@@ -131,6 +131,8 @@ class Guard:
     element: int | None = None
     minimum: int | None = None
     maximum: int | None = None
+    # Signed bias applied before the exact-power-of-two predicate.
+    addend: int = 0
     f64_value: float | None = None
     numeric_format_c_expression: str | None = None
     descriptor: Descriptor | None = None
@@ -392,11 +394,13 @@ class Guard:
         cls,
         field: str,
         *,
+        addend: int = 0,
         diagnostic: GuardDiagnostic | None = None,
     ) -> Self:
         return cls(
             kind=GuardKind.VALUE_EXACT_POWER_OF_TWO_I64,
             field=field,
+            addend=addend,
             diagnostic=diagnostic,
         )
 
@@ -611,6 +615,10 @@ class Guard:
         )
 
     def __post_init__(self) -> None:
+        if not -(2**63) <= self.addend < 2**63:
+            raise ValueError("power-of-two addend must fit in i64")
+        if self.addend and self.kind != GuardKind.VALUE_EXACT_POWER_OF_TWO_I64:
+            raise ValueError(f"{self.kind.value} guard cannot carry an addend")
         if not self.field:
             raise ValueError(f"{self.kind.value} guard requires a field")
         if self.other_field is not None and not self.other_field:

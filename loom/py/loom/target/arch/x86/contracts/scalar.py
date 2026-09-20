@@ -24,7 +24,9 @@ from loom.dialect.scf import defs as scf
 from loom.dialect.view import ALL_VIEW_OPS
 from loom.dialect.view import defs as view
 from loom.dsl import Op
-from loom.target.arch.x86.contracts.integer_division import unsigned_remainder_rules
+from loom.target.arch.x86.contracts.integer_division import (
+    unsigned_constant_division_rules,
+)
 from loom.target.arch.x86.descriptors import X86_SCALAR_DESCRIPTOR_SET
 from loom.target.contracts import (
     AttrProject,
@@ -384,6 +386,7 @@ def _integer_compare_rule(
     descriptor_lookup: _DescriptorLookup,
 ) -> DescriptorRule:
     descriptor = descriptor_lookup(f"x86.scalar.cmp.{predicate}.{descriptor_suffix}")
+    immediate = bool(descriptor.immediates)
     return DescriptorRule(
         source_op=source_op,
         descriptor=descriptor,
@@ -391,15 +394,26 @@ def _integer_compare_rule(
             Guard.enum_attr_equals("predicate", predicate),
             *_typed_guards(("lhs", "rhs"), type_pattern),
             Guard.value_type("result", _I1),
+            *(
+                (
+                    Guard.value_exact_i64("rhs"),
+                    Guard.value_i64_range("rhs", _I32_MIN, _I32_MAX),
+                )
+                if immediate
+                else ()
+            ),
         ),
         emit=(
             _op_emit(
                 descriptor=descriptor,
                 operands={
                     "lhs": ValueRef.operand("lhs"),
-                    "rhs": ValueRef.operand("rhs"),
+                    **({} if immediate else {"rhs": ValueRef.operand("rhs")}),
                 },
                 results={"dst": ValueRef.result("result")},
+                immediates={"imm32": ValueProject.exact_i64("rhs")}
+                if immediate
+                else {},
             ),
         ),
     )
@@ -1520,12 +1534,19 @@ def _cases() -> Sequence[ContractCase]:
             descriptor_lookup,
             maximum=63,
         ),
+        _shift_imm_rule(
+            index.index_shrui,
+            _INDEX,
+            "x86.scalar.shr.imm.gpr64",
+            descriptor_lookup,
+            maximum=63,
+        ),
         *(
             _integer_compare_rule(
                 scalar_comparison.scalar_cmpi,
                 predicate,
                 _I32,
-                "gpr32",
+                descriptor_suffix,
                 descriptor_lookup,
             )
             for predicate in (
@@ -1540,6 +1561,7 @@ def _cases() -> Sequence[ContractCase]:
                 "ugt",
                 "uge",
             )
+            for descriptor_suffix in ("imm.gpr32", "gpr32")
         ),
         *(
             _integer_compare_rule(
@@ -1686,7 +1708,7 @@ def _cases() -> Sequence[ContractCase]:
         ),
         *_madd_address_rules(descriptor_lookup),
         *_memory_rules(descriptor_lookup),
-        *unsigned_remainder_rules(descriptor_lookup),
+        *unsigned_constant_division_rules(descriptor_lookup),
     )
 
 

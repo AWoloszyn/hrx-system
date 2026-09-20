@@ -610,3 +610,19 @@ low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @index_pa
   %remainder = sub %bounded, %51
   return %quotient, %remainder
 }
+
+// ====
+
+aie2p.target<core> @target
+
+func.def target(@target) @index_boundary_pairs(%input: index) -> (index, index, index, index) {
+  %bounded = index.assume %input [range(%input, 0, 4294967295)] : index
+  %power = index.constant 2147483648 : index
+  // ERROR@+1: TARGET/005 {op_name="index.constant", subject_name="value", constraint_key="i64_attr_range", minimum="-1024", maximum="1023"}
+  %largest = index.constant 4294967295 : index
+  %power_quotient = index.div %bounded, %power : index
+  %power_remainder = index.rem %bounded, %power : index
+  %large_quotient = index.div %bounded, %largest : index
+  %large_remainder = index.rem %bounded, %largest : index
+  func.return %power_quotient, %power_remainder, %large_quotient, %large_remainder : index, index, index, index
+}

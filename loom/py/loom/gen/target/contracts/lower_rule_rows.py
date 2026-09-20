@@ -567,6 +567,13 @@ def guard_row(descriptor_refs: Mapping[str, int], row: LowerGuard) -> list[str]:
             f"{{.u64 = {u64_payload}}}",
             always=True,
         )
+    elif row.kind == GuardKind.VALUE_EXACT_POWER_OF_TWO_I64:
+        _append_field(
+            fields,
+            "payload",
+            f"{{.addend = {_c_i64_literal(row.addend)}}}",
+            always=True,
+        )
     if row.kind == GuardKind.DESCRIPTOR_AVAILABLE:
         _append_field(
             fields,
@@ -693,6 +700,7 @@ def attr_copy_row(
         LowerAttrCopyKind.SOURCE_MEMORY_STATIC_BYTE_OFFSET_QUOTIENT,
         LowerAttrCopyKind.SOURCE_MEMORY_STATIC_BYTE_OFFSET_REMAINDER,
         LowerAttrCopyKind.VALUE_U32_DIVISOR_MAGIC_SHIFT,
+        LowerAttrCopyKind.VALUE_U32_DIVISOR_MAGIC_MULTIPLIER,
     ):
         _append_field(
             fields,

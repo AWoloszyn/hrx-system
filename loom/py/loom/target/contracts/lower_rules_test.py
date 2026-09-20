@@ -2423,6 +2423,28 @@ def test_divisor_magic_shift_retains_product_width() -> None:
     )
 
 
+def test_divisor_magic_multiplier_retains_width() -> None:
+    for width in (32, 64):
+        projected = ValueProject.u32_divisor_magic_multiplier("rhs", bit_width=width)
+        assert projected.source_value == "rhs"
+        assert projected.multiplier_bit_width == width
+        assert projected.product_bit_width == 32
+    _expect_value_error(
+        lambda: ValueProject.u32_divisor_magic_multiplier("rhs", bit_width=16),
+        "multiplier width must be 32 or 64",
+    )
+    _expect_value_error(
+        lambda: replace(ValueProject.exact_i64("rhs"), multiplier_bit_width=64),
+        "projection must not set multiplier width",
+    )
+    _expect_value_error(
+        lambda: ValueProject.u32_divisor_magic_multiplier(
+            "rhs", bit_width=64, target_bit_offset=1
+        ),
+        "64-bit reciprocal must not use target bit offset",
+    )
+
+
 def test_compile_lower_rule_set_compiles_exact_i64_i32_word() -> None:
     table = ContractFragment(
         name="test.value-i64-word-immediate",
@@ -2601,6 +2623,20 @@ def test_compile_lower_rule_set_compiles_f32_i32() -> None:
     assert value_ref.index == 0
 
 
+def test_power_of_two_guard_rejects_invalid_addends() -> None:
+    for addend in (-(2**63) - 1, 2**63):
+        _expect_value_error(
+            lambda addend=addend: Guard.value_exact_power_of_two_i64(
+                "lhs", addend=addend
+            ),
+            "addend must fit in i64",
+        )
+    _expect_value_error(
+        lambda: replace(Guard.value_exact_i64("lhs"), addend=1),
+        "guard cannot carry an addend",
+    )
+
+
 def test_compile_lower_rule_set_compiles_power_of_two_log2_immediate() -> None:
     table = ContractFragment(
         name="test.power-of-two-log2",
@@ -2611,6 +2647,7 @@ def test_compile_lower_rule_set_compiles_power_of_two_log2_immediate() -> None:
                 descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
                 guards=(
                     Guard.value_exact_power_of_two_i64("lhs"),
+                    Guard.value_exact_power_of_two_i64("lhs", addend=-1),
                     Guard.value_type("result", Scalar("i32")),
                 ),
                 emit=(
@@ -2630,6 +2667,8 @@ def test_compile_lower_rule_set_compiles_power_of_two_log2_immediate() -> None:
 
     assert compiled.guards[0].kind == GuardKind.VALUE_EXACT_POWER_OF_TWO_I64
     assert compiled.guards[0].value_ref_index == 0
+    assert compiled.guards[0].addend == 0
+    assert compiled.guards[1].addend == -1
     assert len(compiled.attr_copies) == 1
     assert compiled.attr_copies[0].kind == LowerAttrCopyKind.VALUE_EXACT_I64_LOG2
     value_ref = compiled.value_refs[compiled.attr_copies[0].value_ref_index]

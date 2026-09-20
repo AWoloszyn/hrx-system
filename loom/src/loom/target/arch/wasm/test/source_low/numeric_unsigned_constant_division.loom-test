@@ -208,3 +208,20 @@ func.def target(@target) @index_pair_by_20(%input: index) -> (index, index) {
   %remainder = index.rem %bounded, %divisor : index
   func.return %quotient, %remainder : index, index
 }
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def target(@target) @index_boundary_pairs(%input: index) -> (index, index, index, index) {
+  %bounded = index.assume %input [range(%input, 0, 4294967295)] : index
+  %power = index.constant 2147483648 : index
+  %largest = index.constant 4294967295 : index
+  // ERROR@+1: TARGET/001 {op_name="index.shrui"}
+  %power_quotient = index.div %bounded, %power : index
+  %power_remainder = index.rem %bounded, %power : index
+  // ERROR@+1: TARGET/001 {op_name="index.div"}
+  %large_quotient = index.div %bounded, %largest : index
+  %large_remainder = index.rem %bounded, %largest : index
+  func.return %power_quotient, %power_remainder, %large_quotient, %large_remainder : index, index, index, index
+}

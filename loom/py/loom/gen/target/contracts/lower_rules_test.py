@@ -1035,6 +1035,18 @@ def test_generate_lower_rule_set_emits_value_ref_for_float_equals_guard() -> Non
     assert ".payload = {.u64 = UINT64_C(0)" in guard_text
 
 
+def test_guard_row_preserves_power_of_two_addend() -> None:
+    for addend, literal in (
+        (0, "INT64_C(0)"),
+        (-1, "(-INT64_C(1))"),
+        (-(2**63), "INT64_MIN"),
+        (2**63 - 1, "INT64_C(9223372036854775807)"),
+    ):
+        row = LowerGuard(kind=GuardKind.VALUE_EXACT_POWER_OF_TWO_I64, addend=addend)
+        fields = guard_row({}, row)
+        assert f".payload = {{.addend = {literal}}}" in fields
+
+
 def test_generate_lower_rule_set_emits_storage_element_format_guard() -> None:
     table = ContractFragment(
         name="test.low.storage_schema",

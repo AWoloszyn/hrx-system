@@ -59,62 +59,61 @@ func.def public target(@target) @boolean_comparisons(%left: i32, %right: i32) ->
 
 // ----
 low.func.def public target<x86.avx2.core>(@target) abi(object_function) @boolean_comparisons(%left: reg<x86.gpr32>, %right: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
-  %c0 = mov.imm32 0
-  %lhs = cmp.ne.gpr32 %left, %c0
-  %rhs = cmp.ne.gpr32 %right, %c0
-  %87 = copy %lhs : reg<x86.gpr32> -> reg<x86.gpr32>
-  %ne_bit = xor.gpr32 %87, %rhs
-  %89 = mov.imm32 1
-  %90 = copy %ne_bit : reg<x86.gpr32> -> reg<x86.gpr32>
-  %eq_bit = xor.gpr32 %90, %89
-  %92 = copy %ne_bit : reg<x86.gpr32> -> reg<x86.gpr32>
-  %ne_shifted = shl.imm.gpr32 %92 {shift = 1}
-  %94 = copy %eq_bit : reg<x86.gpr32> -> reg<x86.gpr32>
-  %mask_1 = or.gpr32 %94, %ne_shifted
-  %96 = copy %rhs : reg<x86.gpr32> -> reg<x86.gpr32>
-  %97 = xor.gpr32 %96, %89
-  %98 = copy %97 : reg<x86.gpr32> -> reg<x86.gpr32>
-  %slt_bit = and.gpr32 %98, %lhs
-  %100 = copy %slt_bit : reg<x86.gpr32> -> reg<x86.gpr32>
-  %slt_shifted = shl.imm.gpr32 %100 {shift = 2}
-  %102 = copy %mask_1 : reg<x86.gpr32> -> reg<x86.gpr32>
-  %mask_2 = or.gpr32 %102, %slt_shifted
-  %104 = copy %97 : reg<x86.gpr32> -> reg<x86.gpr32>
-  %sle_bit = or.gpr32 %104, %lhs
-  %106 = copy %sle_bit : reg<x86.gpr32> -> reg<x86.gpr32>
-  %sle_shifted = shl.imm.gpr32 %106 {shift = 3}
-  %108 = copy %mask_2 : reg<x86.gpr32> -> reg<x86.gpr32>
-  %mask_3 = or.gpr32 %108, %sle_shifted
-  %110 = copy %lhs : reg<x86.gpr32> -> reg<x86.gpr32>
-  %111 = xor.gpr32 %110, %89
-  %112 = copy %111 : reg<x86.gpr32> -> reg<x86.gpr32>
-  %sgt_bit = and.gpr32 %112, %rhs
-  %114 = copy %sgt_bit : reg<x86.gpr32> -> reg<x86.gpr32>
-  %sgt_shifted = shl.imm.gpr32 %114 {shift = 4}
-  %116 = copy %mask_3 : reg<x86.gpr32> -> reg<x86.gpr32>
-  %mask_4 = or.gpr32 %116, %sgt_shifted
-  %118 = copy %111 : reg<x86.gpr32> -> reg<x86.gpr32>
-  %sge_bit = or.gpr32 %118, %rhs
-  %120 = copy %sge_bit : reg<x86.gpr32> -> reg<x86.gpr32>
-  %sge_shifted = shl.imm.gpr32 %120 {shift = 5}
-  %122 = copy %mask_4 : reg<x86.gpr32> -> reg<x86.gpr32>
-  %mask_5 = or.gpr32 %122, %sge_shifted
-  %124 = copy %sgt_bit : reg<x86.gpr32> -> reg<x86.gpr32>
-  %ult_shifted = shl.imm.gpr32 %124 {shift = 6}
-  %126 = copy %mask_5 : reg<x86.gpr32> -> reg<x86.gpr32>
-  %mask_6 = or.gpr32 %126, %ult_shifted
-  %128 = copy %sge_bit : reg<x86.gpr32> -> reg<x86.gpr32>
-  %ule_shifted = shl.imm.gpr32 %128 {shift = 7}
-  %130 = copy %mask_6 : reg<x86.gpr32> -> reg<x86.gpr32>
-  %mask_7 = or.gpr32 %130, %ule_shifted
-  %132 = copy %slt_bit : reg<x86.gpr32> -> reg<x86.gpr32>
-  %ugt_shifted = shl.imm.gpr32 %132 {shift = 8}
-  %134 = copy %mask_7 : reg<x86.gpr32> -> reg<x86.gpr32>
-  %mask_8 = or.gpr32 %134, %ugt_shifted
-  %136 = copy %sle_bit : reg<x86.gpr32> -> reg<x86.gpr32>
-  %uge_shifted = shl.imm.gpr32 %136 {shift = 9}
-  %138 = copy %mask_8 : reg<x86.gpr32> -> reg<x86.gpr32>
-  %mask_9 = or.gpr32 %138, %uge_shifted
+  %lhs = cmp.ne.imm.gpr32 %left, 0
+  %rhs = cmp.ne.imm.gpr32 %right, 0
+  %86 = copy %lhs : reg<x86.gpr32> -> reg<x86.gpr32>
+  %ne_bit = xor.gpr32 %86, %rhs
+  %88 = mov.imm32 1
+  %89 = copy %ne_bit : reg<x86.gpr32> -> reg<x86.gpr32>
+  %eq_bit = xor.gpr32 %89, %88
+  %91 = copy %ne_bit : reg<x86.gpr32> -> reg<x86.gpr32>
+  %ne_shifted = shl.imm.gpr32 %91 {shift = 1}
+  %93 = copy %eq_bit : reg<x86.gpr32> -> reg<x86.gpr32>
+  %mask_1 = or.gpr32 %93, %ne_shifted
+  %95 = copy %rhs : reg<x86.gpr32> -> reg<x86.gpr32>
+  %96 = xor.gpr32 %95, %88
+  %97 = copy %96 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %slt_bit = and.gpr32 %97, %lhs
+  %99 = copy %slt_bit : reg<x86.gpr32> -> reg<x86.gpr32>
+  %slt_shifted = shl.imm.gpr32 %99 {shift = 2}
+  %101 = copy %mask_1 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %mask_2 = or.gpr32 %101, %slt_shifted
+  %103 = copy %96 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %sle_bit = or.gpr32 %103, %lhs
+  %105 = copy %sle_bit : reg<x86.gpr32> -> reg<x86.gpr32>
+  %sle_shifted = shl.imm.gpr32 %105 {shift = 3}
+  %107 = copy %mask_2 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %mask_3 = or.gpr32 %107, %sle_shifted
+  %109 = copy %lhs : reg<x86.gpr32> -> reg<x86.gpr32>
+  %110 = xor.gpr32 %109, %88
+  %111 = copy %110 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %sgt_bit = and.gpr32 %111, %rhs
+  %113 = copy %sgt_bit : reg<x86.gpr32> -> reg<x86.gpr32>
+  %sgt_shifted = shl.imm.gpr32 %113 {shift = 4}
+  %115 = copy %mask_3 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %mask_4 = or.gpr32 %115, %sgt_shifted
+  %117 = copy %110 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %sge_bit = or.gpr32 %117, %rhs
+  %119 = copy %sge_bit : reg<x86.gpr32> -> reg<x86.gpr32>
+  %sge_shifted = shl.imm.gpr32 %119 {shift = 5}
+  %121 = copy %mask_4 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %mask_5 = or.gpr32 %121, %sge_shifted
+  %123 = copy %sgt_bit : reg<x86.gpr32> -> reg<x86.gpr32>
+  %ult_shifted = shl.imm.gpr32 %123 {shift = 6}
+  %125 = copy %mask_5 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %mask_6 = or.gpr32 %125, %ult_shifted
+  %127 = copy %sge_bit : reg<x86.gpr32> -> reg<x86.gpr32>
+  %ule_shifted = shl.imm.gpr32 %127 {shift = 7}
+  %129 = copy %mask_6 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %mask_7 = or.gpr32 %129, %ule_shifted
+  %131 = copy %slt_bit : reg<x86.gpr32> -> reg<x86.gpr32>
+  %ugt_shifted = shl.imm.gpr32 %131 {shift = 8}
+  %133 = copy %mask_7 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %mask_8 = or.gpr32 %133, %ugt_shifted
+  %135 = copy %sle_bit : reg<x86.gpr32> -> reg<x86.gpr32>
+  %uge_shifted = shl.imm.gpr32 %135 {shift = 9}
+  %137 = copy %mask_8 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %mask_9 = or.gpr32 %137, %uge_shifted
   return %mask_9
 }
 

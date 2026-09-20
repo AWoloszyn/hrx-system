@@ -985,11 +985,14 @@ class _LowerRuleSetCompiler:
                 LowerGuard(
                     kind=guard.kind,
                     value_ref_index=value_ref_index,
+                    addend=guard.addend,
                     diagnostic_index=self._append_diagnostic_ref(
                         source_op,
                         _guard_diagnostic(
                             guard,
-                            _exact_power_of_two_integer_diagnostic(guard.field),
+                            _exact_power_of_two_integer_diagnostic(
+                                guard.field, guard.addend
+                            ),
                         ),
                     ),
                 )
@@ -1925,7 +1928,11 @@ class _LowerRuleSetCompiler:
             ),
             target_bit_offset=project.target_bit_offset,
             source_element_index=project.word_index,
-            literal_i64=project.product_bit_width - 32,
+            literal_i64=(
+                project.multiplier_bit_width - 32
+                if project.kind == ValueProjectKind.U32_DIVISOR_MAGIC_MULTIPLIER
+                else project.product_bit_width - 32
+            ),
         )
 
     def _append_attr_copy_sequence(self, sequence: tuple[LowerAttrCopy, ...]) -> int:

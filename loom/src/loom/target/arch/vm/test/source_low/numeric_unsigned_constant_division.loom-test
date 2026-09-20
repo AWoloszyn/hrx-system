@@ -275,3 +275,30 @@ low.func.def target<vm.core>(@target) abi(vm_function) @index_pair_by_20(%bounde
   %remainder = integer.rem.u64 %bounded, %divisor
   return %quotient, %remainder
 }
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @index_boundary_pairs(%input: index) -> (index, index, index, index) {
+  %bounded = index.assume %input [range(%input, 0, 4294967295)] : index
+  %power = index.constant 2147483648 : index
+  %largest = index.constant 4294967295 : index
+  %power_quotient = index.div %bounded, %power : index
+  %power_remainder = index.rem %bounded, %power : index
+  %large_quotient = index.div %bounded, %largest : index
+  %large_remainder = index.rem %bounded, %largest : index
+  func.return %power_quotient, %power_remainder, %large_quotient, %large_remainder : index, index, index, index
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @index_boundary_pairs(%bounded: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>) asm {
+  %largest = constant.i64 4294967295
+  %22 = constant.i64 31
+  %power_quotient = integer.shift.right.u64 %bounded, %22
+  %24 = constant.i64 2147483647
+  %power_remainder = integer.and.i64 %bounded, %24
+  %large_quotient = integer.div.u64 %bounded, %largest
+  %large_remainder = integer.rem.u64 %bounded, %largest
+  return %power_quotient, %power_remainder, %large_quotient, %large_remainder
+}

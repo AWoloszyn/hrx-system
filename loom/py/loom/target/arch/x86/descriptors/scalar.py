@@ -25,7 +25,11 @@ from loom.target.low_descriptors import (
     LatencyKind,
     ModelQuality,
     Operand,
+    OperandFlag,
+    OperandRole,
+    PhysicalRegister,
     RegClass,
+    RegClassAlt,
     RegClassFlag,
     Resource,
     ResourceKind,
@@ -68,6 +72,28 @@ from .common import (
     _load_effect,
     _store_effect,
 )
+
+# Physical IDs follow the native GPR encoding order, including width aliases.
+_GPR_NAMES = (
+    "rax",
+    "rcx",
+    "rdx",
+    "rbx",
+    "rsp",
+    "rbp",
+    "rsi",
+    "rdi",
+    "r8",
+    "r9",
+    "r10",
+    "r11",
+    "r12",
+    "r13",
+    "r14",
+    "r15",
+)
+_REG_RAX = "x86.rax"
+_REG_RDX = "x86.rdx"
 
 
 def _gpr32_destructive_binary_descriptor(
@@ -296,9 +322,10 @@ def _gpr_compare_descriptor(
     setcc: str,
     semantic_tag: str,
     lhs: Operand,
-    rhs: Operand,
+    rhs: Operand | Immediate,
     asm_suffix: str,
 ) -> Descriptor:
+    immediate = isinstance(rhs, Immediate)
     return Descriptor(
         key=f"x86.scalar.cmp.{predicate}.{asm_suffix}",
         mnemonic=f"cmp.{setcc}",
@@ -306,12 +333,14 @@ def _gpr_compare_descriptor(
         operands=(
             _gpr32_result(),
             lhs,
-            rhs,
+            *((rhs,) if not immediate else ()),
         ),
+        immediates=(rhs,) if immediate else (),
         asm_forms=_asm(
             mnemonic=f"cmp.{predicate}.{asm_suffix}",
             results=("dst",),
-            operands=("lhs", "rhs"),
+            operands=("lhs",) if immediate else ("lhs", "rhs"),
+            immediates=("imm32",) if immediate else (),
         ),
         schedule_class=_SCHEDULE_SCALAR,
         flags=(DescriptorFlag.DEAD_REMOVABLE,),
@@ -365,6 +394,39 @@ X86_SCALAR_SUFFIX_DESCRIPTORS = (
         key="x86.scalar.imul.gpr64",
         mnemonic="imul",
         semantic_tag="integer.mul.i64",
+    ),
+    Descriptor(
+        key="x86.scalar.mul.high.gpr64",
+        mnemonic="mul",
+        semantic_tag="integer.mul.high.u64",
+        operands=(
+            Operand(
+                "dst",
+                OperandRole.RESULT,
+                (RegClassAlt(_REG_RDX),),
+                flags=(OperandFlag.IMPLICIT,),
+            ),
+            Operand(
+                "lhs",
+                OperandRole.OPERAND,
+                (RegClassAlt(_REG_RAX),),
+                flags=(OperandFlag.IMPLICIT,),
+            ),
+            _gpr64_operand("rhs"),
+            Operand(
+                "low",
+                OperandRole.IMPLICIT,
+                (RegClassAlt(_REG_RAX),),
+                flags=(OperandFlag.IMPLICIT, OperandFlag.STATE_WRITE),
+            ),
+        ),
+        asm_forms=_asm(
+            mnemonic="mul.high.gpr64",
+            results=("dst",),
+            operands=("lhs", "rhs"),
+        ),
+        schedule_class=_SCHEDULE_SCALAR,
+        flags=(DescriptorFlag.DEAD_REMOVABLE,),
     ),
     Descriptor(
         key="x86.scalar.imul.imm.gpr64",
@@ -445,6 +507,35 @@ X86_SCALAR_SUFFIX_DESCRIPTORS = (
     _gpr64_to_gpr32_truncate_descriptor(),
     _gpr_select_descriptor(32),
     _gpr_select_descriptor(64),
+    # Restore the original lhs when the subtraction borrows. The original is
+    # still read after dst is written, so allocation keeps the two disjoint.
+    Descriptor(
+        key="x86.scalar.sub.if_uge.imm.gpr32",
+        mnemonic="sub.cmovb",
+        semantic_tag="integer.subtract_if_unsigned_ge.i32",
+        operands=(_gpr32_result(), _gpr32_operand("lhs")),
+        immediates=(_IMM32_IMMEDIATE,),
+        constraints=(Constraint(ConstraintKind.EARLY_CLOBBER, 0),),
+        asm_forms=_asm(
+            mnemonic="sub.if_uge.imm.gpr32",
+            results=("dst",),
+            operands=("lhs",),
+            immediates=("imm32",),
+        ),
+        schedule_class=_SCHEDULE_SCALAR,
+        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+    ),
+    *(
+        _gpr_compare_descriptor(
+            predicate=predicate,
+            setcc=setcc,
+            semantic_tag=f"integer.cmp.{predicate}.i32",
+            lhs=_gpr32_operand("lhs"),
+            rhs=_IMM32_IMMEDIATE,
+            asm_suffix="imm.gpr32",
+        )
+        for predicate, setcc in _CMP_PREDICATE_SETCC
+    ),
     *(
         _gpr32_compare_descriptor(
             predicate=predicate,
@@ -827,22 +918,37 @@ X86_SCALAR_DESCRIPTOR_SET = DescriptorSet(
     c_enum_prefix="X86_SCALAR_CORE",
     generator_version=1,
     supports_native_scheduling=True,
+    physical_registers=tuple(
+        PhysicalRegister(name, (index,)) for index, name in enumerate(_GPR_NAMES)
+    ),
     reg_classes=(
         RegClass(
             _REG_GPR32,
             32,
             SpillSlotSpace.STACK,
-            flags=(RegClassFlag.PHYSICAL,),
-            allocatable_count=16,
-            alias_set_id=1,
+            flags=(RegClassFlag.PHYSICAL, RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS),
+            physical_registers=_GPR_NAMES,
         ),
         RegClass(
             _REG_GPR64,
             64,
             SpillSlotSpace.STACK,
-            flags=(RegClassFlag.PHYSICAL,),
-            allocatable_count=16,
-            alias_set_id=1,
+            flags=(RegClassFlag.PHYSICAL, RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS),
+            physical_registers=_GPR_NAMES,
+        ),
+        *(
+            RegClass(
+                register_class,
+                64,
+                SpillSlotSpace.STACK,
+                flags=(
+                    RegClassFlag.PHYSICAL,
+                    RegClassFlag.UNSPILLABLE,
+                    RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS,
+                ),
+                physical_registers=(register,),
+            )
+            for register_class, register in ((_REG_RAX, "rax"), (_REG_RDX, "rdx"))
         ),
     ),
     resources=(

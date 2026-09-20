@@ -576,7 +576,7 @@ static bool loom_low_lower_rule_value_facts_exact_i64(
 static bool loom_low_lower_rule_value_facts_exact_power_of_two_i64(
     const loom_low_lower_rule_match_context_t* match_context,
     const loom_low_lower_rule_set_t* rule_set, const loom_op_t* source_op,
-    uint16_t value_ref_index) {
+    uint16_t value_ref_index, int64_t addend) {
   const loom_value_id_t value_id = loom_low_lower_rule_source_value(
       match_context->module, rule_set, source_op, value_ref_index);
   loom_value_facts_t facts = loom_value_facts_unknown();
@@ -586,6 +586,7 @@ static bool loom_low_lower_rule_value_facts_exact_power_of_two_i64(
   }
   int64_t exact_value = 0;
   return loom_value_facts_as_exact_i64(facts, &exact_value) &&
+         iree_checked_add_i64(exact_value, addend, &exact_value) &&
          iree_math_is_power_of_two_i64(exact_value);
 }
 
@@ -1035,7 +1036,8 @@ static iree_status_t loom_low_lower_rule_guard_matches(
       return iree_ok_status();
     case LOOM_LOW_LOWER_GUARD_VALUE_EXACT_POWER_OF_TWO_I64:
       *out_matches = loom_low_lower_rule_value_facts_exact_power_of_two_i64(
-          match_context, rule_set, source_op, guard->value_ref_index);
+          match_context, rule_set, source_op, guard->value_ref_index,
+          guard->payload.addend);
       return iree_ok_status();
     case LOOM_LOW_LOWER_GUARD_VALUE_U32_DIVISOR_MAGIC_IS_ADD:
       *out_matches = loom_low_lower_rule_value_facts_u32_divisor_magic_is_add(

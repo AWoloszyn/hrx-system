@@ -665,6 +665,16 @@ static iree_status_t loom_low_lower_rule_build_attrs(
       case LOOM_LOW_LOWER_ATTR_COPY_VALUE_U32_DIVISOR_MAGIC_MULTIPLIER:
       case LOOM_LOW_LOWER_ATTR_COPY_VALUE_U32_DIVISOR_MAGIC_MULTIPLIER_AS_I32:
       case LOOM_LOW_LOWER_ATTR_COPY_VALUE_U32_DIVISOR_MAGIC_SHIFT: {
+        if (attr_copy->kind ==
+                LOOM_LOW_LOWER_ATTR_COPY_VALUE_U32_DIVISOR_MAGIC_MULTIPLIER &&
+            attr_copy->literal_i64 == 32) {
+          const uint32_t divisor =
+              (uint32_t)loom_low_lower_rule_attr_copy_exact_i64(
+                  context, rule_set, state, attr_copy);
+          attrs[i].value = loom_attr_i64(
+              (int64_t)loom_low_lower_u32_divisor_reciprocal(divisor));
+          break;
+        }
         const loom_value_id_t source_value_id =
             loom_low_lower_rule_emit_source_value(
                 context->module, rule_set, state, attr_copy->value_ref_index);
