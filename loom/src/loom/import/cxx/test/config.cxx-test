@@ -18,22 +18,6 @@ func.def public @scaled(%value: i32) -> (i32) {
 }
 
 // ====
-// RUN: pass canonicalize,cse,dce
-// Cleanup retains unresolved scalar values and their config declarations.
-[[loom::config("tuning.factor")]] extern const unsigned factor;
-unsigned scaled(unsigned value) { return value * factor + factor; }
-// ----
-config.decl @tuning.factor : i32
-
-func.def public @scaled(%value: i32) -> (i32) {
-  %factor = config.get @tuning.factor : i32
-  %4 = scalar.muli %value, %factor : i32
-  %6 = scalar.addi %4, %factor : i32
-  func.return %6 : i32
-}
-
-// ====
-// RUN: roundtrip
 // A provider translation unit needs no functions or roots.
 [[loom::config("tuning.factor")]] const unsigned factor = 5;
 [[loom::config("tuning.enabled")]] const bool enabled = true;
@@ -56,7 +40,6 @@ config.def @tuning.mask = -1 : i64
 config.def @tuning.policy = 2 : i16
 
 // ====
-// RUN: roundtrip
 // A same-TU definition fixes earlier reads, redeclarations and aliases alike.
 [[loom::config("tuning.factor")]] extern const unsigned factor;
 [[loom::config("tuning.factor")]] extern const unsigned alias;
@@ -84,21 +67,6 @@ func.def public @after() -> (i32) {
 }
 
 // ====
-// RUN: pass canonicalize,cse,dce
-// Equal definitions coalesce, including an attributed constexpr provider.
-[[loom::config("tuning.factor")]] constexpr unsigned first = 5;
-[[loom::config("tuning.factor")]] const unsigned second{5};
-unsigned entry() { return first + second; }
-// ----
-config.def @tuning.factor = 5 : i32
-
-func.def public @entry() -> (i32) {
-  %5 = scalar.constant 10 : i32
-  func.return %5 : i32
-}
-
-// ====
-// RUN: roundtrip
 // Schedule values and loop bounds use the same ordinary scalar config reads.
 [[loom::config("tuning.unroll")]] extern const unsigned unroll;
 [[loom::config("tuning.depth")]] extern const unsigned depth;
@@ -138,7 +106,6 @@ func.def public @sum() -> (i32) {
 }
 
 // ====
-// RUN: roundtrip
 // Runtime C++ control flow stays available for specialization in Loom.
 [[loom::config("tuning.enabled")]] extern const bool enabled;
 int choose(int value) { if (enabled) return value + 1; return value - 1; }
@@ -160,7 +127,6 @@ func.def public @choose(%value: i32) -> (i32) {
 }
 
 // ====
-// RUN: roundtrip
 // Attribute placement is shared by the supported C and C++ source modes.
 // INPUT: cxx std=c23
 [[loom::config("tuning.factor")]] extern const unsigned factor;

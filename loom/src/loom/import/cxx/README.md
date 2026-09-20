@@ -29,6 +29,8 @@ Each case is an independent translation unit. Roundtrip imports C++ and checks
 canonical Loom output; pass, verify, format, emit, and report modes consume that
 same module.
 
+Files group cases with one shared `RUN` mode declared at the top.
+
 ```cpp
 // RUN: with-checks pass canonicalize,cse,dce
 // INPUT: cxx root=twice std=c++23
@@ -37,8 +39,11 @@ int twice(int value) { return value * 2; }
 // CHECK: func.def public @twice*
 // CHECK: *scalar.shli*
 // CHECK-NOT: *scalar.muli*
+```
 
-// ====
+Diagnostic fixtures use `verify`:
+
+```cpp
 // RUN: verify
 // INPUT: cxx
 long distance(int* left, int* right) {
@@ -53,12 +58,13 @@ CHECK patterns are preserved by updates. Diagnostic annotations use the normal
 structured ERROR/WARNING/REMARK syntax; the JSON report includes suggested
 annotation edits when expectations differ.
 
-`INPUT` selects the source format and options independently of `RUN`. The first
-case's INPUT is inherited by later cases; a later INPUT replaces it for that
-case. With no INPUT, the filename selects C++ with the importer's normal
-C++26/LP64 defaults. `--input-format=cxx` selects C++ for stdin or another
-filename. `--list-input-formats` reports the formats linked into that binary.
-An importer-disabled binary rejects `.cxx-test` and explicit `cxx` input.
+The first case's `RUN` and `INPUT` establish file defaults. `INPUT` selects the
+source format and options independently of `RUN`; a later `INPUT` overrides
+the default for that case. With no `INPUT`, the filename selects C++ with the
+importer's normal C++26/LP64 defaults. `--input-format=cxx` selects C++ for
+stdin or another filename. `--list-input-formats` reports the formats linked
+into that binary. An importer-disabled binary rejects `.cxx-test` and explicit
+`cxx` input.
 
 Options use whitespace-separated `key=value` tokens. Single or double quotes
 preserve spaces within a token, and quotes/backslashes can be escaped inside
