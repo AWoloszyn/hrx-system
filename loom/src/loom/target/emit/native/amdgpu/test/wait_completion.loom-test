@@ -827,12 +827,12 @@ low.func.def target<amdgpu.rdna3.core>(@target) @authored_partial_ordered_vector
 
 // ====
 
-// Without the retained same-class result-ordering proof, the compiler keeps
-// its existing consumer waits after the authored bound.
-// RUN: emit amdgpu-assembly @authored_partial_unordered_vector_results strategy=source
+// Counter completion is ordered even when physical result writes are not.
+// The authored bound completes the older result without a duplicate wait.
+// RUN: emit amdgpu-assembly @authored_partial_ordered_completion strategy=source
 amdgpu.target<gfx1201> @target
 
-low.func.def target<amdgpu.rdna4.core>(@target) @authored_partial_unordered_vector_results(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr>) asm {
+low.func.def target<amdgpu.rdna4.core>(@target) @authored_partial_ordered_completion(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr>) asm {
   %oldest = global_load_b32_saddr %address, %base
   %latest = global_load_b32_saddr %address, %base {offset = 4}
   s_wait_loadcnt {loadcnt = 1}
@@ -844,7 +844,6 @@ low.func.def target<amdgpu.rdna4.core>(@target) @authored_partial_unordered_vect
 // ----
   global_load_b32 v1, v0, s[0:1] offset:0
   global_load_b32 v2, v0, s[0:1] offset:4
-  s_wait_loadcnt loadcnt(1)
   s_wait_loadcnt loadcnt(1)
   v_add_u32 v0, v1, v0
   s_wait_loadcnt loadcnt(0)

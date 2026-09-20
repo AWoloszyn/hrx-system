@@ -118,6 +118,7 @@ class _WaitPacketDescriptorRange:
     first_descriptor_lookup: int
     descriptor_lookup_count: int
     max_descriptor_immediate_count: int
+    maximum_target_counts: tuple[int, ...]
 
 
 @dataclass(frozen=True, slots=True)
@@ -322,6 +323,15 @@ def _descriptor_set_wait_packet_rows(
         (row.immediate_count for row in descriptor_rows),
         default=0,
     )
+    # Coalescing can choose a different wait encoding. Retain bounds that stay
+    # effective under every encoding of each logical counter.
+    maximum_target_counts = tuple(
+        min(
+            (row.no_wait_value - 1 for row in immediate_rows if row.counter_mask & (1 << slot)),
+            default=0,
+        )
+        for slot in range(_COUNTER_X)
+    )
     range_row = _WaitPacketDescriptorRange(
         descriptor_set_key=descriptor_set.key,
         descriptor_set_ordinal=descriptor_set_ordinal,
@@ -330,6 +340,7 @@ def _descriptor_set_wait_packet_rows(
         first_descriptor_lookup=0,
         descriptor_lookup_count=len(descriptor_lookup_rows),
         max_descriptor_immediate_count=max_descriptor_immediate_count,
+        maximum_target_counts=maximum_target_counts,
     )
     return tuple(descriptor_rows), tuple(immediate_rows), tuple(descriptor_lookup_rows), range_row
 
@@ -575,6 +586,7 @@ def _materialize_wait_packet_tables(
                 first_descriptor_lookup=len(descriptor_lookup_rows),
                 descriptor_lookup_count=range_row.descriptor_lookup_count,
                 max_descriptor_immediate_count=range_row.max_descriptor_immediate_count,
+                maximum_target_counts=range_row.maximum_target_counts,
             )
         )
         descriptor_lookup_rows.extend(set_descriptor_lookup_rows)
@@ -650,6 +662,7 @@ def _range_row_initializer(row: _WaitPacketDescriptorRange) -> str:
             f"        .descriptor_lookup_count = {row.descriptor_lookup_count},",
             "        .max_descriptor_immediate_count =",
             f"            {row.max_descriptor_immediate_count},",
+            f"        .maximum_target_counts = {{{', '.join(str(value) for value in row.maximum_target_counts)}}},",
             "    },",
         ]
     )

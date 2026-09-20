@@ -33,6 +33,9 @@ typedef struct loom_amdgpu_wait_packet_target_t {
   iree_host_size_t selection_count;
   // Maximum immediate template count for any available wait descriptor.
   iree_host_size_t max_descriptor_immediate_count;
+  // Borrowed largest effective bounds indexed by logical counter slot, valid
+  // under every encoding that insertion-point coalescing may select.
+  const uint16_t* maximum_target_counts;
 } loom_amdgpu_wait_packet_target_t;
 
 // Populates the generated wait-packet rows available on |descriptor_set|.

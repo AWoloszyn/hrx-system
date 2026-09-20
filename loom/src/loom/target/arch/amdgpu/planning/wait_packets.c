@@ -114,8 +114,6 @@ static void loom_amdgpu_wait_packet_append_immediate(
   IREE_ASSERT_LT(builder->immediate_count, builder->immediate_capacity);
   const uint16_t descriptor_immediate_index =
       immediate_descriptor->descriptor_immediate_index;
-  value = iree_min(value, immediate_descriptor->no_wait_value);
-
   builder->immediates[builder->immediate_count++] =
       (loom_amdgpu_wait_packet_immediate_t){
           .descriptor_immediate_index = descriptor_immediate_index,
@@ -218,9 +216,8 @@ bool loom_amdgpu_wait_packet_try_select_counter_mask(
         loom_amdgpu_wait_packet_descriptor_immediate(packet_descriptor, i);
     uint16_t value = immediate->no_wait_value;
     if (iree_any_bit_set(immediate->counter_mask, covered_counter_mask)) {
-      value = target_count;
+      value = iree_min(target_count, immediate->no_wait_value - 1);
     }
-    value = iree_min(value, immediate->no_wait_value);
     out_selection->immediates[i] = (loom_amdgpu_wait_packet_immediate_t){
         .descriptor_immediate_index = immediate->descriptor_immediate_index,
         .name = immediate->name,

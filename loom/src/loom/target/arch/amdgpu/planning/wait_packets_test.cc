@@ -144,21 +144,29 @@ TEST_F(AmdgpuWaitPacketTest, SelectsArchitectureSpecificCombinedNoWaitValues) {
   }
 }
 
-TEST_F(AmdgpuWaitPacketTest, ClampsTargetCountToNoWaitEncoding) {
+TEST_F(AmdgpuWaitPacketTest, ClampsTargetCountBelowNoWaitEncoding) {
   const loom_low_descriptor_set_t* descriptor_set =
       loom_low_descriptor_registry_lookup(&low_registry_.registry,
                                           IREE_SV("amdgpu.rdna3.core"));
   ASSERT_NE(descriptor_set, nullptr);
 
-  loom_amdgpu_wait_packet_selection_t selection = {};
-  ASSERT_TRUE(loom_amdgpu_wait_packet_try_select_counter_mask(
-      descriptor_set, LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD,
-      /*target_count=*/UINT16_MAX, &selection));
-
-  const loom_amdgpu_wait_packet_immediate_t* vmcnt =
-      FindImmediate(selection, IREE_SV("vmcnt"));
-  ASSERT_NE(vmcnt, nullptr);
-  EXPECT_EQ(vmcnt->value, 63);
+  const uint16_t requested_counts[] = {0, 1, 62, 63, 64, UINT16_MAX};
+  const uint16_t expected_counts[] = {0, 1, 62, 62, 62, 62};
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(requested_counts); ++i) {
+    SCOPED_TRACE(requested_counts[i]);
+    loom_amdgpu_wait_packet_selection_t selection = {};
+    ASSERT_TRUE(loom_amdgpu_wait_packet_try_select_counter_mask(
+        descriptor_set, LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD,
+        requested_counts[i], &selection));
+    const loom_amdgpu_wait_packet_immediate_t* vmcnt =
+        FindImmediate(selection, IREE_SV("vmcnt"));
+    ASSERT_NE(vmcnt, nullptr);
+    EXPECT_EQ(vmcnt->value, expected_counts[i]);
+    const loom_amdgpu_wait_packet_immediate_t* lgkmcnt =
+        FindImmediate(selection, IREE_SV("lgkmcnt"));
+    ASSERT_NE(lgkmcnt, nullptr);
+    EXPECT_EQ(lgkmcnt->value, 63);
+  }
 }
 
 TEST_F(AmdgpuWaitPacketTest, SelectsRdna4SplitWaits) {

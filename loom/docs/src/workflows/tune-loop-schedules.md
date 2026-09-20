@@ -322,6 +322,14 @@ the same thresholds with `s_wait_loadcnt`. Startup and exit waits still complete
 the work those paths require. This register pattern is a compiled result for
 this example; changing the payload, target, or unroll factor can change it.
 
+Branches do not inherently require a full load wait. If a block issues a new
+global load before consuming an older result from a predecessor, Loom can use
+`vmcnt(1)` on GFX9/GFX11 or `loadcnt(1)` on GFX12 to leave the new load pending.
+The proof uses requests issued on that path, so a branch that skips the new
+load still waits for full completion before reading the older result. The same
+rule applies when the first consumer is an edge copy or a register overwrite.
+Scalar-memory requests and generic-address loads do not supply this proof.
+
 The vector motif above exercises the same boundary with four-register payloads.
 At depth four/factor six on gfx1151, its steady backedge carries three vector
 loads without register copies or a wait at the edge. The following iteration

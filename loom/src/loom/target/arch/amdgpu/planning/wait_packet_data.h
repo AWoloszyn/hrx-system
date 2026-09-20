@@ -62,6 +62,9 @@ typedef struct loom_amdgpu_wait_packet_descriptor_range_t {
   uint16_t descriptor_lookup_count;
   // Maximum immediate template count owned by any descriptor in this range.
   uint16_t max_descriptor_immediate_count;
+  // Largest effective bound per logical counter under every available wait
+  // encoding. Unsupported counters have zero; no-wait values are excluded.
+  uint16_t maximum_target_counts[LOOM_AMDGPU_WAIT_COUNTER_SLOT_COUNT];
 } loom_amdgpu_wait_packet_descriptor_range_t;
 
 // Descriptor templates ordered by descriptor set and descriptor ordinal.
