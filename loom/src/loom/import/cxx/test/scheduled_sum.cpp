@@ -12,11 +12,11 @@
 #ifndef DEPTH
 #define DEPTH 1
 #endif
-template <unsigned Factor, unsigned Depth>
 __device__ __forceinline__ int sum(const int* input, unsigned row,
-                                   unsigned columns) {
+                                   unsigned columns, unsigned factor,
+                                   unsigned depth) {
   int total = 0;
-  [[loom::unroll(Factor), loom::pipeline(Depth), loom::schedule("linear")]]
+  [[loom::unroll(factor), loom::pipeline(depth), loom::schedule("linear")]]
   for (unsigned column = 0; column < columns; ++column) {
     total += input[row * columns + column];
   }
@@ -27,6 +27,9 @@ void scheduled_sum(const int* input, int* output, unsigned rows,
                    unsigned columns) {
   unsigned row = threadIdx.x;
   if (row < rows) {
-    output[row] = sum<UNROLL, DEPTH>(input, row, columns);
+    unsigned factor = UNROLL + 1u;
+    --factor;
+    unsigned depth = blockDim.x / 64u * DEPTH;
+    output[row] = sum(input, row, columns, factor, depth);
   }
 }

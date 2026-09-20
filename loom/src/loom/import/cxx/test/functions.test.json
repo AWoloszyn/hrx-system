@@ -2,6 +2,278 @@
   "version": 1,
   "cases": [
     {
+      "name": "SSA schedules preserve inlined arguments, binding snapshots and source widths",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--I={srcdir}/../include",
+              "--root=schedule_call",
+              "--root=schedule_snapshot",
+              "--root=schedule_wide",
+              "--root=schedule_narrow",
+              "--root=schedule_signed",
+              "--root=schedule_unevaluated",
+              "--root=schedule_initializer",
+              "--root=schedule_serial",
+              "--to=bc",
+              "--output={tmp}/functions.loombc",
+              "{srcdir}/schedule_values.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute on the VM",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/schedule_functions.loom",
+              "--library={tmp}/functions.loombc"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":80",
+                "\"sample_count\":80",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Loom diagnoses unroll(factor) after successful source import",
+      "steps": [
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--D=SCHEDULE=unroll(factor)",
+              "--root=scheduled",
+              "--to=bc",
+              "--output={tmp}/policy.loombc",
+              "{srcdir}/schedule_policy.cpp"
+            ]
+          }
+        },
+        {
+          "name": "apply the schedule",
+          "run": {
+            "tool": "loom-compile",
+            "args": [
+              "{tmp}/policy.loombc",
+              "--target=vm:core",
+              "--output={tmp}/policy.vm"
+            ]
+          },
+          "exit": 1,
+          "stderr": {
+            "contains": [
+              "STRUCTURE/014",
+              "compile-time exact i64 value"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Loom diagnoses pipeline(factor) after successful source import",
+      "steps": [
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--D=SCHEDULE=pipeline(factor)",
+              "--root=scheduled",
+              "--to=bc",
+              "--output={tmp}/policy.loombc",
+              "{srcdir}/schedule_policy.cpp"
+            ]
+          }
+        },
+        {
+          "name": "apply the schedule",
+          "run": {
+            "tool": "loom-compile",
+            "args": [
+              "{tmp}/policy.loombc",
+              "--target=vm:core",
+              "--output={tmp}/policy.vm"
+            ]
+          },
+          "exit": 1,
+          "stderr": {
+            "contains": [
+              "STRUCTURE/014",
+              "a compile-time exact depth"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Loom diagnoses unroll(-1) after successful source import",
+      "steps": [
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--D=SCHEDULE=unroll(-1)",
+              "--root=scheduled",
+              "--to=bc",
+              "--output={tmp}/policy.loombc",
+              "{srcdir}/schedule_policy.cpp"
+            ]
+          }
+        },
+        {
+          "name": "apply the schedule",
+          "run": {
+            "tool": "loom-compile",
+            "args": [
+              "{tmp}/policy.loombc",
+              "--target=vm:core",
+              "--output={tmp}/policy.vm"
+            ]
+          },
+          "exit": 1,
+          "stderr": {
+            "contains": [
+              "STRUCTURE/014",
+              "nonnegative unroll factor"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Loom diagnoses unroll(0xffffffffffffffffULL) after successful source import",
+      "steps": [
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--D=SCHEDULE=unroll(0xffffffffffffffffULL)",
+              "--root=scheduled",
+              "--to=bc",
+              "--output={tmp}/policy.loombc",
+              "{srcdir}/schedule_policy.cpp"
+            ]
+          }
+        },
+        {
+          "name": "apply the schedule",
+          "run": {
+            "tool": "loom-compile",
+            "args": [
+              "{tmp}/policy.loombc",
+              "--target=vm:core",
+              "--output={tmp}/policy.vm"
+            ]
+          },
+          "exit": 1,
+          "stderr": {
+            "contains": [
+              "STRUCTURE/014",
+              "nonnegative unroll factor"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Loom diagnoses pipeline(0) after successful source import",
+      "steps": [
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--D=SCHEDULE=pipeline(0)",
+              "--root=scheduled",
+              "--to=bc",
+              "--output={tmp}/policy.loombc",
+              "{srcdir}/schedule_policy.cpp"
+            ]
+          }
+        },
+        {
+          "name": "apply the schedule",
+          "run": {
+            "tool": "loom-compile",
+            "args": [
+              "{tmp}/policy.loombc",
+              "--target=vm:core",
+              "--output={tmp}/policy.vm"
+            ]
+          },
+          "exit": 1,
+          "stderr": {
+            "contains": [
+              "STRUCTURE/014",
+              "a depth in [1, 65535]"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Loom diagnoses pipeline(0x100000001ULL) after successful source import",
+      "steps": [
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--D=SCHEDULE=pipeline(0x100000001ULL)",
+              "--root=scheduled",
+              "--to=bc",
+              "--output={tmp}/policy.loombc",
+              "{srcdir}/schedule_policy.cpp"
+            ]
+          }
+        },
+        {
+          "name": "apply the schedule",
+          "run": {
+            "tool": "loom-compile",
+            "args": [
+              "{tmp}/policy.loombc",
+              "--target=vm:core",
+              "--output={tmp}/policy.vm"
+            ]
+          },
+          "exit": 1,
+          "stderr": {
+            "contains": [
+              "STRUCTURE/014",
+              "a depth in [1, 65535]"
+            ]
+          }
+        }
+      ]
+    },
+    {
       "name": "constant counted headers preserve source-width arithmetic and nonwrapping tails",
       "steps": [
         {

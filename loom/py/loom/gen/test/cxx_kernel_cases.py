@@ -164,9 +164,12 @@ def scheduled_sum(directory):
         expected = [sum(values[row * columns : (row + 1) * columns]) for row in range(rows)]
         case = Case(directory, f"scheduled_sum_{columns}", "i32", rows)
         case.array("input", values)
+        case.array("original", values)
         case.scalar("rows", rows, "i32")
         case.scalar("columns", columns, "i32")
         case.launch("scheduled_sum", "%input, %output, %rows, %columns", f"tensor<{len(values)}xi32>, tensor<{rows}xi32>, i32, i32")
+        case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(values)}xi32>")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
         cases.append(case.finish(expected))
     return "kernel.decl @scheduled_sum() launch(%input: buffer, %output: buffer, %rows: i32, %columns: i32)\n\n" + "\n".join(cases)
 
@@ -511,6 +514,22 @@ def continue_vectors(directory):
 
 
 CONSTANT_LOOP_STARTS = [0, 1, 2, 3, 7, 16, 17, 18, 19, 20, 21, 0x80000000, 0xFFFFFFFF]
+
+
+def schedule_functions(directory):
+    del directory
+    cases = []
+    for name in ["call", "snapshot", "wide", "narrow", "signed", "unevaluated", "initializer", "serial"]:
+        samples = []
+        for count in [0, 1, 2, 3, 4, 5, 7, 16, 17, 33]:
+            expected = sum(range(count))
+            if name == "snapshot":
+                expected += count + 3
+            elif name == "unevaluated":
+                expected += count + 8 + ord("A")
+            samples.append(([count], expected))
+        cases.append(function_cases(f"schedule_{name}", [32], 32, samples))
+    return "\n".join(cases)
 
 
 def constant_loop_functions(directory):
@@ -904,6 +923,7 @@ def main():
         ("aiter_swiglu_f16", swiglu),
         ("control_flow", control_flow),
         ("scheduled_sum", scheduled_sum),
+        ("schedule_functions", schedule_functions),
         ("short_circuit", short_circuit),
         ("early_returns", early_returns),
         ("increment_u8", lambda directory: integer_increment(directory, 8, BYTE_INPUTS)),

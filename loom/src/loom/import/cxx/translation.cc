@@ -611,11 +611,15 @@ class Translator {
       return scalars_.integer(literal->isTrue, LOOM_SCALAR_TYPE_I1, source);
     }
     if (cxx::ast_cast<cxx::IntLiteralExpressionAST>(ast) ||
-        cxx::ast_cast<cxx::FloatLiteralExpressionAST>(ast)) {
+        cxx::ast_cast<cxx::FloatLiteralExpressionAST>(ast) ||
+        cxx::ast_cast<cxx::CharLiteralExpressionAST>(ast) ||
+        cxx::ast_cast<cxx::SizeofExpressionAST>(ast) ||
+        cxx::ast_cast<cxx::SizeofTypeExpressionAST>(ast) ||
+        cxx::ast_cast<cxx::AlignofTypeExpressionAST>(ast)) {
       cxx::ASTInterpreter interpreter(&unit_);
       auto value = interpreter.evaluate(ast);
       if (!value) {
-        fail(ast, "literal has no constant value");
+        fail(ast, "literal or layout query has no constant value");
       }
       return scalars_.constant(*value, ast->type, ast);
     }
@@ -1180,11 +1184,18 @@ class Translator {
             : expression(std::get<cxx::ExpressionAST*>(counted.upper)).ssa();
     auto upper = unsigned_offset(bound, source);
     auto step = scalars_.integer(counted.step, LOOM_SCALAR_TYPE_OFFSET, source);
+    auto depth = schedule.pipeline_depth()
+                     ? expression(schedule.pipeline_depth()).ssa()
+                     : 0;
+    auto factor = schedule.unroll_factor()
+                      ? expression(schedule.unroll_factor()).ssa()
+                      : 0;
     auto written = live_mutations(loop);
     std::erase(written, induction);
     auto initial = current(written);
     auto outer_values = values_;
-    auto* op = schedule.build(&builder_, lower, upper, step, initial, source);
+    auto* op = schedule.build(&builder_, lower, upper, step, initial, depth,
+                              factor, source);
     auto* body = loom_scf_for_body(op);
     auto saved = loom_builder_enter_region(&builder_, op, body);
     auto iteration = name(loom_region_entry_arg_id(body, 0),

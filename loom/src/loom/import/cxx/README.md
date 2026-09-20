@@ -121,16 +121,40 @@ for (unsigned column = 0; column < columns; ++column) {
 }
 ```
 
-Factors and depths are positive i32 integer constant expressions, including
-concrete template parameters. They become ordinary SSA index operands of
-`scf.for`, so the imported program preserves the scheduling choice through
-Loom's existing transformations. Pipeline depth counts original iterations;
-unrolling follows pipelining. `loom::unroll` without arguments requests full
-unrolling, and schedule ordering is `linear`, `interleaved`, or `recurrence`.
-Depth or factor one explicitly keeps that part serial. An annotation on a
-loop that cannot be represented as a nonwrapping counted loop is a source
-error. The cleaned Loom can replace these constants with ordinary config
-values when exploring schedules without reimporting C++.
+Factors and depths can also be ordinary integer expressions: local values,
+helper parameters, template arguments, arithmetic, and topology values such
+as `loom::workgroup_size.x`. The importer reads them once after the `for`
+initializer, before loop execution, and retains them as SSA index operands
+of `scf.for`. Mutation of a binding inside the loop does not change its
+schedule. Source widths, promotions, and signedness are preserved.
+
+```cpp
+LOOM_FORCE_INLINE int sum(const int* input, unsigned columns,
+                          unsigned factor, unsigned depth) {
+  int total = 0;
+  [[loom::unroll(factor), loom::pipeline(depth)]]
+  for (unsigned column = 0; column < columns; ++column) {
+    total += input[column];
+  }
+  return total;
+}
+```
+
+A caller can supply values that become constant through Loom inlining or
+target specialization. The consuming scheduling pass requires an exact value;
+an unresolved factor or depth is a compilation error. Expressions inside the
+annotations cannot call functions, mutate bindings, read volatile values, or
+invoke overloaded operations. Ordinary statements can compute named values
+before the annotation, and `sizeof` operands remain unevaluated.
+
+Pipeline depth counts original iterations; unrolling follows pipelining.
+`loom::unroll` without arguments requests full unrolling, and schedule ordering
+is `linear`, `interleaved`, or `recurrence`. Unroll factors zero and one and
+pipeline depth one keep that part serial. Negative factors and pipeline depths
+outside `[1, 65535]` are compilation errors. An annotation on a loop that cannot
+be represented as a nonwrapping counted loop is a source error. The cleaned
+Loom can also use ordinary config values for schedule exploration without
+reimporting C++.
 
 Bounds such as `pixels / 16u` and steps such as `index += (1u << 2)` retain
 `scf.for` when their integer expressions are constant. This includes macros,

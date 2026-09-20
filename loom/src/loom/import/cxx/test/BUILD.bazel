@@ -27,6 +27,8 @@ iree_execution_test_suite(
         "constant_loops.cpp",
         "increment_values.cpp",
         "integer_functions.cpp",
+        "schedule_policy.cpp",
+        "schedule_values.cpp",
         "shaped_intrinsics.cpp",
         "structured_continue.cpp",
         "vector_initializers.cpp",
