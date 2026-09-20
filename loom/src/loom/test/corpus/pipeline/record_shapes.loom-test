@@ -1,0 +1,200 @@
+// RUN: roundtrip
+
+target.decl @core_target
+
+func.decl target(@core_target) @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> public retain @scatter_unit_unit() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x1x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<1x1x2x2xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<1x1x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<2x2xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<2x2xi32>>, view<1x1x2x2xi32>
+  pipeline.return
+}
+
+// ====
+
+target.decl @core_target
+
+func.decl target(@core_target) @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> public retain @scatter_unit_many() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x3x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<1x3x4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<1x3x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<1x3x4xi32>
+  pipeline.return
+}
+
+// ====
+
+target.decl @core_target
+
+func.decl target(@core_target) @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> public retain @scatter_many_unit() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 2 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<2x1x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<2x1x4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<2x1x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<2x1x4xi32>
+  pipeline.return
+}
+
+// ====
+
+target.decl @core_target
+
+func.decl target(@core_target) @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> public retain @scatter_many_many() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 2 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<2x3x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<2x3x4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<2x3x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<2x3x4xi32>
+  pipeline.return
+}
+
+// ====
+
+target.decl @core_target
+
+func.decl target(@core_target) @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> public retain @scatter_unit_no_temporal_axis() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<1x4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<1x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<1x4xi32>
+  pipeline.return
+}
+
+// ====
+
+target.decl @core_target
+
+func.decl target(@core_target) @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> public retain @single_without_lane_axis() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x1x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<1x4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<1x1x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<1x4xi32>
+  pipeline.return
+}
+
+// ====
+
+target.decl @core_target
+
+func.decl target(@core_target) @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> public retain @single_tile_only() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<1x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<4xi32>
+  pipeline.return
+}
+
+// ====
+
+target.decl @core_target
+
+func.decl target(@core_target) @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> public retain @read_unit_record() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<1x4xi32>
+  %input_flow = pipeline.read %input_view on %workers : view<1x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<1x4xi32>
+  pipeline.return
+}
+
+// ====
+
+target.decl @core_target
+
+func.decl target(@core_target) @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> public retain @read_unit_partition() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<1x1x4xi32>
+  %input_flow = pipeline.read %input_view on %workers : view<1x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<1x1x4xi32>
+  pipeline.return
+}
+
+// ====
+
+target.decl @core_target
+
+func.decl target(@core_target) @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> public retain @fold_innermost_unit_axis() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x1x1x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<1x1x4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<1x1x1x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  %folded = pipeline.fold<addi> %output_flow : pipeline.flow<tile<4xi32>>
+  pipeline.write %folded to %output_view : pipeline.flow<tile<4xi32>>, view<1x1x4xi32>
+  pipeline.return
+}
+
+// ====
+
+target.decl @core_target
+
+func.decl target(@core_target) @copy(%input: buffer, %output: buffer, %other: buffer)
+
+pipeline.def<kernel> public retain @independent_output_layouts() launch(%input: buffer, %output: buffer, %other: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x1x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<1x1x2x2xi32>
+  %other_view = buffer.view %other[%base] : buffer -> view<1x4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<1x1x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow, %other_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<2x2xi32>>, pipeline.flow<tile<4xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<2x2xi32>>, view<1x1x2x2xi32>
+  pipeline.write %other_flow to %other_view : pipeline.flow<tile<4xi32>>, view<1x4xi32>
+  pipeline.return
+}

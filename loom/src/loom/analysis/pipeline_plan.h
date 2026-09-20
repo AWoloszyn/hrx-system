@@ -58,6 +58,10 @@ typedef struct loom_pipeline_plan_binding_view_t {
 
   // Exact byte offset from the launch binding base.
   uint64_t byte_offset;
+
+  // Whether the leading dimension selects a group lane. A unit lane axis is
+  // distinct from a temporal record axis, even when both have extent one.
+  bool partitioned;
 } loom_pipeline_plan_binding_view_t;
 
 typedef struct loom_pipeline_plan_group_t {

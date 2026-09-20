@@ -419,7 +419,13 @@ pipeline_reduce = Op(
 pipeline_write = Op(
     "pipeline.write",
     group=pipeline_ops,
-    doc=("Write each source-group record sequence to a destination view whose trailing dimensions match the flow tile."),
+    doc=(
+        "Write each source-group record sequence to a destination view. "
+        "The view contains a leading group-lane dimension, the exact ordered "
+        "temporal record dimensions, and the trailing flow tile dimensions. "
+        "A single-lane group may omit the leading lane dimension. Unit temporal "
+        "dimensions remain part of the record shape."
+    ),
     operands=[
         Operand("source", ANY, doc="Source tile flow."),
         Operand("target", VIEW, doc="Destination view."),

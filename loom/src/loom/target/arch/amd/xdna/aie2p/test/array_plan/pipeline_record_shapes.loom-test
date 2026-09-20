@@ -1,0 +1,181 @@
+// RUN: with-checks emit aie2p-array-plan @copy_1_workers_1_records
+
+aie2p.target<array> @array_target
+
+aie2p.target<core> @core_target
+
+pipeline.def<kernel> public retain target(@array_target) @copy_1_workers_1_records() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %input_base = index.constant 16 : offset
+  %output_base = index.constant 32 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%input_base] : buffer -> view<1x1x4xi32, #encoding.layout.strided<strides=[12, 8, 1]>>
+  %output_view = buffer.view %output[%output_base] : buffer -> view<1x1x4xi32, #encoding.layout.strided<strides=[16, 12, 1]>>
+  %input_flow = pipeline.scatter %input_view across %workers : view<1x1x4xi32, #encoding.layout.strided<strides=[12, 8, 1]>>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<1x1x4xi32, #encoding.layout.strided<strides=[16, 12, 1]>>
+  pipeline.return
+}
+
+func.def target(@core_target) @copy(%input: buffer, %output: buffer) {
+  %input_aligned, %output_aligned = buffer.assume.alignment %input, %output {minimum_alignment = 4} : buffer, buffer
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input_aligned[%base] : buffer -> view<4xi32>
+  %output_view = buffer.view %output_aligned[%base] : buffer -> view<4xi32>
+  %word0 = view.load %input_view[0] : view<4xi32> -> i32
+  view.store %word0, %output_view[0] : i32, view<4xi32>
+  %word1 = view.load %input_view[1] : view<4xi32> -> i32
+  view.store %word1, %output_view[1] : i32, view<4xi32>
+  %word2 = view.load %input_view[2] : view<4xi32> -> i32
+  view.store %word2, %output_view[2] : i32, view<4xi32>
+  %word3 = view.load %input_view[3] : view<4xi32> -> i32
+  view.store %word3, %output_view[3] : i32, view<4xi32>
+  func.return
+}
+
+// ----
+CHECK: array @copy_1_workers_1_records * workers=1 bindings=2 channels=2 *
+CHECK: channel index=0 transport=external-dma record-bytes=16 capacity=2 records=1 sender=binding[0]:0 partition=0/1 receiver=worker[0]:0
+CHECK: channel index=1 transport=external-dma record-bytes=16 capacity=2 records=1 sender=worker[0]:1 receiver=binding[1]:0 partition=0/1
+CHECK: binding-patch ordinal=0 channel=0 * partition=0/1 offset=16 span=16 transfer=16 repeat=1
+CHECK: binding-patch ordinal=1 channel=1 * partition=0/1 offset=32 span=16 transfer=16 repeat=1 completion-route=0
+
+// ====
+
+// RUN: with-checks emit aie2p-array-plan @copy_1_workers_3_records
+
+aie2p.target<array> @array_target
+
+aie2p.target<core> @core_target
+
+pipeline.def<kernel> public retain target(@array_target) @copy_1_workers_3_records() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %input_base = index.constant 16 : offset
+  %output_base = index.constant 32 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%input_base] : buffer -> view<1x3x4xi32, #encoding.layout.strided<strides=[28, 8, 1]>>
+  %output_view = buffer.view %output[%output_base] : buffer -> view<1x3x4xi32, #encoding.layout.strided<strides=[40, 12, 1]>>
+  %input_flow = pipeline.scatter %input_view across %workers : view<1x3x4xi32, #encoding.layout.strided<strides=[28, 8, 1]>>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<1x3x4xi32, #encoding.layout.strided<strides=[40, 12, 1]>>
+  pipeline.return
+}
+
+func.def target(@core_target) @copy(%input: buffer, %output: buffer) {
+  %input_aligned, %output_aligned = buffer.assume.alignment %input, %output {minimum_alignment = 4} : buffer, buffer
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input_aligned[%base] : buffer -> view<4xi32>
+  %output_view = buffer.view %output_aligned[%base] : buffer -> view<4xi32>
+  %word0 = view.load %input_view[0] : view<4xi32> -> i32
+  view.store %word0, %output_view[0] : i32, view<4xi32>
+  %word1 = view.load %input_view[1] : view<4xi32> -> i32
+  view.store %word1, %output_view[1] : i32, view<4xi32>
+  %word2 = view.load %input_view[2] : view<4xi32> -> i32
+  view.store %word2, %output_view[2] : i32, view<4xi32>
+  %word3 = view.load %input_view[3] : view<4xi32> -> i32
+  view.store %word3, %output_view[3] : i32, view<4xi32>
+  func.return
+}
+
+// ----
+CHECK: array @copy_1_workers_3_records * workers=1 bindings=2 channels=2 *
+CHECK: channel index=0 transport=external-dma record-bytes=16 capacity=2 records=3 sender=binding[0]:0 partition=0/1 receiver=worker[0]:0
+CHECK: channel index=1 transport=external-dma record-bytes=16 capacity=2 records=3 sender=worker[0]:1 receiver=binding[1]:0 partition=0/1
+CHECK: binding-patch ordinal=0 channel=0 * partition=0/1 offset=16 span=80 transfer=48 repeat=1
+CHECK: binding-patch ordinal=1 channel=1 * partition=0/1 offset=32 span=112 transfer=48 repeat=1 completion-route=0
+
+// ====
+
+// RUN: with-checks emit aie2p-array-plan @copy_2_workers_1_records
+
+aie2p.target<array> @array_target
+
+aie2p.target<core> @core_target
+
+pipeline.def<kernel> public retain target(@array_target) @copy_2_workers_1_records() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 2 : index
+  %input_base = index.constant 16 : offset
+  %output_base = index.constant 32 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%input_base] : buffer -> view<2x1x4xi32, #encoding.layout.strided<strides=[12, 8, 1]>>
+  %output_view = buffer.view %output[%output_base] : buffer -> view<2x1x4xi32, #encoding.layout.strided<strides=[16, 12, 1]>>
+  %input_flow = pipeline.scatter %input_view across %workers : view<2x1x4xi32, #encoding.layout.strided<strides=[12, 8, 1]>>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<2x1x4xi32, #encoding.layout.strided<strides=[16, 12, 1]>>
+  pipeline.return
+}
+
+func.def target(@core_target) @copy(%input: buffer, %output: buffer) {
+  %input_aligned, %output_aligned = buffer.assume.alignment %input, %output {minimum_alignment = 4} : buffer, buffer
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input_aligned[%base] : buffer -> view<4xi32>
+  %output_view = buffer.view %output_aligned[%base] : buffer -> view<4xi32>
+  %word0 = view.load %input_view[0] : view<4xi32> -> i32
+  view.store %word0, %output_view[0] : i32, view<4xi32>
+  %word1 = view.load %input_view[1] : view<4xi32> -> i32
+  view.store %word1, %output_view[1] : i32, view<4xi32>
+  %word2 = view.load %input_view[2] : view<4xi32> -> i32
+  view.store %word2, %output_view[2] : i32, view<4xi32>
+  %word3 = view.load %input_view[3] : view<4xi32> -> i32
+  view.store %word3, %output_view[3] : i32, view<4xi32>
+  func.return
+}
+
+// ----
+CHECK: array @copy_2_workers_1_records * workers=2 bindings=2 channels=4 *
+CHECK: channel index=0 transport=external-dma record-bytes=16 capacity=2 records=1 sender=binding[0]:0 partition=0/2 receiver=worker[0]:0
+CHECK: channel index=2 transport=external-dma record-bytes=16 capacity=2 records=1 sender=worker[0]:1 receiver=binding[1]:0 partition=0/2
+CHECK: binding-patch ordinal=0 channel=0 * partition=0/2 offset=16 span=16 transfer=16 repeat=1
+CHECK: binding-patch ordinal=1 channel=2 * partition=0/2 offset=32 span=16 transfer=16 repeat=1 completion-route=0
+CHECK: channel index=1 transport=external-dma record-bytes=16 capacity=2 records=1 sender=binding[0]:0 partition=1/2 receiver=worker[1]:0
+CHECK: channel index=3 transport=external-dma record-bytes=16 capacity=2 records=1 sender=worker[1]:1 receiver=binding[1]:0 partition=1/2
+CHECK: binding-patch ordinal=0 channel=1 * partition=1/2 offset=64 span=16 transfer=16 repeat=1
+CHECK: binding-patch ordinal=1 channel=3 * partition=1/2 offset=96 span=16 transfer=16 repeat=1 completion-route=0
+
+// ====
+
+// RUN: with-checks emit aie2p-array-plan @copy_2_workers_3_records
+
+aie2p.target<array> @array_target
+
+aie2p.target<core> @core_target
+
+pipeline.def<kernel> public retain target(@array_target) @copy_2_workers_3_records() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 2 : index
+  %input_base = index.constant 16 : offset
+  %output_base = index.constant 32 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%input_base] : buffer -> view<2x3x4xi32, #encoding.layout.strided<strides=[28, 8, 1]>>
+  %output_view = buffer.view %output[%output_base] : buffer -> view<2x3x4xi32, #encoding.layout.strided<strides=[40, 12, 1]>>
+  %input_flow = pipeline.scatter %input_view across %workers : view<2x3x4xi32, #encoding.layout.strided<strides=[28, 8, 1]>>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<2x3x4xi32, #encoding.layout.strided<strides=[40, 12, 1]>>
+  pipeline.return
+}
+
+func.def target(@core_target) @copy(%input: buffer, %output: buffer) {
+  %input_aligned, %output_aligned = buffer.assume.alignment %input, %output {minimum_alignment = 4} : buffer, buffer
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input_aligned[%base] : buffer -> view<4xi32>
+  %output_view = buffer.view %output_aligned[%base] : buffer -> view<4xi32>
+  %word0 = view.load %input_view[0] : view<4xi32> -> i32
+  view.store %word0, %output_view[0] : i32, view<4xi32>
+  %word1 = view.load %input_view[1] : view<4xi32> -> i32
+  view.store %word1, %output_view[1] : i32, view<4xi32>
+  %word2 = view.load %input_view[2] : view<4xi32> -> i32
+  view.store %word2, %output_view[2] : i32, view<4xi32>
+  %word3 = view.load %input_view[3] : view<4xi32> -> i32
+  view.store %word3, %output_view[3] : i32, view<4xi32>
+  func.return
+}
+
+// ----
+CHECK: array @copy_2_workers_3_records * workers=2 bindings=2 channels=4 *
+CHECK: channel index=0 transport=external-dma record-bytes=16 capacity=2 records=3 sender=binding[0]:0 partition=0/2 receiver=worker[0]:0
+CHECK: channel index=2 transport=external-dma record-bytes=16 capacity=2 records=3 sender=worker[0]:1 receiver=binding[1]:0 partition=0/2
+CHECK: binding-patch ordinal=0 channel=0 * partition=0/2 offset=16 span=80 transfer=48 repeat=1
+CHECK: binding-patch ordinal=1 channel=2 * partition=0/2 offset=32 span=112 transfer=48 repeat=1 completion-route=0
+CHECK: channel index=1 transport=external-dma record-bytes=16 capacity=2 records=3 sender=binding[0]:0 partition=1/2 receiver=worker[1]:0
+CHECK: channel index=3 transport=external-dma record-bytes=16 capacity=2 records=3 sender=worker[1]:1 receiver=binding[1]:0 partition=1/2
+CHECK: binding-patch ordinal=0 channel=1 * partition=1/2 offset=128 span=80 transfer=48 repeat=1
+CHECK: binding-patch ordinal=1 channel=3 * partition=1/2 offset=192 span=112 transfer=48 repeat=1 completion-route=0

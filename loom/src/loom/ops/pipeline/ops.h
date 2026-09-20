@@ -223,7 +223,7 @@ iree_status_t loom_pipeline_reduce_verify(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter);
 
-// LOOM_OP_PIPELINE_WRITE: Write each source-group record sequence to a destination view whose trailing dimensions match the flow tile.
+// LOOM_OP_PIPELINE_WRITE: Write each source-group record sequence to a destination view. The view contains a leading group-lane dimension, the exact ordered temporal record dimensions, and the trailing flow tile dimensions. A single-lane group may omit the leading lane dimension. Unit temporal dimensions remain part of the record shape.
 // pipeline.write %result to %output : pipeline.flow<tile<8x8xi32>>, view<8x8xi32>
 LOOM_DEFINE_ISA(loom_pipeline_write_isa, LOOM_OP_PIPELINE_WRITE)
 LOOM_DEFINE_OPERAND(loom_pipeline_write_source, 0)

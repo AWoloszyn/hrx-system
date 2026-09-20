@@ -16,6 +16,7 @@
 #include "loom/ops/func/ops.h"
 #include "loom/ops/index/ops.h"
 #include "loom/ops/kernel/ops.h"
+#include "loom/ops/pipeline/ops.h"
 #include "loom/ops/scalar/ops.h"
 #include "loom/testing/test_file.h"
 
@@ -46,6 +47,8 @@ class TemplateSyncTest : public ::testing::Test {
                                    loom_index_dialect_vtables));
     IREE_ASSERT_OK(RegisterDialect(&context_, LOOM_DIALECT_KERNEL,
                                    loom_kernel_dialect_vtables));
+    IREE_ASSERT_OK(RegisterDialect(&context_, LOOM_DIALECT_PIPELINE,
+                                   loom_pipeline_dialect_vtables));
     IREE_ASSERT_OK(RegisterDialect(&context_, LOOM_DIALECT_SCALAR,
                                    loom_scalar_dialect_vtables));
     IREE_ASSERT_OK(loom_context_finalize(&context_));
@@ -267,6 +270,27 @@ TEST_F(TemplateSyncTest, PreservesAnnotationsOnBoundDefinition) {
     EXPECT_FALSE(changed);
     EXPECT_EQ(result, target_source);
   }
+}
+
+TEST_F(TemplateSyncTest, PreservesScopedDefinitionOverlay) {
+  const char* template_source =
+      "pipeline.def @entry() launch() {\n"
+      "  pipeline.return\n"
+      "}\n";
+  const char* target_source =
+      "// TEMPLATE: loom/src/loom/test/corpus/pipeline/example.loom-test\n"
+      "// RUN: roundtrip\n"
+      "\n"
+      "func.decl @target()\n"
+      "pipeline.def<kernel> public retain target(@target) @entry() launch() {\n"
+      "  pipeline.return\n"
+      "}\n";
+
+  std::string result;
+  bool changed = true;
+  IREE_ASSERT_OK(Build(target_source, template_source, &result, &changed));
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(result, target_source);
 }
 
 TEST_F(TemplateSyncTest, KeepsPreludeAnnotationsLocalToTheirCase) {
@@ -496,6 +520,29 @@ TEST_F(TemplateSyncTest, ReplacesSatisfiedTemplateDeclaration) {
                        &second_changed));
   EXPECT_FALSE(second_changed);
   EXPECT_EQ(second_result, first_result);
+}
+
+TEST_F(TemplateSyncTest, KeepsPartiallySatisfiedTemplatePreludeOnce) {
+  const char* target_source =
+      "// TEMPLATE: loom/src/loom/test/corpus/source_low/example.loom-test\n"
+      "// RUN: roundtrip\n"
+      "\n"
+      "config.def @batch_size = 8 : index\n"
+      "func.decl @shared()\n"
+      "func.def @entry() {\n"
+      "}\n";
+  const char* template_source =
+      "config.decl @batch_size : %value: index where "
+      "[range(%value, 1, 16)]\n"
+      "func.decl @shared()\n"
+      "func.def @entry() {\n"
+      "}\n";
+
+  std::string result;
+  bool changed = true;
+  IREE_ASSERT_OK(Build(target_source, template_source, &result, &changed));
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(result, target_source);
 }
 
 TEST_F(TemplateSyncTest, RejectsIncompatibleTemplateDeclaration) {

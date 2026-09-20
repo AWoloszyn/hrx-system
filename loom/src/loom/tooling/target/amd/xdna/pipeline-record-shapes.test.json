@@ -1,0 +1,125 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "unit lane extent",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/test/unit_lane_extent.loom",
+          "--root=@copy_records",
+          "--target=amd.xdna.aie2p:amd.xdna.strix_halo.17f0_11",
+          "--output={tmp}/invalid.xdna"
+        ]
+      },
+      "exit": 1,
+      "stderr": {
+        "contains": [
+          "pipeline output leading dimension must equal source-group cardinality"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/invalid.xdna",
+          "exists": false
+        }
+      ]
+    },
+    {
+      "name": "missing lane axis",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/test/missing_lane_axis.loom",
+          "--root=@copy_records",
+          "--target=amd.xdna.aie2p:amd.xdna.strix_halo.17f0_11",
+          "--output={tmp}/invalid.xdna"
+        ]
+      },
+      "exit": 1,
+      "stderr": {
+        "contains": [
+          "multi-lane pipeline output requires a leading lane dimension"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/invalid.xdna",
+          "exists": false
+        }
+      ]
+    },
+    {
+      "name": "missing temporal axis",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/test/missing_temporal_axis.loom",
+          "--root=@copy_records",
+          "--target=amd.xdna.aie2p:amd.xdna.strix_halo.17f0_11",
+          "--output={tmp}/invalid.xdna"
+        ]
+      },
+      "exit": 1,
+      "stderr": {
+        "contains": [
+          "pipeline output view and flow must have equal record shapes"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/invalid.xdna",
+          "exists": false
+        }
+      ]
+    },
+    {
+      "name": "extra temporal axis",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/test/extra_temporal_axis.loom",
+          "--root=@copy_records",
+          "--target=amd.xdna.aie2p:amd.xdna.strix_halo.17f0_11",
+          "--output={tmp}/invalid.xdna"
+        ]
+      },
+      "exit": 1,
+      "stderr": {
+        "contains": [
+          "pipeline output view and flow must have equal record shapes"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/invalid.xdna",
+          "exists": false
+        }
+      ]
+    },
+    {
+      "name": "equal count different shape",
+      "run": {
+        "tool": "loom-compile",
+        "args": [
+          "{srcdir}/test/equal_count_different_shape.loom",
+          "--root=@copy_records",
+          "--target=amd.xdna.aie2p:amd.xdna.strix_halo.17f0_11",
+          "--output={tmp}/invalid.xdna"
+        ]
+      },
+      "exit": 1,
+      "stderr": {
+        "contains": [
+          "pipeline output view and flow must have equal record shapes"
+        ]
+      },
+      "files": [
+        {
+          "path": "{tmp}/invalid.xdna",
+          "exists": false
+        }
+      ]
+    }
+  ]
+}

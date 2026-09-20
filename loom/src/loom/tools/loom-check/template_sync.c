@@ -180,7 +180,8 @@ static iree_string_view_t loom_check_template_sync_trim_trailing_blank_lines(
     }
     end = line_start;
   }
-  return iree_string_view_substr(text, 0, end);
+  text.size = end;
+  return text;
 }
 
 static bool loom_check_template_sync_line_at(iree_string_view_t source,
@@ -282,7 +283,8 @@ static bool loom_check_template_sync_definition_line_info(
   }
   const iree_host_size_t op_end = leading_space + op_name.size;
   if (op_end < line.size &&
-      !loom_check_template_sync_is_space(line.data[op_end])) {
+      !loom_check_template_sync_is_space(line.data[op_end]) &&
+      line.data[op_end] != '<') {
     return false;
   }
   iree_host_size_t symbol_position = IREE_STRING_VIEW_NPOS;
@@ -335,7 +337,8 @@ loom_check_template_sync_collect_case_overlay(
 
 static iree_string_view_t
 loom_check_template_sync_strip_materialized_template_prelude(
-    iree_string_view_t target_prelude, iree_string_view_t template_prelude) {
+    iree_string_view_t target_prelude, iree_string_view_t template_prelude,
+    const loom_check_template_sync_case_t* template_record) {
   // A synchronized case is emitted as the target-owned prelude followed by
   // the authoritative template input. Strip that exact template suffix before
   // preserving the target overlay. Repeating the operation also repairs files
@@ -351,6 +354,35 @@ loom_check_template_sync_strip_materialized_template_prelude(
     target_prelude =
         loom_check_template_sync_trim_trailing_blank_lines(target_prelude);
   }
+
+  // Target definitions may satisfy only part of the template prelude. The
+  // remaining materialized suffix still belongs to the template. Match only
+  // at parsed symbol boundaries so a shared closing line cannot trim part of
+  // a target-owned definition.
+  iree_host_size_t suffix_size = 0;
+  for (iree_host_size_t i = 0;
+       template_record && i < template_record->symbol_count; ++i) {
+    iree_string_view_t line = iree_string_view_empty();
+    if (!loom_check_template_sync_line_at(
+            template_record->test_case->input,
+            template_record->symbols[i].start_line, &line)) {
+      continue;
+    }
+    const iree_host_size_t offset =
+        (iree_host_size_t)(line.data - template_record->test_case->input.data);
+    if (offset >= template_prelude.size) {
+      continue;
+    }
+    const iree_string_view_t suffix =
+        iree_string_view_substr(template_prelude, offset, IREE_HOST_SIZE_MAX);
+    if (suffix.size > suffix_size &&
+        iree_string_view_ends_with(target_prelude, suffix)) {
+      suffix_size = suffix.size;
+    }
+  }
+  target_prelude = iree_string_view_remove_suffix(target_prelude, suffix_size);
+  target_prelude =
+      loom_check_template_sync_trim_trailing_blank_lines(target_prelude);
   return target_prelude;
 }
 
@@ -364,7 +396,8 @@ loom_check_template_sync_collect_target_overlay(
       loom_check_template_sync_collect_case_overlay(template_record);
   target_overlay.case_prelude =
       loom_check_template_sync_strip_materialized_template_prelude(
-          target_overlay.case_prelude, template_overlay.case_prelude);
+          target_overlay.case_prelude, template_overlay.case_prelude,
+          template_record);
   return target_overlay;
 }
 
