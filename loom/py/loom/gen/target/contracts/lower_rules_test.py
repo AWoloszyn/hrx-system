@@ -1523,9 +1523,9 @@ def test_generate_lower_rule_set_emits_divisor_magic_projection() -> None:
                 descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
                 guards=(
                     Guard.value_type("lhs", Scalar("i32")),
-                    Guard.value_u32_divisor_magic_is_add("rhs", True),
                     Guard.value_type("rhs", Scalar("i32")),
                     Guard.value_type("result", Scalar("i32")),
+                    Guard.value_u32_divisor_magic_is_add("rhs", False),
                 ),
                 emit=(
                     EmitDescriptorOp(
@@ -1537,7 +1537,7 @@ def test_generate_lower_rule_set_emits_divisor_magic_projection() -> None:
                         descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
                         results={"dst": ValueRef.temporary("shift")},
                         result_types={"dst": ValueRef.result("result")},
-                        immediates={"i32_value": ValueProject.u32_divisor_magic_shift("rhs")},
+                        immediates={"i32_value": ValueProject.u32_divisor_magic_shift("rhs", product_bit_width=64)},
                     ),
                     EmitDescriptorOp(
                         descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
@@ -1562,6 +1562,7 @@ def test_generate_lower_rule_set_emits_divisor_magic_projection() -> None:
     assert "LOOM_LOW_LOWER_ATTR_COPY_VALUE_U32_DIVISOR_MAGIC_MULTIPLIER" in generated.source
     assert "LOOM_LOW_LOWER_ATTR_COPY_VALUE_U32_DIVISOR_MAGIC_MULTIPLIER_AS_I32" in generated.source
     assert "LOOM_LOW_LOWER_ATTR_COPY_VALUE_U32_DIVISOR_MAGIC_SHIFT" in generated.source
+    assert ".literal_i64 = INT64_C(32)" in generated.source
     assert "LOOM_LOW_LOWER_ATTR_COPY_VALUE_EXACT_I64_MINUS_ONE" in generated.source
 
 

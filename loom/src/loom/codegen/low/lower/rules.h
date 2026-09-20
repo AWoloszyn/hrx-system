@@ -225,8 +225,9 @@ typedef enum loom_low_lower_attr_copy_kind_e {
   // Emits the unsigned 32-bit magic multiplier for an exact divisor source
   // value fact as an i64 packet attribute.
   LOOM_LOW_LOWER_ATTR_COPY_VALUE_U32_DIVISOR_MAGIC_MULTIPLIER = 8,
-  // Emits the unsigned 32-bit magic post-shift for an exact divisor source
-  // value fact as an i64 packet attribute.
+  // Emits the unsigned 32-bit magic post-shift plus literal_i64 for an exact
+  // divisor source value fact. A full uncorrected 64-bit product adds 32;
+  // a high-half 32-bit product (after any correction) adds zero.
   LOOM_LOW_LOWER_ATTR_COPY_VALUE_U32_DIVISOR_MAGIC_SHIFT = 9,
   // Emits an exact signed i32 source value fact as a zero-extended u32 packet
   // attribute bit pattern.
@@ -309,7 +310,7 @@ typedef struct loom_low_lower_attr_copy_t {
   uint8_t dynamic_term_index;
   // Literal value emitted by I64_LITERAL rows, byte offset used by
   // I64_ARRAY_LANE_BYTE rows, or divisor used by SOURCE_MEMORY quotient and
-  // remainder rows.
+  // remainder rows, or product-width adjustment used by divisor magic shifts.
   int64_t literal_i64;
 } loom_low_lower_attr_copy_t;
 static_assert(sizeof(loom_low_lower_attr_copy_t) == 32,

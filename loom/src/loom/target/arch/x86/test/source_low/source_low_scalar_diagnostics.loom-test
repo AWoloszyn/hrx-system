@@ -89,3 +89,25 @@ func.def target(@target) @offset_cast_requires_nonnegative_index(%input: index) 
   %result = index.cast %input : index to offset
   func.return %result : offset
 }
+
+// ====
+
+x86.target<scalar> @target
+
+func.def target(@target) @remainder_requires_u32_numerator(%input: index) -> (index) {
+  %divisor = index.constant 3 : index
+  // ERROR@+1: TARGET/003 {op_name="index.rem", constraint_key="x86.scalar.remainder_u32"}
+  %result = index.rem %input, %divisor : index
+  func.return %result : index
+}
+
+// ====
+
+x86.target<scalar> @target
+
+func.def target(@target) @remainder_requires_supported_divisor(%input: i32) -> (i32) {
+  %divisor = scalar.constant 7 : i32
+  // ERROR@+1: TARGET/003 {op_name="scalar.remui", constraint_key="x86.scalar.remainder_divisor"}
+  %result = scalar.remui %input, %divisor : i32
+  func.return %result : i32
+}

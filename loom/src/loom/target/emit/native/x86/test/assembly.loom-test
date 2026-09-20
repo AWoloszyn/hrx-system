@@ -14,6 +14,62 @@ low.func.def target<x86.scalar.core>(@x86_target) @x86_fragment(%source: reg<x86
 
 // ====
 
+// RUN: emit x86-asm @constants fixed=%output:physical_register:7:1 fixed=%unsigned_max:physical_register:8:1
+x86.target<scalar> @target
+
+low.func.def target<x86.scalar.core>(@target) @constants(%output: reg<x86.gpr64>) asm {
+  %zero = mov.imm64 0
+  mov.store.gpr64 %zero, %output {disp32 = 0}
+  %signed_max = mov.imm64 2147483647
+  mov.store.gpr64 %signed_max, %output {disp32 = 8}
+  %high_bit = mov.imm64 2147483648
+  mov.store.gpr64 %high_bit, %output {disp32 = 16}
+  %unsigned_max = mov.imm64 4294967295
+  mov.store.gpr64 %unsigned_max, %output {disp32 = 24}
+  %wide = mov.imm64 4294967296
+  mov.store.gpr64 %wide, %output {disp32 = 32}
+  %negative = mov.imm64 -1
+  mov.store.gpr64 %negative, %output {disp32 = 40}
+  %signed_min = mov.imm64 -2147483648
+  mov.store.gpr64 %signed_min, %output {disp32 = 48}
+  %wide_negative = mov.imm64 -2147483649
+  mov.store.gpr64 %wide_negative, %output {disp32 = 56}
+  %large_negative = mov.imm64 -9223372036854775807
+  mov.store.gpr64 %large_negative, %output {disp32 = 64}
+  %large_positive = mov.imm64 9223372036854775807
+  mov.store.gpr64 %large_positive, %output {disp32 = 72}
+  %narrow_negative = mov.imm32 -1
+  mov.store.gpr32 %narrow_negative, %output {disp32 = 80}
+  return
+}
+
+// ----
+  mov eax, 0
+  mov [rdi], rax
+  mov eax, 2147483647
+  mov [rdi + 8], rax
+  mov eax, 2147483648
+  mov [rdi + 16], rax
+  mov r8d, 4294967295
+  mov [rdi + 24], r8
+  mov rax, 4294967296
+  mov [rdi + 32], rax
+  mov rax, -1
+  mov [rdi + 40], rax
+  mov rax, -2147483648
+  mov [rdi + 48], rax
+  mov rax, -2147483649
+  mov [rdi + 56], rax
+  mov rax, -9223372036854775807
+  mov [rdi + 64], rax
+  mov rax, 9223372036854775807
+  mov [rdi + 72], rax
+  mov eax, -1
+  mov [rdi + 80], eax
+  ret
+
+// ====
+
 // RUN: emit x86-asm @zero_extend fixed=%input:physical_register:0:1 fixed=%result:physical_register:0:1
 x86.target<scalar> @target
 
@@ -38,6 +94,62 @@ low.func.def target<x86.avx512.core>(@target) @zero_extend(%input: reg<x86.gpr32
 
 // ----
   mov r9d, r8d
+  ret
+
+// ====
+
+// RUN: emit x86-asm @remainder3 fixed=%value:physical_register:7:1 fixed=%result:physical_register:0:1
+x86.target<scalar> @target
+
+low.func.def target<x86.scalar.core>(@target) @remainder3(%value: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
+  %wide = movzx.gpr64.gpr32 %value
+  %magic = mov.imm64 2863311531
+  %multiply = imul.gpr64 %wide, %magic
+  %quotient = shr.imm.gpr64 %multiply {shift = 33}
+  %product = lea.add_scale.gpr32 %quotient, %quotient {disp32 = 0, scale = 2}
+  %input_copy = copy %value : reg<x86.gpr32> -> reg<x86.gpr32>
+  %result = sub.gpr32 %input_copy, %product
+  return %result
+}
+
+// ----
+  mov eax, edi
+  mov ecx, 2863311531
+  imul rax, rcx
+  shr rax, 33
+  lea ecx, [rax + rax * 2]
+  mov eax, edi
+  sub eax, ecx
+  ret
+
+// ====
+
+// RUN: emit x86-asm @immediate_product fixed=%input:physical_register:8:1 fixed=%negative:physical_register:9:1 fixed=%positive:physical_register:8:1
+x86.target<scalar> @target
+
+low.func.def target<x86.scalar.core>(@target) @immediate_product(%input: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>) asm {
+  %negative = imul.imm.gpr64 %input {imm32 = -2147483648}
+  %positive = imul.imm.gpr64 %input {imm32 = 2147483647}
+  return %negative, %positive
+}
+
+// ----
+  imul r9, r8, -2147483648
+  imul r8, r8, 2147483647
+  ret
+
+// ====
+
+// RUN: emit x86-asm @lea_narrow fixed=%base:physical_register:8:1 fixed=%index:physical_register:9:1 fixed=%result:physical_register:8:1
+x86.target<avx512> @target
+
+low.func.def target<x86.avx512.core>(@target) @lea_narrow(%base: reg<x86.gpr64>, %index: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %result = lea.add_scale.gpr32 %base, %index {disp32 = -16, scale = 8}
+  return %result
+}
+
+// ----
+  lea r8d, [r8 + r9 * 8 - 16]
   ret
 
 // ====
@@ -362,11 +474,11 @@ low.func.def target<x86.scalar.core>(@x86_target) @x86_fragment(%input: reg<x86.
 }
 
 // ----
-  mov rbp, 17
+  mov ebp, 17
   add rax, rsp
   sub rax, rbp
   imul rax, rsp
-  mov rbp, 255
+  mov ebp, 255
   and rax, rbp
   or rax, rsp
   xor rax, rsp
@@ -422,7 +534,7 @@ low.func.def target<x86.avx512.core>(@x86_target) @x86_fragment(%value: reg<x86.
 }
 
 // ----
-  mov rax, 1024
+  mov eax, 1024
   vmovdqu32 [rax - 16], zmm0
   ret
 
@@ -625,7 +737,7 @@ low.func.def target<x86.avx512.core>(@x86_target) @x86_fragment(%input: reg<x86.
 }
 
 // ----
-  mov rbp, 256
+  mov ebp, 256
   imul rax, rcx
   lea rax, [rax + rdx]
   lea rax, [rax + rbp]
@@ -871,7 +983,7 @@ low.func.def target<x86.avx512.core>(@x86_target) @x86_rematerialize_constant_gp
 
 // ----
   add rax, rcx
-  mov rcx, 7
+  mov ecx, 7
   add rax, rcx
   ret
 
