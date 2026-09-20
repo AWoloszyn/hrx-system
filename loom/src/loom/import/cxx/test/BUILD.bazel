@@ -28,6 +28,9 @@ loom_check_test_suite(
         "const.cxx-test",
         "control_invalid.cxx-test",
         "data_models.cxx-test",
+        "enum_semantics.cxx-test",
+        "enums.cxx-test",
+        "enums_invalid.cxx-test",
         "frontend.cxx-test",
         "functions.cxx-test",
         "intrinsics_invalid.cxx-test",
@@ -45,7 +48,10 @@ loom_check_test_suite(
         "vectors.cxx-test",
         "vectors_invalid.cxx-test",
     ],
-    data = ["locations.h"],
+    data = [
+        "enum_semantics.h",
+        "locations.h",
+    ],
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )
 
@@ -55,6 +61,7 @@ iree_execution_test_suite(
         "assumptions.cpp",
         "comparison_functions.cpp",
         "constant_loops.cpp",
+        "enum_values.cpp",
         "increment_values.cpp",
         "integer_functions.cpp",
         "schedule_policy.cpp",
@@ -90,6 +97,7 @@ iree_execution_test_suite(
         "constant_loops.cpp",
         "control_flow.cpp",
         "early_returns.cpp",
+        "enum_values.cpp",
         "flash_attention.cpp",
         "increment_values.cpp",
         "integer_increment.cpp",

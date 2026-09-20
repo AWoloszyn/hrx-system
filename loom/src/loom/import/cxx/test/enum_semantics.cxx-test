@@ -1,0 +1,44 @@
+// RUN: verify
+// INPUT: cxx data-model=lp64 root=entry
+#include "enum_semantics.h"
+void entry() {}
+
+// ====
+// INPUT: cxx data-model=llp64 root=entry
+#include "enum_semantics.h"
+void entry() {}
+
+// ====
+// INPUT: cxx data-model=ilp32 root=entry
+#include "enum_semantics.h"
+void entry() {}
+
+// ====
+// INPUT: cxx std=c23 data-model=lp64
+enum Kind { first, second, copy = second, next };
+enum Wide { large = 1ULL << 40, following };
+enum Byte : unsigned char { byte = 255 };
+static_assert(first == 0 && second == 1 && next == 2);
+static_assert(sizeof(enum Wide) == 8);
+static_assert(following == (1ULL << 40) + 1);
+static_assert(sizeof(enum Byte) == 1 && byte == 255);
+
+// ====
+// INPUT: cxx std=c23 data-model=llp64
+enum Kind { first, second, copy = second, next };
+enum Wide { large = 1ULL << 40, following };
+enum Byte : unsigned char { byte = 255 };
+static_assert(first == 0 && second == 1 && next == 2);
+static_assert(sizeof(enum Wide) == 8);
+static_assert(following == (1ULL << 40) + 1);
+static_assert(sizeof(enum Byte) == 1 && byte == 255);
+
+// ====
+// INPUT: cxx std=c23 data-model=ilp32
+enum Kind { first, second, copy = second, next };
+enum Wide { large = 1ULL << 40, following };
+enum Byte : unsigned char { byte = 255 };
+static_assert(first == 0 && second == 1 && next == 2);
+static_assert(sizeof(enum Wide) == 8);
+static_assert(following == (1ULL << 40) + 1);
+static_assert(sizeof(enum Byte) == 1 && byte == 255);

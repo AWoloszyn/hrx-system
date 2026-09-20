@@ -1,0 +1,79 @@
+// RUN: pass canonicalize,cse
+
+enum class Kind : unsigned { solid, water, sky };
+unsigned entry(Kind kind) { return kind == Kind::water ? 128u : 0u; }
+
+// ----
+func.def public @entry(%kind: i32) -> (i32) {
+  %water = scalar.constant 1 : i32
+  %3 = scalar.cmpi eq, %kind, %water : i32
+  %5 = scalar.constant 128 : i32
+  %6 = scalar.constant 0 : i32
+  %7 = scf.select %3, %5, %6 : i32
+  func.return %7 : i32
+}
+
+// ====
+
+enum class Byte : unsigned char { high = 255 };
+enum class SignedByte : signed char { low = -128 };
+enum class Flag : bool { no, yes };
+unsigned widen(Byte value) { return static_cast<unsigned>(value); }
+int extend(SignedByte value) { return static_cast<int>(value); }
+bool truth(Flag value) { return value == Flag::yes; }
+
+// ----
+func.def public @widen(%value: i8) -> (i32) {
+  %2 = scalar.extui %value : i8 to i32
+  func.return %2 : i32
+}
+
+func.def public @extend(%value: i8) -> (i32) {
+  %5 = scalar.extsi %value : i8 to i32
+  func.return %5 : i32
+}
+
+func.def public @truth(%value: i1) -> (i1) {
+  func.return %value : i1
+}
+
+// ====
+
+enum Inferred { minimum = -1, maximum = 0xffffffffu };
+enum Full { full = 0xffffffffffffffffULL };
+long long choose(bool condition) { return condition ? maximum : minimum; }
+unsigned long long mask() { return full; }
+
+// ----
+func.def public @choose(%condition: i1) -> (i64) {
+  %maximum = scalar.constant 4294967295 : i64
+  %minimum = scalar.constant -1 : i64
+  %7 = scf.select %condition, %maximum, %minimum : i64
+  func.return %7 : i64
+}
+
+func.def public @mask() -> (i64) {
+  %full = scalar.constant -1 : i64
+  func.return %full : i64
+}
+
+// ====
+
+template <class T, T Value>
+static T step() {
+  enum class Kind : T { first = Value, next };
+  return T(Kind::next);
+}
+unsigned entry() { return step<unsigned char, 254>(); }
+
+// ----
+func.def public @entry() -> (i32) {
+  %1 = func.call pure @step_unsigned_char_254() : () -> (i8)
+  %2 = scalar.extui %1 : i8 to i32
+  func.return %2 : i32
+}
+
+func.def @step_unsigned_char_254() -> (i8) {
+  %next = scalar.constant -1 : i8
+  func.return %next : i8
+}

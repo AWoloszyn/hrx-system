@@ -54,6 +54,15 @@ loom_type_t Types::get(const cxx::Type* input, cxx::AST* ast) {
       return loom_type_scalar(LOOM_SCALAR_TYPE_F64);
     case cxx::TypeKind::kFloat16:
       return loom_type_scalar(LOOM_SCALAR_TYPE_F16);
+    case cxx::TypeKind::kEnum:
+    case cxx::TypeKind::kScopedEnum: {
+      auto* underlying = unit_.typeTraits().underlying_type(input);
+      if (underlying == unqualified(input)) {
+        diagnostics_.reject(unit_, ast,
+                            "enum has no resolved underlying representation");
+      }
+      return get(underlying, ast);
+    }
     case cxx::TypeKind::kVector: {
       auto* source = vector(input);
       auto element = get(source->elementType(), ast);
@@ -103,7 +112,8 @@ loom_type_t Types::get(const cxx::Type* input, cxx::AST* ast) {
 }
 
 bool Types::is_unsigned(const cxx::Type* type) {
-  return unit_.typeTraits().is_unsigned(type);
+  auto traits = unit_.typeTraits();
+  return traits.is_unsigned(traits.underlying_type(type));
 }
 
 void Types::require_mutable(const cxx::Type* input, cxx::AST* owner) {

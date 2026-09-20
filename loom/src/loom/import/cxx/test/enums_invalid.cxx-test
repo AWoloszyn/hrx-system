@@ -1,0 +1,300 @@
+// RUN: verify
+// INPUT: cxx data-model=lp64
+// ERROR@+1: PARSE/036 "enumerator initializer must have integral or unscoped enum type"
+enum E { invalid = 2.5 };
+
+// ====
+// INPUT: cxx data-model=lp64
+int value = 2;
+// ERROR@+1: PARSE/036 "enumerator initializer is not a constant expression"
+enum E { invalid = value };
+
+// ====
+// INPUT: cxx data-model=lp64
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : unsigned char { invalid = 256 };
+
+// ====
+// INPUT: cxx data-model=lp64
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : signed char { invalid = 128 };
+
+// ====
+// INPUT: cxx data-model=lp64
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : signed char { invalid = -129 };
+
+// ====
+// INPUT: cxx data-model=lp64
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : unsigned { invalid = -1 };
+
+// ====
+// INPUT: cxx data-model=lp64
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : int { invalid = 0x80000000u };
+
+// ====
+// INPUT: cxx data-model=lp64
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : long long { invalid = 0x8000000000000000ULL };
+
+// ====
+// INPUT: cxx data-model=lp64
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : bool { invalid = 2 };
+
+// ====
+// INPUT: cxx data-model=lp64
+// ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+enum class E : unsigned char { last = 255, invalid };
+
+// ====
+// INPUT: cxx data-model=lp64
+// ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+enum class E : signed char { last = 127, invalid };
+
+// ====
+// INPUT: cxx data-model=lp64
+// ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+enum class E : bool { no, yes, invalid };
+
+// ====
+// INPUT: cxx data-model=lp64
+// ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+enum class E { last = 2147483647, invalid };
+
+// ====
+// INPUT: cxx data-model=lp64
+// ERROR@+1: PARSE/036 "implicit enumerator value exceeds the integer range"
+enum E { last = 0xffffffffffffffffULL, invalid };
+
+// ====
+// INPUT: cxx data-model=lp64
+// ERROR@+1: PARSE/036 "no integer type can represent all enumerator values"
+enum E { negative = -1, large = 0xffffffffffffffffULL };
+
+// ====
+// INPUT: cxx data-model=lp64
+enum class E { first };
+// ERROR@+1: PARSE/036 "enumerator initializer must have integral or unscoped enum type"
+enum F { invalid = E::first };
+
+// ====
+// INPUT: cxx data-model=lp64
+template <unsigned V>
+constexpr unsigned value() {
+  // ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+  enum class E : unsigned char { first = V, next };
+  return unsigned(E::next);
+}
+// ERROR@+1: PARSE/036 "static assertion expression is not an integral constant expression"
+static_assert(value<255>() == 256);
+
+// ====
+// INPUT: cxx data-model=llp64
+// ERROR@+1: PARSE/036 "enumerator initializer must have integral or unscoped enum type"
+enum E { invalid = 2.5 };
+
+// ====
+// INPUT: cxx data-model=llp64
+int value = 2;
+// ERROR@+1: PARSE/036 "enumerator initializer is not a constant expression"
+enum E { invalid = value };
+
+// ====
+// INPUT: cxx data-model=llp64
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : unsigned char { invalid = 256 };
+
+// ====
+// INPUT: cxx data-model=llp64
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : signed char { invalid = 128 };
+
+// ====
+// INPUT: cxx data-model=llp64
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : signed char { invalid = -129 };
+
+// ====
+// INPUT: cxx data-model=llp64
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : unsigned { invalid = -1 };
+
+// ====
+// INPUT: cxx data-model=llp64
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : int { invalid = 0x80000000u };
+
+// ====
+// INPUT: cxx data-model=llp64
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : long long { invalid = 0x8000000000000000ULL };
+
+// ====
+// INPUT: cxx data-model=llp64
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : bool { invalid = 2 };
+
+// ====
+// INPUT: cxx data-model=llp64
+// ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+enum class E : unsigned char { last = 255, invalid };
+
+// ====
+// INPUT: cxx data-model=llp64
+// ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+enum class E : signed char { last = 127, invalid };
+
+// ====
+// INPUT: cxx data-model=llp64
+// ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+enum class E : bool { no, yes, invalid };
+
+// ====
+// INPUT: cxx data-model=llp64
+// ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+enum class E { last = 2147483647, invalid };
+
+// ====
+// INPUT: cxx data-model=llp64
+// ERROR@+1: PARSE/036 "implicit enumerator value exceeds the integer range"
+enum E { last = 0xffffffffffffffffULL, invalid };
+
+// ====
+// INPUT: cxx data-model=llp64
+// ERROR@+1: PARSE/036 "no integer type can represent all enumerator values"
+enum E { negative = -1, large = 0xffffffffffffffffULL };
+
+// ====
+// INPUT: cxx data-model=llp64
+enum class E { first };
+// ERROR@+1: PARSE/036 "enumerator initializer must have integral or unscoped enum type"
+enum F { invalid = E::first };
+
+// ====
+// INPUT: cxx data-model=llp64
+template <unsigned V>
+constexpr unsigned value() {
+  // ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+  enum class E : unsigned char { first = V, next };
+  return unsigned(E::next);
+}
+// ERROR@+1: PARSE/036 "static assertion expression is not an integral constant expression"
+static_assert(value<255>() == 256);
+
+// ====
+// INPUT: cxx data-model=ilp32
+// ERROR@+1: PARSE/036 "enumerator initializer must have integral or unscoped enum type"
+enum E { invalid = 2.5 };
+
+// ====
+// INPUT: cxx data-model=ilp32
+int value = 2;
+// ERROR@+1: PARSE/036 "enumerator initializer is not a constant expression"
+enum E { invalid = value };
+
+// ====
+// INPUT: cxx data-model=ilp32
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : unsigned char { invalid = 256 };
+
+// ====
+// INPUT: cxx data-model=ilp32
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : signed char { invalid = 128 };
+
+// ====
+// INPUT: cxx data-model=ilp32
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : signed char { invalid = -129 };
+
+// ====
+// INPUT: cxx data-model=ilp32
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : unsigned { invalid = -1 };
+
+// ====
+// INPUT: cxx data-model=ilp32
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : int { invalid = 0x80000000u };
+
+// ====
+// INPUT: cxx data-model=ilp32
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : long long { invalid = 0x8000000000000000ULL };
+
+// ====
+// INPUT: cxx data-model=ilp32
+// ERROR@+1: PARSE/036 "enumerator value is not representable in the underlying type"
+enum class E : bool { invalid = 2 };
+
+// ====
+// INPUT: cxx data-model=ilp32
+// ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+enum class E : unsigned char { last = 255, invalid };
+
+// ====
+// INPUT: cxx data-model=ilp32
+// ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+enum class E : signed char { last = 127, invalid };
+
+// ====
+// INPUT: cxx data-model=ilp32
+// ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+enum class E : bool { no, yes, invalid };
+
+// ====
+// INPUT: cxx data-model=ilp32
+// ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+enum class E { last = 2147483647, invalid };
+
+// ====
+// INPUT: cxx data-model=ilp32
+// ERROR@+1: PARSE/036 "implicit enumerator value exceeds the integer range"
+enum E { last = 0xffffffffffffffffULL, invalid };
+
+// ====
+// INPUT: cxx data-model=ilp32
+// ERROR@+1: PARSE/036 "no integer type can represent all enumerator values"
+enum E { negative = -1, large = 0xffffffffffffffffULL };
+
+// ====
+// INPUT: cxx data-model=ilp32
+enum class E { first };
+// ERROR@+1: PARSE/036 "enumerator initializer must have integral or unscoped enum type"
+enum F { invalid = E::first };
+
+// ====
+// INPUT: cxx data-model=ilp32
+template <unsigned V>
+constexpr unsigned value() {
+  // ERROR@+1: PARSE/036 "implicit enumerator value is not representable in the underlying type"
+  enum class E : unsigned char { first = V, next };
+  return unsigned(E::next);
+}
+// ERROR@+1: PARSE/036 "static assertion expression is not an integral constant expression"
+static_assert(value<255>() == 256);
+
+// ====
+// INPUT: cxx
+// Scoped enum values do not implicitly convert to an integer.
+enum class E { value };
+// ERROR@+1: PARSE/036 "cannot initialize return value of type 'unsigned int' with an expression of type '::E'"
+unsigned entry(E value) { return value; }
+
+// ====
+// INPUT: cxx
+// Distinct nominal enum types do not become interchangeable after projection.
+enum class E { value };
+enum class F { value };
+// ERROR@+1: PARSE/036 "invalid operands to binary expression ('::E' and '::F')"
+bool entry(E value) { return value == F::value; }
+
+// ====
+// INPUT: cxx
+// Boolean values have no byte-addressable source storage contract.
+enum class E : bool { no, yes };
+// ERROR@+1: LOWERING/059 "pointers require a supported non-boolean scalar or vector element"
+E entry(const E* input) { return input[0]; }

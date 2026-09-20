@@ -19,6 +19,9 @@ loom_check_test_suite(
     "const.cxx-test"
     "control_invalid.cxx-test"
     "data_models.cxx-test"
+    "enum_semantics.cxx-test"
+    "enums.cxx-test"
+    "enums_invalid.cxx-test"
     "frontend.cxx-test"
     "functions.cxx-test"
     "intrinsics_invalid.cxx-test"
@@ -36,6 +39,7 @@ loom_check_test_suite(
     "vectors.cxx-test"
     "vectors_invalid.cxx-test"
   DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_semantics.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/locations.h"
 )
 endif()
@@ -59,6 +63,7 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/comparison_functions.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_policy.cpp"
@@ -93,6 +98,7 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/control_flow.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/early_returns.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/flash_attention.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_increment.cpp"
