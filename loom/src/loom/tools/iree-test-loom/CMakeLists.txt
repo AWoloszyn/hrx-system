@@ -11,19 +11,50 @@ iree_add_all_subdirs()
 
 loom_cc_library(
   NAME
-    main
+    library_linker
   HDRS
     "library_linker.h"
-    "main.h"
   SRCS
     "library_linker.c"
+  DEPS
+    iree::base
+    loom::link::linker
+    loom::tooling::execution::session
+    loom::tooling::io::file
+    loom::tooling::io::source
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    library_linker_test
+  SRCS
+    "library_linker_test.cc"
+  DEPS
+    ::library_linker
+    iree::base
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::testing::temp_file
+    loom::tooling::execution::session
+    loom::tooling::io::file
+  LABELS
+    "requires-filesystem"
+)
+
+loom_cc_library(
+  NAME
+    main
+  HDRS
+    "main.h"
+  SRCS
     "main.c"
   DEPS
+    ::library_linker
     iree::base
     iree::base::internal::path
     iree::base::tooling::flags
     iree::io::stream
-    loom::link::linker
     loom::sanitizer::options
     loom::target::provider
     loom::tooling::cli::help

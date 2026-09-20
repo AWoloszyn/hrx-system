@@ -37,6 +37,7 @@
 #include "loom/tooling/config/config.h"
 #include "loom/tooling/context/context.h"
 #include "loom/tooling/io/file.h"
+#include "loom/tooling/io/source.h"
 #include "loom/tools/loom-format/convert.h"
 #include "loom/util/stream.h"
 #include "loom/verify/verify.h"
@@ -147,6 +148,8 @@ typedef struct loom_link_cli_input_t {
 typedef struct loom_link_cli_index_t {
   // Provider-backed module index.
   loom_link_module_index_t* module_index;
+  // Input snapshots indexed by the provider ordinal assigned at admission.
+  loom_link_cli_input_t** provider_inputs;
   // Library providers declared as direct dependencies.
   struct {
     // Allocator-owned provider ordinals in command-line order.
@@ -392,6 +395,7 @@ static void loom_link_cli_index_deinitialize(loom_link_cli_index_t* index,
   if (!index) {
     return;
   }
+  iree_allocator_free(allocator, index->provider_inputs);
   iree_allocator_free(allocator, index->root_providers.values);
   iree_allocator_free(allocator, index->direct_providers.values);
   loom_link_module_index_free(index->module_index);
@@ -584,8 +588,11 @@ static iree_status_t loom_link_cli_build_index(
   }
   iree_host_size_t* direct_provider_ordinals = NULL;
   iree_host_size_t* root_provider_ordinals = NULL;
-  iree_status_t status = iree_ok_status();
-  if (direct_provider_count != 0) {
+  loom_link_cli_input_t** provider_inputs = NULL;
+  iree_status_t status = iree_allocator_malloc_array(allocator, input_count,
+                                                     sizeof(*provider_inputs),
+                                                     (void**)&provider_inputs);
+  if (iree_status_is_ok(status) && direct_provider_count != 0) {
     status = iree_allocator_malloc_array(allocator, direct_provider_count,
                                          sizeof(*direct_provider_ordinals),
                                          (void**)&direct_provider_ordinals);
@@ -617,6 +624,9 @@ static iree_status_t loom_link_cli_build_index(
           index, input->contents->const_buffer, input->filename, &index_options,
           &options, &provider_ordinal);
     }
+    if (iree_status_is_ok(status)) {
+      provider_inputs[provider_ordinal] = input;
+    }
     if (iree_status_is_ok(status) &&
         loom_link_cli_input_is_direct_dependency(input)) {
       direct_provider_ordinals[direct_provider_ordinal++] = provider_ordinal;
@@ -628,11 +638,13 @@ static iree_status_t loom_link_cli_build_index(
   }
 
   if (!iree_status_is_ok(status)) {
+    iree_allocator_free(allocator, provider_inputs);
     iree_allocator_free(allocator, root_provider_ordinals);
     iree_allocator_free(allocator, direct_provider_ordinals);
     loom_link_module_index_free(index);
   } else {
     out_index->module_index = index;
+    out_index->provider_inputs = provider_inputs;
     out_index->direct_providers.values = direct_provider_ordinals;
     out_index->direct_providers.count = direct_provider_count;
     out_index->root_providers.values = root_provider_ordinals;
@@ -863,17 +875,11 @@ static iree_status_t loom_link_cli_print_plan(const loom_link_plan_t* plan,
 }
 
 static iree_status_t loom_link_cli_verify_output(
-    const loom_source_entry_t* source_entries, iree_host_size_t source_count,
-    loom_module_t* module) {
-  loom_source_table_resolver_t source_resolver = {
-      .entries = source_entries,
-      .count = source_count,
-  };
+    loom_source_resolver_t source_resolver, loom_module_t* module) {
   loom_verify_options_t verify_options = {
       .sink = {.fn = loom_diagnostic_stderr_sink},
       .max_errors = 100,
-      .source_resolver = {.fn = loom_source_table_resolve,
-                          .user_data = &source_resolver},
+      .source_resolver = source_resolver,
   };
   loom_verify_result_t verify_result = {0};
   IREE_RETURN_IF_ERROR(
@@ -887,34 +893,27 @@ static iree_status_t loom_link_cli_verify_output(
   return iree_ok_status();
 }
 
-static iree_status_t loom_link_cli_collect_source_entries(
-    const loom_link_cli_input_t* inputs, iree_host_size_t input_count,
-    loom_source_entry_t** out_source_entries,
-    iree_host_size_t* out_source_count, iree_allocator_t allocator) {
-  *out_source_entries = NULL;
-  *out_source_count = 0;
-  iree_host_size_t source_count = 0;
-  for (iree_host_size_t i = 0; i < input_count; ++i) {
-    if (inputs[i].has_source_entry) {
-      ++source_count;
+static iree_status_t loom_link_cli_capture_sources(
+    const loom_link_cli_index_t* index,
+    const loom_link_plan_materialization_t* product,
+    loom_tooling_source_storage_t* sources) {
+  for (iree_host_size_t i = 0; i < product->target_sources.count; ++i) {
+    const loom_link_source_projection_t* projection =
+        &product->target_sources.values[i];
+    if (projection->count == 0) {
+      continue;
     }
+    const loom_link_module_index_module_t* module =
+        loom_link_module_index_module_at(index->module_index, i);
+    const loom_link_cli_input_t* input =
+        index->provider_inputs[module->provider_ordinal];
+    const loom_source_table_resolver_t input_sources = {
+        .entries = &input->source_entry,
+        .count = input->has_source_entry ? 1 : 0,
+    };
+    IREE_RETURN_IF_ERROR(loom_tooling_source_storage_project(
+        sources, &input_sources, projection->values));
   }
-  if (source_count == 0) {
-    return iree_ok_status();
-  }
-
-  loom_source_entry_t* source_entries = NULL;
-  IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(allocator, source_count,
-                                                   sizeof(*source_entries),
-                                                   (void**)&source_entries));
-  iree_host_size_t source_ordinal = 0;
-  for (iree_host_size_t i = 0; i < input_count; ++i) {
-    if (inputs[i].has_source_entry) {
-      source_entries[source_ordinal++] = inputs[i].source_entry;
-    }
-  }
-  *out_source_entries = source_entries;
-  *out_source_count = source_count;
   return iree_ok_status();
 }
 
@@ -1199,8 +1198,8 @@ int main(int argc, char** argv) {
   iree_host_size_t input_count = 0;
   loom_link_cli_index_t link_index = {0};
   loom_link_index_materialization_t materialization = {0};
-  loom_source_entry_t* source_entries = NULL;
-  iree_host_size_t source_count = 0;
+  loom_tooling_source_storage_t sources;
+  loom_tooling_source_storage_initialize(&block_pool, &sources);
 
   loom_module_format_t input_format = LOOM_MODULE_FORMAT_AUTO;
   loom_module_format_t output_format = LOOM_MODULE_FORMAT_TEXT;
@@ -1360,16 +1359,16 @@ int main(int argc, char** argv) {
   loom_module_t* linked_module =
       FLAG_print_plan ? NULL : materialization.product.module;
   if (iree_status_is_ok(status) && linked_module != NULL) {
-    status = loom_link_cli_collect_source_entries(
-        inputs, input_count, &source_entries, &source_count, allocator);
+    status = loom_link_cli_capture_sources(&link_index,
+                                           &materialization.product, &sources);
   }
   if (iree_status_is_ok(status) && linked_module &&
       FLAG_require_resolved_config) {
     status = loom_tooling_config_require_resolved_module(linked_module, NULL);
   }
   if (iree_status_is_ok(status) && linked_module && FLAG_verify) {
-    status = loom_link_cli_verify_output(source_entries, source_count,
-                                         linked_module);
+    status = loom_link_cli_verify_output(
+        loom_tooling_source_storage_resolver(&sources), linked_module);
   }
   if (iree_status_is_ok(status) && linked_module) {
     if (FLAG_print_config_schema) {
@@ -1391,7 +1390,7 @@ int main(int argc, char** argv) {
     exit_code = 1;
   }
 
-  iree_allocator_free(allocator, source_entries);
+  loom_tooling_source_storage_deinitialize(&sources);
   loom_link_index_materialization_deinitialize(&materialization);
   loom_link_cli_index_deinitialize(&link_index, allocator);
   loom_link_cli_inputs_deinitialize(inputs, input_count, allocator);

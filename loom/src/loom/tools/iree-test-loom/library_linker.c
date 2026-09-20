@@ -8,10 +8,27 @@
 
 #include "loom/link/linker.h"
 #include "loom/tooling/io/file.h"
+#include "loom/tooling/io/source.h"
 
-static iree_status_t iree_test_loom_add_library(loom_run_session_t* session,
-                                                iree_string_view_t library_path,
-                                                loom_linker_t* linker) {
+typedef struct iree_test_loom_link_sources_t {
+  // Snapshots for the module currently being added.
+  const loom_source_table_resolver_t* input;
+  // Owned snapshots in linked-module source-ID order.
+  loom_tooling_source_storage_t output;
+} iree_test_loom_link_sources_t;
+
+static iree_status_t iree_test_loom_capture_sources(
+    void* user_data, const loom_module_t* source_module,
+    const loom_module_t* target_module,
+    const loom_source_id_t* target_sources) {
+  iree_test_loom_link_sources_t* sources = user_data;
+  return loom_tooling_source_storage_project(&sources->output, sources->input,
+                                             target_sources);
+}
+
+static iree_status_t iree_test_loom_add_library(
+    loom_run_session_t* session, iree_string_view_t library_path,
+    loom_linker_t* linker, iree_test_loom_link_sources_t* sources) {
   if (loom_tooling_file_path_is_stdio(library_path)) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "--library requires a filesystem path");
@@ -29,6 +46,7 @@ static iree_status_t iree_test_loom_add_library(loom_run_session_t* session,
     status = loom_run_module_parse(session, &parse_options, &library_module);
   }
   if (iree_status_is_ok(status)) {
+    sources->input = &library_module.sources.table;
     status = loom_linker_add_module(linker, library_module.module,
                                     /*options=*/NULL);
   }
@@ -51,8 +69,15 @@ iree_status_t iree_test_loom_link_libraries(
 
   loom_linker_t* linker = NULL;
   loom_module_t* linked_module = NULL;
+  iree_test_loom_link_sources_t sources = {
+      .input = &run_module->sources.table,
+  };
+  loom_tooling_source_storage_initialize(loom_run_session_block_pool(session),
+                                         &sources.output);
   const loom_linker_options_t linker_options = {
       .module_name = IREE_SV("linked"),
+      .source_callback = {.fn = iree_test_loom_capture_sources,
+                          .user_data = &sources},
   };
   iree_status_t status = loom_linker_allocate(
       loom_run_session_context(session), &linker_options,
@@ -63,8 +88,8 @@ iree_status_t iree_test_loom_link_libraries(
   }
   for (iree_host_size_t i = 0;
        i < library_paths.count && iree_status_is_ok(status); ++i) {
-    status =
-        iree_test_loom_add_library(session, library_paths.values[i], linker);
+    status = iree_test_loom_add_library(session, library_paths.values[i],
+                                        linker, &sources);
   }
   if (iree_status_is_ok(status)) {
     status = loom_linker_finish(linker, &linked_module);
@@ -72,9 +97,13 @@ iree_status_t iree_test_loom_link_libraries(
   if (iree_status_is_ok(status)) {
     loom_module_free(run_module->module);
     run_module->module = linked_module;
+    loom_tooling_source_storage_deinitialize(&run_module->sources);
+    run_module->sources = sources.output;
+    sources.output = (loom_tooling_source_storage_t){0};
     linked_module = NULL;
   }
   loom_module_free(linked_module);
   loom_linker_free(linker);
+  loom_tooling_source_storage_deinitialize(&sources.output);
   return status;
 }

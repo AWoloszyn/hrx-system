@@ -135,16 +135,8 @@ static iree_status_t loom_run_module_parse_text(
     status = loom_module_register_source(out_module->module, options->filename,
                                          &source_id);
     if (iree_status_is_ok(status)) {
-      out_module->source_entry = (loom_source_entry_t){
-          .source_id = source_id,
-          .source = options->source,
-          .filename = options->filename,
-      };
-      out_module->source_table_resolver = (loom_source_table_resolver_t){
-          .entries = &out_module->source_entry,
-          .count = 1,
-      };
-      out_module->has_source_entry = true;
+      status = loom_tooling_source_storage_insert(
+          &out_module->sources, source_id, options->filename, options->source);
     }
   }
   return status;
@@ -179,8 +171,10 @@ iree_status_t loom_run_module_parse(
     loom_run_module_t* out_module) {
   *out_module = (loom_run_module_t){
       .filename = options->filename,
-      .source = options->source,
   };
+
+  loom_tooling_source_storage_initialize(&session->block_pool,
+                                         &out_module->sources);
 
   iree_status_t status =
       loom_run_module_input_is_bytecode(options->source)
@@ -197,16 +191,14 @@ void loom_run_module_deinitialize(loom_run_module_t* run_module) {
     return;
   }
   loom_module_free(run_module->module);
+  loom_tooling_source_storage_deinitialize(&run_module->sources);
   *run_module = (loom_run_module_t){0};
 }
 
 loom_source_resolver_t loom_run_module_source_resolver(
     const loom_run_module_t* run_module) {
-  if (run_module == NULL || !run_module->has_source_entry) {
+  if (run_module == NULL) {
     return (loom_source_resolver_t){0};
   }
-  return (loom_source_resolver_t){
-      .fn = loom_source_table_resolve,
-      .user_data = (void*)&run_module->source_table_resolver,
-  };
+  return loom_tooling_source_storage_resolver(&run_module->sources);
 }

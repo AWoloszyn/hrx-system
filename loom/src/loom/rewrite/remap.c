@@ -181,6 +181,16 @@ iree_status_t loom_ir_remap_initialize(const loom_module_t* source_module,
       IREE_BUILTIN_UNREACHABLE();
   }
 
+  if (source_module != target_module && source_module->sources.count != 0) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        arena, source_module->sources.count, sizeof(*remap.target_sources),
+        (void**)&remap.target_sources));
+    for (iree_host_size_t i = 0; i < source_module->sources.count; ++i) {
+      IREE_RETURN_IF_ERROR(loom_module_register_source(
+          target_module, source_module->sources.entries[i],
+          &remap.target_sources[i]));
+    }
+  }
   *out_remap = remap;
   return iree_ok_status();
 }
@@ -443,9 +453,8 @@ static iree_status_t loom_ir_remap_source_id(
     *out_target_source_id = source_id;
     return iree_ok_status();
   }
-  return loom_module_register_source(
-      remap->target_module, remap->source_module->sources.entries[source_id],
-      out_target_source_id);
+  *out_target_source_id = remap->target_sources[source_id];
+  return iree_ok_status();
 }
 
 static iree_status_t loom_ir_remap_location_entry(

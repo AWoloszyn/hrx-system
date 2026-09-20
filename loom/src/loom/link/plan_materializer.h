@@ -18,10 +18,27 @@
 extern "C" {
 #endif
 
+// Source-ID correspondence for one indexed materialized input module.
+typedef struct loom_link_source_projection_t {
+  // Arena-owned target IDs indexed by original input source ID.
+  const loom_source_id_t* values;
+  // Source table size, or zero for unselected and bytecode-only inputs.
+  iree_host_size_t count;
+} loom_link_source_projection_t;
+
 // Result of materializing one exact plan.
 typedef struct loom_link_plan_materialization_t {
   // Standalone linked module owned by the caller.
   loom_module_t* module;
+  // Source correspondence indexed by index-wide module ordinal. Includes
+  // intermediate kernel-configuration projections. Storage belongs to the
+  // caller's arena and remains valid after transient input modules are freed.
+  struct {
+    // Per-input source correspondence produced by materialization.
+    loom_link_source_projection_t* values;
+    // Number of index-wide module slots.
+    iree_host_size_t count;
+  } target_sources;
   // Dense target refs indexed by source index symbol ordinal. Unselected
   // symbols contain null refs. Storage belongs to the caller's arena.
   struct {

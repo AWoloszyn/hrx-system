@@ -14,6 +14,7 @@
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/target/low_descriptor_registry.h"
+#include "loom/tooling/io/source.h"
 #include "loom/verify/verify.h"
 
 #ifdef __cplusplus
@@ -95,7 +96,8 @@ typedef struct loom_run_module_parse_options_t {
   // User-facing source filename for diagnostics.
   iree_string_view_t filename;
   // Input bytes. Text is parsed directly; bytecode is detected by file magic.
-  // The caller must keep the bytes alive while the module lives.
+  // Borrowed for the parse call; captured text snapshots are owned by the
+  // result.
   iree_string_view_t source;
   // Diagnostic sink used by the text parser or bytecode reader.
   loom_diagnostic_sink_t diagnostic_sink;
@@ -106,16 +108,11 @@ typedef struct loom_run_module_parse_options_t {
 typedef struct loom_run_module_t {
   // Parsed module owned by this object.
   loom_module_t* module;
-  // Source filename used for diagnostics and source resolution.
+  // Input path borrowed from the caller, which must outlive this object.
+  // Diagnostic source filenames are owned separately in sources.
   iree_string_view_t filename;
-  // Input bytes borrowed from the caller.
-  iree_string_view_t source;
-  // Source table entry for text inputs.
-  loom_source_entry_t source_entry;
-  // Single-entry source resolver for text-input diagnostics.
-  loom_source_table_resolver_t source_table_resolver;
-  // True when source_entry and source_table_resolver are backed by text.
-  bool has_source_entry;
+  // Owned source snapshots for text inputs and linked dependencies.
+  loom_tooling_source_storage_t sources;
 } loom_run_module_t;
 
 // Initializes parse options with stderr diagnostics and a small error cap.
