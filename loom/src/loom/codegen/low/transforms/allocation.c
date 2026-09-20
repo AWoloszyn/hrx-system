@@ -420,6 +420,9 @@ iree_status_t loom_low_materialize_allocation_run(loom_pass_t* pass,
   iree_host_size_t iteration_limit = 0;
   iree_host_size_t rematerialization_iteration_count = 0;
   iree_host_size_t rematerialization_iteration_limit = 0;
+  loom_low_rematerialization_state_t rematerialization = {
+      .arena = pass->arena,
+  };
   for (;;) {
     loom_low_allocation_table_t table = {0};
     IREE_RETURN_IF_ERROR(loom_low_materialize_allocation_build_table(
@@ -453,7 +456,7 @@ iree_status_t loom_low_materialize_allocation_run(loom_pass_t* pass,
       }
       loom_low_allocation_rematerialization_result_t result = {0};
       IREE_RETURN_IF_ERROR(loom_low_allocation_rematerialize_failure(
-          module, &table, pass->arena, &result));
+          module, &table, &rematerialization, pass->arena, &result));
       if (result.value.rewritten_operand_count != 0) {
         IREE_RETURN_IF_ERROR(
             loom_low_materialize_allocation_emit_rematerialization(
@@ -487,7 +490,8 @@ iree_status_t loom_low_materialize_allocation_run(loom_pass_t* pass,
       loom_low_allocation_rematerialization_result_t rematerialization_result =
           {0};
       IREE_RETURN_IF_ERROR(loom_low_allocation_rematerialize_spill_plan(
-          module, &table, pass->arena, &rematerialization_result));
+          module, &table, &rematerialization, pass->arena,
+          &rematerialization_result));
       if (rematerialization_result.value.rewritten_operand_count != 0) {
         IREE_RETURN_IF_ERROR(
             loom_low_materialize_allocation_emit_rematerialization(

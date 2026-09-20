@@ -467,3 +467,26 @@ low.func.def target<test.low.core>(@test_target) @rematerialize_overlapping_view
   %sum = test.add.i32 %sum01, %sum23
   return %wide, %sum
 }
+
+// ====
+
+// Per-use definitions cannot become repair candidates again merely because
+// another operand's definition was inserted between them and their shared user.
+// Three simultaneous operands in two physical registers remain unallocatable;
+// each original constant is attempted once before reporting that real failure.
+// RUN: with-low-asm pass low-materialize-allocation{diagnostics=spills}
+
+test.target<low_core> @test_target
+
+// REMARK@+3: BACKEND/045 {value_name="first", cloned_packet_count="1", rewritten_operand_count="1"}
+// REMARK@+2: BACKEND/045 {value_name="second", cloned_packet_count="1", rewritten_operand_count="1"}
+// REMARK@+1: BACKEND/045 {value_name="third", cloned_packet_count="1", rewritten_operand_count="1"}
+low.func.def target<test.low.core>(@test_target) @irreducible_constants() -> (reg<test.packed.narrow>, reg<test.packed.narrow>, reg<test.packed.narrow>) asm {
+  %first = test.const.packed.narrow 7
+  %second = test.const.packed.narrow 11
+  // ERROR@+1: BACKEND/005 "budget 2" "peak 3" "unspillable-register-exhausted"
+  %third = test.const.packed.narrow 13
+  return %first, %second, %third
+}
+
+// ----
