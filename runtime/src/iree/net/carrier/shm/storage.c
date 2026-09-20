@@ -210,20 +210,33 @@ iree_status_t iree_net_shm_storage_signal(iree_net_shm_storage_t* storage,
   return iree_async_event_native_set(&storage->wakes[side]);
 }
 
-static void iree_net_shm_storage_release_lease(
-    void* user_data, iree_async_buffer_index_t index) {
-  iree_net_shm_storage_endpoint_t* endpoint = user_data;
-  iree_net_shm_storage_t* storage = endpoint->storage;
+static void iree_net_shm_storage_return_slot(
+    iree_net_shm_storage_endpoint_t* endpoint,
+    iree_async_buffer_index_t index) {
   iree_atomic_freelist_push(endpoint->incoming->free_slots,
                             endpoint->incoming->links, (uint16_t)index);
   iree_atomic_fetch_sub(&endpoint->retained_count, 1,
                         iree_memory_order_release);
+}
+
+static void iree_net_shm_storage_release_lease(
+    void* user_data, iree_async_buffer_index_t index) {
+  iree_net_shm_storage_endpoint_t* endpoint = user_data;
+  iree_net_shm_storage_t* storage = endpoint->storage;
+  iree_net_shm_storage_return_slot(endpoint, index);
   iree_status_t status =
       iree_net_shm_storage_signal(storage, storage->side ^ 1u);
   if (!iree_status_is_ok(status)) {
     iree_net_shm_storage_fail(storage, status);
   }
   iree_net_shm_storage_release(storage);
+}
+
+void iree_net_shm_storage_recycle_lease(iree_async_buffer_lease_t* lease) {
+  iree_net_shm_storage_endpoint_t* endpoint = lease->release.user_data;
+  iree_net_shm_storage_return_slot(endpoint, lease->buffer_index);
+  memset(lease, 0, sizeof(*lease));
+  iree_net_shm_storage_release(endpoint->storage);
 }
 
 bool iree_net_shm_storage_try_lease(iree_net_shm_storage_endpoint_t* endpoint,

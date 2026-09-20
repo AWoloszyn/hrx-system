@@ -90,6 +90,9 @@ static uint8_t* iree_net_shm_region_bind_direction(
   out_direction->free_slots = (iree_atomic_freelist_t*)base;
   out_direction->consumed_position =
       (iree_atomic_uint64_t*)(base + IREE_NET_SHM_REGION_ALIGNMENT);
+  out_direction->receiver_closed =
+      (iree_atomic_int32_t*)(base + IREE_NET_SHM_REGION_ALIGNMENT +
+                             sizeof(iree_atomic_uint64_t));
   out_direction->links =
       (iree_atomic_freelist_slot_t*)(base + layout->links_offset);
   out_direction->payload = base + layout->payload_offset;
@@ -112,6 +115,7 @@ iree_status_t iree_net_shm_region_initialize(
         iree_net_shm_region_bind_direction(layout, storage.data, i, direction);
     iree_atomic_store(direction->consumed_position, 0,
                       iree_memory_order_relaxed);
+    iree_atomic_store(direction->receiver_closed, 0, iree_memory_order_relaxed);
     status = iree_atomic_freelist_initialize(
         direction->links, layout->options.slot_count, direction->free_slots);
     if (iree_status_is_ok(status)) {

@@ -42,6 +42,24 @@ iree_runtime_cc_library(
 )
 
 iree_runtime_cc_library(
+    name = "shm",
+    srcs = ["carrier.c"],
+    hdrs = ["carrier.h"],
+    deps = [
+        ":region",
+        ":storage",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/internal:atomic_freelist",
+        "//runtime/src/iree/base/internal:mpsc_queue",
+        "//runtime/src/iree/base/threading",
+        "//runtime/src/iree/net:carrier",
+    ],
+)
+
+iree_runtime_cc_library(
     name = "bootstrap",
     srcs = ["bootstrap.c"],
     hdrs = ["bootstrap.h"],
@@ -80,6 +98,27 @@ iree_runtime_cc_test(
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
+)
+
+iree_runtime_cc_test(
+    name = "carrier_test",
+    srcs = ["carrier_test.cc"],
+    deps = [
+        ":region",
+        ":shm",
+        ":storage",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async:platform",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/net:carrier",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ] + select({
+        "@platforms//os:android": ["//runtime/src/iree/async/platform/posix"],
+        "@platforms//os:linux": ["//runtime/src/iree/async/platform/posix"],
+        "@platforms//os:macos": ["//runtime/src/iree/async/platform/posix"],
+        "//conditions:default": [],
+    }),
 )
 
 iree_runtime_cc_test(

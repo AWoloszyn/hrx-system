@@ -44,6 +44,27 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    shm
+  HDRS
+    "carrier.h"
+  SRCS
+    "carrier.c"
+  DEPS
+    ::region
+    ::storage
+    iree::async
+    iree::base
+    iree::base::core_headers
+    iree::base::internal
+    iree::base::internal::atomic_freelist
+    iree::base::internal::mpsc_queue
+    iree::base::threading
+    iree::net::carrier
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     bootstrap
   HDRS
     "bootstrap.h"
@@ -86,6 +107,32 @@ iree_cc_test(
     iree::base::internal::atomic_freelist
     iree::testing::gtest
     iree::testing::gtest_main
+)
+
+set(_carrier_test_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+  list(APPEND _carrier_test_platform_deps iree::async::platform::posix)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _carrier_test_platform_deps iree::async::platform::posix)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  list(APPEND _carrier_test_platform_deps iree::async::platform::posix)
+endif()
+iree_cc_test(
+  NAME
+    carrier_test
+  SRCS
+    "carrier_test.cc"
+  DEPS
+    ::region
+    ::shm
+    ::storage
+    iree::async
+    iree::async::platform
+    iree::base
+    iree::net::carrier
+    iree::testing::gtest
+    iree::testing::gtest_main
+    ${_carrier_test_platform_deps}
 )
 
 iree_cc_test(

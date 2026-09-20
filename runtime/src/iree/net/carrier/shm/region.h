@@ -65,9 +65,10 @@ typedef struct iree_net_shm_region_layout_t {
 
 // One published payload chunk. All fields are little-endian native integers.
 typedef struct iree_net_shm_descriptor_t {
-  // Index of the exclusively owned payload slot in this direction.
+  // Exclusively owned payload slot, or IREE_ATOMIC_FREELIST_EMPTY for EOF.
   uint32_t slot;
-  // Nonzero initialized bytes in the slot, at most slot_capacity.
+  // Initialized bytes, at most slot_capacity. Zero denotes ordered send EOF
+  // without a payload slot; the opposite send direction remains usable.
   uint32_t length;
   // Cumulative end byte position, acknowledged after descriptor consumption.
   uint64_t end_position;
@@ -83,6 +84,10 @@ typedef struct iree_net_shm_direction_t {
   iree_atomic_freelist_slot_t* links;
   // Receiver-published cumulative consumed byte position.
   iree_atomic_uint64_t* consumed_position;
+  // Receiver-published terminal closure, separate from ordered send EOF.
+  // Written once on endpoint retirement; prevents peer sends waiting forever
+  // when the connection and its other endpoints remain active.
+  iree_atomic_int32_t* receiver_closed;
   // Shared descriptor queue with one polling producer and consumer.
   iree_mpsc_queue_t descriptors;
   // First payload slot; successive slots are layout.slot_stride bytes apart.

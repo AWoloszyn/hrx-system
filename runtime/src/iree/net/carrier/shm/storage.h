@@ -128,6 +128,11 @@ bool iree_net_shm_storage_try_lease(iree_net_shm_storage_endpoint_t* endpoint,
                                     uint16_t slot, uint32_t length,
                                     iree_async_buffer_lease_t* out_lease);
 
+// Returns an unmoved native lease on the receiving poll owner without
+// signaling. The carrier includes this return in its batch wake. |lease| must
+// be a live lease from try_lease, not a lease moved to application ownership.
+void iree_net_shm_storage_recycle_lease(iree_async_buffer_lease_t* lease);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus
