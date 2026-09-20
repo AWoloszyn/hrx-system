@@ -3,13 +3,12 @@
 # Licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-# bazel-to-cmake: skip
 
 load(
     "//loom/build_tools/amdgpu:target_config.bzl",
     "LOOM_AMDGPU_SUPPORTED_TARGETS",
 )
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with")
 load(
     "//loom/build_tools/bazel:defs.bzl",
     "loom_amdgpu_target_profile",
@@ -23,6 +22,7 @@ exports_files(["execution_profiles.bzl"])
     loom_amdgpu_target_profile(
         name = target,
         target = target,
+        target_compatible_with = loom_config_compatible_with(["//loom/config/target:amdgpu_artifacts"]),
     )
     for target in LOOM_AMDGPU_SUPPORTED_TARGETS
 ]

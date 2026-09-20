@@ -13,6 +13,7 @@ load(
     "LoomCheckTestInfo",
     "loom_check_test",
 )
+load("//loom/build_tools/bazel:loom_library.bzl", "loom_test")
 
 def _find_action_with_output(env, actions, expected_basename):
     for action in actions:
@@ -75,11 +76,58 @@ def _test_loom_check_wrapper_uses_test_runner_impl(env, target):
     if not str(info.runner).endswith("//loom/src/loom/tools/loom-check:loom-check-test"):
         env.fail("unexpected default runner %s" % info.runner)
 
+def _test_compiler_profile_uses_typed_identity(name, **kwargs):
+    loom_check_test(
+        name = name + "_subject",
+        src = "roundtrip.loom-test",
+        compile_targets = [":test_fake_profile"],
+        tags = ["manual"],
+    )
+    analysis_test(
+        name = name,
+        impl = _test_compiler_profile_uses_typed_identity_impl,
+        target = name + "_subject_compile_test_fake_profile_launcher",
+        **kwargs
+    )
+
+def _test_compiler_profile_uses_typed_identity_impl(env, target):
+    info = target[LoomCheckTestInfo]
+    env.expect.that_str(info.compile_target).equals("FakeTargetFamily123:FakeTargetSelector123")
+    env.expect.that_str(info.fixture.basename).equals("roundtrip.loom-test")
+    env.expect.that_str(str(info.runner)).contains("//loom/src/loom/tools/loom-check:loom-check")
+
+def _test_execution_and_compiler_share_module(name, **kwargs):
+    loom_test(
+        name = name + "_subject",
+        srcs = ["profile_cases.loom"],
+        compile_targets = [":test_fake_profile"],
+        tags = ["manual"],
+        deps = [":library_dependency"],
+    )
+    analysis_test(
+        name = name,
+        impl = _test_execution_and_compiler_share_module_impl,
+        target = name + "_subject_compile_test_fake_profile_launcher",
+        **kwargs
+    )
+
+def _test_execution_and_compiler_share_module_impl(env, target):
+    info = target[LoomCheckTestInfo]
+    env.expect.that_str(info.fixture.basename).equals(
+        target.label.name.removesuffix("_compile_test_fake_profile_launcher") + "_module.loombc",
+    )
+    runfiles = target[DefaultInfo].default_runfiles.files.to_list()
+    for file in runfiles:
+        if file.basename in ["profile_cases.loom", "library_dependency.loombc"]:
+            env.fail("compiler bypasses the linked root-owned test closure: %s" % file)
+
 def loom_check_rules_test_suite(name):
     test_suite(
         name = name,
         tests = [
             _test_loom_check_wrapper_declares_fixture,
             _test_loom_check_wrapper_uses_test_runner,
+            _test_compiler_profile_uses_typed_identity,
+            _test_execution_and_compiler_share_module,
         ],
     )

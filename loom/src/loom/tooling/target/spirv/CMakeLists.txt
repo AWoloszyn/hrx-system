@@ -223,6 +223,19 @@ loom_cc_test(
 )
 endif()
 
+if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
+loom_test(
+  NAME
+    vulkan_explicit_target_tests
+  SRCS
+    "test/spirv_vulkan_hal_actual.loom"
+  EXECUTION_REQUIRES
+    FALSE
+  COMPILE_TARGETS
+    loom::target::spirv::vulkan1.3+bda
+)
+endif()
+
 if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
 iree_native_test(
   NAME

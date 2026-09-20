@@ -3,8 +3,6 @@
 # Licensed under the Apache License v2.0 with LLVM Exceptions.
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
-#
-# bazel-to-cmake: skip
 
 load("//build_tools/bazel:executable.bzl", "iree_executable_test")
 load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with")
@@ -32,6 +30,7 @@ loom_kernel_binary(
     testonly = True,
     srcs = ["copy_i32.loom"],
     out = "copy_i32_test.spv",
+    tags = ["skip-bazel_to_cmake"],
     target = ":vulkan1.3+bda",
     target_compatible_with = _SPIRV_ARTIFACTS_COMPATIBLE_WITH,
     visibility = ["//visibility:private"],
@@ -46,7 +45,10 @@ iree_executable_test(
         "$(rootpath :copy_i32_test_binary)",
     ],
     data = [":copy_i32_test_binary"],
-    tags = ["hostonly"],
+    tags = [
+        "hostonly",
+        "skip-bazel_to_cmake",
+    ],
     target_compatible_with = _SPIRV_ARTIFACTS_COMPATIBLE_WITH,
     visibility = ["//visibility:private"],
 )

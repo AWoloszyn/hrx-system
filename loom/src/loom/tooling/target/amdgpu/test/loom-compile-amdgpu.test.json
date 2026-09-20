@@ -2,21 +2,6 @@
   "version": 1,
   "cases": [
     {
-      "name": "allocates wave32 loop masks with access instrumentation",
-      "run": {
-        "tool": "loom-compile",
-        "args": [
-          "{srcdir}/corpus/gfx11/loop_entry_wave32.loom",
-          "--root=@delayed_guard_broadcast_wave32",
-          "--target=amdgpu:gfx1151",
-          "--format=amdgpu-hsaco",
-          "--sanitizer=access",
-          "--output={tmp}/loop_entry_wave32.hsaco"
-        ]
-      },
-      "files": [{"path": "{tmp}/loop_entry_wave32.hsaco", "non_empty": true}]
-    },
-    {
       "name": "resumes explicit kernel roots from Low text and bytecode",
       "steps": [
         {
@@ -93,57 +78,6 @@
             ]
           },
           "files": [{"path": "{tmp}/implicit.hsaco", "equals": "{tmp}/source.hsaco"}]
-        }
-      ]
-    },
-    {
-      "name": "compiles HAL kernel closures from complete authoring modules",
-      "run": {
-        "tool": "loom-compile",
-        "args": [
-          "{srcdir}/complete_authoring_module.loom",
-          "--target=amdgpu:gfx1100",
-          "--output={tmp}/complete_authoring_module.hal",
-          "--emit-target-artifact={tmp}/complete_authoring_module.hsaco"
-        ]
-      },
-      "files": [
-        {
-          "path": "{tmp}/complete_authoring_module.hal",
-          "non_empty": true
-        },
-        {
-          "path": "{tmp}/complete_authoring_module.hsaco",
-          "non_empty": true
-        }
-      ]
-    },
-    {
-      "name": "compiles parameterized gfx1250 matrix kernel",
-      "run": {
-        "tool": "loom-compile",
-        "args": [
-          "{srcdir}/gfx1250_configured_fragment_bank.loom",
-          "--product=kernel",
-          "--format=amdgpu-hsaco",
-          "--target=amdgpu:gfx1250",
-          "--config=test.fragment_bank.m_fragments=8",
-          "--config=test.fragment_bank.n_fragments=4",
-          "--config=test.fragment_bank.k_fragments=2",
-          "--config=test.fragment_bank.workgroup_size=32",
-          "--config=test.fragment_bank.scratch_elements=32",
-          "--output={tmp}/configured_fragment_bank.hal",
-          "--emit-target-artifact={tmp}/configured_fragment_bank.hsaco"
-        ]
-      },
-      "files": [
-        {
-          "path": "{tmp}/configured_fragment_bank.hal",
-          "non_empty": true
-        },
-        {
-          "path": "{tmp}/configured_fragment_bank.hsaco",
-          "non_empty": true
         }
       ]
     },

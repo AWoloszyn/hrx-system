@@ -551,6 +551,26 @@ cc_library(
             converter.body,
         )
 
+    def test_native_python_test_builds_its_tool_arguments(self):
+        converter = SimpleNamespace(body="")
+        functions = _PythonBuildFileFunctions(
+            converter=converter,
+            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
+            build_dir="build_tools/example",
+            repo_root="/repo",
+        )
+
+        functions.iree_py_test(
+            name="tool_test",
+            srcs=["test.py"],
+            args=["$(location //third_party:spirv_dis)"],
+            data=["//third_party:spirv_dis"],
+            env_inherit=["PATH"],
+        )
+
+        self.assertIn('"$<TARGET_FILE:iree::third_party::spirv_dis>"', converter.body)
+        self.assertIn("DEPS\n    iree::third_party::spirv_dis", converter.body)
+
     def test_py_test_maps_size_to_default_timeout(self):
         repo_root = Path(__file__).resolve().parents[2]
         for size, timeout in {
@@ -640,6 +660,23 @@ cc_library(
                 main="config_test.py",
                 deps=[],
             )
+
+    def test_private_executable_test_can_skip_cmake(self):
+        converter = SimpleNamespace(body="")
+        functions = bazel_to_cmake_converter.BuildFileFunctions(
+            converter=converter,
+            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
+            build_dir="build_tools/example",
+        )
+
+        functions.iree_executable_test(
+            name="test",
+            src=":runner",
+            visibility=["//visibility:private"],
+            tags=["skip-bazel_to_cmake"],
+        )
+
+        self.assertEqual(converter.body, "")
 
     def test_generated_files_requires_explicit_cmake_projection(self):
         functions = bazel_to_cmake_converter.BuildFileFunctions(

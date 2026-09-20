@@ -13,6 +13,7 @@
 #include "iree/base/internal/arena.h"
 #include "loom/ir/context.h"
 #include "loom/tooling/io/source_path.h"
+#include "loom/tools/loom-check/compile.h"
 #include "loom/tools/loom-check/execute.h"
 #include "loom/tools/loom-check/json_output.h"
 
@@ -21,6 +22,8 @@ extern "C" {
 #endif
 
 typedef struct loom_check_process_options_t {
+  // Offline compiler qualification replacing RUN execution when target is set.
+  loom_check_compile_options_t compile;
   // Explicit source format for stdin or nonstandard filenames, empty for auto.
   iree_string_view_t input_format;
   // Rewrites expected sections and synchronized template cases in-place.

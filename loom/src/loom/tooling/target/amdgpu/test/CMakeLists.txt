@@ -10,33 +10,87 @@
 iree_add_all_subdirs()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
+iree_py_test(
+  NAME
+    qualification_test
+  MAIN
+    "qualification_test.py"
+  SRCS
+    "qualification_test.py"
+  ARGS
+    "$<TARGET_FILE:loom::tools::loom-check::loom-check>"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_global_atomic.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/target/arch/amdgpu/test/source_low/source_low_memory_global_atomic_gfx9_4_generic.loom-test"
+    "$<TARGET_FILE:loom::tools::loom-compile::loom-compile>"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_address_realizations.loom-test"
+  DEPS
+    loom::tools::loom-check::loom-check
+    loom::tools::loom-compile::loom-compile
+  PACKAGE_DIRS
+    "${PROJECT_SOURCE_DIR}/loom/py"
+    "${PROJECT_BINARY_DIR}/loom/py"
+    "${PROJECT_SOURCE_DIR}"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 iree_execution_test_suite(
   NAME
     loom_compile_execution_test
   MANIFESTS
-    "address-widening.test.json"
     "loom-compile-amdgpu.test.json"
-    "memory-addresses.test.json"
-    "wide-offsets.test.json"
   TOOLS
     "loom-compile=loom::tools::loom-compile"
     "loom-compile-report=loom::py::loom::tools::loom-compile-report"
     "loom-format=loom::tools::loom-format"
     "loom-opt=loom::tools::loom-opt"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_scaling.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_widening.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_address_realizations.loom-test"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_global_atomic.loom-test"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_wide_offsets.loom-test"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/complete_authoring_module.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/corpus/gfx11/loop_entry_wave32.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/corpus/gfx11/schedule_scopes.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/gfx1250_configured_fragment_bank.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/loom_opt_f32_arith.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/selected_root_amdgpu.loom"
   LABELS
     "hostonly"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
+loom_check_compile_tests(
+  NAME
+    "authoring_closure"
+  SRC
+    "complete_authoring_module.loom"
+  TARGETS
+    loom::target::amdgpu::gfx1100
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
+loom_check_compile_tests(
+  NAME
+    "configured_fragment_bank"
+  SRC
+    "gfx1250_configured_fragment_bank.loom"
+  TARGETS
+    loom::target::amdgpu::gfx1250
+  ARGS
+    "--config=test.fragment_bank.m_fragments=8"
+    "--config=test.fragment_bank.n_fragments=4"
+    "--config=test.fragment_bank.k_fragments=2"
+    "--config=test.fragment_bank.workgroup_size=32"
+    "--config=test.fragment_bank.scratch_elements=32"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
+loom_check_compile_tests(
+  NAME
+    "loop_entry_access"
+  SRC
+    "loom::tooling::target::amdgpu::test::corpus::gfx11_loop_entry_module"
+  TARGETS
+    loom::target::amdgpu::gfx1151
+  ARGS
+    "--sanitizer=access"
 )
 endif()
 
@@ -68,6 +122,82 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/loom_opt_f32_arith.loom"
   LABELS
     "hostonly"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
+loom_test(
+  NAME
+    wide_offset_hardware_test
+  SRCS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_scaling.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_selection.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/offset_integer_casts.loom"
+  EXECUTION_REQUIRES
+    FALSE
+  COMPILE_TARGETS
+    loom::target::amdgpu::gfx11-generic
+    loom::target::amdgpu::gfx1100
+    loom::target::amdgpu::gfx1101
+    loom::target::amdgpu::gfx1102
+    loom::target::amdgpu::gfx1103
+    loom::target::amdgpu::gfx1150
+    loom::target::amdgpu::gfx1151
+    loom::target::amdgpu::gfx1152
+    loom::target::amdgpu::gfx1153
+    loom::target::amdgpu::gfx1170
+    loom::target::amdgpu::gfx1171
+    loom::target::amdgpu::gfx1172
+    loom::target::amdgpu::gfx12-5-generic
+    loom::target::amdgpu::gfx12-generic
+    loom::target::amdgpu::gfx1200
+    loom::target::amdgpu::gfx1201
+    loom::target::amdgpu::gfx1250
+    loom::target::amdgpu::gfx1250-a0
+    loom::target::amdgpu::gfx1251
+    loom::target::amdgpu::gfx9-4-generic
+    loom::target::amdgpu::gfx940
+    loom::target::amdgpu::gfx941
+    loom::target::amdgpu::gfx942
+    loom::target::amdgpu::gfx950
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
+loom_test(
+  NAME
+    address_carrier_hardware_test
+  SRCS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_carrier_casts.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_carrier_loops.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_widening.loom"
+  EXECUTION_REQUIRES
+    FALSE
+  COMPILE_TARGETS
+    loom::target::amdgpu::gfx11-generic
+    loom::target::amdgpu::gfx1100
+    loom::target::amdgpu::gfx1101
+    loom::target::amdgpu::gfx1102
+    loom::target::amdgpu::gfx1103
+    loom::target::amdgpu::gfx1150
+    loom::target::amdgpu::gfx1151
+    loom::target::amdgpu::gfx1152
+    loom::target::amdgpu::gfx1153
+    loom::target::amdgpu::gfx1170
+    loom::target::amdgpu::gfx1171
+    loom::target::amdgpu::gfx1172
+    loom::target::amdgpu::gfx12-5-generic
+    loom::target::amdgpu::gfx12-generic
+    loom::target::amdgpu::gfx1200
+    loom::target::amdgpu::gfx1201
+    loom::target::amdgpu::gfx1250
+    loom::target::amdgpu::gfx1250-a0
+    loom::target::amdgpu::gfx1251
+    loom::target::amdgpu::gfx9-4-generic
+    loom::target::amdgpu::gfx940
+    loom::target::amdgpu::gfx941
+    loom::target::amdgpu::gfx942
+    loom::target::amdgpu::gfx950
 )
 endif()
 

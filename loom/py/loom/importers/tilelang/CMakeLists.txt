@@ -157,6 +157,7 @@ iree_py_test(
     loom::py::loom::importers::check::check
     loom::py::loom::importers::check::mlir::mlir
     loom::py::loom::importers::check::tilelang::tilelang
+    loom::tools::loom-opt::loom-opt
   PACKAGE_DIRS
     "${PROJECT_SOURCE_DIR}/loom/py"
     "${PROJECT_BINARY_DIR}/loom/py"

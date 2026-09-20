@@ -189,6 +189,41 @@ binary and the corresponding single report for kernel and VM binaries. This
 makes it possible to inspect reachability or compare compiler evidence without
 changing the product graph.
 
+## Test execution and compiler profiles together
+
+`loom_test` keeps execution and offline compiler qualification beside the same
+authored sources:
+
+```starlark
+load("@hrx//loom/build_tools/bazel:defs.bzl", "loom_test")
+load("@hrx//loom/target/amdgpu:execution_profiles.bzl", "AMDGPU_HARDWARE_PROFILE")
+
+loom_test(
+    name = "address_tests",
+    srcs = ["address_tests.loom"],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    compile_targets = [
+        "@hrx//loom/target/amdgpu:gfx942",
+        "@hrx//loom/target/amdgpu:gfx1151",
+    ],
+)
+```
+
+The sources own `check.case` or `check.benchmark` roots; `deps` contribute only
+reachable definitions. Execution and compilation consume the same linked test
+module. The owning test target includes both phases. Its `_execution` child
+requires the execution profile's device, while `_compile_gfx942` and
+`_compile_gfx1151` run the offline compiler on the host. Compilation succeeds
+only when final artifacts are produced; it does not execute numerical checks.
+
+Compiler fixtures have the same alongside option. `loom_check_test` accepts a
+`compile_targets` list; `loom_check_test_suite` accepts a map from existing
+source paths to profile lists. Each source case uses the ordinary input
+provider, TEMPLATE synchronization, and diagnostic annotations. Compilation
+does not compare RUN goldens or inherit their execution skips and expected
+failures. Profile labels supply typed compiler identities, independently of
+execution resource requirements.
+
 ## The CLI and in-memory APIs use the same boundaries
 
 The Bazel rules orchestrate the public tools; they do not add a second linkage

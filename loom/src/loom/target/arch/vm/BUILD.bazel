@@ -151,6 +151,7 @@ loom_check_test_suite(
         "test/source_low/view_root_selection.loom-test",
         "test/storage.loom-test",
     ],
+    compile_targets = {"test/emission.loom-test": ["//loom/target/vm:core"]},
     data = [
         "//loom/src/loom/test/corpus/source_low:buffer_access.loom-test",
         "//loom/src/loom/test/corpus/source_low:buffer_calls.loom-test",

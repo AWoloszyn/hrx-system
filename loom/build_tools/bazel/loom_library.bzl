@@ -15,6 +15,7 @@ load(
     "iree_sanitizer_suppression_env",
 )
 load(":loom_binary.bzl", "LoomBinaryInfo", "loom_kernel_binary")
+load(":loom_check.bzl", "loom_check_compile_tests")
 load(
     ":loom_linking.bzl",
     "loom_linking",
@@ -770,6 +771,7 @@ def loom_test(
         inputopts = [],
         args = [],
         execution_profile = None,
+        compile_targets = [],
         size = "small",
         tags = [],
         visibility = None,
@@ -793,6 +795,8 @@ def loom_test(
       deps: Loom libraries available only for dependency resolution.
       args: Additional arguments passed to the correctness runner.
       execution_profile: Optional execution environment and requirement policy.
+      compile_targets: Typed compiler profiles qualifying the same linked test
+          module offline, without the execution profile's device requirements.
       size: Bazel test size.
       tags: Additional tags applied to the test.
       visibility: Bazel visibility of the generated test target.
@@ -823,8 +827,9 @@ def loom_test(
         testonly = True,
         visibility = ["//visibility:private"],
     )
+    execution_name = name + "_execution" if compile_targets else name
     _declare_execution_test(
-        name = name,
+        name = execution_name,
         data = data,
         module = ":" + module_name,
         profile = execution_profile,
@@ -834,6 +839,22 @@ def loom_test(
         visibility = visibility,
         target_compatible_with = target_compatible_with,
     )
+    compile_tests = loom_check_compile_tests(
+        name = name,
+        src = ":" + module_name,
+        targets = compile_targets,
+        size = size,
+        tags = tags,
+        visibility = visibility,
+        target_compatible_with = target_compatible_with,
+    )
+    if compile_tests:
+        native.test_suite(
+            name = name,
+            tests = [execution_name] + compile_tests,
+            tags = tags,
+            visibility = visibility,
+        )
 
 def loom_kernel_library(
         name,

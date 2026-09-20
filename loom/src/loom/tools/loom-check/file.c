@@ -140,11 +140,35 @@ static iree_status_t loom_check_process_file(
   iree_arena_initialize(block_pool, &arena);
 
   loom_test_file_t file = {0};
-  iree_status_t status = loom_test_file_parse(source, &arena, &file);
+  const bool compile = !iree_string_view_is_empty(options->compile.target);
+  // Binary modules cannot contain case directives. Textual provider selection
+  // happens after splitting so each case's INPUT can override the filename.
+  const bool bytecode =
+      iree_string_view_is_empty(options->input_format)
+          ? iree_string_view_ends_with(path, IREE_SV(".loombc"))
+          : iree_string_view_equal(options->input_format,
+                                   loom_input_bytecode_provider.name);
+  iree_status_t status = iree_ok_status();
+  loom_test_case_t bytecode_case = {.input = source};
+  if (bytecode) {
+    if (!compile) {
+      status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "bytecode qualification requires --target");
+    } else {
+      file.cases = &bytecode_case;
+      file.case_count = 1;
+    }
+  } else {
+    status = loom_test_file_parse(source, &arena, &file);
+  }
 
   if (iree_status_is_ok(status) && options->update && is_stdin) {
     status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "--update cannot be used with stdin");
+  }
+  if (iree_status_is_ok(status) && compile && options->update) {
+    status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "--target does not update RUN goldens");
   }
 
   iree_string_builder_t template_synced_source;
@@ -181,6 +205,19 @@ static iree_status_t loom_check_process_file(
     }
   }
 
+  if (iree_status_is_ok(status) && compile) {
+    if (file.case_count == 0) {
+      status =
+          iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                           "compiler qualification requires at least one case");
+    }
+    file.default_mode = LOOM_TEST_MODE_COMPILE;
+    for (iree_host_size_t i = 0; i < file.case_count; ++i) {
+      file.cases[i].mode = LOOM_TEST_MODE_COMPILE;
+      file.cases[i].xfail = false;
+    }
+  }
+
   loom_check_file_report_t report = {0};
   if (iree_status_is_ok(status)) {
     status = loom_check_file_report_initialize(&file, &arena, &report);
@@ -211,9 +248,15 @@ static iree_status_t loom_check_process_file(
         .format = options->input_format,
         .source_path_options = options->source_path_options,
     };
-    status = loom_check_execute_case(test_case, i, &report, filename,
-                                     &input_request, environment, context,
-                                     block_pool, allocator, &results[i]);
+    if (compile) {
+      status = loom_check_execute_compile(
+          test_case, i, &report, filename, &input_request, &options->compile,
+          environment, context, block_pool, allocator, &results[i]);
+    } else {
+      status = loom_check_execute_case(test_case, i, &report, filename,
+                                       &input_request, environment, context,
+                                       block_pool, allocator, &results[i]);
+    }
     if (!iree_status_is_ok(status)) {
       break;
     }

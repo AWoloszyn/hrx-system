@@ -6,6 +6,7 @@ package(default_visibility = ["//visibility:public"])
 loom_check_test_suite(
     name = "test",
     srcs = ["import.cxx-test"],
+    compile_targets = {"import.cxx-test": ["//loom/target/vm:core"]},
     data = ["helper.h"],
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )

@@ -7,6 +7,7 @@
 #ifndef LOOM_TOOLING_INPUT_INPUT_H_
 #define LOOM_TOOLING_INPUT_INPUT_H_
 
+#include "loom/format/low_repr.h"
 #include "loom/format/text/parser.h"
 #include "loom/tooling/io/source.h"
 #include "loom/tooling/io/source_path.h"
@@ -44,6 +45,8 @@ typedef struct loom_input_request_t {
   iree_string_view_t options;
   // Diagnostic sink and Loom text parsing environment. Importers use the sink.
   loom_text_parse_options_t parse_options;
+  // Descriptor codec used when admitting target Low bytecode.
+  loom_low_repr_environment_t low_repr_environment;
   // Display remapping applied to diagnostics and retained module source names.
   loom_tooling_source_path_options_t source_path_options;
 } loom_input_request_t;
@@ -77,7 +80,7 @@ typedef struct loom_input_provider_t {
 } loom_input_provider_t;
 
 typedef struct loom_input_provider_list_t {
-  // Optional providers linked in addition to the builtin Loom text provider.
+  // Optional providers linked in addition to builtin Loom text and bytecode.
   const loom_input_provider_t* const* values;
   // Number of optional providers.
   iree_host_size_t count;
@@ -85,6 +88,10 @@ typedef struct loom_input_provider_list_t {
 
 // Builtin Loom text admission, always available without an optional importer.
 extern const loom_input_provider_t loom_input_text_provider;
+
+// Builtin serialized Loom module admission. Bytecode is one module, not a
+// textual fixture containing directives or split cases.
+extern const loom_input_provider_t loom_input_bytecode_provider;
 
 // Selects an explicit format or a filename suffix. Unrecognized extensions
 // fail rather than falling through to Loom text. Extensionless input defaults
