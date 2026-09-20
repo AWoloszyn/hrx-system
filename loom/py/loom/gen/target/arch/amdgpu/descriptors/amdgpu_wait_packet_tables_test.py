@@ -173,6 +173,7 @@ def test_classifies_wait_packet_descriptor_rows() -> None:
     assert range_row.descriptor_count == 1
     assert range_row.descriptor_lookup_count == 1
     assert range_row.max_descriptor_immediate_count == 2
+    assert range_row.maximum_target_counts == (62, 0, 62, 0, 0, 0, 0, 0)
 
 
 def test_selects_best_wait_packet_descriptor_rows() -> None:
@@ -295,6 +296,32 @@ def test_classifies_split_wait_packet_descriptor_rows() -> None:
         assert selection.descriptor_index == index
         assert selection.covered_counter_mask == counter_mask
         assert selection.full_drain_counter_mask == counter_mask
+
+
+def test_effective_bounds_cover_all_encodings_of_each_counter() -> None:
+    descriptors = (
+        _descriptor(
+            "amdgpu.s_waitcnt",
+            effects=(_wait_effect(_COUNTER_VMEM_LOAD), _wait_effect(_COUNTER_LDS)),
+            immediates=(
+                _wait_immediate("vmcnt", _WAIT_COUNTER_VMEM_ENCODING_ID, unsigned_max=63),
+                _wait_immediate("lgkmcnt", _WAIT_COUNTER_LGKM_ENCODING_ID, unsigned_max=15),
+            ),
+        ),
+        _descriptor(
+            "amdgpu.s_wait_loadcnt",
+            effects=(_wait_effect(_COUNTER_VMEM_LOAD),),
+            immediates=(_wait_immediate("loadcnt", _WAIT_COUNTER_VMEM_LOAD_ENCODING_ID, unsigned_max=31),),
+        ),
+    )
+    _, _, _, range_row = amdgpu_wait_packet_tables._descriptor_set_wait_packet_rows(
+        _descriptor_set(*descriptors),
+        descriptor_set_ordinal=0,
+        descriptor_ref_key_set={descriptor.key for descriptor in descriptors},
+        first_descriptor=0,
+        first_immediate=0,
+    )
+    assert range_row.maximum_target_counts == (30, 0, 14, 0, 0, 0, 0, 0)
 
 
 def test_skips_non_counter_descriptors() -> None:
@@ -697,6 +724,7 @@ def test_rejects_descriptor_range_with_out_of_bounds_descriptors() -> None:
                 first_descriptor_lookup=0,
                 descriptor_lookup_count=0,
                 max_descriptor_immediate_count=1,
+                maximum_target_counts=(62, 0, 0, 0, 0, 0, 0, 0),
             ),
         ),
         descriptor_lookup_rows=(),
@@ -739,6 +767,7 @@ def test_rejects_selection_row_with_out_of_bounds_descriptor() -> None:
                 first_descriptor_lookup=0,
                 descriptor_lookup_count=1,
                 max_descriptor_immediate_count=1,
+                maximum_target_counts=(62, 0, 0, 0, 0, 0, 0, 0),
             ),
         ),
         descriptor_lookup_rows=(1,),
@@ -791,6 +820,7 @@ def test_rejects_descriptor_lookup_row_with_out_of_bounds_descriptor() -> None:
                 first_descriptor_lookup=0,
                 descriptor_lookup_count=1,
                 max_descriptor_immediate_count=1,
+                maximum_target_counts=(62, 0, 0, 0, 0, 0, 0, 0),
             ),
         ),
         descriptor_lookup_rows=(2,),

@@ -2259,6 +2259,10 @@ static iree_status_t loom_amdgpu_wait_plan_wait_counter_at(
   const uint32_t outstanding_before = builder->outstanding_counts[slot];
   target_count = loom_amdgpu_wait_plan_normalize_target_count(
       builder, counter_id, target_count);
+  // A planned completion bound must never encode the reserved no-wait value.
+  // Record the effective bound before publishing completion or report counts.
+  target_count = iree_min(
+      target_count, builder->wait_packet_target.maximum_target_counts[slot]);
   IREE_RETURN_IF_ERROR(loom_amdgpu_wait_plan_append_action(
       builder, (loom_amdgpu_wait_plan_action_t){
                    .kind = kind,

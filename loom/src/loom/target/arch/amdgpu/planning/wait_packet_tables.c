@@ -33,6 +33,7 @@ void loom_amdgpu_wait_packet_analyze_target(
       .selections = loom_amdgpu_wait_packet_selections[descriptor_set_ordinal],
       .selection_count = LOOM_AMDGPU_WAIT_COUNTER_MASK_ALL + 1,
       .max_descriptor_immediate_count = range->max_descriptor_immediate_count,
+      .maximum_target_counts = range->maximum_target_counts,
   };
 }
 
