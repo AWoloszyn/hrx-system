@@ -82,6 +82,8 @@ admitted source bytes. Builtin macro replacements retain the range of the macro
 use, independently of the replacement spelling: the value `100` from `__LINE__`
 points at the eight characters of `__LINE__`. Nested expansions retain the
 frontend's macro-body use site or argument-token range.
+Stringized and pasted tokens use the macro invocation's range; their generated
+spelling need not occur contiguously in the source.
 
 Header locations retain their own filenames and coordinates; an ERROR in the
 main test cannot match a header diagnostic at a coincident line. Source snapshots

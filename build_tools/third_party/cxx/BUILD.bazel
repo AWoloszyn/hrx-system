@@ -13,5 +13,6 @@ exports_files([
     "constant_arithmetic.patch",
     "include_continuation.patch",
     "include_paths.patch",
+    "macro_operator_locations.patch",
     "template_lookahead.patch",
 ])

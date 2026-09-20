@@ -159,6 +159,34 @@ TEST(SourceTest, BuiltinStringSpellingRetainsThePhysicalExpansionRange) {
   }
 }
 
+TEST(SourceTest, StringizedTokensRetainInvocationRangesAndSeparateSpelling) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  Source source(IREE_SV("#define QUOTE(value) #value\n\n"
+                        "constexpr auto a = QUOTE(ab);\n"
+                        "constexpr auto b = QUOTE();\n"),
+                IREE_SV("operators.cpp"), options);
+  auto* preprocessor = source.unit().preprocessor();
+  unsigned literal_count = 0;
+  for (const auto& token : source.unit().tokens()) {
+    if (token.fileId() != preprocessor->mainSourceFileId() ||
+        token.kind() != cxx::TokenKind::T_STRING_LITERAL) {
+      continue;
+    }
+    auto first = preprocessor->tokenStartPosition(token);
+    auto last = preprocessor->tokenEndPosition(token);
+    EXPECT_EQ(first.fileName, "operators.cpp");
+    EXPECT_EQ(first.line, 3u + literal_count);
+    EXPECT_EQ(first.column, 20u);
+    EXPECT_EQ(last.line, first.line);
+    EXPECT_EQ(last.column, 25u);
+    EXPECT_EQ(token.length(), 5u);
+    EXPECT_EQ(token.spell(), literal_count == 0 ? "\"ab\"" : "\"\"");
+    ++literal_count;
+  }
+  EXPECT_EQ(literal_count, 2u);
+}
+
 TEST(SourceTest, DiagnosticSinkFailureCrossesTheParserSafeBoundary) {
   loom_cxx_import_options_t options;
   loom_cxx_import_options_initialize(&options);

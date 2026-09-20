@@ -26,6 +26,7 @@ loom_check_test_suite(
     "launch_invalid.cxx-test"
     "locations.cxx-test"
     "loops.cxx-test"
+    "macro_operators.cxx-test"
     "pointers.cxx-test"
     "scalar.cxx-test"
     "scalar_invalid.cxx-test"

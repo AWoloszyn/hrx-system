@@ -134,6 +134,7 @@ set(IREE_DEP_CXX_PATCHES
   "//build_tools/third_party/cxx:constant_arithmetic.patch"
   "//build_tools/third_party/cxx:include_continuation.patch"
   "//build_tools/third_party/cxx:include_paths.patch"
+  "//build_tools/third_party/cxx:macro_operator_locations.patch"
   "//build_tools/third_party/cxx:template_lookahead.patch"
 )
 set(IREE_DEP_CXX_PATCH_ARGS
