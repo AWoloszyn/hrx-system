@@ -1,0 +1,88 @@
+// Shared definitions are cloned for the first call and consumed at their last
+// private use. Each instantiation substitutes its own dimension into operands,
+// produced values and returned results.
+// RUN: with-checks pass inline-callables
+
+func.def inline @double(%width: index, %value: vector<[%width]xf32>) -> (vector<[%width]xf32>) {
+  %doubled = vector.addf %value, %value : vector<[%width]xf32>
+  func.return %doubled : vector<[%width]xf32>
+}
+
+func.def public @entry(%left_width: index, %right_width: index, %left: vector<[%left_width]xf32>, %right: vector<[%right_width]xf32>) -> (vector<[%left_width]xf32>, vector<[%right_width]xf32>) {
+  %first = func.call @double(%left_width, %left) : (index, vector<[%left_width]xf32>) -> (vector<[%left_width]xf32>)
+  %second = func.call @double(%right_width, %right) : (index, vector<[%right_width]xf32>) -> (vector<[%right_width]xf32>)
+  func.return %first, %second : vector<[%left_width]xf32>, vector<[%right_width]xf32>
+}
+
+// ----
+CHECK: * = vector.addf %left, %left : vector<[%left_width]xf32>
+CHECK: * = vector.addf %right, %right : vector<[%right_width]xf32>
+CHECK: func.return * : vector<[%left_width]xf32>, vector<[%right_width]xf32>
+CHECK-NOT: *func.call*
+CHECK-NOT: *func.def inline @double*
+
+// ====
+
+// CFG return edges and their continuation arguments retain the caller's
+// dependent type for both clone and consume materialization.
+// RUN: with-checks pass inline-callables
+
+func.def inline @choose(%width: index, %condition: i1, %value: vector<[%width]xf32>) -> (vector<[%width]xf32>) {
+  cfg.cond_br %condition, ^double, ^zero
+^double:
+  %doubled = vector.addf %value, %value : vector<[%width]xf32>
+  func.return %doubled : vector<[%width]xf32>
+^zero:
+  %zeroed = vector.subf %value, %value : vector<[%width]xf32>
+  func.return %zeroed : vector<[%width]xf32>
+}
+
+func.def public @entry(%left_width: index, %right_width: index, %condition: i1, %left: vector<[%left_width]xf32>, %right: vector<[%right_width]xf32>) -> (vector<[%left_width]xf32>, vector<[%right_width]xf32>) {
+  %first = func.call @choose(%left_width, %condition, %left) : (index, i1, vector<[%left_width]xf32>) -> (vector<[%left_width]xf32>)
+  %second = func.call @choose(%right_width, %condition, %right) : (index, i1, vector<[%right_width]xf32>) -> (vector<[%right_width]xf32>)
+  func.return %first, %second : vector<[%left_width]xf32>, vector<[%right_width]xf32>
+}
+
+// ----
+CHECK: * = vector.addf %left, %left : vector<[%left_width]xf32>
+CHECK: * = vector.subf %left, %left : vector<[%left_width]xf32>
+CHECK: * = vector.addf %right, %right : vector<[%right_width]xf32>
+CHECK: * = vector.subf %right, %right : vector<[%right_width]xf32>
+CHECK: cfg.br *: vector<[%left_width]xf32>)
+CHECK: cfg.br *: vector<[%right_width]xf32>)
+CHECK: func.return * : vector<[%left_width]xf32>, vector<[%right_width]xf32>
+CHECK-NOT: *func.call*
+CHECK-NOT: *func.def inline @choose*
+
+// ====
+
+// Provider selection establishes the same substituted signature contract.
+// A nested consumer keeps the vector width supplied by its own caller.
+// RUN: with-checks pass select-templates{rewrite=inline},symbol-dce
+
+template.decl @scale(%width: index, %value: vector<[%width]xf32>, %factor: f32) -> (vector<[%width]xf32>)
+
+template.def<@scale> @scale_impl(%width: index, %value: vector<[%width]xf32>, %factor: f32) -> (vector<[%width]xf32>) {
+  %factors = vector.splat %factor : vector<[%width]xf32>
+  %scaled = vector.mulf %value, %factors : vector<[%width]xf32>
+  template.return %scaled : vector<[%width]xf32>
+}
+
+func.def public @entry(%width: index, %condition: i1, %value: vector<[%width]xf32>, %factor: f32) -> (vector<[%width]xf32>) {
+  %first = template.apply<@scale>(%width, %value, %factor) : (index, vector<[%width]xf32>, f32) -> (vector<[%width]xf32>)
+  %result = scf.if %condition -> (vector<[%width]xf32>) {
+    %second = template.apply<@scale>(%width, %first, %factor) : (index, vector<[%width]xf32>, f32) -> (vector<[%width]xf32>)
+    scf.yield %second : vector<[%width]xf32>
+  } else {
+    scf.yield %first : vector<[%width]xf32>
+  }
+  func.return %result : vector<[%width]xf32>
+}
+
+// ----
+CHECK: * = vector.splat %factor : vector<[%width]xf32>
+CHECK: * = vector.mulf %value, * : vector<[%width]xf32>
+CHECK: * = scf.if %condition -> (vector<[%width]xf32>) {
+CHECK: scf.yield * : vector<[%width]xf32>
+CHECK: func.return %result : vector<[%width]xf32>
+CHECK-NOT: *template.*
