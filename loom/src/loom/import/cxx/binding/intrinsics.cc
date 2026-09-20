@@ -87,6 +87,24 @@ Intrinsics::Binding Intrinsics::resolve(cxx::FunctionSymbol* function,
                                         const cxx::Attribute& attribute,
                                         cxx::AST* owner) {
   auto* signature = cxx::type_cast<cxx::FunctionType>(function->type());
+  if (attribute.arguments[0]->name() == "check.expect.equal") {
+    auto parameters = signature->parameterTypes();
+    if (attribute.arguments.size() != 1 || signature->isVariadic() ||
+        signature->returnType()->kind() != cxx::TypeKind::kVoid ||
+        parameters.size() != 2 ||
+        types_.unqualified(parameters[0]) !=
+            types_.unqualified(parameters[1])) {
+      diagnostics_.reject(
+          unit_, owner,
+          "check.expect.equal requires void(T, T) with one scalar type");
+    }
+    auto type = types_.get(parameters[0], owner);
+    if (loom_type_kind(type) != LOOM_TYPE_SCALAR) {
+      diagnostics_.reject(unit_, owner,
+                          "check.expect.equal requires scalar operands");
+    }
+    return EqualityBinding{type};
+  }
   if (auto* scalar =
           loom_cxx_scalar_binding_find(view(attribute.arguments[0]->name()))) {
     return resolve_scalar(scalar, signature, attribute, owner);
@@ -147,6 +165,17 @@ Intrinsics::ScalarBinding Intrinsics::resolve_scalar(
   return result;
 }
 
+std::optional<loom_type_t> Intrinsics::expectation_type(
+    cxx::FunctionSymbol* function) const {
+  auto entry = bindings_.find(function->canonical());
+  if (entry != bindings_.end()) {
+    if (auto* binding = std::get_if<EqualityBinding>(&entry->second)) {
+      return binding->type;
+    }
+  }
+  return std::nullopt;
+}
+
 std::optional<loom_value_id_t> Intrinsics::call(
     cxx::FunctionSymbol* function, std::span<const loom_value_id_t> arguments,
     uint8_t math_flags, loom_builder_t* builder, loom_location_id_t location) {
@@ -160,8 +189,10 @@ std::optional<loom_value_id_t> Intrinsics::call(
                                 arguments.data(), scalar->type, location, &op));
     return loom_op_results(op)[0];
   }
-  return std::get<ShapedIntrinsic>(entry->second)
-      .call(arguments, builder, location);
+  if (auto* shaped = std::get_if<ShapedIntrinsic>(&entry->second)) {
+    return shaped->call(arguments, builder, location);
+  }
+  return std::nullopt;
 }
 
 }  // namespace loom::cxx_import

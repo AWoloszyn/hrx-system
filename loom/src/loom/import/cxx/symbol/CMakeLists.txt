@@ -27,6 +27,7 @@ loom_cc_library(
     loom::import::cxx::source::locations
     loom::import::cxx::value::types
     loom::ir
+    loom::ops::check
     loom::ops::func
     loom::ops::kernel
   PUBLIC
@@ -46,6 +47,7 @@ loom_cc_test(
     iree::third_party::cxx_parser
     loom::import::cxx::source::error
     loom::import::cxx::value::builder_test
+    loom::ops::check
     loom::ops::func
     loom::ops::kernel
   LABELS

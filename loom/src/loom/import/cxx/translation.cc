@@ -28,6 +28,7 @@
 #include "loom/import/cxx/binding/intrinsics.h"
 #include "loom/import/cxx/binding/launch.h"
 #include "loom/import/cxx/binding/loop_schedule.h"
+#include "loom/import/cxx/check.h"
 #include "loom/import/cxx/control/analysis.h"
 #include "loom/import/cxx/source/attributes.h"
 #include "loom/import/cxx/source/error.h"
@@ -79,6 +80,7 @@ class Translator {
     for (size_t index = 0; index < functions_.pending().size(); ++index) {
       function(functions_.pending()[index]);
     }
+    functions_.build_benchmarks(locations_, &builder_);
   }
 
  private:
@@ -183,6 +185,13 @@ class Translator {
     auto* body = defined.body;
     auto* op = defined.operation;
     auto* region = defined.region;
+    if (defined.kind == FunctionKind::CheckCase) {
+      auto saved = loom_builder_enter_region(&builder_, op, region);
+      translate_check_body(unit_, diagnostics_, functions_, intrinsics_, types_,
+                           scalars_, locations_, builder_, defined);
+      loom_builder_restore(&builder_, saved);
+      return;
+    }
     auto parameters = symbol->parameters();
     control_.emplace(unit_, body);
     auto saved = loom_builder_enter_region(&builder_, op, region);
@@ -810,6 +819,12 @@ class Translator {
       if (!function) {
         fail(ast, "call must resolve to a function symbol");
       }
+      if (intrinsics_.expectation_type(function) ||
+          functions_.is_check_case(function) ||
+          annotated(function, "check_benchmark")) {
+        fail(ast,
+             "check declarations cannot be called from ordinary functions");
+      }
       std::vector<loom_value_id_t> arguments;
       for (auto* argument : cxx::ListView{call->expressionList}) {
         expression(argument).append_to(arguments);
@@ -840,7 +855,7 @@ class Translator {
                                         &builder_, source)) {
         return *value;
       }
-      if (!function->declaration() || annotated(function, "kernel")) {
+      if (!functions_.definition(function) || annotated(function, "kernel")) {
         fail(
             ast,
             "call must resolve to an owned intrinsic or defined device helper");
@@ -1306,7 +1321,13 @@ class Translator {
         }
         auto* function =
             id ? cxx::symbol_cast<cxx::FunctionSymbol>(id->symbol) : nullptr;
-        if (!function || !function->declaration() ||
+        if (function && (intrinsics_.expectation_type(function) ||
+                         functions_.is_check_case(function) ||
+                         annotated(function, "check_benchmark"))) {
+          fail(ast,
+               "check declarations cannot be called from ordinary functions");
+        }
+        if (!function || !functions_.definition(function) ||
             annotated(function, "kernel")) {
           fail(
               ast,

@@ -67,8 +67,12 @@ iree_execution_test_suite(
   MANIFESTS
     "execution.test.json"
   TOOLS
+    "iree-benchmark-loom=loom::tools::iree-benchmark-loom"
     "iree-test-loom=loom::tools::iree-test-loom"
   DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.cc"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_library.cc"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/source_input.cc"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/source_input.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/source_input.loom"

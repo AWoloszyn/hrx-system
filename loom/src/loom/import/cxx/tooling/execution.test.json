@@ -18,6 +18,110 @@
           "\"planning_issue_count\":0"
         ]
       }
+    },
+    {
+      "name": "executes source cases and header assertions directly",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/check_cases.cc"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"case_count\":2",
+          "\"failed_sample_count\":0"
+        ]
+      }
+    },
+    {
+      "name": "executes C++ cases after linking another C++ source library",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/check_cases.cc",
+          "--library={srcdir}/check_library.cc"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"case_count\":3",
+          "\"failed_sample_count\":0"
+        ]
+      }
+    },
+    {
+      "name": "runs the C++ benchmark reference through the existing correctness gate",
+      "run": {
+        "tool": "iree-benchmark-loom",
+        "args": [
+          "{srcdir}/check_cases.cc",
+          "--iterations=1",
+          "--warmup-iterations=0",
+          "--output-format=jsonl"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "wraps_byte_benchmark"
+        ]
+      }
+    },
+    {
+      "name": "reports an authored assertion in check_cases.cc",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/check_cases.cc",
+          "--input-options=cxx:D=CHECK_EXPECTED=1u",
+          "--source-prefix-map={srcdir}=source"
+        ]
+      },
+      "exit": 1,
+      "stdout": {
+        "contains": [
+          "\"failed_sample_count\":1",
+          "\"source_location\":{\"filename\":\"source/check_cases.cc\",\"start_line\":21,\"start_column\":3"
+        ]
+      }
+    },
+    {
+      "name": "reports an authored assertion in check_cases.h",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/check_cases.cc",
+          "--input-options=cxx:D=CHECK_HEADER_EXPECTED=6u",
+          "--source-prefix-map={srcdir}=source"
+        ]
+      },
+      "exit": 1,
+      "stdout": {
+        "contains": [
+          "\"failed_sample_count\":1",
+          "\"source_location\":{\"filename\":\"source/check_cases.h\",\"start_line\":20,\"start_column\":3"
+        ]
+      }
+    },
+    {
+      "name": "VM diagnostics resolve imported helper text in its original header",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/check_cases.cc",
+          "--input-options=cxx:D=CHECK_MATH=1",
+          "--source-prefix-map={srcdir}=source"
+        ]
+      },
+      "exit": 1,
+      "stderr": {
+        "contains": [
+          "source/check_cases.h:",
+          "vm-math",
+          "return exact_sine_intrinsic(value);",
+          "VM compilation failed"
+        ]
+      }
     }
   ]
 }

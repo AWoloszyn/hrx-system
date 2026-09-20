@@ -8,12 +8,19 @@
 #define LOOM_IMPORT_CXX_SOURCE_CONSTANTS_H_
 
 #include <cxx/ast_fwd.h>
+#include <cxx/const_value.h>
 #include <cxx/cxx_fwd.h>
 
 #include <cstdint>
 #include <optional>
 
 namespace loom::cxx_import {
+
+// Evaluates a pure scalar constant, retaining the frontend's typed value.
+// Calls, mutation, overloaded operations, and volatile/runtime reads reject.
+// Unsigned payloads retain all bits, including values above INTMAX_MAX.
+std::optional<cxx::ConstValue> scalar_constant(cxx::TranslationUnit& unit,
+                                               cxx::ExpressionAST* expression);
 
 // Evaluates the pure integer grammar used by source bounds. Source conversions
 // and arithmetic widths are preserved by cxx. Calls, overloaded operations,

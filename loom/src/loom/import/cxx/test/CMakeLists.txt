@@ -15,6 +15,7 @@ loom_check_test_suite(
     compiler_test
   SRCS
     "assumptions.cxx-test"
+    "check.cxx-test"
     "conditionals.cxx-test"
     "const.cxx-test"
     "control_invalid.cxx-test"

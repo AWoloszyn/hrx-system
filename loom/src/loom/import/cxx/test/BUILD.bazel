@@ -24,6 +24,7 @@ loom_check_test_suite(
     name = "compiler_test",
     srcs = [
         "assumptions.cxx-test",
+        "check.cxx-test",
         "conditionals.cxx-test",
         "const.cxx-test",
         "control_invalid.cxx-test",

@@ -51,6 +51,9 @@ loom_cc_library(
 iree_execution_test_suite(
     name = "execution_test",
     data = [
+        "check_cases.cc",
+        "check_cases.h",
+        "check_library.cc",
         "source_input.cc",
         "source_input.h",
         "source_input.loom",
@@ -60,5 +63,8 @@ iree_execution_test_suite(
         "//loom/config/import:cxx",
         "//loom/config/target/arch:vm",
     ]),
-    tools = {"iree-test-loom": "//loom/src/loom/tools/iree-test-loom"},
+    tools = {
+        "iree-benchmark-loom": "//loom/src/loom/tools/iree-benchmark-loom",
+        "iree-test-loom": "//loom/src/loom/tools/iree-test-loom",
+    },
 )
