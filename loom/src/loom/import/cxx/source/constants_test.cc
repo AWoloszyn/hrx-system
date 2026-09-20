@@ -63,18 +63,37 @@ TEST(IntegerConstantTest,
         "(false ? constant_call() : 16u)", "16_words", "(opaque(), 16u)",
         "++value", "(value = 16u)", "16.5f", "(1u / 0u)", "(1u << 32)",
         "(1u << (1ULL << 32))", "(2147483647 + 1)", "(-2147483647 - 1) / -1",
-        "0xffffffffffffffffULL"}) {
+        "0xffffffffffffffffULL", "unsigned_enum_max"}) {
     SCOPED_TRACE(expression);
     std::string text =
         "unsigned opaque(); constexpr unsigned constant_call() { return 16; } "
         "constexpr unsigned operator\"\"_words(unsigned long long) { return "
         "16; } "
+        "enum : unsigned long long { unsigned_enum_max = "
+        "0xffffffffffffffffULL }; "
         "auto entry(unsigned value, volatile unsigned flag) { return " +
         std::string(expression) + "; }";
     Source source(view(text), IREE_SV("rejected.cpp"), options);
     auto* result = returned(source);
     ASSERT_NE(result, nullptr);
     EXPECT_EQ(integer_constant(source.unit(), result), std::nullopt);
+  }
+}
+
+TEST(IntegerConstantTest, PreservesNegativeSignedValues) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  for (auto expression : {"-1", "negative_enum", "Signed::negative"}) {
+    SCOPED_TRACE(expression);
+    std::string text =
+        "enum { negative_enum = -1 }; "
+        "enum class Signed : long long { negative = -1 }; "
+        "auto entry() { return " +
+        std::string(expression) + "; }";
+    Source source(view(text), IREE_SV("signed.cpp"), options);
+    auto* result = returned(source);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(integer_constant(source.unit(), result), -1);
   }
 }
 

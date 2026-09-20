@@ -27,9 +27,12 @@ class IntegerConstant final : private cxx::ASTVisitor {
     cxx::ASTInterpreter interpreter(&unit_);
     auto evaluated = interpreter.evaluate(expression);
     auto value = evaluated ? interpreter.toInt(*evaluated) : std::nullopt;
-    if (value && *value < 0 &&
-        unit_.typeTraits().is_unsigned(expression->type)) {
-      return std::nullopt;
+    if (value && *value < 0) {
+      auto representation =
+          unit_.typeTraits().integral_representation(expression->type);
+      if (!representation->isSigned) {
+        return std::nullopt;
+      }
     }
     return value;
   }
