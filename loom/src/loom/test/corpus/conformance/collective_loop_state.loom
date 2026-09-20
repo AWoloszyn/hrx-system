@@ -9,11 +9,9 @@
 // and nested repetition loop preserve participation; no inactive row is read.
 // The subgroup reduction uses 16-lane clusters so its oracle is independent
 // of the target subgroup width. The workgroup reduction communicates across waves.
-kernel.def @collective_loop_state() {
-  %unit = index.constant 1 : index
-  %size = index.constant 128 : index
-  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
-} launch(%input: buffer, %cluster_output: buffer, %group_output: buffer, %limit_input: index, %repeat_input: index) {
+template.decl @collective_rows(%input: buffer, %cluster_output: buffer, %group_output: buffer, %limit_input: index, %repeat_input: index, %end: index, %depth: index, %factor: index)
+
+template.def<@collective_rows> @collective_rows_impl(%input: buffer, %cluster_output: buffer, %group_output: buffer, %limit_input: index, %repeat_input: index, %end: index, %depth: index, %factor: index) {
   %limit = index.assume %limit_input [range(%limit_input, 0, 16)] : index
   %repeat = index.assume %repeat_input [range(%repeat_input, 0, 2)] : index
   %lane = kernel.workitem.id<x> : index
@@ -24,7 +22,6 @@ kernel.def @collective_loop_state() {
   %identity = scalar.constant 0 : i32
   %initial = scalar.constant 37 : i32
   %multiplier = scalar.constant 2 : i32
-  %end = index.constant 7 : index
   %source_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
   %cluster_aligned = buffer.assume.alignment %cluster_output {minimum_alignment = 4} : buffer
   %group_aligned = buffer.assume.alignment %group_output {minimum_alignment = 4} : buffer
@@ -32,7 +29,7 @@ kernel.def @collective_loop_state() {
   %values = buffer.view %source[%base] : buffer -> view<16x128xi32>
   %cluster_results = buffer.view %cluster_destination[%base] : buffer -> view<8xi32>
   %group_results = buffer.view %group_destination[%base] : buffer -> view<8xi32>
-  %cluster_result, %group_result = scf.for %row = [%c0 to %end step %unit](%cluster_sum = %initial : i32, %group_sum = %initial : i32) -> (i32, i32) {
+  %cluster_result, %group_result = scf.for %row = [%c0 to %end step %unit](%cluster_sum = %initial : i32, %group_sum = %initial : i32) -> (i32, i32) pipeline(%depth) unroll(%factor) {
     %valid = index.cmp slt, %row, %limit : index
     %value = scf.if %valid -> (i32) {
       %loaded = view.load %values[%row, %lane] : view<16x128xi32> -> i32
@@ -63,6 +60,54 @@ kernel.def @collective_loop_state() {
     view.store %cluster_result, %cluster_results[%cluster] : i32, view<8xi32>
     view.store %group_result, %group_results[%cluster] : i32, view<8xi32>
   }
+  template.return
+}
+
+kernel.def @collective_loop_state() {
+  %unit = index.constant 1 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%input: buffer, %cluster_output: buffer, %group_output: buffer, %limit_input: index, %repeat_input: index) {
+  %end = index.constant 7 : index
+  %depth = index.constant 1 : index
+  %factor = index.constant 1 : index
+  template.apply<@collective_rows>(%input, %cluster_output, %group_output, %limit_input, %repeat_input, %end, %depth, %factor) : (buffer, buffer, buffer, index, index, index, index, index)
+  kernel.return
+}
+
+kernel.def @pipelined_collective_loop_state() {
+  %unit = index.constant 1 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%input: buffer, %cluster_output: buffer, %group_output: buffer, %limit_input: index, %repeat_input: index) {
+  %end = index.constant 7 : index
+  %depth = index.constant 3 : index
+  %factor = index.constant 2 : index
+  template.apply<@collective_rows>(%input, %cluster_output, %group_output, %limit_input, %repeat_input, %end, %depth, %factor) : (buffer, buffer, buffer, index, index, index, index, index)
+  kernel.return
+}
+
+kernel.def @short_collective_loop_state() {
+  %unit = index.constant 1 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%input: buffer, %cluster_output: buffer, %group_output: buffer, %limit_input: index, %repeat_input: index) {
+  %end = index.constant 1 : index
+  %depth = index.constant 3 : index
+  %factor = index.constant 2 : index
+  template.apply<@collective_rows>(%input, %cluster_output, %group_output, %limit_input, %repeat_input, %end, %depth, %factor) : (buffer, buffer, buffer, index, index, index, index, index)
+  kernel.return
+}
+
+kernel.def @empty_collective_loop_state() {
+  %unit = index.constant 1 : index
+  %size = index.constant 128 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%size, %unit, %unit) : index
+} launch(%input: buffer, %cluster_output: buffer, %group_output: buffer, %limit_input: index, %repeat_input: index) {
+  %end = index.constant 0 : index
+  %depth = index.constant 3 : index
+  %factor = index.constant 2 : index
+  template.apply<@collective_rows>(%input, %cluster_output, %group_output, %limit_input, %repeat_input, %end, %depth, %factor) : (buffer, buffer, buffer, index, index, index, index, index)
   kernel.return
 }
 
@@ -76,11 +121,19 @@ check.case public @collective_loop_absent {
   %input = check.generate.iota offset(1) step(1) : tensor<1x128xi32>
   %cluster_output = check.generate.fill value(-10000) : tensor<8xi32>
   %group_output = check.generate.fill value(-20000) : tensor<8xi32>
+  %pipeline_cluster = check.generate.fill value(-30000) : tensor<8xi32>
+  %pipeline_group = check.generate.fill value(-40000) : tensor<8xi32>
   %cluster_expected = check.generate.iota offset(37) step(0) : tensor<8xi32>
   %group_expected = check.generate.fill value(37) : tensor<8xi32>
   kernel.launch @collective_loop_state(%input, %cluster_output, %group_output, %limit, %repeat) : (tensor<1x128xi32>, tensor<8xi32>, tensor<8xi32>, index, index)
+  kernel.launch @pipelined_collective_loop_state(%input, %pipeline_cluster, %pipeline_group, %limit, %repeat) : (tensor<1x128xi32>, tensor<8xi32>, tensor<8xi32>, index, index)
   check.expect.equal actual(%cluster_output) expected(%cluster_expected) : tensor<8xi32>
   check.expect.equal actual(%group_output) expected(%group_expected) : tensor<8xi32>
+  check.expect.equal actual(%pipeline_cluster) expected(%cluster_expected) : tensor<8xi32>
+  check.expect.equal actual(%pipeline_group) expected(%group_expected) : tensor<8xi32>
+  kernel.launch @empty_collective_loop_state(%input, %pipeline_cluster, %pipeline_group, %limit, %repeat) : (tensor<1x128xi32>, tensor<8xi32>, tensor<8xi32>, index, index)
+  check.expect.equal actual(%pipeline_cluster) expected(%cluster_expected) : tensor<8xi32>
+  check.expect.equal actual(%pipeline_group) expected(%group_expected) : tensor<8xi32>
   check.return
 }
 
@@ -90,11 +143,19 @@ check.case public @collective_loop_single {
   %input = check.generate.iota offset(1) step(1) : tensor<1x128xi32>
   %cluster_output = check.generate.fill value(-10000) : tensor<8xi32>
   %group_output = check.generate.fill value(-20000) : tensor<8xi32>
+  %pipeline_cluster = check.generate.fill value(-30000) : tensor<8xi32>
+  %pipeline_group = check.generate.fill value(-40000) : tensor<8xi32>
   %cluster_expected = check.generate.iota offset(210) step(256) : tensor<8xi32>
   %group_expected = check.generate.fill value(8330) : tensor<8xi32>
   kernel.launch @collective_loop_state(%input, %cluster_output, %group_output, %limit, %repeat) : (tensor<1x128xi32>, tensor<8xi32>, tensor<8xi32>, index, index)
+  kernel.launch @pipelined_collective_loop_state(%input, %pipeline_cluster, %pipeline_group, %limit, %repeat) : (tensor<1x128xi32>, tensor<8xi32>, tensor<8xi32>, index, index)
   check.expect.equal actual(%cluster_output) expected(%cluster_expected) : tensor<8xi32>
   check.expect.equal actual(%group_output) expected(%group_expected) : tensor<8xi32>
+  check.expect.equal actual(%pipeline_cluster) expected(%cluster_expected) : tensor<8xi32>
+  check.expect.equal actual(%pipeline_group) expected(%group_expected) : tensor<8xi32>
+  kernel.launch @short_collective_loop_state(%input, %pipeline_cluster, %pipeline_group, %limit, %repeat) : (tensor<1x128xi32>, tensor<8xi32>, tensor<8xi32>, index, index)
+  check.expect.equal actual(%pipeline_cluster) expected(%cluster_expected) : tensor<8xi32>
+  check.expect.equal actual(%pipeline_group) expected(%group_expected) : tensor<8xi32>
   check.return
 }
 
@@ -104,11 +165,16 @@ check.case public @collective_loop_ragged {
   %input = check.generate.iota offset(1) step(1) : tensor<2x128xi32>
   %cluster_output = check.generate.fill value(-10000) : tensor<8xi32>
   %group_output = check.generate.fill value(-20000) : tensor<8xi32>
+  %pipeline_cluster = check.generate.fill value(-30000) : tensor<8xi32>
+  %pipeline_group = check.generate.fill value(-40000) : tensor<8xi32>
   %cluster_expected = check.generate.iota offset(8776) step(3840) : tensor<8xi32>
   %group_expected = check.generate.fill value(173584) : tensor<8xi32>
   kernel.launch @collective_loop_state(%input, %cluster_output, %group_output, %limit, %repeat) : (tensor<2x128xi32>, tensor<8xi32>, tensor<8xi32>, index, index)
+  kernel.launch @pipelined_collective_loop_state(%input, %pipeline_cluster, %pipeline_group, %limit, %repeat) : (tensor<2x128xi32>, tensor<8xi32>, tensor<8xi32>, index, index)
   check.expect.equal actual(%cluster_output) expected(%cluster_expected) : tensor<8xi32>
   check.expect.equal actual(%group_output) expected(%group_expected) : tensor<8xi32>
+  check.expect.equal actual(%pipeline_cluster) expected(%cluster_expected) : tensor<8xi32>
+  check.expect.equal actual(%pipeline_group) expected(%group_expected) : tensor<8xi32>
   check.return
 }
 
@@ -118,11 +184,16 @@ check.case public @collective_loop_full {
   %input = check.generate.iota offset(1) step(1) : tensor<7x128xi32>
   %cluster_output = check.generate.fill value(-10000) : tensor<8xi32>
   %group_output = check.generate.fill value(-20000) : tensor<8xi32>
+  %pipeline_cluster = check.generate.fill value(-30000) : tensor<8xi32>
+  %pipeline_group = check.generate.fill value(-40000) : tensor<8xi32>
   %cluster_expected = check.generate.iota offset(267768) step(32512) : tensor<8xi32>
   %group_expected = check.generate.fill value(3019328) : tensor<8xi32>
   kernel.launch @collective_loop_state(%input, %cluster_output, %group_output, %limit, %repeat) : (tensor<7x128xi32>, tensor<8xi32>, tensor<8xi32>, index, index)
+  kernel.launch @pipelined_collective_loop_state(%input, %pipeline_cluster, %pipeline_group, %limit, %repeat) : (tensor<7x128xi32>, tensor<8xi32>, tensor<8xi32>, index, index)
   check.expect.equal actual(%cluster_output) expected(%cluster_expected) : tensor<8xi32>
   check.expect.equal actual(%group_output) expected(%group_expected) : tensor<8xi32>
+  check.expect.equal actual(%pipeline_cluster) expected(%cluster_expected) : tensor<8xi32>
+  check.expect.equal actual(%pipeline_group) expected(%group_expected) : tensor<8xi32>
   check.return
 }
 
@@ -132,11 +203,16 @@ check.case public @collective_loop_repeated {
   %input = check.generate.iota offset(1) step(1) : tensor<7x128xi32>
   %cluster_output = check.generate.fill value(-10000) : tensor<8xi32>
   %group_output = check.generate.fill value(-20000) : tensor<8xi32>
+  %pipeline_cluster = check.generate.fill value(-30000) : tensor<8xi32>
+  %pipeline_group = check.generate.fill value(-40000) : tensor<8xi32>
   %cluster_expected = check.generate.iota offset(14004088) step(4194048) : tensor<8xi32>
   %group_expected = check.generate.fill value(225222592) : tensor<8xi32>
   kernel.launch @collective_loop_state(%input, %cluster_output, %group_output, %limit, %repeat) : (tensor<7x128xi32>, tensor<8xi32>, tensor<8xi32>, index, index)
+  kernel.launch @pipelined_collective_loop_state(%input, %pipeline_cluster, %pipeline_group, %limit, %repeat) : (tensor<7x128xi32>, tensor<8xi32>, tensor<8xi32>, index, index)
   check.expect.equal actual(%cluster_output) expected(%cluster_expected) : tensor<8xi32>
   check.expect.equal actual(%group_output) expected(%group_expected) : tensor<8xi32>
+  check.expect.equal actual(%pipeline_cluster) expected(%cluster_expected) : tensor<8xi32>
+  check.expect.equal actual(%pipeline_group) expected(%group_expected) : tensor<8xi32>
   check.return
 }
 
@@ -146,11 +222,16 @@ check.case public @collective_loop_empty_consumer {
   %input = check.generate.iota offset(1) step(1) : tensor<7x128xi32>
   %cluster_output = check.generate.fill value(-10000) : tensor<8xi32>
   %group_output = check.generate.fill value(-20000) : tensor<8xi32>
+  %pipeline_cluster = check.generate.fill value(-30000) : tensor<8xi32>
+  %pipeline_group = check.generate.fill value(-40000) : tensor<8xi32>
   %cluster_expected = check.generate.iota offset(37) step(0) : tensor<8xi32>
   %group_expected = check.generate.fill value(37) : tensor<8xi32>
   kernel.launch @collective_loop_state(%input, %cluster_output, %group_output, %limit, %repeat) : (tensor<7x128xi32>, tensor<8xi32>, tensor<8xi32>, index, index)
+  kernel.launch @pipelined_collective_loop_state(%input, %pipeline_cluster, %pipeline_group, %limit, %repeat) : (tensor<7x128xi32>, tensor<8xi32>, tensor<8xi32>, index, index)
   check.expect.equal actual(%cluster_output) expected(%cluster_expected) : tensor<8xi32>
   check.expect.equal actual(%group_output) expected(%group_expected) : tensor<8xi32>
+  check.expect.equal actual(%pipeline_cluster) expected(%cluster_expected) : tensor<8xi32>
+  check.expect.equal actual(%pipeline_group) expected(%group_expected) : tensor<8xi32>
   check.return
 }
 

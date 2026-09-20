@@ -342,7 +342,7 @@ scf_for = Op(
             "pipeline_depth",
             INDEX,
             optional=True,
-            doc="Optional SSA read-ahead depth consumed by pipeline-scf-for before unrolling. A positive exact depth counts original iterations independently of the unroll factor; depth one leaves the serial loop. Ordinary reads and their prerequisites run ahead of ordered consumers, with guarded startup and drain preserving the finite domain. The reconstructed loops retain their unroll policy.",
+            doc="Optional SSA read-ahead depth consumed by pipeline-scf-for before unrolling. A positive exact depth counts original iterations independently of the unroll factor; depth one leaves the serial loop. Ordinary reads and their prerequisites run ahead of ordered consumers, with guarded startup and drain preserving the finite domain. Memory-pure convergent consumers, such as subgroup reductions, require compile-time exact loop bounds so all participants retain the same phase split. Convergent operations cannot be read prerequisites or share a nested scheduling unit with reads. The reconstructed loops retain their unroll policy.",
         ),
         Operand(
             "unroll_factor",

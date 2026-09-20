@@ -1,0 +1,65 @@
+// RUN: pass unroll-scf-for
+
+// Interleaving cannot advance the next load across an original collective.
+func.def @interleaved_collectives(%input: view<2xi32>, %initial: i32) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : i32) -> (i32) unroll schedule(interleaved) {
+    %value = view.load %input[%i] : view<2xi32> -> i32
+    %collective = test.convergent %value : i32
+    %next = scalar.addi %sum, %collective : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @interleaved_collectives(%input: view<2xi32>, %initial: i32) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %i_0 = index.constant 0 : index
+  %i_1 = index.constant 1 : index
+  %value = view.load %input[%i_0] : view<2xi32> -> i32
+  %collective = test.convergent %value : i32
+  %next = scalar.addi %initial, %collective : i32
+  %value_1 = view.load %input[%i_1] : view<2xi32> -> i32
+  %collective_1 = test.convergent %value_1 : i32
+  %next_1 = scalar.addi %next, %collective_1 : i32
+  func.return %next_1 : i32
+}
+
+// ====
+
+// Recurrence scheduling has the same participation-order boundary.
+func.def @recurrence_collectives(%input: view<2xi32>, %initial: i32) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %result = scf.for %i = [%begin to %end step %step](%sum = %initial : i32) -> (i32) unroll schedule(recurrence) {
+    %value = view.load %input[%i] : view<2xi32> -> i32
+    %collective = test.convergent %value : i32
+    %next = scalar.addi %sum, %collective : i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @recurrence_collectives(%input: view<2xi32>, %initial: i32) -> (i32) {
+  %begin = index.constant 0 : index
+  %end = index.constant 2 : index
+  %step = index.constant 1 : index
+  %i_0 = index.constant 0 : index
+  %i_1 = index.constant 1 : index
+  %value = view.load %input[%i_0] : view<2xi32> -> i32
+  %collective = test.convergent %value : i32
+  %value_1 = view.load %input[%i_1] : view<2xi32> -> i32
+  %collective_1 = test.convergent %value_1 : i32
+  scf.schedule.fence
+  %next = scalar.addi %initial, %collective : i32
+  scf.schedule.fence
+  %next_1 = scalar.addi %next, %collective_1 : i32
+  func.return %next_1 : i32
+}

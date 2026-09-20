@@ -41,6 +41,13 @@ previous accumulator. Stores, explicit async groups, `scf.while`, and ordered
 effects receive diagnostics at depth greater than one. These
 policies are explicit; an unannotated loop receives no read-ahead transform.
 
+Cooperative reductions can also consume read-ahead values. A requested loop
+containing subgroup or workgroup collectives needs compile-time exact bounds;
+runtime tail guards can remain inside that fixed tile. Separate guarded reads
+from the collective consumer so each can retain its own stage. The
+[collective participation contract](../guide/functions-and-control.md#pipeline-reads-ahead-of-ordered-computation)
+explains this shape and its diagnostics.
+
 ## Give each motif its own schedule
 
 This motif sums four adjacent values per row for each work-item. Its template

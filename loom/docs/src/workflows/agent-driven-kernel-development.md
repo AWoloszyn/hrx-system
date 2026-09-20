@@ -278,6 +278,10 @@ in the consumer and use that state. The
 [checked guarded-row motif](tune-loop-schedules.md#keep-guards-and-inner-loops-in-the-source)
 demonstrates independent inner and outer policies. Stores, ordered effects,
 `scf.while`, and explicit async groups have different scheduling requirements.
+Fixed-bound tiles can pipeline reads into a subgroup or workgroup reduction;
+the collective stays in a memory-pure consumer, separate from guarded loads.
+See the [participation contract](../guide/functions-and-control.md#pipeline-reads-ahead-of-ordered-computation)
+when the tile contains collectives.
 Unannotated loops receive no read-ahead transformation.
 
 An experiment driver may bind these choices with global config keys to make
