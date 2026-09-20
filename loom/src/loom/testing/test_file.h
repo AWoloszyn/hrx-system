@@ -164,6 +164,8 @@ typedef enum loom_test_mode_e {
   LOOM_TEST_MODE_EMIT = 4,  // Parse -> emit target/check output -> compare.
   LOOM_TEST_MODE_COMPILE_REPORT = 5,  // Run pipeline -> compile report.
   LOOM_TEST_MODE_PASS_REPORT = 6,     // Run pipeline -> pass report.
+  // Native artifact qualification selected by the runner's compiler profile.
+  LOOM_TEST_MODE_COMPILE = 7,
 } loom_test_mode_t;
 
 // Flags controlling optional textual output surfaces for a test case.
@@ -196,6 +198,8 @@ static inline const char* loom_test_mode_name(loom_test_mode_t mode) {
       return "pass-report";
     case LOOM_TEST_MODE_COMPILE_REPORT:
       return "compile-report";
+    case LOOM_TEST_MODE_COMPILE:
+      return "compile";
     default:
       return "unknown";
   }

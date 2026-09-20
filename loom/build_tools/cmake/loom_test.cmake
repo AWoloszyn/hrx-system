@@ -7,12 +7,14 @@
 # Source checks use the same merge, test-root link, correctness, and benchmark
 # tools as the Bazel loom_test rule. RUNNER_ARGS carries shared configuration and
 # case selection; ARGS contains correctness-only options such as instrumentation.
+# Compiler profiles consume the same module independently of execution profile
+# requirements and resource labels.
 function(loom_test)
   if(NOT IREE_BUILD_TESTS)
     return()
   endif()
   cmake_parse_arguments(
-    _RULE "" "NAME;INPUT_FORMAT;RESOURCE_GROUP" "SRCS;LIBRARIES;DATA;INPUTOPTS;ARGS;RUNNER_ARGS;LABELS;SANITIZER_SUPPRESSIONS" ${ARGN}
+    _RULE "" "NAME;INPUT_FORMAT;RESOURCE_GROUP" "SRCS;LIBRARIES;DATA;INPUTOPTS;ARGS;RUNNER_ARGS;LABELS;SANITIZER_SUPPRESSIONS;COMPILE_TARGETS;EXECUTION_REQUIRES;EXECUTION_LABELS" ${ARGN}
   )
   if(_RULE_UNPARSED_ARGUMENTS)
     message(FATAL_ERROR "Unknown loom_test arguments: ${_RULE_UNPARSED_ARGUMENTS}")
@@ -37,12 +39,23 @@ function(loom_test)
     INCLUDE_INPUT_TESTS
   )
   set(_MODULE "${CMAKE_CURRENT_BINARY_DIR}/${_RULE_NAME}_module.loombc")
+  loom_check_compile_tests(
+    NAME "${_RULE_NAME}"
+    SRC "${_MODULE}"
+    TARGETS ${_RULE_COMPILE_TARGETS}
+    LABELS ${_RULE_LABELS}
+  )
+  if(DEFINED _RULE_EXECUTION_REQUIRES)
+    if(NOT (${_RULE_EXECUTION_REQUIRES}))
+      return()
+    endif()
+  endif()
   iree_native_test(
     NAME "${_RULE_NAME}"
     SRC loom::tools::iree-test-loom
     ARGS "{{${_MODULE}}}" ${_RULE_RUNNER_ARGS} ${_RULE_ARGS}
     DATA ${_RULE_DATA}
-    LABELS ${_RULE_LABELS}
+    LABELS ${_RULE_LABELS} ${_RULE_EXECUTION_LABELS}
     RESOURCE_GROUP "${_RULE_RESOURCE_GROUP}"
     SANITIZER_SUPPRESSIONS ${_RULE_SANITIZER_SUPPRESSIONS}
   )
@@ -52,7 +65,7 @@ function(loom_test)
     ARGS "{{${_MODULE}}}" ${_RULE_RUNNER_ARGS} --iterations=1 --warmup-iterations=0
       --output-format=jsonl --compile-report=none
     DATA ${_RULE_DATA}
-    LABELS ${_RULE_LABELS}
+    LABELS ${_RULE_LABELS} ${_RULE_EXECUTION_LABELS}
     RESOURCE_GROUP "${_RULE_RESOURCE_GROUP}"
     SANITIZER_SUPPRESSIONS ${_RULE_SANITIZER_SUPPRESSIONS}
   )

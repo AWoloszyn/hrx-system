@@ -16,18 +16,17 @@
 #include "loom/error/diagnostic.h"
 #include "loom/format/text/printer.h"
 #include "loom/ir/module.h"
-#include "loom/link/linker.h"
-#include "loom/ops/op_defs.h"
 #include "loom/sanitizer/options.h"
 #include "loom/target/arch/cmd/artifact_set.h"
 #include "loom/target/entry_selection.h"
-#include "loom/target/module_specialization.h"
 #include "loom/target/reporting/artifact_manifest.h"
 #include "loom/tooling/cli/help.h"
 #include "loom/tooling/compile/artifact.h"
 #include "loom/tooling/compile/configured.h"
 #include "loom/tooling/compile/pipeline.h"
+#include "loom/tooling/compile/preparation.h"
 #include "loom/tooling/compile/report_capture.h"
+#include "loom/tooling/compile/request.h"
 #include "loom/tooling/config/config.h"
 #include "loom/tooling/context/context.h"
 #include "loom/tooling/execution/session.h"
@@ -36,7 +35,6 @@
 #include "loom/tooling/pass/trace_cli.h"
 #include "loom/tools/loom-compile/command_backend.h"
 #include "loom/tools/loom-compile/command_manifest.h"
-#include "loom/tools/loom-compile/request.h"
 
 typedef struct loom_compile_diagnostic_sink_t {
   // Parsed module used for full type rendering.
@@ -310,68 +308,6 @@ static iree_status_t loom_compile_materialize_config_set(
       run_module->module, &options, loom_run_session_block_pool(session), NULL);
 }
 
-static iree_status_t loom_compile_select_roots(
-    loom_run_session_t* session, loom_run_module_t* run_module,
-    const loom_compile_request_t* request, iree_allocator_t allocator) {
-  iree_string_view_list_t roots = request->roots;
-  iree_string_view_t* implicit_root_values = NULL;
-  if (roots.count == 0 && request->product == LOOM_COMPILE_PRODUCT_KERNEL) {
-    for (iree_host_size_t i = 0; i < run_module->module->symbols.count; ++i) {
-      const loom_symbol_t* symbol = &run_module->module->symbols.entries[i];
-      if (loom_compile_request_symbol_is_implicit_root(
-              run_module->module, request->product, symbol)) {
-        ++roots.count;
-      }
-    }
-    if (roots.count == 0) {
-      return iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "kernel product requires a kernel entry or a public or retained "
-          "kernel-scoped pipeline or array program root");
-    }
-    IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(
-        allocator, roots.count, sizeof(*implicit_root_values),
-        (void**)&implicit_root_values));
-    iree_host_size_t root_ordinal = 0;
-    for (iree_host_size_t i = 0; i < run_module->module->symbols.count; ++i) {
-      const loom_symbol_t* symbol = &run_module->module->symbols.entries[i];
-      if (!loom_compile_request_symbol_is_implicit_root(
-              run_module->module, request->product, symbol)) {
-        continue;
-      }
-      implicit_root_values[root_ordinal++] =
-          run_module->module->strings.entries[symbol->name_id];
-    }
-    roots.values = implicit_root_values;
-  }
-  if (roots.count == 0) {
-    return iree_ok_status();
-  }
-
-  const loom_module_t* const source_modules[] = {run_module->module};
-  iree_string_view_t module_name = iree_string_view_empty();
-  if (run_module->module->name_id < run_module->module->strings.count) {
-    module_name =
-        run_module->module->strings.entries[run_module->module->name_id];
-  }
-  loom_module_t* linked_module = NULL;
-  iree_status_t status = loom_link_materialized_modules(
-      source_modules, IREE_ARRAYSIZE(source_modules),
-      &(loom_link_options_t){
-          .module_name = module_name,
-          .root_symbols = roots,
-      },
-      loom_run_session_block_pool(session), allocator, &linked_module);
-  iree_allocator_free(allocator, implicit_root_values);
-  if (!iree_status_is_ok(status)) {
-    return status;
-  }
-
-  loom_module_free(run_module->module);
-  run_module->module = linked_module;
-  return iree_ok_status();
-}
-
 static iree_status_t loom_compile_report_options_initialize(
     loom_compile_report_capture_options_t* out_options) {
   loom_compile_report_capture_options_initialize(out_options);
@@ -498,46 +434,9 @@ static iree_status_t loom_compile_run_pass_pipeline(
   pipeline_options.report = compile_options->report;
   pipeline_options.trace_options = trace_options;
 
-  // Selected roots are public or retained by module linking. Specialization
-  // owns their transitive callees and carries facts directly through emission,
-  // without projecting target definitions back into the authored module.
-  iree_arena_allocator_t arena;
-  iree_arena_initialize(loom_run_session_block_pool(session), &arena);
-  iree_status_t status = iree_ok_status();
-  if (request->product == LOOM_COMPILE_PRODUCT_MODULE &&
-      request->explicit_target.target_profile != NULL) {
-    loom_module_t* module = run_module->module;
-    loom_target_specialization_request_t* specializations = NULL;
-    status = iree_arena_allocate_array(&arena, module->symbols.count,
-                                       sizeof(*specializations),
-                                       (void**)&specializations);
-    if (iree_status_is_ok(status)) {
-      iree_host_size_t count = 0;
-      for (iree_host_size_t i = 0; i < module->symbols.count; ++i) {
-        const loom_symbol_t* symbol = &module->symbols.entries[i];
-        const loom_func_like_t function =
-            loom_func_like_cast(module, symbol->defining_op);
-        if (loom_func_like_body(function) == NULL ||
-            (loom_func_like_is_module_internal(function) &&
-             !iree_any_bit_set(symbol->flags, LOOM_SYMBOL_FLAG_RETAIN))) {
-          continue;
-        }
-        specializations[count++] = (loom_target_specialization_request_t){
-            .function_name = module->strings.entries[symbol->name_id],
-            .target_profile = request->explicit_target.target_profile,
-        };
-      }
-      pipeline_options.target_specializations =
-          (loom_target_specialization_request_list_t){specializations, count};
-    }
-  }
-  if (iree_status_is_ok(status)) {
-    status = loom_compile_run_pipeline(run_module->module, &pipeline_options,
-                                       loom_run_session_block_pool(session),
-                                       out_result);
-  }
-  iree_arena_deinitialize(&arena);
-  return status;
+  return loom_compile_run_request_pipeline(
+      request, run_module->module, &pipeline_options,
+      loom_run_session_block_pool(session), out_result);
 }
 
 static iree_status_t loom_compile_write_bytes(iree_string_view_t path,
@@ -908,10 +807,10 @@ static iree_status_t loom_compile_validate_request_flags(
   return iree_ok_status();
 }
 
-static iree_status_t loom_compile_specialize_explicit_target(
+static iree_status_t loom_compile_materialize_module(
     const loom_target_environment_t* target_environment,
     loom_run_session_t* session, loom_run_module_t* run_module,
-    const loom_artifact_target_t* target,
+    const loom_compile_request_t* request,
     loom_compile_report_capture_t* compile_report_capture,
     iree_allocator_t allocator) {
   loom_compile_diagnostic_sink_t compile_diagnostic_sink = {
@@ -921,7 +820,8 @@ static iree_status_t loom_compile_specialize_explicit_target(
   loom_low_descriptor_text_print_context_initialize(
       &loom_run_session_low_descriptor_registry(session)->registry,
       &compile_diagnostic_sink.type_print_context);
-  const loom_target_entry_options_t diagnostic_options = {
+  const loom_compile_pipeline_options_t pipeline_options = {
+      .target_environment = target_environment,
       .diagnostic_sink =
           {
               .fn = loom_compile_diagnostic_sink,
@@ -929,17 +829,10 @@ static iree_status_t loom_compile_specialize_explicit_target(
           },
       .source_resolver = loom_run_module_source_resolver(run_module),
   };
-  loom_target_entry_diagnostic_emitter_t diagnostic_emitter;
-  loom_target_entry_diagnostic_emitter_initialize(
-      run_module->module, &diagnostic_options, LOOM_EMITTER_PASS,
-      &diagnostic_emitter);
-
   uint32_t error_count = 0;
-  IREE_RETURN_IF_ERROR(loom_target_specialize_module_kernel_entries(
-      target_environment, target->target_profile,
-      loom_target_entry_emitter(&diagnostic_emitter),
-      loom_run_session_block_pool(session), allocator, &run_module->module,
-      &error_count));
+  IREE_RETURN_IF_ERROR(loom_compile_materialize_request(
+      request, &pipeline_options, loom_run_session_block_pool(session),
+      allocator, &run_module->module, &error_count));
   if (error_count != 0) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -1223,16 +1116,10 @@ int main(int argc, char** argv) {
       status = loom_compile_validate_request_flags(&request);
     }
   }
-  if (iree_status_is_ok(status) &&
-      request.product == LOOM_COMPILE_PRODUCT_KERNEL &&
-      request.explicit_target.target_profile != NULL) {
-    status = loom_compile_specialize_explicit_target(
-        compile_environment->target_environment, &session, &run_module,
-        &request.explicit_target, &compile_report_capture, allocator);
-  }
   if (iree_status_is_ok(status)) {
-    status =
-        loom_compile_select_roots(&session, &run_module, &request, allocator);
+    status = loom_compile_materialize_module(
+        compile_environment->target_environment, &session, &run_module,
+        &request, &compile_report_capture, allocator);
   }
   if (iree_status_is_ok(status)) {
     status = loom_compile_artifact_manifest_options_initialize(

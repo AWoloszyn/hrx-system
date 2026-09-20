@@ -67,6 +67,7 @@ iree_py_test(
     loom::py::loom::dialect::test::test
     loom::py::loom::format::text::text
     loom::py::loom::target::test::descriptors
+    loom::tools::loom-format::loom-format
   PACKAGE_DIRS
     "${PROJECT_SOURCE_DIR}/loom/py"
     "${PROJECT_BINARY_DIR}/loom/py"

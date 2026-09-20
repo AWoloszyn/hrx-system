@@ -25,8 +25,10 @@ def loom_module(
         output = None,
         output_format = "text",
         include_input_exports = False,
+        include_input_tests = False,
         strip_check = False,
         require_resolved_config = False,
+        strict_deps = False,
         tags = [],
         target_compatible_with = [],
         visibility = None):
@@ -43,21 +45,23 @@ def loom_module(
       output: Generated module filename. Defaults to <name>.loom or .loombc.
       output_format: Generated representation: text or bc.
       include_input_exports: Whether exported input symbols are implicit roots.
+      include_input_tests: Whether root-owned checks and benchmarks are roots.
       strip_check: Whether check.case and check.benchmark symbols are removed.
       require_resolved_config: Whether unresolved config.decl symbols fail.
+      strict_deps: Whether source references must resolve from direct libraries.
       tags: Additional tags for the generator action.
       target_compatible_with: Optional compatibility constraints for the
         generated module.
       visibility: Visibility of the generated module target.
     """
-    if not srcs:
-        fail("loom_module %s requires at least one primary source" % name)
+    if not srcs and not libraries:
+        fail("loom_module %s requires at least one source or library" % name)
     if mode not in _LOOM_LINK_MODES:
         fail("loom_module %s has unsupported mode %r" % (name, mode))
-    if mode == "merge" and (roots or include_input_exports):
+    if mode == "merge" and (roots or include_input_exports or include_input_tests):
         fail("loom_module %s merge mode does not accept roots" % name)
-    if mode == "link" and not roots and not include_input_exports:
-        fail("loom_module %s link mode requires roots or include_input_exports" % name)
+    if mode == "link" and not roots and not include_input_exports and not include_input_tests:
+        fail("loom_module %s link mode requires roots, include_input_exports, or include_input_tests" % name)
     if output_format not in _LOOM_LINK_OUTPUT_FORMATS:
         fail("loom_module %s has unsupported output format %r" %
              (name, output_format))
@@ -73,10 +77,14 @@ def loom_module(
     args.extend(["--config=%s" % config for config in configs])
     if include_input_exports:
         args.append("--include-input-exports=true")
+    if include_input_tests:
+        args.append("--include-input-tests=true")
     if strip_check:
         args.append("--strip-check=true")
     if require_resolved_config:
         args.append("--require-resolved-config=true")
+    if strict_deps:
+        args.append("--strict-deps")
 
     rule_kwargs = {
         "tags": tags + ["skip-bazel_to_cmake"],

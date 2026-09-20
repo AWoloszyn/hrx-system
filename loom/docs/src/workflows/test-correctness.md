@@ -41,6 +41,27 @@ The report is a `loom.test.v0` JSON document on standard output. Its top-level
 counts summarize cases, concrete samples, failures, skipped cases, and planning
 issues. The `samples` array carries the result of each concrete case sample.
 
+## Compile without an execution device
+
+`loom-check` can qualify a source fixture or a linked test module for a compiler
+profile without opening a device:
+
+```shell
+loom-check --target=amdgpu:gfx942 offsets.loom-test
+loom-check --target=spirv:vulkan1.3+bda program.loombc
+```
+
+Each source case must produce a nonempty final artifact or exactly match its
+diagnostic annotations. Linked kernel entries compile independently, just as
+independent runtime launches do. This checks compilation, not numerical
+correctness: `check.expect` programs still need `iree-test-loom` on the intended
+execution device.
+
+Compilation leaves ordinary `RUN` goldens unchanged, ignores their execution
+requirements and `XFAIL` markers, and rejects `--update`. Template-backed
+fixtures still have to match their source corpus. Compile-time bindings use
+`--config=key=value` and `--config-file=model-config.jsonc`.
+
 ## Select a case or sample
 
 A source file can keep smoke cases, edge cases, and larger validation cases
