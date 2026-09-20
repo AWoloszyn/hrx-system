@@ -262,6 +262,8 @@ _OP_I64_SHR_S = 0x87
 _OP_I64_SHR_U = 0x88
 _OP_F32_ADD = 0x92
 _OP_I32_WRAP_I64 = 0xA7
+_OP_I64_EXTEND_I32_S = 0xAC
+_OP_I64_EXTEND_I32_U = 0xAD
 _OP_I32_REINTERPRET_F32 = 0xBC
 _OP_I64_REINTERPRET_F64 = 0xBD
 _OP_F32_REINTERPRET_I32 = 0xBE
@@ -786,6 +788,22 @@ WASM_CORE_SIMD128_DESCRIPTOR_SET = DescriptorSet(
             asm_forms=_asm(results=("dst",), operands=("input",)),
             schedule_class=_SCHEDULE_SCALAR_I32,
             flags=(DescriptorFlag.DEAD_REMOVABLE,),
+        ),
+        *(
+            Descriptor(
+                key=f"wasm.i64.extend_i32_{signedness}",
+                mnemonic=f"i64.extend_i32_{signedness}",
+                semantic_tag=f"integer.ext{signedness}i.i32.i64",
+                encoding_id=encoding,
+                operands=(_i64_result(), _i32_operand("input")),
+                asm_forms=_asm(results=("dst",), operands=("input",)),
+                schedule_class=_SCHEDULE_SCALAR_I64,
+                flags=(DescriptorFlag.DEAD_REMOVABLE,),
+            )
+            for signedness, encoding in (
+                ("s", _OP_I64_EXTEND_I32_S),
+                ("u", _OP_I64_EXTEND_I32_U),
+            )
         ),
         Descriptor(
             key="wasm.i64.reinterpret_f64",

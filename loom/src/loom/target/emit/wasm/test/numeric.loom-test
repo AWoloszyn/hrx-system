@@ -151,6 +151,12 @@ low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @reint
   return %result
 }
 
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @widen_i32(%bits: reg<wasm.i32>) -> (reg<wasm.i64>, reg<wasm.i64>) asm {
+  %signed = i64.extend_i32_s %bits
+  %unsigned = i64.extend_i32_u %bits
+  return %signed, %unsigned
+}
+
 // ----
 CHECK: Disassembly of section CODE:
 CHECK: i32.rem_u
@@ -220,3 +226,5 @@ CHECK: f64.const *-0x1.199999999999ap0
 CHECK: i64.reinterpret_f64
 CHECK: f64.reinterpret_i64
 CHECK: f32.select
+CHECK: i64.extend_i32_s
+CHECK: i64.extend_i32_u

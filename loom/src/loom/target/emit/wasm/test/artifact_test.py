@@ -6,6 +6,7 @@
 
 """Executes the public compiler's Wasm artifact with Node.js."""
 
+import argparse
 import os
 import shutil
 import subprocess
@@ -23,7 +24,7 @@ class WasmArtifactTest(unittest.TestCase):
             output = Path(directory) / "module.wasm"
             subprocess.run(
                 [
-                    sys.argv[1],
+                    _ARGS.compiler,
                     source,
                     "--format=wasm-binary",
                     f"--output={output}",
@@ -33,20 +34,30 @@ class WasmArtifactTest(unittest.TestCase):
             subprocess.run([node, str(oracle), str(output)], check=True)
 
     def test_default_pipeline_executes_structured_source(self):
-        for source in sys.argv[2:-2]:
+        for source in _ARGS.sources:
             with self.subTest(source=source):
                 self._execute_source(source, Path(source).with_suffix(".mjs"))
 
-    def test_boolean_source_corpus(self):
-        source = Path(sys.argv[-2]).read_text()
-        source = "wasm.target<simd128> @target\n\n" + source.replace(
-            "func.def public @", "func.def public target(@target) @"
-        )
-        with tempfile.TemporaryDirectory() as directory:
-            bound_source = Path(directory) / "boolean.loom"
-            bound_source.write_text(source)
-            self._execute_source(str(bound_source), sys.argv[-1])
+    def test_source_corpora(self):
+        for source_path, oracle in _ARGS.corpus:
+            with self.subTest(source=source_path):
+                source = Path(source_path).read_text()
+                source = source.replace("func.def @", "func.def public @")
+                source = "wasm.target<simd128> @target\n\n" + source.replace(
+                    "func.def public @", "func.def public target(@target) @"
+                )
+                with tempfile.TemporaryDirectory() as directory:
+                    bound_source = Path(directory) / "corpus.loom"
+                    bound_source.write_text(source)
+                    self._execute_source(str(bound_source), oracle)
 
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("compiler")
+    parser.add_argument("sources", nargs="*")
+    parser.add_argument(
+        "--corpus", action="append", nargs=2, default=[], metavar=("SOURCE", "ORACLE")
+    )
+    _ARGS = parser.parse_args()
     unittest.main(argv=[sys.argv[0]])
