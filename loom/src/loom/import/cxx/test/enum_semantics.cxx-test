@@ -42,3 +42,26 @@ static_assert(first == 0 && second == 1 && next == 2);
 static_assert(sizeof(enum Wide) == 8);
 static_assert(following == (1ULL << 40) + 1);
 static_assert(sizeof(enum Byte) == 1 && byte == 255);
+
+// ====
+// RUN: verify
+// INPUT: cxx data-model=lp64
+#include "packed_enums.h"
+
+// ====
+// RUN: verify
+// INPUT: cxx data-model=llp64
+#include "packed_enums.h"
+
+// ====
+// RUN: verify
+// INPUT: cxx data-model=ilp32
+#include "packed_enums.h"
+
+// ====
+// INPUT: cxx std=c23
+enum __attribute__((packed)) Byte { byte = 255 };
+enum Signed { low = -128, high = 127 } __attribute__((packed));
+static_assert(sizeof(enum Byte) == 1);
+static_assert(sizeof(enum Signed) == 1);
+static_assert(sizeof(+byte) == 4 && sizeof(+low) == 4);

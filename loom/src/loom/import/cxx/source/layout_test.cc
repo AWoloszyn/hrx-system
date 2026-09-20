@@ -7,6 +7,8 @@
 #include <cxx/archive.h>
 #include <cxx/private/semantic_codec.h>
 #include <cxx/symbols.h>
+#include <cxx/type_traits.h>
+#include <cxx/types.h>
 #include <cxx/views/symbol_chain.h>
 
 #include "iree/testing/gtest.h"
@@ -47,7 +49,8 @@ TEST_P(LayoutTest, PackedRequestsAndResolvedLayoutSurviveSemanticArchives) {
   loom_cxx_import_options_t options;
   loom_cxx_import_options_initialize(&options);
   options.data_model = GetParam();
-  Source source(IREE_SV("struct [[gnu::packed, gnu::aligned(64)]] Packet {\n"
+  Source source(IREE_SV("enum [[gnu::packed]] Byte { byte = 255 };\n"
+                        "struct [[gnu::packed, gnu::aligned(64)]] Packet {\n"
                         "  unsigned char tag;\n"
                         "  alignas(16) unsigned value;\n"
                         "  unsigned tail [[gnu::packed]];\n"
@@ -67,6 +70,18 @@ TEST_P(LayoutTest, PackedRequestsAndResolvedLayoutSurviveSemanticArchives) {
   cxx::SemanticArchiveRoots restored;
   cxx::SemanticDecoder decoder(&destination.unit());
   ASSERT_TRUE(decoder(reader, restored)) << decoder.error();
+  auto enumerations = restored.globalScope->find("Byte");
+  ASSERT_FALSE(enumerations.begin() == enumerations.end());
+  auto* enumeration = cxx::symbol_cast<cxx::EnumSymbol>(*enumerations.begin());
+  ASSERT_NE(enumeration, nullptr);
+  EXPECT_TRUE(enumeration->isPacked());
+  EXPECT_EQ(enumeration->underlyingType()->kind(),
+            cxx::TypeKind::kUnsignedChar);
+  ASSERT_NE(enumeration->promotionType(), nullptr);
+  EXPECT_EQ(enumeration->promotionType()->kind(), cxx::TypeKind::kInt);
+  EXPECT_EQ(destination.unit().typeTraits().promoted_integer_type(
+                enumeration->type()),
+            enumeration->promotionType());
   auto records = restored.globalScope->find("Packet");
   ASSERT_FALSE(records.begin() == records.end());
   auto* record = cxx::symbol_cast<cxx::ClassSymbol>(*records.begin());

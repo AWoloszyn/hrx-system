@@ -53,6 +53,7 @@ loom_check_test_suite(
         "aligned_layout.h",
         "enum_semantics.h",
         "locations.h",
+        "packed_enums.h",
         "packed_layout.h",
         "record_layout.h",
     ],

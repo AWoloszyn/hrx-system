@@ -29,6 +29,8 @@
               "--root=enum_inferred_unsigned",
               "--root=enum_specialization",
               "--root=enum_bool",
+              "--root=enum_packed_unsigned",
+              "--root=enum_packed_signed",
               "--to=bc",
               "--output={tmp}/functions.loombc",
               "{srcdir}/enum_values.cpp"
@@ -47,8 +49,8 @@
           "stdout": {
             "contains": {
               "unordered": [
-                "\"case_count\":369",
-                "\"sample_count\":369",
+                "\"case_count\":881",
+                "\"sample_count\":881",
                 "\"failed_sample_count\":0",
                 "\"skipped_case_count\":0",
                 "\"planning_issue_count\":0"

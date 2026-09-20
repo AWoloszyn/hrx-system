@@ -85,22 +85,22 @@ struct __attribute__((packed(1))) Packet { unsigned value; };
 
 // ====
 // INPUT: cxx
-// ERROR@+1: PARSE/036 "'packed' attribute requires a record or non-static data member"
+// ERROR@+1: PARSE/036 "'packed' attribute requires a record, enumeration, or non-static data member"
 typedef unsigned Value __attribute__((packed));
 
 // ====
 // INPUT: cxx
-// ERROR@+1: PARSE/036 "'packed' attribute requires a record or non-static data member"
+// ERROR@+1: PARSE/036 "'packed' attribute requires a record, enumeration, or non-static data member"
 unsigned value __attribute__((packed));
 
 // ====
 // INPUT: cxx
-// ERROR@+1: PARSE/036 "'packed' attribute requires a record or non-static data member"
+// ERROR@+1: PARSE/036 "'packed' attribute requires a record, enumeration, or non-static data member"
 struct Packet { [[gnu::packed]] static unsigned value; };
 
 // ====
 // INPUT: cxx
-// ERROR@+1: PARSE/036 "'packed' attribute requires a record or non-static data member"
+// ERROR@+1: PARSE/036 "'packed' attribute requires a record, enumeration, or non-static data member"
 unsigned read(unsigned value __attribute__((packed)));
 
 // ====

@@ -133,6 +133,20 @@ and the full unsigned 64-bit range remain intact. Template-dependent definitions
 are resolved when instantiated. Boolean enums use `i1` values; pointers to them
 require a byte-storage projection and receive the same diagnostic as `bool*`.
 
+GNU `packed` enums select their smallest signed or unsigned storage while
+retaining the promotion selected from their enumerator range. An enum containing
+`255` uses `i8` storage and one-byte pointer stride, but promotes to `int` for
+arithmetic and overload resolution. Fixed underlying types and scoped enums keep
+their declared representation.
+
+```cpp
+enum __attribute__((packed)) Byte { last = 255 };
+int next(Byte value) { return value + 1; }
+```
+
+`next` zero-extends its `i8` argument before the `i32` addition, so `next(last)`
+returns `256`.
+
 Explicit fixed vectors retain their lanes and element widths in High IR:
 
 ```cpp
