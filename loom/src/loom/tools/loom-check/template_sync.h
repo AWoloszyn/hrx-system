@@ -13,6 +13,10 @@
 // any case-local REQUIRES/XFAIL directives already in the target file. Case
 // identity is the single func-like definition in each case body, or the unique
 // public func-like definition when a case also contains private helper bodies.
+// File-level `// TEMPLATE-EXCLUDE: @<case> <reason>` directives omit exact
+// named cases from synchronization. Exclusions must name existing template
+// cases and leave at least one case; an entirely inapplicable corpus needs no
+// fixture.
 
 #ifndef LOOM_TOOLS_LOOM_CHECK_TEMPLATE_SYNC_H_
 #define LOOM_TOOLS_LOOM_CHECK_TEMPLATE_SYNC_H_

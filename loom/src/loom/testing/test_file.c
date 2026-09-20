@@ -125,6 +125,12 @@ static bool loom_test_file_is_template_directive(iree_string_view_t line) {
                                       iree_make_cstring_view("// TEMPLATE: "));
 }
 
+// Returns true if |line| is a well-formed TEMPLATE-EXCLUDE directive.
+static bool loom_test_file_is_template_exclude_directive(
+    iree_string_view_t line) {
+  return iree_string_view_starts_with(line, IREE_SV("// TEMPLATE-EXCLUDE: "));
+}
+
 // Returns true if |line| starts with "// CASE:" (with or without
 // the trailing space). CASE is intentionally unsupported because case identity
 // comes from function symbols in the IR.
@@ -1127,6 +1133,17 @@ static iree_status_t loom_test_file_parse_case_sections(
       continue;
     }
 
+    if (loom_test_file_is_template_exclude_directive(trimmed)) {
+      if (!allow_file_directives || body_started) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "TEMPLATE-EXCLUDE requires a TEMPLATE file preamble and must "
+            "appear before the first case");
+      }
+      body_start = loom_test_file_scanner_end(scanner, case_end);
+      continue;
+    }
+
     if (loom_test_file_looks_like_case(trimmed) ||
         iree_string_view_starts_with(trimmed,
                                      iree_make_cstring_view("//CASE:"))) {
@@ -1157,6 +1174,9 @@ static iree_status_t loom_test_file_parse_case_sections(
         loom_test_file_looks_like_xfail(trimmed) ||
         loom_test_file_looks_like_template(trimmed) ||
         iree_string_view_starts_with(trimmed,
+                                     IREE_SV("// TEMPLATE-EXCLUDE:")) ||
+        iree_string_view_starts_with(trimmed, IREE_SV("//TEMPLATE-EXCLUDE:")) ||
+        iree_string_view_starts_with(trimmed,
                                      iree_make_cstring_view("//RUN:")) ||
         iree_string_view_starts_with(trimmed,
                                      iree_make_cstring_view("//REQUIRES:")) ||
@@ -1168,8 +1188,8 @@ static iree_status_t loom_test_file_parse_case_sections(
           IREE_STATUS_INVALID_ARGUMENT,
           "malformed directive '%.*s'; expected '// RUN: <mode>', "
           "'// INPUT: <format> [options]', '// REQUIRES: <name>', '// XFAIL: "
-          "<reason>', or "
-          "'// TEMPLATE: <path>'",
+          "<reason>', '// TEMPLATE: <path>', or "
+          "'// TEMPLATE-EXCLUDE: @<case> <reason>'",
           (int)trimmed.size, trimmed.data);
     }
 
@@ -1270,14 +1290,63 @@ typedef struct loom_test_case_boundary_t {
   loom_test_source_range_t separator_range;
 } loom_test_case_boundary_t;
 
-static iree_status_t loom_test_file_parse_template_directive_from_preamble(
+static iree_status_t loom_test_file_parse_template_exclusion(
+    iree_string_view_t value, loom_test_template_exclusion_t* out_exclusion) {
+  value = iree_string_view_trim(value);
+  iree_host_size_t name_end =
+      iree_string_view_find_first_of(value, IREE_SV(" \t"), 0);
+  if (name_end == IREE_STRING_VIEW_NPOS || name_end <= 1 ||
+      !iree_string_view_starts_with_char(value, '@')) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "TEMPLATE-EXCLUDE requires '@<case> <reason>' with a nonempty reason");
+  }
+  out_exclusion->case_name = iree_string_view_substr(value, 1, name_end - 1);
+  out_exclusion->reason = iree_string_view_trim(
+      iree_string_view_substr(value, name_end, IREE_HOST_SIZE_MAX));
+  return iree_ok_status();
+}
+
+static iree_status_t loom_test_file_parse_template_directives_from_preamble(
     const char* source_start, iree_string_view_t preamble_text,
-    loom_test_file_t* file) {
+    iree_arena_allocator_t* arena, loom_test_file_t* file) {
+  iree_host_size_t exclusion_count = 0;
   iree_string_view_t scanner = preamble_text;
+  while (!iree_string_view_is_empty(scanner)) {
+    iree_string_view_t line = loom_test_file_consume_line(&scanner);
+    exclusion_count += loom_test_file_is_template_exclude_directive(
+        iree_string_view_trim(line));
+  }
+  if (exclusion_count > 0) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        arena, exclusion_count, sizeof(loom_test_template_exclusion_t),
+        (void**)&file->template_exclusions.values));
+  }
+  scanner = preamble_text;
   while (!iree_string_view_is_empty(scanner)) {
     const char* line_start = scanner.data;
     iree_string_view_t line = loom_test_file_consume_line(&scanner);
     iree_string_view_t trimmed = iree_string_view_trim(line);
+    if (loom_test_file_is_template_exclude_directive(trimmed)) {
+      iree_string_view_t value = trimmed;
+      iree_string_view_consume_prefix(&value, IREE_SV("// TEMPLATE-EXCLUDE: "));
+      loom_test_template_exclusion_t exclusion;
+      IREE_RETURN_IF_ERROR(
+          loom_test_file_parse_template_exclusion(value, &exclusion));
+      for (iree_host_size_t i = 0; i < file->template_exclusions.count; ++i) {
+        if (iree_string_view_equal(
+                file->template_exclusions.values[i].case_name,
+                exclusion.case_name)) {
+          return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                  "duplicate TEMPLATE-EXCLUDE for @%.*s",
+                                  (int)exclusion.case_name.size,
+                                  exclusion.case_name.data);
+        }
+      }
+      file->template_exclusions.values[file->template_exclusions.count++] =
+          exclusion;
+      continue;
+    }
     if (!loom_test_file_is_template_directive(trimmed)) {
       continue;
     }
@@ -1392,8 +1461,8 @@ iree_status_t loom_test_file_parse(iree_string_view_t source,
     iree_string_view_t preamble_text = iree_string_view_substr(
         source, template_preamble_range.start_byte,
         template_preamble_range.end_byte - template_preamble_range.start_byte);
-    IREE_RETURN_IF_ERROR(loom_test_file_parse_template_directive_from_preamble(
-        source.data, preamble_text, out_file));
+    IREE_RETURN_IF_ERROR(loom_test_file_parse_template_directives_from_preamble(
+        source.data, preamble_text, arena, out_file));
 
     loom_test_case_t preamble_case;
     IREE_RETURN_IF_ERROR(loom_test_file_parse_case_sections(

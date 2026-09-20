@@ -1,0 +1,289 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/selected_payload_transport.loom-test
+// RUN: pass source-to-low
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @selected_truncated(%input: vector<4xi32>, %left: i64, %right: i64) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i64
+  %payload = scalar.trunci %selected : i64 to i32
+  cfg.br ^forward(%payload: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @selected_truncated(%input: reg<llvmir.i32 x4>, %left: reg<llvmir.i64>, %right: reg<llvmir.i64>) -> (reg<llvmir.i32>) asm {
+  %value = extract.v4i32 %input, 0
+  %threshold = const.i32 0
+  %condition = cmp.sgt.i32 %value, %threshold
+  %selected = select.i64 %condition, %left, %right
+  %payload = trunc.i64.i32 %selected
+  low.br ^forward(%payload: reg<llvmir.i32>)
+^forward(%carried: reg<llvmir.i32>):
+  return %carried
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @selected_coordinate(%input: vector<4xi32>, %left: i32, %right: i32) -> (index) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload = index.cast %selected : i32 to index
+  cfg.br ^forward(%payload: index)
+^forward(%carried: index):
+  func.return %carried : index
+}
+
+// ----
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @selected_coordinate(%input: reg<llvmir.i32 x4>, %left: reg<llvmir.i32>, %right: reg<llvmir.i32>) -> (reg<llvmir.i64>) asm {
+  %value = extract.v4i32 %input, 0
+  %threshold = const.i32 0
+  %condition = cmp.sgt.i32 %value, %threshold
+  %selected = select.i32 %condition, %left, %right
+  %payload = sext.i32.i64 %selected
+  low.br ^forward(%payload: reg<llvmir.i64>)
+^forward(%carried: reg<llvmir.i64>):
+  return %carried
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @selected_offset(%input: vector<4xi32>, %left: i32, %right: i32) -> (offset) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload = index.cast %selected : i32 to offset
+  cfg.br ^forward(%payload: offset)
+^forward(%carried: offset):
+  func.return %carried : offset
+}
+
+// ----
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @selected_offset(%input: reg<llvmir.i32 x4>, %left: reg<llvmir.i32>, %right: reg<llvmir.i32>) -> (reg<llvmir.i64>) asm {
+  %value = extract.v4i32 %input, 0
+  %threshold = const.i32 0
+  %condition = cmp.sgt.i32 %value, %threshold
+  %selected = select.i32 %condition, %left, %right
+  %payload = zext.i32.i64 %selected
+  low.br ^forward(%payload: reg<llvmir.i64>)
+^forward(%carried: reg<llvmir.i64>):
+  return %carried
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @selected_extended_truncation(%input: vector<4xi32>, %left: i64, %right: i64) -> (i64) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i64
+  %narrowed = scalar.trunci %selected : i64 to i32
+  %payload = scalar.extsi %narrowed : i32 to i64
+  cfg.br ^forward(%payload: i64)
+^forward(%carried: i64):
+  func.return %carried : i64
+}
+
+// ----
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @selected_extended_truncation(%input: reg<llvmir.i32 x4>, %left: reg<llvmir.i64>, %right: reg<llvmir.i64>) -> (reg<llvmir.i64>) asm {
+  %value = extract.v4i32 %input, 0
+  %threshold = const.i32 0
+  %condition = cmp.sgt.i32 %value, %threshold
+  %selected = select.i64 %condition, %left, %right
+  %narrowed = trunc.i64.i32 %selected
+  %payload = sext.i32.i64 %narrowed
+  low.br ^forward(%payload: reg<llvmir.i64>)
+^forward(%carried: reg<llvmir.i64>):
+  return %carried
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @uniform_selected_truncated(%value: i32, %left: i64, %right: i64) -> (i32) {
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i64
+  %payload = scalar.trunci %selected : i64 to i32
+  cfg.br ^forward(%payload: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @uniform_selected_truncated(%value: reg<llvmir.i32>, %left: reg<llvmir.i64>, %right: reg<llvmir.i64>) -> (reg<llvmir.i32>) asm {
+  %threshold = const.i32 0
+  %condition = cmp.sgt.i32 %value, %threshold
+  %selected = select.i64 %condition, %left, %right
+  %payload = trunc.i64.i32 %selected
+  low.br ^forward(%payload: reg<llvmir.i32>)
+^forward(%carried: reg<llvmir.i32>):
+  return %carried
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @independent_assumption_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload, %bounded = scalar.assume %scalar, %selected [range(%selected, 0, 42)] : i32, i32
+  cfg.br ^forward(%payload: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @independent_assumption_payload(%input: reg<llvmir.i32 x4>, %left: reg<llvmir.i32>, %right: reg<llvmir.i32>, %payload: reg<llvmir.i32>) -> (reg<llvmir.i32>) asm {
+  %value = extract.v4i32 %input, 0
+  %threshold = const.i32 0
+  %condition = cmp.sgt.i32 %value, %threshold
+  %bounded = select.i32 %condition, %left, %right
+  low.br ^forward(%payload: reg<llvmir.i32>)
+^forward(%carried: reg<llvmir.i32>):
+  return %carried
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @selected_assumption_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload, %bounded = scalar.assume %scalar, %selected [range(%selected, 0, 42)] : i32, i32
+  cfg.br ^forward(%bounded: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @selected_assumption_payload(%input: reg<llvmir.i32 x4>, %left: reg<llvmir.i32>, %right: reg<llvmir.i32>, %payload: reg<llvmir.i32>) -> (reg<llvmir.i32>) asm {
+  %value = extract.v4i32 %input, 0
+  %threshold = const.i32 0
+  %condition = cmp.sgt.i32 %value, %threshold
+  %bounded = select.i32 %condition, %left, %right
+  low.br ^forward(%bounded: reg<llvmir.i32>)
+^forward(%carried: reg<llvmir.i32>):
+  return %carried
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @independent_transformed_assumption_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload, %bounded = scalar.assume %scalar, %selected [range(%selected, 0, 42)] : i32, i32
+  %increment = scalar.constant 3 : i32
+  %transformed = scalar.addi %payload, %increment : i32
+  cfg.br ^forward(%transformed: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @independent_transformed_assumption_payload(%input: reg<llvmir.i32 x4>, %left: reg<llvmir.i32>, %right: reg<llvmir.i32>, %payload: reg<llvmir.i32>) -> (reg<llvmir.i32>) asm {
+  %value = extract.v4i32 %input, 0
+  %threshold = const.i32 0
+  %condition = cmp.sgt.i32 %value, %threshold
+  %bounded = select.i32 %condition, %left, %right
+  %increment = const.i32 3
+  %transformed = add.i32 %payload, %increment
+  low.br ^forward(%transformed: reg<llvmir.i32>)
+^forward(%carried: reg<llvmir.i32>):
+  return %carried
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @selected_transformed_assumption_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload, %bounded = scalar.assume %scalar, %selected [range(%selected, 0, 42)] : i32, i32
+  %increment = scalar.constant 3 : i32
+  %transformed = scalar.addi %bounded, %increment : i32
+  cfg.br ^forward(%transformed: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @selected_transformed_assumption_payload(%input: reg<llvmir.i32 x4>, %left: reg<llvmir.i32>, %right: reg<llvmir.i32>, %payload: reg<llvmir.i32>) -> (reg<llvmir.i32>) asm {
+  %value = extract.v4i32 %input, 0
+  %threshold = const.i32 0
+  %condition = cmp.sgt.i32 %value, %threshold
+  %bounded = select.i32 %condition, %left, %right
+  %increment = const.i32 3
+  %transformed = add.i32 %bounded, %increment
+  low.br ^forward(%transformed: reg<llvmir.i32>)
+^forward(%carried: reg<llvmir.i32>):
+  return %carried
+}
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def public target(@target) @independent_predicate_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload = scalar.assume %scalar [lt(%scalar, %selected)] : i32
+  cfg.br ^forward(%payload: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+low.func.def public target<llvmir.generic.core>(@target) abi(object_function) @independent_predicate_payload(%input: reg<llvmir.i32 x4>, %left: reg<llvmir.i32>, %right: reg<llvmir.i32>, %payload: reg<llvmir.i32>) -> (reg<llvmir.i32>) asm {
+  low.br ^forward(%payload: reg<llvmir.i32>)
+^forward(%carried: reg<llvmir.i32>):
+  return %carried
+}

@@ -171,6 +171,100 @@ TEST_F(TemplateSyncTest, PreservesMatchingTargetEvidenceAndDirectives) {
   EXPECT_EQ(result.find("stale target evidence"), std::string::npos);
 }
 
+TEST_F(TemplateSyncTest, ExcludesExactCasesAndPreservesRemainingEvidence) {
+  const char* names[] = {"alpha", "beta", "gamma"};
+  const char* cases[] = {
+      "func.decl @target()\n"
+      "func.def target(@target) @alpha() {\n}\n"
+      "\n// ----\nalpha evidence\n\n",
+      "// REQUIRES: fake-target\n"
+      "// ERROR@+1: \"unsupported\"\n"
+      "func.decl @target()\n"
+      "func.def target(@target) @beta() {\n}\n"
+      "\n// ----\nbeta evidence\n\n",
+      "func.decl @target()\n"
+      "func.def target(@target) @gamma() {\n}\n"
+      "\n// ----\ngamma evidence\n\n",
+  };
+  const char* template_source =
+      "func.def @alpha() {\n}\n"
+      "\n// ====\n\nfunc.def @beta() {\n}\n"
+      "\n// ====\n\nfunc.def @gamma() {\n}\n";
+  for (size_t excluded = 0; excluded < IREE_ARRAYSIZE(names); ++excluded) {
+    SCOPED_TRACE(names[excluded]);
+    std::string preamble =
+        "// TEMPLATE: corpus.loom-test\n"
+        "// RUN: emit source-low output=low\n"
+        "// TEMPLATE-EXCLUDE: @";
+    preamble += names[excluded];
+    preamble += " requires explicit CFG support\n\n";
+    std::string target_source = preamble;
+    std::string expected = preamble;
+    for (size_t i = 0; i < IREE_ARRAYSIZE(cases); ++i) {
+      if (i > 0) {
+        target_source += "// ====\n\n";
+      }
+      target_source += cases[i];
+      if (i == excluded) {
+        continue;
+      }
+      if (expected != preamble) {
+        expected += "// ====\n\n";
+      }
+      expected += cases[i];
+    }
+    std::string result;
+    bool changed = false;
+    IREE_ASSERT_OK(
+        Build(target_source.c_str(), template_source, &result, &changed));
+    EXPECT_TRUE(changed);
+    EXPECT_EQ(result, expected);
+    IREE_ASSERT_OK(Build(expected.c_str(), template_source, &result, &changed));
+    EXPECT_FALSE(changed);
+    EXPECT_EQ(result, expected);
+
+    std::string extended_template = template_source;
+    extended_template += "\n// ====\n\nfunc.def @delta() {\n}\n";
+    IREE_ASSERT_OK(
+        Build(expected.c_str(), extended_template.c_str(), &result, &changed));
+    EXPECT_TRUE(changed);
+    EXPECT_EQ(result, expected +
+                          "// ====\n\nfunc.decl @target()\n"
+                          "func.def target(@target) @delta() {\n}\n");
+  }
+}
+
+TEST_F(TemplateSyncTest, MultipleExclusionsApplyWhenBootstrapping) {
+  const char* preamble =
+      "// TEMPLATE: corpus.loom-test\n"
+      "// TEMPLATE-EXCLUDE: @first requires explicit CFG support\n"
+      "// TEMPLATE-EXCLUDE: @last requires flat addressing\n\n";
+  std::string result;
+  bool changed = false;
+  IREE_ASSERT_OK(Build(preamble,
+                       "func.def @first() {\n}\n"
+                       "\n// ====\n\nfunc.def @middle() {\n}\n"
+                       "\n// ====\n\nfunc.def @last() {\n}\n",
+                       &result, &changed));
+  EXPECT_TRUE(changed);
+  EXPECT_EQ(result, std::string(preamble) + "func.def @middle() {\n}\n");
+}
+
+TEST_F(TemplateSyncTest, ExclusionsRejectUnknownNamesAndEmptyCoverage) {
+  for (const char* name : {"missing", "entry*", "entry"}) {
+    SCOPED_TRACE(name);
+    std::string target_source =
+        "// TEMPLATE: corpus.loom-test\n// TEMPLATE-EXCLUDE: @";
+    target_source += name;
+    target_source += " requires explicit CFG support\n\n";
+    std::string result;
+    bool changed = false;
+    IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                          Build(target_source.c_str(),
+                                "func.def @entry() {\n}\n", &result, &changed));
+  }
+}
+
 TEST_F(TemplateSyncTest, UsesKernelDefAsCaseSymbol) {
   std::string result;
   bool changed = false;

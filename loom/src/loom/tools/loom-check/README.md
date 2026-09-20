@@ -43,6 +43,31 @@ case separators, and expected output.
 
 ## Running And Updating Fixtures
 
+### Shared Corpus Templates
+
+A target fixture opts into a shared corpus with a file-preamble `TEMPLATE`
+directive. Normal runs reject stale source; `--update` synchronizes the source
+while preserving target bindings, case directives, and output expectations.
+Case identity is the sole function-like definition, or the unique public entry
+when a case includes private helpers.
+
+Architecturally inapplicable cases in a mixed fixture have explicit exclusions:
+
+```text
+// TEMPLATE: loom/src/loom/test/corpus/source_low/view_transport.loom-test
+// TEMPLATE-EXCLUDE: @correlated_cfg_rotation SPIR-V requires structured control flow.
+// RUN: emit source-low output=low control-flow=structured-low
+```
+
+Each exclusion names one exact case and gives a reason. Duplicate or unknown
+names fail, so a removed or renamed case requires updating its exclusions.
+All remaining cases, including newly added cases, keep their synchronization
+contract. `--update` removes excluded cases from the concrete target fixture.
+An entirely inapplicable corpus needs no fixture or build registration;
+excluding every case is an error. A target's dedicated rejection tests cover
+its architectural boundary. Missing implementations within the target's source
+contract retain precise diagnostic coverage in the shared-corpus fixture.
+
 ### Focused Output Checks
 
 When only a few properties matter, `with-checks` keeps assertions beside the IR

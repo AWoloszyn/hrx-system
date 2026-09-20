@@ -31,6 +31,9 @@ typedef struct loom_check_template_sync_case_t {
   // Arena-owned function symbol name used as the case key.
   iree_string_view_t key;
 
+  // Whether the target fixture explicitly excludes this template case.
+  bool excluded;
+
   // Arena-owned operation name of the func-like case definition.
   iree_string_view_t definition_op_name;
 
@@ -1097,6 +1100,28 @@ iree_status_t loom_check_template_sync_build_source(
         "template synchronization requires at least one template case");
   }
 
+  for (iree_host_size_t i = 0; i < target_file->template_exclusions.count;
+       ++i) {
+    iree_string_view_t name =
+        target_file->template_exclusions.values[i].case_name;
+    const loom_check_template_sync_case_t* record =
+        loom_check_template_sync_find_case(template_cases, template_case_count,
+                                           name);
+    if (!record) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "TEMPLATE-EXCLUDE names @%.*s, which is not a "
+                              "case in the template",
+                              (int)name.size, name.data);
+    }
+    template_cases[record - template_cases].excluded = true;
+  }
+  if (target_file->template_exclusions.count == template_case_count) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "TEMPLATE-EXCLUDE excludes every case; omit the target fixture when "
+        "the entire corpus is inapplicable");
+  }
+
   loom_check_template_sync_case_t* target_cases = NULL;
   iree_host_size_t target_case_count = 0;
   IREE_RETURN_IF_ERROR(loom_check_template_sync_collect_cases(
@@ -1119,8 +1144,12 @@ iree_status_t loom_check_template_sync_build_source(
   IREE_RETURN_IF_ERROR(loom_check_template_sync_append_source_range(
       target_source, preamble_range, new_source));
 
+  iree_host_size_t emitted_count = 0;
   for (iree_host_size_t i = 0; i < template_case_count; ++i) {
     const loom_check_template_sync_case_t* template_record = &template_cases[i];
+    if (template_record->excluded) {
+      continue;
+    }
     const loom_check_template_sync_case_t* target_record =
         loom_check_template_sync_find_case(target_cases, target_case_count,
                                            template_record->key);
@@ -1137,7 +1166,8 @@ iree_status_t loom_check_template_sync_build_source(
         block_pool, host_allocator));
     IREE_RETURN_IF_ERROR(loom_check_template_sync_append_case(
         target_source, template_record, target_record, &default_overlay,
-        /*is_first_case=*/i == 0, arena, new_source));
+        /*is_first_case=*/emitted_count == 0, arena, new_source));
+    ++emitted_count;
   }
 
   iree_string_view_t rebuilt_source = iree_string_builder_view(new_source);
