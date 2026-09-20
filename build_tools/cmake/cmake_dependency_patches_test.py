@@ -15,6 +15,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from build_tools.cmake.test_environment import configured_cmake_arguments
+
 CMAKE_COMMAND = os.environ["IREE_TEST_CMAKE_COMMAND"]
 PATCH_DRIVER = Path(__file__).with_name("iree_apply_dependency_patches.cmake")
 FETCH_HELPERS = Path(__file__).with_name("iree_third_party_helpers.cmake")
@@ -68,13 +70,25 @@ iree_populate_locked_fetch_content(sample sample_source)
             build = root / "build"
             for _ in range(2):
                 result = subprocess.run(
-                    [CMAKE_COMMAND, "-S", str(root), "-B", str(build)],
+                    [
+                        CMAKE_COMMAND,
+                        "-S",
+                        str(root),
+                        "-B",
+                        str(build),
+                        *configured_cmake_arguments(),
+                    ],
                     check=False,
                     text=True,
                     stdout=subprocess.PIPE,
                     stderr=subprocess.STDOUT,
                 )
                 self.assertEqual(result.returncode, 0, result.stdout)
+                cache = (build / "CMakeCache.txt").read_text(encoding="utf-8")
+                self.assertIn(
+                    f"CMAKE_GENERATOR:INTERNAL={os.environ['IREE_TEST_CMAKE_GENERATOR']}\n",
+                    cache,
+                )
                 for name in ("first", "second"):
                     value = build / "_deps/sample-src" / f"{name}.txt"
                     self.assertEqual(
