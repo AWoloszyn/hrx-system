@@ -229,7 +229,7 @@ def capture_access_failures(capture: Capture, cwd: Path, output: str) -> None:
             output,
         )
     ):
-        capture.file(Path(name), copy=False)
+        capture.file(Path(name), copy=True)
 
 
 def symbol_tool(environment: Mapping[str, str], cache: Mapping[str, str]) -> str | None:

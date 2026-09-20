@@ -130,11 +130,15 @@ class WindowsDiagnosticsTest(unittest.TestCase):
             params = root / "bazel-out/bin/cache.obj.params"
             params.parent.mkdir(parents=True)
             params.write_bytes(b"/I SDK\r\n/c cache.cc\r\n")
+            action_error = root / "actions" / "stderr-15695"
+            action_error.parent.mkdir()
+            action_error.write_bytes(b"compiler diagnostic\r\n")
             artifacts = root / "artifacts"
             artifacts.mkdir()
             (artifacts / "output.log").write_text(
                 f"{sdk}/wchar.h(17): fatal error C1083: Cannot open include file: 'missing.h': No such file or directory\n"
                 "cl.exe @bazel-out/bin/cache.obj.params\n"
+                f"ERROR: Couldn't delete action output directory: {action_error} (Permission denied)\n"
             )
             diagnostics.capture_failure(
                 artifacts,
@@ -154,6 +158,11 @@ class WindowsDiagnosticsTest(unittest.TestCase):
             self.assertEqual(
                 (artifacts / records[params.name]["copy"]).read_bytes(),
                 params.read_bytes(),
+            )
+            action_error.write_bytes(b"a later action replaced the diagnostic")
+            self.assertEqual(
+                (artifacts / records[action_error.name]["copy"]).read_bytes(),
+                b"compiler diagnostic\r\n",
             )
             self.assertNotIn("A_SECRET", manifest_text)
             self.assertNotIn("not captured", manifest_text)
