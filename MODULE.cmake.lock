@@ -142,6 +142,7 @@ set(IREE_DEP_CXX_PATCHES
   "//build_tools/third_party/cxx:packed_enums.patch"
   "//build_tools/third_party/cxx:bitfield_attributes.patch"
   "//build_tools/third_party/cxx:record_layout_owner.patch"
+  "//build_tools/third_party/cxx:compound_offsetof.patch"
   "//build_tools/third_party/cxx:template_lookahead.patch"
 )
 set(IREE_DEP_CXX_PATCH_ARGS

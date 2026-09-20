@@ -1,0 +1,26 @@
+// RUN: pass canonicalize,cse,dce
+// Cleanup retains unresolved scalar values and their config declarations.
+[[loom::config("tuning.factor")]] extern const unsigned factor;
+unsigned scaled(unsigned value) { return value * factor + factor; }
+// ----
+config.decl @tuning.factor : i32
+
+func.def public @scaled(%value: i32) -> (i32) {
+  %factor = config.get @tuning.factor : i32
+  %4 = scalar.muli %value, %factor : i32
+  %6 = scalar.addi %4, %factor : i32
+  func.return %6 : i32
+}
+
+// ====
+// Equal definitions coalesce, including an attributed constexpr provider.
+[[loom::config("tuning.factor")]] constexpr unsigned first = 5;
+[[loom::config("tuning.factor")]] const unsigned second{5};
+unsigned entry() { return first + second; }
+// ----
+config.def @tuning.factor = 5 : i32
+
+func.def public @entry() -> (i32) {
+  %5 = scalar.constant 10 : i32
+  func.return %5 : i32
+}

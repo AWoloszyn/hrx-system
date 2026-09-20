@@ -11,6 +11,7 @@
 #include <cxx/memory_layout.h>
 #include <cxx/preprocessor.h>
 
+#include <cstdint>
 #include <filesystem>
 #include <map>
 #include <optional>
@@ -204,16 +205,17 @@ TEST(SourceTest, DiagnosticSinkFailureCrossesTheParserSafeBoundary) {
 TEST(SourceTest, CopiedProviderFailureRetainsOriginalStatus) {
   loom_cxx_import_options_t options;
   loom_cxx_import_options_initialize(&options);
-  iree_status_t provided_status = nullptr;
+  uintptr_t provided_status_identity = 0;
   options.source_provider = {
       [](void* user_data, iree_string_view_t, bool*, iree_string_view_t*) {
         auto status =
             iree_make_status(IREE_STATUS_UNAVAILABLE, "provider failed");
         // Retain only the identity; the source boundary owns the status.
-        *static_cast<iree_status_t*>(user_data) = status;
+        *static_cast<uintptr_t*>(user_data) =
+            reinterpret_cast<uintptr_t>(status);
         return status;
       },
-      &provided_status};
+      &provided_status_identity};
   std::optional<StatusError> retained_error;
   try {
     Source source(IREE_SV("#include \"missing.h\"\n"),
@@ -224,7 +226,7 @@ TEST(SourceTest, CopiedProviderFailureRetainsOriginalStatus) {
   }
   ASSERT_TRUE(retained_error.has_value());
   auto status = retained_error->release();
-  EXPECT_EQ(status, provided_status);
+  EXPECT_EQ(reinterpret_cast<uintptr_t>(status), provided_status_identity);
   IREE_EXPECT_STATUS_IS(IREE_STATUS_UNAVAILABLE, status);
 }
 

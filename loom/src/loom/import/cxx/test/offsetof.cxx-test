@@ -1,0 +1,83 @@
+// RUN: verify
+// INPUT: cxx data-model=lp64
+#include "offsetof_layout.h"
+
+// ====
+// INPUT: cxx data-model=llp64
+#include "offsetof_layout.h"
+
+// ====
+// INPUT: cxx data-model=ilp32
+#include "offsetof_layout.h"
+
+// ====
+// INPUT: cxx
+struct Item { unsigned bits : 3; };
+struct Packet { Item items[3]; };
+// ERROR@+1: PARSE/036 "offsetof requires an addressable data member"
+auto offset() { return __builtin_offsetof(Packet, items[1].bits); }
+
+// ====
+// INPUT: cxx
+struct Item { unsigned value; };
+struct Packet { Item items[3]; };
+// ERROR@+1: PARSE/036 "no member named 'missing'"
+auto offset() { return __builtin_offsetof(Packet, items[1].missing); }
+
+// ====
+// INPUT: cxx
+struct Packet { unsigned values[3]; };
+// ERROR@+1: PARSE/036 "offsetof member designator requires a record type"
+auto offset() { return __builtin_offsetof(Packet, values[1].missing); }
+
+// ====
+// INPUT: cxx
+struct Packet { unsigned* values; };
+// ERROR@+1: PARSE/036 "offsetof subscript requires an array member"
+auto offset() { return __builtin_offsetof(Packet, values[1]); }
+
+// ====
+// INPUT: cxx
+struct Packet { unsigned values[3]; };
+// ERROR@+1: PARSE/036 "negative offsetof indices are not supported"
+auto offset() { return __builtin_offsetof(Packet, values[-1]); }
+
+// ====
+// INPUT: cxx
+struct Packet { unsigned values[3]; };
+// ERROR@+1: PARSE/036 "offsetof index must be an integral constant expression"
+auto offset(unsigned index) { return __builtin_offsetof(Packet, values[index]); }
+
+// ====
+// INPUT: cxx data-model=ilp32
+struct Packet { unsigned values[3]; };
+// ERROR@+1: PARSE/036 "offsetof result exceeds source size_t"
+auto offset() { return __builtin_offsetof(Packet, values[0x40000000ULL]); }
+
+// ====
+// INPUT: cxx data-model=lp64
+struct Packet { unsigned values[3]; };
+// ERROR@+1: PARSE/036 "offsetof result exceeds source size_t"
+auto offset() { return __builtin_offsetof(Packet, values[0x4000000000000000ULL]); }
+
+// ====
+// INPUT: cxx
+struct Packet { unsigned values[3]; };
+// ERROR@+1: PARSE/036 "offsetof index must be an integral constant expression"
+auto offset() { return __builtin_offsetof(Packet, values[1.5]); }
+
+// ====
+// INPUT: cxx
+struct Item { static unsigned value; };
+struct Packet { Item items[3]; };
+// ERROR@+1: PARSE/036 "offsetof requires an addressable data member"
+auto offset() { return __builtin_offsetof(Packet, items[1].value); }
+
+// ====
+// INPUT: cxx data-model=lp64
+struct Item { char tag; char value; };
+struct Packet { char prefix; Item items[1]; };
+auto offset() {
+  // ERROR@+1: PARSE/036 "offsetof result exceeds source size_t"
+  return __builtin_offsetof(Packet, items[0x7fffffffffffffffULL].value);
+}

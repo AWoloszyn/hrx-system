@@ -1,0 +1,54 @@
+// RUN: roundtrip
+// INPUT: cxx
+#include "offsetof_layout.h"
+auto payload_offset() {
+  return __builtin_offsetof(OffsetPacket, blocks[2].payload[1]);
+}
+// ----
+func.def public @payload_offset() -> (i64) {
+  %1 = scalar.constant 32 : i64
+  func.return %1 : i64
+}
+
+// ====
+// INPUT: cxx data-model=lp64
+// GNU offset queries permit constant subscripts beyond the declared extent.
+// This exercises size_t arithmetic without allocating a large source object.
+struct Packet { char bytes[1]; };
+static_assert(__builtin_offsetof(Packet, bytes[0x100000005ULL]) == 0x100000005ULL);
+auto large_offset() {
+  return __builtin_offsetof(Packet, bytes[0x100000005ULL]);
+}
+// ----
+func.def public @large_offset() -> (i64) {
+  %1 = scalar.constant 4294967301 : i64
+  func.return %1 : i64
+}
+
+// ====
+// INPUT: cxx data-model=llp64
+// GNU offset queries permit constant subscripts beyond the declared extent.
+// This exercises size_t arithmetic without allocating a large source object.
+struct Packet { char bytes[1]; };
+static_assert(__builtin_offsetof(Packet, bytes[0x100000005ULL]) == 0x100000005ULL);
+auto large_offset() {
+  return __builtin_offsetof(Packet, bytes[0x100000005ULL]);
+}
+// ----
+func.def public @large_offset() -> (i64) {
+  %1 = scalar.constant 4294967301 : i64
+  func.return %1 : i64
+}
+
+// ====
+// INPUT: cxx std=c23
+struct Item { char tag; unsigned value; };
+struct Packet { char tag; struct Item items[2]; };
+unsigned long long offset(void) {
+  return __builtin_offsetof(struct Packet, items[1].value);
+}
+// ----
+func.def public @offset() -> (i64) {
+  %1 = scalar.constant 16 : i64
+  func.return %1 : i64
+}

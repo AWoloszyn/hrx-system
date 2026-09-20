@@ -172,6 +172,11 @@ static iree_status_t append_status(iree_string_builder_t* builder,
 }
 ```
 
+C++ constructors follow the same parameter contract: an `iree_status_t`
+parameter takes ownership, while a const status value or reference borrows it.
+Ownership analysis uses each parameter's type, including for exception objects,
+independently of the class name.
+
 The check intentionally keeps exceptions narrow. Status primitives that define
 the observer API, known status sinks, C++ `iree::Status` formatting internals,
 and documented borrowed callback boundaries are modeled explicitly. Ordinary

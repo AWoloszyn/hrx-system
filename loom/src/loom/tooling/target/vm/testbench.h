@@ -32,6 +32,8 @@ typedef struct loom_vm_testbench_t {
   loom_testbench_case_plan_list_t cases;
   // Borrowed admitted source snapshots, live through the final invocation.
   loom_source_resolver_t source_resolver;
+  // Borrowed invocation configuration, live through the final function call.
+  const loom_tooling_config_set_t* config_set;
   // Allocator for bytecode and runtime objects.
   iree_allocator_t host_allocator;
   // Owned process, or NULL until the first function call is prepared.
@@ -56,12 +58,13 @@ void loom_vm_testbench_deinitialize(loom_vm_testbench_t* testbench);
 
 // Binds the runner-selected cases and returns a borrowed function-call
 // callback. |user_data| points to an initialized loom_vm_testbench_t. The case
-// list remains live with the source resolver through the final call;
-// deinitialization does not access either. The resolver supports copies
-// preserving source IDs.
+// list, source resolver and optional config set remain live through the final
+// call; deinitialization does not access them. The resolver supports copies
+// preserving source IDs. Configuration specializes the private compiler copy.
 loom_testbench_invocation_provider_t loom_vm_testbench_invocation_provider(
     void* user_data, loom_testbench_case_plan_list_t cases,
-    loom_source_resolver_t source_resolver);
+    loom_source_resolver_t source_resolver,
+    const loom_tooling_config_set_t* config_set);
 
 #ifdef __cplusplus
 }  // extern "C"

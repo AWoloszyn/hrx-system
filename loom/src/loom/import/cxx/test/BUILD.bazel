@@ -6,7 +6,7 @@
 
 load("//build_tools/sanitizer:suppressions.bzl", "rocm_suppressions")
 load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with", "loom_generated_file", "loom_generated_file_family")
-load("//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_test")
+load("//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_library", "loom_test")
 load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
 load("//loom/requirements:defs.bzl", "EMIT_AMDGPU", "EXECUTE_IREE_HAL", "TARGET_ARCH_AMDGPU")
 load("//runtime/requirements:defs.bzl", "AMDGPU_RESOURCE", "HAL_AMDGPU")
@@ -29,6 +29,9 @@ loom_check_test_suite(
         "assumptions_invalid.cxx-test",
         "check.cxx-test",
         "conditionals.cxx-test",
+        "config.cxx-test",
+        "config_cleanup.cxx-test",
+        "config_invalid.cxx-test",
         "const.cxx-test",
         "control_invalid.cxx-test",
         "data_models.cxx-test",
@@ -41,9 +44,12 @@ loom_check_test_suite(
         "launch.cxx-test",
         "launch_invalid.cxx-test",
         "layout_attributes.cxx-test",
+        "layout_attributes_roundtrip.cxx-test",
         "locations.cxx-test",
         "loops.cxx-test",
         "macro_operators.cxx-test",
+        "offsetof.cxx-test",
+        "offsetof_roundtrip.cxx-test",
         "pointers.cxx-test",
         "scalar.cxx-test",
         "scalar_invalid.cxx-test",
@@ -60,6 +66,7 @@ loom_check_test_suite(
         "aligned_layout.h",
         "enum_semantics.h",
         "locations.h",
+        "offsetof_layout.h",
         "packed_enums.h",
         "packed_layout.h",
         "record_layout.h",
@@ -87,6 +94,36 @@ _HOST_COMPATIBILITY = loom_config_compatible_with([
     "//loom/config/import:cxx",
     "//loom/config/target/arch:vm",
 ])
+
+loom_library(
+    name = "config_values",
+    srcs = ["config_values.cpp"],
+    target_compatible_with = _HOST_COMPATIBILITY,
+)
+
+[
+    loom_test(
+        name = "config_" + name + "_test",
+        srcs = [":config_values"],
+        execution_profile = loom_execution_profile(
+            name = name,
+            executor = "reference",
+            runner_args = [
+                "--case=" + name,
+                "--config=tuning.factor=" + factor,
+                "--config=tuning.count=" + count,
+                "--config=tuning.enabled=" + enabled,
+            ],
+            target_class = "cpu",
+            target_family = "vm",
+        ),
+        target_compatible_with = _HOST_COMPATIBILITY,
+    )
+    for name, factor, count, enabled in [
+        ("five", "5", "7", "true"),
+        ("nine", "9", "13", "false"),
+    ]
+]
 
 [
     loom_generated_file(

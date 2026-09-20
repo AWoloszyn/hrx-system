@@ -19,6 +19,7 @@ import os
 import re
 
 import bazel_to_cmake_config
+import bazel_to_cmake_requirements
 import bazel_to_cmake_targets
 
 _LOCATION_PATTERN = re.compile(
@@ -1189,8 +1190,11 @@ class BuildFileFunctions(object):
             rel = bzl_label[2:].replace(":", "/")
             abs_path = os.path.join(self._repo_root, rel)
 
-        namespace = {}
-        if abs_path and os.path.isfile(abs_path):
+        namespace = bazel_to_cmake_requirements.load_requirement_definitions(
+            self._repo_root, bzl_label
+        )
+        if namespace is None and abs_path and os.path.isfile(abs_path):
+            namespace = {}
             try:
                 with open(abs_path) as f:
                     exec(f.read(), namespace)
@@ -1199,6 +1203,8 @@ class BuildFileFunctions(object):
                 # Starlark-only expression failed may depend on incomplete file
                 # state and are no more trustworthy than unresolved symbols.
                 namespace = {}
+
+        namespace = namespace or {}
 
         for local_name, exported_name in requested_symbols:
             if local_name in self._exec_namespace:

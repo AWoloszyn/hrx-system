@@ -148,6 +148,9 @@ function(loom_module)
       DEPENDENCY "${_INPUT_TARGET}"
     )
   endforeach()
+  foreach(_INPUT IN LISTS _SOURCES _LIBRARIES _RULE_DATA)
+    iree_generated_output_add_consumer("${_INPUT}" "${_TARGET}")
+  endforeach()
   iree_register_generated_output_producer("${_TARGET}"
     OUTPUTS "${_OUTPUT}"
   )

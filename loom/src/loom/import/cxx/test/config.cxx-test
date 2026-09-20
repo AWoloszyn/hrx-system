@@ -1,0 +1,141 @@
+// RUN: roundtrip
+// Header declarations preserve typed named dependencies across source aliases.
+namespace tuning {
+[[loom::config("attention.factor")]] extern const unsigned factor;
+[[loom::config("attention.factor")]] extern const unsigned factor;
+}
+[[using loom: config("attention.factor")]] extern const unsigned alias;
+unsigned scaled(unsigned value) { return value * tuning::factor + alias; }
+// ----
+config.decl @attention.factor : i32
+
+func.def public @scaled(%value: i32) -> (i32) {
+  %factor = config.get @attention.factor : i32
+  %4 = scalar.muli %value, %factor : i32
+  %alias = config.get @attention.factor : i32
+  %6 = scalar.addi %4, %alias : i32
+  func.return %6 : i32
+}
+
+// ====
+// A provider translation unit needs no functions or roots.
+[[loom::config("tuning.factor")]] const unsigned factor = 5;
+[[loom::config("tuning.enabled")]] const bool enabled = true;
+[[loom::config("tuning.scale")]] const float scale = 0.5f;
+[[loom::config("tuning.byte")]] const unsigned char byte = 255;
+[[loom::config("tuning.mask")]] const unsigned long long mask = ~0ull;
+enum class Policy : unsigned short { Fast = 2 };
+[[loom::config("tuning.policy")]] const Policy policy = Policy::Fast;
+// ----
+config.def @tuning.factor = 5 : i32
+
+config.def @tuning.enabled = 1 : i1
+
+config.def @tuning.scale = 0.5 : f32
+
+config.def @tuning.byte = -1 : i8
+
+config.def @tuning.mask = -1 : i64
+
+config.def @tuning.policy = 2 : i16
+
+// ====
+// A same-TU definition fixes earlier reads, redeclarations and aliases alike.
+[[loom::config("tuning.factor")]] extern const unsigned factor;
+[[loom::config("tuning.factor")]] extern const unsigned alias;
+unsigned before() { return factor + alias; }
+[[loom::config("tuning.factor")]] const unsigned factor = 5;
+constexpr unsigned twice = factor * 2;
+unsigned after() { return factor + alias + twice; }
+// ----
+config.def @tuning.factor = 5 : i32
+
+func.def public @before() -> (i32) {
+  %factor = scalar.constant 5 : i32
+  %alias = scalar.constant 5 : i32
+  %4 = scalar.addi %factor, %alias : i32
+  func.return %4 : i32
+}
+
+func.def public @after() -> (i32) {
+  %factor = scalar.constant 5 : i32
+  %alias = scalar.constant 5 : i32
+  %8 = scalar.addi %factor, %alias : i32
+  %twice = scalar.constant 10 : i32
+  %10 = scalar.addi %8, %twice : i32
+  func.return %10 : i32
+}
+
+// ====
+// Schedule values and loop bounds use the same ordinary scalar config reads.
+[[loom::config("tuning.unroll")]] extern const unsigned unroll;
+[[loom::config("tuning.depth")]] extern const unsigned depth;
+[[loom::config("tuning.count")]] extern const unsigned count;
+unsigned sum() {
+  unsigned total = 0;
+  [[loom::unroll(unroll), loom::pipeline(depth)]]
+  for (unsigned index = 0; index < count; ++index) { total += index; }
+  return total;
+}
+// ----
+config.decl @tuning.unroll : i32
+
+config.decl @tuning.depth : i32
+
+config.decl @tuning.count : i32
+
+func.def public @sum() -> (i32) {
+  %total$4 = scalar.constant 0 : i32
+  %index = scalar.constant 0 : i32
+  %6 = index.cast %index : i32 to offset
+  %count = config.get @tuning.count : i32
+  %8 = index.cast %count : i32 to offset
+  %9 = index.constant 1 : offset
+  %depth = config.get @tuning.depth : i32
+  %unroll = config.get @tuning.unroll : i32
+  %12 = scalar.extui %depth : i32 to i64
+  %13 = index.cast %12 : i64 to index
+  %14 = scalar.extui %unroll : i32 to i64
+  %15 = index.cast %14 : i64 to index
+  %total$18 = scf.for %index = [%6 to %8 step %9](%total$17 = %total$4 : i32) -> (i32) pipeline(%13) unroll(%15) {
+    %19 = index.cast %index : offset to i32
+    %total$20 = scalar.addi %total$17, %19 : i32
+    scf.yield %total$20 : i32
+  }
+  func.return %total$18 : i32
+}
+
+// ====
+// Runtime C++ control flow stays available for specialization in Loom.
+[[loom::config("tuning.enabled")]] extern const bool enabled;
+int choose(int value) { if (enabled) return value + 1; return value - 1; }
+// ----
+config.decl @tuning.enabled : i1
+
+func.def public @choose(%value: i32) -> (i32) {
+  %enabled = config.get @tuning.enabled : i1
+  %4 = scf.if %enabled -> (i32) {
+    %5 = scalar.constant 1 : i32
+    %6 = scalar.addi %value, %5 : i32
+    scf.yield %6 : i32
+  } else {
+    %7 = scalar.constant 1 : i32
+    %8 = scalar.subi %value, %7 : i32
+    scf.yield %8 : i32
+  }
+  func.return %4 : i32
+}
+
+// ====
+// Attribute placement is shared by the supported C and C++ source modes.
+// INPUT: cxx std=c23
+[[loom::config("tuning.factor")]] extern const unsigned factor;
+unsigned scale(unsigned value) { return value * factor; }
+// ----
+config.decl @tuning.factor : i32
+
+func.def public @scale(%value: i32) -> (i32) {
+  %factor = config.get @tuning.factor : i32
+  %4 = scalar.muli %value, %factor : i32
+  func.return %4 : i32
+}

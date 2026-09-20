@@ -19,6 +19,7 @@ loom_cc_library(
     "functions.cc"
   DEPS
     iree::third_party::cxx_parser
+    loom::import::cxx::binding::config
     loom::import::cxx::binding::intrinsics
     loom::import::cxx::binding::launch
     loom::import::cxx::source

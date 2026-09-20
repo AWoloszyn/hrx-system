@@ -31,6 +31,10 @@ void Functions::select(std::span<const iree_string_view_t> roots) {
   }
   std::vector<cxx::FunctionSymbol*> definitions;
   collect(root->declarationList, DeclarationScope::Namespace, definitions);
+  loom_builder_t builder;
+  loom_builder_initialize(module_, &module_->arena, loom_module_block(module_),
+                          &builder);
+  configs_.build(&builder);
   for (const auto& [function, source] : check_cases_) {
     if (!definition(function)) {
       diagnostics_.reject(unit_, source, "check cases require a definition");
@@ -98,7 +102,7 @@ void Functions::collect(cxx::DeclarationAST* declaration,
                         DeclarationScope scope,
                         std::vector<cxx::FunctionSymbol*>& definitions) {
   if (auto* function = cxx::ast_cast<cxx::FunctionDefinitionAST>(declaration)) {
-    check_declaration(function->symbol, function->attributeList, function,
+    admit_declaration(function->symbol, function->attributeList, function,
                       scope);
     if (scope == DeclarationScope::Namespace &&
         !function->symbol->isTemplatePattern()) {
@@ -110,8 +114,8 @@ void Functions::collect(cxx::DeclarationAST* declaration,
     }
   } else if (auto* space =
                  cxx::ast_cast<cxx::NamespaceDefinitionAST>(declaration)) {
-    check_declaration(nullptr, space->attributeList, space, scope);
-    check_declaration(nullptr, space->extraAttributeList, space, scope);
+    admit_declaration(nullptr, space->attributeList, space, scope);
+    admit_declaration(nullptr, space->extraAttributeList, space, scope);
     collect(space->declarationList, scope, definitions);
   } else if (auto* linkage =
                  cxx::ast_cast<cxx::LinkageSpecificationAST>(declaration)) {
@@ -121,29 +125,29 @@ void Functions::collect(cxx::DeclarationAST* declaration,
     collect(pattern->declaration, DeclarationScope::Nested, definitions);
   } else if (auto* alias =
                  cxx::ast_cast<cxx::AliasDeclarationAST>(declaration)) {
-    check_declaration(nullptr, alias->attributeList, alias, scope);
+    admit_declaration(nullptr, alias->attributeList, alias, scope);
   } else if (auto* attribute =
                  cxx::ast_cast<cxx::AttributeDeclarationAST>(declaration)) {
-    check_declaration(nullptr, attribute->attributeList, attribute, scope);
+    admit_declaration(nullptr, attribute->attributeList, attribute, scope);
   } else if (auto* enumeration =
                  cxx::ast_cast<cxx::OpaqueEnumDeclarationAST>(declaration)) {
-    check_declaration(nullptr, enumeration->attributeList, enumeration, scope);
+    admit_declaration(nullptr, enumeration->attributeList, enumeration, scope);
   } else if (auto* simple =
                  cxx::ast_cast<cxx::SimpleDeclarationAST>(declaration)) {
     if (!simple->initDeclaratorList) {
-      check_declaration(nullptr, simple->attributeList, simple, scope);
+      admit_declaration(nullptr, simple->attributeList, simple, scope);
     }
     for (auto* specifier : cxx::ListView{simple->declSpecifierList}) {
       if (auto* record = cxx::ast_cast<cxx::ClassSpecifierAST>(specifier)) {
-        check_declaration(nullptr, record->attributeList, record,
+        admit_declaration(nullptr, record->attributeList, record,
                           DeclarationScope::Nested);
         collect(record->declarationList, DeclarationScope::Nested, definitions);
       } else if (auto* enumeration =
                      cxx::ast_cast<cxx::EnumSpecifierAST>(specifier)) {
-        check_declaration(nullptr, enumeration->attributeList, enumeration,
+        admit_declaration(nullptr, enumeration->attributeList, enumeration,
                           scope);
         for (auto* enumerator : cxx::ListView{enumeration->enumeratorList}) {
-          check_declaration(nullptr, enumerator->attributeList, enumerator,
+          admit_declaration(nullptr, enumerator->attributeList, enumerator,
                             scope);
         }
       }
@@ -151,7 +155,8 @@ void Functions::collect(cxx::DeclarationAST* declaration,
     for (auto* declarator : cxx::ListView{simple->initDeclaratorList}) {
       auto* function =
           cxx::symbol_cast<cxx::FunctionSymbol>(declarator->symbol);
-      check_declaration(function, simple->attributeList, declarator, scope);
+      bool is_config = admit_declaration(
+          declarator->symbol, simple->attributeList, declarator, scope);
       if (scope != DeclarationScope::Namespace) {
         continue;
       }
@@ -161,7 +166,7 @@ void Functions::collect(cxx::DeclarationAST* declaration,
       }
       auto* variable =
           cxx::symbol_cast<cxx::VariableSymbol>(declarator->symbol);
-      if (variable && !variable->isExtern() &&
+      if (variable && !is_config && !variable->isExtern() &&
           !(variable->isConstexpr() ||
             (unit_.typeTraits().is_const(variable->type()) &&
              variable->constValue()))) {
@@ -173,10 +178,11 @@ void Functions::collect(cxx::DeclarationAST* declaration,
   }
 }
 
-void Functions::check_declaration(
-    cxx::FunctionSymbol* function,
-    cxx::List<cxx::AttributeSpecifierAST*>* attributes, cxx::AST* owner,
-    DeclarationScope scope) {
+bool Functions::admit_declaration(
+    cxx::Symbol* symbol, cxx::List<cxx::AttributeSpecifierAST*>* attributes,
+    cxx::AST* owner, DeclarationScope scope) {
+  bool is_config = configs_.declaration(symbol, attributes, owner);
+  auto* function = cxx::symbol_cast<cxx::FunctionSymbol>(symbol);
   auto require_namespace_function = [&] {
     if (!function || scope != DeclarationScope::Namespace ||
         function->isTemplatePattern() ||
@@ -253,6 +259,7 @@ void Functions::check_declaration(
     diagnostics_.reject(unit_, owner,
                         "check annotations must precede the declaration");
   }
+  return is_config;
 }
 
 cxx::FunctionSymbol* Functions::definition(
@@ -326,6 +333,7 @@ loom_symbol_ref_t Functions::create_symbol(cxx::FunctionSymbol* function) {
   if (ordinal) {
     spelling += "_" + std::to_string(ordinal);
   }
+  configs_.reject_symbol_conflict(spelling);
   loom_string_id_t name;
   check(loom_module_intern_string(module_, view(spelling), &name));
   loom_symbol_id_t id;
@@ -380,7 +388,7 @@ FunctionBody Functions::define(cxx::FunctionSymbol* symbol, Types& types,
     auto saved =
         loom_builder_enter_region(builder, op, loom_kernel_def_config(op));
     auto spelling = module_->strings.entries[name_id];
-    launches_.build(symbol, {spelling.data, spelling.size}, builder,
+    launches_.build(symbol, {spelling.data, spelling.size}, configs_, builder,
                     locations.get(definition));
     loom_builder_restore(builder, saved);
   } else {

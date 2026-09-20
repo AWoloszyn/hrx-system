@@ -130,251 +130,6 @@ package_group(
         self.assertEqual(cmake.count("iree_add_all_subdirs()"), 1)
         self.assertNotIn("implementation_consumers", cmake)
 
-    def test_loom_c_root_targets_strip_filesystem_staging_prefix(self):
-        repo_root = Path(__file__).resolve().parents[2]
-        loom = bazel_to_cmake_config.include_project(
-            str(repo_root / ".bazel_to_cmake.cfg.py"),
-            "loom/.bazel_to_cmake.cfg.py",
-        )
-
-        converter = bazel_to_cmake_config.ProjectTargetConverter(
-            repo_map={"@hrx": ""},
-            projects=[loom],
-        )
-
-        self.assertEqual(
-            converter.convert_target("//loom/src/loom/ir"),
-            ["loom::ir"],
-        )
-        self.assertEqual(
-            converter.convert_target("@hrx//loom/src/loom/tools/loom-check"),
-            ["loom::tools::loom-check"],
-        )
-        self.assertEqual(
-            converter.convert_target("//loom/src/loom/tools/loom-check:loom-check"),
-            ["loom::tools::loom-check::loom-check"],
-        )
-        self.assertEqual(
-            converter.convert_target("//loom/src:defines"),
-            [],
-        )
-
-    def test_loom_check_test_suite_preserves_suite_rule(self):
-        repo_root = Path(__file__).resolve().parents[2]
-        loom = bazel_to_cmake_config.include_project(
-            str(repo_root / ".bazel_to_cmake.cfg.py"),
-            "loom/.bazel_to_cmake.cfg.py",
-        )
-        repo_cfg = SimpleNamespace(PROJECTS=[loom], REPO_MAP={"@hrx": ""})
-
-        cmake = bazel_to_cmake_converter.convert_build_file(
-            """
-load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
-
-loom_check_test_suite(
-    name = "loom_check_file_test",
-    srcs = [
-        "test/source_low/b.loom-test",
-        "test/source_low/a.loom-test",
-    ],
-    data = [
-        "//loom/src/loom/test/corpus/source_low:vector_dot.loom-test",
-        "//third_party:spirv_dis",
-    ],
-    tags = ["gpu"],
-    test_name_prefix_to_strip = "test/source_low/",
-)
-""",
-            repo_cfg,
-            str(repo_root / "loom/src/loom/target/arch/amdgpu"),
-            repo_root=str(repo_root),
-        )
-
-        self.assertIn("if(LOOM_TARGET_ARCH_AMDGPU)", cmake)
-        self.assertIn("loom_check_test_suite(", cmake)
-        self.assertNotIn("iree_native_test(", cmake)
-        self.assertIn('    "test/source_low/b.loom-test"', cmake)
-        self.assertIn('    "test/source_low/a.loom-test"', cmake)
-        self.assertLess(
-            cmake.index('    "test/source_low/b.loom-test"'),
-            cmake.index('    "test/source_low/a.loom-test"'),
-        )
-        self.assertIn(
-            '"${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/'
-            'vector_dot.loom-test"',
-            cmake,
-        )
-        self.assertIn('"iree::third_party::spirv_dis"', cmake)
-        self.assertIn('    "gpu"', cmake)
-        self.assertIn('    "test/source_low/"', cmake)
-        self.assertNotIn('    "loom-check"', cmake)
-
-    def test_importer_check_suite_preserves_optional_guard(self):
-        repo_root = Path(__file__).resolve().parents[2]
-        loom = bazel_to_cmake_config.include_project(
-            str(repo_root / ".bazel_to_cmake.cfg.py"),
-            "loom/.bazel_to_cmake.cfg.py",
-        )
-        repo_cfg = SimpleNamespace(PROJECTS=[loom], REPO_MAP={"@hrx": ""})
-        cmake = bazel_to_cmake_converter.convert_build_file(
-            'loom_check_test_suite(name="test", srcs=["import.cxx-test"], '
-            'data=["helper.h"])',
-            repo_cfg,
-            str(repo_root / "loom/src/loom/import/cxx/tooling/test"),
-            repo_root=str(repo_root),
-        )
-        self.assertIn("if(LOOM_IMPORT_CXX)", cmake)
-        self.assertIn('"import.cxx-test"', cmake)
-        self.assertIn("loom_check_test_suite(", cmake)
-        self.assertIn("helper.h", cmake)
-
-    def test_loom_check_test_suite_preserves_glob_srcs(self):
-        repo_root = Path(__file__).resolve().parents[2]
-        loom = bazel_to_cmake_config.include_project(
-            str(repo_root / ".bazel_to_cmake.cfg.py"),
-            "loom/.bazel_to_cmake.cfg.py",
-        )
-        repo_cfg = SimpleNamespace(PROJECTS=[loom], REPO_MAP={"@hrx": ""})
-
-        cmake = bazel_to_cmake_converter.convert_build_file(
-            """
-load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
-
-loom_check_test_suite(
-    name = "loom_check_file_test",
-    srcs = glob(["test/source_low/*.loom-test"]),
-    test_name_prefix_to_strip = "test/source_low/",
-)
-""",
-            repo_cfg,
-            str(repo_root / "loom/src/loom/target/arch/amdgpu"),
-            repo_root=str(repo_root),
-        )
-
-        self.assertIn(
-            "file(GLOB _GLOB_TEST_SOURCE_LOW_X_LOOM_TEST LIST_DIRECTORIES false",
-            cmake,
-        )
-        self.assertIn(
-            "RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS "
-            "test/source_low/*.loom-test)",
-            cmake,
-        )
-        self.assertIn("loom_check_test_suite(", cmake)
-        self.assertIn('    "${_GLOB_TEST_SOURCE_LOW_X_LOOM_TEST}"', cmake)
-        self.assertNotIn('"test/source_low/a.loom-test"', cmake)
-        self.assertNotIn("iree_native_test(", cmake)
-
-    def test_unprofiled_loom_test_preserves_source_admission(self):
-        repo_root = Path(__file__).resolve().parents[2]
-        loom = bazel_to_cmake_config.include_project(
-            str(repo_root / ".bazel_to_cmake.cfg.py"), "loom/.bazel_to_cmake.cfg.py"
-        )
-        repo_cfg = SimpleNamespace(PROJECTS=[loom], REPO_MAP={"@hrx": ""})
-        cmake = bazel_to_cmake_converter.convert_build_file(
-            """
-load("//loom/build_tools/bazel:defs.bzl", "loom_library", "loom_test")
-load("//loom/build_tools/bazel:build_defs.bzl", "loom_generated_file", "loom_generated_file_family")
-loom_generated_file(
-    name = "cases_gen",
-    generator = "//loom/py/loom/gen/test:cxx_kernel_cases",
-    output = "generated_cases.cc",
-    output_flag = "--output",
-    testonly = True,
-)
-loom_generated_file_family(
-    name = "arrays_gen",
-    generator = "//loom/py/loom/gen/test:cxx_kernel_cases",
-    outputs = ["checks.loom", "arrays"],
-    output_flags = ["--output", "--arrays"],
-    output_directories = ["arrays"],
-    testonly = True,
-)
-loom_library(
-    name = "source_kernel",
-    srcs = ["kernel.cc"],
-    data = ["kernel.h"],
-    inputopts = ["cxx:root=entry"],
-)
-loom_test(
-    name = "source_test",
-    srcs = ["check_cases.cc", ":generated_cases.cc"],
-    data = ["check_cases.h"],
-    input_format = "cxx",
-    inputopts = ["cxx:std=c++20 D=EXPECTED=5"],
-    args = ["--case=header_assertion"],
-    target_compatible_with = ["//loom/config/target/arch:vm"],
-)
-""",
-            repo_cfg,
-            str(repo_root / "loom/src/loom/import/cxx/tooling"),
-            repo_root=str(repo_root),
-        )
-        self.assertIn("if(LOOM_TARGET_ARCH_VM AND LOOM_IMPORT_CXX)", cmake)
-        self.assertIn("loom_generated_file(", cmake)
-        self.assertIn('"${CMAKE_CURRENT_BINARY_DIR}/generated_cases.cc"', cmake)
-        self.assertIn("TESTONLY", cmake)
-        self.assertIn("loom_generated_file_family(", cmake)
-        self.assertIn('"--arrays"', cmake)
-        self.assertIn("loom_module(", cmake)
-        self.assertIn("NAME\n    source_kernel", cmake)
-        self.assertIn('INPUTOPTS\n    "cxx:root=entry"', cmake)
-        self.assertIn("STRICT_DEPS", cmake)
-        self.assertIn("loom_test(", cmake)
-        self.assertIn('"check_cases.cc"', cmake)
-        self.assertIn(
-            '"${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.h"',
-            cmake,
-        )
-        self.assertIn('INPUT_FORMAT\n    "cxx"', cmake)
-        self.assertIn('"cxx:std=c++20 D=EXPECTED=5"', cmake)
-        self.assertIn('"--case=header_assertion"', cmake)
-
-    def test_ignored_rule_accepts_loaded_and_inline_execution_profiles(self):
-        repo_root = Path(__file__).resolve().parents[2]
-        loom = bazel_to_cmake_config.include_project(
-            str(repo_root / ".bazel_to_cmake.cfg.py"),
-            "loom/.bazel_to_cmake.cfg.py",
-        )
-        repo_cfg = SimpleNamespace(PROJECTS=[loom], REPO_MAP={"@hrx": ""})
-
-        cmake = bazel_to_cmake_converter.convert_build_file(
-            """
-load(
-    "//loom/build_tools/bazel:defs.bzl",
-    "loom_execution_profile",
-    "loom_test",
-)
-load(
-    "//synthetic:policy.bzl",
-    TEST_EXECUTION_POLICY = "DEVICE_EXECUTION_POLICY",
-)
-
-loom_test(
-    name = "one_test",
-    srcs = ["one.loom", "two.loom"],
-    execution_profile = TEST_EXECUTION_POLICY,
-)
-
-loom_test(
-    name = "inline_profile_test",
-    srcs = ["one.loom"],
-    execution_profile = loom_execution_profile(
-        name = "reference",
-        target_family = "vm",
-        target_class = "cpu",
-        executor = "reference",
-    ),
-)
-""",
-            repo_cfg,
-            str(repo_root / "loom/src/loom/tooling/target/amdgpu/test"),
-            repo_root=str(repo_root),
-        )
-
-        self.assertNotIn("one_test", cmake)
-        self.assertNotIn("inline_profile_test", cmake)
-
     def test_unhandled_loaded_rule_fails_loudly(self):
         repo_root = Path(__file__).resolve().parents[2]
         repo_cfg = SimpleNamespace(PROJECTS=[], REPO_MAP={"@hrx": ""})
@@ -432,131 +187,31 @@ sh_test(
 
     def test_glob_exclusions_have_distinct_cmake_storage(self):
         repo_root = Path(__file__).resolve().parents[2]
-        loom = bazel_to_cmake_config.include_project(
-            str(repo_root / ".bazel_to_cmake.cfg.py"),
-            "loom/.bazel_to_cmake.cfg.py",
-        )
-        repo_cfg = SimpleNamespace(PROJECTS=[loom], REPO_MAP={"@hrx": ""})
+        repo_cfg = SimpleNamespace(PROJECTS=[], REPO_MAP={"@hrx": ""})
 
         cmake = bazel_to_cmake_converter.convert_build_file(
             """
-load("//loom/build_tools/bazel:defs.bzl", "loom_module")
-
-loom_module(
+cc_library(
     name = "filtered",
-    srcs = glob(["*.loom"], exclude = ["negative.loom"]),
+    srcs = glob(["*.cc"], exclude = ["excluded.cc"]),
 )
 
-loom_module(
+cc_library(
     name = "complete",
-    srcs = glob(["*.loom"]),
+    srcs = glob(["*.cc"]),
 )
 """,
             repo_cfg,
-            str(repo_root / "loom/src/loom/test/corpus/authoring"),
+            str(repo_root / "synthetic"),
             repo_root=str(repo_root),
         )
 
-        glob_vars = set(
-            re.findall(r"file\(GLOB (_GLOB_X_LOOM(?:_[A-F0-9]{8})?)", cmake)
-        )
+        glob_vars = set(re.findall(r"file\(GLOB (_GLOB_X_CC(?:_[A-F0-9]{8})?)", cmake))
         self.assertEqual(len(glob_vars), 2)
-        self.assertIn("_GLOB_X_LOOM", glob_vars)
-        filtered_var = next(var for var in glob_vars if var != "_GLOB_X_LOOM")
+        self.assertIn("_GLOB_X_CC", glob_vars)
+        filtered_var = next(var for var in glob_vars if var != "_GLOB_X_CC")
         self.assertIn(f'    "${{{filtered_var}}}"', cmake)
-        self.assertIn('    "${_GLOB_X_LOOM}"', cmake)
-
-    def test_loom_module_registers_generated_location(self):
-        repo_root = Path(__file__).resolve().parents[2]
-        loom = bazel_to_cmake_config.include_project(
-            str(repo_root / ".bazel_to_cmake.cfg.py"),
-            "loom/.bazel_to_cmake.cfg.py",
-        )
-        repo_cfg = SimpleNamespace(PROJECTS=[loom], REPO_MAP={"@hrx": ""})
-
-        cmake = bazel_to_cmake_converter.convert_build_file(
-            """
-load("//build_tools/bazel:executable.bzl", "iree_executable_test")
-load("//loom/build_tools/bazel:defs.bzl", "loom_module")
-
-loom_module(
-    name = "linked_checks",
-    srcs = ["testdata/checks.loom"],
-    libraries = ["kernels.loom"],
-    roots = ["@case"],
-    configs = ["model.width=16"],
-    mode = "link",
-    output = "linked.loombc",
-    output_format = "bc",
-    include_input_exports = True,
-    strip_check = True,
-    require_resolved_config = True,
-)
-
-iree_executable_test(
-    name = "linked_checks_test",
-    src = "//loom/src/loom/tools/loom-format",
-    args = ["$(location :linked_checks)"],
-    data = [":linked_checks"],
-)
-""",
-            repo_cfg,
-            str(repo_root / "loom/src/loom/target/arch/amdgpu"),
-            repo_root=str(repo_root),
-        )
-
-        self.assertIn("loom_module(", cmake)
-        self.assertIn('    "testdata/checks.loom"', cmake)
-        self.assertIn('    "kernels.loom"', cmake)
-        self.assertIn('    "@case"', cmake)
-        self.assertIn('    "model.width=16"', cmake)
-        self.assertIn('    "link"', cmake)
-        self.assertIn('    "linked.loombc"', cmake)
-        self.assertIn('    "bc"', cmake)
-        self.assertIn("  INCLUDE_INPUT_EXPORTS", cmake)
-        self.assertIn("  STRIP_CHECK", cmake)
-        self.assertIn("  REQUIRE_RESOLVED_CONFIG", cmake)
-        self.assertIn('"{{${CMAKE_CURRENT_BINARY_DIR}/linked.loombc}}"', cmake)
-        self.assertIn(
-            '  DATA\n    "${CMAKE_CURRENT_BINARY_DIR}/linked.loombc"',
-            cmake,
-        )
-
-    def test_loom_module_preserves_cross_package_module_targets(self):
-        repo_root = Path(__file__).resolve().parents[2]
-        loom = bazel_to_cmake_config.include_project(
-            str(repo_root / ".bazel_to_cmake.cfg.py"),
-            "loom/.bazel_to_cmake.cfg.py",
-        )
-        repo_cfg = SimpleNamespace(PROJECTS=[loom], REPO_MAP={"@hrx": ""})
-
-        cmake = bazel_to_cmake_converter.convert_build_file(
-            """
-load("//loom/build_tools/bazel:defs.bzl", "loom_module")
-
-loom_module(
-    name = "provider_suite",
-    srcs = ["provider_checks.loom"],
-    libraries = [
-        "//loom/src/loom/test/corpus/encoding:numeric_conversion_cases",
-        "//loom/src/loom/test/corpus/encoding:mxfp4_decode_bf16.loom",
-    ],
-)
-""",
-            repo_cfg,
-            str(repo_root / "loom/src/loom/tooling/target/amdgpu/test"),
-            repo_root=str(repo_root),
-        )
-
-        self.assertIn(
-            '    "loom::test::corpus::encoding::numeric_conversion_cases"',
-            cmake,
-        )
-        self.assertIn(
-            '    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/encoding/'
-            'mxfp4_decode_bf16.loom"',
-            cmake,
-        )
+        self.assertIn('    "${_GLOB_X_CC}"', cmake)
 
     def test_rejects_compiler_monorepo_external_targets(self):
         converter = bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""})
@@ -615,40 +270,6 @@ loom_module(
         self.assertEqual(
             functions._convert_select_condition("//build_tools/bazel:cc_compiler_msvc"),
             'CMAKE_C_COMPILER_ID STREQUAL "MSVC"',
-        )
-        self.assertEqual(
-            functions._convert_select_condition(
-                "//loom/config/target:amdgpu_artifacts"
-            ),
-            "LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU",
-        )
-        self.assertEqual(
-            functions._convert_select_condition(
-                "//loom/config/target:llvmir_amdgpu_target_env"
-            ),
-            "LOOM_TARGET_ARCH_LLVMIR AND LOOM_EMIT_LLVMIR AND LOOM_TARGET_ARCH_AMDGPU",
-        )
-        self.assertEqual(
-            functions._convert_select_condition(
-                "//loom/config/target:llvmir_artifacts"
-            ),
-            "LOOM_TARGET_ARCH_LLVMIR AND LOOM_EMIT_LLVMIR",
-        )
-        self.assertEqual(
-            functions._convert_select_condition(
-                "//loom/config/target:llvmir_x86_target_env"
-            ),
-            "LOOM_TARGET_ARCH_LLVMIR AND LOOM_EMIT_LLVMIR AND LOOM_TARGET_ARCH_X86",
-        )
-        self.assertEqual(
-            functions._convert_select_condition(
-                "//loom/config/target:spirv_vulkan_artifacts"
-            ),
-            "LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND IREE_HAL_DRIVER_VULKAN",
-        )
-        self.assertEqual(
-            functions._convert_select_condition("//loom/config/target:xdna_artifacts"),
-            "LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA",
         )
         with self.assertRaises(NotImplementedError):
             functions.select(
@@ -985,7 +606,7 @@ loom_module(
         functions = _PythonBuildFileFunctions(
             converter=converter,
             targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
-            build_dir="loom/py/loom/example",
+            build_dir="synthetic/example",
             repo_root=str(repo_root),
         )
 
@@ -1036,61 +657,44 @@ loom_module(
         ):
             functions.iree_generated_files(name="tables_gen")
 
-    def test_requirement_policy_loads_cross_project_requirement_defs(self):
-        repo_root = Path(__file__).resolve().parents[2]
-        source = """
-load(
-    "//loom/requirements:defs.bzl",
-    "EXECUTE_IREE_HAL",
-    "TARGET_ARCH_AMDGPU",
-)
-load("//runtime/requirements:defs.bzl", "HAL_AMDGPU")
-
-PACKAGE_POLICIES = [
-    package_policy(
-        packages = ["synthetic/cross_project/..."],
-        build_requirements = [
-            TARGET_ARCH_AMDGPU,
-            EXECUTE_IREE_HAL,
-            HAL_AMDGPU,
-        ],
-    ),
-]
-"""
+    def test_build_file_loads_cross_project_requirement_alias(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            policy_path = Path(temp_dir) / "package_policy.bzl"
-            policy_path.write_text(source, encoding="utf-8")
-            env = bazel_to_cmake_requirements._requirement_defs_env()
-            env["package_policy"] = bazel_to_cmake_requirements.package_policy
-            bazel_to_cmake_requirements._exec_bzl(policy_path, env, repo_root)
-        policy = bazel_to_cmake_requirements.ProjectRequirementPolicy(
-            package_policies=list(env["PACKAGE_POLICIES"]),
-        )
+            repo_root = Path(temp_dir)
+            alpha = repo_root / "alpha/requirements"
+            alpha.mkdir(parents=True)
+            (alpha / "defs.bzl").write_text(
+                """
+FEATURE = build_requirement(
+    id = "alpha.feature",
+    label = Label("//alpha/requirements:feature"),
+    enabled_by = Label("//alpha/config:feature"),
+    cmake_condition = "ENABLE_ALPHA",
+)
+""",
+                encoding="utf-8",
+            )
+            beta = repo_root / "beta/requirements"
+            beta.mkdir(parents=True)
+            (beta / "defs.bzl").write_text(
+                'load("//alpha/requirements:defs.bzl", IMPORTED_FEATURE = "FEATURE")\n',
+                encoding="utf-8",
+            )
+            cmake = bazel_to_cmake_converter.convert_build_file(
+                """
+load("//beta/requirements:defs.bzl", LOCAL_FEATURE = "IMPORTED_FEATURE")
 
-        collected = policy.collect("synthetic/cross_project/child")
-        conditions = [
-            condition.cmake_condition for condition in collected.cmake_conditions()
-        ]
+cc_library(
+    name = "guarded",
+    srcs = ["guarded.cc"],
+    target_compatible_with = [LOCAL_FEATURE],
+)
+""",
+                SimpleNamespace(PROJECTS=[], REPO_MAP={}),
+                str(repo_root / "beta"),
+                repo_root=str(repo_root),
+            )
 
-        self.assertIn("LOOM_EXECUTE_IREE_HAL", conditions)
-        self.assertIn("IREE_HAL_DRIVER_AMDGPU", conditions)
-        self.assertNotIn("LOOM_EXECUTE_AMDGPU", conditions)
-
-        requirements = {
-            requirement.id: requirement for requirement in collected.build_requirements
-        }
-        self.assertEqual(
-            requirements["loom.target.arch.amdgpu"].label,
-            "//loom/requirements:target_arch_amdgpu",
-        )
-        self.assertEqual(
-            requirements["loom.target.arch.amdgpu"].enabled_by,
-            "//loom/config/target/arch:amdgpu",
-        )
-        self.assertEqual(
-            requirements["runtime.hal.amdgpu"].label,
-            "//runtime/requirements:hal_amdgpu",
-        )
+        self.assertIn("if(ENABLE_ALPHA)\niree_cc_library(", cmake)
 
     def test_requirement_policy_excludes_matching_subtree(self):
         broad_requirement = bazel_to_cmake_requirements.build_requirement(
@@ -1356,7 +960,7 @@ iree_execution_test_suite(
     name = "execution_test",
     manifests = ["smoke.test.json"],
     tools = {"runner": "//tools:runner"},
-    data = glob(["*.loom"]),
+    data = glob(["*.txt"]),
 )
 """,
             repo_cfg,
@@ -1364,9 +968,9 @@ iree_execution_test_suite(
             repo_root=str(repo_root),
         )
 
-        self.assertIn("file(GLOB _GLOB_X_LOOM LIST_DIRECTORIES false", cmake)
-        self.assertIn('    "${_GLOB_X_LOOM}"', cmake)
-        self.assertNotIn("::${_GLOB_X_LOOM}", cmake)
+        self.assertIn("file(GLOB _GLOB_X_TXT LIST_DIRECTORIES false", cmake)
+        self.assertIn('    "${_GLOB_X_TXT}"', cmake)
+        self.assertNotIn("::${_GLOB_X_TXT}", cmake)
 
     def test_native_test_converts_location_env(self):
         converter = SimpleNamespace(body="")

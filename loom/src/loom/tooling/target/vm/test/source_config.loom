@@ -1,0 +1,27 @@
+config.decl @tuning.factor : i32
+
+func.def public @scale(%value: i32) -> (i32) {
+  %factor = config.get @tuning.factor : i32
+  %result = scalar.muli %value, %factor : i32
+  func.return %result : i32
+}
+
+check.case public @five {
+  %input = check.literal value(3) : i32
+  %actual = func.call @scale(%input) : (i32) -> (i32)
+  %expected = check.literal value(15) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case public @nine {
+  %input = check.literal value(3) : i32
+  %actual = func.call @scale(%input) : (i32) -> (i32)
+  %expected = check.literal value(27) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.benchmark<@five> @five_benchmark
+
+check.benchmark<@nine> @nine_benchmark
