@@ -1524,7 +1524,13 @@ def run_amdgpu_target_map(paths: list[str], fix: bool, verbose: bool) -> bool:
 
 def run_hygiene(paths: list[str], fix: bool, verbose: bool) -> bool:
     print_section("Hygiene")
-    ok = True
+    # The dependency graph spans the repository. Check its generated lock even
+    # for narrow commits, without network access or rewriting global outputs.
+    ok = run_command(
+        [sys.executable, "build_tools/bazel_to_cmake/deps.py", "--check"],
+        "CMake dependency lock",
+        verbose,
+    )
     ok = (
         run_inline_check(
             "BUILD filename policy", lambda: run_build_filename_check(paths), verbose
