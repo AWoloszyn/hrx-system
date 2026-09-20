@@ -239,6 +239,7 @@ foreach(_target IN ITEMS
     loom_import_cxx_source_source.objects
     loom_import_cxx_source_locations.objects
     loom_import_cxx_source_constants.objects
+    loom_import_cxx_source_layout_test
     loom_import_cxx_source_constants_test
     loom_import_cxx_source_source_test
     loom_import_cxx_source_locations_test)
