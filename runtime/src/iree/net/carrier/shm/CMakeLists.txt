@@ -26,6 +26,24 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    storage
+  HDRS
+    "storage.h"
+  SRCS
+    "storage.c"
+  DEPS
+    ::region
+    iree::async
+    iree::base
+    iree::base::internal
+    iree::base::internal::atomic_freelist
+    iree::base::internal::shm
+    iree::base::threading
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     bootstrap
   HDRS
     "bootstrap.h"
@@ -50,6 +68,22 @@ iree_cc_test(
     iree::base::internal::atomic_freelist
     iree::base::internal::mpsc_queue
     iree::base::internal::shm
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+iree_cc_test(
+  NAME
+    storage_test
+  SRCS
+    "storage_test.cc"
+  DEPS
+    ::region
+    ::storage
+    iree::async
+    iree::async::platform
+    iree::base
+    iree::base::internal::atomic_freelist
     iree::testing::gtest
     iree::testing::gtest_main
 )

@@ -67,9 +67,12 @@ enum iree_shm_seal_flag_bits_e {
 // Platform handle for sharing shared memory between processes.
 //
 // On POSIX this is a file descriptor. On Windows this is a HANDLE.
-// Handles are opaque and must not be interpreted by callers; use
+// The value identifies a resource in the current process, not a transferable
+// identity. Native IPC passes it using SCM_RIGHTS or DuplicateHandle; copying
+// the integer into another process does not transfer ownership. Use
 // iree_shm_handle_dup to duplicate and iree_shm_handle_close to release.
 typedef struct iree_shm_handle_t {
+  // Local file descriptor on POSIX or HANDLE bits on Windows.
   uint64_t value;
 } iree_shm_handle_t;
 
