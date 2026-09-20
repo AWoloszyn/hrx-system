@@ -33,8 +33,12 @@ extern "C" {
 //   yes     | yes      | yes  | yes
 //
 // Performance:
-//   Minimal overhead: no syscall or backend completion allocation, only
-//   intrusive queue manipulation.
+//   Submission queues caller-owned storage without allocating or reserving a
+//   kernel submission/completion slot. A valid standalone NOP on a live
+//   proactor cannot be rejected for resource exhaustion. A batch containing
+//   other operation types remains subject to their admission requirements.
+//   Waking the poll owner may require a syscall. Storage returns to the caller
+//   at the final callback and may be freed from that callback.
 typedef struct iree_async_nop_operation_t {
   iree_async_operation_t base;
 } iree_async_nop_operation_t;

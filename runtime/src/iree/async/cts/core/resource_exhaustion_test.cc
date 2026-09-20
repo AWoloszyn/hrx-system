@@ -120,15 +120,12 @@ TEST_P(ResourceExhaustionTest, RapidNopSubmissions) {
   // Poll until all complete.
   PollUntil(/*min_completions=*/kNumNops);
 
-  // Verify all completed.
-  int completed_count = 0;
+  // Every intrusive operation must return exactly once, even though the
+  // outstanding count exceeds bounded backend admission capacity.
   for (int i = 0; i < kNumNops; ++i) {
-    if (trackers[i].call_count > 0) {
-      ++completed_count;
-      IREE_EXPECT_OK(trackers[i].ConsumeStatus()) << "NOP " << i << " failed";
-    }
+    EXPECT_EQ(trackers[i].call_count, 1) << "NOP " << i;
+    IREE_EXPECT_OK(trackers[i].ConsumeStatus()) << "NOP " << i << " failed";
   }
-  EXPECT_EQ(completed_count, kNumNops) << "Not all NOPs completed";
 }
 
 // Interleaved submit and poll - simulates realistic workload.
