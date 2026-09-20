@@ -403,47 +403,38 @@ typedef struct iree_async_notification_wait_operation_t {
 // Notification signal
 //===----------------------------------------------------------------------===//
 
-// Signals a notification, waking up to wake_count waiters.
-// Use INT32_MAX to wake all waiters (broadcast).
+// Advances a notification's epoch and wakes observers when this operation
+// executes. Use INT32_MAX to wake all blocked waiters (broadcast).
 //
 // Availability:
 //   generic | io_uring | IOCP | kqueue
 //   yes     | yes      | yes  | yes
 //
-// Implementation:
-//   io_uring 6.7+: IORING_OP_FUTEX_WAKE on epoch word.
-//   io_uring <6.7: IORING_OP_WRITE to eventfd.
-//   Others: Platform-specific (eventfd write, SetEvent, etc.).
-//
 // Threading model:
-//   Callback fires on the poll thread after the signal is processed.
-//   The signal itself happens synchronously in kernel space before the
-//   CQE is posted, so woken waiters may begin running before the
-//   signal operation's callback fires.
+//   Callback fires on the poll thread after epoch publication and native wake.
+//   Woken observers may begin running before the signal's callback fires.
 //
 // Use in LINK chains:
-//   NOTIFICATION_SIGNAL is commonly used as the final step in a linked
-//   sequence:
+//   A signal may hand completed work to waiting consumers:
 //     RECV -> NOTIFICATION_SIGNAL
-//   This wakes waiting consumer threads without returning to userspace
-//   between the I/O completion and the wake.
+//   The epoch advances only after the predecessor succeeds. A failed or
+//   cancelled predecessor cancels the signal without publishing an epoch.
 typedef struct iree_async_notification_signal_operation_t {
   iree_async_operation_t base;
 
   // The notification to signal. Retained by the proactor during execution.
   iree_async_notification_t* notification;
 
-  // Maximum number of waiters to wake. Common values:
+  // Native wake count hint, not a limit on observers seeing the new epoch.
+  // Observers that have not blocked yet may also see the publication.
+  // Common values:
   //   1: Wake a single waiter (e.g., producer/consumer handoff)
   //   INT32_MAX: Wake all waiters (broadcast)
   int32_t wake_count;
 
-  // Result: actual number of waiters woken. Populated on completion.
-  // May be less than wake_count if fewer waiters were blocked.
+  // Result: number of native waiters woken, or -1 when not available.
+  // Does not count observers that see the new epoch without blocking.
   int32_t woken_count;
-
-  // Platform-internal: buffer for eventfd write in event mode.
-  uint64_t write_value;
 } iree_async_notification_signal_operation_t;
 
 #ifdef __cplusplus

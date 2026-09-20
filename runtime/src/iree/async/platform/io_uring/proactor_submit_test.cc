@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "iree/async/file.h"
+#include "iree/async/notification.h"
 #include "iree/async/operations/file.h"
 #include "iree/async/operations/message.h"
 #include "iree/async/operations/net.h"
@@ -285,6 +286,77 @@ TEST_F(IoUringSubmitTest, FullSqRejectsSequenceWithoutStartingIt) {
             (std::vector<iree_status_code_t>{IREE_STATUS_OK}));
   EXPECT_EQ(timer_completion.status_codes,
             (std::vector<iree_status_code_t>{IREE_STATUS_OK}));
+}
+
+TEST_F(IoUringSubmitTest, FailedPredecessorDoesNotPublishNotification) {
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
+  const uint32_t initial_epoch =
+      iree_async_notification_query_epoch(notification);
+  CompletionState completion;
+  iree_async_file_open_operation_t open = {};
+  iree_async_operation_initialize(
+      &open.base, IREE_ASYNC_OPERATION_TYPE_FILE_OPEN,
+      IREE_ASYNC_OPERATION_FLAG_LINKED, CompletionState::Callback, &completion);
+  // The descriptor path names a file, not a directory. Admission succeeds but
+  // the native open fails, exercising continuation cancellation from a CQE.
+  open.path = "/dev/null/notification";
+  open.open_flags = IREE_ASYNC_FILE_OPEN_FLAG_READ;
+  iree_async_notification_signal_operation_t signal = {};
+  iree_async_operation_initialize(
+      &signal.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL,
+      IREE_ASYNC_OPERATION_FLAG_NONE, CompletionState::Callback, &completion);
+  signal.notification = notification;
+  signal.wake_count = 1;
+  iree_async_operation_t* operations[] = {&open.base, &signal.base};
+  IREE_ASSERT_OK(iree_async_proactor_submit(
+      proactor_,
+      iree_async_operation_list_make(operations, IREE_ARRAYSIZE(operations))));
+  EXPECT_EQ(iree_async_notification_query_epoch(notification), initial_epoch);
+  PollUntil(proactor_, [&] { return completion.call_count == 2; });
+  EXPECT_EQ(completion.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_FAILED_PRECONDITION,
+                                             IREE_STATUS_CANCELLED}));
+  EXPECT_EQ(iree_async_notification_query_epoch(notification), initial_epoch);
+  EXPECT_EQ(open.opened_file, nullptr);
+  iree_async_notification_release(notification);
+}
+
+TEST_F(IoUringSubmitTest, FullSqRejectsBatchWithoutPublishingNotification) {
+  FillSubmissionQueue();
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
+  const uint32_t initial_epoch =
+      iree_async_notification_query_epoch(notification);
+  CompletionState completion;
+  iree_async_notification_signal_operation_t signal = {};
+  iree_async_operation_initialize(
+      &signal.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL,
+      IREE_ASYNC_OPERATION_FLAG_NONE, CompletionState::Callback, &completion);
+  signal.notification = notification;
+  signal.wake_count = 1;
+  iree_async_timer_operation_t timer = {};
+  iree_async_operation_initialize(&timer.base, IREE_ASYNC_OPERATION_TYPE_TIMER,
+                                  IREE_ASYNC_OPERATION_FLAG_NONE,
+                                  CompletionState::Callback, &completion);
+  timer.deadline_ns = iree_time_now();
+  iree_async_operation_t* operations[] = {&signal.base, &timer.base};
+  auto batch =
+      iree_async_operation_list_make(operations, IREE_ARRAYSIZE(operations));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                        iree_async_proactor_submit(proactor_, batch));
+  EXPECT_EQ(iree_async_notification_query_epoch(notification), initial_epoch);
+  EXPECT_EQ(completion.call_count, 0);
+  DrainFillers();
+  IREE_ASSERT_OK(iree_async_proactor_submit(proactor_, batch));
+  PollUntil(proactor_, [&] { return completion.call_count == 2; });
+  EXPECT_EQ(completion.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_OK, IREE_STATUS_OK}));
+  EXPECT_EQ(iree_async_notification_query_epoch(notification),
+            initial_epoch + 1);
+  iree_async_notification_release(notification);
 }
 
 TEST_F(IoUringSubmitTest, MalformedTailDoesNotConsumeCloseOwnership) {

@@ -652,9 +652,8 @@ static void iree_async_proactor_iocp_commit_notification_signal(
   // Perform the signal synchronously.
   iree_async_notification_signal(signal_op->notification,
                                  signal_op->wake_count);
-  // woken_count is not precisely available from the Windows API, so report
-  // the requested count.
-  signal_op->woken_count = signal_op->wake_count;
+  // The native wake APIs do not report the number of observers woken.
+  signal_op->woken_count = -1;
 
   iree_async_proactor_iocp_post_direct_completion(proactor, carrier,
                                                   iree_ok_status());

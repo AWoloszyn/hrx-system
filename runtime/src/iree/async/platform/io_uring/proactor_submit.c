@@ -806,63 +806,8 @@ static void iree_async_proactor_io_uring_fill_notification_wait_event(
   read_sqe->user_data = (uint64_t)(uintptr_t)base_operation;
 }
 
-// Fills SQE for a NOTIFICATION_SIGNAL operation in futex mode.
-static void iree_async_proactor_io_uring_fill_notification_signal_futex(
-    iree_io_uring_sqe_t* sqe, iree_async_operation_t* base_operation) {
-  iree_async_notification_signal_operation_t* signal =
-      (iree_async_notification_signal_operation_t*)base_operation;
-
-  signal->woken_count = 0;
-
-  // Increment epoch before kernel FUTEX_WAKE so waiters see the new value.
-  iree_atomic_fetch_add(signal->notification->epoch_ptr, 1,
-                        iree_memory_order_release);
-
-  int32_t futex_flags = IREE_ASYNC_FUTEX_SIZE_U32;
-  if (!iree_any_bit_set(signal->notification->flags,
-                        IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
-    futex_flags |= IREE_ASYNC_FUTEX_FLAG_PRIVATE;
-  }
-
-  memset(sqe, 0, sizeof(*sqe));
-  sqe->opcode = IREE_IORING_OP_FUTEX_WAKE;
-  sqe->fd = futex_flags;
-  sqe->addr = (uint64_t)(uintptr_t)signal->notification->epoch_ptr;
-  sqe->off = (uint64_t)signal->wake_count;
-  sqe->len = 0;
-  sqe->futex_flags = 0;
-  sqe->addr3 = 0xffffffffU;  // FUTEX_BITSET_MATCH_ANY
-  sqe->user_data = (uint64_t)(uintptr_t)base_operation;
-}
-
-// Fills SQE for a NOTIFICATION_SIGNAL operation in event mode.
-static void iree_async_proactor_io_uring_fill_notification_signal_event(
-    iree_io_uring_sqe_t* sqe, iree_async_operation_t* base_operation) {
-  iree_async_notification_signal_operation_t* signal =
-      (iree_async_notification_signal_operation_t*)base_operation;
-
-  signal->woken_count = 0;
-
-  // Increment epoch before kernel writes to eventfd.
-  iree_atomic_fetch_add(signal->notification->epoch_ptr, 1,
-                        iree_memory_order_release);
-
-  int fd = signal->notification->platform.io_uring.signal_primitive.value.fd;
-
-  // With EFD_SEMAPHORE, write(N) allows N read()s to succeed.
-  signal->write_value =
-      (signal->wake_count > 0) ? (uint64_t)signal->wake_count : UINT32_MAX;
-
-  memset(sqe, 0, sizeof(*sqe));
-  sqe->opcode = IREE_IORING_OP_WRITE;
-  sqe->fd = fd;
-  sqe->addr = (uint64_t)(uintptr_t)&signal->write_value;
-  sqe->len = sizeof(signal->write_value);
-  sqe->user_data = (uint64_t)(uintptr_t)base_operation;
-}
-
 //===----------------------------------------------------------------------===//
-// Semaphore operation helpers
+// Software operation helpers
 //===----------------------------------------------------------------------===//
 
 // Returns true for operation types executed inline while dispatching a
@@ -870,6 +815,7 @@ static void iree_async_proactor_io_uring_fill_notification_signal_event(
 static inline bool iree_async_proactor_io_uring_is_inline_software_op(
     iree_async_operation_type_t type) {
   return type == IREE_ASYNC_OPERATION_TYPE_NOP ||
+         type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL ||
          type == IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_SIGNAL ||
          type == IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_WAIT;
 }
@@ -961,6 +907,15 @@ iree_async_proactor_io_uring_build_software_submission_list(
   return head;
 }
 
+// The epoch publication belongs to execution, not native SQE construction.
+// In a linked chain this runs only after the predecessor succeeds.
+static void iree_async_proactor_io_uring_execute_notification_signal(
+    iree_async_notification_signal_operation_t* signal_op) {
+  signal_op->woken_count = -1;
+  iree_async_notification_signal(signal_op->notification,
+                                 signal_op->wake_count);
+}
+
 // Executes a SEMAPHORE_SIGNAL operation synchronously. Returns OK on success,
 // or the first signal failure status. The caller delivers the completion
 // (via MPSC push to the poll thread for callback dispatch).
@@ -1040,8 +995,8 @@ static iree_status_t iree_async_proactor_io_uring_execute_semaphore_wait(
 // Iteratively dispatches a LINKED continuation chain that may contain software
 // operations. Walks the chain in order:
 //
-//   - Software ops (NOP, SEMAPHORE_SIGNAL, SEMAPHORE_WAIT): execute side
-//     effects inline and push completion to MPSC for poll-thread delivery.
+//   - Software ops: execute side effects inline and push completion to MPSC
+//     for poll-thread delivery (NOP, notification signal, semaphore ops).
 //   - Kernel ops: submit the remaining chain via submit_continuation_chain
 //     (produces CQEs counted by the CQE processing loop).
 //   - Deferred WAIT: the tracker takes ownership of the remaining chain.
@@ -1071,6 +1026,9 @@ void iree_async_proactor_io_uring_dispatch_continuation_chain(
     bool deferred = false;
     if (op->type == IREE_ASYNC_OPERATION_TYPE_NOP) {
       // NOP has no side effect.
+    } else if (op->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL) {
+      iree_async_proactor_io_uring_execute_notification_signal(
+          (iree_async_notification_signal_operation_t*)op);
     } else if (op->type == IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_SIGNAL) {
       op_status = iree_async_proactor_io_uring_execute_semaphore_signal(
           (iree_async_semaphore_signal_operation_t*)op);
@@ -1308,6 +1266,9 @@ static void iree_async_proactor_io_uring_commit_software_operation(
   bool deferred = false;
   if (operation->type == IREE_ASYNC_OPERATION_TYPE_NOP) {
     // NOP has no side effect.
+  } else if (operation->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL) {
+    iree_async_proactor_io_uring_execute_notification_signal(
+        (iree_async_notification_signal_operation_t*)operation);
   } else if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_SIGNAL) {
     iree_async_semaphore_signal_operation_t* signal_op =
         (iree_async_semaphore_signal_operation_t*)operation;
@@ -1579,19 +1540,6 @@ iree_status_t iree_async_proactor_io_uring_submit(
             iree_async_proactor_io_uring_fill_notification_wait_futex(
                 sqe, operation);
             break;
-          case IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL: {
-            iree_async_notification_signal_operation_t* signal_op =
-                (iree_async_notification_signal_operation_t*)operation;
-            if (signal_op->notification->mode ==
-                IREE_ASYNC_NOTIFICATION_MODE_FUTEX) {
-              iree_async_proactor_io_uring_fill_notification_signal_futex(
-                  sqe, operation);
-            } else {
-              iree_async_proactor_io_uring_fill_notification_signal_event(
-                  sqe, operation);
-            }
-            break;
-          }
           case IREE_ASYNC_OPERATION_TYPE_MESSAGE:
             iree_async_proactor_io_uring_fill_message(sqe, operation);
             break;

@@ -1013,7 +1013,7 @@ static void iree_async_proactor_posix_commit_notification_wait(
 static void iree_async_proactor_posix_commit_notification_signal(
     iree_async_proactor_posix_t* proactor,
     iree_async_notification_signal_operation_t* signal_op) {
-  signal_op->woken_count = 0;
+  signal_op->woken_count = -1;
   iree_async_notification_signal(signal_op->notification,
                                  signal_op->wake_count);
   iree_async_proactor_posix_publish_completion(proactor, &signal_op->base,

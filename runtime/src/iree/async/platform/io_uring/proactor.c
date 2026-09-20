@@ -1052,19 +1052,6 @@ static inline void iree_async_proactor_io_uring_complete_socket_recvfrom(
   recvfrom->sender.length = (iree_host_size_t)msg->msg_namelen;
 }
 
-// Handles NOTIFICATION_SIGNAL completion: populates woken_count.
-static inline void iree_async_proactor_io_uring_complete_notification_signal(
-    const iree_io_uring_cqe_t* cqe,
-    iree_async_notification_signal_operation_t* signal) {
-  if (signal->notification->mode == IREE_ASYNC_NOTIFICATION_MODE_FUTEX) {
-    signal->woken_count = cqe->res;
-  } else {
-    // Event mode: write succeeded, but we can't know how many waiters
-    // were actually woken (eventfd semantics differ from futex).
-    signal->woken_count = -1;
-  }
-}
-
 // Handles FILE_OPEN completion: imports the opened fd as a file handle.
 static iree_status_t iree_async_proactor_io_uring_complete_file_open(
     iree_async_proactor_io_uring_t* proactor, const iree_io_uring_cqe_t* cqe,
@@ -1126,10 +1113,6 @@ static iree_status_t iree_async_proactor_io_uring_populate_result(
       futex_wake->woken_count = cqe->res;
       break;
     }
-    case IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL:
-      iree_async_proactor_io_uring_complete_notification_signal(
-          cqe, (iree_async_notification_signal_operation_t*)operation);
-      break;
     case IREE_ASYNC_OPERATION_TYPE_FILE_OPEN:
       return iree_async_proactor_io_uring_complete_file_open(
           proactor, cqe, (iree_async_file_open_operation_t*)operation);
