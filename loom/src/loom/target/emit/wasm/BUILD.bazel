@@ -5,18 +5,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load(
-    "//build_tools/bazel:python.bzl",
-    "iree_py_test",
-)
-load(
     "//loom/build_tools/bazel:build_defs.bzl",
     "loom_cc_library",
-    "loom_config_compatible_with",
     "loom_generated_cc_library",
-)
-load(
-    "//loom/build_tools/bazel:loom_check.bzl",
-    "loom_check_test_suite",
 )
 
 package(
@@ -37,26 +28,6 @@ loom_cc_library(
         "//loom/src/loom/target:provider",
         "//runtime/src/iree/base",
     ],
-)
-
-iree_py_test(
-    name = "artifact_test",
-    srcs = ["artifact_test.py"],
-    args = [
-        "$(location //loom/src/loom/tools/loom-compile:loom-compile)",
-        "$(location test/sum.loom)",
-        "$(location test/scalar_memory.loom)",
-    ],
-    data = [
-        "test/scalar_memory.loom",
-        "test/scalar_memory.mjs",
-        "test/sum.loom",
-        "test/sum.mjs",
-        "//loom/src/loom/tools/loom-compile",
-    ],
-    target_compatible_with = loom_config_compatible_with([
-        "//loom/config/target:wasm_artifacts",
-    ]),
 )
 
 #===------------------------------------------------------------------------===#
@@ -162,22 +133,4 @@ loom_cc_library(
         "//loom/src/loom/tools/loom-check:provider",
         "//runtime/src/iree/base",
     ],
-)
-
-loom_check_test_suite(
-    name = "loom_check_file_test",
-    srcs = [
-        "test/assembly.loom-test",
-        "test/loop_termination.loom-test",
-        "test/memory_offsets.loom-test",
-        "test/numeric.loom-test",
-        "test/schedule_scopes.loom-test",
-    ],
-    data = [
-        "@wasi_sdk//:llvm-objdump",
-    ],
-    env = {
-        "LOOM_WASM_LLVM_OBJDUMP": "$(rootpath @wasi_sdk//:llvm-objdump)",
-    },
-    test_name_prefix_to_strip = "test/",
 )

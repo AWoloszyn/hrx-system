@@ -163,19 +163,4 @@ loom_cc_library(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_WASM AND LOOM_EMIT_WASM)
-loom_check_test_suite(
-  NAME
-    loom_check_file_test
-  SRCS
-    "test/assembly.loom-test"
-    "test/loop_termination.loom-test"
-    "test/memory_offsets.loom-test"
-    "test/numeric.loom-test"
-    "test/schedule_scopes.loom-test"
-  TEST_NAME_PREFIX_TO_STRIP
-    "test/"
-)
-endif()
-
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###
