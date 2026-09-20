@@ -9,6 +9,21 @@
 
 iree_add_all_subdirs()
 
+if(LOOM_IMPORT_CXX)
+loom_check_test_suite(
+  NAME
+    compiler_test
+  SRCS
+    "conditionals.cxx-test"
+    "functions.cxx-test"
+    "launch.cxx-test"
+    "loops.cxx-test"
+    "pointers.cxx-test"
+    "scalar.cxx-test"
+    "vectors.cxx-test"
+)
+endif()
+
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 iree_execution_test_suite(
   NAME

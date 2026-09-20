@@ -1,0 +1,24 @@
+// RUN: roundtrip
+// Hidden void helpers retain private visibility.
+[[gnu::visibility("hidden")]] void helper(float* p) { p[0u] = 1.0f; }
+void entry(float* p) { helper(p); }
+// ----
+func.def public @entry(%p: buffer, %p_byte_offset: offset) {
+  func.call @helper(%p, %p_byte_offset) : (buffer, offset)
+  func.return
+}
+
+func.def @helper(%p: buffer, %p_byte_offset: offset) {
+  %4 = scalar.constant 1.0 : f32
+  %5 = scalar.constant 0 : i32
+  %6 = scalar.extui %5 : i32 to i64
+  %7 = scalar.constant 4 : i64
+  %8 = scalar.muli %6, %7 : i64
+  %9 = index.cast %p_byte_offset : offset to i64
+  %10 = scalar.addi %9, %8 : i64
+  %11 = scalar.assume %10 [range(%10, 0, 9223372036854775807)] : i64
+  %12 = index.cast %11 : i64 to offset
+  %13 = buffer.view %p[%12] : buffer -> view<1xf32>
+  view.store %4, %13[0] : f32, view<1xf32>
+  func.return
+}

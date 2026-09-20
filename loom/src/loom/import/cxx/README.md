@@ -87,8 +87,10 @@ source constructs. Other C++ comments, macro continuations, and raw strings
 remain untouched.
 
 The importer-owned integration suite is
-`//loom/src/loom/import/cxx/tooling/test:test`. Execution tests in `test/` retain
-their independent numerical oracles and runtime checks.
+`//loom/src/loom/import/cxx/tooling/test:test`. Authored source lowering goldens
+run through `//loom/src/loom/import/cxx/test:compiler_test`; native API tests
+cover ownership, source providers, and failure propagation. Execution manifests
+in `test/` retain their independent numerical oracles and runtime checks.
 
 ## Source constructs
 
