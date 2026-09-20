@@ -690,9 +690,41 @@ The generated `gfx1151` resource comparison shows the state cost:
 For equal lengths, sharing halves issued K/V loads per pair. Cache reuse means
 this does not imply half the DRAM traffic. The shared form also retains two
 online states per subgroup and halves the number of runnable subgroups. Small
-batches can lose performance while larger batches benefit. Compare all three
-callers at the intended batch size, then inspect their emitted loads, registers,
-spills and JIT cost before choosing the grouping and schedule.
+batches can lose performance while larger batches benefit. The balance also
+depends on the target: fewer issued loads can accompany slower execution.
+
+### Choose grouping and depth independently
+
+Grouping changes how much independent work the device can run; depth changes
+how far each subgroup reads ahead. Compare independent and shared callers at
+the same depth first, then vary depth for each form with unrolling fixed. For
+example, independent/shared at depths two and three gives four candidates, each
+with its own checked outputs and compile report. The motif's template arguments
+keep these choices local to the caller.
+
+The grouped example illustrates why both axes matter. With unroll two and a
+64 MiB K/V pool, measurements at 128 and 1,024 tokens per head favored
+independent depth three for a single query pair
+on gfx1151, RX 7900 XTX, and MI300X. At 1,024 pairs, sharing won on the first two
+devices, while MI300X still favored independent depth three. Those observations
+describe this workload and policy grid; another head width, page distribution,
+or batch size requires its own comparison.
+
+Use reports to explain each candidate's cost before spending device time.
+`show` exposes the applied schedule and final resources; `suggest` identifies
+pipeline-depth experiments and relevant native wait evidence. Compare registers,
+spills, modeled occupancy, code size, and compile time. A larger queue can
+improve overlap even without an occupancy change, while a full wait or queue
+copy can drain future loads earlier than expected.
+
+Measure the surviving candidates at the intended query count and active page
+footprint. Shared reads may already hit cache in the independent form, so
+halving issued loads does not establish a bandwidth benefit. Keep correctness,
+host completion, and device timestamps as separate evidence; alternating policy
+order and retaining stability warnings makes a small difference easier to
+judge. The [benchmark workflow](benchmark.md) owns the timing controls, and
+the [per-instance search workflow](search-loop-schedules.md) shows how to retain
+reports and correctness results across a larger candidate grid.
 
 ## Carry the experiment into a kernel
 
