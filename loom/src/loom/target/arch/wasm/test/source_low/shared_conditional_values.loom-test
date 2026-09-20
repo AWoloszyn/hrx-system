@@ -3,6 +3,7 @@
 
 wasm.target<simd128> @target
 
+// ERROR@+1: TARGET/089 {descriptor_set="wasm.core.simd128", function_name="shared_conditional_values", op_name="func.def"}
 func.def target(@target) @shared_conditional_values(%input: buffer, %output: buffer) {
   %base = index.constant 0 : offset
   %c0 = scalar.constant 0 : i32
@@ -11,30 +12,23 @@ func.def target(@target) @shared_conditional_values(%input: buffer, %output: buf
   %aligned_output = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
   %in = buffer.view %aligned_input[%base] : buffer -> view<3xi32>
   %out = buffer.view %aligned_output[%base] : buffer -> view<3xi32>
-  // ERROR@+1: TARGET/001 {op_name="view.load"}
   %outer_value = view.load %in[0] : view<3xi32> -> i32
   %outer = scalar.cmpi ne, %outer_value, %c0 : i32
   cfg.cond_br %outer, ^evaluate, ^fallback
 ^evaluate:
-  // ERROR@+1: TARGET/001 {op_name="view.load"}
   %loaded = view.load %in[1] : view<3xi32> -> i32
-  // ERROR@+1: TARGET/001 {op_name="view.store"}
   view.store %loaded, %out[0] : i32, view<3xi32>
   %inner = scalar.cmpi ne, %loaded, %c0 : i32
   cfg.cond_br %inner, ^selected, ^fallback
 ^selected:
   %result = scalar.addi %loaded, %loaded : i32
-  // ERROR@+1: TARGET/001 {op_name="view.store"}
   view.store %result, %out[1] : i32, view<3xi32>
   cfg.br ^exit
 ^fallback:
-  // ERROR@+1: TARGET/001 {op_name="view.load"}
   %fallback = view.load %in[2] : view<3xi32> -> i32
-  // ERROR@+1: TARGET/001 {op_name="view.store"}
   view.store %fallback, %out[1] : i32, view<3xi32>
   cfg.br ^exit
 ^exit:
-  // ERROR@+1: TARGET/001 {op_name="view.store"}
   view.store %completed, %out[2] : i32, view<3xi32>
   func.return
 }
