@@ -4,6 +4,11 @@
 file into `// ====` cases, runs the selected `// RUN:` mode, and compares the
 actual output or diagnostics against the inline expectation.
 
+Optional source importers feed an ordinary Loom module into the same modes.
+Enabling the [C++ importer](../../import/cxx/README.md#compiler-tests) adds
+`.cxx-test` files, with source options selected by `// INPUT:`. The linked formats
+are listed by `--list-input-formats`; `--input-format` selects one explicitly.
+
 Roundtrip and pass modes print Low in assembly form by default, including when
 an explicit `// ----` expectation is present. Creating or updating an expectation
 does not change the output representation. `with-locations` retains that
