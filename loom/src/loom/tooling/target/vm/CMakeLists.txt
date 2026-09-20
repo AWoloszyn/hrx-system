@@ -22,9 +22,9 @@ loom_cc_library(
     iree::hal
     iree::vm
     iree::vm::bytecode::module
+    loom::link::linker
     loom::ops::func
     loom::ops::op_defs
-    loom::rewrite::module_projection
     loom::target::arch::vm::module
     loom::target::arch::vm::provider
     loom::target::provider
@@ -41,6 +41,7 @@ iree_execution_test_suite(
   MANIFESTS
     "vm.test.json"
   TOOLS
+    "iree-benchmark-loom=loom::tools::iree-benchmark-loom"
     "iree-test-loom=loom::tools::iree-test-loom"
     "loom-compile=loom::tools::loom-compile"
     "vm-dis=iree::tools::vm::vm-dis"
@@ -52,6 +53,9 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/invalid_operand.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/invalid_storage.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/module.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_cases.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_library_cases.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/source_unavailable.loom"
 )
 endif()
 

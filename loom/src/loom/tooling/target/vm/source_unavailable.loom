@@ -1,0 +1,8 @@
+func.decl @unused() -> (i32)
+
+check.case public @unavailable_function {
+  %actual = func.call @unused() : () -> (i32)
+  %expected = check.literal value(0) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
