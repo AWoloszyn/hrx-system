@@ -30,7 +30,9 @@ PATCH = """--- a/value.txt
 
 class CMakeDependencyPatchesTest(unittest.TestCase):
     def test_fetch_content_preserves_all_patches_and_options(self):
-        with tempfile.TemporaryDirectory() as temporary_dir:
+        with tempfile.TemporaryDirectory(
+            prefix="cmake patch fixture "
+        ) as temporary_dir:
             root = Path(temporary_dir)
             source = root / "archive"
             source.mkdir()
@@ -58,7 +60,7 @@ class CMakeDependencyPatchesTest(unittest.TestCase):
 project(patch_test NONE)
 set(IREE_ROOT_DIR "${{CMAKE_CURRENT_SOURCE_DIR}}")
 include("{FETCH_HELPERS.as_posix()}")
-set(IREE_DEP_SAMPLE_URLS "{archive.as_uri()}")
+set(IREE_DEP_SAMPLE_URLS "{archive.as_posix()}")
 set(IREE_DEP_SAMPLE_SHA256 "{digest}")
 set(IREE_DEP_SAMPLE_PATCHES
   "//patch files:first.patch" "//patch files:second.patch")
