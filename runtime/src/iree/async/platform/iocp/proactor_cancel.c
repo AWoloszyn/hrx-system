@@ -15,6 +15,22 @@
 #define IREE_ASYNC_IOCP_STATUS_PENDING ((LONG)0x00000103L)
 #define IREE_ASYNC_IOCP_STATUS_CANCELLED ((LONG)0xC0000120L)
 
+iree_status_t iree_async_proactor_iocp_cancel_wait_packet(
+    iree_async_proactor_iocp_t* proactor, uintptr_t wait_packet_handle,
+    bool* out_withdrawn) {
+  *out_withdrawn = false;
+  LONG result = proactor->nt_wait_api.NtCancelWaitCompletionPacket(
+      (HANDLE)wait_packet_handle, TRUE);
+  if (result != 0 && result != IREE_ASYNC_IOCP_STATUS_PENDING &&
+      result != IREE_ASYNC_IOCP_STATUS_CANCELLED) {
+    return iree_make_status(IREE_STATUS_INTERNAL,
+                            "NtCancelWaitCompletionPacket failed: 0x%08lx",
+                            (unsigned long)result);
+  }
+  *out_withdrawn = result == 0;
+  return iree_ok_status();
+}
+
 iree_status_t iree_async_proactor_iocp_cancel_wait(
     iree_async_proactor_iocp_t* proactor, iree_async_iocp_carrier_t* carrier,
     bool* out_withdrawn) {
@@ -25,18 +41,11 @@ iree_status_t iree_async_proactor_iocp_cancel_wait(
   }
 
   if (proactor->nt_wait_api.available) {
-    LONG result =
-        proactor->nt_wait_api.NtCancelWaitCompletionPacket(wait_handle, TRUE);
-    if (result != 0 && result != IREE_ASYNC_IOCP_STATUS_PENDING &&
-        result != IREE_ASYNC_IOCP_STATUS_CANCELLED) {
-      return iree_make_status(IREE_STATUS_INTERNAL,
-                              "NtCancelWaitCompletionPacket failed: 0x%08lx",
-                              (unsigned long)result);
-    }
+    IREE_RETURN_IF_ERROR(iree_async_proactor_iocp_cancel_wait_packet(
+        proactor, (uintptr_t)wait_handle, out_withdrawn));
     if (!CloseHandle(wait_handle)) {
       iree_abort();
     }
-    *out_withdrawn = result == 0;
   } else {
     // Only joins the short callback that publishes a completion. It never
     // waits for peer signaling or poll progress and cannot form a poll cycle.

@@ -270,6 +270,17 @@ class CtsTestBase : public BaseType {
     }
   }
 
+  // Returns borrowed event-source ownership through its terminal callback.
+  void WaitForEventSourceUnregistration(iree_async_event_source_t* source) {
+    bool completed = false;
+    iree_async_proactor_unregister_event_source(
+        proactor_, source,
+        {+[](void* user_data) { *static_cast<bool*>(user_data) = true; },
+         &completed});
+    PollUntilCondition([&] { return completed; },
+                       "event source unregistration");
+  }
+
   // Unregisters |relay| and polls until all backend references are gone.
   void WaitForRelayUnregistration(iree_async_relay_t* relay) {
     struct CompletionState {

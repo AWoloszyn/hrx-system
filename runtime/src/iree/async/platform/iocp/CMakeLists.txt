@@ -65,6 +65,20 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
 iree_cc_test(
   NAME
+    event_source_test
+  SRCS
+    "event_source_test.cc"
+  DEPS
+    ::iocp
+    iree::async
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+iree_cc_test(
+  NAME
     proactor_test
   SRCS
     "proactor_test.cc"

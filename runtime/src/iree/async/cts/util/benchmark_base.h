@@ -145,6 +145,20 @@ struct BenchmarkContext {
   }
 };
 
+// Joins an event source before releasing its borrowed primitive or context.
+inline void WaitForEventSourceUnregistration(
+    iree_async_proactor_t* proactor, iree_async_event_source_t* source) {
+  bool completed = false;
+  iree_async_proactor_unregister_event_source(
+      proactor, source,
+      {+[](void* user_data) { *static_cast<bool*>(user_data) = true; },
+       &completed});
+  while (!completed) {
+    IREE_CHECK_OK(
+        iree_async_proactor_poll(proactor, iree_infinite_timeout(), NULL));
+  }
+}
+
 // Unregisters |relay| and polls until all backend references are gone.
 inline void WaitForRelayUnregistration(iree_async_proactor_t* proactor,
                                        iree_async_relay_t* relay) {

@@ -120,7 +120,9 @@ typedef void (*iree_async_event_source_callback_fn_t)(
 // Callback wrapper struct for event source notifications.
 // Follows the pattern of iree_async_buffer_recycle_callback_t.
 typedef struct iree_async_event_source_callback_t {
+  // Function dispatched by the polling thread when the handle is ready.
   iree_async_event_source_callback_fn_t fn;
+  // Borrowed callback context, retained through terminal unregistration.
   void* user_data;
 } iree_async_event_source_callback_t;
 
@@ -128,6 +130,26 @@ typedef struct iree_async_event_source_callback_t {
 static inline iree_async_event_source_callback_t
 iree_async_event_source_callback_null(void) {
   iree_async_event_source_callback_t callback = {NULL, NULL};
+  return callback;
+}
+
+// Completion of terminal event-source unregistration. Native monitoring and
+// all queued callbacks have retired and the source has been destroyed before
+// this function runs. Borrowed handle and callback storage may be released.
+typedef void(IREE_API_PTR* iree_async_event_source_unregistered_fn_t)(
+    void* user_data);
+
+typedef struct iree_async_event_source_unregistered_callback_t {
+  // Function invoked after the event source has been destroyed.
+  iree_async_event_source_unregistered_fn_t fn;
+  // Opaque value passed to |fn|.
+  void* user_data;
+} iree_async_event_source_unregistered_callback_t;
+
+// Returns an empty unregistration callback.
+static inline iree_async_event_source_unregistered_callback_t
+iree_async_event_source_unregistered_callback_none(void) {
+  iree_async_event_source_unregistered_callback_t callback = {NULL, NULL};
   return callback;
 }
 
@@ -632,8 +654,9 @@ typedef struct iree_async_proactor_vtable_t {
       iree_async_proactor_t* proactor, iree_async_primitive_t handle,
       iree_async_event_source_callback_t callback,
       iree_async_event_source_t** out_event_source);
-  void (*unregister_event_source)(iree_async_proactor_t* proactor,
-                                  iree_async_event_source_t* event_source);
+  void (*unregister_event_source)(
+      iree_async_proactor_t* proactor, iree_async_event_source_t* event_source,
+      iree_async_event_source_unregistered_callback_t callback);
 
   iree_status_t (*create_notification)(
       iree_async_proactor_t* proactor, iree_async_notification_flags_t flags,
@@ -1253,7 +1276,7 @@ static inline iree_status_t iree_async_proactor_register_slab(
 //
 // Ownership model:
 //   The handle is NOT owned by the event source. The caller retains ownership
-//   and must ensure the handle outlives the event source registration. The
+//   and must retain it through terminal unregistration completion. The
 //   proactor allocates internal tracking structures during registration and
 //   frees them during unregistration.
 //
@@ -1298,10 +1321,19 @@ static inline iree_status_t iree_async_proactor_register_event_source(
                                                  out_event_source);
 }
 
-// Unregisters an event source and stops monitoring.
+// Begins terminal event-source unregistration and stops callback admission.
 //
-// After this call returns, the callback will not fire again. The event source
-// handle becomes invalid and must not be used after this call.
+// The ordinary event callback will not fire again after this call returns.
+// |callback| fires after all native monitoring and cancellation operations have
+// retired and the event source has been destroyed. The caller must retain the
+// borrowed handle and ordinary callback context until this completion, which
+// may fire inline. The source handle becomes invalid immediately and must not
+// be used or unregistered again. A NULL source completes inline.
+//
+// Deferred completions run from poll() on the polling thread. Proactor
+// destruction also completes any unregistration it owns before returning.
+// The proactor must remain alive to drive retirement and must not be released
+// from within the completion callback.
 //
 // Must NOT be called from within the event source's callback. If you need to
 // unregister from a callback, defer the unregistration to the next poll()
@@ -1311,8 +1343,15 @@ static inline iree_status_t iree_async_proactor_register_event_source(
 //   Must be called from the proactor's poll thread (same thread that calls
 //   poll()). Not thread-safe with respect to poll().
 static inline void iree_async_proactor_unregister_event_source(
-    iree_async_proactor_t* proactor, iree_async_event_source_t* event_source) {
-  proactor->vtable->unregister_event_source(proactor, event_source);
+    iree_async_proactor_t* proactor, iree_async_event_source_t* event_source,
+    iree_async_event_source_unregistered_callback_t callback) {
+  if (!event_source) {
+    if (callback.fn) {
+      callback.fn(callback.user_data);
+    }
+    return;
+  }
+  proactor->vtable->unregister_event_source(proactor, event_source, callback);
 }
 
 //===----------------------------------------------------------------------===//

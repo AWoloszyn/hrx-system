@@ -15,14 +15,6 @@
 
 #include "iree/async/util/signal.h"
 
-// Returns true if the sigset is empty (no signals set).
-static bool iree_sigset_is_empty(const sigset_t* set) {
-  // Check each signal we care about.
-  return !sigismember(set, SIGINT) && !sigismember(set, SIGTERM) &&
-         !sigismember(set, SIGHUP) && !sigismember(set, SIGQUIT) &&
-         !sigismember(set, SIGUSR1) && !sigismember(set, SIGUSR2);
-}
-
 iree_status_t iree_async_linux_signal_add_signal(
     iree_async_linux_signal_state_t* state, iree_async_signal_t signal,
     int* out_signal_fd) {
@@ -99,22 +91,13 @@ void iree_async_linux_signal_remove_signal(
   sigaddset(&unblock_mask, posix_signal);
   pthread_sigmask(SIG_UNBLOCK, &unblock_mask, NULL);
 
-  // Check if any signals remain.
-  if (iree_sigset_is_empty(&state->active_mask)) {
-    // No more signals - close the signalfd entirely.
-    if (state->signal_fd >= 0) {
-      close(state->signal_fd);
-      state->signal_fd = -1;
-    }
-    // Note: We keep sigmask_saved true and saved_sigmask valid in case
-    // signals are added again later. Full restore happens in deinitialize().
-  } else {
-    // Update the signalfd to stop monitoring this signal.
-    // Note: signalfd() with updated mask may leave the removed signal's events
-    // in the buffer - the dispatch code handles this by ignoring signals
-    // without subscribers.
-    signalfd(state->signal_fd, &state->active_mask, SFD_NONBLOCK | SFD_CLOEXEC);
-  }
+  // The proactor keeps monitoring this descriptor across empty subscription
+  // sets. Updating to an empty mask preserves that registration and permits
+  // later subscriptions without replacing its borrowed native identity.
+  int fd = signalfd(state->signal_fd, &state->active_mask,
+                    SFD_NONBLOCK | SFD_CLOEXEC);
+  IREE_ASSERT(fd == state->signal_fd, "live signalfd mask update failed");
+  (void)fd;
 }
 
 void iree_async_linux_signal_deinitialize(

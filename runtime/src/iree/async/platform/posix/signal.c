@@ -197,18 +197,8 @@ void iree_async_selfpipe_signal_remove_signal(
   // Remove from active mask.
   sigdelset(&state->active_mask, posix_signal);
 
-  // If no signals remain, close the pipe.
-  if (iree_sigset_is_empty(&state->active_mask)) {
-    g_selfpipe_write_fd = -1;
-    if (state->pipe_write_fd >= 0) {
-      close(state->pipe_write_fd);
-      state->pipe_write_fd = -1;
-    }
-    if (state->pipe_read_fd >= 0) {
-      close(state->pipe_read_fd);
-      state->pipe_read_fd = -1;
-    }
-  }
+  // The proactor retains its pipe registration across empty subscription sets.
+  // Keep both ends alive until that observer retires during owner teardown.
 }
 
 void iree_async_selfpipe_signal_deinitialize(

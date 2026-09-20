@@ -27,6 +27,7 @@ typedef enum iree_async_local_stream_state_e {
   IREE_ASYNC_LOCAL_STREAM_STATE_OPEN = 0,
   IREE_ASYNC_LOCAL_STREAM_STATE_FAILED,
   IREE_ASYNC_LOCAL_STREAM_STATE_CLOSING,
+  IREE_ASYNC_LOCAL_STREAM_STATE_RETIRING,
   IREE_ASYNC_LOCAL_STREAM_STATE_CLOSED,
 } iree_async_local_stream_state_t;
 
@@ -531,6 +532,14 @@ static iree_status_t iree_async_local_stream_cancel_native(
 // Shared transfer admission and final join
 //===----------------------------------------------------------------------===//
 
+#if defined(IREE_PLATFORM_WINDOWS)
+static void iree_async_local_stream_unobserved(void* user_data) {
+  iree_async_local_stream_t* stream = user_data;
+  stream->state = IREE_ASYNC_LOCAL_STREAM_STATE_CLOSED;
+  iree_async_local_stream_schedule(stream);
+}
+#endif
+
 static void iree_async_local_stream_removed(void* user_data) {
   iree_async_local_stream_t* stream = user_data;
   stream->flags &= ~IREE_ASYNC_LOCAL_STREAM_FLAG_SCHEDULED;
@@ -590,16 +599,22 @@ static iree_status_t iree_async_local_stream_progress(
         ++*out_completed_count;
       }
 #if defined(IREE_PLATFORM_WINDOWS)
-      iree_async_proactor_unregister_event_source(stream->proactor,
-                                                  stream->event_source);
+      // I/O retirement does not imply retirement of its persistent observer.
+      // Clear admission before unregister, which may complete inline.
+      stream->state = IREE_ASYNC_LOCAL_STREAM_STATE_RETIRING;
+      iree_async_event_source_t* event_source = stream->event_source;
       stream->event_source = NULL;
-#endif
+      iree_async_proactor_unregister_event_source(
+          stream->proactor, event_source,
+          (iree_async_event_source_unregistered_callback_t){
+              iree_async_local_stream_unobserved, stream});
+#else
       stream->state = IREE_ASYNC_LOCAL_STREAM_STATE_CLOSED;
+#endif
       stream->flags &= ~(IREE_ASYNC_LOCAL_STREAM_FLAG_NEEDS_ACCEPT |
                          IREE_ASYNC_LOCAL_STREAM_FLAG_CANCEL_REQUESTED);
-      ++*out_completed_count;
     }
-  } else {
+  } else if (stream->state < IREE_ASYNC_LOCAL_STREAM_STATE_CLOSING) {
 #if defined(IREE_PLATFORM_WINDOWS) || defined(IREE_ASYNC_HAVE_FD)
     if (iree_status_is_ok(stream->transfer.status)) {
       stream->transfer.status = iree_async_local_stream_advance(stream);
@@ -610,6 +625,9 @@ static iree_status_t iree_async_local_stream_progress(
       stream->flags |= IREE_ASYNC_LOCAL_STREAM_FLAG_COMPLETE;
       ++*out_completed_count;
     }
+  }
+  if (stream->state == IREE_ASYNC_LOCAL_STREAM_STATE_CLOSED) {
+    ++*out_completed_count;
   }
   stream->progress.remove_requested = true;
   return iree_ok_status();

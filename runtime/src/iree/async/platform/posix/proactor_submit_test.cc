@@ -411,7 +411,12 @@ TEST_F(PosixProactorSubmitTest, CancellationSurvivesInlineCallbackMapGrowth) {
   }
   for (auto* source : state.sources) {
     if (source) {
-      iree_async_proactor_unregister_event_source(proactor_, source);
+      bool unregistered = false;
+      iree_async_proactor_unregister_event_source(
+          proactor_, source,
+          {+[](void* context) { *static_cast<bool*>(context) = true; },
+           &unregistered});
+      EXPECT_TRUE(unregistered);
     }
   }
   iree_async_proactor_wake(proactor_);

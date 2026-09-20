@@ -431,6 +431,13 @@ void iree_async_proactor_iocp_dispatch_completion(
     iree_status_t status, iree_async_completion_flags_t flags,
     iree_host_size_t* completed_count);
 
+// Withdraws an armed native wait packet without closing its reusable handle.
+// Only success proves withdrawal; pending or dequeued packets still require
+// completion dispatch. An unarmed packet must not be passed to this function.
+iree_status_t iree_async_proactor_iocp_cancel_wait_packet(
+    iree_async_proactor_iocp_t* proactor, uintptr_t wait_packet_handle,
+    bool* out_withdrawn);
+
 // Cancels a native wait registration and joins its publishing callback. A
 // withdrawn completion has no remaining carrier packet; otherwise the normal
 // completion path still owns the carrier. Failure preserves the registration.

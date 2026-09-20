@@ -576,7 +576,8 @@ static iree_status_t iree_async_proactor_js_register_event_source(
 }
 
 static void iree_async_proactor_js_unregister_event_source(
-    iree_async_proactor_t* proactor, iree_async_event_source_t* event_source) {
+    iree_async_proactor_t* proactor, iree_async_event_source_t* event_source,
+    iree_async_event_source_unregistered_callback_t callback) {
   IREE_ASSERT(false, "unregister_event_source called on JS proactor");
 }
 

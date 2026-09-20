@@ -3866,8 +3866,8 @@ static iree_status_t iree_async_proactor_posix_register_event_source(
         &proactor->fd_map, source->fd, IREE_ASYNC_POSIX_FD_HANDLER_EVENT_SOURCE,
         source);
     if (!iree_status_is_ok(status)) {
-      iree_status_ignore(
-          iree_async_posix_event_set_remove(proactor->event_set, source->fd));
+      status = iree_status_join(status, iree_async_posix_event_set_remove(
+                                            proactor->event_set, source->fd));
     }
   }
   if (!iree_status_is_ok(status)) {
@@ -3890,19 +3890,22 @@ static iree_status_t iree_async_proactor_posix_register_event_source(
 
 static void iree_async_proactor_posix_unregister_event_source(
     iree_async_proactor_t* base_proactor,
-    iree_async_event_source_t* event_source) {
-  if (!event_source) {
-    return;
-  }
+    iree_async_event_source_t* event_source,
+    iree_async_event_source_unregistered_callback_t callback) {
   IREE_TRACE_ZONE_BEGIN(z0);
 
   iree_async_proactor_posix_t* proactor =
       iree_async_proactor_posix_cast(base_proactor);
 
-  // Remove from fd_map and event set (stops monitoring).
+  // Native removal must complete before returning borrowed handle ownership.
+  iree_status_t status =
+      iree_async_posix_event_set_remove(proactor->event_set, event_source->fd);
+  if (!iree_status_is_ok(status)) {
+    iree_status_abort(status);
+  }
+  // Ready batches carry descriptors, not source pointers. Map removal prevents
+  // any previously collected readiness from reaching this callback context.
   iree_async_posix_fd_map_remove(&proactor->fd_map, event_source->fd);
-  iree_status_ignore(
-      iree_async_posix_event_set_remove(proactor->event_set, event_source->fd));
 
   // Unlink from the proactor's event source list.
   if (event_source->prev) {
@@ -3919,6 +3922,9 @@ static void iree_async_proactor_posix_unregister_event_source(
   iree_allocator_t allocator = event_source->allocator;
   iree_allocator_free(allocator, event_source);
 
+  if (callback.fn) {
+    callback.fn(callback.user_data);
+  }
   IREE_TRACE_ZONE_END(z0);
 }
 
@@ -4314,7 +4320,8 @@ static void iree_async_proactor_posix_signal_deinitialize(
   // Unregister event source (removes from event_set and fd_map).
   if (proactor->signal.event_source) {
     iree_async_proactor_posix_unregister_event_source(
-        &proactor->base, proactor->signal.event_source);
+        &proactor->base, proactor->signal.event_source,
+        iree_async_event_source_unregistered_callback_none());
     proactor->signal.event_source = NULL;
   }
 

@@ -33,8 +33,11 @@ struct iree_async_event_source_t {
   // Wait completion packet HANDLE owned by this source.
   uintptr_t wait_packet_handle;
 
-  // User callback dispatched by the proactor polling thread.
+  // User callback dispatched by the polling thread; cleared on unregistration.
   iree_async_event_source_callback_t callback;
+
+  // Final ownership return, dispatched only after native packet retirement.
+  iree_async_event_source_unregistered_callback_t unregistered_callback;
 };
 
 // Registers a caller-owned waitable HANDLE with the IOCP proactor.
@@ -43,17 +46,19 @@ iree_status_t iree_async_iocp_event_source_register(
     iree_async_event_source_callback_t callback,
     iree_async_event_source_t** out_event_source);
 
-// Synchronously unregisters and frees |event_source|.
+// Stops callback admission and joins the source's native packet before
+// callback.
 void iree_async_iocp_event_source_unregister(
     iree_async_proactor_t* base_proactor,
-    iree_async_event_source_t* event_source);
+    iree_async_event_source_t* event_source,
+    iree_async_event_source_unregistered_callback_t callback);
 
 // Dispatches one event source completion and re-arms its wait packet.
 void iree_async_iocp_event_source_dispatch(
     struct iree_async_proactor_iocp_t* proactor,
     iree_async_event_source_t* event_source);
 
-// Cancels and frees all event sources owned by |proactor|.
+// Cancels all sources and drains admitted retirements during owner destruction.
 void iree_async_iocp_event_source_deinitialize_all(
     struct iree_async_proactor_iocp_t* proactor);
 

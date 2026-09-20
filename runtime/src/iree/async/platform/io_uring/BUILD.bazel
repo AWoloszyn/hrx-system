@@ -25,6 +25,8 @@ package(
 iree_runtime_cc_library(
     name = "io_uring",
     srcs = [
+        "event_source.c",
+        "event_source.h",
         "notification.c",
         "notification.h",
         "proactor.c",

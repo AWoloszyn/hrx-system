@@ -14,6 +14,7 @@
 #define IREE_ASYNC_PLATFORM_IO_URING_PROACTOR_H_
 
 #include "iree/async/platform/io_uring/api.h"
+#include "iree/async/platform/io_uring/event_source.h"
 #include "iree/async/platform/io_uring/sparse_table.h"
 #include "iree/async/platform/io_uring/uring.h"
 #include "iree/async/platform/linux/signal.h"
@@ -30,56 +31,6 @@ extern "C" {
 
 typedef struct iree_async_semaphore_wait_operation_t
     iree_async_semaphore_wait_operation_t;
-
-//===----------------------------------------------------------------------===//
-// Event source tracking
-//===----------------------------------------------------------------------===//
-
-// Internal state for event source lifecycle management.
-typedef enum iree_async_io_uring_event_source_state_e {
-  // Registration is complete but the poll owner has not submitted the
-  // multishot poll yet.
-  IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_ARM_PENDING = 0,
-
-  // The multishot poll is active and callbacks may be dispatched.
-  IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_ACTIVE = 1,
-
-  // Unregistration was requested but SQ pressure prevented cancellation from
-  // being queued. Callbacks are suppressed while the proactor retries.
-  IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_PENDING = 2,
-
-  // Cancellation was queued and the final multishot poll CQE is pending.
-  IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_SUBMITTED = 3,
-
-  // The multishot poll ended without an explicit unregistration request.
-  IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_TERMINAL = 4,
-} iree_async_io_uring_event_source_state_t;
-
-// Tracks a registered event source for persistent monitoring of an external fd.
-// Uses multishot POLL_ADD to receive callbacks when the fd becomes readable.
-// Doubly-linked list node; proactor owns the list.
-struct iree_async_event_source_t {
-  // Next event source in the owning proactor's intrusive list.
-  struct iree_async_event_source_t* next;
-
-  // Previous event source in the owning proactor's intrusive list.
-  struct iree_async_event_source_t* prev;
-
-  // Owning proactor (for vtable access in callbacks).
-  iree_async_proactor_t* proactor;
-
-  // The monitored fd (not owned by the event source).
-  int fd;
-
-  // User callback invoked when the fd is readable.
-  iree_async_event_source_callback_t callback;
-
-  // Current backend registration lifecycle state.
-  iree_async_io_uring_event_source_state_t state;
-
-  // Allocator used to allocate this struct (for deallocation).
-  iree_allocator_t allocator;
-};
 
 //===----------------------------------------------------------------------===//
 // Proactor implementation struct
@@ -250,6 +201,8 @@ typedef enum iree_io_uring_internal_tag_e {
   // The POLL_ADD CQE is always ignored; the linked READ CQE handles
   // resource release and user callback dispatch for both success and failure.
   IREE_IO_URING_TAG_LINKED_POLL = 9,
+  // Event-source cancellation receipt, independent of the final poll CQE.
+  IREE_IO_URING_TAG_EVENT_SOURCE_CANCEL = 10,
 } iree_io_uring_internal_tag_t;
 
 // Helpers for encoding/decoding internal user_data.

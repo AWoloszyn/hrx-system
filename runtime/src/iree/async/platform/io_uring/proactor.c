@@ -287,14 +287,7 @@ static void iree_async_proactor_io_uring_destroy(
     iree_async_signal_release_ownership(&proactor->base);
   }
 
-  // Free any remaining event sources. In normal use, callers should unregister
-  // all event sources before destroying the proactor, but we clean up here to
-  // avoid leaks.
-  while (proactor->event_sources) {
-    iree_async_event_source_t* source = proactor->event_sources;
-    proactor->event_sources = source->next;
-    iree_allocator_free(source->allocator, source);
-  }
+  iree_async_io_uring_event_source_deinitialize_all(proactor);
 
   // Free any remaining relays. In normal use, callers should unregister all
   // relays before destroying the proactor, but we clean up here to avoid leaks.
@@ -753,147 +746,6 @@ static inline void iree_async_proactor_io_uring_handle_message_receive_cqe(
   }
 }
 
-// Unlinks and frees an event source after its final kernel CQE.
-static void iree_async_proactor_io_uring_cleanup_event_source(
-    iree_async_proactor_io_uring_t* proactor,
-    iree_async_event_source_t* source) {
-  if (source->prev) {
-    source->prev->next = source->next;
-  } else {
-    proactor->event_sources = source->next;
-  }
-  if (source->next) {
-    source->next->prev = source->prev;
-  }
-  iree_allocator_free(source->allocator, source);
-}
-
-// Handles an EVENT_SOURCE multishot poll completion.
-static void iree_async_proactor_io_uring_handle_event_source_cqe(
-    iree_async_proactor_io_uring_t* proactor, const iree_io_uring_cqe_t* cqe) {
-  // Extract the event source pointer from the payload.
-  iree_async_event_source_t* source =
-      (iree_async_event_source_t*)(uintptr_t)iree_io_uring_internal_payload(
-          cqe->user_data);
-  if (!source) {
-    return;
-  }
-
-  // Unregistration clears the callback before queuing cancellation so a CQE
-  // already in flight cannot reach caller-owned state after unregister
-  // returns.
-  if (source->callback.fn) {
-    // Translate native poll events to cross-platform enum.
-    // cqe->res contains the poll mask for POLL_ADD completions.
-    iree_async_poll_events_t events = IREE_ASYNC_POLL_EVENT_NONE;
-    if (cqe->res >= 0) {
-      if (cqe->res & POLLIN) {
-        events |= IREE_ASYNC_POLL_EVENT_IN;
-      }
-      if (cqe->res & POLLOUT) {
-        events |= IREE_ASYNC_POLL_EVENT_OUT;
-      }
-      if (cqe->res & POLLERR) {
-        events |= IREE_ASYNC_POLL_EVENT_ERR;
-      }
-      if (cqe->res & POLLHUP) {
-        events |= IREE_ASYNC_POLL_EVENT_HUP;
-      }
-      // POLLRDHUP: peer closed write half (common during clean shutdown).
-      // POLLNVAL: fd was revoked or invalid.
-      // Both indicate the fd is no longer usable for normal I/O.
-      if (cqe->res & POLLRDHUP) {
-        events |= IREE_ASYNC_POLL_EVENT_HUP;
-      }
-      if (cqe->res & POLLNVAL) {
-        events |= IREE_ASYNC_POLL_EVENT_ERR;
-      }
-    } else {
-      // Kernel error (EBADF, ECANCELED, etc.) - treat as error event.
-      events = IREE_ASYNC_POLL_EVENT_ERR;
-    }
-
-    // Invoke the user callback with poll events. The source remains
-    // armed (multishot). CQE_F_MORE should be set for multishot poll;
-    // if not, the poll was cancelled or the fd has a terminal error.
-    source->callback.fn(source->callback.user_data, source, events);
-  }
-
-  // Multishot poll produces CQEs until cancelled. CQE_F_MORE indicates more
-  // CQEs will follow; a final CQE proves that the kernel no longer references
-  // the event source.
-  if (!(cqe->flags & IREE_IORING_CQE_F_MORE)) {
-    if (source->state ==
-            IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_PENDING ||
-        source->state ==
-            IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_SUBMITTED) {
-      iree_async_proactor_io_uring_cleanup_event_source(proactor, source);
-    } else {
-      // Preserve the caller-visible handle until explicit unregistration even
-      // though the kernel ended the persistent poll after a terminal event.
-      source->state = IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_TERMINAL;
-    }
-  }
-}
-
-// Fills an SQE that begins persistent polling for |source|.
-static void iree_async_proactor_io_uring_fill_event_source_arm_sqe(
-    iree_async_event_source_t* source, iree_io_uring_sqe_t* sqe) {
-  memset(sqe, 0, sizeof(*sqe));
-  sqe->opcode = IREE_IORING_OP_POLL_ADD;
-  sqe->fd = source->fd;
-  sqe->poll32_events = POLLIN;
-  sqe->len = IREE_IORING_POLL_ADD_MULTI;
-  sqe->user_data = iree_io_uring_internal_encode(IREE_IO_URING_TAG_EVENT_SOURCE,
-                                                 (uintptr_t)source);
-}
-
-// Fills an SQE that cancels persistent polling for |source|.
-static void iree_async_proactor_io_uring_fill_event_source_cancel_sqe(
-    iree_async_event_source_t* source, iree_io_uring_sqe_t* sqe) {
-  memset(sqe, 0, sizeof(*sqe));
-  sqe->opcode = IREE_IORING_OP_POLL_REMOVE;
-  sqe->fd = -1;
-  sqe->addr = iree_io_uring_internal_encode(IREE_IO_URING_TAG_EVENT_SOURCE,
-                                            (uintptr_t)source);
-  sqe->user_data = iree_io_uring_internal_encode(IREE_IO_URING_TAG_CANCEL, 0);
-}
-
-// Queues initial arms and cancellations deferred to the poll owner. Returns
-// true when SQ pressure left work pending.
-static bool iree_async_proactor_io_uring_retry_pending_event_sources(
-    iree_async_proactor_io_uring_t* proactor) {
-  bool has_pending = false;
-  iree_io_uring_ring_sq_lock(&proactor->ring);
-  for (iree_async_event_source_t* source = proactor->event_sources; source;
-       source = source->next) {
-    if (source->state == IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_ARM_PENDING) {
-      iree_io_uring_sqe_t* sqe = iree_io_uring_ring_get_sqe(&proactor->ring);
-      if (!sqe) {
-        has_pending = true;
-        break;
-      }
-      iree_async_proactor_io_uring_fill_event_source_arm_sqe(source, sqe);
-      source->state = IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_ACTIVE;
-      continue;
-    }
-    if (source->state !=
-        IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_PENDING) {
-      continue;
-    }
-    iree_io_uring_sqe_t* sqe = iree_io_uring_ring_get_sqe(&proactor->ring);
-    if (!sqe) {
-      has_pending = true;
-      break;
-    }
-    iree_async_proactor_io_uring_fill_event_source_cancel_sqe(source, sqe);
-    source->state =
-        IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_SUBMITTED;
-  }
-  iree_io_uring_ring_sq_unlock(&proactor->ring);
-  return has_pending;
-}
-
 // Callback for signalfd dispatch - invoked for each signal read.
 static void iree_async_proactor_io_uring_signal_dispatch_callback(
     void* user_data, iree_async_signal_t signal) {
@@ -1208,7 +1060,12 @@ iree_async_proactor_io_uring_process_internal_cqe(
       // of either success or failure, so we discard the result.
       break;
     case IREE_IO_URING_TAG_EVENT_SOURCE:
-      iree_async_proactor_io_uring_handle_event_source_cqe(proactor, cqe);
+      iree_async_io_uring_event_source_dispatch(proactor, cqe);
+      break;
+    case IREE_IO_URING_TAG_EVENT_SOURCE_CANCEL:
+      *inout_poll_status = iree_status_join(
+          *inout_poll_status,
+          iree_async_io_uring_event_source_complete_cancel(proactor, cqe));
       break;
     case IREE_IO_URING_TAG_RELAY: {
       // Extract the relay pointer from the payload.
@@ -1373,7 +1230,7 @@ static iree_status_t iree_async_proactor_io_uring_submit_pending_event_monitors(
   bool has_pending = false;
   do {
     bool has_pending_event_sources =
-        iree_async_proactor_io_uring_retry_pending_event_sources(proactor);
+        iree_async_io_uring_event_source_submit_pending(proactor);
     bool has_pending_relays =
         iree_async_io_uring_retry_pending_relays(proactor);
     has_pending = has_pending_event_sources || has_pending_relays;
@@ -1943,124 +1800,6 @@ static iree_status_t iree_async_proactor_io_uring_export_fence(
 }
 
 //===----------------------------------------------------------------------===//
-// Event source registration
-//===----------------------------------------------------------------------===//
-
-static iree_status_t iree_async_proactor_io_uring_register_event_source(
-    iree_async_proactor_t* base_proactor, iree_async_primitive_t handle,
-    iree_async_event_source_callback_t callback,
-    iree_async_event_source_t** out_event_source) {
-  IREE_TRACE_ZONE_BEGIN(z0);
-  IREE_ASSERT_ARGUMENT(out_event_source);
-  *out_event_source = NULL;
-
-  iree_async_proactor_io_uring_t* proactor =
-      iree_async_proactor_io_uring_cast(base_proactor);
-
-  // Validate arguments.
-  if (handle.type != IREE_ASYNC_PRIMITIVE_TYPE_FD) {
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "register_event_source requires an FD primitive (got type %d)",
-        (int)handle.type);
-  }
-  if (handle.value.fd < 0) {
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "register_event_source fd must be >= 0 (got %d)",
-                            handle.value.fd);
-  }
-  if (!callback.fn) {
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "register_event_source requires a non-NULL "
-                            "callback function");
-  }
-
-  // Allocate the event source struct.
-  iree_async_event_source_t* source = NULL;
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_allocator_malloc(proactor->base.allocator, sizeof(*source),
-                                (void**)&source));
-
-  // Initialize the event source.
-  source->next = NULL;
-  source->prev = NULL;
-  source->proactor = base_proactor;
-  source->fd = handle.value.fd;
-  source->callback = callback;
-  source->state = IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_ARM_PENDING;
-  source->allocator = proactor->base.allocator;
-
-  // Link into the proactor's event source list.
-  source->next = proactor->event_sources;
-  if (proactor->event_sources) {
-    proactor->event_sources->prev = source;
-  }
-  proactor->event_sources = source;
-
-  // The poll owner converts ARM_PENDING into a kernel operation. This keeps
-  // io_uring_enter on the SINGLE_ISSUER thread and allows registration batches
-  // larger than the submission queue.
-  iree_async_proactor_wake(&proactor->base);
-
-  *out_event_source = source;
-  IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
-}
-
-static void iree_async_proactor_io_uring_unregister_event_source(
-    iree_async_proactor_t* base_proactor,
-    iree_async_event_source_t* event_source) {
-  if (!event_source) {
-    return;
-  }
-
-  IREE_TRACE_ZONE_BEGIN(z0);
-  iree_async_proactor_io_uring_t* proactor =
-      iree_async_proactor_io_uring_cast(base_proactor);
-
-  // An unarmed source has no kernel reference. A terminal CQE has already
-  // proven the same for a source whose persistent poll ended.
-  if (event_source->state ==
-          IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_ARM_PENDING ||
-      event_source->state == IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_TERMINAL) {
-    iree_async_proactor_io_uring_cleanup_event_source(proactor, event_source);
-    IREE_TRACE_ZONE_END(z0);
-    return;
-  }
-
-  // Suppress callbacks before racing with source CQEs already in flight. The
-  // source stays in the list until its final CQE or proactor destruction.
-  event_source->callback.fn = NULL;
-  event_source->state =
-      IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_PENDING;
-
-  // Queue POLL_REMOVE to cancel the multishot poll. If the submission queue is
-  // full, the poll loop retries after processing completions.
-  iree_io_uring_ring_sq_lock(&proactor->ring);
-  iree_io_uring_sqe_t* sqe = iree_io_uring_ring_get_sqe(&proactor->ring);
-  if (sqe) {
-    iree_async_proactor_io_uring_fill_event_source_cancel_sqe(event_source,
-                                                              sqe);
-    event_source->state =
-        IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_SUBMITTED;
-  }
-  iree_io_uring_ring_sq_unlock(&proactor->ring);
-
-  if (sqe) {
-    // Wake the poll thread to submit the cancellation SQE.
-    iree_async_proactor_wake(&proactor->base);
-  }
-
-  // The poll thread flushes the cancellation and owns the source until the
-  // terminal CQE. Proactor destruction closes the ring before freeing any
-  // remaining source state.
-  IREE_TRACE_ZONE_END(z0);
-}
-
-//===----------------------------------------------------------------------===//
 // Relay vtable wrappers
 //===----------------------------------------------------------------------===//
 
@@ -2263,9 +2002,8 @@ const iree_async_proactor_vtable_t iree_async_proactor_io_uring_vtable = {
     .destroy_file = iree_async_proactor_io_uring_destroy_file,
     .create_event = iree_async_proactor_io_uring_create_event,
     .destroy_event = iree_async_proactor_io_uring_destroy_event,
-    .register_event_source = iree_async_proactor_io_uring_register_event_source,
-    .unregister_event_source =
-        iree_async_proactor_io_uring_unregister_event_source,
+    .register_event_source = iree_async_io_uring_event_source_register,
+    .unregister_event_source = iree_async_io_uring_event_source_unregister,
     .create_notification = iree_async_proactor_io_uring_create_notification,
     .create_notification_shared =
         iree_async_proactor_io_uring_create_notification_shared,

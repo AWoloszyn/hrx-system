@@ -11,9 +11,8 @@
 // avoids the complexity of signal handlers and ensures signals are processed
 // in a thread-safe manner.
 //
-// NOTE: Signal handling is process-global. Only one proactor per process may
-// own signals. Tests must account for this: once a proactor claims ownership,
-// no other proactor can subscribe for the rest of the process.
+// Signal handling is process-global. Only one proactor at a time owns signal
+// routing; destruction releases that ownership for the next test's proactor.
 
 #include <atomic>
 
@@ -155,6 +154,22 @@ TEST_P(SignalTest, WindowsUnsupportedSignals) {
 //===----------------------------------------------------------------------===//
 
 #if defined(IREE_PLATFORM_LINUX) || defined(IREE_PLATFORM_APPLE)
+
+TEST_P(SignalTest, ResubscribeAfterLastUnsubscription) {
+  SignalTracker tracker;
+  for (int i = 0; i < 8; ++i) {
+    iree_async_signal_subscription_t* subscription = nullptr;
+    IREE_ASSERT_OK(iree_async_proactor_subscribe_signal(
+        proactor_, IREE_ASYNC_SIGNAL_USER1, {SignalTracker::Callback, &tracker},
+        &subscription));
+    ASSERT_EQ(raise(SIGUSR1), 0);
+    PollUntilCondition([&] {
+      return tracker.call_count.load(std::memory_order_relaxed) == i + 1;
+    });
+    iree_async_proactor_unsubscribe_signal(proactor_, subscription);
+  }
+  EXPECT_EQ(tracker.call_count.load(std::memory_order_relaxed), 8);
+}
 
 // Signal delivery via raise() and poll().
 TEST_P(SignalTest, SignalDelivery) {

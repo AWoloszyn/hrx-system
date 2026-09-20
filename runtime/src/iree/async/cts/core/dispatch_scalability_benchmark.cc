@@ -180,8 +180,7 @@ static void DestroyIdleHandlerContext(IdleHandlerContext* ctx) {
   iree_async_notification_release(ctx->active_source);
   for (size_t i = 0; i < ctx->idle_sources.size(); ++i) {
     if (ctx->idle_sources[i]) {
-      iree_async_proactor_unregister_event_source(ctx->proactor,
-                                                  ctx->idle_sources[i]);
+      WaitForEventSourceUnregistration(ctx->proactor, ctx->idle_sources[i]);
     }
     iree_async_event_release(ctx->idle_events[i]);
   }

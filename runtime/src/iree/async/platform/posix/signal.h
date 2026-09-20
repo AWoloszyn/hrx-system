@@ -42,8 +42,11 @@ extern "C" {
 
 // State for self-pipe signal handling.
 typedef struct iree_async_selfpipe_signal_state_t {
-  // Pipe file descriptors. -1 when inactive.
+  // Owned read descriptor, stable from the first subscription to deinitialize.
+  // -1 before the first subscription.
   int pipe_read_fd;
+  // Owned write descriptor, retained with the read end until deinitialize.
+  // -1 before the first subscription.
   int pipe_write_fd;
 
   // Currently active signals (those with subscriptions).
@@ -93,8 +96,9 @@ iree_status_t iree_async_selfpipe_signal_add_signal(
 
 // Removes |signal| from the set of handled signals.
 //
-// Blocks |signal| and restores the original sigaction handler. When the last
-// signal is removed, closes the pipe and restores the original signal mask.
+// Blocks |signal| and restores the original sigaction handler. The pipe remains
+// alive even with no subscriptions so its proactor registration stays valid.
+// Deinitialize closes the pipe and restores the original signal mask.
 //
 // Thread safety: Call from main thread, serialized with poll.
 void iree_async_selfpipe_signal_remove_signal(

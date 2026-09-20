@@ -124,8 +124,11 @@ static iree_status_t iree_kqueue_submit_changes(int kqueue_fd, int fd,
   // No timeout needed with EV_RECEIPT: kevent processes the changelist and
   // returns receipts without waiting for events.
   struct timespec zero_timeout = {0, 0};
-  int result = kevent(kqueue_fd, changelist, change_count, eventlist,
-                      change_count, &zero_timeout);
+  int result;
+  do {
+    result = kevent(kqueue_fd, changelist, change_count, eventlist,
+                    change_count, &zero_timeout);
+  } while (result < 0 && errno == EINTR);
   if (result < 0) {
     int error = errno;
     return iree_make_status(iree_status_code_from_errno(error),

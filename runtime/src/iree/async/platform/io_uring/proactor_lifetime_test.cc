@@ -762,13 +762,17 @@ TEST_F(ProactorLifetimeTest,
   PollOnce();
 
   FillSubmissionQueue();
-  iree_async_proactor_unregister_event_source(proactor_, event_source);
+  bool unregistered = false;
+  iree_async_proactor_unregister_event_source(
+      proactor_, event_source,
+      {+[](void* context) { *static_cast<bool*>(context) = true; },
+       &unregistered});
 
-  while (!allocator_state_.watched_allocation_freed ||
-         timer_state_.count < submitted_count_) {
+  while (!unregistered || timer_state_.count < submitted_count_) {
     PollOnce();
   }
 
+  EXPECT_TRUE(allocator_state_.watched_allocation_freed);
   EXPECT_EQ(event_state.count, 0u);
   EXPECT_EQ(timer_state_.count, submitted_count_);
   close(event_fd);

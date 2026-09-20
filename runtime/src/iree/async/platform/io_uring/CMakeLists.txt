@@ -16,6 +16,8 @@ iree_cc_library(
   HDRS
     "api.h"
   SRCS
+    "event_source.c"
+    "event_source.h"
     "notification.c"
     "notification.h"
     "proactor.c"

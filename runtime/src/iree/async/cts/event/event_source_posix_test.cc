@@ -99,7 +99,7 @@ TEST_P(EventSourceEventfdTest, RegisterUnregister) {
   ASSERT_NE(source, nullptr);
 
   // Unregister before any signals.
-  iree_async_proactor_unregister_event_source(proactor_, source);
+  WaitForEventSourceUnregistration(source);
 
   // Cleanup.
   close(fd);
@@ -145,7 +145,7 @@ TEST_P(EventSourceEventfdTest, CallbackFires) {
   EXPECT_GE(state.call_count.load(), 1) << "Callback should have fired";
 
   // Cleanup.
-  iree_async_proactor_unregister_event_source(proactor_, state.source);
+  WaitForEventSourceUnregistration(state.source);
   close(fd);
 }
 
@@ -193,7 +193,7 @@ TEST_P(EventSourceEventfdTest, MultipleSignals) {
       << "Should have received at least " << kSignalCount << " callbacks";
 
   // Cleanup.
-  iree_async_proactor_unregister_event_source(proactor_, source);
+  WaitForEventSourceUnregistration(source);
   close(fd);
 }
 
@@ -235,7 +235,7 @@ TEST_P(EventSourceEventfdTest, UnregisterStopsCallbacks) {
   EXPECT_GE(count_before_unregister, 1);
 
   // Unregister.
-  iree_async_proactor_unregister_event_source(proactor_, source);
+  WaitForEventSourceUnregistration(source);
 
   // Signal again after unregister.
   SignalEventFd(fd);
@@ -332,7 +332,7 @@ TEST_P(EventSourceEventfdTest, MultipleEventSources) {
 
   // Cleanup.
   for (int i = 0; i < kSourceCount; ++i) {
-    iree_async_proactor_unregister_event_source(proactor_, sources[i]);
+    WaitForEventSourceUnregistration(sources[i]);
     close(fds[i]);
   }
 }
@@ -405,7 +405,7 @@ TEST_P(EventSourcePosixTest, PipeHangupDeliversPollHup) {
   }
 
   // Cleanup.
-  iree_async_proactor_unregister_event_source(proactor_, source);
+  WaitForEventSourceUnregistration(source);
   close(read_fd);
 }
 
@@ -458,7 +458,7 @@ TEST_P(EventSourcePosixTest, PipeDataDeliversPollIn) {
       << "Expected POLLIN, got events=0x" << std::hex << events;
 
   // Cleanup.
-  iree_async_proactor_unregister_event_source(proactor_, source);
+  WaitForEventSourceUnregistration(source);
   close(read_fd);
   close(write_fd);
 }

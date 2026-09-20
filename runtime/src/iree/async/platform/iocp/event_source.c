@@ -53,23 +53,10 @@ static void iree_async_iocp_event_source_unlink(
   event_source->previous = NULL;
 }
 
-// Cancels all kernel ownership before releasing |event_source|. Register and
-// unregister are serialized with poll, so a failed cancellation would mean a
-// completion was dequeued where the public contract says that is impossible.
-static void iree_async_iocp_event_source_destroy(
-    iree_async_proactor_iocp_t* proactor,
+static void iree_async_iocp_event_source_close_packet(
     iree_async_event_source_t* event_source) {
-  LONG nt_status = proactor->nt_wait_api.NtCancelWaitCompletionPacket(
-      (HANDLE)event_source->wait_packet_handle,
-      /*remove_signaled_packet=*/TRUE);
-  if (!NT_SUCCESS(nt_status)) {
-    iree_status_abort(
-        iree_make_status(IREE_STATUS_INTERNAL,
-                         "NtCancelWaitCompletionPacket failed for event source "
-                         "(NTSTATUS 0x%08x)",
-                         (unsigned)nt_status));
-  }
-  if (!CloseHandle((HANDLE)event_source->wait_packet_handle)) {
+  if (event_source->wait_packet_handle &&
+      !CloseHandle((HANDLE)event_source->wait_packet_handle)) {
     DWORD error = GetLastError();
     iree_status_abort(iree_make_status(
         iree_status_code_from_win32_error(error),
@@ -77,8 +64,37 @@ static void iree_async_iocp_event_source_destroy(
         (unsigned long)error));
   }
   event_source->wait_packet_handle = 0;
+}
+
+// The packet has either been withdrawn or consumed by completion dispatch.
+static void iree_async_iocp_event_source_destroy(
+    iree_async_proactor_iocp_t* proactor,
+    iree_async_event_source_t* event_source) {
+  iree_async_iocp_event_source_close_packet(event_source);
   iree_async_iocp_event_source_unlink(proactor, event_source);
+  iree_async_event_source_unregistered_callback_t callback =
+      event_source->unregistered_callback;
   iree_allocator_free(proactor->base.allocator, event_source);
+  if (callback.fn) {
+    callback.fn(callback.user_data);
+  }
+}
+
+// Closes the reusable packet only when cancellation proves no delivery remains.
+// A queued or already-dequeued completion retains the source until dispatch.
+static void iree_async_iocp_event_source_stop(
+    iree_async_proactor_iocp_t* proactor,
+    iree_async_event_source_t* event_source) {
+  event_source->callback.fn = NULL;
+  bool withdrawn = false;
+  iree_status_t status = iree_async_proactor_iocp_cancel_wait_packet(
+      proactor, event_source->wait_packet_handle, &withdrawn);
+  if (!iree_status_is_ok(status)) {
+    iree_status_abort(status);
+  }
+  if (withdrawn) {
+    iree_async_iocp_event_source_close_packet(event_source);
+  }
 }
 
 iree_status_t iree_async_iocp_event_source_register(
@@ -167,19 +183,26 @@ iree_status_t iree_async_iocp_event_source_register(
 
 void iree_async_iocp_event_source_unregister(
     iree_async_proactor_t* base_proactor,
-    iree_async_event_source_t* event_source) {
-  if (!event_source) {
-    return;
-  }
+    iree_async_event_source_t* event_source,
+    iree_async_event_source_unregistered_callback_t callback) {
   IREE_TRACE_ZONE_BEGIN(z0);
-  iree_async_iocp_event_source_destroy(
-      iree_async_proactor_iocp_cast(base_proactor), event_source);
+  iree_async_proactor_iocp_t* proactor =
+      iree_async_proactor_iocp_cast(base_proactor);
+  event_source->unregistered_callback = callback;
+  iree_async_iocp_event_source_stop(proactor, event_source);
+  if (!event_source->wait_packet_handle) {
+    iree_async_iocp_event_source_destroy(proactor, event_source);
+  }
   IREE_TRACE_ZONE_END(z0);
 }
 
 void iree_async_iocp_event_source_dispatch(
     iree_async_proactor_iocp_t* proactor,
     iree_async_event_source_t* event_source) {
+  if (!event_source->callback.fn) {
+    iree_async_iocp_event_source_destroy(proactor, event_source);
+    return;
+  }
   event_source->callback.fn(event_source->callback.user_data, event_source,
                             IREE_ASYNC_POLL_EVENT_IN);
   iree_status_t status =
@@ -191,8 +214,35 @@ void iree_async_iocp_event_source_dispatch(
 
 void iree_async_iocp_event_source_deinitialize_all(
     iree_async_proactor_iocp_t* proactor) {
+  // Close admission before any terminal callback can release borrowed owners.
+  // Already-unregistering sources retain their existing completion callback.
+  for (iree_async_event_source_t* source = proactor->event_sources; source;
+       source = source->next) {
+    if (source->callback.fn) {
+      iree_async_iocp_event_source_stop(proactor, source);
+    }
+  }
   while (proactor->event_sources) {
-    iree_async_iocp_event_source_destroy(proactor, proactor->event_sources);
+    if (!proactor->event_sources->wait_packet_handle) {
+      iree_async_iocp_event_source_destroy(proactor, proactor->event_sources);
+      continue;
+    }
+    // Only admitted native completions remain, never a wait for peer signaling.
+    // Ordinary I/O must already be drained before proactor destruction.
+    OVERLAPPED_ENTRY entry;
+    ULONG entry_count = 0;
+    if (!GetQueuedCompletionStatusEx((HANDLE)proactor->completion_port.handle,
+                                     &entry, 1, &entry_count, INFINITE,
+                                     FALSE)) {
+      iree_status_abort(iree_make_status(
+          IREE_STATUS_INTERNAL, "draining event source retirement failed: %lu",
+          (unsigned long)GetLastError()));
+    }
+    if (entry_count &&
+        entry.lpCompletionKey == IREE_ASYNC_IOCP_EVENT_SOURCE_COMPLETION_KEY) {
+      iree_async_iocp_event_source_dispatch(
+          proactor, (iree_async_event_source_t*)entry.lpOverlapped);
+    }
   }
 }
 
