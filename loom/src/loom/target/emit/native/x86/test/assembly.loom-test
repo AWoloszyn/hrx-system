@@ -40,6 +40,8 @@ low.func.def target<x86.scalar.core>(@target) @constants(%output: reg<x86.gpr64>
   mov.store.gpr64 %large_positive, %output {disp32 = 72}
   %narrow_negative = mov.imm32 -1
   mov.store.gpr32 %narrow_negative, %output {disp32 = 80}
+  %minimum_i64 = mov.imm64 -9223372036854775808
+  mov.store.gpr64 %minimum_i64, %output {disp32 = 88}
   return
 }
 
@@ -66,6 +68,8 @@ low.func.def target<x86.scalar.core>(@target) @constants(%output: reg<x86.gpr64>
   mov [rdi + 72], rax
   mov eax, -1
   mov [rdi + 80], eax
+  mov rax, -9223372036854775808
+  mov [rdi + 88], rax
   ret
 
 // ====
