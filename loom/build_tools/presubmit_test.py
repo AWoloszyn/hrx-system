@@ -75,7 +75,27 @@ class LoomPresubmitTest(unittest.TestCase):
                     self.presubmit.bazel_package_test_target(
                         "loom/src/loom/example/test/example.loom-test"
                     ),
-                    "//loom/src/loom/example:all",
+                    "//loom/src/loom/example/...",
+                )
+
+    def test_library_change_includes_nested_test_packages(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            repository_root = Path(temporary_dir)
+            package_root = repository_root / "loom/src/loom/example"
+            test_root = package_root / "test"
+            test_root.mkdir(parents=True)
+            (package_root / "BUILD.bazel").touch()
+            (package_root / "library.c").touch()
+            (test_root / "BUILD.bazel").touch()
+            (test_root / "library_test.cc").touch()
+            with mock.patch.object(self.presubmit, "REPO_ROOT", repository_root):
+                targets = self.presubmit.selected_bazel_test_targets(
+                    ["loom/src/loom/example/library.c"]
+                )
+                self.assertEqual(targets, ["//loom/src/loom/example/..."])
+                self.assertEqual(
+                    self.presubmit.bazel_test_command(targets)[-1],
+                    "//loom/src/loom/example/...",
                 )
 
     def test_global_trigger_selects_full_bazel_suite(self):
@@ -106,9 +126,9 @@ class LoomPresubmitTest(unittest.TestCase):
             self.presubmit,
             "bazel_package_test_target",
             side_effect=[
-                "//loom/src/loom/a:all",
-                "//loom/src/loom/a:all",
-                "//loom/src/loom/b:all",
+                "//loom/src/loom/a/...",
+                "//loom/src/loom/a/...",
+                "//loom/src/loom/b/...",
             ],
         ):
             self.assertEqual(
@@ -119,7 +139,7 @@ class LoomPresubmitTest(unittest.TestCase):
                         "loom/src/loom/b/b.c",
                     ]
                 ),
-                ["//loom/src/loom/a:all", "//loom/src/loom/b:all"],
+                ["//loom/src/loom/a/...", "//loom/src/loom/b/..."],
             )
 
     def test_cmake_tests_exclude_runtime_resource_labels(self):
