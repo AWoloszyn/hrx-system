@@ -437,6 +437,8 @@ def selected_bazel_test_targets(paths: list[str]) -> list[str] | None:
     # Shared corpus packages own source libraries; their tests live in target
     # consumers. Those edits need cross-target coverage rather than a test
     # invocation on a library-only package.
+    # Python authoring libraries likewise have generator and import consumers
+    # across packages. Their proof boundary is the Python test suite.
     if any(
         is_global_trigger(path)
         or path.endswith(".bzl")
@@ -453,7 +455,7 @@ def selected_bazel_test_targets(paths: list[str]) -> list[str] | None:
             # A Loom path outside a Bazel package has no safe local ownership
             # boundary. Retain the full-suite proof instead of skipping it.
             return None
-        targets.add(target)
+        targets.add("//loom/py/..." if path.startswith("loom/py/") else target)
     return sorted(targets)
 
 

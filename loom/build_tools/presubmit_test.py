@@ -142,6 +142,42 @@ class LoomPresubmitTest(unittest.TestCase):
                 ["//loom/src/loom/a/...", "//loom/src/loom/b/..."],
             )
 
+    def test_python_library_changes_select_authoring_consumers(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            repository_root = Path(temporary_dir)
+            library_path = "loom/py/loom/example"
+            library_root = repository_root / library_path
+            library_root.mkdir(parents=True)
+            (library_root / "BUILD.bazel").touch()
+            with mock.patch.object(self.presubmit, "REPO_ROOT", repository_root):
+                self.assertEqual(
+                    self.presubmit.selected_bazel_test_targets(
+                        [f"{library_path}/BUILD.bazel", f"{library_path}/rules.py"]
+                    ),
+                    ["//loom/py/..."],
+                )
+
+    def test_python_and_native_changes_keep_native_package_coverage(self):
+        with mock.patch.object(
+            self.presubmit,
+            "bazel_package_test_target",
+            side_effect=[
+                "//loom/py/loom/example/...",
+                "//loom/py/loom/gen/example/...",
+                "//loom/src/loom/example/...",
+            ],
+        ):
+            self.assertEqual(
+                self.presubmit.selected_bazel_test_targets(
+                    [
+                        "loom/py/loom/example/rules.py",
+                        "loom/py/loom/gen/example/rules_test.py",
+                        "loom/src/loom/example/rules.c",
+                    ]
+                ),
+                ["//loom/py/...", "//loom/src/loom/example/..."],
+            )
+
     def test_cmake_tests_exclude_runtime_resource_labels(self):
         self.assertEqual(
             self.presubmit.CTEST_RESOURCE_LABEL_EXCLUDE_REGEX,
