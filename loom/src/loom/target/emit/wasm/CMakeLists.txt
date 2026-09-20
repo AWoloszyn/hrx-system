@@ -10,6 +10,22 @@
 iree_add_all_subdirs()
 
 if(LOOM_TARGET_ARCH_WASM AND LOOM_EMIT_WASM)
+loom_cc_library(
+  NAME
+    artifact_emitter
+  HDRS
+    "artifact_emitter.h"
+  SRCS
+    "artifact_emitter.c"
+  DEPS
+    ::module_binary
+    iree::base
+    loom::target::provider
+  PUBLIC
+)
+endif()
+
+if(LOOM_TARGET_ARCH_WASM AND LOOM_EMIT_WASM)
 loom_generated_cc_library(
   NAME
     error_defs

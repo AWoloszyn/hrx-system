@@ -82,6 +82,14 @@ selects.config_setting_group(
 )
 
 selects.config_setting_group(
+    name = "wasm_artifacts",
+    match_all = [
+        "//loom/config/target/arch:wasm",
+        "//loom/config/emit:wasm",
+    ],
+)
+
+selects.config_setting_group(
     name = "llvmir_artifacts",
     match_all = [
         "//loom/config/target/arch:llvmir",

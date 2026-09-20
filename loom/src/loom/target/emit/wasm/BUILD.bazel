@@ -5,8 +5,13 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load(
+    "//build_tools/bazel:python.bzl",
+    "iree_py_test",
+)
+load(
     "//loom/build_tools/bazel:build_defs.bzl",
     "loom_cc_library",
+    "loom_config_compatible_with",
     "loom_generated_cc_library",
 )
 load(
@@ -21,6 +26,36 @@ package(
 )
 
 _WASM_CHECK_VISIBILITY = ["//loom/src/loom/tools/loom-check:__pkg__"]
+
+loom_cc_library(
+    name = "artifact_emitter",
+    srcs = ["artifact_emitter.c"],
+    hdrs = ["artifact_emitter.h"],
+    visibility = ["//loom/src/loom/tooling/compile:__pkg__"],
+    deps = [
+        ":module_binary",
+        "//loom/src/loom/target:provider",
+        "//runtime/src/iree/base",
+    ],
+)
+
+iree_py_test(
+    name = "artifact_test",
+    srcs = ["artifact_test.py"],
+    args = [
+        "$(location //loom/src/loom/tools/loom-compile:loom-compile)",
+        "$(location test/sum.loom)",
+        "$(location test/sum.mjs)",
+    ],
+    data = [
+        "test/sum.loom",
+        "test/sum.mjs",
+        "//loom/src/loom/tools/loom-compile",
+    ],
+    target_compatible_with = loom_config_compatible_with([
+        "//loom/config/target:wasm_artifacts",
+    ]),
+)
 
 #===------------------------------------------------------------------------===#
 # Wasm emission

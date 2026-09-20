@@ -969,6 +969,8 @@ static void loom_compile_print_agents_markdown(FILE* stream) {
       "loom-compile catalog.loombc --root=@entry \\\n"
       "  --target=amdgpu:gfx1151 --output=entry.hsaco\n"
       "loom-compile kernel.loom --format=llvmir-text --output=kernel.ll\n"
+      "loom-compile functions.loom --format=wasm-binary "
+      "--output=functions.wasm\n"
       "```\n"
       "\n"
       "Command roots select `--format=loom-command` by default and emit "
@@ -1248,6 +1250,9 @@ int main(int argc, char** argv) {
   if (artifact_provider != NULL) {
     compile_options.target_pipeline_options =
         artifact_provider->default_pipeline_options;
+  } else if (request.producer.kind == LOOM_COMPILE_PRODUCER_TARGET_EMITTER) {
+    compile_options.target_pipeline_options =
+        request.producer.value.target_emitter->default_pipeline_options;
   }
   if (iree_status_is_ok(status)) {
     status = loom_compile_sanitizer_options_initialize(

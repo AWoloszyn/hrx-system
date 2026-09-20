@@ -31,6 +31,7 @@
 #include "loom/target/low_legality.h"
 #include "loom/target/low_packet_diagnostics.h"
 #include "loom/target/math_policy.h"
+#include "loom/target/pipeline_options.h"
 #include "loom/target/profile.h"
 #include "loom/target/reporting/artifact_manifest.h"
 #include "loom/target/reporting/report.h"
@@ -213,6 +214,9 @@ typedef struct loom_target_emitter_t {
 
   // Target-neutral artifact format produced by this emitter.
   loom_target_artifact_format_t target_artifact_format;
+
+  // Options for the default compiler pipeline preparing this artifact.
+  loom_target_pipeline_options_t default_pipeline_options;
 
   // Emission callback.
   loom_target_emit_fn_t emit;
