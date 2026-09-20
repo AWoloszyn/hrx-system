@@ -7,18 +7,19 @@
 # bazel-to-cmake: skip
 
 exports_files([
+    "aligned_records.patch",
+    "bitfield_attributes.patch",
     "braced_vector_initialization.patch",
     "builtin_macro_locations.patch",
-    "cxx.BUILD.bazel",
     "constant_arithmetic.patch",
+    "cxx.BUILD.bazel",
     "enum_semantics.patch",
     "include_continuation.patch",
     "include_paths.patch",
     "macro_operator_locations.patch",
     "packed_bitfields.patch",
-    "packed_records.patch",
-    "aligned_records.patch",
     "packed_enums.patch",
-    "bitfield_attributes.patch",
+    "packed_records.patch",
+    "record_layout_owner.patch",
     "template_lookahead.patch",
 ])
