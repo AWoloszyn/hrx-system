@@ -633,6 +633,67 @@ matched unroll factors; a larger depth alone does not establish useful overlap.
 The `n128`/`n1024` and `i1`/`i16`/`i256` benchmark suffixes vary selected-token
 and query counts without changing the cache footprint.
 
+## Share K/V loads across query heads
+
+The [grouped paged-attention example](../generated/examples/guide/functions-and-control/grouped-paged-attention.loom)
+puts two distinct query heads in one subgroup. A pair owns one page table and
+each lane loads one K/V fragment per row for both queries. Ordinary SSA makes
+the reuse explicit:
+
+```loom
+%first_partial_score = vector.dotf %first_query_fragment, %key, %identity : vector<[%fragment_width]xf32>, vector<[%fragment_width]xf32>, f32
+%first_dot = kernel.subgroup.reduce<addf> %first_partial_score : f32
+%second_partial_score = vector.dotf %second_query_fragment, %key, %identity : vector<[%fragment_width]xf32>, vector<[%fragment_width]xf32>, f32
+%second_dot = kernel.subgroup.reduce<addf> %second_partial_score : f32
+```
+
+Each head keeps its own query, length, maximum, denominator and PV accumulator.
+The shared loop traverses the union of both prefixes. Its load guard protects
+that union; two separate consumer guards prevent the longer head from extending
+the shorter head's softmax. Both reductions participate in the fixed sixteen-row
+tile. A reusable online-update template takes the target-derived fragment width
+as an argument, so the same arithmetic handles both heads and subgroup widths.
+
+Three callers separate reuse from scheduling. `independent` launches two
+subgroups per pair; `shared` launches one, with both using depth two and unroll
+two. `shared_serial` uses the same shared body at depth one. The independent
+control reads the same pair-owned table and places the two heads in adjacent
+workgroups. All callers take policy values through template arguments.
+
+```shell
+iree-test-loom grouped-paged-attention.loom --device=amdgpu --sanitizer=access
+
+iree-benchmark-loom grouped-paged-attention.loom \
+  --compare=@grouped_paged_attention_independent_n128_p1024,@grouped_paged_attention_shared_n128_p1024 \
+  --device=amdgpu --measure=dispatch_complete --batch-size=8 \
+  --iterations=16 --warmup-iterations=3 --input-ring-count=1 \
+  --interleave=ABABA --repetitions=2 --output=grouped-comparison.json
+
+loom-compile grouped-paged-attention.loom \
+  --root=@grouped_paged_attention_shared --target=amdgpu:gfx1151 \
+  --format=amdgpu-hsaco --output=grouped.hsaco --compile-report=details \
+  --compile-report-output=grouped.report.json
+loom-compile-report show grouped.report.json
+loom-compile-report suggest grouped.report.json
+```
+
+The `n128`/`n1024` and `p1`/`p128`/`p1024` rows vary tokens and query pairs
+over the same 64 MiB K/V allocation. Each timing case launches one kernel.
+Independent analytic checks cover both states and all output channels, including
+empty heads, unequal lengths, absent pages and repeated pages. Varied queries
+and pair-owned tables distinguish identity; minimal backing exposes extra reads.
+
+The generated `gfx1151` resource comparison shows the state cost:
+
+--8<-- "generated/examples/guide/functions-and-control/grouped-resources.md"
+
+For equal lengths, sharing halves issued K/V loads per pair. Cache reuse means
+this does not imply half the DRAM traffic. The shared form also retains two
+online states per subgroup and halves the number of runnable subgroups. Small
+batches can lose performance while larger batches benefit. Compare all three
+callers at the intended batch size, then inspect their emitted loads, registers,
+spills and JIT cost before choosing the grouping and schedule.
+
 ## Carry the experiment into a kernel
 
 After a sweep, put the selected policy in the caller or its target-derived

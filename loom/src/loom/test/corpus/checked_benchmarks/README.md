@@ -169,6 +169,28 @@ counts with the same full-cache footprint. The
 [sparse attention workflow](../../../../../docs/src/workflows/tune-loop-schedules.md#pipeline-sparse-token-attention)
 connects this source to access checking, reports and schedule comparisons.
 
+## Shared K/V Across Query Heads
+
+`grouped_paged_attention_f32.loom` compares two independent query subgroups
+with one subgroup sharing K/V fragments across two distinct query heads.
+A pair owns its page table; each head retains its own length, query, online
+state and normalized output. The union prefix guards shared loads, while
+separate consumer guards preserve unequal tails and either head being empty.
+
+Independent and shared callers both use depth two and unroll two. A shared
+depth-one caller isolates pipelining. The online update is a reusable template
+whose vector width comes from the target's subgroup size. Analytic checks
+anchor both heads' states and outputs; varied pairs distinguish query and
+table ownership. Minimal backing covers ragged tails, holes and repeated pages.
+
+The `@grouped_paged_attention_independent_n128_p1024` and
+`@grouped_paged_attention_shared_n128_p1024` benchmarks compare 2048 query heads
+over the same 64 MiB K/V pool. The `n128`/`n1024` and `p1`/`p128`/`p1024`
+suffixes select token and pair counts. Sharing halves issued K/V loads for
+equal-length heads but retains more state and launches fewer subgroups. The
+[shared-loading workflow](../../../../../docs/src/workflows/tune-loop-schedules.md#share-kv-loads-across-query-heads)
+compares that tradeoff separately from pipeline depth.
+
 ## Review Questions
 
 Before adding a source file here, the review answers:

@@ -327,6 +327,11 @@ For top-k token lists, the
 separates the selected-prefix guard from physical-ID validity, with independent
 numerical checks, short allocations and poisoned inactive payloads. Preserve
 both boundaries when searching schedules for an indexer-selected workload.
+For grouped query heads, the
+[shared-loading example](tune-loop-schedules.md#share-kv-loads-across-query-heads)
+reuses K/V fragments while keeping separate queries, lengths and softmax states.
+Its independent, shared-serial and shared-pipelined callers separate reuse from
+scheduling: fewer loads can cost more live state and less subgroup parallelism.
 
 For authored native motifs, give a Low helper
 [`schedule(phased)`](../guide/functions-and-control.md#compose-independently-scheduled-helpers)
