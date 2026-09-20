@@ -118,8 +118,9 @@ iree_status_t iree_net_shm_storage_clone_failure(
 
 // Publishes an epoch and wakes |side|'s polling owner. Called once per progress
 // batch; detached lease returns call this without a managed notification.
-iree_status_t iree_net_shm_storage_signal(iree_net_shm_storage_t* storage,
-                                          uint32_t side);
+// Publication does not acknowledge peer progress or require a live peer.
+void iree_net_shm_storage_signal(iree_net_shm_storage_t* storage,
+                                 uint32_t side);
 
 // Attempts to lease an already consumed incoming slot. Only the receiving poll
 // owner calls this. Returns false (and an empty lease) at the N-1 retention

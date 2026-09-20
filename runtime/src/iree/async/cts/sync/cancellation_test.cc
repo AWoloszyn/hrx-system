@@ -203,7 +203,7 @@ TEST_P(CancellationTest, CancelCompletedEventWait) {
   IREE_ASSERT_OK(iree_async_event_create(proactor_, &event));
 
   // Signal before submitting the wait — it will complete immediately.
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
 
   iree_async_event_wait_operation_t wait_op;
   memset(&wait_op, 0, sizeof(wait_op));
@@ -298,7 +298,7 @@ TEST_P(CancellationTest, CancelEventWaitEventStillUsable) {
     wait_op.base.user_data = &tracker;
 
     IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait_op.base));
-    IREE_ASSERT_OK(iree_async_event_set(event));
+    iree_async_event_set(event);
 
     PollUntil(/*min_completions=*/1);
     EXPECT_EQ(tracker.call_count, 1);
@@ -328,7 +328,7 @@ TEST_P(CancellationTest, CancelEventWaitRacesWithSignal) {
     IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait_op.base));
 
     // Signal and cancel back-to-back — race between completion and cancel.
-    IREE_ASSERT_OK(iree_async_event_set(event));
+    iree_async_event_set(event);
     IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &wait_op.base));
 
     PollUntil(/*min_completions=*/1);

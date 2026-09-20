@@ -147,7 +147,7 @@ TEST_F(EventPoolTest, EventSignalAfterAcquire) {
   IREE_ASSERT_OK(iree_async_event_pool_acquire(&pool, &event));
 
   // Event should be usable for signaling.
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
 
   iree_async_event_pool_release(&pool, event);
 
@@ -157,7 +157,7 @@ TEST_F(EventPoolTest, EventSignalAfterAcquire) {
   EXPECT_EQ(event, event2);
 
   // Can signal again without issues.
-  IREE_ASSERT_OK(iree_async_event_set(event2));
+  iree_async_event_set(event2);
 
   iree_async_event_pool_release(&pool, event2);
   iree_async_event_pool_deinitialize(&pool);
@@ -334,9 +334,9 @@ TEST_F(EventPoolTest, MultipleSignalsBeforeRelease) {
   ASSERT_NE(event, nullptr);
 
   // Signal the event multiple times.
-  IREE_ASSERT_OK(iree_async_event_set(event));
-  IREE_ASSERT_OK(iree_async_event_set(event));
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
+  iree_async_event_set(event);
+  iree_async_event_set(event);
 
   iree_async_event_pool_release(&pool, event);
   iree_async_event_pool_deinitialize(&pool);

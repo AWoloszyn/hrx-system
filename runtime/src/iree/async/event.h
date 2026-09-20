@@ -72,9 +72,11 @@ IREE_API_EXPORT void iree_async_event_native_deinitialize(
 // Signals an initialized native event without accessing a proactor. Thread-safe
 // against other signal calls, but not deinitialization. Multiple signals may
 // coalesce; saturation of a nonblocking native counter/pipe is already signaled
-// and succeeds. Other native failures are returned to the caller.
-IREE_API_EXPORT iree_status_t
-iree_async_event_native_set(const iree_async_event_native_t* event);
+// and needs no additional wake. Publication is infallible and does not
+// acknowledge observer progress. The owner must retain the native resources
+// until every concurrent signal call and borrowed wait has retired.
+IREE_API_EXPORT void iree_async_event_native_set(
+    const iree_async_event_native_t* event);
 
 //===----------------------------------------------------------------------===//
 // Managed event
@@ -146,7 +148,8 @@ IREE_API_EXPORT void iree_async_event_release(iree_async_event_t* event);
 // Signals the event. Thread-safe.
 // Wakes the proactor's poll() if it is monitoring this event.
 // Idempotent: multiple calls before the wait completes are coalesced.
-IREE_API_EXPORT iree_status_t iree_async_event_set(iree_async_event_t* event);
+// Publication is infallible; completion is observed through accepted waits.
+IREE_API_EXPORT void iree_async_event_set(iree_async_event_t* event);
 
 #ifdef __cplusplus
 }  // extern "C"

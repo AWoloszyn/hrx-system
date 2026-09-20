@@ -48,7 +48,7 @@ TEST_P(EventTest, SameThreadSignal) {
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait_op.base));
 
   // Signal the event from the same thread.
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
 
   // Poll should pick up the signaled event.
   PollUntil(/*min_completions=*/1);
@@ -76,20 +76,14 @@ TEST_P(EventTest, CrossThreadSignal) {
 
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait_op.base));
 
-  // Signal the event from another thread. The submit is synchronous, so the
-  // wait is already registered by the time the signaler starts.
-  iree_status_code_t signal_status_code = IREE_STATUS_UNKNOWN;
-  std::thread signaler([event, &signal_status_code]() {
-    iree_status_t status = iree_async_event_set(event);
-    signal_status_code = iree_status_code(status);
-    iree_status_free(status);
-  });
+  // Publication may precede native wait registration after admission; the
+  // native event retains readiness until the wait consumes it.
+  std::thread signaler([event]() { iree_async_event_set(event); });
 
   // Poll should pick up the signaled event.
   PollUntil(/*min_completions=*/1);
 
   signaler.join();
-  EXPECT_EQ(signal_status_code, IREE_STATUS_OK);
 
   EXPECT_EQ(tracker.call_count, 1);
   IREE_EXPECT_OK(tracker.ConsumeStatus());
@@ -121,8 +115,8 @@ TEST_P(EventTest, MultipleEventsPartialSignal) {
   IREE_ASSERT_OK(iree_async_proactor_submit(proactor_, list));
 
   // Signal only events 0 and 2, leaving event 1 unsignaled.
-  IREE_ASSERT_OK(iree_async_event_set(events[0]));
-  IREE_ASSERT_OK(iree_async_event_set(events[2]));
+  iree_async_event_set(events[0]);
+  iree_async_event_set(events[2]);
 
   // Poll should pick up exactly 2 completions.
   PollUntil(/*min_completions=*/2);
@@ -134,7 +128,7 @@ TEST_P(EventTest, MultipleEventsPartialSignal) {
   IREE_EXPECT_OK(trackers[2].ConsumeStatus());
 
   // Now signal event 1.
-  IREE_ASSERT_OK(iree_async_event_set(events[1]));
+  iree_async_event_set(events[1]);
   PollUntil(/*min_completions=*/1);
 
   EXPECT_EQ(trackers[1].call_count, 1);
@@ -162,7 +156,7 @@ TEST_P(EventTest, ResetAndReWait) {
     wait_op.base.user_data = &tracker;
 
     IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait_op.base));
-    IREE_ASSERT_OK(iree_async_event_set(event));
+    iree_async_event_set(event);
     PollUntil(/*min_completions=*/1);
 
     EXPECT_EQ(tracker.call_count, 1);
@@ -184,7 +178,7 @@ TEST_P(EventTest, ResetAndReWait) {
     wait_op.base.user_data = &tracker;
 
     IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait_op.base));
-    IREE_ASSERT_OK(iree_async_event_set(event));
+    iree_async_event_set(event);
     PollUntil(/*min_completions=*/1);
 
     EXPECT_EQ(tracker.call_count, 1);
@@ -200,7 +194,7 @@ TEST_P(EventTest, PreSignaledEvent) {
   IREE_ASSERT_OK(iree_async_event_create(proactor_, &event));
 
   // Signal BEFORE submitting the wait.
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
 
   iree_async_event_wait_operation_t wait_op;
   memset(&wait_op, 0, sizeof(wait_op));
@@ -234,7 +228,7 @@ TEST_P(EventTest, RetainRelease) {
   iree_async_event_release(event);
 
   // Event should still be usable.
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
 
   // Final release destroys.
   iree_async_event_release(event);
@@ -284,14 +278,14 @@ TEST_P(NativeEventTest, NonblockingNoninheritableHandles) {
     EXPECT_NE(flags & FD_CLOEXEC, 0);
 #endif  // IREE_PLATFORM_WINDOWS
   }
-  IREE_ASSERT_OK(iree_async_event_native_set(&native_));
+  iree_async_event_native_set(&native_);
   ExpectReady();
 }
 
 TEST_P(NativeEventTest, SaturationIsAlreadySignaled) {
   IREE_ASSERT_OK(iree_async_event_native_initialize(&native_));
 #if defined(IREE_PLATFORM_WINDOWS)
-  IREE_ASSERT_OK(iree_async_event_native_set(&native_));
+  iree_async_event_native_set(&native_);
 #elif defined(IREE_ASYNC_HAVE_EVENTFD)
   const uint64_t value = UINT64_MAX - 1;
   ASSERT_EQ(write(native_.signal_primitive.value.fd, &value, sizeof(value)),
@@ -307,7 +301,7 @@ TEST_P(NativeEventTest, SaturationIsAlreadySignaled) {
   ASSERT_EQ(result, -1);
   ASSERT_EQ(errno, EAGAIN);
 #endif  // native event type
-  IREE_ASSERT_OK(iree_async_event_native_set(&native_));
+  iree_async_event_native_set(&native_);
   ExpectReady();
 #if defined(IREE_PLATFORM_WINDOWS)
   // Auto-reset consumes the coalesced signal once, not one credit per set.
@@ -343,7 +337,7 @@ TEST_P(NativeEventTest, SignalAfterNotificationAndProactorTeardown) {
   EXPECT_EQ(tracker.call_count, 0);
 
   iree_atomic_fetch_add(&epoch, 1, iree_memory_order_release);
-  IREE_ASSERT_OK(iree_async_event_native_set(&native_));
+  iree_async_event_native_set(&native_);
   PollUntilCondition([&] { return tracker.call_count == 1; });
   IREE_EXPECT_OK(tracker.ConsumeStatus());
   iree_async_notification_release(notification);
@@ -354,7 +348,7 @@ TEST_P(NativeEventTest, SignalAfterNotificationAndProactorTeardown) {
   // Neither signaling nor eventual destruction can reach a former proactor.
   std::thread signaler([&] {
     iree_atomic_fetch_add(&epoch, 1, iree_memory_order_release);
-    IREE_EXPECT_OK(iree_async_event_native_set(&native_));
+    iree_async_event_native_set(&native_);
   });
   signaler.join();
   ExpectReady();

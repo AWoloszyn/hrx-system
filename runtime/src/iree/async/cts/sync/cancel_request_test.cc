@@ -210,7 +210,7 @@ TEST_P(CancelRequestTest, NaturalCompletionRacesCancellation) {
   CancelJoin join(proactor_);
   auto operation = MakeWait(&join);
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
-  IREE_ASSERT_OK(iree_async_event_set(event_));
+  iree_async_event_set(event_);
   join.Cancel(&operation.base);
   PollUntilCondition([&] { return join.done(); });
   EXPECT_TRUE(join.code == IREE_STATUS_OK ||
@@ -273,7 +273,7 @@ TEST_P(CancelRequestTest, JoinReusesTargetAddressForAnUncancelledWait) {
   PollUntilCondition([&] { return join.done(); });
   Dispatch([] {});
   EXPECT_EQ(replacement.call_count, 0);
-  IREE_ASSERT_OK(iree_async_event_set(event_));
+  iree_async_event_set(event_);
   PollUntilCondition([&] { return replacement.call_count == 1; });
   IREE_EXPECT_OK(replacement.ConsumeStatus());
 }
@@ -293,7 +293,7 @@ TEST_P(CancelRequestTest, CancellingOneWaitPreservesItsDescriptorNeighbor) {
   PollUntilCondition([&] { return cancelled.done(); });
   EXPECT_EQ(cancelled.code, IREE_STATUS_CANCELLED);
   EXPECT_EQ(survivor.call_count, 0);
-  IREE_ASSERT_OK(iree_async_event_set(event_));
+  iree_async_event_set(event_);
   PollUntilCondition([&] { return survivor.call_count == 1; });
   IREE_EXPECT_OK(survivor.ConsumeStatus());
 }

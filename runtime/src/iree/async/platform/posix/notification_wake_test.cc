@@ -35,6 +35,46 @@ extern "C" ssize_t __wrap_write(int fd, const void* data, size_t length) {
 
 namespace {
 
+class NativeEventWakeTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    intercepted_write_count = 0;
+    IREE_ASSERT_OK(iree_async_event_native_initialize(&event_));
+  }
+
+  void TearDown() override {
+    interrupted_fd = -1;
+    iree_async_event_native_deinitialize(&event_);
+  }
+
+  // Native resources retained through publication and readiness observation.
+  iree_async_event_native_t event_ = {};
+};
+
+TEST_F(NativeEventWakeTest, InterruptedPublicationRetainsReadiness) {
+  interrupted_fd = event_.signal_primitive.value.fd;
+  iree_async_event_native_set(&event_);
+  EXPECT_EQ(intercepted_write_count, 2);
+  uint64_t count = 0;
+  EXPECT_EQ(read(event_.wait_primitive.value.fd, &count, sizeof(count)),
+            sizeof(count));
+  EXPECT_EQ(count, 1u);
+}
+
+TEST_F(NativeEventWakeTest, InterruptedPublicationPreservesCoalescing) {
+  uint64_t saturated_count = UINT64_MAX - 1;
+  ASSERT_EQ(write(event_.signal_primitive.value.fd, &saturated_count,
+                  sizeof(saturated_count)),
+            sizeof(saturated_count));
+  interrupted_fd = event_.signal_primitive.value.fd;
+  iree_async_event_native_set(&event_);
+  EXPECT_EQ(intercepted_write_count, 2);
+  uint64_t count = 0;
+  EXPECT_EQ(read(event_.wait_primitive.value.fd, &count, sizeof(count)),
+            sizeof(count));
+  EXPECT_EQ(count, saturated_count);
+}
+
 class NotificationWakeTest : public ::testing::Test {
  protected:
   void SetUp() override {

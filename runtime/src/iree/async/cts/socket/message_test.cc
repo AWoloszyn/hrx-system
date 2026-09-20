@@ -212,7 +212,7 @@ TEST_P(MessageTest, LinkedEventWaitDefersMessageDelivery) {
   PollImmediate(target_proactor_);
   EXPECT_EQ(receiver.count.load(), 0);
 
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
   PollUntil(/*min_completions=*/2);
   EXPECT_EQ(wait_tracker.call_count, 1);
   EXPECT_EQ(message_tracker.call_count, 1);

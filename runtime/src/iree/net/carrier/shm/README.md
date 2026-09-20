@@ -157,9 +157,13 @@ leases. Free the connection only after its deactivation callback; stop and free
 a listener using the analogous stopped callback. Listener shutdown does not
 revoke connections that were already published.
 
-A shared-wake failure records a terminal error and hands it to the poll owner.
-The successful lease-return path has no failure-registry lookup or connection
-lock. Detachment joins the weak error handoff before proactor destruction.
+Doorbell publication is infallible and does not acknowledge peer progress.
+Locally retained native resources remain valid after peer departure, so detached
+lease returns require neither a live connection nor a connection lock. Peer and
+asynchronous transport failures record a terminal error and hand it to the poll
+owner. Detachment joins that weak error handoff before proactor destruction.
+Applications own progress deadlines for connected but stalled peers; a timeout
+does not replace the deactivation callback's ownership join.
 Peer-specific bootstrap failure retires only that handshake; a native listener
 setup failure stops further acceptance and reports an error. Explicit listener
 stop still provides the final ownership join.

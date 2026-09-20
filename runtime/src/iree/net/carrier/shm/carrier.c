@@ -491,12 +491,7 @@ static void iree_net_shm_progress(iree_net_shm_carrier_t* carrier) {
     iree_net_shm_stop_receive(carrier, &wake);
   }
   if (wake) {
-    iree_status_t status = iree_net_shm_storage_signal(
-        carrier->storage, carrier->storage->side ^ 1u);
-    if (!iree_status_is_ok(status)) {
-      iree_net_shm_storage_fail(carrier->storage, iree_status_clone(status));
-      iree_net_shm_carrier_fail(&carrier->base, status);
-    }
+    iree_net_shm_storage_signal(carrier->storage, carrier->storage->side ^ 1u);
   }
   if (iree_net_shm_carrier_is_running(carrier)) {
     if (more) {
@@ -613,11 +608,7 @@ static void iree_net_shm_carrier_deactivate(
   if (inactive) {
     iree_atomic_store(carrier->receive->incoming->receiver_closed, 1,
                       iree_memory_order_release);
-    iree_status_t status = iree_net_shm_storage_signal(
-        carrier->storage, carrier->storage->side ^ 1u);
-    if (!iree_status_is_ok(status)) {
-      iree_net_shm_storage_fail(carrier->storage, status);
-    }
+    iree_net_shm_storage_signal(carrier->storage, carrier->storage->side ^ 1u);
     callback(user_data);
   }
 }

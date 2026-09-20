@@ -422,7 +422,7 @@ TEST_P(SequenceTest, LinkedEventWaitNop) {
   IREE_ASSERT_OK(iree_async_proactor_submit(proactor_, list));
 
   // Signal the event.
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
 
   PollUntil(/*min_completions=*/2);
 

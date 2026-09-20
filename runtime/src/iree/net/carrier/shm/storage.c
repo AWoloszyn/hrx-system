@@ -203,11 +203,11 @@ iree_status_t iree_net_shm_storage_clone_failure(
   return status;
 }
 
-iree_status_t iree_net_shm_storage_signal(iree_net_shm_storage_t* storage,
-                                          uint32_t side) {
+void iree_net_shm_storage_signal(iree_net_shm_storage_t* storage,
+                                 uint32_t side) {
   iree_atomic_fetch_add(iree_net_shm_region_epoch(storage->mapping.base, side),
                         1, iree_memory_order_release);
-  return iree_async_event_native_set(&storage->wakes[side]);
+  iree_async_event_native_set(&storage->wakes[side]);
 }
 
 static void iree_net_shm_storage_return_slot(
@@ -224,11 +224,7 @@ static void iree_net_shm_storage_release_lease(
   iree_net_shm_storage_endpoint_t* endpoint = user_data;
   iree_net_shm_storage_t* storage = endpoint->storage;
   iree_net_shm_storage_return_slot(endpoint, index);
-  iree_status_t status =
-      iree_net_shm_storage_signal(storage, storage->side ^ 1u);
-  if (!iree_status_is_ok(status)) {
-    iree_net_shm_storage_fail(storage, status);
-  }
+  iree_net_shm_storage_signal(storage, storage->side ^ 1u);
   iree_net_shm_storage_release(storage);
 }
 

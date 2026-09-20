@@ -544,7 +544,7 @@ TEST(IocpLegacyEventWaitTest, FailedCallbackPostDispatchesFromPoll) {
 
   HANDLE preserved_port = NULL;
   IREE_ASSERT_OK(DisableCompletionPosting(iocp, &preserved_port));
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
   iree_async_iocp_carrier_t* carrier = iocp->active_carriers;
   ASSERT_NE(carrier, nullptr);
   WaitForFallbackCompletionReady(carrier);
@@ -593,7 +593,7 @@ TEST(IocpLegacyEventWaitTest, SuccessfulCallbackPostReleasesRegistration) {
                              iree_memory_order_relaxed),
             1);
 
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
   iree_host_size_t completed_count = 0;
   while (completion.call_count == 0) {
     iree_host_size_t poll_completed_count = 0;
@@ -640,7 +640,7 @@ TEST(IocpLegacyEventWaitTest, CancelledFallbackDispatchesExactlyOnce) {
 
   HANDLE preserved_port = NULL;
   IREE_ASSERT_OK(DisableCompletionPosting(iocp, &preserved_port));
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
   iree_async_iocp_carrier_t* carrier = iocp->active_carriers;
   ASSERT_NE(carrier, nullptr);
   WaitForFallbackCompletionReady(carrier);

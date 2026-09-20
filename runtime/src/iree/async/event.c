@@ -39,8 +39,8 @@ IREE_API_EXPORT void iree_async_event_release(iree_async_event_t* event) {
   }
 }
 
-IREE_API_EXPORT iree_status_t iree_async_event_set(iree_async_event_t* event) {
-  return iree_async_event_native_set(&event->native);
+IREE_API_EXPORT void iree_async_event_set(iree_async_event_t* event) {
+  iree_async_event_native_set(&event->native);
 }
 
 #if defined(IREE_PLATFORM_LINUX) || defined(IREE_PLATFORM_ANDROID)
@@ -62,8 +62,8 @@ iree_async_event_native_initialize(iree_async_event_native_t* out_event) {
   return iree_ok_status();
 }
 
-IREE_API_EXPORT iree_status_t
-iree_async_event_native_set(const iree_async_event_native_t* event) {
+IREE_API_EXPORT void iree_async_event_native_set(
+    const iree_async_event_native_t* event) {
   // eventfd: write a 64-bit value to signal. The kernel accumulates values
   // until read. Writing 1 is idiomatic; the actual value doesn't matter for
   // our binary signal semantics.
@@ -72,15 +72,10 @@ iree_async_event_native_set(const iree_async_event_native_t* event) {
   do {
     result = write(event->signal_primitive.value.fd, &value, sizeof(value));
   } while (result < 0 && errno == EINTR);
-  if (result < 0) {
-    // EAGAIN means the counter would overflow (saturated). That's fine - the
-    // event is already maximally signaled. Any other error is unexpected.
-    if (errno != EAGAIN) {
-      return iree_make_status(iree_status_code_from_errno(errno),
-                              "eventfd write failed");
-    }
-  }
-  return iree_ok_status();
+  // A saturated counter is already readable. Other outcomes violate the
+  // initialized resource's lifetime or native event contract.
+  IREE_ASSERT(result == sizeof(value) || (result < 0 && errno == EAGAIN),
+              "eventfd write failed during event publication");
 }
 
 #elif defined(IREE_PLATFORM_APPLE) || defined(IREE_PLATFORM_BSD)
@@ -116,23 +111,18 @@ iree_async_event_native_initialize(iree_async_event_native_t* out_event) {
   return status;
 }
 
-IREE_API_EXPORT iree_status_t
-iree_async_event_native_set(const iree_async_event_native_t* event) {
+IREE_API_EXPORT void iree_async_event_native_set(
+    const iree_async_event_native_t* event) {
   // pipe: write a single byte to signal. The read end becomes readable.
   uint8_t value = 1;
   ssize_t result = 0;
   do {
     result = write(event->signal_primitive.value.fd, &value, sizeof(value));
   } while (result < 0 && errno == EINTR);
-  if (result < 0) {
-    // EAGAIN means the pipe buffer is full. That's fine - the event is already
-    // signaled (there's data to read).
-    if (errno != EAGAIN) {
-      return iree_make_status(iree_status_code_from_errno(errno),
-                              "pipe write failed");
-    }
-  }
-  return iree_ok_status();
+  // A full pipe is already readable. Both ends remain owned while signaling,
+  // including after a peer releases its copies.
+  IREE_ASSERT(result == sizeof(value) || (result < 0 && errno == EAGAIN),
+              "pipe write failed during event publication");
 }
 
 #elif defined(IREE_PLATFORM_WINDOWS)
@@ -156,16 +146,13 @@ iree_async_event_native_initialize(iree_async_event_native_t* out_event) {
   return iree_ok_status();
 }
 
-IREE_API_EXPORT iree_status_t
-iree_async_event_native_set(const iree_async_event_native_t* event) {
+IREE_API_EXPORT void iree_async_event_native_set(
+    const iree_async_event_native_t* event) {
   // Win32 event: SetEvent signals the event. If it's already signaled, this
   // is a no-op (for manual-reset events) or still succeeds (for auto-reset).
   HANDLE handle = (HANDLE)event->signal_primitive.value.win32_handle;
-  if (!SetEvent(handle)) {
-    return iree_make_status(iree_status_code_from_win32_error(GetLastError()),
-                            "SetEvent failed");
-  }
-  return iree_ok_status();
+  BOOL result = SetEvent(handle);
+  IREE_ASSERT(result, "event handle released before publication");
 }
 
 #else  // unsupported platform
@@ -177,11 +164,10 @@ iree_async_event_native_initialize(iree_async_event_native_t* out_event) {
                           "native events not supported on this platform");
 }
 
-IREE_API_EXPORT iree_status_t
-iree_async_event_native_set(const iree_async_event_native_t* event) {
+IREE_API_EXPORT void iree_async_event_native_set(
+    const iree_async_event_native_t* event) {
   (void)event;
-  return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                          "events not supported on this platform");
+  IREE_ASSERT_UNREACHABLE("native event initialization is unavailable");
 }
 
 #endif  // platform

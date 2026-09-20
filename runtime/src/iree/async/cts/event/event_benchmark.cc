@@ -219,7 +219,7 @@ static void BM_EventWaitPreSignaled(::benchmark::State& state,
 
   for (auto _ : state) {
     // Pre-signal the event before submitting wait.
-    IREE_CHECK_OK(iree_async_event_set(event));
+    iree_async_event_set(event);
 
     // Submit wait - should complete immediately since already signaled.
     memset(&wait_op, 0, sizeof(wait_op));
@@ -284,7 +284,7 @@ static void BM_EventSignalWait(::benchmark::State& state,
     }
 
     // Signal the event.
-    IREE_CHECK_OK(iree_async_event_set(event));
+    iree_async_event_set(event);
 
     // Poll until complete.
     if (!ctx->PollUntilComplete(1)) {
@@ -363,7 +363,7 @@ static void BM_EventBatchSignalWait(::benchmark::State& state,
 
     // Signal all events.
     for (size_t i = 0; i < batch_size; ++i) {
-      IREE_CHECK_OK(iree_async_event_set(events[i]));
+      iree_async_event_set(events[i]);
     }
 
     // Poll until all complete.
@@ -443,7 +443,7 @@ static void BM_EventCrossThreadSignal(::benchmark::State& state,
   // Background signaler thread.
   std::thread signaler([&]() {
     while (sync.WaitForRequest()) {
-      IREE_CHECK_OK(iree_async_event_set(event));
+      iree_async_event_set(event);
     }
   });
 

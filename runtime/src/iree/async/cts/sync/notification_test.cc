@@ -714,7 +714,7 @@ TEST_P(NotificationTest, LinkedSignalPublishesAfterPredecessor) {
   EXPECT_EQ(iree_async_notification_query_epoch(notification), initial_epoch);
   EXPECT_EQ(signal_tracker.call_count, 0);
 
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
   PollUntilCondition([&] { return tail_tracker.call_count == 1; },
                      "linked notification publication");
   EXPECT_EQ(wait_tracker.call_count, 1);
