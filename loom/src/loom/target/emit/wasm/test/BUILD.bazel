@@ -28,6 +28,10 @@ iree_py_test(
         "sum.mjs",
         "//loom/src/loom/tools/loom-compile",
     ],
+    env_inherit = [
+        "IREE_WASM_NODE",
+        "PATH",
+    ],
     target_compatible_with = loom_config_compatible_with([
         "//loom/config/target:wasm_artifacts",
     ]),
