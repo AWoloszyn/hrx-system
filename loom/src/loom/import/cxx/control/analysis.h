@@ -14,6 +14,7 @@
 #include <optional>
 #include <span>
 #include <unordered_map>
+#include <variant>
 #include <vector>
 
 namespace loom::cxx_import {
@@ -23,8 +24,8 @@ namespace loom::cxx_import {
 struct CountedLoop {
   // Source binding replaced by the structured loop's induction argument.
   cxx::Symbol* induction;
-  // Stable upper bound, evaluated once by the composition driver.
-  cxx::ExpressionAST* upper;
+  // Proven constant or stable runtime bound evaluated once by translation.
+  std::variant<unsigned, cxx::ExpressionAST*> upper;
   // Positive constant step in the source's unsigned-int width.
   unsigned step;
 };
@@ -34,12 +35,13 @@ struct CountedLoop {
 // path.
 enum class ExitFlow { None, Some, All };
 
-// One traversal owns control facts for an immutable source function body.
+// One analysis owns control facts for an immutable source function body.
 // Ordered writes include nested constructs and preserve source symbol identity.
 // Exit outcomes aggregate each statement's already visited children, and
-// counted-loop classification happens after its writes are complete. Queries
-// only consume retained facts; they do not traverse source or output IR.
-// The source unit and body outlive this object and every returned reference.
+// counted-loop classification evaluates each header's constants once after its
+// writes are complete. Queries only consume retained facts; they do not
+// traverse source or output IR. The source unit and body outlive this object
+// and every returned reference.
 class ControlFlow final : private cxx::ASTVisitor {
  public:
   ControlFlow(cxx::TranslationUnit& unit, cxx::StatementAST* body);

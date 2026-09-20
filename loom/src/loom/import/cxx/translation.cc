@@ -1172,7 +1172,13 @@ class Translator {
     auto source = locations_.get(loop);
     auto* induction = counted.induction;
     auto lower = unsigned_offset(values_.at(induction).ssa(), source);
-    auto upper = unsigned_offset(expression(counted.upper).ssa(), source);
+    auto* constant_upper = std::get_if<unsigned>(&counted.upper);
+    auto bound =
+        constant_upper
+            ? scalars_.integer(static_cast<int32_t>(*constant_upper),
+                               LOOM_SCALAR_TYPE_I32, source)
+            : expression(std::get<cxx::ExpressionAST*>(counted.upper)).ssa();
+    auto upper = unsigned_offset(bound, source);
     auto step = scalars_.integer(counted.step, LOOM_SCALAR_TYPE_OFFSET, source);
     auto written = live_mutations(loop);
     std::erase(written, induction);

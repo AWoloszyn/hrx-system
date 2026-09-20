@@ -2,6 +2,58 @@
   "version": 1,
   "cases": [
     {
+      "name": "constant counted headers preserve source-width arithmetic and nonwrapping tails",
+      "steps": [
+        {
+          "name": "fixtures",
+          "run": {
+            "tool": "generate-cases",
+            "args": [
+              "{tmp}/fixtures"
+            ]
+          }
+        },
+        {
+          "name": "import",
+          "run": {
+            "tool": "loom-import-cxx",
+            "args": [
+              "--builtin-includes=false",
+              "--I={srcdir}/../include",
+              "--root=counted_stride",
+              "--root=counted_edge",
+              "--root=counted_empty",
+              "--root=counted_maximum_step",
+              "--to=bc",
+              "--output={tmp}/functions.loombc",
+              "{srcdir}/constant_loops.cpp"
+            ]
+          }
+        },
+        {
+          "name": "execute on the VM",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/fixtures/constant_loop_functions.loom",
+              "--library={tmp}/functions.loombc"
+            ]
+          },
+          "stdout": {
+            "contains": {
+              "unordered": [
+                "\"case_count\":55",
+                "\"sample_count\":55",
+                "\"failed_sample_count\":0",
+                "\"skipped_case_count\":0",
+                "\"planning_issue_count\":0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "structured continue preserves iteration exits, conditions, steps and nested scopes",
       "steps": [
         {

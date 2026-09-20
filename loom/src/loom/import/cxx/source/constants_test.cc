@@ -7,6 +7,8 @@
 #include "loom/import/cxx/source/constants.h"
 
 #include <cxx/ast.h>
+#include <cxx/names.h>
+#include <cxx/symbols.h>
 
 #include "iree/testing/gtest.h"
 #include "loom/import/cxx/source/source.h"
@@ -19,6 +21,9 @@ cxx::ExpressionAST* returned(Source& source) {
   for (auto* declaration : cxx::ListView{root->declarationList}) {
     if (auto* function =
             cxx::ast_cast<cxx::FunctionDefinitionAST>(declaration)) {
+      if (cxx::to_string(function->symbol->name()) != "entry") {
+        continue;
+      }
       auto* body = cxx::ast_cast<cxx::CompoundStatementFunctionBodyAST>(
                        function->functionBody)
                        ->statement;
@@ -61,8 +66,9 @@ TEST(IntegerConstantTest,
         "0xffffffffffffffffULL"}) {
     SCOPED_TRACE(expression);
     std::string text =
-        "unsigned opaque(); constexpr unsigned constant_call(); "
-        "constexpr unsigned operator\"\"_words(unsigned long long); "
+        "unsigned opaque(); constexpr unsigned constant_call() { return 16; } "
+        "constexpr unsigned operator\"\"_words(unsigned long long) { return "
+        "16; } "
         "auto entry(unsigned value, volatile unsigned flag) { return " +
         std::string(expression) + "; }";
     Source source(view(text), IREE_SV("rejected.cpp"), options);

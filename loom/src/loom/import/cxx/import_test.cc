@@ -615,6 +615,45 @@ TEST_F(ImportTest, BareUnrollAndConstantExpressionSchedules) {
   EXPECT_EQ(diagnostic_count_, 0);
 }
 
+TEST_F(ImportTest, ConstantLoopHeadersPreserveSchedulesAndSourceConversions) {
+  IREE_ASSERT_OK(Import(IREE_SV(R"cpp(
+#define PIXELS 320u
+    template <unsigned Width, unsigned Step>
+    static unsigned sum(const unsigned* input, unsigned start) {
+      constexpr unsigned lanes = 16;
+      unsigned total = 0;
+      [[loom::unroll(3), loom::pipeline(2)]]
+      for (unsigned index = start; index < (Width / lanes);
+           index += Step / 2u) {
+        total += input[index];
+      }
+      return total;
+    }
+    unsigned entry(const unsigned* input, unsigned start) {
+      unsigned total = sum<PIXELS, 4>(input, start);
+      [[loom::unroll(2)]]
+      for (unsigned index = start;
+           index < static_cast<unsigned>(sizeof(++start) * 5u); index++) {
+        total += input[index];
+      }
+      [[loom::unroll(2)]]
+      for (unsigned index = start; index < (0xffffffffu + 21u);
+           index += (1u << 2)) {
+        total += input[index];
+      }
+      return total;
+    }
+  )cpp")));
+  ASSERT_NE(module_, nullptr);
+  auto text = Print();
+  EXPECT_NE(text.find("scf.for"), std::string::npos);
+  EXPECT_NE(text.find("unroll(%"), std::string::npos);
+  EXPECT_NE(text.find("pipeline(%"), std::string::npos);
+  EXPECT_EQ(text.find("scf.while"), std::string::npos);
+  EXPECT_EQ(text.find("scalar.div"), std::string::npos);
+  EXPECT_EQ(diagnostic_count_, 0);
+}
+
 TEST_F(ImportTest, InvalidLoopSchedulesAreNotSilentlyDiscarded) {
   for (const char* attributes :
        {"loom::unroll(0)", "loom::unroll(-1)", "loom::unroll(2.5)",
@@ -639,7 +678,12 @@ TEST_F(ImportTest, InvalidLoopSchedulesAreNotSilentlyDiscarded) {
   for (const char* loop :
        {"[[loom::unroll(2)]] while (count) { --count; }",
         "[[loom::pipeline(2)]] do { --count; } while (count);",
-        "[[loom::unroll]] for (int i = 0; i < (int)count; ++i) {}"}) {
+        "[[loom::unroll]] for (int i = 0; i < (int)count; ++i) {}",
+        "[[loom::unroll]] for (unsigned i = 0; i < 20ULL; ++i) {}",
+        "[[loom::unroll]] for (unsigned i = 0; i < (count + 0u); ++i) {}",
+        "[[loom::unroll]] for (unsigned i = 0; i < (count = 20u); ++i) {}",
+        "[[loom::unroll]] for (unsigned i = 0; i < 20u; i += count) {}",
+        "[[loom::unroll]] for (unsigned i = 0; i < ~0u; i += (1u << 2)) {}"}) {
     SCOPED_TRACE(loop);
     auto source = std::string("unsigned entry(unsigned count) { ") + loop +
                   " return count; }";

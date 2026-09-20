@@ -510,6 +510,46 @@ def continue_vectors(directory):
     return "kernel.decl @continue_vectors() launch(%output: buffer, %count: i32, %choose: i32)\n\n" + "\n".join(cases)
 
 
+CONSTANT_LOOP_STARTS = [0, 1, 2, 3, 7, 16, 17, 18, 19, 20, 21, 0x80000000, 0xFFFFFFFF]
+
+
+def constant_loop_functions(directory):
+    del directory
+    cases = [
+        ("counted_stride", [([start], sum(range(start, 20, 4))) for start in CONSTANT_LOOP_STARTS]),
+        ("counted_empty", [([start], 7) for start in CONSTANT_LOOP_STARTS]),
+        ("counted_maximum_step", [([start], 7 if start == 0 else 0) for start in CONSTANT_LOOP_STARTS]),
+        ("counted_edge", [([start], sum(range(start, 0xFFFFFFFC, 4))) for start in range(0xFFFFFFF0, 0x100000000)]),
+    ]
+    return "\n".join(function_cases(name, [32], 32, samples) for name, samples in cases)
+
+
+def constant_loops(directory):
+    values = [(index * 17 + 7) % 251 for index in range(64 * 20)]
+    cases = []
+    for start in CONSTANT_LOOP_STARTS:
+        expected = []
+        for lane in range(64):
+            row = values[lane * 20 : (lane + 1) * 20]
+            expected.extend([sum(row[start:20:2])] * 2)
+            expected.extend([sum(row[0:20:2])] * 2)
+            expected.append(sum(row[0:20:4]))
+            expected.append(sum(row))
+            iterations = max(0, (20 - start) // 2)
+            expected.append(sum(row[start : start + iterations]) + 19 - iterations)
+            expected.append(signed_bits(sum(range(0xFFFFFFF0 + lane % 8, 0xFFFFFFFC, 4)), 32))
+            expected.extend([sum(row[0:bound:2]) for bound in [0, 1, 2, 5]])
+        case = Case(directory, f"constant_loops_{start}", "i32", len(expected))
+        case.array("input", values)
+        case.array("original", values)
+        case.scalar("start", signed_bits(start, 32), "i32")
+        case.launch("constant_loops", "%input, %output, %start", f"tensor<{len(values)}xi32>, tensor<{len(expected)}xi32>, i32")
+        case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(values)}xi32>")
+        case.lines.append('  check.expect.event<device> {type = "asan_report", count = 0}')
+        cases.append(case.finish(expected))
+    return "kernel.decl @constant_loops() launch(%input: buffer, %output: buffer, %start: i32)\n\n" + "\n".join(cases)
+
+
 def assumption_functions(directory):
     del directory
     values = [0, 1, 127, 128, 254, 255]
@@ -878,6 +918,8 @@ def main():
         ("continue_copy", continue_copy),
         ("continue_pointers", continue_pointers),
         ("continue_vectors", continue_vectors),
+        ("constant_loop_functions", constant_loop_functions),
+        ("constant_loops", constant_loops),
         ("assumption_functions", assumption_functions),
         ("assumption_kernel", assumption_kernel),
         ("comparison_functions", comparison_functions),

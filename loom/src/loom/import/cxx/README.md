@@ -132,6 +132,20 @@ loop that cannot be represented as a nonwrapping counted loop is a source
 error. The cleaned Loom can replace these constants with ordinary config
 values when exploring schedules without reimporting C++.
 
+Bounds such as `pixels / 16u` and steps such as `index += (1u << 2)` retain
+`scf.for` when their integer expressions are constant. This includes macros,
+constexpr bindings, concrete template parameters, integral casts, and `sizeof`.
+Constant evaluation preserves source widths and defined unsigned wrapping;
+unevaluated operands such as `sizeof(++value)` have no runtime effects.
+Prefix and postfix increments have the same counted-loop behavior.
+
+The induction and comparison use the same unsigned-int width. Unit steps may
+use a stable runtime scalar bound; larger steps require a constant bound that
+leaves room for the final increment without wrapping. Runtime starts preserve
+zero-trip and partial-tail behavior. Mutable bounds, effectful expressions,
+widened comparisons and potentially wrapping increments keep general-loop
+semantics, and explicit scheduling on those loops is diagnosed.
+
 Dynamic offset loops currently compile with linear body ordering. The core
 interleaved/recurrence tail construction uses index-only division and
 multiplication for those bounds and must preserve the offset domain before

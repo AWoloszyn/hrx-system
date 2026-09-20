@@ -7,7 +7,6 @@
 #include "loom/import/cxx/control/analysis.h"
 
 #include <cxx/ast.h>
-#include <cxx/ast_interpreter.h>
 #include <cxx/initialization.h>
 #include <cxx/symbols.h>
 #include <cxx/translation_unit.h>
@@ -15,7 +14,20 @@
 
 #include <algorithm>
 
+#include "loom/import/cxx/source/constants.h"
+
 namespace loom::cxx_import {
+namespace {
+
+cxx::ExpressionAST* unwrapped(cxx::ExpressionAST* expression) {
+  expression = cxx::Initializer::stripImplicitCasts(expression);
+  while (auto* nested = cxx::ast_cast<cxx::NestedExpressionAST>(expression)) {
+    expression = cxx::Initializer::stripImplicitCasts(nested->expression);
+  }
+  return expression;
+}
+
+}  // namespace
 
 ControlFlow::ControlFlow(cxx::TranslationUnit& unit, cxx::StatementAST* body)
     : unit_(unit) {
@@ -54,6 +66,15 @@ ExitFlow ControlFlow::continues(cxx::StatementAST* statement) const {
 }
 
 bool ControlFlow::preVisit(cxx::AST* ast) {
+  switch (ast->kind()) {
+    case cxx::ASTKind::ConstExpression:
+    case cxx::ASTKind::SizeofExpression:
+    case cxx::ASTKind::SizeofTypeExpression:
+    case cxx::ASTKind::AlignofTypeExpression:
+      return false;
+    default:
+      break;
+  }
   if (structured(ast)) {
     owners_.push_back(ast);
   }
@@ -163,21 +184,20 @@ void ControlFlow::record(cxx::ExpressionAST* expression) {
 }
 
 // The unit-step unsigned interval cannot wrap before its strict upper bound.
-// A stable scalar/literal upper bound in that same unsigned width may be
-// evaluated once. Wider comparisons can observe induction wraparound and
-// retain their general while semantics, as do mutable bounds.
+// Larger constant steps require room for the final increment even when the
+// bound is not a multiple of the step. Pure constants and stable scalar bounds
+// in that same unsigned width may be evaluated once. Wider comparisons can
+// observe induction wraparound and retain their general while semantics, as do
+// mutable or volatile bounds.
 std::optional<CountedLoop> ControlFlow::classify(cxx::ForStatementAST* loop) {
-  unsigned step_value = 1;
   auto* declaration =
       cxx::ast_cast<cxx::DeclarationStatementAST>(loop->initializer);
   auto* initial =
       declaration
           ? cxx::ast_cast<cxx::SimpleDeclarationAST>(declaration->declaration)
           : nullptr;
-  auto* condition = cxx::ast_cast<cxx::BinaryExpressionAST>(loop->condition);
-  auto* step = cxx::ast_cast<cxx::UnaryExpressionAST>(loop->expression);
-  auto* compound =
-      cxx::ast_cast<cxx::CompoundAssignmentExpressionAST>(loop->expression);
+  auto* condition =
+      cxx::ast_cast<cxx::BinaryExpressionAST>(unwrapped(loop->condition));
   if (!initial || !initial->initDeclaratorList ||
       initial->initDeclaratorList->next || !condition || condition->symbol ||
       condition->op != cxx::TokenKind::T_LESS ||
@@ -185,48 +205,60 @@ std::optional<CountedLoop> ControlFlow::classify(cxx::ForStatementAST* loop) {
     return std::nullopt;
   }
   auto* induction = initial->initDeclaratorList->value->symbol;
-  auto* left = cxx::ast_cast<cxx::IdExpressionAST>(
-      cxx::Initializer::stripImplicitCasts(condition->leftExpression));
-  cxx::IdExpressionAST* increment = nullptr;
-  if (step && !step->symbol && step->op == cxx::TokenKind::T_PLUS_PLUS) {
-    increment = cxx::ast_cast<cxx::IdExpressionAST>(step->expression);
-  } else if (compound && !compound->symbol &&
-             compound->op == cxx::TokenKind::T_PLUS_EQUAL &&
-             cxx::ast_cast<cxx::IntLiteralExpressionAST>(
-                 compound->rightExpression) &&
-             cxx::ast_cast<cxx::IntLiteralExpressionAST>(
-                 condition->rightExpression)) {
-    cxx::ASTInterpreter interpreter(&unit_);
-    auto amount =
-        interpreter.toInt(*interpreter.evaluate(compound->rightExpression));
-    auto upper =
-        interpreter.toInt(*interpreter.evaluate(condition->rightExpression));
-    if (amount && upper && *amount > 0 && *amount <= UINT32_MAX &&
-        *upper >= 0 && *upper <= UINT32_MAX - *amount + 1) {
-      step_value = static_cast<unsigned>(*amount);
-      increment =
-          cxx::ast_cast<cxx::IdExpressionAST>(compound->targetExpression);
-    }
-  }
-  auto* upper =
-      cxx::Initializer::stripImplicitCasts(condition->rightExpression);
-  auto* bound = cxx::ast_cast<cxx::IdExpressionAST>(upper);
-  if (!left || !increment || left->symbol != induction ||
-      increment->symbol != induction ||
-      unit_.typeTraits().remove_cv(induction->type())->kind() !=
+  auto* left =
+      cxx::ast_cast<cxx::IdExpressionAST>(unwrapped(condition->leftExpression));
+  auto traits = unit_.typeTraits();
+  if (!left || left->symbol != induction ||
+      traits.is_volatile(induction->type()) ||
+      traits.remove_cv(induction->type())->kind() !=
           cxx::TypeKind::kUnsignedInt ||
-      unit_.typeTraits().remove_cv(condition->leftExpression->type)->kind() !=
+      traits.remove_cv(condition->leftExpression->type)->kind() !=
           cxx::TypeKind::kUnsignedInt ||
-      unit_.typeTraits().remove_cv(condition->rightExpression->type)->kind() !=
-          cxx::TypeKind::kUnsignedInt ||
-      (!bound && !cxx::ast_cast<cxx::IntLiteralExpressionAST>(upper))) {
+      traits.remove_cv(condition->rightExpression->type)->kind() !=
+          cxx::TypeKind::kUnsignedInt) {
     return std::nullopt;
   }
+
+  unsigned step_value = 1;
+  auto* increment_expression = unwrapped(loop->expression);
+  auto* step = cxx::ast_cast<cxx::UnaryExpressionAST>(increment_expression);
+  auto* post = cxx::ast_cast<cxx::PostIncrExpressionAST>(increment_expression);
+  auto* compound =
+      cxx::ast_cast<cxx::CompoundAssignmentExpressionAST>(increment_expression);
+  cxx::IdExpressionAST* increment = nullptr;
+  if (step && !step->symbol && step->op == cxx::TokenKind::T_PLUS_PLUS) {
+    increment =
+        cxx::ast_cast<cxx::IdExpressionAST>(unwrapped(step->expression));
+  } else if (post && !post->symbol && post->op == cxx::TokenKind::T_PLUS_PLUS) {
+    increment =
+        cxx::ast_cast<cxx::IdExpressionAST>(unwrapped(post->baseExpression));
+  } else if (compound && !compound->symbol &&
+             compound->op == cxx::TokenKind::T_PLUS_EQUAL) {
+    auto amount = integer_constant(unit_, compound->rightExpression);
+    if (amount && *amount > 0 && *amount <= UINT32_MAX) {
+      step_value = static_cast<unsigned>(*amount);
+      increment = cxx::ast_cast<cxx::IdExpressionAST>(
+          unwrapped(compound->targetExpression));
+    }
+  }
   const auto& body_writes = written(loop->statement);
+  if (!increment || increment->symbol != induction ||
+      std::ranges::find(body_writes, induction) != body_writes.end()) {
+    return std::nullopt;
+  }
+
+  if (auto upper = integer_constant(unit_, condition->rightExpression)) {
+    if (*upper >= 0 && *upper <= UINT32_MAX - step_value + 1) {
+      return CountedLoop{induction, static_cast<unsigned>(*upper), step_value};
+    }
+    return std::nullopt;
+  }
+  auto* bound = cxx::ast_cast<cxx::IdExpressionAST>(
+      unwrapped(condition->rightExpression));
   const auto& loop_writes = written(loop);
-  if (std::ranges::find(body_writes, induction) != body_writes.end() ||
-      (bound &&
-       std::ranges::find(loop_writes, bound->symbol) != loop_writes.end())) {
+  if (step_value != 1 || !bound || !traits.is_integral_or_enum(bound->type) ||
+      traits.is_volatile(bound->type) ||
+      std::ranges::find(loop_writes, bound->symbol) != loop_writes.end()) {
     return std::nullopt;
   }
   return CountedLoop{induction, condition->rightExpression, step_value};
