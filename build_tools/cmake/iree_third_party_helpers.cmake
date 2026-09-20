@@ -147,6 +147,17 @@ function(iree_declare_locked_fetch_content dep_name)
     set(_patch_driver "${IREE_ROOT_DIR}/build_tools/cmake/iree_apply_dependency_patches.cmake")
     file(SHA256 "${_patch_driver}" _patch_driver_sha256)
     list(APPEND _patch_fingerprints "${_patch_driver}:${_patch_driver_sha256}")
+    # FetchContent expands command lists, including semicolons inside quoted
+    # -D arguments. Keep list-valued patch parameters in the invoked script.
+    set(_patch_parameters
+      "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_fetch_name}-patch.cmake")
+    file(CONFIGURE OUTPUT "${_patch_parameters}" CONTENT [=[
+set(IREE_PATCH_ARGS [==[@_patch_args@]==])
+set(IREE_PATCH_FILES [==[@_patch_files@]==])
+include([==[@_patch_driver@]==])
+]=] @ONLY)
+    file(SHA256 "${_patch_parameters}" _patch_parameters_sha256)
+    list(APPEND _patch_fingerprints "parameters:${_patch_parameters_sha256}")
     list(JOIN _patch_fingerprints ";" _patch_fingerprint)
     string(SHA256 _patch_set_sha256 "${_patch_fingerprint}")
     list(APPEND _patch_command
@@ -155,9 +166,7 @@ function(iree_declare_locked_fetch_content dep_name)
       "-DIREE_PATCH_SET_SHA256=${_patch_set_sha256}"
       "-DIREE_PATCH_GIT_EXECUTABLE=${_iree_dependency_git_executable}"
       "-DIREE_PATCH_SOURCE_DIR=<SOURCE_DIR>"
-      "-DIREE_PATCH_ARGS=${_patch_args}"
-      "-DIREE_PATCH_FILES=${_patch_files}"
-      -P "${_patch_driver}"
+      -P "${_patch_parameters}"
     )
   endif()
   FetchContent_Declare(
