@@ -153,7 +153,10 @@ function(iree_declare_locked_fetch_content dep_name)
     # complete patch set atomic, including files created by earlier patches.
     set(_patch_file
       "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_fetch_name}-patch.diff")
-    file(WRITE "${_patch_file}" "${_patch_contents}")
+    # Keep Git's patch format LF-delimited on every host. Expand the complete
+    # value once so CMake syntax within the patch itself remains literal.
+    file(CONFIGURE OUTPUT "${_patch_file}" CONTENT "@_patch_contents@"
+      @ONLY NEWLINE_STYLE UNIX)
     # FetchContent expands command lists, including semicolons inside quoted
     # -D arguments. Keep list-valued patch parameters in the invoked script.
     set(_patch_parameters

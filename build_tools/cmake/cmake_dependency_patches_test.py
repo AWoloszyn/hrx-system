@@ -38,8 +38,9 @@ class CMakeDependencyPatchesTest(unittest.TestCase):
             source.mkdir()
             patches = root / "patch files"
             patches.mkdir()
+            context = "\ncontext    line\n@literal@ ${literal} $<CONFIG>\n"
             (source / "value.txt").write_text(
-                "context    line\nbefore\n", encoding="utf-8"
+                context + "before\n", encoding="utf-8", newline="\n"
             )
             for name, before, after in (
                 ("first", "before", "middle"),
@@ -48,8 +49,13 @@ class CMakeDependencyPatchesTest(unittest.TestCase):
                 (patches / f"{name}.patch").write_text(
                     PATCH.replace("-before", f"-{before}")
                     .replace("+after", f"+{after}")
-                    .replace("@@ -1 +1 @@", "@@ -1,2 +1,2 @@\n context line"),
+                    .replace(
+                        "@@ -1 +1 @@",
+                        "@@ -1,4 +1,4 @@\n\n context line\n"
+                        " @literal@ ${literal} $<CONFIG>",
+                    ),
                     encoding="utf-8",
+                    newline="\n",
                 )
             archive = root / "source.tar.gz"
             with tarfile.open(archive, "w:gz") as output:
@@ -73,6 +79,14 @@ iree_populate_locked_fetch_content(sample sample_source)
                 encoding="utf-8",
             )
             build = root / "build"
+            # file(CONFIGURE) terminates its single template line after expanding
+            # the complete patch stack, including its existing patch separators.
+            expected_patch = (
+                (patches / "first.patch").read_bytes()
+                + b"\n"
+                + (patches / "second.patch").read_bytes()
+                + b"\n\n"
+            )
             for _ in range(2):
                 result = subprocess.run(
                     [
@@ -89,6 +103,10 @@ iree_populate_locked_fetch_content(sample sample_source)
                     stderr=subprocess.STDOUT,
                 )
                 self.assertEqual(result.returncode, 0, result.stdout)
+                self.assertEqual(
+                    (build / "CMakeFiles/sample-patch.diff").read_bytes(),
+                    expected_patch,
+                )
                 cache = (build / "CMakeCache.txt").read_text(encoding="utf-8")
                 self.assertIn(
                     f"CMAKE_GENERATOR:INTERNAL={os.environ['IREE_TEST_CMAKE_GENERATOR']}\n",
@@ -96,7 +114,7 @@ iree_populate_locked_fetch_content(sample sample_source)
                 )
                 value = build / "_deps/sample-src/value.txt"
                 self.assertEqual(
-                    value.read_text(encoding="utf-8"), "context    line\nafter\n"
+                    value.read_bytes(), (context + "after\n").encode("utf-8")
                 )
 
     def run_patch(self, source: Path, patch: Path) -> subprocess.CompletedProcess:
