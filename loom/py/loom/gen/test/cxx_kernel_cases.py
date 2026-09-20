@@ -264,7 +264,9 @@ def function_cases(name, argument_widths, result_width, samples, *, argument_typ
     """Emit source calls with the oracle's exact argument and expected bits."""
     cases = []
     for ordinal, (arguments, expected) in enumerate(samples):
-        operands = [f"0x{value % (1 << width):x}ULL" for value, width in zip(arguments, argument_widths, strict=True)]
+        # Negative enum inputs retain their numeric value before the enum cast.
+        # The positive literal remains representable even for INT64_MIN.
+        operands = [f"(-{-value - 1}LL - 1)" if value < 0 else f"0x{value % (1 << width):x}ULL" for value, width in zip(arguments, argument_widths, strict=True)]
         if argument_types is not None:
             operands = [f"static_cast<{kind}>({value})" for kind, value in zip(argument_types, operands, strict=True)]
         operands = ", ".join(operands)
@@ -646,8 +648,8 @@ def enum_functions():
     cases.append(function_cases("enum_inferred", [32], 64, [([value], (1 << 40) if value else -1) for value in commands]))
     cases.append(function_cases("enum_inferred_unsigned", [64], 32, [([value], int(value < (1 << 64) - 1)) for value in wide]))
     cases.append(function_cases("enum_specialization", [32], 64, [([value], (1 << 40) + 0xFFFFFFFF + (4 if value else 0)) for value in commands]))
-    cases.append(function_cases("enum_packed_unsigned", [8], 32, [([value], value + 1) for value in range(256)], argument_types=['PackedByte']))
-    cases.append(function_cases("enum_packed_signed", [8], 32, [([value], value - 1) for value in range(-128, 128)], argument_types=['PackedSignedByte']))
+    cases.append(function_cases("enum_packed_unsigned", [8], 32, [([value], value + 1) for value in range(256)], argument_types=["PackedByte"]))
+    cases.append(function_cases("enum_packed_signed", [8], 32, [([value], value - 1) for value in range(-128, 128)], argument_types=["PackedSignedByte"]))
     cases.append(function_cases("enum_bool", [32], 32, [([value], int(value != 0)) for value in commands]))
     return "\n\n".join(cases) + "\n"
 
