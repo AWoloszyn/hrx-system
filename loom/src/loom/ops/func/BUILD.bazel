@@ -4,6 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+load("//build_tools/embed_data:build_defs.bzl", "iree_c_embed_data")
 load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_test", "loom_generated_cc_library")
 
 package(
@@ -39,6 +40,7 @@ _FUNC_VISIBILITY = [
     "//loom/src/loom/tooling/target/vm:__pkg__",
     "//loom/src/loom/tools/loom-check:__pkg__",
     "//loom/src/loom/tools/loom-format:__pkg__",
+    "//loom/src/loom/transforms/func:__pkg__",
     "//loom/src/loom/transforms/kernel:__pkg__",
     "//loom/src/loom/transforms/symbol:__pkg__",
 ]
@@ -47,9 +49,13 @@ loom_generated_cc_library(
     name = "func",
     srcs = [
         "canonicalize.c",
+        "location.c",
         "verify.c",
     ],
-    hdrs = ["ops.h"],
+    hdrs = [
+        "location.h",
+        "ops.h",
+    ],
     args = ["--dialect=func"],
     generated_src_flags = [
         "--builders",
@@ -63,6 +69,7 @@ loom_generated_cc_library(
     visibility = _FUNC_VISIBILITY,
     deps = [
         "//loom/src/loom/error:error_defs",
+        "//loom/src/loom/format:location",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops:callable_effects",
         "//loom/src/loom/ops:func_symbol_facts",
@@ -70,6 +77,7 @@ loom_generated_cc_library(
         "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/rewrite:rewriter",
         "//loom/src/loom/target:types",
+        "//runtime/src/iree/base:core_headers",
     ],
 )
 
@@ -84,4 +92,34 @@ loom_cc_test(
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
+)
+
+loom_cc_test(
+    name = "location_test",
+    srcs = ["location_test.cc"],
+    deps = [
+        ":func",
+        ":location_test_data",
+        "//loom/src/loom/format:location",
+        "//loom/src/loom/format/bytecode:reader",
+        "//loom/src/loom/format/bytecode:writer",
+        "//loom/src/loom/format/text:parser",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_registry",
+        "//loom/src/loom/testing:module_ptr",
+        "//loom/src/loom/verify",
+        "//runtime/src/iree/base:core_headers",
+        "//runtime/src/iree/io:stream",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_c_embed_data(
+    name = "location_test_data",
+    testonly = True,
+    srcs = ["//loom/src/loom/ops/func/test:location.loom-test"],
+    c_file_output = "location_test_data.c",
+    h_file_output = "location_test_data.h",
+    identifier = "loom_location_test_data",
 )

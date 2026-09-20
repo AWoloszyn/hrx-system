@@ -30,6 +30,7 @@
 #include "loom/transforms/cleanup/cse.h"
 #include "loom/transforms/cleanup/dce.h"
 #include "loom/transforms/cleanup/strip_hints.h"
+#include "loom/transforms/func/locations.h"
 #include "loom/transforms/kernel/kernel_async_legality.h"
 #include "loom/transforms/kernel/kernel_resources.h"
 #include "loom/transforms/kernel/promote_private_fragments.h"
@@ -462,6 +463,11 @@ static const loom_pass_descriptor_t kBuiltinPassDescriptors[] = {
             IREE_ARRAYSIZE(kLowSelectOperandFormsOptionSchema),
         .requirement_defs = kLowDescriptorRegistryRequirements,
         .requirement_count = IREE_ARRAYSIZE(kLowDescriptorRegistryRequirements),
+    },
+    {
+        .key = IREE_SVL("materialize-locations"),
+        .info = loom_materialize_locations_pass_info,
+        .module_run = loom_materialize_locations_run,
     },
     {
         .key = IREE_SVL("normalize-kernel-resources"),

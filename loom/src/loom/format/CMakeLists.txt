@@ -11,6 +11,19 @@ iree_add_all_subdirs()
 
 loom_cc_library(
   NAME
+    location
+  HDRS
+    "location.h"
+  SRCS
+    "location.c"
+  DEPS
+    iree::base
+    iree::base::core_headers
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     low_repr
   HDRS
     "low_repr.h"

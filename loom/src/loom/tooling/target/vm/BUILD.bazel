@@ -63,6 +63,7 @@ loom_cc_test(
     target_compatible_with = loom_config_compatible_with(["//loom/config/target/arch:vm"]),
     deps = [
         ":imports_bytecode",
+        "//loom/src/loom/format:location",
         "//runtime/src/iree/base",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",

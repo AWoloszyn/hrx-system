@@ -5,6 +5,9 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <array>
+#include <cstring>
+#include <string>
+#include <utility>
 
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -12,6 +15,7 @@
 #include "iree/vm/bytecode/module.h"
 #include "iree/vm/reflection.h"
 #include "iree/vm/sync.h"
+#include "loom/format/location.h"
 #include "loom/tooling/target/vm/imports_bytecode.h"
 
 namespace {
@@ -131,10 +135,15 @@ class VMImportsTest : public ::testing::Test {
         iree_vm_environment_lookup_ref_type_table(environment, IREE_SV("vm")),
         &types_));
     const iree_file_toc_t* source = loom_vm_imports_bytecode_create();
+    uint8_t* image = nullptr;
+    IREE_ASSERT_OK(iree_allocator_malloc(iree_allocator_system(),
+                                         source[0].size,
+                                         reinterpret_cast<void**>(&image)));
+    std::memcpy(image, source[0].data, source[0].size);
     IREE_ASSERT_OK(iree_vm_bytecode_module_create(
         environment, IREE_SV("compiled"),
-        {iree_make_const_byte_span(source[0].data, source[0].size),
-         iree_allocator_null()},
+        {iree_make_const_byte_span(image, source[0].size),
+         iree_allocator_system()},
         iree_allocator_system(), &bytecode_));
     iree_vm_environment_free(environment);
 
@@ -272,6 +281,48 @@ TEST_F(VMImportsTest, NativeFailureUnwindsAliasedBufferArguments) {
       IREE_STATUS_ABORTED,
       Invoke(IREE_SV("failure"), {&argument, 1}, iree_vm_variant_span_empty()));
   EXPECT_EQ(release_count, 1);
+}
+
+TEST_F(VMImportsTest, CapturedLocationOutlivesCompiledProgram) {
+  iree_vm_variant_t result = {};
+  IREE_ASSERT_OK(
+      Invoke(IREE_SV("location"), iree_vm_variant_span_empty(), {&result, 1}));
+  iree_vm_process_release(std::exchange(process_, nullptr));
+  iree_vm_program_release(std::exchange(program_, nullptr));
+  iree_vm_module_release(std::exchange(bytecode_, nullptr));
+
+  void* pointer = nullptr;
+  IREE_ASSERT_OK(
+      iree_vm_ptr_from_variant_borrowed(result, types_.buffer, &pointer));
+  auto* buffer = static_cast<iree_vm_buffer_t*>(pointer);
+  iree_const_byte_span_t bytes;
+  IREE_ASSERT_OK(iree_vm_buffer_map_read(
+      buffer, 0, iree_vm_buffer_length(buffer), &bytes));
+  loom_location_value_t location;
+  IREE_ASSERT_OK(loom_location_value_parse(bytes, &location));
+  ASSERT_EQ(location.node_count, 2u);
+  EXPECT_EQ(loom_location_value_kind(location, 1), LOOM_LOCATION_VALUE_TAGGED);
+  EXPECT_EQ(loom_location_value_flags(location, 1),
+            LOOM_LOCATION_VALUE_FLAG_SYNTHETIC);
+  const auto tag = loom_location_value_tagged(location, 1);
+  EXPECT_EQ(tag.tag, 2u);
+  EXPECT_EQ(tag.child, 0u);
+  ASSERT_EQ(tag.data.data_length, 2u);
+  EXPECT_EQ(tag.data.data[1], 2u);
+  const auto file = loom_location_value_file(location, tag.child);
+  EXPECT_TRUE(iree_string_view_equal(file.source, IREE_SV("helper.cc")));
+  EXPECT_EQ(file.range.start_line, 70000u);
+  EXPECT_EQ(file.range.end_column, 15u);
+  EXPECT_TRUE(file.has_text);
+  EXPECT_EQ(std::string(reinterpret_cast<const char*>(file.text.data),
+                        file.text.data_length),
+            "  check(value);\n");
+  ASSERT_EQ(file.field_count, 1u);
+  const auto field = loom_location_value_field(location, tag.child, 0);
+  EXPECT_EQ(field.kind, 0u);
+  EXPECT_EQ(field.index, 1u);
+  EXPECT_EQ(field.range.start_column, 9u);
+  iree_vm_variant_span_reset({&result, 1});
 }
 
 }  // namespace

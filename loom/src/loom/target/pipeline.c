@@ -466,9 +466,11 @@ static iree_status_t loom_target_pipeline_build_expanded_source_body(
       builder,
       loom_target_pipeline_build_source_normalization_before_authoring_expansion,
       user_data, &for_op));
-  return loom_template_expansion_pipeline_build(
+  IREE_RETURN_IF_ERROR(loom_template_expansion_pipeline_build(
       builder, loom_target_pipeline_build_cleanup_expanded_target_functions,
-      NULL);
+      NULL));
+  return loom_target_pipeline_build_run(builder,
+                                        IREE_SV("materialize-locations"));
 }
 
 static iree_status_t loom_target_pipeline_build_source_low_body(
@@ -562,6 +564,8 @@ loom_target_pipeline_build_source_low_diagnostic_artifacts_body(
       (const loom_target_pipeline_build_context_t*)user_data;
   // Diagnostic emission preserves source operations, not unchosen execution
   // modes. Facts used for footprints and lowering describe the compiled root.
+  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_run(
+      builder, IREE_SV("materialize-locations")));
   IREE_RETURN_IF_ERROR(loom_target_pipeline_build_run(
       builder, IREE_SV("specialize-target-callgraph")));
   loom_op_t* for_op = NULL;

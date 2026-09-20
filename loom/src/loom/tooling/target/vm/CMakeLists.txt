@@ -83,6 +83,7 @@ loom_cc_test(
     iree::testing::gtest_main
     iree::vm
     iree::vm::bytecode::module
+    loom::format::location
   LABELS
     "iree-build-requirement=loom.target.arch.vm"
 )

@@ -29,6 +29,7 @@ loom_generated_cc_library(
   ARGS
     "--dialect=global"
   DEPS
+    iree::base::core_headers
     iree::base::internal
     loom::error::emitter
     loom::error::error_defs

@@ -81,3 +81,13 @@ class FuncBuilder(DialectBuilder):
         operands: list[ValueRef] = ...,
         location_id: int | None = ...,
     ) -> None: ...
+    def location(
+        self,
+        *,
+        nodes: Any,
+        results: list[Type | TiedResultSpec],
+        name: str | None = ...,
+        names: Sequence[str] | None = ...,
+        result_names: Sequence[str] | None = ...,
+        location_id: int | None = ...,
+    ) -> ValueRef: ...

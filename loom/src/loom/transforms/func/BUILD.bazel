@@ -13,20 +13,18 @@ package(
 )
 
 loom_cc_library(
-    name = "location",
-    srcs = ["location.c"],
-    hdrs = ["location.h"],
-    deps = [
-        "//runtime/src/iree/base",
-        "//runtime/src/iree/base:core_headers",
-    ],
-)
-
-loom_cc_library(
-    name = "low_repr",
-    hdrs = ["low_repr.h"],
+    name = "locations",
+    srcs = ["locations.c"],
+    hdrs = ["locations.h"],
     deps = [
         "//loom/src/loom/ir",
+        "//loom/src/loom/ir:symbol_map",
+        "//loom/src/loom/ops/func",
+        "//loom/src/loom/ops/global",
+        "//loom/src/loom/pass:types",
+        "//loom/src/loom/rewrite:rewriter",
+        "//loom/src/loom/util:walk",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
     ],
 )

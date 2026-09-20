@@ -30,6 +30,14 @@ func.def public @failure(%buffer: buffer) {
   func.return
 }
 
+// Captured provenance crosses the native call ABI as ordinary immutable data.
+func.def public @location() -> (buffer) {
+  %site = func.location [#func.location.file<"helper.cc", range = [70000, 3, 70000, 15], fields = [#func.location.field<operand, index = 1, range = [70000, 9, 70000, 14]>], text = bytes("2020636865636b2876616c7565293b0a")>, #func.location.tagged<2, data = bytes("0102"), child = 0, synthetic = true>] : buffer
+  %c0 = scalar.constant 0 : i64
+  %left, %value, %right = func.call @mixed(%site, %c0, %site) : (buffer, i64, buffer) -> (buffer, i64, buffer)
+  func.return %right : buffer
+}
+
 // Exercise both overflow banks and preserve a live scalar across the call.
 func.decl import("native") @wide(%v0: i64, %v1: i64, %v2: i64, %v3: i64, %v4: i64, %v5: i64, %v6: i64, %v7: i64, %v8: i64, %v9: i64, %v10: i64, %v11: i64, %v12: i64, %v13: i64, %v14: i64, %v15: i64, %v16: i64, %r0: buffer, %r1: buffer, %r2: buffer, %r3: buffer, %r4: buffer, %r5: buffer, %r6: buffer, %r7: buffer, %r8: buffer, %r9: buffer, %r10: buffer, %r11: buffer, %r12: buffer, %r13: buffer, %r14: buffer, %r15: buffer, %r16: buffer) -> (i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, i64, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer, buffer)
 

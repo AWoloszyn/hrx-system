@@ -16,6 +16,7 @@ loom_generated_cc_library(
     loom::py::loom::gen::ops::c_tables_func_generator
   SRCS
     "canonicalize.c"
+    "location.c"
     "verify.c"
   GENERATED_SRC_FLAGS
     "--builders"
@@ -24,11 +25,14 @@ loom_generated_cc_library(
     "builders.c"
     "tables.c"
   HDRS
+    "location.h"
     "ops.h"
   ARGS
     "--dialect=func"
   DEPS
+    iree::base::core_headers
     loom::error::error_defs
+    loom::format::location
     loom::ir
     loom::ops::callable_effects
     loom::ops::func_symbol_facts
@@ -50,6 +54,43 @@ loom_cc_test(
     iree::testing::gtest_main
     loom::format::text::printer
     loom::ir
+)
+
+loom_cc_test(
+  NAME
+    location_test
+  SRCS
+    "location_test.cc"
+  DEPS
+    ::func
+    ::location_test_data
+    iree::base::core_headers
+    iree::io::stream
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::format::bytecode::reader
+    loom::format::bytecode::writer
+    loom::format::location
+    loom::format::text::parser
+    loom::ir
+    loom::ops::op_registry
+    loom::testing::module_ptr
+    loom::verify
+)
+
+iree_c_embed_data(
+  NAME
+    location_test_data
+  SRCS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/ops/func/test/location.loom-test"
+  C_FILE_OUTPUT
+    "location_test_data.c"
+  H_FILE_OUTPUT
+    "location_test_data.h"
+  IDENTIFIER
+    "loom_location_test_data"
+  TESTONLY
+  PUBLIC
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

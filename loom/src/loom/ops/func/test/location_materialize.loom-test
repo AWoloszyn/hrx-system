@@ -1,0 +1,34 @@
+// RUN: pass materialize-locations
+
+// Intern the complete capture across functions, while preserving distinct
+// source sites and avoiding an authored symbol with the generated name.
+global.rodata.def @__location_0 = bytes("00")
+
+func.def @first() -> (buffer, buffer) {
+  %left = func.location [#func.location.file<"same.cc", range = [4, 3, 4, 8]>] : buffer
+  %right = func.location [#func.location.file<"same.cc", range = [5, 3, 5, 8]>] : buffer
+  func.return %left, %right : buffer, buffer
+}
+
+func.def @second() -> (buffer) {
+  %same = func.location [#func.location.file<"same.cc", range = [4, 3, 4, 8]>] : buffer
+  func.return %same : buffer
+}
+
+// ----
+global.rodata.def @__location_0 = bytes("00")
+
+func.def @first() -> (buffer, buffer) {
+  %left = global.load @__location_1 : buffer
+  %right = global.load @__location_2 : buffer
+  func.return %left, %right : buffer, buffer
+}
+
+func.def @second() -> (buffer) {
+  %same = global.load @__location_1 : buffer
+  func.return %same : buffer
+}
+
+global.rodata.def @__location_1 = bytes("4c4c4f43010000004f00000001000000010000002000000028000000000000004800000007000000040000000300000004000000080000004f00000000000000000000000000000073616d652e6363")
+
+global.rodata.def @__location_2 = bytes("4c4c4f43010000004f00000001000000010000002000000028000000000000004800000007000000050000000300000005000000080000004f00000000000000000000000000000073616d652e6363")

@@ -7,8 +7,8 @@
 """Global dialect: module-level state operations.
 
 Provides global.constant, global.variable, global.rodata.def,
-global.rodata.decl, global.load, and global.store for managing
-immutable/mutable module-level state and named read-only artifact payloads.
+global.rodata.decl, global.load, and global.store for managing immutable/mutable
+module-level state and read-only artifact payloads.
 """
 
 from loom.dialect.globals.defs import (

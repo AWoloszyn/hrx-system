@@ -1,0 +1,23 @@
+// RUN: format bytecode
+
+// Captured coordinates use the value ABI's width, independently of the
+// compiler's debug-location coordinate representation.
+func.def @file() -> (buffer) {
+  %site = func.location [#func.location.file<"large.cc", range = [70000, 3, 70001, 8], fields = [#func.location.field<operand, index = 1, range = [70000, 9, 70000, 14]>], text = bytes("2020636865636b2876616c7565293b0a6d6f726528293b0a")>] : buffer
+  func.return %site : buffer
+}
+
+// ====
+
+// Shared children retain their identities in a flat postorder graph.
+func.def @provenance() -> (buffer) {
+  %site = func.location [#func.location.unknown<>, #func.location.file<"helper.cc", range = [12, 3, 12, 28]>, #func.location.tagged<2, data = bytes("0102"), child = 1, synthetic = true>, #func.location.opaque<"frontend", data = bytes("ff00")>, #func.location.fused<[2, 3, 1]>] : buffer
+  func.return %site : buffer
+}
+
+// ====
+
+func.def @unknown() -> (buffer) {
+  %site = func.location [#func.location.unknown<>] : buffer
+  func.return %site : buffer
+}
