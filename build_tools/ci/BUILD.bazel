@@ -10,15 +10,28 @@
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 
 py_library(
+    name = "windows_file_access",
+    srcs = ["windows_file_access.py"],
+)
+
+py_library(
     name = "windows_diagnostics",
     srcs = ["windows_diagnostics.py"],
     visibility = ["//visibility:public"],
+    deps = [":windows_file_access"],
 )
 
 py_test(
     name = "windows_diagnostics_test",
     size = "small",
     srcs = ["windows_diagnostics_test.py"],
+    deps = [":windows_diagnostics"],
+)
+
+py_test(
+    name = "windows_file_access_test",
+    size = "small",
+    srcs = ["windows_file_access_test.py"],
     deps = [":windows_diagnostics"],
 )
 

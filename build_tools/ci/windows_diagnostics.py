@@ -192,6 +192,8 @@ def capture_cmake(capture: Capture, build_dir: Path, output: str) -> dict[str, s
 
 
 def capture_access_failures(capture: Capture, cwd: Path, output: str) -> None:
+    read_paths = []
+    delete_paths = []
     include_paths = [
         Path(value)
         for value in (environment_value(capture.environment, "INCLUDE") or "").split(
@@ -208,9 +210,10 @@ def capture_access_failures(capture: Capture, cwd: Path, output: str) -> None:
         includer = Path(match[1])
         if not includer.is_absolute():
             includer = cwd / includer
-        capture.file(includer, copy=False)
+        read_paths.append(capture.file(includer, copy=False)["path"])
         for parent in dict.fromkeys([includer.parent, *include_paths]):
             record = capture.file(parent / match[2], copy=False)
+            read_paths.append(record["path"])
             try:
                 record["parent_entries"] = sorted(
                     entry.name for entry in parent.iterdir()
@@ -229,7 +232,17 @@ def capture_access_failures(capture: Capture, cwd: Path, output: str) -> None:
             output,
         )
     ):
-        capture.file(Path(name), copy=True)
+        delete_paths.append(capture.file(Path(name), copy=True)["path"])
+    if os.name == "nt" and (read_paths or delete_paths):
+        arguments = [
+            sys.executable,
+            str(Path(__file__).with_name("windows_file_access.py")),
+        ]
+        for path in dict.fromkeys(read_paths):
+            arguments.extend(["--read", path])
+        for path in dict.fromkeys(delete_paths):
+            arguments.extend(["--delete", path])
+        capture.tool(arguments, cwd, "windows-file-access")
 
 
 def symbol_tool(environment: Mapping[str, str], cache: Mapping[str, str]) -> str | None:
