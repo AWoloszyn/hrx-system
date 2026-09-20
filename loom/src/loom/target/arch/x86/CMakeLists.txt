@@ -115,6 +115,7 @@ loom_check_test_suite(
     "test/source_low/allocation.loom-test"
     "test/source_low/buffer_bulk.loom-test"
     "test/source_low/buffer_raw.loom-test"
+    "test/source_low/callable_values.loom-test"
     "test/source_low/carried_counter_store.loom-test"
     "test/source_low/loop_counter_offset.loom-test"
     "test/source_low/memory_wide_carriers.loom-test"
@@ -150,6 +151,7 @@ loom_check_test_suite(
     "test/source_low/vector_large_insert.loom-test"
     "test/source_low/view_transport.loom-test"
   DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/callable_values.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/carried_counter_store.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/loop_counter_offset.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_scalar_wide_offsets.loom-test"

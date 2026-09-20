@@ -159,6 +159,18 @@ loom_test(
 )
 
 loom_test(
+    name = "callable_values_hardware_test",
+    srcs = ["callable_values.loom"],
+    execution_profile = AMDGPU_HARDWARE_PROFILE,
+)
+
+loom_test(
+    name = "callable_values_access_test",
+    srcs = ["callable_values.loom"],
+    execution_profile = AMDGPU_ACCESS_PROFILE,
+)
+
+loom_test(
     name = "narrow_argument_hardware_test",
     srcs = ["narrow_arguments.loom"],
     execution_profile = AMDGPU_HARDWARE_PROFILE,

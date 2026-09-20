@@ -100,6 +100,16 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
       branch-sink
     }
   }
+  inline-callables(policy = "target")
+  if changed {
+    for func {
+      where target {
+        cfg-simplify
+        canonicalize
+        cse
+      }
+    }
+  }
   for func {
     where target(codegen = "low_native", family = "amdgpu") {
       cfg-converge
@@ -224,6 +234,16 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
   for func {
     where target {
       sanitizer-insert-assertions(checks = "access")
+    }
+  }
+  inline-callables(policy = "target")
+  if changed {
+    for func {
+      where target {
+        cfg-simplify
+        canonicalize
+        cse
+      }
     }
   }
   for func {
@@ -389,6 +409,16 @@ pass.pipeline<module> @__loom_check_prepared_low pipeline {
       canonicalize
       cse
       branch-sink
+    }
+  }
+  inline-callables(policy = "target")
+  if changed {
+    for func {
+      where target {
+        cfg-simplify
+        canonicalize
+        cse
+      }
     }
   }
   for func {

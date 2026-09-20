@@ -270,7 +270,7 @@ struct loom_inline_callables_plan_t {
   iree_host_size_t erased_version_count;
 };
 
-static bool loom_inline_target_requires_low_call_inline(
+static bool loom_inline_target_requires_call_inline(
     const loom_inline_callables_plan_t* state,
     loom_symbol_id_t caller_symbol_id) {
   if (!state->options.target_policy) {
@@ -504,9 +504,9 @@ static void loom_inline_resolve_entry_policy(
   }
 
   const bool target_requires_inline =
-      call_kind == LOOM_CALL_LIKE_KIND_LOW_INTERNAL &&
-      loom_inline_target_requires_low_call_inline(state,
-                                                  entry->source_symbol_id);
+      (call_kind == LOOM_CALL_LIKE_KIND_SEMANTIC ||
+       call_kind == LOOM_CALL_LIKE_KIND_LOW_INTERNAL) &&
+      loom_inline_target_requires_call_inline(state, entry->source_symbol_id);
   if (target_requires_inline && (callee_noinline || call_noinline)) {
     entry->effective_policy = LOOM_INLINE_POLICY_NOINLINE;
     loom_inline_mark_blocker(entry, LOOM_INLINE_BLOCKER_TARGET_REQUIRES_INLINE);

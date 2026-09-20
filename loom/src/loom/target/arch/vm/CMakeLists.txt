@@ -100,6 +100,8 @@ loom_check_test_suite(
     "test/scalar.loom-test"
     "test/source_low/buffer_access.loom-test"
     "test/source_low/buffer_calls.loom-test"
+    "test/source_low/callable_policy.loom-test"
+    "test/source_low/callable_values.loom-test"
     "test/source_low/carried_counter_store.loom-test"
     "test/source_low/loop_counter_offset.loom-test"
     "test/source_low/memory_generic_atomic.loom-test"
@@ -142,6 +144,7 @@ loom_check_test_suite(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/buffer_access.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/buffer_calls.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/callable_values.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/carried_counter_store.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/loop_counter_offset.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_generic_atomic.loom-test"

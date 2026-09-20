@@ -396,6 +396,43 @@ static iree_status_t loom_target_pipeline_build_low_cleanup_body(
   return loom_target_pipeline_build_run(builder, IREE_SV("low-dce"));
 }
 
+static iree_status_t loom_target_pipeline_build_inlined_source_cleanup_body(
+    loom_builder_t* builder, void* user_data) {
+  const loom_target_pipeline_build_context_t* context =
+      (const loom_target_pipeline_build_context_t*)user_data;
+  loom_target_control_flow_lowering_t control_flow_lowering =
+      LOOM_TARGET_CONTROL_FLOW_LOWERING_CFG;
+  IREE_RETURN_IF_ERROR(loom_target_pipeline_resolve_control_flow_lowering(
+      context->options, &control_flow_lowering));
+  if (control_flow_lowering == LOOM_TARGET_CONTROL_FLOW_LOWERING_CFG) {
+    IREE_RETURN_IF_ERROR(
+        loom_target_pipeline_build_run(builder, IREE_SV("cfg-simplify")));
+  }
+  return loom_target_pipeline_build_cleanup(builder);
+}
+
+static iree_status_t loom_target_pipeline_build_inlined_source_cleanup(
+    loom_builder_t* builder, void* user_data) {
+  loom_op_t* for_op = NULL;
+  return loom_target_pipeline_build_for_target_functions(
+      builder, loom_target_pipeline_build_inlined_source_cleanup_body,
+      user_data, &for_op);
+}
+
+static iree_status_t loom_target_pipeline_build_required_source_inlining(
+    loom_builder_t* builder, void* user_data) {
+  // Remove boundaries without a target ABI before physical representation
+  // selection. Inlining CFG bodies introduces entry and return forwarding
+  // blocks, so restore source normal form before lowering the merged function.
+  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_run_with_string_option(
+      builder, IREE_SV("inline-callables"), IREE_SV("policy"),
+      IREE_SV("target")));
+  loom_op_t* if_changed_op = NULL;
+  return loom_pass_ir_build_if_changed(
+      builder, loom_target_pipeline_build_inlined_source_cleanup, user_data,
+      &if_changed_op);
+}
+
 static iree_status_t loom_target_pipeline_build_source_low_artifact_preparation(
     loom_builder_t* builder, void* user_data) {
   const loom_target_pipeline_build_context_t* context =
@@ -497,6 +534,8 @@ static iree_status_t loom_target_pipeline_build_source_low_body(
         builder, loom_target_pipeline_build_vector_memory_footprint, user_data,
         &for_op));
   }
+  IREE_RETURN_IF_ERROR(
+      loom_target_pipeline_build_required_source_inlining(builder, user_data));
   IREE_RETURN_IF_ERROR(loom_target_pipeline_contribute_phase(
       builder, context, LOOM_TARGET_PIPELINE_PHASE_SOURCE_TO_LOW));
   IREE_RETURN_IF_ERROR(
@@ -531,6 +570,8 @@ loom_target_pipeline_build_source_low_diagnostic_artifacts_body(
         builder, loom_target_pipeline_build_vector_memory_footprint, user_data,
         &for_op));
   }
+  IREE_RETURN_IF_ERROR(
+      loom_target_pipeline_build_required_source_inlining(builder, user_data));
   IREE_RETURN_IF_ERROR(
       loom_target_pipeline_build_source_to_low(builder, context->options));
   IREE_RETURN_IF_ERROR(loom_target_pipeline_build_run_with_string_option(

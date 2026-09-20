@@ -33,6 +33,10 @@ typedef struct PipelineRunCounts {
   int target_callgraph_specialization = 0;
   // Lexical pass-run ordinal of retained call-graph specialization.
   int target_callgraph_specialization_ordinal = 0;
+  // Lexical pass-run ordinal of the first target-required call inlining.
+  int first_target_inlining_ordinal = 0;
+  // Lexical pass-run ordinal of the last target-required call inlining.
+  int last_target_inlining_ordinal = 0;
   // Number of source-to-low pass runs.
   int source_to_low = 0;
   // Lexical pass-run ordinal of source-to-low.
@@ -116,6 +120,16 @@ iree_status_t InspectPipelineRun(void* user_data, loom_op_t* op,
     ++counts->target_callgraph_specialization;
     counts->target_callgraph_specialization_ordinal =
         count_context->current_run_ordinal;
+  } else if (iree_string_view_equal(key, IREE_SV("inline-callables")) &&
+             iree_string_view_equal(
+                 FindStringOption(count_context->module,
+                                  loom_pass_run_options(op), IREE_SV("policy")),
+                 IREE_SV("target"))) {
+    if (counts->first_target_inlining_ordinal == 0) {
+      counts->first_target_inlining_ordinal =
+          count_context->current_run_ordinal;
+    }
+    counts->last_target_inlining_ordinal = count_context->current_run_ordinal;
   } else if (iree_string_view_equal(key, IREE_SV("source-to-low"))) {
     ++counts->source_to_low;
     counts->source_to_low_ordinal = count_context->current_run_ordinal;
@@ -222,7 +236,9 @@ TEST_F(TargetPipelineTest, ZeroChecksBuildsNoSanitizerPassSlots) {
   EXPECT_LT(counts.final_template_selection_ordinal,
             counts.target_callgraph_specialization_ordinal);
   EXPECT_LT(counts.target_callgraph_specialization_ordinal,
-            counts.source_to_low_ordinal);
+            counts.first_target_inlining_ordinal);
+  EXPECT_LT(counts.first_target_inlining_ordinal, counts.source_to_low_ordinal);
+  EXPECT_LT(counts.source_to_low_ordinal, counts.last_target_inlining_ordinal);
   EXPECT_LT(counts.source_to_low_ordinal, counts.symbol_dce_ordinal);
   EXPECT_TRUE(iree_string_view_is_empty(counts.source_to_low_diagnostics));
   EXPECT_TRUE(
@@ -246,6 +262,7 @@ TEST_F(TargetPipelineTest, ExpandedSourceStopsBeforeCallgraphSpecialization) {
   EXPECT_TRUE(
       iree_string_view_equal(counts.final_template_rewrite, IREE_SV("inline")));
   EXPECT_EQ(counts.target_callgraph_specialization, 0);
+  EXPECT_EQ(counts.first_target_inlining_ordinal, 0);
   EXPECT_EQ(counts.source_to_low, 0);
   EXPECT_EQ(counts.symbol_dce, 0);
 }
@@ -264,7 +281,9 @@ TEST_F(TargetPipelineTest, DiagnosticArtifactsPreserveRawSourceBoundary) {
   EXPECT_EQ(counts.source_to_low, 1);
   EXPECT_EQ(counts.symbol_dce, 0);
   EXPECT_LT(counts.target_callgraph_specialization_ordinal,
-            counts.source_to_low_ordinal);
+            counts.first_target_inlining_ordinal);
+  EXPECT_LT(counts.first_target_inlining_ordinal, counts.source_to_low_ordinal);
+  EXPECT_LT(counts.source_to_low_ordinal, counts.last_target_inlining_ordinal);
 }
 
 TEST_F(TargetPipelineTest, OperandFormDiagnosticsBuildsSourceToLowOption) {
