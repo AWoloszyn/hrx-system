@@ -9,6 +9,8 @@
           "run": {
             "tool": "generate-cases",
             "args": [
+              "kernels",
+              "--output-dir",
               "{tmp}/fixtures"
             ]
           }
@@ -83,6 +85,8 @@
           "run": {
             "tool": "generate-cases",
             "args": [
+              "kernels",
+              "--output-dir",
               "{tmp}/fixtures"
             ]
           }
@@ -157,6 +161,8 @@
           "run": {
             "tool": "generate-cases",
             "args": [
+              "kernels",
+              "--output-dir",
               "{tmp}/fixtures"
             ]
           }
@@ -231,6 +237,8 @@
           "run": {
             "tool": "generate-cases",
             "args": [
+              "kernels",
+              "--output-dir",
               "{tmp}/fixtures"
             ]
           }

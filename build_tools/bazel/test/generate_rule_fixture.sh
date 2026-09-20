@@ -2,18 +2,22 @@
 
 set -euo pipefail
 
-header=""
-source=""
+outputs=()
+assets=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --header=*)
-      header="${1#--header=}"
+    --header=*|--first=*|--second=*)
+      outputs+=("${1#*=}")
       shift
       ;;
     --source)
-      source="$2"
+      outputs+=("$2")
       shift 2
+      ;;
+    --assets=*)
+      assets="${1#--assets=}"
+      shift
       ;;
     *)
       shift
@@ -21,5 +25,11 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-printf "generated header\n" > "${header}"
-printf "generated source\n" > "${source}"
+for output in "${outputs[@]}"; do
+  mkdir -p "$(dirname "${output}")"
+  printf "generated file\n" > "${output}"
+done
+if [[ -n "${assets}" ]]; then
+  mkdir -p "${assets}"
+  printf "generated asset\n" > "${assets}/fixture.txt"
+fi

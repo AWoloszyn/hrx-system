@@ -302,7 +302,7 @@ def _loom_execution_test_launcher_impl(ctx):
         test_runner_args,
         benchmark_runner_args,
     )
-    runfiles = _tool_runfiles(ctx, test_tool, [module])
+    runfiles = _tool_runfiles(ctx, test_tool, [module] + ctx.files.data)
     runfiles = runfiles.merge(_tool_runfiles(ctx, benchmark_tool, []))
     return [
         DefaultInfo(
@@ -323,6 +323,10 @@ def _loom_execution_test_launcher_impl(ctx):
 _loom_execution_test_launcher = rule(
     implementation = _loom_execution_test_launcher_impl,
     attrs = {
+        "data": attr.label_list(
+            allow_files = True,
+            doc = "Runtime fixtures exposed at their declared runfiles paths.",
+        ),
         "module": attr.label(
             mandatory = True,
             providers = [_LoomTestModuleInfo],
@@ -519,7 +523,8 @@ def _declare_execution_test(
         size,
         tags,
         visibility,
-        target_compatible_with = []):
+        target_compatible_with = [],
+        data = []):
     profile_name = ""
     profile_runner_args = []
     test_kwargs = {
@@ -563,6 +568,7 @@ def _declare_execution_test(
         name = name,
         launcher_rule = _loom_execution_test_launcher,
         launcher_attrs = {
+            "data": data,
             "module": module,
             "profile_args": profile_runner_args,
             "profile_name": profile_name,
@@ -584,7 +590,8 @@ def _declare_library(
         module_testonly,
         module_visibility,
         tags,
-        visibility):
+        visibility,
+        target_compatible_with = []):
     _loom_library(
         name = name,
         srcs = srcs,
@@ -594,6 +601,7 @@ def _declare_library(
         input_options = input_options,
         tags = tags,
         testonly = module_testonly,
+        target_compatible_with = target_compatible_with,
         visibility = module_visibility,
     )
 
@@ -667,6 +675,7 @@ def _declare_library(
         execution_names[execution_name] = profile.name
         _declare_execution_test(
             name = execution_name,
+            data = data,
             module = ":" + test_module,
             profile = profile,
             test_runner_args = [],
@@ -725,7 +734,8 @@ def loom_library(
         input_format = "",
         input_options = [],
         tags = [],
-        visibility = None):
+        visibility = None,
+        target_compatible_with = []):
     """Declares a reusable Loom function or template library.
 
     The rule merges only ``srcs`` into its relocatable bytecode module. Direct
@@ -747,6 +757,7 @@ def loom_library(
         module_testonly = False,
         module_visibility = visibility,
         tags = tags,
+        target_compatible_with = target_compatible_with,
         visibility = visibility,
     )
 
@@ -776,7 +787,7 @@ def loom_test(
     Args:
       name: Name of the generated test target.
       srcs: Authored source modules jointly owning the test module.
-      data: Headers and other files read while importing sources.
+      data: Headers and runtime fixtures available during import and execution.
       input_format: Source provider override, or empty for filename selection.
       input_options: Provider-scoped options, such as ``cxx:std=c++20``.
       deps: Loom libraries available only for dependency resolution.
@@ -814,6 +825,7 @@ def loom_test(
     )
     _declare_execution_test(
         name = name,
+        data = data,
         module = ":" + module_name,
         profile = execution_profile,
         test_runner_args = args,

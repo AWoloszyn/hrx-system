@@ -244,6 +244,42 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         )
         self._emit_platform_guard_end(target_compatible_with)
 
+    def loom_library(
+        self,
+        name,
+        srcs=None,
+        deps=None,
+        data=None,
+        input_format="",
+        input_options=None,
+        tags=None,
+        target_compatible_with=None,
+        **kwargs,
+    ):
+        if self._should_skip_target(tags=tags, **kwargs):
+            return
+        if deps:
+            raise NotImplementedError(
+                "CMake loom_library dependencies require a relocatable library "
+                "projection preserving the transitive dependency closure"
+            )
+        blocks = [
+            self._convert_string_arg_block("NAME", name, quote=False),
+            self._convert_data_srcs_block(srcs),
+            self._convert_data_list_block(data),
+            self._convert_string_arg_block("INPUT_FORMAT", input_format or None),
+            self._convert_string_list_block(
+                "INPUT_OPTIONS", self._convert_location_args(input_options), sort=False
+            ),
+            "  MODE merge\n  OUTPUT_FORMAT bc\n  STRICT_DEPS\n",
+        ]
+        target_compatible_with = self._apply_loom_target_compatible_with(
+            target_compatible_with
+        )
+        self._emit_platform_guard_begin(target_compatible_with)
+        self._converter.body += "loom_module(\n" + "".join(blocks) + ")\n\n"
+        self._emit_platform_guard_end(target_compatible_with)
+
     def loom_test(
         self,
         name,
@@ -690,6 +726,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         generator,
         outputs,
         output_flags,
+        output_directories=None,
         args=None,
         inputs=None,
         comment=None,
@@ -705,6 +742,11 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             target_compatible_with
         )
 
+        for directory in output_directories or []:
+            if directory not in outputs:
+                raise ValueError(
+                    f"generated output directory is not declared: {directory}"
+                )
         for output in outputs:
             self._target_file_paths[self._current_target_label(output)] = (
                 f"${{CMAKE_CURRENT_BINARY_DIR}}/{output}"

@@ -84,6 +84,7 @@ def _loom_generated_files(
         generator,
         outputs,
         output_flags,
+        output_directories = [],
         args = [],
         inputs = [],
         tags = [],
@@ -95,6 +96,9 @@ def _loom_generated_files(
         fail("generated file actions require at least one output")
     if len(output_flags) != len(outputs):
         fail("generated file output flags and outputs must be paired")
+    for directory in output_directories:
+        if directory not in outputs:
+            fail("generated output directory must be a declared output: %s" % directory)
 
     rule_kwargs = {"testonly": testonly}
     if visibility != None:
@@ -109,7 +113,8 @@ def _loom_generated_files(
     iree_generated_files(
         name = name,
         srcs = inputs,
-        outs = outputs,
+        outs = [output for output in outputs if output not in output_directories],
+        output_directories = output_directories,
         args = _loom_bazel_generator_args(args),
         output_args = _loom_output_args(output_flags, outputs),
         tool = generator,
@@ -163,6 +168,7 @@ def loom_generated_file_family(
         generator,
         outputs,
         output_flags,
+        output_directories = [],
         args = [],
         inputs = [],
         tags = [],
@@ -181,6 +187,7 @@ def loom_generated_file_family(
       generator: Executable label that writes every output.
       outputs: Generated filenames.
       output_flags: Generator flags paired positionally with outputs.
+      output_directories: Outputs that are directory trees instead of files.
       args: Generator arguments before the output flags.
       inputs: Source data labels consumed by the generator.
       tags: Additional Bazel tags for the generator action.
@@ -196,6 +203,7 @@ def loom_generated_file_family(
         generator = generator,
         outputs = outputs,
         output_flags = output_flags,
+        output_directories = output_directories,
         args = args,
         inputs = inputs,
         tags = tags,

@@ -12,7 +12,7 @@ function(loom_test)
     return()
   endif()
   cmake_parse_arguments(
-    _RULE "" "NAME;INPUT_FORMAT" "SRCS;DATA;INPUT_OPTIONS;ARGS;LABELS" ${ARGN}
+    _RULE "" "NAME;INPUT_FORMAT;RESOURCE_GROUP" "SRCS;LIBRARIES;DATA;INPUT_OPTIONS;ARGS;LABELS;SANITIZER_SUPPRESSIONS" ${ARGN}
   )
   if(_RULE_UNPARSED_ARGUMENTS)
     message(FATAL_ERROR "Unknown loom_test arguments: ${_RULE_UNPARSED_ARGUMENTS}")
@@ -20,6 +20,7 @@ function(loom_test)
   loom_module(
     NAME "${_RULE_NAME}_library"
     SRCS ${_RULE_SRCS}
+    LIBRARIES ${_RULE_LIBRARIES}
     DATA ${_RULE_DATA}
     INPUT_FORMAT "${_RULE_INPUT_FORMAT}"
     INPUT_OPTIONS ${_RULE_INPUT_OPTIONS}
@@ -30,6 +31,7 @@ function(loom_test)
   loom_module(
     NAME "${_RULE_NAME}_module"
     SRCS "::${_RULE_NAME}_library"
+    LIBRARIES ${_RULE_LIBRARIES}
     MODE link
     OUTPUT_FORMAT bc
     INCLUDE_INPUT_TESTS
@@ -39,13 +41,19 @@ function(loom_test)
     NAME "${_RULE_NAME}"
     SRC loom::tools::iree-test-loom
     ARGS "{{${_MODULE}}}" ${_RULE_ARGS}
+    DATA ${_RULE_DATA}
     LABELS ${_RULE_LABELS}
+    RESOURCE_GROUP "${_RULE_RESOURCE_GROUP}"
+    SANITIZER_SUPPRESSIONS ${_RULE_SANITIZER_SUPPRESSIONS}
   )
   iree_native_test(
     NAME "${_RULE_NAME}_benchmark"
     SRC loom::tools::iree-benchmark-loom
     ARGS "{{${_MODULE}}}" --iterations=1 --warmup-iterations=0
       --output-format=jsonl --compile-report=none
+    DATA ${_RULE_DATA}
     LABELS ${_RULE_LABELS}
+    RESOURCE_GROUP "${_RULE_RESOURCE_GROUP}"
+    SANITIZER_SUPPRESSIONS ${_RULE_SANITIZER_SUPPRESSIONS}
   )
 endfunction()

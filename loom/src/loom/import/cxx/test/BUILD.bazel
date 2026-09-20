@@ -6,9 +6,11 @@
 
 load("//build_tools/sanitizer:suppressions.bzl", "rocm_suppressions")
 load("//build_tools/testing:build_defs.bzl", "iree_execution_test_suite")
-load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with", "loom_generated_file")
-load("//loom/build_tools/bazel:defs.bzl", "loom_test")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with", "loom_generated_file", "loom_generated_file_family")
+load("//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_library", "loom_test")
 load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
+load("//loom/requirements:defs.bzl", "EMIT_AMDGPU", "EXECUTE_IREE_HAL", "TARGET_ARCH_AMDGPU")
+load("//runtime/requirements:defs.bzl", "AMDGPU_RESOURCE", "HAL_AMDGPU")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -160,4 +162,64 @@ iree_execution_test_suite(
         "iree-test-loom": "//loom/src/loom/tools/iree-test-loom",
         "loom-import-cxx": "//loom/src/loom/tools/loom-import-cxx",
     },
+)
+
+# Source checks retain runtime fixture directories alongside the linked module.
+_KERNEL_COMPATIBILITY = loom_config_compatible_with([
+    "//loom/config/import:cxx",
+    "//loom/config/execute:amdgpu_hal",
+])
+
+_CXX_AMDGPU_PROFILE = loom_execution_profile(
+    name = "amdgpu",
+    build_requirements = [
+        TARGET_ARCH_AMDGPU,
+        EMIT_AMDGPU,
+        EXECUTE_IREE_HAL,
+        HAL_AMDGPU,
+    ],
+    executor = "hardware",
+    resource_group = "loom-amdgpu-tests",
+    run_requirements = [AMDGPU_RESOURCE],
+    runner_args = ["--device=amdgpu"],
+    sanitizer_suppressions = rocm_suppressions,
+    target_class = "gpu",
+    target_family = "amdgpu",
+)
+
+loom_generated_file_family(
+    name = "continue_copy_checks_gen",
+    testonly = True,
+    args = [
+        "kernel",
+        "--group=continue_copy",
+    ],
+    generator = "//loom/py/loom/gen/test:cxx_kernel_cases",
+    output_directories = ["continue_copy_arrays"],
+    output_flags = [
+        "--output",
+        "--arrays",
+    ],
+    outputs = [
+        "continue_copy_checks.loom",
+        "continue_copy_arrays",
+    ],
+    target_compatible_with = _KERNEL_COMPATIBILITY,
+)
+
+loom_library(
+    name = "continue_copy_kernel",
+    srcs = ["structured_continue.cpp"],
+    input_options = ["cxx:root=continue_copy"],
+    tags = ["manual"],
+    target_compatible_with = _KERNEL_COMPATIBILITY,
+)
+
+loom_test(
+    name = "continue_copy_source_test",
+    srcs = [":continue_copy_checks.loom"],
+    data = [":continue_copy_checks_gen"],
+    execution_profile = _CXX_AMDGPU_PROFILE,
+    target_compatible_with = _KERNEL_COMPATIBILITY,
+    deps = [":continue_copy_kernel"],
 )

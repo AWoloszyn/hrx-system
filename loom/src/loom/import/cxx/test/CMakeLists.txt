@@ -444,4 +444,50 @@ iree_execution_test_suite(
 )
 endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    continue_copy_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "continue_copy_checks.loom"
+    "continue_copy_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=continue_copy"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_module(
+  NAME
+    continue_copy_kernel
+  SRCS
+    "structured_continue.cpp"
+  INPUT_OPTIONS
+    "cxx:root=continue_copy"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_test(
+  NAME continue_copy_source_test
+  SRCS "${CMAKE_CURRENT_BINARY_DIR}/continue_copy_checks.loom"
+  LIBRARIES ::continue_copy_kernel
+  DATA "${CMAKE_CURRENT_BINARY_DIR}/continue_copy_arrays"
+  ARGS --device=amdgpu
+  LABELS "iree-run-requirement=runtime.resource.amd_gpu"
+  RESOURCE_GROUP "loom-amdgpu-tests"
+  SANITIZER_SUPPRESSIONS lsan rocm
+)
+endif()

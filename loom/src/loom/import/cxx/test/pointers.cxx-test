@@ -27,7 +27,7 @@ void entry(int* input, int* output, long long start, unsigned count) {
   (*output) = *advance(&2 [row], -1);
 }
 // ----
-kernel.def @entry() {
+kernel.def export("entry") @entry() {
   %4 = index.constant 1 : index
   %5 = index.constant 1 : index
   %6 = index.constant 1 : index

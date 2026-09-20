@@ -370,15 +370,18 @@ FunctionBody Functions::define(cxx::FunctionSymbol* symbol, Types& types,
     if (!returns_void) {
       diagnostics_.reject(unit_, definition, "kernel must return void");
     }
-    check(loom_kernel_def_build(builder, 0, 0, {}, 0, 0,
-                                callees_.at(symbol->canonical()), nullptr, 0,
-                                arguments.data(), arguments.size(), nullptr, 0,
-                                locations.get(definition), &op));
+    auto callee = callees_.at(symbol->canonical());
+    auto name_id = module_->symbols.entries[callee.symbol_id].name_id;
+    check(loom_kernel_def_build(
+        builder,
+        exported_.contains(symbol)
+            ? LOOM_KERNEL_DEF_BUILD_FLAG_HAS_EXPORT_SYMBOL
+            : 0,
+        0, {}, exported_.contains(symbol) ? name_id : LOOM_STRING_ID_INVALID, 0,
+        callee, nullptr, 0, arguments.data(), arguments.size(), nullptr, 0,
+        locations.get(definition), &op));
     auto saved =
         loom_builder_enter_region(builder, op, loom_kernel_def_config(op));
-    auto name_id =
-        module_->symbols.entries[callees_.at(symbol->canonical()).symbol_id]
-            .name_id;
     auto spelling = module_->strings.entries[name_id];
     launches_.build(symbol, {spelling.data, spelling.size}, builder,
                     locations.get(definition));
