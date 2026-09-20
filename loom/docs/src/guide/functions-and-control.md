@@ -571,6 +571,9 @@ The [checked collective recurrence](https://github.com/ROCm/hrx-system/blob/main
 applies one template with serial and pipelined policies. It combines 16-lane
 cluster reductions, workgroup reductions, ragged reads, and a nested runtime
 consumer loop, checking each schedule against independent integer results.
+The [cooperative paged-attention workflow](../workflows/tune-loop-schedules.md#pipeline-cooperative-paged-attention)
+applies this shape to shared K/V page lookups, subgroup score reductions, online
+softmax state and ragged sequence tails, with matched checked benchmarks.
 
 The caller can also calculate these values with `index` arithmetic from
 specialized template arguments or target properties. A global configuration

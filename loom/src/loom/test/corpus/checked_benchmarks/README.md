@@ -124,6 +124,29 @@ device time are separate evidence. The website's
 [dependent-load workflow](../../../../../docs/src/workflows/tune-loop-schedules.md#separate-route-and-payload-lookahead)
 walks through that comparison.
 
+## Cooperative Paged Attention
+
+`cooperative_paged_attention_f32.loom` assigns one subgroup to each 128-channel
+query. A runtime page loop shares one table lookup across K/V rows; a fixed
+sixteen-row inner loop pipelines guarded fragments into a subgroup QK reduction
+and ordered online softmax/PV state. Target subgroup width sets each lane's
+channel fragment. One template takes the per-caller depth and unroll factor,
+with depth-one and depth-three callers both unrolled by two.
+
+Independent analytic cases check maximum, denominator and normalized output
+for empty, absent, repeated, short and ragged pages. Varied inputs distinguish
+K/V row identity and lane fragments across shared pages and different query
+lengths. Undersized inactive backing makes accidental tail reads observable
+under the access sanitizer. Timing cases launch one kernel each, with exact
+expectations and the full K/V cache footprint.
+
+Matched benchmark names are
+`@cooperative_paged_attention_serial_n128_i256` and
+`@cooperative_paged_attention_pipelined_n128_i256`. The `n128`/`n1024` and
+`i1`/`i16`/`i256` suffixes select token and query counts. The
+[cooperative pipeline workflow](../../../../../docs/src/workflows/tune-loop-schedules.md#pipeline-cooperative-paged-attention)
+connects these workloads to native resource reports and controlled timings.
+
 ## Review Questions
 
 Before adding a source file here, the review answers:
