@@ -118,6 +118,23 @@ loom_cc_library(
 endif()
 
 if(LOOM_IMPORT_CXX)
+loom_cc_test(
+  NAME
+    layout_test
+  SRCS
+    "layout_test.cc"
+  DEPS
+    ::options
+    ::source
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::third_party::cxx_parser
+  LABELS
+    "iree-build-requirement=loom.import.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     locations
@@ -222,6 +239,7 @@ foreach(_target IN ITEMS
     loom_import_cxx_source_source.objects
     loom_import_cxx_source_locations.objects
     loom_import_cxx_source_constants.objects
+    loom_import_cxx_source_layout_test
     loom_import_cxx_source_constants_test
     loom_import_cxx_source_source_test
     loom_import_cxx_source_locations_test)

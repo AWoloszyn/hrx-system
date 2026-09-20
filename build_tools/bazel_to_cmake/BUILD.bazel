@@ -6,6 +6,11 @@
 
 load("@rules_python//python:defs.bzl", "py_test")
 
+exports_files(
+    ["deps.py"],
+    visibility = ["//build_tools/lefthook:__pkg__"],
+)
+
 py_test(
     name = "bazel_to_cmake_test",
     srcs = [

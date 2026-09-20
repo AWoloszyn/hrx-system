@@ -91,3 +91,12 @@ void enum_storage_u64(const Long* input, Long* output, Long delta) {
   Long* cursor = output + threadIdx.x + 1;
   cursor[-1] = add(input[threadIdx.x], delta);
 }
+
+enum __attribute__((packed)) PackedByte { packed_byte = 255 };
+enum __attribute__((packed)) PackedSignedByte {
+  packed_low = -128,
+  packed_high = 127
+};
+
+int enum_packed_unsigned(PackedByte value) { return value + 1; }
+int enum_packed_signed(PackedSignedByte value) { return value - 1; }

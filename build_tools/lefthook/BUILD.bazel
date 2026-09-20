@@ -35,6 +35,7 @@ py_test(
         "presubmit.py",
         "presubmit_test.py",
     ],
+    data = ["//build_tools/bazel_to_cmake:deps.py"],
     main = "presubmit_test.py",
     tags = _PRESUBMIT_TEST_TAGS,
     deps = ["//build_tools/devtools"],

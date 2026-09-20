@@ -6,10 +6,10 @@
 
 if(NOT DEFINED IREE_PATCH_GIT_EXECUTABLE OR
    NOT DEFINED IREE_PATCH_SOURCE_DIR OR
-   NOT DEFINED IREE_PATCH_FILES)
+   NOT DEFINED IREE_PATCH_FILE)
   message(FATAL_ERROR
     "The dependency patch driver requires a Git executable, source directory, "
-    "and patch files")
+    "and the combined patch file")
 endif()
 
 # A FetchContent population can live inside the enclosing project's worktree.
@@ -24,14 +24,14 @@ set(_patch_command
 set(_patch_options --whitespace=nowarn ${IREE_PATCH_ARGS})
 
 execute_process(
-  COMMAND ${_patch_command} --check ${_patch_options} ${IREE_PATCH_FILES}
+  COMMAND ${_patch_command} --check ${_patch_options} "${IREE_PATCH_FILE}"
   WORKING_DIRECTORY "${IREE_PATCH_SOURCE_DIR}"
   RESULT_VARIABLE _apply_check_result
   OUTPUT_VARIABLE _apply_check_output
   ERROR_VARIABLE _apply_check_error)
 if(_apply_check_result EQUAL 0)
   execute_process(
-    COMMAND ${_patch_command} ${_patch_options} ${IREE_PATCH_FILES}
+    COMMAND ${_patch_command} ${_patch_options} "${IREE_PATCH_FILE}"
     WORKING_DIRECTORY "${IREE_PATCH_SOURCE_DIR}"
     RESULT_VARIABLE _apply_result
     OUTPUT_VARIABLE _apply_output
@@ -49,7 +49,7 @@ endif()
 # so a reconfigure is idempotent.
 execute_process(
   COMMAND ${_patch_command} --reverse --check ${_patch_options}
-    ${IREE_PATCH_FILES}
+    "${IREE_PATCH_FILE}"
   WORKING_DIRECTORY "${IREE_PATCH_SOURCE_DIR}"
   RESULT_VARIABLE _reverse_check_result
   OUTPUT_VARIABLE _reverse_check_output

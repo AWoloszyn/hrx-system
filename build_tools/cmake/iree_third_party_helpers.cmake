@@ -136,24 +136,34 @@ function(iree_declare_locked_fetch_content dep_name)
       message(FATAL_ERROR
         "${dep_name} has locked patches but Git is not available")
     endif()
-    set(_patch_files)
+    set(_patch_contents)
     set(_patch_fingerprints)
     foreach(_patch IN LISTS _patches)
       _iree_dependency_resolve_patch(_patch_file "${_patch}")
-      list(APPEND _patch_files "${_patch_file}")
+      file(READ "${_patch_file}" _patch_content)
+      string(APPEND _patch_contents "${_patch_content}\n")
       file(SHA256 "${_patch_file}" _patch_sha256)
       list(APPEND _patch_fingerprints "${_patch}:${_patch_sha256}")
     endforeach()
     set(_patch_driver "${IREE_ROOT_DIR}/build_tools/cmake/iree_apply_dependency_patches.cmake")
     file(SHA256 "${_patch_driver}" _patch_driver_sha256)
     list(APPEND _patch_fingerprints "${_patch_driver}:${_patch_driver_sha256}")
+    # Git checks and commits each patch-file argument independently. One input
+    # carries intermediate file states across the ordered stack and makes the
+    # complete patch set atomic, including files created by earlier patches.
+    set(_patch_file
+      "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_fetch_name}-patch.diff")
+    # Keep Git's patch format LF-delimited on every host. Expand the complete
+    # value once so CMake syntax within the patch itself remains literal.
+    file(CONFIGURE OUTPUT "${_patch_file}" CONTENT "@_patch_contents@"
+      @ONLY NEWLINE_STYLE UNIX)
     # FetchContent expands command lists, including semicolons inside quoted
     # -D arguments. Keep list-valued patch parameters in the invoked script.
     set(_patch_parameters
       "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_fetch_name}-patch.cmake")
     file(CONFIGURE OUTPUT "${_patch_parameters}" CONTENT [=[
 set(IREE_PATCH_ARGS [==[@_patch_args@]==])
-set(IREE_PATCH_FILES [==[@_patch_files@]==])
+set(IREE_PATCH_FILE [==[@_patch_file@]==])
 include([==[@_patch_driver@]==])
 ]=] @ONLY)
     file(SHA256 "${_patch_parameters}" _patch_parameters_sha256)

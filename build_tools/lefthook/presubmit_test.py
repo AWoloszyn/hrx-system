@@ -12,6 +12,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -503,6 +504,55 @@ class PresubmitTest(unittest.TestCase):
         self.assertIn("--stage-updates", command)
         self.assertEqual(command[-1], selected_paths[0])
         self.assertNotIn("runtime/src/iree/base/status.c", command)
+
+    def test_hygiene_rejects_stale_dependency_patches_without_rewriting_lock(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            generator = root / "build_tools/bazel_to_cmake/deps.py"
+            generator.parent.mkdir(parents=True)
+            shutil.copyfile(
+                PRESUBMIT_PATH.parents[1] / "bazel_to_cmake/deps.py", generator
+            )
+            (root / "MODULE.bazel").write_text(
+                'include("//build_tools/third_party:deps.MODULE.bazel")\n'
+            )
+            fragment = root / "build_tools/third_party/deps.MODULE.bazel"
+            fragment.parent.mkdir(parents=True)
+            declaration = (
+                'http_archive = use_repo_rule("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")\n'
+                'http_archive(name="sample", url="https://example.invalid/sample.tar.gz",\n'
+                f'    sha256="{"0" * 64}", patches=["//patches:first.patch"], patch_args=["-p1"])\n'
+            )
+            fragment.write_text(declaration)
+            (root / "README.md").write_text("Fixture.\n")
+            command = [sys.executable, str(generator)]
+            subprocess.run(command, cwd=root, check=True, capture_output=True)
+            lock = root / "MODULE.cmake.lock"
+            original_lock = lock.read_bytes()
+            output = io.StringIO()
+            with (
+                mock.patch.object(presubmit, "REPO_ROOT", root),
+                contextlib.redirect_stdout(output),
+            ):
+                self.assertTrue(
+                    presubmit.run_hygiene(["README.md"], fix=False, verbose=False)
+                )
+                fragment.write_text(
+                    declaration.replace(
+                        '"//patches:first.patch"',
+                        '"//patches:first.patch", "//patches:second.patch"',
+                    )
+                )
+                for fix in (False, True):
+                    self.assertFalse(
+                        presubmit.run_hygiene(["README.md"], fix=fix, verbose=False)
+                    )
+                    self.assertEqual(lock.read_bytes(), original_lock)
+                subprocess.run(command, cwd=root, check=True, capture_output=True)
+                self.assertTrue(
+                    presubmit.run_hygiene(["README.md"], fix=False, verbose=False)
+                )
+            self.assertIn("MODULE.cmake.lock is stale", output.getvalue())
 
     def test_bazel_to_cmake_global_fix_is_read_only(self):
         with mock.patch.object(

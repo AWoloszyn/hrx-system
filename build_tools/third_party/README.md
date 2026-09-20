@@ -148,7 +148,8 @@ resolved without network access because the URL and hash are already in the
 Bazel fragment.
 
 Root-repository patches and their explicit strip arguments are copied into the
-CMake lock. Pinned CMake fetches apply the same patch set with Git, and include
+CMake lock. Pinned CMake fetches concatenate the ordered patches into one Git
+input so dependent edits are checked and applied as a complete set, and include
 the patch contents in the FetchContent command fingerprint so edited patches
 invalidate an existing population step. Reconfiguration accepts a patch set
 that is already applied and fails loudly when the populated source is in an

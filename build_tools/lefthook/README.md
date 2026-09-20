@@ -104,8 +104,14 @@ tool output are useful.
 ## Profiles
 
 `default` runs repository hygiene: buildifier, Ruff, clang-format,
-bazel-to-cmake, generated AMDGPU target metadata, watchwords, merge-conflict
-markers, and basic text hygiene.
+bazel-to-cmake, the CMake dependency lock, generated AMDGPU target metadata,
+watchwords, merge-conflict markers, and basic text hygiene.
+
+Every hygiene run checks `MODULE.cmake.lock` against the Bazel dependency graph
+with `build_tools/bazel_to_cmake/deps.py --check`, including narrow commits and
+fix mode. This check is offline and read-only. Dependency updates regenerate
+the lock explicitly with `python build_tools/bazel_to_cmake/deps.py`; resolving
+new registry versions may require network access and reviewing a global output.
 
 Buildifier checks formatting and all lint categories in the pinned release,
 including unused loads and variables, deprecated Starlark APIs, and declaration

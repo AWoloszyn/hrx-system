@@ -175,6 +175,7 @@ diff --git a/src/parser/cxx/binder.h b/src/parser/cxx/binder.h
    void bind(TypeExceptionDeclarationAST* ast, const Decl& decl);
 
 diff --git a/src/parser/cxx/binder_enums.cc b/src/parser/cxx/binder_enums.cc
+new file mode 100644
 --- /dev/null
 +++ b/src/parser/cxx/binder_enums.cc
 @@ -0,0 +1,217 @@
@@ -655,6 +656,7 @@ diff --git a/src/parser/cxx/type_traits.h b/src/parser/cxx/type_traits.h
                                      bool directInitialization) const -> bool;
    [[nodiscard]] auto reference_binds_to_temporary(
 diff --git a/tests/unit_tests/sema/enum_range_01.cc b/tests/unit_tests/sema/enum_range_01.cc
+new file mode 100644
 --- /dev/null
 +++ b/tests/unit_tests/sema/enum_range_01.cc
 @@ -0,0 +1,36 @@

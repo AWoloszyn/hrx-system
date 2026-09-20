@@ -72,6 +72,7 @@ class IntegerConstant final : private cxx::ASTVisitor {
       case cxx::ASTKind::SizeofExpression:
       case cxx::ASTKind::SizeofTypeExpression:
       case cxx::ASTKind::AlignofTypeExpression:
+      case cxx::ASTKind::BuiltinOffsetofExpression:
         return false;
       case cxx::ASTKind::NestedExpression:
       case cxx::ASTKind::CastExpression:
