@@ -54,9 +54,6 @@ typedef struct loom_pipeline_plan_write_t {
 
   // Destination binding port ordinal.
   uint32_t binding_port;
-
-  // Whether the destination view has one leading lane dimension.
-  bool partitioned;
 } loom_pipeline_plan_write_t;
 
 typedef struct loom_pipeline_plan_builder_t {
@@ -414,27 +411,15 @@ static void loom_pipeline_plan_define_flow(
 
 static uint32_t loom_pipeline_plan_define_binding_view(
     loom_pipeline_plan_builder_t* builder, loom_type_t binding_type,
-    uint64_t byte_offset) {
+    uint64_t byte_offset, bool partitioned) {
   IREE_ASSERT_LT(builder->binding_view_count, builder->binding_view_capacity);
   const uint32_t index = builder->binding_view_count++;
   builder->binding_views[index] = (loom_pipeline_plan_binding_view_t){
       .binding_type = binding_type,
       .byte_offset = byte_offset,
+      .partitioned = partitioned,
   };
   return index;
-}
-
-static bool loom_pipeline_plan_flow_binding_is_partitioned(
-    const loom_pipeline_plan_builder_t* builder,
-    const loom_pipeline_plan_flow_t* flow) {
-  if (flow->producer_kind != LOOM_PIPELINE_ENDPOINT_KIND_BINDING) {
-    return false;
-  }
-  IREE_ASSERT_LT(flow->binding_view_index, builder->binding_view_count);
-  const loom_type_t binding_type =
-      builder->binding_views[flow->binding_view_index].binding_type;
-  return loom_type_rank(binding_type) ==
-         loom_type_rank(flow->tile_type) + flow->record_shape.rank + 1u;
 }
 
 static iree_status_t loom_pipeline_plan_use_flow(
@@ -565,7 +550,7 @@ static iree_status_t loom_pipeline_plan_define_external_flow(
   IREE_RETURN_IF_ERROR(
       loom_pipeline_plan_view_tile_type(builder, view_type, &binding_type));
   const uint32_t binding_view_index = loom_pipeline_plan_define_binding_view(
-      builder, binding_type, binding_byte_offset);
+      builder, binding_type, binding_byte_offset, partitioned);
   if (builder->binding_next_ports[binding_index] == UINT32_MAX) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "pipeline binding port ordinal overflow");
@@ -964,13 +949,17 @@ static iree_status_t loom_pipeline_plan_parse_write(
   IREE_RETURN_IF_ERROR(loom_pipeline_plan_validate_fixed_record_tile(
       builder, target_type, flow->tile_type));
   const uint32_t lane_count = builder->groups[flow->group_index].lane_count;
-  const bool partitioned = lane_count > 1;
+  // The flow retains every temporal axis, including unit dimensions. Only an
+  // additional leading axis selects a lane; its extent does not classify it.
+  const bool partitioned =
+      loom_type_rank(target_type) ==
+      loom_type_rank(flow->tile_type) + flow->record_shape.rank + 1u;
+  if (lane_count > 1 && !partitioned) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "multi-lane pipeline output requires a leading lane dimension");
+  }
   if (partitioned) {
-    if (loom_type_rank(target_type) <= loom_type_rank(flow->tile_type)) {
-      return iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "multi-lane pipeline output requires a leading lane dimension");
-    }
     uint32_t leading_dimension = 0;
     IREE_RETURN_IF_ERROR(loom_pipeline_plan_exact_dimension(
         builder, target_type, 0, &leading_dimension));
@@ -985,7 +974,7 @@ static iree_status_t loom_pipeline_plan_parse_write(
   IREE_RETURN_IF_ERROR(
       loom_pipeline_plan_view_tile_type(builder, target_type, &binding_type));
   const uint32_t binding_view_index = loom_pipeline_plan_define_binding_view(
-      builder, binding_type, binding_byte_offset);
+      builder, binding_type, binding_byte_offset, partitioned);
   loom_pipeline_plan_record_shape_t target_record_shape = {0};
   IREE_RETURN_IF_ERROR(loom_pipeline_plan_exact_record_shape(
       builder, target_type, flow->tile_type, partitioned, &target_record_shape,
@@ -1009,7 +998,6 @@ static iree_status_t loom_pipeline_plan_parse_write(
       .binding_index = binding_index,
       .binding_view_index = binding_view_index,
       .binding_port = target_port,
-      .partitioned = partitioned,
   };
   return iree_ok_status();
 }
@@ -1334,7 +1322,8 @@ static void loom_pipeline_plan_emit_receive_edges(
     const uint32_t source_port =
         builder->flows[flow->storage_flow_index].producer_port;
     const bool binding_is_partitioned =
-        loom_pipeline_plan_flow_binding_is_partitioned(builder, flow);
+        flow->producer_kind == LOOM_PIPELINE_ENDPOINT_KIND_BINDING &&
+        builder->binding_views[flow->binding_view_index].partitioned;
     const uint32_t target_lane_count =
         port->source_lane == UINT32_MAX ? target_group->lane_count : 1;
     for (uint32_t target_lane = 0; target_lane < target_lane_count;
@@ -1377,7 +1366,7 @@ static void loom_pipeline_plan_emit_write_edges(
                        .source_kind = LOOM_PIPELINE_ENDPOINT_KIND_INSTANCE,
                        .source_index = flow->instance_start + lane,
                        .source_port = source_port,
-                       .binding_view_lane = write->partitioned ? lane : 0,
+                       .binding_view_lane = lane,
                        .target_kind = LOOM_PIPELINE_ENDPOINT_KIND_BINDING,
                        .target_index = write->binding_index,
                        .target_port = write->binding_port,

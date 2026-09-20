@@ -30,4 +30,23 @@ loom_cc_library(
 )
 endif()
 
+if(LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
+iree_execution_test_suite(
+  NAME
+    pipeline_record_shapes_test
+  MANIFESTS
+    "pipeline-record-shapes.test.json"
+  TOOLS
+    "loom-compile=loom::tools::loom-compile"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amd/xdna/test/equal_count_different_shape.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amd/xdna/test/extra_temporal_axis.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amd/xdna/test/missing_lane_axis.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amd/xdna/test/missing_temporal_axis.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amd/xdna/test/unit_lane_extent.loom"
+  LABELS
+    "hostonly"
+)
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

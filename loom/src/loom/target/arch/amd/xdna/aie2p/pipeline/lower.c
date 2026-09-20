@@ -796,9 +796,7 @@ static iree_status_t loom_aie2p_pipeline_emit_binding_view_endpoint(
         binding_view->binding_type, location, binding_view_base));
   }
 
-  const bool partitioned =
-      loom_type_rank(binding_view->binding_type) ==
-      loom_type_rank(flow->tile_type) + flow->record_shape.rank + 1u;
+  const bool partitioned = binding_view->partitioned;
   if (!partitioned && binding_view->byte_offset == 0 &&
       loom_type_equal(binding_view->binding_type, flow->tile_type)) {
     *out_endpoint = *binding_view_base;

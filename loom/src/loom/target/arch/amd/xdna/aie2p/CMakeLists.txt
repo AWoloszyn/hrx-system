@@ -504,6 +504,7 @@ loom_check_test_suite(
     "test/array_plan/endpoint_storage.loom-test"
     "test/array_plan/multicast.loom-test"
     "test/array_plan/packed_record.loom-test"
+    "test/array_plan/pipeline_record_shapes.loom-test"
     "test/array_plan/pipeline_views.loom-test"
     "test/array_plan/record_contracts.loom-test"
     "test/array_plan/ring_wrap.loom-test"
@@ -538,6 +539,7 @@ loom_check_test_suite(
     "test/module_contracts.loom-test"
     "test/pipeline_composition.loom-test"
     "test/pipeline_ports.loom-test"
+    "test/pipeline_record_shapes.loom-test"
     "test/pipeline_reduce.loom-test"
     "test/source_low/carried_counter_store.loom-test"
     "test/source_low/function_storage.loom-test"
@@ -585,6 +587,7 @@ loom_check_test_suite(
   RUNNER
     ::loom-check
   DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/pipeline/record_shapes.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/carried_counter_store.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/lookup_table.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/loop_counter_offset.loom-test"

@@ -4,6 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+load("//build_tools/testing:build_defs.bzl", "iree_execution_test_suite")
 load(
     "//loom/build_tools/bazel:build_defs.bzl",
     "loom_cc_library",
@@ -36,4 +37,21 @@ loom_cc_library(
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
     ],
+)
+
+iree_execution_test_suite(
+    name = "pipeline_record_shapes_test",
+    data = [
+        "test/equal_count_different_shape.loom",
+        "test/extra_temporal_axis.loom",
+        "test/missing_lane_axis.loom",
+        "test/missing_temporal_axis.loom",
+        "test/unit_lane_extent.loom",
+    ],
+    manifests = ["pipeline-record-shapes.test.json"],
+    tags = ["hostonly"],
+    target_compatible_with = _XDNA_COMPILE_COMPATIBLE_WITH,
+    tools = {
+        "loom-compile": "//loom/src/loom/tools/loom-compile",
+    },
 )
