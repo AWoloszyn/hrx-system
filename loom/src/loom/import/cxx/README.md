@@ -98,14 +98,138 @@ remain untouched.
 The importer-owned integration suite is
 `//loom/src/loom/import/cxx/tooling/test:test`. Authored source lowering goldens
 run through `//loom/src/loom/import/cxx/test:compiler_test`; native API tests
-cover ownership, source providers, and failure propagation. Execution manifests
-in `test/` retain their independent numerical oracles and runtime checks.
+cover ownership, source providers, and failure propagation. The
+[execution corpus](test/README.md) uses ordinary `loom_test` targets with
+independent numerical oracles.
+
+## Executable checks and benchmarks
+
+Include `<loomcxx/check.h>` to author a correctness case beside its implementation:
+
+```cpp
+#include <loomcxx/check.h>
+
+unsigned byte_increment(unsigned input) {
+  unsigned char value = (unsigned char)input;
+  ++value;
+  return value;
+}
+
+LOOM_CHECK_CASE(wraps_byte) {
+  const auto actual = byte_increment(255u);
+  loom::check::expect_equal(actual, 0u);
+}
+LOOM_CHECK_BENCHMARK(wraps_byte_benchmark, wraps_byte);
+```
+
+Save this as `checks.cc`. The existing test and benchmark tools accept it
+directly when the C++ importer and VM target are enabled:
+
+```sh
+iree-bazel-run --config=loom-importer-cxx --//loom/config/target:enable=vm \
+  //loom/src/loom/tools/iree-test-loom -- checks.cc
+
+iree-bazel-run --config=loom-importer-cxx --//loom/config/target:enable=vm \
+  //loom/src/loom/tools/iree-benchmark-loom -- checks.cc \
+  --iterations=10 --warmup-iterations=1 --output-format=jsonl
+```
+
+The importer emits an ordinary function, a `check.case`, and a benchmark
+reference. The case's IR is:
+
+```loom
+check.case public @wraps_byte {
+  %input = check.literal value(255) : i32
+  %actual = func.call @byte_increment(%input) : (i32) -> (i32)
+  %expected = check.literal value(0) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.benchmark<@wraps_byte> @wraps_byte_benchmark
+```
+
+`LOOM_CHECK_CASE(name)` expands to `[[loom::check_case]] void name()`.
+Cases are concrete namespace-scope functions with no parameters and a `void`
+result. Namespace qualification and static helper functions work normally.
+`LOOM_CHECK_BENCHMARK(name, case_name)` declares a benchmark referencing a case
+in the same translation unit. The benchmark runner owns timing and iteration
+policy and applies its existing correctness gate.
+
+Case bodies admit scalar constants, initialized automatic `const` or `constexpr`
+bindings, direct calls to defined ordinary functions, and terminal
+`loom::check::expect_equal` observations. Arguments and results retain their
+source scalar types. Constant expressions are evaluated by the frontend;
+runtime conversions and arithmetic belong inside the ordinary called functions.
+After the first expectation, a case can contain further expectations and an
+optional final bare `return`, but no further invocations or bindings. Mutable
+locals, branches, loops, pointers, and kernel launches in the case body produce
+source diagnostics during import.
+
+These restrictions describe the harness body. The implementation under test
+can use the importer's ordinary control flow, helpers, templates and vector
+operations wherever the selected target supports them. Its definition must be
+available in the translation unit, directly or through an include. The current
+shared testbench materializes case inputs, executes its planned calls through
+the IREE VM function provider, then checks observations. Executing control flow
+inside the harness itself requires a shared executor for complete `check.case`
+bodies; no C++-specific interpreter is involved.
+
+Build-integrated checks use the same source file:
+
+```python
+load("//loom/build_tools/bazel:defs.bzl", "loom_test")
+
+loom_test(
+    name = "checks_test",
+    srcs = ["checks.cc"],
+)
+```
+
+List included project headers in `data`. `input_options` accepts provider-scoped
+settings such as `["cxx:std=c++23 D=COUNT=8 I=include"]`. `loom_test` imports and
+links its root-owned cases, runs correctness checks, and runs a single-iteration
+benchmark smoke check. Dependency libraries retain their own tests; linking one
+does not implicitly add its cases to the root's suite.
+
+## Source input and diagnostic ownership
+
+`loom-link`, `iree-test-loom`, `iree-benchmark-loom`, and `iree-run-loom` share
+the optional input provider used by `loom-check`. Enabled binaries recognize
+`.c`, `.cc`, `.cpp`, and `.cxx`; explicit `--input-format=cxx` handles another
+filename or stdin. `--input-options='cxx:std=c++23 D=COUNT=8 I=include'` applies
+options to C++ inputs, including `--library` sources. Include directories are
+relative to the source file. A `.c` suffix selects the provider; use `std=c11`
+or another supported C standard to select C language semantics.
+
+Source inputs can also be linked once and executed as bytecode:
+
+```sh
+loom-link checks.cc --mode=link --include-input-tests \
+  --to=bc --output=checks.loombc
+iree-test-loom checks.loombc
+```
+
+Source diagnostics retain the admitted main file and headers through linking
+and target compilation. Module source identities are remapped by the linker;
+execution reports attribute failed expectations to the original source range,
+including assertions authored in headers. Bytecode retains those locations.
+`--source-prefix-map=old=new` changes displayed filenames without changing
+include resolution.
+
+The input provider changes admission, not execution semantics. `iree-run-loom`
+accepts C++ kernel programs for its HAL workflow; scalar check cases use
+`iree-test-loom`. Building without the C++ importer removes C++ input support
+from these tools. Other importers can participate through the same optional
+provider contract.
 
 ## Source constructs
 
 Multiple kernels and ordinary functions can coexist. By default, concrete
 definitions with external visibility are exported. Repeated `--root` options
 select qualified source function names; their reachable helpers remain private.
+Selected kernel roots publish an `export("symbol")` contract so a separate
+Loom module can resolve its `kernel.decl` through normal library dependencies.
 Overloaded root names require disambiguation in the source. Template helpers
 are instantiated by cxx before import. This interface does not yet define an
 external C++ ABI for linking separately compiled C++ translation units.

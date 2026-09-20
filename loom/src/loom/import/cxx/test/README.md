@@ -17,18 +17,25 @@ Program lowering and source rejection cases belong in these files. Native C++
 tests exercise API contracts such as callback failures, source lifetimes,
 binding identity, and retained analysis facts.
 
-## Standalone execution programs
+## Source execution tests
 
 These programs exercise the full source path: C++ import, ordinary Loom
 bytecode linking, config specialization, AMDGPU compilation, and GPU execution.
 The existing `iree-test-loom` runner compares outputs against independent
 double-precision references and checks both output guards bitwise. Ordinary
 integer functions also execute through the VM with exact scalar references.
+Both use normal `loom_test` targets. Host references generate C++ translation
+units containing `LOOM_CHECK_CASE` bodies and include the implementation under
+test. GPU references generate Loom check modules and NumPy arrays, then link
+against C++ kernel libraries. The [source authoring guide](../README.md#executable-checks-and-benchmarks)
+shows handwritten cases and benchmarks.
 
 ```sh
 iree-bazel-test --config=asan --config=loom-importer-cxx \
-  --//runtime/config/hal:drivers=amdgpu,task \
+  --//loom/config/target:enable=amdgpu \
+  --//runtime/config/hal:drivers=amdgpu \
   --//loom/config/emit:enable=amdgpu \
+  --//loom/config/execute:enable=iree_hal \
   //loom/src/loom/import/cxx/test:kernels_test
 
 iree-bazel-test --config=asan --config=loom-importer-cxx \
@@ -36,8 +43,12 @@ iree-bazel-test --config=asan --config=loom-importer-cxx \
   //loom/src/loom/import/cxx/test:functions_test
 ```
 
-The manifest imports each kernel through an external facade include root, so
-the same test works with `--//loom/config/import/cxx:embed_includes=false`.
+Each target declares its source root and import options in `BUILD.bazel`.
+Most kernels use an explicit facade include root; the vector initializer and
+shaped intrinsic groups exercise the embedded headers. Generated fixture
+directories are declared action outputs and retained as test data, with NPY
+paths relative to their generated check source. Schedule variants share one
+oracle group while importing distinct macro configurations.
 Launch count bounds become normal config declarations; the runner supplies
 three workgroups through `--config` for the numerical kernels. The source
 semantics kernels specify one workgroup. Scalar lane kernels use 64 threads;
@@ -45,6 +56,15 @@ explicit register-vector kernels use one thread.
 The numerical tests explicitly permit approximate mathematical functions.
 They test correctness and source compatibility, not kernel performance or
 compatibility with complete upstream libraries.
+
+`functions_test` aggregates 11 groups with 2,817 scalar cases. `kernels_test`
+aggregates 34 source/configuration variants plus 28 device access sanitizer
+variants, for 404 case executions. Individual targets such as
+`integer_functions_test`, `continue_copy_source_test`, and
+`continue_copy_access_test` can be run directly. Compiler rejection witnesses
+live in `.cxx-test`, including scheduled-loop lowering and unsupported VM
+aggregate transport. The corpus has no JSON execution manifests; JSON fixtures
+under `tooling/` exercise CLI options, report fields, and process exit behavior.
 
 | Source | Numerical coverage | Provenance |
 | --- | --- | --- |
