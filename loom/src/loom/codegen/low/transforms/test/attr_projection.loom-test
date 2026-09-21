@@ -32,7 +32,7 @@ test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) abi(object_function) @volatile_vector_load() -> (reg<test.i32 x4>) asm {
   %view = resource<native_pointer> {index = 0, source_type = buffer} : reg<test.ptr>
-  %result = test.load.ordered.v4i32 %view
+  %result = test.load.ordered.v4i32<volatile> %view
   return %result
 }
 
@@ -56,6 +56,6 @@ low.func.def target<test.low.core>(@test_target) abi(object_function) @dynamic_v
   %view = resource<native_pointer> {index = 0, source_type = buffer} : reg<test.ptr>
   %10 = test.const.i32 4
   %11 = test.mul.i32 %element, %10
-  %result = test.load.index.ordered.v4i32 %view, %11
+  %result = test.load.index.ordered.v4i32<volatile> %view, %11
   return %result
 }

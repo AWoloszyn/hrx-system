@@ -3014,6 +3014,44 @@ def test_generate_tables_memory_access_defaults_use_matching_fields() -> None:
     assert ".cache_scope_attr_index = 255," in tables_c
 
 
+def test_generate_tables_memory_access_flags_use_shared_vocabulary() -> None:
+    memory_flags = EnumDef(
+        "MemoryAccessFlags",
+        [EnumCase("volatile", 1)],
+        c_type="loom_memory_access_flags_t",
+        c_const_prefix="LOOM_MEMORY_ACCESS_FLAG",
+    )
+    op = Op(
+        "test.load",
+        group=Dialect("test"),
+        operands=[Operand("view", ANY)],
+        results=[Result("result", ANY)],
+        attrs=[AttrDef("memory_flags", ATTR_TYPE_FLAGS, enum_def=memory_flags)],
+        effects=[Reads("view")],
+        interfaces=[MemoryAccessInterface()],
+        format=[Flags("memory_flags"), Ref("view")],
+    )
+    tables_c = generate_tables_c("test", 0, [op])
+    assert ".memory_access = &loom_test_load_memory_access," in tables_c
+    assert "test_load_instance_flags_names" in tables_c
+
+
+def test_generate_tables_memory_access_rejects_other_instance_flags() -> None:
+    arithmetic_flags = EnumDef("ArithmeticFlags", [EnumCase("wrap", 1)])
+    op = Op(
+        "test.load",
+        group=Dialect("test"),
+        operands=[Operand("view", ANY)],
+        results=[Result("result", ANY)],
+        attrs=[AttrDef("flags", ATTR_TYPE_FLAGS, enum_def=arithmetic_flags)],
+        effects=[Reads("view")],
+        interfaces=[MemoryAccessInterface()],
+        format=[Flags("flags"), Ref("view")],
+    )
+    with _raises_value_error(r"MemoryAccessInterface on 'test\.load': instance flags must use the shared memory-access flag vocabulary"):
+        generate_tables_c("test", 0, [op])
+
+
 def test_generate_tables_memory_access_operation_kind_rows() -> None:
     dialect = Dialect("test")
     atomic_kind = EnumDef("AtomicKind", [EnumCase("addi", 0)])

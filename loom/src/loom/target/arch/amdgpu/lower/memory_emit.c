@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "loom/codegen/low/builder.h"
 #include "loom/codegen/low/descriptors.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
@@ -185,13 +186,12 @@ static iree_status_t loom_amdgpu_emit_memory_packet(
     iree_host_size_t result_count, loom_op_t** out_op) {
   IREE_ASSERT(packet->access.descriptor != NULL);
   *out_op = NULL;
-  const loom_low_lower_resolved_descriptor_t descriptor = {
-      .descriptor = packet->access.descriptor,
-  };
-  IREE_RETURN_IF_ERROR(loom_low_lower_emit_resolved_descriptor_op(
-      context, &descriptor, operands, operand_count, attrs, result_types,
-      result_count, /*tied_results=*/NULL, /*tied_result_count=*/0,
-      source_op->location, out_op));
+  IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
+      loom_low_lower_context_builder(context),
+      loom_low_lower_context_descriptor_set(context), packet->access.descriptor,
+      packet->access.source.access_flags, operands, operand_count, attrs,
+      result_types, result_count, /*tied_results=*/NULL,
+      /*tied_result_count=*/0, source_op->location, out_op));
   return loom_amdgpu_record_memory_packet_report(context, source_op, packet);
 }
 

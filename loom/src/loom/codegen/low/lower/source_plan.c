@@ -787,58 +787,29 @@ static void loom_low_lower_record_elided_hint_plan(
                });
 }
 
-static bool loom_low_lower_descriptor_memory_effects_are_ordered(
-    const loom_low_descriptor_set_t* descriptor_set,
-    const loom_low_descriptor_t* descriptor, bool* out_has_memory_effect) {
-  *out_has_memory_effect = false;
-  for (uint16_t i = 0; i < descriptor->effect_count; ++i) {
-    const uint32_t effect_index = descriptor->effect_start + i;
-    IREE_ASSERT_LT(effect_index, descriptor_set->effect_count);
-    const loom_low_effect_t* effect = &descriptor_set->effects[effect_index];
-    if (effect->kind != LOOM_LOW_EFFECT_KIND_READ &&
-        effect->kind != LOOM_LOW_EFFECT_KIND_WRITE) {
-      continue;
-    }
-    *out_has_memory_effect = true;
-    if (!iree_any_bit_set(effect->flags, LOOM_LOW_EFFECT_FLAG_ORDERED)) {
-      return false;
-    }
-  }
-  return true;
-}
-
 static bool loom_low_lower_selected_plan_preserves_volatile_memory(
-    const loom_low_lower_context_t* context,
+    const loom_module_t* module,
     const loom_low_lower_selected_plan_t* selected_plan) {
-  const loom_op_t* source_op = selected_plan->source_op;
-  if ((!loom_view_load_isa(source_op) && !loom_view_store_isa(source_op) &&
-       !loom_vector_load_isa(source_op) && !loom_vector_store_isa(source_op)) ||
-      !iree_any_bit_set(source_op->instance_flags,
+  if (!iree_any_bit_set(loom_memory_access_flags(loom_memory_access_cast(
+                            module, selected_plan->source_op)),
                         LOOM_MEMORY_ACCESS_FLAG_VOLATILE)) {
     return true;
+  }
+  if (selected_plan->kind == LOOM_LOW_LOWER_SELECTED_PLAN_CALLBACK) {
+    return iree_any_bit_set(selected_plan->data.target_plan.access_flags,
+                            LOOM_MEMORY_ACCESS_FLAG_VOLATILE);
   }
   if (selected_plan->kind != LOOM_LOW_LOWER_SELECTED_PLAN_RULE ||
       selected_plan->rule == NULL || selected_plan->resolved_emits == NULL) {
     return false;
   }
-  bool found_source_memory_access = false;
   for (uint16_t i = 0; i < selected_plan->rule->emit_count; ++i) {
-    const loom_low_lower_resolved_emit_t* resolved_emit =
-        &selected_plan->resolved_emits[i];
-    if (resolved_emit->emit->source_memory_ordinal == 0) {
-      continue;
+    if (iree_any_bit_set(selected_plan->resolved_emits[i].access_flags,
+                         LOOM_MEMORY_ACCESS_FLAG_VOLATILE)) {
+      return true;
     }
-    // Source-memory projections also annotate address materialization emits.
-    // Only descriptors with memory effects participate in volatile ordering.
-    bool has_memory_effect = false;
-    if (!loom_low_lower_descriptor_memory_effects_are_ordered(
-            context->descriptor_set, resolved_emit->descriptor.descriptor,
-            &has_memory_effect)) {
-      return false;
-    }
-    found_source_memory_access |= has_memory_effect;
   }
-  return found_source_memory_access;
+  return false;
 }
 
 static iree_status_t loom_low_lower_validate_selected_plans(
@@ -849,7 +820,7 @@ static iree_status_t loom_low_lower_validate_selected_plans(
     const loom_low_lower_selected_plan_t* selected_plan =
         &source_plan->selected_plans[i];
     if (!loom_low_lower_selected_plan_preserves_volatile_memory(
-            context, selected_plan)) {
+            context->module, selected_plan)) {
       return loom_low_lower_emit_target_context_error(
           context, selected_plan->source_op, LOOM_ERR_TARGET_081,
           /*extra_params=*/NULL, /*extra_param_count=*/0);
@@ -898,10 +869,6 @@ static iree_status_t loom_low_lower_record_selected_rule_plan(
                                                             rule_selection)) {
     return iree_ok_status();
   }
-  const loom_low_lower_resolved_emit_t* resolved_emits = NULL;
-  IREE_RETURN_IF_ERROR(loom_low_lower_rule_set_resolve_emit_program(
-      context, rule_set_index, rule_set, rule_selection->rule,
-      &resolved_emits));
   const loom_low_source_memory_access_plan_t* source_memory_access = NULL;
   if (rule_selection->uses_source_memory_access) {
     IREE_ASSERT(source_memory_state != NULL);
@@ -914,6 +881,11 @@ static iree_status_t loom_low_lower_record_selected_rule_plan(
     *retained_source_memory_access = *source_memory_state->access_plan;
     source_memory_access = retained_source_memory_access;
   }
+  const loom_low_lower_resolved_emit_t* resolved_emits = NULL;
+  IREE_RETURN_IF_ERROR(loom_low_lower_rule_set_resolve_emit_program(
+      context, rule_set_index, rule_set, rule_selection->rule,
+      source_memory_access ? source_memory_access->access_flags : 0,
+      &resolved_emits));
   const loom_op_t** retained_source_nodes = NULL;
   if (rule_selection->source_node_count > 1) {
     IREE_RETURN_IF_ERROR(loom_low_lower_allocate_plan_data(

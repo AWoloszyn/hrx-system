@@ -1389,6 +1389,11 @@ loom_memory_access_operation_kind_t loom_memory_access_operation_kind(
                 : LOOM_MEMORY_ACCESS_OPERATION_COUNT_;
 }
 
+loom_memory_access_flags_t loom_memory_access_flags(
+    loom_memory_access_t access) {
+  return loom_memory_access_isa(access) ? access.op->instance_flags : 0;
+}
+
 static bool loom_memory_access_operand_field_contains(
     loom_memory_access_t access, uint8_t operand_field_index,
     uint16_t operand_index) {

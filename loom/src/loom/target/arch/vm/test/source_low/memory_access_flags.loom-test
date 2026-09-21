@@ -1,0 +1,250 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/memory_access_flags.loom-test
+// RUN: emit source-low output=low
+
+vm.target<core> @target
+
+func.def target(@target) @observe_scalar(%input: buffer) -> (i32, i32) {
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %source = buffer.view %aligned[%base] : buffer -> view<1xi32>
+  %first = view.load<volatile> %source[0] : view<1xi32> -> i32
+  %second = view.load<volatile> %source[0] : view<1xi32> -> i32
+  func.return %first, %second : i32, i32
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @observe_scalar(%source: reg<vm.ref : buffer>) -> (reg<vm.value : i32>, reg<vm.value : i32>) asm {
+  %11 = constant.i64 0
+  %first = buffer.load<volatile> %source, %11, %11, 0, "i32.x1" : reg<vm.value : i32>
+  %second = buffer.load<volatile> %source, %11, %11, 0, "i32.x1" : reg<vm.value : i32>
+  return %first, %second
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @observe_unused(%input: buffer) {
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %source = buffer.view %aligned[%base] : buffer -> view<2xi32>
+  %first = view.load<volatile> %source[0] : view<2xi32> -> i32
+  %second = view.load<volatile> %source[1] : view<2xi32> -> i32
+  func.return
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @observe_unused(%source: reg<vm.ref : buffer>) asm {
+  %7 = constant.i64 0
+  %first = buffer.load<volatile> %source, %7, %7, 0, "i32.x1" : reg<vm.value : i32>
+  %9 = constant.i64 4
+  %second = buffer.load<volatile> %source, %9, %9, 0, "i32.x1" : reg<vm.value : i32>
+  return
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @repeat_store(%output: buffer, %value: i32) {
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %destination = buffer.view %aligned[%base] : buffer -> view<1xi32>
+  view.store<volatile> %value, %destination[0] : i32, view<1xi32>
+  view.store<volatile> %value, %destination[0] : i32, view<1xi32>
+  func.return
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @repeat_store(%destination: reg<vm.ref : buffer>, %value: reg<vm.value : i32>) asm {
+  %7 = constant.i64 0
+  buffer.store<volatile> %destination, %7, %7, %value, 0, "i32.x1"
+  buffer.store<volatile> %destination, %7, %7, %value, 0, "i32.x1"
+  return
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @observe_vector(%input: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %source_aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %destination_aligned = buffer.assume.alignment %output {minimum_alignment = 64} : buffer
+  %source = buffer.view %source_aligned[%base] : buffer -> view<16xi32>
+  %destination = buffer.view %destination_aligned[%base] : buffer -> view<32xi32>
+  %first = vector.load<volatile> %source[0] : view<16xi32> -> vector<16xi32>
+  %second = vector.load<volatile> %source[0] : view<16xi32> -> vector<16xi32>
+  vector.store<volatile> %first, %destination[0] : vector<16xi32>, view<32xi32>
+  vector.store<volatile> %second, %destination[16] : vector<16xi32>, view<32xi32>
+  func.return
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @observe_vector(%source: reg<vm.ref : buffer>, %destination: reg<vm.ref : buffer>) asm {
+  %109 = constant.i64 0
+  %110 = buffer.load<volatile> %source, %109, %109, 0, "i32.x1" : reg<vm.value : i32>
+  %111 = constant.i64 4
+  %112 = buffer.load<volatile> %source, %111, %111, 0, "i32.x1" : reg<vm.value : i32>
+  %113 = constant.i64 8
+  %114 = buffer.load<volatile> %source, %113, %113, 0, "i32.x1" : reg<vm.value : i32>
+  %115 = constant.i64 12
+  %116 = buffer.load<volatile> %source, %115, %115, 0, "i32.x1" : reg<vm.value : i32>
+  %117 = constant.i64 16
+  %118 = buffer.load<volatile> %source, %117, %117, 0, "i32.x1" : reg<vm.value : i32>
+  %119 = constant.i64 20
+  %120 = buffer.load<volatile> %source, %119, %119, 0, "i32.x1" : reg<vm.value : i32>
+  %121 = constant.i64 24
+  %122 = buffer.load<volatile> %source, %121, %121, 0, "i32.x1" : reg<vm.value : i32>
+  %123 = constant.i64 28
+  %124 = buffer.load<volatile> %source, %123, %123, 0, "i32.x1" : reg<vm.value : i32>
+  %125 = constant.i64 32
+  %126 = buffer.load<volatile> %source, %125, %125, 0, "i32.x1" : reg<vm.value : i32>
+  %127 = constant.i64 36
+  %128 = buffer.load<volatile> %source, %127, %127, 0, "i32.x1" : reg<vm.value : i32>
+  %129 = constant.i64 40
+  %130 = buffer.load<volatile> %source, %129, %129, 0, "i32.x1" : reg<vm.value : i32>
+  %131 = constant.i64 44
+  %132 = buffer.load<volatile> %source, %131, %131, 0, "i32.x1" : reg<vm.value : i32>
+  %133 = constant.i64 48
+  %134 = buffer.load<volatile> %source, %133, %133, 0, "i32.x1" : reg<vm.value : i32>
+  %135 = constant.i64 52
+  %136 = buffer.load<volatile> %source, %135, %135, 0, "i32.x1" : reg<vm.value : i32>
+  %137 = constant.i64 56
+  %138 = buffer.load<volatile> %source, %137, %137, 0, "i32.x1" : reg<vm.value : i32>
+  %139 = constant.i64 60
+  %140 = buffer.load<volatile> %source, %139, %139, 0, "i32.x1" : reg<vm.value : i32>
+  %142 = buffer.load<volatile> %source, %109, %109, 0, "i32.x1" : reg<vm.value : i32>
+  %144 = buffer.load<volatile> %source, %111, %111, 0, "i32.x1" : reg<vm.value : i32>
+  %146 = buffer.load<volatile> %source, %113, %113, 0, "i32.x1" : reg<vm.value : i32>
+  %148 = buffer.load<volatile> %source, %115, %115, 0, "i32.x1" : reg<vm.value : i32>
+  %150 = buffer.load<volatile> %source, %117, %117, 0, "i32.x1" : reg<vm.value : i32>
+  %152 = buffer.load<volatile> %source, %119, %119, 0, "i32.x1" : reg<vm.value : i32>
+  %154 = buffer.load<volatile> %source, %121, %121, 0, "i32.x1" : reg<vm.value : i32>
+  %156 = buffer.load<volatile> %source, %123, %123, 0, "i32.x1" : reg<vm.value : i32>
+  %158 = buffer.load<volatile> %source, %125, %125, 0, "i32.x1" : reg<vm.value : i32>
+  %160 = buffer.load<volatile> %source, %127, %127, 0, "i32.x1" : reg<vm.value : i32>
+  %162 = buffer.load<volatile> %source, %129, %129, 0, "i32.x1" : reg<vm.value : i32>
+  %164 = buffer.load<volatile> %source, %131, %131, 0, "i32.x1" : reg<vm.value : i32>
+  %166 = buffer.load<volatile> %source, %133, %133, 0, "i32.x1" : reg<vm.value : i32>
+  %168 = buffer.load<volatile> %source, %135, %135, 0, "i32.x1" : reg<vm.value : i32>
+  %170 = buffer.load<volatile> %source, %137, %137, 0, "i32.x1" : reg<vm.value : i32>
+  %172 = buffer.load<volatile> %source, %139, %139, 0, "i32.x1" : reg<vm.value : i32>
+  buffer.store<volatile> %destination, %109, %109, %110, 0, "i32.x1"
+  buffer.store<volatile> %destination, %111, %111, %112, 0, "i32.x1"
+  buffer.store<volatile> %destination, %113, %113, %114, 0, "i32.x1"
+  buffer.store<volatile> %destination, %115, %115, %116, 0, "i32.x1"
+  buffer.store<volatile> %destination, %117, %117, %118, 0, "i32.x1"
+  buffer.store<volatile> %destination, %119, %119, %120, 0, "i32.x1"
+  buffer.store<volatile> %destination, %121, %121, %122, 0, "i32.x1"
+  buffer.store<volatile> %destination, %123, %123, %124, 0, "i32.x1"
+  buffer.store<volatile> %destination, %125, %125, %126, 0, "i32.x1"
+  buffer.store<volatile> %destination, %127, %127, %128, 0, "i32.x1"
+  buffer.store<volatile> %destination, %129, %129, %130, 0, "i32.x1"
+  buffer.store<volatile> %destination, %131, %131, %132, 0, "i32.x1"
+  buffer.store<volatile> %destination, %133, %133, %134, 0, "i32.x1"
+  buffer.store<volatile> %destination, %135, %135, %136, 0, "i32.x1"
+  buffer.store<volatile> %destination, %137, %137, %138, 0, "i32.x1"
+  buffer.store<volatile> %destination, %139, %139, %140, 0, "i32.x1"
+  %189 = constant.i64 64
+  buffer.store<volatile> %destination, %189, %189, %142, 0, "i32.x1"
+  %190 = constant.i64 68
+  buffer.store<volatile> %destination, %190, %190, %144, 0, "i32.x1"
+  %191 = constant.i64 72
+  buffer.store<volatile> %destination, %191, %191, %146, 0, "i32.x1"
+  %192 = constant.i64 76
+  buffer.store<volatile> %destination, %192, %192, %148, 0, "i32.x1"
+  %193 = constant.i64 80
+  buffer.store<volatile> %destination, %193, %193, %150, 0, "i32.x1"
+  %194 = constant.i64 84
+  buffer.store<volatile> %destination, %194, %194, %152, 0, "i32.x1"
+  %195 = constant.i64 88
+  buffer.store<volatile> %destination, %195, %195, %154, 0, "i32.x1"
+  %196 = constant.i64 92
+  buffer.store<volatile> %destination, %196, %196, %156, 0, "i32.x1"
+  %197 = constant.i64 96
+  buffer.store<volatile> %destination, %197, %197, %158, 0, "i32.x1"
+  %198 = constant.i64 100
+  buffer.store<volatile> %destination, %198, %198, %160, 0, "i32.x1"
+  %199 = constant.i64 104
+  buffer.store<volatile> %destination, %199, %199, %162, 0, "i32.x1"
+  %200 = constant.i64 108
+  buffer.store<volatile> %destination, %200, %200, %164, 0, "i32.x1"
+  %201 = constant.i64 112
+  buffer.store<volatile> %destination, %201, %201, %166, 0, "i32.x1"
+  %202 = constant.i64 116
+  buffer.store<volatile> %destination, %202, %202, %168, 0, "i32.x1"
+  %203 = constant.i64 120
+  buffer.store<volatile> %destination, %203, %203, %170, 0, "i32.x1"
+  %204 = constant.i64 124
+  buffer.store<volatile> %destination, %204, %204, %172, 0, "i32.x1"
+  return
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @observe_byte(%input: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %source = buffer.view %input[%base] : buffer -> view<1xi8>
+  %destination = buffer.view %output[%base] : buffer -> view<2xi8>
+  %first = view.load<volatile> %source[0] : view<1xi8> -> i8
+  %second = view.load<volatile> %source[0] : view<1xi8> -> i8
+  view.store<volatile> %first, %destination[0] : i8, view<2xi8>
+  view.store<volatile> %second, %destination[1] : i8, view<2xi8>
+  func.return
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @observe_byte(%source: reg<vm.ref : buffer>, %destination: reg<vm.ref : buffer>) asm {
+  %9 = constant.i64 0
+  %first = buffer.load<volatile> %source, %9, %9, 0, "i8.x1" : reg<vm.value : i8>
+  %second = buffer.load<volatile> %source, %9, %9, 0, "i8.x1" : reg<vm.value : i8>
+  buffer.store<volatile> %destination, %9, %9, %first, 0, "i8.x1"
+  %14 = constant.i64 1
+  buffer.store<volatile> %destination, %14, %14, %second, 0, "i8.x1"
+  return
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @observe_dynamic_address(%input: buffer, %byte_offset: offset) -> (i32, i32) {
+  %base = index.assume %byte_offset [range(%byte_offset, 0, 4092), mul(%byte_offset, 4)] : offset
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %source = buffer.view %aligned[%base] : buffer -> view<2xi32>
+  %first = view.load<volatile> %source[0] : view<2xi32> -> i32
+  %second = view.load<volatile> %source[1] : view<2xi32> -> i32
+  func.return %first, %second : i32, i32
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @observe_dynamic_address(%source: reg<vm.ref : buffer>, %base: reg<vm.value : i64>) -> (reg<vm.value : i32>, reg<vm.value : i32>) asm {
+  %first = buffer.load<volatile> %source, %base, %base, 0, "i32.x1" : reg<vm.value : i32>
+  %14 = constant.i64 4
+  %15 = integer.add.i64 %base, %14
+  %second = buffer.load<volatile> %source, %15, %15, 0, "i32.x1" : reg<vm.value : i32>
+  return %first, %second
+}
+
+// ====
+
+vm.target<core> @target
+
+func.def target(@target) @ordinary_scalar(%input: buffer) -> (i32, i32) {
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %source = buffer.view %aligned[%base] : buffer -> view<1xi32>
+  %first = view.load %source[0] : view<1xi32> -> i32
+  %second = view.load %source[0] : view<1xi32> -> i32
+  func.return %first, %second : i32, i32
+}
+
+// ----
+low.func.def target<vm.core>(@target) abi(vm_function) @ordinary_scalar(%source: reg<vm.ref : buffer>) -> (reg<vm.value : i32>, reg<vm.value : i32>) asm {
+  %11 = constant.i64 0
+  %first = buffer.load %source, %11, %11, 0, "i32.x1" : reg<vm.value : i32>
+  return %first, %first
+}

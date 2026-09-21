@@ -1492,12 +1492,12 @@ ERR_TARGET_081 = ErrorDef(
     message=(
         "target '{target_key}' export '{export_name}' config '{config_key}' "
         "selected a lowering for volatile memory operation '{op_name}' in "
-        "'@{function_name}' that has no ordered source-memory descriptor"
+        "'@{function_name}' that cannot preserve its per-access semantics"
     ),
     params=_TARGET_CONTEXT_PARAMS,
     fix_hint=(
-        "Select a source-memory descriptor carrying an ordered read or write "
-        "effect for the volatile operation."
+        "The selected lowering must carry the source memory-access flags onto "
+        "every physical memory access it emits."
     ),
 )
 

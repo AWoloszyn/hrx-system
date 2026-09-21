@@ -337,6 +337,10 @@ typedef struct loom_low_lower_plan_t {
   // Arena-owned target plan data selected during planning and consumed by
   // emission during the same lowering run. Core lowering never interprets it.
   const void* target_data;
+  // Source memory semantics preserved by the selected emission. Memory plans
+  // copy these flags onto every physical access; ordinary plans leave them
+  // zero.
+  loom_memory_access_flags_t access_flags;
 } loom_low_lower_plan_t;
 
 // Returns a selected lowering plan. |target_data| points at immutable
@@ -347,6 +351,7 @@ static inline loom_low_lower_plan_t loom_low_lower_plan_make(
   return (loom_low_lower_plan_t){
       /*.id=*/id,
       /*.target_data=*/target_data,
+      /*.access_flags=*/0,
   };
 }
 

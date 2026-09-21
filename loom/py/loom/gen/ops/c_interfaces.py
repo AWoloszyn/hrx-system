@@ -539,6 +539,9 @@ def _validate_loop_like_interface(op: Op, iface: LoopLikeInterface, interface_na
 
 def _validate_memory_access_interface(op: Op, iface: MemoryAccessInterface, interface_name: str) -> None:
     """Validates MemoryAccessInterface's optional role coherence."""
+    for attr_def in op.attrs:
+        if attr_def.attr_type == ATTR_TYPE_FLAGS and (attr_def.enum_def is None or attr_def.enum_def.c_type != "loom_memory_access_flags_t"):
+            raise ValueError(f"{interface_name} on {op.name!r}: instance flags must use the shared memory-access flag vocabulary")
     if iface.view is None:
         raise ValueError(f"{interface_name} on {op.name!r}: view operand is required")
     c_queries.resolve_operand_index(op, iface.view, interface_name)
