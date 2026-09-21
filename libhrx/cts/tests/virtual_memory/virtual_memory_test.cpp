@@ -100,6 +100,9 @@ TEST_CASE_METHOD(HrxTestFixture, "virtual memory lifecycle",
   resources.is_mapped = true;
   REQUIRE_OK(hrx().allocator_virtual_memory_protect(
       alloc, resources.virtual_buffer, /*virtual_offset=*/0, resources.size,
+      HRX_MEMORY_PROTECTION_READ_WRITE));
+  REQUIRE_OK(hrx().allocator_virtual_memory_protect_scoped(
+      alloc, resources.virtual_buffer, /*virtual_offset=*/0, resources.size,
       HRX_VIRTUAL_MEMORY_ACCESS_SCOPE_ALL, HRX_MEMORY_PROTECTION_READ_WRITE));
 
   REQUIRE_OK(hrx().allocator_virtual_memory_unmap(

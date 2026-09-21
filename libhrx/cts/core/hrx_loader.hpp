@@ -178,6 +178,8 @@ class HrxLoader {
   decltype(&hrx_allocator_virtual_memory_unmap) allocator_virtual_memory_unmap;
   decltype(&hrx_allocator_virtual_memory_protect)
       allocator_virtual_memory_protect;
+  decltype(&hrx_allocator_virtual_memory_protect_scoped)
+      allocator_virtual_memory_protect_scoped;
 
   // Memory pools.
   decltype(&hrx_mem_pool_create) mem_pool_create;
