@@ -51,6 +51,12 @@ const cxx::VectorType* Types::vector(const cxx::Type* type) {
   return cxx::type_cast<cxx::VectorType>(unqualified(type));
 }
 
+loom_memory_access_flags_t Types::memory_access_flags(const cxx::Type* input) {
+  return unit_.typeTraits().is_volatile(input)
+             ? LOOM_MEMORY_ACCESS_FLAG_VOLATILE
+             : 0;
+}
+
 const Partition& Types::partition(const cxx::Type* input, cxx::AST* owner) {
   if (auto* admitted = special(input, owner)) {
     return *admitted;
@@ -85,7 +91,8 @@ const Partition* Types::special(const cxx::Type* input, cxx::AST* owner) {
     return nullptr;
   }
   if (unit_.typeTraits().is_volatile(input)) {
-    diagnostics_.reject(unit_, owner, "volatile access is not supported");
+    diagnostics_.reject(unit_, owner,
+                        "volatile objects require addressable storage");
   }
   auto* type = cxx::type_cast<cxx::ClassType>(unqualified(input));
   if (!type) {
@@ -220,6 +227,7 @@ const ViewPartition* Types::view(const cxx::ClassType* input, cxx::AST* owner) {
   result->source = source;
   result->element_type = element_type;
   result->element = loom_type_element_type(element);
+  result->access_flags = memory_access_flags(element_type);
   result->extents = extents;
   if (extents[0] < 0) {
     result->component_names.push_back("rows");
@@ -247,7 +255,8 @@ const RecordPartition* Types::record(const cxx::Type* input, cxx::AST* owner) {
   }
   auto traits = unit_.typeTraits();
   if (traits.is_volatile(input)) {
-    diagnostics_.reject(unit_, owner, "volatile access is not supported");
+    diagnostics_.reject(unit_, owner,
+                        "volatile objects require addressable storage");
   }
   auto* source = type->definition();
   if (auto found = records_.find(source); found != records_.end()) {
@@ -341,9 +350,6 @@ const MemberPartition& Types::member(cxx::FieldSymbol* field, cxx::AST* owner) {
 loom_type_t Types::get(const cxx::Type* input, cxx::AST* ast) {
   if (!input) {
     diagnostics_.reject(unit_, ast, "expression has no resolved C++ type");
-  }
-  if (unit_.typeTraits().is_volatile(input)) {
-    diagnostics_.reject(unit_, ast, "volatile access is not supported");
   }
   switch (unqualified(input)->kind()) {
     case cxx::TypeKind::kBool:

@@ -451,10 +451,10 @@ class Translator {
     int64_t selector = access.index ? INT64_MIN : 0;
     auto build = types_.vector(ast->type) ? loom_vector_load_build
                                           : loom_view_load_build;
-    check(build(&builder_, 0, 0, access.view,
-                access.index ? &*access.index : nullptr, access.index ? 1 : 0,
-                &selector, 1, 0, 0, types_.get(ast->type, ast),
-                locations_.get(ast), &op));
+    check(build(&builder_, 0, types_.memory_access_flags(ast->type),
+                access.view, access.index ? &*access.index : nullptr,
+                access.index ? 1 : 0, &selector, 1, 0, 0,
+                types_.get(ast->type, ast), locations_.get(ast), &op));
     return result(op);
   }
 
@@ -552,8 +552,8 @@ class Translator {
 
   Value assignment(cxx::AssignmentExpressionAST* assignment) {
     auto* ast = assignment;
-    const auto& partition =
-        types_.partition(assignment->leftExpression->type, ast);
+    const auto& partition = types_.partition(
+        types_.unqualified(assignment->leftExpression->type), ast);
     cxx::ClassSymbol* source = nullptr;
     if (partition.kind == ValueKind::Record) {
       source = static_cast<const RecordPartition&>(partition).source;
@@ -582,7 +582,9 @@ class Translator {
     auto build = types_.vector(assignment->leftExpression->type)
                      ? loom_vector_store_build
                      : loom_view_store_build;
-    check(build(&builder_, 0, 0, value.ssa(), access.view,
+    check(build(&builder_, 0,
+                types_.memory_access_flags(assignment->leftExpression->type),
+                value.ssa(), access.view,
                 access.index ? &*access.index : nullptr, access.index ? 1 : 0,
                 &selector, 1, 0, 0, locations_.get(ast), &op));
     return value;
@@ -852,6 +854,7 @@ class Translator {
           return name(*value, cxx::to_string(variable->name()));
         }
         if (variable->constValue() &&
+            !unit_.typeTraits().is_volatile(variable->type()) &&
             (variable->isConstexpr() ||
              unit_.typeTraits().is_const(variable->type()))) {
           return name(
@@ -1580,10 +1583,19 @@ class Translator {
       effect(nested->expression);
       return;
     }
-    if (auto* binary = cxx::ast_cast<cxx::BinaryExpressionAST>(ast)) {
-      if (binary->op == cxx::TokenKind::T_AMP_AMP ||
-          binary->op == cxx::TokenKind::T_BAR_BAR) {
-        expression(ast);
+    if (types_.unqualified(ast->type)->kind() == cxx::TypeKind::kVoid) {
+      if (auto* cast = cxx::ast_cast<cxx::CastExpressionAST>(ast)) {
+        effect(cast->expression);
+        return;
+      }
+      if (auto* cast = cxx::ast_cast<cxx::CppCastExpressionAST>(ast)) {
+        effect(cast->expression);
+        return;
+      }
+      if (auto* cast = cxx::ast_cast<cxx::TypeConstructionAST>(ast)) {
+        for (auto* operand : cxx::ListView{cast->expressionList}) {
+          effect(operand);
+        }
         return;
       }
     }
@@ -1671,20 +1683,7 @@ class Translator {
           locations_.get(ast), &op));
       return;
     }
-    if (cxx::ast_cast<cxx::AssignmentExpressionAST>(ast) ||
-        cxx::ast_cast<cxx::CompoundAssignmentExpressionAST>(ast)) {
-      expression(ast);
-      return;
-    }
-    auto* unary = cxx::ast_cast<cxx::UnaryExpressionAST>(ast);
-    if (cxx::ast_cast<cxx::PostIncrExpressionAST>(ast) ||
-        (unary && (unary->op == cxx::TokenKind::T_PLUS_PLUS ||
-                   unary->op == cxx::TokenKind::T_MINUS_MINUS))) {
-      expression(ast);
-      return;
-    }
-    fail(ast, "unsupported effect expression: " +
-                  std::string(cxx::to_string(ast->kind())));
+    expression(ast);
   }
 
   // Source AST/symbol lifetime ends after construction and verification.

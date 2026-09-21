@@ -41,6 +41,7 @@ loom_cc_library(
         ":representation",
         "//loom/src/loom/import/cxx/source",
         "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
         "//third_party:cxx_parser",
     ],
 )

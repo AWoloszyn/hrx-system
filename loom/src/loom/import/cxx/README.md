@@ -855,6 +855,34 @@ the selected Loom target to support buffer transport through those control-flow
 edges. Objects with constructors, exceptions and indirect calls need additional
 storage and control-flow projections before they can be imported.
 
+Volatile scalar and vector accesses through pointers and workgroup arrays
+become `view.load/store<volatile>` and `vector.load/store<volatile>`. The
+qualifier belongs to the accessed object: a copied pointer or a pointer member
+retains its pointee's observation semantics. Discarded reads, including explicit
+casts to `void`, remain observable, and repeated accesses stay distinct through
+optimization. Ordinary reads retain their usual optimization.
+
+```cpp
+unsigned observe(const volatile unsigned* input, volatile unsigned* output) {
+  static_cast<void>(*input);
+  unsigned first = *input;
+  unsigned second = *input;
+  *output = first;
+  *output = second;
+  return first + second;
+}
+```
+
+Typed views use the same contract. A `loom::type::view<volatile unsigned, ...>`
+preserves its element qualifier through copies, helpers and subviews;
+`loom::view::load` returns an ordinary scalar and `loom::view::store` accepts
+one. A `const volatile` element permits observations but rejects stores.
+Volatile supplies observable accesses, without atomicity, synchronization or a
+cache-coherence guarantee. Automatic scalar objects and record fields currently
+use SSA transport and cannot represent volatile object storage; those
+declarations produce an explicit source diagnostic. Namespace-scope volatile
+objects require global-storage projection and cannot fold to their initializer.
+
 `continue` skips the remaining body of the innermost `for`, `while`, or
 `do/while`. Updates before the exit survive; a `for` increment and a `do/while`
 condition still execute. Nested blocks and conditionals may continue from

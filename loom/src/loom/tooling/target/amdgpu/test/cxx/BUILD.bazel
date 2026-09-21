@@ -51,6 +51,7 @@ _MODULES = [
     "vector_depth",
     "vector_initializers",
     "vector_values",
+    "volatile_memory",
 ]
 
 [

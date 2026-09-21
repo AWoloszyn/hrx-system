@@ -51,6 +51,7 @@ loom_cc_library(
     iree::third_party::cxx_parser
     loom::import::cxx::source
     loom::ir
+    loom::ops::op_defs
   PUBLIC
 )
 endif()
