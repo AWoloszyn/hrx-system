@@ -267,32 +267,11 @@ typedef struct loom_wasm_local_layout_t {
   iree_host_size_t value_count;
 } loom_wasm_local_layout_t;
 
-typedef struct loom_wasm_attr_name_ids_t {
-  // Module string ID for wasm.i32.const's immediate payload.
-  loom_string_id_t i32_value;
-  // Module string ID for wasm.i64.const's immediate payload.
-  loom_string_id_t i64_value;
-  // Module string ID for scalar floating-point constant bit patterns.
-  loom_string_id_t bits;
-  // Module string ID for wasm.v128.const's low 64-bit immediate payload.
-  loom_string_id_t lo64;
-  // Module string ID for wasm.v128.const's high 64-bit immediate payload.
-  loom_string_id_t hi64;
-  // Module string ID for SIMD lane-immediate payloads.
-  loom_string_id_t lane;
-  // Module string ID for the optional linear-memory instruction offset.
-  loom_string_id_t offset;
-  // Module string IDs for i8x16.shuffle byte-lane immediate payloads.
-  loom_string_id_t shuffle_lanes[16];
-} loom_wasm_attr_name_ids_t;
-
 typedef struct loom_wasm_emit_state_t {
   // Allocation table supplying class-local target ids.
   const loom_low_allocation_table_t* allocation;
   // Module-owned options used by structural instructions such as calls.
   const loom_wasm_function_body_options_t* options;
-  // Cached module attr-name IDs used to decode low packet immediates.
-  loom_wasm_attr_name_ids_t attr_names;
   // Derived Wasm local namespace layout.
   loom_wasm_local_layout_t locals;
   // Mutable body payload writer.
@@ -300,39 +279,6 @@ typedef struct loom_wasm_emit_state_t {
   // Structural facts observed while emitting the function body.
   loom_wasm_function_body_flags_t flags;
 } loom_wasm_emit_state_t;
-
-static const iree_string_view_t kWasmAttrI32ValueName = IREE_SVL("i32_value");
-static const iree_string_view_t kWasmAttrI64ValueName = IREE_SVL("i64_value");
-static const iree_string_view_t kWasmAttrBitsName = IREE_SVL("bits");
-static const iree_string_view_t kWasmAttrLo64Name = IREE_SVL("lo64");
-static const iree_string_view_t kWasmAttrHi64Name = IREE_SVL("hi64");
-static const iree_string_view_t kWasmAttrLaneName = IREE_SVL("lane");
-static const iree_string_view_t kWasmShuffleLaneAttrNames[16] = {
-    IREE_SVL("lane0"),  IREE_SVL("lane1"),  IREE_SVL("lane2"),
-    IREE_SVL("lane3"),  IREE_SVL("lane4"),  IREE_SVL("lane5"),
-    IREE_SVL("lane6"),  IREE_SVL("lane7"),  IREE_SVL("lane8"),
-    IREE_SVL("lane9"),  IREE_SVL("lane10"), IREE_SVL("lane11"),
-    IREE_SVL("lane12"), IREE_SVL("lane13"), IREE_SVL("lane14"),
-    IREE_SVL("lane15"),
-};
-
-static void loom_wasm_attr_name_ids_initialize(
-    const loom_module_t* module, loom_wasm_attr_name_ids_t* out_attr_names) {
-  *out_attr_names = (loom_wasm_attr_name_ids_t){
-      .i32_value = loom_module_lookup_string(module, kWasmAttrI32ValueName),
-      .i64_value = loom_module_lookup_string(module, kWasmAttrI64ValueName),
-      .bits = loom_module_lookup_string(module, kWasmAttrBitsName),
-      .lo64 = loom_module_lookup_string(module, kWasmAttrLo64Name),
-      .hi64 = loom_module_lookup_string(module, kWasmAttrHi64Name),
-      .lane = loom_module_lookup_string(module, kWasmAttrLaneName),
-      .offset = loom_module_lookup_string(module, IREE_SV("offset")),
-  };
-  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(kWasmShuffleLaneAttrNames);
-       ++i) {
-    out_attr_names->shuffle_lanes[i] =
-        loom_module_lookup_string(module, kWasmShuffleLaneAttrNames[i]);
-  }
-}
 
 static iree_status_t loom_wasm_write_opcode(loom_wasm_binary_writer_t* writer,
                                             uint32_t encoding_id) {
@@ -637,56 +583,6 @@ static uint32_t loom_wasm_local_index(const loom_wasm_emit_state_t* state,
   return state->locals.values[ordinal].local_index;
 }
 
-static const loom_named_attr_t* loom_wasm_find_named_attr_by_id(
-    loom_named_attr_slice_t attrs, loom_string_id_t name_id) {
-  if (name_id == LOOM_STRING_ID_INVALID) {
-    return NULL;
-  }
-  for (iree_host_size_t i = 0; i < attrs.count; ++i) {
-    const loom_named_attr_t* attr = &attrs.entries[i];
-    if (attr->name_id == name_id) {
-      return attr;
-    }
-  }
-  return NULL;
-}
-
-static iree_status_t loom_wasm_read_i64_attr(loom_named_attr_slice_t attrs,
-                                             iree_string_view_t name,
-                                             loom_string_id_t name_id,
-                                             int64_t* out_value) {
-  const loom_named_attr_t* attr =
-      loom_wasm_find_named_attr_by_id(attrs, name_id);
-  if (!attr) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "Wasm emission missing required '%.*s' attribute",
-                            (int)name.size, name.data);
-  }
-  if (attr->value.kind != LOOM_ATTR_I64) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "Wasm attribute '%.*s' must be i64", (int)name.size,
-                            name.data);
-  }
-  *out_value = attr->value.i64;
-  return iree_ok_status();
-}
-
-static iree_status_t loom_wasm_read_u8_attr(loom_named_attr_slice_t attrs,
-                                            iree_string_view_t name,
-                                            loom_string_id_t name_id,
-                                            uint8_t maximum_value,
-                                            uint8_t* out_value) {
-  int64_t value = 0;
-  IREE_RETURN_IF_ERROR(loom_wasm_read_i64_attr(attrs, name, name_id, &value));
-  if (value < 0 || value > maximum_value) {
-    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "Wasm attribute '%.*s' is outside [0, %" PRIu8 "]",
-                            (int)name.size, name.data, maximum_value);
-  }
-  *out_value = (uint8_t)value;
-  return iree_ok_status();
-}
-
 static iree_status_t loom_wasm_emit_local_get_index(
     loom_wasm_emit_state_t* state, uint32_t local_index) {
   IREE_RETURN_IF_ERROR(
@@ -724,22 +620,15 @@ static iree_status_t loom_wasm_emit_memarg(loom_wasm_emit_state_t* state,
   return loom_wasm_binary_write_u32_leb(&state->writer, offset);
 }
 
+// Low verification establishes packet shapes and numeric immediate domains.
+// Attribute dictionaries are canonical by spelling: scalar constants and SIMD
+// lane operations have one required field, and memory offsets are the sole
+// optional field. Multi-field encodings map that order to Wasm wire order
+// below.
 static iree_status_t loom_wasm_emit_i32_const(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor) {
-  if (!loom_low_const_isa(op) || op->result_count != 1) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "wasm.i32.const must be a unary low.const");
-  }
-  int64_t value = 0;
-  IREE_RETURN_IF_ERROR(
-      loom_wasm_read_i64_attr(loom_low_const_attrs(op), kWasmAttrI32ValueName,
-                              state->attr_names.i32_value, &value));
-  if (value < INT32_MIN || value > UINT32_MAX) {
-    return iree_make_status(
-        IREE_STATUS_FAILED_PRECONDITION,
-        "wasm.i32.const value is outside the verified i32 bit-pattern range");
-  }
+  const int64_t value = loom_low_const_attrs(op).entries[0].value.i64;
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
   IREE_RETURN_IF_ERROR(
@@ -750,14 +639,7 @@ static iree_status_t loom_wasm_emit_i32_const(
 static iree_status_t loom_wasm_emit_i64_const(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor) {
-  if (!loom_low_const_isa(op) || op->result_count != 1) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "wasm.i64.const must be a unary low.const");
-  }
-  int64_t value = 0;
-  IREE_RETURN_IF_ERROR(
-      loom_wasm_read_i64_attr(loom_low_const_attrs(op), kWasmAttrI64ValueName,
-                              state->attr_names.i64_value, &value));
+  const int64_t value = loom_low_const_attrs(op).entries[0].value.i64;
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
   IREE_RETURN_IF_ERROR(loom_wasm_binary_write_i64_leb(&state->writer, value));
@@ -767,16 +649,14 @@ static iree_status_t loom_wasm_emit_i64_const(
 static iree_status_t loom_wasm_emit_float_const(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor) {
-  const loom_named_attr_t* bits = loom_wasm_find_named_attr_by_id(
-      loom_low_const_attrs(op), state->attr_names.bits);
+  const uint64_t bits = (uint64_t)loom_low_const_attrs(op).entries[0].value.i64;
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
   if (descriptor->encoding_id == LOOM_WASM_OPCODE_F32_CONST) {
-    IREE_RETURN_IF_ERROR(loom_wasm_binary_write_u32_le(
-        &state->writer, (uint32_t)bits->value.i64));
+    IREE_RETURN_IF_ERROR(
+        loom_wasm_binary_write_u32_le(&state->writer, (uint32_t)bits));
   } else {
-    IREE_RETURN_IF_ERROR(loom_wasm_binary_write_u64_le(
-        &state->writer, (uint64_t)bits->value.i64));
+    IREE_RETURN_IF_ERROR(loom_wasm_binary_write_u64_le(&state->writer, bits));
   }
   return loom_wasm_emit_local_set(state, loom_low_const_result(op));
 }
@@ -784,34 +664,20 @@ static iree_status_t loom_wasm_emit_float_const(
 static iree_status_t loom_wasm_emit_v128_const(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor) {
-  if (!loom_low_const_isa(op) || op->result_count != 1) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "wasm.v128.const must be a unary low.const");
-  }
-  int64_t low_bits = 0;
-  int64_t high_bits = 0;
-  IREE_RETURN_IF_ERROR(
-      loom_wasm_read_i64_attr(loom_low_const_attrs(op), kWasmAttrLo64Name,
-                              state->attr_names.lo64, &low_bits));
-  IREE_RETURN_IF_ERROR(
-      loom_wasm_read_i64_attr(loom_low_const_attrs(op), kWasmAttrHi64Name,
-                              state->attr_names.hi64, &high_bits));
+  // Canonical fields are hi64, lo64; the wire payload is little-endian lo, hi.
+  const loom_named_attr_slice_t attrs = loom_low_const_attrs(op);
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
-  IREE_RETURN_IF_ERROR(
-      loom_wasm_binary_write_u64_le(&state->writer, (uint64_t)low_bits));
-  IREE_RETURN_IF_ERROR(
-      loom_wasm_binary_write_u64_le(&state->writer, (uint64_t)high_bits));
+  IREE_RETURN_IF_ERROR(loom_wasm_binary_write_u64_le(
+      &state->writer, (uint64_t)attrs.entries[1].value.i64));
+  IREE_RETURN_IF_ERROR(loom_wasm_binary_write_u64_le(
+      &state->writer, (uint64_t)attrs.entries[0].value.i64));
   return loom_wasm_emit_local_set(state, loom_low_const_result(op));
 }
 
 static iree_status_t loom_wasm_emit_unary_stack_op(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor) {
-  if (!loom_low_op_isa(op) || op->operand_count != 1 || op->result_count != 1) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "Wasm unary packet shape is invalid");
-  }
   loom_value_slice_t operands = loom_low_op_operands(op);
   loom_value_slice_t results = loom_low_op_results(op);
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, operands.values[0]));
@@ -823,10 +689,6 @@ static iree_status_t loom_wasm_emit_unary_stack_op(
 static iree_status_t loom_wasm_emit_binary_stack_op(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor) {
-  if (!loom_low_op_isa(op) || op->operand_count != 2 || op->result_count != 1) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "Wasm binary packet shape is invalid");
-  }
   loom_value_slice_t operands = loom_low_op_operands(op);
   loom_value_slice_t results = loom_low_op_results(op);
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, operands.values[0]));
@@ -839,10 +701,6 @@ static iree_status_t loom_wasm_emit_binary_stack_op(
 static iree_status_t loom_wasm_emit_ternary_stack_op(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor) {
-  if (!loom_low_op_isa(op) || op->operand_count != 3 || op->result_count != 1) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "Wasm ternary packet shape is invalid");
-  }
   loom_value_slice_t operands = loom_low_op_operands(op);
   loom_value_slice_t results = loom_low_op_results(op);
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, operands.values[0]));
@@ -856,8 +714,7 @@ static iree_status_t loom_wasm_emit_ternary_stack_op(
 static iree_status_t loom_wasm_emit_lane_stack_op(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor) {
-  const loom_named_attr_t* lane = loom_wasm_find_named_attr_by_id(
-      loom_low_op_attrs(op), state->attr_names.lane);
+  const uint8_t lane = (uint8_t)loom_low_op_attrs(op).entries[0].value.i64;
   loom_value_slice_t operands = loom_low_op_operands(op);
   loom_value_slice_t results = loom_low_op_results(op);
   for (iree_host_size_t i = 0; i < operands.count; ++i) {
@@ -865,18 +722,17 @@ static iree_status_t loom_wasm_emit_lane_stack_op(
   }
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
-  IREE_RETURN_IF_ERROR(
-      loom_wasm_binary_write_u8(&state->writer, (uint8_t)lane->value.i64));
+  IREE_RETURN_IF_ERROR(loom_wasm_binary_write_u8(&state->writer, lane));
   return loom_wasm_emit_local_set(state, results.values[0]);
 }
 
 static iree_status_t loom_wasm_emit_i8x16_shuffle(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor) {
-  if (!loom_low_op_isa(op) || op->operand_count != 2 || op->result_count != 1) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "wasm.i8x16.shuffle packet shape is invalid");
-  }
+  // Canonical spelling order is lane0, lane1, lane10..lane15, lane2..lane9.
+  static const uint8_t kLaneAttrIndices[16] = {
+      0, 1, 8, 9, 10, 11, 12, 13, 14, 15, 2, 3, 4, 5, 6, 7,
+  };
   loom_value_slice_t operands = loom_low_op_operands(op);
   loom_value_slice_t results = loom_low_op_results(op);
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, operands.values[0]));
@@ -884,55 +740,41 @@ static iree_status_t loom_wasm_emit_i8x16_shuffle(
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
   loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
-  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(kWasmShuffleLaneAttrNames);
-       ++i) {
-    uint8_t lane = 0;
-    IREE_RETURN_IF_ERROR(loom_wasm_read_u8_attr(
-        attrs, kWasmShuffleLaneAttrNames[i], state->attr_names.shuffle_lanes[i],
-        /*maximum_value=*/31, &lane));
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(kLaneAttrIndices); ++i) {
+    const uint8_t lane = (uint8_t)attrs.entries[kLaneAttrIndices[i]].value.i64;
     IREE_RETURN_IF_ERROR(loom_wasm_binary_write_u8(&state->writer, lane));
   }
   return loom_wasm_emit_local_set(state, results.values[0]);
 }
 
-static uint32_t loom_wasm_memory_offset(const loom_wasm_emit_state_t* state,
-                                        const loom_op_t* op) {
-  const loom_named_attr_t* attr = loom_wasm_find_named_attr_by_id(
-      loom_low_op_attrs(op), state->attr_names.offset);
-  return attr ? (uint32_t)attr->value.i64 : 0;
+static uint32_t loom_wasm_memory_offset(const loom_op_t* op) {
+  const loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
+  return attrs.count ? (uint32_t)attrs.entries[0].value.i64 : 0;
 }
 
 static iree_status_t loom_wasm_emit_memory_load(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor, uint8_t alignment_exponent) {
-  if (!loom_low_op_isa(op) || op->operand_count != 1 || op->result_count != 1) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "Wasm memory load packet shape is invalid");
-  }
   loom_value_slice_t operands = loom_low_op_operands(op);
   loom_value_slice_t results = loom_low_op_results(op);
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, operands.values[0]));
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
-  IREE_RETURN_IF_ERROR(loom_wasm_emit_memarg(
-      state, alignment_exponent, loom_wasm_memory_offset(state, op)));
+  IREE_RETURN_IF_ERROR(loom_wasm_emit_memarg(state, alignment_exponent,
+                                             loom_wasm_memory_offset(op)));
   return loom_wasm_emit_local_set(state, results.values[0]);
 }
 
 static iree_status_t loom_wasm_emit_memory_store(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor, uint8_t alignment_exponent) {
-  if (!loom_low_op_isa(op) || op->operand_count != 2 || op->result_count != 0) {
-    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                            "Wasm memory store packet shape is invalid");
-  }
   loom_value_slice_t operands = loom_low_op_operands(op);
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, operands.values[0]));
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, operands.values[1]));
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
   return loom_wasm_emit_memarg(state, alignment_exponent,
-                               loom_wasm_memory_offset(state, op));
+                               loom_wasm_memory_offset(op));
 }
 
 static iree_status_t loom_wasm_emit_descriptor_packet(
@@ -1651,7 +1493,6 @@ iree_status_t loom_wasm_emit_function_body(
       .allocation = allocation,
       .options = options,
   };
-  loom_wasm_attr_name_ids_initialize(allocation->module, &state.attr_names);
   loom_wasm_binary_writer_initialize(allocator, &state.writer);
   loom_low_allocation_value_scratch_t scratch = {0};
   iree_status_t status =

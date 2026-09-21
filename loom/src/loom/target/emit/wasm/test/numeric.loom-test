@@ -228,3 +228,94 @@ CHECK: f64.reinterpret_i64
 CHECK: f32.select
 CHECK: i64.extend_i32_s
 CHECK: i64.extend_i32_u
+
+// ====
+
+// RUN: emit wasm-dis
+// REQUIRES: wasm-objdump
+
+wasm.target<simd128> @target
+
+// Distinct halves and byte lanes expose dictionary order versus wire order.
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @immediate_order(%lhs: reg<wasm.v128>, %rhs: reg<wasm.v128>) -> (reg<wasm.v128>, reg<wasm.v128>, reg<wasm.i64>) asm {
+  %bits = v128.const 81985529216486895, -81985529216486896
+  %shuffled = i8x16.shuffle %lhs, %rhs, 31, 0, 29, 2, 27, 4, 25, 6, 23, 8, 21, 10, 19, 12, 17, 14
+  %minimum = i64.const -9223372036854775808
+  return %bits, %shuffled, %minimum
+}
+
+// ----
+Disassembly of section CODE:
+
+<CODE>:
+        # 1 functions in section.
+
+<immediate_order>:
+        .local v128, i64
+  v128.const  2309737967, 19088743, 1985229328, 4275878552
+  local.set  2
+  local.get  0
+  local.get  1
+  i8x16.shuffle  31, 0, 29, 2, 27, 4, 25, 6, 23, 8, 21, 10, 19, 12, 17, 14
+  local.set  0
+  i64.const  -9223372036854775808
+  local.set  3
+  local.get  2
+  local.get  0
+  local.get  3
+  return
+  end
+
+// ====
+
+// RUN: with-checks format bytecode
+
+wasm.target<simd128> @target
+
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @immediate_roundtrip(%lhs: reg<wasm.v128>, %rhs: reg<wasm.v128>, %address: reg<wasm.i32>) -> (reg<wasm.v128>, reg<wasm.v128>, reg<wasm.i32>) asm {
+  %bits = v128.const 81985529216486895, -81985529216486896
+  %shuffled = i8x16.shuffle %lhs, %rhs, 31, 0, 29, 2, 27, 4, 25, 6, 23, 8, 21, 10, 19, 12, 17, 14
+  %value = i32.load %address {offset = 4294967295}
+  return %bits, %shuffled, %value
+}
+
+// ----
+CHECK: %bits = v128.const 81985529216486895, -81985529216486896
+CHECK: %shuffled = i8x16.shuffle %lhs, %rhs, 31, 0, 29, 2, 27, 4, 25, 6, 23, 8, 21, 10, 19, 12, 17, 14
+CHECK: %value = i32.load %address {offset = 4294967295}
+
+// ====
+
+// RUN: verify
+
+wasm.target<simd128> @target
+
+low.func.def target<wasm.core.simd128>(@target) @reject_invalid_immediates(%value: reg<wasm.v128>) {
+  // ERROR@+1: TARGET/047
+  %missing = low.const<wasm.i32.const> {} : reg<wasm.i32>
+  // ERROR@+1: TARGET/047
+  %missing_half = low.const<wasm.v128.const> {lo64 = 0} : reg<wasm.v128>
+  // ERROR@+1: TARGET/049
+  %kind = low.const<wasm.i64.const> {i64_value = true} : reg<wasm.i64>
+  // ERROR@+1: TARGET/048
+  %extra = low.const<wasm.v128.const> {hi64 = 0, lo64 = 0, unexpected = 0} : reg<wasm.v128>
+  // ERROR@+1: STRUCTURE/014
+  %integer = low.const<wasm.i32.const> {i32_value = 4294967296} : reg<wasm.i32>
+  // ERROR@+1: STRUCTURE/014
+  %float_bits = low.const<wasm.f32.const> {bits = 4294967296} : reg<wasm.f32>
+  // ERROR@+1: STRUCTURE/014
+  %lane = low.op<wasm.i32x4.extract_lane>(%value) {lane = 4} : (reg<wasm.v128>) -> reg<wasm.i32>
+  low.return
+}
+
+// ====
+
+// RUN: verify
+
+wasm.target<simd128> @target
+
+low.func.def target<wasm.core.simd128>(@target) @reject_invalid_shuffle(%value: reg<wasm.v128>) asm {
+  // ERROR@+1: STRUCTURE/014
+  %invalid = i8x16.shuffle %value, %value, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 32
+  return
+}
