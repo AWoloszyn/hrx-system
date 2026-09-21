@@ -13,6 +13,11 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "location.loom-test"
+    "location_capture.loom-test"
+    "location_cse.loom-test"
+    "location_materialize.loom-test"
+    "location_verify.loom-test"
     "roundtrip.loom-test"
     "verify.loom-test"
 )

@@ -12,6 +12,8 @@ package(
     licenses = ["notice"],
 )
 
+exports_files(["imports.loom"])
+
 iree_execution_test_suite(
     name = "tools_test",
     data = [

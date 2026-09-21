@@ -740,6 +740,7 @@ loom_cc_library(
         "//loom/src/loom/codegen/low:verify",
         "//loom/src/loom/error:diagnostic",
         "//loom/src/loom/error:error_defs",
+        "//loom/src/loom/error:source",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops:func_symbol_facts",
         "//loom/src/loom/ops:op_defs",

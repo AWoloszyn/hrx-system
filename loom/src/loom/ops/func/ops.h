@@ -12,20 +12,210 @@
 #ifndef LOOM_OPS_FUNC_OPS_H_
 #define LOOM_OPS_FUNC_OPS_H_
 
+#include "loom/ir/parameterized_attr.h"
 #include "loom/ops/op_defs.h"
 #include "loom/ir/ir.h"
+#include "loom/ir/location.h"
 #include "loom/target/types.h"
+
+enum {
+  LOOM_PARAMETERIZED_ATTR_FUNC_LOCATION_UNKNOWN = LOOM_PARAMETERIZED_ATTR_KIND(LOOM_DIALECT_FUNC, 0),
+  LOOM_PARAMETERIZED_ATTR_FUNC_LOCATION_FIELD = LOOM_PARAMETERIZED_ATTR_KIND(LOOM_DIALECT_FUNC, 1),
+  LOOM_PARAMETERIZED_ATTR_FUNC_LOCATION_FILE = LOOM_PARAMETERIZED_ATTR_KIND(LOOM_DIALECT_FUNC, 2),
+  LOOM_PARAMETERIZED_ATTR_FUNC_LOCATION_FUSED = LOOM_PARAMETERIZED_ATTR_KIND(LOOM_DIALECT_FUNC, 3),
+  LOOM_PARAMETERIZED_ATTR_FUNC_LOCATION_OPAQUE = LOOM_PARAMETERIZED_ATTR_KIND(LOOM_DIALECT_FUNC, 4),
+  LOOM_PARAMETERIZED_ATTR_FUNC_LOCATION_TAGGED = LOOM_PARAMETERIZED_ATTR_KIND(LOOM_DIALECT_FUNC, 5),
+  LOOM_PARAMETERIZED_ATTR_FUNC_COUNT_ = 6,
+};
 
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// An explicitly unknown captured location.
+static inline bool loom_func_location_unknown_attr_isa(loom_attribute_t attr) {
+  return attr.kind == LOOM_ATTR_PARAMETERIZED && loom_attr_as_parameterized_kind(attr) == LOOM_PARAMETERIZED_ATTR_FUNC_LOCATION_UNKNOWN;
+}
+iree_status_t loom_func_location_unknown_attr_make(
+    loom_module_t* module,
+    loom_attribute_t* out_attr);
+
+// A captured source field range in its file node's coordinate space.
+static inline bool loom_func_location_field_attr_isa(loom_attribute_t attr) {
+  return attr.kind == LOOM_ATTR_PARAMETERIZED && loom_attr_as_parameterized_kind(attr) == LOOM_PARAMETERIZED_ATTR_FUNC_LOCATION_FIELD;
+}
+enum { LOOM_FUNC_LOCATION_FIELD_ATTR_KIND_PARAMETER_INDEX = 0 };
+static inline loom_location_field_kind_t loom_func_location_field_attr_kind(loom_attribute_t attr) {
+  return (loom_location_field_kind_t)loom_attr_as_enum(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_FIELD_ATTR_KIND_PARAMETER_INDEX]);
+}
+enum { LOOM_FUNC_LOCATION_FIELD_ATTR_INDEX_PARAMETER_INDEX = 1 };
+static inline int64_t loom_func_location_field_attr_index(loom_attribute_t attr) {
+  return loom_attr_as_i64(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_FIELD_ATTR_INDEX_PARAMETER_INDEX]);
+}
+enum { LOOM_FUNC_LOCATION_FIELD_ATTR_RANGE_PARAMETER_INDEX = 2 };
+static inline loom_i64_array_t loom_func_location_field_attr_range(loom_attribute_t attr) {
+  return loom_attr_as_i64_array(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_FIELD_ATTR_RANGE_PARAMETER_INDEX]);
+}
+iree_status_t loom_func_location_field_attr_make(
+    loom_module_t* module,
+    loom_location_field_kind_t kind,
+    int64_t index,
+    loom_i64_array_t range,
+    loom_attribute_t* out_attr);
+
+// Captured file range and optional original source text beginning at the start line.
+enum loom_func_location_file_attr_build_flag_bits_e {
+  LOOM_FUNC_LOCATION_FILE_ATTR_BUILD_FLAG_HAS_SYNTHETIC = 1u << 0,
+  LOOM_FUNC_LOCATION_FILE_ATTR_BUILD_FLAG_HAS_FIELDS = 1u << 1,
+  LOOM_FUNC_LOCATION_FILE_ATTR_BUILD_FLAG_HAS_TEXT = 1u << 2,
+};
+typedef uint32_t loom_func_location_file_attr_build_flags_t;
+static inline bool loom_func_location_file_attr_isa(loom_attribute_t attr) {
+  return attr.kind == LOOM_ATTR_PARAMETERIZED && loom_attr_as_parameterized_kind(attr) == LOOM_PARAMETERIZED_ATTR_FUNC_LOCATION_FILE;
+}
+enum { LOOM_FUNC_LOCATION_FILE_ATTR_SOURCE_PARAMETER_INDEX = 0 };
+static inline loom_string_id_t loom_func_location_file_attr_source(loom_attribute_t attr) {
+  return loom_attr_as_string_id(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_FILE_ATTR_SOURCE_PARAMETER_INDEX]);
+}
+enum { LOOM_FUNC_LOCATION_FILE_ATTR_RANGE_PARAMETER_INDEX = 1 };
+static inline loom_i64_array_t loom_func_location_file_attr_range(loom_attribute_t attr) {
+  return loom_attr_as_i64_array(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_FILE_ATTR_RANGE_PARAMETER_INDEX]);
+}
+enum { LOOM_FUNC_LOCATION_FILE_ATTR_SYNTHETIC_PARAMETER_INDEX = 2 };
+static inline bool loom_func_location_file_attr_has_synthetic(loom_attribute_t attr) {
+  return !loom_attr_is_absent(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_FILE_ATTR_SYNTHETIC_PARAMETER_INDEX]);
+}
+static inline bool loom_func_location_file_attr_synthetic(loom_attribute_t attr) {
+  return loom_attr_as_bool(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_FILE_ATTR_SYNTHETIC_PARAMETER_INDEX]);
+}
+enum { LOOM_FUNC_LOCATION_FILE_ATTR_FIELDS_PARAMETER_INDEX = 3 };
+static inline bool loom_func_location_file_attr_has_fields(loom_attribute_t attr) {
+  return !loom_attr_is_absent(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_FILE_ATTR_FIELDS_PARAMETER_INDEX]);
+}
+static inline loom_parameterized_attr_array_t loom_func_location_file_attr_fields(loom_attribute_t attr) {
+  return loom_attr_as_parameterized_array(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_FILE_ATTR_FIELDS_PARAMETER_INDEX]);
+}
+enum { LOOM_FUNC_LOCATION_FILE_ATTR_TEXT_PARAMETER_INDEX = 4 };
+static inline bool loom_func_location_file_attr_has_text(loom_attribute_t attr) {
+  return !loom_attr_is_absent(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_FILE_ATTR_TEXT_PARAMETER_INDEX]);
+}
+static inline iree_const_byte_span_t loom_func_location_file_attr_text(loom_attribute_t attr) {
+  return loom_attr_as_bytes(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_FILE_ATTR_TEXT_PARAMETER_INDEX]);
+}
+iree_status_t loom_func_location_file_attr_make(
+    loom_module_t* module,
+    loom_func_location_file_attr_build_flags_t build_flags,
+    loom_string_id_t source,
+    loom_i64_array_t range,
+    bool synthetic,
+    loom_parameterized_attr_array_t fields,
+    iree_const_byte_span_t text,
+    loom_attribute_t* out_attr);
+
+// Provenance derived from several captured locations.
+enum loom_func_location_fused_attr_build_flag_bits_e {
+  LOOM_FUNC_LOCATION_FUSED_ATTR_BUILD_FLAG_HAS_SYNTHETIC = 1u << 0,
+};
+typedef uint32_t loom_func_location_fused_attr_build_flags_t;
+static inline bool loom_func_location_fused_attr_isa(loom_attribute_t attr) {
+  return attr.kind == LOOM_ATTR_PARAMETERIZED && loom_attr_as_parameterized_kind(attr) == LOOM_PARAMETERIZED_ATTR_FUNC_LOCATION_FUSED;
+}
+enum { LOOM_FUNC_LOCATION_FUSED_ATTR_CHILDREN_PARAMETER_INDEX = 0 };
+static inline loom_i64_array_t loom_func_location_fused_attr_children(loom_attribute_t attr) {
+  return loom_attr_as_i64_array(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_FUSED_ATTR_CHILDREN_PARAMETER_INDEX]);
+}
+enum { LOOM_FUNC_LOCATION_FUSED_ATTR_SYNTHETIC_PARAMETER_INDEX = 1 };
+static inline bool loom_func_location_fused_attr_has_synthetic(loom_attribute_t attr) {
+  return !loom_attr_is_absent(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_FUSED_ATTR_SYNTHETIC_PARAMETER_INDEX]);
+}
+static inline bool loom_func_location_fused_attr_synthetic(loom_attribute_t attr) {
+  return loom_attr_as_bool(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_FUSED_ATTR_SYNTHETIC_PARAMETER_INDEX]);
+}
+iree_status_t loom_func_location_fused_attr_make(
+    loom_module_t* module,
+    loom_func_location_fused_attr_build_flags_t build_flags,
+    loom_i64_array_t children,
+    bool synthetic,
+    loom_attribute_t* out_attr);
+
+// Captured external source identity and uninterpreted payload.
+enum loom_func_location_opaque_attr_build_flag_bits_e {
+  LOOM_FUNC_LOCATION_OPAQUE_ATTR_BUILD_FLAG_HAS_SYNTHETIC = 1u << 0,
+};
+typedef uint32_t loom_func_location_opaque_attr_build_flags_t;
+static inline bool loom_func_location_opaque_attr_isa(loom_attribute_t attr) {
+  return attr.kind == LOOM_ATTR_PARAMETERIZED && loom_attr_as_parameterized_kind(attr) == LOOM_PARAMETERIZED_ATTR_FUNC_LOCATION_OPAQUE;
+}
+enum { LOOM_FUNC_LOCATION_OPAQUE_ATTR_SOURCE_PARAMETER_INDEX = 0 };
+static inline loom_string_id_t loom_func_location_opaque_attr_source(loom_attribute_t attr) {
+  return loom_attr_as_string_id(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_OPAQUE_ATTR_SOURCE_PARAMETER_INDEX]);
+}
+enum { LOOM_FUNC_LOCATION_OPAQUE_ATTR_DATA_PARAMETER_INDEX = 1 };
+static inline iree_const_byte_span_t loom_func_location_opaque_attr_data(loom_attribute_t attr) {
+  return loom_attr_as_bytes(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_OPAQUE_ATTR_DATA_PARAMETER_INDEX]);
+}
+enum { LOOM_FUNC_LOCATION_OPAQUE_ATTR_SYNTHETIC_PARAMETER_INDEX = 2 };
+static inline bool loom_func_location_opaque_attr_has_synthetic(loom_attribute_t attr) {
+  return !loom_attr_is_absent(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_OPAQUE_ATTR_SYNTHETIC_PARAMETER_INDEX]);
+}
+static inline bool loom_func_location_opaque_attr_synthetic(loom_attribute_t attr) {
+  return loom_attr_as_bool(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_OPAQUE_ATTR_SYNTHETIC_PARAMETER_INDEX]);
+}
+iree_status_t loom_func_location_opaque_attr_make(
+    loom_module_t* module,
+    loom_func_location_opaque_attr_build_flags_t build_flags,
+    loom_string_id_t source,
+    iree_const_byte_span_t data,
+    bool synthetic,
+    loom_attribute_t* out_attr);
+
+// Tagged provenance with an optional captured child.
+enum loom_func_location_tagged_attr_build_flag_bits_e {
+  LOOM_FUNC_LOCATION_TAGGED_ATTR_BUILD_FLAG_HAS_CHILD = 1u << 0,
+  LOOM_FUNC_LOCATION_TAGGED_ATTR_BUILD_FLAG_HAS_SYNTHETIC = 1u << 1,
+};
+typedef uint32_t loom_func_location_tagged_attr_build_flags_t;
+static inline bool loom_func_location_tagged_attr_isa(loom_attribute_t attr) {
+  return attr.kind == LOOM_ATTR_PARAMETERIZED && loom_attr_as_parameterized_kind(attr) == LOOM_PARAMETERIZED_ATTR_FUNC_LOCATION_TAGGED;
+}
+enum { LOOM_FUNC_LOCATION_TAGGED_ATTR_TAG_PARAMETER_INDEX = 0 };
+static inline int64_t loom_func_location_tagged_attr_tag(loom_attribute_t attr) {
+  return loom_attr_as_i64(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_TAGGED_ATTR_TAG_PARAMETER_INDEX]);
+}
+enum { LOOM_FUNC_LOCATION_TAGGED_ATTR_DATA_PARAMETER_INDEX = 1 };
+static inline iree_const_byte_span_t loom_func_location_tagged_attr_data(loom_attribute_t attr) {
+  return loom_attr_as_bytes(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_TAGGED_ATTR_DATA_PARAMETER_INDEX]);
+}
+enum { LOOM_FUNC_LOCATION_TAGGED_ATTR_CHILD_PARAMETER_INDEX = 2 };
+static inline bool loom_func_location_tagged_attr_has_child(loom_attribute_t attr) {
+  return !loom_attr_is_absent(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_TAGGED_ATTR_CHILD_PARAMETER_INDEX]);
+}
+static inline int64_t loom_func_location_tagged_attr_child(loom_attribute_t attr) {
+  return loom_attr_as_i64(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_TAGGED_ATTR_CHILD_PARAMETER_INDEX]);
+}
+enum { LOOM_FUNC_LOCATION_TAGGED_ATTR_SYNTHETIC_PARAMETER_INDEX = 3 };
+static inline bool loom_func_location_tagged_attr_has_synthetic(loom_attribute_t attr) {
+  return !loom_attr_is_absent(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_TAGGED_ATTR_SYNTHETIC_PARAMETER_INDEX]);
+}
+static inline bool loom_func_location_tagged_attr_synthetic(loom_attribute_t attr) {
+  return loom_attr_as_bool(loom_attr_as_parameterized_slots(attr)[LOOM_FUNC_LOCATION_TAGGED_ATTR_SYNTHETIC_PARAMETER_INDEX]);
+}
+iree_status_t loom_func_location_tagged_attr_make(
+    loom_module_t* module,
+    loom_func_location_tagged_attr_build_flags_t build_flags,
+    int64_t tag,
+    iree_const_byte_span_t data,
+    int64_t child,
+    bool synthetic,
+    loom_attribute_t* out_attr);
 
 enum {
   LOOM_OP_FUNC_DEF = LOOM_OP_KIND(LOOM_DIALECT_FUNC, 0),
   LOOM_OP_FUNC_DECL = LOOM_OP_KIND(LOOM_DIALECT_FUNC, 1),
   LOOM_OP_FUNC_CALL = LOOM_OP_KIND(LOOM_DIALECT_FUNC, 2),
   LOOM_OP_FUNC_RETURN = LOOM_OP_KIND(LOOM_DIALECT_FUNC, 3),
-  LOOM_OP_FUNC_COUNT_ = 4,
+  LOOM_OP_FUNC_LOCATION = LOOM_OP_KIND(LOOM_DIALECT_FUNC, 4),
+  LOOM_OP_FUNC_COUNT_ = 5,
 };
 
 // Function visibility. Absent (0) means private (module-internal).
@@ -241,6 +431,21 @@ iree_status_t loom_func_return_build(
     loom_location_id_t location,
     loom_op_t** out_op);
 
+// LOOM_OP_FUNC_LOCATION: Materialize immutable captured source provenance as a read-only buffer. The required postorder node array ends with the root location; children refer to earlier nodes. All captured data is semantic and survives debug stripping. This operation never reads its own debug annotation. Equal complete captures may share executable rodata.
+// %site = func.location [#func.location.file<"example.cc", range = [12, 3, 12, 28]>] : buffer
+LOOM_DEFINE_ISA(loom_func_location_isa, LOOM_OP_FUNC_LOCATION)
+LOOM_DEFINE_RESULT(loom_func_location_result, 0)
+LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_func_location_nodes, 0)
+iree_status_t loom_func_location_build(
+    loom_builder_t* builder,
+    loom_parameterized_attr_array_t nodes,
+    loom_type_t result_type,
+    loom_location_id_t location,
+    loom_op_t** out_op);
+iree_status_t loom_func_location_verify(
+    const loom_module_t* module, const loom_op_t* op,
+    iree_diagnostic_emitter_t emitter);
+
 // Returns the vtable array for the func dialect.
 const loom_op_vtable_t* const* loom_func_dialect_vtables(
     iree_host_size_t* out_count);
@@ -252,6 +457,10 @@ const loom_op_semantics_t* loom_func_dialect_op_semantics(
 // Returns semantic metadata for a func op kind, or empty metadata.
 loom_op_semantics_t loom_func_op_semantics(
     loom_op_kind_t kind);
+
+// Returns parameterized attribute descriptors for the func dialect.
+const loom_parameterized_attr_descriptor_t* loom_func_dialect_parameterized_attrs(
+    iree_host_size_t* out_count);
 
 #ifdef __cplusplus
 }

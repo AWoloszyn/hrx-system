@@ -126,6 +126,14 @@ use_descriptor(descriptor);
 Evaluate the query unconditionally and use the assertion only to document the
 trusted invariant.
 
+### `iree-test-status-macro-scope`
+
+Status assertion macros such as `IREE_ASSERT_OK` and `IREE_EXPECT_OK` belong in
+test code. Test filenames use `_test.` or `_test_`, or are named `test_base.h`;
+files directly in `test`, `testing`, or `cts` directories are also test code.
+Names of more distant ancestors, including a checkout directory, do not change
+the classification of a production source file.
+
 ### `iree-status-discarded`
 
 `iree-status-discarded` diagnoses calls returning `iree_status_t` when the call

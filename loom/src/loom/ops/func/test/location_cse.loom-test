@@ -1,0 +1,17 @@
+// RUN: pass cse
+
+// CSE merges identical captures from different debug sites and preserves
+// distinct captured source ranges.
+func.def @sites() -> (buffer, buffer, buffer) {
+  %first = func.location [#func.location.file<"same.cc", range = [4, 3, 4, 8]>] : buffer
+  %duplicate = func.location [#func.location.file<"same.cc", range = [4, 3, 4, 8]>] : buffer
+  %different = func.location [#func.location.file<"same.cc", range = [5, 3, 5, 8]>] : buffer
+  func.return %first, %duplicate, %different : buffer, buffer, buffer
+}
+
+// ----
+func.def @sites() -> (buffer, buffer, buffer) {
+  %first = func.location [#func.location.file<"same.cc", range = [4, 3, 4, 8]>] : buffer
+  %different = func.location [#func.location.file<"same.cc", range = [5, 3, 5, 8]>] : buffer
+  func.return %first, %first, %different : buffer, buffer, buffer
+}

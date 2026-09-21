@@ -19,6 +19,7 @@ from loom.assembly import (
     ARROW,
     COLON,
     COMMA,
+    EQUALS,
     GLUE,
     LBRACKET,
     LPAREN,
@@ -294,6 +295,12 @@ _KERNEL_COMMON_ATTRS = [
 _FUNC_DECL_IMPORT_ATTRS = [
     AttrDef("import_kind", "enum", enum_def=LowCodeImportKind, optional=True),
     AttrDef("code_symbol", "string", optional=True),
+    AttrDef(
+        "import_module",
+        "string",
+        optional=True,
+        doc="Runtime module namespace owning the imported code symbol.",
+    ),
 ]
 
 _FUNC_MODIFIER_FORMAT: list[FormatElement] = [
@@ -444,6 +451,10 @@ _FUNC_IMPORT_FORMAT: list[FormatElement] = [
             Attr("import_kind"),
             COMMA,
             Attr("code_symbol"),
+            OptionalGroup(
+                [COMMA, kw("module"), EQUALS, Attr("import_module")],
+                anchor="import_module",
+            ),
             GLUE,
             RPAREN,
         ],
@@ -621,7 +632,14 @@ low_func_decl = Op(
         flags=[SymbolDefinitionFlag.DECLARATION],
     ),
     results=[Result("results", REGISTER, variadic=True)],
-    interfaces=[FuncLikeInterface(**_FUNC_LIKE_COMMON, args="args")],
+    interfaces=[
+        FuncLikeInterface(
+            **_FUNC_LIKE_COMMON,
+            args="args",
+            import_module="import_module",
+            import_symbol="code_symbol",
+        )
+    ],
     verify="loom_low_func_decl_verify",
     format=[
         *_FUNC_MODIFIER_FORMAT,

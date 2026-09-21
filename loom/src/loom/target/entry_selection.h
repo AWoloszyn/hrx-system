@@ -18,6 +18,7 @@
 #include "iree/base/internal/arena.h"
 #include "loom/codegen/low/verify.h"
 #include "loom/error/diagnostic.h"
+#include "loom/error/source.h"
 #include "loom/ir/ir.h"
 #include "loom/target/facts.h"
 #include "loom/target/function_version.h"

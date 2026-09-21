@@ -13,6 +13,7 @@
 #include "loom/codegen/low/verify.h"
 #include "loom/error/diagnostic.h"
 #include "loom/error/json_sink.h"
+#include "loom/error/source.h"
 #include "loom/format/text/parser.h"
 #include "loom/format/text/printer.h"
 #include "loom/ir/context.h"

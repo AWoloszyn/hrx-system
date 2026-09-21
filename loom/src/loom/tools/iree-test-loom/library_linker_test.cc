@@ -11,6 +11,7 @@
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "iree/testing/temp_file.h"
+#include "loom/error/source.h"
 #include "loom/tooling/io/file.h"
 
 namespace loom {

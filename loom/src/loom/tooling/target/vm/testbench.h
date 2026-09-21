@@ -10,6 +10,7 @@
 #include "iree/vm/buffer.h"
 #include "iree/vm/invocation.h"
 #include "iree/vm/process.h"
+#include "loom/error/source.h"
 #include "loom/target/provider.h"
 #include "loom/tooling/testbench/invocation.h"
 

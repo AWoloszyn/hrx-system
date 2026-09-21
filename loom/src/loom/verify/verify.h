@@ -167,67 +167,13 @@
 
 #include "iree/base/api.h"
 #include "loom/error/diagnostic.h"
+#include "loom/error/source.h"
 #include "loom/ir/ir.h"
 #include "loom/ops/op_defs.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-//===----------------------------------------------------------------------===//
-// Source resolution
-//===----------------------------------------------------------------------===//
-
-// Resolves an op's location to a source range for caret rendering.
-// Returns true if the location could be resolved (source text is
-// available and the location points into it). When false, the
-// verifier emits diagnostics without source ranges.
-typedef bool (*loom_source_resolver_fn_t)(void* user_data,
-                                          const loom_module_t* module,
-                                          loom_location_id_t location,
-                                          loom_source_range_t* out_range);
-
-// A source resolver: callback + context. Passed to the verifier at
-// creation time. The verifier resolves op locations through this.
-typedef struct loom_source_resolver_t {
-  loom_source_resolver_fn_t fn;
-  void* user_data;
-} loom_source_resolver_t;
-
-// Resolves a location through the resolver. If fn is NULL, returns
-// false (no source available).
-static inline bool loom_source_resolve(loom_source_resolver_t resolver,
-                                       const loom_module_t* module,
-                                       loom_location_id_t location,
-                                       loom_source_range_t* out_range) {
-  if (resolver.fn) {
-    return resolver.fn(resolver.user_data, module, location, out_range);
-  }
-  return false;
-}
-
-// A single source buffer entry: maps a source_id to the text that
-// was parsed to produce ops referencing that source.
-typedef struct loom_source_entry_t {
-  loom_source_id_t source_id;
-  iree_string_view_t source;
-  iree_string_view_t filename;
-} loom_source_entry_t;
-
-// Table of source buffers for the built-in resolver. In the common
-// case (single parse → verify), this has one entry. After linking
-// modules from multiple source files, one entry per file.
-typedef struct loom_source_table_resolver_t {
-  const loom_source_entry_t* entries;
-  iree_host_size_t count;
-} loom_source_table_resolver_t;
-
-// Built-in source resolver that resolves file locations by looking up
-// the source_id in a table of source buffers. Pass a
-// loom_source_table_resolver_t* as user_data.
-bool loom_source_table_resolve(void* user_data, const loom_module_t* module,
-                               loom_location_id_t location,
-                               loom_source_range_t* out_range);
 
 //===----------------------------------------------------------------------===//
 // Verification options

@@ -169,6 +169,23 @@ are part of Loom's source representation and survive supported text/bytecode
 round trips. Optimization and target lowering may of course produce a different
 program; format conversion alone does not.
 
+## Source locations can be program values
+
+[`func.location`](../reference/dialects/func/ops/location.md) produces a
+read-only buffer containing captured source provenance. Its explicit nodes
+describe file ranges, optional original source text and field spans, and
+relationships such as fused or tagged origins. Lines and Unicode code-point
+columns are one-based; range ends are exclusive. An absent source snapshot
+remains absent in the value.
+
+Captured provenance is semantic program data. Serialization, linking, and debug
+stripping preserve it, and equal complete captures may share immutable storage.
+A runtime consumer can retain the buffer after the compiler and executable
+owners have been released. The value needs no source files at runtime.
+Its own debug annotation does not change the captured data: frontends and
+compiler clients select and freeze an original site while that source is
+available, then emit the explicit value.
+
 ## Canonical formatting is the source contract
 
 Canonical text removes whitespace and layout churn while retaining the source

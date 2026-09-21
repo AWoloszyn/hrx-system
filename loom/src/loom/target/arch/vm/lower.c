@@ -103,6 +103,7 @@ static iree_status_t loom_vm_emit_op(void* user_data,
 
 static const loom_low_lower_policy_t kPolicy = {
     .name = IREE_SVL("vm-lower"),
+    .import_decl_kind = LOOM_LOW_FUNC_DECL_IMPORT_KIND_NATIVE,
     .error_catalog = &loom_error_catalog_core,
     .source_type_supported = {.fn = loom_vm_source_type_supported},
     .map_type = {.fn = loom_vm_map_type},

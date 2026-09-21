@@ -45,8 +45,7 @@ function(_loom_generated_files)
     _RULE "" "NAME;GENERATOR;COMMENT" "OUTPUTS;OUTPUT_FLAGS;ARGS;INPUTS" ${ARGN}
   )
   iree_package_target_name(_GENERATOR_TARGET "${_RULE_GENERATOR}")
-  # Python packages register their entry points before their consumers. Native
-  # executable targets may be forward references, resolved at generation time.
+  # Python packages register their entry points before their consumers.
   if(TARGET "${_GENERATOR_TARGET}")
     get_target_property(_GENERATOR_TYPE "${_GENERATOR_TARGET}" TYPE)
     if(_GENERATOR_TYPE STREQUAL "UTILITY")
@@ -54,6 +53,12 @@ function(_loom_generated_files)
       return()
     endif()
   endif()
+
+  # Native executable aliases may be forward references. Keep the alias intact
+  # until generation instead of guessing the concrete target of a default binary.
+  iree_package_ns(_PACKAGE_NS)
+  string(REGEX REPLACE "^::" "${_PACKAGE_NS}::"
+    _GENERATOR_TARGET "${_RULE_GENERATOR}")
 
   list(LENGTH _RULE_OUTPUTS _OUTPUT_COUNT)
   list(LENGTH _RULE_OUTPUT_FLAGS _OUTPUT_FLAG_COUNT)

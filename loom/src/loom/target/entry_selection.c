@@ -9,12 +9,14 @@
 #include "loom/analysis/symbol_facts.h"
 #include "loom/codegen/low/verify.h"
 #include "loom/error/error_catalog.h"
+#include "loom/error/source.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/func_symbol_facts.h"
 #include "loom/ops/op_defs.h"
 #include "loom/ops/target/facts.h"
 #include "loom/target/function_contract.h"
+#include "loom/verify/verify.h"
 
 uint32_t loom_target_entry_max_errors(
     const loom_target_entry_options_t* options, uint32_t default_max_errors) {

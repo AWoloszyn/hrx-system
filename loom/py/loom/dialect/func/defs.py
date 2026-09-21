@@ -6,7 +6,7 @@
 
 """Func dialect op definitions.
 
-Four ops for runtime program structure:
+Operations for runtime program structure and source provenance:
 
 Top-level (module-level symbols):
   func.def       — Function definition (has body, callable by name).
@@ -14,6 +14,7 @@ Top-level (module-level symbols):
 Body ops:
   func.call      — Runtime function call.
   func.return    — Return values from function body.
+  func.location  — Materialize captured source provenance as a buffer.
 """
 
 from typing import Any
@@ -33,6 +34,7 @@ from loom.assembly import (
     PredicateList,
     Refs,
     Region,
+    ResultType,
     ResultTypeList,
     Scope,
     SymbolRef,
@@ -42,8 +44,10 @@ from loom.assembly import (
 from loom.dialect.target.defs import ExportAbiKind
 from loom.dsl import (
     ANY,
+    BUFFER,
     ISOLATED_FROM_ABOVE,
     POISON_BOUNDARY,
+    PURE,
     SYMBOL_DEFINE,
     TERMINATOR,
     UNKNOWN_EFFECTS,
@@ -58,6 +62,7 @@ from loom.dsl import (
     Op,
     Operand,
     OpPhase,
+    ParameterizedAttrDef,
     RegionDef,
     Result,
     SymbolDefinition,
@@ -483,6 +488,124 @@ func_return = Op(
 )
 
 # ============================================================================
+# func.location — captured source provenance
+# ============================================================================
+
+# Captured locations are semantic values. A flat postorder node array keeps
+# shared provenance graphs independent of debug-location tables and aggregate
+# attribute nesting limits. Child indices always refer to preceding nodes.
+func_location_unknown_attr = ParameterizedAttrDef(
+    "func.location.unknown",
+    group=func_ops,
+    parameters=[],
+    doc="An explicitly unknown captured location.",
+)
+
+LocationFieldKind = EnumDef(
+    "LocationFieldKind",
+    [
+        EnumCase("operand", 0),
+        EnumCase("result", 1),
+        EnumCase("attribute", 2),
+        EnumCase("region", 3),
+        EnumCase("successor", 4),
+    ],
+    c_type="loom_location_field_kind_t",
+    c_const_prefix="LOOM_LOCATION_FIELD",
+    c_include="loom/ir/location.h",
+    doc="Source field category in a captured file range.",
+)
+
+func_location_field_attr = ParameterizedAttrDef(
+    "func.location.field",
+    group=func_ops,
+    parameters=[
+        AttrDef("kind", "enum", enum_def=LocationFieldKind, doc="Source field category."),
+        AttrDef("index", "i64", doc="Zero-based field index."),
+        AttrDef("range", "i64_array", doc="Start line/column and exclusive end line/column."),
+    ],
+    primary_parameter="kind",
+    doc="A captured source field range in its file node's coordinate space.",
+)
+
+func_location_file_attr = ParameterizedAttrDef(
+    "func.location.file",
+    group=func_ops,
+    parameters=[
+        AttrDef("source", "string", doc="Original source name."),
+        AttrDef("range", "i64_array", doc="Four unsigned 32-bit coordinates: one-based lines and Unicode code-point columns, with an exclusive end."),
+        AttrDef("synthetic", "bool", optional=True, doc="The source marks this location as compiler-generated."),
+        AttrDef("fields", "parameterized_array", parameterized_attr=func_location_field_attr, optional=True),
+        AttrDef("text", "bytes", optional=True, doc="Exact source lines spanning the range; absent when unavailable."),
+    ],
+    primary_parameter="source",
+    doc="Captured file range and optional original source text beginning at the start line.",
+)
+
+func_location_fused_attr = ParameterizedAttrDef(
+    "func.location.fused",
+    group=func_ops,
+    parameters=[
+        AttrDef("children", "i64_array", doc="Ordered indices of preceding location nodes."),
+        AttrDef("synthetic", "bool", optional=True, doc="The source marks this location as compiler-generated."),
+    ],
+    primary_parameter="children",
+    doc="Provenance derived from several captured locations.",
+)
+
+func_location_opaque_attr = ParameterizedAttrDef(
+    "func.location.opaque",
+    group=func_ops,
+    parameters=[
+        AttrDef("source", "string", doc="External provenance namespace."),
+        AttrDef("data", "bytes", doc="Uninterpreted external provenance bytes."),
+        AttrDef("synthetic", "bool", optional=True, doc="The source marks this location as compiler-generated."),
+    ],
+    primary_parameter="source",
+    doc="Captured external source identity and uninterpreted payload.",
+)
+
+func_location_tagged_attr = ParameterizedAttrDef(
+    "func.location.tagged",
+    group=func_ops,
+    parameters=[
+        AttrDef("tag", "i64", doc="Stable nonzero location tag."),
+        AttrDef("data", "bytes", doc="Uninterpreted tag payload."),
+        AttrDef("child", "i64", optional=True, doc="Index of a preceding child location, when present."),
+        AttrDef("synthetic", "bool", optional=True, doc="The source marks this location as compiler-generated."),
+    ],
+    primary_parameter="tag",
+    doc="Tagged provenance with an optional captured child.",
+)
+
+ALL_FUNC_PARAMETERIZED_ATTRS = (
+    func_location_unknown_attr,
+    func_location_field_attr,
+    func_location_file_attr,
+    func_location_fused_attr,
+    func_location_opaque_attr,
+    func_location_tagged_attr,
+)
+
+func_location = Op(
+    "func.location",
+    group=func_ops,
+    doc=(
+        "Materialize immutable captured source provenance as a read-only buffer. "
+        "The required postorder node array ends with the root location; children "
+        "refer to earlier nodes. All captured data is semantic and survives "
+        "debug stripping. This operation never reads its own debug annotation. "
+        "Equal complete captures may share executable rodata."
+    ),
+    attrs=[AttrDef("nodes", "parameterized_array")],
+    results=[Result("result", BUFFER)],
+    traits=[PURE],
+    format=[Attr("nodes"), COLON, ResultType("result")],
+    verify="loom_func_location_verify",
+    examples=['%site = func.location [#func.location.file<"example.cc", range = [12, 3, 12, 28]>] : buffer'],
+)
+
+# ============================================================================
 # All ops
 # ============================================================================
 
@@ -491,4 +614,5 @@ ALL_FUNC_OPS: tuple[Op, ...] = (
     func_decl,
     func_call,
     func_return,
+    func_location,
 )

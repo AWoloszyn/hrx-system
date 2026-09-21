@@ -9,7 +9,7 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
-#include "loom/verify/verify.h"
+#include "loom/error/source.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -6,6 +6,7 @@
 
 #include "loom/verify/verify_diagnostics.h"
 
+#include "loom/error/source.h"
 #include "loom/format/text/printer.h"
 
 static bool loom_verify_resolve_location_id(const loom_verify_state_t* state,
@@ -238,9 +239,9 @@ static iree_host_size_t loom_collect_source_backed_highlights(
 
     const loom_location_field_span_t* field_span =
         &location->file.field_spans[span_index];
-    iree_host_size_t start_offset = loom_verify_source_byte_offset(
+    iree_host_size_t start_offset = loom_source_byte_offset(
         source_location->source, field_span->start_line, field_span->start_col);
-    iree_host_size_t end_offset = loom_verify_source_byte_offset(
+    iree_host_size_t end_offset = loom_source_byte_offset(
         source_location->source, field_span->end_line, field_span->end_col);
     if (start_offset >= end_offset || start_offset < source_location->start ||
         end_offset > source_location->end) {

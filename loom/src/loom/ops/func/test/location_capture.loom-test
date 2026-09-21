@@ -1,0 +1,18 @@
+// RUN: verify
+
+// Unicode before the symbol exercises source columns independently of bytes.
+func.def export("résumé") @original(%left: i32, %right: i32) -> (i32) {
+  %sum = scalar.addi %left, %right : i32
+  func.return %sum : i32
+}
+
+// Compiler clients replace the explicit unknown value with captured nodes.
+// The native call uses the same ordinary buffer ABI as any other value.
+func.decl import("native") @mixed(%left: buffer, %value: i64, %right: buffer) -> (buffer, i64, buffer)
+
+func.def public @captured() -> (buffer) {
+  %site = func.location [#func.location.unknown<>] : buffer
+  %c0 = scalar.constant 0 : i64
+  %left, %value, %right = func.call @mixed(%site, %c0, %site) : (buffer, i64, buffer) -> (buffer, i64, buffer)
+  func.return %right : buffer
+}

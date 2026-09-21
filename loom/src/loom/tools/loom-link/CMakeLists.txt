@@ -23,6 +23,7 @@ loom_cc_binary(
     loom::codegen::low::repr
     loom::codegen::low::text_asm
     loom::error::diagnostic
+    loom::error::source
     loom::format::bytecode::writer
     loom::format::text::printer
     loom::ir

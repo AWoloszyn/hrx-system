@@ -31,6 +31,39 @@ indexed by the linked module's source IDs, including after input modules are
 released. Later compilation consumes the retained mapping rather than matching
 filenames or reopening source files.
 
+Compiler clients can freeze an original location as executable data before
+releasing this ownership. `loom_func_location_capture` in
+[`location_capture.h`](../../ops/func/location_capture.h) consumes a location
+ID and this input's resolver, then copies its reachable provenance graph,
+structured field spans, and available original source lines into module-owned
+semantic attributes:
+
+```c
+loom_parameterized_attr_array_t nodes;
+IREE_RETURN_IF_ERROR(loom_func_location_capture(
+    input.module, original_op->location,
+    loom_input_module_source_resolver(&input), scratch_arena, &nodes));
+IREE_RETURN_IF_ERROR(loom_func_location_build(
+    builder, nodes, loom_type_buffer(), LOOM_LOCATION_UNKNOWN, &location_op));
+```
+
+The builder belongs to `input.module` and inserts at the consumer's chosen
+point. Capture happens while original field spans and admitted text are still
+available; an importer or compiler client chooses the site explicitly. It is
+independent of verification and does not turn an operation's debug annotation
+into a late runtime lookup. The same construction works for Loom text, C++
+headers and macro invocation ranges, or other frontends carrying Loom locations.
+
+The resulting `func.location` value survives serialization, linking, and
+debug stripping. It lowers to interned immutable rodata and crosses native VM
+imports as an ordinary `buffer`. The compiler-free reader in
+[`format/location.h`](../../format/location.h) borrows its buffer span;
+retaining the buffer retains the data after compiler, program, and process
+teardown. Source names, one-based lines and Unicode code-point columns, field
+ranges, tagged/fused provenance, and optional original text are part of the
+value's identity. Missing source remains explicit, with no filesystem reads or
+printed-IR replacement.
+
 Adding a native importer requires its descriptor and adapter, conditional
 composition in each final binary, and importer-owned integration tests. The
 shared test rules accept `.<format>-test`; envelopes, diagnostic matching,

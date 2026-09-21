@@ -24,6 +24,7 @@ loom_cc_binary(
     loom::codegen::low::verify
     loom::error::diagnostic
     loom::error::json_sink
+    loom::error::source
     loom::format::text::printer
     loom::ir
     loom::pass::builtin_registry

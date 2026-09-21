@@ -22,6 +22,7 @@ loom_cc_library(
     iree::hal
     iree::vm
     iree::vm::bytecode::module
+    loom::error::source
     loom::link::linker
     loom::ops::func
     loom::ops::op_defs
@@ -32,6 +33,77 @@ loom_cc_library(
     loom::tooling::config
     loom::tooling::testbench::invocation
   PUBLIC
+)
+endif()
+
+if(LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    imports_binary
+  GENERATOR
+    loom::tools::loom-compile
+  OUTPUT
+    "imports.vm"
+  OUTPUT_FLAG
+    "--output="
+  ARGS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/test/imports.loom"
+    "--target=vm:core"
+  INPUTS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/test/imports.loom"
+  TESTONLY
+)
+endif()
+
+if(LOOM_TARGET_ARCH_VM)
+iree_c_embed_data(
+  NAME
+    imports_bytecode
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/imports.vm"
+  C_FILE_OUTPUT
+    "imports_bytecode.c"
+  H_FILE_OUTPUT
+    "imports_bytecode.h"
+  IDENTIFIER
+    "loom_vm_imports_bytecode"
+  TESTONLY
+  PUBLIC
+)
+endif()
+
+if(LOOM_TARGET_ARCH_VM)
+loom_cc_test(
+  NAME
+    imports_test
+  SRCS
+    "imports_test.cc"
+  DEPS
+    ::imports_bytecode
+    iree::base
+    iree::base::internal::arena
+    iree::io::stream
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::vm
+    iree::vm::bytecode::module
+    loom::format::bytecode::reader
+    loom::format::bytecode::writer
+    loom::format::location
+    loom::ir
+    loom::link::linker
+    loom::ops::func
+    loom::ops::func::location_capture
+    loom::ops::func::location_capture_test_data
+    loom::ops::op_defs
+    loom::ops::op_registry
+    loom::target::arch::vm::module
+    loom::target::arch::vm::provider
+    loom::target::provider
+    loom::tooling::compile::pipeline
+    loom::tooling::input
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
 )
 endif()
 

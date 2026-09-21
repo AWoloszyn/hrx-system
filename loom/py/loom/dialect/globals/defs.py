@@ -6,7 +6,7 @@
 
 """Global dialect op definitions.
 
-Six ops for module-level state:
+Operations for module-level state and immutable executable data:
 
 Top-level (module-level symbols):
   global.constant     — Immutable global (weights, parameters, constants).

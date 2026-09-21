@@ -9,6 +9,7 @@
 #include <stdlib.h>
 
 #include "iree/io/vec_stream.h"
+#include "iree/vm/bytecode/wire/core.h"
 #include "iree/vm/bytecode/wire/module.h"
 #include "loom/ir/module.h"
 #include "loom/ops/global/ops.h"
@@ -20,10 +21,10 @@
 // count/types, exactly as the wire callable table requires. Ordinals are
 // assigned by sorting once; the runtime performs no hashing or interning.
 static int loom_vm_signature_compare(const void* lhs_ptr, const void* rhs_ptr) {
-  const loom_vm_module_function_t* lhs =
-      *(const loom_vm_module_function_t* const*)lhs_ptr;
-  const loom_vm_module_function_t* rhs =
-      *(const loom_vm_module_function_t* const*)rhs_ptr;
+  const loom_vm_module_callable_t* lhs =
+      *(const loom_vm_module_callable_t* const*)lhs_ptr;
+  const loom_vm_module_callable_t* rhs =
+      *(const loom_vm_module_callable_t* const*)rhs_ptr;
   int comparison = (int)lhs->argument_count - (int)rhs->argument_count;
   if (comparison) {
     return comparison;
@@ -50,11 +51,32 @@ static int loom_vm_signature_compare(const void* lhs_ptr, const void* rhs_ptr) {
 }
 
 static int loom_vm_export_compare(const void* lhs_ptr, const void* rhs_ptr) {
-  const loom_vm_module_function_t* lhs =
-      *(const loom_vm_module_function_t* const*)lhs_ptr;
-  const loom_vm_module_function_t* rhs =
-      *(const loom_vm_module_function_t* const*)rhs_ptr;
+  const loom_vm_module_callable_t* lhs =
+      *(const loom_vm_module_callable_t* const*)lhs_ptr;
+  const loom_vm_module_callable_t* rhs =
+      *(const loom_vm_module_callable_t* const*)rhs_ptr;
   return iree_string_view_compare(lhs->export_name, rhs->export_name);
+}
+
+// Import rows are ordered by module, symbol, then structural callable type.
+// Equal rows share one runtime binding even when authored under several
+// aliases.
+static int loom_vm_import_compare(const void* lhs_ptr, const void* rhs_ptr) {
+  const loom_vm_module_callable_t* lhs =
+      *(const loom_vm_module_callable_t* const*)lhs_ptr;
+  const loom_vm_module_callable_t* rhs =
+      *(const loom_vm_module_callable_t* const*)rhs_ptr;
+  int comparison = iree_string_view_compare(lhs->import.module_name,
+                                            rhs->import.module_name);
+  if (comparison) {
+    return comparison;
+  }
+  comparison = iree_string_view_compare(lhs->import.symbol_name,
+                                        rhs->import.symbol_name);
+  if (comparison) {
+    return comparison;
+  }
+  return (int)lhs->callable_ordinal - (int)rhs->callable_ordinal;
 }
 
 static iree_status_t loom_vm_signature_type(loom_type_t type,
@@ -99,8 +121,9 @@ static iree_status_t loom_vm_module_collect(
   loom_target_function_version_snapshot_t versions = {0};
   IREE_RETURN_IF_ERROR(loom_target_function_version_snapshot_build(
       module, request->function_versions, request->scratch_arena, &versions));
-  loom_vm_module_function_t* functions = NULL;
+  loom_vm_module_callable_t* functions = NULL;
   iree_host_size_t storage_size = 0;
+  iree_host_size_t bindings_offset = 0;
   iree_host_size_t ordinals_offset = 0;
   iree_host_size_t rodata_offset = 0;
   iree_host_size_t rodata_symbols_offset = 0;
@@ -108,7 +131,9 @@ static iree_status_t loom_vm_module_collect(
   // each field keeps its native alignment without inter-array padding.
   IREE_RETURN_IF_ERROR(IREE_STRUCT_LAYOUT(
       0, &storage_size,
-      IREE_STRUCT_FIELD(module->symbols.count, loom_vm_module_function_t, NULL),
+      IREE_STRUCT_FIELD(module->symbols.count, loom_vm_module_callable_t, NULL),
+      IREE_STRUCT_FIELD(module->symbols.count, loom_vm_module_callable_t*,
+                        &bindings_offset),
       IREE_STRUCT_FIELD(module->symbols.count, const loom_op_t*,
                         &rodata_offset),
       IREE_STRUCT_FIELD(module->symbols.count, uint16_t, &ordinals_offset),
@@ -116,9 +141,12 @@ static iree_status_t loom_vm_module_collect(
                         &rodata_symbols_offset)));
   IREE_RETURN_IF_ERROR(iree_arena_allocate(request->scratch_arena, storage_size,
                                            (void**)&functions));
+  loom_vm_module_callable_t** bindings_by_symbol =
+      (loom_vm_module_callable_t**)((uint8_t*)functions + bindings_offset);
   uint16_t* ordinals_by_symbol =
       (uint16_t*)((uint8_t*)functions + ordinals_offset);
   uint32_t count = 0;
+  uint32_t definition_count = 0;
   const loom_op_t** rodata =
       (const loom_op_t**)((uint8_t*)functions + rodata_offset);
   loom_symbol_id_t* rodata_symbols =
@@ -130,12 +158,13 @@ static iree_status_t loom_vm_module_collect(
        ++i) {
     const loom_symbol_t* symbol = &module->symbols.entries[i];
     loom_op_t* op = symbol->defining_op;
+    bindings_by_symbol[i] = NULL;
     ordinals_by_symbol[i] = UINT16_MAX;
     if (loom_global_rodata_def_isa(op)) {
       rodata_symbols[rodata_count++] = (loom_symbol_id_t)i;
       continue;
     }
-    if (!loom_low_func_def_isa(op)) {
+    if (!loom_low_func_def_isa(op) && !loom_low_func_decl_isa(op)) {
       continue;
     }
     loom_func_like_t function = loom_func_like_cast(module, op);
@@ -145,18 +174,36 @@ static iree_status_t loom_vm_module_collect(
                                 IREE_SV("vm.core"))) {
       continue;
     }
-    loom_vm_module_function_t* entry = &functions[count];
-    ordinals_by_symbol[i] = (uint16_t)count;
-    *entry = (loom_vm_module_function_t){
+    loom_vm_module_callable_t* entry = &functions[count];
+    bindings_by_symbol[i] = entry;
+    *entry = (loom_vm_module_callable_t){
         .function = function,
         .target_facts = loom_target_function_version_target_facts(
             loom_target_function_version_snapshot_handle_at(&versions, i)),
-        .ordinal = (uint16_t)count,
-        .results = loom_low_func_def_results(op),
+        .results = {loom_op_results(op), op->result_count},
     };
     entry->arguments = loom_func_like_arg_ids(function, &entry->argument_count);
+    if (loom_low_func_decl_isa(op)) {
+      const loom_string_id_t import_module =
+          loom_func_like_import_module(function);
+      if (loom_low_func_decl_import_kind(op) !=
+              LOOM_LOW_FUNC_DECL_IMPORT_KIND_NATIVE ||
+          import_module == LOOM_STRING_ID_INVALID) {
+        status = iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "VM import requires a native callable with a module namespace");
+        continue;
+      }
+      entry->target_kind = IREE_VM_BYTECODE_CONTROL_CALL_TARGET_REQUIRED_IMPORT;
+      entry->import.module_name = module->strings.entries[import_module];
+      entry->import.symbol_name =
+          module->strings.entries[loom_func_like_import_symbol(function)];
+    } else {
+      entry->target_kind = IREE_VM_BYTECODE_CONTROL_CALL_TARGET_LOCAL;
+      entry->ordinal = (uint16_t)definition_count++;
+    }
     const loom_string_id_t export_name = loom_func_like_export_symbol(function);
-    if (loom_func_like_is_exported(function)) {
+    if (loom_low_func_def_isa(op) && loom_func_like_is_exported(function)) {
       entry->export_name =
           module->strings
               .entries[export_name != LOOM_STRING_ID_INVALID ? export_name
@@ -170,7 +217,7 @@ static iree_status_t loom_vm_module_collect(
     ++count;
   }
   IREE_RETURN_IF_ERROR(status);
-  if (!count) {
+  if (!definition_count) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "module contains no VM function definitions");
   }
@@ -180,7 +227,7 @@ static iree_status_t loom_vm_module_collect(
       sizeof(*descriptors), (void**)&descriptors));
   bool uses_buffer_type = false;
   for (uint32_t i = 0; i < count && iree_status_is_ok(status); ++i) {
-    loom_vm_module_function_t* entry = &functions[i];
+    loom_vm_module_callable_t* entry = &functions[i];
     entry->signature.fields = descriptors;
     const uint32_t field_count = entry->argument_count + entry->results.count;
     for (uint32_t j = 0; j < field_count && iree_status_is_ok(status); ++j) {
@@ -211,9 +258,10 @@ static iree_status_t loom_vm_module_collect(
   if (iree_status_is_ok(status)) {
     *out_functions = (loom_vm_module_plan_t){
         .values = functions,
-        .ordinals_by_symbol = ordinals_by_symbol,
+        .bindings_by_symbol = bindings_by_symbol,
         .count = count,
-        .rodata = {.symbols = rodata_symbols,
+        .rodata = {.ordinals_by_symbol = ordinals_by_symbol,
+                   .symbols = rodata_symbols,
                    .symbol_count = rodata_count,
                    .values = rodata,
                    .alignment = IREE_VM_BYTECODE_IMAGE_ALIGNMENT},
@@ -255,81 +303,138 @@ static iree_status_t loom_vm_stream_patch(iree_io_stream_t* stream,
 static iree_status_t loom_vm_module_write(
     const loom_target_emit_request_t* request, loom_vm_module_plan_t functions,
     iree_io_stream_t* stream) {
-  const uint32_t function_count = functions.count;
-  // Separate sorted views preserve function ordinals and avoid sorting exports
-  // again when emitting their rows after the callable table.
-  loom_vm_module_function_t** sorted = NULL;
+  // Sorted views retain direct call bindings and definition order while
+  // interning signatures and imports for canonical runtime tables.
+  loom_vm_module_callable_t** sorted = NULL;
   IREE_RETURN_IF_ERROR(
-      iree_arena_allocate_array(request->scratch_arena, 2 * function_count,
+      iree_arena_allocate_array(request->scratch_arena, 4 * functions.count,
                                 sizeof(*sorted), (void**)&sorted));
-  loom_vm_module_function_t** exports = sorted + function_count;
+  loom_vm_module_callable_t** definitions = sorted + functions.count;
+  loom_vm_module_callable_t** exports = definitions + functions.count;
+  loom_vm_module_callable_t** imports = exports + functions.count;
+  uint32_t function_count = 0;
   uint32_t export_count = 0;
-  for (uint32_t i = 0; i < function_count; ++i) {
-    sorted[i] = &functions.values[i];
-    if (!iree_string_view_is_empty(functions.values[i].export_name)) {
-      exports[export_count++] = &functions.values[i];
+  uint32_t import_count = 0;
+  for (uint32_t i = 0; i < functions.count; ++i) {
+    loom_vm_module_callable_t* entry = &functions.values[i];
+    sorted[i] = entry;
+    if (entry->target_kind ==
+        IREE_VM_BYTECODE_CONTROL_CALL_TARGET_REQUIRED_IMPORT) {
+      imports[import_count++] = entry;
+    } else {
+      definitions[function_count++] = entry;
+      if (!iree_string_view_is_empty(entry->export_name)) {
+        exports[export_count++] = entry;
+      }
     }
+  }
+  qsort(sorted, functions.count, sizeof(*sorted), loom_vm_signature_compare);
+  uint32_t callable_count = 0;
+  for (uint32_t i = 0; i < functions.count; ++i) {
+    loom_vm_module_callable_t* entry = sorted[i];
+    if (!callable_count ||
+        loom_vm_signature_compare(&sorted[callable_count - 1], &entry)) {
+      sorted[callable_count++] = entry;
+    }
+    entry->callable_ordinal = (uint16_t)(callable_count - 1);
+  }
+  qsort(imports, import_count, sizeof(*imports), loom_vm_import_compare);
+  uint32_t unique_import_count = 0;
+  for (uint32_t i = 0; i < import_count; ++i) {
+    loom_vm_module_callable_t* entry = imports[i];
+    if (!unique_import_count ||
+        loom_vm_import_compare(&imports[unique_import_count - 1], &entry)) {
+      imports[unique_import_count++] = entry;
+    }
+    entry->ordinal = (uint16_t)(unique_import_count - 1);
+  }
+  import_count = unique_import_count;
+  qsort(exports, export_count, sizeof(*exports), loom_vm_export_compare);
+
+  iree_string_view_t* strings = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      request->scratch_arena, export_count + 2 + 2 * import_count,
+      sizeof(*strings), (void**)&strings));
+  uint32_t string_count = 0;
+  for (uint32_t i = 0; i < export_count; ++i) {
+    if (i && iree_string_view_equal(exports[i - 1]->export_name,
+                                    exports[i]->export_name)) {
+      return iree_make_status(
+          IREE_STATUS_INVALID_ARGUMENT, "duplicate VM export '%.*s'",
+          (int)exports[i]->export_name.size, exports[i]->export_name.data);
+    }
+    strings[string_count++] = exports[i]->export_name;
+  }
+  // Buffer type strings follow export names, retaining their direct ordinals.
+  if (functions.uses_buffer_type) {
+    strings[string_count++] = IREE_SV("vm");
+    strings[string_count++] = IREE_SV("buffer");
+  }
+  iree_vm_bytecode_v0_import_group_row_t* import_groups = NULL;
+  iree_vm_bytecode_v0_import_entry_row_t* import_entries = NULL;
+  uint32_t import_group_count = 0;
+  if (import_count) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        request->scratch_arena, import_count, sizeof(*import_groups),
+        (void**)&import_groups));
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        request->scratch_arena, import_count, sizeof(*import_entries),
+        (void**)&import_entries));
+  }
+  for (uint32_t i = 0; i < import_count; ++i) {
+    const loom_vm_module_callable_t* entry = imports[i];
+    if (!i || !iree_string_view_equal(imports[i - 1]->import.module_name,
+                                      entry->import.module_name)) {
+      import_groups[import_group_count++] =
+          (iree_vm_bytecode_v0_import_group_row_t){.module_name_string_u16 =
+                                                       (uint16_t)string_count};
+      strings[string_count++] = entry->import.module_name;
+    }
+    ++import_groups[import_group_count - 1].entry_count_u32;
+    import_entries[i] = (iree_vm_bytecode_v0_import_entry_row_t){
+        .symbol_name_string_u16 = (uint16_t)string_count,
+        .callable_type_ordinal_u16 = entry->callable_ordinal,
+    };
+    strings[string_count++] = entry->import.symbol_name;
+  }
+  if (string_count > UINT16_MAX) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "VM string count exceeds the u16 ordinal space");
   }
   const iree_vm_bytecode_v0_image_header_t header = {
       .magic_u8 = {'I', 'R', 'E', 'E', 'V', 'M', 0, 0},
       .core_major_u16 = IREE_VM_BYTECODE_CORE_MAJOR,
       .core_required_minor_u16 = IREE_VM_BYTECODE_CORE_MINOR,
-      .section_count_u16 = 3 + (export_count != 0) +
-                           (export_count != 0 || functions.uses_buffer_type) +
-                           functions.uses_buffer_type +
+      .section_count_u16 = 3 + (export_count != 0) + (string_count != 0) +
+                           functions.uses_buffer_type + (import_count != 0) +
                            (functions.rodata.symbol_count != 0),
   };
   IREE_RETURN_IF_ERROR(iree_io_stream_write(stream, sizeof(header), &header));
-  iree_vm_bytecode_v0_section_directory_row_t directory[7] = {0};
+  iree_vm_bytecode_v0_section_directory_row_t directory[8] = {0};
   IREE_RETURN_IF_ERROR(iree_io_stream_write(
       stream, header.section_count_u16 * sizeof(directory[0]), directory));
   uint16_t section = 0;
   iree_io_stream_pos_t start = 0;
   iree_status_t status = iree_ok_status();
-  if (export_count || functions.uses_buffer_type) {
-    qsort(exports, export_count, sizeof(*exports), loom_vm_export_compare);
+  if (string_count) {
     IREE_RETURN_IF_ERROR(loom_vm_section_begin(
         stream, IREE_VM_BYTECODE_SECTION_STRINGS, &directory[section], &start));
-    const iree_vm_bytecode_v0_strings_header_t strings_header = {
-        export_count + (functions.uses_buffer_type ? 2 : 0)};
-    if (strings_header.string_count_u32 > UINT16_MAX) {
-      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                              "VM string count exceeds the u16 ordinal space");
-    }
+    const iree_vm_bytecode_v0_strings_header_t strings_header = {string_count};
     IREE_RETURN_IF_ERROR(
         iree_io_stream_write(stream, sizeof(strings_header), &strings_header));
     uint32_t offset = 0;
     IREE_RETURN_IF_ERROR(iree_io_stream_write(stream, sizeof(offset), &offset));
-    for (uint32_t i = 0; i < export_count && iree_status_is_ok(status); ++i) {
-      if (exports[i]->export_name.size > UINT32_MAX - offset) {
+    for (uint32_t i = 0; i < string_count && iree_status_is_ok(status); ++i) {
+      if (strings[i].size > UINT32_MAX - offset) {
         status = iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                                   "VM string bytes exceed u32");
-      } else if (i && iree_string_view_equal(exports[i - 1]->export_name,
-                                             exports[i]->export_name)) {
-        status = iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT, "duplicate VM export '%.*s'",
-            (int)exports[i]->export_name.size, exports[i]->export_name.data);
       } else {
-        offset += (uint32_t)exports[i]->export_name.size;
+        offset += (uint32_t)strings[i].size;
         status = iree_io_stream_write(stream, sizeof(offset), &offset);
       }
     }
-    // Source buffer types lower to the single Core vm.buffer type. These two
-    // strings follow export names, preserving their direct ordinal mapping.
-    if (functions.uses_buffer_type && iree_status_is_ok(status)) {
-      if (offset > UINT32_MAX - 8) {
-        status = iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                                  "VM string bytes exceed u32");
-      } else {
-        const uint32_t offsets[] = {offset + 2, offset + 8};
-        status = iree_io_stream_write(stream, sizeof(offsets), offsets);
-      }
-    }
-    for (uint32_t i = 0; i < export_count && iree_status_is_ok(status); ++i) {
-      status = iree_io_stream_write_string(stream, exports[i]->export_name);
-    }
-    if (functions.uses_buffer_type && iree_status_is_ok(status)) {
-      status = iree_io_stream_write_string(stream, IREE_SV("vmbuffer"));
+    for (uint32_t i = 0; i < string_count && iree_status_is_ok(status); ++i) {
+      status = iree_io_stream_write_string(stream, strings[i]);
     }
     IREE_RETURN_IF_ERROR(status);
     directory[section++].byte_length_u64 =
@@ -354,15 +459,6 @@ static iree_status_t loom_vm_module_write(
         iree_io_stream_offset(stream) - start;
   }
 
-  qsort(sorted, function_count, sizeof(*sorted), loom_vm_signature_compare);
-  uint32_t callable_count = 0;
-  for (uint32_t i = 0; i < function_count; ++i) {
-    if (!callable_count ||
-        loom_vm_signature_compare(&sorted[callable_count - 1], &sorted[i])) {
-      sorted[callable_count++] = sorted[i];
-    }
-    sorted[i]->callable_ordinal = (uint16_t)(callable_count - 1);
-  }
   IREE_RETURN_IF_ERROR(
       loom_vm_section_begin(stream, IREE_VM_BYTECODE_SECTION_SIGNATURES,
                             &directory[section], &start));
@@ -372,14 +468,14 @@ static iree_status_t loom_vm_module_write(
                                             &signatures_header));
   uint32_t descriptor_base = 0;
   for (uint32_t i = 0; i < callable_count && iree_status_is_ok(status); ++i) {
-    const loom_vm_module_function_t* entry = sorted[i];
+    const loom_vm_module_callable_t* entry = sorted[i];
     iree_vm_bytecode_v0_signature_row_t signature = entry->signature.row;
     signature.descriptor_base_u32 = descriptor_base;
     status = iree_io_stream_write(stream, sizeof(signature), &signature);
     descriptor_base += entry->argument_count + entry->results.count;
   }
   for (uint32_t i = 0; i < callable_count && iree_status_is_ok(status); ++i) {
-    const loom_vm_module_function_t* entry = sorted[i];
+    const loom_vm_module_callable_t* entry = sorted[i];
     status =
         iree_io_stream_write(stream,
                              (entry->argument_count + entry->results.count) *
@@ -404,6 +500,20 @@ static iree_status_t loom_vm_module_write(
   IREE_RETURN_IF_ERROR(status);
   directory[section++].byte_length_u64 = iree_io_stream_offset(stream) - start;
 
+  if (import_count) {
+    IREE_RETURN_IF_ERROR(loom_vm_section_begin(
+        stream, IREE_VM_BYTECODE_SECTION_IMPORTS, &directory[section], &start));
+    const iree_vm_bytecode_v0_imports_header_t imports_header = {
+        .group_count_u32 = import_group_count};
+    IREE_RETURN_IF_ERROR(
+        iree_io_stream_write(stream, sizeof(imports_header), &imports_header));
+    IREE_RETURN_IF_ERROR(iree_io_stream_write(
+        stream, import_group_count * sizeof(*import_groups), import_groups));
+    IREE_RETURN_IF_ERROR(iree_io_stream_write(
+        stream, import_count * sizeof(*import_entries), import_entries));
+    directory[section++].byte_length_u64 =
+        iree_io_stream_offset(stream) - start;
+  }
   if (export_count) {
     IREE_RETURN_IF_ERROR(loom_vm_section_begin(
         stream, IREE_VM_BYTECODE_SECTION_EXPORTS, &directory[section], &start));
@@ -411,7 +521,7 @@ static iree_status_t loom_vm_module_write(
     IREE_RETURN_IF_ERROR(
         iree_io_stream_write(stream, sizeof(exports_header), &exports_header));
     for (uint32_t i = 0; i < export_count && iree_status_is_ok(status); ++i) {
-      const loom_vm_module_function_t* entry = exports[i];
+      const loom_vm_module_callable_t* entry = exports[i];
       const iree_vm_bytecode_v0_export_row_t row = {
           .name_string_u16 = (uint16_t)i,
           .callable_type_ordinal_u16 = entry->callable_ordinal,
@@ -443,12 +553,12 @@ static iree_status_t loom_vm_module_write(
       continue;
     }
     iree_vm_bytecode_v0_function_row_t row = {
-        .callable_type_ordinal_u16 = functions.values[i].callable_ordinal,
+        .callable_type_ordinal_u16 = definitions[i]->callable_ordinal,
         .bytecode_offset_u32 = (uint32_t)offset,
     };
     status = loom_vm_function_emit(
-        request, functions.values[i].function, functions.values[i].target_facts,
-        &functions.values[i].signature, &functions, stream, &row);
+        request, definitions[i]->function, definitions[i]->target_facts,
+        &definitions[i]->signature, &functions, stream, &row);
     if (iree_status_is_ok(status)) {
       functions_header.maximum_block_count_u32 = iree_max(
           functions_header.maximum_block_count_u32, row.block_count_u32);

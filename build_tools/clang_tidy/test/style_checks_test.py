@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -264,6 +265,57 @@ class StyleChecksTest(clang_tidy_test.ClangTidyAssertions):
                 "[iree-test-status-macro-scope]",
             ],
         )
+
+    def test_status_macro_scope_uses_the_containing_directory(self):
+        fixture = (
+            Path(__file__).resolve().parents[1] / "fixtures" / "status_macro_scope.c"
+        ).read_text()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            for directory in ("test", "testing", "cts"):
+                with self.subTest(directory=directory):
+                    source = Path(temporary_directory) / directory / "assertions.c"
+                    source.parent.mkdir()
+                    source.write_text(fixture)
+                    output = clang_tidy_test.run_clang_tidy(
+                        clang_tidy=_ARGS.clang_tidy,
+                        plugin=_ARGS.plugin,
+                        checks="-*,iree-test-status-macro-scope",
+                        source=source,
+                        compiler_args=["-std=gnu11"],
+                    )
+                    self.assertNotIn("test-only status assertion macro", output)
+
+    def test_status_macro_scope_ignores_checkout_ancestor_names(self):
+        fixture = (
+            Path(__file__).resolve().parents[1] / "fixtures" / "status_macro_scope.c"
+        ).read_text()
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            for ancestor in ("test", "testing", "cts"):
+                with self.subTest(ancestor=ancestor):
+                    source = (
+                        Path(temporary_directory)
+                        / ancestor
+                        / "project"
+                        / "runtime"
+                        / "source.c"
+                    )
+                    source.parent.mkdir(parents=True)
+                    source.write_text(fixture)
+                    output = clang_tidy_test.run_clang_tidy(
+                        clang_tidy=_ARGS.clang_tidy,
+                        plugin=_ARGS.plugin,
+                        checks="-*,iree-test-status-macro-scope",
+                        source=source,
+                        compiler_args=["-std=gnu11"],
+                    )
+                    self.assertContainsAll(
+                        output,
+                        [
+                            "IREE_ASSERT_OK is a test-only status assertion macro",
+                            "IREE_EXPECT_OK is a test-only status assertion macro",
+                            "IREE_EXPECT_STATUS_IS is a test-only status assertion macro",
+                        ],
+                    )
 
     def test_raw_status_predicates_are_diagnosed(self):
         output = clang_tidy_test.run_clang_tidy(

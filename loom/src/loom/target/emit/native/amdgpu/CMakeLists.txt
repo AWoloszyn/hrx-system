@@ -651,6 +651,7 @@ loom_cc_library(
     loom::codegen::low::target_binding
     loom::error::diagnostic
     loom::error::error_defs
+    loom::error::source
     loom::ir
     loom::ops::global
     loom::ops::low
@@ -672,7 +673,6 @@ loom_cc_library(
     loom::target::reporting::low
     loom::target::reporting::report
     loom::target::types
-    loom::verify
   PUBLIC
 )
 endif()

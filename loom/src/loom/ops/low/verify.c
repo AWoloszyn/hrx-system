@@ -492,6 +492,22 @@ static iree_status_t loom_low_verify_decl_code_import(
       op, loom_low_func_decl_import_kind_ATTR_INDEX);
   const bool code_symbol_present = loom_low_optional_attr_is_present(
       op, loom_low_func_decl_code_symbol_ATTR_INDEX);
+  if (loom_low_optional_attr_is_present(
+          op, loom_low_func_decl_import_module_ATTR_INDEX)) {
+    const iree_string_view_t import_module =
+        loom_low_string_or_empty(module, loom_low_func_decl_import_module(op));
+    if (iree_string_view_is_empty(import_module)) {
+      IREE_RETURN_IF_ERROR(loom_low_emit_string_attr_value_error(
+          op, loom_low_func_decl_import_module_ATTR_INDEX,
+          IREE_SV("import_module"), import_module,
+          IREE_SV("non-empty imported module name"), emitter));
+    }
+    if (!import_kind_present) {
+      IREE_RETURN_IF_ERROR(loom_low_verify_function_attr_present(
+          op, loom_low_func_decl_import_kind_ATTR_INDEX, IREE_SV("import"),
+          IREE_SV("present when import_module is present"), emitter));
+    }
+  }
   if (import_kind_present && loom_low_func_decl_import_kind(op) == 0) {
     IREE_RETURN_IF_ERROR(loom_low_emit_attr_value_error(
         op, loom_low_func_decl_import_kind_ATTR_INDEX, IREE_SV("import"), 0,

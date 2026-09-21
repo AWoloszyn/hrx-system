@@ -38,6 +38,7 @@ loom_cc_library(
     iree::io::stream
     loom::codegen::low::repr
     loom::error::diagnostic
+    loom::error::source
     loom::format::bytecode::writer
     loom::format::low_repr
     loom::link::materialization_environment
@@ -88,6 +89,7 @@ loom_cc_binary(
     loom::tooling::io::file
     loom::tooling::io::source_path
     loom::tooling::pass::trace_cli
+    loom::verify
 )
 
 loom_cc_test(

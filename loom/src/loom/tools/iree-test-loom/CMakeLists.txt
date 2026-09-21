@@ -18,6 +18,7 @@ loom_cc_library(
     "library_linker.c"
   DEPS
     iree::base
+    loom::error::source
     loom::link::linker
     loom::tooling::execution::session
     loom::tooling::io::file
@@ -36,6 +37,7 @@ loom_cc_test(
     iree::testing::gtest
     iree::testing::gtest_main
     iree::testing::temp_file
+    loom::error::source
     loom::tooling::execution::session
     loom::tooling::io::file
   LABELS

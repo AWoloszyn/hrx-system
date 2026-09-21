@@ -19,6 +19,7 @@
 #include "loom/codegen/low/storage_layout.h"
 #include "loom/codegen/low/target_binding.h"
 #include "loom/error/error_catalog.h"
+#include "loom/error/source.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/global/ops.h"

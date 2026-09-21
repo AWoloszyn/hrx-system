@@ -6,6 +6,7 @@
 
 #include "loom/tools/iree-test-loom/library_linker.h"
 
+#include "loom/error/source.h"
 #include "loom/link/linker.h"
 #include "loom/tooling/io/file.h"
 #include "loom/tooling/io/source.h"

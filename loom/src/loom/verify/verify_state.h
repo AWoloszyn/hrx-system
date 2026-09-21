@@ -9,6 +9,7 @@
 
 #include "iree/base/internal/arena.h"
 #include "loom/analysis/consumption.h"
+#include "loom/error/source.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/special_values.h"
@@ -231,9 +232,6 @@ iree_status_t loom_verify_define_value(loom_verify_state_t* state,
 void loom_verify_consume_value(loom_verify_state_t* state,
                                loom_value_id_t value_id,
                                const loom_op_t* consuming_op);
-
-iree_host_size_t loom_verify_source_byte_offset(iree_string_view_t source,
-                                                uint32_t line, uint32_t column);
 
 bool loom_verify_at_error_limit(const loom_verify_state_t* state);
 const loom_op_vtable_t* loom_verify_lookup_vtable(

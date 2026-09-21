@@ -62,9 +62,9 @@ def _load_scalar_generation() -> DialectGeneration:
 
 
 def _load_func_generation() -> DialectGeneration:
-    from loom.dialect.func import ALL_FUNC_OPS, func_ops
+    from loom.dialect.func import ALL_FUNC_OPS, ALL_FUNC_PARAMETERIZED_ATTRS, func_ops
 
-    return DialectGeneration(func_ops, list(ALL_FUNC_OPS), None)
+    return DialectGeneration(func_ops, list(ALL_FUNC_OPS), None, ALL_FUNC_PARAMETERIZED_ATTRS)
 
 
 def _load_encoding_generation() -> DialectGeneration:

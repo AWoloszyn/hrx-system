@@ -316,6 +316,7 @@ loom_cc_library(
     loom::transforms::cleanup::cse
     loom::transforms::cleanup::dce
     loom::transforms::cleanup::strip_hints
+    loom::transforms::func::locations
     loom::transforms::kernel::kernel_async_legality
     loom::transforms::kernel::kernel_resources
     loom::transforms::kernel::promote_private_fragments

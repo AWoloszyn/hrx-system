@@ -1,0 +1,91 @@
+// RUN: emit vm-dis
+
+vm.target<core> @vm
+
+// Import grouping follows runtime names, independent of declaration order and
+// local aliases. Duplicate aliases share a single import binding.
+func.decl import("zebra", "step") target(@vm) @last(%value: i32) -> (i32)
+
+func.decl import("alpha", "step") target(@vm) @first(%value: i32) -> (i32)
+
+func.decl import("alpha", "step") target(@vm) @alias(%value: i32) -> (i32)
+
+func.decl import("alpha") target(@vm) @consume(%value: buffer)
+
+func.def public target(@vm) @run(%value: i32, %buffer: buffer) -> (i32) {
+  %a = func.call @last(%value) : (i32) -> (i32)
+  %b = func.call @first(%a) : (i32) -> (i32)
+  %c = func.call @alias(%b) : (i32) -> (i32)
+  func.call @consume(%buffer) : (buffer)
+  func.return %c : i32
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "run"
+    string @string1 = "vm"
+    string @string2 = "buffer"
+    string @string3 = "alpha"
+    string @string4 = "consume"
+    string @string5 = "step"
+    string @string6 = "zebra"
+    string @string7 = "step"
+  }
+
+  section ref_types alignment(8) {
+    namespace @ref_group0 name(@string1) {
+      ref_type @ref_type0 name(@string2)
+    }
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 (i32) -> (i32)
+    signature @signature1 (ref(@ref_type0)) -> ()
+    signature @signature2 (i32, ref(@ref_type0)) -> (i32)
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+    callable @callable1 flags([]) depth(0) : @signature1
+    callable @callable2 flags([]) depth(0) : @signature2
+  }
+
+  section imports alignment(8) {
+    group @import_group0 module_name(@string3) {
+      import @import0 name(@string4) flags([]) : @callable1
+      import @import1 name(@string5) flags([]) : @callable0
+    }
+    group @import_group1 module_name(@string6) {
+      import @import2 name(@string7) flags([]) : @callable0
+    }
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable2 = @function0
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable2 flags([has_call]) frame(local_bytes = 8, value_registers = 1, ref_registers = 1, function_registers = 0, local_refs = 1, local_functions = 0) {
+    ^bb0:
+      control.block
+      stack.store.i64 #v0, %v0.x1
+      control.call @import2 {direct_ref_move_mask = 0x0000}
+      stack.store.i64 #v0, %v0.x1
+      %v0.x1 = stack.load.i64 #v0
+      stack.store.i64 #v0, %v0.x1
+      control.call @import1 {direct_ref_move_mask = 0x0000}
+      stack.store.i64 #v0, %v0.x1
+      %v0.x1 = stack.load.i64 #v0
+      stack.store.i64 #v0, %v0.x1
+      control.call @import1 {direct_ref_move_mask = 0x0000}
+      stack.store.i64 #v0, %v0.x1
+      %v0.x1 = stack.load.i64 #v0
+      ref.stack.store.retain %r0, #r0
+      control.call @import0 {direct_ref_move_mask = 0x0001}
+      %r0 = ref.stack.load.move #r0
+      control.return
+    }
+  }
+
+}

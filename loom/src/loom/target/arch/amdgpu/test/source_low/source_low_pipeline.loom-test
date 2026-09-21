@@ -34,6 +34,7 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
       }
     }
   }
+  materialize-locations
   specialize-target-callgraph
   for func {
     where target {
@@ -169,6 +170,7 @@ pass.pipeline<module> @__loom_check_source_low pipeline {
       }
     }
   }
+  materialize-locations
   specialize-target-callgraph
   for func {
     where target {
@@ -353,6 +355,7 @@ pass.pipeline<module> @__loom_check_prepared_low pipeline {
       }
     }
   }
+  materialize-locations
   specialize-target-callgraph
   for func {
     where target {

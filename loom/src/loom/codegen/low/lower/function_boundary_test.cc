@@ -318,6 +318,9 @@ TEST_F(LowLowerFunctionBoundaryTest,
 
   const loom_func_like_t low_declaration =
       loom_func_like_cast(module_, result_.low_func_op);
+  EXPECT_EQ(loom_func_like_import_module(low_declaration), import_module);
+  EXPECT_EQ(loom_func_like_import_symbol(low_declaration),
+            loom_low_func_decl_code_symbol(result_.low_func_op));
   uint16_t predicate_count = 0;
   const loom_predicate_t* predicates =
       loom_func_like_predicates(low_declaration, &predicate_count);

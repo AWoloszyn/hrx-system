@@ -200,6 +200,7 @@ loom_cc_library(
         "//loom/src/loom/target/tool:spirv",
         "//loom/src/loom/tooling/compile:pipeline",
         "//loom/src/loom/tools/loom-check:execute",
+        "//loom/src/loom/verify",
         "//runtime/src/iree/base",
     ],
 )

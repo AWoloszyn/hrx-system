@@ -74,11 +74,11 @@ loom_cc_library(
   DEPS
     iree::base
     loom::error::diagnostic
+    loom::error::source
     loom::ir
     loom::target::pipeline_options
     loom::target::reporting::artifact_manifest
     loom::target::reporting::report
-    loom::verify
   PUBLIC
 )
 
@@ -220,6 +220,7 @@ loom_cc_library(
     loom::codegen::low::pipeline::legalizer_registry
     loom::codegen::low::pipeline::pass_environment
     loom::error::diagnostic
+    loom::error::source
     loom::ir
     loom::pass::builtin_registry
     loom::pass::interpreter

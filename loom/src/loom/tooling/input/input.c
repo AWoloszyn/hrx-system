@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "iree/base/internal/path.h"
+#include "loom/error/source.h"
 #include "loom/format/bytecode/reader.h"
 #include "loom/ir/module.h"
 

@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "loom/error/renderer.h"
+#include "loom/error/source.h"
 #include "loom/util/stream.h"
 
 //===----------------------------------------------------------------------===//

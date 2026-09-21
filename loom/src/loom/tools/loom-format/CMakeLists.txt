@@ -21,6 +21,7 @@ loom_cc_library(
     iree::base::internal::arena
     iree::io::stream
     loom::error::diagnostic
+    loom::error::source
     loom::format::bytecode::format
     loom::format::bytecode::reader
     loom::format::bytecode::writer

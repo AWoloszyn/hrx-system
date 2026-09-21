@@ -14,9 +14,9 @@
 extern "C" {
 #endif
 
-// Module-owned function definitions shared by table and instruction emission.
-typedef struct loom_vm_module_function_t {
-  // Borrowed executable function and signature values.
+// Module-owned call bindings shared by table and instruction emission.
+typedef struct loom_vm_module_callable_t {
+  // Borrowed function definition or import declaration and signature values.
   loom_func_like_t function;
   // Function target facts retained by the shared specialization pipeline.
   const loom_target_facts_t* target_facts;
@@ -26,29 +26,41 @@ typedef struct loom_vm_module_function_t {
   loom_value_slice_t results;
   // Public name, or empty for an internal function.
   iree_string_view_t export_name;
-  // Function ordinal in the emitted image.
+  // Runtime import identity; empty for a local function.
+  struct {
+    // Module namespace owning the imported callable.
+    iree_string_view_t module_name;
+    // Export name within that module, independent of the local symbol name.
+    iree_string_view_t symbol_name;
+  } import;
+  // Local-function or flat-import ordinal in the emitted image.
   uint16_t ordinal;
   // Source-ordered logical argument count.
   uint16_t argument_count;
   // Canonical callable ordinal assigned by signature sorting.
   uint16_t callable_ordinal;
+  // Wire control.call target kind, shared by local and imported calls.
+  uint8_t target_kind;
   // Exact logical fields and their physical argument/result bank counts.
   loom_vm_function_signature_t signature;
-} loom_vm_module_function_t;
+} loom_vm_module_callable_t;
 
 // Module-local emission plan. Function ordinals come from the symbol walk;
 // data ordinals are assigned on first emitted use, excluding other targets'
 // payloads without a second traversal of function bodies.
 typedef struct loom_vm_module_plan_t {
-  // Arena-owned function records in bytecode ordinal order.
-  loom_vm_module_function_t* values;
-  // Symbol-indexed ordinals in the definition's function or rodata table.
-  // UINT16_MAX marks definitions not emitted by this module writer.
-  uint16_t* ordinals_by_symbol;
+  // Arena-owned local and imported callable records in source symbol order.
+  loom_vm_module_callable_t* values;
+  // Direct symbol-indexed bindings for calls within the VM target contract.
+  // Open declarations without an executable binding remain NULL until the
+  // selected caller's schedule is validated for artifact emission.
+  loom_vm_module_callable_t** bindings_by_symbol;
   // Number of records in |values|, bounded by the module symbol ID space.
   uint32_t count;
   // Read-only payloads retained for the module's data section.
   struct {
+    // Symbol-indexed data ordinals; UINT16_MAX marks an unreferenced payload.
+    uint16_t* ordinals_by_symbol;
     // Module symbol IDs in declaration order for numeric Low operands.
     const loom_symbol_id_t* symbols;
     // Number of entries in |symbols|.

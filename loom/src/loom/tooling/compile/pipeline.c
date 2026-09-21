@@ -17,6 +17,7 @@
 #include "loom/target/pipeline.h"
 #include "loom/target/predicate.h"
 #include "loom/target/provider.h"
+#include "loom/verify/verify.h"
 
 enum {
   LOOM_COMPILE_DEFAULT_MAX_PIPELINE_ERRORS = 20,

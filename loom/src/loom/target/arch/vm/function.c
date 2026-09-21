@@ -242,7 +242,7 @@ static iree_status_t loom_vm_function_rodata(const loom_module_t* module,
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "VM rodata operand requires a data definition");
   }
-  uint16_t* ordinal = &plan->ordinals_by_symbol[symbol.symbol_id];
+  uint16_t* ordinal = &plan->rodata.ordinals_by_symbol[symbol.symbol_id];
   if (*ordinal == UINT16_MAX) {
     const int64_t alignment = loom_global_rodata_def_alignment(definition);
     if (alignment > UINT32_MAX) {
@@ -430,15 +430,24 @@ static iree_status_t loom_vm_function_prepare_calls(
   for (iree_host_size_t i = 0; i < frame->schedule.call_node_count; ++i) {
     const loom_low_schedule_node_t* node =
         &frame->schedule.nodes[frame->schedule.call_node_indices[i]];
-    const uint16_t ordinal =
+    const loom_vm_module_callable_t* binding =
         functions
-            ->ordinals_by_symbol[loom_low_func_call_callee(node->op).symbol_id];
-    if (ordinal == UINT16_MAX) {
-      return iree_make_status(IREE_STATUS_UNIMPLEMENTED,
-                              "VM runtime imports require module import rows");
+            ->bindings_by_symbol[loom_low_func_call_callee(node->op).symbol_id];
+    // Open source declarations remain legal until an executable is requested.
+    // Validate that boundary once before emitting calls from this schedule.
+    if (!binding) {
+      const loom_symbol_t* symbol =
+          &frame->module->symbols
+               .entries[loom_low_func_call_callee(node->op).symbol_id];
+      const iree_string_view_t name =
+          frame->module->strings.entries[symbol->name_id];
+      return iree_make_status(
+          IREE_STATUS_NOT_FOUND,
+          "VM callee '@%.*s' has no definition or runtime import",
+          (int)name.size, name.data);
     }
     const iree_vm_bytecode_v0_signature_row_t* signature =
-        &functions->values[ordinal].signature.row;
+        &binding->signature.row;
     const uint32_t argument_overflow =
         signature->argument_value_count_u16 -
         iree_min(16, signature->argument_value_count_u16);
@@ -514,9 +523,9 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_call(
     const loom_low_schedule_node_t* node,
     const loom_vm_module_plan_t* functions, loom_vm_call_scratch_t* scratch,
     iree_io_stream_t* stream, iree_vm_bytecode_v0_function_row_t* out_row) {
-  const uint16_t ordinal =
+  const loom_vm_module_callable_t* binding =
       functions
-          ->ordinals_by_symbol[loom_low_func_call_callee(node->op).symbol_id];
+          ->bindings_by_symbol[loom_low_func_call_callee(node->op).symbol_id];
   loom_vm_call_bank_t* banks = scratch->banks;
   loom_vm_function_call_bindings(frame, node, banks);
   const loom_vm_call_bank_t* values = &banks[VM_CORE_REG_CLASS_ID_VALUE];
@@ -611,8 +620,8 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_call(
   if (iree_status_is_ok(status)) {
     const iree_vm_bytecode_control_call_t instruction = {
         .opcode = IREE_VM_BYTECODE_OPCODE_CONTROL_CALL,
-        .target_kind_u8 = IREE_VM_BYTECODE_CONTROL_CALL_TARGET_LOCAL,
-        .target_ordinal_u16 = ordinal,
+        .target_kind_u8 = binding->target_kind,
+        .target_ordinal_u16 = binding->ordinal,
         .direct_ref_move_mask_u16 =
             (uint16_t)((1u << iree_min(16, refs->argument_count)) - 1),
     };

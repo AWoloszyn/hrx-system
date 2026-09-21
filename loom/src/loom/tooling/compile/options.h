@@ -10,11 +10,11 @@
 #define LOOM_TOOLING_COMPILE_OPTIONS_H_
 
 #include "iree/base/api.h"
+#include "loom/error/source.h"
 #include "loom/ir/function_version.h"
 #include "loom/target/pipeline_options.h"
 #include "loom/target/reporting/artifact_manifest.h"
 #include "loom/target/reporting/report.h"
-#include "loom/verify/verify.h"
 
 #ifdef __cplusplus
 extern "C" {

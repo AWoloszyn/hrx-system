@@ -12,9 +12,19 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files([
+    "location.loom-test",
+    "location_capture.loom-test",
+])
+
 loom_check_test_suite(
     name = "test",
     srcs = [
+        "location.loom-test",
+        "location_capture.loom-test",
+        "location_cse.loom-test",
+        "location_materialize.loom-test",
+        "location_verify.loom-test",
         "roundtrip.loom-test",
         "verify.loom-test",
     ],

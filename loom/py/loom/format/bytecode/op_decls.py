@@ -63,9 +63,10 @@ def default_op_decls() -> tuple[Any, ...]:
 
 def default_parameterized_attr_defs() -> tuple[Any, ...]:
     """Return built-in families not reachable from one exact op field."""
+    from loom.dialect.func import ALL_FUNC_PARAMETERIZED_ATTRS
     from loom.dialect.target import ALL_TARGET_PARAMETERIZED_ATTRS
 
-    return (*ALL_TARGET_PARAMETERIZED_ATTRS,)
+    return (*ALL_FUNC_PARAMETERIZED_ATTRS, *ALL_TARGET_PARAMETERIZED_ATTRS)
 
 
 def build_op_decl_map(op_decls: Iterable[Any] | None = None) -> dict[str, Any]:

@@ -4,7 +4,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library")
+load("//build_tools/embed_data:build_defs.bzl", "iree_c_embed_data")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_cc_test", "loom_config_compatible_with", "loom_generated_file")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -17,6 +18,7 @@ loom_cc_library(
     srcs = ["testbench.c"],
     hdrs = ["testbench.h"],
     deps = [
+        "//loom/src/loom/error:source",
         "//loom/src/loom/link:linker",
         "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/ops/func",
@@ -28,6 +30,61 @@ loom_cc_library(
         "//loom/src/loom/tooling/testbench:invocation",
         "//runtime/src/iree/base",
         "//runtime/src/iree/hal",
+        "//runtime/src/iree/vm",
+        "//runtime/src/iree/vm/bytecode:module",
+    ],
+)
+
+loom_generated_file(
+    name = "imports_binary",
+    testonly = True,
+    args = [
+        "$(location //loom/src/loom/tooling/target/vm/test:imports.loom)",
+        "--target=vm:core",
+    ],
+    generator = "//loom/src/loom/tools/loom-compile",
+    inputs = ["//loom/src/loom/tooling/target/vm/test:imports.loom"],
+    output = "imports.vm",
+    output_flag = "--output=",
+    target_compatible_with = loom_config_compatible_with(["//loom/config/target/arch:vm"]),
+)
+
+iree_c_embed_data(
+    name = "imports_bytecode",
+    testonly = True,
+    srcs = [":imports_binary"],
+    c_file_output = "imports_bytecode.c",
+    h_file_output = "imports_bytecode.h",
+    identifier = "loom_vm_imports_bytecode",
+    target_compatible_with = loom_config_compatible_with(["//loom/config/target/arch:vm"]),
+)
+
+loom_cc_test(
+    name = "imports_test",
+    srcs = ["imports_test.cc"],
+    target_compatible_with = loom_config_compatible_with(["//loom/config/target/arch:vm"]),
+    deps = [
+        ":imports_bytecode",
+        "//loom/src/loom/format:location",
+        "//loom/src/loom/format/bytecode:reader",
+        "//loom/src/loom/format/bytecode:writer",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/link:linker",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops:op_registry",
+        "//loom/src/loom/ops/func",
+        "//loom/src/loom/ops/func:location_capture",
+        "//loom/src/loom/ops/func:location_capture_test_data",
+        "//loom/src/loom/target:provider",
+        "//loom/src/loom/target/arch/vm:module",
+        "//loom/src/loom/target/arch/vm:provider",
+        "//loom/src/loom/tooling/compile:pipeline",
+        "//loom/src/loom/tooling/input",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/io:stream",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
         "//runtime/src/iree/vm",
         "//runtime/src/iree/vm/bytecode:module",
     ],

@@ -13,6 +13,16 @@ package(
 )
 
 loom_cc_library(
+    name = "location",
+    srcs = ["location.c"],
+    hdrs = ["location.h"],
+    deps = [
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
+    ],
+)
+
+loom_cc_library(
     name = "low_repr",
     hdrs = ["low_repr.h"],
     deps = [

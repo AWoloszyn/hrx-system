@@ -6,6 +6,7 @@
 
 #include "loom/import/cxx/tooling/input.h"
 
+#include <cstring>
 #include <filesystem>
 #include <string>
 
@@ -13,9 +14,16 @@
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "iree/testing/temp_file.h"
+#include "loom/error/source.h"
+#include "loom/format/location.h"
 #include "loom/import/cxx/import.h"
 #include "loom/import/cxx/source/catalog.h"
+#include "loom/import/cxx/tooling/source_capture_test_data.h"
+#include "loom/ops/func/location.h"
+#include "loom/ops/func/location_capture.h"
+#include "loom/ops/op_defs.h"
 #include "loom/ops/op_registry.h"
+#include "loom/testing/test_file.h"
 #include "loom/tools/loom-check/file.h"
 #include "loom/tools/loom-check/test_util.h"
 #include "loom/util/json.h"
@@ -108,6 +116,68 @@ class InputTest : public ::testing::Test {
   // Generic check runner with the C++ input contribution.
   loom_check_environment_t environment_ = {};
 };
+
+TEST_F(InputTest, CapturedHeaderMacroSpellingOutlivesSourceOwners) {
+  const auto* data = loom_cxx_source_capture_test_data_create();
+  iree_arena_allocator_t scratch;
+  iree_arena_initialize(&pool_, &scratch);
+  loom_test_file_t fixture;
+  IREE_ASSERT_OK(loom_test_file_parse(
+      iree_make_string_view(reinterpret_cast<const char*>(data[0].data),
+                            data[0].size),
+      &scratch, &fixture));
+  ASSERT_EQ(fixture.case_count, 1u);
+  std::string source = String(fixture.cases[0].input);
+  const std::string header_source(reinterpret_cast<const char*>(data[1].data),
+                                  data[1].size);
+  iree::testing::TempFilePath header("loom_capture_header", ".h");
+  const std::string header_filename =
+      std::filesystem::path(header.path()).generic_string();
+  source.replace(source.find("source_capture.h"),
+                 std::strlen("source_capture.h"), header_filename);
+  IREE_ASSERT_OK(Write(header.path(), header_source));
+  loom_input_request_t request = {};
+  request.source = View(source);
+  request.path = IREE_SV("capture.cxx-test");
+  request.options = IREE_SV("root=captured_sum");
+  IREE_ASSERT_OK(Load(request));
+  ASSERT_NE(input_.module, nullptr);
+  source.assign(source.size(), '?');
+  IREE_ASSERT_OK(Write(header.path(), "#error changed after admission\n"));
+  auto* module = input_.module;
+  auto name = loom_module_lookup_string(module, IREE_SV("source_sum"));
+  auto symbol = loom_module_find_symbol(module, name);
+  ASSERT_NE(symbol, LOOM_SYMBOL_ID_INVALID);
+  auto function =
+      loom_func_like_cast(module, module->symbols.entries[symbol].defining_op);
+  auto* expression =
+      loom_region_entry_block(loom_func_like_body(function))->first_op;
+  loom_parameterized_attr_array_t nodes;
+  IREE_ASSERT_OK(loom_func_location_capture(
+      module, expression->location, loom_input_module_source_resolver(&input_),
+      &scratch, &nodes));
+  iree_arena_reset(&scratch);
+  iree_const_byte_span_t bytes;
+  IREE_ASSERT_OK(loom_func_location_encode(module, nodes, &scratch, &bytes));
+  loom_input_module_deinitialize(&input_);
+  loom_location_value_t location;
+  IREE_ASSERT_OK(loom_location_value_parse(bytes, &location));
+  ASSERT_EQ(location.node_count, 1u);
+  const auto file = loom_location_value_file(location, 0);
+  EXPECT_EQ(String(file.source), header_filename);
+  EXPECT_TRUE(file.has_text);
+  const auto text = iree_make_string_view(
+      reinterpret_cast<const char*>(file.text.data), file.text.data_length);
+  EXPECT_EQ(String(text), "  /* λ */ return SOURCE_SUM(left, right);\n");
+  auto start = loom_source_byte_offset(text, 1, file.range.start_column);
+  auto end = loom_source_byte_offset(text, 1, file.range.end_column);
+  EXPECT_EQ(String(iree_make_string_view(text.data + start, end - start)),
+            "SOURCE_SUM");
+  // One extra UTF-8 byte precedes the macro, so the byte offset equals the
+  // one-based code-point column instead of being one less.
+  EXPECT_EQ(start, file.range.start_column);
+  iree_arena_deinitialize(&scratch);
+}
 
 TEST_F(InputTest, HeaderSnapshotsSurviveFrontendAndFilesystemChanges) {
   iree::testing::TempFilePath header("loom_input_header", ".h");
