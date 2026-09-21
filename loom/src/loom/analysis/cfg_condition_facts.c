@@ -147,6 +147,9 @@ typedef struct loom_cfg_condition_event_t {
 } loom_cfg_condition_event_t;
 
 typedef struct loom_cfg_condition_event_queue_t {
+  // Scratch arena owning dynamic event storage.
+  iree_arena_allocator_t* arena;
+
   // Prefix sum mapping block-local rows to global row ordinals.
   uint32_t* block_row_offsets;
 
@@ -156,20 +159,20 @@ typedef struct loom_cfg_condition_event_queue_t {
   // Per-block masks of queued Boolean outcomes.
   uint8_t* boolean_queued_masks;
 
-  // Fixed ring storage covering the complete event universe.
+  // Contiguous storage for currently queued events.
   loom_cfg_condition_event_t* events;
 
   // Number of entries in block_row_offsets minus one.
   uint16_t block_count;
 
-  // Ring capacity.
-  uint32_t capacity;
+  // Allocated entry count in events.
+  iree_host_size_t capacity;
 
-  // Ring head ordinal.
-  uint32_t head;
+  // First queued event in events.
+  iree_host_size_t head;
 
   // Number of queued events.
-  uint32_t count;
+  iree_host_size_t count;
 } loom_cfg_condition_event_queue_t;
 
 typedef struct loom_cfg_condition_relation_solver_t {
@@ -338,6 +341,7 @@ static iree_status_t loom_cfg_condition_event_queue_initialize(
     iree_arena_allocator_t* arena,
     loom_cfg_condition_event_queue_t* out_queue) {
   *out_queue = (loom_cfg_condition_event_queue_t){
+      .arena = arena,
       .block_count = block_count,
   };
   IREE_RETURN_IF_ERROR(
@@ -368,60 +372,62 @@ static iree_status_t loom_cfg_condition_event_queue_initialize(
         (void**)&out_queue->boolean_queued_masks));
     memset(out_queue->boolean_queued_masks, 0, block_count);
   }
-  const uint64_t event_capacity = total_row_count * 3 + block_count * 2;
-  if (event_capacity > UINT32_MAX) {
-    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                            "condition event universe exceeds uint32_t");
-  }
-  out_queue->capacity = (uint32_t)event_capacity;
-  if (event_capacity != 0) {
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        arena, (iree_host_size_t)event_capacity, sizeof(*out_queue->events),
-        (void**)&out_queue->events));
-  }
   return iree_ok_status();
 }
 
-static void loom_cfg_condition_event_queue_append(
+static iree_status_t loom_cfg_condition_event_queue_append(
     loom_cfg_condition_event_queue_t* queue, loom_cfg_condition_event_t event) {
-  IREE_ASSERT_LT(queue->count, queue->capacity);
-  const uint32_t tail = (queue->head + queue->count) % queue->capacity;
-  queue->events[tail] = event;
+  if (queue->head + queue->count == queue->capacity && queue->head != 0) {
+    memmove(queue->events, &queue->events[queue->head],
+            queue->count * sizeof(*queue->events));
+    queue->head = 0;
+  }
+  if (queue->count == queue->capacity) {
+    const iree_host_size_t minimum_capacity =
+        iree_max((iree_host_size_t)64, queue->count + 1);
+    IREE_RETURN_IF_ERROR(iree_arena_grow_array(
+        queue->arena, queue->count, minimum_capacity, sizeof(*queue->events),
+        &queue->capacity, (void**)&queue->events));
+  }
+  queue->events[queue->head + queue->count] = event;
   ++queue->count;
+  return iree_ok_status();
 }
 
-static void loom_cfg_condition_event_queue_enqueue_integer(
+static iree_status_t loom_cfg_condition_event_queue_enqueue_integer(
     loom_cfg_condition_event_queue_t* queue, uint16_t block, uint32_t row,
     loom_condition_relation_outcome_t outcome) {
   const uint32_t global_row = queue->block_row_offsets[block] + row;
   const uint8_t bit = (uint8_t)(1u << outcome);
   if ((queue->integer_queued_masks[global_row] & bit) != 0) {
-    return;
+    return iree_ok_status();
   }
-  queue->integer_queued_masks[global_row] |= bit;
-  loom_cfg_condition_event_queue_append(
+  IREE_RETURN_IF_ERROR(loom_cfg_condition_event_queue_append(
       queue, (loom_cfg_condition_event_t){
                  .row = row,
                  .block = block,
                  .outcome = outcome,
                  .kind = LOOM_CFG_CONDITION_EVENT_INTEGER,
-             });
+             }));
+  queue->integer_queued_masks[global_row] |= bit;
+  return iree_ok_status();
 }
 
-static void loom_cfg_condition_event_queue_enqueue_boolean(
+static iree_status_t loom_cfg_condition_event_queue_enqueue_boolean(
     loom_cfg_condition_event_queue_t* queue, uint16_t block, bool value) {
   const uint8_t outcome = value ? 1 : 0;
   const uint8_t bit = (uint8_t)(1u << outcome);
   if ((queue->boolean_queued_masks[block] & bit) != 0) {
-    return;
+    return iree_ok_status();
   }
-  queue->boolean_queued_masks[block] |= bit;
-  loom_cfg_condition_event_queue_append(
+  IREE_RETURN_IF_ERROR(loom_cfg_condition_event_queue_append(
       queue, (loom_cfg_condition_event_t){
                  .block = block,
                  .outcome = outcome,
                  .kind = LOOM_CFG_CONDITION_EVENT_BOOLEAN,
-             });
+             }));
+  queue->boolean_queued_masks[block] |= bit;
+  return iree_ok_status();
 }
 
 static bool loom_cfg_condition_event_queue_pop(
@@ -431,8 +437,11 @@ static bool loom_cfg_condition_event_queue_pop(
     return false;
   }
   const loom_cfg_condition_event_t event = queue->events[queue->head];
-  queue->head = (queue->head + 1) % queue->capacity;
+  ++queue->head;
   --queue->count;
+  if (queue->count == 0) {
+    queue->head = 0;
+  }
   const uint8_t bit = (uint8_t)(1u << event.outcome);
   if (event.kind == LOOM_CFG_CONDITION_EVENT_INTEGER) {
     const uint32_t global_row =
@@ -1587,8 +1596,8 @@ static iree_status_t loom_cfg_condition_relation_intersect_block(
         continue;
       }
       row->excluded[outcome] = intersection;
-      loom_cfg_condition_event_queue_enqueue_integer(&solver->pending, block,
-                                                     row_index, outcome);
+      IREE_RETURN_IF_ERROR(loom_cfg_condition_event_queue_enqueue_integer(
+          &solver->pending, block, row_index, outcome));
     }
   }
   return iree_ok_status();
@@ -1608,8 +1617,8 @@ static iree_status_t loom_cfg_condition_relation_intersect_block_truth(
       continue;
     }
     truth->values[value] = intersection;
-    loom_cfg_condition_event_queue_enqueue_boolean(&solver->pending, block,
-                                                   value != 0);
+    IREE_RETURN_IF_ERROR(loom_cfg_condition_event_queue_enqueue_boolean(
+        &solver->pending, block, value != 0));
   }
   return iree_ok_status();
 }
@@ -1667,10 +1676,9 @@ static iree_status_t loom_cfg_condition_relation_update_contribution_row(
       return iree_ok_status();
     }
     target_row->excluded[outcome] = intersection;
-    loom_cfg_condition_event_queue_enqueue_integer(
+    return loom_cfg_condition_event_queue_enqueue_integer(
         &solver->pending, edge->target,
         (uint32_t)(target_row - target_facts->rows), outcome);
-    return iree_ok_status();
   }
 
   loom_condition_relation_matrix_row_t* contribution_row =
@@ -1698,10 +1706,9 @@ static iree_status_t loom_cfg_condition_relation_update_contribution_row(
     return iree_ok_status();
   }
   target_row->excluded[outcome] = target;
-  loom_cfg_condition_event_queue_enqueue_integer(
+  return loom_cfg_condition_event_queue_enqueue_integer(
       &solver->pending, edge->target,
       (uint32_t)(target_row - target_facts->rows), outcome);
-  return iree_ok_status();
 }
 
 static iree_status_t loom_cfg_condition_relation_propagate_integer(
@@ -1765,8 +1772,8 @@ static iree_status_t loom_cfg_condition_relation_propagate_boolean(
         &intersection));
     if (intersection != target_truth->values[event->outcome]) {
       target_truth->values[event->outcome] = intersection;
-      loom_cfg_condition_event_queue_enqueue_boolean(
-          &solver->pending, edge->target, event->outcome != 0);
+      IREE_RETURN_IF_ERROR(loom_cfg_condition_event_queue_enqueue_boolean(
+          &solver->pending, edge->target, event->outcome != 0));
     }
     return iree_ok_status();
   }
@@ -1786,8 +1793,8 @@ static iree_status_t loom_cfg_condition_relation_propagate_boolean(
       &target));
   if (target != target_truth->values[event->outcome]) {
     target_truth->values[event->outcome] = target;
-    loom_cfg_condition_event_queue_enqueue_boolean(
-        &solver->pending, edge->target, event->outcome != 0);
+    IREE_RETURN_IF_ERROR(loom_cfg_condition_event_queue_enqueue_boolean(
+        &solver->pending, edge->target, event->outcome != 0));
   }
   return iree_ok_status();
 }
