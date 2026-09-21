@@ -220,6 +220,52 @@ class ConfigureBazelTest(unittest.TestCase):
         self.assertIn("common --repo_env=IREE_HAL_AMDGPU_DEVICE_TOOLCHAIN=none", config)
         self.assertNotIn("IREE_ROCM_PATH", config)
 
+    def test_api_options_have_equivalent_native_and_portable_spellings(self):
+        portable = self.configure_bazel.parse_arguments(
+            ["-DIREE_ENABLE_VULKAN=ON", "-DIREE_ENABLE_D3D12=OFF"]
+        )
+        native = self.configure_bazel.parse_arguments(
+            [
+                "--//build_tools/vulkan/config:enabled=true",
+                "--//build_tools/d3d12/config:enabled=false",
+            ]
+        )
+        config = self.configure_bazel.generate_config(portable)
+        self.assertEqual(config, self.configure_bazel.generate_config(native))
+        self.assertIn("build --//build_tools/vulkan/config:enabled=true", config)
+        self.assertIn("build --//build_tools/d3d12/config:enabled=false", config)
+        self.assertIn("build --//runtime/config/hal:drivers=task\n", config)
+
+    def test_d3d12_can_be_selected_without_vulkan_or_a_hal_driver(self):
+        args = self.configure_bazel.parse_arguments(["-DIREE_ENABLE_D3D12=ON"])
+        config = self.configure_bazel.generate_config(args)
+        self.assertIn("build --//build_tools/vulkan/config:enabled=false", config)
+        self.assertIn("build --//build_tools/d3d12/config:enabled=true", config)
+        self.assertIn("build --//runtime/config/hal:drivers=task\n", config)
+
+    def test_hal_selection_does_not_mutate_explicit_api_request(self):
+        args = self.configure_bazel.parse_arguments(
+            ["-DIREE_HAL_DRIVER_VULKAN=ON", "-DIREE_ENABLE_VULKAN=OFF"]
+        )
+        config = self.configure_bazel.generate_config(args)
+        self.assertIn("build --//runtime/config/hal:drivers=task,vulkan\n", config)
+        self.assertIn("build --//build_tools/vulkan/config:enabled=false", config)
+
+    def test_api_options_reject_ambiguous_or_invalid_inputs(self):
+        for api in ("vulkan", "d3d12"):
+            portable = f"-DIREE_ENABLE_{api.upper()}"
+            native = f"--//build_tools/{api}/config:enabled"
+            for options in (
+                [portable + "=ON", native + "=false"],
+                [portable + "=unknown"],
+                [native + "=unknown"],
+                [native],
+            ):
+                with self.subTest(options=options):
+                    args = self.configure_bazel.parse_arguments(options)
+                    with self.assertRaises(SystemExit):
+                        self.configure_bazel.generate_config(args)
+
     def test_environment_rocm_path_configures_amdgpu(self):
         with tempfile.TemporaryDirectory() as temporary_directory:
             rocm_root = self.make_rocm_root(temporary_directory)

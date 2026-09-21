@@ -258,7 +258,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -280,7 +280,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -302,7 +302,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -324,7 +324,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -348,7 +348,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -372,7 +372,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -397,7 +397,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -419,7 +419,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -442,7 +442,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -464,7 +464,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -486,7 +486,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -508,7 +508,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -530,7 +530,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -552,7 +552,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -577,7 +577,7 @@ iree_cc_test(
   LABELS
     "vulkan_uses_vk_khr_buffer_device_address"
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -609,7 +609,7 @@ iree_cc_test(
   LABELS
     "vulkan_uses_vk_khr_buffer_device_address"
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -635,7 +635,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -657,7 +657,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -679,7 +679,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -703,7 +703,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -725,7 +725,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -748,7 +748,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -771,7 +771,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests
@@ -793,7 +793,7 @@ iree_cc_test(
     iree::testing::gtest
   LABELS
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     iree-hal-drivers-vulkan-tests

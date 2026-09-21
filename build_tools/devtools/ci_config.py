@@ -137,7 +137,7 @@ CPU_RESOURCE_TAG_EXCLUDES = (
     "-iree-run-requirement=libamdf.resource.amd_gpu",
     "-iree-run-requirement=libamdf.resource.xdna",
     "-iree-run-requirement=runtime.resource.amd_gpu",
-    "-iree-run-requirement=runtime.resource.vulkan_device",
+    "-iree-run-requirement=vulkan.resource.device",
     "-iree-run-requirement=runtime.resource.webgpu_device",
 )
 NON_CPU_HAL_DRIVER_CTEST_REGEX = r"^iree/hal/drivers/(amdgpu|vulkan|webgpu)/"
@@ -249,7 +249,7 @@ def amdgpu_bazel_xfail_targets(target_selector: str) -> tuple[str, ...]:
 
 
 VULKAN_BUILD_REQUIREMENT_TAG = "iree-build-requirement=runtime.hal.vulkan"
-VULKAN_RUN_REQUIREMENT_TAG = "iree-run-requirement=runtime.resource.vulkan_device"
+VULKAN_RUN_REQUIREMENT_TAG = "iree-run-requirement=vulkan.resource.device"
 VULKAN_BAZEL_TEST_TAG_FILTERS = (
     VULKAN_BUILD_REQUIREMENT_TAG,
     VULKAN_RUN_REQUIREMENT_TAG,

@@ -31,7 +31,7 @@ GLOBAL_TEST_TRIGGERS = (
 )
 RESOURCE_TEST_TAG_FILTERS = (
     "-iree-run-requirement=runtime.resource.amd_gpu",
-    "-iree-run-requirement=runtime.resource.vulkan_device",
+    "-iree-run-requirement=vulkan.resource.device",
     "-iree-run-requirement=runtime.resource.webgpu_device",
 )
 BAZEL_TEST_EXCLUDES = (

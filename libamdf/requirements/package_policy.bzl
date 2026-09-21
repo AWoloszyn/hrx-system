@@ -14,6 +14,11 @@ load(
     "package_policy",
 )
 load(
+    "//build_tools/d3d12/requirements:defs.bzl",
+    "D3D12_API",
+    "D3D12_DEVICE_RESOURCE",
+)
+load(
     "//libamdf/requirements:defs.bzl",
     "AMDGPU_RESOURCE",
     "LIBAMDF",
@@ -74,6 +79,11 @@ PACKAGE_POLICIES = [
         build_requirements = [LIBAMDF_GPU],
         run_requirements = [AMDGPU_RESOURCE],
         resource_group = "iree-hal-drivers-amdgpu-tests",
+    ),
+    package_policy(
+        packages = ["libamdf/cts/interop/gpu/d3d12/..."],
+        build_requirements = [D3D12_API],
+        run_requirements = [D3D12_DEVICE_RESOURCE],
     ),
     package_policy(
         packages = ["libamdf/cts/interop/gpu/xdna/..."],

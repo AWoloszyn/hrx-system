@@ -264,7 +264,7 @@ iree_executable_test(
         "LSAN_OPTIONS": "suppressions=$(location " + vulkan_suppressions["lsan"] + "):allow_addr2line=1",
     },
     tags = [
-        "iree-run-requirement=runtime.resource.vulkan_device",
+        "iree-run-requirement=vulkan.resource.device",
         "runtime-resource=vulkan-device",
     ],
     target_compatible_with = _SPIRV_COMPILE_COMPATIBLE_WITH + _SPIRV_VULKAN_HAL_COMPATIBLE_WITH,
@@ -305,7 +305,7 @@ loom_cc_test(
     resource_group = "loom-vulkan-tests",
     sanitizer_suppressions = vulkan_suppressions,
     tags = [
-        "iree-run-requirement=runtime.resource.vulkan_device",
+        "iree-run-requirement=vulkan.resource.device",
         "runtime-resource=vulkan-device",
     ],
     target_compatible_with = LOOM_SPIRV_VULKAN_COMPATIBLE_WITH,

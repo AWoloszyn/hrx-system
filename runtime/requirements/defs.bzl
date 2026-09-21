@@ -40,13 +40,6 @@ AMDGPU_RESOURCE = run_requirement(
     skip_contract = "Tests skip when no compatible AMD GPU/HSA agent is available.",
 )
 
-VULKAN_DEVICE_RESOURCE = run_requirement(
-    id = "runtime.resource.vulkan_device",
-    label = Label("//runtime/requirements:vulkan_device"),
-    cmake_label = "runtime-resource=vulkan-device",
-    skip_contract = "Tests skip when no compatible Vulkan device is available.",
-)
-
 WEBGPU_DEVICE_RESOURCE = run_requirement(
     id = "runtime.resource.webgpu_device",
     label = Label("//runtime/requirements:webgpu_device"),
@@ -59,6 +52,5 @@ REQUIREMENTS = [
     HAL_VULKAN,
     HAL_WEBGPU,
     AMDGPU_RESOURCE,
-    VULKAN_DEVICE_RESOURCE,
     WEBGPU_DEVICE_RESOURCE,
 ]

@@ -56,7 +56,7 @@ loom_execution_test(
     "iree-build-requirement=loom.emit.spirv"
     "iree-build-requirement=loom.execute.iree_hal"
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
     "loom-execution-profile=spirv_vulkan_hardware"
     "loom-target-family=spirv"

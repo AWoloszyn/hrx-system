@@ -248,7 +248,7 @@ loom_execution_test(
     "iree-build-requirement=loom.emit.spirv"
     "iree-build-requirement=loom.execute.iree_hal"
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
     "loom-execution-profile=spirv_vulkan_explicit_target_hardware"
     "loom-target-family=spirv"
@@ -307,7 +307,7 @@ loom_execution_test(
     "iree-build-requirement=loom.emit.spirv"
     "iree-build-requirement=loom.execute.iree_hal"
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
     "loom-execution-profile=spirv_vulkan_hardware"
     "loom-target-family=spirv"
@@ -347,7 +347,7 @@ iree_native_test(
   ENV
     "LSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/build_tools/sanitizer/lsan_suppressions_vulkan.txt:allow_addr2line=1"
   LABELS
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
 )
 endif()
@@ -407,7 +407,7 @@ loom_cc_test(
   ARGS
     "--vulkan_validation_layers=false"
   LABELS
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
     "iree-build-requirement=loom.target.arch.spirv"
     "iree-build-requirement=loom.emit.spirv"

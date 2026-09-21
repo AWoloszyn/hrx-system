@@ -67,6 +67,11 @@ _RUNTIME_HAL_DRIVER_CMAKE_OPTIONS = {
     "//runtime/config/hal:executable_loader_system_library": "IREE_HAL_EXECUTABLE_LOADER_SYSTEM_LIBRARY",
 }
 
+_API_CONFIG_CMAKE_OPTIONS = {
+    "//build_tools/vulkan/config:available": "IREE_VULKAN_AVAILABLE",
+    "//build_tools/d3d12/config:available": "IREE_D3D12_AVAILABLE",
+}
+
 _LOOM_CONFIG_CMAKE_OPTIONS = {
     "//loom/config/import:cxx": "LOOM_IMPORT_CXX",
     "//loom/config/import/cxx:embed_includes_enabled": "LOOM_IMPORT_CXX_EMBED_INCLUDES",
@@ -282,6 +287,7 @@ class BuildFileFunctions(object):
         return (
             _COMPILER_CMAKE_OPTIONS.get(label)
             or _RUNTIME_HAL_DRIVER_CMAKE_OPTIONS.get(label)
+            or _API_CONFIG_CMAKE_OPTIONS.get(label)
             or _LOOM_CONFIG_CMAKE_OPTIONS.get(label)
         )
 

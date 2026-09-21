@@ -193,11 +193,13 @@ alias(
 alias(
     name = "vulkan_headers",
     actual = select({
-        "//runtime/config/hal:driver_vulkan": "@vulkan_headers//:headers",
+        "//build_tools/vulkan/config:available": "@vulkan_headers//:headers",
         "//conditions:default": ":empty_vulkan_headers",
     }),
     tags = ["manual"],
     visibility = [
+        ":build_tool_users",
+        ":libamdf_users",
         ":loom_users",
         ":runtime_users",
     ],

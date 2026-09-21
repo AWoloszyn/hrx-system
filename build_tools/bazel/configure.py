@@ -95,6 +95,8 @@ NATIVE_LOOM_EXECUTE_FLAG = "--//loom/config/execute:enable"
 NATIVE_LOOM_IMPORT_FLAG = "--//loom/config/import:enable"
 NATIVE_AMDF_ENABLED_FLAG = "--//libamdf/config:enabled"
 NATIVE_AMDF_FAMILIES_FLAG = "--//libamdf/config:families"
+NATIVE_VULKAN_ENABLED_FLAG = "--//build_tools/vulkan/config:enabled"
+NATIVE_D3D12_ENABLED_FLAG = "--//build_tools/d3d12/config:enabled"
 NATIVE_REPO_ENV_PREFIX = "--repo_env="
 TRUE_VALUES = frozenset(("1", "ON", "TRUE", "YES"))
 FALSE_VALUES = frozenset(("0", "OFF", "FALSE", "NO"))
@@ -123,6 +125,14 @@ class ConfigRequest:
     amdf_build_source: str | None = None
     enabled_amdf_families: set[str] = field(default_factory=lambda: set(AMDF_FAMILIES))
     amdf_family_source: str | None = None
+    # Explicit Vulkan API selection, independent of HAL driver selection.
+    vulkan_enabled: bool = False
+    # Option spelling used for the Vulkan API selection.
+    vulkan_source: str | None = None
+    # Explicit D3D12 API selection; target-OS compatibility is evaluated by Bazel.
+    d3d12_enabled: bool = False
+    # Option spelling used for the D3D12 API selection.
+    d3d12_source: str | None = None
     rocm_path: str | None = None
 
     def set_driver(self, driver: str, enabled: bool) -> None:
@@ -262,6 +272,24 @@ class ConfigRequest:
             )
         self.loom_import_source = "native"
         self.enabled_loom_importers = set(importers)
+
+    def set_vulkan_enabled(self, enabled: bool, source: str) -> None:
+        if self.vulkan_source is not None and self.vulkan_source != source:
+            raise SystemExit(
+                "Do not mix portable -DIREE_ENABLE_VULKAN with the native "
+                f"{NATIVE_VULKAN_ENABLED_FLAG}=... Bazel option."
+            )
+        self.vulkan_source = source
+        self.vulkan_enabled = enabled
+
+    def set_d3d12_enabled(self, enabled: bool, source: str) -> None:
+        if self.d3d12_source is not None and self.d3d12_source != source:
+            raise SystemExit(
+                "Do not mix portable -DIREE_ENABLE_D3D12 with the native "
+                f"{NATIVE_D3D12_ENABLED_FLAG}=... Bazel option."
+            )
+        self.d3d12_source = source
+        self.d3d12_enabled = enabled
 
     def set_amdf_build(self, enabled: bool, source: str) -> None:
         if self.amdf_build_source is not None and self.amdf_build_source != source:
@@ -492,6 +520,12 @@ def apply_define(request: ConfigRequest, define: str) -> None:
     if name == "AMDF_BUILD":
         request.set_amdf_build(parse_bool(name, value), "portable")
         return
+    if name == "IREE_ENABLE_VULKAN":
+        request.set_vulkan_enabled(parse_bool(name, value), "portable")
+        return
+    if name == "IREE_ENABLE_D3D12":
+        request.set_d3d12_enabled(parse_bool(name, value), "portable")
+        return
     if name in AMDF_FAMILY_DEFINES:
         request.set_amdf_family(AMDF_FAMILY_DEFINES[name], parse_bool(name, value))
         return
@@ -567,6 +601,20 @@ def apply_native_bazel_arg(request: ConfigRequest, arg: str) -> None:
         return
     if arg == NATIVE_AMDF_FAMILIES_FLAG:
         raise SystemExit(f"{NATIVE_AMDF_FAMILIES_FLAG} must use --flag=value syntax.")
+    if arg.startswith(NATIVE_VULKAN_ENABLED_FLAG + "="):
+        request.set_vulkan_enabled(
+            parse_bool(NATIVE_VULKAN_ENABLED_FLAG, arg.split("=", 1)[1]), "native"
+        )
+        return
+    if arg == NATIVE_VULKAN_ENABLED_FLAG:
+        raise SystemExit(f"{NATIVE_VULKAN_ENABLED_FLAG} must use --flag=value syntax.")
+    if arg.startswith(NATIVE_D3D12_ENABLED_FLAG + "="):
+        request.set_d3d12_enabled(
+            parse_bool(NATIVE_D3D12_ENABLED_FLAG, arg.split("=", 1)[1]), "native"
+        )
+        return
+    if arg == NATIVE_D3D12_ENABLED_FLAG:
+        raise SystemExit(f"{NATIVE_D3D12_ENABLED_FLAG} must use --flag=value syntax.")
     if arg.startswith(NATIVE_REPO_ENV_PREFIX):
         repo_env = arg[len(NATIVE_REPO_ENV_PREFIX) :]
         if "=" not in repo_env:
@@ -686,6 +734,16 @@ def generate_config(args: argparse.Namespace) -> str:
             "build",
             "--//libamdf/config:families="
             + ",".join(ordered_amdf_family_set(request.enabled_amdf_families)),
+        ),
+        "",
+        "# Vulkan and D3D12 API clients; neither selection enables a HAL driver.",
+        bazelrc_line(
+            "build",
+            NATIVE_VULKAN_ENABLED_FLAG + "=" + str(request.vulkan_enabled).lower(),
+        ),
+        bazelrc_line(
+            "build",
+            NATIVE_D3D12_ENABLED_FLAG + "=" + str(request.d3d12_enabled).lower(),
         ),
         "",
         "# Source dependency mode.",

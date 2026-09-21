@@ -14,12 +14,15 @@ load(
     "package_policy",
 )
 load(
+    "//build_tools/vulkan/requirements:defs.bzl",
+    "VULKAN_DEVICE_RESOURCE",
+)
+load(
     "//runtime/requirements:defs.bzl",
     "AMDGPU_RESOURCE",
     "HAL_AMDGPU",
     "HAL_VULKAN",
     "HAL_WEBGPU",
-    "VULKAN_DEVICE_RESOURCE",
     "WEBGPU_DEVICE_RESOURCE",
 )
 

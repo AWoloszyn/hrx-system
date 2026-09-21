@@ -436,6 +436,8 @@ between Bazel and CMake.
 | `AMDF_FAMILY_RDNA` | `ON`, `OFF` | Admits RDNA implementation packages to libamdf. | Adds or removes `rdna` from the libamdf implementation-family scope. | `--//libamdf/config:families=<complete-family-list>` |
 | `AMDF_FAMILY_CDNA` | `ON`, `OFF` | Admits CDNA implementation packages to libamdf. | Adds or removes `cdna` from the libamdf implementation-family scope. | `--//libamdf/config:families=<complete-family-list>` |
 | `AMDF_FAMILY_XDNA` | `ON`, `OFF` | Admits XDNA implementation packages to libamdf. | Adds or removes `xdna` from the libamdf implementation-family scope. | `--//libamdf/config:families=<complete-family-list>` |
+| `IREE_ENABLE_VULKAN` | `ON`, `OFF` | Enables Vulkan API clients independently of HAL drivers. Defaults to `OFF`; the Vulkan HAL also enables API availability. | Selects Vulkan API clients with the same HAL implication. | `--//build_tools/vulkan/config:enabled=<bool>` |
+| `IREE_ENABLE_D3D12` | `ON`, `OFF` | Enables D3D12 API clients for Windows targets. Defaults to `OFF`. | Selects D3D12 API clients for Windows targets, including cross-compilation. | `--//build_tools/d3d12/config:enabled=<bool>` |
 | `IREE_HAL_DRIVER_AMDGPU` | `ON`, `OFF` | Builds the AMDGPU runtime HAL driver. | Adds or removes `amdgpu` from the runtime driver registry and recursive package scope. | `--//runtime/config/hal:drivers=<complete-driver-list>` |
 | `IREE_HAL_DRIVER_TASK` | `ON`, `OFF` | Builds the task runtime HAL driver. | Adds or removes `task` from the runtime driver registry. | `--//runtime/config/hal:drivers=<complete-driver-list>` |
 | `IREE_HAL_DRIVER_VULKAN` | `ON`, `OFF` | Builds the Vulkan runtime HAL driver. | Adds or removes `vulkan` from the runtime driver registry and recursive package scope. | `--//runtime/config/hal:drivers=<complete-driver-list>` |
@@ -475,6 +477,14 @@ iree-cmake-test -R '^libamdf/'
 The native family setting is a complete list. For example, an XDNA-only source
 configuration uses `--//libamdf/config:families=xdna`; the portable equivalent
 sets `AMDF_FAMILY_RDNA=OFF` and `AMDF_FAMILY_CDNA=OFF`.
+
+Vulkan and D3D12 API selections control client compilation separately from
+device execution. They do not enable a HAL driver or shader compiler. Vulkan
+HAL selection also makes Vulkan available, so excluding all Vulkan clients
+requires disabling both requests. Each API owns its build and run requirements;
+mixed tests declare every participant they need. See the [Vulkan client
+guide](build_tools/vulkan/README.md) and [D3D12 client
+guide](build_tools/d3d12/README.md) for examples and dependency boundaries.
 
 ### External HAL drivers
 
