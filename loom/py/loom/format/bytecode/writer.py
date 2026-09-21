@@ -19,11 +19,10 @@ identical bytes. This is required for caching and CAS storage.
 from __future__ import annotations
 
 import struct
-from collections.abc import Iterable, Mapping, Sequence
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from typing import Any, ClassVar, cast
 
-from loom.dsl import FuncLikeInterface, SymbolReferenceRole
+from loom.dsl import FuncLikeInterface
 from loom.fields import compute_layout, resolve_fields
 from loom.format.block_order import ordered_blocks
 from loom.format.bytecode.encoding import ByteBuffer
@@ -33,6 +32,7 @@ from loom.format.bytecode.op_decls import (
     func_like_interface_for_op,
     symbol_def_for_op,
 )
+from loom.format.bytecode.symbol_references import SymbolReferenceProjectionBuilder
 from loom.ir import (
     ATTR_AGGREGATE_MAX_NESTING_DEPTH,
     REGION_SOURCE_FLAG_MASK,
@@ -186,22 +186,6 @@ MAGIC = b"LOOM"
 FORMAT_VERSION = 37
 PRODUCER = "loom-py"
 
-SYMBOL_INTERFACE_BITS = {
-    "func_like": 1 << 0,
-    "global": 1 << 1,
-    "executable": 1 << 2,
-    "record": 1 << 3,
-    "target": 1 << 4,
-    "config": 1 << 5,
-    "rodata": 1 << 6,
-    "kernel": 1 << 7,
-    "callable": 1 << 8,
-    "command_program": 1 << 9,
-    "template_family": 1 << 10,
-    "template_provider": 1 << 11,
-    "kernel_entry": 1 << 12,
-    "pipeline": 1 << 13,
-}
 SYMBOL_INTERFACE_FLAG_MASK = (1 << 14) - 1
 
 SOURCE_TRIVIA_LEADING_BLANK_LINE = 1
@@ -292,250 +276,6 @@ class NumberingContext:
 
 
 # ============================================================================
-# Symbol reference projection
-# ============================================================================
-
-
-@dataclass(frozen=True, slots=True)
-class _SymbolReferenceSourceScope:
-    """Symbol and independently serializable root that own a reference."""
-
-    symbol_index: int | None = None
-    root_region_index_plus_one: int = 0
-
-
-@dataclass(frozen=True, slots=True)
-class _SymbolReferenceRecord:
-    """Wire symbol reference with its source contract or root region."""
-
-    source_root_region_index_plus_one: int
-    target_symbol_index: int
-    target_interfaces: int = 0
-
-
-class _SymbolReferenceProjectionBuilder:
-    """Builds wire-symbol dependency and abstract-provider rows."""
-
-    def __init__(
-        self,
-        module: Module,
-        wire_symbol_indices: dict[str, int],
-        op_decls_by_name: Mapping[str, Any],
-    ) -> None:
-        self._module = module
-        self._wire_symbol_indices = wire_symbol_indices
-        self._op_decls_by_name = op_decls_by_name
-        self._module_dependencies: list[_SymbolReferenceRecord] = []
-        self._symbol_dependencies: list[list[_SymbolReferenceRecord]] = [
-            [] for _ in wire_symbol_indices
-        ]
-        self._symbol_template_demands: list[list[_SymbolReferenceRecord]] = [
-            [] for _ in wire_symbol_indices
-        ]
-
-    def build(
-        self,
-    ) -> tuple[
-        tuple[_SymbolReferenceRecord, ...],
-        tuple[tuple[_SymbolReferenceRecord, ...], ...],
-        tuple[tuple[_SymbolReferenceRecord, ...], ...],
-    ]:
-        """Builds rows in the linked-list order used by the C analysis."""
-        module_scope = _SymbolReferenceSourceScope()
-        for operation in self._module.body.ops:
-            self._visit_operation(module_scope, operation)
-        for encoding in self._module.encodings:
-            self._visit_encoding(module_scope, encoding)
-        return (
-            tuple(reversed(self._module_dependencies)),
-            tuple(tuple(reversed(row)) for row in self._symbol_dependencies),
-            tuple(tuple(reversed(row)) for row in self._symbol_template_demands),
-        )
-
-    def _add_dependency(
-        self,
-        source_scope: _SymbolReferenceSourceScope,
-        name: str,
-        target_interfaces: int,
-    ) -> None:
-        try:
-            target_symbol_index = self._wire_symbol_indices[name]
-        except KeyError as exc:
-            raise ValueError(f"unresolved symbol dependency {name!r}") from exc
-        record = _SymbolReferenceRecord(
-            source_root_region_index_plus_one=source_scope.root_region_index_plus_one,
-            target_symbol_index=target_symbol_index,
-            target_interfaces=target_interfaces,
-        )
-        if source_scope.symbol_index is None:
-            self._module_dependencies.append(record)
-        else:
-            self._symbol_dependencies[source_scope.symbol_index].append(record)
-
-    def _visit_attr(
-        self,
-        source_scope: _SymbolReferenceSourceScope,
-        value: Any,
-        attr_def: Any | None = None,
-    ) -> None:
-        attr_type = getattr(attr_def, "attr_type", None)
-        symbol_ref = getattr(attr_def, "symbol_ref", None)
-        is_availability = (
-            symbol_ref is not None
-            and symbol_ref.role is SymbolReferenceRole.AVAILABILITY
-        )
-        target_interfaces = 0
-        if symbol_ref is not None:
-            for interface in symbol_ref.interfaces:
-                target_interfaces |= SYMBOL_INTERFACE_BITS[interface]
-        if attr_type == "symbol" or isinstance(value, SymbolName):
-            if not is_availability:
-                self._add_dependency(source_scope, str(value), target_interfaces)
-            return
-        if attr_type == "symbol_array" or isinstance(value, SymbolNameArray):
-            if not is_availability:
-                for name in value:
-                    self._add_dependency(source_scope, str(name), target_interfaces)
-            return
-        if attr_type == "symbol_set" or isinstance(value, SymbolNameSet):
-            if not is_availability:
-                for name in value:
-                    self._add_dependency(source_scope, str(name), target_interfaces)
-            return
-        if isinstance(value, _IR_TYPE_CLASSES):
-            self._visit_type(source_scope, cast(Type, value))
-            return
-        if isinstance(value, EncodingInstance):
-            self._visit_encoding(source_scope, value)
-            return
-        if isinstance(value, ParameterizedAttr):
-            for parameter, slot in zip(
-                value.definition.parameters, value.slots, strict=True
-            ):
-                if slot is not None:
-                    self._visit_attr(source_scope, slot, parameter)
-            return
-        if isinstance(value, ParameterizedAttrArray):
-            for element in value:
-                self._visit_attr(source_scope, element)
-            return
-        if isinstance(value, Mapping):
-            for nested_value in value.values():
-                self._visit_attr(source_scope, nested_value)
-            return
-        if isinstance(value, list | tuple):
-            for nested_value in value:
-                self._visit_attr(source_scope, nested_value)
-
-    def _visit_encoding(
-        self,
-        source_scope: _SymbolReferenceSourceScope,
-        encoding: EncodingInstance,
-    ) -> None:
-        for _, parameter_value in encoding.params:
-            self._visit_attr(source_scope, parameter_value)
-
-    def _visit_type(
-        self, source_scope: _SymbolReferenceSourceScope, ir_type: Type
-    ) -> None:
-        match ir_type:
-            case ShapedType(element_type=element_type, encoding=encoding):
-                self._visit_type(source_scope, element_type)
-                if isinstance(encoding, EncodingInstance):
-                    self._visit_encoding(source_scope, encoding)
-            case FunctionType(arg_types=args, result_types=results):
-                for nested_type in (*args, *results):
-                    self._visit_type(source_scope, nested_type)
-            case DialectType(params=parameters):
-                for nested_type in parameters:
-                    self._visit_type(source_scope, nested_type)
-            case ParameterizedType(definition=definition, slots=slots):
-                for parameter, value in zip(definition.params, slots, strict=True):
-                    if value is not None:
-                        self._visit_attr(source_scope, value, parameter)
-            case RegisterType(value_type=value_type) if value_type is not None:
-                self._visit_type(source_scope, value_type)
-            case _:
-                pass
-
-    def _visit_value(
-        self, source_scope: _SymbolReferenceSourceScope, value_id: int
-    ) -> None:
-        if 0 <= value_id < len(self._module.values):
-            self._visit_type(source_scope, self._module.values[value_id].type)
-
-    def _visit_region(
-        self, source_scope: _SymbolReferenceSourceScope, region: Region
-    ) -> None:
-        for block in region.blocks:
-            for argument_id in block.arg_ids:
-                self._visit_value(source_scope, argument_id)
-            for operation in block.ops:
-                self._visit_operation(source_scope, operation)
-
-    def _visit_operation(
-        self, source_scope: _SymbolReferenceSourceScope, operation: Operation
-    ) -> None:
-        op_decl = self._op_decls_by_name.get(operation.name)
-        symbol_def = getattr(op_decl, "symbol_def", None)
-        nested_source_scope = source_scope
-        defines_symbol = False
-        if symbol_def is not None:
-            symbol_name = operation.attributes.get(symbol_def.field)
-            if isinstance(symbol_name, str):
-                try:
-                    nested_source_scope = _SymbolReferenceSourceScope(
-                        symbol_index=self._wire_symbol_indices[symbol_name]
-                    )
-                    defines_symbol = True
-                except KeyError as exc:
-                    raise ValueError(
-                        f"symbol-defining operation {operation.name!r} names "
-                        f"unindexed symbol {symbol_name!r}"
-                    ) from exc
-
-        if operation.name == "template.apply":
-            family = operation.attributes.get("family")
-            if nested_source_scope.symbol_index is None:
-                raise ValueError("template.apply is not owned by a module symbol")
-            if not isinstance(family, str):
-                raise ValueError("template.apply family must be a symbol")
-            try:
-                family_symbol_ordinal = self._wire_symbol_indices[family]
-            except KeyError as exc:
-                raise ValueError(
-                    f"template.apply references unknown family {family!r}"
-                ) from exc
-            self._symbol_template_demands[nested_source_scope.symbol_index].append(
-                _SymbolReferenceRecord(
-                    source_root_region_index_plus_one=(
-                        nested_source_scope.root_region_index_plus_one
-                    ),
-                    target_symbol_index=family_symbol_ordinal,
-                )
-            )
-
-        for value_id in (*operation.operands, *operation.results):
-            self._visit_value(nested_source_scope, value_id)
-        for key, value in operation.attributes.items():
-            if symbol_def is not None and key == symbol_def.field:
-                continue
-            self._visit_attr(
-                nested_source_scope,
-                value,
-                attr_def_for_op(self._op_decls_by_name, operation.name, key),
-            )
-        for region_index, region in enumerate(operation.regions):
-            child_source_scope = nested_source_scope
-            if defines_symbol:
-                child_source_scope = _SymbolReferenceSourceScope(
-                    symbol_index=nested_source_scope.symbol_index,
-                    root_region_index_plus_one=region_index + 1,
-                )
-            self._visit_region(child_source_scope, region)
-
-
-# ============================================================================
 # Bytecode writer
 # ============================================================================
 
@@ -596,7 +336,7 @@ class BytecodeWriter:
             self._module_dependencies,
             self._symbol_dependencies,
             self._symbol_template_demands,
-        ) = _SymbolReferenceProjectionBuilder(
+        ) = SymbolReferenceProjectionBuilder(
             self._module,
             self._wire_symbol_indices,
             self._op_decls_by_name,
@@ -939,34 +679,54 @@ class BytecodeWriter:
             self._binding_facts[identity] = bound
         return self._binding_facts[id(root)]
 
+    @staticmethod
+    def _number(steps: Iterator[Any]) -> None:
+        """Complete postorder numbering without growing the Python call stack."""
+        pending = [steps]
+        while pending:
+            try:
+                child = next(pending[-1])
+            except StopIteration:
+                pending.pop()
+            else:
+                pending.append(child)
+
     def _number_type(self, ir_type: Type) -> None:
+        self._number(self._number_type_steps(ir_type))
+
+    def _number_attr_value(self, value: Any, attr_def: Any | None = None) -> None:
+        self._number(self._number_attr_steps(value, attr_def))
+
+    def _number_encoding_instance(self, value: EncodingInstance) -> None:
+        self._number(self._number_encoding_steps(value))
+
+    def _number_type_steps(self, ir_type: Type) -> Iterator[Any]:
         """Ensure a type and all its sub-types are interned.
 
-        Sub-types are interned BEFORE their parent so that the type
-        table is in topological order (the reader can resolve forward
-        references by index).
+        Sub-types are interned before their parent, so the reader resolves each
+        child from an earlier entry in the topologically ordered type table.
         """
         if id(ir_type) in self._numbered_types:
             return
         self._numbered_types.add(id(ir_type))
-        # Recurse into sub-types first (topological order).
+        # Complete immediate children before numbering their parent.
         match ir_type:
-            case ShapedType(element_type=elem, encoding=enc):
-                self._number_type(elem)
-                if isinstance(enc, EncodingInstance):
-                    self._number_encoding_instance(enc)
+            case ShapedType(element_type=element, encoding=encoding):
+                yield self._number_type_steps(element)
+                if isinstance(encoding, EncodingInstance):
+                    yield self._number_encoding_steps(encoding)
             case FunctionType(arg_types=args, result_types=results):
-                for t in args:
-                    self._number_type(t)
-                for t in results:
-                    self._number_type(t)
-            case DialectType(name=name, params=params):
+                for child in args:
+                    yield self._number_type_steps(child)
+                for child in results:
+                    yield self._number_type_steps(child)
+            case DialectType(name=name, params=parameters):
                 self._ctx.intern_string(name)
-                for p in params:
-                    self._number_type(p)
+                for parameter in parameters:
+                    yield self._number_type_steps(parameter)
             case RegisterType(value_type=value_type):
                 if value_type is not None:
-                    self._number_type(value_type)
+                    yield self._number_type_steps(value_type)
             case ParameterizedType(
                 definition=definition,
                 slots=slots,
@@ -976,19 +736,19 @@ class BytecodeWriter:
                     if value is None:
                         continue
                     self._ctx.intern_string(parameter.name)
-                    self._number_attr_value(value, parameter)
+                    yield self._number_attr_steps(value, parameter)
             case _:
                 pass
         # Intern the parent AFTER sub-types (ensures sub-types have lower IDs).
         if not self._has_type_bindings(ir_type):
             self._ctx.intern_type(ir_type)
 
-    def _number_attr_value(
+    def _number_attr_steps(
         self,
         value: Any,
         attr_def: Any | None = None,
         aggregate_nesting_depth: int = 0,
-    ) -> None:
+    ) -> Iterator[Any]:
         """Intern strings referenced by attribute values."""
         attr_type = getattr(attr_def, "attr_type", None)
         if attr_type == "enum":
@@ -1016,7 +776,9 @@ class BytecodeWriter:
                 if slot is None:
                     continue
                 self._ctx.intern_string(parameter.name)
-                self._number_attr_value(slot, parameter, aggregate_nesting_depth + 1)
+                yield self._number_attr_steps(
+                    slot, parameter, aggregate_nesting_depth + 1
+                )
         elif isinstance(value, ParameterizedAttrArray):
             if aggregate_nesting_depth >= ATTR_AGGREGATE_MAX_NESTING_DEPTH:
                 raise ValueError(
@@ -1028,15 +790,17 @@ class BytecodeWriter:
                     "parameterized attribute arrays require a descriptor-backed field"
                 )
             for element in value:
-                self._number_attr_value(element, attr_def, aggregate_nesting_depth + 1)
+                yield self._number_attr_steps(
+                    element, attr_def, aggregate_nesting_depth + 1
+                )
         elif isinstance(value, str):
             self._ctx.intern_string(value)
         elif isinstance(value, bytes | bytearray):
             pass
         elif isinstance(value, _IR_TYPE_CLASSES):
-            self._number_type(cast(Type, value))
+            yield self._number_type_steps(cast(Type, value))
         elif isinstance(value, EncodingInstance):
-            self._number_encoding_instance(value)
+            yield self._number_encoding_steps(value)
         elif isinstance(value, Mapping):
             if aggregate_nesting_depth >= ATTR_AGGREGATE_MAX_NESTING_DEPTH:
                 raise ValueError(
@@ -1045,18 +809,18 @@ class BytecodeWriter:
                 )
             for k, v in value.items():
                 self._ctx.intern_string(k)
-                self._number_attr_value(
+                yield self._number_attr_steps(
                     v, aggregate_nesting_depth=aggregate_nesting_depth + 1
                 )
         elif isinstance(value, list | tuple):
             for item in value:
-                self._number_attr_value(item)
+                yield self._number_attr_steps(item)
 
-    def _number_encoding_instance(self, value: EncodingInstance) -> None:
+    def _number_encoding_steps(self, value: EncodingInstance) -> Iterator[Any]:
         """Intern one static encoding and any nested encoding-valued params."""
         for param_name, param_value in value.params:
             self._ctx.intern_string(param_name)
-            self._number_attr_value(param_value)
+            yield self._number_attr_steps(param_value)
         self._ctx.intern_string(value.name)
         if value.alias:
             self._ctx.intern_string(value.alias)

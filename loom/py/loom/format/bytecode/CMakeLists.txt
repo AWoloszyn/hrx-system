@@ -17,6 +17,7 @@ iree_py_library(
     "encoding.py"
     "op_decls.py"
     "reader.py"
+    "symbol_references.py"
     "writer.py"
   DEPS
     loom::py::loom::core
@@ -32,11 +33,13 @@ iree_py_test(
   SRCS
     "encoding_test.py"
     "reader_test.py"
+    "symbol_references_test.py"
     "writer_test.py"
     "../../tools/pytest_style_runner.py"
   ARGS
     "loom.format.bytecode.encoding_test"
     "loom.format.bytecode.reader_test"
+    "loom.format.bytecode.symbol_references_test"
     "loom.format.bytecode.writer_test"
   DEPS
     loom::py::loom::format::bytecode::bytecode

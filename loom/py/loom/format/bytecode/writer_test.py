@@ -57,6 +57,7 @@ from loom.dsl import (
 )
 from loom.format.bytecode.encoding import decode_varint
 from loom.format.bytecode.reader import read_module
+from loom.format.bytecode.symbol_references import SYMBOL_INTERFACE_BITS
 from loom.format.bytecode.writer import (
     FORMAT_VERSION,
     LOCATION_MODE_FULL_LOCATIONS,
@@ -65,7 +66,6 @@ from loom.format.bytecode.writer import (
     SECTION_LOCATIONS,
     SECTION_SYMBOL_REFERENCES,
     SECTION_SYMBOLS,
-    SYMBOL_INTERFACE_BITS,
     NumberingContext,
     write_module,
 )

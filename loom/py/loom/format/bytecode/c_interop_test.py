@@ -14,6 +14,7 @@ import tempfile
 from dataclasses import replace
 from pathlib import Path
 
+from loom.builder import IRBuilder
 from loom.builtin_types import ALL_BUILTIN_TYPES
 from loom.dialect.cfg import ALL_CFG_OPS
 from loom.dialect.func import ALL_FUNC_OPS
@@ -35,22 +36,29 @@ from loom.format.text.parser import Parser
 from loom.format.text.printer import Printer
 from loom.ir import (
     BF16,
+    F32,
+    INDEX,
     Block,
     CanonicalAttrDict,
     DynamicDim,
     DynamicEncoding,
     EnumArrayAttr,
+    FunctionType,
     Module,
     ParameterizedAttr,
     ParameterizedAttrArray,
     ParameterizedType,
     PredicateListAttr,
+    Region,
     RegisterType,
+    ShapedType,
     SignedEnumSetAttr,
     SymbolName,
     SymbolNameArray,
     SymbolNameSet,
+    TypeKind,
 )
+from loom.verify import verify_module
 
 
 def _run_loom_format(arguments: list[object]) -> subprocess.CompletedProcess[str]:
@@ -662,6 +670,58 @@ def _test_predicate_attribute_interop(
         assert selected_text == canonical, (canonical, selected_text)
 
 
+def _test_shared_projected_graph(loom_format: Path, loom_link: Path) -> None:
+    builder = IRBuilder()
+    builder.register_ops(ALL_TEST_OPS)
+    extent = builder.value("extent", INDEX)
+    root = ShapedType(TypeKind.VECTOR, F32, (DynamicDim(extent.id),))
+    for _ in range(3):
+        root = FunctionType((root, root), (root,))
+    value = builder.value("payload", root)
+    projected = builder.module.clone_func_signature_args([extent.id, value.id])
+    regions = [Region(blocks=[Block(arg_ids=projected)]), Region(blocks=[Block()])]
+    builder.build(
+        "test.split_func",
+        func_args=[extent, value],
+        attributes={"callee": "shared"},
+        regions=regions,
+    )
+    for region in regions:
+        builder.set_insertion_block(region.blocks[0])
+        builder.build("test.yield")
+    verify_module(builder.module, ops=ALL_TEST_OPS).raise_if_errors()
+    printer = Printer()
+    printer.register_ops(ALL_TEST_OPS)
+    canonical = printer.print_module(builder.module)
+    full = _roundtrip_through_c(loom_format, builder.module)
+    assert printer.print_module(full) == canonical
+    with tempfile.TemporaryDirectory(prefix="loom-shared-graph-interop-") as directory:
+        source_path = Path(directory) / "source.loombc"
+        selected_path = Path(directory) / "selected.loombc"
+        source_path.write_bytes(write_module(builder.module, op_decls=ALL_TEST_OPS))
+        result = subprocess.run(
+            [
+                loom_link,
+                source_path,
+                "--root=shared",
+                "--to=bc",
+                f"--output={selected_path}",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        selected = read_module(selected_path.read_bytes())
+    verify_module(selected, ops=ALL_TEST_OPS).raise_if_errors()
+    text = printer.print_module(selected)
+    assert text == canonical
+    parser = Parser()
+    parser.register_ops(ALL_TEST_OPS)
+    parser.register_types(ALL_BUILTIN_TYPES)
+    assert printer.print_module(parser.parse(text, verify=True)) == canonical
+
+
 def main() -> None:
     if len(sys.argv) != 5:
         raise ValueError(
@@ -671,6 +731,7 @@ def main() -> None:
         Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
     )
     _test_scoped_type_interop(Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[4]))
+    _test_shared_projected_graph(Path(sys.argv[1]), Path(sys.argv[2]))
     source_module, register_type = _interop_module()
     loaded_module = _roundtrip_through_c(Path(sys.argv[1]), source_module)
     source_symbols = {symbol.name: symbol for symbol in source_module.symbols}

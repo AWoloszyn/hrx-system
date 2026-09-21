@@ -35,8 +35,8 @@ def test_region_arg_source_accepts_func_args_field() -> None:
     assert test_split_func.regions[0].arg_source == "args"
 
 
-@pytest.mark.parametrize(("depth", "roundtrip"), [(2048, False), (6, True)])
-def test_shared_projected_signature_graph(depth: int, roundtrip: bool) -> None:
+@pytest.mark.parametrize("depth", [6, 2048])
+def test_shared_projected_signature_graph(depth: int) -> None:
     builder = IRBuilder()
     builder.register_ops(ALL_TEST_OPS)
     extent = builder.value("extent", INDEX)
@@ -58,9 +58,8 @@ def test_shared_projected_signature_graph(depth: int, roundtrip: bool) -> None:
         builder.build("test.yield")
     module = builder.module
     verify_module(module, ops=ALL_TEST_OPS).raise_if_errors()
-    if roundtrip:
-        module = read_module(write_module(module, op_decls=ALL_TEST_OPS))
-        verify_module(module, ops=ALL_TEST_OPS).raise_if_errors()
+    module = read_module(write_module(module, op_decls=ALL_TEST_OPS))
+    verify_module(module, ops=ALL_TEST_OPS).raise_if_errors()
     for region in module.body.ops[0].regions:
         extent_id, payload_id = region.blocks[0].arg_ids
         root = module.values[payload_id].type
