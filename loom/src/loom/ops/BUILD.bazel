@@ -21,11 +21,13 @@ loom_cc_library(
     name = "op_defs",
     srcs = ["op_defs.c"],
     hdrs = [
+        "attribute_accessors.h",
         "builder_macros.h",
         "op_defs.h",
     ],
     deps = [
         ":format",
+        "//loom/src/loom/error:emitter",
         "//loom/src/loom/ir",
         "//loom/src/loom/util:adaptive_sort",
         "//loom/src/loom/util:bstring",

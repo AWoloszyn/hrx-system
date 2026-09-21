@@ -37,14 +37,20 @@ enum {
   LOOM_GLOBAL_CONSTANT_PREDICATES_ATTR_INDEX = 1,
   LOOM_GLOBAL_CONSTANT_INITIALIZER_ATTR_INDEX = 2,
 };
+#define loom_global_constant_symbol_field() \
+  ((loom_attr_field_t){LOOM_GLOBAL_CONSTANT_SYMBOL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_global_constant_symbol, LOOM_GLOBAL_CONSTANT_SYMBOL_ATTR_INDEX)
 #define loom_global_constant_rewrite_symbol(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_GLOBAL_CONSTANT_SYMBOL_ATTR_INDEX, (attribute))
+#define loom_global_constant_predicates_field() \
+  ((loom_attr_field_t){LOOM_GLOBAL_CONSTANT_PREDICATES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_global_constant_predicates, LOOM_GLOBAL_CONSTANT_PREDICATES_ATTR_INDEX)
 #define loom_global_constant_has_predicates(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_GLOBAL_CONSTANT_PREDICATES_ATTR_INDEX]))
 #define loom_global_constant_rewrite_predicates(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_GLOBAL_CONSTANT_PREDICATES_ATTR_INDEX, (attribute))
+#define loom_global_constant_initializer_field() \
+  ((loom_attr_field_t){LOOM_GLOBAL_CONSTANT_INITIALIZER_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ANY(loom_global_constant_initializer, LOOM_GLOBAL_CONSTANT_INITIALIZER_ATTR_INDEX)
 #define loom_global_constant_has_initializer(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_GLOBAL_CONSTANT_INITIALIZER_ATTR_INDEX]))
@@ -77,14 +83,20 @@ enum {
   LOOM_GLOBAL_VARIABLE_PREDICATES_ATTR_INDEX = 1,
   LOOM_GLOBAL_VARIABLE_INITIALIZER_ATTR_INDEX = 2,
 };
+#define loom_global_variable_symbol_field() \
+  ((loom_attr_field_t){LOOM_GLOBAL_VARIABLE_SYMBOL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_global_variable_symbol, LOOM_GLOBAL_VARIABLE_SYMBOL_ATTR_INDEX)
 #define loom_global_variable_rewrite_symbol(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_GLOBAL_VARIABLE_SYMBOL_ATTR_INDEX, (attribute))
+#define loom_global_variable_predicates_field() \
+  ((loom_attr_field_t){LOOM_GLOBAL_VARIABLE_PREDICATES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_global_variable_predicates, LOOM_GLOBAL_VARIABLE_PREDICATES_ATTR_INDEX)
 #define loom_global_variable_has_predicates(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_GLOBAL_VARIABLE_PREDICATES_ATTR_INDEX]))
 #define loom_global_variable_rewrite_predicates(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_GLOBAL_VARIABLE_PREDICATES_ATTR_INDEX, (attribute))
+#define loom_global_variable_initializer_field() \
+  ((loom_attr_field_t){LOOM_GLOBAL_VARIABLE_INITIALIZER_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ANY(loom_global_variable_initializer, LOOM_GLOBAL_VARIABLE_INITIALIZER_ATTR_INDEX)
 #define loom_global_variable_has_initializer(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_GLOBAL_VARIABLE_INITIALIZER_ATTR_INDEX]))
@@ -116,12 +128,18 @@ enum {
   LOOM_GLOBAL_RODATA_DEF_CONTENTS_ATTR_INDEX = 1,
   LOOM_GLOBAL_RODATA_DEF_ALIGNMENT_ATTR_INDEX = 2,
 };
+#define loom_global_rodata_def_symbol_field() \
+  ((loom_attr_field_t){LOOM_GLOBAL_RODATA_DEF_SYMBOL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_global_rodata_def_symbol, LOOM_GLOBAL_RODATA_DEF_SYMBOL_ATTR_INDEX)
 #define loom_global_rodata_def_rewrite_symbol(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_GLOBAL_RODATA_DEF_SYMBOL_ATTR_INDEX, (attribute))
+#define loom_global_rodata_def_contents_field() \
+  ((loom_attr_field_t){LOOM_GLOBAL_RODATA_DEF_CONTENTS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_BYTES(loom_global_rodata_def_contents, LOOM_GLOBAL_RODATA_DEF_CONTENTS_ATTR_INDEX)
 #define loom_global_rodata_def_rewrite_contents(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_GLOBAL_RODATA_DEF_CONTENTS_ATTR_INDEX, (attribute))
+#define loom_global_rodata_def_alignment_field() \
+  ((loom_attr_field_t){LOOM_GLOBAL_RODATA_DEF_ALIGNMENT_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_global_rodata_def_alignment, LOOM_GLOBAL_RODATA_DEF_ALIGNMENT_ATTR_INDEX)
 #define loom_global_rodata_def_has_alignment(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_GLOBAL_RODATA_DEF_ALIGNMENT_ATTR_INDEX]))
@@ -150,6 +168,8 @@ LOOM_DEFINE_VARIADIC_RESULTS(loom_global_load_result, 0)
 enum {
   LOOM_GLOBAL_LOAD_GLOBAL_ATTR_INDEX = 0,
 };
+#define loom_global_load_global_field() \
+  ((loom_attr_field_t){LOOM_GLOBAL_LOAD_GLOBAL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_global_load_global, LOOM_GLOBAL_LOAD_GLOBAL_ATTR_INDEX)
 #define loom_global_load_rewrite_global(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_GLOBAL_LOAD_GLOBAL_ATTR_INDEX, (attribute))
@@ -177,6 +197,8 @@ LOOM_DEFINE_OPERAND(loom_global_store_value, 0)
 enum {
   LOOM_GLOBAL_STORE_GLOBAL_ATTR_INDEX = 0,
 };
+#define loom_global_store_global_field() \
+  ((loom_attr_field_t){LOOM_GLOBAL_STORE_GLOBAL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_global_store_global, LOOM_GLOBAL_STORE_GLOBAL_ATTR_INDEX)
 #define loom_global_store_rewrite_global(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_GLOBAL_STORE_GLOBAL_ATTR_INDEX, (attribute))
@@ -196,6 +218,8 @@ LOOM_DEFINE_ISA(loom_global_rodata_decl_isa, LOOM_OP_GLOBAL_RODATA_DECL)
 enum {
   LOOM_GLOBAL_RODATA_DECL_SYMBOL_ATTR_INDEX = 0,
 };
+#define loom_global_rodata_decl_symbol_field() \
+  ((loom_attr_field_t){LOOM_GLOBAL_RODATA_DECL_SYMBOL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_global_rodata_decl_symbol, LOOM_GLOBAL_RODATA_DECL_SYMBOL_ATTR_INDEX)
 #define loom_global_rodata_decl_rewrite_symbol(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_GLOBAL_RODATA_DECL_SYMBOL_ATTR_INDEX, (attribute))

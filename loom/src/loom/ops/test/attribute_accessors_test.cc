@@ -71,6 +71,24 @@ TEST_F(AttributeAccessorTest, PresenceDistinguishesZeroAndEmptyFromAbsence) {
     EXPECT_EQ(loom_test_record_has_kind(op), present);
     EXPECT_EQ(loom_test_record_has_dict(op), present);
 
+    static const loom_attr_field_t fields[] = {
+        loom_test_record_kind_field(),
+        loom_test_record_dict_field(),
+    };
+    const loom_attr_kind_t expected_kinds[] = {LOOM_ATTR_ENUM, LOOM_ATTR_DICT};
+    for (size_t i = 0; i < IREE_ARRAYSIZE(fields); ++i) {
+      const auto attribute = loom_op_attr(op, fields[i]);
+      EXPECT_EQ(attribute.kind, present ? expected_kinds[i] : LOOM_ATTR_ABSENT);
+    }
+    const auto location =
+        loom_attr_field_diagnostic_ref(loom_test_record_kind_field());
+    EXPECT_EQ(location.kind, LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE);
+    const auto* descriptor =
+        &loom_op_vtable(module_, op)->attr_descriptors[location.index];
+    EXPECT_TRUE(iree_string_view_equal(loom_attr_descriptor_name(descriptor),
+                                       IREE_SV("kind")));
+    EXPECT_EQ(location.occurrence, 0);
+
     int evaluations = 0;
     EXPECT_EQ(loom_test_record_has_kind((++evaluations, op)), present);
     EXPECT_EQ(evaluations, 1);

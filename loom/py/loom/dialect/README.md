@@ -65,6 +65,14 @@ Mutation callers include `loom/rewrite/rewriter.h`; the generated macros evaluat
 each argument once and add no per-field function bodies. Construction continues
 to use the operation's builder.
 
+Shared validators and metadata tables use `<field>_field()` bindings. Each
+`loom_attr_field_t` occupies one byte and names a fixed stored slot. The shared
+`loom_op_attr(op, field)` reader preserves the full attribute payload and
+`loom_attr_field_diagnostic_ref(field)` identifies its source span. Handwritten
+builders initialize unfinalized storage through `loom_op_initialize_attr`; they
+retain responsibility for payload ownership and operation finalization. These
+shared operations avoid another function family for every declared field.
+
 The `format` order is part of the API exposed to generated Python and C builder
 surfaces. Reordering format fields changes the way generated builders ask for
 arguments even when the underlying IR fields are unchanged.

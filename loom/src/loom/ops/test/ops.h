@@ -435,6 +435,8 @@ LOOM_DEFINE_RESULT(loom_test_constant_result, 0)
 enum {
   LOOM_TEST_CONSTANT_VALUE_ATTR_INDEX = 0,
 };
+#define loom_test_constant_value_field() \
+  ((loom_attr_field_t){LOOM_TEST_CONSTANT_VALUE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ANY(loom_test_constant_value, LOOM_TEST_CONSTANT_VALUE_ATTR_INDEX)
 #define loom_test_constant_rewrite_value(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_CONSTANT_VALUE_ATTR_INDEX, (attribute))
@@ -460,6 +462,8 @@ LOOM_DEFINE_RESULT(loom_test_effectful_constant_result, 0)
 enum {
   LOOM_TEST_EFFECTFUL_CONSTANT_VALUE_ATTR_INDEX = 0,
 };
+#define loom_test_effectful_constant_value_field() \
+  ((loom_attr_field_t){LOOM_TEST_EFFECTFUL_CONSTANT_VALUE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ANY(loom_test_effectful_constant_value, LOOM_TEST_EFFECTFUL_CONSTANT_VALUE_ATTR_INDEX)
 #define loom_test_effectful_constant_rewrite_value(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_EFFECTFUL_CONSTANT_VALUE_ATTR_INDEX, (attribute))
@@ -508,6 +512,8 @@ LOOM_DEFINE_RESULT(loom_test_cmp_result, 0)
 enum {
   LOOM_TEST_CMP_PREDICATE_ATTR_INDEX = 0,
 };
+#define loom_test_cmp_predicate_field() \
+  ((loom_attr_field_t){LOOM_TEST_CMP_PREDICATE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_cmp_predicate, LOOM_TEST_CMP_PREDICATE_ATTR_INDEX, loom_test_cmp_predicate_t)
 #define loom_test_cmp_rewrite_predicate(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_CMP_PREDICATE_ATTR_INDEX, (attribute))
@@ -548,6 +554,8 @@ LOOM_DEFINE_RESULT(loom_test_update_result, 0)
 enum {
   LOOM_TEST_UPDATE_STATIC_OFFSETS_ATTR_INDEX = 0,
 };
+#define loom_test_update_static_offsets_field() \
+  ((loom_attr_field_t){LOOM_TEST_UPDATE_STATIC_OFFSETS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_test_update_static_offsets, LOOM_TEST_UPDATE_STATIC_OFFSETS_ATTR_INDEX)
 #define loom_test_update_rewrite_static_offsets(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_UPDATE_STATIC_OFFSETS_ATTR_INDEX, (attribute))
@@ -571,6 +579,8 @@ LOOM_DEFINE_VARIADIC_RESULTS(loom_test_invoke_results, 0)
 enum {
   LOOM_TEST_INVOKE_CALLEE_ATTR_INDEX = 0,
 };
+#define loom_test_invoke_callee_field() \
+  ((loom_attr_field_t){LOOM_TEST_INVOKE_CALLEE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_invoke_callee, LOOM_TEST_INVOKE_CALLEE_ATTR_INDEX)
 #define loom_test_invoke_rewrite_callee(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_INVOKE_CALLEE_ATTR_INDEX, (attribute))
@@ -597,6 +607,8 @@ LOOM_DEFINE_VARIADIC_RESULTS(loom_test_low_call_results, 0)
 enum {
   LOOM_TEST_LOW_CALL_CALLEE_ATTR_INDEX = 0,
 };
+#define loom_test_low_call_callee_field() \
+  ((loom_attr_field_t){LOOM_TEST_LOW_CALL_CALLEE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_low_call_callee, LOOM_TEST_LOW_CALL_CALLEE_ATTR_INDEX)
 #define loom_test_low_call_rewrite_callee(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_LOW_CALL_CALLEE_ATTR_INDEX, (attribute))
@@ -623,6 +635,8 @@ LOOM_DEFINE_VARIADIC_RESULTS(loom_test_low_invoke_results, 0)
 enum {
   LOOM_TEST_LOW_INVOKE_CALLEE_ATTR_INDEX = 0,
 };
+#define loom_test_low_invoke_callee_field() \
+  ((loom_attr_field_t){LOOM_TEST_LOW_INVOKE_CALLEE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_low_invoke_callee, LOOM_TEST_LOW_INVOKE_CALLEE_ATTR_INDEX)
 #define loom_test_low_invoke_rewrite_callee(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_LOW_INVOKE_CALLEE_ATTR_INDEX, (attribute))
@@ -650,6 +664,8 @@ LOOM_DEFINE_RESULT(loom_test_slice_result, 0)
 enum {
   LOOM_TEST_SLICE_STATIC_OFFSETS_ATTR_INDEX = 0,
 };
+#define loom_test_slice_static_offsets_field() \
+  ((loom_attr_field_t){LOOM_TEST_SLICE_STATIC_OFFSETS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_test_slice_static_offsets, LOOM_TEST_SLICE_STATIC_OFFSETS_ATTR_INDEX)
 #define loom_test_slice_rewrite_static_offsets(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_SLICE_STATIC_OFFSETS_ATTR_INDEX, (attribute))
@@ -790,19 +806,27 @@ enum {
   LOOM_TEST_FUNC_CC_ATTR_INDEX = 2,
   LOOM_TEST_FUNC_PREDICATES_ATTR_INDEX = 3,
 };
+#define loom_test_func_callee_field() \
+  ((loom_attr_field_t){LOOM_TEST_FUNC_CALLEE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_func_callee, LOOM_TEST_FUNC_CALLEE_ATTR_INDEX)
 #define loom_test_func_rewrite_callee(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_FUNC_CALLEE_ATTR_INDEX, (attribute))
+#define loom_test_func_visibility_field() \
+  ((loom_attr_field_t){LOOM_TEST_FUNC_VISIBILITY_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_func_visibility, LOOM_TEST_FUNC_VISIBILITY_ATTR_INDEX, loom_test_visibility_t)
 #define loom_test_func_has_visibility(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_FUNC_VISIBILITY_ATTR_INDEX]))
 #define loom_test_func_rewrite_visibility(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_FUNC_VISIBILITY_ATTR_INDEX, (attribute))
+#define loom_test_func_cc_field() \
+  ((loom_attr_field_t){LOOM_TEST_FUNC_CC_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_func_cc, LOOM_TEST_FUNC_CC_ATTR_INDEX, loom_test_cc_t)
 #define loom_test_func_has_cc(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_FUNC_CC_ATTR_INDEX]))
 #define loom_test_func_rewrite_cc(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_FUNC_CC_ATTR_INDEX, (attribute))
+#define loom_test_func_predicates_field() \
+  ((loom_attr_field_t){LOOM_TEST_FUNC_PREDICATES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_test_func_predicates, LOOM_TEST_FUNC_PREDICATES_ATTR_INDEX)
 #define loom_test_func_has_predicates(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_FUNC_PREDICATES_ATTR_INDEX]))
@@ -844,14 +868,20 @@ enum {
   LOOM_TEST_SPLIT_FUNC_VISIBILITY_ATTR_INDEX = 1,
   LOOM_TEST_SPLIT_FUNC_CC_ATTR_INDEX = 2,
 };
+#define loom_test_split_func_callee_field() \
+  ((loom_attr_field_t){LOOM_TEST_SPLIT_FUNC_CALLEE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_split_func_callee, LOOM_TEST_SPLIT_FUNC_CALLEE_ATTR_INDEX)
 #define loom_test_split_func_rewrite_callee(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_SPLIT_FUNC_CALLEE_ATTR_INDEX, (attribute))
+#define loom_test_split_func_visibility_field() \
+  ((loom_attr_field_t){LOOM_TEST_SPLIT_FUNC_VISIBILITY_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_split_func_visibility, LOOM_TEST_SPLIT_FUNC_VISIBILITY_ATTR_INDEX, loom_test_visibility_t)
 #define loom_test_split_func_has_visibility(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_SPLIT_FUNC_VISIBILITY_ATTR_INDEX]))
 #define loom_test_split_func_rewrite_visibility(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_SPLIT_FUNC_VISIBILITY_ATTR_INDEX, (attribute))
+#define loom_test_split_func_cc_field() \
+  ((loom_attr_field_t){LOOM_TEST_SPLIT_FUNC_CC_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_split_func_cc, LOOM_TEST_SPLIT_FUNC_CC_ATTR_INDEX, loom_test_cc_t)
 #define loom_test_split_func_has_cc(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_SPLIT_FUNC_CC_ATTR_INDEX]))
@@ -885,14 +915,20 @@ enum {
   LOOM_TEST_DECL_VISIBILITY_ATTR_INDEX = 1,
   LOOM_TEST_DECL_CC_ATTR_INDEX = 2,
 };
+#define loom_test_decl_callee_field() \
+  ((loom_attr_field_t){LOOM_TEST_DECL_CALLEE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_decl_callee, LOOM_TEST_DECL_CALLEE_ATTR_INDEX)
 #define loom_test_decl_rewrite_callee(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_DECL_CALLEE_ATTR_INDEX, (attribute))
+#define loom_test_decl_visibility_field() \
+  ((loom_attr_field_t){LOOM_TEST_DECL_VISIBILITY_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_decl_visibility, LOOM_TEST_DECL_VISIBILITY_ATTR_INDEX, loom_test_visibility_t)
 #define loom_test_decl_has_visibility(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_DECL_VISIBILITY_ATTR_INDEX]))
 #define loom_test_decl_rewrite_visibility(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_DECL_VISIBILITY_ATTR_INDEX, (attribute))
+#define loom_test_decl_cc_field() \
+  ((loom_attr_field_t){LOOM_TEST_DECL_CC_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_decl_cc, LOOM_TEST_DECL_CC_ATTR_INDEX, loom_test_cc_t)
 #define loom_test_decl_has_cc(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_DECL_CC_ATTR_INDEX]))
@@ -926,14 +962,20 @@ enum {
   LOOM_TEST_RECORD_KIND_ATTR_INDEX = 1,
   LOOM_TEST_RECORD_DICT_ATTR_INDEX = 2,
 };
+#define loom_test_record_symbol_field() \
+  ((loom_attr_field_t){LOOM_TEST_RECORD_SYMBOL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_record_symbol, LOOM_TEST_RECORD_SYMBOL_ATTR_INDEX)
 #define loom_test_record_rewrite_symbol(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_RECORD_SYMBOL_ATTR_INDEX, (attribute))
+#define loom_test_record_kind_field() \
+  ((loom_attr_field_t){LOOM_TEST_RECORD_KIND_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_record_kind, LOOM_TEST_RECORD_KIND_ATTR_INDEX, loom_test_record_kind_t)
 #define loom_test_record_has_kind(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_RECORD_KIND_ATTR_INDEX]))
 #define loom_test_record_rewrite_kind(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_RECORD_KIND_ATTR_INDEX, (attribute))
+#define loom_test_record_dict_field() \
+  ((loom_attr_field_t){LOOM_TEST_RECORD_DICT_ATTR_INDEX})
 LOOM_DEFINE_ATTR_DICT(loom_test_record_dict, LOOM_TEST_RECORD_DICT_ATTR_INDEX)
 #define loom_test_record_has_dict(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_RECORD_DICT_ATTR_INDEX]))
@@ -961,6 +1003,8 @@ LOOM_DEFINE_RESULT(loom_test_attrs_result, 0)
 enum {
   LOOM_TEST_ATTRS_DICT_ATTR_INDEX = 0,
 };
+#define loom_test_attrs_dict_field() \
+  ((loom_attr_field_t){LOOM_TEST_ATTRS_DICT_ATTR_INDEX})
 LOOM_DEFINE_ATTR_DICT(loom_test_attrs_dict, LOOM_TEST_ATTRS_DICT_ATTR_INDEX)
 #define loom_test_attrs_has_dict(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_ATTRS_DICT_ATTR_INDEX]))
@@ -988,6 +1032,8 @@ LOOM_DEFINE_RESULT(loom_test_operand_dict_result, 0)
 enum {
   LOOM_TEST_OPERAND_DICT_PARAM_NAMES_ATTR_INDEX = 0,
 };
+#define loom_test_operand_dict_param_names_field() \
+  ((loom_attr_field_t){LOOM_TEST_OPERAND_DICT_PARAM_NAMES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_DICT(loom_test_operand_dict_param_names, LOOM_TEST_OPERAND_DICT_PARAM_NAMES_ATTR_INDEX)
 #define loom_test_operand_dict_has_param_names(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_OPERAND_DICT_PARAM_NAMES_ATTR_INDEX]))
@@ -1011,6 +1057,8 @@ LOOM_DEFINE_VARIADIC_RESULTS(loom_test_attr_table_results, 0)
 enum {
   LOOM_TEST_ATTR_TABLE_CASE_KEYS_ATTR_INDEX = 0,
 };
+#define loom_test_attr_table_case_keys_field() \
+  ((loom_attr_field_t){LOOM_TEST_ATTR_TABLE_CASE_KEYS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_test_attr_table_case_keys, LOOM_TEST_ATTR_TABLE_CASE_KEYS_ATTR_INDEX)
 #define loom_test_attr_table_rewrite_case_keys(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_ATTR_TABLE_CASE_KEYS_ATTR_INDEX, (attribute))
@@ -1042,6 +1090,8 @@ LOOM_DEFINE_OPERAND(loom_test_region_table_selector, 0)
 enum {
   LOOM_TEST_REGION_TABLE_CASE_KEYS_ATTR_INDEX = 0,
 };
+#define loom_test_region_table_case_keys_field() \
+  ((loom_attr_field_t){LOOM_TEST_REGION_TABLE_CASE_KEYS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_test_region_table_case_keys, LOOM_TEST_REGION_TABLE_CASE_KEYS_ATTR_INDEX)
 #define loom_test_region_table_rewrite_case_keys(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_REGION_TABLE_CASE_KEYS_ATTR_INDEX, (attribute))
@@ -1078,6 +1128,8 @@ LOOM_DEFINE_VARIADIC_RESULTS(loom_test_assume_results, 0)
 enum {
   LOOM_TEST_ASSUME_PREDICATES_ATTR_INDEX = 0,
 };
+#define loom_test_assume_predicates_field() \
+  ((loom_attr_field_t){LOOM_TEST_ASSUME_PREDICATES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_test_assume_predicates, LOOM_TEST_ASSUME_PREDICATES_ATTR_INDEX)
 #define loom_test_assume_rewrite_predicates(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_ASSUME_PREDICATES_ATTR_INDEX, (attribute))
@@ -1189,6 +1241,8 @@ LOOM_DEFINE_RESULT(loom_test_counter_result, 0)
 enum {
   LOOM_TEST_COUNTER_VALUE_ATTR_INDEX = 0,
 };
+#define loom_test_counter_value_field() \
+  ((loom_attr_field_t){LOOM_TEST_COUNTER_VALUE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_counter_value, LOOM_TEST_COUNTER_VALUE_ATTR_INDEX)
 #define loom_test_counter_rewrite_value(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_COUNTER_VALUE_ATTR_INDEX, (attribute))
@@ -1208,6 +1262,8 @@ LOOM_DEFINE_RESULT(loom_test_dim_result, 0)
 enum {
   LOOM_TEST_DIM_DIM_INDEX_ATTR_INDEX = 0,
 };
+#define loom_test_dim_dim_index_field() \
+  ((loom_attr_field_t){LOOM_TEST_DIM_DIM_INDEX_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_dim_dim_index, LOOM_TEST_DIM_DIM_INDEX_ATTR_INDEX)
 #define loom_test_dim_rewrite_dim_index(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_DIM_DIM_INDEX_ATTR_INDEX, (attribute))
@@ -1516,6 +1572,8 @@ LOOM_DEFINE_RESULT(loom_test_fact_encoding_layout_stride_hi_result, 0)
 enum {
   LOOM_TEST_FACT_ENCODING_LAYOUT_STRIDE_HI_AXIS_ATTR_INDEX = 0,
 };
+#define loom_test_fact_encoding_layout_stride_hi_axis_field() \
+  ((loom_attr_field_t){LOOM_TEST_FACT_ENCODING_LAYOUT_STRIDE_HI_AXIS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_fact_encoding_layout_stride_hi_axis, LOOM_TEST_FACT_ENCODING_LAYOUT_STRIDE_HI_AXIS_ATTR_INDEX)
 #define loom_test_fact_encoding_layout_stride_hi_rewrite_axis(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_FACT_ENCODING_LAYOUT_STRIDE_HI_AXIS_ATTR_INDEX, (attribute))
@@ -1540,6 +1598,8 @@ LOOM_DEFINE_RESULT(loom_test_fact_encoding_operand_field_result, 0)
 enum {
   LOOM_TEST_FACT_ENCODING_OPERAND_FIELD_FIELD_ATTR_INDEX = 0,
 };
+#define loom_test_fact_encoding_operand_field_field_field() \
+  ((loom_attr_field_t){LOOM_TEST_FACT_ENCODING_OPERAND_FIELD_FIELD_ATTR_INDEX})
 LOOM_DEFINE_ATTR_STRING(loom_test_fact_encoding_operand_field_field, LOOM_TEST_FACT_ENCODING_OPERAND_FIELD_FIELD_ATTR_INDEX)
 #define loom_test_fact_encoding_operand_field_rewrite_field(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_FACT_ENCODING_OPERAND_FIELD_FIELD_ATTR_INDEX, (attribute))
@@ -1982,6 +2042,8 @@ LOOM_DEFINE_RESULT(loom_test_clause_constant_result, 0)
 enum {
   LOOM_TEST_CLAUSE_CONSTANT_VALUE_ATTR_INDEX = 0,
 };
+#define loom_test_clause_constant_value_field() \
+  ((loom_attr_field_t){LOOM_TEST_CLAUSE_CONSTANT_VALUE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ANY(loom_test_clause_constant_value, LOOM_TEST_CLAUSE_CONSTANT_VALUE_ATTR_INDEX)
 #define loom_test_clause_constant_rewrite_value(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_CLAUSE_CONSTANT_VALUE_ATTR_INDEX, (attribute))
@@ -2023,6 +2085,8 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_test_shape_dims, 1)
 enum {
   LOOM_TEST_SHAPE_STATIC_DIMS_ATTR_INDEX = 0,
 };
+#define loom_test_shape_static_dims_field() \
+  ((loom_attr_field_t){LOOM_TEST_SHAPE_STATIC_DIMS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_test_shape_static_dims, LOOM_TEST_SHAPE_STATIC_DIMS_ATTR_INDEX)
 #define loom_test_shape_rewrite_static_dims(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_SHAPE_STATIC_DIMS_ATTR_INDEX, (attribute))
@@ -2073,157 +2137,221 @@ enum {
   LOOM_TEST_TARGET_CONTRACT_SET_KEY_ATTR_INDEX = 30,
   LOOM_TEST_TARGET_CONTRACT_FEATURE_BITS_ATTR_INDEX = 31,
 };
+#define loom_test_target_symbol_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_SYMBOL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_target_symbol, LOOM_TEST_TARGET_SYMBOL_ATTR_INDEX)
 #define loom_test_target_rewrite_symbol(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_SYMBOL_ATTR_INDEX, (attribute))
+#define loom_test_target_kind_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_KIND_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_target_kind, LOOM_TEST_TARGET_KIND_ATTR_INDEX, loom_test_target_kind_t)
 #define loom_test_target_rewrite_kind(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_KIND_ATTR_INDEX, (attribute))
+#define loom_test_target_codegen_format_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_CODEGEN_FORMAT_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_target_codegen_format, LOOM_TEST_TARGET_CODEGEN_FORMAT_ATTR_INDEX, loom_target_codegen_format_t)
 #define loom_test_target_has_codegen_format(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_CODEGEN_FORMAT_ATTR_INDEX]))
 #define loom_test_target_rewrite_codegen_format(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_CODEGEN_FORMAT_ATTR_INDEX, (attribute))
+#define loom_test_target_artifact_format_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_ARTIFACT_FORMAT_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_target_artifact_format, LOOM_TEST_TARGET_ARTIFACT_FORMAT_ATTR_INDEX, loom_target_artifact_format_t)
 #define loom_test_target_has_artifact_format(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_ARTIFACT_FORMAT_ATTR_INDEX]))
 #define loom_test_target_rewrite_artifact_format(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_ARTIFACT_FORMAT_ATTR_INDEX, (attribute))
+#define loom_test_target_default_pointer_bitwidth_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_DEFAULT_POINTER_BITWIDTH_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_default_pointer_bitwidth, LOOM_TEST_TARGET_DEFAULT_POINTER_BITWIDTH_ATTR_INDEX)
 #define loom_test_target_has_default_pointer_bitwidth(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_DEFAULT_POINTER_BITWIDTH_ATTR_INDEX]))
 #define loom_test_target_rewrite_default_pointer_bitwidth(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_DEFAULT_POINTER_BITWIDTH_ATTR_INDEX, (attribute))
+#define loom_test_target_index_bitwidth_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_INDEX_BITWIDTH_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_index_bitwidth, LOOM_TEST_TARGET_INDEX_BITWIDTH_ATTR_INDEX)
 #define loom_test_target_has_index_bitwidth(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_INDEX_BITWIDTH_ATTR_INDEX]))
 #define loom_test_target_rewrite_index_bitwidth(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_INDEX_BITWIDTH_ATTR_INDEX, (attribute))
+#define loom_test_target_offset_bitwidth_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_OFFSET_BITWIDTH_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_offset_bitwidth, LOOM_TEST_TARGET_OFFSET_BITWIDTH_ATTR_INDEX)
 #define loom_test_target_has_offset_bitwidth(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_OFFSET_BITWIDTH_ATTR_INDEX]))
 #define loom_test_target_rewrite_offset_bitwidth(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_OFFSET_BITWIDTH_ATTR_INDEX, (attribute))
+#define loom_test_target_max_workgroup_size_x_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MAX_WORKGROUP_SIZE_X_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_workgroup_size_x, LOOM_TEST_TARGET_MAX_WORKGROUP_SIZE_X_ATTR_INDEX)
 #define loom_test_target_has_max_workgroup_size_x(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MAX_WORKGROUP_SIZE_X_ATTR_INDEX]))
 #define loom_test_target_rewrite_max_workgroup_size_x(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MAX_WORKGROUP_SIZE_X_ATTR_INDEX, (attribute))
+#define loom_test_target_max_workgroup_size_y_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MAX_WORKGROUP_SIZE_Y_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_workgroup_size_y, LOOM_TEST_TARGET_MAX_WORKGROUP_SIZE_Y_ATTR_INDEX)
 #define loom_test_target_has_max_workgroup_size_y(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MAX_WORKGROUP_SIZE_Y_ATTR_INDEX]))
 #define loom_test_target_rewrite_max_workgroup_size_y(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MAX_WORKGROUP_SIZE_Y_ATTR_INDEX, (attribute))
+#define loom_test_target_max_workgroup_size_z_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MAX_WORKGROUP_SIZE_Z_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_workgroup_size_z, LOOM_TEST_TARGET_MAX_WORKGROUP_SIZE_Z_ATTR_INDEX)
 #define loom_test_target_has_max_workgroup_size_z(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MAX_WORKGROUP_SIZE_Z_ATTR_INDEX]))
 #define loom_test_target_rewrite_max_workgroup_size_z(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MAX_WORKGROUP_SIZE_Z_ATTR_INDEX, (attribute))
+#define loom_test_target_max_flat_workgroup_size_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MAX_FLAT_WORKGROUP_SIZE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_flat_workgroup_size, LOOM_TEST_TARGET_MAX_FLAT_WORKGROUP_SIZE_ATTR_INDEX)
 #define loom_test_target_has_max_flat_workgroup_size(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MAX_FLAT_WORKGROUP_SIZE_ATTR_INDEX]))
 #define loom_test_target_rewrite_max_flat_workgroup_size(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MAX_FLAT_WORKGROUP_SIZE_ATTR_INDEX, (attribute))
+#define loom_test_target_max_workgroup_storage_bytes_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MAX_WORKGROUP_STORAGE_BYTES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_workgroup_storage_bytes, LOOM_TEST_TARGET_MAX_WORKGROUP_STORAGE_BYTES_ATTR_INDEX)
 #define loom_test_target_has_max_workgroup_storage_bytes(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MAX_WORKGROUP_STORAGE_BYTES_ATTR_INDEX]))
 #define loom_test_target_rewrite_max_workgroup_storage_bytes(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MAX_WORKGROUP_STORAGE_BYTES_ATTR_INDEX, (attribute))
+#define loom_test_target_subgroup_size_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_SUBGROUP_SIZE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_subgroup_size, LOOM_TEST_TARGET_SUBGROUP_SIZE_ATTR_INDEX)
 #define loom_test_target_has_subgroup_size(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_SUBGROUP_SIZE_ATTR_INDEX]))
 #define loom_test_target_rewrite_subgroup_size(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_SUBGROUP_SIZE_ATTR_INDEX, (attribute))
+#define loom_test_target_max_grid_size_x_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MAX_GRID_SIZE_X_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_grid_size_x, LOOM_TEST_TARGET_MAX_GRID_SIZE_X_ATTR_INDEX)
 #define loom_test_target_has_max_grid_size_x(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MAX_GRID_SIZE_X_ATTR_INDEX]))
 #define loom_test_target_rewrite_max_grid_size_x(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MAX_GRID_SIZE_X_ATTR_INDEX, (attribute))
+#define loom_test_target_max_grid_size_y_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MAX_GRID_SIZE_Y_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_grid_size_y, LOOM_TEST_TARGET_MAX_GRID_SIZE_Y_ATTR_INDEX)
 #define loom_test_target_has_max_grid_size_y(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MAX_GRID_SIZE_Y_ATTR_INDEX]))
 #define loom_test_target_rewrite_max_grid_size_y(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MAX_GRID_SIZE_Y_ATTR_INDEX, (attribute))
+#define loom_test_target_max_grid_size_z_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MAX_GRID_SIZE_Z_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_grid_size_z, LOOM_TEST_TARGET_MAX_GRID_SIZE_Z_ATTR_INDEX)
 #define loom_test_target_has_max_grid_size_z(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MAX_GRID_SIZE_Z_ATTR_INDEX]))
 #define loom_test_target_rewrite_max_grid_size_z(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MAX_GRID_SIZE_Z_ATTR_INDEX, (attribute))
+#define loom_test_target_max_flat_grid_size_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MAX_FLAT_GRID_SIZE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_flat_grid_size, LOOM_TEST_TARGET_MAX_FLAT_GRID_SIZE_ATTR_INDEX)
 #define loom_test_target_has_max_flat_grid_size(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MAX_FLAT_GRID_SIZE_ATTR_INDEX]))
 #define loom_test_target_rewrite_max_flat_grid_size(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MAX_FLAT_GRID_SIZE_ATTR_INDEX, (attribute))
+#define loom_test_target_max_workgroup_count_x_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MAX_WORKGROUP_COUNT_X_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_workgroup_count_x, LOOM_TEST_TARGET_MAX_WORKGROUP_COUNT_X_ATTR_INDEX)
 #define loom_test_target_has_max_workgroup_count_x(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MAX_WORKGROUP_COUNT_X_ATTR_INDEX]))
 #define loom_test_target_rewrite_max_workgroup_count_x(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MAX_WORKGROUP_COUNT_X_ATTR_INDEX, (attribute))
+#define loom_test_target_max_workgroup_count_y_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MAX_WORKGROUP_COUNT_Y_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_workgroup_count_y, LOOM_TEST_TARGET_MAX_WORKGROUP_COUNT_Y_ATTR_INDEX)
 #define loom_test_target_has_max_workgroup_count_y(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MAX_WORKGROUP_COUNT_Y_ATTR_INDEX]))
 #define loom_test_target_rewrite_max_workgroup_count_y(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MAX_WORKGROUP_COUNT_Y_ATTR_INDEX, (attribute))
+#define loom_test_target_max_workgroup_count_z_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MAX_WORKGROUP_COUNT_Z_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_workgroup_count_z, LOOM_TEST_TARGET_MAX_WORKGROUP_COUNT_Z_ATTR_INDEX)
 #define loom_test_target_has_max_workgroup_count_z(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MAX_WORKGROUP_COUNT_Z_ATTR_INDEX]))
 #define loom_test_target_rewrite_max_workgroup_count_z(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MAX_WORKGROUP_COUNT_Z_ATTR_INDEX, (attribute))
+#define loom_test_target_memory_space_generic_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MEMORY_SPACE_GENERIC_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_memory_space_generic, LOOM_TEST_TARGET_MEMORY_SPACE_GENERIC_ATTR_INDEX)
 #define loom_test_target_has_memory_space_generic(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MEMORY_SPACE_GENERIC_ATTR_INDEX]))
 #define loom_test_target_rewrite_memory_space_generic(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MEMORY_SPACE_GENERIC_ATTR_INDEX, (attribute))
+#define loom_test_target_memory_space_global_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MEMORY_SPACE_GLOBAL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_memory_space_global, LOOM_TEST_TARGET_MEMORY_SPACE_GLOBAL_ATTR_INDEX)
 #define loom_test_target_has_memory_space_global(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MEMORY_SPACE_GLOBAL_ATTR_INDEX]))
 #define loom_test_target_rewrite_memory_space_global(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MEMORY_SPACE_GLOBAL_ATTR_INDEX, (attribute))
+#define loom_test_target_memory_space_workgroup_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MEMORY_SPACE_WORKGROUP_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_memory_space_workgroup, LOOM_TEST_TARGET_MEMORY_SPACE_WORKGROUP_ATTR_INDEX)
 #define loom_test_target_has_memory_space_workgroup(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MEMORY_SPACE_WORKGROUP_ATTR_INDEX]))
 #define loom_test_target_rewrite_memory_space_workgroup(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MEMORY_SPACE_WORKGROUP_ATTR_INDEX, (attribute))
+#define loom_test_target_memory_space_constant_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MEMORY_SPACE_CONSTANT_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_memory_space_constant, LOOM_TEST_TARGET_MEMORY_SPACE_CONSTANT_ATTR_INDEX)
 #define loom_test_target_has_memory_space_constant(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MEMORY_SPACE_CONSTANT_ATTR_INDEX]))
 #define loom_test_target_rewrite_memory_space_constant(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MEMORY_SPACE_CONSTANT_ATTR_INDEX, (attribute))
+#define loom_test_target_memory_space_private_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MEMORY_SPACE_PRIVATE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_memory_space_private, LOOM_TEST_TARGET_MEMORY_SPACE_PRIVATE_ATTR_INDEX)
 #define loom_test_target_has_memory_space_private(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MEMORY_SPACE_PRIVATE_ATTR_INDEX]))
 #define loom_test_target_rewrite_memory_space_private(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MEMORY_SPACE_PRIVATE_ATTR_INDEX, (attribute))
+#define loom_test_target_memory_space_host_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MEMORY_SPACE_HOST_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_memory_space_host, LOOM_TEST_TARGET_MEMORY_SPACE_HOST_ATTR_INDEX)
 #define loom_test_target_has_memory_space_host(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MEMORY_SPACE_HOST_ATTR_INDEX]))
 #define loom_test_target_rewrite_memory_space_host(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MEMORY_SPACE_HOST_ATTR_INDEX, (attribute))
+#define loom_test_target_memory_space_descriptor_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_MEMORY_SPACE_DESCRIPTOR_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_memory_space_descriptor, LOOM_TEST_TARGET_MEMORY_SPACE_DESCRIPTOR_ATTR_INDEX)
 #define loom_test_target_has_memory_space_descriptor(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_MEMORY_SPACE_DESCRIPTOR_ATTR_INDEX]))
 #define loom_test_target_rewrite_memory_space_descriptor(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_MEMORY_SPACE_DESCRIPTOR_ATTR_INDEX, (attribute))
+#define loom_test_target_abi_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_ABI_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_target_abi, LOOM_TEST_TARGET_ABI_ATTR_INDEX, loom_target_abi_kind_t)
 #define loom_test_target_has_abi(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_ABI_ATTR_INDEX]))
 #define loom_test_target_rewrite_abi(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_ABI_ATTR_INDEX, (attribute))
+#define loom_test_target_export_symbol_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_EXPORT_SYMBOL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_STRING(loom_test_target_export_symbol, LOOM_TEST_TARGET_EXPORT_SYMBOL_ATTR_INDEX)
 #define loom_test_target_has_export_symbol(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_EXPORT_SYMBOL_ATTR_INDEX]))
 #define loom_test_target_rewrite_export_symbol(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_EXPORT_SYMBOL_ATTR_INDEX, (attribute))
+#define loom_test_target_linkage_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_LINKAGE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_target_linkage, LOOM_TEST_TARGET_LINKAGE_ATTR_INDEX, loom_target_linkage_t)
 #define loom_test_target_has_linkage(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_LINKAGE_ATTR_INDEX]))
 #define loom_test_target_rewrite_linkage(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_LINKAGE_ATTR_INDEX, (attribute))
+#define loom_test_target_contract_set_key_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_CONTRACT_SET_KEY_ATTR_INDEX})
 LOOM_DEFINE_ATTR_STRING(loom_test_target_contract_set_key, LOOM_TEST_TARGET_CONTRACT_SET_KEY_ATTR_INDEX)
 #define loom_test_target_has_contract_set_key(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_CONTRACT_SET_KEY_ATTR_INDEX]))
 #define loom_test_target_rewrite_contract_set_key(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TARGET_CONTRACT_SET_KEY_ATTR_INDEX, (attribute))
+#define loom_test_target_contract_feature_bits_field() \
+  ((loom_attr_field_t){LOOM_TEST_TARGET_CONTRACT_FEATURE_BITS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_test_target_contract_feature_bits, LOOM_TEST_TARGET_CONTRACT_FEATURE_BITS_ATTR_INDEX)
 #define loom_test_target_has_contract_feature_bits(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_TARGET_CONTRACT_FEATURE_BITS_ATTR_INDEX]))
@@ -2454,6 +2582,8 @@ LOOM_DEFINE_ISA(loom_test_template_param_symbol_isa, LOOM_OP_TEST_TEMPLATE_PARAM
 enum {
   LOOM_TEST_TEMPLATE_PARAM_SYMBOL_TARGET_ATTR_INDEX = 0,
 };
+#define loom_test_template_param_symbol_target_field() \
+  ((loom_attr_field_t){LOOM_TEST_TEMPLATE_PARAM_SYMBOL_TARGET_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_template_param_symbol_target, LOOM_TEST_TEMPLATE_PARAM_SYMBOL_TARGET_ATTR_INDEX)
 #define loom_test_template_param_symbol_rewrite_target(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TEMPLATE_PARAM_SYMBOL_TARGET_ATTR_INDEX, (attribute))
@@ -2469,6 +2599,8 @@ LOOM_DEFINE_ISA(loom_test_template_param_symbol_flags_isa, LOOM_OP_TEST_TEMPLATE
 enum {
   LOOM_TEST_TEMPLATE_PARAM_SYMBOL_FLAGS_TARGET_ATTR_INDEX = 0,
 };
+#define loom_test_template_param_symbol_flags_target_field() \
+  ((loom_attr_field_t){LOOM_TEST_TEMPLATE_PARAM_SYMBOL_FLAGS_TARGET_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_template_param_symbol_flags_target, LOOM_TEST_TEMPLATE_PARAM_SYMBOL_FLAGS_TARGET_ATTR_INDEX)
 #define loom_test_template_param_symbol_flags_rewrite_target(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_TEMPLATE_PARAM_SYMBOL_FLAGS_TARGET_ATTR_INDEX, (attribute))
@@ -2539,14 +2671,20 @@ enum {
   LOOM_TEST_ENUM_ARRAY_ATTRS_OPTIONAL_VALUES_ATTR_INDEX = 1,
   LOOM_TEST_ENUM_ARRAY_ATTRS_DICT_ATTR_INDEX = 2,
 };
+#define loom_test_enum_array_attrs_required_values_field() \
+  ((loom_attr_field_t){LOOM_TEST_ENUM_ARRAY_ATTRS_REQUIRED_VALUES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_ARRAY(loom_test_enum_array_attrs_required_values, LOOM_TEST_ENUM_ARRAY_ATTRS_REQUIRED_VALUES_ATTR_INDEX)
 #define loom_test_enum_array_attrs_rewrite_required_values(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_ENUM_ARRAY_ATTRS_REQUIRED_VALUES_ATTR_INDEX, (attribute))
+#define loom_test_enum_array_attrs_optional_values_field() \
+  ((loom_attr_field_t){LOOM_TEST_ENUM_ARRAY_ATTRS_OPTIONAL_VALUES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_ARRAY(loom_test_enum_array_attrs_optional_values, LOOM_TEST_ENUM_ARRAY_ATTRS_OPTIONAL_VALUES_ATTR_INDEX)
 #define loom_test_enum_array_attrs_has_optional_values(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_ENUM_ARRAY_ATTRS_OPTIONAL_VALUES_ATTR_INDEX]))
 #define loom_test_enum_array_attrs_rewrite_optional_values(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_ENUM_ARRAY_ATTRS_OPTIONAL_VALUES_ATTR_INDEX, (attribute))
+#define loom_test_enum_array_attrs_dict_field() \
+  ((loom_attr_field_t){LOOM_TEST_ENUM_ARRAY_ATTRS_DICT_ATTR_INDEX})
 LOOM_DEFINE_ATTR_DICT(loom_test_enum_array_attrs_dict, LOOM_TEST_ENUM_ARRAY_ATTRS_DICT_ATTR_INDEX)
 #define loom_test_enum_array_attrs_has_dict(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_ENUM_ARRAY_ATTRS_DICT_ATTR_INDEX]))
@@ -2574,14 +2712,20 @@ enum {
   LOOM_TEST_SIGNED_ENUM_SET_ATTRS_OPTIONAL_FEATURES_ATTR_INDEX = 1,
   LOOM_TEST_SIGNED_ENUM_SET_ATTRS_DICT_ATTR_INDEX = 2,
 };
+#define loom_test_signed_enum_set_attrs_required_features_field() \
+  ((loom_attr_field_t){LOOM_TEST_SIGNED_ENUM_SET_ATTRS_REQUIRED_FEATURES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SIGNED_ENUM_SET(loom_test_signed_enum_set_attrs_required_features, LOOM_TEST_SIGNED_ENUM_SET_ATTRS_REQUIRED_FEATURES_ATTR_INDEX)
 #define loom_test_signed_enum_set_attrs_rewrite_required_features(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_SIGNED_ENUM_SET_ATTRS_REQUIRED_FEATURES_ATTR_INDEX, (attribute))
+#define loom_test_signed_enum_set_attrs_optional_features_field() \
+  ((loom_attr_field_t){LOOM_TEST_SIGNED_ENUM_SET_ATTRS_OPTIONAL_FEATURES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SIGNED_ENUM_SET(loom_test_signed_enum_set_attrs_optional_features, LOOM_TEST_SIGNED_ENUM_SET_ATTRS_OPTIONAL_FEATURES_ATTR_INDEX)
 #define loom_test_signed_enum_set_attrs_has_optional_features(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_SIGNED_ENUM_SET_ATTRS_OPTIONAL_FEATURES_ATTR_INDEX]))
 #define loom_test_signed_enum_set_attrs_rewrite_optional_features(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_SIGNED_ENUM_SET_ATTRS_OPTIONAL_FEATURES_ATTR_INDEX, (attribute))
+#define loom_test_signed_enum_set_attrs_dict_field() \
+  ((loom_attr_field_t){LOOM_TEST_SIGNED_ENUM_SET_ATTRS_DICT_ATTR_INDEX})
 LOOM_DEFINE_ATTR_DICT(loom_test_signed_enum_set_attrs_dict, LOOM_TEST_SIGNED_ENUM_SET_ATTRS_DICT_ATTR_INDEX)
 #define loom_test_signed_enum_set_attrs_has_dict(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_SIGNED_ENUM_SET_ATTRS_DICT_ATTR_INDEX]))
@@ -2608,9 +2752,13 @@ enum {
   LOOM_TEST_SYMBOL_ARRAY_ATTRS_DEPENDENCIES_ATTR_INDEX = 0,
   LOOM_TEST_SYMBOL_ARRAY_ATTRS_AVAILABLE_ATTR_INDEX = 1,
 };
+#define loom_test_symbol_array_attrs_dependencies_field() \
+  ((loom_attr_field_t){LOOM_TEST_SYMBOL_ARRAY_ATTRS_DEPENDENCIES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL_ARRAY(loom_test_symbol_array_attrs_dependencies, LOOM_TEST_SYMBOL_ARRAY_ATTRS_DEPENDENCIES_ATTR_INDEX)
 #define loom_test_symbol_array_attrs_rewrite_dependencies(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_SYMBOL_ARRAY_ATTRS_DEPENDENCIES_ATTR_INDEX, (attribute))
+#define loom_test_symbol_array_attrs_available_field() \
+  ((loom_attr_field_t){LOOM_TEST_SYMBOL_ARRAY_ATTRS_AVAILABLE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL_ARRAY(loom_test_symbol_array_attrs_available, LOOM_TEST_SYMBOL_ARRAY_ATTRS_AVAILABLE_ATTR_INDEX)
 #define loom_test_symbol_array_attrs_has_available(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_SYMBOL_ARRAY_ATTRS_AVAILABLE_ATTR_INDEX]))
@@ -2634,6 +2782,8 @@ LOOM_DEFINE_ISA(loom_test_symbol_set_attrs_isa, LOOM_OP_TEST_SYMBOL_SET_ATTRS)
 enum {
   LOOM_TEST_SYMBOL_SET_ATTRS_SYMBOLS_ATTR_INDEX = 0,
 };
+#define loom_test_symbol_set_attrs_symbols_field() \
+  ((loom_attr_field_t){LOOM_TEST_SYMBOL_SET_ATTRS_SYMBOLS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL_SET(loom_test_symbol_set_attrs_symbols, LOOM_TEST_SYMBOL_SET_ATTRS_SYMBOLS_ATTR_INDEX)
 #define loom_test_symbol_set_attrs_rewrite_symbols(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_SYMBOL_SET_ATTRS_SYMBOLS_ATTR_INDEX, (attribute))
@@ -2649,6 +2799,8 @@ LOOM_DEFINE_ISA(loom_test_parameterized_attr_isa, LOOM_OP_TEST_PARAMETERIZED_ATT
 enum {
   LOOM_TEST_PARAMETERIZED_ATTR_OPTIONS_ATTR_INDEX = 0,
 };
+#define loom_test_parameterized_attr_options_field() \
+  ((loom_attr_field_t){LOOM_TEST_PARAMETERIZED_ATTR_OPTIONS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PARAMETERIZED(loom_test_parameterized_attr_options, LOOM_TEST_PARAMETERIZED_ATTR_OPTIONS_ATTR_INDEX)
 #define loom_test_parameterized_attr_rewrite_options(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_PARAMETERIZED_ATTR_OPTIONS_ATTR_INDEX, (attribute))
@@ -2664,6 +2816,8 @@ LOOM_DEFINE_ISA(loom_test_compact_parameterized_attr_isa, LOOM_OP_TEST_COMPACT_P
 enum {
   LOOM_TEST_COMPACT_PARAMETERIZED_ATTR_VALUE_ATTR_INDEX = 0,
 };
+#define loom_test_compact_parameterized_attr_value_field() \
+  ((loom_attr_field_t){LOOM_TEST_COMPACT_PARAMETERIZED_ATTR_VALUE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PARAMETERIZED(loom_test_compact_parameterized_attr_value, LOOM_TEST_COMPACT_PARAMETERIZED_ATTR_VALUE_ATTR_INDEX)
 #define loom_test_compact_parameterized_attr_rewrite_value(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_COMPACT_PARAMETERIZED_ATTR_VALUE_ATTR_INDEX, (attribute))
@@ -2680,9 +2834,13 @@ enum {
   LOOM_TEST_PARAMETERIZED_ATTR_ARRAY_VALUES_ATTR_INDEX = 0,
   LOOM_TEST_PARAMETERIZED_ATTR_ARRAY_TILES_ATTR_INDEX = 1,
 };
+#define loom_test_parameterized_attr_array_values_field() \
+  ((loom_attr_field_t){LOOM_TEST_PARAMETERIZED_ATTR_ARRAY_VALUES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_test_parameterized_attr_array_values, LOOM_TEST_PARAMETERIZED_ATTR_ARRAY_VALUES_ATTR_INDEX)
 #define loom_test_parameterized_attr_array_rewrite_values(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_PARAMETERIZED_ATTR_ARRAY_VALUES_ATTR_INDEX, (attribute))
+#define loom_test_parameterized_attr_array_tiles_field() \
+  ((loom_attr_field_t){LOOM_TEST_PARAMETERIZED_ATTR_ARRAY_TILES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_test_parameterized_attr_array_tiles, LOOM_TEST_PARAMETERIZED_ATTR_ARRAY_TILES_ATTR_INDEX)
 #define loom_test_parameterized_attr_array_has_tiles(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_PARAMETERIZED_ATTR_ARRAY_TILES_ATTR_INDEX]))
@@ -2706,6 +2864,8 @@ LOOM_DEFINE_ISA(loom_test_attr_params_isa, LOOM_OP_TEST_ATTR_PARAMS)
 enum {
   LOOM_TEST_ATTR_PARAMS_OPTIONS_ATTR_INDEX = 0,
 };
+#define loom_test_attr_params_options_field() \
+  ((loom_attr_field_t){LOOM_TEST_ATTR_PARAMS_OPTIONS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PARAMETERIZED(loom_test_attr_params_options, LOOM_TEST_ATTR_PARAMS_OPTIONS_ATTR_INDEX)
 #define loom_test_attr_params_rewrite_options(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_ATTR_PARAMS_OPTIONS_ATTR_INDEX, (attribute))
@@ -2739,6 +2899,8 @@ LOOM_DEFINE_SEGMENTED_OPERANDS(loom_test_partitioned_call_bindings, 2)
 enum {
   LOOM_TEST_PARTITIONED_CALL_CALLEE_ATTR_INDEX = 0,
 };
+#define loom_test_partitioned_call_callee_field() \
+  ((loom_attr_field_t){LOOM_TEST_PARTITIONED_CALL_CALLEE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_partitioned_call_callee, LOOM_TEST_PARTITIONED_CALL_CALLEE_ATTR_INDEX)
 #define loom_test_partitioned_call_rewrite_callee(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_PARTITIONED_CALL_CALLEE_ATTR_INDEX, (attribute))

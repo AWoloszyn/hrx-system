@@ -341,6 +341,8 @@ LOOM_DEFINE_RESULT(loom_encoding_layout_strided_result, 0)
 enum {
   LOOM_ENCODING_LAYOUT_STRIDED_STATIC_STRIDES_ATTR_INDEX = 0,
 };
+#define loom_encoding_layout_strided_static_strides_field() \
+  ((loom_attr_field_t){LOOM_ENCODING_LAYOUT_STRIDED_STATIC_STRIDES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_encoding_layout_strided_static_strides, LOOM_ENCODING_LAYOUT_STRIDED_STATIC_STRIDES_ATTR_INDEX)
 #define loom_encoding_layout_strided_rewrite_static_strides(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_ENCODING_LAYOUT_STRIDED_STATIC_STRIDES_ATTR_INDEX, (attribute))
@@ -371,9 +373,13 @@ enum {
   LOOM_ENCODING_DEFINE_SPEC_ATTR_INDEX = 0,
   LOOM_ENCODING_DEFINE_PARAM_NAMES_ATTR_INDEX = 1,
 };
+#define loom_encoding_define_spec_field() \
+  ((loom_attr_field_t){LOOM_ENCODING_DEFINE_SPEC_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENCODING(loom_encoding_define_spec, LOOM_ENCODING_DEFINE_SPEC_ATTR_INDEX)
 #define loom_encoding_define_rewrite_spec(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_ENCODING_DEFINE_SPEC_ATTR_INDEX, (attribute))
+#define loom_encoding_define_param_names_field() \
+  ((loom_attr_field_t){LOOM_ENCODING_DEFINE_PARAM_NAMES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_DICT(loom_encoding_define_param_names, LOOM_ENCODING_DEFINE_PARAM_NAMES_ATTR_INDEX)
 #define loom_encoding_define_has_param_names(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_ENCODING_DEFINE_PARAM_NAMES_ATTR_INDEX]))
@@ -404,6 +410,8 @@ LOOM_DEFINE_RESULT(loom_encoding_isa_result, 0)
 enum {
   LOOM_ENCODING_ISA_SPEC_ATTR_INDEX = 0,
 };
+#define loom_encoding_isa_spec_field() \
+  ((loom_attr_field_t){LOOM_ENCODING_ISA_SPEC_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENCODING(loom_encoding_isa_spec, LOOM_ENCODING_ISA_SPEC_ATTR_INDEX)
 #define loom_encoding_isa_rewrite_spec(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_ENCODING_ISA_SPEC_ATTR_INDEX, (attribute))
@@ -451,6 +459,8 @@ LOOM_DEFINE_RESULT(loom_encoding_layout_assume_strided_result, 0)
 enum {
   LOOM_ENCODING_LAYOUT_ASSUME_STRIDED_RANK_ATTR_INDEX = 0,
 };
+#define loom_encoding_layout_assume_strided_rank_field() \
+  ((loom_attr_field_t){LOOM_ENCODING_LAYOUT_ASSUME_STRIDED_RANK_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_encoding_layout_assume_strided_rank, LOOM_ENCODING_LAYOUT_ASSUME_STRIDED_RANK_ATTR_INDEX)
 #define loom_encoding_layout_assume_strided_rewrite_rank(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_ENCODING_LAYOUT_ASSUME_STRIDED_RANK_ATTR_INDEX, (attribute))
@@ -478,6 +488,8 @@ LOOM_DEFINE_RESULT(loom_encoding_assume_spec_result, 0)
 enum {
   LOOM_ENCODING_ASSUME_SPEC_SPEC_ATTR_INDEX = 0,
 };
+#define loom_encoding_assume_spec_spec_field() \
+  ((loom_attr_field_t){LOOM_ENCODING_ASSUME_SPEC_SPEC_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENCODING(loom_encoding_assume_spec_spec, LOOM_ENCODING_ASSUME_SPEC_SPEC_ATTR_INDEX)
 #define loom_encoding_assume_spec_rewrite_spec(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_ENCODING_ASSUME_SPEC_SPEC_ATTR_INDEX, (attribute))
@@ -505,6 +517,8 @@ LOOM_DEFINE_RESULT(loom_encoding_matches_result, 0)
 enum {
   LOOM_ENCODING_MATCHES_REQUIREMENTS_ATTR_INDEX = 0,
 };
+#define loom_encoding_matches_requirements_field() \
+  ((loom_attr_field_t){LOOM_ENCODING_MATCHES_REQUIREMENTS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PARAMETERIZED(loom_encoding_matches_requirements, LOOM_ENCODING_MATCHES_REQUIREMENTS_ATTR_INDEX)
 #define loom_encoding_matches_rewrite_requirements(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_ENCODING_MATCHES_REQUIREMENTS_ATTR_INDEX, (attribute))
@@ -535,6 +549,8 @@ LOOM_DEFINE_RESULT(loom_encoding_assume_match_result, 0)
 enum {
   LOOM_ENCODING_ASSUME_MATCH_REQUIREMENTS_ATTR_INDEX = 0,
 };
+#define loom_encoding_assume_match_requirements_field() \
+  ((loom_attr_field_t){LOOM_ENCODING_ASSUME_MATCH_REQUIREMENTS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PARAMETERIZED(loom_encoding_assume_match_requirements, LOOM_ENCODING_ASSUME_MATCH_REQUIREMENTS_ATTR_INDEX)
 #define loom_encoding_assume_match_rewrite_requirements(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_ENCODING_ASSUME_MATCH_REQUIREMENTS_ATTR_INDEX, (attribute))

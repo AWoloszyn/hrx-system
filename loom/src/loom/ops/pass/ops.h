@@ -55,9 +55,13 @@ enum {
   LOOM_PASS_PIPELINE_ANCHOR_ATTR_INDEX = 0,
   LOOM_PASS_PIPELINE_SYMBOL_ATTR_INDEX = 1,
 };
+#define loom_pass_pipeline_anchor_field() \
+  ((loom_attr_field_t){LOOM_PASS_PIPELINE_ANCHOR_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pass_pipeline_anchor, LOOM_PASS_PIPELINE_ANCHOR_ATTR_INDEX, loom_pass_anchor_t)
 #define loom_pass_pipeline_rewrite_anchor(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_PASS_PIPELINE_ANCHOR_ATTR_INDEX, (attribute))
+#define loom_pass_pipeline_symbol_field() \
+  ((loom_attr_field_t){LOOM_PASS_PIPELINE_SYMBOL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_pass_pipeline_symbol, LOOM_PASS_PIPELINE_SYMBOL_ATTR_INDEX)
 #define loom_pass_pipeline_rewrite_symbol(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_PASS_PIPELINE_SYMBOL_ATTR_INDEX, (attribute))
@@ -77,6 +81,8 @@ LOOM_DEFINE_ISA(loom_pass_for_isa, LOOM_OP_PASS_FOR)
 enum {
   LOOM_PASS_FOR_ANCHOR_ATTR_INDEX = 0,
 };
+#define loom_pass_for_anchor_field() \
+  ((loom_attr_field_t){LOOM_PASS_FOR_ANCHOR_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pass_for_anchor, LOOM_PASS_FOR_ANCHOR_ATTR_INDEX, loom_pass_anchor_t)
 #define loom_pass_for_rewrite_anchor(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_PASS_FOR_ANCHOR_ATTR_INDEX, (attribute))
@@ -96,9 +102,13 @@ enum {
   LOOM_PASS_WHERE_PREDICATE_ATTR_INDEX = 0,
   LOOM_PASS_WHERE_ATTRS_ATTR_INDEX = 1,
 };
+#define loom_pass_where_predicate_field() \
+  ((loom_attr_field_t){LOOM_PASS_WHERE_PREDICATE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_STRING(loom_pass_where_predicate, LOOM_PASS_WHERE_PREDICATE_ATTR_INDEX)
 #define loom_pass_where_rewrite_predicate(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_PASS_WHERE_PREDICATE_ATTR_INDEX, (attribute))
+#define loom_pass_where_attrs_field() \
+  ((loom_attr_field_t){LOOM_PASS_WHERE_ATTRS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_DICT(loom_pass_where_attrs, LOOM_PASS_WHERE_ATTRS_ATTR_INDEX)
 #define loom_pass_where_has_attrs(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_PASS_WHERE_ATTRS_ATTR_INDEX]))
@@ -127,14 +137,20 @@ enum {
   LOOM_PASS_REPEAT_COUNT_ATTR_INDEX = 1,
   LOOM_PASS_REPEAT_MAX_ITERATIONS_ATTR_INDEX = 2,
 };
+#define loom_pass_repeat_mode_field() \
+  ((loom_attr_field_t){LOOM_PASS_REPEAT_MODE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pass_repeat_mode, LOOM_PASS_REPEAT_MODE_ATTR_INDEX, loom_pass_repeat_mode_t)
 #define loom_pass_repeat_rewrite_mode(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_PASS_REPEAT_MODE_ATTR_INDEX, (attribute))
+#define loom_pass_repeat_count_field() \
+  ((loom_attr_field_t){LOOM_PASS_REPEAT_COUNT_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_pass_repeat_count, LOOM_PASS_REPEAT_COUNT_ATTR_INDEX)
 #define loom_pass_repeat_has_count(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_PASS_REPEAT_COUNT_ATTR_INDEX]))
 #define loom_pass_repeat_rewrite_count(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_PASS_REPEAT_COUNT_ATTR_INDEX, (attribute))
+#define loom_pass_repeat_max_iterations_field() \
+  ((loom_attr_field_t){LOOM_PASS_REPEAT_MAX_ITERATIONS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_pass_repeat_max_iterations, LOOM_PASS_REPEAT_MAX_ITERATIONS_ATTR_INDEX)
 #define loom_pass_repeat_has_max_iterations(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_PASS_REPEAT_MAX_ITERATIONS_ATTR_INDEX]))
@@ -161,6 +177,8 @@ LOOM_DEFINE_ISA(loom_pass_call_isa, LOOM_OP_PASS_CALL)
 enum {
   LOOM_PASS_CALL_CALLEE_ATTR_INDEX = 0,
 };
+#define loom_pass_call_callee_field() \
+  ((loom_attr_field_t){LOOM_PASS_CALL_CALLEE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_pass_call_callee, LOOM_PASS_CALL_CALLEE_ATTR_INDEX)
 #define loom_pass_call_rewrite_callee(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_PASS_CALL_CALLEE_ATTR_INDEX, (attribute))
@@ -177,9 +195,13 @@ enum {
   LOOM_PASS_RUN_KEY_ATTR_INDEX = 0,
   LOOM_PASS_RUN_OPTIONS_ATTR_INDEX = 1,
 };
+#define loom_pass_run_key_field() \
+  ((loom_attr_field_t){LOOM_PASS_RUN_KEY_ATTR_INDEX})
 LOOM_DEFINE_ATTR_STRING(loom_pass_run_key, LOOM_PASS_RUN_KEY_ATTR_INDEX)
 #define loom_pass_run_rewrite_key(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_PASS_RUN_KEY_ATTR_INDEX, (attribute))
+#define loom_pass_run_options_field() \
+  ((loom_attr_field_t){LOOM_PASS_RUN_OPTIONS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_DICT(loom_pass_run_options, LOOM_PASS_RUN_OPTIONS_ATTR_INDEX)
 #define loom_pass_run_has_options(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_PASS_RUN_OPTIONS_ATTR_INDEX]))
@@ -203,6 +225,8 @@ LOOM_DEFINE_ISA(loom_pass_fail_isa, LOOM_OP_PASS_FAIL)
 enum {
   LOOM_PASS_FAIL_MESSAGE_ATTR_INDEX = 0,
 };
+#define loom_pass_fail_message_field() \
+  ((loom_attr_field_t){LOOM_PASS_FAIL_MESSAGE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_STRING(loom_pass_fail_message, LOOM_PASS_FAIL_MESSAGE_ATTR_INDEX)
 #define loom_pass_fail_rewrite_message(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_PASS_FAIL_MESSAGE_ATTR_INDEX, (attribute))
@@ -218,6 +242,8 @@ LOOM_DEFINE_ISA(loom_pass_halt_isa, LOOM_OP_PASS_HALT)
 enum {
   LOOM_PASS_HALT_MESSAGE_ATTR_INDEX = 0,
 };
+#define loom_pass_halt_message_field() \
+  ((loom_attr_field_t){LOOM_PASS_HALT_MESSAGE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_STRING(loom_pass_halt_message, LOOM_PASS_HALT_MESSAGE_ATTR_INDEX)
 #define loom_pass_halt_rewrite_message(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_PASS_HALT_MESSAGE_ATTR_INDEX, (attribute))

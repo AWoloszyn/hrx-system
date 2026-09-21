@@ -68,6 +68,8 @@ LOOM_DEFINE_RESULT(loom_index_constant_result, 0)
 enum {
   LOOM_INDEX_CONSTANT_VALUE_ATTR_INDEX = 0,
 };
+#define loom_index_constant_value_field() \
+  ((loom_attr_field_t){LOOM_INDEX_CONSTANT_VALUE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ANY(loom_index_constant_value, LOOM_INDEX_CONSTANT_VALUE_ATTR_INDEX)
 #define loom_index_constant_rewrite_value(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_INDEX_CONSTANT_VALUE_ATTR_INDEX, (attribute))
@@ -110,6 +112,8 @@ LOOM_DEFINE_VARIADIC_RESULTS(loom_index_assume_results, 0)
 enum {
   LOOM_INDEX_ASSUME_PREDICATES_ATTR_INDEX = 0,
 };
+#define loom_index_assume_predicates_field() \
+  ((loom_attr_field_t){LOOM_INDEX_ASSUME_PREDICATES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_index_assume_predicates, LOOM_INDEX_ASSUME_PREDICATES_ATTR_INDEX)
 #define loom_index_assume_rewrite_predicates(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_INDEX_ASSUME_PREDICATES_ATTR_INDEX, (attribute))
@@ -511,6 +515,8 @@ LOOM_DEFINE_RESULT(loom_index_cmp_result, 0)
 enum {
   LOOM_INDEX_CMP_PREDICATE_ATTR_INDEX = 0,
 };
+#define loom_index_cmp_predicate_field() \
+  ((loom_attr_field_t){LOOM_INDEX_CMP_PREDICATE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_index_cmp_predicate, LOOM_INDEX_CMP_PREDICATE_ATTR_INDEX, loom_index_cmp_predicate_t)
 #define loom_index_cmp_rewrite_predicate(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_INDEX_CMP_PREDICATE_ATTR_INDEX, (attribute))

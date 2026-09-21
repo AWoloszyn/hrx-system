@@ -18,6 +18,21 @@
 extern "C" {
 #endif
 
+// A schema-bound field in a dense attribute array. Generated accessors name the
+// field; generic readers, initializers, and metadata tables consume its slot.
+// This has the same storage cost as an attribute ordinal and carries no
+// payload.
+typedef struct loom_attr_field_t {
+  // Fixed storage slot owned by the schema, excluding instance flags.
+  uint8_t index;
+} loom_attr_field_t;
+
+static_assert(sizeof(loom_attr_field_t) == 1,
+              "attribute field bindings must remain one byte");
+
+// Unavailable binding for metadata without a corresponding attribute field.
+#define loom_attr_field_none() ((loom_attr_field_t){UINT8_MAX})
+
 enum loom_attr_flag_bits_e {
   LOOM_ATTR_OPTIONAL = 1u << 0,
   // Enum values are ordinal-preserving across bytecode and generic

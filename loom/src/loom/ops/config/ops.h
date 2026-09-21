@@ -33,9 +33,13 @@ enum {
   LOOM_CONFIG_DECL_SYMBOL_ATTR_INDEX = 0,
   LOOM_CONFIG_DECL_PREDICATES_ATTR_INDEX = 1,
 };
+#define loom_config_decl_symbol_field() \
+  ((loom_attr_field_t){LOOM_CONFIG_DECL_SYMBOL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_config_decl_symbol, LOOM_CONFIG_DECL_SYMBOL_ATTR_INDEX)
 #define loom_config_decl_rewrite_symbol(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_CONFIG_DECL_SYMBOL_ATTR_INDEX, (attribute))
+#define loom_config_decl_predicates_field() \
+  ((loom_attr_field_t){LOOM_CONFIG_DECL_PREDICATES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_config_decl_predicates, LOOM_CONFIG_DECL_PREDICATES_ATTR_INDEX)
 #define loom_config_decl_has_predicates(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_CONFIG_DECL_PREDICATES_ATTR_INDEX]))
@@ -68,9 +72,13 @@ enum {
   LOOM_CONFIG_DEF_SYMBOL_ATTR_INDEX = 0,
   LOOM_CONFIG_DEF_VALUE_ATTR_INDEX = 1,
 };
+#define loom_config_def_symbol_field() \
+  ((loom_attr_field_t){LOOM_CONFIG_DEF_SYMBOL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_config_def_symbol, LOOM_CONFIG_DEF_SYMBOL_ATTR_INDEX)
 #define loom_config_def_rewrite_symbol(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_CONFIG_DEF_SYMBOL_ATTR_INDEX, (attribute))
+#define loom_config_def_value_field() \
+  ((loom_attr_field_t){LOOM_CONFIG_DEF_VALUE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ANY(loom_config_def_value, LOOM_CONFIG_DEF_VALUE_ATTR_INDEX)
 #define loom_config_def_rewrite_value(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_CONFIG_DEF_VALUE_ATTR_INDEX, (attribute))
@@ -97,6 +105,8 @@ LOOM_DEFINE_RESULT(loom_config_get_result, 0)
 enum {
   LOOM_CONFIG_GET_CONFIG_ATTR_INDEX = 0,
 };
+#define loom_config_get_config_field() \
+  ((loom_attr_field_t){LOOM_CONFIG_GET_CONFIG_ATTR_INDEX})
 LOOM_DEFINE_ATTR_SYMBOL(loom_config_get_config, LOOM_CONFIG_GET_CONFIG_ATTR_INDEX)
 #define loom_config_get_rewrite_config(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_CONFIG_GET_CONFIG_ATTR_INDEX, (attribute))

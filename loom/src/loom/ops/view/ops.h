@@ -60,6 +60,8 @@ LOOM_DEFINE_RESULT(loom_view_subview_result, 0)
 enum {
   LOOM_VIEW_SUBVIEW_STATIC_OFFSETS_ATTR_INDEX = 0,
 };
+#define loom_view_subview_static_offsets_field() \
+  ((loom_attr_field_t){LOOM_VIEW_SUBVIEW_STATIC_OFFSETS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_subview_static_offsets, LOOM_VIEW_SUBVIEW_STATIC_OFFSETS_ATTR_INDEX)
 #define loom_view_subview_rewrite_static_offsets(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_SUBVIEW_STATIC_OFFSETS_ATTR_INDEX, (attribute))
@@ -117,16 +119,22 @@ enum {
   LOOM_VIEW_LOAD_STATIC_INDICES_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_INSTANCE_FLAGS(loom_view_load_memory_flags)
+#define loom_view_load_cache_scope_field() \
+  ((loom_attr_field_t){LOOM_VIEW_LOAD_CACHE_SCOPE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_load_cache_scope, LOOM_VIEW_LOAD_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_view_load_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VIEW_LOAD_CACHE_SCOPE_ATTR_INDEX]))
 #define loom_view_load_rewrite_cache_scope(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_LOAD_CACHE_SCOPE_ATTR_INDEX, (attribute))
+#define loom_view_load_cache_temporal_field() \
+  ((loom_attr_field_t){LOOM_VIEW_LOAD_CACHE_TEMPORAL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_load_cache_temporal, LOOM_VIEW_LOAD_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_view_load_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VIEW_LOAD_CACHE_TEMPORAL_ATTR_INDEX]))
 #define loom_view_load_rewrite_cache_temporal(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_LOAD_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
+#define loom_view_load_static_indices_field() \
+  ((loom_attr_field_t){LOOM_VIEW_LOAD_STATIC_INDICES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_load_static_indices, LOOM_VIEW_LOAD_STATIC_INDICES_ATTR_INDEX)
 #define loom_view_load_rewrite_static_indices(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_LOAD_STATIC_INDICES_ATTR_INDEX, (attribute))
@@ -171,16 +179,22 @@ enum {
   LOOM_VIEW_STORE_STATIC_INDICES_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_INSTANCE_FLAGS(loom_view_store_memory_flags)
+#define loom_view_store_cache_scope_field() \
+  ((loom_attr_field_t){LOOM_VIEW_STORE_CACHE_SCOPE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_store_cache_scope, LOOM_VIEW_STORE_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_view_store_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VIEW_STORE_CACHE_SCOPE_ATTR_INDEX]))
 #define loom_view_store_rewrite_cache_scope(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_STORE_CACHE_SCOPE_ATTR_INDEX, (attribute))
+#define loom_view_store_cache_temporal_field() \
+  ((loom_attr_field_t){LOOM_VIEW_STORE_CACHE_TEMPORAL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_store_cache_temporal, LOOM_VIEW_STORE_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_view_store_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VIEW_STORE_CACHE_TEMPORAL_ATTR_INDEX]))
 #define loom_view_store_rewrite_cache_temporal(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_STORE_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
+#define loom_view_store_static_indices_field() \
+  ((loom_attr_field_t){LOOM_VIEW_STORE_STATIC_INDICES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_store_static_indices, LOOM_VIEW_STORE_STATIC_INDICES_ATTR_INDEX)
 #define loom_view_store_rewrite_static_indices(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_STORE_STATIC_INDICES_ATTR_INDEX, (attribute))
@@ -222,25 +236,37 @@ enum {
   LOOM_VIEW_ATOMIC_REDUCE_CACHE_TEMPORAL_ATTR_INDEX = 4,
   LOOM_VIEW_ATOMIC_REDUCE_STATIC_INDICES_ATTR_INDEX = 5,
 };
+#define loom_view_atomic_reduce_kind_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_REDUCE_KIND_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_kind, LOOM_VIEW_ATOMIC_REDUCE_KIND_ATTR_INDEX, loom_atomic_kind_t)
 #define loom_view_atomic_reduce_rewrite_kind(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_REDUCE_KIND_ATTR_INDEX, (attribute))
+#define loom_view_atomic_reduce_ordering_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_REDUCE_ORDERING_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_ordering, LOOM_VIEW_ATOMIC_REDUCE_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
 #define loom_view_atomic_reduce_rewrite_ordering(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_REDUCE_ORDERING_ATTR_INDEX, (attribute))
+#define loom_view_atomic_reduce_scope_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_REDUCE_SCOPE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_scope, LOOM_VIEW_ATOMIC_REDUCE_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
 #define loom_view_atomic_reduce_rewrite_scope(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_REDUCE_SCOPE_ATTR_INDEX, (attribute))
+#define loom_view_atomic_reduce_cache_scope_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_REDUCE_CACHE_SCOPE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_cache_scope, LOOM_VIEW_ATOMIC_REDUCE_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_view_atomic_reduce_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VIEW_ATOMIC_REDUCE_CACHE_SCOPE_ATTR_INDEX]))
 #define loom_view_atomic_reduce_rewrite_cache_scope(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_REDUCE_CACHE_SCOPE_ATTR_INDEX, (attribute))
+#define loom_view_atomic_reduce_cache_temporal_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_REDUCE_CACHE_TEMPORAL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_cache_temporal, LOOM_VIEW_ATOMIC_REDUCE_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_view_atomic_reduce_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VIEW_ATOMIC_REDUCE_CACHE_TEMPORAL_ATTR_INDEX]))
 #define loom_view_atomic_reduce_rewrite_cache_temporal(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_REDUCE_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
+#define loom_view_atomic_reduce_static_indices_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_REDUCE_STATIC_INDICES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_atomic_reduce_static_indices, LOOM_VIEW_ATOMIC_REDUCE_STATIC_INDICES_ATTR_INDEX)
 #define loom_view_atomic_reduce_rewrite_static_indices(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_REDUCE_STATIC_INDICES_ATTR_INDEX, (attribute))
@@ -284,25 +310,37 @@ enum {
   LOOM_VIEW_ATOMIC_RMW_CACHE_TEMPORAL_ATTR_INDEX = 4,
   LOOM_VIEW_ATOMIC_RMW_STATIC_INDICES_ATTR_INDEX = 5,
 };
+#define loom_view_atomic_rmw_kind_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_RMW_KIND_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_kind, LOOM_VIEW_ATOMIC_RMW_KIND_ATTR_INDEX, loom_atomic_kind_t)
 #define loom_view_atomic_rmw_rewrite_kind(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_RMW_KIND_ATTR_INDEX, (attribute))
+#define loom_view_atomic_rmw_ordering_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_RMW_ORDERING_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_ordering, LOOM_VIEW_ATOMIC_RMW_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
 #define loom_view_atomic_rmw_rewrite_ordering(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_RMW_ORDERING_ATTR_INDEX, (attribute))
+#define loom_view_atomic_rmw_scope_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_RMW_SCOPE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_scope, LOOM_VIEW_ATOMIC_RMW_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
 #define loom_view_atomic_rmw_rewrite_scope(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_RMW_SCOPE_ATTR_INDEX, (attribute))
+#define loom_view_atomic_rmw_cache_scope_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_RMW_CACHE_SCOPE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_cache_scope, LOOM_VIEW_ATOMIC_RMW_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_view_atomic_rmw_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VIEW_ATOMIC_RMW_CACHE_SCOPE_ATTR_INDEX]))
 #define loom_view_atomic_rmw_rewrite_cache_scope(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_RMW_CACHE_SCOPE_ATTR_INDEX, (attribute))
+#define loom_view_atomic_rmw_cache_temporal_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_RMW_CACHE_TEMPORAL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_cache_temporal, LOOM_VIEW_ATOMIC_RMW_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_view_atomic_rmw_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VIEW_ATOMIC_RMW_CACHE_TEMPORAL_ATTR_INDEX]))
 #define loom_view_atomic_rmw_rewrite_cache_temporal(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_RMW_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
+#define loom_view_atomic_rmw_static_indices_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_RMW_STATIC_INDICES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_atomic_rmw_static_indices, LOOM_VIEW_ATOMIC_RMW_STATIC_INDICES_ATTR_INDEX)
 #define loom_view_atomic_rmw_rewrite_static_indices(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_RMW_STATIC_INDICES_ATTR_INDEX, (attribute))
@@ -348,25 +386,37 @@ enum {
   LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_TEMPORAL_ATTR_INDEX = 4,
   LOOM_VIEW_ATOMIC_CMPXCHG_STATIC_INDICES_ATTR_INDEX = 5,
 };
+#define loom_view_atomic_cmpxchg_success_ordering_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_CMPXCHG_SUCCESS_ORDERING_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_success_ordering, LOOM_VIEW_ATOMIC_CMPXCHG_SUCCESS_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
 #define loom_view_atomic_cmpxchg_rewrite_success_ordering(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_CMPXCHG_SUCCESS_ORDERING_ATTR_INDEX, (attribute))
+#define loom_view_atomic_cmpxchg_failure_ordering_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_CMPXCHG_FAILURE_ORDERING_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_failure_ordering, LOOM_VIEW_ATOMIC_CMPXCHG_FAILURE_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
 #define loom_view_atomic_cmpxchg_rewrite_failure_ordering(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_CMPXCHG_FAILURE_ORDERING_ATTR_INDEX, (attribute))
+#define loom_view_atomic_cmpxchg_scope_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_CMPXCHG_SCOPE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_scope, LOOM_VIEW_ATOMIC_CMPXCHG_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
 #define loom_view_atomic_cmpxchg_rewrite_scope(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_CMPXCHG_SCOPE_ATTR_INDEX, (attribute))
+#define loom_view_atomic_cmpxchg_cache_scope_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_SCOPE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_cache_scope, LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_view_atomic_cmpxchg_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_SCOPE_ATTR_INDEX]))
 #define loom_view_atomic_cmpxchg_rewrite_cache_scope(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_SCOPE_ATTR_INDEX, (attribute))
+#define loom_view_atomic_cmpxchg_cache_temporal_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_TEMPORAL_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_cache_temporal, LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_view_atomic_cmpxchg_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_TEMPORAL_ATTR_INDEX]))
 #define loom_view_atomic_cmpxchg_rewrite_cache_temporal(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
+#define loom_view_atomic_cmpxchg_static_indices_field() \
+  ((loom_attr_field_t){LOOM_VIEW_ATOMIC_CMPXCHG_STATIC_INDICES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_atomic_cmpxchg_static_indices, LOOM_VIEW_ATOMIC_CMPXCHG_STATIC_INDICES_ATTR_INDEX)
 #define loom_view_atomic_cmpxchg_rewrite_static_indices(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_ATOMIC_CMPXCHG_STATIC_INDICES_ATTR_INDEX, (attribute))
@@ -407,12 +457,18 @@ enum {
   LOOM_VIEW_PREFETCH_LOCALITY_ATTR_INDEX = 1,
   LOOM_VIEW_PREFETCH_STATIC_INDICES_ATTR_INDEX = 2,
 };
+#define loom_view_prefetch_intent_field() \
+  ((loom_attr_field_t){LOOM_VIEW_PREFETCH_INTENT_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_prefetch_intent, LOOM_VIEW_PREFETCH_INTENT_ATTR_INDEX, loom_view_prefetch_intent_t)
 #define loom_view_prefetch_rewrite_intent(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_PREFETCH_INTENT_ATTR_INDEX, (attribute))
+#define loom_view_prefetch_locality_field() \
+  ((loom_attr_field_t){LOOM_VIEW_PREFETCH_LOCALITY_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_prefetch_locality, LOOM_VIEW_PREFETCH_LOCALITY_ATTR_INDEX, loom_view_prefetch_locality_t)
 #define loom_view_prefetch_rewrite_locality(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_PREFETCH_LOCALITY_ATTR_INDEX, (attribute))
+#define loom_view_prefetch_static_indices_field() \
+  ((loom_attr_field_t){LOOM_VIEW_PREFETCH_STATIC_INDICES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_prefetch_static_indices, LOOM_VIEW_PREFETCH_STATIC_INDICES_ATTR_INDEX)
 #define loom_view_prefetch_rewrite_static_indices(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_VIEW_PREFETCH_STATIC_INDICES_ATTR_INDEX, (attribute))

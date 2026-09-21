@@ -13,6 +13,7 @@ loom_cc_library(
   NAME
     op_defs
   HDRS
+    "attribute_accessors.h"
     "builder_macros.h"
     "op_defs.h"
   SRCS
@@ -21,6 +22,7 @@ loom_cc_library(
     ::format
     iree::base
     iree::base::internal::arena
+    loom::error::emitter
     loom::ir
     loom::util::adaptive_sort
     loom::util::bstring

@@ -65,12 +65,18 @@ enum {
   LOOM_SANITIZER_ASSERT_ACCESS_STATIC_INDICES_ATTR_INDEX = 1,
   LOOM_SANITIZER_ASSERT_ACCESS_STATIC_EXTENTS_ATTR_INDEX = 2,
 };
+#define loom_sanitizer_assert_access_kind_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_ASSERT_ACCESS_KIND_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_assert_access_kind, LOOM_SANITIZER_ASSERT_ACCESS_KIND_ATTR_INDEX, loom_sanitizer_assert_access_kind_t)
 #define loom_sanitizer_assert_access_rewrite_kind(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_ASSERT_ACCESS_KIND_ATTR_INDEX, (attribute))
+#define loom_sanitizer_assert_access_static_indices_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_ASSERT_ACCESS_STATIC_INDICES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_sanitizer_assert_access_static_indices, LOOM_SANITIZER_ASSERT_ACCESS_STATIC_INDICES_ATTR_INDEX)
 #define loom_sanitizer_assert_access_rewrite_static_indices(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_ASSERT_ACCESS_STATIC_INDICES_ATTR_INDEX, (attribute))
+#define loom_sanitizer_assert_access_static_extents_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_ASSERT_ACCESS_STATIC_EXTENTS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_sanitizer_assert_access_static_extents, LOOM_SANITIZER_ASSERT_ACCESS_STATIC_EXTENTS_ATTR_INDEX)
 #define loom_sanitizer_assert_access_has_static_extents(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_SANITIZER_ASSERT_ACCESS_STATIC_EXTENTS_ATTR_INDEX]))
@@ -105,6 +111,8 @@ LOOM_DEFINE_VARIADIC_RESULTS(loom_sanitizer_assert_value_results, 0)
 enum {
   LOOM_SANITIZER_ASSERT_VALUE_PREDICATES_ATTR_INDEX = 0,
 };
+#define loom_sanitizer_assert_value_predicates_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_ASSERT_VALUE_PREDICATES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_sanitizer_assert_value_predicates, LOOM_SANITIZER_ASSERT_VALUE_PREDICATES_ATTR_INDEX)
 #define loom_sanitizer_assert_value_rewrite_predicates(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_ASSERT_VALUE_PREDICATES_ATTR_INDEX, (attribute))
@@ -135,6 +143,8 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_sanitizer_assert_op_values, 0)
 enum {
   LOOM_SANITIZER_ASSERT_OP_PREDICATES_ATTR_INDEX = 0,
 };
+#define loom_sanitizer_assert_op_predicates_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_ASSERT_OP_PREDICATES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_sanitizer_assert_op_predicates, LOOM_SANITIZER_ASSERT_OP_PREDICATES_ATTR_INDEX)
 #define loom_sanitizer_assert_op_rewrite_predicates(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_ASSERT_OP_PREDICATES_ATTR_INDEX, (attribute))
@@ -186,22 +196,32 @@ enum {
   LOOM_SANITIZER_RACE_ACCESS_SCOPE_ATTR_INDEX = 3,
   LOOM_SANITIZER_RACE_ACCESS_STATIC_INDICES_ATTR_INDEX = 4,
 };
+#define loom_sanitizer_race_access_kind_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_RACE_ACCESS_KIND_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_race_access_kind, LOOM_SANITIZER_RACE_ACCESS_KIND_ATTR_INDEX, loom_sanitizer_race_access_kind_t)
 #define loom_sanitizer_race_access_rewrite_kind(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_RACE_ACCESS_KIND_ATTR_INDEX, (attribute))
+#define loom_sanitizer_race_access_atomic_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_RACE_ACCESS_ATOMIC_ATTR_INDEX})
 LOOM_DEFINE_ATTR_BOOL(loom_sanitizer_race_access_atomic, LOOM_SANITIZER_RACE_ACCESS_ATOMIC_ATTR_INDEX)
 #define loom_sanitizer_race_access_rewrite_atomic(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_RACE_ACCESS_ATOMIC_ATTR_INDEX, (attribute))
+#define loom_sanitizer_race_access_ordering_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_RACE_ACCESS_ORDERING_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_race_access_ordering, LOOM_SANITIZER_RACE_ACCESS_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
 #define loom_sanitizer_race_access_has_ordering(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_SANITIZER_RACE_ACCESS_ORDERING_ATTR_INDEX]))
 #define loom_sanitizer_race_access_rewrite_ordering(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_RACE_ACCESS_ORDERING_ATTR_INDEX, (attribute))
+#define loom_sanitizer_race_access_scope_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_RACE_ACCESS_SCOPE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_race_access_scope, LOOM_SANITIZER_RACE_ACCESS_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
 #define loom_sanitizer_race_access_has_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_SANITIZER_RACE_ACCESS_SCOPE_ATTR_INDEX]))
 #define loom_sanitizer_race_access_rewrite_scope(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_RACE_ACCESS_SCOPE_ATTR_INDEX, (attribute))
+#define loom_sanitizer_race_access_static_indices_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_RACE_ACCESS_STATIC_INDICES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_sanitizer_race_access_static_indices, LOOM_SANITIZER_RACE_ACCESS_STATIC_INDICES_ATTR_INDEX)
 #define loom_sanitizer_race_access_rewrite_static_indices(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_RACE_ACCESS_STATIC_INDICES_ATTR_INDEX, (attribute))
@@ -236,12 +256,18 @@ enum {
   LOOM_SANITIZER_RACE_SYNC_ORDERING_ATTR_INDEX = 1,
   LOOM_SANITIZER_RACE_SYNC_SCOPE_ATTR_INDEX = 2,
 };
+#define loom_sanitizer_race_sync_memory_space_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_RACE_SYNC_MEMORY_SPACE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_race_sync_memory_space, LOOM_SANITIZER_RACE_SYNC_MEMORY_SPACE_ATTR_INDEX, loom_value_fact_memory_space_t)
 #define loom_sanitizer_race_sync_rewrite_memory_space(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_RACE_SYNC_MEMORY_SPACE_ATTR_INDEX, (attribute))
+#define loom_sanitizer_race_sync_ordering_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_RACE_SYNC_ORDERING_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_race_sync_ordering, LOOM_SANITIZER_RACE_SYNC_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
 #define loom_sanitizer_race_sync_rewrite_ordering(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_RACE_SYNC_ORDERING_ATTR_INDEX, (attribute))
+#define loom_sanitizer_race_sync_scope_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_RACE_SYNC_SCOPE_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_race_sync_scope, LOOM_SANITIZER_RACE_SYNC_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
 #define loom_sanitizer_race_sync_rewrite_scope(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_RACE_SYNC_SCOPE_ATTR_INDEX, (attribute))
@@ -268,18 +294,28 @@ enum {
   LOOM_SANITIZER_ASSERT_ACCESSES_STATIC_STRIDES_ATTR_INDEX = 3,
   LOOM_SANITIZER_ASSERT_ACCESSES_STATIC_COUNT_ATTR_INDEX = 4,
 };
+#define loom_sanitizer_assert_accesses_kind_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_ASSERT_ACCESSES_KIND_ATTR_INDEX})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_assert_accesses_kind, LOOM_SANITIZER_ASSERT_ACCESSES_KIND_ATTR_INDEX, loom_sanitizer_assert_accesses_kind_t)
 #define loom_sanitizer_assert_accesses_rewrite_kind(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_ASSERT_ACCESSES_KIND_ATTR_INDEX, (attribute))
+#define loom_sanitizer_assert_accesses_static_indices_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_ASSERT_ACCESSES_STATIC_INDICES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_sanitizer_assert_accesses_static_indices, LOOM_SANITIZER_ASSERT_ACCESSES_STATIC_INDICES_ATTR_INDEX)
 #define loom_sanitizer_assert_accesses_rewrite_static_indices(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_ASSERT_ACCESSES_STATIC_INDICES_ATTR_INDEX, (attribute))
+#define loom_sanitizer_assert_accesses_static_extents_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_ASSERT_ACCESSES_STATIC_EXTENTS_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_sanitizer_assert_accesses_static_extents, LOOM_SANITIZER_ASSERT_ACCESSES_STATIC_EXTENTS_ATTR_INDEX)
 #define loom_sanitizer_assert_accesses_rewrite_static_extents(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_ASSERT_ACCESSES_STATIC_EXTENTS_ATTR_INDEX, (attribute))
+#define loom_sanitizer_assert_accesses_static_strides_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_ASSERT_ACCESSES_STATIC_STRIDES_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_sanitizer_assert_accesses_static_strides, LOOM_SANITIZER_ASSERT_ACCESSES_STATIC_STRIDES_ATTR_INDEX)
 #define loom_sanitizer_assert_accesses_rewrite_static_strides(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_ASSERT_ACCESSES_STATIC_STRIDES_ATTR_INDEX, (attribute))
+#define loom_sanitizer_assert_accesses_static_count_field() \
+  ((loom_attr_field_t){LOOM_SANITIZER_ASSERT_ACCESSES_STATIC_COUNT_ATTR_INDEX})
 LOOM_DEFINE_ATTR_I64(loom_sanitizer_assert_accesses_static_count, LOOM_SANITIZER_ASSERT_ACCESSES_STATIC_COUNT_ATTR_INDEX)
 #define loom_sanitizer_assert_accesses_rewrite_static_count(rewriter, op, attribute) \
   loom_rewriter_set_attr((rewriter), (op), LOOM_SANITIZER_ASSERT_ACCESSES_STATIC_COUNT_ATTR_INDEX, (attribute))

@@ -398,6 +398,11 @@ def generate_ops_h(
                 lines.append(f"LOOM_DEFINE_INSTANCE_FLAGS({prefix}_{attr_def.name})")
                 continue
             desc_index = f"{prefix}_{attr_def.name}_ATTR_INDEX".upper()
+            field_name = f"{attr_def.name}_field"
+            if field_name in layout.fields:
+                raise ValueError(f"{op.name}: field accessor '{prefix}_{field_name}' conflicts with field '{field_name}'")
+            lines.append(f"#define {prefix}_{field_name}() \\")
+            lines.append(f"  ((loom_attr_field_t){{{desc_index}}})")
             macro_map = {
                 "i64": "LOOM_DEFINE_ATTR_I64",
                 "f64": "LOOM_DEFINE_ATTR_F64",
