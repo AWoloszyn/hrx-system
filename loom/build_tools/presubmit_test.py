@@ -61,6 +61,51 @@ class LoomPresubmitTest(unittest.TestCase):
         self.assertNotIn("//loom/...", command)
         self.assertIn("--//loom/config/import:enable=cxx", command)
 
+    def test_package_tests_distinguish_empty_selection_from_failure(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            package = root / "loom/src/loom/example"
+            package.mkdir(parents=True)
+            (package / "BUILD.bazel").touch()
+            files_from = root / "changed.txt"
+            files_from.write_text("loom/src/loom/example/CMakeLists.txt\n")
+            for exit_code in (0, 1, 2, 3, 4, 7, 8, 37):
+                with (
+                    self.subTest(exit_code=exit_code),
+                    mock.patch.object(self.presubmit, "REPO_ROOT", root),
+                    mock.patch.object(
+                        self.presubmit.subprocess,
+                        "run",
+                        return_value=subprocess.CompletedProcess([], exit_code),
+                    ) as run,
+                    contextlib.redirect_stdout(io.StringIO()) as output,
+                ):
+                    self.assertEqual(
+                        self.presubmit.run_bazel_tests(str(files_from)),
+                        exit_code in (0, 4),
+                    )
+                    self.assertEqual(
+                        run.call_args.args[0][-1], "//loom/src/loom/example/..."
+                    )
+                    self.assertEqual(
+                        "failed with exit code" in output.getvalue(),
+                        exit_code not in (0, 4),
+                    )
+
+    def test_full_suite_requires_tests(self):
+        for exit_code in (0, 1, 3, 4):
+            with (
+                self.subTest(exit_code=exit_code),
+                mock.patch.object(
+                    self.presubmit.subprocess,
+                    "run",
+                    return_value=subprocess.CompletedProcess([], exit_code),
+                ) as run,
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                self.assertEqual(self.presubmit.run_bazel_tests(), exit_code == 0)
+                self.assertEqual(run.call_args.args[0][-1], "//loom/...")
+
     def test_bazel_package_target_uses_nearest_build_package(self):
         with tempfile.TemporaryDirectory() as temporary_dir:
             repository_root = Path(temporary_dir)
