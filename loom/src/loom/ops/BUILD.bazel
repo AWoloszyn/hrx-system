@@ -182,7 +182,10 @@ loom_cc_library(
     name = "cache",
     srcs = ["cache.c"],
     hdrs = ["cache.h"],
-    deps = ["//runtime/src/iree/base"],
+    deps = [
+        "//loom/src/loom/ir",
+        "//runtime/src/iree/base",
+    ],
 )
 
 loom_cc_library(

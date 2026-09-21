@@ -60,6 +60,7 @@ from loom.dsl import (
     VECTOR,
     VIEW,
     AttrDef,
+    CachePolicyInterface,
     CallLikeInterface,
     CallLikeKind,
     ContractFamily,
@@ -1359,6 +1360,7 @@ kernel_async_copy = Op(
         Result("token", ANY, doc="Opaque async-copy token for the initiated copy."),
     ],
     attrs=_async_copy_attrs(),
+    interfaces=[CachePolicyInterface()],
     effects=[Reads("source"), Writes("dest")],
     verify="loom_kernel_async_copy_verify",
     format=[
@@ -1401,6 +1403,7 @@ kernel_async_copy_mask = Op(
         Result("token", ANY, doc="Opaque async-copy token for the predicated copy."),
     ],
     attrs=_async_copy_attrs(),
+    interfaces=[CachePolicyInterface()],
     effects=[Reads("source"), Writes("dest")],
     verify="loom_kernel_async_copy_mask_verify",
     format=[
@@ -1454,6 +1457,7 @@ kernel_async_gather = Op(
         Result("token", ANY, doc="Opaque async-copy token for the subgroup gather."),
     ],
     attrs=_async_cache_attrs(),
+    interfaces=[CachePolicyInterface()],
     effects=[Reads("source"), Writes("dest")],
     verify="loom_kernel_async_gather_verify",
     format=[
@@ -1497,6 +1501,7 @@ kernel_async_gather_mask = Op(
         Result("token", ANY, doc="Opaque async-copy token for the predicated gather."),
     ],
     attrs=_async_cache_attrs(),
+    interfaces=[CachePolicyInterface()],
     effects=[Reads("source"), Writes("dest")],
     verify="loom_kernel_async_gather_mask_verify",
     format=[
@@ -1550,6 +1555,7 @@ kernel_async_cluster_gather = Op(
         Result("token", ANY, doc="Opaque async-copy token for the cluster gather."),
     ],
     attrs=_async_cache_attrs(),
+    interfaces=[CachePolicyInterface()],
     effects=[Reads("source"), Writes("dest")],
     verify="loom_kernel_async_cluster_gather_verify",
     format=[
@@ -1599,6 +1605,7 @@ kernel_async_cluster_gather_mask = Op(
         Result("token", ANY, doc="Opaque async-copy token for the predicated cluster gather."),
     ],
     attrs=_async_cache_attrs(),
+    interfaces=[CachePolicyInterface()],
     effects=[Reads("source"), Writes("dest")],
     verify="loom_kernel_async_cluster_gather_mask_verify",
     format=[
@@ -1654,6 +1661,7 @@ kernel_async_tensor_load_to_lds = Op(
         Result("token", ANY, doc="Opaque async-copy token for the tensor load."),
     ],
     attrs=_async_cache_attrs(),
+    interfaces=[CachePolicyInterface()],
     effects=[Reads("source"), Writes("dest")],
     verify="loom_kernel_async_tensor_load_to_lds_verify",
     format=[
@@ -1705,6 +1713,7 @@ kernel_async_tensor_store_from_lds = Op(
         Result("token", ANY, doc="Opaque async-copy token for the tensor store."),
     ],
     attrs=_async_cache_attrs(),
+    interfaces=[CachePolicyInterface()],
     effects=[Reads("source"), Writes("dest")],
     verify="loom_kernel_async_tensor_store_from_lds_verify",
     format=[

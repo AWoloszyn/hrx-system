@@ -22,6 +22,7 @@ loom_cc_library(
     loom::ir
     loom::ir::facts
     loom::ops::buffer
+    loom::ops::cache
     loom::ops::encoding
     loom::ops::index
     loom::ops::op_defs
@@ -92,6 +93,7 @@ loom_cc_library(
     iree::base
     loom::ir
     loom::ops::atomic
+    loom::ops::cache
     loom::ops::op_defs
     loom::ops::scalar
     loom::ops::scf

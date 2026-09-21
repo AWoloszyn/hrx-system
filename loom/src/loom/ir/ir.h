@@ -133,6 +133,7 @@ typedef struct loom_target_like_vtable_t loom_target_like_vtable_t;
 typedef struct loom_loop_like_vtable_t loom_loop_like_vtable_t;
 typedef struct loom_region_branch_vtable_t loom_region_branch_vtable_t;
 typedef struct loom_memory_access_vtable_t loom_memory_access_vtable_t;
+typedef struct loom_cache_policy_vtable_t loom_cache_policy_vtable_t;
 typedef struct loom_type_transfer_context_t loom_type_transfer_context_t;
 
 //===----------------------------------------------------------------------===//
@@ -1428,12 +1429,6 @@ typedef struct loom_memory_access_vtable_t {
   // Index of the static logical-origin indices attr.
   uint8_t static_indices_attr_index;
 
-  // Index of the optional cache/coherency-scope attr.
-  uint8_t cache_scope_attr_index;
-
-  // Index of the optional temporal cache-policy attr.
-  uint8_t cache_temporal_attr_index;
-
   // Index of the atomic update-kind attr.
   uint8_t atomic_kind_attr_index;
 
@@ -1460,6 +1455,18 @@ typedef struct loom_memory_access_t {
   const loom_op_vtable_t* op_vtable;
 } loom_memory_access_t;
 
+// Schema-resolved CachePolicy attribute roles. Stored inline in the op vtable;
+// zero initialization denotes an operation without the interface. NONE indices
+// denote an implemented fixed default policy with no authored attributes.
+typedef struct loom_cache_policy_vtable_t {
+  // Whether the operation implements the CachePolicy interface.
+  bool available;
+  // Attribute index in the shared cache-scope enum domain, or NONE.
+  uint8_t scope_attr_index;
+  // Attribute index in the shared temporal-policy enum domain, or NONE.
+  uint8_t temporal_attr_index;
+} loom_cache_policy_vtable_t;
+
 //===----------------------------------------------------------------------===//
 // Op vtable
 //===----------------------------------------------------------------------===//
@@ -1483,20 +1490,16 @@ typedef struct loom_memory_access_t {
 //
 //   Cache line 2 (bytes 64-127): verification, parse/print, and
 //   diagnostics — descriptor arrays only needed by the verifier,
-//   format tables only needed by the parser/printer, and the name
-//   string only needed by diagnostics.
+//   format tables only needed by the parser/printer, the name string only
+//   needed by diagnostics, and the compact cache-policy interface binding.
 //
 //   Cache line 3 (bytes 128-191): interface and placement pointers — only
 //   touched by passes that query a specific interface (e.g., LICM reads
 //   loop_like, call graph construction reads call_like) and by verification.
 //   Each pointer is NULL for ops that don't implement that interface/contract,
-//   so passes that don't use any interfaces never fetch this line. With typical
-//   op counts (~200-500 kinds), the NULL pointers for the majority of ops
-//   occupy .rodata address space but do not cause L1 cache misses because no
-//   code path reads them.
-//
-// With ~500 op kinds, keeping the hot path in one cache line avoids
-// ~500 × 64B = 32KB of cold .rodata fetches per pass.
+//   so passes that don't use interfaces do not access these fields. Object
+//   alignment is pointer-sized; the byte groups describe field locality,
+//   not a guarantee that every group starts on a physical cache-line boundary.
 struct loom_op_vtable_t {
   // --- Cache line 1: compiler pass hot path (0-63) ---
 
@@ -1549,7 +1552,8 @@ struct loom_op_vtable_t {
   // Number of dictionary rows at the start of constraints. Nonzero exactly
   // when LOOM_OP_VTABLE_HAS_OPERAND_DICT is set; independent of assembly.
   uint8_t operand_dictionary_count;
-  // 3 bytes padding to 128.
+  // Generated advisory cache-policy roles, independent of memory endpoints.
+  loom_cache_policy_vtable_t cache_policy;
 
   // --- Cache line 3: interface and placement pointers (128-191) ---
   //
@@ -1573,7 +1577,7 @@ struct loom_op_vtable_t {
 };
 
 static_assert(sizeof(loom_op_vtable_t) == 192,
-              "loom_op_vtable_t must be exactly three cache lines");
+              "loom_op_vtable_t must be 192 bytes");
 
 // Returns true when every operand is a declaration-owned signature definition
 // rather than a reference to a value defined elsewhere.

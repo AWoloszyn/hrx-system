@@ -6,6 +6,20 @@
 
 #include "loom/ops/cache.h"
 
+#include "loom/ir/context.h"
+
+loom_cache_policy_t loom_cache_policy_cast(const loom_module_t* module,
+                                           const loom_op_t* op) {
+  const loom_op_vtable_t* vtable = op ? loom_op_vtable(module, op) : NULL;
+  if (!vtable || !vtable->cache_policy.available) {
+    return (loom_cache_policy_t){0};
+  }
+  return (loom_cache_policy_t){
+      .attributes = loom_op_const_attrs(op),
+      .vtable = &vtable->cache_policy,
+  };
+}
+
 bool loom_cache_scope_is_valid(uint8_t scope) {
   return scope < LOOM_CACHE_SCOPE_COUNT_;
 }

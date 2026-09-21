@@ -1549,20 +1549,6 @@ loom_attribute_t loom_memory_access_static_indices(
                                              : LOOM_ATTR_INDEX_NONE);
 }
 
-loom_attribute_t loom_memory_access_cache_scope(loom_memory_access_t access) {
-  const loom_memory_access_vtable_t* vtable = loom_memory_access_vtable(access);
-  return loom_memory_access_attr(
-      access, vtable ? vtable->cache_scope_attr_index : LOOM_ATTR_INDEX_NONE);
-}
-
-loom_attribute_t loom_memory_access_cache_temporal(
-    loom_memory_access_t access) {
-  const loom_memory_access_vtable_t* vtable = loom_memory_access_vtable(access);
-  return loom_memory_access_attr(access, vtable
-                                             ? vtable->cache_temporal_attr_index
-                                             : LOOM_ATTR_INDEX_NONE);
-}
-
 loom_attribute_t loom_memory_access_atomic_kind(loom_memory_access_t access) {
   const loom_memory_access_vtable_t* vtable = loom_memory_access_vtable(access);
   return loom_memory_access_attr(

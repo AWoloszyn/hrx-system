@@ -1574,12 +1574,6 @@ loom_value_slice_t loom_memory_access_dynamic_indices(
 // Returns the static logical-origin indices attr.
 loom_attribute_t loom_memory_access_static_indices(loom_memory_access_t access);
 
-// Returns the optional cache/coherency-scope attr.
-loom_attribute_t loom_memory_access_cache_scope(loom_memory_access_t access);
-
-// Returns the optional temporal cache-policy attr.
-loom_attribute_t loom_memory_access_cache_temporal(loom_memory_access_t access);
-
 // Returns the atomic update-kind attr.
 loom_attribute_t loom_memory_access_atomic_kind(loom_memory_access_t access);
 

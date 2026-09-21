@@ -9,6 +9,7 @@
 #include "loom/ir/module.h"
 #include "loom/ir/scalar_type.h"
 #include "loom/ops/atomic.h"
+#include "loom/ops/cache.h"
 #include "loom/ops/op_defs.h"
 #include "loom/ops/scalar/ops.h"
 #include "loom/ops/scf/ops.h"
@@ -30,17 +31,16 @@ static_assert(IREE_ARRAYSIZE(kAtomicRmwFailureOrderings) ==
               "all atomic RMW orderings must map to a failure ordering");
 
 static loom_view_atomic_cmpxchg_build_flags_t
-loom_view_legalize_atomic_cmpxchg_cache_policy(loom_memory_access_t access,
+loom_view_legalize_atomic_cmpxchg_cache_policy(loom_cache_policy_t policy,
                                                uint8_t* out_cache_scope,
                                                uint8_t* out_cache_temporal) {
   loom_view_atomic_cmpxchg_build_flags_t build_flags = 0;
-  const loom_attribute_t cache_scope = loom_memory_access_cache_scope(access);
+  const loom_attribute_t cache_scope = loom_cache_policy_scope(policy);
   if (!loom_attr_is_absent(cache_scope)) {
     build_flags |= LOOM_VIEW_ATOMIC_CMPXCHG_BUILD_FLAG_HAS_CACHE_SCOPE;
     *out_cache_scope = loom_attr_as_enum(cache_scope);
   }
-  const loom_attribute_t cache_temporal =
-      loom_memory_access_cache_temporal(access);
+  const loom_attribute_t cache_temporal = loom_cache_policy_temporal(policy);
   if (!loom_attr_is_absent(cache_temporal)) {
     build_flags |= LOOM_VIEW_ATOMIC_CMPXCHG_BUILD_FLAG_HAS_CACHE_TEMPORAL;
     *out_cache_temporal = loom_attr_as_enum(cache_temporal);
@@ -62,8 +62,9 @@ static iree_status_t loom_view_legalize_build_atomic_addf_before_region(
   uint8_t cache_scope = 0;
   uint8_t cache_temporal = 0;
   const loom_view_atomic_cmpxchg_build_flags_t build_flags =
-      loom_view_legalize_atomic_cmpxchg_cache_policy(access, &cache_scope,
-                                                     &cache_temporal);
+      loom_view_legalize_atomic_cmpxchg_cache_policy(
+          loom_cache_policy_cast(builder->module, access.op), &cache_scope,
+          &cache_temporal);
   const loom_value_slice_t indices = loom_memory_access_dynamic_indices(access);
   const loom_attribute_t static_indices =
       loom_memory_access_static_indices(access);

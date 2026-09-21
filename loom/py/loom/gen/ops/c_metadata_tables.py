@@ -1129,7 +1129,7 @@ def generate_tables_c(
         type_transfer_fn = op.type_transfer or "NULL"
         verify_fn = op.verify or "NULL"
         eff_traits = op.effective_traits or "NULL"
-        interface_ptrs = {spec.vtable_field: c_interfaces.interface_vtable_ptr(op, spec) for spec in c_interfaces.INTERFACES}
+        interface_initializers = {spec.vtable_field: c_interfaces.interface_vtable_initializer(op, spec) for spec in c_interfaces.INTERFACES}
         symbol_def_ptr = f"&{prefix}_symbol_def" if op.symbol_def is not None else "NULL"
         has_placement = any(trait.name in ("HasParent", "HasAncestor", "NoAncestor") for trait in op.traits)
         placement_ptr = f"&{prefix}_placement" if has_placement else "NULL"
@@ -1204,9 +1204,9 @@ def generate_tables_c(
             )
             lines.append(f"    .module_record_key_attr_index = {key_attr_index},")
         for spec in c_interfaces.INTERFACES:
-            interface_ptr = interface_ptrs[spec.vtable_field]
-            if interface_ptr != "NULL":
-                lines.append(f"    .{spec.vtable_field} = {interface_ptr},")
+            initializer = interface_initializers[spec.vtable_field]
+            if initializer is not None:
+                lines.append(f"    .{spec.vtable_field} = {initializer},")
         if symbol_def_ptr != "NULL":
             lines.append(f"    .symbol_def = {symbol_def_ptr},")
         if placement_ptr != "NULL":

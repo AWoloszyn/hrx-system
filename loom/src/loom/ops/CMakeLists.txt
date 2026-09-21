@@ -203,6 +203,7 @@ loom_cc_library(
     "cache.c"
   DEPS
     iree::base
+    loom::ir
   PUBLIC
 )
 

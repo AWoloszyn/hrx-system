@@ -219,9 +219,10 @@ bool loom_vector_memory_footprint_static_extents(
     const loom_vector_memory_footprint_t* footprint, int64_t* out_extents,
     iree_host_size_t capacity);
 
-// Extracts the optional cache policy from a vector memory op. Returns false
-// for non-memory ops or malformed cache attrs so callers do not rewrite away
-// verifier-owned diagnostics.
+// Extracts the optional cache policy through the operation's CachePolicy
+// interface, including scalar/vector accesses and asynchronous transfers.
+// Returns false for nonmembers or malformed cache attrs so callers do not
+// rewrite away verifier-owned diagnostics.
 bool loom_vector_memory_cache_policy_from_op(
     const loom_module_t* module, const loom_op_t* op,
     loom_vector_memory_cache_policy_t* out_policy);

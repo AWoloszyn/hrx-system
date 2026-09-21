@@ -266,6 +266,7 @@ __all__ = [
     "LegacyFieldMapping",
     "LegacyFormat",
     # Interfaces.
+    "CachePolicyInterface",
     "CallLikeInterface",
     "CallLikeKind",
     "FuncLikeInterface",
@@ -5600,6 +5601,20 @@ class RegionBranchInterface(NamedTuple):
 _DEFAULT_INTERFACE_FIELD = object()
 
 
+class CachePolicyInterface(NamedTuple):
+    """Advisory cache policy shared by single-access and transfer operations.
+
+    Fields name declared enum attributes, independently of memory endpoint
+    layout. Both may be None for operations with a fixed default policy.
+    Missing named fields are schema errors, not implicit default policies.
+    """
+
+    # Attribute in the shared CacheScope enum domain, or None.
+    cache_scope: str | None = "cache_scope"
+    # Attribute in the shared CacheTemporal enum domain, or None.
+    cache_temporal: str | None = "cache_temporal"
+
+
 @unique
 class MemoryAccessOperationKind(Enum):
     """Operation family represented by a MemoryAccess op shape."""
@@ -5648,10 +5663,6 @@ class MemoryAccessInterface:
     indices: str | None = None
     # Attr naming the full-rank static logical origin indices.
     static_indices: str | None = None
-    # Optional cache/coherency scope attr.
-    cache_scope: str | None = None
-    # Optional temporal cache-policy attr.
-    cache_temporal: str | None = None
     # Atomic update kind attr.
     atomic_kind: str | None = None
     # Single atomic memory-ordering attr.
@@ -5680,8 +5691,6 @@ class MemoryAccessInterface:
         offsets: str | None | object = _DEFAULT_INTERFACE_FIELD,
         indices: str | None | object = _DEFAULT_INTERFACE_FIELD,
         static_indices: str | None | object = _DEFAULT_INTERFACE_FIELD,
-        cache_scope: str | None | object = _DEFAULT_INTERFACE_FIELD,
-        cache_temporal: str | None | object = _DEFAULT_INTERFACE_FIELD,
         atomic_kind: str | None | object = _DEFAULT_INTERFACE_FIELD,
         atomic_ordering: str | None | object = _DEFAULT_INTERFACE_FIELD,
         atomic_success_ordering: str | None | object = _DEFAULT_INTERFACE_FIELD,
@@ -5731,16 +5740,6 @@ class MemoryAccessInterface:
             self,
             "static_indices",
             _resolve("static_indices", static_indices, "static_indices"),
-        )
-        object.__setattr__(
-            self,
-            "cache_scope",
-            _resolve("cache_scope", cache_scope, "cache_scope"),
-        )
-        object.__setattr__(
-            self,
-            "cache_temporal",
-            _resolve("cache_temporal", cache_temporal, "cache_temporal"),
         )
         object.__setattr__(
             self,

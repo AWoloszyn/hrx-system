@@ -70,6 +70,7 @@ from loom.dsl import (
     AttrMatchesElementType,
     BitRangeWithinElementWidth,
     Borrow,
+    CachePolicyInterface,
     CallLikeInterface,
     CallLikeKind,
     ConditionForwardedCountMatchesBlockArgs,
@@ -2982,6 +2983,60 @@ def test_generate_tables_rejects_incomplete_condition_loop_contract() -> None:
         _generate_condition_loop_tables(op)
 
 
+def _cache_policy_test_op(
+    names: tuple[str, ...],
+    interface: CachePolicyInterface | None = None,
+) -> Op:
+    if interface is None:
+        interface = CachePolicyInterface(cache_scope="scope", cache_temporal="temporal")
+    cache_enums = {
+        name: EnumDef(
+            name,
+            [EnumCase("default", 0)],
+            c_type=f"loom_cache_{name}_t",
+            c_const_prefix=f"LOOM_CACHE_{name.upper()}",
+            c_include="loom/ops/cache.h",
+        )
+        for name in ("scope", "temporal")
+    }
+    return Op(
+        "test.policy",
+        group=Dialect("test"),
+        attrs=[AttrDef(name, "enum", enum_def=cache_enums[name]) if name in cache_enums else AttrDef(name, "i64") for name in names],
+        interfaces=[interface],
+        format=[AttrDict()],
+    )
+
+
+def test_cache_policy_interface_follows_declared_fields() -> None:
+    for names in (("scope", "temporal"), ("temporal", "inserted", "scope")):
+        op = _cache_policy_test_op(names)
+        tables_c = generate_tables_c("test", 0, [op])
+        assert f".scope_attr_index = {names.index('scope')}," in tables_c
+        assert f".temporal_attr_index = {names.index('temporal')}," in tables_c
+        assert ".cache_policy = { .available = true," in tables_c
+
+
+def test_cache_policy_interface_rejects_missing_or_wrong_fields() -> None:
+    with _raises_value_error("attr 'scope' not found"):
+        generate_tables_c("test", 0, [_cache_policy_test_op(("renamed", "temporal"))])
+    op = _cache_policy_test_op(("scope", "temporal"), CachePolicyInterface(cache_scope="temporal", cache_temporal="scope"))
+    with _raises_value_error("must use the shared loom_cache_scope_t enum"):
+        generate_tables_c("test", 0, [op])
+
+
+def test_cache_policy_interface_can_describe_fixed_default_policy() -> None:
+    op = Op(
+        "test.fixed_policy",
+        group=Dialect("test"),
+        interfaces=[CachePolicyInterface(None, None)],
+    )
+    tables_c = generate_tables_c("test", 0, [op])
+    assert ".scope_attr_index = 255," in tables_c
+    assert ".temporal_attr_index = 255," in tables_c
+    assert ".cache_policy = { .available = true," in tables_c
+
+
 def test_generate_tables_memory_access_defaults_use_matching_fields() -> None:
     op = Op(
         "test.load",
@@ -3005,7 +3060,6 @@ def test_generate_tables_memory_access_defaults_use_matching_fields() -> None:
     assert ".value_operand_index = 255," in tables_c
     assert ".indices_operand_field_index = 1," in tables_c
     assert ".static_indices_attr_index = 0," in tables_c
-    assert ".cache_scope_attr_index = 255," in tables_c
 
 
 def test_generate_tables_memory_access_flags_use_shared_vocabulary() -> None:

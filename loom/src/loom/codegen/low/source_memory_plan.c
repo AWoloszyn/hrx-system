@@ -1709,9 +1709,8 @@ bool loom_low_source_memory_access_plan_build(
   }
 
   loom_vector_memory_cache_policy_t cache_policy = {0};
-  if (!loom_vector_memory_cache_policy_from_attrs(
-          loom_memory_access_cache_scope(access),
-          loom_memory_access_cache_temporal(access), &cache_policy)) {
+  if (!loom_vector_memory_cache_policy_from_op(module, source_op,
+                                               &cache_policy)) {
     out_diagnostic->rejection_bits |=
         LOOM_LOW_SOURCE_MEMORY_ACCESS_REJECTION_CACHE_POLICY;
     return false;

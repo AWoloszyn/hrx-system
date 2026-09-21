@@ -7,6 +7,7 @@
 #include "loom/ops/vector/memory.h"
 
 #include "loom/ir/scalar_type.h"
+#include "loom/ops/cache.h"
 #include "loom/ops/encoding/storage.h"
 #include "loom/ops/vector/fragment.h"
 #include "loom/ops/vector/ops.h"
@@ -409,13 +410,13 @@ bool loom_vector_memory_cache_policy_from_op(
   if (!module || !op) {
     return false;
   }
-  loom_memory_access_t access = loom_memory_access_cast(module, op);
-  if (!loom_memory_access_isa(access)) {
+  const loom_cache_policy_t policy = loom_cache_policy_cast(module, op);
+  if (!loom_cache_policy_isa(policy)) {
     return false;
   }
   return loom_vector_memory_cache_policy_from_attrs(
-      loom_memory_access_cache_scope(access),
-      loom_memory_access_cache_temporal(access), out_policy);
+      loom_cache_policy_scope(policy), loom_cache_policy_temporal(policy),
+      out_policy);
 }
 
 bool loom_vector_memory_access_static_axis_extent(

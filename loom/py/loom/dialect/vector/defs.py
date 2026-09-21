@@ -76,6 +76,7 @@ from loom.dsl import (
     AttrDef,
     AttrMatchesElementType,
     BitRangeWithinElementWidth,
+    CachePolicyInterface,
     Constraint,
     ContractFamily,
     Dialect,
@@ -1446,8 +1447,6 @@ def _memory_access_interface(
         mask=mask,
         passthrough=passthrough,
         offsets=offsets,
-        cache_scope="cache_scope",
-        cache_temporal="cache_temporal",
         atomic_kind=atomic_kind,
         atomic_ordering=atomic_ordering,
         atomic_success_ordering=atomic_success_ordering,
@@ -1526,7 +1525,7 @@ vector_fragment_load = Op(
     ],
     traits=[REFINABLE_RESULT_TYPE_REFS],
     effects=[Reads("view")],
-    interfaces=[_memory_access_interface()],
+    interfaces=[CachePolicyInterface(), _memory_access_interface()],
     constraints=[OperandDictionary("auxiliary", "auxiliary_names")],
     verify="loom_vector_fragment_load_verify",
     facts="loom_vector_fragment_load_facts",
@@ -1593,7 +1592,7 @@ vector_fragment_store = Op(
         *_indexed_memory_attrs(),
     ],
     effects=[Writes("view")],
-    interfaces=[_memory_access_interface(value="value")],
+    interfaces=[CachePolicyInterface(), _memory_access_interface(value="value")],
     verify="loom_vector_fragment_store_verify",
     format=[
         TemplateParam("role"),
@@ -1650,7 +1649,7 @@ vector_load = Op(
     constraints=[SameElementType("view", "result")],
     traits=[REFINABLE_RESULT_TYPE_REFS],
     effects=[Reads("view")],
-    interfaces=[_memory_access_interface()],
+    interfaces=[CachePolicyInterface(), _memory_access_interface()],
     effective_traits="loom_memory_access_effective_traits",
     verify="loom_vector_load_verify",
     facts="loom_vector_load_facts",
@@ -1695,7 +1694,7 @@ vector_store = Op(
     ],
     constraints=[SameElementType("value", "view")],
     effects=[Writes("view")],
-    interfaces=[_memory_access_interface(value="value")],
+    interfaces=[CachePolicyInterface(), _memory_access_interface(value="value")],
     effective_traits="loom_memory_access_effective_traits",
     verify="loom_vector_store_verify",
     format=[
@@ -1739,7 +1738,7 @@ vector_load_mask = Op(
         SameType("passthrough", "result"),
     ],
     effects=[Reads("view")],
-    interfaces=[_memory_access_interface(mask="mask", passthrough="passthrough")],
+    interfaces=[CachePolicyInterface(), _memory_access_interface(mask="mask", passthrough="passthrough")],
     verify="loom_vector_load_mask_verify",
     canonicalize="loom_vector_masked_memory_canonicalize",
     format=[
@@ -1779,7 +1778,7 @@ vector_store_mask = Op(
         SameShape("mask", "value"),
     ],
     effects=[Writes("view")],
-    interfaces=[_memory_access_interface(value="value", mask="mask")],
+    interfaces=[CachePolicyInterface(), _memory_access_interface(value="value", mask="mask")],
     verify="loom_vector_store_mask_verify",
     canonicalize="loom_vector_masked_memory_canonicalize",
     format=[
@@ -1827,7 +1826,7 @@ vector_load_expand = Op(
         SameType("passthrough", "result"),
     ],
     effects=[Reads("view")],
-    interfaces=[_memory_access_interface(mask="mask", passthrough="passthrough")],
+    interfaces=[CachePolicyInterface(), _memory_access_interface(mask="mask", passthrough="passthrough")],
     verify="loom_vector_load_expand_verify",
     canonicalize="loom_vector_masked_memory_canonicalize",
     format=[
@@ -1868,7 +1867,7 @@ vector_store_compress = Op(
         SameShape("mask", "value"),
     ],
     effects=[Writes("view")],
-    interfaces=[_memory_access_interface(value="value", mask="mask")],
+    interfaces=[CachePolicyInterface(), _memory_access_interface(value="value", mask="mask")],
     verify="loom_vector_store_compress_verify",
     canonicalize="loom_vector_masked_memory_canonicalize",
     format=[
@@ -1913,7 +1912,7 @@ vector_gather = Op(
         SameShape("offsets", "result"),
     ],
     effects=[Reads("view")],
-    interfaces=[_memory_access_interface(offsets="offsets")],
+    interfaces=[CachePolicyInterface(), _memory_access_interface(offsets="offsets")],
     verify="loom_vector_gather_verify",
     canonicalize="loom_vector_gather_scatter_canonicalize",
     format=[
@@ -1959,7 +1958,7 @@ vector_scatter = Op(
         SameShape("offsets", "value"),
     ],
     effects=[Writes("view")],
-    interfaces=[_memory_access_interface(value="value", offsets="offsets")],
+    interfaces=[CachePolicyInterface(), _memory_access_interface(value="value", offsets="offsets")],
     verify="loom_vector_scatter_verify",
     canonicalize="loom_vector_gather_scatter_canonicalize",
     format=[
@@ -2010,7 +2009,7 @@ vector_gather_mask = Op(
         SameType("passthrough", "result"),
     ],
     effects=[Reads("view")],
-    interfaces=[_memory_access_interface(offsets="offsets", mask="mask", passthrough="passthrough")],
+    interfaces=[CachePolicyInterface(), _memory_access_interface(offsets="offsets", mask="mask", passthrough="passthrough")],
     verify="loom_vector_gather_mask_verify",
     canonicalize="loom_vector_masked_memory_canonicalize",
     format=[
@@ -2060,7 +2059,7 @@ vector_scatter_mask = Op(
         SameShape("offsets", "mask", "value"),
     ],
     effects=[Writes("view")],
-    interfaces=[_memory_access_interface(value="value", offsets="offsets", mask="mask")],
+    interfaces=[CachePolicyInterface(), _memory_access_interface(value="value", offsets="offsets", mask="mask")],
     verify="loom_vector_scatter_mask_verify",
     canonicalize="loom_vector_masked_memory_canonicalize",
     format=[
@@ -2165,7 +2164,7 @@ vector_atomic_reduce = Op(
         SameShape("offsets", "value"),
     ],
     effects=[ReadWrites("view")],
-    interfaces=[_atomic_memory_access_interface(value="value")],
+    interfaces=[CachePolicyInterface(), _atomic_memory_access_interface(value="value")],
     verify="loom_vector_atomic_reduce_verify",
     format=[
         TemplateParam("kind"),
@@ -2209,7 +2208,7 @@ vector_atomic_reduce_mask = Op(
         SameShape("offsets", "mask", "value"),
     ],
     effects=[ReadWrites("view")],
-    interfaces=[_atomic_memory_access_interface(value="value", mask="mask")],
+    interfaces=[CachePolicyInterface(), _atomic_memory_access_interface(value="value", mask="mask")],
     verify="loom_vector_atomic_reduce_mask_verify",
     canonicalize="loom_vector_masked_memory_canonicalize",
     format=[
@@ -2263,7 +2262,7 @@ vector_atomic_rmw = Op(
         SameType("value", "result"),
     ],
     effects=[ReadWrites("view")],
-    interfaces=[_atomic_memory_access_interface(value="value")],
+    interfaces=[CachePolicyInterface(), _atomic_memory_access_interface(value="value")],
     verify="loom_vector_atomic_rmw_verify",
     format=[
         TemplateParam("kind"),
@@ -2310,7 +2309,7 @@ vector_atomic_rmw_mask = Op(
         SameType("value", "passthrough", "result"),
     ],
     effects=[ReadWrites("view")],
-    interfaces=[_atomic_memory_access_interface(value="value", mask="mask", passthrough="passthrough")],
+    interfaces=[CachePolicyInterface(), _atomic_memory_access_interface(value="value", mask="mask", passthrough="passthrough")],
     verify="loom_vector_atomic_rmw_mask_verify",
     canonicalize="loom_vector_masked_memory_canonicalize",
     format=[
@@ -2372,6 +2371,7 @@ vector_atomic_cmpxchg = Op(
     ],
     effects=[ReadWrites("view")],
     interfaces=[
+        CachePolicyInterface(),
         _memory_access_interface(
             expected="expected",
             replacement="replacement",
@@ -2379,7 +2379,7 @@ vector_atomic_cmpxchg = Op(
             atomic_success_ordering="success_ordering",
             atomic_failure_ordering="failure_ordering",
             atomic_scope="scope",
-        )
+        ),
     ],
     verify="loom_vector_atomic_cmpxchg_verify",
     format=[
