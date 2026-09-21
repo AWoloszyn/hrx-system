@@ -118,6 +118,29 @@ static iree_status_t loom_aie2p_low_verify_worker(
   uint16_t attrs_attr_index = UINT16_MAX;
   const loom_named_attr_t* entry_attr = loom_aie2p_low_find_packet_attr(
       state, packet->op, IREE_SV("entry"), &attrs_attr_index);
+  // Symbolic ordinals permit numeric values in the shared descriptor contract,
+  // but a resident worker names a core function. Other malformed attribute
+  // kinds are diagnosed by shared Low verification.
+  if (entry_attr != NULL && entry_attr->value.kind == LOOM_ATTR_I64) {
+    const loom_diagnostic_param_t params[] = {
+        loom_param_string(state->function_name),
+        loom_param_with_field_ref(
+            loom_param_string(loom_low_descriptor_packet_diagnostic_key(
+                state->target->descriptor_set, packet)),
+            loom_diagnostic_field_ref(
+                LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE,
+                loom_low_descriptor_packet_attribute_index(packet))),
+        loom_param_with_field_ref(
+            loom_param_string(IREE_SV("entry")),
+            loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE,
+                                      attrs_attr_index)),
+        loom_param_u32(entry_attr->value.kind),
+        loom_param_string(IREE_SV("symbol reference")),
+    };
+    return loom_low_verify_context_emit(context, packet->op,
+                                        LOOM_ERR_TARGET_049, params,
+                                        IREE_ARRAYSIZE(params));
+  }
   if (entry_attr == NULL || entry_attr->value.kind != LOOM_ATTR_SYMBOL) {
     return iree_ok_status();
   }

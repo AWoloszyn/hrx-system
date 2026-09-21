@@ -145,28 +145,6 @@ static bool loom_aie2p_array_symbol_ref_equal(loom_symbol_ref_t lhs,
   return lhs.module_id == rhs.module_id && lhs.symbol_id == rhs.symbol_id;
 }
 
-static const loom_named_attr_t* loom_aie2p_array_find_attr(
-    const loom_module_t* module, const loom_op_t* op, iree_string_view_t name) {
-  loom_named_attr_slice_t attrs = loom_named_attr_slice_empty();
-  const bool has_attrs = loom_low_packet_try_op_attrs(op, &attrs, NULL);
-  IREE_ASSERT(has_attrs, "verified descriptor packet must carry attributes");
-  for (iree_host_size_t i = 0; i < attrs.count; ++i) {
-    const loom_named_attr_t* attr = &attrs.entries[i];
-    if (iree_string_view_equal(
-            loom_string_table_get(&module->strings, attr->name_id), name)) {
-      return attr;
-    }
-  }
-  IREE_ASSERT_UNREACHABLE("verified descriptor immediate must be present");
-  return NULL;
-}
-
-static loom_attribute_t loom_aie2p_array_attr(const loom_module_t* module,
-                                              const loom_op_t* op,
-                                              iree_string_view_t name) {
-  return loom_aie2p_array_find_attr(module, op, name)->value;
-}
-
 static iree_status_t loom_aie2p_array_exact_u32(
     const loom_aie2p_array_plan_builder_t* builder, loom_value_id_t value_id,
     const char* purpose, uint32_t* out_value) {
@@ -446,19 +424,19 @@ static iree_status_t loom_aie2p_array_extract_group(
   return iree_ok_status();
 }
 
-static iree_status_t loom_aie2p_array_extract_binding(
+static void loom_aie2p_array_extract_binding(
     loom_aie2p_array_plan_builder_t* builder, const loom_op_t* op) {
   loom_aie2p_array_binding_t* binding =
       &builder->bindings[builder->binding_cursor];
+  // Required fields occupy canonical spelling order: access, ordinal.
+  const loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
   binding->value_id = loom_op_results(op)[0];
-  binding->ordinal = (uint32_t)loom_attr_as_i64(
-      loom_aie2p_array_attr(builder->module, op, IREE_SV("ordinal")));
-  binding->access = (loom_aie2p_array_binding_access_t)loom_attr_as_i64(
-      loom_aie2p_array_attr(builder->module, op, IREE_SV("access")));
+  binding->ordinal = (uint32_t)attrs.entries[1].value.i64;
+  binding->access =
+      (loom_aie2p_array_binding_access_t)attrs.entries[0].value.i64;
   loom_aie2p_array_define_entity(builder, binding->value_id,
                                  LOOM_AIE2P_ARRAY_ENTITY_BINDING,
                                  (uint32_t)builder->binding_cursor++);
-  return iree_ok_status();
 }
 
 static iree_status_t loom_aie2p_array_extract_worker(
@@ -471,8 +449,9 @@ static iree_status_t loom_aie2p_array_extract_worker(
       "worker group", &worker->group_index));
   IREE_RETURN_IF_ERROR(loom_aie2p_array_exact_u32(
       builder, loom_op_operands(op)[1], "worker lane", &worker->lane));
-  worker->entry = loom_attr_as_symbol(
-      loom_aie2p_array_attr(builder->module, op, IREE_SV("entry")));
+  // Both worker forms require entry first in canonical spelling order.
+  const loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
+  worker->entry = attrs.entries[0].value.symbol;
   worker->fold_record_count = 0;
   worker->fold_output_port = 0;
   worker->fold_output_count = 0;
@@ -498,14 +477,11 @@ static iree_status_t loom_aie2p_array_extract_worker(
           iree_diagnostic_emit(builder->diagnostic_emitter, &emission));
       return iree_status_from_code(IREE_STATUS_INVALID_ARGUMENT);
     }
-    worker->fold_output_port = (uint32_t)loom_attr_as_i64(
-        loom_aie2p_array_attr(builder->module, op, IREE_SV("output_port")));
-    worker->fold_output_count = (uint32_t)loom_attr_as_i64(
-        loom_aie2p_array_attr(builder->module, op, IREE_SV("output_count")));
-    worker->fold_kind = (loom_combining_kind_t)loom_attr_as_i64(
-        loom_aie2p_array_attr(builder->module, op, IREE_SV("kind")));
-    worker->fold_fast_math_flags = (uint8_t)loom_attr_as_i64(
-        loom_aie2p_array_attr(builder->module, op, IREE_SV("fast_math")));
+    // Remaining required fields are fast_math, kind, output_count, output_port.
+    worker->fold_output_port = (uint32_t)attrs.entries[4].value.i64;
+    worker->fold_output_count = (uint32_t)attrs.entries[3].value.i64;
+    worker->fold_kind = (loom_combining_kind_t)attrs.entries[2].value.i64;
+    worker->fold_fast_math_flags = (uint8_t)attrs.entries[1].value.i64;
   }
   worker->coordinate = (loom_xdna_tile_coordinate_t){
       .column = UINT16_MAX,
@@ -524,8 +500,7 @@ static iree_status_t loom_aie2p_array_extract_endpoint(
       &builder->endpoints[builder->endpoint_cursor];
   endpoint->value_id = loom_op_results(op)[0];
   endpoint->direction = direction;
-  endpoint->port = (uint32_t)loom_attr_as_i64(
-      loom_aie2p_array_attr(builder->module, op, IREE_SV("port")));
+  endpoint->port = (uint32_t)loom_low_op_attrs(op).entries[0].value.i64;
   endpoint->message_type =
       *loom_aie2p_array_result_value_type(builder->module, op);
   endpoint->binding_view_source_endpoint_index = UINT32_MAX;
@@ -664,7 +639,7 @@ static iree_status_t loom_aie2p_array_extract_topology(
         break;
       }
       case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_BINDING: {
-        IREE_RETURN_IF_ERROR(loom_aie2p_array_extract_binding(builder, op));
+        loom_aie2p_array_extract_binding(builder, op);
         break;
       }
       case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_WORKER: {
