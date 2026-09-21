@@ -869,6 +869,10 @@ typedef enum hrx_virtual_memory_access_scope_t {
 
 HRX_API hrx_status_t hrx_allocator_virtual_memory_protect(
     hrx_allocator_t allocator, hrx_buffer_t virtual_buffer,
+    size_t virtual_offset, size_t size, hrx_memory_protection_t protection);
+
+HRX_API hrx_status_t hrx_allocator_virtual_memory_protect_scoped(
+    hrx_allocator_t allocator, hrx_buffer_t virtual_buffer,
     size_t virtual_offset, size_t size,
     hrx_virtual_memory_access_scope_t access_scope,
     hrx_memory_protection_t protection);

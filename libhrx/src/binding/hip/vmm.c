@@ -1398,9 +1398,11 @@ hipError_t iree_hip_vmm_set_access(void* ptr, size_t size,
         break;
       }
     }
-    result = iree_hip_vmm_from_hrx_status(hrx_allocator_virtual_memory_protect(
-        hrx_device_allocator(access_device), reservation->virtual_buffer,
-        offset, size, scope, iree_hip_vmm_protection(descriptors[i].flags)));
+    result = iree_hip_vmm_from_hrx_status(
+        hrx_allocator_virtual_memory_protect_scoped(
+            hrx_device_allocator(access_device), reservation->virtual_buffer,
+            offset, size, scope,
+            iree_hip_vmm_protection(descriptors[i].flags)));
     if (result == hipSuccess) {
       iree_allocator_free(iree_allocator_system(), reservation->access_ranges);
       reservation->access_ranges = updated_ranges;
