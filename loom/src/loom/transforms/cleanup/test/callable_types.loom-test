@@ -100,3 +100,30 @@ func.def public @return_dimension(%storage: buffer) -> (%extent: index, view<[%e
   %view = buffer.view %storage[%base] : buffer -> view<[%width]xf32>
   func.return %width, %view : index, view<[%width]xf32>
 }
+
+// ====
+
+// Purity does not release signature ownership.
+func.decl pure @forward(%layout: encoding<layout>, %input: view<2x3xf32, %layout>) -> (view<2x3xf32, %layout>)
+
+func.def public @pure_call(%storage: buffer) -> (f32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %base = index.constant 0 : offset
+  %input = buffer.view %storage[%base] : buffer -> view<2x3xf32, %layout>
+  %result = func.call pure @forward(%layout, %input) : (encoding<layout>, view<2x3xf32, %layout>) -> (view<2x3xf32, %layout>)
+  %value = view.load %result[1, 2] : view<2x3xf32, %layout> -> f32
+  func.return %value : f32
+}
+
+// ====
+
+template.decl pure @forward(%layout: encoding<layout>, %input: view<2x3xf32, %layout>) -> (view<2x3xf32, %layout>)
+
+func.def public @pure_family(%storage: buffer) -> (f32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %base = index.constant 0 : offset
+  %input = buffer.view %storage[%base] : buffer -> view<2x3xf32, %layout>
+  %result = template.apply<@forward>(%layout, %input) pure : (encoding<layout>, view<2x3xf32, %layout>) -> (view<2x3xf32, %layout>)
+  %value = view.load %result[1, 2] : view<2x3xf32, %layout> -> f32
+  func.return %value : f32
+}

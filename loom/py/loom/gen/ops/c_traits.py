@@ -8,7 +8,7 @@
 
 from __future__ import annotations
 
-from loom.dsl import EffectKind, Op, RegionDef, TypeConstraint
+from loom.dsl import CallLikeInterface, EffectKind, FuncLikeInterface, Op, RegionDef, TypeConstraint
 from loom.fields import compute_layout
 from loom.gen.ops.c_enums import TRAIT_MAP
 from loom.gen.ops.c_names import c_enum_name
@@ -138,6 +138,12 @@ def trait_flags(op: Op) -> str:
     # without each transform carrying a ConstantLike exception.
     if _has_trait(op, "ConstantLike") and "LOOM_TRAIT_SAFE_TO_SPECULATE" not in bits:
         bits.append("LOOM_TRAIT_SAFE_TO_SPECULATE")
+
+    # Callable definitions and exact calls share signature ownership even when
+    # their effects differ. Unresolved applications can declare the same boundary
+    # without providing the direct-callee metadata required by CallLike.
+    if "LOOM_TRAIT_CALLABLE_BOUNDARY" not in bits and any(isinstance(interface, (CallLikeInterface, FuncLikeInterface)) for interface in op.interfaces):
+        bits.append("LOOM_TRAIT_CALLABLE_BOUNDARY")
 
     has_read = False
     has_write = False

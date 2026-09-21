@@ -1850,14 +1850,14 @@ iree_status_t loom_low_invoke_verify(const loom_module_t* module,
 
 loom_trait_flags_t loom_low_func_call_effective_traits(const loom_op_t* op) {
   if (loom_low_func_call_purity(op) != 0) {
-    return LOOM_TRAIT_PURE;
+    return LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_PURE;
   }
-  return LOOM_TRAIT_UNKNOWN_EFFECTS;
+  return LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_UNKNOWN_EFFECTS;
 }
 
 loom_trait_flags_t loom_low_invoke_effective_traits(const loom_op_t* op) {
   if (loom_low_invoke_purity(op) != 0) {
-    return LOOM_TRAIT_PURE;
+    return LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_PURE;
   }
-  return LOOM_TRAIT_UNKNOWN_EFFECTS;
+  return LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_UNKNOWN_EFFECTS;
 }

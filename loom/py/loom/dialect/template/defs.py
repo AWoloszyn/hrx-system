@@ -37,6 +37,7 @@ from loom.dialect.func.defs import CallingConv, Purity, Retain, Temperature, Vis
 from loom.dsl import (
     ANY,
     ATTR_TYPE_PARAMETERIZED_ARRAY,
+    CALLABLE_BOUNDARY,
     COMMAND_EFFECT,
     CONTEXTUAL,
     ISOLATED_FROM_ABOVE,
@@ -325,7 +326,7 @@ template_apply = Op(
         AttrDef("temperature", "enum", enum_def=Temperature, optional=True),
     ],
     results=[Result("results", ANY, variadic=True)],
-    traits=[UNKNOWN_EFFECTS, COMMAND_EFFECT, CONTEXTUAL],
+    traits=[UNKNOWN_EFFECTS, COMMAND_EFFECT, CONTEXTUAL, CALLABLE_BOUNDARY],
     verify="loom_template_apply_verify",
     canonicalize="loom_template_apply_canonicalize",
     effective_traits="loom_template_apply_effective_traits",

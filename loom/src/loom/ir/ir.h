@@ -792,6 +792,12 @@ enum loom_trait_bits_e {
   // interchangeable. Motion and CSE preserve the context until expansion;
   // runtime effects and erasure of unused pure results remain independent.
   LOOM_TRAIT_CONTEXTUAL = 1u << 30,
+  // Op participates in a callable signature shared with other operations.
+  // Refining its operand/result types requires an owner that reconciles the
+  // signature and its callers together. This property is independent of
+  // purity and does not imply an exact callee. Derived for FuncLike/CallLike
+  // interfaces; unresolved callable applications declare it explicitly.
+  LOOM_TRAIT_CALLABLE_BOUNDARY = 1u << 31,
 };
 typedef uint32_t loom_trait_flags_t;
 

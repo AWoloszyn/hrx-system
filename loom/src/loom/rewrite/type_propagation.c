@@ -13,7 +13,6 @@
 #include "loom/ir/local_value_domain.h"
 #include "loom/ir/module.h"
 #include "loom/ir/type_refinement.h"
-#include "loom/ops/template/ops.h"
 #include "loom/target/registers.h"
 #include "loom/util/cfg_graph.h"
 
@@ -1401,14 +1400,6 @@ static iree_status_t loom_type_propagator_process_def_constraints(
                                                            def_op, vtable);
 }
 
-static bool loom_type_propagator_op_has_callable_contract(
-    const loom_op_t* op, const loom_op_vtable_t* vtable) {
-  // A family application has a callable contract before selection supplies its
-  // exact callee, so it deliberately does not implement the CallLike interface.
-  return vtable && (vtable->call_like || vtable->func_like ||
-                    loom_template_apply_isa(op));
-}
-
 static bool loom_type_propagator_boundary_is_fixed(
     const loom_type_propagator_t* propagator, loom_op_t* op) {
   return !propagator->refine_boundary.fn ||
@@ -1455,8 +1446,7 @@ static iree_status_t loom_type_propagator_process_value_adjacency(
     loom_op_t* definition = loom_value_def_op(value);
     const loom_op_vtable_t* definition_vtable =
         loom_op_vtable(propagator->module, definition);
-    if (loom_type_propagator_op_has_callable_contract(definition,
-                                                      definition_vtable) &&
+    if (iree_any_bit_set(definition->traits, LOOM_TRAIT_CALLABLE_BOUNDARY) &&
         loom_type_propagator_boundary_is_fixed(propagator, definition)) {
       propagator->conflict = true;
       return iree_ok_status();
@@ -1473,7 +1463,7 @@ static iree_status_t loom_type_propagator_process_value_adjacency(
     loom_op_t* user = loom_use_user_op(uses[i]);
     const loom_op_vtable_t* user_vtable =
         loom_op_vtable(propagator->module, user);
-    if (loom_type_propagator_op_has_callable_contract(user, user_vtable) &&
+    if (iree_any_bit_set(user->traits, LOOM_TRAIT_CALLABLE_BOUNDARY) &&
         loom_type_propagator_boundary_is_fixed(propagator, user)) {
       propagator->conflict = true;
       return iree_ok_status();

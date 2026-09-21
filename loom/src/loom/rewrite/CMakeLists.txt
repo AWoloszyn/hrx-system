@@ -221,7 +221,6 @@ loom_cc_library(
     loom::ir
     loom::ir::type_refinement
     loom::ops::op_defs
-    loom::ops::template
     loom::target::registers
     loom::util::cfg_graph
     loom::util::fact_table

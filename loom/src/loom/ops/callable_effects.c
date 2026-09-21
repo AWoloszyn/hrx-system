@@ -49,7 +49,7 @@ iree_status_t loom_callable_effects_propagate_purity(
 loom_trait_flags_t loom_callable_effects_traits(const loom_op_t* op,
                                                 uint8_t purity_attr_index) {
   if (loom_attr_as_enum(loom_op_const_attrs(op)[purity_attr_index]) != 0) {
-    return LOOM_TRAIT_PURE;
+    return LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_PURE;
   }
-  return LOOM_TRAIT_UNKNOWN_EFFECTS;
+  return LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_UNKNOWN_EFFECTS;
 }
