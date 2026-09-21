@@ -419,3 +419,35 @@ func.def @rank2_replaced_state(%initial: vector<2x2xi32>, %replacement: vector<2
   }
   func.return %result_slot_0, %result_slot_1 : vector<2xi32>, vector<2xi32>
 }
+
+// ====
+// RUN: with-checks pass sroa-vector-banks
+
+// Expanding one aggregate column preserves result-local relationships between
+// retained columns.
+func.def @bank_sroa_with_dependent_view(%storage: buffer, %base: offset, %initial_rows: index, %layout: encoding<layout>, %initial: vector<1x2x4xf32>, %increment: vector<4xf32>) {
+  %loop_begin = index.constant 0 : index
+  %loop_end = index.constant 4 : index
+  %loop_step = index.constant 1 : index
+  %initial_view = buffer.view %storage[%base] : buffer -> view<[%initial_rows]x4xi32, %layout>
+  %rows, %view, %result = scf.for %i = [%loop_begin to %loop_end step %loop_step](%body_rows = %initial_rows : index, %body_view = %initial_view : view<[%initial_rows]x4xi32, %layout>, %bank = %initial : vector<1x2x4xf32>) -> (index, view<[%rows]x4xi32, %layout>, vector<1x2x4xf32>) {
+    test.use %body_view : view<[%body_rows]x4xi32, %layout>
+    %old = vector.extract %bank[0, 1] : vector<1x2x4xf32> -> vector<4xf32>
+    %next = vector.addf %old, %increment : vector<4xf32>
+    %updated = vector.insert %next into %bank[0, 1] : vector<4xf32>, vector<1x2x4xf32>
+    %next_rows = index.sub %body_rows, %loop_step : index
+    %next_view = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+    scf.yield %next_rows, %next_view, %updated : index, view<[%next_rows]x4xi32, %layout>, vector<1x2x4xf32>
+  }
+  %selected = vector.extract %result[0, 1] : vector<1x2x4xf32> -> vector<4xf32>
+  test.use %view, %selected : view<[%rows]x4xi32, %layout>, vector<4xf32>
+  func.return
+}
+
+// ----
+CHECK: * = vector.extract %initial[0, 0] : vector<1x2x4xf32> -> vector<4xf32>
+CHECK: * = vector.extract %initial[0, 1] : vector<1x2x4xf32> -> vector<4xf32>
+CHECK: %rows, %view, *, * = scf.for *(%* = %initial_rows : index, %* = %initial_view : view<[%initial_rows]x4xi32, %layout>, *: vector<4xf32>, *: vector<4xf32>) -> (index, view<[%rows]x4xi32, %layout>, vector<4xf32>, vector<4xf32>) {
+CHECK: test.use * : view<[*]x4xi32, %layout>
+CHECK: scf.yield %next_rows, %next_view, *, %next : index, view<[%next_rows]x4xi32, %layout>, vector<4xf32>, vector<4xf32>
+CHECK: test.use %view, * : view<[%rows]x4xi32, %layout>, vector<4xf32>
