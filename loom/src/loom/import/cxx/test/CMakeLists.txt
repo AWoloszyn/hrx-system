@@ -22,6 +22,7 @@ loom_check_test_suite(
     "config_cleanup.cxx-test"
     "config_invalid.cxx-test"
     "const.cxx-test"
+    "constexpr_semantics.cxx-test"
     "control_invalid.cxx-test"
     "data_models.cxx-test"
     "enum_semantics.cxx-test"
