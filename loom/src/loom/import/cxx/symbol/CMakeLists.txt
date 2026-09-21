@@ -41,6 +41,7 @@ loom_cc_library(
     loom::import::cxx::source::attributes
     loom::import::cxx::source::error
     loom::import::cxx::source::locations
+    loom::import::cxx::value::signature
     loom::import::cxx::value::types
     loom::ir
     loom::ops::check

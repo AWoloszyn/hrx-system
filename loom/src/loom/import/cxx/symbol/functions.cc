@@ -18,6 +18,7 @@
 
 #include "loom/import/cxx/source/attributes.h"
 #include "loom/import/cxx/source/error.h"
+#include "loom/import/cxx/value/signature.h"
 #include "loom/ir/module.h"
 #include "loom/ops/check/ops.h"
 #include "loom/ops/func/ops.h"
@@ -132,6 +133,27 @@ void Functions::collect(cxx::DeclarationAST* declaration,
     collect(linkage->declarationList, scope, definitions);
   } else if (auto* pattern =
                  cxx::ast_cast<cxx::TemplateDeclarationAST>(declaration)) {
+    // Function template patterns are not ordinary callable definitions, but
+    // their leading operation attribute owns admission for every concrete
+    // specialization reached later. Class members and nested templates remain
+    // outside the namespace-scope intrinsic surface.
+    if (scope == DeclarationScope::Namespace &&
+        pattern->templateParameterList) {
+      if (auto* simple =
+              cxx::ast_cast<cxx::SimpleDeclarationAST>(pattern->declaration)) {
+        for (auto* declarator : cxx::ListView{simple->initDeclaratorList}) {
+          if (auto* function =
+                  cxx::symbol_cast<cxx::FunctionSymbol>(declarator->symbol)) {
+            intrinsics_.declaration(function, simple->attributeList,
+                                    declarator);
+          }
+        }
+      } else if (auto* function = cxx::ast_cast<cxx::FunctionDefinitionAST>(
+                     pattern->declaration)) {
+        intrinsics_.declaration(function->symbol, function->attributeList,
+                                function);
+      }
+    }
     collect(pattern->declaration,
             pattern->templateParameterList ? DeclarationScope::Nested : scope,
             definitions);
@@ -458,20 +480,37 @@ FunctionBody Functions::define(cxx::FunctionSymbol* symbol, Types& types,
   auto parameters = symbol->parameters();
   bool kernel = annotated(symbol, "kernel");
   bool check_case = is_check_case(symbol);
-  std::vector<loom_type_t> arguments;
-  for (auto* parameter : parameters) {
-    if (kernel) {
-      arguments.push_back(types.get(parameter->type(), definition));
-    } else {
-      types.append(parameter->type(), definition, arguments);
-    }
-  }
   auto* signature = cxx::type_cast<cxx::FunctionType>(symbol->type());
   if (!signature || signature->isVariadic()) {
     diagnostics_.reject(unit_, definition,
                         "variadic functions are not admitted");
   }
   bool returns_void = signature->returnType()->kind() == cxx::TypeKind::kVoid;
+  std::vector<loom_type_t> arguments;
+  std::vector<loom_type_t> results;
+  BoundSignature callable_signature;
+  if (kernel) {
+    for (auto* parameter : parameters) {
+      arguments.push_back(types.get(parameter->type(), definition));
+    }
+  } else if (!check_case) {
+    std::vector<const cxx::Type*> sources;
+    sources.reserve(parameters.size() + !returns_void);
+    size_t argument_count = 0;
+    for (auto* parameter : parameters) {
+      sources.push_back(parameter->type());
+      argument_count +=
+          types.partition(parameter->type(), definition).component_count;
+    }
+    if (!returns_void) {
+      sources.push_back(signature->returnType());
+    }
+    callable_signature = bind_signature(types, sources, definition, builder);
+    arguments.assign(callable_signature.types.begin(),
+                     callable_signature.types.begin() + argument_count);
+    results.assign(callable_signature.types.begin() + argument_count,
+                   callable_signature.types.end());
+  }
   loom_op_t* op;
   if (check_case) {
     launches_.reject_ordinary_function(symbol);
@@ -497,10 +536,6 @@ FunctionBody Functions::define(cxx::FunctionSymbol* symbol, Types& types,
     loom_builder_restore(builder, saved);
   } else {
     launches_.reject_ordinary_function(symbol);
-    std::vector<loom_type_t> results;
-    if (!returns_void) {
-      types.append(signature->returnType(), definition, results);
-    }
     check(loom_func_def_build(
         builder,
         (annotated(symbol, "device") ? LOOM_FUNC_DEF_BUILD_FLAG_HAS_CC : 0) |

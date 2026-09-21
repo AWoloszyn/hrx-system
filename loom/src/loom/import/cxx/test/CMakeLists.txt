@@ -54,6 +54,7 @@ loom_check_test_suite(
     "symbols_invalid.cxx-test"
     "vectors.cxx-test"
     "vectors_invalid.cxx-test"
+    "view_values.cxx-test"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/aligned_layout.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_semantics.h"

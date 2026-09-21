@@ -227,6 +227,60 @@ types or template instantiations. Ordinary `if` remains available for Loom
 specialization; `if constexpr` requires a separate source-selection projection
 and is currently rejected by the importer.
 
+## Typed views and layouts
+
+`<loomcxx/view.h>` exposes Loom views without hiding their shape and address
+mapping behind a pointer intrinsic. Static extents remain template arguments;
+`loom::type::dynamic` marks each extent supplied when the view is formed. Layout
+values live in the matching `loom::encoding` namespace and can be dense or use
+runtime element strides.
+
+```cpp
+#include <loomcxx/view.h>
+
+namespace loomt = loom::type;
+using rows32 = loomt::view<const float, loomt::dynamic, 32>;
+
+rows32 suffix(rows32 source, unsigned first, unsigned remaining) {
+  return loom::view::subview(source, {first, 0}, {remaining});
+}
+
+void copy_element(const float* input, float* output, unsigned rows,
+                  unsigned input_stride, unsigned row, unsigned column) {
+  auto input_layout = loom::encoding::layout::strided(input_stride, 1u);
+  auto output_layout = loom::encoding::layout::dense<2>();
+  auto source = loom::buffer::view<loomt::dynamic, 32>(
+      input, {rows}, input_layout);
+  auto destination = loom::buffer::view<loomt::dynamic, 32>(
+      output, {rows}, output_layout);
+  auto tail = suffix(source, row, rows - row);
+  loom::view::store(loom::view::load(tail, 0, column), destination, row,
+                    column);
+}
+```
+
+The deduced `subview` overload retains the source's static/dynamic extent
+pattern. An explicit `subview<loom::type::dynamic, 16>(...)` selects a different
+result pattern while still deducing the element and source shape. Dimensions
+are supplied in source-axis order, with no slot for an axis already fixed by
+the type. A `view<const T, ...>` supports loads; ordinary C++ template deduction
+rejects attempts to store through it.
+
+The facade types have real, trivially copyable C++ object representations, so
+copies, overload resolution, `sizeof`, and data-model-dependent layout remain
+source-language facts. Import projects each value into the facts Loom needs:
+dynamic extents, one first-class layout, and the dependent view. Calls and
+structured branches reserve all destination identities before constructing the
+dependent view type. A helper returning `rows32` therefore has the shape:
+
+```loom
+func.def @suffix(...) -> (%rows: index, %layout: encoding<layout>,
+                          view<[%rows]x32xf32, %layout>)
+```
+
+Every call result and control-flow join names its own extent and layout instead
+of retaining references to values inside the callee or one incoming branch.
+
 ## Executable checks and benchmarks
 
 Include `<loomcxx/check.h>` to author a correctness case beside its implementation:

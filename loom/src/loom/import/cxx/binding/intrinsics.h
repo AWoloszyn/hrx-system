@@ -12,15 +12,24 @@
 
 #include <optional>
 #include <span>
+#include <string>
 #include <unordered_map>
 #include <variant>
 
 #include "loom/import/cxx/binding/scalar_bindings.h"
 #include "loom/import/cxx/binding/shaped.h"
+#include "loom/import/cxx/binding/view.h"
 #include "loom/import/cxx/source/source.h"
 #include "loom/import/cxx/value/types.h"
 
 namespace loom::cxx_import {
+
+// Result of one operation binding that has already claimed a source call.
+// Void intrinsics have no value; absence never means that the call was missed.
+struct IntrinsicCallResult {
+  // Emitted source value, absent for a handled void operation.
+  std::optional<Value> value;
+};
 
 // Resolves annotated source declarations against scalar, shaped, and check
 // operation contracts at admission. Calls consume the retained binding
@@ -41,11 +50,16 @@ class Intrinsics {
   std::optional<loom_type_t> expectation_type(
       cxx::FunctionSymbol* function) const;
 
-  // Emits a value-producing scalar or shaped operation. Void check bindings
-  // are handled by check-body translation and have no value result here.
-  std::optional<loom_value_id_t> call(
-      cxx::FunctionSymbol* function, std::span<const loom_value_id_t> arguments,
-      uint8_t math_flags, loom_builder_t* builder, loom_location_id_t location);
+  // Returns whether this service owns the concrete function. Reached function
+  // template specializations resolve lazily from an admitted primary pattern.
+  bool owns(cxx::FunctionSymbol* function, cxx::AST* owner);
+
+  // Emits an owned concrete operation using source-preserving argument values.
+  IntrinsicCallResult call(cxx::FunctionSymbol* function,
+                           std::span<const Value> arguments, ValueArena& arena,
+                           cxx::AST* owner, uint8_t math_flags,
+                           loom_builder_t* builder,
+                           loom_location_id_t location);
 
  private:
   struct ScalarBinding {
@@ -68,7 +82,8 @@ class Intrinsics {
       return loom_type_equal(type, other.type);
     }
   };
-  using Binding = std::variant<ScalarBinding, ShapedIntrinsic, EqualityBinding>;
+  using Binding = std::variant<ScalarBinding, ShapedIntrinsic, ViewIntrinsic,
+                               EqualityBinding>;
 
   Binding resolve(cxx::FunctionSymbol* function,
                   const cxx::Attribute& attribute, cxx::AST* owner);
@@ -76,6 +91,7 @@ class Intrinsics {
                                const cxx::FunctionType* signature,
                                const cxx::Attribute& attribute,
                                cxx::AST* owner);
+  Binding* concrete_binding(cxx::FunctionSymbol* function, cxx::AST* owner);
 
   // Invocation-owned frontend supplying canonical semantic types.
   cxx::TranslationUnit& unit_;
@@ -85,6 +101,8 @@ class Intrinsics {
   Types& types_;
   // Validated bindings indexed by canonical semantic function symbol.
   std::unordered_map<cxx::FunctionSymbol*, Binding> bindings_;
+  // Template operation spellings indexed by admitted primary declaration.
+  std::unordered_map<cxx::FunctionSymbol*, std::string> template_bindings_;
 };
 
 }  // namespace loom::cxx_import

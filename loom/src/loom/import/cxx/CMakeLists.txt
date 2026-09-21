@@ -61,6 +61,7 @@ loom_cc_library(
     loom::import::cxx::symbol::functions
     loom::import::cxx::value::representation
     loom::import::cxx::value::scalar
+    loom::import::cxx::value::signature
     loom::import::cxx::value::storage
     loom::import::cxx::value::types
     loom::import::cxx::value::vector

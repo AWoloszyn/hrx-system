@@ -167,6 +167,32 @@ TEST_F(ImportTest, RecordComponentsOutliveSourceAndFunctionBindingStorage) {
   EXPECT_EQ(diagnostic_count_, 0);
 }
 
+TEST_F(ImportTest, ViewFacadePreservesItsObjectContractAcrossDataModels) {
+  const auto source = IREE_SV(
+      "#include <loomcxx/view.h>\n"
+      "namespace loomt = loom::type;\n"
+      "using Layout = loomt::encoding<loom::encoding::role::layout, 2>;\n"
+      "using Rows = loomt::view<const float, loomt::dynamic, 32>;\n"
+      "static_assert(__is_trivially_copyable(Layout));\n"
+      "static_assert(__is_trivially_copyable(Rows));\n"
+      "static_assert(sizeof(Layout) == 2 * sizeof(loomt::size_type));\n"
+      "static_assert(sizeof(Rows) == sizeof(void*) + "
+      "4 * sizeof(loomt::size_type));\n"
+      "Rows identity(Rows value) { return value; }\n");
+  for (auto data_model : {LOOM_CXX_DATA_MODEL_LP64, LOOM_CXX_DATA_MODEL_LLP64,
+                          LOOM_CXX_DATA_MODEL_ILP32}) {
+    SCOPED_TRACE(static_cast<int>(data_model));
+    options_.data_model = data_model;
+    IREE_ASSERT_OK(Import(source));
+    ASSERT_NE(module_, nullptr);
+    auto text = Print();
+    EXPECT_NE(text.find("func.def public @identity"), std::string::npos);
+    EXPECT_NE(text.find("view<[%value_rows]x32xf32, %value_layout>"),
+              std::string::npos);
+  }
+  EXPECT_EQ(diagnostic_count_, 0);
+}
+
 TEST_F(ImportTest, HeaderProviderUsesNormalIncludeSearch) {
   const auto overrides =
       std::filesystem::path("/overrides/").make_preferred().string();
@@ -270,7 +296,7 @@ TEST_F(ImportTest, EmbeddedFacadeAndExternalProviderAgree) {
   // include root; preprocessing and binding resolution remain identical.
   for (const char* name :
        {"hip/hip_runtime.h", "hip/hip_fp16.h", "loomcxx/kernel.h",
-        "loomcxx/math.h", "loomcxx/scalar.h"}) {
+        "loomcxx/math.h", "loomcxx/scalar.h", "loomcxx/view.h"}) {
     auto contents = loom::cxx_import::builtin_include(name);
     ASSERT_TRUE(contents.has_value());
     headers_[std::string("/edited/") + name] = *contents;
