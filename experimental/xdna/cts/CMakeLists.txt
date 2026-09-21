@@ -87,6 +87,7 @@ iree_cc_test(
     amdf::amdf_static
     amdf::headers
     iree::base
+    iree::base::internal::shm
     iree::experimental::xdna::executable
     iree::hal
     iree::hal::drivers::amd::xdna::image::aie2p::npu2
@@ -120,6 +121,7 @@ iree_cc_test(
     amdf::amdf_static
     amdf::headers
     iree::base
+    iree::base::internal::shm
     iree::experimental::xdna::executable
     iree::hal
     iree::hal::drivers::amd::xdna::image::aie2p::npu2

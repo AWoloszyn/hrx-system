@@ -97,6 +97,7 @@ xdna_execution_test_suite(
             "//libamdf/cts/util:provider_headers",
             "//libamdf/cts/xdna:xdna_device_fixture",
             "//runtime/src/iree/base",
+            "//runtime/src/iree/base/internal:shm",
             "//runtime/src/iree/hal",
             "//runtime/src/iree/hal/drivers/amd/xdna/image/aie2p:npu2",
             "//runtime/src/iree/hal/drivers/amd/xdna/image/testdata:mul_i32",

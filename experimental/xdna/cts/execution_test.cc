@@ -15,6 +15,7 @@
 
 #include "amdf/gpu.h"
 #include "experimental/xdna/executable.h"
+#include "iree/base/internal/shm.h"
 #include "iree/hal/drivers/amd/xdna/image/aie2p/npu2.h"
 #include "iree/hal/drivers/amd/xdna/image/testdata/mul_i32.h"
 #include "iree/hal/drivers/amd/xdna/image/testdata/mul_i32_npu4.h"
@@ -40,12 +41,10 @@ constexpr BindingValues kValues = {
     65535,      65536,      0x7FFFFFFF, 0x80000000, 0x80000001, 0xFFFFFFFD,
     0xFFFFFFFE, 0xFFFFFFFF, 0x12345678, 0x87654321};
 
-class XdnaExecutionTest
-    : public XdnaDeviceFixture,
-      public ::testing::WithParamInterface<amdf_memory_profile_roles_t> {
+class XdnaExecutionFixture : public XdnaDeviceFixture {
  protected:
   struct MappedMemory {
-    // Case-owned allocation; its context and device outlive it.
+    // Owned allocation, or null for a view borrowing separately owned backing.
     amdf_memory_t* memory = nullptr;
     // Explicit host mapping, destroyed before the allocation.
     amdf_host_mapping_t* mapping = nullptr;
@@ -220,10 +219,10 @@ class XdnaExecutionTest
     create->registered_host_cacheability = mapping.cacheability;
   }
 
-  void CreateBindings() {
+  void CreateBindings(amdf_memory_profile_roles_t role) {
     memory_access_.requirements.address_kinds = uint64_t{1}
                                                 << AMDF_MEMORY_ADDRESS_XDNA_DMA;
-    if (GetParam() != AMDF_MEMORY_PROFILE_ROLE_CREATE) {
+    if (role != AMDF_MEMORY_PROFILE_ROLE_CREATE) {
       amdf_memory_scope_info_t scope_info = {};
       scope_info.type = AMDF_STRUCTURE_TYPE_MEMORY_SCOPE_INFO;
       scope_info.structure_size = sizeof(scope_info);
@@ -246,13 +245,12 @@ class XdnaExecutionTest
         ASSERT_EQ(status, AMDF_STATUS_OK);
         available_roles |= profile.roles;
       }
-      if ((available_roles & GetParam()) == 0) {
-        GTEST_SKIP() << "XDNA memory role " << GetParam()
-                     << " is not advertised";
+      if ((available_roles & role) == 0) {
+        GTEST_SKIP() << "XDNA memory role " << role << " is not advertised";
       }
     }
     const uint32_t profile_ordinal =
-        FindMemoryProfileOrdinal(GetParam() | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
+        FindMemoryProfileOrdinal(role | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
                                  AMDF_MEMORY_FLAG_HOST_VISIBLE);
     ASSERT_NE(profile_ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
     amdf_memory_profile_t profile = {};
@@ -265,7 +263,7 @@ class XdnaExecutionTest
               AMDF_STATUS_OK);
     for (size_t i = 0; i < bindings_.size(); ++i) {
       auto& binding = bindings_[i];
-      if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_IMPORT) {
+      if (role == AMDF_MEMORY_PROFILE_ROLE_IMPORT) {
         ASSERT_NO_FATAL_FAILURE(
             ImportMemory(profile_ordinal, &binding.storage));
         if (IsSkipped()) {
@@ -280,7 +278,7 @@ class XdnaExecutionTest
         create.accesses = &memory_access_;
         create.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
         create.byte_length = kBindingStorageByteLength;
-        if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
+        if (role == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
           ASSERT_NO_FATAL_FAILURE(
               PrepareRegistration(profile, &binding.caller_storage, &create));
         }
@@ -289,18 +287,20 @@ class XdnaExecutionTest
                   AMDF_STATUS_OK);
         ASSERT_NO_FATAL_FAILURE(
             MapMemory(kBindingStorageByteLength, &binding.storage));
-        if (GetParam() == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
+        if (role == AMDF_MEMORY_PROFILE_ROLE_REGISTER) {
           ASSERT_EQ(binding.storage.pointer, create.registered_host_pointer);
         }
       }
       std::memset(binding.storage.pointer, kGuardValue,
                   kBindingStorageByteLength);
-      ASSERT_NO_FATAL_FAILURE(WrapBinding(i));
-      ASSERT_NO_FATAL_FAILURE(QueryHostCacheOperations(i));
+      ASSERT_NO_FATAL_FAILURE(WrapBinding(i, binding.storage.memory, 0));
+      ASSERT_NO_FATAL_FAILURE(
+          QueryHostCacheOperations(i, binding.storage.memory));
     }
   }
 
-  void WrapBinding(size_t ordinal) {
+  void WrapBinding(size_t ordinal, amdf_memory_t* memory,
+                   uint64_t memory_byte_offset) {
     auto& binding = bindings_[ordinal];
     IREE_ASSERT_OK(iree_hal_heap_buffer_wrap(
         iree_hal_buffer_placement_undefined(),
@@ -315,16 +315,18 @@ class XdnaExecutionTest
         &binding.buffer));
     resolved_bindings_[ordinal].buffer_ref =
         iree_hal_make_buffer_ref(binding.buffer, 0, kBindingByteLength);
-    resolved_bindings_[ordinal].memory = binding.storage.memory;
-    resolved_bindings_[ordinal].memory_byte_offset = kBindingByteOffset;
-    ASSERT_EQ(api_->memory_query_address(
-                  binding.storage.memory, 0, AMDF_MEMORY_ADDRESS_XDNA_DMA,
-                  &resolved_bindings_[ordinal].device_address),
-              AMDF_STATUS_OK);
-    resolved_bindings_[ordinal].device_address += kBindingByteOffset;
+    resolved_bindings_[ordinal].memory = memory;
+    resolved_bindings_[ordinal].memory_byte_offset =
+        memory_byte_offset + kBindingByteOffset;
+    ASSERT_EQ(
+        api_->memory_query_address(memory, 0, AMDF_MEMORY_ADDRESS_XDNA_DMA,
+                                   &resolved_bindings_[ordinal].device_address),
+        AMDF_STATUS_OK);
+    resolved_bindings_[ordinal].device_address +=
+        memory_byte_offset + kBindingByteOffset;
   }
 
-  void QueryHostCacheOperations(size_t ordinal) {
+  void QueryHostCacheOperations(size_t ordinal, amdf_memory_t* memory) {
     auto& binding = bindings_[ordinal];
     amdf_memory_site_t host = {};
     host.type = AMDF_STRUCTURE_TYPE_MEMORY_SITE;
@@ -335,7 +337,7 @@ class XdnaExecutionTest
     device.type = AMDF_STRUCTURE_TYPE_MEMORY_SITE;
     device.structure_size = sizeof(device);
     device.kind = AMDF_MEMORY_SITE_KIND_DEVICE;
-    device.value.device.memory = binding.storage.memory;
+    device.value.device.memory = memory;
     device.value.device.queue_family_ordinal = queue_family_ordinal_;
     amdf_memory_pair_info_t pair = {};
     pair.type = AMDF_STRUCTURE_TYPE_MEMORY_PAIR_INFO;
@@ -684,8 +686,12 @@ class XdnaExecutionTest
   ResolvedBindings resolved_bindings_ = {};
 };
 
+class XdnaExecutionTest
+    : public XdnaExecutionFixture,
+      public ::testing::WithParamInterface<amdf_memory_profile_roles_t> {};
+
 TEST_P(XdnaExecutionTest, ReusesImmutableInstructionsWithChangingInputs) {
-  ASSERT_NO_FATAL_FAILURE(CreateBindings());
+  ASSERT_NO_FATAL_FAILURE(CreateBindings(GetParam()));
   if (IsSkipped()) {
     return;
   }
@@ -710,7 +716,7 @@ TEST_P(XdnaExecutionTest, ReusesImmutableInstructionsWithChangingInputs) {
 }
 
 TEST_P(XdnaExecutionTest, SharesDataAcrossIndependentContextLifetimes) {
-  ASSERT_NO_FATAL_FAILURE(CreateBindings());
+  ASSERT_NO_FATAL_FAILURE(CreateBindings(GetParam()));
   if (IsSkipped()) {
     return;
   }
@@ -813,7 +819,7 @@ TEST_P(XdnaExecutionTest, SharesDataAcrossIndependentContextLifetimes) {
 }
 
 TEST_P(XdnaExecutionTest, ReestablishesStateAcrossFullWidthContextSwitches) {
-  ASSERT_NO_FATAL_FAILURE(CreateBindings());
+  ASSERT_NO_FATAL_FAILURE(CreateBindings(GetParam()));
   if (IsSkipped()) {
     return;
   }
@@ -864,6 +870,124 @@ TEST_P(XdnaExecutionTest, ReestablishesStateAcrossFullWidthContextSwitches) {
     ASSERT_NO_FATAL_FAILURE(VerifyInstructions(first_));
     ASSERT_NO_FATAL_FAILURE(VerifyInstructions(second_));
   }
+}
+
+// Registers one independently owned shared mapping, with all bindings as
+// offsets into that allocation. The creator's mapping is not a device owner.
+class XdnaSharedMappingTest : public XdnaExecutionFixture {
+ protected:
+  void CreateSharedBindings() {
+    memory_access_.requirements.address_kinds = UINT64_C(1)
+                                                << AMDF_MEMORY_ADDRESS_XDNA_DMA;
+    const uint32_t ordinal = FindMemoryProfileOrdinal(
+        AMDF_MEMORY_PROFILE_ROLE_REGISTER | AMDF_MEMORY_PROFILE_ROLE_HOST_MAP,
+        AMDF_MEMORY_FLAG_HOST_VISIBLE);
+    ASSERT_NE(ordinal, AMDF_MEMORY_PROFILE_ORDINAL_UNKNOWN);
+    amdf_memory_profile_t profile = {};
+    profile.type = AMDF_STRUCTURE_TYPE_MEMORY_PROFILE;
+    profile.structure_size = sizeof(profile);
+    amdf_memory_access_capabilities_t capabilities = {};
+    capabilities.type = AMDF_STRUCTURE_TYPE_MEMORY_ACCESS_CAPABILITIES;
+    capabilities.structure_size = sizeof(capabilities);
+    ASSERT_EQ(QueryMemoryProfile(ordinal, &profile, &capabilities),
+              AMDF_STATUS_OK);
+    const auto& registration = profile.registration;
+    const uint64_t granularity = registration.byte_length_granularity;
+    ASSERT_GT(granularity, 0u);
+    ASSERT_GT(registration.registered_host_pointer_alignment, 0u);
+    // Ordinary shared mappings are write-back host pages on both platforms.
+    ASSERT_EQ(registration.registered_host_cacheability,
+              AMDF_HOST_CACHEABILITY_WRITE_BACK);
+    const uint64_t byte_length =
+        ((bindings_.size() * kBindingStorageByteLength + granularity - 1) /
+         granularity) *
+        granularity;
+    ASSERT_LE(byte_length, registration.maximum_byte_length);
+    IREE_ASSERT_OK(iree_shm_create(nullptr, byte_length, &originator_));
+    std::memset(originator_.base, kGuardValue, originator_.size);
+    IREE_ASSERT_OK(
+        iree_shm_open_handle(originator_.handle, originator_.size, &shared_));
+    ASSERT_NE(shared_.base, originator_.base);
+    ASSERT_EQ(reinterpret_cast<uintptr_t>(shared_.base) %
+                  registration.registered_host_pointer_alignment,
+              0u);
+    ASSERT_EQ(std::memcmp(shared_.base, originator_.base, byte_length), 0);
+    iree_shm_close(&originator_);
+
+    amdf_memory_create_info_t create = {};
+    create.type = AMDF_STRUCTURE_TYPE_MEMORY_CREATE_INFO;
+    create.structure_size = sizeof(create);
+    create.memory_profile_ordinal = ordinal;
+    create.access_count = 1;
+    create.accesses = &memory_access_;
+    create.required_flags = AMDF_MEMORY_FLAG_HOST_VISIBLE;
+    create.byte_length = byte_length;
+    create.minimum_alignment = registration.minimum_alignment;
+    create.registered_host_pointer = shared_.base;
+    create.registered_host_cacheability = AMDF_HOST_CACHEABILITY_WRITE_BACK;
+    ASSERT_EQ(api_->memory_create(system_scope_, &create, &registration_),
+              AMDF_STATUS_OK);
+
+    for (size_t i = 0; i < bindings_.size(); ++i) {
+      auto& storage = bindings_[i].storage;
+      amdf_memory_map_info_t map = {};
+      map.type = AMDF_STRUCTURE_TYPE_MEMORY_MAP_INFO;
+      map.structure_size = sizeof(map);
+      map.flags = AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE;
+      map.byte_offset = i * kBindingStorageByteLength;
+      map.byte_length = kBindingStorageByteLength;
+      ASSERT_EQ(api_->memory_map(registration_, &map, &storage.mapping),
+                AMDF_STATUS_OK);
+      amdf_host_mapping_info_t info = {};
+      info.type = AMDF_STRUCTURE_TYPE_HOST_MAPPING_INFO;
+      info.structure_size = sizeof(info);
+      ASSERT_EQ(api_->host_mapping_query_info(storage.mapping, &info),
+                AMDF_STATUS_OK);
+      storage.pointer = static_cast<uint8_t*>(info.pointer);
+      ASSERT_EQ(storage.pointer,
+                static_cast<uint8_t*>(shared_.base) + map.byte_offset);
+      // The binding owns its view, not a second copy of the registration.
+      ASSERT_NO_FATAL_FAILURE(WrapBinding(i, registration_, map.byte_offset));
+      ASSERT_NO_FATAL_FAILURE(QueryHostCacheOperations(i, registration_));
+    }
+  }
+
+  void TearDown() override {
+    // Checked execution retirement and every offset view precede the single
+    // registration release. A failed native detach must not unmap its source.
+    ASSERT_NO_FATAL_FAILURE(XdnaExecutionFixture::TearDown());
+    if (registration_) {
+      ASSERT_EQ(api_->memory_destroy(std::exchange(registration_, nullptr)),
+                AMDF_STATUS_OK);
+    }
+    iree_shm_close(&shared_);
+    iree_shm_close(&originator_);
+  }
+
+  // Temporary creator mapping, closed before native registration.
+  iree_shm_mapping_t originator_ = {};
+  // Independently opened mapping retained through native registration release.
+  iree_shm_mapping_t shared_ = {};
+  // One registration borrowed by all three offset bindings.
+  amdf_memory_t* registration_ = nullptr;
+};
+
+TEST_F(XdnaSharedMappingTest, ExecutesAfterOriginatorMappingCloses) {
+  ASSERT_NO_FATAL_FAILURE(CreateSharedBindings());
+  ASSERT_NO_FATAL_FAILURE(PrepareExecution(resolved_bindings_, &first_));
+  std::array<BindingValues, 3> expected;
+  BindingValues poisoned;
+  for (size_t i = 0; i < kElementCount; ++i) {
+    expected[0][i] = kValues[i];
+    expected[1][i] = kValues[(i * 3 + 5) % kElementCount];
+    expected[2][i] = expected[0][i] * expected[1][i];
+    poisoned[i] = ~expected[2][i];
+  }
+  ASSERT_NO_FATAL_FAILURE(WriteBinding(0, expected[0]));
+  ASSERT_NO_FATAL_FAILURE(WriteBinding(1, expected[1]));
+  ASSERT_NO_FATAL_FAILURE(WriteBinding(2, poisoned));
+  ASSERT_NO_FATAL_FAILURE(RunExecution(first_));
+  ASSERT_NO_FATAL_FAILURE(VerifyBindings(expected));
 }
 
 // Exercises the queue visibility contract with real producers and consumers.
@@ -1090,7 +1214,7 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
           api_->host_mapping_cache_control(
               storage.mapping, publish.host_operation, 0, create.byte_length),
           AMDF_STATUS_OK);
-      ASSERT_NO_FATAL_FAILURE(WrapBinding(ordinal));
+      ASSERT_NO_FATAL_FAILURE(WrapBinding(ordinal, storage.memory, 0));
       ASSERT_EQ(
           api_->memory_query_address(storage.memory, 1, AMDF_MEMORY_ADDRESS_GPU,
                                      &gpu_addresses_[ordinal]),
