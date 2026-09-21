@@ -15,7 +15,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Mapping
 
-from build_tools.devtools import cmake_file_api, cmake_fuzz, cmake_try
+from build_tools.devtools import cmake_cache, cmake_file_api, cmake_fuzz, cmake_try
 from build_tools.devtools import ctest as ctest_dev
 from build_tools.devtools.command_plan import (
     CommandPlan,
@@ -241,7 +241,7 @@ def _is_managed_cmake_build_tree(build_dir: Path) -> bool:
         pass
 
     try:
-        entries = cmake_try.load_cmake_cache(build_dir)
+        entries = cmake_cache.load_cmake_cache(build_dir)
     except cmake_file_api.FileApiError:
         return False
     values = {entry.name: entry.value for entry in entries}
@@ -284,7 +284,7 @@ def _cmake_definition_value(arguments: list[str], name: str) -> str | None:
 
 def _configured_cmake_generator(build_dir: Path) -> _CMakeGenerator | None:
     try:
-        entries = cmake_try.load_cmake_cache(build_dir)
+        entries = cmake_cache.load_cmake_cache(build_dir)
     except cmake_file_api.FileApiError:
         return None
     values = {entry.name: entry.value for entry in entries}

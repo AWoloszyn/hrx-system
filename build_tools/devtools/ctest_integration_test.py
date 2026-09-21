@@ -6,11 +6,14 @@
 
 from __future__ import annotations
 
+import json
 import os
+import shutil
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from build_tools.cmake.test_environment import configured_cmake_arguments
 from build_tools.devtools import ctest as ctest_dev
@@ -22,6 +25,102 @@ CTEST_COMMAND = os.environ["IREE_TEST_CTEST_COMMAND"]
 
 
 class CTestIntegrationTest(unittest.TestCase):
+    def test_shared_closure_is_fresh_and_visited_once(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            source_dir = root / "source with spaces"
+            build_dir = root / "build with spaces"
+            shutil.copytree(FIXTURE_SOURCE_DIR.parent / "selected_build", source_dir)
+            subprocess.run(
+                [
+                    CMAKE_COMMAND,
+                    "-S",
+                    str(source_dir),
+                    "-B",
+                    str(build_dir),
+                    *configured_cmake_arguments(),
+                    f"-DIREE_REPO_ROOT={REPO_ROOT}",
+                ],
+                check=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+            )
+            step = ctest_dev.CTestBuildAndRunStep(
+                cmake=CMAKE_COMMAND,
+                ctest=CTEST_COMMAND,
+                build_dir=build_dir,
+                arguments=["-R", "^(left|right)$", "-C", "Release"],
+                cwd=REPO_ROOT,
+                env={**os.environ, "CMAKE_BUILD_PARALLEL_LEVEL": "2"},
+            )
+            make_temporary_dir = root / "make $files = # '"
+            make_temporary_dir.mkdir()
+
+            def check_build(build_count):
+                # Exercise the real Make/shell argument boundary with a
+                # temporary-file location containing metacharacters.
+                with mock.patch.object(tempfile, "tempdir", str(make_temporary_dir)):
+                    self.assertEqual(step.run(), 0)
+                self.assertEqual(list(make_temporary_dir.iterdir()), [])
+                generator = os.environ["IREE_TEST_CMAKE_GENERATOR"]
+                if generator == "Unix Makefiles" or generator.startswith("Ninja"):
+                    self.assertEqual(
+                        (build_dir / "visits.txt").read_text().splitlines(),
+                        ["visit"] * build_count,
+                    )
+                for name in ("left", "right"):
+                    self.assertEqual(
+                        (build_dir / f"{name}.ran").read_text().splitlines(),
+                        ["run"] * build_count,
+                    )
+
+            check_build(1)
+            result = subprocess.run(
+                [
+                    CTEST_COMMAND,
+                    "--test-dir",
+                    str(build_dir),
+                    "-C",
+                    "Release",
+                    "-R",
+                    "^left$",
+                    "--show-only=json-v1",
+                ],
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+            )
+            executable = Path(json.loads(result.stdout)["tests"][0]["command"][0])
+            initial_mtime = executable.stat().st_mtime_ns
+            check_build(2)
+            self.assertEqual(executable.stat().st_mtime_ns, initial_mtime)
+
+            # The test executable reads the expected value at runtime, so stale
+            # generated headers or compiled sources produce a real test failure.
+            (source_dir / "value.txt").write_text("5\n")
+            (source_dir / "expected.txt").write_text("6\n")
+            check_build(3)
+            source = source_dir / "shared.c"
+            source.write_text(source.read_text().replace("+ 1", "+ 2"))
+            (source_dir / "expected.txt").write_text("7\n")
+            check_build(4)
+
+            executable.unlink()
+            check_build(5)
+            self.assertTrue(executable.is_file())
+
+            # Previously built executables still exist, but failed preparation
+            # must stop before either test can execute them.
+            source.write_text("#error selected build must stop\n")
+            with mock.patch.object(tempfile, "tempdir", str(make_temporary_dir)):
+                self.assertNotEqual(step.run(), 0)
+            self.assertEqual(list(make_temporary_dir.iterdir()), [])
+            for name in ("left", "right"):
+                self.assertEqual(
+                    (build_dir / f"{name}.ran").read_text().splitlines(), ["run"] * 5
+                )
+
     def test_stale_graph_is_refreshed_before_ctest_selection(self):
         with tempfile.TemporaryDirectory() as temporary_dir:
             temporary_path = Path(temporary_dir)
