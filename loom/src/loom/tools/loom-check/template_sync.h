@@ -34,10 +34,11 @@ extern "C" {
 // TEMPLATE directive.
 //
 // The target file preamble is preserved, including its authoritative RUN line.
-// Template RUN lines and expected sections are not copied. Existing target
-// cases with matching func-like definitions keep their expected section,
-// case-local REQUIRES/XFAIL directives, and diagnostic annotations; stale
-// target-only cases are omitted. The rebuilt text is written into |new_source|;
+// Template RUN lines, diagnostic annotations, and expected sections are not
+// copied. Existing target cases with matching func-like definitions keep their
+// expected section, case-local REQUIRES/XFAIL directives, and diagnostic
+// annotations; stale target-only cases are omitted. The rebuilt text is written
+// into |new_source|;
 // |*out_changed| reports whether it differs from |target_source|.
 iree_status_t loom_check_template_sync_build_source(
     iree_string_view_t target_source, const loom_test_file_t* target_file,

@@ -307,6 +307,36 @@ TEST_F(TemplateSyncTest, IgnoresFuncDeclWhenSelectingCaseSymbol) {
   EXPECT_NE(result.find("func.def @entry()"), std::string::npos);
 }
 
+TEST_F(TemplateSyncTest, SharedDeclarationsAndExpectationsDoNotAccumulate) {
+  const char* template_source =
+      "// RUN: verify\n\n"
+      "func.decl @callee()\n"
+      "func.def @entry() {\n"
+      "  // ERROR@+1: \"source expectation\"\n"
+      "  func.return\n"
+      "}\n";
+  const char* target_source =
+      "// TEMPLATE: corpus.loom-test\n"
+      "// RUN: verify\n\n"
+      "func.decl @callee()\n"
+      "func.def @entry() {\n"
+      "  // ERROR@+1: \"target expectation\"\n"
+      "  func.return\n"
+      "}\n";
+  std::string first_result;
+  bool changed = true;
+  IREE_ASSERT_OK(
+      Build(target_source, template_source, &first_result, &changed));
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(first_result, target_source);
+
+  std::string second_result;
+  IREE_ASSERT_OK(
+      Build(first_result.c_str(), template_source, &second_result, &changed));
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(second_result, first_result);
+}
+
 TEST_F(TemplateSyncTest, PreservesTargetAnnotationsAtAnchoredInputLines) {
   std::string result;
   bool changed = false;
