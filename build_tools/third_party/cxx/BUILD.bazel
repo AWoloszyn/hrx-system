@@ -23,6 +23,7 @@ exports_files([
     "packed_bitfields.patch",
     "packed_enums.patch",
     "packed_records.patch",
+    "qualified_template_calls.patch",
     "record_layout_owner.patch",
     "template_lookahead.patch",
 ])
