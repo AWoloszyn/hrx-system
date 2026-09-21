@@ -195,10 +195,10 @@ static bool loom_amdgpu_scalar_cmpi_i64_requires_native_mask(
       values->rhs >= module->values.count ||
       !loom_amdgpu_type_is_i64(loom_module_value_type(module, values->lhs)) ||
       !loom_amdgpu_type_is_i64(loom_module_value_type(module, values->rhs)) ||
-      source_op->attribute_count == 0) {
+      source_op->attribute_count <= loom_scalar_cmpi_predicate_ATTR_INDEX) {
     return false;
   }
-  const uint8_t predicate = loom_attr_as_enum(loom_op_attrs(source_op)[0]);
+  const uint8_t predicate = loom_scalar_cmpi_predicate(source_op);
   return predicate != LOOM_SCALAR_CMPI_PREDICATE_EQ &&
          predicate != LOOM_SCALAR_CMPI_PREDICATE_NE;
 }

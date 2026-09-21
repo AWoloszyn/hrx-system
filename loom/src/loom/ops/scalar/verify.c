@@ -43,20 +43,21 @@ static iree_status_t loom_scalar_emit_attribute_kind_mismatch(
 iree_status_t loom_scalar_geluf_verify(const loom_module_t* module,
                                        const loom_op_t* op,
                                        iree_diagnostic_emitter_t emitter) {
-  loom_attribute_t scale_attr = loom_op_attrs(op)[1];
+  loom_attribute_t scale_attr =
+      loom_op_attrs(op)[loom_scalar_geluf_scale_ATTR_INDEX];
   bool has_scale = !loom_attr_is_absent(scale_attr);
   if (loom_scalar_geluf_variant(op) == LOOM_SCALAR_GELUF_VARIANT_LOGISTIC) {
     if (has_scale) {
       return iree_ok_status();
     }
     return loom_scalar_emit_attribute_kind_mismatch(
-        emitter, op, IREE_SV("scale"), /*attr_index=*/1, LOOM_ATTR_ABSENT,
-        LOOM_ATTR_F64);
+        emitter, op, IREE_SV("scale"), loom_scalar_geluf_scale_ATTR_INDEX,
+        LOOM_ATTR_ABSENT, LOOM_ATTR_F64);
   }
   if (!has_scale) {
     return iree_ok_status();
   }
   return loom_scalar_emit_attribute_kind_mismatch(
-      emitter, op, IREE_SV("scale"), /*attr_index=*/1, scale_attr.kind,
-      LOOM_ATTR_ABSENT);
+      emitter, op, IREE_SV("scale"), loom_scalar_geluf_scale_ATTR_INDEX,
+      scale_attr.kind, LOOM_ATTR_ABSENT);
 }

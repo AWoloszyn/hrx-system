@@ -3442,7 +3442,8 @@ iree_status_t loom_vector_geluf_facts(loom_fact_context_t* context,
       .scale = 0.0,
   };
   if (transfer.variant == LOOM_VECTOR_GELUF_VARIANT_LOGISTIC) {
-    loom_attribute_t scale_attr = loom_op_attrs(op)[1];
+    loom_attribute_t scale_attr =
+        loom_op_attrs(op)[loom_vector_geluf_scale_ATTR_INDEX];
     if (loom_attr_is_absent(scale_attr)) {
       result_facts[0] = loom_value_facts_unknown();
       return iree_ok_status();

@@ -163,8 +163,29 @@ static loom_kernel_dimension_t loom_amdgpu_preamble_query_dimension(
     const loom_op_t* op, const loom_amdgpu_preamble_query_row_t* row) {
   IREE_ASSERT(loom_amdgpu_preamble_query_row_has_flag(
       row, LOOM_AMDGPU_PREAMBLE_QUERY_FLAG_DIMENSIONAL));
-  IREE_ASSERT_NE(op->attribute_count, 0u);
-  return (loom_kernel_dimension_t)loom_attr_as_enum(loom_op_const_attrs(op)[0]);
+  switch (row->kind) {
+    case LOOM_AMDGPU_PREAMBLE_QUERY_KIND_WORKITEM_ID:
+      return loom_kernel_workitem_id_dimension(op);
+    case LOOM_AMDGPU_PREAMBLE_QUERY_KIND_WORKGROUP_ID:
+      return loom_kernel_workgroup_id_dimension(op);
+    case LOOM_AMDGPU_PREAMBLE_QUERY_KIND_WORKGROUP_SIZE:
+      return loom_kernel_workgroup_size_dimension(op);
+    case LOOM_AMDGPU_PREAMBLE_QUERY_KIND_WORKGROUP_COUNT:
+      return loom_kernel_workgroup_count_dimension(op);
+    case LOOM_AMDGPU_PREAMBLE_QUERY_KIND_WORKITEM_DISPATCH_ID:
+      return loom_kernel_workitem_dispatch_id_dimension(op);
+    case LOOM_AMDGPU_PREAMBLE_QUERY_KIND_CLUSTER_ID:
+      return loom_kernel_cluster_id_dimension(op);
+    case LOOM_AMDGPU_PREAMBLE_QUERY_KIND_CLUSTER_WORKGROUP_ID:
+      return loom_kernel_cluster_workgroup_id_dimension(op);
+    case LOOM_AMDGPU_PREAMBLE_QUERY_KIND_CLUSTER_SIZE:
+      return loom_kernel_cluster_size_dimension(op);
+    case LOOM_AMDGPU_PREAMBLE_QUERY_KIND_CLUSTER_COUNT:
+      return loom_kernel_cluster_count_dimension(op);
+    default:
+      IREE_ASSERT_UNREACHABLE("query has no dimension attribute");
+      IREE_BUILTIN_UNREACHABLE();
+  }
 }
 
 typedef struct loom_amdgpu_preamble_query_facts_t {

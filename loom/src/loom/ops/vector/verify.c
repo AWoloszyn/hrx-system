@@ -2045,22 +2045,23 @@ iree_status_t loom_vector_transform_verify(const loom_module_t* module,
 iree_status_t loom_vector_geluf_verify(const loom_module_t* module,
                                        const loom_op_t* op,
                                        iree_diagnostic_emitter_t emitter) {
-  loom_attribute_t scale_attr = loom_op_attrs(op)[1];
+  loom_attribute_t scale_attr =
+      loom_op_attrs(op)[loom_vector_geluf_scale_ATTR_INDEX];
   bool has_scale = !loom_attr_is_absent(scale_attr);
   if (loom_vector_geluf_variant(op) == LOOM_VECTOR_GELUF_VARIANT_LOGISTIC) {
     if (has_scale) {
       return iree_ok_status();
     }
     return loom_vector_emit_indexed_attribute_kind_mismatch(
-        emitter, op, IREE_SV("scale"), /*attr_index=*/1, LOOM_ATTR_ABSENT,
-        LOOM_ATTR_F64);
+        emitter, op, IREE_SV("scale"), loom_vector_geluf_scale_ATTR_INDEX,
+        LOOM_ATTR_ABSENT, LOOM_ATTR_F64);
   }
   if (!has_scale) {
     return iree_ok_status();
   }
   return loom_vector_emit_indexed_attribute_kind_mismatch(
-      emitter, op, IREE_SV("scale"), /*attr_index=*/1, scale_attr.kind,
-      LOOM_ATTR_ABSENT);
+      emitter, op, IREE_SV("scale"), loom_vector_geluf_scale_ATTR_INDEX,
+      scale_attr.kind, LOOM_ATTR_ABSENT);
 }
 
 iree_status_t loom_vector_reduce_verify(const loom_module_t* module,

@@ -278,7 +278,7 @@ static bool loom_testbench_plan_range_parameter(
 static bool loom_testbench_plan_choice_parameter(
     const loom_module_t* module, const loom_op_t* op,
     loom_testbench_parameter_plan_t* out_parameter) {
-  loom_attribute_t values = loom_op_const_attrs(op)[0];
+  loom_attribute_t values = loom_check_param_choice_values(op);
   if (values.kind != LOOM_ATTR_I64_ARRAY || values.count == 0) {
     return false;
   }
@@ -474,7 +474,8 @@ static bool loom_testbench_plan_file_write(
   out_file_write->path_id = loom_check_file_write_npy_path(op);
   out_file_write->path =
       loom_testbench_string_from_id(module, out_file_write->path_id);
-  loom_attribute_t mode_attr = loom_op_const_attrs(op)[1];
+  loom_attribute_t mode_attr =
+      loom_op_const_attrs(op)[loom_check_file_write_npy_mode_ATTR_INDEX];
   out_file_write->mode =
       loom_attr_is_absent(mode_attr)
           ? LOOM_CHECK_FILE_WRITE_NPY_MODE_ON_FAILURE

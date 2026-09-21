@@ -803,14 +803,15 @@ static const loom_movement_async_descriptor_t
             LOOM_MOVEMENT_LAYOUT_BYTE_RANGE,
             LOOM_MOVEMENT_ASYNC_TRANSFER_EQUAL_ENDPOINTS, 0, 1,
             LOOM_MOVEMENT_ABSENT_INDEX, LOOM_MOVEMENT_ABSENT_INDEX,
-            LOOM_MOVEMENT_ABSENT_INDEX, 2, UINT8_MAX),
+            LOOM_MOVEMENT_ABSENT_INDEX,
+            loom_kernel_async_copy_direction_ATTR_INDEX, UINT8_MAX),
         LOOM_MOVEMENT_ASYNC_DESCRIPTOR(
             LOOM_OP_KERNEL_ASYNC_COPY_MASK,
             LOOM_MOVEMENT_KIND_KERNEL_ASYNC_COPY_MASK,
             LOOM_MOVEMENT_REQUEST_MASKED, LOOM_MOVEMENT_LAYOUT_BYTE_RANGE,
             LOOM_MOVEMENT_ASYNC_TRANSFER_EQUAL_ENDPOINTS, 0, 1, 2,
-            LOOM_MOVEMENT_ABSENT_INDEX, LOOM_MOVEMENT_ABSENT_INDEX, 2,
-            UINT8_MAX),
+            LOOM_MOVEMENT_ABSENT_INDEX, LOOM_MOVEMENT_ABSENT_INDEX,
+            loom_kernel_async_copy_mask_direction_ATTR_INDEX, UINT8_MAX),
         LOOM_MOVEMENT_ASYNC_DESCRIPTOR(
             LOOM_OP_KERNEL_ASYNC_GATHER, LOOM_MOVEMENT_KIND_KERNEL_ASYNC_GATHER,
             0, LOOM_MOVEMENT_LAYOUT_SUBGROUP_GATHER,
@@ -910,6 +911,59 @@ static bool loom_movement_apply_async_transfer(
   return false;
 }
 
+static bool loom_movement_async_cache_policy(
+    const loom_op_t* op, loom_vector_memory_cache_policy_t* out_policy,
+    loom_movement_diagnostic_t* diagnostic) {
+  uint16_t scope_index;
+  uint16_t temporal_index;
+  switch (op->kind) {
+    case LOOM_OP_KERNEL_ASYNC_COPY:
+      scope_index = loom_kernel_async_copy_cache_scope_ATTR_INDEX;
+      temporal_index = loom_kernel_async_copy_cache_temporal_ATTR_INDEX;
+      break;
+    case LOOM_OP_KERNEL_ASYNC_COPY_MASK:
+      scope_index = loom_kernel_async_copy_mask_cache_scope_ATTR_INDEX;
+      temporal_index = loom_kernel_async_copy_mask_cache_temporal_ATTR_INDEX;
+      break;
+    case LOOM_OP_KERNEL_ASYNC_GATHER:
+      scope_index = loom_kernel_async_gather_cache_scope_ATTR_INDEX;
+      temporal_index = loom_kernel_async_gather_cache_temporal_ATTR_INDEX;
+      break;
+    case LOOM_OP_KERNEL_ASYNC_GATHER_MASK:
+      scope_index = loom_kernel_async_gather_mask_cache_scope_ATTR_INDEX;
+      temporal_index = loom_kernel_async_gather_mask_cache_temporal_ATTR_INDEX;
+      break;
+    case LOOM_OP_KERNEL_ASYNC_CLUSTER_GATHER:
+      scope_index = loom_kernel_async_cluster_gather_cache_scope_ATTR_INDEX;
+      temporal_index =
+          loom_kernel_async_cluster_gather_cache_temporal_ATTR_INDEX;
+      break;
+    case LOOM_OP_KERNEL_ASYNC_CLUSTER_GATHER_MASK:
+      scope_index =
+          loom_kernel_async_cluster_gather_mask_cache_scope_ATTR_INDEX;
+      temporal_index =
+          loom_kernel_async_cluster_gather_mask_cache_temporal_ATTR_INDEX;
+      break;
+    case LOOM_OP_KERNEL_ASYNC_TENSOR_LOAD_TO_LDS:
+      scope_index = loom_kernel_async_tensor_load_to_lds_cache_scope_ATTR_INDEX;
+      temporal_index =
+          loom_kernel_async_tensor_load_to_lds_cache_temporal_ATTR_INDEX;
+      break;
+    case LOOM_OP_KERNEL_ASYNC_TENSOR_STORE_FROM_LDS:
+      scope_index =
+          loom_kernel_async_tensor_store_from_lds_cache_scope_ATTR_INDEX;
+      temporal_index =
+          loom_kernel_async_tensor_store_from_lds_cache_temporal_ATTR_INDEX;
+      break;
+    default:
+      IREE_ASSERT_UNREACHABLE("op has no async movement descriptor");
+      IREE_BUILTIN_UNREACHABLE();
+  }
+  const loom_attribute_t* attrs = loom_op_const_attrs(op);
+  return loom_movement_cache_policy_from_attrs(
+      attrs[scope_index], attrs[temporal_index], out_policy, diagnostic);
+}
+
 static iree_status_t loom_movement_describe_async(
     loom_movement_analysis_t* analysis, const loom_op_t* op,
     const loom_movement_async_descriptor_t* descriptor,
@@ -936,8 +990,8 @@ static iree_status_t loom_movement_describe_async(
   }
 
   const loom_attribute_t* attrs = loom_op_const_attrs(op);
-  if (!loom_movement_cache_policy_from_attrs(
-          attrs[0], attrs[1], &request->cache_policy, diagnostic)) {
+  if (!loom_movement_async_cache_policy(op, &request->cache_policy,
+                                        diagnostic)) {
     return loom_movement_describe_result(false, out_described);
   }
   if (descriptor->direction_attr_index != LOOM_MOVEMENT_ABSENT_INDEX) {

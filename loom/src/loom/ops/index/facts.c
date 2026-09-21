@@ -132,7 +132,7 @@ iree_status_t loom_index_assume_facts(loom_fact_context_t* context,
   for (uint16_t i = fact_count; i < op->result_count; ++i) {
     result_facts[i] = loom_value_facts_unknown();
   }
-  loom_attribute_t pred_attr = loom_op_attrs(op)[0];
+  loom_attribute_t pred_attr = loom_index_assume_predicates(op);
   const loom_predicate_t* predicates = pred_attr.predicate_list;
   uint16_t predicate_count = pred_attr.count;
   loom_value_slice_t values = loom_index_assume_values(op);
