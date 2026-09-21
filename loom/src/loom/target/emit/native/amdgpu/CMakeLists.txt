@@ -146,6 +146,7 @@ loom_check_test_suite(
     "test/vopd_plan.loom-test"
     "test/wait_coalescing.loom-test"
     "test/wait_completion.loom-test"
+    "test/wait_elision.loom-test"
     "test/wait_flat.loom-test"
     "test/wait_plan.loom-test"
     "test/wait_states.loom-test"

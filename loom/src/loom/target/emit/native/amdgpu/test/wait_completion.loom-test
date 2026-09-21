@@ -59,7 +59,6 @@ low.func.def target<amdgpu.rdna3.core>(@target) @full_completion_then_new_produc
 // ----
   ds_read_b32 v1, v0 offset:0
   s_waitcnt vmcnt(63) lgkmcnt(0)
-  s_waitcnt vmcnt(63) lgkmcnt(0)
   ds_read_b32 v2, v0 offset:4
   s_waitcnt vmcnt(63) lgkmcnt(0)
   v_add_u32 v1, v1, v2
@@ -87,7 +86,6 @@ low.func.def target<amdgpu.rdna3.core>(@target) @empty_completion_before_produce
 }
 
 // ----
-  s_waitcnt vmcnt(63) lgkmcnt(0)
   s_waitcnt vmcnt(63) lgkmcnt(0)
   s_load_dword s3, s[0:1], s2 offset:0
   s_waitcnt vmcnt(63) lgkmcnt(0)
@@ -123,7 +121,6 @@ low.func.def target<amdgpu.rdna3.core>(@target) @completion_on_one_incoming_path
   s_delay_alu instid0(SALU_CYCLE_1)
   s_cbranch_scc0 .Lbb2
 .Lbb1:
-  s_waitcnt vmcnt(63) lgkmcnt(0)
   s_waitcnt vmcnt(63) lgkmcnt(0)
   s_branch .Lbb3
 .Lbb2:

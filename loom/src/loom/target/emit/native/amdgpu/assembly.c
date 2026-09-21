@@ -3440,6 +3440,12 @@ static iree_status_t loom_amdgpu_append_vopd_or_descriptor_packet(
     void* user_data, const loom_native_assembly_packet_context_t* context) {
   loom_amdgpu_assembly_emit_state_t* state =
       (loom_amdgpu_assembly_emit_state_t*)user_data;
+  if (state != NULL && state->packet_plan.wait_packets != NULL &&
+      loom_amdgpu_wait_plan_elides_node(
+          state->packet_plan.wait_packets->wait_plan,
+          context->packet->node_index)) {
+    return iree_ok_status();
+  }
   if (state == NULL || state->packet_plan.vopd_plan == NULL) {
     return loom_amdgpu_append_stateful_descriptor_packet(user_data, context);
   }

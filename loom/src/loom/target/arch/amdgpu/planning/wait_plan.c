@@ -269,6 +269,8 @@ typedef struct loom_amdgpu_wait_plan_builder_t {
   loom_amdgpu_wait_plan_action_t* actions;
   // Number of populated action rows.
   iree_host_size_t action_count;
+  // Lazily allocated output bitset of redundant authored full memory waits.
+  uint64_t* elided_wait_nodes;
   // Cursor into packet-ordered actions while projecting residual hazards.
   iree_host_size_t hazard_action_cursor;
   // Packet index of the next residual hazard, or IREE_HOST_SIZE_MAX.
@@ -292,6 +294,8 @@ typedef struct loom_amdgpu_wait_plan_builder_t {
   uint64_t block_epoch;
   // Counters fully drained earlier in the current straight-line block.
   uint32_t current_block_full_drain_counter_mask;
+  // Counters proven empty since their last issue or opaque control boundary.
+  uint32_t known_empty_counter_mask;
   // Translation group currently represented by outstanding gfx125x XCNT
   // events. Hardware implicitly drains XCNT when this group changes.
   loom_amdgpu_wait_xcnt_group_t xcnt_group;
@@ -2256,6 +2260,7 @@ static void loom_amdgpu_wait_plan_apply_counter_progress(
   if (target_count == 0) {
     builder->unordered_flat_counter_mask &= ~counter_mask;
     builder->current_block_full_drain_counter_mask |= counter_mask;
+    builder->known_empty_counter_mask |= counter_mask;
     loom_amdgpu_wait_frontier_drain(&builder->frontier, counter_mask);
     ++builder->counter_epochs[slot];
     builder->completed_position_counts[slot] = 0;
@@ -3582,6 +3587,12 @@ static iree_status_t loom_amdgpu_wait_plan_note_producer(
   const uint32_t counter_mask =
       frontier_node->read_counter_mask | frontier_node->write_counter_mask |
       node_state->trans_result_counter_mask | node_state->source_counter_mask;
+  // A pre-control drain completes older work, but an opaque control operation
+  // may start new work of its own. Preserve authored waits after that boundary.
+  // Keep historical completion separate: older producers remain complete.
+  builder->known_empty_counter_mask &= ~(node_state->barrier_counter_mask != 0
+                                             ? LOOM_AMDGPU_WAIT_COUNTER_MASK_ALL
+                                             : counter_mask);
   if (iree_any_bit_set(node_state->flags,
                        LOOM_AMDGPU_WAIT_NODE_STATE_UNORDERED_FLAT_COMPLETION)) {
     builder->unordered_flat_counter_mask |=
@@ -3683,6 +3694,29 @@ static iree_status_t loom_amdgpu_wait_plan_handle_partial_wait(
   return iree_ok_status();
 }
 
+static bool loom_amdgpu_wait_plan_full_wait_is_redundant(
+    const loom_amdgpu_wait_plan_builder_t* builder,
+    const loom_amdgpu_wait_node_state_t* node_state) {
+  const uint32_t counter_mask = node_state->explicit_wait_counter_mask;
+  if (!iree_any_bit_set(node_state->flags,
+                        LOOM_AMDGPU_WAIT_NODE_STATE_EXPLICIT_WAIT) ||
+      counter_mask == 0 ||
+      iree_any_bit_set(counter_mask, LOOM_AMDGPU_WAIT_COUNTER_MASK_ALU) ||
+      (counter_mask & ~builder->known_empty_counter_mask) != 0) {
+    return false;
+  }
+  // Full drains establish emptiness even for unknown incoming work. Retain
+  // every authored partial bound; packed ALU controls are not ordinary
+  // remaining-memory-operation counts.
+  for (uint32_t slot = 0; slot < LOOM_AMDGPU_WAIT_COUNTER_SLOT_COUNT; ++slot) {
+    const uint16_t bound = node_state->counters.wait.target_counts[slot];
+    if (bound != UINT16_MAX && bound != 0) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static iree_status_t loom_amdgpu_wait_plan_process_node(
     loom_amdgpu_wait_plan_builder_t* builder, uint32_t node_index) {
   loom_amdgpu_wait_node_state_t* node_state = &builder->node_states[node_index];
@@ -3718,6 +3752,22 @@ static iree_status_t loom_amdgpu_wait_plan_process_node(
       loom_amdgpu_wait_plan_handle_barrier(builder, node_index));
   IREE_RETURN_IF_ERROR(
       loom_amdgpu_wait_plan_handle_program_exit(builder, node_index));
+  if (loom_amdgpu_wait_plan_full_wait_is_redundant(builder, node_state)) {
+    if (builder->elided_wait_nodes == NULL) {
+      const iree_host_size_t word_count =
+          builder->schedule->node_count / 64 +
+          (builder->schedule->node_count % 64 != 0);
+      IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+          builder->arena, word_count, sizeof(*builder->elided_wait_nodes),
+          (void**)&builder->elided_wait_nodes));
+      memset(builder->elided_wait_nodes, 0,
+             word_count * sizeof(*builder->elided_wait_nodes));
+    }
+    builder->elided_wait_nodes[node_index / 64] |= UINT64_C(1)
+                                                   << (node_index % 64);
+    node_state->flags |= LOOM_AMDGPU_WAIT_NODE_STATE_ZERO_NATIVE_WORK;
+    return iree_ok_status();
+  }
   if (node_state->explicit_wait_counter_mask != 0) {
     IREE_RETURN_IF_ERROR(loom_amdgpu_wait_plan_drain_mask(
         builder, LOOM_AMDGPU_WAIT_PLAN_ACTION_EXPLICIT,
@@ -3764,6 +3814,7 @@ static iree_status_t loom_amdgpu_wait_plan_build_actions(
     builder->insertion.anchor_node = LOOM_LOW_SCHEDULE_NODE_NONE;
     ++builder->block_epoch;
     builder->current_block_full_drain_counter_mask = 0;
+    builder->known_empty_counter_mask = 0;
     builder->xcnt_group = LOOM_AMDGPU_WAIT_XCNT_GROUP_NONE;
     builder->vmem_epoch_order_class = LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE;
     builder->unordered_flat_counter_mask = 0;
@@ -3855,6 +3906,11 @@ static void loom_amdgpu_wait_plan_progress_query(
       (const loom_amdgpu_wait_plan_builder_t*)user_data;
   const loom_amdgpu_wait_node_state_t* node_state =
       &builder->node_states[packet->node_index];
+  if (builder->elided_wait_nodes != NULL &&
+      (builder->elided_wait_nodes[packet->node_index / 64] &
+       (UINT64_C(1) << (packet->node_index % 64))) != 0) {
+    return;
+  }
   const loom_amdgpu_wait_frontier_node_t* frontier_node =
       &builder->frontier_nodes[packet->node_index];
   loom_amdgpu_wait_plan_emit_counter_progress_mask(
@@ -4048,6 +4104,7 @@ iree_status_t loom_amdgpu_wait_plan_build(
         .hazard_plan = builder.hazard_plan,
         .actions = builder.actions,
         .action_count = builder.action_count,
+        .elided_wait_nodes = builder.elided_wait_nodes,
     };
     if (builder.hazard_plan.progress == &builder.progress) {
       out_plan->hazard_plan.progress = &out_plan->progress;

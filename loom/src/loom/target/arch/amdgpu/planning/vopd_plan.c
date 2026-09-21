@@ -492,6 +492,15 @@ static loom_amdgpu_vopd_visible_packet_t loom_amdgpu_vopd_classify_packet(
   };
   loom_amdgpu_vopd_packet_flags_t* packet_flags =
       &builder->packet_flags[packet_index];
+  if (builder->wait_packets != NULL &&
+      loom_amdgpu_wait_plan_elides_node(builder->wait_packets->wait_plan,
+                                        visible.packet.node_index)) {
+    if (!iree_any_bit_set(*packet_flags,
+                          LOOM_AMDGPU_VOPD_PACKET_FLAG_INSERTION_BLOCKED)) {
+      *packet_flags |= LOOM_AMDGPU_VOPD_PACKET_FLAG_TRANSPARENT;
+    }
+    return visible;
+  }
   if (visible.packet.descriptor == NULL) {
     visible.structural = loom_amdgpu_structural_packet_analyze(
         builder->schedule, builder->allocation, visible.packet.node, 0);
@@ -1653,6 +1662,11 @@ static iree_status_t loom_amdgpu_vopd_plan_unpaired_matrix_stream(
          packet_index < packet_end; ++packet_index) {
       const loom_low_packet_view_t packet =
           loom_low_packet_at(builder->schedule, packet_index);
+      if (builder->wait_packets != NULL &&
+          loom_amdgpu_wait_plan_elides_node(builder->wait_packets->wait_plan,
+                                            packet.node_index)) {
+        continue;
+      }
       loom_amdgpu_structural_packet_info_t structural = {0};
       if (packet.descriptor == NULL) {
         structural = loom_amdgpu_structural_packet_analyze(

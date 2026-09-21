@@ -164,6 +164,7 @@ loom_cc_library(
         ":matrix_wait_states",
         ":structural_packet",
         ":vopd_plan",
+        ":wait_plan",
         "//loom/src/loom/codegen/low:allocation",
         "//loom/src/loom/codegen/low:packet",
         "//loom/src/loom/codegen/low:packet_hazard_plan",
