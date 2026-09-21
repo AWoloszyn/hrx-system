@@ -94,6 +94,17 @@ class Translator {
     diagnostics_.reject(unit_, ast, message);
   }
 
+  void require_kernel_context(cxx::AST* owner) {
+    // Required inlining defers the IR ancestor requirement until expansion.
+    if (current_function_.kind == FunctionKind::Kernel ||
+        (current_function_.kind == FunctionKind::Ordinary &&
+         loom_func_def_inline_policy(current_function_.operation) ==
+             LOOM_INLINE_POLICY_INLINE)) {
+      return;
+    }
+    fail(owner, "kernel intrinsic requires a kernel or force-inline helper");
+  }
+
   Value convert(cxx::ExpressionAST* input_ast, const cxx::Type* output_type,
                 cxx::AST* owner) {
     auto value = expression(input_ast);
@@ -905,6 +916,7 @@ class Translator {
         const auto& slice = types_.member(field, ast);
         return value.project(*slice.partition, slice.component_offset);
       }
+      require_kernel_context(ast);
       auto axis = cxx::to_string(member->symbol->name());
       loom_kernel_dimension_t dimension;
       if (axis == "x") {
@@ -1096,6 +1108,7 @@ class Translator {
       };
       loom_op_t* op;
       if (annotated(function, "subgroup_size")) {
+        require_kernel_context(ast);
         auto arguments = flatten_arguments();
         auto result_type = types_.get(ast->type, ast);
         if (!arguments.empty() ||
@@ -1112,6 +1125,7 @@ class Translator {
         return result(op);
       }
       if (annotated(function, "shuffle_xor")) {
+        require_kernel_context(ast);
         auto arguments = flatten_arguments();
         if (arguments.size() != 3) {
           fail(ast, "shuffle_xor requires three scalar operands");

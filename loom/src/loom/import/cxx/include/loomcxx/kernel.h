@@ -36,6 +36,8 @@ struct uint3 {
   unsigned z;
 };
 
+// Topology queries and subgroup intrinsics require a kernel body or a
+// force-inline helper. Other helpers receive topology values as arguments.
 [[loom::workitem_id]] extern const uint3 workitem_id;
 [[loom::workgroup_id]] extern const uint3 workgroup_id;
 [[loom::workgroup_size]] extern const uint3 workgroup_size;

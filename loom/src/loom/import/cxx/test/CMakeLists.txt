@@ -32,6 +32,8 @@ loom_check_test_suite(
     "frontend.cxx-test"
     "functions.cxx-test"
     "intrinsics_invalid.cxx-test"
+    "kernel_intrinsics.cxx-test"
+    "kernel_intrinsics_invalid.cxx-test"
     "launch.cxx-test"
     "launch_invalid.cxx-test"
     "layout_attributes.cxx-test"
