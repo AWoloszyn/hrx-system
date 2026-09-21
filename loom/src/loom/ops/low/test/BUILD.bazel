@@ -16,6 +16,7 @@ loom_check_test_suite(
     name = "test",
     srcs = [
         "assume.loom-test",
+        "call_types.loom-test",
         "canonicalize.loom-test",
         "facts.loom-test",
         "imports.loom-test",

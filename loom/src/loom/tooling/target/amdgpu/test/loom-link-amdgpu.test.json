@@ -146,6 +146,26 @@
             "not_contains": ["@resource_type_binding", "vector<?", "low.return"]
           },
           "stderr": {"empty": true}
+        },
+        {
+          "name": "call-projected-register-signature",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "--root=call_register_type_binding",
+              "{tmp}/bindings.loombc",
+              "{srcdir}/loom_link_type_binding_declaration.loom"
+            ]
+          },
+          "stdout": {
+            "contains": [
+              "@register_type_binding$link0(%width: reg<amdgpu.sgpr : index>, %value: reg<amdgpu.vgpr : vector<[%width]xf32>>) asm {",
+              "@call_register_type_binding(%width: reg<amdgpu.sgpr : index>, %value: reg<amdgpu.vgpr : vector<[%width]xf32>>) asm {",
+              "low.func.call @register_type_binding"
+            ],
+            "not_contains": ["@resource_type_binding", "vector<?", "low.return"]
+          },
+          "stderr": {"empty": true}
         }
       ]
     }

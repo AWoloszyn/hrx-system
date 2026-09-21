@@ -325,7 +325,7 @@ test.target<low_core> @test_target
 low.func.decl target<test.low.core>(@test_target) @typed_callee(%value: reg<test.i32 : i32>) -> (reg<test.i32 : i32>)
 
 low.func.def target<test.low.core>(@test_target) @typed_call_mismatch(%value: reg<test.i32 : f32>) {
-  // ERROR@+1: TYPE/001 {field_a="operand 0", type_a="reg<test.i32 : f32>", field_b="callee argument 0", type_b="reg<test.i32 : i32>"}
+  // ERROR@+1: TYPE/001 {field_a="operand 0", type_a="reg<test.i32 : f32>", field_b="contract argument 0", type_b="reg<test.i32 : i32>"}
   %result = low.func.call @typed_callee(%value) : (reg<test.i32 : f32>) -> (reg<test.i32 : i32>)
   low.return
 }

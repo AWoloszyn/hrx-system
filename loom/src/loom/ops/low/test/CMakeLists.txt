@@ -14,6 +14,7 @@ loom_check_test_suite(
     test
   SRCS
     "assume.loom-test"
+    "call_types.loom-test"
     "canonicalize.loom-test"
     "facts.loom-test"
     "imports.loom-test"

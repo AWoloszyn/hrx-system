@@ -403,7 +403,7 @@ test.target<low_core> @test_target
 low.func.decl target<test.low.core>(@test_target) @extern_add(%lhs: reg<test.i32>, %rhs: reg<test.ptr>) -> (reg<test.i32>)
 
 low.func.def target<test.low.core>(@test_target) @low_call_operand_type(%lhs: reg<test.i32>, %rhs: reg<test.i32>) -> (reg<test.i32>) {
-  // ERROR@+1: TYPE/001 {field_a="operand 1", type_a="reg<test.i32>", field_b="callee argument 1", type_b="reg<test.ptr>"}
+  // ERROR@+1: TYPE/001 {field_a="operand 1", type_a="reg<test.i32>", field_b="contract argument 1", type_b="reg<test.ptr>"}
   %sum = low.func.call @extern_add(%lhs, %rhs) : (reg<test.i32>, reg<test.i32>) -> (reg<test.i32>)
   low.return %sum : reg<test.i32>
 }

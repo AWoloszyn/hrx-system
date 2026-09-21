@@ -1,0 +1,121 @@
+// RUN: verify
+
+// Callee and caller bind the same register value shape in different SSA scopes.
+low.func.decl target<test.low.core> @dependent(%width: reg<test.i32 : index>, %value: reg<test.i32 : vector<[%width]xf32>>) -> (reg<test.i32 : vector<[%width]xf32>>)
+
+low.func.def target<test.low.core> @call_declaration(%extent: reg<test.i32 : index>, %input: reg<test.i32 : vector<[%extent]xf32>>) asm {
+  %result = low.func.call @dependent(%extent, %input) : (reg<test.i32 : index>, reg<test.i32 : vector<[%extent]xf32>>) -> (reg<test.i32 : vector<[%extent]xf32>>)
+  return
+}
+
+// ====
+
+// Defined callees use body arguments instead of detached declaration arguments.
+low.func.def target<test.low.core> @identity(%width: reg<test.i32 : index>, %value: reg<test.i32 : vector<[%width]xf32>>) -> (reg<test.i32 : vector<[%width]xf32>>) asm {
+  return %value
+}
+
+low.func.def target<test.low.core> @call_definition(%extent: reg<test.i32 : index>, %input: reg<test.i32 : vector<[%extent]xf32>>) asm {
+  %result = low.func.call @identity(%extent, %input) : (reg<test.i32 : index>, reg<test.i32 : vector<[%extent]xf32>>) -> (reg<test.i32 : vector<[%extent]xf32>>)
+  return
+}
+
+// ====
+
+// Register value types preserve nested TYPE and predicate attribute bindings.
+low.func.decl target<test.low.core> @metadata(%width: reg<test.i32 : index>, %value: reg<test.ptr : test.array<vector<[%width]xf32>, metadata = {constraints = predicates[pow2(%width)], shape = vector<[%width]xf32>}>>)
+
+low.func.def target<test.low.core> @call_metadata(%extent: reg<test.i32 : index>, %input: reg<test.ptr : test.array<vector<[%extent]xf32>, metadata = {constraints = predicates[pow2(%extent)], shape = vector<[%extent]xf32>}>>) asm {
+  low.func.call @metadata(%extent, %input) : (reg<test.i32 : index>, reg<test.ptr : test.array<vector<[%extent]xf32>, metadata = {constraints = predicates[pow2(%extent)], shape = vector<[%extent]xf32>}>>)
+  return
+}
+
+// ====
+
+// Result-owned dimensions map to the call's sibling result, not its operands.
+low.func.decl target<test.low.core> @produce() -> (%width: reg<test.i32 : index>, reg<test.i32 : vector<[%width]xf32>>)
+
+low.func.def target<test.low.core> @call_result_bound() asm {
+  %extent, %result = low.func.call @produce() : () -> (reg<test.i32 : index>, reg<test.i32 : vector<[%extent]xf32>>)
+  return
+}
+
+// ====
+
+// SSA encodings are part of the semantic value type as well as dimensions.
+low.func.decl target<test.low.core> @encoded(%layout: reg<test.ptr : encoding<layout>>, %value: reg<test.ptr : view<4xf32, %layout>>) -> (reg<test.ptr : view<4xf32, %layout>>)
+
+low.func.def target<test.low.core> @call_encoding(%layout: reg<test.ptr : encoding<layout>>, %input: reg<test.ptr : view<4xf32, %layout>>) asm {
+  %result = low.func.call @encoded(%layout, %input) : (reg<test.ptr : encoding<layout>>, reg<test.ptr : view<4xf32, %layout>>) -> (reg<test.ptr : view<4xf32, %layout>>)
+  return
+}
+
+// ====
+
+low.func.decl target<test.low.core> @dependent(%width: reg<test.i32 : index>, %value: reg<test.i32 : vector<[%width]xf32>>) -> (reg<test.i32 : vector<[%width]xf32>>)
+
+low.func.def target<test.low.core> @wrong_argument_peer(%width: reg<test.i32 : index>, %other_width: reg<test.i32 : index>, %input: reg<test.i32 : vector<[%other_width]xf32>>) asm {
+  // ERROR@+1: TYPE/001 {field_a="operand 1", field_b="contract argument 1"}
+  %result = low.func.call @dependent(%width, %input) : (reg<test.i32 : index>, reg<test.i32 : vector<[%other_width]xf32>>) -> (reg<test.i32 : vector<[%width]xf32>>)
+  return
+}
+
+// ====
+
+low.func.decl target<test.low.core> @dependent(%width: reg<test.i32 : index>) -> (reg<test.i32 : vector<[%width]xf32>>)
+
+low.func.def target<test.low.core> @wrong_result_peer(%width: reg<test.i32 : index>, %other_width: reg<test.i32 : index>) asm {
+  // ERROR@+1: TYPE/001 {field_a="result 0", field_b="contract result 0"}
+  %result = low.func.call @dependent(%width) : (reg<test.i32 : index>) -> (reg<test.i32 : vector<[%other_width]xf32>>)
+  return
+}
+
+// ====
+
+low.func.decl target<test.low.core> @dependent(%width: reg<test.i32 : index>, %value: reg<test.i32 : vector<[%width]xf32>>)
+
+low.func.def target<test.low.core> @wrong_carrier(%width: reg<test.i32 : index>, %input: reg<test.ptr : vector<[%width]xf32>>) asm {
+  // ERROR@+1: TYPE/001 {field_a="operand 1", field_b="contract argument 1"}
+  low.func.call @dependent(%width, %input) : (reg<test.i32 : index>, reg<test.ptr : vector<[%width]xf32>>) -> ()
+  return
+}
+
+// ====
+
+low.func.decl target<test.low.core> @metadata(%width: reg<test.i32 : index>, %value: reg<test.ptr : test.array<i32, metadata = {constraints = predicates[pow2(%width)]}>>)
+
+low.func.def target<test.low.core> @wrong_predicate_peer(%width: reg<test.i32 : index>, %other_width: reg<test.i32 : index>, %input: reg<test.ptr : test.array<i32, metadata = {constraints = predicates[pow2(%other_width)]}>>) asm {
+  // ERROR@+1: TYPE/001 {field_a="operand 1", field_b="contract argument 1"}
+  low.func.call @metadata(%width, %input) : (reg<test.i32 : index>, reg<test.ptr : test.array<i32, metadata = {constraints = predicates[pow2(%other_width)]}>>) -> ()
+  return
+}
+
+// ====
+
+low.func.decl target<test.low.core> @encoded(%layout: reg<test.ptr : encoding<layout>>, %value: reg<test.ptr : view<4xf32, %layout>>)
+
+low.func.def target<test.low.core> @wrong_encoding_peer(%layout: reg<test.ptr : encoding<layout>>, %other_layout: reg<test.ptr : encoding<layout>>, %input: reg<test.ptr : view<4xf32, %other_layout>>) asm {
+  // ERROR@+1: TYPE/001 {field_a="operand 1", field_b="contract argument 1"}
+  low.func.call @encoded(%layout, %input) : (reg<test.ptr : encoding<layout>>, reg<test.ptr : view<4xf32, %other_layout>>) -> ()
+  return
+}
+
+// ====
+
+low.func.decl target<test.low.core> @produce() -> (%width: reg<test.i32 : index>, reg<test.i32 : vector<[%width]xf32>>)
+
+low.func.def target<test.low.core> @wrong_result_bound(%input_width: reg<test.i32 : index>) asm {
+  // ERROR@+1: TYPE/001 {field_a="result 1", field_b="contract result 1"}
+  %extent, %result = low.func.call @produce() : () -> (reg<test.i32 : index>, reg<test.i32 : vector<[%input_width]xf32>>)
+  return
+}
+
+// ====
+
+low.func.decl target<test.low.core> @produce() -> (reg<test.i32 : index>)
+
+low.func.def target<test.low.core> @wrong_result_count() asm {
+  // ERROR@+1: STRUCTURE/002 {op_name="low.func.call", actual_count="0", expected_count="1"}
+  low.func.call @produce() : () -> ()
+  return
+}
