@@ -101,6 +101,13 @@ emission frame and prints its normal report summary, including static and dynami
 instruction counts. This uses the runner's linked target descriptors and the
 same report collector as native emission.
 
+`emit pipeline-plan @pipeline max-instances=<count>` checks diagnostics from
+the shared concrete pipeline planner without selecting a target. The input is
+verified before generic value facts and the plan are computed. The explicit
+resident-instance capacity supplies the planner's allocation bound, normally
+provided by a target materializer. This mode produces diagnostics only; source
+legality checks that need no propagated facts continue to use `verify`.
+
 ### Source Target Lowering
 
 `emit source-low` runs the shared source compilation pipeline. For a function

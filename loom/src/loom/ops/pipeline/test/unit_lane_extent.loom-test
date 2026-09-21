@@ -1,14 +1,10 @@
-// RUN: pass aie2p-lower-pipeline
+// RUN: emit pipeline-plan @copy_records max-instances=2
 
 // A single-lane group still requires its explicit lane axis to have extent one.
 
-aie2p.target<array> @array_target
+func.decl @copy(%input: buffer, %output: buffer)
 
-aie2p.target<core> @core_target
-
-func.decl target(@core_target) @copy(%input: buffer, %output: buffer)
-
-pipeline.def<kernel> public retain target(@array_target) @copy_records() launch(%input: buffer, %output: buffer) {
+pipeline.def<kernel> @copy_records() launch(%input: buffer, %output: buffer) {
   %lanes = index.constant 1 : index
   %base = index.constant 0 : offset
   %workers = group.create %lanes : index -> group

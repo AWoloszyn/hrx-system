@@ -1454,6 +1454,29 @@ TEST_F(ExecuteTest, LowReportRejectsMissingSymbolAndExtraOptions) {
                              "requires one low function symbol name");
 }
 
+TEST_F(ExecuteTest, PipelinePlanRequiresSymbolAndExplicitCapacity) {
+  for (const char* directive : {
+           "// RUN: emit pipeline-plan\n",
+           "// RUN: emit pipeline-plan @entry\n",
+           "// RUN: emit pipeline-plan @ max-instances=2\n",
+       }) {
+    SCOPED_TRACE(directive);
+    ExpectFirstFailsWithDetail(
+        directive, "requires @pipeline max-instances=<positive integer>");
+  }
+  ExpectFirstFailsWithDetail(
+      "// RUN: emit pipeline-plan @entry max-instances=0\n",
+      "max-instances must be positive");
+  for (const char* directive : {
+           "// RUN: emit pipeline-plan @entry max-instances=-1\n",
+           "// RUN: emit pipeline-plan @entry max-instances=2 extra\n",
+           "// RUN: emit pipeline-plan @entry max-instances=4294967296\n",
+       }) {
+    SCOPED_TRACE(directive);
+    ExpectFirstFailsWithDetail(directive, "uint32");
+  }
+}
+
 TEST_F(ExecuteTest, EmitSourceLowParsesSanitizerOptions) {
   loom_check_result_t result;
   IREE_ASSERT_OK(

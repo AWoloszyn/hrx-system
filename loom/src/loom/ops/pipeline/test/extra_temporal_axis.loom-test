@@ -1,0 +1,18 @@
+// RUN: emit pipeline-plan @copy_records max-instances=2
+
+// Extra unit axes cannot be discarded to match a one-dimensional record shape.
+
+func.decl @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> @copy_records() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x1x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<1x1x1x4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<1x1x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  // ERROR@+1: LOWERING/062 {rank="3", expected_rank="1"}
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<1x1x1x4xi32>
+  pipeline.return
+}

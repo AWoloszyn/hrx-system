@@ -1,0 +1,35 @@
+// RUN: emit pipeline-plan @matching_records max-instances=2
+
+func.decl @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> @matching_records() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 2 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<2x1x3x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<2x1x3x4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<2x1x3x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<2x1x3x4xi32>
+  pipeline.return
+}
+
+// ====
+
+// RUN: emit pipeline-plan @non_buffer_binding max-instances=2
+
+// Verification rejects invalid input before the planner consumes it.
+
+// ERROR@+1: TYPE/003 {operand_name="launch binding 0", actual_type="i32", expected_constraint="buffer"}
+pipeline.def @non_buffer_binding() launch(%binding: i32) {
+  pipeline.return
+}
+
+// ====
+
+// RUN: emit pipeline-plan @not_a_pipeline max-instances=2
+
+// ERROR@+1: SYMBOL/003 {symbol_name="not_a_pipeline", actual_kind="function", expected_kind="pipeline.def"}
+func.def @not_a_pipeline() {
+  func.return
+}

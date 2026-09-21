@@ -1,12 +1,8 @@
-// RUN: pass aie2p-lower-pipeline
+// RUN: emit pipeline-plan @stage_extent_mismatch max-instances=2
 
-aie2p.target<array> @array_target
+func.decl @join(%lhs: buffer, %rhs: buffer, %output: buffer)
 
-aie2p.target<core> @core_target
-
-func.decl target(@core_target) @join(%lhs: buffer, %rhs: buffer, %output: buffer)
-
-pipeline.def<kernel> public retain target(@array_target) @stage_extent_mismatch() launch(%lhs: buffer, %rhs: buffer) {
+pipeline.def<kernel> @stage_extent_mismatch() launch(%lhs: buffer, %rhs: buffer) {
   %lanes = index.constant 1 : index
   %base = index.constant 0 : offset
   %workers = group.create %lanes : index -> group
@@ -21,15 +17,13 @@ pipeline.def<kernel> public retain target(@array_target) @stage_extent_mismatch(
 
 // ====
 
+// RUN: emit pipeline-plan @stage_rank_mismatch max-instances=2
+
 // Equal record counts do not make different temporal ranks interchangeable.
 
-aie2p.target<array> @array_target
+func.decl @join(%lhs: buffer, %rhs: buffer, %output: buffer)
 
-aie2p.target<core> @core_target
-
-func.decl target(@core_target) @join(%lhs: buffer, %rhs: buffer, %output: buffer)
-
-pipeline.def<kernel> public retain target(@array_target) @stage_rank_mismatch() launch(%lhs: buffer, %rhs: buffer) {
+pipeline.def<kernel> @stage_rank_mismatch() launch(%lhs: buffer, %rhs: buffer) {
   %lanes = index.constant 1 : index
   %base = index.constant 0 : offset
   %workers = group.create %lanes : index -> group
@@ -44,15 +38,13 @@ pipeline.def<kernel> public retain target(@array_target) @stage_rank_mismatch() 
 
 // ====
 
-aie2p.target<array> @array_target
+// RUN: emit pipeline-plan @reduction_extent_mismatch max-instances=2
 
-aie2p.target<core> @core_target
+func.decl @produce(%input: buffer, %output: buffer)
 
-func.decl target(@core_target) @produce(%input: buffer, %output: buffer)
+func.decl @reduce(%source: buffer, %bias: buffer, %output: buffer)
 
-func.decl target(@core_target) @reduce(%source: buffer, %bias: buffer, %output: buffer)
-
-pipeline.def<kernel> public retain target(@array_target) @reduction_extent_mismatch() launch(%input: buffer, %bias: buffer) {
+pipeline.def<kernel> @reduction_extent_mismatch() launch(%input: buffer, %bias: buffer) {
   %lanes = index.constant 1 : index
   %base = index.constant 0 : offset
   %producers = group.create %lanes : index -> group
