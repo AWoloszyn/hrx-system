@@ -29,7 +29,7 @@ static iree_status_t loom_spirv_emit_branch_label(
 static uint32_t loom_spirv_emit_for_loop_control(const loom_op_t* op) {
   if (loom_low_scf_for_unroll_factor_is_present(op) ||
       !loom_attr_is_absent(
-          loom_op_attrs(op)[loom_low_scf_for_unroll_policy_ATTR_INDEX])) {
+          loom_op_attrs(op)[LOOM_LOW_SCF_FOR_UNROLL_POLICY_ATTR_INDEX])) {
     return LOOM_SPIRV_LOOP_CONTROL_UNROLL_MASK;
   }
   return LOOM_SPIRV_LOOP_CONTROL_NONE;

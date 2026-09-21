@@ -351,19 +351,19 @@ static bool loom_testbench_plan_parameter(
   if (loom_check_param_range_isa(op)) {
     return loom_testbench_plan_range_parameter(module, op, out_parameter) &&
            loom_testbench_plan_parameter_name(
-               module, op, loom_check_param_range_param_name_ATTR_INDEX,
+               module, op, LOOM_CHECK_PARAM_RANGE_PARAM_NAME_ATTR_INDEX,
                out_parameter);
   }
   if (loom_check_param_choice_isa(op)) {
     return loom_testbench_plan_choice_parameter(module, op, out_parameter) &&
            loom_testbench_plan_parameter_name(
-               module, op, loom_check_param_choice_param_name_ATTR_INDEX,
+               module, op, LOOM_CHECK_PARAM_CHOICE_PARAM_NAME_ATTR_INDEX,
                out_parameter);
   }
   if (loom_check_param_seed_isa(op)) {
     return loom_testbench_plan_seed_parameter(module, op, out_parameter) &&
            loom_testbench_plan_parameter_name(
-               module, op, loom_check_param_seed_param_name_ATTR_INDEX,
+               module, op, LOOM_CHECK_PARAM_SEED_PARAM_NAME_ATTR_INDEX,
                out_parameter);
   }
   return false;
@@ -395,7 +395,7 @@ static bool loom_testbench_plan_value_source(
     out_source->iota.offset = loom_check_generate_iota_offset(op);
     out_source->iota.step = loom_check_generate_iota_step(op);
     loom_attribute_t period_attr =
-        loom_op_attrs(op)[loom_check_generate_iota_period_ATTR_INDEX];
+        loom_op_attrs(op)[LOOM_CHECK_GENERATE_IOTA_PERIOD_ATTR_INDEX];
     if (!loom_attr_is_absent(period_attr)) {
       int64_t period = loom_attr_as_i64(period_attr);
       if (period <= 0 || (uint64_t)period > (uint64_t)IREE_HOST_SIZE_MAX) {
@@ -475,7 +475,7 @@ static bool loom_testbench_plan_file_write(
   out_file_write->path =
       loom_testbench_string_from_id(module, out_file_write->path_id);
   loom_attribute_t mode_attr =
-      loom_op_const_attrs(op)[loom_check_file_write_npy_mode_ATTR_INDEX];
+      loom_op_const_attrs(op)[LOOM_CHECK_FILE_WRITE_NPY_MODE_ATTR_INDEX];
   out_file_write->mode =
       loom_attr_is_absent(mode_attr)
           ? LOOM_CHECK_FILE_WRITE_NPY_MODE_ON_FAILURE

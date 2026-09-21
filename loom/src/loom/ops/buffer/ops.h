@@ -41,8 +41,12 @@ enum {
 LOOM_DEFINE_ISA(loom_buffer_alloca_isa, LOOM_OP_BUFFER_ALLOCA)
 LOOM_DEFINE_OPERAND(loom_buffer_alloca_byte_length, 0)
 LOOM_DEFINE_RESULT(loom_buffer_alloca_result, 0)
-LOOM_DEFINE_ATTR_I64(loom_buffer_alloca_base_alignment, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_buffer_alloca_memory_space, 1, loom_value_fact_memory_space_t)
+enum {
+  LOOM_BUFFER_ALLOCA_BASE_ALIGNMENT_ATTR_INDEX = 0,
+  LOOM_BUFFER_ALLOCA_MEMORY_SPACE_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_I64(loom_buffer_alloca_base_alignment, LOOM_BUFFER_ALLOCA_BASE_ALIGNMENT_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_buffer_alloca_memory_space, LOOM_BUFFER_ALLOCA_MEMORY_SPACE_ATTR_INDEX, loom_value_fact_memory_space_t)
 iree_status_t loom_buffer_alloca_build(
     loom_builder_t* builder,
     loom_value_fact_memory_space_t memory_space,
@@ -65,7 +69,10 @@ iree_status_t loom_buffer_alloca_verify(
 LOOM_DEFINE_ISA(loom_buffer_assume_alignment_isa, LOOM_OP_BUFFER_ASSUME_ALIGNMENT)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_buffer_assume_alignment_buffers, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_buffer_assume_alignment_results, 0)
-LOOM_DEFINE_ATTR_I64(loom_buffer_assume_alignment_minimum_alignment, 0)
+enum {
+  LOOM_BUFFER_ASSUME_ALIGNMENT_MINIMUM_ALIGNMENT_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_I64(loom_buffer_assume_alignment_minimum_alignment, LOOM_BUFFER_ASSUME_ALIGNMENT_MINIMUM_ALIGNMENT_ATTR_INDEX)
 iree_status_t loom_buffer_assume_alignment_build(
     loom_builder_t* builder,
     const loom_value_id_t* buffers,
@@ -89,7 +96,10 @@ iree_status_t loom_buffer_assume_alignment_verify(
 LOOM_DEFINE_ISA(loom_buffer_assume_memory_space_isa, LOOM_OP_BUFFER_ASSUME_MEMORY_SPACE)
 LOOM_DEFINE_OPERAND(loom_buffer_assume_memory_space_buffer, 0)
 LOOM_DEFINE_RESULT(loom_buffer_assume_memory_space_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_buffer_assume_memory_space_memory_space, 0, loom_value_fact_memory_space_t)
+enum {
+  LOOM_BUFFER_ASSUME_MEMORY_SPACE_MEMORY_SPACE_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_buffer_assume_memory_space_memory_space, LOOM_BUFFER_ASSUME_MEMORY_SPACE_MEMORY_SPACE_ATTR_INDEX, loom_value_fact_memory_space_t)
 iree_status_t loom_buffer_assume_memory_space_build(
     loom_builder_t* builder,
     loom_value_fact_memory_space_t memory_space,
@@ -172,7 +182,10 @@ LOOM_DEFINE_ISA(loom_buffer_pack_isa, LOOM_OP_BUFFER_PACK)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_buffer_pack_byte_lengths, 0)
 LOOM_DEFINE_RESULT(loom_buffer_pack_total_byte_length, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_buffer_pack_byte_offsets, 1)
-LOOM_DEFINE_ATTR_I64_ARRAY(loom_buffer_pack_minimum_alignments, 0)
+enum {
+  LOOM_BUFFER_PACK_MINIMUM_ALIGNMENTS_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_I64_ARRAY(loom_buffer_pack_minimum_alignments, LOOM_BUFFER_PACK_MINIMUM_ALIGNMENTS_ATTR_INDEX)
 iree_status_t loom_buffer_pack_build(
     loom_builder_t* builder,
     loom_may_consume const loom_value_id_t* byte_lengths,

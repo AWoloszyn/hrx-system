@@ -64,7 +64,7 @@ iree_status_t loom_low_verify_call_context(
       loom_param_with_field_ref(
           loom_param_string(IREE_SV("callee")),
           loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE,
-                                    loom_low_func_call_callee_ATTR_INDEX)),
+                                    LOOM_LOW_FUNC_CALL_CALLEE_ATTR_INDEX)),
       loom_param_string(
           callee_version != NULL
               ? loom_target_facts_identity_name(

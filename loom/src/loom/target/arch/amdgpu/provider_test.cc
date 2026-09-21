@@ -551,7 +551,7 @@ TEST_F(AmdgpuProviderTest, MaterializesEveryStructuredProfile) {
       ModulePtr module = MaterializeTargetDefinition(
           target->name, IREE_SV("target"), variant, &target_op);
       EXPECT_TRUE(loom_attr_is_absent(
-          loom_op_attrs(target_op)[loom_amdgpu_target_features_ATTR_INDEX]));
+          loom_op_attrs(target_op)[LOOM_AMDGPU_TARGET_FEATURES_ATTR_INDEX]));
 
       loom_symbol_fact_table_reset(&fact_table_);
       const loom_target_symbol_facts_t* materialized_symbol_facts =

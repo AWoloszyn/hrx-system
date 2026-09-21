@@ -679,7 +679,10 @@ LOOM_DEFINE_OPERAND(loom_scalar_clampf_value, 0)
 LOOM_DEFINE_OPERAND(loom_scalar_clampf_lower, 1)
 LOOM_DEFINE_OPERAND(loom_scalar_clampf_upper, 2)
 LOOM_DEFINE_RESULT(loom_scalar_clampf_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scalar_clampf_mode, 0, loom_scalar_clampf_mode_t)
+enum {
+  LOOM_SCALAR_CLAMPF_MODE_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scalar_clampf_mode, LOOM_SCALAR_CLAMPF_MODE_ATTR_INDEX, loom_scalar_clampf_mode_t)
 LOOM_DEFINE_INSTANCE_FLAGS(loom_scalar_clampf_fastmath)
 iree_status_t loom_scalar_clampf_build(
     loom_builder_t* builder,
@@ -1223,9 +1226,13 @@ iree_status_t loom_scalar_softplusf_facts(
 LOOM_DEFINE_ISA(loom_scalar_geluf_isa, LOOM_OP_SCALAR_GELUF)
 LOOM_DEFINE_OPERAND(loom_scalar_geluf_input, 0)
 LOOM_DEFINE_RESULT(loom_scalar_geluf_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scalar_geluf_variant, 0, loom_scalar_geluf_variant_t)
+enum {
+  LOOM_SCALAR_GELUF_VARIANT_ATTR_INDEX = 0,
+  LOOM_SCALAR_GELUF_SCALE_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scalar_geluf_variant, LOOM_SCALAR_GELUF_VARIANT_ATTR_INDEX, loom_scalar_geluf_variant_t)
 LOOM_DEFINE_INSTANCE_FLAGS(loom_scalar_geluf_fastmath)
-LOOM_DEFINE_ATTR_F64(loom_scalar_geluf_scale, 1)
+LOOM_DEFINE_ATTR_F64(loom_scalar_geluf_scale, LOOM_SCALAR_GELUF_SCALE_ATTR_INDEX)
 enum loom_scalar_geluf_build_flag_bits_e {
   LOOM_SCALAR_GELUF_BUILD_FLAG_HAS_SCALE = 1u << 0,
 };
@@ -1364,7 +1371,10 @@ LOOM_DEFINE_ISA(loom_scalar_cmpi_isa, LOOM_OP_SCALAR_CMPI)
 LOOM_DEFINE_OPERAND(loom_scalar_cmpi_lhs, 0)
 LOOM_DEFINE_OPERAND(loom_scalar_cmpi_rhs, 1)
 LOOM_DEFINE_RESULT(loom_scalar_cmpi_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scalar_cmpi_predicate, 0, loom_scalar_cmpi_predicate_t)
+enum {
+  LOOM_SCALAR_CMPI_PREDICATE_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scalar_cmpi_predicate, LOOM_SCALAR_CMPI_PREDICATE_ATTR_INDEX, loom_scalar_cmpi_predicate_t)
 iree_status_t loom_scalar_cmpi_build(
     loom_builder_t* builder,
     loom_scalar_cmpi_predicate_t predicate,
@@ -1385,7 +1395,10 @@ LOOM_DEFINE_ISA(loom_scalar_cmpf_isa, LOOM_OP_SCALAR_CMPF)
 LOOM_DEFINE_OPERAND(loom_scalar_cmpf_lhs, 0)
 LOOM_DEFINE_OPERAND(loom_scalar_cmpf_rhs, 1)
 LOOM_DEFINE_RESULT(loom_scalar_cmpf_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scalar_cmpf_predicate, 0, loom_scalar_cmpf_predicate_t)
+enum {
+  LOOM_SCALAR_CMPF_PREDICATE_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scalar_cmpf_predicate, LOOM_SCALAR_CMPF_PREDICATE_ATTR_INDEX, loom_scalar_cmpf_predicate_t)
 LOOM_DEFINE_INSTANCE_FLAGS(loom_scalar_cmpf_fastmath)
 iree_status_t loom_scalar_cmpf_build(
     loom_builder_t* builder,
@@ -1640,7 +1653,10 @@ iree_status_t loom_scalar_bitcast_facts(
 // %c42 = scalar.constant 42 : i32
 LOOM_DEFINE_ISA(loom_scalar_constant_isa, LOOM_OP_SCALAR_CONSTANT)
 LOOM_DEFINE_RESULT(loom_scalar_constant_result, 0)
-LOOM_DEFINE_ATTR_ANY(loom_scalar_constant_value, 0)
+enum {
+  LOOM_SCALAR_CONSTANT_VALUE_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ANY(loom_scalar_constant_value, LOOM_SCALAR_CONSTANT_VALUE_ATTR_INDEX)
 iree_status_t loom_scalar_constant_build(
     loom_builder_t* builder,
     loom_attribute_t value,
@@ -1851,8 +1867,12 @@ iree_status_t loom_scalar_ctpopi_facts(
 LOOM_DEFINE_ISA(loom_scalar_bitfield_extractu_isa, LOOM_OP_SCALAR_BITFIELD_EXTRACTU)
 LOOM_DEFINE_OPERAND(loom_scalar_bitfield_extractu_source, 0)
 LOOM_DEFINE_RESULT(loom_scalar_bitfield_extractu_result, 0)
-LOOM_DEFINE_ATTR_I64(loom_scalar_bitfield_extractu_offset, 0)
-LOOM_DEFINE_ATTR_I64(loom_scalar_bitfield_extractu_width, 1)
+enum {
+  LOOM_SCALAR_BITFIELD_EXTRACTU_OFFSET_ATTR_INDEX = 0,
+  LOOM_SCALAR_BITFIELD_EXTRACTU_WIDTH_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_I64(loom_scalar_bitfield_extractu_offset, LOOM_SCALAR_BITFIELD_EXTRACTU_OFFSET_ATTR_INDEX)
+LOOM_DEFINE_ATTR_I64(loom_scalar_bitfield_extractu_width, LOOM_SCALAR_BITFIELD_EXTRACTU_WIDTH_ATTR_INDEX)
 iree_status_t loom_scalar_bitfield_extractu_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -1872,8 +1892,12 @@ iree_status_t loom_scalar_bitfield_extractu_facts(
 LOOM_DEFINE_ISA(loom_scalar_bitfield_extracts_isa, LOOM_OP_SCALAR_BITFIELD_EXTRACTS)
 LOOM_DEFINE_OPERAND(loom_scalar_bitfield_extracts_source, 0)
 LOOM_DEFINE_RESULT(loom_scalar_bitfield_extracts_result, 0)
-LOOM_DEFINE_ATTR_I64(loom_scalar_bitfield_extracts_offset, 0)
-LOOM_DEFINE_ATTR_I64(loom_scalar_bitfield_extracts_width, 1)
+enum {
+  LOOM_SCALAR_BITFIELD_EXTRACTS_OFFSET_ATTR_INDEX = 0,
+  LOOM_SCALAR_BITFIELD_EXTRACTS_WIDTH_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_I64(loom_scalar_bitfield_extracts_offset, LOOM_SCALAR_BITFIELD_EXTRACTS_OFFSET_ATTR_INDEX)
+LOOM_DEFINE_ATTR_I64(loom_scalar_bitfield_extracts_width, LOOM_SCALAR_BITFIELD_EXTRACTS_WIDTH_ATTR_INDEX)
 iree_status_t loom_scalar_bitfield_extracts_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -1893,7 +1917,10 @@ iree_status_t loom_scalar_bitfield_extracts_facts(
 LOOM_DEFINE_ISA(loom_scalar_assume_isa, LOOM_OP_SCALAR_ASSUME)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_scalar_assume_values, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_scalar_assume_results, 0)
-LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_scalar_assume_predicates, 0)
+enum {
+  LOOM_SCALAR_ASSUME_PREDICATES_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_scalar_assume_predicates, LOOM_SCALAR_ASSUME_PREDICATES_ATTR_INDEX)
 iree_status_t loom_scalar_assume_build(
     loom_builder_t* builder,
     const loom_value_id_t* values,

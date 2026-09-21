@@ -335,12 +335,12 @@ static iree_status_t loom_scf_pipeline_build_loop(
     factor = loom_scf_for_unroll_factor(source);
   }
   if (!loom_attr_is_absent(
-          loom_op_const_attrs(source)[loom_scf_for_unroll_policy_ATTR_INDEX])) {
+          loom_op_const_attrs(source)[LOOM_SCF_FOR_UNROLL_POLICY_ATTR_INDEX])) {
     flags |= LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_POLICY;
     policy = loom_scf_for_unroll_policy(source);
   }
   if (!loom_attr_is_absent(loom_op_const_attrs(
-          source)[loom_scf_for_unroll_schedule_ATTR_INDEX])) {
+          source)[LOOM_SCF_FOR_UNROLL_SCHEDULE_ATTR_INDEX])) {
     flags |= LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_SCHEDULE;
     schedule = loom_scf_for_unroll_schedule(source);
   }

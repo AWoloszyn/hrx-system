@@ -1208,9 +1208,9 @@ static void loom_amdgpu_fragment_memory_source_from_op(
         loom_vector_fragment_load_static_indices(source_op);
     out_source->dynamic_indices = loom_vector_fragment_load_indices(source_op);
     out_source->cache_scope = loom_op_attrs(
-        source_op)[loom_vector_fragment_load_cache_scope_ATTR_INDEX];
+        source_op)[LOOM_VECTOR_FRAGMENT_LOAD_CACHE_SCOPE_ATTR_INDEX];
     out_source->cache_temporal = loom_op_attrs(
-        source_op)[loom_vector_fragment_load_cache_temporal_ATTR_INDEX];
+        source_op)[LOOM_VECTOR_FRAGMENT_LOAD_CACHE_TEMPORAL_ATTR_INDEX];
     return;
   }
 
@@ -1224,9 +1224,9 @@ static void loom_amdgpu_fragment_memory_source_from_op(
       loom_vector_fragment_store_static_indices(source_op);
   out_source->dynamic_indices = loom_vector_fragment_store_indices(source_op);
   out_source->cache_scope = loom_op_attrs(
-      source_op)[loom_vector_fragment_store_cache_scope_ATTR_INDEX];
+      source_op)[LOOM_VECTOR_FRAGMENT_STORE_CACHE_SCOPE_ATTR_INDEX];
   out_source->cache_temporal = loom_op_attrs(
-      source_op)[loom_vector_fragment_store_cache_temporal_ATTR_INDEX];
+      source_op)[LOOM_VECTOR_FRAGMENT_STORE_CACHE_TEMPORAL_ATTR_INDEX];
 }
 
 static bool loom_amdgpu_fragment_memory_fp8_load_scale_source(

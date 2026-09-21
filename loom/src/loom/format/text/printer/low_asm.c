@@ -123,9 +123,9 @@ static iree_string_view_t loom_print_low_asm_packet_descriptor_key(
     const loom_op_t* op) {
   uint16_t descriptor_index;
   if (loom_low_op_isa(op)) {
-    descriptor_index = loom_low_op_descriptor_ATTR_INDEX;
+    descriptor_index = LOOM_LOW_OP_DESCRIPTOR_ATTR_INDEX;
   } else if (loom_low_const_isa(op)) {
-    descriptor_index = loom_low_const_descriptor_ATTR_INDEX;
+    descriptor_index = LOOM_LOW_CONST_DESCRIPTOR_ATTR_INDEX;
   } else {
     return iree_string_view_empty();
   }

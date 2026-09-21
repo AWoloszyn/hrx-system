@@ -209,8 +209,8 @@ iree_status_t loom_view_load_verify(const loom_module_t* module,
       module, op, emitter, IREE_SV("view"), view_type,
       loom_view_load_static_indices(op), loom_view_load_indices(op).count));
   return loom_view_verify_optional_cache_policy(
-      emitter, op, loom_view_load_cache_scope_ATTR_INDEX,
-      loom_view_load_cache_temporal_ATTR_INDEX, LOOM_CACHE_POLICY_ACCESS_LOAD);
+      emitter, op, LOOM_VIEW_LOAD_CACHE_SCOPE_ATTR_INDEX,
+      LOOM_VIEW_LOAD_CACHE_TEMPORAL_ATTR_INDEX, LOOM_CACHE_POLICY_ACCESS_LOAD);
 }
 
 iree_status_t loom_view_store_verify(const loom_module_t* module,
@@ -222,8 +222,8 @@ iree_status_t loom_view_store_verify(const loom_module_t* module,
       module, op, emitter, IREE_SV("view"), view_type,
       loom_view_store_static_indices(op), loom_view_store_indices(op).count));
   return loom_view_verify_optional_cache_policy(
-      emitter, op, loom_view_store_cache_scope_ATTR_INDEX,
-      loom_view_store_cache_temporal_ATTR_INDEX,
+      emitter, op, LOOM_VIEW_STORE_CACHE_SCOPE_ATTR_INDEX,
+      LOOM_VIEW_STORE_CACHE_TEMPORAL_ATTR_INDEX,
       LOOM_CACHE_POLICY_ACCESS_STORE);
 }
 
@@ -243,8 +243,8 @@ iree_status_t loom_view_atomic_reduce_verify(
       loom_view_verify_atomic_kind(emitter, op, IREE_SV("value"), value_type,
                                    loom_view_atomic_reduce_kind(op), false));
   return loom_view_verify_optional_cache_policy(
-      emitter, op, loom_view_atomic_reduce_cache_scope_ATTR_INDEX,
-      loom_view_atomic_reduce_cache_temporal_ATTR_INDEX,
+      emitter, op, LOOM_VIEW_ATOMIC_REDUCE_CACHE_SCOPE_ATTR_INDEX,
+      LOOM_VIEW_ATOMIC_REDUCE_CACHE_TEMPORAL_ATTR_INDEX,
       LOOM_CACHE_POLICY_ACCESS_ATOMIC);
 }
 
@@ -264,8 +264,8 @@ iree_status_t loom_view_atomic_rmw_verify(const loom_module_t* module,
       loom_view_verify_atomic_kind(emitter, op, IREE_SV("value"), value_type,
                                    loom_view_atomic_rmw_kind(op), true));
   return loom_view_verify_optional_cache_policy(
-      emitter, op, loom_view_atomic_rmw_cache_scope_ATTR_INDEX,
-      loom_view_atomic_rmw_cache_temporal_ATTR_INDEX,
+      emitter, op, LOOM_VIEW_ATOMIC_RMW_CACHE_SCOPE_ATTR_INDEX,
+      LOOM_VIEW_ATOMIC_RMW_CACHE_TEMPORAL_ATTR_INDEX,
       LOOM_CACHE_POLICY_ACCESS_ATOMIC);
 }
 
@@ -282,8 +282,8 @@ iree_status_t loom_view_atomic_cmpxchg_verify(
       emitter, op, loom_view_atomic_cmpxchg_success_ordering(op),
       loom_view_atomic_cmpxchg_failure_ordering(op)));
   return loom_view_verify_optional_cache_policy(
-      emitter, op, loom_view_atomic_cmpxchg_cache_scope_ATTR_INDEX,
-      loom_view_atomic_cmpxchg_cache_temporal_ATTR_INDEX,
+      emitter, op, LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_SCOPE_ATTR_INDEX,
+      LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_TEMPORAL_ATTR_INDEX,
       LOOM_CACHE_POLICY_ACCESS_ATOMIC);
 }
 

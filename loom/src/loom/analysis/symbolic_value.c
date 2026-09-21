@@ -531,10 +531,10 @@ static bool loom_symbolic_expr_identity_chain_step(
   uint16_t predicates_index;
   if (loom_index_assume_isa(defining_op)) {
     values = loom_index_assume_values(defining_op);
-    predicates_index = loom_index_assume_predicates_ATTR_INDEX;
+    predicates_index = LOOM_INDEX_ASSUME_PREDICATES_ATTR_INDEX;
   } else if (loom_scalar_assume_isa(defining_op)) {
     values = loom_scalar_assume_values(defining_op);
-    predicates_index = loom_scalar_assume_predicates_ATTR_INDEX;
+    predicates_index = LOOM_SCALAR_ASSUME_PREDICATES_ATTR_INDEX;
   } else {
     return false;
   }

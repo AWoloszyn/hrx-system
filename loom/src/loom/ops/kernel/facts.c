@@ -1012,9 +1012,9 @@ iree_status_t loom_kernel_subgroup_reduce_facts(
   (void)operand_facts;
   result_facts[0] = loom_value_facts_unknown();
   const bool has_cluster_size = !loom_attr_is_absent(
-      loom_op_attrs(op)[loom_kernel_subgroup_reduce_cluster_size_ATTR_INDEX]);
+      loom_op_attrs(op)[LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_SIZE_ATTR_INDEX]);
   const bool has_cluster_stride = !loom_attr_is_absent(
-      loom_op_attrs(op)[loom_kernel_subgroup_reduce_cluster_stride_ATTR_INDEX]);
+      loom_op_attrs(op)[LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_STRIDE_ATTR_INDEX]);
   if (!has_cluster_size && !has_cluster_stride) {
     loom_value_facts_mark_subgroup_uniform(&result_facts[0]);
   }

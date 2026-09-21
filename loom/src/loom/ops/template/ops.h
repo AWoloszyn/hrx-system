@@ -67,15 +67,26 @@ typedef enum loom_template_retain_e {
 LOOM_DEFINE_ISA(loom_template_decl_isa, LOOM_OP_TEMPLATE_DECL)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_template_decl_args, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_template_decl_results, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_template_decl_family, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_visibility, 1, loom_template_visibility_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_cc, 2, loom_template_cc_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_purity, 3, loom_template_purity_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_temperature, 4, loom_template_temperature_t)
-LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_template_decl_predicates, 5)
-LOOM_DEFINE_ATTR_SYMBOL(loom_template_decl_target, 6)
-LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_template_decl_requires, 7)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_retain, 8, loom_template_retain_t)
+enum {
+  LOOM_TEMPLATE_DECL_FAMILY_ATTR_INDEX = 0,
+  LOOM_TEMPLATE_DECL_VISIBILITY_ATTR_INDEX = 1,
+  LOOM_TEMPLATE_DECL_CC_ATTR_INDEX = 2,
+  LOOM_TEMPLATE_DECL_PURITY_ATTR_INDEX = 3,
+  LOOM_TEMPLATE_DECL_TEMPERATURE_ATTR_INDEX = 4,
+  LOOM_TEMPLATE_DECL_PREDICATES_ATTR_INDEX = 5,
+  LOOM_TEMPLATE_DECL_TARGET_ATTR_INDEX = 6,
+  LOOM_TEMPLATE_DECL_REQUIRES_ATTR_INDEX = 7,
+  LOOM_TEMPLATE_DECL_RETAIN_ATTR_INDEX = 8,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_template_decl_family, LOOM_TEMPLATE_DECL_FAMILY_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_visibility, LOOM_TEMPLATE_DECL_VISIBILITY_ATTR_INDEX, loom_template_visibility_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_cc, LOOM_TEMPLATE_DECL_CC_ATTR_INDEX, loom_template_cc_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_purity, LOOM_TEMPLATE_DECL_PURITY_ATTR_INDEX, loom_template_purity_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_temperature, LOOM_TEMPLATE_DECL_TEMPERATURE_ATTR_INDEX, loom_template_temperature_t)
+LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_template_decl_predicates, LOOM_TEMPLATE_DECL_PREDICATES_ATTR_INDEX)
+LOOM_DEFINE_ATTR_SYMBOL(loom_template_decl_target, LOOM_TEMPLATE_DECL_TARGET_ATTR_INDEX)
+LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_template_decl_requires, LOOM_TEMPLATE_DECL_REQUIRES_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_retain, LOOM_TEMPLATE_DECL_RETAIN_ATTR_INDEX, loom_template_retain_t)
 enum loom_template_decl_build_flag_bits_e {
   LOOM_TEMPLATE_DECL_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
   LOOM_TEMPLATE_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 1,
@@ -118,17 +129,30 @@ iree_status_t loom_template_decl_verify(
 // }
 LOOM_DEFINE_ISA(loom_template_def_isa, LOOM_OP_TEMPLATE_DEF)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_template_def_results, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_template_def_family, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_template_def_implementation, 1)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_visibility, 2, loom_template_visibility_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_cc, 3, loom_template_cc_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_purity, 4, loom_template_purity_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_temperature, 5, loom_template_temperature_t)
-LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_template_def_predicates, 6)
-LOOM_DEFINE_ATTR_SYMBOL(loom_template_def_target, 7)
-LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_template_def_requires, 8)
-LOOM_DEFINE_ATTR_I64(loom_template_def_priority, 9)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_retain, 10, loom_template_retain_t)
+enum {
+  LOOM_TEMPLATE_DEF_FAMILY_ATTR_INDEX = 0,
+  LOOM_TEMPLATE_DEF_IMPLEMENTATION_ATTR_INDEX = 1,
+  LOOM_TEMPLATE_DEF_VISIBILITY_ATTR_INDEX = 2,
+  LOOM_TEMPLATE_DEF_CC_ATTR_INDEX = 3,
+  LOOM_TEMPLATE_DEF_PURITY_ATTR_INDEX = 4,
+  LOOM_TEMPLATE_DEF_TEMPERATURE_ATTR_INDEX = 5,
+  LOOM_TEMPLATE_DEF_PREDICATES_ATTR_INDEX = 6,
+  LOOM_TEMPLATE_DEF_TARGET_ATTR_INDEX = 7,
+  LOOM_TEMPLATE_DEF_REQUIRES_ATTR_INDEX = 8,
+  LOOM_TEMPLATE_DEF_PRIORITY_ATTR_INDEX = 9,
+  LOOM_TEMPLATE_DEF_RETAIN_ATTR_INDEX = 10,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_template_def_family, LOOM_TEMPLATE_DEF_FAMILY_ATTR_INDEX)
+LOOM_DEFINE_ATTR_SYMBOL(loom_template_def_implementation, LOOM_TEMPLATE_DEF_IMPLEMENTATION_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_visibility, LOOM_TEMPLATE_DEF_VISIBILITY_ATTR_INDEX, loom_template_visibility_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_cc, LOOM_TEMPLATE_DEF_CC_ATTR_INDEX, loom_template_cc_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_purity, LOOM_TEMPLATE_DEF_PURITY_ATTR_INDEX, loom_template_purity_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_temperature, LOOM_TEMPLATE_DEF_TEMPERATURE_ATTR_INDEX, loom_template_temperature_t)
+LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_template_def_predicates, LOOM_TEMPLATE_DEF_PREDICATES_ATTR_INDEX)
+LOOM_DEFINE_ATTR_SYMBOL(loom_template_def_target, LOOM_TEMPLATE_DEF_TARGET_ATTR_INDEX)
+LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_template_def_requires, LOOM_TEMPLATE_DEF_REQUIRES_ATTR_INDEX)
+LOOM_DEFINE_ATTR_I64(loom_template_def_priority, LOOM_TEMPLATE_DEF_PRIORITY_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_retain, LOOM_TEMPLATE_DEF_RETAIN_ATTR_INDEX, loom_template_retain_t)
 LOOM_DEFINE_REGION(loom_template_def_body, 0)
 enum loom_template_def_build_flag_bits_e {
   LOOM_TEMPLATE_DEF_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
@@ -174,17 +198,30 @@ iree_status_t loom_template_def_verify(
 LOOM_DEFINE_ISA(loom_template_ukernel_isa, LOOM_OP_TEMPLATE_UKERNEL)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_template_ukernel_args, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_template_ukernel_results, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_template_ukernel_family, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_template_ukernel_implementation, 1)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_visibility, 2, loom_template_visibility_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_cc, 3, loom_template_cc_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_purity, 4, loom_template_purity_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_temperature, 5, loom_template_temperature_t)
-LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_template_ukernel_predicates, 6)
-LOOM_DEFINE_ATTR_SYMBOL(loom_template_ukernel_target, 7)
-LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_template_ukernel_requires, 8)
-LOOM_DEFINE_ATTR_I64(loom_template_ukernel_priority, 9)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_retain, 10, loom_template_retain_t)
+enum {
+  LOOM_TEMPLATE_UKERNEL_FAMILY_ATTR_INDEX = 0,
+  LOOM_TEMPLATE_UKERNEL_IMPLEMENTATION_ATTR_INDEX = 1,
+  LOOM_TEMPLATE_UKERNEL_VISIBILITY_ATTR_INDEX = 2,
+  LOOM_TEMPLATE_UKERNEL_CC_ATTR_INDEX = 3,
+  LOOM_TEMPLATE_UKERNEL_PURITY_ATTR_INDEX = 4,
+  LOOM_TEMPLATE_UKERNEL_TEMPERATURE_ATTR_INDEX = 5,
+  LOOM_TEMPLATE_UKERNEL_PREDICATES_ATTR_INDEX = 6,
+  LOOM_TEMPLATE_UKERNEL_TARGET_ATTR_INDEX = 7,
+  LOOM_TEMPLATE_UKERNEL_REQUIRES_ATTR_INDEX = 8,
+  LOOM_TEMPLATE_UKERNEL_PRIORITY_ATTR_INDEX = 9,
+  LOOM_TEMPLATE_UKERNEL_RETAIN_ATTR_INDEX = 10,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_template_ukernel_family, LOOM_TEMPLATE_UKERNEL_FAMILY_ATTR_INDEX)
+LOOM_DEFINE_ATTR_SYMBOL(loom_template_ukernel_implementation, LOOM_TEMPLATE_UKERNEL_IMPLEMENTATION_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_visibility, LOOM_TEMPLATE_UKERNEL_VISIBILITY_ATTR_INDEX, loom_template_visibility_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_cc, LOOM_TEMPLATE_UKERNEL_CC_ATTR_INDEX, loom_template_cc_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_purity, LOOM_TEMPLATE_UKERNEL_PURITY_ATTR_INDEX, loom_template_purity_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_temperature, LOOM_TEMPLATE_UKERNEL_TEMPERATURE_ATTR_INDEX, loom_template_temperature_t)
+LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_template_ukernel_predicates, LOOM_TEMPLATE_UKERNEL_PREDICATES_ATTR_INDEX)
+LOOM_DEFINE_ATTR_SYMBOL(loom_template_ukernel_target, LOOM_TEMPLATE_UKERNEL_TARGET_ATTR_INDEX)
+LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_template_ukernel_requires, LOOM_TEMPLATE_UKERNEL_REQUIRES_ATTR_INDEX)
+LOOM_DEFINE_ATTR_I64(loom_template_ukernel_priority, LOOM_TEMPLATE_UKERNEL_PRIORITY_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_retain, LOOM_TEMPLATE_UKERNEL_RETAIN_ATTR_INDEX, loom_template_retain_t)
 enum loom_template_ukernel_build_flag_bits_e {
   LOOM_TEMPLATE_UKERNEL_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
   LOOM_TEMPLATE_UKERNEL_BUILD_FLAG_HAS_RETAIN = 1u << 1,
@@ -229,9 +266,14 @@ iree_status_t loom_template_ukernel_verify(
 LOOM_DEFINE_ISA(loom_template_apply_isa, LOOM_OP_TEMPLATE_APPLY)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_template_apply_operands, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_template_apply_results, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_template_apply_family, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_apply_purity, 1, loom_template_purity_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_apply_temperature, 2, loom_template_temperature_t)
+enum {
+  LOOM_TEMPLATE_APPLY_FAMILY_ATTR_INDEX = 0,
+  LOOM_TEMPLATE_APPLY_PURITY_ATTR_INDEX = 1,
+  LOOM_TEMPLATE_APPLY_TEMPERATURE_ATTR_INDEX = 2,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_template_apply_family, LOOM_TEMPLATE_APPLY_FAMILY_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_apply_purity, LOOM_TEMPLATE_APPLY_PURITY_ATTR_INDEX, loom_template_purity_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_apply_temperature, LOOM_TEMPLATE_APPLY_TEMPERATURE_ATTR_INDEX, loom_template_temperature_t)
 enum loom_template_apply_build_flag_bits_e {
   LOOM_TEMPLATE_APPLY_BUILD_FLAG_HAS_PURITY = 1u << 0,
   LOOM_TEMPLATE_APPLY_BUILD_FLAG_HAS_TEMPERATURE = 1u << 1,
@@ -262,9 +304,14 @@ iree_status_t loom_template_apply_verify(
 LOOM_DEFINE_ISA(loom_template_call_isa, LOOM_OP_TEMPLATE_CALL)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_template_call_operands, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_template_call_results, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_template_call_callee, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_call_purity, 1, loom_template_purity_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_call_temperature, 2, loom_template_temperature_t)
+enum {
+  LOOM_TEMPLATE_CALL_CALLEE_ATTR_INDEX = 0,
+  LOOM_TEMPLATE_CALL_PURITY_ATTR_INDEX = 1,
+  LOOM_TEMPLATE_CALL_TEMPERATURE_ATTR_INDEX = 2,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_template_call_callee, LOOM_TEMPLATE_CALL_CALLEE_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_call_purity, LOOM_TEMPLATE_CALL_PURITY_ATTR_INDEX, loom_template_purity_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_call_temperature, LOOM_TEMPLATE_CALL_TEMPERATURE_ATTR_INDEX, loom_template_temperature_t)
 enum loom_template_call_build_flag_bits_e {
   LOOM_TEMPLATE_CALL_BUILD_FLAG_HAS_PURITY = 1u << 0,
   LOOM_TEMPLATE_CALL_BUILD_FLAG_HAS_TEMPERATURE = 1u << 1,

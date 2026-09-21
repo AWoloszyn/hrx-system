@@ -69,8 +69,8 @@ loom_low_descriptor_text_asm_transfer_detached_attr(
   const uint8_t op_index = loom_op_dialect_index(op_kind);
   IREE_ASSERT_LT(op_index, vtable_count);
   const uint8_t attr_index = kind == LOOM_TEXT_LOW_ASM_STRUCTURAL_MOVE
-                                 ? loom_low_move_detached_ATTR_INDEX
-                                 : loom_low_copy_detached_ATTR_INDEX;
+                                 ? LOOM_LOW_MOVE_DETACHED_ATTR_INDEX
+                                 : LOOM_LOW_COPY_DETACHED_ATTR_INDEX;
   return &vtables[op_index]->attr_descriptors[attr_index];
 }
 
@@ -470,16 +470,16 @@ static iree_status_t loom_low_descriptor_text_asm_describe_resource(
       .location = op->location,
   };
   IREE_RETURN_IF_ERROR(loom_low_descriptor_text_asm_set_structural_attr(
-      module, op, loom_low_resource_index_ATTR_INDEX, IREE_SV("index"),
+      module, op, LOOM_LOW_RESOURCE_INDEX_ATTR_INDEX, IREE_SV("index"),
       &kLowAsmResourceIndexAttr, out_statement));
   IREE_RETURN_IF_ERROR(loom_low_descriptor_text_asm_set_structural_attr(
-      module, op, loom_low_resource_source_type_ATTR_INDEX,
+      module, op, LOOM_LOW_RESOURCE_SOURCE_TYPE_ATTR_INDEX,
       IREE_SV("source_type"), &kLowAsmResourceSemanticTypeAttr, out_statement));
   IREE_RETURN_IF_ERROR(loom_low_descriptor_text_asm_set_structural_attr(
-      module, op, loom_low_resource_extent_ATTR_INDEX, IREE_SV("extent"),
+      module, op, LOOM_LOW_RESOURCE_EXTENT_ATTR_INDEX, IREE_SV("extent"),
       &kLowAsmResourceExtentAttr, out_statement));
   return loom_low_descriptor_text_asm_set_structural_attr(
-      module, op, loom_low_resource_cache_swizzle_stride_ATTR_INDEX,
+      module, op, LOOM_LOW_RESOURCE_CACHE_SWIZZLE_STRIDE_ATTR_INDEX,
       IREE_SV("cache_swizzle_stride"), &kLowAsmResourceCacheSwizzleStrideAttr,
       out_statement);
 }
@@ -498,7 +498,7 @@ static iree_status_t loom_low_descriptor_text_asm_describe_live_in(
       .structural_kind = LOOM_TEXT_LOW_ASM_STRUCTURAL_LIVE_IN,
       .structural_build_flags =
           loom_attr_is_absent(
-              loom_op_attrs(op)[loom_low_live_in_attrs_ATTR_INDEX])
+              loom_op_attrs(op)[LOOM_LOW_LIVE_IN_ATTRS_ATTR_INDEX])
               ? 0
               : LOOM_TEXT_LOW_ASM_STRUCTURAL_BUILD_FLAG_HAS_ATTRIBUTES,
       .structural_key = loom_string_table_get(&module->strings, source_id),
@@ -561,8 +561,8 @@ static iree_status_t loom_low_descriptor_text_asm_describe_transfer(
       .location = op->location,
   };
   const uint8_t attr_index = kind == LOOM_TEXT_LOW_ASM_STRUCTURAL_MOVE
-                                 ? loom_low_move_detached_ATTR_INDEX
-                                 : loom_low_copy_detached_ATTR_INDEX;
+                                 ? LOOM_LOW_MOVE_DETACHED_ATTR_INDEX
+                                 : LOOM_LOW_COPY_DETACHED_ATTR_INDEX;
   return loom_low_descriptor_text_asm_set_structural_attr(
       module, op, attr_index, IREE_SV("detached"),
       loom_low_descriptor_text_asm_transfer_detached_attr(kind), out_statement);
@@ -580,11 +580,11 @@ static iree_status_t loom_low_descriptor_text_asm_describe_storage_reserve(
       .location = op->location,
   };
   IREE_RETURN_IF_ERROR(loom_low_descriptor_text_asm_set_structural_attr(
-      module, op, loom_low_storage_reserve_byte_alignment_ATTR_INDEX,
+      module, op, LOOM_LOW_STORAGE_RESERVE_BYTE_ALIGNMENT_ATTR_INDEX,
       IREE_SV("byte_alignment"), &kLowAsmStorageReserveByteAlignmentAttr,
       out_statement));
   return loom_low_descriptor_text_asm_set_structural_attr(
-      module, op, loom_low_storage_reserve_byte_length_ATTR_INDEX,
+      module, op, LOOM_LOW_STORAGE_RESERVE_BYTE_LENGTH_ATTR_INDEX,
       IREE_SV("byte_length"), &kLowAsmStorageReserveByteLengthAttr,
       out_statement);
 }
@@ -604,7 +604,7 @@ static iree_status_t loom_low_descriptor_text_asm_describe_storage_address(
       .location = op->location,
   };
   return loom_low_descriptor_text_asm_set_structural_attr(
-      module, op, loom_low_storage_address_offset_ATTR_INDEX, IREE_SV("offset"),
+      module, op, LOOM_LOW_STORAGE_ADDRESS_OFFSET_ATTR_INDEX, IREE_SV("offset"),
       &kLowAsmStorageAddressOffsetAttr, out_statement);
 }
 
@@ -622,10 +622,10 @@ static iree_status_t loom_low_descriptor_text_asm_describe_storage_view(
       .location = op->location,
   };
   IREE_RETURN_IF_ERROR(loom_low_descriptor_text_asm_set_structural_attr(
-      module, op, loom_low_storage_view_offset_ATTR_INDEX, IREE_SV("offset"),
+      module, op, LOOM_LOW_STORAGE_VIEW_OFFSET_ATTR_INDEX, IREE_SV("offset"),
       &kLowAsmStorageAddressOffsetAttr, out_statement));
   return loom_low_descriptor_text_asm_set_structural_attr(
-      module, op, loom_low_storage_view_byte_length_ATTR_INDEX,
+      module, op, LOOM_LOW_STORAGE_VIEW_BYTE_LENGTH_ATTR_INDEX,
       IREE_SV("byte_length"), &kLowAsmStorageReserveByteLengthAttr,
       out_statement);
 }

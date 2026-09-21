@@ -771,7 +771,7 @@ static iree_status_t loom_amdgpu_hal_kernel_library_collect_rodata_symbols(
     const iree_const_byte_span_t contents = loom_global_rodata_def_contents(op);
     uint64_t alignment = 0;
     const loom_attribute_t alignment_attr =
-        loom_op_const_attrs(op)[loom_global_rodata_def_alignment_ATTR_INDEX];
+        loom_op_const_attrs(op)[LOOM_GLOBAL_RODATA_DEF_ALIGNMENT_ATTR_INDEX];
     if (!loom_attr_is_absent(alignment_attr)) {
       alignment = (uint64_t)loom_attr_as_i64(alignment_attr);
     }

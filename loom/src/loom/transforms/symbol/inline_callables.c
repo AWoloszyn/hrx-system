@@ -1186,7 +1186,7 @@ static iree_status_t loom_inline_materialize_low_schedules(
         op = next_op;
       }
     }
-    loom_op_attrs(entry->callee.op)[loom_low_func_def_schedule_ATTR_INDEX] =
+    loom_op_attrs(entry->callee.op)[LOOM_LOW_FUNC_DEF_SCHEDULE_ATTR_INDEX] =
         loom_attr_absent();
     loom_pass_mark_changed(state->pass);
   }

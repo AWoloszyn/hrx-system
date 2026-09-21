@@ -699,7 +699,7 @@ iree_status_t loom_amdgpu_emit_hal_buffer_descriptor(
       resource_has_extent = true;
     } else {
       const loom_attribute_t extent_attr =
-          loom_op_attrs(binding_op)[loom_low_resource_extent_ATTR_INDEX];
+          loom_op_attrs(binding_op)[LOOM_LOW_RESOURCE_EXTENT_ATTR_INDEX];
       if (!loom_attr_is_absent(extent_attr)) {
         const int64_t resource_extent = loom_low_resource_extent(binding_op);
         if (resource_extent <= UINT32_MAX) {
@@ -710,7 +710,7 @@ iree_status_t loom_amdgpu_emit_hal_buffer_descriptor(
     }
 
     const loom_attribute_t cache_swizzle_stride_attr = loom_op_attrs(
-        binding_op)[loom_low_resource_cache_swizzle_stride_ATTR_INDEX];
+        binding_op)[LOOM_LOW_RESOURCE_CACHE_SWIZZLE_STRIDE_ATTR_INDEX];
     if (!loom_attr_is_absent(cache_swizzle_stride_attr)) {
       cache_swizzle_stride = loom_low_resource_cache_swizzle_stride(binding_op);
     }

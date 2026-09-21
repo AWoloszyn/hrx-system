@@ -1500,9 +1500,9 @@ iree_status_t loom_kernel_subgroup_reduce_verify(
   IREE_RETURN_IF_ERROR(loom_kernel_verify_combining_kind_for_value(
       module, emitter, op, value_id, loom_kernel_subgroup_reduce_kind(op)));
   return loom_kernel_verify_cluster_attrs(
-      emitter, op, loom_kernel_subgroup_reduce_cluster_size_ATTR_INDEX,
+      emitter, op, LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_SIZE_ATTR_INDEX,
       loom_kernel_subgroup_reduce_cluster_size(op),
-      loom_kernel_subgroup_reduce_cluster_stride_ATTR_INDEX,
+      LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_STRIDE_ATTR_INDEX,
       loom_kernel_subgroup_reduce_cluster_stride(op));
 }
 
@@ -1515,9 +1515,9 @@ iree_status_t loom_kernel_subgroup_scan_verify(
   IREE_RETURN_IF_ERROR(loom_kernel_verify_combining_kind_for_value(
       module, emitter, op, value_id, loom_kernel_subgroup_scan_kind(op)));
   return loom_kernel_verify_cluster_attrs(
-      emitter, op, loom_kernel_subgroup_scan_cluster_size_ATTR_INDEX,
+      emitter, op, LOOM_KERNEL_SUBGROUP_SCAN_CLUSTER_SIZE_ATTR_INDEX,
       loom_kernel_subgroup_scan_cluster_size(op),
-      loom_kernel_subgroup_scan_cluster_stride_ATTR_INDEX,
+      LOOM_KERNEL_SUBGROUP_SCAN_CLUSTER_STRIDE_ATTR_INDEX,
       loom_kernel_subgroup_scan_cluster_stride(op));
 }
 

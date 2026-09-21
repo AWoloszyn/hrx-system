@@ -147,12 +147,20 @@ typedef enum loom_kernel_workgroup_scan_direction_e {
 //   kernel.return
 // }
 LOOM_DEFINE_ISA(loom_kernel_def_isa, LOOM_OP_KERNEL_DEF)
-LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_def_callee, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_def_target, 1)
-LOOM_DEFINE_ATTR_STRING(loom_kernel_def_export_symbol, 2)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_def_export_linkage, 3, loom_target_linkage_t)
-LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_kernel_def_predicates, 4)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_def_retain, 5, loom_kernel_retain_t)
+enum {
+  LOOM_KERNEL_DEF_CALLEE_ATTR_INDEX = 0,
+  LOOM_KERNEL_DEF_TARGET_ATTR_INDEX = 1,
+  LOOM_KERNEL_DEF_EXPORT_SYMBOL_ATTR_INDEX = 2,
+  LOOM_KERNEL_DEF_EXPORT_LINKAGE_ATTR_INDEX = 3,
+  LOOM_KERNEL_DEF_PREDICATES_ATTR_INDEX = 4,
+  LOOM_KERNEL_DEF_RETAIN_ATTR_INDEX = 5,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_def_callee, LOOM_KERNEL_DEF_CALLEE_ATTR_INDEX)
+LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_def_target, LOOM_KERNEL_DEF_TARGET_ATTR_INDEX)
+LOOM_DEFINE_ATTR_STRING(loom_kernel_def_export_symbol, LOOM_KERNEL_DEF_EXPORT_SYMBOL_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_def_export_linkage, LOOM_KERNEL_DEF_EXPORT_LINKAGE_ATTR_INDEX, loom_target_linkage_t)
+LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_kernel_def_predicates, LOOM_KERNEL_DEF_PREDICATES_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_def_retain, LOOM_KERNEL_DEF_RETAIN_ATTR_INDEX, loom_kernel_retain_t)
 LOOM_DEFINE_REGION(loom_kernel_def_config, 0)
 LOOM_DEFINE_REGION(loom_kernel_def_body, 1)
 enum loom_kernel_def_build_flag_bits_e {
@@ -247,9 +255,14 @@ iree_status_t loom_kernel_exit_canonicalize(loom_op_t* op, loom_rewriter_t* rewr
 // LOOM_OP_KERNEL_BARRIER: Synchronize invocations in an explicit execution scope and fence a named memory space with a required ordering. Workgroup-memory barriers synchronize either the current subgroup or workgroup with acquire-release ordering. Global-memory barriers synchronize the current workgroup with acquire, release, or acquire-release ordering. Async-copy completion is modeled by kernel.async.wait; use kernel.barrier only when invocations must rendezvous before consuming shared or global memory.
 // kernel.barrier<workgroup> scope(subgroup) ordering(acq_rel)
 LOOM_DEFINE_ISA(loom_kernel_barrier_isa, LOOM_OP_KERNEL_BARRIER)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_barrier_memory_space, 0, loom_value_fact_memory_space_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_barrier_ordering, 1, loom_atomic_ordering_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_barrier_scope, 2, loom_atomic_scope_t)
+enum {
+  LOOM_KERNEL_BARRIER_MEMORY_SPACE_ATTR_INDEX = 0,
+  LOOM_KERNEL_BARRIER_ORDERING_ATTR_INDEX = 1,
+  LOOM_KERNEL_BARRIER_SCOPE_ATTR_INDEX = 2,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_barrier_memory_space, LOOM_KERNEL_BARRIER_MEMORY_SPACE_ATTR_INDEX, loom_value_fact_memory_space_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_barrier_ordering, LOOM_KERNEL_BARRIER_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_barrier_scope, LOOM_KERNEL_BARRIER_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
 iree_status_t loom_kernel_barrier_build(
     loom_builder_t* builder,
     loom_value_fact_memory_space_t memory_space,
@@ -267,9 +280,14 @@ LOOM_DEFINE_ISA(loom_kernel_async_copy_isa, LOOM_OP_KERNEL_ASYNC_COPY)
 LOOM_DEFINE_OPERAND(loom_kernel_async_copy_source, 0)
 LOOM_DEFINE_OPERAND(loom_kernel_async_copy_dest, 1)
 LOOM_DEFINE_RESULT(loom_kernel_async_copy_token, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_cache_scope, 0, loom_cache_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_cache_temporal, 1, loom_cache_temporal_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_direction, 2, loom_kernel_direction_t)
+enum {
+  LOOM_KERNEL_ASYNC_COPY_CACHE_SCOPE_ATTR_INDEX = 0,
+  LOOM_KERNEL_ASYNC_COPY_CACHE_TEMPORAL_ATTR_INDEX = 1,
+  LOOM_KERNEL_ASYNC_COPY_DIRECTION_ATTR_INDEX = 2,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_cache_scope, LOOM_KERNEL_ASYNC_COPY_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_cache_temporal, LOOM_KERNEL_ASYNC_COPY_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_direction, LOOM_KERNEL_ASYNC_COPY_DIRECTION_ATTR_INDEX, loom_kernel_direction_t)
 iree_status_t loom_kernel_async_copy_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -291,9 +309,14 @@ LOOM_DEFINE_OPERAND(loom_kernel_async_copy_mask_source, 0)
 LOOM_DEFINE_OPERAND(loom_kernel_async_copy_mask_dest, 1)
 LOOM_DEFINE_OPERAND(loom_kernel_async_copy_mask_predicate, 2)
 LOOM_DEFINE_RESULT(loom_kernel_async_copy_mask_token, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_mask_cache_scope, 0, loom_cache_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_mask_cache_temporal, 1, loom_cache_temporal_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_mask_direction, 2, loom_kernel_direction_t)
+enum {
+  LOOM_KERNEL_ASYNC_COPY_MASK_CACHE_SCOPE_ATTR_INDEX = 0,
+  LOOM_KERNEL_ASYNC_COPY_MASK_CACHE_TEMPORAL_ATTR_INDEX = 1,
+  LOOM_KERNEL_ASYNC_COPY_MASK_DIRECTION_ATTR_INDEX = 2,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_mask_cache_scope, LOOM_KERNEL_ASYNC_COPY_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_mask_cache_temporal, LOOM_KERNEL_ASYNC_COPY_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_mask_direction, LOOM_KERNEL_ASYNC_COPY_MASK_DIRECTION_ATTR_INDEX, loom_kernel_direction_t)
 iree_status_t loom_kernel_async_copy_mask_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -315,8 +338,12 @@ LOOM_DEFINE_ISA(loom_kernel_async_gather_isa, LOOM_OP_KERNEL_ASYNC_GATHER)
 LOOM_DEFINE_OPERAND(loom_kernel_async_gather_source, 0)
 LOOM_DEFINE_OPERAND(loom_kernel_async_gather_dest, 1)
 LOOM_DEFINE_RESULT(loom_kernel_async_gather_token, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_gather_cache_scope, 0, loom_cache_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_gather_cache_temporal, 1, loom_cache_temporal_t)
+enum {
+  LOOM_KERNEL_ASYNC_GATHER_CACHE_SCOPE_ATTR_INDEX = 0,
+  LOOM_KERNEL_ASYNC_GATHER_CACHE_TEMPORAL_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_gather_cache_scope, LOOM_KERNEL_ASYNC_GATHER_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_gather_cache_temporal, LOOM_KERNEL_ASYNC_GATHER_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 iree_status_t loom_kernel_async_gather_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -337,8 +364,12 @@ LOOM_DEFINE_OPERAND(loom_kernel_async_gather_mask_source, 0)
 LOOM_DEFINE_OPERAND(loom_kernel_async_gather_mask_dest, 1)
 LOOM_DEFINE_OPERAND(loom_kernel_async_gather_mask_predicate, 2)
 LOOM_DEFINE_RESULT(loom_kernel_async_gather_mask_token, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_gather_mask_cache_scope, 0, loom_cache_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_gather_mask_cache_temporal, 1, loom_cache_temporal_t)
+enum {
+  LOOM_KERNEL_ASYNC_GATHER_MASK_CACHE_SCOPE_ATTR_INDEX = 0,
+  LOOM_KERNEL_ASYNC_GATHER_MASK_CACHE_TEMPORAL_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_gather_mask_cache_scope, LOOM_KERNEL_ASYNC_GATHER_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_gather_mask_cache_temporal, LOOM_KERNEL_ASYNC_GATHER_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 iree_status_t loom_kernel_async_gather_mask_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -373,7 +404,10 @@ iree_status_t loom_kernel_async_group_verify(
 // kernel.async.wait %group {newer_groups = 0} : kernel.async.group
 LOOM_DEFINE_ISA(loom_kernel_async_wait_isa, LOOM_OP_KERNEL_ASYNC_WAIT)
 LOOM_DEFINE_OPERAND(loom_kernel_async_wait_group, 0)
-LOOM_DEFINE_ATTR_I64(loom_kernel_async_wait_newer_groups, 0)
+enum {
+  LOOM_KERNEL_ASYNC_WAIT_NEWER_GROUPS_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_I64(loom_kernel_async_wait_newer_groups, LOOM_KERNEL_ASYNC_WAIT_NEWER_GROUPS_ATTR_INDEX)
 iree_status_t loom_kernel_async_wait_build(
     loom_builder_t* builder,
     loom_value_id_t group,
@@ -407,8 +441,12 @@ LOOM_DEFINE_OPERAND(loom_kernel_async_tensor_load_to_lds_source, 0)
 LOOM_DEFINE_OPERAND(loom_kernel_async_tensor_load_to_lds_dest, 1)
 LOOM_DEFINE_OPERAND(loom_kernel_async_tensor_load_to_lds_descriptor, 2)
 LOOM_DEFINE_RESULT(loom_kernel_async_tensor_load_to_lds_token, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_tensor_load_to_lds_cache_scope, 0, loom_cache_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_tensor_load_to_lds_cache_temporal, 1, loom_cache_temporal_t)
+enum {
+  LOOM_KERNEL_ASYNC_TENSOR_LOAD_TO_LDS_CACHE_SCOPE_ATTR_INDEX = 0,
+  LOOM_KERNEL_ASYNC_TENSOR_LOAD_TO_LDS_CACHE_TEMPORAL_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_tensor_load_to_lds_cache_scope, LOOM_KERNEL_ASYNC_TENSOR_LOAD_TO_LDS_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_tensor_load_to_lds_cache_temporal, LOOM_KERNEL_ASYNC_TENSOR_LOAD_TO_LDS_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 iree_status_t loom_kernel_async_tensor_load_to_lds_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -430,8 +468,12 @@ LOOM_DEFINE_OPERAND(loom_kernel_async_tensor_store_from_lds_source, 0)
 LOOM_DEFINE_OPERAND(loom_kernel_async_tensor_store_from_lds_dest, 1)
 LOOM_DEFINE_OPERAND(loom_kernel_async_tensor_store_from_lds_descriptor, 2)
 LOOM_DEFINE_RESULT(loom_kernel_async_tensor_store_from_lds_token, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_tensor_store_from_lds_cache_scope, 0, loom_cache_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_tensor_store_from_lds_cache_temporal, 1, loom_cache_temporal_t)
+enum {
+  LOOM_KERNEL_ASYNC_TENSOR_STORE_FROM_LDS_CACHE_SCOPE_ATTR_INDEX = 0,
+  LOOM_KERNEL_ASYNC_TENSOR_STORE_FROM_LDS_CACHE_TEMPORAL_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_tensor_store_from_lds_cache_scope, LOOM_KERNEL_ASYNC_TENSOR_STORE_FROM_LDS_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_tensor_store_from_lds_cache_temporal, LOOM_KERNEL_ASYNC_TENSOR_STORE_FROM_LDS_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 iree_status_t loom_kernel_async_tensor_store_from_lds_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -453,8 +495,12 @@ LOOM_DEFINE_OPERAND(loom_kernel_async_cluster_gather_source, 0)
 LOOM_DEFINE_OPERAND(loom_kernel_async_cluster_gather_dest, 1)
 LOOM_DEFINE_OPERAND(loom_kernel_async_cluster_gather_cluster_mask, 2)
 LOOM_DEFINE_RESULT(loom_kernel_async_cluster_gather_token, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_cluster_gather_cache_scope, 0, loom_cache_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_cluster_gather_cache_temporal, 1, loom_cache_temporal_t)
+enum {
+  LOOM_KERNEL_ASYNC_CLUSTER_GATHER_CACHE_SCOPE_ATTR_INDEX = 0,
+  LOOM_KERNEL_ASYNC_CLUSTER_GATHER_CACHE_TEMPORAL_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_cluster_gather_cache_scope, LOOM_KERNEL_ASYNC_CLUSTER_GATHER_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_cluster_gather_cache_temporal, LOOM_KERNEL_ASYNC_CLUSTER_GATHER_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 iree_status_t loom_kernel_async_cluster_gather_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -477,8 +523,12 @@ LOOM_DEFINE_OPERAND(loom_kernel_async_cluster_gather_mask_dest, 1)
 LOOM_DEFINE_OPERAND(loom_kernel_async_cluster_gather_mask_cluster_mask, 2)
 LOOM_DEFINE_OPERAND(loom_kernel_async_cluster_gather_mask_predicate, 3)
 LOOM_DEFINE_RESULT(loom_kernel_async_cluster_gather_mask_token, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_cluster_gather_mask_cache_scope, 0, loom_cache_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_cluster_gather_mask_cache_temporal, 1, loom_cache_temporal_t)
+enum {
+  LOOM_KERNEL_ASYNC_CLUSTER_GATHER_MASK_CACHE_SCOPE_ATTR_INDEX = 0,
+  LOOM_KERNEL_ASYNC_CLUSTER_GATHER_MASK_CACHE_TEMPORAL_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_cluster_gather_mask_cache_scope, LOOM_KERNEL_ASYNC_CLUSTER_GATHER_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_cluster_gather_mask_cache_temporal, LOOM_KERNEL_ASYNC_CLUSTER_GATHER_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 iree_status_t loom_kernel_async_cluster_gather_mask_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -498,7 +548,10 @@ iree_status_t loom_kernel_async_cluster_gather_mask_verify(
 // %tid = kernel.workitem.id<x> : index
 LOOM_DEFINE_ISA(loom_kernel_workitem_id_isa, LOOM_OP_KERNEL_WORKITEM_ID)
 LOOM_DEFINE_RESULT(loom_kernel_workitem_id_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workitem_id_dimension, 0, loom_kernel_dimension_t)
+enum {
+  LOOM_KERNEL_WORKITEM_ID_DIMENSION_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workitem_id_dimension, LOOM_KERNEL_WORKITEM_ID_DIMENSION_ATTR_INDEX, loom_kernel_dimension_t)
 iree_status_t loom_kernel_workitem_id_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -515,7 +568,10 @@ iree_status_t loom_kernel_workitem_id_facts(
 // %bid = kernel.workgroup.id<x> : index
 LOOM_DEFINE_ISA(loom_kernel_workgroup_id_isa, LOOM_OP_KERNEL_WORKGROUP_ID)
 LOOM_DEFINE_RESULT(loom_kernel_workgroup_id_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_id_dimension, 0, loom_kernel_dimension_t)
+enum {
+  LOOM_KERNEL_WORKGROUP_ID_DIMENSION_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_id_dimension, LOOM_KERNEL_WORKGROUP_ID_DIMENSION_ATTR_INDEX, loom_kernel_dimension_t)
 iree_status_t loom_kernel_workgroup_id_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -532,7 +588,10 @@ iree_status_t loom_kernel_workgroup_id_facts(
 // %size = kernel.workgroup.size<x> : index
 LOOM_DEFINE_ISA(loom_kernel_workgroup_size_isa, LOOM_OP_KERNEL_WORKGROUP_SIZE)
 LOOM_DEFINE_RESULT(loom_kernel_workgroup_size_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_size_dimension, 0, loom_kernel_dimension_t)
+enum {
+  LOOM_KERNEL_WORKGROUP_SIZE_DIMENSION_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_size_dimension, LOOM_KERNEL_WORKGROUP_SIZE_DIMENSION_ATTR_INDEX, loom_kernel_dimension_t)
 iree_status_t loom_kernel_workgroup_size_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -549,7 +608,10 @@ iree_status_t loom_kernel_workgroup_size_facts(
 // %count = kernel.workgroup.count<x> : index
 LOOM_DEFINE_ISA(loom_kernel_workgroup_count_isa, LOOM_OP_KERNEL_WORKGROUP_COUNT)
 LOOM_DEFINE_RESULT(loom_kernel_workgroup_count_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_count_dimension, 0, loom_kernel_dimension_t)
+enum {
+  LOOM_KERNEL_WORKGROUP_COUNT_DIMENSION_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_count_dimension, LOOM_KERNEL_WORKGROUP_COUNT_DIMENSION_ATTR_INDEX, loom_kernel_dimension_t)
 iree_status_t loom_kernel_workgroup_count_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -566,7 +628,10 @@ iree_status_t loom_kernel_workgroup_count_facts(
 // %gid = kernel.workitem.dispatch.id<x> : index
 LOOM_DEFINE_ISA(loom_kernel_workitem_dispatch_id_isa, LOOM_OP_KERNEL_WORKITEM_DISPATCH_ID)
 LOOM_DEFINE_RESULT(loom_kernel_workitem_dispatch_id_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workitem_dispatch_id_dimension, 0, loom_kernel_dimension_t)
+enum {
+  LOOM_KERNEL_WORKITEM_DISPATCH_ID_DIMENSION_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workitem_dispatch_id_dimension, LOOM_KERNEL_WORKITEM_DISPATCH_ID_DIMENSION_ATTR_INDEX, loom_kernel_dimension_t)
 iree_status_t loom_kernel_workitem_dispatch_id_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -647,7 +712,10 @@ LOOM_DEFINE_OPERAND(loom_kernel_subgroup_shuffle_offset, 1)
 LOOM_DEFINE_OPERAND(loom_kernel_subgroup_shuffle_width, 2)
 LOOM_DEFINE_RESULT(loom_kernel_subgroup_shuffle_result, 0)
 LOOM_DEFINE_RESULT(loom_kernel_subgroup_shuffle_valid, 1)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_shuffle_mode, 0, loom_kernel_subgroup_shuffle_mode_t)
+enum {
+  LOOM_KERNEL_SUBGROUP_SHUFFLE_MODE_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_shuffle_mode, LOOM_KERNEL_SUBGROUP_SHUFFLE_MODE_ATTR_INDEX, loom_kernel_subgroup_shuffle_mode_t)
 iree_status_t loom_kernel_subgroup_shuffle_build(
     loom_builder_t* builder,
     loom_kernel_subgroup_shuffle_mode_t mode,
@@ -708,9 +776,14 @@ iree_status_t loom_kernel_subgroup_value_result_verify(
 LOOM_DEFINE_ISA(loom_kernel_subgroup_reduce_isa, LOOM_OP_KERNEL_SUBGROUP_REDUCE)
 LOOM_DEFINE_OPERAND(loom_kernel_subgroup_reduce_value, 0)
 LOOM_DEFINE_RESULT(loom_kernel_subgroup_reduce_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_reduce_kind, 0, loom_combining_kind_t)
-LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_reduce_cluster_size, 1)
-LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_reduce_cluster_stride, 2)
+enum {
+  LOOM_KERNEL_SUBGROUP_REDUCE_KIND_ATTR_INDEX = 0,
+  LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_SIZE_ATTR_INDEX = 1,
+  LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_STRIDE_ATTR_INDEX = 2,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_reduce_kind, LOOM_KERNEL_SUBGROUP_REDUCE_KIND_ATTR_INDEX, loom_combining_kind_t)
+LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_reduce_cluster_size, LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_SIZE_ATTR_INDEX)
+LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_reduce_cluster_stride, LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_STRIDE_ATTR_INDEX)
 enum loom_kernel_subgroup_reduce_build_flag_bits_e {
   LOOM_KERNEL_SUBGROUP_REDUCE_BUILD_FLAG_HAS_CLUSTER_SIZE = 1u << 0,
   LOOM_KERNEL_SUBGROUP_REDUCE_BUILD_FLAG_HAS_CLUSTER_STRIDE = 1u << 1,
@@ -740,11 +813,18 @@ iree_status_t loom_kernel_subgroup_reduce_verify(
 LOOM_DEFINE_ISA(loom_kernel_subgroup_scan_isa, LOOM_OP_KERNEL_SUBGROUP_SCAN)
 LOOM_DEFINE_OPERAND(loom_kernel_subgroup_scan_value, 0)
 LOOM_DEFINE_RESULT(loom_kernel_subgroup_scan_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_kind, 0, loom_combining_kind_t)
-LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_scan_cluster_size, 1)
-LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_scan_cluster_stride, 2)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_mode, 3, loom_kernel_subgroup_scan_mode_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_direction, 4, loom_kernel_subgroup_scan_direction_t)
+enum {
+  LOOM_KERNEL_SUBGROUP_SCAN_KIND_ATTR_INDEX = 0,
+  LOOM_KERNEL_SUBGROUP_SCAN_CLUSTER_SIZE_ATTR_INDEX = 1,
+  LOOM_KERNEL_SUBGROUP_SCAN_CLUSTER_STRIDE_ATTR_INDEX = 2,
+  LOOM_KERNEL_SUBGROUP_SCAN_MODE_ATTR_INDEX = 3,
+  LOOM_KERNEL_SUBGROUP_SCAN_DIRECTION_ATTR_INDEX = 4,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_kind, LOOM_KERNEL_SUBGROUP_SCAN_KIND_ATTR_INDEX, loom_combining_kind_t)
+LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_scan_cluster_size, LOOM_KERNEL_SUBGROUP_SCAN_CLUSTER_SIZE_ATTR_INDEX)
+LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_scan_cluster_stride, LOOM_KERNEL_SUBGROUP_SCAN_CLUSTER_STRIDE_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_mode, LOOM_KERNEL_SUBGROUP_SCAN_MODE_ATTR_INDEX, loom_kernel_subgroup_scan_mode_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_direction, LOOM_KERNEL_SUBGROUP_SCAN_DIRECTION_ATTR_INDEX, loom_kernel_subgroup_scan_direction_t)
 enum loom_kernel_subgroup_scan_build_flag_bits_e {
   LOOM_KERNEL_SUBGROUP_SCAN_BUILD_FLAG_HAS_CLUSTER_SIZE = 1u << 0,
   LOOM_KERNEL_SUBGROUP_SCAN_BUILD_FLAG_HAS_CLUSTER_STRIDE = 1u << 1,
@@ -889,7 +969,10 @@ iree_status_t loom_kernel_subgroup_match_all_verify(
 LOOM_DEFINE_ISA(loom_kernel_workgroup_reduce_isa, LOOM_OP_KERNEL_WORKGROUP_REDUCE)
 LOOM_DEFINE_OPERAND(loom_kernel_workgroup_reduce_value, 0)
 LOOM_DEFINE_RESULT(loom_kernel_workgroup_reduce_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_reduce_kind, 0, loom_combining_kind_t)
+enum {
+  LOOM_KERNEL_WORKGROUP_REDUCE_KIND_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_reduce_kind, LOOM_KERNEL_WORKGROUP_REDUCE_KIND_ATTR_INDEX, loom_combining_kind_t)
 iree_status_t loom_kernel_workgroup_reduce_build(
     loom_builder_t* builder,
     loom_combining_kind_t kind,
@@ -911,9 +994,14 @@ iree_status_t loom_kernel_workgroup_reduce_verify(
 LOOM_DEFINE_ISA(loom_kernel_workgroup_scan_isa, LOOM_OP_KERNEL_WORKGROUP_SCAN)
 LOOM_DEFINE_OPERAND(loom_kernel_workgroup_scan_value, 0)
 LOOM_DEFINE_RESULT(loom_kernel_workgroup_scan_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_scan_kind, 0, loom_combining_kind_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_scan_mode, 1, loom_kernel_workgroup_scan_mode_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_scan_direction, 2, loom_kernel_workgroup_scan_direction_t)
+enum {
+  LOOM_KERNEL_WORKGROUP_SCAN_KIND_ATTR_INDEX = 0,
+  LOOM_KERNEL_WORKGROUP_SCAN_MODE_ATTR_INDEX = 1,
+  LOOM_KERNEL_WORKGROUP_SCAN_DIRECTION_ATTR_INDEX = 2,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_scan_kind, LOOM_KERNEL_WORKGROUP_SCAN_KIND_ATTR_INDEX, loom_combining_kind_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_scan_mode, LOOM_KERNEL_WORKGROUP_SCAN_MODE_ATTR_INDEX, loom_kernel_workgroup_scan_mode_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_scan_direction, LOOM_KERNEL_WORKGROUP_SCAN_DIRECTION_ATTR_INDEX, loom_kernel_workgroup_scan_direction_t)
 iree_status_t loom_kernel_workgroup_scan_build(
     loom_builder_t* builder,
     loom_combining_kind_t kind,
@@ -988,7 +1076,10 @@ iree_status_t loom_kernel_workgroup_vote_count_verify(
 // kernel.assert %ok : i1
 LOOM_DEFINE_ISA(loom_kernel_assert_isa, LOOM_OP_KERNEL_ASSERT)
 LOOM_DEFINE_OPERAND(loom_kernel_assert_condition, 0)
-LOOM_DEFINE_ATTR_STRING(loom_kernel_assert_message, 0)
+enum {
+  LOOM_KERNEL_ASSERT_MESSAGE_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_STRING(loom_kernel_assert_message, LOOM_KERNEL_ASSERT_MESSAGE_ATTR_INDEX)
 enum loom_kernel_assert_build_flag_bits_e {
   LOOM_KERNEL_ASSERT_BUILD_FLAG_HAS_MESSAGE = 1u << 0,
 };
@@ -1005,7 +1096,10 @@ iree_status_t loom_kernel_assert_build(
 // %cluster = kernel.cluster.id<x> : index
 LOOM_DEFINE_ISA(loom_kernel_cluster_id_isa, LOOM_OP_KERNEL_CLUSTER_ID)
 LOOM_DEFINE_RESULT(loom_kernel_cluster_id_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_cluster_id_dimension, 0, loom_kernel_dimension_t)
+enum {
+  LOOM_KERNEL_CLUSTER_ID_DIMENSION_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_cluster_id_dimension, LOOM_KERNEL_CLUSTER_ID_DIMENSION_ATTR_INDEX, loom_kernel_dimension_t)
 iree_status_t loom_kernel_cluster_id_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -1023,7 +1117,10 @@ iree_status_t loom_kernel_cluster_id_facts(
 // %local_cluster_id = kernel.cluster.workgroup.id<y> : index
 LOOM_DEFINE_ISA(loom_kernel_cluster_workgroup_id_isa, LOOM_OP_KERNEL_CLUSTER_WORKGROUP_ID)
 LOOM_DEFINE_RESULT(loom_kernel_cluster_workgroup_id_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_cluster_workgroup_id_dimension, 0, loom_kernel_dimension_t)
+enum {
+  LOOM_KERNEL_CLUSTER_WORKGROUP_ID_DIMENSION_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_cluster_workgroup_id_dimension, LOOM_KERNEL_CLUSTER_WORKGROUP_ID_DIMENSION_ATTR_INDEX, loom_kernel_dimension_t)
 iree_status_t loom_kernel_cluster_workgroup_id_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -1057,7 +1154,10 @@ iree_status_t loom_kernel_cluster_workgroup_flat_id_facts(
 // %cluster_size = kernel.cluster.size<y> : index
 LOOM_DEFINE_ISA(loom_kernel_cluster_size_isa, LOOM_OP_KERNEL_CLUSTER_SIZE)
 LOOM_DEFINE_RESULT(loom_kernel_cluster_size_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_cluster_size_dimension, 0, loom_kernel_dimension_t)
+enum {
+  LOOM_KERNEL_CLUSTER_SIZE_DIMENSION_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_cluster_size_dimension, LOOM_KERNEL_CLUSTER_SIZE_DIMENSION_ATTR_INDEX, loom_kernel_dimension_t)
 iree_status_t loom_kernel_cluster_size_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -1075,7 +1175,10 @@ iree_status_t loom_kernel_cluster_size_facts(
 // %cluster_count = kernel.cluster.count<y> : index
 LOOM_DEFINE_ISA(loom_kernel_cluster_count_isa, LOOM_OP_KERNEL_CLUSTER_COUNT)
 LOOM_DEFINE_RESULT(loom_kernel_cluster_count_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_cluster_count_dimension, 0, loom_kernel_dimension_t)
+enum {
+  LOOM_KERNEL_CLUSTER_COUNT_DIMENSION_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_cluster_count_dimension, LOOM_KERNEL_CLUSTER_COUNT_DIMENSION_ATTR_INDEX, loom_kernel_dimension_t)
 iree_status_t loom_kernel_cluster_count_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -1094,12 +1197,20 @@ iree_status_t loom_kernel_cluster_count_facts(
 LOOM_DEFINE_ISA(loom_kernel_decl_isa, LOOM_OP_KERNEL_DECL)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_decl_workloads, 0)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_decl_args, 1)
-LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_decl_callee, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_decl_target, 1)
-LOOM_DEFINE_ATTR_STRING(loom_kernel_decl_export_symbol, 2)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_decl_export_linkage, 3, loom_target_linkage_t)
-LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_kernel_decl_predicates, 4)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_decl_retain, 5, loom_kernel_retain_t)
+enum {
+  LOOM_KERNEL_DECL_CALLEE_ATTR_INDEX = 0,
+  LOOM_KERNEL_DECL_TARGET_ATTR_INDEX = 1,
+  LOOM_KERNEL_DECL_EXPORT_SYMBOL_ATTR_INDEX = 2,
+  LOOM_KERNEL_DECL_EXPORT_LINKAGE_ATTR_INDEX = 3,
+  LOOM_KERNEL_DECL_PREDICATES_ATTR_INDEX = 4,
+  LOOM_KERNEL_DECL_RETAIN_ATTR_INDEX = 5,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_decl_callee, LOOM_KERNEL_DECL_CALLEE_ATTR_INDEX)
+LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_decl_target, LOOM_KERNEL_DECL_TARGET_ATTR_INDEX)
+LOOM_DEFINE_ATTR_STRING(loom_kernel_decl_export_symbol, LOOM_KERNEL_DECL_EXPORT_SYMBOL_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_decl_export_linkage, LOOM_KERNEL_DECL_EXPORT_LINKAGE_ATTR_INDEX, loom_target_linkage_t)
+LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_kernel_decl_predicates, LOOM_KERNEL_DECL_PREDICATES_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_decl_retain, LOOM_KERNEL_DECL_RETAIN_ATTR_INDEX, loom_kernel_retain_t)
 enum loom_kernel_decl_build_flag_bits_e {
   LOOM_KERNEL_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 0,
   LOOM_KERNEL_DECL_BUILD_FLAG_HAS_TARGET = 1u << 1,
@@ -1129,9 +1240,14 @@ iree_status_t loom_kernel_decl_build(
 // kernel.entry.decl @fill(%count: index, %output: buffer)
 LOOM_DEFINE_ISA(loom_kernel_entry_decl_isa, LOOM_OP_KERNEL_ENTRY_DECL)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_kernel_entry_decl_args, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_entry_decl_callee, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_entry_decl_target, 1)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_entry_decl_retain, 2, loom_kernel_retain_t)
+enum {
+  LOOM_KERNEL_ENTRY_DECL_CALLEE_ATTR_INDEX = 0,
+  LOOM_KERNEL_ENTRY_DECL_TARGET_ATTR_INDEX = 1,
+  LOOM_KERNEL_ENTRY_DECL_RETAIN_ATTR_INDEX = 2,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_entry_decl_callee, LOOM_KERNEL_ENTRY_DECL_CALLEE_ATTR_INDEX)
+LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_entry_decl_target, LOOM_KERNEL_ENTRY_DECL_TARGET_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_entry_decl_retain, LOOM_KERNEL_ENTRY_DECL_RETAIN_ATTR_INDEX, loom_kernel_retain_t)
 enum loom_kernel_entry_decl_build_flag_bits_e {
   LOOM_KERNEL_ENTRY_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 0,
   LOOM_KERNEL_ENTRY_DECL_BUILD_FLAG_HAS_TARGET = 1u << 1,
@@ -1153,7 +1269,10 @@ iree_status_t loom_kernel_entry_decl_build(
 LOOM_DEFINE_ISA(loom_kernel_launch_isa, LOOM_OP_KERNEL_LAUNCH)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_launch_workloads, 0)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_launch_arguments, 1)
-LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_launch_callee, 0)
+enum {
+  LOOM_KERNEL_LAUNCH_CALLEE_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_launch_callee, LOOM_KERNEL_LAUNCH_CALLEE_ATTR_INDEX)
 iree_status_t loom_kernel_launch_build(
     loom_builder_t* builder,
     loom_symbol_ref_t callee,
@@ -1173,7 +1292,10 @@ LOOM_DEFINE_ISA(loom_kernel_dispatch_isa, LOOM_OP_KERNEL_DISPATCH)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_dispatch_workgroup_counts, 0)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_dispatch_arguments, 1)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_dispatch_workgroup_size, 2)
-LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_dispatch_callee, 0)
+enum {
+  LOOM_KERNEL_DISPATCH_CALLEE_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_dispatch_callee, LOOM_KERNEL_DISPATCH_CALLEE_ATTR_INDEX)
 iree_status_t loom_kernel_dispatch_build(
     loom_builder_t* builder,
     loom_symbol_ref_t callee,

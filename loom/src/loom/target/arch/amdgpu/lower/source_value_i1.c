@@ -195,7 +195,7 @@ static bool loom_amdgpu_scalar_cmpi_i64_requires_native_mask(
       values->rhs >= module->values.count ||
       !loom_amdgpu_type_is_i64(loom_module_value_type(module, values->lhs)) ||
       !loom_amdgpu_type_is_i64(loom_module_value_type(module, values->rhs)) ||
-      source_op->attribute_count <= loom_scalar_cmpi_predicate_ATTR_INDEX) {
+      source_op->attribute_count <= LOOM_SCALAR_CMPI_PREDICATE_ATTR_INDEX) {
     return false;
   }
   const uint8_t predicate = loom_scalar_cmpi_predicate(source_op);

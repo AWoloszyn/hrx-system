@@ -288,7 +288,7 @@ iree_status_t loom_global_rodata_def_verify(const loom_module_t* module,
                                             iree_diagnostic_emitter_t emitter) {
   (void)module;
   loom_attribute_t alignment =
-      loom_op_attrs(op)[loom_global_rodata_def_alignment_ATTR_INDEX];
+      loom_op_attrs(op)[LOOM_GLOBAL_RODATA_DEF_ALIGNMENT_ATTR_INDEX];
   if (loom_attr_is_absent(alignment)) {
     return iree_ok_status();
   }

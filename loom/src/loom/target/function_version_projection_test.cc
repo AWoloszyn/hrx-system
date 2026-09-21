@@ -443,7 +443,7 @@ func.def public target(@requirement) @entry() {
   EXPECT_EQ(loom_test_target_kind(projected_target),
             LOOM_TEST_TARGET_KIND_LOW_CORE);
   const loom_attribute_t index_bitwidth = loom_op_const_attrs(
-      projected_target)[loom_test_target_index_bitwidth_ATTR_INDEX];
+      projected_target)[LOOM_TEST_TARGET_INDEX_BITWIDTH_ATTR_INDEX];
   ASSERT_FALSE(loom_attr_is_absent(index_bitwidth));
   EXPECT_EQ(loom_attr_as_i64(index_bitwidth), 64);
 }

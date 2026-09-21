@@ -76,7 +76,7 @@ static iree_status_t loom_low_repr_resolve_packet_attributes_impl(
   const uint32_t ordinal =
       is_const ? loom_low_const_descriptor(op) : loom_low_op_descriptor(op);
   const uint16_t attrs_index =
-      is_const ? loom_low_const_attrs_ATTR_INDEX : loom_low_op_attrs_ATTR_INDEX;
+      is_const ? LOOM_LOW_CONST_ATTRS_ATTR_INDEX : LOOM_LOW_OP_ATTRS_ATTR_INDEX;
   return loom_low_resolve_immediate_enums(module, descriptor_set,
                                           &descriptor_set->descriptors[ordinal],
                                           &loom_op_attrs(op)[attrs_index]);

@@ -29,8 +29,12 @@ enum {
 // config.decl @model36.model.hidden_size : index
 LOOM_DEFINE_ISA(loom_config_decl_isa, LOOM_OP_CONFIG_DECL)
 LOOM_DEFINE_RESULT(loom_config_decl_type, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_config_decl_symbol, 0)
-LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_config_decl_predicates, 1)
+enum {
+  LOOM_CONFIG_DECL_SYMBOL_ATTR_INDEX = 0,
+  LOOM_CONFIG_DECL_PREDICATES_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_config_decl_symbol, LOOM_CONFIG_DECL_SYMBOL_ATTR_INDEX)
+LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_config_decl_predicates, LOOM_CONFIG_DECL_PREDICATES_ATTR_INDEX)
 enum loom_config_decl_build_flag_bits_e {
   LOOM_CONFIG_DECL_BUILD_FLAG_HAS_PREDICATES = 1u << 0,
 };
@@ -54,8 +58,12 @@ iree_status_t loom_config_decl_verify(
 // config.def @model36.model.hidden_size = 2048 : index
 LOOM_DEFINE_ISA(loom_config_def_isa, LOOM_OP_CONFIG_DEF)
 LOOM_DEFINE_RESULT(loom_config_def_type, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_config_def_symbol, 0)
-LOOM_DEFINE_ATTR_ANY(loom_config_def_value, 1)
+enum {
+  LOOM_CONFIG_DEF_SYMBOL_ATTR_INDEX = 0,
+  LOOM_CONFIG_DEF_VALUE_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_config_def_symbol, LOOM_CONFIG_DEF_SYMBOL_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ANY(loom_config_def_value, LOOM_CONFIG_DEF_VALUE_ATTR_INDEX)
 iree_status_t loom_config_def_build(
     loom_builder_t* builder,
     loom_symbol_ref_t symbol,
@@ -76,7 +84,10 @@ iree_status_t loom_config_def_verify(
 // %hidden = config.get @model36.model.hidden_size : index
 LOOM_DEFINE_ISA(loom_config_get_isa, LOOM_OP_CONFIG_GET)
 LOOM_DEFINE_RESULT(loom_config_get_result, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_config_get_config, 0)
+enum {
+  LOOM_CONFIG_GET_CONFIG_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_config_get_config, LOOM_CONFIG_GET_CONFIG_ATTR_INDEX)
 iree_status_t loom_config_get_build(
     loom_builder_t* builder,
     loom_symbol_ref_t config,

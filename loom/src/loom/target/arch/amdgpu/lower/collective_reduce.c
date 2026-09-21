@@ -42,20 +42,20 @@ static bool loom_amdgpu_subgroup_optional_attr_is_present(const loom_op_t* op,
 
 static bool loom_amdgpu_subgroup_reduce_has_cluster_attrs(const loom_op_t* op) {
   return loom_amdgpu_subgroup_optional_attr_is_present(
-             op, loom_kernel_subgroup_reduce_cluster_size_ATTR_INDEX) ||
+             op, LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_SIZE_ATTR_INDEX) ||
          loom_amdgpu_subgroup_optional_attr_is_present(
-             op, loom_kernel_subgroup_reduce_cluster_stride_ATTR_INDEX);
+             op, LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_STRIDE_ATTR_INDEX);
 }
 
 static bool loom_amdgpu_subgroup_reduce_has_cluster_size(const loom_op_t* op) {
   return loom_amdgpu_subgroup_optional_attr_is_present(
-      op, loom_kernel_subgroup_reduce_cluster_size_ATTR_INDEX);
+      op, LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_SIZE_ATTR_INDEX);
 }
 
 static bool loom_amdgpu_subgroup_reduce_has_cluster_stride(
     const loom_op_t* op) {
   return loom_amdgpu_subgroup_optional_attr_is_present(
-      op, loom_kernel_subgroup_reduce_cluster_stride_ATTR_INDEX);
+      op, LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_STRIDE_ATTR_INDEX);
 }
 
 static bool loom_amdgpu_subgroup_cluster_size_is_supported(

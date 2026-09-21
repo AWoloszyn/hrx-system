@@ -51,8 +51,12 @@ typedef enum loom_pass_repeat_mode_e {
 //   canonicalize
 // }
 LOOM_DEFINE_ISA(loom_pass_pipeline_isa, LOOM_OP_PASS_PIPELINE)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pass_pipeline_anchor, 0, loom_pass_anchor_t)
-LOOM_DEFINE_ATTR_SYMBOL(loom_pass_pipeline_symbol, 1)
+enum {
+  LOOM_PASS_PIPELINE_ANCHOR_ATTR_INDEX = 0,
+  LOOM_PASS_PIPELINE_SYMBOL_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pass_pipeline_anchor, LOOM_PASS_PIPELINE_ANCHOR_ATTR_INDEX, loom_pass_anchor_t)
+LOOM_DEFINE_ATTR_SYMBOL(loom_pass_pipeline_symbol, LOOM_PASS_PIPELINE_SYMBOL_ATTR_INDEX)
 LOOM_DEFINE_REGION(loom_pass_pipeline_body, 0)
 iree_status_t loom_pass_pipeline_build(
     loom_builder_t* builder,
@@ -66,7 +70,10 @@ iree_status_t loom_pass_pipeline_build(
 //   cse
 // }
 LOOM_DEFINE_ISA(loom_pass_for_isa, LOOM_OP_PASS_FOR)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pass_for_anchor, 0, loom_pass_anchor_t)
+enum {
+  LOOM_PASS_FOR_ANCHOR_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pass_for_anchor, LOOM_PASS_FOR_ANCHOR_ATTR_INDEX, loom_pass_anchor_t)
 LOOM_DEFINE_REGION(loom_pass_for_body, 0)
 iree_status_t loom_pass_for_build(
     loom_builder_t* builder,
@@ -79,8 +86,12 @@ iree_status_t loom_pass_for_build(
 //   canonicalize
 // }
 LOOM_DEFINE_ISA(loom_pass_where_isa, LOOM_OP_PASS_WHERE)
-LOOM_DEFINE_ATTR_STRING(loom_pass_where_predicate, 0)
-LOOM_DEFINE_ATTR_DICT(loom_pass_where_attrs, 1)
+enum {
+  LOOM_PASS_WHERE_PREDICATE_ATTR_INDEX = 0,
+  LOOM_PASS_WHERE_ATTRS_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_STRING(loom_pass_where_predicate, LOOM_PASS_WHERE_PREDICATE_ATTR_INDEX)
+LOOM_DEFINE_ATTR_DICT(loom_pass_where_attrs, LOOM_PASS_WHERE_ATTRS_ATTR_INDEX)
 LOOM_DEFINE_REGION(loom_pass_where_body, 0)
 enum loom_pass_where_build_flag_bits_e {
   LOOM_PASS_WHERE_BUILD_FLAG_HAS_ATTRS = 1u << 0,
@@ -99,9 +110,14 @@ iree_status_t loom_pass_where_build(
 //   canonicalize
 // }
 LOOM_DEFINE_ISA(loom_pass_repeat_isa, LOOM_OP_PASS_REPEAT)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pass_repeat_mode, 0, loom_pass_repeat_mode_t)
-LOOM_DEFINE_ATTR_I64(loom_pass_repeat_count, 1)
-LOOM_DEFINE_ATTR_I64(loom_pass_repeat_max_iterations, 2)
+enum {
+  LOOM_PASS_REPEAT_MODE_ATTR_INDEX = 0,
+  LOOM_PASS_REPEAT_COUNT_ATTR_INDEX = 1,
+  LOOM_PASS_REPEAT_MAX_ITERATIONS_ATTR_INDEX = 2,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pass_repeat_mode, LOOM_PASS_REPEAT_MODE_ATTR_INDEX, loom_pass_repeat_mode_t)
+LOOM_DEFINE_ATTR_I64(loom_pass_repeat_count, LOOM_PASS_REPEAT_COUNT_ATTR_INDEX)
+LOOM_DEFINE_ATTR_I64(loom_pass_repeat_max_iterations, LOOM_PASS_REPEAT_MAX_ITERATIONS_ATTR_INDEX)
 LOOM_DEFINE_REGION(loom_pass_repeat_body, 0)
 enum loom_pass_repeat_build_flag_bits_e {
   LOOM_PASS_REPEAT_BUILD_FLAG_HAS_COUNT = 1u << 0,
@@ -120,7 +136,10 @@ iree_status_t loom_pass_repeat_build(
 // LOOM_OP_PASS_CALL: Statically call another named pass pipeline.
 // pass.call @cleanup
 LOOM_DEFINE_ISA(loom_pass_call_isa, LOOM_OP_PASS_CALL)
-LOOM_DEFINE_ATTR_SYMBOL(loom_pass_call_callee, 0)
+enum {
+  LOOM_PASS_CALL_CALLEE_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_pass_call_callee, LOOM_PASS_CALL_CALLEE_ATTR_INDEX)
 iree_status_t loom_pass_call_build(
     loom_builder_t* builder,
     loom_symbol_ref_t callee,
@@ -130,8 +149,12 @@ iree_status_t loom_pass_call_build(
 // LOOM_OP_PASS_RUN: Descriptor-backed leaf pass invocation.
 // pass.run<canonicalize>
 LOOM_DEFINE_ISA(loom_pass_run_isa, LOOM_OP_PASS_RUN)
-LOOM_DEFINE_ATTR_STRING(loom_pass_run_key, 0)
-LOOM_DEFINE_ATTR_DICT(loom_pass_run_options, 1)
+enum {
+  LOOM_PASS_RUN_KEY_ATTR_INDEX = 0,
+  LOOM_PASS_RUN_OPTIONS_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_STRING(loom_pass_run_key, LOOM_PASS_RUN_KEY_ATTR_INDEX)
+LOOM_DEFINE_ATTR_DICT(loom_pass_run_options, LOOM_PASS_RUN_OPTIONS_ATTR_INDEX)
 enum loom_pass_run_build_flag_bits_e {
   LOOM_PASS_RUN_BUILD_FLAG_HAS_OPTIONS = 1u << 0,
 };
@@ -147,7 +170,10 @@ iree_status_t loom_pass_run_build(
 // LOOM_OP_PASS_FAIL: Emit a structured pipeline assertion failure.
 // pass.fail "expected canonical form"
 LOOM_DEFINE_ISA(loom_pass_fail_isa, LOOM_OP_PASS_FAIL)
-LOOM_DEFINE_ATTR_STRING(loom_pass_fail_message, 0)
+enum {
+  LOOM_PASS_FAIL_MESSAGE_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_STRING(loom_pass_fail_message, LOOM_PASS_FAIL_MESSAGE_ATTR_INDEX)
 iree_status_t loom_pass_fail_build(
     loom_builder_t* builder,
     loom_string_id_t message,
@@ -157,7 +183,10 @@ iree_status_t loom_pass_fail_build(
 // LOOM_OP_PASS_HALT: Deliberately stop pipeline execution with a diagnostic message.
 // pass.halt "inspect lowered IR"
 LOOM_DEFINE_ISA(loom_pass_halt_isa, LOOM_OP_PASS_HALT)
-LOOM_DEFINE_ATTR_STRING(loom_pass_halt_message, 0)
+enum {
+  LOOM_PASS_HALT_MESSAGE_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_STRING(loom_pass_halt_message, LOOM_PASS_HALT_MESSAGE_ATTR_INDEX)
 iree_status_t loom_pass_halt_build(
     loom_builder_t* builder,
     loom_string_id_t message,

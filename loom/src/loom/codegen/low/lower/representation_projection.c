@@ -250,10 +250,10 @@ static iree_status_t loom_low_representation_plan_op(
     loom_low_representation_projection_plan_t* plan) {
   if (loom_low_op_isa(op)) {
     IREE_RETURN_IF_ERROR(loom_low_representation_plan_descriptor(
-        op, loom_low_op_descriptor_ATTR_INDEX, projection, plan));
+        op, LOOM_LOW_OP_DESCRIPTOR_ATTR_INDEX, projection, plan));
   } else if (loom_low_const_isa(op)) {
     IREE_RETURN_IF_ERROR(loom_low_representation_plan_descriptor(
-        op, loom_low_const_descriptor_ATTR_INDEX, projection, plan));
+        op, LOOM_LOW_CONST_DESCRIPTOR_ATTR_INDEX, projection, plan));
   }
 
   const loom_value_id_t* results = loom_op_const_results(op);

@@ -562,7 +562,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_emit_binding_index_duplicate(
       .label = IREE_SV("previous binding"),
       .op = previous_op,
       .field_ref = loom_diagnostic_field_ref(
-          LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, loom_low_resource_index_ATTR_INDEX),
+          LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, LOOM_LOW_RESOURCE_INDEX_ATTR_INDEX),
   }};
   return loom_amdgpu_hal_kernel_abi_emit(
       emitter, resource_op, LOOM_ERR_AMDGPU_011, params, IREE_ARRAYSIZE(params),
@@ -623,7 +623,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_emit_live_in_duplicate(
       .label = IREE_SV("previous live-in"),
       .op = previous_op,
       .field_ref = loom_diagnostic_field_ref(
-          LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, loom_low_live_in_source_ATTR_INDEX),
+          LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, LOOM_LOW_LIVE_IN_SOURCE_ATTR_INDEX),
   }};
   return loom_amdgpu_hal_kernel_abi_emit(
       emitter, live_in_op, LOOM_ERR_AMDGPU_015, params, IREE_ARRAYSIZE(params),
@@ -645,7 +645,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_emit_fixed_live_in_overlap(
       .label = IREE_SV("conflicting live-in"),
       .op = conflicting_op,
       .field_ref = loom_diagnostic_field_ref(
-          LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, loom_low_live_in_source_ATTR_INDEX),
+          LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, LOOM_LOW_LIVE_IN_SOURCE_ATTR_INDEX),
   }};
   return loom_amdgpu_hal_kernel_abi_emit(
       emitter, live_in_op, LOOM_ERR_AMDGPU_045, params, IREE_ARRAYSIZE(params),
@@ -665,7 +665,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_emit_workitem_live_in_mix(
       .label = IREE_SV("conflicting live-in"),
       .op = conflicting_op,
       .field_ref = loom_diagnostic_field_ref(
-          LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, loom_low_live_in_source_ATTR_INDEX),
+          LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, LOOM_LOW_LIVE_IN_SOURCE_ATTR_INDEX),
   }};
   return loom_amdgpu_hal_kernel_abi_emit(
       emitter, live_in_op, LOOM_ERR_AMDGPU_016, params, IREE_ARRAYSIZE(params),
@@ -943,7 +943,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_make_layout_u32_array_attr(
 bool loom_amdgpu_hal_kernel_abi_has_layout_attr(const loom_op_t* function_op) {
   return loom_low_kernel_def_isa(function_op) &&
          !loom_attr_is_absent(loom_op_attrs(
-             function_op)[loom_low_kernel_def_abi_layout_ATTR_INDEX]);
+             function_op)[LOOM_LOW_KERNEL_DEF_ABI_LAYOUT_ATTR_INDEX]);
 }
 
 iree_status_t loom_amdgpu_hal_kernel_abi_make_layout_attr(

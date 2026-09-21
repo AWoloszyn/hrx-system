@@ -382,14 +382,22 @@ def generate_ops_h(
             else:
                 lines.append(f"LOOM_DEFINE_SUCCESSOR({prefix}_{successor.name}, {desc.index})")
 
+        # Attribute slots have uppercase names independent of accessor names.
+        # Flags live in the instance word and have no attribute-array slot.
+        stored_attrs = [attr_def for attr_def in op.attrs if attr_def.attr_type != ATTR_TYPE_FLAGS]
+        if stored_attrs:
+            lines.append("enum {")
+            for index, attr_def in enumerate(stored_attrs):
+                index_name = f"{prefix}_{attr_def.name}_ATTR_INDEX".upper()
+                lines.append(f"  {index_name} = {index},")
+            lines.append("};")
+
         # Regular attribute accessors (excludes flags attrs).
-        non_flags_index = 0
         for attr_def in op.attrs:
             if attr_def.attr_type == ATTR_TYPE_FLAGS:
                 lines.append(f"LOOM_DEFINE_INSTANCE_FLAGS({prefix}_{attr_def.name})")
                 continue
-            desc_index = non_flags_index
-            non_flags_index += 1
+            desc_index = f"{prefix}_{attr_def.name}_ATTR_INDEX".upper()
             macro_map = {
                 "i64": "LOOM_DEFINE_ATTR_I64",
                 "f64": "LOOM_DEFINE_ATTR_F64",

@@ -348,12 +348,12 @@ static bool loom_amdgpu_async_gather_select(
   loom_vector_memory_cache_policy_t cache_policy = {0};
   const loom_attribute_t* attrs = loom_op_const_attrs(source_op);
   if (source_op->attribute_count <=
-          loom_kernel_async_gather_cache_scope_ATTR_INDEX ||
+          LOOM_KERNEL_ASYNC_GATHER_CACHE_SCOPE_ATTR_INDEX ||
       source_op->attribute_count <=
-          loom_kernel_async_gather_cache_temporal_ATTR_INDEX ||
+          LOOM_KERNEL_ASYNC_GATHER_CACHE_TEMPORAL_ATTR_INDEX ||
       !loom_vector_memory_cache_policy_from_attrs(
-          attrs[loom_kernel_async_gather_cache_scope_ATTR_INDEX],
-          attrs[loom_kernel_async_gather_cache_temporal_ATTR_INDEX],
+          attrs[LOOM_KERNEL_ASYNC_GATHER_CACHE_SCOPE_ATTR_INDEX],
+          attrs[LOOM_KERNEL_ASYNC_GATHER_CACHE_TEMPORAL_ATTR_INDEX],
           &cache_policy)) {
     out_diagnostic->rejection_bits |=
         LOOM_AMDGPU_ASYNC_GATHER_REJECTION_CACHE_POLICY;
@@ -487,12 +487,12 @@ static bool loom_amdgpu_cluster_gather_select(
   loom_vector_memory_cache_policy_t cache_policy = {0};
   const loom_attribute_t* attrs = loom_op_const_attrs(source_op);
   if (source_op->attribute_count <=
-          loom_kernel_async_cluster_gather_cache_scope_ATTR_INDEX ||
+          LOOM_KERNEL_ASYNC_CLUSTER_GATHER_CACHE_SCOPE_ATTR_INDEX ||
       source_op->attribute_count <=
-          loom_kernel_async_cluster_gather_cache_temporal_ATTR_INDEX ||
+          LOOM_KERNEL_ASYNC_CLUSTER_GATHER_CACHE_TEMPORAL_ATTR_INDEX ||
       !loom_vector_memory_cache_policy_from_attrs(
-          attrs[loom_kernel_async_cluster_gather_cache_scope_ATTR_INDEX],
-          attrs[loom_kernel_async_cluster_gather_cache_temporal_ATTR_INDEX],
+          attrs[LOOM_KERNEL_ASYNC_CLUSTER_GATHER_CACHE_SCOPE_ATTR_INDEX],
+          attrs[LOOM_KERNEL_ASYNC_CLUSTER_GATHER_CACHE_TEMPORAL_ATTR_INDEX],
           &cache_policy)) {
     out_diagnostic->rejection_bits |=
         LOOM_AMDGPU_CLUSTER_GATHER_REJECTION_CACHE_POLICY;
@@ -729,12 +729,12 @@ static bool loom_amdgpu_tensor_load_select(
 
   const loom_attribute_t* attrs = loom_op_const_attrs(source_op);
   if (source_op->attribute_count <=
-          loom_kernel_async_tensor_load_to_lds_cache_scope_ATTR_INDEX ||
+          LOOM_KERNEL_ASYNC_TENSOR_LOAD_TO_LDS_CACHE_SCOPE_ATTR_INDEX ||
       source_op->attribute_count <=
-          loom_kernel_async_tensor_load_to_lds_cache_temporal_ATTR_INDEX ||
+          LOOM_KERNEL_ASYNC_TENSOR_LOAD_TO_LDS_CACHE_TEMPORAL_ATTR_INDEX ||
       !loom_vector_memory_cache_policy_from_attrs(
-          attrs[loom_kernel_async_tensor_load_to_lds_cache_scope_ATTR_INDEX],
-          attrs[loom_kernel_async_tensor_load_to_lds_cache_temporal_ATTR_INDEX],
+          attrs[LOOM_KERNEL_ASYNC_TENSOR_LOAD_TO_LDS_CACHE_SCOPE_ATTR_INDEX],
+          attrs[LOOM_KERNEL_ASYNC_TENSOR_LOAD_TO_LDS_CACHE_TEMPORAL_ATTR_INDEX],
           &out_selection->cache_policy)) {
     out_diagnostic->rejection_bits |=
         LOOM_AMDGPU_TENSOR_LOAD_REJECTION_CACHE_POLICY;

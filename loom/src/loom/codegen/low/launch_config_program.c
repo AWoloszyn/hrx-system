@@ -149,7 +149,7 @@ static iree_status_t loom_kernel_launch_config_copy_workload_predicates(
   loom_rewriter_t rewriter;
   loom_rewriter_initialize(&rewriter, remap->target_module, scratch_arena);
   const iree_status_t status = loom_rewriter_set_attr(
-      &rewriter, target_function_op, loom_func_def_predicates_ATTR_INDEX,
+      &rewriter, target_function_op, LOOM_FUNC_DEF_PREDICATES_ATTR_INDEX,
       loom_attr_predicate_list(target_predicates, workload_predicate_count));
   loom_rewriter_deinitialize(&rewriter);
   return status;

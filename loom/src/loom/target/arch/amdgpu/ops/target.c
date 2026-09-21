@@ -248,7 +248,7 @@ static iree_status_t loom_amdgpu_target_record_verify_features(
     iree_diagnostic_emitter_t emitter,
     const loom_amdgpu_processor_info_t* processor) {
   const loom_attribute_t attr =
-      loom_op_const_attrs(op)[loom_amdgpu_target_features_ATTR_INDEX];
+      loom_op_const_attrs(op)[LOOM_AMDGPU_TARGET_FEATURES_ATTR_INDEX];
   if (loom_attr_is_absent(attr)) {
     return iree_ok_status();
   }
@@ -264,7 +264,7 @@ static iree_status_t loom_amdgpu_target_record_verify_features(
   const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
   IREE_ASSERT(vtable != NULL && vtable->attr_descriptors != NULL);
   const loom_attr_descriptor_t* descriptor =
-      &vtable->attr_descriptors[loom_amdgpu_target_features_ATTR_INDEX];
+      &vtable->attr_descriptors[LOOM_AMDGPU_TARGET_FEATURES_ATTR_INDEX];
   for (iree_host_size_t stable_value = 0;
        stable_value < LOOM_AMDGPU_TARGET_FEATURES_COUNT_; ++stable_value) {
     const bool positive =
@@ -308,7 +308,7 @@ static bool loom_amdgpu_target_record_effective_wavefront_size(
     uint32_t* out_wavefront_size) {
   *out_wavefront_size = 0;
   const loom_attribute_t subgroup_size =
-      loom_op_attrs(target_op)[loom_amdgpu_target_subgroup_size_ATTR_INDEX];
+      loom_op_attrs(target_op)[LOOM_AMDGPU_TARGET_SUBGROUP_SIZE_ATTR_INDEX];
   if (!loom_attr_is_absent(subgroup_size)) {
     const int64_t value = loom_attr_as_i64(subgroup_size);
     if (value < 0 || value > UINT32_MAX) {

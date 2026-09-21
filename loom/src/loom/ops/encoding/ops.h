@@ -338,7 +338,10 @@ iree_status_t loom_encoding_layout_dense_facts(
 LOOM_DEFINE_ISA(loom_encoding_layout_strided_isa, LOOM_OP_ENCODING_LAYOUT_STRIDED)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_encoding_layout_strided_strides, 0)
 LOOM_DEFINE_RESULT(loom_encoding_layout_strided_result, 0)
-LOOM_DEFINE_ATTR_I64_ARRAY(loom_encoding_layout_strided_static_strides, 0)
+enum {
+  LOOM_ENCODING_LAYOUT_STRIDED_STATIC_STRIDES_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_I64_ARRAY(loom_encoding_layout_strided_static_strides, LOOM_ENCODING_LAYOUT_STRIDED_STATIC_STRIDES_ATTR_INDEX)
 iree_status_t loom_encoding_layout_strided_build(
     loom_builder_t* builder,
     const loom_value_id_t* strides,
@@ -362,8 +365,12 @@ iree_status_t loom_encoding_layout_strided_verify(
 LOOM_DEFINE_ISA(loom_encoding_define_isa, LOOM_OP_ENCODING_DEFINE)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_encoding_define_params, 0)
 LOOM_DEFINE_RESULT(loom_encoding_define_result, 0)
-LOOM_DEFINE_ATTR_ENCODING(loom_encoding_define_spec, 0)
-LOOM_DEFINE_ATTR_DICT(loom_encoding_define_param_names, 1)
+enum {
+  LOOM_ENCODING_DEFINE_SPEC_ATTR_INDEX = 0,
+  LOOM_ENCODING_DEFINE_PARAM_NAMES_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_ENCODING(loom_encoding_define_spec, LOOM_ENCODING_DEFINE_SPEC_ATTR_INDEX)
+LOOM_DEFINE_ATTR_DICT(loom_encoding_define_param_names, LOOM_ENCODING_DEFINE_PARAM_NAMES_ATTR_INDEX)
 iree_status_t loom_encoding_define_build(
     loom_builder_t* builder,
     uint16_t spec,
@@ -386,7 +393,10 @@ iree_status_t loom_encoding_define_verify(
 LOOM_DEFINE_ISA(loom_encoding_isa_isa, LOOM_OP_ENCODING_ISA)
 LOOM_DEFINE_OPERAND(loom_encoding_isa_enc, 0)
 LOOM_DEFINE_RESULT(loom_encoding_isa_result, 0)
-LOOM_DEFINE_ATTR_ENCODING(loom_encoding_isa_spec, 0)
+enum {
+  LOOM_ENCODING_ISA_SPEC_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENCODING(loom_encoding_isa_spec, LOOM_ENCODING_ISA_SPEC_ATTR_INDEX)
 iree_status_t loom_encoding_isa_build(
     loom_builder_t* builder,
     uint16_t spec,
@@ -428,7 +438,10 @@ iree_status_t loom_encoding_layout_assume_dense_facts(
 LOOM_DEFINE_ISA(loom_encoding_layout_assume_strided_isa, LOOM_OP_ENCODING_LAYOUT_ASSUME_STRIDED)
 LOOM_DEFINE_OPERAND(loom_encoding_layout_assume_strided_layout, 0)
 LOOM_DEFINE_RESULT(loom_encoding_layout_assume_strided_result, 0)
-LOOM_DEFINE_ATTR_I64(loom_encoding_layout_assume_strided_rank, 0)
+enum {
+  LOOM_ENCODING_LAYOUT_ASSUME_STRIDED_RANK_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_I64(loom_encoding_layout_assume_strided_rank, LOOM_ENCODING_LAYOUT_ASSUME_STRIDED_RANK_ATTR_INDEX)
 iree_status_t loom_encoding_layout_assume_strided_build(
     loom_builder_t* builder,
     loom_value_id_t layout,
@@ -450,7 +463,10 @@ iree_status_t loom_encoding_layout_assume_strided_verify(
 LOOM_DEFINE_ISA(loom_encoding_assume_spec_isa, LOOM_OP_ENCODING_ASSUME_SPEC)
 LOOM_DEFINE_OPERAND(loom_encoding_assume_spec_enc, 0)
 LOOM_DEFINE_RESULT(loom_encoding_assume_spec_result, 0)
-LOOM_DEFINE_ATTR_ENCODING(loom_encoding_assume_spec_spec, 0)
+enum {
+  LOOM_ENCODING_ASSUME_SPEC_SPEC_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_ENCODING(loom_encoding_assume_spec_spec, LOOM_ENCODING_ASSUME_SPEC_SPEC_ATTR_INDEX)
 iree_status_t loom_encoding_assume_spec_build(
     loom_builder_t* builder,
     loom_value_id_t enc,
@@ -472,7 +488,10 @@ iree_status_t loom_encoding_assume_spec_verify(
 LOOM_DEFINE_ISA(loom_encoding_matches_isa, LOOM_OP_ENCODING_MATCHES)
 LOOM_DEFINE_OPERAND(loom_encoding_matches_enc, 0)
 LOOM_DEFINE_RESULT(loom_encoding_matches_result, 0)
-LOOM_DEFINE_ATTR_PARAMETERIZED(loom_encoding_matches_requirements, 0)
+enum {
+  LOOM_ENCODING_MATCHES_REQUIREMENTS_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_PARAMETERIZED(loom_encoding_matches_requirements, LOOM_ENCODING_MATCHES_REQUIREMENTS_ATTR_INDEX)
 iree_status_t loom_encoding_matches_build(
     loom_builder_t* builder,
     loom_attribute_t requirements,
@@ -497,7 +516,10 @@ iree_status_t loom_encoding_matches_verify(
 LOOM_DEFINE_ISA(loom_encoding_assume_match_isa, LOOM_OP_ENCODING_ASSUME_MATCH)
 LOOM_DEFINE_OPERAND(loom_encoding_assume_match_enc, 0)
 LOOM_DEFINE_RESULT(loom_encoding_assume_match_result, 0)
-LOOM_DEFINE_ATTR_PARAMETERIZED(loom_encoding_assume_match_requirements, 0)
+enum {
+  LOOM_ENCODING_ASSUME_MATCH_REQUIREMENTS_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_PARAMETERIZED(loom_encoding_assume_match_requirements, LOOM_ENCODING_ASSUME_MATCH_REQUIREMENTS_ATTR_INDEX)
 iree_status_t loom_encoding_assume_match_build(
     loom_builder_t* builder,
     loom_attribute_t requirements,

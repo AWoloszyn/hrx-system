@@ -336,7 +336,7 @@ TEST_F(CSETest, RewriterReplaceAttrDictBuildsFreshCanonicalDict) {
   loom_rewriter_t rewriter;
   loom_rewriter_initialize(&rewriter, module_, &pass_arena);
   IREE_ASSERT_OK(loom_rewriter_replace_attr_dict(
-      &rewriter, attrs_op, loom_test_attrs_dict_ATTR_INDEX,
+      &rewriter, attrs_op, LOOM_TEST_ATTRS_DICT_ATTR_INDEX,
       loom_make_named_attr_update_slice(updates, IREE_ARRAYSIZE(updates))));
   loom_rewriter_deinitialize(&rewriter);
   iree_arena_deinitialize(&pass_arena);
@@ -392,7 +392,7 @@ TEST_F(CSETest, RewriterReplaceAttrDictRecordsTypeValueRefs) {
   loom_rewriter_t rewriter;
   loom_rewriter_initialize(&rewriter, module_, &pass_arena);
   IREE_ASSERT_OK(loom_rewriter_replace_attr_dict(
-      &rewriter, attrs_op, loom_test_attrs_dict_ATTR_INDEX,
+      &rewriter, attrs_op, LOOM_TEST_ATTRS_DICT_ATTR_INDEX,
       loom_make_named_attr_update_slice(updates, IREE_ARRAYSIZE(updates))));
   loom_rewriter_deinitialize(&rewriter);
   iree_arena_deinitialize(&pass_arena);
@@ -434,7 +434,7 @@ TEST_F(CSETest, RewriterSetAttrRejectsMalformedDictAttr) {
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_INVALID_ARGUMENT,
       loom_rewriter_set_attr(
-          &rewriter, attrs_op, loom_test_attrs_dict_ATTR_INDEX,
+          &rewriter, attrs_op, LOOM_TEST_ATTRS_DICT_ATTR_INDEX,
           loom_make_canonical_attr_dict(/*entries=*/NULL, /*count=*/1)));
   loom_rewriter_deinitialize(&rewriter);
   iree_arena_deinitialize(&pass_arena);
@@ -473,7 +473,7 @@ TEST_F(CSETest, RewriterSetAttrRejectsNonCanonicalDictAttrOrder) {
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_INVALID_ARGUMENT,
       loom_rewriter_set_attr(
-          &rewriter, attrs_op, loom_test_attrs_dict_ATTR_INDEX,
+          &rewriter, attrs_op, LOOM_TEST_ATTRS_DICT_ATTR_INDEX,
           loom_make_canonical_attr_dict(unsorted_entries,
                                         IREE_ARRAYSIZE(unsorted_entries))));
   loom_rewriter_deinitialize(&rewriter);
@@ -507,7 +507,7 @@ TEST_F(CSETest, RewriterSetAttrRejectsDuplicateDictAttrKeys) {
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_INVALID_ARGUMENT,
       loom_rewriter_set_attr(
-          &rewriter, attrs_op, loom_test_attrs_dict_ATTR_INDEX,
+          &rewriter, attrs_op, LOOM_TEST_ATTRS_DICT_ATTR_INDEX,
           loom_make_canonical_attr_dict(duplicate_entries,
                                         IREE_ARRAYSIZE(duplicate_entries))));
   loom_rewriter_deinitialize(&rewriter);

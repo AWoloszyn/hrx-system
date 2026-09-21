@@ -804,14 +804,14 @@ static const loom_movement_async_descriptor_t
             LOOM_MOVEMENT_ASYNC_TRANSFER_EQUAL_ENDPOINTS, 0, 1,
             LOOM_MOVEMENT_ABSENT_INDEX, LOOM_MOVEMENT_ABSENT_INDEX,
             LOOM_MOVEMENT_ABSENT_INDEX,
-            loom_kernel_async_copy_direction_ATTR_INDEX, UINT8_MAX),
+            LOOM_KERNEL_ASYNC_COPY_DIRECTION_ATTR_INDEX, UINT8_MAX),
         LOOM_MOVEMENT_ASYNC_DESCRIPTOR(
             LOOM_OP_KERNEL_ASYNC_COPY_MASK,
             LOOM_MOVEMENT_KIND_KERNEL_ASYNC_COPY_MASK,
             LOOM_MOVEMENT_REQUEST_MASKED, LOOM_MOVEMENT_LAYOUT_BYTE_RANGE,
             LOOM_MOVEMENT_ASYNC_TRANSFER_EQUAL_ENDPOINTS, 0, 1, 2,
             LOOM_MOVEMENT_ABSENT_INDEX, LOOM_MOVEMENT_ABSENT_INDEX,
-            loom_kernel_async_copy_mask_direction_ATTR_INDEX, UINT8_MAX),
+            LOOM_KERNEL_ASYNC_COPY_MASK_DIRECTION_ATTR_INDEX, UINT8_MAX),
         LOOM_MOVEMENT_ASYNC_DESCRIPTOR(
             LOOM_OP_KERNEL_ASYNC_GATHER, LOOM_MOVEMENT_KIND_KERNEL_ASYNC_GATHER,
             0, LOOM_MOVEMENT_LAYOUT_SUBGROUP_GATHER,
@@ -918,42 +918,42 @@ static bool loom_movement_async_cache_policy(
   uint16_t temporal_index;
   switch (op->kind) {
     case LOOM_OP_KERNEL_ASYNC_COPY:
-      scope_index = loom_kernel_async_copy_cache_scope_ATTR_INDEX;
-      temporal_index = loom_kernel_async_copy_cache_temporal_ATTR_INDEX;
+      scope_index = LOOM_KERNEL_ASYNC_COPY_CACHE_SCOPE_ATTR_INDEX;
+      temporal_index = LOOM_KERNEL_ASYNC_COPY_CACHE_TEMPORAL_ATTR_INDEX;
       break;
     case LOOM_OP_KERNEL_ASYNC_COPY_MASK:
-      scope_index = loom_kernel_async_copy_mask_cache_scope_ATTR_INDEX;
-      temporal_index = loom_kernel_async_copy_mask_cache_temporal_ATTR_INDEX;
+      scope_index = LOOM_KERNEL_ASYNC_COPY_MASK_CACHE_SCOPE_ATTR_INDEX;
+      temporal_index = LOOM_KERNEL_ASYNC_COPY_MASK_CACHE_TEMPORAL_ATTR_INDEX;
       break;
     case LOOM_OP_KERNEL_ASYNC_GATHER:
-      scope_index = loom_kernel_async_gather_cache_scope_ATTR_INDEX;
-      temporal_index = loom_kernel_async_gather_cache_temporal_ATTR_INDEX;
+      scope_index = LOOM_KERNEL_ASYNC_GATHER_CACHE_SCOPE_ATTR_INDEX;
+      temporal_index = LOOM_KERNEL_ASYNC_GATHER_CACHE_TEMPORAL_ATTR_INDEX;
       break;
     case LOOM_OP_KERNEL_ASYNC_GATHER_MASK:
-      scope_index = loom_kernel_async_gather_mask_cache_scope_ATTR_INDEX;
-      temporal_index = loom_kernel_async_gather_mask_cache_temporal_ATTR_INDEX;
+      scope_index = LOOM_KERNEL_ASYNC_GATHER_MASK_CACHE_SCOPE_ATTR_INDEX;
+      temporal_index = LOOM_KERNEL_ASYNC_GATHER_MASK_CACHE_TEMPORAL_ATTR_INDEX;
       break;
     case LOOM_OP_KERNEL_ASYNC_CLUSTER_GATHER:
-      scope_index = loom_kernel_async_cluster_gather_cache_scope_ATTR_INDEX;
+      scope_index = LOOM_KERNEL_ASYNC_CLUSTER_GATHER_CACHE_SCOPE_ATTR_INDEX;
       temporal_index =
-          loom_kernel_async_cluster_gather_cache_temporal_ATTR_INDEX;
+          LOOM_KERNEL_ASYNC_CLUSTER_GATHER_CACHE_TEMPORAL_ATTR_INDEX;
       break;
     case LOOM_OP_KERNEL_ASYNC_CLUSTER_GATHER_MASK:
       scope_index =
-          loom_kernel_async_cluster_gather_mask_cache_scope_ATTR_INDEX;
+          LOOM_KERNEL_ASYNC_CLUSTER_GATHER_MASK_CACHE_SCOPE_ATTR_INDEX;
       temporal_index =
-          loom_kernel_async_cluster_gather_mask_cache_temporal_ATTR_INDEX;
+          LOOM_KERNEL_ASYNC_CLUSTER_GATHER_MASK_CACHE_TEMPORAL_ATTR_INDEX;
       break;
     case LOOM_OP_KERNEL_ASYNC_TENSOR_LOAD_TO_LDS:
-      scope_index = loom_kernel_async_tensor_load_to_lds_cache_scope_ATTR_INDEX;
+      scope_index = LOOM_KERNEL_ASYNC_TENSOR_LOAD_TO_LDS_CACHE_SCOPE_ATTR_INDEX;
       temporal_index =
-          loom_kernel_async_tensor_load_to_lds_cache_temporal_ATTR_INDEX;
+          LOOM_KERNEL_ASYNC_TENSOR_LOAD_TO_LDS_CACHE_TEMPORAL_ATTR_INDEX;
       break;
     case LOOM_OP_KERNEL_ASYNC_TENSOR_STORE_FROM_LDS:
       scope_index =
-          loom_kernel_async_tensor_store_from_lds_cache_scope_ATTR_INDEX;
+          LOOM_KERNEL_ASYNC_TENSOR_STORE_FROM_LDS_CACHE_SCOPE_ATTR_INDEX;
       temporal_index =
-          loom_kernel_async_tensor_store_from_lds_cache_temporal_ATTR_INDEX;
+          LOOM_KERNEL_ASYNC_TENSOR_STORE_FROM_LDS_CACHE_TEMPORAL_ATTR_INDEX;
       break;
     default:
       IREE_ASSERT_UNREACHABLE("op has no async movement descriptor");

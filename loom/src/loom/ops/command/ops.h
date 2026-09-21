@@ -47,12 +47,20 @@ typedef enum loom_command_retain_e {
 //   command.return
 // }
 LOOM_DEFINE_ISA(loom_command_program_def_isa, LOOM_OP_COMMAND_PROGRAM_DEF)
-LOOM_DEFINE_ATTR_SYMBOL(loom_command_program_def_callee, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_command_program_def_visibility, 1, loom_command_visibility_t)
-LOOM_DEFINE_ATTR_SYMBOL(loom_command_program_def_target, 2)
-LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_command_program_def_predicates, 3)
-LOOM_DEFINE_ATTR_I64(loom_command_program_def_specialization_count, 4)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_command_program_def_retain, 5, loom_command_retain_t)
+enum {
+  LOOM_COMMAND_PROGRAM_DEF_CALLEE_ATTR_INDEX = 0,
+  LOOM_COMMAND_PROGRAM_DEF_VISIBILITY_ATTR_INDEX = 1,
+  LOOM_COMMAND_PROGRAM_DEF_TARGET_ATTR_INDEX = 2,
+  LOOM_COMMAND_PROGRAM_DEF_PREDICATES_ATTR_INDEX = 3,
+  LOOM_COMMAND_PROGRAM_DEF_SPECIALIZATION_COUNT_ATTR_INDEX = 4,
+  LOOM_COMMAND_PROGRAM_DEF_RETAIN_ATTR_INDEX = 5,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_command_program_def_callee, LOOM_COMMAND_PROGRAM_DEF_CALLEE_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_command_program_def_visibility, LOOM_COMMAND_PROGRAM_DEF_VISIBILITY_ATTR_INDEX, loom_command_visibility_t)
+LOOM_DEFINE_ATTR_SYMBOL(loom_command_program_def_target, LOOM_COMMAND_PROGRAM_DEF_TARGET_ATTR_INDEX)
+LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_command_program_def_predicates, LOOM_COMMAND_PROGRAM_DEF_PREDICATES_ATTR_INDEX)
+LOOM_DEFINE_ATTR_I64(loom_command_program_def_specialization_count, LOOM_COMMAND_PROGRAM_DEF_SPECIALIZATION_COUNT_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_command_program_def_retain, LOOM_COMMAND_PROGRAM_DEF_RETAIN_ATTR_INDEX, loom_command_retain_t)
 LOOM_DEFINE_REGION(loom_command_program_def_body, 0)
 enum loom_command_program_def_build_flag_bits_e {
   LOOM_COMMAND_PROGRAM_DEF_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
@@ -84,12 +92,20 @@ iree_status_t loom_command_program_def_verify(
 // command.program.decl @decode(%token_count: index) launch(%parameters: buffer, %transient: buffer)
 LOOM_DEFINE_ISA(loom_command_program_decl_isa, LOOM_OP_COMMAND_PROGRAM_DECL)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_command_program_decl_args, 0)
-LOOM_DEFINE_ATTR_SYMBOL(loom_command_program_decl_callee, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_command_program_decl_visibility, 1, loom_command_visibility_t)
-LOOM_DEFINE_ATTR_SYMBOL(loom_command_program_decl_target, 2)
-LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_command_program_decl_predicates, 3)
-LOOM_DEFINE_ATTR_I64(loom_command_program_decl_specialization_count, 4)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_command_program_decl_retain, 5, loom_command_retain_t)
+enum {
+  LOOM_COMMAND_PROGRAM_DECL_CALLEE_ATTR_INDEX = 0,
+  LOOM_COMMAND_PROGRAM_DECL_VISIBILITY_ATTR_INDEX = 1,
+  LOOM_COMMAND_PROGRAM_DECL_TARGET_ATTR_INDEX = 2,
+  LOOM_COMMAND_PROGRAM_DECL_PREDICATES_ATTR_INDEX = 3,
+  LOOM_COMMAND_PROGRAM_DECL_SPECIALIZATION_COUNT_ATTR_INDEX = 4,
+  LOOM_COMMAND_PROGRAM_DECL_RETAIN_ATTR_INDEX = 5,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_command_program_decl_callee, LOOM_COMMAND_PROGRAM_DECL_CALLEE_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_command_program_decl_visibility, LOOM_COMMAND_PROGRAM_DECL_VISIBILITY_ATTR_INDEX, loom_command_visibility_t)
+LOOM_DEFINE_ATTR_SYMBOL(loom_command_program_decl_target, LOOM_COMMAND_PROGRAM_DECL_TARGET_ATTR_INDEX)
+LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_command_program_decl_predicates, LOOM_COMMAND_PROGRAM_DECL_PREDICATES_ATTR_INDEX)
+LOOM_DEFINE_ATTR_I64(loom_command_program_decl_specialization_count, LOOM_COMMAND_PROGRAM_DECL_SPECIALIZATION_COUNT_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_command_program_decl_retain, LOOM_COMMAND_PROGRAM_DECL_RETAIN_ATTR_INDEX, loom_command_retain_t)
 enum loom_command_program_decl_build_flag_bits_e {
   LOOM_COMMAND_PROGRAM_DECL_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
   LOOM_COMMAND_PROGRAM_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 1,
@@ -121,7 +137,10 @@ iree_status_t loom_command_program_decl_verify(
 LOOM_DEFINE_ISA(loom_command_program_launch_isa, LOOM_OP_COMMAND_PROGRAM_LAUNCH)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_command_program_launch_specializations, 0)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_command_program_launch_bindings, 1)
-LOOM_DEFINE_ATTR_SYMBOL(loom_command_program_launch_callee, 0)
+enum {
+  LOOM_COMMAND_PROGRAM_LAUNCH_CALLEE_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_command_program_launch_callee, LOOM_COMMAND_PROGRAM_LAUNCH_CALLEE_ATTR_INDEX)
 iree_status_t loom_command_program_launch_build(
     loom_builder_t* builder,
     loom_symbol_ref_t callee,
@@ -179,7 +198,10 @@ LOOM_DEFINE_ISA(loom_command_parameter_isa, LOOM_OP_COMMAND_PARAMETER)
 LOOM_DEFINE_OPERAND(loom_command_parameter_source, 0)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_command_parameter_substitutions, 1)
 LOOM_DEFINE_RESULT(loom_command_parameter_result, 0)
-LOOM_DEFINE_ATTR_STRING(loom_command_parameter_pattern, 0)
+enum {
+  LOOM_COMMAND_PARAMETER_PATTERN_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_STRING(loom_command_parameter_pattern, LOOM_COMMAND_PARAMETER_PATTERN_ATTR_INDEX)
 iree_status_t loom_command_parameter_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,

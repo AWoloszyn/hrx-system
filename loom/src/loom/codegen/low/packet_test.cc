@@ -117,7 +117,7 @@ TEST(LowPacketTest, GetsDescriptorPacketOpAttrs) {
   PacketAttrTestOp low_op_storage;
   low_op_storage.op.kind = LOOM_OP_LOW_OP;
   low_op_storage.op.attribute_count = IREE_ARRAYSIZE(low_op_storage.attrs);
-  low_op_storage.attrs[loom_low_op_attrs_ATTR_INDEX] =
+  low_op_storage.attrs[LOOM_LOW_OP_ATTRS_ATTR_INDEX] =
       loom_make_canonical_attr_dict(named_attrs, IREE_ARRAYSIZE(named_attrs));
 
   loom_named_attr_slice_t attrs = loom_named_attr_slice_empty();
@@ -126,13 +126,13 @@ TEST(LowPacketTest, GetsDescriptorPacketOpAttrs) {
                                            &attrs_attr_index));
   EXPECT_EQ(attrs.entries, named_attrs);
   EXPECT_EQ(attrs.count, 1u);
-  EXPECT_EQ(attrs_attr_index, loom_low_op_attrs_ATTR_INDEX);
+  EXPECT_EQ(attrs_attr_index, LOOM_LOW_OP_ATTRS_ATTR_INDEX);
 
   PacketAttrTestOp low_const_storage;
   low_const_storage.op.kind = LOOM_OP_LOW_CONST;
   low_const_storage.op.attribute_count =
       IREE_ARRAYSIZE(low_const_storage.attrs);
-  low_const_storage.attrs[loom_low_const_attrs_ATTR_INDEX] =
+  low_const_storage.attrs[LOOM_LOW_CONST_ATTRS_ATTR_INDEX] =
       loom_make_canonical_attr_dict(named_attrs, IREE_ARRAYSIZE(named_attrs));
 
   attrs = loom_named_attr_slice_empty();
@@ -141,7 +141,7 @@ TEST(LowPacketTest, GetsDescriptorPacketOpAttrs) {
                                            &attrs_attr_index));
   EXPECT_EQ(attrs.entries, named_attrs);
   EXPECT_EQ(attrs.count, 1u);
-  EXPECT_EQ(attrs_attr_index, loom_low_const_attrs_ATTR_INDEX);
+  EXPECT_EQ(attrs_attr_index, LOOM_LOW_CONST_ATTRS_ATTR_INDEX);
 }
 
 TEST(LowPacketTest, GetsPacketViewAttrs) {
@@ -152,7 +152,7 @@ TEST(LowPacketTest, GetsPacketViewAttrs) {
   PacketAttrTestOp low_op_storage;
   low_op_storage.op.kind = LOOM_OP_LOW_OP;
   low_op_storage.op.attribute_count = IREE_ARRAYSIZE(low_op_storage.attrs);
-  low_op_storage.attrs[loom_low_op_attrs_ATTR_INDEX] =
+  low_op_storage.attrs[LOOM_LOW_OP_ATTRS_ATTR_INDEX] =
       loom_make_canonical_attr_dict(named_attrs, IREE_ARRAYSIZE(named_attrs));
 
   loom_low_schedule_node_t node = {};

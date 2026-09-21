@@ -35,8 +35,12 @@ typedef enum loom_vm_target_kind_e {
 // LOOM_OP_VM_TARGET: Selects the portable VM instruction set and host function ABI.
 // vm.target<core> @vm
 LOOM_DEFINE_ISA(loom_vm_target_isa, LOOM_OP_VM_TARGET)
-LOOM_DEFINE_ATTR_SYMBOL(loom_vm_target_symbol, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vm_target_kind, 1, loom_vm_target_kind_t)
+enum {
+  LOOM_VM_TARGET_SYMBOL_ATTR_INDEX = 0,
+  LOOM_VM_TARGET_KIND_ATTR_INDEX = 1,
+};
+LOOM_DEFINE_ATTR_SYMBOL(loom_vm_target_symbol, LOOM_VM_TARGET_SYMBOL_ATTR_INDEX)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vm_target_kind, LOOM_VM_TARGET_KIND_ATTR_INDEX, loom_vm_target_kind_t)
 iree_status_t loom_vm_target_build(
     loom_builder_t* builder,
     loom_vm_target_kind_t kind,

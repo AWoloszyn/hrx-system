@@ -57,7 +57,10 @@ LOOM_DEFINE_ISA(loom_view_subview_isa, LOOM_OP_VIEW_SUBVIEW)
 LOOM_DEFINE_OPERAND(loom_view_subview_source, 0)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_view_subview_offsets, 1)
 LOOM_DEFINE_RESULT(loom_view_subview_result, 0)
-LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_subview_static_offsets, 0)
+enum {
+  LOOM_VIEW_SUBVIEW_STATIC_OFFSETS_ATTR_INDEX = 0,
+};
+LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_subview_static_offsets, LOOM_VIEW_SUBVIEW_STATIC_OFFSETS_ATTR_INDEX)
 iree_status_t loom_view_subview_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -106,10 +109,15 @@ LOOM_DEFINE_ISA(loom_view_load_isa, LOOM_OP_VIEW_LOAD)
 LOOM_DEFINE_OPERAND(loom_view_load_view, 0)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_view_load_indices, 1)
 LOOM_DEFINE_RESULT(loom_view_load_result, 0)
+enum {
+  LOOM_VIEW_LOAD_CACHE_SCOPE_ATTR_INDEX = 0,
+  LOOM_VIEW_LOAD_CACHE_TEMPORAL_ATTR_INDEX = 1,
+  LOOM_VIEW_LOAD_STATIC_INDICES_ATTR_INDEX = 2,
+};
 LOOM_DEFINE_INSTANCE_FLAGS(loom_view_load_memory_flags)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_load_cache_scope, 0, loom_cache_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_load_cache_temporal, 1, loom_cache_temporal_t)
-LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_load_static_indices, 2)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_load_cache_scope, LOOM_VIEW_LOAD_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_load_cache_temporal, LOOM_VIEW_LOAD_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_load_static_indices, LOOM_VIEW_LOAD_STATIC_INDICES_ATTR_INDEX)
 enum loom_view_load_build_flag_bits_e {
   LOOM_VIEW_LOAD_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VIEW_LOAD_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -145,10 +153,15 @@ LOOM_DEFINE_ISA(loom_view_store_isa, LOOM_OP_VIEW_STORE)
 LOOM_DEFINE_OPERAND(loom_view_store_value, 0)
 LOOM_DEFINE_OPERAND(loom_view_store_view, 1)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_view_store_indices, 2)
+enum {
+  LOOM_VIEW_STORE_CACHE_SCOPE_ATTR_INDEX = 0,
+  LOOM_VIEW_STORE_CACHE_TEMPORAL_ATTR_INDEX = 1,
+  LOOM_VIEW_STORE_STATIC_INDICES_ATTR_INDEX = 2,
+};
 LOOM_DEFINE_INSTANCE_FLAGS(loom_view_store_memory_flags)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_store_cache_scope, 0, loom_cache_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_store_cache_temporal, 1, loom_cache_temporal_t)
-LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_store_static_indices, 2)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_store_cache_scope, LOOM_VIEW_STORE_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_store_cache_temporal, LOOM_VIEW_STORE_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_store_static_indices, LOOM_VIEW_STORE_STATIC_INDICES_ATTR_INDEX)
 enum loom_view_store_build_flag_bits_e {
   LOOM_VIEW_STORE_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VIEW_STORE_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -179,12 +192,20 @@ LOOM_DEFINE_ISA(loom_view_atomic_reduce_isa, LOOM_OP_VIEW_ATOMIC_REDUCE)
 LOOM_DEFINE_OPERAND(loom_view_atomic_reduce_value, 0)
 LOOM_DEFINE_OPERAND(loom_view_atomic_reduce_view, 1)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_view_atomic_reduce_indices, 2)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_kind, 0, loom_atomic_kind_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_ordering, 1, loom_atomic_ordering_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_scope, 2, loom_atomic_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_cache_scope, 3, loom_cache_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_cache_temporal, 4, loom_cache_temporal_t)
-LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_atomic_reduce_static_indices, 5)
+enum {
+  LOOM_VIEW_ATOMIC_REDUCE_KIND_ATTR_INDEX = 0,
+  LOOM_VIEW_ATOMIC_REDUCE_ORDERING_ATTR_INDEX = 1,
+  LOOM_VIEW_ATOMIC_REDUCE_SCOPE_ATTR_INDEX = 2,
+  LOOM_VIEW_ATOMIC_REDUCE_CACHE_SCOPE_ATTR_INDEX = 3,
+  LOOM_VIEW_ATOMIC_REDUCE_CACHE_TEMPORAL_ATTR_INDEX = 4,
+  LOOM_VIEW_ATOMIC_REDUCE_STATIC_INDICES_ATTR_INDEX = 5,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_kind, LOOM_VIEW_ATOMIC_REDUCE_KIND_ATTR_INDEX, loom_atomic_kind_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_ordering, LOOM_VIEW_ATOMIC_REDUCE_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_scope, LOOM_VIEW_ATOMIC_REDUCE_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_cache_scope, LOOM_VIEW_ATOMIC_REDUCE_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_cache_temporal, LOOM_VIEW_ATOMIC_REDUCE_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_atomic_reduce_static_indices, LOOM_VIEW_ATOMIC_REDUCE_STATIC_INDICES_ATTR_INDEX)
 enum loom_view_atomic_reduce_build_flag_bits_e {
   LOOM_VIEW_ATOMIC_REDUCE_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VIEW_ATOMIC_REDUCE_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -217,12 +238,20 @@ LOOM_DEFINE_OPERAND(loom_view_atomic_rmw_value, 0)
 LOOM_DEFINE_OPERAND(loom_view_atomic_rmw_view, 1)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_view_atomic_rmw_indices, 2)
 LOOM_DEFINE_RESULT(loom_view_atomic_rmw_result, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_kind, 0, loom_atomic_kind_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_ordering, 1, loom_atomic_ordering_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_scope, 2, loom_atomic_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_cache_scope, 3, loom_cache_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_cache_temporal, 4, loom_cache_temporal_t)
-LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_atomic_rmw_static_indices, 5)
+enum {
+  LOOM_VIEW_ATOMIC_RMW_KIND_ATTR_INDEX = 0,
+  LOOM_VIEW_ATOMIC_RMW_ORDERING_ATTR_INDEX = 1,
+  LOOM_VIEW_ATOMIC_RMW_SCOPE_ATTR_INDEX = 2,
+  LOOM_VIEW_ATOMIC_RMW_CACHE_SCOPE_ATTR_INDEX = 3,
+  LOOM_VIEW_ATOMIC_RMW_CACHE_TEMPORAL_ATTR_INDEX = 4,
+  LOOM_VIEW_ATOMIC_RMW_STATIC_INDICES_ATTR_INDEX = 5,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_kind, LOOM_VIEW_ATOMIC_RMW_KIND_ATTR_INDEX, loom_atomic_kind_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_ordering, LOOM_VIEW_ATOMIC_RMW_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_scope, LOOM_VIEW_ATOMIC_RMW_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_cache_scope, LOOM_VIEW_ATOMIC_RMW_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_cache_temporal, LOOM_VIEW_ATOMIC_RMW_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_atomic_rmw_static_indices, LOOM_VIEW_ATOMIC_RMW_STATIC_INDICES_ATTR_INDEX)
 enum loom_view_atomic_rmw_build_flag_bits_e {
   LOOM_VIEW_ATOMIC_RMW_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VIEW_ATOMIC_RMW_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -257,12 +286,20 @@ LOOM_DEFINE_OPERAND(loom_view_atomic_cmpxchg_replacement, 1)
 LOOM_DEFINE_OPERAND(loom_view_atomic_cmpxchg_view, 2)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_view_atomic_cmpxchg_indices, 3)
 LOOM_DEFINE_RESULT(loom_view_atomic_cmpxchg_old, 0)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_success_ordering, 0, loom_atomic_ordering_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_failure_ordering, 1, loom_atomic_ordering_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_scope, 2, loom_atomic_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_cache_scope, 3, loom_cache_scope_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_cache_temporal, 4, loom_cache_temporal_t)
-LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_atomic_cmpxchg_static_indices, 5)
+enum {
+  LOOM_VIEW_ATOMIC_CMPXCHG_SUCCESS_ORDERING_ATTR_INDEX = 0,
+  LOOM_VIEW_ATOMIC_CMPXCHG_FAILURE_ORDERING_ATTR_INDEX = 1,
+  LOOM_VIEW_ATOMIC_CMPXCHG_SCOPE_ATTR_INDEX = 2,
+  LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_SCOPE_ATTR_INDEX = 3,
+  LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_TEMPORAL_ATTR_INDEX = 4,
+  LOOM_VIEW_ATOMIC_CMPXCHG_STATIC_INDICES_ATTR_INDEX = 5,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_success_ordering, LOOM_VIEW_ATOMIC_CMPXCHG_SUCCESS_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_failure_ordering, LOOM_VIEW_ATOMIC_CMPXCHG_FAILURE_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_scope, LOOM_VIEW_ATOMIC_CMPXCHG_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_cache_scope, LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_cache_temporal, LOOM_VIEW_ATOMIC_CMPXCHG_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_atomic_cmpxchg_static_indices, LOOM_VIEW_ATOMIC_CMPXCHG_STATIC_INDICES_ATTR_INDEX)
 enum loom_view_atomic_cmpxchg_build_flag_bits_e {
   LOOM_VIEW_ATOMIC_CMPXCHG_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VIEW_ATOMIC_CMPXCHG_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -295,9 +332,14 @@ iree_status_t loom_view_atomic_cmpxchg_verify(
 LOOM_DEFINE_ISA(loom_view_prefetch_isa, LOOM_OP_VIEW_PREFETCH)
 LOOM_DEFINE_OPERAND(loom_view_prefetch_view, 0)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_view_prefetch_indices, 1)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_prefetch_intent, 0, loom_view_prefetch_intent_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_prefetch_locality, 1, loom_view_prefetch_locality_t)
-LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_prefetch_static_indices, 2)
+enum {
+  LOOM_VIEW_PREFETCH_INTENT_ATTR_INDEX = 0,
+  LOOM_VIEW_PREFETCH_LOCALITY_ATTR_INDEX = 1,
+  LOOM_VIEW_PREFETCH_STATIC_INDICES_ATTR_INDEX = 2,
+};
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_prefetch_intent, LOOM_VIEW_PREFETCH_INTENT_ATTR_INDEX, loom_view_prefetch_intent_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_prefetch_locality, LOOM_VIEW_PREFETCH_LOCALITY_ATTR_INDEX, loom_view_prefetch_locality_t)
+LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_prefetch_static_indices, LOOM_VIEW_PREFETCH_STATIC_INDICES_ATTR_INDEX)
 iree_status_t loom_view_prefetch_build(
     loom_builder_t* builder,
     loom_value_id_t view,

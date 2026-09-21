@@ -258,9 +258,9 @@ static bool loom_loop_fusion_read_for_info(loom_op_t* op,
   if (loom_scf_for_pipeline_depth_is_present(op) ||
       loom_scf_for_unroll_factor_is_present(op) ||
       !loom_attr_is_absent(
-          loom_op_const_attrs(op)[loom_scf_for_unroll_policy_ATTR_INDEX]) ||
+          loom_op_const_attrs(op)[LOOM_SCF_FOR_UNROLL_POLICY_ATTR_INDEX]) ||
       !loom_attr_is_absent(
-          loom_op_const_attrs(op)[loom_scf_for_unroll_schedule_ATTR_INDEX])) {
+          loom_op_const_attrs(op)[LOOM_SCF_FOR_UNROLL_SCHEDULE_ATTR_INDEX])) {
     return false;
   }
 

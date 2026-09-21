@@ -647,12 +647,12 @@ static loom_scf_for_build_flags_t loom_vector_bank_sroa_build_flags(
     *out_unroll_factor = loom_scf_for_unroll_factor(loop);
   }
   if (!loom_attr_is_absent(
-          loom_op_attrs(loop)[loom_scf_for_unroll_policy_ATTR_INDEX])) {
+          loom_op_attrs(loop)[LOOM_SCF_FOR_UNROLL_POLICY_ATTR_INDEX])) {
     flags |= LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_POLICY;
     *out_unroll_policy = loom_scf_for_unroll_policy(loop);
   }
   if (!loom_attr_is_absent(
-          loom_op_attrs(loop)[loom_scf_for_unroll_schedule_ATTR_INDEX])) {
+          loom_op_attrs(loop)[LOOM_SCF_FOR_UNROLL_SCHEDULE_ATTR_INDEX])) {
     flags |= LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_SCHEDULE;
     *out_unroll_schedule = loom_scf_for_unroll_schedule(loop);
   }

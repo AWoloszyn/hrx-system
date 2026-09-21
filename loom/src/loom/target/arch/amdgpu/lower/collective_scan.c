@@ -38,9 +38,9 @@ static bool loom_amdgpu_subgroup_optional_attr_is_present(const loom_op_t* op,
 
 static bool loom_amdgpu_subgroup_scan_has_cluster_attrs(const loom_op_t* op) {
   return loom_amdgpu_subgroup_optional_attr_is_present(
-             op, loom_kernel_subgroup_scan_cluster_size_ATTR_INDEX) ||
+             op, LOOM_KERNEL_SUBGROUP_SCAN_CLUSTER_SIZE_ATTR_INDEX) ||
          loom_amdgpu_subgroup_optional_attr_is_present(
-             op, loom_kernel_subgroup_scan_cluster_stride_ATTR_INDEX);
+             op, LOOM_KERNEL_SUBGROUP_SCAN_CLUSTER_STRIDE_ATTR_INDEX);
 }
 
 static bool loom_amdgpu_subgroup_full_wave_workgroups(

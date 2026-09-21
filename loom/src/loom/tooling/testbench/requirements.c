@@ -158,7 +158,7 @@ static iree_string_view_t loom_testbench_requirement_display_message(
     iree_string_view_t provider_display_message) {
   if (loom_check_skip_if_isa(op)) {
     loom_attribute_t reason_attr =
-        loom_op_attrs(op)[loom_check_skip_if_reason_ATTR_INDEX];
+        loom_op_attrs(op)[LOOM_CHECK_SKIP_IF_REASON_ATTR_INDEX];
     if (reason_attr.kind == LOOM_ATTR_STRING) {
       return loom_testbench_requirement_module_string(
           module, loom_attr_as_string_id(reason_attr));

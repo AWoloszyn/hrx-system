@@ -25,7 +25,7 @@ bool loom_low_packet_try_op_attrs(const loom_op_t* op,
       *out_attrs = loom_low_op_attrs(op);
     }
     if (out_attrs_attr_index != NULL) {
-      *out_attrs_attr_index = loom_low_op_attrs_ATTR_INDEX;
+      *out_attrs_attr_index = LOOM_LOW_OP_ATTRS_ATTR_INDEX;
     }
     return true;
   }
@@ -34,7 +34,7 @@ bool loom_low_packet_try_op_attrs(const loom_op_t* op,
       *out_attrs = loom_low_const_attrs(op);
     }
     if (out_attrs_attr_index != NULL) {
-      *out_attrs_attr_index = loom_low_const_attrs_ATTR_INDEX;
+      *out_attrs_attr_index = LOOM_LOW_CONST_ATTRS_ATTR_INDEX;
     }
     return true;
   }

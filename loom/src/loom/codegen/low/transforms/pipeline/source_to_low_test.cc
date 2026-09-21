@@ -826,7 +826,7 @@ TEST_F(LowLowerPassTest,
       target_descriptor_set, IREE_SV("test.projectable_effect.i32"));
   ASSERT_NE(target_ordinal, LOOM_LOW_DESCRIPTOR_ORDINAL_NONE);
   EXPECT_EQ(loom_attr_as_scoped_enum(
-                loom_op_const_attrs(packet)[loom_low_op_descriptor_ATTR_INDEX]),
+                loom_op_const_attrs(packet)[LOOM_LOW_OP_DESCRIPTOR_ATTR_INDEX]),
             target_ordinal);
 }
 

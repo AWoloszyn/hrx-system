@@ -44,7 +44,7 @@ static iree_status_t loom_global_load_rodata_facts(
       byte_extent = loom_value_facts_exact_i64((int64_t)contents.data_length);
     }
     loom_attribute_t alignment = loom_op_const_attrs(
-        definition_op)[loom_global_rodata_def_alignment_ATTR_INDEX];
+        definition_op)[LOOM_GLOBAL_RODATA_DEF_ALIGNMENT_ATTR_INDEX];
     if (!loom_attr_is_absent(alignment)) {
       minimum_alignment = (uint64_t)loom_attr_as_i64(alignment);
     }

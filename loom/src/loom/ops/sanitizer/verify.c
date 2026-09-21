@@ -408,9 +408,9 @@ iree_status_t loom_sanitizer_race_access_verify(
 
   const bool atomic = loom_sanitizer_race_access_atomic(op);
   const bool has_ordering = loom_sanitizer_optional_attr_is_present(
-      op, loom_sanitizer_race_access_ordering_ATTR_INDEX);
+      op, LOOM_SANITIZER_RACE_ACCESS_ORDERING_ATTR_INDEX);
   const bool has_scope = loom_sanitizer_optional_attr_is_present(
-      op, loom_sanitizer_race_access_scope_ATTR_INDEX);
+      op, LOOM_SANITIZER_RACE_ACCESS_SCOPE_ATTR_INDEX);
   if (atomic) {
     if (!has_ordering) {
       return loom_sanitizer_emit_attribute_value_constraint(

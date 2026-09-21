@@ -443,8 +443,8 @@ static bool loom_amdgpu_workitem_dimension_is_valid(
     const loom_op_t* defining_op) {
   const uint16_t dimension_index =
       loom_kernel_workitem_id_isa(defining_op)
-          ? loom_kernel_workitem_id_dimension_ATTR_INDEX
-          : loom_kernel_workitem_dispatch_id_dimension_ATTR_INDEX;
+          ? LOOM_KERNEL_WORKITEM_ID_DIMENSION_ATTR_INDEX
+          : LOOM_KERNEL_WORKITEM_DISPATCH_ID_DIMENSION_ATTR_INDEX;
   return iree_any_bit_set(loom_amdgpu_source_producer_flags(defining_op->kind),
                           LOOM_AMDGPU_SOURCE_PRODUCER_WORKITEM_DIMENSION) &&
          defining_op->attribute_count > dimension_index &&

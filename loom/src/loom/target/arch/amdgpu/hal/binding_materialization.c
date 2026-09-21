@@ -1289,7 +1289,7 @@ iree_status_t loom_amdgpu_hal_binding_materialize(
         module, &layout, scratch_arena, &abi_layout_attr);
     if (iree_status_is_ok(status)) {
       status = loom_rewriter_set_attr(&rewriter, function_op,
-                                      loom_low_kernel_def_abi_layout_ATTR_INDEX,
+                                      LOOM_LOW_KERNEL_DEF_ABI_LAYOUT_ATTR_INDEX,
                                       abi_layout_attr);
     }
   }
