@@ -1292,3 +1292,36 @@ func.def device @scale_leaf(%value: f32) -> (f32) {
   %result = scalar.mulf %value, %leaf_scale : f32
   func.return %result : f32
 }
+
+// ====
+
+// External signatures remain fixed even when local facts prove a layout exact.
+func.decl @external_read(%layout: encoding<layout>, %input: view<2x3xf32, %layout>) -> (f32)
+
+func.def public @read_external_dense(%storage: buffer) -> (f32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %base = index.constant 0 : offset
+  %input = buffer.view %storage[%base] : buffer -> view<2x3xf32, %layout>
+  %result = func.call @external_read(%layout, %input) : (encoding<layout>, view<2x3xf32, %layout>) -> (f32)
+  func.return %result : f32
+}
+
+// ====
+
+// A public callable's dimension contract belongs to its external callers.
+func.def public @public_dimension_contract(%width: index, %input: view<[%width]xf32>) -> (view<[%width]xf32>) where [eq(%width, 8)] {
+  func.return %input : view<[%width]xf32>
+}
+
+// ====
+
+// A family application retains its declared signature before provider selection.
+template.decl @family_read(%layout: encoding<layout>, %input: view<2x3xf32, %layout>) -> (f32)
+
+func.def public @read_family_dense(%storage: buffer) -> (f32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %base = index.constant 0 : offset
+  %input = buffer.view %storage[%base] : buffer -> view<2x3xf32, %layout>
+  %result = template.apply<@family_read>(%layout, %input) : (encoding<layout>, view<2x3xf32, %layout>) -> (f32)
+  func.return %result : f32
+}

@@ -1730,6 +1730,9 @@ typedef struct loom_canonicalize_rewrite_state_t {
   // Table-driven type propagator for this region run.
   loom_type_propagator_t* type_propagator;
 
+  // Borrowed whole-module owner permitting callable boundary type changes.
+  loom_type_propagator_boundary_callback_t refine_boundary;
+
   // Representation-changing rewrites enabled for this run.
   loom_canonicalizer_flags_t flags;
 
@@ -1743,7 +1746,8 @@ static iree_status_t loom_canonicalize_prepare_region(
   loom_canonicalize_rewrite_state_t* state =
       (loom_canonicalize_rewrite_state_t*)user_data;
   IREE_RETURN_IF_ERROR(loom_type_propagator_allocate(
-      driver->module, driver->scratch_arena, &state->type_propagator));
+      driver->module, state->refine_boundary, driver->scratch_arena,
+      &state->type_propagator));
   IREE_RETURN_IF_ERROR(loom_type_propagator_prepare_region(
       state->type_propagator, region, parent_op));
   loom_symbolic_expr_context_initialize(
@@ -1933,6 +1937,9 @@ static iree_status_t loom_canonicalizer_run_precomputed_region(
   }
   loom_canonicalize_rewrite_state_t state = {
       .flags = options ? options->flags : 0,
+      .refine_boundary = options
+                             ? options->refine_boundary
+                             : (loom_type_propagator_boundary_callback_t){0},
   };
   uint32_t max_iterations = options && options->max_iterations > 0
                                 ? options->max_iterations

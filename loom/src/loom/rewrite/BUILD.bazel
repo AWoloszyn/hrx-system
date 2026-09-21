@@ -196,6 +196,7 @@ loom_cc_library(
         "//loom/src/loom/ir",
         "//loom/src/loom/ir:type_refinement",
         "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/template",
         "//loom/src/loom/target:registers",
         "//loom/src/loom/util:cfg_graph",
         "//loom/src/loom/util:fact_table",

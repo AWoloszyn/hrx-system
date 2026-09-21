@@ -11,7 +11,10 @@
 // expanded across the connected constraint/use closure, and committed through
 // the rewriter only if the whole transaction is consistent. The propagator
 // consumes verified IR and retained analysis facts; contradictory candidate
-// closures leave the module unchanged.
+// closures leave the module unchanged. Callable inputs, call results, and
+// returned values retain their verified boundary types unless a whole-module
+// owner explicitly permits refinement and reconciles the signature. Local
+// refinement can also proceed after inlining removes that boundary.
 
 #ifndef LOOM_REWRITE_TYPE_PROPAGATION_H_
 #define LOOM_REWRITE_TYPE_PROPAGATION_H_
@@ -29,6 +32,18 @@ extern "C" {
 
 typedef struct loom_type_propagator_t loom_type_propagator_t;
 
+// Optional ownership query for callable boundary refinement. The callback
+// borrows its state for the propagator's lifetime. Without a callback, callable
+// boundary types remain fixed.
+typedef struct loom_type_propagator_boundary_callback_t {
+  // Returns true only when the owner will reconcile the signature and all
+  // callers after local refinement. |op| is a callable definition or call.
+  bool (*fn)(void* user_data, loom_op_t* op);
+
+  // Borrowed whole-module boundary owner state.
+  void* user_data;
+} loom_type_propagator_boundary_callback_t;
+
 // Context passed to op-specific semantic type-transfer hooks. Hooks can inspect
 // the current transactional candidate type of a value and seed new candidates,
 // but they cannot commit mutations themselves.
@@ -38,8 +53,9 @@ typedef struct loom_type_transfer_context_t loom_type_transfer_context_t;
 // indexed by region-local value ordinals and may be reused across many op
 // transactions in the same pass/region run.
 iree_status_t loom_type_propagator_allocate(
-    loom_module_t* module, iree_arena_allocator_t* arena,
-    loom_type_propagator_t** out_propagator);
+    loom_module_t* module,
+    loom_type_propagator_boundary_callback_t refine_boundary,
+    iree_arena_allocator_t* arena, loom_type_propagator_t** out_propagator);
 
 // Releases the propagator's active function-local value domain. The propagator
 // object itself is arena-allocated and has no heap ownership.

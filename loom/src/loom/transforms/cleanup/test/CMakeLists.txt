@@ -13,6 +13,7 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "callable_types.loom-test"
     "dce.loom-test"
     "hint_lifetime.loom-test"
     "value_facts.loom-test"

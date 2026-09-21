@@ -13,6 +13,7 @@
 #include "loom/ir/local_value_domain.h"
 #include "loom/ir/module.h"
 #include "loom/ir/type_refinement.h"
+#include "loom/ops/template/ops.h"
 #include "loom/target/registers.h"
 #include "loom/util/cfg_graph.h"
 
@@ -45,6 +46,9 @@ struct loom_type_propagator_t {
 
   // Scratch arena owning transaction arrays and temporary overflow dimensions.
   iree_arena_allocator_t* arena;
+
+  // Borrowed owner authorizing callable signature refinement, when present.
+  loom_type_propagator_boundary_callback_t refine_boundary;
 
   // Region-local domain mapping module value IDs to compact ordinals.
   loom_local_value_domain_t value_domain;
@@ -194,14 +198,16 @@ static iree_status_t loom_type_propagator_register_value(
 }
 
 iree_status_t loom_type_propagator_allocate(
-    loom_module_t* module, iree_arena_allocator_t* arena,
-    loom_type_propagator_t** out_propagator) {
+    loom_module_t* module,
+    loom_type_propagator_boundary_callback_t refine_boundary,
+    iree_arena_allocator_t* arena, loom_type_propagator_t** out_propagator) {
   loom_type_propagator_t* propagator = NULL;
   IREE_RETURN_IF_ERROR(
       iree_arena_allocate(arena, sizeof(*propagator), (void**)&propagator));
   memset(propagator, 0, sizeof(*propagator));
   propagator->module = module;
   propagator->arena = arena;
+  propagator->refine_boundary = refine_boundary;
   propagator->transaction_generation = 1;
   *out_propagator = propagator;
   return iree_ok_status();
@@ -1299,7 +1305,7 @@ static iree_status_t loom_type_propagator_schedule_forwarding(
 
 static iree_status_t loom_type_propagator_process_op_constraints(
     loom_type_propagator_t* propagator, const loom_rewriter_t* rewriter,
-    loom_op_t* op) {
+    loom_op_t* op, const loom_op_vtable_t* vtable) {
   if (!op || iree_any_bit_set(op->flags, LOOM_OP_FLAG_DEAD)) {
     return iree_ok_status();
   }
@@ -1311,7 +1317,6 @@ static iree_status_t loom_type_propagator_process_op_constraints(
     return iree_ok_status();
   }
 
-  const loom_op_vtable_t* vtable = loom_op_vtable(propagator->module, op);
   if (!vtable) {
     return iree_ok_status();
   }
@@ -1368,34 +1373,47 @@ static iree_status_t loom_type_propagator_process_op_constraints(
 
 static iree_status_t loom_type_propagator_process_use_constraints(
     loom_type_propagator_t* propagator, const loom_rewriter_t* rewriter,
-    loom_op_t* op) {
-  const loom_op_vtable_t* vtable = loom_op_vtable(propagator->module, op);
+    loom_op_t* op, const loom_op_vtable_t* vtable) {
   const bool has_type_constraints =
       vtable && vtable->constraint_count > vtable->operand_dictionary_count;
   const bool has_type_transfer = vtable && vtable->type_transfer;
   const bool is_cfg_forwarding = op->successor_count > 0;
   const bool is_region_forwarding =
-      loom_type_propagator_op_is_terminator(propagator, op) && op->parent_op &&
+      vtable && iree_any_bit_set(vtable->traits, LOOM_TRAIT_TERMINATOR) &&
+      op->parent_op &&
       loom_region_branch_isa(
           loom_region_branch_cast(propagator->module, op->parent_op));
   if ((is_cfg_forwarding || is_region_forwarding) && !has_type_constraints &&
       !has_type_transfer && op->region_count == 0) {
     return loom_type_propagator_schedule_forwarding(propagator, op);
   }
-  return loom_type_propagator_process_op_constraints(propagator, rewriter, op);
+  return loom_type_propagator_process_op_constraints(propagator, rewriter, op,
+                                                     vtable);
 }
 
 static iree_status_t loom_type_propagator_process_def_constraints(
     loom_type_propagator_t* propagator, const loom_rewriter_t* rewriter,
-    loom_value_t* value) {
-  loom_op_t* def_op = loom_value_def_op(value);
-  const loom_region_branch_t branch =
-      loom_region_branch_cast(propagator->module, def_op);
-  return loom_region_branch_isa(branch)
+    loom_op_t* def_op, const loom_op_vtable_t* vtable) {
+  return vtable && vtable->region_branch
              ? loom_type_propagator_schedule_region_forwarding(propagator,
                                                                def_op)
              : loom_type_propagator_process_op_constraints(propagator, rewriter,
-                                                           def_op);
+                                                           def_op, vtable);
+}
+
+static bool loom_type_propagator_op_has_callable_contract(
+    const loom_op_t* op, const loom_op_vtable_t* vtable) {
+  // A family application has a callable contract before selection supplies its
+  // exact callee, so it deliberately does not implement the CallLike interface.
+  return vtable && (vtable->call_like || vtable->func_like ||
+                    loom_template_apply_isa(op));
+}
+
+static bool loom_type_propagator_boundary_is_fixed(
+    const loom_type_propagator_t* propagator, loom_op_t* op) {
+  return !propagator->refine_boundary.fn ||
+         !propagator->refine_boundary.fn(propagator->refine_boundary.user_data,
+                                         op);
 }
 
 static iree_status_t loom_type_propagator_process_value_adjacency(
@@ -1415,15 +1433,36 @@ static iree_status_t loom_type_propagator_process_value_adjacency(
     if (value_ordinal != LOOM_VALUE_ORDINAL_INVALID &&
         (iree_host_size_t)value_ordinal < propagator->ordinal_capacity &&
         propagator->owner_ops[value_ordinal]) {
+      const loom_op_vtable_t* owner_vtable = loom_op_vtable(
+          propagator->module, propagator->owner_ops[value_ordinal]);
+      if (owner_vtable->func_like &&
+          loom_type_propagator_boundary_is_fixed(
+              propagator, propagator->owner_ops[value_ordinal])) {
+        // A local transaction cannot redeclare an externally owned signature.
+        // Whole-module boundary specialization updates callers and callees
+        // together; local facts remain usable without changing these types.
+        propagator->conflict = true;
+        return iree_ok_status();
+      }
       IREE_RETURN_IF_ERROR(loom_type_propagator_process_op_constraints(
-          propagator, rewriter, propagator->owner_ops[value_ordinal]));
+          propagator, rewriter, propagator->owner_ops[value_ordinal],
+          owner_vtable));
       if (propagator->conflict) {
         return iree_ok_status();
       }
     }
   } else {
+    loom_op_t* definition = loom_value_def_op(value);
+    const loom_op_vtable_t* definition_vtable =
+        loom_op_vtable(propagator->module, definition);
+    if (loom_type_propagator_op_has_callable_contract(definition,
+                                                      definition_vtable) &&
+        loom_type_propagator_boundary_is_fixed(propagator, definition)) {
+      propagator->conflict = true;
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(loom_type_propagator_process_def_constraints(
-        propagator, rewriter, value));
+        propagator, rewriter, definition, definition_vtable));
     if (propagator->conflict) {
       return iree_ok_status();
     }
@@ -1431,8 +1470,30 @@ static iree_status_t loom_type_propagator_process_value_adjacency(
 
   const loom_use_t* uses = loom_value_uses(value);
   for (uint32_t i = 0; i < value->use_count; ++i) {
+    loom_op_t* user = loom_use_user_op(uses[i]);
+    const loom_op_vtable_t* user_vtable =
+        loom_op_vtable(propagator->module, user);
+    if (loom_type_propagator_op_has_callable_contract(user, user_vtable) &&
+        loom_type_propagator_boundary_is_fixed(propagator, user)) {
+      propagator->conflict = true;
+      return iree_ok_status();
+    }
+    if (user->parent_op && user_vtable &&
+        iree_any_bit_set(user_vtable->traits, LOOM_TRAIT_TERMINATOR)) {
+      const loom_op_vtable_t* parent_vtable =
+          loom_op_vtable(propagator->module, user->parent_op);
+      if (parent_vtable->func_like &&
+          loom_type_propagator_terminator_matches(
+              loom_op_vtable_region_descriptor(
+                  parent_vtable, parent_vtable->func_like->body_region_index),
+              user) &&
+          loom_type_propagator_boundary_is_fixed(propagator, user->parent_op)) {
+        propagator->conflict = true;
+        return iree_ok_status();
+      }
+    }
     IREE_RETURN_IF_ERROR(loom_type_propagator_process_use_constraints(
-        propagator, rewriter, loom_use_user_op(uses[i])));
+        propagator, rewriter, user, user_vtable));
     if (propagator->conflict) {
       return iree_ok_status();
     }
@@ -1454,20 +1515,26 @@ static iree_status_t loom_type_propagator_process_value_adjacency(
             (iree_host_size_t)user_value_ordinal <
                 propagator->ordinal_capacity &&
             propagator->owner_ops[user_value_ordinal]) {
+          loom_op_t* owner = propagator->owner_ops[user_value_ordinal];
           IREE_RETURN_IF_ERROR(loom_type_propagator_process_op_constraints(
-              propagator, rewriter, propagator->owner_ops[user_value_ordinal]));
+              propagator, rewriter, owner,
+              loom_op_vtable(propagator->module, owner)));
         }
       } else {
+        loom_op_t* definition = loom_value_def_op(user_value);
         IREE_RETURN_IF_ERROR(loom_type_propagator_process_def_constraints(
-            propagator, rewriter, user_value));
+            propagator, rewriter, definition,
+            loom_op_vtable(propagator->module, definition)));
       }
       if (propagator->conflict) {
         return iree_ok_status();
       }
       const loom_use_t* user_value_uses = loom_value_uses(user_value);
       for (uint32_t i = 0; i < user_value->use_count; ++i) {
+        loom_op_t* user = loom_use_user_op(user_value_uses[i]);
         IREE_RETURN_IF_ERROR(loom_type_propagator_process_use_constraints(
-            propagator, rewriter, loom_use_user_op(user_value_uses[i])));
+            propagator, rewriter, user,
+            loom_op_vtable(propagator->module, user)));
         if (propagator->conflict) {
           return iree_ok_status();
         }
@@ -1519,8 +1586,8 @@ iree_status_t loom_type_propagator_apply_op(loom_type_propagator_t* propagator,
   IREE_ASSERT(loom_local_value_domain_is_acquired(&propagator->value_domain));
   *out_changed = false;
   loom_type_propagator_next_transaction(propagator);
-  IREE_RETURN_IF_ERROR(
-      loom_type_propagator_process_op_constraints(propagator, rewriter, op));
+  IREE_RETURN_IF_ERROR(loom_type_propagator_process_op_constraints(
+      propagator, rewriter, op, loom_op_vtable(propagator->module, op)));
 
   while (!propagator->conflict && (propagator->value_worklist_count > 0 ||
                                    propagator->forwarding_worklist_count > 0)) {

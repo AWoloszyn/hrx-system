@@ -96,7 +96,8 @@ class TypePropagationTest : public ::testing::Test {
     }
     loom_type_propagator_t* propagator = NULL;
     if (iree_status_is_ok(status)) {
-      status = loom_type_propagator_allocate(module_, &pass_arena, &propagator);
+      status =
+          loom_type_propagator_allocate(module_, {}, &pass_arena, &propagator);
     }
     if (iree_status_is_ok(status)) {
       status = loom_type_propagator_prepare_function(propagator, function_);
@@ -130,7 +131,8 @@ class TypePropagationTest : public ::testing::Test {
     }
     loom_type_propagator_t* propagator = NULL;
     if (iree_status_is_ok(status)) {
-      status = loom_type_propagator_allocate(module_, &pass_arena, &propagator);
+      status =
+          loom_type_propagator_allocate(module_, {}, &pass_arena, &propagator);
     }
     if (iree_status_is_ok(status)) {
       status = loom_type_propagator_prepare_function(propagator, function_);
@@ -452,7 +454,7 @@ TEST_F(TypePropagationTest, ValueFactsNarrowDynamicDimensions) {
   IREE_ASSERT_OK(loom_rewriter_enable_analysis(&rewriter, function_, facts));
   loom_type_propagator_t* propagator = NULL;
   IREE_ASSERT_OK(
-      loom_type_propagator_allocate(module_, &pass_arena, &propagator));
+      loom_type_propagator_allocate(module_, {}, &pass_arena, &propagator));
   IREE_ASSERT_OK(loom_type_propagator_prepare_function(propagator, function_));
 
   bool changed = false;
@@ -500,7 +502,7 @@ TEST_F(TypePropagationTest, TypeUseUsersAreQueuedOnCommit) {
   IREE_ASSERT_OK(loom_rewriter_initialize(&rewriter, module_, &pass_arena));
   loom_type_propagator_t* propagator = NULL;
   IREE_ASSERT_OK(
-      loom_type_propagator_allocate(module_, &pass_arena, &propagator));
+      loom_type_propagator_allocate(module_, {}, &pass_arena, &propagator));
   IREE_ASSERT_OK(loom_type_propagator_prepare_function(propagator, function_));
 
   bool changed = false;
