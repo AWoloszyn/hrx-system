@@ -66,6 +66,14 @@ enum loom_amdgpu_wait_counter_e {
   (LOOM_AMDGPU_WAIT_COUNTER_MASK_MEMORY | LOOM_AMDGPU_WAIT_COUNTER_MASK_ALU | \
    LOOM_AMDGPU_WAIT_COUNTER_MASK_X)
 
+// Compact set of logical AMDGPU wait counters. Counter masks are stored in
+// dense planning tables, while arithmetic and public query results widen to
+// uint32_t.
+typedef uint8_t loom_amdgpu_wait_counter_mask_t;
+
+static_assert(LOOM_AMDGPU_WAIT_COUNTER_MASK_ALL <= UINT8_MAX,
+              "wait-counter masks must fit their packed representation");
+
 // Returns true when |counter_id| names a concrete AMDGPU wait counter.
 static inline bool loom_amdgpu_wait_counter_id_is_valid(uint16_t counter_id) {
   return counter_id >= LOOM_AMDGPU_WAIT_COUNTER_VMEM_LOAD &&
