@@ -9,11 +9,9 @@
 #-------------------------------------------------------------------------------
 
 if(${CMAKE_HOST_SYSTEM_NAME} STREQUAL "Windows")
-  set(IREE_HOST_SCRIPT_EXT "bat")
   # https://gitlab.kitware.com/cmake/cmake/-/issues/17553
   set(IREE_HOST_EXECUTABLE_SUFFIX ".exe")
 else()
-  set(IREE_HOST_SCRIPT_EXT "sh")
   set(IREE_HOST_EXECUTABLE_SUFFIX "")
 endif()
 

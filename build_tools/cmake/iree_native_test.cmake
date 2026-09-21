@@ -13,16 +13,15 @@
 # Parameters:
 # NAME: name of target
 # DRIVER: If specified, will pass --device=DRIVER to the test binary.
-# DATA: Additional input files needed by the test binary. When running tests on
-#     a separate device (e.g. Android), these files will be pushed to the
-#     device. TEST_INPUT_FILE_ARG is automatically added if specified.
-# ARGS: additional arguments passed to the test binary. TEST_INPUT_FILE_ARG and
-#     --device=DRIVER are automatically added if specified.
+# DATA: Additional input files needed by the test binary.
+# ARGS: Additional arguments passed to the test binary. --device=DRIVER is
+#     automatically added if specified.
 #     File-related arguments can be passed with `{{}}` locator,
 #     e.g., --input=@{{foo.npy}}. The locator is used to portably
 #     pass the file arguments to tests and add the file to DATA.
 # ENV: Additional KEY=VALUE environment variables set while the test runs.
-# SRC: binary target to run as the test.
+# SRC: Binary target to run as the test. CMake applies the target's
+#     CROSSCOMPILING_EMULATOR and TEST_LAUNCHER execution properties.
 # WILL_FAIL: The target will run, but its pass/fail status will be inverted.
 # DISABLED: The target will be skipped and its status will be 'Not Run'.
 # RESOURCE_GROUP: If set, tests sharing the same RESOURCE_GROUP name will not
@@ -67,7 +66,6 @@ function(iree_native_test)
   iree_package_ns(_PACKAGE_NS)
   iree_package_path(_PACKAGE_PATH)
   set(_TEST_NAME "${_PACKAGE_PATH}/${_RULE_NAME}")
-  set(_IREE_TEST_CAN_REGISTER OFF)
 
   # If driver was specified, add the corresponding test arg.
   if(DEFINED _RULE_DRIVER)
@@ -83,10 +81,6 @@ function(iree_native_test)
   endif()
   list(APPEND _TEST_ENVIRONMENT_VARS ${_RULE_ENV})
 
-  if(ANDROID)
-    set(_ANDROID_ABS_DIR "/data/local/tmp/${_PACKAGE_PATH}/${_RULE_NAME}")
-  endif()
-
   # Detect file location with `{{}}` and handle its portability for all entries
   # in `_RULE_ARGS`.
   foreach(_ARG ${_RULE_ARGS})
@@ -94,10 +88,6 @@ function(iree_native_test)
     if(_FILE_ARG)
       set(_FILE_PATH ${CMAKE_MATCH_1})
       list(APPEND _RULE_DATA "${_FILE_PATH}")
-      if (ANDROID)
-        cmake_path(GET _FILE_PATH FILENAME _FILE_BASENAME)
-        set(_FILE_PATH "${_ANDROID_ABS_DIR}/${_FILE_BASENAME}")
-      endif()
       # remove the `{{}}` from `_ARG` and append it to `_TEST_ARGS`.
       string(REGEX REPLACE "{{.+}}" "" _FILE_FLAG_PREFIX "${_ARG}")
       list(APPEND _TEST_ARGS "${_FILE_FLAG_PREFIX}${_FILE_PATH}")
@@ -140,67 +130,14 @@ function(iree_native_test)
     list(APPEND _TEST_RUNTIME_DATA "$<TARGET_FILE:${_DATA_TARGET}>")
   endforeach()
 
-  if(ANDROID)
-    # Define a custom target for pushing and running the test on Android device.
-    set(_TEST_NAME ${_TEST_NAME}_on_android_device)
-    add_test(
-      NAME
-        ${_TEST_NAME}
-      COMMAND
-        "${CMAKE_SOURCE_DIR}/build_tools/cmake/run_android_test.${IREE_HOST_SCRIPT_EXT}"
-        "${_ANDROID_ABS_DIR}/$<TARGET_FILE_NAME:${_SRC_TARGET}>"
-        ${_TEST_ARGS}
-    )
-    # Use environment variables to instruct the script to push artifacts
-    # onto the Android device before running the test. This needs to match
-    # with the expectation of the run_android_test.{sh|bat|ps1} script.
-    string(REPLACE ";" " " _DATA_SPACE_SEPARATED "${_TEST_RUNTIME_DATA}")
-    set(
-      _ENVIRONMENT_VARS
-        "TEST_ANDROID_ABS_DIR=${_ANDROID_ABS_DIR}"
-        "TEST_EXECUTABLE=$<TARGET_FILE:${_SRC_TARGET}>"
-        "TEST_DATA=${_DATA_SPACE_SEPARATED}"
-        "TEST_TMPDIR=${_ANDROID_ABS_DIR}/test_tmpdir"
-    )
-    set_property(TEST ${_TEST_NAME} PROPERTY ENVIRONMENT ${_ENVIRONMENT_VARS})
-  elseif((IREE_ARCH STREQUAL "riscv_64" OR
-          IREE_ARCH STREQUAL "riscv_32") AND
-         CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # The test target needs to run within the QEMU emulator for RV64 Linux
-    # crosscompile build or on-device.
-    add_test(
-      NAME
-        ${_TEST_NAME}
-      COMMAND
-        "${IREE_ROOT_DIR}/build_tools/cmake/run_riscv_test.sh"
-        -L "${RISCV_TOOLCHAIN_ROOT}/sysroot"
-        "$<TARGET_FILE:${_SRC_TARGET}>"
-        ${_TEST_ARGS}
-    )
-    iree_configure_test(${_TEST_NAME})
-    set_property(TEST ${_TEST_NAME} APPEND PROPERTY ENVIRONMENT
-      "QEMU_CPU_FLAGS=${RISCV_QEMU_CPU_FLAGS}")
-  elseif(IREE_ARCH STREQUAL "arm_64" AND "requires-arm-sme" IN_LIST _RULE_LABELS)
-    add_test(
-      NAME
-        ${_TEST_NAME}
-      COMMAND
-        "${IREE_ROOT_DIR}/build_tools/cmake/run_arm_sme_test.sh"
-        "$<TARGET_FILE:${_SRC_TARGET}>"
-        ${_TEST_ARGS}
-    )
-    iree_configure_test(${_TEST_NAME})
-  else()
-    add_test(
-      NAME
-        ${_TEST_NAME}
-      COMMAND
-        "$<TARGET_FILE:${_SRC_TARGET}>"
-        ${_TEST_ARGS}
-    )
-    iree_configure_test(${_TEST_NAME})
-    set(_IREE_TEST_CAN_REGISTER ON)
-  endif()
+  add_test(
+    NAME
+      ${_TEST_NAME}
+    COMMAND
+      "${_SRC_TARGET}"
+      ${_TEST_ARGS}
+  )
+  iree_configure_test(${_TEST_NAME})
   iree_register_test_build_targets(
     "${_TEST_NAME}"
     TARGETS "${_TEST_BUILD_TARGET}"
@@ -236,8 +173,7 @@ function(iree_native_test)
     set_property(TEST ${_TEST_NAME} PROPERTY DISABLED ${_RULE_DISABLED})
   endif()
 
-  if(_IREE_TEST_CAN_REGISTER AND
-     IREE_TEST_REGISTRATION_FUNCTION AND
+  if(IREE_TEST_REGISTRATION_FUNCTION AND
      NOT IREE_SKIP_TEST_REGISTRATION)
     set(_IREE_REGISTERED_WILL_FAIL)
     if(_RULE_WILL_FAIL)

@@ -33,7 +33,8 @@
 #
 # Note:
 # iree_cc_test will create a binary called ${PACKAGE_NAME}_${NAME}, e.g.
-# iree_base_foo_test.
+# iree_base_foo_test. Native test commands honor the executable target's
+# CROSSCOMPILING_EMULATOR and TEST_LAUNCHER properties.
 #
 #
 # Usage:
@@ -159,44 +160,7 @@ function(iree_cc_test)
   endif()
   list(APPEND _ENVIRONMENT_VARS ${_RULE_ENV})
 
-  # Case for cross-compiling towards Android.
-  if(ANDROID)
-    set(_ANDROID_REL_DIR "${_PACKAGE_PATH}/${_RULE_NAME}")
-    set(_ANDROID_ABS_DIR "/data/local/tmp/${_ANDROID_REL_DIR}")
-
-    # Define a custom target for pushing and running the test on Android device.
-    set(_NAME_PATH ${_NAME_PATH}_on_android_device)
-    add_test(
-      NAME
-        ${_NAME_PATH}
-      COMMAND
-        "${CMAKE_SOURCE_DIR}/build_tools/cmake/run_android_test.${IREE_HOST_SCRIPT_EXT}"
-        "${_ANDROID_REL_DIR}/$<TARGET_FILE_NAME:${_NAME}>"
-        ${_RULE_ARGS}
-    )
-    # Use environment variables to instruct the script to push artifacts
-    # onto the Android device before running the test. This needs to match
-    # with the expectation of the run_android_test.{sh|bat|ps1} script.
-    list(APPEND _ENVIRONMENT_VARS TEST_ANDROID_ABS_DIR=${_ANDROID_ABS_DIR})
-    list(APPEND _ENVIRONMENT_VARS TEST_EXECUTABLE=$<TARGET_FILE:${_NAME}>)
-    list(APPEND _ENVIRONMENT_VARS TEST_TMPDIR=${_ANDROID_ABS_DIR}/test_tmpdir)
-  elseif((IREE_ARCH STREQUAL "riscv_64" OR
-          IREE_ARCH STREQUAL "riscv_32") AND
-         CMAKE_SYSTEM_NAME STREQUAL "Linux")
-    # The test target needs to run within the QEMU emulator for RV64 Linux
-    # crosscompile build or on-device.
-    add_test(
-      NAME
-        ${_NAME_PATH}
-      COMMAND
-       "${IREE_ROOT_DIR}/build_tools/cmake/run_riscv_test.sh"
-        -L "${RISCV_TOOLCHAIN_ROOT}/sysroot"
-        "$<TARGET_FILE:${_NAME}>"
-        ${_RULE_ARGS}
-    )
-    iree_configure_test(${_NAME_PATH})
-    list(APPEND _ENVIRONMENT_VARS "QEMU_CPU_FLAGS=${RISCV_QEMU_CPU_FLAGS}")
-  elseif(CMAKE_SYSTEM_PROCESSOR STREQUAL "wasm32")
+  if(CMAKE_SYSTEM_PROCESSOR STREQUAL "wasm32")
     # WASI: bundle the .wasm binary with JS companions and run via Node.js.
     # Uses _iree_wasm_setup_bundler for order-independent collection of JS
     # companion metadata and entry point discovery via genex chains.
@@ -224,7 +188,7 @@ function(iree_cc_test)
       NAME
         ${_NAME_PATH}
       COMMAND
-        "$<TARGET_FILE:${_NAME}>"
+        "${_NAME}"
         ${_RULE_ARGS}
       )
 
