@@ -1,0 +1,24 @@
+// RUN: roundtrip
+
+// Generic dictionaries distinguish type expressions from quoted strings and
+// preserve the ordinary literal forms.
+test.decl @static_types(%values: test.array<i32, metadata = {element = f32, handle = buffer, nested = {callback = (i32) -> (f32), reference = test.ref<i32>}, spelling = "f32", enabled = true, mode = fast, bytes = bytes("0123")}>)
+
+// ----
+test.decl @static_types(%values: test.array<i32, metadata = {bytes = bytes("0123"), element = f32, enabled = true, handle = buffer, mode = "fast", nested = {callback = (i32) -> (f32), reference = test.ref<i32>}, spelling = "f32"}>)
+
+// ====
+// RUN: roundtrip
+
+// Nested TYPE leaves inherit argument-mode forward binders independently of
+// the enclosing type's element binding.
+test.decl @dependent_types(%values: test.array<vector<[%width]xf32>, metadata = {callback = (vector<[%height]xf32>) -> (view<[%width]xf32, %layout>), nested = {shape = vector<[%height]xf32>}}>, %width: index, %height: index, %layout: encoding<layout>)
+
+// ====
+// RUN: roundtrip
+
+// Body dictionaries resolve the same complete types in the existing SSA scope.
+func.def @body_types(%width: index, %input: f32) -> (f32) {
+  %configured = test.attrs %input {metadata = {element = test.array<vector<[%width]xf32>>, shape = vector<[%width]xf32>}} : f32
+  func.return %configured : f32
+}
