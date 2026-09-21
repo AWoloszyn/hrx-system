@@ -53,6 +53,7 @@ from loom.dsl import (
     ATTR_TYPE_SYMBOL,
     ATTR_TYPE_SYMBOL_ARRAY,
     ATTR_TYPE_SYMBOL_SET,
+    CALLABLE_BOUNDARY,
     CONSTANT_LIKE,
     DECOMPOSABLE,
     ELEMENTWISE,
@@ -2659,6 +2660,22 @@ def test_generate_tables_emits_call_like_interface() -> None:
     assert ".operand_segment_count = 0," in tables_c
     assert ".result_offset = 0," in tables_c
     assert ".kind = LOOM_CALL_LIKE_KIND_SEMANTIC," in tables_c
+    assert ".traits = LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_PURE," in tables_c
+
+
+def test_generate_tables_emits_callable_boundary_without_direct_callee() -> None:
+    op = Op(
+        "test.apply",
+        group=Dialect("test"),
+        operands=[Operand("operands", ANY, variadic=True)],
+        results=[Result("results", ANY, variadic=True)],
+        traits=[CALLABLE_BOUNDARY],
+    )
+
+    tables_c = generate_tables_c("test", 0, [op])
+
+    assert ".traits = LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_PURE," in tables_c
+    assert "loom_call_like_vtable_t" not in tables_c
 
 
 def test_generate_tables_emits_command_program_call_kind() -> None:
@@ -2680,6 +2697,7 @@ def test_generate_tables_emits_command_program_call_kind() -> None:
     tables_c = generate_tables_c("test", 0, [op])
 
     assert ".kind = LOOM_CALL_LIKE_KIND_COMMAND_PROGRAM," in tables_c
+    assert ".traits = LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_PURE," in tables_c
 
 
 def test_generate_tables_emits_no_result_call_like_interface() -> None:
@@ -2727,6 +2745,7 @@ def test_generate_tables_emits_func_like_representation_contract() -> None:
 
     assert ".callee_attr_index = 0," in tables_c
     assert ".repr_contract_attr_index = 1," in tables_c
+    assert ".traits = LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_PURE," in tables_c
 
 
 def test_generate_tables_emits_func_like_flags() -> None:

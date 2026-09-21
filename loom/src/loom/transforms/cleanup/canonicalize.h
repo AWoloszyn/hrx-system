@@ -8,6 +8,7 @@
 #define LOOM_TRANSFORMS_CANONICALIZE_H_
 
 #include "loom/pass/types.h"
+#include "loom/rewrite/type_propagation.h"
 #include "loom/util/fact_table.h"
 
 #ifdef __cplusplus
@@ -48,6 +49,10 @@ typedef struct loom_canonicalizer_options_t {
   // from a different fact context. The view is borrowed for the run; target
   // scope is supplied independently by target_facts.
   loom_value_fact_table_view_t seed_facts;
+
+  // Optional whole-module owner permitting callable boundary type changes.
+  // Borrowed for the run; without an owner, callable types remain fixed.
+  loom_type_propagator_boundary_callback_t refine_boundary;
 } loom_canonicalizer_options_t;
 
 // Summary of one canonicalizer function run.

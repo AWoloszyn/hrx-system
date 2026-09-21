@@ -29,8 +29,9 @@ iree_status_t loom_callable_effects_propagate_purity(loom_op_t* op,
                                                      uint8_t purity_attr_index,
                                                      loom_rewriter_t* rewriter);
 
-// Returns the effective effect traits for an operation carrying a purity
-// attribute at |purity_attr_index|.
+// Returns the effective traits for a callable application carrying a purity
+// attribute at |purity_attr_index|. Its callable boundary remains independent
+// of the selected effects.
 loom_trait_flags_t loom_callable_effects_traits(const loom_op_t* op,
                                                 uint8_t purity_attr_index);
 

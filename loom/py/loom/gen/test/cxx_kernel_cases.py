@@ -1070,7 +1070,20 @@ def typed_views(arrays):
         )
         case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(inputs)}xf32>")
         cases.append(case.finish(expected))
-    return "kernel.decl @typed_view_copy() launch(%input: buffer, %output: buffer, %rows: i32, %input_stride: i32, %input_origin: i32, %output_origin: i32)\n\n" + "\n".join(cases)
+    for origin in (0, 3, 15):
+        inputs = [float(index) + 0.25 for index in range(origin + 33)]
+        case = Case(arrays, f"typed_view_static_layouts_{origin}", "f32", 2)
+        case.array("input", inputs)
+        case.array("original", inputs)
+        case.scalar("origin", origin, "i32")
+        case.launch("typed_view_static_layouts", "%input, %output, %origin", f"tensor<{len(inputs)}xf32>, tensor<2xf32>, i32")
+        case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(inputs)}xf32>")
+        cases.append(case.finish([inputs[origin + 2 * stride + 3] for stride in (8, 11)]))
+    declarations = (
+        "kernel.decl @typed_view_copy() launch(%input: buffer, %output: buffer, %rows: i32, %input_stride: i32, %input_origin: i32, %output_origin: i32)\n\n"
+        "kernel.decl @typed_view_static_layouts() launch(%input: buffer, %output: buffer, %input_origin: i32)\n\n"
+    )
+    return declarations + "\n".join(cases)
 
 
 KERNEL_GROUPS = {

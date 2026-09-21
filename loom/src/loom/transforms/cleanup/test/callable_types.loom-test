@@ -1,0 +1,129 @@
+// RUN: pass canonicalize
+
+// Local refinement preserves callable contracts, including their dependent
+// dimensions and layout identities. Refinement proceeds after inlining.
+
+func.decl @read(%layout: encoding<layout>, %input: view<2x3xf32, %layout>) -> (f32)
+
+func.def public @dense_argument(%storage: buffer) -> (f32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %base = index.constant 0 : offset
+  %input = buffer.view %storage[%base] : buffer -> view<2x3xf32, %layout>
+  %result = func.call @read(%layout, %input) : (encoding<layout>, view<2x3xf32, %layout>) -> (f32)
+  func.return %result : f32
+}
+
+// ====
+
+func.decl @read(%layout: encoding<layout>, %input: view<2x3xf32, %layout>) -> (f32)
+
+func.def public @strided_argument(%storage: buffer) -> (f32) {
+  %layout = encoding.layout.strided [8, 1] : encoding<layout>
+  %base = index.constant 0 : offset
+  %input = buffer.view %storage[%base] : buffer -> view<2x3xf32, %layout>
+  %result = func.call @read(%layout, %input) : (encoding<layout>, view<2x3xf32, %layout>) -> (f32)
+  func.return %result : f32
+}
+
+// ====
+
+func.decl @forward(%width: index, %input: view<[%width]xf32>) -> (view<[%width]xf32>)
+
+func.def public @constant_dimension(%storage: buffer) -> (f32) {
+  %width = index.constant 8 : index
+  %base = index.constant 0 : offset
+  %input = buffer.view %storage[%base] : buffer -> view<[%width]xf32>
+  %result = func.call @forward(%width, %input) : (index, view<[%width]xf32>) -> (view<[%width]xf32>)
+  %value = view.load %result[7] : view<[%width]xf32> -> f32
+  func.return %value : f32
+}
+
+// ====
+
+func.def public @return_layout(%storage: buffer) -> (%result_layout: encoding<layout>, view<2x3xf32, %result_layout>) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %base = index.constant 0 : offset
+  %result = buffer.view %storage[%base] : buffer -> view<2x3xf32, %layout>
+  func.return %layout, %result : encoding<layout>, view<2x3xf32, %layout>
+}
+
+// ====
+
+func.def public @contract_dimension(%width: index, %input: view<[%width]xf32>) -> (view<[%width]xf32>) where [eq(%width, 8)] {
+  func.return %input : view<[%width]xf32>
+}
+
+// ====
+
+// RUN: pass canonicalize,inline-callables,canonicalize,dce
+
+func.def inline @read(%layout: encoding<layout>, %input: view<2x3xf32, %layout>) -> (f32) {
+  %value = view.load %input[1, 2] : view<2x3xf32, %layout> -> f32
+  func.return %value : f32
+}
+
+func.def public @dense_after_inline(%storage: buffer) -> (f32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %base = index.constant 0 : offset
+  %input = buffer.view %storage[%base] : buffer -> view<2x3xf32, %layout>
+  %result = func.call @read(%layout, %input) : (encoding<layout>, view<2x3xf32, %layout>) -> (f32)
+  func.return %result : f32
+}
+
+// ----
+func.def public @dense_after_inline(%storage: buffer) -> (f32) {
+  %base = index.constant 0 : offset
+  %input = buffer.view %storage[%base] : buffer -> view<2x3xf32>
+  %value = view.load %input[1, 2] : view<2x3xf32> -> f32
+  func.return %value : f32
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+template.decl @read(%layout: encoding<layout>, %input: view<2x3xf32, %layout>) -> (f32)
+
+func.def public @template_argument(%storage: buffer) -> (f32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %base = index.constant 0 : offset
+  %input = buffer.view %storage[%base] : buffer -> view<2x3xf32, %layout>
+  %result = template.apply<@read>(%layout, %input) : (encoding<layout>, view<2x3xf32, %layout>) -> (f32)
+  func.return %result : f32
+}
+
+// ====
+
+func.def public @return_dimension(%storage: buffer) -> (%extent: index, view<[%extent]xf32>) {
+  %width = index.constant 8 : index
+  %base = index.constant 0 : offset
+  %view = buffer.view %storage[%base] : buffer -> view<[%width]xf32>
+  func.return %width, %view : index, view<[%width]xf32>
+}
+
+// ====
+
+// Purity does not release signature ownership.
+func.decl pure @forward(%layout: encoding<layout>, %input: view<2x3xf32, %layout>) -> (view<2x3xf32, %layout>)
+
+func.def public @pure_call(%storage: buffer) -> (f32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %base = index.constant 0 : offset
+  %input = buffer.view %storage[%base] : buffer -> view<2x3xf32, %layout>
+  %result = func.call pure @forward(%layout, %input) : (encoding<layout>, view<2x3xf32, %layout>) -> (view<2x3xf32, %layout>)
+  %value = view.load %result[1, 2] : view<2x3xf32, %layout> -> f32
+  func.return %value : f32
+}
+
+// ====
+
+template.decl pure @forward(%layout: encoding<layout>, %input: view<2x3xf32, %layout>) -> (view<2x3xf32, %layout>)
+
+func.def public @pure_family(%storage: buffer) -> (f32) {
+  %layout = encoding.layout.dense : encoding<layout>
+  %base = index.constant 0 : offset
+  %input = buffer.view %storage[%base] : buffer -> view<2x3xf32, %layout>
+  %result = template.apply<@forward>(%layout, %input) pure : (encoding<layout>, view<2x3xf32, %layout>) -> (view<2x3xf32, %layout>)
+  %value = view.load %result[1, 2] : view<2x3xf32, %layout> -> f32
+  func.return %value : f32
+}

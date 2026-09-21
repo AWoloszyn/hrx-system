@@ -1298,6 +1298,27 @@ static iree_status_t loom_refine_boundaries_collect_function(
 // Function refinement
 //===----------------------------------------------------------------------===//
 
+static bool loom_refine_boundaries_can_refine_boundary(void* user_data,
+                                                       loom_op_t* op) {
+  const loom_refine_boundaries_graph_t* graph =
+      (const loom_refine_boundaries_graph_t*)user_data;
+  loom_symbol_ref_t callee = loom_symbol_ref_null();
+  loom_func_like_t function = loom_func_like_cast(graph->module, op);
+  if (loom_func_like_isa(function)) {
+    callee = loom_func_like_callee(function);
+  } else {
+    loom_value_slice_t operands = {0};
+    loom_value_slice_t results = {0};
+    if (!loom_refine_boundaries_read_call(graph->module, op, NULL, &callee,
+                                          &operands, &results)) {
+      return false;
+    }
+  }
+  iree_host_size_t node = 0;
+  return loom_refine_boundaries_callee_node(graph, callee, &node) &&
+         graph->functions[node].can_refine_boundary;
+}
+
 static iree_status_t loom_refine_boundaries_run_function(
     loom_pass_t* pass, loom_canonicalizer_t* canonicalizer,
     loom_refine_boundaries_graph_t* graph, loom_value_fact_table_t* seed_facts,
@@ -1310,7 +1331,9 @@ static iree_status_t loom_refine_boundaries_run_function(
       loom_refine_boundaries_statistics(pass);
   int64_t replacements_applied = 0;
   int64_t constants_materialized = 0;
-  loom_canonicalizer_options_t options = {0};
+  loom_canonicalizer_options_t options = {
+      .refine_boundary = {loom_refine_boundaries_can_refine_boundary, graph},
+  };
   IREE_RETURN_IF_ERROR(loom_refine_boundaries_apply_function_boundary_values(
       graph->module, seed_replacements, seed_facts, function_info,
       graph->walk_arena, &replacements_applied, &constants_materialized,

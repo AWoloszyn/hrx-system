@@ -151,6 +151,7 @@ TRAIT_MAP: dict[str, str] = {
     "Hint": "LOOM_TRAIT_HINT",
     "SafeToSpeculate": "LOOM_TRAIT_SAFE_TO_SPECULATE",
     "RefinableResultTypeRefs": "LOOM_TRAIT_REFINABLE_RESULT_TYPE_REFS",
+    "CallableBoundary": "LOOM_TRAIT_CALLABLE_BOUNDARY",
     "PoisonBoundary": "LOOM_TRAIT_POISON_BOUNDARY",
     "FactIdentity": "LOOM_TRAIT_FACT_IDENTITY",
     "DistributionTransfer": "LOOM_TRAIT_DISTRIBUTION_TRANSFER",
