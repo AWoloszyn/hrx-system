@@ -72,6 +72,17 @@ static int failing_role(int argc, char** argv, const char* temp_directory) {
   return 42;
 }
 
+static int argument_role(int argc, char** argv, const char* temp_directory) {
+  (void)temp_directory;
+  for (int i = 1; i < argc; ++i) {
+    if (strcmp(argv[i], "--coordinated_test_payload=two words") == 0) {
+      return 0;
+    }
+  }
+  fprintf(stderr, "arguments: missing caller payload after launcher parsing\n");
+  return 1;
+}
+
 //===----------------------------------------------------------------------===//
 // Test configs
 //===----------------------------------------------------------------------===//
@@ -104,22 +115,17 @@ static const iree_coordinated_test_config_t kFailsBeforeReadyConfig = {
     /*.role_count=*/1,
 };
 
-// Register the data exchange config as the default (used by
-// coordinated_test_main.cc for child dispatch). All configs share the same
-// role entry functions, so any config works for dispatch — we register the
-// one with the most roles to cover all role names.
-//
-// When using multiple configs with different role sets, all role entry
-// functions must be reachable from the registered config. We achieve this by
-// registering a combined config that includes all roles.
+// All role functions must be reachable from the registered child dispatcher,
+// even when individual tests launch only a subset of roles.
 static const iree_test_role_t kAllRoles[] = {
     {"writer", writer_role, /*signals_ready=*/true},
     {"reader", reader_role, /*signals_ready=*/false},
     {"failing", failing_role, /*signals_ready=*/false},
+    {"arguments", argument_role, /*signals_ready=*/false},
 };
 static const iree_coordinated_test_config_t kAllRolesConfig = {
     /*.roles=*/kAllRoles,
-    /*.role_count=*/3,
+    /*.role_count=*/IREE_ARRAYSIZE(kAllRoles),
 };
 IREE_COORDINATED_TEST_REGISTER(kAllRolesConfig);
 
@@ -145,4 +151,17 @@ TEST(CoordinatedTest, ExitBeforeReadyFailsWithoutDeadline) {
   ASSERT_NE(0, iree_coordinated_test_run(iree_coordinated_test_argc(),
                                          iree_coordinated_test_argv(),
                                          &kFailsBeforeReadyConfig));
+}
+
+TEST(CoordinatedTest, ForwardsArgumentsAfterLauncherParsing) {
+  // The test invocation includes a gtest flag consumed before this body and
+  // a caller-owned argument with spaces. The real child must receive the
+  // caller payload and enter its role instead of recursively launching tests.
+  const iree_test_role_t roles[] = {
+      {"arguments", argument_role, /*signals_ready=*/false},
+  };
+  const iree_coordinated_test_config_t config = {roles, IREE_ARRAYSIZE(roles)};
+  ASSERT_EQ(0,
+            iree_coordinated_test_run(iree_coordinated_test_argc(),
+                                      iree_coordinated_test_argv(), &config));
 }

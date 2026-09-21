@@ -160,6 +160,10 @@ iree_runtime_cc_library(
 iree_runtime_cc_test(
     name = "coordinated_test_test",
     srcs = ["coordinated_test_test.cc"],
+    args = [
+        "--gtest_color=no",
+        "'--coordinated_test_payload=two words'",
+    ],
     tags = ["noriscv"],
     deps = [
         ":coordinated_test",
