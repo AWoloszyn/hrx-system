@@ -37,6 +37,9 @@ typedef struct loom_check_template_sync_case_t {
   // Arena-owned operation name of the func-like case definition.
   iree_string_view_t definition_op_name;
 
+  // Whether the selected case entry has public visibility.
+  bool definition_is_public;
+
   // Parsed case carrying the input to synchronize.
   const loom_test_case_t* test_case;
 
@@ -497,6 +500,7 @@ static iree_status_t loom_check_template_sync_extract_case_metadata(
       if (func_like_count == 1 || is_public) {
         key = loom_string_table_get(&module->strings, symbol->name_id);
         definition_op_name = loom_op_name(module, symbol->defining_op);
+        out_record->definition_is_public = is_public;
       }
     }
     if (iree_status_is_ok(status) &&
@@ -776,8 +780,25 @@ static iree_status_t loom_check_template_sync_append_template_input_line(
   }
   IREE_RETURN_IF_ERROR(iree_string_builder_append_string(
       builder, iree_string_view_substr(template_line, 0, op_end)));
+  iree_string_view_t definition_prefix = overlay->definition_prefix;
+  if (template_record->definition_is_public &&
+      !overlay->source_record->definition_is_public) {
+    // New cases may borrow an overlay from a private single-function case.
+    // Keep the template's public entry identifiable on subsequent updates.
+    // An optional scope precedes the visibility modifier in func-like syntax.
+    if (iree_string_view_starts_with(definition_prefix, IREE_SV("<"))) {
+      const iree_host_size_t scope_end =
+          iree_string_view_find_char(definition_prefix, '>', 0) + 1;
+      IREE_RETURN_IF_ERROR(iree_string_builder_append_string(
+          builder, iree_string_view_substr(definition_prefix, 0, scope_end)));
+      definition_prefix =
+          iree_string_view_remove_prefix(definition_prefix, scope_end);
+    }
+    IREE_RETURN_IF_ERROR(
+        iree_string_builder_append_cstring(builder, " public"));
+  }
   IREE_RETURN_IF_ERROR(
-      iree_string_builder_append_string(builder, overlay->definition_prefix));
+      iree_string_builder_append_string(builder, definition_prefix));
   IREE_RETURN_IF_ERROR(iree_string_builder_append_string(
       builder, iree_string_view_substr(template_line, symbol_position,
                                        IREE_HOST_SIZE_MAX)));

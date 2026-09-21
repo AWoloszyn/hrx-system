@@ -878,6 +878,59 @@ TEST_F(TemplateSyncTest, UpdatesHelpersAroundPublicEntry) {
   EXPECT_EQ(second_result, first_result);
 }
 
+TEST_F(TemplateSyncTest, NewHelperCaseKeepsPublicEntryWithPrivateOverlay) {
+  const char* target_source =
+      "// TEMPLATE: loom/src/loom/test/corpus/source_low/callables.loom-test\n"
+      "// RUN: emit source-low output=module\n\n"
+      "func.decl @target()\n\n"
+      "func.def target(@target) @first() {\n  func.return\n}\n";
+  const char* template_source =
+      "// RUN: roundtrip\n\n"
+      "func.def @first() {\n  func.return\n}\n"
+      "\n// ====\n\n"
+      "func.def @helper() {\n  func.return\n}\n\n"
+      "func.def public @entry() {\n"
+      "  func.call @helper() : () -> ()\n"
+      "  func.return\n}\n";
+  std::string first_result;
+  bool changed = false;
+  IREE_ASSERT_OK(
+      Build(target_source, template_source, &first_result, &changed));
+  EXPECT_TRUE(changed);
+  EXPECT_NE(first_result.find("func.def public target(@target) @entry"),
+            std::string::npos);
+  std::string second_result;
+  IREE_ASSERT_OK(
+      Build(first_result.c_str(), template_source, &second_result, &changed));
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(second_result, first_result);
+}
+
+TEST_F(TemplateSyncTest, PublicEntryKeepsScopedTargetOverlay) {
+  const char* target_source =
+      "// TEMPLATE: loom/src/loom/test/corpus/pipeline/example.loom-test\n"
+      "// RUN: roundtrip\n\n"
+      "func.decl @target()\n"
+      "pipeline.def<kernel> retain target(@target) @entry() launch() {\n"
+      "  pipeline.return\n}\n";
+  const char* template_source =
+      "pipeline.def public @entry() launch() {\n"
+      "  pipeline.return\n}\n";
+  std::string first_result;
+  bool changed = false;
+  IREE_ASSERT_OK(
+      Build(target_source, template_source, &first_result, &changed));
+  EXPECT_TRUE(changed);
+  EXPECT_NE(first_result.find(
+                "pipeline.def<kernel> public retain target(@target) @entry"),
+            std::string::npos);
+  std::string second_result;
+  IREE_ASSERT_OK(
+      Build(first_result.c_str(), template_source, &second_result, &changed));
+  EXPECT_FALSE(changed);
+  EXPECT_EQ(second_result, first_result);
+}
+
 TEST_F(TemplateSyncTest, RejectsAmbiguousMultiFunctionCases) {
   for (const char* visibility : {"", "public "}) {
     const std::string template_source =
