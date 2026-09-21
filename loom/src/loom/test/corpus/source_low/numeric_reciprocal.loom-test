@@ -1,0 +1,14 @@
+// RUN: roundtrip
+
+func.def @scalar_f32_reciprocal(%input: f32) -> (f32) {
+  %numerator = scalar.constant 1.0 : f32
+  %result = scalar.divf<arcp> %numerator, %input : f32
+  func.return %result : f32
+}
+
+// ====
+
+func.def @scalar_f32_reciprocal_multiply(%numerator: f32, %denominator: f32) -> (f32) {
+  %result = scalar.divf<arcp> %numerator, %denominator : f32
+  func.return %result : f32
+}

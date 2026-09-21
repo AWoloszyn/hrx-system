@@ -1,0 +1,28 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_reciprocal.loom-test
+// RUN: emit source-low target=vm:core output=low
+
+func.def @scalar_f32_reciprocal(%input: f32) -> (f32) {
+  %numerator = scalar.constant 1.0 : f32
+  %result = scalar.divf<arcp> %numerator, %input : f32
+  func.return %result : f32
+}
+
+// ----
+low.func.def target<vm.core> abi(vm_function) @scalar_f32_reciprocal(%input: reg<vm.value : f32>) -> (reg<vm.value : f32>) asm {
+  %numerator = constant.i32 1065353216 : reg<vm.value : f32>
+  %result = float.div.f32 %numerator, %input
+  return %result
+}
+
+// ====
+
+func.def @scalar_f32_reciprocal_multiply(%numerator: f32, %denominator: f32) -> (f32) {
+  %result = scalar.divf<arcp> %numerator, %denominator : f32
+  func.return %result : f32
+}
+
+// ----
+low.func.def target<vm.core> abi(vm_function) @scalar_f32_reciprocal_multiply(%numerator: reg<vm.value : f32>, %denominator: reg<vm.value : f32>) -> (reg<vm.value : f32>) asm {
+  %result = float.div.f32 %numerator, %denominator
+  return %result
+}

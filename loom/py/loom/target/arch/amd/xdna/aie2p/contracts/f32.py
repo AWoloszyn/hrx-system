@@ -1150,6 +1150,22 @@ def _f32_integral_rule(
     )
 
 
+def _f32_arcp_reciprocal_rule() -> DescriptorRule:
+    program = _F32Program()
+    program.unary(None, "reciprocal.f32", ValueRef.operand("rhs"))
+    return DescriptorRule(
+        source_op=scalar_arithmetic.scalar_divf,
+        descriptor=program.emits[0].descriptor,
+        guards=(
+            *(Guard.value_type(field, _F32) for field in ("lhs", "rhs", "result")),
+            Guard.instance_flags_has_all("fastmath", "arcp"),
+            Guard.value_float_equals("lhs", 1.0),
+        ),
+        emit=tuple(program.emits),
+        report_key="approximate_binary32_reciprocal",
+    )
+
+
 def _f32_arcp_div_rule() -> DescriptorRule:
     program = _F32Program()
     reciprocal = program.unary(
@@ -1624,6 +1640,7 @@ AIE2P_F32_RULES = (
     _vector_f32_abs_rule(),
     _vector_f32_neg_rule(),
     _f32_copysign_rule(),
+    _f32_arcp_reciprocal_rule(),
     _f32_arcp_div_rule(),
     _f32_extremum_rule(scalar_arithmetic.scalar_minimumf, "minimum", "ieee"),
     _f32_extremum_rule(scalar_arithmetic.scalar_maximumf, "maximum", "ieee"),

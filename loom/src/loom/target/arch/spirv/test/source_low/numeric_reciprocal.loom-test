@@ -1,0 +1,28 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_reciprocal.loom-test
+// RUN: emit source-low target=spirv:vulkan1.3+bda output=low
+
+func.def @scalar_f32_reciprocal(%input: f32) -> (f32) {
+  %numerator = scalar.constant 1.0 : f32
+  %result = scalar.divf<arcp> %numerator, %input : f32
+  func.return %result : f32
+}
+
+// ----
+low.func.def target<spirv.logical.core> abi(shader_entry_point) @scalar_f32_reciprocal(%input: reg<spirv.id : f32>) -> (reg<spirv.id : f32>) asm {
+  %numerator = OpConstant.f32 1065353216
+  %result = OpFDiv.f32 %numerator, %input
+  return %result
+}
+
+// ====
+
+func.def @scalar_f32_reciprocal_multiply(%numerator: f32, %denominator: f32) -> (f32) {
+  %result = scalar.divf<arcp> %numerator, %denominator : f32
+  func.return %result : f32
+}
+
+// ----
+low.func.def target<spirv.logical.core> abi(shader_entry_point) @scalar_f32_reciprocal_multiply(%numerator: reg<spirv.id : f32>, %denominator: reg<spirv.id : f32>) -> (reg<spirv.id : f32>) asm {
+  %result = OpFDiv.f32 %numerator, %denominator
+  return %result
+}
