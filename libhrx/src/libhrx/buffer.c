@@ -221,12 +221,11 @@ hrx_status_t hrx_buffer_get_device_ptr(hrx_buffer_t buffer, void** device_ptr) {
                             hrx_make_status(HRX_STATUS_INVALID_ARGUMENT,
                                             "buffer or device_ptr is NULL"));
   }
-  // Device allocations may not be host-visible, so ask the allocator for its
+  // Device allocations may not be host-visible, so ask the buffer for its
   // native device address before falling back to a host mapping.
   iree_hal_external_buffer_t external_buffer;
-  iree_status_t status = iree_hal_allocator_export_buffer(
-      buffer->device->allocator.hal_allocator, buffer->hal_buffer,
-      IREE_HAL_EXTERNAL_BUFFER_TYPE_DEVICE_ALLOCATION,
+  iree_status_t status = iree_hal_buffer_export(
+      buffer->hal_buffer, IREE_HAL_EXTERNAL_BUFFER_TYPE_DEVICE_ALLOCATION,
       IREE_HAL_EXTERNAL_BUFFER_FLAG_NONE, &external_buffer);
   if (iree_status_is_ok(status)) {
     *device_ptr =

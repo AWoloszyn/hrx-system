@@ -367,28 +367,6 @@ static iree_status_t iree_hal_replay_recorder_allocator_import_buffer(
   return status;
 }
 
-static iree_status_t iree_hal_replay_recorder_allocator_export_buffer(
-    iree_hal_allocator_t* IREE_RESTRICT base_allocator,
-    iree_hal_buffer_t* IREE_RESTRICT buffer,
-    iree_hal_external_buffer_type_t requested_type,
-    iree_hal_external_buffer_flags_t requested_flags,
-    iree_hal_external_buffer_t* IREE_RESTRICT out_external_buffer) {
-  iree_hal_replay_recorder_allocator_t* allocator =
-      iree_hal_replay_recorder_allocator_cast(base_allocator);
-  iree_hal_replay_pending_record_t pending_record;
-  IREE_RETURN_IF_ERROR(iree_hal_replay_recorder_allocator_begin_operation(
-      allocator, IREE_HAL_REPLAY_OBJECT_ID_NONE,
-      IREE_HAL_REPLAY_OPERATION_CODE_ALLOCATOR_EXPORT_BUFFER,
-      IREE_HAL_REPLAY_PAYLOAD_TYPE_NONE, &pending_record));
-  iree_hal_replay_recorder_mark_unsupported(&pending_record);
-  return iree_hal_replay_recorder_end_operation(
-      &pending_record,
-      iree_hal_allocator_export_buffer(
-          allocator->base_allocator,
-          iree_hal_replay_recorder_buffer_base_or_self(buffer), requested_type,
-          requested_flags, out_external_buffer));
-}
-
 static bool iree_hal_replay_recorder_allocator_supports_virtual_memory(
     iree_hal_allocator_t* IREE_RESTRICT base_allocator) {
   iree_hal_replay_recorder_allocator_t* allocator =
@@ -853,7 +831,6 @@ static const iree_hal_allocator_vtable_t
         .deallocate_buffer =
             iree_hal_replay_recorder_allocator_deallocate_buffer,
         .import_buffer = iree_hal_replay_recorder_allocator_import_buffer,
-        .export_buffer = iree_hal_replay_recorder_allocator_export_buffer,
         .supports_virtual_memory =
             iree_hal_replay_recorder_allocator_supports_virtual_memory,
         .virtual_memory_query_granularity =

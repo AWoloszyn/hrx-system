@@ -189,6 +189,17 @@ static void iree_hal_subspan_buffer_destroy(iree_hal_buffer_t* base_buffer) {
   IREE_TRACE_ZONE_END(z0);
 }
 
+static iree_status_t iree_hal_subspan_buffer_export_range(
+    iree_hal_buffer_t* buffer, iree_device_size_t local_byte_offset,
+    iree_device_size_t local_byte_length,
+    iree_hal_external_buffer_type_t requested_type,
+    iree_hal_external_buffer_flags_t requested_flags,
+    iree_hal_external_buffer_t* out_external_buffer) {
+  return _VTABLE_DISPATCH(buffer->allocated_buffer, export_range)(
+      buffer->allocated_buffer, local_byte_offset, local_byte_length,
+      requested_type, requested_flags, out_external_buffer);
+}
+
 static iree_status_t iree_hal_subspan_buffer_map_range(
     iree_hal_buffer_t* buffer, iree_hal_mapping_mode_t mapping_mode,
     iree_hal_memory_access_t memory_access,
@@ -223,6 +234,7 @@ static iree_status_t iree_hal_subspan_buffer_flush_range(
 static const iree_hal_buffer_vtable_t iree_hal_subspan_buffer_vtable = {
     .recycle = iree_hal_buffer_recycle,
     .destroy = iree_hal_subspan_buffer_destroy,
+    .export_range = iree_hal_subspan_buffer_export_range,
     .map_range = iree_hal_subspan_buffer_map_range,
     .unmap_range = iree_hal_subspan_buffer_unmap_range,
     .invalidate_range = iree_hal_subspan_buffer_invalidate_range,
@@ -517,7 +529,8 @@ IREE_API_EXPORT iree_status_t iree_hal_buffer_subspan(
   IREE_RETURN_IF_ERROR(iree_hal_buffer_calculate_range(
       iree_hal_buffer_byte_offset(buffer), iree_hal_buffer_byte_length(buffer),
       byte_offset, byte_length, &byte_offset, &byte_length));
-  if (byte_offset == 0 && byte_length == iree_hal_buffer_byte_length(buffer)) {
+  if (byte_offset == iree_hal_buffer_byte_offset(buffer) &&
+      byte_length == iree_hal_buffer_byte_length(buffer)) {
     iree_hal_buffer_retain(buffer);
     *out_buffer = buffer;
     return iree_ok_status();
@@ -530,12 +543,32 @@ IREE_API_EXPORT iree_status_t iree_hal_buffer_subspan(
   iree_hal_buffer_t* allocated_buffer =
       iree_hal_buffer_allocated_buffer(buffer);
   if (allocated_buffer && allocated_buffer != buffer) {
-    return iree_hal_buffer_subspan(allocated_buffer, byte_offset, byte_length,
-                                   host_allocator, out_buffer);
+    // The range is already allocation-relative. Convert back to the parent
+    // view's coordinates before the recursive call applies its base offset.
+    return iree_hal_buffer_subspan(
+        allocated_buffer,
+        byte_offset - iree_hal_buffer_byte_offset(allocated_buffer),
+        byte_length, host_allocator, out_buffer);
   }
 
   return iree_hal_subspan_buffer_create(buffer, byte_offset, byte_length,
                                         host_allocator, out_buffer);
+}
+
+IREE_API_EXPORT iree_status_t iree_hal_buffer_export(
+    iree_hal_buffer_t* buffer, iree_hal_external_buffer_type_t requested_type,
+    iree_hal_external_buffer_flags_t requested_flags,
+    iree_hal_external_buffer_t* out_external_buffer) {
+  IREE_ASSERT_ARGUMENT(buffer);
+  IREE_ASSERT_ARGUMENT(out_external_buffer);
+  memset(out_external_buffer, 0, sizeof(*out_external_buffer));
+  IREE_TRACE_ZONE_BEGIN(z0);
+  iree_status_t status = _VTABLE_DISPATCH(buffer, export_range)(
+      buffer, iree_hal_buffer_byte_offset(buffer),
+      iree_hal_buffer_byte_length(buffer), requested_type, requested_flags,
+      out_external_buffer);
+  IREE_TRACE_ZONE_END(z0);
+  return status;
 }
 
 IREE_API_EXPORT iree_hal_buffer_t* iree_hal_buffer_allocated_buffer(
