@@ -371,6 +371,8 @@ enum {
 };
 LOOM_DEFINE_ATTR_ENCODING(loom_encoding_define_spec, LOOM_ENCODING_DEFINE_SPEC_ATTR_INDEX)
 LOOM_DEFINE_ATTR_DICT(loom_encoding_define_param_names, LOOM_ENCODING_DEFINE_PARAM_NAMES_ATTR_INDEX)
+#define loom_encoding_define_has_param_names(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_ENCODING_DEFINE_PARAM_NAMES_ATTR_INDEX]))
 iree_status_t loom_encoding_define_build(
     loom_builder_t* builder,
     uint16_t spec,

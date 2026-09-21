@@ -92,6 +92,8 @@ enum {
 };
 LOOM_DEFINE_ATTR_STRING(loom_pass_where_predicate, LOOM_PASS_WHERE_PREDICATE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_DICT(loom_pass_where_attrs, LOOM_PASS_WHERE_ATTRS_ATTR_INDEX)
+#define loom_pass_where_has_attrs(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_PASS_WHERE_ATTRS_ATTR_INDEX]))
 LOOM_DEFINE_REGION(loom_pass_where_body, 0)
 enum loom_pass_where_build_flag_bits_e {
   LOOM_PASS_WHERE_BUILD_FLAG_HAS_ATTRS = 1u << 0,
@@ -117,7 +119,11 @@ enum {
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pass_repeat_mode, LOOM_PASS_REPEAT_MODE_ATTR_INDEX, loom_pass_repeat_mode_t)
 LOOM_DEFINE_ATTR_I64(loom_pass_repeat_count, LOOM_PASS_REPEAT_COUNT_ATTR_INDEX)
+#define loom_pass_repeat_has_count(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_PASS_REPEAT_COUNT_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_pass_repeat_max_iterations, LOOM_PASS_REPEAT_MAX_ITERATIONS_ATTR_INDEX)
+#define loom_pass_repeat_has_max_iterations(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_PASS_REPEAT_MAX_ITERATIONS_ATTR_INDEX]))
 LOOM_DEFINE_REGION(loom_pass_repeat_body, 0)
 enum loom_pass_repeat_build_flag_bits_e {
   LOOM_PASS_REPEAT_BUILD_FLAG_HAS_COUNT = 1u << 0,
@@ -155,6 +161,8 @@ enum {
 };
 LOOM_DEFINE_ATTR_STRING(loom_pass_run_key, LOOM_PASS_RUN_KEY_ATTR_INDEX)
 LOOM_DEFINE_ATTR_DICT(loom_pass_run_options, LOOM_PASS_RUN_OPTIONS_ATTR_INDEX)
+#define loom_pass_run_has_options(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_PASS_RUN_OPTIONS_ATTR_INDEX]))
 enum loom_pass_run_build_flag_bits_e {
   LOOM_PASS_RUN_BUILD_FLAG_HAS_OPTIONS = 1u << 0,
 };

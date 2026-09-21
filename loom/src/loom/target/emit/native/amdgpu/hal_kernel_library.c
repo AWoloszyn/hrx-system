@@ -770,10 +770,8 @@ static iree_status_t loom_amdgpu_hal_kernel_library_collect_rodata_symbols(
         loom_amdgpu_hal_kernel_library_rodata_symbol_name(module, symbol);
     const iree_const_byte_span_t contents = loom_global_rodata_def_contents(op);
     uint64_t alignment = 0;
-    const loom_attribute_t alignment_attr =
-        loom_op_const_attrs(op)[LOOM_GLOBAL_RODATA_DEF_ALIGNMENT_ATTR_INDEX];
-    if (!loom_attr_is_absent(alignment_attr)) {
-      alignment = (uint64_t)loom_attr_as_i64(alignment_attr);
+    if (loom_global_rodata_def_has_alignment(op)) {
+      alignment = (uint64_t)loom_global_rodata_def_alignment(op);
     }
     data_symbols[data_symbol_count++] = (loom_amdgpu_hsaco_data_symbol_t){
         .name = name,

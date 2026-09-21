@@ -158,20 +158,48 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_def_callee, LOOM_LOW_FUNC_DEF_CALLEE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_def_target, LOOM_LOW_FUNC_DEF_TARGET_ATTR_INDEX)
+#define loom_low_func_def_has_target(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_TARGET_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_low_func_def_descriptor_set, LOOM_LOW_FUNC_DEF_DESCRIPTOR_SET_ATTR_INDEX)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_abi, LOOM_LOW_FUNC_DEF_ABI_ATTR_INDEX, loom_target_abi_kind_t)
+#define loom_low_func_def_has_abi(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_ABI_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_DICT(loom_low_func_def_abi_attrs, LOOM_LOW_FUNC_DEF_ABI_ATTRS_ATTR_INDEX)
+#define loom_low_func_def_has_abi_attrs(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_ABI_ATTRS_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_DICT(loom_low_func_def_abi_layout, LOOM_LOW_FUNC_DEF_ABI_LAYOUT_ATTR_INDEX)
+#define loom_low_func_def_has_abi_layout(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_ABI_LAYOUT_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_low_func_def_export_symbol, LOOM_LOW_FUNC_DEF_EXPORT_SYMBOL_ATTR_INDEX)
+#define loom_low_func_def_has_export_symbol(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_EXPORT_SYMBOL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_DICT(loom_low_func_def_export_attrs, LOOM_LOW_FUNC_DEF_EXPORT_ATTRS_ATTR_INDEX)
+#define loom_low_func_def_has_export_attrs(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_EXPORT_ATTRS_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_visibility, LOOM_LOW_FUNC_DEF_VISIBILITY_ATTR_INDEX, loom_low_visibility_t)
+#define loom_low_func_def_has_visibility(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_VISIBILITY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_cc, LOOM_LOW_FUNC_DEF_CC_ATTR_INDEX, loom_low_cc_t)
+#define loom_low_func_def_has_cc(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_CC_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_purity, LOOM_LOW_FUNC_DEF_PURITY_ATTR_INDEX, loom_low_purity_t)
+#define loom_low_func_def_has_purity(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_PURITY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_inline_policy, LOOM_LOW_FUNC_DEF_INLINE_POLICY_ATTR_INDEX, loom_inline_policy_t)
+#define loom_low_func_def_has_inline_policy(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_INLINE_POLICY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_allocation, LOOM_LOW_FUNC_DEF_ALLOCATION_ATTR_INDEX, loom_low_allocation_t)
+#define loom_low_func_def_has_allocation(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_ALLOCATION_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_schedule, LOOM_LOW_FUNC_DEF_SCHEDULE_ATTR_INDEX, loom_low_schedule_t)
+#define loom_low_func_def_has_schedule(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_SCHEDULE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_func_def_predicates, LOOM_LOW_FUNC_DEF_PREDICATES_ATTR_INDEX)
+#define loom_low_func_def_has_predicates(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_PREDICATES_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_retain, LOOM_LOW_FUNC_DEF_RETAIN_ATTR_INDEX, loom_low_retain_t)
+#define loom_low_func_def_has_retain(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_RETAIN_ATTR_INDEX]))
 LOOM_DEFINE_REGION(loom_low_func_def_body, 0)
 enum loom_low_func_def_build_flag_bits_e {
   LOOM_LOW_FUNC_DEF_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
@@ -250,23 +278,57 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_kernel_def_callee, LOOM_LOW_KERNEL_DEF_CALLEE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_kernel_def_target, LOOM_LOW_KERNEL_DEF_TARGET_ATTR_INDEX)
+#define loom_low_kernel_def_has_target(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_TARGET_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_low_kernel_def_descriptor_set, LOOM_LOW_KERNEL_DEF_DESCRIPTOR_SET_ATTR_INDEX)
 LOOM_DEFINE_ATTR_DICT(loom_low_kernel_def_abi_layout, LOOM_LOW_KERNEL_DEF_ABI_LAYOUT_ATTR_INDEX)
+#define loom_low_kernel_def_has_abi_layout(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_ABI_LAYOUT_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_low_kernel_def_export_symbol, LOOM_LOW_KERNEL_DEF_EXPORT_SYMBOL_ATTR_INDEX)
+#define loom_low_kernel_def_has_export_symbol(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_EXPORT_SYMBOL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_export_linkage, LOOM_LOW_KERNEL_DEF_EXPORT_LINKAGE_ATTR_INDEX, loom_target_linkage_t)
+#define loom_low_kernel_def_has_export_linkage(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_EXPORT_LINKAGE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_size_x, LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_X_ATTR_INDEX)
+#define loom_low_kernel_def_has_workgroup_size_x(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_X_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_size_y, LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_Y_ATTR_INDEX)
+#define loom_low_kernel_def_has_workgroup_size_y(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_Y_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_size_z, LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_Z_ATTR_INDEX)
+#define loom_low_kernel_def_has_workgroup_size_z(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_Z_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_count_x, LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_X_ATTR_INDEX)
+#define loom_low_kernel_def_has_workgroup_count_x(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_X_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_count_y, LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Y_ATTR_INDEX)
+#define loom_low_kernel_def_has_workgroup_count_y(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Y_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_count_z, LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Z_ATTR_INDEX)
+#define loom_low_kernel_def_has_workgroup_count_z(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Z_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_cluster_size_x, LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_X_ATTR_INDEX)
+#define loom_low_kernel_def_has_workgroup_cluster_size_x(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_X_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_cluster_size_y, LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Y_ATTR_INDEX)
+#define loom_low_kernel_def_has_workgroup_cluster_size_y(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Y_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_cluster_size_z, LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Z_ATTR_INDEX)
+#define loom_low_kernel_def_has_workgroup_cluster_size_z(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Z_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_allocation, LOOM_LOW_KERNEL_DEF_ALLOCATION_ATTR_INDEX, loom_low_allocation_t)
+#define loom_low_kernel_def_has_allocation(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_ALLOCATION_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_schedule, LOOM_LOW_KERNEL_DEF_SCHEDULE_ATTR_INDEX, loom_low_schedule_t)
+#define loom_low_kernel_def_has_schedule(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_SCHEDULE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_kernel_def_predicates, LOOM_LOW_KERNEL_DEF_PREDICATES_ATTR_INDEX)
+#define loom_low_kernel_def_has_predicates(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_PREDICATES_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_retain, LOOM_LOW_KERNEL_DEF_RETAIN_ATTR_INDEX, loom_low_retain_t)
+#define loom_low_kernel_def_has_retain(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_RETAIN_ATTR_INDEX]))
 LOOM_DEFINE_REGION(loom_low_kernel_def_body, 0)
 enum loom_low_kernel_def_build_flag_bits_e {
   LOOM_LOW_KERNEL_DEF_BUILD_FLAG_HAS_RETAIN = 1u << 0,
@@ -347,23 +409,57 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_decl_callee, LOOM_LOW_FUNC_DECL_CALLEE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_decl_target, LOOM_LOW_FUNC_DECL_TARGET_ATTR_INDEX)
+#define loom_low_func_decl_has_target(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_TARGET_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_descriptor_set, LOOM_LOW_FUNC_DECL_DESCRIPTOR_SET_ATTR_INDEX)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_abi, LOOM_LOW_FUNC_DECL_ABI_ATTR_INDEX, loom_target_abi_kind_t)
+#define loom_low_func_decl_has_abi(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_ABI_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_DICT(loom_low_func_decl_abi_attrs, LOOM_LOW_FUNC_DECL_ABI_ATTRS_ATTR_INDEX)
+#define loom_low_func_decl_has_abi_attrs(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_ABI_ATTRS_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_DICT(loom_low_func_decl_abi_layout, LOOM_LOW_FUNC_DECL_ABI_LAYOUT_ATTR_INDEX)
+#define loom_low_func_decl_has_abi_layout(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_ABI_LAYOUT_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_export_symbol, LOOM_LOW_FUNC_DECL_EXPORT_SYMBOL_ATTR_INDEX)
+#define loom_low_func_decl_has_export_symbol(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_EXPORT_SYMBOL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_DICT(loom_low_func_decl_export_attrs, LOOM_LOW_FUNC_DECL_EXPORT_ATTRS_ATTR_INDEX)
+#define loom_low_func_decl_has_export_attrs(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_EXPORT_ATTRS_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_visibility, LOOM_LOW_FUNC_DECL_VISIBILITY_ATTR_INDEX, loom_low_visibility_t)
+#define loom_low_func_decl_has_visibility(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_VISIBILITY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_cc, LOOM_LOW_FUNC_DECL_CC_ATTR_INDEX, loom_low_cc_t)
+#define loom_low_func_decl_has_cc(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_CC_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_purity, LOOM_LOW_FUNC_DECL_PURITY_ATTR_INDEX, loom_low_purity_t)
+#define loom_low_func_decl_has_purity(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_PURITY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_inline_policy, LOOM_LOW_FUNC_DECL_INLINE_POLICY_ATTR_INDEX, loom_inline_policy_t)
+#define loom_low_func_decl_has_inline_policy(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_INLINE_POLICY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_allocation, LOOM_LOW_FUNC_DECL_ALLOCATION_ATTR_INDEX, loom_low_allocation_t)
+#define loom_low_func_decl_has_allocation(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_ALLOCATION_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_schedule, LOOM_LOW_FUNC_DECL_SCHEDULE_ATTR_INDEX, loom_low_schedule_t)
+#define loom_low_func_decl_has_schedule(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_SCHEDULE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_func_decl_predicates, LOOM_LOW_FUNC_DECL_PREDICATES_ATTR_INDEX)
+#define loom_low_func_decl_has_predicates(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_PREDICATES_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_retain, LOOM_LOW_FUNC_DECL_RETAIN_ATTR_INDEX, loom_low_retain_t)
+#define loom_low_func_decl_has_retain(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_RETAIN_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_import_kind, LOOM_LOW_FUNC_DECL_IMPORT_KIND_ATTR_INDEX, loom_low_func_decl_import_kind_t)
+#define loom_low_func_decl_has_import_kind(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_IMPORT_KIND_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_code_symbol, LOOM_LOW_FUNC_DECL_CODE_SYMBOL_ATTR_INDEX)
+#define loom_low_func_decl_has_code_symbol(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_CODE_SYMBOL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_import_module, LOOM_LOW_FUNC_DECL_IMPORT_MODULE_ATTR_INDEX)
+#define loom_low_func_decl_has_import_module(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_IMPORT_MODULE_ATTR_INDEX]))
 enum loom_low_func_decl_build_flag_bits_e {
   LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
   LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 1,
@@ -442,7 +538,11 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_call_callee, LOOM_LOW_FUNC_CALL_CALLEE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_call_purity, LOOM_LOW_FUNC_CALL_PURITY_ATTR_INDEX, loom_low_purity_t)
+#define loom_low_func_call_has_purity(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_CALL_PURITY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_call_inline_policy, LOOM_LOW_FUNC_CALL_INLINE_POLICY_ATTR_INDEX, loom_inline_policy_t)
+#define loom_low_func_call_has_inline_policy(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_CALL_INLINE_POLICY_ATTR_INDEX]))
 enum loom_low_func_call_build_flag_bits_e {
   LOOM_LOW_FUNC_CALL_BUILD_FLAG_HAS_PURITY = 1u << 0,
   LOOM_LOW_FUNC_CALL_BUILD_FLAG_HAS_INLINE_POLICY = 1u << 1,
@@ -479,6 +579,8 @@ enum {
 LOOM_DEFINE_ATTR_SCOPED_ENUM(loom_low_op_descriptor, LOOM_LOW_OP_DESCRIPTOR_ATTR_INDEX)
 LOOM_DEFINE_INSTANCE_FLAGS(loom_low_op_memory_flags)
 LOOM_DEFINE_ATTR_DICT(loom_low_op_attrs, LOOM_LOW_OP_ATTRS_ATTR_INDEX)
+#define loom_low_op_has_attrs(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_OP_ATTRS_ATTR_INDEX]))
 loom_trait_flags_t loom_low_op_effective_traits(const loom_op_t* op);
 
 // LOOM_OP_LOW_CONST: Descriptor-backed constant or immediate materialization into a register.
@@ -491,6 +593,8 @@ enum {
 };
 LOOM_DEFINE_ATTR_SCOPED_ENUM(loom_low_const_descriptor, LOOM_LOW_CONST_DESCRIPTOR_ATTR_INDEX)
 LOOM_DEFINE_ATTR_DICT(loom_low_const_attrs, LOOM_LOW_CONST_ATTRS_ATTR_INDEX)
+#define loom_low_const_has_attrs(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_CONST_ATTRS_ATTR_INDEX]))
 iree_status_t loom_low_const_facts(
     loom_fact_context_t* context,
     const loom_module_t* module, const loom_op_t* op,
@@ -606,7 +710,11 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_invoke_callee, LOOM_LOW_INVOKE_CALLEE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_invoke_purity, LOOM_LOW_INVOKE_PURITY_ATTR_INDEX, loom_low_purity_t)
+#define loom_low_invoke_has_purity(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_INVOKE_PURITY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_invoke_inline_policy, LOOM_LOW_INVOKE_INLINE_POLICY_ATTR_INDEX, loom_inline_policy_t)
+#define loom_low_invoke_has_inline_policy(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_INVOKE_INLINE_POLICY_ATTR_INDEX]))
 enum loom_low_invoke_build_flag_bits_e {
   LOOM_LOW_INVOKE_BUILD_FLAG_HAS_PURITY = 1u << 0,
   LOOM_LOW_INVOKE_BUILD_FLAG_HAS_INLINE_POLICY = 1u << 1,
@@ -794,7 +902,11 @@ LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_resource_import_kind, LOOM_LOW_RESOURCE_IMP
 LOOM_DEFINE_ATTR_I64(loom_low_resource_index, LOOM_LOW_RESOURCE_INDEX_ATTR_INDEX)
 LOOM_DEFINE_ATTR_TYPE(loom_low_resource_source_type, LOOM_LOW_RESOURCE_SOURCE_TYPE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_I64(loom_low_resource_extent, LOOM_LOW_RESOURCE_EXTENT_ATTR_INDEX)
+#define loom_low_resource_has_extent(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_RESOURCE_EXTENT_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_low_resource_cache_swizzle_stride, LOOM_LOW_RESOURCE_CACHE_SWIZZLE_STRIDE_ATTR_INDEX)
+#define loom_low_resource_has_cache_swizzle_stride(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_RESOURCE_CACHE_SWIZZLE_STRIDE_ATTR_INDEX]))
 enum loom_low_resource_build_flag_bits_e {
   LOOM_LOW_RESOURCE_BUILD_FLAG_HAS_EXTENT_VALUE = 1u << 0,
   LOOM_LOW_RESOURCE_BUILD_FLAG_HAS_EXTENT = 1u << 1,
@@ -829,6 +941,8 @@ enum {
 LOOM_DEFINE_ATTR_STRING(loom_low_live_in_source, LOOM_LOW_LIVE_IN_SOURCE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_I64(loom_low_live_in_source_id, LOOM_LOW_LIVE_IN_SOURCE_ID_ATTR_INDEX)
 LOOM_DEFINE_ATTR_DICT(loom_low_live_in_attrs, LOOM_LOW_LIVE_IN_ATTRS_ATTR_INDEX)
+#define loom_low_live_in_has_attrs(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_LIVE_IN_ATTRS_ATTR_INDEX]))
 enum loom_low_live_in_build_flag_bits_e {
   LOOM_LOW_LIVE_IN_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };
@@ -913,6 +1027,8 @@ enum {
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_scf_for_signedness, LOOM_LOW_SCF_FOR_SIGNEDNESS_ATTR_INDEX, loom_low_scf_for_signedness_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_scf_for_unroll_policy, LOOM_LOW_SCF_FOR_UNROLL_POLICY_ATTR_INDEX, loom_low_scf_for_unroll_policy_t)
+#define loom_low_scf_for_has_unroll_policy(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_SCF_FOR_UNROLL_POLICY_ATTR_INDEX]))
 LOOM_DEFINE_REGION(loom_low_scf_for_body, 0)
 enum loom_low_scf_for_build_flag_bits_e {
   LOOM_LOW_SCF_FOR_BUILD_FLAG_HAS_UNROLL_FACTOR = 1u << 0,

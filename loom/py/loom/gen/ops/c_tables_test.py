@@ -3496,6 +3496,33 @@ def test_attribute_accessors_bind_to_uppercase_schema_indices() -> None:
         assert not re.search(r"\bloom_\w+_ATTR_INDEX\b", ops_h)
 
 
+def test_optional_attribute_presence_uses_stored_slots_without_function_bodies() -> None:
+    flags = EnumDef("Flags", [EnumCase("enabled", 1)])
+    fields = [
+        AttrDef("required", ATTR_TYPE_I64),
+        AttrDef("flags", ATTR_TYPE_FLAGS, optional=True, enum_def=flags),
+        AttrDef("optional", ATTR_TYPE_I64, optional=True),
+    ]
+    for attrs in (fields, list(reversed(fields))):
+        op = Op("test.presence", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
+        ops_h = generate_ops_h("test", 0, [op])
+        index = [attr.name for attr in attrs if attr.attr_type != ATTR_TYPE_FLAGS].index("optional")
+        assert f"LOOM_TEST_PRESENCE_OPTIONAL_ATTR_INDEX = {index}," in ops_h
+        assert "#define loom_test_presence_has_optional(op)" in ops_h
+        assert "(!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_PRESENCE_OPTIONAL_ATTR_INDEX]))" in ops_h
+        assert "loom_test_presence_has_required" not in ops_h
+        assert "loom_test_presence_has_flags" not in ops_h
+        assert "static inline bool loom_test_presence_has_optional" not in ops_h
+
+
+def test_optional_attribute_presence_rejects_accessor_name_collisions() -> None:
+    fields = [AttrDef("count", ATTR_TYPE_I64, optional=True), AttrDef("has_count", ATTR_TYPE_I64)]
+    for attrs in (fields, list(reversed(fields))):
+        op = Op("test.presence", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
+        with _raises_value_error("presence accessor 'loom_test_presence_has_count' conflicts with field 'has_count'"):
+            generate_ops_h("test", 0, [op])
+
+
 def test_scoped_enum_generates_domain_aware_format_metadata() -> None:
     op = Op(
         "test.packet",

@@ -3442,13 +3442,11 @@ iree_status_t loom_vector_geluf_facts(loom_fact_context_t* context,
       .scale = 0.0,
   };
   if (transfer.variant == LOOM_VECTOR_GELUF_VARIANT_LOGISTIC) {
-    loom_attribute_t scale_attr =
-        loom_op_attrs(op)[LOOM_VECTOR_GELUF_SCALE_ATTR_INDEX];
-    if (loom_attr_is_absent(scale_attr)) {
+    if (!loom_vector_geluf_has_scale(op)) {
       result_facts[0] = loom_value_facts_unknown();
       return iree_ok_status();
     }
-    transfer.scale = loom_attr_as_f64(scale_attr);
+    transfer.scale = loom_vector_geluf_scale(op);
   }
   return loom_vector_float_unary_data_math_summary_facts(
       context, loom_vector_result_element_type(module, op), operand_facts,

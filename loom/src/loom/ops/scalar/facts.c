@@ -347,13 +347,11 @@ iree_status_t loom_scalar_geluf_facts(loom_fact_context_t* context,
                                         &result_facts[0]);
       return iree_ok_status();
     case LOOM_SCALAR_GELUF_VARIANT_LOGISTIC: {
-      loom_attribute_t scale_attr =
-          loom_op_attrs(op)[LOOM_SCALAR_GELUF_SCALE_ATTR_INDEX];
-      if (loom_attr_is_absent(scale_attr)) {
+      if (!loom_scalar_geluf_has_scale(op)) {
         result_facts[0] = loom_value_facts_unknown();
         return iree_ok_status();
       }
-      const double scale = loom_attr_as_f64(scale_attr);
+      const double scale = loom_scalar_geluf_scale(op);
       double input = 0.0;
       if (!loom_value_facts_as_exact_float(scalar_type, operand_facts[0],
                                            &input)) {

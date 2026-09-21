@@ -275,17 +275,41 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_func_def_callee, LOOM_FUNC_DEF_CALLEE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_def_visibility, LOOM_FUNC_DEF_VISIBILITY_ATTR_INDEX, loom_func_visibility_t)
+#define loom_func_def_has_visibility(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DEF_VISIBILITY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_def_cc, LOOM_FUNC_DEF_CC_ATTR_INDEX, loom_func_cc_t)
+#define loom_func_def_has_cc(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DEF_CC_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_def_purity, LOOM_FUNC_DEF_PURITY_ATTR_INDEX, loom_func_purity_t)
+#define loom_func_def_has_purity(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DEF_PURITY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_def_temperature, LOOM_FUNC_DEF_TEMPERATURE_ATTR_INDEX, loom_func_temperature_t)
+#define loom_func_def_has_temperature(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DEF_TEMPERATURE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_def_inline_policy, LOOM_FUNC_DEF_INLINE_POLICY_ATTR_INDEX, loom_inline_policy_t)
+#define loom_func_def_has_inline_policy(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DEF_INLINE_POLICY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_func_def_predicates, LOOM_FUNC_DEF_PREDICATES_ATTR_INDEX)
+#define loom_func_def_has_predicates(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DEF_PREDICATES_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_SYMBOL(loom_func_def_target, LOOM_FUNC_DEF_TARGET_ATTR_INDEX)
+#define loom_func_def_has_target(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DEF_TARGET_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_def_abi, LOOM_FUNC_DEF_ABI_ATTR_INDEX, loom_target_abi_kind_t)
+#define loom_func_def_has_abi(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DEF_ABI_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_DICT(loom_func_def_abi_attrs, LOOM_FUNC_DEF_ABI_ATTRS_ATTR_INDEX)
+#define loom_func_def_has_abi_attrs(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DEF_ABI_ATTRS_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_func_def_export_symbol, LOOM_FUNC_DEF_EXPORT_SYMBOL_ATTR_INDEX)
+#define loom_func_def_has_export_symbol(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DEF_EXPORT_SYMBOL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_DICT(loom_func_def_export_attrs, LOOM_FUNC_DEF_EXPORT_ATTRS_ATTR_INDEX)
+#define loom_func_def_has_export_attrs(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DEF_EXPORT_ATTRS_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_def_retain, LOOM_FUNC_DEF_RETAIN_ATTR_INDEX, loom_func_retain_t)
+#define loom_func_def_has_retain(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DEF_RETAIN_ATTR_INDEX]))
 LOOM_DEFINE_REGION(loom_func_def_body, 0)
 enum loom_func_def_build_flag_bits_e {
   LOOM_FUNC_DEF_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
@@ -355,19 +379,47 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_func_decl_callee, LOOM_FUNC_DECL_CALLEE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_decl_visibility, LOOM_FUNC_DECL_VISIBILITY_ATTR_INDEX, loom_func_visibility_t)
+#define loom_func_decl_has_visibility(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DECL_VISIBILITY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_func_decl_import_module, LOOM_FUNC_DECL_IMPORT_MODULE_ATTR_INDEX)
+#define loom_func_decl_has_import_module(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DECL_IMPORT_MODULE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_func_decl_import_symbol, LOOM_FUNC_DECL_IMPORT_SYMBOL_ATTR_INDEX)
+#define loom_func_decl_has_import_symbol(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DECL_IMPORT_SYMBOL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_decl_cc, LOOM_FUNC_DECL_CC_ATTR_INDEX, loom_func_cc_t)
+#define loom_func_decl_has_cc(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DECL_CC_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_decl_purity, LOOM_FUNC_DECL_PURITY_ATTR_INDEX, loom_func_purity_t)
+#define loom_func_decl_has_purity(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DECL_PURITY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_decl_temperature, LOOM_FUNC_DECL_TEMPERATURE_ATTR_INDEX, loom_func_temperature_t)
+#define loom_func_decl_has_temperature(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DECL_TEMPERATURE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_decl_inline_policy, LOOM_FUNC_DECL_INLINE_POLICY_ATTR_INDEX, loom_inline_policy_t)
+#define loom_func_decl_has_inline_policy(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DECL_INLINE_POLICY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_SYMBOL(loom_func_decl_target, LOOM_FUNC_DECL_TARGET_ATTR_INDEX)
+#define loom_func_decl_has_target(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DECL_TARGET_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_decl_abi, LOOM_FUNC_DECL_ABI_ATTR_INDEX, loom_target_abi_kind_t)
+#define loom_func_decl_has_abi(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DECL_ABI_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_DICT(loom_func_decl_abi_attrs, LOOM_FUNC_DECL_ABI_ATTRS_ATTR_INDEX)
+#define loom_func_decl_has_abi_attrs(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DECL_ABI_ATTRS_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_func_decl_export_symbol, LOOM_FUNC_DECL_EXPORT_SYMBOL_ATTR_INDEX)
+#define loom_func_decl_has_export_symbol(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DECL_EXPORT_SYMBOL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_DICT(loom_func_decl_export_attrs, LOOM_FUNC_DECL_EXPORT_ATTRS_ATTR_INDEX)
+#define loom_func_decl_has_export_attrs(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DECL_EXPORT_ATTRS_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_func_decl_predicates, LOOM_FUNC_DECL_PREDICATES_ATTR_INDEX)
+#define loom_func_decl_has_predicates(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DECL_PREDICATES_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_decl_retain, LOOM_FUNC_DECL_RETAIN_ATTR_INDEX, loom_func_retain_t)
+#define loom_func_decl_has_retain(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_DECL_RETAIN_ATTR_INDEX]))
 enum loom_func_decl_build_flag_bits_e {
   LOOM_FUNC_DECL_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
   LOOM_FUNC_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 1,
@@ -429,8 +481,14 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_func_call_callee, LOOM_FUNC_CALL_CALLEE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_call_purity, LOOM_FUNC_CALL_PURITY_ATTR_INDEX, loom_func_purity_t)
+#define loom_func_call_has_purity(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_CALL_PURITY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_call_temperature, LOOM_FUNC_CALL_TEMPERATURE_ATTR_INDEX, loom_func_temperature_t)
+#define loom_func_call_has_temperature(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_CALL_TEMPERATURE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_func_call_inline_policy, LOOM_FUNC_CALL_INLINE_POLICY_ATTR_INDEX, loom_inline_policy_t)
+#define loom_func_call_has_inline_policy(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_FUNC_CALL_INLINE_POLICY_ATTR_INDEX]))
 enum loom_func_call_build_flag_bits_e {
   LOOM_FUNC_CALL_BUILD_FLAG_HAS_PURITY = 1u << 0,
   LOOM_FUNC_CALL_BUILD_FLAG_HAS_TEMPERATURE = 1u << 1,

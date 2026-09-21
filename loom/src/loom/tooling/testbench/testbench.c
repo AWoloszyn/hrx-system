@@ -394,10 +394,8 @@ static bool loom_testbench_plan_value_source(
     out_source->type = loom_testbench_value_type(module, out_source->value_id);
     out_source->iota.offset = loom_check_generate_iota_offset(op);
     out_source->iota.step = loom_check_generate_iota_step(op);
-    loom_attribute_t period_attr =
-        loom_op_attrs(op)[LOOM_CHECK_GENERATE_IOTA_PERIOD_ATTR_INDEX];
-    if (!loom_attr_is_absent(period_attr)) {
-      int64_t period = loom_attr_as_i64(period_attr);
+    if (loom_check_generate_iota_has_period(op)) {
+      int64_t period = loom_check_generate_iota_period(op);
       if (period <= 0 || (uint64_t)period > (uint64_t)IREE_HOST_SIZE_MAX) {
         return false;
       }
@@ -474,12 +472,9 @@ static bool loom_testbench_plan_file_write(
   out_file_write->path_id = loom_check_file_write_npy_path(op);
   out_file_write->path =
       loom_testbench_string_from_id(module, out_file_write->path_id);
-  loom_attribute_t mode_attr =
-      loom_op_const_attrs(op)[LOOM_CHECK_FILE_WRITE_NPY_MODE_ATTR_INDEX];
-  out_file_write->mode =
-      loom_attr_is_absent(mode_attr)
-          ? LOOM_CHECK_FILE_WRITE_NPY_MODE_ON_FAILURE
-          : (loom_check_file_write_npy_mode_t)loom_attr_as_enum(mode_attr);
+  out_file_write->mode = loom_check_file_write_npy_has_mode(op)
+                             ? loom_check_file_write_npy_mode(op)
+                             : LOOM_CHECK_FILE_WRITE_NPY_MODE_ON_FAILURE;
   return out_file_write->value_id < module->values.count &&
          out_file_write->path_id < module->strings.count &&
          out_file_write->mode > 0 &&

@@ -39,7 +39,11 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_global_constant_symbol, LOOM_GLOBAL_CONSTANT_SYMBOL_ATTR_INDEX)
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_global_constant_predicates, LOOM_GLOBAL_CONSTANT_PREDICATES_ATTR_INDEX)
+#define loom_global_constant_has_predicates(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_GLOBAL_CONSTANT_PREDICATES_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ANY(loom_global_constant_initializer, LOOM_GLOBAL_CONSTANT_INITIALIZER_ATTR_INDEX)
+#define loom_global_constant_has_initializer(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_GLOBAL_CONSTANT_INITIALIZER_ATTR_INDEX]))
 enum loom_global_constant_build_flag_bits_e {
   LOOM_GLOBAL_CONSTANT_BUILD_FLAG_HAS_PREDICATES = 1u << 0,
 };
@@ -69,7 +73,11 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_global_variable_symbol, LOOM_GLOBAL_VARIABLE_SYMBOL_ATTR_INDEX)
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_global_variable_predicates, LOOM_GLOBAL_VARIABLE_PREDICATES_ATTR_INDEX)
+#define loom_global_variable_has_predicates(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_GLOBAL_VARIABLE_PREDICATES_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ANY(loom_global_variable_initializer, LOOM_GLOBAL_VARIABLE_INITIALIZER_ATTR_INDEX)
+#define loom_global_variable_has_initializer(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_GLOBAL_VARIABLE_INITIALIZER_ATTR_INDEX]))
 enum loom_global_variable_build_flag_bits_e {
   LOOM_GLOBAL_VARIABLE_BUILD_FLAG_HAS_PREDICATES = 1u << 0,
 };
@@ -99,6 +107,8 @@ enum {
 LOOM_DEFINE_ATTR_SYMBOL(loom_global_rodata_def_symbol, LOOM_GLOBAL_RODATA_DEF_SYMBOL_ATTR_INDEX)
 LOOM_DEFINE_ATTR_BYTES(loom_global_rodata_def_contents, LOOM_GLOBAL_RODATA_DEF_CONTENTS_ATTR_INDEX)
 LOOM_DEFINE_ATTR_I64(loom_global_rodata_def_alignment, LOOM_GLOBAL_RODATA_DEF_ALIGNMENT_ATTR_INDEX)
+#define loom_global_rodata_def_has_alignment(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_GLOBAL_RODATA_DEF_ALIGNMENT_ATTR_INDEX]))
 enum loom_global_rodata_def_build_flag_bits_e {
   LOOM_GLOBAL_RODATA_DEF_BUILD_FLAG_HAS_ALIGNMENT = 1u << 0,
 };

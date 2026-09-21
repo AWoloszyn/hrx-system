@@ -439,11 +439,8 @@ static iree_status_t loom_pass_verify_repeat_bounds(const loom_op_t* op) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "pass.repeat has invalid mode %u", (unsigned)mode);
   }
-  const loom_attribute_t* attrs = loom_op_const_attrs(op);
-  bool has_count =
-      !loom_attr_is_absent(attrs[LOOM_PASS_REPEAT_COUNT_ATTR_INDEX]);
-  bool has_max_iterations =
-      !loom_attr_is_absent(attrs[LOOM_PASS_REPEAT_MAX_ITERATIONS_ATTR_INDEX]);
+  bool has_count = loom_pass_repeat_has_count(op);
+  bool has_max_iterations = loom_pass_repeat_has_max_iterations(op);
   if (mode == LOOM_PASS_REPEAT_MODE_FIXED) {
     if (!has_count) {
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,

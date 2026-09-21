@@ -942,8 +942,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_make_layout_u32_array_attr(
 
 bool loom_amdgpu_hal_kernel_abi_has_layout_attr(const loom_op_t* function_op) {
   return loom_low_kernel_def_isa(function_op) &&
-         !loom_attr_is_absent(loom_op_attrs(
-             function_op)[LOOM_LOW_KERNEL_DEF_ABI_LAYOUT_ATTR_INDEX]);
+         loom_low_kernel_def_has_abi_layout(function_op);
 }
 
 iree_status_t loom_amdgpu_hal_kernel_abi_make_layout_attr(

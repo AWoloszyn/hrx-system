@@ -57,6 +57,20 @@ loom_generated_cc_library(
 
 loom_cc_test(
   NAME
+    attribute_accessors_test
+  SRCS
+    "attribute_accessors_test.cc"
+  DEPS
+    ::test
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+    loom::ops::op_defs
+)
+
+loom_cc_test(
+  NAME
     ops_test
   SRCS
     "ops_test.cc"

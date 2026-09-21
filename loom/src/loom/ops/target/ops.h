@@ -95,35 +95,95 @@ enum {
 LOOM_DEFINE_ATTR_SYMBOL(loom_target_generic_symbol, LOOM_TARGET_GENERIC_SYMBOL_ATTR_INDEX)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_target_generic_kind, LOOM_TARGET_GENERIC_KIND_ATTR_INDEX, loom_target_generic_kind_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_target_generic_codegen_format, LOOM_TARGET_GENERIC_CODEGEN_FORMAT_ATTR_INDEX, loom_target_codegen_format_t)
+#define loom_target_generic_has_codegen_format(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_CODEGEN_FORMAT_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_target_generic_artifact_format, LOOM_TARGET_GENERIC_ARTIFACT_FORMAT_ATTR_INDEX, loom_target_artifact_format_t)
+#define loom_target_generic_has_artifact_format(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_ARTIFACT_FORMAT_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_default_pointer_bitwidth, LOOM_TARGET_GENERIC_DEFAULT_POINTER_BITWIDTH_ATTR_INDEX)
+#define loom_target_generic_has_default_pointer_bitwidth(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_DEFAULT_POINTER_BITWIDTH_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_index_bitwidth, LOOM_TARGET_GENERIC_INDEX_BITWIDTH_ATTR_INDEX)
+#define loom_target_generic_has_index_bitwidth(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_INDEX_BITWIDTH_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_offset_bitwidth, LOOM_TARGET_GENERIC_OFFSET_BITWIDTH_ATTR_INDEX)
+#define loom_target_generic_has_offset_bitwidth(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_OFFSET_BITWIDTH_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_max_workgroup_size_x, LOOM_TARGET_GENERIC_MAX_WORKGROUP_SIZE_X_ATTR_INDEX)
+#define loom_target_generic_has_max_workgroup_size_x(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MAX_WORKGROUP_SIZE_X_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_max_workgroup_size_y, LOOM_TARGET_GENERIC_MAX_WORKGROUP_SIZE_Y_ATTR_INDEX)
+#define loom_target_generic_has_max_workgroup_size_y(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MAX_WORKGROUP_SIZE_Y_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_max_workgroup_size_z, LOOM_TARGET_GENERIC_MAX_WORKGROUP_SIZE_Z_ATTR_INDEX)
+#define loom_target_generic_has_max_workgroup_size_z(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MAX_WORKGROUP_SIZE_Z_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_max_flat_workgroup_size, LOOM_TARGET_GENERIC_MAX_FLAT_WORKGROUP_SIZE_ATTR_INDEX)
+#define loom_target_generic_has_max_flat_workgroup_size(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MAX_FLAT_WORKGROUP_SIZE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_max_workgroup_storage_bytes, LOOM_TARGET_GENERIC_MAX_WORKGROUP_STORAGE_BYTES_ATTR_INDEX)
+#define loom_target_generic_has_max_workgroup_storage_bytes(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MAX_WORKGROUP_STORAGE_BYTES_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_subgroup_size, LOOM_TARGET_GENERIC_SUBGROUP_SIZE_ATTR_INDEX)
+#define loom_target_generic_has_subgroup_size(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_SUBGROUP_SIZE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_max_grid_size_x, LOOM_TARGET_GENERIC_MAX_GRID_SIZE_X_ATTR_INDEX)
+#define loom_target_generic_has_max_grid_size_x(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MAX_GRID_SIZE_X_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_max_grid_size_y, LOOM_TARGET_GENERIC_MAX_GRID_SIZE_Y_ATTR_INDEX)
+#define loom_target_generic_has_max_grid_size_y(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MAX_GRID_SIZE_Y_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_max_grid_size_z, LOOM_TARGET_GENERIC_MAX_GRID_SIZE_Z_ATTR_INDEX)
+#define loom_target_generic_has_max_grid_size_z(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MAX_GRID_SIZE_Z_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_max_flat_grid_size, LOOM_TARGET_GENERIC_MAX_FLAT_GRID_SIZE_ATTR_INDEX)
+#define loom_target_generic_has_max_flat_grid_size(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MAX_FLAT_GRID_SIZE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_max_workgroup_count_x, LOOM_TARGET_GENERIC_MAX_WORKGROUP_COUNT_X_ATTR_INDEX)
+#define loom_target_generic_has_max_workgroup_count_x(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MAX_WORKGROUP_COUNT_X_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_max_workgroup_count_y, LOOM_TARGET_GENERIC_MAX_WORKGROUP_COUNT_Y_ATTR_INDEX)
+#define loom_target_generic_has_max_workgroup_count_y(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MAX_WORKGROUP_COUNT_Y_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_max_workgroup_count_z, LOOM_TARGET_GENERIC_MAX_WORKGROUP_COUNT_Z_ATTR_INDEX)
+#define loom_target_generic_has_max_workgroup_count_z(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MAX_WORKGROUP_COUNT_Z_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_memory_space_generic, LOOM_TARGET_GENERIC_MEMORY_SPACE_GENERIC_ATTR_INDEX)
+#define loom_target_generic_has_memory_space_generic(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MEMORY_SPACE_GENERIC_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_memory_space_global, LOOM_TARGET_GENERIC_MEMORY_SPACE_GLOBAL_ATTR_INDEX)
+#define loom_target_generic_has_memory_space_global(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MEMORY_SPACE_GLOBAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_memory_space_workgroup, LOOM_TARGET_GENERIC_MEMORY_SPACE_WORKGROUP_ATTR_INDEX)
+#define loom_target_generic_has_memory_space_workgroup(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MEMORY_SPACE_WORKGROUP_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_memory_space_constant, LOOM_TARGET_GENERIC_MEMORY_SPACE_CONSTANT_ATTR_INDEX)
+#define loom_target_generic_has_memory_space_constant(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MEMORY_SPACE_CONSTANT_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_memory_space_private, LOOM_TARGET_GENERIC_MEMORY_SPACE_PRIVATE_ATTR_INDEX)
+#define loom_target_generic_has_memory_space_private(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MEMORY_SPACE_PRIVATE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_memory_space_host, LOOM_TARGET_GENERIC_MEMORY_SPACE_HOST_ATTR_INDEX)
+#define loom_target_generic_has_memory_space_host(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MEMORY_SPACE_HOST_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_memory_space_descriptor, LOOM_TARGET_GENERIC_MEMORY_SPACE_DESCRIPTOR_ATTR_INDEX)
+#define loom_target_generic_has_memory_space_descriptor(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_MEMORY_SPACE_DESCRIPTOR_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_target_generic_abi, LOOM_TARGET_GENERIC_ABI_ATTR_INDEX, loom_target_abi_kind_t)
+#define loom_target_generic_has_abi(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_ABI_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_target_generic_export_symbol, LOOM_TARGET_GENERIC_EXPORT_SYMBOL_ATTR_INDEX)
+#define loom_target_generic_has_export_symbol(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_EXPORT_SYMBOL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_target_generic_linkage, LOOM_TARGET_GENERIC_LINKAGE_ATTR_INDEX, loom_target_linkage_t)
+#define loom_target_generic_has_linkage(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_LINKAGE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_target_generic_contract_set_key, LOOM_TARGET_GENERIC_CONTRACT_SET_KEY_ATTR_INDEX)
+#define loom_target_generic_has_contract_set_key(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_CONTRACT_SET_KEY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_target_generic_contract_feature_bits, LOOM_TARGET_GENERIC_CONTRACT_FEATURE_BITS_ATTR_INDEX)
+#define loom_target_generic_has_contract_feature_bits(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TARGET_GENERIC_CONTRACT_FEATURE_BITS_ATTR_INDEX]))
 enum loom_target_generic_build_flag_bits_e {
   LOOM_TARGET_GENERIC_BUILD_FLAG_HAS_CODEGEN_FORMAT = 1u << 0,
   LOOM_TARGET_GENERIC_BUILD_FLAG_HAS_ARTIFACT_FORMAT = 1u << 1,

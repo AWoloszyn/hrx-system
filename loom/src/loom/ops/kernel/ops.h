@@ -157,10 +157,20 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_def_callee, LOOM_KERNEL_DEF_CALLEE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_def_target, LOOM_KERNEL_DEF_TARGET_ATTR_INDEX)
+#define loom_kernel_def_has_target(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_DEF_TARGET_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_kernel_def_export_symbol, LOOM_KERNEL_DEF_EXPORT_SYMBOL_ATTR_INDEX)
+#define loom_kernel_def_has_export_symbol(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_DEF_EXPORT_SYMBOL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_def_export_linkage, LOOM_KERNEL_DEF_EXPORT_LINKAGE_ATTR_INDEX, loom_target_linkage_t)
+#define loom_kernel_def_has_export_linkage(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_DEF_EXPORT_LINKAGE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_kernel_def_predicates, LOOM_KERNEL_DEF_PREDICATES_ATTR_INDEX)
+#define loom_kernel_def_has_predicates(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_DEF_PREDICATES_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_def_retain, LOOM_KERNEL_DEF_RETAIN_ATTR_INDEX, loom_kernel_retain_t)
+#define loom_kernel_def_has_retain(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_DEF_RETAIN_ATTR_INDEX]))
 LOOM_DEFINE_REGION(loom_kernel_def_config, 0)
 LOOM_DEFINE_REGION(loom_kernel_def_body, 1)
 enum loom_kernel_def_build_flag_bits_e {
@@ -783,7 +793,11 @@ enum {
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_reduce_kind, LOOM_KERNEL_SUBGROUP_REDUCE_KIND_ATTR_INDEX, loom_combining_kind_t)
 LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_reduce_cluster_size, LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_SIZE_ATTR_INDEX)
+#define loom_kernel_subgroup_reduce_has_cluster_size(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_SIZE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_reduce_cluster_stride, LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_STRIDE_ATTR_INDEX)
+#define loom_kernel_subgroup_reduce_has_cluster_stride(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_STRIDE_ATTR_INDEX]))
 enum loom_kernel_subgroup_reduce_build_flag_bits_e {
   LOOM_KERNEL_SUBGROUP_REDUCE_BUILD_FLAG_HAS_CLUSTER_SIZE = 1u << 0,
   LOOM_KERNEL_SUBGROUP_REDUCE_BUILD_FLAG_HAS_CLUSTER_STRIDE = 1u << 1,
@@ -822,7 +836,11 @@ enum {
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_kind, LOOM_KERNEL_SUBGROUP_SCAN_KIND_ATTR_INDEX, loom_combining_kind_t)
 LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_scan_cluster_size, LOOM_KERNEL_SUBGROUP_SCAN_CLUSTER_SIZE_ATTR_INDEX)
+#define loom_kernel_subgroup_scan_has_cluster_size(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_SUBGROUP_SCAN_CLUSTER_SIZE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_scan_cluster_stride, LOOM_KERNEL_SUBGROUP_SCAN_CLUSTER_STRIDE_ATTR_INDEX)
+#define loom_kernel_subgroup_scan_has_cluster_stride(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_SUBGROUP_SCAN_CLUSTER_STRIDE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_mode, LOOM_KERNEL_SUBGROUP_SCAN_MODE_ATTR_INDEX, loom_kernel_subgroup_scan_mode_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_direction, LOOM_KERNEL_SUBGROUP_SCAN_DIRECTION_ATTR_INDEX, loom_kernel_subgroup_scan_direction_t)
 enum loom_kernel_subgroup_scan_build_flag_bits_e {
@@ -1080,6 +1098,8 @@ enum {
   LOOM_KERNEL_ASSERT_MESSAGE_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_STRING(loom_kernel_assert_message, LOOM_KERNEL_ASSERT_MESSAGE_ATTR_INDEX)
+#define loom_kernel_assert_has_message(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_ASSERT_MESSAGE_ATTR_INDEX]))
 enum loom_kernel_assert_build_flag_bits_e {
   LOOM_KERNEL_ASSERT_BUILD_FLAG_HAS_MESSAGE = 1u << 0,
 };
@@ -1207,10 +1227,20 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_decl_callee, LOOM_KERNEL_DECL_CALLEE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_decl_target, LOOM_KERNEL_DECL_TARGET_ATTR_INDEX)
+#define loom_kernel_decl_has_target(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_DECL_TARGET_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_STRING(loom_kernel_decl_export_symbol, LOOM_KERNEL_DECL_EXPORT_SYMBOL_ATTR_INDEX)
+#define loom_kernel_decl_has_export_symbol(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_DECL_EXPORT_SYMBOL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_decl_export_linkage, LOOM_KERNEL_DECL_EXPORT_LINKAGE_ATTR_INDEX, loom_target_linkage_t)
+#define loom_kernel_decl_has_export_linkage(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_DECL_EXPORT_LINKAGE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_kernel_decl_predicates, LOOM_KERNEL_DECL_PREDICATES_ATTR_INDEX)
+#define loom_kernel_decl_has_predicates(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_DECL_PREDICATES_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_decl_retain, LOOM_KERNEL_DECL_RETAIN_ATTR_INDEX, loom_kernel_retain_t)
+#define loom_kernel_decl_has_retain(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_DECL_RETAIN_ATTR_INDEX]))
 enum loom_kernel_decl_build_flag_bits_e {
   LOOM_KERNEL_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 0,
   LOOM_KERNEL_DECL_BUILD_FLAG_HAS_TARGET = 1u << 1,
@@ -1247,7 +1277,11 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_entry_decl_callee, LOOM_KERNEL_ENTRY_DECL_CALLEE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_entry_decl_target, LOOM_KERNEL_ENTRY_DECL_TARGET_ATTR_INDEX)
+#define loom_kernel_entry_decl_has_target(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_ENTRY_DECL_TARGET_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_entry_decl_retain, LOOM_KERNEL_ENTRY_DECL_RETAIN_ATTR_INDEX, loom_kernel_retain_t)
+#define loom_kernel_entry_decl_has_retain(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_KERNEL_ENTRY_DECL_RETAIN_ATTR_INDEX]))
 enum loom_kernel_entry_decl_build_flag_bits_e {
   LOOM_KERNEL_ENTRY_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 0,
   LOOM_KERNEL_ENTRY_DECL_BUILD_FLAG_HAS_TARGET = 1u << 1,

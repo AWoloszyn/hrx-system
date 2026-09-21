@@ -195,15 +195,12 @@ static bool loom_low_optional_attr_is_present(const loom_op_t* op,
 static bool loom_low_function_explicit_abi(const loom_op_t* op,
                                            loom_target_abi_kind_t* out_abi,
                                            uint16_t* out_abi_attr_index) {
-  if (loom_low_func_def_isa(op) &&
-      loom_low_optional_attr_is_present(op, LOOM_LOW_FUNC_DEF_ABI_ATTR_INDEX)) {
+  if (loom_low_func_def_isa(op) && loom_low_func_def_has_abi(op)) {
     *out_abi = loom_low_func_def_abi(op);
     *out_abi_attr_index = LOOM_LOW_FUNC_DEF_ABI_ATTR_INDEX;
     return true;
   }
-  if (loom_low_func_decl_isa(op) &&
-      loom_low_optional_attr_is_present(op,
-                                        LOOM_LOW_FUNC_DECL_ABI_ATTR_INDEX)) {
+  if (loom_low_func_decl_isa(op) && loom_low_func_decl_has_abi(op)) {
     *out_abi = loom_low_func_decl_abi(op);
     *out_abi_attr_index = LOOM_LOW_FUNC_DECL_ABI_ATTR_INDEX;
     return true;
@@ -339,12 +336,12 @@ static iree_status_t loom_low_verify_kernel_contract(
       IREE_SV("workgroup_cluster_size_z"),
       IREE_SV("present when another cluster dimension is present"), emitter));
 
-  const bool has_cluster_size_x = loom_low_optional_attr_is_present(
-      op, LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_X_ATTR_INDEX);
-  const bool has_cluster_size_y = loom_low_optional_attr_is_present(
-      op, LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Y_ATTR_INDEX);
-  const bool has_cluster_size_z = loom_low_optional_attr_is_present(
-      op, LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Z_ATTR_INDEX);
+  const bool has_cluster_size_x =
+      loom_low_kernel_def_has_workgroup_cluster_size_x(op);
+  const bool has_cluster_size_y =
+      loom_low_kernel_def_has_workgroup_cluster_size_y(op);
+  const bool has_cluster_size_z =
+      loom_low_kernel_def_has_workgroup_cluster_size_z(op);
   if (!has_cluster_size_x && !has_cluster_size_y && !has_cluster_size_z) {
     return iree_ok_status();
   }
@@ -383,12 +380,12 @@ static iree_status_t loom_low_verify_kernel_contract(
         emitter);
   }
 
-  const bool has_workgroup_count_x = loom_low_optional_attr_is_present(
-      op, LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_X_ATTR_INDEX);
-  const bool has_workgroup_count_y = loom_low_optional_attr_is_present(
-      op, LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Y_ATTR_INDEX);
-  const bool has_workgroup_count_z = loom_low_optional_attr_is_present(
-      op, LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Z_ATTR_INDEX);
+  const bool has_workgroup_count_x =
+      loom_low_kernel_def_has_workgroup_count_x(op);
+  const bool has_workgroup_count_y =
+      loom_low_kernel_def_has_workgroup_count_y(op);
+  const bool has_workgroup_count_z =
+      loom_low_kernel_def_has_workgroup_count_z(op);
   if (!has_workgroup_count_x || !has_workgroup_count_y ||
       !has_workgroup_count_z) {
     return iree_ok_status();
@@ -475,12 +472,9 @@ static iree_status_t loom_low_verify_kernel_exactness_modes(
 static iree_status_t loom_low_verify_decl_code_import(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter) {
-  const bool import_kind_present = loom_low_optional_attr_is_present(
-      op, LOOM_LOW_FUNC_DECL_IMPORT_KIND_ATTR_INDEX);
-  const bool code_symbol_present = loom_low_optional_attr_is_present(
-      op, LOOM_LOW_FUNC_DECL_CODE_SYMBOL_ATTR_INDEX);
-  if (loom_low_optional_attr_is_present(
-          op, LOOM_LOW_FUNC_DECL_IMPORT_MODULE_ATTR_INDEX)) {
+  const bool import_kind_present = loom_low_func_decl_has_import_kind(op);
+  const bool code_symbol_present = loom_low_func_decl_has_code_symbol(op);
+  if (loom_low_func_decl_has_import_module(op)) {
     const iree_string_view_t import_module =
         loom_low_string_or_empty(module, loom_low_func_decl_import_module(op));
     if (iree_string_view_is_empty(import_module)) {
@@ -1156,25 +1150,21 @@ static iree_status_t loom_low_verify_resource_op(
         emitter);
   }
 
-  loom_attribute_t extent =
-      loom_op_attrs(op)[LOOM_LOW_RESOURCE_EXTENT_ATTR_INDEX];
-  if (!loom_attr_is_absent(extent) && loom_low_resource_extent(op) < 0) {
+  const bool has_extent = loom_low_resource_has_extent(op);
+  if (has_extent && loom_low_resource_extent(op) < 0) {
     return loom_low_emit_attr_value_error(
         op, LOOM_LOW_RESOURCE_EXTENT_ATTR_INDEX, IREE_SV("extent"),
         loom_low_resource_extent(op), IREE_SV(">= 0"), emitter);
   }
 
-  if (!loom_attr_is_absent(extent) &&
-      loom_low_resource_extent_value_is_present(op)) {
+  if (has_extent && loom_low_resource_extent_value_is_present(op)) {
     return loom_low_emit_attr_value_error(
         op, LOOM_LOW_RESOURCE_EXTENT_ATTR_INDEX, IREE_SV("extent"),
         loom_low_resource_extent(op),
         IREE_SV("absent when extent operand is present"), emitter);
   }
 
-  loom_attribute_t cache_swizzle_stride =
-      loom_op_attrs(op)[LOOM_LOW_RESOURCE_CACHE_SWIZZLE_STRIDE_ATTR_INDEX];
-  if (!loom_attr_is_absent(cache_swizzle_stride)) {
+  if (loom_low_resource_has_cache_swizzle_stride(op)) {
     const int64_t stride = loom_low_resource_cache_swizzle_stride(op);
     if (stride < 0 || stride > 0x3FFF) {
       return loom_low_emit_attr_value_error(
@@ -1454,8 +1444,7 @@ iree_status_t loom_low_scf_for_verify(const loom_module_t* module,
       module, op, IREE_SV("low executable"), emitter, NULL));
 
   const bool has_unroll_factor = loom_low_scf_for_unroll_factor_is_present(op);
-  const bool has_unroll_policy = loom_low_optional_attr_is_present(
-      op, LOOM_LOW_SCF_FOR_UNROLL_POLICY_ATTR_INDEX);
+  const bool has_unroll_policy = loom_low_scf_for_has_unroll_policy(op);
   if (has_unroll_factor && has_unroll_policy) {
     return loom_low_emit_attr_value_error(
         op, LOOM_LOW_SCF_FOR_UNROLL_POLICY_ATTR_INDEX, IREE_SV("unroll"), 2,

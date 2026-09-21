@@ -257,10 +257,8 @@ static bool loom_loop_fusion_read_for_info(loom_op_t* op,
   // consumers must materialize them before fusion changes either.
   if (loom_scf_for_pipeline_depth_is_present(op) ||
       loom_scf_for_unroll_factor_is_present(op) ||
-      !loom_attr_is_absent(
-          loom_op_const_attrs(op)[LOOM_SCF_FOR_UNROLL_POLICY_ATTR_INDEX]) ||
-      !loom_attr_is_absent(
-          loom_op_const_attrs(op)[LOOM_SCF_FOR_UNROLL_SCHEDULE_ATTR_INDEX])) {
+      loom_scf_for_has_unroll_policy(op) ||
+      loom_scf_for_has_unroll_schedule(op)) {
     return false;
   }
 

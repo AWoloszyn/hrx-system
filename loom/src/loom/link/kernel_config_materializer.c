@@ -628,9 +628,8 @@ static iree_status_t loom_link_kernel_config_build_ir_declaration(
   IREE_RETURN_IF_ERROR(
       loom_ir_remap_location_id(&remap, source_op->location, &location));
 
-  const loom_attribute_t* source_attrs = loom_op_const_attrs(source_op);
   loom_kernel_decl_build_flags_t build_flags = 0;
-  if (!loom_attr_is_absent(source_attrs[LOOM_KERNEL_DEF_RETAIN_ATTR_INDEX])) {
+  if (loom_kernel_def_has_retain(source_op)) {
     build_flags |= LOOM_KERNEL_DECL_BUILD_FLAG_HAS_RETAIN;
   }
   if (loom_symbol_ref_is_valid(target)) {
@@ -639,8 +638,7 @@ static iree_status_t loom_link_kernel_config_build_ir_declaration(
   if (export_symbol != LOOM_STRING_ID_INVALID) {
     build_flags |= LOOM_KERNEL_DECL_BUILD_FLAG_HAS_EXPORT_SYMBOL;
   }
-  if (!loom_attr_is_absent(
-          source_attrs[LOOM_KERNEL_DEF_EXPORT_LINKAGE_ATTR_INDEX])) {
+  if (loom_kernel_def_has_export_linkage(source_op)) {
     build_flags |= LOOM_KERNEL_DECL_BUILD_FLAG_HAS_EXPORT_LINKAGE;
   }
   const loom_symbol_ref_t target_callee = {

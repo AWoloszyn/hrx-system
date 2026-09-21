@@ -760,8 +760,14 @@ enum {
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_load_role, LOOM_VECTOR_FRAGMENT_LOAD_ROLE_ATTR_INDEX, loom_vector_role_t)
 LOOM_DEFINE_ATTR_DICT(loom_vector_fragment_load_auxiliary_names, LOOM_VECTOR_FRAGMENT_LOAD_AUXILIARY_NAMES_ATTR_INDEX)
+#define loom_vector_fragment_load_has_auxiliary_names(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_FRAGMENT_LOAD_AUXILIARY_NAMES_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_load_cache_scope, LOOM_VECTOR_FRAGMENT_LOAD_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_fragment_load_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_FRAGMENT_LOAD_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_load_cache_temporal, LOOM_VECTOR_FRAGMENT_LOAD_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_fragment_load_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_FRAGMENT_LOAD_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_fragment_load_static_indices, LOOM_VECTOR_FRAGMENT_LOAD_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_fragment_load_build_flag_bits_e {
   LOOM_VECTOR_FRAGMENT_LOAD_BUILD_FLAG_HAS_BLOCKS = 1u << 0,
@@ -814,7 +820,11 @@ enum {
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_store_role, LOOM_VECTOR_FRAGMENT_STORE_ROLE_ATTR_INDEX, loom_vector_role_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_store_cache_scope, LOOM_VECTOR_FRAGMENT_STORE_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_fragment_store_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_FRAGMENT_STORE_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_store_cache_temporal, LOOM_VECTOR_FRAGMENT_STORE_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_fragment_store_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_FRAGMENT_STORE_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_fragment_store_static_indices, LOOM_VECTOR_FRAGMENT_STORE_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_fragment_store_build_flag_bits_e {
   LOOM_VECTOR_FRAGMENT_STORE_BUILD_FLAG_HAS_BLOCKS = 1u << 0,
@@ -856,7 +866,11 @@ enum {
 };
 LOOM_DEFINE_INSTANCE_FLAGS(loom_vector_load_memory_flags)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_load_cache_scope, LOOM_VECTOR_LOAD_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_load_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_LOAD_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_load_cache_temporal, LOOM_VECTOR_LOAD_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_load_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_LOAD_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_load_static_indices, LOOM_VECTOR_LOAD_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_load_build_flag_bits_e {
   LOOM_VECTOR_LOAD_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -900,7 +914,11 @@ enum {
 };
 LOOM_DEFINE_INSTANCE_FLAGS(loom_vector_store_memory_flags)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_store_cache_scope, LOOM_VECTOR_STORE_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_store_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_STORE_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_store_cache_temporal, LOOM_VECTOR_STORE_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_store_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_STORE_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_store_static_indices, LOOM_VECTOR_STORE_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_store_build_flag_bits_e {
   LOOM_VECTOR_STORE_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -940,7 +958,11 @@ enum {
   LOOM_VECTOR_LOAD_MASK_STATIC_INDICES_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_load_mask_cache_scope, LOOM_VECTOR_LOAD_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_load_mask_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_LOAD_MASK_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_load_mask_cache_temporal, LOOM_VECTOR_LOAD_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_load_mask_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_LOAD_MASK_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_load_mask_static_indices, LOOM_VECTOR_LOAD_MASK_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_load_mask_build_flag_bits_e {
   LOOM_VECTOR_LOAD_MASK_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -980,7 +1002,11 @@ enum {
   LOOM_VECTOR_STORE_MASK_STATIC_INDICES_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_store_mask_cache_scope, LOOM_VECTOR_STORE_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_store_mask_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_STORE_MASK_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_store_mask_cache_temporal, LOOM_VECTOR_STORE_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_store_mask_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_STORE_MASK_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_store_mask_static_indices, LOOM_VECTOR_STORE_MASK_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_store_mask_build_flag_bits_e {
   LOOM_VECTOR_STORE_MASK_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -1019,7 +1045,11 @@ enum {
   LOOM_VECTOR_LOAD_EXPAND_STATIC_INDICES_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_load_expand_cache_scope, LOOM_VECTOR_LOAD_EXPAND_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_load_expand_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_LOAD_EXPAND_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_load_expand_cache_temporal, LOOM_VECTOR_LOAD_EXPAND_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_load_expand_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_LOAD_EXPAND_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_load_expand_static_indices, LOOM_VECTOR_LOAD_EXPAND_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_load_expand_build_flag_bits_e {
   LOOM_VECTOR_LOAD_EXPAND_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -1058,7 +1088,11 @@ enum {
   LOOM_VECTOR_STORE_COMPRESS_STATIC_INDICES_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_store_compress_cache_scope, LOOM_VECTOR_STORE_COMPRESS_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_store_compress_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_STORE_COMPRESS_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_store_compress_cache_temporal, LOOM_VECTOR_STORE_COMPRESS_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_store_compress_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_STORE_COMPRESS_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_store_compress_static_indices, LOOM_VECTOR_STORE_COMPRESS_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_store_compress_build_flag_bits_e {
   LOOM_VECTOR_STORE_COMPRESS_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -1096,7 +1130,11 @@ enum {
   LOOM_VECTOR_GATHER_STATIC_INDICES_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_gather_cache_scope, LOOM_VECTOR_GATHER_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_gather_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_GATHER_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_gather_cache_temporal, LOOM_VECTOR_GATHER_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_gather_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_GATHER_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_gather_static_indices, LOOM_VECTOR_GATHER_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_gather_build_flag_bits_e {
   LOOM_VECTOR_GATHER_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -1135,7 +1173,11 @@ enum {
   LOOM_VECTOR_SCATTER_STATIC_INDICES_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_scatter_cache_scope, LOOM_VECTOR_SCATTER_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_scatter_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_SCATTER_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_scatter_cache_temporal, LOOM_VECTOR_SCATTER_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_scatter_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_SCATTER_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_scatter_static_indices, LOOM_VECTOR_SCATTER_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_scatter_build_flag_bits_e {
   LOOM_VECTOR_SCATTER_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -1175,7 +1217,11 @@ enum {
   LOOM_VECTOR_GATHER_MASK_STATIC_INDICES_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_gather_mask_cache_scope, LOOM_VECTOR_GATHER_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_gather_mask_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_GATHER_MASK_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_gather_mask_cache_temporal, LOOM_VECTOR_GATHER_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_gather_mask_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_GATHER_MASK_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_gather_mask_static_indices, LOOM_VECTOR_GATHER_MASK_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_gather_mask_build_flag_bits_e {
   LOOM_VECTOR_GATHER_MASK_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -1216,7 +1262,11 @@ enum {
   LOOM_VECTOR_SCATTER_MASK_STATIC_INDICES_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_scatter_mask_cache_scope, LOOM_VECTOR_SCATTER_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_scatter_mask_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_SCATTER_MASK_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_scatter_mask_cache_temporal, LOOM_VECTOR_SCATTER_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_scatter_mask_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_SCATTER_MASK_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_scatter_mask_static_indices, LOOM_VECTOR_SCATTER_MASK_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_scatter_mask_build_flag_bits_e {
   LOOM_VECTOR_SCATTER_MASK_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -1261,7 +1311,11 @@ LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_kind, LOOM_VECTOR_ATOMIC_R
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_ordering, LOOM_VECTOR_ATOMIC_REDUCE_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_scope, LOOM_VECTOR_ATOMIC_REDUCE_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_cache_scope, LOOM_VECTOR_ATOMIC_REDUCE_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_atomic_reduce_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_REDUCE_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_cache_temporal, LOOM_VECTOR_ATOMIC_REDUCE_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_atomic_reduce_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_REDUCE_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_atomic_reduce_static_indices, LOOM_VECTOR_ATOMIC_REDUCE_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_atomic_reduce_build_flag_bits_e {
   LOOM_VECTOR_ATOMIC_REDUCE_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -1309,7 +1363,11 @@ LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_mask_kind, LOOM_VECTOR_ATO
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_mask_ordering, LOOM_VECTOR_ATOMIC_REDUCE_MASK_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_mask_scope, LOOM_VECTOR_ATOMIC_REDUCE_MASK_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_mask_cache_scope, LOOM_VECTOR_ATOMIC_REDUCE_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_atomic_reduce_mask_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_REDUCE_MASK_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_mask_cache_temporal, LOOM_VECTOR_ATOMIC_REDUCE_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_atomic_reduce_mask_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_REDUCE_MASK_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_atomic_reduce_mask_static_indices, LOOM_VECTOR_ATOMIC_REDUCE_MASK_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_atomic_reduce_mask_build_flag_bits_e {
   LOOM_VECTOR_ATOMIC_REDUCE_MASK_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -1358,7 +1416,11 @@ LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_kind, LOOM_VECTOR_ATOMIC_RMW_
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_ordering, LOOM_VECTOR_ATOMIC_RMW_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_scope, LOOM_VECTOR_ATOMIC_RMW_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_cache_scope, LOOM_VECTOR_ATOMIC_RMW_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_atomic_rmw_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_RMW_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_cache_temporal, LOOM_VECTOR_ATOMIC_RMW_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_atomic_rmw_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_RMW_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_atomic_rmw_static_indices, LOOM_VECTOR_ATOMIC_RMW_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_atomic_rmw_build_flag_bits_e {
   LOOM_VECTOR_ATOMIC_RMW_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -1409,7 +1471,11 @@ LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_mask_kind, LOOM_VECTOR_ATOMIC
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_mask_ordering, LOOM_VECTOR_ATOMIC_RMW_MASK_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_mask_scope, LOOM_VECTOR_ATOMIC_RMW_MASK_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_mask_cache_scope, LOOM_VECTOR_ATOMIC_RMW_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_atomic_rmw_mask_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_RMW_MASK_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_mask_cache_temporal, LOOM_VECTOR_ATOMIC_RMW_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_atomic_rmw_mask_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_RMW_MASK_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_atomic_rmw_mask_static_indices, LOOM_VECTOR_ATOMIC_RMW_MASK_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_atomic_rmw_mask_build_flag_bits_e {
   LOOM_VECTOR_ATOMIC_RMW_MASK_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -1461,7 +1527,11 @@ LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_cmpxchg_success_ordering, LOOM_VE
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_cmpxchg_failure_ordering, LOOM_VECTOR_ATOMIC_CMPXCHG_FAILURE_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_cmpxchg_scope, LOOM_VECTOR_ATOMIC_CMPXCHG_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_cmpxchg_cache_scope, LOOM_VECTOR_ATOMIC_CMPXCHG_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
+#define loom_vector_atomic_cmpxchg_has_cache_scope(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_CMPXCHG_CACHE_SCOPE_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_cmpxchg_cache_temporal, LOOM_VECTOR_ATOMIC_CMPXCHG_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
+#define loom_vector_atomic_cmpxchg_has_cache_temporal(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_CMPXCHG_CACHE_TEMPORAL_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_atomic_cmpxchg_static_indices, LOOM_VECTOR_ATOMIC_CMPXCHG_STATIC_INDICES_ATTR_INDEX)
 enum loom_vector_atomic_cmpxchg_build_flag_bits_e {
   LOOM_VECTOR_ATOMIC_CMPXCHG_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -2771,6 +2841,8 @@ enum {
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_geluf_variant, LOOM_VECTOR_GELUF_VARIANT_ATTR_INDEX, loom_vector_geluf_variant_t)
 LOOM_DEFINE_INSTANCE_FLAGS(loom_vector_geluf_fastmath)
 LOOM_DEFINE_ATTR_F64(loom_vector_geluf_scale, LOOM_VECTOR_GELUF_SCALE_ATTR_INDEX)
+#define loom_vector_geluf_has_scale(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_GELUF_SCALE_ATTR_INDEX]))
 enum loom_vector_geluf_build_flag_bits_e {
   LOOM_VECTOR_GELUF_BUILD_FLAG_HAS_SCALE = 1u << 0,
 };
@@ -3439,6 +3511,8 @@ enum {
   LOOM_VECTOR_DECODE_AUXILIARY_NAMES_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_DICT(loom_vector_decode_auxiliary_names, LOOM_VECTOR_DECODE_AUXILIARY_NAMES_ATTR_INDEX)
+#define loom_vector_decode_has_auxiliary_names(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_DECODE_AUXILIARY_NAMES_ATTR_INDEX]))
 iree_status_t loom_vector_decode_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t payload,
@@ -3469,6 +3543,8 @@ enum {
   LOOM_VECTOR_ENCODE_AUXILIARY_NAMES_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_DICT(loom_vector_encode_auxiliary_names, LOOM_VECTOR_ENCODE_AUXILIARY_NAMES_ATTR_INDEX)
+#define loom_vector_encode_has_auxiliary_names(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ENCODE_AUXILIARY_NAMES_ATTR_INDEX]))
 iree_status_t loom_vector_encode_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -3503,7 +3579,11 @@ enum {
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_role, LOOM_VECTOR_FRAGMENT_ROLE_ATTR_INDEX, loom_vector_role_t)
 LOOM_DEFINE_ATTR_DICT(loom_vector_fragment_param_names, LOOM_VECTOR_FRAGMENT_PARAM_NAMES_ATTR_INDEX)
+#define loom_vector_fragment_has_param_names(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_FRAGMENT_PARAM_NAMES_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_vector_fragment_predicates, LOOM_VECTOR_FRAGMENT_PREDICATES_ATTR_INDEX)
+#define loom_vector_fragment_has_predicates(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_FRAGMENT_PREDICATES_ATTR_INDEX]))
 enum loom_vector_fragment_build_flag_bits_e {
   LOOM_VECTOR_FRAGMENT_BUILD_FLAG_HAS_BLOCKS = 1u << 0,
   LOOM_VECTOR_FRAGMENT_BUILD_FLAG_HAS_PREDICATES = 1u << 1,

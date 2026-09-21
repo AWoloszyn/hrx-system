@@ -57,10 +57,18 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_command_program_def_callee, LOOM_COMMAND_PROGRAM_DEF_CALLEE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_command_program_def_visibility, LOOM_COMMAND_PROGRAM_DEF_VISIBILITY_ATTR_INDEX, loom_command_visibility_t)
+#define loom_command_program_def_has_visibility(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_COMMAND_PROGRAM_DEF_VISIBILITY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_SYMBOL(loom_command_program_def_target, LOOM_COMMAND_PROGRAM_DEF_TARGET_ATTR_INDEX)
+#define loom_command_program_def_has_target(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_COMMAND_PROGRAM_DEF_TARGET_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_command_program_def_predicates, LOOM_COMMAND_PROGRAM_DEF_PREDICATES_ATTR_INDEX)
+#define loom_command_program_def_has_predicates(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_COMMAND_PROGRAM_DEF_PREDICATES_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_command_program_def_specialization_count, LOOM_COMMAND_PROGRAM_DEF_SPECIALIZATION_COUNT_ATTR_INDEX)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_command_program_def_retain, LOOM_COMMAND_PROGRAM_DEF_RETAIN_ATTR_INDEX, loom_command_retain_t)
+#define loom_command_program_def_has_retain(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_COMMAND_PROGRAM_DEF_RETAIN_ATTR_INDEX]))
 LOOM_DEFINE_REGION(loom_command_program_def_body, 0)
 enum loom_command_program_def_build_flag_bits_e {
   LOOM_COMMAND_PROGRAM_DEF_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
@@ -102,10 +110,18 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_command_program_decl_callee, LOOM_COMMAND_PROGRAM_DECL_CALLEE_ATTR_INDEX)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_command_program_decl_visibility, LOOM_COMMAND_PROGRAM_DECL_VISIBILITY_ATTR_INDEX, loom_command_visibility_t)
+#define loom_command_program_decl_has_visibility(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_COMMAND_PROGRAM_DECL_VISIBILITY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_SYMBOL(loom_command_program_decl_target, LOOM_COMMAND_PROGRAM_DECL_TARGET_ATTR_INDEX)
+#define loom_command_program_decl_has_target(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_COMMAND_PROGRAM_DECL_TARGET_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_command_program_decl_predicates, LOOM_COMMAND_PROGRAM_DECL_PREDICATES_ATTR_INDEX)
+#define loom_command_program_decl_has_predicates(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_COMMAND_PROGRAM_DECL_PREDICATES_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_I64(loom_command_program_decl_specialization_count, LOOM_COMMAND_PROGRAM_DECL_SPECIALIZATION_COUNT_ATTR_INDEX)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_command_program_decl_retain, LOOM_COMMAND_PROGRAM_DECL_RETAIN_ATTR_INDEX, loom_command_retain_t)
+#define loom_command_program_decl_has_retain(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_COMMAND_PROGRAM_DECL_RETAIN_ATTR_INDEX]))
 enum loom_command_program_decl_build_flag_bits_e {
   LOOM_COMMAND_PROGRAM_DECL_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
   LOOM_COMMAND_PROGRAM_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 1,

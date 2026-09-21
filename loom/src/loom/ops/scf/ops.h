@@ -68,7 +68,11 @@ enum {
   LOOM_SCF_FOR_UNROLL_SCHEDULE_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scf_for_unroll_policy, LOOM_SCF_FOR_UNROLL_POLICY_ATTR_INDEX, loom_scf_for_unroll_policy_t)
+#define loom_scf_for_has_unroll_policy(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_SCF_FOR_UNROLL_POLICY_ATTR_INDEX]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scf_for_unroll_schedule, LOOM_SCF_FOR_UNROLL_SCHEDULE_ATTR_INDEX, loom_scf_for_unroll_schedule_t)
+#define loom_scf_for_has_unroll_schedule(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_SCF_FOR_UNROLL_SCHEDULE_ATTR_INDEX]))
 LOOM_DEFINE_REGION(loom_scf_for_body, 0)
 enum loom_scf_for_build_flag_bits_e {
   LOOM_SCF_FOR_BUILD_FLAG_HAS_PIPELINE_DEPTH = 1u << 0,

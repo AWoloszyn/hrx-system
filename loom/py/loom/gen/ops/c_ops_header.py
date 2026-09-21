@@ -426,6 +426,12 @@ def generate_ops_h(
                 lines.append(f"LOOM_DEFINE_ATTR_ENUM_TYPED({prefix}_{attr_def.name}, {desc_index}, {enum_type})")
             elif macro:
                 lines.append(f"{macro}({prefix}_{attr_def.name}, {desc_index})")
+            if attr_def.optional:
+                presence_name = f"has_{attr_def.name}"
+                if presence_name in layout.fields:
+                    raise ValueError(f"{op.name}: presence accessor '{prefix}_{presence_name}' conflicts with field '{presence_name}'")
+                lines.append(f"#define {prefix}_{presence_name}(op) \\")
+                lines.append(f"  (!loom_attr_is_absent(loom_op_const_attrs((op))[{desc_index}]))")
 
         for region_def in op.regions:
             desc = layout.fields[region_def.name]

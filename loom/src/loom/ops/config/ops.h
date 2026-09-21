@@ -35,6 +35,8 @@ enum {
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_config_decl_symbol, LOOM_CONFIG_DECL_SYMBOL_ATTR_INDEX)
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_config_decl_predicates, LOOM_CONFIG_DECL_PREDICATES_ATTR_INDEX)
+#define loom_config_decl_has_predicates(op) \
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_CONFIG_DECL_PREDICATES_ATTR_INDEX]))
 enum loom_config_decl_build_flag_bits_e {
   LOOM_CONFIG_DECL_BUILD_FLAG_HAS_PREDICATES = 1u << 0,
 };

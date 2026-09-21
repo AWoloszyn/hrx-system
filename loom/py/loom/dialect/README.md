@@ -49,6 +49,14 @@ Field names are the stable bridge between the op declaration and the format
 elements. If the format references `Ref("lhs")`, the op needs an operand,
 result, attribute, successor, region, or implicit format field named `lhs`.
 
+Generated C operation APIs pair typed value getters with `has_<field>` queries
+for optional stored attributes. Presence tests the attribute kind, so explicitly
+provided zero, false, or empty values remain distinct from omission. For example,
+`loom_scalar_geluf_has_scale(op)` establishes presence before
+`loom_scalar_geluf_scale(op)` reads the floating-point value. Instance flags have
+no separate absent state. Presence queries are function-like macros that
+evaluate their operation argument once; unused queries add no C function bodies.
+
 The `format` order is part of the API exposed to generated Python and C builder
 surfaces. Reordering format fields changes the way generated builders ask for
 arguments even when the underlying IR fields are unchanged.

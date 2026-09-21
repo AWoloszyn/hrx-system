@@ -69,6 +69,19 @@ loom_generated_cc_library(
 )
 
 loom_cc_test(
+    name = "attribute_accessors_test",
+    srcs = ["attribute_accessors_test.cc"],
+    deps = [
+        ":test",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
     name = "ops_test",
     srcs = ["ops_test.cc"],
     deps = [

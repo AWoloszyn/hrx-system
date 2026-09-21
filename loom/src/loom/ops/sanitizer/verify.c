@@ -29,12 +29,6 @@ static iree_status_t loom_sanitizer_emit(iree_diagnostic_emitter_t emitter,
   return iree_diagnostic_emit(emitter, &emission);
 }
 
-static bool loom_sanitizer_optional_attr_is_present(const loom_op_t* op,
-                                                    uint16_t attr_index) {
-  return attr_index < op->attribute_count &&
-         !loom_attr_is_absent(loom_op_attrs(op)[attr_index]);
-}
-
 static iree_status_t loom_sanitizer_emit_attribute_value_constraint(
     iree_diagnostic_emitter_t emitter, const loom_op_t* op,
     iree_string_view_t attr_name, int64_t actual_value,
@@ -407,10 +401,8 @@ iree_status_t loom_sanitizer_race_access_verify(
       loom_sanitizer_race_access_indices(op).count));
 
   const bool atomic = loom_sanitizer_race_access_atomic(op);
-  const bool has_ordering = loom_sanitizer_optional_attr_is_present(
-      op, LOOM_SANITIZER_RACE_ACCESS_ORDERING_ATTR_INDEX);
-  const bool has_scope = loom_sanitizer_optional_attr_is_present(
-      op, LOOM_SANITIZER_RACE_ACCESS_SCOPE_ATTR_INDEX);
+  const bool has_ordering = loom_sanitizer_race_access_has_ordering(op);
+  const bool has_scope = loom_sanitizer_race_access_has_scope(op);
   if (atomic) {
     if (!has_ordering) {
       return loom_sanitizer_emit_attribute_value_constraint(

@@ -320,14 +320,12 @@ static iree_status_t loom_scf_for_rebuild_carried_state(
     unroll_factor = loom_scf_for_unroll_factor(op);
   }
   loom_scf_for_unroll_policy_t unroll_policy = 0;
-  if (!loom_attr_is_absent(
-          loom_op_attrs(op)[LOOM_SCF_FOR_UNROLL_POLICY_ATTR_INDEX])) {
+  if (loom_scf_for_has_unroll_policy(op)) {
     build_flags |= LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_POLICY;
     unroll_policy = loom_scf_for_unroll_policy(op);
   }
   loom_scf_for_unroll_schedule_t unroll_schedule = 0;
-  if (!loom_attr_is_absent(
-          loom_op_attrs(op)[LOOM_SCF_FOR_UNROLL_SCHEDULE_ATTR_INDEX])) {
+  if (loom_scf_for_has_unroll_schedule(op)) {
     build_flags |= LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_SCHEDULE;
     unroll_schedule = loom_scf_for_unroll_schedule(op);
   }

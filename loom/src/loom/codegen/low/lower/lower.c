@@ -403,11 +403,6 @@ static iree_status_t loom_low_lower_bind_region_entry_args(
   return iree_ok_status();
 }
 
-static bool loom_low_lower_op_attr_present(const loom_op_t* op,
-                                           uint8_t attr_index) {
-  return !loom_attr_is_absent(loom_op_attrs(op)[attr_index]);
-}
-
 static iree_status_t loom_low_lower_emit_scf_for(
     loom_low_lower_context_t* context, const loom_op_t* source_op) {
   if (loom_scf_for_pipeline_depth_is_present(source_op)) {
@@ -445,8 +440,7 @@ static iree_status_t loom_low_lower_emit_scf_for(
   }
 
   uint8_t unroll_policy = 0;
-  if (loom_low_lower_op_attr_present(source_op,
-                                     LOOM_SCF_FOR_UNROLL_POLICY_ATTR_INDEX)) {
+  if (loom_scf_for_has_unroll_policy(source_op)) {
     build_flags |= LOOM_LOW_SCF_FOR_BUILD_FLAG_HAS_UNROLL_POLICY;
     unroll_policy = (uint8_t)loom_scf_for_unroll_policy(source_op);
   }
