@@ -193,3 +193,113 @@ low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @subview_dens
   i32.store %destination_crop, %value {offset = 84}
   return %value
 }
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def @make_storage_crop(%input: buffer, %origin: offset, %columns: index) -> (%result_storage: encoding<storage>, view<2x3xf32, %result_storage>) {
+  %layout = encoding.layout.strided [%columns, 1] : encoding<layout>
+  %schema = encoding.define #encoding.f32 : encoding<schema>
+  %storage = encoding.define #encoding.storage {layout = %layout : encoding<layout>, schema = %schema : encoding<schema>} : encoding<storage>
+  %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %source = buffer.view %input_aligned[%origin] : buffer -> view<4x[%columns]xf32, %storage>
+  %crop = view.subview %source[1, 2] : view<4x[%columns]xf32, %storage> -> view<2x3xf32, %storage>
+  // ERROR@+2: TARGET/033 {op_name="func.return", field_name="source", actual_type="encoding<storage>"}
+  // ERROR@+1: TARGET/033 {op_name="func.return", field_name="source", actual_type="view<2x3xf32, %storage>"}
+  func.return %storage, %crop : encoding<storage>, view<2x3xf32, %storage>
+}
+
+func.def @read_storage_crop(%storage: encoding<storage>, %crop: view<2x3xf32, %storage>) -> (f32) {
+  %value = view.load %crop[1, 1] : view<2x3xf32, %storage> -> f32
+  func.return %value : f32
+}
+
+func.def public target(@target) @subview_composed_helpers(%input: buffer, %output: buffer, %width: index) {
+  %columns = index.assume %width [range(%width, 8, 12)] : index
+  %origin = index.constant 8 : offset
+  %storage, %crop = func.call @make_storage_crop(%input, %origin, %columns) : (buffer, offset, index) -> (encoding<storage>, view<2x3xf32, %storage>)
+  %value = func.call @read_storage_crop(%storage, %crop) : (encoding<storage>, view<2x3xf32, %storage>) -> (f32)
+  %output_origin = index.constant 4 : offset
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %destination = buffer.view %output_aligned[%output_origin] : buffer -> view<1xf32>
+  view.store %value, %destination[0] : f32, view<1xf32>
+  func.return
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def public target(@target) @subview_composed_refined_nested(%input: buffer, %output: buffer, %base: offset, %row_pitch: index, %column_pitch: index) {
+  %origin = index.assume %base [range(%base, 4, 12), mul(%base, 4)] : offset
+  %row_stride = index.assume %row_pitch [range(%row_pitch, 8, 12)] : index
+  %column_stride = index.assume %column_pitch [range(%column_pitch, 1, 2)] : index
+  %layout = encoding.layout.strided [%row_stride, %column_stride] : encoding<layout>
+  %refined_layout = encoding.layout.assume.strided %layout {rank = 2} : encoding<layout>
+  %schema = encoding.define #encoding.f32 : encoding<schema>
+  %storage = encoding.define #encoding.storage {layout = %refined_layout : encoding<layout>, schema = %schema : encoding<schema>} : encoding<storage>
+  %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %source = buffer.view %input_aligned[%origin] : buffer -> view<4x4xf32, %storage>
+  %outer = view.subview %source[1, 1] : view<4x4xf32, %storage> -> view<3x3xf32, %storage>
+  %inner = view.subview %outer[1, 1] : view<3x3xf32, %storage> -> view<2x2xf32, %storage>
+  %value = view.load %inner[1, 0] : view<2x2xf32, %storage> -> f32
+  %output_origin = index.constant 4 : offset
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %destination = buffer.view %output_aligned[%output_origin] : buffer -> view<1xf32>
+  view.store %value, %destination[0] : f32, view<1xf32>
+  func.return
+}
+
+// ----
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @subview_composed_refined_nested(%inner: reg<wasm.i32>, %destination: reg<wasm.i32>, %origin: reg<wasm.i32>, %row_stride: reg<wasm.i32>, %column_stride: reg<wasm.i32>) asm {
+  %25 = i32.const 8
+  %26 = i32.mul %row_stride, %25
+  %27 = i32.add %origin, %26
+  %29 = i32.mul %column_stride, %25
+  %30 = i32.add %27, %29
+  %31 = i32.const 4
+  %32 = i32.mul %row_stride, %31
+  %33 = i32.add %30, %32
+  %34 = i32.add %inner, %33
+  %value = f32.load %34
+  f32.store %destination, %value {offset = 4}
+  return
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def @make_storage_crop(%input: buffer, %origin: offset, %columns: index) -> (%result_storage: encoding<storage>, view<2x3xf32, %result_storage>) {
+  %layout = encoding.layout.strided [%columns, 1] : encoding<layout>
+  %schema = encoding.define #encoding.f32 : encoding<schema>
+  %storage = encoding.define #encoding.storage {layout = %layout : encoding<layout>, schema = %schema : encoding<schema>} : encoding<storage>
+  %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %source = buffer.view %input_aligned[%origin] : buffer -> view<4x[%columns]xf32, %storage>
+  %crop = view.subview %source[1, 2] : view<4x[%columns]xf32, %storage> -> view<2x3xf32, %storage>
+  // ERROR@+2: TARGET/033 {op_name="func.return", field_name="source", actual_type="encoding<storage>"}
+  // ERROR@+1: TARGET/033 {op_name="func.return", field_name="source", actual_type="view<2x3xf32, %storage>"}
+  func.return %storage, %crop : encoding<storage>, view<2x3xf32, %storage>
+}
+
+func.def @read_storage_crop(%storage: encoding<storage>, %crop: view<2x3xf32, %storage>) -> (f32) {
+  %value = view.load %crop[1, 1] : view<2x3xf32, %storage> -> f32
+  func.return %value : f32
+}
+
+func.def public target(@target) @subview_composed_distinct_bindings(%input: buffer, %output: buffer, %first_width: index, %second_width: index) {
+  %first_columns = index.assume %first_width [range(%first_width, 8, 12)] : index
+  %second_columns = index.assume %second_width [range(%second_width, 8, 12)] : index
+  %origin = index.constant 8 : offset
+  %first_storage, %first_crop = func.call @make_storage_crop(%input, %origin, %first_columns) : (buffer, offset, index) -> (encoding<storage>, view<2x3xf32, %first_storage>)
+  %second_storage, %second_crop = func.call @make_storage_crop(%input, %origin, %second_columns) : (buffer, offset, index) -> (encoding<storage>, view<2x3xf32, %second_storage>)
+  %first = func.call @read_storage_crop(%first_storage, %first_crop) : (encoding<storage>, view<2x3xf32, %first_storage>) -> (f32)
+  %second = func.call @read_storage_crop(%second_storage, %second_crop) : (encoding<storage>, view<2x3xf32, %second_storage>) -> (f32)
+  %value = scalar.subf %first, %second : f32
+  %output_origin = index.constant 4 : offset
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %destination = buffer.view %output_aligned[%output_origin] : buffer -> view<1xf32>
+  view.store %value, %destination[0] : f32, view<1xf32>
+  func.return
+}
