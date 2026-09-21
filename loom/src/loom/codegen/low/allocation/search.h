@@ -68,11 +68,26 @@ typedef struct loom_low_allocation_search_context_t {
   const loom_low_allocation_physical_domains_t* physical_domains;
 } loom_low_allocation_search_context_t;
 
+// Reusable spill-search arrays owned by one interval-assignment attempt. Start
+// zero-initialized; storage grows in the assignment scratch arena and is
+// released with that arena. Contents have no meaning across searches.
+typedef struct loom_low_allocation_search_workspace_t {
+  // Entry capacity of each of the three coallocated arrays below.
+  iree_host_size_t capacity;
+  // Conflicting assignments for the location currently being considered.
+  uint32_t* candidate_assignment_indices;
+  // Best victim set found during the current search.
+  uint32_t* best_assignment_indices;
+  // Candidate victims excluded while checking remaining location conflicts.
+  loom_value_id_t* ignored_value_ids;
+} loom_low_allocation_search_workspace_t;
+
 // Active assignment set selected for spilling before an interval is assigned.
 typedef struct loom_low_allocation_search_spill_victim_set_t {
   // Base location where the incoming interval can be placed after spilling.
   uint32_t location_base;
-  // Assignment indices to spill before placing the incoming interval.
+  // Assignment indices to spill before placing the incoming interval. Borrowed
+  // from the workspace until its next search or scratch-arena release.
   const uint32_t* assignment_indices;
   // Number of entries in |assignment_indices|.
   uint16_t assignment_count;
@@ -117,12 +132,16 @@ iree_status_t loom_low_allocation_search_assignment_spill_capacity(
     loom_low_allocation_class_capacity_t* out_capacity);
 
 // Finds the best active-assignment victim set that would make |interval|
-// assignable under |capacity|. The returned assignment indices are arena-owned.
+// assignable under |capacity|. Grows |workspace| in |arena| as needed; consumes
+// no additional storage while the active set fits its current capacity. The
+// returned indices must be consumed before the next search using |workspace|.
 iree_status_t loom_low_allocation_search_find_active_spill_victim_set(
     loom_low_allocation_search_context_t* context,
     const loom_liveness_interval_t* interval,
     const loom_low_allocation_class_capacity_t* capacity,
-    bool interval_requires_register, iree_arena_allocator_t* arena,
+    bool interval_requires_register,
+    loom_low_allocation_search_workspace_t* workspace,
+    iree_arena_allocator_t* arena,
     loom_low_allocation_search_spill_victim_set_t* out_victim_set);
 
 #ifdef __cplusplus

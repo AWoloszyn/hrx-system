@@ -942,7 +942,9 @@ iree_status_t loom_low_allocation_search_find_active_spill_victim_set(
     loom_low_allocation_search_context_t* context,
     const loom_liveness_interval_t* interval,
     const loom_low_allocation_class_capacity_t* capacity,
-    bool interval_requires_register, iree_arena_allocator_t* arena,
+    bool interval_requires_register,
+    loom_low_allocation_search_workspace_t* workspace,
+    iree_arena_allocator_t* arena,
     loom_low_allocation_search_spill_victim_set_t* out_victim_set) {
   *out_victim_set = (loom_low_allocation_search_spill_victim_set_t){0};
   const loom_low_reg_class_t* reg_class =
@@ -974,21 +976,25 @@ iree_status_t loom_low_allocation_search_find_active_spill_victim_set(
     }
   }
 
-  uint32_t* candidate_assignment_indices = NULL;
-  uint32_t* best_assignment_indices = NULL;
-  loom_value_id_t* ignored_value_ids = NULL;
-  if (context->active_set->count > 0) {
-    IREE_RETURN_IF_ERROR(
-        iree_arena_allocate_array(arena, context->active_set->count,
-                                  sizeof(*candidate_assignment_indices),
-                                  (void**)&candidate_assignment_indices));
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        arena, context->active_set->count, sizeof(*best_assignment_indices),
-        (void**)&best_assignment_indices));
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        arena, context->active_set->count, sizeof(*ignored_value_ids),
-        (void**)&ignored_value_ids));
+  if (context->active_set->count > workspace->capacity) {
+    // Only the previous search used these contents. Geometric growth bounds
+    // abandoned arena storage without copying obsolete candidates.
+    IREE_RETURN_IF_ERROR(iree_arena_grow_array(
+        arena, /*existing_count=*/0, context->active_set->count,
+        sizeof(*workspace->candidate_assignment_indices) +
+            sizeof(*workspace->best_assignment_indices) +
+            sizeof(*workspace->ignored_value_ids),
+        &workspace->capacity,
+        (void**)&workspace->candidate_assignment_indices));
+    workspace->best_assignment_indices =
+        workspace->candidate_assignment_indices + workspace->capacity;
+    workspace->ignored_value_ids =
+        workspace->best_assignment_indices + workspace->capacity;
   }
+  uint32_t* candidate_assignment_indices =
+      workspace->candidate_assignment_indices;
+  uint32_t* best_assignment_indices = workspace->best_assignment_indices;
+  loom_value_id_t* ignored_value_ids = workspace->ignored_value_ids;
 
   uint16_t best_assignment_count = 0;
   uint32_t best_unit_count = 0;
