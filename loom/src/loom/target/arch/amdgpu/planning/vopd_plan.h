@@ -191,9 +191,9 @@ typedef struct loom_amdgpu_vopd_plan_t {
   const loom_amdgpu_vopd_rejection_t* rejections;
   // Number of VOPD rejection records.
   iree_host_size_t rejection_count;
-  // Per-scheduled-packet VOPD membership records.
+  // Per-scheduled-packet VOPD membership records. NULL when no pair exists.
   const loom_amdgpu_vopd_packet_t* packets;
-  // Number of packet membership records.
+  // Number of scheduled packets in the membership domain.
   iree_host_size_t packet_count;
 } loom_amdgpu_vopd_plan_t;
 
