@@ -268,7 +268,6 @@ hrx_cc_test(
     srcs = ["memory_test.cc"],
     linkopts = select({
         "@platforms//os:linux": [
-            "-Wl,--wrap=hrx_buffer_table_insert_reserved",
             "-Wl,--wrap=iree_hal_command_buffer_execution_barrier",
         ],
         "//conditions:default": [],
