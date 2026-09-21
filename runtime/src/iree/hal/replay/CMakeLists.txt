@@ -303,6 +303,22 @@ iree_cc_test(
 
 iree_cc_test(
   NAME
+    recorder_allocator_test
+  SRCS
+    "recorder_allocator.h"
+    "recorder_allocator_test.cc"
+  DEPS
+    ::format
+    ::recorder
+    iree::base
+    iree::hal
+    iree::io::file_handle
+    iree::testing::gtest
+    iree::testing::gtest_main
+)
+
+iree_cc_test(
+  NAME
     recorder_buffer_test
   SRCS
     "recorder_buffer.h"

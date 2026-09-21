@@ -331,17 +331,17 @@ static iree_status_t iree_hal_replay_recorder_allocator_import_buffer(
     iree_hal_replay_recorder_mark_unsupported(&pending_record);
   }
 
+  // Complete fallible wrapper construction before native import can take
+  // ownership of the caller's release callback.
+  iree_hal_replay_recorder_buffer_t* proxy_buffer = NULL;
+  iree_status_t status = iree_hal_replay_recorder_buffer_allocate_proxy(
+      allocator->host_allocator, &proxy_buffer);
   iree_hal_buffer_t* base_buffer = NULL;
-  iree_hal_buffer_t* replay_buffer = NULL;
-  iree_status_t status = IREE_HAL_REPLAY_VTABLE_DISPATCH(
-      allocator->base_allocator, iree_hal_allocator, import_buffer)(
-      allocator->base_allocator, params, external_buffer, release_callback,
-      &base_buffer);
   if (iree_status_is_ok(status)) {
-    status = iree_hal_replay_recorder_buffer_create_proxy(
-        allocator->recorder, allocator->device_id, buffer_id,
-        IREE_HAL_REPLAY_OBJECT_ID_NONE, allocator->placement_device,
-        base_buffer, allocator->host_allocator, &replay_buffer);
+    status = IREE_HAL_REPLAY_VTABLE_DISPATCH(allocator->base_allocator,
+                                             iree_hal_allocator, import_buffer)(
+        allocator->base_allocator, params, external_buffer, release_callback,
+        &base_buffer);
   }
 
   iree_hal_replay_buffer_object_payload_t object_payload;
@@ -359,9 +359,13 @@ static iree_status_t iree_hal_replay_recorder_allocator_import_buffer(
       IREE_HAL_REPLAY_PAYLOAD_TYPE_BUFFER_OBJECT, 1, &object_iovec);
 
   if (iree_status_is_ok(status)) {
-    *out_buffer = replay_buffer;
+    *out_buffer = iree_hal_replay_recorder_buffer_initialize_proxy(
+        allocator->recorder, allocator->device_id, buffer_id,
+        IREE_HAL_REPLAY_OBJECT_ID_NONE, allocator->placement_device,
+        base_buffer, allocator->host_allocator, proxy_buffer);
   } else {
-    iree_hal_buffer_release(replay_buffer);
+    iree_hal_replay_recorder_buffer_free_proxy(allocator->host_allocator,
+                                               proxy_buffer);
   }
   iree_hal_buffer_release(base_buffer);
   return status;
