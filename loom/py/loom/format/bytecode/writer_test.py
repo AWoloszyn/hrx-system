@@ -2060,7 +2060,7 @@ class TestCrossFormatRoundTrip:
     def test_enum_future_ordinal_survives_bytecode(self) -> None:
         text = (
             "target.generic<reference> @future_target "
-            "{artifact_format = elf, codegen_format = llvmir}\n"
+            "{artifact_format = elf, codegen_format = low_native}\n"
         )
         parser = Parser()
         parser.register_ops(ALL_TARGET_OPS)

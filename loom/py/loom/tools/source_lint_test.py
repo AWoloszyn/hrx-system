@@ -158,7 +158,7 @@ def test_dollar_names_fail_in_every_authored_position(
 
 def test_dollar_rule_accepts_comments_strings_and_semantic_names() -> None:
     source = r"""// %comment$0 and @helper$config are compiler output.
-%sum = llvmir.inline_asm "addl $2, $0", "=r,r,r"(%lhs, %rhs) : (i32, i32) -> i32
+test.string "operands $2, $0"
 test.string "escaped \" @not_a_symbol$1 // still a string"
 %batch_dim = index.constant 57 : index // %double$17$0
 func.decl @pipeline_worker(%input_count: index)

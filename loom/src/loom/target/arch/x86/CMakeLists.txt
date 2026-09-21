@@ -211,23 +211,6 @@ endif()
 if(LOOM_TARGET_ARCH_X86)
 loom_cc_library(
   NAME
-    packed_dot_vector
-  HDRS
-    "packed_dot_vector.h"
-  SRCS
-    "packed_dot_vector.c"
-  DEPS
-    ::packed_dot_contract
-    ::packed_dot_contract_projection
-    loom::analysis::contract_vector
-    loom::ir
-  PUBLIC
-)
-endif()
-
-if(LOOM_TARGET_ARCH_X86)
-loom_cc_library(
-  NAME
     packed_dot_contract_projection
   HDRS
     "packed_dot_contract_projection.h"

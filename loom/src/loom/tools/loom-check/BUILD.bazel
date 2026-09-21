@@ -4,7 +4,6 @@ load(
     "loom_cc_binary",
     "loom_cc_library",
     "loom_cc_test",
-    "loom_config_compatible_with",
 )
 
 package(
@@ -23,34 +22,6 @@ _EMIT_AMDGPU_CHECK_COPTS = iree_select({
 _EMIT_AMDGPU_CHECK_DEPS = iree_select({
     "//loom/config/emit:amdgpu": [
         "//loom/src/loom/target/arch/amdgpu/check:provider",
-    ],
-    "//conditions:default": [],
-})
-
-_TARGET_LLVMIR_CHECK_COPTS = iree_select({
-    "//loom/config/target/arch:llvmir": [
-        "-DLOOM_CHECK_HAVE_TARGET_LLVMIR=1",
-    ],
-    "//conditions:default": [],
-})
-
-_TARGET_LLVMIR_CHECK_DEPS = iree_select({
-    "//loom/config/target/arch:llvmir": [
-        "//loom/src/loom/target/arch/llvmir/check:check_provider",
-    ],
-    "//conditions:default": [],
-})
-
-_EMIT_LLVMIR_CHECK_COPTS = iree_select({
-    "//loom/config/emit:llvmir": [
-        "-DLOOM_CHECK_HAVE_EMIT_LLVMIR=1",
-    ],
-    "//conditions:default": [],
-})
-
-_EMIT_LLVMIR_CHECK_DEPS = iree_select({
-    "//loom/config/emit:llvmir": [
-        ":llvmir_provider",
     ],
     "//conditions:default": [],
 })
@@ -137,8 +108,6 @@ _TARGET_X86_CHECK_DEPS = iree_select({
 
 _LOOM_CHECK_PROVIDER_COPTS = (
     _EMIT_AMDGPU_CHECK_COPTS +
-    _TARGET_LLVMIR_CHECK_COPTS +
-    _EMIT_LLVMIR_CHECK_COPTS +
     _TARGET_SPIRV_CHECK_COPTS +
     _EMIT_SPIRV_CHECK_COPTS +
     _TARGET_WASM_CHECK_COPTS +
@@ -149,8 +118,6 @@ _LOOM_CHECK_PROVIDER_COPTS = (
 
 _LOOM_CHECK_PROVIDER_DEPS = (
     _EMIT_AMDGPU_CHECK_DEPS +
-    _TARGET_LLVMIR_CHECK_DEPS +
-    _EMIT_LLVMIR_CHECK_DEPS +
     _TARGET_SPIRV_CHECK_DEPS +
     _EMIT_SPIRV_CHECK_DEPS +
     _TARGET_WASM_CHECK_DEPS +
@@ -485,20 +452,6 @@ loom_cc_library(
         "//loom/src/loom/target:provider",
         "//loom/src/loom/tooling/context",
         "//loom/src/loom/tooling/input",
-        "//runtime/src/iree/base",
-    ],
-)
-
-loom_cc_library(
-    name = "llvmir_provider",
-    srcs = ["llvmir_provider.c"],
-    hdrs = ["llvmir_provider.h"],
-    target_compatible_with = loom_config_compatible_with([
-        "//loom/config/target:llvmir_artifacts",
-    ]),
-    deps = [
-        ":provider",
-        "//loom/src/loom/target/emit/llvmir:loom_check",
         "//runtime/src/iree/base",
     ],
 )

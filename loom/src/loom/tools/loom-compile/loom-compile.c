@@ -91,7 +91,7 @@ IREE_FLAG(string, product, "",
           "roots this selects the product's canonical roots.");
 IREE_FLAG(string, format, "",
           "Optional exact artifact format, such as 'amdgpu-hsaco', "
-          "'spirv-binary', 'loom-command', or 'llvmir-text'. Omit this to "
+          "'spirv-binary', 'loom-command', or 'wasm-binary'. Omit this to "
           "select the canonical format for the inferred product and target.");
 IREE_FLAG(string, target, "",
           "Optional compilation target in family:selector form, such as "
@@ -861,7 +861,7 @@ static void loom_compile_print_agents_markdown(FILE* stream) {
       "  --target=amdgpu:gfx11-generic --output=kernel.hsaco\n"
       "loom-compile catalog.loombc --root=@entry \\\n"
       "  --target=amdgpu:gfx1151 --output=entry.hsaco\n"
-      "loom-compile kernel.loom --format=llvmir-text --output=kernel.ll\n"
+      "loom-compile kernel.loom --format=spirv-binary --output=kernel.spv\n"
       "loom-compile functions.loom --format=wasm-binary "
       "--output=functions.wasm\n"
       "```\n"

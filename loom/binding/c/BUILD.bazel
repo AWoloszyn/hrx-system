@@ -71,12 +71,6 @@ LOOMC_TARGET_AMDGPU_IREE_HAL_PUBLIC_HDRS = [
     "include/loomc/target/amdgpu/iree_hal.h",
 ]
 
-LOOMC_TARGET_LLVMIR_PUBLIC_HDRS = [
-    "include/loomc/target/llvmir.h",
-    "include/loomc/target/llvmir/base.h",
-    "include/loomc/target/llvmir/emit.h",
-]
-
 LOOMC_TARGET_XDNA_PUBLIC_HDRS = [
     "include/loomc/target/amd/xdna.h",
     "include/loomc/target/amd/xdna/base.h",
@@ -122,7 +116,6 @@ exports_files(
     LOOMC_TARGET_AMDGPU_PUBLIC_HDRS +
     LOOMC_TARGET_CMD_PUBLIC_HDRS +
     LOOMC_TARGET_IREE_HAL_PUBLIC_HDRS +
-    LOOMC_TARGET_LLVMIR_PUBLIC_HDRS +
     LOOMC_TARGET_SPIRV_PUBLIC_HDRS +
     LOOMC_TARGET_SPIRV_IREE_HAL_PUBLIC_HDRS +
     LOOMC_TARGET_SPIRV_VULKANINFO_PUBLIC_HDRS +

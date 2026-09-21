@@ -20,12 +20,12 @@ from pathlib import Path, PurePath
 
 LOOM_EXECUTE_SUBSTRATES = ("iree_hal",)
 LOOM_IMPORTERS = ("cxx", "mlir", "tilelang")
-LOOM_TARGETS = ("amdgpu", "llvmir", "spirv", "vm", "wasm", "xdna", "x86")
-LOOM_EMITTERS = ("amdgpu", "llvmir", "spirv", "wasm", "xdna")
+LOOM_TARGETS = ("amdgpu", "spirv", "vm", "wasm", "xdna", "x86")
+LOOM_EMITTERS = ("amdgpu", "spirv", "wasm", "xdna")
 AMDF_FAMILIES = ("rdna", "cdna", "xdna")
 HOST_DRIVERS = ("task",)
 DEFAULT_LOOM_EXECUTE = LOOM_EXECUTE_SUBSTRATES
-DEFAULT_LOOM_TARGETS = ("amdgpu", "llvmir", "spirv", "xdna", "x86")
+DEFAULT_LOOM_TARGETS = ("amdgpu", "spirv", "xdna", "x86")
 
 SDK_DRIVER_PACKAGES = {
     "amdgpu": (
@@ -63,7 +63,6 @@ DRIVER_DEFINES = {
 }
 LOOM_TARGET_DEFINES = {
     "LOOM_TARGET_AMDGPU": "amdgpu",
-    "LOOM_TARGET_LLVMIR": "llvmir",
     "LOOM_TARGET_SPIRV": "spirv",
     "LOOM_TARGET_VM": "vm",
     "LOOM_TARGET_WASM": "wasm",
@@ -71,7 +70,6 @@ LOOM_TARGET_DEFINES = {
     "LOOM_TARGET_X86": "x86",
 }
 LOOM_EMIT_DEFINES = {
-    "LOOM_EMIT_LLVMIR": "llvmir",
     "LOOM_EMIT_XDNA": "xdna",
 }
 LOOM_EXECUTE_DEFINES = {
@@ -389,7 +387,7 @@ def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
   python build_tools/bazel/configure.py -DAMDF_BUILD=ON -DAMDF_FAMILY_CDNA=OFF
   python build_tools/bazel/configure.py -DLOOM_TARGET_SPIRV=OFF
   python build_tools/bazel/configure.py -DLOOM_TARGET_AMDGPU=ON -DLOOM_EXECUTE_IREE_HAL=ON -DIREE_HAL_DRIVER_AMDGPU=ON -DIREE_ROCM_PATH=/opt/rocm
-  python build_tools/bazel/configure.py -DLOOM_TARGET_AMDGPU=ON -DLOOM_EMIT_LLVMIR=ON
+  python build_tools/bazel/configure.py -DLOOM_EMIT_XDNA=ON
   python build_tools/bazel/configure.py -DLOOM_IMPORT_TILELANG=ON
 
 Portable -D project options are documented in BUILDING.md. Other Bazel-native
@@ -696,7 +694,7 @@ def generate_config(args: argparse.Namespace) -> str:
             "--repo_env=IREE_DEPENDENCY_MODE=" + request.dependency_mode,
         ),
         "",
-        "# Loom target, execute substrate, importer, and explicit debug emitter scope.",
+        "# Loom target, execute substrate, importer, and explicit emitter scope.",
         bazelrc_line(
             "build",
             "--//loom/config/target:enable="

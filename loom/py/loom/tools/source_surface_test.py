@@ -38,7 +38,7 @@ def _write_source_tree(repo_root: Path) -> None:
     _write(source_root / "target/emit/native/object.c", "int native_object;\n")
     _write(source_root / "target/emit/native/amdgpu/hsaco.c", "int hsaco;\n")
     _write(source_root / "target/emit/native/x86/assembly.c", "int native_x86;\n")
-    _write(source_root / "target/emit/llvmir/module_emitter.c", "int llvmir_emit;\n")
+    _write(source_root / "target/emit/spirv/module_emitter.c", "int spirv_emit;\n")
 
     _write(source_root / "tools/loom-opt/main.c", "int tool;\n")
     _write(source_root / "tooling/testbench/harness.c", "int harness;\n")

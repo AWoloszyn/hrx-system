@@ -6,8 +6,8 @@
 
 // x86 source-to-target-low lowering policy.
 //
-// The x86 arch package owns descriptor-level lowering decisions that should be
-// shared by native assembly, LLVMIR, and future direct object emitters.
+// The x86 arch package owns descriptor-level lowering decisions for native
+// code generation.
 
 #ifndef LOOM_TARGET_ARCH_X86_LOWER_LOWER_H_
 #define LOOM_TARGET_ARCH_X86_LOWER_LOWER_H_

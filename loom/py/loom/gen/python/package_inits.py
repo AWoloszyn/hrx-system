@@ -86,14 +86,6 @@ PACKAGE_INITS = (
         "Emission-target descriptor inputs.",
     ),
     PackageInit(
-        "loom/py/loom/target/emit/llvmir/__init__.py",
-        "LLVMIR debug projection metadata.",
-    ),
-    PackageInit(
-        "loom/py/loom/target/emit/llvmir/x86/__init__.py",
-        "x86 LLVMIR debug projection metadata.",
-    ),
-    PackageInit(
         "loom/py/loom/target/emit/wasm/__init__.py",
         "Wasm emission target contract data.",
     ),

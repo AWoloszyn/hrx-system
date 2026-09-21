@@ -14,7 +14,6 @@ package(default_visibility = ["//visibility:public"])
 # needed to compile for that backend.
 DEFAULT_ENABLED = [
     "amdgpu",
-    "llvmir",
     "spirv",
     "xdna",
     "x86",
@@ -22,7 +21,6 @@ DEFAULT_ENABLED = [
 
 SUPPORTED_VALUES = [
     "amdgpu",
-    "llvmir",
     "spirv",
     "vm",
     "wasm",
@@ -86,29 +84,5 @@ selects.config_setting_group(
     match_all = [
         "//loom/config/target/arch:wasm",
         "//loom/config/emit:wasm",
-    ],
-)
-
-selects.config_setting_group(
-    name = "llvmir_artifacts",
-    match_all = [
-        "//loom/config/target/arch:llvmir",
-        "//loom/config/emit:llvmir",
-    ],
-)
-
-selects.config_setting_group(
-    name = "llvmir_amdgpu_target_env",
-    match_all = [
-        ":llvmir_artifacts",
-        "//loom/config/target/arch:amdgpu",
-    ],
-)
-
-selects.config_setting_group(
-    name = "llvmir_x86_target_env",
-    match_all = [
-        ":llvmir_artifacts",
-        "//loom/config/target/arch:x86",
     ],
 )

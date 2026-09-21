@@ -396,7 +396,7 @@ and available execution resources are independent.
 The selected packages are `//libamdf/...` and `//experimental/xdna/...`.
 Common runtime code enters through the ELF consumers' dependencies. The
 ROCr-backed AMDGPU HAL and its Loom execution suites are not enabled; these
-jobs require neither ROCr nor a GPU target selector. CDNA, SPIR-V, LLVMIR,
+jobs require neither ROCr nor a GPU target selector. CDNA, SPIR-V,
 WASM, and optional importers are disabled, and the repository-wide CPU and
 libhrx suites are outside the test scope.
 
@@ -592,7 +592,7 @@ remains a separate concern controlled by Loom execution support and the runtime
 `IREE_HAL_DRIVER_*` options.
 
 The default dependency-satisfied Loom target set is
-`amdgpu,llvmir,spirv,x86`. AMDGPU and SPIR-V target compilation use pinned
+`amdgpu,spirv,xdna,x86`. AMDGPU and SPIR-V target compilation use pinned
 source dependencies by default and do not enable the matching runtime HAL
 drivers. WebAssembly remains opt-in until the WASI SDK repository is available
 in this checkout. The default execution substrate set is `iree_hal`; HAL
@@ -668,16 +668,15 @@ should usually keep `loom_defaults`.
 | `LOOM_TARGET_VM` | `ON`, `OFF` | Builds Loom VM compilation and function execution. | Adds or removes `vm` from the Loom target product set. | `--//loom/config/target:enable=<complete-target-list>` |
 | `LOOM_TARGET_WASM` | `ON`, `OFF` | Builds Loom WebAssembly target support and production Wasm emission. | Adds or removes `wasm` from the Loom target product set. | `--//loom/config/target:enable=<complete-target-list>` |
 | `LOOM_TARGET_X86` | `ON`, `OFF` | Builds Loom x86 target support. | Adds or removes `x86` from the Loom target product set. | `--//loom/config/target:enable=<complete-target-list>` |
-| `LOOM_EMIT_LLVMIR` | `ON`, `OFF` | Builds LLVM IR debug/developer emission for enabled target archs. | Adds or removes `llvmir` from the explicit Loom emitter set. | `--//loom/config/emit:enable=<complete-emitter-list>` |
 | `LOOM_EXECUTE_IREE_HAL` | `ON`, `OFF` | Builds Loom execution providers that run through IREE HAL when a matching runtime HAL driver is enabled. | Adds or removes `iree_hal` from the Loom execute substrate set. | `--//loom/config/execute:enable=<complete-execute-list>` |
 
 The native Loom target flag is a complete list. The default target set is
-`amdgpu,llvmir,spirv,x86`, and the default execution substrate set is
+`amdgpu,spirv,xdna,x86`, and the default execution substrate set is
 `iree_hal`:
 
 ```bash
 python dev.py bazel configure \
-  --//loom/config/target:enable=amdgpu,llvmir,spirv,x86
+  --//loom/config/target:enable=amdgpu,spirv,xdna,x86
 ```
 
 AMDGPU compiler target selection is also a complete list. Bazel uses
@@ -710,15 +709,6 @@ internal target-architecture and emitter slices:
 python dev.py bazel configure -DLOOM_TARGET_SPIRV=OFF
 ```
 
-LLVM IR emission is a debug/developer artifact path. It is explicit even when a
-native target such as AMDGPU or x86 is enabled:
-
-```bash
-python dev.py bazel configure \
-  -DLOOM_TARGET_AMDGPU=ON \
-  -DLOOM_EMIT_LLVMIR=ON
-```
-
 Execution options describe the runtime substrate available to Loom tools, not a
 compilation target by themselves. For example, AMDGPU execution needs the
 AMDGPU Loom target, the IREE HAL execution substrate, and the AMDGPU runtime
@@ -745,7 +735,7 @@ The raw `//loom/config/target/arch:enable=...`,
 `//loom/config/emit:enable=...`, and `//loom/config/execute:enable=...` values
 are advanced source-embedding and CI-audit surfaces. They exist to build narrow
 slices deliberately; the published portable API is the `LOOM_TARGET_*` product
-target set plus explicit debug emitters and execution substrates.
+target set plus explicit emitters and execution substrates.
 
 Other Bazel-native overrides belong in `.bazelrc.local`.
 
@@ -987,7 +977,7 @@ python dev.py --cmake-build-dir C:\b\hrx-msvc cmake test `
 
 Repository-wide Loom hygiene has a broader compiler-capability contract than
 the host-only smoke: `loom-format` verifies every tracked standalone module
-with the AMDGPU, IREE VM, LLVM IR, SPIR-V, and x86 target descriptors. A CMake
+with the AMDGPU, IREE VM, SPIR-V, Wasm, XDNA, and x86 target descriptors. A CMake
 tree used for `cmake precommit` therefore needs AMDGPU and SPIR-V target support
 even when their HAL drivers remain disabled:
 

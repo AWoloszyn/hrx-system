@@ -7,9 +7,7 @@
 """x86 target profile and descriptor-set row data.
 
 This module owns the Python input rows that generators consume for x86
-descriptor views and native target records. LLVMIR is a debug/inspection
-projection and keeps its feature-string metadata under target/emit/llvmir so
-native x86 binaries do not carry LLVMIR-only names or feature strings.
+descriptor views and native target records.
 """
 
 from __future__ import annotations

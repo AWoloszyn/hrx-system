@@ -54,7 +54,6 @@ iree_py_library(
   DEPS
     loom::py::loom::gen::support::support
     loom::py::loom::target::arch::x86::target_info
-    loom::py::loom::target::emit::llvmir::x86::target_info
 )
 
 iree_py_library(

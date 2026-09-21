@@ -9,9 +9,8 @@
 // Source lowering records the declared kernel.def parameter sequence in a
 // low.kernel.def ABI snapshot. Function-local low.resource imports and low
 // entry-block arguments are use sites attached to that declaration; they do not
-// define the exported ABI shape after cleanup removes unused values. This layer
-// stays below LLVMIR/native artifact emission so the same ABI can feed the
-// temporary assembly path, direct HSACO writing, and future backends.
+// define the exported ABI shape after cleanup removes unused values. Native
+// artifact emission consumes this ABI for assembly and direct HSACO writing.
 
 #ifndef LOOM_TARGET_ARCH_AMDGPU_HAL_KERNEL_ABI_H_
 #define LOOM_TARGET_ARCH_AMDGPU_HAL_KERNEL_ABI_H_

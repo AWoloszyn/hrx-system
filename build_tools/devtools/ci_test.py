@@ -294,7 +294,7 @@ class CiTest(unittest.TestCase):
         ):
             self.assertIn(f"-D{define}=ON", configure_step.argv)
         self.assertIn(
-            "--//loom/config/target:enable=amdgpu,llvmir,spirv,vm,wasm,xdna,x86",
+            "--//loom/config/target:enable=amdgpu,spirv,vm,wasm,xdna,x86",
             configure_step.argv,
         )
         self.assertIn(

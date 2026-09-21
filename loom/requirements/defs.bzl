@@ -18,13 +18,6 @@ EMIT_AMDGPU = build_requirement(
     cmake_condition = "LOOM_EMIT_AMDGPU",
 )
 
-EMIT_LLVMIR = build_requirement(
-    id = "loom.emit.llvmir",
-    label = Label("//loom/requirements:emit_llvmir"),
-    enabled_by = Label("//loom/config/emit:llvmir"),
-    cmake_condition = "LOOM_EMIT_LLVMIR",
-)
-
 EMIT_SPIRV = build_requirement(
     id = "loom.emit.spirv",
     label = Label("//loom/requirements:emit_spirv"),
@@ -74,13 +67,6 @@ TARGET_ARCH_AMDGPU = build_requirement(
     cmake_condition = "LOOM_TARGET_ARCH_AMDGPU",
 )
 
-TARGET_ARCH_LLVMIR = build_requirement(
-    id = "loom.target.arch.llvmir",
-    label = Label("//loom/requirements:target_arch_llvmir"),
-    enabled_by = Label("//loom/config/target/arch:llvmir"),
-    cmake_condition = "LOOM_TARGET_ARCH_LLVMIR",
-)
-
 TARGET_ARCH_SPIRV = build_requirement(
     id = "loom.target.arch.spirv",
     label = Label("//loom/requirements:target_arch_spirv"),
@@ -118,7 +104,6 @@ TARGET_ARCH_X86 = build_requirement(
 
 REQUIREMENTS = [
     EMIT_AMDGPU,
-    EMIT_LLVMIR,
     EMIT_SPIRV,
     EMIT_WASM,
     EXECUTE_IREE_HAL,
@@ -126,7 +111,6 @@ REQUIREMENTS = [
     IMPORT_MLIR,
     IMPORT_TILELANG,
     TARGET_ARCH_AMDGPU,
-    TARGET_ARCH_LLVMIR,
     TARGET_ARCH_SPIRV,
     TARGET_ARCH_WASM,
     TARGET_ARCH_VM,

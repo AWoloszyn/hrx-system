@@ -21,9 +21,6 @@ option(LOOM_TARGET_DEFAULTS
 if(NOT DEFINED LOOM_TARGET_AMDGPU_DEFAULT)
   set(LOOM_TARGET_AMDGPU_DEFAULT ${LOOM_TARGET_DEFAULTS})
 endif()
-if(NOT DEFINED LOOM_TARGET_LLVMIR_DEFAULT)
-  set(LOOM_TARGET_LLVMIR_DEFAULT ${LOOM_TARGET_DEFAULTS})
-endif()
 if(NOT DEFINED LOOM_TARGET_SPIRV_DEFAULT)
   set(LOOM_TARGET_SPIRV_DEFAULT ${LOOM_TARGET_DEFAULTS})
 endif()
@@ -48,9 +45,6 @@ if(NOT DEFINED LOOM_TARGET_AMDGPU_TARGETS)
     CACHE STRING
     "Loom AMDGPU target selectors to compile into AMDGPU target support.")
 endif()
-option(LOOM_TARGET_LLVMIR
-  "Enables Loom LLVM IR oracle target support."
-  ${LOOM_TARGET_LLVMIR_DEFAULT})
 option(LOOM_TARGET_SPIRV
   "Enables Loom SPIR-V target support."
   ${LOOM_TARGET_SPIRV_DEFAULT})
@@ -70,9 +64,6 @@ option(LOOM_TARGET_X86
 option(LOOM_TARGET_ARCH_AMDGPU
   "Enables the AMDGPU Loom target architecture slice."
   OFF)
-option(LOOM_TARGET_ARCH_LLVMIR
-  "Enables the LLVM IR Loom oracle target architecture slice."
-  OFF)
 option(LOOM_TARGET_ARCH_SPIRV
   "Enables the SPIR-V Loom target architecture slice."
   OFF)
@@ -90,7 +81,6 @@ option(LOOM_TARGET_ARCH_X86
   OFF)
 mark_as_advanced(
   LOOM_TARGET_ARCH_AMDGPU
-  LOOM_TARGET_ARCH_LLVMIR
   LOOM_TARGET_ARCH_SPIRV
   LOOM_TARGET_ARCH_VM
   LOOM_TARGET_ARCH_WASM
@@ -101,8 +91,6 @@ mark_as_advanced(
 option(LOOM_EMIT_AMDGPU
   "Enables the AMDGPU Loom artifact emitter slice."
   OFF)
-option(LOOM_EMIT_LLVMIR
-  "Enables the LLVM IR Loom debug artifact emitter slice." OFF)
 option(LOOM_EMIT_SPIRV
   "Enables the SPIR-V Loom artifact emitter slice."
   OFF)
@@ -114,7 +102,6 @@ option(LOOM_EMIT_XDNA
   OFF)
 mark_as_advanced(
   LOOM_EMIT_AMDGPU
-  LOOM_EMIT_LLVMIR
   LOOM_EMIT_SPIRV
   LOOM_EMIT_WASM
   LOOM_EMIT_XDNA
@@ -123,10 +110,6 @@ mark_as_advanced(
 if(LOOM_TARGET_AMDGPU)
   set(LOOM_TARGET_ARCH_AMDGPU ON)
   set(LOOM_EMIT_AMDGPU ON)
-endif()
-if(LOOM_TARGET_LLVMIR)
-  set(LOOM_TARGET_ARCH_LLVMIR ON)
-  set(LOOM_EMIT_LLVMIR ON)
 endif()
 if(LOOM_TARGET_SPIRV)
   set(LOOM_TARGET_ARCH_SPIRV ON)
@@ -172,11 +155,6 @@ option(LOOM_IMPORT_TILELANG
 if(LOOM_EMIT_AMDGPU AND NOT LOOM_TARGET_ARCH_AMDGPU)
   message(FATAL_ERROR
     "LOOM_EMIT_AMDGPU=ON requires LOOM_TARGET_ARCH_AMDGPU=ON.")
-endif()
-
-if(LOOM_EMIT_LLVMIR AND NOT LOOM_TARGET_ARCH_LLVMIR)
-  message(FATAL_ERROR
-    "LOOM_EMIT_LLVMIR=ON requires LOOM_TARGET_ARCH_LLVMIR=ON.")
 endif()
 
 if(LOOM_EMIT_SPIRV AND NOT LOOM_TARGET_ARCH_SPIRV)

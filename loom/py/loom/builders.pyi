@@ -18,7 +18,6 @@ from loom.dialect.globals.builders import GlobalBuilder
 from loom.dialect.group.builders import GroupBuilder
 from loom.dialect.index.builders import IndexBuilder
 from loom.dialect.kernel.builders import KernelBuilder
-from loom.dialect.llvmir.builders import LlvmirBuilder
 from loom.dialect.low.builders import LowBuilder
 from loom.dialect.pass_.builders import PassBuilder
 from loom.dialect.pipeline.builders import PipelineBuilder
@@ -72,8 +71,6 @@ class LoomBuilder:
     def index(self) -> IndexBuilder: ...
     @property
     def kernel(self) -> KernelBuilder: ...
-    @property
-    def llvmir(self) -> LlvmirBuilder: ...
     @property
     def low(self) -> LowBuilder: ...
     @property

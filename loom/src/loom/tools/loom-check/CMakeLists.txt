@@ -375,22 +375,6 @@ loom_cc_library(
   PUBLIC
 )
 
-if(LOOM_TARGET_ARCH_LLVMIR AND LOOM_EMIT_LLVMIR)
-loom_cc_library(
-  NAME
-    llvmir_provider
-  HDRS
-    "llvmir_provider.h"
-  SRCS
-    "llvmir_provider.c"
-  DEPS
-    ::provider
-    iree::base
-    loom::target::emit::llvmir::loom_check
-  PUBLIC
-)
-endif()
-
 loom_cc_library(
   NAME
     test_provider
@@ -434,12 +418,6 @@ set(_loom_check_platform_copts "")
 if(LOOM_EMIT_AMDGPU)
   list(APPEND _loom_check_platform_copts "-DLOOM_CHECK_HAVE_EMIT_AMDGPU=1")
 endif()
-if(LOOM_TARGET_ARCH_LLVMIR)
-  list(APPEND _loom_check_platform_copts "-DLOOM_CHECK_HAVE_TARGET_LLVMIR=1")
-endif()
-if(LOOM_EMIT_LLVMIR)
-  list(APPEND _loom_check_platform_copts "-DLOOM_CHECK_HAVE_EMIT_LLVMIR=1")
-endif()
 if(LOOM_TARGET_ARCH_SPIRV)
   list(APPEND _loom_check_platform_copts "-DLOOM_CHECK_HAVE_TARGET_SPIRV=1")
 endif()
@@ -461,12 +439,6 @@ endif()
 set(_loom_check_platform_deps "")
 if(LOOM_EMIT_AMDGPU)
   list(APPEND _loom_check_platform_deps loom::target::arch::amdgpu::check::provider)
-endif()
-if(LOOM_TARGET_ARCH_LLVMIR)
-  list(APPEND _loom_check_platform_deps loom::target::arch::llvmir::check::check_provider)
-endif()
-if(LOOM_EMIT_LLVMIR)
-  list(APPEND _loom_check_platform_deps ::llvmir_provider)
 endif()
 if(LOOM_TARGET_ARCH_SPIRV)
   list(APPEND _loom_check_platform_deps loom::target::arch::spirv::check::check_provider)
@@ -505,12 +477,6 @@ set(_loom_check_test_platform_copts "")
 if(LOOM_EMIT_AMDGPU)
   list(APPEND _loom_check_test_platform_copts "-DLOOM_CHECK_HAVE_EMIT_AMDGPU=1")
 endif()
-if(LOOM_TARGET_ARCH_LLVMIR)
-  list(APPEND _loom_check_test_platform_copts "-DLOOM_CHECK_HAVE_TARGET_LLVMIR=1")
-endif()
-if(LOOM_EMIT_LLVMIR)
-  list(APPEND _loom_check_test_platform_copts "-DLOOM_CHECK_HAVE_EMIT_LLVMIR=1")
-endif()
 if(LOOM_TARGET_ARCH_SPIRV)
   list(APPEND _loom_check_test_platform_copts "-DLOOM_CHECK_HAVE_TARGET_SPIRV=1")
 endif()
@@ -532,12 +498,6 @@ endif()
 set(_loom_check_test_platform_deps "")
 if(LOOM_EMIT_AMDGPU)
   list(APPEND _loom_check_test_platform_deps loom::target::arch::amdgpu::check::provider)
-endif()
-if(LOOM_TARGET_ARCH_LLVMIR)
-  list(APPEND _loom_check_test_platform_deps loom::target::arch::llvmir::check::check_provider)
-endif()
-if(LOOM_EMIT_LLVMIR)
-  list(APPEND _loom_check_test_platform_deps ::llvmir_provider)
 endif()
 if(LOOM_TARGET_ARCH_SPIRV)
   list(APPEND _loom_check_test_platform_deps loom::target::arch::spirv::check::check_provider)

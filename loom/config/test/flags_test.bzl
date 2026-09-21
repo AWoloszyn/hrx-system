@@ -11,11 +11,11 @@ load("@rules_testing//lib:analysis_test.bzl", "analysis_test")
 load("@rules_testing//lib:truth.bzl", "matching")
 
 _VALID_VALUES = {
-    "loom/config/emit": ["amdgpu", "llvmir", "spirv", "wasm"],
+    "loom/config/emit": ["amdgpu", "spirv", "wasm"],
     "loom/config/execute": ["iree_hal"],
     "loom/config/import": ["mlir", "tilelang"],
-    "loom/config/target": ["amdgpu", "llvmir", "spirv", "vm", "wasm", "x86"],
-    "loom/config/target/arch": ["amdgpu", "llvmir", "spirv", "vm", "wasm", "x86"],
+    "loom/config/target": ["amdgpu", "spirv", "vm", "wasm", "x86"],
+    "loom/config/target/arch": ["amdgpu", "spirv", "vm", "wasm", "x86"],
 }
 
 def _expect_values(env, target):

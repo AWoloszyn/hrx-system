@@ -583,7 +583,7 @@ TEST(SpirvModuleBuilderTest, EmitsCooperativeMatrixRawBdaHalKernelPreamble) {
 TEST(SpirvModuleBuilderTest, RejectsNonSpirvTargetBundle) {
   const loom_target_snapshot_t snapshot = {
       /*.name=*/IREE_SVL("not-spirv"),
-      /*.codegen_format=*/LOOM_TARGET_CODEGEN_FORMAT_LLVMIR,
+      /*.codegen_format=*/LOOM_TARGET_CODEGEN_FORMAT_LOW_NATIVE,
       /*.artifact_format=*/LOOM_TARGET_ARTIFACT_FORMAT_ELF,
   };
   const loom_target_export_plan_t export_plan = {

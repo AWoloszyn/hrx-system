@@ -219,17 +219,6 @@ iree_py_library(
 
 iree_py_library(
   NAME
-    c_tables_llvmir_generator
-  MAIN_MODULE
-    "loom.gen.ops.c_tables"
-  DEPS
-    loom::py::loom::gen::ops::c_tables
-    loom::py::loom::dialect::llvmir::llvmir
-    loom::py::loom::dialect::target::target
-)
-
-iree_py_library(
-  NAME
     c_tables_low_generator
   MAIN_MODULE
     "loom.gen.ops.c_tables"

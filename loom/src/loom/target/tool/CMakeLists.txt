@@ -40,22 +40,6 @@ loom_cc_test(
 
 loom_cc_library(
   NAME
-    llvm
-  HDRS
-    "llvm.h"
-  SRCS
-    "llvm.c"
-  DEPS
-    ::process
-    iree::base
-    iree::base::internal::path
-    iree::io::file_handle
-    iree::io::stream
-  PUBLIC
-)
-
-loom_cc_library(
-  NAME
     spirv
   HDRS
     "spirv.h"

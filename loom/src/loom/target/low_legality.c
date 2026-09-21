@@ -371,7 +371,6 @@ loom_target_low_legality_diagnostic_flags(
 static bool loom_target_low_legality_codegen_format_is_low(
     loom_target_codegen_format_t codegen_format) {
   switch (codegen_format) {
-    case LOOM_TARGET_CODEGEN_FORMAT_LLVMIR:
     case LOOM_TARGET_CODEGEN_FORMAT_LOW_NATIVE:
     case LOOM_TARGET_CODEGEN_FORMAT_SPIRV:
     case LOOM_TARGET_CODEGEN_FORMAT_WASM:

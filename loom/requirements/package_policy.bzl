@@ -16,14 +16,12 @@ load(
 load(
     "//loom/requirements:defs.bzl",
     "EMIT_AMDGPU",
-    "EMIT_LLVMIR",
     "EMIT_SPIRV",
     "EMIT_WASM",
     "IMPORT_CXX",
     "IMPORT_MLIR",
     "IMPORT_TILELANG",
     "TARGET_ARCH_AMDGPU",
-    "TARGET_ARCH_LLVMIR",
     "TARGET_ARCH_SPIRV",
     "TARGET_ARCH_VM",
     "TARGET_ARCH_WASM",
@@ -41,10 +39,6 @@ PACKAGE_POLICIES = [
         build_requirements = [IMPORT_CXX],
     ),
     package_policy(
-        packages = ["loom/src/loom/ops/llvmir/..."],
-        build_requirements = [TARGET_ARCH_LLVMIR],
-    ),
-    package_policy(
         packages = ["loom/src/loom/target/arch/amd/xdna/..."],
         build_requirements = [TARGET_ARCH_XDNA],
     ),
@@ -55,10 +49,6 @@ PACKAGE_POLICIES = [
     package_policy(
         packages = ["loom/src/loom/target/arch/amdgpu/hal"],
         forbidden_deps = ["//runtime/src/iree/hal/drivers/amdgpu/..."],
-    ),
-    package_policy(
-        packages = ["loom/src/loom/target/arch/llvmir/..."],
-        build_requirements = [TARGET_ARCH_LLVMIR],
     ),
     package_policy(
         packages = ["loom/src/loom/target/arch/spirv/..."],
@@ -74,18 +64,6 @@ PACKAGE_POLICIES = [
     ),
     package_policy(
         packages = ["loom/src/loom/target/arch/x86/..."],
-        build_requirements = [TARGET_ARCH_X86],
-    ),
-    package_policy(
-        packages = ["loom/src/loom/target/emit/llvmir/..."],
-        build_requirements = [TARGET_ARCH_LLVMIR, EMIT_LLVMIR],
-    ),
-    package_policy(
-        packages = ["loom/src/loom/target/emit/llvmir/amdgpu/..."],
-        build_requirements = [TARGET_ARCH_AMDGPU],
-    ),
-    package_policy(
-        packages = ["loom/src/loom/target/emit/llvmir/x86/..."],
         build_requirements = [TARGET_ARCH_X86],
     ),
     package_policy(
