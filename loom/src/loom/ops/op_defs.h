@@ -760,6 +760,9 @@ enum loom_region_flag_bits_e {
   // Every directly observable effect in this region or a nested region must
   // be represented by an op carrying LOOM_TRAIT_COMMAND_EFFECT.
   LOOM_REGION_COMMAND_EFFECTS_ONLY = 1u << 6,
+  // The parent format declares the entry block arguments before this region.
+  // Generated from signature/region syntax so printers need no format scan.
+  LOOM_REGION_PARENT_DECLARED_ARGS = 1u << 7,
 };
 typedef uint8_t loom_region_flags_t;
 

@@ -946,9 +946,10 @@ def generate_tables_c(
         # Region descriptors.
         if op.regions:
             implicit_terminator = c_traits.implicit_terminator_kind(op, ops_by_name)
+            parent_declared_args = c_format.region_entry_args_declared_by_parent(op, elements)
             lines.append(f"static const loom_region_descriptor_t {prefix}_region_desc[] = {{")
             func_args_fields = c_queries.func_args_field_names(op)
-            for region_def in op.regions:
+            for region_index, region_def in enumerate(op.regions):
                 region_flags = []
                 if region_def.single_block:
                     region_flags.append("LOOM_REGION_SINGLE_BLOCK")
@@ -956,6 +957,8 @@ def generate_tables_c(
                     region_flags.append("LOOM_REGION_OPTIONAL")
                 if region_def.arg_source in func_args_fields:
                     region_flags.append("LOOM_REGION_PROJECT_FUNC_ARGS")
+                if region_index in parent_declared_args:
+                    region_flags.append("LOOM_REGION_PARENT_DECLARED_ARGS")
                 buffer_arg_memory_space = region_def.buffer_arg_memory_space
                 if buffer_arg_memory_space is not None:
                     if buffer_arg_memory_space != "global":
