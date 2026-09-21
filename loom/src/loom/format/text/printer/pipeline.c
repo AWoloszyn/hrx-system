@@ -95,7 +95,7 @@ static bool loom_print_pipeline_string_attr(const loom_print_context_t* ctx,
       attr->string_id >= ctx->module->strings.count) {
     return false;
   }
-  *out_value = ctx->module->strings.entries[attr->string_id];
+  *out_value = loom_string_table_get(&ctx->module->strings, attr->string_id);
   return true;
 }
 
@@ -135,7 +135,8 @@ static bool loom_print_pipeline_symbol_attr(const loom_print_context_t* ctx,
       ctx->module->symbols.entries[attr->symbol.symbol_id].name_id;
   return name_id < ctx->module->strings.count &&
          loom_print_pipeline_is_printable_name(
-             ctx->module->strings.entries[name_id], /*allow_dot=*/false);
+             loom_string_table_get(&ctx->module->strings, name_id),
+             /*allow_dot=*/false);
 }
 
 static bool loom_print_pipeline_attr_value_is_printable(
@@ -212,7 +213,8 @@ static bool loom_print_pipeline_attr_value_is_printable(
           ctx->module->symbols.entries[attr->symbol.symbol_id].name_id;
       return name_id < ctx->module->strings.count &&
              loom_print_pipeline_is_printable_name(
-                 ctx->module->strings.entries[name_id], /*allow_dot=*/false);
+                 loom_string_table_get(&ctx->module->strings, name_id),
+                 /*allow_dot=*/false);
     }
     case LOOM_ATTR_SYMBOL_ARRAY:
     case LOOM_ATTR_SYMBOL_SET: {
@@ -229,7 +231,8 @@ static bool loom_print_pipeline_attr_value_is_printable(
             ctx->module->symbols.entries[ref.symbol_id].name_id;
         if (name_id >= ctx->module->strings.count ||
             !loom_print_pipeline_is_printable_name(
-                ctx->module->strings.entries[name_id], /*allow_dot=*/false)) {
+                loom_string_table_get(&ctx->module->strings, name_id),
+                /*allow_dot=*/false)) {
           return false;
         }
       }
@@ -251,7 +254,7 @@ static bool loom_print_pipeline_attr_value_is_printable(
         const loom_named_attr_t* entry = &attr->dict_entries[i];
         if (entry->name_id >= ctx->module->strings.count ||
             !loom_print_pipeline_is_printable_name(
-                ctx->module->strings.entries[entry->name_id],
+                loom_string_table_get(&ctx->module->strings, entry->name_id),
                 /*allow_dot=*/false) ||
             !loom_print_pipeline_attr_value_is_printable(
                 ctx, &entry->value, /*descriptor=*/NULL,
@@ -501,7 +504,8 @@ static iree_status_t loom_print_pipeline_attr_parens(
     }
     const loom_named_attr_t* entry = &attrs.entries[i];
     IREE_RETURN_IF_ERROR(loom_output_stream_write(
-        ctx->stream, ctx->module->strings.entries[entry->name_id]));
+        ctx->stream,
+        loom_string_table_get(&ctx->module->strings, entry->name_id)));
     IREE_RETURN_IF_ERROR(loom_output_stream_write_cstring(ctx->stream, " = "));
     IREE_RETURN_IF_ERROR(loom_print_attr(ctx, &entry->value, NULL));
   }

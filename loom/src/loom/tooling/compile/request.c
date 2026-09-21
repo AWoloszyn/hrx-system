@@ -84,7 +84,7 @@ static iree_status_t loom_compile_request_classify_symbol(
         return iree_ok_status();
       default: {
         const iree_string_view_t symbol_name =
-            module->strings.entries[symbol->name_id];
+            loom_string_table_get(&module->strings, symbol->name_id);
         return iree_make_status(
             IREE_STATUS_INVALID_ARGUMENT,
             "pipeline root '@%.*s' has unsupported product scope %u",
@@ -107,7 +107,7 @@ static iree_status_t loom_compile_request_classify_symbol(
     return iree_ok_status();
   }
   const iree_string_view_t symbol_name =
-      module->strings.entries[symbol->name_id];
+      loom_string_table_get(&module->strings, symbol->name_id);
   return iree_make_status(
       IREE_STATUS_INVALID_ARGUMENT,
       "root symbol '@%.*s' does not define a compilable product",
@@ -190,7 +190,7 @@ static iree_status_t loom_compile_request_merge_root(
       loom_compile_request_classify_symbol(module, symbol, &product));
   if (summary->root_count != 0 && summary->product != product) {
     const iree_string_view_t symbol_name =
-        module->strings.entries[symbol->name_id];
+        loom_string_table_get(&module->strings, symbol->name_id);
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
         "selected roots mix '%.*s' and '%.*s' products at '@%.*s'",

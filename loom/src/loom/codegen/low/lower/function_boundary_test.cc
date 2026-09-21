@@ -246,7 +246,8 @@ TEST_F(LowLowerFunctionBoundaryTest,
   const loom_type_id_t source_type_id =
       loom_low_resource_source_type(resource_op);
   ASSERT_LT(source_type_id, module_->types.count);
-  EXPECT_TRUE(loom_type_is_buffer(module_->types.entries[source_type_id]));
+  EXPECT_TRUE(loom_type_is_buffer(
+      loom_type_table_get(&module_->types, source_type_id)));
   const loom_value_id_t resource_result = loom_low_resource_result(resource_op);
   ExpectRegister(resource_result, TEST_LOW_CORE_REG_CLASS_ID_TEST_PTR);
   EXPECT_TRUE(
@@ -335,13 +336,15 @@ TEST_F(LowLowerFunctionBoundaryTest,
   const loom_string_id_t code_symbol =
       loom_low_func_decl_code_symbol(result_.low_func_op);
   ASSERT_LT(code_symbol, module_->strings.count);
-  EXPECT_TRUE(iree_string_view_equal(module_->strings.entries[code_symbol],
-                                     IREE_SV("extern_f")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module_->strings, code_symbol),
+      IREE_SV("extern_f")));
   const loom_string_id_t descriptor_set =
       loom_low_func_decl_descriptor_set(result_.low_func_op);
   ASSERT_LT(descriptor_set, module_->strings.count);
-  EXPECT_TRUE(iree_string_view_equal(module_->strings.entries[descriptor_set],
-                                     IREE_SV("test.low.core")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module_->strings, descriptor_set),
+      IREE_SV("test.low.core")));
 
   const loom_symbol_ref_t low_callee =
       loom_low_func_decl_callee(result_.low_func_op);

@@ -80,7 +80,8 @@ static bool loom_pipeline_type_is_opaque(const loom_module_t* module,
   }
   const loom_string_id_t name_id = loom_type_dialect_name_id(type);
   return name_id != LOOM_STRING_ID_INVALID && name_id < module->strings.count &&
-         iree_string_view_equal(module->strings.entries[name_id], name);
+         iree_string_view_equal(
+             loom_string_table_get(&module->strings, name_id), name);
 }
 
 static bool loom_pipeline_type_is_group(const loom_module_t* module,
@@ -97,7 +98,8 @@ static bool loom_pipeline_type_is_flow_tile(const loom_module_t* module,
   }
   const loom_type_id_t element_type_id =
       loom_pipeline_flow_type_element_type(type);
-  const loom_type_t element_type = module->types.entries[element_type_id];
+  const loom_type_t element_type =
+      loom_type_table_get(&module->types, element_type_id);
   if (!loom_type_is_tile(element_type)) {
     return false;
   }

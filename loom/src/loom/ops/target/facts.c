@@ -134,6 +134,12 @@ void loom_target_facts_project_record(const loom_target_record_view_t* record,
   }
 }
 
+static iree_string_view_t loom_target_symbol_fact_string(
+    const void* context, loom_string_id_t string_id) {
+  const loom_module_t* module = (const loom_module_t*)context;
+  return loom_string_table_get(&module->strings, string_id);
+}
+
 static iree_status_t loom_target_symbol_fact_compute(
     const loom_symbol_fact_domain_t* domain,
     loom_symbol_fact_context_t* context, const loom_module_t* module,
@@ -160,14 +166,14 @@ static iree_status_t loom_target_symbol_fact_compute(
       context, fact_type->storage_size, (void**)&projection));
   const loom_target_record_view_t record = {
       .descriptor = descriptor,
-      .name = module->strings.entries[symbol->name_id],
+      .name = loom_string_table_get(&module->strings, symbol->name_id),
       .attributes = loom_op_const_attrs(target.op),
       .attribute_count = target.op->attribute_count,
       .selector = selector,
       .strings =
           {
-              .values = module->strings.entries,
-              .count = module->strings.count,
+              .context = module,
+              .lookup = loom_target_symbol_fact_string,
           },
   };
   loom_target_facts_project_record(&record, row_bundle, projection);
@@ -184,7 +190,7 @@ static iree_status_t loom_target_symbol_fact_compute(
       .module_id = 0,
       .symbol_id = symbol_id,
   };
-  facts->name = module->strings.entries[symbol->name_id];
+  facts->name = loom_string_table_get(&module->strings, symbol->name_id);
 
   *out_facts = &facts->base;
   return iree_ok_status();

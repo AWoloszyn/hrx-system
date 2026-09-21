@@ -194,7 +194,8 @@ static iree_status_t loom_availability_attr_is_available_before_op_impl(
       }
       return loom_availability_type_is_available_before_op(
           analysis, moving_root_op, before_op,
-          analysis->module->types.entries[attr->type_id], out_available);
+          loom_type_table_get(&analysis->module->types, attr->type_id),
+          out_available);
     case LOOM_ATTR_PREDICATE_LIST:
       if (attr->count > 0 && !attr->predicate_list) {
         return iree_ok_status();

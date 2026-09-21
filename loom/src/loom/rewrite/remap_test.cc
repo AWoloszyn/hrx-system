@@ -188,7 +188,7 @@ TEST_F(RemapTest, RemapsTypesNestedInParameterizedTypeSlots) {
       loom_test_array_type_element_type(target_array_type);
   ASSERT_LT(target_vector_type_id, target_->types.count);
   loom_type_t target_vector_type =
-      target_->types.entries[target_vector_type_id];
+      loom_type_table_get(&target_->types, target_vector_type_id);
   ASSERT_TRUE(loom_type_dim_is_dynamic_at(target_vector_type, 0));
   EXPECT_EQ(loom_type_dim_value_id_at(target_vector_type, 0), target_dim);
 }
@@ -346,8 +346,8 @@ TEST_F(RemapTest, RemapsPredicateListsInsideDictAttributes) {
 
   ASSERT_EQ(target_dict.kind, LOOM_ATTR_DICT);
   ASSERT_EQ(target_dict.count, 1u);
-  iree_string_view_t target_name =
-      target_->strings.entries[target_dict.dict_entries[0].name_id];
+  iree_string_view_t target_name = loom_string_table_get(
+      &target_->strings, target_dict.dict_entries[0].name_id);
   EXPECT_TRUE(iree_string_view_equal(target_name, IREE_SV("predicates")));
   loom_attribute_t target_predicates = target_dict.dict_entries[0].value;
   ASSERT_EQ(target_predicates.kind, LOOM_ATTR_PREDICATE_LIST);
@@ -390,8 +390,9 @@ TEST_F(RemapTest, RemapsCompactParameterizedAttributeSlotsByDescriptor) {
   ASSERT_TRUE(loom_test_compact_attr_has_label(target_attr));
   loom_string_id_t target_label_id = loom_test_compact_attr_label(target_attr);
   ASSERT_LT(target_label_id, target_->strings.count);
-  EXPECT_TRUE(iree_string_view_equal(target_->strings.entries[target_label_id],
-                                     IREE_SV("wave")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&target_->strings, target_label_id),
+      IREE_SV("wave")));
   EXPECT_NE(loom_attr_as_parameterized_slots(source_attr),
             loom_attr_as_parameterized_slots(target_attr));
 }
@@ -446,10 +447,12 @@ TEST_F(RemapTest, RemapsStaticEncodingDependenciesAcrossModules) {
       loom_module_encoding(target_, target_encoding_id);
   ASSERT_NE(target_encoding, nullptr);
   EXPECT_TRUE(iree_string_view_equal(
-      target_->strings.entries[target_encoding->name_id], IREE_SV("q4_test")));
+      loom_string_table_get(&target_->strings, target_encoding->name_id),
+      IREE_SV("q4_test")));
   ASSERT_EQ(target_encoding->attribute_count, 1u);
   EXPECT_TRUE(iree_string_view_equal(
-      target_->strings.entries[target_encoding->attributes[0].name_id],
+      loom_string_table_get(&target_->strings,
+                            target_encoding->attributes[0].name_id),
       IREE_SV("block")));
   EXPECT_EQ(loom_attr_as_i64(target_encoding->attributes[0].value), 32);
 }
@@ -517,10 +520,12 @@ TEST_F(RemapTest, RemapsOverflowDimsAndEncodingBeforeInterning) {
             (const void*)source_dims);
 
   ASSERT_EQ(target_->types.count, 3u);
-  EXPECT_TRUE(loom_type_equal(target_->types.entries[0], index_type));
-  EXPECT_TRUE(loom_type_equal(target_->types.entries[1],
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&target_->types, 0), index_type));
+  EXPECT_TRUE(loom_type_equal(loom_type_table_get(&target_->types, 1),
                               loom_type_scalar(LOOM_SCALAR_TYPE_F32)));
-  EXPECT_TRUE(loom_type_equal(target_->types.entries[2], target_type));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&target_->types, 2), target_type));
 }
 
 TEST_F(RemapTest, RejectsDeepStaticEncodingNesting) {
@@ -566,7 +571,8 @@ TEST_F(RemapTest, RemapsTypeAttributesAcrossModules) {
       loom_module_intern_type(source_, source_type, &interned_source_type));
   loom_type_id_t source_type_id = LOOM_TYPE_ID_INVALID;
   for (iree_host_size_t i = 0; i < source_->types.count; ++i) {
-    if (loom_type_equal(source_->types.entries[i], interned_source_type)) {
+    if (loom_type_equal(loom_type_table_get(&source_->types, i),
+                        interned_source_type)) {
       source_type_id = (loom_type_id_t)i;
       break;
     }
@@ -580,8 +586,8 @@ TEST_F(RemapTest, RemapsTypeAttributesAcrossModules) {
 
   ASSERT_EQ(target_attr.kind, LOOM_ATTR_TYPE);
   ASSERT_LT(target_attr.type_id, target_->types.count);
-  EXPECT_TRUE(loom_type_equal(target_->types.entries[target_attr.type_id],
-                              source_type));
+  EXPECT_TRUE(loom_type_equal(
+      loom_type_table_get(&target_->types, target_attr.type_id), source_type));
 }
 
 TEST_F(RemapTest, RemapsLocationsAcrossModules) {
@@ -629,7 +635,7 @@ TEST_F(RemapTest, RemapsLocationsAcrossModules) {
 
   ASSERT_LT(target_location_id, target_->locations.count);
   const loom_location_entry_t& target_fused =
-      target_->locations.entries[target_location_id];
+      *loom_location_table_const_entry(&target_->locations, target_location_id);
   ASSERT_EQ(target_fused.kind, LOOM_LOCATION_FUSED);
   ASSERT_EQ(target_fused.fused.count, 1u);
   ASSERT_NE(target_fused.fused.children, nullptr);
@@ -637,7 +643,7 @@ TEST_F(RemapTest, RemapsLocationsAcrossModules) {
   loom_location_id_t target_child_id = target_fused.fused.children[0];
   ASSERT_LT(target_child_id, target_->locations.count);
   const loom_location_entry_t& target_child =
-      target_->locations.entries[target_child_id];
+      *loom_location_table_const_entry(&target_->locations, target_child_id);
   ASSERT_EQ(target_child.kind, LOOM_LOCATION_FILE);
   EXPECT_NE(target_child.file.source_id, source_id);
   EXPECT_NE(target_child.file.source_id, target_preexisting_source_id);
@@ -677,7 +683,7 @@ TEST_F(RemapTest, RemapsTaggedLocationsAcrossModules) {
 
   ASSERT_LT(target_location_id, target_->locations.count);
   const loom_location_entry_t& target_tagged =
-      target_->locations.entries[target_location_id];
+      *loom_location_table_const_entry(&target_->locations, target_location_id);
   ASSERT_EQ(target_tagged.kind, LOOM_LOCATION_TAGGED);
   EXPECT_EQ(target_tagged.tagged.tag, LOOM_LOCATION_TAG_SANITIZER_SITE);
   ASSERT_NE(target_tagged.tagged.child, LOOM_LOCATION_UNKNOWN);
@@ -688,8 +694,8 @@ TEST_F(RemapTest, RemapsTaggedLocationsAcrossModules) {
   EXPECT_EQ(std::memcmp(target_tagged.tagged.data, data, IREE_ARRAYSIZE(data)),
             0);
 
-  const loom_location_entry_t& target_child =
-      target_->locations.entries[target_tagged.tagged.child];
+  const loom_location_entry_t& target_child = *loom_location_table_const_entry(
+      &target_->locations, target_tagged.tagged.child);
   ASSERT_EQ(target_child.kind, LOOM_LOCATION_FILE);
   ASSERT_LT(target_child.file.source_id, target_->sources.count);
   EXPECT_TRUE(iree_string_view_equal(
@@ -708,7 +714,7 @@ static iree_status_t RemapSymbolByName(void* user_data,
   const loom_symbol_t* source_symbol =
       &source_module->symbols.entries[source_ref.symbol_id];
   iree_string_view_t source_name =
-      source_module->strings.entries[source_symbol->name_id];
+      loom_string_table_get(&source_module->strings, source_symbol->name_id);
   loom_string_id_t target_name_id = LOOM_STRING_ID_INVALID;
   IREE_RETURN_IF_ERROR(
       loom_module_intern_string(target_module, source_name, &target_name_id));
@@ -780,9 +786,11 @@ TEST_F(RemapTest, RemapsOrderedSymbolArraysAcrossModules) {
   const loom_string_id_t target_alpha_name_id =
       target_->symbols.entries[target_refs.values[1].symbol_id].name_id;
   EXPECT_TRUE(iree_string_view_equal(
-      target_->strings.entries[target_beta_name_id], IREE_SV("beta")));
+      loom_string_table_get(&target_->strings, target_beta_name_id),
+      IREE_SV("beta")));
   EXPECT_TRUE(iree_string_view_equal(
-      target_->strings.entries[target_alpha_name_id], IREE_SV("alpha")));
+      loom_string_table_get(&target_->strings, target_alpha_name_id),
+      IREE_SV("alpha")));
 }
 
 TEST_F(RemapTest, RemapsParameterizedAttributeArraysAcrossModules) {
@@ -847,15 +855,16 @@ TEST_F(RemapTest, RemapsParameterizedAttributeArraysAcrossModules) {
       loom_test_options_attr_element_type(target_options);
   ASSERT_LT(target_vector_type_id, target_->types.count);
   loom_type_t target_vector_type =
-      target_->types.entries[target_vector_type_id];
+      loom_type_table_get(&target_->types, target_vector_type_id);
   ASSERT_TRUE(loom_type_dim_is_dynamic_at(target_vector_type, 0));
   EXPECT_EQ(loom_type_dim_value_id_at(target_vector_type, 0), target_dim);
   loom_symbol_ref_t target_ref = loom_test_options_attr_target(target_options);
   ASSERT_LT(target_ref.symbol_id, target_->symbols.count);
   loom_string_id_t target_name_id =
       target_->symbols.entries[target_ref.symbol_id].name_id;
-  EXPECT_TRUE(iree_string_view_equal(target_->strings.entries[target_name_id],
-                                     IREE_SV("target")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&target_->strings, target_name_id),
+      IREE_SV("target")));
 }
 
 static iree_status_t RemapSymbolToMissingTarget(
@@ -1047,8 +1056,9 @@ TEST_F(RemapTest, CrossModuleSymbolRefsRequirePolicy) {
   ASSERT_LT(target_attr.symbol.symbol_id, target_->symbols.count);
   loom_string_id_t target_name_id =
       target_->symbols.entries[target_attr.symbol.symbol_id].name_id;
-  EXPECT_TRUE(iree_string_view_equal(target_->strings.entries[target_name_id],
-                                     IREE_SV("callee")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&target_->strings, target_name_id),
+      IREE_SV("callee")));
 }
 
 TEST_F(RemapTest, RemapsSymbolsNestedInParameterizedTypes) {
@@ -1082,8 +1092,9 @@ TEST_F(RemapTest, RemapsSymbolsNestedInParameterizedTypes) {
   ASSERT_LT(target_ref.symbol_id, target_->symbols.count);
   loom_string_id_t target_name_id =
       target_->symbols.entries[target_ref.symbol_id].name_id;
-  EXPECT_TRUE(iree_string_view_equal(target_->strings.entries[target_name_id],
-                                     IREE_SV("target")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&target_->strings, target_name_id),
+      IREE_SV("target")));
 }
 
 TEST_F(RemapTest, CrossModuleSymbolPolicyMustReturnTargetSymbol) {

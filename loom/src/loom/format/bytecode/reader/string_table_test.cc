@@ -177,10 +177,10 @@ TEST_F(BytecodeStringTableTest, MaterializesCanonicalStringIds) {
       loom_bytecode_string_table_materialize(&module_view_, module_));
 
   ASSERT_EQ(module_->strings.count, 3u);
-  EXPECT_TRUE(
-      iree_string_view_equal(module_->strings.entries[1], IREE_SV("alpha")));
-  EXPECT_TRUE(
-      iree_string_view_equal(module_->strings.entries[2], IREE_SV("beta")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module_->strings, 1), IREE_SV("alpha")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module_->strings, 2), IREE_SV("beta")));
 }
 
 TEST_F(BytecodeStringTableTest, RejectsDuplicateSources) {

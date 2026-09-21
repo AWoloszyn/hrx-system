@@ -296,7 +296,7 @@ static iree_string_view_t loom_inline_symbol_name(const loom_module_t* module,
   if (symbol_id < module->symbols.count) {
     loom_string_id_t name_id = module->symbols.entries[symbol_id].name_id;
     if (name_id < module->strings.count) {
-      return module->strings.entries[name_id];
+      return loom_string_table_get(&module->strings, name_id);
     }
   }
   return IREE_SV("<invalid>");
@@ -572,7 +572,7 @@ static iree_status_t loom_inline_build_plan(
   for (iree_host_size_t i = 0; i < state->options.references->occurrence_count;
        ++i) {
     const loom_symbol_reference_occurrence_t* edge =
-        &state->options.references->occurrences[i];
+        loom_symbol_reference_table_occurrence(state->options.references, i);
     if (!loom_symbol_reference_occurrence_is_dependency(edge) ||
         (state->options.live_symbols &&
          edge->source_symbol_id < state->module->symbols.count &&

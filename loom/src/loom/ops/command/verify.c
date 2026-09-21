@@ -77,8 +77,8 @@ static iree_status_t loom_command_emit_pattern_constraint(
 iree_status_t loom_command_parameter_verify(const loom_module_t* module,
                                             const loom_op_t* op,
                                             iree_diagnostic_emitter_t emitter) {
-  const iree_string_view_t pattern =
-      module->strings.entries[loom_command_parameter_pattern(op)];
+  const iree_string_view_t pattern = loom_string_table_get(
+      &module->strings, loom_command_parameter_pattern(op));
   if (pattern.size == 0) {
     return loom_command_emit_pattern_constraint(
         emitter, op, pattern, IREE_SV("a non-empty parameter key pattern"));

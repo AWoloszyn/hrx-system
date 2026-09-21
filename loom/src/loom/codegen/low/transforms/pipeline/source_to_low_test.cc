@@ -574,8 +574,9 @@ TEST_F(LowLowerPassTest,
   const loom_string_id_t descriptor_set_id =
       loom_low_func_def_descriptor_set(function_version.base.function.op);
   ASSERT_LT(descriptor_set_id, module->strings.count);
-  EXPECT_TRUE(iree_string_view_equal(module->strings.entries[descriptor_set_id],
-                                     IREE_SV("test.low.core")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module->strings, descriptor_set_id),
+      IREE_SV("test.low.core")));
 
   loom_block_t* low_entry = loom_region_entry_block(
       loom_func_like_body(function_version.base.function));
@@ -650,8 +651,9 @@ TEST_F(LowLowerPassTest,
   const loom_string_id_t descriptor_set_id =
       loom_low_func_def_descriptor_set(entry_symbol->defining_op);
   ASSERT_LT(descriptor_set_id, module->strings.count);
-  EXPECT_TRUE(iree_string_view_equal(module->strings.entries[descriptor_set_id],
-                                     IREE_SV("test.low.core")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module->strings, descriptor_set_id),
+      IREE_SV("test.low.core")));
 }
 
 TEST_F(LowLowerPassTest,

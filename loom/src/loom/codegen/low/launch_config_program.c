@@ -410,8 +410,8 @@ static iree_status_t loom_kernel_launch_config_resolve_low_function(
     *out_function = entry->version_handle->function;
     return iree_ok_status();
   }
-  const iree_string_view_t source_name =
-      program->module->strings.entries[entry->source_function_name_id];
+  const iree_string_view_t source_name = loom_string_table_get(
+      &program->module->strings, entry->source_function_name_id);
   const loom_string_id_t lowered_name_id =
       loom_module_lookup_string(lowered_module, source_name);
   if (lowered_name_id == LOOM_STRING_ID_INVALID) {

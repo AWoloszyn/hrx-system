@@ -284,8 +284,8 @@ static bool loom_attribute_equal_after_value_remap(
         return false;
       }
       return loom_type_equal_after_value_remap(
-          module, module->types.entries[source_attr.type_id],
-          module->types.entries[target_attr.type_id], remap);
+          module, loom_type_table_get(&module->types, source_attr.type_id),
+          loom_type_table_get(&module->types, target_attr.type_id), remap);
 
     case LOOM_ATTR_PREDICATE_LIST:
       if (source_attr.count != target_attr.count ||
@@ -687,7 +687,8 @@ static bool loom_attribute_references_value(const loom_module_t* module,
       return attr.type_id != LOOM_TYPE_ID_INVALID &&
              attr.type_id < module->types.count &&
              loom_type_references_value(
-                 module, module->types.entries[attr.type_id], value_id);
+                 module, loom_type_table_get(&module->types, attr.type_id),
+                 value_id);
     case LOOM_ATTR_PREDICATE_LIST:
       for (uint16_t i = 0; i < attr.count; ++i) {
         const loom_predicate_t* predicate = &attr.predicate_list[i];
@@ -921,7 +922,8 @@ IREE_ATTRIBUTE_NOINLINE static uint32_t loom_attribute_hash_after_value_remap(
         hash = loom_structural_hash_mix_u32(
             hash,
             loom_type_hash_after_value_remap(
-                module, module->types.entries[attribute->type_id], remap));
+                module, loom_type_table_get(&module->types, attribute->type_id),
+                remap));
       } else {
         hash = loom_structural_hash_mix_u32(hash, attribute->type_id);
       }

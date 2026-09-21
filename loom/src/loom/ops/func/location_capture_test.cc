@@ -153,8 +153,9 @@ TEST_F(LocationCaptureTest, ColumnsPreserveUnicodeCodePoints) {
 }
 
 TEST_F(LocationCaptureTest, ExclusiveEndAtNextLineDoesNotCaptureThatLine) {
-  const auto source_id =
-      input_.module->locations.entries[Original()->location].file.source_id;
+  const auto source_id = loom_location_table_const_entry(
+                             &input_.module->locations, Original()->location)
+                             ->file.source_id;
   loom_location_id_t location;
   IREE_ASSERT_OK(loom_module_add_location(
       input_.module, loom_location_file_range(source_id, 5, 3, 6, 1),
@@ -257,8 +258,9 @@ TEST_F(LocationCaptureTest, UnknownLocationProducesAnExplicitUnknownNode) {
 }
 
 TEST_F(LocationCaptureTest, UnavailableCoordinatesKeepTheRangeWithoutText) {
-  const auto source_id =
-      input_.module->locations.entries[Original()->location].file.source_id;
+  const auto source_id = loom_location_table_const_entry(
+                             &input_.module->locations, Original()->location)
+                             ->file.source_id;
   loom_location_id_t location;
   IREE_ASSERT_OK(loom_module_add_location(
       input_.module, loom_location_file_range(source_id, 60000, 1, 60000, 20),

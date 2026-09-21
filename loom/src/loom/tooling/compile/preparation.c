@@ -39,7 +39,7 @@ static iree_status_t loom_compile_materialize_roots(
       if (loom_compile_request_symbol_is_implicit_root(module, request->product,
                                                        symbol)) {
         implicit_root_values[root_ordinal++] =
-            module->strings.entries[symbol->name_id];
+            loom_string_table_get(&module->strings, symbol->name_id);
       }
     }
     roots.values = implicit_root_values;
@@ -51,7 +51,7 @@ static iree_status_t loom_compile_materialize_roots(
   const loom_module_t* const source_modules[] = {module};
   iree_string_view_t module_name = iree_string_view_empty();
   if (module->name_id < module->strings.count) {
-    module_name = module->strings.entries[module->name_id];
+    module_name = loom_string_table_get(&module->strings, module->name_id);
   }
   loom_module_t* linked_module = NULL;
   iree_status_t status = loom_link_materialized_modules(
@@ -130,7 +130,8 @@ iree_status_t loom_compile_run_request_pipeline(
           continue;
         }
         specializations[count++] = (loom_target_specialization_request_t){
-            .function_name = module->strings.entries[symbol->name_id],
+            .function_name =
+                loom_string_table_get(&module->strings, symbol->name_id),
             .target_profile = request->explicit_target.target_profile,
         };
       }

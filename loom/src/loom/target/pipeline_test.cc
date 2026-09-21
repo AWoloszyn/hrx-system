@@ -78,14 +78,16 @@ iree_string_view_t FindStringOption(loom_module_t* module,
                                     iree_string_view_t name) {
   for (iree_host_size_t i = 0; i < options.count; ++i) {
     const loom_named_attr_t* option = &options.entries[i];
-    iree_string_view_t option_name = module->strings.entries[option->name_id];
+    iree_string_view_t option_name =
+        loom_string_table_get(&module->strings, option->name_id);
     if (!iree_string_view_equal(option_name, name)) {
       continue;
     }
     if (option->value.kind != LOOM_ATTR_STRING) {
       return iree_string_view_empty();
     }
-    return module->strings.entries[loom_attr_as_string_id(option->value)];
+    return loom_string_table_get(&module->strings,
+                                 loom_attr_as_string_id(option->value));
   }
   return iree_string_view_empty();
 }
@@ -103,8 +105,8 @@ iree_status_t InspectPipelineRun(void* user_data, loom_op_t* op,
       static_cast<PipelineRunCountContext*>(user_data);
   ++count_context->current_run_ordinal;
   PipelineRunCounts* counts = &count_context->counts;
-  iree_string_view_t key =
-      count_context->module->strings.entries[loom_pass_run_key(op)];
+  iree_string_view_t key = loom_string_table_get(
+      &count_context->module->strings, loom_pass_run_key(op));
   if (iree_string_view_equal(key, IREE_SV("select-templates")) &&
       iree_string_view_equal(
           FindStringOption(count_context->module, loom_pass_run_options(op),

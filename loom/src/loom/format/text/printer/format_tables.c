@@ -250,8 +250,9 @@ iree_status_t loom_print_operand_dict(loom_print_context_t* ctx,
     }
     if (i > 0) {
       int comparison = iree_string_view_compare(
-          ctx->module->strings.entries[names_attr.dict_entries[i - 1].name_id],
-          ctx->module->strings.entries[entry->name_id]);
+          loom_string_table_get(&ctx->module->strings,
+                                names_attr.dict_entries[i - 1].name_id),
+          loom_string_table_get(&ctx->module->strings, entry->name_id));
       if (comparison >= 0) {
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                 "OPERAND_DICT names attr keys are not "
@@ -281,7 +282,8 @@ iree_status_t loom_print_operand_dict(loom_print_context_t* ctx,
     }
 
     IREE_RETURN_IF_ERROR(loom_output_stream_write(
-        ctx->stream, ctx->module->strings.entries[entry->name_id]));
+        ctx->stream,
+        loom_string_table_get(&ctx->module->strings, entry->name_id)));
     IREE_RETURN_IF_ERROR(loom_output_stream_write_cstring(ctx->stream, " = "));
     uint16_t operand_index = (uint16_t)(start + (uint16_t)ordinal);
     iree_host_size_t value_start = ctx->stream->offset;

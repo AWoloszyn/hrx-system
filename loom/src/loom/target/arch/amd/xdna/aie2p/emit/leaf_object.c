@@ -212,8 +212,8 @@ static iree_status_t loom_aie2p_leaf_object_collect_resources(
         .extent_physical_register_count = extent_physical_register_count,
         .flags = flags,
         .import_kind = loom_low_resource_import_kind(op),
-        .source_type_kind =
-            loom_type_kind(frame->module->types.entries[source_type_id]),
+        .source_type_kind = loom_type_kind(
+            loom_type_table_get(&frame->module->types, source_type_id)),
     };
   }
   realization->resource_imports = resources;

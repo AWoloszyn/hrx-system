@@ -462,7 +462,7 @@ iree_status_t loom_template_provider_summary_bind_family(
   out_provider->origin_ordinal = origin_ordinal;
   out_provider->family = target_family;
   out_provider->family_name =
-      target_module->strings.entries[binding.symbol->name_id];
+      loom_string_table_get(&target_module->strings, binding.symbol->name_id);
   out_provider->argument_ids = binding.argument_ids;
   out_provider->result_ids = binding.result_ids;
   out_provider->predicates = predicates;
@@ -538,7 +538,8 @@ iree_status_t loom_template_provider_contract_bind_family(
       .result_count = binding.result_count,
       .predicate_count = contract->predicate_count,
       .target_condition_count = contract->target_condition_count,
-      .family_name = target_module->strings.entries[binding.symbol->name_id],
+      .family_name = loom_string_table_get(&target_module->strings,
+                                           binding.symbol->name_id),
       .name = contract->name,
       .priority = contract->priority,
       .argument_ids = binding.argument_ids,

@@ -183,9 +183,9 @@ typedef struct loom_attribute_occurrence_walk_t {
 static iree_status_t loom_attribute_walk_type_occurrences(
     loom_type_id_t type_id, void* user_data) {
   const loom_attribute_occurrence_walk_t* walk = user_data;
-  return loom_type_walk_value_refs(walk->module,
-                                   walk->module->types.entries[type_id],
-                                   walk->callback, walk->user_data);
+  return loom_type_walk_value_refs(
+      walk->module, loom_type_table_get(&walk->module->types, type_id),
+      walk->callback, walk->user_data);
 }
 
 static iree_status_t loom_attribute_walk_value_occurrence(
@@ -229,7 +229,8 @@ static iree_status_t loom_attribute_collect_type_dependencies(
   loom_attribute_dependency_build_t* build = user_data;
   return loom_type_dependencies_union(
       &build->module->type_uses, build->root,
-      build->module->types.dependencies[type_id], &build->root);
+      loom_type_table_dependencies(&build->module->types, type_id),
+      &build->root);
 }
 
 static iree_status_t loom_attribute_collect_value_dependency(

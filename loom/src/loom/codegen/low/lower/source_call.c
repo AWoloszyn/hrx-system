@@ -27,7 +27,7 @@ static iree_string_view_t loom_low_source_call_symbol_name(
   if (symbol->name_id >= module->strings.count) {
     return IREE_SV("<unnamed>");
   }
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static iree_status_t loom_low_source_call_emit_contract_error(
@@ -102,7 +102,7 @@ static iree_string_view_t loom_low_source_call_function_descriptor_set(
   if (descriptor_set >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[descriptor_set];
+  return loom_string_table_get(&module->strings, descriptor_set);
 }
 
 static iree_status_t loom_low_source_call_resolve_callee_target(

@@ -109,7 +109,7 @@ static iree_string_view_t loomc_launch_config_function_name(
     const loom_module_t* module, loom_func_like_t function) {
   const loom_symbol_ref_t symbol_ref = loom_func_like_callee(function);
   const loom_symbol_t* symbol = &module->symbols.entries[symbol_ref.symbol_id];
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static void loomc_launch_config_evaluation_deinitialize(

@@ -1128,9 +1128,11 @@ TEST_F(ParserTest, ReturnsSymbolReferencesFromParsedSnapshot) {
   ASSERT_NE(availability_occurrence_id,
             LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID);
   const loom_symbol_reference_occurrence_t* dependency =
-      &symbol_references.occurrences[dependency_occurrence_id];
+      loom_symbol_reference_table_occurrence(&symbol_references,
+                                             dependency_occurrence_id);
   const loom_symbol_reference_occurrence_t* availability =
-      &symbol_references.occurrences[availability_occurrence_id];
+      loom_symbol_reference_table_occurrence(&symbol_references,
+                                             availability_occurrence_id);
   EXPECT_EQ(dependency->role, LOOM_SYMBOL_REFERENCE_ROLE_DEPENDENCY);
   EXPECT_EQ(availability->role, LOOM_SYMBOL_REFERENCE_ROLE_AVAILABILITY);
 
@@ -1177,8 +1179,8 @@ TEST_F(ParserTest, ParameterizedAttrsRoundTripInDeclarationOrder) {
   loom_symbol_ref_t target = loom_test_options_attr_target(options);
   ASSERT_LT(target.symbol_id, module->symbols.count);
   EXPECT_TRUE(iree_string_view_equal(
-      module->strings
-          .entries[module->symbols.entries[target.symbol_id].name_id],
+      loom_string_table_get(&module->strings,
+                            module->symbols.entries[target.symbol_id].name_id),
       IREE_SV("target")));
   loom_module_free(module);
 }
@@ -1202,8 +1204,8 @@ TEST_F(ParserTest, CompactParameterizedAttrsCanonicalizePrimaryFirst) {
   ASSERT_TRUE(loom_test_compact_attr_has_label(compact));
   loom_string_id_t label_id = loom_test_compact_attr_label(compact);
   ASSERT_LT(label_id, module->strings.count);
-  EXPECT_TRUE(iree_string_view_equal(module->strings.entries[label_id],
-                                     IREE_SV("wave")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module->strings, label_id), IREE_SV("wave")));
   loom_module_free(module);
 
   text = RoundTrip("test.compact_parameterized_attr #test.compact<64>\n");
@@ -1929,14 +1931,15 @@ TEST_F(ParserTest, DescriptorBackedTypesRoundTripAndPreserveParameters) {
   loom_symbol_ref_t target = loom_test_matrix_type_target(matrix_type);
   ASSERT_LT(target.symbol_id, module->symbols.count);
   EXPECT_TRUE(iree_string_view_equal(
-      module->strings
-          .entries[module->symbols.entries[target.symbol_id].name_id],
+      loom_string_table_get(&module->strings,
+                            module->symbols.entries[target.symbol_id].name_id),
       IREE_SV("target")));
   loom_type_id_t element_type_id =
       loom_test_matrix_type_element_type(matrix_type);
   ASSERT_LT(element_type_id, module->types.count);
-  EXPECT_TRUE(loom_type_equal(module->types.entries[element_type_id],
-                              loom_type_scalar(LOOM_SCALAR_TYPE_BF16)));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&module->types, element_type_id),
+                      loom_type_scalar(LOOM_SCALAR_TYPE_BF16)));
 
   loom_type_t packed_type = loom_module_value_type(
       module, loom_test_constant_result(loom_block_op(block, 3)));
@@ -3061,7 +3064,7 @@ TEST_F(ParserTest, TrailingFileLocationOverridesParserSourceFallback) {
   ASSERT_LT(op->location, module->locations.count);
 
   const loom_location_entry_t& location =
-      module->locations.entries[op->location];
+      *loom_location_table_const_entry(&module->locations, op->location);
   ASSERT_EQ(location.kind, LOOM_LOCATION_FILE);
   ASSERT_LT(location.file.source_id, module->sources.count);
   EXPECT_TRUE(
@@ -3116,9 +3119,9 @@ TEST_F(ParserTest, TrailingLocationsReuseSourceIds) {
   ASSERT_LT(second_op->location, module->locations.count);
 
   const loom_location_entry_t& first_location =
-      module->locations.entries[first_op->location];
+      *loom_location_table_const_entry(&module->locations, first_op->location);
   const loom_location_entry_t& second_location =
-      module->locations.entries[second_op->location];
+      *loom_location_table_const_entry(&module->locations, second_op->location);
   ASSERT_EQ(first_location.kind, LOOM_LOCATION_FILE);
   ASSERT_EQ(second_location.kind, LOOM_LOCATION_FILE);
   EXPECT_EQ(first_location.file.source_id, second_location.file.source_id);
@@ -3176,7 +3179,7 @@ TEST_F(ParserTest, FallbackParserLocationPrintedWhenNoExplicitLoc) {
   ASSERT_LT(op->location, module->locations.count);
 
   const loom_location_entry_t& location =
-      module->locations.entries[op->location];
+      *loom_location_table_const_entry(&module->locations, op->location);
   ASSERT_EQ(location.kind, LOOM_LOCATION_FILE);
   EXPECT_TRUE(iree_string_view_equal(
       module->sources.entries[location.file.source_id], IREE_SV("test.loom")));

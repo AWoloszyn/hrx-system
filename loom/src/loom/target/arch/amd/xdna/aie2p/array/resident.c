@@ -145,7 +145,7 @@ static iree_status_t loom_aie2p_array_resident_add_symbol(
       builder->module->symbols.entries[array_ref.symbol_id].name_id;
   IREE_ASSERT_LT(array_name_id, builder->module->strings.count);
   const iree_string_view_t array_name =
-      builder->module->strings.entries[array_name_id];
+      loom_string_table_get(&builder->module->strings, array_name_id);
   const iree_string_view_t infix = IREE_SV("$worker$");
   iree_host_size_t name_capacity = 0;
   if (!iree_host_size_checked_add(array_name.size, infix.size + 11,

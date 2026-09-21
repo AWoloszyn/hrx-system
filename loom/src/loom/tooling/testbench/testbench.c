@@ -50,7 +50,7 @@ static iree_string_view_t loom_testbench_symbol_name(
   if (!symbol || symbol->name_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static const loom_symbol_t* loom_testbench_symbol_from_ref(
@@ -67,7 +67,7 @@ static iree_string_view_t loom_testbench_string_from_id(
   if (string_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 static loom_scalar_type_t loom_testbench_value_scalar_type(
@@ -334,7 +334,8 @@ static bool loom_testbench_plan_parameter_name(
     return false;
   }
 
-  iree_string_view_t name = module->strings.entries[name_attr.string_id];
+  iree_string_view_t name =
+      loom_string_table_get(&module->strings, name_attr.string_id);
   if (iree_string_view_is_empty(name)) {
     return false;
   }
@@ -1394,7 +1395,7 @@ static iree_host_size_t loom_testbench_case_parameter_index_by_name(
   if (name_id >= module->strings.count) {
     return IREE_HOST_SIZE_MAX;
   }
-  iree_string_view_t name = module->strings.entries[name_id];
+  iree_string_view_t name = loom_string_table_get(&module->strings, name_id);
   for (iree_host_size_t i = 0; i < case_plan->parameter_count; ++i) {
     if (iree_string_view_equal(case_plan->parameters[i].name, name)) {
       return i;
@@ -1410,14 +1411,15 @@ static bool loom_testbench_benchmark_assignment_has_duplicate_key(
       attrs.entries[assignment_index].name_id >= module->strings.count) {
     return false;
   }
-  iree_string_view_t name =
-      module->strings.entries[attrs.entries[assignment_index].name_id];
+  iree_string_view_t name = loom_string_table_get(
+      &module->strings, attrs.entries[assignment_index].name_id);
   for (iree_host_size_t i = 0; i < assignment_index; ++i) {
     if (attrs.entries[i].name_id >= module->strings.count) {
       continue;
     }
     if (iree_string_view_equal(
-            module->strings.entries[attrs.entries[i].name_id], name)) {
+            loom_string_table_get(&module->strings, attrs.entries[i].name_id),
+            name)) {
       return true;
     }
   }

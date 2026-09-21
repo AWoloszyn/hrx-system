@@ -229,8 +229,9 @@ class TargetFunctionVersionProjectionTest : public ::testing::Test {
         loom_func_like_target(FindFunction(module, function_name));
     IREE_ASSERT(loom_symbol_ref_is_valid(target_ref));
     IREE_ASSERT_EQ(target_ref.module_id, 0);
-    return module->strings
-        .entries[module->symbols.entries[target_ref.symbol_id].name_id];
+    return loom_string_table_get(
+        &module->strings,
+        module->symbols.entries[target_ref.symbol_id].name_id);
   }
 
   const loom_op_t* FunctionTarget(loom_module_t* module,

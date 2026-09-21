@@ -188,7 +188,7 @@ static iree_string_view_t loom_amdgpu_argument_value_name(
   if (name_id == LOOM_STRING_ID_INVALID || name_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[name_id];
+  return loom_string_table_get(&module->strings, name_id);
 }
 
 static uint32_t loom_amdgpu_direct_arg_byte_count(loom_type_t abi_type) {

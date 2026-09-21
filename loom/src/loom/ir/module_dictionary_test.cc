@@ -65,9 +65,9 @@ class ModuleDictionaryTest : public ::testing::Test {
       char key[32];
       std::snprintf(key, sizeof(key), "parameter_%05u",
                     static_cast<unsigned>(i));
-      EXPECT_TRUE(
-          iree_string_view_equal(module_->strings.entries[entry.name_id],
-                                 iree_make_cstring_view(key)));
+      EXPECT_TRUE(iree_string_view_equal(
+          loom_string_table_get(&module_->strings, entry.name_id),
+          iree_make_cstring_view(key)));
     }
     IREE_EXPECT_OK(loom_module_verify_canonical_attr_dict(module_, dictionary));
   }

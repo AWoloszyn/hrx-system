@@ -97,8 +97,8 @@ static iree_status_t loom_bytecode_reader_resolve_function_low_descriptor_set(
   }
 
   const iree_string_view_t repr_contract =
-      reader->output_module->strings
-          .entries[loom_attr_as_string_id(repr_contract_attr)];
+      loom_string_table_get(&reader->output_module->strings,
+                            loom_attr_as_string_id(repr_contract_attr));
   *out_descriptor_set = loom_low_repr_lookup_descriptor_set(
       &reader->low_repr_environment, repr_contract);
   if (!*out_descriptor_set) {

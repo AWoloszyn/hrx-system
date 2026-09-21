@@ -29,7 +29,8 @@ static iree_status_t loom_encoding_emit(iree_diagnostic_emitter_t emitter,
 static iree_status_t loom_encoding_define_emit_duplicate_static_dynamic_param(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter, loom_string_id_t name_id) {
-  iree_string_view_t param_name = module->strings.entries[name_id];
+  iree_string_view_t param_name =
+      loom_string_table_get(&module->strings, name_id);
   loom_diagnostic_param_t params[] = {
       loom_param_string(param_name),
   };
@@ -43,7 +44,7 @@ static iree_status_t loom_encoding_define_emit_unknown_dynamic_param(
     loom_string_id_t name_id) {
   loom_diagnostic_param_t params[] = {
       loom_param_string(encoding_name),
-      loom_param_string(module->strings.entries[name_id]),
+      loom_param_string(loom_string_table_get(&module->strings, name_id)),
   };
   return loom_encoding_emit(emitter, op, LOOM_ERR_ENCODING_008, params,
                             IREE_ARRAYSIZE(params));
@@ -56,7 +57,7 @@ static iree_status_t loom_encoding_define_emit_dynamic_type_mismatch(
     loom_type_constraint_t expected_type) {
   loom_diagnostic_param_t params[] = {
       loom_param_string(encoding_name),
-      loom_param_string(module->strings.entries[name_id]),
+      loom_param_string(loom_string_table_get(&module->strings, name_id)),
       loom_param_type(loom_module_value_type(module, value_id)),
       loom_param_string(
           iree_make_cstring_view(loom_type_constraint_name(expected_type))),
@@ -97,13 +98,13 @@ static iree_status_t loom_encoding_define_resolve_params(
     const loom_named_attr_t* dynamic_entry =
         &params->dynamic_names.entries[dynamic_index];
     const iree_string_view_t dynamic_name =
-        module->strings.entries[dynamic_entry->name_id];
+        loom_string_table_get(&module->strings, dynamic_entry->name_id);
 
     while (static_index < params->static_attrs.count) {
       const loom_named_attr_t* static_entry =
           &params->static_attrs.entries[static_index];
       const iree_string_view_t static_name =
-          module->strings.entries[static_entry->name_id];
+          loom_string_table_get(&module->strings, static_entry->name_id);
       const int comparison =
           iree_string_view_compare(static_name, dynamic_name);
       if (comparison >= 0) {
@@ -171,9 +172,9 @@ static loom_string_id_t loom_encoding_define_find_duplicate_param(
         params->static_attrs.entries[static_index].name_id;
     const loom_string_id_t dynamic_name_id =
         params->dynamic_names.entries[dynamic_index].name_id;
-    const int comparison =
-        iree_string_view_compare(module->strings.entries[static_name_id],
-                                 module->strings.entries[dynamic_name_id]);
+    const int comparison = iree_string_view_compare(
+        loom_string_table_get(&module->strings, static_name_id),
+        loom_string_table_get(&module->strings, dynamic_name_id));
     if (comparison == 0) {
       return dynamic_name_id;
     }
@@ -286,7 +287,7 @@ iree_status_t loom_encoding_define_verify(const loom_module_t* module,
   }
 
   iree_string_view_t encoding_name =
-      module->strings.entries[params.spec->name_id];
+      loom_string_table_get(&module->strings, params.spec->name_id);
 
   const loom_encoding_vtable_t* vtable =
       loom_module_encoding_vtable(module, params.spec);
@@ -356,7 +357,8 @@ iree_status_t loom_encoding_assume_spec_verify(
     return iree_ok_status();
   }
 
-  iree_string_view_t encoding_name = module->strings.entries[spec->name_id];
+  iree_string_view_t encoding_name =
+      loom_string_table_get(&module->strings, spec->name_id);
   return loom_encoding_define_emit_result_role_error(
       emitter, op, encoding_name, result_type,
       loom_type_encoding_with_role(expected_role));
@@ -386,7 +388,7 @@ iree_status_t loom_encoding_isa_verify(const loom_module_t* module,
   }
 
   const loom_diagnostic_param_t params[] = {
-      loom_param_string(module->strings.entries[spec->name_id]),
+      loom_param_string(loom_string_table_get(&module->strings, spec->name_id)),
       loom_param_type(loom_type_encoding_with_role(spec_role)),
       loom_param_type(operand_type),
   };

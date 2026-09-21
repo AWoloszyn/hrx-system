@@ -69,7 +69,7 @@ TEST_F(FunctionsTest, RootsQueueEachConcreteHelperOnceWithPrivateVisibility) {
       functions.define(functions.pending()[1], types, locations, &builder_);
   EXPECT_EQ(loom_func_def_visibility(helper.operation), 0);
   auto name_id = module_->symbols.entries[first.symbol_id].name_id;
-  auto name = module_->strings.entries[name_id];
+  auto name = loom_string_table_get(&module_->strings, name_id);
   EXPECT_EQ(std::string_view(name.data, name.size), "scale_3");
 }
 

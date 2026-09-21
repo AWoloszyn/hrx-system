@@ -47,8 +47,8 @@
 // stable arena pointers:
 //   value_id   -> index into the module value table
 //   symbol_id  -> index into module->symbols.entries[]
-//   string_id  -> index into module->strings.entries[]
-//   type_id    -> index into module->types.entries[] (for interned types)
+//   string_id  -> index into the module's canonical string table
+//   type_id    -> index into the module's canonical type table
 //   use/def    -> loom_op_t* / loom_block_t* stable arena pointers
 //
 // Benefits: stable table references for serialization, compact scalar IDs
@@ -93,7 +93,10 @@
 #include "loom/error/emitter.h"
 #include "loom/ir/attribute.h"
 #include "loom/ir/encoding.h"
+#include "loom/ir/intern_table.h"
 #include "loom/ir/location.h"
+#include "loom/ir/string_table.h"
+#include "loom/ir/type_table.h"
 #include "loom/ir/types.h"
 #include "loom/util/bstring.h"
 #include "loom/util/segmented_storage.h"
@@ -2172,20 +2175,6 @@ typedef struct loom_symbol_t {
 // Tables
 //===----------------------------------------------------------------------===//
 
-// Interned string table. All strings in a module are deduplicated here.
-// String IDs are stable across the module's lifetime.
-//
-// Lookup by content (for interning during construction) uses a hash
-// map. Lookup by ID (for printing) is a direct array index.
-typedef struct loom_string_table_t {
-  iree_host_size_t count;
-  iree_host_size_t capacity;
-  iree_string_view_t* entries;
-} loom_string_table_t;
-
-// Canonical set of SSA dependencies in a type. Zero is the empty set.
-typedef uint32_t loom_type_dependency_id_t;
-
 // Per-value identities in the shared type-dependency ownership index.
 typedef struct loom_value_type_use_heads_t {
   // Canonical singleton for this provider, or zero until first activation.
@@ -2351,20 +2340,6 @@ typedef struct loom_symbol_table_t {
   loom_symbol_t* entries;
 } loom_symbol_table_t;
 
-// Type table. Interned types for pointer-equality comparison.
-typedef struct loom_type_table_t {
-  // Number of published canonical types and parallel facts.
-  iree_host_size_t count;
-  // Allocated rows in each parallel array.
-  iree_host_size_t capacity;
-  // Immutable module-owned type payloads.
-  loom_type_t* entries;
-  // Structural hashes parallel to entries.
-  uint32_t* hashes;
-  // Canonical SSA dependency sets parallel to entries, including forward IDs.
-  loom_type_dependency_id_t* dependencies;
-} loom_type_table_t;
-
 typedef struct loom_type_dependency_index_t loom_type_dependency_index_t;
 
 // Shared membership and active ownership of SSA references in value types and
@@ -2412,16 +2387,6 @@ typedef struct loom_comment_table_t {
   loom_comment_attachment_t* entries;
 } loom_comment_table_t;
 
-// Open-addressing hash table for deduplicating module-owned values during
-// construction. Arena-allocated, freed when the module is destroyed.
-// Lazy-initialized: capacity 0 means uninitialized, first use allocates.
-typedef struct loom_intern_table_t {
-  iree_host_size_t count;
-  iree_host_size_t capacity;
-  uint32_t* hashes;
-  uint32_t* indices;
-} loom_intern_table_t;
-
 //===----------------------------------------------------------------------===//
 // Module flags
 //===----------------------------------------------------------------------===//
@@ -2440,9 +2405,9 @@ typedef uint16_t loom_module_flags_t;
 
 // A loom module: the top-level IR container.
 //
-// Owns all IR through an arena allocator. Creating a module allocates
-// the arena. Destroying the module frees the arena and all IR within
-// it in O(1) time. No individual deallocation of IR nodes.
+// Owns all IR through arena allocators. Destroying the module releases its
+// arenas, returning pooled blocks in batches without individually freeing IR
+// nodes.
 //
 // Thread safety: a module is single-owner. During parallel compilation
 // phases, the module is immutable (const access from worker threads).
@@ -2469,8 +2434,8 @@ typedef struct loom_module_t {
   // Allocator used to allocate and free the module struct itself.
   iree_allocator_t allocator;
 
-  // Arena backing all IR storage. Bump-pointer allocation during construction
-  // and O(1) destruction through reusable workspace blocks.
+  // Arena backing IR storage with bump-pointer allocation and batched return
+  // of reusable workspace blocks.
   iree_arena_allocator_t arena;
 
   // Interned strings (SSA names, function names, attribute keys).
@@ -2513,10 +2478,11 @@ typedef struct loom_module_t {
   // loom_module_allocate().
   loom_region_t* body;
 
-  // Intern hash tables for deduplicating strings, types, and encodings during
-  // construction. Arena-allocated, lazy-initialized on first use.
+  // Arena-owned deduplication buckets for canonical strings.
   loom_intern_table_t string_intern;
+  // Arena-owned deduplication buckets for canonical types.
   loom_intern_table_t type_intern;
+  // Arena-owned deduplication buckets for canonical encodings.
   loom_intern_table_t encoding_intern;
 
   // Complete immutable canonical-payload identity index, published with types.
@@ -2587,7 +2553,7 @@ static inline iree_string_view_t loom_module_value_name(
   if (name_id == LOOM_STRING_ID_INVALID || name_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[name_id];
+  return loom_string_table_get(&module->strings, name_id);
 }
 
 //===----------------------------------------------------------------------===//

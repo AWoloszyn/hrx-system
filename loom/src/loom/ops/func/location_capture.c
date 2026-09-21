@@ -272,7 +272,8 @@ iree_status_t loom_func_location_capture(
     const loom_location_entry_t* entry =
         node->location == LOOM_LOCATION_UNKNOWN
             ? &unknown
-            : &module->locations.entries[node->location];
+            : loom_location_table_const_entry(&module->locations,
+                                              node->location);
     uint32_t child_count = 0;
     if (entry->kind == LOOM_LOCATION_FUSED) {
       child_count = entry->fused.count;

@@ -40,183 +40,6 @@ static uint32_t loom_hash_string_view(iree_string_view_t string) {
 }
 
 //===----------------------------------------------------------------------===//
-// Intern table
-//===----------------------------------------------------------------------===//
-
-// Returns the hash table capacity needed for |entry_capacity| entries
-// at a maximum 0.75 load factor, rounded up to a power of two.
-static iree_host_size_t loom_intern_capacity_for_entries(
-    iree_host_size_t entry_capacity) {
-  return iree_host_size_next_power_of_two((entry_capacity * 4 + 2) / 3);
-}
-
-static iree_status_t loom_intern_table_allocate(iree_arena_allocator_t* arena,
-                                                iree_host_size_t capacity,
-                                                loom_intern_table_t* table) {
-  uint32_t* hashes = NULL;
-  uint32_t* indices = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, capacity, sizeof(uint32_t), (void**)&hashes));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, capacity, sizeof(uint32_t), (void**)&indices));
-
-  iree_host_size_t byte_size = capacity * sizeof(uint32_t);
-  memset(hashes, 0, byte_size);
-  memset(indices, 0xFF, byte_size);
-  table->count = 0;
-  table->capacity = capacity;
-  table->hashes = hashes;
-  table->indices = indices;
-  return iree_ok_status();
-}
-
-static iree_status_t loom_intern_table_grow(iree_arena_allocator_t* arena,
-                                            loom_intern_table_t* table) {
-  iree_host_size_t old_capacity = table->capacity;
-  uint32_t* old_hashes = table->hashes;
-  uint32_t* old_indices = table->indices;
-
-  iree_host_size_t new_capacity = old_capacity * 2;
-  IREE_RETURN_IF_ERROR(loom_intern_table_allocate(arena, new_capacity, table));
-
-  // Reinsert all entries from the old table.
-  iree_host_size_t mask = new_capacity - 1;
-  for (iree_host_size_t i = 0; i < old_capacity; ++i) {
-    if (old_indices[i] == UINT32_MAX) {
-      continue;
-    }
-    uint32_t hash = old_hashes[i];
-    iree_host_size_t slot = hash & mask;
-    while (table->indices[slot] != UINT32_MAX) {
-      slot = (slot + 1) & mask;
-    }
-    table->hashes[slot] = hash;
-    table->indices[slot] = old_indices[i];
-    ++table->count;
-  }
-
-  return iree_ok_status();
-}
-
-// Clears all entries while retaining the arena-owned table allocation.
-static void loom_intern_table_clear(loom_intern_table_t* table) {
-  if (table->capacity == 0) {
-    return;
-  }
-  memset(table->indices, 0xFF, table->capacity * sizeof(uint32_t));
-  table->count = 0;
-}
-
-// Finds a vacant slot for a known-unique value in a non-full table.
-static iree_host_size_t loom_intern_table_find_empty_slot(
-    const loom_intern_table_t* table, uint32_t hash) {
-  const iree_host_size_t mask = table->capacity - 1;
-  iree_host_size_t slot = hash & mask;
-  while (table->indices[slot] != UINT32_MAX) {
-    slot = (slot + 1) & mask;
-  }
-  return slot;
-}
-
-// Inserts a value known to be unique into a table with available capacity.
-static void loom_intern_table_insert_unique(loom_intern_table_t* table,
-                                            uint32_t hash, uint32_t index) {
-  IREE_ASSERT(table->count < table->capacity);
-  const iree_host_size_t slot = loom_intern_table_find_empty_slot(table, hash);
-  table->hashes[slot] = hash;
-  table->indices[slot] = index;
-  ++table->count;
-}
-
-// Tests whether insertion preserves the maximum load factor without growth.
-static bool loom_intern_table_has_insert_capacity(
-    const loom_intern_table_t* table) {
-  return table->count * 4 < table->capacity * 3;
-}
-
-// Ensures one entry can be inserted while preserving the maximum load factor.
-static iree_status_t loom_intern_table_reserve_insert(
-    iree_arena_allocator_t* arena, loom_intern_table_t* table) {
-  if (table->capacity == 0) {
-    return loom_intern_table_allocate(arena, /*capacity=*/32, table);
-  }
-  if (!loom_intern_table_has_insert_capacity(table)) {
-    return loom_intern_table_grow(arena, table);
-  }
-  return iree_ok_status();
-}
-
-typedef bool (*loom_intern_equal_fn_t)(const void* context, uint32_t index);
-
-typedef struct loom_intern_probe_t {
-  // Existing entry index, or UINT32_MAX when the candidate is absent.
-  uint32_t index;
-  // Matching or vacant slot, valid until the table grows or is mutated.
-  iree_host_size_t slot;
-} loom_intern_probe_t;
-
-static loom_intern_probe_t loom_intern_table_probe(
-    const loom_intern_table_t* table, uint32_t hash,
-    loom_intern_equal_fn_t equal_fn, const void* equal_context) {
-  if (table->capacity == 0) {
-    return (loom_intern_probe_t){.index = UINT32_MAX, .slot = 0};
-  }
-
-  iree_host_size_t mask = table->capacity - 1;
-  iree_host_size_t slot = hash & mask;
-  while (true) {
-    uint32_t index = table->indices[slot];
-    if (index == UINT32_MAX) {
-      return (loom_intern_probe_t){.index = UINT32_MAX, .slot = slot};
-    }
-    if (table->hashes[slot] == hash && equal_fn(equal_context, index)) {
-      return (loom_intern_probe_t){.index = index, .slot = slot};
-    }
-    slot = (slot + 1) & mask;
-  }
-}
-
-static uint32_t loom_intern_table_lookup(const loom_intern_table_t* table,
-                                         uint32_t hash,
-                                         loom_intern_equal_fn_t equal_fn,
-                                         const void* equal_context) {
-  return loom_intern_table_probe(table, hash, equal_fn, equal_context).index;
-}
-
-// Looks up or inserts an entry in the intern table.
-// |hash|: pre-computed hash of the entry.
-// |index|: the entry table index to insert if not found.
-// |out_index|: set to the existing index if found, or |new_index| if newly
-//   inserted.
-static iree_status_t loom_intern_table_find_or_insert(
-    iree_arena_allocator_t* arena, loom_intern_table_t* table, uint32_t hash,
-    uint32_t new_index, loom_intern_equal_fn_t equal_fn,
-    const void* equal_context, uint32_t* out_index) {
-  IREE_RETURN_IF_ERROR(loom_intern_table_reserve_insert(arena, table));
-
-  iree_host_size_t mask = table->capacity - 1;
-  iree_host_size_t slot = hash & mask;
-
-  while (true) {
-    if (table->indices[slot] == UINT32_MAX) {
-      // Empty slot: insert.
-      table->hashes[slot] = hash;
-      table->indices[slot] = new_index;
-      ++table->count;
-      *out_index = new_index;
-      return iree_ok_status();
-    }
-    if (table->hashes[slot] == hash &&
-        equal_fn(equal_context, table->indices[slot])) {
-      // Found existing entry.
-      *out_index = table->indices[slot];
-      return iree_ok_status();
-    }
-    slot = (slot + 1) & mask;
-  }
-}
-
-//===----------------------------------------------------------------------===//
 // Growable table helpers
 //===----------------------------------------------------------------------===//
 
@@ -281,70 +104,36 @@ static void loom_value_u32_scratch_fill(loom_value_u32_scratch_t* scratch,
 
 static iree_status_t loom_string_table_ensure_capacity(
     iree_arena_allocator_t* arena, loom_string_table_t* table) {
-  if (table->count < table->capacity) {
+  if (table->count < loom_string_table_capacity(table)) {
     return iree_ok_status();
   }
-  iree_host_size_t new_capacity =
-      table->capacity > 0 ? table->capacity * 2 : 512;
-  iree_string_view_t* new_entries = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, new_capacity, sizeof(iree_string_view_t), (void**)&new_entries));
-  memset(new_entries, 0, new_capacity * sizeof(iree_string_view_t));
-  if (table->count > 0) {
-    memcpy(new_entries, table->entries,
-           table->count * sizeof(iree_string_view_t));
-  }
-  table->entries = new_entries;
-  table->capacity = new_capacity;
-  return iree_ok_status();
+  void* segment = NULL;
+  return loom_segmented_storage_append(&table->segments, arena, &segment);
 }
 
-static iree_status_t loom_type_table_ensure_capacity(
-    iree_arena_allocator_t* arena, loom_type_table_t* table) {
-  if (table->count < table->capacity) {
-    return iree_ok_status();
-  }
-  iree_host_size_t new_capacity = 64;
-  if (table->capacity > 0 &&
-      !iree_host_size_checked_mul(table->capacity, 2, &new_capacity)) {
-    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                            "type table capacity overflow");
-  }
-  loom_type_t* new_entries = NULL;
-  uint32_t* new_hashes = NULL;
-  loom_type_dependency_id_t* new_dependencies = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, new_capacity, sizeof(loom_type_t), (void**)&new_entries));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, new_capacity, sizeof(uint32_t), (void**)&new_hashes));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(arena, new_capacity,
-                                                 sizeof(*new_dependencies),
-                                                 (void**)&new_dependencies));
-  memset(new_entries, 0, new_capacity * sizeof(loom_type_t));
-  memset(new_hashes, 0, new_capacity * sizeof(uint32_t));
-  memset(new_dependencies, 0, new_capacity * sizeof(*new_dependencies));
-  if (table->count > 0) {
-    memcpy(new_entries, table->entries, table->count * sizeof(loom_type_t));
-    memcpy(new_hashes, table->hashes, table->count * sizeof(uint32_t));
-    memcpy(new_dependencies, table->dependencies,
-           table->count * sizeof(*new_dependencies));
-  }
-  table->entries = new_entries;
-  table->hashes = new_hashes;
-  table->dependencies = new_dependencies;
-  table->capacity = new_capacity;
-  return iree_ok_status();
-}
-
-// Publishes row, hash and dependency storage together so a caller can rewind
-// arena allocations after failure without leaving a table pointing into them.
-static iree_status_t loom_module_reserve_type_insert(loom_module_t* module) {
+// Stages row storage before the last fallible bucket reserve. Successful
+// rehash may move existing buckets; only infallible publication follows it.
+static iree_status_t loom_module_reserve_type_insert(
+    loom_module_t* module, uint32_t hash, iree_host_size_t* inout_slot) {
+  const iree_arena_checkpoint_t checkpoint =
+      iree_arena_checkpoint_save(&module->arena);
   loom_type_table_t types = module->types;
-  IREE_RETURN_IF_ERROR(loom_type_table_ensure_capacity(&module->arena, &types));
-  IREE_RETURN_IF_ERROR(
-      loom_intern_table_reserve_insert(&module->arena, &module->type_intern));
-  module->types = types;
-  return iree_ok_status();
+  iree_status_t status = iree_ok_status();
+  if (types.count == loom_type_table_capacity(&types)) {
+    void* segment = NULL;
+    status = loom_segmented_storage_append(&types.segments, &module->arena,
+                                           &segment);
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_intern_table_reserve_insert(
+        &module->arena, &module->type_intern, hash, inout_slot);
+  }
+  if (iree_status_is_ok(status)) {
+    module->types = types;
+  } else {
+    iree_arena_checkpoint_restore(&checkpoint);
+  }
+  return status;
 }
 
 static iree_status_t loom_encoding_table_ensure_capacity(
@@ -377,18 +166,6 @@ static iree_status_t loom_source_table_ensure_capacity(
   IREE_RETURN_IF_ERROR(iree_arena_grow_array(
       arena, table->count, /*minimum_capacity=*/4, sizeof(iree_string_view_t),
       &table->capacity, (void**)&table->entries));
-  return iree_ok_status();
-}
-
-static iree_status_t loom_location_table_ensure_capacity(
-    iree_arena_allocator_t* arena, loom_location_table_t* table) {
-  if (table->count < table->capacity) {
-    return iree_ok_status();
-  }
-  IREE_RETURN_IF_ERROR(
-      iree_arena_grow_array(arena, table->count, /*minimum_capacity=*/16,
-                            sizeof(loom_location_entry_t), &table->capacity,
-                            (void**)&table->entries));
   return iree_ok_status();
 }
 
@@ -680,28 +457,20 @@ static iree_status_t loom_module_initialize_tables(
   module->type_uses.value_table = &module->values;
   iree_arena_initialize(module->arena.block_pool, &module->type_uses.arena);
 
-  // Strings.
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, string_capacity, sizeof(iree_string_view_t),
-      (void**)&module->strings.entries));
-  module->strings.capacity = string_capacity;
-  memset(module->strings.entries, 0,
-         string_capacity * sizeof(iree_string_view_t));
+  // Locations. Rows are allocated lazily in stable segments.
+  loom_segmented_storage_initialize(sizeof(loom_location_segment_t),
+                                    iree_alignof(loom_location_segment_t),
+                                    &module->locations.segments);
 
-  // Types.
-  IREE_RETURN_IF_ERROR(
-      iree_arena_allocate_array(arena, type_capacity, sizeof(loom_type_t),
-                                (void**)&module->types.entries));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, type_capacity, sizeof(uint32_t), (void**)&module->types.hashes));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, type_capacity, sizeof(loom_type_dependency_id_t),
-      (void**)&module->types.dependencies));
-  module->types.capacity = type_capacity;
-  memset(module->types.entries, 0, type_capacity * sizeof(loom_type_t));
-  memset(module->types.hashes, 0, type_capacity * sizeof(uint32_t));
-  memset(module->types.dependencies, 0,
-         type_capacity * sizeof(loom_type_dependency_id_t));
+  // String views are lazy; hints size only the interner's buckets.
+  loom_segmented_storage_initialize(sizeof(loom_string_segment_t),
+                                    iree_alignof(loom_string_segment_t),
+                                    &module->strings.segments);
+
+  // Canonical rows are lazy; type hints size only the interner's buckets.
+  loom_segmented_storage_initialize(sizeof(loom_type_segment_t),
+                                    iree_alignof(loom_type_segment_t),
+                                    &module->types.segments);
 
   // Encodings. Modules without an encoding count hint retain lazy allocation.
   if (encoding_capacity > 0) {
@@ -728,21 +497,20 @@ static iree_status_t loom_module_initialize_tables(
 
   // Intern tables sized to match entry capacity.
   iree_host_size_t string_intern_capacity =
-      loom_intern_capacity_for_entries(string_capacity);
-  IREE_RETURN_IF_ERROR(loom_intern_table_allocate(arena, string_intern_capacity,
-                                                  &module->string_intern));
+      loom_intern_table_capacity_for_entries(string_capacity);
+  IREE_RETURN_IF_ERROR(loom_intern_table_initialize(
+      arena, string_intern_capacity, &module->string_intern));
   iree_host_size_t type_intern_capacity =
-      loom_intern_capacity_for_entries(type_capacity);
-  IREE_RETURN_IF_ERROR(loom_intern_table_allocate(arena, type_intern_capacity,
-                                                  &module->type_intern));
+      loom_intern_table_capacity_for_entries(type_capacity);
+  IREE_RETURN_IF_ERROR(loom_intern_table_initialize(arena, type_intern_capacity,
+                                                    &module->type_intern));
+  iree_host_size_t encoding_intern_capacity = 0;
   if (encoding_capacity > 0) {
-    iree_host_size_t encoding_intern_capacity =
-        loom_intern_capacity_for_entries(encoding_capacity);
-    IREE_RETURN_IF_ERROR(loom_intern_table_allocate(
-        arena, encoding_intern_capacity, &module->encoding_intern));
+    encoding_intern_capacity =
+        loom_intern_table_capacity_for_entries(encoding_capacity);
   }
-
-  return iree_ok_status();
+  return loom_intern_table_initialize(arena, encoding_intern_capacity,
+                                      &module->encoding_intern);
 }
 
 iree_status_t loom_module_allocate(loom_context_t* context,
@@ -855,7 +623,7 @@ static loom_encoding_family_flags_t loom_module_bind_encoding_parameters(
        ++parameter_index) {
     loom_named_attr_t* parameter = &parameters[parameter_index];
     const iree_string_view_t parameter_name =
-        module->strings.entries[parameter->name_id];
+        loom_string_table_get(&module->strings, parameter->name_id);
     while (descriptor_index < family_descriptor->parameter_count) {
       const iree_string_view_t descriptor_name = loom_attr_descriptor_name(
           &family_descriptor->parameter_descriptors[descriptor_index]);
@@ -912,7 +680,8 @@ iree_status_t loom_module_add_encoding(loom_module_t* module,
         "non-empty encoding parameter list has a NULL entry pointer");
   }
 
-  iree_string_view_t encoding_name = module->strings.entries[encoding->name_id];
+  iree_string_view_t encoding_name =
+      loom_string_table_get(&module->strings, encoding->name_id);
   const loom_encoding_name_resolution_t name_resolution =
       loom_context_resolve_encoding_name(module->context, encoding_name);
   const loom_encoding_vtable_t* vtable = loom_context_resolve_encoding_vtable(
@@ -967,9 +736,8 @@ iree_status_t loom_module_add_encoding(loom_module_t* module,
             alias_entries[alias_parameter_index].name_id) {
           continue;
         }
-        const iree_string_view_t parameter_name =
-            module->strings
-                .entries[alias_entries[alias_parameter_index].name_id];
+        const iree_string_view_t parameter_name = loom_string_table_get(
+            &module->strings, alias_entries[alias_parameter_index].name_id);
         return iree_make_status(
             IREE_STATUS_INVALID_ARGUMENT,
             "encoding alias '%.*s' fixes parameter '%.*s'; the parameter "
@@ -1028,8 +796,9 @@ iree_status_t loom_module_add_encoding(loom_module_t* module,
       .module = module,
       .encoding = &canonical_encoding,
   };
-  const uint32_t existing_index = loom_intern_table_lookup(
+  const loom_intern_probe_t probe = loom_intern_table_probe(
       &module->encoding_intern, hash, loom_encoding_equal_fn, &equal_context);
+  const uint32_t existing_index = probe.index;
 
   // Alias names are rare file-local shorthand. Scan only when one is authored
   // and reject collisions against any structurally different encoding.
@@ -1043,7 +812,7 @@ iree_status_t loom_module_add_encoding(loom_module_t* module,
         continue;
       }
       iree_string_view_t alias_name =
-          module->strings.entries[canonical_encoding.alias_id];
+          loom_string_table_get(&module->strings, canonical_encoding.alias_id);
       return iree_make_status(
           IREE_STATUS_INVALID_ARGUMENT,
           "encoding alias '%.*s' already names a different encoding",
@@ -1084,13 +853,14 @@ iree_status_t loom_module_add_encoding(loom_module_t* module,
 
   IREE_RETURN_IF_ERROR(
       loom_encoding_table_ensure_capacity(&module->arena, &module->encodings));
+  iree_host_size_t slot = probe.slot;
   IREE_RETURN_IF_ERROR(loom_intern_table_reserve_insert(
-      &module->arena, &module->encoding_intern));
+      &module->arena, &module->encoding_intern, hash, &slot));
 
   const uint32_t new_index = (uint32_t)module->encodings.count;
   loom_encoding_t* entry = &module->encodings.entries[new_index];
   *entry = canonical_encoding;
-  loom_intern_table_insert_unique(&module->encoding_intern, hash, new_index);
+  loom_intern_table_insert(&module->encoding_intern, slot, hash, new_index);
 
   *out_encoding_id = (uint16_t)(new_index + 1);
   ++module->encodings.count;
@@ -1258,7 +1028,7 @@ static iree_status_t loom_module_mark_symbol_references_in_named_attrs(
 static iree_status_t loom_module_mark_symbol_references_in_types(
     const loom_module_t* module, uint8_t* referenced_symbols) {
   for (iree_host_size_t i = 0; i < module->types.count; ++i) {
-    loom_type_t type = module->types.entries[i];
+    loom_type_t type = loom_type_table_get(&module->types, i);
     if (!loom_type_is_parameterized(type)) {
       continue;
     }
@@ -1681,8 +1451,10 @@ iree_status_t loom_module_compact_symbols_preserving_symbol_refs(
         module, new_symbol_ids, old_symbol_count, &attributes,
         encoding->attribute_count));
     encoding->attributes = attributes;
-    loom_intern_table_insert_unique(&module->encoding_intern,
-                                    loom_encoding_hash(encoding), (uint32_t)i);
+    const uint32_t hash = loom_encoding_hash(encoding);
+    const iree_host_size_t slot =
+        loom_intern_table_find_empty_slot(&module->encoding_intern, hash);
+    loom_intern_table_insert(&module->encoding_intern, slot, hash, (uint32_t)i);
   }
 
   for (iree_host_size_t old_index = 0; old_index < old_symbol_count;
@@ -1771,16 +1543,6 @@ iree_status_t loom_module_append_source(loom_module_t* module,
 iree_status_t loom_module_add_location(loom_module_t* module,
                                        loom_location_entry_t entry,
                                        loom_location_id_t* out_location_id) {
-  // Lazily initialize with entry 0 = LOOM_LOCATION_NONE.
-  if (module->locations.count == 0) {
-    IREE_RETURN_IF_ERROR(loom_location_table_ensure_capacity(
-        &module->arena, &module->locations));
-    module->locations.entries[0] = (loom_location_entry_t){
-        .kind = LOOM_LOCATION_NONE,
-    };
-    module->locations.count = 1;
-  }
-
   // Location IDs are 32-bit and ID 0 is reserved for LOOM_LOCATION_UNKNOWN.
   // IDs 1 through UINT32_MAX are representable, so once count advances past
   // UINT32_MAX the next cast would wrap to 0 and forge the null sentinel.
@@ -1791,12 +1553,21 @@ iree_status_t loom_module_add_location(loom_module_t* module,
                             module->locations.count, (unsigned)UINT32_MAX);
   }
 
-  IREE_RETURN_IF_ERROR(
-      loom_location_table_ensure_capacity(&module->arena, &module->locations));
-
   loom_location_id_t id = (loom_location_id_t)module->locations.count;
-  module->locations.entries[id] = entry;
-  module->locations.count++;
+  loom_location_segment_t* segment = NULL;
+  if ((id & LOOM_LOCATION_SEGMENT_MASK) == 0) {
+    IREE_RETURN_IF_ERROR(loom_segmented_storage_append(
+        &module->locations.segments, &module->arena, (void**)&segment));
+    if (id == LOOM_LOCATION_UNKNOWN) {
+      segment->rows[0] = (loom_location_entry_t){.kind = LOOM_LOCATION_NONE};
+      id = 1;
+    }
+  } else {
+    segment = (loom_location_segment_t*)loom_segmented_storage_segment(
+        &module->locations.segments, id >> LOOM_LOCATION_SEGMENT_SHIFT);
+  }
+  segment->rows[id & LOOM_LOCATION_SEGMENT_MASK] = entry;
+  module->locations.count = (iree_host_size_t)id + 1;
   *out_location_id = id;
   return iree_ok_status();
 }
@@ -1812,7 +1583,8 @@ iree_status_t loom_module_attach_location_field_spans(
                             "attachment (module has %" PRIhsz " locations)",
                             location_id, module->locations.count);
   }
-  loom_location_entry_t* entry = &module->locations.entries[location_id];
+  loom_location_entry_t* entry =
+      loom_location_table_entry(&module->locations, location_id);
   if (entry->kind != LOOM_LOCATION_FILE) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -2019,8 +1791,8 @@ static iree_status_t loom_module_canonicalize_value_type(
   }
   loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_module_intern_type_id(module, type, &type_id));
-  *out_type = module->types.entries[type_id];
-  *out_dependencies = module->types.dependencies[type_id];
+  *out_type = loom_type_table_get(&module->types, type_id);
+  *out_dependencies = loom_type_table_dependencies(&module->types, type_id);
   return iree_ok_status();
 }
 
@@ -2237,7 +2009,7 @@ iree_status_t loom_module_try_set_derived_value_name(
   }
 
   iree_string_view_t source_name =
-      module->strings.entries[source_value->name_id];
+      loom_string_table_get(&module->strings, source_value->name_id);
   iree_host_size_t name_length = 0;
   if (!iree_host_size_checked_add(source_name.size, 1, &name_length) ||
       !iree_host_size_checked_add(name_length, suffix.size, &name_length)) {
@@ -2295,8 +2067,8 @@ typedef struct loom_string_equal_context_t {
 static bool loom_string_equal_fn(const void* context, uint32_t index) {
   const loom_string_equal_context_t* ctx =
       (const loom_string_equal_context_t*)context;
-  return iree_string_view_equal(ctx->module->strings.entries[index],
-                                ctx->string);
+  return iree_string_view_equal(
+      loom_string_table_get(&ctx->module->strings, index), ctx->string);
 }
 
 iree_status_t loom_module_intern_string(loom_module_t* module,
@@ -2305,10 +2077,10 @@ iree_status_t loom_module_intern_string(loom_module_t* module,
   uint32_t hash = loom_hash_string_view(string);
   loom_string_equal_context_t equal_context = {module, string};
 
-  uint32_t existing_index = loom_intern_table_lookup(
+  const loom_intern_probe_t probe = loom_intern_table_probe(
       &module->string_intern, hash, loom_string_equal_fn, &equal_context);
-  if (existing_index != UINT32_MAX) {
-    *out_string_id = (loom_string_id_t)existing_index;
+  if (probe.index != UINT32_MAX) {
+    *out_string_id = (loom_string_id_t)probe.index;
     return iree_ok_status();
   }
 
@@ -2322,13 +2094,10 @@ iree_status_t loom_module_intern_string(loom_module_t* module,
         module->strings.count, (unsigned)(LOOM_STRING_ID_INVALID - 1));
   }
 
-  // Reserve both tables before preparing the new string. The duplicate probe
-  // established uniqueness, so publishing its index requires no equality check
-  // or fallible work after the string row is populated.
+  // Prepare the row and bytes before the last fallible bucket reserve. The
+  // duplicate probe retains the vacant slot unless growth changes placement.
   IREE_RETURN_IF_ERROR(
       loom_string_table_ensure_capacity(&module->arena, &module->strings));
-  IREE_RETURN_IF_ERROR(
-      loom_intern_table_reserve_insert(&module->arena, &module->string_intern));
 
   // New entry: arena-allocate a copy of the string data.
   char* copy = NULL;
@@ -2337,10 +2106,17 @@ iree_status_t loom_module_intern_string(loom_module_t* module,
         iree_arena_allocate(&module->arena, string.size, (void**)&copy));
     memcpy(copy, string.data, string.size);
   }
+  iree_host_size_t slot = probe.slot;
+  IREE_RETURN_IF_ERROR(loom_intern_table_reserve_insert(
+      &module->arena, &module->string_intern, hash, &slot));
   const uint32_t new_index = (uint32_t)module->strings.count;
-  module->strings.entries[new_index] = iree_make_string_view(copy, string.size);
+  loom_string_segment_t* segment =
+      (loom_string_segment_t*)loom_segmented_storage_segment(
+          &module->strings.segments, new_index >> LOOM_STRING_SEGMENT_SHIFT);
+  segment->entries[new_index & LOOM_STRING_SEGMENT_MASK] =
+      iree_make_string_view(copy, string.size);
   module->strings.count++;
-  loom_intern_table_insert_unique(&module->string_intern, hash, new_index);
+  loom_intern_table_insert(&module->string_intern, slot, hash, new_index);
 
   *out_string_id = (loom_string_id_t)new_index;
   return iree_ok_status();
@@ -2350,8 +2126,9 @@ loom_string_id_t loom_module_lookup_string(const loom_module_t* module,
                                            iree_string_view_t string) {
   uint32_t hash = loom_hash_string_view(string);
   loom_string_equal_context_t equal_context = {module, string};
-  return (loom_string_id_t)loom_intern_table_lookup(
+  const loom_intern_probe_t probe = loom_intern_table_probe(
       &module->string_intern, hash, loom_string_equal_fn, &equal_context);
+  return (loom_string_id_t)probe.index;
 }
 
 //===----------------------------------------------------------------------===//
@@ -2372,7 +2149,7 @@ static iree_status_t loom_module_resolve_symbol_ref_name(
   }
   const loom_string_id_t name_id =
       module->symbols.entries[ref.symbol_id].name_id;
-  *out_name = module->strings.entries[name_id];
+  *out_name = loom_string_table_get(&module->strings, name_id);
   return iree_ok_status();
 }
 
@@ -2381,8 +2158,9 @@ static int loom_module_compare_symbol_refs_by_name(const loom_module_t* module,
                                                    loom_symbol_ref_t rhs) {
   loom_string_id_t lhs_name_id = module->symbols.entries[lhs.symbol_id].name_id;
   loom_string_id_t rhs_name_id = module->symbols.entries[rhs.symbol_id].name_id;
-  return iree_string_view_compare(module->strings.entries[lhs_name_id],
-                                  module->strings.entries[rhs_name_id]);
+  return iree_string_view_compare(
+      loom_string_table_get(&module->strings, lhs_name_id),
+      loom_string_table_get(&module->strings, rhs_name_id));
 }
 
 static void loom_module_sift_symbol_ref_heap(const loom_module_t* module,
@@ -2504,7 +2282,7 @@ static iree_status_t loom_module_resolve_attr_dict_key_name(
         " strings)",
         name_id, module->strings.count);
   }
-  *out_name = module->strings.entries[name_id];
+  *out_name = loom_string_table_get(&module->strings, name_id);
   return iree_ok_status();
 }
 
@@ -2517,8 +2295,9 @@ static iree_status_t loom_module_canonicalize_attr_value(
 static bool loom_module_attr_dict_key_less(const loom_module_t* module,
                                            const loom_named_attr_t* lhs,
                                            const loom_named_attr_t* rhs) {
-  return iree_string_view_compare(module->strings.entries[lhs->name_id],
-                                  module->strings.entries[rhs->name_id]) < 0;
+  return iree_string_view_compare(
+             loom_string_table_get(&module->strings, lhs->name_id),
+             loom_string_table_get(&module->strings, rhs->name_id)) < 0;
 }
 
 LOOM_DEFINE_ADAPTIVE_SORT_WITH_CONTEXT(loom_module_sort_attr_dict_entries,
@@ -2575,7 +2354,7 @@ static iree_status_t loom_module_make_canonical_attr_dict_entries(
   for (iree_host_size_t i = 1; i < count; ++i) {
     if (canonical_entries[i - 1].name_id == canonical_entries[i].name_id) {
       iree_string_view_t key_name =
-          module->strings.entries[canonical_entries[i].name_id];
+          loom_string_table_get(&module->strings, canonical_entries[i].name_id);
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "duplicate dict attribute key '%.*s'",
                               (int)key_name.size, key_name.data);
@@ -3632,7 +3411,8 @@ static loom_type_id_t loom_module_find_recent_exact_type(
       continue;
     }
     const loom_type_id_t type_id = ordinal - 1;
-    if (loom_type_has_same_storage(module->types.entries[type_id], type)) {
+    if (loom_type_has_same_storage(loom_type_table_get(&module->types, type_id),
+                                   type)) {
       return type_id;
     }
   }
@@ -3642,9 +3422,10 @@ static loom_type_id_t loom_module_find_recent_exact_type(
 static void loom_module_note_recent_register_type(loom_module_t* module,
                                                   loom_type_id_t type_id) {
   IREE_ASSERT(type_id < module->types.count);
-  IREE_ASSERT(loom_type_is_register(module->types.entries[type_id]));
   IREE_ASSERT(
-      loom_type_register_has_value_type(module->types.entries[type_id]));
+      loom_type_is_register(loom_type_table_get(&module->types, type_id)));
+  IREE_ASSERT(loom_type_register_has_value_type(
+      loom_type_table_get(&module->types, type_id)));
   const uint32_t ordinal = type_id + 1;
   if (module->recent_register_type_ordinals[0] == ordinal) {
     return;
@@ -3664,7 +3445,7 @@ static loom_type_id_t loom_module_find_recent_register_type_structural(
     }
     const loom_type_id_t type_id = ordinal - 1;
     const loom_register_type_data_t* existing =
-        loom_type_register_data(module->types.entries[type_id]);
+        loom_type_register_data(loom_type_table_get(&module->types, type_id));
     const loom_register_type_data_t* candidate = loom_type_register_data(type);
     if (existing->carrier_payload0 == candidate->carrier_payload0 &&
         existing->carrier_payload1 == candidate->carrier_payload1 &&
@@ -3680,7 +3461,8 @@ static loom_type_id_t loom_module_find_recent_register_type_structural(
 static bool loom_type_equal_fn(const void* context, uint32_t index) {
   const loom_type_equal_context_t* ctx =
       (const loom_type_equal_context_t*)context;
-  return loom_type_equal(ctx->module->types.entries[index], ctx->type);
+  return loom_type_equal(loom_type_table_get(&ctx->module->types, index),
+                         ctx->type);
 }
 
 // Compares only the immediate structure of a topologically assembled type.
@@ -3690,7 +3472,7 @@ static bool loom_topological_type_equal_fn(const void* context,
                                            uint32_t index) {
   const loom_topological_type_context_t* ctx =
       (const loom_topological_type_context_t*)context;
-  const loom_type_t existing = ctx->module->types.entries[index];
+  const loom_type_t existing = loom_type_table_get(&ctx->module->types, index);
   const loom_type_t candidate = ctx->type;
   if (existing.header != candidate.header ||
       existing.encoding_id != candidate.encoding_id ||
@@ -3712,7 +3494,8 @@ static bool loom_topological_type_equal_fn(const void* context,
       for (iree_host_size_t i = 0; i < ctx->dependency_count; ++i) {
         if (!loom_type_has_same_storage(
                 existing_data->types[i],
-                ctx->module->types.entries[ctx->dependency_ids[i]])) {
+                loom_type_table_get(&ctx->module->types,
+                                    ctx->dependency_ids[i]))) {
           return false;
         }
       }
@@ -3731,7 +3514,8 @@ static bool loom_topological_type_equal_fn(const void* context,
       for (iree_host_size_t i = 0; i < ctx->dependency_count; ++i) {
         if (!loom_type_has_same_storage(
                 existing_parameters[i],
-                ctx->module->types.entries[ctx->dependency_ids[i]])) {
+                loom_type_table_get(&ctx->module->types,
+                                    ctx->dependency_ids[i]))) {
           return false;
         }
       }
@@ -3752,7 +3536,8 @@ static bool loom_topological_type_equal_fn(const void* context,
       }
       if (loom_type_has_same_storage(
               existing_data->value_type,
-              ctx->module->types.entries[ctx->dependency_ids[0]])) {
+              loom_type_table_get(&ctx->module->types,
+                                  ctx->dependency_ids[0]))) {
         return true;
       }
       return false;
@@ -3782,7 +3567,8 @@ static uint32_t loom_topological_type_hash(
                                           (uint32_t)context->dependency_count);
       for (iree_host_size_t i = 0; i < context->dependency_count; ++i) {
         hash = loom_structural_hash_mix_u32(
-            hash, context->module->types.hashes[context->dependency_ids[i]]);
+            hash, loom_type_table_hash(&context->module->types,
+                                       context->dependency_ids[i]));
       }
       return loom_structural_hash_finalize(hash);
     }
@@ -3793,7 +3579,8 @@ static uint32_t loom_topological_type_hash(
                                           (uint16_t)context->dependency_count);
       for (iree_host_size_t i = 0; i < context->dependency_count; ++i) {
         hash = loom_structural_hash_mix_u32(
-            hash, context->module->types.hashes[context->dependency_ids[i]]);
+            hash, loom_type_table_hash(&context->module->types,
+                                       context->dependency_ids[i]));
       }
       return loom_structural_hash_finalize(hash);
     case LOOM_TYPE_REGISTER: {
@@ -3804,7 +3591,8 @@ static uint32_t loom_topological_type_hash(
       hash = loom_structural_hash_mix_u64(hash, data->carrier_payload0);
       hash = loom_structural_hash_mix_u64(hash, data->carrier_payload1);
       hash = loom_structural_hash_mix_u32(
-          hash, context->module->types.hashes[context->dependency_ids[0]]);
+          hash, loom_type_table_hash(&context->module->types,
+                                     context->dependency_ids[0]));
       return loom_structural_hash_finalize(hash);
     }
     default:
@@ -3930,7 +3718,8 @@ static iree_status_t loom_module_clone_topological_type_from_context(
       target_data->result_count = source_data->result_count;
       target_data->reserved = 0;
       for (iree_host_size_t i = 0; i < ctx->dependency_count; ++i) {
-        target_data->types[i] = module->types.entries[ctx->dependency_ids[i]];
+        target_data->types[i] =
+            loom_type_table_get(&module->types, ctx->dependency_ids[i]);
       }
       *out_type = loom_type_function(target_data);
       return iree_ok_status();
@@ -3943,7 +3732,8 @@ static iree_status_t loom_module_clone_topological_type_from_context(
             (void**)&target_parameters));
       }
       for (iree_host_size_t i = 0; i < ctx->dependency_count; ++i) {
-        target_parameters[i] = module->types.entries[ctx->dependency_ids[i]];
+        target_parameters[i] =
+            loom_type_table_get(&module->types, ctx->dependency_ids[i]);
       }
       *out_type =
           loom_type_dialect(loom_type_dialect_name_id(type),
@@ -3962,7 +3752,8 @@ static iree_status_t loom_module_clone_topological_type_from_context(
       *target_data = (loom_register_type_data_t){
           .carrier_payload0 = source_data->carrier_payload0,
           .carrier_payload1 = source_data->carrier_payload1,
-          .value_type = module->types.entries[ctx->dependency_ids[0]],
+          .value_type =
+              loom_type_table_get(&module->types, ctx->dependency_ids[0]),
       };
       *out_type = loom_type_register_payload_with_value_type(target_data);
       return iree_ok_status();
@@ -3988,7 +3779,7 @@ static iree_status_t loom_module_intern_type_impl(
       &module->type_intern, hash, equal_fn, equal_context);
   const uint32_t existing_index = probe.index;
   if (existing_index != UINT32_MAX) {
-    *out_interned_type = module->types.entries[existing_index];
+    *out_interned_type = loom_type_table_get(&module->types, existing_index);
     if (out_type_id) {
       *out_type_id = (loom_type_id_t)existing_index;
     }
@@ -4021,24 +3812,22 @@ static iree_status_t loom_module_intern_type_impl(
   // Payload preparation does not intern types. Only hash-table growth can
   // invalidate the vacant slot found by the initial probe.
   iree_host_size_t slot = probe.slot;
-  const bool grow_intern_table =
-      !loom_intern_table_has_insert_capacity(&module->type_intern);
-  if (module->types.count == module->types.capacity || grow_intern_table) {
-    IREE_RETURN_IF_ERROR(loom_module_reserve_type_insert(module));
-    if (grow_intern_table) {
-      slot = loom_intern_table_find_empty_slot(&module->type_intern, hash);
-    }
+  if (module->types.count == loom_type_table_capacity(&module->types) ||
+      !loom_intern_table_has_insert_capacity(&module->type_intern)) {
+    IREE_RETURN_IF_ERROR(loom_module_reserve_type_insert(module, hash, &slot));
   }
 
   uint32_t new_index = (uint32_t)module->types.count;
-  module->types.entries[new_index] = type;
-  module->types.hashes[new_index] = hash;
-  module->types.dependencies[new_index] = dependencies;
+  loom_type_segment_t* segment =
+      (loom_type_segment_t*)loom_segmented_storage_segment(
+          &module->types.segments, new_index >> LOOM_TYPE_SEGMENT_SHIFT);
+  const uint32_t row = new_index & LOOM_TYPE_SEGMENT_MASK;
+  segment->entries[row] = type;
+  segment->hashes[row] = hash;
+  segment->dependencies[row] = dependencies;
   module->types.count++;
   loom_type_identity_commit(module, &identity_insertion);
-  module->type_intern.hashes[slot] = hash;
-  module->type_intern.indices[slot] = new_index;
-  ++module->type_intern.count;
+  loom_intern_table_insert(&module->type_intern, slot, hash, new_index);
   *out_interned_type = type;
   if (out_type_id) {
     *out_type_id = (loom_type_id_t)new_index;
@@ -4143,7 +3932,8 @@ iree_status_t loom_module_intern_topological_type_id(
       IREE_ASSERT(structural_dependency_ids[i] < module->types.count);
       IREE_RETURN_IF_ERROR(loom_type_dependencies_union(
           &module->type_uses, dependencies,
-          module->types.dependencies[structural_dependency_ids[i]],
+          loom_type_table_dependencies(&module->types,
+                                       structural_dependency_ids[i]),
           &dependencies));
     }
   }
@@ -4188,7 +3978,7 @@ static iree_status_t loom_module_intern_type_with_dependencies(
     recent_type_id = loom_type_identity_find(module, type);
   }
   if (recent_type_id != LOOM_TYPE_ID_INVALID) {
-    *out_interned_type = module->types.entries[recent_type_id];
+    *out_interned_type = loom_type_table_get(&module->types, recent_type_id);
     if (out_type_id) {
       *out_type_id = recent_type_id;
     }
@@ -4204,7 +3994,7 @@ static iree_status_t loom_module_intern_type_with_dependencies(
       }
       loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
       IREE_RETURN_IF_ERROR(loom_type_import(module, type, &type_id));
-      *out_interned_type = module->types.entries[type_id];
+      *out_interned_type = loom_type_table_get(&module->types, type_id);
       if (out_type_id) {
         *out_type_id = type_id;
       }
@@ -4337,7 +4127,7 @@ iree_status_t loom_module_intern_function_type(loom_module_t* module,
   loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_type_import_function(
       module, arg_types, arg_count, result_types, result_count, &type_id));
-  *out_interned_type = module->types.entries[type_id];
+  *out_interned_type = loom_type_table_get(&module->types, type_id);
   return iree_ok_status();
 }
 
@@ -4358,7 +4148,7 @@ iree_status_t loom_module_intern_register_type(loom_module_t* module,
     IREE_RETURN_IF_ERROR(loom_module_intern_type_with_dependencies(
         module, type, out_interned_type, &type_id));
   } else {
-    *out_interned_type = module->types.entries[type_id];
+    *out_interned_type = loom_type_table_get(&module->types, type_id);
   }
   loom_module_note_recent_register_type(module, type_id);
   loom_module_note_recent_exact_type(module, type_id);

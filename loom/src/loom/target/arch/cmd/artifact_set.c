@@ -21,7 +21,7 @@ static iree_string_view_t loom_cmd_program_artifact_set_symbol_name(
   const loom_string_id_t name_id =
       module->symbols.entries[symbol_ref.symbol_id].name_id;
   IREE_ASSERT_LT(name_id, module->strings.count);
-  return module->strings.entries[name_id];
+  return loom_string_table_get(&module->strings, name_id);
 }
 
 static iree_string_view_t loom_cmd_program_artifact_set_copy_string(

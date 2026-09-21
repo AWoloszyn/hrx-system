@@ -150,7 +150,7 @@ static std::string StringFromId(const loom_module_t* module,
   if (string_id >= module->strings.count) {
     return "";
   }
-  iree_string_view_t value = module->strings.entries[string_id];
+  iree_string_view_t value = loom_string_table_get(&module->strings, string_id);
   return std::string(value.data, value.size);
 }
 
@@ -162,7 +162,8 @@ static const loom_named_attr_t* FindNamedAttr(const loom_module_t* module,
       continue;
     }
     if (iree_string_view_equal(
-            module->strings.entries[attrs.entries[i].name_id], name)) {
+            loom_string_table_get(&module->strings, attrs.entries[i].name_id),
+            name)) {
       return &attrs.entries[i];
     }
   }
@@ -200,7 +201,7 @@ static void ExpectFunctionPacketIdentity(
   const loom_string_id_t contract_id = loom_func_like_repr_contract(function);
   ASSERT_LT(contract_id, module->strings.count);
   EXPECT_TRUE(iree_string_view_equal(
-      module->strings.entries[contract_id],
+      loom_string_table_get(&module->strings, contract_id),
       loom_low_descriptor_set_string(descriptor_set,
                                      descriptor_set->key_string_offset)));
 
@@ -338,7 +339,8 @@ TEST_F(LowAsmParserTest, ParsesStructuralRegisterValueTypes) {
   ASSERT_TRUE(loom_type_is_dialect(*dialect_value_type));
   EXPECT_EQ(loom_type_dialect_param_count(*dialect_value_type), 0u);
   EXPECT_TRUE(iree_string_view_equal(
-      module->strings.entries[loom_type_dialect_name_id(*dialect_value_type)],
+      loom_string_table_get(&module->strings,
+                            loom_type_dialect_name_id(*dialect_value_type)),
       IREE_SV("kernel.async.token")));
 
   loom_module_free(module);

@@ -63,7 +63,7 @@ static iree_status_t loom_print_block_label_view(
     const loom_block_t* block, char* synthetic_buffer,
     iree_host_size_t synthetic_buffer_capacity, iree_string_view_t* out_label) {
   if (loom_print_block_has_label(ctx, block)) {
-    *out_label = ctx->module->strings.entries[block->label_id];
+    *out_label = loom_string_table_get(&ctx->module->strings, block->label_id);
     return iree_ok_status();
   }
   uint16_t block_index = 0;

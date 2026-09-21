@@ -118,7 +118,8 @@ TEST_F(ModuleTest, ModuleName) {
   IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("my_module"),
                                       &block_pool_, NULL,
                                       iree_allocator_system(), &module));
-  iree_string_view_t name = module->strings.entries[module->name_id];
+  iree_string_view_t name =
+      loom_string_table_get(&module->strings, module->name_id);
   EXPECT_TRUE(iree_string_view_equal(name, IREE_SV("my_module")));
   loom_module_free(module);
 }
@@ -274,8 +275,9 @@ TEST_F(ModuleTest, ValueNameHelpersCopyMoveAndDerive) {
   loom_string_id_t derived_name = loom_module_value(module, derived)->name_id;
   ASSERT_NE(derived_name, LOOM_STRING_ID_INVALID);
   ASSERT_LT(derived_name, module->strings.count);
-  EXPECT_TRUE(iree_string_view_equal(module->strings.entries[derived_name],
-                                     IREE_SV("head_bounded")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module->strings, derived_name),
+      IREE_SV("head_bounded")));
 
   IREE_ASSERT_OK(loom_module_move_value_name(module, source, moved));
   EXPECT_EQ(loom_module_value(module, source)->name_id, LOOM_STRING_ID_INVALID);
@@ -1126,7 +1128,7 @@ TEST_F(ModuleTest, DefineValue) {
   EXPECT_EQ(loom_type_kind(value->type), LOOM_TYPE_SCALAR);
   EXPECT_EQ(loom_type_element_type(value->type), LOOM_SCALAR_TYPE_F32);
   EXPECT_EQ(module->types.count, 1u);
-  EXPECT_TRUE(loom_type_equal(module->types.entries[0], f32));
+  EXPECT_TRUE(loom_type_equal(loom_type_table_get(&module->types, 0), f32));
   loom_module_free(module);
 }
 
@@ -1141,11 +1143,12 @@ TEST_F(ModuleTest, DefineValueInternsShapedTypeClosure) {
   IREE_ASSERT_OK(loom_module_define_value(module, vector_type, &id));
 
   ASSERT_EQ(module->types.count, 2u);
-  EXPECT_TRUE(loom_type_equal(module->types.entries[0],
+  EXPECT_TRUE(loom_type_equal(loom_type_table_get(&module->types, 0),
                               loom_type_scalar(LOOM_SCALAR_TYPE_F32)));
-  EXPECT_TRUE(loom_type_equal(module->types.entries[1], vector_type));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&module->types, 1), vector_type));
   EXPECT_TRUE(loom_type_equal(loom_module_value_type(module, id),
-                              module->types.entries[1]));
+                              loom_type_table_get(&module->types, 1)));
 
   loom_module_free(module);
 }
@@ -1600,7 +1603,7 @@ TEST_F(ModuleTest, ReplaceValueTypeUsesUpdatesParameterizedTypeSlots) {
       loom_test_array_type_element_type(replaced_array_type);
   ASSERT_LT(replaced_vector_type_id, module->types.count);
   loom_type_t replaced_vector_type =
-      module->types.entries[replaced_vector_type_id];
+      loom_type_table_get(&module->types, replaced_vector_type_id);
   ASSERT_TRUE(loom_type_dim_is_dynamic_at(replaced_vector_type, 0));
   EXPECT_EQ(loom_type_dim_value_id_at(replaced_vector_type, 0), new_dim_id);
   EXPECT_FALSE(loom_module_value_has_type_uses(module, old_dim_id));
@@ -1657,7 +1660,7 @@ TEST_F(ModuleTest,
       loom_test_options_attr_element_type(replaced_variants.values[0]);
   ASSERT_LT(replaced_vector_type_id, module->types.count);
   loom_type_t replaced_vector_type =
-      module->types.entries[replaced_vector_type_id];
+      loom_type_table_get(&module->types, replaced_vector_type_id);
   ASSERT_TRUE(loom_type_dim_is_dynamic_at(replaced_vector_type, 0));
   EXPECT_EQ(loom_type_dim_value_id_at(replaced_vector_type, 0), new_dim_id);
   EXPECT_FALSE(loom_module_value_has_type_uses(module, old_dim_id));
@@ -1764,97 +1767,6 @@ TEST_F(ModuleTest, ReplaceValueTypeUsesUpdatesSsaEncoding) {
   EXPECT_EQ(loom_type_encoding_value_id(replaced_type), new_layout_id);
   EXPECT_FALSE(loom_module_value_has_type_uses(module, old_layout_id));
   EXPECT_TRUE(loom_module_value_has_type_uses(module, new_layout_id));
-
-  loom_module_free(module);
-}
-
-//===----------------------------------------------------------------------===//
-// String interning
-//===----------------------------------------------------------------------===//
-
-TEST_F(ModuleTest, InternString) {
-  loom_module_t* module = NULL;
-  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
-                                      NULL, iree_allocator_system(), &module));
-  loom_string_id_t id = LOOM_STRING_ID_INVALID;
-  IREE_ASSERT_OK(loom_module_intern_string(module, IREE_SV("hello"), &id));
-  EXPECT_NE(id, LOOM_STRING_ID_INVALID);
-
-  iree_string_view_t stored = module->strings.entries[id];
-  EXPECT_TRUE(iree_string_view_equal(stored, IREE_SV("hello")));
-  loom_module_free(module);
-}
-
-TEST_F(ModuleTest, InternStringDedup) {
-  loom_module_t* module = NULL;
-  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
-                                      NULL, iree_allocator_system(), &module));
-  loom_string_id_t id1 = LOOM_STRING_ID_INVALID;
-  loom_string_id_t id2 = LOOM_STRING_ID_INVALID;
-  IREE_ASSERT_OK(loom_module_intern_string(module, IREE_SV("hello"), &id1));
-  IREE_ASSERT_OK(loom_module_intern_string(module, IREE_SV("hello"), &id2));
-  EXPECT_EQ(id1, id2);
-  loom_module_free(module);
-}
-
-TEST_F(ModuleTest, InternDifferentStrings) {
-  loom_module_t* module = NULL;
-  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
-                                      NULL, iree_allocator_system(), &module));
-  loom_string_id_t id1 = LOOM_STRING_ID_INVALID;
-  loom_string_id_t id2 = LOOM_STRING_ID_INVALID;
-  IREE_ASSERT_OK(loom_module_intern_string(module, IREE_SV("hello"), &id1));
-  IREE_ASSERT_OK(loom_module_intern_string(module, IREE_SV("world"), &id2));
-  EXPECT_NE(id1, id2);
-  loom_module_free(module);
-}
-
-TEST_F(ModuleTest, InternEmptyString) {
-  loom_module_t* module = NULL;
-  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
-                                      NULL, iree_allocator_system(), &module));
-  loom_string_id_t id = LOOM_STRING_ID_INVALID;
-  IREE_ASSERT_OK(
-      loom_module_intern_string(module, iree_string_view_empty(), &id));
-  EXPECT_NE(id, LOOM_STRING_ID_INVALID);
-  iree_string_view_t stored = module->strings.entries[id];
-  EXPECT_EQ(stored.size, 0u);
-  loom_module_free(module);
-}
-
-TEST_F(ModuleTest, InternStringStress) {
-  loom_module_t* module = NULL;
-  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
-                                      NULL, iree_allocator_system(), &module));
-  // Intern 1000 unique strings and verify dedup.
-  char buffer[32];
-  for (int i = 0; i < 1000; ++i) {
-    int length = iree_snprintf(buffer, sizeof(buffer), "string_%d", i);
-    loom_string_id_t id = LOOM_STRING_ID_INVALID;
-    IREE_ASSERT_OK(loom_module_intern_string(
-        module, iree_make_string_view(buffer, length), &id));
-    // Intern again, expect same ID.
-    loom_string_id_t id2 = LOOM_STRING_ID_INVALID;
-    IREE_ASSERT_OK(loom_module_intern_string(
-        module, iree_make_string_view(buffer, length), &id2));
-    EXPECT_EQ(id, id2);
-  }
-  loom_module_free(module);
-}
-
-TEST_F(ModuleTest, LookupString) {
-  loom_module_t* module = NULL;
-  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
-                                      NULL, iree_allocator_system(), &module));
-
-  loom_string_id_t hello_id = LOOM_STRING_ID_INVALID;
-  IREE_ASSERT_OK(
-      loom_module_intern_string(module, IREE_SV("hello"), &hello_id));
-
-  EXPECT_EQ(loom_module_lookup_string(module, IREE_SV("hello")), hello_id);
-  EXPECT_EQ(loom_module_lookup_string(module, IREE_SV("missing")),
-            LOOM_STRING_ID_INVALID);
-  EXPECT_EQ(module->strings.count, 2u);  // "test" module name + "hello".
 
   loom_module_free(module);
 }
@@ -2694,16 +2606,14 @@ TEST_F(ModuleTest, ParameterizedAttrArrayWalksAndReplacesNestedValueRefs) {
 
   loom_attribute_t original_options =
       loom_attr_as_parameterized_array(array).values[0];
-  loom_type_t original_vector =
-      module->types
-          .entries[loom_test_options_attr_element_type(original_options)];
+  loom_type_t original_vector = loom_type_table_get(
+      &module->types, loom_test_options_attr_element_type(original_options));
   EXPECT_EQ(loom_type_dim_value_id_at(original_vector, 0), old_dim_id);
 
   loom_attribute_t replaced_options =
       loom_attr_as_parameterized_array(replaced_array).values[0];
-  loom_type_t replaced_vector =
-      module->types
-          .entries[loom_test_options_attr_element_type(replaced_options)];
+  loom_type_t replaced_vector = loom_type_table_get(
+      &module->types, loom_test_options_attr_element_type(replaced_options));
   EXPECT_EQ(loom_type_dim_value_id_at(replaced_vector, 0), new_dim_id);
 
   AttributeValueRefCapture replaced_capture = {};
@@ -3004,9 +2914,9 @@ TEST_F(ModuleTest, ParameterizedTypeBuilderReturnsCanonicalId) {
       IREE_ARRAYSIZE(parameters), &array_type, &array_id));
   ASSERT_EQ(array_id, 1u);
   EXPECT_EQ(module->types.count, 2u);
-  EXPECT_EQ(
-      loom_type_parameterized_parameters(array_type),
-      loom_type_parameterized_parameters(module->types.entries[array_id]));
+  EXPECT_EQ(loom_type_parameterized_parameters(array_type),
+            loom_type_parameterized_parameters(
+                loom_type_table_get(&module->types, array_id)));
 
   parameters[1] = loom_attr_i64(64);
   EXPECT_EQ(loom_test_array_type_alignment(array_type), 32);
@@ -3048,7 +2958,8 @@ TEST_F(ModuleTest, CompactParameterizedTypeBuilderInternsWhenIdRequested) {
       &type_id));
   ASSERT_EQ(type_id, 0u);
   EXPECT_EQ(module->types.count, 1u);
-  EXPECT_TRUE(loom_type_equal(module->types.entries[type_id], type));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&module->types, type_id), type));
   const iree_host_size_t allocation_size = module->arena.used_allocation_size;
   loom_type_id_t duplicate_id = LOOM_TYPE_ID_INVALID;
   IREE_ASSERT_OK(loom_module_make_parameterized_type(
@@ -3057,30 +2968,6 @@ TEST_F(ModuleTest, CompactParameterizedTypeBuilderInternsWhenIdRequested) {
   EXPECT_EQ(duplicate_id, type_id);
   EXPECT_EQ(module->types.count, 1u);
   EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
-  loom_module_free(module);
-}
-
-TEST_F(ModuleTest, InternStringRejectsInvalidSentinelIdButKeepsDedupWorking) {
-  loom_module_t* module = NULL;
-  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
-                                      NULL, iree_allocator_system(), &module));
-
-  loom_string_id_t existing_id = LOOM_STRING_ID_INVALID;
-  IREE_ASSERT_OK(
-      loom_module_intern_string(module, IREE_SV("hello"), &existing_id));
-
-  module->strings.count = LOOM_STRING_ID_INVALID;
-
-  loom_string_id_t duplicate_id = LOOM_STRING_ID_INVALID;
-  IREE_ASSERT_OK(
-      loom_module_intern_string(module, IREE_SV("hello"), &duplicate_id));
-  EXPECT_EQ(duplicate_id, existing_id);
-
-  loom_string_id_t new_id = LOOM_STRING_ID_INVALID;
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_RESOURCE_EXHAUSTED,
-      loom_module_intern_string(module, IREE_SV("world"), &new_id));
-
   loom_module_free(module);
 }
 
@@ -3132,8 +3019,10 @@ TEST_F(ModuleTest, InternTypeIdReturnsCanonicalId) {
   EXPECT_EQ(duplicate_f32_id, f32_id);
   EXPECT_EQ(i32_id, 1u);
   EXPECT_EQ(module->types.count, 2u);
-  EXPECT_TRUE(loom_type_equal(module->types.entries[f32_id], f32));
-  EXPECT_TRUE(loom_type_equal(module->types.entries[i32_id], i32));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&module->types, f32_id), f32));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&module->types, i32_id), i32));
   loom_module_free(module);
 }
 
@@ -3190,7 +3079,8 @@ TEST_F(ModuleTest, InternTypePreservesCollidingEntriesAcrossGrowth) {
         module, type, /*structural_dependency_ids=*/nullptr,
         /*structural_dependency_count=*/0, &type_id));
     EXPECT_EQ(type_id, colliding_ids[i]);
-    EXPECT_TRUE(loom_type_equal(module->types.entries[type_id], type));
+    EXPECT_TRUE(
+        loom_type_equal(loom_type_table_get(&module->types, type_id), type));
   }
   EXPECT_EQ(module->types.count, type_count);
   EXPECT_EQ(module->type_intern.count, type_count);
@@ -3222,7 +3112,8 @@ TEST_F(ModuleTest, ParameterizedTypeDuplicateAtGrowthThresholdKeepsStorage) {
   }
   ASSERT_EQ(module->type_intern.capacity, initial_capacity);
   ASSERT_EQ(module->type_intern.count, growth_threshold);
-  const uint32_t* indices = module->type_intern.indices;
+  const auto* first_bucket =
+      loom_intern_table_const_bucket(&module->type_intern, 0);
   const iree_host_size_t allocation_size = module->arena.used_allocation_size;
   loom_type_t duplicate_type = {};
   IREE_ASSERT_OK(loom_test_array_type_make(
@@ -3230,7 +3121,8 @@ TEST_F(ModuleTest, ParameterizedTypeDuplicateAtGrowthThresholdKeepsStorage) {
       /*alignment=*/1, loom_named_attr_slice_empty(), &duplicate_type));
   EXPECT_EQ(loom_type_parameterized_parameters(duplicate_type),
             loom_type_parameterized_parameters(first_type));
-  EXPECT_EQ(module->type_intern.indices, indices);
+  EXPECT_EQ(loom_intern_table_const_bucket(&module->type_intern, 0),
+            first_bucket);
   EXPECT_EQ(module->type_intern.capacity, initial_capacity);
   EXPECT_EQ(module->arena.used_allocation_size, allocation_size);
 
@@ -3281,7 +3173,7 @@ TEST_F(ModuleTest, InternTopologicalTypeHandlesDeepCanonicalChain) {
                 sizeof(loom_func_type_data_t) + sizeof(loom_type_t));
   source.arg_count = 1;
   for (iree_host_size_t i = 0; i < kDepth; ++i) {
-    source.types[0] = module->types.entries[dependency_id];
+    source.types[0] = loom_type_table_get(&module->types, dependency_id);
     const loom_type_t type =
         loom_type_function(reinterpret_cast<loom_func_type_data_t*>(&source));
     loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
@@ -3292,7 +3184,7 @@ TEST_F(ModuleTest, InternTopologicalTypeHandlesDeepCanonicalChain) {
     dependency_id = type_id;
   }
 
-  source.types[0] = module->types.entries[dependency_id - 1];
+  source.types[0] = loom_type_table_get(&module->types, dependency_id - 1);
   const loom_type_t duplicate =
       loom_type_function(reinterpret_cast<loom_func_type_data_t*>(&source));
   const loom_type_id_t duplicate_dependency_id = dependency_id - 1;
@@ -3304,10 +3196,10 @@ TEST_F(ModuleTest, InternTopologicalTypeHandlesDeepCanonicalChain) {
   EXPECT_EQ(module->types.count, kDepth + 1);
 
   const loom_func_type_data_t* deepest_data =
-      loom_type_func_data(module->types.entries[dependency_id]);
+      loom_type_func_data(loom_type_table_get(&module->types, dependency_id));
   ASSERT_NE(deepest_data, nullptr);
   const loom_type_t expected_dependency =
-      module->types.entries[dependency_id - 1];
+      loom_type_table_get(&module->types, dependency_id - 1);
   EXPECT_EQ(deepest_data->types[0].header, expected_dependency.header);
   EXPECT_EQ(deepest_data->types[0].encoding_id,
             expected_dependency.encoding_id);
@@ -3348,9 +3240,10 @@ TEST_F(ModuleTest, InternShapedType) {
   EXPECT_EQ(interned1.dims[0], interned2.dims[0]);
   EXPECT_EQ(interned1.dims[1], interned2.dims[1]);
   ASSERT_EQ(module->types.count, 2u);
-  EXPECT_TRUE(loom_type_equal(module->types.entries[0],
+  EXPECT_TRUE(loom_type_equal(loom_type_table_get(&module->types, 0),
                               loom_type_scalar(LOOM_SCALAR_TYPE_F32)));
-  EXPECT_TRUE(loom_type_equal(module->types.entries[1], interned1));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&module->types, 1), interned1));
   loom_module_free(module);
 }
 
@@ -3384,7 +3277,8 @@ TEST_F(ModuleTest, InternImplicitShapedAttachmentUsesAbsentIdentity) {
       loom_module_intern_type_id(module, explicit_type, &explicit_type_id));
 
   EXPECT_EQ(explicit_type_id, implicit_type_id);
-  EXPECT_FALSE(loom_type_has_encoding(module->types.entries[implicit_type_id]));
+  EXPECT_FALSE(loom_type_has_encoding(
+      loom_type_table_get(&module->types, implicit_type_id)));
   loom_module_free(module);
 }
 
@@ -3529,11 +3423,13 @@ TEST_F(ModuleTest, InternRegisterTypeOwnsAndDeduplicatesValueType) {
       duplicate_value_type, &duplicate));
 
   ASSERT_EQ(module->types.count, 4u);
-  EXPECT_TRUE(loom_type_equal(module->types.entries[0],
+  EXPECT_TRUE(loom_type_equal(loom_type_table_get(&module->types, 0),
                               loom_type_scalar(LOOM_SCALAR_TYPE_F32)));
-  EXPECT_TRUE(loom_type_equal(module->types.entries[1], duplicate_param));
-  EXPECT_TRUE(loom_type_equal(module->types.entries[2], duplicate_value_type));
-  EXPECT_TRUE(loom_type_equal(module->types.entries[3], first));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&module->types, 1), duplicate_param));
+  EXPECT_TRUE(loom_type_equal(loom_type_table_get(&module->types, 2),
+                              duplicate_value_type));
+  EXPECT_TRUE(loom_type_equal(loom_type_table_get(&module->types, 3), first));
   EXPECT_TRUE(loom_type_equal(first, duplicate));
   EXPECT_EQ(loom_type_register_data(first), loom_type_register_data(duplicate));
   EXPECT_EQ(module->arena.total_allocation_size, allocation_size);
@@ -3643,8 +3539,9 @@ TEST_F(ModuleTest, InternFunctionTypeDirectAndPackedFormsDedup) {
       module, packed_source, dependency_ids, IREE_ARRAYSIZE(dependency_ids),
       &topological_type_id));
   EXPECT_EQ(topological_type_id, 3u);
-  EXPECT_EQ(module->types.hashes[topological_type_id],
-            loom_type_hash(module->types.entries[topological_type_id]));
+  EXPECT_EQ(
+      loom_type_table_hash(&module->types, topological_type_id),
+      loom_type_hash(loom_type_table_get(&module->types, topological_type_id)));
   EXPECT_EQ(module->arena.total_allocation_size, allocation_size);
 
   iree_allocator_free(iree_allocator_system(),
@@ -3900,11 +3797,14 @@ TEST_F(ModuleTest, SizeHints) {
   IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
                                       &hints, iree_allocator_system(),
                                       &module));
-  // Stable value segments allocate lazily instead of reserving speculative
-  // headroom from the hint. Contiguous tables retain growth-factor sizing.
+  // Stable rows allocate lazily instead of reserving speculative headroom from
+  // hints. The module name occupies the first string-view segment.
   EXPECT_EQ(loom_value_table_capacity(&module->values), 0u);
-  EXPECT_GE(module->strings.capacity, 50u);
-  EXPECT_GE(module->types.capacity, 20u);
+  EXPECT_EQ(loom_string_table_capacity(&module->strings),
+            LOOM_STRING_SEGMENT_CAPACITY);
+  EXPECT_GE(module->string_intern.capacity, 50u);
+  EXPECT_EQ(loom_type_table_capacity(&module->types), 0u);
+  EXPECT_GE(module->type_intern.capacity, 20u);
   EXPECT_GE(module->encodings.capacity, 12u);
   EXPECT_GE(module->encoding_intern.capacity, 12u);
   EXPECT_GE(module->sources.capacity, 6u);

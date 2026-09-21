@@ -106,8 +106,8 @@ func.def @helper(%x: i32) -> (i32) {
   };
   loom_module_t* target = nullptr;
   IREE_ASSERT_OK(loom_module_allocate(
-      &context_, source->strings.entries[source->name_id], &block_pool_, &hints,
-      iree_allocator_system(), &target));
+      &context_, loom_string_table_get(&source->strings, source->name_id),
+      &block_pool_, &hints, iree_allocator_system(), &target));
   ASSERT_NE(target, nullptr);
 
   std::vector<loom_symbol_ref_t> target_symbols(source->symbols.count);
@@ -117,7 +117,7 @@ func.def @helper(%x: i32) -> (i32) {
         &source->symbols.entries[source_symbol_id];
     loom_string_id_t target_name_id = LOOM_STRING_ID_INVALID;
     IREE_ASSERT_OK(loom_module_intern_string(
-        target, source->strings.entries[source_symbol->name_id],
+        target, loom_string_table_get(&source->strings, source_symbol->name_id),
         &target_name_id));
     loom_symbol_id_t target_symbol_id = LOOM_SYMBOL_ID_INVALID;
     IREE_ASSERT_OK(

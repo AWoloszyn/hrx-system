@@ -300,7 +300,8 @@ static bool loom_test_string_id_equal(const loom_module_t* module,
       string_id >= module->strings.count) {
     return false;
   }
-  return iree_string_view_equal(module->strings.entries[string_id], expected);
+  return iree_string_view_equal(
+      loom_string_table_get(&module->strings, string_id), expected);
 }
 
 iree_status_t loom_test_fact_encoding_operand_field_facts(

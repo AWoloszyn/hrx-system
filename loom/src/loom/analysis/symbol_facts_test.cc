@@ -104,8 +104,9 @@ test.record @target {arch = "gfx1100", lanes = 64}
   EXPECT_EQ(facts->symbol.symbol_id,
             FindSymbol(module.get(), IREE_SV("target")));
   ASSERT_NE(facts->arch_id, LOOM_STRING_ID_INVALID);
-  EXPECT_TRUE(iree_string_view_equal(module->strings.entries[facts->arch_id],
-                                     IREE_SV("gfx1100")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module->strings, facts->arch_id),
+      IREE_SV("gfx1100")));
   EXPECT_EQ(facts->lanes, 64);
   EXPECT_FALSE(loom_symbol_ref_is_valid(facts->dependency_symbol));
   EXPECT_EQ(facts->dependency_facts, nullptr);

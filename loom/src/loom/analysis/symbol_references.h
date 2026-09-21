@@ -22,12 +22,13 @@
 #include "loom/analysis/scc.h"
 #include "loom/ir/attribute_schema.h"
 #include "loom/ir/ir.h"
+#include "loom/util/segmented_storage.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif
 
-// Index into a symbol reference table's occurrence array.
+// Dense ordinal in a symbol reference table's stable occurrence storage.
 typedef uint32_t loom_symbol_reference_occurrence_id_t;
 #define LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID \
   ((loom_symbol_reference_occurrence_id_t)UINT32_MAX)
@@ -95,6 +96,18 @@ typedef struct loom_symbol_reference_occurrence_t {
 static_assert(sizeof(loom_symbol_reference_occurrence_t) == 32,
               "symbol reference occurrences must remain 32 bytes");
 
+// Shift mapping an occurrence ID to its fixed-size segment.
+#define LOOM_SYMBOL_REFERENCE_OCCURRENCE_SEGMENT_SHIFT 6u
+
+// Number of occurrence rows in each arena-owned segment.
+#define LOOM_SYMBOL_REFERENCE_OCCURRENCE_SEGMENT_CAPACITY \
+  (1u << LOOM_SYMBOL_REFERENCE_OCCURRENCE_SEGMENT_SHIFT)
+
+static_assert((uint64_t)LOOM_SYMBOL_REFERENCE_OCCURRENCE_SEGMENT_CAPACITY *
+                      LOOM_SEGMENTED_STORAGE_MAX_SEGMENT_COUNT >=
+                  (uint64_t)LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID,
+              "occurrence storage must cover the full occurrence ID domain");
+
 // Returns true when |occurrence| contributes to reachability and link closure.
 static inline bool loom_symbol_reference_occurrence_is_dependency(
     const loom_symbol_reference_occurrence_t* occurrence) {
@@ -158,9 +171,9 @@ typedef struct loom_symbol_reference_table_t {
   const loom_symbol_reference_symbol_occurrences_t* symbols;
   // Number of entries in symbols.
   iree_host_size_t symbol_count;
-  // Occurrences owned by the caller-provided arena.
-  const loom_symbol_reference_occurrence_t* occurrences;
-  // Number of entries in occurrences.
+  // Stable occurrence segments owned by the caller-provided arena.
+  loom_segmented_storage_t occurrences;
+  // Number of published occurrences; unused segment rows are uninitialized.
   iree_host_size_t occurrence_count;
   // First module-root occurrence.
   loom_symbol_reference_occurrence_id_t first_module_occurrence_id;
@@ -197,6 +210,21 @@ typedef struct loom_symbol_reference_table_t {
   } template_providers;
 } loom_symbol_reference_table_t;
 
+// Returns an occurrence by its valid ID in this immutable analysis snapshot.
+// The row borrows the table's arena; user_op also borrows the analyzed module.
+static inline const loom_symbol_reference_occurrence_t*
+loom_symbol_reference_table_occurrence(
+    const loom_symbol_reference_table_t* table,
+    loom_symbol_reference_occurrence_id_t occurrence_id) {
+  const loom_symbol_reference_occurrence_t* segment =
+      (const loom_symbol_reference_occurrence_t*)
+          loom_segmented_storage_const_segment(
+              &table->occurrences,
+              occurrence_id >> LOOM_SYMBOL_REFERENCE_OCCURRENCE_SEGMENT_SHIFT);
+  return &segment[occurrence_id &
+                  (LOOM_SYMBOL_REFERENCE_OCCURRENCE_SEGMENT_CAPACITY - 1u)];
+}
+
 // Returns true when at least one template.apply demands |family_symbol_id|.
 // |family_symbol_id| must be valid in the table's module symbol table.
 static inline bool loom_symbol_reference_template_family_is_demanded(
@@ -207,7 +235,10 @@ static inline bool loom_symbol_reference_template_family_is_demanded(
           (UINT64_C(1) << (family_symbol_id & 63u))) != 0;
 }
 
-// Builds the symbol reference table for |module| into |arena|.
+// Builds an immutable reference snapshot borrowing |module| and storage owned
+// by |arena|. On failure, |out_table| is empty; any partial allocations remain
+// owned by |arena| until reset. No occurrence storage is retained by the
+// module.
 iree_status_t loom_symbol_reference_table_build(
     const loom_module_t* module, iree_arena_allocator_t* arena,
     loom_symbol_reference_table_t* out_table);

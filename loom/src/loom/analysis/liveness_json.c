@@ -53,8 +53,8 @@ static iree_status_t loom_liveness_json_write_string_or_null(
       string_id >= module->strings.count) {
     return loom_output_stream_write_cstring(stream, "null");
   }
-  return loom_json_write_escaped_string(stream,
-                                        module->strings.entries[string_id]);
+  return loom_json_write_escaped_string(
+      stream, loom_string_table_get(&module->strings, string_id));
 }
 
 static iree_status_t loom_liveness_json_write_scalar_name_or_null(

@@ -102,7 +102,7 @@ static iree_string_view_t loom_low_symbol_name(const loom_module_t* module,
   }
   const loom_symbol_t* symbol = &module->symbols.entries[ref.symbol_id];
   if (symbol->name_id < module->strings.count) {
-    return module->strings.entries[symbol->name_id];
+    return loom_string_table_get(&module->strings, symbol->name_id);
   }
   return IREE_SV("<unnamed>");
 }
@@ -128,7 +128,7 @@ static iree_string_view_t loom_low_string_or_empty(const loom_module_t* module,
       string_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 static iree_string_view_t loom_low_symbol_definition_name(

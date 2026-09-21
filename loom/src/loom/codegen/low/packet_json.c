@@ -30,7 +30,7 @@ static iree_string_view_t loom_low_packet_json_symbol_name(
   if (symbol->name_id >= module->strings.count) {
     return IREE_SV("<unnamed>");
   }
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static iree_string_view_t loom_low_packet_json_function_name(
@@ -77,8 +77,8 @@ static iree_status_t loom_low_packet_json_write_string_id_or_null(
       string_id >= module->strings.count) {
     return loom_output_stream_write_cstring(stream, "null");
   }
-  return loom_json_write_escaped_string(stream,
-                                        module->strings.entries[string_id]);
+  return loom_json_write_escaped_string(
+      stream, loom_string_table_get(&module->strings, string_id));
 }
 
 static iree_string_view_t loom_low_packet_json_string_id_or_fallback(
@@ -86,7 +86,7 @@ static iree_string_view_t loom_low_packet_json_string_id_or_fallback(
     iree_host_size_t buffer_capacity) {
   if (string_id != LOOM_STRING_ID_INVALID &&
       string_id < module->strings.count) {
-    return module->strings.entries[string_id];
+    return loom_string_table_get(&module->strings, string_id);
   }
   int length = iree_snprintf(buffer, buffer_capacity, "<name:%" PRIu32 ">",
                              (uint32_t)string_id);
@@ -296,7 +296,8 @@ static iree_status_t loom_low_packet_json_write_type_attr(
     loom_output_stream_t* stream) {
   if (type_id < module->types.count) {
     return loom_low_packet_json_write_type(
-        module, type_print_options, module->types.entries[type_id], stream);
+        module, type_print_options,
+        loom_type_table_get(&module->types, type_id), stream);
   }
   char buffer[32];
   int length =
@@ -576,7 +577,8 @@ static const loom_named_attr_t* loom_low_packet_json_find_named_attr(
   for (iree_host_size_t i = 0; i < attrs.count; ++i) {
     const loom_named_attr_t* attr = &attrs.entries[i];
     if (attr->name_id < module->strings.count &&
-        iree_string_view_equal(module->strings.entries[attr->name_id], name)) {
+        iree_string_view_equal(
+            loom_string_table_get(&module->strings, attr->name_id), name)) {
       return attr;
     }
   }

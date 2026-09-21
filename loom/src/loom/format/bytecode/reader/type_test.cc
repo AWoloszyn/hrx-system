@@ -237,9 +237,12 @@ TEST_F(BytecodeTypeTest, BuildsAndMaterializesTopologicalPlan) {
       MakeMaterializer(data, sizeof(data));
   IREE_ASSERT_OK(loom_bytecode_type_materialize(&materializer));
   ASSERT_EQ(module_->types.count, 3u);
-  EXPECT_EQ(loom_type_kind(module_->types.entries[0]), LOOM_TYPE_NONE);
-  EXPECT_EQ(loom_type_kind(module_->types.entries[1]), LOOM_TYPE_SCALAR);
-  EXPECT_EQ(loom_type_kind(module_->types.entries[2]), LOOM_TYPE_FUNCTION);
+  EXPECT_EQ(loom_type_kind(loom_type_table_get(&module_->types, 0)),
+            LOOM_TYPE_NONE);
+  EXPECT_EQ(loom_type_kind(loom_type_table_get(&module_->types, 1)),
+            LOOM_TYPE_SCALAR);
+  EXPECT_EQ(loom_type_kind(loom_type_table_get(&module_->types, 2)),
+            LOOM_TYPE_FUNCTION);
   EXPECT_EQ(error_count_, 0u);
 }
 
@@ -322,36 +325,40 @@ TEST_F(BytecodeTypeTest, StructuralTypesRetainChildrenBeyondPlanLifetime) {
   IREE_ASSERT_OK(iree_arena_allocate(&scratch_arena_, 1024, &overwritten_plan));
   std::memset(overwritten_plan, 0xA5, 1024);
 
-  const loom_func_type_data_t* signature =
-      loom_type_func_data(module_->types.entries[function_type_id]);
+  const loom_func_type_data_t* signature = loom_type_func_data(
+      loom_type_table_get(&module_->types, function_type_id));
   ASSERT_NE(signature, nullptr);
   EXPECT_EQ(signature->arg_count, 1u);
   EXPECT_EQ(signature->result_count, 1u);
   for (iree_host_size_t i = 0; i < 2; ++i) {
-    EXPECT_TRUE(loom_type_equal(signature->types[i],
-                                module_->types.entries[scalar_type_id]));
+    EXPECT_TRUE(
+        loom_type_equal(signature->types[i],
+                        loom_type_table_get(&module_->types, scalar_type_id)));
   }
-  const loom_type_t dialect = module_->types.entries[dialect_type_id];
+  const loom_type_t dialect =
+      loom_type_table_get(&module_->types, dialect_type_id);
   EXPECT_EQ(loom_type_dialect_name_id(dialect), target_name_id);
   ASSERT_EQ(loom_type_dialect_param_count(dialect), 1u);
-  EXPECT_TRUE(loom_type_equal(loom_type_dialect_params(dialect)[0],
-                              module_->types.entries[function_type_id]));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_dialect_params(dialect)[0],
+                      loom_type_table_get(&module_->types, function_type_id)));
   EXPECT_EQ(loom_type_dialect_params(dialect)[0].dims[0],
-            module_->types.entries[function_type_id].dims[0]);
-  const loom_register_type_data_t* carrier =
-      loom_type_register_data(module_->types.entries[register_type_id]);
+            loom_type_table_get(&module_->types, function_type_id).dims[0]);
+  const loom_register_type_data_t* carrier = loom_type_register_data(
+      loom_type_table_get(&module_->types, register_type_id));
   ASSERT_NE(carrier, nullptr);
   EXPECT_EQ(carrier->carrier_payload0, 1u);
   EXPECT_EQ(carrier->carrier_payload1, UINT64_C(1) << 16);
-  EXPECT_TRUE(loom_type_equal(carrier->value_type,
-                              module_->types.entries[dialect_type_id]));
+  EXPECT_TRUE(
+      loom_type_equal(carrier->value_type,
+                      loom_type_table_get(&module_->types, dialect_type_id)));
   EXPECT_EQ(carrier->value_type.dims[0],
-            module_->types.entries[dialect_type_id].dims[0]);
+            loom_type_table_get(&module_->types, dialect_type_id).dims[0]);
   for (const auto type_id :
        {function_type_id, dialect_type_id, register_type_id}) {
     loom_type_id_t duplicate_id = LOOM_TYPE_ID_INVALID;
     IREE_ASSERT_OK(loom_module_intern_type_id(
-        module_, module_->types.entries[type_id], &duplicate_id));
+        module_, loom_type_table_get(&module_->types, type_id), &duplicate_id));
     EXPECT_EQ(duplicate_id, type_id);
   }
 }
@@ -466,7 +473,7 @@ TEST_F(BytecodeTypeTest, MaterializesEmptyFunctionPayload) {
   IREE_ASSERT_OK(loom_bytecode_type_materialize(&materializer));
   ASSERT_EQ(module_->types.count, 1u);
   const loom_func_type_data_t* payload =
-      loom_type_func_data(module_->types.entries[0]);
+      loom_type_func_data(loom_type_table_get(&module_->types, 0));
   ASSERT_NE(payload, nullptr);
   EXPECT_EQ(payload->arg_count, 0u);
   EXPECT_EQ(payload->result_count, 0u);
@@ -498,14 +505,15 @@ TEST_F(BytecodeTypeTest, MaterializesFullWidthFunctionSignature) {
   IREE_ASSERT_OK(loom_bytecode_type_materialize(&materializer));
   ASSERT_EQ(module_->types.count, 3u);
   const loom_func_type_data_t* payload =
-      loom_type_func_data(module_->types.entries[2]);
+      loom_type_func_data(loom_type_table_get(&module_->types, 2));
   ASSERT_NE(payload, nullptr);
   EXPECT_EQ(payload->arg_count, UINT16_MAX);
   EXPECT_EQ(payload->result_count, UINT16_MAX);
   EXPECT_EQ(payload->reserved, 0u);
   for (iree_host_size_t i = 0; i < 2u * UINT16_MAX; ++i) {
     EXPECT_TRUE(loom_type_equal(
-        payload->types[i], module_->types.entries[i < UINT16_MAX ? 0 : 1]));
+        payload->types[i],
+        loom_type_table_get(&module_->types, i < UINT16_MAX ? 0 : 1)));
   }
 }
 

@@ -106,8 +106,8 @@ class KernelConfigMaterializerTest : public ::testing::Test {
                                   iree_string_view_t name) {
     for (iree_host_size_t i = 0; i < module->symbols.count; ++i) {
       const loom_symbol_t* symbol = &module->symbols.entries[i];
-      if (iree_string_view_equal(module->strings.entries[symbol->name_id],
-                                 name)) {
+      if (iree_string_view_equal(
+              loom_string_table_get(&module->strings, symbol->name_id), name)) {
         return symbol;
       }
     }
@@ -399,12 +399,13 @@ kernel.def target(@dispatch_target) @dispatch_rows(%element_count: index) {
           configuration_module->symbols.entries[projected.symbol_id]
               .defining_op;
       ASSERT_NE(op->location, LOOM_LOCATION_UNKNOWN);
-      const loom_location_entry_t& location =
-          configuration_module->locations.entries[op->location];
+      const loom_location_entry_t& location = *loom_location_table_const_entry(
+          &configuration_module->locations, op->location);
       const loom_op_t* source_op =
           FindSymbol(source_module, IREE_SV("dispatch_rows"))->defining_op;
       const loom_location_entry_t& source_location =
-          source_module->locations.entries[source_op->location];
+          *loom_location_table_const_entry(&source_module->locations,
+                                           source_op->location);
       EXPECT_EQ(location.kind, LOOM_LOCATION_FILE);
       EXPECT_EQ(location.file.start_line, source_location.file.start_line);
       EXPECT_EQ(location.file.end_line, source_location.file.end_line);

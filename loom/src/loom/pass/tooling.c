@@ -201,8 +201,8 @@ static bool loom_pass_tool_has_option_attr(
     const loom_pass_tool_option_build_context_t* context,
     iree_string_view_t option_name) {
   for (iree_host_size_t i = 0; i < context->attr_count; ++i) {
-    iree_string_view_t existing =
-        context->module->strings.entries[context->attrs[i].name_id];
+    iree_string_view_t existing = loom_string_table_get(
+        &context->module->strings, context->attrs[i].name_id);
     if (iree_string_view_equal(existing, option_name)) {
       return true;
     }

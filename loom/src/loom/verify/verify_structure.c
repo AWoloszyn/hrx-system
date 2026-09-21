@@ -879,7 +879,7 @@ static bool loom_verify_try_resolve_local_symbol_name(
   }
   const loom_string_id_t name_id =
       module->symbols.entries[ref.symbol_id].name_id;
-  *out_name = module->strings.entries[name_id];
+  *out_name = loom_string_table_get(&module->strings, name_id);
   return true;
 }
 
@@ -1359,13 +1359,13 @@ iree_status_t loom_verify_operand_dicts(loom_verify_state_t* state,
         continue;
       }
       iree_string_view_t key_name =
-          state->module->strings.entries[entry->name_id];
+          loom_string_table_get(&state->module->strings, entry->name_id);
       if (i > 0) {
         const loom_named_attr_t* previous_entry =
             &names_attr.dict_entries[i - 1];
         if (previous_entry->name_id < state->module->strings.count) {
-          iree_string_view_t previous_key_name =
-              state->module->strings.entries[previous_entry->name_id];
+          iree_string_view_t previous_key_name = loom_string_table_get(
+              &state->module->strings, previous_entry->name_id);
           if (iree_string_view_compare(previous_key_name, key_name) >= 0) {
             loom_verify_emit_operand_dict_attr_violation(
                 state, op, attr_name, attr_index, i,
@@ -1623,13 +1623,13 @@ static void loom_verify_static_encoding_ref(loom_verify_state_t* state,
       loom_module_encoding_vtable(state->module, encoding);
   if (!loom_encoding_static_parameters_are_valid(encoding)) {
     const iree_string_view_t encoding_name =
-        state->module->strings.entries[encoding->name_id];
+        loom_string_table_get(&state->module->strings, encoding->name_id);
     for (uint8_t i = 0;
          i < encoding->attribute_count && !loom_verify_at_error_limit(state);
          ++i) {
       const loom_named_attr_t* parameter = &encoding->attributes[i];
       const iree_string_view_t parameter_name =
-          state->module->strings.entries[parameter->name_id];
+          loom_string_table_get(&state->module->strings, parameter->name_id);
       const uint8_t descriptor_index =
           loom_encoding_parameter_descriptor_index(parameter);
       if (descriptor_index == LOOM_ENCODING_PARAMETER_INDEX_INVALID) {
@@ -1704,7 +1704,8 @@ static void loom_verify_static_encoding_attr_refs(loom_verify_state_t* state,
     case LOOM_ATTR_TYPE:
       if (attr.type_id < state->module->types.count) {
         loom_verify_static_encoding_type_ref(
-            state, op, state->module->types.entries[attr.type_id]);
+            state, op,
+            loom_type_table_get(&state->module->types, attr.type_id));
       }
       return;
     case LOOM_ATTR_DICT:
@@ -2081,7 +2082,7 @@ void loom_verify_module_type_symbol_references(loom_verify_state_t* state) {
       .may_reference_values = false,
   };
   for (iree_host_size_t i = 0; i < state->module->types.count; ++i) {
-    loom_type_t type = state->module->types.entries[i];
+    loom_type_t type = loom_type_table_get(&state->module->types, i);
     if (loom_verify_type_well_formed_malformation(type) !=
         LOOM_VERIFY_TYPE_MALFORMATION_NONE) {
       state->type_summary.all_well_formed = false;

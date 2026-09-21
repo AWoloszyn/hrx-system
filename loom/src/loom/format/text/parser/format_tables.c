@@ -235,8 +235,9 @@ static iree_status_t loom_parse_format_compare_string_ids(
         "%" PRIhsz " strings)",
         rhs_id, module->strings.count);
   }
-  *out_comparison = iree_string_view_compare(module->strings.entries[lhs_id],
-                                             module->strings.entries[rhs_id]);
+  *out_comparison =
+      iree_string_view_compare(loom_string_table_get(&module->strings, lhs_id),
+                               loom_string_table_get(&module->strings, rhs_id));
   return iree_ok_status();
 }
 

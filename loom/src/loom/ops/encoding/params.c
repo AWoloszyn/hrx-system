@@ -76,13 +76,13 @@ bool loom_encoding_define_try_resolve_unverified_params(
       return false;
     }
     const iree_string_view_t dynamic_name =
-        module->strings.entries[dynamic_entry->name_id];
+        loom_string_table_get(&module->strings, dynamic_entry->name_id);
 
     while (static_index < params->static_attrs.count) {
       const loom_named_attr_t* static_entry =
           &params->static_attrs.entries[static_index];
       const iree_string_view_t static_name =
-          module->strings.entries[static_entry->name_id];
+          loom_string_table_get(&module->strings, static_entry->name_id);
       const int comparison =
           iree_string_view_compare(static_name, dynamic_name);
       if (comparison >= 0) {
@@ -176,7 +176,7 @@ void loom_encoding_define_resolve_verified_params(
     const loom_named_attr_t* dynamic_entry =
         &params->dynamic_names.entries[dynamic_index];
     const iree_string_view_t dynamic_name =
-        module->strings.entries[dynamic_entry->name_id];
+        loom_string_table_get(&module->strings, dynamic_entry->name_id);
     while (!loom_bstring_equal(
         descriptor->dynamic_parameter_descriptors[descriptor_index].name,
         dynamic_name)) {

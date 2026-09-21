@@ -1,0 +1,52 @@
+// RUN: verify
+
+// The unresolved dependency follows 64 occurrences, crossing a storage segment.
+test.record @known
+test.func @unresolved_dependency() {
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  // ERROR@+1: SYMBOL/002 "missing"
+  test.symbol_array_attrs [@missing]
+  test.yield
+}
+
+// ====
+
+// RUN: roundtrip
+
+// The same boundary preserves an unresolved availability anchor without error.
+test.record @known
+test.func @available_provider() {
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [] using [@external_provider]
+  test.yield
+}
+
+// ----
+test.record @known
+
+test.func @available_provider() {
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [@known, @known, @known, @known, @known, @known, @known, @known]
+  test.symbol_array_attrs [] using [@external_provider]
+  test.yield
+}

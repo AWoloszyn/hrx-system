@@ -106,7 +106,7 @@ static iree_status_t loom_amdgpu_kernel_record_symbol_name(
                             "AMDGPU kernel emission function symbol has no "
                             "module string");
   }
-  *out_symbol = module->strings.entries[symbol->name_id];
+  *out_symbol = loom_string_table_get(&module->strings, symbol->name_id);
   return loom_amdgpu_kernel_record_validate_symbol(*out_symbol);
 }
 

@@ -66,7 +66,8 @@ bool loom_source_table_resolve(void* user_data, const loom_module_t* module,
   if ((iree_host_size_t)location >= module->locations.count) {
     return false;
   }
-  const loom_location_entry_t* entry = &module->locations.entries[location];
+  const loom_location_entry_t* entry =
+      loom_location_table_const_entry(&module->locations, location);
   if (entry->kind != LOOM_LOCATION_FILE) {
     return false;
   }

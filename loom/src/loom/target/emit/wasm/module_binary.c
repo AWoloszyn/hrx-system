@@ -133,7 +133,7 @@ static iree_string_view_t loom_wasm_module_string_or_empty(
       string_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 static iree_string_view_t loom_wasm_module_symbol_name(

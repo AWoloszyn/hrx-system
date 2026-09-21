@@ -47,7 +47,8 @@ static iree_status_t loom_cmd_program_composition_visit_successors(
       composition->references->symbols[node].first_outgoing_occurrence_id;
   while (occurrence_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
     const loom_symbol_reference_occurrence_t* occurrence =
-        &composition->references->occurrences[occurrence_id];
+        loom_symbol_reference_table_occurrence(composition->references,
+                                               occurrence_id);
     if (loom_cmd_program_composition_is_call(composition, occurrence)) {
       IREE_RETURN_IF_ERROR(
           successor.fn(successor.user_data, occurrence->target_symbol_id));
@@ -62,7 +63,7 @@ static iree_string_view_t loom_cmd_program_composition_symbol_name(
   IREE_ASSERT_LT(symbol_id, module->symbols.count);
   const loom_string_id_t name_id = module->symbols.entries[symbol_id].name_id;
   IREE_ASSERT_LT(name_id, module->strings.count);
-  return module->strings.entries[name_id];
+  return loom_string_table_get(&module->strings, name_id);
 }
 
 static iree_status_t loom_cmd_program_composition_reject_cycles(
@@ -110,7 +111,8 @@ static iree_status_t loom_cmd_program_composition_inline_component(
   while (occurrence_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID &&
          iree_status_is_ok(status)) {
     const loom_symbol_reference_occurrence_t* occurrence =
-        &composition->references->occurrences[occurrence_id];
+        loom_symbol_reference_table_occurrence(composition->references,
+                                               occurrence_id);
     if (loom_cmd_program_composition_is_call(composition, occurrence)) {
       status = loom_callable_inline_direct_call(
           rewriter, (loom_op_t*)occurrence->user_op);

@@ -753,10 +753,12 @@ TEST_F(MaterializeTest, ClonesOperandDictOps) {
   loom_named_attr_slice_t names = loom_test_operand_dict_param_names(cloned_op);
   ASSERT_EQ(names.count, 2u);
   EXPECT_TRUE(iree_string_view_equal(
-      target_->strings.entries[names.entries[0].name_id], IREE_SV("alpha")));
+      loom_string_table_get(&target_->strings, names.entries[0].name_id),
+      IREE_SV("alpha")));
   EXPECT_EQ(loom_attr_as_i64(names.entries[0].value), 0);
   EXPECT_TRUE(iree_string_view_equal(
-      target_->strings.entries[names.entries[1].name_id], IREE_SV("beta")));
+      loom_string_table_get(&target_->strings, names.entries[1].name_id),
+      IREE_SV("beta")));
   EXPECT_EQ(loom_attr_as_i64(names.entries[1].value), 1);
 }
 

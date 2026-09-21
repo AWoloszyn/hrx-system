@@ -153,6 +153,43 @@ class SymbolReferencesTest : public ::testing::Test {
     return table;
   }
 
+  ModulePtr MakeRepeatedReferences(iree_host_size_t count,
+                                   std::vector<loom_op_t*>* user_ops) {
+    ModulePtr module = AllocateModule();
+    loom_builder_t builder = {};
+    loom_builder_initialize(module.get(), &module->arena,
+                            loom_module_block(module.get()), &builder);
+    const auto target = AddSymbol(module.get(), IREE_SV("target"));
+    loom_op_t* target_op = nullptr;
+    IREE_CHECK_OK(loom_test_record_build(&builder, 0, 0, target,
+                                         loom_named_attr_slice_empty(),
+                                         LOOM_LOCATION_UNKNOWN, &target_op));
+    const auto owner = AddSymbol(module.get(), IREE_SV("owner"));
+    loom_op_t* function = nullptr;
+    IREE_CHECK_OK(loom_test_func_build(&builder, 0, 0, 0, owner, nullptr, 0,
+                                       nullptr, 0, nullptr, 0, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &function));
+    loom_builder_enter_region(&builder, function,
+                              loom_test_func_body(function));
+    const auto reference = loom_make_symbol_ref_array(&target, 1);
+    for (iree_host_size_t i = 0; i < count; ++i) {
+      const bool availability = (i & 1u) != 0;
+      const auto dependencies =
+          availability ? loom_symbol_ref_array_empty() : reference;
+      const auto available =
+          availability ? reference : loom_symbol_ref_array_empty();
+      loom_op_t* user_op = nullptr;
+      IREE_CHECK_OK(loom_test_symbol_array_attrs_build(
+          &builder, LOOM_TEST_SYMBOL_ARRAY_ATTRS_BUILD_FLAG_HAS_AVAILABLE,
+          dependencies, available, LOOM_LOCATION_UNKNOWN, &user_op));
+      user_ops->push_back(user_op);
+    }
+    loom_op_t* terminator = nullptr;
+    IREE_CHECK_OK(loom_test_yield_build(&builder, nullptr, 0,
+                                        LOOM_LOCATION_UNKNOWN, &terminator));
+    return module;
+  }
+
   const loom_symbol_reference_occurrence_t* FindOccurrence(
       const loom_symbol_reference_table_t& table,
       loom_symbol_id_t source_symbol_id, loom_symbol_id_t target_symbol_id,
@@ -162,7 +199,7 @@ class SymbolReferencesTest : public ::testing::Test {
           table.first_module_occurrence_id;
       while (occurrence_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
         const loom_symbol_reference_occurrence_t* occurrence =
-            &table.occurrences[occurrence_id];
+            loom_symbol_reference_table_occurrence(&table, occurrence_id);
         if (occurrence->target_symbol_id == target_symbol_id &&
             occurrence->kind == kind) {
           return occurrence;
@@ -176,7 +213,7 @@ class SymbolReferencesTest : public ::testing::Test {
         table.symbols[source_symbol_id].first_outgoing_occurrence_id;
     while (occurrence_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
       const loom_symbol_reference_occurrence_t* occurrence =
-          &table.occurrences[occurrence_id];
+          loom_symbol_reference_table_occurrence(&table, occurrence_id);
       if (occurrence->target_symbol_id == target_symbol_id &&
           occurrence->kind == kind) {
         return occurrence;
@@ -197,6 +234,152 @@ class SymbolReferencesTest : public ::testing::Test {
   loom_context_t context_;
   iree_arena_allocator_t analysis_arena_;
 };
+
+// Separates analysis allocation from the module's already-constructed IR.
+class ObservedReferenceArena {
+ public:
+  explicit ObservedReferenceArena(iree_host_size_t block_size) {
+    iree_arena_block_pool_initialize(block_size, {this, Allocate}, &pool);
+    iree_arena_initialize(&pool, &arena);
+  }
+  ~ObservedReferenceArena() {
+    iree_arena_deinitialize(&arena);
+    iree_arena_block_pool_deinitialize(&pool);
+  }
+
+  // Backing allocation attempts, including an injected failure.
+  iree_host_size_t allocation_count = 0;
+  // Largest backing request in bytes.
+  iree_host_size_t largest_allocation = 0;
+  // Allocation ordinal to fail, or SIZE_MAX to allow every request.
+  iree_host_size_t failure_index = SIZE_MAX;
+  // Pool shared by result rows and the builder's temporary summary arena.
+  iree_arena_block_pool_t pool = {};
+  // Published analysis storage, independently reclaimable from the module.
+  iree_arena_allocator_t arena = {};
+
+ private:
+  static iree_status_t Allocate(void* self, iree_allocator_command_t command,
+                                const void* parameters, void** pointer) {
+    auto* observer = static_cast<ObservedReferenceArena*>(self);
+    if (command != IREE_ALLOCATOR_COMMAND_FREE) {
+      const auto* allocation =
+          static_cast<const iree_allocator_alloc_params_t*>(parameters);
+      observer->largest_allocation =
+          iree_max(observer->largest_allocation, allocation->byte_length);
+      if (observer->allocation_count++ == observer->failure_index) {
+        return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                                "injected reference allocation failure");
+      }
+    }
+    const auto allocator = iree_allocator_system();
+    return allocator.ctl(allocator.self, command, parameters, pointer);
+  }
+};
+
+TEST_F(SymbolReferencesTest, IndexedRowsAndAdjacencyCrossSegmentBoundaries) {
+  constexpr uint32_t kSegment =
+      LOOM_SYMBOL_REFERENCE_OCCURRENCE_SEGMENT_CAPACITY;
+  for (const uint32_t count :
+       {0u, 1u, kSegment - 1, kSegment, kSegment + 1, 16 * kSegment,
+        16 * kSegment + 1, 512 * kSegment, 512 * kSegment + 1}) {
+    SCOPED_TRACE(count);
+    std::vector<loom_op_t*> user_ops;
+    ModulePtr module = MakeRepeatedReferences(count, &user_ops);
+    ObservedReferenceArena storage(32768);
+    loom_symbol_reference_table_t table = {};
+    IREE_ASSERT_OK(loom_symbol_reference_table_build(module.get(),
+                                                     &storage.arena, &table));
+    ASSERT_EQ(table.occurrence_count, count);
+    ASSERT_EQ(table.symbols[0].incoming_count, count);
+    ASSERT_EQ(table.symbols[1].outgoing_count, count);
+    EXPECT_EQ(table.occurrences.segment_count,
+              (count + kSegment - 1) / kSegment);
+    EXPECT_EQ(table.module_occurrence_count, 0u);
+
+    const auto snapshot = table;
+    auto previous_id = LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID;
+    for (uint32_t id = 0; id < count; ++id) {
+      const auto* row = loom_symbol_reference_table_occurrence(&table, id);
+      EXPECT_EQ(loom_symbol_reference_table_occurrence(&snapshot, id), row);
+      EXPECT_EQ(row->user_op, user_ops[id]);
+      EXPECT_EQ(row->source_symbol_id, 1u);
+      EXPECT_EQ(row->target_symbol_id, 0u);
+      const loom_symbol_interface_flags_t expected_interfaces =
+          (id & 1u) ? 0u : LOOM_SYMBOL_INTERFACE_RECORD;
+      EXPECT_EQ(row->target_interfaces, expected_interfaces);
+      EXPECT_EQ(row->kind, LOOM_SYMBOL_REFERENCE_OCCURRENCE_SYMBOL_ATTR);
+      EXPECT_EQ(row->attr_index, id & 1u);
+      EXPECT_EQ(row->role, (id & 1u) ? LOOM_SYMBOL_REFERENCE_ROLE_AVAILABILITY
+                                     : LOOM_SYMBOL_REFERENCE_ROLE_DEPENDENCY);
+      EXPECT_EQ(row->source_root_region_index_plus_one, 1u);
+      EXPECT_EQ(row->next_incoming_occurrence_id, previous_id);
+      EXPECT_EQ(row->next_outgoing_occurrence_id, previous_id);
+      previous_id = id;
+    }
+    EXPECT_EQ(table.symbols[0].first_incoming_occurrence_id, previous_id);
+    EXPECT_EQ(table.symbols[1].first_outgoing_occurrence_id, previous_id);
+    EXPECT_LE(storage.largest_allocation, 32768u);
+  }
+}
+
+TEST_F(SymbolReferencesTest,
+       RebuildReusesPooledRowsWithoutOversizedAllocation) {
+  const uint32_t count =
+      512 * LOOM_SYMBOL_REFERENCE_OCCURRENCE_SEGMENT_CAPACITY + 1;
+  std::vector<loom_op_t*> user_ops;
+  ModulePtr module = MakeRepeatedReferences(count, &user_ops);
+  for (const auto block_size : {32768u, 131072u}) {
+    SCOPED_TRACE(block_size);
+    ObservedReferenceArena storage(block_size);
+    loom_symbol_reference_table_t table = {};
+    IREE_ASSERT_OK(loom_symbol_reference_table_build(module.get(),
+                                                     &storage.arena, &table));
+    ASSERT_EQ(table.occurrence_count, count);
+    EXPECT_EQ(storage.arena.allocation_head, nullptr);
+    EXPECT_LE(storage.largest_allocation, block_size);
+    const auto backing_allocations = storage.allocation_count;
+    for (int repetition = 0; repetition < 3; ++repetition) {
+      iree_arena_reset(&storage.arena);
+      IREE_ASSERT_OK(loom_symbol_reference_table_build(module.get(),
+                                                       &storage.arena, &table));
+      EXPECT_EQ(storage.allocation_count, backing_allocations);
+      EXPECT_EQ(
+          loom_symbol_reference_table_occurrence(&table, count - 1)->user_op,
+          user_ops.back());
+    }
+  }
+}
+
+TEST_F(SymbolReferencesTest, AllocationFailureNeverPublishesPartialTable) {
+  constexpr uint32_t kCount = 2049;
+  std::vector<loom_op_t*> user_ops;
+  ModulePtr module = MakeRepeatedReferences(kCount, &user_ops);
+  ObservedReferenceArena storage(32768);
+  loom_symbol_reference_table_t table = {};
+  IREE_ASSERT_OK(
+      loom_symbol_reference_table_build(module.get(), &storage.arena, &table));
+  const auto allocation_count = storage.allocation_count;
+  ASSERT_GT(allocation_count, 1u);
+  for (iree_host_size_t failure = 0; failure < allocation_count; ++failure) {
+    SCOPED_TRACE(failure);
+    iree_arena_reset(&storage.arena);
+    iree_arena_block_pool_trim(&storage.pool);
+    storage.failure_index = storage.allocation_count + failure;
+    IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                          loom_symbol_reference_table_build(
+                              module.get(), &storage.arena, &table));
+    EXPECT_EQ(table.module, nullptr);
+    EXPECT_EQ(table.symbol_count, 0u);
+    EXPECT_EQ(table.occurrence_count, 0u);
+    EXPECT_EQ(table.occurrences.segment_count, 0u);
+    storage.failure_index = SIZE_MAX;
+    iree_arena_reset(&storage.arena);
+    IREE_ASSERT_OK(loom_symbol_reference_table_build(module.get(),
+                                                     &storage.arena, &table));
+    EXPECT_EQ(table.occurrence_count, kCount);
+  }
+}
 
 TEST_F(SymbolReferencesTest, CallsAndGlobalAccessesUseGeneratedDescriptors) {
   ModulePtr module = ParseModule(R"(
@@ -633,7 +816,7 @@ func.def @typed(%arg: test.matrix<bf16, scope = subgroup, rows = 16, target = @d
       table.symbols[provider].first_incoming_occurrence_id;
   while (occurrence_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
     const loom_symbol_reference_occurrence_t* occurrence =
-        &table.occurrences[occurrence_id];
+        loom_symbol_reference_table_occurrence(&table, occurrence_id);
     if (loom_symbol_reference_occurrence_is_dependency(occurrence)) {
       ++dependency_count;
     } else {
@@ -679,7 +862,7 @@ func.def @typed(%arg: test.matrix<bf16, scope = subgroup, rows = 16, target = @t
       table.symbols[typed].first_outgoing_occurrence_id;
   while (occurrence_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
     const loom_symbol_reference_occurrence_t* occurrence =
-        &table.occurrences[occurrence_id];
+        loom_symbol_reference_table_occurrence(&table, occurrence_id);
     if (occurrence->target_symbol_id == target &&
         occurrence->kind == LOOM_SYMBOL_REFERENCE_OCCURRENCE_VALUE_TYPE) {
       ++occurrence_count;
@@ -716,7 +899,7 @@ func.def @consumer() {
       table.symbols[provider_a].first_incoming_occurrence_id;
   while (occurrence_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
     const loom_symbol_reference_occurrence_t* occurrence =
-        &table.occurrences[occurrence_id];
+        loom_symbol_reference_table_occurrence(&table, occurrence_id);
     ASSERT_EQ(occurrence->source_symbol_id, consumer);
     ASSERT_EQ(occurrence->kind, LOOM_SYMBOL_REFERENCE_OCCURRENCE_SYMBOL_ATTR);
     if (loom_symbol_reference_occurrence_is_dependency(occurrence)) {

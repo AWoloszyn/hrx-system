@@ -131,7 +131,7 @@ static iree_string_view_t loom_low_string_or_empty(const loom_module_t* module,
       string_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 static iree_string_view_t loom_low_op_name(const loom_module_t* module,
@@ -229,7 +229,7 @@ static loom_type_t loom_low_type_attr(const loom_module_t* module,
   if (type_id == LOOM_TYPE_ID_INVALID || type_id >= module->types.count) {
     return loom_type_none();
   }
-  return module->types.entries[type_id];
+  return loom_type_table_get(&module->types, type_id);
 }
 
 static iree_status_t loom_low_emit_symbol_kind_mismatch(

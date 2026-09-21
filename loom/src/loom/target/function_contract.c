@@ -32,7 +32,7 @@ static iree_string_view_t loom_target_function_contract_string_from_id(
   if (string_id >= module->strings.count) {
     return IREE_SV("<unknown>");
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 static iree_string_view_t loom_target_function_contract_symbol_ref_name(

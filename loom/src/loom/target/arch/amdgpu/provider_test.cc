@@ -128,7 +128,7 @@ static iree_status_t BuildMaterializationPipeline(loom_builder_t* builder,
 
 static iree_string_view_t ModuleString(loom_module_t* module,
                                        loom_string_id_t id) {
-  return module->strings.entries[id];
+  return loom_string_table_get(&module->strings, id);
 }
 
 static iree_string_view_t AttrStringValue(loom_module_t* module,

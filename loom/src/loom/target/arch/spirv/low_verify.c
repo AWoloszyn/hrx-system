@@ -191,7 +191,8 @@ static bool loom_spirv_low_type_is_named_opaque(const loom_module_t* module,
   }
   const loom_string_id_t name_id = loom_type_dialect_name_id(type);
   return name_id < module->strings.count &&
-         iree_string_view_equal(module->strings.entries[name_id], name);
+         iree_string_view_equal(
+             loom_string_table_get(&module->strings, name_id), name);
 }
 
 static loom_type_t loom_spirv_low_module_type_attr(const loom_module_t* module,
@@ -199,7 +200,7 @@ static loom_type_t loom_spirv_low_module_type_attr(const loom_module_t* module,
   if (type_id >= module->types.count) {
     return loom_type_none();
   }
-  return module->types.entries[type_id];
+  return loom_type_table_get(&module->types, type_id);
 }
 
 static iree_string_view_t loom_spirv_low_value_type_format(

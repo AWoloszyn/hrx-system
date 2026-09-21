@@ -33,7 +33,7 @@ static iree_string_view_t loom_cmd_dispatch_count_symbol_name(
   const loom_string_id_t name_id =
       build->module->symbols.entries[symbol_ref.symbol_id].name_id;
   IREE_ASSERT_LT(name_id, build->module->strings.count);
-  return build->module->strings.entries[name_id];
+  return loom_string_table_get(&build->module->strings, name_id);
 }
 
 static bool loom_cmd_dispatch_count_exact_u32(

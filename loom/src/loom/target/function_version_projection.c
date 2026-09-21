@@ -96,7 +96,7 @@ loom_target_function_version_projection_select_generated_name_namespace(
     const loom_symbol_t* symbol = &source_module->symbols.entries[symbol_id];
     uint32_t namespace_ordinal = 0;
     if (loom_target_function_version_projection_parse_generated_name_namespace(
-            source_module->strings.entries[symbol->name_id],
+            loom_string_table_get(&source_module->strings, symbol->name_id),
             &namespace_ordinal) &&
         namespace_ordinal < namespace_count) {
       iree_bitmap_set(used_namespaces, namespace_ordinal);

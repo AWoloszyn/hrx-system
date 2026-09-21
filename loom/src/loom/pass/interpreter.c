@@ -128,7 +128,7 @@ static iree_string_view_t loom_pass_interpreter_symbol_name(
       frame->symbol->name_id >= state->module->strings.count) {
     return IREE_SV("<none>");
   }
-  return state->module->strings.entries[frame->symbol->name_id];
+  return loom_string_table_get(&state->module->strings, frame->symbol->name_id);
 }
 
 static iree_string_view_t loom_pass_interpreter_source_symbol_name(
@@ -143,7 +143,7 @@ static iree_string_view_t loom_pass_interpreter_source_symbol_name(
   if (symbol->name_id >= module->strings.count) {
     return fallback;
   }
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static iree_status_t loom_pass_interpreter_count_diagnostic(
@@ -702,7 +702,8 @@ static bool loom_pass_interpreter_attr_string_value_equal(
       return false;
     }
     return iree_string_view_equal(
-        state->module->strings.entries[actual_string_id], expected_string);
+        loom_string_table_get(&state->module->strings, actual_string_id),
+        expected_string);
   }
   if (actual_attr.kind == LOOM_ATTR_ENUM && descriptor &&
       descriptor->enum_case_names) {

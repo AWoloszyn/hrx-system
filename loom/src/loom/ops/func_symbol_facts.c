@@ -20,7 +20,7 @@ static iree_status_t loom_func_symbol_string_from_id(
         IREE_STATUS_INVALID_ARGUMENT, "func %.*s string id %u is invalid",
         (int)field_name.size, field_name.data, (uint32_t)string_id);
   }
-  *out_string = module->strings.entries[string_id];
+  *out_string = loom_string_table_get(&module->strings, string_id);
   return iree_ok_status();
 }
 

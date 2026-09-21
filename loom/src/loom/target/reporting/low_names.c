@@ -42,7 +42,7 @@ iree_string_view_t loom_target_compile_report_module_string(
       string_id >= module->strings.count) {
     return fallback;
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 iree_string_view_t loom_target_compile_report_value_name(

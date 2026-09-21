@@ -36,7 +36,7 @@ static iree_string_view_t loom_cmd_program_plan_symbol_name(
   IREE_ASSERT_LT(symbol_ref.symbol_id, module->symbols.count);
   const loom_symbol_t* symbol = &module->symbols.entries[symbol_ref.symbol_id];
   IREE_ASSERT_LT(symbol->name_id, module->strings.count);
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 typedef struct loom_cmd_program_root_build_t {

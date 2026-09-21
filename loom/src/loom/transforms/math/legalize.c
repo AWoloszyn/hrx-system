@@ -361,7 +361,7 @@ static iree_string_view_t loom_math_legalize_function_name(
   if (symbol->name_id >= state->module->strings.count) {
     return iree_string_view_empty();
   }
-  return state->module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&state->module->strings, symbol->name_id);
 }
 
 static iree_status_t loom_math_legalize_record_report_row(

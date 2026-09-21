@@ -189,7 +189,8 @@ iree_status_t loom_bytecode_write_module(
   }
 
   // File header: magic, version, location mode, module count, producer string.
-  iree_string_view_t module_name = module->strings.entries[module->name_id];
+  iree_string_view_t module_name =
+      loom_string_table_get(&module->strings, module->name_id);
 
   if (iree_status_is_ok(status)) {
     // Magic.

@@ -165,7 +165,7 @@ class AmdgpuSanitizerAccessTest : public ::testing::Test {
   }
 
   iree_string_view_t String(loom_string_id_t string_id) const {
-    return module_->strings.entries[string_id];
+    return loom_string_table_get(&module_->strings, string_id);
   }
 
   const loom_low_descriptor_t* DescriptorForRef(

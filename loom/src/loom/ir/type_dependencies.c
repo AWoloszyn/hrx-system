@@ -667,7 +667,8 @@ static iree_status_t loom_dependency_collect_attribute(
     case LOOM_ATTR_TYPE:
       return loom_type_dependencies_union(
           &module->type_uses, *root,
-          module->types.dependencies[attribute->type_id], root);
+          loom_type_table_dependencies(&module->types, attribute->type_id),
+          root);
     case LOOM_ATTR_PREDICATE_LIST:
       for (uint16_t i = 0; i < attribute->count; ++i) {
         const loom_predicate_t* predicate = &attribute->predicate_list[i];

@@ -49,7 +49,7 @@ class TypeIndexTest : public ::testing::Test {
     auto* data = reinterpret_cast<loom_func_type_data_t*>(storage);
     data->arg_count = fanout;
     for (uint16_t i = 0; i < fanout; ++i) {
-      data->types[i] = module_->types.entries[child];
+      data->types[i] = loom_type_table_get(&module_->types, child);
     }
     const loom_type_id_t children[] = {child, child};
     loom_type_id_t id = LOOM_TYPE_ID_INVALID;
@@ -86,9 +86,9 @@ TEST_F(TypeIndexTest, SharedDependenciesAreIndexedOnce) {
   IREE_ASSERT_OK(loom_bytecode_type_index_initialize(module_, &arena_, &index));
   EXPECT_EQ(index.count, module_->types.count);
   for (loom_type_id_t id = 0; id < module_->types.count; ++id) {
-    EXPECT_EQ(
-        loom_bytecode_type_index_lookup(&index, module_->types.entries[id]),
-        id);
+    EXPECT_EQ(loom_bytecode_type_index_lookup(
+                  &index, loom_type_table_get(&module_->types, id)),
+              id);
   }
 }
 
@@ -107,7 +107,7 @@ TEST_F(TypeIndexTest, ShapedTypesRetainTheirScalarDependency) {
   ASSERT_NE(scalar, nullptr);
   for (auto type : types) {
     const auto* node = loom_bytecode_type_index_lookup_node(
-        &index, module_->types.entries[type]);
+        &index, loom_type_table_get(&module_->types, type));
     ASSERT_NE(node, nullptr);
     ASSERT_EQ(node->dependencies.count, 1u);
     EXPECT_EQ(&index.nodes[index.dependencies[node->dependencies.begin]],
@@ -141,7 +141,7 @@ TEST_F(TypeIndexTest,
   for (size_t i = 0; i < first.size(); ++i) {
     EXPECT_NE(first[i], second[i]);
     EXPECT_EQ(loom_bytecode_type_index_lookup(
-                  &index, module_->types.entries[second[i]]),
+                  &index, loom_type_table_get(&module_->types, second[i])),
               first[i]);
   }
 }
@@ -151,7 +151,7 @@ TEST_F(TypeIndexTest, GeneralConstructionRetainsCanonicalChildren) {
   for (int level = 0; level < 6; ++level) {
     child = InternFunction(child, 2);
   }
-  const loom_type_t argument = module_->types.entries[child];
+  const loom_type_t argument = loom_type_table_get(&module_->types, child);
   const loom_type_t result = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   loom_type_t parent;
   IREE_ASSERT_OK(loom_module_intern_function_type(module_, &argument, 1,
@@ -199,7 +199,7 @@ TEST_F(TypeIndexTest, ParameterAttributesRetainTypeDependencyClasses) {
   loom_bytecode_type_index_t index;
   IREE_ASSERT_OK(loom_bytecode_type_index_initialize(module_, &arena_, &index));
   EXPECT_EQ(loom_bytecode_type_index_lookup(
-                &index, module_->types.entries[parent_ids[1]]),
+                &index, loom_type_table_get(&module_->types, parent_ids[1])),
             parent_ids[0]);
 }
 

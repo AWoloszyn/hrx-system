@@ -172,10 +172,12 @@ TEST_F(EncodingFormatTest, DefineInlineSpec) {
   ASSERT_NE(spec_encoding, nullptr);
   ASSERT_LT(spec_encoding->name_id, module->strings.count);
   EXPECT_TRUE(iree_string_view_equal(
-      module->strings.entries[spec_encoding->name_id], IREE_SV("test.schema")));
+      loom_string_table_get(&module->strings, spec_encoding->name_id),
+      IREE_SV("test.schema")));
   ASSERT_EQ(spec_encoding->attribute_count, 1u);
   EXPECT_TRUE(iree_string_view_equal(
-      module->strings.entries[spec_encoding->attributes[0].name_id],
+      loom_string_table_get(&module->strings,
+                            spec_encoding->attributes[0].name_id),
       IREE_SV("block")));
   EXPECT_EQ(spec_encoding->attributes[0].value.kind, LOOM_ATTR_I64);
   EXPECT_EQ(spec_encoding->attributes[0].value.i64, 32);
@@ -233,12 +235,12 @@ TEST_F(EncodingFormatTest, DefineDynamicParams) {
   loom_named_attr_slice_t param_names = loom_encoding_define_param_names(op);
   ASSERT_EQ(param_names.count, 2u);
   EXPECT_TRUE(iree_string_view_equal(
-      module->strings.entries[param_names.entries[0].name_id],
+      loom_string_table_get(&module->strings, param_names.entries[0].name_id),
       IREE_SV("group_size")));
   EXPECT_EQ(param_names.entries[0].value.kind, LOOM_ATTR_I64);
   EXPECT_EQ(param_names.entries[0].value.i64, 0);
   EXPECT_TRUE(iree_string_view_equal(
-      module->strings.entries[param_names.entries[1].name_id],
+      loom_string_table_get(&module->strings, param_names.entries[1].name_id),
       IREE_SV("scale")));
   EXPECT_EQ(param_names.entries[1].value.kind, LOOM_ATTR_I64);
   EXPECT_EQ(param_names.entries[1].value.i64, 1);
@@ -294,7 +296,8 @@ TEST_F(EncodingFormatTest, DefineAliasSpec) {
   ASSERT_NE(spec_encoding, nullptr);
   ASSERT_NE(spec_encoding->alias_id, LOOM_STRING_ID_INVALID);
   EXPECT_TRUE(iree_string_view_equal(
-      module->strings.entries[spec_encoding->alias_id], IREE_SV("enc")));
+      loom_string_table_get(&module->strings, spec_encoding->alias_id),
+      IREE_SV("enc")));
 
   EXPECT_EQ(PrintModule(module),
             "#enc = #test.schema<block=32>\n"
@@ -324,8 +327,9 @@ TEST_F(EncodingFormatTest, CanonicalNumericSchemaHasStructuralIdentity) {
 
   const loom_encoding_t* encoding = loom_module_encoding(module, named_id);
   ASSERT_NE(encoding, nullptr);
-  EXPECT_TRUE(iree_string_view_equal(module->strings.entries[encoding->name_id],
-                                     IREE_SV("encoding.operand")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module->strings, encoding->name_id),
+      IREE_SV("encoding.operand")));
   EXPECT_EQ(PrintModule(module),
             "%named = encoding.define #encoding.f8e4m3fn : "
             "encoding<schema>\n"
@@ -410,7 +414,8 @@ TEST_F(EncodingFormatTest, DefineNestedInlineSpec) {
   ASSERT_NE(outer_encoding, nullptr);
   ASSERT_EQ(outer_encoding->attribute_count, 1u);
   EXPECT_TRUE(iree_string_view_equal(
-      module->strings.entries[outer_encoding->attributes[0].name_id],
+      loom_string_table_get(&module->strings,
+                            outer_encoding->attributes[0].name_id),
       IREE_SV("spec")));
 
   loom_attribute_t nested_spec = outer_encoding->attributes[0].value;
@@ -418,12 +423,13 @@ TEST_F(EncodingFormatTest, DefineNestedInlineSpec) {
   const loom_encoding_t* nested_encoding =
       loom_module_encoding(module, loom_attr_as_encoding_id(nested_spec));
   ASSERT_NE(nested_encoding, nullptr);
-  EXPECT_TRUE(
-      iree_string_view_equal(module->strings.entries[nested_encoding->name_id],
-                             IREE_SV("test.schema")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module->strings, nested_encoding->name_id),
+      IREE_SV("test.schema")));
   ASSERT_EQ(nested_encoding->attribute_count, 1u);
   EXPECT_TRUE(iree_string_view_equal(
-      module->strings.entries[nested_encoding->attributes[0].name_id],
+      loom_string_table_get(&module->strings,
+                            nested_encoding->attributes[0].name_id),
       IREE_SV("block")));
   EXPECT_EQ(nested_encoding->attributes[0].value.kind, LOOM_ATTR_I64);
   EXPECT_EQ(nested_encoding->attributes[0].value.i64, 32);

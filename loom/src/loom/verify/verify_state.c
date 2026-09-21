@@ -121,7 +121,7 @@ iree_string_view_t loom_verify_value_name(const loom_verify_state_t* state,
   const loom_value_t* value = loom_module_value(state->module, value_id);
   if (value->name_id != LOOM_STRING_ID_INVALID &&
       value->name_id < state->module->strings.count) {
-    return state->module->strings.entries[value->name_id];
+    return loom_string_table_get(&state->module->strings, value->name_id);
   }
   return iree_make_cstring_view("<unnamed>");
 }
@@ -136,7 +136,7 @@ iree_string_view_t loom_verify_symbol_name(const loom_verify_state_t* state,
   const loom_symbol_t* symbol = &state->module->symbols.entries[ref.symbol_id];
   if (symbol->name_id != LOOM_STRING_ID_INVALID &&
       symbol->name_id < state->module->strings.count) {
-    return state->module->strings.entries[symbol->name_id];
+    return loom_string_table_get(&state->module->strings, symbol->name_id);
   }
   return iree_make_cstring_view("<unnamed>");
 }

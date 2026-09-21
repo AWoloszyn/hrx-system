@@ -213,7 +213,7 @@ static iree_host_size_t loom_collect_source_backed_highlights(
   }
 
   const loom_location_entry_t* location =
-      &module->locations.entries[op->location];
+      loom_location_table_const_entry(&module->locations, op->location);
   if (location->kind != LOOM_LOCATION_FILE ||
       location->file.field_span_count == 0 || !location->file.field_spans) {
     return 0;

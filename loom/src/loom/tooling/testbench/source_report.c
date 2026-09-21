@@ -11,7 +11,7 @@ static const loom_location_entry_t* loom_testbench_file_location(
   while (location_id != LOOM_LOCATION_UNKNOWN &&
          (iree_host_size_t)location_id < module->locations.count) {
     const loom_location_entry_t* entry =
-        &module->locations.entries[location_id];
+        loom_location_table_const_entry(&module->locations, location_id);
     switch (entry->kind) {
       case LOOM_LOCATION_FILE:
         return entry;

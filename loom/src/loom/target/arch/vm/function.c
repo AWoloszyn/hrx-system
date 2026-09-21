@@ -415,7 +415,7 @@ static iree_status_t loom_vm_function_prepare_calls(
           &frame->module->symbols
                .entries[loom_low_func_call_callee(node->op).symbol_id];
       const iree_string_view_t name =
-          frame->module->strings.entries[symbol->name_id];
+          loom_string_table_get(&frame->module->strings, symbol->name_id);
       return iree_make_status(
           IREE_STATUS_NOT_FOUND,
           "VM callee '@%.*s' has no definition or runtime import",

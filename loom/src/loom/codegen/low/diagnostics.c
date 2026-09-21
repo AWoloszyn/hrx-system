@@ -27,7 +27,7 @@ iree_string_view_t loom_low_diagnostic_symbol_name(
   if (symbol->name_id >= module->strings.count) {
     return IREE_SV("<unnamed>");
   }
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 iree_string_view_t loom_low_diagnostic_target_key(
@@ -93,7 +93,7 @@ iree_string_view_t loom_low_diagnostic_value_name(const loom_module_t* module,
   if (value->name_id >= module->strings.count) {
     return IREE_SV("<unnamed>");
   }
-  return module->strings.entries[value->name_id];
+  return loom_string_table_get(&module->strings, value->name_id);
 }
 
 iree_string_view_t loom_low_diagnostic_value_class_name(
@@ -117,7 +117,7 @@ iree_string_view_t loom_low_diagnostic_block_name(const loom_module_t* module,
       block->label_id >= module->strings.count) {
     return IREE_SV("<anonymous>");
   }
-  return module->strings.entries[block->label_id];
+  return loom_string_table_get(&module->strings, block->label_id);
 }
 
 const loom_op_t* loom_low_diagnostic_value_origin_op(

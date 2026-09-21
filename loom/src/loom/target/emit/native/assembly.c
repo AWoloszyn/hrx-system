@@ -17,7 +17,7 @@ iree_string_view_t loom_native_assembly_module_string(
       string_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 iree_string_view_t loom_native_assembly_descriptor_string(

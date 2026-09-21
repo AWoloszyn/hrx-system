@@ -81,7 +81,7 @@ static iree_string_view_t loom_amdgpu_hal_kernel_library_symbol_name(
   const loom_symbol_t* symbol = &module->symbols.entries[symbol_ref.symbol_id];
   IREE_ASSERT(symbol->name_id != LOOM_STRING_ID_INVALID &&
               symbol->name_id < module->strings.count);
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static iree_string_view_t
@@ -733,7 +733,7 @@ static iree_string_view_t loom_amdgpu_hal_kernel_library_rodata_symbol_name(
     const loom_module_t* module, const loom_symbol_t* symbol) {
   IREE_ASSERT(symbol->name_id != LOOM_STRING_ID_INVALID &&
               symbol->name_id < module->strings.count);
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static iree_status_t loom_amdgpu_hal_kernel_library_collect_rodata_symbols(

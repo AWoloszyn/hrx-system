@@ -89,7 +89,8 @@ bool loom_encoding_auxiliary_view_resolve(
         entry->name_id >= module->strings.count) {
       continue;
     }
-    iree_string_view_t key_name = module->strings.entries[entry->name_id];
+    iree_string_view_t key_name =
+        loom_string_table_get(&module->strings, entry->name_id);
     loom_encoding_auxiliary_key_t key = 0;
     if (!loom_encoding_auxiliary_key_lookup_stable_id(
             loom_stable_id_from_string(key_name), &key)) {

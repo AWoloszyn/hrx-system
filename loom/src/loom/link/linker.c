@@ -168,7 +168,7 @@ static iree_string_view_t loom_link_target_symbol_name(
     const loom_module_t* target_module, loom_symbol_ref_t target_ref) {
   const loom_symbol_t* symbol =
       &target_module->symbols.entries[target_ref.symbol_id];
-  return target_module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&target_module->strings, symbol->name_id);
 }
 
 static iree_status_t loom_link_source_symbol_name(
@@ -182,7 +182,8 @@ static iree_status_t loom_link_source_symbol_name(
                             (unsigned)source_symbol_id,
                             (unsigned)source_symbol->name_id);
   }
-  *out_name = source_module->strings.entries[source_symbol->name_id];
+  *out_name =
+      loom_string_table_get(&source_module->strings, source_symbol->name_id);
   return iree_ok_status();
 }
 
@@ -387,7 +388,7 @@ static iree_status_t loom_linker_rename_private_target_symbol(
       &linker->target_module->symbols.entries[target_symbol_id];
   loom_string_id_t old_name_id = symbol->name_id;
   iree_string_view_t old_name =
-      linker->target_module->strings.entries[old_name_id];
+      loom_string_table_get(&linker->target_module->strings, old_name_id);
 
   loom_string_id_t new_name_id = LOOM_STRING_ID_INVALID;
   IREE_RETURN_IF_ERROR(
@@ -1455,9 +1456,9 @@ static iree_status_t loom_linker_mark_template_providers_live(
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "template family symbol has an invalid name");
     }
-    if (!iree_string_view_equal(
-            source->module->strings.entries[family_symbol->name_id],
-            family_name)) {
+    if (!iree_string_view_equal(loom_string_table_get(&source->module->strings,
+                                                      family_symbol->name_id),
+                                family_name)) {
       continue;
     }
     IREE_RETURN_IF_ERROR(
@@ -1499,7 +1500,8 @@ static iree_status_t loom_linker_visit_apply_dependency(
                             "template family symbol has an invalid name");
   }
   return loom_linker_mark_template_providers_live(
-      source, walk->apply_module->strings.entries[family_symbol->name_id]);
+      source, loom_string_table_get(&walk->apply_module->strings,
+                                    family_symbol->name_id));
 }
 
 static iree_status_t loom_linker_mark_function_apply_dependencies_live(
@@ -1646,7 +1648,8 @@ static iree_status_t loom_linker_resolve_live_symbols(
               .first_outgoing_occurrence_id;
       while (edge_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
         const loom_symbol_reference_occurrence_t* edge =
-            &source->reference_table.occurrences[edge_id];
+            loom_symbol_reference_table_occurrence(&source->reference_table,
+                                                   edge_id);
         if (!loom_symbol_reference_occurrence_is_dependency(edge)) {
           edge_id = edge->next_outgoing_occurrence_id;
           continue;

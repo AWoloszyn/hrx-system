@@ -39,6 +39,7 @@
 #define LOOM_IR_LOCATION_H_
 
 #include "iree/base/api.h"
+#include "loom/util/segmented_storage.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -142,7 +143,7 @@ typedef struct loom_location_field_span_t {
 static_assert(sizeof(loom_location_field_span_t) == 16,
               "loom_location_field_span_t must be 16 bytes");
 
-// A source location entry. 24 bytes. Tagged union.
+// A source location entry. 32 bytes. Tagged union.
 //
 // The kind field determines which union variant is active. File locations (the
 // 90% case) use uint16_t line/column numbers, supporting up to 65K lines per
@@ -198,15 +199,60 @@ typedef struct loom_location_entry_t {
 static_assert(sizeof(loom_location_entry_t) == 32,
               "loom_location_entry_t must be 32 bytes");
 
+// Number of rows in one stable location segment.
+#define LOOM_LOCATION_SEGMENT_CAPACITY 256u
+
+// Shift mapping a location ID to its segment index.
+#define LOOM_LOCATION_SEGMENT_SHIFT 8u
+
+// Mask mapping a location ID to its row within a segment.
+#define LOOM_LOCATION_SEGMENT_MASK (LOOM_LOCATION_SEGMENT_CAPACITY - 1u)
+
+static_assert((1u << LOOM_LOCATION_SEGMENT_SHIFT) ==
+                  LOOM_LOCATION_SEGMENT_CAPACITY,
+              "location segment capacity must match its index shift");
+static_assert((uint64_t)LOOM_LOCATION_SEGMENT_CAPACITY *
+                      LOOM_SEGMENTED_STORAGE_MAX_SEGMENT_COUNT >=
+                  (uint64_t)UINT32_MAX + 1,
+              "location storage must cover the full location ID domain");
+
+// Fixed-size arena-owned location rows; appending never moves earlier rows.
+typedef struct loom_location_segment_t {
+  // Rows indexed by the low bits of a location ID.
+  loom_location_entry_t rows[LOOM_LOCATION_SEGMENT_CAPACITY];
+} loom_location_segment_t;
+
 // Location table stored on the module.
 //
 // Entry 0 is always LOOM_LOCATION_NONE. When locations are stripped, the table
-// is empty and all ops reference LOOM_LOCATION_UNKNOWN.
+// is empty and all ops reference LOOM_LOCATION_UNKNOWN. Rows are allocated
+// lazily in stable segments and remain valid until module destruction.
 typedef struct loom_location_table_t {
+  // Number of initialized rows, including the unknown entry when nonempty.
   iree_host_size_t count;
-  iree_host_size_t capacity;
-  loom_location_entry_t* entries;
+  // Stable row segments owned by the containing module's arena.
+  loom_segmented_storage_t segments;
 } loom_location_table_t;
+
+// Returns a mutable published row for |location_id|, which must be < count.
+static inline loom_location_entry_t* loom_location_table_entry(
+    loom_location_table_t* table, loom_location_id_t location_id) {
+  IREE_ASSERT((iree_host_size_t)location_id < table->count);
+  loom_location_segment_t* segment =
+      (loom_location_segment_t*)loom_segmented_storage_segment(
+          &table->segments, location_id >> LOOM_LOCATION_SEGMENT_SHIFT);
+  return &segment->rows[location_id & LOOM_LOCATION_SEGMENT_MASK];
+}
+
+// Returns a const published row for |location_id|, which must be < count.
+static inline const loom_location_entry_t* loom_location_table_const_entry(
+    const loom_location_table_t* table, loom_location_id_t location_id) {
+  IREE_ASSERT((iree_host_size_t)location_id < table->count);
+  const loom_location_segment_t* segment =
+      (const loom_location_segment_t*)loom_segmented_storage_const_segment(
+          &table->segments, location_id >> LOOM_LOCATION_SEGMENT_SHIFT);
+  return &segment->rows[location_id & LOOM_LOCATION_SEGMENT_MASK];
+}
 
 // Returns the kind tag for |entry|.
 loom_location_kind_t loom_location_get_kind(loom_location_entry_t entry);

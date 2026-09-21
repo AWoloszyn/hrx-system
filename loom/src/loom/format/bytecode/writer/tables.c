@@ -130,7 +130,7 @@ iree_status_t loom_bytecode_write_types_section(
        ++writer_type_id) {
     iree_host_size_t module_index =
         numbering->types.module_indices_by_writer_id[writer_type_id];
-    loom_type_t type = module->types.entries[module_index];
+    loom_type_t type = loom_type_table_get(&module->types, module_index);
     loom_type_kind_t kind = loom_type_kind(type);
 
     uint8_t kind_byte = 0;
@@ -219,7 +219,8 @@ iree_status_t loom_bytecode_write_types_section(
         uint32_t name_writer_id = 0;
         if (name_id < numbering->module->strings.count) {
           IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_string_view(
-              numbering, numbering->module->strings.entries[name_id],
+              numbering,
+              loom_string_table_get(&numbering->module->strings, name_id),
               &name_writer_id));
         }
         IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_uvarint(
@@ -443,7 +444,8 @@ iree_status_t loom_bytecode_write_locations_section(
   IREE_RETURN_IF_ERROR(
       loom_bytecode_page_writer_write_uvarint(page_writer, location_count));
   for (iree_host_size_t i = 0; i < location_count; ++i) {
-    const loom_location_entry_t* entry = &module->locations.entries[i];
+    const loom_location_entry_t* entry = loom_location_table_const_entry(
+        &module->locations, (loom_location_id_t)i);
     IREE_RETURN_IF_ERROR(
         loom_bytecode_page_writer_write_u8(page_writer, (uint8_t)entry->kind));
     IREE_RETURN_IF_ERROR(

@@ -224,8 +224,9 @@ static loom_block_t* loom_parser_find_block_by_label(
         block->label_id >= parser->module->strings.count) {
       continue;
     }
-    if (iree_string_view_equal(parser->module->strings.entries[block->label_id],
-                               label)) {
+    if (iree_string_view_equal(
+            loom_string_table_get(&parser->module->strings, block->label_id),
+            label)) {
       return block;
     }
   }
@@ -302,7 +303,8 @@ static iree_status_t loom_parser_verify_symbols_resolved(
             .first_incoming_occurrence_id;
     while (occurrence_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
       const loom_symbol_reference_occurrence_t* occurrence =
-          &out_symbol_references->occurrences[occurrence_id];
+          loom_symbol_reference_table_occurrence(out_symbol_references,
+                                                 occurrence_id);
       has_reference = true;
       if (occurrence->role == LOOM_SYMBOL_REFERENCE_ROLE_AVAILABILITY) {
         has_availability = true;

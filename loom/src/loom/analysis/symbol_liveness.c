@@ -144,7 +144,7 @@ static iree_status_t loom_symbol_liveness_mark_module_root_edges(
       state->references->first_module_occurrence_id;
   while (edge_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
     const loom_symbol_reference_occurrence_t* edge =
-        &state->references->occurrences[edge_id];
+        loom_symbol_reference_table_occurrence(state->references, edge_id);
     if (!loom_symbol_reference_occurrence_is_dependency(edge)) {
       edge_id = edge->next_outgoing_occurrence_id;
       continue;
@@ -193,7 +193,7 @@ static iree_status_t loom_symbol_liveness_traverse_symbol(
       state->references->symbols[symbol_id].first_outgoing_occurrence_id;
   while (edge_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
     const loom_symbol_reference_occurrence_t* edge =
-        &state->references->occurrences[edge_id];
+        loom_symbol_reference_table_occurrence(state->references, edge_id);
     if (!loom_symbol_reference_occurrence_is_dependency(edge)) {
       edge_id = edge->next_outgoing_occurrence_id;
       continue;
@@ -264,10 +264,6 @@ static iree_status_t loom_symbol_liveness_validate(
   if (references->symbol_count > 0 && !references->symbols) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "symbol liveness reference symbols are NULL");
-  }
-  if (references->occurrence_count > 0 && !references->occurrences) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "symbol liveness reference occurrences are NULL");
   }
   if (!arena) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,

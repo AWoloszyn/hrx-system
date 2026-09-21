@@ -291,6 +291,14 @@ static iree_status_t loom_link_bytecode_template_prepare_target_cache(
   return iree_ok_status();
 }
 
+static iree_string_view_t loom_link_bytecode_template_target_string(
+    const void* context, loom_string_id_t string_id) {
+  const loom_bytecode_module_metadata_t* metadata =
+      (const loom_bytecode_module_metadata_t*)context;
+  IREE_ASSERT(string_id < metadata->strings.count);
+  return metadata->strings.values[string_id];
+}
+
 static iree_status_t loom_link_bytecode_template_project_target_facts(
     loom_link_bytecode_template_contract_reader_t* reader,
     uint32_t source_symbol_ordinal,
@@ -355,8 +363,8 @@ static iree_status_t loom_link_bytecode_template_project_target_facts(
         .selector = selector,
         .strings =
             {
-                .values = reader->metadata->strings.values,
-                .count = reader->metadata->strings.count,
+                .context = reader->metadata,
+                .lookup = loom_link_bytecode_template_target_string,
             },
     };
     loom_target_facts_project_record(&record, row_bundle, mutable_facts);

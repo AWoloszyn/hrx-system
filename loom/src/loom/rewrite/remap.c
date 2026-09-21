@@ -432,7 +432,8 @@ iree_status_t loom_ir_remap_string_id(loom_ir_remap_t* remap,
   }
   return loom_module_intern_string(
       remap->target_module,
-      remap->source_module->strings.entries[source_string_id], out_string_id);
+      loom_string_table_get(&remap->source_module->strings, source_string_id),
+      out_string_id);
 }
 
 static iree_status_t loom_ir_remap_source_id(
@@ -517,7 +518,9 @@ static iree_status_t loom_ir_remap_location_entry(
                 source_child_id, remap->source_module->locations.count);
           }
           IREE_RETURN_IF_ERROR(loom_ir_remap_location_entry(
-              remap, remap->source_module->locations.entries[source_child_id],
+              remap,
+              *loom_location_table_const_entry(&remap->source_module->locations,
+                                               source_child_id),
               depth + 1, &target_child_entry));
           IREE_RETURN_IF_ERROR(loom_module_add_location(
               remap->target_module, target_child_entry, &target_children[i]));
@@ -570,7 +573,8 @@ static iree_status_t loom_ir_remap_location_entry(
         loom_location_entry_t target_child_entry = {0};
         IREE_RETURN_IF_ERROR(loom_ir_remap_location_entry(
             remap,
-            remap->source_module->locations.entries[source_entry.tagged.child],
+            *loom_location_table_const_entry(&remap->source_module->locations,
+                                             source_entry.tagged.child),
             depth + 1, &target_child_entry));
         IREE_RETURN_IF_ERROR(
             loom_module_add_location(remap->target_module, target_child_entry,
@@ -623,7 +627,9 @@ iree_status_t loom_ir_remap_location_id(
   }
   loom_location_entry_t target_entry = {0};
   IREE_RETURN_IF_ERROR(loom_ir_remap_location_entry(
-      remap, remap->source_module->locations.entries[source_location_id],
+      remap,
+      *loom_location_table_const_entry(&remap->source_module->locations,
+                                       source_location_id),
       /*depth=*/0, &target_entry));
   return loom_module_add_location(remap->target_module, target_entry,
                                   out_target_location_id);
@@ -705,7 +711,7 @@ static iree_status_t loom_ir_remap_type_id(loom_ir_remap_t* remap,
   }
   loom_type_t target_type = {0};
   IREE_RETURN_IF_ERROR(loom_ir_remap_type(
-      remap, remap->source_module->types.entries[source_type_id],
+      remap, loom_type_table_get(&remap->source_module->types, source_type_id),
       &target_type));
   return loom_module_intern_type_id(remap->target_module, target_type,
                                     out_target_type_id);
@@ -1019,8 +1025,8 @@ static iree_status_t loom_ir_remap_attribute_impl(
         if (loom_symbol_ref_is_valid(duplicate_ref)) {
           const loom_symbol_t* duplicate_symbol =
               &remap->target_module->symbols.entries[duplicate_ref.symbol_id];
-          iree_string_view_t duplicate_name =
-              remap->target_module->strings.entries[duplicate_symbol->name_id];
+          iree_string_view_t duplicate_name = loom_string_table_get(
+              &remap->target_module->strings, duplicate_symbol->name_id);
           return iree_make_status(
               IREE_STATUS_INVALID_ARGUMENT,
               "remapped symbol set contains duplicate '@%.*s'",

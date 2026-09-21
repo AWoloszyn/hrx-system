@@ -34,7 +34,8 @@ static bool loom_target_pass_predicate_attrs_contain(
       continue;
     }
     if (iree_string_view_equal(
-            module->strings.entries[attrs.entries[i].name_id], name)) {
+            loom_string_table_get(&module->strings, attrs.entries[i].name_id),
+            name)) {
       return true;
     }
   }
@@ -48,7 +49,7 @@ static iree_status_t loom_target_pass_predicate_string_from_id(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "invalid pass.where target predicate string id");
   }
-  *out_string = module->strings.entries[string_id];
+  *out_string = loom_string_table_get(&module->strings, string_id);
   return iree_ok_status();
 }
 

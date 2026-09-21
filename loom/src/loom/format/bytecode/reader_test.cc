@@ -2862,14 +2862,14 @@ TEST_F(ReaderTest, MaterializesExactIndexedSymbolSelection) {
   ASSERT_NE(selected_module, nullptr);
   ASSERT_EQ(selected_module->symbols.count, 1u);
   const loom_symbol_t* selected_symbol = &selected_module->symbols.entries[0];
-  EXPECT_TRUE(iree_string_view_equal(
-      selected_module->strings.entries[selected_symbol->name_id],
-      IREE_SV("selected")));
+  EXPECT_TRUE(
+      iree_string_view_equal(loom_string_table_get(&selected_module->strings,
+                                                   selected_symbol->name_id),
+                             IREE_SV("selected")));
   ASSERT_NE(selected_symbol->defining_op, nullptr);
   ASSERT_NE(selected_symbol->defining_op->location, LOOM_LOCATION_UNKNOWN);
-  const loom_location_entry_t& location =
-      selected_module->locations
-          .entries[selected_symbol->defining_op->location];
+  const loom_location_entry_t& location = *loom_location_table_const_entry(
+      &selected_module->locations, selected_symbol->defining_op->location);
   EXPECT_EQ(location.kind, LOOM_LOCATION_FILE);
   EXPECT_EQ(location.file.start_line, 8u);
   EXPECT_EQ(location.file.end_line, 10u);
@@ -3483,7 +3483,7 @@ TEST_F(ReaderTest, PreservesPhysicalSymbolDefinitionOrder) {
       const loom_symbol_t* symbol = &read_module->symbols.entries[i];
       if (symbol->defining_op == op) {
         const iree_string_view_t name =
-            read_module->strings.entries[symbol->name_id];
+            loom_string_table_get(&read_module->strings, symbol->name_id);
         definition_names.emplace_back(name.data, name.size);
         break;
       }
@@ -3788,10 +3788,12 @@ TEST_F(ReaderTest, ReadsMultiModuleIndexAndMaterializesByOrdinal) {
   EXPECT_TRUE(ordinal_error_ids.empty());
   ASSERT_NE(read_module, nullptr);
   EXPECT_TRUE(iree_string_view_equal(
-      read_module->strings.entries[read_module->name_id], IREE_SV("module_b")));
+      loom_string_table_get(&read_module->strings, read_module->name_id),
+      IREE_SV("module_b")));
   ASSERT_EQ(read_module->symbols.count, 1u);
   EXPECT_TRUE(iree_string_view_equal(
-      read_module->strings.entries[read_module->symbols.entries[0].name_id],
+      loom_string_table_get(&read_module->strings,
+                            read_module->symbols.entries[0].name_id),
       IREE_SV("f")));
   loom_module_free(read_module);
 
@@ -4134,8 +4136,9 @@ TEST_F(ReaderTest, ParameterizedAttrsPreserveNamedSlotsAndPresence) {
   const loom_type_id_t element_type_id =
       loom_test_options_attr_element_type(full);
   ASSERT_LT(element_type_id, read_module->types.count);
-  EXPECT_TRUE(loom_type_equal(read_module->types.entries[element_type_id],
-                              loom_type_scalar(LOOM_SCALAR_TYPE_BF16)));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&read_module->types, element_type_id),
+                      loom_type_scalar(LOOM_SCALAR_TYPE_BF16)));
   ASSERT_TRUE(loom_test_options_attr_has_tile(full));
   loom_attribute_t tile = loom_test_options_attr_tile(full);
   ASSERT_TRUE(loom_test_tile_attr_isa(tile));
@@ -4157,8 +4160,8 @@ TEST_F(ReaderTest, ParameterizedAttrsPreserveNamedSlotsAndPresence) {
   ASSERT_TRUE(loom_test_compact_attr_has_label(compact));
   loom_string_id_t label_id = loom_test_compact_attr_label(compact);
   ASSERT_LT(label_id, read_module->strings.count);
-  EXPECT_TRUE(iree_string_view_equal(read_module->strings.entries[label_id],
-                                     IREE_SV("wave")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&read_module->strings, label_id), IREE_SV("wave")));
 
   loom_op_t* array_op = loom_block_op(entry, 4);
   ASSERT_TRUE(loom_test_parameterized_attr_array_isa(array_op));
@@ -4203,7 +4206,8 @@ TEST_F(ReaderTest, ReadsGlobalSymbolModule) {
   const loom_symbol_t& symbol = read_module->symbols.entries[0];
   EXPECT_EQ(symbol.kind, LOOM_SYMBOL_GLOBAL);
   EXPECT_TRUE(iree_string_view_equal(
-      read_module->strings.entries[symbol.name_id], IREE_SV("answer")));
+      loom_string_table_get(&read_module->strings, symbol.name_id),
+      IREE_SV("answer")));
   ASSERT_NE(symbol.defining_op, nullptr);
   ASSERT_TRUE(loom_global_constant_isa(symbol.defining_op));
   loom_attribute_t initializer =
@@ -4246,7 +4250,8 @@ TEST_F(ReaderTest, ReadsDynamicGlobalSymbolModule) {
                               loom_type_scalar(LOOM_SCALAR_TYPE_INDEX)));
   ASSERT_NE(dim_value.name_id, LOOM_STRING_ID_INVALID);
   EXPECT_TRUE(iree_string_view_equal(
-      read_module->strings.entries[dim_value.name_id], IREE_SV("n")));
+      loom_string_table_get(&read_module->strings, dim_value.name_id),
+      IREE_SV("n")));
 
   const loom_attribute_t* attrs = loom_op_attrs(symbol.defining_op);
   ASSERT_EQ(attrs[1].kind, LOOM_ATTR_PREDICATE_LIST);
@@ -4302,7 +4307,7 @@ TEST_F(ReaderTest, ReadsLocationTablesWithModuleSources) {
                                      IREE_SV("model.loom")));
   ASSERT_EQ(read_module->locations.count, 2u);
   const loom_location_entry_t& file_location =
-      read_module->locations.entries[1];
+      *loom_location_table_const_entry(&read_module->locations, 1);
   EXPECT_EQ(file_location.kind, LOOM_LOCATION_FILE);
   EXPECT_EQ(file_location.file.source_id, 0u);
   EXPECT_EQ(file_location.file.start_line, 1u);
@@ -4338,7 +4343,8 @@ TEST_F(ReaderTest, ReadsTaggedLocationTables) {
   ASSERT_NE(read_module, nullptr);
   ASSERT_EQ(read_module->locations.count, 3u);
   const loom_location_entry_t& tagged_location =
-      read_module->locations.entries[tagged_location_id];
+      *loom_location_table_const_entry(&read_module->locations,
+                                       tagged_location_id);
   EXPECT_EQ(tagged_location.kind, LOOM_LOCATION_TAGGED);
   EXPECT_EQ(tagged_location.tagged.tag, LOOM_LOCATION_TAG_SANITIZER_SITE);
   EXPECT_EQ(tagged_location.tagged.child, 1u);
@@ -4612,8 +4618,8 @@ TEST_F(ReaderTest, ReadsStructuralRegisterValueType) {
 
   const loom_type_t* register_type = nullptr;
   for (iree_host_size_t i = 0; i < read_module->types.count; ++i) {
-    if (loom_type_is_register(read_module->types.entries[i])) {
-      register_type = &read_module->types.entries[i];
+    if (loom_type_is_register(loom_type_table_get(&read_module->types, i))) {
+      register_type = loom_type_table_entry(&read_module->types, i);
       break;
     }
   }
@@ -4624,7 +4630,8 @@ TEST_F(ReaderTest, ReadsStructuralRegisterValueType) {
   ASSERT_NE(value_type, nullptr);
   ASSERT_TRUE(loom_type_is_dialect(*value_type));
   EXPECT_TRUE(iree_string_view_equal(
-      read_module->strings.entries[loom_type_dialect_name_id(*value_type)],
+      loom_string_table_get(&read_module->strings,
+                            loom_type_dialect_name_id(*value_type)),
       IREE_SV("test.payload")));
   ASSERT_EQ(loom_type_dialect_param_count(*value_type), 1u);
   EXPECT_TRUE(loom_type_equal(
@@ -4714,8 +4721,9 @@ TEST_F(ReaderTest, ReadsDescriptorBackedParameterizedTypes) {
   loom_type_id_t element_type_id =
       loom_test_matrix_type_element_type(matrix_type);
   ASSERT_LT(element_type_id, read_module->types.count);
-  EXPECT_TRUE(loom_type_equal(read_module->types.entries[element_type_id],
-                              loom_type_scalar(LOOM_SCALAR_TYPE_BF16)));
+  EXPECT_TRUE(
+      loom_type_equal(loom_type_table_get(&read_module->types, element_type_id),
+                      loom_type_scalar(LOOM_SCALAR_TYPE_BF16)));
 
   loom_type_t packed_type =
       loom_module_value_type(read_module, arguments.values[2]);
@@ -4917,9 +4925,10 @@ TEST_F(ReaderTest, PreservesGlobalAndRecordDefinitionLocations) {
     const loom_location_id_t selected_location =
         selected_module->symbols.entries[0].defining_op->location;
     ASSERT_NE(selected_location, LOOM_LOCATION_UNKNOWN);
-    EXPECT_EQ(
-        selected_module->locations.entries[selected_location].file.start_line,
-        4u);
+    EXPECT_EQ(loom_location_table_const_entry(&selected_module->locations,
+                                              selected_location)
+                  ->file.start_line,
+              4u);
     ExpectCanonicalBytecodeRoundTrip(module);
     loom_module_free(selected_module);
     iree_arena_deinitialize(&arena);

@@ -203,7 +203,8 @@ static iree_status_t loom_bytecode_write_attr_value_at_depth(
             "type attribute id %u out of range (module has %" PRIhsz " types)",
             (unsigned)attr.type_id, numbering->module->types.count);
       }
-      loom_type_t type = numbering->module->types.entries[attr.type_id];
+      loom_type_t type =
+          loom_type_table_get(&numbering->module->types, attr.type_id);
       uint32_t type_writer_id = 0;
       IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_type(
           numbering, type, &type_writer_id));
@@ -564,7 +565,8 @@ static iree_status_t loom_bytecode_emit_attr_value_at_depth(
             "type attribute id %u out of range (module has %" PRIhsz " types)",
             (unsigned)attr.type_id, numbering->module->types.count);
       }
-      loom_type_t type = numbering->module->types.entries[attr.type_id];
+      loom_type_t type =
+          loom_type_table_get(&numbering->module->types, attr.type_id);
       uint32_t type_writer_id = 0;
       IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_type(
           numbering, type, &type_writer_id));

@@ -35,12 +35,15 @@ typedef struct loom_symbol_reference_builder_t {
   loom_symbol_reference_summary_t* summary;
   // Mutable per-symbol occurrence heads.
   loom_symbol_reference_symbol_occurrences_t* symbols;
-  // Mutable occurrence storage.
-  loom_symbol_reference_occurrence_t* occurrences;
-  // Number of live occurrence entries.
-  iree_host_size_t occurrence_count;
-  // Number of allocated occurrence slots.
-  iree_host_size_t occurrence_capacity;
+  // Append-only occurrence rows staged until the complete table is published.
+  struct {
+    // Stable row segments and their pointer directory.
+    loom_segmented_storage_t segments;
+    // Current segment receiving rows; NULL before the first append.
+    loom_symbol_reference_occurrence_t* tail;
+    // Number of initialized occurrence rows.
+    iree_host_size_t count;
+  } occurrences;
   // First module-root occurrence.
   loom_symbol_reference_occurrence_id_t first_module_occurrence_id;
   // Number of module-root occurrences.
@@ -112,6 +115,11 @@ static iree_status_t loom_symbol_reference_builder_initialize(
       .arena = arena,
       .first_module_occurrence_id = LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID,
   };
+  loom_segmented_storage_initialize(
+      LOOM_SYMBOL_REFERENCE_OCCURRENCE_SEGMENT_CAPACITY *
+          sizeof(loom_symbol_reference_occurrence_t),
+      iree_alignof(loom_symbol_reference_occurrence_t),
+      &builder->occurrences.segments);
   if (module->symbols.count == 0) {
     return iree_ok_status();
   }
@@ -133,22 +141,24 @@ static iree_status_t loom_symbol_reference_builder_append_occurrence(
     loom_symbol_reference_role_t role,
     loom_symbol_interface_flags_t target_interfaces, uint8_t attr_index,
     const loom_op_t* user_op) {
-  if (builder->occurrence_count >= UINT32_MAX) {
+  if (builder->occurrences.count >= UINT32_MAX) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "symbol reference table exceeds %u occurrences",
                             (unsigned)(UINT32_MAX - 1));
   }
-  if (builder->occurrence_count >= builder->occurrence_capacity) {
-    IREE_RETURN_IF_ERROR(iree_arena_grow_array(
-        builder->arena, builder->occurrence_count,
-        builder->occurrence_count + 1, sizeof(*builder->occurrences),
-        &builder->occurrence_capacity, (void**)&builder->occurrences));
+  const uint32_t segment_offset =
+      builder->occurrences.count &
+      (LOOM_SYMBOL_REFERENCE_OCCURRENCE_SEGMENT_CAPACITY - 1u);
+  if (segment_offset == 0) {
+    IREE_RETURN_IF_ERROR(loom_segmented_storage_append(
+        &builder->occurrences.segments, builder->arena,
+        (void**)&builder->occurrences.tail));
   }
 
   const loom_symbol_reference_occurrence_id_t occurrence_id =
-      (loom_symbol_reference_occurrence_id_t)builder->occurrence_count++;
+      (loom_symbol_reference_occurrence_id_t)builder->occurrences.count++;
   loom_symbol_reference_occurrence_t* occurrence =
-      &builder->occurrences[occurrence_id];
+      &builder->occurrences.tail[segment_offset];
   *occurrence = (loom_symbol_reference_occurrence_t){
       .source_symbol_id = source_scope.symbol_id,
       .target_symbol_id = target_symbol_id,
@@ -630,8 +640,8 @@ iree_status_t loom_symbol_reference_table_build(
       .module = module,
       .symbols = builder.symbols,
       .symbol_count = module->symbols.count,
-      .occurrences = builder.occurrences,
-      .occurrence_count = builder.occurrence_count,
+      .occurrences = builder.occurrences.segments,
+      .occurrence_count = builder.occurrences.count,
       .first_module_occurrence_id = builder.first_module_occurrence_id,
       .module_occurrence_count = builder.module_occurrence_count,
       .template_demands =
@@ -668,7 +678,7 @@ static iree_status_t loom_symbol_reference_visit_dependency_successors(
       table->symbols[node].first_outgoing_occurrence_id;
   while (occurrence_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
     const loom_symbol_reference_occurrence_t* occurrence =
-        &table->occurrences[occurrence_id];
+        loom_symbol_reference_table_occurrence(table, occurrence_id);
     if (!loom_symbol_reference_occurrence_is_dependency(occurrence)) {
       occurrence_id = occurrence->next_outgoing_occurrence_id;
       continue;

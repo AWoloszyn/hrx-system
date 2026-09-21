@@ -530,7 +530,7 @@ FunctionBody Functions::define(cxx::FunctionSymbol* symbol, Types& types,
                                 locations.get(definition), &op));
     auto saved =
         loom_builder_enter_region(builder, op, loom_kernel_def_config(op));
-    auto spelling = module_->strings.entries[name_id];
+    auto spelling = loom_string_table_get(&module_->strings, name_id);
     launches_.build(symbol, {spelling.data, spelling.size}, names_, builder,
                     locations.get(definition));
     loom_builder_restore(builder, saved);

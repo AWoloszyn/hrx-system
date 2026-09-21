@@ -6,6 +6,8 @@
 
 #include "loom/ops/target/facts.h"
 
+#include <vector>
+
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -108,6 +110,61 @@ TEST(TargetFactRelationTest, DistinctFactsRequireFamilyIdentityRelation) {
 
   EXPECT_TRUE(loom_target_facts_satisfy_identity_requirement(&lhs, &lhs));
   EXPECT_FALSE(loom_target_facts_satisfy_identity_requirement(&lhs, &rhs));
+}
+
+TEST_F(TargetFactsTest, ProjectionBorrowsStringsWithoutRetainingSourceAccess) {
+  loom_op_kind_t kind = 0;
+  const loom_op_vtable_t* vtable = loom_context_lookup_op_by_name(
+      &context_, IREE_SV("target.generic"), &kind);
+  ASSERT_NE(vtable, nullptr);
+  const auto* descriptor = vtable->target_like->descriptor;
+  const auto selector = LOOM_TARGET_GENERIC_KIND_REFERENCE;
+  const auto* bundle =
+      loom_target_bundle_table_lookup(descriptor->bundle_table, selector);
+  std::vector<loom_attribute_t> attributes(vtable->attribute_count,
+                                           loom_attr_absent());
+  attributes[loom_target_generic_kind_ATTR_INDEX] = loom_attr_enum(selector);
+  attributes[loom_target_generic_export_symbol_ATTR_INDEX] =
+      loom_attr_string(1);
+  attributes[loom_target_generic_contract_set_key_ATTR_INDEX] =
+      loom_attr_string(0);
+  const iree_string_view_t first_strings[] = {IREE_SV("first_contract"),
+                                              IREE_SV("first_entry")};
+  const iree_string_view_t second_strings[] = {IREE_SV("second_contract"),
+                                               IREE_SV("second_entry")};
+  loom_target_facts_t first;
+  loom_target_facts_t second;
+  {
+    loom_target_record_view_t record = {
+        /*.descriptor=*/descriptor,
+        /*.name=*/IREE_SV("source_target"),
+        /*.attributes=*/attributes.data(),
+        /*.attribute_count=*/vtable->attribute_count,
+        /*.selector=*/selector,
+        /*.strings=*/
+        {
+            /*.context=*/first_strings,
+            /*.lookup=*/
+            [](const void* context, loom_string_id_t id) {
+              return static_cast<const iree_string_view_t*>(context)[id];
+            },
+        },
+    };
+    loom_target_facts_project_record(&record, bundle, &first);
+    record.strings.context = second_strings;
+    loom_target_facts_project_record(&record, bundle, &second);
+  }
+  EXPECT_EQ(first.storage.export_plan.export_symbol.data,
+            first_strings[1].data);
+  EXPECT_EQ(first.storage.config.contract_set_key.data, first_strings[0].data);
+  EXPECT_EQ(second.storage.export_plan.export_symbol.data,
+            second_strings[1].data);
+  EXPECT_EQ(second.storage.config.contract_set_key.data,
+            second_strings[0].data);
+  EXPECT_TRUE(loom_target_facts_field_is_explicit(
+      &first, LOOM_TARGET_FACT_FIELD_EXPORT_SYMBOL));
+  EXPECT_TRUE(loom_target_facts_field_is_explicit(
+      &second, LOOM_TARGET_FACT_FIELD_CONTRACT_SET_KEY));
 }
 
 TEST_F(TargetFactsTest, ProjectsLaunchBoundsFromGenericTargetRecord) {

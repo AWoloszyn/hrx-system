@@ -501,7 +501,7 @@ static iree_status_t loom_low_descriptor_text_asm_describe_live_in(
               loom_op_attrs(op)[loom_low_live_in_attrs_ATTR_INDEX])
               ? 0
               : LOOM_TEXT_LOW_ASM_STRUCTURAL_BUILD_FLAG_HAS_ATTRIBUTES,
-      .structural_key = module->strings.entries[source_id],
+      .structural_key = loom_string_table_get(&module->strings, source_id),
       .results = loom_op_const_results(op),
       .result_count = 1,
       .attributes = loom_low_live_in_attrs(op),

@@ -310,7 +310,7 @@ static iree_status_t loom_target_callgraph_prepare_symbol(
     const loom_symbol_t* target_symbol =
         &state->module->symbols.entries[target_ref.symbol_id];
     info->authored_target_name =
-        state->module->strings.entries[target_symbol->name_id];
+        loom_string_table_get(&state->module->strings, target_symbol->name_id);
     const loom_target_symbol_facts_t* target_facts =
         loom_target_symbol_facts_cast(target_base_facts);
     if (target_facts != NULL) {
@@ -657,7 +657,8 @@ static bool loom_target_callgraph_has_propagating_incoming_call(
       state->references.symbols[target_symbol_id].first_incoming_occurrence_id;
   while (occurrence_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
     const loom_symbol_reference_occurrence_t* occurrence =
-        &state->references.occurrences[occurrence_id];
+        loom_symbol_reference_table_occurrence(&state->references,
+                                               occurrence_id);
     occurrence_id = occurrence->next_incoming_occurrence_id;
     if (occurrence->source_symbol_id == target_symbol_id ||
         !loom_symbol_reference_occurrence_is_dependency(occurrence) ||
@@ -775,7 +776,7 @@ static iree_status_t loom_target_callgraph_plan_reachable_rows(
     while (state->plan_valid &&
            edge_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
       const loom_symbol_reference_occurrence_t* edge =
-          &state->references.occurrences[edge_id];
+          loom_symbol_reference_table_occurrence(&state->references, edge_id);
       edge_id = edge->next_outgoing_occurrence_id;
       if (!loom_symbol_reference_occurrence_is_dependency(edge) ||
           edge->kind != LOOM_SYMBOL_REFERENCE_OCCURRENCE_CALL ||
@@ -844,7 +845,7 @@ static iree_status_t loom_target_callgraph_plan_clone_name(
   const loom_symbol_t* source_symbol =
       &state->module->symbols.entries[source_ref.symbol_id];
   const iree_string_view_t source_name =
-      state->module->strings.entries[source_symbol->name_id];
+      loom_string_table_get(&state->module->strings, source_symbol->name_id);
 
   for (iree_host_size_t ordinal = symbol_info->next_clone_ordinal;
        ordinal < IREE_HOST_SIZE_MAX; ++ordinal) {
@@ -899,7 +900,8 @@ static iree_status_t loom_target_callgraph_prepare_materializations(
     if (row_id == info->original_row_id) {
       const loom_string_id_t name_id =
           state->module->symbols.entries[row->source_symbol_id].name_id;
-      row->concrete_name = state->module->strings.entries[name_id];
+      row->concrete_name =
+          loom_string_table_get(&state->module->strings, name_id);
     } else {
       IREE_ASSERT(!info->externally_visible);
       row->clone_required = true;

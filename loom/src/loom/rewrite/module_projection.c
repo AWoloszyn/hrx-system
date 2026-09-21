@@ -149,7 +149,8 @@ iree_status_t loom_ir_module_clone(
   const iree_string_view_t module_name =
       source_module->name_id == LOOM_STRING_ID_INVALID
           ? IREE_SV("module")
-          : source_module->strings.entries[source_module->name_id];
+          : loom_string_table_get(&source_module->strings,
+                                  source_module->name_id);
   const loom_module_size_hints_t hints = {
       .value_count = 0,
       .string_count = target_string_capacity,
@@ -179,7 +180,8 @@ iree_status_t loom_ir_module_clone(
         &source_module->symbols.entries[source_symbol_id];
     loom_string_id_t target_name_id = LOOM_STRING_ID_INVALID;
     status = loom_module_intern_string(
-        target_module, source_module->strings.entries[source_symbol->name_id],
+        target_module,
+        loom_string_table_get(&source_module->strings, source_symbol->name_id),
         &target_name_id);
     loom_symbol_id_t target_symbol_id = LOOM_SYMBOL_ID_INVALID;
     if (iree_status_is_ok(status)) {

@@ -121,7 +121,7 @@ static iree_string_view_t loomc_module_global_symbol_name(
       symbol->name_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static bool loomc_module_global_populate_from_symbol(

@@ -227,10 +227,10 @@ iree_status_t loom_run_module_clone(loom_run_session_t* session,
       .target = &out_module->sources,
   };
   const loom_link_options_t options = {
-      .module_name =
-          source->module->name_id < source->module->strings.count
-              ? source->module->strings.entries[source->module->name_id]
-              : iree_string_view_empty(),
+      .module_name = source->module->name_id < source->module->strings.count
+                         ? loom_string_table_get(&source->module->strings,
+                                                 source->module->name_id)
+                         : iree_string_view_empty(),
       .root_symbols = root_symbols,
       .source_callback = {.fn = loom_run_module_clone_sources,
                           .user_data = &sources},

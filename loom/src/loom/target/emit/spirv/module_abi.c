@@ -47,7 +47,7 @@ static iree_string_view_t loom_spirv_module_abi_string_or_empty(
       string_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 static iree_status_t loom_spirv_module_abi_op_name(
@@ -118,7 +118,7 @@ static loom_type_t loom_spirv_module_abi_type_attr(
   if (type_id >= context->module->types.count) {
     return loom_type_none();
   }
-  return context->module->types.entries[type_id];
+  return loom_type_table_get(&context->module->types, type_id);
 }
 
 static loom_spirv_value_type_t loom_spirv_module_abi_low_register_value_type(

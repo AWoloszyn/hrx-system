@@ -283,9 +283,11 @@ func.def @helper(%x: i32) -> (i32) {
   const loom_symbol_t* second_helper =
       &linked->symbols.entries[definition_targets[1].symbol_id];
   EXPECT_TRUE(iree_string_view_equal(
-      linked->strings.entries[first_helper->name_id], IREE_SV("helper")));
+      loom_string_table_get(&linked->strings, first_helper->name_id),
+      IREE_SV("helper")));
   EXPECT_TRUE(iree_string_view_starts_with(
-      linked->strings.entries[second_helper->name_id], IREE_SV("helper$link")));
+      loom_string_table_get(&linked->strings, second_helper->name_id),
+      IREE_SV("helper$link")));
 }
 
 TEST_F(LinkerTest, CommandDefinitionSupersedesMatchingDeclaration) {

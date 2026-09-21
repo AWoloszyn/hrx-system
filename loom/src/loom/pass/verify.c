@@ -64,7 +64,7 @@ static iree_status_t loom_pass_string_from_id(const loom_module_t* module,
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "invalid %s string id", label);
   }
-  *out_string = module->strings.entries[string_id];
+  *out_string = loom_string_table_get(&module->strings, string_id);
   return iree_ok_status();
 }
 
@@ -78,7 +78,7 @@ static iree_string_view_t loom_pass_symbol_name_from_ref(
   if (symbol->name_id >= module->strings.count) {
     return IREE_SV("<invalid>");
   }
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static iree_string_view_t loom_pass_pipeline_name(
@@ -323,7 +323,8 @@ static iree_status_t loom_pass_verify_run(loom_pass_verify_state_t* state,
   if (!iree_status_is_ok(status)) {
     iree_string_view_t key = iree_string_view_empty();
     if (loom_pass_run_key(op) < state->module->strings.count) {
-      key = state->module->strings.entries[loom_pass_run_key(op)];
+      key =
+          loom_string_table_get(&state->module->strings, loom_pass_run_key(op));
     }
     iree_string_view_t pipeline_name =
         loom_pass_pipeline_name(state->module, pipeline_op);

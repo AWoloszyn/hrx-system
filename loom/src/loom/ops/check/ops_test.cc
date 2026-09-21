@@ -134,7 +134,8 @@ TEST_F(CheckOpsTest, NamedBenchmarkBytecodeRoundTrip) {
   auto ref = loom_check_benchmark_benchmark(benchmark);
   EXPECT_EQ(loaded->symbols.entries[ref.symbol_id].defining_op, benchmark);
   EXPECT_TRUE(iree_string_view_equal(
-      loaded->strings.entries[loaded->symbols.entries[ref.symbol_id].name_id],
+      loom_string_table_get(&loaded->strings,
+                            loaded->symbols.entries[ref.symbol_id].name_id),
       IREE_SV("latency")));
   auto case_ref = loom_check_benchmark_case_ref(benchmark);
   EXPECT_EQ(loaded->symbols.entries[case_ref.symbol_id].defining_op,

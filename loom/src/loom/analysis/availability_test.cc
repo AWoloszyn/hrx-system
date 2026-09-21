@@ -71,7 +71,8 @@ class AvailabilityTest : public ::testing::Test {
     loom_type_t interned_type = {0};
     IREE_ASSERT_OK(loom_module_intern_type(module_, type, &interned_type));
     for (iree_host_size_t i = 0; i < module_->types.count; ++i) {
-      if (loom_type_equal(module_->types.entries[i], interned_type)) {
+      if (loom_type_equal(loom_type_table_get(&module_->types, i),
+                          interned_type)) {
         *out_type_id = (loom_type_id_t)i;
         return;
       }

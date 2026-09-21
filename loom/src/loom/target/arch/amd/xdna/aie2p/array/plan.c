@@ -152,7 +152,8 @@ static const loom_named_attr_t* loom_aie2p_array_find_attr(
   IREE_ASSERT(has_attrs, "verified descriptor packet must carry attributes");
   for (iree_host_size_t i = 0; i < attrs.count; ++i) {
     const loom_named_attr_t* attr = &attrs.entries[i];
-    if (iree_string_view_equal(module->strings.entries[attr->name_id], name)) {
+    if (iree_string_view_equal(
+            loom_string_table_get(&module->strings, attr->name_id), name)) {
       return attr;
     }
   }
@@ -1850,8 +1851,9 @@ iree_status_t loom_aie2p_array_plan_build(
   }
   const loom_string_id_t contract_id = loom_func_like_repr_contract(function);
   if (contract_id >= module->strings.count ||
-      !iree_string_view_equal(module->strings.entries[contract_id],
-                              IREE_SV("amd.xdna.aie2p.array"))) {
+      !iree_string_view_equal(
+          loom_string_table_get(&module->strings, contract_id),
+          IREE_SV("amd.xdna.aie2p.array"))) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
         "AIE2P array planning requires amd.xdna.aie2p.array Low IR");
