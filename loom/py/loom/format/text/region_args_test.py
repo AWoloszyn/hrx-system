@@ -17,6 +17,8 @@ from loom.format.bytecode.writer import write_module
 from loom.format.text.parser import ParseError, Parser
 from loom.format.text.printer import Printer
 from loom.ir import F32, DynamicDim, DynamicEncoding
+from loom.type_binding import remap_value_bindings
+from loom.verify import verify_module
 
 
 def _formats() -> tuple[Parser, Printer]:
@@ -27,6 +29,47 @@ def _formats() -> tuple[Parser, Printer]:
         for operations in (ALL_FUNC_OPS, ALL_SCF_OPS, ALL_TEST_OPS):
             format.register_ops(operations)
     return parser, printer
+
+
+def _condition_loop_source(
+    body_extent_reference: str = "body_extent",
+    *,
+    isolate_entry_mismatch: bool = False,
+) -> str:
+    condition_extents = (
+        "%before_other_extent, %before_extent"
+        if isolate_entry_mismatch
+        else "%before_extent, %before_other_extent"
+    )
+    yielded_state = (
+        "%input, %extent, %other_extent, %layout\n"
+        "        : tile<[%extent]xf32, %layout>, index, index, encoding"
+        if isolate_entry_mismatch
+        else (
+            f"%body_view, %body_extent, %body_other_extent, %body_layout\n"
+            f"        : tile<[%{body_extent_reference}]xf32, %body_layout>, "
+            "index, index, encoding"
+        )
+    )
+    return f"""\
+func.def @f(%condition: i1, %extent: index, %other_extent: index,
+    %layout: encoding, %input: tile<[%extent]xf32, %layout>) {{
+  %result_view, %result_extent, %result_other_extent, %result_layout = scf.while(
+      %before_view = %input : tile<[%extent]xf32, %layout>,
+      %before_extent = %extent : index,
+      %before_other_extent = %other_extent : index,
+      %before_layout = %layout : encoding)
+      -> (tile<[%result_extent]xf32, %result_layout>, index, index, encoding) {{
+    scf.condition %condition, %before_view, {condition_extents}, %before_layout
+        : i1, tile<[%before_extent]xf32, %before_layout>, index, index, encoding
+  }} do(%body_view: tile<[%{body_extent_reference}]xf32, %body_layout>,
+      %body_extent: index, %body_other_extent: index,
+      %body_layout: encoding) {{
+    scf.yield {yielded_state}
+  }}
+  func.return
+}}
+"""
 
 
 @pytest.mark.parametrize("argument_form", ["capture", "explicit", "element"])
@@ -91,3 +134,136 @@ def test_capture_binding_is_not_visible_after_its_region() -> None:
             "  func.return\n"
             "}\n"
         )
+
+
+def test_explicit_region_args_can_reference_later_peers() -> None:
+    parser, printer = _formats()
+    module = parser.parse(
+        "func.def @f(%extent: index, %layout: encoding, "
+        "%input: tile<[%extent]xf32, %layout>) {\n"
+        "  test.block_args %input, %extent, %layout "
+        ": tile<[%extent]xf32, %layout>, index, encoding "
+        "do(%view: tile<[%local_extent]xf32, %local_layout>, "
+        "%local_extent: index, %local_layout: encoding) {\n"
+        "    test.use %view : tile<[%local_extent]xf32, %local_layout>\n"
+        "    test.yield\n"
+        "  }\n"
+        "  func.return\n"
+        "}\n"
+    )
+    text = printer.print_module(module)
+    loaded_text = parser.parse(text)
+    assert printer.print_module(loaded_text) == text
+
+    for candidate in (module, loaded_text, read_module(write_module(module))):
+        function_entry = candidate.body.ops[0].regions[0].blocks[0]
+        nested_entry = function_entry.ops[0].regions[0].blocks[0]
+        view = candidate.values[nested_entry.arg_ids[0]]
+        assert view.type.dims == (DynamicDim(nested_entry.arg_ids[1]),)
+        assert view.type.encoding == DynamicEncoding(nested_entry.arg_ids[2])
+
+
+def test_unresolved_explicit_region_peer_is_rejected() -> None:
+    parser, _ = _formats()
+    with pytest.raises(
+        ParseError,
+        match="unresolved forward reference to '%missing' in region arguments",
+    ):
+        parser.parse(
+            "func.def @f(%input: tile<4xf32>) {\n"
+            "  test.block_args %input : tile<4xf32> "
+            "do(%view: tile<[%missing]xf32>) {\n"
+            "    test.yield\n"
+            "  }\n"
+            "  func.return\n"
+            "}\n"
+        )
+
+
+def test_condition_loop_projects_result_scheme_to_both_entries() -> None:
+    parser, printer = _formats()
+    module = parser.parse(_condition_loop_source(), verify=True)
+    text = printer.print_module(module)
+    loaded_text = parser.parse(text, verify=True)
+    assert printer.print_module(loaded_text) == text
+
+    for candidate in (module, loaded_text, read_module(write_module(module))):
+        diagnostics = verify_module(candidate)
+        assert not diagnostics.has_errors, str(diagnostics.diagnostics)
+        function_entry = candidate.body.ops[0].regions[0].blocks[0]
+        loop = function_entry.ops[0]
+        before_entry = loop.regions[0].blocks[0]
+        body_entry = loop.regions[1].blocks[0]
+        result_view = candidate.values[loop.results[0]]
+        before_view = candidate.values[before_entry.arg_ids[0]]
+        body_view = candidate.values[body_entry.arg_ids[0]]
+        assert result_view.type.dims == (DynamicDim(loop.results[1]),)
+        assert result_view.type.encoding == DynamicEncoding(loop.results[3])
+        assert before_view.type.dims == (DynamicDim(before_entry.arg_ids[1]),)
+        assert before_view.type.encoding == DynamicEncoding(before_entry.arg_ids[3])
+        assert body_view.type.dims == (DynamicDim(body_entry.arg_ids[1]),)
+        assert body_view.type.encoding == DynamicEncoding(body_entry.arg_ids[3])
+
+
+def test_condition_loop_rejects_wrong_entry_peer() -> None:
+    parser, _ = _formats()
+    module = parser.parse(
+        _condition_loop_source(
+            "body_other_extent",
+            isolate_entry_mismatch=True,
+        )
+    )
+
+    diagnostics = verify_module(module)
+
+    assert diagnostics.has_errors
+    assert any(
+        diagnostic.error_id == "ERR_TYPE_013"
+        and "region 'after' entry" in " ".join(diagnostic.details)
+        for diagnostic in diagnostics.diagnostics
+    )
+
+
+@pytest.mark.parametrize(
+    ("edge", "error_id", "constraint_name"),
+    [
+        ("initial", "ERR_TYPE_001", "IterArgsMatchResults"),
+        ("yield", "ERR_TYPE_009", "YieldTypesMatchResults"),
+        (
+            "condition",
+            "ERR_TYPE_001",
+            "ConditionForwardedTypesMatchBlockArgs",
+        ),
+    ],
+)
+def test_condition_loop_rejects_wrong_edge_peer(
+    edge: str,
+    error_id: str,
+    constraint_name: str,
+) -> None:
+    parser, _ = _formats()
+    module = parser.parse(_condition_loop_source())
+    function_entry = module.body.ops[0].regions[0].blocks[0]
+    loop = function_entry.ops[0]
+    before_entry = loop.regions[0].blocks[0]
+    body_entry = loop.regions[1].blocks[0]
+
+    if edge == "initial":
+        initial = module.values[loop.operands[0]]
+        initial.type = remap_value_bindings(
+            (initial.type,),
+            {loop.operands[1]: loop.operands[2]},
+        )[0]
+    elif edge == "yield":
+        body_entry.ops[-1].operands[0] = loop.operands[0]
+    else:
+        before_entry.ops[-1].operands[1] = loop.operands[0]
+
+    diagnostics = verify_module(module)
+
+    assert diagnostics.has_errors
+    assert any(
+        diagnostic.error_id == error_id
+        and diagnostic.message == f"{constraint_name} constraint violated"
+        for diagnostic in diagnostics.diagnostics
+    )

@@ -2230,6 +2230,61 @@ TEST_F(ParserTest, LoopWithIterArgs) {
   }
 }
 
+TEST_F(ParserTest, ExplicitRegionArgsCanReferenceLaterPeers) {
+  loom_module_t* module = ParseOk(
+      "test.func @forward_peer(%extent: index, "
+      "%input: tile<[%extent]xf32>) {\n"
+      "  test.block_args %input, %extent : tile<[%extent]xf32>, index "
+      "do(%view: tile<[%local_extent]xf32>, %local_extent: index) {\n"
+      "    test.use %view : tile<[%local_extent]xf32>\n"
+      "    test.yield\n"
+      "  }\n"
+      "  test.yield\n"
+      "}\n");
+  ASSERT_NE(module, nullptr);
+
+  loom_op_t* func_op = GetFirstFunctionOp(module);
+  ASSERT_NE(func_op, nullptr);
+  loom_block_t* func_entry = GetEntryBlock(loom_op_regions(func_op)[0]);
+  ASSERT_NE(func_entry, nullptr);
+  ASSERT_GE(func_entry->op_count, 1u);
+  loom_op_t* block_args_op = loom_block_op(func_entry, 0);
+  ASSERT_NE(block_args_op, nullptr);
+  ASSERT_EQ(block_args_op->region_count, 1u);
+  loom_block_t* nested_entry = GetEntryBlock(loom_op_regions(block_args_op)[0]);
+  ASSERT_NE(nested_entry, nullptr);
+  ASSERT_EQ(nested_entry->arg_count, 2u);
+  loom_type_t view_type =
+      loom_module_value_type(module, nested_entry->arg_ids[0]);
+  EXPECT_EQ(loom_type_dim(view_type, 0),
+            loom_dim_pack_dynamic(nested_entry->arg_ids[1]));
+
+  std::string text = PrintModule(module);
+  EXPECT_NE(text.find("do(%view: tile<[%local_extent]xf32>, "
+                      "%local_extent: index)"),
+            std::string::npos)
+      << text;
+  loom_module_free(module);
+}
+
+TEST_F(ParserTest, UnresolvedExplicitRegionPeerRecoversPastNestedBody) {
+  const auto& diagnostics = ParseExpectErrors(
+      "test.func @unresolved_peer(%input: tile<4xf32>) {\n"
+      "  test.block_args %input : tile<4xf32> "
+      "do(%view: tile<[%missing]xf32>) {\n"
+      "    test.yield\n"
+      "  }\n"
+      "  %good = test.constant 0 : i32\n"
+      "  test.use %good : i32\n"
+      "  test.yield\n"
+      "}\n");
+  ASSERT_EQ(diagnostics.size(), 1u);
+  ExpectError(diagnostics[0],
+              loom_error_def_lookup(LOOM_ERROR_DOMAIN_PARSE, 1));
+  EXPECT_EQ(GetStringParam(diagnostics[0], 0), "missing");
+  EXPECT_EQ(diagnostics[0].origin_line, 2u);
+}
+
 TEST_F(ParserTest, LoopWithoutIterArgs) {
   // Loop without iter_args — just the IV and no results.
   loom_module_t* module = ParseOk(

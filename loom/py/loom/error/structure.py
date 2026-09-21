@@ -98,13 +98,12 @@ ERR_STRUCTURE_007 = ErrorDef(
     code=7,
     severity=Severity.ERROR,
     summary="Region block argument count mismatch.",
-    message="region has {actual_count} block arguments, expected "
-    "{expected_count} (one per input tile)",
+    message="region has {actual_count} block arguments, expected {expected_count}",
     params=(
         ErrorParam("actual_count", ParamKind.U32),
         ErrorParam("expected_count", ParamKind.U32),
     ),
-    fix_hint="Ensure the region has exactly one block argument per input tile",
+    fix_hint="Match the region entry argument count to its declared input tuple",
 )
 
 # ERR_STRUCTURE_008: YieldCountMatchesResults violated.

@@ -69,8 +69,6 @@ from loom.dsl import (
     AttrDef,
     AttrMatchesElementType,
     BitRangeWithinElementWidth,
-    BlockArgCount,
-    BlockArgsMatchTypes,
     Borrow,
     CallLikeInterface,
     CallLikeKind,
@@ -2938,12 +2936,8 @@ def _make_condition_loop_op(*, constraints: list[Constraint]) -> Op:
 def _condition_loop_constraints() -> list[Constraint]:
     return [
         IterArgsMatchResults("iter_args", "results"),
-        BlockArgCount("before", "iter_args"),
-        BlockArgsMatchTypes("before", "iter_args"),
-        BlockArgCount("after", "iter_args"),
-        BlockArgsMatchTypes("after", "iter_args"),
-        ConditionForwardedCountMatchesBlockArgs("before", "after", "iter_args"),
-        ConditionForwardedTypesMatchBlockArgs("before", "after", "iter_args"),
+        ConditionForwardedCountMatchesBlockArgs("before", "after", "results"),
+        ConditionForwardedTypesMatchBlockArgs("before", "after", "results"),
         YieldCountMatchesResults("after", "results"),
         YieldTypesMatchResults("after", "results"),
     ]
@@ -2978,7 +2972,7 @@ def test_generate_tables_emits_condition_loop_like_interface() -> None:
 
 def test_generate_tables_rejects_incomplete_condition_loop_contract() -> None:
     constraints = _condition_loop_constraints()
-    constraints.pop(5)
+    constraints.pop(1)
     op = _make_condition_loop_op(constraints=constraints)
 
     with _raises_value_error(

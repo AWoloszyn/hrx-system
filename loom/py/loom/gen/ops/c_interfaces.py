@@ -519,17 +519,13 @@ def _validate_loop_like_interface(op: Op, iface: LoopLikeInterface, interface_na
         if body.implicit_args:
             raise ValueError(f"{interface_name} on {op.name!r}: condition-loop carried body arguments must begin at block argument zero")
         condition_constraints = (
-            ("BlockArgCount", (iface.condition_region, iface.iter_args)),
-            ("BlockArgsMatchTypes", (iface.condition_region, iface.iter_args)),
-            ("BlockArgCount", (iface.body, iface.iter_args)),
-            ("BlockArgsMatchTypes", (iface.body, iface.iter_args)),
             (
                 "ConditionForwardedCountMatchesBlockArgs",
-                (iface.condition_region, iface.body, iface.iter_args),
+                (iface.condition_region, iface.body, results_name),
             ),
             (
                 "ConditionForwardedTypesMatchBlockArgs",
-                (iface.condition_region, iface.body, iface.iter_args),
+                (iface.condition_region, iface.body, results_name),
             ),
         )
         for constraint_name, constraint_args in condition_constraints:

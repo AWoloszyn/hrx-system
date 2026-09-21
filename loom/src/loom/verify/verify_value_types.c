@@ -10,6 +10,70 @@
 #include "loom/ops/op_defs.h"
 #include "loom/verify/verify_diagnostics.h"
 
+// Loop results describe one recurring type scheme. Unique result definitions
+// map to each entry's definitions; repeated initial operands never choose which
+// carried extent or encoding a body value depends on.
+void loom_verify_loop_entry_types(loom_verify_state_t* state,
+                                  const loom_op_t* op,
+                                  const loom_loop_like_vtable_t* loop) {
+  const uint8_t regions[] = {loop->body_region_index,
+                             loop->condition_region_index};
+  for (uint8_t r = 0; r < IREE_ARRAYSIZE(regions); ++r) {
+    if (regions[r] == LOOM_REGION_INDEX_NONE) {
+      continue;
+    }
+    const loom_block_t* entry =
+        loom_region_const_entry_block(loom_op_regions(op)[regions[r]]);
+    const bool has_induction_variable =
+        regions[r] == loop->body_region_index &&
+        loop->iv_block_arg_index != LOOM_BLOCK_ARG_INDEX_NONE;
+    const uint16_t offset = has_induction_variable ? 1 : 0;
+    const uint32_t expected_count = (uint32_t)op->result_count + offset;
+    if (entry->arg_count != expected_count) {
+      loom_diagnostic_param_t params[] = {loom_param_u32(entry->arg_count),
+                                          loom_param_u32(expected_count)};
+      loom_verify_emit_structured(state, op, LOOM_ERR_STRUCTURE_007, params,
+                                  IREE_ARRAYSIZE(params));
+      continue;
+    }
+    if (offset) {
+      const loom_loop_like_t reference = {(loom_op_t*)op, loop};
+      const loom_type_t actual =
+          loom_module_value_type(state->module, entry->arg_ids[0]);
+      const loom_type_t expected = loom_module_value_type(
+          state->module, loom_loop_like_lower_bound(reference));
+      if (!loom_type_equal(actual, expected)) {
+        loom_diagnostic_param_t params[] = {loom_param_u32(0),
+                                            loom_param_type(actual),
+                                            loom_param_type(expected)};
+        loom_verify_emit_structured(state, op, LOOM_ERR_TYPE_013, params,
+                                    IREE_ARRAYSIZE(params));
+      }
+    }
+    const loom_type_value_remap_t remap = {
+        .source_values = loom_op_const_results(op),
+        .target_values = offset ? entry->arg_ids + offset : entry->arg_ids,
+        .count = op->result_count,
+        .flags = LOOM_TYPE_VALUE_REMAP_FLAG_SOURCE_DEFINITION_SLICE,
+    };
+    for (uint16_t i = 0; i < op->result_count; ++i) {
+      const loom_type_t actual =
+          loom_module_value_type(state->module, remap.target_values[i]);
+      const loom_type_t expected =
+          loom_module_value_type(state->module, remap.source_values[i]);
+      if (loom_type_equal_after_value_remap(state->module, expected, actual,
+                                            &remap)) {
+        continue;
+      }
+      loom_diagnostic_param_t params[] = {loom_param_u32(i + offset),
+                                          loom_param_type(actual),
+                                          loom_param_type(expected)};
+      loom_verify_emit_structured(state, op, LOOM_ERR_TYPE_013, params,
+                                  IREE_ARRAYSIZE(params));
+    }
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // SSA references carried by value types
 //===----------------------------------------------------------------------===//

@@ -9,6 +9,12 @@
 
 #include "loom/verify/verify_state.h"
 
+// Checks a structurally verified loop's entry arguments against its recurring
+// result type scheme, including counted induction variable type and arity.
+void loom_verify_loop_entry_types(loom_verify_state_t* state,
+                                  const loom_op_t* op,
+                                  const loom_loop_like_vtable_t* loop);
+
 // Checks references carried by operation value types in the current scope.
 void loom_verify_value_type_refs(loom_verify_state_t* state,
                                  const loom_op_t* op,

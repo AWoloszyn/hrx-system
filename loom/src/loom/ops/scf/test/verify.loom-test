@@ -148,6 +148,66 @@ func.def @while_after_arg_type_mismatch(%cond: i1, %init: index) -> (index) {
 
 // ====
 
+// The recurring result tuple gives duplicate initial values distinct roles.
+// The after-region view must depend on its matching extent role, not the other
+// extent merely because both roles start with the same SSA value.
+func.def @while_after_arg_wrong_sibling(%cond: i1, %extent: index, %input: view<[%extent]xf32>) {
+  // ERROR@+1: TYPE/013
+  %view, %left, %right = scf.while(%before_view = %input : view<[%extent]xf32>, %before_left = %extent : index, %before_right = %extent : index) -> (view<[%left]xf32>, index, index) {
+    scf.condition %cond, %before_view, %before_left, %before_right : i1, view<[%before_left]xf32>, index, index
+  } do(%body_view: view<[%body_right]xf32>, %body_left: index, %body_right: index) {
+    scf.yield %input, %extent, %extent : view<[%extent]xf32>, index, index
+  }
+  test.use %view, %left, %right : view<[%left]xf32>, index, index
+  func.return
+}
+
+// ====
+
+// Initial state is checked against the recurring result roles. Swapping two
+// distinct extents leaves their scalar types unchanged but invalidates the
+// carried view's dependency.
+func.def @while_initial_wrong_sibling(%cond: i1, %left_extent: index, %right_extent: index, %input: view<[%left_extent]xf32>) {
+  // ERROR@+1: TYPE/001
+  %view, %left, %right = scf.while(%before_view = %input : view<[%left_extent]xf32>, %before_left = %right_extent : index, %before_right = %left_extent : index) -> (view<[%left]xf32>, index, index) {
+    scf.condition %cond, %before_view, %before_left, %before_right : i1, view<[%before_left]xf32>, index, index
+  } do(%body_view: view<[%body_left]xf32>, %body_left: index, %body_right: index) {
+    scf.yield %body_view, %body_left, %body_right : view<[%body_left]xf32>, index, index
+  }
+  test.use %view, %left, %right : view<[%left]xf32>, index, index
+  func.return
+}
+
+// ====
+
+// Condition forwarding preserves tuple roles as well as scalar types.
+func.def @while_condition_wrong_sibling(%cond: i1, %left_extent: index, %right_extent: index, %input: view<[%left_extent]xf32>) {
+  %view, %left, %right = scf.while(%before_view = %input : view<[%left_extent]xf32>, %before_left = %left_extent : index, %before_right = %right_extent : index) -> (view<[%left]xf32>, index, index) {
+    // ERROR@+1: TYPE/001
+    scf.condition %cond, %before_view, %before_right, %before_left : i1, view<[%before_left]xf32>, index, index
+  } do(%body_view: view<[%body_left]xf32>, %body_left: index, %body_right: index) {
+    scf.yield %body_view, %body_left, %body_right : view<[%body_left]xf32>, index, index
+  }
+  test.use %view, %left, %right : view<[%left]xf32>, index, index
+  func.return
+}
+
+// ====
+
+// Backedge yields preserve tuple roles as well as scalar types.
+func.def @while_yield_wrong_sibling(%cond: i1, %left_extent: index, %right_extent: index, %input: view<[%left_extent]xf32>) {
+  // ERROR@+1: TYPE/009
+  %view, %left, %right = scf.while(%before_view = %input : view<[%left_extent]xf32>, %before_left = %left_extent : index, %before_right = %right_extent : index) -> (view<[%left]xf32>, index, index) {
+    scf.condition %cond, %before_view, %before_left, %before_right : i1, view<[%before_left]xf32>, index, index
+  } do(%body_view: view<[%body_left]xf32>, %body_left: index, %body_right: index) {
+    scf.yield %body_view, %body_right, %body_left : view<[%body_left]xf32>, index, index
+  }
+  test.use %view, %left, %right : view<[%left]xf32>, index, index
+  func.return
+}
+
+// ====
+
 // scf.condition forwards one value for each after-region entry block arg.
 func.def @while_condition_forward_count_mismatch(%cond: i1, %init: index) -> (index) {
   %r = scf.while(%before = %init : index) -> (index) {

@@ -110,10 +110,31 @@ def _validate_positional_types(
         )
     from loom.type_identity import TypeIdentity
 
-    identities = TypeIdentity()
-    for (lhs_display_name, lhs_item), (rhs_display_name, rhs_item) in zip(
-        lhs_items, rhs_items, strict=True
+    lhs_ids = [getattr(item, "value_id", None) for _, item in lhs_items]
+    rhs_ids = [getattr(item, "value_id", None) for _, item in rhs_items]
+    rhs_types = [
+        _field_element_type(item) if element_types else _field_value_type(item)
+        for _, item in rhs_items
+    ]
+    expected_types = rhs_types
+    if (
+        not element_types
+        and all(value_id is not None for value_id in (*lhs_ids, *rhs_ids))
+        and len(set(rhs_ids)) == len(rhs_ids)
     ):
+        from loom.type_binding import remap_value_bindings
+
+        expected_types = remap_value_bindings(
+            rhs_types,
+            dict(zip(rhs_ids, lhs_ids, strict=True)),
+        )
+
+    identities = TypeIdentity()
+    for (
+        (lhs_display_name, lhs_item),
+        (rhs_display_name, rhs_item),
+        expected_type,
+    ) in zip(lhs_items, rhs_items, expected_types, strict=True):
         # Invalid value IDs are diagnosed structurally by the verifier. Leave
         # their dependent type relationships unevaluated.
         if lhs_item is None or rhs_item is None:
@@ -123,12 +144,12 @@ def _validate_positional_types(
             if element_types
             else _field_value_type(lhs_item)
         )
-        rhs_type = (
-            _field_element_type(rhs_item)
-            if element_types
-            else _field_value_type(rhs_item)
-        )
-        if not identities.equal(lhs_type, rhs_type):
+        if not identities.equal(lhs_type, expected_type):
+            rhs_type = (
+                _field_element_type(rhs_item)
+                if element_types
+                else _field_value_type(rhs_item)
+            )
             return (
                 False,
                 f"'{lhs_display_name}' type {lhs_type} != "
