@@ -592,3 +592,49 @@ low.func.def target<test.low.core>(@test_target) @irreducible_constants() -> (re
 }
 
 // ----
+
+// ====
+
+// The temporary forces a spill. The overlapping three- and two-unit slices
+// together read more than the four-unit source, so they share a full reload.
+// RUN: with-low-asm pass low-materialize-allocation{budgets=test.i32=5}
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @overlapping_slice_reloads(%blocker: reg<test.i32>, %wide: reg<test.i32 x4>) -> (reg<test.i32>) asm {
+  %temporary = test.add.i32 %blocker, %blocker
+  %pressure = test.add.i32 %blocker, %temporary
+  %head = slice %wide[0] : reg<test.i32 x4> -> reg<test.i32 x3>
+  %first = slice %head[0] : reg<test.i32 x3> -> reg<test.i32>
+  %second = slice %head[1] : reg<test.i32 x3> -> reg<test.i32>
+  %sum = test.add.i32 %first, %second
+  %tail = slice %wide[2] : reg<test.i32 x4> -> reg<test.i32 x2>
+  %third = slice %tail[0] : reg<test.i32 x2> -> reg<test.i32>
+  %fourth = slice %tail[1] : reg<test.i32 x2> -> reg<test.i32>
+  %sum1 = test.add.i32 %sum, %third
+  %sum2 = test.add.i32 %sum1, %fourth
+  %out = test.add.i32 %sum2, %pressure
+  return %out
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @overlapping_slice_reloads(%blocker: reg<test.i32>, %wide: reg<test.i32 x4>) -> (reg<test.i32>) asm {
+  %overlapping_slice_reloads_spill_storage_0 = storage {byte_alignment = 16, byte_length = 16} : low.storage<private>
+  low.spill %wide, %overlapping_slice_reloads_spill_storage_0 : reg<test.i32 x4>, low.storage<private>
+  %temporary = test.add.i32 %blocker, %blocker
+  %pressure = test.add.i32 %blocker, %temporary
+  %16 = low.reload %overlapping_slice_reloads_spill_storage_0 : low.storage<private> -> reg<test.i32 x4>
+  %head = slice %16[0] : reg<test.i32 x4> -> reg<test.i32 x3>
+  %first = slice %head[0] : reg<test.i32 x3> -> reg<test.i32>
+  %second = slice %head[1] : reg<test.i32 x3> -> reg<test.i32>
+  %sum = test.add.i32 %first, %second
+  %tail = slice %16[2] : reg<test.i32 x4> -> reg<test.i32 x2>
+  %third = slice %tail[0] : reg<test.i32 x2> -> reg<test.i32>
+  %fourth = slice %tail[1] : reg<test.i32 x2> -> reg<test.i32>
+  %sum1 = test.add.i32 %sum, %third
+  %sum2 = test.add.i32 %sum1, %fourth
+  %out = test.add.i32 %sum2, %pressure
+  return %out
+}

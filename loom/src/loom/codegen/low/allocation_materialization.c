@@ -518,21 +518,19 @@ static iree_status_t loom_low_allocation_insert_spill_store(
 }
 
 static bool loom_low_allocation_slice_reload_use(
+    const loom_module_t* module,
     const loom_low_allocation_assignment_t* assignment,
     const loom_low_allocation_spill_plan_t* plan, const loom_region_t* body,
     loom_use_t use, loom_op_t** out_slice_op, uint16_t* out_block_index,
-    uint32_t* out_unit_byte_size) {
+    uint32_t* out_reload_byte_size) {
   *out_slice_op = NULL;
   *out_block_index = 0;
-  *out_unit_byte_size = 0;
+  *out_reload_byte_size = 0;
   loom_op_t* user_op = loom_use_user_op(use);
-  int64_t reload_offset = 0;
-  if (!loom_low_allocation_spill_plan_slice_reload_byte_offset(
-          assignment, plan->byte_size, user_op, loom_use_operand_index(use),
-          out_unit_byte_size, &reload_offset)) {
+  if (!loom_low_allocation_spill_plan_slice_reload_byte_size(
+          module, assignment, plan->byte_size, user_op, out_reload_byte_size)) {
     return false;
   }
-  (void)reload_offset;
   uint16_t block_index = 0;
   if (!loom_region_try_block_index(body, user_op->parent_block, &block_index)) {
     return false;
@@ -606,10 +604,10 @@ static iree_status_t loom_low_allocation_prepare_slice_reloads(
   for (uint32_t i = 0; i < use_count; ++i) {
     loom_op_t* slice_op = NULL;
     uint16_t block_index = 0;
-    uint32_t unit_byte_size = 0;
-    if (!loom_low_allocation_slice_reload_use(assignment, plan, body, uses[i],
-                                              &slice_op, &block_index,
-                                              &unit_byte_size)) {
+    uint32_t reload_byte_size = 0;
+    if (!loom_low_allocation_slice_reload_use(module, assignment, plan, body,
+                                              uses[i], &slice_op, &block_index,
+                                              &reload_byte_size)) {
       continue;
     }
     if (!groups) {
@@ -643,7 +641,7 @@ static iree_status_t loom_low_allocation_prepare_slice_reloads(
     }
     group_indices_by_use[i] = group_index;
     ++groups[group_index].slice_count;
-    groups[group_index].narrow_reload_bytes += unit_byte_size;
+    groups[group_index].narrow_reload_bytes += reload_byte_size;
   }
   if (!groups) {
     return iree_ok_status();
