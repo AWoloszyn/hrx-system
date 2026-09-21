@@ -13,14 +13,10 @@ loom_check_test_suite(
   NAME
     test
   SRCS
-    "equal_count_different_shape.loom-test"
-    "extra_temporal_axis.loom-test"
     "input_record_shapes.loom-test"
-    "missing_lane_axis.loom-test"
-    "missing_temporal_axis.loom-test"
+    "output_record_shapes.loom-test"
     "plan.loom-test"
     "roundtrip.loom-test"
-    "unit_lane_extent.loom-test"
     "verify.loom-test"
 )
 
