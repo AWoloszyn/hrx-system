@@ -9,6 +9,7 @@
 
 #include "common/allocation_preparation.h"
 #include "common/capture_admission.h"
+#include "common/context.h"
 #include "common/event_timestamp_pool.h"
 #include "common/execution_resource.h"
 #include "common/fat_binary.h"
@@ -33,7 +34,6 @@ extern "C" {
 typedef iree_host_size_t iree_hal_streaming_device_ordinal_t;
 
 typedef struct iree_hal_streaming_buffer_t iree_hal_streaming_buffer_t;
-typedef struct iree_hal_streaming_context_t iree_hal_streaming_context_t;
 typedef struct iree_hal_streaming_context_module_entry_t
     iree_hal_streaming_context_module_entry_t;
 typedef struct iree_hal_streaming_context_symbol_map_t
@@ -1733,9 +1733,6 @@ iree_hal_streaming_context_flags_t iree_hal_streaming_context_flags(
     iree_hal_streaming_context_t* context);
 
 // Synchronization: none (thread-local access).
-iree_hal_streaming_context_t* iree_hal_streaming_context_current(void);
-
-// Synchronization: none (thread-local access).
 uintptr_t iree_hal_streaming_current_thread_token(void);
 
 // Synchronization: none (thread-local modification).
@@ -1879,10 +1876,6 @@ iree_status_t iree_hal_streaming_context_synchronize_event_records(
 // synchronized.
 iree_status_t iree_hal_streaming_context_synchronize_legacy_default(
     iree_hal_streaming_context_t* context);
-
-// Synchronization: all streams in all active contexts.
-// This flushes and waits for every context registered in the process.
-iree_status_t iree_hal_streaming_context_synchronize_all(void);
 
 // Orders future work on |stream| after work already enqueued on each blocking,
 // non-capturing stream in the context. Null entries, the legacy default stream,
@@ -2373,11 +2366,6 @@ iree_status_t iree_hal_streaming_memory_wrap_buffer(
     iree_hal_streaming_context_t* context, iree_hal_buffer_t* buffer,
     iree_hal_streaming_buffer_context_ownership_t context_ownership,
     iree_hal_streaming_buffer_t** out_buffer);
-
-// Releases a wrapper created with iree_hal_streaming_memory_wrap_buffer.
-// Synchronization: none (unregisters existing memory).
-void iree_hal_streaming_memory_release_wrapped_buffer(
-    iree_hal_streaming_buffer_t* buffer);
 
 // Synchronization: none (registers existing memory).
 iree_status_t iree_hal_streaming_memory_register_host(

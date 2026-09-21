@@ -210,6 +210,7 @@ void HrxLoader::load(const std::string& path) {
   LOAD(allocator_virtual_memory_map);
   LOAD(allocator_virtual_memory_unmap);
   LOAD(allocator_virtual_memory_protect);
+  LOAD(allocator_virtual_memory_protect_scoped);
 
   LOAD(mem_pool_create);
   LOAD(mem_pool_retain);
