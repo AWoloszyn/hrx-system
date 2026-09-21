@@ -74,10 +74,6 @@ typedef struct loom_spirv_emit_state_t {
   loom_local_value_domain_t value_domain;
   // Function-local Loom value to SPIR-V value-ref table.
   loom_spirv_module_value_table_t value_table;
-  // Module string IDs for descriptor-set immediate rows.
-  loom_string_id_t* immediate_name_ids;
-  // Number of entries in immediate_name_ids.
-  iree_host_size_t immediate_name_id_count;
   // SPIR-V type and constant emission cache shared by the module.
   loom_spirv_type_context_t* type_context;
   // SPIR-V ID assigned to the function.
@@ -123,10 +119,11 @@ iree_status_t loom_spirv_emit_lookup_value(
     loom_spirv_emit_state_t* state, loom_value_id_t value_id,
     loom_spirv_module_value_ref_t* out_value_ref);
 
-// Resolves descriptor immediate |descriptor_immediate_index| from |packet|.
-iree_status_t loom_spirv_emit_lookup_packet_i64_immediate(
-    loom_spirv_emit_state_t* state, const loom_low_descriptor_packet_t* packet,
-    uint8_t descriptor_immediate_index, int64_t* out_value);
+// Returns the packet's sole immediate. Generation proves that consuming forms
+// have one required integer immediate; Low verification establishes its
+// presence and canonical i64 value before emission.
+int64_t loom_spirv_emit_packet_immediate(
+    const loom_low_descriptor_packet_t* packet);
 
 // Returns true when a function-local value already has a SPIR-V ref.
 static inline bool loom_spirv_emit_value_ref_exists(

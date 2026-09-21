@@ -21,7 +21,6 @@
 extern "C" {
 #endif
 
-#define LOOM_SPIRV_PACKET_IMMEDIATE_NONE UINT8_MAX
 #define LOOM_SPIRV_PACKET_MAX_OPERAND_COUNT 4
 #define LOOM_SPIRV_PACKET_OPERAND_TYPE_CAPACITY 3
 
@@ -134,8 +133,6 @@ typedef struct loom_spirv_packet_row_t {
   uint8_t result_count;
   // Expected packet operand count.
   uint8_t operand_count;
-  // Descriptor-local immediate index read by the row.
-  uint8_t immediate_index;
   // Alignment operand for aligned memory access rows.
   uint8_t memory_alignment;
   // Semantic emission requirements of the selected packet.
