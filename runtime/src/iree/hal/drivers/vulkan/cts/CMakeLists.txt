@@ -219,18 +219,18 @@ iree_c_embed_data(
   NAME
     bda_spirv_test_spv
   SRCS
-    "bda_descriptor_storage_variable.spv"
-    "bda_i32_add7.spv"
-    "bda_i32_add7_binding_1_length_4_17.spv"
-    "bda_i32_add7_bindings_2.spv"
-    "bda_i32_add7_constant_length_4.spv"
-    "bda_i32_add7_descriptor_decorated.spv"
-    "bda_i32_add7_no_metadata.spv"
-    "bda_missing_physical_storage_buffer_addresses.spv"
-    "bda_missing_push_constant_root.spv"
-    "bda_noop_binding_requirements.spv"
-    "bda_noop_bindings_2_constant_length_8.spv"
-    "bda_noop_without_push_constant_root.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/bda_descriptor_storage_variable.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/bda_i32_add7.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/bda_i32_add7_binding_1_length_4_17.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/bda_i32_add7_bindings_2.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/bda_i32_add7_constant_length_4.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/bda_i32_add7_descriptor_decorated.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/bda_i32_add7_no_metadata.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/bda_missing_physical_storage_buffer_addresses.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/bda_missing_push_constant_root.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/bda_noop_binding_requirements.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/bda_noop_bindings_2_constant_length_8.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/bda_noop_without_push_constant_root.spv"
   C_FILE_OUTPUT
     "bda_spirv_test_spv.c"
   H_FILE_OUTPUT

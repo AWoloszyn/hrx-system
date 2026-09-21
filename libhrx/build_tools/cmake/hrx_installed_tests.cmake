@@ -7,6 +7,7 @@
 # share/hrx-system/tests.
 
 include(GNUInstallDirs)
+include("${CMAKE_CURRENT_LIST_DIR}/../../../build_tools/cmake/iree_test_arguments.cmake")
 
 set(_HRX_INSTALLED_TESTS_BUILD_DIR "${CMAKE_BINARY_DIR}/hrx-installed-tests")
 set(_HRX_INSTALLED_TESTS_ROOT_FILE "${_HRX_INSTALLED_TESTS_BUILD_DIR}/CTestTestfile.cmake")
@@ -239,22 +240,6 @@ function(hrx_installed_tests_install_source_tree SOURCE_DIR DEST_REL OUT_VAR)
   set(${OUT_VAR} "\${CMAKE_CURRENT_LIST_DIR}/../testdata/${DEST_REL}" PARENT_SCOPE)
 endfunction()
 
-function(hrx_installed_tests_project_relative_path SOURCE_PATH OUT_VAR)
-  get_filename_component(_ABS_SOURCE "${SOURCE_PATH}" ABSOLUTE)
-  set(_PROJECT_SOURCE_DIR "${PROJECT_SOURCE_DIR}")
-  cmake_path(IS_PREFIX _PROJECT_SOURCE_DIR "${_ABS_SOURCE}" NORMALIZE _IN_PROJECT)
-  if(_IN_PROJECT)
-    cmake_path(RELATIVE_PATH _ABS_SOURCE
-      BASE_DIRECTORY "${PROJECT_SOURCE_DIR}"
-      OUTPUT_VARIABLE _REL_PATH)
-  else()
-    iree_package_path(_PACKAGE_PATH)
-    get_filename_component(_SOURCE_NAME "${_ABS_SOURCE}" NAME)
-    set(_REL_PATH "${_PACKAGE_PATH}/${_SOURCE_NAME}")
-  endif()
-  set(${OUT_VAR} "${_REL_PATH}" PARENT_SCOPE)
-endfunction()
-
 function(hrx_installed_tests_source_relative_path SOURCE_PATH OUT_VAR)
   get_filename_component(_ABS_SOURCE "${SOURCE_PATH}" ABSOLUTE)
   set(_PROJECT_SOURCE_DIR "${PROJECT_SOURCE_DIR}")
@@ -374,31 +359,24 @@ function(hrx_installed_tests_resolve_data DATA OUT_SOURCE_PATH OUT_REL_PATH)
   set(${OUT_REL_PATH} "${_REL_PATH}" PARENT_SCOPE)
 endfunction()
 
-function(hrx_installed_tests_append_data_map MAP_VAR SOURCE_PATH DATA INSTALLED_PATH)
-  set(_MAP "${${MAP_VAR}}")
-  list(APPEND _MAP "${DATA}|${INSTALLED_PATH}")
-  if(NOT "${SOURCE_PATH}" STREQUAL "${DATA}")
-    list(APPEND _MAP "${SOURCE_PATH}|${INSTALLED_PATH}")
-  endif()
-  set(${MAP_VAR} "${_MAP}" PARENT_SCOPE)
-endfunction()
-
-function(hrx_installed_tests_install_data OUT_VAR OUT_MAP_VAR)
+function(hrx_installed_tests_install_data OUT_VAR)
   hrx_installed_tests_is_enabled(_ENABLED)
   if(NOT _ENABLED)
     return()
   endif()
 
-  iree_package_path(_PACKAGE_PATH)
   set(_INSTALLED_DATA)
-  set(_DATA_MAP)
   foreach(_DATA IN LISTS ARGN)
     set(_DATA_TARGET "${_DATA}")
     if(_DATA_TARGET MATCHES "^::")
       iree_package_ns(_PACKAGE_NAMESPACE)
       set(_DATA_TARGET "${_PACKAGE_NAMESPACE}${_DATA_TARGET}")
     endif()
-    if(TARGET "${_DATA_TARGET}")
+    if(_DATA_TARGET MATCHES "^\\$<TARGET_FILE:([^>]+)>$")
+      set(_DATA_TARGET "${CMAKE_MATCH_1}")
+      hrx_installed_tests_install_target("${_DATA_TARGET}" _INSTALLED_PATH)
+    elseif(NOT IS_ABSOLUTE "${_DATA_TARGET}" AND
+           (TARGET "${_DATA_TARGET}" OR _DATA_TARGET MATCHES "::"))
       hrx_installed_tests_install_target("${_DATA_TARGET}" _INSTALLED_PATH)
     else()
       hrx_installed_tests_resolve_data("${_DATA}" _SOURCE_PATH _REL_PATH)
@@ -409,62 +387,11 @@ function(hrx_installed_tests_install_data OUT_VAR OUT_MAP_VAR)
         hrx_installed_tests_install_source_file(
           "${_SOURCE_PATH}" "${_REL_PATH}" _INSTALLED_PATH)
       endif()
-      hrx_installed_tests_append_data_map(
-        _DATA_MAP "${_SOURCE_PATH}" "${_DATA}" "${_INSTALLED_PATH}")
     endif()
     list(APPEND _INSTALLED_DATA "${_INSTALLED_PATH}")
   endforeach()
 
   set(${OUT_VAR} "${_INSTALLED_DATA}" PARENT_SCOPE)
-  set(${OUT_MAP_VAR} "${_DATA_MAP}" PARENT_SCOPE)
-endfunction()
-
-function(hrx_installed_tests_should_install_arg_path ARG OUT_VAR)
-  if(NOT IS_ABSOLUTE "${ARG}" OR NOT EXISTS "${ARG}")
-    set(${OUT_VAR} OFF PARENT_SCOPE)
-    return()
-  endif()
-
-  get_filename_component(_ABS_ARG "${ARG}" ABSOLUTE)
-  set(_PROJECT_SOURCE_DIR "${PROJECT_SOURCE_DIR}")
-  set(_BINARY_DIR "${CMAKE_BINARY_DIR}")
-  cmake_path(IS_PREFIX _PROJECT_SOURCE_DIR "${_ABS_ARG}" NORMALIZE _IN_PROJECT)
-  cmake_path(IS_PREFIX _BINARY_DIR "${_ABS_ARG}" NORMALIZE _IN_BINARY_TREE)
-  if(_IN_PROJECT OR _IN_BINARY_TREE)
-    set(${OUT_VAR} ON PARENT_SCOPE)
-  else()
-    set(${OUT_VAR} OFF PARENT_SCOPE)
-  endif()
-endfunction()
-
-function(hrx_installed_tests_install_arg_data OUT_VAR OUT_MAP_VAR)
-  hrx_installed_tests_is_enabled(_ENABLED)
-  if(NOT _ENABLED)
-    return()
-  endif()
-
-  set(_INSTALLED_DATA)
-  set(_DATA_MAP)
-  foreach(_ARG IN LISTS ARGN)
-    hrx_installed_tests_should_install_arg_path("${_ARG}" _SHOULD_INSTALL)
-    if(NOT _SHOULD_INSTALL)
-      continue()
-    endif()
-    hrx_installed_tests_resolve_data("${_ARG}" _SOURCE_PATH _REL_PATH)
-    if(IS_DIRECTORY "${_SOURCE_PATH}")
-      hrx_installed_tests_install_source_tree(
-        "${_SOURCE_PATH}" "${_REL_PATH}" _INSTALLED_PATH)
-    else()
-      hrx_installed_tests_install_source_file(
-        "${_SOURCE_PATH}" "${_REL_PATH}" _INSTALLED_PATH)
-    endif()
-    hrx_installed_tests_append_data_map(
-      _DATA_MAP "${_SOURCE_PATH}" "${_ARG}" "${_INSTALLED_PATH}")
-    list(APPEND _INSTALLED_DATA "${_INSTALLED_PATH}")
-  endforeach()
-
-  set(${OUT_VAR} "${_INSTALLED_DATA}" PARENT_SCOPE)
-  set(${OUT_MAP_VAR} "${_DATA_MAP}" PARENT_SCOPE)
 endfunction()
 
 # Rewrites target-file generator expressions in test arguments and environment
@@ -495,30 +422,6 @@ function(hrx_installed_tests_map_target_file_expressions OUT_VAR)
       message(FATAL_ERROR
         "Installed tests cannot preserve generator expression in argument '${_ARG}'")
     endif()
-    list(APPEND _MAPPED_ARGS "${_MAPPED_ARG}")
-  endforeach()
-
-  set(${OUT_VAR} "${_MAPPED_ARGS}" PARENT_SCOPE)
-endfunction()
-
-function(hrx_installed_tests_map_data_args OUT_VAR DATA_MAP)
-  set(_MAPPED_ARGS)
-  foreach(_ARG IN LISTS ARGN)
-    set(_MAPPED_ARG "${_ARG}")
-    foreach(_ENTRY IN LISTS DATA_MAP)
-      string(FIND "${_ENTRY}" "|" _PATH_SEPARATOR_INDEX)
-      if(_PATH_SEPARATOR_INDEX LESS 0)
-        message(FATAL_ERROR
-          "Installed test data path record is malformed: ${_ENTRY}")
-      endif()
-      string(SUBSTRING "${_ENTRY}" 0 ${_PATH_SEPARATOR_INDEX} _SOURCE_PATH)
-      math(EXPR _INSTALLED_PATH_INDEX "${_PATH_SEPARATOR_INDEX} + 1")
-      string(SUBSTRING "${_ENTRY}" ${_INSTALLED_PATH_INDEX} -1 _INSTALLED_PATH)
-      if(NOT "${_SOURCE_PATH}" STREQUAL "")
-        string(REPLACE "${_SOURCE_PATH}" "${_INSTALLED_PATH}"
-          _MAPPED_ARG "${_MAPPED_ARG}")
-      endif()
-    endforeach()
     list(APPEND _MAPPED_ARGS "${_MAPPED_ARG}")
   endforeach()
 
@@ -561,6 +464,15 @@ function(hrx_installed_tests_standard_environment TEST_NAME OUT_ENV OUT_ENV_MOD)
   set(${OUT_ENV_MOD} "${_ENV_MOD}" PARENT_SCOPE)
 endfunction()
 
+function(hrx_installed_test_file_argument FILE OUT_PATH)
+  if(FILE MATCHES "^\\$<")
+    hrx_installed_tests_map_target_file_expressions(_PATH "${FILE}")
+  else()
+    hrx_installed_tests_install_data(_PATH "${FILE}")
+  endif()
+  set(${OUT_PATH} "${_PATH}" PARENT_SCOPE)
+endfunction()
+
 function(hrx_register_installed_test)
   hrx_installed_tests_is_enabled(_ENABLED)
   if(NOT _ENABLED OR HRX_SKIP_INSTALLED_TEST_REGISTRATION)
@@ -587,17 +499,25 @@ function(hrx_register_installed_test)
     message(FATAL_ERROR "hrx_register_installed_test requires TARGET or COMMAND")
   endif()
 
-  hrx_installed_tests_map_target_file_expressions(_ARGS ${_RULE_ARGS})
+  hrx_installed_tests_install_data(_INSTALLED_DATA ${_RULE_DATA})
+  iree_resolve_test_arguments(_ARGS _ARG_DATA
+    hrx_installed_test_file_argument ${_RULE_ARGS})
+  hrx_installed_tests_map_target_file_expressions(_ARGS ${_ARGS})
+  iree_resolve_test_arguments(_ENVIRONMENT _ENV_DATA
+    hrx_installed_test_file_argument ${_RULE_ENVIRONMENT})
   hrx_installed_tests_map_target_file_expressions(
-    _ENVIRONMENT ${_RULE_ENVIRONMENT})
-  hrx_installed_tests_install_data(_INSTALLED_DATA _DATA_MAP ${_RULE_DATA})
-  hrx_installed_tests_install_arg_data(_INSTALLED_ARG_DATA _ARG_DATA_MAP ${_ARGS})
-  list(APPEND _INSTALLED_DATA ${_INSTALLED_ARG_DATA})
-  list(APPEND _DATA_MAP ${_ARG_DATA_MAP})
+    _ENVIRONMENT ${_ENVIRONMENT})
+  list(APPEND _INSTALLED_DATA ${_ENV_DATA})
+  list(APPEND _INSTALLED_DATA ${_ARG_DATA})
   if(_INSTALLED_DATA)
     list(REMOVE_DUPLICATES _INSTALLED_DATA)
   endif()
-  hrx_installed_tests_map_data_args(_ARGS "${_DATA_MAP}" ${_ARGS})
+  if(_RULE_WORKING_DIRECTORY)
+    hrx_installed_tests_source_relative_path(
+      "${_RULE_WORKING_DIRECTORY}" _WORKING_DIRECTORY_RELATIVE)
+    set(_RULE_WORKING_DIRECTORY
+      "\${CMAKE_CURRENT_LIST_DIR}/../testdata/${_WORKING_DIRECTORY_RELATIVE}")
+  endif()
 
   hrx_installed_tests_standard_environment(
     "${_RULE_NAME}" _STANDARD_ENV _STANDARD_ENV_MOD)
@@ -666,7 +586,7 @@ function(hrx_register_installed_python_test)
     _RULE
     ""
     "NAME;SRC;TIMEOUT"
-    "ARGS;DEPS;LABELS;PACKAGE_DIRS;SOURCES"
+    "ARGS;DATA;DEPS;LABELS;PACKAGE_DIRS;SOURCES"
     ${ARGN}
   )
 
@@ -675,7 +595,8 @@ function(hrx_register_installed_python_test)
   else()
     set(_SOURCE_PATH "${_RULE_SRC}")
   endif()
-  hrx_installed_tests_project_relative_path("${_SOURCE_PATH}" _SRC_REL_PATH)
+  hrx_installed_tests_python_source_relative_path(
+    "${_SOURCE_PATH}" "${_RULE_PACKAGE_DIRS}" _SRC_REL_PATH)
   hrx_installed_tests_install_source_file(
     "${_SOURCE_PATH}" "${_SRC_REL_PATH}" _INSTALLED_SRC)
 
@@ -742,6 +663,7 @@ function(hrx_register_installed_python_test)
     NAME "${_RULE_NAME}"
     COMMAND "\${HRX_TEST_PYTHON}"
     ARGS "${_INSTALLED_SRC}" ${_RULE_ARGS}
+    DATA ${_RULE_DATA}
     LABELS ${_RULE_LABELS}
     TIMEOUT "${_RULE_TIMEOUT}"
     ENVIRONMENT "PYTHONDONTWRITEBYTECODE=1"

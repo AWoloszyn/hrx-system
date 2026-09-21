@@ -23,13 +23,13 @@ include("${IREE_REPO_ROOT}/build_tools/cmake/iree_native_test.cmake")
 include("${IREE_REPO_ROOT}/libhrx/build_tools/cmake/hrx_installed_tests.cmake")
 
 add_executable(reader reader.cc)
-iree_native_test(NAME first SRC reader ARGS shared.txt DATA shared.txt)
-iree_native_test(NAME second SRC reader ARGS shared.txt DATA shared.txt)
+iree_native_test(NAME first SRC reader ARGS "{{shared.txt}}" DATA shared.txt)
+iree_native_test(NAME second SRC reader ARGS "{{shared.txt}}" DATA shared.txt)
 
 # These distinct files have the same name after replacing slashes with
 # underscores. They must have independent producers and installed artifacts.
 iree_native_test(NAME distinct_paths SRC reader
-  ARGS a/b.txt a_b.txt
+  ARGS "{{a/b.txt}}" "{{a_b.txt}}"
   DATA a/b.txt a_b.txt)
 
 iree_finalize_target_dependencies()

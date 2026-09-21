@@ -18,14 +18,17 @@ iree_py_test(
   SRCS
     "qualification_test.py"
   ARGS
-    "$<TARGET_FILE:loom::tools::loom-check::loom-check>"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_global_atomic.loom-test"
+    "{{$<TARGET_FILE:loom::tools::loom-check::loom-check>}}"
+    "{{${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_global_atomic.loom-test}}"
+    "{{${PROJECT_SOURCE_DIR}/loom/src/loom/target/arch/amdgpu/test/source_low/source_low_memory_global_atomic_gfx9_4_generic.loom-test}}"
+    "{{$<TARGET_FILE:loom::tools::loom-compile::loom-compile>}}"
+    "{{${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_address_realizations.loom-test}}"
+  DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/target/arch/amdgpu/test/source_low/source_low_memory_global_atomic_gfx9_4_generic.loom-test"
-    "$<TARGET_FILE:loom::tools::loom-compile::loom-compile>"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_address_realizations.loom-test"
-  DEPS
-    loom::tools::loom-check::loom-check
-    loom::tools::loom-compile::loom-compile
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_global_atomic.loom-test"
+    "loom::tools::loom-check::loom-check"
+    "loom::tools::loom-compile::loom-compile"
   PACKAGE_DIRS
     "${PROJECT_SOURCE_DIR}/loom/py"
     "${PROJECT_BINARY_DIR}/loom/py"

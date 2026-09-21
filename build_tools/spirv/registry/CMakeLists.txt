@@ -97,7 +97,7 @@ if(IREE_BUILD_TESTS AND _pinned_source_allowed AND
     SRCS
       "spirv_core_grammar_registry_test.py"
     ARGS
-      "${_spirv_core_grammar}"
+      "{{${_spirv_core_grammar}}}"
     DEPS
       ::spirv_core_grammar
     PACKAGE_DIRS
@@ -110,7 +110,7 @@ if(IREE_BUILD_TESTS AND _pinned_source_allowed AND
     SRCS
       "dependency_expression_registry_test.py"
     ARGS
-      "${_vulkan_xml_registry}"
+      "{{${_vulkan_xml_registry}}}"
     DEPS
       ::dependency_expression
     PACKAGE_DIRS
@@ -122,7 +122,7 @@ if(IREE_BUILD_TESTS AND _pinned_source_allowed AND
     SRCS
       "vulkan_spirv_availability_registry_test.py"
     ARGS
-      "${_vulkan_xml_registry}"
+      "{{${_vulkan_xml_registry}}}"
     DEPS
       ::dependency_expression
       ::vulkan_spirv_availability

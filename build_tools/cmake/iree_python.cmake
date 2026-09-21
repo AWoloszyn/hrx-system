@@ -4,6 +4,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+include("${CMAKE_CURRENT_LIST_DIR}/iree_test_arguments.cmake")
+
 ###############################################################################
 # Main user rules
 ###############################################################################
@@ -422,10 +424,12 @@ endfunction()
 # SOURCES: All Python sources required by the test.
 # DEPS: Python library targets required by the test.
 # ARGS: Command line arguments to the Python source file.
+#     File paths use the same {{file}} locators as iree_native_test.
+# DATA: Additional files or targets required by the test.
 # LABELS: Additional labels to apply to the test. The package path is added
 #     automatically.
 # GENERATED_IN_BINARY_DIR: If present, indicates that the srcs have been
-#   in the CMAKE_CURRENT_BINARY_DIR.
+#   generated in CMAKE_CURRENT_BINARY_DIR.
 # PACKAGE_DIRS: Python package paths to be added to PYTHONPATH.
 function(iree_local_py_test)
   if(NOT IREE_BUILD_TESTS OR ANDROID OR EMSCRIPTEN)
@@ -436,7 +440,7 @@ function(iree_local_py_test)
     _RULE
     "GENERATED_IN_BINARY_DIR"
     "NAME;SRC"
-    "ARGS;DEPS;LABELS;PACKAGE_DIRS;SOURCES;TIMEOUT"
+    "ARGS;DATA;DEPS;LABELS;PACKAGE_DIRS;SOURCES;TIMEOUT"
     ${ARGN}
   )
 
@@ -445,6 +449,12 @@ function(iree_local_py_test)
   if(_RULE_GENERATED_IN_BINARY_DIR)
     set(_SRC_DIR "${CMAKE_CURRENT_BINARY_DIR}")
   endif()
+
+  set(_SOURCE_FILES)
+  foreach(_SOURCE IN LISTS _RULE_SOURCES)
+    get_filename_component(_SOURCE "${_SOURCE}" ABSOLUTE BASE_DIR "${_SRC_DIR}")
+    list(APPEND _SOURCE_FILES "${_SOURCE}")
+  endforeach()
 
   iree_package_name(_PACKAGE_NAME)
   set(_NAME "${_PACKAGE_NAME}_${_RULE_NAME}")
@@ -457,12 +467,17 @@ function(iree_local_py_test)
     set(_RULE_TIMEOUT 60)
   endif()
 
+  get_filename_component(_SOURCE_PATH "${_RULE_SRC}" ABSOLUTE
+    BASE_DIR "${_SRC_DIR}")
+  iree_resolve_test_arguments(_TEST_ARGS _ARG_DATA
+    iree_build_test_file_argument ${_RULE_ARGS})
+  list(APPEND _RULE_DATA ${_ARG_DATA})
   add_test(
     NAME ${_NAME_PATH}
     COMMAND
       "${Python3_EXECUTABLE}"
-      "${CMAKE_CURRENT_SOURCE_DIR}/${_RULE_SRC}"
-      ${_RULE_ARGS}
+      "${_SOURCE_PATH}"
+      ${_TEST_ARGS}
   )
 
   set_property(TEST ${_NAME_PATH} PROPERTY LABELS "${_RULE_LABELS}")
@@ -476,7 +491,7 @@ function(iree_local_py_test)
   )
 
   set(_TEST_BUILD_TARGETS)
-  if(_RULE_DEPS)
+  if(_RULE_DEPS OR _RULE_DATA OR _RULE_GENERATED_IN_BINARY_DIR)
     set(_TEST_BUILD_TARGET "${_NAME}_test_deps")
     add_custom_target("${_TEST_BUILD_TARGET}" ALL)
     set_property(
@@ -489,6 +504,8 @@ function(iree_local_py_test)
         DEPENDENCY "${_TEST_DEPENDENCY}"
       )
     endforeach()
+    iree_add_data_dependencies(NAME "${_TEST_BUILD_TARGET}" DATA ${_RULE_DATA})
+    iree_generated_output_add_consumer("${_SOURCE_PATH}" "${_TEST_BUILD_TARGET}")
     list(APPEND _TEST_BUILD_TARGETS "${_TEST_BUILD_TARGET}")
   endif()
 
@@ -505,9 +522,11 @@ function(iree_local_py_test)
         NAME
           "${_NAME_PATH}"
         SRC
-          "${_RULE_SRC}"
+          "${_SOURCE_PATH}"
+        DATA
+          ${_RULE_DATA}
         SOURCES
-          ${_RULE_SOURCES}
+          ${_SOURCE_FILES}
         DEPS
           ${_RULE_DEPS}
         ARGS
@@ -521,8 +540,6 @@ function(iree_local_py_test)
       )
     endif()
   endif()
-
-  # TODO(marbre): Find out how to add deps to tests.
 endfunction()
 
 # iree_py_test()
@@ -534,18 +551,20 @@ endfunction()
 # MAIN: Python source file to execute.
 # SRCS: All Python sources required by the test.
 # ARGS: Command line arguments to the Python source file.
+#     File paths use the same {{file}} locators as iree_native_test.
+# DATA: Additional files or targets required by the test.
 # LABELS: Additional labels to apply to the test. The package path is added
 #     automatically.
 # IMPORTS: List of package import directories relative to the current package.
 # DEPS: List of iree_py_library targets needed by the test.
 # GENERATED_IN_BINARY_DIR: If present, indicates that the srcs have been
-#   in the CMAKE_CURRENT_BINARY_DIR.
+#   generated in CMAKE_CURRENT_BINARY_DIR.
 function(iree_py_test)
   cmake_parse_arguments(
     _RULE
     "GENERATED_IN_BINARY_DIR"
     "MAIN;NAME"
-    "ARGS;LABELS;PACKAGE_DIRS;IMPORTS;DEPS;SRCS;TIMEOUT"
+    "ARGS;DATA;LABELS;PACKAGE_DIRS;IMPORTS;DEPS;SRCS;TIMEOUT"
     ${ARGN}
   )
   if(_RULE_MAIN)
@@ -590,6 +609,10 @@ function(iree_py_test)
     list(REMOVE_DUPLICATES _RULE_PACKAGE_DIRS)
   endif()
 
+  set(_GENERATED_OPTION)
+  if(_RULE_GENERATED_IN_BINARY_DIR)
+    set(_GENERATED_OPTION GENERATED_IN_BINARY_DIR)
+  endif()
   iree_local_py_test(
     NAME
       "${_RULE_NAME}"
@@ -597,6 +620,8 @@ function(iree_py_test)
       "${_RULE_MAIN_SOURCE}"
     SOURCES
       ${_RULE_SOURCE_FILES}
+    DATA
+      ${_RULE_DATA}
     DEPS
       ${_RULE_DEPS}
     ARGS
@@ -605,8 +630,7 @@ function(iree_py_test)
       ${_RULE_LABELS}
     PACKAGE_DIRS
       ${_RULE_PACKAGE_DIRS}
-    GENERATED_IN_BINARY_DIR
-      "${_RULE_GENERATED_IN_BINARY_DIR}"
+    ${_GENERATED_OPTION}
     TIMEOUT
       ${_RULE_TIMEOUT}
   )

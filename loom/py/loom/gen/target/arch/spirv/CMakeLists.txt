@@ -73,9 +73,11 @@ iree_py_test(
   SRCS
     "feature_catalog_validation_test.py"
   ARGS
+    "{{${PROJECT_SOURCE_DIR}/loom/src/loom/target/arch/spirv/isa.h}}"
+    "{{${_LOOM_SPIRV_CORE_GRAMMAR}}}"
+    "{{${_LOOM_VULKAN_XML_REGISTRY}}}"
+  DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/target/arch/spirv/isa.h"
-    "${_LOOM_SPIRV_CORE_GRAMMAR}"
-    "${_LOOM_VULKAN_XML_REGISTRY}"
   DEPS
     loom::py::loom::gen::target::arch::spirv::feature_catalog_validation
     loom::py::loom::gen::target::arch::spirv::features

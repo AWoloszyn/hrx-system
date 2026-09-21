@@ -197,6 +197,7 @@ class BuildFileFunctions(object):
             self._build_dir = build_dir
         self._filegroup_srcs = {}
         self._target_file_labels = set()
+        # Producers own fully qualified CMake paths for generated file labels.
         self._target_file_paths = {}
         self.selects = _SelectsModule()
         self._custom_initialize()
@@ -665,29 +666,38 @@ class BuildFileFunctions(object):
             converted_args.extend(self._convert_linkopt_location_arg(arg))
         return converted_args
 
-    def _convert_native_test_location_arg(self, arg):
+    def _convert_test_location_arg(self, arg):
         def replace_location(match):
             paths = self._cmake_location_paths(match.group(2))
-            if len(paths) != 1:
-                return " ".join(paths)
-            return "{{%s}}" % paths[0]
+            if not match.group(1).endswith("s") and len(paths) != 1:
+                raise ValueError(f"single-file location has {len(paths)} files: {arg}")
+            return " ".join("{{%s}}" % path for path in paths)
 
         return _LOCATION_PATTERN.sub(replace_location, arg)
 
-    def _convert_native_test_location_args(self, args):
+    def _convert_test_location_args(self, args):
         if args is None:
             return None
-        return [self._convert_native_test_location_arg(arg) for arg in args]
+        converted_args = []
+        for arg in args:
+            match = _LOCATION_PATTERN.fullmatch(arg)
+            if match and match.group(1).endswith("s"):
+                converted_args.extend(
+                    "{{%s}}" % path
+                    for path in self._cmake_location_paths(match.group(2))
+                )
+            else:
+                converted_args.append(self._convert_test_location_arg(arg))
+        return converted_args
 
-    def _convert_native_test_env(self, env):
+    def _convert_test_env(self, env):
         if not env:
             return None
         converted_env = []
         for key, value in sorted(env.items()):
             if self._has_unresolved_external_location(value):
                 continue
-            converted_values = self._convert_location_arg(value)
-            converted_value = " ".join(converted_values)
+            converted_value = self._convert_test_location_arg(value)
             converted_env.append("%s=%s" % (key, converted_value))
         return converted_env or None
 
@@ -703,15 +713,6 @@ class BuildFileFunctions(object):
             if len(cmake_targets) != 1 or not cmake_targets[0]:
                 return True
         return False
-
-    def _location_label_keys(self, args):
-        if args is None:
-            return set()
-        labels = set()
-        for arg in args:
-            for match in _LOCATION_PATTERN.finditer(arg):
-                labels.add(self._split_location_label(match.group(2)))
-        return labels
 
     def _cmake_location_paths(self, label):
         if label.startswith("${"):
@@ -732,10 +733,7 @@ class BuildFileFunctions(object):
             ]
         canonical_label = self._canonical_location_label(label)
         if canonical_label in self._target_file_paths:
-            path = self._target_file_paths[canonical_label]
-            if package == self._current_package():
-                return [path]
-            return [f"${{IREE_BINARY_DIR}}/{package}/{path}"]
+            return [self._target_file_paths[canonical_label]]
         source_path = self._cmake_source_location_path(label)
         if self._repo_root:
             concrete_source_path = os.path.join(self._repo_root, package, name)
@@ -1328,22 +1326,7 @@ class BuildFileFunctions(object):
                     data = None
                 else:
                     raise NotImplementedError(f"iree_py_test data: {name}")
-        if data:
-            location_labels = self._location_label_keys(args)
-            unlocated_data = [
-                label
-                for label in data
-                if self._split_location_label(label) not in location_labels
-            ]
-            if unlocated_data and not all(
-                self._is_source_data_label(label) for label in unlocated_data
-            ):
-                raise NotImplementedError(f"iree_py_test data: {name}")
-        # Tool locations are executable build dependencies as well as arguments.
         # CTest already inherits the invoking environment, including env_inherit.
-        tool_deps = [
-            label for label in data or [] if not self._is_source_data_label(label)
-        ]
         source_list = list(srcs or [])
         main_source = None
         if main:
@@ -1368,10 +1351,11 @@ class BuildFileFunctions(object):
             sort=False,
         )
         args_block = self._convert_string_list_block(
-            "ARGS", self._convert_location_args(args), sort=False
+            "ARGS", self._convert_test_location_args(args), sort=False
         )
+        data_block = self._convert_data_list_block(data)
         deps_block, deps_var_block = self._convert_python_target_list_blocks(
-            name, "DEPS", (deps or []) + tool_deps
+            name, "DEPS", deps
         )
         imports_block = self._convert_string_list_block("IMPORTS", imports, sort=False)
         labels_block = self._convert_string_list_block("LABELS", tags)
@@ -1390,6 +1374,7 @@ class BuildFileFunctions(object):
             f"{main_block}"
             f"{source_block}"
             f"{args_block}"
+            f"{data_block}"
             f"{deps_block}"
             f"{imports_block}"
             f"{labels_block}"
@@ -1805,13 +1790,13 @@ class BuildFileFunctions(object):
         linkopts_block, platform_linkopts_block = self._convert_platform_select_strings(
             name, "LINKOPTS", linkopts, expand_locations=True
         )
-        data_block = self._convert_target_list_block("DATA", data, omit_empty=True)
+        data_block = self._convert_data_list_block(data)
         deps_block, platform_deps_block = self._convert_platform_select_deps(name, deps)
         args_block = self._convert_string_list_block(
-            "ARGS", self._convert_location_args(args), sort=False
+            "ARGS", self._convert_test_location_args(args), sort=False
         )
         env_block = self._convert_string_list_block(
-            "ENV", self._convert_native_test_env(env), sort=False
+            "ENV", self._convert_test_env(env), sort=False
         )
         labels_block = self._convert_string_list_block("LABELS", tags)
         timeout_block = self._convert_timeout_arg_block("TIMEOUT", timeout)
@@ -2460,7 +2445,9 @@ class BuildFileFunctions(object):
         if target_compatible_with is None:
             target_compatible_with = _SPIRV_TOOL_TARGET_COMPATIBLE_WITH
         out_file = out or ("%s.spv" % name)
-        self._target_file_paths[self._current_target_label(name)] = out_file
+        self._target_file_paths[self._current_target_label(name)] = (
+            f"${{CMAKE_CURRENT_BINARY_DIR}}/{out_file}"
+        )
         name_block = self._convert_string_arg_block("NAME", name, quote=False)
         src_block = self._convert_string_arg_block("SRC", src)
         out_block = self._convert_string_arg_block("OUT", out)
@@ -2598,7 +2585,7 @@ class BuildFileFunctions(object):
             self._convert_string_arg_block("NAME", name, quote=False) if name else ""
         )
         args_block = self._convert_string_list_block(
-            "ARGS", self._convert_location_args(args), sort=False
+            "ARGS", self._convert_test_location_args(args), sort=False
         )
         labels_block = self._convert_string_list_block("LABELS", tags)
         resource_group_block = self._convert_string_arg_block(
@@ -2762,11 +2749,11 @@ class BuildFileFunctions(object):
         name_block = self._convert_string_arg_block("NAME", name)
         test_binary_block = self._convert_single_target_block("SRC", src)
         args_block = self._convert_string_list_block(
-            "ARGS", self._convert_native_test_location_args(args)
+            "ARGS", self._convert_test_location_args(args)
         )
         data_block = self._convert_data_list_block(data)
         env_block = self._convert_string_list_block(
-            "ENV", self._convert_native_test_env(env), sort=False
+            "ENV", self._convert_test_env(env), sort=False
         )
         labels_block = self._convert_string_list_block("LABELS", tags)
         resource_group_block = self._convert_string_arg_block(
@@ -2819,13 +2806,13 @@ class BuildFileFunctions(object):
             return
         name_block = self._convert_string_arg_block("NAME", name, quote=False)
         srcs_block = self._convert_srcs_block(srcs)
-        data_block = self._convert_target_list_block("DATA", data)
+        data_block = self._convert_data_list_block(data)
         deps_block = self._convert_target_list_block("DEPS", deps)
         copts_block = self._convert_string_list_block("COPTS", copts, sort=False)
         defines_block = self._convert_string_list_block("DEFINES", defines)
         linkopts_block = self._convert_string_list_block("LINKOPTS", linkopts)
         args_block = self._convert_string_list_block(
-            "ARGS", self._convert_location_args(args), sort=False
+            "ARGS", self._convert_test_location_args(args), sort=False
         )
         testonly_block = self._convert_option_block("TESTONLY", testonly)
         labels_block = self._convert_string_list_block("LABELS", tags)

@@ -4,6 +4,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+include("${CMAKE_CURRENT_LIST_DIR}/iree_test_arguments.cmake")
+
 # iree_cc_test()
 #
 # CMake function to imitate Bazel's cc_test rule.
@@ -15,6 +17,8 @@
 #     Note: flag passing is only enforced through CTest, so manually running
 #     the test binaries (such as under a debugger) will _not_ pass any
 #     arguments without extra setup.
+#     File paths use the same {{file}} locators as iree_native_test.
+# ENV: KEY=VALUE environment variables, with optional {{file}} locators.
 # SRCS: List of source files for the binary.
 # DATA: List of other targets and files required for this binary.
 # DEPS: List of other libraries to be linked in to the binary targets.
@@ -131,7 +135,6 @@ function(iree_cc_test)
       ${_RULE_DEPS}
       ${IREE_DEFAULT_LINK_LIBRARIES}
   )
-  iree_add_data_dependencies(NAME ${_NAME} DATA ${_RULE_DATA})
 
   # Add all IREE targets to a folder in the IDE for organization.
   set_property(TARGET ${_NAME} PROPERTY FOLDER ${IREE_IDE_FOLDER}/test)
@@ -160,6 +163,8 @@ function(iree_cc_test)
   endif()
   list(APPEND _ENVIRONMENT_VARS ${_RULE_ENV})
 
+  iree_resolve_test_arguments(_TEST_ARGS _ARG_DATA
+    iree_build_test_file_argument ${_RULE_ARGS})
   if(CMAKE_SYSTEM_PROCESSOR STREQUAL "wasm32")
     # WASI: bundle the .wasm binary with JS companions and run via Node.js.
     # Uses _iree_wasm_setup_bundler for order-independent collection of JS
@@ -180,7 +185,7 @@ function(iree_cc_test)
         ${_NAME_PATH}
       COMMAND
         "${NODE_EXECUTABLE}" "${_OUTPUT_MJS}"
-        ${_RULE_ARGS}
+        ${_TEST_ARGS}
     )
     iree_configure_test(${_NAME_PATH})
   else()
@@ -189,7 +194,7 @@ function(iree_cc_test)
         ${_NAME_PATH}
       COMMAND
         "${_NAME}"
-        ${_RULE_ARGS}
+        ${_TEST_ARGS}
       )
 
     iree_configure_test(${_NAME_PATH})
@@ -209,7 +214,11 @@ function(iree_cc_test)
     set_property(GLOBAL APPEND PROPERTY IREE_RUNTIME_COVERAGE_TARGETS "${_NAME}=$<TARGET_FILE:${_NAME}>")
   endif()
 
-  set_property(TEST ${_NAME_PATH} APPEND PROPERTY ENVIRONMENT ${_ENVIRONMENT_VARS})
+  iree_resolve_test_arguments(_TEST_ENVIRONMENT _ENV_DATA
+    iree_build_test_file_argument ${_ENVIRONMENT_VARS})
+  list(APPEND _RULE_DATA ${_ARG_DATA} ${_ENV_DATA})
+  iree_add_data_dependencies(NAME ${_NAME} DATA ${_RULE_DATA})
+  set_property(TEST ${_NAME_PATH} APPEND PROPERTY ENVIRONMENT ${_TEST_ENVIRONMENT})
 
   if(NOT DEFINED _RULE_TIMEOUT)
     set(_RULE_TIMEOUT 60)

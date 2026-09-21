@@ -570,7 +570,7 @@ endfunction()
 # NAME: name of the target to add data dependencies to
 # DATA: List of targets and/or files in the source tree (relative to the
 # project root).
-# OUT_FILE_DATA: Optional output variable receiving file-shaped DATA entries.
+# OUT_FILE_DATA: Optional output variable receiving absolute runtime file paths.
 # OUT_TARGET_DATA: Optional output variable receiving target-shaped DATA
 #     entries as CMake target names.
 function(iree_add_data_dependencies)
@@ -595,6 +595,15 @@ function(iree_add_data_dependencies)
   set(_FILE_DATA)
   set(_TARGET_DATA)
   foreach(_DATA_LABEL ${_RULE_DATA})
+    if(IS_ABSOLUTE "${_DATA_LABEL}")
+      list(APPEND _FILE_DATA "${_DATA_LABEL}")
+      iree_generated_output_add_consumer(
+        "${_DATA_LABEL}"
+        "${_RULE_NAME}"
+      )
+      continue()
+    endif()
+
     set(_DATA_TARGET_NAME "${_DATA_LABEL}")
     set(_DATA_IS_TARGET_FILE OFF)
     # Native test file locators can name a target's output before the target
@@ -619,15 +628,6 @@ function(iree_add_data_dependencies)
       continue()
     endif()
 
-    if(IS_ABSOLUTE "${_DATA_LABEL}")
-      list(APPEND _FILE_DATA "${_DATA_LABEL}")
-      iree_generated_output_add_consumer(
-        "${_DATA_LABEL}"
-        "${_RULE_NAME}"
-      )
-      continue()
-    endif()
-
     # Some Bazel data edges refer to generated files in the current package
     # rather than source-tree files. The CMake custom commands that produce
     # those files typically expose a package-prefixed target named after the
@@ -644,7 +644,7 @@ function(iree_add_data_dependencies)
       endif()
     endforeach()
     if(_DATA_GENERATED_TARGET)
-      list(APPEND _FILE_DATA "${_DATA_LABEL}")
+      list(APPEND _FILE_DATA "${CMAKE_CURRENT_BINARY_DIR}/${_DATA_LABEL}")
       iree_register_target_dependency(
         TARGET "${_RULE_NAME}"
         DEPENDENCY "${_DATA_GENERATED_TARGET}"
@@ -653,7 +653,6 @@ function(iree_add_data_dependencies)
     endif()
 
     # Not a target, assume to be a file instead.
-    list(APPEND _FILE_DATA "${_DATA_LABEL}")
     set(_FILE_PATH ${_DATA_LABEL})
 
     # Keep staging targets private: a file spelling must remain file DATA for
@@ -662,6 +661,7 @@ function(iree_add_data_dependencies)
     set(_INPUT_PATH "${PROJECT_SOURCE_DIR}/${_FILE_PATH}")
     set(_OUTPUT_PATH "${PROJECT_BINARY_DIR}/${_FILE_PATH}")
     cmake_path(NORMAL_PATH _OUTPUT_PATH)
+    list(APPEND _FILE_DATA "${_OUTPUT_PATH}")
     string(SHA256 _DATA_KEY "${_OUTPUT_PATH}")
     set(_DATA_TARGET "iree_data_${_DATA_KEY}")
     if(NOT TARGET ${_DATA_TARGET})

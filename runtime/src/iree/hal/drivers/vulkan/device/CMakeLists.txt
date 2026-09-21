@@ -109,10 +109,10 @@ iree_c_embed_data(
   NAME
     kernels_generated
   SRCS
-    "atomic_32_generated.spv"
-    "atomic_64_generated.spv"
-    "fill_unaligned_generated.spv"
-    "update_unaligned_generated.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/atomic_32_generated.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/atomic_64_generated.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/fill_unaligned_generated.spv"
+    "${CMAKE_CURRENT_BINARY_DIR}/update_unaligned_generated.spv"
   C_FILE_OUTPUT
     "kernels_generated.c"
   H_FILE_OUTPUT

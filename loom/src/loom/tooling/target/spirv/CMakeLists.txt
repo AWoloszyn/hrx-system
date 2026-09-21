@@ -345,7 +345,7 @@ iree_native_test(
     "${PROJECT_SOURCE_DIR}/build_tools/sanitizer/lsan_suppressions_vulkan.txt"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/spirv/test/multiple_entries.loom"
   ENV
-    "LSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/build_tools/sanitizer/lsan_suppressions_vulkan.txt:allow_addr2line=1"
+    "LSAN_OPTIONS=suppressions={{${PROJECT_SOURCE_DIR}/build_tools/sanitizer/lsan_suppressions_vulkan.txt}}:allow_addr2line=1"
   LABELS
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"

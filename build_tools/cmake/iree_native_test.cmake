@@ -4,6 +4,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+include("${CMAKE_CURRENT_LIST_DIR}/iree_test_arguments.cmake")
+
 # iree_native_test()
 #
 # Creates a test that runs the specified binary with the specified arguments.
@@ -18,10 +20,15 @@
 #     automatically added if specified.
 #     File-related arguments can be passed with `{{}}` locator,
 #     e.g., --input=@{{foo.npy}}. The locator is used to portably
-#     pass the file arguments to tests and add the file to DATA.
+#     pass file arguments to tests and add each file to DATA. Relative file
+#     locators use the project source root; generated files use absolute paths
+#     or target-file expressions. Ordinary argument text remains literal.
 # ENV: Additional KEY=VALUE environment variables set while the test runs.
+#     Values may contain file locators with the same semantics as ARGS.
 # SRC: Binary target to run as the test. CMake applies the target's
 #     CROSSCOMPILING_EMULATOR and TEST_LAUNCHER execution properties.
+# WORKING_DIRECTORY: Source or build directory to run the test from. Installed
+#     tests use the corresponding directory in their testdata tree.
 # WILL_FAIL: The target will run, but its pass/fail status will be inverted.
 # DISABLED: The target will be skipped and its status will be 'Not Run'.
 # RESOURCE_GROUP: If set, tests sharing the same RESOURCE_GROUP name will not
@@ -55,7 +62,7 @@ function(iree_native_test)
   cmake_parse_arguments(
     _RULE
     ""
-    "NAME;SRC;DRIVER;WILL_FAIL;DISABLED;RESOURCE_GROUP"
+    "NAME;SRC;DRIVER;WILL_FAIL;DISABLED;RESOURCE_GROUP;WORKING_DIRECTORY"
     "ARGS;ENV;LABELS;DATA;TIMEOUT;SANITIZER_SUPPRESSIONS"
     ${ARGN}
   )
@@ -81,20 +88,11 @@ function(iree_native_test)
   endif()
   list(APPEND _TEST_ENVIRONMENT_VARS ${_RULE_ENV})
 
-  # Detect file location with `{{}}` and handle its portability for all entries
-  # in `_RULE_ARGS`.
-  foreach(_ARG ${_RULE_ARGS})
-    string(REGEX MATCH ".*{{(.+)}}" _FILE_ARG "${_ARG}")
-    if(_FILE_ARG)
-      set(_FILE_PATH ${CMAKE_MATCH_1})
-      list(APPEND _RULE_DATA "${_FILE_PATH}")
-      # remove the `{{}}` from `_ARG` and append it to `_TEST_ARGS`.
-      string(REGEX REPLACE "{{.+}}" "" _FILE_FLAG_PREFIX "${_ARG}")
-      list(APPEND _TEST_ARGS "${_FILE_FLAG_PREFIX}${_FILE_PATH}")
-    else()  # naive append
-      list(APPEND _TEST_ARGS "${_ARG}")
-    endif(_FILE_ARG)
-  endforeach(_ARG)
+  iree_resolve_test_arguments(_TEST_ARGS _ARG_DATA
+    iree_build_test_file_argument ${_RULE_ARGS})
+  iree_resolve_test_arguments(_TEST_ENVIRONMENT _ENV_DATA
+    iree_build_test_file_argument ${_TEST_ENVIRONMENT_VARS})
+  list(APPEND _RULE_DATA ${_ARG_DATA} ${_ENV_DATA})
   list(REMOVE_DUPLICATES _RULE_DATA)
 
   # Replace binary passed by relative ::name with iree::package::name
@@ -138,6 +136,10 @@ function(iree_native_test)
       ${_TEST_ARGS}
   )
   iree_configure_test(${_TEST_NAME})
+  if(_RULE_WORKING_DIRECTORY)
+    set_property(TEST "${_TEST_NAME}" PROPERTY WORKING_DIRECTORY
+      "${_RULE_WORKING_DIRECTORY}")
+  endif()
   iree_register_test_build_targets(
     "${_TEST_NAME}"
     TARGETS "${_TEST_BUILD_TARGET}"
@@ -146,7 +148,7 @@ function(iree_native_test)
   # Apply accumulated test environment variables after the test exists.
   if(_TEST_ENVIRONMENT_VARS)
     set_property(TEST ${_TEST_NAME} APPEND PROPERTY ENVIRONMENT
-      ${_TEST_ENVIRONMENT_VARS})
+      ${_TEST_ENVIRONMENT})
   endif()
 
   if (NOT DEFINED _RULE_TIMEOUT OR "${_RULE_TIMEOUT}" STREQUAL "")
@@ -194,7 +196,9 @@ function(iree_native_test)
         TARGET
           "${_SRC_TARGET}"
         ARGS
-          ${_TEST_ARGS}
+          ${_RULE_ARGS}
+        WORKING_DIRECTORY
+          "${_RULE_WORKING_DIRECTORY}"
         DATA
           ${_RULE_DATA}
         ENVIRONMENT

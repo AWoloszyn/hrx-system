@@ -30,7 +30,7 @@ iree_add_data_dependencies(
     _TARGET_DATA
 )
 
-if(NOT "${_FILE_DATA}" STREQUAL "fixture.txt;${_GENERATED_DATA}")
+if(NOT "${_FILE_DATA}" STREQUAL "${CMAKE_BINARY_DIR}/fixture.txt;${_GENERATED_DATA}")
   message(FATAL_ERROR "Unexpected file DATA: ${_FILE_DATA}")
 endif()
 if(NOT "${_TARGET_DATA}" STREQUAL "fixture::tool")

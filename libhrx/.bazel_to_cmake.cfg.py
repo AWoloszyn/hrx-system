@@ -127,10 +127,8 @@ class HrxBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         srcs_block = self._convert_srcs_block(srcs)
         copts_block = self._convert_string_list_block("COPTS", copts, sort=False)
         defines_block = self._convert_string_list_block("DEFINES", defines)
-        data_block = self._convert_target_list_block(
-            "DATA",
-            ["//libhrx/src/libhrx:hrx"] + (data or []),
-            omit_empty=True,
+        data_block = self._convert_data_list_block(
+            ["//libhrx/src/libhrx:hrx"] + (data or [])
         )
         deps_block, platform_deps_block = self._convert_platform_select_deps(
             "hrx_cts_" + name,
@@ -139,7 +137,7 @@ class HrxBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         includes_block = self._convert_includes_block(includes)
         args_block = self._convert_string_list_block(
             "ARGS",
-            self._convert_location_args(
+            self._convert_test_location_args(
                 [
                     "--hrx-library",
                     "$<TARGET_FILE:libhrx::src::libhrx::hrx>",
@@ -149,7 +147,7 @@ class HrxBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             sort=False,
         )
         env_block = self._convert_string_list_block(
-            "ENV", self._convert_native_test_env(env), sort=False
+            "ENV", self._convert_test_env(env), sort=False
         )
         if platform_deps_block:
             self._converter.body += platform_deps_block

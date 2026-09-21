@@ -56,6 +56,9 @@ iree_py_test(
   ARGS
     "loom.target.arch.amdgpu.contracts.arithmetic_test"
     "loom.target.arch.amdgpu.contracts.dispatch_ownership_test"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/target/arch/amdgpu/lower/registry.c"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/target/arch/amdgpu/lower/registry_tables.inl"
   DEPS
     loom::py::loom::target::arch::amdgpu::contracts::contracts
   PACKAGE_DIRS

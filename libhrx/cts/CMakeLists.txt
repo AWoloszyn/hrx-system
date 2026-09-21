@@ -130,7 +130,7 @@ hrx_cc_test(
   SRCS
     "tests/host_allocator/host_allocator_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::core
     iree::third_party::catch2
@@ -146,7 +146,7 @@ hrx_cc_test(
   SRCS
     "tests/lifecycle/lifecycle_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::core
     iree::third_party::catch2
@@ -167,7 +167,7 @@ hrx_cc_test(
   SRCS
     "tests/device/device_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::core
     iree::third_party::catch2
@@ -188,7 +188,7 @@ hrx_cc_test(
   SRCS
     "tests/allocator/allocator_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::core
     iree::third_party::catch2
@@ -209,7 +209,7 @@ hrx_cc_test(
   SRCS
     "tests/semaphore/semaphore_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::core
     iree::third_party::catch2
@@ -230,7 +230,7 @@ hrx_cc_test(
   SRCS
     "tests/stream/stream_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::core
     iree::third_party::catch2
@@ -251,7 +251,7 @@ hrx_cc_test(
   SRCS
     "tests/memory/memory_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::core
     iree::third_party::catch2
@@ -272,7 +272,7 @@ hrx_cc_test(
   SRCS
     "tests/transfer/transfer_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::core
     iree::third_party::catch2
@@ -293,7 +293,7 @@ hrx_cc_test(
   SRCS
     "tests/stream_ops/stream_ops_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::core
     iree::third_party::catch2
@@ -316,7 +316,7 @@ hrx_cc_test(
     "core/amdgpu_test_data.hpp"
     "tests/executable/executable_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::amdgpu_executable_test_kernels
     ::core
@@ -339,7 +339,7 @@ iree_cc_test(
   SRCS
     "tests/hip/event_test.cpp"
   DATA
-    libhrx::src::binding::hip::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     iree::testing::gtest
@@ -347,7 +347,7 @@ iree_cc_test(
     libhrx::src::binding::hip::launch_params
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -370,7 +370,7 @@ iree_cc_test(
   COPTS
     "-Wno-attributes"
   DATA
-    libhrx::src::binding::hip::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     ::amdgpu_executable_test_kernels
@@ -379,7 +379,7 @@ iree_cc_test(
     libhrx::src::binding::hip::launch_params
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -400,7 +400,7 @@ iree_cc_test(
     "core/amdgpu_test_data.hpp"
     "tests/hip/launch_validation_api_test.cc"
   DATA
-    libhrx::src::binding::hip::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     ::amdgpu_executable_test_kernels
@@ -410,7 +410,7 @@ iree_cc_test(
     libhrx::src::binding::hip::launch_params
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -435,7 +435,7 @@ iree_cc_test(
   COPTS
     "-Wno-attributes"
   DATA
-    libhrx::src::binding::hip::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     ::amdgpu_executable_test_kernels
@@ -446,7 +446,7 @@ iree_cc_test(
     libhrx::src::binding::hip::launch_params
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -470,7 +470,7 @@ iree_cc_test(
   COPTS
     "-Wno-attributes"
   DATA
-    libhrx::src::binding::hip::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     ::amdgpu_executable_test_kernels
@@ -482,7 +482,7 @@ iree_cc_test(
     libhrx_defs
   ENV
     "ASAN_OPTIONS=detect_leaks=0"
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -505,7 +505,7 @@ iree_cc_test(
   COPTS
     "-Wno-attributes"
   DATA
-    libhrx::src::binding::hip::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     ::amdgpu_executable_test_kernels
@@ -514,7 +514,7 @@ iree_cc_test(
     libhrx::src::binding::hip::launch_params
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -537,7 +537,7 @@ iree_cc_test(
   COPTS
     "-Wno-attributes"
   DATA
-    libhrx::src::binding::hip::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     ::amdgpu_hip_printf_test_kernels
@@ -546,7 +546,7 @@ iree_cc_test(
     libhrx::src::binding::hip::launch_params
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -569,7 +569,7 @@ iree_cc_test(
   COPTS
     "-Wno-attributes"
   DATA
-    libhrx::src::binding::hip::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     ::amdgpu_hip_printf_test_kernels
@@ -578,7 +578,7 @@ iree_cc_test(
     libhrx::src::binding::hip::launch_params
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -597,7 +597,7 @@ hrx_cc_test(
   SRCS
     "tests/queue_ops/queue_ops_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::core
     iree::third_party::catch2
@@ -618,7 +618,7 @@ hrx_cc_test(
   SRCS
     "tests/status/status_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::core
     iree::third_party::catch2
@@ -634,7 +634,7 @@ hrx_cc_test(
   SRCS
     "tests/refcount/refcount_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::core
     iree::third_party::catch2
@@ -655,7 +655,7 @@ hrx_cc_test(
   SRCS
     "tests/virtual_memory/virtual_memory_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::core
     iree::third_party::catch2
@@ -676,7 +676,7 @@ hrx_cc_test(
   SRCS
     "tests/cxx_api/cxx_api_test.cpp"
   DATA
-    libhrx::src::libhrx::hrx
+    "libhrx::src::libhrx::hrx"
   DEPS
     ::core
     iree::third_party::catch2

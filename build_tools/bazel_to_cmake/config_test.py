@@ -568,8 +568,10 @@ cc_library(
             env_inherit=["PATH"],
         )
 
-        self.assertIn('"$<TARGET_FILE:iree::third_party::spirv_dis>"', converter.body)
-        self.assertIn("DEPS\n    iree::third_party::spirv_dis", converter.body)
+        self.assertIn(
+            '"{{$<TARGET_FILE:iree::third_party::spirv_dis>}}"', converter.body
+        )
+        self.assertIn('DATA\n    "iree::third_party::spirv_dis"', converter.body)
 
     def test_py_test_maps_size_to_default_timeout(self):
         repo_root = Path(__file__).resolve().parents[2]
@@ -641,25 +643,23 @@ cc_library(
             converter.body,
         )
 
-    def test_py_test_rejects_unlocated_generated_data(self):
-        repo_root = Path(__file__).resolve().parents[2]
+    def test_py_test_preserves_unlocated_generated_data(self):
         converter = SimpleNamespace(body="")
         functions = _PythonBuildFileFunctions(
             converter=converter,
             targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
-            build_dir="build_tools/bazel_to_cmake",
-            repo_root=str(repo_root),
+            build_dir="/repo/pkg",
+            repo_root="/repo",
         )
-
-        with self.assertRaisesRegex(NotImplementedError, "iree_py_test data"):
-            functions.iree_py_test(
-                name="generated_data_test",
-                srcs=["config_test.py"],
-                args=["bazel_to_cmake_config_test"],
-                data=["//build_tools/bazel_to_cmake:generated_data.txt"],
-                main="config_test.py",
-                deps=[],
-            )
+        functions.iree_spirv_asm_module(name="generated_data", src="input.spvasm")
+        functions.iree_py_test(
+            name="generated_data_test",
+            srcs=["test.py"],
+            data=[":generated_data"],
+        )
+        self.assertIn(
+            'DATA\n    "${CMAKE_CURRENT_BINARY_DIR}/generated_data.spv"', converter.body
+        )
 
     def test_private_executable_test_can_skip_cmake(self):
         converter = SimpleNamespace(body="")
@@ -841,6 +841,29 @@ cc_library(
             converter.body,
         )
 
+    def test_native_test_rejects_multiple_files_in_single_file_locations(self):
+        for kind in ("location", "rootpath", "execpath"):
+            for field in ("args", "env"):
+                with self.subTest(kind=kind, field=field):
+                    converter = SimpleNamespace(body="")
+                    functions = bazel_to_cmake_converter.BuildFileFunctions(
+                        converter=converter,
+                        targets=bazel_to_cmake_targets.TargetConverter(
+                            repo_map={"@hrx": ""}
+                        ),
+                        build_dir="/repo/pkg",
+                        repo_root="/repo",
+                    )
+                    functions.filegroup(name="inputs", srcs=["first.txt", "second.txt"])
+                    location = f"$({kind} :inputs)"
+                    value = [location] if field == "args" else {"INPUT": location}
+                    with self.assertRaisesRegex(ValueError, "single-file location"):
+                        functions.native_test(
+                            name="location_test",
+                            src="//tools:runner",
+                            **{field: value},
+                        )
+
     def test_native_test_preserves_file_and_target_data(self):
         repo_root = Path(__file__).resolve().parents[2]
         converter = SimpleNamespace(body="")
@@ -884,9 +907,9 @@ cc_library(
             ],
         )
 
-        self.assertIn('"${PROJECT_SOURCE_DIR}/pkg/input.txt"', converter.body)
+        self.assertIn('"{{${PROJECT_SOURCE_DIR}/pkg/input.txt}}"', converter.body)
         self.assertIn(
-            '"--flag=${PROJECT_SOURCE_DIR}/pkg/nested/input.bin"',
+            '"--flag={{${PROJECT_SOURCE_DIR}/pkg/nested/input.bin}}"',
             converter.body,
         )
 
@@ -910,9 +933,9 @@ cc_library(
             ],
         )
 
-        self.assertIn('"${PROJECT_SOURCE_DIR}/pkg/input.txt"', converter.body)
+        self.assertIn('"{{${PROJECT_SOURCE_DIR}/pkg/input.txt}}"', converter.body)
         self.assertIn(
-            '"--flag=${PROJECT_SOURCE_DIR}/pkg/nested/input.bin"',
+            '"--flag={{${PROJECT_SOURCE_DIR}/pkg/nested/input.bin}}"',
             converter.body,
         )
 
@@ -1029,11 +1052,11 @@ iree_execution_test_suite(
 
         self.assertIn("ENV", converter.body)
         self.assertIn(
-            '"FIXTURE=${PROJECT_SOURCE_DIR}/pkg/input.txt"',
+            '"FIXTURE={{${PROJECT_SOURCE_DIR}/pkg/input.txt}}"',
             converter.body,
         )
         self.assertIn(
-            '"SPIRV_VAL=$<TARGET_FILE:iree::third_party::spirv_val>"',
+            '"SPIRV_VAL={{$<TARGET_FILE:iree::third_party::spirv_val>}}"',
             converter.body,
         )
 
@@ -1133,13 +1156,13 @@ iree_execution_test_suite(
             ],
         )
 
-        self.assertIn('"${PROJECT_SOURCE_DIR}/pkg/input.txt"', converter.body)
+        self.assertIn('"{{${PROJECT_SOURCE_DIR}/pkg/input.txt}}"', converter.body)
         self.assertIn(
-            '"--tool=${PROJECT_SOURCE_DIR}/pkg/fixture_tool"',
+            '"--tool={{${PROJECT_SOURCE_DIR}/pkg/fixture_tool}}"',
             converter.body,
         )
         self.assertIn(
-            '"--runner=$<TARGET_FILE:iree::tools::runner>"',
+            '"--runner={{$<TARGET_FILE:iree::tools::runner>}}"',
             converter.body,
         )
         self.assertNotIn("$(location", converter.body)
@@ -1165,7 +1188,7 @@ iree_execution_test_suite(
         self.assertIn("ENV", converter.body)
         self.assertIn('"FEATURE=enabled"', converter.body)
         self.assertIn(
-            '"FIXTURE=${PROJECT_SOURCE_DIR}/pkg/input.txt"',
+            '"FIXTURE={{${PROJECT_SOURCE_DIR}/pkg/input.txt}}"',
             converter.body,
         )
         self.assertNotIn("$(location", converter.body)
