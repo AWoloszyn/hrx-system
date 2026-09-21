@@ -492,6 +492,112 @@ TEST_P(WindowsXdnaKernelExecutionTest,
   EXPECT_TRUE(native_.opcodes.empty());
 }
 
+TEST_P(WindowsXdnaKernelExecutionTest, ResetFenceDoesNotCompleteAcceptedWork) {
+  amdf_xdna_umd_memory_result_t result = {};
+  ASSERT_EQ(amdf_xdna_umd_memory_prepare_private(&context_, &profile_, &create_,
+                                                 &memory_, &result),
+            AMDF_STATUS_OK);
+  auto* execution = context_.kernel_execution;
+  ASSERT_EQ(amdf_windows_xdna_kernel_execution_acquire_queue(execution),
+            AMDF_STATUS_OK);
+  uint64_t submission = 0;
+  ASSERT_EQ(amdf_windows_xdna_kernel_execution_submit(
+                execution, result.device_address, 64, &submission),
+            AMDF_STATUS_OK);
+  native_.progress = UINT64_MAX;
+  EXPECT_EQ(amdf_windows_xdna_kernel_execution_query_progress(execution), 0u);
+  const auto lost = amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST);
+  EXPECT_EQ(amdf_windows_xdna_kernel_execution_query_terminal_status(execution),
+            lost);
+  amdf_wait_deadline_t deadline;
+  ASSERT_EQ(amdf_wait_deadline_initialize(AMDF_TIMEOUT_INFINITE, 0, &deadline),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(
+      amdf_windows_xdna_kernel_execution_wait(execution, submission, &deadline),
+      lost);
+  const size_t accepted_count = native_.opcodes.size();
+  uint64_t rejected_submission = 77;
+  EXPECT_EQ(amdf_windows_xdna_kernel_execution_submit(
+                execution, result.device_address, 64, &rejected_submission),
+            lost);
+  EXPECT_EQ(rejected_submission, 77u);
+  EXPECT_EQ(native_.opcodes.size(), accepted_count);
+  // This dependency executes no hardware work. End its simulated access
+  // before the fixture releases memory; reset signaling did not prove this.
+  native_.progress = submission;
+  amdf_windows_xdna_kernel_execution_release_queue(execution);
+}
+
+TEST_P(WindowsXdnaKernelExecutionTest,
+       ResetDuringWaitDoesNotCompleteAcceptedWork) {
+  amdf_xdna_umd_memory_result_t result = {};
+  ASSERT_EQ(amdf_xdna_umd_memory_prepare_private(&context_, &profile_, &create_,
+                                                 &memory_, &result),
+            AMDF_STATUS_OK);
+  auto* execution = context_.kernel_execution;
+  ASSERT_EQ(amdf_windows_xdna_kernel_execution_acquire_queue(execution),
+            AMDF_STATUS_OK);
+  native_.deferred_opcode = 3;
+  uint64_t submission = 0;
+  ASSERT_EQ(amdf_windows_xdna_kernel_execution_submit(
+                execution, result.device_address, 64, &submission),
+            AMDF_STATUS_OK);
+  kmt_.wait_from_cpu =
+      [](const D3DKMT_WAITFORSYNCHRONIZATIONOBJECTFROMCPU* wait) -> NTSTATUS {
+    EXPECT_EQ(wait->FenceValueArray[0], native_state->pending_submission);
+    native_state->progress = UINT64_MAX;
+    EXPECT_NE(wait->hAsyncEvent, nullptr);
+    EXPECT_TRUE(SetEvent(wait->hAsyncEvent));
+    return 0;
+  };
+  amdf_wait_deadline_t deadline;
+  ASSERT_EQ(amdf_wait_deadline_initialize(AMDF_TIMEOUT_INFINITE, 0, &deadline),
+            AMDF_STATUS_OK);
+  const auto lost = amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST);
+  EXPECT_EQ(
+      amdf_windows_xdna_kernel_execution_wait(execution, submission, &deadline),
+      lost);
+  EXPECT_EQ(amdf_windows_xdna_kernel_execution_query_progress(execution), 0u);
+  EXPECT_EQ(amdf_windows_xdna_kernel_execution_query_terminal_status(execution),
+            lost);
+  // End simulated device access independently of the reset indication.
+  native_.progress = submission;
+  amdf_windows_xdna_kernel_execution_release_queue(execution);
+}
+
+TEST_P(WindowsXdnaKernelExecutionTest,
+       ResetDuringBootstrapDoesNotPublishOrReleaseBacking) {
+  native_.deferred_opcode = 5;
+  kmt_.wait_from_cpu =
+      [](const D3DKMT_WAITFORSYNCHRONIZATIONOBJECTFROMCPU* wait) -> NTSTATUS {
+    EXPECT_EQ(wait->FenceValueArray[0], native_state->pending_submission);
+    EXPECT_EQ(wait->hAsyncEvent, nullptr);
+    native_state->progress = UINT64_MAX;
+    return 0;
+  };
+  amdf_xdna_umd_memory_result_t result = {};
+  result.device_address = 77;
+  const auto lost = amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST);
+  EXPECT_EQ(amdf_xdna_umd_memory_prepare_private(&context_, &profile_, &create_,
+                                                 &memory_, &result),
+            lost);
+  EXPECT_EQ(result.device_address, 77u);
+  EXPECT_EQ(native_.opcodes, (std::vector<uint64_t>{2, 5}));
+  ASSERT_NE(memory_, nullptr);
+  EXPECT_EQ(amdf_xdna_umd_memory_destroy(memory_), lost);
+  EXPECT_NE(native_.allocations[3].pointer, nullptr);
+  EXPECT_EQ(amdf_windows_xdna_kernel_execution_prepare_context_destroy(
+                context_.kernel_execution),
+            amdf_make_api_status(AMDF_STATUS_CODE_BUSY));
+  // The fake's last access ends here, separately from its failed wait. No
+  // reset or failed-device recovery claim follows from this cleanup step.
+  native_.progress = native_.pending_submission;
+  EXPECT_EQ(amdf_xdna_umd_memory_destroy(memory_), AMDF_STATUS_OK);
+  memory_ = nullptr;
+  EXPECT_EQ(native_.opcodes, (std::vector<uint64_t>{2, 5}));
+  EXPECT_EQ(amdf_kmt_device_status_query(&device_.status), lost);
+}
+
 TEST_P(WindowsXdnaKernelExecutionTest, FailedBootstrapDoesNotPublishMemory) {
   native_.initialize_result = 0;
   amdf_xdna_umd_memory_result_t result = {};

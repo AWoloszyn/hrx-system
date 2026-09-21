@@ -118,8 +118,11 @@ class D3D12MemoryInteropTest : public GpuDeviceFixture {
       return;
     }
     if (queue_ != nullptr) {
-      ASSERT_EQ(api_->kernel_queue_destroy(queue_), AMDF_STATUS_OK);
-      queue_ = nullptr;
+      const auto status = api_->kernel_queue_destroy(queue_);
+      if (status != amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
+        queue_ = nullptr;
+      }
+      ASSERT_EQ(status, AMDF_STATUS_OK);
     }
     if (command_mapping_ != nullptr) {
       ASSERT_EQ(api_->host_mapping_destroy(command_mapping_), AMDF_STATUS_OK);

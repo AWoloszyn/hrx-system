@@ -74,7 +74,9 @@ uint64_t amdf_windows_xdna_kernel_execution_query_progress(
     const amdf_windows_xdna_kernel_execution_t* execution) {
   return execution->progress_fence_pointer == NULL
              ? 0
-             : *execution->progress_fence_pointer;
+             : amdf_kmt_device_status_query_fence_progress(
+                   &execution->device->status,
+                   execution->progress_fence_pointer);
 }
 
 static amdf_status_t amdf_windows_xdna_kernel_execution_submit_native(
@@ -87,7 +89,8 @@ static amdf_status_t amdf_windows_xdna_kernel_execution_submit_native(
   if (!amdf_status_is_ok(terminal_status)) {
     return terminal_status;
   }
-  if (execution->last_native_submission == UINT64_MAX) {
+  // UINT64_MAX is reserved for the monitored fence's reset indication.
+  if (execution->last_native_submission >= UINT64_MAX - 1) {
     return amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED);
   }
   const uint64_t native_submission = execution->last_native_submission + 1;
@@ -130,10 +133,17 @@ static void amdf_windows_xdna_kernel_execution_record_failure(
 
 static amdf_status_t amdf_windows_xdna_kernel_execution_wait_synchronous(
     amdf_windows_xdna_kernel_execution_t* execution, uint64_t submission) {
-  if (amdf_windows_xdna_kernel_execution_query_progress(execution) >=
-      submission) {
-    MemoryBarrier();
+  const uint64_t progress =
+      amdf_windows_xdna_kernel_execution_query_progress(execution);
+  // An ordinary native point still proves retirement after a separate error.
+  // The reset sentinel supplies no such point and is filtered by the reader.
+  if (progress >= submission) {
     return AMDF_STATUS_OK;
+  }
+  const amdf_status_t terminal_status =
+      amdf_windows_xdna_kernel_execution_query_terminal_status(execution);
+  if (!amdf_status_is_ok(terminal_status)) {
+    return terminal_status;
   }
   D3DKMT_WAITFORSYNCHRONIZATIONOBJECTFROMCPU wait = {0};
   wait.hDevice = execution->device->device;
@@ -147,11 +157,16 @@ static amdf_status_t amdf_windows_xdna_kernel_execution_wait_synchronous(
         &execution->device->status, execution->device->kmt,
         execution->device->device, status);
   }
-  MemoryBarrier();
-  return amdf_windows_xdna_kernel_execution_query_progress(execution) >=
-                 submission
-             ? AMDF_STATUS_OK
-             : amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL);
+  const uint64_t completed =
+      amdf_windows_xdna_kernel_execution_query_progress(execution);
+  if (completed >= submission) {
+    return AMDF_STATUS_OK;
+  }
+  const amdf_status_t completed_status =
+      amdf_windows_xdna_kernel_execution_query_terminal_status(execution);
+  return amdf_status_is_ok(completed_status)
+             ? amdf_make_api_status(AMDF_STATUS_CODE_INTERNAL)
+             : completed_status;
 }
 
 static amdf_status_t amdf_windows_xdna_kernel_execution_submit_preparation(
@@ -626,8 +641,12 @@ amdf_status_t amdf_windows_xdna_kernel_execution_wait(
   amdf_wait_budget_t remaining;
   while (amdf_windows_xdna_kernel_execution_query_progress(execution) <
          native_submission) {
-    const amdf_status_t status =
-        amdf_wait_deadline_query_remaining(deadline, &remaining);
+    amdf_status_t status =
+        amdf_windows_xdna_kernel_execution_query_terminal_status(execution);
+    if (!amdf_status_is_ok(status)) {
+      return status;
+    }
+    status = amdf_wait_deadline_query_remaining(deadline, &remaining);
     if (!amdf_status_is_ok(status)) {
       return status;
     }
@@ -639,13 +658,14 @@ amdf_status_t amdf_windows_xdna_kernel_execution_wait(
   // A finite waiter never blocks acquiring the reusable event behind an
   // infinite native wait. Contention consumes the same original deadline.
   for (;;) {
-    if (amdf_windows_xdna_kernel_execution_query_progress(execution) >=
-        native_submission) {
-      MemoryBarrier();
-      return AMDF_STATUS_OK;
+    const uint64_t progress =
+        amdf_windows_xdna_kernel_execution_query_progress(execution);
+    amdf_status_t status =
+        amdf_windows_xdna_kernel_execution_query_terminal_status(execution);
+    if (!amdf_status_is_ok(status) || progress >= native_submission) {
+      return status;
     }
-    const amdf_status_t status =
-        amdf_wait_deadline_query_remaining(deadline, &remaining);
+    status = amdf_wait_deadline_query_remaining(deadline, &remaining);
     if (!amdf_status_is_ok(status)) {
       return status;
     }
@@ -661,6 +681,11 @@ amdf_status_t amdf_windows_xdna_kernel_execution_wait(
   while (amdf_status_is_ok(status) &&
          amdf_windows_xdna_kernel_execution_query_progress(execution) <
              native_submission) {
+    status =
+        amdf_windows_xdna_kernel_execution_query_terminal_status(execution);
+    if (!amdf_status_is_ok(status)) {
+      break;
+    }
     status = amdf_wait_deadline_query_remaining(deadline, &remaining);
     if (!amdf_status_is_ok(status)) {
       break;
@@ -718,7 +743,8 @@ amdf_status_t amdf_windows_xdna_kernel_execution_wait(
   }
   ReleaseSRWLockExclusive(&execution->wait_lock);
   if (amdf_status_is_ok(status)) {
-    MemoryBarrier();
+    status =
+        amdf_windows_xdna_kernel_execution_query_terminal_status(execution);
   }
   return status;
 }

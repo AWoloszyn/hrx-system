@@ -69,6 +69,8 @@ struct FakeMemoryState {
   uint32_t wait_failures_remaining = 0;
   // Monitored paging progress exposed to production code.
   volatile uint64_t paging_fence = 0;
+  // Explicit successful-wait result, or zero to publish the requested point.
+  uint64_t progress_on_wait_success = 0;
   // Native result injected after shared-resource acquisition.
   amdf_status_t import_status = AMDF_STATUS_OK;
   // Independent NT reference captured by the native import dependency.
@@ -204,7 +206,9 @@ FakeWaitFromCpu(const D3DKMT_WAITFORSYNCHRONIZATIONOBJECTFROMCPU* wait) {
     --current_state->wait_failures_remaining;
     return kStatusNoMemory;
   }
-  current_state->paging_fence = target;
+  current_state->paging_fence = current_state->progress_on_wait_success != 0
+                                    ? current_state->progress_on_wait_success
+                                    : target;
   return 0;
 }
 
@@ -337,6 +341,44 @@ TEST_F(WindowsGpuMemoryTest, MapsExactReadExecuteAccessWithoutWrite) {
             AMDF_STATUS_OK);
   ASSERT_NE(memory, nullptr);
   EXPECT_EQ(amdf_gpu_umd_memory_destroy(memory), AMDF_STATUS_OK);
+}
+
+class WindowsGpuResetFenceTest : public WindowsGpuMemoryTest,
+                                 public ::testing::WithParamInterface<bool> {};
+
+INSTANTIATE_TEST_SUITE_P(DuringWait, WindowsGpuResetFenceTest,
+                         ::testing::Bool());
+
+TEST_P(WindowsGpuResetFenceTest,
+       PreventsMemoryPublicationBeforeIndependentNativeReclamation) {
+  if (GetParam()) {
+    state_.progress_on_wait_success = UINT64_MAX;
+  } else {
+    state_.paging_fence = UINT64_MAX;
+  }
+  amdf_gpu_umd_memory_t* memory = nullptr;
+  amdf_gpu_umd_memory_result_t result;
+  std::memset(&result, 0xA5, sizeof(result));
+  const amdf_gpu_umd_memory_result_t original = result;
+  const auto lost = amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST);
+  EXPECT_EQ(amdf_gpu_umd_memory_prepare(&device_, 0, nullptr, &profile_,
+                                        &create_info_, &memory, &result),
+            lost);
+  EXPECT_EQ(std::memcmp(&result, &original, sizeof(result)), 0);
+  EXPECT_EQ(state_.wait_targets.size(), GetParam() ? 1u : 0u);
+  ASSERT_NE(memory, nullptr);
+  // The reset sentinel did not complete the map. Native allocation destruction
+  // independently reclaims the failed construction's mapping and residency;
+  // cleanup needs neither another paging wait nor a manufactured fence value.
+  EXPECT_EQ(amdf_gpu_umd_memory_destroy(memory), AMDF_STATUS_OK);
+  EXPECT_EQ(state_.metadata_free_count, 1u);
+  EXPECT_EQ(state_.wait_targets.size(), GetParam() ? 1u : 0u);
+  EXPECT_EQ(std::count(state_.operations.begin(), state_.operations.end(),
+                       Operation::kDestroyAllocation),
+            1);
+  EXPECT_EQ(std::count(state_.operations.begin(), state_.operations.end(),
+                       Operation::kFreeAddress),
+            1);
 }
 
 TEST_F(WindowsGpuMemoryTest,

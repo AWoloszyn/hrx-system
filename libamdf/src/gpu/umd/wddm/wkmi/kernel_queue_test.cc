@@ -286,47 +286,56 @@ bool NativeFailureLeavesNoAdapterCleanupObligation() {
   return passed;
 }
 
-bool PublishedQueueOwnsSubmissionUntilExplicitDestruction() {
+bool FinalReleaseConsumesPublishedQueueOnEveryNativeResult() {
   bool passed = true;
-  FakeNativeState state;
-  current_state = &state;
-  amdf_wkmi_bridge_gpu_adapter_t adapter;
-  adapter.host_allocator = {&state, Allocate, nullptr, Free};
-  const auto create = MakeCreateInfo();
-  amdf_wkmi_bridge_gpu_kernel_queue_t* queue = nullptr;
-  amdf_wkmi_bridge_gpu_kernel_queue_info_t info = {};
-  uint32_t native_status = 0;
-  AMDF_EXPECT(amdf::wkmi_bridge::GpuKernelQueueCreate(&adapter, &create, &queue,
-                                                      &info, &native_status) ==
-              AMDF_WKMI_BRIDGE_RESULT_SUCCESS);
-  if (queue == nullptr) {
-    return false;
+  for (uint32_t failure_stage = 0; failure_stage < 3; ++failure_stage) {
+    FakeNativeState state;
+    current_state = &state;
+    amdf_wkmi_bridge_gpu_adapter_t adapter;
+    adapter.host_allocator = {&state, Allocate, nullptr, Free};
+    const auto create = MakeCreateInfo();
+    amdf_wkmi_bridge_gpu_kernel_queue_t* queue = nullptr;
+    amdf_wkmi_bridge_gpu_kernel_queue_info_t info = {};
+    uint32_t native_status = 0;
+    AMDF_EXPECT(amdf::wkmi_bridge::GpuKernelQueueCreate(
+                    &adapter, &create, &queue, &info, &native_status) ==
+                AMDF_WKMI_BRIDGE_RESULT_SUCCESS);
+    if (queue == nullptr) {
+      return false;
+    }
+    AMDF_EXPECT(info.progress_fence_handle == kFence);
+    AMDF_EXPECT(info.progress_fence_pointer == &state.progress);
+    AMDF_EXPECT(state.live_allocation_count == 2);
+    AMDF_EXPECT(adapter.live_queue_count == 1);
+    AMDF_EXPECT(amdf::wkmi_bridge::PrepareGpuAdapterClose(
+                    &adapter, &native_status) == AMDF_WKMI_BRIDGE_RESULT_BUSY);
+    AMDF_EXPECT(amdf::wkmi_bridge::GpuKernelQueueSubmit(queue, 0x2000, 64, 7,
+                                                        &native_status) ==
+                AMDF_WKMI_BRIDGE_RESULT_SUCCESS);
+    AMDF_EXPECT(*info.progress_fence_pointer == 7);
+    if (failure_stage == 1) {
+      state.destroy_queue_status = STATUS_DEVICE_BUSY;
+    }
+    if (failure_stage == 2) {
+      state.destroy_context_status = STATUS_DEVICE_BUSY;
+    }
+    AMDF_EXPECT(
+        amdf::wkmi_bridge::GpuKernelQueueDestroy(queue, &native_status) ==
+        (failure_stage == 0 ? AMDF_WKMI_BRIDGE_RESULT_SUCCESS
+                            : AMDF_WKMI_BRIDGE_RESULT_NATIVE_FAILURE));
+    AMDF_EXPECT(native_status ==
+                static_cast<uint32_t>(failure_stage == 0 ? STATUS_SUCCESS
+                                                         : STATUS_DEVICE_BUSY));
+    AMDF_EXPECT(state.live_allocation_count == 0);
+    AMDF_EXPECT(adapter.live_queue_count == 0);
+    AMDF_EXPECT(state.queue_destroy_count == 1);
+    AMDF_EXPECT(state.context_destroy_count == (failure_stage == 1 ? 0u : 1u));
+    AMDF_EXPECT(
+        amdf::wkmi_bridge::PrepareGpuAdapterClose(&adapter, &native_status) ==
+        AMDF_WKMI_BRIDGE_RESULT_SUCCESS);
+    AMDF_EXPECT(state.submit_count == 1);
+    AMDF_EXPECT(state.dependency_failure_count == 0);
   }
-  AMDF_EXPECT(info.progress_fence_handle == kFence);
-  AMDF_EXPECT(info.progress_fence_pointer == &state.progress);
-  AMDF_EXPECT(state.live_allocation_count == 2);
-  AMDF_EXPECT(adapter.live_queue_count == 1);
-  AMDF_EXPECT(amdf::wkmi_bridge::GpuKernelQueueSubmit(queue, 0x2000, 64, 7,
-                                                      &native_status) ==
-              AMDF_WKMI_BRIDGE_RESULT_SUCCESS);
-  AMDF_EXPECT(*info.progress_fence_pointer == 7);
-  state.destroy_queue_status = STATUS_DEVICE_BUSY;
-  AMDF_EXPECT(amdf::wkmi_bridge::GpuKernelQueueDestroy(queue, &native_status) ==
-              AMDF_WKMI_BRIDGE_RESULT_NATIVE_FAILURE);
-  AMDF_EXPECT(native_status == static_cast<uint32_t>(STATUS_DEVICE_BUSY));
-  AMDF_EXPECT(amdf::wkmi_bridge::PrepareGpuAdapterClose(
-                  &adapter, &native_status) == AMDF_WKMI_BRIDGE_RESULT_BUSY);
-  AMDF_EXPECT(state.live_allocation_count == 2);
-  AMDF_EXPECT(state.context_destroy_count == 0);
-  state.destroy_queue_status = STATUS_SUCCESS;
-  AMDF_EXPECT(amdf::wkmi_bridge::GpuKernelQueueDestroy(queue, &native_status) ==
-              AMDF_WKMI_BRIDGE_RESULT_SUCCESS);
-  AMDF_EXPECT(state.live_allocation_count == 0);
-  AMDF_EXPECT(adapter.live_queue_count == 0);
-  AMDF_EXPECT(state.queue_destroy_count == 2);
-  AMDF_EXPECT(state.context_destroy_count == 1);
-  AMDF_EXPECT(state.submit_count == 1);
-  AMDF_EXPECT(state.dependency_failure_count == 0);
   current_state = nullptr;
   return passed;
 }
@@ -347,8 +356,8 @@ int main() {
        AllocationFailureLeavesNoNativeOwnership},
       {"NativeFailureLeavesNoAdapterCleanupObligation",
        NativeFailureLeavesNoAdapterCleanupObligation},
-      {"PublishedQueueOwnsSubmissionUntilExplicitDestruction",
-       PublishedQueueOwnsSubmissionUntilExplicitDestruction},
+      {"FinalReleaseConsumesPublishedQueueOnEveryNativeResult",
+       FinalReleaseConsumesPublishedQueueOnEveryNativeResult},
   };
   bool passed = true;
   for (const auto& test : cases) {

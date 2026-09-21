@@ -383,38 +383,41 @@ typedef struct amdf_api_t {
   amdf_status_t(AMDF_CALL* kernel_queue_query_info)(
       amdf_kernel_queue_t* queue, amdf_kernel_queue_info_t* out_info);
 
-  /// Samples retirement and observed terminal state without waiting.
+  /// Reads established retirement and cached terminal state without waiting.
   ///
-  /// The operation may retire completed submissions and consume their native
-  /// results. It is thread-safe with submission and other status operations. It
-  /// performs no allocation, system call, sleep, or active polling. No
-  /// output is modified when validation fails. ACTIVE means no terminal failure
-  /// has been observed, not that a fresh native health check was performed.
-  /// Rejection and timeout errors do not themselves mark a queue failed. A
-  /// terminal failure remains sticky and is not itself retirement proof.
-  /// Providers without a mapped completion fence report cached progress;
-  /// `kernel_queue_wait`, including a zero-time wait, refreshes that progress.
-  /// This path takes no library lock and performs no lazy initialization. It
-  /// may atomically claim retirement; queue-slot updates can contend, so this
-  /// is not a wait-free guarantee.
+  /// This is a read-only snapshot, not a native completion check. It does not
+  /// consume command results or retire submissions, even when the native
+  /// completion fence has advanced. Use `kernel_queue_wait`, including a
+  /// zero-time wait, to refresh native progress and perform checked retirement
+  /// before reusing command storage.
+  /// The operation is thread-safe with submission and waits. It performs no
+  /// allocation, system call, sleep, active polling, locking, lazy
+  /// initialization or ownership-counter updates. No output is modified when
+  /// validation fails. ACTIVE means no terminal failure has been observed, not
+  /// that a fresh native health check was performed. Rejection and timeout
+  /// errors do not themselves mark a queue failed. A terminal failure remains
+  /// sticky and is not itself retirement proof.
   amdf_status_t(AMDF_CALL* kernel_queue_query_status)(
       amdf_kernel_queue_t* queue, amdf_kernel_queue_status_t* out_status);
 
   /// Waits until `submission` retires, a failure is observed, or time expires.
   ///
   /// `timeout_nanoseconds` includes host contention, active polling, and native
-  /// waiting under one deadline. A zero timeout performs one nonblocking native
-  /// poll when progress is not already known. `poll_duration_nanoseconds` is
-  /// clipped to that timeout; zero disables active polling.
-  /// `AMDF_TIMEOUT_INFINITE` requests no deadline. A
-  /// timeout observes but never cancels accepted work or permits command
-  /// storage reuse. The operation is thread-safe with submission and status
-  /// queries.
+  /// waiting under one deadline. A zero timeout attempts checked retirement
+  /// without waiting, including one native poll when progress is not already
+  /// known. It can time out while another caller owns retirement even if native
+  /// execution is complete. `poll_duration_nanoseconds` is clipped to that
+  /// timeout; zero disables active polling.
+  /// `AMDF_TIMEOUT_INFINITE` requests no deadline. A timeout does not itself
+  /// cancel accepted work or permit command storage reuse. The operation is
+  /// thread-safe with submission, status queries and other waits.
   /// A native wait error is returned even if progress concurrently advances;
   /// callers use `kernel_queue_query_status` to determine retirement and
   /// whether a terminal failure was observed before deciding to retry.
-  /// This is the explicit synchronization path. It may query clocks, poll,
-  /// yield, enter native waits and serialize access to a reusable wait event.
+  /// Confirmed native completion permits command-result inspection before
+  /// retirement is published. This explicit synchronization path may query
+  /// clocks, poll, yield, enter native waits and serialize access to a reusable
+  /// wait event.
   /// Contention consumes the same deadline. Queue creation prepares wait
   /// resources; waiting performs no library allocation or lazy resource setup.
   amdf_status_t(AMDF_CALL* kernel_queue_wait)(
@@ -424,9 +427,15 @@ typedef struct amdf_api_t {
   /// Destroys one queue after every accepted submission has retired.
   ///
   /// The caller must have exclusive access. The operation samples progress once
-  /// and returns `AMDF_STATUS_CODE_BUSY` without waiting while work remains. A
-  /// native teardown failure leaves the queue live so destruction can be
-  /// retried.
+  /// and returns API-domain BUSY without waiting or native mutation while work
+  /// remains; the queue stays live. Every other result for a valid queue
+  /// consumes the handle, including a native cleanup error. Native errors
+  /// retain their domains: a native busy error is not the API-domain
+  /// precondition rejection. Failed cleanup preserves unreleased native
+  /// resources and required backing as leaks, without a retained library owner
+  /// or later cleanup attempt. It does not authorize reuse of caller-owned
+  /// command or data storage without independent completion evidence. The
+  /// device must outlive this call.
   amdf_status_t(AMDF_CALL* kernel_queue_destroy)(amdf_kernel_queue_t* queue);
 
   /// Copies immutable properties cached when `queue` was created.
@@ -498,9 +507,15 @@ typedef struct amdf_api_t {
   /// published work has been consumed.
   ///
   /// The caller must have exclusive access. The operation returns BUSY without
-  /// native mutation while a mapping or unconsumed publication remains. A
-  /// native teardown failure leaves the queue live so destruction can be
-  /// retried.
+  /// native mutation while a mapping or unconsumed publication remains. This
+  /// API-domain rejection leaves the queue live. Every other result for a valid
+  /// queue consumes the handle, including a native cleanup error. Native errors
+  /// retain their domains: a native busy error is not a precondition rejection.
+  /// Failed cleanup preserves unreleased native resources and required backing
+  /// as leaks, without a retained library owner or later cleanup attempt.
+  /// Packet consumption alone is not execution completion. Failed queue removal
+  /// does not permit reuse of caller-owned scratch, commands or data without
+  /// independent completion evidence. The device must outlive this call.
   amdf_status_t(AMDF_CALL* user_queue_destroy)(amdf_user_queue_t* queue);
 
   /// Returns the stable base address consumed by `kind` for `memory`.

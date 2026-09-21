@@ -22,8 +22,8 @@ not promise a wall-clock deadline for kernel submission.
 | Scope-profile and visibility planning | Qualify a proposed consumer set and exact producer/consumer pair, using temporary host storage. | Device activation, native allocation, mapping and execution. This is not an allocation-free per-dispatch query. |
 | Device, memory, context and queue creation | Acquire the native resources, address mappings, residency, packet storage and completion objects required by the requested resource. | Deferring that resource's preparation to a metadata query or its first publication. |
 | Kernel publication | Claim a queue slot, resolve the caller-owned command range, fill required transport fields and publish natively. | Library locks, allocation, lazy setup, command parsing/copying, indirect-buffer scans and completion waits. |
-| Kernel progress observation | Read mapped or cached progress and consume completed native command results. | Library locks, allocation, lazy setup, system calls and active polling. |
-| Explicit waiting | Query clocks, poll within the requested budget, yield and enter native waits. | Allocation or first-wait resource creation. Wait-event serialization consumes the same deadline. |
+| Kernel progress observation | Read established retirement and cached terminal state without mutating either. | Native completion checks, command-result consumption, retirement, library locks, allocation, lazy setup, system calls and active polling. |
+| Explicit waiting | Refresh native progress, inspect command results and establish retirement; query clocks, poll within the requested budget, yield and enter native waits. | Allocation or first-wait resource creation. Wait-event serialization consumes the same deadline. |
 
 An address query indexes the memory's established access record and address
 kind. Its cost does not grow with the allocation size, number of live

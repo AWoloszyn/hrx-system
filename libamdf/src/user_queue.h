@@ -26,7 +26,9 @@ typedef struct amdf_user_queue_vtable_t {
                                  uint64_t published_index,
                                  uint64_t timeout_nanoseconds,
                                  uint64_t poll_duration_nanoseconds);
-  // Releases exact native queue state after all work has been consumed.
+  // API-domain BUSY rejects unconsumed work without native mutation. Every
+  // other result consumes native ownership, preserving unsafe backing on
+  // failure. A native-domain busy error is a consuming cleanup failure.
   amdf_status_t (*destroy_native)(amdf_user_queue_t* queue);
 } amdf_user_queue_vtable_t;
 

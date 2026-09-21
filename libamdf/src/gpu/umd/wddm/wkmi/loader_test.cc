@@ -15,6 +15,7 @@
 namespace {
 
 using SetQueryResultFn = void(__cdecl*)(amdf_wkmi_bridge_result_t);
+using SetAbiVersionFn = void(__cdecl*)(uint32_t);
 
 class WkmiLoaderTest : public ::testing::Test {
  protected:
@@ -85,6 +86,27 @@ TEST_F(WkmiLoaderTest, NegotiationFailurePreservesLiveModuleOwner) {
   EXPECT_EQ(loader.module, loaded_module);
   EXPECT_EQ(amdf_gpu_wddm_wkmi_loader_deinitialize(&loader), AMDF_STATUS_OK);
   EXPECT_EQ(loader.module, nullptr);
+}
+
+TEST_F(WkmiLoaderTest, RejectsRetryableQueueReleaseBridge) {
+  amdf_gpu_wddm_wkmi_loader_t loader = {};
+  ASSERT_EQ(
+      amdf_gpu_wddm_wkmi_loader_initialize(amdf_allocator_system(), &loader),
+      AMDF_STATUS_OK);
+  const auto set_version = reinterpret_cast<SetAbiVersionFn>(
+      GetProcAddress(loader.module, "amdf_test_wkmi_bridge_set_abi_version"));
+  ASSERT_NE(set_version, nullptr);
+  set_version(AMDF_WKMI_BRIDGE_ABI_VERSION_3);
+  const auto* sentinel =
+      reinterpret_cast<const amdf_wkmi_bridge_api_t*>(uintptr_t{1});
+  const amdf_wkmi_bridge_api_t* api = sentinel;
+  EXPECT_EQ(amdf_gpu_wddm_wkmi_loader_query_api(&loader, &api),
+            amdf_make_api_status(AMDF_STATUS_CODE_VERSION_MISMATCH));
+  EXPECT_EQ(api, sentinel);
+  set_version(AMDF_WKMI_BRIDGE_ABI_VERSION_LATEST);
+  EXPECT_EQ(amdf_gpu_wddm_wkmi_loader_query_api(&loader, &api), AMDF_STATUS_OK);
+  EXPECT_NE(api, sentinel);
+  EXPECT_EQ(amdf_gpu_wddm_wkmi_loader_deinitialize(&loader), AMDF_STATUS_OK);
 }
 
 }  // namespace

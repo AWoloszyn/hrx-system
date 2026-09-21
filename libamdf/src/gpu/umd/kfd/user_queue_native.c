@@ -13,18 +13,6 @@
 
 #include "libamdf/src/platform/linux/file.h"
 
-amdf_gpu_kfd_user_queue_destroy_result_t
-amdf_gpu_kfd_user_queue_classify_destroy_status(amdf_status_t status) {
-  const bool failed_after_consumption =
-      amdf_status_domain(status) == AMDF_STATUS_DOMAIN_ERRNO &&
-      (amdf_status_code(status) == ETIME || amdf_status_code(status) == EIO);
-  return (amdf_gpu_kfd_user_queue_destroy_result_t){
-      .status = status,
-      .identifier_consumed =
-          amdf_status_is_ok(status) || failed_after_consumption,
-  };
-}
-
 static amdf_status_t amdf_gpu_kfd_user_queue_buffer_create(
     void* user_data, amdf_gpu_umd_device_t* device,
     const amdf_gpu_kfd_buffer_create_info_t* create_info,
@@ -59,19 +47,16 @@ static amdf_status_t amdf_gpu_kfd_user_queue_create_native(
   return AMDF_STATUS_OK;
 }
 
-static amdf_gpu_kfd_user_queue_destroy_result_t
-amdf_gpu_kfd_user_queue_destroy_native(void* user_data,
-                                       amdf_gpu_umd_device_t* device,
-                                       uint32_t queue_identifier) {
+static amdf_status_t amdf_gpu_kfd_user_queue_destroy_native(
+    void* user_data, amdf_gpu_umd_device_t* device, uint32_t queue_identifier) {
   (void)user_data;
   struct kfd_ioctl_destroy_queue_args arguments = {
       .queue_id = queue_identifier,
   };
   if (ioctl(device->descriptor, AMDKFD_IOC_DESTROY_QUEUE, &arguments) == 0) {
-    return amdf_gpu_kfd_user_queue_classify_destroy_status(AMDF_STATUS_OK);
+    return AMDF_STATUS_OK;
   }
-  return amdf_gpu_kfd_user_queue_classify_destroy_status(
-      amdf_linux_error(errno));
+  return amdf_linux_error(errno);
 }
 
 static amdf_status_t amdf_gpu_kfd_user_queue_doorbell_map(
@@ -92,13 +77,6 @@ static amdf_status_t amdf_gpu_kfd_user_queue_doorbell_unmap(
   (void)user_data;
   return munmap(mapping, byte_length) == 0 ? AMDF_STATUS_OK
                                            : amdf_linux_error(errno);
-}
-
-static amdf_status_t amdf_gpu_kfd_user_queue_reset_query(
-    void* user_data, amdf_gpu_umd_device_t* device,
-    amdf_gpu_kfd_reset_state_t* out_state) {
-  (void)user_data;
-  return amdf_gpu_kfd_reset_monitor_query(&device->reset_monitor, out_state);
 }
 
 static amdf_status_t amdf_gpu_kfd_user_queue_vm_fault_query(
@@ -128,7 +106,6 @@ static const amdf_gpu_kfd_user_queue_native_api_t
         .doorbell_map = amdf_gpu_kfd_user_queue_doorbell_map,
         .doorbell_unmap = amdf_gpu_kfd_user_queue_doorbell_unmap,
         .vm_fault_query = amdf_gpu_kfd_user_queue_vm_fault_query,
-        .reset_query = amdf_gpu_kfd_user_queue_reset_query,
 };
 
 const amdf_gpu_kfd_user_queue_native_api_t*

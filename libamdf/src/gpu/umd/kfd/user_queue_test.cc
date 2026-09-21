@@ -107,15 +107,12 @@ struct FakeNativeState {
     return AMDF_STATUS_OK;
   }
 
-  static amdf_gpu_kfd_user_queue_destroy_result_t QueueDestroy(
-      void* user_data, amdf_gpu_umd_device_t*, uint32_t queue_identifier) {
+  static amdf_status_t QueueDestroy(void* user_data, amdf_gpu_umd_device_t*,
+                                    uint32_t queue_identifier) {
     auto* self = static_cast<FakeNativeState*>(user_data);
     ++self->queue_destroy_count;
     self->destroyed_queue_identifiers.push_back(queue_identifier);
-    return {
-        .status = self->queue_destroy_status,
-        .identifier_consumed = self->queue_identifier_consumed,
-    };
+    return self->queue_destroy_status;
   }
 
   static amdf_status_t DoorbellMap(void* user_data, amdf_gpu_umd_device_t*,
@@ -139,17 +136,6 @@ struct FakeNativeState {
     self->observed_doorbell_unmapping = mapping;
     self->observed_doorbell_unmapping_length = byte_length;
     return self->doorbell_unmap_status;
-  }
-
-  static amdf_status_t ResetQuery(void* user_data, amdf_gpu_umd_device_t*,
-                                  amdf_gpu_kfd_reset_state_t* out_state) {
-    auto* self = static_cast<FakeNativeState*>(user_data);
-    ++self->reset_query_count;
-    if (!amdf_status_is_ok(self->reset_query_status)) {
-      return self->reset_query_status;
-    }
-    *out_state = self->reset_state;
-    return AMDF_STATUS_OK;
   }
 
   static amdf_status_t VmFaultQuery(
@@ -181,14 +167,10 @@ struct FakeNativeState {
     queue_create_count = 0;
     queue_destroy_count = 0;
     queue_destroy_status = AMDF_STATUS_OK;
-    queue_identifier_consumed = true;
     destroyed_queue_identifiers.clear();
     doorbell_map_count = 0;
     doorbell_unmap_count = 0;
     doorbell_unmap_status = AMDF_STATUS_OK;
-    reset_query_count = 0;
-    reset_query_status = AMDF_STATUS_OK;
-    reset_state = {};
     vm_fault = {};
     observed_create = {};
     observed_doorbell_mapping_offset = 0;
@@ -220,14 +202,10 @@ struct FakeNativeState {
   int queue_create_count = 0;
   int queue_destroy_count = 0;
   amdf_status_t queue_destroy_status = AMDF_STATUS_OK;
-  bool queue_identifier_consumed = true;
   std::vector<uint32_t> destroyed_queue_identifiers;
   int doorbell_map_count = 0;
   int doorbell_unmap_count = 0;
   amdf_status_t doorbell_unmap_status = AMDF_STATUS_OK;
-  int reset_query_count = 0;
-  amdf_status_t reset_query_status = AMDF_STATUS_OK;
-  amdf_gpu_kfd_reset_state_t reset_state = {};
   // Per-render-VM observation supplied by the native dependency.
   struct {
     // Number of native fault queries performed.
@@ -267,7 +245,6 @@ class KfdUserQueueTest : public ::testing::Test {
     device_.topology.context_save_restore_byte_length = 4096;
     device_.topology.control_stack_byte_length = 4096;
     device_.topology.virtual_address.alignment = 4096;
-    device_.reset_monitor.context_owned = true;
     device_.user_queue_native_api = &native_api_;
   }
 
@@ -296,11 +273,8 @@ class KfdUserQueueTest : public ::testing::Test {
                                          published_index & read_index_mask);
       }
       native_state_.queue_destroy_status = AMDF_STATUS_OK;
-      native_state_.queue_identifier_consumed = true;
       native_state_.doorbell_unmap_status = AMDF_STATUS_OK;
       native_state_.failed_buffer_destroy_call = 0;
-      native_state_.reset_query_status = AMDF_STATUS_OK;
-      native_state_.reset_state = {.reset_observed = true};
       EXPECT_EQ(amdf_gpu_umd_user_queue_destroy(queue_), AMDF_STATUS_OK);
       queue_ = nullptr;
     }
@@ -374,7 +348,6 @@ class KfdUserQueueTest : public ::testing::Test {
       .doorbell_map = FakeNativeState::DoorbellMap,
       .doorbell_unmap = FakeNativeState::DoorbellUnmap,
       .vm_fault_query = FakeNativeState::VmFaultQuery,
-      .reset_query = FakeNativeState::ResetQuery,
   };
   amdf_gpu_umd_device_t device_ = {};
   amdf_gpu_umd_user_queue_t* queue_ = nullptr;
@@ -828,6 +801,7 @@ TEST_F(KfdUserQueueTest, MalformedProgressLatchesInternalFailure) {
 }
 
 TEST_F(KfdUserQueueTest, WaitAndDestroyRequireConsumedPublication) {
+  native_state_.created_queue_identifier = 0;
   CreateQueue();
   MapQueue();
   amdf_atomic_uint64_store_release(WriteIndex(), 8);
@@ -853,94 +827,66 @@ TEST_F(KfdUserQueueTest, WaitAndDestroyRequireConsumedPublication) {
   queue_ = nullptr;
   EXPECT_EQ(native_state_.queue_destroy_count, 1);
   ASSERT_EQ(native_state_.destroyed_queue_identifiers.size(), 1u);
-  EXPECT_EQ(native_state_.destroyed_queue_identifiers[0], 47u);
+  EXPECT_EQ(native_state_.destroyed_queue_identifiers[0], 0u);
   EXPECT_EQ(native_state_.doorbell_unmap_count, 1);
   EXPECT_EQ(native_state_.LiveBufferCount(), 0u);
   EXPECT_EQ(native_state_.destroyed_buffer_indices,
             (std::vector<size_t>{4, 3, 2, 1, 0}));
 }
 
-TEST_F(KfdUserQueueTest, RetainedIdentifierRetriesTheSameNativeQueue) {
-  CreateQueue();
-  native_state_.queue_destroy_status =
-      amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EBUSY);
-  native_state_.queue_identifier_consumed = false;
-  EXPECT_EQ(amdf_gpu_umd_user_queue_destroy(queue_),
-            native_state_.queue_destroy_status);
-  EXPECT_EQ(native_state_.LiveBufferCount(), 5u);
-  EXPECT_EQ(native_state_.doorbell_unmap_count, 0);
-
-  native_state_.queue_destroy_status = AMDF_STATUS_OK;
-  native_state_.queue_identifier_consumed = true;
-  ASSERT_EQ(amdf_gpu_umd_user_queue_destroy(queue_), AMDF_STATUS_OK);
-  queue_ = nullptr;
-  ASSERT_EQ(native_state_.destroyed_queue_identifiers.size(), 2u);
-  EXPECT_EQ(native_state_.destroyed_queue_identifiers[0], 47u);
-  EXPECT_EQ(native_state_.destroyed_queue_identifiers[1], 47u);
+TEST_F(KfdUserQueueTest, NativeRemovalFailureConsumesOwnerAndPreservesBacking) {
+  // These errors include both retained and consumed native identifiers. None
+  // supplies proof that queue-reachable storage is safe to release.
+  for (int error : {EBUSY, ETIME, EIO}) {
+    SCOPED_TRACE(error);
+    native_state_.Reset();
+    CreateQueue();
+    native_state_.queue_destroy_status =
+        amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, error);
+    EXPECT_EQ(amdf_gpu_umd_user_queue_destroy(queue_),
+              native_state_.queue_destroy_status);
+    queue_ = nullptr;
+    EXPECT_EQ(native_state_.destroyed_queue_identifiers,
+              (std::vector<uint32_t>{47}));
+    EXPECT_EQ(native_state_.queue_destroy_count, 1);
+    EXPECT_EQ(native_state_.buffer_destroy_count, 0);
+    EXPECT_EQ(native_state_.doorbell_unmap_count, 0);
+    EXPECT_EQ(native_state_.LiveBufferCount(), 5u);
+    EXPECT_EQ(native_state_.abandoned_buffer_indices,
+              (std::vector<size_t>{0, 1, 2, 3, 4}));
+  }
 }
 
-TEST_F(KfdUserQueueTest, ConsumedIdentifierWaitsForCompletedReset) {
-  CreateQueue();
-  native_state_.queue_destroy_status =
-      amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, ETIME);
-  native_state_.queue_identifier_consumed = true;
-  EXPECT_EQ(amdf_gpu_umd_user_queue_destroy(queue_),
-            native_state_.queue_destroy_status);
-  EXPECT_EQ(native_state_.queue_destroy_count, 1);
-  EXPECT_EQ(native_state_.LiveBufferCount(), 5u);
-
-  native_state_.queue_destroy_status = AMDF_STATUS_OK;
-  native_state_.reset_state = {};
-  EXPECT_EQ(amdf_status_code(amdf_gpu_umd_user_queue_destroy(queue_)),
-            AMDF_STATUS_CODE_BUSY);
-  native_state_.reset_state = {
-      .reset_observed = true,
-      .reset_in_progress = true,
-  };
-  EXPECT_EQ(amdf_status_code(amdf_gpu_umd_user_queue_destroy(queue_)),
-            AMDF_STATUS_CODE_BUSY);
-  native_state_.reset_state = {.reset_observed = true};
-  ASSERT_EQ(amdf_gpu_umd_user_queue_destroy(queue_), AMDF_STATUS_OK);
-  queue_ = nullptr;
-  EXPECT_EQ(native_state_.queue_destroy_count, 1);
-  EXPECT_EQ(native_state_.reset_query_count, 3);
-  EXPECT_EQ(native_state_.LiveBufferCount(), 0u);
-}
-
-TEST_F(KfdUserQueueTest, StorageReleaseRetriesWithoutNativeQueueMutation) {
+TEST_F(KfdUserQueueTest, StorageReleaseFailureConsumesOwnerWithoutRetry) {
   CreateQueue();
   native_state_.doorbell_unmap_status =
       amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EBUSY);
   EXPECT_EQ(amdf_gpu_umd_user_queue_destroy(queue_),
             native_state_.doorbell_unmap_status);
+  queue_ = nullptr;
   EXPECT_EQ(native_state_.queue_destroy_count, 1);
   EXPECT_EQ(native_state_.doorbell_unmap_count, 1);
   EXPECT_EQ(native_state_.LiveBufferCount(), 4u);
 
-  native_state_.doorbell_unmap_status = AMDF_STATUS_OK;
-  ASSERT_EQ(amdf_gpu_umd_user_queue_destroy(queue_), AMDF_STATUS_OK);
-  queue_ = nullptr;
-  EXPECT_EQ(native_state_.queue_destroy_count, 1);
-  EXPECT_EQ(native_state_.doorbell_unmap_count, 2);
-  EXPECT_EQ(native_state_.LiveBufferCount(), 0u);
+  EXPECT_EQ(native_state_.destroyed_buffer_indices, (std::vector<size_t>{4}));
+  EXPECT_EQ(native_state_.abandoned_buffer_indices,
+            (std::vector<size_t>{0, 1, 2, 3}));
 }
 
-TEST_F(KfdUserQueueTest, RetirementFlushRetriesWithoutNativeQueueMutation) {
+TEST_F(KfdUserQueueTest, FailedRetirementFlushPreservesAllReachableBacking) {
   CreateQueue();
   native_state_.failed_buffer_destroy_call = 1;
   EXPECT_EQ(amdf_gpu_umd_user_queue_destroy(queue_),
             native_state_.buffer_destroy_failure);
+  queue_ = nullptr;
   EXPECT_EQ(native_state_.queue_destroy_count, 1);
   EXPECT_EQ(native_state_.doorbell_unmap_count, 0);
   EXPECT_EQ(native_state_.LiveBufferCount(), 5u);
 
-  native_state_.failed_buffer_destroy_call = 0;
-  ASSERT_EQ(amdf_gpu_umd_user_queue_destroy(queue_), AMDF_STATUS_OK);
-  queue_ = nullptr;
-  EXPECT_EQ(native_state_.queue_destroy_count, 1);
-  EXPECT_EQ(native_state_.destroyed_buffer_indices,
-            (std::vector<size_t>{4, 3, 2, 1, 0}));
-  EXPECT_EQ(native_state_.LiveBufferCount(), 0u);
+  EXPECT_EQ(native_state_.buffer_destroy_count, 1);
+  EXPECT_TRUE(native_state_.destroyed_buffer_indices.empty());
+  EXPECT_EQ(native_state_.abandoned_buffer_indices,
+            (std::vector<size_t>{0, 1, 2, 3, 4}));
 }
 
 TEST_F(KfdUserQueueTest,
@@ -970,7 +916,6 @@ TEST_F(KfdUserQueueTest,
         scenario.destroy_error == 0 ? AMDF_STATUS_OK
                                     : amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO,
                                                        scenario.destroy_error);
-    native_state_.queue_identifier_consumed = scenario.destroy_error != EBUSY;
     native_state_.failed_buffer_destroy_call =
         scenario.failed_buffer_destroy_call;
     const amdf_gpu_umd_user_queue_create_info_t create_info = MakeCreateInfo();
@@ -991,7 +936,6 @@ TEST_F(KfdUserQueueTest,
     EXPECT_EQ(native_state_.queue_destroy_count, 1);
     EXPECT_EQ(native_state_.buffer_destroy_count,
               scenario.failed_buffer_destroy_call);
-    EXPECT_EQ(native_state_.reset_query_count, 0);
     EXPECT_EQ(native_state_.destroyed_buffer_indices, scenario.released);
     EXPECT_EQ(native_state_.abandoned_buffer_indices, scenario.abandoned);
   }

@@ -92,14 +92,16 @@ TEST(QueryApiTest, RejectsReversedVersionRangeWithoutPublishingOutput) {
   EXPECT_EQ(api, sentinel);
 }
 
-TEST(QueryApiTest, RejectsTheImplicitRegistrationCacheabilityAbi) {
+TEST(QueryApiTest, RejectsOlderAbisWithoutPublishingOutput) {
   const auto* const sentinel =
       reinterpret_cast<const amdf_api_t*>(uintptr_t{1});
-  const amdf_api_t* api = sentinel;
-  EXPECT_EQ(amdf_cts_provider_query_api()(AMDF_ABI_VERSION_1,
-                                          AMDF_ABI_VERSION_1, &api),
-            amdf_make_api_status(AMDF_STATUS_CODE_VERSION_MISMATCH));
-  EXPECT_EQ(api, sentinel);
+  for (amdf_abi_version_t version = AMDF_ABI_VERSION_1;
+       version < AMDF_ABI_VERSION_LATEST; ++version) {
+    const amdf_api_t* api = sentinel;
+    EXPECT_EQ(amdf_cts_provider_query_api()(version, version, &api),
+              amdf_make_api_status(AMDF_STATUS_CODE_VERSION_MISMATCH));
+    EXPECT_EQ(api, sentinel);
+  }
 }
 
 TEST(QueryApiTest, RejectsConstructionCapabilitiesWithoutPayloadGeometry) {

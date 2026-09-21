@@ -181,10 +181,12 @@ class GpuMemoryInteropTest : public GpuDeviceFixture {
   amdf_status_t DestroyAccess(DeviceAccess& access) {
     if (access.queue != nullptr) {
       const amdf_status_t status = api_->kernel_queue_destroy(access.queue);
+      if (status != amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
+        access.queue = nullptr;
+      }
       if (!amdf_status_is_ok(status)) {
         return status;
       }
-      access.queue = nullptr;
     }
     if (access.mapping != nullptr) {
       const amdf_status_t status = api_->host_mapping_destroy(access.mapping);

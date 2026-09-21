@@ -154,7 +154,7 @@ static amdf_status_t amdf_gpu_user_queue_destroy_native(
     amdf_user_queue_t* base_queue) {
   amdf_gpu_user_queue_t* queue = (amdf_gpu_user_queue_t*)base_queue;
   const amdf_status_t status = amdf_gpu_umd_user_queue_destroy(queue->umd);
-  if (amdf_status_is_ok(status)) {
+  if (status != amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
     queue->umd = NULL;
   }
   return status;

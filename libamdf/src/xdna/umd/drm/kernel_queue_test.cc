@@ -41,6 +41,10 @@ struct NativeState {
   int submission_error = 0;
   // Error returned by native timeline wait, or zero for completion.
   int wait_error = 0;
+  // Error from GEM close after the packet's host view is unmapped.
+  int packet_release_error = 0;
+  // Number of final packet release attempts.
+  uint32_t packet_release_count = 0;
   // Test synchronization protecting the controlled native wait.
   std::mutex mutex;
   // Notification when the native wait enters or may return.
@@ -73,7 +77,9 @@ class LinuxXdnaKernelQueueTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    EXPECT_EQ(amdf_xdna_umd_kernel_queue_destroy(queue_), AMDF_STATUS_OK);
+    if (queue_ != nullptr) {
+      EXPECT_EQ(amdf_xdna_umd_kernel_queue_destroy(queue_), AMDF_STATUS_OK);
+    }
     EXPECT_EQ(amdf_atomic_uint32_load_acquire(&context_.queue_leased), 0u);
     native_state = nullptr;
   }
@@ -89,6 +95,21 @@ class LinuxXdnaKernelQueueTest : public ::testing::Test {
   // Infinite production wait; the outer test harness catches hangs.
   amdf_wait_deadline_t deadline_ = {};
 };
+
+TEST_F(LinuxXdnaKernelQueueTest, FailedPacketReleaseConsumesContextLease) {
+  native_.packet_release_error = EBUSY;
+  EXPECT_EQ(amdf_xdna_umd_kernel_queue_destroy(queue_),
+            amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO, EBUSY));
+  queue_ = nullptr;
+  EXPECT_EQ(native_.packet_release_count, 1u);
+  EXPECT_EQ(amdf_atomic_uint32_load_acquire(&context_.queue_leased), 0u);
+
+  native_.packet_release_error = 0;
+  ASSERT_EQ(amdf_xdna_umd_kernel_queue_create(&context_, &queue_),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(native_.packet_release_count, 1u);
+  EXPECT_EQ(amdf_atomic_uint32_load_acquire(&context_.queue_leased), 1u);
+}
 
 TEST_F(LinuxXdnaKernelQueueTest, FramesByteLengthAndNoIndirectBufferList) {
   uint64_t sequence = UINT64_MAX;
@@ -205,6 +226,12 @@ extern "C" amdf_status_t amdf_linux_xdna_buffer_attach(
 
 extern "C" amdf_status_t amdf_linux_xdna_buffer_deinitialize(
     int descriptor, amdf_linux_xdna_buffer_t* buffer) {
+  ++native_state->packet_release_count;
+  buffer->host_pointer = nullptr;
+  if (native_state->packet_release_error != 0) {
+    return amdf_make_status(AMDF_STATUS_DOMAIN_ERRNO,
+                            native_state->packet_release_error);
+  }
   *buffer = {};
   return AMDF_STATUS_OK;
 }

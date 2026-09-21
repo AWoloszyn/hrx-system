@@ -50,10 +50,7 @@ amdf_status_t amdf_xdna_umd_kernel_queue_submit(
 
 uint64_t amdf_xdna_umd_kernel_queue_query_progress(
     const amdf_xdna_umd_kernel_queue_t* queue) {
-  const uint64_t progress =
-      amdf_windows_xdna_kernel_execution_query_progress(queue->execution);
-  MemoryBarrier();
-  return progress;
+  return amdf_windows_xdna_kernel_execution_query_progress(queue->execution);
 }
 
 void amdf_xdna_umd_kernel_queue_retire_command(

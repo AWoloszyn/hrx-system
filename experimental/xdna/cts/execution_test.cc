@@ -141,8 +141,11 @@ class XdnaExecutionTest
 
   void DestroyExecution(Execution* execution) {
     if (execution->queue) {
-      ASSERT_EQ(api_->kernel_queue_destroy(execution->queue), AMDF_STATUS_OK);
-      execution->queue = nullptr;
+      const auto status = api_->kernel_queue_destroy(execution->queue);
+      if (status != amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
+        execution->queue = nullptr;
+      }
+      ASSERT_EQ(status, AMDF_STATUS_OK);
     }
     ASSERT_NO_FATAL_FAILURE(DestroyMemory(&execution->instructions));
     if (execution->context) {
@@ -467,12 +470,12 @@ class XdnaExecutionTest
     }
   }
 
-  void PrepareExecution(const ResolvedBindings& bindings,
-                        Execution* execution) {
+  void PrepareExecution(const ResolvedBindings& bindings, Execution* execution,
+                        uint32_t logical_column_count = 1) {
     amdf_xdna_context_create_info_t context_create = {};
     context_create.type = AMDF_STRUCTURE_TYPE_XDNA_CONTEXT_CREATE_INFO;
     context_create.structure_size = sizeof(context_create);
-    context_create.logical_column_count = 1;
+    context_create.logical_column_count = logical_column_count;
     context_create.physical_column_origin =
         AMDF_XDNA_PHYSICAL_COLUMN_ORIGIN_ANY;
     context_create.acceptable_scheduling_modes =
@@ -591,15 +594,7 @@ class XdnaExecutionTest
               AMDF_STATUS_OK);
     ASSERT_EQ(status.retired_submission, submission);
     ASSERT_EQ(status.terminal_status, AMDF_STATUS_OK);
-    ASSERT_EQ(
-        api_->host_mapping_cache_control(execution.instructions.mapping,
-                                         AMDF_HOST_CACHE_OPERATION_INVALIDATE,
-                                         0, execution.byte_length),
-        AMDF_STATUS_OK);
-    ASSERT_EQ(
-        std::memcmp(execution.original_instructions.data(),
-                    execution.instructions.pointer, execution.byte_length),
-        0);
+    ASSERT_NO_FATAL_FAILURE(VerifyInstructions(execution));
   }
 
   void WriteBinding(size_t ordinal, const BindingValues& values) {
@@ -634,6 +629,18 @@ class XdnaExecutionTest
             << "element " << i;
       }
     }
+  }
+
+  void VerifyInstructions(const Execution& execution) {
+    ASSERT_EQ(
+        api_->host_mapping_cache_control(execution.instructions.mapping,
+                                         AMDF_HOST_CACHE_OPERATION_INVALIDATE,
+                                         0, execution.byte_length),
+        AMDF_STATUS_OK);
+    ASSERT_EQ(
+        std::memcmp(execution.original_instructions.data(),
+                    execution.instructions.pointer, execution.byte_length),
+        0);
   }
 
   // Native kernel queue family selected from the libamdf endpoint.
@@ -802,6 +809,60 @@ TEST_P(XdnaExecutionTest, SharesDataAcrossIndependentContextLifetimes) {
   }
 }
 
+TEST_P(XdnaExecutionTest, ReestablishesStateAcrossFullWidthContextSwitches) {
+  ASSERT_NO_FATAL_FAILURE(CreateBindings());
+  if (IsSkipped()) {
+    return;
+  }
+  amdf_xdna_device_info_t device_info = {};
+  device_info.type = AMDF_STRUCTURE_TYPE_XDNA_DEVICE_INFO;
+  device_info.structure_size = sizeof(device_info);
+  ASSERT_EQ(xdna_api_->device_query_info(device_, &device_info),
+            AMDF_STATUS_OK);
+  const uint32_t column_count = device_info.array.column_count;
+  if (column_count < device_info.context.minimum_column_count ||
+      column_count > device_info.context.maximum_column_count ||
+      (column_count - device_info.context.minimum_column_count) %
+              device_info.context.column_count_granularity !=
+          0) {
+    GTEST_SKIP() << "full-array logical contexts are unavailable";
+  }
+  ASSERT_NO_FATAL_FAILURE(
+      PrepareExecution(resolved_bindings_, &first_, column_count));
+  // Full-width contexts cannot satisfy this interleave by occupying disjoint
+  // physical columns. A produces (lhs * rhs); B consumes it without a host
+  // copy.
+  const ResolvedBindings consumer_bindings = {
+      resolved_bindings_[2], resolved_bindings_[1], resolved_bindings_[0]};
+  ASSERT_NO_FATAL_FAILURE(
+      PrepareExecution(consumer_bindings, &second_, column_count));
+  for (uint32_t iteration = 0; iteration < 3; ++iteration) {
+    SCOPED_TRACE(iteration);
+    std::array<BindingValues, 3> expected;
+    BindingValues poisoned;
+    for (size_t i = 0; i < kElementCount; ++i) {
+      expected[0][i] = kValues[(i + iteration) % kElementCount];
+      expected[1][i] = static_cast<uint32_t>(i * 2 + iteration * 2 + 3);
+      expected[2][i] = expected[0][i] * expected[1][i];
+      poisoned[i] = ~expected[2][i];
+    }
+    ASSERT_NO_FATAL_FAILURE(WriteBinding(0, expected[0]));
+    ASSERT_NO_FATAL_FAILURE(WriteBinding(1, expected[1]));
+    ASSERT_NO_FATAL_FAILURE(WriteBinding(2, poisoned));
+    // Native context lifetime does not preserve array configuration. Reuse
+    // the same complete command bytes after every switch; preparation and
+    // relocation still happen only once for each instruction allocation.
+    ASSERT_NO_FATAL_FAILURE(RunExecution(first_));
+    ASSERT_NO_FATAL_FAILURE(RunExecution(second_));
+    for (size_t i = 0; i < kElementCount; ++i) {
+      expected[0][i] = expected[2][i] * expected[1][i];
+    }
+    ASSERT_NO_FATAL_FAILURE(VerifyBindings(expected));
+    ASSERT_NO_FATAL_FAILURE(VerifyInstructions(first_));
+    ASSERT_NO_FATAL_FAILURE(VerifyInstructions(second_));
+  }
+}
+
 // Exercises the queue visibility contract with real producers and consumers.
 // COPY_DATA uses TC L2; it does not qualify shader-side PROGRAM transitions.
 class XdnaPoolVisibilityTest : public XdnaExecutionTest {
@@ -898,12 +959,18 @@ class XdnaPoolVisibilityTest : public XdnaExecutionTest {
       gpu_mapping_ = nullptr;
     }
     if (gpu_queue_) {
-      ASSERT_EQ(api_->user_queue_destroy(gpu_queue_), AMDF_STATUS_OK);
-      gpu_queue_ = nullptr;
+      const auto status = api_->user_queue_destroy(gpu_queue_);
+      if (status != amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
+        gpu_queue_ = nullptr;
+      }
+      ASSERT_EQ(status, AMDF_STATUS_OK);
     }
     if (gpu_kernel_queue_) {
-      ASSERT_EQ(api_->kernel_queue_destroy(gpu_kernel_queue_), AMDF_STATUS_OK);
-      gpu_kernel_queue_ = nullptr;
+      const auto status = api_->kernel_queue_destroy(gpu_kernel_queue_);
+      if (status != amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
+        gpu_kernel_queue_ = nullptr;
+      }
+      ASSERT_EQ(status, AMDF_STATUS_OK);
     }
     ASSERT_NO_FATAL_FAILURE(DestroyMemory(&gpu_commands_));
     ASSERT_NO_FATAL_FAILURE(DestroyMemory(&staging_));

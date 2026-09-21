@@ -128,16 +128,38 @@ amdf_status_t amdf_kmt_wait_for_paging(
     const amdf_kmt_api_t* api, D3DKMT_HANDLE device,
     D3DKMT_HANDLE paging_sync_object,
     const volatile uint64_t* current_paging_fence, uint64_t target_value) {
-  if (target_value == 0 ||
-      (current_paging_fence != NULL && *current_paging_fence >= target_value)) {
+  if (target_value == 0) {
     return AMDF_STATUS_OK;
+  }
+  if (current_paging_fence != NULL) {
+    const uint64_t progress = *current_paging_fence;
+    MemoryBarrier();
+    // Reset signaling unblocks monitored-fence waiters without completing the
+    // operation. It cannot establish residency or completed page-table edits.
+    if (progress == UINT64_MAX) {
+      return amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST);
+    }
+    if (progress >= target_value) {
+      return AMDF_STATUS_OK;
+    }
   }
   D3DKMT_WAITFORSYNCHRONIZATIONOBJECTFROMCPU wait = {0};
   wait.hDevice = device;
   wait.ObjectCount = 1;
   wait.ObjectHandleArray = &paging_sync_object;
   wait.FenceValueArray = &target_value;
-  return amdf_kmt_make_status(api->wait_from_cpu(&wait));
+  const amdf_status_t status = amdf_kmt_make_status(api->wait_from_cpu(&wait));
+  if (!amdf_status_is_ok(status)) {
+    return status;
+  }
+  if (current_paging_fence != NULL) {
+    const uint64_t progress = *current_paging_fence;
+    MemoryBarrier();
+    if (progress == UINT64_MAX) {
+      return amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST);
+    }
+  }
+  return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_kmt_api_initialize(amdf_kmt_api_t* out_api) {

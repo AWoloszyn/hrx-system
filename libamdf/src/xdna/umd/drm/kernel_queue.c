@@ -275,10 +275,7 @@ amdf_status_t amdf_xdna_umd_kernel_queue_destroy(
   amdf_xdna_umd_device_t* device = queue->context->device;
   const amdf_status_t status =
       amdf_linux_xdna_buffer_deinitialize(device->descriptor, &queue->packet);
-  if (!amdf_status_is_ok(status)) {
-    return status;
-  }
   amdf_atomic_uint32_store_release(&queue->context->queue_leased, 0);
   amdf_free(device->host_allocator, queue);
-  return AMDF_STATUS_OK;
+  return status;
 }

@@ -37,7 +37,8 @@ amdf_wkmi_bridge_result_t AMDF_WKMI_BRIDGE_CALL GpuKernelQueueSubmit(
     uint64_t command_buffer_byte_length, uint64_t progress_value,
     uint32_t* out_native_status) noexcept;
 
-// Releases one native GPU hardware queue and execution context.
+// Consumes an idle queue on every native result. Unreleased native handles
+// leak; no host owner or adapter child remains after a cleanup failure.
 amdf_wkmi_bridge_result_t AMDF_WKMI_BRIDGE_CALL
 GpuKernelQueueDestroy(amdf_wkmi_bridge_gpu_kernel_queue_t* queue,
                       uint32_t* out_native_status) noexcept;

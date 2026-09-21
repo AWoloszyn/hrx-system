@@ -71,7 +71,8 @@ and repetitions. Host image loading, relocation, instruction publication and
 allocation are outside timing. Every command includes device initialization
 and execution because time-sliced context lifetime does not guarantee tile
 state survives between independent submissions. Each iteration publishes fresh
-input and checks numerical output and guards outside timing.
+input and checks numerical output, guards and instruction immutability outside
+timing.
 
 | Scenario | Timed operations |
 | --- | --- |

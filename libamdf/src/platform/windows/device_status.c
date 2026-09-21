@@ -33,6 +33,12 @@ static amdf_status_t amdf_kmt_device_status_publish(
              : expected;
 }
 
+void amdf_kmt_device_status_record_reset(
+    amdf_kmt_device_status_t* device_status) {
+  amdf_kmt_device_status_publish(
+      device_status, amdf_make_api_status(AMDF_STATUS_CODE_DEVICE_LOST));
+}
+
 amdf_status_t amdf_kmt_device_status_observe_error(
     amdf_kmt_device_status_t* device_status, const amdf_kmt_api_t* api,
     D3DKMT_HANDLE device, amdf_status_t operation_status) {

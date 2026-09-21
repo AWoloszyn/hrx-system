@@ -45,9 +45,10 @@ uint64_t amdf_xdna_umd_kernel_queue_query_progress(
 // retirement. The caller exclusively owns the pending slot and retains the
 // native packet throughout this call. Records execution failure without
 // delaying retirement.
-// This can run from the no-syscall status path. It takes no lock and performs
-// no allocation, initialization or wait; packet inspection and atomic terminal
-// status publication are its only native-state work.
+// Called by explicit synchronization or exclusive teardown, never by a status
+// query. It takes no lock and performs no allocation, initialization or wait;
+// packet inspection and atomic terminal status publication are its only
+// native-state work.
 void amdf_xdna_umd_kernel_queue_retire_command(
     amdf_xdna_umd_kernel_queue_t* queue);
 
@@ -65,7 +66,10 @@ amdf_status_t amdf_xdna_umd_kernel_queue_wait(
     amdf_xdna_umd_kernel_queue_t* queue, uint64_t native_submission,
     const amdf_wait_deadline_t* deadline);
 
-// Releases an idle native queue lease.
+// Consumes an idle native queue lease even when native cleanup fails. The
+// shared layer has already established retirement. Native errors retain their
+// domains; API-domain BUSY is reserved for the shared layer's precondition
+// rejection.
 amdf_status_t amdf_xdna_umd_kernel_queue_destroy(
     amdf_xdna_umd_kernel_queue_t* queue);
 

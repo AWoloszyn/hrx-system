@@ -74,7 +74,11 @@ class XdnaKernelQueueTest : public XdnaContextFixture {
  protected:
   void TearDown() override {
     if (queue_) {
-      EXPECT_EQ(api_->kernel_queue_destroy(queue_), AMDF_STATUS_OK);
+      const auto status = DestroyQueue();
+      EXPECT_EQ(status, AMDF_STATUS_OK);
+      if (!amdf_status_is_ok(status)) {
+        return;
+      }
     }
     if (mapping_) {
       EXPECT_EQ(api_->host_mapping_destroy(mapping_), AMDF_STATUS_OK);
@@ -89,6 +93,14 @@ class XdnaKernelQueueTest : public XdnaContextFixture {
       EXPECT_EQ(xdna_api_->context_destroy(sibling_.context), AMDF_STATUS_OK);
     }
     XdnaContextFixture::TearDown();
+  }
+
+  amdf_status_t DestroyQueue() {
+    const auto status = api_->kernel_queue_destroy(queue_);
+    if (status != amdf_make_api_status(AMDF_STATUS_CODE_BUSY)) {
+      queue_ = nullptr;
+    }
+    return status;
   }
 
   void AllocateInstructions(amdf_xdna_context_t* context,
@@ -263,12 +275,23 @@ TEST_F(XdnaKernelQueueTest, SubmitsImmutableRangesAndReacquiresQueue) {
     ASSERT_EQ(xdna_api_->kernel_queue_submit(queue_, &submit, &submission),
               AMDF_STATUS_OK);
     EXPECT_EQ(submission, i + 1);
-    ASSERT_EQ(
-        api_->kernel_queue_wait(queue_, submission, AMDF_TIMEOUT_INFINITE, 0),
-        AMDF_STATUS_OK);
+    // Observation does not release command ownership, even if the device has
+    // already completed this short transaction. Only explicit synchronization
+    // establishes the next reusable submission slot.
     amdf_kernel_queue_status_t status = {};
     status.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_STATUS;
     status.structure_size = sizeof(status);
+    ASSERT_EQ(api_->kernel_queue_query_status(queue_, &status), AMDF_STATUS_OK);
+    EXPECT_EQ(status.retired_submission, i);
+    EXPECT_EQ(status.terminal_status, AMDF_STATUS_OK);
+    uint64_t rejected_submission = UINT64_MAX;
+    EXPECT_EQ(amdf_status_code(xdna_api_->kernel_queue_submit(
+                  queue_, &submit, &rejected_submission)),
+              AMDF_STATUS_CODE_BUSY);
+    EXPECT_EQ(rejected_submission, UINT64_MAX);
+    ASSERT_EQ(
+        api_->kernel_queue_wait(queue_, submission, AMDF_TIMEOUT_INFINITE, 0),
+        AMDF_STATUS_OK);
     ASSERT_EQ(api_->kernel_queue_query_status(queue_, &status), AMDF_STATUS_OK);
     EXPECT_EQ(status.retired_submission, submission);
     EXPECT_EQ(status.terminal_status, AMDF_STATUS_OK);
@@ -283,8 +306,7 @@ TEST_F(XdnaKernelQueueTest, SubmitsImmutableRangesAndReacquiresQueue) {
                         expected.size()),
             0);
 
-  ASSERT_EQ(api_->kernel_queue_destroy(queue_), AMDF_STATUS_OK);
-  queue_ = nullptr;
+  ASSERT_EQ(DestroyQueue(), AMDF_STATUS_OK);
   ASSERT_NO_FATAL_FAILURE(CreateQueue());
   uint64_t submission = 0;
   ASSERT_EQ(xdna_api_->kernel_queue_submit(queue_, &submit, &submission),
@@ -339,7 +361,7 @@ TEST_F(XdnaKernelQueueTest, PrivateBackingIsQualifiedByExactContext) {
 }
 
 TEST_F(XdnaKernelQueueTest,
-       PreservesInitialCreditsAndTileDataAcrossQueueLeases) {
+       PreservesApplicationStateWithinSubmissionsAcrossQueueLeases) {
   amdf_xdna_endpoint_info_t identity = {};
   identity.type = AMDF_STRUCTURE_TYPE_XDNA_ENDPOINT_INFO;
   identity.structure_size = sizeof(identity);
@@ -353,65 +375,68 @@ TEST_F(XdnaKernelQueueTest,
             AMDF_STATUS_OK);
   ASSERT_EQ(context_info.row_count, 6u);
 
-  auto initialize = MakeNoOpTransaction();
-  auto observe = MakeNoOpTransaction();
+  auto transaction = MakeNoOpTransaction();
   // One AIE2P column has a memory row followed by four compute rows. Hold each
-  // core in reset and publish each lock's first credit exactly once. Admission
-  // must not leave a sample acquire or DMA request waiting to consume it.
+  // core in reset and publish each lock's first credit for this command.
+  // Admission must not leave a sample acquire or DMA request to consume it.
   for (uint32_t row = 2; row < context_info.row_count; ++row) {
     const uint32_t base = row << 20;
-    AppendRegisterOperation(initialize, RegisterOperation::kMaskedWrite,
+    AppendRegisterOperation(transaction, RegisterOperation::kMaskedWrite,
                             base + 0x32000, 2, 3);
     for (uint32_t lock = 0; lock < 16; ++lock) {
       const uint32_t address = base + 0x1F000 + lock * 16;
-      AppendRegisterOperation(initialize, RegisterOperation::kWrite, address, 1,
-                              UINT32_MAX);
-      AppendRegisterOperation(initialize, RegisterOperation::kPoll, address, 1,
-                              0x3F);
-      AppendRegisterOperation(observe, RegisterOperation::kPoll, address, 1,
+      AppendRegisterOperation(transaction, RegisterOperation::kWrite, address,
+                              1, UINT32_MAX);
+      AppendRegisterOperation(transaction, RegisterOperation::kPoll, address, 1,
                               0x3F);
     }
   }
-  // Retain independent 64-byte application regions in memory-tile SRAM and
-  // every core's data memory. Later submissions only observe these values.
+  // Populate independent 64-byte application regions in memory-tile SRAM and
+  // every core's data memory.
   for (uint32_t row = 1; row < context_info.row_count; ++row) {
     for (uint32_t word = 0; word < 16; ++word) {
       const uint32_t address = (row << 20) + 0x1000 + word * 4;
       const uint32_t value = 0xC0DE0000u | (row << 8) | word;
-      AppendRegisterOperation(initialize, RegisterOperation::kWrite, address,
+      AppendRegisterOperation(transaction, RegisterOperation::kWrite, address,
                               value, UINT32_MAX);
-      AppendRegisterOperation(initialize, RegisterOperation::kPoll, address,
+      AppendRegisterOperation(transaction, RegisterOperation::kPoll, address,
                               value, UINT32_MAX);
-      AppendRegisterOperation(observe, RegisterOperation::kPoll, address, value,
-                              UINT32_MAX);
     }
   }
-  ASSERT_NO_FATAL_FAILURE(CreateInstructions(initialize, observe));
+  // Observe every initialized region again after all writes. The native
+  // command owns this state interval; time-sliced contexts need not retain
+  // tile state across separate submissions, even on the same queue.
+  for (uint32_t row = 2; row < context_info.row_count; ++row) {
+    for (uint32_t lock = 0; lock < 16; ++lock) {
+      AppendRegisterOperation(transaction, RegisterOperation::kPoll,
+                              (row << 20) + 0x1F000 + lock * 16, 1, 0x3F);
+    }
+  }
+  for (uint32_t row = 1; row < context_info.row_count; ++row) {
+    for (uint32_t word = 0; word < 16; ++word) {
+      AppendRegisterOperation(transaction, RegisterOperation::kPoll,
+                              (row << 20) + 0x1000 + word * 4,
+                              0xC0DE0000u | (row << 8) | word, UINT32_MAX);
+    }
+  }
+  ASSERT_NO_FATAL_FAILURE(CreateInstructions(transaction, transaction));
   ASSERT_NO_FATAL_FAILURE(CreateQueue());
   amdf_xdna_kernel_command_t command = {};
   command.memory = memory_;
-  command.byte_length = initialize.size();
+  command.byte_length = transaction.size();
   amdf_xdna_kernel_queue_submission_info_t submit = {};
   submit.type = AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_SUBMISSION_INFO;
   submit.structure_size = sizeof(submit);
   submit.command_count = 1;
   submit.commands = &command;
-  uint64_t submission = 0;
-  ASSERT_EQ(xdna_api_->kernel_queue_submit(queue_, &submit, &submission),
-            AMDF_STATUS_OK);
-  ASSERT_EQ(
-      api_->kernel_queue_wait(queue_, submission, AMDF_TIMEOUT_INFINITE, 0),
-      AMDF_STATUS_OK);
-
-  command.byte_offset = instruction_stride_;
-  command.byte_length = observe.size();
   for (uint32_t generation = 0; generation < 8; ++generation) {
     SCOPED_TRACE(generation);
     if (generation == 4) {
-      ASSERT_EQ(api_->kernel_queue_destroy(queue_), AMDF_STATUS_OK);
-      queue_ = nullptr;
+      ASSERT_EQ(DestroyQueue(), AMDF_STATUS_OK);
       ASSERT_NO_FATAL_FAILURE(CreateQueue());
     }
+    command.byte_offset = (generation % 2) * instruction_stride_;
+    uint64_t submission = 0;
     ASSERT_EQ(xdna_api_->kernel_queue_submit(queue_, &submit, &submission),
               AMDF_STATUS_OK);
     ASSERT_EQ(
@@ -420,11 +445,11 @@ TEST_F(XdnaKernelQueueTest,
   }
   ASSERT_EQ(api_->host_mapping_cache_control(
                 mapping_, AMDF_HOST_CACHE_OPERATION_INVALIDATE, 0,
-                instruction_stride_ + observe.size()),
+                instruction_stride_ + transaction.size()),
             AMDF_STATUS_OK);
-  EXPECT_EQ(std::memcmp(pointer_, initialize.data(), initialize.size()), 0);
-  EXPECT_EQ(std::memcmp(pointer_ + instruction_stride_, observe.data(),
-                        observe.size()),
+  EXPECT_EQ(std::memcmp(pointer_, transaction.data(), transaction.size()), 0);
+  EXPECT_EQ(std::memcmp(pointer_ + instruction_stride_, transaction.data(),
+                        transaction.size()),
             0);
 }
 
