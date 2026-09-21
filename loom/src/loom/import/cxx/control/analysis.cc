@@ -127,6 +127,10 @@ unsigned ControlFlow::classify_paths(cxx::StatementAST* statement) const {
     return outcomes;
   }
   if (auto* branch = cxx::ast_cast<cxx::IfStatementAST>(statement)) {
+    if (branch->constexprValue.has_value()) {
+      return paths(*branch->constexprValue ? branch->statement
+                                           : branch->elseStatement);
+    }
     return paths(branch->statement) | paths(branch->elseStatement);
   }
   cxx::StatementAST* body = nullptr;
@@ -140,6 +144,15 @@ unsigned ControlFlow::classify_paths(cxx::StatementAST* statement) const {
            (body_paths & (Fallthrough | Continue) ? unsigned(Fallthrough) : 0);
   }
   return Fallthrough | (paths(body) & Return);
+}
+
+void ControlFlow::visit(cxx::IfStatementAST* ast) {
+  if (ast->constexprValue.has_value()) {
+    accept(ast->initializer);
+    accept(*ast->constexprValue ? ast->statement : ast->elseStatement);
+  } else {
+    cxx::ASTVisitor::visit(ast);
+  }
 }
 
 void ControlFlow::visit(cxx::AssignmentExpressionAST* ast) {

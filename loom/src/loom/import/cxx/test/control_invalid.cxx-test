@@ -4,7 +4,6 @@
 void entry() { continue; }
 
 // ====
-// RUN: verify
 // Continue does not admit other unsupported transfers or conditions.
 void entry(unsigned count) {
   while (count) {
@@ -18,7 +17,6 @@ void entry(unsigned count) {
 }
 
 // ====
-// RUN: verify
 // Continue does not admit other unsupported transfers or conditions.
 void entry(unsigned count) {
   while (count) {
@@ -33,7 +31,6 @@ void entry(unsigned count) {
 }
 
 // ====
-// RUN: verify
 // Continue does not admit other unsupported transfers or conditions.
 unsigned entry(unsigned count) {
   // ERROR@+1: LOWERING/059 "returns inside loops require a structured loop-exit projection"
@@ -47,31 +44,6 @@ unsigned entry(unsigned count) {
 }
 
 // ====
-// RUN: verify
-// Continue does not admit other unsupported transfers or conditions.
-void entry(unsigned count) {
-  while (count) {
-    // ERROR@+1: LOWERING/059 "if initializer/constexpr is outside this slice"
-    if constexpr (true) {
-      continue;
-    }
-  }
-}
-
-// ====
-// RUN: verify
-// Continue does not admit other unsupported transfers or conditions.
-void entry(unsigned count) {
-  while (count) {
-    // ERROR@+1: LOWERING/059 "if initializer/constexpr is outside this slice"
-    if (unsigned remaining = --count; remaining) {
-      continue;
-    }
-  }
-}
-
-// ====
-// RUN: verify
 // Rejects incomplete returns and unprojected exit joins.
 // ERROR@+1: LOWERING/059 "non-void function can reach its end without returning a value"
 int entry(int x) {
@@ -82,19 +54,16 @@ int entry(int x) {
 }
 
 // ====
-// RUN: verify
 // Rejects incomplete returns and unprojected exit joins.
 // ERROR@+1: PARSE/036 "non-void function must return a value of type 'int'"
 int entry() { return; }
 
 // ====
-// RUN: verify
 // Rejects incomplete returns and unprojected exit joins.
 // ERROR@+1: PARSE/036 "void function should not return a value"
 void entry() { return 1; }
 
 // ====
-// RUN: verify
 // Rejects incomplete returns and unprojected exit joins.
 int entry(int x, int y) {
   // ERROR@+1: LOWERING/059 "conditional returns require at most one fallthrough arm; shared continuations need a scoped exit projection"
@@ -108,7 +77,6 @@ int entry(int x, int y) {
 }
 
 // ====
-// RUN: verify
 // Rejects incomplete returns and unprojected exit joins.
 int entry(int x) {
   // ERROR@+1: LOWERING/059 "returns inside loops require a structured loop-exit projection"
@@ -119,7 +87,6 @@ int entry(int x) {
 }
 
 // ====
-// RUN: verify
 // Rejects incomplete returns and unprojected exit joins.
 int entry(int x) {
   // ERROR@+1: LOWERING/059 "returns inside loops require a structured loop-exit projection"
@@ -129,7 +96,6 @@ int entry(int x) {
 }
 
 // ====
-// RUN: verify
 // Rejects incomplete returns and unprojected exit joins.
 int entry() {
   // ERROR@+1: LOWERING/059 "returns inside loops require a structured loop-exit projection"

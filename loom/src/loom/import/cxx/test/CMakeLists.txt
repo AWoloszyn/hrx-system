@@ -22,6 +22,8 @@ loom_check_test_suite(
     "config_cleanup.cxx-test"
     "config_invalid.cxx-test"
     "const.cxx-test"
+    "constexpr.cxx-test"
+    "constexpr_semantics.cxx-test"
     "control_invalid.cxx-test"
     "data_models.cxx-test"
     "enum_semantics.cxx-test"
@@ -52,6 +54,7 @@ loom_check_test_suite(
     "standards.cxx-test"
     "symbols.cxx-test"
     "symbols_invalid.cxx-test"
+    "template_calls.cxx-test"
     "vectors.cxx-test"
     "vectors_invalid.cxx-test"
     "view_values.cxx-test"
@@ -65,6 +68,32 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_layout.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_values.cpp"
 )
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test_module(
+  NAME
+    constexpr_values_test_module
+  SRCS
+    "constexpr_values.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    constexpr_values_test_execute_vm_reference_test
+  MODULE
+    "::constexpr_values_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)

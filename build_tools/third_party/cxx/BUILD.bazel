@@ -13,6 +13,7 @@ exports_files([
     "builtin_macro_locations.patch",
     "compound_offsetof.patch",
     "constant_arithmetic.patch",
+    "constexpr_branches.patch",
     "cxx.BUILD.bazel",
     "enum_semantics.patch",
     "include_continuation.patch",
@@ -22,6 +23,7 @@ exports_files([
     "packed_bitfields.patch",
     "packed_enums.patch",
     "packed_records.patch",
+    "qualified_template_calls.patch",
     "record_layout_owner.patch",
     "template_lookahead.patch",
 ])

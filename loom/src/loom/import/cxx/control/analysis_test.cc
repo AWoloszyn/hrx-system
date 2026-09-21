@@ -84,6 +84,12 @@ TEST(ControlFlowTest, CountedAdmissionRetainsTheNonwrappingIntervalProof) {
       {"unsigned n", "for (unsigned i=0; i<4294967295u; i+=4u) {}", 0},
       {"unsigned long n", "for (unsigned i=0; i<n; ++i) {}", 0},
       {"unsigned n", "for (unsigned i=0; i<n; ++i) { --n; }", 0},
+      {"unsigned n",
+       "for (unsigned i=0; i<n; ++i) { if constexpr(false) --n; }", 1},
+      {"unsigned n", "for (unsigned i=0; i<n; ++i) { if constexpr(true) --n; }",
+       0},
+      {"unsigned n",
+       "for (unsigned i=0; i<n; ++i) { if constexpr(--n; false) {} }", 0},
       {"unsigned n", "for (unsigned i=0; i<n; ++i) { ++i; }", 0},
       {"unsigned n", "for (unsigned i=0; i<n; --i) {}", 0},
       {"unsigned n", "for (unsigned i=0; i<=n; ++i) {}", 0},
@@ -125,6 +131,28 @@ TEST(ControlFlowTest, CountedAdmissionRetainsTheNonwrappingIntervalProof) {
       EXPECT_EQ(analysis.counted(loop), counted);
     }
   }
+}
+
+TEST(ControlFlowTest, SourceSelectionRetainsInitializerAndSelectedWrites) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  Source source(
+      IREE_SV("void entry(int selected, int discarded, int initialized) {"
+              "if constexpr (++initialized; false) ++discarded;"
+              "else ++selected; }"),
+      IREE_SV("selected.cpp"), options);
+  auto* function = definition(source);
+  auto* body = cxx::ast_cast<cxx::CompoundStatementFunctionBodyAST>(
+                   function->functionBody)
+                   ->statement;
+  auto* branch = cxx::ast_cast<cxx::IfStatementAST>(body->statementList->value);
+  Types types(source.unit(), source.diagnostics());
+  ControlFlow analysis(source.unit(), types, body);
+  auto writes = analysis.written(branch);
+  ASSERT_EQ(writes.size(), 2u);
+  EXPECT_EQ(writes[0], function->symbol->parameters()[2]);
+  EXPECT_EQ(writes[1], function->symbol->parameters()[0]);
+  EXPECT_TRUE(std::ranges::equal(writes, analysis.written(body)));
 }
 
 TEST(ControlFlowTest, NestedWritesPreserveOrderAndShadowedSymbolIdentity) {
@@ -302,6 +330,13 @@ TEST(ControlFlowTest, IterationExitsStopAtTheirLoopAndExcludeUnreachablePaths) {
       {"continue;", ExitFlow::All, ExitFlow::None},
       {"if (x) continue;", ExitFlow::Some, ExitFlow::None},
       {"if (x) continue; else continue;", ExitFlow::All, ExitFlow::None},
+      {"if constexpr(true) continue; else return;", ExitFlow::All,
+       ExitFlow::None},
+      {"if constexpr(false) continue; else return;", ExitFlow::None,
+       ExitFlow::All},
+      {"if constexpr(false) continue;", ExitFlow::None, ExitFlow::None},
+      {"if constexpr(true) { if (x) continue; } else return;", ExitFlow::Some,
+       ExitFlow::None},
       {"if (x) { if (y) continue; } else { if (y) continue; }", ExitFlow::Some,
        ExitFlow::None},
       {"if (x) continue; return;", ExitFlow::Some, ExitFlow::Some},

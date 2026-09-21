@@ -1,0 +1,65 @@
+// RUN: verify
+// An uninitialized const declaration is not a source constant.
+extern const unsigned value;
+int entry() {
+  // ERROR@+1: PARSE/036 "condition of 'if constexpr' is not a constant expression"
+  if constexpr (value == 4) return 11;
+  else return 22;
+}
+
+// ====
+// Ordinary runtime parameters cannot control source selection.
+int entry(int value) {
+  // ERROR@+1: PARSE/036 "condition of 'if constexpr' is not a constant expression"
+  if constexpr (value) return 11;
+  else return 22;
+}
+
+// ====
+// A dependent parameter is checked when its type becomes concrete.
+template <typename T>
+int select(T value) {
+  // ERROR@+1: PARSE/036 "condition of 'if constexpr' is not a constant expression"
+  if constexpr (value) return 11;
+  else return 22;
+}
+// REMARK@+1: PARSE/036 "in instantiation of function template specialization 'select <int>' requested here"
+int entry() { return select(3); }
+
+// ====
+// A nondependent condition is checked before a template is instantiated.
+template <typename T>
+int select(int value) {
+  // ERROR@+1: PARSE/036 "condition of 'if constexpr' is not a constant expression"
+  if constexpr (value) return 11;
+  else return 22;
+}
+
+// ====
+// Discarded source outside templates remains subject to source checking.
+int entry(int value) {
+  if constexpr (false) {
+    // ERROR@+1: PARSE/036 "condition of 'if constexpr' is not a constant expression"
+    if constexpr (value) return 11;
+  }
+  return 22;
+}
+
+// ====
+// A dependent condition in a discarded template arm is never instantiated.
+template <typename T>
+constexpr int select() {
+  if constexpr (true) return 11;
+  else if constexpr (T::missing) return 22;
+}
+static_assert(select<int>() == 11);
+
+// ====
+// The initializer executes even when branch selection is already known.
+static constexpr int initialized() {
+  int value = 0;
+  if constexpr (++value; false) value += 100;
+  else value += 10;
+  return value;
+}
+static_assert(initialized() == 11);
