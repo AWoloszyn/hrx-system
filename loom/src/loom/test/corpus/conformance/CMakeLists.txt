@@ -28,10 +28,6 @@ loom_test(
     condition_loops_test
   SRCS
     "condition_loops.loom"
-  COMPILE_TARGETS
-    loom::target::amdgpu::gfx1151
-    loom::target::amdgpu::gfx942
-    loom::target::spirv::vulkan1.3+bda
 )
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
@@ -111,5 +107,16 @@ loom_execution_test(
     "loom-amdgpu-tests"
 )
 endif()
+
+loom_check_compile_tests(
+  NAME
+    "condition_loops_test"
+  SRC
+    "::condition_loops_test_module"
+  TARGETS
+    loom::target::amdgpu::gfx1151
+    loom::target::amdgpu::gfx942
+    loom::target::spirv::vulkan1.3+bda
+)
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

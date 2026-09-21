@@ -11,7 +11,7 @@ function(loom_test)
     return()
   endif()
   cmake_parse_arguments(
-    _RULE "" "NAME;INPUT_FORMAT" "SRCS;LIBRARIES;DATA;INPUTOPTS;LABELS;COMPILE_TARGETS" ${ARGN}
+    _RULE "" "NAME;INPUT_FORMAT" "SRCS;LIBRARIES;DATA;INPUTOPTS" ${ARGN}
   )
   if(_RULE_UNPARSED_ARGUMENTS)
     message(FATAL_ERROR "Unknown loom_test arguments: ${_RULE_UNPARSED_ARGUMENTS}")
@@ -38,13 +38,6 @@ function(loom_test)
   iree_package_target_name(_MODULE_TARGET "::${_RULE_NAME}_module")
   # Runtime fixtures belong to the source owner, not individual environments.
   set_property(TARGET "${_MODULE_TARGET}" PROPERTY LOOM_TEST_DATA "${_RULE_DATA}")
-  set(_MODULE "${CMAKE_CURRENT_BINARY_DIR}/${_RULE_NAME}_module.loombc")
-  loom_check_compile_tests(
-    NAME "${_RULE_NAME}"
-    SRC "${_MODULE}"
-    TARGETS ${_RULE_COMPILE_TARGETS}
-    LABELS ${_RULE_LABELS}
-  )
 endfunction()
 
 # RUNNER_ARGS reaches correctness and benchmark smoke; ARGS is correctness-only.

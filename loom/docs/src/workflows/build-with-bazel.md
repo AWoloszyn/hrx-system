@@ -224,6 +224,34 @@ only compiler checks; at least one execution or compiler profile is required.
 Adding profiles creates separate results without importing or linking the
 source closure again. Device availability never gates a sibling compiler check.
 
+### Workload variants share one source owner
+
+`configs` binds compile-time values for compiler qualification, correctness,
+and benchmark smoke. `case` selects cases for the two numerical runners;
+compiler qualification still covers the entire owned module. These settings
+belong to the workload, while execution profiles own device selection,
+instrumentation, and resource requirements.
+
+Use named `variants` when the same program needs several configurations:
+
+```starlark
+--8<-- "examples/guide/functions-and-control/BUILD.bazel:workload_variants"
+```
+
+Each row overrides keys in the common `configs` mapping and may override the
+common `case` selector. Configuration values are strings, as on binary rules.
+Omitting `variants` creates one default workload; supplying it names the
+complete set, with no extra default row. An empty mapping is an authoring error.
+
+Each workload has independent compiler and execution children, named
+`<name>_<variant>_compile_<target>` and
+`<name>_<variant>_execute_<profile>_test`. The source import and linked module
+remain shared across every row and profile. `args` remains correctness-only;
+`--config` and `--case` are rejected there and in execution profiles so the two
+numerical runners cannot accidentally select different workloads.
+
+### Compiler fixtures retain their source assertions
+
 Compiler fixtures have the same alongside option. `loom_check_test` accepts a
 `compile_targets` list; `loom_check_test_suite` accepts a map from existing
 source paths to profile lists. Each source case uses the ordinary input

@@ -315,6 +315,7 @@ loom_test(
 loom_test(
     name = "asan_test",
     srcs = ["//loom/src/loom/test/corpus/sanitizer:amdgpu_asan_actual.loom"],
+    configs = {"asan_launch_bound.tile_capacity": "1"},
     execution_profiles = [AMDGPU_ASAN_PROFILE],
 )
 
@@ -339,48 +340,35 @@ loom_test(
 )
 
 loom_test(
-    name = "pipeline_predicates_serial_test",
+    name = "pipeline_predicates_test",
     srcs = [
         "amdgpu_pipeline_predicates.loom",
         "//loom/binding/c/benchmark/kernels:synthetic/segmented_guarded_read_ahead.loom",
     ],
-    args = [
-        "--config=test.depth=1",
-        "--config=test.factor=1",
-        "--config=benchmark.loop_count=8",
-        "--config=benchmark.pipeline_depth=1",
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx1151",
     ],
+    configs = {
+        "benchmark.loop_count": "8",
+        "test.factor": "1",
+    },
     execution_profiles = [AMDGPU_ACCESS_PROFILE],
-)
-
-loom_test(
-    name = "pipeline_predicates_depth_three_test",
-    srcs = [
-        "amdgpu_pipeline_predicates.loom",
-        "//loom/binding/c/benchmark/kernels:synthetic/segmented_guarded_read_ahead.loom",
-    ],
-    args = [
-        "--config=test.depth=3",
-        "--config=test.factor=1",
-        "--config=benchmark.loop_count=8",
-        "--config=benchmark.pipeline_depth=3",
-    ],
-    execution_profiles = [AMDGPU_ACCESS_PROFILE],
-)
-
-loom_test(
-    name = "pipeline_predicates_unrolled_test",
-    srcs = [
-        "amdgpu_pipeline_predicates.loom",
-        "//loom/binding/c/benchmark/kernels:synthetic/segmented_guarded_read_ahead.loom",
-    ],
-    args = [
-        "--config=test.depth=4",
-        "--config=test.factor=2",
-        "--config=benchmark.loop_count=8",
-        "--config=benchmark.pipeline_depth=4",
-    ],
-    execution_profiles = [AMDGPU_ACCESS_PROFILE],
+    variants = {
+        "depth_three": {"configs": {
+            "benchmark.pipeline_depth": "3",
+            "test.depth": "3",
+        }},
+        "serial": {"configs": {
+            "benchmark.pipeline_depth": "1",
+            "test.depth": "1",
+        }},
+        "unrolled": {"configs": {
+            "benchmark.pipeline_depth": "4",
+            "test.depth": "4",
+            "test.factor": "2",
+        }},
+    },
 )
 
 loom_test(

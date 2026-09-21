@@ -58,7 +58,6 @@ AMDGPU_ASAN_PROFILE = loom_execution_profile(
     resource_group = "loom-amdgpu-tests",
     run_requirements = [AMDGPU_RESOURCE],
     runner_args = _AMDGPU_PROFILE_ARGUMENTS + [
-        "--config=asan_launch_bound.tile_capacity=1",
         "--sanitizer=asan",
         "--sanitizer-reporting=report-only",
         "--amdgpu_asan=true",

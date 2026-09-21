@@ -142,11 +142,16 @@ loom_test(
         "profile_cases.loom",
     ],
     args = ["--sample=0"],
+    case = "benchmark_case",
     execution_profiles = [
         REFERENCE_PROFILE,
         SERIALIZED_REFERENCE_PROFILE,
     ],
     tags = ["manual"],
+    variants = {
+        "all": {"case": ""},
+        "selected": {},
+    },
     deps = [":library_dependency"],
 )
 

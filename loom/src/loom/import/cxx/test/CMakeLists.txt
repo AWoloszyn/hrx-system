@@ -67,67 +67,52 @@ loom_check_test_suite(
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_module(
+loom_test(
   NAME
-    config_values
+    config_values_test
   SRCS
     "config_values.cpp"
-  MODE merge
-  OUTPUT_FORMAT bc
-  STRICT_DEPS
-)
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
-  NAME
-    config_five_test
-  SRCS
-    "::config_values"
 )
 
+if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
-    config_five_test_execute_five_test
+    config_values_test_five_execute_vm_reference_test
   MODULE
-    "::config_five_test_module"
+    "::config_values_test_module"
   RUNNER_ARGS
-    "--case=five"
-    "--config=tuning.factor=5"
     "--config=tuning.count=7"
     "--config=tuning.enabled=true"
+    "--config=tuning.factor=5"
+    "--case=five"
   LABELS
-    "loom-execution-profile=five"
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
     "loom-target-family=vm"
     "loom-target-class=cpu"
     "loom-executor=reference"
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
-  NAME
-    config_nine_test
-  SRCS
-    "::config_values"
-)
-
+if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
-    config_nine_test_execute_nine_test
+    config_values_test_nine_execute_vm_reference_test
   MODULE
-    "::config_nine_test_module"
+    "::config_values_test_module"
   RUNNER_ARGS
-    "--case=nine"
-    "--config=tuning.factor=9"
     "--config=tuning.count=13"
     "--config=tuning.enabled=false"
+    "--config=tuning.factor=9"
+    "--case=nine"
   LABELS
-    "loom-execution-profile=nine"
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
     "loom-target-family=vm"
     "loom-target-class=cpu"
     "loom-executor=reference"
 )
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)

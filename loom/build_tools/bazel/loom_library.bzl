@@ -41,11 +41,11 @@ LoomExecutionTestInfo = provider(
     doc = "A test executing one linked Loom test module.",
     fields = {
         "benchmark_runner": "Resolved single-iteration benchmark runner executable.",
-        "benchmark_runner_args": "Smoke and profile arguments passed to the benchmark runner.",
+        "benchmark_runner_args": "Smoke, profile, and workload arguments passed to the benchmark runner.",
         "module": "Linked Loom module containing root-owned cases and benchmarks.",
         "profile_name": "Stable execution profile name.",
         "test_runner": "Resolved correctness runner executable.",
-        "test_runner_args": "Profile and test arguments passed to the correctness runner.",
+        "test_runner_args": "Profile, workload, and test arguments passed to the correctness runner.",
     },
 )
 
@@ -55,6 +55,11 @@ _LoomTestModuleInfo = provider(
         "module": "Linked Loom bytecode module consumed by execution and plan runners.",
     },
 )
+
+def _reject_workload_args(name, args):
+    for arg in args:
+        if arg.split("=")[0] in ["--config", "--case"]:
+            fail("%s: use loom_test configs and case for workload selection, not %s" % (name, arg))
 
 def loom_execution_profile(
         name,
@@ -74,7 +79,8 @@ def loom_execution_profile(
       target_family: Compiler target family, such as amdgpu or spirv.
       target_class: Broad target class, such as gpu or cpu.
       executor: Execution environment, such as hardware or reference.
-      runner_args: Arguments passed to the correctness and benchmark runners.
+      runner_args: Environment arguments passed to both numerical runners.
+          Workload configs and case selection belong on loom_test.
       build_requirements: Build requirements needed by the execution runners.
       run_requirements: Runtime resources needed to execute the test.
       resource_group: Optional local resource group serializing competing tests.
@@ -93,6 +99,7 @@ def loom_execution_profile(
     ]:
         if type(value) != type("") or not value:
             fail("loom execution profile %s must be a non-empty string" % field_name)
+    _reject_workload_args(name, runner_args)
     requirement_ids = {}
     for phase, requirements in [
         ("build", build_requirements),
@@ -293,8 +300,9 @@ def _loom_execution_test_launcher_impl(ctx):
     test_tool = ctx.toolchains[_LOOM_TEST_TOOLCHAIN_TYPE].tool
     benchmark_tool = ctx.toolchains[_LOOM_BENCHMARK_TOOLCHAIN_TYPE].tool
     module = ctx.attr.module[_LoomTestModuleInfo].module
-    test_runner_args = ctx.attr.profile_args + ctx.attr.test_args
-    benchmark_runner_args = _LOOM_BENCHMARK_SMOKE_ARGS + ctx.attr.profile_args
+    runner_args = ctx.attr.profile_args + ctx.attr.workload_args
+    test_runner_args = runner_args + ctx.attr.test_args
+    benchmark_runner_args = _LOOM_BENCHMARK_SMOKE_ARGS + runner_args
     output = _write_execution_test_launcher(
         ctx,
         test_tool,
@@ -342,6 +350,9 @@ _loom_execution_test_launcher = rule(
         ),
         "test_args": attr.string_list(
             doc = "Arguments appended only to the correctness runner.",
+        ),
+        "workload_args": attr.string_list(
+            doc = "Configuration bindings and case selection shared by both runners.",
         ),
     },
     doc = "Generates a launcher for one linked Loom test profile.",
@@ -525,7 +536,8 @@ def _declare_execution_test(
         tags,
         visibility,
         target_compatible_with = [],
-        data = []):
+        data = [],
+        workload_args = []):
     test_kwargs = apply_test_requirements(
         {
             "size": size,
@@ -563,6 +575,7 @@ def _declare_execution_test(
             "profile_args": profile.runner_args,
             "profile_name": profile.name,
             "test_args": test_runner_args,
+            "workload_args": workload_args,
         },
         test_kwargs = test_kwargs,
     )
@@ -763,6 +776,35 @@ def loom_library(
         visibility = visibility,
     )
 
+def _test_variants(name, configs, case, variants):
+    if variants == None:
+        return {name: struct(configs = configs, case = case)}
+    if not variants:
+        fail("%s variants must contain at least one named workload" % name)
+    workloads = {}
+    for variant_name, variant in variants.items():
+        if type(variant_name) != "string" or not variant_name:
+            fail("%s variant names must be non-empty strings" % name)
+        for key in variant:
+            if key not in ["configs", "case"]:
+                fail("%s variant %s has unknown field %s" % (name, variant_name, key))
+        workload_name = name + "_" + _name_suffix(variant_name)
+        if workload_name in workloads:
+            fail("%s has colliding variant names: %s" % (name, variant_name))
+        workload_configs = dict(configs)
+        workload_configs.update(variant.get("configs", {}))
+        workloads[workload_name] = struct(
+            configs = workload_configs,
+            case = variant.get("case", case),
+        )
+    return workloads
+
+def _test_config_args(name, configs):
+    for key, value in configs.items():
+        if type(key) != "string" or type(value) != "string":
+            fail("%s configs must map symbol names to string values" % name)
+    return ["--config=%s=%s" % (key, configs[key]) for key in sorted(configs.keys())]
+
 def loom_test(
         name,
         srcs,
@@ -771,6 +813,9 @@ def loom_test(
         input_format = "",
         inputopts = [],
         args = [],
+        configs = {},
+        case = "",
+        variants = None,
         execution_profiles = [],
         compile_targets = [],
         size = "small",
@@ -795,6 +840,13 @@ def loom_test(
       inputopts: Provider-scoped options, such as ``cxx:std=c++20``.
       deps: Loom libraries available only for dependency resolution.
       args: Additional arguments passed to the correctness runner.
+      configs: String-valued configuration bindings shared by compiler checks,
+          correctness, and benchmark smoke.
+      case: Optional case selector shared by correctness and benchmark smoke.
+          Compiler checks continue to qualify the entire owned module.
+      variants: Complete mapping of named workloads, each with optional configs
+          and case fields overriding the common values. Omitted variants create
+          one default workload; an explicitly empty mapping is invalid.
       execution_profiles: Independent execution environments and requirement
           policies. An empty list declares no execution children.
       compile_targets: Typed compiler profiles qualifying the same linked test
@@ -809,6 +861,8 @@ def loom_test(
         fail("%s requires at least one authored test source" % name)
     if not execution_profiles and not compile_targets:
         fail("%s requires execution_profiles or compile_targets" % name)
+    _reject_workload_args(name, args)
+    workloads = _test_variants(name, configs, case, variants)
     library_name = name + "_library"
     module_name = name + "_module"
     _loom_library(
@@ -832,29 +886,37 @@ def loom_test(
         testonly = True,
         visibility = ["//visibility:private"],
     )
-    execution_tests = _declare_execution_tests(
-        name = name,
-        data = data,
-        module = ":" + module_name,
-        profiles = execution_profiles,
-        test_runner_args = args,
-        size = size,
-        tags = tags,
-        visibility = visibility,
-        target_compatible_with = target_compatible_with,
-    )
-    compile_tests = loom_check_compile_tests(
-        name = name,
-        src = ":" + module_name,
-        targets = compile_targets,
-        size = size,
-        tags = tags,
-        visibility = visibility,
-        target_compatible_with = target_compatible_with,
-    )
+    tests = []
+    for workload_name, workload in workloads.items():
+        config_args = _test_config_args(workload_name, workload.configs)
+        if type(workload.case) != "string":
+            fail("%s case must be a string" % workload_name)
+        workload_args = config_args + (["--case=" + workload.case] if workload.case else [])
+        tests.extend(_declare_execution_tests(
+            name = workload_name,
+            data = data,
+            module = ":" + module_name,
+            profiles = execution_profiles,
+            workload_args = workload_args,
+            test_runner_args = args,
+            size = size,
+            tags = tags,
+            visibility = visibility,
+            target_compatible_with = target_compatible_with,
+        ))
+        tests.extend(loom_check_compile_tests(
+            name = workload_name,
+            src = ":" + module_name,
+            targets = compile_targets,
+            args = config_args,
+            size = size,
+            tags = tags,
+            visibility = visibility,
+            target_compatible_with = target_compatible_with,
+        ))
     native.test_suite(
         name = name,
-        tests = execution_tests + compile_tests,
+        tests = tests,
         tags = tags,
         visibility = visibility,
     )

@@ -229,8 +229,6 @@ loom_test(
     vulkan_explicit_target_tests
   SRCS
     "test/spirv_vulkan_hal_actual.loom"
-  COMPILE_TARGETS
-    loom::target::spirv::vulkan1.3+bda
 )
 
 if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
@@ -261,6 +259,15 @@ loom_execution_test(
     vulkan
 )
 endif()
+
+loom_check_compile_tests(
+  NAME
+    "vulkan_explicit_target_tests"
+  SRC
+    "::vulkan_explicit_target_tests_module"
+  TARGETS
+    loom::target::spirv::vulkan1.3+bda
+)
 endif()
 
 if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
