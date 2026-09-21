@@ -28,6 +28,7 @@ LOOM_DEFINE_ADAPTIVE_SORT(loom_low_allocation_interval_order_sort,
                           loom_low_allocation_interval_order_less)
 
 iree_status_t loom_low_allocation_interval_order_build(
+    const loom_low_descriptor_set_t* descriptor_set,
     const loom_liveness_analysis_t* liveness, iree_arena_allocator_t* arena,
     loom_low_allocation_interval_order_t* out_order) {
   *out_order = (loom_low_allocation_interval_order_t){0};
@@ -46,10 +47,17 @@ iree_status_t loom_low_allocation_interval_order_build(
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, interval_count, sizeof(*intervals), (void**)&intervals));
   iree_host_size_t interval_index = 0;
+  bool has_packable_aggregates = false;
   for (iree_host_size_t i = 0; i < liveness->interval_count; ++i) {
     const loom_liveness_interval_t* interval = &liveness->intervals[i];
     if (loom_low_allocation_live_range_interval_is_allocatable(interval)) {
       intervals[interval_index++] = interval;
+      if (interval->unit_count > 1 &&
+          !loom_low_reg_class_uses_explicit_physical_registers(
+              &descriptor_set
+                   ->reg_classes[interval->value_class.register_class_id])) {
+        has_packable_aggregates = true;
+      }
     }
   }
   loom_low_allocation_interval_order_sort(intervals, interval_count);
@@ -57,6 +65,7 @@ iree_status_t loom_low_allocation_interval_order_build(
   *out_order = (loom_low_allocation_interval_order_t){
       .intervals = intervals,
       .interval_count = interval_count,
+      .has_packable_aggregates = has_packable_aggregates,
   };
   return iree_ok_status();
 }

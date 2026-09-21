@@ -55,8 +55,8 @@ class LowAllocationScalarPackingTest : public ::testing::Test {
     liveness.pressure_summaries = summaries_;
     liveness.pressure_summary_count = IREE_ARRAYSIZE(summaries_);
     loom_low_allocation_interval_order_t order = {};
-    IREE_RETURN_IF_ERROR(
-        loom_low_allocation_interval_order_build(&liveness, &arena_, &order));
+    IREE_RETURN_IF_ERROR(loom_low_allocation_interval_order_build(
+        &descriptor_set_, &liveness, &arena_, &order));
     return loom_low_allocation_scalar_packing_build(
         &descriptor_set_, &liveness, &order, &arena_, out_packing);
   }

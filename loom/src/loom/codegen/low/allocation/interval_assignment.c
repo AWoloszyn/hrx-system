@@ -687,8 +687,10 @@ static iree_status_t loom_low_allocation_interval_assignment_assign(
       state->context;
   loom_low_allocation_interval_order_t order = {0};
   IREE_RETURN_IF_ERROR(loom_low_allocation_interval_order_build(
-      context->liveness, state->scratch_arena, &order));
+      context->target->descriptor_set, context->liveness, state->scratch_arena,
+      &order));
   state->interval_count = order.interval_count;
+  state->result.has_packable_aggregates = order.has_packable_aggregates;
   IREE_RETURN_IF_ERROR(
       loom_low_allocation_interval_assignment_initialize_result_storage(
           state, &order));

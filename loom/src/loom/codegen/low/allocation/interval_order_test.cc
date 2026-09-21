@@ -19,6 +19,11 @@ class LowAllocationIntervalOrderTest : public ::testing::Test {
     iree_arena_block_pool_initialize(4096, iree_allocator_system(),
                                      &block_pool_);
     iree_arena_initialize(&block_pool_, &arena_);
+    classes_[0].flags = LOOM_LOW_REG_CLASS_FLAG_PHYSICAL;
+    classes_[1].flags = LOOM_LOW_REG_CLASS_FLAG_PHYSICAL |
+                        LOOM_LOW_REG_CLASS_FLAG_EXPLICIT_PHYSICAL_REGISTERS;
+    descriptor_set_.reg_classes = classes_;
+    descriptor_set_.reg_class_count = IREE_ARRAYSIZE(classes_);
   }
 
   void TearDown() override {
@@ -57,8 +62,14 @@ class LowAllocationIntervalOrderTest : public ::testing::Test {
     }
   }
 
+  // Pool shared by the fixture's ordering arena.
   iree_arena_block_pool_t block_pool_;
+  // Scratch storage for interval orders.
   iree_arena_allocator_t arena_;
+  // Contiguous and explicit physical-register classes.
+  loom_low_reg_class_t classes_[2] = {};
+  // Target contract used to classify aggregate intervals.
+  loom_low_descriptor_set_t descriptor_set_ = {};
 };
 
 TEST_F(LowAllocationIntervalOrderTest, FiltersNonAllocatableIntervals) {
@@ -72,10 +83,11 @@ TEST_F(LowAllocationIntervalOrderTest, FiltersNonAllocatableIntervals) {
   liveness.interval_count = IREE_ARRAYSIZE(intervals);
 
   loom_low_allocation_interval_order_t order = {};
-  IREE_ASSERT_OK(
-      loom_low_allocation_interval_order_build(&liveness, &arena_, &order));
+  IREE_ASSERT_OK(loom_low_allocation_interval_order_build(
+      &descriptor_set_, &liveness, &arena_, &order));
   EXPECT_EQ(order.intervals, nullptr);
   EXPECT_EQ(order.interval_count, 0u);
+  EXPECT_FALSE(order.has_packable_aggregates);
 }
 
 TEST_F(LowAllocationIntervalOrderTest, SortsByStartEndAndValueId) {
@@ -95,10 +107,11 @@ TEST_F(LowAllocationIntervalOrderTest, SortsByStartEndAndValueId) {
   liveness.interval_count = IREE_ARRAYSIZE(intervals);
 
   loom_low_allocation_interval_order_t order = {};
-  IREE_ASSERT_OK(
-      loom_low_allocation_interval_order_build(&liveness, &arena_, &order));
+  IREE_ASSERT_OK(loom_low_allocation_interval_order_build(
+      &descriptor_set_, &liveness, &arena_, &order));
   ASSERT_NE(order.intervals, nullptr);
   ASSERT_EQ(order.interval_count, 4u);
+  EXPECT_TRUE(order.has_packable_aggregates);
   const loom_value_id_t expected_value_ids[] = {1, 2, 3, 4};
   ExpectOrderedValueIds(order, expected_value_ids,
                         IREE_ARRAYSIZE(expected_value_ids));
@@ -120,13 +133,36 @@ TEST_F(LowAllocationIntervalOrderTest, SortsLargeReverseStartOrder) {
   liveness.interval_count = IREE_ARRAYSIZE(intervals);
 
   loom_low_allocation_interval_order_t order = {};
-  IREE_ASSERT_OK(
-      loom_low_allocation_interval_order_build(&liveness, &arena_, &order));
+  IREE_ASSERT_OK(loom_low_allocation_interval_order_build(
+      &descriptor_set_, &liveness, &arena_, &order));
   ASSERT_NE(order.intervals, nullptr);
   ASSERT_EQ(order.interval_count, kIntervalCount);
+  EXPECT_FALSE(order.has_packable_aggregates);
   for (iree_host_size_t i = 0; i < kIntervalCount; ++i) {
     EXPECT_EQ(order.intervals[i]->start_point, (uint32_t)(i + 1u)) << i;
   }
+}
+
+TEST_F(LowAllocationIntervalOrderTest, ExcludesExplicitPhysicalAggregates) {
+  loom_liveness_interval_t intervals[] = {
+      RegisterInterval(/*value_id=*/1, /*start_point=*/0, /*end_point=*/4,
+                       /*unit_count=*/1),
+      RegisterInterval(/*value_id=*/2, /*start_point=*/0, /*end_point=*/4,
+                       /*unit_count=*/8),
+      ScalarInterval(/*value_id=*/3),
+  };
+  intervals[1].value_class.register_class_id = 1;
+  // Only register intervals participate in scalar/aggregate packing.
+  intervals[2].unit_count = 8;
+  loom_liveness_analysis_t liveness = {};
+  liveness.intervals = intervals;
+  liveness.interval_count = IREE_ARRAYSIZE(intervals);
+
+  loom_low_allocation_interval_order_t order = {};
+  IREE_ASSERT_OK(loom_low_allocation_interval_order_build(
+      &descriptor_set_, &liveness, &arena_, &order));
+  ASSERT_EQ(order.interval_count, 2u);
+  EXPECT_FALSE(order.has_packable_aggregates);
 }
 
 }  // namespace

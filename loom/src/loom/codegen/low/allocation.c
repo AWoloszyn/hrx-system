@@ -318,7 +318,8 @@ iree_status_t loom_low_allocate_function(
         &interval_assignment_context, &state.interval_assignment);
   }
   if (iree_status_is_ok(status) && state.target_constraints.error_count == 0 &&
-      state.interval_assignment.spill_count != 0) {
+      state.interval_assignment.spill_count != 0 &&
+      state.interval_assignment.has_packable_aggregates) {
     bool fragmentation_repair_eliminates_spills = false;
     status = loom_low_allocation_fragmentation_repair_eliminates_spills(
         &state, model, value_domain, &fragmentation_repair_eliminates_spills);

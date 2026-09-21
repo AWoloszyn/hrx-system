@@ -621,8 +621,8 @@ TEST_F(LowAllocationSearchTest,
   EXPECT_EQ(location_base, 0u);
 
   loom_low_allocation_interval_order_t order = {};
-  IREE_ASSERT_OK(
-      loom_low_allocation_interval_order_build(&liveness, &arena_, &order));
+  IREE_ASSERT_OK(loom_low_allocation_interval_order_build(
+      &descriptor_set, &liveness, &arena_, &order));
   IREE_ASSERT_OK(loom_low_allocation_scalar_packing_build(
       &descriptor_set, &liveness, &order, &arena_, &context.scalar_packing));
   location_base = UINT32_MAX;
