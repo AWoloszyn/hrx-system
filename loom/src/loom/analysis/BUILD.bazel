@@ -1108,6 +1108,7 @@ loom_cc_test(
         "//loom/src/loom/ops/buffer",
         "//loom/src/loom/ops/encoding",
         "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/kernel",
         "//loom/src/loom/ops/scf",
         "//loom/src/loom/ops/test",
         "//loom/src/loom/ops/vector",
