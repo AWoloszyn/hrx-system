@@ -29,6 +29,7 @@ using HipModuleGetFunctionFn = hipError_t (*)(hipFunction_t* function,
                                               const char* name);
 using HipStreamCreateFn = hipError_t (*)(hipStream_t* stream);
 using HipStreamDestroyFn = hipError_t (*)(hipStream_t stream);
+using HipStreamSynchronizeFn = hipError_t (*)(hipStream_t stream);
 using HipStreamGetIdFn = hipError_t (*)(hipStream_t stream,
                                         unsigned long long* stream_id);
 using HipLaunchKernelFn = hipError_t (*)(const void* function, dim3 grid_dim,
@@ -46,6 +47,12 @@ using HipModuleLaunchKernelFn = hipError_t (*)(
     unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
     unsigned int block_dim_z, unsigned int shared_memory_bytes,
     hipStream_t stream, void** arguments, void** extra);
+using HipLaunchKernelExCFn = hipError_t (*)(const hipLaunchConfig_t* config,
+                                            const void* function,
+                                            void** arguments);
+using HipDrvLaunchKernelExFn = hipError_t (*)(const HIP_LAUNCH_CONFIG* config,
+                                              hipFunction_t function,
+                                              void** arguments, void** extra);
 using HipFuncGetAttributeFn = hipError_t (*)(int* value,
                                              hipFuncAttribute_t attribute,
                                              hipFunction_t function);
@@ -89,6 +96,8 @@ struct HipRuntimeApi {
   HipStreamCreateFn stream_create = nullptr;
   // Destroys the stream used by immediate launch entry points.
   HipStreamDestroyFn stream_destroy = nullptr;
+  // Waits for all work previously enqueued on a stream.
+  HipStreamSynchronizeFn stream_synchronize = nullptr;
   // Queries a stream without dereferencing a stale public handle.
   HipStreamGetIdFn stream_get_id = nullptr;
   // Launches a registered runtime kernel.
@@ -97,6 +106,10 @@ struct HipRuntimeApi {
   HipExtLaunchKernelFn ext_launch_kernel = nullptr;
   // Launches a module kernel with prepacked or pointer-array arguments.
   HipModuleLaunchKernelFn module_launch_kernel = nullptr;
+  // Launches a runtime kernel from an extensible configuration.
+  HipLaunchKernelExCFn launch_kernel_ex = nullptr;
+  // Launches a module kernel from an extensible configuration.
+  HipDrvLaunchKernelExFn driver_launch_kernel_ex = nullptr;
   // Queries a cached function compatibility attribute.
   HipFuncGetAttributeFn function_get_attribute = nullptr;
   // Updates a mutable function compatibility attribute.
@@ -135,12 +148,18 @@ class HipLaunchValidationApiTest : public testing::Test {
       api_.stream_create = dso_.Resolve<HipStreamCreateFn>("hipStreamCreate");
       api_.stream_destroy =
           dso_.Resolve<HipStreamDestroyFn>("hipStreamDestroy");
+      api_.stream_synchronize =
+          dso_.Resolve<HipStreamSynchronizeFn>("hipStreamSynchronize");
       api_.stream_get_id = dso_.Resolve<HipStreamGetIdFn>("hipStreamGetId");
       api_.launch_kernel = dso_.Resolve<HipLaunchKernelFn>("hipLaunchKernel");
       api_.ext_launch_kernel =
           dso_.Resolve<HipExtLaunchKernelFn>("hipExtLaunchKernel");
       api_.module_launch_kernel =
           dso_.Resolve<HipModuleLaunchKernelFn>("hipModuleLaunchKernel");
+      api_.launch_kernel_ex =
+          dso_.Resolve<HipLaunchKernelExCFn>("hipLaunchKernelExC");
+      api_.driver_launch_kernel_ex =
+          dso_.Resolve<HipDrvLaunchKernelExFn>("hipDrvLaunchKernelEx");
       api_.function_get_attribute =
           dso_.Resolve<HipFuncGetAttributeFn>("hipFuncGetAttribute");
       api_.function_set_attribute =
@@ -172,10 +191,13 @@ class HipLaunchValidationApiTest : public testing::Test {
     ASSERT_NE(nullptr, api_.module_get_function);
     ASSERT_NE(nullptr, api_.stream_create);
     ASSERT_NE(nullptr, api_.stream_destroy);
+    ASSERT_NE(nullptr, api_.stream_synchronize);
     ASSERT_NE(nullptr, api_.stream_get_id);
     ASSERT_NE(nullptr, api_.launch_kernel);
     ASSERT_NE(nullptr, api_.ext_launch_kernel);
     ASSERT_NE(nullptr, api_.module_launch_kernel);
+    ASSERT_NE(nullptr, api_.launch_kernel_ex);
+    ASSERT_NE(nullptr, api_.driver_launch_kernel_ex);
     ASSERT_NE(nullptr, api_.function_get_attribute);
     ASSERT_NE(nullptr, api_.function_set_attribute);
     ASSERT_NE(nullptr, api_.graph_create);
@@ -193,6 +215,7 @@ class HipLaunchValidationApiTest : public testing::Test {
       ASSERT_EQ(hipSuccess, api_.get_device(&device));
       hipDeviceProp_t properties = {};
       ASSERT_EQ(hipSuccess, api_.get_device_properties(&properties, device));
+      supports_cooperative_launch_ = properties.cooperativeLaunch != 0;
       const hrx_cts::AmdgpuExecutableTestImage test_image =
           hrx_cts::FindAmdgpuExecutableTestImage(properties.gcnArchName);
       ASSERT_NE(nullptr, test_image.file)
@@ -245,6 +268,8 @@ class HipLaunchValidationApiTest : public testing::Test {
   static hipFunction_t empty_function_;
   // Kernel with a nonempty native argument image used for span validation.
   static hipFunction_t prepacked_function_;
+  // Whether the selected device supports cooperative dispatch.
+  static bool supports_cooperative_launch_;
   // Stream supplied to immediate launch entry points.
   hipStream_t stream_ = nullptr;
 };
@@ -254,6 +279,7 @@ hrx::hip::testing::HipDso HipLaunchValidationApiTest::dso_;
 hipModule_t HipLaunchValidationApiTest::module_;
 hipFunction_t HipLaunchValidationApiTest::empty_function_;
 hipFunction_t HipLaunchValidationApiTest::prepacked_function_;
+bool HipLaunchValidationApiTest::supports_cooperative_launch_ = false;
 
 TEST_F(HipLaunchValidationApiTest,
        FunctionDynamicSharedMemoryAttributeRejectsInvalidValues) {
@@ -307,6 +333,26 @@ TEST_F(HipLaunchValidationApiTest,
                 /*block_dim_z=*/1, /*shared_memory_bytes=*/0, stream_,
                 /*arguments=*/nullptr, /*extra=*/nullptr));
 
+  hipLaunchConfig_t runtime_config = {};
+  runtime_config.gridDim = invalid_grid;
+  runtime_config.blockDim = valid_dimension;
+  runtime_config.stream = stream_;
+  EXPECT_EQ(hipErrorInvalidConfiguration,
+            api_.launch_kernel_ex(&runtime_config, function,
+                                  /*arguments=*/nullptr));
+
+  HIP_LAUNCH_CONFIG driver_config = {};
+  driver_config.gridDimY = 1;
+  driver_config.gridDimZ = 1;
+  driver_config.blockDimX = 1;
+  driver_config.blockDimY = 1;
+  driver_config.blockDimZ = 1;
+  driver_config.hStream = stream_;
+  EXPECT_EQ(
+      hipErrorInvalidConfiguration,
+      api_.driver_launch_kernel_ex(&driver_config, (hipFunction_t)function,
+                                   /*arguments=*/nullptr, /*extra=*/nullptr));
+
   hipGraph_t graph = nullptr;
   ASSERT_EQ(hipSuccess, api_.graph_create(&graph, /*flags=*/0));
   hipKernelNodeParams valid_params = {
@@ -341,6 +387,106 @@ TEST_F(HipLaunchValidationApiTest,
                                  /*dependency_count=*/0, &invalid_params));
   EXPECT_EQ(reinterpret_cast<hipGraphNode_t>(uintptr_t{1}), rejected_node);
   EXPECT_EQ(hipSuccess, api_.graph_destroy(graph));
+}
+
+TEST_F(HipLaunchValidationApiTest,
+       ExtendedLaunchEntryPointsRejectMalformedAttributes) {
+  const dim3 one = {1, 1, 1};
+  hipLaunchAttribute unsupported_attribute = {};
+  unsupported_attribute.id = hipLaunchAttributeClusterDimension;
+
+  hipLaunchConfig_t runtime_config = {};
+  runtime_config.gridDim = one;
+  runtime_config.blockDim = one;
+  runtime_config.stream = stream_;
+  runtime_config.attrs = &unsupported_attribute;
+  runtime_config.numAttrs = 1;
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.launch_kernel_ex(&runtime_config, empty_function_,
+                                  /*arguments=*/nullptr));
+
+  HIP_LAUNCH_CONFIG driver_config = {};
+  driver_config.gridDimX = 1;
+  driver_config.gridDimY = 1;
+  driver_config.gridDimZ = 1;
+  driver_config.blockDimX = 1;
+  driver_config.blockDimY = 1;
+  driver_config.blockDimZ = 1;
+  driver_config.hStream = stream_;
+  driver_config.attrs = &unsupported_attribute;
+  driver_config.numAttrs = 1;
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.driver_launch_kernel_ex(&driver_config, empty_function_,
+                                         /*arguments=*/nullptr,
+                                         /*extra=*/nullptr));
+
+  runtime_config.attrs = nullptr;
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.launch_kernel_ex(&runtime_config, empty_function_,
+                                  /*arguments=*/nullptr));
+  driver_config.attrs = nullptr;
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.driver_launch_kernel_ex(&driver_config, empty_function_,
+                                         /*arguments=*/nullptr,
+                                         /*extra=*/nullptr));
+}
+
+TEST_F(HipLaunchValidationApiTest,
+       ExtendedLaunchEntryPointsDispatchNoArgumentKernel) {
+  const dim3 one = {1, 1, 1};
+  hipLaunchConfig_t runtime_config = {};
+  runtime_config.gridDim = one;
+  runtime_config.blockDim = one;
+  runtime_config.stream = stream_;
+
+  HIP_LAUNCH_CONFIG driver_config = {};
+  driver_config.gridDimX = 1;
+  driver_config.gridDimY = 1;
+  driver_config.gridDimZ = 1;
+  driver_config.blockDimX = 1;
+  driver_config.blockDimY = 1;
+  driver_config.blockDimZ = 1;
+  driver_config.hStream = stream_;
+
+  ASSERT_EQ(hipSuccess, api_.launch_kernel_ex(&runtime_config, empty_function_,
+                                              /*arguments=*/nullptr));
+  ASSERT_EQ(hipSuccess,
+            api_.driver_launch_kernel_ex(&driver_config, empty_function_,
+                                         /*arguments=*/nullptr,
+                                         /*extra=*/nullptr));
+  ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream_));
+
+  if (supports_cooperative_launch_) {
+    hipLaunchAttribute cooperative_attribute = {};
+    cooperative_attribute.id = hipLaunchAttributeCooperative;
+    cooperative_attribute.val.cooperative = 1;
+    runtime_config.attrs = &cooperative_attribute;
+    runtime_config.numAttrs = 1;
+    driver_config.attrs = &cooperative_attribute;
+    driver_config.numAttrs = 1;
+
+    ASSERT_EQ(hipSuccess,
+              api_.launch_kernel_ex(&runtime_config, empty_function_,
+                                    /*arguments=*/nullptr));
+    ASSERT_EQ(hipSuccess,
+              api_.driver_launch_kernel_ex(&driver_config, empty_function_,
+                                           /*arguments=*/nullptr,
+                                           /*extra=*/nullptr));
+
+    uint8_t empty_argument_buffer = 0;
+    size_t empty_argument_buffer_size = 0;
+    void* extra[] = {
+        HIP_LAUNCH_PARAM_BUFFER_POINTER,
+        &empty_argument_buffer,
+        HIP_LAUNCH_PARAM_BUFFER_SIZE,
+        &empty_argument_buffer_size,
+        HIP_LAUNCH_PARAM_END,
+    };
+    ASSERT_EQ(hipSuccess,
+              api_.driver_launch_kernel_ex(&driver_config, empty_function_,
+                                           /*arguments=*/nullptr, extra));
+    ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream_));
+  }
 }
 
 TEST_F(HipLaunchValidationApiTest, ZeroAccessPolicyWindowRemainsSupported) {
