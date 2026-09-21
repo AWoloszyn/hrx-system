@@ -21,6 +21,8 @@
 //         iree_coordinated_test_argv(), &kConfig));
 //   }
 
+#include <vector>
+
 #include "iree/base/api.h"
 #include "iree/base/tooling/flags.h"
 #include "iree/testing/coordinated_test.h"
@@ -42,8 +44,12 @@ int main(int argc, char** argv) {
     return child_result;
   }
 
-  // Launcher path: save argc/argv for TEST bodies, then run gtest.
-  iree_coordinated_test_set_args(argc, argv);
+  // Both flag parsers compact argv in place. Keep the original pointer array
+  // alive through RUN_ALL_TESTS so child role arguments cannot be truncated or
+  // replaced by the launcher's parsed argument list. The strings remain owned
+  // by the process startup storage.
+  std::vector<char*> child_argv(argv, argv + argc + 1);
+  iree_coordinated_test_set_args(argc, child_argv.data());
   iree_flags_parse_checked(IREE_FLAGS_PARSE_MODE_UNDEFINED_OK |
                                IREE_FLAGS_PARSE_MODE_CONTINUE_AFTER_HELP,
                            &argc, &argv);

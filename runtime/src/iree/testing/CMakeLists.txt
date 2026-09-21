@@ -149,6 +149,9 @@ iree_cc_test(
     ::coordinated_test
     ::coordinated_test_main
     ::gtest
+  ARGS
+    "--gtest_color=no"
+    "--coordinated_test_payload=two words"
   LABELS
     "noriscv"
 )
