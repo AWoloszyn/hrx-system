@@ -40,6 +40,8 @@ loom_check_test_suite(
     "offsetof.cxx-test"
     "offsetof_roundtrip.cxx-test"
     "pointers.cxx-test"
+    "records.cxx-test"
+    "records_invalid.cxx-test"
     "scalar.cxx-test"
     "scalar_invalid.cxx-test"
     "schedule_lowering.cxx-test"
@@ -60,6 +62,7 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/packed_enums.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/packed_layout.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_layout.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_values.cpp"
 )
 endif()
 
@@ -230,6 +233,25 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_generated_file(
   NAME
+    record_values_cases_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUT
+    "record_values_cases.cc"
+  OUTPUT_FLAG
+    "--output"
+  ARGS
+    "host"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_values.cpp"
+  INPUTS
+    "record_values.cpp"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
     schedule_values_cases_gen
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
@@ -385,6 +407,17 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/integer_functions_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test(
+  NAME
+    record_values_test
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/record_values_cases.cc"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_values.cpp"
 )
 endif()
 
@@ -657,6 +690,25 @@ loom_generated_file_family(
   ARGS
     "kernel"
     "--group=pointer_walk"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    record_values_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "record_values_checks.loom"
+    "record_values_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=record_values"
   TESTONLY
 )
 endif()
@@ -1568,6 +1620,77 @@ loom_test(
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/pointer_walk_arrays"
     "${CMAKE_CURRENT_BINARY_DIR}/pointer_walk_checks.loom"
+  INPUTOPTS
+
+  ARGS
+    "--sanitizer=access"
+    "--sanitizer-reporting=report-only"
+  RUNNER_ARGS
+    "--device=amdgpu"
+  LABELS
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.amdgpu"
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+    "loom-execution-profile=amdgpu"
+    "loom-target-family=amdgpu"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "loom-amdgpu-tests"
+  SANITIZER_SUPPRESSIONS
+    lsan
+    rocm
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_test(
+  NAME
+    record_values_source_test
+  SRCS
+    "record_values.cpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/record_values_checks.loom"
+  DATA
+    "${CMAKE_CURRENT_BINARY_DIR}/record_values_arrays"
+    "${CMAKE_CURRENT_BINARY_DIR}/record_values_checks.loom"
+  INPUTOPTS
+
+  ARGS
+
+  RUNNER_ARGS
+    "--device=amdgpu"
+  LABELS
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.amdgpu"
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+    "loom-execution-profile=amdgpu"
+    "loom-target-family=amdgpu"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "loom-amdgpu-tests"
+  SANITIZER_SUPPRESSIONS
+    lsan
+    rocm
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_test(
+  NAME
+    record_values_access_test
+  SRCS
+    "record_values.cpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/record_values_checks.loom"
+  DATA
+    "${CMAKE_CURRENT_BINARY_DIR}/record_values_arrays"
+    "${CMAKE_CURRENT_BINARY_DIR}/record_values_checks.loom"
   INPUTOPTS
 
   ARGS

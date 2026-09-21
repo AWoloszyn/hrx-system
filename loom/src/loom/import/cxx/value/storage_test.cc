@@ -93,7 +93,10 @@ TEST_F(StorageTest, InteriorPointersRetainSignedDisplacementsAndRootIdentity) {
   std::vector<loom_value_id_t> arguments;
   first.append_to(arguments);
   second.append_to(arguments);
-  Value restored(std::span<const loom_value_id_t>(arguments).subspan(2));
+  ValueArena values;
+  Value restored =
+      values.capture(kPointerPartition,
+                     std::span<const loom_value_id_t>(arguments).subspan(2));
   EXPECT_EQ(restored.pointer().root, first.pointer().root);
   EXPECT_EQ(restored.pointer().byte_offset, interior.byte_offset);
   EXPECT_NE(restored.pointer().byte_offset, first.pointer().byte_offset);

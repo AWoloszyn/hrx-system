@@ -15,9 +15,26 @@ loom_cc_library(
     representation
   HDRS
     "representation.h"
+  SRCS
+    "representation.cc"
   DEPS
     loom::ir
   PUBLIC
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_test(
+  NAME
+    representation_test
+  SRCS
+    "representation_test.cc"
+  DEPS
+    ::representation
+    iree::testing::gtest
+    iree::testing::gtest_main
+  LABELS
+    "iree-build-requirement=loom.import.cxx"
 )
 endif()
 
@@ -30,6 +47,7 @@ loom_cc_library(
   SRCS
     "types.cc"
   DEPS
+    ::representation
     iree::third_party::cxx_parser
     loom::import::cxx::source
     loom::ir
@@ -211,6 +229,8 @@ loom_cc_test(
 endif()
 
 foreach(_target IN ITEMS
+    loom_import_cxx_value_representation.objects
+    loom_import_cxx_value_representation_test
     loom_import_cxx_value_types.objects
     loom_import_cxx_value_types_test
     loom_import_cxx_value_scalar.objects

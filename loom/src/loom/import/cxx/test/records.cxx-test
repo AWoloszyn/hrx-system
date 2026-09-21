@@ -1,0 +1,74 @@
+// RUN: roundtrip
+// Empty, two-scalar and nested records retain source identity across calls.
+struct Empty {};
+struct Pair { unsigned first, second; };
+struct Packet { Empty tag; Pair pair; bool valid; };
+Empty empty(Empty value) { return value; }
+Pair pair(Pair value) { Pair copy(value); copy.second++; return copy; }
+Packet packet(Packet value, unsigned choose) {
+  Packet copy{value};
+  copy.pair = pair(copy.pair);
+  copy.tag = empty(copy.tag);
+  if (choose) copy.pair.first += 3u;
+  return choose ? copy : value;
+}
+unsigned temporary(unsigned value) { return Pair{value, 7u}.first; }
+// ----
+func.def public @empty() {
+  func.return
+}
+
+func.def public @pair(%value_first: i32, %value_second: i32) -> (i32, i32) {
+  %4 = scalar.constant 1 : i32
+  %copy_second = scalar.addi %value_second, %4 : i32
+  func.return %value_first, %copy_second : i32, i32
+}
+
+func.def public @packet(%value_pair_first: i32, %value_pair_second: i32, %value_valid: i1, %choose: i32) -> (i32, i32, i1) {
+  %copy_pair_first$13, %copy_pair_second$14 = func.call @pair(%value_pair_first, %value_pair_second) : (i32, i32) -> (i32, i32)
+  func.call @empty() : ()
+  %15 = scalar.constant 0 : i32
+  %16 = scalar.cmpi ne, %choose, %15 : i32
+  %copy_pair_first$17, %copy_pair_second$18, %copy_valid = scf.if %16 -> (i32, i32, i1) {
+    %20 = scalar.constant 3 : i32
+    %copy_pair_first = scalar.addi %copy_pair_first$13, %20 : i32
+    scf.yield %copy_pair_first, %copy_pair_second$14, %value_valid : i32, i32, i1
+  } else {
+    scf.yield %copy_pair_first$13, %copy_pair_second$14, %value_valid : i32, i32, i1
+  }
+  %22 = scalar.constant 0 : i32
+  %23 = scalar.cmpi ne, %choose, %22 : i32
+  %24, %25, %26 = scf.if %23 -> (i32, i32, i1) {
+    scf.yield %copy_pair_first$17, %copy_pair_second$18, %copy_valid : i32, i32, i1
+  } else {
+    scf.yield %value_pair_first, %value_pair_second, %value_valid : i32, i32, i1
+  }
+  func.return %24, %25, %26 : i32, i32, i1
+}
+
+func.def public @temporary(%value: i32) -> (i32) {
+  %29 = scalar.constant 7 : i32
+  func.return %value : i32
+}
+
+// ====
+// INPUT: cxx data-model=lp64
+// RUN: verify
+// Source layouts remain independent of flattened High component order.
+#include "record_values.cpp"
+static_assert(sizeof(State) == 32);
+static_assert(sizeof(void*) == 8 && sizeof(long) == 8);
+
+// ====
+// INPUT: cxx data-model=llp64
+// RUN: verify
+#include "record_values.cpp"
+static_assert(sizeof(State) == 32);
+static_assert(sizeof(void*) == 8 && sizeof(long) == 4);
+
+// ====
+// INPUT: cxx data-model=ilp32
+// RUN: verify
+#include "record_values.cpp"
+static_assert(sizeof(State) == 32);
+static_assert(sizeof(void*) == 4 && sizeof(long) == 4);

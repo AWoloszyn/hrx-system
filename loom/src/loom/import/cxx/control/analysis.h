@@ -17,7 +17,20 @@
 #include <variant>
 #include <vector>
 
+#include "loom/import/cxx/value/types.h"
+
 namespace loom::cxx_import {
+
+// Retained ownership of a source assignment destination. A field write replaces
+// a slice of its owning automatic binding; it is not a storage-backed store.
+struct Destination {
+  // Owning local or parameter identity, borrowed from the source function.
+  cxx::Symbol* binding;
+  // First component of a nested member in the complete owning binding.
+  size_t component_offset;
+  // Member structure, or null when the destination is the entire binding.
+  const Partition* member;
+};
 
 // Retained proof that a source loop has a stable, nonwrapping unsigned
 // interval.
@@ -44,13 +57,17 @@ enum class ExitFlow { None, Some, All };
 // and every returned reference.
 class ControlFlow final : private cxx::ASTVisitor {
  public:
-  ControlFlow(cxx::TranslationUnit& unit, cxx::StatementAST* body);
+  ControlFlow(cxx::TranslationUnit& unit, Types& types,
+              cxx::StatementAST* body);
   ControlFlow(const ControlFlow&) = delete;
   ControlFlow& operator=(const ControlFlow&) = delete;
 
   // Unique bindings mutated under a structured statement or conditional value
   // expression, in encounter order. Includes mutations in conditions.
   std::span<cxx::Symbol* const> written(cxx::AST* owner) const;
+  // Retained automatic-object destination, or no value for a memory access or
+  // unsupported lvalue. Whole identifiers need no indexed projection record.
+  std::optional<Destination> destination(cxx::ExpressionAST* expression) const;
   // Null retains ordinary while semantics; a result permits scf.for lowering.
   const CountedLoop* counted(cxx::ForStatementAST* loop) const;
   // Retained return/fallthrough summary, including nested statements.
@@ -77,10 +94,14 @@ class ControlFlow final : private cxx::ASTVisitor {
 
   // Resolved source types and literal interpretation for loop admission.
   cxx::TranslationUnit& unit_;
+  // Admitted source member partitions outlive all retained destination slices.
+  Types& types_;
   // Active structured ancestors during construction only.
   std::vector<cxx::AST*> owners_;
   // Stable encounter order determines region argument/result order.
   std::unordered_map<cxx::AST*, std::vector<cxx::Symbol*>> writes_;
+  // Nested lvalue ownership and transitive component offsets computed once.
+  std::unordered_map<cxx::ExpressionAST*, Destination> destinations_;
   // Proven intervals retained after each source loop's children are visited.
   std::unordered_map<cxx::ForStatementAST*, CountedLoop> counted_;
   // Sparse path sets retain statements with function or iteration exits.

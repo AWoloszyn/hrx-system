@@ -43,6 +43,49 @@ TEST(TypesTest, ProjectsTheConfiguredDataModelAndRetainsSignedness) {
   }
 }
 
+TEST(TypesTest, RecordPartitionsRetainNominalMembersAndStaticTransport) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  Source source(IREE_SV("struct Empty {}; struct Pair { unsigned a, b; }; "
+                        "struct Other { unsigned a, b; }; "
+                        "struct Packet { Empty empty; Pair pair; "
+                        "const unsigned* pointer; const bool valid; };"),
+                IREE_SV("records.cpp"), options);
+  Types types(source.unit(), source.diagnostics());
+  auto* owner = source.unit().ast();
+  auto source_type = [&](const char* name) {
+    return (*source.unit().globalScope()->find(name).begin())->type();
+  };
+  const auto* packet = types.record(source_type("Packet"), owner);
+  ASSERT_NE(packet, nullptr);
+  ASSERT_EQ(packet->members.size(), 4u);
+  EXPECT_EQ(packet->component_count, 5u);
+  EXPECT_EQ(packet->members[0].partition->component_count, 0u);
+  EXPECT_EQ(packet->members[1].component_offset, 0u);
+  EXPECT_EQ(packet->members[2].component_offset, 2u);
+  EXPECT_EQ(packet->members[3].component_offset, 4u);
+  EXPECT_EQ(types.member(packet->members[2].field, owner).component_offset, 2u);
+  EXPECT_EQ(packet->component_names,
+            (std::vector<std::string>{"pair_a", "pair_b", "pointer",
+                                      "pointer_byte_offset", "valid"}));
+  EXPECT_NE(packet->members[1].partition,
+            &types.partition(source_type("Other"), owner));
+  EXPECT_EQ(types.partition(source_type("Pair"), owner).kind,
+            ValueKind::Record);
+  EXPECT_EQ(packet->members[2].partition->kind, ValueKind::Pointer);
+  EXPECT_TRUE(
+      source.unit().typeTraits().is_const(packet->members[3].field->type()));
+  EXPECT_EQ(types.record(source_type("Empty"), owner)->source->sizeInBytes(),
+            1);
+  std::vector<loom_type_t> signature;
+  types.append(source_type("Packet"), owner, signature);
+  ASSERT_EQ(signature.size(), 5u);
+  EXPECT_EQ(loom_type_element_type(signature[0]), LOOM_SCALAR_TYPE_I32);
+  EXPECT_EQ(loom_type_kind(signature[2]), LOOM_TYPE_BUFFER);
+  EXPECT_EQ(loom_type_element_type(signature[3]), LOOM_SCALAR_TYPE_OFFSET);
+  EXPECT_EQ(loom_type_element_type(signature[4]), LOOM_SCALAR_TYPE_I1);
+}
+
 TEST(TypesTest, RejectsRepresentationsThatLoseSourceSemantics) {
   loom_cxx_import_options_t options;
   loom_cxx_import_options_initialize(&options);

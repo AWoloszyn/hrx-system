@@ -29,9 +29,20 @@ cxx::ExpressionAST* unwrapped(cxx::ExpressionAST* expression) {
 
 }  // namespace
 
-ControlFlow::ControlFlow(cxx::TranslationUnit& unit, cxx::StatementAST* body)
-    : unit_(unit) {
+ControlFlow::ControlFlow(cxx::TranslationUnit& unit, Types& types,
+                         cxx::StatementAST* body)
+    : unit_(unit), types_(types) {
   accept(body);
+}
+
+std::optional<Destination> ControlFlow::destination(
+    cxx::ExpressionAST* expression) const {
+  if (auto* id = cxx::ast_cast<cxx::IdExpressionAST>(expression)) {
+    return Destination{id->symbol, 0, nullptr};
+  }
+  auto found = destinations_.find(expression);
+  return found == destinations_.end() ? std::nullopt
+                                      : std::optional(found->second);
 }
 
 std::span<cxx::Symbol* const> ControlFlow::written(cxx::AST* owner) const {
@@ -168,12 +179,36 @@ bool ControlFlow::structured(cxx::AST* ast) {
 }
 
 void ControlFlow::record(cxx::ExpressionAST* expression) {
-  while (auto* nested = cxx::ast_cast<cxx::NestedExpressionAST>(expression)) {
-    expression = nested->expression;
+  auto* destination = expression;
+  size_t component_offset = 0;
+  const Partition* partition = nullptr;
+  for (;;) {
+    if (auto* nested = cxx::ast_cast<cxx::NestedExpressionAST>(expression)) {
+      expression = nested->expression;
+      continue;
+    }
+    auto* member = cxx::ast_cast<cxx::MemberExpressionAST>(expression);
+    if (!member || member->accessOp != cxx::TokenKind::T_DOT) {
+      break;
+    }
+    auto* field = cxx::symbol_cast<cxx::FieldSymbol>(member->symbol);
+    if (!field || field->isStatic()) {
+      return;
+    }
+    const auto& slice = types_.member(field, member);
+    if (!partition) {
+      partition = slice.partition;
+    }
+    component_offset += slice.component_offset;
+    expression = member->baseExpression;
   }
   auto* id = cxx::ast_cast<cxx::IdExpressionAST>(expression);
   if (!id) {
     return;
+  }
+  if (expression != destination) {
+    destinations_.emplace(destination,
+                          Destination{id->symbol, component_offset, partition});
   }
   for (auto* owner : owners_) {
     auto& writes = writes_[owner];

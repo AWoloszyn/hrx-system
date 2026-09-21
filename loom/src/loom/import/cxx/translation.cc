@@ -95,6 +95,9 @@ class Translator {
   Value convert(cxx::ExpressionAST* input_ast, const cxx::Type* output_type,
                 cxx::AST* owner) {
     auto value = expression(input_ast);
+    if (value.is_record()) {
+      return value;
+    }
     if (value.is_pointer()) {
       if (loom_type_kind(types_.get(output_type, owner)) != LOOM_TYPE_BUFFER) {
         fail(owner, "conversion must preserve pointer representation");
@@ -143,7 +146,14 @@ class Translator {
   }
 
   Value name(Value value, const std::string& hint) {
-    if (value.is_pointer()) {
+    if (value.is_record()) {
+      const auto& partition =
+          static_cast<const RecordPartition&>(value.partition());
+      auto components = value.components();
+      for (size_t index = 0; index < components.size(); ++index) {
+        name(components[index], hint + "_" + partition.component_names[index]);
+      }
+    } else if (value.is_pointer()) {
       auto pointer = value.pointer();
       name(pointer.root, hint);
       name(pointer.byte_offset, hint + "_byte_offset");
@@ -153,12 +163,14 @@ class Translator {
     return value;
   }
 
-  Value region_value(loom_region_t* region, size_t& index, size_t count) {
-    loom_value_id_t components[2];
-    for (size_t component = 0; component < count; ++component) {
-      components[component] = loom_region_entry_arg_id(region, index++);
-    }
-    return Value({components, count});
+  Value region_value(loom_region_t* region, size_t& index,
+                     const Partition& partition) {
+    auto* block = loom_region_entry_block(region);
+    auto components =
+        std::span<const loom_value_id_t>(block->arg_ids, block->arg_count)
+            .subspan(index, partition.component_count);
+    index += partition.component_count;
+    return value_arena_.capture(partition, components);
   }
 
   loom_value_id_t result(loom_op_t* op, const std::string& hint = "") {
@@ -197,17 +209,18 @@ class Translator {
       return;
     }
     auto parameters = symbol->parameters();
-    control_.emplace(unit_, body);
+    control_.emplace(unit_, types_, body);
     auto saved = loom_builder_enter_region(&builder_, op, region);
     values_.clear();
+    value_arena_.reset();
     size_t argument_index = 0;
     for (auto* parameter : parameters) {
-      auto type = types_.get(parameter->type(), defined.source);
-      bool pointer = loom_type_kind(type) == LOOM_TYPE_BUFFER;
       bool kernel = defined.kind == FunctionKind::Kernel;
-      auto value =
-          region_value(region, argument_index, pointer && !kernel ? 2 : 1);
-      if (pointer && kernel) {
+      const auto& partition =
+          types_.partition(parameter->type(), defined.source);
+      auto value = region_value(region, argument_index,
+                                kernel ? kSSAPartition : partition);
+      if (partition.kind == ValueKind::Pointer && kernel) {
         value = storage_.root(value.ssa(), defined.source);
       }
       values_[parameter] = name(value, cxx::to_string(parameter->name()));
@@ -411,45 +424,123 @@ class Translator {
 
   enum class IncrementResult { Previous, Updated };
 
+  Destination destination(cxx::ExpressionAST* expression, cxx::AST* owner) {
+    auto destination = control_->destination(expression);
+    if (!destination || !values_.contains(destination->binding)) {
+      fail(owner, "mutation requires an owned automatic source binding");
+    }
+    types_.require_mutable(expression->type, expression);
+    return *destination;
+  }
+
+  Value read(Destination destination) {
+    auto value = values_.at(destination.binding);
+    return destination.member ? value.project(*destination.member,
+                                              destination.component_offset)
+                              : value;
+  }
+
+  void write(Destination destination, Value value) {
+    auto& binding = values_.at(destination.binding);
+    binding = name(
+        destination.member
+            ? value_arena_.replace(binding, destination.component_offset, value)
+            : value,
+        cxx::to_string(destination.binding->name()));
+  }
+
   Value increment(cxx::ExpressionAST* destination, cxx::TokenKind token,
                   IncrementResult selected, cxx::AST* owner) {
-    while (auto* nested =
-               cxx::ast_cast<cxx::NestedExpressionAST>(destination)) {
-      destination = nested->expression;
-    }
-    auto* id = cxx::ast_cast<cxx::IdExpressionAST>(destination);
-    if (!id || !values_.contains(id->symbol)) {
-      fail(owner, "increment requires an owned automatic source binding");
-    }
-    types_.require_mutable(id->type, id);
-    auto previous = values_.at(id->symbol);
+    auto target = this->destination(destination, owner);
+    auto previous = read(target);
     auto source = locations_.get(owner);
     auto operation = token == cxx::TokenKind::T_MINUS_MINUS
                          ? cxx::TokenKind::T_MINUS
                          : cxx::TokenKind::T_PLUS;
     Value updated;
-    if (auto* pointer =
-            cxx::type_cast<cxx::PointerType>(types_.unqualified(id->type))) {
+    if (auto* pointer = cxx::type_cast<cxx::PointerType>(
+            types_.unqualified(destination->type))) {
       auto one = scalars_.integer(1, LOOM_SCALAR_TYPE_I32, source);
       updated =
           storage_.advance(previous.pointer(), one, pointer,
                            unit_.control()->getIntType(), operation, owner);
     } else {
-      if (!unit_.typeTraits().is_integral(id->type) ||
-          types_.unqualified(id->type)->kind() == cxx::TypeKind::kBool) {
+      if (!unit_.typeTraits().is_integral(destination->type) ||
+          types_.unqualified(destination->type)->kind() ==
+              cxx::TypeKind::kBool) {
         fail(owner, "increment requires an integer or pointer binding");
       }
       // Builtin ++/-- performs promoted arithmetic before converting back to
       // the lvalue type, just like compound assignment with an integer one.
-      auto* promoted = unit_.typeTraits().promoted_integer_type(id->type);
-      auto value = scalars_.convert(previous.ssa(), id->type, promoted, owner);
+      auto* promoted =
+          unit_.typeTraits().promoted_integer_type(destination->type);
+      auto value =
+          scalars_.convert(previous.ssa(), destination->type, promoted, owner);
       auto one = scalars_.integer(1, loom_type_element_type(value_type(value)),
                                   source);
       value = scalars_.binary(operation, value, one, promoted, promoted, owner);
-      updated = scalars_.convert(value, promoted, id->type, owner);
+      updated = scalars_.convert(value, promoted, destination->type, owner);
     }
-    values_[id->symbol] = name(updated, cxx::to_string(id->symbol->name()));
+    write(target, updated);
     return selected == IncrementResult::Previous ? previous : updated;
+  }
+
+  Value compound_assignment(cxx::CompoundAssignmentExpressionAST* assignment) {
+    auto* ast = assignment;
+    auto* destination = assignment->targetExpression;
+    if (assignment->symbol) {
+      fail(ast, "compound assignment requires a builtin local");
+    }
+    auto target = this->destination(destination, ast);
+    auto value = expression(assignment->rightExpression);
+    // The right operand is sequenced before the destination's value read.
+    auto old = read(target);
+    if (old.is_pointer()) {
+      auto updated =
+          storage_.advance(old.pointer(), value.ssa(), destination->type,
+                           assignment->rightExpression->type,
+                           cxx::get_underlying_binary_op(assignment->op), ast);
+      write(target, Value(updated));
+      return Value(updated);
+    }
+    auto* promoted = assignment->leftExpression->type;
+    old = numeric_convert(old.ssa(), destination->type, promoted, ast);
+    value = numeric_convert(value.ssa(), assignment->rightExpression->type,
+                            promoted, ast);
+    auto updated = binary(cxx::get_underlying_binary_op(assignment->op),
+                          old.ssa(), value.ssa(), promoted, promoted, ast);
+    updated = numeric_convert(updated, promoted, destination->type, ast);
+    write(target, updated);
+    return updated;
+  }
+
+  Value assignment(cxx::AssignmentExpressionAST* assignment) {
+    auto* ast = assignment;
+    auto* record = types_.record(assignment->leftExpression->type, ast);
+    if ((assignment->symbol &&
+         (!record ||
+          (assignment->symbol != record->source->copyAssignmentOperator() &&
+           assignment->symbol != record->source->moveAssignmentOperator()))) ||
+        assignment->op != cxx::TokenKind::T_EQUAL) {
+      fail(ast, "only builtin plain assignment is admitted here");
+    }
+    types_.require_mutable(assignment->leftExpression->type,
+                           assignment->leftExpression);
+    auto value = expression(assignment->rightExpression);
+    if (auto target = control_->destination(assignment->leftExpression)) {
+      write(destination(assignment->leftExpression, ast), value);
+      return value;
+    }
+    auto access = address(assignment->leftExpression);
+    int64_t selector = access.index ? INT64_MIN : 0;
+    loom_op_t* op;
+    auto build = types_.vector(assignment->leftExpression->type)
+                     ? loom_vector_store_build
+                     : loom_view_store_build;
+    check(build(&builder_, 0, 0, value.ssa(), access.view,
+                access.index ? &*access.index : nullptr, access.index ? 1 : 0,
+                &selector, 1, 0, 0, locations_.get(ast), &op));
+    return value;
   }
 
   // The condition has already executed. Each arm starts from that same state
@@ -491,12 +582,85 @@ class Translator {
                                source, &yield));
     loom_builder_restore(&builder_, saved);
     bind_values(written, loom_op_results(op) + value_count);
-    return Value({loom_op_results(op), value_count});
+    return value_arena_.capture(types_.partition(ast->type, ast),
+                                {loom_op_results(op), value_count});
+  }
+
+  // The frontend has selected the special member and checked accessibility,
+  // deletion, cv and overload resolution. Source admission establishes trivial
+  // lifecycle semantics before an implicit copy becomes an SSA value copy.
+  void admit_copy(cxx::FunctionSymbol* constructor, const cxx::Type* type,
+                  cxx::AST* owner) {
+    if (!constructor) {
+      return;
+    }
+    auto* record = types_.record(type, owner);
+    if (record && constructor == record->source->defaultConstructor()) {
+      fail(owner,
+           "default record construction requires source object initialization "
+           "semantics");
+    }
+    if (!record || (constructor != record->source->copyConstructor() &&
+                    constructor != record->source->moveConstructor())) {
+      fail(owner,
+           "record construction requires aggregate initialization or a trivial "
+           "copy");
+    }
+  }
+
+  Value initialize(const cxx::Type* type,
+                   cxx::List<cxx::ExpressionAST*>* elements, cxx::AST* owner) {
+    if (auto* record = types_.record(type, owner)) {
+      // Single same-type arguments are copy-list/direct initialization, not
+      // the first aggregate field. The normalized AST retains that distinction.
+      if (elements && !elements->next &&
+          types_.unqualified(elements->value->type) ==
+              types_.unqualified(type)) {
+        return expression(elements->value);
+      }
+      std::vector<loom_value_id_t> components;
+      components.reserve(record->component_count);
+      for (const auto& member : record->members) {
+        convert(elements->value, member.field->type(), owner)
+            .append_to(components);
+        elements = elements->next;
+      }
+      return value_arena_.capture(*record, components);
+    }
+    if (auto* vector = types_.vector(type)) {
+      std::vector<loom_value_id_t> components;
+      for (auto* element : cxx::ListView{elements}) {
+        components.push_back(
+            convert(element, vector->elementType(), owner).ssa());
+      }
+      return vectors_.construct(components, type, owner);
+    }
+    auto output = types_.get(type, owner);
+    if (elements && !elements->next) {
+      return convert(elements->value, type, owner);
+    }
+    if (elements || loom_type_kind(output) != LOOM_TYPE_SCALAR) {
+      fail(owner,
+           "value initialization requires a scalar, vector or admitted record");
+    }
+    loom_op_t* op;
+    check(loom_scalar_constant_build(
+        &builder_,
+        types_.is_float(type) ? loom_attr_f64(0.0) : loom_attr_i64(0), output,
+        locations_.get(owner), &op));
+    return result(op);
   }
 
   Value expression(cxx::ExpressionAST* ast) {
     if (!ast) {
       throw std::runtime_error("missing expression");
+    }
+    if (auto* assignment = cxx::ast_cast<cxx::AssignmentExpressionAST>(ast)) {
+      return this->assignment(assignment);
+    }
+    if (auto* assignment =
+            cxx::ast_cast<cxx::CompoundAssignmentExpressionAST>(ast)) {
+      return compound_assignment(assignment);
     }
     auto source = locations_.get(ast);
     if (auto* constant = cxx::ast_cast<cxx::ConstExpressionAST>(ast)) {
@@ -514,7 +678,7 @@ class Translator {
     }
     if (auto* cast = cxx::ast_cast<cxx::ImplicitCastExpressionAST>(ast)) {
       if (cast->conversionFunction) {
-        fail(ast, "user-defined conversions are not admitted");
+        admit_copy(cast->conversionFunction, ast->type, ast);
       }
       return convert(cast->expression, cast->type, ast);
     }
@@ -559,6 +723,10 @@ class Translator {
       return convert(cast->expression, cast->type, ast);
     }
     if (auto* cast = cxx::ast_cast<cxx::TypeConstructionAST>(ast)) {
+      if (types_.record(ast->type, ast)) {
+        admit_copy(cast->constructorSymbol, ast->type, ast);
+        return initialize(ast->type, cast->expressionList, ast);
+      }
       auto output = types_.get(ast->type, ast);
       if (cast->constructorSymbol ||
           loom_type_kind(output) != LOOM_TYPE_SCALAR ||
@@ -577,22 +745,15 @@ class Translator {
     }
     if (auto* construction =
             cxx::ast_cast<cxx::BracedTypeConstructionAST>(ast)) {
-      if (construction->constructorSymbol || !types_.vector(ast->type)) {
-        fail(ast, "braced value construction requires an explicit vector type");
-      }
-      return expression(construction->bracedInitList);
+      admit_copy(construction->constructorSymbol, ast->type, ast);
+      return initialize(ast->type, construction->bracedInitList->expressionList,
+                        ast);
     }
     if (auto* initializer = cxx::ast_cast<cxx::BracedInitListAST>(ast)) {
-      auto* vector = types_.vector(ast->type);
-      if (!vector) {
-        fail(ast,
-             "aggregate value initializers require an explicit vector type");
-      }
-      std::vector<loom_value_id_t> elements;
-      for (auto* element : cxx::ListView{initializer->expressionList}) {
-        elements.push_back(convert(element, vector->elementType(), ast).ssa());
-      }
-      return vectors_.construct(elements, ast->type, ast);
+      return initialize(ast->type, initializer->expressionList, ast);
+    }
+    if (auto* initializer = cxx::ast_cast<cxx::ParenInitializerAST>(ast)) {
+      return initialize(ast->type, initializer->expressionList, ast);
     }
     if (auto* select = cxx::ast_cast<cxx::ConditionalExpressionAST>(ast)) {
       if (types_.vector(select->condition->type)) {
@@ -628,6 +789,11 @@ class Translator {
               cxx::to_string(variable->name()));
         }
       }
+      if (cxx::symbol_cast<cxx::FieldSymbol>(id->symbol)) {
+        fail(ast,
+             "member-dependent initialization requires source object "
+             "initialization semantics");
+      }
       fail(ast, "unbound source value: " +
                     cxx::to_string(id->symbol ? id->symbol->name() : nullptr));
     }
@@ -650,9 +816,21 @@ class Translator {
     }
     if (auto* member = cxx::ast_cast<cxx::MemberExpressionAST>(ast)) {
       auto* base = cxx::ast_cast<cxx::IdExpressionAST>(member->baseExpression);
-      if (!base || !member->symbol ||
-          member->accessOp != cxx::TokenKind::T_DOT) {
-        fail(ast, "only topology member access is admitted");
+      if (!member->symbol || member->accessOp != cxx::TokenKind::T_DOT) {
+        fail(ast, "record member access requires an SSA source value");
+      }
+      bool topology = base && (annotated(base->symbol, "workitem_id") ||
+                               annotated(base->symbol, "workgroup_id") ||
+                               annotated(base->symbol, "workgroup_size") ||
+                               annotated(base->symbol, "workgroup_count"));
+      if (!topology) {
+        auto* field = cxx::symbol_cast<cxx::FieldSymbol>(member->symbol);
+        if (!field || field->isStatic()) {
+          fail(ast, "record value access requires a non-static data member");
+        }
+        auto value = expression(member->baseExpression);
+        const auto& slice = types_.member(field, ast);
+        return value.project(*slice.partition, slice.component_offset);
       }
       auto axis = cxx::to_string(member->symbol->name());
       loom_kernel_dimension_t dimension;
@@ -836,9 +1014,9 @@ class Translator {
       for (auto* argument : cxx::ListView{call->expressionList}) {
         expression(argument).append_to(arguments);
       }
-      auto result_type = types_.get(ast->type, ast);
       loom_op_t* op;
       if (annotated(function, "subgroup_size")) {
+        auto result_type = types_.get(ast->type, ast);
         if (!arguments.empty() ||
             !loom_type_equal(result_type,
                              loom_type_scalar(LOOM_SCALAR_TYPE_I32))) {
@@ -855,7 +1033,8 @@ class Translator {
       if (annotated(function, "shuffle_xor") && arguments.size() == 3) {
         check(loom_kernel_subgroup_shuffle_build(
             &builder_, LOOM_KERNEL_SUBGROUP_SHUFFLE_MODE_XOR, arguments[0],
-            arguments[1], arguments[2], result_type, source, &op));
+            arguments[1], arguments[2], types_.get(ast->type, ast), source,
+            &op));
         return result(op);
       }
       if (auto value = intrinsics_.call(function, arguments, math_flags_,
@@ -873,7 +1052,8 @@ class Translator {
       check(loom_func_call_build(
           &builder_, 0, 0, 0, 0, symbol, arguments.data(), arguments.size(),
           results.data(), results.size(), nullptr, 0, source, &op));
-      return Value({loom_op_results(op), results.size()});
+      return value_arena_.capture(types_.partition(ast->type, ast),
+                                  {loom_op_results(op), results.size()});
     }
     fail(ast,
          "unsupported expression: " + std::string(cxx::to_string(ast->kind())));
@@ -1057,7 +1237,9 @@ class Translator {
                 types_.unqualified(variable->symbol->type()))) {
           fail(ast, "local arrays require __shared__ in this slice");
         }
-        types_.get(variable->symbol->type(), variable);
+        types_.partition(variable->symbol->type(), variable);
+        admit_copy(source_variable->constructor(), variable->symbol->type(),
+                   variable);
         values_[variable->symbol] =
             name(expression(variable->initializer),
                  cxx::to_string(variable->symbol->name()));
@@ -1272,19 +1454,22 @@ class Translator {
   void bind(const std::vector<cxx::Symbol*>& symbols, loom_region_t* region,
             size_t index = 0) {
     for (auto* symbol : symbols) {
-      auto count = values_.at(symbol).components().size();
-      values_[symbol] = name(region_value(region, index, count),
+      const auto& partition = values_.at(symbol).partition();
+      values_[symbol] = name(region_value(region, index, partition),
                              cxx::to_string(symbol->name()));
     }
   }
   void bind_values(const std::vector<cxx::Symbol*>& symbols,
                    const loom_value_id_t* components) {
-    size_t index = 0;
     for (auto* symbol : symbols) {
-      auto count = values_.at(symbol).components().size();
-      values_[symbol] = name(Value({components + index, count}),
-                             cxx::to_string(symbol->name()));
-      index += count;
+      const auto& partition = values_.at(symbol).partition();
+      auto count = partition.component_count;
+      values_[symbol] =
+          name(value_arena_.capture(partition, {components, count}),
+               cxx::to_string(symbol->name()));
+      if (count) {
+        components += count;
+      }
     }
   }
 
@@ -1371,61 +1556,9 @@ class Translator {
           locations_.get(ast), &op));
       return;
     }
-    if (auto* assignment =
-            cxx::ast_cast<cxx::CompoundAssignmentExpressionAST>(ast)) {
-      auto* destination =
-          cxx::ast_cast<cxx::IdExpressionAST>(assignment->targetExpression);
-      if (!destination || assignment->symbol) {
-        fail(ast, "compound assignment requires a builtin local");
-      }
-      types_.require_mutable(destination->type, destination);
-      auto old = expression(destination);
-      auto value = expression(assignment->rightExpression);
-      if (old.is_pointer()) {
-        auto updated = storage_.advance(
-            old.pointer(), value.ssa(), destination->type,
-            assignment->rightExpression->type,
-            cxx::get_underlying_binary_op(assignment->op), ast);
-        values_[destination->symbol] =
-            name(Value(updated), cxx::to_string(destination->symbol->name()));
-        return;
-      }
-      auto* promoted = assignment->leftExpression->type;
-      old = numeric_convert(old.ssa(), destination->type, promoted, ast);
-      value = numeric_convert(value.ssa(), assignment->rightExpression->type,
-                              promoted, ast);
-      auto updated = binary(cxx::get_underlying_binary_op(assignment->op),
-                            old.ssa(), value.ssa(), promoted, promoted, ast);
-      updated = numeric_convert(updated, promoted, destination->type, ast);
-      values_[destination->symbol] =
-          name(updated, cxx::to_string(destination->symbol->name()));
-      return;
-    }
-    if (auto* assignment = cxx::ast_cast<cxx::AssignmentExpressionAST>(ast)) {
-      if (assignment->symbol || assignment->op != cxx::TokenKind::T_EQUAL) {
-        fail(ast, "only builtin plain assignment is admitted here");
-      }
-      types_.require_mutable(assignment->leftExpression->type,
-                             assignment->leftExpression);
-      auto value = expression(assignment->rightExpression);
-      if (auto* destination =
-              cxx::ast_cast<cxx::IdExpressionAST>(assignment->leftExpression)) {
-        if (!values_.contains(destination->symbol)) {
-          fail(ast, "assignment requires an owned automatic source binding");
-        }
-        values_[destination->symbol] =
-            name(value, cxx::to_string(destination->symbol->name()));
-        return;
-      }
-      auto access = address(assignment->leftExpression);
-      int64_t selector = access.index ? INT64_MIN : 0;
-      loom_op_t* op;
-      auto build = types_.vector(assignment->leftExpression->type)
-                       ? loom_vector_store_build
-                       : loom_view_store_build;
-      check(build(&builder_, 0, 0, value.ssa(), access.view,
-                  access.index ? &*access.index : nullptr, access.index ? 1 : 0,
-                  &selector, 1, 0, 0, locations_.get(ast), &op));
+    if (cxx::ast_cast<cxx::AssignmentExpressionAST>(ast) ||
+        cxx::ast_cast<cxx::CompoundAssignmentExpressionAST>(ast)) {
+      expression(ast);
       return;
     }
     auto* unary = cxx::ast_cast<cxx::UnaryExpressionAST>(ast);
@@ -1473,6 +1606,8 @@ class Translator {
   uint8_t math_flags_;
   // Source and native definition contracts for the body being translated.
   FunctionBody current_function_ = {};
+  // Immutable large source bindings, released after each function's maps.
+  ValueArena value_arena_;
   // Bound symbols, never identifier spellings, key source-to-SSA mappings.
   std::unordered_map<cxx::Symbol*, Value> values_;
   // Immutable control facts for the function currently being translated.

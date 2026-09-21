@@ -58,10 +58,9 @@ The numerical tests explicitly permit approximate mathematical functions.
 They test correctness and source compatibility, not kernel performance or
 compatibility with complete upstream libraries.
 
-`functions_test` aggregates 11 source modules with 2,817 scalar cases.
-`kernels_test` aggregates 19 source modules with 247 cases, each run normally and with device
-access sanitization, for 494 case executions. Every case checks for zero access
-reports. Individual targets such as `integer_functions_test`,
+`functions_test` aggregates scalar-result VM cases. `kernels_test` aggregates
+native source modules, each run normally and with device access sanitization.
+Every case checks for zero access reports. Individual targets such as `integer_functions_test`,
 `structured_continue_source_test`, and `structured_continue_access_test` can be
 run directly. Compiler rejection witnesses live in `.cxx-test`, including
 scheduled-loop lowering and unsupported VM aggregate transport. The corpus has
@@ -87,6 +86,7 @@ report fields, and process exit behavior.
 | `structured_continue.cpp` | Conditional iteration exits, shared tails, nested loop targets, shadowed bindings, for increments and pre/post-test conditions. Exact VM references cover 350 scalar cases. Native cases preserve sparse destinations, compacted pointer streams, vector recurrences and filtered reads under four unroll/pipeline schedules, with unchanged inputs and output guards checked normally and with device access sanitization. | Original source-language control witness, including the renderer's odd-index copy pattern. |
 | `pointer_walk.cpp` | Interior pointers through helper returns, conditional origins and counted/pre-test/post-test loops. Signed backward displacements, zero-trip behavior and final pointer positions are checked for seven lane-specific trip counts under three starting positions, normally and with device access sanitization. Inputs and output guards remain unchanged. | Original source storage-semantics witness. |
 | `shaped_intrinsics.cpp` | Register-table lookups preserve integer values and floating-point bits, including signed zero, infinities and NaNs. Mixed-width dots cover all four byte-signedness pairs and wrapping i32 accumulators. The VM checks 264 scalar-return cases; AMDGPU checks complete buffers and guards for zero and nonzero group counts, normally and with device access sanitization. | Original shaped operation-binding witness. |
+| `record_values.cpp` | Empty, nested, scalar, vector and pointer records through construction, member mutation, independent copies, helpers, conditional values and loop state. Twenty-four exact VM cases and sixty AMDGPU cases include modular overflow, zero trips, defaults/designators and sequencing. Native cases preserve input buffers and output guards, normally and with access sanitization. Record and explicit-leaf controls express the same algorithm for code/resource comparison. | Original source value and callable-boundary witness. |
 | `symbol_exports.cpp` | A kernel and helper use explicit Loom names inherited through source redeclarations. Authored Loom links and launches the renamed kernel for 32 exact modular integer cases, with unchanged inputs and output guards checked normally and with device access sanitization. | Original source-symbol identity witness. |
 
 The llama.cpp extraction specializes `rms_norm_f32`, `block_reduce<SUM>` and

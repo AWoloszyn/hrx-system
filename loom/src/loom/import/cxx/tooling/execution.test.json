@@ -196,6 +196,72 @@
           "wraps_byte_benchmark"
         ]
       }
+    },
+    {
+      "name": "record components cross imported typed library and text ownership boundaries",
+      "steps": [
+        {
+          "name": "library",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "{srcdir}/record_library.cc",
+              "--to=text",
+              "--output={tmp}/record_library.loom"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{srcdir}/record_input.loom",
+              "--library={tmp}/record_library.loom"
+            ]
+          },
+          "stdout": {
+            "contains": [
+              "\"case_count\":1",
+              "\"failed_sample_count\":0",
+              "\"planning_issue_count\":0"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "record components cross imported typed library and bytecode ownership boundaries",
+      "steps": [
+        {
+          "name": "library",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "{srcdir}/record_library.cc",
+              "--to=bc",
+              "--output={tmp}/record_library.loombc"
+            ]
+          }
+        },
+        {
+          "name": "execute",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{srcdir}/record_input.loom",
+              "--library={tmp}/record_library.loombc"
+            ]
+          },
+          "stdout": {
+            "contains": [
+              "\"case_count\":1",
+              "\"failed_sample_count\":0",
+              "\"planning_issue_count\":0"
+            ]
+          }
+        }
+      ]
     }
   ]
 }

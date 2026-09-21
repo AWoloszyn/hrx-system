@@ -8,6 +8,7 @@
 
 #include <cxx/control.h>
 #include <cxx/memory_layout.h>
+#include <cxx/symbols.h>
 #include <cxx/types.h>
 
 namespace loom::cxx_import {
@@ -18,6 +19,87 @@ const cxx::Type* Types::unqualified(const cxx::Type* type) {
 
 const cxx::VectorType* Types::vector(const cxx::Type* type) {
   return cxx::type_cast<cxx::VectorType>(unqualified(type));
+}
+
+const Partition& Types::partition(const cxx::Type* input, cxx::AST* owner) {
+  if (auto* admitted = record(input, owner)) {
+    return *admitted;
+  }
+  return loom_type_kind(get(input, owner)) == LOOM_TYPE_BUFFER
+             ? kPointerPartition
+             : kSSAPartition;
+}
+
+const RecordPartition* Types::record(const cxx::Type* input, cxx::AST* owner) {
+  if (!input) {
+    return nullptr;
+  }
+  auto* type = cxx::type_cast<cxx::ClassType>(unqualified(input));
+  if (!type) {
+    return nullptr;
+  }
+  auto traits = unit_.typeTraits();
+  if (traits.is_volatile(input)) {
+    diagnostics_.reject(unit_, owner, "volatile access is not supported");
+  }
+  auto* source = type->definition();
+  if (auto found = records_.find(source); found != records_.end()) {
+    return found->second.get();
+  }
+  if (!source || !source->isComplete() || source->isUnion() ||
+      !source->baseClasses().empty() || !traits.is_aggregate(input) ||
+      !traits.is_trivially_copyable(input) ||
+      !traits.has_trivial_destructor(input)) {
+    diagnostics_.reject(
+        unit_, owner,
+        "record values require a complete aggregate without unions, bases "
+        "or nontrivial lifecycle operations");
+  }
+  auto result = std::make_unique<RecordPartition>();
+  result->kind = ValueKind::Record;
+  result->component_count = 0;
+  result->source = source;
+  for (auto* symbol : source->members()) {
+    auto* field = cxx::symbol_cast<cxx::FieldSymbol>(symbol);
+    if (!field || field->isStatic()) {
+      continue;
+    }
+    if (field->isBitField() || traits.is_reference(field->type()) ||
+        traits.is_array(field->type())) {
+      diagnostics_.reject(
+          unit_, owner,
+          "record value fields cannot be bitfields, references or arrays");
+    }
+    auto& member_partition = partition(field->type(), owner);
+    MemberPartition member{field, &member_partition, result->component_count};
+    result->members.push_back(member);
+    members_.emplace(field, member);
+    append(field->type(), owner, result->component_types);
+    auto name = cxx::to_string(field->name());
+    if (member_partition.kind == ValueKind::Record) {
+      auto& nested = static_cast<const RecordPartition&>(member_partition);
+      for (const auto& suffix : nested.component_names) {
+        result->component_names.push_back(name + "_" + suffix);
+      }
+    } else {
+      result->component_names.push_back(name);
+      if (member_partition.kind == ValueKind::Pointer) {
+        result->component_names.push_back(name + "_byte_offset");
+      }
+    }
+    result->component_count += member_partition.component_count;
+  }
+  auto* admitted = result.get();
+  records_.emplace(source, std::move(result));
+  return admitted;
+}
+
+const MemberPartition& Types::member(cxx::FieldSymbol* field, cxx::AST* owner) {
+  if (auto found = members_.find(field); found != members_.end()) {
+    return found->second;
+  }
+  record(field->parent()->type(), owner);
+  return members_.at(field);
 }
 
 loom_type_t Types::get(const cxx::Type* input, cxx::AST* ast) {
@@ -125,6 +207,11 @@ void Types::require_mutable(const cxx::Type* input, cxx::AST* owner) {
 
 void Types::append(const cxx::Type* input, cxx::AST* owner,
                    std::vector<loom_type_t>& output) {
+  if (auto* admitted = record(input, owner)) {
+    output.insert(output.end(), admitted->component_types.begin(),
+                  admitted->component_types.end());
+    return;
+  }
   auto type = get(input, owner);
   output.push_back(type);
   if (loom_type_kind(type) == LOOM_TYPE_BUFFER) {
