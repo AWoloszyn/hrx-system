@@ -1946,21 +1946,6 @@ loom_amdgpu_memory_access_promote_scalar_materializable_terms_to_soffset(
   return true;
 }
 
-static bool loom_amdgpu_memory_access_root_is_read_only(
-    const loom_amdgpu_memory_access_t* access,
-    const loom_view_region_table_t* view_regions) {
-  if (view_regions == NULL ||
-      access->source.root_value_id == LOOM_VALUE_ID_INVALID ||
-      access->source.alias_scope_id == LOOM_VALUE_FACT_ALIAS_SCOPE_ID_NONE) {
-    return false;
-  }
-  const loom_view_access_flags_t access_flags =
-      loom_view_region_table_root_access_flags(view_regions,
-                                               access->source.root_value_id);
-  return iree_all_bits_set(access_flags, LOOM_VIEW_ACCESS_READ) &&
-         !iree_any_bit_set(access_flags, LOOM_VIEW_ACCESS_WRITE);
-}
-
 static bool loom_amdgpu_memory_access_try_select_global_smem(
     const loom_amdgpu_memory_packet_selection_context_t* selection_context,
     loom_low_source_memory_operation_kind_t kind,
@@ -1975,8 +1960,10 @@ static bool loom_amdgpu_memory_access_try_select_global_smem(
       !loom_amdgpu_memory_access_promote_scalar_materializable_terms_to_soffset(
           selection_context->materialization_plan, &candidate) ||
       !loom_amdgpu_memory_access_uses_only_scalar_address_terms(&candidate) ||
-      !loom_amdgpu_memory_access_root_is_read_only(
-          &candidate, selection_context->view_regions)) {
+      !selection_context->view_regions ||
+      !loom_view_region_table_root_is_stable(
+          selection_context->view_regions, candidate.source.root_value_id,
+          candidate.source.alias_scope_id, candidate.source.memory_space)) {
     return false;
   }
 

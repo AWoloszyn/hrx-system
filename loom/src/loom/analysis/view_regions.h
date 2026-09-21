@@ -43,7 +43,7 @@ enum loom_view_access_flag_bits_e {
   // The view is written by at least one memory operation.
   LOOM_VIEW_ACCESS_WRITE = 1u << 1,
 };
-typedef uint32_t loom_view_access_flags_t;
+typedef uint8_t loom_view_access_flags_t;
 
 // Precision bits describing which parts of a region are known symbolically.
 enum loom_view_region_precision_flag_bits_e {
@@ -137,6 +137,14 @@ typedef struct loom_view_region_table_t {
   // Per-local-value construction state for recursion guards.
   uint8_t* states_by_value_ordinal;
 
+  // Aggregate accesses through every alias of a storage root, indexed by the
+  // root's local value ordinal. Populated by analyze, including raw buffers.
+  loom_view_access_flags_t* root_access_flags_by_value_ordinal;
+
+  // Memory spaces that may change through acquisition, unknown effects, or
+  // writes without comparable storage identities. Bit i names memory space i.
+  uint32_t interference_memory_spaces;
+
   // Compact region storage indexed by region ID.
   loom_view_region_t* regions;
 
@@ -180,13 +188,26 @@ iree_status_t loom_view_region_table_derive_element_region(
     loom_view_region_t* out_region, bool* out_derived);
 
 // Walks the table's local value domain region, constructs summaries for view
-// values, and derives per-view access flags from memory-operand descriptors.
+// values, and derives per-view/root accesses and memory-space interference.
+// The result covers nested control flow and is invalidated by IR mutation.
 iree_status_t loom_view_region_table_analyze(loom_view_region_table_t* table);
 
-// Returns aggregate access flags for all summarized regions with
-// |root_value_id|.
+// Returns analyzed aggregate access flags through |root_value_id| in constant
+// time, or zero when the root is outside the table's local value domain.
 loom_view_access_flags_t loom_view_region_table_root_access_flags(
     const loom_view_region_table_t* table, loom_value_id_t root_value_id);
+
+// Proves that an accessed storage root remains unchanged throughout the
+// analyzed function. Local read-only access alone is insufficient: acquisition
+// may import another participant's writes, and unknown effects or incomparable
+// written roots may alias it. Constant storage is immutable by contract.
+// |alias_scope_id| and |memory_space| are retained facts for the queried
+// access. Requires analyze to have completed; this query performs no IR
+// traversal.
+bool loom_view_region_table_root_is_stable(
+    const loom_view_region_table_t* table, loom_value_id_t root_value_id,
+    loom_value_fact_alias_scope_id_t alias_scope_id,
+    loom_value_fact_memory_space_t memory_space);
 
 // Returns true when two concrete memory spaces cannot name the same storage.
 // Unknown and generic spaces remain conservative, as do distinct global-like

@@ -462,7 +462,7 @@ kernel.def @i32_dynamic_leading_dim_global_saddr() {
 kernel.def @i32_readonly_uniform_smem_non_power_two_stride() {
   %unit = index.constant 1 : index
   %workgroups = index.constant 2 : index
-  %workgroup_size = index.constant 64 : index
+  %workgroup_size = index.constant 1 : index
   kernel.launch.config workgroups(%workgroups, %unit, %unit) workgroup_size(%workgroup_size, %unit, %unit) : index
 } launch(%input: buffer, %output: buffer) {
   %workgroup = kernel.workgroup.id<x> : index
@@ -470,8 +470,9 @@ kernel.def @i32_readonly_uniform_smem_non_power_two_stride() {
   %input_global = buffer.assume.memory_space<global> %input : buffer
   %input_noalias = buffer.assume.noalias %input_global : buffer
   %output_global = buffer.assume.memory_space<global> %output : buffer
+  %output_noalias = buffer.assume.noalias %output_global : buffer
   %input_view = buffer.view %input_noalias[%base] : buffer -> view<2x3xi32>
-  %output_view = buffer.view %output_global[%base] : buffer -> view<2xi32>
+  %output_view = buffer.view %output_noalias[%base] : buffer -> view<2xi32>
   %loaded = view.load %input_view[%workgroup, 0] : view<2x3xi32> -> i32
   view.store %loaded, %output_view[%workgroup] : i32, view<2xi32>
   kernel.return
@@ -544,9 +545,10 @@ kernel.def @f32_readonly_uniform_smem_vector_math() {
   %control_noalias = buffer.assume.noalias %control_global : buffer
   %input_global = buffer.assume.memory_space<global> %input : buffer
   %output_global = buffer.assume.memory_space<global> %output : buffer
+  %output_noalias = buffer.assume.noalias %output_global : buffer
   %control_view = buffer.view %control_noalias[%base] : buffer -> view<1xf32>
   %input_view = buffer.view %input_global[%base] : buffer -> view<64x4xf32>
-  %output_view = buffer.view %output_global[%base] : buffer -> view<64x4xf32>
+  %output_view = buffer.view %output_noalias[%base] : buffer -> view<64x4xf32>
   %scale = view.load %control_view[0] : view<1xf32> -> f32
   %scale_vector = vector.splat %scale : vector<4xf32>
   %input_vector = vector.load %input_view[%lane, 0] : view<64x4xf32> -> vector<4xf32>
@@ -565,8 +567,9 @@ kernel.def @i32_readonly_uniform_smem_address() {
   %control_global = buffer.assume.memory_space<global> %control : buffer
   %control_noalias = buffer.assume.noalias %control_global : buffer
   %output_global = buffer.assume.memory_space<global> %output : buffer
+  %output_noalias = buffer.assume.noalias %output_global : buffer
   %control_view = buffer.view %control_noalias[%base] : buffer -> view<1xi32>
-  %output_view = buffer.view %output_global[%base] : buffer -> view<64xi32>
+  %output_view = buffer.view %output_noalias[%base] : buffer -> view<64xi32>
   %column_i32 = view.load %control_view[0] : view<1xi32> -> i32
   %column0 = index.cast %column_i32 : i32 to index
   %column = index.assume %column0 [range(%column0, 0, 63)] : index
