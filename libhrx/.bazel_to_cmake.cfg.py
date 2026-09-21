@@ -154,6 +154,9 @@ class HrxBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         if platform_deps_block:
             self._converter.body += platform_deps_block
         labels_block = self._convert_string_list_block("LABELS", tags)
+        resource_group_block = self._convert_string_arg_block(
+            "RESOURCE_GROUP", kwargs.get("resource_group"), quote=False
+        )
         self._converter.body += (
             f"hrx_cc_test(\n"
             f"{name_block}"
@@ -166,6 +169,7 @@ class HrxBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             f"{env_block}"
             f"{includes_block}"
             f"{labels_block}"
+            f"{resource_group_block}"
             f")\n\n"
         )
 

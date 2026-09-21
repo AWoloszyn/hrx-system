@@ -261,7 +261,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -283,7 +283,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -305,7 +305,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -327,7 +327,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -351,7 +351,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -375,7 +375,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -400,7 +400,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -422,7 +422,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -445,7 +445,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -467,7 +467,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -489,7 +489,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -511,7 +511,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -533,7 +533,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -555,7 +555,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -580,7 +580,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     vulkan
@@ -612,7 +612,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     vulkan
@@ -638,7 +638,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -660,7 +660,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -682,7 +682,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -706,7 +706,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -728,7 +728,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -751,7 +751,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -774,7 +774,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 
@@ -796,7 +796,7 @@ iree_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    iree-hal-drivers-vulkan-tests
+    gpu-device
 )
 endif()
 

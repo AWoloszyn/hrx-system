@@ -45,6 +45,8 @@ iree_native_test(
     "iree-run-requirement=runtime.resource.amd_gpu"
     "requires-gpu-amd"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 endif()
 
@@ -84,6 +86,8 @@ iree_native_test(
     "iree-run-requirement=runtime.resource.amd_gpu"
     "requires-gpu-amd"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 endif()
 
@@ -120,6 +124,8 @@ iree_native_test(
     "requires-gpu-amd"
     "runtime-resource=amd-gpu"
     "notsan"
+  RESOURCE_GROUP
+    gpu-device
 )
 endif()
 
@@ -140,6 +146,8 @@ iree_native_test(
     "requires-gpu-amd"
     "runtime-resource=amd-gpu"
     "notsan"
+  RESOURCE_GROUP
+    gpu-device
 )
 endif()
 
@@ -175,6 +183,8 @@ iree_native_test(
     "requires-gpu-amd"
     "runtime-resource=amd-gpu"
     "manual"
+  RESOURCE_GROUP
+    gpu-device
 )
 endif()
 
@@ -210,6 +220,8 @@ iree_native_test(
     "requires-gpu-amd"
     "runtime-resource=amd-gpu"
     "manual"
+  RESOURCE_GROUP
+    gpu-device
 )
 endif()
 
@@ -228,6 +240,8 @@ iree_native_test(
     "iree-run-requirement=runtime.resource.amd_gpu"
     "requires-gpu-amd"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 endif()
 
@@ -262,6 +276,8 @@ iree_native_test(
     "requires-gpu-amd"
     "runtime-resource=amd-gpu"
     "manual"
+  RESOURCE_GROUP
+    gpu-device
 )
 endif()
 

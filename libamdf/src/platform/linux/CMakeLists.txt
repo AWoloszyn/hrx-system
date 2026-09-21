@@ -167,7 +167,7 @@ iree_cc_test(
     "runtime-resource=amd-xdna"
     "iree-build-requirement=libamdf"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 

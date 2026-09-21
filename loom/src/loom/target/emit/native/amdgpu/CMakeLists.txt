@@ -850,6 +850,8 @@ loom_cc_test(
     "runtime-resource=amd-gpu"
     "iree-build-requirement=loom.target.arch.amdgpu"
     "iree-build-requirement=loom.emit.amdgpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 endif()
 

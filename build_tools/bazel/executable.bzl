@@ -12,6 +12,7 @@ load(
     "collect_wasm_js",
     "discover_wasm_entry",
 )
+load(":cc_attrs.bzl", "cc_attrs")
 load(
     ":dynamic_library_bundle.bzl",
     "collect_dynamic_library_bundles",
@@ -386,10 +387,11 @@ iree_executable_alias = macro(
     doc = "Exposes an executable target or file as another executable target.",
 )
 
-def _executable_test_macro_impl(name, visibility, **kwargs):
+def _executable_test_macro_impl(name, visibility, tags, resource_group, **kwargs):
     _iree_executable_test(
         name = name,
         visibility = visibility,
+        tags = cc_attrs.with_resource_group_tags(tags, resource_group),
         windows_launcher = _windows_launcher(),
         **kwargs
     )
@@ -397,6 +399,12 @@ def _executable_test_macro_impl(name, visibility, **kwargs):
 iree_executable_test = macro(
     implementation = _executable_test_macro_impl,
     inherit_attrs = _iree_executable_test,
-    attrs = {"windows_launcher": None},
+    attrs = {
+        "resource_group": attr.string(
+            configurable = False,
+            doc = "Local resource name used to serialize tests competing for the same host resource.",
+        ),
+        "windows_launcher": None,
+    },
     doc = "Runs an executable target or file directly as a Bazel test.",
 )

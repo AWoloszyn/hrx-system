@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//build_tools/bazel:executable.bzl", "iree_executable_test")
+load("//build_tools/bazel:test_resources.bzl", "GPU_DEVICE_RESOURCE_GROUP")
 load("//build_tools/embed_data:build_defs.bzl", "iree_c_embed_data")
 load("//build_tools/sanitizer:suppressions.bzl", "vulkan_suppressions")
 load(
@@ -215,7 +216,7 @@ iree_executable_test(
 loom_cc_test(
     name = "emit_amdgpu_hsa_test",
     srcs = ["emit_amdgpu_hsa.c"],
-    resource_group = "loom-amdgpu-tests",
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = [
         "driver=amdgpu",
         "iree-run-requirement=runtime.resource.amd_gpu",
@@ -235,7 +236,7 @@ loom_cc_test(
 loom_cc_test(
     name = "emit_spirv_vulkan_test",
     srcs = ["emit_spirv_vulkan.c"],
-    resource_group = "loom-vulkan-tests",
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     sanitizer_suppressions = vulkan_suppressions,
     tags = [
         "driver=vulkan",
@@ -254,7 +255,7 @@ loom_cc_test(
 loom_cc_test(
     name = "emit_spirv_iree_hal_test",
     srcs = ["emit_spirv_iree_hal.c"],
-    resource_group = "loom-vulkan-tests",
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     sanitizer_suppressions = vulkan_suppressions,
     tags = [
         "driver=vulkan",

@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//build_tools/bazel:executable.bzl", "iree_executable_test")
+load("//build_tools/bazel:test_resources.bzl", "GPU_DEVICE_RESOURCE_GROUP")
 load("//build_tools/embed_data:build_defs.bzl", "iree_c_embed_data")
 load("//build_tools/sanitizer:suppressions.bzl", "vulkan_suppressions")
 load(
@@ -263,6 +264,7 @@ iree_executable_test(
     env = {
         "LSAN_OPTIONS": "suppressions=$(location " + vulkan_suppressions["lsan"] + "):allow_addr2line=1",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = [
         "iree-run-requirement=vulkan.resource.device",
         "runtime-resource=vulkan-device",
@@ -302,7 +304,7 @@ loom_cc_test(
         "//runtime/src/iree/hal/cts/util:test_main.cc",
     ],
     args = ["--vulkan_validation_layers=false"],
-    resource_group = "loom-vulkan-tests",
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     sanitizer_suppressions = vulkan_suppressions,
     tags = [
         "iree-run-requirement=vulkan.resource.device",

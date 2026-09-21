@@ -157,6 +157,8 @@ hrx_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 
 hrx_cc_test(
@@ -176,6 +178,8 @@ hrx_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 
 hrx_cc_test(
@@ -195,6 +199,8 @@ hrx_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 
 hrx_cc_test(
@@ -214,6 +220,8 @@ hrx_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 
 hrx_cc_test(
@@ -233,6 +241,8 @@ hrx_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 
 hrx_cc_test(
@@ -252,6 +262,8 @@ hrx_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 
 hrx_cc_test(
@@ -271,6 +283,8 @@ hrx_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 
 hrx_cc_test(
@@ -290,6 +304,8 @@ hrx_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 
 hrx_cc_test(
@@ -312,6 +328,8 @@ hrx_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND IREE_HAL_DRIVER_AMDGPU)
@@ -333,6 +351,8 @@ iree_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     hsa
@@ -363,6 +383,8 @@ iree_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     hsa
@@ -392,6 +414,8 @@ iree_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     rocm
@@ -426,6 +450,8 @@ iree_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     hsa
@@ -460,6 +486,8 @@ iree_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     rocm
@@ -490,6 +518,8 @@ iree_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     hsa
@@ -520,6 +550,8 @@ iree_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     hsa
@@ -551,6 +583,8 @@ iree_cc_test(
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
     "manual"
+  RESOURCE_GROUP
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     hsa
@@ -574,6 +608,8 @@ hrx_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 
 hrx_cc_test(
@@ -609,6 +645,8 @@ hrx_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 
 hrx_cc_test(
@@ -628,6 +666,8 @@ hrx_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
 )
 
 hrx_cc_test(

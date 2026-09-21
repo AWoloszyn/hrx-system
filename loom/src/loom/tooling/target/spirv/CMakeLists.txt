@@ -255,7 +255,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-vulkan-tests"
+    "gpu-device"
   SANITIZER_SUPPRESSIONS
     lsan
     vulkan
@@ -314,7 +314,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-vulkan-tests"
+    "gpu-device"
   SANITIZER_SUPPRESSIONS
     lsan
     vulkan
@@ -349,6 +349,8 @@ iree_native_test(
   LABELS
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
+  RESOURCE_GROUP
+    gpu-device
 )
 endif()
 
@@ -412,7 +414,7 @@ loom_cc_test(
     "iree-build-requirement=loom.target.arch.spirv"
     "iree-build-requirement=loom.emit.spirv"
   RESOURCE_GROUP
-    loom-vulkan-tests
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     vulkan

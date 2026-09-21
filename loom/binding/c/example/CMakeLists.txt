@@ -224,7 +224,7 @@ loom_cc_test(
     "requires-gpu-amd"
     "runtime-resource=amd-gpu"
   RESOURCE_GROUP
-    loom-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -244,7 +244,7 @@ loom_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    loom-vulkan-tests
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     vulkan
@@ -272,7 +272,7 @@ loom_cc_test(
     "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    loom-vulkan-tests
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     vulkan

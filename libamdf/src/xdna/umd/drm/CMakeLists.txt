@@ -273,7 +273,7 @@ iree_cc_test(
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.xdna"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 

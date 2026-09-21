@@ -331,7 +331,7 @@ iree_cc_test(
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -354,7 +354,7 @@ iree_cc_test(
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -377,7 +377,7 @@ iree_cc_test(
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -418,7 +418,7 @@ iree_cc_test(
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -458,7 +458,7 @@ iree_cc_test(
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -499,7 +499,7 @@ iree_cc_test(
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -522,7 +522,7 @@ iree_cc_test(
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -537,7 +537,7 @@ iree_runtime_hal_cts_test_suite(
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 

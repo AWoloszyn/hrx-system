@@ -58,7 +58,7 @@ iree_native_test(
     "iree-run-requirement=d3d12.resource.device"
     "runtime-resource=d3d12-device"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -79,7 +79,7 @@ iree_native_test(
     "iree-run-requirement=d3d12.resource.device"
     "runtime-resource=d3d12-device"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -117,7 +117,7 @@ iree_native_test(
     "iree-run-requirement=d3d12.resource.device"
     "runtime-resource=d3d12-device"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -140,7 +140,7 @@ iree_native_test(
     "iree-run-requirement=d3d12.resource.device"
     "runtime-resource=d3d12-device"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -179,7 +179,7 @@ iree_native_test(
     "iree-run-requirement=d3d12.resource.device"
     "runtime-resource=d3d12-device"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -203,7 +203,7 @@ iree_native_test(
     "iree-run-requirement=d3d12.resource.device"
     "runtime-resource=d3d12-device"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 

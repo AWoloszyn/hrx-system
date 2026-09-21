@@ -38,7 +38,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -63,7 +63,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-vulkan-tests"
+    "gpu-device"
   SANITIZER_SUPPRESSIONS
     lsan
     vulkan

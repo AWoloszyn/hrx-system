@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//build_tools/amdgpu:binary.bzl", "iree_amdgpu_binary_variants_embed_data")
+load("//build_tools/bazel:test_resources.bzl", "GPU_DEVICE_RESOURCE_GROUP")
 load(
     "//build_tools/sanitizer:suppressions.bzl",
     "hsa_suppressions",
@@ -122,48 +123,56 @@ hrx_cts_test(
 hrx_cts_test(
     name = "lifecycle",
     srcs = ["tests/lifecycle/lifecycle_test.cpp"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = AMD_GPU_CTS_TAGS,
 )
 
 hrx_cts_test(
     name = "device",
     srcs = ["tests/device/device_test.cpp"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = AMD_GPU_CTS_TAGS,
 )
 
 hrx_cts_test(
     name = "allocator",
     srcs = ["tests/allocator/allocator_test.cpp"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = AMD_GPU_CTS_TAGS,
 )
 
 hrx_cts_test(
     name = "semaphore",
     srcs = ["tests/semaphore/semaphore_test.cpp"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = AMD_GPU_CTS_TAGS,
 )
 
 hrx_cts_test(
     name = "stream",
     srcs = ["tests/stream/stream_test.cpp"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = AMD_GPU_CTS_TAGS,
 )
 
 hrx_cts_test(
     name = "memory",
     srcs = ["tests/memory/memory_test.cpp"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = AMD_GPU_CTS_TAGS,
 )
 
 hrx_cts_test(
     name = "transfer",
     srcs = ["tests/transfer/transfer_test.cpp"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = AMD_GPU_CTS_TAGS,
 )
 
 hrx_cts_test(
     name = "stream_ops",
     srcs = ["tests/stream_ops/stream_ops_test.cpp"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = AMD_GPU_CTS_TAGS,
 )
 
@@ -174,6 +183,7 @@ hrx_cts_test(
         "core/amdgpu_test_data.hpp",
         "tests/executable/executable_test.cpp",
     ],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = AMD_GPU_CTS_TAGS,
     deps = [
         ":amdgpu_executable_test_kernels",
@@ -188,6 +198,7 @@ hrx_cc_test(
     env = {
         "HRX_TEST_LIBAMDHIP64": "$(location //libhrx/src/binding/hip:amdhip64)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     sanitizer_suppressions = hsa_suppressions,
     tags = AMD_GPU_CTS_TAGS,
     target_compatible_with = _HIP_GPU_COMPATIBILITY,
@@ -211,6 +222,7 @@ hrx_cc_test(
     env = {
         "HRX_TEST_LIBAMDHIP64": "$(location //libhrx/src/binding/hip:amdhip64)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     sanitizer_suppressions = hsa_suppressions,
     tags = AMD_GPU_CTS_TAGS,
     target_compatible_with = _HIP_GPU_COMPATIBILITY,
@@ -237,6 +249,7 @@ hrx_cc_test(
     env = {
         "HRX_TEST_LIBAMDHIP64": "$(location //libhrx/src/binding/hip:amdhip64)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     sanitizer_suppressions = rocm_suppressions,
     tags = AMD_GPU_CTS_TAGS,
     target_compatible_with = _HIP_GPU_COMPATIBILITY,
@@ -266,6 +279,7 @@ hrx_cc_test(
     env = {
         "HRX_TEST_LIBAMDHIP64": "$(location //libhrx/src/binding/hip:amdhip64)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     sanitizer_suppressions = hsa_suppressions,
     tags = AMD_GPU_CTS_TAGS,
     target_compatible_with = _HIP_GPU_COMPATIBILITY,
@@ -298,6 +312,7 @@ hrx_cc_test(
         "ASAN_OPTIONS": "detect_leaks=0",
         "HRX_TEST_LIBAMDHIP64": "$(location //libhrx/src/binding/hip:amdhip64)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     sanitizer_suppressions = rocm_suppressions,
     tags = AMD_GPU_CTS_TAGS,
     target_compatible_with = _HIP_GPU_COMPATIBILITY,
@@ -325,6 +340,7 @@ hrx_cc_test(
     env = {
         "HRX_TEST_LIBAMDHIP64": "$(location //libhrx/src/binding/hip:amdhip64)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     sanitizer_suppressions = hsa_suppressions,
     tags = AMD_GPU_CTS_TAGS,
     target_compatible_with = _HIP_GPU_COMPATIBILITY,
@@ -350,6 +366,7 @@ hrx_cc_test(
     env = {
         "HRX_TEST_LIBAMDHIP64": "$(location //libhrx/src/binding/hip:amdhip64)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     sanitizer_suppressions = hsa_suppressions,
     tags = AMD_GPU_CTS_TAGS,
     target_compatible_with = _HIP_GPU_COMPATIBILITY,
@@ -375,6 +392,7 @@ hrx_cc_test(
     env = {
         "HRX_TEST_LIBAMDHIP64": "$(location //libhrx/src/binding/hip:amdhip64)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     sanitizer_suppressions = hsa_suppressions,
     tags = AMD_GPU_CTS_TAGS + ["manual"],
     target_compatible_with = _HIP_GPU_COMPATIBILITY,
@@ -391,6 +409,7 @@ hrx_cc_test(
 hrx_cts_test(
     name = "queue_ops",
     srcs = ["tests/queue_ops/queue_ops_test.cpp"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = AMD_GPU_CTS_TAGS,
 )
 
@@ -402,12 +421,14 @@ hrx_cts_test(
 hrx_cts_test(
     name = "refcount",
     srcs = ["tests/refcount/refcount_test.cpp"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = AMD_GPU_CTS_TAGS,
 )
 
 hrx_cts_test(
     name = "virtual_memory",
     srcs = ["tests/virtual_memory/virtual_memory_test.cpp"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = AMD_GPU_CTS_TAGS,
 )
 

@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//build_tools/bazel:cmake.bzl", "iree_cmake_extra_content")
+load("//build_tools/bazel:test_resources.bzl", "GPU_DEVICE_RESOURCE_GROUP")
 load(
     "//build_tools/sanitizer:suppressions.bzl",
     "hsa_suppressions",
@@ -567,6 +568,7 @@ hrx_cc_test(
     env = {
         "HRX_TEST_LIBAMDHIP64": "$(location :amdhip64_array_lease_test)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     sanitizer_suppressions = hsa_suppressions,
     tags = [
         "iree-run-requirement=runtime.resource.amd_gpu",
@@ -596,6 +598,7 @@ hrx_cc_test(
     env = {
         "HRX_TEST_LIBAMDHIP64": "$(location :amdhip64)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = [
         "iree-run-requirement=runtime.resource.amd_gpu",
         "runtime-resource=amd-gpu",
@@ -621,6 +624,7 @@ hrx_cc_test(
     env = {
         "HRX_TEST_LIBAMDHIP64": "$(location :amdhip64)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = [
         "iree-run-requirement=runtime.resource.amd_gpu",
         "runtime-resource=amd-gpu",
@@ -647,6 +651,7 @@ hrx_cc_test(
         "HRX_TEST_LIBAMDHIP64": "$(location :amdhip64)",
         "ROCR_VISIBLE_DEVICES": "-1",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = [
         "iree-run-requirement=runtime.resource.amd_gpu",
         "runtime-resource=amd-gpu",
@@ -667,6 +672,7 @@ hrx_cc_test(
     env = {
         "HRX_TEST_LIBAMDHIP64": "$(location :amdhip64)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     sanitizer_suppressions = hsa_suppressions,
     tags = [
         "iree-run-requirement=runtime.resource.amd_gpu",
@@ -691,6 +697,7 @@ hrx_cc_test(
     env = {
         "HRX_TEST_LIBAMDHIP64": "$(location :amdhip64)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = [
         "iree-run-requirement=runtime.resource.amd_gpu",
         "runtime-resource=amd-gpu",
@@ -711,6 +718,7 @@ hrx_cc_test(
     env = {
         "HRX_TEST_LIBAMDHIP64": "$(location :amdhip64)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     sanitizer_suppressions = hsa_suppressions,
     tags = [
         "iree-run-requirement=runtime.resource.amd_gpu",
@@ -736,6 +744,7 @@ hrx_cc_test(
     env = {
         "HRX_TEST_LIBAMDHIP64": "$(location :amdhip64)",
     },
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = [
         "iree-run-requirement=runtime.resource.amd_gpu",
         "runtime-resource=amd-gpu",

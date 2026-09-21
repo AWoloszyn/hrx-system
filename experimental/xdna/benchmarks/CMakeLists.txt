@@ -35,7 +35,7 @@ iree_cc_binary_benchmark(
     "iree-run-requirement=libamdf.resource.xdna"
     "runtime-resource=amd-xdna"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 

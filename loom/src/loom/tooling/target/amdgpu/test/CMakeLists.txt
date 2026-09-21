@@ -156,7 +156,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -193,7 +193,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -262,7 +262,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -288,7 +288,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -355,7 +355,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -381,7 +381,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -416,7 +416,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -442,7 +442,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -509,7 +509,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -535,7 +535,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -570,7 +570,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -605,7 +605,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -631,7 +631,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -666,7 +666,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -692,7 +692,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -727,7 +727,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -753,7 +753,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -788,7 +788,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -823,7 +823,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -860,7 +860,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -897,7 +897,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -932,7 +932,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -967,7 +967,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -993,7 +993,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -1028,7 +1028,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -1054,7 +1054,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -1089,7 +1089,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -1115,7 +1115,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -1152,7 +1152,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -1193,7 +1193,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -1230,7 +1230,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -1273,7 +1273,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()
@@ -1315,7 +1315,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -1360,7 +1360,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -1405,7 +1405,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 
@@ -1459,7 +1459,7 @@ loom_execution_test(
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-amdgpu-tests"
+    "gpu-device"
 )
 endif()
 endif()

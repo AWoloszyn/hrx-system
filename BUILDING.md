@@ -322,6 +322,12 @@ does not admit a mixed test. The CI helpers derive exclusions from the owners'
 requirement declarations and reject unknown IDs before executing a test phase.
 CTest builds the concrete roots of the selected tests after filtering.
 
+Hardware tests sharing the assigned device use `GPU_DEVICE_RESOURCE_GROUP`
+from `build_tools/bazel/test_resources.bzl`. CTest uses the shared `gpu-device`
+lock; Bazel uses local exclusivity. The group is explicit and independent of
+API selection and run requirements, so CPU mock tests need no device lock.
+Separate invocations or jobs require exclusive device assignment by the runner.
+
 IREE source-tree CI is run through the repo-local CI command script so GitHub
 workflow failures have copyable local commands. This is the script-backed
 surface; ordinary build/test docs use the `iree-bazel-*` and `iree-cmake-*`

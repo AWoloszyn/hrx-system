@@ -6,6 +6,7 @@
 
 """Public execution profiles owned by the Loom AMDGPU target provider."""
 
+load("//build_tools/bazel:test_resources.bzl", "GPU_DEVICE_RESOURCE_GROUP")
 load("//loom/build_tools/bazel:defs.bzl", "loom_execution_profile")
 load(
     "//loom/requirements:defs.bzl",
@@ -34,7 +35,7 @@ def amdgpu_execution_profile(name, runner_args = [], sanitizer_suppressions = No
             HAL_AMDGPU,
         ],
         executor = "hardware",
-        resource_group = "loom-amdgpu-tests",
+        resource_group = GPU_DEVICE_RESOURCE_GROUP,
         run_requirements = [AMDGPU_RESOURCE],
         runner_args = ["--device=amdgpu"] + runner_args,
         sanitizer_suppressions = sanitizer_suppressions,

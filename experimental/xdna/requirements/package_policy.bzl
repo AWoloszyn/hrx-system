@@ -7,6 +7,7 @@
 """Requirements mirrored by generated CMake targets."""
 
 load("//build_tools/bazel:package_policy.bzl", "package_policy")
+load("//build_tools/bazel:test_resources.bzl", "GPU_DEVICE_RESOURCE_GROUP")
 load("//libamdf/requirements:defs.bzl", "XDNA_RESOURCE")
 load(":defs.bzl", "REQUIREMENTS")
 
@@ -22,6 +23,6 @@ PACKAGE_POLICIES = [
         ],
         run_requirements = [XDNA_RESOURCE],
         # Shares native devices with libamdf and GPU/XDNA interop CTS.
-        resource_group = "iree-hal-drivers-amdgpu-tests",
+        resource_group = GPU_DEVICE_RESOURCE_GROUP,
     ),
 ]

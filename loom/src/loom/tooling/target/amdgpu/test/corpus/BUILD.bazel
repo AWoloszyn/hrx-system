@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//build_tools/bazel:executable.bzl", "iree_executable_test")
+load("//build_tools/bazel:test_resources.bzl", "GPU_DEVICE_RESOURCE_GROUP")
 load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with")
 load("//loom/build_tools/bazel:defs.bzl", "loom_module")
 
@@ -63,6 +64,7 @@ iree_executable_test(
         "--device=amdgpu",
     ],
     data = [":generic_test_module"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = _EXECUTION_TAGS,
     target_compatible_with = _GENERIC_COMPATIBLE_WITH,
 )
@@ -88,6 +90,7 @@ iree_executable_test(
         "--config=benchmark.pair_count=16",
     ],
     data = [":gfx11_test_module"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = _EXECUTION_TAGS,
     target_compatible_with = _GFX11_COMPATIBLE_WITH,
 )
@@ -111,6 +114,7 @@ iree_executable_test(
         "--sanitizer=access",
     ],
     data = ["//loom/src/loom/test/corpus/conformance:loop_count.loom"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = _EXECUTION_TAGS + ["notsan"],
     target_compatible_with = _GENERIC_COMPATIBLE_WITH,
 )
@@ -124,6 +128,7 @@ iree_executable_test(
         "--sanitizer=access",
     ],
     data = [":gfx11_loop_entry_module"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = _EXECUTION_TAGS + ["notsan"],
     target_compatible_with = _GFX11_COMPATIBLE_WITH,
 )
@@ -142,6 +147,7 @@ iree_executable_test(
         "--device=amdgpu",
     ],
     data = [":gfx1100_test_module"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = _EXECUTION_TAGS + ["manual"],
     target_compatible_with = _GENERIC_COMPATIBLE_WITH,
 )
@@ -160,6 +166,7 @@ iree_executable_test(
         "--device=amdgpu",
     ],
     data = [":gfx9_4_test_module"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = _EXECUTION_TAGS + ["manual"],
     target_compatible_with = _GENERIC_COMPATIBLE_WITH,
 )
@@ -172,6 +179,7 @@ iree_executable_test(
         "--device=amdgpu",
     ],
     data = ["gfx9_4/gfx9_4_async_gather.loom"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = _EXECUTION_TAGS,
     target_compatible_with = _CDNA3_COMPATIBLE_WITH,
 )
@@ -192,6 +200,7 @@ iree_executable_test(
         "--device=amdgpu",
     ],
     data = [":gfx1250_test_module"],
+    resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = _EXECUTION_TAGS + ["manual"],
     target_compatible_with = _GENERIC_COMPATIBLE_WITH,
 )
