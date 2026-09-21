@@ -524,12 +524,12 @@ TEST_P(ShmConnectionTest, CrossThreadDeactivationDrainsIdleNativeObservation) {
   PollUntil([&] { return drained_[0] && drained_[1]; });
 }
 
-INSTANTIATE_TEST_SUITE_P(Executors, ShmConnectionTest,
 #if defined(IREE_PLATFORM_WINDOWS)
-                         ::testing::Values(false)
+INSTANTIATE_TEST_SUITE_P(Executors, ShmConnectionTest,
+                         ::testing::Values(false));
 #else
-                         ::testing::Values(false, true)
+INSTANTIATE_TEST_SUITE_P(Executors, ShmConnectionTest,
+                         ::testing::Values(false, true));
 #endif
-);
 
 }  // namespace

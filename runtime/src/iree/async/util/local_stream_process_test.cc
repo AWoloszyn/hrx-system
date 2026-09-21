@@ -29,6 +29,18 @@
 #else
 #include <poll.h>
 #include <sys/syscall.h>
+
+// Older libc headers can omit pidfd_open even when the running kernel has it.
+// IREE's Linux architectures use 434, with an additional tag for the x32 ABI.
+#ifndef SYS_pidfd_open
+#if defined(__NR_pidfd_open)
+#define SYS_pidfd_open __NR_pidfd_open
+#elif defined(__x86_64__) && defined(__ILP32__)
+#define SYS_pidfd_open (__X32_SYSCALL_BIT + 434)
+#else
+#define SYS_pidfd_open 434
+#endif
+#endif
 #endif
 #endif
 
