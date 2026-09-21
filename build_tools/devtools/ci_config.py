@@ -162,7 +162,7 @@ XDNA_BAZEL_TARGETS = AMDF_BAZEL_TARGETS + ("//experimental/xdna/...",)
 XDNA_BAZEL_TEST_TAG_FILTERS = (AMDF_BUILD_REQUIREMENT_TAG, XDNA_RUN_REQUIREMENT_TAG)
 XDNA_CMAKE_BUILD_TARGETS = ("libamdf/all", "experimental/xdna/all")
 XDNA_CTEST_PACKAGE_REGEX = r"^iree/experimental/xdna/"
-# Compile both client families; only XDNA requires native hardware for execution.
+# Compile both client families; Linux admits only XDNA hardware execution.
 # Common runtime components enter through the ELF consumers' dependencies.
 AMD_CLIENT_BAZEL_OPTIONS = (
     "--//libamdf/config:enabled=true",
@@ -177,9 +177,24 @@ AMD_CLIENT_BAZEL_TARGETS = (
     *AMDF_BAZEL_TARGETS,
     "//experimental/xdna/...",
 )
-AMD_CLIENT_BAZEL_TEST_TAG_FILTERS = (
-    *XDNA_BAZEL_TEST_TAG_FILTERS,
-    "-iree-run-requirement=libamdf.resource.amd_gpu",
+AMD_CLIENT_WINDOWS_BAZEL_OPTIONS = AMD_CLIENT_BAZEL_OPTIONS + (
+    "--//build_tools/vulkan/config:enabled=true",
+    "--//build_tools/d3d12/config:enabled=true",
+    "--//runtime/config/hal:drivers=task,vulkan",
+    "--//loom/config/target:enable=amdgpu,spirv,x86",
+)
+AMD_CLIENT_WINDOWS_BAZEL_TARGETS = AMD_CLIENT_BAZEL_TARGETS + (
+    "//runtime/src/iree/hal/drivers/vulkan/...",
+    "//loom/binding/c/test/target/spirv/...",
+    "//loom/src/loom/tooling/target/spirv/...",
+)
+AMD_CLIENT_WINDOWS_RESOURCES = (
+    XDNA_RESOURCES
+    + VULKAN_RESOURCES
+    + (
+        "libamdf.resource.amd_gpu",
+        "d3d12.resource.device",
+    )
 )
 # Preserve case-level execution and skips: a successful hardware test target
 # can contain only skipped cases when its runner lacks an admitted device.

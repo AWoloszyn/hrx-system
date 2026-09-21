@@ -399,24 +399,30 @@ test is not hardware qualification.
 
 The Linux and Windows **AMD RDNA+XDNA** Bazel workflows exercise the native
 client configuration through `iree-bazel-amd-client[-asan]`. Both libamdf
-families are compiled, including their tests, while XDNA is the only admitted
-hardware test resource. The test phase runs libamdf's host-only coverage for
-both families and the XDNA CTS and ELF execution consumers. GPU hardware tests
-remain compiled but are excluded by their resource requirement. Build support
-and available execution resources are independent.
-
-The selected packages are `//libamdf/...` and `//experimental/xdna/...`.
-Common runtime code enters through the ELF consumers' dependencies. The
-ROCr-backed AMDGPU HAL and its Loom execution suites are not enabled; these
-jobs require neither ROCr nor a GPU target selector. CDNA, SPIR-V,
-WASM, and optional importers are disabled, and the repository-wide CPU and
-libhrx suites are outside the test scope.
+families are compiled, including their tests. Both workflows run libamdf's
+host-only coverage, XDNA CTS, and ELF execution consumers from `//libamdf/...`
+and `//experimental/xdna/...`.
 
 Linux runs with ASAN on the gfx1150 NPU pool and requires access to the assigned
-`/dev/accel/accel0`; Windows runs natively with clang-cl on the gfx1151 pool.
-XDNA tests reuse their devices and the existing AMD test resource group. The
-runner supplies exclusive native device access. The unsuffixed command is the
-Windows reproduction form.
+`/dev/accel/accel0`. XDNA is its only admitted hardware test resource; GPU tests
+remain compiled but are excluded by their resource requirement.
+
+Windows runs natively with clang-cl on the gfx1151 pool and also admits native
+libamdf GPU, D3D12, and Vulkan device resources. This includes the libamdf
+D3D12 and GPU/XDNA memory interop matrices, Vulkan HAL CTS under
+`//runtime/src/iree/hal/drivers/vulkan/...`, and Loom Vulkan execution tests
+under `//loom/binding/c/test/target/spirv/...` and
+`//loom/src/loom/tooling/target/spirv/...`. The runner requires healthy AMD GPU
+and NPU drivers plus a Vulkan loader and compatible device. Hardware tests use
+the shared GPU resource group, and the runner supplies exclusive device access.
+The unsuffixed command is the Windows reproduction form; `--target` replaces
+the default package selection while preserving device admission.
+
+These jobs enable neither the ROCr-backed AMDGPU HAL nor its Loom execution
+suites and require neither ROCr nor a GPU target selector. CDNA, WASM, and
+optional importers are disabled. SPIR-V and the Vulkan HAL are enabled for the
+Windows API tests; the repository-wide CPU and libhrx suites remain outside
+the test scope.
 
 AMDGPU Bazel sanitizer configurations are separate CI jobs so they build and
 test independently. Aggregate CPU Bazel and CMake commands remain available as
