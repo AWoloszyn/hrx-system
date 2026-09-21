@@ -1086,6 +1086,51 @@ def typed_views(arrays):
     return declarations + "\n".join(cases)
 
 
+def volatile_memory(arrays):
+    cases = []
+    inputs = [signed_bits(index * 0x10203041 + 0x7FFFFF00, 32) for index in range(64)]
+    for kernel in ("volatile_memory", "ordinary_memory"):
+        for count in (0, 1, 17, 64):
+            expected = [-123] * 128
+            for index in range(count):
+                doubled = (inputs[index] * 2) % (1 << 32)
+                expected[index] = signed_bits(doubled, 32)
+                expected[64 + index] = signed_bits(doubled ^ 0xA5A55A5A, 32)
+            case = Case(arrays, f"{kernel}_{count}", "i32", len(expected))
+            case.array("input", inputs)
+            case.array("original", inputs)
+            case.scalar("count", count, "i32")
+            case.launch(kernel, "%input, %output, %count", "tensor<64xi32>, tensor<128xi32>, i32")
+            case.lines.append("  check.expect.bitwise actual(%input) expected(%original) : tensor<64xi32>")
+            cases.append(case.finish(expected))
+    for ordinal, values in enumerate(([0, 1, -1, -(1 << 31)], [37, -128, 65535, (1 << 31) - 1], inputs[:4])):
+        case = Case(arrays, f"volatile_vectors_{ordinal}", "i32", 4)
+        case.array("input", values)
+        case.array("original", values)
+        case.launch("volatile_vectors", "%input, %output", "tensor<4xi32>, tensor<4xi32>")
+        case.lines.append("  check.expect.bitwise actual(%input) expected(%original) : tensor<4xi32>")
+        cases.append(case.finish(values))
+    case = Case(arrays, "volatile_shared", "i32", 64)
+    case.array("input", inputs)
+    case.array("original", inputs)
+    case.launch("volatile_shared", "%input, %output", "tensor<64xi32>, tensor<64xi32>")
+    case.lines.append("  check.expect.bitwise actual(%input) expected(%original) : tensor<64xi32>")
+    cases.append(case.finish([signed_bits(value + 1, 32) for value in inputs]))
+    for origin, stride in ((0, 4), (3, 7), (15, 15)):
+        case = Case(arrays, f"volatile_views_{origin}_{stride}", "i32", 4)
+        case.array("input", inputs)
+        case.array("original", inputs)
+        case.scalar("origin", origin, "i32")
+        case.scalar("stride", stride, "i32")
+        case.launch("volatile_views", "%input, %output, %origin, %stride", "tensor<64xi32>, tensor<4xi32>, i32, i32")
+        case.lines.append("  check.expect.bitwise actual(%input) expected(%original) : tensor<64xi32>")
+        cases.append(case.finish([-123, signed_bits(inputs[origin + stride + 1] * 2, 32), -123, -123]))
+    declarations = "".join(f"kernel.decl @{kernel}() launch(%input: buffer, %output: buffer, %count: i32)\n\n" for kernel in ("volatile_memory", "ordinary_memory"))
+    declarations += "".join(f"kernel.decl @{kernel}() launch(%input: buffer, %output: buffer)\n\n" for kernel in ("volatile_vectors", "volatile_shared"))
+    declarations += "kernel.decl @volatile_views() launch(%input: buffer, %output: buffer, %origin: i32, %stride: i32)\n\n"
+    return declarations + "\n".join(cases)
+
+
 KERNEL_GROUPS = {
     "aiter_swiglu_f16": lambda arrays: launch_grid("aiter_swiglu_f16", 3) + swiglu(arrays),
     "assumptions": assumption_kernel,
@@ -1108,6 +1153,7 @@ KERNEL_GROUPS = {
     "vector_depth": lambda arrays: vector_depth(arrays) + "\n" + vector_depth_span(arrays),
     "vector_initializers": vector_initializers,
     "vector_values": lambda arrays: vector_control(arrays) + "\n" + vector_masks(arrays),
+    "volatile_memory": volatile_memory,
 }
 
 

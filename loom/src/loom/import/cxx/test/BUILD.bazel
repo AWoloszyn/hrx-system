@@ -41,6 +41,8 @@ loom_check_test_suite(
         "frontend.cxx-test",
         "functions.cxx-test",
         "intrinsics_invalid.cxx-test",
+        "kernel_intrinsics.cxx-test",
+        "kernel_intrinsics_invalid.cxx-test",
         "launch.cxx-test",
         "launch_invalid.cxx-test",
         "layout_attributes.cxx-test",
@@ -67,6 +69,9 @@ loom_check_test_suite(
         "vectors.cxx-test",
         "vectors_invalid.cxx-test",
         "view_values.cxx-test",
+        "volatile.cxx-test",
+        "volatile_invalid.cxx-test",
+        "volatile_views.cxx-test",
     ],
     data = [
         "aligned_layout.h",
@@ -106,6 +111,16 @@ _HOST_COMPATIBILITY = loom_config_compatible_with([
 loom_test(
     name = "constexpr_values_test",
     srcs = ["constexpr_values.cpp"],
+    execution_profiles = [VM_REFERENCE_PROFILE],
+    target_compatible_with = _HOST_COMPATIBILITY,
+)
+
+loom_test(
+    name = "volatile_values_test",
+    srcs = [
+        "volatile_memory.cpp",
+        "volatile_values.loom",
+    ],
     execution_profiles = [VM_REFERENCE_PROFILE],
     target_compatible_with = _HOST_COMPATIBILITY,
 )
@@ -194,6 +209,7 @@ _KERNEL_SOURCES = [
     "vector_depth",
     "vector_initializers",
     "vector_values",
+    "volatile_memory",
 ]
 
 [

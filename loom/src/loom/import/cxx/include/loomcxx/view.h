@@ -137,11 +137,23 @@ template <class T, loom::type::size_type Rows, loom::type::size_type Columns>
 T load(loom::type::view<T, Rows, Columns> source, loom::type::size_type row,
        loom::type::size_type column);
 
+// Observes one volatile element and returns its ordinary scalar value.
+template <class T, loom::type::size_type Rows, loom::type::size_type Columns>
+[[loom::op("view.load")]]
+T load(loom::type::view<volatile T, Rows, Columns> source,
+       loom::type::size_type row, loom::type::size_type column);
+
 // Stores one scalar at a rank-two logical coordinate. Template deduction
 // rejects destinations whose element type is const.
 template <class T, loom::type::size_type Rows, loom::type::size_type Columns>
 [[loom::op("view.store")]]
 void store(T value, loom::type::view<T, Rows, Columns> destination,
+           loom::type::size_type row, loom::type::size_type column);
+
+// Observes a store through a volatile view without qualifying the scalar value.
+template <class T, loom::type::size_type Rows, loom::type::size_type Columns>
+[[loom::op("view.store")]]
+void store(T value, loom::type::view<volatile T, Rows, Columns> destination,
            loom::type::size_type row, loom::type::size_type column);
 
 }  // namespace loom::view

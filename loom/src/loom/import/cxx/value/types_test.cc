@@ -106,6 +106,8 @@ TEST(TypesTest, ViewPartitionsBindEachDestinationShapeAndLayoutIdentity) {
                         "loom::encoding::role::layout, 2>; "
                         "using Plane = loom::type::view<const float, "
                         "loom::type::dynamic, 32>; "
+                        "using Observed = loom::type::view<const volatile "
+                        "float, loom::type::dynamic, 32>; "
                         "struct Packet { Plane plane; unsigned tag; };"),
                 IREE_SV("views.cpp"), options);
   Types types(source.unit(), source.diagnostics());
@@ -129,6 +131,10 @@ TEST(TypesTest, ViewPartitionsBindEachDestinationShapeAndLayoutIdentity) {
   EXPECT_EQ(plane.kind, ValueKind::View);
   EXPECT_EQ(plane.component_count, 3u);
   EXPECT_TRUE(types.requires_binding(source_type("Plane"), owner));
+  EXPECT_EQ(static_cast<const ViewPartition&>(plane).access_flags, 0);
+  const auto& observed = types.partition(source_type("Observed"), owner);
+  EXPECT_EQ(static_cast<const ViewPartition&>(observed).access_flags,
+            LOOM_MEMORY_ACCESS_FLAG_VOLATILE);
   const loom_value_id_t plane_ids[] = {11, 12, 13};
   std::vector<loom_type_t> plane_types;
   types.append_bound(source_type("Plane"), owner, plane_ids, plane_types);
@@ -170,10 +176,6 @@ TEST(TypesTest, RejectsRepresentationsThatLoseSourceSemantics) {
   Types types(source.unit(), source.diagnostics());
   auto* control = source.unit().control();
   auto* owner = source.unit().ast();
-  EXPECT_THROW(types.get(control->getQualType(control->getIntType(),
-                                              cxx::CvQualifiers::kVolatile),
-                         owner),
-               SourceRejected);
   EXPECT_THROW(
       types.get(control->getPointerType(control->getBoolType()), owner),
       SourceRejected);
@@ -181,6 +183,30 @@ TEST(TypesTest, RejectsRepresentationsThatLoseSourceSemantics) {
       types.get(control->getLvalueReferenceType(control->getIntType()), owner),
       SourceRejected);
   EXPECT_THROW(types.get(control->getLongDoubleType(), owner), SourceRejected);
+}
+
+TEST(TypesTest, SeparatesLoadedRepresentationFromVolatileObjectAdmission) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  Source source(IREE_SV("int entry();"), IREE_SV("types.cpp"), options);
+  Types types(source.unit(), source.diagnostics());
+  auto* control = source.unit().control();
+  auto* owner = source.unit().ast();
+  auto* integer = control->getUnsignedIntType();
+  auto* observed = control->getQualType(integer, cxx::CvQualifiers::kVolatile);
+  auto* pointer = control->getPointerType(observed);
+  EXPECT_TRUE(
+      loom_type_equal(types.get(observed, owner), types.get(integer, owner)));
+  EXPECT_EQ(types.memory_access_flags(integer), 0);
+  EXPECT_EQ(types.memory_access_flags(pointer), 0);
+  EXPECT_EQ(types.memory_access_flags(observed),
+            LOOM_MEMORY_ACCESS_FLAG_VOLATILE);
+  EXPECT_EQ(types.partition(pointer, owner).kind, ValueKind::Pointer);
+  EXPECT_THROW(types.partition(observed, owner), SourceRejected);
+  EXPECT_THROW(
+      types.partition(
+          control->getQualType(pointer, cxx::CvQualifiers::kVolatile), owner),
+      SourceRejected);
 }
 
 TEST(TypesTest, EnumProjectionPreservesSourceWidthSignednessAndIdentity) {

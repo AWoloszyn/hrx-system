@@ -21,6 +21,7 @@
 #include "loom/import/cxx/source/source.h"
 #include "loom/import/cxx/value/representation.h"
 #include "loom/ir/types.h"
+#include "loom/ops/op_defs.h"
 
 namespace loom::cxx_import {
 
@@ -63,10 +64,12 @@ struct EncodingPartition final : Partition {
 struct ViewPartition final : Partition {
   // Concrete source specialization retaining nominal and cv-qualified rules.
   cxx::ClassSymbol* source;
-  // Source element type, including pointee constness for store admission.
+  // Source element type, including cv qualifiers for access admission.
   const cxx::Type* element_type;
   // High scalar representation of one logical element.
   loom_scalar_type_t element;
+  // Observation semantics retained from the source element qualifier.
+  loom_memory_access_flags_t access_flags;
   // Static extent, or -1 when the axis has a transported dynamic extent.
   std::array<int64_t, 2> extents;
   // Component labels in transport order; an empty label names the view itself.
@@ -83,12 +86,19 @@ class Types {
   Types(cxx::TranslationUnit& unit, Diagnostics& diagnostics)
       : unit_(unit), diagnostics_(diagnostics) {}
 
-  // Diagnoses unsupported source representations at owner and throws
-  // SourceRejected. Returned types retain no source storage.
+  // Projects a loaded value's representation independently of top-level cv
+  // qualifiers. Object storage admission belongs to partition(); access
+  // semantics belong to memory_access_flags(). Unsupported representations
+  // diagnose at owner and throw SourceRejected.
   loom_type_t get(const cxx::Type* input, cxx::AST* owner);
   // Admits a source value and returns its stable, identity-free partition.
   // Leaf carriers are static; admitted records are owned by this Types object.
+  // Volatile objects cannot use SSA-only transport without addressable storage.
   const Partition& partition(const cxx::Type* input, cxx::AST* owner);
+  // Observation semantics of an access through this cv-qualified object type.
+  // Pointers pass their pointee type; the pointer binding's own qualifiers do
+  // not affect the accessed object.
+  loom_memory_access_flags_t memory_access_flags(const cxx::Type* input);
   // Returns whether projected component types reference destination SSA
   // identities. Such values must use append_bound() after reserving every
   // destination component ID in transport order.
@@ -139,6 +149,7 @@ class Types {
   // Admitted special source objects, keyed by concrete specialization.
   std::unordered_map<cxx::ClassSymbol*, std::unique_ptr<EncodingPartition>>
       encodings_;
+  // Admitted view specializations retaining element and extent contracts.
   std::unordered_map<cxx::ClassSymbol*, std::unique_ptr<ViewPartition>> views_;
   // Member identity indexes the slice established by record admission.
   std::unordered_map<cxx::FieldSymbol*, MemberPartition> members_;

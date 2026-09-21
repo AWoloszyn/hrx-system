@@ -94,6 +94,17 @@ class Translator {
     diagnostics_.reject(unit_, ast, message);
   }
 
+  void require_kernel_context(cxx::AST* owner) {
+    // Required inlining defers the IR ancestor requirement until expansion.
+    if (current_function_.kind == FunctionKind::Kernel ||
+        (current_function_.kind == FunctionKind::Ordinary &&
+         loom_func_def_inline_policy(current_function_.operation) ==
+             LOOM_INLINE_POLICY_INLINE)) {
+      return;
+    }
+    fail(owner, "kernel intrinsic requires a kernel or force-inline helper");
+  }
+
   Value convert(cxx::ExpressionAST* input_ast, const cxx::Type* output_type,
                 cxx::AST* owner) {
     auto value = expression(input_ast);
@@ -451,10 +462,10 @@ class Translator {
     int64_t selector = access.index ? INT64_MIN : 0;
     auto build = types_.vector(ast->type) ? loom_vector_load_build
                                           : loom_view_load_build;
-    check(build(&builder_, 0, 0, access.view,
-                access.index ? &*access.index : nullptr, access.index ? 1 : 0,
-                &selector, 1, 0, 0, types_.get(ast->type, ast),
-                locations_.get(ast), &op));
+    check(build(&builder_, 0, types_.memory_access_flags(ast->type),
+                access.view, access.index ? &*access.index : nullptr,
+                access.index ? 1 : 0, &selector, 1, 0, 0,
+                types_.get(ast->type, ast), locations_.get(ast), &op));
     return result(op);
   }
 
@@ -552,8 +563,8 @@ class Translator {
 
   Value assignment(cxx::AssignmentExpressionAST* assignment) {
     auto* ast = assignment;
-    const auto& partition =
-        types_.partition(assignment->leftExpression->type, ast);
+    const auto& partition = types_.partition(
+        types_.unqualified(assignment->leftExpression->type), ast);
     cxx::ClassSymbol* source = nullptr;
     if (partition.kind == ValueKind::Record) {
       source = static_cast<const RecordPartition&>(partition).source;
@@ -582,7 +593,9 @@ class Translator {
     auto build = types_.vector(assignment->leftExpression->type)
                      ? loom_vector_store_build
                      : loom_view_store_build;
-    check(build(&builder_, 0, 0, value.ssa(), access.view,
+    check(build(&builder_, 0,
+                types_.memory_access_flags(assignment->leftExpression->type),
+                value.ssa(), access.view,
                 access.index ? &*access.index : nullptr, access.index ? 1 : 0,
                 &selector, 1, 0, 0, locations_.get(ast), &op));
     return value;
@@ -852,6 +865,7 @@ class Translator {
           return name(*value, cxx::to_string(variable->name()));
         }
         if (variable->constValue() &&
+            !unit_.typeTraits().is_volatile(variable->type()) &&
             (variable->isConstexpr() ||
              unit_.typeTraits().is_const(variable->type()))) {
           return name(
@@ -902,6 +916,7 @@ class Translator {
         const auto& slice = types_.member(field, ast);
         return value.project(*slice.partition, slice.component_offset);
       }
+      require_kernel_context(ast);
       auto axis = cxx::to_string(member->symbol->name());
       loom_kernel_dimension_t dimension;
       if (axis == "x") {
@@ -1093,6 +1108,7 @@ class Translator {
       };
       loom_op_t* op;
       if (annotated(function, "subgroup_size")) {
+        require_kernel_context(ast);
         auto arguments = flatten_arguments();
         auto result_type = types_.get(ast->type, ast);
         if (!arguments.empty() ||
@@ -1109,6 +1125,7 @@ class Translator {
         return result(op);
       }
       if (annotated(function, "shuffle_xor")) {
+        require_kernel_context(ast);
         auto arguments = flatten_arguments();
         if (arguments.size() != 3) {
           fail(ast, "shuffle_xor requires three scalar operands");
@@ -1580,10 +1597,19 @@ class Translator {
       effect(nested->expression);
       return;
     }
-    if (auto* binary = cxx::ast_cast<cxx::BinaryExpressionAST>(ast)) {
-      if (binary->op == cxx::TokenKind::T_AMP_AMP ||
-          binary->op == cxx::TokenKind::T_BAR_BAR) {
-        expression(ast);
+    if (types_.unqualified(ast->type)->kind() == cxx::TypeKind::kVoid) {
+      if (auto* cast = cxx::ast_cast<cxx::CastExpressionAST>(ast)) {
+        effect(cast->expression);
+        return;
+      }
+      if (auto* cast = cxx::ast_cast<cxx::CppCastExpressionAST>(ast)) {
+        effect(cast->expression);
+        return;
+      }
+      if (auto* cast = cxx::ast_cast<cxx::TypeConstructionAST>(ast)) {
+        for (auto* operand : cxx::ListView{cast->expressionList}) {
+          effect(operand);
+        }
         return;
       }
     }
@@ -1671,20 +1697,7 @@ class Translator {
           locations_.get(ast), &op));
       return;
     }
-    if (cxx::ast_cast<cxx::AssignmentExpressionAST>(ast) ||
-        cxx::ast_cast<cxx::CompoundAssignmentExpressionAST>(ast)) {
-      expression(ast);
-      return;
-    }
-    auto* unary = cxx::ast_cast<cxx::UnaryExpressionAST>(ast);
-    if (cxx::ast_cast<cxx::PostIncrExpressionAST>(ast) ||
-        (unary && (unary->op == cxx::TokenKind::T_PLUS_PLUS ||
-                   unary->op == cxx::TokenKind::T_MINUS_MINUS))) {
-      expression(ast);
-      return;
-    }
-    fail(ast, "unsupported effect expression: " +
-                  std::string(cxx::to_string(ast->kind())));
+    expression(ast);
   }
 
   // Source AST/symbol lifetime ends after construction and verification.

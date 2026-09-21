@@ -1,0 +1,122 @@
+// RUN: pass canonicalize,cse
+// Kernel-only intrinsics remain available in nested kernel control flow.
+// Barriers have no kernel ancestor requirement and may live in helpers.
+#include <loomcxx/kernel.h>
+static void synchronize() { loom::workgroup_barrier(); }
+[[loom::kernel, loom::workgroup_size(64, 1, 1), loom::workgroup_count(1, 1, 1)]]
+void entry(unsigned* coordinates, float* output, float value) {
+  unsigned lane = loom::workitem_id.x;
+  if (lane < 32) {
+    coordinates[lane] = loom::workgroup_id.x + loom::workgroup_size.x +
+                        loom::workgroup_count.x + loom::subgroup_size();
+    output[lane] = loom::shuffle_xor(value, 1, 32);
+  }
+  synchronize();
+}
+// ----
+kernel.def @entry() {
+  %3 = index.constant 1 : index
+  %6 = index.constant 64 : index
+  kernel.launch.config workgroups(%3, %3, %3) workgroup_size(%6, %3, %3) : index
+} launch(%coordinates: buffer, %output: buffer, %value: f32) {
+  %workitem_id_x = kernel.workitem.id<x> : index
+  %lane = index.cast %workitem_id_x : index to i32
+  %13 = scalar.constant 32 : i32
+  %14 = scalar.cmpi ult, %lane, %13 : i32
+  scf.if %14 {
+    %46 = scalar.assume %lane [lt(%lane, 32)] : i32
+    %52 = scalar.constant 65 : i32
+    %23 = kernel.subgroup.size : index
+    %24 = index.cast %23 : index to i32
+    %51 = scalar.addi %24, %52 : i32
+    %26 = scalar.extui %46 : i32 to i64
+    %49 = scalar.constant 2 : i64
+    %50 = scalar.shli %26, %49 : i64
+    %31 = scalar.assume %50 [range(%50, 0, 9223372036854775807)] : i64
+    %32 = index.cast %31 : i64 to offset
+    %33 = buffer.view %coordinates[%32] : buffer -> view<1xi32>
+    view.store %51, %33[0] : i32, view<1xi32>
+    %34 = scalar.constant 1 : i32
+    %35 = scalar.constant 32 : i32
+    %36, %37 = kernel.subgroup.shuffle<xor> %value, %34, %35 : f32, i32, i32
+    %38 = scalar.extui %46 : i32 to i64
+    %47 = scalar.constant 2 : i64
+    %48 = scalar.shli %38, %47 : i64
+    %43 = scalar.assume %48 [range(%48, 0, 9223372036854775807)] : i64
+    %44 = index.cast %43 : i64 to offset
+    %45 = buffer.view %output[%44] : buffer -> view<1xf32>
+    view.store %36, %45[0] : f32, view<1xf32>
+  }
+  func.call @synchronize() : ()
+  kernel.return
+}
+
+func.def @synchronize() {
+  kernel.barrier<global> scope(workgroup) ordering(acq_rel)
+  kernel.barrier<workgroup> scope(workgroup) ordering(acq_rel)
+  func.return
+}
+
+// ====
+// Required-inline helpers defer placement until their kernel use is expanded.
+#include <loomcxx/kernel.h>
+[[loom::force_inline]] static unsigned topology() {
+  return loom::workitem_id.x + loom::workgroup_id.x +
+         loom::workgroup_size.x + loom::workgroup_count.x +
+         loom::subgroup_size();
+}
+[[loom::device, loom::force_inline]] static float exchange(float value) {
+  return loom::shuffle_xor(value, 1, 32);
+}
+[[loom::kernel, loom::workgroup_size(64, 1, 1), loom::workgroup_count(1, 1, 1)]]
+void entry(unsigned* coordinates, float* output, float value) {
+  unsigned lane = loom::workitem_id.x;
+  coordinates[lane] = topology();
+  output[lane] = exchange(value);
+}
+// ----
+kernel.def @entry() {
+  %3 = index.constant 1 : index
+  %6 = index.constant 64 : index
+  kernel.launch.config workgroups(%3, %3, %3) workgroup_size(%6, %3, %3) : index
+} launch(%coordinates: buffer, %output: buffer, %value: f32) {
+  %workitem_id_x = kernel.workitem.id<x> : index
+  %lane = index.cast %workitem_id_x : index to i32
+  %13 = func.call pure @topology() : () -> (i32)
+  %14 = scalar.extui %lane : i32 to i64
+  %54 = scalar.constant 2 : i64
+  %55 = scalar.shli %14, %54 : i64
+  %19 = scalar.assume %55 [range(%55, 0, 9223372036854775807)] : i64
+  %20 = index.cast %19 : i64 to offset
+  %21 = buffer.view %coordinates[%20] : buffer -> view<1xi32>
+  view.store %13, %21[0] : i32, view<1xi32>
+  %22 = func.call @exchange(%value) : (f32) -> (f32)
+  %30 = buffer.view %output[%20] : buffer -> view<1xf32>
+  view.store %22, %30[0] : f32, view<1xf32>
+  kernel.return
+}
+
+func.def inline @topology() -> (i32) {
+  %workitem_id_x = kernel.workitem.id<x> : index
+  %33 = index.cast %workitem_id_x : index to i32
+  %workgroup_id_x = kernel.workgroup.id<x> : index
+  %35 = index.cast %workgroup_id_x : index to i32
+  %36 = scalar.addi %33, %35 : i32
+  %workgroup_size_x = kernel.workgroup.size<x> : index
+  %38 = index.cast %workgroup_size_x : index to i32
+  %39 = scalar.addi %36, %38 : i32
+  %workgroup_count_x = kernel.workgroup.count<x> : index
+  %41 = index.cast %workgroup_count_x : index to i32
+  %42 = scalar.addi %39, %41 : i32
+  %43 = kernel.subgroup.size : index
+  %44 = index.cast %43 : index to i32
+  %45 = scalar.addi %42, %44 : i32
+  func.return %45 : i32
+}
+
+func.def device inline @exchange(%value: f32) -> (f32) {
+  %48 = scalar.constant 1 : i32
+  %49 = scalar.constant 32 : i32
+  %50, %51 = kernel.subgroup.shuffle<xor> %value, %48, %49 : f32, i32, i32
+  func.return %50 : f32
+}

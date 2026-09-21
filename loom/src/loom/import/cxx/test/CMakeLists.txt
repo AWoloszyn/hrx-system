@@ -32,6 +32,8 @@ loom_check_test_suite(
     "frontend.cxx-test"
     "functions.cxx-test"
     "intrinsics_invalid.cxx-test"
+    "kernel_intrinsics.cxx-test"
+    "kernel_intrinsics_invalid.cxx-test"
     "launch.cxx-test"
     "launch_invalid.cxx-test"
     "layout_attributes.cxx-test"
@@ -58,6 +60,9 @@ loom_check_test_suite(
     "vectors.cxx-test"
     "vectors_invalid.cxx-test"
     "view_values.cxx-test"
+    "volatile.cxx-test"
+    "volatile_invalid.cxx-test"
+    "volatile_views.cxx-test"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/aligned_layout.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_semantics.h"
@@ -86,6 +91,33 @@ loom_execution_test(
     constexpr_values_test_execute_vm_reference_test
   MODULE
     "::constexpr_values_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test_module(
+  NAME
+    volatile_values_test_module
+  SRCS
+    "volatile_memory.cpp"
+    "volatile_values.loom"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    volatile_values_test_execute_vm_reference_test
+  MODULE
+    "::volatile_values_test_module"
   LABELS
     "iree-build-requirement=loom.target.arch.vm"
     "loom-execution-profile=vm_reference"
@@ -1120,6 +1152,25 @@ loom_generated_file_family(
 endif()
 
 if(LOOM_IMPORT_CXX)
+loom_generated_file_family(
+  NAME
+    volatile_memory_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "volatile_memory_checks.loom"
+    "volatile_memory_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=volatile_memory"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
 loom_test_module(
   NAME
     aiter_swiglu_f16_module
@@ -1429,6 +1480,21 @@ loom_test_module(
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/vector_values_arrays"
     "${CMAKE_CURRENT_BINARY_DIR}/vector_values_checks.loom"
+  INPUTOPTS
+
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_test_module(
+  NAME
+    volatile_memory_module
+  SRCS
+    "volatile_memory.cpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/volatile_memory_checks.loom"
+  DATA
+    "${CMAKE_CURRENT_BINARY_DIR}/volatile_memory_arrays"
+    "${CMAKE_CURRENT_BINARY_DIR}/volatile_memory_checks.loom"
   INPUTOPTS
 
 )

@@ -1,0 +1,27 @@
+// RUN: verify
+// The pointer object itself has no memory backing in SSA transport.
+// ERROR@+1: LOWERING/059 "volatile objects require addressable storage"
+unsigned pointer_object(unsigned* volatile input) { return *input; }
+
+// ====
+// Namespace storage cannot be substituted with a volatile initializer.
+// ERROR@+1: LOWERING/059 "global storage definitions require a global-storage projection"
+const volatile unsigned observed = 7;
+unsigned global_observation() { return observed; }
+
+// ====
+// A const volatile access still cannot write its observed object.
+// ERROR@+1: LOWERING/059 "mutation requires a non-const destination"
+void constant_observation(const volatile unsigned* input) { *input = 7; }
+
+// ====
+// Volatile overloads preserve the view's read-only element contract.
+#include <loomcxx/view.h>
+template <class View>
+concept Writable = requires(View destination) {
+  loom::view::store(7u, destination, 0, 0);
+};
+static_assert(Writable<loom::type::view<unsigned, 2, 4>>);
+static_assert(Writable<loom::type::view<volatile unsigned, 2, 4>>);
+static_assert(!Writable<loom::type::view<const unsigned, 2, 4>>);
+static_assert(!Writable<loom::type::view<const volatile unsigned, 2, 4>>);

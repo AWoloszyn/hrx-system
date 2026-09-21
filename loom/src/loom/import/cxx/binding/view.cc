@@ -357,10 +357,10 @@ std::optional<Value> ViewIntrinsic::call(std::span<const Value> arguments,
           std::numeric_limits<int64_t>::min(),
           std::numeric_limits<int64_t>::min(),
       };
-      check(loom_view_load_build(builder, 0, 0, view_component(arguments[0]),
-                                 indices.data(), indices.size(), static_indices,
-                                 std::size(static_indices), 0, 0,
-                                 scalar_result_, location, &op));
+      check(loom_view_load_build(
+          builder, 0, source_view_->access_flags, view_component(arguments[0]),
+          indices.data(), indices.size(), static_indices,
+          std::size(static_indices), 0, 0, scalar_result_, location, &op));
       return Value(loom_op_results(op)[0]);
     }
     case Operation::Store: {
@@ -373,9 +373,9 @@ std::optional<Value> ViewIntrinsic::call(std::span<const Value> arguments,
           std::numeric_limits<int64_t>::min(),
       };
       check(loom_view_store_build(
-          builder, 0, 0, arguments[0].ssa(), view_component(arguments[1]),
-          indices.data(), indices.size(), static_indices,
-          std::size(static_indices), 0, 0, location, &op));
+          builder, 0, source_view_->access_flags, arguments[0].ssa(),
+          view_component(arguments[1]), indices.data(), indices.size(),
+          static_indices, std::size(static_indices), 0, 0, location, &op));
       return std::nullopt;
     }
   }

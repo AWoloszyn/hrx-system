@@ -205,9 +205,10 @@ void Functions::collect(cxx::DeclarationAST* declaration,
       auto* variable =
           cxx::symbol_cast<cxx::VariableSymbol>(declarator->symbol);
       if (variable && !is_config && !variable->isExtern() &&
-          !(variable->isConstexpr() ||
-            (unit_.typeTraits().is_const(variable->type()) &&
-             variable->constValue()))) {
+          (unit_.typeTraits().is_volatile(variable->type()) ||
+           !(variable->isConstexpr() ||
+             (unit_.typeTraits().is_const(variable->type()) &&
+              variable->constValue())))) {
         diagnostics_.reject(
             unit_, declarator,
             "global storage definitions require a global-storage projection");
