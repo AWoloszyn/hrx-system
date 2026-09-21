@@ -831,12 +831,28 @@ loom_cc_test(
 
 loom_cc_library(
   NAME
+    liveness_dataflow
+  HDRS
+    "liveness_dataflow.h"
+  SRCS
+    "liveness_dataflow.c"
+  DEPS
+    iree::base
+    iree::base::internal::arena
+    loom::ir
+    loom::util::cfg_graph
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     liveness
   HDRS
     "liveness.h"
   SRCS
     "liveness.c"
   DEPS
+    ::liveness_dataflow
     iree::base
     iree::base::internal
     iree::base::internal::arena
@@ -847,6 +863,19 @@ loom_cc_library(
     loom::util::cfg_graph
     loom::util::segmented_storage
   PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    liveness_dataflow_test
+  SRCS
+    "liveness_dataflow_test.cc"
+  DEPS
+    ::liveness_dataflow
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::util::cfg_graph
 )
 
 loom_cc_library(
