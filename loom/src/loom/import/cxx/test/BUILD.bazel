@@ -205,6 +205,7 @@ _KERNEL_SOURCES = [
     "short_circuit",
     "structured_continue",
     "symbol_exports",
+    "typed_views",
     "vector_depth",
     "vector_initializers",
     "vector_values",
