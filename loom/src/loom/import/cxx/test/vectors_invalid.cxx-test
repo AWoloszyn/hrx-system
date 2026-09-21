@@ -59,12 +59,3 @@ V f() { return V{256}; }
 typedef int V __attribute__((vector_size(16)));
 // ERROR@+1: PARSE/036 "narrowing conversion from 'float' to 'int' in braced-init-list"
 V f(float x) { return V{x, 0, 0, 0}; }
-
-// ====
-// RUN: verify
-// Braced vector construction rejects invalid initializers.
-struct Value {
-  int field;
-};
-// ERROR@+1: LOWERING/059 "only topology member access is admitted"
-int f(int x) { return Value{x}.field; }

@@ -18,13 +18,13 @@ unsigned entry() {
 // ====
 // RUN: verify
 // Increment rejects unprojected lvalues and source types.
-// ERROR@+1: LOWERING/059 "increment requires an owned automatic source binding"
+// ERROR@+1: LOWERING/059 "mutation requires an owned automatic source binding"
 unsigned entry(unsigned* pointer) { return (*pointer)++; }
 
 // ====
 // RUN: verify
 // Increment rejects unprojected lvalues and source types.
-// ERROR@+1: LOWERING/059 "increment requires an owned automatic source binding"
+// ERROR@+1: LOWERING/059 "mutation requires an owned automatic source binding"
 unsigned entry(unsigned* pointer) { return ++pointer[0u]; }
 
 // ====
@@ -37,7 +37,7 @@ float entry(float value) { return value++; }
 // RUN: verify
 // Increment rejects unprojected lvalues and source types.
 extern unsigned value;
-// ERROR@+1: LOWERING/059 "increment requires an owned automatic source binding"
+// ERROR@+1: LOWERING/059 "mutation requires an owned automatic source binding"
 unsigned entry() { return ++value; }
 
 // ====
@@ -58,5 +58,5 @@ int entry() { return 1; }
 // RUN: verify
 // External storage cannot become an automatic binding.
 extern int counter;
-// ERROR@+1: LOWERING/059 "assignment requires an owned automatic source binding"
+// ERROR@+1: LOWERING/059 "mutation requires an owned automatic source binding"
 void entry() { counter = 3; }

@@ -107,7 +107,8 @@ TEST(ControlFlowTest, CountedAdmissionRetainsTheNonwrappingIntervalProof) {
     auto* loop =
         cxx::ast_cast<cxx::ForStatementAST>(body->statementList->value);
     ASSERT_NE(loop, nullptr);
-    ControlFlow analysis(source.unit(), body);
+    Types types(source.unit(), source.diagnostics());
+    ControlFlow analysis(source.unit(), types, body);
     auto* counted = analysis.counted(loop);
     ASSERT_EQ(counted != nullptr, test.step != 0);
     if (counted) {
@@ -148,7 +149,8 @@ TEST(ControlFlowTest, NestedWritesPreserveOrderAndShadowedSymbolIdentity) {
                    ->statement;
   auto* branch = cxx::ast_cast<cxx::IfStatementAST>(body->statementList->value);
   ASSERT_NE(branch, nullptr);
-  ControlFlow analysis(source.unit(), body);
+  Types types(source.unit(), source.diagnostics());
+  ControlFlow analysis(source.unit(), types, body);
   auto writes = analysis.written(branch);
   ASSERT_EQ(writes.size(), 3u);
   EXPECT_EQ(writes[0], function->symbol->parameters()[1]);
@@ -157,6 +159,57 @@ TEST(ControlFlowTest, NestedWritesPreserveOrderAndShadowedSymbolIdentity) {
   EXPECT_EQ(cxx::to_string(writes[2]->name()), "x");
   EXPECT_TRUE(std::ranges::equal(writes, analysis.written(body)));
   EXPECT_TRUE(analysis.written(branch->condition).empty());
+}
+
+TEST(ControlFlowTest, NestedMemberWritesRetainTheOwningBindingAndSlice) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  Source source(IREE_SV(R"(
+    struct Payload { int value; const int* cursor; };
+    struct Envelope { int prefix; Payload payload; };
+    void entry(Envelope state, bool condition) {
+      if (condition) {
+        ++(state.payload.value);
+        state.payload.cursor += 1;
+      }
+    }
+  )"),
+                IREE_SV("member_writes.cpp"), options);
+  auto* function = definition(source);
+  ASSERT_NE(function, nullptr);
+  auto* body = cxx::ast_cast<cxx::CompoundStatementFunctionBodyAST>(
+                   function->functionBody)
+                   ->statement;
+  auto* branch = cxx::ast_cast<cxx::IfStatementAST>(body->statementList->value);
+  ASSERT_NE(branch, nullptr);
+  auto* arm = cxx::ast_cast<cxx::CompoundStatementAST>(branch->statement);
+  ASSERT_NE(arm, nullptr);
+  auto* increment_statement =
+      cxx::ast_cast<cxx::ExpressionStatementAST>(arm->statementList->value);
+  auto* increment =
+      cxx::ast_cast<cxx::UnaryExpressionAST>(increment_statement->expression);
+  ASSERT_NE(increment, nullptr);
+  auto* assignment_statement = cxx::ast_cast<cxx::ExpressionStatementAST>(
+      arm->statementList->next->value);
+  auto* assignment = cxx::ast_cast<cxx::CompoundAssignmentExpressionAST>(
+      assignment_statement->expression);
+  ASSERT_NE(assignment, nullptr);
+  Types types(source.unit(), source.diagnostics());
+  ControlFlow analysis(source.unit(), types, body);
+  auto writes = analysis.written(branch);
+  ASSERT_EQ(writes.size(), 1u);
+  EXPECT_EQ(writes[0], function->symbol->parameters()[0]);
+  EXPECT_TRUE(std::ranges::equal(writes, analysis.written(body)));
+  auto scalar = analysis.destination(increment->expression);
+  ASSERT_TRUE(scalar.has_value());
+  EXPECT_EQ(scalar->binding, writes[0]);
+  EXPECT_EQ(scalar->component_offset, 1u);
+  EXPECT_EQ(scalar->member, &kSSAPartition);
+  auto pointer = analysis.destination(assignment->targetExpression);
+  ASSERT_TRUE(pointer.has_value());
+  EXPECT_EQ(pointer->binding, writes[0]);
+  EXPECT_EQ(pointer->component_offset, 2u);
+  EXPECT_EQ(pointer->member, &kPointerPartition);
 }
 
 TEST(ControlFlowTest, ReturnSummariesRetainFallthroughAndNestedExits) {
@@ -190,7 +243,8 @@ TEST(ControlFlowTest, ReturnSummariesRetainFallthroughAndNestedExits) {
     auto* body = cxx::ast_cast<cxx::CompoundStatementFunctionBodyAST>(
                      function->functionBody)
                      ->statement;
-    ControlFlow analysis(source.unit(), body);
+    Types types(source.unit(), source.diagnostics());
+    ControlFlow analysis(source.unit(), types, body);
     EXPECT_EQ(analysis.returns(body), test.flow);
   }
 }
@@ -215,7 +269,8 @@ TEST(ControlFlowTest, ConditionalValuesRetainOrderedBindingMutations) {
   auto* select = cxx::ast_cast<cxx::ConditionalExpressionAST>(
       cxx::Initializer::stripImplicitCasts(ret->expression));
   ASSERT_NE(select, nullptr);
-  ControlFlow analysis(source.unit(), body);
+  Types types(source.unit(), source.diagnostics());
+  ControlFlow analysis(source.unit(), types, body);
   auto writes = analysis.written(select);
   ASSERT_EQ(writes.size(), 3u);
   auto parameters = function->symbol->parameters();
@@ -275,7 +330,8 @@ TEST(ControlFlowTest, IterationExitsStopAtTheirLoopAndExcludeUnreachablePaths) {
     auto* loop =
         cxx::ast_cast<cxx::ForStatementAST>(body->statementList->value);
     ASSERT_NE(loop, nullptr);
-    ControlFlow analysis(source.unit(), body);
+    Types types(source.unit(), source.diagnostics());
+    ControlFlow analysis(source.unit(), types, body);
     EXPECT_EQ(analysis.continues(loop->statement), test.continues);
     EXPECT_EQ(analysis.returns(loop->statement), test.returns);
     EXPECT_EQ(analysis.continues(loop), ExitFlow::None);

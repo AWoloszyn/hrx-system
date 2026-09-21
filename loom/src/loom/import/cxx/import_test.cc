@@ -147,6 +147,26 @@ TEST_F(ImportTest, ExplicitSymbolNamesOutliveSource) {
   EXPECT_EQ(diagnostic_count_, 0);
 }
 
+TEST_F(ImportTest, RecordComponentsOutliveSourceAndFunctionBindingStorage) {
+  std::string source =
+      "struct Result { unsigned value; unsigned* next; bool valid; };\n"
+      "Result advance(unsigned* pointer, unsigned value) {\n"
+      "  Result original{value, pointer + 1u, true};\n"
+      "  Result copy = original; copy.next += value; return copy;\n"
+      "}\n"
+      "unsigned consume(unsigned* pointer, unsigned value) {\n"
+      "  Result result = advance(pointer, value); return result.value;\n"
+      "}\n";
+  IREE_ASSERT_OK(Import(iree_make_string_view(source.data(), source.size())));
+  ASSERT_NE(module_, nullptr);
+  source.assign(source.size(), '?');
+  auto text = Print();
+  EXPECT_NE(text.find("-> (i32, buffer, offset, i1)"), std::string::npos);
+  EXPECT_NE(text.find("func.call @advance"), std::string::npos);
+  EXPECT_NE(text.find("func.def public @consume"), std::string::npos);
+  EXPECT_EQ(diagnostic_count_, 0);
+}
+
 TEST_F(ImportTest, HeaderProviderUsesNormalIncludeSearch) {
   const auto overrides =
       std::filesystem::path("/overrides/").make_preferred().string();

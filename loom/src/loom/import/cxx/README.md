@@ -397,6 +397,48 @@ int next(Byte value) { return value + 1; }
 `next` zero-extends its `i8` argument before the `i32` addition, so `next(last)`
 returns `256`.
 
+Ordinary helpers can accept and return aggregate records by value, including
+nested records, explicit vectors, interior pointers, and empty records:
+
+```cpp
+typedef unsigned u32x4 __attribute__((vector_size(16)));
+struct Result {
+  u32x4 lanes;
+  const unsigned* cursor;
+  bool valid;
+};
+
+Result advance(Result previous, unsigned count) {
+  Result next = previous;
+  for (unsigned i = 0; i < count; ++i) {
+    next.cursor++;
+    next.lanes += u32x4{1u, 2u, 3u, 4u};
+    next.valid = !next.valid;
+  }
+  return count ? next : previous;
+}
+```
+
+Copies are independent values. Assigning a nested member changes only that
+member of the destination; the source copy and untouched siblings retain their
+values. Helper and region boundaries transport members in declaration order,
+with each pointer retaining both its buffer root and byte origin. C++ padding
+is absent from these signatures. Empty records retain source identity and layout
+while transporting zero values; a two-scalar record remains distinct from a
+pointer. Kernel parameters continue to use the ordinary launch binding ABI and
+reject record parameters.
+
+The admitted records are complete aggregates with public fields, trivial copying
+and destruction, and no unions or base classes. Fields recursively admit scalar,
+vector, pointer, and record values. Braced construction includes normalized
+positional, designated and omitted-field initialization, plus default member
+expressions that do not access the object under construction. Bitfields,
+references, array fields, addresses of automatic records and raw object storage
+are rejected. Implicit default construction such as `Result()` and default
+member expressions accessing another member require source object initialization
+phases and receive explicit diagnostics; substituting aggregate braces would
+not preserve their semantics.
+
 Record layout queries honor GNU `packed`, explicit `aligned(N)`, standard
 `alignas`, and `#pragma pack`. Requests stay attached to their declarations
 through template specialization. Nested records keep their own padding; packing
@@ -428,10 +470,10 @@ array indices. For example, `__builtin_offsetof(Block<unsigned>, words[2])` is
 offset retains the source `size_t` width.
 
 Bitfield layouts retain actual bit positions, including fields crossing their
-declared storage units and zero-width alignment boundaries. Layout queries do
-not admit record values or bitfield memory operations into High IR. Packed base
-classes, virtual members, Microsoft bitfield ABI layouts, aligned typedefs,
-and GNU `aligned` without an explicit argument produce source diagnostics.
+declared storage units and zero-width alignment boundaries. Layout queries are
+independent of value admission; bitfield memory operations remain unsupported.
+Packed base classes, virtual members, Microsoft bitfield ABI layouts, aligned
+typedefs, and GNU `aligned` without an explicit argument produce source diagnostics.
 
 Explicit fixed vectors retain their lanes and element widths in High IR:
 
@@ -664,9 +706,10 @@ conformance. LP64, LLP64 and ILP32 source layouts are independent of the machine
 running the importer.
 
 The current translation surface covers scalar and explicit vector arithmetic,
-conversions, typed-pointer indexing and arithmetic, local SSA values,
-conditional regions, short-circuit `&&` and `||`, counted and general `for` loops, `while` and
-`do/while` loops, fixed workgroup arrays, and direct calls. Unsupported reachable
+conversions, typed-pointer indexing and arithmetic, aggregate record values,
+local SSA values, conditional regions, short-circuit `&&` and `||`, counted and
+general `for` loops, `while` and `do/while` loops, fixed workgroup arrays, and
+direct calls. Unsupported reachable
 types and statements produce source diagnostics. Integral subscripts preserve
 their source width and signedness. Interior pointers carry a buffer root and an
 object-relative byte offset through helper arguments, returns, conditional

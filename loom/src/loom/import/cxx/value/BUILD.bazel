@@ -15,8 +15,21 @@ package(
 
 loom_cc_library(
     name = "representation",
+    srcs = ["representation.cc"],
     hdrs = ["representation.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
     deps = ["//loom/src/loom/ir"],
+)
+
+loom_cc_test(
+    name = "representation_test",
+    srcs = ["representation_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":representation",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
 )
 
 loom_cc_library(
@@ -25,6 +38,7 @@ loom_cc_library(
     hdrs = ["types.h"],
     cxxopts = select(CXX_COMPILER_OPTIONS),
     deps = [
+        ":representation",
         "//loom/src/loom/import/cxx/source",
         "//loom/src/loom/ir",
         "//third_party:cxx_parser",
@@ -175,6 +189,8 @@ loom_cc_test(
 iree_cmake_extra_content(
     """
 foreach(_target IN ITEMS
+    loom_import_cxx_value_representation.objects
+    loom_import_cxx_value_representation_test
     loom_import_cxx_value_types.objects
     loom_import_cxx_value_types_test
     loom_import_cxx_value_scalar.objects

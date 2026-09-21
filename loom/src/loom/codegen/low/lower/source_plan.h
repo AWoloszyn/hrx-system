@@ -102,6 +102,10 @@ typedef struct loom_low_lower_descriptor_matrix_plan_t {
 
 // Function-local retained plan and source-value materialization state.
 typedef struct loom_low_lower_source_plan_t {
+  // Source-body blocks in definition-before-use order, borrowed from retained
+  // dominance when all blocks are reachable. Unreachable blocks follow in
+  // storage order. NULL preserves the single-block structured path.
+  const uint16_t* block_order;
   // Per-source-value storage demand flags indexed by source value ordinal.
   loom_low_lower_value_storage_flags_t* value_storage_flags;
   // Selected plans in source traversal order.

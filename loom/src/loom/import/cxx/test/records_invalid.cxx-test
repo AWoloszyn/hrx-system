@@ -1,0 +1,104 @@
+// RUN: verify
+// Unions do not have an unconditional component partition.
+union Value { unsigned integer; float real; };
+// ERROR@+1: LOWERING/059 "record values require a complete aggregate without unions, bases or nontrivial lifecycle operations"
+Value entry(Value value) { return value; }
+
+// ====
+// RUN: verify
+// Base subobjects need an explicit source-object contract.
+struct Base { unsigned base; };
+struct Value : Base { unsigned member; };
+// ERROR@+1: LOWERING/059 "record values require a complete aggregate without unions, bases or nontrivial lifecycle operations"
+Value entry(Value value) { return value; }
+
+// ====
+// RUN: verify
+// Constructors must execute their semantics.
+struct Value { unsigned member; Value(unsigned x) : member(x) {} };
+// ERROR@+1: LOWERING/059 "record values require a complete aggregate without unions, bases or nontrivial lifecycle operations"
+unsigned entry(unsigned x) { Value value{x}; return value.member; }
+
+// ====
+// RUN: verify
+// Destructors cannot disappear in SSA value copies.
+struct Value { unsigned member; ~Value() {} };
+// ERROR@+1: LOWERING/059 "record values require a complete aggregate without unions, bases or nontrivial lifecycle operations"
+Value entry(Value value) { return value; }
+
+// ====
+// RUN: verify
+// An aggregate with user-defined assignment is not a trivial value.
+struct Value { unsigned member; Value& operator=(const Value& rhs) { member=rhs.member+1; return *this; } };
+// ERROR@+1: LOWERING/059 "record values require a complete aggregate without unions, bases or nontrivial lifecycle operations"
+Value entry(Value value) { return value; }
+
+// ====
+// RUN: verify
+// Bitfields require source storage semantics.
+struct Value { unsigned member : 7; };
+// ERROR@+1: LOWERING/059 "record value fields cannot be bitfields, references or arrays"
+Value entry(Value value) { return value; }
+
+// ====
+// RUN: verify
+// Array objects are not pointer-valued fields.
+struct Value { unsigned member[4]; };
+// ERROR@+1: LOWERING/059 "record value fields cannot be bitfields, references or arrays"
+Value entry(Value value) { return value; }
+
+// ====
+// RUN: verify
+// Reference fields cannot become independent SSA copies.
+struct Value { unsigned& member; };
+// ERROR@+1: LOWERING/059 "record value fields cannot be bitfields, references or arrays"
+Value entry(Value value) { return value; }
+
+// ====
+// RUN: verify
+// Volatile fields retain their access semantics.
+struct Value { volatile unsigned member; };
+// ERROR@+1: LOWERING/059 "volatile access is not supported"
+Value entry(Value value) { return value; }
+
+// ====
+// RUN: verify
+// Aggregate object addresses need real object storage.
+struct Value { unsigned member; };
+// ERROR@+1: LOWERING/059 "unsupported C++ type: ::Value"
+unsigned entry(Value value) { auto* pointer = &value; return pointer->member; }
+
+// ====
+// RUN: verify
+// A member address cannot be manufactured from an SSA value.
+struct Value { unsigned member; };
+// ERROR@+1: LOWERING/059 "address-of requires an existing storage-backed element"
+unsigned entry(Value value) { auto* pointer = &value.member; return *pointer; }
+
+// ====
+// RUN: verify
+// Byte reinterpretation cannot use the flattened value transport as C++ layout.
+struct Value { unsigned member; };
+// ERROR@+1: LOWERING/059 "unsupported C++ type: ::Value"
+unsigned entry(Value value) { return __builtin_bit_cast(unsigned, value); }
+
+// ====
+// RUN: verify
+// Ordinary record arguments do not change the kernel launch ABI.
+struct Value { unsigned member; };
+// ERROR@+1: LOWERING/059 "unsupported C++ type: ::Value"
+[[loom::kernel]] void entry(Value value, unsigned* output) { output[0]=value.member; }
+
+// ====
+// RUN: verify
+// Default construction has distinct object zero-initialization rules.
+struct Value { unsigned first=1, second=2; };
+// ERROR@+1: LOWERING/059 "default record construction requires source object initialization semantics"
+Value entry() { return Value(); }
+
+// ====
+// RUN: verify
+// Member-dependent defaults need an object-under-construction binding.
+// ERROR@+1: LOWERING/059 "member-dependent initialization requires source object initialization semantics"
+struct Value { unsigned first=1, second=first+2; };
+Value entry() { return Value{}; }

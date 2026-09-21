@@ -55,6 +55,8 @@ iree_execution_test_suite(
         "check_cases.cc",
         "check_cases.h",
         "check_library.cc",
+        "record_input.loom",
+        "record_library.cc",
         "source_input.cc",
         "source_input.h",
         "source_input.loom",

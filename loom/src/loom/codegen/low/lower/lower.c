@@ -1079,10 +1079,13 @@ static iree_status_t loom_low_lower_emit_region_ops(
     bool map_source_blocks) {
   // A rejected plan leaves its low results unbound, so emission cannot resume
   // elsewhere in the region after any diagnostic error.
+  const uint16_t* block_order =
+      map_source_blocks ? context->lowering.source_plan.block_order : NULL;
   iree_status_t status = iree_ok_status();
-  for (uint16_t block_index = 0;
-       block_index < source_region->block_count && iree_status_is_ok(status);
-       ++block_index) {
+  for (uint16_t position = 0;
+       position < source_region->block_count && iree_status_is_ok(status);
+       ++position) {
+    const uint16_t block_index = block_order ? block_order[position] : position;
     loom_block_t* source_block = loom_region_block(source_region, block_index);
     if (map_source_blocks) {
       loom_builder_set_block(&context->builder,

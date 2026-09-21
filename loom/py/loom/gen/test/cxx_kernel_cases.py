@@ -845,6 +845,88 @@ def vector_initializers(arrays):
     return "kernel.decl @vector_initializers() launch(%output: buffer, %input: i32)\n\n" + "\n".join(cases)
 
 
+def record_pair_reference(value, count):
+    return 9 * value + count * (count - 1) // 2 + 21 + 3 * ((count + 1) // 2)
+
+
+def record_sequence_reference(value, choose):
+    return 5 * value + 60 if choose else 12 * value + 30
+
+
+def record_functions():
+    values = [0, 7, 0xFFFFFFFF]
+    pairs = [([value, count], record_pair_reference(value, count)) for value in values for count in [0, 1, 2, 7]]
+    defaults = [([value], value + 44) for value in values]
+    sequencing = [([value, choose], record_sequence_reference(value, choose)) for value in values for choose in [0, 1, 2]]
+    return (
+        "\n\n".join(
+            [
+                function_cases("record_pairs", [32, 32], 32, pairs),
+                function_cases("record_defaults", [32], 32, defaults),
+                function_cases("record_sequencing", [32, 32], 32, sequencing),
+            ]
+        )
+        + "\n"
+    )
+
+
+def record_values(arrays):
+    rng = random.Random(53091)
+    inputs = [rng.randrange(1 << 32) for _ in range(32)]
+    stored_inputs = [signed_bits(value, 32) for value in inputs]
+    cases = []
+    for seed in [0, 7, 0xFFFFFFFF]:
+        for count in [0, 1, 2, 7]:
+            original = [(seed + lane) % (1 << 32) for lane in range(4)]
+            advanced = [(value + count * (lane + 1)) % (1 << 32) for lane, value in enumerate(original)]
+            first = (seed + count * (count - 1) // 2) % (1 << 32)
+            second = (seed + 7 + (count + 1) // 2) % (1 << 32)
+            for choose in [0, 1, 2]:
+                lanes = [value + lane + 5 if choose & 1 else value for lane, value in enumerate(advanced)]
+                pair = [first + 1, second] if choose & 1 else [first, second * 3]
+                selected = lanes if choose else original
+                selected_pair = pair if choose else [seed, seed + 7]
+                expected = (
+                    lanes
+                    + original
+                    + selected
+                    + [
+                        inputs[3 + count],
+                        inputs[3],
+                        inputs[3 + count if choose else 3],
+                        int(count % 2 == 0),
+                        1,
+                        *pair,
+                        *selected_pair,
+                        record_pair_reference(seed, count),
+                        seed + 44,
+                        record_sequence_reference(seed, choose),
+                        inputs[1],
+                        inputs[8],
+                        inputs[7],
+                    ]
+                )
+                case = Case(arrays, f"records_{seed}_{count}_{choose}", "i32", len(expected))
+                case.array("input", stored_inputs)
+                for name, value in [("seed", seed), ("count", count), ("choose", choose)]:
+                    case.scalar(name, signed_bits(value, 32), "i32")
+                case.launch("record_values", "%input, %output, %seed, %count, %choose", f"tensor<32xi32>, tensor<{len(expected)}xi32>, i32, i32, i32")
+                case.array("original", stored_inputs)
+                case.lines.append("  check.expect.bitwise actual(%input) expected(%original) : tensor<32xi32>")
+                cases.append(case.finish([signed_bits(value, 32) for value in expected]))
+            expected = [*advanced, inputs[3 + count], int(count % 2 == 0), inputs[3], seed]
+            for kernel in ["record_control", "leaf_control"]:
+                case = Case(arrays, f"{kernel}_{seed}_{count}", "i32", 8)
+                case.array("input", stored_inputs)
+                case.scalar("seed", signed_bits(seed, 32), "i32")
+                case.scalar("count", count, "i32")
+                case.launch(kernel, "%input, %output, %seed, %count", "tensor<32xi32>, tensor<8xi32>, i32, i32")
+                cases.append(case.finish([signed_bits(value, 32) for value in expected]))
+    declarations = "kernel.decl @record_values() launch(%input: buffer, %output: buffer, %seed: i32, %count: i32, %choose: i32)\n"
+    declarations += "".join(f"kernel.decl @{kernel}() launch(%input: buffer, %output: buffer, %seed: i32, %count: i32)\n" for kernel in ["record_control", "leaf_control"])
+    return declarations + "\n" + "\n".join(cases)
+
+
 def f32_bits(bits):
     return struct.unpack("<f", struct.pack("<I", bits))[0]
 
@@ -972,6 +1054,7 @@ KERNEL_GROUPS = {
     "integer_increment": lambda arrays: integer_increment(arrays, 8, BYTE_INPUTS) + "\n" + integer_increment(arrays, 64, WIDE_INPUTS),
     "llama_rms_norm": lambda arrays: launch_grid("llama_rms_norm", 3) + rms_norm(arrays),
     "pointer_walk": pointer_walk,
+    "record_values": record_values,
     "scheduled_sum": scheduled_sum,
     "shaped_intrinsics": lambda arrays: register_lookup(arrays) + "\n" + register_lookup(arrays, floating=True) + "\n" + mixed_dot(arrays),
     "short_circuit": short_circuit,
@@ -990,6 +1073,7 @@ HOST_REFERENCES = {
     "enum_values.cpp": enum_functions,
     "increment_values.cpp": increment_functions,
     "integer_functions.cpp": integer_functions,
+    "record_values.cpp": record_functions,
     "schedule_values.cpp": schedule_functions,
     "shaped_intrinsics.cpp": shaped_intrinsic_values,
     "structured_continue.cpp": continue_functions,

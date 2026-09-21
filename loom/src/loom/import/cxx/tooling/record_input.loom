@@ -1,0 +1,15 @@
+func.decl @library.update(%first: i32, %second: i32, %valid: i1, %count: i32) -> (i32, i32, i1)
+
+check.case @record_library {
+  %first = check.literal value(7) : i32
+  %second = check.literal value(11) : i32
+  %valid = check.literal value(1) : i1
+  %count = check.literal value(3) : i32
+  %actual, %unchanged, %toggled = func.call @library.update(%first, %second, %valid, %count) : (i32, i32, i1, i32) -> (i32, i32, i1)
+  %expected = check.literal value(40) : i32
+  %false = check.literal value(0) : i1
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.expect.equal actual(%unchanged) expected(%second) : i32
+  check.expect.equal actual(%toggled) expected(%false) : i1
+  check.return
+}

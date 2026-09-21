@@ -68,7 +68,20 @@ typedef struct loom_sanitizer_site_collection_t {
 
   // Number of rows in rows.
   iree_host_size_t row_count;
+
+  // Arena-owned operation identity index. Slots contain row ordinals plus one;
+  // zero denotes an empty slot. Site IDs remain in deterministic walk order.
+  uint32_t* operation_index;
+
+  // Power-of-two slot count, or zero when the collection has no sites.
+  iree_host_size_t operation_capacity;
 } loom_sanitizer_site_collection_t;
+
+// Returns the retained row for a collected operation, independent of query
+// order. The operation belongs to this immutable collection; IR edits require
+// rebuilding it. The returned row shares the collection's arena lifetime.
+const loom_sanitizer_site_row_t* loom_sanitizer_site_collection_lookup(
+    const loom_sanitizer_site_collection_t* collection, const loom_op_t* op);
 
 // Returns true when |row| has decoded sanitizer site payload metadata.
 static inline bool loom_sanitizer_site_row_has_payload(
