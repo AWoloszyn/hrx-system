@@ -1035,6 +1035,7 @@ loom_cc_library(
     loom::ops::scf
     loom::ops::template
     loom::util::adaptive_sort
+    loom::util::segmented_storage
   PUBLIC
 )
 

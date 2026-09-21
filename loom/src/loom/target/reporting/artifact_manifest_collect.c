@@ -635,21 +635,6 @@ static iree_status_t loom_target_artifact_manifest_collect_functions(
   return iree_ok_status();
 }
 
-static iree_status_t loom_target_artifact_manifest_reference_occurrence(
-    const loom_symbol_reference_table_t* reference_table,
-    loom_symbol_reference_occurrence_id_t occurrence_id,
-    const loom_symbol_reference_occurrence_t** out_occurrence) {
-  if (occurrence_id >= reference_table->occurrence_count) {
-    return iree_make_status(
-        IREE_STATUS_FAILED_PRECONDITION,
-        "reference occurrence id %u is out of range for table with %" PRIhsz
-        " occurrences",
-        (unsigned)occurrence_id, reference_table->occurrence_count);
-  }
-  *out_occurrence = &reference_table->occurrences[occurrence_id];
-  return iree_ok_status();
-}
-
 static iree_status_t loom_target_artifact_manifest_mark_function_closure(
     loom_target_entry_list_t entries,
     const loom_symbol_reference_table_t* reference_table,
@@ -682,9 +667,8 @@ static iree_status_t loom_target_artifact_manifest_mark_function_closure(
     loom_symbol_reference_occurrence_id_t edge_id =
         reference_table->symbols[symbol_id].first_outgoing_occurrence_id;
     while (edge_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
-      const loom_symbol_reference_occurrence_t* edge = NULL;
-      IREE_RETURN_IF_ERROR(loom_target_artifact_manifest_reference_occurrence(
-          reference_table, edge_id, &edge));
+      const loom_symbol_reference_occurrence_t* edge =
+          loom_symbol_reference_table_occurrence(reference_table, edge_id);
       if (loom_symbol_reference_occurrence_is_dependency(edge) &&
           edge->kind == LOOM_SYMBOL_REFERENCE_OCCURRENCE_CALL) {
         if (edge->target_symbol_id >= reference_table->symbol_count) {
@@ -730,9 +714,8 @@ static iree_status_t loom_target_artifact_manifest_mark_used_globals(
     loom_symbol_reference_occurrence_id_t edge_id =
         reference_table->symbols[i].first_outgoing_occurrence_id;
     while (edge_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
-      const loom_symbol_reference_occurrence_t* edge = NULL;
-      IREE_RETURN_IF_ERROR(loom_target_artifact_manifest_reference_occurrence(
-          reference_table, edge_id, &edge));
+      const loom_symbol_reference_occurrence_t* edge =
+          loom_symbol_reference_table_occurrence(reference_table, edge_id);
       if (loom_symbol_reference_occurrence_is_dependency(edge) &&
           edge->kind == LOOM_SYMBOL_REFERENCE_OCCURRENCE_GLOBAL_ACCESS) {
         if (edge->target_symbol_id >= reference_table->symbol_count) {

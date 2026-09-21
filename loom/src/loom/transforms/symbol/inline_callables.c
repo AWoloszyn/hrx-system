@@ -572,7 +572,7 @@ static iree_status_t loom_inline_build_plan(
   for (iree_host_size_t i = 0; i < state->options.references->occurrence_count;
        ++i) {
     const loom_symbol_reference_occurrence_t* edge =
-        &state->options.references->occurrences[i];
+        loom_symbol_reference_table_occurrence(state->options.references, i);
     if (!loom_symbol_reference_occurrence_is_dependency(edge) ||
         (state->options.live_symbols &&
          edge->source_symbol_id < state->module->symbols.count &&

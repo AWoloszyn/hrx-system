@@ -1128,9 +1128,11 @@ TEST_F(ParserTest, ReturnsSymbolReferencesFromParsedSnapshot) {
   ASSERT_NE(availability_occurrence_id,
             LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID);
   const loom_symbol_reference_occurrence_t* dependency =
-      &symbol_references.occurrences[dependency_occurrence_id];
+      loom_symbol_reference_table_occurrence(&symbol_references,
+                                             dependency_occurrence_id);
   const loom_symbol_reference_occurrence_t* availability =
-      &symbol_references.occurrences[availability_occurrence_id];
+      loom_symbol_reference_table_occurrence(&symbol_references,
+                                             availability_occurrence_id);
   EXPECT_EQ(dependency->role, LOOM_SYMBOL_REFERENCE_ROLE_DEPENDENCY);
   EXPECT_EQ(availability->role, LOOM_SYMBOL_REFERENCE_ROLE_AVAILABILITY);
 

@@ -1107,7 +1107,7 @@ static iree_status_t loom_template_selection_analyze_exact_calls(
     loom_template_selection_state_t* state) {
   for (iree_host_size_t i = 0; i < state->references.occurrence_count; ++i) {
     const loom_symbol_reference_occurrence_t* occurrence =
-        &state->references.occurrences[i];
+        loom_symbol_reference_table_occurrence(&state->references, i);
     if (occurrence->kind != LOOM_SYMBOL_REFERENCE_OCCURRENCE_CALL ||
         occurrence->user_op == NULL ||
         !loom_template_call_isa(occurrence->user_op) ||
@@ -1238,7 +1238,7 @@ static iree_status_t loom_template_selection_allocate_entries(
   iree_host_size_t exact_call_count = 0;
   for (iree_host_size_t i = 0; i < state->references.occurrence_count; ++i) {
     const loom_symbol_reference_occurrence_t* occurrence =
-        &state->references.occurrences[i];
+        loom_symbol_reference_table_occurrence(&state->references, i);
     if (occurrence->kind == LOOM_SYMBOL_REFERENCE_OCCURRENCE_CALL &&
         occurrence->user_op != NULL &&
         loom_template_call_isa(occurrence->user_op)) {

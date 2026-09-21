@@ -1155,7 +1155,7 @@ static uint32_t loom_link_index_count_dependency_occurrences(
   loom_symbol_reference_occurrence_id_t occurrence_id = first_occurrence_id;
   while (occurrence_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
     const loom_symbol_reference_occurrence_t* occurrence =
-        &table->occurrences[occurrence_id];
+        loom_symbol_reference_table_occurrence(table, occurrence_id);
     if (loom_symbol_reference_occurrence_is_dependency(occurrence)) {
       ++dependency_count;
     }
@@ -1172,7 +1172,7 @@ static void loom_link_index_copy_dependency_occurrences(
   loom_symbol_reference_occurrence_id_t occurrence_id = first_occurrence_id;
   while (occurrence_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
     const loom_symbol_reference_occurrence_t* occurrence =
-        &table->occurrences[occurrence_id];
+        loom_symbol_reference_table_occurrence(table, occurrence_id);
     if (loom_symbol_reference_occurrence_is_dependency(occurrence)) {
       values[*position] = occurrence->target_symbol_id;
       target_interfaces[*position] = occurrence->target_interfaces;
@@ -1196,7 +1196,7 @@ static iree_status_t loom_link_index_project_symbol_references(
   iree_host_size_t dependency_count = 0;
   for (iree_host_size_t i = 0; i < table->occurrence_count; ++i) {
     if (loom_symbol_reference_occurrence_is_dependency(
-            &table->occurrences[i])) {
+            loom_symbol_reference_table_occurrence(table, i))) {
       ++dependency_count;
     }
   }

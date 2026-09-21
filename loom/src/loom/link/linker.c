@@ -1648,7 +1648,8 @@ static iree_status_t loom_linker_resolve_live_symbols(
               .first_outgoing_occurrence_id;
       while (edge_id != LOOM_SYMBOL_REFERENCE_OCCURRENCE_ID_INVALID) {
         const loom_symbol_reference_occurrence_t* edge =
-            &source->reference_table.occurrences[edge_id];
+            loom_symbol_reference_table_occurrence(&source->reference_table,
+                                                   edge_id);
         if (!loom_symbol_reference_occurrence_is_dependency(edge)) {
           edge_id = edge->next_outgoing_occurrence_id;
           continue;

@@ -283,7 +283,7 @@ iree_status_t loom_kernel_resolve_launches(
        i < references->occurrence_count && iree_status_is_ok(status) && valid;
        ++i) {
     const loom_symbol_reference_occurrence_t* occurrence =
-        &references->occurrences[i];
+        loom_symbol_reference_table_occurrence(references, i);
     loom_op_t* user_op = (loom_op_t*)occurrence->user_op;
     if (occurrence->kind != LOOM_SYMBOL_REFERENCE_OCCURRENCE_CALL || !user_op ||
         iree_any_bit_set(user_op->flags, LOOM_OP_FLAG_DEAD) ||
