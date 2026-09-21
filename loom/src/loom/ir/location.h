@@ -128,7 +128,8 @@ typedef enum loom_location_field_kind_e {
   LOOM_LOCATION_FIELD_SUCCESSOR = 4,
 } loom_location_field_kind_t;
 
-// Source span for one concrete op field inside a file location.
+// Source span for one concrete op field inside a file location. Lines and
+// Unicode code-point columns are one-based; the end is exclusive.
 typedef struct loom_location_field_span_t {
   loom_location_field_kind_t kind;
   uint16_t index;
@@ -148,8 +149,10 @@ static_assert(sizeof(loom_location_field_span_t) == 16,
 // file. Agent-authored .loom files are typically hundreds of lines; linked
 // module dumps are diagnostic output, not round-tripped source.
 //
-// The source_id field indexes into the module's source table, which stores
-// filenames, system tags, and any other provenance labels.
+// File lines and Unicode code-point columns are one-based, with an exclusive
+// end; zero denotes an unavailable coordinate. The source_id field indexes into
+// the module's source table, which stores filenames, system tags, and any other
+// provenance labels.
 typedef struct loom_location_entry_t {
   loom_location_kind_t kind;
   loom_location_flags_t flags;

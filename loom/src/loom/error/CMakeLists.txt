@@ -64,6 +64,20 @@ loom_cc_library(
   PUBLIC
 )
 
+loom_cc_test(
+  NAME
+    source_test
+  SRCS
+    "source_test.cc"
+  DEPS
+    ::source
+    iree::base
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+)
+
 loom_generated_cc_library(
   NAME
     error_defs

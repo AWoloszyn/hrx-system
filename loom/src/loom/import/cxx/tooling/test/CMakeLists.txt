@@ -15,8 +15,10 @@ loom_check_test_suite(
     test
   SRCS
     "import.cxx-test"
+    "source_capture.cxx-test"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/test/helper.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/test/source_capture.h"
 )
 endif()
 

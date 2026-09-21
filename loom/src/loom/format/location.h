@@ -17,8 +17,8 @@
 // Unknown nodes have no payload. File payloads contain name offset/length,
 // start line/column, exclusive end line/column, field offset/count, and source
 // text offset/length (ten u32s). A field contains kind, index, and four range
-// coordinates (six u32s). Coordinates are one-based UTF-8 byte positions; zero
-// denotes unavailable coordinates. Source text contains the exact complete
+// coordinates (six u32s). Lines and Unicode code-point columns are one-based;
+// zero denotes unavailable coordinates. Source text contains the exact complete
 // lines starting at start_line and spanning the range. A text offset of zero
 // denotes unavailable text; present empty text has a nonzero offset.
 // Fused payloads contain ordered u32 child indices. Opaque payloads contain
@@ -70,11 +70,11 @@ typedef struct loom_location_value_t {
 typedef struct loom_location_value_range_t {
   // One-based line containing the first byte, or zero when unknown.
   uint32_t start_line;
-  // One-based byte column of the first byte, or zero when unknown.
+  // One-based Unicode code-point column of the start, or zero when unknown.
   uint32_t start_column;
   // One-based line containing the exclusive end, or zero when unknown.
   uint32_t end_line;
-  // One-based byte column of the exclusive end, or zero when unknown.
+  // One-based Unicode code-point column of the end, or zero when unknown.
   uint32_t end_column;
 } loom_location_value_range_t;
 

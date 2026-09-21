@@ -56,6 +56,59 @@ loom_cc_test(
     loom::ir
 )
 
+loom_cc_library(
+  NAME
+    location_capture
+  HDRS
+    "location_capture.h"
+  SRCS
+    "location_capture.c"
+  DEPS
+    ::func
+    iree::base
+    iree::base::internal::arena
+    loom::error::source
+    loom::ir
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    location_capture_test
+  SRCS
+    "location_capture_test.cc"
+  DEPS
+    ::func
+    ::location_capture
+    ::location_capture_test_data
+    iree::base
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::error::source
+    loom::format::location
+    loom::ir
+    loom::ops::op_defs
+    loom::ops::op_registry
+    loom::tooling::input
+    loom::tooling::io::source
+)
+
+iree_c_embed_data(
+  NAME
+    location_capture_test_data
+  SRCS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/ops/func/test/location_capture.loom-test"
+  C_FILE_OUTPUT
+    "location_capture_test_data.c"
+  H_FILE_OUTPUT
+    "location_capture_test_data.h"
+  IDENTIFIER
+    "loom_location_capture_test_data"
+  TESTONLY
+  PUBLIC
+)
+
 loom_cc_test(
   NAME
     location_test

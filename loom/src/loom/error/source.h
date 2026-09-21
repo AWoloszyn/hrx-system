@@ -66,7 +66,9 @@ typedef struct loom_source_table_resolver_t {
 } loom_source_table_resolver_t;
 
 // Resolves file locations against a loom_source_table_resolver_t passed as
-// |user_data|. Unknown, non-file, and missing source locations return false.
+// |user_data|. Unknown, non-file, and missing source locations return false, as
+// do unavailable, reversed, or out-of-snapshot coordinates. Success denotes an
+// exact original range; coordinates are never clamped into different spelling.
 bool loom_source_table_resolve(void* user_data, const loom_module_t* module,
                                loom_location_id_t location,
                                loom_source_range_t* out_range);

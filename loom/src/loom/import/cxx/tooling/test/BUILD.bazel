@@ -3,9 +3,20 @@ load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files([
+    "source_capture.cxx-test",
+    "source_capture.h",
+])
+
 loom_check_test_suite(
     name = "test",
-    srcs = ["import.cxx-test"],
-    data = ["helper.h"],
+    srcs = [
+        "import.cxx-test",
+        "source_capture.cxx-test",
+    ],
+    data = [
+        "helper.h",
+        "source_capture.h",
+    ],
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )

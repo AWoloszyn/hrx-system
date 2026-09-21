@@ -8,14 +8,27 @@
 #include <cstring>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "iree/io/vec_stream.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "iree/vm/buffer.h"
 #include "iree/vm/bytecode/module.h"
 #include "iree/vm/reflection.h"
 #include "iree/vm/sync.h"
+#include "loom/format/bytecode/reader.h"
+#include "loom/format/bytecode/writer.h"
 #include "loom/format/location.h"
+#include "loom/link/linker.h"
+#include "loom/ops/func/location_capture.h"
+#include "loom/ops/func/location_capture_test_data.h"
+#include "loom/ops/func/ops.h"
+#include "loom/ops/op_registry.h"
+#include "loom/target/arch/vm/module.h"
+#include "loom/target/arch/vm/provider.h"
+#include "loom/tooling/compile/pipeline.h"
+#include "loom/tooling/input/input.h"
 #include "loom/tooling/target/vm/imports_bytecode.h"
 
 namespace {
@@ -127,22 +140,29 @@ void CountRelease(void* user_data, iree_byte_span_t) {
 
 class VMImportsTest : public ::testing::Test {
  protected:
+  virtual void CreateImage(std::vector<uint8_t>* out_image) {
+    const auto* source = loom_vm_imports_bytecode_create();
+    out_image->assign(source[0].data, source[0].data + source[0].size);
+  }
+
   void SetUp() override {
+    std::vector<uint8_t> contents;
+    CreateImage(&contents);
+    ASSERT_FALSE(contents.empty());
     iree_vm_environment_t* environment = nullptr;
     IREE_ASSERT_OK(
         iree_vm_environment_allocate(iree_allocator_system(), &environment));
     IREE_ASSERT_OK(iree_vm_ref_types_resolve(
         iree_vm_environment_lookup_ref_type_table(environment, IREE_SV("vm")),
         &types_));
-    const iree_file_toc_t* source = loom_vm_imports_bytecode_create();
     uint8_t* image = nullptr;
     IREE_ASSERT_OK(iree_allocator_malloc(iree_allocator_system(),
-                                         source[0].size,
+                                         contents.size(),
                                          reinterpret_cast<void**>(&image)));
-    std::memcpy(image, source[0].data, source[0].size);
+    std::memcpy(image, contents.data(), contents.size());
     IREE_ASSERT_OK(iree_vm_bytecode_module_create(
         environment, IREE_SV("compiled"),
-        {iree_make_const_byte_span(image, source[0].size),
+        {iree_make_const_byte_span(image, contents.size()),
          iree_allocator_system()},
         iree_allocator_system(), &bytecode_));
     iree_vm_environment_free(environment);
@@ -322,6 +342,166 @@ TEST_F(VMImportsTest, CapturedLocationOutlivesCompiledProgram) {
   EXPECT_EQ(field.kind, 0u);
   EXPECT_EQ(field.index, 1u);
   EXPECT_EQ(field.range.start_column, 9u);
+  iree_vm_variant_span_reset({&result, 1});
+}
+
+// Exercises the compiler-client lifecycle: capture while admitted sources are
+// alive, freeze in bytecode without debug locations, link, compile, and only
+// then hand independently owned executable bytes to the native-call fixture.
+class VMSourceCaptureTest : public VMImportsTest {
+ protected:
+  void CreateImage(std::vector<uint8_t>* out_image) override {
+    iree_arena_block_pool_t pool;
+    iree_arena_block_pool_initialize(32 * 1024, iree_allocator_system(), &pool);
+    iree_arena_allocator_t arena;
+    iree_arena_initialize(&pool, &arena);
+    const loom_target_provider_t* providers[] = {&loom_vm_target_provider};
+    const auto provider_set = loom_target_provider_set_make(providers, 1);
+    loom_target_environment_t environment;
+    IREE_ASSERT_OK(
+        loom_target_environment_initialize(&provider_set, &environment));
+    loom_context_t context;
+    loom_context_initialize(iree_allocator_system(), &context);
+    IREE_ASSERT_OK(loom_op_registry_register_all_dialects(&context));
+    IREE_ASSERT_OK(
+        loom_target_environment_register_context(&environment, &context));
+    IREE_ASSERT_OK(loom_context_finalize(&context));
+    const auto* data = loom_location_capture_test_data_create();
+    loom_input_request_t request = {};
+    request.source = iree_make_string_view(
+        reinterpret_cast<const char*>(data[0].data), data[0].size);
+    request.path = IREE_SV("admitted.loom");
+    loom_input_module_t input;
+    IREE_ASSERT_OK(loom_input_module_load(&loom_input_text_provider, &request,
+                                          &context, &pool,
+                                          iree_allocator_system(), &input));
+    ASSERT_NE(input.module, nullptr);
+    auto find = [](loom_module_t* module, iree_string_view_t name) {
+      auto symbol = loom_module_find_symbol(
+          module, loom_module_lookup_string(module, name));
+      return module->symbols.entries[symbol].defining_op;
+    };
+    loom_parameterized_attr_array_t nodes;
+    IREE_ASSERT_OK(loom_func_location_capture(
+        input.module, find(input.module, IREE_SV("original"))->location,
+        loom_input_module_source_resolver(&input), &arena, &nodes));
+    auto function = loom_func_like_cast(
+        input.module, find(input.module, IREE_SV("captured")));
+    auto* capture =
+        loom_region_entry_block(loom_func_like_body(function))->first_op;
+    ASSERT_TRUE(loom_func_location_isa(capture));
+    IREE_ASSERT_OK(loom_op_set_attr(
+        input.module, capture, 0,
+        loom_attr_parameterized_array(nodes.values, nodes.count)));
+
+    iree_io_stream_t* stream = nullptr;
+    IREE_ASSERT_OK(iree_io_vec_stream_create(
+        IREE_IO_STREAM_MODE_WRITABLE | IREE_IO_STREAM_MODE_READABLE |
+            IREE_IO_STREAM_MODE_SEEKABLE,
+        4096, iree_allocator_system(), &stream));
+    loom_bytecode_write_options_t write_options = {};
+    write_options.location_mode = LOOM_BYTECODE_LOCATION_MODE_NO_LOCATIONS;
+    IREE_ASSERT_OK(loom_bytecode_write_module(input.module, stream,
+                                              &write_options, &pool));
+    std::vector<uint8_t> serialized(iree_io_stream_length(stream));
+    IREE_ASSERT_OK(iree_io_stream_seek(stream, IREE_IO_STREAM_SEEK_SET, 0));
+    IREE_ASSERT_OK(iree_io_stream_read(stream, serialized.size(),
+                                       serialized.data(), nullptr));
+    iree_io_stream_release(stream);
+    loom_input_module_deinitialize(&input);
+    iree_arena_reset(&arena);
+
+    loom_bytecode_read_result_t read_result;
+    loom_module_t* decoded = nullptr;
+    IREE_ASSERT_OK(loom_bytecode_read_module(
+        {serialized.data(), serialized.size()}, IREE_SV("stripped.loombc"),
+        &context, &pool, nullptr, &read_result, &decoded,
+        iree_allocator_system()));
+    ASSERT_EQ(read_result.error_count, 0u);
+    ASSERT_NE(decoded, nullptr);
+    EXPECT_LE(decoded->locations.count, 1u);
+    const loom_module_t* sources[] = {decoded};
+    const iree_string_view_t root = IREE_SV("captured");
+    loom_link_options_t link_options = {};
+    link_options.module_name = IREE_SV("captured");
+    link_options.root_symbols = {1, &root};
+    loom_module_t* module = nullptr;
+    IREE_ASSERT_OK(loom_link_materialized_modules(
+        sources, 1, &link_options, &pool, iree_allocator_system(), &module));
+    loom_module_free(decoded);
+    serialized.clear();
+
+    const loom_target_profile_t* profile = nullptr;
+    IREE_ASSERT_OK(
+        loom_vm_target_provider.select_profile(IREE_SV("core"), &profile));
+    loom_target_low_descriptor_registry_t registry;
+    IREE_ASSERT_OK(loom_target_environment_initialize_low_descriptor_registry(
+        &environment, &registry));
+    loom_target_specialization_request_t specialization = {};
+    specialization.function_name = root;
+    specialization.target_profile = profile;
+    loom_compile_pipeline_options_t options;
+    loom_compile_pipeline_options_initialize(&options);
+    options.target_environment = &environment;
+    options.low_descriptor_registry = &registry;
+    options.target_specializations = {&specialization, 1};
+    loom_compile_pipeline_result_t pipeline;
+    IREE_ASSERT_OK(
+        loom_compile_run_pipeline(module, &options, &pool, &pipeline));
+    ASSERT_EQ(pipeline.pass.error_count, 0u);
+    loom_target_emit_request_t emission = {};
+    emission.target_environment = &environment;
+    emission.low_descriptor_registry = &registry.registry;
+    emission.module = module;
+    emission.function_versions = &pipeline.function_versions.list;
+    emission.scratch_arena = &arena;
+    emission.allocator = iree_allocator_system();
+    loom_target_emit_artifact_t artifact;
+    IREE_ASSERT_OK(loom_vm_module_emit(&emission, &artifact));
+    iree_byte_span_t image;
+    IREE_ASSERT_OK(iree_byte_sequence_clone(artifact.contents,
+                                            iree_allocator_system(), &image));
+    out_image->assign(image.data, image.data + image.data_length);
+    iree_allocator_free(iree_allocator_system(), image.data);
+    loom_target_emit_artifact_release(&artifact);
+    loom_compile_pipeline_result_deinitialize(&pipeline);
+    loom_module_free(module);
+    loom_context_deinitialize(&context);
+    loom_target_environment_deinitialize(&environment);
+    iree_arena_deinitialize(&arena);
+    iree_arena_block_pool_deinitialize(&pool);
+  }
+};
+
+TEST_F(VMSourceCaptureTest, OriginalSourceOutlivesCompilerAndProgram) {
+  iree_vm_variant_t result = {};
+  IREE_ASSERT_OK(
+      Invoke(IREE_SV("captured"), iree_vm_variant_span_empty(), {&result, 1}));
+  iree_vm_process_release(std::exchange(process_, nullptr));
+  iree_vm_program_release(std::exchange(program_, nullptr));
+  iree_vm_module_release(std::exchange(bytecode_, nullptr));
+  void* pointer = nullptr;
+  IREE_ASSERT_OK(
+      iree_vm_ptr_from_variant_borrowed(result, types_.buffer, &pointer));
+  auto* buffer = static_cast<iree_vm_buffer_t*>(pointer);
+  iree_const_byte_span_t bytes;
+  IREE_ASSERT_OK(iree_vm_buffer_map_read(
+      buffer, 0, iree_vm_buffer_length(buffer), &bytes));
+  loom_location_value_t value;
+  IREE_ASSERT_OK(loom_location_value_parse(bytes, &value));
+  ASSERT_EQ(value.node_count, 1u);
+  const auto file = loom_location_value_file(value, 0);
+  EXPECT_TRUE(iree_string_view_equal(file.source, IREE_SV("admitted.loom")));
+  EXPECT_TRUE(file.has_text);
+  EXPECT_EQ(file.range.start_line, 4u);
+  EXPECT_GT(file.field_count, 0u);
+  const std::string text(reinterpret_cast<const char*>(file.text.data),
+                         file.text.data_length);
+  EXPECT_EQ(text,
+            "func.def export(\"résumé\") @original(%left: i32, %right: i32) -> "
+            "(i32) {\n"
+            "  %sum = scalar.addi %left, %right : i32\n"
+            "  func.return %sum : i32\n}\n");
   iree_vm_variant_span_reset({&result, 1});
 }
 

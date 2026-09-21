@@ -17,6 +17,7 @@ loom_cc_test(
     "input_test.cc"
   DEPS
     ::input
+    ::source_capture_test_data
     iree::base
     iree::base::internal::arena
     iree::io::file_handle
@@ -24,11 +25,16 @@ loom_cc_test(
     iree::testing::gtest_main
     iree::testing::temp_file
     loom::error::source
+    loom::format::location
     loom::import::cxx
     loom::import::cxx::source::catalog
     loom::import::cxx::source::options
     loom::ir
+    loom::ops::func
+    loom::ops::func::location_capture
+    loom::ops::op_defs
     loom::ops::op_registry
+    loom::testing::test_file
     loom::tooling::input
     loom::tools::loom-check::execute
     loom::tools::loom-check::file
@@ -39,6 +45,22 @@ loom_cc_test(
     "iree-build-requirement=loom.import.cxx"
 )
 endif()
+
+iree_c_embed_data(
+  NAME
+    source_capture_test_data
+  SRCS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/test/source_capture.cxx-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/test/source_capture.h"
+  C_FILE_OUTPUT
+    "source_capture_test_data.c"
+  H_FILE_OUTPUT
+    "source_capture_test_data.h"
+  IDENTIFIER
+    "loom_cxx_source_capture_test_data"
+  TESTONLY
+  PUBLIC
+)
 
 if(LOOM_IMPORT_CXX)
 loom_cc_library(

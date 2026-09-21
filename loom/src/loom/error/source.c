@@ -9,10 +9,14 @@
 #include "iree/base/internal/unicode.h"
 #include "loom/ir/module.h"
 
-iree_host_size_t loom_source_byte_offset(iree_string_view_t source,
-                                         uint32_t line, uint32_t column) {
+// Returns an exact position when present, while always publishing the clamped
+// byte offset used by source highlighting.
+static bool loom_source_find_position(iree_string_view_t source, uint32_t line,
+                                      uint32_t column,
+                                      iree_host_size_t* out_offset) {
   if (line == 0) {
-    return 0;
+    *out_offset = 0;
+    return false;
   }
   // Scan newlines to find the byte offset of the start of |line|.
   uint32_t current_line = 1;
@@ -24,7 +28,8 @@ iree_host_size_t loom_source_byte_offset(iree_string_view_t source,
     ++offset;
   }
   if (current_line < line) {
-    return source.size;
+    *out_offset = source.size;
+    return false;
   }
   // Walk UTF-8 codepoints to reach the target column (1-based).
   // Column 1 means "start of line" = offset stays where it is.
@@ -34,7 +39,15 @@ iree_host_size_t loom_source_byte_offset(iree_string_view_t source,
     iree_unicode_utf8_decode(source, &offset);
     ++current_column;
   }
-  return offset > source.size ? source.size : offset;
+  *out_offset = iree_min(offset, source.size);
+  return offset <= source.size && current_column == column;
+}
+
+iree_host_size_t loom_source_byte_offset(iree_string_view_t source,
+                                         uint32_t line, uint32_t column) {
+  iree_host_size_t offset;
+  loom_source_find_position(source, line, column, &offset);
+  return offset;
 }
 
 bool loom_source_table_resolve(void* user_data, const loom_module_t* module,
@@ -70,11 +83,16 @@ bool loom_source_table_resolve(void* user_data, const loom_module_t* module,
     return false;
   }
 
-  // Compute byte offsets from line/column into the source buffer.
-  iree_host_size_t start_offset = loom_source_byte_offset(
-      source_entry->source, entry->file.start_line, entry->file.start_col);
-  iree_host_size_t end_offset = loom_source_byte_offset(
-      source_entry->source, entry->file.end_line, entry->file.end_col);
+  // Only an ordered range actually present in the snapshot has exact spelling.
+  // Explicit debug locations can name unavailable or out-of-snapshot positions.
+  iree_host_size_t start_offset = 0, end_offset = 0;
+  if (!loom_source_find_position(source_entry->source, entry->file.start_line,
+                                 entry->file.start_col, &start_offset) ||
+      !loom_source_find_position(source_entry->source, entry->file.end_line,
+                                 entry->file.end_col, &end_offset) ||
+      end_offset < start_offset) {
+    return false;
+  }
 
   *out_range = (loom_source_range_t){
       .provenance = LOOM_SOURCE_PROVENANCE_EXACT_SOURCE,

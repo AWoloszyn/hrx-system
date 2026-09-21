@@ -14,6 +14,7 @@ loom_check_test_suite(
     test
   SRCS
     "location.loom-test"
+    "location_capture.loom-test"
     "location_cse.loom-test"
     "location_materialize.loom-test"
     "location_verify.loom-test"

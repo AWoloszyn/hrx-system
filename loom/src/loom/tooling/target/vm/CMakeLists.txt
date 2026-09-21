@@ -80,11 +80,27 @@ loom_cc_test(
   DEPS
     ::imports_bytecode
     iree::base
+    iree::base::internal::arena
+    iree::io::stream
     iree::testing::gtest
     iree::testing::gtest_main
     iree::vm
     iree::vm::bytecode::module
+    loom::format::bytecode::reader
+    loom::format::bytecode::writer
     loom::format::location
+    loom::ir
+    loom::link::linker
+    loom::ops::func
+    loom::ops::func::location_capture
+    loom::ops::func::location_capture_test_data
+    loom::ops::op_defs
+    loom::ops::op_registry
+    loom::target::arch::vm::module
+    loom::target::arch::vm::provider
+    loom::target::provider
+    loom::tooling::compile::pipeline
+    loom::tooling::input
   LABELS
     "iree-build-requirement=loom.target.arch.vm"
 )

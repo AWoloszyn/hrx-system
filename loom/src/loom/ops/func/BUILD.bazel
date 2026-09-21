@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//build_tools/embed_data:build_defs.bzl", "iree_c_embed_data")
-load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_test", "loom_generated_cc_library")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_cc_test", "loom_generated_cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -25,6 +25,7 @@ _FUNC_VISIBILITY = [
     "//loom/src/loom/format/text:__pkg__",
     "//loom/src/loom/format/text/test:__pkg__",
     "//loom/src/loom/import/cxx:__pkg__",
+    "//loom/src/loom/import/cxx/tooling:__pkg__",
     "//loom/src/loom/import/cxx/symbol:__pkg__",
     "//loom/src/loom/link:__pkg__",
     "//loom/src/loom/ops:__pkg__",
@@ -92,6 +93,49 @@ loom_cc_test(
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],
+)
+
+loom_cc_library(
+    name = "location_capture",
+    srcs = ["location_capture.c"],
+    hdrs = ["location_capture.h"],
+    deps = [
+        ":func",
+        "//loom/src/loom/error:source",
+        "//loom/src/loom/ir",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "location_capture_test",
+    srcs = ["location_capture_test.cc"],
+    deps = [
+        ":func",
+        ":location_capture",
+        ":location_capture_test_data",
+        "//loom/src/loom/error:source",
+        "//loom/src/loom/format:location",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops:op_registry",
+        "//loom/src/loom/tooling/input",
+        "//loom/src/loom/tooling/io:source",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_c_embed_data(
+    name = "location_capture_test_data",
+    testonly = True,
+    srcs = ["//loom/src/loom/ops/func/test:location_capture.loom-test"],
+    c_file_output = "location_capture_test_data.c",
+    h_file_output = "location_capture_test_data.h",
+    identifier = "loom_location_capture_test_data",
 )
 
 loom_cc_test(

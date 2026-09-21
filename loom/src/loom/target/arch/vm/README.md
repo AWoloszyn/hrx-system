@@ -89,12 +89,43 @@ not a public vector calling convention. Supported math modes are selected by
 the target math policy rather than by substituting a host platform's libm.
 
 Runtime ISA availability is distinct from source-lowering support. This target
-does not provide kernel/workgroup execution, HAL command programs, runtime
-function imports, indirect calls, process-global mutation, or suspension.
+does not provide kernel/workgroup execution, HAL command programs, indirect
+calls, process-global mutation, or suspension.
 Unsupported source representations and instructions fail compilation; the
 emitter does not fall back to another execution engine. Kernel launch-config
 evaluation is a separate integration boundary, not part of compiling an
 ordinary `.vm` module.
+
+## Native imports and captured source
+
+A runtime import states the providing module's namespace independently of the
+local symbol. The VM linker resolves it against the native module supplied by
+the embedding:
+
+```loom
+func.decl import("diagnostics") @observe(%site: buffer)
+
+func.def public @report() {
+  %site = func.location [#func.location.file<"example.cc", range = [12, 3, 12, 28]>] : buffer
+  func.call @observe(%site) : (buffer)
+  func.return
+}
+```
+
+The import uses the ordinary scalar/reference calling convention, including
+overflow arguments and results. Returned references transfer their ownership
+through the call ABI; a native failure unwinds reference arguments normally.
+An explicit import alias is needed only when its external symbol differs from
+the local symbol.
+
+`func.location` materializes an immutable source value as a normal VM buffer.
+Its semantic nodes retain file ranges, source field ranges, optional original
+text, and fused/tagged/opaque provenance even when debug locations are stripped.
+Compiler clients can [capture these nodes from admitted source](../../../tooling/input/README.md)
+before source storage expires. Native consumers decode the versioned
+[`LLOC` span](../../../format/location.h) and retain the buffer when observations
+must outlive the invocation or executable. Runtime decoding needs no compiler
+tables or source files.
 
 ## Testing
 

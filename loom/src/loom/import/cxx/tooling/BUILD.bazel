@@ -1,3 +1,4 @@
+load("//build_tools/embed_data:build_defs.bzl", "iree_c_embed_data")
 load("//build_tools/testing:build_defs.bzl", "iree_execution_test_suite")
 load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_cc_test", "loom_config_compatible_with")
 load("//loom/build_tools/bazel:defs.bzl", "loom_test")
@@ -13,12 +14,18 @@ loom_cc_test(
     srcs = ["input_test.cc"],
     deps = [
         ":input",
+        ":source_capture_test_data",
         "//loom/src/loom/error:source",
+        "//loom/src/loom/format:location",
         "//loom/src/loom/import/cxx",
         "//loom/src/loom/import/cxx/source:catalog",
         "//loom/src/loom/import/cxx/source:options",
         "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/ops:op_registry",
+        "//loom/src/loom/ops/func",
+        "//loom/src/loom/ops/func:location_capture",
+        "//loom/src/loom/testing:test_file",
         "//loom/src/loom/tooling/input",
         "//loom/src/loom/tools/loom-check:execute",
         "//loom/src/loom/tools/loom-check:file",
@@ -32,6 +39,18 @@ loom_cc_test(
         "//runtime/src/iree/testing:gtest_main",
         "//runtime/src/iree/testing:temp_file",
     ],
+)
+
+iree_c_embed_data(
+    name = "source_capture_test_data",
+    testonly = True,
+    srcs = [
+        "//loom/src/loom/import/cxx/tooling/test:source_capture.cxx-test",
+        "//loom/src/loom/import/cxx/tooling/test:source_capture.h",
+    ],
+    c_file_output = "source_capture_test_data.c",
+    h_file_output = "source_capture_test_data.h",
+    identifier = "loom_cxx_source_capture_test_data",
 )
 
 loom_cc_library(

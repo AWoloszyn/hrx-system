@@ -533,7 +533,7 @@ func_location_file_attr = ParameterizedAttrDef(
     group=func_ops,
     parameters=[
         AttrDef("source", "string", doc="Original source name."),
-        AttrDef("range", "i64_array", doc="Four unsigned 32-bit, one-based byte coordinates."),
+        AttrDef("range", "i64_array", doc="Four unsigned 32-bit coordinates: one-based lines and Unicode code-point columns, with an exclusive end."),
         AttrDef("synthetic", "bool", optional=True, doc="The source marks this location as compiler-generated."),
         AttrDef("fields", "parameterized_array", parameterized_attr=func_location_field_attr, optional=True),
         AttrDef("text", "bytes", optional=True, doc="Exact source lines spanning the range; absent when unavailable."),
