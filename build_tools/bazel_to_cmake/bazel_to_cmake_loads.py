@@ -85,7 +85,8 @@ class ModuleLoader:
                 return None
             label = "//" + remainder
         if label.startswith("//"):
-            return (self._repo_root / label[2:].replace(":", "/", 1)).resolve()
+            package, _, name = label[2:].partition(":")
+            return (self._repo_root / package / name).resolve()
         if label.startswith(":"):
             return (Path(package_dir) / label[1:]).resolve()
         return None
