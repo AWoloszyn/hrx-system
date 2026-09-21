@@ -111,10 +111,10 @@ static iree_status_t loom_check_compile_request(
   const iree_host_size_t initial_error_count = collector->error_count;
   const loom_module_t* const sources[] = {source_module};
   const loom_link_options_t link_options = {
-      .module_name =
-          source_module->name_id < source_module->strings.count
-              ? source_module->strings.entries[source_module->name_id]
-              : iree_string_view_empty(),
+      .module_name = source_module->name_id < source_module->strings.count
+                         ? loom_string_table_get(&source_module->strings,
+                                                 source_module->name_id)
+                         : iree_string_view_empty(),
   };
   loom_module_t* module = NULL;
   iree_status_t status = loom_link_materialized_modules(
@@ -257,7 +257,7 @@ iree_status_t loom_check_execute_compile(
           continue;
         }
         const iree_string_view_t root =
-            input.module->strings.entries[symbol->name_id];
+            loom_string_table_get(&input.module->strings, symbol->name_id);
         request.roots = (iree_string_view_list_t){.count = 1, .values = &root};
         status = loom_check_compile_request(&request, input.module,
                                             &pipeline_options, &collector,

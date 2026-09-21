@@ -135,8 +135,9 @@ static bool loom_amdgpu_low_find_immediate_value(
   for (iree_host_size_t i = 0; i < attrs.count; ++i) {
     const loom_named_attr_t* attr = &attrs.entries[i];
     if (attr->name_id >= module->strings.count ||
-        !iree_string_view_equal(module->strings.entries[attr->name_id],
-                                immediate_name)) {
+        !iree_string_view_equal(
+            loom_string_table_get(&module->strings, attr->name_id),
+            immediate_name)) {
       continue;
     }
     if (attr->value.kind != LOOM_ATTR_I64) {

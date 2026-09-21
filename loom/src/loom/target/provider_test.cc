@@ -122,7 +122,7 @@ class TargetProviderTest : public ::testing::Test {
   }
 
   iree_string_view_t RunKey(loom_module_t* module, const loom_op_t* op) {
-    return module->strings.entries[loom_pass_run_key(op)];
+    return loom_string_table_get(&module->strings, loom_pass_run_key(op));
   }
 
   iree_arena_block_pool_t block_pool_;

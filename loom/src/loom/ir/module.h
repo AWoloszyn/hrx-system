@@ -9,9 +9,9 @@
 //
 // Allocations use module-owned arenas backed by a shared block pool. Persistent
 // dependency facts are independent of speculative payload checkpoints.
-// Module values use stable fixed-capacity segments.
-// Smaller contiguous intern/metadata tables are pre-sized from capacity hints
-// when available and grow when needed.
+// Module values, locations, types and string views use stable fixed-capacity
+// segments. Hints size interner buckets and remaining contiguous metadata
+// tables when available.
 //
 // Thread safety: modules are single-owner. No locks. Parallel compilation
 // uses separate modules with separate arenas.
@@ -37,7 +37,7 @@ typedef struct loom_module_size_hints_t {
   // Expected value count. Values allocate lazily in stable segments, so this
   // does not reserve speculative row capacity.
   iree_host_size_t value_count;
-  // Expected interned string count.
+  // Expected interned string count, sizing content-interner buckets only.
   iree_host_size_t string_count;
   // Expected interned type count.
   iree_host_size_t type_count;
@@ -62,7 +62,7 @@ typedef struct loom_module_size_hints_t {
 //
 // |hints| may be NULL for default capacities (text parsing, tests). When
 // non-NULL, hints size contiguous tables and intern buckets with growth
-// headroom. Value, location and canonical type rows remain lazy.
+// headroom. Value, location, canonical type and string-view rows remain lazy.
 iree_status_t loom_module_allocate(loom_context_t* context,
                                    iree_string_view_t name,
                                    iree_arena_block_pool_t* block_pool,

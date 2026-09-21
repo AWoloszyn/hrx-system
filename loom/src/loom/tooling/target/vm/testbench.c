@@ -73,9 +73,9 @@ static iree_status_t loom_vm_testbench_compile(loom_vm_testbench_t* testbench,
         }
         max_arguments = iree_max(max_arguments, call->input_count);
         max_results = iree_max(max_results, call->result_count);
-        roots[call->callee_ref.symbol_id] =
-            source->strings.entries
-                [source->symbols.entries[call->callee_ref.symbol_id].name_id];
+        roots[call->callee_ref.symbol_id] = loom_string_table_get(
+            &source->strings,
+            source->symbols.entries[call->callee_ref.symbol_id].name_id);
       }
     }
     for (iree_host_size_t i = 0; i < source->symbols.count; ++i) {
@@ -124,7 +124,8 @@ static iree_status_t loom_vm_testbench_compile(loom_vm_testbench_t* testbench,
           loom_attr_enum(LOOM_FUNC_VISIBILITY_PUBLIC);
       symbol->flags |= LOOM_SYMBOL_FLAG_PUBLIC;
       requests[request_count++] = (loom_target_specialization_request_t){
-          .function_name = module->strings.entries[symbol->name_id],
+          .function_name =
+              loom_string_table_get(&module->strings, symbol->name_id),
           .target_profile = profile,
       };
     }
@@ -362,9 +363,10 @@ static iree_status_t loom_vm_testbench_invoke(
   iree_vm_function_t callee = iree_vm_function_null();
   IREE_RETURN_IF_ERROR(iree_vm_process_lookup_function(
       testbench->process, IREE_SV("test"),
-      invocation->module->strings
-          .entries[export_name == LOOM_STRING_ID_INVALID ? symbol->name_id
-                                                         : export_name],
+      loom_string_table_get(&invocation->module->strings,
+                            export_name == LOOM_STRING_ID_INVALID
+                                ? symbol->name_id
+                                : export_name),
       &callee));
   iree_vm_variant_t* arguments = testbench->arguments;
   iree_vm_variant_t* results = testbench->results;

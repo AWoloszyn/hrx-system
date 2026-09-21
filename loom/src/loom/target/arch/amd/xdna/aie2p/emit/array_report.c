@@ -300,7 +300,7 @@ static void loom_aie2p_array_report_channel_storage(
     }
   }
   *out_storage = (loom_target_compile_report_pipeline_storage_t){
-      .schema_name = module->strings.entries[encoding->name_id],
+      .schema_name = loom_string_table_get(&module->strings, encoding->name_id),
       .address_layout = address_layout_name,
       .transform = IREE_SV("none"),
       .schema_logical_element_count =

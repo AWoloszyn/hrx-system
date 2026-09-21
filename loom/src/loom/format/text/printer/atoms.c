@@ -218,7 +218,7 @@ static iree_status_t loom_print_canonical_encoding(
         loom_output_stream_write(stream, loom_bstring_view(alias->name)));
   } else if (encoding->name_id < module->strings.count) {
     IREE_RETURN_IF_ERROR(loom_output_stream_write(
-        stream, module->strings.entries[encoding->name_id]));
+        stream, loom_string_table_get(&module->strings, encoding->name_id)));
   }
 
   const loom_encoding_vtable_t* vtable =
@@ -257,7 +257,7 @@ static iree_status_t loom_print_canonical_encoding(
     }
     if (param->name_id < module->strings.count) {
       IREE_RETURN_IF_ERROR(loom_output_stream_write(
-          stream, module->strings.entries[param->name_id]));
+          stream, loom_string_table_get(&module->strings, param->name_id)));
     }
     IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '='));
     const loom_attr_descriptor_t* descriptor = NULL;
@@ -284,7 +284,7 @@ static iree_status_t loom_print_static_encoding(
         encoding->alias_id < module->strings.count) {
       IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '#'));
       return loom_output_stream_write(
-          stream, module->strings.entries[encoding->alias_id]);
+          stream, loom_string_table_get(&module->strings, encoding->alias_id));
     }
     return loom_print_canonical_encoding(stream, module, encoding, ctx);
   }
@@ -484,8 +484,8 @@ static iree_status_t loom_text_print_type_impl(
     case LOOM_TYPE_DIALECT: {
       loom_string_id_t name_id = loom_type_dialect_name_id(type);
       if (module && name_id < module->strings.count) {
-        IREE_RETURN_IF_ERROR(
-            loom_output_stream_write(stream, module->strings.entries[name_id]));
+        IREE_RETURN_IF_ERROR(loom_output_stream_write(
+            stream, loom_string_table_get(&module->strings, name_id)));
       } else {
         IREE_RETURN_IF_ERROR(
             loom_output_stream_write_cstring(stream, "?dialect"));
@@ -988,7 +988,7 @@ static iree_status_t loom_print_attr_impl(
       loom_string_id_t id = attr->string_id;
       iree_string_view_t attr_string = iree_string_view_empty();
       if (module && id < module->strings.count) {
-        attr_string = module->strings.entries[id];
+        attr_string = loom_string_table_get(&module->strings, id);
       }
       if (descriptor &&
           iree_any_bit_set(descriptor->flags, LOOM_ATTR_BARE_IDENTIFIER) &&
@@ -1105,7 +1105,8 @@ static iree_status_t loom_print_attr_impl(
         loom_string_id_t name_id =
             module->symbols.entries[ref.symbol_id].name_id;
         if (name_id < module->strings.count) {
-          iree_string_view_t name = module->strings.entries[name_id];
+          iree_string_view_t name =
+              loom_string_table_get(&module->strings, name_id);
           IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '@'));
           return loom_output_stream_write(stream, name);
         }
@@ -1221,7 +1222,7 @@ static iree_status_t loom_print_attr_impl(
         const loom_named_attr_t* entry = &attr->dict_entries[i];
         if (module && entry->name_id < module->strings.count) {
           IREE_RETURN_IF_ERROR(loom_output_stream_write(
-              stream, module->strings.entries[entry->name_id]));
+              stream, loom_string_table_get(&module->strings, entry->name_id)));
         } else {
           IREE_RETURN_IF_ERROR(loom_output_stream_write_format(
               stream, "<name:%" PRIu16 ">", entry->name_id));
@@ -1282,7 +1283,8 @@ iree_status_t loom_print_encoding_aliases(loom_print_context_t* ctx,
     }
     IREE_RETURN_IF_ERROR(loom_output_stream_write_char(ctx->stream, '#'));
     IREE_RETURN_IF_ERROR(loom_output_stream_write(
-        ctx->stream, module->strings.entries[encoding->alias_id]));
+        ctx->stream,
+        loom_string_table_get(&module->strings, encoding->alias_id)));
     IREE_RETURN_IF_ERROR(loom_output_stream_write_cstring(ctx->stream, " = "));
     IREE_RETURN_IF_ERROR(
         loom_print_canonical_encoding(ctx->stream, module, encoding, ctx));

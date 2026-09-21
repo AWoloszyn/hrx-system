@@ -449,7 +449,7 @@ static iree_string_view_t loom_low_target_legalize_function_name(
   if (symbol->name_id >= state->module->strings.count) {
     return iree_string_view_empty();
   }
-  return state->module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&state->module->strings, symbol->name_id);
 }
 
 static iree_string_view_t loom_low_target_legalize_nonempty(
@@ -467,7 +467,7 @@ static iree_string_view_t loom_low_target_legalize_value_name(
       value->name_id >= module->strings.count) {
     return IREE_SV("<unnamed>");
   }
-  return module->strings.entries[value->name_id];
+  return loom_string_table_get(&module->strings, value->name_id);
 }
 
 static bool loom_low_target_legalize_should_stop_preflight(

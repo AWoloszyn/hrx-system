@@ -193,7 +193,7 @@ static iree_string_view_t loom_link_materialized_module_name(
   if (!module || module->name_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[module->name_id];
+  return loom_string_table_get(&module->strings, module->name_id);
 }
 
 static iree_status_t loom_link_index_validate_materialized_module(
@@ -1051,7 +1051,8 @@ static iree_status_t loom_link_index_module_materialized_symbols(
                               " has out-of-range name id %u",
                               i, (unsigned)symbol->name_id);
     }
-    iree_string_view_t name = source_module->strings.entries[symbol->name_id];
+    iree_string_view_t name =
+        loom_string_table_get(&source_module->strings, symbol->name_id);
     loom_link_symbol_identity_t identity =
         loom_link_symbol_has_global_identity(source_module, symbol)
             ? LOOM_LINK_SYMBOL_IDENTITY_GLOBAL

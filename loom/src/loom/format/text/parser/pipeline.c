@@ -339,7 +339,8 @@ static iree_status_t loom_parse_pipeline_repeat_options(
     const loom_op_vtable_t* vtable) {
   for (iree_host_size_t i = 0; i < attrs.count; ++i) {
     const loom_named_attr_t* entry = &attrs.entries[i];
-    iree_string_view_t name = parser->module->strings.entries[entry->name_id];
+    iree_string_view_t name =
+        loom_string_table_get(&parser->module->strings, entry->name_id);
     if (entry->value.kind != LOOM_ATTR_I64) {
       loom_diagnostic_param_t params[] = {
           loom_param_string(IREE_SV("pass repeat option value")),

@@ -159,7 +159,8 @@ static void loom_func_location_write_string(const loom_module_t* module,
                                             uint8_t* bytes, uint32_t* cursor,
                                             uint8_t* reference,
                                             loom_string_id_t string_id) {
-  const iree_string_view_t string = module->strings.entries[string_id];
+  const iree_string_view_t string =
+      loom_string_table_get(&module->strings, string_id);
   loom_func_location_write_bytes(
       bytes, cursor, reference,
       iree_make_const_byte_span(string.data, string.size));
@@ -188,8 +189,8 @@ iree_status_t loom_func_location_encode(const loom_module_t* module,
                           ? LOOM_LOCATION_VALUE_FLAG_SYNTHETIC
                           : 0;
       payload_length = LOOM_LOCATION_VALUE_FILE_LENGTH;
-      size += (uint64_t)module->strings
-                  .entries[loom_func_location_file_attr_source(node)]
+      size += (uint64_t)loom_string_table_get(
+                  &module->strings, loom_func_location_file_attr_source(node))
                   .size +
               (uint64_t)loom_func_location_file_attr_fields(node).count *
                   LOOM_LOCATION_VALUE_FIELD_LENGTH +
@@ -207,8 +208,8 @@ iree_status_t loom_func_location_encode(const loom_module_t* module,
                           ? LOOM_LOCATION_VALUE_FLAG_SYNTHETIC
                           : 0;
       payload_length = LOOM_LOCATION_VALUE_OPAQUE_LENGTH;
-      size += (uint64_t)module->strings
-                  .entries[loom_func_location_opaque_attr_source(node)]
+      size += (uint64_t)loom_string_table_get(
+                  &module->strings, loom_func_location_opaque_attr_source(node))
                   .size +
               loom_func_location_opaque_attr_data(node).data_length;
     } else if (loom_func_location_tagged_attr_isa(node)) {

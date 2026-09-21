@@ -731,7 +731,7 @@ static iree_string_view_t loom_amdgpu_module_string_or_empty(
       string_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 static loom_value_id_t loom_amdgpu_lookup_live_in_by_source(

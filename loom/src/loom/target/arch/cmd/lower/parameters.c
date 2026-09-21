@@ -113,8 +113,8 @@ static iree_status_t loom_cmd_parameter_format_key(
     loom_cmd_parameter_build_t* build, const loom_op_t* op,
     iree_string_view_t* out_key) {
   *out_key = iree_string_view_empty();
-  const iree_string_view_t pattern =
-      build->module->strings.entries[loom_command_parameter_pattern(op)];
+  const iree_string_view_t pattern = loom_string_table_get(
+      &build->module->strings, loom_command_parameter_pattern(op));
   const loom_value_slice_t substitutions =
       loom_command_parameter_substitutions(op);
 

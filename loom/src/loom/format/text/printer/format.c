@@ -119,7 +119,8 @@ static iree_status_t loom_print_bind_function_low_repr(
         "function representation contract must be a valid string key");
   }
   ctx->low_repr = (loom_text_low_repr_context_t){
-      .contract_key = ctx->module->strings.entries[attr.string_id],
+      .contract_key =
+          loom_string_table_get(&ctx->module->strings, attr.string_id),
   };
   if (!loom_text_low_asm_environment_supports_printing(
           &ctx->low_asm_environment)) {
@@ -545,7 +546,8 @@ iree_status_t loom_print_format_elements(loom_print_context_t* ctx,
         if (attr.kind == LOOM_ATTR_STRING &&
             attr.string_id != LOOM_STRING_ID_INVALID &&
             attr.string_id < ctx->module->strings.count) {
-          iree_string_view_t key = ctx->module->strings.entries[attr.string_id];
+          iree_string_view_t key =
+              loom_string_table_get(&ctx->module->strings, attr.string_id);
           iree_host_size_t key_ref_start = ctx->stream->offset;
           IREE_RETURN_IF_ERROR(loom_print_emit_cstr(ctx, "<", true));
           IREE_RETURN_IF_ERROR(loom_print_emit(ctx, key, true));
@@ -582,7 +584,8 @@ iree_status_t loom_print_format_elements(loom_print_context_t* ctx,
         if (attr.kind == LOOM_ATTR_STRING &&
             attr.string_id != LOOM_STRING_ID_INVALID &&
             attr.string_id < ctx->module->strings.count) {
-          iree_string_view_t key = ctx->module->strings.entries[attr.string_id];
+          iree_string_view_t key =
+              loom_string_table_get(&ctx->module->strings, attr.string_id);
           iree_host_size_t ref_start = ctx->stream->offset;
           IREE_RETURN_IF_ERROR(loom_print_emit_cstr(ctx, "<", true));
           IREE_RETURN_IF_ERROR(loom_print_emit(ctx, key, true));

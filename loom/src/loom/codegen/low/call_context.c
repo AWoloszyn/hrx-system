@@ -15,8 +15,9 @@
 static iree_string_view_t loom_low_call_context_symbol_name(
     const loom_module_t* module, loom_symbol_ref_t reference) {
   return loom_symbol_ref_is_valid(reference)
-             ? module->strings.entries
-                   [module->symbols.entries[reference.symbol_id].name_id]
+             ? loom_string_table_get(
+                   &module->strings,
+                   module->symbols.entries[reference.symbol_id].name_id)
              : IREE_SV("<unnamed>");
 }
 

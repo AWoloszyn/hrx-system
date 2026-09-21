@@ -124,7 +124,8 @@ iree_status_t loom_bytecode_numbering_initialize(
       numbering, iree_string_view_empty(), &empty_string_writer_id));
   if (numbering->strings.writer_ids_by_module_id != NULL) {
     for (iree_host_size_t i = 0; i < module->strings.count; ++i) {
-      if (iree_string_view_is_empty(module->strings.entries[i])) {
+      if (iree_string_view_is_empty(
+              loom_string_table_get(&module->strings, i))) {
         numbering->strings.writer_ids_by_module_id[i] = empty_string_writer_id;
         break;
       }
@@ -164,7 +165,8 @@ iree_status_t loom_bytecode_numbering_intern_module_string(
     *out_writer_id = numbering->strings.writer_ids_by_module_id[string_id];
     return iree_ok_status();
   }
-  iree_string_view_t view = numbering->module->strings.entries[string_id];
+  iree_string_view_t view =
+      loom_string_table_get(&numbering->module->strings, string_id);
   uint32_t writer_id = 0;
   IREE_RETURN_IF_ERROR(
       loom_bytecode_numbering_append_string(numbering, view, &writer_id));
@@ -193,7 +195,8 @@ iree_status_t loom_bytecode_numbering_intern_string_view(
   // assigned in first-use order, not source intern-table order, so the bytecode
   // stays canonical across text forms that intern strings differently.
   for (iree_host_size_t i = 0; i < numbering->module->strings.count; ++i) {
-    if (iree_string_view_equal(numbering->module->strings.entries[i], view)) {
+    if (iree_string_view_equal(
+            loom_string_table_get(&numbering->module->strings, i), view)) {
       return loom_bytecode_numbering_intern_module_string(
           numbering, (loom_string_id_t)i, out_writer_id);
     }
@@ -472,7 +475,7 @@ iree_status_t loom_bytecode_resolve_function_low_descriptor_set(
         "serializing Low functions requires a representation codec");
   }
   const iree_string_view_t descriptor_set_key =
-      numbering->module->strings.entries[descriptor_set_key_id];
+      loom_string_table_get(&numbering->module->strings, descriptor_set_key_id);
   *out_descriptor_set = loom_low_repr_lookup_descriptor_set(
       &numbering->low_repr.environment, descriptor_set_key);
   if (!*out_descriptor_set) {
@@ -649,7 +652,9 @@ static iree_status_t loom_bytecode_catalog_enter_type(
     const loom_string_id_t name_id = loom_type_dialect_name_id(type);
     if (name_id < numbering->module->strings.count) {
       IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_string_view(
-          numbering, numbering->module->strings.entries[name_id], &unused_id));
+          numbering,
+          loom_string_table_get(&numbering->module->strings, name_id),
+          &unused_id));
     }
   }
   if (loom_type_kind(type) == LOOM_TYPE_PARAMETERIZED) {

@@ -334,7 +334,7 @@ static iree_status_t loom_parse_symbol_collection_attr(
       loom_string_id_t duplicate_name_id =
           parser->module->symbols.entries[duplicate_ref.symbol_id].name_id;
       iree_string_view_t duplicate_name =
-          parser->module->strings.entries[duplicate_name_id];
+          loom_string_table_get(&parser->module->strings, duplicate_name_id);
       loom_token_t first_token = loom_token_none();
       loom_token_t duplicate_token = loom_token_none();
       bool found_first = false;
@@ -1059,7 +1059,7 @@ iree_status_t loom_parser_emit_duplicate_attr_dict_key(
 
 static iree_string_view_t loom_parsed_attr_dict_entry_name(
     const loom_module_t* module, const loom_parsed_attr_dict_entry_t* entry) {
-  return module->strings.entries[entry->attr.name_id];
+  return loom_string_table_get(&module->strings, entry->attr.name_id);
 }
 
 static iree_status_t loom_parse_generic_attr_value_with_type_mode(

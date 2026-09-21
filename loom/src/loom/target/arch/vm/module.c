@@ -170,8 +170,9 @@ static iree_status_t loom_vm_module_collect(
     loom_func_like_t function = loom_func_like_cast(module, op);
     const loom_string_id_t contract = loom_func_like_repr_contract(function);
     if (contract == LOOM_STRING_ID_INVALID ||
-        !iree_string_view_equal(module->strings.entries[contract],
-                                IREE_SV("vm.core"))) {
+        !iree_string_view_equal(
+            loom_string_table_get(&module->strings, contract),
+            IREE_SV("vm.core"))) {
       continue;
     }
     loom_vm_module_callable_t* entry = &functions[count];
@@ -195,19 +196,20 @@ static iree_status_t loom_vm_module_collect(
         continue;
       }
       entry->target_kind = IREE_VM_BYTECODE_CONTROL_CALL_TARGET_REQUIRED_IMPORT;
-      entry->import.module_name = module->strings.entries[import_module];
-      entry->import.symbol_name =
-          module->strings.entries[loom_func_like_import_symbol(function)];
+      entry->import.module_name =
+          loom_string_table_get(&module->strings, import_module);
+      entry->import.symbol_name = loom_string_table_get(
+          &module->strings, loom_func_like_import_symbol(function));
     } else {
       entry->target_kind = IREE_VM_BYTECODE_CONTROL_CALL_TARGET_LOCAL;
       entry->ordinal = (uint16_t)definition_count++;
     }
     const loom_string_id_t export_name = loom_func_like_export_symbol(function);
     if (loom_low_func_def_isa(op) && loom_func_like_is_exported(function)) {
-      entry->export_name =
-          module->strings
-              .entries[export_name != LOOM_STRING_ID_INVALID ? export_name
-                                                             : symbol->name_id];
+      entry->export_name = loom_string_table_get(
+          &module->strings, export_name != LOOM_STRING_ID_INVALID
+                                ? export_name
+                                : symbol->name_id);
       if (iree_string_view_is_empty(entry->export_name)) {
         status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                   "VM export names must not be empty");

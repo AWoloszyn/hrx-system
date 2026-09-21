@@ -313,8 +313,9 @@ static iree_status_t loom_check_low_emit_consider_fixed_value_match(
   const loom_value_t* value = loom_module_value(module, value_id);
   if (!matches && value->name_id != LOOM_STRING_ID_INVALID &&
       value->name_id < module->strings.count &&
-      iree_string_view_equal(module->strings.entries[value->name_id],
-                             value_name)) {
+      iree_string_view_equal(
+          loom_string_table_get(&module->strings, value->name_id),
+          value_name)) {
     matches = true;
   }
   if (!matches) {

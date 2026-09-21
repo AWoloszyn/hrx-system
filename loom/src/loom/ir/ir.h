@@ -47,7 +47,7 @@
 // stable arena pointers:
 //   value_id   -> index into the module value table
 //   symbol_id  -> index into module->symbols.entries[]
-//   string_id  -> index into module->strings.entries[]
+//   string_id  -> index into the module's canonical string table
 //   type_id    -> index into the module's canonical type table
 //   use/def    -> loom_op_t* / loom_block_t* stable arena pointers
 //
@@ -95,6 +95,7 @@
 #include "loom/ir/encoding.h"
 #include "loom/ir/intern_table.h"
 #include "loom/ir/location.h"
+#include "loom/ir/string_table.h"
 #include "loom/ir/type_table.h"
 #include "loom/ir/types.h"
 #include "loom/util/bstring.h"
@@ -2174,17 +2175,6 @@ typedef struct loom_symbol_t {
 // Tables
 //===----------------------------------------------------------------------===//
 
-// Interned string table. All strings in a module are deduplicated here.
-// String IDs are stable across the module's lifetime.
-//
-// Lookup by content (for interning during construction) uses a hash
-// map. Lookup by ID (for printing) is a direct array index.
-typedef struct loom_string_table_t {
-  iree_host_size_t count;
-  iree_host_size_t capacity;
-  iree_string_view_t* entries;
-} loom_string_table_t;
-
 // Per-value identities in the shared type-dependency ownership index.
 typedef struct loom_value_type_use_heads_t {
   // Canonical singleton for this provider, or zero until first activation.
@@ -2563,7 +2553,7 @@ static inline iree_string_view_t loom_module_value_name(
   if (name_id == LOOM_STRING_ID_INVALID || name_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[name_id];
+  return loom_string_table_get(&module->strings, name_id);
 }
 
 //===----------------------------------------------------------------------===//

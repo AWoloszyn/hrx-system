@@ -38,7 +38,7 @@ static iree_string_view_t loom_low_source_selection_symbol_ref_name(
   if (symbol->name_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static bool loom_low_source_selection_u32_topology_differs(uint32_t lhs,

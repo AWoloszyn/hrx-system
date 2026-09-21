@@ -46,13 +46,14 @@ typedef struct loom_target_record_view_t {
   // Concrete selector row established by source verification.
   uint8_t selector;
 
-  // Borrowed string identity table used by STRING attributes.
+  // Borrowed source-domain access, used only during synchronous projection.
   struct {
-    // Borrowed string views indexed by STRING payload IDs.
-    const iree_string_view_t* values;
+    // Source owner whose string bytes outlive the projected facts.
+    const void* context;
 
-    // Number of entries in |values|.
-    iree_host_size_t count;
+    // Resolves a verified source ID to its original borrowed string bytes.
+    iree_string_view_t (*lookup)(const void* context,
+                                 loom_string_id_t string_id);
   } strings;
 } loom_target_record_view_t;
 
@@ -69,9 +70,8 @@ static inline loom_attribute_t loom_target_record_view_attribute(
 static inline iree_string_view_t loom_target_record_view_string(
     const loom_target_record_view_t* record, loom_attribute_t attribute) {
   IREE_ASSERT(attribute.kind == LOOM_ATTR_STRING);
-  const loom_string_id_t string_id = loom_attr_as_string_id(attribute);
-  IREE_ASSERT(string_id < record->strings.count);
-  return record->strings.values[string_id];
+  return record->strings.lookup(record->strings.context,
+                                loom_attr_as_string_id(attribute));
 }
 
 // Projects family-owned facts from one verified target record.

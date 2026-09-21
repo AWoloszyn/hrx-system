@@ -268,7 +268,7 @@ static iree_string_view_t loom_kernel_value_name(const loom_module_t* module,
   if (name_id == LOOM_STRING_ID_INVALID || name_id >= module->strings.count) {
     return IREE_SV("<unnamed>");
   }
-  return module->strings.entries[name_id];
+  return loom_string_table_get(&module->strings, name_id);
 }
 
 static iree_string_view_t loom_kernel_op_name(const loom_module_t* module,
@@ -319,7 +319,8 @@ static bool loom_kernel_type_is_opaque_dialect(const loom_module_t* module,
   if (name_id == LOOM_STRING_ID_INVALID || name_id >= module->strings.count) {
     return false;
   }
-  return iree_string_view_equal(module->strings.entries[name_id], name);
+  return iree_string_view_equal(
+      loom_string_table_get(&module->strings, name_id), name);
 }
 
 static bool loom_kernel_type_is_async_token(const loom_module_t* module,

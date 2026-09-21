@@ -13,17 +13,10 @@
 #include "loom/target/arch/amd/xdna/aie2p/ops/ops.h"
 #include "loom/target/arch/amd/xdna/device/profile.h"
 
-static const loom_xdna_device_profile_t* loom_aie2p_target_record_profile(
-    const loom_target_record_view_t* record) {
-  const loom_attribute_t profile_attr = loom_target_record_view_attribute(
-      record, loom_aie2p_target_device_profile_ATTR_INDEX);
-  if (loom_attr_is_absent(profile_attr)) {
-    return NULL;
-  }
-  const loom_string_id_t profile_id = loom_attr_as_string_id(profile_attr);
-  IREE_ASSERT_LT(profile_id, record->strings.count);
+static const loom_xdna_device_profile_t* loom_aie2p_target_profile(
+    iree_string_view_t name) {
   const loom_xdna_device_profile_t* profile =
-      loom_xdna_device_profile_lookup(record->strings.values[profile_id]);
+      loom_xdna_device_profile_lookup(name);
   return profile != NULL &&
                  loom_xdna_device_profile_array_family(profile)->architecture ==
                      LOOM_XDNA_ARCHITECTURE_AIE2P
@@ -34,11 +27,13 @@ static const loom_xdna_device_profile_t* loom_aie2p_target_record_profile(
 static void loom_aie2p_target_facts_project(
     const loom_target_record_view_t* record, loom_target_facts_t* base_facts) {
   loom_aie2p_target_facts_t* facts = (loom_aie2p_target_facts_t*)base_facts;
-  facts->device_profile = loom_aie2p_target_record_profile(record);
-  IREE_ASSERT(loom_target_record_view_attribute(
-                  record, loom_aie2p_target_device_profile_ATTR_INDEX)
-                      .kind == LOOM_ATTR_ABSENT ||
-              facts->device_profile != NULL);
+  const loom_attribute_t profile_attr = loom_target_record_view_attribute(
+      record, loom_aie2p_target_device_profile_ATTR_INDEX);
+  if (!loom_attr_is_absent(profile_attr)) {
+    facts->device_profile = loom_aie2p_target_profile(
+        loom_target_record_view_string(record, profile_attr));
+    IREE_ASSERT(facts->device_profile != NULL);
+  }
 }
 
 const loom_target_fact_projector_t loom_aie2p_target_fact_projector = {
@@ -121,17 +116,9 @@ iree_status_t loom_aie2p_target_record_verify(
 
   const loom_string_id_t profile_id = loom_attr_as_string_id(profile_attr);
   IREE_ASSERT_LT(profile_id, module->strings.count);
-  const iree_string_view_t profile = module->strings.entries[profile_id];
-  const loom_target_record_view_t record = {
-      .strings =
-          {
-              .values = module->strings.entries,
-              .count = module->strings.count,
-          },
-      .attributes = loom_op_const_attrs(op),
-      .attribute_count = op->attribute_count,
-  };
-  if (loom_aie2p_target_record_profile(&record) != NULL) {
+  const iree_string_view_t profile =
+      loom_string_table_get(&module->strings, profile_id);
+  if (loom_aie2p_target_profile(profile) != NULL) {
     return iree_ok_status();
   }
 

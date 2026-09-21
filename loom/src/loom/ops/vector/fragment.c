@@ -195,7 +195,8 @@ bool loom_vector_fragment_parameter_view_resolve(
       continue;
     }
 
-    iree_string_view_t key_name = module->strings.entries[entry->name_id];
+    iree_string_view_t key_name =
+        loom_string_table_get(&module->strings, entry->name_id);
     uint64_t stable_id = loom_stable_id_from_string(key_name);
     if (stable_id == loom_vector_fragment_schema_key_id) {
       out_view->has_schema = true;

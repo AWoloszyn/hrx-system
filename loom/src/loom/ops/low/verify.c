@@ -131,7 +131,7 @@ static iree_string_view_t loom_low_string_or_empty(const loom_module_t* module,
       string_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 static iree_string_view_t loom_low_op_name(const loom_module_t* module,

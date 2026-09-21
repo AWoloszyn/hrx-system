@@ -394,7 +394,7 @@ static iree_string_view_t loom_template_selection_symbol_name(
   if (symbol->name_id >= module->strings.count) {
     return fallback;
   }
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static iree_string_view_t loom_template_selection_context_symbol_name(
@@ -406,7 +406,8 @@ static iree_string_view_t loom_template_selection_context_symbol_name(
   if (context->source_symbol->name_id >= state->module->strings.count) {
     return IREE_SV("<none>");
   }
-  return state->module->strings.entries[context->source_symbol->name_id];
+  return loom_string_table_get(&state->module->strings,
+                               context->source_symbol->name_id);
 }
 
 static iree_string_view_t loom_template_selection_unresolved_reason_code(

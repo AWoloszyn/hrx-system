@@ -786,7 +786,7 @@ static iree_string_view_t loom_testbench_module_string(
   if (module == NULL || string_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 static const loom_named_attr_t* loom_testbench_find_named_attr(

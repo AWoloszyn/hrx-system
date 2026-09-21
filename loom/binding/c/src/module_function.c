@@ -136,7 +136,7 @@ static iree_string_view_t loomc_module_function_symbol_name(
       symbol->name_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static bool loomc_module_function_symbol_has_export_info(
@@ -418,8 +418,8 @@ static bool loomc_module_function_populate_export_info(
     if (export_symbol_id >= module->strings.count) {
       return false;
     }
-    out_info->export_symbol =
-        loomc_string_view_from_iree(module->strings.entries[export_symbol_id]);
+    out_info->export_symbol = loomc_string_view_from_iree(
+        loom_string_table_get(&module->strings, export_symbol_id));
     out_info->flags |= LOOMC_MODULE_FUNCTION_EXPORT_FLAG_HAS_SYMBOL;
   }
   return out_info->flags != 0;

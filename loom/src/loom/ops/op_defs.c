@@ -1992,8 +1992,9 @@ static iree_status_t loom_builder_compare_string_ids(
         "%" PRIhsz " strings)",
         rhs_id, module->strings.count);
   }
-  *out_comparison = iree_string_view_compare(module->strings.entries[lhs_id],
-                                             module->strings.entries[rhs_id]);
+  *out_comparison =
+      iree_string_view_compare(loom_string_table_get(&module->strings, lhs_id),
+                               loom_string_table_get(&module->strings, rhs_id));
   return iree_ok_status();
 }
 
@@ -2068,7 +2069,7 @@ iree_status_t loom_builder_set_operand_dict(
           sorted_values[insert_index - 1].name_id, &comparison));
       if (comparison == 0) {
         iree_string_view_t name =
-            builder->module->strings.entries[entry.name_id];
+            loom_string_table_get(&builder->module->strings, entry.name_id);
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                 "duplicate operand dictionary key '%.*s'",
                                 (int)name.size, name.data);

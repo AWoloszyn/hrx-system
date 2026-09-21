@@ -180,7 +180,7 @@ static iree_string_view_t loom_low_verify_symbol_name(
   }
   const loom_symbol_t* symbol = &module->symbols.entries[ref.symbol_id];
   if (symbol->name_id < module->strings.count) {
-    return module->strings.entries[symbol->name_id];
+    return loom_string_table_get(&module->strings, symbol->name_id);
   }
   return IREE_SV("<unnamed>");
 }
@@ -235,7 +235,7 @@ static iree_string_view_t loom_low_verify_string_or_empty(
       string_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 static iree_string_view_t loom_low_verify_descriptor_op_name(
@@ -1184,7 +1184,7 @@ static iree_string_view_t loom_low_verify_value_name_or_placeholder(
       value->name_id >= module->strings.count) {
     return placeholder;
   }
-  return module->strings.entries[value->name_id];
+  return loom_string_table_get(&module->strings, value->name_id);
 }
 
 static iree_status_t loom_low_verify_emit_unresolved_register_class(

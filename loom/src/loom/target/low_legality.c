@@ -70,7 +70,7 @@ static iree_string_view_t loom_target_low_legality_symbol_name(
   }
   const loom_symbol_t* symbol = &module->symbols.entries[symbol_ref.symbol_id];
   if (symbol->name_id < module->strings.count) {
-    return module->strings.entries[symbol->name_id];
+    return loom_string_table_get(&module->strings, symbol->name_id);
   }
   return IREE_SV("<unnamed>");
 }
@@ -482,7 +482,7 @@ loom_target_low_legality_resolve_dialect_type(const loom_module_t* module,
   if (name_id == LOOM_STRING_ID_INVALID || name_id >= module->strings.count) {
     return NULL;
   }
-  iree_string_view_t name = module->strings.entries[name_id];
+  iree_string_view_t name = loom_string_table_get(&module->strings, name_id);
   const loom_type_descriptor_t* descriptor =
       loom_type_registry_lookup(module->context, name);
   if (descriptor == NULL ||

@@ -30,7 +30,8 @@ static bool loom_aie2p_xdna_has_contract(const loom_module_t* module,
   const loom_func_like_t function = loom_func_like_cast(module, function_op);
   const loom_string_id_t contract_id = loom_func_like_repr_contract(function);
   return contract_id < module->strings.count &&
-         iree_string_view_equal(module->strings.entries[contract_id], contract);
+         iree_string_view_equal(
+             loom_string_table_get(&module->strings, contract_id), contract);
 }
 
 typedef struct loom_aie2p_xdna_source_entry_t {
@@ -93,7 +94,8 @@ static iree_status_t loom_aie2p_xdna_collect_array_entries(
     }
     entries[entry_index++] = (loom_aie2p_xdna_source_entry_t){
         .function_op = symbol->defining_op,
-        .name = request->module->strings.entries[symbol->name_id],
+        .name =
+            loom_string_table_get(&request->module->strings, symbol->name_id),
     };
   }
   IREE_ASSERT_EQ(entry_index, entry_count);

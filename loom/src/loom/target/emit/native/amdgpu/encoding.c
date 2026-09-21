@@ -668,8 +668,8 @@ static iree_status_t loom_amdgpu_symbol_name_from_attr(
                             "references an unnamed symbol",
                             (int)field_name.size, field_name.data);
   }
-  *out_symbol_name =
-      state->inputs.schedule->module->strings.entries[symbol->name_id];
+  *out_symbol_name = loom_string_table_get(
+      &state->inputs.schedule->module->strings, symbol->name_id);
   return iree_ok_status();
 }
 

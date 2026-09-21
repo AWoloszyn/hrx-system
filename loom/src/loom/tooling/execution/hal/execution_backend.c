@@ -254,7 +254,8 @@ iree_status_t loom_run_hal_execution_backend_run_one_shot(
         loom_func_like_export_symbol(entry.func);
     export_name =
         export_symbol != LOOM_STRING_ID_INVALID
-            ? request->run_module->module->strings.entries[export_symbol]
+            ? loom_string_table_get(&request->run_module->module->strings,
+                                    export_symbol)
             : entry.func_name;
   }
 

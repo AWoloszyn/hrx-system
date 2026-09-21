@@ -27,7 +27,7 @@ static iree_string_view_t loom_low_allocation_json_symbol_name(
   if (symbol->name_id >= module->strings.count) {
     return IREE_SV("<unnamed>");
   }
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static iree_string_view_t loom_low_allocation_json_function_name(
@@ -150,8 +150,8 @@ static iree_status_t loom_low_allocation_json_write_string_or_null(
       string_id >= module->strings.count) {
     return loom_output_stream_write_cstring(stream, "null");
   }
-  return loom_json_write_escaped_string(stream,
-                                        module->strings.entries[string_id]);
+  return loom_json_write_escaped_string(
+      stream, loom_string_table_get(&module->strings, string_id));
 }
 
 static iree_status_t loom_low_allocation_json_write_string_view_or_null(

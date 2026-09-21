@@ -89,7 +89,7 @@ iree_status_t loom_module_record_plan_initialize(
       out_plan->records[record_index] = (loom_module_record_t){
           .op = op,
           .vtable = vtable,
-          .key = module->strings.entries[key_id],
+          .key = loom_string_table_get(&module->strings, key_id),
           .physical_ordinal = record_index,
       };
       ++record_index;

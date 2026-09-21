@@ -26,9 +26,9 @@ iree_status_t loom_target_compile_report_record_loop_pipelines(
     }
     const loom_symbol_ref_t function_ref =
         loom_func_like_callee(version->base.function);
-    const iree_string_view_t function_name =
-        module->strings
-            .entries[module->symbols.entries[function_ref.symbol_id].name_id];
+    const iree_string_view_t function_name = loom_string_table_get(
+        &module->strings,
+        module->symbols.entries[function_ref.symbol_id].name_id);
     report->detail_flags |= LOOM_TARGET_COMPILE_REPORT_DETAIL_SOURCE_LOW_ROWS;
     for (const loom_source_loop_pipeline_t* pipeline =
              version->loop_pipelines.head;

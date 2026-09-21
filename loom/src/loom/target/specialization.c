@@ -114,7 +114,8 @@ static iree_status_t loom_target_specialization_lookup_target(
       fact_table, module, target_ref, &base_facts));
   const loom_symbol_t* target_symbol =
       &module->symbols.entries[target_ref.symbol_id];
-  *out_target_name = module->strings.entries[target_symbol->name_id];
+  *out_target_name =
+      loom_string_table_get(&module->strings, target_symbol->name_id);
   *out_target_facts = loom_target_symbol_facts_cast(base_facts);
   return iree_ok_status();
 }
@@ -126,7 +127,7 @@ static iree_status_t loom_target_specialization_resolve_function_symbol(
   loom_symbol_t* function_symbol = &module->symbols.entries[function_symbol_id];
   const loom_string_id_t function_name_id = function_symbol->name_id;
   const iree_string_view_t function_name =
-      module->strings.entries[function_name_id];
+      loom_string_table_get(&module->strings, function_name_id);
   if (iree_bitmap_test(specialized_symbols, function_symbol_id)) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -282,7 +283,7 @@ static iree_status_t loom_target_specialization_emit_conflict(
     const loom_target_resolved_specialization_t* specialization,
     iree_string_view_t effective_target_name) {
   const iree_string_view_t function_name =
-      module->strings.entries[specialization->function_name_id];
+      loom_string_table_get(&module->strings, specialization->function_name_id);
   const loom_diagnostic_param_t params[] = {
       loom_param_string(function_name),
       loom_param_string(specialization->authored_target_name),

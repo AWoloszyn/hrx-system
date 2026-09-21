@@ -302,7 +302,8 @@ static bool loom_vector_memory_footprint_lookup_config_decl_bound(
     return false;
   }
 
-  *out_config_key = state->module->strings.entries[config_symbol->name_id];
+  *out_config_key =
+      loom_string_table_get(&state->module->strings, config_symbol->name_id);
   return true;
 }
 

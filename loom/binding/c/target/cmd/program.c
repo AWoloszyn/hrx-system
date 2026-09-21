@@ -332,7 +332,7 @@ static iree_string_view_t loomc_cmd_program_product_kernel_name(
   const loom_symbol_t* symbol =
       &product->module->symbols.entries[product->kernel.symbol_id];
   IREE_ASSERT_LT(symbol->name_id, product->module->strings.count);
-  return product->module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&product->module->strings, symbol->name_id);
 }
 
 static iree_status_t loomc_cmd_program_product_publish_kernel_request(

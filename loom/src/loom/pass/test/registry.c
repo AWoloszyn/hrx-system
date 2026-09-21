@@ -68,7 +68,7 @@ static iree_string_view_t loom_test_pass_function_name(
   if (symbol->name_id >= module->strings.count) {
     return IREE_SV("<none>");
   }
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static iree_status_t loom_test_pass_trace_record(

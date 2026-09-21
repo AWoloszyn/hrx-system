@@ -78,8 +78,9 @@ class PassInterpreterTest : public PassTestHarness {
     (void)function;
     const iree_string_view_t* selected_name =
         static_cast<const iree_string_view_t*>(user_data);
-    return iree_string_view_equal(module->strings.entries[symbol->name_id],
-                                  *selected_name);
+    return iree_string_view_equal(
+        loom_string_table_get(&module->strings, symbol->name_id),
+        *selected_name);
   }
 };
 

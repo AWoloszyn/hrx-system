@@ -33,7 +33,7 @@ static iree_string_view_t loom_low_packet_asm_module_string(
       string_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 static iree_status_t loom_low_packet_asm_append_descriptor_string(

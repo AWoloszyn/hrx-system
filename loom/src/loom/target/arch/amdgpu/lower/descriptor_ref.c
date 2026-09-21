@@ -105,7 +105,7 @@ void loom_amdgpu_filter_descriptor_optional_attrs(
   iree_host_size_t filtered_count = required_count;
   for (iree_host_size_t i = required_count; i < *inout_attr_count; ++i) {
     const iree_string_view_t attr_name =
-        builder->module->strings.entries[attrs[i].name_id];
+        loom_string_table_get(&builder->module->strings, attrs[i].name_id);
     if (loom_amdgpu_descriptor_has_immediate(descriptor_set, descriptor,
                                              attr_name)) {
       attrs[filtered_count++] = attrs[i];

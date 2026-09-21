@@ -200,7 +200,7 @@ static iree_string_view_t loom_amdgpu_hal_kernel_abi_module_string(
       string_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 static const loom_low_descriptor_t*

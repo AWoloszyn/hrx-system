@@ -219,7 +219,8 @@ iree_status_t loom_bytecode_write_types_section(
         uint32_t name_writer_id = 0;
         if (name_id < numbering->module->strings.count) {
           IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_string_view(
-              numbering, numbering->module->strings.entries[name_id],
+              numbering,
+              loom_string_table_get(&numbering->module->strings, name_id),
               &name_writer_id));
         }
         IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_uvarint(

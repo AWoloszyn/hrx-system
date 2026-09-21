@@ -224,8 +224,9 @@ static loom_block_t* loom_parser_find_block_by_label(
         block->label_id >= parser->module->strings.count) {
       continue;
     }
-    if (iree_string_view_equal(parser->module->strings.entries[block->label_id],
-                               label)) {
+    if (iree_string_view_equal(
+            loom_string_table_get(&parser->module->strings, block->label_id),
+            label)) {
       return block;
     }
   }

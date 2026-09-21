@@ -80,7 +80,8 @@ static bool loom_pipeline_type_is_opaque(const loom_module_t* module,
   }
   const loom_string_id_t name_id = loom_type_dialect_name_id(type);
   return name_id != LOOM_STRING_ID_INVALID && name_id < module->strings.count &&
-         iree_string_view_equal(module->strings.entries[name_id], name);
+         iree_string_view_equal(
+             loom_string_table_get(&module->strings, name_id), name);
 }
 
 static bool loom_pipeline_type_is_group(const loom_module_t* module,

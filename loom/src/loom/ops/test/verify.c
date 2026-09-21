@@ -27,7 +27,7 @@ static iree_string_view_t loom_test_symbol_name(const loom_module_t* module,
   const loom_symbol_t* symbol = &module->symbols.entries[symbol_ref.symbol_id];
   if (symbol->name_id != LOOM_STRING_ID_INVALID &&
       symbol->name_id < module->strings.count) {
-    return module->strings.entries[symbol->name_id];
+    return loom_string_table_get(&module->strings, symbol->name_id);
   }
   return IREE_SV("<unnamed>");
 }

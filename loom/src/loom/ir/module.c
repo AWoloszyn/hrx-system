@@ -104,22 +104,11 @@ static void loom_value_u32_scratch_fill(loom_value_u32_scratch_t* scratch,
 
 static iree_status_t loom_string_table_ensure_capacity(
     iree_arena_allocator_t* arena, loom_string_table_t* table) {
-  if (table->count < table->capacity) {
+  if (table->count < loom_string_table_capacity(table)) {
     return iree_ok_status();
   }
-  iree_host_size_t new_capacity =
-      table->capacity > 0 ? table->capacity * 2 : 512;
-  iree_string_view_t* new_entries = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, new_capacity, sizeof(iree_string_view_t), (void**)&new_entries));
-  memset(new_entries, 0, new_capacity * sizeof(iree_string_view_t));
-  if (table->count > 0) {
-    memcpy(new_entries, table->entries,
-           table->count * sizeof(iree_string_view_t));
-  }
-  table->entries = new_entries;
-  table->capacity = new_capacity;
-  return iree_ok_status();
+  void* segment = NULL;
+  return loom_segmented_storage_append(&table->segments, arena, &segment);
 }
 
 // Stages row storage before the last fallible bucket reserve. Successful
@@ -473,13 +462,10 @@ static iree_status_t loom_module_initialize_tables(
                                     iree_alignof(loom_location_segment_t),
                                     &module->locations.segments);
 
-  // Strings.
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, string_capacity, sizeof(iree_string_view_t),
-      (void**)&module->strings.entries));
-  module->strings.capacity = string_capacity;
-  memset(module->strings.entries, 0,
-         string_capacity * sizeof(iree_string_view_t));
+  // String views are lazy; hints size only the interner's buckets.
+  loom_segmented_storage_initialize(sizeof(loom_string_segment_t),
+                                    iree_alignof(loom_string_segment_t),
+                                    &module->strings.segments);
 
   // Canonical rows are lazy; type hints size only the interner's buckets.
   loom_segmented_storage_initialize(sizeof(loom_type_segment_t),
@@ -637,7 +623,7 @@ static loom_encoding_family_flags_t loom_module_bind_encoding_parameters(
        ++parameter_index) {
     loom_named_attr_t* parameter = &parameters[parameter_index];
     const iree_string_view_t parameter_name =
-        module->strings.entries[parameter->name_id];
+        loom_string_table_get(&module->strings, parameter->name_id);
     while (descriptor_index < family_descriptor->parameter_count) {
       const iree_string_view_t descriptor_name = loom_attr_descriptor_name(
           &family_descriptor->parameter_descriptors[descriptor_index]);
@@ -694,7 +680,8 @@ iree_status_t loom_module_add_encoding(loom_module_t* module,
         "non-empty encoding parameter list has a NULL entry pointer");
   }
 
-  iree_string_view_t encoding_name = module->strings.entries[encoding->name_id];
+  iree_string_view_t encoding_name =
+      loom_string_table_get(&module->strings, encoding->name_id);
   const loom_encoding_name_resolution_t name_resolution =
       loom_context_resolve_encoding_name(module->context, encoding_name);
   const loom_encoding_vtable_t* vtable = loom_context_resolve_encoding_vtable(
@@ -749,9 +736,8 @@ iree_status_t loom_module_add_encoding(loom_module_t* module,
             alias_entries[alias_parameter_index].name_id) {
           continue;
         }
-        const iree_string_view_t parameter_name =
-            module->strings
-                .entries[alias_entries[alias_parameter_index].name_id];
+        const iree_string_view_t parameter_name = loom_string_table_get(
+            &module->strings, alias_entries[alias_parameter_index].name_id);
         return iree_make_status(
             IREE_STATUS_INVALID_ARGUMENT,
             "encoding alias '%.*s' fixes parameter '%.*s'; the parameter "
@@ -826,7 +812,7 @@ iree_status_t loom_module_add_encoding(loom_module_t* module,
         continue;
       }
       iree_string_view_t alias_name =
-          module->strings.entries[canonical_encoding.alias_id];
+          loom_string_table_get(&module->strings, canonical_encoding.alias_id);
       return iree_make_status(
           IREE_STATUS_INVALID_ARGUMENT,
           "encoding alias '%.*s' already names a different encoding",
@@ -2023,7 +2009,7 @@ iree_status_t loom_module_try_set_derived_value_name(
   }
 
   iree_string_view_t source_name =
-      module->strings.entries[source_value->name_id];
+      loom_string_table_get(&module->strings, source_value->name_id);
   iree_host_size_t name_length = 0;
   if (!iree_host_size_checked_add(source_name.size, 1, &name_length) ||
       !iree_host_size_checked_add(name_length, suffix.size, &name_length)) {
@@ -2081,8 +2067,8 @@ typedef struct loom_string_equal_context_t {
 static bool loom_string_equal_fn(const void* context, uint32_t index) {
   const loom_string_equal_context_t* ctx =
       (const loom_string_equal_context_t*)context;
-  return iree_string_view_equal(ctx->module->strings.entries[index],
-                                ctx->string);
+  return iree_string_view_equal(
+      loom_string_table_get(&ctx->module->strings, index), ctx->string);
 }
 
 iree_status_t loom_module_intern_string(loom_module_t* module,
@@ -2124,7 +2110,11 @@ iree_status_t loom_module_intern_string(loom_module_t* module,
   IREE_RETURN_IF_ERROR(loom_intern_table_reserve_insert(
       &module->arena, &module->string_intern, hash, &slot));
   const uint32_t new_index = (uint32_t)module->strings.count;
-  module->strings.entries[new_index] = iree_make_string_view(copy, string.size);
+  loom_string_segment_t* segment =
+      (loom_string_segment_t*)loom_segmented_storage_segment(
+          &module->strings.segments, new_index >> LOOM_STRING_SEGMENT_SHIFT);
+  segment->entries[new_index & LOOM_STRING_SEGMENT_MASK] =
+      iree_make_string_view(copy, string.size);
   module->strings.count++;
   loom_intern_table_insert(&module->string_intern, slot, hash, new_index);
 
@@ -2159,7 +2149,7 @@ static iree_status_t loom_module_resolve_symbol_ref_name(
   }
   const loom_string_id_t name_id =
       module->symbols.entries[ref.symbol_id].name_id;
-  *out_name = module->strings.entries[name_id];
+  *out_name = loom_string_table_get(&module->strings, name_id);
   return iree_ok_status();
 }
 
@@ -2168,8 +2158,9 @@ static int loom_module_compare_symbol_refs_by_name(const loom_module_t* module,
                                                    loom_symbol_ref_t rhs) {
   loom_string_id_t lhs_name_id = module->symbols.entries[lhs.symbol_id].name_id;
   loom_string_id_t rhs_name_id = module->symbols.entries[rhs.symbol_id].name_id;
-  return iree_string_view_compare(module->strings.entries[lhs_name_id],
-                                  module->strings.entries[rhs_name_id]);
+  return iree_string_view_compare(
+      loom_string_table_get(&module->strings, lhs_name_id),
+      loom_string_table_get(&module->strings, rhs_name_id));
 }
 
 static void loom_module_sift_symbol_ref_heap(const loom_module_t* module,
@@ -2291,7 +2282,7 @@ static iree_status_t loom_module_resolve_attr_dict_key_name(
         " strings)",
         name_id, module->strings.count);
   }
-  *out_name = module->strings.entries[name_id];
+  *out_name = loom_string_table_get(&module->strings, name_id);
   return iree_ok_status();
 }
 
@@ -2304,8 +2295,9 @@ static iree_status_t loom_module_canonicalize_attr_value(
 static bool loom_module_attr_dict_key_less(const loom_module_t* module,
                                            const loom_named_attr_t* lhs,
                                            const loom_named_attr_t* rhs) {
-  return iree_string_view_compare(module->strings.entries[lhs->name_id],
-                                  module->strings.entries[rhs->name_id]) < 0;
+  return iree_string_view_compare(
+             loom_string_table_get(&module->strings, lhs->name_id),
+             loom_string_table_get(&module->strings, rhs->name_id)) < 0;
 }
 
 LOOM_DEFINE_ADAPTIVE_SORT_WITH_CONTEXT(loom_module_sort_attr_dict_entries,
@@ -2362,7 +2354,7 @@ static iree_status_t loom_module_make_canonical_attr_dict_entries(
   for (iree_host_size_t i = 1; i < count; ++i) {
     if (canonical_entries[i - 1].name_id == canonical_entries[i].name_id) {
       iree_string_view_t key_name =
-          module->strings.entries[canonical_entries[i].name_id];
+          loom_string_table_get(&module->strings, canonical_entries[i].name_id);
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "duplicate dict attribute key '%.*s'",
                               (int)key_name.size, key_name.data);

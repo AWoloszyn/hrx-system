@@ -992,7 +992,7 @@ def _generate_builder_implementation(
             lines.append(f"  loom_op_attrs(*out_op)[{idx}] = loom_attr_string({name});")
             lines.append(f"  loom_op_attrs(*out_op)[{stable_id_idx}] = loom_attr_i64((int64_t)")
             lines.append("      loom_stable_id_from_string(")
-            lines.append(f"          builder->module->strings.entries[{name}]));")
+            lines.append(f"          loom_string_table_get(&builder->module->strings, {name})));")
 
     # FuncArgs boundary attributes are derived from each concatenated signature
     # field rather than exposed as redundant builder parameters.

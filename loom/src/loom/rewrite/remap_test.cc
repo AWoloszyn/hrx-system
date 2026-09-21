@@ -346,8 +346,8 @@ TEST_F(RemapTest, RemapsPredicateListsInsideDictAttributes) {
 
   ASSERT_EQ(target_dict.kind, LOOM_ATTR_DICT);
   ASSERT_EQ(target_dict.count, 1u);
-  iree_string_view_t target_name =
-      target_->strings.entries[target_dict.dict_entries[0].name_id];
+  iree_string_view_t target_name = loom_string_table_get(
+      &target_->strings, target_dict.dict_entries[0].name_id);
   EXPECT_TRUE(iree_string_view_equal(target_name, IREE_SV("predicates")));
   loom_attribute_t target_predicates = target_dict.dict_entries[0].value;
   ASSERT_EQ(target_predicates.kind, LOOM_ATTR_PREDICATE_LIST);
@@ -390,8 +390,9 @@ TEST_F(RemapTest, RemapsCompactParameterizedAttributeSlotsByDescriptor) {
   ASSERT_TRUE(loom_test_compact_attr_has_label(target_attr));
   loom_string_id_t target_label_id = loom_test_compact_attr_label(target_attr);
   ASSERT_LT(target_label_id, target_->strings.count);
-  EXPECT_TRUE(iree_string_view_equal(target_->strings.entries[target_label_id],
-                                     IREE_SV("wave")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&target_->strings, target_label_id),
+      IREE_SV("wave")));
   EXPECT_NE(loom_attr_as_parameterized_slots(source_attr),
             loom_attr_as_parameterized_slots(target_attr));
 }
@@ -446,10 +447,12 @@ TEST_F(RemapTest, RemapsStaticEncodingDependenciesAcrossModules) {
       loom_module_encoding(target_, target_encoding_id);
   ASSERT_NE(target_encoding, nullptr);
   EXPECT_TRUE(iree_string_view_equal(
-      target_->strings.entries[target_encoding->name_id], IREE_SV("q4_test")));
+      loom_string_table_get(&target_->strings, target_encoding->name_id),
+      IREE_SV("q4_test")));
   ASSERT_EQ(target_encoding->attribute_count, 1u);
   EXPECT_TRUE(iree_string_view_equal(
-      target_->strings.entries[target_encoding->attributes[0].name_id],
+      loom_string_table_get(&target_->strings,
+                            target_encoding->attributes[0].name_id),
       IREE_SV("block")));
   EXPECT_EQ(loom_attr_as_i64(target_encoding->attributes[0].value), 32);
 }
@@ -711,7 +714,7 @@ static iree_status_t RemapSymbolByName(void* user_data,
   const loom_symbol_t* source_symbol =
       &source_module->symbols.entries[source_ref.symbol_id];
   iree_string_view_t source_name =
-      source_module->strings.entries[source_symbol->name_id];
+      loom_string_table_get(&source_module->strings, source_symbol->name_id);
   loom_string_id_t target_name_id = LOOM_STRING_ID_INVALID;
   IREE_RETURN_IF_ERROR(
       loom_module_intern_string(target_module, source_name, &target_name_id));
@@ -783,9 +786,11 @@ TEST_F(RemapTest, RemapsOrderedSymbolArraysAcrossModules) {
   const loom_string_id_t target_alpha_name_id =
       target_->symbols.entries[target_refs.values[1].symbol_id].name_id;
   EXPECT_TRUE(iree_string_view_equal(
-      target_->strings.entries[target_beta_name_id], IREE_SV("beta")));
+      loom_string_table_get(&target_->strings, target_beta_name_id),
+      IREE_SV("beta")));
   EXPECT_TRUE(iree_string_view_equal(
-      target_->strings.entries[target_alpha_name_id], IREE_SV("alpha")));
+      loom_string_table_get(&target_->strings, target_alpha_name_id),
+      IREE_SV("alpha")));
 }
 
 TEST_F(RemapTest, RemapsParameterizedAttributeArraysAcrossModules) {
@@ -857,8 +862,9 @@ TEST_F(RemapTest, RemapsParameterizedAttributeArraysAcrossModules) {
   ASSERT_LT(target_ref.symbol_id, target_->symbols.count);
   loom_string_id_t target_name_id =
       target_->symbols.entries[target_ref.symbol_id].name_id;
-  EXPECT_TRUE(iree_string_view_equal(target_->strings.entries[target_name_id],
-                                     IREE_SV("target")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&target_->strings, target_name_id),
+      IREE_SV("target")));
 }
 
 static iree_status_t RemapSymbolToMissingTarget(
@@ -1050,8 +1056,9 @@ TEST_F(RemapTest, CrossModuleSymbolRefsRequirePolicy) {
   ASSERT_LT(target_attr.symbol.symbol_id, target_->symbols.count);
   loom_string_id_t target_name_id =
       target_->symbols.entries[target_attr.symbol.symbol_id].name_id;
-  EXPECT_TRUE(iree_string_view_equal(target_->strings.entries[target_name_id],
-                                     IREE_SV("callee")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&target_->strings, target_name_id),
+      IREE_SV("callee")));
 }
 
 TEST_F(RemapTest, RemapsSymbolsNestedInParameterizedTypes) {
@@ -1085,8 +1092,9 @@ TEST_F(RemapTest, RemapsSymbolsNestedInParameterizedTypes) {
   ASSERT_LT(target_ref.symbol_id, target_->symbols.count);
   loom_string_id_t target_name_id =
       target_->symbols.entries[target_ref.symbol_id].name_id;
-  EXPECT_TRUE(iree_string_view_equal(target_->strings.entries[target_name_id],
-                                     IREE_SV("target")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&target_->strings, target_name_id),
+      IREE_SV("target")));
 }
 
 TEST_F(RemapTest, CrossModuleSymbolPolicyMustReturnTargetSymbol) {

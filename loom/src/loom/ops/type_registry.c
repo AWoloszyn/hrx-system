@@ -76,7 +76,7 @@ const loom_value_fact_domain_t* loom_type_registry_resolve_fact_domain(
       return NULL;
     }
     const loom_type_descriptor_t* descriptor = loom_type_registry_lookup(
-        module->context, module->strings.entries[name_id]);
+        module->context, loom_string_table_get(&module->strings, name_id));
     return descriptor != NULL ? descriptor->fact_domain : NULL;
   }
   const loom_type_descriptor_t* descriptor =

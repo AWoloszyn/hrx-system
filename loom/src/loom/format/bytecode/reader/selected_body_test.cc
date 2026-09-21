@@ -117,8 +117,8 @@ TEST_F(BytecodeSelectedBodyTest, ProjectsHighValueReferencesToCompactIds) {
       loom_bytecode_reader_expect_empty(&decoder_, &cursor, IREE_SV("IR")));
 
   ASSERT_EQ(module_->strings.count, 2u);
-  EXPECT_TRUE(iree_string_view_equal(module_->strings.entries[1],
-                                     IREE_SV("selected_value")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module_->strings, 1), IREE_SV("selected_value")));
   ASSERT_EQ(module_->types.count, 1u);
   EXPECT_EQ(loom_type_kind(loom_type_table_get(&module_->types, 0)),
             LOOM_TYPE_SCALAR);

@@ -1177,8 +1177,8 @@ TEST_F(ParserTest, ParameterizedAttrsRoundTripInDeclarationOrder) {
   loom_symbol_ref_t target = loom_test_options_attr_target(options);
   ASSERT_LT(target.symbol_id, module->symbols.count);
   EXPECT_TRUE(iree_string_view_equal(
-      module->strings
-          .entries[module->symbols.entries[target.symbol_id].name_id],
+      loom_string_table_get(&module->strings,
+                            module->symbols.entries[target.symbol_id].name_id),
       IREE_SV("target")));
   loom_module_free(module);
 }
@@ -1202,8 +1202,8 @@ TEST_F(ParserTest, CompactParameterizedAttrsCanonicalizePrimaryFirst) {
   ASSERT_TRUE(loom_test_compact_attr_has_label(compact));
   loom_string_id_t label_id = loom_test_compact_attr_label(compact);
   ASSERT_LT(label_id, module->strings.count);
-  EXPECT_TRUE(iree_string_view_equal(module->strings.entries[label_id],
-                                     IREE_SV("wave")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module->strings, label_id), IREE_SV("wave")));
   loom_module_free(module);
 
   text = RoundTrip("test.compact_parameterized_attr #test.compact<64>\n");
@@ -1929,8 +1929,8 @@ TEST_F(ParserTest, DescriptorBackedTypesRoundTripAndPreserveParameters) {
   loom_symbol_ref_t target = loom_test_matrix_type_target(matrix_type);
   ASSERT_LT(target.symbol_id, module->symbols.count);
   EXPECT_TRUE(iree_string_view_equal(
-      module->strings
-          .entries[module->symbols.entries[target.symbol_id].name_id],
+      loom_string_table_get(&module->strings,
+                            module->symbols.entries[target.symbol_id].name_id),
       IREE_SV("target")));
   loom_type_id_t element_type_id =
       loom_test_matrix_type_element_type(matrix_type);

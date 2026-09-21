@@ -237,7 +237,7 @@ static iree_status_t loom_refine_boundaries_make_specialization_symbol(
   const loom_symbol_t* source_symbol =
       &module->symbols.entries[source_ref.symbol_id];
   iree_string_view_t source_name =
-      module->strings.entries[source_symbol->name_id];
+      loom_string_table_get(&module->strings, source_symbol->name_id);
 
   for (iree_host_size_t ordinal = preferred_ordinal;
        ordinal < IREE_HOST_SIZE_MAX; ++ordinal) {

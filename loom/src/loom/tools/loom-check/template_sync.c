@@ -472,7 +472,7 @@ static iree_status_t loom_check_template_sync_extract_case_metadata(
       loom_check_template_sync_symbol_t* symbol_record =
           &out_record->symbols[out_record->symbol_count];
       status = loom_check_template_sync_copy_string(
-          arena, module->strings.entries[symbol->name_id],
+          arena, loom_string_table_get(&module->strings, symbol->name_id),
           &symbol_record->name);
       if (!iree_status_is_ok(status)) {
         break;
@@ -495,7 +495,7 @@ static iree_status_t loom_check_template_sync_extract_case_metadata(
           iree_any_bit_set(symbol->flags, LOOM_SYMBOL_FLAG_PUBLIC);
       public_func_like_count += is_public;
       if (func_like_count == 1 || is_public) {
-        key = module->strings.entries[symbol->name_id];
+        key = loom_string_table_get(&module->strings, symbol->name_id);
         definition_op_name = loom_op_name(module, symbol->defining_op);
       }
     }

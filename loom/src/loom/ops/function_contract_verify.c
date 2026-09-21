@@ -15,7 +15,7 @@
 
 static iree_string_view_t loom_function_contract_symbol_name(
     const loom_module_t* module, const loom_symbol_t* symbol) {
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 typedef struct loom_function_contract_signature_t {

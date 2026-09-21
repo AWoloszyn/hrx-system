@@ -399,8 +399,8 @@ static iree_status_t loom_parse_low_asm_named_immediates(
 
   loom_named_attr_slice_t parsed_attrs = loom_attr_as_dict(dict_attr);
   for (iree_host_size_t i = 0; i < parsed_attrs.count; ++i) {
-    iree_string_view_t parsed_name =
-        parser->module->strings.entries[parsed_attrs.entries[i].name_id];
+    iree_string_view_t parsed_name = loom_string_table_get(
+        &parser->module->strings, parsed_attrs.entries[i].name_id);
     bool found = false;
     for (uint16_t j = immediate_start; j < immediate_end; ++j) {
       loom_text_low_asm_immediate_descriptor_t immediate = {0};
@@ -423,8 +423,8 @@ static iree_status_t loom_parse_low_asm_named_immediates(
         loom_low_asm_immediate_descriptor(parser, packet, i, &immediate));
     const loom_named_attr_t* parsed_attr = NULL;
     for (iree_host_size_t j = 0; j < parsed_attrs.count; ++j) {
-      iree_string_view_t parsed_name =
-          parser->module->strings.entries[parsed_attrs.entries[j].name_id];
+      iree_string_view_t parsed_name = loom_string_table_get(
+          &parser->module->strings, parsed_attrs.entries[j].name_id);
       if (iree_string_view_equal(parsed_name, immediate.spelling)) {
         parsed_attr = &parsed_attrs.entries[j];
         break;

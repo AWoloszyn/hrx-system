@@ -329,7 +329,7 @@ static iree_status_t loom_run_hal_testbench_module_symbol_name_from_ref(
                             "symbol ref %u has an invalid name",
                             (unsigned)ref.symbol_id);
   }
-  *out_name = module->strings.entries[symbol->name_id];
+  *out_name = loom_string_table_get(&module->strings, symbol->name_id);
   return iree_ok_status();
 }
 
@@ -392,7 +392,8 @@ static iree_status_t loom_run_hal_testbench_link_selected_root(
   const loom_module_t* const source_modules[] = {source_module};
   iree_string_view_t module_name = iree_string_view_empty();
   if (source_module->name_id < source_module->strings.count) {
-    module_name = source_module->strings.entries[source_module->name_id];
+    module_name =
+        loom_string_table_get(&source_module->strings, source_module->name_id);
   }
   const iree_string_view_t root_symbols[] = {entry_symbol};
   return loom_link_materialized_modules(
@@ -606,7 +607,8 @@ iree_status_t loom_run_hal_testbench_actual_provider_compile(
       loom_func_like_export_symbol(entry_func);
   provider->invocation_options.function_name =
       export_symbol != LOOM_STRING_ID_INVALID
-          ? provider->compile_module.module->strings.entries[export_symbol]
+          ? loom_string_table_get(&provider->compile_module.module->strings,
+                                  export_symbol)
           : entry_symbol;
 
   if (provider->target_environment == NULL) {

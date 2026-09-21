@@ -158,7 +158,7 @@ static iree_status_t loom_aie2p_pipeline_composition_add_symbol(
       module->symbols.entries[pipeline_ref.symbol_id].name_id;
   IREE_ASSERT_LT(pipeline_name_id, module->strings.count);
   const iree_string_view_t pipeline_name =
-      module->strings.entries[pipeline_name_id];
+      loom_string_table_get(&module->strings, pipeline_name_id);
   const iree_string_view_t infix = IREE_SV("$group$");
   iree_host_size_t name_capacity = 0;
   if (!iree_host_size_checked_add(pipeline_name.size, infix.size + 11,

@@ -296,7 +296,7 @@ static iree_string_view_t loom_inline_symbol_name(const loom_module_t* module,
   if (symbol_id < module->symbols.count) {
     loom_string_id_t name_id = module->symbols.entries[symbol_id].name_id;
     if (name_id < module->strings.count) {
-      return module->strings.entries[name_id];
+      return loom_string_table_get(&module->strings, name_id);
     }
   }
   return IREE_SV("<invalid>");

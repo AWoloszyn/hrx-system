@@ -234,7 +234,7 @@ static iree_status_t loom_print_low_asm_attr_name(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "low asm immediate attribute name is out of range");
   }
-  *out_name = module->strings.entries[attr->name_id];
+  *out_name = loom_string_table_get(&module->strings, attr->name_id);
   return iree_ok_status();
 }
 

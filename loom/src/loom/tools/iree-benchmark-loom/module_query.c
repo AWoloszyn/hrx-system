@@ -13,7 +13,7 @@ iree_string_view_t iree_benchmark_loom_module_string(
   if (string_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 iree_string_view_t iree_benchmark_loom_value_name(const loom_module_t* module,
@@ -25,7 +25,7 @@ iree_string_view_t iree_benchmark_loom_value_name(const loom_module_t* module,
   if (name_id == LOOM_STRING_ID_INVALID || name_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[name_id];
+  return loom_string_table_get(&module->strings, name_id);
 }
 
 iree_string_view_t iree_benchmark_loom_normalize_selection_name(
@@ -66,6 +66,6 @@ iree_status_t iree_benchmark_loom_module_symbol_name_from_ref(
                             "symbol ref %u has an invalid name",
                             (unsigned)ref.symbol_id);
   }
-  *out_name = module->strings.entries[symbol->name_id];
+  *out_name = loom_string_table_get(&module->strings, symbol->name_id);
   return iree_ok_status();
 }

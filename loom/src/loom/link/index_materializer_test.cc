@@ -217,8 +217,8 @@ class LinkIndexMaterializerTest : public ::testing::Test {
                                   iree_string_view_t name) {
     for (iree_host_size_t i = 0; i < module->symbols.count; ++i) {
       const loom_symbol_t* symbol = &module->symbols.entries[i];
-      if (iree_string_view_equal(module->strings.entries[symbol->name_id],
-                                 name)) {
+      if (iree_string_view_equal(
+              loom_string_table_get(&module->strings, symbol->name_id), name)) {
         return symbol;
       }
     }
@@ -256,7 +256,8 @@ class LinkIndexMaterializerTest : public ::testing::Test {
     if (string_id == LOOM_STRING_ID_INVALID) {
       return {};
     }
-    const iree_string_view_t value = module->strings.entries[string_id];
+    const iree_string_view_t value =
+        loom_string_table_get(&module->strings, string_id);
     return std::string(value.data, value.size);
   }
 
@@ -269,7 +270,8 @@ class LinkIndexMaterializerTest : public ::testing::Test {
     shapes.reserve(module->symbols.count);
     for (iree_host_size_t i = 0; i < module->symbols.count; ++i) {
       const loom_symbol_t* symbol = &module->symbols.entries[i];
-      const iree_string_view_t name = module->strings.entries[symbol->name_id];
+      const iree_string_view_t name =
+          loom_string_table_get(&module->strings, symbol->name_id);
       std::string import_module;
       std::string import_symbol;
       std::string export_symbol;
@@ -907,7 +909,8 @@ func.def public export("unrelated") @unused(%x: i32) -> (i32) {
       loom_func_like_export_symbol(entry_func);
   ASSERT_NE(entry_export, LOOM_STRING_ID_INVALID);
   EXPECT_TRUE(iree_string_view_equal(
-      materialization.product.module->strings.entries[entry_export],
+      loom_string_table_get(&materialization.product.module->strings,
+                            entry_export),
       IREE_SV("request_entry")));
   EXPECT_EQ(loom_func_like_export_symbol(helper_func), LOOM_STRING_ID_INVALID);
 
@@ -964,7 +967,8 @@ func.def public export("provider_identity") @identity(%x: i32) -> (i32) {
       loom_func_like_export_symbol(identity_func);
   ASSERT_NE(export_symbol, LOOM_STRING_ID_INVALID);
   EXPECT_TRUE(iree_string_view_equal(
-      materialization.product.module->strings.entries[export_symbol],
+      loom_string_table_get(&materialization.product.module->strings,
+                            export_symbol),
       IREE_SV("request_identity")));
 
   loom_link_index_materialization_deinitialize(&materialization);
@@ -1054,7 +1058,8 @@ func.def export("entry") @entry(%x: i32) -> (i32) {
   const loom_string_id_t export_symbol = loom_func_like_export_symbol(function);
   ASSERT_NE(export_symbol, LOOM_STRING_ID_INVALID);
   EXPECT_TRUE(iree_string_view_equal(
-      materialization.product.module->strings.entries[export_symbol],
+      loom_string_table_get(&materialization.product.module->strings,
+                            export_symbol),
       IREE_SV("entry")));
 
   loom_link_index_materialization_deinitialize(&materialization);

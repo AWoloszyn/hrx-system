@@ -440,7 +440,8 @@ static iree_status_t loom_amdgpu_append_packet_symbol_attr(
         "AMDGPU assembly attribute '%.*s' references an unnamed symbol",
         (int)field_name.size, field_name.data);
   }
-  const iree_string_view_t name = module->strings.entries[symbol->name_id];
+  const iree_string_view_t name =
+      loom_string_table_get(&module->strings, symbol->name_id);
   return iree_string_builder_append_format(context->builder, "@%.*s",
                                            (int)name.size, name.data);
 }

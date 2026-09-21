@@ -27,7 +27,7 @@ static iree_string_view_t loom_low_schedule_json_symbol_name(
   if (symbol->name_id >= module->strings.count) {
     return IREE_SV("<unnamed>");
   }
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 static iree_string_view_t loom_low_schedule_json_function_name(

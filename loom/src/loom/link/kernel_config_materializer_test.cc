@@ -106,8 +106,8 @@ class KernelConfigMaterializerTest : public ::testing::Test {
                                   iree_string_view_t name) {
     for (iree_host_size_t i = 0; i < module->symbols.count; ++i) {
       const loom_symbol_t* symbol = &module->symbols.entries[i];
-      if (iree_string_view_equal(module->strings.entries[symbol->name_id],
-                                 name)) {
+      if (iree_string_view_equal(
+              loom_string_table_get(&module->strings, symbol->name_id), name)) {
         return symbol;
       }
     }

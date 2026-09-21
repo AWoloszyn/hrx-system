@@ -372,9 +372,9 @@ kernel.def @classified() {
       ++call_count;
       zero_result_call_count += op->result_count == 0;
       const loom_symbol_ref_t callee = loom_template_call_callee(op);
-      const iree_string_view_t callee_name =
-          class_module->strings
-              .entries[class_module->symbols.entries[callee.symbol_id].name_id];
+      const iree_string_view_t callee_name = loom_string_table_get(
+          &class_module->strings,
+          class_module->symbols.entries[callee.symbol_id].name_id);
       if (iree_string_view_equal(callee_name, IREE_SV("large")) ||
           iree_string_view_equal(callee_name, IREE_SV("small"))) {
         const loom_value_slice_t operands = loom_template_call_operands(op);

@@ -380,8 +380,10 @@ iree_status_t loom_print_name_plan_initialize(
       continue;
     }
     ++named_value_count;
-    if (module->strings.entries[name_id].size > maximum_name_length) {
-      maximum_name_length = module->strings.entries[name_id].size;
+    if (loom_string_table_get(&module->strings, name_id).size >
+        maximum_name_length) {
+      maximum_name_length =
+          loom_string_table_get(&module->strings, name_id).size;
     }
     if (loom_print_name_value_is_printable(module, (loom_value_id_t)i)) {
       ++indexed_name_count;
@@ -512,8 +514,9 @@ iree_status_t loom_print_name_plan_initialize(
       continue;
     }
     out_plan->resolutions[i].suffix = loom_print_name_resolve_suffix(
-        module, explicit_names, value_id, module->strings.entries[name_id], 1,
-        candidate_buffer, candidate_buffer_capacity);
+        module, explicit_names, value_id,
+        loom_string_table_get(&module->strings, name_id), 1, candidate_buffer,
+        candidate_buffer_capacity);
   }
 
   iree_arena_checkpoint_restore(&temporary_checkpoint);
@@ -531,8 +534,8 @@ static iree_status_t loom_print_name_write_resolution(
   IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '%'));
   loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
   if (loom_print_name_value_has_name(module, value_id, &name_id)) {
-    IREE_RETURN_IF_ERROR(
-        loom_output_stream_write(stream, module->strings.entries[name_id]));
+    IREE_RETURN_IF_ERROR(loom_output_stream_write(
+        stream, loom_string_table_get(&module->strings, name_id)));
     if (resolution.suffix == 0) {
       return iree_ok_status();
     }

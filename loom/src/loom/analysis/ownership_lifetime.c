@@ -410,7 +410,7 @@ static iree_string_view_t loom_ownership_lifetime_value_name(
   const loom_value_t* value = loom_module_value(state->module, value_id);
   if (value->name_id != LOOM_STRING_ID_INVALID &&
       value->name_id < state->module->strings.count) {
-    return state->module->strings.entries[value->name_id];
+    return loom_string_table_get(&state->module->strings, value->name_id);
   }
   return IREE_SV("<unnamed>");
 }

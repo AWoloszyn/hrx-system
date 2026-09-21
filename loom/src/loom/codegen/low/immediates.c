@@ -54,8 +54,10 @@ iree_status_t loom_low_resolve_immediate_enums(
     }
     int64_t value = 0;
     if (!loom_low_resolve_immediate_enum(
-            descriptor_set, descriptor, module->strings.entries[entry->name_id],
-            module->strings.entries[entry->value.string_id], &value)) {
+            descriptor_set, descriptor,
+            loom_string_table_get(&module->strings, entry->name_id),
+            loom_string_table_get(&module->strings, entry->value.string_id),
+            &value)) {
       continue;
     }
     if (resolved_entries == NULL) {

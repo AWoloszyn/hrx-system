@@ -489,7 +489,8 @@ const loom_symbol_t* FindModuleSymbol(const loom_module_t* module,
     if (symbol->name_id >= module->strings.count) {
       continue;
     }
-    iree_string_view_t symbol_name = module->strings.entries[symbol->name_id];
+    iree_string_view_t symbol_name =
+        loom_string_table_get(&module->strings, symbol->name_id);
     if (symbol_name.size == strlen(name) &&
         memcmp(symbol_name.data, name, symbol_name.size) == 0) {
       return symbol;

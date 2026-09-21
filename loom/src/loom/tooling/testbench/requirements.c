@@ -15,7 +15,7 @@ static iree_string_view_t loom_testbench_requirement_module_string(
   if (string_id >= module->strings.count) {
     return iree_string_view_empty();
   }
-  return module->strings.entries[string_id];
+  return loom_string_table_get(&module->strings, string_id);
 }
 
 iree_string_view_t loom_testbench_requirement_op_kind_name(

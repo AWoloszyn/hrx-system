@@ -20,7 +20,8 @@ static bool loom_test_record_dict_lookup(const loom_module_t* module,
     if (name_id >= module->strings.count) {
       continue;
     }
-    if (iree_string_view_equal(module->strings.entries[name_id], name)) {
+    if (iree_string_view_equal(loom_string_table_get(&module->strings, name_id),
+                               name)) {
       *out_attr = &dict.entries[i].value;
       return true;
     }

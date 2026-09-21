@@ -1241,8 +1241,8 @@ func.def public @unbound() {
     ASSERT_TRUE(loom_symbol_ref_is_valid(function_ref));
     const loom_symbol_t* function_symbol =
         &internal_module->symbols.entries[function_ref.symbol_id];
-    const iree_string_view_t function_name =
-        internal_module->strings.entries[function_symbol->name_id];
+    const iree_string_view_t function_name = loom_string_table_get(
+        &internal_module->strings, function_symbol->name_id);
     const std::string function_name_string(function_name.data,
                                            function_name.size);
     if (function_name_string.rfind("shared_subgroup_size", 0) != 0) {

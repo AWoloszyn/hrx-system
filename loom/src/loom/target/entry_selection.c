@@ -74,7 +74,7 @@ static iree_string_view_t loom_target_entry_module_symbol_name(
   if (symbol->name_id >= module->strings.count) {
     return IREE_SV("<unknown>");
   }
-  return module->strings.entries[symbol->name_id];
+  return loom_string_table_get(&module->strings, symbol->name_id);
 }
 
 void loom_target_entry_diagnostic_emitter_initialize(

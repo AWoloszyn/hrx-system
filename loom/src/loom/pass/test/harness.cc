@@ -20,7 +20,8 @@ static iree_string_view_t PredicateContextSymbolName(
       context->symbol->name_id >= context->target_module->strings.count) {
     return IREE_SV("<none>");
   }
-  return context->target_module->strings.entries[context->symbol->name_id];
+  return loom_string_table_get(&context->target_module->strings,
+                               context->symbol->name_id);
 }
 
 static iree_status_t VerifyTargetPredicate(

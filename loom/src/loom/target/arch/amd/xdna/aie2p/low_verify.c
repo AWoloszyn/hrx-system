@@ -59,8 +59,9 @@ static const loom_named_attr_t* loom_aie2p_low_find_packet_attr(
   for (iree_host_size_t i = 0; i < attrs.count; ++i) {
     const loom_named_attr_t* attr = &attrs.entries[i];
     if (attr->name_id < state->module->strings.count &&
-        iree_string_view_equal(state->module->strings.entries[attr->name_id],
-                               name)) {
+        iree_string_view_equal(
+            loom_string_table_get(&state->module->strings, attr->name_id),
+            name)) {
       return attr;
     }
   }
@@ -74,7 +75,7 @@ static iree_string_view_t loom_aie2p_low_function_contract_name(
   }
   const loom_string_id_t contract_id = loom_func_like_repr_contract(function);
   if (contract_id < module->strings.count) {
-    return module->strings.entries[contract_id];
+    return loom_string_table_get(&module->strings, contract_id);
   }
 
   // A resident worker may name a source function in the same mixed-level

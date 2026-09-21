@@ -58,7 +58,7 @@ static iree_status_t loom_pass_program_string_from_id(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "invalid %s string id", label);
   }
-  *out_string = module->strings.entries[string_id];
+  *out_string = loom_string_table_get(&module->strings, string_id);
   return iree_ok_status();
 }
 

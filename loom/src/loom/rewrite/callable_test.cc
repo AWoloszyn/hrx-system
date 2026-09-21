@@ -316,7 +316,8 @@ TEST_F(CallableInlineTest, InlinesDirectCallAndReplacesReturnOperand) {
   loom_value_id_t negated =
       loom_test_neg_result(loom_block_op(caller_block, 0));
   EXPECT_TRUE(iree_string_view_equal(
-      module_->strings.entries[loom_module_value(module_, negated)->name_id],
+      loom_string_table_get(&module_->strings,
+                            loom_module_value(module_, negated)->name_id),
       IREE_SV("call_result")));
   loom_value_slice_t returned =
       loom_func_return_operands(loom_block_op(caller_block, 1));
@@ -669,7 +670,8 @@ TEST_F(CallableInlineTest, ConsumingInlineMovesBodyAndErasesCallee) {
   ASSERT_EQ(returned.count, 1u);
   EXPECT_EQ(returned.values[0], negated);
   EXPECT_TRUE(iree_string_view_equal(
-      module_->strings.entries[loom_module_value(module_, negated)->name_id],
+      loom_string_table_get(&module_->strings,
+                            loom_module_value(module_, negated)->name_id),
       IREE_SV("call_result")));
 }
 
@@ -758,8 +760,9 @@ TEST_F(CallableInlineTest, ConsumingInlineMovesCfgBlocksAndErasesCallee) {
   ASSERT_EQ(continuation->arg_count, 1u);
   const loom_value_id_t continuation_value = loom_block_arg_id(continuation, 0);
   EXPECT_TRUE(iree_string_view_equal(
-      module_->strings
-          .entries[loom_module_value(module_, continuation_value)->name_id],
+      loom_string_table_get(
+          &module_->strings,
+          loom_module_value(module_, continuation_value)->name_id),
       IREE_SV("call_result")));
   ASSERT_TRUE(loom_func_return_isa(continuation->last_op));
   EXPECT_EQ(loom_func_return_operands(continuation->last_op).values[0],
@@ -886,7 +889,8 @@ TEST_F(CallableInlineTest, InlinesMultiResultCall) {
   loom_value_id_t negated =
       loom_test_neg_result(loom_block_op(caller_block, 0));
   EXPECT_TRUE(iree_string_view_equal(
-      module_->strings.entries[loom_module_value(module_, negated)->name_id],
+      loom_string_table_get(&module_->strings,
+                            loom_module_value(module_, negated)->name_id),
       IREE_SV("negated")));
   loom_value_slice_t returned =
       loom_func_return_operands(loom_block_op(caller_block, 1));

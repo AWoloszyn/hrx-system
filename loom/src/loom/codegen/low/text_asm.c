@@ -1175,7 +1175,7 @@ static iree_status_t loom_low_descriptor_text_asm_attr_name(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "low asm packet immediate name is invalid");
   }
-  *out_name = module->strings.entries[attr->name_id];
+  *out_name = loom_string_table_get(&module->strings, attr->name_id);
   return iree_ok_status();
 }
 

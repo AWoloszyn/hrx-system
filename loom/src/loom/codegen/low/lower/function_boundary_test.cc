@@ -336,13 +336,15 @@ TEST_F(LowLowerFunctionBoundaryTest,
   const loom_string_id_t code_symbol =
       loom_low_func_decl_code_symbol(result_.low_func_op);
   ASSERT_LT(code_symbol, module_->strings.count);
-  EXPECT_TRUE(iree_string_view_equal(module_->strings.entries[code_symbol],
-                                     IREE_SV("extern_f")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module_->strings, code_symbol),
+      IREE_SV("extern_f")));
   const loom_string_id_t descriptor_set =
       loom_low_func_decl_descriptor_set(result_.low_func_op);
   ASSERT_LT(descriptor_set, module_->strings.count);
-  EXPECT_TRUE(iree_string_view_equal(module_->strings.entries[descriptor_set],
-                                     IREE_SV("test.low.core")));
+  EXPECT_TRUE(iree_string_view_equal(
+      loom_string_table_get(&module_->strings, descriptor_set),
+      IREE_SV("test.low.core")));
 
   const loom_symbol_ref_t low_callee =
       loom_low_func_decl_callee(result_.low_func_op);
