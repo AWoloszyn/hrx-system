@@ -9,7 +9,7 @@
 
 iree_add_all_subdirs()
 
-if(LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
 loom_cc_library(
   NAME
     artifact_provider
@@ -30,7 +30,7 @@ loom_cc_library(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
 iree_execution_test_suite(
   NAME
     pipeline_record_shapes_test
