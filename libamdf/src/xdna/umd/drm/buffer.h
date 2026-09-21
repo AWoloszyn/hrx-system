@@ -21,7 +21,7 @@ typedef struct amdf_linux_xdna_buffer_t {
   uint32_t type;
   // Allocation extent in bytes, rounded to the native page size.
   size_t byte_length;
-  // Stable address in this native device's address domain.
+  // Stable device address; zero for CPU-only KMQ command buffers.
   uint64_t device_address;
   // CPU base, including for heap suballocations that have no independent mmap.
   void* host_pointer;
@@ -66,9 +66,9 @@ amdf_status_t amdf_linux_xdna_buffer_export_dma_buf(
     int descriptor, const amdf_linux_xdna_buffer_t* buffer,
     int* out_dma_buf_descriptor);
 
-// Establishes native addresses and a persistent CPU mapping for one live GEM
-// buffer. Failure retains any mapping state acquired by this one-shot operation
-// in `buffer` for deinitialization.
+// Establishes a persistent CPU mapping and, except for CPU-only CMD buffers,
+// native device addresses for one live GEM buffer. Failure retains any mapping
+// state acquired by this one-shot operation in `buffer` for deinitialization.
 amdf_status_t amdf_linux_xdna_buffer_attach(
     int descriptor, size_t alignment, size_t page_size,
     const amdf_linux_xdna_buffer_t* heap, amdf_linux_xdna_buffer_t* buffer);

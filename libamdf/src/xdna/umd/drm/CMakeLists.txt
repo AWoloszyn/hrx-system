@@ -32,7 +32,10 @@ iree_cc_test(
     buffer_test
   SRCS
     "buffer_test.cc"
+  LINKOPTS
+    "-Wl,--wrap=ioctl"
   DEPS
+    $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_drm_uapi>
     $<BUILD_LOCAL_INTERFACE:iree::third_party::linux_xdna_uapi>
     ::buffer
     amdf::headers
@@ -193,7 +196,6 @@ iree_cc_library(
     libamdf::src::allocator
     libamdf::src::atomics
     libamdf::src::platform::linux::file
-    libamdf::src::platform::linux::host_cache
     libamdf::src::platform::linux::native_event
     libamdf::src::platform::native_event
     libamdf::src::platform::wait

@@ -34,11 +34,13 @@ amdf_cc_library(
 amdf_cc_test(
     name = "buffer_test",
     srcs = ["buffer_test.cc"],
+    linkopts = ["-Wl,--wrap=ioctl"],
     target_compatible_with = DRM_COMPATIBILITY,
     deps = [
         ":buffer",
         "//third_party:google_test",
         "//third_party:google_test_main",
+        "//third_party:linux_drm_uapi",
         "//third_party:linux_xdna_uapi",
     ],
 )
@@ -158,7 +160,6 @@ amdf_cc_library(
         "//libamdf/src/platform:native_event",
         "//libamdf/src/platform:wait",
         "//libamdf/src/platform/linux:file",
-        "//libamdf/src/platform/linux:host_cache",
         "//libamdf/src/platform/linux:native_event",
         "//libamdf/src/xdna/umd:kernel_queue",
         "//third_party:linux_xdna_uapi",

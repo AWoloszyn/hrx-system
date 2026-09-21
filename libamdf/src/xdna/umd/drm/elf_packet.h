@@ -15,7 +15,7 @@ extern "C" {
 
 // ERT_START_NPU_PREEMPT_ELF with one CU mask and no save/restore or properties.
 typedef struct amdf_linux_xdna_elf_packet_t {
-  // Native little-endian transport words, including firmware-written state.
+  // Native little-endian transport words, including kernel-written state.
   uint32_t words[12];
 } amdf_linux_xdna_elf_packet_t;
 

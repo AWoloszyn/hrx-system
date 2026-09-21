@@ -12,7 +12,6 @@
 #include "libamdf/src/allocator.h"
 #include "libamdf/src/atomics.h"
 #include "libamdf/src/platform/linux/file.h"
-#include "libamdf/src/platform/linux/host_cache.h"
 #include "libamdf/src/platform/native_event.h"
 #include "libamdf/src/platform/wait.h"
 #include "libamdf/src/xdna/umd/drm/context.h"
@@ -38,7 +37,10 @@ struct amdf_xdna_umd_kernel_queue_t {
   amdf_atomic_uint64_t progress;
   // Nonwaiting claim around the one-time capture of native point zero.
   amdf_atomic_uint32_t first_point;
-  // Native command/result storage reused only after checked retirement.
+  // Native command/result storage reused only after checked retirement. DRM
+  // submits a BO handle with no byte offset, and the kernel later reads and
+  // completes that same BO. Independently pending commands require distinct
+  // BOs even though their packets occupy less than a page.
   amdf_linux_xdna_buffer_t packets[];
 };
 
@@ -303,9 +305,9 @@ amdf_status_t amdf_xdna_umd_kernel_queue_submit(
   amdf_linux_xdna_buffer_t* packet = &queue->packets[slot];
   amdf_linux_xdna_elf_packet_build(instruction_address, instruction_byte_length,
                                    packet->host_pointer);
-  amdf_linux_host_cache_transfer(packet->host_pointer,
-                                 sizeof(amdf_linux_xdna_elf_packet_t),
-                                 queue->context->device->cache_line_size);
+  // This packet is shared with the kernel CPU, which builds the firmware
+  // message and writes the result. CPU cache coherence covers both directions;
+  // NPU instruction/data cache maintenance is a separate caller operation.
   return amdf_linux_xdna_command_submit(queue->context, packet,
                                         out_native_submission);
 }
