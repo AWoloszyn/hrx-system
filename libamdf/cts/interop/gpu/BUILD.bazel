@@ -6,17 +6,14 @@
 
 package(
     default_visibility = ["//visibility:private"],
-    features = ["layering_check"],
     licenses = ["notice"],  # Apache 2.0
 )
 
 test_suite(
-    name = "all",
+    name = "gpu",
     tests = [
-        "//libamdf/cts/core",
-        "//libamdf/cts/gpu",
-        "//libamdf/cts/interop/gpu",
-        "//libamdf/cts/xdna",
+        "//libamdf/cts/interop/gpu/d3d12:memory",
+        "//libamdf/cts/interop/gpu/xdna",
     ],
     visibility = ["//visibility:public"],
 )

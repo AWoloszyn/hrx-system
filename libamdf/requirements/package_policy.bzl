@@ -70,10 +70,15 @@ PACKAGE_POLICIES = [
         resource_group = "iree-hal-drivers-amdgpu-tests",
     ),
     package_policy(
-        packages = ["libamdf/cts/interop/gpu_xdna/..."],
-        build_requirements = [LIBAMDF_GPU, LIBAMDF_XDNA],
-        run_requirements = [AMDGPU_RESOURCE, XDNA_RESOURCE],
+        packages = ["libamdf/cts/interop/gpu/..."],
+        build_requirements = [LIBAMDF_GPU],
+        run_requirements = [AMDGPU_RESOURCE],
         resource_group = "iree-hal-drivers-amdgpu-tests",
+    ),
+    package_policy(
+        packages = ["libamdf/cts/interop/gpu/xdna/..."],
+        build_requirements = [LIBAMDF_XDNA],
+        run_requirements = [XDNA_RESOURCE],
     ),
     package_policy(
         packages = [

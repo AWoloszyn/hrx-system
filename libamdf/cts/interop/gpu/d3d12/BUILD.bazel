@@ -15,6 +15,10 @@ package(
 amdf_cts_test_suite(
     name = "memory",
     srcs = ["memory_test.cc"],
+    linkopts = [
+        "d3d12.lib",
+        "dxgi.lib",
+    ],
     target_compatible_with = [
         "@platforms//os:windows",
         "@platforms//cpu:x86_64",
