@@ -12,12 +12,56 @@
 #include <cxx/symbols.h>
 #include <cxx/types.h>
 
+#include <array>
 #include <type_traits>
+#include <utility>
+#include <vector>
 
 #include "loom/import/cxx/source/attributes.h"
 #include "loom/import/cxx/source/error.h"
 
 namespace loom::cxx_import {
+namespace {
+
+const cxx::Attribute* operation_attribute(cxx::FunctionSymbol* function) {
+  if (!function->attributes()) {
+    return nullptr;
+  }
+  for (const auto& attribute : *function->attributes()) {
+    if (attribute.attributeNamespace && attribute.name &&
+        attribute.attributeNamespace->name() == "loom" &&
+        attribute.name->name() == "op") {
+      return &attribute;
+    }
+  }
+  return nullptr;
+}
+
+std::span<const loom_value_id_t> flatten(
+    std::span<const Value> arguments,
+    std::array<loom_value_id_t, 8>& inline_values,
+    std::vector<loom_value_id_t>& overflow) {
+  size_t count = 0;
+  for (auto argument : arguments) {
+    count += argument.partition().component_count;
+  }
+  if (count <= inline_values.size()) {
+    size_t index = 0;
+    for (auto argument : arguments) {
+      for (auto component : argument.components()) {
+        inline_values[index++] = component;
+      }
+    }
+    return {inline_values.data(), count};
+  }
+  overflow.reserve(count);
+  for (auto argument : arguments) {
+    argument.append_to(overflow);
+  }
+  return overflow;
+}
+
+}  // namespace
 
 void Intrinsics::declaration(cxx::FunctionSymbol* function,
                              cxx::List<cxx::AttributeSpecifierAST*>* attributes,
@@ -48,17 +92,7 @@ void Intrinsics::declaration(cxx::FunctionSymbol* function,
           }
         }
       });
-  const cxx::Attribute* selected = nullptr;
-  if (function->attributes()) {
-    for (const auto& attribute : *function->attributes()) {
-      if (attribute.attributeNamespace && attribute.name &&
-          attribute.attributeNamespace->name() == "loom" &&
-          attribute.name->name() == "op") {
-        selected = &attribute;
-        break;
-      }
-    }
-  }
+  const cxx::Attribute* selected = operation_attribute(function);
   if (!selected) {
     return;
   }
@@ -66,6 +100,21 @@ void Intrinsics::declaration(cxx::FunctionSymbol* function,
     diagnostics_.reject(unit_, owner,
                         "operation bindings require leading attributes on a "
                         "plain function declaration");
+  }
+  if (function->isTemplatePattern()) {
+    if (selected->arguments.size() != 1 ||
+        !ViewIntrinsic::supports(selected->arguments[0]->name())) {
+      diagnostics_.reject(unit_, owner,
+                          "function template operation has no C++ projection");
+    }
+    auto spelling = std::string(selected->arguments[0]->name());
+    auto [entry, inserted] =
+        template_bindings_.try_emplace(function->canonical(), spelling);
+    if (!inserted && entry->second != spelling) {
+      diagnostics_.reject(unit_, owner,
+                          "conflicting intrinsic template redeclarations");
+    }
+    return;
   }
   auto binding = resolve(function, *selected, owner);
   auto [entry, inserted] =
@@ -112,6 +161,10 @@ Intrinsics::Binding Intrinsics::resolve(cxx::FunctionSymbol* function,
   if (auto shaped = ShapedIntrinsic::resolve(unit_, diagnostics_, types_,
                                              signature, attribute, owner)) {
     return *shaped;
+  }
+  if (auto view = ViewIntrinsic::resolve(unit_, diagnostics_, types_, signature,
+                                         attribute, owner)) {
+    return *view;
   }
   diagnostics_.reject(unit_, owner, "operation has no C++ projection");
 }
@@ -176,23 +229,63 @@ std::optional<loom_type_t> Intrinsics::expectation_type(
   return std::nullopt;
 }
 
-std::optional<loom_value_id_t> Intrinsics::call(
-    cxx::FunctionSymbol* function, std::span<const loom_value_id_t> arguments,
-    uint8_t math_flags, loom_builder_t* builder, loom_location_id_t location) {
+Intrinsics::Binding* Intrinsics::concrete_binding(cxx::FunctionSymbol* function,
+                                                  cxx::AST* owner) {
   auto entry = bindings_.find(function->canonical());
-  if (entry == bindings_.end()) {
-    return std::nullopt;
+  if (entry != bindings_.end()) {
+    return &entry->second;
   }
-  if (auto* scalar = std::get_if<ScalarBinding>(&entry->second)) {
+  if (!function->isSpecialization()) {
+    return nullptr;
+  }
+  auto* primary =
+      cxx::symbol_cast<cxx::FunctionSymbol>(function->primaryTemplateSymbol());
+  auto pattern = primary ? template_bindings_.find(primary->canonical())
+                         : template_bindings_.end();
+  if (pattern == template_bindings_.end()) {
+    return nullptr;
+  }
+  auto* attribute = operation_attribute(function);
+  if (!attribute || attribute->arguments.size() != 1 ||
+      attribute->arguments[0]->name() != pattern->second) {
+    diagnostics_.reject(
+        unit_, owner,
+        "intrinsic specialization does not preserve its template binding");
+  }
+  auto binding = resolve(function, *attribute, owner);
+  auto inserted =
+      bindings_.try_emplace(function->canonical(), std::move(binding));
+  return &inserted.first->second;
+}
+
+bool Intrinsics::owns(cxx::FunctionSymbol* function, cxx::AST* owner) {
+  return concrete_binding(function, owner) != nullptr;
+}
+
+IntrinsicCallResult Intrinsics::call(cxx::FunctionSymbol* function,
+                                     std::span<const Value> arguments,
+                                     ValueArena& arena, cxx::AST* owner,
+                                     uint8_t math_flags,
+                                     loom_builder_t* builder,
+                                     loom_location_id_t location) {
+  auto* binding = concrete_binding(function, owner);
+  IREE_ASSERT(binding);
+  if (auto* view = std::get_if<ViewIntrinsic>(binding)) {
+    return {view->call(arguments, types_, arena, owner, builder, location)};
+  }
+  std::array<loom_value_id_t, 8> inline_values;
+  std::vector<loom_value_id_t> overflow;
+  auto flattened = flatten(arguments, inline_values, overflow);
+  if (auto* scalar = std::get_if<ScalarBinding>(binding)) {
     loom_op_t* op;
     check(scalar->scalar->build(builder, scalar->flags | math_flags,
-                                arguments.data(), scalar->type, location, &op));
-    return loom_op_results(op)[0];
+                                flattened.data(), scalar->type, location, &op));
+    return {Value(loom_op_results(op)[0])};
   }
-  if (auto* shaped = std::get_if<ShapedIntrinsic>(&entry->second)) {
-    return shaped->call(arguments, builder, location);
+  if (auto* shaped = std::get_if<ShapedIntrinsic>(binding)) {
+    return {Value(shaped->call(flattened, builder, location))};
   }
-  return std::nullopt;
+  return {};
 }
 
 }  // namespace loom::cxx_import

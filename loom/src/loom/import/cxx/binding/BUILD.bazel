@@ -68,6 +68,27 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "view",
+    srcs = ["view.cc"],
+    hdrs = ["view.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        "//loom/src/loom/import/cxx/source",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/import/cxx/value:representation",
+        "//loom/src/loom/import/cxx/value:types",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/buffer",
+        "//loom/src/loom/ops/encoding",
+        "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/view",
+        "//runtime/src/iree/base",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_library(
     name = "intrinsics",
     srcs = ["intrinsics.cc"],
     hdrs = ["intrinsics.h"],
@@ -75,6 +96,7 @@ loom_cc_library(
     deps = [
         ":scalar_bindings",
         ":shaped",
+        ":view",
         "//loom/src/loom/import/cxx/source",
         "//loom/src/loom/import/cxx/source:attributes",
         "//loom/src/loom/import/cxx/source:error",
@@ -169,6 +191,7 @@ foreach(_target IN ITEMS
     loom_import_cxx_binding_config.objects
     loom_import_cxx_binding_intrinsics.objects
     loom_import_cxx_binding_shaped.objects
+    loom_import_cxx_binding_view.objects
     loom_import_cxx_binding_launch.objects
     loom_import_cxx_binding_loop_schedule.objects
     loom_import_cxx_binding_shaped_test

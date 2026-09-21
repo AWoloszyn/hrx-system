@@ -66,6 +66,7 @@ loom_check_test_suite(
         "symbols_invalid.cxx-test",
         "vectors.cxx-test",
         "vectors_invalid.cxx-test",
+        "view_values.cxx-test",
     ],
     data = [
         "aligned_layout.h",
@@ -204,6 +205,7 @@ _KERNEL_SOURCES = [
     "short_circuit",
     "structured_continue",
     "symbol_exports",
+    "typed_views",
     "vector_depth",
     "vector_initializers",
     "vector_values",

@@ -21,6 +21,7 @@ exports_files([
     "include/loomcxx/kernel.h",
     "include/loomcxx/math.h",
     "include/loomcxx/scalar.h",
+    "include/loomcxx/view.h",
 ])
 
 loom_cc_test(
@@ -77,6 +78,7 @@ loom_cc_library(
         "//loom/src/loom/import/cxx/symbol:functions",
         "//loom/src/loom/import/cxx/value:representation",
         "//loom/src/loom/import/cxx/value:scalar",
+        "//loom/src/loom/import/cxx/value:signature",
         "//loom/src/loom/import/cxx/value:storage",
         "//loom/src/loom/import/cxx/value:types",
         "//loom/src/loom/import/cxx/value:vector",

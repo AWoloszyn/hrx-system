@@ -17,6 +17,7 @@
 #include <cxx/translation_unit.h>
 #include <cxx/types.h>
 
+#include <array>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -38,6 +39,7 @@
 #include "loom/import/cxx/symbol/functions.h"
 #include "loom/import/cxx/value/representation.h"
 #include "loom/import/cxx/value/scalar.h"
+#include "loom/import/cxx/value/signature.h"
 #include "loom/import/cxx/value/storage.h"
 #include "loom/import/cxx/value/types.h"
 #include "loom/import/cxx/value/vector.h"
@@ -95,7 +97,10 @@ class Translator {
   Value convert(cxx::ExpressionAST* input_ast, const cxx::Type* output_type,
                 cxx::AST* owner) {
     auto value = expression(input_ast);
-    if (value.is_record()) {
+    if (value.is_record() || value.is_encoding() || value.is_view()) {
+      if (&types_.partition(output_type, owner) != &value.partition()) {
+        fail(owner, "conversion must preserve the source value type");
+      }
       return value;
     }
     if (value.is_pointer()) {
@@ -153,10 +158,20 @@ class Translator {
       for (size_t index = 0; index < components.size(); ++index) {
         name(components[index], hint + "_" + partition.component_names[index]);
       }
+    } else if (value.is_view()) {
+      const auto& partition =
+          static_cast<const ViewPartition&>(value.partition());
+      auto components = value.components();
+      for (size_t index = 0; index < components.size(); ++index) {
+        auto suffix = partition.component_names[index];
+        name(components[index], suffix.empty() ? hint : hint + "_" + suffix);
+      }
     } else if (value.is_pointer()) {
       auto pointer = value.pointer();
       name(pointer.root, hint);
       name(pointer.byte_offset, hint + "_byte_offset");
+    } else if (value.is_encoding()) {
+      name(value.components()[0], hint);
     } else {
       name(value.ssa(), hint);
     }
@@ -306,15 +321,19 @@ class Translator {
       }
       auto condition = branch_condition(branch);
       auto outer_values = values_;
-      std::vector<loom_type_t> result_types;
+      BoundSignature result_signature;
       if (current_function_.return_type->kind() != cxx::TypeKind::kVoid) {
-        types_.append(current_function_.return_type, ast, result_types);
+        std::array<const cxx::Type*, 1> result_sources = {
+            current_function_.return_type};
+        result_signature =
+            bind_signature(types_, result_sources, ast, &builder_);
       }
       loom_op_t* op;
       auto source = locations_.get(ast);
       check(loom_scf_if_build(&builder_, LOOM_SCF_IF_BUILD_FLAG_HAS_ELSE_REGION,
-                              condition, result_types.data(),
-                              result_types.size(), nullptr, 0, source, &op));
+                              condition, result_signature.types.data(),
+                              result_signature.types.size(), nullptr, 0, source,
+                              &op));
       auto saved =
           loom_builder_enter_region(&builder_, op, loom_scf_if_then_region(op));
       auto returned = returning_statement(branch->statement, continuation);
@@ -332,8 +351,9 @@ class Translator {
                                  locations_.get(returned.source), &yield));
       loom_builder_restore(&builder_, saved);
       values_ = outer_values;
-      returned.values.assign(loom_op_results(op),
-                             loom_op_results(op) + result_types.size());
+      returned.values.assign(
+          loom_op_results(op),
+          loom_op_results(op) + result_signature.types.size());
       returned.source = ast;
       return returned;
     }
@@ -516,11 +536,20 @@ class Translator {
 
   Value assignment(cxx::AssignmentExpressionAST* assignment) {
     auto* ast = assignment;
-    auto* record = types_.record(assignment->leftExpression->type, ast);
+    const auto& partition =
+        types_.partition(assignment->leftExpression->type, ast);
+    cxx::ClassSymbol* source = nullptr;
+    if (partition.kind == ValueKind::Record) {
+      source = static_cast<const RecordPartition&>(partition).source;
+    } else if (partition.kind == ValueKind::Encoding) {
+      source = static_cast<const EncodingPartition&>(partition).source;
+    } else if (partition.kind == ValueKind::View) {
+      source = static_cast<const ViewPartition&>(partition).source;
+    }
     if ((assignment->symbol &&
-         (!record ||
-          (assignment->symbol != record->source->copyAssignmentOperator() &&
-           assignment->symbol != record->source->moveAssignmentOperator()))) ||
+         (!source ||
+          (assignment->symbol != source->copyAssignmentOperator() &&
+           assignment->symbol != source->moveAssignmentOperator()))) ||
         assignment->op != cxx::TokenKind::T_EQUAL) {
       fail(ast, "only builtin plain assignment is admitted here");
     }
@@ -548,19 +577,20 @@ class Translator {
   template <typename Then, typename Else>
   Value conditional_value(cxx::ExpressionAST* ast, loom_value_id_t condition,
                           Then then_value, Else else_value) {
-    std::vector<loom_type_t> outputs;
-    types_.append(ast->type, ast, outputs);
-    auto value_count = outputs.size();
     auto written = live_mutations(ast);
+    auto value_count = types_.partition(ast->type, ast).component_count;
+    std::vector<const cxx::Type*> sources = {ast->type};
+    sources.reserve(1 + written.size());
     for (auto* symbol : written) {
-      types_.append(symbol->type(), ast, outputs);
+      sources.push_back(symbol->type());
     }
     auto initial = current(written);
     auto source = locations_.get(ast);
+    auto outputs = bind_signature(types_, sources, ast, &builder_);
     loom_op_t* op;
     check(loom_scf_if_build(&builder_, LOOM_SCF_IF_BUILD_FLAG_HAS_ELSE_REGION,
-                            condition, outputs.data(), outputs.size(), nullptr,
-                            0, source, &op));
+                            condition, outputs.types.data(),
+                            outputs.types.size(), nullptr, 0, source, &op));
     auto saved =
         loom_builder_enter_region(&builder_, op, loom_scf_if_then_region(op));
     std::vector<loom_value_id_t> yielded;
@@ -594,17 +624,30 @@ class Translator {
     if (!constructor) {
       return;
     }
-    auto* record = types_.record(type, owner);
-    if (record && constructor == record->source->defaultConstructor()) {
-      fail(owner,
-           "default record construction requires source object initialization "
-           "semantics");
+    const auto& partition = types_.partition(type, owner);
+    cxx::ClassSymbol* source = nullptr;
+    bool is_record = partition.kind == ValueKind::Record;
+    if (partition.kind == ValueKind::Record) {
+      source = static_cast<const RecordPartition&>(partition).source;
+    } else if (partition.kind == ValueKind::Encoding) {
+      source = static_cast<const EncodingPartition&>(partition).source;
+    } else if (partition.kind == ValueKind::View) {
+      source = static_cast<const ViewPartition&>(partition).source;
     }
-    if (!record || (constructor != record->source->copyConstructor() &&
-                    constructor != record->source->moveConstructor())) {
-      fail(owner,
-           "record construction requires aggregate initialization or a trivial "
-           "copy");
+    if (source && constructor == source->defaultConstructor()) {
+      fail(owner, is_record
+                      ? "default record construction requires source object "
+                        "initialization semantics"
+                      : "default encoding or view construction requires "
+                        "source object initialization semantics");
+    }
+    if (!source || (constructor != source->copyConstructor() &&
+                    constructor != source->moveConstructor())) {
+      fail(owner, is_record
+                      ? "record construction requires aggregate initialization "
+                        "or a trivial copy"
+                      : "encoding and view construction requires an operation "
+                        "result or a trivial copy");
     }
   }
 
@@ -626,6 +669,17 @@ class Translator {
         elements = elements->next;
       }
       return value_arena_.capture(*record, components);
+    }
+    const auto& partition = types_.partition(type, owner);
+    if (partition.kind == ValueKind::Encoding ||
+        partition.kind == ValueKind::View) {
+      if (elements && !elements->next &&
+          types_.unqualified(elements->value->type) ==
+              types_.unqualified(type)) {
+        return expression(elements->value);
+      }
+      fail(owner,
+           "encoding and view values require an operation result or a copy");
     }
     if (auto* vector = types_.vector(type)) {
       std::vector<loom_value_id_t> components;
@@ -1010,12 +1064,20 @@ class Translator {
         fail(ast,
              "check declarations cannot be called from ordinary functions");
       }
-      std::vector<loom_value_id_t> arguments;
+      std::vector<Value> source_arguments;
       for (auto* argument : cxx::ListView{call->expressionList}) {
-        expression(argument).append_to(arguments);
+        source_arguments.push_back(expression(argument));
       }
+      auto flatten_arguments = [&] {
+        std::vector<loom_value_id_t> arguments;
+        for (auto argument : source_arguments) {
+          argument.append_to(arguments);
+        }
+        return arguments;
+      };
       loom_op_t* op;
       if (annotated(function, "subgroup_size")) {
+        auto arguments = flatten_arguments();
         auto result_type = types_.get(ast->type, ast);
         if (!arguments.empty() ||
             !loom_type_equal(result_type,
@@ -1030,16 +1092,24 @@ class Translator {
                                     source, &op));
         return result(op);
       }
-      if (annotated(function, "shuffle_xor") && arguments.size() == 3) {
+      if (annotated(function, "shuffle_xor")) {
+        auto arguments = flatten_arguments();
+        if (arguments.size() != 3) {
+          fail(ast, "shuffle_xor requires three scalar operands");
+        }
         check(loom_kernel_subgroup_shuffle_build(
             &builder_, LOOM_KERNEL_SUBGROUP_SHUFFLE_MODE_XOR, arguments[0],
             arguments[1], arguments[2], types_.get(ast->type, ast), source,
             &op));
         return result(op);
       }
-      if (auto value = intrinsics_.call(function, arguments, math_flags_,
-                                        &builder_, source)) {
-        return *value;
+      if (intrinsics_.owns(function, ast)) {
+        auto called = intrinsics_.call(function, source_arguments, value_arena_,
+                                       ast, math_flags_, &builder_, source);
+        if (!called.value) {
+          fail(ast, "void intrinsic cannot be used as a value");
+        }
+        return *called.value;
       }
       if (!functions_.definition(function) || annotated(function, "kernel")) {
         fail(
@@ -1047,13 +1117,14 @@ class Translator {
             "call must resolve to an owned intrinsic or defined device helper");
       }
       auto symbol = functions_.declare(function);
-      std::vector<loom_type_t> results;
-      types_.append(ast->type, ast, results);
+      auto arguments = flatten_arguments();
+      std::array<const cxx::Type*, 1> result_sources = {ast->type};
+      auto results = bind_signature(types_, result_sources, ast, &builder_);
       check(loom_func_call_build(
           &builder_, 0, 0, 0, 0, symbol, arguments.data(), arguments.size(),
-          results.data(), results.size(), nullptr, 0, source, &op));
+          results.types.data(), results.types.size(), nullptr, 0, source, &op));
       return value_arena_.capture(types_.partition(ast->type, ast),
-                                  {loom_op_results(op), results.size()});
+                                  {loom_op_results(op), results.types.size()});
     }
     fail(ast,
          "unsupported expression: " + std::string(cxx::to_string(ast->kind())));
@@ -1066,16 +1137,18 @@ class Translator {
                                     Then then_statement, Else else_statement) {
     auto written = live_mutations(owner);
     auto outer_values = values_;
-    std::vector<loom_type_t> result_types = {
-        loom_type_scalar(LOOM_SCALAR_TYPE_I1)};
+    std::vector<const cxx::Type*> sources = {unit_.control()->getBoolType()};
+    sources.reserve(1 + written.size());
     for (auto* symbol : written) {
-      types_.append(symbol->type(), owner, result_types);
+      sources.push_back(symbol->type());
     }
     auto source = locations_.get(owner);
+    auto result_signature = bind_signature(types_, sources, owner, &builder_);
     loom_op_t* op;
     check(loom_scf_if_build(&builder_, LOOM_SCF_IF_BUILD_FLAG_HAS_ELSE_REGION,
-                            condition, result_types.data(), result_types.size(),
-                            nullptr, 0, source, &op));
+                            condition, result_signature.types.data(),
+                            result_signature.types.size(), nullptr, 0, source,
+                            &op));
     auto saved =
         loom_builder_enter_region(&builder_, op, loom_scf_if_then_region(op));
     std::vector<loom_value_id_t> yielded = {then_statement()};
@@ -1250,17 +1323,19 @@ class Translator {
       auto condition = branch_condition(branch);
       auto saved_values = values_;
       auto written = live_mutations(ast);
-      std::vector<loom_type_t> types;
+      std::vector<const cxx::Type*> sources;
+      sources.reserve(written.size());
       for (auto* symbol : written) {
-        types_.append(symbol->type(), ast, types);
+        sources.push_back(symbol->type());
       }
+      auto results = bind_signature(types_, sources, ast, &builder_);
       loom_op_t* op;
       auto flags = branch->elseStatement || !written.empty()
                        ? LOOM_SCF_IF_BUILD_FLAG_HAS_ELSE_REGION
                        : 0;
-      check(loom_scf_if_build(&builder_, flags, condition, types.data(),
-                              types.size(), nullptr, 0, locations_.get(ast),
-                              &op));
+      check(loom_scf_if_build(&builder_, flags, condition, results.types.data(),
+                              results.types.size(), nullptr, 0,
+                              locations_.get(ast), &op));
       auto saved =
           loom_builder_enter_region(&builder_, op, loom_scf_if_then_region(op));
       statement(branch->statement);
@@ -1522,6 +1597,19 @@ class Translator {
                          annotated(function, "check_benchmark"))) {
           fail(ast,
                "check declarations cannot be called from ordinary functions");
+        }
+        if (function && intrinsics_.owns(function, ast)) {
+          std::vector<Value> arguments;
+          for (auto* argument : cxx::ListView{call->expressionList}) {
+            arguments.push_back(expression(argument));
+          }
+          auto called =
+              intrinsics_.call(function, arguments, value_arena_, ast,
+                               math_flags_, &builder_, locations_.get(ast));
+          if (called.value) {
+            fail(ast, "value-producing intrinsic reached a void call");
+          }
+          return;
         }
         if (!function || !functions_.definition(function) ||
             annotated(function, "kernel")) {

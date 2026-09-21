@@ -82,6 +82,31 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
+    view
+  HDRS
+    "view.h"
+  SRCS
+    "view.cc"
+  DEPS
+    iree::base
+    iree::third_party::cxx_parser
+    loom::import::cxx::source
+    loom::import::cxx::source::error
+    loom::import::cxx::value::representation
+    loom::import::cxx::value::types
+    loom::ir
+    loom::ops::buffer
+    loom::ops::encoding
+    loom::ops::index
+    loom::ops::op_defs
+    loom::ops::view
+  PUBLIC
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_library(
+  NAME
     intrinsics
   HDRS
     "intrinsics.h"
@@ -90,6 +115,7 @@ loom_cc_library(
   DEPS
     ::scalar_bindings
     ::shaped
+    ::view
     iree::third_party::cxx_parser
     loom::import::cxx::source
     loom::import::cxx::source::attributes
@@ -203,6 +229,7 @@ foreach(_target IN ITEMS
     loom_import_cxx_binding_config.objects
     loom_import_cxx_binding_intrinsics.objects
     loom_import_cxx_binding_shaped.objects
+    loom_import_cxx_binding_view.objects
     loom_import_cxx_binding_launch.objects
     loom_import_cxx_binding_loop_schedule.objects
     loom_import_cxx_binding_shaped_test

@@ -54,6 +54,7 @@ loom_check_test_suite(
     "symbols_invalid.cxx-test"
     "vectors.cxx-test"
     "vectors_invalid.cxx-test"
+    "view_values.cxx-test"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/aligned_layout.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_semantics.h"
@@ -983,6 +984,25 @@ loom_generated_file_family(
   ARGS
     "kernel"
     "--group=symbol_exports"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_generated_file_family(
+  NAME
+    typed_views_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "typed_views_checks.loom"
+    "typed_views_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=typed_views"
   TESTONLY
 )
 endif()
@@ -2532,6 +2552,95 @@ loom_execution_test(
     symbol_exports_access_test_execute_amdgpu_test
   MODULE
     "::symbol_exports_access_test_module"
+  ARGS
+    "--sanitizer=access"
+    "--sanitizer-reporting=report-only"
+  RUNNER_ARGS
+    "--device=amdgpu"
+  LABELS
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.amdgpu"
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+    "loom-execution-profile=amdgpu"
+    "loom-target-family=amdgpu"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "loom-amdgpu-tests"
+  SANITIZER_SUPPRESSIONS
+    lsan
+    rocm
+)
+endif()
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_test(
+  NAME
+    typed_views_source_test
+  SRCS
+    "typed_views.cpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/typed_views_checks.loom"
+  DATA
+    "${CMAKE_CURRENT_BINARY_DIR}/typed_views_arrays"
+    "${CMAKE_CURRENT_BINARY_DIR}/typed_views_checks.loom"
+  INPUTOPTS
+
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    typed_views_source_test_execute_amdgpu_test
+  MODULE
+    "::typed_views_source_test_module"
+  ARGS
+
+  RUNNER_ARGS
+    "--device=amdgpu"
+  LABELS
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.amdgpu"
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+    "loom-execution-profile=amdgpu"
+    "loom-target-family=amdgpu"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "loom-amdgpu-tests"
+  SANITIZER_SUPPRESSIONS
+    lsan
+    rocm
+)
+endif()
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_test(
+  NAME
+    typed_views_access_test
+  SRCS
+    "typed_views.cpp"
+    "${CMAKE_CURRENT_BINARY_DIR}/typed_views_checks.loom"
+  DATA
+    "${CMAKE_CURRENT_BINARY_DIR}/typed_views_arrays"
+    "${CMAKE_CURRENT_BINARY_DIR}/typed_views_checks.loom"
+  INPUTOPTS
+
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    typed_views_access_test_execute_amdgpu_test
+  MODULE
+    "::typed_views_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"

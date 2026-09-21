@@ -1042,6 +1042,37 @@ def symbol_exports(arrays):
     return "kernel.decl @library.dispatch() launch(%output: buffer, %input: buffer)\n\n" + "\n".join(cases)
 
 
+def typed_views(arrays):
+    cases = []
+    for ordinal, (rows, input_stride, input_origin, output_origin) in enumerate([(0, 8, 0, 0), (1, 8, 3, 2), (3, 11, 5, 4), (7, 17, 7, 6)]):
+        logical_end = input_origin + ((rows - 1) * input_stride + 8 if rows else 0)
+        input_count = logical_end + 3
+        inputs = [float(index - 512) for index in range(input_count)]
+        expected_values = []
+        for row in range(rows):
+            for column in range(8):
+                value = float(row * 32 + column) + 0.25
+                inputs[input_origin + row * input_stride + column] = value
+                expected_values.append(value)
+
+        expected = [-123.0] * output_origin + expected_values + [-123.0] * 3
+        case = Case(arrays, f"typed_views_{ordinal}", "f32", len(expected))
+        case.array("input", inputs)
+        case.array("original", inputs)
+        case.scalar("rows", rows, "i32")
+        case.scalar("input_stride", input_stride, "i32")
+        case.scalar("input_origin", input_origin, "i32")
+        case.scalar("output_origin", output_origin, "i32")
+        case.launch(
+            "typed_view_copy",
+            "%input, %output, %rows, %input_stride, %input_origin, %output_origin",
+            f"tensor<{len(inputs)}xf32>, tensor<{len(expected)}xf32>, i32, i32, i32, i32",
+        )
+        case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(inputs)}xf32>")
+        cases.append(case.finish(expected))
+    return "kernel.decl @typed_view_copy() launch(%input: buffer, %output: buffer, %rows: i32, %input_stride: i32, %input_origin: i32, %output_origin: i32)\n\n" + "\n".join(cases)
+
+
 KERNEL_GROUPS = {
     "aiter_swiglu_f16": lambda arrays: launch_grid("aiter_swiglu_f16", 3) + swiglu(arrays),
     "assumptions": assumption_kernel,
@@ -1060,6 +1091,7 @@ KERNEL_GROUPS = {
     "short_circuit": short_circuit,
     "structured_continue": lambda arrays: "\n".join(reference(arrays) for reference in (continue_values, continue_scheduled, continue_copy, continue_pointers, continue_vectors)),
     "symbol_exports": symbol_exports,
+    "typed_views": typed_views,
     "vector_depth": lambda arrays: vector_depth(arrays) + "\n" + vector_depth_span(arrays),
     "vector_initializers": vector_initializers,
     "vector_values": lambda arrays: vector_control(arrays) + "\n" + vector_masks(arrays),
