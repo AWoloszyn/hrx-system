@@ -130,6 +130,7 @@ jobs:
           python build_tools/devtools/ci.py iree-bazel-amd-client --bazel-profile-dir "%RUNNER_TEMP%\bazel-profiles"
 
       - name: Upload Bazel profiles
+        continue-on-error: true
         if: ${{ always() && steps.client_ci.outcome != 'skipped' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
