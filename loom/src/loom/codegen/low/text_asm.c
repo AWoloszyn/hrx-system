@@ -93,6 +93,9 @@ static iree_status_t loom_low_descriptor_text_asm_immediate_info(
   out_immediate->has_default_value =
       iree_any_bit_set(immediate->flags, LOOM_LOW_IMMEDIATE_FLAG_DEFAULT_VALUE);
   out_immediate->default_value = immediate->default_value;
+  out_immediate->enum_domain = immediate->kind == LOOM_LOW_IMMEDIATE_KIND_ENUM
+                                   ? immediate->enum_domain_id
+                                   : UINT16_MAX;
   if (asm_immediate->name_string_offset != LOOM_LOW_STRING_OFFSET_NONE) {
     IREE_RETURN_IF_ERROR(loom_low_descriptor_text_asm_string(
         descriptor_set, asm_immediate->name_string_offset,
@@ -126,6 +129,9 @@ static iree_status_t loom_low_descriptor_text_asm_descriptor_immediate_info(
   out_immediate->has_default_value =
       iree_any_bit_set(immediate->flags, LOOM_LOW_IMMEDIATE_FLAG_DEFAULT_VALUE);
   out_immediate->default_value = immediate->default_value;
+  out_immediate->enum_domain = immediate->kind == LOOM_LOW_IMMEDIATE_KIND_ENUM
+                                   ? immediate->enum_domain_id
+                                   : UINT16_MAX;
   out_immediate->spelling = out_immediate->field_name;
   return iree_ok_status();
 }

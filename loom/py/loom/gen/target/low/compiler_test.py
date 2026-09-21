@@ -11,7 +11,11 @@ import pytest
 
 from loom.gen.target.low import compiler
 from loom.target.low_descriptors import (
+    DescriptorFlag,
     EncodingFieldValue,
+    EnumDomain,
+    EnumValue,
+    ImmediateKind,
     InstructionClass,
     IssueUse,
     IssueUseKind,
@@ -26,6 +30,24 @@ from loom.target.test.descriptors import (
     TEST_LOW_CONST_I32_DESCRIPTOR,
     TEST_LOW_CORE_DESCRIPTOR_SET,
 )
+
+
+def test_enum_immediate_projection_retains_semantic_values() -> None:
+    enum_descriptor = replace(
+        TEST_LOW_CONST_I32_DESCRIPTOR,
+        immediates=(replace(TEST_LOW_CONST_I32_DESCRIPTOR.immediates[0], kind=ImmediateKind.ENUM, enum_domain="direction"),),
+    )
+    compiled = compiler.compile_descriptor_set(
+        replace(
+            TEST_LOW_CORE_DESCRIPTOR_SET,
+            descriptors=(TEST_LOW_ADD_I32_DESCRIPTOR, enum_descriptor),
+            enum_domains=(EnumDomain("direction", (EnumValue("reverse", -5), EnumValue("forward", 7))),),
+        )
+    )
+    descriptors = {descriptor.key: descriptor for descriptor in compiled.descriptors}
+    assert DescriptorFlag.ENUM_IMMEDIATES not in descriptors[TEST_LOW_ADD_I32_DESCRIPTOR.key].flags
+    assert DescriptorFlag.ENUM_IMMEDIATES in descriptors[enum_descriptor.key].flags
+    assert {value.token: value.value for value in compiled.enum_values} == {"reverse": -5, "forward": 7}
 
 
 @pytest.mark.parametrize(

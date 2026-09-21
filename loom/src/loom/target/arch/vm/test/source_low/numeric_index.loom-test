@@ -105,16 +105,16 @@ func.def target(@vm) @index_compare_select(%lhs: index, %rhs: index) -> (i1, i1,
 
 // ----
 low.func.def target<vm.core>(@vm) abi(vm_function) @index_compare_select(%lhs: reg<vm.value : i64>, %rhs: reg<vm.value : i64>) -> (reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i64>) asm {
-  %eq = integer.compare.i64 %lhs, %rhs, 0
-  %ne = integer.compare.i64 %lhs, %rhs, 1
-  %slt = integer.compare.i64 %lhs, %rhs, 2
-  %sle = integer.compare.i64 %lhs, %rhs, 3
-  %sgt = integer.compare.i64 %lhs, %rhs, 4
-  %sge = integer.compare.i64 %lhs, %rhs, 5
-  %ult = integer.compare.i64 %lhs, %rhs, 6
-  %ule = integer.compare.i64 %lhs, %rhs, 7
-  %ugt = integer.compare.i64 %lhs, %rhs, 8
-  %uge = integer.compare.i64 %lhs, %rhs, 9
+  %eq = integer.compare.i64 %lhs, %rhs, "eq"
+  %ne = integer.compare.i64 %lhs, %rhs, "ne"
+  %slt = integer.compare.i64 %lhs, %rhs, "slt"
+  %sle = integer.compare.i64 %lhs, %rhs, "sle"
+  %sgt = integer.compare.i64 %lhs, %rhs, "sgt"
+  %sge = integer.compare.i64 %lhs, %rhs, "sge"
+  %ult = integer.compare.i64 %lhs, %rhs, "ult"
+  %ule = integer.compare.i64 %lhs, %rhs, "ule"
+  %ugt = integer.compare.i64 %lhs, %rhs, "ugt"
+  %uge = integer.compare.i64 %lhs, %rhs, "uge"
   %selected = value.select %ult, %lhs, %rhs
   return %eq, %ne, %slt, %sle, %sgt, %sge, %ult, %ule, %ugt, %uge, %selected
 }
@@ -140,16 +140,16 @@ func.def target(@vm) @offset_compare_select(%lhs: offset, %rhs: offset) -> (i1, 
 
 // ----
 low.func.def target<vm.core>(@vm) abi(vm_function) @offset_compare_select(%lhs: reg<vm.value : i64>, %rhs: reg<vm.value : i64>) -> (reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i64>) asm {
-  %eq = integer.compare.i64 %lhs, %rhs, 0
-  %ne = integer.compare.i64 %lhs, %rhs, 1
-  %slt = integer.compare.i64 %lhs, %rhs, 2
-  %sle = integer.compare.i64 %lhs, %rhs, 3
-  %sgt = integer.compare.i64 %lhs, %rhs, 4
-  %sge = integer.compare.i64 %lhs, %rhs, 5
-  %ult = integer.compare.i64 %lhs, %rhs, 6
-  %ule = integer.compare.i64 %lhs, %rhs, 7
-  %ugt = integer.compare.i64 %lhs, %rhs, 8
-  %uge = integer.compare.i64 %lhs, %rhs, 9
+  %eq = integer.compare.i64 %lhs, %rhs, "eq"
+  %ne = integer.compare.i64 %lhs, %rhs, "ne"
+  %slt = integer.compare.i64 %lhs, %rhs, "slt"
+  %sle = integer.compare.i64 %lhs, %rhs, "sle"
+  %sgt = integer.compare.i64 %lhs, %rhs, "sgt"
+  %sge = integer.compare.i64 %lhs, %rhs, "sge"
+  %ult = integer.compare.i64 %lhs, %rhs, "ult"
+  %ule = integer.compare.i64 %lhs, %rhs, "ule"
+  %ugt = integer.compare.i64 %lhs, %rhs, "ugt"
+  %uge = integer.compare.i64 %lhs, %rhs, "uge"
   %selected = value.select %ult, %lhs, %rhs
   return %eq, %ne, %slt, %sle, %sgt, %sge, %ult, %ule, %ugt, %uge, %selected
 }

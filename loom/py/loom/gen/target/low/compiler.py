@@ -386,6 +386,10 @@ def derive_descriptor_projections(
         raise ValueError(f"descriptor '{descriptor.key}' has the early-clobber flag without an early-clobber constraint")
 
     derived_flags = list(descriptor.flags)
+    if DescriptorFlag.ENUM_IMMEDIATES in descriptor.flags:
+        raise ValueError(f"descriptor '{descriptor.key}' authors the derived enum-immediates flag")
+    if any(immediate.kind is ImmediateKind.ENUM for immediate in descriptor.immediates):
+        derived_flags.append(DescriptorFlag.ENUM_IMMEDIATES)
     if has_barrier_effect and not has_barrier_flag:
         derived_flags.append(DescriptorFlag.BARRIER)
     if has_early_clobber_constraint and not has_early_clobber_flag:

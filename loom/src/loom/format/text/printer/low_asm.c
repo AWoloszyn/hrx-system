@@ -464,6 +464,26 @@ static iree_status_t loom_print_low_asm_operand_segments(
   return iree_ok_status();
 }
 
+static iree_status_t loom_print_low_asm_immediate_value(
+    loom_print_context_t* ctx, const loom_text_low_asm_statement_t* statement,
+    const loom_text_low_asm_immediate_descriptor_t* immediate,
+    const loom_attribute_t* value) {
+  if (value->kind == LOOM_ATTR_I64 && immediate->enum_domain != UINT16_MAX) {
+    const loom_low_repr_environment_t* environment =
+        &ctx->low_asm_environment.low_repr;
+    const iree_string_view_t token = environment->vtable->enum_value_token(
+        environment->state, statement->packet.descriptor_set,
+        immediate->enum_domain, value->i64);
+    int64_t numeric_token_value = 0;
+    if (!iree_string_view_is_empty(token) &&
+        (!iree_string_view_atoi_int64(token, &numeric_token_value) ||
+         numeric_token_value != value->i64)) {
+      return loom_print_string_literal(ctx->stream, token);
+    }
+  }
+  return loom_print_attr(ctx, value, NULL);
+}
+
 static iree_status_t loom_print_low_asm_named_immediates(
     loom_print_context_t* ctx, const loom_text_low_asm_statement_t* statement,
     uint16_t immediate_start, uint16_t immediate_end) {
@@ -500,7 +520,8 @@ static iree_status_t loom_print_low_asm_named_immediates(
     IREE_RETURN_IF_ERROR(
         loom_output_stream_write(ctx->stream, immediate.spelling));
     IREE_RETURN_IF_ERROR(loom_output_stream_write_cstring(ctx->stream, " = "));
-    IREE_RETURN_IF_ERROR(loom_print_attr(ctx, &attr->value, NULL));
+    IREE_RETURN_IF_ERROR(loom_print_low_asm_immediate_value(
+        ctx, statement, &immediate, &attr->value));
     ++printed_count;
   }
   IREE_RETURN_IF_ERROR(loom_output_stream_write_char(ctx->stream, '}'));
@@ -535,7 +556,8 @@ static iree_status_t loom_print_low_asm_positional_immediates(
     }
     IREE_RETURN_IF_ERROR(loom_print_space_if_needed(ctx));
     iree_host_size_t start = ctx->stream->offset;
-    IREE_RETURN_IF_ERROR(loom_print_attr(ctx, &attr->value, NULL));
+    IREE_RETURN_IF_ERROR(loom_print_low_asm_immediate_value(
+        ctx, statement, &immediate, &attr->value));
     loom_print_did_write(ctx);
     if (statement->has_immediate_attribute_field) {
       loom_print_report_field(

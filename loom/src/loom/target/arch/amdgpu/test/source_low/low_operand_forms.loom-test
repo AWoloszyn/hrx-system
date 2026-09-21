@@ -101,7 +101,7 @@ low.func.def target<amdgpu.rdna3.core>(@target) @vop2_f32_inline_add(%rhs: reg<a
 amdgpu.target<gfx1100> @target
 
 low.func.def target<amdgpu.rdna3.core>(@target) @vop2_f32_inline_add(%rhs: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %result = v_add_f32_src0_inline %rhs, 1065353216
+  %result = v_add_f32_src0_inline %rhs, "f32_1_0"
   return %result
 }
 
@@ -263,7 +263,7 @@ low.func.def target<amdgpu.rdna3.core>(@target) @vop3_compare_f32_rhs_inline(%va
 amdgpu.target<gfx1100> @target
 
 low.func.def target<amdgpu.rdna3.core>(@target) @vop3_compare_f32_rhs_inline(%value: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>) asm {
-  %result = v_cmp_lt_f32_src1_inline %value {rhs = 1065353216}
+  %result = v_cmp_lt_f32_src1_inline %value {rhs = "f32_1_0"}
   return %result
 }
 
@@ -281,7 +281,7 @@ low.func.def target<amdgpu.rdna3.core>(@target) @vop3_compare_f32_lhs_inline(%va
 amdgpu.target<gfx1100> @target
 
 low.func.def target<amdgpu.rdna3.core>(@target) @vop3_compare_f32_lhs_inline(%value: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>) asm {
-  %result = v_cmp_gt_f32_src0_inline %value {lhs = 3212836864}
+  %result = v_cmp_gt_f32_src0_inline %value {lhs = "f32_n1_0"}
   return %result
 }
 

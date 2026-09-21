@@ -101,11 +101,7 @@ iree_status_t loom_spirv_emit_atomic_packet(
   IREE_RETURN_IF_ERROR(
       loom_spirv_emit_lookup_value(state, operand_values[1], &value));
 
-  int64_t ordering_value = 0;
-  IREE_RETURN_IF_ERROR(loom_spirv_emit_lookup_packet_i64_immediate(
-      state, packet, row->immediate_index, &ordering_value));
-  IREE_ASSERT(ordering_value >= LOOM_SPIRV_ATOMIC_ORDERING_RELAXED &&
-              ordering_value <= LOOM_SPIRV_ATOMIC_ORDERING_ACQUIRE_RELEASE);
+  const int64_t ordering_value = loom_spirv_emit_packet_immediate(packet);
   const loom_spirv_atomic_ordering_t ordering =
       (loom_spirv_atomic_ordering_t)ordering_value;
   uint32_t scope_id = 0;
@@ -141,11 +137,8 @@ iree_status_t loom_spirv_emit_atomic_compare_exchange_packet(
       loom_spirv_emit_lookup_value(state, operand_values[2], &expected));
   IREE_ASSERT_EQ(replacement.type_id, expected.type_id);
 
-  int64_t failure_ordering_value = 0;
-  IREE_RETURN_IF_ERROR(loom_spirv_emit_lookup_packet_i64_immediate(
-      state, packet, row->immediate_index, &failure_ordering_value));
-  IREE_ASSERT(failure_ordering_value >= LOOM_SPIRV_ATOMIC_ORDERING_RELAXED &&
-              failure_ordering_value <= LOOM_SPIRV_ATOMIC_ORDERING_ACQUIRE);
+  const int64_t failure_ordering_value =
+      loom_spirv_emit_packet_immediate(packet);
   const loom_spirv_atomic_ordering_t success_ordering =
       (loom_spirv_atomic_ordering_t)row->payload.atomic.success_ordering;
   const loom_spirv_atomic_ordering_t failure_ordering =
@@ -246,11 +239,7 @@ iree_status_t loom_spirv_emit_atomic_float_bitcast_packet(
   IREE_RETURN_IF_ERROR(
       loom_spirv_emit_lookup_value(state, operand_values[1], &value));
 
-  int64_t ordering_value = 0;
-  IREE_RETURN_IF_ERROR(loom_spirv_emit_lookup_packet_i64_immediate(
-      state, packet, row->immediate_index, &ordering_value));
-  IREE_ASSERT(ordering_value >= LOOM_SPIRV_ATOMIC_ORDERING_RELAXED &&
-              ordering_value <= LOOM_SPIRV_ATOMIC_ORDERING_ACQUIRE_RELEASE);
+  const int64_t ordering_value = loom_spirv_emit_packet_immediate(packet);
   uint32_t scope_id = 0;
   uint32_t semantics_id = 0;
   IREE_RETURN_IF_ERROR(loom_spirv_emit_atomic_constants(
@@ -292,11 +281,8 @@ iree_status_t loom_spirv_emit_atomic_float_compare_exchange_packet(
       loom_spirv_emit_lookup_value(state, operand_values[2], &expected));
   IREE_ASSERT_EQ(replacement.type_id, expected.type_id);
 
-  int64_t failure_ordering_value = 0;
-  IREE_RETURN_IF_ERROR(loom_spirv_emit_lookup_packet_i64_immediate(
-      state, packet, row->immediate_index, &failure_ordering_value));
-  IREE_ASSERT(failure_ordering_value >= LOOM_SPIRV_ATOMIC_ORDERING_RELAXED &&
-              failure_ordering_value <= LOOM_SPIRV_ATOMIC_ORDERING_ACQUIRE);
+  const int64_t failure_ordering_value =
+      loom_spirv_emit_packet_immediate(packet);
   uint32_t scope_id = 0;
   uint32_t success_semantics_id = 0;
   IREE_RETURN_IF_ERROR(loom_spirv_emit_atomic_constants(
@@ -423,11 +409,7 @@ iree_status_t loom_spirv_emit_atomic_float_cas_packet(
   IREE_RETURN_IF_ERROR(
       loom_spirv_emit_lookup_value(state, operand_values[1], &value));
 
-  int64_t ordering_value = 0;
-  IREE_RETURN_IF_ERROR(loom_spirv_emit_lookup_packet_i64_immediate(
-      state, packet, row->immediate_index, &ordering_value));
-  IREE_ASSERT(ordering_value >= LOOM_SPIRV_ATOMIC_ORDERING_RELAXED &&
-              ordering_value <= LOOM_SPIRV_ATOMIC_ORDERING_ACQUIRE_RELEASE);
+  const int64_t ordering_value = loom_spirv_emit_packet_immediate(packet);
   uint32_t scope_id = 0;
   uint32_t success_semantics_id = 0;
   IREE_RETURN_IF_ERROR(loom_spirv_emit_atomic_constants(

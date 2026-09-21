@@ -592,6 +592,9 @@ static iree_status_t loom_finalize_op(
   loom_op_refresh_effective_traits(parser->module, op);
   if (parsed->has_effective_traits) {
     op->traits = parsed->effective_traits;
+    IREE_RETURN_IF_ERROR(loom_low_repr_resolve_packet_attributes(
+        &parser->low_asm_environment.low_repr, parser->low_repr.descriptor_set,
+        parser->module, op));
   }
 
   // Link symbol-defining ops incrementally so the symbol table has

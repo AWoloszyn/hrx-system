@@ -128,9 +128,9 @@ low.func.def public retain target<amd.xdna.aie2p.array>(@array_target) abi(array
   %69 = worker %63, %68, @produce
   %70 = constant.u32 0 : reg<aie2p.array.scalar : index>
   %71 = worker %65, %70, @composite_reduce$group$1
-  %72 = binding 0, 1
-  %73 = binding 1, 1
-  %74 = binding 2, 2
+  %72 = binding 0, "read"
+  %73 = binding 1, "read"
+  %74 = binding 2, "write"
   %75 = sender %72, 0 : reg<aie2p.array.sender : tile<2x16xi8>>
   %76 = constant.u64 0 : reg<aie2p.array.offset : offset>
   %77 = constant.u32 0 : reg<aie2p.array.scalar : index>

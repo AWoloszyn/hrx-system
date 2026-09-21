@@ -458,7 +458,7 @@ func.def target(@target) @rope_pair_rotate(%even: f32, %odd: f32, %angle: f32) -
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @rope_pair_rotate(%even: reg<amdgpu.vgpr>, %odd: reg<amdgpu.vgpr>, %angle: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
-  %24 = v_mul_f32_src0_inline %angle, 1042479491
+  %24 = v_mul_f32_src0_inline %angle, "f32_inv_2pi"
   %sine = v_sin_f32 %24
   %cosine = v_cos_f32 %24
   %even_cos = v_mul_f32 %even, %cosine

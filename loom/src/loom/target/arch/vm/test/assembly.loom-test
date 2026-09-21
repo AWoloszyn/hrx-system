@@ -61,3 +61,18 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @float_selectors(%a: reg<vm.v
   %bits = value.copy %fused : reg<vm.value : i32>
   return %bits, %unordered
 }
+
+// ====
+// RUN: with-checks format bytecode
+
+vm.target<core> @vm
+
+low.func.def target<vm.core>(@vm) abi(vm_function) @enum_spellings(%a: reg<vm.value : i64>, %b: reg<vm.value : i64>) -> (reg<vm.value : i1>, reg<vm.value : i1>) asm {
+  %named = integer.compare.i64 %a, %b, "ult"
+  %numeric = integer.compare.i64 %a, %b, 6
+  return %named, %numeric
+}
+
+// ----
+CHECK: %named = integer.compare.i64 %a, %b, "ult"
+CHECK: %numeric = integer.compare.i64 %a, %b, "ult"

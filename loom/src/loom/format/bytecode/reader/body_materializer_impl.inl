@@ -726,6 +726,9 @@ loom_bytecode_body_reader_read_op_record(
   }
   if (has_effective_traits) {
     op->traits = effective_traits;
+    IREE_RETURN_IF_ERROR(loom_low_repr_resolve_packet_attributes(
+        loom_bytecode_body_policy_low_repr_environment(body_reader->materializer),
+        body_reader->low_descriptor_set, builder->module, op));
   }
   if (source_trivia.leading_blank_line) {
     op->flags |= LOOM_OP_FLAG_LEADING_BLANK_LINE;

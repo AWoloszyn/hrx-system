@@ -1237,10 +1237,10 @@ low.kernel.def target<amdgpu.rdna3.core>(@target) abi_layout({constant_count = 0
   %55 = v_cvt_f32_f16 %54
   %56 = slice %result[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
   %57 = v_cvt_f32_f16 %56
-  %60 = v_mul_f32_src0_inline %51, 1073741824
-  %62 = v_mul_f32_src0_inline %53, 1073741824
-  %64 = v_mul_f32_src0_inline %55, 1073741824
-  %66 = v_mul_f32_src0_inline %57, 1073741824
+  %60 = v_mul_f32_src0_inline %51, "f32_2_0"
+  %62 = v_mul_f32_src0_inline %53, "f32_2_0"
+  %64 = v_mul_f32_src0_inline %55, "f32_2_0"
+  %66 = v_mul_f32_src0_inline %57, "f32_2_0"
   %68 = v_lshlrev_b32_src0_inline %25, 2
   global_store_b32_saddr %68, %60, %out_view
   global_store_b32_saddr %68, %62, %out_view {offset = 256}
@@ -3351,7 +3351,7 @@ func.def target(@target) @scaled_wmma_f8_selectors(%lhs_data: vector<16xi32>, %r
 // ----
 low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) abi(hal_kernel) @scaled_wmma_f8_selectors(%lhs: reg<amdgpu.vgpr x16>, %rhs: reg<amdgpu.vgpr x16>, %init: reg<amdgpu.vgpr x8>, %scale_a: reg<amdgpu.vgpr>, %scale_b: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr x8>) asm {
   %20 = copy %init : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
-  %result = v_wmma_scale_f32_16x16x128_f8f6f4_f8_f8 %lhs, %rhs, %20, %scale_a, %scale_b {matrix_a_fmt = 1, matrix_b_fmt = 1, matrix_a_scale_fmt = 2, matrix_b_scale_fmt = 2}
+  %result = v_wmma_scale_f32_16x16x128_f8f6f4_f8_f8 %lhs, %rhs, %20, %scale_a, %scale_b {matrix_a_fmt = "bf8", matrix_b_fmt = "bf8", matrix_a_scale_fmt = "fp8_e4m3", matrix_b_scale_fmt = "fp8_e4m3"}
   return %result
 }
 
@@ -3410,7 +3410,7 @@ low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_c
   %rhs = concat(%46, %48, %50, %52) : (reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>, reg<amdgpu.vgpr x4>) -> reg<amdgpu.vgpr x16>
   %init = concat(%32, %32, %32, %32, %32, %32, %32, %32) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
   %63 = copy %init : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
-  %result = v_wmma_scale_f32_16x16x128_f8f6f4_f8_f8 %lhs, %rhs, %63, %scale_a, %scale_b {matrix_a_fmt = 1, matrix_b_fmt = 1, matrix_a_scale_fmt = 2, matrix_b_scale_fmt = 2}
+  %result = v_wmma_scale_f32_16x16x128_f8f6f4_f8_f8 %lhs, %rhs, %63, %scale_a, %scale_b {matrix_a_fmt = "bf8", matrix_b_fmt = "bf8", matrix_a_scale_fmt = "fp8_e4m3", matrix_b_scale_fmt = "fp8_e4m3"}
   %65 = v_and_b32_src0_inline %26, 15
   %66 = v_lshlrev_b32_src0_inline %65, 2
   %67 = v_lshrrev_b32_src0_inline %26, 4
@@ -3454,7 +3454,7 @@ func.def target(@target) @scaled_wmma_fp4_e8m0_selectors(%lhs_data: vector<8xi32
 // ----
 low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) abi(hal_kernel) @scaled_wmma_fp4_e8m0_selectors(%lhs: reg<amdgpu.vgpr x8>, %rhs: reg<amdgpu.vgpr x8>, %init: reg<amdgpu.vgpr x8>, %scale_a: reg<amdgpu.vgpr>, %scale_b: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr x8>) asm {
   %20 = copy %init : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
-  %result = v_wmma_scale_f32_16x16x128_f8f6f4_f4_f4 %lhs, %rhs, %20, %scale_a, %scale_b {matrix_a_fmt = 4, matrix_b_fmt = 4}
+  %result = v_wmma_scale_f32_16x16x128_f8f6f4_f4_f4 %lhs, %rhs, %20, %scale_a, %scale_b {matrix_a_fmt = "fp4", matrix_b_fmt = "fp4"}
   return %result
 }
 
@@ -3477,7 +3477,7 @@ func.def target(@target) @scaled_wmma_fp6_e8m0_selectors(%lhs_data: vector<12xi3
 // ----
 low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) abi(hal_kernel) @scaled_wmma_fp6_e8m0_selectors(%lhs: reg<amdgpu.vgpr x12>, %rhs: reg<amdgpu.vgpr x12>, %init: reg<amdgpu.vgpr x8>, %scale_a: reg<amdgpu.vgpr>, %scale_b: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr x8>) asm {
   %20 = copy %init : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
-  %result = v_wmma_scale_f32_16x16x128_f8f6f4_f6_f6 %lhs, %rhs, %20, %scale_a, %scale_b {matrix_a_fmt = 2, matrix_b_fmt = 2}
+  %result = v_wmma_scale_f32_16x16x128_f8f6f4_f6_f6 %lhs, %rhs, %20, %scale_a, %scale_b {matrix_a_fmt = "fp6", matrix_b_fmt = "fp6"}
   return %result
 }
 
@@ -3500,7 +3500,7 @@ func.def target(@target) @scaled_wmma_bf6_e8m0_selectors(%lhs_data: vector<12xi3
 // ----
 low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) abi(hal_kernel) @scaled_wmma_bf6_e8m0_selectors(%lhs: reg<amdgpu.vgpr x12>, %rhs: reg<amdgpu.vgpr x12>, %init: reg<amdgpu.vgpr x8>, %scale_a: reg<amdgpu.vgpr>, %scale_b: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr x8>) asm {
   %20 = copy %init : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
-  %result = v_wmma_scale_f32_16x16x128_f8f6f4_f6_f6 %lhs, %rhs, %20, %scale_a, %scale_b {matrix_a_fmt = 3, matrix_b_fmt = 3}
+  %result = v_wmma_scale_f32_16x16x128_f8f6f4_f6_f6 %lhs, %rhs, %20, %scale_a, %scale_b {matrix_a_fmt = "bf6", matrix_b_fmt = "bf6"}
   return %result
 }
 
@@ -3523,7 +3523,7 @@ func.def target(@target) @scaled_wmma_scale16_f8_selectors(%lhs_data: vector<16x
 // ----
 low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) abi(hal_kernel) @scaled_wmma_scale16_f8_selectors(%lhs: reg<amdgpu.vgpr x16>, %rhs: reg<amdgpu.vgpr x16>, %init: reg<amdgpu.vgpr x8>, %scale_a: reg<amdgpu.vgpr x2>, %scale_b: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x8>) asm {
   %20 = copy %init : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
-  %result = v_wmma_scale16_f32_16x16x128_f8f6f4_f8_f8 %lhs, %rhs, %20, %scale_a, %scale_b {matrix_a_fmt = 1, matrix_b_fmt = 1, matrix_a_scale_fmt = 2, matrix_b_scale_fmt = 2}
+  %result = v_wmma_scale16_f32_16x16x128_f8f6f4_f8_f8 %lhs, %rhs, %20, %scale_a, %scale_b {matrix_a_fmt = "bf8", matrix_b_fmt = "bf8", matrix_a_scale_fmt = "fp8_e4m3", matrix_b_scale_fmt = "fp8_e4m3"}
   return %result
 }
 
@@ -3546,7 +3546,7 @@ func.def target(@target) @scaled_wmma_scale16_fp4_e8m0_selectors(%lhs_data: vect
 // ----
 low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) abi(hal_kernel) @scaled_wmma_scale16_fp4_e8m0_selectors(%lhs: reg<amdgpu.vgpr x8>, %rhs: reg<amdgpu.vgpr x8>, %init: reg<amdgpu.vgpr x8>, %scale_a: reg<amdgpu.vgpr x2>, %scale_b: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x8>) asm {
   %20 = copy %init : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
-  %result = v_wmma_scale16_f32_16x16x128_f8f6f4_f4_f4 %lhs, %rhs, %20, %scale_a, %scale_b {matrix_a_fmt = 4, matrix_b_fmt = 4}
+  %result = v_wmma_scale16_f32_16x16x128_f8f6f4_f4_f4 %lhs, %rhs, %20, %scale_a, %scale_b {matrix_a_fmt = "fp4", matrix_b_fmt = "fp4"}
   return %result
 }
 

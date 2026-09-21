@@ -87,10 +87,10 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @buffer_generations(%count: r
   %c0 = constant.i32 0
   low.br ^_bb1(%count: reg<vm.value : i32>, %first: reg<vm.ref : buffer>, %second: reg<vm.ref : buffer>)
 ^_bb1(%before: reg<vm.value : i32>, %x: reg<vm.ref : buffer>, %y: reg<vm.ref : buffer>):
-  %condition = integer.compare.i32 %before, %c0, 4
+  %condition = integer.compare.i32 %before, %c0, "sgt"
   low.cond_br %condition, ^_bb2, ^_bb3 : reg<vm.value : i1>
 ^_bb2:
-  %extra = conversion.integer %before, 19
+  %extra = conversion.integer %before, "u32.to.i64"
   %extent = integer.add.i64 %length, %extra
   %replacement = buffer.allocate %extent, 3 : reg<vm.ref : buffer>
   buffer.copy %replacement, %base_offset, %x, %base_offset, %length

@@ -655,9 +655,9 @@ func.def target(@gfx11_target) @vector_f32_mulf_uniform_constant_keeps_mul(%q: v
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@gfx11_target) abi(hal_kernel) @vector_f32_mulf_uniform_constant_keeps_mul(%q: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
   %6 = slice %q[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
-  %7 = v_mul_f32_src0_inline %6, 1073741824
+  %7 = v_mul_f32_src0_inline %6, "f32_2_0"
   %8 = slice %q[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
-  %9 = v_mul_f32_src0_inline %8, 1073741824
+  %9 = v_mul_f32_src0_inline %8, "f32_2_0"
   %result = concat(%7, %9) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
   return %result
 }

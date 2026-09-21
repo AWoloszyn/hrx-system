@@ -8,7 +8,7 @@ low.func.def public target<vm.core>(@vm) abi(vm_function) @scaled_half(%base: re
   %length = constant.i64 64
   %buffer = buffer.allocate %length, 3 : reg<vm.ref : buffer>
   buffer.store %buffer, %base, %index, %value, 3, "i16.x1"
-  %result = buffer.load %buffer, %base, %index, 3, 4
+  %result = buffer.load %buffer, %base, %index, 3, "i16.x1"
   return %result
 }
 
@@ -53,7 +53,7 @@ vm.target<core> @vm
 // Named and numeric immediates share the same packed selector representation.
 low.func.def public target<vm.core>(@vm) abi(vm_function) @atomic_selectors(%buffer: reg<vm.ref : buffer>, %offset: reg<vm.value : i64>, %value: reg<vm.value : i64>, %replacement: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>) asm {
   buffer.atomic.reduce %buffer, %offset, %value, "i64", "add.integer", "release", "system"
-  %old = buffer.atomic.rmw %buffer, %offset, %value, 1, 2, 1, 3 : reg<vm.value : i64>
+  %old = buffer.atomic.rmw %buffer, %offset, %value, "i64", "add.integer", "acquire", "device" : reg<vm.value : i64>
   %exchanged = buffer.atomic.cmpxchg %buffer, %offset, %old, %replacement, "acq_rel.acquire", "i64", "system" : reg<vm.value : i64>
   return %old, %exchanged
 }
@@ -109,7 +109,7 @@ vm.target<core> @vm
 // Failure acquire (8) cannot be paired with success relaxed (0).
 low.func.def target<vm.core>(@vm) abi(vm_function) @invalid_orderings(%buffer: reg<vm.ref : buffer>, %offset: reg<vm.value : i64>, %expected: reg<vm.value : i32>, %replacement: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
   // ERROR@+1: STRUCTURE/027
-  %old = buffer.atomic.cmpxchg %buffer, %offset, %expected, %replacement, 8, 0, 3 : reg<vm.value : i32>
+  %old = buffer.atomic.cmpxchg %buffer, %offset, %expected, %replacement, 8, "i32", "device" : reg<vm.value : i32>
   return %old
 }
 
@@ -122,7 +122,7 @@ vm.target<core> @vm
 // Exchange is an RMW operation, not a reduction selector.
 low.func.def target<vm.core>(@vm) abi(vm_function) @invalid_reduction(%buffer: reg<vm.ref : buffer>, %offset: reg<vm.value : i64>, %value: reg<vm.value : i32>) asm {
   // ERROR@+1: STRUCTURE/027
-  buffer.atomic.reduce %buffer, %offset, %value, 0, 0, 0, 3
+  buffer.atomic.reduce %buffer, %offset, %value, "i32", 0, "relaxed", "device"
   return
 }
 

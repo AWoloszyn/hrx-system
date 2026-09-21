@@ -42,7 +42,7 @@ low.func.def target<vm.core>(@target) abi(vm_function) @derived_selection(%first
 ^_bb5:
   low.br ^_bb6(%third_aligned: reg<vm.ref : buffer>, %base2: reg<vm.value : i64>)
 ^_bb6(%selected: reg<vm.ref : buffer>, %selected_offset: reg<vm.value : i64>):
-  %value = buffer.load %selected, %selected_offset, %selected_offset, 0, 8 : reg<vm.value : i32>
+  %value = buffer.load %selected, %selected_offset, %selected_offset, 0, "i32.x1" : reg<vm.value : i32>
   return %value
 }
 
@@ -79,10 +79,10 @@ low.func.def target<vm.core>(@target) abi(vm_function) @selection_with_side_effe
   low.cond_br %enter, ^producer, ^exit : reg<vm.value : i1>
 ^producer:
   %40 = constant.i64 0
-  buffer.store %third_view, %40, %40, %initial, 0, 8
+  buffer.store %third_view, %40, %40, %initial, 0, "i32.x1"
   low.cond_br %side, ^_bb2, ^_bb3 : reg<vm.value : i1>
 ^_bb2:
-  buffer.store %first_view, %40, %40, %initial, 0, 8
+  buffer.store %first_view, %40, %40, %initial, 0, "i32.x1"
   low.br ^_bb3
 ^_bb3:
   low.cond_br %select_first, ^_bb4, ^_bb5 : reg<vm.value : i1>
@@ -97,7 +97,7 @@ low.func.def target<vm.core>(@target) abi(vm_function) @selection_with_side_effe
 ^_bb8:
   low.br ^_bb9(%third_view: reg<vm.ref : buffer>)
 ^_bb9(%selected: reg<vm.ref : buffer>):
-  %result = buffer.load %selected, %40, %40, 0, 8 : reg<vm.value : i32>
+  %result = buffer.load %selected, %40, %40, 0, "i32.x1" : reg<vm.value : i32>
   return %result
 ^exit:
   return %initial

@@ -464,6 +464,8 @@ typedef uint16_t loom_low_descriptor_flags_t;
 // Each execution produces a result with a distinct identity. Prevents CSE but
 // permits dead-result elimination.
 #define LOOM_LOW_DESCRIPTOR_FLAG_UNIQUE_IDENTITY ((uint16_t)1u << 8)
+// Descriptor has enum immediates whose named input values require resolution.
+#define LOOM_LOW_DESCRIPTOR_FLAG_ENUM_IMMEDIATES ((uint16_t)1u << 9)
 
 // Target-neutral semantic classes attached to generated low descriptors.
 // Multiple classes may be present when a packet contributes to several
@@ -737,7 +739,8 @@ typedef struct loom_low_immediate_t {
   uint16_t encoding_field_id;
   // Number of encoding-slice rows for this immediate.
   uint16_t encoding_slice_count;
-  // Immediate interpretation used by verifier and emitter.
+  // Immediate interpretation used by verifier and emitter. Enum immediates
+  // carry semantic i64 values in verified IR; construction resolves names.
   loom_low_immediate_kind_t kind;
   // Immediate flags such as symbolic or relative.
   loom_low_immediate_flags_t flags;

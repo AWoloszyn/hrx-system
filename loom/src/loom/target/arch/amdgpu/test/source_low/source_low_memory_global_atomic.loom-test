@@ -121,7 +121,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %47 = s_mov_b64_exec_read
   low.br ^_bb1(%36: reg<amdgpu.vgpr>)
 ^_bb1(%31: reg<amdgpu.vgpr>):
-  %37 = v_add_f32_src0_inline %31, 1065353216
+  %37 = v_add_f32_src0_inline %31, "f32_1_0"
   %39 = s_mov_b32 0
   %63 = slice %view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %64 = slice %view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -146,7 +146,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %60 = s_mov_b64_exec_read
   low.br ^_bb3(%36: reg<amdgpu.vgpr>)
 ^_bb3(%32: reg<amdgpu.vgpr>):
-  %50 = v_add_f32_src0_inline %32, 1065353216
+  %50 = v_add_f32_src0_inline %32, "f32_1_0"
   %51 = v_mov_b32 0
   %52 = s_mov_b32 0
   %71 = slice %view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>

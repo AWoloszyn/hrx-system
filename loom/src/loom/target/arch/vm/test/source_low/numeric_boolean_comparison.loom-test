@@ -60,35 +60,35 @@ func.def public target(@target) @boolean_comparisons(%left: i32, %right: i32) ->
 // ----
 low.func.def public target<vm.core>(@target) abi(vm_function) @boolean_comparisons(%left: reg<vm.value : i32>, %right: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
   %c0 = constant.i32 0
-  %lhs = integer.compare.i32 %left, %c0, 1
-  %rhs = integer.compare.i32 %right, %c0, 1
+  %lhs = integer.compare.i32 %left, %c0, "ne"
+  %rhs = integer.compare.i32 %right, %c0, "ne"
   %87 = integer.xor.i32 %lhs, %rhs : reg<vm.value : i1>
   %88 = constant.i32 1 : reg<vm.value : i1>
   %eq = integer.xor.i32 %87, %88 : reg<vm.value : i1>
-  %eq_bit = conversion.integer %eq, 5 : reg<vm.value : i32>
-  %ne_bit = conversion.integer %87, 5 : reg<vm.value : i32>
+  %eq_bit = conversion.integer %eq, "u1.to.i32" : reg<vm.value : i32>
+  %ne_bit = conversion.integer %87, "u1.to.i32" : reg<vm.value : i32>
   %shift_1 = constant.i32 1
   %ne_shifted = integer.shift.left.i32 %ne_bit, %shift_1
   %mask_1 = integer.or.i32 %eq_bit, %ne_shifted
   %95 = integer.xor.i32 %rhs, %88 : reg<vm.value : i1>
   %slt = integer.and.i32 %95, %lhs : reg<vm.value : i1>
-  %slt_bit = conversion.integer %slt, 5 : reg<vm.value : i32>
+  %slt_bit = conversion.integer %slt, "u1.to.i32" : reg<vm.value : i32>
   %shift_2 = constant.i32 2
   %slt_shifted = integer.shift.left.i32 %slt_bit, %shift_2
   %mask_2 = integer.or.i32 %mask_1, %slt_shifted
   %sle = integer.or.i32 %95, %lhs : reg<vm.value : i1>
-  %sle_bit = conversion.integer %sle, 5 : reg<vm.value : i32>
+  %sle_bit = conversion.integer %sle, "u1.to.i32" : reg<vm.value : i32>
   %shift_3 = constant.i32 3
   %sle_shifted = integer.shift.left.i32 %sle_bit, %shift_3
   %mask_3 = integer.or.i32 %mask_2, %sle_shifted
   %106 = integer.xor.i32 %lhs, %88 : reg<vm.value : i1>
   %sgt = integer.and.i32 %106, %rhs : reg<vm.value : i1>
-  %sgt_bit = conversion.integer %sgt, 5 : reg<vm.value : i32>
+  %sgt_bit = conversion.integer %sgt, "u1.to.i32" : reg<vm.value : i32>
   %shift_4 = constant.i32 4
   %sgt_shifted = integer.shift.left.i32 %sgt_bit, %shift_4
   %mask_4 = integer.or.i32 %mask_3, %sgt_shifted
   %sge = integer.or.i32 %106, %rhs : reg<vm.value : i1>
-  %sge_bit = conversion.integer %sge, 5 : reg<vm.value : i32>
+  %sge_bit = conversion.integer %sge, "u1.to.i32" : reg<vm.value : i32>
   %shift_5 = constant.i32 5
   %sge_shifted = integer.shift.left.i32 %sge_bit, %shift_5
   %mask_5 = integer.or.i32 %mask_4, %sge_shifted
@@ -155,7 +155,7 @@ func.def public target(@target) @boolean_unsigned_extensions(%input: i1) -> (i32
 
 // ----
 low.func.def public target<vm.core>(@target) abi(vm_function) @boolean_unsigned_extensions(%input: reg<vm.value : i1>) -> (reg<vm.value : i32>, reg<vm.value : i64>) asm {
-  %word = conversion.integer %input, 5 : reg<vm.value : i32>
-  %wide = conversion.integer %input, 7
+  %word = conversion.integer %input, "u1.to.i32" : reg<vm.value : i32>
+  %wide = conversion.integer %input, "u1.to.i64"
   return %word, %wide
 }

@@ -40,12 +40,12 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @indexed_view_bytes(%base: re
   %45 = constant.i64 2 : reg<vm.value>
   %46 = integer.shift.left.i64 %44, %45
   %47 = integer.add.i64 %base, %46
-  buffer.store %matrix, %47, %47, %pattern, 0, 8
-  %loaded = buffer.load %matrix, %47, %47, 0, 8 : reg<vm.value : i32>
+  buffer.store %matrix, %47, %47, %pattern, 0, "i32.x1"
+  %loaded = buffer.load %matrix, %47, %47, 0, "i32.x1" : reg<vm.value : i32>
   %52 = constant.i64 2
   %offset = integer.shift.left.i64 %44, %52
   %address = integer.add.i64 %base, %offset
-  %byte = buffer.load %matrix, %address, %address, 0, 0 : reg<vm.value : i32>
+  %byte = buffer.load %matrix, %address, %address, 0, "i8.x1" : reg<vm.value : i32>
   return %loaded, %byte
 }
 
@@ -87,9 +87,9 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @reverse_view_bytes(%index: r
   %33 = constant.i64 -4 : reg<vm.value>
   %34 = integer.mul.i64 %index, %33
   %35 = integer.add.i64 %34, %last_word
-  buffer.store %selected, %35, %35, %pattern, 0, 8
-  %loaded = buffer.load %selected, %35, %35, 0, 8 : reg<vm.value : i32>
-  %byte = buffer.load %selected, %address, %address, 0, 0 : reg<vm.value : i32>
+  buffer.store %selected, %35, %35, %pattern, 0, "i32.x1"
+  %loaded = buffer.load %selected, %35, %35, 0, "i32.x1" : reg<vm.value : i32>
+  %byte = buffer.load %selected, %address, %address, 0, "i8.x1" : reg<vm.value : i32>
   return %loaded, %byte
 }
 
@@ -139,35 +139,35 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @view_payloads(%input_i8: reg
   %length = constant.i64 64
   %view_f64 = buffer.allocate %length, 3 : reg<vm.ref : buffer>
   %65 = constant.i64 0
-  buffer.store %view_f64, %65, %65, %input_i8, 0, 0
+  buffer.store %view_f64, %65, %65, %input_i8, 0, "i8.x1"
   %66 = constant.i64 2
-  buffer.store %view_f64, %66, %66, %input_i16, 0, 4
+  buffer.store %view_f64, %66, %66, %input_i16, 0, "i16.x1"
   %67 = constant.i64 4
-  buffer.store %view_f64, %67, %67, %input_i32, 0, 8
+  buffer.store %view_f64, %67, %67, %input_i32, 0, "i32.x1"
   %68 = constant.i64 8
-  buffer.store %view_f64, %68, %68, %input_i64, 0, 12
+  buffer.store %view_f64, %68, %68, %input_i64, 0, "i64.x1"
   %69 = constant.i64 16
-  buffer.store %view_f64, %69, %69, %input_f8E4M3, 0, 0
+  buffer.store %view_f64, %69, %69, %input_f8E4M3, 0, "i8.x1"
   %70 = constant.i64 17
-  buffer.store %view_f64, %70, %70, %input_f8E5M2, 0, 0
+  buffer.store %view_f64, %70, %70, %input_f8E5M2, 0, "i8.x1"
   %71 = constant.i64 18
-  buffer.store %view_f64, %71, %71, %input_f16, 0, 4
+  buffer.store %view_f64, %71, %71, %input_f16, 0, "i16.x1"
   %72 = constant.i64 20
-  buffer.store %view_f64, %72, %72, %input_bf16, 0, 4
+  buffer.store %view_f64, %72, %72, %input_bf16, 0, "i16.x1"
   %73 = constant.i64 24
-  buffer.store %view_f64, %73, %73, %input_f32, 0, 8
+  buffer.store %view_f64, %73, %73, %input_f32, 0, "i32.x1"
   %74 = constant.i64 32
-  buffer.store %view_f64, %74, %74, %input_f64, 0, 12
-  %loaded_i8 = buffer.load %view_f64, %65, %65, 0, 0 : reg<vm.value : i8>
-  %loaded_i16 = buffer.load %view_f64, %66, %66, 0, 4 : reg<vm.value : i16>
-  %loaded_i32 = buffer.load %view_f64, %67, %67, 0, 8 : reg<vm.value : i32>
-  %loaded_i64 = buffer.load %view_f64, %68, %68, 0, 12
-  %loaded_f8E4M3 = buffer.load %view_f64, %69, %69, 0, 0 : reg<vm.value : f8E4M3>
-  %loaded_f8E5M2 = buffer.load %view_f64, %70, %70, 0, 0 : reg<vm.value : f8E5M2>
-  %loaded_f16 = buffer.load %view_f64, %71, %71, 0, 4 : reg<vm.value : f16>
-  %loaded_bf16 = buffer.load %view_f64, %72, %72, 0, 4 : reg<vm.value : bf16>
-  %loaded_f32 = buffer.load %view_f64, %73, %73, 0, 8 : reg<vm.value : f32>
-  %loaded_f64 = buffer.load %view_f64, %74, %74, 0, 12 : reg<vm.value : f64>
+  buffer.store %view_f64, %74, %74, %input_f64, 0, "i64.x1"
+  %loaded_i8 = buffer.load %view_f64, %65, %65, 0, "i8.x1" : reg<vm.value : i8>
+  %loaded_i16 = buffer.load %view_f64, %66, %66, 0, "i16.x1" : reg<vm.value : i16>
+  %loaded_i32 = buffer.load %view_f64, %67, %67, 0, "i32.x1" : reg<vm.value : i32>
+  %loaded_i64 = buffer.load %view_f64, %68, %68, 0, "i64.x1"
+  %loaded_f8E4M3 = buffer.load %view_f64, %69, %69, 0, "i8.x1" : reg<vm.value : f8E4M3>
+  %loaded_f8E5M2 = buffer.load %view_f64, %70, %70, 0, "i8.x1" : reg<vm.value : f8E5M2>
+  %loaded_f16 = buffer.load %view_f64, %71, %71, 0, "i16.x1" : reg<vm.value : f16>
+  %loaded_bf16 = buffer.load %view_f64, %72, %72, 0, "i16.x1" : reg<vm.value : bf16>
+  %loaded_f32 = buffer.load %view_f64, %73, %73, 0, "i32.x1" : reg<vm.value : f32>
+  %loaded_f64 = buffer.load %view_f64, %74, %74, 0, "i64.x1" : reg<vm.value : f64>
   return %loaded_i8, %loaded_i16, %loaded_i32, %loaded_i64, %loaded_f8E4M3, %loaded_f8E5M2, %loaded_f16, %loaded_bf16, %loaded_f32, %loaded_f64
 }
 
@@ -218,23 +218,23 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @view_tail_sum(%columns: reg<
   %step = constant.i64 1
   low.br ^_bb1(%origin: reg<vm.value : i64>)
 ^_bb1(%column$45: reg<vm.value : i64>):
-  %55 = integer.compare.i64 %column$45, %columns, 2
+  %55 = integer.compare.i64 %column$45, %columns, "slt"
   low.cond_br %55, ^_bb2, ^_bb3 : reg<vm.value : i1>
 ^_bb2:
-  %ordinal = conversion.integer %column$45, 29 : reg<vm.value : i32>
+  %ordinal = conversion.integer %column$45, "i64.to.i32" : reg<vm.value : i32>
   %value$57 = integer.add.i32 %pattern, %ordinal
   %59 = constant.i64 2 : reg<vm.value>
   %60 = integer.shift.left.i64 %columns, %59
   %62 = integer.shift.left.i64 %column$45, %59
   %63 = integer.add.i64 %60, %62
   %64 = integer.add.i64 %63, %base
-  buffer.store %selected, %64, %64, %value$57, 0, 8
+  buffer.store %selected, %64, %64, %value$57, 0, "i32.x1"
   %65 = integer.add.i64 %column$45, %step
   low.br ^_bb1(%65: reg<vm.value : i64>)
 ^_bb3:
   low.br ^_bb4(%origin: reg<vm.value : i64>, %clear: reg<vm.value : i32>)
 ^_bb4(%column$46: reg<vm.value : i64>, %partial: reg<vm.value : i32>):
-  %66 = integer.compare.i64 %column$46, %columns, 2
+  %66 = integer.compare.i64 %column$46, %columns, "slt"
   low.cond_br %66, ^_bb5, ^_bb6 : reg<vm.value : i1>
 ^_bb5:
   %68 = constant.i64 2 : reg<vm.value>
@@ -242,7 +242,7 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @view_tail_sum(%columns: reg<
   %71 = integer.shift.left.i64 %column$46, %68
   %72 = integer.add.i64 %69, %71
   %73 = integer.add.i64 %72, %base
-  %value$74 = buffer.load %selected, %73, %73, 0, 8 : reg<vm.value : i32>
+  %value$74 = buffer.load %selected, %73, %73, 0, "i32.x1" : reg<vm.value : i32>
   %next = integer.add.i32 %partial, %value$74
   %76 = integer.add.i64 %column$46, %step
   low.br ^_bb4(%76: reg<vm.value : i64>, %next: reg<vm.value : i32>)
@@ -250,6 +250,6 @@ low.func.def target<vm.core>(@vm) abi(vm_function) @view_tail_sum(%columns: reg<
   %77 = constant.i64 2
   %row_offset = integer.shift.left.i64 %columns, %77
   %address = integer.add.i64 %base, %row_offset
-  %byte = buffer.load %selected, %address, %address, 0, 0 : reg<vm.value : i32>
+  %byte = buffer.load %selected, %address, %address, 0, "i8.x1" : reg<vm.value : i32>
   return %partial, %byte
 }

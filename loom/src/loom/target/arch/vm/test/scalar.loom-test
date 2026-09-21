@@ -64,6 +64,6 @@ func.def target(@vm) @compare(%a: i64, %b: i64) -> (i1) {
 
 // ----
 low.func.def target<vm.core>(@vm) abi(vm_function) @compare(%a: reg<vm.value : i64>, %b: reg<vm.value : i64>) -> (reg<vm.value : i1>) asm {
-  %result = integer.compare.i64 %a, %b, 6
+  %result = integer.compare.i64 %a, %b, "ult"
   return %result
 }

@@ -15,12 +15,12 @@ func.def target(@vm) @integer_widths(%boolean: i1, %word: i32, %wide: i64) -> (i
 
 // ----
 low.func.def target<vm.core>(@vm) abi(vm_function) @integer_widths(%boolean: reg<vm.value : i1>, %word: reg<vm.value : i32>, %wide: reg<vm.value : i64>) -> (reg<vm.value : i32>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i1>, reg<vm.value : i32>) asm {
-  %signed_boolean = conversion.integer %boolean, 4 : reg<vm.value : i32>
-  %unsigned_boolean = conversion.integer %boolean, 7
-  %signed_word = conversion.integer %word, 18
-  %unsigned_word = conversion.integer %word, 19
-  %low_bit = conversion.integer %wide, 26 : reg<vm.value : i1>
-  %low_word = conversion.integer %wide, 29 : reg<vm.value : i32>
+  %signed_boolean = conversion.integer %boolean, "s1.to.i32" : reg<vm.value : i32>
+  %unsigned_boolean = conversion.integer %boolean, "u1.to.i64"
+  %signed_word = conversion.integer %word, "s32.to.i64"
+  %unsigned_word = conversion.integer %word, "u32.to.i64"
+  %low_bit = conversion.integer %wide, "i64.to.i1" : reg<vm.value : i1>
+  %low_word = conversion.integer %wide, "i64.to.i32" : reg<vm.value : i32>
   return %signed_boolean, %unsigned_boolean, %signed_word, %unsigned_word, %low_bit, %low_word
 }
 
@@ -36,8 +36,8 @@ func.def target(@vm) @float_widths(%single: f32, %double: f64) -> (f64, f32) {
 
 // ----
 low.func.def target<vm.core>(@vm) abi(vm_function) @float_widths(%single: reg<vm.value : f32>, %double: reg<vm.value : f64>) -> (reg<vm.value : f64>, reg<vm.value : f32>) asm {
-  %wide = conversion.float.width %single, 0 : reg<vm.value : f64>
-  %narrow = conversion.float.width %double, 1 : reg<vm.value : f32>
+  %wide = conversion.float.width %single, "f32.to.f64" : reg<vm.value : f64>
+  %narrow = conversion.float.width %double, "f64.to.f32" : reg<vm.value : f32>
   return %wide, %narrow
 }
 
@@ -59,14 +59,14 @@ func.def target(@vm) @integer_to_float(%word: i32, %wide: i64) -> (f32, f64, f32
 
 // ----
 low.func.def target<vm.core>(@vm) abi(vm_function) @integer_to_float(%word: reg<vm.value : i32>, %wide: reg<vm.value : i64>) -> (reg<vm.value : f32>, reg<vm.value : f64>, reg<vm.value : f32>, reg<vm.value : f64>, reg<vm.value : f32>, reg<vm.value : f64>, reg<vm.value : f32>, reg<vm.value : f64>) asm {
-  %signed_word_f32 = conversion.integer.to.float %word, 0 : reg<vm.value : f32>
-  %signed_word_f64 = conversion.integer.to.float %word, 2 : reg<vm.value : f64>
-  %unsigned_word_f32 = conversion.integer.to.float %word, 1 : reg<vm.value : f32>
-  %unsigned_word_f64 = conversion.integer.to.float %word, 3 : reg<vm.value : f64>
-  %signed_wide_f32 = conversion.integer.to.float %wide, 4 : reg<vm.value : f32>
-  %signed_wide_f64 = conversion.integer.to.float %wide, 6 : reg<vm.value : f64>
-  %unsigned_wide_f32 = conversion.integer.to.float %wide, 5 : reg<vm.value : f32>
-  %unsigned_wide_f64 = conversion.integer.to.float %wide, 7 : reg<vm.value : f64>
+  %signed_word_f32 = conversion.integer.to.float %word, "s32.to.f32" : reg<vm.value : f32>
+  %signed_word_f64 = conversion.integer.to.float %word, "s32.to.f64" : reg<vm.value : f64>
+  %unsigned_word_f32 = conversion.integer.to.float %word, "u32.to.f32" : reg<vm.value : f32>
+  %unsigned_word_f64 = conversion.integer.to.float %word, "u32.to.f64" : reg<vm.value : f64>
+  %signed_wide_f32 = conversion.integer.to.float %wide, "s64.to.f32" : reg<vm.value : f32>
+  %signed_wide_f64 = conversion.integer.to.float %wide, "s64.to.f64" : reg<vm.value : f64>
+  %unsigned_wide_f32 = conversion.integer.to.float %wide, "u64.to.f32" : reg<vm.value : f32>
+  %unsigned_wide_f64 = conversion.integer.to.float %wide, "u64.to.f64" : reg<vm.value : f64>
   return %signed_word_f32, %signed_word_f64, %unsigned_word_f32, %unsigned_word_f64, %signed_wide_f32, %signed_wide_f64, %unsigned_wide_f32, %unsigned_wide_f64
 }
 
@@ -88,13 +88,13 @@ func.def target(@vm) @float_to_integer(%single: f32, %double: f64) -> (i32, i64,
 
 // ----
 low.func.def target<vm.core>(@vm) abi(vm_function) @float_to_integer(%single: reg<vm.value : f32>, %double: reg<vm.value : f64>) -> (reg<vm.value : i32>, reg<vm.value : i64>, reg<vm.value : i32>, reg<vm.value : i64>, reg<vm.value : i32>, reg<vm.value : i64>, reg<vm.value : i32>, reg<vm.value : i64>) asm {
-  %signed_single_i32 = conversion.float.to.integer %single, 6 : reg<vm.value : i32>
-  %signed_single_i64 = conversion.float.to.integer %single, 8
-  %unsigned_single_i32 = conversion.float.to.integer %single, 7 : reg<vm.value : i32>
-  %unsigned_single_i64 = conversion.float.to.integer %single, 9
-  %signed_double_i32 = conversion.float.to.integer %double, 16 : reg<vm.value : i32>
-  %signed_double_i64 = conversion.float.to.integer %double, 18
-  %unsigned_double_i32 = conversion.float.to.integer %double, 17 : reg<vm.value : i32>
-  %unsigned_double_i64 = conversion.float.to.integer %double, 19
+  %signed_single_i32 = conversion.float.to.integer %single, "f32.to.s32" : reg<vm.value : i32>
+  %signed_single_i64 = conversion.float.to.integer %single, "f32.to.s64"
+  %unsigned_single_i32 = conversion.float.to.integer %single, "f32.to.u32" : reg<vm.value : i32>
+  %unsigned_single_i64 = conversion.float.to.integer %single, "f32.to.u64"
+  %signed_double_i32 = conversion.float.to.integer %double, "f64.to.s32" : reg<vm.value : i32>
+  %signed_double_i64 = conversion.float.to.integer %double, "f64.to.s64"
+  %unsigned_double_i32 = conversion.float.to.integer %double, "f64.to.u32" : reg<vm.value : i32>
+  %unsigned_double_i64 = conversion.float.to.integer %double, "f64.to.u64"
   return %signed_single_i32, %signed_single_i64, %unsigned_single_i32, %unsigned_single_i64, %signed_double_i32, %signed_double_i64, %unsigned_double_i32, %unsigned_double_i64
 }

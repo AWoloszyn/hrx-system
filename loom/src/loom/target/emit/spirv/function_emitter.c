@@ -97,28 +97,6 @@ static iree_status_t loom_spirv_emit_value_name(loom_spirv_emit_state_t* state,
       loom_spirv_emit_string_or_empty(state->module, value->name_id));
 }
 
-static iree_status_t loom_spirv_emit_prepare_immediate_name_ids(
-    loom_spirv_emit_state_t* state) {
-  const iree_host_size_t immediate_count =
-      state->target->descriptor_set->immediate_count;
-  if (immediate_count == 0) {
-    return iree_ok_status();
-  }
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      state->scratch_arena, immediate_count, sizeof(*state->immediate_name_ids),
-      (void**)&state->immediate_name_ids));
-  state->immediate_name_id_count = immediate_count;
-  for (iree_host_size_t i = 0; i < immediate_count; ++i) {
-    const loom_low_immediate_t* immediate =
-        &state->target->descriptor_set->immediates[i];
-    const iree_string_view_t name = loom_low_descriptor_set_string(
-        state->target->descriptor_set, immediate->field_name_string_offset);
-    state->immediate_name_ids[i] =
-        loom_module_lookup_string(state->module, name);
-  }
-  return iree_ok_status();
-}
-
 iree_status_t loom_spirv_emit_define_value(
     loom_spirv_emit_state_t* state, loom_value_id_t value_id,
     loom_spirv_module_value_ref_t value_ref, bool emit_name) {
@@ -252,70 +230,13 @@ static iree_status_t loom_spirv_emit_builtin_variable(
   return iree_ok_status();
 }
 
-static loom_named_attr_slice_t loom_spirv_emit_packet_attrs(
+int64_t loom_spirv_emit_packet_immediate(
     const loom_low_descriptor_packet_t* packet) {
-  switch (packet->kind) {
-    case LOOM_LOW_DESCRIPTOR_PACKET_CONST:
-      return loom_low_const_attrs(packet->op);
-    case LOOM_LOW_DESCRIPTOR_PACKET_OP:
-      return loom_low_op_attrs(packet->op);
-    case LOOM_LOW_DESCRIPTOR_PACKET_NONE:
-      break;
-  }
-  return loom_make_named_attr_slice(NULL, 0);
-}
-
-static const loom_low_immediate_t* loom_spirv_emit_descriptor_immediate(
-    loom_spirv_emit_state_t* state, const loom_low_descriptor_packet_t* packet,
-    uint8_t descriptor_immediate_index) {
-  if (descriptor_immediate_index >= packet->descriptor->immediate_count) {
-    return NULL;
-  }
-  const uint32_t immediate_row =
-      packet->descriptor->immediate_start + descriptor_immediate_index;
-  if (immediate_row >= state->target->descriptor_set->immediate_count) {
-    return NULL;
-  }
-  return &state->target->descriptor_set->immediates[immediate_row];
-}
-
-static iree_string_view_t loom_spirv_emit_immediate_name(
-    loom_spirv_emit_state_t* state, const loom_low_immediate_t* immediate) {
-  if (immediate == NULL) {
-    return IREE_SV("<unknown>");
-  }
-  return loom_low_descriptor_set_string(state->target->descriptor_set,
-                                        immediate->field_name_string_offset);
-}
-
-iree_status_t loom_spirv_emit_lookup_packet_i64_immediate(
-    loom_spirv_emit_state_t* state, const loom_low_descriptor_packet_t* packet,
-    uint8_t descriptor_immediate_index, int64_t* out_value) {
-  const loom_low_immediate_t* immediate = loom_spirv_emit_descriptor_immediate(
-      state, packet, descriptor_immediate_index);
-  IREE_ASSERT(immediate != NULL);
-  const uint32_t immediate_row =
-      packet->descriptor->immediate_start + descriptor_immediate_index;
-  IREE_ASSERT_LT(immediate_row, state->immediate_name_id_count);
-  const loom_string_id_t expected_name_id =
-      state->immediate_name_ids[immediate_row];
-  const loom_named_attr_slice_t attrs = loom_spirv_emit_packet_attrs(packet);
-  for (iree_host_size_t i = 0; i < attrs.count; ++i) {
-    const loom_named_attr_t* attr = &attrs.entries[i];
-    if (attr->name_id != expected_name_id) {
-      continue;
-    }
-    IREE_ASSERT_EQ(attr->value.kind, LOOM_ATTR_I64);
-    *out_value = loom_attr_as_i64(attr->value);
-    return iree_ok_status();
-  }
-  if (iree_any_bit_set(immediate->flags,
-                       LOOM_LOW_IMMEDIATE_FLAG_DEFAULT_VALUE)) {
-    *out_value = immediate->default_value;
-    return iree_ok_status();
-  }
-  IREE_CHECK_UNREACHABLE("verified low descriptor immediate attribute");
-  return iree_ok_status();
+  const loom_named_attr_slice_t attrs =
+      packet->kind == LOOM_LOW_DESCRIPTOR_PACKET_CONST
+          ? loom_low_const_attrs(packet->op)
+          : loom_low_op_attrs(packet->op);
+  return attrs.entries[0].value.i64;
 }
 
 static void loom_spirv_emit_validate_packet_shape(
@@ -341,9 +262,7 @@ static iree_status_t loom_spirv_emit_load_packet_operands(
 static iree_status_t loom_spirv_emit_scalar_constant_packet(
     loom_spirv_emit_state_t* state, const loom_low_descriptor_packet_t* packet,
     const loom_spirv_packet_row_t* row) {
-  int64_t value = 0;
-  IREE_RETURN_IF_ERROR(loom_spirv_emit_lookup_packet_i64_immediate(
-      state, packet, row->immediate_index, &value));
+  const int64_t value = loom_spirv_emit_packet_immediate(packet);
   uint32_t type_id = 0;
   IREE_RETURN_IF_ERROR(loom_spirv_emit_type_id_for_value_type(
       state->type_context, loom_spirv_packet_row_result_type(row), &type_id));
@@ -485,9 +404,7 @@ static iree_status_t loom_spirv_emit_composite_extract_packet(
   loom_spirv_module_value_ref_t operands[1] = {0};
   IREE_RETURN_IF_ERROR(
       loom_spirv_emit_load_packet_operands(state, packet, row, operands));
-  int64_t component_index = 0;
-  IREE_RETURN_IF_ERROR(loom_spirv_emit_lookup_packet_i64_immediate(
-      state, packet, row->immediate_index, &component_index));
+  const int64_t component_index = loom_spirv_emit_packet_immediate(packet);
   uint32_t result_type_id = 0;
   IREE_RETURN_IF_ERROR(loom_spirv_emit_type_id_for_value_type(
       state->type_context, loom_spirv_packet_row_result_type(row),
@@ -516,9 +433,7 @@ static iree_status_t loom_spirv_emit_composite_insert_packet(
   loom_spirv_module_value_ref_t operands[2] = {0};
   IREE_RETURN_IF_ERROR(
       loom_spirv_emit_load_packet_operands(state, packet, row, operands));
-  int64_t component_index = 0;
-  IREE_RETURN_IF_ERROR(loom_spirv_emit_lookup_packet_i64_immediate(
-      state, packet, row->immediate_index, &component_index));
+  const int64_t component_index = loom_spirv_emit_packet_immediate(packet);
   uint32_t result_type_id = 0;
   IREE_RETURN_IF_ERROR(loom_spirv_emit_type_id_for_value_type(
       state->type_context, loom_spirv_packet_row_result_type(row),
@@ -1280,9 +1195,6 @@ static iree_status_t loom_spirv_emit_function_state_initialize(
     status = loom_spirv_module_value_table_initialize(&out_state->value_domain,
                                                       &out_state->value_table,
                                                       context->scratch_arena);
-  }
-  if (iree_status_is_ok(status)) {
-    status = loom_spirv_emit_prepare_immediate_name_ids(out_state);
   }
   if (!iree_status_is_ok(status)) {
     loom_spirv_emit_function_state_deinitialize(out_state);

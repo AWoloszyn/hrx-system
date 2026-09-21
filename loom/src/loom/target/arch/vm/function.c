@@ -196,31 +196,6 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_return(
   return iree_io_stream_write(stream, sizeof(instruction), &instruction);
 }
 
-static uint64_t loom_vm_function_immediate(
-    const loom_low_emission_frame_t* frame,
-    const loom_low_immediate_t* immediate, loom_attribute_t value) {
-  if (value.kind != LOOM_ATTR_STRING) {
-    return (uint64_t)value.i64;
-  }
-  // Verified Low permits either an integer ordinal or a named enum token.
-  // Compiler lowering emits ordinals; authored assembly can use either form.
-  const loom_low_descriptor_set_t* descriptors = frame->target.descriptor_set;
-  const loom_low_enum_domain_t* domain =
-      &descriptors->enum_domains[immediate->enum_domain_id];
-  const iree_string_view_t token =
-      frame->module->strings.entries[value.string_id];
-  for (uint16_t i = 0; i < domain->value_count; ++i) {
-    const loom_low_enum_value_t* entry =
-        &descriptors->enum_values[domain->value_start + i];
-    if (iree_string_view_equal(token,
-                               loom_low_descriptor_set_string(
-                                   descriptors, entry->token_string_offset))) {
-      return (uint64_t)entry->value;
-    }
-  }
-  IREE_BUILTIN_UNREACHABLE();
-}
-
 // Bind a data operand while emitting its first consumer, keeping unused and
 // non-VM payloads out of this artifact. Authored numeric ordinals name the
 // declaration-order table; symbols and ordinals share the same final binding.
@@ -329,7 +304,7 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_packet(
           IREE_RETURN_IF_ERROR(loom_vm_function_rodata(frame->module, value,
                                                        module_plan, &bits));
         } else {
-          bits = loom_vm_function_immediate(frame, immediate, value);
+          bits = (uint64_t)value.i64;
         }
         if (immediate->bit_width <= 8) {
           // Packed selector components share a zero-initialized packet byte.

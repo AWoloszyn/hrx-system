@@ -58,7 +58,7 @@ low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_c
   %rhs_block_scale = global_load_b64_saddr %43, %rhs_block_scale_view
   %init = concat(%43, %43, %43, %43, %43, %43, %43, %43) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
   %66 = copy %init : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
-  %local_result = v_wmma_scale16_f32_16x16x128_f8f6f4_f4_f4 %lhs, %rhs, %66, %lhs_block_scale, %rhs_block_scale {matrix_a_fmt = 4, matrix_b_fmt = 4, matrix_a_scale_fmt = 2, matrix_b_scale_fmt = 2}
+  %local_result = v_wmma_scale16_f32_16x16x128_f8f6f4_f4_f4 %lhs, %rhs, %66, %lhs_block_scale, %rhs_block_scale {matrix_a_fmt = "fp4", matrix_b_fmt = "fp4", matrix_a_scale_fmt = "fp8_e4m3", matrix_b_scale_fmt = "fp8_e4m3"}
   %lhs_global_scale = global_load_b32_saddr %43, %lhs_global_scale_view
   %rhs_global_scale = global_load_b32_saddr %43, %rhs_global_scale_view
   %global_scale = v_mul_f32 %lhs_global_scale, %rhs_global_scale
@@ -134,7 +134,7 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) abi(hal_kernel) @fp4_e4m
   low.cond_br %55, ^_bb2, ^_bb3 : reg<amdgpu.scc>
 ^_bb2:
   %56 = copy %local_accumulator : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
-  %next = v_wmma_scale16_f32_16x16x128_f8f6f4_f4_f4 %lhs, %rhs, %56, %lhs_block_scale, %rhs_block_scale {matrix_a_fmt = 4, matrix_b_fmt = 4, matrix_a_scale_fmt = 2, matrix_b_scale_fmt = 2}
+  %next = v_wmma_scale16_f32_16x16x128_f8f6f4_f4_f4 %lhs, %rhs, %56, %lhs_block_scale, %rhs_block_scale {matrix_a_fmt = "fp4", matrix_b_fmt = "fp4", matrix_a_scale_fmt = "fp8_e4m3", matrix_b_scale_fmt = "fp8_e4m3"}
   %58 = s_add_u32 %k_tile, %k_tile_step
   low.br ^_bb1(%58: reg<amdgpu.sgpr>, %next: reg<amdgpu.vgpr x8>)
 ^_bb3:

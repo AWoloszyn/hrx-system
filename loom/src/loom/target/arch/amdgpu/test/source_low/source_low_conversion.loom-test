@@ -597,10 +597,10 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @vector_
   %69 = v_and_b32_lit %58, 2147483647
   %71 = v_and_b32_lit %61, 2147483647
   %73 = v_and_b32_lit %64, 2147483647
-  %76 = v_cmp_ge_f32_src1_inline %67 {rhs = 1056964608}
-  %78 = v_cmp_ge_f32_src1_inline %69 {rhs = 1056964608}
-  %80 = v_cmp_ge_f32_src1_inline %71 {rhs = 1056964608}
-  %82 = v_cmp_ge_f32_src1_inline %73 {rhs = 1056964608}
+  %76 = v_cmp_ge_f32_src1_inline %67 {rhs = "f32_0_5"}
+  %78 = v_cmp_ge_f32_src1_inline %69 {rhs = "f32_0_5"}
+  %80 = v_cmp_ge_f32_src1_inline %71 {rhs = "f32_0_5"}
+  %82 = v_cmp_ge_f32_src1_inline %73 {rhs = "f32_0_5"}
   %86 = v_bfi_b32_src0_lit %39, %23, 2147483647
   %89 = v_bfi_b32_src0_lit %39, %26, 2147483647
   %92 = v_bfi_b32_src0_lit %39, %29, 2147483647

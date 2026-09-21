@@ -95,10 +95,25 @@ static iree_string_view_t ReorderedDescriptorKey(
   return IREE_SV("test.add.i32");
 }
 
+static iree_status_t ReorderedResolvePacketAttributes(
+    const loom_low_repr_environment_state_t*,
+    const loom_low_repr_descriptor_set_t*, loom_module_t*, loom_op_t*) {
+  // This environment's only descriptor has no immediate attributes.
+  return iree_ok_status();
+}
+
+static iree_string_view_t ReorderedEnumValueToken(
+    const loom_low_repr_environment_state_t*,
+    const loom_low_repr_descriptor_set_t*, uint16_t, int64_t) {
+  return iree_string_view_empty();
+}
+
 static const loom_low_repr_environment_vtable_t kReorderedEnvironmentVtable = {
     /*.lookup_descriptor_set=*/ReorderedLookupDescriptorSet,
     /*.resolve_descriptor=*/ReorderedResolveDescriptor,
     /*.descriptor_key=*/ReorderedDescriptorKey,
+    /*.resolve_packet_attributes=*/ReorderedResolvePacketAttributes,
+    /*.enum_value_token=*/ReorderedEnumValueToken,
 };
 
 static const loom_low_repr_environment_t kReorderedEnvironment = {

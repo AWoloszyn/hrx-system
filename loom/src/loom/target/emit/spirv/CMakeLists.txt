@@ -292,6 +292,7 @@ loom_check_test_suite(
     "test/buffer_raw.loom-test"
     "test/cooperative_matrix.loom-test"
     "test/entry_point.loom-test"
+    "test/immediate_enums.loom-test"
     "test/index_conversion.loom-test"
     "test/integer_boolean.loom-test"
     "test/loop_termination.loom-test"

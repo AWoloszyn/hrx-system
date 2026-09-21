@@ -67,12 +67,12 @@ from loom.target.arch.spirv.scalar_memory import (
     RAW_STORAGE_BUFFER_BYTE,
     STORAGE_BUFFER_SCALARS,
 )
-from loom.target.low_descriptors import Descriptor
+from loom.target.low_descriptors import Descriptor, ImmediateFlag, ImmediateKind
 
 
 def _expect_row_validation_error(rows: tuple[_PacketRow, ...], expected_message: str) -> None:
     with pytest.raises(ValueError, match=re.escape(expected_message)):
-        _validate_rows(rows)
+        _validate_rows(rows, SPIRV_LOGICAL_CORE_DESCRIPTOR_SET.descriptors)
 
 
 def _row_index(rows: tuple[_PacketRow, ...], descriptor_key: str) -> int:
@@ -93,6 +93,22 @@ def _packet_value_types(row: _PacketRow) -> tuple[str, ...]:
 
 def _atomic_model_row(rows, attribute: str, value: str):
     return next(row for row in rows if getattr(row, attribute) == value)
+
+
+@pytest.mark.parametrize("change", ["missing", "extra", "default", "ordinal"])
+def test_validation_requires_direct_integer_immediate(change: str) -> None:
+    descriptors = SPIRV_LOGICAL_CORE_DESCRIPTOR_SET.descriptors
+    descriptor = next(descriptor for descriptor in descriptors if descriptor.key == "spirv.op_constant.i32")
+    immediate = descriptor.immediates[0]
+    immediates = {
+        "missing": (),
+        "extra": (immediate, replace(immediate, field_name="extra")),
+        "default": (replace(immediate, flags=(ImmediateFlag.DEFAULT_VALUE,)),),
+        "ordinal": (replace(immediate, kind=ImmediateKind.ORDINAL),),
+    }[change]
+    descriptors = tuple(replace(row, immediates=immediates) if row.key == descriptor.key else row for row in descriptors)
+    with pytest.raises(ValueError, match="emission requires one required integer immediate"):
+        _validate_rows(_packet_rows(), descriptors)
 
 
 def test_validation_rejects_duplicate_packet_descriptor_keys() -> None:
@@ -600,13 +616,11 @@ def test_generation_emits_complete_ordinary_vector_structural_matrix() -> None:
         assert "LOOM_SPIRV_OP_COMPOSITE_EXTRACT" in extract
         assert "LOOM_SPIRV_PACKET_FORM_COMPOSITE_EXTRACT" in extract
         assert ".operand_count = 1" in extract
-        assert ".immediate_index = 0" in extract
 
         insert = _generated_row(tables, insert_key)
         assert "LOOM_SPIRV_OP_COMPOSITE_INSERT" in insert
         assert "LOOM_SPIRV_PACKET_FORM_COMPOSITE_INSERT" in insert
         assert ".operand_count = 2" in insert
-        assert ".immediate_index = 0" in insert
 
         select = packet_rows_by_key[select_key]
         assert select.opcode == "LOOM_SPIRV_OP_SELECT"
@@ -666,7 +680,7 @@ def _assert_generated_ordinary_vector_instructions(
         assert row.result_type == _expected_ordinary_vector_value(instruction.result_type)
         assert row.operand_types == tuple(_expected_ordinary_vector_value(operand_type) for operand_type in instruction.operand_types)
         assert row.result_count == 1
-        assert row.immediate_index is None
+        assert not row.has_immediate
 
         descriptor = descriptors_by_key[instruction.key]
         assert descriptor.mnemonic == instruction.mnemonic
@@ -776,7 +790,7 @@ def test_generation_emits_atomic_packet_forms_and_immediates() -> None:
     assert integer_rmw.opcode == "LOOM_SPIRV_OP_ATOMIC_I_SUB"
     assert integer_rmw.form == "LOOM_SPIRV_PACKET_FORM_ATOMIC"
     assert integer_rmw.result_count == 1
-    assert integer_rmw.immediate_index == 0
+    assert integer_rmw.has_immediate
     assert integer_rmw.atomic_scope == "LOOM_SPIRV_SCOPE_SUBGROUP"
     assert integer_rmw.atomic_storage_semantics == "LOOM_SPIRV_MEMORY_SEMANTICS_WORKGROUP_MEMORY_MASK"
     assert "LOOM_SPIRV_SCALAR_TYPE_S64" in integer_rmw.result_type

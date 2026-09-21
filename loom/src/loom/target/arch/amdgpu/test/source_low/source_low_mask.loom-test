@@ -56,7 +56,7 @@ func.def target(@target) @scalar_cmpf_rhs_zero_inline(%value: f32) -> (i1) {
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scalar_cmpf_rhs_zero_inline(%value: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>) asm {
-  %mask = v_cmp_lg_f32_src1_inline %value {rhs = 0}
+  %mask = v_cmp_lg_f32_src1_inline %value {rhs = "f32_0_0"}
   return %mask
 }
 
@@ -72,7 +72,7 @@ func.def target(@target) @scalar_cmpf_lhs_one_inline(%value: f32) -> (i1) {
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @scalar_cmpf_lhs_one_inline(%value: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>) asm {
-  %mask = v_cmp_lt_f32_src0_inline %value {lhs = 1065353216}
+  %mask = v_cmp_lt_f32_src0_inline %value {lhs = "f32_1_0"}
   return %mask
 }
 
@@ -90,9 +90,9 @@ func.def target(@target) @vector_cmpf_rhs_zero_inline(%value: vector<2xf32>) -> 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @vector_cmpf_rhs_zero_inline(%value: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.sgpr x4>) asm {
   %11 = slice %value[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
-  %12 = v_cmp_lg_f32_src1_inline %11 {rhs = 0}
+  %12 = v_cmp_lg_f32_src1_inline %11 {rhs = "f32_0_0"}
   %13 = slice %value[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
-  %14 = v_cmp_lg_f32_src1_inline %13 {rhs = 0}
+  %14 = v_cmp_lg_f32_src1_inline %13 {rhs = "f32_0_0"}
   %mask = concat(%12, %14) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) -> reg<amdgpu.sgpr x4>
   return %mask
 }

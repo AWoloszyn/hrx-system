@@ -40,8 +40,9 @@ iree_status_t loom_low_build_descriptor_implicit_resource_type(
     const loom_low_descriptor_t* descriptor, loom_type_t* out_type);
 
 // Emits a descriptor-backed low.op from a descriptor row resolved earlier in
-// the pipeline.
-//
+// the pipeline. Named enum immediates are resolved to their semantic i64
+// values; unrecognized tokens remain available to verification for source
+// diagnostics.
 iree_status_t loom_low_build_resolved_descriptor_op(
     loom_builder_t* builder, const loom_low_descriptor_set_t* descriptor_set,
     const loom_low_descriptor_t* descriptor, const loom_value_id_t* operands,
@@ -51,7 +52,7 @@ iree_status_t loom_low_build_resolved_descriptor_op(
     loom_location_id_t location, loom_op_t** out_op);
 
 // Emits a descriptor-backed low.const from a descriptor row resolved earlier in
-// the pipeline.
+// the pipeline, resolving named enum immediates as for low.op.
 iree_status_t loom_low_build_resolved_descriptor_const(
     loom_builder_t* builder, const loom_low_descriptor_set_t* descriptor_set,
     const loom_low_descriptor_t* descriptor, loom_named_attr_slice_t attrs,
