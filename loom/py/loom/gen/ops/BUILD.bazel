@@ -203,16 +203,6 @@ iree_py_binary(
 )
 
 iree_py_binary(
-    name = "c_tables_llvmir_generator",
-    main_module = "loom.gen.ops.c_tables",
-    visibility = GENERATOR_VISIBILITY,
-    deps = C_TABLES_BASE_DEPS + [
-        "//loom/py/loom/dialect/llvmir",
-        "//loom/py/loom/dialect/target",
-    ],
-)
-
-iree_py_binary(
     name = "c_tables_low_generator",
     main_module = "loom.gen.ops.c_tables",
     visibility = GENERATOR_VISIBILITY,

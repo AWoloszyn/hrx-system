@@ -23,8 +23,6 @@ package(
 
 _X86_CHECK_PACKAGE_VISIBILITY = ["//loom/src/loom/target/arch/x86/check:__pkg__"]
 
-_X86_LLVMIR_VISIBILITY = ["//loom/src/loom/target/emit/llvmir/x86:__pkg__"]
-
 _X86_LOWER_VISIBILITY = ["//loom/src/loom/target/arch/x86/lower:__pkg__"]
 
 _X86_NATIVE_VISIBILITY = ["//loom/src/loom/target/emit/native/x86:__pkg__"]
@@ -43,7 +41,7 @@ _X86_PROVIDER_VISIBILITY = [
 loom_cc_library(
     name = "feature_bits",
     hdrs = ["feature_bits.h"],
-    visibility = _X86_LLVMIR_VISIBILITY + _X86_RECORDS_VISIBILITY,
+    visibility = _X86_RECORDS_VISIBILITY,
     deps = ["//runtime/src/iree/base"],
 )
 
@@ -209,19 +207,6 @@ loom_generated_cc_library(
         "//loom/src/loom/analysis:native_layout",
         "//loom/src/loom/codegen/low:descriptors",
         "//runtime/src/iree/base",
-    ],
-)
-
-loom_cc_library(
-    name = "packed_dot_vector",
-    srcs = ["packed_dot_vector.c"],
-    hdrs = ["packed_dot_vector.h"],
-    visibility = _X86_LLVMIR_VISIBILITY,
-    deps = [
-        ":packed_dot_contract",
-        ":packed_dot_contract_projection",
-        "//loom/src/loom/analysis:contract_vector",
-        "//loom/src/loom/ir",
     ],
 )
 

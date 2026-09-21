@@ -25,7 +25,6 @@ def default_op_decls() -> tuple[Any, ...]:
     from loom.dialect.group import ALL_GROUP_OPS
     from loom.dialect.index import ALL_INDEX_OPS
     from loom.dialect.kernel import ALL_KERNEL_OPS
-    from loom.dialect.llvmir import ALL_LLVMIR_OPS
     from loom.dialect.low import ALL_LOW_OPS
     from loom.dialect.pass_ import ALL_PASS_OPS
     from loom.dialect.pipeline import ALL_PIPELINE_OPS
@@ -55,7 +54,6 @@ def default_op_decls() -> tuple[Any, ...]:
         *ALL_VECTOR_OPS,
         *ALL_INDEX_OPS,
         *ALL_KERNEL_OPS,
-        *ALL_LLVMIR_OPS,
         *ALL_TARGET_OPS,
         *ALL_LOW_OPS,
         *ALL_PASS_OPS,

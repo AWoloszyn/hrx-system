@@ -733,7 +733,6 @@ class KeyRef:
 
     Examples:
         template.def<@tile.contract> device @name(...)
-        llvmir.intrinsic<llvm.memcpy> (...)
         low.func.def target<amdgpu.rdna3_5.core>(@gfx1151) @name(...)
         template.apply<@qwen.q4.matmul>(%weights, %input) : (...) -> (...)
     """

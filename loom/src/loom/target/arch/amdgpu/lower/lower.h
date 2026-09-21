@@ -7,9 +7,7 @@
 // AMDGPU source-to-target-low lowering policy.
 //
 // This policy owns the architecture-specific mapping from target-legal source
-// Loom ops to AMDGPU descriptor-backed low ops. It deliberately stays below
-// native assembly and LLVMIR emission so the same low representation can feed
-// every later AMDGPU backend path.
+// Loom ops to AMDGPU descriptor-backed low ops for native code generation.
 
 #ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_LOWER_H_
 #define LOOM_TARGET_ARCH_AMDGPU_LOWER_LOWER_H_

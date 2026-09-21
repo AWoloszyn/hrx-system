@@ -13,7 +13,4 @@ package(
 exports_files([
     "command_artifacts.loom",
     "command_kernel_requests.loom",
-    "configured_llvmir.loom",
-    "configured_values.json",
-    "llvmir_program.loom",
 ])

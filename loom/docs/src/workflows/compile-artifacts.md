@@ -170,15 +170,6 @@ rule retains the static packaging workflow. It compiles the linked kernel module
 as one executable and exposes it with the manifest and portable artifacts as one
 Bazel product target.
 
-Target-owned emitters can also expose intermediate deployment formats directly.
-For example, an installation with the LLVM IR emitter can write textual or
-bitcode artifacts:
-
-```shell
-loom-compile kernel.loom --format=llvmir-text --output=kernel.ll
-loom-compile kernel.loom --format=llvmir-bitcode --output=kernel.bc
-```
-
 ## Emit a WebAssembly module
 
 An installation with Wasm enabled can compile ordinary functions into a binary

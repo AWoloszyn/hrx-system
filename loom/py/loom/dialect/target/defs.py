@@ -68,7 +68,6 @@ SnapshotCodegenFormat = EnumDef(
     "SnapshotCodegenFormat",
     [
         EnumCase("unknown", 0, doc="No codegen format selected."),
-        EnumCase("llvmir", 1, doc="LLVM IR emission target."),
         EnumCase("spirv", 2, doc="SPIR-V emission target."),
         EnumCase("low_native", 4, doc="Native low dialect code emission target."),
         EnumCase("wasm", 5, doc="WebAssembly module emission target."),
@@ -87,8 +86,6 @@ _ARTIFACT_FORMAT_CASES = [
     EnumCase("macho", 3, doc="Mach-O object artifact."),
     EnumCase("spirv_binary", 4, doc="SPIR-V binary artifact."),
     EnumCase("wasm_binary", 6, doc="WebAssembly binary module artifact."),
-    EnumCase("llvmir_text", 7, doc="Textual LLVM IR module artifact."),
-    EnumCase("llvmir_bitcode", 8, doc="LLVM bitcode module artifact."),
     EnumCase("vm_binary", 9, doc="Portable VM bytecode module artifact."),
 ]
 

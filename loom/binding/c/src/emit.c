@@ -539,16 +539,6 @@ static loomc_status_t loomc_emit_sidecar_artifact_metadata(
   }
 }
 
-static loomc_artifact_kind_t loomc_emit_primary_artifact_kind(
-    loom_target_artifact_format_t target_artifact_format) {
-  switch (target_artifact_format) {
-    case LOOM_TARGET_ARTIFACT_FORMAT_LLVMIR_TEXT:
-      return LOOMC_ARTIFACT_KIND_TEXT;
-    default:
-      return LOOMC_ARTIFACT_KIND_EXECUTABLE;
-  }
-}
-
 static loomc_string_view_t loomc_emit_identifier(
     const loomc_emit_resolved_options_t* options,
     const loom_target_emitter_t* emitter) {
@@ -684,11 +674,8 @@ static loomc_status_t loomc_emit_add_artifact(
     }
   }
 
-  loomc_status_t status = loomc_ok_status();
-  const loomc_artifact_kind_t artifact_kind =
-      loomc_emit_primary_artifact_kind(target_artifact->target_artifact_format);
-  status = loomc_emit_add_byte_sequence_artifact(
-      result, artifact_kind,
+  loomc_status_t status = loomc_emit_add_byte_sequence_artifact(
+      result, LOOMC_ARTIFACT_KIND_EXECUTABLE,
       loomc_string_view_from_iree(emitter->public_artifact_format),
       loomc_emit_identifier(options, emitter), target_artifact->contents);
   for (iree_host_size_t i = 0;

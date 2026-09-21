@@ -118,21 +118,4 @@ iree_execution_test_suite(
     "hostonly"
 )
 
-if(LOOM_TARGET_ARCH_LLVMIR AND LOOM_EMIT_LLVMIR)
-iree_execution_test_suite(
-  NAME
-    llvmir_execution_test
-  MANIFESTS
-    "loom-compile-llvmir.test.json"
-  TOOLS
-    "loom-compile=::loom-compile"
-  DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/loom-compile/testdata/configured_llvmir.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/loom-compile/testdata/configured_values.json"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/loom-compile/testdata/llvmir_program.loom"
-  LABELS
-    "hostonly"
-)
-endif()
-
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

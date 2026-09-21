@@ -308,7 +308,7 @@ structured regions are rejected.
 Scopes order surviving emitted instructions and emit no runtime instruction.
 They do not wait for loads, synchronize lanes, or publish memory. Full fences
 still order the whole instruction stream, and `schedule(locked)` still fixes
-block order. Native AMDGPU and x86 support scopes; LLVM IR, SPIR-V, Wasm, and VM
+block order. Native AMDGPU and x86 support scopes; SPIR-V, Wasm, and VM
 representations reject the native-order contract explicitly.
 
 The [checked paired-matrix example](https://github.com/ROCm/hrx-system/blob/main/loom/src/loom/tooling/target/amdgpu/test/corpus/gfx11/schedule_scopes.loom)
@@ -421,11 +421,6 @@ completion waits account for register copies used to carry those values: a
 copied input is ready in the next iteration, while a value forwarded in place
 retains its pending dependency. The future load can remain outstanding during
 independent arithmetic, then completes before its result is read or copied.
-
-LLVM IR text, bitcode, and object emission preserve this loop-carried state,
-including the byte origins selected by `scf.for` and `scf.while`. The
-[artifact workflow](../workflows/compile-artifacts.md) describes how to select
-an output format for the program's target.
 
 ## Unrolling is a loop policy
 

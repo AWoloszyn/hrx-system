@@ -41,7 +41,6 @@ CMAKE_HAL_DRIVER_DEFINES = (
 )
 CMAKE_LOOM_TARGET_DEFINES = (
     ("amdgpu", "LOOM_TARGET_AMDGPU"),
-    ("llvmir", "LOOM_TARGET_LLVMIR"),
     ("spirv", "LOOM_TARGET_SPIRV"),
     ("vm", "LOOM_TARGET_VM"),
     ("wasm", "LOOM_TARGET_WASM"),
@@ -62,7 +61,6 @@ REPOSITORY_BUILD_HAL_DRIVERS = (
 )
 REPOSITORY_BUILD_LOOM_TARGETS = (
     "amdgpu",
-    "llvmir",
     "spirv",
     "vm",
     "wasm",

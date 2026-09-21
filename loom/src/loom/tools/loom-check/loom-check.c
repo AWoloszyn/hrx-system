@@ -22,9 +22,6 @@
 #ifndef LOOM_CHECK_HAVE_EMIT_AMDGPU
 #define LOOM_CHECK_HAVE_EMIT_AMDGPU 0
 #endif  // LOOM_CHECK_HAVE_EMIT_AMDGPU
-#ifndef LOOM_CHECK_HAVE_EMIT_LLVMIR
-#define LOOM_CHECK_HAVE_EMIT_LLVMIR 0
-#endif  // LOOM_CHECK_HAVE_EMIT_LLVMIR
 #ifndef LOOM_CHECK_HAVE_TARGET_SPIRV
 #define LOOM_CHECK_HAVE_TARGET_SPIRV 0
 #endif  // LOOM_CHECK_HAVE_TARGET_SPIRV
@@ -47,12 +44,6 @@
 #if LOOM_CHECK_HAVE_EMIT_AMDGPU
 #include "loom/target/arch/amdgpu/check/provider.h"
 #endif  // LOOM_CHECK_HAVE_EMIT_AMDGPU
-#if LOOM_CHECK_HAVE_TARGET_LLVMIR
-#include "loom/target/arch/llvmir/check/provider.h"
-#endif  // LOOM_CHECK_HAVE_TARGET_LLVMIR
-#if LOOM_CHECK_HAVE_EMIT_LLVMIR
-#include "loom/tools/loom-check/llvmir_provider.h"
-#endif  // LOOM_CHECK_HAVE_EMIT_LLVMIR
 #if LOOM_CHECK_HAVE_TARGET_SPIRV
 #include "loom/target/arch/spirv/check/provider.h"
 #endif  // LOOM_CHECK_HAVE_TARGET_SPIRV
@@ -80,12 +71,6 @@ static const loom_check_provider_t* const kLoomCheckProviders[] = {
 #if LOOM_CHECK_HAVE_EMIT_AMDGPU
     &loom_amdgpu_check_provider,
 #endif  // LOOM_CHECK_HAVE_EMIT_AMDGPU
-#if LOOM_CHECK_HAVE_TARGET_LLVMIR
-    &loom_llvmir_target_check_provider,
-#endif  // LOOM_CHECK_HAVE_TARGET_LLVMIR
-#if LOOM_CHECK_HAVE_EMIT_LLVMIR
-    &loom_llvmir_check_provider,
-#endif  // LOOM_CHECK_HAVE_EMIT_LLVMIR
 #if LOOM_CHECK_HAVE_TARGET_SPIRV
     &loom_spirv_check_provider,
 #endif  // LOOM_CHECK_HAVE_TARGET_SPIRV

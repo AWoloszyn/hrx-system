@@ -10,13 +10,11 @@ load("//build_tools/bazel:settings.bzl", "iree_string_list_flag")
 package(default_visibility = ["//visibility:public"])
 
 # Advanced artifact-family slices. Public //loom/config/target values imply the
-# emitters required for that target. LLVMIR is included in the default build so
-# the oracle/development path stays exercised with the other target families.
+# emitters required for that target.
 DEFAULT_ENABLED = []
 
 SUPPORTED_VALUES = [
     "amdgpu",
-    "llvmir",
     "spirv",
     "wasm",
     "xdna",
@@ -48,7 +46,6 @@ iree_string_list_flag(
     )
     for value in [
         "amdgpu",
-        "llvmir",
         "spirv",
         "wasm",
         "xdna",

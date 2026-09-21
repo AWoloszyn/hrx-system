@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""Generator: x86 profile catalogs -> native and LLVMIR projection rows."""
+"""Generator: x86 profile catalogs -> native target rows."""
 
 from __future__ import annotations
 
@@ -40,11 +40,6 @@ from loom.target.arch.x86.target_info import (  # noqa: E402
     X86_NATIVE_TARGET_SELECTOR_PROFILE_KEYS,
     X86TargetProfileInfo,
     x86_target_profile_info_by_key,
-)
-from loom.target.emit.llvmir.x86.target_info import (  # noqa: E402
-    X86_LLVMIR_PROJECTION_INFOS,
-    X86LlvmirProjectionInfo,
-    x86_llvmir_target_feature_string,
 )
 
 _FEATURE_BIT_C_NAMES = (
@@ -118,35 +113,6 @@ def _emit_native_profiles_inl(profiles: tuple[X86TargetProfileInfo, ...]) -> str
     return "\n".join(lines)
 
 
-def _emit_llvmir_profiles_inl(
-    projections: tuple[X86LlvmirProjectionInfo, ...],
-) -> str:
-    lines = [
-        *line_comment_header("//", generator="loom.gen.target.arch.x86.x86_target_profiles"),
-        "// clang-format off",
-        "",
-        "#ifdef LOOM_LLVMIR_X86_TARGET_PROFILE",
-    ]
-    for projection in projections:
-        profile = projection.target_profile
-        lines.append(
-            "LOOM_LLVMIR_X86_TARGET_PROFILE("
-            f"{_symbol_suffix(profile.profile_key)}, "
-            f"{_c_arg(profile.descriptor_set_key)}, "
-            f"{_c_arg(projection.debug_profile_key)}, "
-            f"{_c_arg(x86_llvmir_target_feature_string(projection))}, "
-            f"{_feature_bits_expr(profile.contract_feature_bits)})"
-        )
-    lines.extend(["#endif", "", "#ifdef LOOM_LLVMIR_X86_TARGET_FIXTURE"])
-    for profile_key in ("x86.scalar", "x86.packed_dot"):
-        projection = next(info for info in projections if info.profile_key == profile_key)
-        profile = projection.target_profile
-        lines.append(f"LOOM_LLVMIR_X86_TARGET_FIXTURE({_symbol_suffix(profile.profile_key)}, {_c_arg(profile.descriptor_set_key)}, {_feature_bits_expr(profile.contract_feature_bits)})")
-    lines.append("#endif")
-    lines.extend(["", "// clang-format on", ""])
-    return "\n".join(lines)
-
-
 def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generates x86 target profile include snippets.")
     parser.add_argument(
@@ -155,34 +121,26 @@ def _parse_arguments(argv: Sequence[str] | None) -> argparse.Namespace:
         help="Path to write the native x86 profile include snippet.",
     )
     parser.add_argument(
-        "--llvmir-output",
-        type=Path,
-        help="Path to write the LLVMIR x86 projection include snippet.",
-    )
-    parser.add_argument(
         "--check",
         action="store_true",
         help="Validate generation inputs without writing any output files.",
     )
     args = parser.parse_args(argv)
-    if args.check and (args.native_output is not None or args.llvmir_output is not None):
-        parser.error("--check cannot be combined with output flags")
-    if not args.check and args.native_output is None and args.llvmir_output is None:
-        parser.error("at least one output flag is required unless --check is used")
+    if args.check and args.native_output is not None:
+        parser.error("--check cannot be combined with --native-output")
+    if not args.check and args.native_output is None:
+        parser.error("--native-output is required unless --check is used")
     return args
 
 
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parse_arguments(argv)
     native_contents = _emit_native_profiles_inl(_native_target_profiles())
-    llvmir_contents = _emit_llvmir_profiles_inl(X86_LLVMIR_PROJECTION_INFOS)
 
     if args.check:
         return 0
     if args.native_output is not None:
         _write_text(args.native_output, native_contents)
-    if args.llvmir_output is not None:
-        _write_text(args.llvmir_output, llvmir_contents)
     return 0
 
 

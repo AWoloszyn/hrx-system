@@ -28,7 +28,6 @@ typedef struct loom_target_fact_type_t loom_target_fact_type_t;
 typedef uint8_t loom_target_codegen_format_t;
 typedef enum loom_target_codegen_format_e {
   LOOM_TARGET_CODEGEN_FORMAT_UNKNOWN = 0,
-  LOOM_TARGET_CODEGEN_FORMAT_LLVMIR = 1,
   LOOM_TARGET_CODEGEN_FORMAT_SPIRV = 2,
   LOOM_TARGET_CODEGEN_FORMAT_LOW_NATIVE = 4,
   LOOM_TARGET_CODEGEN_FORMAT_WASM = 5,
@@ -43,8 +42,6 @@ typedef enum loom_target_artifact_format_e {
   LOOM_TARGET_ARTIFACT_FORMAT_MACHO = 3,
   LOOM_TARGET_ARTIFACT_FORMAT_SPIRV_BINARY = 4,
   LOOM_TARGET_ARTIFACT_FORMAT_WASM_BINARY = 6,
-  LOOM_TARGET_ARTIFACT_FORMAT_LLVMIR_TEXT = 7,
-  LOOM_TARGET_ARTIFACT_FORMAT_LLVMIR_BITCODE = 8,
   LOOM_TARGET_ARTIFACT_FORMAT_VM_BINARY = 9,
 } loom_target_artifact_format_e;
 
@@ -70,8 +67,6 @@ typedef enum loom_target_linkage_e {
 static inline iree_string_view_t loom_target_codegen_format_name(
     loom_target_codegen_format_t format) {
   switch (format) {
-    case LOOM_TARGET_CODEGEN_FORMAT_LLVMIR:
-      return IREE_SV("llvmir");
     case LOOM_TARGET_CODEGEN_FORMAT_SPIRV:
       return IREE_SV("spirv");
     case LOOM_TARGET_CODEGEN_FORMAT_LOW_NATIVE:
@@ -102,10 +97,6 @@ static inline iree_string_view_t loom_target_artifact_format_name(
       return IREE_SV("wasm_binary");
     case LOOM_TARGET_ARTIFACT_FORMAT_VM_BINARY:
       return IREE_SV("vm_binary");
-    case LOOM_TARGET_ARTIFACT_FORMAT_LLVMIR_TEXT:
-      return IREE_SV("llvmir_text");
-    case LOOM_TARGET_ARTIFACT_FORMAT_LLVMIR_BITCODE:
-      return IREE_SV("llvmir_bitcode");
     case LOOM_TARGET_ARTIFACT_FORMAT_UNKNOWN:
       return IREE_SV("unknown");
   }

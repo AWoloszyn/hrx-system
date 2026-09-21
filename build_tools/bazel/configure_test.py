@@ -275,7 +275,7 @@ class ConfigureBazelTest(unittest.TestCase):
         config = self.configure_bazel.generate_config(args)
 
         self.assertIn(
-            "build --//loom/config/target:enable=amdgpu,llvmir,spirv,xdna,x86",
+            "build --//loom/config/target:enable=amdgpu,spirv,xdna,x86",
             config,
         )
         self.assertIn("build --//loom/config/execute:enable=iree_hal", config)
@@ -292,7 +292,7 @@ class ConfigureBazelTest(unittest.TestCase):
 
                 self.assertIn(
                     "build --//loom/config/target:enable="
-                    f"amdgpu,llvmir,spirv,{target},xdna,x86",
+                    f"amdgpu,spirv,{target},xdna,x86",
                     config,
                 )
                 self.assertIn("build --//loom/config/execute:enable=iree_hal", config)
@@ -307,7 +307,7 @@ class ConfigureBazelTest(unittest.TestCase):
         config = self.configure_bazel.generate_config(args)
 
         self.assertIn(
-            "build --//loom/config/target:enable=amdgpu,llvmir,spirv,vm,xdna,x86",
+            "build --//loom/config/target:enable=amdgpu,spirv,vm,xdna,x86",
             config,
         )
 
@@ -324,7 +324,7 @@ class ConfigureBazelTest(unittest.TestCase):
         config = self.configure_bazel.generate_config(args)
 
         self.assertIn(
-            "build --//loom/config/target:enable=llvmir,spirv,xdna,x86",
+            "build --//loom/config/target:enable=spirv,xdna,x86",
             config,
         )
         self.assertIn("build --//loom/config/execute:enable=iree_hal", config)
@@ -335,22 +335,22 @@ class ConfigureBazelTest(unittest.TestCase):
         config = self.configure_bazel.generate_config(args)
 
         self.assertIn(
-            "build --//loom/config/target:enable=amdgpu,llvmir,spirv,xdna,x86",
+            "build --//loom/config/target:enable=amdgpu,spirv,xdna,x86",
             config,
         )
         self.assertIn("build --//loom/config/execute:enable=", config)
         self.assertIn("build --//loom/config/emit:enable=", config)
 
-    def test_portable_loom_llvmir_option_configures_explicit_emitter_scope(self):
-        args = self.configure_bazel.parse_arguments(["-DLOOM_EMIT_LLVMIR=ON"])
+    def test_portable_loom_xdna_option_configures_explicit_emitter_scope(self):
+        args = self.configure_bazel.parse_arguments(["-DLOOM_EMIT_XDNA=ON"])
         config = self.configure_bazel.generate_config(args)
 
         self.assertIn(
-            "build --//loom/config/target:enable=amdgpu,llvmir,spirv,xdna,x86",
+            "build --//loom/config/target:enable=amdgpu,spirv,xdna,x86",
             config,
         )
         self.assertIn("build --//loom/config/execute:enable=iree_hal", config)
-        self.assertIn("build --//loom/config/emit:enable=llvmir", config)
+        self.assertIn("build --//loom/config/emit:enable=xdna", config)
 
     def test_portable_loom_import_option_configures_importer_scope(self):
         args = self.configure_bazel.parse_arguments(["-DLOOM_IMPORT_TILELANG=ON"])
@@ -369,25 +369,25 @@ class ConfigureBazelTest(unittest.TestCase):
     def test_native_loom_target_execute_and_emit_options_configure_scope(self):
         args = self.configure_bazel.parse_arguments(
             [
-                "--//loom/config/target:enable=amdgpu,llvmir,spirv,vm",
+                "--//loom/config/target:enable=amdgpu,spirv,vm",
                 "--//loom/config/execute:enable=iree_hal",
-                "--//loom/config/emit:enable=llvmir",
+                "--//loom/config/emit:enable=xdna",
             ]
         )
         config = self.configure_bazel.generate_config(args)
 
         self.assertIn(
-            "build --//loom/config/target:enable=amdgpu,llvmir,spirv,vm",
+            "build --//loom/config/target:enable=amdgpu,spirv,vm",
             config,
         )
         self.assertIn("build --//loom/config/execute:enable=iree_hal", config)
-        self.assertIn("build --//loom/config/emit:enable=llvmir", config)
+        self.assertIn("build --//loom/config/emit:enable=xdna", config)
 
     def test_portable_and_native_loom_target_options_conflict(self):
         args = self.configure_bazel.parse_arguments(
             [
                 "-DLOOM_TARGET_AMDGPU=ON",
-                "--//loom/config/target:enable=llvmir",
+                "--//loom/config/target:enable=spirv",
             ]
         )
 

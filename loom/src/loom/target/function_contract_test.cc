@@ -433,7 +433,7 @@ TEST_F(TargetFunctionContractTest, BundleCompatibilityRejectsContractShape) {
       /*.config=*/&selected_config,
   };
 
-  selected_snapshot.codegen_format = LOOM_TARGET_CODEGEN_FORMAT_LLVMIR;
+  selected_snapshot.codegen_format = LOOM_TARGET_CODEGEN_FORMAT_LOW_NATIVE;
   EXPECT_FALSE(loom_target_function_contract_bundles_compatible(
       &module_bundle, &selected_bundle));
   selected_snapshot = module_snapshot;

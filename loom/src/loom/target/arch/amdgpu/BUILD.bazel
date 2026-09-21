@@ -99,9 +99,7 @@ loom_cc_library(
         _AMDGPU_MATRIX_VISIBILITY +
         _AMDGPU_NATIVE_VISIBILITY +
         _AMDGPU_PLANNING_VISIBILITY +
-        _AMDGPU_TOOLING_VISIBILITY + [
-            "//loom/src/loom/target/emit/llvmir/amdgpu:__pkg__",
-        ]
+        _AMDGPU_TOOLING_VISIBILITY
     ),
     deps = ["//runtime/src/iree/base"],
 )
@@ -110,11 +108,7 @@ loom_cc_library(
     name = "buffer_resource",
     srcs = ["buffer_resource.c"],
     hdrs = ["buffer_resource.h"],
-    visibility = (
-        _AMDGPU_HAL_VISIBILITY + [
-            "//loom/src/loom/target/emit/llvmir:__pkg__",
-        ]
-    ),
+    visibility = _AMDGPU_HAL_VISIBILITY,
     deps = [
         ":target_info_defs",
         "//runtime/src/iree/base",

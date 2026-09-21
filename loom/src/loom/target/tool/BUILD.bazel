@@ -16,8 +16,6 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-_LLVM_TOOL_VISIBILITY = ["//loom/src/loom/target/emit/llvmir:__pkg__"]
-
 _SPIRV_TOOL_VISIBILITY = ["//loom/src/loom/target/emit/spirv:__pkg__"]
 
 _WASM_TOOL_VISIBILITY = ["//loom/src/loom/target/emit/wasm:__pkg__"]
@@ -50,20 +48,6 @@ loom_cc_test(
     deps = [
         ":process",
         "//runtime/src/iree/testing:gtest",
-    ],
-)
-
-loom_cc_library(
-    name = "llvm",
-    srcs = ["llvm.c"],
-    hdrs = ["llvm.h"],
-    visibility = _LLVM_TOOL_VISIBILITY,
-    deps = [
-        ":process",
-        "//runtime/src/iree/base",
-        "//runtime/src/iree/base/internal:path",
-        "//runtime/src/iree/io:file_handle",
-        "//runtime/src/iree/io:stream",
     ],
 )
 
