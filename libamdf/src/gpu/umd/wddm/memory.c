@@ -60,15 +60,6 @@ struct amdf_gpu_umd_memory_t {
   D3DKMT_HANDLE allocation_handles[];
 };
 
-struct amdf_gpu_umd_host_mapping_t {
-  // Memory borrowed by the generic host-mapping parent.
-  amdf_gpu_umd_memory_t* memory;
-  // First byte exposed by this mapping.
-  void* pointer;
-  // Exposed byte length.
-  uint64_t byte_length;
-};
-
 static bool amdf_windows_gpu_align_up(uint64_t value, uint64_t alignment,
                                       uint64_t* out_value) {
   const uint64_t mask = alignment - 1;
@@ -626,32 +617,22 @@ amdf_status_t amdf_gpu_umd_memory_map(
     const amdf_memory_map_info_t* map_info,
     amdf_gpu_umd_host_mapping_t** out_mapping,
     amdf_gpu_umd_host_mapping_result_t* out_result) {
-  amdf_gpu_umd_host_mapping_t* mapping = NULL;
-  amdf_status_t status =
-      amdf_calloc(memory->device->host_allocator, sizeof(*mapping),
-                  amdf_alignof(amdf_gpu_umd_host_mapping_t), (void**)&mapping);
-  if (!amdf_status_is_ok(status)) {
-    return status;
-  }
-  mapping->memory = memory;
-  mapping->pointer = (uint8_t*)memory->host_pointer + map_info->byte_offset;
-  mapping->byte_length = map_info->byte_length;
-
   amdf_gpu_umd_host_mapping_result_t result = {0};
   result.flags = capabilities->supported_access;
-  result.pointer = mapping->pointer;
-  result.byte_length = mapping->byte_length;
+  result.pointer = (uint8_t*)memory->host_pointer + map_info->byte_offset;
+  result.byte_length = map_info->byte_length;
   result.visibility =
       amdf_gpu_umd_memory_describe_host(memory->device, 0, memory->flags);
   *out_result = result;
-  *out_mapping = mapping;
+  // The public view owns the borrow; memory already owns the persistent map.
+  *out_mapping = (amdf_gpu_umd_host_mapping_t*)memory;
   return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_gpu_umd_host_mapping_cache_control(
     amdf_gpu_umd_host_mapping_t* mapping, amdf_host_cache_operation_t operation,
     uint64_t memory_byte_offset, uint64_t byte_length) {
-  amdf_gpu_umd_memory_t* memory = mapping->memory;
+  amdf_gpu_umd_memory_t* memory = (amdf_gpu_umd_memory_t*)mapping;
   amdf_status_t status = amdf_windows_host_cache_control(
       operation, (uint8_t*)memory->host_pointer + memory_byte_offset,
       byte_length);
@@ -691,5 +672,5 @@ amdf_status_t amdf_gpu_umd_host_mapping_cache_control(
 }
 
 void amdf_gpu_umd_host_mapping_destroy(amdf_gpu_umd_host_mapping_t* mapping) {
-  amdf_free(mapping->memory->device->host_allocator, mapping);
+  (void)mapping;
 }

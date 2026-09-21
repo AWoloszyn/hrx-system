@@ -19,16 +19,6 @@
 #include "libamdf/src/xdna/umd/drm/memory.h"
 #include "libamdf/src/xdna/umd/drm/memory_profile.h"
 
-struct amdf_xdna_umd_host_mapping_t {
-  // Host allocator copied for independent mapping teardown.
-  amdf_allocator_t host_allocator;
-  // View into the attachment's persistent mapping, never independently
-  // unmapped.
-  void* pointer;
-  // Native cache-line length in bytes, qualified during device creation.
-  uint32_t cache_line_size;
-};
-
 amdf_status_t amdf_xdna_umd_memory_destroy(amdf_xdna_umd_memory_t* memory) {
   const amdf_status_t status = amdf_linux_xdna_buffer_deinitialize(
       memory->device->descriptor, &memory->buffer);
@@ -481,38 +471,32 @@ amdf_status_t amdf_xdna_umd_memory_map(
     const amdf_memory_map_info_t* map_info,
     amdf_xdna_umd_host_mapping_t** out_mapping,
     amdf_xdna_umd_host_mapping_result_t* out_result) {
-  amdf_xdna_umd_host_mapping_t* mapping = NULL;
-  amdf_status_t status =
-      amdf_calloc(memory->device->host_allocator, sizeof(*mapping),
-                  amdf_alignof(amdf_xdna_umd_host_mapping_t), (void**)&mapping);
-  if (!amdf_status_is_ok(status)) {
-    return status;
-  }
-  mapping->host_allocator = memory->device->host_allocator;
-  mapping->pointer = (uint8_t*)memory->buffer.host_pointer +
-                     memory->source_byte_offset + map_info->byte_offset;
-  mapping->cache_line_size = memory->device->cache_line_size;
   amdf_xdna_umd_host_mapping_result_t result = {0};
   result.flags = capabilities->supported_access;
-  result.pointer = mapping->pointer;
+  result.pointer = (uint8_t*)memory->buffer.host_pointer +
+                   memory->source_byte_offset + map_info->byte_offset;
   result.byte_length = map_info->byte_length;
   result.visibility = memory->host_visibility;
   *out_result = result;
-  *out_mapping = mapping;
+  // The public view owns the borrow; memory already owns the persistent map.
+  *out_mapping = (amdf_xdna_umd_host_mapping_t*)memory;
   return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_xdna_umd_host_mapping_cache_control(
     amdf_xdna_umd_host_mapping_t* mapping,
-    amdf_host_cache_operation_t operation, uint64_t byte_offset,
+    amdf_host_cache_operation_t operation, uint64_t memory_byte_offset,
     uint64_t byte_length) {
   // The public mapping boundary has already validated operation and range.
   (void)operation;
-  amdf_linux_host_cache_transfer((uint8_t*)mapping->pointer + byte_offset,
-                                 byte_length, mapping->cache_line_size);
+  const amdf_xdna_umd_memory_t* memory = (amdf_xdna_umd_memory_t*)mapping;
+  amdf_linux_host_cache_transfer((uint8_t*)memory->buffer.host_pointer +
+                                     memory->source_byte_offset +
+                                     memory_byte_offset,
+                                 byte_length, memory->device->cache_line_size);
   return AMDF_STATUS_OK;
 }
 
 void amdf_xdna_umd_host_mapping_destroy(amdf_xdna_umd_host_mapping_t* mapping) {
-  amdf_free(mapping->host_allocator, mapping);
+  (void)mapping;
 }

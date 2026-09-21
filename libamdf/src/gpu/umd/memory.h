@@ -112,7 +112,9 @@ amdf_status_t amdf_gpu_umd_memory_destroy(amdf_gpu_umd_memory_t* memory);
 // the caller preserves any separately owned backing those resources can reach.
 void amdf_gpu_umd_memory_abandon(amdf_gpu_umd_memory_t* memory);
 
-// Creates one explicit host mapping.
+// Borrows a view of the memory's persistent native host mapping. Current native
+// providers need no allocation or system call; the common host view owns the
+// borrow and keeps the memory live by caller contract, not by reference count.
 amdf_status_t amdf_gpu_umd_memory_map(
     amdf_gpu_umd_memory_t* memory,
     const amdf_host_mapping_capabilities_t* capabilities,

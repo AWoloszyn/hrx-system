@@ -39,15 +39,6 @@ struct amdf_xdna_umd_memory_t {
   uint64_t device_address;
 };
 
-struct amdf_xdna_umd_host_mapping_t {
-  // Host allocator copied for independent mapping teardown.
-  amdf_allocator_t host_allocator;
-  // First byte exposed by this mapping.
-  void* pointer;
-  // Exposed byte length.
-  uint64_t byte_length;
-};
-
 static amdf_status_t amdf_windows_xdna_memory_release_native(
     amdf_xdna_umd_memory_t* memory) {
   if (memory->context != NULL) {
@@ -465,35 +456,27 @@ amdf_status_t amdf_xdna_umd_memory_map(
     const amdf_memory_map_info_t* map_info,
     amdf_xdna_umd_host_mapping_t** out_mapping,
     amdf_xdna_umd_host_mapping_result_t* out_result) {
-  amdf_xdna_umd_host_mapping_t* mapping = NULL;
-  amdf_status_t status =
-      amdf_calloc(memory->device->host_allocator, sizeof(*mapping),
-                  amdf_alignof(amdf_xdna_umd_host_mapping_t), (void**)&mapping);
-  if (!amdf_status_is_ok(status)) {
-    return status;
-  }
-  mapping->host_allocator = memory->device->host_allocator;
-  mapping->pointer = (uint8_t*)memory->host_pointer + map_info->byte_offset;
-  mapping->byte_length = map_info->byte_length;
-
   amdf_xdna_umd_host_mapping_result_t result = {0};
   result.flags = capabilities->supported_access;
-  result.pointer = mapping->pointer;
-  result.byte_length = mapping->byte_length;
+  result.pointer = (uint8_t*)memory->host_pointer + map_info->byte_offset;
+  result.byte_length = map_info->byte_length;
   result.visibility = amdf_xdna_umd_memory_describe_host(memory->device, 0, 0);
   *out_result = result;
-  *out_mapping = mapping;
+  // The public view owns the borrow; memory already owns the persistent map.
+  *out_mapping = (amdf_xdna_umd_host_mapping_t*)memory;
   return AMDF_STATUS_OK;
 }
 
 amdf_status_t amdf_xdna_umd_host_mapping_cache_control(
     amdf_xdna_umd_host_mapping_t* mapping,
-    amdf_host_cache_operation_t operation, uint64_t byte_offset,
+    amdf_host_cache_operation_t operation, uint64_t memory_byte_offset,
     uint64_t byte_length) {
+  const amdf_xdna_umd_memory_t* memory = (amdf_xdna_umd_memory_t*)mapping;
   return amdf_windows_host_cache_control(
-      operation, (uint8_t*)mapping->pointer + byte_offset, byte_length);
+      operation, (uint8_t*)memory->host_pointer + memory_byte_offset,
+      byte_length);
 }
 
 void amdf_xdna_umd_host_mapping_destroy(amdf_xdna_umd_host_mapping_t* mapping) {
-  amdf_free(mapping->host_allocator, mapping);
+  (void)mapping;
 }

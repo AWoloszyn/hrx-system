@@ -79,6 +79,8 @@ struct FakeMemoryState {
   std::vector<Operation> operations;
   // Paging fence targets observed by CPU waits.
   std::vector<uint64_t> wait_targets;
+  // Native cache ranges observed when publishing noncoherent host writes.
+  std::vector<D3DKMT_INVALIDATECACHE> invalidations;
 };
 
 FakeMemoryState* current_state = nullptr;
@@ -326,6 +328,69 @@ TEST_F(WindowsGpuMemoryTest, DestroyReclaimsMappingAndResidencyDirectly) {
                 Operation::kCreateAllocation, Operation::kMap, Operation::kWait,
                 Operation::kMakeResident, Operation::kWait,
                 Operation::kDestroyAllocation, Operation::kFreeAddress}));
+}
+
+TEST_F(WindowsGpuMemoryTest, BorrowsHostViewsAcrossNativeAllocationChunks) {
+  state_.allocation_domain = AMDF_WKMI_BRIDGE_GPU_ALLOCATION_DOMAIN_SYSTEM;
+  state_.allocation_count = 2;
+  state_.expected_synchronous_destroy = 1;
+  create_info_.required_flags =
+      AMDF_MEMORY_FLAG_HOST_VISIBLE | AMDF_MEMORY_FLAG_DEVICE_ADDRESS;
+  ASSERT_EQ(amdf_gpu_umd_device_query_memory_profile(&device_, 0, &profile_),
+            AMDF_STATUS_OK);
+  kmt_.invalidate_cache = [](const D3DKMT_INVALIDATECACHE* invalidate) {
+    current_state->invalidations.push_back(*invalidate);
+    return static_cast<NTSTATUS>(0);
+  };
+  amdf_gpu_umd_memory_t* memory = nullptr;
+  amdf_gpu_umd_memory_result_t result = {};
+  ASSERT_EQ(amdf_gpu_umd_memory_prepare(&device_, 0, nullptr, &profile_,
+                                        &create_info_, &memory, &result),
+            AMDF_STATUS_OK);
+  device_.host_allocator.allocate = [](void*, uint64_t, uint64_t) -> void* {
+    ADD_FAILURE() << "a persistent native host view requires no allocation";
+    return nullptr;
+  };
+  const size_t native_operation_count = state_.operations.size();
+  amdf_memory_map_info_t request = {};
+  request.flags = AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE;
+  request.byte_length = 128;
+  const uint64_t offsets[] = {128, 32736};
+  amdf_gpu_umd_host_mapping_t* mappings[2] = {};
+  amdf_gpu_umd_host_mapping_result_t views[2] = {};
+  for (size_t i = 0; i < 2; ++i) {
+    request.byte_offset = offsets[i];
+    ASSERT_EQ(amdf_gpu_umd_memory_map(memory, &profile_.host_mapping, &request,
+                                      &mappings[i], &views[i]),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(views[i].pointer,
+              static_cast<uint8_t*>(state_.host_pointer) + offsets[i]);
+    EXPECT_EQ(views[i].byte_length, request.byte_length);
+    std::memset(views[i].pointer, 0xA0 + i, request.byte_length);
+  }
+  amdf_gpu_umd_host_mapping_destroy(mappings[0]);
+  // The second view straddles two native allocations, neither of which is
+  // owned by the view. Cache publication still uses memory-relative offsets.
+  EXPECT_EQ(amdf_gpu_umd_host_mapping_cache_control(
+                mappings[1], AMDF_HOST_CACHE_OPERATION_FLUSH, offsets[1], 128),
+            AMDF_STATUS_OK);
+  ASSERT_EQ(state_.invalidations.size(), 2u);
+  EXPECT_EQ(state_.invalidations[0].hDevice, device_.device);
+  EXPECT_EQ(state_.invalidations[0].hAllocation, 0x20u);
+  EXPECT_EQ(state_.invalidations[0].Offset, offsets[1]);
+  EXPECT_EQ(state_.invalidations[0].Length, 32u);
+  EXPECT_EQ(state_.invalidations[1].hDevice, device_.device);
+  EXPECT_EQ(state_.invalidations[1].hAllocation, 0x21u);
+  EXPECT_EQ(state_.invalidations[1].Offset, 0u);
+  EXPECT_EQ(state_.invalidations[1].Length, 96u);
+  EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[127], 0xA1);
+  amdf_gpu_umd_host_mapping_destroy(mappings[1]);
+  EXPECT_EQ(static_cast<uint8_t*>(state_.host_pointer)[128], 0xA0);
+  EXPECT_EQ(static_cast<uint8_t*>(state_.host_pointer)[32736], 0xA1);
+  EXPECT_EQ(state_.operations.size(), native_operation_count);
+  EXPECT_EQ(state_.metadata_free_count, 0u);
+  EXPECT_EQ(amdf_gpu_umd_memory_destroy(memory), AMDF_STATUS_OK);
+  EXPECT_EQ(state_.metadata_free_count, 1u);
 }
 
 TEST_F(WindowsGpuMemoryTest, MapsExactReadExecuteAccessWithoutWrite) {
