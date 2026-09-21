@@ -13,13 +13,17 @@ load(
     "collect_package_policy",
     "package_policy",
 )
+load("//build_tools/bazel:test_resources.bzl", "GPU_DEVICE_RESOURCE_GROUP")
+load(
+    "//build_tools/vulkan/requirements:defs.bzl",
+    "VULKAN_DEVICE_RESOURCE",
+)
 load(
     "//runtime/requirements:defs.bzl",
     "AMDGPU_RESOURCE",
     "HAL_AMDGPU",
     "HAL_VULKAN",
     "HAL_WEBGPU",
-    "VULKAN_DEVICE_RESOURCE",
     "WEBGPU_DEVICE_RESOURCE",
 )
 
@@ -34,7 +38,7 @@ PACKAGE_POLICIES = [
             "runtime/src/iree/hal/drivers/amdgpu/target/...",
         ],
         run_requirements = [AMDGPU_RESOURCE],
-        resource_group = "iree-hal-drivers-amdgpu-tests",
+        resource_group = GPU_DEVICE_RESOURCE_GROUP,
     ),
     package_policy(
         packages = ["runtime/src/iree/hal/drivers/vulkan/..."],
@@ -43,7 +47,7 @@ PACKAGE_POLICIES = [
     package_policy(
         packages = ["runtime/src/iree/hal/drivers/vulkan/cts/..."],
         run_requirements = [VULKAN_DEVICE_RESOURCE],
-        resource_group = "iree-hal-drivers-vulkan-tests",
+        resource_group = GPU_DEVICE_RESOURCE_GROUP,
     ),
     package_policy(
         packages = ["runtime/src/iree/hal/drivers/webgpu/..."],
@@ -52,7 +56,7 @@ PACKAGE_POLICIES = [
     package_policy(
         packages = ["runtime/src/iree/hal/drivers/webgpu/cts/..."],
         run_requirements = [WEBGPU_DEVICE_RESOURCE],
-        resource_group = "iree-hal-drivers-webgpu-tests",
+        resource_group = GPU_DEVICE_RESOURCE_GROUP,
     ),
 ]
 

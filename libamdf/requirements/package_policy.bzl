@@ -13,6 +13,12 @@ load(
     "collect_package_policy",
     "package_policy",
 )
+load("//build_tools/bazel:test_resources.bzl", "GPU_DEVICE_RESOURCE_GROUP")
+load(
+    "//build_tools/d3d12/requirements:defs.bzl",
+    "D3D12_API",
+    "D3D12_DEVICE_RESOURCE",
+)
 load(
     "//libamdf/requirements:defs.bzl",
     "AMDGPU_RESOURCE",
@@ -58,7 +64,7 @@ PACKAGE_POLICIES = [
             "libamdf/cts/gpu/...",
         ],
         run_requirements = [AMDGPU_RESOURCE],
-        resource_group = "iree-hal-drivers-amdgpu-tests",
+        resource_group = GPU_DEVICE_RESOURCE_GROUP,
     ),
     package_policy(
         packages = [
@@ -67,13 +73,23 @@ PACKAGE_POLICIES = [
         ],
         run_requirements = [XDNA_RESOURCE],
         # Cross-engine interop shares the same native resource lock.
-        resource_group = "iree-hal-drivers-amdgpu-tests",
+        resource_group = GPU_DEVICE_RESOURCE_GROUP,
     ),
     package_policy(
-        packages = ["libamdf/cts/interop/gpu_xdna/..."],
-        build_requirements = [LIBAMDF_GPU, LIBAMDF_XDNA],
-        run_requirements = [AMDGPU_RESOURCE, XDNA_RESOURCE],
-        resource_group = "iree-hal-drivers-amdgpu-tests",
+        packages = ["libamdf/cts/interop/gpu/..."],
+        build_requirements = [LIBAMDF_GPU],
+        run_requirements = [AMDGPU_RESOURCE],
+        resource_group = GPU_DEVICE_RESOURCE_GROUP,
+    ),
+    package_policy(
+        packages = ["libamdf/cts/interop/gpu/d3d12/..."],
+        build_requirements = [D3D12_API],
+        run_requirements = [D3D12_DEVICE_RESOURCE],
+    ),
+    package_policy(
+        packages = ["libamdf/cts/interop/gpu/xdna/..."],
+        build_requirements = [LIBAMDF_XDNA],
+        run_requirements = [XDNA_RESOURCE],
     ),
     package_policy(
         packages = [

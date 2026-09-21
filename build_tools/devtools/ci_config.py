@@ -11,6 +11,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from build_tools.devtools import run_requirements
+
 # This file is the CI policy map. Entries here should describe workflow
 # boundaries: package roots, target patterns, requirement labels, resource
 # slices, and named xfail groups. Individual test targets belong near the test;
@@ -133,12 +135,21 @@ CPU_BAZEL_TARGET_EXCLUDES = (
     "-//runtime/src/iree/hal/drivers/vulkan/...",
     "-//runtime/src/iree/hal/drivers/webgpu/...",
 )
-CPU_RESOURCE_TAG_EXCLUDES = (
-    "-iree-run-requirement=libamdf.resource.amd_gpu",
-    "-iree-run-requirement=libamdf.resource.xdna",
-    "-iree-run-requirement=runtime.resource.amd_gpu",
-    "-iree-run-requirement=runtime.resource.vulkan_device",
-    "-iree-run-requirement=runtime.resource.webgpu_device",
+CPU_RESOURCE_TAG_EXCLUDES = run_requirements.bazel_exclusions(())
+# A native AMD endpoint and an HSA agent are distinct runner capabilities.
+XDNA_RESOURCES = ("libamdf.resource.xdna",)
+AMDGPU_RESOURCES = ("runtime.resource.amd_gpu",)
+VULKAN_RESOURCES = ("vulkan.resource.device",)
+# Each command resets explicit API requests from machine-local Bazel settings.
+# Job options follow these defaults and can select either API independently.
+BAZEL_DEFAULT_OPTIONS = (
+    "--//build_tools/vulkan/config:enabled=false",
+    "--//build_tools/d3d12/config:enabled=false",
+)
+REPOSITORY_BAZEL_OPTIONS = (
+    "--//libamdf/config:enabled=true",
+    "--//build_tools/vulkan/config:enabled=true",
+    "--//build_tools/d3d12/config:enabled=true",
 )
 NON_CPU_HAL_DRIVER_CTEST_REGEX = r"^iree/hal/drivers/(amdgpu|vulkan|webgpu)/"
 
@@ -249,7 +260,7 @@ def amdgpu_bazel_xfail_targets(target_selector: str) -> tuple[str, ...]:
 
 
 VULKAN_BUILD_REQUIREMENT_TAG = "iree-build-requirement=runtime.hal.vulkan"
-VULKAN_RUN_REQUIREMENT_TAG = "iree-run-requirement=runtime.resource.vulkan_device"
+VULKAN_RUN_REQUIREMENT_TAG = "iree-run-requirement=vulkan.resource.device"
 VULKAN_BAZEL_TEST_TAG_FILTERS = (
     VULKAN_BUILD_REQUIREMENT_TAG,
     VULKAN_RUN_REQUIREMENT_TAG,

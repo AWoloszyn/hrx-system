@@ -9,7 +9,7 @@
 
 iree_add_all_subdirs()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
 loom_cc_library(
   NAME
     artifact_provider
@@ -113,7 +113,7 @@ loom_cc_library(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
 loom_cc_test(
   NAME
     artifact_provider_test
@@ -248,14 +248,14 @@ loom_execution_test(
     "iree-build-requirement=loom.emit.spirv"
     "iree-build-requirement=loom.execute.iree_hal"
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
     "loom-execution-profile=spirv_vulkan_explicit_target_hardware"
     "loom-target-family=spirv"
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-vulkan-tests"
+    "gpu-device"
   SANITIZER_SUPPRESSIONS
     lsan
     vulkan
@@ -307,14 +307,14 @@ loom_execution_test(
     "iree-build-requirement=loom.emit.spirv"
     "iree-build-requirement=loom.execute.iree_hal"
     "iree-build-requirement=runtime.hal.vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
     "loom-execution-profile=spirv_vulkan_hardware"
     "loom-target-family=spirv"
     "loom-target-class=gpu"
     "loom-executor=hardware"
   RESOURCE_GROUP
-    "loom-vulkan-tests"
+    "gpu-device"
   SANITIZER_SUPPRESSIONS
     lsan
     vulkan
@@ -322,7 +322,7 @@ loom_execution_test(
 endif()
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
 iree_native_test(
   NAME
     "aliased_entry_test"
@@ -347,12 +347,14 @@ iree_native_test(
   ENV
     "LSAN_OPTIONS=suppressions=${PROJECT_SOURCE_DIR}/build_tools/sanitizer/lsan_suppressions_vulkan.txt:allow_addr2line=1"
   LABELS
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
+  RESOURCE_GROUP
+    gpu-device
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
 loom_generated_file(
   NAME
     multiple_entries_binary
@@ -372,7 +374,7 @@ loom_generated_file(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
 iree_c_embed_data(
   NAME
     multiple_entries_spv
@@ -407,12 +409,12 @@ loom_cc_test(
   ARGS
     "--vulkan_validation_layers=false"
   LABELS
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
     "iree-build-requirement=loom.target.arch.spirv"
     "iree-build-requirement=loom.emit.spirv"
   RESOURCE_GROUP
-    loom-vulkan-tests
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     vulkan

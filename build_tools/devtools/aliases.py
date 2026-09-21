@@ -21,6 +21,7 @@ BAZEL_ALIASES = {
     "iree-bazel-test": ["bazel", "test"],
     "iree-bazel-query": ["bazel", "query"],
     "iree-bazel-cquery": ["bazel", "cquery"],
+    "iree-bazel-aquery": ["bazel", "aquery"],
     "iree-bazel-info": ["bazel", "info"],
     "iree-bazel-shutdown": ["bazel", "shutdown"],
     "iree-bazel-run": ["bazel", "run"],

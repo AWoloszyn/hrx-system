@@ -10,10 +10,10 @@ package(
 )
 
 test_suite(
-    name = "gpu_xdna",
+    name = "xdna",
     tests = [
-        "//libamdf/cts/interop/gpu_xdna/linux:memory",
-        "//libamdf/cts/interop/gpu_xdna/windows:memory",
+        "//libamdf/cts/interop/gpu/xdna/linux:memory",
+        "//libamdf/cts/interop/gpu/xdna/windows:memory",
     ],
     visibility = ["//visibility:public"],
 )

@@ -49,9 +49,7 @@ class LoomPresubmitTest(unittest.TestCase):
             arg for arg in command if arg.startswith("--test_tag_filters=")
         )
         self.assertIn("-iree-run-requirement=runtime.resource.amd_gpu", tag_filter)
-        self.assertIn(
-            "-iree-run-requirement=runtime.resource.vulkan_device", tag_filter
-        )
+        self.assertIn("-iree-run-requirement=vulkan.resource.device", tag_filter)
         self.assertNotIn("loom.resource", tag_filter)
 
     def test_bazel_test_command_accepts_affected_targets(self):

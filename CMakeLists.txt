@@ -150,6 +150,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/build_tools/third_party/vulkan_headers/vulkan
 include("${CMAKE_CURRENT_LIST_DIR}/build_tools/third_party/catch2/catch2.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/build_tools/third_party/cxx/cxx.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/build_tools/third_party/wkmi/wkmi.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/build_tools/vulkan/vulkan.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/build_tools/d3d12/d3d12.cmake")
 
 iree_setup_toolchain()
 hrx_configure_ipo()
@@ -167,7 +169,7 @@ if(IREE_HAL_DRIVER_AMDGPU)
   iree_configure_rocm_hsa_runtime_headers()
   iree_configure_rocm_aqlprofile_sdk_headers()
 endif()
-if(IREE_HAL_DRIVER_VULKAN)
+if(IREE_VULKAN_AVAILABLE)
   iree_configure_vulkan_headers()
 endif()
 if(AMDF_BUILD AND WIN32 AND IREE_ARCH STREQUAL "x86_64" AND

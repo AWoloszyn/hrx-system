@@ -164,7 +164,7 @@ loom_cc_binary(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
+if(IREE_VULKAN_AVAILABLE AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
 loom_cc_binary(
   NAME
     emit_spirv_vulkan
@@ -178,7 +178,7 @@ loom_cc_binary(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND IREE_HAL_DRIVER_VULKAN)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND IREE_HAL_DRIVER_VULKAN)
 loom_cc_binary(
   NAME
     emit_spirv_iree_hal
@@ -224,11 +224,11 @@ loom_cc_test(
     "requires-gpu-amd"
     "runtime-resource=amd-gpu"
   RESOURCE_GROUP
-    loom-amdgpu-tests
+    gpu-device
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
+if(IREE_VULKAN_AVAILABLE AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
 loom_cc_test(
   NAME
     emit_spirv_vulkan_test
@@ -241,10 +241,10 @@ loom_cc_test(
     loom::binding::c::target::spirv::vulkan
   LABELS
     "driver=vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    loom-vulkan-tests
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     vulkan
@@ -269,10 +269,10 @@ loom_cc_test(
     loom::binding::c::target::spirv::iree_hal
   LABELS
     "driver=vulkan"
-    "iree-run-requirement=runtime.resource.vulkan_device"
+    "iree-run-requirement=vulkan.resource.device"
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
-    loom-vulkan-tests
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     vulkan

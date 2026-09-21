@@ -106,11 +106,34 @@ def _test_executable_wrapper_contract_impl(env, target):
     )
     env.expect.that_str(action.mnemonic).equals("ExecutableSymlink")
 
+def _test_executable_test_applies_resource_group_tags(name, **kwargs):
+    iree_executable_test(
+        name = name + "_subject",
+        src = ":generate_rule_fixture_tool",
+        resource_group = "shared-device",
+        tags = ["manual", "existing-tag"],
+    )
+    analysis_test(
+        name = name,
+        attr_values = {"timeout": "short"},
+        impl = _test_executable_test_applies_resource_group_tags_impl,
+        target = name + "_subject",
+        **kwargs
+    )
+
+def _test_executable_test_applies_resource_group_tags_impl(env, target):
+    env.expect.that_collection(target[TestingAspectInfo].attrs.tags).contains_at_least([
+        "existing-tag",
+        "exclusive-if-local",
+        "resource_group:shared-device",
+    ])
+
 def executable_rules_test_suite(name):
     test_suite(
         name = name,
         tests = [
             _test_executable_alias_wraps_source,
             _test_executable_test_wraps_source,
+            _test_executable_test_applies_resource_group_tags,
         ],
     )

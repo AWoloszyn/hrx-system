@@ -45,7 +45,7 @@ iree_runtime_hal_cts_test_suite(
     "iree-run-requirement=runtime.resource.webgpu_device"
     "runtime-resource=webgpu-device"
   RESOURCE_GROUP
-    iree-hal-drivers-webgpu-tests
+    gpu-device
 )
 endif()
 

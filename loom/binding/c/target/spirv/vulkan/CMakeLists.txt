@@ -9,11 +9,7 @@
 
 iree_add_all_subdirs()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
-set(_vulkan_platform_deps "")
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
-  list(APPEND _vulkan_platform_deps iree::third_party::vulkan_headers)
-endif()
+if(LOOM_TARGET_ARCH_SPIRV AND IREE_VULKAN_AVAILABLE)
 loom_cc_library(
   NAME
     vulkan
@@ -23,9 +19,9 @@ loom_cc_library(
     "vulkan.c"
   DEPS
     iree::base::internal
+    iree::third_party::vulkan_headers
     loom::binding::c::loomc
     loom::binding::c::target::spirv
-    ${_vulkan_platform_deps}
   ALWAYSLINK
   PUBLIC
 )

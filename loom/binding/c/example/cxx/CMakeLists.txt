@@ -68,6 +68,8 @@ loom_cc_test(
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
+  RESOURCE_GROUP
+    gpu-device
   SANITIZER_SUPPRESSIONS
     lsan
     rocm

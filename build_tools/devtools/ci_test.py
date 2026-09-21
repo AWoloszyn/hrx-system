@@ -43,10 +43,124 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from build_tools.devtools import ci, ci_config
+from build_tools.devtools import ci, ci_config, run_requirements
 
 
 class CiTest(unittest.TestCase):
+    def test_requirement_audit_precedes_execution_and_rejects_unknown_tags(self):
+        for requirement, audit_code, expected_code in (
+            ("device", 0, 0),
+            ("typo", 0, 1),
+            ("device", 7, 7),
+        ):
+            with self.subTest(requirement=requirement):
+                with tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    output = root / "executed"
+                    payload = f'<query><rule name="//suite:test"><list name="tags"><string value="iree-run-requirement={requirement}"/></list></rule></query>'
+                    step = ci.CiStep(
+                        "Test",
+                        (
+                            sys.executable,
+                            "-c",
+                            "from pathlib import Path; Path('executed').touch()",
+                        ),
+                        requirement_audit=ci.RequirementAudit(
+                            (
+                                sys.executable,
+                                "-c",
+                                f"print({payload!r}); raise SystemExit({audit_code})",
+                            ),
+                            run_requirements.audit_bazel_xml,
+                        ),
+                    )
+                    with (
+                        mock.patch.object(ci, "REPO_ROOT", root),
+                        mock.patch.object(
+                            run_requirements, "declared_ids", return_value={"device"}
+                        ),
+                        mock.patch.dict(os.environ, {}, clear=True),
+                        contextlib.redirect_stdout(io.StringIO()),
+                        contextlib.redirect_stderr(io.StringIO()),
+                    ):
+                        result = ci.run_step(step, verbose=False)
+                    self.assertEqual(result.returncode, expected_code)
+                    self.assertEqual(output.exists(), expected_code == 0)
+
+    def test_resource_admission_composes_with_focus_filters(self):
+        with mock.patch.object(
+            run_requirements, "declared_ids", return_value={"device.a", "device.b"}
+        ):
+            bazel_step = ci.bazel_test_step(
+                "Test",
+                ("//suite/...",),
+                test_tag_filters=("focus",),
+                available_resources=("device.a",),
+            )
+            cmake_step = ci.cmake_test_step(
+                "example",
+                "Test",
+                label_regex="focus",
+                label_exclude_regex="manual",
+                available_resources=("device.a",),
+            )
+        bazel_filter = next(
+            arg for arg in bazel_step.argv if arg.startswith("--test_tag_filters=")
+        )
+        self.assertEqual(
+            bazel_filter, "--test_tag_filters=focus,-iree-run-requirement=device.b"
+        )
+        ctest_filter = cmake_step.argv[cmake_step.argv.index("-LE") + 1]
+        self.assertIsNotNone(re.search(ctest_filter, "iree-run-requirement=device.b"))
+        self.assertIsNotNone(re.search(ctest_filter, "manual"))
+        self.assertIsNone(re.search(ctest_filter, "iree-run-requirement=device.a"))
+
+    def test_job_options_override_defaults_and_filter_overrides_fail_loud(self):
+        with (
+            mock.patch.object(ci_config, "BAZEL_DEFAULT_OPTIONS", ("--choice=off",)),
+            mock.patch.object(
+                run_requirements, "declared_ids", return_value={"device"}
+            ),
+        ):
+            options = ("--choice=on",)
+            step = ci.bazel_test_step("Test", ("//suite:test",), bazel_options=options)
+            self.assertLess(
+                step.argv.index("--choice=off"), step.argv.index("--choice=on")
+            )
+            filters = [
+                arg for arg in step.argv if arg.startswith("--test_tag_filters=")
+            ]
+            self.assertEqual(
+                filters[-1], "--test_tag_filters=-iree-run-requirement=device"
+            )
+            for option in ("--test_tag_filters", "--test_tag_filters=focus"):
+                with self.assertRaisesRegex(ValueError, "Use test_tag_filters"):
+                    ci.bazel_test_step(
+                        "Test", ("//suite:test",), bazel_options=(option,)
+                    )
+
+    def test_audit_survives_step_options_and_dry_run_has_no_subprocesses(self):
+        step = ci.bazel_test_step("Test", ("//suite:test",))
+        args = ci.parse_arguments(
+            [
+                "iree-bazel-cpu",
+                "--keep-going",
+                "--bazel-profile-dir",
+                "/tmp/profiles",
+            ]
+        )
+        with mock.patch.object(ci, "_steps_from_args", return_value=[step]):
+            planned = ci.steps_from_args(args)
+        self.assertIs(planned[0].requirement_audit, step.requirement_audit)
+        with (
+            mock.patch.object(ci.subprocess, "run") as run,
+            contextlib.redirect_stdout(io.StringIO()),
+        ):
+            self.assertEqual(
+                ci.run_steps(planned, dry_run=True, keep_going=True, verbose=False), 0
+            )
+        run.assert_not_called()
+
     def test_keep_going_reaches_bazel_before_target_and_program_separators(self):
         steps = [
             ci.bazel_build_step("Build", ("//example:one", "-//example:excluded")),
@@ -184,8 +298,8 @@ class CiTest(unittest.TestCase):
 
         text = output.getvalue()
         self.assertIn("dev.py bazel configure", text)
-        self.assertIn("dev.py bazel build -- //runtime/...", text)
-        self.assertIn("dev.py bazel test --test_tag_filters=", text)
+        self.assertIn("dev.py bazel build ", text)
+        self.assertIn("dev.py bazel test ", text)
         self.assertIn(" -- //runtime/...", text)
         self.assertIn("-//runtime/src/iree/hal/drivers/amdgpu/...", text)
         self.assertIn("-//runtime/src/iree/hal/drivers/vulkan/...", text)
@@ -668,30 +782,29 @@ class CiTest(unittest.TestCase):
         )
 
         steps = ci.steps_from_args(args)
-        command_lines = [step.command_line() for step in steps]
 
         self.assertTrue(
             any(
-                "bazel test --config=asan --test_tag_filters="
-                + ",".join(ci_config.CPU_RESOURCE_TAG_EXCLUDES)
-                in line
-                for line in command_lines
+                step.argv[:4] == ("python3", "dev.py", "bazel", "test")
+                and "--config=asan" in step.argv
+                and step.argv.index("--config=asan") < step.argv.index("--")
+                for step in steps
             )
         )
         self.assertTrue(
             any(
-                "bazel test --config=ubsan --test_tag_filters="
-                + ",".join(ci_config.CPU_RESOURCE_TAG_EXCLUDES)
-                in line
-                for line in command_lines
+                step.argv[:4] == ("python3", "dev.py", "bazel", "test")
+                and "--config=ubsan" in step.argv
+                and step.argv.index("--config=ubsan") < step.argv.index("--")
+                for step in steps
             )
         )
         self.assertTrue(
             any(
-                "bazel test --config=tsan --test_tag_filters="
-                + ",".join(ci_config.CPU_RESOURCE_TAG_EXCLUDES)
-                in line
-                for line in command_lines
+                step.argv[:4] == ("python3", "dev.py", "bazel", "test")
+                and "--config=tsan" in step.argv
+                and step.argv.index("--config=tsan") < step.argv.index("--")
+                for step in steps
             )
         )
         tsan_test_step = next(
@@ -711,17 +824,10 @@ class CiTest(unittest.TestCase):
         self.assertTrue(tsan_suppression_path.is_file())
         self.assertTrue(
             any(
-                step.argv[:7]
-                == (
-                    "python3",
-                    "dev.py",
-                    "bazel",
-                    "build",
-                    "--config=msan",
-                    "--",
-                    "//runtime/...",
-                )
+                step.argv[:4] == ("python3", "dev.py", "bazel", "build")
                 and "--config=msan" in step.argv
+                and step.argv.index("--config=msan") < step.argv.index("--")
+                and step.argv.index("//runtime/...") > step.argv.index("--")
                 for step in steps
             )
         )
@@ -745,13 +851,13 @@ class CiTest(unittest.TestCase):
         steps = ci.steps_from_args(args)
         command_lines = [step.command_line() for step in steps]
 
-        self.assertEqual(command_lines[0], "python3 dev.py bazel configure")
+        self.assertEqual(steps[0].argv[:4], ("python3", "dev.py", "bazel", "configure"))
         self.assertTrue(
             any(
-                "bazel test --config=asan --test_tag_filters="
-                + ",".join(ci_config.CPU_RESOURCE_TAG_EXCLUDES)
-                in line
-                for line in command_lines
+                step.argv[:4] == ("python3", "dev.py", "bazel", "test")
+                and "--config=asan" in step.argv
+                and step.argv.index("--config=asan") < step.argv.index("--")
+                for step in steps
             )
         )
         self.assertFalse(any("--config=ubsan" in line for line in command_lines))
@@ -772,17 +878,10 @@ class CiTest(unittest.TestCase):
 
         self.assertTrue(
             any(
-                step.argv[:7]
-                == (
-                    "python3",
-                    "dev.py",
-                    "bazel",
-                    "build",
-                    "--config=msan",
-                    "--",
-                    "//runtime/...",
-                )
+                step.argv[:4] == ("python3", "dev.py", "bazel", "build")
                 and "--config=msan" in step.argv
+                and step.argv.index("--config=msan") < step.argv.index("--")
+                and step.argv.index("//runtime/...") > step.argv.index("--")
                 for step in steps
             )
         )
@@ -817,10 +916,6 @@ class CiTest(unittest.TestCase):
                 arg.startswith("-//runtime/src/iree/hal/drivers/amdgpu")
                 for arg in build_step.argv + test_step.argv
             )
-        )
-        self.assertIn(
-            "--test_tag_filters=" + ",".join(ci_config.AMDGPU_BAZEL_TEST_TAG_FILTERS),
-            test_step.argv,
         )
 
     def test_bazel_amdgpu_single_sanitizer_command_runs_one_configuration(self):
@@ -858,14 +953,6 @@ class CiTest(unittest.TestCase):
                 for arg in tsan_test.argv
             )
         )
-        self.assertIn(
-            "--test_tag_filters="
-            + ",".join(
-                ci_config.AMDGPU_BAZEL_TEST_TAG_FILTERS
-                + (f"-{ci_config.HOST_TSAN_INCOMPATIBLE_TEST_LABEL}",)
-            ),
-            tsan_test.argv,
-        )
         self.assertFalse(
             any(
                 arg.startswith("-//runtime/src/iree/hal/drivers/amdgpu")
@@ -893,11 +980,6 @@ class CiTest(unittest.TestCase):
                     step
                     for step in steps
                     if step.name == f"Test IREE / AMDGPU / {sanitizer.upper()}"
-                )
-                self.assertIn(
-                    "--test_tag_filters="
-                    + ",".join(ci_config.AMDGPU_BAZEL_TEST_TAG_FILTERS),
-                    test_step.argv,
                 )
                 self.assertFalse(
                     any(
@@ -931,10 +1013,6 @@ class CiTest(unittest.TestCase):
         )
         for xfail_target in ci_config.VULKAN_XFAIL_TARGETS:
             self.assertIn(xfail_target, test_step.argv)
-        self.assertIn(
-            "--test_tag_filters=" + ",".join(ci_config.VULKAN_BAZEL_TEST_TAG_FILTERS),
-            test_step.argv,
-        )
 
     def test_vulkan_linux_commands_require_namespace_sandboxing(self):
         for host_platform in ("linux", "win32", "darwin"):
@@ -1704,10 +1782,6 @@ fi
             )
         )
         build_steps = [step for step in steps if step.name.startswith("Build IREE")]
-        resource_target = ci.cmake_runtime_resource_build_target(
-            ci_config.AMDGPU_CTEST_RESOURCE_LABEL_REGEX
-        )
-        self.assertTrue(any(resource_target in step.argv for step in build_steps))
         self.assertFalse(
             any(
                 "loom_tools_iree-test-loom_amdgpu_execution_test" in arg
@@ -1721,18 +1795,12 @@ fi
                 for step in steps
             )
         )
-        resource_test = next(
-            step
-            for step in steps
-            if step.name == "Test IREE CMake AMDGPU resource tests"
-        )
         package_test = next(
             step
             for step in steps
             if step.name == "Test IREE CMake AMDGPU package tests"
         )
         self.assertEqual(self.ctest_exclude_regexes(package_test), [])
-        self.assertIn(ci_config.CTEST_MANUAL_LABEL_EXCLUDE_REGEX, resource_test.argv)
 
     def test_cmake_amdgpu_device_binary_source_build_uses_fetched_rocm_root(self):
         args = ci.parse_arguments(["iree-cmake-amdgpu"])
@@ -1768,23 +1836,6 @@ fi
         for step in test_steps:
             self.assertEqual(step.env, expected_env)
 
-    def test_cmake_amdgpu_tsan_excludes_only_host_incompatible_tests(self):
-        args = ci.parse_arguments(["iree-cmake-amdgpu-tsan"])
-
-        steps = ci.steps_from_args(args)
-        resource_test = next(
-            step
-            for step in steps
-            if step.name == "Test IREE CMake AMDGPU resource tests with TSAN"
-        )
-        self.assertIn(
-            ci.combine_ctest_regex(
-                ci_config.CTEST_MANUAL_LABEL_EXCLUDE_REGEX,
-                ci_config.HOST_TSAN_INCOMPATIBLE_TEST_LABEL,
-            ),
-            resource_test.argv,
-        )
-
     def test_cmake_amdgpu_msan_builds_driver_targets_without_test_deps(self):
         args = ci.parse_arguments(["iree-cmake-amdgpu-msan"])
 
@@ -1796,11 +1847,6 @@ fi
         self.assertTrue(
             any("-DIREE_BUILD_BENCHMARKS=OFF" in line for line in command_lines)
         )
-        build_steps = [step for step in steps if step.name.startswith("Build IREE")]
-        resource_target = ci.cmake_runtime_resource_build_target(
-            ci_config.AMDGPU_CTEST_RESOURCE_LABEL_REGEX
-        )
-        self.assertFalse(any(resource_target in step.argv for step in build_steps))
         self.assertFalse(any("Test IREE CMake AMDGPU" in step.name for step in steps))
 
     def test_cmake_loom_amdgpu_command_runs_compile_coverage_without_driver(self):
@@ -1828,7 +1874,6 @@ fi
         )
         for regex in ci_config.LOOM_AMDGPU_CMAKE_COMPILE_CTEST_REGEXES:
             self.assertTrue(any(regex in arg for arg in test_step.argv))
-        self.assertIn(ci_config.CTEST_RESOURCE_LABEL_EXCLUDE_REGEX, test_step.argv)
 
     def test_cmake_vulkan_command_scopes_build_and_tests_to_vulkan(self):
         args = ci.parse_arguments(["iree-cmake-vulkan"])
@@ -1843,10 +1888,7 @@ fi
             any("-DIREE_HAL_DRIVER_AMDGPU=OFF" in line for line in command_lines)
         )
         build_steps = [step for step in steps if step.name.startswith("Build IREE")]
-        resource_target = ci.cmake_runtime_resource_build_target(
-            ci_config.VULKAN_CTEST_RESOURCE_LABEL_REGEX
-        )
-        for target in ci_config.VULKAN_CMAKE_DRIVER_TARGETS + (resource_target,):
+        for target in ci_config.VULKAN_CMAKE_DRIVER_TARGETS:
             self.assertTrue(any(target in step.argv for step in build_steps))
         for target in (
             "loom/src/loom/tools/iree-test-loom/all",
@@ -1868,7 +1910,6 @@ fi
             if step.name == "Test IREE CMake Vulkan resource tests"
         )
         self.assertIn(ci_config.VULKAN_CTEST_RESOURCE_LABEL_REGEX, resource_test.argv)
-        self.assertIn(ci_config.CTEST_MANUAL_LABEL_EXCLUDE_REGEX, resource_test.argv)
         self.assertIn(ci_config.VULKAN_CTEST_REGEX, resource_test.argv)
         self.assertFalse(
             any("emit_spirv_vulkan_test" in arg for arg in resource_test.argv)

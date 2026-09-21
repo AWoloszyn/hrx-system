@@ -19,6 +19,19 @@ _PRESUBMIT_TEST_SIZE = "small"
 _PRESUBMIT_TEST_TAGS = ["manual"]
 
 py_library(
+    name = "run_requirements",
+    srcs = ["run_requirements.py"],
+    data = [
+        "//build_tools/d3d12/requirements:defs.bzl",
+        "//build_tools/vulkan/requirements:defs.bzl",
+        "//libamdf/requirements:defs.bzl",
+        "//loom/requirements:defs.bzl",
+        "//runtime/requirements:defs.bzl",
+    ],
+    deps = ["//build_tools/bazel_to_cmake:declarative_loads"],
+)
+
+py_library(
     name = "devtools",
     srcs = [
         "__init__.py",
@@ -47,6 +60,7 @@ py_library(
         "source_lock.py",
     ],
     deps = [
+        ":run_requirements",
         "//build_tools/bazel:compile_commands_merge_lib",
         "//build_tools/bazel:configure",
         "//build_tools/ci:windows_diagnostics",
@@ -60,7 +74,10 @@ py_binary(
         "ci.py",
         "ci_config.py",
     ],
-    deps = ["//build_tools/ci:windows_diagnostics"],
+    deps = [
+        ":run_requirements",
+        "//build_tools/ci:windows_diagnostics",
+    ],
 )
 
 config_setting(
@@ -156,7 +173,10 @@ py_test(
     ],
     main = "ci_test.py",
     tags = _PRESUBMIT_TEST_TAGS,
-    deps = ["//build_tools/ci:windows_diagnostics"],
+    deps = [
+        ":run_requirements",
+        "//build_tools/ci:windows_diagnostics",
+    ],
 )
 
 py_test(
@@ -358,9 +378,18 @@ test_suite(
         ":hooks_test",
         ":install_test",
         ":project_presubmit_test",
+        ":run_requirements_test",
         ":setup_test",
         ":smoke_test_lib_test",
         ":source_lock_test",
         "//build_tools/ci:windows_diagnostics_test",
     ],
+)
+
+py_test(
+    name = "run_requirements_test",
+    size = _PRESUBMIT_TEST_SIZE,
+    srcs = ["run_requirements_test.py"],
+    tags = _PRESUBMIT_TEST_TAGS,
+    deps = [":run_requirements"],
 )

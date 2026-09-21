@@ -37,7 +37,7 @@ iree_execution_test_suite(
     "iree-run-requirement=libamdf.resource.xdna"
     "runtime-resource=amd-xdna"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -73,7 +73,7 @@ iree_execution_test_suite(
     "iree-run-requirement=libamdf.resource.xdna"
     "runtime-resource=amd-xdna"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -106,7 +106,7 @@ iree_cc_test(
     "iree-run-requirement=libamdf.resource.xdna"
     "runtime-resource=amd-xdna"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 
@@ -139,7 +139,7 @@ iree_cc_test(
     "iree-run-requirement=libamdf.resource.xdna"
     "runtime-resource=amd-xdna"
   RESOURCE_GROUP
-    iree-hal-drivers-amdgpu-tests
+    gpu-device
 )
 endif()
 

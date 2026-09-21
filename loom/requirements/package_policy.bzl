@@ -14,6 +14,10 @@ load(
     "package_policy",
 )
 load(
+    "//build_tools/vulkan/requirements:defs.bzl",
+    "VULKAN_API",
+)
+load(
     "//loom/requirements:defs.bzl",
     "EMIT_AMDGPU",
     "EMIT_SPIRV",
@@ -30,6 +34,10 @@ load(
 )
 
 PACKAGE_POLICIES = [
+    package_policy(
+        packages = ["loom/binding/c/target/spirv/vulkan/..."],
+        build_requirements = [TARGET_ARCH_SPIRV, VULKAN_API],
+    ),
     package_policy(
         packages = [
             "loom/binding/c/import/cxx/...",
@@ -119,7 +127,7 @@ PACKAGE_POLICIES = [
     ),
     package_policy(
         packages = ["loom/binding/c/test/target/spirv/..."],
-        build_requirements = [TARGET_ARCH_SPIRV, EMIT_SPIRV],
+        build_requirements = [TARGET_ARCH_SPIRV],
     ),
 ]
 

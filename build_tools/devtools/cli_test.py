@@ -408,6 +408,25 @@ class CliTest(unittest.TestCase):
 
         self.assertIn("bazel cquery --output=files //runtime/...", description)
 
+        argv = self.planned_argv(
+            [
+                "bazel",
+                "aquery",
+                'mnemonic("CppCompile", //runtime/...)',
+                "--output=jsonproto",
+                "--config=asan",
+            ]
+        )
+        self.assertEqual(
+            argv[1:],
+            [
+                "aquery",
+                'mnemonic("CppCompile", //runtime/...)',
+                "--output=jsonproto",
+                "--config=asan",
+            ],
+        )
+
         args = cli.parse_arguments(["bazel", "info", "execution_root"])
 
         plan = args.handler(args)

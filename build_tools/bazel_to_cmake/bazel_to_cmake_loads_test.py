@@ -56,6 +56,17 @@ PROFILE = with_options("configured")
         )
         self.assertIs(exported, direct)
 
+    def test_repository_root_imports_resolve_in_the_checkout(self):
+        self.write_module("defaults.bzl", 'VALUE = ["root"]\n')
+        self.write_module(
+            "consumer/exports.bzl",
+            'load("//:defaults.bzl", "VALUE")\n',
+        )
+        exported = self.loader.symbol("//consumer:exports.bzl", "VALUE", self.root)
+        direct = self.loader.symbol("@workspace//:defaults.bzl", "VALUE", self.root)
+        self.assertEqual(exported, ["root"])
+        self.assertIs(exported, direct)
+
     def test_failed_evaluation_never_exports_partial_values(self):
         self.write_module(
             "settings/broken.bzl", 'VALUE = ["incomplete"]\nunsupported_starlark()\n'
