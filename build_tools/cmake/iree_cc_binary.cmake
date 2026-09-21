@@ -98,6 +98,9 @@ function(iree_cc_binary)
       PRIVATE
         ${_RULE_SRCS}
     )
+    foreach(_SOURCE IN LISTS _RULE_SRCS)
+      iree_generated_output_add_consumer("${_SOURCE}" "${_NAME}")
+    endforeach()
   else()
     set(_DUMMY_SRC "${CMAKE_CURRENT_BINARY_DIR}/${_NAME}_dummy.cc")
     iree_make_empty_file("${_DUMMY_SRC}")

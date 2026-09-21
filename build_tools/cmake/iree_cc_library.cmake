@@ -434,8 +434,8 @@ function(iree_cc_library)
     set(_GENERATED_INPUT_CONSUMER ${_OBJECTS_NAME})
   endif()
   foreach(_GENERATED_INPUT IN LISTS
-      _RULE_GENERATED_SRC_TARGET_SRCS
-      _RULE_GENERATED_HDR_FILES)
+      _RULE_SRC_TARGET_SRCS
+      _RULE_HDR_TARGET_SRCS)
     iree_generated_output_add_consumer(
       "${_GENERATED_INPUT}"
       "${_GENERATED_INPUT_CONSUMER}"
