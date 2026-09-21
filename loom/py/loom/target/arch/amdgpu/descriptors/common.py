@@ -211,6 +211,7 @@ _SCHEDULE_TENSOR_LOAD_LDS = "amdgpu.tensor.load.lds"
 _SCHEDULE_CLUSTER_LOAD_LDS = "amdgpu.cluster.load.lds"
 _SCHEDULE_CACHE_CONTROL = "amdgpu.cache.control"
 _SCHEDULE_MODE_CONTROL = "amdgpu.mode.control"
+_SCHEDULE_MESSAGE = "amdgpu.message"
 _SCHEDULE_WAIT_MEMORY = "amdgpu.wait.memory"
 _SCHEDULE_WAIT_VMEM_STORE = "amdgpu.wait.vmem.store"
 _SCHEDULE_WAIT_LDS = "amdgpu.wait.lds"
@@ -1162,6 +1163,15 @@ def _common_scalar_vector_memory_schedule_classes(
             latency_kind=LatencyKind.VARIABLE,
             latency_cycles=1,
             issue_uses=(IssueUse(_RESOURCE_CONTROL, cycles=1, units=1),),
+            flags=(ScheduleClassFlag.CONTROL,),
+            model_quality=ModelQuality.FALLBACK,
+        ),
+        ScheduleClass(
+            _SCHEDULE_MESSAGE,
+            latency_kind=LatencyKind.VARIABLE,
+            latency_cycles=1,
+            issue_uses=(IssueUse(_RESOURCE_CONTROL, cycles=1, units=1),),
+            hazards=_SMEM_WAIT_HAZARDS,
             flags=(ScheduleClassFlag.CONTROL,),
             model_quality=ModelQuality.FALLBACK,
         ),
@@ -3486,6 +3496,7 @@ __all__ = (
     "_SCHEDULE_MFMA",
     "_SCHEDULE_MFMA_QUALIFIED_PREFIX",
     "_SCHEDULE_MODE_CONTROL",
+    "_SCHEDULE_MESSAGE",
     "_SCHEDULE_PACKED_DOT",
     "_SCHEDULE_SALU",
     "_SCHEDULE_SALU_COMPARE",

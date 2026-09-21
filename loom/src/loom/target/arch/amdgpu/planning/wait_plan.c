@@ -1418,6 +1418,10 @@ static void loom_amdgpu_wait_plan_classify_effects(
     switch (effect->kind) {
       case LOOM_LOW_EFFECT_KIND_READ: {
         if (!loom_amdgpu_wait_effect_is_dependency_memory(effect)) {
+          // Counter-backed external reads produce asynchronous results without
+          // participating in memory alias dependencies.
+          frontier_node->read_counter_mask |=
+              loom_amdgpu_wait_effect_counter_mask(effect);
           break;
         }
         node_state->flags |= LOOM_AMDGPU_WAIT_NODE_STATE_DEPENDENCY_READ;
@@ -1435,6 +1439,8 @@ static void loom_amdgpu_wait_plan_classify_effects(
       }
       case LOOM_LOW_EFFECT_KIND_WRITE: {
         if (!loom_amdgpu_wait_effect_is_dependency_memory(effect)) {
+          frontier_node->write_counter_mask |=
+              loom_amdgpu_wait_effect_counter_mask(effect);
           break;
         }
         node_state->flags |= LOOM_AMDGPU_WAIT_NODE_STATE_DEPENDENCY_WRITE;

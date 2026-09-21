@@ -139,6 +139,7 @@ loom_check_test_suite(
     "test/dpp_wait_states.loom-test"
     "test/gfx1201_native.loom-test"
     "test/hal_kernel_library.loom-test"
+    "test/message_completion.loom-test"
     "test/packet.loom-test"
     "test/packet_json.loom-test"
     "test/spill_lowering.loom-test"

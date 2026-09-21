@@ -861,26 +861,6 @@ static iree_status_t loom_amdgpu_find_packet_immediate(
                           (int)field_name.size, field_name.data);
 }
 
-static bool loom_amdgpu_descriptor_has_effect(
-    const loom_low_descriptor_set_t* descriptor_set,
-    const loom_low_descriptor_t* descriptor, loom_low_effect_kind_t kind) {
-  if (descriptor->effect_count == 0) {
-    return false;
-  }
-  IREE_ASSERT(descriptor_set->effects != NULL);
-  IREE_ASSERT_LE(descriptor->effect_start, descriptor_set->effect_count);
-  IREE_ASSERT_LE(descriptor->effect_count,
-                 descriptor_set->effect_count - descriptor->effect_start);
-  for (uint16_t i = 0; i < descriptor->effect_count; ++i) {
-    const loom_low_effect_t* effect =
-        &descriptor_set->effects[descriptor->effect_start + i];
-    if (effect->kind == kind) {
-      return true;
-    }
-  }
-  return false;
-}
-
 static bool loom_amdgpu_descriptor_has_memory_effect(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_low_descriptor_t* descriptor, loom_low_effect_kind_t kind,
@@ -1784,9 +1764,9 @@ static iree_status_t loom_amdgpu_append_waitcnt_packet(
 }
 
 typedef enum loom_amdgpu_descriptor_packet_route_flag_bits_e {
-  // Descriptor has a read effect.
+  // Descriptor has a memory read effect.
   LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_READ_EFFECT = 1u << 0,
-  // Descriptor has a write effect.
+  // Descriptor has a memory write effect.
   LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_WRITE_EFFECT = 1u << 1,
   // Descriptor has a counter effect.
   LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_COUNTER_EFFECT = 1u << 2,
@@ -1849,22 +1829,22 @@ loom_amdgpu_descriptor_packet_route_flags(
   const loom_low_descriptor_view_t* descriptor_view =
       loom_amdgpu_descriptor_view(context);
 
-  const bool has_read_effect = loom_amdgpu_descriptor_has_effect(
-      descriptor_set, descriptor, LOOM_LOW_EFFECT_KIND_READ);
-  if (has_read_effect) {
-    flags |= LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_READ_EFFECT;
+  for (uint16_t i = 0; i < descriptor->effect_count; ++i) {
+    const loom_low_effect_t* effect =
+        &descriptor_set->effects[descriptor->effect_start + i];
+    if (effect->kind == LOOM_LOW_EFFECT_KIND_COUNTER) {
+      flags |= LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_COUNTER_EFFECT;
+    } else if (effect->memory_space != LOOM_LOW_MEMORY_SPACE_NONE) {
+      if (effect->kind == LOOM_LOW_EFFECT_KIND_READ) {
+        flags |= LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_READ_EFFECT;
+      } else if (effect->kind == LOOM_LOW_EFFECT_KIND_WRITE) {
+        flags |= LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_WRITE_EFFECT;
+      }
+    }
   }
-  const bool has_write_effect = loom_amdgpu_descriptor_has_effect(
-      descriptor_set, descriptor, LOOM_LOW_EFFECT_KIND_WRITE);
-  if (has_write_effect) {
-    flags |= LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_WRITE_EFFECT;
-  }
-  const bool has_counter_effect = loom_amdgpu_descriptor_has_effect(
-      descriptor_set, descriptor, LOOM_LOW_EFFECT_KIND_COUNTER);
-  if (has_counter_effect) {
-    flags |= LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_COUNTER_EFFECT;
-  }
-  if (has_read_effect && has_write_effect &&
+  if (iree_all_bits_set(
+          flags, LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_READ_EFFECT |
+                     LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_WRITE_EFFECT) &&
       loom_amdgpu_descriptor_is_global_to_lds(descriptor_set, descriptor)) {
     flags |= LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_GLOBAL_TO_LDS;
   }

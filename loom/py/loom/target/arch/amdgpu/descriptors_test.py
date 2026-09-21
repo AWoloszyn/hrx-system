@@ -63,6 +63,7 @@ from loom.target.arch.amdgpu.descriptors import (
     _SCHEDULE_FLAT_STORE,
     _SCHEDULE_LDS_STORE,
     _SCHEDULE_MATRIX,
+    _SCHEDULE_MESSAGE,
     _SCHEDULE_MFMA_QUALIFIED_PREFIX,
     _SCHEDULE_MODE_CONTROL,
     _SCHEDULE_PACKED_DOT,
@@ -2425,7 +2426,11 @@ def test_feedback_control_descriptors_cover_execution_families() -> None:
             "amdgpu.s_trap",
         ):
             descriptor = descriptors[descriptor_key]
-            assert descriptor.schedule_class == _SCHEDULE_MODE_CONTROL
+            assert descriptor.schedule_class == (
+                _SCHEDULE_MESSAGE
+                if descriptor_key == "amdgpu.s_sendmsg"
+                else _SCHEDULE_MODE_CONTROL
+            )
             assert descriptor.semantic_tag.startswith("control.")
             if descriptor_key == "amdgpu.s_sendmsg":
                 _assert_s_sendmsg_low_asm_form(descriptor)
@@ -2445,7 +2450,11 @@ def test_feedback_control_descriptors_cover_execution_families() -> None:
             "amdgpu.s_trap",
         ):
             descriptor = descriptors[descriptor_key]
-            assert descriptor.schedule_class == _SCHEDULE_MODE_CONTROL
+            assert descriptor.schedule_class == (
+                _SCHEDULE_MESSAGE
+                if descriptor_key in ("amdgpu.s_sendmsg", "amdgpu.s_sendmsg_rtn_b32")
+                else _SCHEDULE_MODE_CONTROL
+            )
             assert descriptor.semantic_tag.startswith("control.")
             if descriptor_key == "amdgpu.s_sendmsg":
                 _assert_s_sendmsg_low_asm_form(descriptor)
