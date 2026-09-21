@@ -196,12 +196,12 @@ authored sources:
 
 ```starlark
 load("@hrx//loom/build_tools/bazel:defs.bzl", "loom_test")
-load("@hrx//loom/target/amdgpu:execution_profiles.bzl", "AMDGPU_HARDWARE_PROFILE")
+load("@hrx//loom/target:execution_profiles.bzl", "GPU_HARDWARE_PROFILES")
 
 loom_test(
     name = "address_tests",
     srcs = ["address_tests.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = GPU_HARDWARE_PROFILES,
     compile_targets = [
         "@hrx//loom/target/amdgpu:gfx942",
         "@hrx//loom/target/amdgpu:gfx1151",
@@ -211,10 +211,18 @@ loom_test(
 
 The sources own `check.case` or `check.benchmark` roots; `deps` contribute only
 reachable definitions. Execution and compilation consume the same linked test
-module. The owning test target includes both phases. Its `_execution` child
-requires the execution profile's device, while `_compile_gfx942` and
-`_compile_gfx1151` run the offline compiler on the host. Compilation succeeds
+module. The owning test target includes both phases. Each
+`_execute_<profile>_test` child requires only its execution profile's device,
+while `_compile_gfx942` and `_compile_gfx1151` run the offline compiler on the
+host. Compilation succeeds
 only when final artifacts are produced; it does not execute numerical checks.
+
+`GPU_HARDWARE_PROFILES` selects native AMDGPU and Vulkan execution independently.
+Use `VM_REFERENCE_PROFILE` from `@hrx//loom/target/vm:execution_profiles.bzl`
+for reference function execution. An empty `execution_profiles` list creates
+only compiler checks; at least one execution or compiler profile is required.
+Adding profiles creates separate results without importing or linking the
+source closure again. Device availability never gates a sibling compiler check.
 
 Compiler fixtures have the same alongside option. `loom_check_test` accepts a
 `compile_targets` list; `loom_check_test_suite` accepts a map from existing

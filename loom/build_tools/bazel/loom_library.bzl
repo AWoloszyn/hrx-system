@@ -43,7 +43,7 @@ LoomExecutionTestInfo = provider(
         "benchmark_runner": "Resolved single-iteration benchmark runner executable.",
         "benchmark_runner_args": "Smoke and profile arguments passed to the benchmark runner.",
         "module": "Linked Loom module containing root-owned cases and benchmarks.",
-        "profile_name": "Stable execution profile name, or empty for an unprofiled test.",
+        "profile_name": "Stable execution profile name.",
         "test_runner": "Resolved correctness runner executable.",
         "test_runner_args": "Profile and test arguments passed to the correctness runner.",
     },
@@ -526,36 +526,25 @@ def _declare_execution_test(
         visibility,
         target_compatible_with = [],
         data = []):
-    profile_name = ""
-    profile_runner_args = []
-    test_kwargs = {
-        "size": size,
-        "tags": tags,
-    }
-    if profile != None:
-        if getattr(profile, "kind", None) != "loom_execution_profile":
-            fail("%s execution profile was not created by loom_execution_profile" % name)
-        profile_name = profile.name
-        profile_runner_args = profile.runner_args
-        test_kwargs = apply_test_requirements(
-            {
-                "size": size,
-                "tags": tags + profile.tags + _execution_profile_tags(profile),
-            },
-            build_requirements = profile.build_requirements,
-            run_requirements = profile.run_requirements,
-            resource_group = profile.resource_group,
-        )
-        test_kwargs["data"] = iree_sanitizer_suppression_data(
-            [],
-            profile.sanitizer_suppressions,
-        )
-        test_env = iree_sanitizer_suppression_env(
-            None,
-            profile.sanitizer_suppressions,
-        )
-        if test_env:
-            test_kwargs["env"] = test_env
+    test_kwargs = apply_test_requirements(
+        {
+            "size": size,
+            "tags": tags + profile.tags + _execution_profile_tags(profile),
+        },
+        build_requirements = profile.build_requirements,
+        run_requirements = profile.run_requirements,
+        resource_group = profile.resource_group,
+    )
+    test_kwargs["data"] = iree_sanitizer_suppression_data(
+        [],
+        profile.sanitizer_suppressions,
+    )
+    test_env = iree_sanitizer_suppression_env(
+        None,
+        profile.sanitizer_suppressions,
+    )
+    if test_env:
+        test_kwargs["env"] = test_env
     if target_compatible_with:
         test_kwargs["target_compatible_with"] = test_kwargs.get("target_compatible_with", []) + target_compatible_with
     resource_group = test_kwargs.pop("resource_group", None)
@@ -571,12 +560,36 @@ def _declare_execution_test(
         launcher_attrs = {
             "data": data,
             "module": module,
-            "profile_args": profile_runner_args,
-            "profile_name": profile_name,
+            "profile_args": profile.runner_args,
+            "profile_name": profile.name,
             "test_args": test_runner_args,
         },
         test_kwargs = test_kwargs,
     )
+
+def _declare_execution_tests(name, module, profiles, **kwargs):
+    """Expands independent execution policies over one source-owned module."""
+    tests = {}
+    for profile in profiles:
+        if getattr(profile, "kind", None) != "loom_execution_profile":
+            fail("%s execution profile was not created by loom_execution_profile" % name)
+        test_name = "%s_execute_%s_test" % (name, _name_suffix(profile.name))
+        if test_name in tests:
+            fail(
+                "%s execution profile %s has the same generated name as %s" % (
+                    name,
+                    profile.name,
+                    tests[test_name],
+                ),
+            )
+        tests[test_name] = profile.name
+        _declare_execution_test(
+            name = test_name,
+            module = module,
+            profile = profile,
+            **kwargs
+        )
+    return tests.keys()
 
 def _declare_library(
         name,
@@ -661,30 +674,18 @@ def _declare_library(
 
     if execution_profiles and not srcs:
         fail("%s requires authored srcs for execution profiles" % name)
-    execution_names = {}
-    for profile in execution_profiles:
-        profile_suffix = _name_suffix(profile.name)
-        execution_name = "%s_execute_%s_test" % (name, profile_suffix)
-        if execution_name in execution_names:
-            fail(
-                "%s execution profile %s has the same generated name as %s" % (
-                    name,
-                    profile.name,
-                    execution_names[execution_name],
-                ),
-            )
-        execution_names[execution_name] = profile.name
-        _declare_execution_test(
-            name = execution_name,
-            data = data,
+    if execution_profiles:
+        tests.extend(_declare_execution_tests(
+            name = name,
             module = ":" + test_module,
-            profile = profile,
+            profiles = execution_profiles,
+            data = data,
             test_runner_args = [],
             size = "small",
             tags = tags,
             visibility = ["//visibility:private"],
-        )
-        tests.append(execution_name)
+            target_compatible_with = target_compatible_with,
+        ))
 
     binary_names = {}
     for target in kernel_targets:
@@ -770,7 +771,7 @@ def loom_test(
         input_format = "",
         inputopts = [],
         args = [],
-        execution_profile = None,
+        execution_profiles = [],
         compile_targets = [],
         size = "small",
         tags = [],
@@ -787,16 +788,18 @@ def loom_test(
     and no warmup repetitions.
 
     Args:
-      name: Name of the generated test target.
+      name: Name of the suite containing all compilation and execution children.
       srcs: Authored source modules jointly owning the test module.
       data: Headers and runtime fixtures available during import and execution.
       input_format: Source provider override, or empty for filename selection.
       inputopts: Provider-scoped options, such as ``cxx:std=c++20``.
       deps: Loom libraries available only for dependency resolution.
       args: Additional arguments passed to the correctness runner.
-      execution_profile: Optional execution environment and requirement policy.
+      execution_profiles: Independent execution environments and requirement
+          policies. An empty list declares no execution children.
       compile_targets: Typed compiler profiles qualifying the same linked test
-          module offline, without the execution profile's device requirements.
+          module offline, without execution profiles' device requirements.
+          At least one execution or compiler profile is required.
       size: Bazel test size.
       tags: Additional tags applied to the test.
       visibility: Bazel visibility of the generated test target.
@@ -804,6 +807,8 @@ def loom_test(
     """
     if not srcs:
         fail("%s requires at least one authored test source" % name)
+    if not execution_profiles and not compile_targets:
+        fail("%s requires execution_profiles or compile_targets" % name)
     library_name = name + "_library"
     module_name = name + "_module"
     _loom_library(
@@ -827,12 +832,11 @@ def loom_test(
         testonly = True,
         visibility = ["//visibility:private"],
     )
-    execution_name = name + "_execution" if compile_targets else name
-    _declare_execution_test(
-        name = execution_name,
+    execution_tests = _declare_execution_tests(
+        name = name,
         data = data,
         module = ":" + module_name,
-        profile = execution_profile,
+        profiles = execution_profiles,
         test_runner_args = args,
         size = size,
         tags = tags,
@@ -848,13 +852,12 @@ def loom_test(
         visibility = visibility,
         target_compatible_with = target_compatible_with,
     )
-    if compile_tests:
-        native.test_suite(
-            name = name,
-            tests = [execution_name] + compile_tests,
-            tags = tags,
-            visibility = visibility,
-        )
+    native.test_suite(
+        name = name,
+        tests = execution_tests + compile_tests,
+        tags = tags,
+        visibility = visibility,
+    )
 
 def loom_kernel_library(
         name,

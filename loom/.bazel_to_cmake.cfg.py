@@ -344,6 +344,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         tags=None,
     ):
         return {
+            "kind": "loom_execution_profile",
             "name": name,
             "target_family": target_family,
             "target_class": target_class,
@@ -365,7 +366,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         input_format="",
         inputopts=None,
         args=None,
-        execution_profile=None,
+        execution_profiles=None,
         compile_targets=None,
         tags=None,
         target_compatible_with=None,
@@ -373,49 +374,11 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
     ):
         if self._should_skip_target(tags=tags, **kwargs):
             return
+        if not execution_profiles and not compile_targets:
+            raise ValueError(f"{name} requires execution_profiles or compile_targets")
         target_compatible_with = self._apply_loom_target_compatible_with(
             target_compatible_with
         )
-        profile = execution_profile or {}
-        policy = bazel_to_cmake_requirements.CollectedPackagePolicy(
-            build_requirements=profile.get("build_requirements", []),
-            run_requirements=profile.get("run_requirements", []),
-            resource_group=profile.get("resource_group"),
-        )
-        labels = list(profile.get("tags", []))
-        labels.extend(policy.tags(include_run_requirements=True))
-        if profile:
-            labels.extend(
-                [
-                    "loom-execution-profile=" + profile["name"],
-                    "loom-target-family=" + profile["target_family"],
-                    "loom-target-class=" + profile["target_class"],
-                    "loom-executor=" + profile["executor"],
-                ]
-            )
-        execution_blocks = []
-        if compile_targets:
-            # Device requirements belong only to the execution children.
-            execution_requires = self._target_compatible_condition(
-                policy.cmake_conditions()
-            )
-            execution_blocks = [
-                self._convert_string_list_block(
-                    "EXECUTION_LABELS", labels or None, sort=False
-                ),
-                (
-                    f"  EXECUTION_REQUIRES\n    {execution_requires}\n"
-                    if execution_requires
-                    else ""
-                ),
-            ]
-        else:
-            target_compatible_with = (
-                bazel_to_cmake_requirements.append_cmake_conditions(
-                    target_compatible_with, policy.cmake_conditions()
-                )
-            )
-            tags = list(tags or []) + labels
         blocks = [
             self._convert_string_arg_block("NAME", name, quote=False),
             self._convert_loom_module_inputs("SRCS", srcs),
@@ -427,23 +390,68 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
                 self._convert_location_args(inputopts),
                 sort=False,
             ),
-            self._convert_string_list_block("ARGS", args, sort=False),
-            self._convert_string_list_block(
-                "RUNNER_ARGS",
-                self._convert_location_args(profile.get("runner_args")),
-                sort=False,
-            ),
             self._convert_string_list_block("LABELS", tags or None, sort=False),
-            *execution_blocks,
-            self._convert_string_arg_block("RESOURCE_GROUP", policy.resource_group),
-            self._convert_sanitizer_suppressions_block(
-                profile.get("sanitizer_suppressions")
-            ),
             self._convert_target_list_block("COMPILE_TARGETS", compile_targets),
         ]
         self._emit_platform_guard_begin(target_compatible_with)
         self._converter.body += "loom_test(\n" + "".join(blocks) + ")\n\n"
+        execution_names = set()
+        for profile in execution_profiles or []:
+            if profile.get("kind") != "loom_execution_profile":
+                raise ValueError(
+                    f"{name} execution profile was not created by loom_execution_profile"
+                )
+            suffix = profile["name"]
+            if ":" in suffix:
+                suffix = suffix.split(":")[-1]
+            elif "/" in suffix:
+                suffix = suffix.split("/")[-1]
+            suffix = re.sub(r"[-.+]", "_", suffix)
+            execution_name = f"{name}_execute_{suffix}_test"
+            if execution_name in execution_names:
+                raise ValueError(
+                    f"{name} has colliding execution profiles: {profile['name']}"
+                )
+            execution_names.add(execution_name)
+            self._loom_execution_test(
+                execution_name, "::" + name + "_module", profile, args, tags
+            )
         self._emit_platform_guard_end(target_compatible_with)
+
+    def _loom_execution_test(self, name, module, profile, args, tags):
+        policy = bazel_to_cmake_requirements.CollectedPackagePolicy(
+            build_requirements=profile["build_requirements"],
+            run_requirements=profile["run_requirements"],
+            resource_group=profile["resource_group"],
+        )
+        labels = list(tags or []) + profile["tags"]
+        labels.extend(policy.tags(include_run_requirements=True))
+        labels.extend(
+            [
+                "loom-execution-profile=" + profile["name"],
+                "loom-target-family=" + profile["target_family"],
+                "loom-target-class=" + profile["target_class"],
+                "loom-executor=" + profile["executor"],
+            ]
+        )
+        blocks = [
+            self._convert_string_arg_block("NAME", name, quote=False),
+            self._convert_string_arg_block("MODULE", module),
+            self._convert_string_list_block("ARGS", args, sort=False),
+            self._convert_string_list_block(
+                "RUNNER_ARGS",
+                self._convert_location_args(profile["runner_args"]),
+                sort=False,
+            ),
+            self._convert_string_list_block("LABELS", labels, sort=False),
+            self._convert_string_arg_block("RESOURCE_GROUP", policy.resource_group),
+            self._convert_sanitizer_suppressions_block(
+                profile["sanitizer_suppressions"]
+            ),
+        ]
+        self._emit_platform_guard_begin(policy.cmake_conditions())
+        self._converter.body += "loom_execution_test(\n" + "".join(blocks) + ")\n\n"
+        self._emit_platform_guard_end(policy.cmake_conditions())
 
     def _convert_loom_module_inputs(self, block_name, inputs):
         if inputs is None:

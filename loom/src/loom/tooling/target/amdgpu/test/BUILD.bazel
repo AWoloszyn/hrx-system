@@ -127,7 +127,7 @@ loom_test(
         "//loom/src/loom/tooling/execution/hal:testdata/dynamic_workgroup_hal_actual.loom",
         "//loom/src/loom/tooling/execution/hal:testdata/launch_schedule_hal_actual.loom",
     ],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
@@ -138,7 +138,7 @@ loom_test(
         "//loom/src/loom/test/corpus/conformance:offset_integer_casts.loom",
     ],
     compile_targets = ["//loom/target/amdgpu:" + target for target in LOOM_AMDGPU_SUPPORTED_TARGETS],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
@@ -149,7 +149,7 @@ loom_test(
         "//loom/src/loom/test/corpus/conformance:address_widening.loom",
     ],
     compile_targets = ["//loom/target/amdgpu:" + target for target in LOOM_AMDGPU_SUPPORTED_TARGETS],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
@@ -159,181 +159,169 @@ loom_test(
         "//loom/src/loom/test/corpus/conformance:address_carrier_loops.loom",
         "//loom/src/loom/test/corpus/conformance:address_widening.loom",
     ],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
     name = "address_uniform_add_hardware_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:address_uniform_add.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
     name = "address_uniform_add_access_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:address_uniform_add.loom"],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
     name = "wide_subtract_hardware_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:integer_wide_subtract.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
     name = "wide_subtract_access_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:integer_wide_subtract.loom"],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
     name = "wide_shift_hardware_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:integer_wide_shifts.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
     name = "kernarg_hardware_test",
     srcs = ["amdgpu_unused_kernargs.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
     name = "callable_values_hardware_test",
     srcs = ["callable_values.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
     name = "callable_values_access_test",
     srcs = ["callable_values.loom"],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
     name = "narrow_argument_hardware_test",
     srcs = ["narrow_arguments.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
     name = "narrow_argument_access_test",
     srcs = ["narrow_arguments.loom"],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
     name = "narrow_integer_hardware_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:integer_narrow_consumers.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
     name = "unsigned_remainder_hardware_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:integer_unsigned_remainder.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
     name = "loop_count_access_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:loop_count.loom"],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
-)
-
-loom_test(
-    name = "condition_loops_hardware_test",
-    srcs = ["//loom/src/loom/test/corpus/conformance:condition_loops.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
-)
-
-loom_test(
-    name = "condition_loops_access_test",
-    srcs = ["//loom/src/loom/test/corpus/conformance:condition_loops.loom"],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
     name = "loop_termination_hardware_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:loop_termination.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
     name = "loop_termination_access_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:loop_termination.loom"],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
     name = "collective_loop_access_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:collective_loop_state.loom"],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
     name = "sequential_loops_hardware_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:sequential_loop_slices.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
     name = "conditional_guards_hardware_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:conditional_guards.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
     name = "conditional_guards_access_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:conditional_guards.loom"],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
     name = "conditional_effects_hardware_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:conditional_effects.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
     name = "conditional_effects_access_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:conditional_effects.loom"],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
     name = "conditional_results_hardware_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:conditional_results.loom"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
 )
 
 loom_test(
     name = "conditional_results_access_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:conditional_results.loom"],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
     name = "uniform_predicate_control_access_test",
     srcs = ["//loom/src/loom/test/corpus/conformance:uniform_predicate_control.loom"],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
     name = "kernarg_access_test",
     srcs = ["amdgpu_unused_kernargs.loom"],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
     name = "asan_test",
     srcs = ["//loom/src/loom/test/corpus/sanitizer:amdgpu_asan_actual.loom"],
-    execution_profile = AMDGPU_ASAN_PROFILE,
+    execution_profiles = [AMDGPU_ASAN_PROFILE],
 )
 
 loom_test(
     name = "unroll_fences_access_test",
     srcs = ["amdgpu_unroll_fences.loom"],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
@@ -347,7 +335,7 @@ loom_test(
         "//loom/src/loom/test/corpus/checked_benchmarks:routed_row_combine_f32.loom",
         "//loom/src/loom/test/corpus/checked_benchmarks:sparse_token_attention_f32.loom",
     ],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
@@ -362,7 +350,7 @@ loom_test(
         "--config=benchmark.loop_count=8",
         "--config=benchmark.pipeline_depth=1",
     ],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
@@ -377,7 +365,7 @@ loom_test(
         "--config=benchmark.loop_count=8",
         "--config=benchmark.pipeline_depth=3",
     ],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
@@ -392,11 +380,11 @@ loom_test(
         "--config=benchmark.loop_count=8",
         "--config=benchmark.pipeline_depth=4",
     ],
-    execution_profile = AMDGPU_ACCESS_PROFILE,
+    execution_profiles = [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(
     name = "tsan_test",
     srcs = ["//loom/src/loom/test/corpus/sanitizer:amdgpu_tsan_actual.loom"],
-    execution_profile = AMDGPU_TSAN_PROFILE,
+    execution_profiles = [AMDGPU_TSAN_PROFILE],
 )

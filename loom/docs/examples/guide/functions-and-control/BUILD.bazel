@@ -6,10 +6,10 @@
 #
 # bazel-to-cmake: skip
 
-load("@hrx//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_kernel_library", "loom_library", "loom_test")
-load("@hrx//loom/requirements:defs.bzl", "TARGET_ARCH_VM")
+load("@hrx//loom/build_tools/bazel:defs.bzl", "loom_kernel_library", "loom_library", "loom_test")
 load("@hrx//loom/src/loom/tooling/target/spirv:execution_profiles.bzl", "SPIRV_VULKAN_HARDWARE_PROFILE")
 load("@hrx//loom/target/amdgpu:execution_profiles.bzl", "AMDGPU_HARDWARE_PROFILE")
+load("@hrx//loom/target/vm:execution_profiles.bzl", "VM_REFERENCE_PROFILE")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -24,13 +24,7 @@ loom_library(
 loom_test(
     name = "tests",
     srcs = ["tests.loom"],
-    execution_profile = loom_execution_profile(
-        name = "vm",
-        build_requirements = [TARGET_ARCH_VM],
-        executor = "reference",
-        target_class = "cpu",
-        target_family = "vm",
-    ),
+    execution_profiles = [VM_REFERENCE_PROFILE],
     deps = [":rotation"],
 )
 
@@ -55,7 +49,7 @@ loom_test(
         "--config=read_ahead.depth=1",
         "--config=read_ahead.unroll=2",
     ],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
     deps = [":read_ahead"],
 )
 
@@ -66,7 +60,7 @@ loom_test(
         "--config=read_ahead.depth=3",
         "--config=read_ahead.unroll=1",
     ],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
     deps = [":read_ahead"],
 )
 
@@ -91,7 +85,7 @@ loom_test(
     name = "vector_read_ahead_access_test",
     srcs = ["vector-read-ahead-tests.loom"],
     args = ["--sanitizer=access"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
     deps = [":vector_read_ahead"],
 )
 
@@ -116,7 +110,7 @@ loom_test(
     name = "guarded_read_ahead_access_test",
     srcs = ["guarded-read-ahead-tests.loom"],
     args = ["--sanitizer=access"],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
     deps = [":guarded_read_ahead"],
 )
 
@@ -148,7 +142,7 @@ loom_test(
         "--config=paired_rows.right_lookahead=0",
         "--config=paired_rows.right_unroll=1",
     ],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
     deps = [":paired_read_ahead"],
 )
 
@@ -162,7 +156,7 @@ loom_test(
         "--config=paired_rows.right_lookahead=3",
         "--config=paired_rows.right_unroll=4",
     ],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
     deps = [":paired_read_ahead"],
 )
 
@@ -176,7 +170,7 @@ loom_test(
         "--config=paired_rows.right_lookahead=3",
         "--config=paired_rows.right_unroll=4",
     ],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
     deps = [":paired_read_ahead"],
 )
 
@@ -190,6 +184,6 @@ loom_test(
         "--config=paired_rows.right_lookahead=31",
         "--config=paired_rows.right_unroll=4",
     ],
-    execution_profile = AMDGPU_HARDWARE_PROFILE,
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
     deps = [":paired_read_ahead"],
 )

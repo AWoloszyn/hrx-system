@@ -10,15 +10,22 @@
 iree_add_all_subdirs()
 
 file(GLOB _GLOB_X_LOOM LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS *.loom)
-if(LOOM_TARGET_ARCH_VM)
 loom_test(
   NAME
     vm_test
   SRCS
     "${_GLOB_X_LOOM}"
+)
+
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    vm_test_execute_vm_reference_test
+  MODULE
+    "::vm_test_module"
   LABELS
     "iree-build-requirement=loom.target.arch.vm"
-    "loom-execution-profile=vm"
+    "loom-execution-profile=vm_reference"
     "loom-target-family=vm"
     "loom-target-class=cpu"
     "loom-executor=reference"

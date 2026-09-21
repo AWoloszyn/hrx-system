@@ -9,6 +9,7 @@ load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with", "
 load("//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_library", "loom_test")
 load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
 load("//loom/requirements:defs.bzl", "EMIT_AMDGPU", "EXECUTE_IREE_HAL", "TARGET_ARCH_AMDGPU")
+load("//loom/target/vm:execution_profiles.bzl", "VM_REFERENCE_PROFILE")
 load("//runtime/requirements:defs.bzl", "AMDGPU_RESOURCE", "HAL_AMDGPU")
 
 package(
@@ -111,7 +112,7 @@ loom_library(
     loom_test(
         name = "config_" + name + "_test",
         srcs = [":config_values"],
-        execution_profile = loom_execution_profile(
+        execution_profiles = [loom_execution_profile(
             name = name,
             executor = "reference",
             runner_args = [
@@ -122,7 +123,7 @@ loom_library(
             ],
             target_class = "cpu",
             target_family = "vm",
-        ),
+        )],
         target_compatible_with = _HOST_COMPATIBILITY,
     )
     for name, factor, count, enabled in [
@@ -153,6 +154,7 @@ loom_library(
         name = source.removesuffix(".cpp") + "_test",
         srcs = [":" + source.removesuffix(".cpp") + "_cases.cc"],
         data = [source],
+        execution_profiles = [VM_REFERENCE_PROFILE],
         target_compatible_with = _HOST_COMPATIBILITY,
     )
     for source in _HOST_SOURCES
@@ -244,7 +246,7 @@ _KERNEL_SOURCES = [
         ],
         args = args,
         data = [":" + source + "_checks_gen"],
-        execution_profile = _CXX_AMDGPU_PROFILE,
+        execution_profiles = [_CXX_AMDGPU_PROFILE],
         inputopts = ["cxx:approximate-functions=true"] if source in [
             "aiter_swiglu_f16",
             "flash_attention",

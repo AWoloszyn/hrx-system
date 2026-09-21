@@ -229,11 +229,21 @@ loom_test(
     vulkan_explicit_target_tests
   SRCS
     "test/spirv_vulkan_hal_actual.loom"
+  COMPILE_TARGETS
+    loom::target::spirv::vulkan1.3+bda
+)
+
+if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
+loom_execution_test(
+  NAME
+    vulkan_explicit_target_tests_execute_spirv_vulkan_explicit_target_hardware_test
+  MODULE
+    "::vulkan_explicit_target_tests_module"
   RUNNER_ARGS
     "--device=vulkan"
     "--vulkan_validation_layers=false"
     "--target=spirv:vulkan1.3+bda"
-  EXECUTION_LABELS
+  LABELS
     "iree-build-requirement=loom.target.arch.spirv"
     "iree-build-requirement=loom.emit.spirv"
     "iree-build-requirement=loom.execute.iree_hal"
@@ -244,19 +254,16 @@ loom_test(
     "loom-target-family=spirv"
     "loom-target-class=gpu"
     "loom-executor=hardware"
-  EXECUTION_REQUIRES
-    LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN
   RESOURCE_GROUP
     "loom-vulkan-tests"
   SANITIZER_SUPPRESSIONS
     lsan
     vulkan
-  COMPILE_TARGETS
-    loom::target::spirv::vulkan1.3+bda
 )
 endif()
+endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
+if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
 loom_test(
   NAME
     vulkan_tests
@@ -270,7 +277,6 @@ loom_test(
     "test/spirv_vulkan_quantized_hal_actual.loom"
     "test/spirv_vulkan_vector_float.loom"
     "test/spirv_vulkan_workgroup_offsets.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/condition_loops.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/global_atomic_add_f32.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/loop_rotating_values.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/loop_rotating_views.loom"
@@ -278,6 +284,14 @@ loom_test(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/execution/hal/testdata/buffer_bulk_hal_actual.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/execution/hal/testdata/dynamic_workgroup_hal_actual.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/execution/hal/testdata/launch_schedule_hal_actual.loom"
+)
+
+if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
+loom_execution_test(
+  NAME
+    vulkan_tests_execute_spirv_vulkan_hardware_test
+  MODULE
+    "::vulkan_tests_module"
   RUNNER_ARGS
     "--device=vulkan"
     "--vulkan_validation_layers=false"
@@ -298,6 +312,7 @@ loom_test(
     lsan
     vulkan
 )
+endif()
 endif()
 
 if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)

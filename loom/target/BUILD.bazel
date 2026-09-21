@@ -8,6 +8,8 @@ load("//build_tools/bazel:cmake.bzl", "iree_cmake_extra_content")
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(["execution_profiles.bzl"])
+
 iree_cmake_extra_content(
     content = """
 set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}")

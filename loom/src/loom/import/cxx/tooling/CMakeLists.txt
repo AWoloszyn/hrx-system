@@ -93,6 +93,21 @@ loom_test(
   INPUTOPTS
     "cxx:D=CHECK_EXPECTED=0u"
 )
+
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    source_test_execute_vm_reference_test
+  MODULE
+    "::source_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

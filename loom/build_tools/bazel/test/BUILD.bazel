@@ -142,15 +142,10 @@ loom_test(
         "profile_cases.loom",
     ],
     args = ["--sample=0"],
-    execution_profile = REFERENCE_PROFILE,
-    tags = ["manual"],
-    deps = [":library_dependency"],
-)
-
-loom_test(
-    name = "serialized_profile_test",
-    srcs = ["profile_cases.loom"],
-    execution_profile = SERIALIZED_REFERENCE_PROFILE,
+    execution_profiles = [
+        REFERENCE_PROFILE,
+        SERIALIZED_REFERENCE_PROFILE,
+    ],
     tags = ["manual"],
     deps = [":library_dependency"],
 )
@@ -158,7 +153,7 @@ loom_test(
 loom_test(
     name = "suppressed_profile_test",
     srcs = ["profile_cases.loom"],
-    execution_profile = SUPPRESSED_REFERENCE_PROFILE,
+    execution_profiles = [SUPPRESSED_REFERENCE_PROFILE],
     tags = ["manual"],
     deps = [":library_dependency"],
 )
