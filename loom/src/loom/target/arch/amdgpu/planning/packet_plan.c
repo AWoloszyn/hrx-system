@@ -20,6 +20,10 @@ iree_status_t loom_amdgpu_packet_plan_build(
   };
   iree_arena_allocator_t transient_arena;
   iree_arena_initialize(arena->block_pool, &transient_arena);
+  // Coexecution accumulates consumers during VOPD planning and remains live
+  // through fixed-wait planning, so phase checkpoints cannot own its state.
+  iree_arena_allocator_t matrix_coexecution_arena;
+  iree_arena_initialize(arena->block_pool, &matrix_coexecution_arena);
   const loom_amdgpu_processor_properties_t* processor_properties =
       loom_amdgpu_target_processor_properties_from_resolved_target(
           &schedule->target);
@@ -29,8 +33,8 @@ iree_status_t loom_amdgpu_packet_plan_build(
           : LOOM_AMDGPU_MATRIX_COEXECUTION_PROFILE_NONE;
   loom_amdgpu_matrix_coexecution_t* matrix_coexecution = NULL;
   iree_status_t status = loom_amdgpu_matrix_coexecution_allocate(
-      schedule, allocation, matrix_coexecution_profile, &transient_arena,
-      &matrix_coexecution);
+      schedule, allocation, matrix_coexecution_profile,
+      &matrix_coexecution_arena, &matrix_coexecution);
   if (iree_status_is_ok(status)) {
     status = loom_amdgpu_address_state_plan_build(schedule, allocation, arena,
                                                   &out_plan->address_state);
@@ -69,5 +73,6 @@ iree_status_t loom_amdgpu_packet_plan_build(
     iree_arena_checkpoint_restore(&wait_state_checkpoint);
   }
   iree_arena_deinitialize(&transient_arena);
+  iree_arena_deinitialize(&matrix_coexecution_arena);
   return status;
 }
