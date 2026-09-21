@@ -13,7 +13,7 @@
 // arguments omitted from the direct ABI, and predicate remapping translates
 // source value references after those bindings exist.
 //
-// Import declarations use the same type and metadata mapping without a body.
+// Function declarations use the same type and metadata mapping without a body.
 // They are lowered independently by the module source-to-Low pass before
 // function definitions.
 
@@ -66,12 +66,13 @@ iree_status_t loom_low_lower_function_boundary_remap_predicates(
 iree_status_t loom_low_lower_function_boundary_emit_resource_imports(
     loom_low_lower_context_t* context);
 
-// Lowers one target-bound external function declaration into a low.func.decl.
+// Lowers one target-bound function declaration into a low.func.decl.
 //
 // The emitted low declaration preserves source symbol identity and callable
-// metadata, maps its signature through |options->policy|, and records the
-// policy import kind plus the resolved import symbol as the low code symbol.
-iree_status_t loom_low_lower_import_declaration(
+// metadata and maps its signature through |options->policy|. Runtime imports
+// record the policy import kind and resolved code symbol. Ordinary declarations
+// remain unresolved Loom symbols for a subsequent IR link.
+iree_status_t loom_low_lower_declaration(
     loom_module_t* module, loom_func_like_t source_declaration,
     const loom_low_lower_options_t* options,
     loom_low_lower_result_t* out_result);

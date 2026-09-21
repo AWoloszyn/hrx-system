@@ -295,8 +295,8 @@ TEST_F(LowLowerFunctionBoundaryTest,
   SetValueName(loom_op_const_results(source_op)[0], IREE_SV("output"));
   SetArgumentPredicate(source_declaration, source_arguments[0]);
 
-  IREE_ASSERT_OK(loom_low_lower_import_declaration(module_, source_declaration,
-                                                   &options_, &result_));
+  IREE_ASSERT_OK(loom_low_lower_declaration(module_, source_declaration,
+                                            &options_, &result_));
   ASSERT_EQ(result_.error_count, 0u);
   ASSERT_NE(result_.descriptor_set, nullptr);
   ASSERT_NE(result_.low_func_op, nullptr);
