@@ -30,6 +30,7 @@ loom_check_test_suite(
     "scf_unroll_bounds.loom-test"
     "scf_unroll_carrier.loom-test"
     "scf_unroll_collectives.loom-test"
+    "scf_unroll_dependent_types.loom-test"
     "scf_unroll_fences.loom-test"
     "scf_unroll_payload.loom-test"
     "scf_unroll_regions.loom-test"
