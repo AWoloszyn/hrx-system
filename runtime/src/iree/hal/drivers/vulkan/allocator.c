@@ -1012,7 +1012,14 @@ static bool iree_hal_vulkan_allocator_resolve_memory_placement(
 
     const int score = iree_hal_vulkan_allocator_score_memory_type(
         &candidate_params, memory_type);
-    if (!found || score > best_score) {
+    // Equal-scoring types may refer to a small host-visible device heap and a
+    // much larger cached host heap. Prefer the larger allocation range instead
+    // of depending on the memory type enumeration order.
+    if (!found || score > best_score ||
+        (score == best_score &&
+         iree_hal_vulkan_allocator_max_allocation_size_for_type(allocator, i) >
+             iree_hal_vulkan_allocator_max_allocation_size_for_type(
+                 allocator, best_placement.memory_type_index))) {
       found = true;
       best_score = score;
       best_params = candidate_params;
