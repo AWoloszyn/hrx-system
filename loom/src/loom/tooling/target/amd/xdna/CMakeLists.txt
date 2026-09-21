@@ -31,48 +31,106 @@ loom_cc_library(
 endif()
 
 if(LOOM_BUILD AND LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
-iree_execution_test_suite(
-  NAME
-    pipeline_record_shapes_test
-  MANIFESTS
-    "pipeline-record-shapes.test.json"
-  TOOLS
-    "loom-compile=loom::tools::loom-compile"
-  DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amd/xdna/test/equal_count_different_shape.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amd/xdna/test/extra_temporal_axis.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amd/xdna/test/missing_lane_axis.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amd/xdna/test/missing_temporal_axis.loom"
-  LABELS
-    "hostonly"
-)
-endif()
-
-if(LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
 loom_check_test_suite(
   NAME
-    pipeline_diagnostics_test
+    pipeline_record_shapes_test
   SRCS
+    "test/equal_count_different_shape.loom-test"
+    "test/extra_temporal_axis.loom-test"
+    "test/missing_lane_axis.loom-test"
+    "test/missing_temporal_axis.loom-test"
     "test/unit_lane_extent.loom-test"
   RUNNER
     loom::target::arch::amd::xdna::aie2p::loom-check
 )
 endif()
 
-if(LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
 loom_check_compile_tests(
   NAME
-    "test_unit_lane_extent"
+    "test_equal_count_different_shape"
   SRC
-    "test/unit_lane_extent.loom-test"
+    "test/equal_count_different_shape.loom-test"
   REGISTERED_SRCS
+    "test/equal_count_different_shape.loom-test"
+    "test/extra_temporal_axis.loom-test"
+    "test/missing_lane_axis.loom-test"
+    "test/missing_temporal_axis.loom-test"
     "test/unit_lane_extent.loom-test"
   TARGETS
     loom::target::xdna::amd.xdna.strix_halo.17f0_11
 )
 endif()
 
-if(LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
+loom_check_compile_tests(
+  NAME
+    "test_extra_temporal_axis"
+  SRC
+    "test/extra_temporal_axis.loom-test"
+  REGISTERED_SRCS
+    "test/equal_count_different_shape.loom-test"
+    "test/extra_temporal_axis.loom-test"
+    "test/missing_lane_axis.loom-test"
+    "test/missing_temporal_axis.loom-test"
+    "test/unit_lane_extent.loom-test"
+  TARGETS
+    loom::target::xdna::amd.xdna.strix_halo.17f0_11
+)
+endif()
+
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
+loom_check_compile_tests(
+  NAME
+    "test_missing_lane_axis"
+  SRC
+    "test/missing_lane_axis.loom-test"
+  REGISTERED_SRCS
+    "test/equal_count_different_shape.loom-test"
+    "test/extra_temporal_axis.loom-test"
+    "test/missing_lane_axis.loom-test"
+    "test/missing_temporal_axis.loom-test"
+    "test/unit_lane_extent.loom-test"
+  TARGETS
+    loom::target::xdna::amd.xdna.strix_halo.17f0_11
+)
+endif()
+
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
+loom_check_compile_tests(
+  NAME
+    "test_missing_temporal_axis"
+  SRC
+    "test/missing_temporal_axis.loom-test"
+  REGISTERED_SRCS
+    "test/equal_count_different_shape.loom-test"
+    "test/extra_temporal_axis.loom-test"
+    "test/missing_lane_axis.loom-test"
+    "test/missing_temporal_axis.loom-test"
+    "test/unit_lane_extent.loom-test"
+  TARGETS
+    loom::target::xdna::amd.xdna.strix_halo.17f0_11
+)
+endif()
+
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
+loom_check_compile_tests(
+  NAME
+    "test_unit_lane_extent"
+  SRC
+    "test/unit_lane_extent.loom-test"
+  REGISTERED_SRCS
+    "test/equal_count_different_shape.loom-test"
+    "test/extra_temporal_axis.loom-test"
+    "test/missing_lane_axis.loom-test"
+    "test/missing_temporal_axis.loom-test"
+    "test/unit_lane_extent.loom-test"
+  TARGETS
+    loom::target::xdna::amd.xdna.strix_halo.17f0_11
+)
+endif()
+
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
 iree_py_test(
   NAME
     publication_test

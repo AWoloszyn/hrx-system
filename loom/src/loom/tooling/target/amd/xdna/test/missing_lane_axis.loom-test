@@ -1,3 +1,7 @@
+// RUN: pass aie2p-lower-pipeline
+
+// The unit temporal axis cannot stand in for a multi-lane output's lane axis.
+
 aie2p.target<array> @array_target
 
 aie2p.target<core> @core_target
@@ -12,6 +16,7 @@ pipeline.def<kernel> public retain target(@array_target) @copy_records() launch(
   %output_view = buffer.view %output[%base] : buffer -> view<1x4xi32>
   %input_flow = pipeline.scatter %input_view across %workers : view<2x1x4xi32>, group -> pipeline.flow<tile<4xi32>>
   %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  // ERROR@+1: LOWERING/060 {lane_count="2"}
   pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<1x4xi32>
   pipeline.return
 }
