@@ -44,6 +44,7 @@ loom_cc_library(
     iree::base::internal::unicode
     loom::format::text::low_asm
     loom::ir
+    loom::ops::low
     loom::ops::op_defs
     loom::ops::type_registry
     loom::target::registers

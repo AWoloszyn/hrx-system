@@ -15,6 +15,7 @@
 #include "loom/format/text/printer/regions.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
+#include "loom/ops/low/ops.h"
 #include "loom/ops/op_defs.h"
 
 typedef enum loom_print_low_asm_preflight_failure_kind_e {
@@ -93,17 +94,21 @@ static bool loom_print_low_asm_allows_canonical_op(loom_print_context_t* ctx,
                        LOOM_TRAIT_HINT | LOOM_TRAIT_COMPILE_TIME_ONLY)) {
     return true;
   }
-  iree_string_view_t op_name = loom_op_name(ctx->module, op);
-  return iree_string_view_equal(op_name, IREE_SV("low.br")) ||
-         iree_string_view_equal(op_name, IREE_SV("low.cond_br")) ||
-         iree_string_view_equal(op_name, IREE_SV("low.func.call")) ||
-         iree_string_view_equal(op_name, IREE_SV("low.reload")) ||
-         iree_string_view_equal(op_name, IREE_SV("low.scf.condition")) ||
-         iree_string_view_equal(op_name, IREE_SV("low.scf.yield")) ||
-         iree_string_view_equal(op_name, IREE_SV("low.scf.if")) ||
-         iree_string_view_equal(op_name, IREE_SV("low.scf.for")) ||
-         iree_string_view_equal(op_name, IREE_SV("low.scf.while")) ||
-         iree_string_view_equal(op_name, IREE_SV("low.spill"));
+  switch (op->kind) {
+    case LOOM_OP_LOW_BR:
+    case LOOM_OP_LOW_COND_BR:
+    case LOOM_OP_LOW_FUNC_CALL:
+    case LOOM_OP_LOW_RELOAD:
+    case LOOM_OP_LOW_SCF_CONDITION:
+    case LOOM_OP_LOW_SCF_YIELD:
+    case LOOM_OP_LOW_SCF_IF:
+    case LOOM_OP_LOW_SCF_FOR:
+    case LOOM_OP_LOW_SCF_WHILE:
+    case LOOM_OP_LOW_SPILL:
+      return true;
+    default:
+      return false;
+  }
 }
 
 static iree_status_t loom_print_low_asm_region_preflight(
@@ -116,15 +121,19 @@ static iree_string_view_t loom_print_low_asm_packet_descriptor_key(
     loom_print_context_t* ctx,
     const loom_text_low_asm_descriptor_set_t* descriptor_set,
     const loom_op_t* op) {
-  iree_string_view_t op_name = loom_op_name(ctx->module, op);
-  if (!iree_string_view_equal(op_name, IREE_SV("low.op")) &&
-      !iree_string_view_equal(op_name, IREE_SV("low.const"))) {
+  uint16_t descriptor_index;
+  if (loom_low_op_isa(op)) {
+    descriptor_index = loom_low_op_descriptor_ATTR_INDEX;
+  } else if (loom_low_const_isa(op)) {
+    descriptor_index = loom_low_const_descriptor_ATTR_INDEX;
+  } else {
     return iree_string_view_empty();
   }
-  if (op->attribute_count == 0) {
+  if (op->attribute_count <= descriptor_index) {
     return iree_string_view_empty();
   }
-  const loom_attribute_t descriptor_attr = loom_op_const_attrs(op)[0];
+  const loom_attribute_t descriptor_attr =
+      loom_op_const_attrs(op)[descriptor_index];
   if (descriptor_attr.kind != LOOM_ATTR_SCOPED_ENUM) {
     return iree_string_view_empty();
   }
@@ -168,8 +177,7 @@ static iree_status_t loom_print_low_asm_preflight_canonical_structural_op(
     const loom_text_low_asm_descriptor_set_t* descriptor_set,
     uint16_t block_index, const loom_op_t* op,
     loom_print_low_asm_preflight_failure_t* out_failure, bool* out_available) {
-  iree_string_view_t op_name = loom_op_name(ctx->module, op);
-  if (iree_string_view_equal(op_name, IREE_SV("low.scf.if"))) {
+  if (loom_low_scf_if_isa(op)) {
     if (op->region_count < 1 || loom_op_regions(op)[0] == NULL) {
       *out_available = false;
       loom_print_low_asm_record_operation_failure(ctx, descriptor_set,
@@ -187,7 +195,7 @@ static iree_status_t loom_print_low_asm_preflight_canonical_structural_op(
           ctx, loom_op_regions(op)[1], descriptor_set,
           /*entry_args_declared_by_parent=*/false, out_failure, out_available));
     }
-  } else if (iree_string_view_equal(op_name, IREE_SV("low.scf.for"))) {
+  } else if (loom_low_scf_for_isa(op)) {
     if (op->region_count < 1 || loom_op_regions(op)[0] == NULL) {
       *out_available = false;
       loom_print_low_asm_record_operation_failure(ctx, descriptor_set,
@@ -197,7 +205,7 @@ static iree_status_t loom_print_low_asm_preflight_canonical_structural_op(
     IREE_RETURN_IF_ERROR(loom_print_low_asm_region_preflight(
         ctx, loom_op_regions(op)[0], descriptor_set,
         /*entry_args_declared_by_parent=*/true, out_failure, out_available));
-  } else if (iree_string_view_equal(op_name, IREE_SV("low.scf.while"))) {
+  } else if (loom_low_scf_while_isa(op)) {
     if (op->region_count < 2 || loom_op_regions(op)[0] == NULL ||
         loom_op_regions(op)[1] == NULL) {
       *out_available = false;
