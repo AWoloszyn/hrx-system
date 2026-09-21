@@ -287,15 +287,16 @@ static iree_status_t loom_cmd_serialize_import_resource(
   return iree_ok_status();
 }
 
-static void loom_cmd_serialize_constant(loom_cmd_serialize_build_t* build,
-                                        const loom_op_t* op,
-                                        loom_cmd_serialize_value_kind_t kind,
-                                        uint16_t value_index) {
+static void loom_cmd_serialize_constant(
+    loom_cmd_serialize_build_t* build, const loom_op_t* op,
+    loom_cmd_serialize_value_kind_t kind,
+    loom_low_immediate_field_t value_field) {
   loom_cmd_serialize_value_t* result =
       loom_cmd_serialize_result(build, loom_low_const_result(op));
   result->kind = kind;
   result->payload.scalar =
-      (uint64_t)loom_low_const_attrs(op).entries[value_index].value.i64;
+      (uint64_t)loom_low_immediate_attr(loom_low_const_attrs(op), value_field)
+          .i64;
 }
 
 static void loom_cmd_serialize_transfer(loom_cmd_serialize_build_t* build,
@@ -676,37 +677,37 @@ static iree_status_t loom_cmd_serialize_packet(
   if (loom_cmd_serialize_packet_is(build, packet,
                                    CMD_CORE_DESCRIPTOR_REF_CONSTANT_U32)) {
     loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_U32,
-                                CMD_CORE_CONSTANT_U32_VALUE_ATTR_INDEX);
+                                loom_cmd_core_constant_u32_value_field());
     return iree_ok_status();
   }
   if (loom_cmd_serialize_packet_is(build, packet,
                                    CMD_CORE_DESCRIPTOR_REF_CONSTANT_U64)) {
     loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_U64,
-                                CMD_CORE_CONSTANT_U64_VALUE_ATTR_INDEX);
+                                loom_cmd_core_constant_u64_value_field());
     return iree_ok_status();
   }
   if (loom_cmd_serialize_packet_is(build, packet,
                                    CMD_CORE_DESCRIPTOR_REF_CONSTANT_B8)) {
     loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_B8,
-                                CMD_CORE_CONSTANT_B8_VALUE_ATTR_INDEX);
+                                loom_cmd_core_constant_b8_value_field());
     return iree_ok_status();
   }
   if (loom_cmd_serialize_packet_is(build, packet,
                                    CMD_CORE_DESCRIPTOR_REF_CONSTANT_B16)) {
     loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_B16,
-                                CMD_CORE_CONSTANT_B16_VALUE_ATTR_INDEX);
+                                loom_cmd_core_constant_b16_value_field());
     return iree_ok_status();
   }
   if (loom_cmd_serialize_packet_is(build, packet,
                                    CMD_CORE_DESCRIPTOR_REF_CONSTANT_B32)) {
     loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_B32,
-                                CMD_CORE_CONSTANT_B32_VALUE_ATTR_INDEX);
+                                loom_cmd_core_constant_b32_value_field());
     return iree_ok_status();
   }
   if (loom_cmd_serialize_packet_is(build, packet,
                                    CMD_CORE_DESCRIPTOR_REF_CONSTANT_B64)) {
     loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_B64,
-                                CMD_CORE_CONSTANT_B64_VALUE_ATTR_INDEX);
+                                loom_cmd_core_constant_b64_value_field());
     return iree_ok_status();
   }
   if (loom_cmd_serialize_packet_is(build, packet,

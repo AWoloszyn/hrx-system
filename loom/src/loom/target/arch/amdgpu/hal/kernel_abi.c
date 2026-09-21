@@ -1282,29 +1282,25 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_verify_low_ops(
         continue;
       }
 
-      const uint16_t cache_swizzle_stride_index =
+      const loom_low_immediate_field_t cache_swizzle_stride_field =
           descriptor == dynamic_buffer_descriptor
-              ? LOOM_AMDGPU_HAL_BUFFER_DESCRIPTOR_EXTENT_CACHE_SWIZZLE_STRIDE_ATTR_INDEX
-              : LOOM_AMDGPU_HAL_BUFFER_DESCRIPTOR_CACHE_SWIZZLE_STRIDE_ATTR_INDEX;
+              ? loom_amdgpu_hal_buffer_descriptor_extent_cache_swizzle_stride_field()
+              : loom_amdgpu_hal_buffer_descriptor_cache_swizzle_stride_field();
       loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
-      if (attrs.count <= cache_swizzle_stride_index ||
-          attrs.entries[cache_swizzle_stride_index].value.kind !=
-              LOOM_ATTR_I64) {
-        loom_attr_kind_t actual_kind = LOOM_ATTR_ABSENT;
-        if (attrs.count > cache_swizzle_stride_index) {
-          actual_kind =
-              (loom_attr_kind_t)attrs.entries[cache_swizzle_stride_index]
-                  .value.kind;
-        }
+      const loom_attribute_t cache_swizzle_stride_attr =
+          attrs.count > cache_swizzle_stride_field
+              ? loom_low_immediate_attr(attrs, cache_swizzle_stride_field)
+              : loom_attr_absent();
+      if (cache_swizzle_stride_attr.kind != LOOM_ATTR_I64) {
         IREE_RETURN_IF_ERROR(
             loom_amdgpu_hal_kernel_abi_emit_descriptor_attr_error(
-                op, IREE_SV("cache_swizzle_stride"), actual_kind, max_errors,
+                op, IREE_SV("cache_swizzle_stride"),
+                (loom_attr_kind_t)cache_swizzle_stride_attr.kind, max_errors,
                 emitter, result));
         continue;
       }
 
-      const int64_t cache_swizzle_stride =
-          attrs.entries[cache_swizzle_stride_index].value.i64;
+      const int64_t cache_swizzle_stride = cache_swizzle_stride_attr.i64;
       if (cache_swizzle_stride == 0 || supports_cache_swizzle) {
         continue;
       }

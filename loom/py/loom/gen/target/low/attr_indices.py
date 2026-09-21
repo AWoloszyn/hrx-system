@@ -26,18 +26,18 @@ def _descriptor_attr_indices(descriptor: Descriptor) -> dict[tuple[str, bool], i
     return indices
 
 
-def emit_attr_indices(
+def emit_attr_accessors(
     c_enum_prefix: str,
     descriptors: Iterable[Descriptor],
     *,
     target_key: str | None,
 ) -> list[str]:
-    """Emits dictionary indices shared by every variant of each descriptor.
+    """Emits dictionary readers and bindings shared by descriptor variants.
 
     A target's common header can pass multiple variants of the same descriptor.
     Only fields with a fixed, identical position in every variant are exposed.
-    A trailing optional field uses OPTIONAL_ATTR_INDEX. The caller establishes
-    its presence by comparing the dictionary count with the index.
+    A trailing optional field returns ABSENT when omitted. Field macros also
+    let shared consumers select the binding for their actual descriptor.
     """
 
     descriptor_indices: dict[str, dict[tuple[str, bool], int]] = {}
@@ -48,27 +48,17 @@ def emit_attr_indices(
         descriptor_indices[descriptor.key] = indices
 
     lines: list[str] = []
-    constant_fields: dict[str, tuple[str, str]] = {}
     accessor_fields: dict[str, tuple[str, str]] = {}
+    prefix = c_enum_prefix.lower()
+    if not prefix.startswith("loom_"):
+        prefix = f"loom_{prefix}"
     for key, indices in descriptor_indices.items():
         if not indices:
             continue
-        descriptor_name = c_spelling.c_identifier(target_relative_name(target_key, key)).upper()
-        lines.extend([f"// Canonical dictionary indices for {key}.", "enum {"])
+        descriptor_name = c_spelling.c_identifier(target_relative_name(target_key, key)).lower()
+        lines.append(f"// Canonical dictionary fields for {key}.")
         for (field_name, optional), index in indices.items():
-            suffix = "OPTIONAL_ATTR_INDEX" if optional else "ATTR_INDEX"
-            constant = f"{c_enum_prefix}_{descriptor_name}_{c_spelling.c_identifier(field_name).upper()}_{suffix}"
-            if constant in constant_fields:
-                previous_key, previous_field = constant_fields[constant]
-                raise ValueError(f"attribute index '{constant}' collides between '{previous_key}.{previous_field}' and '{key}.{field_name}'")
-            constant_fields[constant] = (key, field_name)
-            lines.append(f"  {constant} = {index},")
-        lines.extend(["};", ""])
-        prefix = c_enum_prefix.lower()
-        if not prefix.startswith("loom_"):
-            prefix = f"loom_{prefix}"
-        for (field_name, optional), index in indices.items():
-            accessor = f"{prefix}_{descriptor_name.lower()}_{c_spelling.c_identifier(field_name)}"
+            accessor = f"{prefix}_{descriptor_name}_{c_spelling.c_identifier(field_name)}"
             for name in (accessor, f"{accessor}_field"):
                 if name in accessor_fields:
                     previous_key, previous_field = accessor_fields[name]

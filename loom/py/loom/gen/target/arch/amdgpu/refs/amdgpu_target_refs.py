@@ -709,7 +709,7 @@ def _emit_tables_header(descriptor_sets: Sequence[DescriptorSet]) -> str:
     lines.append("")
     descriptor_ref_key_set = frozenset(descriptor_ref_keys)
     lines.extend(
-        attr_indices.emit_attr_indices(
+        attr_indices.emit_attr_accessors(
             "LOOM_AMDGPU",
             (descriptor for descriptor_set in descriptor_sets for descriptor in descriptor_set.descriptors if descriptor.key in descriptor_ref_key_set),
             target_key="amdgpu",

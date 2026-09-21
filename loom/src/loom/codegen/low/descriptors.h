@@ -729,13 +729,9 @@ static_assert(offsetof(loom_low_operand_t, source_binding) == 9,
 static_assert(offsetof(loom_low_operand_t, flags) == 12,
               "source binding must not move operand flags");
 
-// Generated descriptor headers expose <PREFIX>_<DESCRIPTOR>_<FIELD>_ATTR_INDEX
-// constants for canonical packet dictionary positions. These differ from the
-// declaration-order indices in the immediate table. A binding exists only when
-// every preceding field is required. A trailing optional field instead exposes
-// OPTIONAL_ATTR_INDEX and is present exactly when dictionary count > index.
-// Non-trailing optional fields and fields following an optional immediate have
-// no direct binding.
+// Interpretation and encoding of one declared immediate. Table order follows
+// the descriptor declaration; canonical packet dictionaries follow field name
+// order. Generated field accessors bind the two through immediate_fields.h.
 typedef struct loom_low_immediate_t {
   // String-table offset for the immediate field name.
   loom_bstring_table_offset_t field_name_string_offset;
