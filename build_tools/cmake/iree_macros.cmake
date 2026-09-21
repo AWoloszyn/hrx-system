@@ -448,9 +448,11 @@ endfunction()
 # Resolves a package-relative or aliased target name to the concrete CMake
 # target name used by rules that cannot consume aliases directly.
 function(iree_package_target_name OUTPUT_TARGET_NAME TARGET_NAME)
-  iree_package_ns(_PACKAGE_NS)
   set(_TARGET_NAME "${TARGET_NAME}")
-  string(REGEX REPLACE "^::" "${_PACKAGE_NS}::" _TARGET_NAME "${_TARGET_NAME}")
+  if(_TARGET_NAME MATCHES "^::")
+    iree_package_ns(_PACKAGE_NS)
+    set(_TARGET_NAME "${_PACKAGE_NS}${_TARGET_NAME}")
+  endif()
 
   if(TARGET "${_TARGET_NAME}")
     get_target_property(_ALIASED_TARGET "${_TARGET_NAME}" ALIASED_TARGET)
