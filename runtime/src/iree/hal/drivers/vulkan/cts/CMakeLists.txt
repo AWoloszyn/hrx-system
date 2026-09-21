@@ -58,7 +58,7 @@ iree_cc_library(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
 iree_spirv_asm_module(
   NAME
     bda_descriptor_storage_variable
@@ -71,7 +71,7 @@ iree_spirv_asm_module(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
 iree_spirv_asm_module(
   NAME
     bda_i32_add7
@@ -84,7 +84,7 @@ iree_spirv_asm_module(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
 iree_spirv_asm_module(
   NAME
     bda_i32_add7_binding_1_length_4_17
@@ -97,7 +97,7 @@ iree_spirv_asm_module(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
 iree_spirv_asm_module(
   NAME
     bda_i32_add7_bindings_2
@@ -110,7 +110,7 @@ iree_spirv_asm_module(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
 iree_spirv_asm_module(
   NAME
     bda_i32_add7_constant_length_4
@@ -123,7 +123,7 @@ iree_spirv_asm_module(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
 iree_spirv_asm_module(
   NAME
     bda_i32_add7_descriptor_decorated
@@ -136,7 +136,7 @@ iree_spirv_asm_module(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
 iree_spirv_asm_module(
   NAME
     bda_i32_add7_no_metadata
@@ -149,7 +149,7 @@ iree_spirv_asm_module(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
 iree_spirv_asm_module(
   NAME
     bda_missing_physical_storage_buffer_addresses
@@ -162,7 +162,7 @@ iree_spirv_asm_module(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
 iree_spirv_asm_module(
   NAME
     bda_missing_push_constant_root
@@ -175,7 +175,7 @@ iree_spirv_asm_module(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
 iree_spirv_asm_module(
   NAME
     bda_noop_binding_requirements
@@ -188,7 +188,7 @@ iree_spirv_asm_module(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
 iree_spirv_asm_module(
   NAME
     bda_noop_bindings_2_constant_length_8
@@ -201,7 +201,7 @@ iree_spirv_asm_module(
 )
 endif()
 
-if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV OR IREE_HAL_DRIVER_VULKAN)
 iree_spirv_asm_module(
   NAME
     bda_noop_without_push_constant_root

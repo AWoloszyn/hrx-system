@@ -1195,6 +1195,39 @@ iree_execution_test_suite(
         self.assertIn("iree_execution_test_suite(", converter.body)
         self.assertIn("endif()", converter.body)
 
+    def test_loom_artifact_execution_requires_compiler_project(self):
+        converter = SimpleNamespace(body="")
+        functions = bazel_to_cmake_converter.BuildFileFunctions(
+            converter=converter,
+            targets=bazel_to_cmake_config.ProjectTargetConverter(
+                repo_map={"@hrx": ""},
+                projects=[],
+                target_mappings={
+                    "//loom/src/loom/tools/loom-compile": ["loom::tools::loom-compile"],
+                },
+            ),
+            build_dir="/repo/experimental/xdna/cts",
+            repo_root="/repo",
+        )
+
+        functions.iree_execution_test_suite(
+            name="integer_shifts_test",
+            manifests=["integer_shifts.test.json"],
+            tools={"loom-compile": "//loom/src/loom/tools/loom-compile"},
+            target_compatible_with=functions.select(
+                {
+                    "//loom/config/target:xdna_artifacts": [],
+                    "//conditions:default": ["@platforms//:incompatible"],
+                }
+            ),
+        )
+
+        self.assertIn(
+            "if(LOOM_BUILD AND LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)",
+            converter.body,
+        )
+        self.assertIn("loom-compile=", converter.body)
+
     def test_execution_test_suite_emits_sanitizer_suppressions(self):
         converter = SimpleNamespace(body="")
         functions = bazel_to_cmake_converter.BuildFileFunctions(
