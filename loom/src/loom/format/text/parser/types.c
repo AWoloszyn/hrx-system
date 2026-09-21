@@ -318,9 +318,10 @@ static iree_status_t loom_parser_type_list_append(
 // `%name: type` binder is a property of the active declaration scope.
 //
 // In body context (BODY mode), emits PARSE/001 for undefined names.
-static iree_status_t loom_resolve_type_reference(
-    loom_parser_t* parser, loom_token_t name_token, loom_type_parse_mode_t mode,
-    loom_value_id_t* out_value_id) {
+iree_status_t loom_resolve_type_reference(loom_parser_t* parser,
+                                          loom_token_t name_token,
+                                          loom_type_parse_mode_t mode,
+                                          loom_value_id_t* out_value_id) {
   loom_string_id_t name_id =
       loom_module_lookup_string(parser->module, name_token.text);
   loom_value_id_t value_id = loom_parser_lookup_value(parser, name_id);

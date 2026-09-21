@@ -16,78 +16,6 @@
 #include "loom/ir/module.h"
 #include "loom/ops/op_defs.h"
 
-//===----------------------------------------------------------------------===//
-// Predicate printing
-//===----------------------------------------------------------------------===//
-
-// Prints a predicate argument based on its tag.
-static iree_status_t loom_print_predicate_arg(loom_print_context_t* ctx,
-                                              uint8_t tag, int64_t value) {
-  switch (tag) {
-    case LOOM_PRED_ARG_VALUE: {
-      return loom_print_value_ref(ctx, (loom_value_id_t)value);
-    }
-    case LOOM_PRED_ARG_CONST:
-      return loom_output_stream_write_format(ctx->stream, "%" PRId64, value);
-    default:
-      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                              "unknown predicate arg tag %d", (int)tag);
-  }
-}
-
-static iree_status_t loom_print_predicate(loom_print_context_t* ctx,
-                                          const loom_predicate_t* predicate) {
-  const char* predicate_name = loom_predicate_kind_name(predicate->kind);
-  if (!predicate_name) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "unknown predicate kind %d", (int)predicate->kind);
-  }
-  uint8_t expected_argument_count =
-      loom_predicate_kind_argument_count(predicate->kind);
-  if (predicate->arg_count != expected_argument_count) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "predicate kind %s expects %u arguments, got %u",
-                            predicate_name, expected_argument_count,
-                            predicate->arg_count);
-  }
-  // Emit kind name and opening paren: "mul("
-  IREE_RETURN_IF_ERROR(loom_print_space_if_needed(ctx));
-  IREE_RETURN_IF_ERROR(
-      loom_output_stream_write_cstring(ctx->stream, predicate_name));
-  IREE_RETURN_IF_ERROR(loom_output_stream_write_char(ctx->stream, '('));
-  // Emit arguments separated by ", ".
-  for (uint8_t j = 0; j < predicate->arg_count; ++j) {
-    if (j > 0) {
-      IREE_RETURN_IF_ERROR(loom_output_stream_write_cstring(ctx->stream, ", "));
-    }
-    IREE_RETURN_IF_ERROR(loom_print_predicate_arg(ctx, predicate->arg_tags[j],
-                                                  predicate->args[j]));
-  }
-  IREE_RETURN_IF_ERROR(loom_output_stream_write_char(ctx->stream, ')'));
-  loom_print_did_write(ctx);
-  return iree_ok_status();
-}
-
-// Prints a predicate list in the format: [pred(%name, 16), lt(%K, 1024)]
-static iree_status_t loom_print_predicate_list(
-    loom_print_context_t* ctx, const loom_predicate_t* predicates,
-    uint16_t count) {
-  if (count > 0 && !predicates) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "predicate list has count %u but NULL predicates",
-                            count);
-  }
-  IREE_RETURN_IF_ERROR(loom_print_emit_cstr(ctx, "[", false));
-  for (uint16_t i = 0; i < count; ++i) {
-    if (i > 0) {
-      IREE_RETURN_IF_ERROR(loom_print_emit_cstr(ctx, ",", false));
-    }
-    IREE_RETURN_IF_ERROR(loom_print_predicate(ctx, &predicates[i]));
-  }
-  IREE_RETURN_IF_ERROR(loom_print_emit_cstr(ctx, "]", false));
-  return iree_ok_status();
-}
-
 static bool loom_print_optional_attr_present(const loom_op_t* op,
                                              uint16_t attr_index) {
   if (attr_index >= op->attribute_count) {
@@ -513,16 +441,12 @@ iree_status_t loom_print_format_elements(loom_print_context_t* ctx,
         }
         loom_attribute_t attr = loom_op_attrs(op)[element->field_index];
         if (attr.kind == LOOM_ATTR_PREDICATE_LIST) {
-          if (attr.count > 0 && !attr.predicate_list) {
-            return iree_make_status(
-                IREE_STATUS_INVALID_ARGUMENT,
-                "PREDICATE_LIST attr has count %u but NULL predicates",
-                attr.count);
-          }
           iree_host_size_t predicate_start =
               loom_print_next_token_start_offset(ctx, false, '[');
+          IREE_RETURN_IF_ERROR(loom_print_space_if_needed(ctx));
           IREE_RETURN_IF_ERROR(
               loom_print_predicate_list(ctx, attr.predicate_list, attr.count));
+          loom_print_did_write(ctx);
           loom_print_report_field(
               ctx,
               loom_print_field_ref(LOOM_PRINT_FIELD_ATTR, element->field_index),

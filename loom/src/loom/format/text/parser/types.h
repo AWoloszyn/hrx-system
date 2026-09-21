@@ -8,6 +8,7 @@
 #define LOOM_FORMAT_TEXT_PARSER_TYPES_H_
 
 #include "iree/base/api.h"
+#include "loom/format/text/tokenizer.h"
 #include "loom/ir/ir.h"
 
 #ifdef __cplusplus
@@ -16,14 +17,23 @@ extern "C" {
 
 typedef struct loom_parser_t loom_parser_t;
 
-// Controls how dynamic dim names are resolved during type parsing.
+// Controls how SSA names are resolved in types and their parameters.
 typedef enum loom_type_parse_mode_e {
-  // Function arg context: [%M] creates a new index value if not already defined
-  // in scope.
+  // Declaration context: an unknown name creates a NONE-typed placeholder.
+  // The declaration scope owns its subsequent inference or explicit binder.
   LOOM_TYPE_PARSE_ARG = 0,
-  // Op body context: [%M] must already be defined in scope.
+  // Op body context: the referenced value must already be defined in scope.
   LOOM_TYPE_PARSE_BODY = 1,
 } loom_type_parse_mode_t;
+
+// Resolves an SSA_VALUE token in a type or parameter attribute. ARG mode
+// reserves an unknown name for a later binder in the active declaration scope;
+// BODY mode diagnoses an undefined name. Diagnostic emission can succeed while
+// increasing parser->error_count, as for ordinary parser value resolution.
+iree_status_t loom_resolve_type_reference(loom_parser_t* parser,
+                                          loom_token_t name_token,
+                                          loom_type_parse_mode_t mode,
+                                          loom_value_id_t* out_value_id);
 
 #define LOOM_PARSER_TYPE_LIST_MIN_CAPACITY 8
 typedef struct loom_parser_type_list_t {

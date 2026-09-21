@@ -34,6 +34,11 @@ iree_status_t loom_print_attr(const loom_print_context_t* ctx,
                               const loom_attribute_t* attr,
                               const loom_attr_descriptor_t* descriptor);
 
+// Prints [pred(arguments), ...] without token spacing or a generic kind prefix.
+iree_status_t loom_print_predicate_list(const loom_print_context_t* ctx,
+                                        const loom_predicate_t* predicates,
+                                        uint16_t count);
+
 // Prints a quoted string with canonical escaping and UTF-8 validation.
 iree_status_t loom_print_string_literal(loom_output_stream_t* stream,
                                         iree_string_view_t text);
