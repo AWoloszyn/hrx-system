@@ -307,6 +307,10 @@ with per-instance policies, checked row-sum and packed-dot experiment harnesses,
 configuration sweeps, and actual `show`/`suggest` output. The
 [per-instance search](search-loop-schedules.md) composes two independent motifs,
 checks candidate identity, and inspects resource cliffs before device execution.
+For shared-input kernels, the
+[grouping and depth comparison](tune-loop-schedules.md#choose-grouping-and-depth-independently)
+separates load reuse from available subgroup parallelism, with different policy
+winners across workload sizes and GPU targets.
 The [control-flow guide](../guide/functions-and-control.md#unrolling-is-a-loop-policy)
 owns the exact policy and schedule semantics.
 
@@ -327,6 +331,11 @@ For top-k token lists, the
 separates the selected-prefix guard from physical-ID validity, with independent
 numerical checks, short allocations and poisoned inactive payloads. Preserve
 both boundaries when searching schedules for an indexer-selected workload.
+For grouped query heads, the
+[shared-loading example](tune-loop-schedules.md#share-kv-loads-across-query-heads)
+reuses K/V fragments while keeping separate queries, lengths and softmax states.
+Its independent, shared-serial and shared-pipelined callers separate reuse from
+scheduling: fewer loads can cost more live state and less subgroup parallelism.
 
 For authored native motifs, give a Low helper
 [`schedule(phased)`](../guide/functions-and-control.md#compose-independently-scheduled-helpers)

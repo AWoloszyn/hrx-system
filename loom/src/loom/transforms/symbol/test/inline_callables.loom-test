@@ -442,15 +442,15 @@ func.def public @cfg_entry(%arg: i32) -> (i32) {
 // ----
 func.def public @cfg_entry(%arg: i32) -> (i32) {
   %prefix = test.addi %arg, %arg : i32
-  cfg.br ^_bb1(%prefix: i32)
-^_bb1(%value: i32):
+  cfg.br ^_bb1
+^_bb1:
   %condition = scalar.constant 1 : i1
   cfg.cond_br %condition, ^_bb2, ^_bb3
 ^_bb2:
-  %doubled = test.addi %value, %value : i32
+  %doubled = test.addi %prefix, %prefix : i32
   cfg.br ^_bb4(%doubled: i32)
 ^_bb3:
-  cfg.br ^_bb5(%value: i32)
+  cfg.br ^_bb5(%prefix: i32)
 ^_bb4(%forwarded: i32):
   cfg.br ^_bb5(%forwarded: i32)
 ^_bb5(%selected: i32):
@@ -487,15 +487,15 @@ low.func.def public target<test.low.core>(@target) @low_cfg_entry(%condition: re
 // ----
 test.target<low_core> @target
 
-low.func.def public target<test.low.core>(@target) @low_cfg_entry(%condition$4: reg<test.i32>, %arg: reg<test.i32>) -> (reg<test.i32>) asm {
+low.func.def public target<test.low.core>(@target) @low_cfg_entry(%condition: reg<test.i32>, %arg: reg<test.i32>) -> (reg<test.i32>) asm {
   %prefix = copy %arg : reg<test.i32> -> reg<test.i32>
-  low.br ^_bb1(%condition$4: reg<test.i32>, %prefix: reg<test.i32>)
-^_bb1(%condition$0: reg<test.i32>, %value: reg<test.i32>):
-  low.cond_br %condition$0, ^_bb2, ^_bb3 : reg<test.i32>
+  low.br ^_bb1
+^_bb1:
+  low.cond_br %condition, ^_bb2, ^_bb3 : reg<test.i32>
 ^_bb2:
-  low.br ^_bb5(%value: reg<test.i32>)
+  low.br ^_bb5(%prefix: reg<test.i32>)
 ^_bb3:
-  low.br ^_bb4(%value: reg<test.i32>)
+  low.br ^_bb4(%prefix: reg<test.i32>)
 ^_bb4(%forwarded: reg<test.i32>):
   low.br ^_bb5(%forwarded: reg<test.i32>)
 ^_bb5(%selected: reg<test.i32>):
@@ -600,10 +600,10 @@ func.def public @closure_cfg_entry(%value: i32) -> (i32) {
 }
 
 // ----
-func.def public @closure_cfg_entry(%value$6: i32) -> (i32) {
-  cfg.br ^_bb1(%value$6: i32)
-^_bb1(%value$0: i32):
-  cfg.br ^_bb2(%value$0: i32)
+func.def public @closure_cfg_entry(%value: i32) -> (i32) {
+  cfg.br ^_bb1
+^_bb1:
+  cfg.br ^_bb2(%value: i32)
 ^_bb2(%forwarded: i32):
   cfg.br ^_bb3(%forwarded: i32)
 ^_bb3(%result: i32):
@@ -636,9 +636,9 @@ func.def public @nested_linear_cfg_entry(%entry_value: i32) -> (i32) {
 
 // ----
 func.def public @nested_linear_cfg_entry(%entry_value: i32) -> (i32) {
-  cfg.br ^_bb1(%entry_value: i32)
-^_bb1(%outer_value: i32):
-  %nested_doubled = test.addi %outer_value, %outer_value : i32
+  cfg.br ^_bb1
+^_bb1:
+  %nested_doubled = test.addi %entry_value, %entry_value : i32
   cfg.br ^_bb2(%nested_doubled: i32)
 ^_bb2(%outer_forwarded: i32):
   cfg.br ^_bb3(%outer_forwarded: i32)
@@ -677,11 +677,11 @@ low.func.def public target<test.low.core>(@nested_cfg_target) @nested_cfg_entry(
 test.target<low_core> @nested_cfg_target
 
 low.func.def public target<test.low.core>(@nested_cfg_target) @nested_cfg_entry(%entry_value: reg<test.i32>) -> (reg<test.i32>) asm {
-  low.br ^_bb1(%entry_value: reg<test.i32>)
-^_bb1(%parent_value: reg<test.i32>):
-  low.br ^_bb2(%parent_value: reg<test.i32>)
-^_bb2(%child_value: reg<test.i32>):
-  low.br ^_bb3(%child_value: reg<test.i32>)
+  low.br ^_bb1
+^_bb1:
+  low.br ^_bb2
+^_bb2:
+  low.br ^_bb3(%entry_value: reg<test.i32>)
 ^_bb3(%child_forwarded: reg<test.i32>):
   low.br ^_bb4(%child_forwarded: reg<test.i32>)
 ^_bb4(%parent_result: reg<test.i32>):
@@ -720,11 +720,11 @@ func.def public @tail_scope_entry(%entry_value: i32) -> (i32) {
 
 // ----
 func.def public @tail_scope_entry(%entry_value: i32) -> (i32) {
-  cfg.br ^_bb1(%entry_value: i32)
-^_bb1(%parent_value: i32):
-  cfg.br ^_bb2(%parent_value: i32)
-^_bb2(%leaf_value: i32):
-  cfg.br ^_bb3(%leaf_value: i32)
+  cfg.br ^_bb1
+^_bb1:
+  cfg.br ^_bb2
+^_bb2:
+  cfg.br ^_bb3(%entry_value: i32)
 ^_bb3(%leaf_forwarded: i32):
   cfg.br ^_bb4(%leaf_forwarded: i32)
 ^_bb4(%child_result: i32):
@@ -743,8 +743,8 @@ func.def public @tail_scope_entry(%entry_value: i32) -> (i32) {
 // A shared CFG wrapper exercises both execution dependencies. Its nested leaf
 // must be flattened before the wrapper is cloned, and the clone must complete
 // before the final use consumes and erases the wrapper definition.
-// The cloned entry has no predecessor inside its callee and captures the call
-// operand directly; the transferred body retains its original entry argument.
+// Both entries have no predecessor inside their callee and capture the call
+// operand directly.
 func.def inline @shared_cfg_leaf(%leaf_value: i32) -> (i32) {
   cfg.br ^exit(%leaf_value: i32)
 ^exit(%leaf_forwarded: i32):
@@ -770,9 +770,9 @@ func.def public @consume_cfg_wrapper(%consume_value: i32) -> (i32) {
 func.def public @clone_cfg_wrapper(%clone_value: i32) -> (i32) {
   cfg.br ^_bb1
 ^_bb1:
-  cfg.br ^_bb2(%clone_value: i32)
-^_bb2(%leaf_value: i32):
-  cfg.br ^_bb3(%leaf_value: i32)
+  cfg.br ^_bb2
+^_bb2:
+  cfg.br ^_bb3(%clone_value: i32)
 ^_bb3(%leaf_forwarded: i32):
   cfg.br ^_bb4(%leaf_forwarded: i32)
 ^_bb4(%wrapper_result: i32):
@@ -782,11 +782,11 @@ func.def public @clone_cfg_wrapper(%clone_value: i32) -> (i32) {
 }
 
 func.def public @consume_cfg_wrapper(%consume_value: i32) -> (i32) {
-  cfg.br ^_bb1(%consume_value: i32)
-^_bb1(%wrapper_value: i32):
-  cfg.br ^_bb2(%wrapper_value: i32)
-^_bb2(%leaf_value: i32):
-  cfg.br ^_bb3(%leaf_value: i32)
+  cfg.br ^_bb1
+^_bb1:
+  cfg.br ^_bb2
+^_bb2:
+  cfg.br ^_bb3(%consume_value: i32)
 ^_bb3(%leaf_forwarded: i32):
   cfg.br ^_bb4(%leaf_forwarded: i32)
 ^_bb4(%wrapper_result: i32):
@@ -916,23 +916,23 @@ low.func.def public target<test.low.core>(@scope_target) @scoped_entry(%conditio
 // ----
 test.target<low_core> @scope_target
 
-low.func.def public target<test.low.core>(@scope_target) @scoped_entry(%condition$9: reg<test.i32>, %value$10: reg<test.i32>) -> (reg<test.i32>) asm {
+low.func.def public target<test.low.core>(@scope_target) @scoped_entry(%condition: reg<test.i32>, %value: reg<test.i32>) -> (reg<test.i32>) asm {
   low.schedule.begin
-  low.br ^_bb1(%condition$9: reg<test.i32>, %value$10: reg<test.i32>)
-^_bb1(%condition$0: reg<test.i32>, %value$1: reg<test.i32>):
+  low.br ^_bb1
+^_bb1:
   low.schedule.begin
-  low.cond_br %condition$0, ^_bb2, ^_bb3 : reg<test.i32>
+  low.cond_br %condition, ^_bb2, ^_bb3 : reg<test.i32>
 ^_bb2:
   low.schedule.phase
-  %sum$3 = test.add.i32 %value$1, %value$1
+  %sum$3 = test.add.i32 %value, %value
   low.schedule.end
   low.br ^_bb4(%sum$3: reg<test.i32>)
 ^_bb3:
   low.schedule.end
-  low.br ^_bb4(%value$1: reg<test.i32>)
+  low.br ^_bb4(%value: reg<test.i32>)
 ^_bb4(%chosen: reg<test.i32>):
   low.schedule.phase
-  %sum$8 = test.add.i32 %chosen, %value$10
+  %sum$8 = test.add.i32 %chosen, %value
   low.schedule.end
   return %sum$8
 }
@@ -1084,11 +1084,11 @@ func.def public @entry(%arg: i32) -> (i32) {
 
 // ----
 func.def public @entry(%arg: i32) -> (i32) {
-  cfg.br ^_bb1(%arg: i32)
-^_bb1(%value$3: i32):
-  cfg.br ^_bb4(%value$3: i32)
-^_bb4(%value$0: i32):
-  cfg.br ^_bb5(%value$0: i32)
+  cfg.br ^_bb1
+^_bb1:
+  cfg.br ^_bb4
+^_bb4:
+  cfg.br ^_bb5(%arg: i32)
 ^_bb5(%forwarded$2: i32):
   cfg.br ^_bb6(%forwarded$2: i32)
 ^_bb6(%result$11: i32):

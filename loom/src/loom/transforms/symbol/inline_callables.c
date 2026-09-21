@@ -168,15 +168,13 @@ typedef enum loom_inline_blocker_e {
   LOOM_INLINE_BLOCKER_RECURSIVE_BODY = 12,
   LOOM_INLINE_BLOCKER_CALLEE_BODY_MISSING_TERMINATOR = 13,
   LOOM_INLINE_BLOCKER_CALLEE_BODY_INVALID_TERMINATOR = 14,
-  LOOM_INLINE_BLOCKER_OPERAND_COUNT_MISMATCH = 15,
-  LOOM_INLINE_BLOCKER_RETURN_COUNT_MISMATCH = 18,
-  LOOM_INLINE_BLOCKER_TARGET_REQUIRES_INLINE = 21,
-  LOOM_INLINE_BLOCKER_LOW_CALLEE_KIND = 22,
-  LOOM_INLINE_BLOCKER_LOW_ALLOCATION = 23,
-  LOOM_INLINE_BLOCKER_LOW_ENTRY_RESOURCE = 24,
-  LOOM_INLINE_BLOCKER_LOW_LOCKED_NESTED_REGION = 25,
-  LOOM_INLINE_BLOCKER_CALLEE_SUCCESSOR_OUTSIDE_BODY = 26,
-  LOOM_INLINE_BLOCKER_CALLER_REGION_NOT_CFG_CAPABLE = 27,
+  LOOM_INLINE_BLOCKER_TARGET_REQUIRES_INLINE = 15,
+  LOOM_INLINE_BLOCKER_LOW_CALLEE_KIND = 16,
+  LOOM_INLINE_BLOCKER_LOW_ALLOCATION = 17,
+  LOOM_INLINE_BLOCKER_LOW_ENTRY_RESOURCE = 18,
+  LOOM_INLINE_BLOCKER_LOW_LOCKED_NESTED_REGION = 19,
+  LOOM_INLINE_BLOCKER_CALLEE_SUCCESSOR_OUTSIDE_BODY = 20,
+  LOOM_INLINE_BLOCKER_CALLER_REGION_NOT_CFG_CAPABLE = 21,
 } loom_inline_blocker_t;
 
 typedef struct loom_inline_symbol_info_t {
@@ -354,10 +352,6 @@ static iree_string_view_t loom_inline_blocker_code(
       return IREE_SV("callee_body_missing_terminator");
     case LOOM_INLINE_BLOCKER_CALLEE_BODY_INVALID_TERMINATOR:
       return IREE_SV("callee_body_invalid_terminator");
-    case LOOM_INLINE_BLOCKER_OPERAND_COUNT_MISMATCH:
-      return IREE_SV("operand_count_mismatch");
-    case LOOM_INLINE_BLOCKER_RETURN_COUNT_MISMATCH:
-      return IREE_SV("return_count_mismatch");
     case LOOM_INLINE_BLOCKER_TARGET_REQUIRES_INLINE:
       return IREE_SV("target_requires_inline");
     case LOOM_INLINE_BLOCKER_LOW_CALLEE_KIND:
@@ -913,17 +907,6 @@ static loom_inline_blocker_t loom_inline_validate_inline_body(
   // Function contracts are verified at the input boundary. Caller types may
   // have been refined since then; materialization substitutes the actual
   // arguments and remaps dependent dimensions/layouts in the cloned body.
-  uint16_t arg_count = 0;
-  loom_func_like_arg_ids(entry->callee, &arg_count);
-  loom_value_slice_t call_operands = loom_call_like_operands(entry->call);
-  if (arg_count != call_operands.count) {
-    return LOOM_INLINE_BLOCKER_OPERAND_COUNT_MISMATCH;
-  }
-  loom_value_slice_t call_results = loom_call_like_results(entry->call);
-  if (entry->callee.op->result_count != call_results.count) {
-    return LOOM_INLINE_BLOCKER_RETURN_COUNT_MISMATCH;
-  }
-
   for (uint16_t block_index = 0; block_index < body->block_count;
        ++block_index) {
     loom_block_t* block = loom_region_block(body, block_index);
@@ -942,12 +925,6 @@ static loom_inline_blocker_t loom_inline_validate_inline_body(
               &ignored_index)) {
         return LOOM_INLINE_BLOCKER_CALLEE_SUCCESSOR_OUTSIDE_BODY;
       }
-    }
-    if (terminator->kind != body_descriptor->terminator) {
-      continue;
-    }
-    if (terminator->operand_count != call_results.count) {
-      return LOOM_INLINE_BLOCKER_RETURN_COUNT_MISMATCH;
     }
   }
 

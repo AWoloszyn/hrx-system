@@ -577,6 +577,9 @@ softmax state and ragged sequence tails, with matched checked benchmarks.
 The [sparse token variant](../workflows/tune-loop-schedules.md#pipeline-sparse-token-attention)
 adds dependent per-token IDs and an independent selected-prefix boundary,
 including ignored suffixes that point at poisoned payloads.
+The [grouped-query variant](../workflows/tune-loop-schedules.md#share-kv-loads-across-query-heads)
+shares each K/V fragment across two independent softmax states. It compares
+load reuse and pipelining separately, with per-head guards for unequal lengths.
 
 The caller can also calculate these values with `index` arithmetic from
 specialized template arguments or target properties. A global configuration

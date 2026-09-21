@@ -739,10 +739,10 @@ TEST_F(CallableInlineTest, ConsumingInlineMovesCfgBlocksAndErasesCallee) {
   EXPECT_EQ(moved_entry->last_op, entry_branch);
   EXPECT_EQ(entry_branch->parent_op, caller_op);
   EXPECT_EQ(loom_cfg_br_dest(caller_entry->last_op), moved_entry);
-  EXPECT_EQ(loom_cfg_br_args(caller_entry->last_op).values[0], caller_args[0]);
+  EXPECT_EQ(loom_cfg_br_args(caller_entry->last_op).count, 0u);
+  EXPECT_EQ(moved_entry->arg_count, 0u);
   EXPECT_EQ(loom_cfg_br_dest(entry_branch), moved_exit);
-  EXPECT_EQ(loom_cfg_br_args(entry_branch).values[0],
-            loom_block_arg_id(moved_entry, 0));
+  EXPECT_EQ(loom_cfg_br_args(entry_branch).values[0], caller_args[0]);
   ASSERT_TRUE(loom_cfg_br_isa(moved_exit->last_op));
   EXPECT_EQ(loom_cfg_br_dest(moved_exit->last_op), continuation);
   ASSERT_EQ(continuation->arg_count, 1u);

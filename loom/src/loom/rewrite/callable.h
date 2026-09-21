@@ -8,7 +8,10 @@
 //
 // These helpers adapt generic IR remapping/materialization to function-like
 // operations. They do not decide inline profitability or import policy; callers
-// choose a verified call site and these helpers perform the mutation.
+// choose a call site and these helpers materialize the verified call contract.
+// Signature verification establishes arity and type compatibility after SSA
+// argument/result substitution. Materialization remaps dependent types into the
+// caller; callee-local types need not be identical to caller-local types.
 
 #ifndef LOOM_REWRITE_CALLABLE_H_
 #define LOOM_REWRITE_CALLABLE_H_

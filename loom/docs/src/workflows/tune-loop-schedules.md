@@ -633,6 +633,99 @@ matched unroll factors; a larger depth alone does not establish useful overlap.
 The `n128`/`n1024` and `i1`/`i16`/`i256` benchmark suffixes vary selected-token
 and query counts without changing the cache footprint.
 
+## Share K/V loads across query heads
+
+The [grouped paged-attention example](../generated/examples/guide/functions-and-control/grouped-paged-attention.loom)
+puts two distinct query heads in one subgroup. A pair owns one page table and
+each lane loads one K/V fragment per row for both queries. Ordinary SSA makes
+the reuse explicit:
+
+```loom
+%first_partial_score = vector.dotf %first_query_fragment, %key, %identity : vector<[%fragment_width]xf32>, vector<[%fragment_width]xf32>, f32
+%first_dot = kernel.subgroup.reduce<addf> %first_partial_score : f32
+%second_partial_score = vector.dotf %second_query_fragment, %key, %identity : vector<[%fragment_width]xf32>, vector<[%fragment_width]xf32>, f32
+%second_dot = kernel.subgroup.reduce<addf> %second_partial_score : f32
+```
+
+Each head keeps its own query, length, maximum, denominator and PV accumulator.
+The shared loop traverses the union of both prefixes. Its load guard protects
+that union; two separate consumer guards prevent the longer head from extending
+the shorter head's softmax. Both reductions participate in the fixed sixteen-row
+tile. A reusable online-update template takes the target-derived fragment width
+as an argument, so the same arithmetic handles both heads and subgroup widths.
+
+Three callers separate reuse from scheduling. `independent` launches two
+subgroups per pair; `shared` launches one, with both using depth two and unroll
+two. `shared_serial` uses the same shared body at depth one. The independent
+control reads the same pair-owned table and places the two heads in adjacent
+workgroups. All callers take policy values through template arguments.
+
+```shell
+iree-test-loom grouped-paged-attention.loom --device=amdgpu --sanitizer=access
+
+iree-benchmark-loom grouped-paged-attention.loom \
+  --compare=@grouped_paged_attention_independent_n128_p1024,@grouped_paged_attention_shared_n128_p1024 \
+  --device=amdgpu --measure=dispatch_complete --batch-size=8 \
+  --iterations=16 --warmup-iterations=3 --input-ring-count=1 \
+  --interleave=ABABA --repetitions=2 --output=grouped-comparison.json
+
+loom-compile grouped-paged-attention.loom \
+  --root=@grouped_paged_attention_shared --target=amdgpu:gfx1151 \
+  --format=amdgpu-hsaco --output=grouped.hsaco --compile-report=details \
+  --compile-report-output=grouped.report.json
+loom-compile-report show grouped.report.json
+loom-compile-report suggest grouped.report.json
+```
+
+The `n128`/`n1024` and `p1`/`p128`/`p1024` rows vary tokens and query pairs
+over the same 64 MiB K/V allocation. Each timing case launches one kernel.
+Independent analytic checks cover both states and all output channels, including
+empty heads, unequal lengths, absent pages and repeated pages. Varied queries
+and pair-owned tables distinguish identity; minimal backing exposes extra reads.
+
+The generated `gfx1151` resource comparison shows the state cost:
+
+--8<-- "generated/examples/guide/functions-and-control/grouped-resources.md"
+
+For equal lengths, sharing halves issued K/V loads per pair. Cache reuse means
+this does not imply half the DRAM traffic. The shared form also retains two
+online states per subgroup and halves the number of runnable subgroups. Small
+batches can lose performance while larger batches benefit. The balance also
+depends on the target: fewer issued loads can accompany slower execution.
+
+### Choose grouping and depth independently
+
+Grouping changes how much independent work the device can run; depth changes
+how far each subgroup reads ahead. Compare independent and shared callers at
+the same depth first, then vary depth for each form with unrolling fixed. For
+example, independent/shared at depths two and three gives four candidates, each
+with its own checked outputs and compile report. The motif's template arguments
+keep these choices local to the caller.
+
+The grouped example illustrates why both axes matter. With unroll two and a
+64 MiB K/V pool, measurements at 128 and 1,024 tokens per head favored
+independent depth three for a single query pair
+on gfx1151, RX 7900 XTX, and MI300X. At 1,024 pairs, sharing won on the first two
+devices, while MI300X still favored independent depth three. Those observations
+describe this workload and policy grid; another head width, page distribution,
+or batch size requires its own comparison.
+
+Use reports to explain each candidate's cost before spending device time.
+`show` exposes the applied schedule and final resources; `suggest` identifies
+pipeline-depth experiments and relevant native wait evidence. Compare registers,
+spills, modeled occupancy, code size, and compile time. A larger queue can
+improve overlap even without an occupancy change, while a full wait or queue
+copy can drain future loads earlier than expected.
+
+Measure the surviving candidates at the intended query count and active page
+footprint. Shared reads may already hit cache in the independent form, so
+halving issued loads does not establish a bandwidth benefit. Keep correctness,
+host completion, and device timestamps as separate evidence; alternating policy
+order and retaining stability warnings makes a small difference easier to
+judge. The [benchmark workflow](benchmark.md) owns the timing controls, and
+the [per-instance search workflow](search-loop-schedules.md) shows how to retain
+reports and correctness results across a larger candidate grid.
+
 ## Carry the experiment into a kernel
 
 After a sweep, put the selected policy in the caller or its target-derived

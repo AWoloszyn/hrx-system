@@ -162,6 +162,29 @@ func.def @wrong_application_argument(%value: f32) -> (i32) {
 
 // ====
 
+// Substitution follows the dimension operand rather than accepting any vector
+// of the same rank and element type.
+func.decl @dependent(%width: index, %value: vector<[%width]xf32>) -> (vector<[%width]xf32>)
+
+func.def @wrong_dependent_argument(%width: index, %other_width: index, %value: vector<[%other_width]xf32>) -> (vector<[%width]xf32>) {
+  // ERROR@+1: TYPE/001 {field_a="operand 1", field_b="contract argument 1"}
+  %result = func.call @dependent(%width, %value) : (index, vector<[%other_width]xf32>) -> (vector<[%width]xf32>)
+  func.return %result : vector<[%width]xf32>
+}
+
+// ====
+
+// Selected providers cannot change the instantiated result dimension.
+template.decl @dependent(%width: index, %value: vector<[%width]xf32>) -> (vector<[%width]xf32>)
+
+func.def @wrong_dependent_result(%width: index, %other_width: index, %value: vector<[%width]xf32>) -> (vector<[%other_width]xf32>) {
+  // ERROR@+1: TYPE/001 {field_a="result 0", field_b="contract result 0"}
+  %result = template.apply<@dependent>(%width, %value) : (index, vector<[%width]xf32>) -> (vector<[%other_width]xf32>)
+  func.return %result : vector<[%other_width]xf32>
+}
+
+// ====
+
 func.decl pure @pure_external()
 
 func.def @pure_body() {

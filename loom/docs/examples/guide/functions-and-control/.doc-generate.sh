@@ -43,6 +43,8 @@ cp -- "${repo_root}/loom/src/loom/test/corpus/checked_benchmarks/cooperative_pag
   "${output_dir}/cooperative-paged-attention.loom"
 cp -- "${repo_root}/loom/src/loom/test/corpus/checked_benchmarks/sparse_token_attention_f32.loom" \
   "${output_dir}/sparse-token-attention.loom"
+cp -- "${repo_root}/loom/src/loom/test/corpus/checked_benchmarks/grouped_paged_attention_f32.loom" \
+  "${output_dir}/grouped-paged-attention.loom"
 
 cd -- "${output_dir}"
 "${loom_format}" --check guarded-read-ahead.loom
@@ -179,6 +181,21 @@ for policy in serial pipelined; do
 done
 "${loom_report}" suggest sparse-pipelined.report.json >sparse.suggest.txt
 
+"${loom_format}" --check grouped-paged-attention.loom
+for policy in independent shared_serial shared; do
+  "${loom_compile}" grouped-paged-attention.loom \
+    --root="@grouped_paged_attention_${policy}" \
+    --target=amdgpu:gfx1151 --format=amdgpu-hsaco \
+    --output="grouped-${policy}.hsaco" --compile-report=details \
+    --compile-report-output="grouped-${policy}.report.json"
+  "${loom_report}" show "grouped-${policy}.report.json" --format=json \
+    >"grouped-${policy}.view.json"
+  "${loom_benchmark}" grouped-paged-attention.loom \
+    --benchmark="@grouped_paged_attention_${policy}_n128_p1024" \
+    --dry-run --output="grouped-${policy}.plan.json"
+done
+"${loom_report}" suggest grouped-shared.report.json >grouped.suggest.txt
+
 # Compile the independent caller grid and retain the bounded evidence readers use.
 "${loom_format}" --check paired-read-ahead.loom
 "${loom_format}" --check paired-read-ahead-tests.loom
@@ -266,18 +283,27 @@ for left_depth, left_factor, right_depth, right_factor in (
     )
 Path("paired-resources.md").write_text("\n".join(lines) + "\n")
 
-for example in ("cooperative", "sparse"):
+serial_pipeline_policies = (("serial", "Depth 1"), ("pipelined", "Depth 3"))
+for example, policies in (
+    ("cooperative", serial_pipeline_policies),
+    ("sparse", serial_pipeline_policies),
+    ("grouped", (
+        ("independent", "Independent, depth 2"),
+        ("shared_serial", "Shared, depth 1"),
+        ("shared", "Shared, depth 2"),
+    )),
+):
     lines = [
         "| Policy | Code bytes | VGPRs | Modeled residency | Spills |",
         "| --- | ---: | ---: | ---: | ---: |",
     ]
-    for policy, depth in (("serial", 1), ("pipelined", 3)):
+    for policy, label in policies:
         view = json.loads(Path(f"{example}-{policy}.view.json").read_text())
         entry = view["entries"][0]
         facts = entry["artifact_facts"]
         analysis = entry["compiler_analysis"]
         lines.append(
-            f"| Depth {depth}, unroll 2 | {facts['code_byte_count']} | "
+            f"| {label}, unroll 2 | {facts['code_byte_count']} | "
             f"{analysis['vector_register_count']} | "
             f"{analysis['occupancy_percent']}% | {analysis['allocation_spill_count']} |"
         )
