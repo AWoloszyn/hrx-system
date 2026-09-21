@@ -42,6 +42,18 @@ loom_test(
 )
 
 loom_test(
+    name = "shrinking_view_test",
+    srcs = ["shrinking_view.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/amdgpu:gfx1250",
+        "//loom/target/spirv:vulkan1.3+bda",
+    ],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+)
+
+loom_test(
     name = "view_window_walk_test",
     srcs = ["view_window_walk.loom"],
     compile_targets = [

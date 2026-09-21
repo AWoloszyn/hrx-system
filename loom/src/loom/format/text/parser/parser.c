@@ -65,10 +65,25 @@ void loom_parser_sync_to_newline(loom_parser_t* parser) {
   // whose kind is SSA_VALUE (result name), OP_NAME, LOOM_TOKEN_ERROR
   // (lexical error at the next sibling op), BLOCK_LABEL, RBRACE (end of
   // region), or EOF.
+  // A malformed region-owning op may fail before reaching its opening brace.
+  // Skip its balanced regions instead of treating a nested closing brace as
+  // the end of the region containing that op.
+  uint32_t brace_depth = 0;
   for (;;) {
     loom_token_t token = loom_tokenizer_peek(&parser->tokenizer);
     if (token.kind == LOOM_TOKEN_EOF) {
       break;
+    }
+    if (token.kind == LOOM_TOKEN_LBRACE) {
+      ++brace_depth;
+    } else if (token.kind == LOOM_TOKEN_RBRACE && brace_depth > 0) {
+      --brace_depth;
+      loom_tokenizer_next(&parser->tokenizer);
+      continue;
+    }
+    if (brace_depth > 0) {
+      loom_tokenizer_next(&parser->tokenizer);
+      continue;
     }
     if (token.kind == LOOM_TOKEN_RBRACE) {
       break;

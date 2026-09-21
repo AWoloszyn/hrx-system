@@ -422,6 +422,8 @@ iree_status_t loom_parse_format_result_type_list(
 typedef struct loom_parsed_binding_t {
   // Region entry block argument name introduced by this binding.
   loom_token_t arg_token;
+  // Initial operand whose type is annotated in the binding list.
+  loom_value_id_t operand_id;
 } loom_parsed_binding_t;
 
 #define LOOM_PARSE_FORMAT_INLINE_BINDINGS 8
@@ -472,6 +474,18 @@ static loom_type_t loom_parse_format_binding_arg_type(
 static iree_status_t loom_parse_format_define_binding_arg(
     loom_parser_t* parser, const loom_format_element_t* element,
     loom_parsed_binding_t binding, loom_type_t type) {
+  const loom_type_t input_type =
+      loom_module_value_type(parser->module, binding.operand_id);
+  if (!loom_type_equal(input_type, type)) {
+    loom_diagnostic_param_t params[] = {
+        loom_param_string(IREE_SV("binding")),
+        loom_param_type(input_type),
+        loom_param_string(IREE_SV("type annotation")),
+        loom_param_type(type),
+    };
+    return loom_parser_emit(parser, LOOM_ERR_TYPE_001, params,
+                            IREE_ARRAYSIZE(params), binding.arg_token);
+  }
   loom_type_t arg_type = loom_parse_format_binding_arg_type(element, type);
   loom_value_id_t arg_value_id = 0;
   IREE_RETURN_IF_ERROR(
@@ -511,6 +525,7 @@ static iree_status_t loom_parse_format_binding_entry(
 
   *out_binding = (loom_parsed_binding_t){
       .arg_token = arg_token,
+      .operand_id = operand_id,
   };
   return iree_ok_status();
 }

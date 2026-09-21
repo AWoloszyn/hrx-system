@@ -1208,6 +1208,30 @@ static iree_status_t loom_type_propagator_process_region_forwarding(
     return iree_ok_status();
   }
 
+  const loom_loop_like_t loop = loom_loop_like_cast(propagator->module, op);
+  if (loom_loop_like_has_counted_range(loop)) {
+    loom_block_t* body = loom_region_entry_block(loom_loop_like_body(loop));
+    const loom_value_id_t* arguments = body->arg_ids + 1;
+    IREE_RETURN_IF_ERROR(loom_type_propagator_seed_value_span_facts(
+        propagator, rewriter, arguments, op->result_count));
+    if (propagator->conflict) {
+      return iree_ok_status();
+    }
+    // Initial, recurring and final values are different instantiations of
+    // one tuple. Refining just an initial extent to a constant would break
+    // the entry edge when that extent changes on subsequent iterations.
+    const loom_value_slice_t initial = loom_loop_like_iter_args(loop);
+    const loom_op_t* yield = loom_block_const_last_op(body);
+    const loom_value_id_t* sources[] = {initial.values, arguments,
+                                        loom_op_const_operands(yield)};
+    for (iree_host_size_t i = 0;
+         i < IREE_ARRAYSIZE(sources) && !propagator->conflict; ++i) {
+      IREE_RETURN_IF_ERROR(loom_type_propagator_forward_source_tuple(
+          propagator, results, sources[i], op->result_count));
+    }
+    return iree_ok_status();
+  }
+
   for (uint8_t region_index = 0; region_index < op->region_count;
        ++region_index) {
     const loom_op_t* terminator = loom_region_branch_region_terminator(
@@ -1269,7 +1293,10 @@ static iree_status_t loom_type_propagator_schedule_region_forwarding(
     loom_type_propagator_t* propagator, loom_op_t* op) {
   const loom_region_branch_t branch =
       loom_region_branch_cast(propagator->module, op);
-  if (!loom_region_branch_isa(branch) || op->result_count == 0) {
+  const loom_loop_like_t loop = loom_loop_like_cast(propagator->module, op);
+  if ((!loom_region_branch_isa(branch) &&
+       !loom_loop_like_has_counted_range(loop)) ||
+      op->result_count == 0) {
     return iree_ok_status();
   }
   return loom_type_propagator_enqueue_forwarding(propagator,
@@ -1380,8 +1407,10 @@ static iree_status_t loom_type_propagator_process_use_constraints(
   const bool is_region_forwarding =
       vtable && iree_any_bit_set(vtable->traits, LOOM_TRAIT_TERMINATOR) &&
       op->parent_op &&
-      loom_region_branch_isa(
-          loom_region_branch_cast(propagator->module, op->parent_op));
+      (loom_region_branch_isa(
+           loom_region_branch_cast(propagator->module, op->parent_op)) ||
+       loom_loop_like_has_counted_range(
+           loom_loop_like_cast(propagator->module, op->parent_op)));
   if ((is_cfg_forwarding || is_region_forwarding) && !has_type_constraints &&
       !has_type_transfer && op->region_count == 0) {
     return loom_type_propagator_schedule_forwarding(propagator, op);
@@ -1393,7 +1422,9 @@ static iree_status_t loom_type_propagator_process_use_constraints(
 static iree_status_t loom_type_propagator_process_def_constraints(
     loom_type_propagator_t* propagator, const loom_rewriter_t* rewriter,
     loom_op_t* def_op, const loom_op_vtable_t* vtable) {
-  return vtable && vtable->region_branch
+  const loom_loop_like_t loop = loom_loop_like_cast(propagator->module, def_op);
+  return (vtable && vtable->region_branch) ||
+                 loom_loop_like_has_counted_range(loop)
              ? loom_type_propagator_schedule_region_forwarding(propagator,
                                                                def_op)
              : loom_type_propagator_process_op_constraints(propagator, rewriter,
