@@ -156,3 +156,39 @@ check.case public @condition_counter_nested_disabled {
   check.expect.equal actual(%actual) expected(%expected) : tensor<12xi32>
   check.return
 }
+
+// Keep a native-width offset recurrence coherent across the condition and body
+// CFG edges while the runtime iteration bound stays narrow.
+kernel.def @condition_wide_recurrence() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer, %initial: offset, %iteration_count_input: index) {
+  %iteration_count = index.assume %iteration_count_input [range(%iteration_count_input, 0, 3)] : index
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %stride = index.constant 1 : offset
+  %base = index.constant 0 : offset
+  %aligned_output = buffer.assume.alignment %output {minimum_alignment = 8} : buffer
+  %result_view = buffer.view %aligned_output[%base] : buffer -> view<1xi64>
+  %final_count, %final_value = scf.while(%before_count = %iteration_count : index, %before_value = %initial : offset) -> (index, offset) {
+    %more = index.cmp sgt, %before_count, %c0 : index
+    scf.condition %more, %before_count, %before_value : i1, index, offset
+  } do(%count: index, %value: offset) {
+    %next_count = index.sub %count, %c1 : index
+    %next_value = index.sub %value, %stride : offset
+    scf.yield %next_count, %next_value : index, offset
+  }
+  %wide_value = index.cast %final_value : offset to i64
+  view.store %wide_value, %result_view[0] : i64, view<1xi64>
+  kernel.return
+}
+
+check.case public @condition_wide_recurrence_case {
+  %initial = check.literal value(103) : offset
+  %iteration_count = check.literal value(3) : index
+  %actual = check.generate.fill value(-1) : tensor<1xi64>
+  %expected = check.generate.fill value(100) : tensor<1xi64>
+  kernel.launch @condition_wide_recurrence(%actual, %initial, %iteration_count) : (tensor<1xi64>, offset, index)
+  check.expect.equal actual(%actual) expected(%expected) : tensor<1xi64>
+  check.return
+}
