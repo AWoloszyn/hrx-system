@@ -74,6 +74,12 @@ typedef struct loom_canonicalizer_result_t {
 
   // Number of ops modified by canonicalization.
   int64_t ops_modified;
+
+  // Number of type propagation candidate closures rejected as inconsistent.
+  int64_t type_propagation_conflicts;
+
+  // Number of repeated rejected candidates skipped within an iteration.
+  int64_t type_propagation_rejection_cache_hits;
 } loom_canonicalizer_result_t;
 
 // Stateful canonicalizer that can be driven by a pass or by whole-program

@@ -682,6 +682,9 @@ static void loom_refine_boundaries_merge_canonicalize_result(
   target->types_changed |= source->types_changed;
   target->boundary_maybe_changed |= source->boundary_maybe_changed;
   target->ops_modified += source->ops_modified;
+  target->type_propagation_conflicts += source->type_propagation_conflicts;
+  target->type_propagation_rejection_cache_hits +=
+      source->type_propagation_rejection_cache_hits;
 }
 
 static int32_t loom_refine_boundaries_find_argument_index(

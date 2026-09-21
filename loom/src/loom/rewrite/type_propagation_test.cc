@@ -350,6 +350,64 @@ TEST_F(TypePropagationTest, SameTypeConflictRejectsTransaction) {
       static_vector_32));
 }
 
+TEST_F(TypePropagationTest, RejectedCandidateClosureRunsOncePerIteration) {
+  loom_type_t dynamic_vector = loom_type_shaped_1d(
+      LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_I32, loom_dim_pack_dynamic(1), 0);
+  loom_type_t static_vector_16 = loom_type_shaped_1d(
+      LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_I32, loom_dim_pack_static(16), 0);
+  loom_type_t static_vector_32 = loom_type_shaped_1d(
+      LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_I32, loom_dim_pack_static(32), 0);
+
+  loom_op_t* source_op = NULL;
+  IREE_ASSERT_OK(BuildConstant(loom_attr_i64(0), dynamic_vector, &source_op));
+  loom_value_id_t source = loom_test_constant_result(source_op);
+
+  static constexpr iree_host_size_t kMatchingUserCount = 128;
+  loom_op_t* matching_users[kMatchingUserCount] = {0};
+  for (iree_host_size_t i = 0; i < kMatchingUserCount; ++i) {
+    IREE_ASSERT_OK(loom_test_attrs_build(
+        &builder_, 0, source, (loom_named_attr_slice_t){0}, static_vector_16,
+        LOOM_LOCATION_UNKNOWN, &matching_users[i]));
+  }
+  loom_op_t* conflicting_user = NULL;
+  IREE_ASSERT_OK(loom_test_attrs_build(
+      &builder_, 0, source, (loom_named_attr_slice_t){0}, static_vector_32,
+      LOOM_LOCATION_UNKNOWN, &conflicting_user));
+
+  iree_arena_allocator_t pass_arena;
+  iree_arena_initialize(&block_pool_, &pass_arena);
+  loom_rewriter_t rewriter;
+  IREE_ASSERT_OK(loom_rewriter_initialize(&rewriter, module_, &pass_arena));
+  loom_type_propagator_t* propagator = NULL;
+  IREE_ASSERT_OK(
+      loom_type_propagator_allocate(module_, {}, &pass_arena, &propagator));
+  IREE_ASSERT_OK(loom_type_propagator_prepare_function(propagator, function_));
+
+  loom_type_propagator_begin_iteration(propagator);
+  for (iree_host_size_t i = 0; i < kMatchingUserCount; ++i) {
+    bool changed = false;
+    IREE_ASSERT_OK(loom_type_propagator_apply_op(propagator, &rewriter,
+                                                 matching_users[i], &changed));
+    EXPECT_FALSE(changed);
+  }
+  loom_type_propagator_statistics_t statistics =
+      loom_type_propagator_statistics(propagator);
+  EXPECT_EQ(statistics.conflict_count, 1u);
+  EXPECT_GE(statistics.rejection_cache_hit_count, kMatchingUserCount - 1);
+
+  loom_type_propagator_begin_iteration(propagator);
+  bool changed = false;
+  IREE_ASSERT_OK(loom_type_propagator_apply_op(propagator, &rewriter,
+                                               matching_users[0], &changed));
+  EXPECT_FALSE(changed);
+  statistics = loom_type_propagator_statistics(propagator);
+  EXPECT_EQ(statistics.conflict_count, 2u);
+
+  loom_type_propagator_deinitialize(propagator);
+  loom_rewriter_deinitialize(&rewriter);
+  iree_arena_deinitialize(&pass_arena);
+}
+
 TEST_F(TypePropagationTest, SameShapeNarrowsVariadicInputs) {
   loom_type_t static_tile = loom_type_shaped_1d(
       LOOM_TYPE_TILE, LOOM_SCALAR_TYPE_F32, loom_dim_pack_static(4), 0);
