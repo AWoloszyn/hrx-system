@@ -630,6 +630,11 @@ static iree_status_t loom_low_allocation_prepare_slice_reloads(
           .first_slice_op = slice_op,
           .full_reload_value_id = LOOM_VALUE_ID_INVALID,
       };
+    } else if (slice_op->block_ordinal <
+               groups[group_index].first_slice_op->block_ordinal) {
+      // Use lists are unordered after rewrites. A shared reload must precede
+      // every slice in its block regardless of use-list insertion order.
+      groups[group_index].first_slice_op = slice_op;
     }
     group_indices_by_use[i] = group_index;
     ++groups[group_index].slice_count;

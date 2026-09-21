@@ -339,13 +339,56 @@ low.func.def target<test.low.core>(@test_target) @rematerialize_spill_plan_diagn
 
 // ====
 
-// RUN: pass low-materialize-allocation{budgets=test.i32=9}
+// Removing the first use swaps a later slice to the front of the use list.
+// The shared reload must still precede the first slice in program order.
+// RUN: pass low-dce,low-materialize-allocation{budgets=test.i32=3}
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @shared_reload_after_dce(%blocker: reg<test.i32>, %wide: reg<test.i32 x2>) -> (reg<test.i32>) asm {
+  %pressure = test.add.i32 %blocker, %blocker
+  %dead = slice %wide[1] : reg<test.i32 x2> -> reg<test.i32>
+  %first = slice %wide[0] : reg<test.i32 x2> -> reg<test.i32>
+  %second = slice %wide[1] : reg<test.i32 x2> -> reg<test.i32>
+  %pair = test.add.i32 %first, %second
+  %third = slice %wide[0] : reg<test.i32 x2> -> reg<test.i32>
+  %sum = test.add.i32 %pair, %third
+  %result = test.add.i32 %sum, %pressure
+  return %result
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @shared_reload_after_dce(%blocker: reg<test.i32>, %wide: reg<test.i32 x2>) -> (reg<test.i32>) asm {
+  %shared_reload_after_dce_spill_storage_0 = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
+  %shared_reload_after_dce_spill_storage_1 = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  low.spill %wide, %shared_reload_after_dce_spill_storage_0 : reg<test.i32 x2>, low.storage<private>
+  %pressure = test.add.i32 %blocker, %blocker
+  low.spill %pressure, %shared_reload_after_dce_spill_storage_1 : reg<test.i32>, low.storage<private>
+  %12 = low.reload %shared_reload_after_dce_spill_storage_0 : low.storage<private> -> reg<test.i32 x2>
+  %first = slice %12[0] : reg<test.i32 x2> -> reg<test.i32>
+  %second = slice %12[1] : reg<test.i32 x2> -> reg<test.i32>
+  %pair = test.add.i32 %first, %second
+  %third = slice %12[0] : reg<test.i32 x2> -> reg<test.i32>
+  %sum = test.add.i32 %pair, %third
+  %14 = low.reload %shared_reload_after_dce_spill_storage_1 : low.storage<private> -> reg<test.i32>
+  %result = test.add.i32 %sum, %14
+  return %result
+}
+
+// ====
+
+// Each branch gets its own reload even when dead-use removal changes the order
+// of uses both within a block and between blocks.
+// RUN: pass low-dce,low-materialize-allocation{budgets=test.i32=9}
 
 test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @dense_slice_reloads_per_cfg_block(%condition: reg<test.i32>, %wide: reg<test.i32 x8>) -> (reg<test.i32>) asm {
   low.cond_br %condition, ^left, ^right : reg<test.i32>
 ^left:
+  %dead_left = slice %wide[7] : reg<test.i32 x8> -> reg<test.i32>
   %left0 = slice %wide[0] : reg<test.i32 x8> -> reg<test.i32>
   %left1 = slice %wide[1] : reg<test.i32 x8> -> reg<test.i32>
   %left_sum0 = test.add.i32 %left0, %left1
@@ -363,6 +406,7 @@ low.func.def target<test.low.core>(@test_target) @dense_slice_reloads_per_cfg_bl
   %left_sum6 = test.add.i32 %left_sum5, %left7
   return %left_sum6
 ^right:
+  %dead_right = slice %wide[7] : reg<test.i32 x8> -> reg<test.i32>
   %right0 = slice %wide[0] : reg<test.i32 x8> -> reg<test.i32>
   %right1 = slice %wide[1] : reg<test.i32 x8> -> reg<test.i32>
   %right_sum0 = test.add.i32 %right0, %right1
@@ -389,39 +433,39 @@ low.func.def target<test.low.core>(@test_target) @dense_slice_reloads_per_cfg_bl
   low.spill %wide, %dense_slice_reloads_per_cfg_block_spill_storage_0 : reg<test.i32 x8>, low.storage<private>
   low.cond_br %condition, ^left, ^right : reg<test.i32>
 ^left:
-  %34 = low.reload %dense_slice_reloads_per_cfg_block_spill_storage_0 : low.storage<private> -> reg<test.i32 x8>
-  %left0 = slice %34[0] : reg<test.i32 x8> -> reg<test.i32>
-  %left1 = slice %34[1] : reg<test.i32 x8> -> reg<test.i32>
+  %37 = low.reload %dense_slice_reloads_per_cfg_block_spill_storage_0 : low.storage<private> -> reg<test.i32 x8>
+  %left0 = slice %37[0] : reg<test.i32 x8> -> reg<test.i32>
+  %left1 = slice %37[1] : reg<test.i32 x8> -> reg<test.i32>
   %left_sum0 = test.add.i32 %left0, %left1
-  %left2 = slice %34[2] : reg<test.i32 x8> -> reg<test.i32>
+  %left2 = slice %37[2] : reg<test.i32 x8> -> reg<test.i32>
   %left_sum1 = test.add.i32 %left_sum0, %left2
-  %left3 = slice %34[3] : reg<test.i32 x8> -> reg<test.i32>
+  %left3 = slice %37[3] : reg<test.i32 x8> -> reg<test.i32>
   %left_sum2 = test.add.i32 %left_sum1, %left3
-  %left4 = slice %34[4] : reg<test.i32 x8> -> reg<test.i32>
+  %left4 = slice %37[4] : reg<test.i32 x8> -> reg<test.i32>
   %left_sum3 = test.add.i32 %left_sum2, %left4
-  %left5 = slice %34[5] : reg<test.i32 x8> -> reg<test.i32>
+  %left5 = slice %37[5] : reg<test.i32 x8> -> reg<test.i32>
   %left_sum4 = test.add.i32 %left_sum3, %left5
-  %left6 = slice %34[6] : reg<test.i32 x8> -> reg<test.i32>
+  %left6 = slice %37[6] : reg<test.i32 x8> -> reg<test.i32>
   %left_sum5 = test.add.i32 %left_sum4, %left6
-  %left7 = slice %34[7] : reg<test.i32 x8> -> reg<test.i32>
+  %left7 = slice %37[7] : reg<test.i32 x8> -> reg<test.i32>
   %left_sum6 = test.add.i32 %left_sum5, %left7
   return %left_sum6
 ^right:
-  %35 = low.reload %dense_slice_reloads_per_cfg_block_spill_storage_0 : low.storage<private> -> reg<test.i32 x8>
-  %right0 = slice %35[0] : reg<test.i32 x8> -> reg<test.i32>
-  %right1 = slice %35[1] : reg<test.i32 x8> -> reg<test.i32>
+  %36 = low.reload %dense_slice_reloads_per_cfg_block_spill_storage_0 : low.storage<private> -> reg<test.i32 x8>
+  %right0 = slice %36[0] : reg<test.i32 x8> -> reg<test.i32>
+  %right1 = slice %36[1] : reg<test.i32 x8> -> reg<test.i32>
   %right_sum0 = test.add.i32 %right0, %right1
-  %right2 = slice %35[2] : reg<test.i32 x8> -> reg<test.i32>
+  %right2 = slice %36[2] : reg<test.i32 x8> -> reg<test.i32>
   %right_sum1 = test.add.i32 %right_sum0, %right2
-  %right3 = slice %35[3] : reg<test.i32 x8> -> reg<test.i32>
+  %right3 = slice %36[3] : reg<test.i32 x8> -> reg<test.i32>
   %right_sum2 = test.add.i32 %right_sum1, %right3
-  %right4 = slice %35[4] : reg<test.i32 x8> -> reg<test.i32>
+  %right4 = slice %36[4] : reg<test.i32 x8> -> reg<test.i32>
   %right_sum3 = test.add.i32 %right_sum2, %right4
-  %right5 = slice %35[5] : reg<test.i32 x8> -> reg<test.i32>
+  %right5 = slice %36[5] : reg<test.i32 x8> -> reg<test.i32>
   %right_sum4 = test.add.i32 %right_sum3, %right5
-  %right6 = slice %35[6] : reg<test.i32 x8> -> reg<test.i32>
+  %right6 = slice %36[6] : reg<test.i32 x8> -> reg<test.i32>
   %right_sum5 = test.add.i32 %right_sum4, %right6
-  %right7 = slice %35[7] : reg<test.i32 x8> -> reg<test.i32>
+  %right7 = slice %36[7] : reg<test.i32 x8> -> reg<test.i32>
   %right_sum6 = test.add.i32 %right_sum5, %right7
   return %right_sum6
 }
