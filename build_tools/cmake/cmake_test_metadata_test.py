@@ -44,6 +44,61 @@ def configure_fixture(build_dir: Path, *cmake_args: str) -> subprocess.Completed
 
 
 class CMakeTestMetadataTest(unittest.TestCase):
+    def test_preserves_escaped_names_and_ordered_build_roots(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            extension = root / "extension.cmake"
+            test_name = 'quoted "name" \\ path\nwith\ttab'
+            extension.write_text(
+                f"set(_TEST_NAME [=[{test_name}]=])\n"
+                'add_test(NAME "${_TEST_NAME}" COMMAND "${CMAKE_COMMAND}" -E true)\n'
+                'iree_register_test_build_targets("${_TEST_NAME}"\n'
+                "  TARGETS tool_backed_root host_root tool_backed_root)\n"
+                'add_test(NAME OFF COMMAND "${CMAKE_COMMAND}" -E true)\n'
+                "iree_register_test_build_targets(OFF)\n",
+                encoding="utf-8",
+            )
+            build_dir = root / "build"
+            result = configure_fixture(
+                build_dir, f"-DIREE_TEST_METADATA_EXTENSION_FILE={extension}"
+            )
+            self.assertEqual(result.returncode, 0, result.stdout)
+            catalog = json.loads(
+                (build_dir / "iree_ctest_build_targets.json").read_text()
+            )
+            self.assertEqual(
+                catalog["tests"][test_name], ["tool_backed_root", "host_root"]
+            )
+            self.assertEqual(catalog["tests"]["OFF"], [])
+            result = subprocess.run(
+                [CTEST_COMMAND, "--test-dir", str(build_dir), "--show-only=json-v1"],
+                check=True,
+                text=True,
+                stdout=subprocess.PIPE,
+            )
+            self.assertIn(
+                test_name, {test["name"] for test in json.loads(result.stdout)["tests"]}
+            )
+
+    def test_rejects_duplicate_metadata_for_boolean_like_name(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            root = Path(temporary_dir)
+            extension = root / "extension.cmake"
+            extension.write_text(
+                'add_test(NAME OFF COMMAND "${CMAKE_COMMAND}" -E true)\n'
+                "iree_register_test_build_targets(OFF)\n"
+                "iree_register_test_build_targets(OFF)\n",
+                encoding="utf-8",
+            )
+            result = configure_fixture(
+                root / "build", f"-DIREE_TEST_METADATA_EXTENSION_FILE={extension}"
+            )
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn(
+                "CTest test has duplicate IREE_BUILD_TARGETS metadata: OFF",
+                " ".join(result.stdout.split()),
+            )
+
     def test_emits_exact_roots_for_common_test_shapes(self):
         with tempfile.TemporaryDirectory() as temporary_dir:
             build_dir = Path(temporary_dir) / "build"

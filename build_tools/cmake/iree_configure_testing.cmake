@@ -48,9 +48,9 @@ function(iree_register_test_build_targets TEST_NAME)
   endif()
 
   string(SHA256 _TEST_KEY "${TEST_NAME}")
-  get_property(_EXISTING_TEST_NAME
-    GLOBAL PROPERTY "IREE_TEST_BUILD_METADATA_NAME_${_TEST_KEY}")
-  if(_EXISTING_TEST_NAME)
+  get_property(_REGISTERED
+    GLOBAL PROPERTY "IREE_TEST_BUILD_METADATA_NAME_${_TEST_KEY}" SET)
+  if(_REGISTERED)
     message(FATAL_ERROR
       "CTest test has duplicate IREE_BUILD_TARGETS metadata: ${TEST_NAME}")
   endif()
@@ -121,13 +121,11 @@ endfunction()
 function(iree_finalize_test_build_targets)
   get_property(_TEST_METADATA_KEYS
     GLOBAL PROPERTY IREE_TEST_BUILD_METADATA_KEYS)
-  set(_TESTS_WITH_BUILD_METADATA)
   foreach(_TEST_KEY IN LISTS _TEST_METADATA_KEYS)
     get_property(_TEST_NAME
       GLOBAL PROPERTY "IREE_TEST_BUILD_METADATA_NAME_${_TEST_KEY}")
     get_property(_BUILD_TARGETS
       GLOBAL PROPERTY "IREE_TEST_BUILD_METADATA_TARGETS_${_TEST_KEY}")
-    list(APPEND _TESTS_WITH_BUILD_METADATA "${_TEST_NAME}")
     foreach(_BUILD_TARGET IN LISTS _BUILD_TARGETS)
       if(NOT TARGET "${_BUILD_TARGET}")
         message(FATAL_ERROR
@@ -161,15 +159,22 @@ function(iree_finalize_test_build_targets)
 
   _iree_collect_repository_ctests("${PROJECT_SOURCE_DIR}" _REPOSITORY_TESTS)
   foreach(_TEST_NAME IN LISTS _REPOSITORY_TESTS)
-    if(NOT _TEST_NAME IN_LIST _TESTS_WITH_BUILD_METADATA)
+    string(SHA256 _TEST_KEY "${_TEST_NAME}")
+    get_property(_REGISTERED
+      GLOBAL PROPERTY "IREE_TEST_BUILD_METADATA_NAME_${_TEST_KEY}" SET)
+    if(NOT _REGISTERED)
       message(FATAL_ERROR
         "repository CTest test is missing IREE_BUILD_TARGETS metadata: "
         "${_TEST_NAME}")
     endif()
   endforeach()
 
-  set(_BUILD_TARGET_CATALOG
-    "{\"kind\":\"ireeCtestBuildTargets\",\"version\":1,\"tests\":{}}")
+  # Encode each entry independently instead of parsing and serializing the
+  # growing catalog for every test. Publish only the completed JSON document.
+  set(_CATALOG_TEMP "${IREE_CTEST_BUILD_TARGETS_FILE}.tmp")
+  file(WRITE "${_CATALOG_TEMP}"
+    "{\n  \"kind\": \"ireeCtestBuildTargets\",\n  \"version\": 1,\n  \"tests\": {")
+  set(_ENTRY_SEPARATOR "")
   foreach(_TEST_KEY IN LISTS _TEST_METADATA_KEYS)
     get_property(_TEST_NAME
       GLOBAL PROPERTY "IREE_TEST_BUILD_METADATA_NAME_${_TEST_KEY}")
@@ -184,13 +189,18 @@ function(iree_finalize_test_build_targets)
         "\"${_BUILD_TARGET}\"")
       math(EXPR _BUILD_TARGET_INDEX "${_BUILD_TARGET_INDEX} + 1")
     endforeach()
-    string(JSON _BUILD_TARGET_CATALOG
-      SET "${_BUILD_TARGET_CATALOG}"
-      tests "${_TEST_NAME}" "${_BUILD_TARGETS_JSON}")
+    # Let CMake escape the member name, then append the member without its
+    # enclosing object braces. Per-entry work is independent of catalog size.
+    string(JSON _ENTRY SET "{}" "${_TEST_NAME}" "${_BUILD_TARGETS_JSON}")
+    string(LENGTH "${_ENTRY}" _ENTRY_LENGTH)
+    math(EXPR _MEMBER_LENGTH "${_ENTRY_LENGTH} - 2")
+    string(SUBSTRING "${_ENTRY}" 1 ${_MEMBER_LENGTH} _MEMBER)
+    string(STRIP "${_MEMBER}" _MEMBER)
+    file(APPEND "${_CATALOG_TEMP}" "${_ENTRY_SEPARATOR}\n    ${_MEMBER}")
+    set(_ENTRY_SEPARATOR ",")
   endforeach()
-  file(WRITE
-    "${IREE_CTEST_BUILD_TARGETS_FILE}"
-    "${_BUILD_TARGET_CATALOG}\n")
+  file(APPEND "${_CATALOG_TEMP}" "\n  }\n}\n")
+  file(RENAME "${_CATALOG_TEMP}" "${IREE_CTEST_BUILD_TARGETS_FILE}")
 
   get_property(_RESOURCE_BUILD_TARGETS
     GLOBAL PROPERTY IREE_TEST_RESOURCE_BUILD_TARGETS)
