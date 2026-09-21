@@ -57,8 +57,8 @@ iree_async_io_uring_notification_cast(iree_async_notification_t* notification) {
   return (iree_async_io_uring_notification_t*)notification;
 }
 
-// The accepting consumer or an in-flight monitor keeps the entry alive. While
-// the owner dispatches it, PENDING stays set even across unlocked callbacks.
+// The accepting consumer or an in-flight monitor keeps the entry alive. The
+// owner clears PENDING before callbacks can admit the next batch of work.
 static void iree_async_io_uring_notification_enqueue_locked(
     iree_async_io_uring_notification_t* notification) {
   if (!iree_any_bit_set(notification->state,
@@ -421,9 +421,8 @@ static bool iree_async_io_uring_notification_has_pending_consumers(
   return false;
 }
 
-// The relay error callback may submit work, so dispatch it outside the mutex.
-// The API prohibits unregistering relays from that callback. PENDING stays
-// claimed so concurrent wait admission is consumed by this dispatch pass.
+// Execute sinks without user callbacks. Fault delivery follows source-local
+// detachment so callback admission can establish its own pending-work entry.
 static void iree_async_io_uring_notification_dispatch_relays_locked(
     iree_async_io_uring_notification_t* notification, uint32_t epoch) {
   for (iree_async_relay_t* relay = notification->relays; relay;
@@ -438,10 +437,23 @@ static void iree_async_io_uring_notification_dispatch_relays_locked(
     }
     // Publish the observation before executing a sink that may signal again.
     relay->wait_epoch = epoch;
-    iree_status_t status = iree_status_clone(notification->failure);
-    iree_slim_mutex_unlock(&notification->mutex);
-    iree_async_io_uring_relay_dispatch_notification(relay, status);
-    iree_slim_mutex_lock(&notification->mutex);
+    if (!iree_status_is_ok(notification->failure)) {
+      relay->platform.io_uring.state =
+          IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_PENDING;
+    } else {
+      iree_slim_mutex_unlock(&notification->mutex);
+      int sink_error = iree_async_io_uring_relay_fire_sink(relay);
+      iree_slim_mutex_lock(&notification->mutex);
+      if (sink_error) {
+        relay->platform.io_uring.sink_error = sink_error;
+        relay->platform.io_uring.state =
+            IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_PENDING;
+      } else if (!iree_any_bit_set(relay->flags,
+                                   IREE_ASYNC_RELAY_FLAG_PERSISTENT)) {
+        relay->platform.io_uring.state =
+            IREE_ASYNC_IO_URING_RELAY_STATE_UNREGISTRATION_PENDING;
+      }
+    }
   }
 }
 
@@ -479,6 +491,7 @@ static bool iree_async_io_uring_notification_dispatch(
     iree_async_proactor_io_uring_t* proactor,
     iree_async_io_uring_notification_t* notification) {
   iree_async_operation_t* ready = NULL;
+  iree_async_relay_t* faulted_relays = NULL;
   iree_async_relay_t* retired_relays = NULL;
   bool armed = false;
   iree_slim_mutex_lock(&notification->mutex);
@@ -499,8 +512,8 @@ static bool iree_async_io_uring_notification_dispatch(
     if (!native_owned) {
       iree_async_io_uring_notification_dispatch_relays_locked(notification,
                                                               epoch);
-      // An unlocked relay callback may admit a wait with a newer token.
-      // Compare it with a fresh epoch, never the earlier relay snapshot.
+      // A sink can publish another epoch while a submitter admits a new wait.
+      // Compare against a fresh epoch, never the earlier relay snapshot.
       if (notification->waits || notification->relays) {
         epoch = iree_async_notification_query_epoch(&notification->base);
       }
@@ -566,22 +579,42 @@ static bool iree_async_io_uring_notification_dispatch(
         continue;
       }
       *relay_link = relay->platform.io_uring.notification_relay_next;
-      relay->platform.io_uring.notification_relay_next = NULL;
-      if (relay->platform.io_uring.state !=
-              IREE_ASYNC_IO_URING_RELAY_STATE_FAULTED ||
-          !iree_any_bit_set(relay->flags, IREE_ASYNC_RELAY_FLAG_PERSISTENT)) {
+      if (relay->platform.io_uring.state ==
+          IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_PENDING) {
+        relay->platform.io_uring.state =
+            IREE_ASYNC_IO_URING_RELAY_STATE_FAULTED;
+        relay->platform.io_uring.notification_relay_next = faulted_relays;
+        faulted_relays = relay;
+      } else {
         relay->platform.io_uring.notification_relay_next = retired_relays;
         retired_relays = relay;
       }
     }
   }
-  iree_status_t failure =
-      ready ? iree_status_clone(notification->failure) : iree_ok_status();
+  iree_status_t failure = ready || faulted_relays
+                              ? iree_status_clone(notification->failure)
+                              : iree_ok_status();
   notification->state &= ~IREE_ASYNC_IO_URING_NOTIFICATION_PENDING;
   iree_slim_mutex_unlock(&notification->mutex);
 
   // No further access to the notification or its borrowed primitives. The
   // terminal callbacks below may release the last resource owners.
+  while (faulted_relays) {
+    iree_async_relay_t* relay = faulted_relays;
+    faulted_relays = relay->platform.io_uring.notification_relay_next;
+    relay->platform.io_uring.notification_relay_next = NULL;
+    iree_status_t status =
+        relay->platform.io_uring.sink_error
+            ? iree_make_status(iree_status_code_from_errno(
+                                   relay->platform.io_uring.sink_error),
+                               "relay sink write failed")
+            : iree_status_clone(failure);
+    iree_async_io_uring_relay_report_fault(relay, status);
+    if (!iree_any_bit_set(relay->flags, IREE_ASYNC_RELAY_FLAG_PERSISTENT)) {
+      relay->platform.io_uring.notification_relay_next = retired_relays;
+      retired_relays = relay;
+    }
+  }
   iree_async_io_uring_notification_complete_waits(proactor, ready, failure);
   while (retired_relays) {
     iree_async_relay_t* relay = retired_relays;

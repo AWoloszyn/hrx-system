@@ -59,6 +59,9 @@ typedef enum iree_async_io_uring_relay_state_e {
   // A persistent poll source terminated without a relay fault. The
   // caller-visible handle remains valid until terminal unregistration.
   IREE_ASYNC_IO_URING_RELAY_STATE_TERMINAL = 7,
+
+  // Notification-source fault classified but not yet detached and reported.
+  IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_PENDING = 8,
 } iree_async_io_uring_relay_state_t;
 
 //===----------------------------------------------------------------------===//
@@ -91,12 +94,13 @@ void iree_async_io_uring_handle_relay_cqe(
 bool iree_async_io_uring_retry_pending_relays(
     iree_async_proactor_io_uring_t* proactor);
 
-// Executes an epoch-qualified notification relay with no native source owned
-// by the relay. A failure faults the logical handle and invokes its observer;
-// one-shot completion marks it for source-local detachment before cleanup.
-// Takes ownership of |status| (a source failure suppresses the sink).
-void iree_async_io_uring_relay_dispatch_notification(iree_async_relay_t* relay,
-                                                     iree_status_t status);
+// Executes the sink without calling user code. Returns zero or a native errno.
+int iree_async_io_uring_relay_fire_sink(iree_async_relay_t* relay);
+
+// Reports a previously classified fault after source bookkeeping is settled.
+// Takes ownership of |status|. A persistent handle remains caller-owned.
+void iree_async_io_uring_relay_report_fault(iree_async_relay_t* relay,
+                                            iree_status_t status);
 
 // Completes terminal cleanup after source-local/native ownership has retired.
 void iree_async_io_uring_relay_cleanup(iree_async_proactor_io_uring_t* proactor,

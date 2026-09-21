@@ -224,6 +224,25 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_test(
   NAME
+    notification_test
+  SRCS
+    "notification_test.cc"
+  LINKOPTS
+    "-Wl,--wrap=read"
+    "-Wl,--wrap=write"
+  DEPS
+    ::io_uring
+    iree::async
+    iree::testing::gtest
+    iree::testing::gtest_main
+  RESOURCE_GROUP
+    io_uring
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
     proactor_cancel_test
   SRCS
     "proactor_cancel_test.cc"

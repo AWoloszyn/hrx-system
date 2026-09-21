@@ -32,8 +32,7 @@
 // Executes the sink action synchronously.
 // For SIGNAL_PRIMITIVE: writes to eventfd.
 // For SIGNAL_NOTIFICATION: signals the notification directly.
-// Returns true on success, false on failure with errno set.
-static bool iree_async_io_uring_relay_fire_sink(iree_async_relay_t* relay) {
+int iree_async_io_uring_relay_fire_sink(iree_async_relay_t* relay) {
   switch (relay->sink.type) {
     case IREE_ASYNC_RELAY_SINK_TYPE_SIGNAL_PRIMITIVE: {
       // Write the value to the eventfd/event handle.
@@ -44,8 +43,7 @@ static bool iree_async_io_uring_relay_fire_sink(iree_async_relay_t* relay) {
                         sizeof(value));
       } while (written < 0 && errno == EINTR);
       if (written != sizeof(value)) {
-        // Write failed. errno is set by write().
-        return false;
+        return written < 0 ? errno : EIO;
       }
       break;
     }
@@ -57,7 +55,7 @@ static bool iree_async_io_uring_relay_fire_sink(iree_async_relay_t* relay) {
       break;
     }
   }
-  return true;
+  return 0;
 }
 
 // Drains a persistent primitive source after its multishot poll fires.
@@ -86,17 +84,8 @@ static void iree_async_io_uring_relay_fill_source_sqe(
   sqe->user_data = iree_io_uring_relay_encode(relay);
 }
 
-// Transitions a relay to a faulted state and invokes the error callback.
-// |source_is_active| indicates that a persistent multishot source still holds
-// a kernel reference and must be cancelled before terminal unregistration can
-// destroy the relay. Takes ownership of |status|.
-static void iree_async_io_uring_relay_fault(iree_async_relay_t* relay,
-                                            bool source_is_active,
+void iree_async_io_uring_relay_report_fault(iree_async_relay_t* relay,
                                             iree_status_t status) {
-  relay->platform.io_uring.state =
-      source_is_active
-          ? IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_CANCELLATION_PENDING
-          : IREE_ASYNC_IO_URING_RELAY_STATE_FAULTED;
   if (relay->error_callback.fn) {
     // Transfer ownership to callback.
     relay->error_callback.fn(relay->error_callback.user_data, relay, status);
@@ -106,20 +95,16 @@ static void iree_async_io_uring_relay_fault(iree_async_relay_t* relay,
   }
 }
 
-void iree_async_io_uring_relay_dispatch_notification(iree_async_relay_t* relay,
-                                                     iree_status_t status) {
-  if (iree_status_is_ok(status) &&
-      !iree_async_io_uring_relay_fire_sink(relay)) {
-    status = iree_make_status(iree_status_code_from_errno(errno),
-                              "relay sink write failed");
-  }
-  if (!iree_status_is_ok(status)) {
-    iree_async_io_uring_relay_fault(relay, /*source_is_active=*/false, status);
-  } else if (!iree_any_bit_set(relay->flags,
-                               IREE_ASYNC_RELAY_FLAG_PERSISTENT)) {
-    relay->platform.io_uring.state =
-        IREE_ASYNC_IO_URING_RELAY_STATE_UNREGISTRATION_PENDING;
-  }
+// A primitive multishot source may remain active while its fault suppresses
+// further sink delivery. Native cancellation precedes terminal unregistration.
+static void iree_async_io_uring_relay_fault(iree_async_relay_t* relay,
+                                            bool source_is_active,
+                                            iree_status_t status) {
+  relay->platform.io_uring.state =
+      source_is_active
+          ? IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_CANCELLATION_PENDING
+          : IREE_ASYNC_IO_URING_RELAY_STATE_FAULTED;
+  iree_async_io_uring_relay_report_fault(relay, status);
 }
 
 // Performs final cleanup of a relay: unlinks from the proactor's relay list,
@@ -435,12 +420,11 @@ void iree_async_io_uring_handle_relay_cqe(
     }
 
     if (should_fire) {
-      if (!iree_async_io_uring_relay_fire_sink(relay)) {
-        // Sink write failed. Capture errno before any other calls.
-        int saved_errno = errno;
+      int sink_error = iree_async_io_uring_relay_fire_sink(relay);
+      if (sink_error) {
         iree_async_io_uring_relay_fault(
             relay, is_persistent && has_more,
-            iree_make_status(iree_status_code_from_errno(saved_errno),
+            iree_make_status(iree_status_code_from_errno(sink_error),
                              "relay sink write failed"));
       } else {
         // Reset level readiness before the next persistent primitive event.
