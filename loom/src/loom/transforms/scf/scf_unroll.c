@@ -987,10 +987,10 @@ static iree_status_t loom_scf_unroll_clear_policy(
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &context->rewriter->builder, /*build_flags=*/0,
       loom_scf_for_lower_bound(op), loom_scf_for_upper_bound(op),
-      loom_scf_for_step(op), iter_args.values, iter_args.count, tied_results,
-      tied_result_count, /*pipeline_depth=*/LOOM_VALUE_ID_INVALID,
-      LOOM_VALUE_ID_INVALID, /*unroll_policy=*/0, /*unroll_schedule=*/0,
-      op->location, &new_loop));
+      loom_scf_for_step(op), iter_args.values, iter_args.count,
+      /*result_types=*/NULL, tied_results, tied_result_count,
+      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
+      /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &new_loop));
 
   loom_region_t* old_body = loom_scf_for_body(op);
   loom_block_t* old_block = loom_region_entry_block(old_body);
@@ -1071,7 +1071,8 @@ static iree_status_t loom_scf_unroll_partial_unroll(
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &context->rewriter->builder, /*build_flags=*/0,
       loom_scf_for_lower_bound(op), loom_scf_for_upper_bound(op), scaled_step,
-      iter_args.values, iter_args.count, tied_results, tied_result_count,
+      iter_args.values, iter_args.count, /*result_types=*/NULL, tied_results,
+      tied_result_count,
       /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
       /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &new_loop));
 
@@ -1429,7 +1430,7 @@ static iree_status_t loom_scf_unroll_partial_unroll_scheduled_with_arena(
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &context->rewriter->builder, /*build_flags=*/0,
       loom_scf_for_lower_bound(op), main_upper, scaled_step, iter_args.values,
-      iter_args.count, tied_results, tied_result_count,
+      iter_args.count, /*result_types=*/NULL, tied_results, tied_result_count,
       /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
       /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &main_loop));
 
@@ -1503,7 +1504,8 @@ static iree_status_t loom_scf_unroll_partial_unroll_scheduled_with_arena(
     IREE_RETURN_IF_ERROR(loom_scf_for_build(
         &context->rewriter->builder, /*build_flags=*/0, main_upper,
         loom_scf_for_upper_bound(op), tail_step, tail_iter_args.values,
-        tail_iter_args.count, tied_results, tied_result_count,
+        tail_iter_args.count, /*result_types=*/NULL, tied_results,
+        tied_result_count,
         /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
         /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &tail_loop));
     loom_region_t* tail_body = loom_scf_for_body(tail_loop);

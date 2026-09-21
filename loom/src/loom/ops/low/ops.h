@@ -799,6 +799,10 @@ enum loom_low_scf_for_build_flag_bits_e {
   LOOM_LOW_SCF_FOR_BUILD_FLAG_HAS_UNROLL_POLICY = 1u << 1,
 };
 typedef uint32_t loom_low_scf_for_build_flags_t;
+// result_types has iter_args_count entries, or is NULL to preserve
+// the initial operand types. Explicit types define the recurring tuple;
+// reserve result IDs first when types refer to sibling results. Region
+// entry types instantiate that tuple with their own argument identities.
 iree_status_t loom_low_scf_for_build(
     loom_builder_t* builder,
     loom_low_scf_for_build_flags_t build_flags,
@@ -808,6 +812,7 @@ iree_status_t loom_low_scf_for_build(
     loom_may_consume loom_value_id_t step,
     loom_may_consume const loom_value_id_t* iter_args,
     iree_host_size_t iter_args_count,
+    const loom_type_t* result_types,
     const loom_tied_result_t* tied_results,
     iree_host_size_t tied_result_count,
     loom_optional loom_may_consume loom_value_id_t unroll_factor,
@@ -829,10 +834,15 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_low_scf_while_iter_args, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_scf_while_results, 0)
 LOOM_DEFINE_REGION(loom_low_scf_while_before, 0)
 LOOM_DEFINE_REGION(loom_low_scf_while_after, 1)
+// result_types has iter_args_count entries, or is NULL to preserve
+// the initial operand types. Explicit types define the recurring tuple;
+// reserve result IDs first when types refer to sibling results. Region
+// entry types instantiate that tuple with their own argument identities.
 iree_status_t loom_low_scf_while_build(
     loom_builder_t* builder,
     loom_may_consume const loom_value_id_t* iter_args,
     iree_host_size_t iter_args_count,
+    const loom_type_t* result_types,
     const loom_tied_result_t* tied_results,
     iree_host_size_t tied_result_count,
     loom_location_id_t location,

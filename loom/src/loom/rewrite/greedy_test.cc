@@ -1377,7 +1377,8 @@ TEST_P(ConditionInductionFactsRewriteTest, SemanticEditsMatchFreshAnalysis) {
   const loom_value_id_t seeds[] = {loom_index_constant_result(initial),
                                    loom_index_constant_result(payload)};
   loom_op_t* loop = nullptr;
-  IREE_ASSERT_OK(loom_scf_while_build(&builder_, seeds, 2, nullptr, 0,
+  IREE_ASSERT_OK(loom_scf_while_build(&builder_, seeds, 2,
+                                      /*result_types=*/nullptr, nullptr, 0,
                                       LOOM_LOCATION_UNKNOWN, &loop));
   const auto loop_like = loom_loop_like_cast(module_, loop);
   auto* before = loom_loop_like_condition_region(loop_like);
@@ -1621,13 +1622,13 @@ TEST_P(StructuredForwardingFactsRewriteTest,
   loom_op_t* loop = nullptr;
   if (is_while) {
     IREE_ASSERT_OK(loom_scf_while_build(&rewriter.builder, seeds.data(), count,
-                                        nullptr, 0, LOOM_LOCATION_UNKNOWN,
-                                        &loop));
+                                        /*result_types=*/nullptr, nullptr, 0,
+                                        LOOM_LOCATION_UNKNOWN, &loop));
   } else {
     IREE_ASSERT_OK(loom_scf_for_build(
-        &rewriter.builder, 0, begin, limit, step, seeds.data(), count, nullptr,
-        0, LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID, 0, 0,
-        LOOM_LOCATION_UNKNOWN, &loop));
+        &rewriter.builder, 0, begin, limit, step, seeds.data(), count,
+        /*result_types=*/nullptr, nullptr, 0, LOOM_VALUE_ID_INVALID,
+        LOOM_VALUE_ID_INVALID, 0, 0, LOOM_LOCATION_UNKNOWN, &loop));
   }
   auto expect_summary_deferred = [&]() {
     for (uint16_t i = 0; i < count; ++i) {

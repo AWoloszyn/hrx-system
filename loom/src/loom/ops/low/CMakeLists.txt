@@ -44,6 +44,7 @@ loom_generated_cc_library(
     loom::ops::storage_facts
     loom::ops::successor_verify
     loom::ops::target
+    loom::rewrite::remap
     loom::rewrite::rewriter
     loom::target::registers
     loom::target::types

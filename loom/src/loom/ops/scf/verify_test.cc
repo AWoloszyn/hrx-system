@@ -87,7 +87,8 @@ TEST_F(ScfVerifyTest, PolicyOperandsCannotOwnResultStorage) {
       loom_op_t* loop = nullptr;
       IREE_ASSERT_OK(
           loom_scf_for_build(&builder_, flags, lower, upper, step, &initial, 1,
-                             &tie, 1, has_depth ? depth : LOOM_VALUE_ID_INVALID,
+                             /*result_types=*/nullptr, &tie, 1,
+                             has_depth ? depth : LOOM_VALUE_ID_INVALID,
                              has_factor ? factor : LOOM_VALUE_ID_INVALID, 0, 0,
                              LOOM_LOCATION_UNKNOWN, &loop));
       EXPECT_EQ(loom_scf_for_pipeline_depth(loop),

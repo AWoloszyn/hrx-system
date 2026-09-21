@@ -231,13 +231,12 @@ def static_tied_results(op: Op) -> list[tuple[int, int]]:
     return ties
 
 
-def inferred_variadic_result_type_source(op: Op) -> str | None:
-    """Returns the operand field defining the complete variadic result list.
+def variadic_result_count_source(op: Op) -> str | None:
+    """Returns the operand field defining the variadic result count.
 
-    IterArgsMatchResults makes both the result count and each result type a
-    function of the corresponding iter operand. Builders for that exact shape
-    should preserve the schema contract instead of accepting a redundant
-    parallel type array from every caller.
+    IterArgsMatchResults equates tuples after substituting result identities
+    with initial operands. Result types may name changing peer dependencies,
+    so only the count is inferred; callers can supply the recurring type scheme.
     """
     if len(op.results) != 1 or not op.results[0].variadic:
         return None
@@ -291,7 +290,6 @@ def extract_c_params(op: Op, shared_enums: SharedEnumMap) -> list[dict[str, Any]
     Each param has: name, kind, c_type, and kind-specific extras.
     """
     layout = compute_layout(op)
-    inferred_result_source = inferred_variadic_result_type_source(op)
     params: list[dict[str, Any]] = []
     implicit_fields = {"iv", "args"}
     covered_attrs: set[str] = {
@@ -550,13 +548,12 @@ def extract_c_params(op: Op, shared_enums: SharedEnumMap) -> list[dict[str, Any]
                         )
 
                 case ResultTypeList(field=name):
-                    if inferred_result_source is None:
-                        params.append(
-                            {
-                                "name": "result_types",
-                                "kind": "result_types",
-                            }
-                        )
+                    params.append(
+                        {
+                            "name": "result_types",
+                            "kind": "result_types",
+                        }
+                    )
                     if has_dynamic_ties:
                         params.append(
                             {
@@ -716,7 +713,7 @@ def extract_c_params(op: Op, shared_enums: SharedEnumMap) -> list[dict[str, Any]
     # builder parameters. Exact fixed result constraints are synthesized by
     # the generated implementation instead.
     has_result_param = any(p["kind"] in ("result_type", "result_types") for p in params)
-    if not has_result_param and len(op.results) > 0 and inferred_result_source is None and fixed_result_type_constraints(op) is None:
+    if not has_result_param and len(op.results) > 0 and fixed_result_type_constraints(op) is None:
         if layout.variadic_result:
             params.append(
                 {
@@ -836,7 +833,8 @@ def build_c_param_list(op: Op, params: list[dict[str, object]], layout: FieldLay
             case "result_types":
                 if layout.variadic_result:
                     c_params.append("const loom_type_t* result_types")
-                    c_params.append("iree_host_size_t result_count")
+                    if variadic_result_count_source(op) is None:
+                        c_params.append("iree_host_size_t result_count")
                 elif fixed_result_types_fit_single_builder_type(op):
                     c_params.append("loom_type_t result_type")
                 else:

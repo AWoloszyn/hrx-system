@@ -48,6 +48,7 @@ loom_generated_cc_library(
     loom::ops::storage_facts
     loom::ops::target
     loom::ops::type_registry
+    loom::rewrite::remap
     loom::rewrite::rewriter
     loom::target::test::target_record_table
     loom::target::types

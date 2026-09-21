@@ -647,9 +647,9 @@ TEST_F(VerifyTest, LoopBodyMissingMaterializedTerminatorFails) {
   EnterTestFunc(arg_types, 3, args);
 
   loom_op_t* loop_op = nullptr;
-  IREE_ASSERT_OK(loom_test_loop_build(&builder_, args[0], args[1], args[2],
-                                      nullptr, 0, nullptr, 0,
-                                      LOOM_LOCATION_UNKNOWN, &loop_op));
+  IREE_ASSERT_OK(loom_test_loop_build(
+      &builder_, args[0], args[1], args[2], nullptr, 0,
+      /*result_types=*/nullptr, nullptr, 0, LOOM_LOCATION_UNKNOWN, &loop_op));
   ASSERT_NE(loop_op, nullptr);
   loom_region_t* body = loom_test_loop_body(loop_op);
   ASSERT_NE(body, nullptr);
@@ -693,9 +693,9 @@ TEST_F(VerifyTest, SingleBlockRegionRejectsAdditionalBlock) {
   EnterTestFunc(arg_types, IREE_ARRAYSIZE(arg_types), args);
 
   loom_op_t* loop_op = nullptr;
-  IREE_ASSERT_OK(loom_test_loop_build(&builder_, args[0], args[1], args[2],
-                                      nullptr, 0, nullptr, 0,
-                                      LOOM_LOCATION_UNKNOWN, &loop_op));
+  IREE_ASSERT_OK(loom_test_loop_build(
+      &builder_, args[0], args[1], args[2], nullptr, 0,
+      /*result_types=*/nullptr, nullptr, 0, LOOM_LOCATION_UNKNOWN, &loop_op));
   loom_region_t* body = loom_test_loop_body(loop_op);
   loom_builder_ip_t saved = loom_builder_enter_region(&builder_, loop_op, body);
   loom_op_t* yield_op = nullptr;

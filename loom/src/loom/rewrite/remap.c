@@ -909,6 +909,49 @@ iree_status_t loom_ir_remap_value_types(loom_ir_remap_t* remap,
   return iree_ok_status();
 }
 
+iree_status_t loom_ir_remap_assign_value_types(
+    loom_module_t* module, const loom_value_id_t* source_values,
+    const loom_value_id_t* target_values, iree_host_size_t value_count) {
+  bool has_dependencies = false;
+  for (iree_host_size_t i = 0; i < value_count; ++i) {
+    loom_type_use_iterator_t dependencies;
+    loom_module_value_type_dependencies(module, source_values[i],
+                                        &dependencies);
+    if (loom_type_dependencies_next(&dependencies) != LOOM_VALUE_ID_INVALID) {
+      has_dependencies = true;
+      break;
+    }
+  }
+
+  iree_arena_allocator_t scratch;
+  iree_arena_initialize(module->arena.block_pool, &scratch);
+  loom_ir_remap_t remap;
+  iree_status_t status = iree_ok_status();
+  if (has_dependencies) {
+    const loom_ir_remap_options_t options = {.allow_unmapped_values = true};
+    status =
+        loom_ir_remap_initialize(module, module, &scratch, &options, &remap);
+    if (iree_status_is_ok(status)) {
+      status = loom_ir_remap_map_values(&remap, source_values, target_values,
+                                        value_count);
+    }
+  }
+  for (iree_host_size_t i = 0; i < value_count && iree_status_is_ok(status);
+       ++i) {
+    loom_type_t type = loom_module_value_type(module, source_values[i]);
+    if (has_dependencies) {
+      status = loom_ir_remap_type(&remap, type, &type);
+    }
+    if (iree_status_is_ok(status) &&
+        !loom_type_equal(type,
+                         loom_module_value_type(module, target_values[i]))) {
+      status = loom_module_set_value_type(module, target_values[i], type);
+    }
+  }
+  iree_arena_deinitialize(&scratch);
+  return status;
+}
+
 static iree_status_t loom_ir_remap_predicate_list_into(
     loom_ir_remap_t* remap, const loom_predicate_t* source_predicates,
     iree_host_size_t predicate_count, iree_arena_allocator_t* payload_arena,

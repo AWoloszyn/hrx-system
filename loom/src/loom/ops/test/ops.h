@@ -638,6 +638,10 @@ LOOM_DEFINE_OPERAND(loom_test_loop_step, 2)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_test_loop_iter_args, 3)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_test_loop_results, 0)
 LOOM_DEFINE_REGION(loom_test_loop_body, 0)
+// result_types has iter_args_count entries, or is NULL to preserve
+// the initial operand types. Explicit types define the recurring tuple;
+// reserve result IDs first when types refer to sibling results. Region
+// entry types instantiate that tuple with their own argument identities.
 iree_status_t loom_test_loop_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t lower_bound,
@@ -645,6 +649,7 @@ iree_status_t loom_test_loop_build(
     loom_may_consume loom_value_id_t step,
     loom_may_consume const loom_value_id_t* iter_args,
     iree_host_size_t iter_args_count,
+    const loom_type_t* result_types,
     const loom_tied_result_t* tied_results,
     iree_host_size_t tied_result_count,
     loom_location_id_t location,

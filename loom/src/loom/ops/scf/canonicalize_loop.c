@@ -339,8 +339,9 @@ static iree_status_t loom_scf_for_rebuild_carried_state(
   iree_status_t status = loom_scf_for_build(
       &rewriter->builder, build_flags, loom_scf_for_lower_bound(op),
       loom_scf_for_upper_bound(op), loom_scf_for_step(op), kept_iter_args,
-      kept_count, tied_results, tied_result_count, pipeline_depth,
-      unroll_factor, unroll_policy, unroll_schedule, op->location, &new_loop);
+      kept_count, /*result_types=*/NULL, tied_results, tied_result_count,
+      pipeline_depth, unroll_factor, unroll_policy, unroll_schedule,
+      op->location, &new_loop);
   loom_op_t* new_yield = NULL;
   if (iree_status_is_ok(status)) {
     loom_region_t* new_body = loom_scf_for_body(new_loop);

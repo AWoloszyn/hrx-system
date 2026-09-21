@@ -1690,7 +1690,8 @@ iree_status_t loom_builder_define_block_arg(loom_builder_t* builder,
                                             loom_block_t* block,
                                             loom_type_t type,
                                             loom_value_id_t* out_value_id) {
-  IREE_RETURN_IF_ERROR(loom_builder_define_value(builder, type, out_value_id));
+  IREE_RETURN_IF_ERROR(
+      loom_module_define_value(builder->module, type, out_value_id));
   return loom_block_add_arg(builder->module, block, *out_value_id);
 }
 

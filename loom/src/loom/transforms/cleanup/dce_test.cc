@@ -236,9 +236,10 @@ TEST_F(DCETest, RemovesDynamicDimProducerAfterDeadRegionBlockArgErased) {
 
   loom_value_id_t iter_args[] = {init};
   loom_op_t* loop_op = NULL;
-  IREE_ASSERT_OK(loom_test_loop_build(
-      &builder_, lower_bound, upper_bound, step, iter_args,
-      IREE_ARRAYSIZE(iter_args), NULL, 0, LOOM_LOCATION_UNKNOWN, &loop_op));
+  IREE_ASSERT_OK(loom_test_loop_build(&builder_, lower_bound, upper_bound, step,
+                                      iter_args, IREE_ARRAYSIZE(iter_args),
+                                      /*result_types=*/nullptr, NULL, 0,
+                                      LOOM_LOCATION_UNKNOWN, &loop_op));
 
   EXPECT_TRUE(loom_module_value_has_type_uses(module_, dim_id));
   EXPECT_EQ(count_live_ops(), 6);

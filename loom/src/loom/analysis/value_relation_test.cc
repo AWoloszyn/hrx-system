@@ -99,6 +99,7 @@ TEST_F(ValueRelationTest, CountedLoopSeparatesEntryBypassAndYieldEdges) {
   loom_op_t* loop = nullptr;
   IREE_ASSERT_OK(loom_scf_for_build(
       &builder_, /*build_flags=*/0, lower_bound, upper_bound, step, &initial, 1,
+      /*result_types=*/nullptr,
       /*tied_results=*/nullptr, /*tied_result_count=*/0,
       /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
       /*unroll_policy=*/0, /*unroll_schedule=*/0, LOOM_LOCATION_UNKNOWN,
@@ -143,7 +144,8 @@ TEST_F(ValueRelationTest, ConditionLoopPreservesDistinctStateEdges) {
 
   loom_op_t* loop = nullptr;
   IREE_ASSERT_OK(loom_scf_while_build(
-      &builder_, &initial, 1, /*tied_results=*/nullptr,
+      &builder_, &initial, 1, /*result_types=*/nullptr,
+      /*tied_results=*/nullptr,
       /*tied_result_count=*/0, LOOM_LOCATION_UNKNOWN, &loop));
   const loom_value_id_t before_argument =
       loom_region_entry_arg_id(loom_scf_while_before(loop), 0);
