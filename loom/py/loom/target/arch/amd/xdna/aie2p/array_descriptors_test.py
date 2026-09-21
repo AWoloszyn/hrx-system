@@ -113,10 +113,10 @@ def test_worker_entries_are_explicit_symbolic_product_edges() -> None:
     assert fold.immediates[3].kind is ImmediateKind.ENUM
 
 
-def test_planner_immediate_positions_are_required_and_typed() -> None:
-    # The verified planner reads canonical dictionaries directly. Optional fields
-    # or changed spelling order would invalidate those positions.
-    layouts = {
+def test_planner_immediate_fields_are_required_and_typed() -> None:
+    # Generated bindings own field positions; the planner consumes these value
+    # domains unconditionally after verification.
+    fields = {
         "binding": (
             ("access", ImmediateKind.ENUM),
             ("ordinal", ImmediateKind.UNSIGNED),
@@ -136,12 +136,13 @@ def test_planner_immediate_positions_are_required_and_typed() -> None:
         descriptor.mnemonic: descriptor
         for descriptor in AIE2P_ARRAY_DESCRIPTOR_SET.descriptors
     }
-    for mnemonic, layout in layouts.items():
+    for mnemonic, required_fields in fields.items():
         descriptor = descriptors[mnemonic]
         assert descriptor.op_kind is DescriptorOpKind.OP
-        immediates = sorted(descriptor.immediates, key=lambda value: value.field_name)
-        assert tuple((value.field_name, value.kind) for value in immediates) == layout
-        for immediate in immediates:
+        immediates = {value.field_name: value for value in descriptor.immediates}
+        for field_name, kind in required_fields:
+            immediate = immediates[field_name]
+            assert immediate.kind is kind
             assert immediate.flags == (
                 (ImmediateFlag.SYMBOLIC,) if immediate.field_name == "entry" else ()
             )

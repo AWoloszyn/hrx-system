@@ -729,6 +729,12 @@ static_assert(offsetof(loom_low_operand_t, source_binding) == 9,
 static_assert(offsetof(loom_low_operand_t, flags) == 12,
               "source binding must not move operand flags");
 
+// Generated descriptor headers expose <PREFIX>_<DESCRIPTOR>_<FIELD>_ATTR_INDEX
+// constants for canonical packet dictionary positions. These differ from the
+// declaration-order indices in the immediate table. A binding exists only when
+// every preceding field is required. Optional fields instead expose
+// OPTIONAL_ATTR_INDEX, which requires presence at the caller. Fields following
+// an optional immediate have no fixed-position binding.
 typedef struct loom_low_immediate_t {
   // String-table offset for the immediate field name.
   loom_bstring_table_offset_t field_name_string_offset;

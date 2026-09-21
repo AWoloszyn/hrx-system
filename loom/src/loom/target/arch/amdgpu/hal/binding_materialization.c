@@ -15,7 +15,6 @@
 #include "loom/ops/low/ops.h"
 #include "loom/rewrite/rewriter.h"
 #include "loom/target/arch/amdgpu/buffer_resource.h"
-#include "loom/target/arch/amdgpu/hal/binding_descriptor.h"
 #include "loom/target/arch/amdgpu/hal/kernel_abi.h"
 #include "loom/target/arch/amdgpu/refs/target_refs.h"
 #include "loom/target/arch/amdgpu/target_info.h"
@@ -1017,7 +1016,8 @@ loom_amdgpu_hal_binding_materialize_buffer_descriptor_pseudo(
         buffer_resource_info,
     const loom_amdgpu_buffer_resource_record_encoding_info_t*
         record_encoding_info,
-    const loom_low_descriptor_t* descriptor, loom_type_t sgpr_type,
+    const loom_low_descriptor_t* descriptor,
+    uint16_t cache_swizzle_stride_index, loom_type_t sgpr_type,
     loom_type_t sgpr_x2_type) {
   const loom_value_id_t value_checkpoint =
       loom_rewriter_value_checkpoint(rewriter);
@@ -1027,8 +1027,7 @@ loom_amdgpu_hal_binding_materialize_buffer_descriptor_pseudo(
   loom_value_slice_t results = loom_low_op_results(op);
   loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
   const int64_t cache_swizzle_stride_attr =
-      attrs.entries[LOOM_AMDGPU_HAL_BUFFER_DESCRIPTOR_ATTR_CACHE_SWIZZLE_STRIDE]
-          .value.i64;
+      attrs.entries[cache_swizzle_stride_index].value.i64;
   const uint32_t cache_swizzle_stride = (uint32_t)cache_swizzle_stride_attr;
 
   loom_amdgpu_hal_binding_descriptor_pointer_words_t pointer_words = {0};
@@ -1063,7 +1062,8 @@ loom_amdgpu_hal_binding_materialize_buffer_descriptor_pseudo(
     num_records_word2 = operands.values[1];
   } else {
     const int64_t extent =
-        attrs.entries[LOOM_AMDGPU_HAL_BUFFER_DESCRIPTOR_ATTR_EXTENT].value.i64;
+        attrs.entries[LOOM_AMDGPU_HAL_BUFFER_DESCRIPTOR_EXTENT_ATTR_INDEX]
+            .value.i64;
     static_range_word = loom_amdgpu_hal_binding_descriptor_range_word(extent);
     const uint32_t encoded_word2 =
         static_range_word >> num_records_word1_bit_count;
@@ -1181,9 +1181,14 @@ loom_amdgpu_hal_binding_materialize_buffer_descriptors_with_types(
           op = next_op;
           continue;
         }
+        const uint16_t cache_swizzle_stride_index =
+            descriptor == dynamic_extent_descriptor
+                ? LOOM_AMDGPU_HAL_BUFFER_DESCRIPTOR_EXTENT_CACHE_SWIZZLE_STRIDE_ATTR_INDEX
+                : LOOM_AMDGPU_HAL_BUFFER_DESCRIPTOR_CACHE_SWIZZLE_STRIDE_ATTR_INDEX;
         status = loom_amdgpu_hal_binding_materialize_buffer_descriptor_pseudo(
             rewriter, op, descriptor_set, buffer_resource_info,
-            record_encoding_info, descriptor, sgpr_type, sgpr_x2_type);
+            record_encoding_info, descriptor, cache_swizzle_stride_index,
+            sgpr_type, sgpr_x2_type);
         if (iree_status_is_ok(status)) {
           ++*out_materialized_count;
         }

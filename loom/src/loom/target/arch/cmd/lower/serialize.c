@@ -142,16 +142,6 @@ static bool loom_cmd_serialize_packet_is(
   return packet->descriptor_ordinal == descriptor_ordinal;
 }
 
-static uint64_t loom_cmd_serialize_constant_value(const loom_op_t* op) {
-  const loom_named_attr_slice_t attrs = loom_low_const_attrs(op);
-  IREE_ASSERT_EQ(attrs.count, 1u);
-  IREE_ASSERT_EQ(attrs.entries[0].value.kind, LOOM_ATTR_I64);
-  const int64_t signed_value = loom_attr_as_i64(attrs.entries[0].value);
-  uint64_t value = 0;
-  memcpy(&value, &signed_value, sizeof(value));
-  return value;
-}
-
 static loom_cmd_serialize_value_t* loom_cmd_serialize_result(
     loom_cmd_serialize_build_t* build, loom_value_id_t value_id) {
   const loom_value_ordinal_t value_ordinal =
@@ -299,11 +289,13 @@ static iree_status_t loom_cmd_serialize_import_resource(
 
 static void loom_cmd_serialize_constant(loom_cmd_serialize_build_t* build,
                                         const loom_op_t* op,
-                                        loom_cmd_serialize_value_kind_t kind) {
+                                        loom_cmd_serialize_value_kind_t kind,
+                                        uint16_t value_index) {
   loom_cmd_serialize_value_t* result =
       loom_cmd_serialize_result(build, loom_low_const_result(op));
   result->kind = kind;
-  result->payload.scalar = loom_cmd_serialize_constant_value(op);
+  result->payload.scalar =
+      (uint64_t)loom_low_const_attrs(op).entries[value_index].value.i64;
 }
 
 static void loom_cmd_serialize_transfer(loom_cmd_serialize_build_t* build,
@@ -683,32 +675,38 @@ static iree_status_t loom_cmd_serialize_packet(
   const loom_op_t* op = packet->op;
   if (loom_cmd_serialize_packet_is(build, packet,
                                    CMD_CORE_DESCRIPTOR_REF_CONSTANT_U32)) {
-    loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_U32);
+    loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_U32,
+                                CMD_CORE_CONSTANT_U32_VALUE_ATTR_INDEX);
     return iree_ok_status();
   }
   if (loom_cmd_serialize_packet_is(build, packet,
                                    CMD_CORE_DESCRIPTOR_REF_CONSTANT_U64)) {
-    loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_U64);
+    loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_U64,
+                                CMD_CORE_CONSTANT_U64_VALUE_ATTR_INDEX);
     return iree_ok_status();
   }
   if (loom_cmd_serialize_packet_is(build, packet,
                                    CMD_CORE_DESCRIPTOR_REF_CONSTANT_B8)) {
-    loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_B8);
+    loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_B8,
+                                CMD_CORE_CONSTANT_B8_VALUE_ATTR_INDEX);
     return iree_ok_status();
   }
   if (loom_cmd_serialize_packet_is(build, packet,
                                    CMD_CORE_DESCRIPTOR_REF_CONSTANT_B16)) {
-    loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_B16);
+    loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_B16,
+                                CMD_CORE_CONSTANT_B16_VALUE_ATTR_INDEX);
     return iree_ok_status();
   }
   if (loom_cmd_serialize_packet_is(build, packet,
                                    CMD_CORE_DESCRIPTOR_REF_CONSTANT_B32)) {
-    loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_B32);
+    loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_B32,
+                                CMD_CORE_CONSTANT_B32_VALUE_ATTR_INDEX);
     return iree_ok_status();
   }
   if (loom_cmd_serialize_packet_is(build, packet,
                                    CMD_CORE_DESCRIPTOR_REF_CONSTANT_B64)) {
-    loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_B64);
+    loom_cmd_serialize_constant(build, op, LOOM_CMD_SERIALIZE_VALUE_KIND_B64,
+                                CMD_CORE_CONSTANT_B64_VALUE_ATTR_INDEX);
     return iree_ok_status();
   }
   if (loom_cmd_serialize_packet_is(build, packet,

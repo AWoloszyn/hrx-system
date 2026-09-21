@@ -28,6 +28,7 @@ _ensure_runtime_py_on_path()
 from loom.gen.support import c_arrays  # noqa: E402
 from loom.gen.support.files import write_text_file  # noqa: E402
 from loom.gen.support.generated_file import line_comment_header  # noqa: E402
+from loom.gen.target.low import attr_indices  # noqa: E402
 from loom.target.arch.amdgpu.descriptors import (  # noqa: E402
     amdgpu_common_reg_class_ids,
     amdgpu_core_descriptor_set_instruction_names_by_isa_key,
@@ -679,7 +680,7 @@ def _materialize_descriptor_ref_tables(
     return descriptor_set_tables
 
 
-def _emit_tables_header() -> str:
+def _emit_tables_header(descriptor_sets: Sequence[DescriptorSet]) -> str:
     descriptor_ref_keys = amdgpu_descriptor_ref_keys()
     lines = [
         "// Copyright 2026 The IREE Authors",
@@ -704,6 +705,14 @@ def _emit_tables_header() -> str:
     ]
     lines.extend(f"#define {_descriptor_ref_constant_name(key)} {_u16_literal(index)}" for index, key in enumerate(descriptor_ref_keys))
     lines.append("")
+    descriptor_ref_key_set = frozenset(descriptor_ref_keys)
+    lines.extend(
+        attr_indices.emit_attr_indices(
+            "LOOM_AMDGPU",
+            (descriptor for descriptor_set in descriptor_sets for descriptor in descriptor_set.descriptors if descriptor.key in descriptor_ref_key_set),
+            target_key="amdgpu",
+        )
+    )
     lines.extend(f"#define {_reg_class_id_constant_name(reg_class_name)} {reg_class_id}u" for reg_class_name, reg_class_id in amdgpu_common_reg_class_ids())
     lines.append("")
     lines.extend(f"#define {_immediate_encoding_id_constant_name(name)} {encoding_id}u" for name, encoding_id in amdgpu_immediate_encoding_id_items())
@@ -856,7 +865,7 @@ def generate_target_ref_outputs(
 ) -> None:
     """Emits target-reference tables from an existing descriptor corpus."""
 
-    write_text_file(header_path, _emit_tables_header())
+    write_text_file(header_path, _emit_tables_header(tuple(descriptor_sets_by_key[info.key] for info in descriptor_set_infos)))
     write_text_file(
         source_path,
         _emit_source(
