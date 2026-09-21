@@ -1,0 +1,44 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/math_contraction.loom-test
+// TEMPLATE-EXCLUDE: @scalar_contract Scalar F32 multiply/FMA lowering is not implemented for this profile.
+// TEMPLATE-EXCLUDE: @scalar_swapped Scalar F32 multiply/FMA lowering is not implemented for this profile.
+// TEMPLATE-EXCLUDE: @scalar_nonadjacent Scalar F32 multiply/FMA lowering is not implemented for this profile.
+// TEMPLATE-EXCLUDE: @scalar_multiuse Scalar F32 multiply/FMA lowering is not implemented for this profile.
+// TEMPLATE-EXCLUDE: @scalar_one_flag Scalar F32 multiply/FMA lowering is not implemented for this profile.
+// TEMPLATE-EXCLUDE: @scalar_explicit Scalar F32 multiply/FMA lowering is not implemented for this profile.
+// TEMPLATE-EXCLUDE: @vector16_contract This profile supports the four-lane SIMD carrier used by the retained cases.
+// RUN: emit source-low target=wasm:simd128 output=low
+
+func.def @vector4_contract(%a: vector<4xf32>, %b: vector<4xf32>, %c: vector<4xf32>) -> (vector<4xf32>) {
+  %product = vector.mulf<contract> %a, %b : vector<4xf32>
+  %result = vector.addf<contract> %product, %c : vector<4xf32>
+  func.return %result : vector<4xf32>
+}
+
+// ----
+low.func.def target<wasm.core.simd128> abi(wasm_function) @vector4_contract(%a: reg<wasm.v128>, %b: reg<wasm.v128>, %c: reg<wasm.v128>) -> (reg<wasm.v128>) asm {
+  %product = f32x4.mul %a, %b
+  %result = f32x4.add %product, %c
+  return %result
+}
+
+// ====
+
+func.def @vector4_reduce(%a: vector<4xf32>, %b: vector<4xf32>, %c: f32) -> (f32) {
+  %product = vector.mulf<contract> %a, %b : vector<4xf32>
+  %result = vector.reduce<addf, reassoc|nnan|ninf|nsz|contract> %product, %c : vector<4xf32>, f32
+  func.return %result : f32
+}
+
+// ----
+low.func.def target<wasm.core.simd128> abi(wasm_function) @vector4_reduce(%a: reg<wasm.v128>, %b: reg<wasm.v128>, %c: reg<wasm.f32>) -> (reg<wasm.f32>) asm {
+  %product = f32x4.mul %a, %b
+  %11 = f32x4.extract_lane %product, 0
+  %12 = f32.add %c, %11
+  %13 = f32x4.extract_lane %product, 1
+  %14 = f32.add %12, %13
+  %15 = f32x4.extract_lane %product, 2
+  %16 = f32.add %14, %15
+  %17 = f32x4.extract_lane %product, 3
+  %result = f32.add %16, %17
+  return %result
+}

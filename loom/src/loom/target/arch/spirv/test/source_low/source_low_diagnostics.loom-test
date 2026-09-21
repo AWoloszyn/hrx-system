@@ -455,3 +455,14 @@ func.def target(@target) @index_constants_require_signed_carrier() -> (index, in
   %unsigned_maximum = index.constant 4294967295 : index
   func.return %underflow, %overflow, %unsigned_maximum : index, index, index
 }
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+// Required single-rounding FMA cannot become separate multiply and add.
+func.def target(@target) @explicit_fma_requires_fused_instruction(%a: f32, %b: f32, %c: f32) -> (f32) {
+  // ERROR@+1: TARGET/001 {op_name="scalar.fmaf"}
+  %result = scalar.fmaf %a, %b, %c : f32
+  func.return %result : f32
+}

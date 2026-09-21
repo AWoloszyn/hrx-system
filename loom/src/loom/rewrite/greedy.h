@@ -40,6 +40,9 @@ typedef struct loom_greedy_rewrite_options_t {
 
   // Optional constant materialization hook installed on the active rewriter.
   loom_materialize_constant_fn_t materialize_constant;
+
+  // Borrowed function-scoped target math policy used for optional rewrites.
+  const struct loom_target_math_policy_t* math_policy;
 } loom_greedy_rewrite_options_t;
 
 // Summary of one greedy rewrite run.

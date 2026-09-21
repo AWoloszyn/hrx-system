@@ -1991,6 +1991,9 @@ static iree_status_t loom_vector_canonicalize_addf(loom_op_t* op,
   }
 
   const uint8_t fmaf_flags = add_flags & loom_vector_mulf_fastmath(product_op);
+  if (!loom_rewriter_prefers_fma(rewriter, result_type, fmaf_flags)) {
+    return iree_ok_status();
+  }
   loom_builder_set_before(&rewriter->builder, op);
   loom_value_id_t value_checkpoint = loom_rewriter_value_checkpoint(rewriter);
   loom_op_t* fmaf_op = NULL;
@@ -2395,6 +2398,13 @@ iree_status_t loom_vector_reduce_canonicalize(loom_op_t* op,
                          LOOM_VECTOR_FASTMATHFLAGS_CONTRACT)) {
       uint8_t dot_flags = loom_vector_reduce_fastmath(op) &
                           loom_vector_mulf_fastmath(product_op);
+      if (!loom_rewriter_prefers_fma(
+              rewriter,
+              loom_module_value_type(rewriter->module,
+                                     loom_vector_reduce_result(op)),
+              dot_flags)) {
+        return iree_ok_status();
+      }
       loom_builder_set_before(&rewriter->builder, op);
       loom_value_id_t value_checkpoint =
           loom_rewriter_value_checkpoint(rewriter);

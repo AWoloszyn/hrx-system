@@ -95,9 +95,21 @@ static void loom_vm_math_policy_query(
   };
 }
 
+static bool loom_vm_math_prefer_fma(
+    const loom_target_math_policy_t* policy, loom_type_t value_type,
+    loom_target_math_fastmath_flags_t fastmath_flags) {
+  (void)policy;
+  (void)fastmath_flags;
+  const loom_scalar_type_t element_type = loom_type_element_type(value_type);
+  return loom_type_is_scalar(value_type) &&
+         (element_type == LOOM_SCALAR_TYPE_F32 ||
+          element_type == LOOM_SCALAR_TYPE_F64);
+}
+
 static const loom_target_math_policy_t loom_vm_math_policy = {
     .name = IREE_SVL("vm-math"),
     .query = loom_vm_math_policy_query,
+    .prefer_fma = loom_vm_math_prefer_fma,
 };
 
 void loom_vm_math_policy_registry_initialize(

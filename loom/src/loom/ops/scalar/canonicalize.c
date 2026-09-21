@@ -1152,7 +1152,10 @@ iree_status_t loom_scalar_addf_canonicalize(loom_op_t* op,
         product_op = NULL;
       }
     }
-    if (product_op) {
+    if (product_op &&
+        loom_rewriter_prefers_fma(
+            rewriter, loom_scalar_single_result_type(rewriter, op),
+            add_flags & loom_scalar_mulf_fastmath(product_op))) {
       const uint8_t fmaf_flags =
           add_flags & loom_scalar_mulf_fastmath(product_op);
       loom_builder_set_before(&rewriter->builder, op);

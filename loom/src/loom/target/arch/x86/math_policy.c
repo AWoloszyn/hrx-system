@@ -44,21 +44,47 @@ static void loom_x86_math_policy_query(
   *out_decision = loom_x86_math_keep(IREE_SV("math.op.native_f32"));
 }
 
+static bool loom_x86_math_prefer_scalar_fma(
+    const loom_target_math_policy_t* policy, loom_type_t value_type,
+    loom_target_math_fastmath_flags_t fastmath_flags) {
+  (void)policy;
+  (void)fastmath_flags;
+  return loom_type_is_scalar(value_type) &&
+         loom_type_element_type(value_type) == LOOM_SCALAR_TYPE_F32;
+}
+
+static bool loom_x86_math_prefer_avx512_fma(
+    const loom_target_math_policy_t* policy, loom_type_t value_type,
+    loom_target_math_fastmath_flags_t fastmath_flags) {
+  return loom_x86_math_prefer_scalar_fma(policy, value_type, fastmath_flags) ||
+         (loom_type_is_vector(value_type) && loom_type_rank(value_type) == 1 &&
+          loom_type_is_all_static(value_type) &&
+          loom_type_dim_static_size_at(value_type, 0) == 16 &&
+          loom_type_element_type(value_type) == LOOM_SCALAR_TYPE_F32);
+}
+
 static const loom_target_math_policy_t kX86MathPolicy = {
     .name = IREE_SVL("x86-math"),
     .query = loom_x86_math_policy_query,
+    .prefer_fma = loom_x86_math_prefer_scalar_fma,
+};
+
+static const loom_target_math_policy_t kX86Avx512MathPolicy = {
+    .name = IREE_SVL("x86-math"),
+    .query = loom_x86_math_policy_query,
+    .prefer_fma = loom_x86_math_prefer_avx512_fma,
 };
 
 static const loom_target_math_policy_registry_entry_t kX86MathPolicyEntries[] =
     {
         {/*.contract_set_key=*/IREE_SVL("x86.avx512.core"),
-         /*.policy=*/&kX86MathPolicy},
+         /*.policy=*/&kX86Avx512MathPolicy},
         {/*.contract_set_key=*/IREE_SVL("x86.avx2.core"),
          /*.policy=*/&kX86MathPolicy},
         {/*.contract_set_key=*/IREE_SVL("x86.packed_dot.core"),
          /*.policy=*/&kX86MathPolicy},
         {/*.contract_set_key=*/IREE_SVL("x86.avx512_packed_dot.core"),
-         /*.policy=*/&kX86MathPolicy},
+         /*.policy=*/&kX86Avx512MathPolicy},
 };
 
 void loom_x86_math_policy_registry_initialize(

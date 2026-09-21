@@ -38,6 +38,7 @@ loom_cc_library(
     loom::rewrite::greedy
     loom::rewrite::rewriter
     loom::rewrite::type_propagation
+    loom::target::math_policy
     loom::target::pass_environment
     loom::transforms::view::load_coalescing
     loom::util::fact_table

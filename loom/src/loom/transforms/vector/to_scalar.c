@@ -21,6 +21,7 @@
 #include "loom/pass/value_facts.h"
 #include "loom/rewrite/rewriter.h"
 #include "loom/target/function_version.h"
+#include "loom/target/math_policy.h"
 #include "loom/transforms/vector/to_scalar_aggregates.h"
 #include "loom/transforms/vector/to_scalar_core.h"
 #include "loom/transforms/vector/to_scalar_descriptors.h"
@@ -1310,6 +1311,11 @@ static iree_status_t loom_vector_to_scalar_run_with_lowerer(
 
   loom_rewriter_t rewriter;
   loom_rewriter_initialize(&rewriter, module, pass->arena);
+  rewriter.math_policy = loom_target_math_policy_registry_lookup_for_bundle(
+      loom_target_math_pass_capability_policy_registry(
+          loom_target_math_pass_capability_from_pass(pass)),
+      loom_target_facts_bundle(
+          loom_target_function_version_target_facts(pass->function_version)));
   loom_value_fact_table_t* facts = NULL;
   iree_status_t status = loom_pass_value_facts_prepare(
       pass, module,

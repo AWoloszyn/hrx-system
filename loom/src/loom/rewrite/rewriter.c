@@ -13,10 +13,18 @@
 #include "loom/ir/module.h"
 #include "loom/ir/value_refs.h"
 #include "loom/ops/op_defs.h"
+#include "loom/target/math_policy.h"
 #include "loom/util/fact_cfg.h"
 
 #define LOOM_REWRITER_INITIAL_WORKLIST_CAPACITY 64
 #define LOOM_REWRITER_INITIAL_REGION_STACK_CAPACITY 8
+
+bool loom_rewriter_prefers_fma(const loom_rewriter_t* rewriter,
+                               loom_type_t value_type, uint8_t fastmath_flags) {
+  const loom_target_math_policy_t* policy = rewriter->math_policy;
+  return policy && policy->prefer_fma &&
+         policy->prefer_fma(policy, value_type, fastmath_flags);
+}
 
 typedef enum loom_rewriter_user_change_flag_bits_e {
   // Operand identities are changing, not just the facts of the same value.

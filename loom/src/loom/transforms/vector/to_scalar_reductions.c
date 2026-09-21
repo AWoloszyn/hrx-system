@@ -399,6 +399,10 @@ static bool loom_vector_to_scalar_try_configure_product_fmaf_forest(
   if (!iree_any_bit_set(product_flags, LOOM_VECTOR_FASTMATHFLAGS_CONTRACT)) {
     return false;
   }
+  if (!loom_rewriter_prefers_fma(state->rewriter, state->result_scalar_type,
+                                 product_flags & reduce_flags)) {
+    return false;
+  }
 
   accumulator_state->fused_product_lhs = loom_vector_mulf_lhs(input_op);
   accumulator_state->fused_product_rhs = loom_vector_mulf_rhs(input_op);

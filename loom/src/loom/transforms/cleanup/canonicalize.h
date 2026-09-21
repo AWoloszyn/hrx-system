@@ -43,6 +43,9 @@ typedef struct loom_canonicalizer_options_t {
   // Optional immutable target facts used by target-sensitive fact inference.
   const loom_target_facts_t* target_facts;
 
+  // Borrowed math policy for this target. NULL retains optional contraction.
+  const struct loom_target_math_policy_t* math_policy;
+
   // Optional function/region-local seeds cloned before the initial analysis.
   // The caller selects values in this scope; other entries in the source table
   // are not imported. Extension payloads are re-interned, so the seeds may come

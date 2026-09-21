@@ -720,6 +720,7 @@ TEST_F(CanonicalizeTest, DriverAcceptsSeedFacts) {
       /*.max_iterations=*/{},
       /*.flags=*/0,
       /*.target_facts=*/NULL,
+      /*.math_policy=*/NULL,
       /*.seed_facts=*/{&seed_facts, &arg, 1},
   };
   IREE_ASSERT_OK(loom_canonicalizer_run_function(&canonicalizer, func_like_,
@@ -808,6 +809,7 @@ TEST_F(CanonicalizeTest, DriverPreservesExplicitTargetFactsAcrossSideRegions) {
       /*.max_iterations=*/{},
       /*.flags=*/0,
       /*.target_facts=*/&target_facts,
+      /*.math_policy=*/NULL,
       /*.seed_facts=*/{&seed_facts, nullptr, 0},
   };
   IREE_ASSERT_OK(loom_canonicalizer_run_function(&canonicalizer, split_func,
@@ -879,6 +881,7 @@ TEST_F(CanonicalizeTest, RegionDriverAcceptsSeedFacts) {
       /*.max_iterations=*/{},
       /*.flags=*/0,
       /*.target_facts=*/NULL,
+      /*.math_policy=*/NULL,
       /*.seed_facts=*/{&seed_facts, &config_arg, 1},
   };
   IREE_ASSERT_OK(loom_canonicalizer_run_region(
