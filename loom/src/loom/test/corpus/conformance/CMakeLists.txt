@@ -23,9 +23,9 @@ loom_module(
     "bc"
 )
 
-loom_test(
+loom_test_module(
   NAME
-    condition_loops_test
+    condition_loops_test_module
   SRCS
     "condition_loops.loom"
 )
@@ -119,9 +119,9 @@ loom_check_compile_tests(
     loom::target::spirv::vulkan1.3+bda
 )
 
-loom_test(
+loom_test_module(
   NAME
-    loop_termination_test
+    loop_termination_test_module
   SRCS
     "loop_termination.loom"
 )

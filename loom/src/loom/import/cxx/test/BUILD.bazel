@@ -6,7 +6,7 @@
 
 load("//build_tools/sanitizer:suppressions.bzl", "rocm_suppressions")
 load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with", "loom_generated_file", "loom_generated_file_family")
-load("//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_test")
+load("//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_test", "loom_test_module")
 load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
 load("//loom/requirements:defs.bzl", "EMIT_AMDGPU", "EXECUTE_IREE_HAL", "TARGET_ARCH_AMDGPU")
 load("//loom/target/vm:execution_profiles.bzl", "VM_REFERENCE_PROFILE")
@@ -217,7 +217,6 @@ _KERNEL_SOURCES = [
     "short_circuit",
     "structured_continue",
     "symbol_exports",
-    "typed_views",
     "vector_depth",
     "vector_initializers",
     "vector_values",
@@ -273,4 +272,33 @@ test_suite(
 test_suite(
     name = "functions_test",
     tests = [":" + source.removesuffix(".cpp") + "_test" for source in _HOST_SOURCES],
+)
+
+loom_generated_file_family(
+    name = "typed_views_checks_gen",
+    testonly = True,
+    args = [
+        "kernel",
+        "--group=typed_views",
+    ],
+    generator = "//loom/py/loom/gen/test:cxx_kernel_cases",
+    output_directories = ["typed_views_arrays"],
+    output_flags = [
+        "--output",
+        "--arrays",
+    ],
+    outputs = [
+        "typed_views_checks.loom",
+        "typed_views_arrays",
+    ],
+)
+
+loom_test_module(
+    name = "typed_views_module",
+    srcs = [
+        "typed_views.cpp",
+        ":typed_views_checks.loom",
+    ],
+    data = [":typed_views_checks_gen"],
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )

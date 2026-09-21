@@ -202,14 +202,21 @@ def _loom_test_module_impl(ctx):
         mnemonic = "LoomTestModule",
         progress_message = "Linking Loom test module %s" % ctx.label,
     )
+    runfiles = ctx.runfiles(files = [module] + ctx.files.data)
+    for data in ctx.attr.data:
+        runfiles = runfiles.merge(data[DefaultInfo].default_runfiles)
     return [
-        DefaultInfo(files = depset([module])),
+        DefaultInfo(files = depset([module]), runfiles = runfiles),
         _LoomTestModuleInfo(module = module),
     ]
 
 _loom_test_module = rule(
     implementation = _loom_test_module_impl,
     attrs = {
+        "data": attr.label_list(
+            allow_files = True,
+            doc = "Runtime fixtures retained with the linked module.",
+        ),
         "deps": attr.label_list(
             providers = [LoomLibraryInfo],
             doc = "Direct libraries available only for dependency resolution.",
@@ -311,7 +318,8 @@ def _loom_execution_test_launcher_impl(ctx):
         test_runner_args,
         benchmark_runner_args,
     )
-    runfiles = _tool_runfiles(ctx, test_tool, [module] + ctx.files.data)
+    runfiles = _tool_runfiles(ctx, test_tool, [])
+    runfiles = runfiles.merge(ctx.attr.module[DefaultInfo].default_runfiles)
     runfiles = runfiles.merge(_tool_runfiles(ctx, benchmark_tool, []))
     return [
         DefaultInfo(
@@ -332,10 +340,6 @@ def _loom_execution_test_launcher_impl(ctx):
 _loom_execution_test_launcher = rule(
     implementation = _loom_execution_test_launcher_impl,
     attrs = {
-        "data": attr.label_list(
-            allow_files = True,
-            doc = "Runtime fixtures exposed at their declared runfiles paths.",
-        ),
         "module": attr.label(
             mandatory = True,
             providers = [_LoomTestModuleInfo],
@@ -536,7 +540,6 @@ def _declare_execution_test(
         tags,
         visibility,
         target_compatible_with = [],
-        data = [],
         workload_args = []):
     test_kwargs = apply_test_requirements(
         {
@@ -570,7 +573,6 @@ def _declare_execution_test(
         name = name,
         launcher_rule = _loom_execution_test_launcher,
         launcher_attrs = {
-            "data": data,
             "module": module,
             "profile_args": profile.runner_args,
             "profile_name": profile.name,
@@ -665,6 +667,7 @@ def _declare_library(
         test_module = name + "_test_module"
         _loom_test_module(
             name = test_module,
+            data = data,
             deps = deps,
             root_library = ":" + name,
             tags = tags + ["manual"],
@@ -692,7 +695,6 @@ def _declare_library(
             name = name,
             module = ":" + test_module,
             profiles = execution_profiles,
-            data = data,
             test_runner_args = [],
             size = "small",
             tags = tags,
@@ -805,13 +807,70 @@ def _test_config_args(name, configs):
             fail("%s configs must map symbol names to string values" % name)
     return ["--config=%s=%s" % (key, configs[key]) for key in sorted(configs.keys())]
 
-def loom_test(
+def loom_test_module(
         name,
         srcs,
         deps = [],
         data = [],
         input_format = "",
         inputopts = [],
+        tags = [],
+        visibility = None,
+        target_compatible_with = []):
+    """Owns a reusable linked test module and its runtime fixtures.
+
+    Direct sources jointly own all check cases and benchmarks in the module.
+    Dependencies supply reachable definitions, not additional test roots.
+    Import options and data belong here; consumers select their workload and
+    execution or compiler profiles with ``loom_test(module = ...)``.
+    The module requires only its source providers, independently of consumers'
+    device requirements. Its default output is the linked bytecode file.
+
+    Args:
+      name: Public module target name.
+      srcs: Authored source modules jointly owning the test roots.
+      deps: Libraries available only for dependency resolution.
+      data: Headers and runtime fixtures retained by the source owner.
+      input_format: Source provider override, or empty for filename selection.
+      inputopts: Provider-scoped import options, with location expansion.
+      tags: Additional tags for the source module.
+      visibility: Bazel visibility of the reusable module.
+      target_compatible_with: Source-provider build configuration constraints.
+    """
+    if not srcs:
+        fail("%s requires at least one authored test source" % name)
+    library_name = name + "_library"
+    _loom_library(
+        name = library_name,
+        srcs = srcs,
+        deps = deps,
+        data = data,
+        input_format = input_format,
+        inputopts = inputopts,
+        tags = tags + ["manual"],
+        testonly = True,
+        visibility = ["//visibility:private"],
+        target_compatible_with = target_compatible_with,
+    )
+    _loom_test_module(
+        name = name,
+        data = data,
+        deps = deps,
+        root_library = ":" + library_name,
+        tags = tags,
+        testonly = True,
+        visibility = visibility,
+        target_compatible_with = target_compatible_with,
+    )
+
+def loom_test(
+        name,
+        srcs = [],
+        deps = [],
+        data = [],
+        input_format = "",
+        inputopts = [],
+        module = None,
         args = [],
         configs = {},
         case = "",
@@ -822,7 +881,7 @@ def loom_test(
         tags = [],
         visibility = None,
         target_compatible_with = []):
-    """Executes tests owned by a group of authored Loom sources.
+    """Qualifies authored sources or a reusable Loom test module.
 
     The rule merges ``srcs`` into one relocatable root library and links a test
     module containing every root-owned ``check.case`` and ``check.benchmark``
@@ -839,6 +898,9 @@ def loom_test(
       input_format: Source provider override, or empty for filename selection.
       inputopts: Provider-scoped options, such as ``cxx:std=c++20``.
       deps: Loom libraries available only for dependency resolution.
+      module: Existing loom_test_module to qualify without importing or linking
+          again. Exclusive with srcs, deps, data, input_format, and inputopts;
+          the source owner retains those inputs and its runtime fixtures.
       args: Additional arguments passed to the correctness runner.
       configs: String-valued configuration bindings shared by compiler checks,
           correctness, and benchmark smoke.
@@ -857,35 +919,28 @@ def loom_test(
       visibility: Bazel visibility of the generated test target.
       target_compatible_with: Build configuration constraints for all actions.
     """
-    if not srcs:
-        fail("%s requires at least one authored test source" % name)
+    if module and (srcs or deps or data or input_format or inputopts):
+        fail("%s module is exclusive with source and import options" % name)
+    if not module and not srcs:
+        fail("%s requires srcs or a test module" % name)
     if not execution_profiles and not compile_targets:
         fail("%s requires execution_profiles or compile_targets" % name)
     _reject_workload_args(name, args)
     workloads = _test_variants(name, configs, case, variants)
-    library_name = name + "_library"
-    module_name = name + "_module"
-    _loom_library(
-        name = library_name,
-        srcs = srcs,
-        deps = deps,
-        data = data,
-        input_format = input_format,
-        inputopts = inputopts,
-        tags = tags + ["manual"],
-        testonly = True,
-        visibility = ["//visibility:private"],
-        target_compatible_with = target_compatible_with,
-    )
-    _loom_test_module(
-        name = module_name,
-        deps = deps,
-        root_library = ":" + library_name,
-        target_compatible_with = target_compatible_with,
-        tags = tags + ["manual"],
-        testonly = True,
-        visibility = ["//visibility:private"],
-    )
+    if not module:
+        module_name = name + "_module"
+        loom_test_module(
+            name = module_name,
+            srcs = srcs,
+            deps = deps,
+            data = data,
+            input_format = input_format,
+            inputopts = inputopts,
+            tags = tags + ["manual"],
+            visibility = ["//visibility:private"],
+            target_compatible_with = target_compatible_with,
+        )
+        module = ":" + module_name
     tests = []
     for workload_name, workload in workloads.items():
         config_args = _test_config_args(workload_name, workload.configs)
@@ -894,8 +949,7 @@ def loom_test(
         workload_args = config_args + (["--case=" + workload.case] if workload.case else [])
         tests.extend(_declare_execution_tests(
             name = workload_name,
-            data = data,
-            module = ":" + module_name,
+            module = module,
             profiles = execution_profiles,
             workload_args = workload_args,
             test_runner_args = args,
@@ -906,7 +960,7 @@ def loom_test(
         ))
         tests.extend(loom_check_compile_tests(
             name = workload_name,
-            src = ":" + module_name,
+            src = module,
             targets = compile_targets,
             args = config_args,
             size = size,

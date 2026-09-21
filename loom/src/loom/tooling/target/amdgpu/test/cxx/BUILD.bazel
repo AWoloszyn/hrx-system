@@ -1,0 +1,35 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//build_tools/sanitizer:suppressions.bzl", "rocm_suppressions")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with")
+load("//loom/build_tools/bazel:defs.bzl", "loom_test")
+load("//loom/target/amdgpu:execution_profiles.bzl", "amdgpu_execution_profile")
+
+package(default_visibility = ["//visibility:public"])
+
+# These sources assert zero access reports against independent reference data.
+_EXECUTION_PROFILES = [
+    amdgpu_execution_profile(
+        name = "amdgpu",
+        sanitizer_suppressions = rocm_suppressions,
+    ),
+    amdgpu_execution_profile(
+        name = "amdgpu_access",
+        runner_args = [
+            "--sanitizer=access",
+            "--sanitizer-reporting=report-only",
+        ],
+        sanitizer_suppressions = rocm_suppressions,
+    ),
+]
+
+loom_test(
+    name = "typed_views_test",
+    execution_profiles = _EXECUTION_PROFILES,
+    module = "//loom/src/loom/import/cxx/test:typed_views_module",
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)

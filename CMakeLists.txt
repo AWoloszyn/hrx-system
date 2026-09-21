@@ -232,6 +232,7 @@ endif()
 
 if(LOOM_BUILD)
   loom_finalize_module_libraries()
+  loom_finalize_execution_tests()
 endif()
 iree_finalize_target_dependencies()
 if(IREE_BUILD_TESTS)

@@ -224,13 +224,15 @@ loom_cc_test(
 endif()
 
 if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
-loom_test(
+loom_test_module(
   NAME
-    vulkan_explicit_target_tests
+    vulkan_explicit_target_tests_module
   SRCS
     "test/spirv_vulkan_hal_actual.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
 if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
 loom_execution_test(
   NAME
@@ -271,9 +273,9 @@ loom_check_compile_tests(
 endif()
 
 if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
-loom_test(
+loom_test_module(
   NAME
-    vulkan_tests
+    vulkan_tests_module
   SRCS
     "test/multiple_entries.loom"
     "test/spirv_vulkan_atomic_hal_actual.loom"
@@ -288,7 +290,9 @@ loom_test(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/loop_rotating_values.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/loop_rotating_views.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV)
 if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
 loom_execution_test(
   NAME

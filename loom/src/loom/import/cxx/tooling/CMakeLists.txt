@@ -105,9 +105,9 @@ iree_execution_test_suite(
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+loom_test_module(
   NAME
-    source_test
+    source_test_module
   SRCS
     "check_cases.cc"
   DATA
@@ -115,7 +115,9 @@ loom_test(
   INPUTOPTS
     "cxx:D=CHECK_EXPECTED=0u"
 )
+endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME

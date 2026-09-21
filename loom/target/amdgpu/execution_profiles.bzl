@@ -19,67 +19,57 @@ load(
     "HAL_AMDGPU",
 )
 
-_AMDGPU_BUILD_REQUIREMENTS = [
-    TARGET_ARCH_AMDGPU,
-    EMIT_AMDGPU,
-    EXECUTE_IREE_HAL,
-    HAL_AMDGPU,
-]
+def amdgpu_execution_profile(name, runner_args = [], sanitizer_suppressions = None, tags = []):
+    """Defines AMDGPU execution with shared device and resource requirements.
 
-_AMDGPU_PROFILE_ARGUMENTS = ["--device=amdgpu"]
+    Callers own instrumentation, diagnostic reporting and suppression policy.
+    Workload configuration and case selection remain on the test declaration.
+    """
+    return loom_execution_profile(
+        name = name,
+        build_requirements = [
+            TARGET_ARCH_AMDGPU,
+            EMIT_AMDGPU,
+            EXECUTE_IREE_HAL,
+            HAL_AMDGPU,
+        ],
+        executor = "hardware",
+        resource_group = "loom-amdgpu-tests",
+        run_requirements = [AMDGPU_RESOURCE],
+        runner_args = ["--device=amdgpu"] + runner_args,
+        sanitizer_suppressions = sanitizer_suppressions,
+        tags = tags,
+        target_class = "gpu",
+        target_family = "amdgpu",
+    )
 
-AMDGPU_HARDWARE_PROFILE = loom_execution_profile(
+AMDGPU_HARDWARE_PROFILE = amdgpu_execution_profile(
     name = "amdgpu_hardware",
-    build_requirements = _AMDGPU_BUILD_REQUIREMENTS,
-    executor = "hardware",
-    resource_group = "loom-amdgpu-tests",
-    run_requirements = [AMDGPU_RESOURCE],
-    runner_args = _AMDGPU_PROFILE_ARGUMENTS,
-    target_class = "gpu",
-    target_family = "amdgpu",
 )
 
-AMDGPU_ACCESS_PROFILE = loom_execution_profile(
+AMDGPU_ACCESS_PROFILE = amdgpu_execution_profile(
     name = "amdgpu_access",
-    build_requirements = _AMDGPU_BUILD_REQUIREMENTS,
-    executor = "hardware",
-    resource_group = "loom-amdgpu-tests",
-    run_requirements = [AMDGPU_RESOURCE],
-    runner_args = _AMDGPU_PROFILE_ARGUMENTS + ["--sanitizer=access"],
+    runner_args = ["--sanitizer=access"],
     tags = ["notsan"],
-    target_class = "gpu",
-    target_family = "amdgpu",
 )
 
-AMDGPU_ASAN_PROFILE = loom_execution_profile(
+AMDGPU_ASAN_PROFILE = amdgpu_execution_profile(
     name = "amdgpu_asan",
-    build_requirements = _AMDGPU_BUILD_REQUIREMENTS,
-    executor = "hardware",
-    resource_group = "loom-amdgpu-tests",
-    run_requirements = [AMDGPU_RESOURCE],
-    runner_args = _AMDGPU_PROFILE_ARGUMENTS + [
+    runner_args = [
         "--sanitizer=asan",
         "--sanitizer-reporting=report-only",
         "--amdgpu_asan=true",
         "--amdgpu_asan_report_policy=report-only",
     ],
     tags = ["notsan"],
-    target_class = "gpu",
-    target_family = "amdgpu",
 )
 
-AMDGPU_TSAN_PROFILE = loom_execution_profile(
+AMDGPU_TSAN_PROFILE = amdgpu_execution_profile(
     name = "amdgpu_tsan",
-    build_requirements = _AMDGPU_BUILD_REQUIREMENTS,
-    executor = "hardware",
-    resource_group = "loom-amdgpu-tests",
-    run_requirements = [AMDGPU_RESOURCE],
-    runner_args = _AMDGPU_PROFILE_ARGUMENTS + [
+    runner_args = [
         "--sanitizer=tsan",
         "--sanitizer-reporting=report-only",
         "--amdgpu_tsan=true",
         "--amdgpu_tsan_report_policy=report-only",
     ],
-    target_class = "gpu",
-    target_family = "amdgpu",
 )

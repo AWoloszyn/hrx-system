@@ -9,9 +9,9 @@
 
 iree_add_all_subdirs()
 
-loom_test(
+loom_test_module(
   NAME
-    hardware_test
+    hardware_test_module
   SRCS
     "testdata/buffer_bulk_hal_actual.loom"
     "testdata/dynamic_workgroup_hal_actual.loom"

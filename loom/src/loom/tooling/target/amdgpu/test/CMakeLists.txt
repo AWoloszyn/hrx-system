@@ -126,14 +126,16 @@ iree_execution_test_suite(
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    hal_tests
+    hal_tests_module
   SRCS
     "amdgpu_hal_actual.loom"
     "generated_tensor_cases.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -160,15 +162,17 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    wide_offset_hardware_test
+    wide_offset_hardware_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_scaling.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_selection.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/offset_integer_casts.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -227,15 +231,17 @@ loom_check_compile_tests(
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    address_carrier_test
+    address_carrier_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_carrier_casts.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_carrier_loops.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_widening.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -320,13 +326,15 @@ loom_check_compile_tests(
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    address_uniform_add_test
+    address_uniform_add_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/address_uniform_add.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -379,13 +387,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    subview_test
+    subview_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/memory_subview.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -470,13 +480,15 @@ loom_check_compile_tests(
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    wide_subtract_test
+    wide_subtract_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/integer_wide_subtract.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -529,13 +541,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    wide_shift_hardware_test
+    wide_shift_hardware_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/integer_wide_shifts.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -562,13 +576,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    kernarg_test
+    kernarg_test_module
   SRCS
     "amdgpu_unused_kernargs.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -621,13 +637,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    callable_values_test
+    callable_values_test_module
   SRCS
     "callable_values.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -680,13 +698,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    narrow_argument_test
+    narrow_argument_test_module
   SRCS
     "narrow_arguments.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -739,13 +759,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    narrow_integer_hardware_test
+    narrow_integer_hardware_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/integer_narrow_consumers.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -772,13 +794,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    unsigned_remainder_hardware_test
+    unsigned_remainder_hardware_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/integer_unsigned_remainder.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -805,13 +829,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    loop_count_access_test
+    loop_count_access_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/loop_count.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -840,13 +866,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    collective_loop_access_test
+    collective_loop_access_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/collective_loop_state.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -875,13 +903,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    sequential_loops_hardware_test
+    sequential_loops_hardware_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/sequential_loop_slices.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -908,13 +938,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    conditional_guards_test
+    conditional_guards_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/conditional_guards.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -967,13 +999,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    conditional_effects_test
+    conditional_effects_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/conditional_effects.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -1026,13 +1060,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    conditional_results_test
+    conditional_results_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/conditional_results.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -1085,13 +1121,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    uniform_predicate_control_access_test
+    uniform_predicate_control_access_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/uniform_predicate_control.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -1120,13 +1158,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    asan_test
+    asan_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/sanitizer/amdgpu_asan_actual.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -1159,13 +1199,15 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    unroll_fences_access_test
+    unroll_fences_access_test_module
   SRCS
     "amdgpu_unroll_fences.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -1194,9 +1236,9 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    indirection_access_test
+    indirection_access_test_module
   SRCS
     "queued_routes.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/checked_benchmarks/cooperative_paged_attention_f32.loom"
@@ -1206,7 +1248,9 @@ loom_test(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/checked_benchmarks/routed_row_combine_f32.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/checked_benchmarks/sparse_token_attention_f32.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -1235,14 +1279,16 @@ endif()
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    pipeline_predicates_test
+    pipeline_predicates_test_module
   SRCS
     "amdgpu_pipeline_predicates.loom"
     "${PROJECT_SOURCE_DIR}/loom/binding/c/benchmark/kernels/synthetic/segmented_guarded_read_ahead.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
@@ -1380,13 +1426,15 @@ loom_check_compile_tests(
 endif()
 
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
-loom_test(
+loom_test_module(
   NAME
-    tsan_test
+    tsan_test_module
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/sanitizer/amdgpu_tsan_actual.loom"
 )
+endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_execution_test(
   NAME
