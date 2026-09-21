@@ -124,6 +124,10 @@ The [enumeration example](examples/enumerate.c) shows ABI negotiation and
 passive selection. The [XDNA numerical consumer](../experimental/xdna/cts/execution_test.cc)
 loads canonical images, prepares instruction ranges, executes them against
 allocated, registered and imported data, and checks results and teardown.
+The [shared-pool consumer](../experimental/xdna/cts/shared_mapping_process_test.cc)
+transfers a native memory handle between processes, independently maps and
+registers the backing, and executes after the producer releases its mapping and
+memory handle. One registration covers the pool; bindings use explicit offsets.
 
 Focused design documents describe the contracts:
 
