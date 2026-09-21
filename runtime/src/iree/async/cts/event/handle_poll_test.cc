@@ -20,16 +20,15 @@
 namespace iree::async::cts {
 namespace {
 
-static iree_async_handle_poll_operation_t MakePoll(
-    iree_async_primitive_t primitive, iree_async_poll_events_t events,
-    CompletionTracker* tracker) {
-  iree_async_handle_poll_operation_t operation = {};
-  iree_async_operation_initialize(&operation.base,
+static void InitializePoll(iree_async_handle_poll_operation_t* operation,
+                           iree_async_primitive_t primitive,
+                           iree_async_poll_events_t events,
+                           CompletionTracker* tracker) {
+  iree_async_operation_initialize(&operation->base,
                                   IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL, 0,
                                   CompletionTracker::Callback, tracker);
-  operation.primitive = primitive;
-  operation.events = events;
-  return operation;
+  operation->primitive = primitive;
+  operation->events = events;
 }
 
 class HandlePollTest : public CtsTestBase<> {
@@ -114,7 +113,8 @@ class HandlePollTest : public CtsTestBase<> {
 TEST_P(HandlePollTest, SignalBeforeSubmission) {
   Signal();
   CompletionTracker tracker;
-  auto operation = MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_IN, &tracker);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializePoll(&operation, primitive_, IREE_ASYNC_POLL_EVENT_IN, &tracker);
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
   PollUntilCondition([&] { return tracker.call_count == 1; });
   IREE_EXPECT_OK(tracker.ConsumeStatus());
@@ -123,7 +123,8 @@ TEST_P(HandlePollTest, SignalBeforeSubmission) {
 
 TEST_P(HandlePollTest, WaitsWithoutConsumingOrClosingPrimitive) {
   CompletionTracker tracker;
-  auto operation = MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_IN, &tracker);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializePoll(&operation, primitive_, IREE_ASYNC_POLL_EVENT_IN, &tracker);
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
   PollAvailable();
   EXPECT_EQ(tracker.call_count, 0);
@@ -143,7 +144,8 @@ TEST_P(HandlePollTest, WaitsWithoutConsumingOrClosingPrimitive) {
 
 TEST_P(HandlePollTest, CancellationBeforePollingClearsResults) {
   CompletionTracker tracker;
-  auto operation = MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_IN, &tracker);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializePoll(&operation, primitive_, IREE_ASYNC_POLL_EVENT_IN, &tracker);
   operation.result_events = IREE_ASYNC_POLL_EVENT_OUT;
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
   IREE_ASSERT_OK(iree_async_proactor_cancel(proactor_, &operation.base));
@@ -157,7 +159,8 @@ TEST_P(HandlePollTest, CancellationBeforePollingClearsResults) {
 TEST_P(HandlePollTest, ReusedPollClearsResultsOnCancellation) {
   Signal();
   CompletionTracker tracker;
-  auto operation = MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_IN, &tracker);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializePoll(&operation, primitive_, IREE_ASYNC_POLL_EVENT_IN, &tracker);
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
   PollUntilCondition([&] { return tracker.call_count == 1; });
   IREE_EXPECT_OK(tracker.ConsumeStatus());
@@ -177,10 +180,12 @@ TEST_P(HandlePollTest, ReusedPollClearsResultsOnCancellation) {
 TEST_P(HandlePollTest, CancelledLinkedPredecessorClearsPollResults) {
   CompletionTracker predecessor_tracker;
   CompletionTracker poll_tracker;
-  auto predecessor =
-      MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_IN, &predecessor_tracker);
-  auto successor =
-      MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_IN, &poll_tracker);
+  iree_async_handle_poll_operation_t predecessor = {};
+  InitializePoll(&predecessor, primitive_, IREE_ASYNC_POLL_EVENT_IN,
+                 &predecessor_tracker);
+  iree_async_handle_poll_operation_t successor = {};
+  InitializePoll(&successor, primitive_, IREE_ASYNC_POLL_EVENT_IN,
+                 &poll_tracker);
   predecessor.base.flags = IREE_ASYNC_OPERATION_FLAG_LINKED;
   successor.result_events = IREE_ASYNC_POLL_EVENT_OUT;
   iree_async_operation_t* operations[] = {&predecessor.base, &successor.base};
@@ -206,7 +211,8 @@ TEST_P(HandlePollTest, RejectsInvalidInterestsWithoutCallbacks) {
   };
   for (iree_async_poll_events_t events : invalid_events) {
     CompletionTracker tracker;
-    auto operation = MakePoll(primitive_, events, &tracker);
+    iree_async_handle_poll_operation_t operation = {};
+    InitializePoll(&operation, primitive_, events, &tracker);
     operation.result_events = IREE_ASYNC_POLL_EVENT_OUT;
     IREE_EXPECT_STATUS_IS(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -219,9 +225,11 @@ TEST_P(HandlePollTest, RejectsInvalidInterestsWithoutCallbacks) {
 TEST_P(HandlePollTest, InvalidBatchLeavesValidPollCallerOwned) {
   CompletionTracker valid_tracker;
   CompletionTracker invalid_tracker;
-  auto valid = MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_IN, &valid_tracker);
-  auto invalid =
-      MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_NONE, &invalid_tracker);
+  iree_async_handle_poll_operation_t valid = {};
+  InitializePoll(&valid, primitive_, IREE_ASYNC_POLL_EVENT_IN, &valid_tracker);
+  iree_async_handle_poll_operation_t invalid = {};
+  InitializePoll(&invalid, primitive_, IREE_ASYNC_POLL_EVENT_NONE,
+                 &invalid_tracker);
   valid.result_events = IREE_ASYNC_POLL_EVENT_OUT;
   iree_async_operation_t* operations[] = {&valid.base, &invalid.base};
   IREE_EXPECT_STATUS_IS(
@@ -240,8 +248,8 @@ TEST_P(HandlePollTest, InvalidBatchLeavesValidPollCallerOwned) {
 
 TEST_P(HandlePollTest, FinalCallbackMayDeleteOperation) {
   CompletionTracker tracker;
-  auto* operation = new iree_async_handle_poll_operation_t(
-      MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_IN, &tracker));
+  auto* operation = new iree_async_handle_poll_operation_t{};
+  InitializePoll(operation, primitive_, IREE_ASYNC_POLL_EVENT_IN, &tracker);
   operation->base.completion_fn =
       +[](void* user_data, iree_async_operation_t* base, iree_status_t status,
           iree_async_completion_flags_t flags) {
@@ -267,7 +275,8 @@ TEST_P(HandlePollTest, RejectsWritableWaitOnWindowsHandle) {
   };
   for (iree_async_poll_events_t events : interests) {
     CompletionTracker tracker;
-    auto operation = MakePoll(primitive_, events, &tracker);
+    iree_async_handle_poll_operation_t operation = {};
+    InitializePoll(&operation, primitive_, events, &tracker);
     IREE_EXPECT_STATUS_IS(
         IREE_STATUS_UNAVAILABLE,
         iree_async_proactor_submit_one(proactor_, &operation.base));
@@ -279,7 +288,8 @@ TEST_P(HandlePollTest, RejectsWritableWaitOnWindowsHandle) {
 
 TEST_P(HandlePollTest, ReportsHangupWithoutAnExplicitHangupInterest) {
   CompletionTracker tracker;
-  auto operation = MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_IN, &tracker);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializePoll(&operation, primitive_, IREE_ASYNC_POLL_EVENT_IN, &tracker);
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
   ASSERT_EQ(close(descriptors_[1]), 0);
   descriptors_[1] = -1;
@@ -291,8 +301,9 @@ TEST_P(HandlePollTest, ReportsHangupWithoutAnExplicitHangupInterest) {
 
 TEST_P(HandlePollTest, ReportsPipeWriteErrorAsReadiness) {
   CompletionTracker tracker;
-  auto operation = MakePoll(iree_async_primitive_from_fd(descriptors_[1]),
-                            IREE_ASYNC_POLL_EVENT_OUT, &tracker);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializePoll(&operation, iree_async_primitive_from_fd(descriptors_[1]),
+                 IREE_ASYNC_POLL_EVENT_OUT, &tracker);
   ASSERT_EQ(close(descriptors_[0]), 0);
   descriptors_[0] = -1;
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
@@ -365,7 +376,8 @@ class HandlePollSocketTest : public HandlePollTest {
 TEST_P(HandlePollSocketTest, WritableInterestResumesAfterBackpressure) {
   FillSendBuffer();
   CompletionTracker tracker;
-  auto operation = MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_OUT, &tracker);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializePoll(&operation, primitive_, IREE_ASYNC_POLL_EVENT_OUT, &tracker);
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
   PollAvailable();
   EXPECT_EQ(tracker.call_count, 0);
@@ -380,9 +392,12 @@ TEST_P(HandlePollSocketTest, WritableInterestResumesAfterBackpressure) {
 TEST_P(HandlePollSocketTest, ReadAndWriteWaitsOnSameDescriptorStayIndependent) {
   CompletionTracker reader;
   CompletionTracker writer;
-  auto read_operation = MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_IN, &reader);
-  auto write_operation =
-      MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_OUT, &writer);
+  iree_async_handle_poll_operation_t read_operation = {};
+  InitializePoll(&read_operation, primitive_, IREE_ASYNC_POLL_EVENT_IN,
+                 &reader);
+  iree_async_handle_poll_operation_t write_operation = {};
+  InitializePoll(&write_operation, primitive_, IREE_ASYNC_POLL_EVENT_OUT,
+                 &writer);
   iree_async_operation_t* operations[] = {&read_operation.base,
                                           &write_operation.base};
   IREE_ASSERT_OK(iree_async_proactor_submit(
@@ -400,9 +415,10 @@ TEST_P(HandlePollSocketTest, ReadAndWriteWaitsOnSameDescriptorStayIndependent) {
 
 TEST_P(HandlePollSocketTest, CombinedInterestCompletesForEitherDirection) {
   CompletionTracker tracker;
-  auto operation =
-      MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_IN | IREE_ASYNC_POLL_EVENT_OUT,
-               &tracker);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializePoll(&operation, primitive_,
+                 IREE_ASYNC_POLL_EVENT_IN | IREE_ASYNC_POLL_EVENT_OUT,
+                 &tracker);
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
   PollUntilCondition([&] { return tracker.call_count == 1; });
   IREE_EXPECT_OK(tracker.ConsumeStatus());
@@ -421,7 +437,8 @@ TEST_P(HandlePollSocketTest, CombinedInterestCompletesForEitherDirection) {
 TEST_P(HandlePollSocketTest, CancelsBackpressuredWritableWait) {
   FillSendBuffer();
   CompletionTracker tracker;
-  auto operation = MakePoll(primitive_, IREE_ASYNC_POLL_EVENT_OUT, &tracker);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializePoll(&operation, primitive_, IREE_ASYNC_POLL_EVENT_OUT, &tracker);
   operation.result_events = IREE_ASYNC_POLL_EVENT_IN;
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
   PollAvailable();

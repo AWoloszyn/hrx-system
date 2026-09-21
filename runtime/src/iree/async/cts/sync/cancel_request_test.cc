@@ -118,14 +118,13 @@ class CancelRequestTest : public SocketTestBase<> {
     SocketTestBase<>::TearDown();
   }
 
-  iree_async_handle_poll_operation_t MakeWait(CancelJoin* join) {
-    iree_async_handle_poll_operation_t operation = {};
+  void InitializeWait(iree_async_handle_poll_operation_t* operation,
+                      CancelJoin* join) {
     iree_async_operation_initialize(
-        &operation.base, IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL,
+        &operation->base, IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL,
         IREE_ASYNC_OPERATION_FLAG_NONE, CancelJoin::Complete, join);
-    operation.primitive = event_->native.wait_primitive;
-    operation.events = IREE_ASYNC_POLL_EVENT_IN;
-    return operation;
+    operation->primitive = event_->native.wait_primitive;
+    operation->events = IREE_ASYNC_POLL_EVENT_IN;
   }
 
   void PollAvailable() {
@@ -168,7 +167,8 @@ class CancelRequestTest : public SocketTestBase<> {
 
 TEST_P(CancelRequestTest, CancelBeforeFirstPollWithoutPeerProgress) {
   CancelJoin join(proactor_);
-  auto operation = MakeWait(&join);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializeWait(&operation, &join);
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
   join.Cancel(&operation.base);
   PollUntilCondition([&] { return join.done(); });
@@ -179,7 +179,8 @@ TEST_P(CancelRequestTest, CancelBeforeFirstPollWithoutPeerProgress) {
 
 TEST_P(CancelRequestTest, CancelRegisteredWaitWithoutPeerProgress) {
   CancelJoin join(proactor_);
-  auto operation = MakeWait(&join);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializeWait(&operation, &join);
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
   PollAvailable();
   EXPECT_EQ(join.terminals, 0);
@@ -191,7 +192,8 @@ TEST_P(CancelRequestTest, CancelRegisteredWaitWithoutPeerProgress) {
 
 TEST_P(CancelRequestTest, CallbackCancelsWaitBeforeRegistration) {
   CancelJoin join(proactor_);
-  auto operation = MakeWait(&join);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializeWait(&operation, &join);
   CompletionTracker marker;
   iree_async_operation_t trailing = {};
   iree_async_operation_initialize(&trailing, IREE_ASYNC_OPERATION_TYPE_NOP, 0,
@@ -208,7 +210,8 @@ TEST_P(CancelRequestTest, CallbackCancelsWaitBeforeRegistration) {
 
 TEST_P(CancelRequestTest, NaturalCompletionRacesCancellation) {
   CancelJoin join(proactor_);
-  auto operation = MakeWait(&join);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializeWait(&operation, &join);
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
   iree_async_event_set(event_);
   join.Cancel(&operation.base);
@@ -230,7 +233,7 @@ TEST_P(CancelRequestTest, JoinCallbackDestroysItsOwner) {
   };
   bool destroyed = false;
   auto* owner = new Owner{CancelJoin(proactor_), {}, &destroyed};
-  owner->operation = MakeWait(&owner->join);
+  InitializeWait(&owner->operation, &owner->join);
   owner->join.user_data = owner;
   owner->join.joined = [](void* user_data) {
     auto* owner = static_cast<Owner*>(user_data);
@@ -249,7 +252,8 @@ TEST_P(CancelRequestTest, JoinCallbackDestroysItsOwner) {
 
 TEST_P(CancelRequestTest, JoinReusesTargetAddressForAnUncancelledWait) {
   CancelJoin join(proactor_);
-  auto operation = MakeWait(&join);
+  iree_async_handle_poll_operation_t operation = {};
+  InitializeWait(&operation, &join);
   CompletionTracker replacement;
   struct State {
     // Same proactor for both executions of the same target address.
@@ -280,9 +284,11 @@ TEST_P(CancelRequestTest, JoinReusesTargetAddressForAnUncancelledWait) {
 
 TEST_P(CancelRequestTest, CancellingOneWaitPreservesItsDescriptorNeighbor) {
   CancelJoin cancelled(proactor_);
-  auto first = MakeWait(&cancelled);
+  iree_async_handle_poll_operation_t first = {};
+  InitializeWait(&first, &cancelled);
   CompletionTracker survivor;
-  auto second = MakeWait(nullptr);
+  iree_async_handle_poll_operation_t second = {};
+  InitializeWait(&second, nullptr);
   second.base.completion_fn = CompletionTracker::Callback;
   second.base.user_data = &survivor;
   iree_async_operation_t* operations[] = {&first.base, &second.base};
@@ -301,8 +307,10 @@ TEST_P(CancelRequestTest, CancellingOneWaitPreservesItsDescriptorNeighbor) {
 TEST_P(CancelRequestTest, ReceiptCanEnqueueTheNextCancellation) {
   CancelJoin first(proactor_);
   CancelJoin second(proactor_);
-  auto first_operation = MakeWait(&first);
-  auto second_operation = MakeWait(&second);
+  iree_async_handle_poll_operation_t first_operation = {};
+  InitializeWait(&first_operation, &first);
+  iree_async_handle_poll_operation_t second_operation = {};
+  InitializeWait(&second_operation, &second);
   struct State {
     // Receipt being delivered before admitting the next request.
     CancelJoin* first;
@@ -335,7 +343,7 @@ TEST_P(CancelRequestTest, CancellationBurstYieldsToUnrelatedWork) {
   std::vector<std::unique_ptr<CancelJoin>> joins;
   for (size_t i = 0; i < kCount; ++i) {
     joins.push_back(std::make_unique<CancelJoin>(proactor_));
-    operations[i] = MakeWait(joins.back().get());
+    InitializeWait(&operations[i], joins.back().get());
     IREE_ASSERT_OK(
         iree_async_proactor_submit_one(proactor_, &operations[i].base));
   }

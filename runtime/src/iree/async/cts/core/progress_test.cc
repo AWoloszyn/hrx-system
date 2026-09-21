@@ -5,7 +5,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <functional>
-#include <utility>
 
 #include "iree/async/cts/util/registry.h"
 #include "iree/async/cts/util/test_base.h"
@@ -15,9 +14,7 @@ namespace iree::async::cts {
 namespace {
 
 struct ProgressWork {
-  explicit ProgressWork(
-      std::function<iree_status_t(iree_host_size_t*)> callback = {})
-      : callback(std::move(callback)) {
+  ProgressWork() {
     entry.user_data = this;
     entry.fn = +[](void* user_data, iree_host_size_t* out_completed_count) {
       return static_cast<ProgressWork*>(user_data)->callback(
@@ -40,7 +37,8 @@ class ProgressTest : public CtsTestBase<> {
 
 TEST_P(ProgressTest, FailureRetainsEntryUntilExplicitRetirement) {
   int calls = 0;
-  ProgressWork work([&](iree_host_size_t* completed) {
+  ProgressWork work;
+  work.callback = [&](iree_host_size_t* completed) {
     EXPECT_EQ(*completed, 0u);
     ++calls;
     *completed = 1;
@@ -49,7 +47,7 @@ TEST_P(ProgressTest, FailureRetainsEntryUntilExplicitRetirement) {
     }
     work.entry.remove_requested = true;
     return iree_ok_status();
-  });
+  };
   Register(work);
 
   iree_host_size_t completed = 99;
@@ -144,18 +142,20 @@ TEST_P(ProgressTest, FailureStillUnlinksBeforeCallbackOwnedDestruction) {
 
 TEST_P(ProgressTest, WorkRegisteredDuringCallbackRunsOnNextPoll) {
   int successor_calls = 0;
-  ProgressWork successor([&](iree_host_size_t* completed) {
+  ProgressWork successor;
+  successor.callback = [&](iree_host_size_t* completed) {
     ++successor_calls;
     *completed = 1;
     successor.entry.remove_requested = true;
     return iree_ok_status();
-  });
-  ProgressWork first([&](iree_host_size_t* completed) {
+  };
+  ProgressWork first;
+  first.callback = [&](iree_host_size_t* completed) {
     Register(successor);
     *completed = 1;
     first.entry.remove_requested = true;
     return iree_ok_status();
-  });
+  };
   Register(first);
 
   iree_host_size_t completed = 0;
@@ -172,17 +172,19 @@ TEST_P(ProgressTest, WorkRegisteredDuringCallbackRunsOnNextPoll) {
 
 TEST_P(ProgressTest, FailedCallbackPreservesItsNewRegistration) {
   int successor_calls = 0;
-  ProgressWork successor([&](iree_host_size_t* completed) {
+  ProgressWork successor;
+  successor.callback = [&](iree_host_size_t* completed) {
     ++successor_calls;
     *completed = 1;
     successor.entry.remove_requested = true;
     return iree_ok_status();
-  });
-  ProgressWork first([&](iree_host_size_t*) {
+  };
+  ProgressWork first;
+  first.callback = [&](iree_host_size_t*) {
     Register(successor);
     first.entry.remove_requested = true;
     return iree_status_from_code(IREE_STATUS_UNAVAILABLE);
-  });
+  };
   Register(first);
 
   IREE_EXPECT_STATUS_IS(
@@ -240,14 +242,15 @@ TEST_P(ProgressTest, CallbackCanDestroyUnvisitedEntry) {
   ProgressWork* work[2];
   int calls = 0;
   for (int i = 0; i < 2; ++i) {
-    work[i] = new ProgressWork([&, i](iree_host_size_t* completed) {
+    work[i] = new ProgressWork;
+    work[i]->callback = [&, i](iree_host_size_t* completed) {
       ++calls;
       iree_async_proactor_unregister_progress(proactor_, &work[1 - i]->entry);
       delete work[1 - i];
       *completed = 1;
       work[i]->entry.remove_requested = true;
       return iree_ok_status();
-    });
+    };
     work[i]->entry.on_remove =
         +[](void* user_data) { delete static_cast<ProgressWork*>(user_data); };
     Register(*work[i]);
@@ -266,7 +269,8 @@ TEST_P(ProgressTest, CallbackCanDestroyPreviouslyRunEntry) {
   ProgressWork* earlier = nullptr;
   int calls = 0;
   for (int i = 0; i < 2; ++i) {
-    work[i] = new ProgressWork([&, i](iree_host_size_t* completed) {
+    work[i] = new ProgressWork;
+    work[i]->callback = [&, i](iree_host_size_t* completed) {
       ++calls;
       *completed = 1;
       if (!earlier) {
@@ -277,7 +281,7 @@ TEST_P(ProgressTest, CallbackCanDestroyPreviouslyRunEntry) {
         work[i]->entry.remove_requested = true;
       }
       return iree_ok_status();
-    });
+    };
     work[i]->entry.on_remove =
         +[](void* user_data) { delete static_cast<ProgressWork*>(user_data); };
     Register(*work[i]);
@@ -293,14 +297,15 @@ TEST_P(ProgressTest, CallbackCanDestroyPreviouslyRunEntry) {
 
 TEST_P(ProgressTest, IdleRegisteredWorkPreventsBlocking) {
   int calls = 0;
-  ProgressWork work([&](iree_host_size_t* completed) {
+  ProgressWork work;
+  work.callback = [&](iree_host_size_t* completed) {
     ++calls;
     if (calls == 2) {
       *completed = 1;
       work.entry.remove_requested = true;
     }
     return iree_ok_status();
-  });
+  };
   Register(work);
 
   // No timer or native completion can release a backend that wrongly blocks.
@@ -324,11 +329,12 @@ TEST_P(ProgressTest, IdleRegisteredWorkPreventsBlocking) {
 
 TEST_P(ProgressTest, PollFailurePreservesOperationCompletions) {
   int operation_calls = 0;
-  ProgressWork work([&](iree_host_size_t* completed) {
+  ProgressWork work;
+  work.callback = [&](iree_host_size_t* completed) {
     *completed = 2;
     work.entry.remove_requested = true;
     return iree_status_from_code(IREE_STATUS_UNAVAILABLE);
-  });
+  };
   struct CompletionState {
     // Poll owner that admits the follow-up progress work.
     iree_async_proactor_t* proactor;
