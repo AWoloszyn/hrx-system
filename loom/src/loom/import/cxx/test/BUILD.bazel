@@ -31,6 +31,7 @@ loom_check_test_suite(
         "config_cleanup.cxx-test",
         "config_invalid.cxx-test",
         "const.cxx-test",
+        "constexpr.cxx-test",
         "constexpr_semantics.cxx-test",
         "control_invalid.cxx-test",
         "data_models.cxx-test",
@@ -101,6 +102,13 @@ _HOST_COMPATIBILITY = loom_config_compatible_with([
     "//loom/config/import:cxx",
     "//loom/config/target/arch:vm",
 ])
+
+loom_test(
+    name = "constexpr_values_test",
+    srcs = ["constexpr_values.cpp"],
+    execution_profiles = [VM_REFERENCE_PROFILE],
+    target_compatible_with = _HOST_COMPATIBILITY,
+)
 
 loom_test(
     name = "config_values_test",

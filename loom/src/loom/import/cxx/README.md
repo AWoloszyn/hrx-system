@@ -224,8 +224,50 @@ An unresolved setting is not a C++ constant expression. Template arguments,
 `constexpr` initializers, `static_assert` and fixed type extents still require
 source-known values; use source definitions and reimport when changing C++
 types or template instantiations. Ordinary `if` remains available for Loom
-specialization; `if constexpr` requires a separate source-selection projection
-and is currently rejected by the importer.
+specialization. `if constexpr` selects from source-known constants, including
+template arguments and exact config definitions; unresolved config declarations
+cannot select a C++ branch.
+
+## Compile-time branches
+
+`if constexpr (expression)` imports only the source-selected arm. Template
+specializations can choose different operations, helper calls, and return types
+without emitting a runtime condition. A discarded arm contributes no writes,
+returns or continues to Loom control analysis, so it cannot prevent a counted
+loop from retaining its schedule.
+
+```cpp
+template <bool Filter>
+unsigned sum(unsigned count) {
+  unsigned total = 0;
+  [[loom::unroll(2)]]
+  for (unsigned index = 0; index < count; ++index) {
+    if constexpr (Filter) {
+      if (index & 1u) continue;
+    }
+    total += index;
+  }
+  return total;
+}
+```
+
+`sum<false>` imports as an unconditional scheduled loop. `sum<true>` retains
+the per-iteration filter. CXX performs required-constant checking when parsing
+or instantiating the source, and the importer consumes that selection directly.
+A nonconstant condition produces a source diagnostic, including an
+instantiation location when the failure occurs in a template.
+
+Both ordinary `if` and `if constexpr` support an initializer before the
+semicolon. It executes once before the selected path, including when a false
+constexpr condition has no `else`:
+
+```cpp
+if (unsigned original = value++; selected) return value + original;
+if constexpr (++visits; false) { /* Discarded. */ }
+```
+
+Discarded template arms are not instantiated. Outside templates, both arms
+remain subject to C++ source checking even though only one is imported.
 
 ## Typed views and layouts
 
@@ -280,6 +322,31 @@ func.def @suffix(...) -> (%rows: index, %layout: encoding<layout>,
 
 Every call result and control-flow join names its own extent and layout instead
 of retaining references to values inside the callee or one incoming branch.
+
+Compile-time policies can choose the shape type itself:
+
+```cpp
+template <bool Strided>
+auto make_view(const float* input) {
+  if constexpr (Strided) {
+    auto layout = loom::encoding::layout::strided(11u, 1u);
+    return loom::buffer::view<loomt::dynamic, 8>(input, {3}, layout);
+  } else {
+    auto layout = loom::encoding::layout::dense<2>();
+    return loom::buffer::view<3, 8>(input, {}, layout);
+  }
+}
+
+template <class View>
+float read_view(View source) {
+  return loom::view::load(source, 2, 3);
+}
+```
+
+`make_view<false>` returns a statically shaped `3x8` view with a dense layout;
+`make_view<true>` returns a dynamic-row view with an explicit row stride. Each
+specialization deduces its own return type. The generic reader accepts either
+type, and Loom retains the shape and layout facts through the helper calls.
 
 ## Executable checks and benchmarks
 

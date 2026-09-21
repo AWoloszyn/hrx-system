@@ -50,6 +50,7 @@ enum class ExitFlow { None, Some, All };
 
 // One analysis owns control facts for an immutable source function body.
 // Ordered writes include nested constructs and preserve source symbol identity.
+// Constexpr branches visit only their initializer and source-selected arm.
 // Exit outcomes aggregate each statement's already visited children, and
 // counted-loop classification evaluates each header's constants once after its
 // writes are complete. Queries only consume retained facts; they do not
@@ -81,6 +82,7 @@ class ControlFlow final : private cxx::ASTVisitor {
 
   bool preVisit(cxx::AST* ast) override;
   void postVisit(cxx::AST* ast) override;
+  void visit(cxx::IfStatementAST* ast) override;
   void visit(cxx::AssignmentExpressionAST* ast) override;
   void visit(cxx::CompoundAssignmentExpressionAST* ast) override;
   void visit(cxx::PostIncrExpressionAST* ast) override;

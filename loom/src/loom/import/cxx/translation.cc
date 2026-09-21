@@ -275,15 +275,31 @@ class Translator {
     }
   }
 
+  // Source-selected branches are transparent to every statement/exit path.
+  // Their initializers still execute once; a discarded arm contributes no IR.
+  cxx::StatementAST* selected_statement(cxx::StatementAST* ast) {
+    while (auto* branch = cxx::ast_cast<cxx::IfStatementAST>(ast)) {
+      if (!branch->constexprValue.has_value()) {
+        break;
+      }
+      if (branch->initializer) {
+        statement(branch->initializer);
+      }
+      ast = *branch->constexprValue ? branch->statement : branch->elseStatement;
+    }
+    return ast;
+  }
+
   loom_value_id_t branch_condition(cxx::IfStatementAST* branch) {
-    if (branch->initializer || branch->constexprLoc) {
-      fail(branch, "if initializer/constexpr is outside this slice");
+    if (branch->initializer) {
+      statement(branch->initializer);
     }
     return expression(branch->condition).ssa();
   }
 
   Returned returning_statement(cxx::StatementAST* ast,
                                const ReturnSequence& continuation) {
+    ast = selected_statement(ast);
     if (auto* ret = cxx::ast_cast<cxx::ReturnStatementAST>(ast)) {
       bool returns_void =
           current_function_.return_type->kind() == cxx::TypeKind::kVoid;
@@ -1193,6 +1209,7 @@ class Translator {
   loom_value_id_t continuing_tail(cxx::CompoundStatementAST* owner,
                                   cxx::StatementAST* ast,
                                   cxx::List<cxx::StatementAST*>* remaining) {
+    ast = selected_statement(ast);
     auto flow = control_->continues(ast);
     if (flow == ExitFlow::None) {
       if (ast) {
@@ -1226,6 +1243,12 @@ class Translator {
   }
 
   loom_value_id_t continuing_statement(cxx::StatementAST* ast) {
+    auto* source = ast;
+    ast = selected_statement(ast);
+    if (!ast) {
+      return scalars_.integer(true, LOOM_SCALAR_TYPE_I1,
+                              locations_.get(source));
+    }
     if (control_->continues(ast) == ExitFlow::None) {
       statement(ast);
       return scalars_.integer(true, LOOM_SCALAR_TYPE_I1, locations_.get(ast));
@@ -1261,6 +1284,10 @@ class Translator {
   }
 
   void statement(cxx::StatementAST* ast) {
+    ast = selected_statement(ast);
+    if (!ast) {
+      return;
+    }
     if (auto* compound = cxx::ast_cast<cxx::CompoundStatementAST>(ast)) {
       for (auto* child : cxx::ListView{compound->statementList}) {
         statement(child);
