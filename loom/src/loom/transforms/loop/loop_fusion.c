@@ -501,27 +501,11 @@ static iree_status_t loom_loop_fusion_concat_iter_args(
   return iree_ok_status();
 }
 
-static iree_status_t loom_loop_fusion_map_old_results_to_fused(
-    loom_ir_remap_t* remap, const loom_loop_fusion_for_info_t* first,
-    const loom_loop_fusion_for_info_t* second, loom_op_t* fused_loop) {
-  loom_value_slice_t fused_results = loom_scf_for_results(fused_loop);
-  if (first->results.count > 0) {
-    IREE_RETURN_IF_ERROR(loom_ir_remap_map_values(remap, first->results.values,
-                                                  fused_results.values,
-                                                  first->results.count));
-  }
-  if (second->results.count > 0) {
-    IREE_RETURN_IF_ERROR(loom_ir_remap_map_values(
-        remap, second->results.values,
-        fused_results.values + first->results.count, second->results.count));
-  }
-  return iree_ok_status();
-}
-
-static iree_status_t loom_loop_fusion_set_fused_result_types(
+static iree_status_t loom_loop_fusion_prepare_fused_result_types(
     loom_loop_fusion_context_t* context,
     const loom_loop_fusion_for_info_t* first,
-    const loom_loop_fusion_for_info_t* second, loom_op_t* fused_loop) {
+    const loom_loop_fusion_for_info_t* second,
+    const loom_value_id_t* fused_results, loom_type_t* fused_result_types) {
   loom_ir_remap_t remap = {0};
   IREE_RETURN_IF_ERROR(loom_ir_remap_initialize(
       context->module, context->module, context->fusion_arena,
@@ -529,27 +513,26 @@ static iree_status_t loom_loop_fusion_set_fused_result_types(
           .allow_unmapped_values = true,
       },
       &remap));
-  IREE_RETURN_IF_ERROR(loom_loop_fusion_map_old_results_to_fused(
-      &remap, first, second, fused_loop));
-
-  loom_value_slice_t fused_results = loom_scf_for_results(fused_loop);
-  loom_type_t* first_result_types = NULL;
-  IREE_RETURN_IF_ERROR(loom_ir_remap_value_types(&remap, first->results.values,
-                                                 first->results.count,
-                                                 &first_result_types));
-  for (uint16_t i = 0; i < first->results.count; ++i) {
-    IREE_RETURN_IF_ERROR(loom_rewriter_set_value_type(
-        context->rewriter, fused_results.values[i], first_result_types[i]));
+  if (first->results.count > 0) {
+    IREE_RETURN_IF_ERROR(loom_ir_remap_map_values(
+        &remap, first->results.values, fused_results, first->results.count));
   }
-
-  loom_type_t* second_result_types = NULL;
-  IREE_RETURN_IF_ERROR(loom_ir_remap_value_types(&remap, second->results.values,
-                                                 second->results.count,
-                                                 &second_result_types));
+  if (second->results.count > 0) {
+    IREE_RETURN_IF_ERROR(loom_ir_remap_map_values(
+        &remap, second->results.values, fused_results + first->results.count,
+        second->results.count));
+  }
+  for (uint16_t i = 0; i < first->results.count; ++i) {
+    IREE_RETURN_IF_ERROR(loom_ir_remap_type(
+        &remap,
+        loom_module_value_type(context->module, first->results.values[i]),
+        &fused_result_types[i]));
+  }
   for (uint16_t i = 0; i < second->results.count; ++i) {
-    IREE_RETURN_IF_ERROR(loom_rewriter_set_value_type(
-        context->rewriter, fused_results.values[first->results.count + i],
-        second_result_types[i]));
+    IREE_RETURN_IF_ERROR(loom_ir_remap_type(
+        &remap,
+        loom_module_value_type(context->module, second->results.values[i]),
+        &fused_result_types[first->results.count + i]));
   }
   return iree_ok_status();
 }
@@ -702,6 +685,17 @@ static iree_status_t loom_loop_fusion_fuse_pair(
 
   const uint16_t result_count = iter_arg_count;
 
+  loom_value_id_t* reserved_results = NULL;
+  loom_type_t* result_types = NULL;
+  if (result_count > 0) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(scratch_arena, result_count,
+                                                   sizeof(*reserved_results),
+                                                   (void**)&reserved_results));
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(scratch_arena, result_count,
+                                                   sizeof(*result_types),
+                                                   (void**)&result_types));
+  }
+
   loom_value_id_t* provisional_yield_values = NULL;
   if (result_count > 0) {
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -744,20 +738,27 @@ static iree_status_t loom_loop_fusion_fuse_pair(
   loom_builder_set_before(builder, first->op);
 
   loom_op_t* fused_loop = NULL;
-  iree_status_t status = loom_scf_for_build(
-      builder, /*build_flags=*/0, first->domain.lower_bound,
-      first->domain.upper_bound, first->domain.step, iter_args, iter_arg_count,
-      /*result_types=*/NULL, NULL, 0, /*pipeline_depth=*/LOOM_VALUE_ID_INVALID,
-      LOOM_VALUE_ID_INVALID,
-      /*unroll_policy=*/0, /*unroll_schedule=*/0, first->op->location,
-      &fused_loop);
+  iree_status_t status = iree_ok_status();
+  if (result_count > 0) {
+    status =
+        loom_builder_reserve_results(builder, result_count, reserved_results);
+  }
+  if (iree_status_is_ok(status) && result_count > 0) {
+    status = loom_loop_fusion_prepare_fused_result_types(
+        context, first, second, reserved_results, result_types);
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_scf_for_build(
+        builder, /*build_flags=*/0, first->domain.lower_bound,
+        first->domain.upper_bound, first->domain.step, iter_args,
+        iter_arg_count, result_types, NULL, 0,
+        /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
+        /*unroll_policy=*/0, /*unroll_schedule=*/0, first->op->location,
+        &fused_loop);
+  }
   if (iree_status_is_ok(status)) {
     status = loom_loop_fusion_copy_result_names(context->module, first, second,
                                                 fused_loop);
-  }
-  if (iree_status_is_ok(status)) {
-    status = loom_loop_fusion_set_fused_result_types(context, first, second,
-                                                     fused_loop);
   }
 
   if (iree_status_is_ok(status)) {
