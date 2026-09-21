@@ -637,6 +637,70 @@ static iree_status_t loom_stage_loop_carried_fragments_remap_value(
   return loom_ir_remap_resolve_value(remap, source, out_target);
 }
 
+// Reserves the retained result identities and projects the source result type
+// scheme onto them. Invariant retained columns stay on the builder's inferred
+// path, avoiding remap state for the common fragment-only recurrence.
+static iree_status_t loom_stage_loop_carried_fragments_reserve_result_scheme(
+    loom_stage_loop_carried_fragments_context_t* context, const loom_op_t* op,
+    const uint16_t* staged_index_by_ordinal, uint16_t kept_count,
+    loom_type_t** out_result_types) {
+  *out_result_types = NULL;
+  const loom_value_slice_t iter_args = loom_scf_for_iter_args(op);
+  const loom_value_id_t* source_results = loom_op_const_results(op);
+  bool requires_result_scheme = false;
+  for (uint16_t i = 0; i < op->result_count; ++i) {
+    if (staged_index_by_ordinal[i] == UINT16_MAX &&
+        !loom_type_equal(
+            loom_module_value_type(context->module, source_results[i]),
+            loom_module_value_type(context->module, iter_args.values[i]))) {
+      requires_result_scheme = true;
+      break;
+    }
+  }
+  if (!requires_result_scheme) {
+    return iree_ok_status();
+  }
+
+  loom_type_t* result_types = NULL;
+  loom_value_id_t* reserved_results = NULL;
+  IREE_RETURN_IF_ERROR(
+      iree_arena_allocate_array(context->scratch_arena, kept_count,
+                                sizeof(*result_types), (void**)&result_types));
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      context->scratch_arena, kept_count, sizeof(*reserved_results),
+      (void**)&reserved_results));
+  IREE_RETURN_IF_ERROR(loom_builder_reserve_results(
+      &context->rewriter->builder, kept_count, reserved_results));
+
+  loom_ir_remap_t remap = {0};
+  IREE_RETURN_IF_ERROR(loom_ir_remap_initialize(
+      context->module, context->module, context->scratch_arena,
+      &(loom_ir_remap_options_t){
+          .allow_unmapped_values = true,
+          .remap_symbol = loom_ir_remap_symbol_callback_empty(),
+      },
+      &remap));
+  uint16_t kept_ordinal = 0;
+  for (uint16_t i = 0; i < op->result_count; ++i) {
+    if (staged_index_by_ordinal[i] != UINT16_MAX) {
+      continue;
+    }
+    IREE_RETURN_IF_ERROR(loom_ir_remap_map_value(
+        &remap, source_results[i], reserved_results[kept_ordinal++]));
+  }
+  kept_ordinal = 0;
+  for (uint16_t i = 0; i < op->result_count; ++i) {
+    if (staged_index_by_ordinal[i] != UINT16_MAX) {
+      continue;
+    }
+    IREE_RETURN_IF_ERROR(loom_ir_remap_type(
+        &remap, loom_module_value_type(context->module, source_results[i]),
+        &result_types[kept_ordinal++]));
+  }
+  *out_result_types = result_types;
+  return iree_ok_status();
+}
+
 static iree_status_t loom_stage_loop_carried_fragments_rewrite(
     loom_stage_loop_carried_fragments_context_t* context, loom_op_t* op,
     loom_op_t* yield,
@@ -803,11 +867,14 @@ static iree_status_t loom_stage_loop_carried_fragments_rewrite(
     build_flags |= LOOM_SCF_FOR_BUILD_FLAG_HAS_PIPELINE_DEPTH;
     pipeline_depth = loom_scf_for_pipeline_depth(op);
   }
+  loom_type_t* result_types = NULL;
+  IREE_RETURN_IF_ERROR(loom_stage_loop_carried_fragments_reserve_result_scheme(
+      context, op, staged_index_by_ordinal, kept_count, &result_types));
   loom_op_t* new_loop = NULL;
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &context->rewriter->builder, build_flags, loom_scf_for_lower_bound(op),
       loom_scf_for_upper_bound(op), loom_scf_for_step(op), kept_iter_args,
-      kept_count, /*result_types=*/NULL, /*tied_results=*/NULL,
+      kept_count, result_types, /*tied_results=*/NULL,
       /*tied_result_count=*/0, pipeline_depth, unroll_factor, unroll_policy,
       unroll_schedule, op->location, &new_loop));
 
