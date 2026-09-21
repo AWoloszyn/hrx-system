@@ -206,3 +206,17 @@ CHECK: %sum = s_add_u32 %base, %*
 CHECK: %* = s_mov_b32 0
 CHECK: %wide = concat(%sum, %*) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
 CHECK: return %wide
+
+// ====
+
+amdgpu.target<gfx942> @target
+
+// Every result keeps its matching input, including mixed address domains.
+func.def target(@target) @bounded_addresses(%row: index, %column: index, %byte_offset: offset) -> (index, index, offset) {
+  %bounded_row, %bounded_column, %aligned_offset = index.assume %row, %column, %byte_offset [range(%row, 0, 31), range(%column, 0, 63), mul(%byte_offset, 16)] : index, index, offset
+  func.return %bounded_row, %bounded_column, %aligned_offset : index, index, offset
+}
+
+// ----
+CHECK: low.func.def * @bounded_addresses(%bounded_row: reg<amdgpu.sgpr>, %bounded_column: reg<amdgpu.sgpr>, %aligned_offset: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr x2>) asm {
+CHECK: return %bounded_row, %bounded_column, %aligned_offset

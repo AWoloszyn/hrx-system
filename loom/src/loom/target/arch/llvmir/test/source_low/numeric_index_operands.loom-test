@@ -142,3 +142,12 @@ func.def target(@target) @high_bit_offset_add(%input: offset) -> (i64) {
   %wide = index.cast %sum : offset to i64
   func.return %wide : i64
 }
+
+// ====
+
+llvmir.target<object> @target {data_layout = "e-p:64:64-i64:64-n8:16:32:64-S128", triple = "loom-direct64-unknown-none"}
+
+func.def target(@target) @bounded_addresses(%row: index, %column: index, %byte_offset: offset) -> (index, index, offset) {
+  %bounded_row, %bounded_column, %aligned_offset = index.assume %row, %column, %byte_offset [range(%row, 0, 31), range(%column, 0, 63), mul(%byte_offset, 16)] : index, index, offset
+  func.return %bounded_row, %bounded_column, %aligned_offset : index, index, offset
+}
