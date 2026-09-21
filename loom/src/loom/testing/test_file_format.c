@@ -244,14 +244,16 @@ static iree_status_t loom_test_file_format_case(
       .user_data = &collector,
   };
   loom_module_t* module = NULL;
+  // Parse the full case so EOF diagnostics retain their original locations.
+  // The parser leaves final trivia unattached for verbatim output.
   iree_status_t status = loom_test_file_format_parse_module(
-      input_slices.module_source, filename, context, block_pool,
-      diagnostic_sink, low_asm_environment, &module);
+      test_case->input, filename, context, block_pool, diagnostic_sink,
+      low_asm_environment, &module);
   if (iree_status_is_ok(status) &&
       loom_test_file_format_case_verifies_input(test_case)) {
     collector.format_options.module = module;
-    status = loom_test_file_format_verify_module(
-        input_slices.module_source, filename, module, diagnostic_sink);
+    status = loom_test_file_format_verify_module(test_case->input, filename,
+                                                 module, diagnostic_sink);
   }
 
   if (!iree_status_is_ok(status)) {

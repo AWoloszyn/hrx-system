@@ -94,7 +94,7 @@ check.case @mlp {
   check.return
 }
 
-check.benchmark<@mlp>
+check.benchmark<@mlp> @mlp_sweep
 check.benchmark<@mlp> @decode {rows = 2}
 check.benchmark<@mlp> @full {rows = 3584}
 )");

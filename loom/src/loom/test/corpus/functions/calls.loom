@@ -15,7 +15,7 @@ check.case @arithmetic_case {
   check.return
 }
 
-check.benchmark<@arithmetic_case>
+check.benchmark<@arithmetic_case> @arithmetic_benchmark
 
 func.def public @swap(%a: i64, %b: i64) -> (i64, i64) {
   func.return %b, %a : i64, i64

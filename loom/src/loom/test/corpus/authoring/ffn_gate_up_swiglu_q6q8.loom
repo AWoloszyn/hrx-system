@@ -214,4 +214,4 @@ check.case public @ffn_gate_up_swiglu_q6q8_zero_case {
   check.return
 }
 
-check.benchmark<@ffn_gate_up_swiglu_q6q8_zero_case>
+check.benchmark<@ffn_gate_up_swiglu_q6q8_zero_case> @ffn_gate_up_swiglu_q6q8_zero

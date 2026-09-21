@@ -1913,10 +1913,8 @@ static void loom_verify_symbol_reference(
     loom_verify_state_t* state, const loom_op_t* op,
     const loom_symbol_reference_descriptor_t* reference_descriptor,
     loom_symbol_ref_t ref, loom_diagnostic_field_ref_t field_ref) {
-  if (!loom_symbol_ref_is_valid(ref)) {
-    return;
-  }
-
+  // Optional absence has no symbol payload. A present symbol attribute must
+  // name a valid entry, including when its field is optional.
   if (ref.module_id != 0) {
     loom_diagnostic_param_t params[] = {
         loom_param_with_field_ref(loom_param_u32(ref.module_id), field_ref),

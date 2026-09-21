@@ -64,4 +64,4 @@ check.case public @fragment_repack_bf16_equivalence_case {
   check.return
 }
 
-check.benchmark<@fragment_repack_bf16_equivalence_case>
+check.benchmark<@fragment_repack_bf16_equivalence_case> @fragment_repack_bf16_equivalence

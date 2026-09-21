@@ -43,7 +43,7 @@ check.case public @memset_i8_case {
   check.return
 }
 
-check.benchmark<@memset_i8_case>
+check.benchmark<@memset_i8_case> @memset_i8_sweep
 
 check.benchmark<@memset_i8_case> @memset_i8_tail {element_length = 17}
 

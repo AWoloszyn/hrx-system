@@ -10,7 +10,7 @@ check.case public @scale_i32_buffer_case {
   check.return
 }
 
-check.benchmark<@scale_i32_buffer_case>
+check.benchmark<@scale_i32_buffer_case> @scale_i32_buffer_sweep
 
 check.benchmark<@scale_i32_buffer_case> @scale_i32_buffer_tail {element_count = 17}
 

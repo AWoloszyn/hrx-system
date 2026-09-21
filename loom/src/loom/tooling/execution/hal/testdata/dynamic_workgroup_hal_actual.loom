@@ -26,4 +26,4 @@ check.case @dynamic_workgroup_hal_actual_case {
   check.return
 }
 
-check.benchmark<@dynamic_workgroup_hal_actual_case>
+check.benchmark<@dynamic_workgroup_hal_actual_case> @dynamic_workgroup_hal_actual

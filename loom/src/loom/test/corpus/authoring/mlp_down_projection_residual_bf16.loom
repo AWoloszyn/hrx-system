@@ -75,7 +75,7 @@ check.case public @mlp_down_projection_residual_case {
   check.return
 }
 
-check.benchmark<@mlp_down_projection_residual_case>
+check.benchmark<@mlp_down_projection_residual_case> @mlp_down_projection_residual
 
 check.benchmark<@mlp_down_projection_residual_case> @mlp_down_projection_residual_decode {rows = 2}
 

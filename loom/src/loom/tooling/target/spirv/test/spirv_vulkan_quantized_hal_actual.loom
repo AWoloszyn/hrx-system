@@ -58,4 +58,4 @@ check.case @quantized_projection_u8_scalar_128_case {
   check.return
 }
 
-check.benchmark<@quantized_projection_u8_scalar_128_case>
+check.benchmark<@quantized_projection_u8_scalar_128_case> @quantized_projection_u8_scalar_128_benchmark

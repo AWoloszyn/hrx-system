@@ -18,4 +18,4 @@ check.case @complete_authoring_copy_i32_case {
   check.return
 }
 
-check.benchmark<@complete_authoring_copy_i32_case>
+check.benchmark<@complete_authoring_copy_i32_case> @complete_authoring_copy_i32_benchmark

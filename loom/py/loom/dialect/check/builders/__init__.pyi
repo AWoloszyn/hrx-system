@@ -203,7 +203,7 @@ class CheckBuilder(DialectBuilder):
         self,
         *,
         case_ref: str,
-        benchmark: str | None = ...,
+        benchmark: str,
         attrs: Mapping[str, Any] | None = ...,
         location_id: int | None = ...,
     ) -> None: ...

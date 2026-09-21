@@ -29,8 +29,8 @@ rule that `iree_status_t` is not a control-flow token:
   call returning non-OK are never consumed.
 - The metadata, retained-index, and shared module public boundaries are the
   only places that consume the exact code-only marker, and only when an error
-  was counted by the bytecode decoder. The shared module boundary does this
-  before invoking the general IR verifier. The boundaries publish the
+  was counted by the bytecode decoder. IR semantic verification is a separate
+  caller-owned step after materialization. The boundaries publish the
   diagnostic result, withhold invalid output objects, and return OK.
 - Every other non-OK status propagates unchanged. `IREE_STATUS_DEFERRED` is
   reserved within the private bytecode-reader call graph, so a diagnostic sink

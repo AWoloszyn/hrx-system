@@ -155,7 +155,7 @@ check.case @private_case {
 }
 
 check.benchmark<@scale_case> @scale_latency
-check.benchmark<@private_case>
+check.benchmark<@private_case> @private
 )");
   ASSERT_NE(module, nullptr);
 
@@ -198,7 +198,8 @@ check.benchmark<@private_case>
   EXPECT_EQ(plan.benchmarks[0].sample_count, 1u);
   EXPECT_TRUE(
       iree_string_view_equal(plan.benchmarks[1].name, IREE_SV("private")));
-  EXPECT_EQ(plan.benchmarks[1].symbol, nullptr);
+  ASSERT_NE(plan.benchmarks[1].symbol, nullptr);
+  EXPECT_TRUE(loom_symbol_ref_is_valid(plan.benchmarks[1].ref));
   EXPECT_EQ(plan.benchmarks[1].case_index, 1u);
   EXPECT_EQ(plan.benchmarks[1].sample_count, 1u);
   EXPECT_EQ(plan.issue_count, 0u);

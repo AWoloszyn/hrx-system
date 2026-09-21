@@ -619,10 +619,10 @@ check_expect_event = Op(
 check_benchmark = Op(
     "check.benchmark",
     group=check_ops,
-    doc="Declares a benchmark slice over a check.case.",
+    doc="Declares a named benchmark slice over a check.case. The required symbol identifies the record in linking, reports, and benchmark selection.",
     traits=[SYMBOL_DEFINE],
     attrs=[
-        AttrDef("benchmark", "symbol", optional=True),
+        AttrDef("benchmark", "symbol"),
         AttrDef(
             "case_ref",
             "symbol",
@@ -639,7 +639,7 @@ check_benchmark = Op(
     ),
     format=[
         TemplateParam("case_ref"),
-        OptionalGroup([SymbolRef("benchmark")], anchor="benchmark"),
+        SymbolRef("benchmark"),
         AttrDict("attrs"),
     ],
     examples=[

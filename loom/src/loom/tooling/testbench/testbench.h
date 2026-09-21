@@ -413,13 +413,13 @@ typedef struct loom_testbench_case_plan_t {
 } loom_testbench_case_plan_t;
 
 typedef struct loom_testbench_benchmark_plan_t {
-  // Optional module-local symbol reference naming this benchmark policy.
+  // Module-local symbol reference naming this benchmark record.
   loom_symbol_ref_t ref;
-  // Symbol table entry for |ref|, or NULL when the benchmark is anonymous.
+  // Symbol table entry for |ref|.
   const loom_symbol_t* symbol;
   // Defining check.benchmark operation.
   const loom_op_t* op;
-  // Explicit symbol name or stable case-derived anonymous name.
+  // Explicit symbol name used for reports and benchmark selection.
   iree_string_view_t name;
   // Referenced check.case symbol.
   loom_symbol_ref_t case_ref;

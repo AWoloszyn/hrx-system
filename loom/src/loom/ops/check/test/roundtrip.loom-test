@@ -39,7 +39,7 @@ check.case @fixture_case {
   check.return
 }
 
-check.benchmark<@fixture_case>
+check.benchmark<@fixture_case> @fixture_sweep
 
 check.benchmark<@fixture_case> @fixture_m16_n24 {m = 16, n = 24}
 

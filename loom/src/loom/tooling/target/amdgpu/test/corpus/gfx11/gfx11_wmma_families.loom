@@ -165,4 +165,4 @@ check.case public @gfx11_wmma_families_case {
   check.return
 }
 
-check.benchmark<@gfx11_wmma_families_case>
+check.benchmark<@gfx11_wmma_families_case> @gfx11_wmma_families_benchmark

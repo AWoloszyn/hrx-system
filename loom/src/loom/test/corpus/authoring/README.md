@@ -33,7 +33,7 @@ profiling, compile-time measurement, and soak runs belong to explicit
 | Local unroll intent | `ffn_gate_up_swiglu_q6q8.loom` keeps block/part loops structured and marks the tiny trip-count loops with `unroll`. |
 | Logical indexing | The examples use index/view math for logical rows, blocks, lanes, byte positions, and dense tensor coordinates. |
 | Dynamic case parameters | `mlp_down_projection_residual_bf16.loom` names `rows` on a `check.param.choice` and threads it through shapes, launch geometry, and the kernel ABI. |
-| Benchmark slices | `mlp_down_projection_residual_bf16.loom` has an anonymous full sweep plus named decode/full rows with assignment dictionaries. |
+| Benchmark slices | `mlp_down_projection_residual_bf16.loom` names the full sweep and the decode/full rows with assignment dictionaries. |
 | HIP C++ porting motifs | `hip/README.md` maps HIP/CUDA kernel habits to Loom source spellings, proof commands, diagnostics, and authoring-level report workflows. |
 | Packed field contracts | `hip/packed_field_contracts.loom` shows q2/q3/q4/q5/q6-style fields as explicit storage/decode/repack contracts instead of fake scalar element types. |
 | HIP shared memory tile | `hip/shared_memory_tile.loom` stages a 64-lane i32 tile through workgroup memory, synchronizes, and reads a reversed lane so correctness depends on LDS traffic. |
@@ -553,11 +553,12 @@ tensor shapes, scalar kernel argument, and dynamic buffer views. A separately
 bound row-capacity config controls reusable launch geometry, and the kernel
 relates the runtime row count to that capacity with `index.assume`.
 
-The anonymous `check.benchmark<@mlp_down_projection_residual_case>` sweeps all
-case samples and receives generated benchmark names. The named benchmark rows
-pin specific samples with assignment dictionaries:
+The `@mlp_down_projection_residual` benchmark sweeps all case samples. Each
+benchmark has an explicit symbol for selection and reporting; assignment
+dictionaries select specific samples:
 
 ```loom
+check.benchmark<@mlp_down_projection_residual_case> @mlp_down_projection_residual
 check.benchmark<@mlp_down_projection_residual_case> @mlp_down_projection_residual_decode {rows = 2}
 check.benchmark<@mlp_down_projection_residual_case> @mlp_down_projection_residual_full {rows = 3584}
 ```
@@ -679,7 +680,7 @@ sentinel-sized views, late `index.cast` byte-address conversions, and ggml-style
 `nb*` byte strides typed as `index`.
 
 `check.case` owns correctness policy for a workload. It creates inputs, calls
-the unit under test, and states expectations. `check.benchmark<@case>` selects
+the unit under test, and states expectations. `check.benchmark<@case> @name` selects
 which case samples should be timed. Benchmark rows name workloads; the runner
 chooses timing rigor, output format, profiling, compile-time measurement, and
 batching.
@@ -709,6 +710,6 @@ real representation primitive or a sharper helper boundary, not a source
 generator.
 
 The benchmark style scales by absence. A model library can carry many
-`check.benchmark<@case>` rows because each row is just a workload selection.
+`check.benchmark<@case> @name` rows because each row is just a named workload selection.
 Repeated timing dictionaries, profiling flags, and per-row harness policy would
 make the source noisy and would couple authored IR to one command-line tool.
