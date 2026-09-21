@@ -1,7 +1,15 @@
 diff --git a/src/parser/cxx/parser.cc b/src/parser/cxx/parser.cc
 --- a/src/parser/cxx/parser.cc
 +++ b/src/parser/cxx/parser.cc
-@@ -9878,6 +9878,7 @@
+@@ -9870,14 +9870,15 @@
+     functionSymbol->setDefined(true);
+
+     if (classDepth_) functionSymbol->setInline(true);
+
+     binder_.applyFunctionDefinitionKind(functionSymbol, functionBody);
+
+     binder_.applyDeclarationAttributes(functionSymbol, attributes);
+
      auto ast = FunctionDefinitionAST::create(pool_);
      yyast = ast;
 
