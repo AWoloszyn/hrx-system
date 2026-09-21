@@ -1,0 +1,102 @@
+// RUN: emit pipeline-plan @missing_lane_axis max-instances=2
+
+// The unit temporal axis cannot stand in for a multi-lane output's lane axis.
+
+func.decl @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> @missing_lane_axis() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 2 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<2x1x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<1x4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<2x1x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  // ERROR@+1: LOWERING/060 {lane_count="2"}
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<1x4xi32>
+  pipeline.return
+}
+
+// ====
+
+// RUN: emit pipeline-plan @unit_lane_extent max-instances=2
+
+// A single-lane group still requires its explicit lane axis to have extent one.
+
+func.decl @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> @unit_lane_extent() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x1x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<2x1x4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<1x1x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  // ERROR@+1: LOWERING/061 {extent="2", lane_count="1"}
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<2x1x4xi32>
+  pipeline.return
+}
+
+// ====
+
+// RUN: emit pipeline-plan @missing_temporal_axis max-instances=2
+
+// Unit temporal axes remain part of the record shape even for a single record.
+
+func.decl @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> @missing_temporal_axis() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x1x1x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<1x4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<1x1x1x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  // ERROR@+1: LOWERING/062 {rank="1", expected_rank="2"}
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<1x4xi32>
+  pipeline.return
+}
+
+// ====
+
+// RUN: emit pipeline-plan @extra_temporal_axis max-instances=2
+
+// Extra unit axes cannot be discarded to match a one-dimensional record shape.
+
+func.decl @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> @extra_temporal_axis() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x1x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<1x1x1x4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<1x1x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  // ERROR@+1: LOWERING/062 {rank="3", expected_rank="1"}
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<1x1x1x4xi32>
+  pipeline.return
+}
+
+// ====
+
+// RUN: emit pipeline-plan @equal_count_different_shape max-instances=2
+
+// Equal record counts do not make different temporal shapes interchangeable.
+
+func.decl @copy(%input: buffer, %output: buffer)
+
+pipeline.def<kernel> @equal_count_different_shape() launch(%input: buffer, %output: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x2x3x4xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<1x3x2x4xi32>
+  %input_flow = pipeline.scatter %input_view across %workers : view<1x2x3x4xi32>, group -> pipeline.flow<tile<4xi32>>
+  %output_flow = pipeline.stage @copy on %workers(%input_flow) : (group, pipeline.flow<tile<4xi32>>) -> (pipeline.flow<tile<4xi32>>)
+  // ERROR@+1: LOWERING/063 {dimension="0", extent="3", expected_extent="2"}
+  pipeline.write %output_flow to %output_view : pipeline.flow<tile<4xi32>>, view<1x3x2x4xi32>
+  pipeline.return
+}

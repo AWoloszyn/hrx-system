@@ -59,6 +59,7 @@ loom_cc_library(
     iree::io::stream
     loom::analysis::liveness
     loom::analysis::liveness_json
+    loom::analysis::pipeline_plan
     loom::codegen::low::allocation
     loom::codegen::low::allocation_json
     loom::codegen::low::descriptors
@@ -87,6 +88,7 @@ loom_cc_library(
     loom::ops::kernel
     loom::ops::low
     loom::ops::op_defs
+    loom::ops::pipeline
     loom::ops::target
     loom::pass::builtin_registry
     loom::pass::pipeline
@@ -114,6 +116,7 @@ loom_cc_library(
     loom::tooling::input
     loom::tools::loom-format::convert
     loom::util::diff
+    loom::util::fact_table
     loom::util::json
     loom::util::stream
     loom::verify

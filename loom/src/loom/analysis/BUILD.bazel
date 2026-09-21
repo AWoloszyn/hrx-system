@@ -520,6 +520,8 @@ loom_cc_library(
     hdrs = ["pipeline_plan.h"],
     deps = [
         ":type_refinement",
+        "//loom/src/loom/error:emitter",
+        "//loom/src/loom/error:error_defs",
         "//loom/src/loom/ir",
         "//loom/src/loom/ir:facts",
         "//loom/src/loom/ops:combining",
@@ -542,6 +544,7 @@ loom_cc_test(
     deps = [
         ":pipeline_firing",
         ":pipeline_plan",
+        "//loom/src/loom/error:error_defs",
         "//loom/src/loom/format/text:parser",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/encoding",

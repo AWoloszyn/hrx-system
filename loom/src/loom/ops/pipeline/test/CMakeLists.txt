@@ -13,6 +13,9 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "input_record_shapes.loom-test"
+    "output_record_shapes.loom-test"
+    "plan.loom-test"
     "roundtrip.loom-test"
     "verify.loom-test"
 )

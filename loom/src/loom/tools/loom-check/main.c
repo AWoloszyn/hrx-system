@@ -276,6 +276,8 @@ int loom_check_main(int argc, char** argv,
       "              low-allocation, low-allocation-json, low-packet-json,\n"
       "              low-compile-report @function,\n"
       "              target-low-registry-manifest, and source-low.\n"
+      "              pipeline-plan @pipeline max-instances=<count> checks\n"
+      "              concrete pipeline planning diagnostics without a target.\n"
       "              source-low emits target-lowering\n"
       "              artifacts or pipeline text and accepts\n"
       "              @function target=family:selector for specialization,\n"

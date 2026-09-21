@@ -9,6 +9,7 @@
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "loom/analysis/pipeline_firing.h"
+#include "loom/error/error_catalog.h"
 #include "loom/format/text/parser.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
@@ -65,7 +66,8 @@ class PipelinePlanTest : public ::testing::Test {
   }
 
   iree_status_t BuildPlan(loom_module_t* module, iree_string_view_t name,
-                          loom_pipeline_plan_t* out_plan) {
+                          loom_pipeline_plan_t* out_plan, bool* out_valid,
+                          iree_diagnostic_emitter_t diagnostic_emitter = {}) {
     const loom_func_like_t pipeline = FindPipeline(module, name);
     loom_value_fact_table_t facts = {};
     IREE_RETURN_IF_ERROR(loom_value_fact_table_initialize(
@@ -76,7 +78,8 @@ class PipelinePlanTest : public ::testing::Test {
                                     (loom_pipeline_plan_limits_t){
                                         /*.instance_count=*/16,
                                     },
-                                    &analysis_arena_, out_plan);
+                                    diagnostic_emitter, &analysis_arena_,
+                                    out_plan, out_valid);
   }
 
   iree_arena_block_pool_t block_pool_ = {};
@@ -128,11 +131,14 @@ pipeline.def<kernel> @split_k() launch(%lhs: buffer, %rhs: buffer, %bias: buffer
   IREE_ASSERT_OK(loom_value_fact_table_compute(&facts, module.get(), pipeline));
 
   loom_pipeline_plan_t plan = {};
+  bool plan_valid = false;
   IREE_ASSERT_OK(loom_pipeline_plan_build(module.get(), pipeline, &facts,
                                           (loom_pipeline_plan_limits_t){
                                               /*.instance_count=*/16,
                                           },
-                                          &analysis_arena_, &plan));
+                                          {}, &analysis_arena_, &plan,
+                                          &plan_valid));
+  ASSERT_TRUE(plan_valid);
 
   ASSERT_EQ(plan.binding_count, 4u);
   EXPECT_EQ(plan.bindings[0].access, LOOM_PIPELINE_BINDING_ACCESS_FLAG_READ);
@@ -216,7 +222,9 @@ pipeline.def<kernel> @split_k() launch(%lhs: buffer, %rhs: buffer, %bias: buffer
                                (loom_pipeline_plan_limits_t){
                                    /*.instance_count=*/2,
                                },
-                               &analysis_arena_, &undersized_plan));
+                               {}, &analysis_arena_, &undersized_plan,
+                               &plan_valid));
+  EXPECT_FALSE(plan_valid);
 }
 
 TEST_F(PipelinePlanTest, CombinesParallelFoldedStagesIntoOneWorkerBehavior) {
@@ -248,7 +256,10 @@ pipeline.def<kernel> @parallel_folds() launch(%left: buffer, %right: buffer, %sh
 )");
 
   loom_pipeline_plan_t plan = {};
-  IREE_ASSERT_OK(BuildPlan(module.get(), IREE_SV("parallel_folds"), &plan));
+  bool plan_valid = false;
+  IREE_ASSERT_OK(
+      BuildPlan(module.get(), IREE_SV("parallel_folds"), &plan, &plan_valid));
+  ASSERT_TRUE(plan_valid);
 
   ASSERT_EQ(plan.group_count, 1u);
   ASSERT_EQ(plan.instance_count, 1u);
@@ -292,7 +303,10 @@ pipeline.def<kernel> @frames() launch(%input: buffer, %output: buffer) {
 }
 )");
   loom_pipeline_plan_t plan = {};
-  IREE_ASSERT_OK(BuildPlan(module.get(), IREE_SV("frames"), &plan));
+  bool plan_valid = false;
+  IREE_ASSERT_OK(
+      BuildPlan(module.get(), IREE_SV("frames"), &plan, &plan_valid));
+  ASSERT_TRUE(plan_valid);
   // A completion stage is not a terminal folded-output worker. Failed flat
   // behavior recognition must not leave a partially initialized fold contract.
   EXPECT_EQ(plan.instances[0].fold_record_count, 0u);
@@ -339,7 +353,10 @@ pipeline.def<kernel> @one_record() launch(%input: buffer, %output: buffer) {
 }
 )");
   loom_pipeline_plan_t plan = {};
-  IREE_ASSERT_OK(BuildPlan(module.get(), IREE_SV("one_record"), &plan));
+  bool plan_valid = false;
+  IREE_ASSERT_OK(
+      BuildPlan(module.get(), IREE_SV("one_record"), &plan, &plan_valid));
+  ASSERT_TRUE(plan_valid);
   loom_pipeline_firing_plan_t firing = {};
   bool valid = false;
   IREE_ASSERT_OK(loom_pipeline_firing_plan_build(&plan, {}, &analysis_arena_,
@@ -373,7 +390,10 @@ pipeline.def<kernel> @encoded() launch(%weight: buffer, %activation: buffer) {
 )");
 
   loom_pipeline_plan_t plan = {};
-  IREE_ASSERT_OK(BuildPlan(module.get(), IREE_SV("encoded"), &plan));
+  bool plan_valid = false;
+  IREE_ASSERT_OK(
+      BuildPlan(module.get(), IREE_SV("encoded"), &plan, &plan_valid));
+  ASSERT_TRUE(plan_valid);
 
   ASSERT_EQ(plan.flow_count, 2u);
   EXPECT_EQ(plan.flows[0].record_count, 3u);
@@ -422,9 +442,10 @@ pipeline.def<kernel> @partial_record() launch(%weight: buffer) {
 )");
 
   loom_pipeline_plan_t plan = {};
+  bool plan_valid = false;
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_INVALID_ARGUMENT,
-      BuildPlan(module.get(), IREE_SV("partial_record"), &plan));
+      BuildPlan(module.get(), IREE_SV("partial_record"), &plan, &plan_valid));
 }
 
 TEST_F(PipelinePlanTest, ConnectsEqualCardinalityStageGroupsPointwise) {
@@ -460,11 +481,14 @@ pipeline.def<kernel> @chain() launch(%input: buffer, %output: buffer) {
   IREE_ASSERT_OK(loom_value_fact_table_compute(&facts, module.get(), pipeline));
 
   loom_pipeline_plan_t plan = {};
+  bool plan_valid = false;
   IREE_ASSERT_OK(loom_pipeline_plan_build(module.get(), pipeline, &facts,
                                           (loom_pipeline_plan_limits_t){
                                               /*.instance_count=*/16,
                                           },
-                                          &analysis_arena_, &plan));
+                                          {}, &analysis_arena_, &plan,
+                                          &plan_valid));
+  ASSERT_TRUE(plan_valid);
 
   ASSERT_EQ(plan.instance_count, 2u);
   ASSERT_EQ(plan.edge_count, 4u);
@@ -514,7 +538,9 @@ pipeline.def<kernel> @chain() launch(%input: buffer, %output: buffer) {
 )");
 
   loom_pipeline_plan_t plan = {};
-  IREE_ASSERT_OK(BuildPlan(module.get(), IREE_SV("chain"), &plan));
+  bool plan_valid = false;
+  IREE_ASSERT_OK(BuildPlan(module.get(), IREE_SV("chain"), &plan, &plan_valid));
+  ASSERT_TRUE(plan_valid);
 
   ASSERT_EQ(plan.group_count, 1u);
   EXPECT_EQ(plan.groups[0].stage_count, 2u);
@@ -578,7 +604,10 @@ pipeline.def<kernel> @fanout() launch(%input: buffer, %output: buffer) {
 )");
 
   loom_pipeline_plan_t plan = {};
-  IREE_ASSERT_OK(BuildPlan(module.get(), IREE_SV("fanout"), &plan));
+  bool plan_valid = false;
+  IREE_ASSERT_OK(
+      BuildPlan(module.get(), IREE_SV("fanout"), &plan, &plan_valid));
+  ASSERT_TRUE(plan_valid);
 
   ASSERT_EQ(plan.group_count, 1u);
   EXPECT_EQ(plan.groups[0].stage_count, 3u);
@@ -617,7 +646,10 @@ pipeline.def<kernel> @broadcast() launch(%input: buffer) {
 )");
 
   loom_pipeline_plan_t plan = {};
-  IREE_ASSERT_OK(BuildPlan(module.get(), IREE_SV("broadcast"), &plan));
+  bool plan_valid = false;
+  IREE_ASSERT_OK(
+      BuildPlan(module.get(), IREE_SV("broadcast"), &plan, &plan_valid));
+  ASSERT_TRUE(plan_valid);
 
   ASSERT_EQ(plan.binding_count, 1u);
   EXPECT_EQ(plan.bindings[0].access, LOOM_PIPELINE_BINDING_ACCESS_FLAG_READ);
@@ -678,11 +710,14 @@ pipeline.def<kernel> @fanout() launch(%input: buffer, %output0: buffer, %output1
   IREE_ASSERT_OK(loom_value_fact_table_compute(&facts, module.get(), pipeline));
 
   loom_pipeline_plan_t plan = {};
+  bool plan_valid = false;
   IREE_ASSERT_OK(loom_pipeline_plan_build(module.get(), pipeline, &facts,
                                           (loom_pipeline_plan_limits_t){
                                               /*.instance_count=*/16,
                                           },
-                                          &analysis_arena_, &plan));
+                                          {}, &analysis_arena_, &plan,
+                                          &plan_valid));
+  ASSERT_TRUE(plan_valid);
 
   ASSERT_EQ(plan.instance_count, 3u);
   ASSERT_EQ(plan.edge_count, 5u);
@@ -717,7 +752,10 @@ pipeline.def<kernel> @distributed_copy() launch(%input: buffer, %output: buffer)
 )");
 
   loom_pipeline_plan_t plan = {};
-  IREE_ASSERT_OK(BuildPlan(module.get(), IREE_SV("distributed_copy"), &plan));
+  bool plan_valid = false;
+  IREE_ASSERT_OK(
+      BuildPlan(module.get(), IREE_SV("distributed_copy"), &plan, &plan_valid));
+  ASSERT_TRUE(plan_valid);
 
   ASSERT_EQ(plan.binding_count, 2u);
   EXPECT_EQ(plan.bindings[0].access, LOOM_PIPELINE_BINDING_ACCESS_FLAG_READ);
@@ -769,8 +807,38 @@ pipeline.def<kernel> @mismatch() launch(%input: buffer, %output: buffer) {
 )");
 
   loom_pipeline_plan_t plan = {};
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        BuildPlan(module.get(), IREE_SV("mismatch"), &plan));
+  bool plan_valid = true;
+  uint32_t diagnostic_count = 0;
+  iree_diagnostic_emitter_t emitter = {
+      [](void* user_data, const loom_diagnostic_emission_t* emission) {
+        ++*static_cast<uint32_t*>(user_data);
+        EXPECT_TRUE(loom_pipeline_write_isa(emission->op));
+        EXPECT_EQ(emission->error, LOOM_ERR_LOWERING_061);
+        return iree_ok_status();
+      },
+      &diagnostic_count,
+  };
+  IREE_ASSERT_OK(BuildPlan(module.get(), IREE_SV("mismatch"), &plan,
+                           &plan_valid, emitter));
+  EXPECT_EQ(diagnostic_count, 1u);
+  EXPECT_FALSE(plan_valid);
+  EXPECT_EQ(plan.pipeline.op, nullptr);
+  EXPECT_EQ(plan.bindings, nullptr);
+  EXPECT_EQ(plan.flows, nullptr);
+  EXPECT_EQ(plan.instances, nullptr);
+
+  emitter.fn = [](void*, const loom_diagnostic_emission_t*) {
+    return iree_make_status(IREE_STATUS_DATA_LOSS, "diagnostic sink failed");
+  };
+  plan_valid = true;
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_DATA_LOSS,
+                        BuildPlan(module.get(), IREE_SV("mismatch"), &plan,
+                                  &plan_valid, emitter));
+  EXPECT_FALSE(plan_valid);
+  EXPECT_EQ(plan.pipeline.op, nullptr);
+  EXPECT_EQ(plan.bindings, nullptr);
+  EXPECT_EQ(plan.flows, nullptr);
+  EXPECT_EQ(plan.instances, nullptr);
 }
 
 TEST_F(PipelinePlanTest, RejectsUnresolvedCardinalityAtConcreteBoundary) {
@@ -794,12 +862,14 @@ pipeline.def<kernel> @dynamic(%lanes: index) launch() {
   IREE_ASSERT_OK(loom_value_fact_table_compute(&facts, module.get(), pipeline));
 
   loom_pipeline_plan_t plan = {};
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        loom_pipeline_plan_build(module.get(), pipeline, &facts,
-                                                 (loom_pipeline_plan_limits_t){
-                                                     /*.instance_count=*/16,
-                                                 },
-                                                 &analysis_arena_, &plan));
+  bool plan_valid = false;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      loom_pipeline_plan_build(module.get(), pipeline, &facts,
+                               (loom_pipeline_plan_limits_t){
+                                   /*.instance_count=*/16,
+                               },
+                               {}, &analysis_arena_, &plan, &plan_valid));
 }
 
 TEST_F(PipelinePlanTest, RejectsUnresolvedRecordShapeAtConcreteBoundary) {
@@ -829,60 +899,14 @@ pipeline.def<kernel> @dynamic(%extent: index) launch(%input: buffer, %output: bu
   IREE_ASSERT_OK(loom_value_fact_table_compute(&facts, module.get(), pipeline));
 
   loom_pipeline_plan_t plan = {};
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        loom_pipeline_plan_build(module.get(), pipeline, &facts,
-                                                 (loom_pipeline_plan_limits_t){
-                                                     /*.instance_count=*/16,
-                                                 },
-                                                 &analysis_arena_, &plan));
-}
-
-TEST_F(PipelinePlanTest, RejectsMismatchedStageRecordCounts) {
-  ModulePtr module = Parse(R"(
-func.def @join(%lhs: buffer, %rhs: buffer, %output: buffer) {
-  func.return
-}
-
-pipeline.def<kernel> @mismatch() launch(%lhs: buffer, %rhs: buffer) {
-  %lanes = index.constant 1 : index
-  %base = index.constant 0 : offset
-  %workers = group.create %lanes : index -> group
-  %lhs_view = buffer.view %lhs[%base] : buffer -> view<4x8xi8>
-  %rhs_view = buffer.view %rhs[%base] : buffer -> view<2x8xi8>
-  %lhs_records = pipeline.read %lhs_view on %workers : view<4x8xi8>, group -> pipeline.flow<tile<8xi8>>
-  %rhs_records = pipeline.read %rhs_view on %workers : view<2x8xi8>, group -> pipeline.flow<tile<8xi8>>
-  %output = pipeline.stage @join on %workers(%lhs_records, %rhs_records) : (group, pipeline.flow<tile<8xi8>>, pipeline.flow<tile<8xi8>>) -> (pipeline.flow<tile<8xi8>>)
-  pipeline.return
-}
-)");
-
-  loom_pipeline_plan_t plan = {};
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        BuildPlan(module.get(), IREE_SV("mismatch"), &plan));
-}
-
-TEST_F(PipelinePlanTest, RejectsDifferentlyShapedStageRecordSequences) {
-  ModulePtr module = Parse(R"(
-func.def @join(%lhs: buffer, %rhs: buffer, %output: buffer) {
-  func.return
-}
-
-pipeline.def<kernel> @mismatch() launch(%lhs: buffer, %rhs: buffer) {
-  %lanes = index.constant 1 : index
-  %base = index.constant 0 : offset
-  %workers = group.create %lanes : index -> group
-  %lhs_view = buffer.view %lhs[%base] : buffer -> view<2x2x8xi8>
-  %rhs_view = buffer.view %rhs[%base] : buffer -> view<4x8xi8>
-  %lhs_records = pipeline.read %lhs_view on %workers : view<2x2x8xi8>, group -> pipeline.flow<tile<8xi8>>
-  %rhs_records = pipeline.read %rhs_view on %workers : view<4x8xi8>, group -> pipeline.flow<tile<8xi8>>
-  %output = pipeline.stage @join on %workers(%lhs_records, %rhs_records) : (group, pipeline.flow<tile<8xi8>>, pipeline.flow<tile<8xi8>>) -> (pipeline.flow<tile<8xi8>>)
-  pipeline.return
-}
-)");
-
-  loom_pipeline_plan_t plan = {};
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        BuildPlan(module.get(), IREE_SV("mismatch"), &plan));
+  bool plan_valid = false;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      loom_pipeline_plan_build(module.get(), pipeline, &facts,
+                               (loom_pipeline_plan_limits_t){
+                                   /*.instance_count=*/16,
+                               },
+                               {}, &analysis_arena_, &plan, &plan_valid));
 }
 
 TEST_F(PipelinePlanTest, RejectsMismatchedOutputRecordCount) {
@@ -905,8 +929,32 @@ pipeline.def<kernel> @mismatch() launch(%input: buffer, %output: buffer) {
 )");
 
   loom_pipeline_plan_t plan = {};
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        BuildPlan(module.get(), IREE_SV("mismatch"), &plan));
+  bool plan_valid = false;
+  IREE_ASSERT_OK(
+      BuildPlan(module.get(), IREE_SV("mismatch"), &plan, &plan_valid));
+  EXPECT_FALSE(plan_valid);
+  EXPECT_EQ(plan.pipeline.op, nullptr);
+  EXPECT_EQ(plan.bindings, nullptr);
+  EXPECT_EQ(plan.flows, nullptr);
+  EXPECT_EQ(plan.instances, nullptr);
+
+  iree_diagnostic_emitter_t emitter = {
+      [](void*, const loom_diagnostic_emission_t* emission) {
+        EXPECT_EQ(emission->error, LOOM_ERR_LOWERING_063);
+        return iree_make_status(IREE_STATUS_DATA_LOSS,
+                                "diagnostic sink failed");
+      },
+      nullptr,
+  };
+  plan_valid = true;
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_DATA_LOSS,
+                        BuildPlan(module.get(), IREE_SV("mismatch"), &plan,
+                                  &plan_valid, emitter));
+  EXPECT_FALSE(plan_valid);
+  EXPECT_EQ(plan.pipeline.op, nullptr);
+  EXPECT_EQ(plan.bindings, nullptr);
+  EXPECT_EQ(plan.flows, nullptr);
+  EXPECT_EQ(plan.instances, nullptr);
 }
 
 TEST_F(PipelinePlanTest, RejectsEmptyRecordSequence) {
@@ -927,8 +975,10 @@ pipeline.def<kernel> @empty() launch(%input: buffer) {
 )");
 
   loom_pipeline_plan_t plan = {};
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        BuildPlan(module.get(), IREE_SV("empty"), &plan));
+  bool plan_valid = false;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      BuildPlan(module.get(), IREE_SV("empty"), &plan, &plan_valid));
 }
 
 TEST_F(PipelinePlanTest, RejectsRecordCountOverflow) {
@@ -944,38 +994,10 @@ pipeline.def<kernel> @overflow() launch(%input: buffer) {
 )");
 
   loom_pipeline_plan_t plan = {};
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
-                        BuildPlan(module.get(), IREE_SV("overflow"), &plan));
-}
-
-TEST_F(PipelinePlanTest, RejectsMismatchedReductionRecordCounts) {
-  ModulePtr module = Parse(R"(
-func.def @produce(%input: buffer, %output: buffer) {
-  func.return
-}
-
-func.def @reduce(%source: buffer, %bias: buffer, %output: buffer) {
-  func.return
-}
-
-pipeline.def<kernel> @mismatch() launch(%input: buffer, %bias: buffer) {
-  %lanes = index.constant 1 : index
-  %base = index.constant 0 : offset
-  %producers = group.create %lanes : index -> group
-  %reducers = group.create %lanes : index -> group
-  %input_view = buffer.view %input[%base] : buffer -> view<4x8xi8>
-  %bias_view = buffer.view %bias[%base] : buffer -> view<2x8xi8>
-  %input_records = pipeline.read %input_view on %producers : view<4x8xi8>, group -> pipeline.flow<tile<8xi8>>
-  %source_records = pipeline.stage @produce on %producers(%input_records) : (group, pipeline.flow<tile<8xi8>>) -> (pipeline.flow<tile<8xi8>>)
-  %bias_records = pipeline.read %bias_view on %reducers : view<2x8xi8>, group -> pipeline.flow<tile<8xi8>>
-  %output_records = pipeline.reduce @reduce from %producers(%source_records) to %reducers(%bias_records) : (group, pipeline.flow<tile<8xi8>>) to (group, pipeline.flow<tile<8xi8>>) -> (pipeline.flow<tile<8xi8>>)
-  pipeline.return
-}
-)");
-
-  loom_pipeline_plan_t plan = {};
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        BuildPlan(module.get(), IREE_SV("mismatch"), &plan));
+  bool plan_valid = false;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_RESOURCE_EXHAUSTED,
+      BuildPlan(module.get(), IREE_SV("overflow"), &plan, &plan_valid));
 }
 
 TEST_F(PipelinePlanTest, RejectsRecordwiseUseBeforeFold) {
@@ -999,8 +1021,10 @@ pipeline.def<kernel> @fanout() launch(%input: buffer) {
 )");
 
   loom_pipeline_plan_t plan = {};
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        BuildPlan(module.get(), IREE_SV("fanout"), &plan));
+  bool plan_valid = false;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      BuildPlan(module.get(), IREE_SV("fanout"), &plan, &plan_valid));
 }
 
 }  // namespace

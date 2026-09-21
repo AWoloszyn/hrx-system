@@ -739,12 +739,27 @@ static bool loom_check_template_sync_template_line_is_satisfied_declaration(
   return false;
 }
 
+static bool loom_check_template_sync_line_is_annotation(
+    const loom_test_case_t* test_case, iree_string_view_t line) {
+  const iree_host_size_t start_byte =
+      test_case->input_range.start_byte +
+      (iree_host_size_t)(line.data - test_case->input.data);
+  for (iree_host_size_t i = 0; i < test_case->annotation_count; ++i) {
+    if (test_case->annotations[i].source_range.start_byte == start_byte) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static iree_status_t loom_check_template_sync_append_template_input_line(
     iree_string_view_t template_line, iree_host_size_t line_number,
     const loom_check_template_sync_case_t* template_record,
     const loom_check_template_sync_target_overlay_t* overlay,
     iree_string_builder_t* builder) {
-  if (loom_check_template_sync_template_line_is_satisfied_declaration(
+  if (loom_check_template_sync_line_is_annotation(template_record->test_case,
+                                                  template_line) ||
+      loom_check_template_sync_template_line_is_satisfied_declaration(
           template_record, overlay, line_number)) {
     return iree_ok_status();
   }
@@ -787,8 +802,12 @@ static bool loom_check_template_sync_prelude_line_is_shared_definition(
       const loom_check_template_sync_symbol_t* template_symbol =
           &template_record->symbols[j];
       if (iree_string_view_equal(target_symbol->name, template_symbol->name)) {
+        // Target definitions can satisfy shared declarations. Matching
+        // declarations remain source-owned, just like shared definitions.
         return !iree_any_bit_set(template_symbol->definition_flags,
-                                 LOOM_SYMBOL_DEFINITION_FLAG_DECLARATION);
+                                 LOOM_SYMBOL_DEFINITION_FLAG_DECLARATION) ||
+               iree_any_bit_set(target_symbol->definition_flags,
+                                LOOM_SYMBOL_DEFINITION_FLAG_DECLARATION);
       }
     }
   }
@@ -817,17 +836,7 @@ static iree_status_t loom_check_template_sync_append_target_overlay_prelude(
             overlay, template_record, ++line_number)) {
       continue;
     }
-    const iree_host_size_t start_byte =
-        target_case->input_range.start_byte +
-        (iree_host_size_t)(line.data - target_case->input.data);
-    bool is_annotation = false;
-    for (iree_host_size_t i = 0; i < target_case->annotation_count; ++i) {
-      if (target_case->annotations[i].source_range.start_byte == start_byte) {
-        is_annotation = true;
-        break;
-      }
-    }
-    if (!is_annotation) {
+    if (!loom_check_template_sync_line_is_annotation(target_case, line)) {
       if (iree_string_view_is_empty(iree_string_view_trim(line))) {
         ++pending_blank_lines;
         continue;

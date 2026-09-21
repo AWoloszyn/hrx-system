@@ -145,21 +145,33 @@ class QualificationTest(unittest.TestCase):
 
     def test_rejected_compilation_does_not_publish_output(self):
         output = self.root / "rejected.hal"
-        result = subprocess.run(
-            [
-                _ARGS.compiler,
-                str(self.corpus),
-                "--target=amdgpu:gfx942",
-                "--root=@global_atomic_minnum_maxnum_f32",
-                f"--output={output}",
-            ],
-            capture_output=True,
-            text=True,
-        )
-        self.assertNotEqual(result.returncode, 0)
-        self.assertIn("AMDGPU/023", result.stderr)
-        self.assertIn("atomic.descriptor_missing", result.stderr)
-        self.assertFalse(output.exists())
+        native_output = self.root / "rejected.hsaco"
+        for contents in (None, b"previous artifact"):
+            with self.subTest(existing_output=contents is not None):
+                if contents is not None:
+                    output.write_bytes(contents)
+                    native_output.write_bytes(contents)
+                result = subprocess.run(
+                    [
+                        _ARGS.compiler,
+                        str(self.corpus),
+                        "--target=amdgpu:gfx942",
+                        "--root=@global_atomic_minnum_maxnum_f32",
+                        f"--output={output}",
+                        f"--emit-target-artifact={native_output}",
+                    ],
+                    capture_output=True,
+                    text=True,
+                )
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("AMDGPU/023", result.stderr)
+                self.assertIn("atomic.descriptor_missing", result.stderr)
+                self.assertEqual(result.stdout, "")
+                for artifact in (output, native_output):
+                    if contents is None:
+                        self.assertFalse(artifact.exists())
+                    else:
+                        self.assertEqual(artifact.read_bytes(), contents)
 
 
 if __name__ == "__main__":

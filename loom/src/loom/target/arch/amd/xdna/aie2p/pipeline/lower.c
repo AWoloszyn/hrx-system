@@ -1052,21 +1052,21 @@ iree_status_t loom_aie2p_pipeline_lower_to_array_low(
   const loom_xdna_array_family_t* family = loom_xdna_npu2_array_family();
   const uint32_t maximum_instance_count =
       (uint32_t)family->column_count * family->row_count;
-  iree_status_t status =
-      loom_pipeline_plan_build(module, pipeline, facts,
-                               (loom_pipeline_plan_limits_t){
-                                   .instance_count = maximum_instance_count,
-                               },
-                               &scratch_arena, &plan);
-  if (iree_status_is_ok(status)) {
+  bool valid = false;
+  iree_status_t status = loom_pipeline_plan_build(
+      module, pipeline, facts,
+      (loom_pipeline_plan_limits_t){
+          .instance_count = maximum_instance_count,
+      },
+      diagnostic_emitter, &scratch_arena, &plan, &valid);
+  if (iree_status_is_ok(status) && valid) {
     status = loom_aie2p_pipeline_placement_initialize(&plan, &scratch_arena,
                                                       &placement);
   }
-  if (iree_status_is_ok(status)) {
+  if (iree_status_is_ok(status) && valid) {
     status = loom_aie2p_pipeline_place_instances(&placement);
   }
-  bool valid = false;
-  if (iree_status_is_ok(status)) {
+  if (iree_status_is_ok(status) && valid) {
     status = loom_aie2p_pipeline_composition_materialize(
         module, &plan, diagnostic_emitter, &scratch_arena, &composition,
         &valid);

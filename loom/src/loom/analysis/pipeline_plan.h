@@ -19,6 +19,7 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
+#include "loom/error/emitter.h"
 #include "loom/ir/facts.h"
 #include "loom/ir/module.h"
 #include "loom/ops/combining.h"
@@ -356,12 +357,15 @@ typedef struct loom_pipeline_plan_t {
 // buffering capacities are read from |facts|. |limits| is supplied by the
 // materializer after target specialization and bounds planning allocations.
 // All plan storage is allocated from |arena|.
-iree_status_t loom_pipeline_plan_build(const loom_module_t* module,
-                                       loom_func_like_t pipeline,
-                                       const loom_value_fact_table_t* facts,
-                                       loom_pipeline_plan_limits_t limits,
-                                       iree_arena_allocator_t* arena,
-                                       loom_pipeline_plan_t* out_plan);
+// Output lane and input/output record-shape mismatches emit source diagnostics
+// and leave |out_valid| false and |out_plan| empty. Status carries
+// diagnostic-sink, allocation, resource-limit, and unsupported
+// concrete-planning failures.
+iree_status_t loom_pipeline_plan_build(
+    const loom_module_t* module, loom_func_like_t pipeline,
+    const loom_value_fact_table_t* facts, loom_pipeline_plan_limits_t limits,
+    iree_diagnostic_emitter_t diagnostic_emitter, iree_arena_allocator_t* arena,
+    loom_pipeline_plan_t* out_plan, bool* out_valid);
 
 #ifdef __cplusplus
 }  // extern "C"

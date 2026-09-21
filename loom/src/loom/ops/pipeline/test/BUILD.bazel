@@ -12,9 +12,14 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(["output_record_shapes.loom-test"])
+
 loom_check_test_suite(
     name = "test",
     srcs = [
+        "input_record_shapes.loom-test",
+        "output_record_shapes.loom-test",
+        "plan.loom-test",
         "roundtrip.loom-test",
         "verify.loom-test",
     ],
