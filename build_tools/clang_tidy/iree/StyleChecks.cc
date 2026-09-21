@@ -62,9 +62,13 @@ bool IsTestFilename(StringRef Filename) {
     return false;
   }
   StringRef Basename = llvm::sys::path::filename(Filename);
-  return Filename.contains("/test/") || Filename.contains("/testing/") ||
-         Filename.contains("/cts/") || Basename.contains("_test.") ||
-         Basename.contains("_test_") || Basename == "test_base.h";
+  // Test ownership comes from the file or its containing directory, not an
+  // ancestor such as a checkout named "testing".
+  StringRef Directory =
+      llvm::sys::path::filename(llvm::sys::path::parent_path(Filename));
+  return Directory == "test" || Directory == "testing" || Directory == "cts" ||
+         Basename.contains("_test.") || Basename.contains("_test_") ||
+         Basename == "test_base.h";
 }
 
 bool FirstMacroArgumentContainsIdentifier(const MacroArgs* Args,
