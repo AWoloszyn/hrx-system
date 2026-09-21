@@ -25,6 +25,8 @@ typedef struct loom_low_lower_resolved_emit_t {
   const loom_low_lower_emit_t* emit;
   // Descriptor row referenced by |emit| and resolved during planning.
   loom_low_lower_resolved_descriptor_t descriptor;
+  // Source access semantics for this memory packet; zero for address setup.
+  loom_memory_access_flags_t access_flags;
 } loom_low_lower_resolved_emit_t;
 
 // Resolves descriptor-backed emit rows after selection. Returned rows are
@@ -32,7 +34,7 @@ typedef struct loom_low_lower_resolved_emit_t {
 iree_status_t loom_low_lower_rule_set_resolve_emit_program(
     loom_low_lower_context_t* context, uint16_t rule_set_index,
     const loom_low_lower_rule_set_t* rule_set,
-    const loom_low_lower_rule_t* rule,
+    const loom_low_lower_rule_t* rule, loom_memory_access_flags_t access_flags,
     const loom_low_lower_resolved_emit_t** out_resolved_emits);
 
 // Emits target-Low packets for |source_op| using a previously selected rule.

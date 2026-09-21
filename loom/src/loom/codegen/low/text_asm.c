@@ -227,7 +227,7 @@ static iree_status_t loom_low_descriptor_text_asm_make_packet(
                                              ? loom_low_const_attrs_ATTR_INDEX
                                              : loom_low_op_attrs_ATTR_INDEX,
       .has_named_immediates = has_named_immediates,
-      .builds_as_const = builds_as_const,
+      .operation_kind = builds_as_const ? LOOM_OP_LOW_CONST : LOOM_OP_LOW_OP,
   };
   return iree_ok_status();
 }
@@ -1048,7 +1048,7 @@ static iree_status_t loom_low_descriptor_text_asm_build_tied_results(
 static iree_status_t loom_low_descriptor_text_asm_build_packet(
     const loom_text_low_asm_environment_state_t* state, loom_builder_t* builder,
     const loom_text_low_asm_packet_descriptor_t* packet,
-    loom_text_low_asm_packet_build_flags_t build_flags,
+    loom_text_low_asm_packet_build_flags_t build_flags, uint8_t instance_flags,
     const loom_value_id_t* operands, iree_host_size_t operand_count,
     loom_named_attr_slice_t attributes, const loom_type_t* result_types,
     iree_host_size_t result_count, const loom_tied_result_t* tied_results,
@@ -1068,7 +1068,7 @@ static iree_status_t loom_low_descriptor_text_asm_build_packet(
       loom_low_descriptor_text_asm_descriptor_set(packet->descriptor_set);
   const loom_low_descriptor_t* descriptor =
       loom_low_descriptor_text_asm_descriptor(packet->descriptor);
-  if (packet->builds_as_const) {
+  if (packet->operation_kind == LOOM_OP_LOW_CONST) {
     if (result_count != 1) {
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "low asm const packet must have one result");
@@ -1083,9 +1083,9 @@ static iree_status_t loom_low_descriptor_text_asm_build_packet(
         builder, packet, &tied_results, &tied_result_count));
   }
   return loom_low_build_resolved_descriptor_op(
-      builder, descriptor_set, descriptor, operands, operand_count, attributes,
-      result_types, result_count, tied_results, tied_result_count, location,
-      out_op);
+      builder, descriptor_set, descriptor, instance_flags, operands,
+      operand_count, attributes, result_types, result_count, tied_results,
+      tied_result_count, location, out_op);
 }
 
 static iree_status_t loom_low_descriptor_text_asm_operand_segment_descriptor(
@@ -1342,7 +1342,7 @@ static iree_status_t loom_low_descriptor_text_asm_describe_packet(
   if (packet.descriptor == NULL) {
     return iree_ok_status();
   }
-  if (is_const != packet.builds_as_const) {
+  if (is_const != (packet.operation_kind == LOOM_OP_LOW_CONST)) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
         "low asm packet '%.*s' has the wrong canonical operation form",

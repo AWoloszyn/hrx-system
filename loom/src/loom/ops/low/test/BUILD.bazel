@@ -19,6 +19,7 @@ loom_check_test_suite(
         "canonicalize.loom-test",
         "facts.loom-test",
         "imports.loom-test",
+        "memory_access_flags.loom-test",
         "roundtrip.loom-test",
         "schedule_scopes.loom-test",
         "structured_control.loom-test",

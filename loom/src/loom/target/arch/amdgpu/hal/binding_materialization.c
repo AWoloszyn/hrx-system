@@ -201,8 +201,8 @@ static iree_status_t loom_amdgpu_hal_binding_build_s_binary_b32(
   const loom_low_descriptor_t* descriptor =
       loom_amdgpu_hal_binding_descriptor_ref(descriptor_set, descriptor_ref);
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
-      &rewriter->builder, descriptor_set, descriptor, operands,
-      IREE_ARRAYSIZE(operands), loom_make_named_attr_slice(NULL, 0),
+      &rewriter->builder, descriptor_set, descriptor, /*access_flags=*/0,
+      operands, IREE_ARRAYSIZE(operands), loom_make_named_attr_slice(NULL, 0),
       result_types, IREE_ARRAYSIZE(result_types), /*tied_results=*/NULL,
       /*tied_result_count=*/0, location, &binary_op));
   *out_value = loom_value_slice_get(loom_low_op_results(binary_op), 0);
@@ -224,8 +224,8 @@ static iree_status_t loom_amdgpu_hal_binding_build_s_binary_b32_rhs_inline(
   const loom_low_descriptor_t* descriptor =
       loom_amdgpu_hal_binding_descriptor_ref(descriptor_set, descriptor_ref);
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
-      &rewriter->builder, descriptor_set, descriptor, operands,
-      IREE_ARRAYSIZE(operands), loom_make_named_attr_slice(&attr, 1),
+      &rewriter->builder, descriptor_set, descriptor, /*access_flags=*/0,
+      operands, IREE_ARRAYSIZE(operands), loom_make_named_attr_slice(&attr, 1),
       result_types, IREE_ARRAYSIZE(result_types), /*tied_results=*/NULL,
       /*tied_result_count=*/0, location, &binary_op));
   *out_value = loom_value_slice_get(loom_low_op_results(binary_op), 0);
@@ -247,8 +247,8 @@ static iree_status_t loom_amdgpu_hal_binding_build_s_load_offset_only(
   const loom_low_descriptor_t* descriptor =
       loom_amdgpu_hal_binding_descriptor_ref(descriptor_set, descriptor_ref);
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
-      &rewriter->builder, descriptor_set, descriptor, operands,
-      IREE_ARRAYSIZE(operands), loom_make_named_attr_slice(&attr, 1),
+      &rewriter->builder, descriptor_set, descriptor, /*access_flags=*/0,
+      operands, IREE_ARRAYSIZE(operands), loom_make_named_attr_slice(&attr, 1),
       result_types, IREE_ARRAYSIZE(result_types), /*tied_results=*/NULL,
       /*tied_result_count=*/0, location, &load_op));
   *out_value = loom_low_op_results(load_op).values[0];

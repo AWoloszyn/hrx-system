@@ -16,6 +16,12 @@
 extern "C" {
 #endif
 
+// Parses an optional <flag|flag> list using the operation's declared
+// vocabulary.
+iree_status_t loom_parse_format_flags(loom_parser_t* parser,
+                                      const loom_op_vtable_t* vtable,
+                                      loom_parsed_op_t* parsed);
+
 iree_status_t loom_parser_walk_format(loom_parser_t* parser,
                                       const loom_op_vtable_t* vtable,
                                       loom_token_t op_name_token,

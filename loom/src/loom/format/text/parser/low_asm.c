@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "loom/error/error_catalog.h"
+#include "loom/format/text/parser/format.h"
 #include "loom/format/text/parser/format_signatures.h"
 #include "loom/ir/context.h"
 
@@ -753,6 +754,16 @@ static iree_status_t loom_parse_low_asm_instruction(
         (uint32_t)result_names->count);
   }
 
+  // An angle-delimited operand segment begins with an SSA value. Instance
+  // flags begin with a keyword, so both forms remain unambiguous here.
+  loom_tokenizer_t lookahead = parser->tokenizer;
+  if (loom_tokenizer_try_consume(&lookahead, LOOM_TOKEN_LANGLE) &&
+      loom_tokenizer_at(&lookahead, LOOM_TOKEN_BARE_IDENT)) {
+    const loom_op_vtable_t* vtable =
+        loom_context_resolve_op(parser->context, packet.operation_kind);
+    IREE_RETURN_IF_ERROR(loom_parse_format_flags(parser, vtable, parsed));
+  }
+
   loom_low_asm_value_list_t operands;
   loom_low_asm_value_list_initialize(&operands);
   IREE_RETURN_IF_ERROR(
@@ -800,9 +811,9 @@ static iree_status_t loom_parse_low_asm_instruction(
       loom_make_named_attr_slice(attrs, attr_count);
   IREE_RETURN_IF_ERROR(parser->low_asm_environment.vtable->build_packet(
       parser->low_asm_environment.state, &parser->builder, &packet, build_flags,
-      operands.values, operands.count, attr_slice, result_types,
-      packet.result_count, parsed->tied_results, parsed->tied_result_count,
-      location, &op));
+      parsed->instance_flags, operands.values, operands.count, attr_slice,
+      result_types, packet.result_count, parsed->tied_results,
+      parsed->tied_result_count, location, &op));
   if (op == NULL) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "low asm packet builder returned no operation");

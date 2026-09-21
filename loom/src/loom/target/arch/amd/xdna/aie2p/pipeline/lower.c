@@ -605,8 +605,9 @@ static iree_status_t loom_aie2p_pipeline_emit_op(
   loom_op_t* op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
       &emitter->builder, emitter->descriptor_set,
-      loom_aie2p_pipeline_descriptor(emitter, descriptor_ordinal), operands,
-      operand_count, attrs, result_type, result_type != NULL ? 1 : 0,
+      loom_aie2p_pipeline_descriptor(emitter, descriptor_ordinal),
+      /*access_flags=*/0, operands, operand_count, attrs, result_type,
+      result_type != NULL ? 1 : 0,
       /*tied_results=*/NULL, /*tied_result_count=*/0, location, &op));
   if (out_value != NULL) {
     IREE_ASSERT(result_type != NULL);

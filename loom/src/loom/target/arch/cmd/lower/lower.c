@@ -316,8 +316,9 @@ static iree_status_t loom_cmd_lower_build_descriptor_op(
     loom_location_id_t location, loom_op_t** out_op) {
   return loom_low_build_resolved_descriptor_op(
       &state->builder, state->descriptor_set,
-      loom_cmd_lower_descriptor(state, descriptor_ordinal), operands,
-      operand_count, loom_named_attr_slice_empty(), result_types, result_count,
+      loom_cmd_lower_descriptor(state, descriptor_ordinal), /*access_flags=*/0,
+      operands, operand_count, loom_named_attr_slice_empty(), result_types,
+      result_count,
       /*tied_results=*/NULL, /*tied_result_count=*/0, location, out_op);
 }
 

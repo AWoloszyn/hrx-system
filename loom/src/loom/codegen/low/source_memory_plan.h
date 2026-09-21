@@ -248,6 +248,9 @@ typedef struct loom_low_source_memory_access_plan_t {
   // Number of leading dynamic address terms contributed by the source view
   // base.
   uint8_t dynamic_view_base_term_count;
+  // Execution semantics copied from the source memory access and preserved by
+  // every physical memory packet selected for that access.
+  loom_memory_access_flags_t access_flags;
   // Whether canonicalization moved a nonzero byte contribution from a source
   // dynamic index into |static_byte_offset|. Original source index operands
   // cannot be combined with the canonical static offset when this is true.

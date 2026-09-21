@@ -228,9 +228,9 @@ func.def target(@target) @dot2_bf16x32(%lhs: buffer, %rhs: buffer, %acc: buffer,
 low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @volatile_copy_i8x64() asm {
   %source_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
   %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
-  %first = vlda.512.i8x64.volatile %source_view, 0
-  %second = vlda.512.i8x64.volatile %source_view, 0
-  vst.512.i8x64.volatile %second, %output_view, 0
+  %first = vlda.512.i8x64.volatile<volatile> %source_view, 0
+  %second = vlda.512.i8x64.volatile<volatile> %source_view, 0
+  vst.512.i8x64.volatile<volatile> %second, %output_view, 0
   return
 }
 

@@ -1,0 +1,31 @@
+// RUN: with-checks emit low-schedule-json @observations strategy=resource-stall
+
+// Independently observable reads retain their completion ordering even when
+// their addresses and unused results create no SSA dependency between them.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @observations(%first_address: reg<test.ptr>, %second_address: reg<test.ptr>) asm {
+  %first = test.load.v4i32<volatile> %first_address
+  %second = test.load.v4i32<volatile> %second_address
+  return
+}
+
+// ----
+CHECK: *"dependency_count":1,*
+CHECK: *"from":0,"to":1,"kind":"effect",*"producer_event":"test.memory.read",*"consumer_event":"test.memory.read","minimum_issue_separation_cycles":4,*
+
+// ====
+// RUN: with-checks emit low-schedule-json @ordinary_reads strategy=resource-stall
+
+// Identical descriptors without access modifiers remain independent reads.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @ordinary_reads(%first_address: reg<test.ptr>, %second_address: reg<test.ptr>) asm {
+  %first = test.load.v4i32 %first_address
+  %second = test.load.v4i32 %second_address
+  return
+}
+
+// ----
+CHECK: *"dependency_count":0,*
+CHECK: *"dependencies":[],*

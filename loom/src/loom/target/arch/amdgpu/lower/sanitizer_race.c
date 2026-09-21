@@ -206,8 +206,8 @@ static iree_status_t loom_amdgpu_sanitizer_race_build_descriptor_op(
   const loom_low_descriptor_t* descriptor =
       loom_amdgpu_lookup_descriptor_ref(descriptor_set, descriptor_ref);
   return loom_low_build_resolved_descriptor_op(
-      builder, descriptor_set, descriptor, operands, operand_count, attrs,
-      result_types, result_count, /*tied_results=*/NULL,
+      builder, descriptor_set, descriptor, /*access_flags=*/0, operands,
+      operand_count, attrs, result_types, result_count, /*tied_results=*/NULL,
       /*tied_result_count=*/0, location, out_op);
 }
 
@@ -297,8 +297,9 @@ static iree_status_t loom_amdgpu_sanitizer_race_build_global_load(
       IREE_ARRAYSIZE(operands), &operand_count));
   loom_op_t* op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
-      builder, descriptor_set, descriptor, operands, operand_count,
-      loom_make_named_attr_slice(attrs, attr_count), &result_type,
+      builder, descriptor_set, descriptor, /*access_flags=*/0, operands,
+      operand_count, loom_make_named_attr_slice(attrs, attr_count),
+      &result_type,
       /*result_count=*/1, /*tied_results=*/NULL, /*tied_result_count=*/0,
       location, &op));
   const loom_value_id_t value =
@@ -375,8 +376,9 @@ static iree_status_t loom_amdgpu_sanitizer_race_build_global_swap_u64_acq_rel(
       descriptor_set, LOOM_AMDGPU_REG_CLASS_ID_VGPR, 2, &result_type));
   loom_op_t* op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
-      builder, descriptor_set, descriptor, operands, operand_count,
-      loom_make_named_attr_slice(attrs, attr_count), &result_type,
+      builder, descriptor_set, descriptor, /*access_flags=*/0, operands,
+      operand_count, loom_make_named_attr_slice(attrs, attr_count),
+      &result_type,
       /*result_count=*/1, /*tied_results=*/NULL, /*tied_result_count=*/0,
       location, &op));
   const loom_value_id_t observed =
@@ -417,8 +419,9 @@ static iree_status_t loom_amdgpu_sanitizer_race_build_global_atomic_add(
       IREE_ARRAYSIZE(operands), &operand_count));
   loom_op_t* op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
-      builder, descriptor_set, descriptor, operands, operand_count,
-      loom_make_named_attr_slice(attrs, attr_count), /*result_types=*/NULL,
+      builder, descriptor_set, descriptor, /*access_flags=*/0, operands,
+      operand_count, loom_make_named_attr_slice(attrs, attr_count),
+      /*result_types=*/NULL,
       /*result_count=*/0, /*tied_results=*/NULL, /*tied_result_count=*/0,
       location, &op));
   return loom_amdgpu_system_memory_build_release_ordering_scoped(

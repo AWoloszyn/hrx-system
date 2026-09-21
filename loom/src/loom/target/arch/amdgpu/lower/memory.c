@@ -2987,6 +2987,7 @@ static iree_status_t loom_amdgpu_select_memory_plan(
     retained_plan->packets[i] = selection.packets[i];
   }
   *out_plan = loom_low_lower_plan_make(source_op->kind, retained_plan);
+  out_plan->access_flags = retained_plan->packets[0].access.source.access_flags;
   return iree_ok_status();
 }
 

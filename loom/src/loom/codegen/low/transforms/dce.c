@@ -55,7 +55,9 @@ static iree_status_t loom_low_dce_deadness_query(void* user_data,
     return iree_ok_status();
   }
 
-  if (op->result_count == 0 || !loom_op_results_unused(module, op)) {
+  if (op->result_count == 0 || !loom_op_results_unused(module, op) ||
+      iree_any_bit_set(loom_op_effective_traits(module, op),
+                       LOOM_TRAIT_OBSERVABLE_EFFECT)) {
     return iree_ok_status();
   }
 

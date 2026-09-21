@@ -213,8 +213,9 @@ static iree_status_t loom_aie2p_array_resident_build_op(
   loom_op_t* op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
       ir_builder, builder->descriptor_set,
-      &builder->descriptor_set->descriptors[descriptor_ordinal], operands,
-      operand_count, attrs, result_type, result_type != NULL ? 1 : 0,
+      &builder->descriptor_set->descriptors[descriptor_ordinal],
+      /*access_flags=*/0, operands, operand_count, attrs, result_type,
+      result_type != NULL ? 1 : 0,
       /*tied_results=*/NULL, /*tied_result_count=*/0, location, &op));
   if (out_value != NULL) {
     IREE_ASSERT(result_type != NULL);

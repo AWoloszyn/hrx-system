@@ -1734,6 +1734,35 @@ static iree_status_t loom_low_verify_descriptor_features(
   return iree_ok_status();
 }
 
+static iree_status_t loom_low_verify_packet_access_flags(
+    loom_low_function_verify_state_t* function_state,
+    const loom_low_descriptor_packet_t* packet) {
+  if (!iree_any_bit_set(packet->op->instance_flags,
+                        LOOM_MEMORY_ACCESS_FLAG_VOLATILE)) {
+    return iree_ok_status();
+  }
+  const loom_low_descriptor_set_t* descriptor_set =
+      function_state->target->descriptor_set;
+  const loom_low_descriptor_t* descriptor = packet->descriptor;
+  for (uint16_t i = 0; i < descriptor->effect_count; ++i) {
+    const loom_low_effect_t* effect =
+        &descriptor_set->effects[descriptor->effect_start + i];
+    if (effect->kind == LOOM_LOW_EFFECT_KIND_READ ||
+        effect->kind == LOOM_LOW_EFFECT_KIND_WRITE) {
+      return iree_ok_status();
+    }
+  }
+  loom_diagnostic_param_t params[] = {
+      loom_param_string(
+          loom_low_descriptor_packet_diagnostic_key(descriptor_set, packet)),
+      loom_param_string(function_state->function_name),
+  };
+  return loom_low_verify_emit(function_state->state, packet->op,
+                              LOOM_ERR_TARGET_090, params,
+                              IREE_ARRAYSIZE(params), /*related_ops=*/NULL,
+                              /*related_op_count=*/0);
+}
+
 static iree_status_t loom_low_verify_packet(
     loom_low_function_verify_state_t* function_state,
     const loom_low_descriptor_packet_t* packet) {
@@ -1784,6 +1813,11 @@ static iree_status_t loom_low_verify_packet(
         function_state, op, LOOM_ERR_STRUCTURE_001, descriptor_key,
         descriptor_attr_index, op->operand_count, minimum_operand_count));
   }
+  if (loom_low_verify_should_stop(function_state->state)) {
+    return iree_ok_status();
+  }
+  IREE_RETURN_IF_ERROR(
+      loom_low_verify_packet_access_flags(function_state, packet));
   if (loom_low_verify_should_stop(function_state->state)) {
     return iree_ok_status();
   }

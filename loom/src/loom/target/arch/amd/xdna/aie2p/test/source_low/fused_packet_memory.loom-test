@@ -40,7 +40,7 @@ low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @load_ext
   %12 = mov.i32 1
   %13 = lshl %element, %12
   %14 = mov.address-index %13
-  %converted = vlda.convert.bf16x32.to.f32x32.index.volatile %source_view, %14
+  %converted = vlda.convert.bf16x32.to.f32x32.index.volatile<volatile> %source_view, %14
   return %converted
 }
 
@@ -137,7 +137,7 @@ low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @load_bit
   %source_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
   %12 = mov.address-index %element
   set.unpack-size 0
-  %unpacked = vldb.unpack.s4.to.s8x128.index.volatile %source_view, %12
+  %unpacked = vldb.unpack.s4.to.s8x128.index.volatile<volatile> %source_view, %12
   return %unpacked
 }
 
@@ -186,7 +186,7 @@ low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @store_fp
   %12 = lshl %element, %11
   %13 = mov.address-index %12
   set.rounding 12
-  vst.convert.f32x32.to.bf16x32.index.volatile %input, %output_view, %13
+  vst.convert.f32x32.to.bf16x32.index.volatile<volatile> %input, %output_view, %13
   return
 }
 

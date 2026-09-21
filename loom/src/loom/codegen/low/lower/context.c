@@ -841,8 +841,8 @@ iree_status_t loom_low_lower_emit_resolved_descriptor_op(
     loom_op_t** out_op) {
   return loom_low_build_resolved_descriptor_op(
       &context->builder, context->descriptor_set, descriptor->descriptor,
-      operands, operand_count, attrs, result_types, result_count, tied_results,
-      tied_result_count, location, out_op);
+      /*access_flags=*/0, operands, operand_count, attrs, result_types,
+      result_count, tied_results, tied_result_count, location, out_op);
 }
 
 iree_status_t loom_low_lower_emit_resolved_descriptor_const(

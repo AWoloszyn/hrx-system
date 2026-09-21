@@ -1237,9 +1237,8 @@ static iree_status_t loom_low_schedule_note_descriptor_state_accesses(
   }
   const loom_low_descriptor_set_t* descriptor_set =
       state->target.descriptor_set;
-  const bool has_ordered_effect =
-      loom_low_schedule_descriptor_has_ordered_effect(descriptor_set,
-                                                      descriptor);
+  const bool has_ordered_effect = loom_low_schedule_node_has_ordered_effect(
+      descriptor_set, &state->nodes[node_index]);
   for (uint16_t i = 0; i < descriptor->operand_count; ++i) {
     const uint32_t operand_row = descriptor->operand_start + i;
     const loom_low_operand_t* operand = &descriptor_set->operands[operand_row];

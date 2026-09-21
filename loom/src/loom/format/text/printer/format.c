@@ -178,6 +178,19 @@ static uint16_t loom_print_operand_flat_index(const loom_op_t* op,
   return (uint16_t)(operand - loom_op_const_operands(op));
 }
 
+iree_status_t loom_print_instance_flags(loom_print_context_t* ctx,
+                                        const loom_op_vtable_t* vtable,
+                                        uint8_t flags) {
+  if (flags == 0) {
+    return iree_ok_status();
+  }
+  IREE_RETURN_IF_ERROR(loom_print_emit_cstr(ctx, "<", true));
+  IREE_RETURN_IF_ERROR(loom_print_instance_flag_list(ctx, vtable, flags));
+  IREE_RETURN_IF_ERROR(loom_print_emit_cstr(ctx, ">", true));
+  loom_print_did_write(ctx);
+  return iree_ok_status();
+}
+
 iree_status_t loom_print_format_elements(loom_print_context_t* ctx,
                                          const loom_op_t* op,
                                          const loom_op_vtable_t* vtable) {
@@ -518,17 +531,8 @@ iree_status_t loom_print_format_elements(loom_print_context_t* ctx,
         break;
       }
       case LOOM_FORMAT_KIND_FLAGS: {
-        // Per-instance flags in angle brackets, glued to the op name:
-        // scalar.addi<nsw|nuw>. Walks set bits in instance_flags and
-        // emits keywords from the vtable's instance_flags_case_names.
-        uint8_t flags = op->instance_flags;
-        if (flags != 0 && vtable->instance_flags_case_names != NULL) {
-          IREE_RETURN_IF_ERROR(loom_print_emit_cstr(ctx, "<", true));
-          IREE_RETURN_IF_ERROR(
-              loom_print_instance_flag_list(ctx, vtable, flags));
-          IREE_RETURN_IF_ERROR(loom_print_emit_cstr(ctx, ">", true));
-          loom_print_did_write(ctx);
-        }
+        IREE_RETURN_IF_ERROR(
+            loom_print_instance_flags(ctx, vtable, op->instance_flags));
         break;
       }
       case LOOM_FORMAT_KIND_KEY_REF: {

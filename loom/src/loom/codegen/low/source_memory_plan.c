@@ -1746,9 +1746,14 @@ bool loom_low_source_memory_access_plan_build(
   const loom_value_id_t byte_offset_value_id =
       loom_memory_access_byte_offset(access);
   if (byte_offset_value_id != LOOM_VALUE_ID_INVALID) {
-    return loom_low_source_memory_access_plan_build_byte_offset_impl(
-        view_regions, operation_kind, view_value_id, byte_offset_value_id,
-        cache_policy, out_plan, out_diagnostic);
+    const bool built =
+        loom_low_source_memory_access_plan_build_byte_offset_impl(
+            view_regions, operation_kind, view_value_id, byte_offset_value_id,
+            cache_policy, out_plan, out_diagnostic);
+    if (built) {
+      out_plan->access_flags = loom_memory_access_flags(access);
+    }
+    return built;
   }
 
   const loom_type_t view_type = loom_module_value_type(module, view_value_id);
@@ -1761,6 +1766,7 @@ bool loom_low_source_memory_access_plan_build(
       loom_memory_access_static_indices(access), vector_type, cache_policy,
       out_plan, out_diagnostic);
   if (built) {
+    out_plan->access_flags = loom_memory_access_flags(access);
     out_plan->vector_offset_kind =
         loom_low_source_memory_access_vector_offset_kind(
             fact_table, loom_memory_access_offsets(access));

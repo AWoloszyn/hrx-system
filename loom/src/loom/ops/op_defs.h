@@ -1532,6 +1532,12 @@ loom_memory_access_t loom_memory_access_cast(const loom_module_t* module,
 loom_memory_access_operation_kind_t loom_memory_access_operation_kind(
     loom_memory_access_t access);
 
+// Returns the per-access execution semantics. MemoryAccess operations use the
+// shared memory-access vocabulary for their instance flags; the op generator
+// enforces that contract even for operations without optional flags.
+loom_memory_access_flags_t loom_memory_access_flags(
+    loom_memory_access_t access);
+
 // Returns true when the operand at |operand_index| is a written value,
 // compare-exchange expected value, or compare-exchange replacement value.
 bool loom_memory_access_operand_index_is_payload(loom_memory_access_t access,

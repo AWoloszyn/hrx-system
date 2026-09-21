@@ -1,0 +1,295 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/memory_access_flags.loom-test
+// RUN: emit source-low output=low
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @observe_scalar(%input: buffer) -> (i32, i32) {
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %source = buffer.view %aligned[%base] : buffer -> view<1xi32>
+  %first = view.load<volatile> %source[0] : view<1xi32> -> i32
+  %second = view.load<volatile> %source[0] : view<1xi32> -> i32
+  func.return %first, %second : i32, i32
+}
+
+// ----
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @observe_scalar(%aligned: reg<spirv.ptr.storage_buffer>) -> (reg<spirv.id : i32>, reg<spirv.id : i32>) asm {
+  %11 = OpConstant.offset64 0
+  %12 = OpPtrAccessChain.storage_buffer.i32.byte_offset %aligned, %11
+  %first = OpLoad.storage_buffer.i32<volatile> %12
+  %second = OpLoad.storage_buffer.i32<volatile> %12
+  return %first, %second
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @observe_unused(%input: buffer) {
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %source = buffer.view %aligned[%base] : buffer -> view<2xi32>
+  %first = view.load<volatile> %source[0] : view<2xi32> -> i32
+  %second = view.load<volatile> %source[1] : view<2xi32> -> i32
+  func.return
+}
+
+// ----
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @observe_unused(%aligned: reg<spirv.ptr.storage_buffer>) asm {
+  %7 = OpConstant.offset64 0
+  %8 = OpPtrAccessChain.storage_buffer.i32.byte_offset %aligned, %7
+  %first = OpLoad.storage_buffer.i32<volatile> %8
+  %10 = OpConstant.offset64 4
+  %11 = OpPtrAccessChain.storage_buffer.i32.byte_offset %aligned, %10
+  %second = OpLoad.storage_buffer.i32<volatile> %11
+  return
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @repeat_store(%output: buffer, %value: i32) {
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %destination = buffer.view %aligned[%base] : buffer -> view<1xi32>
+  view.store<volatile> %value, %destination[0] : i32, view<1xi32>
+  view.store<volatile> %value, %destination[0] : i32, view<1xi32>
+  func.return
+}
+
+// ----
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @repeat_store(%aligned: reg<spirv.ptr.storage_buffer>, %value: reg<spirv.id : i32>) asm {
+  %7 = OpConstant.offset64 0
+  %8 = OpPtrAccessChain.storage_buffer.i32.byte_offset %aligned, %7
+  OpStore.storage_buffer.i32<volatile> %8, %value
+  OpStore.storage_buffer.i32<volatile> %8, %value
+  return
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @observe_vector(%input: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %source_aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %destination_aligned = buffer.assume.alignment %output {minimum_alignment = 64} : buffer
+  %source = buffer.view %source_aligned[%base] : buffer -> view<16xi32>
+  %destination = buffer.view %destination_aligned[%base] : buffer -> view<32xi32>
+  %first = vector.load<volatile> %source[0] : view<16xi32> -> vector<16xi32>
+  %second = vector.load<volatile> %source[0] : view<16xi32> -> vector<16xi32>
+  vector.store<volatile> %first, %destination[0] : vector<16xi32>, view<32xi32>
+  vector.store<volatile> %second, %destination[16] : vector<16xi32>, view<32xi32>
+  func.return
+}
+
+// ----
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @observe_vector(%source_aligned: reg<spirv.ptr.storage_buffer>, %destination_aligned: reg<spirv.ptr.storage_buffer>) asm {
+  %77 = OpConstant.offset64 0
+  %78 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %77
+  %79 = OpLoad.storage_buffer.i32<volatile> %78
+  %80 = OpConstant.offset64 4
+  %81 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %80
+  %82 = OpLoad.storage_buffer.i32<volatile> %81
+  %83 = OpConstant.offset64 8
+  %84 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %83
+  %85 = OpLoad.storage_buffer.i32<volatile> %84
+  %86 = OpConstant.offset64 12
+  %87 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %86
+  %88 = OpLoad.storage_buffer.i32<volatile> %87
+  %89 = OpConstant.offset64 16
+  %90 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %89
+  %91 = OpLoad.storage_buffer.i32<volatile> %90
+  %92 = OpConstant.offset64 20
+  %93 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %92
+  %94 = OpLoad.storage_buffer.i32<volatile> %93
+  %95 = OpConstant.offset64 24
+  %96 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %95
+  %97 = OpLoad.storage_buffer.i32<volatile> %96
+  %98 = OpConstant.offset64 28
+  %99 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %98
+  %100 = OpLoad.storage_buffer.i32<volatile> %99
+  %101 = OpConstant.offset64 32
+  %102 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %101
+  %103 = OpLoad.storage_buffer.i32<volatile> %102
+  %104 = OpConstant.offset64 36
+  %105 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %104
+  %106 = OpLoad.storage_buffer.i32<volatile> %105
+  %107 = OpConstant.offset64 40
+  %108 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %107
+  %109 = OpLoad.storage_buffer.i32<volatile> %108
+  %110 = OpConstant.offset64 44
+  %111 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %110
+  %112 = OpLoad.storage_buffer.i32<volatile> %111
+  %113 = OpConstant.offset64 48
+  %114 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %113
+  %115 = OpLoad.storage_buffer.i32<volatile> %114
+  %116 = OpConstant.offset64 52
+  %117 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %116
+  %118 = OpLoad.storage_buffer.i32<volatile> %117
+  %119 = OpConstant.offset64 56
+  %120 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %119
+  %121 = OpLoad.storage_buffer.i32<volatile> %120
+  %122 = OpConstant.offset64 60
+  %123 = OpPtrAccessChain.storage_buffer.i32.byte_offset %source_aligned, %122
+  %124 = OpLoad.storage_buffer.i32<volatile> %123
+  %127 = OpLoad.storage_buffer.i32<volatile> %78
+  %130 = OpLoad.storage_buffer.i32<volatile> %81
+  %133 = OpLoad.storage_buffer.i32<volatile> %84
+  %136 = OpLoad.storage_buffer.i32<volatile> %87
+  %139 = OpLoad.storage_buffer.i32<volatile> %90
+  %142 = OpLoad.storage_buffer.i32<volatile> %93
+  %145 = OpLoad.storage_buffer.i32<volatile> %96
+  %148 = OpLoad.storage_buffer.i32<volatile> %99
+  %151 = OpLoad.storage_buffer.i32<volatile> %102
+  %154 = OpLoad.storage_buffer.i32<volatile> %105
+  %157 = OpLoad.storage_buffer.i32<volatile> %108
+  %160 = OpLoad.storage_buffer.i32<volatile> %111
+  %163 = OpLoad.storage_buffer.i32<volatile> %114
+  %166 = OpLoad.storage_buffer.i32<volatile> %117
+  %169 = OpLoad.storage_buffer.i32<volatile> %120
+  %172 = OpLoad.storage_buffer.i32<volatile> %123
+  %174 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %77
+  OpStore.storage_buffer.i32<volatile> %174, %79
+  %176 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %80
+  OpStore.storage_buffer.i32<volatile> %176, %82
+  %178 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %83
+  OpStore.storage_buffer.i32<volatile> %178, %85
+  %180 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %86
+  OpStore.storage_buffer.i32<volatile> %180, %88
+  %182 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %89
+  OpStore.storage_buffer.i32<volatile> %182, %91
+  %184 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %92
+  OpStore.storage_buffer.i32<volatile> %184, %94
+  %186 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %95
+  OpStore.storage_buffer.i32<volatile> %186, %97
+  %188 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %98
+  OpStore.storage_buffer.i32<volatile> %188, %100
+  %190 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %101
+  OpStore.storage_buffer.i32<volatile> %190, %103
+  %192 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %104
+  OpStore.storage_buffer.i32<volatile> %192, %106
+  %194 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %107
+  OpStore.storage_buffer.i32<volatile> %194, %109
+  %196 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %110
+  OpStore.storage_buffer.i32<volatile> %196, %112
+  %198 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %113
+  OpStore.storage_buffer.i32<volatile> %198, %115
+  %200 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %116
+  OpStore.storage_buffer.i32<volatile> %200, %118
+  %202 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %119
+  OpStore.storage_buffer.i32<volatile> %202, %121
+  %204 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %122
+  OpStore.storage_buffer.i32<volatile> %204, %124
+  %205 = OpConstant.offset64 64
+  %206 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %205
+  OpStore.storage_buffer.i32<volatile> %206, %127
+  %207 = OpConstant.offset64 68
+  %208 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %207
+  OpStore.storage_buffer.i32<volatile> %208, %130
+  %209 = OpConstant.offset64 72
+  %210 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %209
+  OpStore.storage_buffer.i32<volatile> %210, %133
+  %211 = OpConstant.offset64 76
+  %212 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %211
+  OpStore.storage_buffer.i32<volatile> %212, %136
+  %213 = OpConstant.offset64 80
+  %214 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %213
+  OpStore.storage_buffer.i32<volatile> %214, %139
+  %215 = OpConstant.offset64 84
+  %216 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %215
+  OpStore.storage_buffer.i32<volatile> %216, %142
+  %217 = OpConstant.offset64 88
+  %218 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %217
+  OpStore.storage_buffer.i32<volatile> %218, %145
+  %219 = OpConstant.offset64 92
+  %220 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %219
+  OpStore.storage_buffer.i32<volatile> %220, %148
+  %221 = OpConstant.offset64 96
+  %222 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %221
+  OpStore.storage_buffer.i32<volatile> %222, %151
+  %223 = OpConstant.offset64 100
+  %224 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %223
+  OpStore.storage_buffer.i32<volatile> %224, %154
+  %225 = OpConstant.offset64 104
+  %226 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %225
+  OpStore.storage_buffer.i32<volatile> %226, %157
+  %227 = OpConstant.offset64 108
+  %228 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %227
+  OpStore.storage_buffer.i32<volatile> %228, %160
+  %229 = OpConstant.offset64 112
+  %230 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %229
+  OpStore.storage_buffer.i32<volatile> %230, %163
+  %231 = OpConstant.offset64 116
+  %232 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %231
+  OpStore.storage_buffer.i32<volatile> %232, %166
+  %233 = OpConstant.offset64 120
+  %234 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %233
+  OpStore.storage_buffer.i32<volatile> %234, %169
+  %235 = OpConstant.offset64 124
+  %236 = OpPtrAccessChain.storage_buffer.i32.byte_offset %destination_aligned, %235
+  OpStore.storage_buffer.i32<volatile> %236, %172
+  return
+}
+
+// ====
+
+// XFAIL: The Vulkan 1.3 profile lacks storage-buffer i8 descriptors.
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @observe_byte(%input: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %source = buffer.view %input[%base] : buffer -> view<1xi8>
+  %destination = buffer.view %output[%base] : buffer -> view<2xi8>
+  %first = view.load<volatile> %source[0] : view<1xi8> -> i8
+  %second = view.load<volatile> %source[0] : view<1xi8> -> i8
+  view.store<volatile> %first, %destination[0] : i8, view<2xi8>
+  view.store<volatile> %second, %destination[1] : i8, view<2xi8>
+  func.return
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @observe_dynamic_address(%input: buffer, %byte_offset: offset) -> (i32, i32) {
+  %base = index.assume %byte_offset [range(%byte_offset, 0, 4092), mul(%byte_offset, 4)] : offset
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %source = buffer.view %aligned[%base] : buffer -> view<2xi32>
+  %first = view.load<volatile> %source[0] : view<2xi32> -> i32
+  %second = view.load<volatile> %source[1] : view<2xi32> -> i32
+  func.return %first, %second : i32, i32
+}
+
+// ----
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @observe_dynamic_address(%aligned: reg<spirv.ptr.storage_buffer>, %base: reg<spirv.offset64>) -> (reg<spirv.id : i32>, reg<spirv.id : i32>) asm {
+  %13 = OpPtrAccessChain.storage_buffer.i32.byte_offset %aligned, %base
+  %first = OpLoad.storage_buffer.i32<volatile> %13
+  %15 = OpConstant.offset64 4
+  %16 = OpIAdd.offset64 %base, %15
+  %17 = OpPtrAccessChain.storage_buffer.i32.byte_offset %aligned, %16
+  %second = OpLoad.storage_buffer.i32<volatile> %17
+  return %first, %second
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @ordinary_scalar(%input: buffer) -> (i32, i32) {
+  %base = index.constant 0 : offset
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %source = buffer.view %aligned[%base] : buffer -> view<1xi32>
+  %first = view.load %source[0] : view<1xi32> -> i32
+  %second = view.load %source[0] : view<1xi32> -> i32
+  func.return %first, %second : i32, i32
+}
+
+// ----
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @ordinary_scalar(%aligned: reg<spirv.ptr.storage_buffer>) -> (reg<spirv.id : i32>, reg<spirv.id : i32>) asm {
+  %11 = OpConstant.offset64 0
+  %12 = OpPtrAccessChain.storage_buffer.i32.byte_offset %aligned, %11
+  %first = OpLoad.storage_buffer.i32 %12
+  return %first, %first
+}

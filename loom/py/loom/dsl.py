@@ -5620,6 +5620,9 @@ class MemoryAccessInterface:
     concrete op kind. Common role names default to the same field names on
     the op; omitted optional defaults are soft and become ``none`` if the op
     does not declare the default field.
+
+    Instance flags, when present, use the shared MemoryAccessFlags vocabulary.
+    Consumers query them through the interface without concrete op-kind tests.
     """
 
     # Operand naming the accessed view or memory object.

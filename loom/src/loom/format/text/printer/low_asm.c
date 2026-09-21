@@ -10,6 +10,7 @@
 
 #include "loom/format/text/printer/atoms.h"
 #include "loom/format/text/printer/block_order.h"
+#include "loom/format/text/printer/format.h"
 #include "loom/format/text/printer/format_signatures.h"
 #include "loom/format/text/printer/regions.h"
 #include "loom/ir/context.h"
@@ -611,6 +612,9 @@ static iree_status_t loom_print_low_asm_packet(
     loom_print_context_t* ctx, const loom_text_low_asm_statement_t* statement) {
   IREE_RETURN_IF_ERROR(loom_print_low_asm_result_list(ctx, statement));
   IREE_RETURN_IF_ERROR(loom_print_emit(ctx, statement->packet.mnemonic, false));
+  IREE_RETURN_IF_ERROR(
+      loom_print_instance_flags(ctx, loom_op_vtable(ctx->module, statement->op),
+                                statement->op->instance_flags));
   if (statement->packet.operand_segment_count != 0) {
     IREE_RETURN_IF_ERROR(loom_print_low_asm_operand_segments(ctx, statement));
   } else {

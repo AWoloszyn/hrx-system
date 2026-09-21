@@ -1,0 +1,129 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// Volatile reads order even when their results are unused and their addresses
+// differ. The branch case carries the same completion requirement to each edge.
+// RUN: emit amdgpu-assembly @volatile_reads strategy=source
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @volatile_reads(%offset: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>) asm {
+  %first = global_load_b32_saddr<volatile> %offset, %base {glc = 1, dlc = 1}
+  %second = global_load_b32_saddr<volatile> %offset, %base {offset = 4, glc = 1, dlc = 1}
+  return
+}
+
+// ----
+  global_load_b32 v1, v0, s[0:1] offset:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  global_load_b32 v0, v0, s[0:1] offset:4
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @volatile_branch strategy=source
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @volatile_branch(%offset: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %condition: reg<amdgpu.scc>) asm {
+  %first = global_load_b32_saddr<volatile> %offset, %base {glc = 1, dlc = 1}
+  low.cond_br %condition, ^left, ^right : reg<amdgpu.scc>
+^left:
+  %left = global_load_b32_saddr<volatile> %offset, %base {offset = 4, glc = 1, dlc = 1}
+  return
+^right:
+  %right = global_load_b32_saddr<volatile> %offset, %base {offset = 8, glc = 1, dlc = 1}
+  return
+}
+
+// ----
+  global_load_b32 v1, v0, s[0:1] offset:0
+  s_cbranch_scc0 .Lbb2
+.Lbb1:
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  global_load_b32 v0, v0, s[0:1] offset:4
+  s_endpgm
+.Lbb2:
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  global_load_b32 v0, v0, s[0:1] offset:8
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @ordinary_reads strategy=source
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @ordinary_reads(%offset: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>) asm {
+  %first = global_load_b32_saddr %offset, %base
+  %second = global_load_b32_saddr %offset, %base {offset = 4}
+  return
+}
+
+// ----
+  global_load_b32 v1, v0, s[0:1] offset:0
+  global_load_b32 v0, v0, s[0:1] offset:4
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @volatile_read_write strategy=source
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @volatile_read_write(%offset: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %value: reg<amdgpu.vgpr>) asm {
+  %first = global_load_b32_saddr<volatile> %offset, %base
+  global_store_b32_saddr<volatile> %offset, %value, %base {offset = 4}
+  %second = global_load_b32_saddr<volatile> %offset, %base {offset = 8}
+  return
+}
+
+// ----
+  global_load_b32 v2, v1, s[0:1] offset:0
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  global_store_b32 v1, v0, s[0:1] offset:4
+  s_waitcnt_vscnt vscnt(0)
+  global_load_b32 v0, v1, s[0:1] offset:8
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @volatile_writes strategy=source
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @volatile_writes(%offset: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %value: reg<amdgpu.vgpr>) asm {
+  global_store_b32_saddr<volatile> %offset, %value, %base
+  global_store_b32_saddr<volatile> %offset, %value, %base {offset = 4}
+  return
+}
+
+// ----
+  global_store_b32 v0, v1, s[0:1] offset:0
+  s_waitcnt_vscnt vscnt(0)
+  global_store_b32 v0, v1, s[0:1] offset:4
+  s_waitcnt_vscnt vscnt(0)
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @volatile_loop strategy=source
+
+// This loop's load has no SSA consumer. Only its volatile observation requires
+// completion before the next iteration observes the memory again.
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @volatile_loop(%offset: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %again: reg<amdgpu.scc>) asm {
+  low.br ^loop
+^loop:
+  %observed = global_load_b32_saddr<volatile> %offset, %base
+  low.cond_br %again, ^loop, ^exit : reg<amdgpu.scc>
+^exit:
+  return
+}
+
+// ----
+.Lbb1:
+  s_waitcnt vmcnt(0) lgkmcnt(63)
+  global_load_b32 v1, v0, s[0:1] offset:0
+  s_cbranch_scc1 .Lbb1
+.Lbb2:
+  s_endpgm

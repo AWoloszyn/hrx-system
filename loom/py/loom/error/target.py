@@ -1492,12 +1492,12 @@ ERR_TARGET_081 = ErrorDef(
     message=(
         "target '{target_key}' export '{export_name}' config '{config_key}' "
         "selected a lowering for volatile memory operation '{op_name}' in "
-        "'@{function_name}' that has no ordered source-memory descriptor"
+        "'@{function_name}' that cannot preserve its per-access semantics"
     ),
     params=_TARGET_CONTEXT_PARAMS,
     fix_hint=(
-        "Select a source-memory descriptor carrying an ordered read or write "
-        "effect for the volatile operation."
+        "The selected lowering must carry the source memory-access flags onto "
+        "every physical memory access it emits."
     ),
 )
 
@@ -1629,6 +1629,23 @@ ERR_TARGET_089 = ErrorDef(
     ),
 )
 
+# ERR_TARGET_090: Memory access modifier applied to a non-memory packet.
+ERR_TARGET_090 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=90,
+    severity=Severity.ERROR,
+    summary="Memory access modifier applied to a non-memory packet.",
+    message=(
+        "Low instruction '{descriptor}' in '@{function_name}' carries volatile "
+        "access semantics but its descriptor declares no memory read or write"
+    ),
+    params=(
+        ErrorParam("descriptor", ParamKind.STRING),
+        ErrorParam("function_name", ParamKind.STRING),
+    ),
+    fix_hint="Apply volatile only to a descriptor-backed memory access.",
+)
+
 ALL_TARGET_ERRORS = (
     ERR_TARGET_001,
     ERR_TARGET_002,
@@ -1709,4 +1726,5 @@ ALL_TARGET_ERRORS = (
     ERR_TARGET_087,
     ERR_TARGET_088,
     ERR_TARGET_089,
+    ERR_TARGET_090,
 )

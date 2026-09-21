@@ -175,7 +175,9 @@ iree_status_t loom_low_rematerialize_value_uses(
       iree_any_bit_set(defining_op->flags, LOOM_OP_FLAG_DEAD) ||
       defining_op->result_count != 1 || defining_op->region_count != 0 ||
       defining_op->successor_count != 0 ||
-      defining_op->tied_result_count != 0) {
+      defining_op->tied_result_count != 0 ||
+      iree_any_bit_set(loom_op_effective_traits(module, defining_op),
+                       LOOM_TRAIT_OBSERVABLE_EFFECT)) {
     return iree_ok_status();
   }
 

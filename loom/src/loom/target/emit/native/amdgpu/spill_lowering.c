@@ -487,9 +487,10 @@ static iree_status_t loom_amdgpu_spill_lowering_build_register_convert(
   const loom_type_t result_types[] = {result_type};
   loom_op_t* convert_op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
-      &rewriter->builder, context->descriptor_set, descriptor, operands,
-      IREE_ARRAYSIZE(operands), loom_make_named_attr_slice(NULL, 0),
-      result_types, IREE_ARRAYSIZE(result_types), /*tied_results=*/NULL,
+      &rewriter->builder, context->descriptor_set, descriptor,
+      /*access_flags=*/0, operands, IREE_ARRAYSIZE(operands),
+      loom_make_named_attr_slice(NULL, 0), result_types,
+      IREE_ARRAYSIZE(result_types), /*tied_results=*/NULL,
       /*tied_result_count=*/0, location, &convert_op));
   *out_value = loom_low_op_results(convert_op).values[0];
   return iree_ok_status();
@@ -572,6 +573,7 @@ static iree_status_t loom_amdgpu_spill_lowering_build_exec_read(
   loom_op_t* read_op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
       &rewriter->builder, context->descriptor_set, descriptor,
+      /*access_flags=*/0,
       /*operands=*/NULL, /*operand_count=*/0, loom_named_attr_slice_empty(),
       &exec_type, 1, /*tied_results=*/NULL,
       /*tied_result_count=*/0, location, &read_op));
@@ -588,8 +590,8 @@ static iree_status_t loom_amdgpu_spill_lowering_build_exec_write(
           context->descriptor_set, LOOM_AMDGPU_DESCRIPTOR_REF_S_MOV_B64_EXEC);
   loom_op_t* write_op = NULL;
   return loom_low_build_resolved_descriptor_op(
-      &rewriter->builder, context->descriptor_set, descriptor, &exec, 1,
-      loom_named_attr_slice_empty(),
+      &rewriter->builder, context->descriptor_set, descriptor,
+      /*access_flags=*/0, &exec, 1, loom_named_attr_slice_empty(),
       /*result_types=*/NULL, /*result_count=*/0, /*tied_results=*/NULL,
       /*tied_result_count=*/0, location, &write_op);
 }
@@ -604,6 +606,7 @@ static iree_status_t loom_amdgpu_spill_lowering_build_full_exec_write(
   loom_op_t* write_op = NULL;
   return loom_low_build_resolved_descriptor_op(
       &rewriter->builder, context->descriptor_set, descriptor,
+      /*access_flags=*/0,
       /*operands=*/NULL, /*operand_count=*/0, loom_named_attr_slice_empty(),
       /*result_types=*/NULL,
       /*result_count=*/0, /*tied_results=*/NULL, /*tied_result_count=*/0,
@@ -733,7 +736,8 @@ static iree_status_t loom_amdgpu_spill_lowering_store_chunk(
   loom_op_t* store_op = NULL;
   return loom_low_build_resolved_descriptor_op(
       &rewriter->builder, context->descriptor_set, spill_descriptor.descriptor,
-      operands, operand_count, loom_make_named_attr_slice(&attr, 1),
+      /*access_flags=*/0, operands, operand_count,
+      loom_make_named_attr_slice(&attr, 1),
       /*result_types=*/NULL,
       /*result_count=*/0, /*tied_results=*/NULL, /*tied_result_count=*/0,
       location, &store_op);
@@ -780,8 +784,9 @@ static iree_status_t loom_amdgpu_spill_lowering_load_chunk(
   loom_op_t* load_op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
       &rewriter->builder, context->descriptor_set, spill_descriptor.descriptor,
-      operands, operand_count, loom_make_named_attr_slice(&attr, 1),
-      result_types, IREE_ARRAYSIZE(result_types), /*tied_results=*/NULL,
+      /*access_flags=*/0, operands, operand_count,
+      loom_make_named_attr_slice(&attr, 1), result_types,
+      IREE_ARRAYSIZE(result_types), /*tied_results=*/NULL,
       /*tied_result_count=*/0, location, &load_op));
   *out_value = loom_low_op_results(load_op).values[0];
   return iree_ok_status();

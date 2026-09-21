@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "iree/base/internal/math.h"
+#include "loom/codegen/low/builder.h"
 #include "loom/codegen/low/lower/context.h"
 #include "loom/codegen/low/lower/rule_descriptor.h"
 #include "loom/codegen/low/lower/rule_match.h"
@@ -348,10 +349,30 @@ static int64_t loom_low_lower_rule_attr_copy_i64_attr_minus_literal(
   return projected_value;
 }
 
+static loom_memory_access_flags_t loom_low_lower_resolve_emit_access_flags(
+    const loom_low_descriptor_set_t* descriptor_set,
+    const loom_low_descriptor_t* descriptor, const loom_low_lower_emit_t* emit,
+    loom_memory_access_flags_t access_flags) {
+  if (access_flags == 0 || emit->source_memory_ordinal == 0) {
+    return 0;
+  }
+  // Source-memory rows also describe address materialization. Only actual
+  // memory packets inherit the source operation's observable access.
+  for (uint16_t i = 0; i < descriptor->effect_count; ++i) {
+    const loom_low_effect_t* effect =
+        &descriptor_set->effects[descriptor->effect_start + i];
+    if (effect->kind == LOOM_LOW_EFFECT_KIND_READ ||
+        effect->kind == LOOM_LOW_EFFECT_KIND_WRITE) {
+      return access_flags;
+    }
+  }
+  return 0;
+}
+
 iree_status_t loom_low_lower_rule_set_resolve_emit_program(
     loom_low_lower_context_t* context, uint16_t rule_set_index,
     const loom_low_lower_rule_set_t* rule_set,
-    const loom_low_lower_rule_t* rule,
+    const loom_low_lower_rule_t* rule, loom_memory_access_flags_t access_flags,
     const loom_low_lower_resolved_emit_t** out_resolved_emits) {
   *out_resolved_emits = NULL;
   if (rule->emit_count == 0) {
@@ -373,6 +394,7 @@ iree_status_t loom_low_lower_rule_set_resolve_emit_program(
         loom_low_lower_rule_set_emit_at(rule_set, emit_ref_index);
     resolved_emits[i].emit = emit;
     resolved_emits[i].descriptor = (loom_low_lower_resolved_descriptor_t){0};
+    resolved_emits[i].access_flags = 0;
     if (emit->descriptor_ref == LOOM_LOW_LOWER_DESCRIPTOR_REF_NONE) {
       continue;
     }
@@ -382,6 +404,8 @@ iree_status_t loom_low_lower_rule_set_resolve_emit_program(
     IREE_ASSERT(descriptor != NULL,
                 "generated target-low rule references a missing descriptor");
     resolved_emits[i].descriptor.descriptor = descriptor;
+    resolved_emits[i].access_flags = loom_low_lower_resolve_emit_access_flags(
+        context->descriptor_set, descriptor, emit, access_flags);
   }
   *out_resolved_emits = resolved_emits;
   return iree_ok_status();
@@ -1106,10 +1130,12 @@ static iree_status_t loom_low_lower_rule_emit_descriptor_op(
   }
 
   loom_op_t* low_op = NULL;
-  IREE_RETURN_IF_ERROR(loom_low_lower_emit_resolved_descriptor_op(
-      context, &resolved_emit->descriptor, low_operands,
-      emit->operand_ref_count, attrs, result_types, emit->result_ref_count,
-      tied_results, emit->tied_result_count, source_op->location, &low_op));
+  IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
+      &context->builder, context->descriptor_set,
+      resolved_emit->descriptor.descriptor, resolved_emit->access_flags,
+      low_operands, emit->operand_ref_count, attrs, result_types,
+      emit->result_ref_count, tied_results, emit->tied_result_count,
+      source_op->location, &low_op));
   loom_value_slice_t low_results = loom_low_op_results(low_op);
   return loom_low_lower_rule_bind_results(context, rule_set, source_op, state,
                                           emit, low_results.values);

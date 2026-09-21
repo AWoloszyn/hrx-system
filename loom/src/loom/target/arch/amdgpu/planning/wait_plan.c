@@ -1636,6 +1636,17 @@ static iree_status_t loom_amdgpu_wait_plan_finish_node_classification(
         frontier_node->write_space_flags |= generic_space;
       }
     }
+    // A volatile memory instruction is an ordering consumer even when its
+    // descriptor only reads. Retain that distinction for both local edges and
+    // the incoming memory frontier across CFG blocks.
+    if (node->descriptor != NULL &&
+        iree_any_bit_set(node->op->instance_flags,
+                         LOOM_MEMORY_ACCESS_FLAG_VOLATILE)) {
+      node_state->flags |= LOOM_AMDGPU_WAIT_NODE_STATE_DEPENDENCY_READ |
+                           LOOM_AMDGPU_WAIT_NODE_STATE_DEPENDENCY_WRITE;
+      frontier_node->read_space_flags |= generic_space;
+      frontier_node->write_space_flags |= generic_space;
+    }
     const loom_amdgpu_descriptor_traits_t descriptor_traits =
         loom_amdgpu_descriptor_traits(descriptor_set, node->descriptor);
     if (loom_amdgpu_wait_plan_descriptor_has_xcnt_source_lease(

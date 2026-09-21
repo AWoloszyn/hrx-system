@@ -15,10 +15,11 @@
 extern "C" {
 #endif
 
-// Returns true when any descriptor effect forms an ordered frontier.
-bool loom_low_schedule_descriptor_has_ordered_effect(
+// Returns true when a descriptor-backed node forms an ordered frontier.
+// Per-access semantics strengthen the descriptor's intrinsic effect ordering.
+bool loom_low_schedule_node_has_ordered_effect(
     const loom_low_descriptor_set_t* descriptor_set,
-    const loom_low_descriptor_t* descriptor);
+    const loom_low_schedule_node_t* node);
 
 // Adds effect ordering and target timing dependencies within and across CFG
 // blocks.
