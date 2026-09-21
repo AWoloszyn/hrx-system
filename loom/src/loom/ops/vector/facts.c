@@ -3469,7 +3469,7 @@ static void loom_vector_fmaf_transfer(loom_scalar_type_t scalar_type,
                                       const loom_value_facts_t* c,
                                       const void* user_data,
                                       loom_value_facts_t* out) {
-  loom_value_facts_eval_float_ternary(scalar_type, a, b, c, fmaf, fma, out);
+  loom_value_facts_eval_float_fma(scalar_type, a, b, c, out);
 }
 
 iree_status_t loom_vector_fmaf_facts(loom_fact_context_t* context,
@@ -4729,8 +4729,8 @@ static bool loom_vector_accumulate_float_fma(
     loom_scalar_type_t scalar_type, loom_value_facts_t lhs,
     loom_value_facts_t rhs, loom_value_facts_t accumulator,
     loom_value_facts_t* out_accumulator) {
-  loom_value_facts_eval_float_ternary(scalar_type, &lhs, &rhs, &accumulator,
-                                      fmaf, fma, out_accumulator);
+  loom_value_facts_eval_float_fma(scalar_type, &lhs, &rhs, &accumulator,
+                                  out_accumulator);
   return loom_value_facts_is_exact(*out_accumulator) ||
          loom_value_facts_is_nan(*out_accumulator);
 }

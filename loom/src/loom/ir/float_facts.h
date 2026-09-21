@@ -23,8 +23,6 @@ typedef double (*loom_float_unary_data_f64_fn_t)(double input,
                                                  const void* user_data);
 typedef float (*loom_float_binary_f32_fn_t)(float lhs, float rhs);
 typedef double (*loom_float_binary_f64_fn_t)(double lhs, double rhs);
-typedef float (*loom_float_ternary_f32_fn_t)(float a, float b, float c);
-typedef double (*loom_float_ternary_f64_fn_t)(double a, double b, double c);
 
 typedef enum loom_float_minmax_kind_e {
   LOOM_FLOAT_MINMAX_MINIMUM = 0,
@@ -104,13 +102,18 @@ void loom_value_facts_eval_float_binary(loom_scalar_type_t scalar_type,
                                         loom_float_binary_f32_fn_t f32_fn,
                                         loom_float_binary_f64_fn_t f64_fn,
                                         loom_value_facts_t* out_facts);
-void loom_value_facts_eval_float_ternary(loom_scalar_type_t scalar_type,
-                                         const loom_value_facts_t* a,
-                                         const loom_value_facts_t* b,
-                                         const loom_value_facts_t* c,
-                                         loom_float_ternary_f32_fn_t f32_fn,
-                                         loom_float_ternary_f64_fn_t f64_fn,
-                                         loom_value_facts_t* out_facts);
+
+// Evaluates a fused multiply-add with one rounding to |scalar_type|. Narrow
+// results retain the contribution of addends lost in F32/F64 intermediates.
+// Exact operand payloads have already been rounded to their declared type.
+// Requires non-trapping round-to-nearest-even host arithmetic with subnormals
+// preserved. The pass interpreter establishes this environment for compiler
+// evaluation, including the host F32/F64 arithmetic evaluators.
+void loom_value_facts_eval_float_fma(loom_scalar_type_t scalar_type,
+                                     const loom_value_facts_t* a,
+                                     const loom_value_facts_t* b,
+                                     const loom_value_facts_t* c,
+                                     loom_value_facts_t* out_facts);
 
 // Evaluates sine or cosine over turns with exact quarter-turn range reduction.
 // Finite inputs preserve periodicity and produce exact cardinal values with

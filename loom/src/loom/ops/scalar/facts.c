@@ -380,9 +380,9 @@ iree_status_t loom_scalar_fmaf_facts(loom_fact_context_t* context,
                                      const loom_op_t* op,
                                      const loom_value_facts_t* operand_facts,
                                      loom_value_facts_t* result_facts) {
-  loom_value_facts_eval_float_ternary(
-      loom_scalar_result_element_type(module, op), &operand_facts[0],
-      &operand_facts[1], &operand_facts[2], fmaf, fma, &result_facts[0]);
+  loom_value_facts_eval_float_fma(loom_scalar_result_element_type(module, op),
+                                  &operand_facts[0], &operand_facts[1],
+                                  &operand_facts[2], &result_facts[0]);
   return iree_ok_status();
 }
 

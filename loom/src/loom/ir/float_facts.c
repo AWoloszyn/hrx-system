@@ -171,13 +171,46 @@ void loom_value_facts_eval_float_binary(loom_scalar_type_t scalar_type,
   loom_value_facts_propagate_binary_distribution(*lhs, *rhs, out_facts);
 }
 
-void loom_value_facts_eval_float_ternary(loom_scalar_type_t scalar_type,
-                                         const loom_value_facts_t* a,
-                                         const loom_value_facts_t* b,
-                                         const loom_value_facts_t* c,
-                                         loom_float_ternary_f32_fn_t f32_fn,
-                                         loom_float_ternary_f64_fn_t f64_fn,
-                                         loom_value_facts_t* out_facts) {
+// Produces an F32 value that rounds to the exact narrow FMA result. For finite
+// F8/F16/BF16 operands, the product has at most 22 significant bits and fits
+// exactly in F64. A rounded F64 sum alone can still lose a tiny addend that
+// changes the side of a narrow rounding midpoint.
+static float loom_float_fma_narrow(double a, double b, double c) {
+  const double product = a * b;
+  const double sum = product + c;
+  float rounded = (float)sum;
+  uint32_t bits = 0;
+  memcpy(&bits, &rounded, sizeof(bits));
+
+  // F16 has the widest narrow significand. Every narrow rounding midpoint,
+  // including subnormal and overflow boundaries, has twelve zero low F32 bits.
+  if ((bits & UINT32_C(0xFFF)) != 0 || !isfinite(rounded)) {
+    return rounded;
+  }
+
+  double error = sum - (double)rounded;
+  if (error == 0.0) {
+    // FastTwoSum recovers the exact residual even when the addend is too small
+    // to survive the F64 addition. Neither its product nor residual can exceed
+    // F64's exponent range for the supported narrow operand formats.
+    error =
+        fabs(product) >= fabs(c) ? c - (sum - product) : product - (sum - c);
+  }
+  if (error != 0.0) {
+    // Nudge a midpoint toward the exact result before narrowing. The filter
+    // also admits non-midpoints, where one F32 ULP cannot change narrow
+    // rounding.
+    bits += ((error > 0.0) != ((bits >> 31) != 0)) ? 1u : UINT32_MAX;
+    memcpy(&rounded, &bits, sizeof(rounded));
+  }
+  return rounded;
+}
+
+void loom_value_facts_eval_float_fma(loom_scalar_type_t scalar_type,
+                                     const loom_value_facts_t* a,
+                                     const loom_value_facts_t* b,
+                                     const loom_value_facts_t* c,
+                                     loom_value_facts_t* out_facts) {
   double a_value = 0.0;
   double b_value = 0.0;
   double c_value = 0.0;
@@ -185,13 +218,16 @@ void loom_value_facts_eval_float_ternary(loom_scalar_type_t scalar_type,
       !loom_value_facts_as_exact_float(scalar_type, *b, &b_value) ||
       !loom_value_facts_as_exact_float(scalar_type, *c, &c_value)) {
     *out_facts = loom_value_facts_unknown();
-  } else if (loom_float_type_uses_f32_arithmetic(scalar_type)) {
+  } else if (scalar_type == LOOM_SCALAR_TYPE_F32) {
     *out_facts = loom_value_facts_exact_float(
         scalar_type,
-        (double)f32_fn((float)a_value, (float)b_value, (float)c_value));
+        (double)fmaf((float)a_value, (float)b_value, (float)c_value));
+  } else if (scalar_type == LOOM_SCALAR_TYPE_F64) {
+    *out_facts = loom_value_facts_exact_float(scalar_type,
+                                              fma(a_value, b_value, c_value));
   } else {
     *out_facts = loom_value_facts_exact_float(
-        scalar_type, f64_fn(a_value, b_value, c_value));
+        scalar_type, (double)loom_float_fma_narrow(a_value, b_value, c_value));
   }
   loom_value_facts_propagate_ternary_distribution(*a, *b, *c, out_facts);
 }
