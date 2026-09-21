@@ -86,6 +86,83 @@ TEST(TypesTest, RecordPartitionsRetainNominalMembersAndStaticTransport) {
   EXPECT_EQ(loom_type_element_type(signature[4]), LOOM_SCALAR_TYPE_I1);
 }
 
+TEST(TypesTest, ViewPartitionsBindEachDestinationShapeAndLayoutIdentity) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  Source source(IREE_SV("namespace loom { namespace encoding { "
+                        "enum class role { layout }; } namespace type { "
+                        "using size_type = __SIZE_TYPE__; "
+                        "inline constexpr size_type dynamic = ~size_type{0}; "
+                        "template <loom::encoding::role Role, size_type Rank> "
+                        "struct [[loom::type(\"encoding\")]] encoding { "
+                        "size_type strides[Rank]; }; "
+                        "template <class T, size_type Rows = dynamic, "
+                        "size_type Columns = dynamic> "
+                        "struct [[loom::type(\"view\")]] view { T* data; "
+                        "size_type shape[2]; "
+                        "encoding<loom::encoding::role::layout, 2> layout; }; "
+                        "} } "
+                        "using Layout = loom::type::encoding<"
+                        "loom::encoding::role::layout, 2>; "
+                        "using Plane = loom::type::view<const float, "
+                        "loom::type::dynamic, 32>; "
+                        "struct Packet { Plane plane; unsigned tag; };"),
+                IREE_SV("views.cpp"), options);
+  Types types(source.unit(), source.diagnostics());
+  auto* owner = source.unit().ast();
+  auto source_type = [&](const char* name) {
+    return (*source.unit().globalScope()->find(name).begin())->type();
+  };
+
+  const auto& layout = types.partition(source_type("Layout"), owner);
+  EXPECT_EQ(layout.kind, ValueKind::Encoding);
+  EXPECT_EQ(layout.component_count, 1u);
+  EXPECT_FALSE(types.requires_binding(source_type("Layout"), owner));
+  std::vector<loom_type_t> layout_types;
+  types.append(source_type("Layout"), owner, layout_types);
+  ASSERT_EQ(layout_types.size(), 1u);
+  EXPECT_EQ(loom_type_kind(layout_types[0]), LOOM_TYPE_ENCODING);
+  EXPECT_EQ(loom_type_encoding_role(layout_types[0]),
+            LOOM_ENCODING_ROLE_ADDRESS_LAYOUT);
+
+  const auto& plane = types.partition(source_type("Plane"), owner);
+  EXPECT_EQ(plane.kind, ValueKind::View);
+  EXPECT_EQ(plane.component_count, 3u);
+  EXPECT_TRUE(types.requires_binding(source_type("Plane"), owner));
+  const loom_value_id_t plane_ids[] = {11, 12, 13};
+  std::vector<loom_type_t> plane_types;
+  types.append_bound(source_type("Plane"), owner, plane_ids, plane_types);
+  ASSERT_EQ(plane_types.size(), 3u);
+  EXPECT_EQ(loom_type_element_type(plane_types[0]), LOOM_SCALAR_TYPE_INDEX);
+  EXPECT_EQ(loom_type_encoding_role(plane_types[1]),
+            LOOM_ENCODING_ROLE_ADDRESS_LAYOUT);
+  EXPECT_EQ(loom_type_kind(plane_types[2]), LOOM_TYPE_VIEW);
+  EXPECT_EQ(loom_type_rank(plane_types[2]), 2u);
+  EXPECT_EQ(loom_type_element_type(plane_types[2]), LOOM_SCALAR_TYPE_F32);
+  EXPECT_EQ(loom_type_dim_value_id_at(plane_types[2], 0), 11u);
+  EXPECT_EQ(loom_type_dim_static_size_at(plane_types[2], 1), 32);
+  EXPECT_TRUE(loom_type_has_ssa_encoding(plane_types[2]));
+  EXPECT_EQ(loom_type_encoding_value_id(plane_types[2]), 12u);
+  std::vector<loom_type_t> unbound;
+  EXPECT_THROW(types.append(source_type("Plane"), owner, unbound),
+               SourceRejected);
+
+  const auto* packet = types.record(source_type("Packet"), owner);
+  ASSERT_NE(packet, nullptr);
+  EXPECT_EQ(packet->component_count, 4u);
+  EXPECT_EQ(
+      packet->component_names,
+      (std::vector<std::string>{"plane_rows", "plane_layout", "plane", "tag"}));
+  EXPECT_TRUE(types.requires_binding(source_type("Packet"), owner));
+  const loom_value_id_t packet_ids[] = {21, 22, 23, 24};
+  std::vector<loom_type_t> packet_types;
+  types.append_bound(source_type("Packet"), owner, packet_ids, packet_types);
+  ASSERT_EQ(packet_types.size(), 4u);
+  EXPECT_EQ(loom_type_dim_value_id_at(packet_types[2], 0), 21u);
+  EXPECT_EQ(loom_type_encoding_value_id(packet_types[2]), 22u);
+  EXPECT_EQ(loom_type_element_type(packet_types[3]), LOOM_SCALAR_TYPE_I32);
+}
+
 TEST(TypesTest, RejectsRepresentationsThatLoseSourceSemantics) {
   loom_cxx_import_options_t options;
   loom_cxx_import_options_initialize(&options);

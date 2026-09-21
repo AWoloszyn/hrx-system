@@ -46,6 +46,19 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "signature",
+    srcs = ["signature.cc"],
+    hdrs = ["signature.h"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":types",
+        "//loom/src/loom/import/cxx/source:error",
+        "//loom/src/loom/ops:op_defs",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_library(
     name = "scalar",
     srcs = ["scalar.cc"],
     hdrs = ["scalar.h"],
@@ -132,6 +145,20 @@ loom_cc_test(
 )
 
 loom_cc_test(
+    name = "signature_test",
+    srcs = ["signature_test.cc"],
+    cxxopts = select(CXX_COMPILER_OPTIONS),
+    deps = [
+        ":builder_test",
+        ":signature",
+        "//loom/src/loom/ops/test",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//third_party:cxx_parser",
+    ],
+)
+
+loom_cc_test(
     name = "scalar_test",
     srcs = ["scalar_test.cc"],
     cxxopts = select(CXX_COMPILER_OPTIONS),
@@ -191,6 +218,8 @@ iree_cmake_extra_content(
 foreach(_target IN ITEMS
     loom_import_cxx_value_representation.objects
     loom_import_cxx_value_representation_test
+    loom_import_cxx_value_signature.objects
+    loom_import_cxx_value_signature_test
     loom_import_cxx_value_types.objects
     loom_import_cxx_value_types_test
     loom_import_cxx_value_scalar.objects

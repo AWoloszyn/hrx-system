@@ -58,6 +58,23 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
+    signature
+  HDRS
+    "signature.h"
+  SRCS
+    "signature.cc"
+  DEPS
+    ::types
+    iree::third_party::cxx_parser
+    loom::import::cxx::source::error
+    loom::ops::op_defs
+  PUBLIC
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_library(
+  NAME
     scalar
   HDRS
     "scalar.h"
@@ -164,6 +181,24 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_test(
   NAME
+    signature_test
+  SRCS
+    "signature_test.cc"
+  DEPS
+    ::builder_test
+    ::signature
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::third_party::cxx_parser
+    loom::ops::test
+  LABELS
+    "iree-build-requirement=loom.import.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_test(
+  NAME
     scalar_test
   SRCS
     "scalar_test.cc"
@@ -231,6 +266,8 @@ endif()
 foreach(_target IN ITEMS
     loom_import_cxx_value_representation.objects
     loom_import_cxx_value_representation_test
+    loom_import_cxx_value_signature.objects
+    loom_import_cxx_value_signature_test
     loom_import_cxx_value_types.objects
     loom_import_cxx_value_types_test
     loom_import_cxx_value_scalar.objects
