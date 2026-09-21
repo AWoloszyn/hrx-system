@@ -1476,7 +1476,8 @@ void loom_low_schedule_pressure_score_candidate(
   uint64_t produced_live_units = 0;
   uint32_t produced_live_value_count = 0;
   bool rematerializable_leaf =
-      node->descriptor != NULL && node->operand_count == 0;
+      node->descriptor != NULL && node->operand_count == 0 &&
+      !iree_any_bit_set(node->traits, LOOM_TRAIT_OBSERVABLE_EFFECT);
   const uint16_t storage_relation_count = node->storage_relation_count;
   const bool has_early_clobber =
       iree_any_bit_set(node->flags, LOOM_LOW_SCHEDULE_NODE_FLAG_EARLY_CLOBBER);

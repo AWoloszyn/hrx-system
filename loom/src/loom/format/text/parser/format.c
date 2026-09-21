@@ -401,9 +401,9 @@ static iree_status_t loom_parse_format_instance_flag_list(
 }
 
 // Parses instance flags: <flag1|flag2>.
-static iree_status_t loom_parse_format_flags(loom_parser_t* parser,
-                                             const loom_op_vtable_t* vtable,
-                                             loom_parsed_op_t* parsed) {
+iree_status_t loom_parse_format_flags(loom_parser_t* parser,
+                                      const loom_op_vtable_t* vtable,
+                                      loom_parsed_op_t* parsed) {
   if (loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_LANGLE)) {
     IREE_RETURN_IF_ERROR(loom_parse_format_instance_flag_list(
         parser, vtable, &parsed->instance_flags));

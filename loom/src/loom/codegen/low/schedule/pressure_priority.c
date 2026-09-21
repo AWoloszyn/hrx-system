@@ -34,7 +34,8 @@ static uint64_t loom_low_schedule_node_materialization_key(
     return UINT64_C(1) << 63;
   }
   if (node->descriptor == NULL || node->operand_count != 0 ||
-      node->result_count == 0) {
+      node->result_count == 0 ||
+      iree_any_bit_set(node->traits, LOOM_TRAIT_OBSERVABLE_EFFECT)) {
     return 0;
   }
   for (uint16_t result_index = 0; result_index < node->result_count;

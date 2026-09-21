@@ -821,7 +821,9 @@ static iree_status_t loom_low_select_operand_form_rematerialize_operand(
   }
   if (defining_op->operand_count != 0 || defining_op->result_count != 1 ||
       defining_op->region_count != 0 || defining_op->successor_count != 0 ||
-      defining_op->tied_result_count != 0) {
+      defining_op->tied_result_count != 0 ||
+      iree_any_bit_set(loom_op_effective_traits(state->module, defining_op),
+                       LOOM_TRAIT_OBSERVABLE_EFFECT)) {
     return iree_ok_status();
   }
 
@@ -1169,10 +1171,10 @@ static iree_status_t loom_low_select_operand_form_rewrite_packet(
   loom_builder_set_before(&rewriter->builder, op);
   loom_op_t* replacement_op = NULL;
   iree_status_t status = loom_low_build_resolved_descriptor_op(
-      &rewriter->builder, descriptor_set, replacement_descriptor, operands,
-      form->operand_map_count, replacement_attrs, result_types,
-      op->result_count, tied_results, tied_result_count, op->location,
-      &replacement_op);
+      &rewriter->builder, descriptor_set, replacement_descriptor,
+      op->instance_flags, operands, form->operand_map_count, replacement_attrs,
+      result_types, op->result_count, tied_results, tied_result_count,
+      op->location, &replacement_op);
   loom_builder_restore(&rewriter->builder, saved_ip);
   IREE_RETURN_IF_ERROR(status);
 

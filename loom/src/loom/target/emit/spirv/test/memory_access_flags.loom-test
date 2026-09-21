@@ -1,0 +1,27 @@
+// RUN: with-checks emit spirv-dis validate
+// REQUIRES: spirv-dis, spirv-val
+
+// The final SPIR-V retains the access semantics for the downstream compiler.
+// Other accesses to the same storage keep their ordinary memory operands.
+spirv.target<vulkan1_3> @target
+
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @memory_observations() asm {
+  %storage = storage {byte_alignment = 4, byte_length = 16} : low.storage<workgroup>
+  %base = storage_address %storage : low.storage<workgroup> -> reg<spirv.ptr.workgroup.array.i32>
+  %index = OpConstant.i32 0
+  %value = OpConstant.i32 7
+  %pointer = OpAccessChain.workgroup.i32.element_index %base, %index
+  OpStore.workgroup.i32<volatile> %pointer, %value
+  %first = OpLoad.workgroup.i32<volatile> %pointer
+  %second = OpLoad.workgroup.i32<volatile> %pointer
+  OpStore.workgroup.i32 %pointer, %value
+  %ordinary = OpLoad.workgroup.i32 %pointer
+  return
+}
+
+// ----
+CHECK: OpStore %pointer %value Volatile|Aligned 4
+CHECK: %first = OpLoad %int %pointer Volatile|Aligned 4
+CHECK: %second = OpLoad %int %pointer Volatile|Aligned 4
+CHECK: OpStore %pointer %value Aligned 4
+CHECK: %ordinary = OpLoad %int %pointer Aligned 4

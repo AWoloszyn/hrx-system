@@ -30,6 +30,7 @@ from loom.assembly import (
     BindingList,
     BlockArgs,
     BlockRef,
+    Flags,
     FormatElement,
     FuncArgs,
     KeyRef,
@@ -57,11 +58,13 @@ from loom.dialect.func.defs import (
     Retain,
     Visibility,
 )
+from loom.dialect.memory import MemoryAccessFlags
 from loom.dialect.target.defs import ExportAbiKind, ExportLinkage
 from loom.dsl import (
     ANY,
     ATTR_TYPE_BOOL,
     ATTR_TYPE_ENUM,
+    ATTR_TYPE_FLAGS,
     ATTR_TYPE_I64,
     ATTR_TYPE_TYPE,
     COMPILE_TIME_ONLY,
@@ -1124,17 +1127,31 @@ low_op = Op(
     "low.op",
     group=low_ops,
     phase=OpPhase.EXECUTABLE,
-    doc="Descriptor-backed target instruction over virtual registers.",
+    doc=(
+        "Descriptor-backed target instruction over virtual registers. Memory "
+        "access flags constrain each instruction instance independently of its "
+        "descriptor and machine cache controls. Volatile preserves dynamic "
+        "memory observations and their order; it supplies no atomicity, "
+        "synchronization, or cache-coherence guarantee."
+    ),
     operands=[Operand("operands", REGISTER, variadic=True)],
     attrs=[
         AttrDef("descriptor", "scoped_enum"),
+        AttrDef(
+            "memory_flags",
+            ATTR_TYPE_FLAGS,
+            optional=True,
+            enum_def=MemoryAccessFlags,
+        ),
         AttrDef("attrs", "dict", optional=True),
     ],
     results=[Result("results", REGISTER, variadic=True)],
     traits=[UNKNOWN_EFFECTS],
+    effective_traits="loom_low_op_effective_traits",
     generate_c_builder=False,
     format=[
         ScopedEnumRef("descriptor"),
+        Flags("memory_flags"),
         GLUE,
         LPAREN,
         Refs("operands"),

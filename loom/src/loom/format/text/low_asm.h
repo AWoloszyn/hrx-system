@@ -93,8 +93,8 @@ typedef struct loom_text_low_asm_packet_descriptor_t {
   uint16_t immediate_attribute_field_index;
   // True when at least one immediate requires named-dictionary syntax.
   bool has_named_immediates;
-  // True when this packet should canonicalize to a low const operation.
-  bool builds_as_const;
+  // Canonical operation kind supplying the packet's instance-flag vocabulary.
+  loom_op_kind_t operation_kind;
 } loom_text_low_asm_packet_descriptor_t;
 
 typedef struct loom_text_low_asm_immediate_descriptor_t {
@@ -293,7 +293,7 @@ typedef iree_status_t (*loom_text_low_asm_operand_segment_descriptor_fn_t)(
 typedef iree_status_t (*loom_text_low_asm_build_packet_fn_t)(
     const loom_text_low_asm_environment_state_t* state, loom_builder_t* builder,
     const loom_text_low_asm_packet_descriptor_t* packet,
-    loom_text_low_asm_packet_build_flags_t build_flags,
+    loom_text_low_asm_packet_build_flags_t build_flags, uint8_t instance_flags,
     const loom_value_id_t* operands, iree_host_size_t operand_count,
     loom_named_attr_slice_t attributes, const loom_type_t* result_types,
     iree_host_size_t result_count, const loom_tied_result_t* tied_results,

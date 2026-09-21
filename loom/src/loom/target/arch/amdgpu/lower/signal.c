@@ -181,8 +181,8 @@ static iree_status_t loom_amdgpu_signal_build_vgpr_b32_copy(
   loom_value_id_t operands[] = {source};
   loom_op_t* copy_op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
-      builder, descriptor_set, descriptor, operands, IREE_ARRAYSIZE(operands),
-      loom_make_named_attr_slice(NULL, 0), &vgpr_type,
+      builder, descriptor_set, descriptor, /*access_flags=*/0, operands,
+      IREE_ARRAYSIZE(operands), loom_make_named_attr_slice(NULL, 0), &vgpr_type,
       /*result_count=*/1, /*tied_results=*/NULL, /*tied_result_count=*/0,
       location, &copy_op));
   *out_value = loom_value_slice_get(loom_low_op_results(copy_op), 0);
@@ -324,8 +324,9 @@ static iree_status_t loom_amdgpu_signal_build_global_store_b64(
       IREE_ARRAYSIZE(operands), &operand_count));
   loom_op_t* store_op = NULL;
   return loom_low_build_resolved_descriptor_op(
-      builder, descriptor_set, descriptor, operands, operand_count,
-      loom_make_named_attr_slice(attrs, attr_count), /*result_types=*/NULL,
+      builder, descriptor_set, descriptor, /*access_flags=*/0, operands,
+      operand_count, loom_make_named_attr_slice(attrs, attr_count),
+      /*result_types=*/NULL,
       /*result_count=*/0, /*tied_results=*/NULL, /*tied_result_count=*/0,
       location, &store_op);
 }
@@ -353,7 +354,7 @@ static iree_status_t loom_amdgpu_signal_build_m0_from_sgpr(
       descriptor_set, descriptor, /*result_index=*/0, &result_type));
   loom_op_t* op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
-      builder, descriptor_set, descriptor, &source,
+      builder, descriptor_set, descriptor, /*access_flags=*/0, &source,
       /*operand_count=*/1, loom_make_named_attr_slice(NULL, 0), &result_type,
       /*result_count=*/1, /*tied_results=*/NULL, /*tied_result_count=*/0,
       location, &op));
@@ -425,8 +426,9 @@ iree_status_t loom_amdgpu_build_signal_add_one_release(
       IREE_ARRAYSIZE(operands), &operand_count));
   loom_op_t* op = NULL;
   return loom_low_build_resolved_descriptor_op(
-      builder, descriptor_set, descriptor, operands, operand_count,
-      loom_make_named_attr_slice(attrs, attr_count), /*result_types=*/NULL,
+      builder, descriptor_set, descriptor, /*access_flags=*/0, operands,
+      operand_count, loom_make_named_attr_slice(attrs, attr_count),
+      /*result_types=*/NULL,
       /*result_count=*/0, /*tied_results=*/NULL, /*tied_result_count=*/0,
       location, &op);
 }
@@ -458,8 +460,8 @@ iree_status_t loom_amdgpu_build_signal_mailbox_message_id(
       descriptor_set, LOOM_AMDGPU_DESCRIPTOR_REF_S_AND_B32);
   loom_op_t* op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
-      builder, descriptor_set, descriptor, operands, IREE_ARRAYSIZE(operands),
-      loom_make_named_attr_slice(NULL, 0), &sgpr_type,
+      builder, descriptor_set, descriptor, /*access_flags=*/0, operands,
+      IREE_ARRAYSIZE(operands), loom_make_named_attr_slice(NULL, 0), &sgpr_type,
       /*result_count=*/1, /*tied_results=*/NULL,
       /*tied_result_count=*/0, location, &op));
   *out_message_id = loom_value_slice_get(loom_low_op_results(op), 0);

@@ -52,14 +52,14 @@ loom_low_schedule_boundary_event_endpoint(uint16_t timing_event_id) {
 }
 
 static bool loom_low_schedule_effect_is_ordered(
-    const loom_low_effect_t* effect) {
+    const loom_low_effect_t* effect, loom_memory_access_flags_t access_flags) {
   if (iree_any_bit_set(effect->flags, LOOM_LOW_EFFECT_FLAG_ORDERED)) {
     return true;
   }
   switch (effect->kind) {
     case LOOM_LOW_EFFECT_KIND_READ:
     case LOOM_LOW_EFFECT_KIND_WRITE:
-      return false;
+      return iree_any_bit_set(access_flags, LOOM_MEMORY_ACCESS_FLAG_VOLATILE);
     case LOOM_LOW_EFFECT_KIND_UNKNOWN:
     case LOOM_LOW_EFFECT_KIND_CALL:
     case LOOM_LOW_EFFECT_KIND_BARRIER:
@@ -72,8 +72,8 @@ static bool loom_low_schedule_effect_is_ordered(
 }
 
 static bool loom_low_schedule_effect_orders_memory(
-    const loom_low_effect_t* effect) {
-  if (!loom_low_schedule_effect_is_ordered(effect)) {
+    const loom_low_effect_t* effect, loom_memory_access_flags_t access_flags) {
+  if (!loom_low_schedule_effect_is_ordered(effect, access_flags)) {
     return false;
   }
   switch (effect->kind) {
@@ -100,13 +100,14 @@ static bool loom_low_schedule_node_has_structural_effects(
                                             LOOM_TRAIT_OBSERVABLE_EFFECT);
 }
 
-bool loom_low_schedule_descriptor_has_ordered_effect(
+bool loom_low_schedule_node_has_ordered_effect(
     const loom_low_descriptor_set_t* descriptor_set,
-    const loom_low_descriptor_t* descriptor) {
+    const loom_low_schedule_node_t* node) {
+  const loom_low_descriptor_t* descriptor = node->descriptor;
   for (uint16_t i = 0; i < descriptor->effect_count; ++i) {
     const loom_low_effect_t* effect =
         &descriptor_set->effects[descriptor->effect_start + i];
-    if (loom_low_schedule_effect_is_ordered(effect)) {
+    if (loom_low_schedule_effect_is_ordered(effect, node->op->instance_flags)) {
       return true;
     }
   }
@@ -358,7 +359,8 @@ static iree_status_t loom_low_schedule_note_descriptor_effects(
   for (uint16_t i = 0; i < descriptor->effect_count; ++i) {
     const loom_low_effect_t* effect =
         &descriptor_set->effects[descriptor->effect_start + i];
-    if (loom_low_schedule_effect_orders_memory(effect)) {
+    if (loom_low_schedule_effect_orders_memory(
+            effect, state->nodes[node_index].op->instance_flags)) {
       return loom_low_schedule_effect_frontier_note_ordered(
           state, frontier, node_index,
           loom_low_schedule_effect_endpoint(i, effect->consumer_event_id),
@@ -545,7 +547,8 @@ static iree_status_t loom_low_schedule_scan_boundary_consumer_block(
     for (uint16_t i = 0; i < descriptor->effect_count; ++i) {
       const loom_low_effect_t* effect =
           &descriptor_set->effects[descriptor->effect_start + i];
-      if (!loom_low_schedule_effect_orders_memory(effect)) {
+      if (!loom_low_schedule_effect_orders_memory(effect,
+                                                  node->op->instance_flags)) {
         continue;
       }
       IREE_RETURN_IF_ERROR(loom_low_schedule_add_boundary_ordered_requirement(

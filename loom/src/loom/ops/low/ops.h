@@ -55,6 +55,9 @@ enum {
   LOOM_OP_LOW_COUNT_ = 31,
 };
 
+// Execution-semantics modifiers shared by scalar and vector memory accesses.
+#define LOOM_LOW_MEMORYACCESSFLAGS_VOLATILE ((uint8_t)1)
+
 // Function visibility. Absent (0) means private (module-internal).
 typedef enum loom_low_visibility_e {
   LOOM_LOW_VISIBILITY_PUBLIC = 1,
@@ -399,13 +402,15 @@ iree_status_t loom_low_func_call_verify(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter);
 
-// LOOM_OP_LOW_OP: Descriptor-backed target instruction over virtual registers.
+// LOOM_OP_LOW_OP: Descriptor-backed target instruction over virtual registers. Memory access flags constrain each instruction instance independently of its descriptor and machine cache controls. Volatile preserves dynamic memory observations and their order; it supplies no atomicity, synchronization, or cache-coherence guarantee.
 // %sum = low.op<amdgpu.v_add_u32>(%lhs, %rhs) : (reg<amdgpu.vgpr x1>, reg<amdgpu.vgpr x1>) -> reg<amdgpu.vgpr x1>
 LOOM_DEFINE_ISA(loom_low_op_isa, LOOM_OP_LOW_OP)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_low_op_operands, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_op_results, 0)
 LOOM_DEFINE_ATTR_SCOPED_ENUM(loom_low_op_descriptor, 0)
+LOOM_DEFINE_INSTANCE_FLAGS(loom_low_op_memory_flags)
 LOOM_DEFINE_ATTR_DICT(loom_low_op_attrs, 1)
+loom_trait_flags_t loom_low_op_effective_traits(const loom_op_t* op);
 
 // LOOM_OP_LOW_CONST: Descriptor-backed constant or immediate materialization into a register.
 // %c0 = low.const<amdgpu.s_mov_b32> {imm = 0} : reg<amdgpu.sgpr x1>

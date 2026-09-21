@@ -333,10 +333,12 @@ static iree_status_t loom_low_representation_apply_plan(
       *out_changed = true;
     }
     if (update->op->traits != update->effective_traits) {
-      const loom_trait_flags_t old_traits = update->op->traits;
+      const loom_trait_flags_t old_traits =
+          loom_op_effective_traits(module, update->op);
       update->op->traits = update->effective_traits;
-      loom_module_update_op_direct_summaries(module, update->op, old_traits,
-                                             update->effective_traits);
+      loom_module_update_op_direct_summaries(
+          module, update->op, old_traits,
+          loom_op_effective_traits(module, update->op));
       *out_changed = true;
     }
   }

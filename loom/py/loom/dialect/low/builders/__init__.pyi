@@ -117,6 +117,7 @@ class LowBuilder(DialectBuilder):
         self,
         *,
         descriptor: str,
+        memory_flags: str = ...,
         operands: list[ValueRef] = ...,
         attrs: Mapping[str, Any] | None = ...,
         results: list[Type | TiedResultSpec],

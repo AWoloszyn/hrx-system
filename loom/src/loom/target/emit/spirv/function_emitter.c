@@ -692,6 +692,15 @@ static iree_status_t loom_spirv_emit_access_chain_packet(
       loom_spirv_packet_row_result_type(row));
 }
 
+static uint32_t loom_spirv_emit_packet_memory_access_mask(
+    const loom_low_descriptor_packet_t* packet) {
+  return LOOM_SPIRV_MEMORY_ACCESS_ALIGNED_MASK |
+         (iree_any_bit_set(packet->op->instance_flags,
+                           LOOM_MEMORY_ACCESS_FLAG_VOLATILE)
+              ? LOOM_SPIRV_MEMORY_ACCESS_VOLATILE_MASK
+              : 0);
+}
+
 static iree_status_t loom_spirv_emit_load_aligned_packet(
     loom_spirv_emit_state_t* state, const loom_low_descriptor_packet_t* packet,
     const loom_spirv_packet_row_t* row) {
@@ -708,7 +717,7 @@ static iree_status_t loom_spirv_emit_load_aligned_packet(
       &result_id));
   const uint32_t instruction_operands[] = {
       result_type_id,        result_id,
-      operands[0].id,        LOOM_SPIRV_MEMORY_ACCESS_ALIGNED_MASK,
+      operands[0].id,        loom_spirv_emit_packet_memory_access_mask(packet),
       row->memory_alignment,
   };
   IREE_RETURN_IF_ERROR(loom_spirv_binary_write_instruction(
@@ -728,7 +737,7 @@ static iree_status_t loom_spirv_emit_store_aligned_packet(
   const uint32_t instruction_operands[] = {
       operands[0].id,
       operands[1].id,
-      LOOM_SPIRV_MEMORY_ACCESS_ALIGNED_MASK,
+      loom_spirv_emit_packet_memory_access_mask(packet),
       row->memory_alignment,
   };
   return loom_spirv_binary_write_instruction(
@@ -771,7 +780,7 @@ static iree_status_t loom_spirv_emit_cooperative_matrix_load_packet(
       operands[0].id,
       layout_id,
       stride_id,
-      LOOM_SPIRV_MEMORY_ACCESS_ALIGNED_MASK,
+      loom_spirv_emit_packet_memory_access_mask(packet),
       row->memory_alignment,
   };
   IREE_RETURN_IF_ERROR(loom_spirv_binary_write_instruction(
@@ -797,7 +806,7 @@ static iree_status_t loom_spirv_emit_cooperative_matrix_store_packet(
       operands[1].id,
       layout_id,
       stride_id,
-      LOOM_SPIRV_MEMORY_ACCESS_ALIGNED_MASK,
+      loom_spirv_emit_packet_memory_access_mask(packet),
       row->memory_alignment,
   };
   return loom_spirv_binary_write_instruction(

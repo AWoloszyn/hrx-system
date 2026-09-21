@@ -130,7 +130,7 @@ static iree_status_t loom_amdgpu_control_packet_build_m0_from_sgpr(
       descriptor_set, descriptor, /*result_index=*/0, &result_type));
   loom_op_t* op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
-      builder, descriptor_set, descriptor, &source,
+      builder, descriptor_set, descriptor, /*access_flags=*/0, &source,
       /*operand_count=*/1, loom_make_named_attr_slice(NULL, 0), &result_type,
       /*result_count=*/1, /*tied_results=*/NULL, /*tied_result_count=*/0,
       location, &op));
@@ -153,8 +153,8 @@ static iree_status_t loom_amdgpu_control_packet_build_control_op(
       builder, immediate, immediate_value, &immediate_attr));
   const bool has_result = !loom_type_equal(result_type, loom_type_none());
   return loom_low_build_resolved_descriptor_op(
-      builder, descriptor_set, descriptor, operands, operand_count,
-      loom_make_named_attr_slice(&immediate_attr, 1),
+      builder, descriptor_set, descriptor, /*access_flags=*/0, operands,
+      operand_count, loom_make_named_attr_slice(&immediate_attr, 1),
       has_result ? &result_type : NULL, has_result ? 1 : 0,
       /*tied_results=*/NULL, /*tied_result_count=*/0, location, out_op);
 }
@@ -173,8 +173,8 @@ static iree_status_t loom_amdgpu_control_packet_build_binary_sgpr_u32(
   const loom_value_id_t operands[] = {lhs, rhs};
   loom_op_t* op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_build_resolved_descriptor_op(
-      builder, descriptor_set, descriptor, operands, IREE_ARRAYSIZE(operands),
-      loom_make_named_attr_slice(NULL, 0), &sgpr_type,
+      builder, descriptor_set, descriptor, /*access_flags=*/0, operands,
+      IREE_ARRAYSIZE(operands), loom_make_named_attr_slice(NULL, 0), &sgpr_type,
       /*result_count=*/1, /*tied_results=*/NULL,
       /*tied_result_count=*/0, location, &op));
   *out_value = loom_value_slice_get(loom_low_op_results(op), 0);
