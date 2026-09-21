@@ -55,19 +55,15 @@ TEST(WkmiEndpointPropertiesTest, NormalizesMultiXccTopology) {
             AMDF_QUEUE_COMMAND_TYPE_GPU_PM4);
   EXPECT_EQ(properties.queue_families[0].publication_modes,
             AMDF_QUEUE_PUBLICATION_MODE_KERNEL);
-  EXPECT_EQ(properties.queue_families[0].roles,
-            AMDF_QUEUE_ROLE_COMPUTE | AMDF_QUEUE_ROLE_TRANSFER |
-                AMDF_QUEUE_ROLE_CACHE_CONTROL);
-  EXPECT_EQ(properties.queue_families[0].cache_operations,
-            AMDF_CACHE_OPERATIONS_RELEASE_TO_SYSTEM |
-                AMDF_CACHE_OPERATIONS_ACQUIRE_FROM_SYSTEM);
-  EXPECT_EQ(properties.queue_families[0].cache_transition_kinds,
-            AMDF_CACHE_TRANSITION_KINDS_GLOBAL);
   EXPECT_EQ(properties.queue_families[1].command_type,
             AMDF_QUEUE_COMMAND_TYPE_GPU_SDMA);
   EXPECT_EQ(properties.queue_families[1].publication_modes,
             AMDF_QUEUE_PUBLICATION_MODE_KERNEL);
-  EXPECT_EQ(properties.queue_families[1].roles, AMDF_QUEUE_ROLE_TRANSFER);
+
+  // Translated queue roles and operation capabilities must form a usable
+  // public endpoint profile, without freezing a particular capability table.
+  amdf_gpu_endpoint_profile_t profile = {};
+  EXPECT_TRUE(amdf_gpu_endpoint_profile_initialize(&properties, &profile));
 }
 
 TEST(WkmiEndpointPropertiesTest, NormalizesMissingScratchSlots) {

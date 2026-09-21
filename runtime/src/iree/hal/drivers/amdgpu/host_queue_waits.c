@@ -128,11 +128,10 @@ static bool iree_hal_amdgpu_host_queue_resolve_wait(
     return false;
   }
 
-  // Has the signal for |value| been submitted? The last_signal cache records
-  // the most recent signal's value. If it hasn't reached |value|, the signal
-  // hasn't been submitted yet (wait-before-signal) and the frontier does not
-  // reflect the signal's causal context - frontier dominance would be a
-  // false positive.
+  // The cache identifies one exact signal, not a producer history. A later
+  // signal can depend on this consumer, so its epoch cannot replace |value|'s
+  // blocking dependency. An already-covered later proof can still elide the
+  // wait without adding a dependency; a future value has no proof yet.
   iree_hal_amdgpu_last_signal_flags_t signal_flags =
       IREE_HAL_AMDGPU_LAST_SIGNAL_FLAG_NONE;
   iree_async_axis_t signal_axis = 0;
@@ -140,8 +139,21 @@ static bool iree_hal_amdgpu_host_queue_resolve_wait(
   uint64_t signal_value = 0;
   if (!iree_hal_amdgpu_last_signal_load(
           iree_hal_amdgpu_semaphore_last_signal(semaphore), &signal_flags,
-          &signal_axis, &signal_epoch, &signal_value) ||
-      signal_value < value) {
+          &signal_axis, &signal_epoch, &signal_value)) {
+    return false;
+  }
+  if (IREE_UNLIKELY(signal_value != value)) {
+    if (signal_value > value &&
+        (signal_flags &
+         IREE_HAL_AMDGPU_LAST_SIGNAL_FLAG_PRODUCER_FRONTIER_EXACT) &&
+        iree_hal_amdgpu_frontier_dominates_axis(
+            iree_hal_amdgpu_host_queue_const_frontier(queue), signal_axis,
+            signal_epoch)) {
+      resolution->inline_acquire_scope =
+          iree_hal_amdgpu_host_queue_max_fence_scope(
+              resolution->inline_acquire_scope, acquire_scope);
+      return true;
+    }
     return false;
   }
 
@@ -192,6 +204,17 @@ static bool iree_hal_amdgpu_host_queue_resolve_wait(
       async_semaphore,
       iree_hal_amdgpu_fixed_frontier_as_frontier(&semaphore_frontier),
       IREE_HAL_AMDGPU_QUEUE_FRONTIER_CAPACITY);
+
+  // Publication updates the frontier and cache under the same mutex used by
+  // the copy above. Recheck afterward so a newer frontier cannot silently
+  // strengthen this exact wait. A publication after the copy can only make
+  // this check conservatively defer; it cannot alter the copied frontier.
+  if (!iree_hal_amdgpu_last_signal_load(
+          iree_hal_amdgpu_semaphore_last_signal(semaphore), &signal_flags,
+          &signal_axis, &signal_epoch, &signal_value) ||
+      signal_value != value) {
+    return false;
+  }
 
   iree_async_frontier_entry_t
       undominated[IREE_HAL_AMDGPU_QUEUE_FRONTIER_CAPACITY];

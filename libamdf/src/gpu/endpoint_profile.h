@@ -104,6 +104,12 @@ typedef struct amdf_gpu_endpoint_profile_t {
   amdf_queue_family_info_t queue_families[AMDF_GPU_QUEUE_FAMILY_CAPACITY];
 } amdf_gpu_endpoint_profile_t;
 
+// Returns MEC PM4 command encoding capabilities, independent of kernel or user
+// publication. This immutable query performs no allocation or native operation.
+// Actual target-memory atomicity and participant reach are qualified
+// separately.
+amdf_atomic_capabilities_t amdf_gpu_pm4_atomic_capabilities(void);
+
 // Validates and normalizes |properties| into |out_profile|.
 bool amdf_gpu_endpoint_profile_initialize(
     const amdf_gpu_endpoint_properties_t* properties,

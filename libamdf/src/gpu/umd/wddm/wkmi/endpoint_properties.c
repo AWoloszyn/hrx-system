@@ -66,10 +66,11 @@ bool amdf_gpu_wddm_wkmi_endpoint_properties_translate(
                                    : 0,
             .publication_modes = AMDF_QUEUE_PUBLICATION_MODE_KERNEL,
             .roles = AMDF_QUEUE_ROLE_COMPUTE | AMDF_QUEUE_ROLE_TRANSFER |
-                     AMDF_QUEUE_ROLE_CACHE_CONTROL,
+                     AMDF_QUEUE_ROLE_ATOMIC | AMDF_QUEUE_ROLE_CACHE_CONTROL,
             .cache_operations = AMDF_CACHE_OPERATIONS_RELEASE_TO_SYSTEM |
                                 AMDF_CACHE_OPERATIONS_ACQUIRE_FROM_SYSTEM,
             .cache_transition_kinds = AMDF_CACHE_TRANSITION_KINDS_GLOBAL,
+            .atomic_capabilities = amdf_gpu_pm4_atomic_capabilities(),
         };
   }
   if (provider_properties->supports_sdma_kernel_queue != 0) {

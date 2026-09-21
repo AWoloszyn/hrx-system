@@ -17,7 +17,6 @@
 
 #if defined(IREE_PLATFORM_LINUX)
 static std::atomic<bool> g_fail_next_memory_barrier = false;
-static std::atomic<bool> g_fail_next_reserved_insert = false;
 
 extern "C" iree_status_t __real_iree_hal_command_buffer_execution_barrier(
     iree_hal_command_buffer_t* command_buffer,
@@ -48,21 +47,6 @@ extern "C" iree_status_t __wrap_iree_hal_command_buffer_execution_barrier(
       buffer_barriers);
 }
 
-extern "C" hrx_status_t __real_hrx_buffer_table_insert_reserved(
-    hrx_buffer_table_t* table, uint64_t device_ptr, void* host_ptr, size_t size,
-    hrx_buffer_t buffer, void* user_data);
-
-extern "C" hrx_status_t __wrap_hrx_buffer_table_insert_reserved(
-    hrx_buffer_table_t* table, uint64_t device_ptr, void* host_ptr, size_t size,
-    hrx_buffer_t buffer, void* user_data) {
-  if (g_fail_next_reserved_insert.exchange(false, std::memory_order_acq_rel)) {
-    hrx_buffer_table_cancel_reserved_insert(table);
-    return hrx_make_status(HRX_STATUS_OUT_OF_MEMORY,
-                           "injected rollback insertion failure");
-  }
-  return __real_hrx_buffer_table_insert_reserved(table, device_ptr, host_ptr,
-                                                 size, buffer, user_data);
-}
 #endif  // IREE_PLATFORM_LINUX
 
 namespace {
@@ -623,73 +607,77 @@ TEST_F(CpuStreamingMemoryTest,
   iree_hal_queue_release(installed_queue);
   iree_hal_semaphore_release(gate);
 }
+#endif  // IREE_PLATFORM_LINUX
 
 TEST_F(CpuStreamingMemoryTest,
-       AsyncFreeRollbackFailureDrainsAcceptedPrefixBeforeRelease) {
+       AsyncFreeFlushFailureRestoresAllocationWhileWorkIsPending) {
   constexpr iree_device_size_t kAllocationSize = 16;
   IREE_ASSERT_OK(iree_hal_streaming_memory_allocate_device(
       context_, kAllocationSize, IREE_HAL_STREAMING_MEMORY_FLAG_NONE,
       &buffer_));
   device_pointer_ = iree_hal_streaming_buffer_device_pointer(buffer_);
+  ASSERT_NE(nullptr, buffer_->host_ptr);
+  std::memset(buffer_->host_ptr, 0, kAllocationSize);
   uint32_t pattern = 0xA5A5A5A5u;
   IREE_ASSERT_OK(iree_hal_streaming_memory_memset(context_, device_pointer_,
                                                   kAllocationSize, &pattern,
                                                   sizeof(pattern), stream_));
-
-  InjectedFlushQueue fault_queue = {};
-  iree_hal_queue_t* original_queue = stream_->queue;
-  InitializeInjectedFlushQueue(original_queue, &fault_queue);
-  EXPECT_EQ(original_queue, ReplaceStreamQueue(stream_, &fault_queue.base));
-  iree_hal_queue_release(original_queue);
 
   iree_hal_semaphore_t* gate = nullptr;
   IREE_ASSERT_OK(iree_hal_semaphore_create(
       context_->device, IREE_HAL_QUEUE_FAMILY_AFFINITY_ANY,
       /*initial_value=*/0, IREE_HAL_SEMAPHORE_FLAG_NONE, &gate));
   uint64_t gate_value = 1;
+  InjectedFlushQueue fault_queue = {};
+  iree_hal_queue_t* original_queue = stream_->queue;
+  InitializeInjectedFlushQueue(original_queue, &fault_queue);
+  EXPECT_EQ(original_queue, ReplaceStreamQueue(stream_, &fault_queue.base));
+  iree_hal_queue_release(original_queue);
   fault_queue.execute_gate = gate;
   fault_queue.execute_gate_value = gate_value;
   fault_queue.fail_flush.store(true, std::memory_order_release);
-  g_fail_next_reserved_insert.store(true, std::memory_order_release);
 
-  std::atomic<bool> free_returned = false;
-  std::atomic<iree_status_code_t> free_status_code = IREE_STATUS_UNKNOWN;
-  std::thread free_thread([&] {
-    iree_status_t status = iree_hal_streaming_memory_free_device_async(
-        context_, device_pointer_, stream_);
-    free_status_code.store(iree_status_code(status), std::memory_order_release);
-    iree_status_ignore(status);
-    free_returned.store(true, std::memory_order_release);
-  });
-
-  bool observed_flush_failure = false;
-  for (int i = 0; i < 1000000; ++i) {
-    if (fault_queue.injected_flush_count.load(std::memory_order_acquire) > 0) {
-      observed_flush_failure = true;
-      break;
-    }
-    std::this_thread::yield();
-  }
-  EXPECT_TRUE(observed_flush_failure);
-  EXPECT_GT(fault_queue.injected_execute_count.load(std::memory_order_acquire),
-            0);
-  EXPECT_FALSE(free_returned.load(std::memory_order_acquire));
-
-  IREE_EXPECT_OK(iree_hal_semaphore_signal(gate, gate_value,
-                                           /*frontier=*/nullptr));
-  free_thread.join();
-  g_fail_next_reserved_insert.store(false, std::memory_order_release);
-  EXPECT_TRUE(free_returned.load(std::memory_order_acquire));
-  EXPECT_EQ(IREE_STATUS_INTERNAL,
-            free_status_code.load(std::memory_order_acquire));
-  buffer_ = nullptr;
-  device_pointer_ = 0;
+  // The fill is accepted, but the flush error prevents enqueueing the free.
+  // Rollback restores the caller's allocation using its reserved table slot;
+  // it neither allocates nor waits for accepted work to complete.
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INTERNAL,
+                        iree_hal_streaming_memory_free_device_async(
+                            context_, device_pointer_, stream_));
+  EXPECT_EQ(1, fault_queue.injected_execute_count.load());
+  EXPECT_EQ(1, fault_queue.injected_flush_count.load());
 
   iree_hal_queue_retain(original_queue);
   iree_hal_queue_t* installed_queue =
       ReplaceStreamQueue(stream_, original_queue);
   iree_hal_queue_release(installed_queue);
+
+  uint64_t completed_value = 0;
+  IREE_EXPECT_OK(
+      iree_hal_semaphore_query(stream_->timeline_semaphore, &completed_value));
+  EXPECT_LT(completed_value, stream_->pending_value);
+
+  // A normal preparation lease proves both lookup and admission were restored.
+  iree_hal_streaming_retained_buffer_ref_t restored_ref = {};
+  IREE_EXPECT_OK(iree_hal_streaming_memory_lookup_range_retain(
+      context_, device_pointer_, kAllocationSize, &restored_ref));
+  EXPECT_EQ(buffer_, restored_ref.owner_wrapper);
+  iree_hal_streaming_retained_buffer_ref_deinitialize(&restored_ref);
+
+  IREE_EXPECT_OK(iree_hal_semaphore_signal(gate, gate_value,
+                                           /*frontier=*/nullptr));
+  IREE_EXPECT_OK(iree_hal_streaming_stream_synchronize(stream_));
   iree_hal_semaphore_release(gate);
+
+  std::array<uint8_t, kAllocationSize> expected;
+  expected.fill(0xA5);
+  EXPECT_EQ(0,
+            std::memcmp(buffer_->host_ptr, expected.data(), expected.size()));
+
+  // The failed call did not consume ownership: the caller can free it normally.
+  IREE_ASSERT_OK(iree_hal_streaming_memory_free_device_async(
+      context_, device_pointer_, stream_));
+  buffer_ = nullptr;
+  device_pointer_ = 0;
+  IREE_EXPECT_OK(iree_hal_streaming_stream_synchronize(stream_));
 }
-#endif  // IREE_PLATFORM_LINUX
 }  // namespace
