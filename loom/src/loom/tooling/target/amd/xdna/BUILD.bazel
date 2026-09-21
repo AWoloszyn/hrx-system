@@ -4,12 +4,14 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+load("//build_tools/bazel:python.bzl", "iree_py_test")
 load("//build_tools/testing:build_defs.bzl", "iree_execution_test_suite")
 load(
     "//loom/build_tools/bazel:build_defs.bzl",
     "loom_cc_library",
     "loom_config_compatible_with",
 )
+load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -46,7 +48,6 @@ iree_execution_test_suite(
         "test/extra_temporal_axis.loom",
         "test/missing_lane_axis.loom",
         "test/missing_temporal_axis.loom",
-        "test/unit_lane_extent.loom",
     ],
     manifests = ["pipeline-record-shapes.test.json"],
     tags = ["hostonly"],
@@ -54,4 +55,29 @@ iree_execution_test_suite(
     tools = {
         "loom-compile": "//loom/src/loom/tools/loom-compile",
     },
+)
+
+loom_check_test_suite(
+    name = "pipeline_diagnostics_test",
+    srcs = ["test/unit_lane_extent.loom-test"],
+    compile_targets = {
+        "test/unit_lane_extent.loom-test": ["//loom/target/xdna:amd.xdna.strix_halo.17f0_11"],
+    },
+    runner = "//loom/src/loom/target/arch/amd/xdna/aie2p:loom-check",
+    target_compatible_with = _XDNA_COMPILE_COMPATIBLE_WITH,
+)
+
+iree_py_test(
+    name = "publication_test",
+    srcs = ["test/publication_test.py"],
+    args = [
+        "$(location //loom/src/loom/tools/loom-compile:loom-compile)",
+        "$(location test/unit_lane_extent.loom-test)",
+    ],
+    data = [
+        "test/unit_lane_extent.loom-test",
+        "//loom/src/loom/tools/loom-compile",
+    ],
+    tags = ["hostonly"],
+    target_compatible_with = _XDNA_COMPILE_COMPATIBLE_WITH,
 )

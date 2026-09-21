@@ -410,6 +410,7 @@ loom_cc_binary(
     name = "loom-check",
     testonly = True,
     srcs = ["check/loom-check.c"],
+    visibility = ["//loom/src/loom/tooling/target/amd/xdna:__pkg__"],
     deps = [
         ":check_provider",
         "//loom/src/loom/tools/loom-check:provider",

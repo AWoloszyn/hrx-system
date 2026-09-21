@@ -43,9 +43,54 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amd/xdna/test/extra_temporal_axis.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amd/xdna/test/missing_lane_axis.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amd/xdna/test/missing_temporal_axis.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amd/xdna/test/unit_lane_extent.loom"
   LABELS
     "hostonly"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
+loom_check_test_suite(
+  NAME
+    pipeline_diagnostics_test
+  SRCS
+    "test/unit_lane_extent.loom-test"
+  RUNNER
+    loom::target::arch::amd::xdna::aie2p::loom-check
+)
+endif()
+
+if(LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
+loom_check_compile_tests(
+  NAME
+    "test_unit_lane_extent"
+  SRC
+    "test/unit_lane_extent.loom-test"
+  REGISTERED_SRCS
+    "test/unit_lane_extent.loom-test"
+  TARGETS
+    loom::target::xdna::amd.xdna.strix_halo.17f0_11
+)
+endif()
+
+if(LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
+iree_py_test(
+  NAME
+    publication_test
+  MAIN
+    "test/publication_test.py"
+  SRCS
+    "test/publication_test.py"
+  ARGS
+    "$<TARGET_FILE:loom::tools::loom-compile::loom-compile>"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amd/xdna/test/unit_lane_extent.loom-test"
+  DEPS
+    loom::tools::loom-compile::loom-compile
+  LABELS
+    "hostonly"
+  PACKAGE_DIRS
+    "${PROJECT_SOURCE_DIR}/loom/py"
+    "${PROJECT_BINARY_DIR}/loom/py"
+    "${PROJECT_SOURCE_DIR}"
 )
 endif()
 

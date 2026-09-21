@@ -692,6 +692,69 @@ ERR_LOWERING_059 = ErrorDef(
     params=(ErrorParam("detail", ParamKind.STRING),),
 )
 
+# ERR_LOWERING_060: Multi-lane pipeline output lacks its lane dimension.
+ERR_LOWERING_060 = ErrorDef(
+    domain=ErrorDomain.LOWERING,
+    code=60,
+    severity=Severity.ERROR,
+    summary="Pipeline output requires a leading lane dimension.",
+    message=(
+        "multi-lane pipeline output requires a leading lane dimension "
+        "for {lane_count} source-group lanes"
+    ),
+    params=(ErrorParam("lane_count", ParamKind.U32),),
+)
+
+# ERR_LOWERING_061: Pipeline output lane extent differs from its group.
+ERR_LOWERING_061 = ErrorDef(
+    domain=ErrorDomain.LOWERING,
+    code=61,
+    severity=Severity.ERROR,
+    summary="Pipeline output lane extent differs from its source group.",
+    message=(
+        "pipeline output leading dimension must equal source-group "
+        "cardinality; got {extent}, expected {lane_count}"
+    ),
+    params=(
+        ErrorParam("extent", ParamKind.U32),
+        ErrorParam("lane_count", ParamKind.U32),
+    ),
+)
+
+# ERR_LOWERING_062: Pipeline output has a different temporal record rank.
+ERR_LOWERING_062 = ErrorDef(
+    domain=ErrorDomain.LOWERING,
+    code=62,
+    severity=Severity.ERROR,
+    summary="Pipeline output has a different temporal record rank.",
+    message=(
+        "pipeline output view and flow must have equal record shapes; "
+        "got {rank} temporal dimensions, expected {expected_rank}"
+    ),
+    params=(
+        ErrorParam("rank", ParamKind.U32),
+        ErrorParam("expected_rank", ParamKind.U32),
+    ),
+)
+
+# ERR_LOWERING_063: Pipeline output has a different temporal record extent.
+ERR_LOWERING_063 = ErrorDef(
+    domain=ErrorDomain.LOWERING,
+    code=63,
+    severity=Severity.ERROR,
+    summary="Pipeline output has a different temporal record extent.",
+    message=(
+        "pipeline output view and flow must have equal record shapes; "
+        "temporal dimension {dimension} has extent {extent}, "
+        "expected {expected_extent}"
+    ),
+    params=(
+        ErrorParam("dimension", ParamKind.U32),
+        ErrorParam("extent", ParamKind.U32),
+        ErrorParam("expected_extent", ParamKind.U32),
+    ),
+)
+
 ALL_LOWERING_ERRORS: tuple[ErrorDef, ...] = (
     ERR_LOWERING_022,
     ERR_LOWERING_023,
@@ -728,4 +791,8 @@ ALL_LOWERING_ERRORS: tuple[ErrorDef, ...] = (
     ERR_LOWERING_057,
     ERR_LOWERING_058,
     ERR_LOWERING_059,
+    ERR_LOWERING_060,
+    ERR_LOWERING_061,
+    ERR_LOWERING_062,
+    ERR_LOWERING_063,
 )

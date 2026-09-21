@@ -10,6 +10,7 @@
 
 #include "iree/base/internal/math.h"
 #include "loom/analysis/type_refinement.h"
+#include "loom/error/error_catalog.h"
 #include "loom/ir/context.h"
 #include "loom/ir/structural_hash.h"
 #include "loom/ops/buffer/ops.h"
@@ -930,7 +931,9 @@ static iree_status_t loom_pipeline_plan_parse_buffer(
 }
 
 static iree_status_t loom_pipeline_plan_parse_write(
-    loom_pipeline_plan_builder_t* builder, const loom_op_t* op) {
+    loom_pipeline_plan_builder_t* builder, const loom_op_t* op,
+    iree_diagnostic_emitter_t diagnostic_emitter, bool* out_valid) {
+  *out_valid = false;
   uint32_t flow_index = 0;
   IREE_RETURN_IF_ERROR(loom_pipeline_plan_use_flow(
       builder, loom_pipeline_write_source(op), &flow_index));
@@ -956,19 +959,31 @@ static iree_status_t loom_pipeline_plan_parse_write(
       loom_type_rank(target_type) ==
       loom_type_rank(flow->tile_type) + flow->record_shape.rank + 1u;
   if (lane_count > 1 && !partitioned) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "multi-lane pipeline output requires a leading lane dimension");
+    const loom_diagnostic_param_t params[] = {loom_param_u32(lane_count)};
+    const loom_diagnostic_emission_t emission = {
+        .op = op,
+        .error = LOOM_ERR_LOWERING_060,
+        .params = params,
+        .param_count = IREE_ARRAYSIZE(params),
+    };
+    return iree_diagnostic_emit(diagnostic_emitter, &emission);
   }
   if (partitioned) {
     uint32_t leading_dimension = 0;
     IREE_RETURN_IF_ERROR(loom_pipeline_plan_exact_dimension(
         builder, target_type, 0, &leading_dimension));
     if (leading_dimension != lane_count) {
-      return iree_make_status(
-          IREE_STATUS_INVALID_ARGUMENT,
-          "pipeline output leading dimension must equal source-group "
-          "cardinality");
+      const loom_diagnostic_param_t params[] = {
+          loom_param_u32(leading_dimension),
+          loom_param_u32(lane_count),
+      };
+      const loom_diagnostic_emission_t emission = {
+          .op = op,
+          .error = LOOM_ERR_LOWERING_061,
+          .params = params,
+          .param_count = IREE_ARRAYSIZE(params),
+      };
+      return iree_diagnostic_emit(diagnostic_emitter, &emission);
     }
   }
   loom_type_t binding_type = loom_type_none();
@@ -980,11 +995,34 @@ static iree_status_t loom_pipeline_plan_parse_write(
   IREE_RETURN_IF_ERROR(loom_pipeline_plan_exact_record_shape(
       builder, target_type, flow->tile_type, partitioned, &target_record_shape,
       /*out_record_count=*/NULL));
-  if (!loom_pipeline_plan_record_shapes_equal(target_record_shape,
-                                              flow->record_shape)) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "pipeline output view and flow must have equal record shapes");
+  if (target_record_shape.rank != flow->record_shape.rank) {
+    const loom_diagnostic_param_t params[] = {
+        loom_param_u32(target_record_shape.rank),
+        loom_param_u32(flow->record_shape.rank),
+    };
+    const loom_diagnostic_emission_t emission = {
+        .op = op,
+        .error = LOOM_ERR_LOWERING_062,
+        .params = params,
+        .param_count = IREE_ARRAYSIZE(params),
+    };
+    return iree_diagnostic_emit(diagnostic_emitter, &emission);
+  }
+  for (uint8_t i = 0; i < target_record_shape.rank; ++i) {
+    if (target_record_shape.dimensions[i] != flow->record_shape.dimensions[i]) {
+      const loom_diagnostic_param_t params[] = {
+          loom_param_u32(i),
+          loom_param_u32(target_record_shape.dimensions[i]),
+          loom_param_u32(flow->record_shape.dimensions[i]),
+      };
+      const loom_diagnostic_emission_t emission = {
+          .op = op,
+          .error = LOOM_ERR_LOWERING_063,
+          .params = params,
+          .param_count = IREE_ARRAYSIZE(params),
+      };
+      return iree_diagnostic_emit(diagnostic_emitter, &emission);
+    }
   }
   builder->bindings[binding_index].access |=
       LOOM_PIPELINE_BINDING_ACCESS_FLAG_WRITE;
@@ -1000,6 +1038,7 @@ static iree_status_t loom_pipeline_plan_parse_write(
       .binding_view_index = binding_view_index,
       .binding_port = target_port,
   };
+  *out_valid = true;
   return iree_ok_status();
 }
 
@@ -1416,7 +1455,9 @@ static bool loom_pipeline_plan_op_is_compile_time(
 }
 
 static iree_status_t loom_pipeline_plan_parse_graph(
-    loom_pipeline_plan_builder_t* builder) {
+    loom_pipeline_plan_builder_t* builder,
+    iree_diagnostic_emitter_t diagnostic_emitter, bool* out_valid) {
+  *out_valid = false;
   loom_region_t* body = loom_func_like_body(builder->pipeline);
   IREE_ASSERT(body != NULL && body->block_count == 1);
   const loom_block_t* block = loom_region_const_entry_block(body);
@@ -1445,7 +1486,12 @@ static iree_status_t loom_pipeline_plan_parse_graph(
     } else if (loom_pipeline_reduce_isa(op)) {
       IREE_RETURN_IF_ERROR(loom_pipeline_plan_parse_reduce(builder, op));
     } else if (loom_pipeline_write_isa(op)) {
-      IREE_RETURN_IF_ERROR(loom_pipeline_plan_parse_write(builder, op));
+      bool valid = false;
+      IREE_RETURN_IF_ERROR(loom_pipeline_plan_parse_write(
+          builder, op, diagnostic_emitter, &valid));
+      if (!valid) {
+        return iree_ok_status();
+      }
     } else if (loom_pipeline_return_isa(op)) {
       continue;
     } else if (!loom_pipeline_plan_op_is_compile_time(builder, op)) {
@@ -1479,6 +1525,7 @@ static iree_status_t loom_pipeline_plan_parse_graph(
           "pipeline contains a flow with no physical consumer");
     }
   }
+  *out_valid = true;
   return iree_ok_status();
 }
 
@@ -1647,24 +1694,29 @@ static iree_status_t loom_pipeline_plan_builder_initialize(
   return iree_ok_status();
 }
 
-iree_status_t loom_pipeline_plan_build(const loom_module_t* module,
-                                       loom_func_like_t pipeline,
-                                       const loom_value_fact_table_t* facts,
-                                       loom_pipeline_plan_limits_t limits,
-                                       iree_arena_allocator_t* arena,
-                                       loom_pipeline_plan_t* out_plan) {
+iree_status_t loom_pipeline_plan_build(
+    const loom_module_t* module, loom_func_like_t pipeline,
+    const loom_value_fact_table_t* facts, loom_pipeline_plan_limits_t limits,
+    iree_diagnostic_emitter_t diagnostic_emitter, iree_arena_allocator_t* arena,
+    loom_pipeline_plan_t* out_plan, bool* out_valid) {
   IREE_ASSERT_ARGUMENT(module);
   IREE_ASSERT(loom_func_like_isa(pipeline));
   IREE_ASSERT_ARGUMENT(facts);
   IREE_ASSERT_ARGUMENT(arena);
   IREE_ASSERT_ARGUMENT(out_plan);
   *out_plan = (loom_pipeline_plan_t){0};
+  *out_valid = false;
   IREE_ASSERT(loom_pipeline_def_isa(pipeline.op));
 
   loom_pipeline_plan_builder_t builder = {0};
   IREE_RETURN_IF_ERROR(loom_pipeline_plan_builder_initialize(
       module, pipeline, facts, limits, arena, &builder));
-  IREE_RETURN_IF_ERROR(loom_pipeline_plan_parse_graph(&builder));
+  bool valid = false;
+  IREE_RETURN_IF_ERROR(
+      loom_pipeline_plan_parse_graph(&builder, diagnostic_emitter, &valid));
+  if (!valid) {
+    return iree_ok_status();
+  }
   *out_plan = (loom_pipeline_plan_t){
       .pipeline = pipeline,
       .bindings = builder.bindings,
@@ -1687,5 +1739,6 @@ iree_status_t loom_pipeline_plan_build(const loom_module_t* module,
       .edges = builder.edges,
       .edge_count = builder.edge_count,
   };
+  *out_valid = true;
   return iree_ok_status();
 }
