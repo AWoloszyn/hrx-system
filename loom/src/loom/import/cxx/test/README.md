@@ -24,10 +24,13 @@ bytecode linking, config specialization, AMDGPU compilation, and GPU execution.
 The existing `iree-test-loom` runner compares outputs against independent
 double-precision references and checks both output guards bitwise. Ordinary
 integer functions also execute through the VM with exact scalar references.
-Both use normal `loom_test` targets. Host references generate C++ translation
-units containing `LOOM_CHECK_CASE` bodies and include the implementation under
-test. Each GPU source file and its generated Loom reference module form one
-test module. The [source authoring guide](../README.md#executable-checks-and-benchmarks)
+Host references generate C++ translation units containing `LOOM_CHECK_CASE`
+bodies and include the implementation under test. Each kernel source file and
+its generated Loom references form one reusable `loom_test_module` here, with
+its runtime arrays and import options. AMDGPU qualification consumes these
+modules through `loom_test` in the
+[target test package](../../../tooling/target/amdgpu/test/cxx/BUILD.bazel).
+The [source authoring guide](../README.md#executable-checks-and-benchmarks)
 shows handwritten cases and benchmarks.
 
 ```sh
@@ -36,7 +39,7 @@ iree-bazel-test --config=asan --config=loom-importer-cxx \
   --//runtime/config/hal:drivers=amdgpu \
   --//loom/config/emit:enable=amdgpu \
   --//loom/config/execute:enable=iree_hal \
-  //loom/src/loom/import/cxx/test:kernels_test
+  //loom/src/loom/tooling/target/amdgpu/test/cxx:kernels_test
 
 iree-bazel-test --config=asan --config=loom-importer-cxx \
   --//loom/config/target:enable=vm \
@@ -58,16 +61,21 @@ The numerical tests explicitly permit approximate mathematical functions.
 They test correctness and source compatibility, not kernel performance or
 compatibility with complete upstream libraries.
 
-`functions_test` aggregates scalar-result VM cases. `kernels_test` aggregates
-native source modules, each run normally and with device access sanitization.
-Every case checks for zero access reports. Individual targets such as `integer_functions_test`,
-`structured_continue_kernel_test_execute_amdgpu_test`, and
-`structured_continue_kernel_test_execute_amdgpu_access_test` can be run directly.
-Both native profiles share one imported and linked module, with the generated
-reference arrays retained as runtime data. Access instrumentation applies to
-correctness and benchmark smoke alike. Compiler rejection witnesses live in
-`.cxx-test`, including scheduled-loop lowering and unsupported VM aggregate
-transport. The corpus has no JSON execution manifests; JSON fixtures under
+`functions_test` here aggregates scalar-result VM cases. The AMDGPU package's
+`kernels_test` qualifies its selected source modules normally and with device
+access sanitization. Every case checks for zero access reports. Individual
+targets such as `integer_functions_test` here, and
+`structured_continue_test_execute_amdgpu_test` and
+`structured_continue_test_execute_amdgpu_access_test` in the target package,
+can be run directly. Both native profiles share one imported and linked module,
+with reference arrays retained by its source owner. Device availability gates
+execution, while the modules and reference generation remain available without
+AMDGPU or HAL. A target explicitly selects the modules it supports; adding a
+source does not automatically claim support on every backend. Access
+instrumentation applies to correctness and benchmark smoke alike. Compiler
+rejection witnesses live in `.cxx-test`, including scheduled-loop lowering and
+unsupported VM aggregate transport. The corpus has no JSON execution manifests;
+JSON fixtures under
 `tooling/` exercise CLI options, report fields, and process exit behavior.
 
 | Source | Numerical coverage | Provenance |
@@ -86,7 +94,7 @@ transport. The corpus has no JSON execution manifests; JSON fixtures under
 | `vector_initializers.cpp` | Typed vector temporaries in returns, arguments, templates and nested expressions. VM lane checks and complete AMDGPU buffers cover empty/single/partial forms, narrow conversions, signed zero, zero-filled lanes and left-to-right initializer effects. | Original source-language initialization witness. |
 | `integer_increment.cpp` | Uniform and lane-varying byte/64-bit increments execute on AMDGPU, including byte wrap, low-word carry, bit 63 and full-width wrap. Fifteen input cases check all 64 lanes and both output guards. | Original source-language semantics witness. |
 | `increment_values.cpp` | Prefix/postfix results, byte/64-bit wrap, short-circuit and conditional mutations, and loop-condition updates. Exact VM oracles cover 532 scalar cases; native checks include complete pointer streams, skipped updates, unchanged inputs and output guards, normally and with device access sanitization. | Original source-language sequencing witness. |
-| `structured_continue.cpp` | Conditional iteration exits, shared tails, nested loop targets, shadowed bindings, for increments and pre/post-test conditions. Exact VM references cover 350 scalar cases. Native cases preserve sparse destinations, compacted pointer streams, vector recurrences and filtered reads under four unroll/pipeline schedules, with unchanged inputs and output guards checked normally and with device access sanitization. | Original source-language control witness, including the renderer's odd-index copy pattern. |
+| `structured_continue.cpp` | Conditional iteration exits, shared tails, nested loop targets, shadowed bindings, for increments and pre/post-test conditions. Exact VM references cover 350 scalar cases. Native cases preserve sparse destinations, compacted pointer streams, vector recurrences and filtered reads under four unroll/pipeline schedules, with unchanged inputs and output guards checked normally and with device access sanitization. | Original source-language control witness. |
 | `pointer_walk.cpp` | Interior pointers through helper returns, conditional origins and counted/pre-test/post-test loops. Signed backward displacements, zero-trip behavior and final pointer positions are checked for seven lane-specific trip counts under three starting positions, normally and with device access sanitization. Inputs and output guards remain unchanged. | Original source storage-semantics witness. |
 | `shaped_intrinsics.cpp` | Register-table lookups preserve integer values and floating-point bits, including signed zero, infinities and NaNs. Mixed-width dots cover all four byte-signedness pairs and wrapping i32 accumulators. The VM checks 264 scalar-return cases; AMDGPU checks complete buffers and guards for zero and nonzero group counts, normally and with device access sanitization. | Original shaped operation-binding witness. |
 | `record_values.cpp` | Empty, nested, scalar, vector and pointer records through construction, member mutation, independent copies, helpers, conditional values and loop state. Twenty-four exact VM cases and sixty AMDGPU cases include modular overflow, zero trips, defaults/designators and sequencing. Native cases preserve input buffers and output guards, normally and with access sanitization. Record and explicit-leaf controls express the same algorithm for code/resource comparison. | Original source value and callable-boundary witness. |

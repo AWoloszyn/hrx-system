@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-load("//loom/build_tools/bazel:defs.bzl", "loom_test")
+load("//loom/build_tools/bazel:defs.bzl", "loom_test", "loom_test_module")
 load("//loom/target/vm:execution_profiles.bzl", "VM_REFERENCE_PROFILE")
 
 package(
@@ -18,6 +18,11 @@ exports_files(_SOURCES)
 
 loom_test(
     name = "vm_test",
-    srcs = _SOURCES,
     execution_profiles = [VM_REFERENCE_PROFILE],
+    module = ":functions",
+)
+
+loom_test_module(
+    name = "functions",
+    srcs = _SOURCES,
 )

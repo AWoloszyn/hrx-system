@@ -293,7 +293,7 @@ def _test_execution_profile_contract(name, **kwargs):
 def _test_execution_profile_contract_impl(env, target):
     info = target[LoomExecutionTestInfo]
     env.expect.that_str(info.module.basename).equals(
-        "profiled_test_module.loombc",
+        "profiled_module.loombc",
     )
     env.expect.that_str(info.profile_name).equals("reference")
     if not info.test_runner.basename.startswith("iree-test-loom"):
@@ -317,7 +317,7 @@ def _test_execution_profile_contract_impl(env, target):
         env.fail("unexpected benchmark runner args %r" % info.benchmark_runner_args)
 
     runfiles = target[DefaultInfo].default_runfiles.files.to_list()
-    _expect_basename(env, runfiles, "profiled_test_module.loombc")
+    _expect_basename(env, runfiles, "profiled_module.loombc")
     _expect_basename(env, runfiles, info.test_runner.basename)
     _expect_basename(env, runfiles, info.benchmark_runner.basename)
     _expect_no_basename(env, runfiles, "profile_cases.loom")
@@ -348,7 +348,7 @@ def _test_resource_profile_preserves_direct_execution(name, **kwargs):
 def _test_resource_profile_preserves_direct_execution_impl(env, target):
     info = target[LoomExecutionTestInfo]
     env.expect.that_str(info.module.basename).equals(
-        "profiled_test_module.loombc",
+        "profiled_module.loombc",
     )
     env.expect.that_str(info.profile_name).equals("serialized_reference")
 
@@ -368,7 +368,7 @@ def _test_grouped_execution_root_sources(name, **kwargs):
             "timeout": "short",
         },
         impl = _test_grouped_execution_root_sources_impl,
-        target = ":profiled_test_library",
+        target = ":profiled_module_library",
         **kwargs
     )
 
@@ -386,13 +386,13 @@ def _test_execution_module_links_root_tests(name, **kwargs):
             "timeout": "short",
         },
         impl = _test_execution_module_links_root_tests_impl,
-        target = ":profiled_test_module",
+        target = ":profiled_module",
         **kwargs
     )
 
 def _test_execution_module_links_root_tests_impl(env, target):
     files = target[DefaultInfo].files.to_list()
-    _expect_basename(env, files, "profiled_test_module.loombc")
+    _expect_basename(env, files, "profiled_module.loombc")
     action = _find_action(env, target[TestingAspectInfo].actions, "LoomTestModule")
     for expected_arg in [
         "--mode=link",
@@ -405,7 +405,7 @@ def _test_execution_module_links_root_tests_impl(env, target):
         env,
         action.argv,
         "",
-        "profiled_test_library.loombc",
+        "profiled_module_library.loombc",
     )
     _expect_arg_with_prefix_and_suffix(
         env,
@@ -414,7 +414,7 @@ def _test_execution_module_links_root_tests_impl(env, target):
         "library_dependency.loombc",
     )
     inputs = action.inputs.to_list()
-    _expect_basename(env, inputs, "profiled_test_library.loombc")
+    _expect_basename(env, inputs, "profiled_module_library.loombc")
     _expect_basename(env, inputs, "library_dependency.loombc")
     _expect_no_basename(env, inputs, "profile_cases.loom")
     _expect_no_basename(env, inputs, "profile_benchmarks.loom")

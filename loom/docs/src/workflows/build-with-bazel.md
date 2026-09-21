@@ -224,6 +224,37 @@ only compiler checks; at least one execution or compiler profile is required.
 Adding profiles creates separate results without importing or linking the
 source closure again. Device availability never gates a sibling compiler check.
 
+### Share a corpus across test packages
+
+`loom_test_module` gives a corpus its own source and fixture ownership. A target
+package can consume that module with `loom_test(module = ...)`, applying its
+execution profiles without repeating the import or link:
+
+```starlark
+# In the corpus package:
+loom_test_module(
+    name = "copy_cases",
+    srcs = ["copy.cpp", ":copy_checks.loom"],
+    data = [":reference_arrays"],
+    visibility = ["//visibility:public"],
+)
+
+# In a target qualification package:
+loom_test(
+    name = "copy_test",
+    module = "//corpus:copy_cases",
+    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
+)
+```
+
+Load both rules from `@hrx//loom/build_tools/bazel:defs.bzl` and the AMDGPU
+profile from `@hrx//loom/target/amdgpu:execution_profiles.bzl`. Source-provider
+options and runtime fixtures belong on the module. Configuration bindings,
+case selection, and compiler or execution profiles belong on each consumer.
+The shared module builds independently of device availability, and its runtime
+fixtures follow it into every consumer. `module` is exclusive with source and
+import arguments on `loom_test`.
+
 ### Workload variants share one source owner
 
 `configs` binds compile-time values for compiler qualification, correctness,

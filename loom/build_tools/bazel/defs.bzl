@@ -20,6 +20,7 @@ load(
     _loom_kernel_library = "loom_kernel_library",
     _loom_library = "loom_library",
     _loom_test = "loom_test",
+    _loom_test_module = "loom_test_module",
 )
 load(
     ":loom_module.bzl",
@@ -49,4 +50,5 @@ loom_library = _loom_library
 loom_module = _loom_module
 loom_target_profile = _loom_target_profile
 loom_test = _loom_test
+loom_test_module = _loom_test_module
 loom_tools_toolchains = _loom_tools_toolchains

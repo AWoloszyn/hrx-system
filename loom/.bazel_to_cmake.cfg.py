@@ -398,7 +398,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             workloads[workload_name] = (workload_configs, variant.get("case", case))
         return workloads
 
-    def loom_test(
+    def loom_test_module(
         self,
         name,
         srcs,
@@ -406,6 +406,41 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         data=None,
         input_format="",
         inputopts=None,
+        tags=None,
+        target_compatible_with=None,
+        **kwargs,
+    ):
+        if self._should_skip_target(tags=tags, **kwargs):
+            return
+        if not srcs:
+            raise ValueError(f"{name} requires at least one authored test source")
+        self._loom_module_targets.add(self._current_target_label(name))
+        target_compatible_with = self._apply_loom_target_compatible_with(
+            target_compatible_with
+        )
+        blocks = [
+            self._convert_string_arg_block("NAME", name, quote=False),
+            self._convert_loom_module_inputs("SRCS", srcs),
+            self._convert_loom_module_inputs("LIBRARIES", deps),
+            self._convert_data_list_block(data),
+            self._convert_string_arg_block("INPUT_FORMAT", input_format or None),
+            self._convert_string_list_block(
+                "INPUTOPTS", self._convert_location_args(inputopts), sort=False
+            ),
+        ]
+        self._emit_platform_guard_begin(target_compatible_with)
+        self._converter.body += "loom_test_module(\n" + "".join(blocks) + ")\n\n"
+        self._emit_platform_guard_end(target_compatible_with)
+
+    def loom_test(
+        self,
+        name,
+        srcs=None,
+        deps=None,
+        data=None,
+        input_format="",
+        inputopts=None,
+        module=None,
         args=None,
         configs=None,
         case="",
@@ -418,8 +453,12 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
     ):
         if self._should_skip_target(tags=tags, **kwargs):
             return
-        if not srcs:
-            raise ValueError(f"{name} requires at least one authored test source")
+        if module and (srcs or deps or data or input_format or inputopts):
+            raise ValueError(
+                f"{name} module is exclusive with source and import options"
+            )
+        if not module and not srcs:
+            raise ValueError(f"{name} requires srcs or a test module")
         if not execution_profiles and not compile_targets:
             raise ValueError(f"{name} requires execution_profiles or compile_targets")
         self._reject_workload_args(name, args)
@@ -427,21 +466,18 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         target_compatible_with = self._apply_loom_target_compatible_with(
             target_compatible_with
         )
-        blocks = [
-            self._convert_string_arg_block("NAME", name, quote=False),
-            self._convert_loom_module_inputs("SRCS", srcs),
-            self._convert_loom_module_inputs("LIBRARIES", deps),
-            self._convert_data_list_block(data),
-            self._convert_string_arg_block("INPUT_FORMAT", input_format or None),
-            self._convert_string_list_block(
-                "INPUTOPTS",
-                self._convert_location_args(inputopts),
-                sort=False,
-            ),
-        ]
+        if not module:
+            module = ":" + name + "_module"
+            self.loom_test_module(
+                name=name + "_module",
+                srcs=srcs,
+                deps=deps,
+                data=data,
+                input_format=input_format,
+                inputopts=inputopts,
+                target_compatible_with=target_compatible_with,
+            )
         self._emit_platform_guard_begin(target_compatible_with)
-        self._converter.body += "loom_test(\n" + "".join(blocks) + ")\n\n"
-        module = "::" + name + "_module"
         for workload_name, (workload_configs, workload_case) in workloads.items():
             for key, value in workload_configs.items():
                 if not isinstance(key, str) or not isinstance(value, str):
@@ -471,11 +507,16 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
                     )
                 execution_names.add(execution_name)
                 self._loom_execution_test(
-                    execution_name, module, profile, args, tags, workload_args
+                    execution_name,
+                    self._convert_single_target(module),
+                    profile,
+                    args,
+                    tags,
+                    workload_args,
                 )
             self._loom_check_compile_tests(
                 name=workload_name,
-                src=":" + name + "_module",
+                src=module,
                 targets=compile_targets,
                 data=None,
                 env=None,

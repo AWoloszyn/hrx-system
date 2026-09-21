@@ -68,13 +68,15 @@ loom_check_test_suite(
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+loom_test_module(
   NAME
-    config_values_test
+    config_values_test_module
   SRCS
     "config_values.cpp"
 )
+endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
@@ -345,15 +347,17 @@ loom_generated_file(
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+loom_test_module(
   NAME
-    assumptions_test
+    assumptions_test_module
   SRCS
     "${CMAKE_CURRENT_BINARY_DIR}/assumptions_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cpp"
 )
+endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
@@ -371,15 +375,17 @@ endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+loom_test_module(
   NAME
-    comparison_functions_test
+    comparison_functions_test_module
   SRCS
     "${CMAKE_CURRENT_BINARY_DIR}/comparison_functions_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/comparison_functions.cpp"
 )
+endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
@@ -397,15 +403,17 @@ endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+loom_test_module(
   NAME
-    constant_loops_test
+    constant_loops_test_module
   SRCS
     "${CMAKE_CURRENT_BINARY_DIR}/constant_loops_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
 )
+endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
@@ -423,15 +431,17 @@ endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+loom_test_module(
   NAME
-    enum_values_test
+    enum_values_test_module
   SRCS
     "${CMAKE_CURRENT_BINARY_DIR}/enum_values_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
 )
+endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
@@ -449,15 +459,17 @@ endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+loom_test_module(
   NAME
-    increment_values_test
+    increment_values_test_module
   SRCS
     "${CMAKE_CURRENT_BINARY_DIR}/increment_values_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
 )
+endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
@@ -475,15 +487,17 @@ endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+loom_test_module(
   NAME
-    integer_functions_test
+    integer_functions_test_module
   SRCS
     "${CMAKE_CURRENT_BINARY_DIR}/integer_functions_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
 )
+endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
@@ -501,15 +515,17 @@ endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+loom_test_module(
   NAME
-    record_values_test
+    record_values_test_module
   SRCS
     "${CMAKE_CURRENT_BINARY_DIR}/record_values_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_values.cpp"
 )
+endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
@@ -527,15 +543,17 @@ endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+loom_test_module(
   NAME
-    schedule_values_test
+    schedule_values_test_module
   SRCS
     "${CMAKE_CURRENT_BINARY_DIR}/schedule_values_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_values.cpp"
 )
+endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
@@ -553,15 +571,17 @@ endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+loom_test_module(
   NAME
-    shaped_intrinsics_test
+    shaped_intrinsics_test_module
   SRCS
     "${CMAKE_CURRENT_BINARY_DIR}/shaped_intrinsics_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
 )
+endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
@@ -579,15 +599,17 @@ endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+loom_test_module(
   NAME
-    structured_continue_test
+    structured_continue_test_module
   SRCS
     "${CMAKE_CURRENT_BINARY_DIR}/structured_continue_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
 )
+endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
@@ -605,15 +627,17 @@ endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+loom_test_module(
   NAME
-    vector_initializers_test
+    vector_initializers_test_module
   SRCS
     "${CMAKE_CURRENT_BINARY_DIR}/vector_initializers_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
 )
+endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
@@ -631,15 +655,17 @@ endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+loom_test_module(
   NAME
-    vector_values_test
+    vector_values_test_module
   SRCS
     "${CMAKE_CURRENT_BINARY_DIR}/vector_values_cases.cc"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
 )
+endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 if(LOOM_TARGET_ARCH_VM)
 loom_execution_test(
   NAME
@@ -665,7 +691,7 @@ loom_check_test_suite(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     aiter_swiglu_f16_checks_gen
@@ -684,7 +710,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     assumptions_checks_gen
@@ -703,7 +729,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     constant_loops_checks_gen
@@ -722,7 +748,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     control_flow_checks_gen
@@ -741,7 +767,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     early_returns_checks_gen
@@ -760,7 +786,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     enum_values_checks_gen
@@ -779,7 +805,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     flash_attention_checks_gen
@@ -798,7 +824,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     increment_values_checks_gen
@@ -817,7 +843,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     integer_increment_checks_gen
@@ -836,7 +862,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     llama_rms_norm_checks_gen
@@ -855,7 +881,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     pointer_walk_checks_gen
@@ -874,7 +900,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     record_values_checks_gen
@@ -893,7 +919,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     scheduled_sum_checks_gen
@@ -912,7 +938,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     shaped_intrinsics_checks_gen
@@ -931,7 +957,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     short_circuit_checks_gen
@@ -950,7 +976,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     structured_continue_checks_gen
@@ -969,7 +995,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     symbol_exports_checks_gen
@@ -988,7 +1014,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     typed_views_checks_gen
@@ -1007,7 +1033,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     vector_depth_checks_gen
@@ -1026,7 +1052,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     vector_initializers_checks_gen
@@ -1045,7 +1071,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     vector_values_checks_gen
@@ -1064,10 +1090,10 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    aiter_swiglu_f16_kernel_test
+    aiter_swiglu_f16_module
   SRCS
     "aiter_swiglu_f16.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/aiter_swiglu_f16_checks.loom"
@@ -1077,68 +1103,12 @@ loom_test(
   INPUTOPTS
     "cxx:approximate-functions=true"
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    aiter_swiglu_f16_kernel_test_execute_amdgpu_test
-  MODULE
-    "::aiter_swiglu_f16_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    aiter_swiglu_f16_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::aiter_swiglu_f16_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    assumptions_kernel_test
+    assumptions_module
   SRCS
     "assumptions.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/assumptions_checks.loom"
@@ -1148,68 +1118,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    assumptions_kernel_test_execute_amdgpu_test
-  MODULE
-    "::assumptions_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    assumptions_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::assumptions_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    constant_loops_kernel_test
+    constant_loops_module
   SRCS
     "constant_loops.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/constant_loops_checks.loom"
@@ -1219,68 +1133,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    constant_loops_kernel_test_execute_amdgpu_test
-  MODULE
-    "::constant_loops_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    constant_loops_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::constant_loops_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    control_flow_kernel_test
+    control_flow_module
   SRCS
     "control_flow.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/control_flow_checks.loom"
@@ -1290,68 +1148,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    control_flow_kernel_test_execute_amdgpu_test
-  MODULE
-    "::control_flow_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    control_flow_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::control_flow_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    early_returns_kernel_test
+    early_returns_module
   SRCS
     "early_returns.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/early_returns_checks.loom"
@@ -1361,68 +1163,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    early_returns_kernel_test_execute_amdgpu_test
-  MODULE
-    "::early_returns_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    early_returns_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::early_returns_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    enum_values_kernel_test
+    enum_values_module
   SRCS
     "enum_values.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/enum_values_checks.loom"
@@ -1432,68 +1178,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    enum_values_kernel_test_execute_amdgpu_test
-  MODULE
-    "::enum_values_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    enum_values_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::enum_values_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    flash_attention_kernel_test
+    flash_attention_module
   SRCS
     "flash_attention.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/flash_attention_checks.loom"
@@ -1503,68 +1193,12 @@ loom_test(
   INPUTOPTS
     "cxx:approximate-functions=true"
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    flash_attention_kernel_test_execute_amdgpu_test
-  MODULE
-    "::flash_attention_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    flash_attention_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::flash_attention_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    increment_values_kernel_test
+    increment_values_module
   SRCS
     "increment_values.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/increment_values_checks.loom"
@@ -1574,68 +1208,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    increment_values_kernel_test_execute_amdgpu_test
-  MODULE
-    "::increment_values_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    increment_values_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::increment_values_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    integer_increment_kernel_test
+    integer_increment_module
   SRCS
     "integer_increment.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/integer_increment_checks.loom"
@@ -1645,68 +1223,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    integer_increment_kernel_test_execute_amdgpu_test
-  MODULE
-    "::integer_increment_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    integer_increment_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::integer_increment_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    llama_rms_norm_kernel_test
+    llama_rms_norm_module
   SRCS
     "llama_rms_norm.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/llama_rms_norm_checks.loom"
@@ -1716,68 +1238,12 @@ loom_test(
   INPUTOPTS
     "cxx:approximate-functions=true"
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    llama_rms_norm_kernel_test_execute_amdgpu_test
-  MODULE
-    "::llama_rms_norm_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    llama_rms_norm_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::llama_rms_norm_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    pointer_walk_kernel_test
+    pointer_walk_module
   SRCS
     "pointer_walk.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/pointer_walk_checks.loom"
@@ -1787,68 +1253,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    pointer_walk_kernel_test_execute_amdgpu_test
-  MODULE
-    "::pointer_walk_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    pointer_walk_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::pointer_walk_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    record_values_kernel_test
+    record_values_module
   SRCS
     "record_values.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/record_values_checks.loom"
@@ -1858,68 +1268,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    record_values_kernel_test_execute_amdgpu_test
-  MODULE
-    "::record_values_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    record_values_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::record_values_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    scheduled_sum_kernel_test
+    scheduled_sum_module
   SRCS
     "scheduled_sum.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/scheduled_sum_checks.loom"
@@ -1929,68 +1283,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    scheduled_sum_kernel_test_execute_amdgpu_test
-  MODULE
-    "::scheduled_sum_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    scheduled_sum_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::scheduled_sum_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    shaped_intrinsics_kernel_test
+    shaped_intrinsics_module
   SRCS
     "shaped_intrinsics.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/shaped_intrinsics_checks.loom"
@@ -2000,68 +1298,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    shaped_intrinsics_kernel_test_execute_amdgpu_test
-  MODULE
-    "::shaped_intrinsics_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    shaped_intrinsics_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::shaped_intrinsics_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    short_circuit_kernel_test
+    short_circuit_module
   SRCS
     "short_circuit.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/short_circuit_checks.loom"
@@ -2071,68 +1313,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    short_circuit_kernel_test_execute_amdgpu_test
-  MODULE
-    "::short_circuit_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    short_circuit_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::short_circuit_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    structured_continue_kernel_test
+    structured_continue_module
   SRCS
     "structured_continue.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/structured_continue_checks.loom"
@@ -2142,68 +1328,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    structured_continue_kernel_test_execute_amdgpu_test
-  MODULE
-    "::structured_continue_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    structured_continue_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::structured_continue_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    symbol_exports_kernel_test
+    symbol_exports_module
   SRCS
     "symbol_exports.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/symbol_exports_checks.loom"
@@ -2213,68 +1343,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    symbol_exports_kernel_test_execute_amdgpu_test
-  MODULE
-    "::symbol_exports_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    symbol_exports_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::symbol_exports_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    typed_views_kernel_test
+    typed_views_module
   SRCS
     "typed_views.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/typed_views_checks.loom"
@@ -2284,68 +1358,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    typed_views_kernel_test_execute_amdgpu_test
-  MODULE
-    "::typed_views_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    typed_views_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::typed_views_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    vector_depth_kernel_test
+    vector_depth_module
   SRCS
     "vector_depth.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/vector_depth_checks.loom"
@@ -2355,68 +1373,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    vector_depth_kernel_test_execute_amdgpu_test
-  MODULE
-    "::vector_depth_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    vector_depth_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::vector_depth_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    vector_initializers_kernel_test
+    vector_initializers_module
   SRCS
     "vector_initializers.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/vector_initializers_checks.loom"
@@ -2426,68 +1388,12 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    vector_initializers_kernel_test_execute_amdgpu_test
-  MODULE
-    "::vector_initializers_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
 endif()
 
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
+if(LOOM_IMPORT_CXX)
+loom_test_module(
   NAME
-    vector_initializers_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::vector_initializers_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-endif()
-
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_test(
-  NAME
-    vector_values_kernel_test
+    vector_values_module
   SRCS
     "vector_values.cpp"
     "${CMAKE_CURRENT_BINARY_DIR}/vector_values_checks.loom"
@@ -2497,62 +1403,6 @@ loom_test(
   INPUTOPTS
 
 )
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    vector_values_kernel_test_execute_amdgpu_test
-  MODULE
-    "::vector_values_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
-
-if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
-loom_execution_test(
-  NAME
-    vector_values_kernel_test_execute_amdgpu_access_test
-  MODULE
-    "::vector_values_kernel_test_module"
-  RUNNER_ARGS
-    "--device=amdgpu"
-    "--sanitizer=access"
-    "--sanitizer-reporting=report-only"
-  LABELS
-    "iree-build-requirement=loom.target.arch.amdgpu"
-    "iree-build-requirement=loom.emit.amdgpu"
-    "iree-build-requirement=loom.execute.iree_hal"
-    "iree-build-requirement=runtime.hal.amdgpu"
-    "iree-run-requirement=runtime.resource.amd_gpu"
-    "runtime-resource=amd-gpu"
-    "loom-execution-profile=amdgpu_access"
-    "loom-target-family=amdgpu"
-    "loom-target-class=gpu"
-    "loom-executor=hardware"
-  RESOURCE_GROUP
-    "loom-amdgpu-tests"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    rocm
-)
-endif()
 endif()
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

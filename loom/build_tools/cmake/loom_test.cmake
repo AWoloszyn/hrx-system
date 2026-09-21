@@ -6,7 +6,7 @@
 
 # A source owner imports and links one module. Independently gated execution and
 # compiler children consume that module without repeating its source closure.
-function(loom_test)
+function(loom_test_module)
   if(NOT IREE_BUILD_TESTS)
     return()
   endif()
@@ -14,7 +14,7 @@ function(loom_test)
     _RULE "" "NAME;INPUT_FORMAT" "SRCS;LIBRARIES;DATA;INPUTOPTS" ${ARGN}
   )
   if(_RULE_UNPARSED_ARGUMENTS)
-    message(FATAL_ERROR "Unknown loom_test arguments: ${_RULE_UNPARSED_ARGUMENTS}")
+    message(FATAL_ERROR "Unknown loom_test_module arguments: ${_RULE_UNPARSED_ARGUMENTS}")
   endif()
   loom_module(
     NAME "${_RULE_NAME}_library"
@@ -28,14 +28,14 @@ function(loom_test)
     STRICT_DEPS
   )
   loom_module(
-    NAME "${_RULE_NAME}_module"
+    NAME "${_RULE_NAME}"
     SRCS "::${_RULE_NAME}_library"
     LIBRARIES ${_RULE_LIBRARIES}
     MODE link
     OUTPUT_FORMAT bc
     INCLUDE_INPUT_TESTS
   )
-  iree_package_target_name(_MODULE_TARGET "::${_RULE_NAME}_module")
+  iree_package_target_name(_MODULE_TARGET "::${_RULE_NAME}")
   # Runtime fixtures belong to the source owner, not individual environments.
   set_property(TARGET "${_MODULE_TARGET}" PROPERTY LOOM_TEST_DATA "${_RULE_DATA}")
 endfunction()
@@ -45,8 +45,35 @@ function(loom_execution_test)
   if(NOT IREE_BUILD_TESTS)
     return()
   endif()
+  cmake_parse_arguments(_RULE "" "NAME" "" ${ARGN})
+  iree_package_name(_PACKAGE_NAME)
+  set(_ID "${_PACKAGE_NAME}_${_RULE_NAME}")
+  set_property(GLOBAL APPEND PROPERTY LOOM_EXECUTION_TESTS "${_ID}")
+  set_property(GLOBAL PROPERTY "${_ID}_ARGUMENTS" "${ARGN}")
+  iree_package_path(_PACKAGE_PATH)
+  set_property(GLOBAL PROPERTY "${_ID}_PACKAGE_PATH" "${_PACKAGE_PATH}")
+  foreach(_VARIABLE
+      CMAKE_CURRENT_LIST_DIR CMAKE_CURRENT_SOURCE_DIR CMAKE_CURRENT_BINARY_DIR
+      IREE_IDE_FOLDER)
+    set_property(GLOBAL PROPERTY "${_ID}_${_VARIABLE}" "${${_VARIABLE}}")
+  endforeach()
+endfunction()
+
+# All module owners must exist before runtime fixture paths can be passed to
+# native test registration, including its installed-test relocation boundary.
+# Retaining the declaring package keeps test names and relative data unchanged
+# even when the module is owned by a later package.
+function(_loom_declare_execution_test ID)
+  foreach(_VARIABLE
+      CMAKE_CURRENT_LIST_DIR CMAKE_CURRENT_SOURCE_DIR CMAKE_CURRENT_BINARY_DIR
+      IREE_IDE_FOLDER)
+    get_property("${_VARIABLE}" GLOBAL PROPERTY "${ID}_${_VARIABLE}")
+  endforeach()
+  set(IREE_PACKAGE_ROOT_DIR "${CMAKE_CURRENT_LIST_DIR}")
+  get_property(IREE_PACKAGE_ROOT_PREFIX GLOBAL PROPERTY "${ID}_PACKAGE_PATH")
+  get_property(_ARGUMENTS GLOBAL PROPERTY "${ID}_ARGUMENTS")
   cmake_parse_arguments(
-    _RULE "" "NAME;MODULE;RESOURCE_GROUP" "ARGS;RUNNER_ARGS;LABELS;SANITIZER_SUPPRESSIONS" ${ARGN}
+    _RULE "" "NAME;MODULE;RESOURCE_GROUP" "ARGS;RUNNER_ARGS;LABELS;SANITIZER_SUPPRESSIONS" ${_ARGUMENTS}
   )
   if(_RULE_UNPARSED_ARGUMENTS)
     message(FATAL_ERROR "Unknown loom_execution_test arguments: ${_RULE_UNPARSED_ARGUMENTS}")
@@ -73,4 +100,18 @@ function(loom_execution_test)
     RESOURCE_GROUP "${_RULE_RESOURCE_GROUP}"
     SANITIZER_SUPPRESSIONS ${_RULE_SANITIZER_SUPPRESSIONS}
   )
+  iree_package_name(_PACKAGE_NAME)
+  foreach(_SUFFIX "" "_benchmark")
+    iree_register_target_dependency(
+      TARGET "${_PACKAGE_NAME}_${_RULE_NAME}${_SUFFIX}_test_deps"
+      DEPENDENCY "${_MODULE_TARGET}"
+    )
+  endforeach()
+endfunction()
+
+function(loom_finalize_execution_tests)
+  get_property(_TESTS GLOBAL PROPERTY LOOM_EXECUTION_TESTS)
+  foreach(_TEST IN LISTS _TESTS)
+    _loom_declare_execution_test("${_TEST}")
+  endforeach()
 endfunction()

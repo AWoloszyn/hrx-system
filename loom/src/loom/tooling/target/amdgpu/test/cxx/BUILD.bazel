@@ -1,0 +1,69 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//build_tools/sanitizer:suppressions.bzl", "rocm_suppressions")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with")
+load("//loom/build_tools/bazel:defs.bzl", "loom_test")
+load("//loom/target/amdgpu:execution_profiles.bzl", "amdgpu_execution_profile")
+
+package(default_visibility = ["//visibility:public"])
+
+# These sources assert zero access reports against independent reference data.
+_EXECUTION_PROFILES = [
+    amdgpu_execution_profile(
+        name = "amdgpu",
+        sanitizer_suppressions = rocm_suppressions,
+    ),
+    amdgpu_execution_profile(
+        name = "amdgpu_access",
+        runner_args = [
+            "--sanitizer=access",
+            "--sanitizer-reporting=report-only",
+        ],
+        sanitizer_suppressions = rocm_suppressions,
+    ),
+]
+
+# Qualification is explicit: publishing a source module does not imply support
+# for its operations on every target.
+_MODULES = [
+    "aiter_swiglu_f16",
+    "assumptions",
+    "constant_loops",
+    "control_flow",
+    "early_returns",
+    "enum_values",
+    "flash_attention",
+    "increment_values",
+    "integer_increment",
+    "llama_rms_norm",
+    "pointer_walk",
+    "record_values",
+    "scheduled_sum",
+    "shaped_intrinsics",
+    "short_circuit",
+    "structured_continue",
+    "symbol_exports",
+    "typed_views",
+    "vector_depth",
+    "vector_initializers",
+    "vector_values",
+]
+
+[
+    loom_test(
+        name = module + "_test",
+        execution_profiles = _EXECUTION_PROFILES,
+        module = "//loom/src/loom/import/cxx/test:" + module + "_module",
+        target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+    )
+    for module in _MODULES
+]
+
+test_suite(
+    name = "kernels_test",
+    tests = [":" + module + "_test" for module in _MODULES],
+)
