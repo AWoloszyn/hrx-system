@@ -1,0 +1,68 @@
+// RUN: pass aie2p-lower-pipeline
+
+aie2p.target<array> @array_target
+
+aie2p.target<core> @core_target
+
+func.decl target(@core_target) @join(%lhs: buffer, %rhs: buffer, %output: buffer)
+
+pipeline.def<kernel> public retain target(@array_target) @stage_extent_mismatch() launch(%lhs: buffer, %rhs: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %lhs_view = buffer.view %lhs[%base] : buffer -> view<4x8xi8>
+  %rhs_view = buffer.view %rhs[%base] : buffer -> view<2x8xi8>
+  %lhs_records = pipeline.read %lhs_view on %workers : view<4x8xi8>, group -> pipeline.flow<tile<8xi8>>
+  %rhs_records = pipeline.read %rhs_view on %workers : view<2x8xi8>, group -> pipeline.flow<tile<8xi8>>
+  // ERROR@+1: LOWERING/063 {dimension="0", extent="2", expected_extent="4"}
+  %output = pipeline.stage @join on %workers(%lhs_records, %rhs_records) : (group, pipeline.flow<tile<8xi8>>, pipeline.flow<tile<8xi8>>) -> (pipeline.flow<tile<8xi8>>)
+  pipeline.return
+}
+
+// ====
+
+// Equal record counts do not make different temporal ranks interchangeable.
+
+aie2p.target<array> @array_target
+
+aie2p.target<core> @core_target
+
+func.decl target(@core_target) @join(%lhs: buffer, %rhs: buffer, %output: buffer)
+
+pipeline.def<kernel> public retain target(@array_target) @stage_rank_mismatch() launch(%lhs: buffer, %rhs: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %workers = group.create %lanes : index -> group
+  %lhs_view = buffer.view %lhs[%base] : buffer -> view<2x2x8xi8>
+  %rhs_view = buffer.view %rhs[%base] : buffer -> view<4x8xi8>
+  %lhs_records = pipeline.read %lhs_view on %workers : view<2x2x8xi8>, group -> pipeline.flow<tile<8xi8>>
+  %rhs_records = pipeline.read %rhs_view on %workers : view<4x8xi8>, group -> pipeline.flow<tile<8xi8>>
+  // ERROR@+1: LOWERING/062 {rank="1", expected_rank="2"}
+  %output = pipeline.stage @join on %workers(%lhs_records, %rhs_records) : (group, pipeline.flow<tile<8xi8>>, pipeline.flow<tile<8xi8>>) -> (pipeline.flow<tile<8xi8>>)
+  pipeline.return
+}
+
+// ====
+
+aie2p.target<array> @array_target
+
+aie2p.target<core> @core_target
+
+func.decl target(@core_target) @produce(%input: buffer, %output: buffer)
+
+func.decl target(@core_target) @reduce(%source: buffer, %bias: buffer, %output: buffer)
+
+pipeline.def<kernel> public retain target(@array_target) @reduction_extent_mismatch() launch(%input: buffer, %bias: buffer) {
+  %lanes = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %producers = group.create %lanes : index -> group
+  %reducers = group.create %lanes : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<4x8xi8>
+  %bias_view = buffer.view %bias[%base] : buffer -> view<2x8xi8>
+  %input_records = pipeline.read %input_view on %producers : view<4x8xi8>, group -> pipeline.flow<tile<8xi8>>
+  %source_records = pipeline.stage @produce on %producers(%input_records) : (group, pipeline.flow<tile<8xi8>>) -> (pipeline.flow<tile<8xi8>>)
+  %bias_records = pipeline.read %bias_view on %reducers : view<2x8xi8>, group -> pipeline.flow<tile<8xi8>>
+  // ERROR@+1: LOWERING/063 {dimension="0", extent="2", expected_extent="4"}
+  %output_records = pipeline.reduce @reduce from %producers(%source_records) to %reducers(%bias_records) : (group, pipeline.flow<tile<8xi8>>) to (group, pipeline.flow<tile<8xi8>>) -> (pipeline.flow<tile<8xi8>>)
+  pipeline.return
+}

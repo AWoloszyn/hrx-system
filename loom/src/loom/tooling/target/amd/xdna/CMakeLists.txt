@@ -37,6 +37,7 @@ loom_check_test_suite(
   SRCS
     "test/equal_count_different_shape.loom-test"
     "test/extra_temporal_axis.loom-test"
+    "test/input_record_shapes.loom-test"
     "test/missing_lane_axis.loom-test"
     "test/missing_temporal_axis.loom-test"
     "test/unit_lane_extent.loom-test"
@@ -54,6 +55,7 @@ loom_check_compile_tests(
   REGISTERED_SRCS
     "test/equal_count_different_shape.loom-test"
     "test/extra_temporal_axis.loom-test"
+    "test/input_record_shapes.loom-test"
     "test/missing_lane_axis.loom-test"
     "test/missing_temporal_axis.loom-test"
     "test/unit_lane_extent.loom-test"
@@ -71,6 +73,25 @@ loom_check_compile_tests(
   REGISTERED_SRCS
     "test/equal_count_different_shape.loom-test"
     "test/extra_temporal_axis.loom-test"
+    "test/input_record_shapes.loom-test"
+    "test/missing_lane_axis.loom-test"
+    "test/missing_temporal_axis.loom-test"
+    "test/unit_lane_extent.loom-test"
+  TARGETS
+    loom::target::xdna::amd.xdna.strix_halo.17f0_11
+)
+endif()
+
+if(LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA)
+loom_check_compile_tests(
+  NAME
+    "test_input_record_shapes"
+  SRC
+    "test/input_record_shapes.loom-test"
+  REGISTERED_SRCS
+    "test/equal_count_different_shape.loom-test"
+    "test/extra_temporal_axis.loom-test"
+    "test/input_record_shapes.loom-test"
     "test/missing_lane_axis.loom-test"
     "test/missing_temporal_axis.loom-test"
     "test/unit_lane_extent.loom-test"
@@ -88,6 +109,7 @@ loom_check_compile_tests(
   REGISTERED_SRCS
     "test/equal_count_different_shape.loom-test"
     "test/extra_temporal_axis.loom-test"
+    "test/input_record_shapes.loom-test"
     "test/missing_lane_axis.loom-test"
     "test/missing_temporal_axis.loom-test"
     "test/unit_lane_extent.loom-test"
@@ -105,6 +127,7 @@ loom_check_compile_tests(
   REGISTERED_SRCS
     "test/equal_count_different_shape.loom-test"
     "test/extra_temporal_axis.loom-test"
+    "test/input_record_shapes.loom-test"
     "test/missing_lane_axis.loom-test"
     "test/missing_temporal_axis.loom-test"
     "test/unit_lane_extent.loom-test"
@@ -122,6 +145,7 @@ loom_check_compile_tests(
   REGISTERED_SRCS
     "test/equal_count_different_shape.loom-test"
     "test/extra_temporal_axis.loom-test"
+    "test/input_record_shapes.loom-test"
     "test/missing_lane_axis.loom-test"
     "test/missing_temporal_axis.loom-test"
     "test/unit_lane_extent.loom-test"

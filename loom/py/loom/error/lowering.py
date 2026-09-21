@@ -721,14 +721,14 @@ ERR_LOWERING_061 = ErrorDef(
     ),
 )
 
-# ERR_LOWERING_062: Pipeline output has a different temporal record rank.
+# ERR_LOWERING_062: Pipeline record sequences have different temporal ranks.
 ERR_LOWERING_062 = ErrorDef(
     domain=ErrorDomain.LOWERING,
     code=62,
     severity=Severity.ERROR,
-    summary="Pipeline output has a different temporal record rank.",
+    summary="Pipeline record sequences have different temporal ranks.",
     message=(
-        "pipeline output view and flow must have equal record shapes; "
+        "pipeline record shapes must match; "
         "got {rank} temporal dimensions, expected {expected_rank}"
     ),
     params=(
@@ -737,14 +737,14 @@ ERR_LOWERING_062 = ErrorDef(
     ),
 )
 
-# ERR_LOWERING_063: Pipeline output has a different temporal record extent.
+# ERR_LOWERING_063: Pipeline record sequences have different temporal extents.
 ERR_LOWERING_063 = ErrorDef(
     domain=ErrorDomain.LOWERING,
     code=63,
     severity=Severity.ERROR,
-    summary="Pipeline output has a different temporal record extent.",
+    summary="Pipeline record sequences have different temporal extents.",
     message=(
-        "pipeline output view and flow must have equal record shapes; "
+        "pipeline record shapes must match; "
         "temporal dimension {dimension} has extent {extent}, "
         "expected {expected_extent}"
     ),

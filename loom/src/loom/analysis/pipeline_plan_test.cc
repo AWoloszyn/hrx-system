@@ -909,58 +909,6 @@ pipeline.def<kernel> @dynamic(%extent: index) launch(%input: buffer, %output: bu
                                {}, &analysis_arena_, &plan, &plan_valid));
 }
 
-TEST_F(PipelinePlanTest, RejectsMismatchedStageRecordCounts) {
-  ModulePtr module = Parse(R"(
-func.def @join(%lhs: buffer, %rhs: buffer, %output: buffer) {
-  func.return
-}
-
-pipeline.def<kernel> @mismatch() launch(%lhs: buffer, %rhs: buffer) {
-  %lanes = index.constant 1 : index
-  %base = index.constant 0 : offset
-  %workers = group.create %lanes : index -> group
-  %lhs_view = buffer.view %lhs[%base] : buffer -> view<4x8xi8>
-  %rhs_view = buffer.view %rhs[%base] : buffer -> view<2x8xi8>
-  %lhs_records = pipeline.read %lhs_view on %workers : view<4x8xi8>, group -> pipeline.flow<tile<8xi8>>
-  %rhs_records = pipeline.read %rhs_view on %workers : view<2x8xi8>, group -> pipeline.flow<tile<8xi8>>
-  %output = pipeline.stage @join on %workers(%lhs_records, %rhs_records) : (group, pipeline.flow<tile<8xi8>>, pipeline.flow<tile<8xi8>>) -> (pipeline.flow<tile<8xi8>>)
-  pipeline.return
-}
-)");
-
-  loom_pipeline_plan_t plan = {};
-  bool plan_valid = false;
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_INVALID_ARGUMENT,
-      BuildPlan(module.get(), IREE_SV("mismatch"), &plan, &plan_valid));
-}
-
-TEST_F(PipelinePlanTest, RejectsDifferentlyShapedStageRecordSequences) {
-  ModulePtr module = Parse(R"(
-func.def @join(%lhs: buffer, %rhs: buffer, %output: buffer) {
-  func.return
-}
-
-pipeline.def<kernel> @mismatch() launch(%lhs: buffer, %rhs: buffer) {
-  %lanes = index.constant 1 : index
-  %base = index.constant 0 : offset
-  %workers = group.create %lanes : index -> group
-  %lhs_view = buffer.view %lhs[%base] : buffer -> view<2x2x8xi8>
-  %rhs_view = buffer.view %rhs[%base] : buffer -> view<4x8xi8>
-  %lhs_records = pipeline.read %lhs_view on %workers : view<2x2x8xi8>, group -> pipeline.flow<tile<8xi8>>
-  %rhs_records = pipeline.read %rhs_view on %workers : view<4x8xi8>, group -> pipeline.flow<tile<8xi8>>
-  %output = pipeline.stage @join on %workers(%lhs_records, %rhs_records) : (group, pipeline.flow<tile<8xi8>>, pipeline.flow<tile<8xi8>>) -> (pipeline.flow<tile<8xi8>>)
-  pipeline.return
-}
-)");
-
-  loom_pipeline_plan_t plan = {};
-  bool plan_valid = false;
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_INVALID_ARGUMENT,
-      BuildPlan(module.get(), IREE_SV("mismatch"), &plan, &plan_valid));
-}
-
 TEST_F(PipelinePlanTest, RejectsMismatchedOutputRecordCount) {
   ModulePtr module = Parse(R"(
 func.def @copy(%input: buffer, %output: buffer) {
@@ -984,6 +932,24 @@ pipeline.def<kernel> @mismatch() launch(%input: buffer, %output: buffer) {
   bool plan_valid = false;
   IREE_ASSERT_OK(
       BuildPlan(module.get(), IREE_SV("mismatch"), &plan, &plan_valid));
+  EXPECT_FALSE(plan_valid);
+  EXPECT_EQ(plan.pipeline.op, nullptr);
+  EXPECT_EQ(plan.bindings, nullptr);
+  EXPECT_EQ(plan.flows, nullptr);
+  EXPECT_EQ(plan.instances, nullptr);
+
+  iree_diagnostic_emitter_t emitter = {
+      [](void*, const loom_diagnostic_emission_t* emission) {
+        EXPECT_EQ(emission->error, LOOM_ERR_LOWERING_063);
+        return iree_make_status(IREE_STATUS_DATA_LOSS,
+                                "diagnostic sink failed");
+      },
+      nullptr,
+  };
+  plan_valid = true;
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_DATA_LOSS,
+                        BuildPlan(module.get(), IREE_SV("mismatch"), &plan,
+                                  &plan_valid, emitter));
   EXPECT_FALSE(plan_valid);
   EXPECT_EQ(plan.pipeline.op, nullptr);
   EXPECT_EQ(plan.bindings, nullptr);
@@ -1032,38 +998,6 @@ pipeline.def<kernel> @overflow() launch(%input: buffer) {
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_RESOURCE_EXHAUSTED,
       BuildPlan(module.get(), IREE_SV("overflow"), &plan, &plan_valid));
-}
-
-TEST_F(PipelinePlanTest, RejectsMismatchedReductionRecordCounts) {
-  ModulePtr module = Parse(R"(
-func.def @produce(%input: buffer, %output: buffer) {
-  func.return
-}
-
-func.def @reduce(%source: buffer, %bias: buffer, %output: buffer) {
-  func.return
-}
-
-pipeline.def<kernel> @mismatch() launch(%input: buffer, %bias: buffer) {
-  %lanes = index.constant 1 : index
-  %base = index.constant 0 : offset
-  %producers = group.create %lanes : index -> group
-  %reducers = group.create %lanes : index -> group
-  %input_view = buffer.view %input[%base] : buffer -> view<4x8xi8>
-  %bias_view = buffer.view %bias[%base] : buffer -> view<2x8xi8>
-  %input_records = pipeline.read %input_view on %producers : view<4x8xi8>, group -> pipeline.flow<tile<8xi8>>
-  %source_records = pipeline.stage @produce on %producers(%input_records) : (group, pipeline.flow<tile<8xi8>>) -> (pipeline.flow<tile<8xi8>>)
-  %bias_records = pipeline.read %bias_view on %reducers : view<2x8xi8>, group -> pipeline.flow<tile<8xi8>>
-  %output_records = pipeline.reduce @reduce from %producers(%source_records) to %reducers(%bias_records) : (group, pipeline.flow<tile<8xi8>>) to (group, pipeline.flow<tile<8xi8>>) -> (pipeline.flow<tile<8xi8>>)
-  pipeline.return
-}
-)");
-
-  loom_pipeline_plan_t plan = {};
-  bool plan_valid = false;
-  IREE_EXPECT_STATUS_IS(
-      IREE_STATUS_INVALID_ARGUMENT,
-      BuildPlan(module.get(), IREE_SV("mismatch"), &plan, &plan_valid));
 }
 
 TEST_F(PipelinePlanTest, RejectsRecordwiseUseBeforeFold) {

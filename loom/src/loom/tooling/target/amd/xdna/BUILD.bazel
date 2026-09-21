@@ -43,6 +43,7 @@ loom_cc_library(
 _PIPELINE_RECORD_SHAPE_SOURCES = [
     "test/equal_count_different_shape.loom-test",
     "test/extra_temporal_axis.loom-test",
+    "test/input_record_shapes.loom-test",
     "test/missing_lane_axis.loom-test",
     "test/missing_temporal_axis.loom-test",
     "test/unit_lane_extent.loom-test",

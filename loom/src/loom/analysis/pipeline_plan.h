@@ -357,9 +357,10 @@ typedef struct loom_pipeline_plan_t {
 // buffering capacities are read from |facts|. |limits| is supplied by the
 // materializer after target specialization and bounds planning allocations.
 // All plan storage is allocated from |arena|.
-// Output lane and record-shape mismatches emit source diagnostics and leave
-// |out_valid| false and |out_plan| empty. Status carries diagnostic-sink,
-// allocation, resource-limit, and unsupported concrete-planning failures.
+// Output lane and input/output record-shape mismatches emit source diagnostics
+// and leave |out_valid| false and |out_plan| empty. Status carries
+// diagnostic-sink, allocation, resource-limit, and unsupported
+// concrete-planning failures.
 iree_status_t loom_pipeline_plan_build(
     const loom_module_t* module, loom_func_like_t pipeline,
     const loom_value_fact_table_t* facts, loom_pipeline_plan_limits_t limits,
