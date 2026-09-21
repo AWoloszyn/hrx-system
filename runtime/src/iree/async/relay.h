@@ -270,8 +270,13 @@ struct iree_async_relay_t {
       // io_uring tracks asynchronous cancellation, re-arm, and terminal
       // kernel-reference ownership explicitly.
       uint32_t state;
-      // Native sink error awaiting delivery after source-list detachment.
-      int sink_error;
+      // Source-specific completion state; the source type selects the member.
+      union {
+        // Native sink error awaiting notification source-list detachment.
+        int sink_error;
+        // Primitive poll and cancellation operations still awaiting receipts.
+        uint32_t primitive_operations;
+      } pending;
       // Source-local linkage for notification relays (poll owner only).
       struct iree_async_relay_t* notification_relay_next;
     } io_uring;

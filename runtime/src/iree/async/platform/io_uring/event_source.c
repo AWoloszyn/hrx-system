@@ -190,9 +190,17 @@ iree_status_t iree_async_io_uring_event_source_complete_cancel(
   return status;
 }
 
-void iree_async_io_uring_event_source_deinitialize_all(
+void iree_async_io_uring_event_source_unregister_all(
     iree_async_proactor_io_uring_t* proactor) {
-  while (proactor->event_sources) {
-    iree_async_io_uring_event_source_destroy(proactor, proactor->event_sources);
+  iree_async_event_source_t* source = proactor->event_sources;
+  while (source) {
+    iree_async_event_source_t* next = source->next;
+    // A cleared callback already owns an admitted terminal unregistration.
+    if (source->callback.fn) {
+      iree_async_io_uring_event_source_unregister(
+          &proactor->base, source,
+          iree_async_event_source_unregistered_callback_none());
+    }
+    source = next;
   }
 }

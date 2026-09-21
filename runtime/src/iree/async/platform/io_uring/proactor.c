@@ -74,9 +74,6 @@
 #define IREE_IO_URING_TSAN_COMPLETE(operation) ((void)0)
 #endif  // IREE_SANITIZER_THREAD
 
-static void iree_async_proactor_io_uring_destroy(
-    iree_async_proactor_t* base_proactor);
-
 // Wakes the proactor after another task queues a ring registration request.
 static void iree_async_proactor_io_uring_wake_registration_owner(
     void* user_data) {
@@ -250,75 +247,6 @@ iree_status_t iree_async_proactor_create_io_uring(
   }
   IREE_TRACE_ZONE_END(z0);
   return status;
-}
-
-static void iree_async_proactor_io_uring_destroy(
-    iree_async_proactor_t* base_proactor) {
-  IREE_TRACE_ZONE_BEGIN(z0);
-  iree_async_proactor_io_uring_t* proactor =
-      iree_async_proactor_io_uring_cast(base_proactor);
-  iree_allocator_t allocator = proactor->base.allocator;
-
-  // Closing the ring synchronously terminates all kernel operations. Keep
-  // event sources, relay state, source primitives, and retained notifications
-  // alive until this completes so terminal callbacks cannot observe cleanup
-  // while the kernel still holds references.
-  iree_io_uring_ring_deinitialize(&proactor->ring);
-  iree_async_io_uring_notification_discard_pending(proactor);
-
-  // Clean up signal handling state.
-  if (proactor->signal.initialized) {
-    // Free all signal subscriptions.
-    for (int i = 0; i < IREE_ASYNC_SIGNAL_COUNT; ++i) {
-      while (proactor->signal.subscriptions[i]) {
-        iree_async_signal_subscription_t* subscription =
-            proactor->signal.subscriptions[i];
-        proactor->signal.subscriptions[i] = subscription->next;
-        iree_allocator_free(allocator, subscription);
-      }
-    }
-    // Free the signal event source.
-    iree_allocator_free(allocator, proactor->signal.event_source);
-    proactor->signal.event_source = NULL;
-    // Deinitialize Linux signalfd state.
-    iree_async_linux_signal_deinitialize(&proactor->signal.linux_state);
-    proactor->signal.initialized = false;
-    // Release global signal ownership so another proactor can claim it.
-    iree_async_signal_release_ownership(&proactor->base);
-  }
-
-  iree_async_io_uring_event_source_deinitialize_all(proactor);
-
-  // Free any remaining relays. In normal use, callers should unregister all
-  // relays before destroying the proactor, but we clean up here to avoid leaks.
-  while (proactor->relays) {
-    iree_async_io_uring_cleanup_relay_after_ring_close(proactor,
-                                                       proactor->relays);
-  }
-
-  // Deinitialize the message pool (all entries returned to free list by now).
-  iree_async_message_pool_deinitialize(&proactor->message_pool);
-
-  iree_atomic_slist_deinitialize(&proactor->pending_software_operations);
-  iree_atomic_slist_deinitialize(&proactor->pending_notifications);
-  iree_atomic_slist_deinitialize(&proactor->pending_semaphore_waits);
-  iree_async_semaphore_wait_context_deinitialize(
-      &proactor->semaphore_wait_context);
-
-  // Free sparse buffer table. The kernel table is automatically destroyed
-  // when the ring fd is closed; this frees the userspace slot allocator.
-  iree_io_uring_sparse_table_free(proactor->buffer_table, allocator);
-
-  // Close the wake eventfd.
-  if (proactor->wake_eventfd >= 0) {
-    close(proactor->wake_eventfd);
-    proactor->wake_eventfd = -1;
-  }
-
-  // Free the proactor structure.
-  iree_allocator_free(allocator, proactor);
-
-  IREE_TRACE_ZONE_END(z0);
 }
 
 //===----------------------------------------------------------------------===//
@@ -1072,6 +1000,15 @@ iree_async_proactor_io_uring_process_internal_cqe(
                                            cqe->flags);
       break;
     }
+    case IREE_IO_URING_TAG_RELAY_CANCEL: {
+      iree_async_relay_t* relay =
+          (iree_async_relay_t*)(uintptr_t)iree_io_uring_internal_payload(
+              cqe->user_data);
+      *inout_poll_status = iree_status_join(
+          *inout_poll_status,
+          iree_async_io_uring_relay_complete_cancel(proactor, relay, cqe->res));
+      break;
+    }
     case IREE_IO_URING_TAG_SIGNAL:
       iree_async_proactor_io_uring_handle_signal_cqe(proactor, cqe);
       break;
@@ -1119,7 +1056,7 @@ iree_async_proactor_io_uring_socket_from_io_operation(
 // Returns the number of user completions (typically 1, but can be more if
 // continuation callbacks were invoked directly; 0 if suppressed, e.g., first
 // CQE of a zero-copy send waiting for NOTIF).
-static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
+iree_host_size_t iree_async_proactor_io_uring_process_cqe(
     iree_async_proactor_io_uring_t* proactor, const iree_io_uring_cqe_t* cqe,
     iree_status_t* inout_poll_status) {
   // Linked POLL_ADD head CQE for EVENT_WAIT.
@@ -1221,7 +1158,7 @@ static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
 // Submits poll-owned event source and relay operations in SQ-sized batches.
 // Registration only creates logical handles; this is the boundary that makes
 // them kernel-visible while preserving SINGLE_ISSUER ownership.
-static iree_status_t iree_async_proactor_io_uring_submit_pending_event_monitors(
+iree_status_t iree_async_proactor_io_uring_submit_pending_event_monitors(
     iree_async_proactor_io_uring_t* proactor) {
   bool has_pending = false;
   do {

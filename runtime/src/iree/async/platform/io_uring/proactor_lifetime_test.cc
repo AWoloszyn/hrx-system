@@ -460,6 +460,19 @@ TEST(IoUringCrossThreadTest,
       },
       nullptr,
   };
+  struct Retirement {
+    // Poll owner used to retire the batch after its last source fires.
+    iree_async_proactor_t* proactor;
+    // Callback witness and notification shared with the test thread.
+    EventCallbackState* callback_state;
+    // Registered handles owned until the next progress callback unregisters
+    // them.
+    std::vector<iree_async_event_source_t*> sources;
+    // One-shot poll-owner action, removed after admitting unregistration.
+    iree_async_progress_entry_t progress = {};
+    // Terminal receipts published before the polling thread may stop.
+    std::atomic<iree_host_size_t> completed{0};
+  } retirement{proactor, &callback_state};
   for (iree_host_size_t i = 0; i < event_fds.size(); ++i) {
     iree_async_event_source_t* event_source = nullptr;
     status = iree_async_proactor_register_event_source(
@@ -475,7 +488,31 @@ TEST(IoUringCrossThreadTest,
       IREE_ASSERT_OK(status);
     }
     ASSERT_NE(event_source, nullptr);
+    retirement.sources.push_back(event_source);
   }
+
+  retirement.progress.user_data = &retirement;
+  retirement.progress.fn = +[](void* user_data,
+                               iree_host_size_t* out_completed_count) {
+    auto* retirement = static_cast<Retirement*>(user_data);
+    if (!retirement->callback_state->invoked.load(std::memory_order_acquire)) {
+      return iree_ok_status();
+    }
+    retirement->progress.remove_requested = true;
+    for (auto* source : retirement->sources) {
+      iree_async_proactor_unregister_event_source(
+          retirement->proactor, source,
+          {+[](void* user_data) {
+             auto* retirement = static_cast<Retirement*>(user_data);
+             retirement->completed.fetch_add(1, std::memory_order_release);
+             iree_notification_post(&retirement->callback_state->notification,
+                                    IREE_ALL_WAITERS);
+           },
+           retirement});
+    }
+    return iree_ok_status();
+  };
+  iree_async_proactor_register_progress(proactor, &retirement.progress);
 
   uint64_t signal_value = 1;
   ASSERT_EQ(write(event_fds.back(), &signal_value, sizeof(signal_value)),
@@ -501,6 +538,16 @@ TEST(IoUringCrossThreadTest,
   EXPECT_TRUE(callback_state.events.load(std::memory_order_relaxed) &
               IREE_ASYNC_POLL_EVENT_IN);
 
+  // end_polling cannot drive native work after its owner task exits. Join the
+  // whole observer batch there before releasing the drained proactor here.
+  EXPECT_TRUE(iree_notification_await(
+      &callback_state.notification,
+      +[](void* user_data) {
+        auto* retirement = static_cast<Retirement*>(user_data);
+        return retirement->completed.load(std::memory_order_acquire) ==
+               retirement->sources.size();
+      },
+      &retirement, iree_infinite_timeout()));
   iree_async_proactor_thread_request_stop(proactor_thread);
   IREE_ASSERT_OK(
       iree_async_proactor_thread_join(proactor_thread, IREE_DURATION_INFINITE));

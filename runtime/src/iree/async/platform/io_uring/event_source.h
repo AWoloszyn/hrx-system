@@ -69,8 +69,9 @@ iree_status_t iree_async_io_uring_event_source_complete_cancel(
     struct iree_async_proactor_io_uring_t* proactor,
     const iree_io_uring_cqe_t* cqe);
 
-// Completes pending unregistrations after ring closure joined all native work.
-void iree_async_io_uring_event_source_deinitialize_all(
+// Stops remaining callback admission while preserving owned unregistrations.
+// Native receipts must still be driven before the ring is closed.
+void iree_async_io_uring_event_source_unregister_all(
     struct iree_async_proactor_io_uring_t* proactor);
 
 #ifdef __cplusplus

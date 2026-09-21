@@ -805,6 +805,13 @@ static inline void iree_async_proactor_retain(iree_async_proactor_t* proactor) {
 }
 
 // Releases a reference to the proactor. Destroys when count reaches zero.
+// Callers stop submission and drain user operations before final release.
+// Once polling has begun, final release with live observers or pending
+// unregistrations must occur on the poll owner. It drives remaining native
+// retirement and terminal callbacks before destruction returns.
+// Those terminal callbacks may release resources but must not admit new work.
+// After all owner-bound work has retired, final release may occur on any
+// thread.
 static inline void iree_async_proactor_release(
     iree_async_proactor_t* proactor) {
   if (proactor && iree_atomic_ref_count_dec(&proactor->ref_count) == 1) {
@@ -940,7 +947,8 @@ static inline iree_status_t iree_async_proactor_poll(
 // This does not cancel in-flight asynchronous operations or invoke callbacks.
 // Those operations must be drained or cancelled before the polling loop exits.
 // Registered resources whose teardown may require backend owner-task work must
-// also be released before this call.
+// also be released before this call. Event-source and relay unregistrations
+// must have reached their terminal callbacks, not merely been requested.
 static inline void iree_async_proactor_end_polling(
     iree_async_proactor_t* proactor) {
   if (proactor->vtable->end_polling) {

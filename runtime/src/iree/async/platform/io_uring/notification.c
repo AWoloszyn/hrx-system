@@ -445,7 +445,7 @@ static void iree_async_io_uring_notification_dispatch_relays_locked(
       int sink_error = iree_async_io_uring_relay_fire_sink(relay);
       iree_slim_mutex_lock(&notification->mutex);
       if (sink_error) {
-        relay->platform.io_uring.sink_error = sink_error;
+        relay->platform.io_uring.pending.sink_error = sink_error;
         relay->platform.io_uring.state =
             IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_PENDING;
       } else if (!iree_any_bit_set(relay->flags,
@@ -604,9 +604,9 @@ static bool iree_async_io_uring_notification_dispatch(
     faulted_relays = relay->platform.io_uring.notification_relay_next;
     relay->platform.io_uring.notification_relay_next = NULL;
     iree_status_t status =
-        relay->platform.io_uring.sink_error
+        relay->platform.io_uring.pending.sink_error
             ? iree_make_status(iree_status_code_from_errno(
-                                   relay->platform.io_uring.sink_error),
+                                   relay->platform.io_uring.pending.sink_error),
                                "relay sink write failed")
             : iree_status_clone(failure);
     iree_async_io_uring_relay_report_fault(relay, status);
@@ -644,44 +644,4 @@ bool iree_async_io_uring_notification_drain_pending(
     armed |= iree_async_io_uring_notification_dispatch(proactor, notification);
   }
   return armed;
-}
-
-void iree_async_io_uring_notification_discard_pending(
-    iree_async_proactor_io_uring_t* proactor) {
-  iree_atomic_slist_entry_t* head = NULL;
-  iree_atomic_slist_entry_t* tail = NULL;
-  iree_atomic_slist_flush(&proactor->pending_notifications,
-                          IREE_ATOMIC_SLIST_FLUSH_ORDER_APPROXIMATE_FIFO, &head,
-                          &tail);
-  while (head) {
-    iree_atomic_slist_entry_t* entry = head;
-    head = entry->next;
-    iree_async_io_uring_notification_t* notification =
-        (iree_async_io_uring_notification_t*)((char*)entry -
-                                              offsetof(
-                                                  iree_async_io_uring_notification_t,
-                                                  pending_entry));
-    notification->state &= ~IREE_ASYNC_IO_URING_NOTIFICATION_PENDING;
-  }
-}
-
-void iree_async_io_uring_notification_detach_relay_after_ring_close(
-    iree_async_relay_t* relay) {
-  iree_async_io_uring_notification_t* notification =
-      iree_async_io_uring_notification_cast(relay->source.notification);
-  if (notification->cancel.phase == IREE_ASYNC_CANCEL_REQUEST_PHASE_QUEUED) {
-    iree_async_proactor_issue_cancel_request(notification->base.proactor,
-                                             &notification->cancel);
-  }
-  notification->cancel.phase = IREE_ASYNC_CANCEL_REQUEST_PHASE_IDLE;
-  notification->state &= ~(IREE_ASYNC_IO_URING_NOTIFICATION_POLL_IN_FLIGHT |
-                           IREE_ASYNC_IO_URING_NOTIFICATION_RETIRING);
-  iree_async_relay_t** link = &notification->relays;
-  while (*link && *link != relay) {
-    link = &(*link)->platform.io_uring.notification_relay_next;
-  }
-  if (*link) {
-    *link = relay->platform.io_uring.notification_relay_next;
-  }
-  relay->platform.io_uring.notification_relay_next = NULL;
 }

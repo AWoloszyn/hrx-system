@@ -82,6 +82,8 @@ static void iree_async_io_uring_relay_fill_source_sqe(
     sqe->len = IREE_IORING_POLL_ADD_MULTI;
   }
   sqe->user_data = iree_io_uring_relay_encode(relay);
+  relay->platform.io_uring.pending.primitive_operations |=
+      IREE_ASYNC_IO_URING_RELAY_OPERATION_POLL;
 }
 
 void iree_async_io_uring_relay_report_fault(iree_async_relay_t* relay,
@@ -148,14 +150,6 @@ void iree_async_io_uring_relay_cleanup(iree_async_proactor_io_uring_t* proactor,
   if (unregistered_callback.fn) {
     unregistered_callback.fn(unregistered_callback.user_data);
   }
-}
-
-void iree_async_io_uring_cleanup_relay_after_ring_close(
-    iree_async_proactor_io_uring_t* proactor, iree_async_relay_t* relay) {
-  if (relay->source.type == IREE_ASYNC_RELAY_SOURCE_TYPE_NOTIFICATION) {
-    iree_async_io_uring_notification_detach_relay_after_ring_close(relay);
-  }
-  iree_async_io_uring_relay_cleanup(proactor, relay);
 }
 
 //===----------------------------------------------------------------------===//
@@ -293,7 +287,10 @@ static void iree_async_io_uring_relay_fill_unregistration_sqe(
   sqe->opcode = IREE_IORING_OP_POLL_REMOVE;
   sqe->fd = -1;
   sqe->addr = iree_io_uring_relay_encode(relay);
-  sqe->user_data = iree_io_uring_internal_encode(IREE_IO_URING_TAG_CANCEL, 0);
+  sqe->user_data = iree_io_uring_internal_encode(IREE_IO_URING_TAG_RELAY_CANCEL,
+                                                 (uintptr_t)relay);
+  relay->platform.io_uring.pending.primitive_operations |=
+      IREE_ASYNC_IO_URING_RELAY_OPERATION_CANCEL;
 }
 
 void iree_async_io_uring_unregister_relay(
@@ -366,16 +363,73 @@ void iree_async_io_uring_unregister_relay(
     iree_async_proactor_wake(&proactor->base);
   }
 
-  // The relay stays in the list until its final source CQE arrives. If SQ
-  // pressure prevented cancellation submission, the poll loop retries after
-  // processing CQEs. Proactor destruction closes the ring before completing
-  // any pending unregistration callback.
+  // The relay stays in the list until its source and cancellation CQEs arrive.
+  // If SQ pressure prevented cancellation submission, the poll loop retries
+  // after processing CQEs. Destruction drives the same receipts before closure.
   IREE_TRACE_ZONE_END(z0);
+}
+
+void iree_async_io_uring_unregister_all_relays(
+    iree_async_proactor_io_uring_t* proactor) {
+  iree_async_relay_t* relay = proactor->relays;
+  while (relay) {
+    iree_async_relay_t* next = relay->next;
+    if (relay->platform.io_uring.state !=
+            IREE_ASYNC_IO_URING_RELAY_STATE_UNREGISTRATION_PENDING &&
+        relay->platform.io_uring.state !=
+            IREE_ASYNC_IO_URING_RELAY_STATE_UNREGISTRATION_SUBMITTED) {
+      iree_async_io_uring_unregister_relay(
+          proactor, relay, iree_async_relay_unregistered_callback_none());
+    }
+    relay = next;
+  }
 }
 
 //===----------------------------------------------------------------------===//
 // CQE handling
 //===----------------------------------------------------------------------===//
+
+// Both receipts precede terminal ownership return, regardless of their order.
+static void iree_async_io_uring_relay_finish_retirement(
+    iree_async_proactor_io_uring_t* proactor, iree_async_relay_t* relay) {
+  if (relay->platform.io_uring.pending.primitive_operations) {
+    return;
+  }
+  if (relay->platform.io_uring.state ==
+          IREE_ASYNC_IO_URING_RELAY_STATE_UNREGISTRATION_PENDING ||
+      relay->platform.io_uring.state ==
+          IREE_ASYNC_IO_URING_RELAY_STATE_UNREGISTRATION_SUBMITTED) {
+    iree_async_io_uring_relay_cleanup(proactor, relay);
+  } else if (relay->platform.io_uring.state ==
+                 IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_CANCELLATION_PENDING ||
+             relay->platform.io_uring.state ==
+                 IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_CANCELLATION_SUBMITTED) {
+    relay->platform.io_uring.state = IREE_ASYNC_IO_URING_RELAY_STATE_FAULTED;
+  }
+}
+
+iree_status_t iree_async_io_uring_relay_complete_cancel(
+    iree_async_proactor_io_uring_t* proactor, iree_async_relay_t* relay,
+    int32_t result) {
+  relay->platform.io_uring.pending.primitive_operations &=
+      ~IREE_ASYNC_IO_URING_RELAY_OPERATION_CANCEL;
+  iree_status_t status = iree_ok_status();
+  if (result < 0 && result != -ENOENT && result != -EALREADY) {
+    status =
+        iree_make_status(iree_status_code_from_errno(-result),
+                         "io_uring relay cancellation failed: %d", -result);
+    if (iree_any_bit_set(relay->platform.io_uring.pending.primitive_operations,
+                         IREE_ASYNC_IO_URING_RELAY_OPERATION_POLL)) {
+      relay->platform.io_uring.state =
+          relay->platform.io_uring.state ==
+                  IREE_ASYNC_IO_URING_RELAY_STATE_UNREGISTRATION_SUBMITTED
+              ? IREE_ASYNC_IO_URING_RELAY_STATE_UNREGISTRATION_PENDING
+              : IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_CANCELLATION_PENDING;
+    }
+  }
+  iree_async_io_uring_relay_finish_retirement(proactor, relay);
+  return status;
+}
 
 void iree_async_io_uring_handle_relay_cqe(
     iree_async_proactor_io_uring_t* proactor, iree_async_relay_t* relay,
@@ -395,6 +449,10 @@ void iree_async_io_uring_handle_relay_cqe(
       relay->platform.io_uring.state ==
           IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_CANCELLATION_SUBMITTED;
   bool has_more = (cqe_flags & IREE_IORING_CQE_F_MORE) != 0;
+  if (!has_more) {
+    relay->platform.io_uring.pending.primitive_operations &=
+        ~IREE_ASYNC_IO_URING_RELAY_OPERATION_POLL;
+  }
   bool is_persistent =
       iree_any_bit_set(relay->flags, IREE_ASYNC_RELAY_FLAG_PERSISTENT);
 
@@ -462,15 +520,14 @@ void iree_async_io_uring_handle_relay_cqe(
     iree_io_uring_ring_sq_unlock(&proactor->ring);
   }
 
-  // A final source CQE proves the kernel no longer references the relay. An
-  // unregistering relay can now complete; a fault-cancelling relay remains as
-  // a caller-visible faulted handle until explicit terminal unregistration.
+  // The final source CQE retires monitoring. A prepared cancellation still
+  // owns the key until its independent receipt, even if monitoring ended first.
   if (!has_more &&
       (relay->platform.io_uring.state ==
            IREE_ASYNC_IO_URING_RELAY_STATE_UNREGISTRATION_PENDING ||
        relay->platform.io_uring.state ==
            IREE_ASYNC_IO_URING_RELAY_STATE_UNREGISTRATION_SUBMITTED)) {
-    iree_async_io_uring_relay_cleanup(proactor, relay);
+    iree_async_io_uring_relay_finish_retirement(proactor, relay);
     return;
   }
   if (!has_more &&
@@ -478,7 +535,7 @@ void iree_async_io_uring_handle_relay_cqe(
            IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_CANCELLATION_PENDING ||
        relay->platform.io_uring.state ==
            IREE_ASYNC_IO_URING_RELAY_STATE_FAULT_CANCELLATION_SUBMITTED)) {
-    relay->platform.io_uring.state = IREE_ASYNC_IO_URING_RELAY_STATE_FAULTED;
+    iree_async_io_uring_relay_finish_retirement(proactor, relay);
     return;
   }
 

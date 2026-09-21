@@ -78,14 +78,6 @@ void iree_async_io_uring_notification_unregister_relay(
 bool iree_async_io_uring_notification_drain_pending(
     iree_async_proactor_io_uring_t* proactor);
 
-// Retires queued intents before relay cleanup after ring close.
-void iree_async_io_uring_notification_discard_pending(
-    iree_async_proactor_io_uring_t* proactor);
-
-// Removes a relay and retires its source monitor after synchronous ring close.
-void iree_async_io_uring_notification_detach_relay_after_ring_close(
-    iree_async_relay_t* relay);
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

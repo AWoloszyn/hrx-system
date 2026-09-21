@@ -203,6 +203,8 @@ typedef enum iree_io_uring_internal_tag_e {
   IREE_IO_URING_TAG_LINKED_POLL = 9,
   // Event-source cancellation receipt, independent of the final poll CQE.
   IREE_IO_URING_TAG_EVENT_SOURCE_CANCEL = 10,
+  // Primitive relay cancellation key retirement, independent of its poll.
+  IREE_IO_URING_TAG_RELAY_CANCEL = 11,
 } iree_io_uring_internal_tag_t;
 
 // Helpers for encoding/decoding internal user_data.
@@ -253,6 +255,18 @@ typedef struct iree_async_io_uring_fence_export_tracker_t {
 
 // Vtable for same-backend validation in submit.
 extern const iree_async_proactor_vtable_t iree_async_proactor_io_uring_vtable;
+
+// Destruction joins borrowed native observers before closing the ring.
+void iree_async_proactor_io_uring_destroy(iree_async_proactor_t* base_proactor);
+
+// Poll-owned native progress shared with terminal observer retirement.
+iree_status_t iree_async_proactor_io_uring_submit_pending_event_monitors(
+    iree_async_proactor_io_uring_t* proactor);
+
+// Dispatches one owned CQE. The caller advances its CQ slot after dispatch.
+iree_host_size_t iree_async_proactor_io_uring_process_cqe(
+    iree_async_proactor_io_uring_t* proactor, const iree_io_uring_cqe_t* cqe,
+    iree_status_t* inout_poll_status);
 
 // Cancellation vtable implementation. Owner callbacks can submit a full SQ to
 // admit cancellation without allocating or waiting for operation completion.
