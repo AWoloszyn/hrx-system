@@ -159,6 +159,15 @@ TEST(LaunchParamsTest, ParseLaunchAttributesRejectsInvalidLists) {
             iree_hip_parse_launch_attributes(&attribute, 1, &cooperative));
 }
 
+TEST(LaunchParamsTest, ParseLaunchAttributesRejectsUnavailablePrefetch) {
+  hipLaunchAttribute attribute = {};
+  attribute.id = hipLaunchAttributeExtDynDataPrefetch;
+
+  bool cooperative = false;
+  EXPECT_EQ(hipErrorNotSupported,
+            iree_hip_parse_launch_attributes(&attribute, 1, &cooperative));
+}
+
 TEST(LaunchParamsTest, ValidateLaunchConfigurationAcceptsDeviceLimits) {
   iree_hal_streaming_device_t device = {};
   InitializeLaunchDevice(&device);

@@ -71,6 +71,10 @@ hipError_t iree_hip_parse_launch_attributes(
       case hipLaunchAttributeCooperative:
         *out_cooperative |= attributes[i].val.cooperative != 0;
         break;
+      case hipLaunchAttributeExtDynDataPrefetch:
+        // HRX advertises no dynamic-prefetch regions, so this recognized
+        // feature is unavailable rather than malformed.
+        return hipErrorNotSupported;
       default:
         // Accepting an attribute without implementing its execution semantics
         // would silently launch a kernel with a different contract.
