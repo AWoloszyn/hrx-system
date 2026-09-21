@@ -105,3 +105,54 @@ low.func.def target<test.low.core>(@target) @shared_reload_exceeds_capacity(%blo
 
 // ----
 CHECK: spills: 2
+
+// ====
+
+// Both store operands must stay in registers. Fragmentation can fail first-fit
+// before it produces any spill plan, but five registers still suffice.
+// RUN: with-checks emit low-allocation @required_tuple test.i32=5
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @required_tuple(%scalar: reg<test.i32>, %wide: reg<test.i32 x4>) asm {
+  %storage = storage {byte_alignment = 16, byte_length = 32} : low.storage<private>
+  low.spill %scalar, %storage {offset = 16} : reg<test.i32>, low.storage<private>
+  low.spill %wide, %storage : reg<test.i32 x4>, low.storage<private>
+  return
+}
+
+// ----
+CHECK: assignments: 2
+CHECK: spills: 0
+
+// ====
+
+// RUN: emit low-allocation-json @required_tuple_shortage test.i32=4 output=none
+
+test.target<low_core> @target
+
+// ERROR@+1: BACKEND/005 "spill-traffic-register-exhausted"
+low.func.def target<test.low.core>(@target) @required_tuple_shortage(%scalar: reg<test.i32>, %wide: reg<test.i32 x4>) asm {
+  %storage = storage {byte_alignment = 16, byte_length = 32} : low.storage<private>
+  low.spill %scalar, %storage {offset = 16} : reg<test.i32>, low.storage<private>
+  low.spill %wide, %storage : reg<test.i32 x4>, low.storage<private>
+  return
+}
+
+// ----
+
+// ====
+
+// RUN: emit low-allocation-json @required_tuple_fixed_conflict test.i32=5 fixed=%scalar:target_id:0:1 output=none
+
+test.target<low_core> @target
+
+// ERROR@+1: BACKEND/005 "spill-traffic-register-exhausted"
+low.func.def target<test.low.core>(@target) @required_tuple_fixed_conflict(%scalar: reg<test.i32>, %wide: reg<test.i32 x4>) asm {
+  %storage = storage {byte_alignment = 16, byte_length = 32} : low.storage<private>
+  low.spill %scalar, %storage {offset = 16} : reg<test.i32>, low.storage<private>
+  low.spill %wide, %storage : reg<test.i32 x4>, low.storage<private>
+  return
+}
+
+// ----

@@ -235,3 +235,30 @@ low.func.def target<amdgpu.rdna3_5.core>(@target) @pack_address_above_reloaded_t
   v_add_u32 v0, v0, v3
   ds_write_b32 v5, v0 offset:16
   s_endpgm
+
+// ====
+
+// Both spill operands need physical VGPRs at entry. Packing must recover from
+// a failed first-fit assignment before native spill packets are expanded.
+// RUN: emit amdgpu-assembly @pack_required_spill_operands strategy=source amdgpu.vgpr=5
+
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @pack_required_spill_operands(%scalar: reg<amdgpu.vgpr>, %wide: reg<amdgpu.vgpr x4>) asm {
+  %storage = storage {byte_alignment = 16, byte_length = 32} : low.storage<private>
+  low.spill %scalar, %storage {offset = 16} : reg<amdgpu.vgpr>, low.storage<private>
+  low.spill %wide, %storage : reg<amdgpu.vgpr x4>, low.storage<private>
+  return
+}
+
+// ----
+  s_mov_b64_exec_read s[0:1]
+  s_mov_b64 exec, -1
+  scratch_store_b32 off, v4, off offset:16 glc:0 slc:0 dlc:0
+  s_mov_b64 exec, s[0:1]
+  s_mov_b64_exec_read s[0:1]
+  s_mov_b64 exec, -1
+  scratch_store_b128 off, v[0:3], off offset:0 glc:0 slc:0 dlc:0
+  s_mov_b64 exec, s[0:1]
+  s_waitcnt_vscnt vscnt(0)
+  s_endpgm
