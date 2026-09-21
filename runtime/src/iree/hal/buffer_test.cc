@@ -7,6 +7,7 @@
 #include "iree/hal/buffer.h"
 
 #include <string>
+#include <vector>
 
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -99,6 +100,193 @@ TEST(BufferPermissionTest, ValidatesAccessAndUsage) {
 
 static void CountBufferRelease(void* user_data, iree_hal_buffer_t* buffer) {
   ++*static_cast<int*>(user_data);
+}
+
+struct SubspanAllocatorState {
+  // Number of view wrappers allocated but not yet freed.
+  iree_host_size_t live_allocation_count = 0;
+  // Whether new allocations fail while existing wrappers remain releasable.
+  bool fail_allocations = false;
+};
+
+static iree_status_t SubspanAllocatorCtl(void* self,
+                                         iree_allocator_command_t command,
+                                         const void* params, void** inout_ptr) {
+  auto* state = static_cast<SubspanAllocatorState*>(self);
+  const bool is_allocation = command == IREE_ALLOCATOR_COMMAND_MALLOC ||
+                             command == IREE_ALLOCATOR_COMMAND_CALLOC;
+  if (is_allocation && state->fail_allocations) {
+    return iree_status_from_code(IREE_STATUS_RESOURCE_EXHAUSTED);
+  }
+  iree_allocator_t system_allocator = iree_allocator_system();
+  iree_status_t status =
+      system_allocator.ctl(system_allocator.self, command, params, inout_ptr);
+  if (iree_status_is_ok(status)) {
+    if (is_allocation) {
+      ++state->live_allocation_count;
+    } else if (command == IREE_ALLOCATOR_COMMAND_FREE) {
+      --state->live_allocation_count;
+    }
+  }
+  return status;
+}
+
+class BufferSubspanTest : public ::testing::Test {
+ protected:
+  void SetUp() override {
+    IREE_ASSERT_OK(iree_hal_heap_buffer_wrap(
+        iree_hal_buffer_placement_undefined(), IREE_HAL_MEMORY_TYPE_HOST_LOCAL,
+        IREE_HAL_MEMORY_ACCESS_ALL, IREE_HAL_BUFFER_USAGE_MAPPING,
+        sizeof(storage_), iree_make_byte_span(storage_, sizeof(storage_)),
+        ReleaseCallback(), iree_allocator_system(), &root_));
+  }
+
+  void TearDown() override {
+    iree_hal_buffer_release(root_);
+    EXPECT_EQ(0u, allocator_state_.live_allocation_count);
+  }
+
+  iree_allocator_t ViewAllocator() {
+    return iree_allocator_t{&allocator_state_, SubspanAllocatorCtl};
+  }
+
+  iree_hal_buffer_release_callback_t ReleaseCallback() {
+    return iree_hal_buffer_release_callback_t{
+        +[](void* user_data, iree_hal_buffer_t* buffer) {
+          auto* offsets =
+              static_cast<std::vector<iree_device_size_t>*>(user_data);
+          offsets->push_back(iree_hal_buffer_byte_offset(buffer));
+        },
+        &released_offsets_};
+  }
+
+  // Real backing for all views; callback observations never access retired
+  // data.
+  alignas(64) uint8_t storage_[1024] = {};
+  // Native allocation retained by the fixture unless explicitly released.
+  iree_hal_buffer_t* root_ = nullptr;
+  // Host allocation accounting for view wrappers only.
+  SubspanAllocatorState allocator_state_;
+  // Original allocation-relative offsets in callback execution order.
+  std::vector<iree_device_size_t> released_offsets_;
+};
+
+TEST_F(BufferSubspanTest, NestedViewsAndSiblingsRetainTheReleaseOwner) {
+  iree_hal_buffer_t* owner = nullptr;
+  IREE_ASSERT_OK(iree_hal_subspan_buffer_create_with_callback(
+      root_, 32, 768, ReleaseCallback(), ViewAllocator(), &owner));
+  iree_hal_buffer_t* sibling = nullptr;
+  IREE_ASSERT_OK(
+      iree_hal_buffer_subspan(owner, 0, 16, ViewAllocator(), &sibling));
+  iree_hal_buffer_t* intermediate = nullptr;
+  IREE_ASSERT_OK(
+      iree_hal_buffer_subspan(owner, 16, 512, ViewAllocator(), &intermediate));
+  iree_hal_buffer_t* child = nullptr;
+  IREE_ASSERT_OK(
+      iree_hal_buffer_subspan(intermediate, 8, 16, ViewAllocator(), &child));
+  EXPECT_EQ(root_, iree_hal_buffer_allocated_buffer(child));
+  EXPECT_EQ(56u, iree_hal_buffer_byte_offset(child));
+  EXPECT_EQ(16u, iree_hal_buffer_byte_length(child));
+
+  iree_hal_buffer_release(owner);
+  iree_hal_buffer_release(intermediate);
+  EXPECT_EQ(3u, allocator_state_.live_allocation_count);
+  EXPECT_TRUE(released_offsets_.empty());
+  iree_hal_buffer_release(child);
+  EXPECT_EQ(2u, allocator_state_.live_allocation_count);
+  EXPECT_TRUE(released_offsets_.empty());
+  iree_hal_buffer_release(sibling);
+  EXPECT_EQ(0u, allocator_state_.live_allocation_count);
+  EXPECT_EQ((std::vector<iree_device_size_t>{32}), released_offsets_);
+}
+
+TEST_F(BufferSubspanTest, RepeatedSlicingDoesNotRetainIntermediateViews) {
+  for (bool has_owner : {false, true}) {
+    SCOPED_TRACE(has_owner);
+    iree_hal_buffer_t* view = root_;
+    if (has_owner) {
+      IREE_ASSERT_OK(iree_hal_subspan_buffer_create_with_callback(
+          root_, 32, 768, ReleaseCallback(), ViewAllocator(), &view));
+    } else {
+      iree_hal_buffer_retain(view);
+    }
+    for (int i = 0; i < 256; ++i) {
+      iree_hal_buffer_t* child = nullptr;
+      IREE_ASSERT_OK(iree_hal_buffer_subspan(view, 1, IREE_HAL_WHOLE_BUFFER,
+                                             ViewAllocator(), &child));
+      iree_hal_buffer_release(view);
+      view = child;
+      EXPECT_EQ(root_, iree_hal_buffer_allocated_buffer(view));
+      EXPECT_EQ(has_owner ? 2u : 1u, allocator_state_.live_allocation_count);
+      EXPECT_TRUE(released_offsets_.empty());
+    }
+    EXPECT_EQ(has_owner ? 288u : 256u, iree_hal_buffer_byte_offset(view));
+    iree_hal_buffer_release(view);
+    EXPECT_EQ(0u, allocator_state_.live_allocation_count);
+  }
+  EXPECT_EQ((std::vector<iree_device_size_t>{32}), released_offsets_);
+}
+
+TEST_F(BufferSubspanTest, WholeViewRetainsTheSameOwnerWithoutAllocating) {
+  iree_hal_buffer_t* owner = nullptr;
+  IREE_ASSERT_OK(iree_hal_subspan_buffer_create_with_callback(
+      root_, 32, 64, ReleaseCallback(), ViewAllocator(), &owner));
+  allocator_state_.fail_allocations = true;
+  iree_hal_buffer_t* alias = nullptr;
+  IREE_ASSERT_OK(iree_hal_buffer_subspan(owner, 0, IREE_HAL_WHOLE_BUFFER,
+                                         ViewAllocator(), &alias));
+  EXPECT_EQ(owner, alias);
+  iree_hal_buffer_release(owner);
+  EXPECT_TRUE(released_offsets_.empty());
+  iree_hal_buffer_release(alias);
+  EXPECT_EQ((std::vector<iree_device_size_t>{32}), released_offsets_);
+}
+
+TEST_F(BufferSubspanTest, IndependentCallbacksComposeInLifetimeOrder) {
+  iree_hal_buffer_t* outer = nullptr;
+  IREE_ASSERT_OK(iree_hal_subspan_buffer_create_with_callback(
+      root_, 32, 768, ReleaseCallback(), ViewAllocator(), &outer));
+  iree_hal_buffer_t* inner = nullptr;
+  IREE_ASSERT_OK(iree_hal_subspan_buffer_create_with_callback(
+      outer, 48, 512, ReleaseCallback(), ViewAllocator(), &inner));
+  EXPECT_EQ(root_, iree_hal_buffer_allocated_buffer(inner));
+  iree_hal_buffer_t* child = nullptr;
+  IREE_ASSERT_OK(
+      iree_hal_buffer_subspan(inner, 8, 16, ViewAllocator(), &child));
+  EXPECT_EQ(root_, iree_hal_buffer_allocated_buffer(child));
+  EXPECT_EQ(56u, iree_hal_buffer_byte_offset(child));
+
+  iree_hal_buffer_release(root_);
+  root_ = nullptr;
+  iree_hal_buffer_release(outer);
+  iree_hal_buffer_release(inner);
+  EXPECT_TRUE(released_offsets_.empty());
+  iree_hal_buffer_release(child);
+  // The inner callback runs with its containing owner still retained. The
+  // final owner releases the native allocation before its own callback.
+  EXPECT_EQ((std::vector<iree_device_size_t>{48, 0, 32}), released_offsets_);
+}
+
+TEST_F(BufferSubspanTest, AllocationFailureLeavesOwnershipWithTheCaller) {
+  iree_hal_buffer_t* owner = nullptr;
+  IREE_ASSERT_OK(iree_hal_subspan_buffer_create_with_callback(
+      root_, 32, 768, ReleaseCallback(), ViewAllocator(), &owner));
+  allocator_state_.fail_allocations = true;
+  iree_hal_buffer_t* child = nullptr;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_RESOURCE_EXHAUSTED,
+      iree_hal_subspan_buffer_create_with_callback(
+          owner, 48, 64, ReleaseCallback(), ViewAllocator(), &child));
+  EXPECT_EQ(nullptr, child);
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_RESOURCE_EXHAUSTED,
+      iree_hal_buffer_subspan(owner, 16, 64, ViewAllocator(), &child));
+  EXPECT_EQ(nullptr, child);
+  EXPECT_EQ(1u, allocator_state_.live_allocation_count);
+  EXPECT_TRUE(released_offsets_.empty());
+  iree_hal_buffer_release(owner);
+  EXPECT_EQ(0u, allocator_state_.live_allocation_count);
+  EXPECT_EQ((std::vector<iree_device_size_t>{32}), released_offsets_);
 }
 
 TEST(BufferExportTest, NestedSubspansBorrowTheExactView) {

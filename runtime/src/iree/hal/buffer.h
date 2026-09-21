@@ -864,9 +864,12 @@ IREE_API_EXPORT iree_hal_buffer_overlap_t iree_hal_buffer_test_overlap(
 // If |byte_length| is IREE_HAL_WHOLE_BUFFER the remaining bytes in the buffer
 // after |byte_offset| (possibly 0) will be selected.
 //
-// The parent buffer will remain alive for the lifetime of the subspan
-// returned. If the subspan is a small portion this may cause additional
-// memory to remain allocated longer than required.
+// Retains the backing allocation and any owner responsible for releasing the
+// parent view's range. Ordinary intermediate views need not remain alive. If
+// the subspan is a small portion this may keep the entire parent range
+// allocated longer than required. This does not extend an asynchronous
+// allocation epoch: all uses of the subspan must still precede explicit queue
+// deallocation.
 //
 // Returns the given |buffer| if the requested span covers the entire range.
 // |out_buffer| must be released by the caller.
@@ -1209,21 +1212,29 @@ IREE_API_EXPORT iree_status_t iree_hal_buffer_mapping_subspan(
 // iree_hal_subspan_buffer_t
 //===----------------------------------------------------------------------===//
 
-// Creates a buffer referencing a subspan of some base allocation.
+// Creates a buffer referencing a range of |source_buffer|. |byte_offset| is
+// allocation-relative, not relative to the source view. The range must be
+// contained within the source view. Retains its backing allocation and release
+// owner independently so nested views preserve ownership without adding address
+// indirection. Use iree_hal_buffer_subspan for checked, view-relative slicing.
 IREE_API_EXPORT iree_status_t iree_hal_subspan_buffer_create(
-    iree_hal_buffer_t* allocated_buffer, iree_device_size_t byte_offset,
+    iree_hal_buffer_t* source_buffer, iree_device_size_t byte_offset,
     iree_device_size_t byte_length, iree_allocator_t host_allocator,
     iree_hal_buffer_t** out_buffer);
 
-// Creates a buffer referencing a subspan of some base allocation and invokes
-// |release_callback| after the subspan releases its retained base buffer.
+// Creates a subspan with the same range semantics as
+// iree_hal_subspan_buffer_create and an additional release obligation.
+// |release_callback| is invoked after releasing the retained backing allocation
+// and before releasing any inherited lifetime owner. The callback transfers to
+// the new view only on success and runs once after its final dependent view is
+// released, with the original view and range (not one of its children).
 //
 // This is used by allocators that need pool bookkeeping to observe the final
 // lifetime of a materialized view. The callback is intentionally sequenced
 // after the base release so it may release a pool slab without invalidating the
 // subspan while its final reference is being destroyed.
 IREE_API_EXPORT iree_status_t iree_hal_subspan_buffer_create_with_callback(
-    iree_hal_buffer_t* allocated_buffer, iree_device_size_t byte_offset,
+    iree_hal_buffer_t* source_buffer, iree_device_size_t byte_offset,
     iree_device_size_t byte_length,
     iree_hal_buffer_release_callback_t release_callback,
     iree_allocator_t host_allocator, iree_hal_buffer_t** out_buffer);
