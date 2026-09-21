@@ -31,7 +31,8 @@ iree_status_t loom_bytecode_symbol_validate_type_ref(
     loom_bytecode_reader_decoder_t* decoder,
     const loom_bytecode_reader_module_view_t* module_view, uint64_t type_id,
     uint64_t offset) {
-  if (type_id >= module_view->types.count) {
+  if (type_id != 1 &&
+      ((type_id & 1) || (type_id >> 1) >= module_view->types.count)) {
     return loom_bytecode_reader_emit_table_ref(
         decoder, IREE_SV("TYPES"), type_id, module_view->types.count, offset);
   }

@@ -53,7 +53,7 @@ iree_status_t loom_bytecode_count_serialized_bodies(
 // Appends one SSA value definition to a buffered metadata payload.
 iree_status_t loom_bytecode_emit_value_def(
     iree_string_builder_t* builder, loom_bytecode_numbering_t* numbering,
-    const loom_bytecode_value_numbering_t* value_numbering,
+    loom_bytecode_value_numbering_t* value_numbering,
     const loom_value_t* value);
 
 // Streams the IR section and records each symbol's root-region ranges.

@@ -44,7 +44,7 @@ class MlirTypeConverter:
             else normalized
         )
         try:
-            result = parse_type_string(mapped_text)[0]
+            result = parse_type_string(mapped_text)
         except Exception:
             result = _parse_shaped_type(mapped_text)
         self._cache[normalized] = result

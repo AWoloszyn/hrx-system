@@ -17,10 +17,9 @@ from loom.ir import (
     Block,
     Module,
     Operation,
-    ParameterizedAttr,
-    ParameterizedAttrArray,
-    Predicate,
+    PredicateArg,
 )
+from loom.type_binding import iter_value_bindings
 
 
 @dataclass(frozen=True)
@@ -39,24 +38,19 @@ class _Scope:
     definitions: list[int] = field(default_factory=list)
     # Resolved ordinary, type and attribute references emitted in this scope.
     references: list[int] = field(default_factory=list)
+    # Type/attribute roots whose shared binding graph is visited once per scope.
+    binding_roots: list[Any] = field(default_factory=list)
     # Independent child scopes, including symbol signatures and region bodies.
     children: list["_Scope"] = field(default_factory=list)
 
 
 def _attribute_references(value: Any, references: list[int]) -> None:
-    pending = [value]
-    while pending:
-        value = pending.pop()
-        if isinstance(value, Predicate):
-            references.extend(arg.value for arg in value.args if arg.tag == "value")
-        elif isinstance(value, Mapping):
-            pending.extend(value.values())
-        elif isinstance(value, ParameterizedAttr):
-            pending.extend(value.slots)
-        elif isinstance(value, ParameterizedAttrArray):
-            pending.extend(value.values)
-        elif isinstance(value, list | tuple):
-            pending.extend(value)
+    for binding in iter_value_bindings(value):
+        value_id = (
+            binding.value if isinstance(binding, PredicateArg) else binding.value_id
+        )
+        if value_id is not None:
+            references.append(value_id)
 
 
 def _find_conflicts(
@@ -116,10 +110,7 @@ def plan_names(
     spelling_owners = list(range(len(module.values)))
 
     def type_references(value_id: int, scope: _Scope) -> None:
-        value = module.values[value_id]
-        scope.references.extend(value.dim_bindings.values())
-        if value.encoding_binding >= 0:
-            scope.references.append(value.encoding_binding)
+        scope.binding_roots.append(module.values[value_id].type)
 
     def collect_operation(op: Operation, enclosing: _Scope) -> None:
         if op.is_dead:
@@ -165,7 +156,7 @@ def plan_names(
         scope.references.extend(op.operands)
         for value_id in (*op.operands, *op.results):
             type_references(value_id, scope)
-        _attribute_references(op.attributes, scope.references)
+        scope.binding_roots.append(op.attributes)
         declared_regions: set[int] = set()
         if declaration is not None:
             field_layout = layout(declaration)
@@ -225,6 +216,7 @@ def plan_names(
     pending = [root]
     while pending:
         scope = pending.pop()
+        _attribute_references(scope.binding_roots, scope.references)
         defined.update(scope.definitions)
         referenced.update(scope.references)
         pending.extend(scope.children)

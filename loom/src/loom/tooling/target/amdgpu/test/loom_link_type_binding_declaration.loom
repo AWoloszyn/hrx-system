@@ -1,0 +1,3 @@
+// Matching this declaration to a bytecode definition projects its signature
+// before the selected function body is loaded.
+low.func.decl public target<amdgpu.rdna3.core> @register_type_binding(%width: reg<amdgpu.sgpr : index>, %value: reg<amdgpu.vgpr : vector<[%width]xf32>>)

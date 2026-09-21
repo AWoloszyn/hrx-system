@@ -19,7 +19,7 @@ identical bytes. This is required for caching and CAS storage.
 from __future__ import annotations
 
 import struct
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, ClassVar, cast
 
@@ -57,6 +57,7 @@ from loom.ir import (
     PoolType,
     Predicate,
     PredicateArg,
+    PredicateListAttr,
     Region,
     RegisterType,
     ScalarType,
@@ -74,6 +75,7 @@ from loom.ir import (
     TypeKind,
     Value,
 )
+from loom.type_binding import binding_children, iter_value_bindings
 
 _IR_TYPE_CLASSES = (
     ScalarType,
@@ -180,7 +182,7 @@ BYTECODE_IR_KIND_BY_TYPE_KIND: dict[int, TypeKind] = {
 
 # File magic and version.
 MAGIC = b"LOOM"
-FORMAT_VERSION = 36
+FORMAT_VERSION = 37
 PRODUCER = "loom-py"
 
 SYMBOL_INTERFACE_BITS = {
@@ -534,6 +536,17 @@ class _SymbolReferenceProjectionBuilder:
 # ============================================================================
 
 
+class _ValueNumbering(dict[int, int]):
+    """One independently decoded SSA namespace and its completed type records."""
+
+    def __init__(self, values: Mapping[int, int] | None = None) -> None:
+        super().__init__(values or {})
+        # Scope-local completed ordinals, keyed by source type identity.
+        self.types: dict[int, int] = {}
+        # Completed type/attribute nodes in this scope's dependency traversal.
+        self.completed: set[int] = set()
+
+
 class BytecodeWriter:
     """Serializes an ir.py Module to .loombc bytes.
 
@@ -565,6 +578,10 @@ class BytecodeWriter:
         self._location_mode = location_mode
         self._op_decls_by_name = build_op_decl_map(op_decls)
         self._ctx = NumberingContext()
+        # Indexed binding facts for each reachable type/attribute graph node.
+        self._binding_facts: dict[int, bool] = {}
+        # Physical type nodes whose strings and immediate children are numbered.
+        self._numbered_types: set[int] = set()
         # Dominance order retained once for value numbering and block emission.
         self._region_blocks: dict[int, list[Block]] = {}
         self._wire_symbols, self._wire_symbol_indices = (
@@ -828,27 +845,22 @@ class BytecodeWriter:
             while scan_index < len(local_values):
                 value = module.values[local_values[scan_index]]
                 scan_index += 1
-                for binding_id in value.dim_bindings.values():
-                    add_value(binding_id)
-                if value.encoding_binding >= 0:
-                    add_value(value.encoding_binding)
+                collect_attr_value(value.type)
             return scan_index
+
+        def collect_attr_value(value: Any) -> None:
+            for binding in iter_value_bindings(value):
+                value_id = (
+                    binding.value
+                    if isinstance(binding, PredicateArg)
+                    else binding.value_id
+                )
+                if value_id is not None:
+                    add_value(value_id)
 
         for result_id in op.results:
             add_value(result_id)
         scan_index = collect_value_bindings(0)
-
-        def collect_attr_value(value: Any) -> None:
-            if isinstance(value, list) and value and isinstance(value[0], Predicate):
-                for predicate in value:
-                    for arg in predicate.args:
-                        if arg.tag != "value":
-                            continue
-                        add_value(arg.value)
-                return
-            if isinstance(value, Mapping):
-                for nested_value in value.values():
-                    collect_attr_value(nested_value)
 
         for key, value in op.attributes.items():
             if key == "symbol":
@@ -898,6 +910,31 @@ class BytecodeWriter:
         for region in op.regions:
             self._number_region(region)
 
+    def _has_type_bindings(self, root: Any) -> bool:
+        """Compute binding facts once across the invocation's shared graph."""
+        pending = [(root, False)]
+        while pending:
+            value, expanded = pending.pop()
+            identity = id(value)
+            if identity in self._binding_facts:
+                continue
+            children = tuple(binding_children(value))
+            if children and not expanded:
+                pending.append((value, True))
+                pending.extend((child, False) for child in children)
+                continue
+            bound = any(self._binding_facts[id(child)] for child in children)
+            if isinstance(value, DynamicDim):
+                if value.value_id is None:
+                    raise ValueError("dynamic dimension has no SSA binding")
+                bound = True
+            elif isinstance(value, DynamicEncoding):
+                bound = True
+            elif isinstance(value, PredicateArg):
+                bound |= value.tag == "value"
+            self._binding_facts[identity] = bound
+        return self._binding_facts[id(root)]
+
     def _number_type(self, ir_type: Type) -> None:
         """Ensure a type and all its sub-types are interned.
 
@@ -905,6 +942,9 @@ class BytecodeWriter:
         table is in topological order (the reader can resolve forward
         references by index).
         """
+        if id(ir_type) in self._numbered_types:
+            return
+        self._numbered_types.add(id(ir_type))
         # Recurse into sub-types first (topological order).
         match ir_type:
             case ShapedType(element_type=elem, encoding=enc):
@@ -936,7 +976,8 @@ class BytecodeWriter:
             case _:
                 pass
         # Intern the parent AFTER sub-types (ensures sub-types have lower IDs).
-        self._ctx.intern_type(ir_type)
+        if not self._has_type_bindings(ir_type):
+            self._ctx.intern_type(ir_type)
 
     def _number_attr_value(
         self,
@@ -1103,8 +1144,17 @@ class BytecodeWriter:
             self._write_one_type(buf, ir_type)
         return buf.get_bytes()
 
-    def _write_one_type(self, buf: ByteBuffer, ir_type: Type) -> None:
-        """Serialize one type entry."""
+    def _type_reference(self, ir_type: Type, values: _ValueNumbering | None) -> int:
+        if values is None:
+            return self._ctx.intern_type(ir_type)
+        if self._binding_facts[id(ir_type)]:
+            return (values.types[id(ir_type)] << 1) | 1
+        return self._ctx.intern_type(ir_type) << 1
+
+    def _write_one_type(
+        self, buf: ByteBuffer, ir_type: Type, values: _ValueNumbering | None = None
+    ) -> None:
+        """Serialize a static table entry or a complete scoped record."""
         match ir_type:
             case NoneType():
                 buf.write_u8(BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.NONE])
@@ -1115,12 +1165,14 @@ class BytecodeWriter:
                 buf.write_u8(BYTECODE_TYPE_KIND_BY_IR_KIND[ir_type.type_kind])
                 buf.write_u8(ir_type.element_type.kind.value)
                 buf.write_u8(ir_type.rank)
-                # Encoding attachment: 0 = none, 1 = static (table index
-                # follows), 2 = dynamic SSA (value_id on the Value, not the
-                # type).
+                # Encoding attachment: 0 = none, 1 = static, 2 = scoped SSA.
                 if isinstance(ir_type.encoding, DynamicEncoding):
                     buf.write_u8(2)  # dynamic SSA encoding
-                    buf.write_varint(0)
+                    buf.write_varint(
+                        self._value_number_or_error(
+                            values, ir_type.encoding.value_id, "dynamic encoding"
+                        )
+                    )
                 elif isinstance(ir_type.encoding, EncodingInstance):
                     # Find the encoding in the module's table.
                     enc_index = 0
@@ -1142,22 +1194,31 @@ class BytecodeWriter:
                         case StaticDim(size=size):
                             buf.write_u8(0)  # is_dynamic = false
                             buf.write_varint(size)
-                        case DynamicDim():
+                        case DynamicDim(value_id=value_id):
                             buf.write_u8(1)  # is_dynamic = true
+                            if values is not None:
+                                buf.write_varint(
+                                    0
+                                    if value_id is None
+                                    else 1
+                                    + self._value_number_or_error(
+                                        values, value_id, "dynamic dimension"
+                                    )
+                                )
             case FunctionType(arg_types=args, result_types=results):
                 buf.write_u8(BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.FUNCTION])
                 buf.write_varint(len(args))
                 buf.write_varint(len(results))
                 for arg in args:
-                    buf.write_varint(self._ctx.intern_type(arg))
+                    buf.write_varint(self._type_reference(arg, values))
                 for result in results:
-                    buf.write_varint(self._ctx.intern_type(result))
+                    buf.write_varint(self._type_reference(result, values))
             case DialectType(name=name, params=params):
                 buf.write_u8(BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.DIALECT])
                 buf.write_varint(self._ctx.strings[name])
                 buf.write_varint(len(params))
                 for param in params:
-                    buf.write_varint(self._ctx.intern_type(param))
+                    buf.write_varint(self._type_reference(param, values))
             case ParameterizedType(
                 definition=definition,
                 slots=slots,
@@ -1172,7 +1233,13 @@ class BytecodeWriter:
                 buf.write_varint(len(present_parameters))
                 for parameter, value in present_parameters:
                     buf.write_varint(self._ctx.strings[parameter.name])
-                    self._write_attr_value(buf, value, attr_def=parameter)
+                    self._write_attr_value(
+                        buf,
+                        value,
+                        values,
+                        attr_def=parameter,
+                        completed_types=values is not None,
+                    )
             case RegisterType(
                 descriptor_set_stable_id=descriptor_set_stable_id,
                 register_class_id=register_class_id,
@@ -1182,9 +1249,10 @@ class BytecodeWriter:
                 buf.write_u8(BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.REGISTER])
                 buf.write_varint(descriptor_set_stable_id)
                 buf.write_varint(register_class_id | (unit_count << 16))
-                buf.write_u8(1 if value_type is not None else 0)
+                if values is None:
+                    buf.write_u8(1 if value_type is not None else 0)
                 if value_type is not None:
-                    buf.write_varint(self._ctx.intern_type(value_type))
+                    buf.write_varint(self._type_reference(value_type, values))
             case StorageType(space=space):
                 buf.write_u8(BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.STORAGE])
                 buf.write_u8(space.value)
@@ -1193,6 +1261,14 @@ class BytecodeWriter:
                 buf.write_u8(role.value)
             case PoolType(block_size=block_size):
                 buf.write_u8(BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.POOL])
+                if values is not None:
+                    buf.write_varint(
+                        1
+                        + self._value_number_or_error(
+                            values, block_size.value_id, "pool dimension"
+                        )
+                    )
+                    return
                 match block_size:
                     case StaticDim(size=size):
                         buf.write_u8(0)  # static
@@ -1275,7 +1351,7 @@ class BytecodeWriter:
 
     def _write_root_region_payload(self, buf: ByteBuffer, region: Region) -> None:
         """Write one root region with an independent SSA namespace."""
-        value_numbers: dict[int, int] = {}
+        value_numbers = _ValueNumbering()
         self._assign_value_numbers(region, value_numbers)
         value_count, region_count, block_count, op_count = self._count_region_tree(
             region
@@ -1362,7 +1438,7 @@ class BytecodeWriter:
         return value_count, region_count, block_count, op_count
 
     def _value_number_or_error(
-        self, value_numbers: dict[int, int], value_id: int, context: str
+        self, value_numbers: _ValueNumbering, value_id: int, context: str
     ) -> int:
         try:
             return value_numbers[value_id]
@@ -1372,7 +1448,7 @@ class BytecodeWriter:
             ) from exc
 
     def _write_region(
-        self, buf: ByteBuffer, region: Region, value_numbers: dict[int, int]
+        self, buf: ByteBuffer, region: Region, value_numbers: _ValueNumbering
     ) -> None:
         """Write a region (source_flags + block_count + blocks)."""
         if region.source_flags < 0 or (region.source_flags & ~REGION_SOURCE_FLAG_MASK):
@@ -1390,7 +1466,7 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         block: Block,
-        value_numbers: dict[int, int],
+        value_numbers: _ValueNumbering,
         block_indices: dict[int, int],
     ) -> None:
         """Write a block (label, args, ops)."""
@@ -1411,37 +1487,44 @@ class BytecodeWriter:
         for op in live_ops:
             self._write_operation(buf, op, value_numbers, block_indices)
 
-    def _write_dim_bindings(
-        self, buf: ByteBuffer, value: Value, value_numbers: dict[int, int]
+    def _write_type_use(
+        self, buf: ByteBuffer, ir_type: Type, values: _ValueNumbering | None
     ) -> None:
-        """Write dim bindings and encoding binding for a value.
-
-        Every dynamic dim in the value's type must have a corresponding
-        entry in dim_bindings referencing an SSA value. Missing bindings
-        indicate invalid IR (anonymous dynamic dims are not permitted).
-        """
-        dims = value.type.dims if hasattr(value.type, "dims") else ()
-        dynamic_count = sum(1 for d in dims if isinstance(d, DynamicDim))
-        if dynamic_count > 0 and len(value.dim_bindings) != dynamic_count:
-            raise ValueError(
-                f"value '{value.name}' has {dynamic_count} dynamic dim(s) "
-                f"but {len(value.dim_bindings)} dim binding(s) — every "
-                f"dynamic dim must reference an SSA value"
-            )
-        buf.write_varint(dynamic_count)
-        for _position, value_id in sorted(value.dim_bindings.items()):
-            value_number = self._value_number_or_error(
-                value_numbers, value_id, "dynamic dimension binding"
-            )
-            buf.write_signed_varint(value_number)
-        # Encoding binding: 0 = none, else 1 + value_number.
-        if value.encoding_binding >= 0:
-            value_number = self._value_number_or_error(
-                value_numbers, value.encoding_binding, "dynamic encoding binding"
-            )
-            buf.write_varint(1 + value_number)
-        else:
+        """Extend the current scope with final records and select its root."""
+        bound = self._binding_facts[id(ir_type)]
+        if values is None:
+            if bound:
+                raise ValueError("SSA-bound type requires a value scope")
+            buf.write_varint(self._ctx.intern_type(ir_type))
+            return
+        buf.write_varint(1 if bound else self._ctx.intern_type(ir_type) << 1)
+        if not bound:
             buf.write_varint(0)
+            return
+        records: list[Type] = []
+        pending = [(ir_type, False)]
+        while pending:
+            value, expanded = pending.pop()
+            identity = id(value)
+            if identity in values.completed or not self._binding_facts[identity]:
+                continue
+            children = tuple(binding_children(value))
+            if children and not expanded:
+                pending.append((value, True))
+                pending.extend((child, False) for child in reversed(children))
+                continue
+            values.completed.add(identity)
+            if isinstance(value, _IR_TYPE_CLASSES):
+                values.types[identity] = len(values.types)
+                records.append(value)
+        payload = ByteBuffer()
+        payload.write_varint(len(records))
+        for record in records:
+            self._write_one_type(payload, record, values)
+        payload.write_varint(values.types[id(ir_type)] + 1)
+        data = payload.get_bytes()
+        buf.write_varint(len(data))
+        buf.write_bytes(data)
 
     def _write_source_trivia(
         self,
@@ -1464,17 +1547,16 @@ class BytecodeWriter:
             buf.write_bytes(encoded)
 
     def _write_value_def(
-        self, buf: ByteBuffer, value: Value, value_numbers: dict[int, int]
+        self, buf: ByteBuffer, value: Value, value_numbers: _ValueNumbering
     ) -> None:
         buf.write_varint(self._ctx.strings.get(value.name, 0))
-        buf.write_varint(self._ctx.intern_type(value.type))
-        self._write_dim_bindings(buf, value, value_numbers)
+        self._write_type_use(buf, value.type, value_numbers)
 
     def _write_operation(
         self,
         buf: ByteBuffer,
         op: Operation,
-        value_numbers: dict[int, int],
+        value_numbers: _ValueNumbering,
         block_indices: dict[int, int],
     ) -> None:
         """Write a single operation."""
@@ -1558,9 +1640,10 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         value: ParameterizedAttr,
-        value_numbers: dict[int, int] | None,
+        value_numbers: _ValueNumbering | None,
         attr_def: Any | None,
         aggregate_nesting_depth: int,
+        completed_types: bool,
     ) -> None:
         """Write a parameterized attribute payload without its kind byte."""
         if aggregate_nesting_depth >= ATTR_AGGREGATE_MAX_NESTING_DEPTH:
@@ -1591,15 +1674,17 @@ class BytecodeWriter:
                 value_numbers,
                 parameter_by_name[parameter_name],
                 aggregate_nesting_depth + 1,
+                completed_types=completed_types,
             )
 
     def _write_parameterized_attr_value(
         self,
         buf: ByteBuffer,
         value: ParameterizedAttr,
-        value_numbers: dict[int, int] | None,
+        value_numbers: _ValueNumbering | None,
         attr_def: Any | None,
         aggregate_nesting_depth: int,
+        completed_types: bool,
     ) -> None:
         """Write a complete descriptor-backed parameterized attribute."""
         if attr_def is not None and getattr(attr_def, "attr_type", None) != (
@@ -1615,15 +1700,17 @@ class BytecodeWriter:
             value_numbers,
             attr_def,
             aggregate_nesting_depth,
+            completed_types,
         )
 
     def _write_parameterized_attr_array_value(
         self,
         buf: ByteBuffer,
         value: ParameterizedAttrArray,
-        value_numbers: dict[int, int] | None,
+        value_numbers: _ValueNumbering | None,
         attr_def: Any | None,
         aggregate_nesting_depth: int,
+        completed_types: bool,
     ) -> None:
         """Write a descriptor-backed ordered parameterized attribute array."""
         if aggregate_nesting_depth >= ATTR_AGGREGATE_MAX_NESTING_DEPTH:
@@ -1644,14 +1731,16 @@ class BytecodeWriter:
                 value_numbers,
                 attr_def,
                 aggregate_nesting_depth + 1,
+                completed_types,
             )
 
     def _write_dict_attr_value(
         self,
         buf: ByteBuffer,
         value: Mapping[str, Any],
-        value_numbers: dict[int, int] | None,
+        value_numbers: _ValueNumbering | None,
         aggregate_nesting_depth: int,
+        completed_types: bool,
     ) -> None:
         """Write a canonical generic attribute dictionary."""
         if aggregate_nesting_depth >= ATTR_AGGREGATE_MAX_NESTING_DEPTH:
@@ -1668,15 +1757,17 @@ class BytecodeWriter:
                 item,
                 value_numbers,
                 aggregate_nesting_depth=aggregate_nesting_depth + 1,
+                completed_types=completed_types,
             )
 
     def _dispatch_parameterized_attr_value(
         self,
         buf: ByteBuffer,
         value: Any,
-        value_numbers: dict[int, int] | None,
+        value_numbers: _ValueNumbering | None,
         attr_def: Any | None,
         aggregate_nesting_depth: int,
+        completed_types: bool,
     ) -> bool:
         """Writes or rejects a parameterized field, returning whether handled."""
         attr_type = getattr(attr_def, "attr_type", None)
@@ -1687,6 +1778,7 @@ class BytecodeWriter:
                 value_numbers,
                 attr_def,
                 aggregate_nesting_depth,
+                completed_types,
             )
             return True
         if isinstance(value, ParameterizedAttrArray):
@@ -1696,6 +1788,7 @@ class BytecodeWriter:
                 value_numbers,
                 attr_def,
                 aggregate_nesting_depth,
+                completed_types,
             )
             return True
         if attr_type == "parameterized":
@@ -1714,9 +1807,11 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         value: Any,
-        value_numbers: dict[int, int] | None = None,
+        value_numbers: _ValueNumbering | None = None,
         attr_def: Any | None = None,
         aggregate_nesting_depth: int = 0,
+        *,
+        completed_types: bool = False,
     ) -> None:
         """Write an attribute value with its kind byte."""
         attr_type = getattr(attr_def, "attr_type", None)
@@ -1726,23 +1821,19 @@ class BytecodeWriter:
             value_numbers,
             attr_def,
             aggregate_nesting_depth,
+            completed_types,
         ):
             return
         if self._dispatch_symbol_attr_value(buf, value, attr_def):
             return
-        if attr_type == "predicate_list":
-            if not isinstance(value, list) or not all(
+        if attr_type == "predicate_list" or isinstance(value, PredicateListAttr):
+            if not isinstance(value, list | PredicateListAttr) or not all(
                 isinstance(predicate, Predicate) for predicate in value
             ):
                 raise TypeError(
-                    "predicate-list attribute value must be a list of Predicate "
+                    "predicate-list attribute value must contain Predicate "
                     f"objects, got {value!r}"
                 )
-            buf.write_u8(ATTR_KIND_PREDICATE_LIST)
-            self._write_predicate_list(buf, value, value_numbers)
-            return
-        # Check for predicate list attribute (list of Predicate objects).
-        if isinstance(value, list) and value and isinstance(value[0], Predicate):
             buf.write_u8(ATTR_KIND_PREDICATE_LIST)
             self._write_predicate_list(buf, value, value_numbers)
             return
@@ -1757,11 +1848,14 @@ class BytecodeWriter:
             buf.write_u8(ATTR_KIND_SCOPED_ENUM)
             buf.write_varint(self._ctx.strings[value])
             return
-        if attr_type == "type":
+        if attr_type == "type" or isinstance(value, _IR_TYPE_CLASSES):
             if not isinstance(value, _IR_TYPE_CLASSES):
                 raise TypeError(f"type attribute value must be a Type, got {value!r}")
             buf.write_u8(ATTR_KIND_TYPE)
-            buf.write_varint(self._ctx.intern_type(cast(Type, value)))
+            if completed_types:
+                buf.write_varint(self._type_reference(value, value_numbers))
+            else:
+                self._write_type_use(buf, value, value_numbers)
             return
         if attr_type == "bytes":
             if not isinstance(value, bytes | bytearray):
@@ -1802,7 +1896,7 @@ class BytecodeWriter:
             raise ValueError("symbol sets require a descriptor-backed field")
         elif isinstance(value, Mapping):
             self._write_dict_attr_value(
-                buf, value, value_numbers, aggregate_nesting_depth
+                buf, value, value_numbers, aggregate_nesting_depth, completed_types
             )
         elif isinstance(value, EncodingInstance):
             buf.write_u8(ATTR_KIND_ENCODING)
@@ -1969,8 +2063,8 @@ class BytecodeWriter:
     def _write_predicate_list(
         self,
         buf: ByteBuffer,
-        predicates: list[Predicate],
-        value_numbers: dict[int, int] | None = None,
+        predicates: Sequence[Predicate],
+        value_numbers: _ValueNumbering | None = None,
     ) -> None:
         """Write a predicate list: count + per-predicate data."""
         buf.write_varint(len(predicates))
@@ -1987,7 +2081,7 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         arg: PredicateArg,
-        value_numbers: dict[int, int] | None = None,
+        value_numbers: _ValueNumbering | None = None,
     ) -> None:
         """Write a single predicate argument: tag + value."""
         match arg.tag:
@@ -2152,12 +2246,14 @@ class BytecodeWriter:
                 # Result types and tied results.
                 result_ids = op.results
                 tied_results = op.tied_results
-                signature_value_numbers = {
-                    value_id: value_number
-                    for value_number, value_id in enumerate(
-                        [*workload_arg_ids, *arg_ids, *result_ids]
-                    )
-                }
+                signature_value_numbers = _ValueNumbering(
+                    {
+                        value_id: value_number
+                        for value_number, value_id in enumerate(
+                            [*workload_arg_ids, *arg_ids, *result_ids]
+                        )
+                    }
+                )
 
                 buf.write_varint(len(workload_arg_ids))
                 buf.write_varint(len(arg_ids))
@@ -2236,10 +2332,12 @@ class BytecodeWriter:
 
                 result_ids = list(op.results)
                 local_value_ids = self._collect_global_local_values(op)
-                local_value_numbers = {
-                    value_id: value_number
-                    for value_number, value_id in enumerate(local_value_ids)
-                }
+                local_value_numbers = _ValueNumbering(
+                    {
+                        value_id: value_number
+                        for value_number, value_id in enumerate(local_value_ids)
+                    }
+                )
                 buf.write_varint(len(result_ids))
                 buf.write_varint(len(local_value_ids))
                 for value_id in local_value_ids:

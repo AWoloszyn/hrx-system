@@ -256,13 +256,12 @@ static iree_status_t loom_bytecode_reader_skip_value_def(
   uint64_t name_offset = loom_bytecode_reader_cursor_absolute_position(cursor);
   uint64_t name_id = 0;
   uint64_t type_id = 0;
-  uint64_t dim_binding_count = 0;
+
   IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_uvarint_inline(
       &reader->decoder, cursor, &name_id));
   IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_uvarint_inline(
       &reader->decoder, cursor, &type_id));
-  IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_uvarint_inline(
-      &reader->decoder, cursor, &dim_binding_count));
+
   if (name_id != 0) {
     iree_string_view_t unused_name = iree_string_view_empty();
     IREE_RETURN_IF_ERROR(loom_bytecode_symbol_validate_string_ref(
@@ -271,14 +270,7 @@ static iree_status_t loom_bytecode_reader_skip_value_def(
   }
   IREE_RETURN_IF_ERROR(loom_bytecode_symbol_validate_type_ref(
       &reader->decoder, &reader->view, type_id, name_offset));
-  for (uint64_t i = 0; i < dim_binding_count; ++i) {
-    int64_t unused_value_ref = 0;
-    IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_svarint(
-        &reader->decoder, cursor, &unused_value_ref));
-  }
-  uint64_t unused_encoding_ref = 0;
-  return loom_bytecode_reader_read_uvarint_inline(&reader->decoder, cursor,
-                                                  &unused_encoding_ref);
+  return loom_bytecode_skip_type_bindings(&reader->decoder, cursor);
 }
 
 static iree_status_t loom_bytecode_reader_decode_region_payloads(

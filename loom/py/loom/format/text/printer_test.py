@@ -202,28 +202,22 @@ class TestPrintType:
         """With context, dynamic dims print as [%name]."""
         from loom.format.text.printer import TypePrintContext
 
-        t = ShapedType(TypeKind.TILE, F32, (DynamicDim(), StaticDim(4)))
+        t = ShapedType(TypeKind.TILE, F32, (DynamicDim(0), StaticDim(4)))
         # Set up: value ID 0 is named %M.
         module = Module(name="test")
         module.add_value(Value(name="M", type=INDEX))
-        context = TypePrintContext(
-            dim_bindings={0: 0},  # dim position 0 -> value ID 0
-            module=module,
-        )
+        context = TypePrintContext(module)
         assert print_type(t, context) == "tile<[%M]x4xf32>"
 
     def test_dynamic_dims_all_dynamic(self) -> None:
         """Multiple dynamic dims with named bindings."""
         from loom.format.text.printer import TypePrintContext
 
-        t = ShapedType(TypeKind.TENSOR, F32, (DynamicDim(), DynamicDim()))
+        t = ShapedType(TypeKind.TENSOR, F32, (DynamicDim(0), DynamicDim(1)))
         module = Module(name="test")
         module.add_value(Value(name="M", type=INDEX))
         module.add_value(Value(name="K", type=INDEX))
-        context = TypePrintContext(
-            dim_bindings={0: 0, 1: 1},
-            module=module,
-        )
+        context = TypePrintContext(module)
         assert print_type(t, context) == "tensor<[%M]x[%K]xf32>"
 
     def test_encoding_with_alias(self) -> None:
@@ -246,17 +240,13 @@ class TestPrintType:
         t = ShapedType(
             TypeKind.VIEW,
             F32,
-            (DynamicDim(),),
-            encoding=DynamicEncoding(),
+            (DynamicDim(0),),
+            encoding=DynamicEncoding(1),
         )
         module = Module(name="test")
         module.add_value(Value(name="N", type=INDEX))
         module.add_value(Value(name="layout", type=ENCODING_TYPE))
-        context = TypePrintContext(
-            dim_bindings={0: 0},
-            encoding_binding=1,
-            module=module,
-        )
+        context = TypePrintContext(module)
         assert print_type(t, context) == "view<[%N]xf32, %layout>"
 
     def test_encoding_without_alias(self) -> None:
@@ -1330,18 +1320,22 @@ class TestSpacing:
 
     def test_deflate_result_dim_reference(self) -> None:
         """test.deflate prints result dim referencing another result by name."""
-        tensor_dyn = ShapedType(TypeKind.TENSOR, F32, (DynamicDim(),))
         module = Module(name="test")
         # Input: tensor<[%M]xf32> — has a named dynamic dim.
         m_id = module.add_value(Value(name="M", type=INDEX))
         input_id = module.add_value(
-            Value(name="input", type=tensor_dyn, dim_bindings={0: m_id})
+            Value(
+                name="input", type=ShapedType(TypeKind.TENSOR, F32, (DynamicDim(m_id),))
+            )
         )
         # Create %length first so we can reference it in %output's dim.
         length_id = module.add_value(Value(name="length", type=INDEX))
         # Result 0: tensor<[%length]xf32> — dim references %length directly.
         output_id = module.add_value(
-            Value(name="output", type=tensor_dyn, dim_bindings={0: length_id})
+            Value(
+                name="output",
+                type=ShapedType(TypeKind.TENSOR, F32, (DynamicDim(length_id),)),
+            )
         )
         op = Operation(
             name="test.deflate",
@@ -1391,45 +1385,37 @@ class TestEncodingTypePrinting:
         assert print_type(ir_type) == expected
 
     def test_dynamic_encoding_with_context(self) -> None:
-        """ShapedType with DynamicEncoding + encoding_binding prints %name."""
+        """A complete SSA encoding prints its value's name."""
         module = Module(name="test")
         enc_id = module.add_value(Value(name="enc", type=ENCODING_TYPE))
         tile_type = ShapedType(
-            TypeKind.TILE, F32, (StaticDim(4),), encoding=DynamicEncoding()
+            TypeKind.TILE, F32, (StaticDim(4),), encoding=DynamicEncoding(enc_id)
         )
-        module.add_value(Value(name="t", type=tile_type, encoding_binding=enc_id))
+        module.add_value(Value(name="t", type=tile_type))
         from loom.format.text.printer import TypePrintContext
 
-        context = TypePrintContext(
-            dim_bindings={}, module=module, encoding_binding=enc_id
-        )
+        context = TypePrintContext(module)
         text = print_type(tile_type, context)
         assert text == "tile<4xf32, %enc>"
 
     def test_dynamic_encoding_without_context(self) -> None:
-        """ShapedType with DynamicEncoding without context prints ?."""
+        """Without names, the encoding keeps its numeric SSA identity."""
         tile_type = ShapedType(
-            TypeKind.TILE, F32, (StaticDim(4),), encoding=DynamicEncoding()
+            TypeKind.TILE, F32, (StaticDim(4),), encoding=DynamicEncoding(0)
         )
         text = print_type(tile_type)
-        assert text == "tile<4xf32, ?>"
+        assert text == "tile<4xf32, %0>"
 
     def test_dynamic_encoding_in_operation(self) -> None:
         """Full op printing with dynamic encoding on a value type."""
         module = Module(name="test")
         enc_id = module.add_value(Value(name="enc", type=ENCODING_TYPE))
         tile_type = ShapedType(
-            TypeKind.TILE, F32, (StaticDim(4),), encoding=DynamicEncoding()
+            TypeKind.TILE, F32, (StaticDim(4),), encoding=DynamicEncoding(enc_id)
         )
-        lhs_id = module.add_value(
-            Value(name="lhs", type=tile_type, encoding_binding=enc_id)
-        )
-        rhs_id = module.add_value(
-            Value(name="rhs", type=tile_type, encoding_binding=enc_id)
-        )
-        result_id = module.add_value(
-            Value(name="result", type=tile_type, encoding_binding=enc_id)
-        )
+        lhs_id = module.add_value(Value(name="lhs", type=tile_type))
+        rhs_id = module.add_value(Value(name="rhs", type=tile_type))
+        result_id = module.add_value(Value(name="result", type=tile_type))
         op = Operation(
             name="test.addi",
             operands=[lhs_id, rhs_id],
@@ -1461,23 +1447,16 @@ class TestPoolTypePrinting:
 
         module = Module(name="test")
         module.add_value(Value(name="BS", type=INDEX))
-        context = TypePrintContext(
-            dim_bindings={0: 0},
-            module=module,
-        )
-        assert print_type(PoolType(DynamicDim()), context) == "pool<[%BS]>"
+        context = TypePrintContext(module)
+        assert print_type(PoolType(DynamicDim(0)), context) == "pool<[%BS]>"
 
     def test_pool_in_operation(self) -> None:
         """Pool type prints correctly as an op operand type."""
         module = Module(name="test")
         bs_id = module.add_value(Value(name="BS", type=INDEX))
-        pool_type = PoolType(DynamicDim())
-        pool_id = module.add_value(
-            Value(name="pool", type=pool_type, dim_bindings={0: bs_id})
-        )
-        result_id = module.add_value(
-            Value(name="result", type=pool_type, dim_bindings={0: bs_id})
-        )
+        pool_type = PoolType(DynamicDim(bs_id))
+        pool_id = module.add_value(Value(name="pool", type=pool_type))
+        result_id = module.add_value(Value(name="result", type=pool_type))
         op = Operation(
             name="test.attrs",
             operands=[pool_id],
@@ -1536,7 +1515,7 @@ class TestPrinterFlags:
 
         enc = EncodingInstance(name="q8_0", alias="enc", params=(("block", 32),))
         shaped = ShapedType(TypeKind.TILE, I8, (StaticDim(256),), encoding=enc)
-        context = TypePrintContext({}, Module(), use_aliases=False)
+        context = TypePrintContext(Module(), use_aliases=False)
         assert print_type(shaped, context) == "tile<256xi8, #q8_0<block=32>>"
 
     def test_use_aliases_false_no_params(self) -> None:
@@ -1545,7 +1524,7 @@ class TestPrinterFlags:
 
         enc = EncodingInstance(name="dense", alias="d")
         shaped = ShapedType(TypeKind.TILE, F32, (StaticDim(4),), encoding=enc)
-        context = TypePrintContext({}, Module(), use_aliases=False)
+        context = TypePrintContext(Module(), use_aliases=False)
         assert print_type(shaped, context) == "tile<4xf32, #dense>"
 
     def test_use_aliases_false_in_printer(self) -> None:

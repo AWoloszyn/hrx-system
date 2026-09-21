@@ -15,7 +15,7 @@ from loom.dialect.scf import ALL_SCF_OPS
 from loom.dialect.test import ALL_TEST_OPS
 from loom.format.text.parser import ParseError, Parser
 from loom.format.text.printer import Printer
-from loom.ir import Module
+from loom.ir import DynamicDim, Module
 
 
 def _formats() -> tuple[Parser, Printer]:
@@ -66,8 +66,8 @@ def test_global_symbolic_bindings_remain_local_to_each_declaration() -> None:
     loaded, printed = _roundtrip(parser.parse(text))
     assert printed == text
     first, second = loaded.body.ops
-    first_extent = loaded.values[first.results[0]].dim_bindings[0]
-    second_extent = loaded.values[second.results[0]].dim_bindings[0]
+    first_extent = loaded.values[first.results[0]].type.dims[0].value_id
+    second_extent = loaded.values[second.results[0]].type.dims[0].value_id
     assert first_extent != second_extent
     assert first.attributes["predicates"][0].args[0].value == first_extent
     assert second.attributes["predicates"][0].args[0].value == second_extent
@@ -107,9 +107,9 @@ def test_captured_outer_value(reference: str) -> None:
     elif reference == "predicate":
         assert use.attributes["predicates"][0].args[0].value == extent
     elif reference == "result_type":
-        assert loaded.values[use.results[0]].dim_bindings == {0: extent}
+        assert loaded.values[use.results[0]].type.dims == (DynamicDim(extent),)
     else:
-        assert loaded.values[use.operands[0]].dim_bindings == {0: extent}
+        assert loaded.values[use.operands[0]].type.dims == (DynamicDim(extent),)
     assert nested.ops[2].operands[0] == nested.ops[0].results[0]
     assert loaded.values[extent].name != loaded.values[nested.ops[0].results[0]].name
 
@@ -131,7 +131,10 @@ def test_captured_dynamic_encoding() -> None:
     loaded, _ = _roundtrip(module)
     body = loaded.body.ops[0].regions[0].blocks[0]
     nested = body.ops[0].regions[0].blocks[0]
-    assert loaded.values[nested.ops[1].results[0]].encoding_binding == body.arg_ids[1]
+    assert (
+        loaded.values[nested.ops[1].results[0]].type.encoding.value_id
+        == body.arg_ids[1]
+    )
     assert nested.ops[2].operands[0] == nested.ops[0].results[0]
 
 
@@ -148,7 +151,7 @@ def test_signature_names_and_result_bindings() -> None:
     argument = operation.operands[0]
     extent = operation.results[0]
     assert loaded.values[argument].name != loaded.values[extent].name
-    assert loaded.values[operation.results[1]].dim_bindings == {0: extent}
+    assert loaded.values[operation.results[1]].type.dims == (DynamicDim(extent),)
     predicate = operation.attributes["predicates"][0]
     assert [arg.value for arg in predicate.args] == [argument, extent]
 
@@ -193,7 +196,7 @@ def test_tied_result_keeps_its_own_referenced_identity(result_name: str) -> None
     assert extent != op.operands[0]
     assert op.tied_results[0].operand_index == 0
     assert op.tied_results[0].result_index == 0
-    assert loaded.values[op.results[1]].dim_bindings == {0: extent}
+    assert loaded.values[op.results[1]].type.dims == (DynamicDim(extent),)
     assert op.attributes["predicates"][0].args[0].value == extent
 
 

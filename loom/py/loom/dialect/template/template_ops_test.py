@@ -18,7 +18,7 @@ from loom.format.bytecode.writer import write_module
 from loom.format.text.parser import Parser
 from loom.format.text.printer import Printer
 from loom.format.text.tokenizer import ParseError
-from loom.ir import Module, ParameterizedAttrArray
+from loom.ir import Module, ParameterizedAttrArray, PredicateListAttr
 from loom.verify import verify_module
 
 
@@ -103,7 +103,7 @@ template.def<@demo.tile> requires [#target.subgroup.size<64>] @wave64(%size: ind
     predicates = provider.attributes.get("predicates")
     assert isinstance(requirements, ParameterizedAttrArray)
     assert requirements.values[0].family_name == "target.subgroup.size"
-    assert isinstance(predicates, list)
+    assert isinstance(predicates, PredicateListAttr)
     assert len(predicates) == 1
 
 

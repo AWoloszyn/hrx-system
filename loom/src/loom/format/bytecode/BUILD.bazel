@@ -13,9 +13,18 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(
+    ["scoped_type_interop.loom-test"],
+    visibility = ["//loom/py/loom/format/bytecode:__pkg__"],
+)
+
 loom_check_test_suite(
     name = "test",
-    srcs = ["catalog_order.loom-test"],
+    srcs = [
+        "catalog_order.loom-test",
+        "scoped_type_interop.loom-test",
+        "type_bindings.loom-test",
+    ],
 )
 
 loom_cc_library(

@@ -680,11 +680,10 @@ def test_verifier_reports_missing_dynamic_dim_binding() -> None:
     )
 
 
-def test_verifier_reports_unexpected_dynamic_dim_binding() -> None:
+def test_verifier_reports_missing_dimension_value() -> None:
     module = Module()
-    size = module.add_value(Value("size", INDEX))
-    value_type = ShapedType(TypeKind.VIEW, F32, (StaticDim(4),))
-    value = module.add_value(Value("view", value_type, dim_bindings={0: size}))
+    value_type = ShapedType(TypeKind.VIEW, F32, (DynamicDim(42),))
+    value = module.add_value(Value("view", value_type))
     module = _module_with_body_ops(
         Operation(name="test.use", operands=[value]),
         module=module,
@@ -693,17 +692,17 @@ def test_verifier_reports_unexpected_dynamic_dim_binding() -> None:
     diagnostics = verify_module(module, ops=ALL_TEST_OPS)
 
     assert _diagnostic_text_contains(
-        diagnostics, "static dimension has unexpected SSA binding"
+        diagnostics, "dynamic dimension references missing value"
     )
 
 
-def test_verifier_reports_missing_dynamic_encoding_binding() -> None:
+def test_verifier_reports_missing_encoding_value() -> None:
     module = Module()
     value_type = ShapedType(
         TypeKind.VIEW,
         F32,
         (StaticDim(4),),
-        encoding=DynamicEncoding(),
+        encoding=DynamicEncoding(42),
     )
     value = module.add_value(Value("view", value_type))
     module = _module_with_body_ops(
@@ -713,7 +712,9 @@ def test_verifier_reports_missing_dynamic_encoding_binding() -> None:
 
     diagnostics = verify_module(module, ops=ALL_TEST_OPS)
 
-    assert _diagnostic_text_contains(diagnostics, "dynamic encoding has no SSA binding")
+    assert _diagnostic_text_contains(
+        diagnostics, "dynamic encoding references missing value"
+    )
 
 
 def test_verifier_accepts_dynamic_encoding_binding() -> None:
@@ -723,9 +724,9 @@ def test_verifier_accepts_dynamic_encoding_binding() -> None:
         TypeKind.VIEW,
         F32,
         (StaticDim(4),),
-        encoding=DynamicEncoding(),
+        encoding=DynamicEncoding(layout),
     )
-    value = module.add_value(Value("view", value_type, encoding_binding=layout))
+    value = module.add_value(Value("view", value_type))
     module = _module_with_body_ops(
         Operation(name="test.use", operands=[value]),
         module=module,

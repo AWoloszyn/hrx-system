@@ -17,10 +17,11 @@
 
 void loom_bytecode_value_numbering_initialize(
     loom_bytecode_value_numbering_t* value_numbering,
-    const loom_module_t* module, iree_arena_allocator_t* arena) {
+    loom_bytecode_numbering_t* numbering) {
   *value_numbering = (loom_bytecode_value_numbering_t){
-      .module = module,
-      .arena = arena,
+      .module = numbering->module,
+      .arena = numbering->arena,
+      .binding_generation = ++numbering->types.index.binding_generation,
   };
 }
 
@@ -394,7 +395,7 @@ iree_status_t loom_bytecode_number_global(
           numbering, value->name_id, &unused_id));
     }
     IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_type(
-        numbering, value->type, &unused_id));
+        numbering, value->type, &unused_id, NULL));
   }
 
   const loom_op_vtable_t* vtable =
@@ -548,14 +549,14 @@ iree_status_t loom_bytecode_number_function(
   for (uint16_t i = 0; i < workload_args.count; ++i) {
     loom_type_t arg_type =
         loom_module_value_type(numbering->module, workload_args.values[i]);
-    IREE_RETURN_IF_ERROR(
-        loom_bytecode_numbering_intern_type(numbering, arg_type, &unused_id));
+    IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_type(
+        numbering, arg_type, &unused_id, NULL));
   }
   for (uint16_t i = 0; i < arg_count; ++i) {
     loom_value_id_t value_id = arg_ids[i];
     loom_type_t arg_type = loom_module_value_type(numbering->module, value_id);
-    IREE_RETURN_IF_ERROR(
-        loom_bytecode_numbering_intern_type(numbering, arg_type, &unused_id));
+    IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_type(
+        numbering, arg_type, &unused_id, NULL));
   }
 
   // Result types (recursive).
@@ -565,7 +566,7 @@ iree_status_t loom_bytecode_number_function(
     loom_type_t result_type =
         loom_module_value_type(numbering->module, result_ids[i]);
     IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_type(
-        numbering, result_type, &unused_id));
+        numbering, result_type, &unused_id, NULL));
   }
 
   // Function metadata predicates reference signature SSA values. Their value
@@ -613,7 +614,7 @@ static iree_status_t loom_bytecode_number_region(
             numbering, value->name_id, &unused_id));
       }
       IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_type(
-          numbering, value->type, &unused_id));
+          numbering, value->type, &unused_id, NULL));
     }
 
     // Operations.
@@ -644,7 +645,7 @@ static iree_status_t loom_bytecode_number_operation(
           numbering, value->name_id, &unused_id));
     }
     IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_type(
-        numbering, value->type, &unused_id));
+        numbering, value->type, &unused_id, NULL));
   }
 
   // Attribute keys and values.

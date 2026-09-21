@@ -260,7 +260,7 @@ static loom_symbol_kind_t loom_bytecode_selected_symbol_kind(
   IREE_BUILTIN_UNREACHABLE();
 }
 
-static iree_status_t loom_bytecode_selected_symbols_predeclare(
+iree_status_t loom_bytecode_selected_symbols_predeclare(
     loom_bytecode_selected_symbol_materializer_t* materializer,
     const loom_bytecode_selected_symbol_t* selected_symbols,
     iree_host_size_t selected_symbol_count) {
@@ -363,9 +363,6 @@ iree_status_t loom_bytecode_selected_symbols_materialize(
     loom_bytecode_selected_symbol_materializer_t* materializer,
     const loom_bytecode_selected_symbol_t* selected_symbols,
     iree_host_size_t selected_symbol_count) {
-  IREE_RETURN_IF_ERROR(loom_bytecode_selected_symbols_predeclare(
-      materializer, selected_symbols, selected_symbol_count));
-
   loom_builder_t builder;
   loom_builder_initialize(
       materializer->output_module, &materializer->output_module->arena,

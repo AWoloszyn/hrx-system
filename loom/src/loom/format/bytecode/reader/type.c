@@ -12,6 +12,97 @@
 #include "loom/format/bytecode/reader/attribute.h"
 #include "loom/format/bytecode/reader/module_view.h"
 
+iree_status_t loom_bytecode_type_decode_kind(
+    loom_bytecode_reader_decoder_t* decoder, uint8_t kind_byte, uint64_t offset,
+    loom_type_kind_t* out_kind) {
+  switch (kind_byte) {
+    case LOOM_BYTECODE_TYPE_NONE:
+      *out_kind = LOOM_TYPE_NONE;
+      return iree_ok_status();
+    case LOOM_BYTECODE_TYPE_SCALAR:
+      *out_kind = LOOM_TYPE_SCALAR;
+      return iree_ok_status();
+    case LOOM_BYTECODE_TYPE_TILE:
+      *out_kind = LOOM_TYPE_TILE;
+      return iree_ok_status();
+    case LOOM_BYTECODE_TYPE_TENSOR:
+      *out_kind = LOOM_TYPE_TENSOR;
+      return iree_ok_status();
+    case LOOM_BYTECODE_TYPE_FUNCTION:
+      *out_kind = LOOM_TYPE_FUNCTION;
+      return iree_ok_status();
+    case LOOM_BYTECODE_TYPE_DIALECT:
+      *out_kind = LOOM_TYPE_DIALECT;
+      return iree_ok_status();
+    case LOOM_BYTECODE_TYPE_ENCODING:
+      *out_kind = LOOM_TYPE_ENCODING;
+      return iree_ok_status();
+    case LOOM_BYTECODE_TYPE_POOL:
+      *out_kind = LOOM_TYPE_POOL;
+      return iree_ok_status();
+    case LOOM_BYTECODE_TYPE_VECTOR:
+      *out_kind = LOOM_TYPE_VECTOR;
+      return iree_ok_status();
+    case LOOM_BYTECODE_TYPE_VIEW:
+      *out_kind = LOOM_TYPE_VIEW;
+      return iree_ok_status();
+    case LOOM_BYTECODE_TYPE_BUFFER:
+      *out_kind = LOOM_TYPE_BUFFER;
+      return iree_ok_status();
+    case LOOM_BYTECODE_TYPE_REGISTER:
+      *out_kind = LOOM_TYPE_REGISTER;
+      return iree_ok_status();
+    case LOOM_BYTECODE_TYPE_STORAGE:
+      *out_kind = LOOM_TYPE_STORAGE;
+      return iree_ok_status();
+    case LOOM_BYTECODE_TYPE_PARAMETERIZED:
+      *out_kind = LOOM_TYPE_PARAMETERIZED;
+      return iree_ok_status();
+    default: {
+      loom_diagnostic_param_t params[] = {
+          loom_param_u32(kind_byte),
+          loom_param_u64(offset),
+      };
+      return loom_bytecode_reader_emit_error(decoder, LOOM_ERR_BYTECODE_004,
+                                             params, IREE_ARRAYSIZE(params),
+                                             offset, 1);
+    }
+  }
+}
+
+iree_status_t loom_bytecode_type_read_register_carrier(
+    loom_bytecode_reader_decoder_t* decoder,
+    loom_bytecode_reader_cursor_t* cursor, uint64_t type_index,
+    uint64_t out_payload[2]) {
+  const uint64_t payload0_offset =
+      loom_bytecode_reader_cursor_absolute_position(cursor);
+  IREE_RETURN_IF_ERROR(
+      loom_bytecode_reader_read_uvarint(decoder, cursor, &out_payload[0]));
+  const uint64_t payload1_offset =
+      loom_bytecode_reader_cursor_absolute_position(cursor);
+  IREE_RETURN_IF_ERROR(
+      loom_bytecode_reader_read_uvarint(decoder, cursor, &out_payload[1]));
+  if (out_payload[0] == 0) {
+    return loom_bytecode_reader_emit_invalid_field(
+        decoder, cursor->range_name, IREE_SV("type"), type_index,
+        IREE_SV("register_payload0"), payload0_offset,
+        IREE_SV("register_descriptor_set_stable_id_must_be_non_zero"));
+  }
+  if (((out_payload[1] >> 16) & UINT32_MAX) == 0) {
+    return loom_bytecode_reader_emit_invalid_field(
+        decoder, cursor->range_name, IREE_SV("type"), type_index,
+        IREE_SV("register_payload1"), payload1_offset,
+        IREE_SV("register_unit_count_must_be_non_zero"));
+  }
+  if ((out_payload[1] >> 48) != 0) {
+    return loom_bytecode_reader_emit_invalid_field(
+        decoder, cursor->range_name, IREE_SV("type"), type_index,
+        IREE_SV("register_payload1"), payload1_offset,
+        IREE_SV("register_payload_reserved_bits_must_be_zero"));
+  }
+  return iree_ok_status();
+}
+
 static loom_bytecode_attribute_materializer_t
 loom_bytecode_type_attribute_materializer(
     loom_bytecode_type_materializer_t* materializer) {
@@ -55,7 +146,7 @@ static iree_status_t loom_bytecode_type_materialize_parameterized(
     IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_u8(
         materializer->decoder, &cursor, &encoded_value_kind));
     IREE_ASSERT(encoded_value_kind < LOOM_BYTECODE_ATTR_COUNT);
-    IREE_RETURN_IF_ERROR(loom_bytecode_attribute_materialize_named(
+    IREE_RETURN_IF_ERROR(loom_bytecode_attribute_decode_named(
         &attribute_materializer, &cursor,
         &descriptor->parameter_descriptors[parameter_index],
         (loom_bytecode_attr_kind_t)encoded_value_kind,
@@ -98,15 +189,16 @@ iree_status_t loom_bytecode_type_materialize_structural(
 
 iree_status_t loom_bytecode_type_materialize(
     loom_bytecode_type_materializer_t* materializer) {
-  const loom_bytecode_type_fact_t* fact =
-      materializer->module_view->types.facts;
+  loom_bytecode_type_fact_t* fact = materializer->module_view->types.facts;
   for (iree_host_size_t type_index = 0;
        type_index < materializer->module_view->types.count; ++type_index) {
     IREE_ASSERT(!fact || fact->type_id >= type_index);
     loom_type_t type = {0};
     loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
     iree_status_t status = iree_ok_status();
-    const loom_bytecode_type_plan_entry_t* entry =
+    const iree_host_size_t previous_type_count =
+        materializer->output_module->types.count;
+    loom_bytecode_type_plan_entry_t* entry =
         &materializer->module_view->types.entries[type_index];
     if (fact && fact->type_id == type_index) {
       if (fact->kind == LOOM_TYPE_PARAMETERIZED) {
@@ -117,8 +209,14 @@ iree_status_t loom_bytecode_type_materialize(
             &type, &type_id);
         iree_arena_checkpoint_restore(&checkpoint);
       } else {
-        const loom_bytecode_structural_type_fact_t* structural_fact =
-            (const loom_bytecode_structural_type_fact_t*)fact;
+        loom_bytecode_structural_type_fact_t* structural_fact =
+            (loom_bytecode_structural_type_fact_t*)fact;
+        for (uint32_t i = 0; i < entry->structural.dependency_count; ++i) {
+          structural_fact->type_ids[i] =
+              materializer->module_view->types
+                  .entries[structural_fact->type_ids[i]]
+                  .completed_type;
+        }
         status = loom_bytecode_type_materialize_structural(
             &entry->structural, structural_fact, structural_fact->type_ids,
             materializer->output_module, &type_id);
@@ -131,7 +229,7 @@ iree_status_t loom_bytecode_type_materialize(
       status = loom_module_intern_topological_type_id(
           materializer->output_module, type, NULL, 0, &type_id);
     }
-    if (iree_status_is_ok(status) && type_id != type_index) {
+    if (iree_status_is_ok(status) && type_id < previous_type_count) {
       status = loom_bytecode_reader_emit_invalid_field(
           materializer->decoder, IREE_SV("TYPES"), IREE_SV("type"), type_index,
           IREE_SV("type"),
@@ -139,6 +237,7 @@ iree_status_t loom_bytecode_type_materialize(
           IREE_SV("type_table_must_be_deduplicated_and_topologically_ordered"));
     }
     IREE_RETURN_IF_ERROR(status);
+    entry->completed_type = type_id;
   }
   IREE_ASSERT(!fact);
   return iree_ok_status();

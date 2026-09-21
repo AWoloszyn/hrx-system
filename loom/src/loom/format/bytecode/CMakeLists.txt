@@ -14,6 +14,8 @@ loom_check_test_suite(
     test
   SRCS
     "catalog_order.loom-test"
+    "scoped_type_interop.loom-test"
+    "type_bindings.loom-test"
 )
 
 loom_cc_library(

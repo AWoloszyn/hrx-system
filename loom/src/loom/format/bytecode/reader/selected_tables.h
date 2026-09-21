@@ -12,6 +12,7 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
 #include "loom/format/bytecode/index.h"
+#include "loom/format/bytecode/reader/attribute.h"
 #include "loom/format/bytecode/reader/decoder.h"
 #include "loom/format/bytecode/reader/selected_projection.h"
 #include "loom/ir/context.h"
@@ -27,14 +28,6 @@ typedef enum loom_bytecode_selected_table_kind_e {
   LOOM_BYTECODE_SELECTED_TABLE_TYPE = 1,
   LOOM_BYTECODE_SELECTED_TABLE_LOCATION = 2,
 } loom_bytecode_selected_table_kind_t;
-
-// Result of projecting one shared-table reference.
-typedef enum loom_bytecode_selected_reference_state_e {
-  // The source identity was already projected into the output module.
-  LOOM_BYTECODE_SELECTED_REFERENCE_RESOLVED = 0,
-  // The source identity was scheduled on the explicit materialization stack.
-  LOOM_BYTECODE_SELECTED_REFERENCE_SCHEDULED = 1,
-} loom_bytecode_selected_reference_state_t;
 
 // Resolves one module-local source symbol ordinal into the output module.
 typedef iree_status_t (*loom_bytecode_selected_symbol_resolver_fn_t)(
@@ -64,14 +57,6 @@ loom_bytecode_selected_symbol_resolver_make(
       /*.user_data=*/user_data,
   };
 }
-
-// One entry on the explicit shared-table materialization stack.
-typedef struct loom_bytecode_selected_table_frame_t {
-  // Shared-table domain containing the source entry.
-  loom_bytecode_selected_table_kind_t table_kind;
-  // Source-table ordinal of the entry.
-  uint32_t source_ordinal;
-} loom_bytecode_selected_table_frame_t;
 
 // Invocation-local state for reached-only shared-table materialization.
 //
@@ -104,14 +89,28 @@ typedef struct loom_bytecode_selected_table_materializer_t {
   } sources;
   // Explicit dependency stack reused across root resolutions.
   struct {
-    // Retained-arena-owned frames in dependency order.
-    loom_bytecode_selected_table_frame_t* values;
+    // First retained-arena-owned chunk, reused after each root completes.
+    struct loom_bytecode_selected_table_chunk_t* first;
+    // Chunk containing the current top frame, or the empty first chunk.
+    struct loom_bytecode_selected_table_chunk_t* current;
     // Number of live frames.
     iree_host_size_t count;
-    // Allocated frame capacity.
-    iree_host_size_t capacity;
   } worklist;
 } loom_bytecode_selected_table_materializer_t;
+
+// Constructs completed scoped types without interning decoding templates.
+iree_status_t loom_bytecode_selected_type_project_completed(
+    loom_bytecode_selected_table_materializer_t* materializer,
+    loom_bytecode_reader_cursor_t* cursor,
+    const loom_bytecode_attribute_ssa_materialization_scope_t* scope,
+    uint64_t reference, loom_type_id_t* out_type);
+
+// Constructs completed scoped types without interning decoding templates.
+iree_status_t loom_bytecode_selected_type_materialize_bindings(
+    loom_bytecode_selected_table_materializer_t* materializer,
+    loom_bytecode_reader_cursor_t* cursor,
+    const loom_bytecode_attribute_ssa_materialization_scope_t* scope,
+    uint64_t source_type_id, loom_type_id_t* out_type_id);
 
 // Initializes an empty reached-only table materializer.
 //
@@ -158,23 +157,23 @@ iree_status_t loom_bytecode_selected_table_resolve_symbol(
     bool* out_found);
 
 // Projects one source encoding reference, scheduling it when not yet reached.
+// The destination slot remains valid until the enclosing root completes.
 iree_status_t loom_bytecode_selected_table_project_encoding(
     loom_bytecode_selected_table_materializer_t* materializer,
-    uint16_t source_encoding_id, uint16_t* out_target_encoding_id,
-    loom_bytecode_selected_reference_state_t* out_state);
+    uint16_t source_encoding_id, uint32_t* out_target_encoding_id);
 
 // Projects one source type reference, scheduling it when not yet reached.
+// The destination slot remains valid until the enclosing root completes.
 iree_status_t loom_bytecode_selected_table_project_type(
     loom_bytecode_selected_table_materializer_t* materializer,
-    loom_type_id_t source_type_id, loom_type_id_t* out_target_type_id,
-    loom_bytecode_selected_reference_state_t* out_state);
+    loom_type_id_t source_type_id, loom_type_id_t* out_target_type_id);
 
 // Projects one source location reference, scheduling it when not yet reached.
+// The destination slot remains valid until the enclosing root completes.
 iree_status_t loom_bytecode_selected_table_project_location(
     loom_bytecode_selected_table_materializer_t* materializer,
     loom_location_id_t source_location_id,
-    loom_location_id_t* out_target_location_id,
-    loom_bytecode_selected_reference_state_t* out_state);
+    loom_location_id_t* out_target_location_id);
 
 // Materializes the closure of one source encoding and returns its compact ID.
 iree_status_t loom_bytecode_selected_table_materialize_encoding(

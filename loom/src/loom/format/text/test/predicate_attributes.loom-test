@@ -18,7 +18,7 @@ test.decl @dependent_predicates(%values: test.array<vector<[%width]xf32>, metada
 
 // Ordinary predicate fields retain their compact spelling; generic dictionary
 // leaves use the same SSA names and preserve independent values.
-func.def @body_predicates(%width: index, %height: index, %input: f32) -> (f32) {
+func.def retain @body_predicates(%width: index, %height: index, %input: f32) -> (f32) {
   %bounded = index.assume %width [range(%width, 1, 64)] : index
   %configured = test.attrs %input {metadata = {constraints = predicates[lt(%bounded, %height)], nested = {constraints = predicates[finite(%input)]}}} : f32
   func.return %configured : f32

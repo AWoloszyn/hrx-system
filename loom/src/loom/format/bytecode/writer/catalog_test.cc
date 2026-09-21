@@ -243,19 +243,54 @@ TEST_F(CatalogTest, SharedTypeNumberingRetainsCompletedResults) {
   uint32_t writer_id = 0;
   IREE_ASSERT_OK(loom_bytecode_numbering_intern_type(
       &numbering, loom_type_table_get(&module_->types, types.back()),
-      &writer_id));
+      &writer_id, nullptr));
   ASSERT_EQ(numbering.types.count, types.size());
   EXPECT_EQ(writer_id, types.size() - 1);
   const auto completed_storage = arena_.used_allocation_size;
   for (size_t i = 0; i < types.size(); ++i) {
     EXPECT_EQ(numbering.types.module_indices_by_writer_id[i], types[i]);
     IREE_ASSERT_OK(loom_bytecode_numbering_intern_type(
-        &numbering, loom_type_table_get(&module_->types, types[i]),
-        &writer_id));
+        &numbering, loom_type_table_get(&module_->types, types[i]), &writer_id,
+        nullptr));
     EXPECT_EQ(writer_id, i);
   }
   EXPECT_EQ(numbering.types.count, types.size());
   EXPECT_EQ(arena_.used_allocation_size, completed_storage);
+}
+
+TEST_F(CatalogTest, NumberingRetainsDistinctScopedTypeIdentities) {
+  const loom_type_t dimension_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  loom_type_id_t types[2];
+  for (size_t i = 0; i < 2; ++i) {
+    loom_value_id_t dimension = LOOM_VALUE_ID_INVALID;
+    IREE_ASSERT_OK(
+        loom_module_define_value(module_, dimension_type, &dimension));
+    types[i] = Pair(InternType(loom_type_shaped_1d(
+        LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+        loom_dim_pack_dynamic(dimension), /*encoding_id=*/0)));
+  }
+  loom_bytecode_numbering_t numbering;
+  IREE_ASSERT_OK(
+      loom_bytecode_numbering_initialize(&numbering, module_, &arena_));
+  uint32_t writer_ids[2] = {};
+  uint32_t storage_nodes[2] = {};
+  for (size_t i = 0; i < 2; ++i) {
+    IREE_ASSERT_OK(loom_bytecode_numbering_intern_type(
+        &numbering, loom_type_table_get(&module_->types, types[i]),
+        &writer_ids[i], &storage_nodes[i]));
+    EXPECT_EQ(&numbering.types.index.nodes[storage_nodes[i]],
+              loom_bytecode_type_index_lookup_node(
+                  &numbering.types.index,
+                  loom_type_table_get(&module_->types, types[i])));
+  }
+  EXPECT_EQ(writer_ids[0], writer_ids[1]);
+  EXPECT_NE(storage_nodes[0], storage_nodes[1]);
+  // Bound types have no global wire entry; only their scalar leaf is global.
+  EXPECT_EQ(numbering.types.count, 1u);
+  for (size_t i = 0; i < 2; ++i) {
+    EXPECT_EQ(numbering.types.index.nodes[storage_nodes[i]].module_index,
+              types[i]);
+  }
 }
 
 TEST_F(CatalogTest, TypeAndAttributeMetadataKeepFirstUseOrder) {
@@ -319,8 +354,8 @@ TEST_F(CatalogTest, TypeAndAttributeMetadataKeepFirstUseOrder) {
   IREE_ASSERT_OK(
       loom_bytecode_numbering_initialize(&numbering, module_, &arena_));
   uint32_t writer_id = 0;
-  IREE_ASSERT_OK(
-      loom_bytecode_numbering_intern_type(&numbering, type, &writer_id));
+  IREE_ASSERT_OK(loom_bytecode_numbering_intern_type(&numbering, type,
+                                                     &writer_id, nullptr));
   const loom_type_id_t expected_types[] = {element, child, type_id};
   ASSERT_EQ(numbering.types.count, IREE_ARRAYSIZE(expected_types));
   for (size_t i = 0; i < IREE_ARRAYSIZE(expected_types); ++i) {
@@ -380,8 +415,8 @@ TEST_F(CatalogTest, ParameterizedTypesResumeAfterNestedTypes) {
   IREE_ASSERT_OK(
       loom_bytecode_numbering_initialize(&numbering, module_, &arena_));
   uint32_t writer_id = 0;
-  IREE_ASSERT_OK(
-      loom_bytecode_numbering_intern_type(&numbering, type, &writer_id));
+  IREE_ASSERT_OK(loom_bytecode_numbering_intern_type(&numbering, type,
+                                                     &writer_id, nullptr));
   ASSERT_EQ(numbering.types.count, types.size());
   for (size_t i = 0; i < types.size(); ++i) {
     EXPECT_EQ(numbering.types.module_indices_by_writer_id[i], types[i]);

@@ -148,12 +148,12 @@ class TileLangConversionContext(SourceImportSession):
         view_type = self.type_converter.view_type(buffer)
         if view_type.encoding is not None:
             return view_type
-        self.storage_encoding_for_buffer(buffer)
+        encoding = self.storage_encoding_for_buffer(buffer)
         return ShapedType(
             view_type.type_kind,
             view_type.element_type,
             view_type.dims,
-            encoding=DynamicEncoding(),
+            encoding=DynamicEncoding(encoding.id),
         )
 
     def storage_encoding_for_buffer(self, buffer: object | None) -> ValueRef:
@@ -217,18 +217,6 @@ class TileLangConversionContext(SourceImportSession):
             if preference is not None:
                 return preference
         return None
-
-    def bind_buffer_view_layout(
-        self,
-        view: ValueRef,
-        buffer: object | None = None,
-    ) -> None:
-        view_value = self.builder.module.values[view.id]
-        view_type = view_value.type
-        if isinstance(view_type, ShapedType) and isinstance(
-            view_type.encoding, DynamicEncoding
-        ):
-            view_value.encoding_binding = self.storage_encoding_for_buffer(buffer).id
 
     def float_operation_kwargs(self) -> dict[str, str]:
         if self.float_fastmath_flags is None:

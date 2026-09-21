@@ -42,8 +42,9 @@ typedef struct loom_bytecode_reader_module_t {
 // and a retained public index. Its allocation arena alone determines lifetime.
 typedef loom_bytecode_section_metadata_t loom_bytecode_reader_section_t;
 
-// Immutable facts established while validating one module. All pointers
-// borrow either input bytecode or storage from the reader arenas.
+// Facts established while validating one module. All pointers borrow either
+// input bytecode or storage from the reader arenas. A full read consumes the
+// invocation-owned type plan during materialization.
 typedef struct loom_bytecode_reader_module_view_t {
   // Validated file-directory entry for this module.
   const loom_bytecode_reader_module_t* directory_entry;
@@ -96,17 +97,8 @@ typedef struct loom_bytecode_reader_module_view_t {
     iree_host_size_t count;
   } sources;
 
-  // Validated type count and optional immutable materialization plan.
-  struct {
-    // Dense direct entries and diagnostic offsets for full materialization,
-    // or NULL when only validating metadata or retaining an index.
-    loom_bytecode_type_plan_entry_t* entries;
-    // Number of types.
-    iree_host_size_t count;
-    // Sparse non-direct facts in wire order, or NULL when no plan is requested
-    // or all types are direct.
-    loom_bytecode_type_fact_t* facts;
-  } types;
+  // Validated type count and optional invocation-owned materialization plan.
+  loom_bytecode_type_plan_t types;
 
   // Validated registered operation table.
   struct {

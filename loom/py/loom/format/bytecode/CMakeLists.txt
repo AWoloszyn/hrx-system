@@ -58,16 +58,21 @@ iree_py_test(
     "c_interop_test.py"
   ARGS
     "$<TARGET_FILE:loom::tools::loom-format::loom-format>"
+    "$<TARGET_FILE:loom::tools::loom-link::loom-link>"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/format/text/test/predicate_attributes.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/format/bytecode/scoped_type_interop.loom-test"
   DEPS
     loom::py::loom::format::bytecode::bytecode
     loom::py::loom::dialect::cfg::cfg
     loom::py::loom::dialect::func::func
+    loom::py::loom::dialect::index::index
     loom::py::loom::dialect::low::low
     loom::py::loom::dialect::scf::scf
     loom::py::loom::dialect::test::test
     loom::py::loom::format::text::text
     loom::py::loom::target::test::descriptors
     loom::tools::loom-format::loom-format
+    loom::tools::loom-link::loom-link
   PACKAGE_DIRS
     "${PROJECT_SOURCE_DIR}/loom/py"
     "${PROJECT_BINARY_DIR}/loom/py"

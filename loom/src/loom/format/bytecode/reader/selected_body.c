@@ -33,6 +33,7 @@ static void loom_bytecode_body_policy_initialize_value_scope(
       .payload_offset = payload_offset,
       .value_map = value_map,
       .value_capacity = value_count,
+      .bindings = {.arena = &materializer->tables->retained_arena},
   };
 }
 
@@ -83,21 +84,13 @@ static iree_status_t loom_bytecode_body_policy_project_string(
       value_scope->tables, (uint32_t)string_id, out_string_id);
 }
 
-static iree_status_t loom_bytecode_body_policy_materialize_type(
-    loom_bytecode_body_policy_value_scope_t* value_scope, uint64_t type_id,
-    uint64_t offset, loom_type_id_t* out_type_id, loom_type_t* out_type) {
-  const loom_bytecode_module_metadata_t* metadata =
-      value_scope->tables->metadata;
-  if (type_id >= metadata->types.count) {
-    return loom_bytecode_reader_emit_table_ref(value_scope->decoder,
-                                               IREE_SV("TYPES"), type_id,
-                                               metadata->types.count, offset);
-  }
-  IREE_RETURN_IF_ERROR(loom_bytecode_selected_table_materialize_type(
-      value_scope->tables, (loom_type_id_t)type_id, out_type_id));
-  *out_type =
-      loom_type_table_get(&value_scope->output_module->types, *out_type_id);
-  return iree_ok_status();
+static iree_status_t loom_bytecode_body_policy_materialize_type_bindings(
+    loom_bytecode_body_policy_value_scope_t* value_scope,
+    loom_bytecode_reader_cursor_t* cursor,
+    const loom_bytecode_attribute_ssa_materialization_scope_t* scope,
+    uint64_t type_id, loom_type_id_t* out_type_id) {
+  return loom_bytecode_selected_type_materialize_bindings(
+      value_scope->tables, cursor, scope, type_id, out_type_id);
 }
 
 static iree_status_t loom_bytecode_body_policy_materialize_location(
@@ -127,15 +120,8 @@ static iree_status_t loom_bytecode_body_policy_resolve_op(
   }
   const iree_host_size_t op_ordinal =
       (iree_host_size_t)op_table_index_plus1 - 1;
-  *out_vtable = loom_context_lookup_op_by_name(
-      value_scope->tables->context, metadata->ops.entries[op_ordinal].name,
-      out_kind);
-  if (*out_vtable == NULL) {
-    return loom_bytecode_reader_emit_invalid_field(
-        value_scope->decoder, IREE_SV("OPS"), IREE_SV("op"), op_ordinal,
-        IREE_SV("name_id"), offset,
-        IREE_SV("op_name_is_not_registered_in_the_context"));
-  }
+  *out_vtable = metadata->ops.entries[op_ordinal].vtable;
+  *out_kind = metadata->ops.entries[op_ordinal].kind;
   return iree_ok_status();
 }
 

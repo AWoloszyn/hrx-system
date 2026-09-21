@@ -14,12 +14,15 @@ loom_cc_library(
     attribute
   HDRS
     "attribute.h"
+  TEXTUAL_HDRS
+    "binding_impl.inl"
   SRCS
     "attribute.c"
   DEPS
     ::encoder
     ::numbering
     iree::base
+    loom::ir
   PUBLIC
 )
 

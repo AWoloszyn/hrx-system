@@ -287,12 +287,9 @@ class WriterTest : public ::testing::Test {
 
   void SkipValueDef(const std::vector<uint8_t>& bytes, size_t* offset) {
     ReadUVarint(bytes, offset);  // name_id
-    ReadUVarint(bytes, offset);  // type_id
-    uint64_t dim_binding_count = ReadUVarint(bytes, offset);
-    for (uint64_t i = 0; i < dim_binding_count; ++i) {
-      ReadUVarint(bytes, offset);
-    }
-    ReadUVarint(bytes, offset);  // encoding_binding
+    ReadUVarint(bytes, offset);  // Tagged type reference.
+    const uint64_t length = ReadUVarint(bytes, offset);
+    *offset += length;
   }
 
   struct SectionEntry {
@@ -864,10 +861,9 @@ TEST_F(WriterTest, FunctionBodySummaryAndOpTableRefsUseNewWireShape) {
   for (uint64_t i = 0; i < block_arg_count; ++i) {
     uint64_t unused = 0;
     IREE_ASSERT_OK(loom_uvarint_decode(&cursor, &unused));  // name_id
-    IREE_ASSERT_OK(loom_uvarint_decode(&cursor, &unused));  // type_index
-    IREE_ASSERT_OK(loom_uvarint_decode(&cursor, &unused));  // dim_count
-    ASSERT_EQ(unused, 0u);
-    IREE_ASSERT_OK(loom_uvarint_decode(&cursor, &unused));  // encoding_binding
+    IREE_ASSERT_OK(loom_uvarint_decode(&cursor, &unused));  // Type reference.
+    ASSERT_EQ(unused & 1u, 0u);                             // Static type.
+    IREE_ASSERT_OK(loom_uvarint_decode(&cursor, &unused));  // Record length.
     ASSERT_EQ(unused, 0u);
   }
   uint64_t block_op_count = 0;

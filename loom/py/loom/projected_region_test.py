@@ -112,9 +112,9 @@ def test_projected_signature_bindings_follow_region_identities(
         layout = builder.value("layout", ENCODING_TYPE)
         input = builder.value(
             "input",
-            ShapedType(TypeKind.TILE, F32, (DynamicDim(),), DynamicEncoding()),
-            dim_bindings={0: extent.id},
-            encoding_binding=layout.id,
+            ShapedType(
+                TypeKind.TILE, F32, (DynamicDim(extent.id),), DynamicEncoding(layout.id)
+            ),
         )
         builder.build(
             "test.split_func",
@@ -133,8 +133,8 @@ def test_projected_signature_bindings_follow_region_identities(
         assert set(config.blocks[0].arg_ids).isdisjoint(body.blocks[0].arg_ids)
         for region in (config, body):
             extent, layout, value = region.blocks[0].arg_ids
-            assert candidate.values[value].dim_bindings == {0: extent}
-            assert candidate.values[value].encoding_binding == layout
+            assert candidate.values[value].type.dims == (DynamicDim(extent),)
+            assert candidate.values[value].type.encoding == DynamicEncoding(layout)
 
     text = printer.print_module(module)
     for candidate in (

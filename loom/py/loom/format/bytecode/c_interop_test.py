@@ -11,11 +11,13 @@ from __future__ import annotations
 import subprocess
 import sys
 import tempfile
+from dataclasses import replace
 from pathlib import Path
 
 from loom.builtin_types import ALL_BUILTIN_TYPES
 from loom.dialect.cfg import ALL_CFG_OPS
 from loom.dialect.func import ALL_FUNC_OPS
+from loom.dialect.index import ALL_INDEX_OPS
 from loom.dialect.low import ALL_LOW_OPS
 from loom.dialect.scf import ALL_SCF_OPS
 from loom.dialect.test import (
@@ -35,11 +37,14 @@ from loom.ir import (
     BF16,
     Block,
     CanonicalAttrDict,
+    DynamicDim,
+    DynamicEncoding,
     EnumArrayAttr,
     Module,
     ParameterizedAttr,
     ParameterizedAttrArray,
     ParameterizedType,
+    PredicateListAttr,
     RegisterType,
     SignedEnumSetAttr,
     SymbolName,
@@ -379,8 +384,8 @@ def _assert_cfg_identities(module: Module) -> None:
     assert forward.ops[0].operands[0] == forward.arg_ids[0]
     assert exit.ops[0].operands[0] == forward.arg_ids[0]
     argument = module.values[forward.arg_ids[0]]
-    assert argument.dim_bindings == {0: entry.arg_ids[0]}
-    assert argument.encoding_binding == entry.arg_ids[1]
+    assert argument.type.dims[0] == DynamicDim(entry.arg_ids[0])
+    assert argument.type.encoding == DynamicEncoding(entry.arg_ids[1])
 
 
 def _test_cfg_interop(loom_format: Path) -> None:
@@ -460,20 +465,21 @@ def _test_region_argument_interop(loom_format: Path) -> None:
                 nested = op.regions[0].blocks[0]
                 argument_id = nested.arg_ids[-1]
                 argument = candidate.values[argument_id]
-                assert argument.dim_bindings == {0: entry.arg_ids[0]}
-                assert argument.encoding_binding == entry.arg_ids[1]
+                assert argument.type.dims[0] == DynamicDim(entry.arg_ids[0])
+                assert argument.type.encoding == DynamicEncoding(entry.arg_ids[1])
                 assert nested.ops[0].operands[0] == argument_id
             config, body = candidate.body.ops[1].regions
             assert set(config.blocks[0].arg_ids).isdisjoint(body.blocks[0].arg_ids)
             for region in (config, body):
                 extent, _alternate, layout, input = region.blocks[0].arg_ids
-                assert candidate.values[input].dim_bindings == {0: extent}
-                assert candidate.values[input].encoding_binding == layout
+                assert candidate.values[input].type.dims[0] == DynamicDim(extent)
+                assert candidate.values[input].type.encoding == DynamicEncoding(layout)
                 assert region.blocks[0].ops[0].operands[0] == input
 
     # Equal structural shapes must not hide a reference to the wrong peer.
     config_args = module.body.ops[1].regions[0].blocks[0].arg_ids
-    module.values[config_args[3]].dim_bindings[0] = config_args[1]
+    argument = module.values[config_args[3]]
+    argument.type = replace(argument.type, dims=(DynamicDim(config_args[1]),))
     with tempfile.TemporaryDirectory(prefix="loom-projected-argument-") as temp_dir:
         source_path = Path(temp_dir) / "invalid.loombc"
         source_path.write_bytes(write_module(module))
@@ -515,9 +521,9 @@ def _test_tied_signature_interop(loom_format: Path) -> None:
             for op in (shape, window, identity):
                 assert op.tied_results[0].operand_index == 0
                 assert op.tied_results[0].result_index == 0
-            assert candidate.values[shape.results[1]].dim_bindings == {
-                0: shape.results[0]
-            }
+            assert candidate.values[shape.results[1]].type.dims[0] == DynamicDim(
+                shape.results[0]
+            )
             for op in (shape, identity):
                 assert op.attributes["predicates"][0].args[0].value == op.results[0]
             assert (
@@ -526,9 +532,145 @@ def _test_tied_signature_interop(loom_format: Path) -> None:
             )
 
 
+def _fixture_sources(fixture: Path) -> list[str]:
+    return [
+        "\n".join(
+            line
+            for line in case.partition("// ----")[0].splitlines()
+            if not line.startswith("// RUN:")
+        ).lstrip()
+        for case in fixture.read_text().split("// ====")
+    ]
+
+
+def _test_scoped_type_interop(
+    loom_format: Path, loom_link: Path, fixture: Path
+) -> None:
+    parser = Parser()
+    printer = Printer()
+    for operations in (ALL_TEST_OPS, ALL_LOW_OPS):
+        parser.register_ops(operations)
+        printer.register_ops(operations)
+    parser.register_types((*ALL_BUILTIN_TYPES, *ALL_TEST_TYPES))
+    printer.register_types((*ALL_BUILTIN_TYPES, *ALL_TEST_TYPES))
+    parser.register_parameterized_attrs(ALL_TEST_PARAMETERIZED_ATTRS)
+    [source] = _fixture_sources(fixture)
+    module = parser.parse(source)
+    canonical = printer.print_module(module)
+    for candidate in (
+        read_module(
+            write_module(module),
+            type_defs=ALL_TEST_TYPES,
+            parameterized_attrs=ALL_TEST_PARAMETERIZED_ATTRS,
+        ),
+        _roundtrip_through_c(loom_format, module),
+        _roundtrip_through_c(loom_format, source),
+    ):
+        assert printer.print_module(candidate) == canonical
+        nested = candidate.body.ops[0]
+        width, height, value = nested.regions[0].blocks[0].arg_ids
+        value_type = candidate.values[value].type
+        child = value_type.get("element_type").get("element_type")
+        assert child.dims == (DynamicDim(width),)
+        assert value_type.get("metadata")["shape"].dims == (DynamicDim(height),)
+        register = candidate.body.ops[1]
+        width, value = register.operands
+        assert candidate.values[value].type.value_type.dims == (DynamicDim(width),)
+        entry = candidate.body.ops[2].regions[0].blocks[0]
+        attribute_type = entry.ops[0].attributes["dict"]["shape"].get("element_type")
+        assert attribute_type.get("element_type").dims == (
+            DynamicDim(entry.arg_ids[0]),
+        )
+
+    with tempfile.TemporaryDirectory(
+        prefix="loom-scoped-selected-interop-"
+    ) as directory:
+        source_path = Path(directory) / "python.loombc"
+        selected_path = Path(directory) / "selected.loombc"
+        source_path.write_bytes(write_module(module))
+        result = subprocess.run(
+            [
+                loom_link,
+                source_path,
+                "--root=nested",
+                "--root=type_attribute",
+                "--to=bc",
+                f"--output={selected_path}",
+            ],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert result.returncode == 0, result.stderr
+        selected = read_module(
+            selected_path.read_bytes(),
+            type_defs=ALL_TEST_TYPES,
+            parameterized_attrs=ALL_TEST_PARAMETERIZED_ATTRS,
+        )
+    assert {symbol.name for symbol in selected.symbols} == {"nested", "type_attribute"}
+    selected_text = printer.print_module(selected)
+    assert "metadata = {shape = vector<[%height]xf32>}" in selected_text
+    assert "element_type = test.array<vector<[%width]xf32>>" in selected_text
+    assert printer.print_module(parser.parse(selected_text)) == selected_text
+
+
+def _test_predicate_attribute_interop(
+    loom_format: Path, loom_link: Path, fixture: Path
+) -> None:
+    parser = Parser()
+    printer = Printer()
+    for operations in (ALL_TEST_OPS, ALL_FUNC_OPS, ALL_INDEX_OPS):
+        parser.register_ops(operations)
+        printer.register_ops(operations)
+    parser.register_types((*ALL_BUILTIN_TYPES, *ALL_TEST_TYPES))
+    printer.register_types((*ALL_BUILTIN_TYPES, *ALL_TEST_TYPES))
+    for source in _fixture_sources(fixture):
+        module = parser.parse(source)
+        canonical = printer.print_module(module)
+        if module.symbols[0].name == "static_predicates":
+            argument = module.body.ops[0].operands[0]
+            metadata = module.values[argument].type.get("metadata")
+            assert metadata["empty"] == PredicateListAttr()
+            assert metadata["integers"] == []
+            assert metadata["empty"] != metadata["integers"]
+        for candidate in (
+            read_module(write_module(module), type_defs=ALL_TEST_TYPES),
+            _roundtrip_through_c(loom_format, module),
+            _roundtrip_through_c(loom_format, source),
+        ):
+            assert printer.print_module(candidate) == canonical
+            assert printer.print_module(parser.parse(canonical)) == canonical
+        with tempfile.TemporaryDirectory(prefix="loom-predicate-interop-") as directory:
+            source_path = Path(directory) / "source.loombc"
+            selected_path = Path(directory) / "selected.loombc"
+            source_path.write_bytes(write_module(module))
+            result = subprocess.run(
+                [
+                    loom_link,
+                    source_path,
+                    f"--root={module.symbols[0].name}",
+                    "--to=bc",
+                    f"--output={selected_path}",
+                ],
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            assert result.returncode == 0, result.stderr
+            selected = read_module(selected_path.read_bytes(), type_defs=ALL_TEST_TYPES)
+        selected_text = printer.print_module(selected)
+        assert selected_text == canonical, (canonical, selected_text)
+
+
 def main() -> None:
-    if len(sys.argv) != 2:
-        raise ValueError("expected the C loom-format binary path")
+    if len(sys.argv) != 5:
+        raise ValueError(
+            "expected C loom-format, loom-link, predicate and scoped-type fixture paths"
+        )
+    _test_predicate_attribute_interop(
+        Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[3])
+    )
+    _test_scoped_type_interop(Path(sys.argv[1]), Path(sys.argv[2]), Path(sys.argv[4]))
     source_module, register_type = _interop_module()
     loaded_module = _roundtrip_through_c(Path(sys.argv[1]), source_module)
     source_symbols = {symbol.name: symbol for symbol in source_module.symbols}

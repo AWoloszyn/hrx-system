@@ -237,6 +237,9 @@ TEST_F(BytecodeTypeTest, BuildsAndMaterializesTopologicalPlan) {
       MakeMaterializer(data, sizeof(data));
   IREE_ASSERT_OK(loom_bytecode_type_materialize(&materializer));
   ASSERT_EQ(module_->types.count, 3u);
+  for (loom_type_id_t i = 0; i < module_view_.types.count; ++i) {
+    EXPECT_EQ(module_view_.types.entries[i].completed_type, i);
+  }
   EXPECT_EQ(loom_type_kind(loom_type_table_get(&module_->types, 0)),
             LOOM_TYPE_NONE);
   EXPECT_EQ(loom_type_kind(loom_type_table_get(&module_->types, 1)),
@@ -559,6 +562,18 @@ TEST_F(BytecodeTypeTest, RejectsNoneShapedElementType) {
                         DecodeEntry(/*type_index=*/0, data, sizeof(data),
                                     /*absolute_offset=*/0, &entry, &fact));
   EXPECT_EQ(error_count_, 1u);
+}
+
+TEST_F(BytecodeTypeTest, GlobalTypesRequireScopeIndependentEncodings) {
+  const uint8_t data[] = {
+      /*type_count=*/1,
+      LOOM_BYTECODE_TYPE_TENSOR,
+      LOOM_SCALAR_TYPE_F32,
+      /*rank=*/0,
+      LOOM_BYTECODE_ENCODING_ATTACHMENT_SSA,
+      /*encoding_instance=*/0,
+  };
+  CheckValidationModes(data, sizeof(data), IREE_STATUS_DEFERRED);
 }
 
 TEST_F(BytecodeTypeTest, DecodesOneIndexedEntry) {

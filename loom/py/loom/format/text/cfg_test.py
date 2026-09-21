@@ -17,7 +17,7 @@ from loom.format.bytecode.reader import read_module
 from loom.format.bytecode.writer import write_module
 from loom.format.text.parser import ParseError, Parser
 from loom.format.text.printer import Printer
-from loom.ir import Block, Module
+from loom.ir import Block, DynamicDim, DynamicEncoding, Module
 from loom.verify import verify_module
 
 
@@ -56,8 +56,8 @@ def test_cfg_argument_keeps_dimension_and_encoding_bindings() -> None:
         first, second = candidate.body.ops[0].regions[0].blocks
         assert first.ops[0].successors[0] is second
         argument = candidate.values[second.arg_ids[0]]
-        assert argument.dim_bindings == {0: first.arg_ids[0]}
-        assert argument.encoding_binding == first.arg_ids[1]
+        assert argument.type.dims == (DynamicDim(first.arg_ids[0]),)
+        assert argument.type.encoding == DynamicEncoding(first.arg_ids[1])
         assert second.ops[0].operands[0] == second.arg_ids[0]
 
 

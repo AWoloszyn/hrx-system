@@ -85,7 +85,7 @@ extern "C" {
 
 #define LOOM_BYTECODE_MAGIC "LOOM"
 #define LOOM_BYTECODE_MAGIC_LENGTH 4
-#define LOOM_BYTECODE_FORMAT_VERSION 36
+#define LOOM_BYTECODE_FORMAT_VERSION 37
 
 #define LOOM_BYTECODE_SOURCE_TRIVIA_LEADING_BLANK_LINE (1u << 0)
 #define LOOM_BYTECODE_SOURCE_TRIVIA_COMMENT_COUNT_SHIFT 1
@@ -329,14 +329,12 @@ typedef enum loom_bytecode_section_kind_e {
 // TYPES section
 // ==========================================================================
 //
-// Interned structural type table. Types are serialized independent of
-// any runtime representation. The reader constructs runtime types from
-// the bytecode data. The writer decomposes runtime types for storage.
-//
-// Types are structural: a dynamic dim is just "dynamic" (a flag), not
-// a reference to a specific SSA value. The binding of dynamic dims to
-// SSA values happens in the IR section, on the operations that define
-// values with those types.
+// Interned SSA-independent type table. Entries are complete types, serialized
+// independently of their runtime representation. Every child type reference,
+// including TYPE attributes nested in parameters, names an earlier entry.
+// Unbound dynamic dimensions are representable but carry no SSA identity.
+// Types with any transitive SSA dependency live in the scoped records below,
+// not as unbound templates in this table.
 //
 //   [type_count: varint]
 //   For each type:
@@ -352,8 +350,6 @@ typedef enum loom_bytecode_section_kind_e {
 //       [encoding_attachment: byte]
 //             0 = none.
 //             1 = static (instance index follows).
-//             2 = SSA dynamic (binding on the Value, not the type;
-//                 instance index is 0).
 //             Must be 0 for VECTOR.
 //       [encoding_instance: varint] (0 = none, else 1-based instance index)
 //       For each dim (rank times):
@@ -391,6 +387,73 @@ typedef enum loom_bytecode_section_kind_e {
 // Dense descriptor pointers and declaration-order slot ordinals never
 // serialize. TYPE parameter payloads reference earlier TYPES entries so the
 // table remains topologically materializable.
+
+// ==========================================================================
+// Scoped type uses
+// ==========================================================================
+//
+// Function signatures, global declaration-local values, and root-region
+// payloads each own an independent SSA numbering and completed-type sequence.
+// Nested regions share their root payload's scope. A value definition or TYPE
+// attribute in an SSA scope carries a complete type use:
+//
+//   [reference: varint]
+//   [extension_length: varint]
+//   [extension: extension_length bytes]
+//
+// An SSA-independent use has reference = TYPES index << 1 and no extension.
+// An SSA-dependent use has reference = 1 and a bounded extension:
+//
+//   [new_type_count: varint]
+//   For each new type in child-before-parent order:
+//     [complete_type: ...]
+//   [root_ordinal_plus1: varint]
+//
+// Each new type appends to the scope's completed-type sequence. The root names
+// any completed entry, including one emitted by an earlier use. Reusing an
+// entry therefore emits zero new types. An extension is consumed exactly;
+// neither an unbound template nor a separate binding overlay is serialized.
+// Readers construct canonical final types as records complete, and may release
+// record scratch immediately. Completed identities remain valid for the scope.
+//
+// Child references within a complete record are tagged varints:
+//   even: TYPES index << 1.
+//   odd:  (prior completed ordinal << 1) | 1.
+// Every child is already complete. TYPE attributes nested within a complete
+// PARAMETERIZED record use this child reference directly, with no extension.
+// TYPE attributes outside any SSA scope use an untagged TYPES index instead.
+//
+// Complete records use the same one-byte kind tags as TYPES. Remaining fields
+// are varints unless stated otherwise:
+//
+//   TILE/TENSOR/VECTOR/VIEW:
+//     element_type, rank, encoding_attachment, encoding_reference.
+//     Attachment 0 requires reference 0; attachment 1 names a one-based static
+//     ENCODINGS instance; attachment 2 names a zero-based SSA value in scope.
+//     VECTOR requires attachment 0.
+//     For each dimension: is_dynamic, dimension_payload.
+//     A static payload is its size. A dynamic payload is 0 for an unbound
+//     dimension, otherwise the scope-local SSA value number plus 1.
+//   POOL:
+//     Dynamic block-size SSA value number plus 1, or 0 if unbound.
+//   FUNCTION:
+//     arg_count, result_count, then one child reference per argument/result.
+//     Each count is at most UINT16_MAX.
+//   DIALECT:
+//     name_id (STRINGS ordinal), param_count, then child references.
+//     The name ordinal has STRINGS width; param_count is at most UINT16_MAX.
+//   REGISTER:
+//     payload0, payload1, value_type child reference.
+//     The semantic value type is always present in a scoped register record.
+//   PARAMETERIZED:
+//     Family/parameter names and attribute payloads as in TYPES, except TYPE
+//     attributes use completed child references and predicates use this scope.
+//
+// A signature reserves all its workload, argument, and result identities before
+// decoding their types. A global reserves all declaration-local identities.
+// A root payload reserves each block-argument or operation-result group before
+// decoding that group's types. Type bindings may name later members of their
+// own definition group, but never an identity in another SSA scope.
 
 // ==========================================================================
 // ENCODINGS section
@@ -575,26 +638,14 @@ typedef enum loom_bytecode_section_kind_e {
 //     [result_count: varint]
 //     For each kernel workload arg:
 //       [name_id: varint]       0 = no SSA name; otherwise STRINGS id.
-//       [type_index: varint]    (structural type from TYPES section)
-//       [dim_binding_count: varint]
-//       For each dynamic dim:
-//         [value_ref: signed_varint]  Signature-local value number.
-//       [encoding_binding: varint]    0 = no binding, N > 0 = value number N-1.
+//       [type_use: ...]         Complete type in the signature SSA scope.
 //     For each arg:
 //       [name_id: varint]       0 = no SSA name; otherwise STRINGS id.
-//       [type_index: varint]    (structural type from TYPES section)
-//       [dim_binding_count: varint]
-//       For each dynamic dim:
-//         [value_ref: signed_varint]  Signature-local value number.
-//       [encoding_binding: varint]    0 = no binding, N > 0 = value number N-1.
+//       [type_use: ...]         Complete type in the signature SSA scope.
 //     For each result:
 //       [is_tied: byte]
 //       [name_id: varint]       0 = no SSA name; otherwise STRINGS id.
-//       [type_index: varint]    (structural type from TYPES section)
-//       [dim_binding_count: varint]
-//       For each dynamic dim:
-//         [value_ref: signed_varint]  Signature-local value number.
-//       [encoding_binding: varint]    0 = no binding, N > 0 = value number N-1.
+//       [type_use: ...]         Complete type in the signature SSA scope.
 //       (if tied: [tied_operand_index: varint])
 //     [tied_result_count: varint]
 //     [predicate_count: varint]
@@ -647,11 +698,7 @@ typedef enum loom_bytecode_section_kind_e {
 //                               and predicate attrs. Must be >= result_count.
 //     For each declaration-local value:
 //       [name_id: varint]       0 = no SSA name; otherwise STRINGS id.
-//       [type_index: varint]    (structural type from TYPES section)
-//       [dim_binding_count: varint]
-//       For each dynamic dim:
-//         [value_ref: signed_varint]  Global-symbol-local value number.
-//       [encoding_binding: varint]    0 = no binding, N > 0 = value number N-1.
+//       [type_use: ...]         Complete type in the global's local SSA scope.
 //     [attr_count: varint]      Present attributes except the identity symbol
 //                               attr, which is reconstructed from name_id.
 //     For each present non-identity attribute:
@@ -761,14 +808,7 @@ typedef enum loom_bytecode_section_kind_e {
 //     [arg_count: varint]
 //     For each block arg (these DEFINE SSA values):
 //       [name_id: varint]       0 = no SSA name; otherwise STRINGS id.
-//       [type_index: varint]    (structural type from TYPES section)
-//       [dim_binding_count: varint]  (number of dynamic dims in this type)
-//       For each dynamic dim (in shape order, skipping static dims):
-//         [value_ref: signed_varint]  Block-local value number
-//              referencing an index-typed SSA value.
-//       [encoding_binding: varint]    0 = no encoding binding.
-//              N > 0: the value is (N-1), a block-local value number
-//              referencing an encoding-typed SSA value.
+//       [type_use: ...]         Complete type in the root payload's SSA scope.
 //     [op_count: varint]
 //     For each op:
 //       [op_table_index_plus1: varint]
@@ -794,11 +834,7 @@ typedef enum loom_bytecode_section_kind_e {
 //       [result_count: varint]
 //       For each result (these DEFINE SSA values):
 //         [name_id: varint]     0 = no SSA name; otherwise STRINGS id.
-//         [type_index: varint]
-//         [dim_binding_count: varint]
-//         For each dynamic dim:
-//           [value_ref: signed_varint]  Same encoding as block args.
-//         [encoding_binding: varint]    Same encoding as block args.
+//         [type_use: ...]       Complete type in the root payload's SSA scope.
 //       [tied_result_count: varint]
 //       For each tied result:
 //         [result_index: varint]
@@ -831,6 +867,9 @@ typedef enum loom_bytecode_section_kind_e {
 // 15=PARAMETERIZED_ARRAY, 16=SIGNED_ENUM_SET, 17=SYMBOL_ARRAY,
 // 18=SYMBOL_SET. ABSENT is never
 // encoded as a payload value.
+// TYPE value_data follows the Scoped type uses contract above: a complete type
+// use in SSA scopes, a completed child reference inside a scoped record, or an
+// untagged TYPES index in module-level metadata.
 // ENUM value_data is the raw uint8 case ordinal;
 // bytecode readers preserve it without consulting enum case tables so open enum
 // attrs can survive tools whose op tables do not yet name the ordinal. Closed

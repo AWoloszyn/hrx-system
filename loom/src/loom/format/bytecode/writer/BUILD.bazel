@@ -16,10 +16,12 @@ loom_cc_library(
     name = "attribute",
     srcs = ["attribute.c"],
     hdrs = ["attribute.h"],
+    textual_hdrs = ["binding_impl.inl"],
     visibility = ["//loom/src/loom/format/bytecode:__pkg__"],
     deps = [
         ":encoder",
         ":numbering",
+        "//loom/src/loom/ir",
         "//runtime/src/iree/base",
     ],
 )

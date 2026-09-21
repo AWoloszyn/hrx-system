@@ -27,8 +27,10 @@ typedef struct loom_bytecode_symbol_materializer_t {
   loom_bytecode_reader_decoder_t decoder;
   // Finalized dialect and attribute registry context.
   loom_context_t* context;
-  // Resettable storage for symbol and attribute construction.
+  // Invocation storage for symbol scopes and completed binding identities.
   iree_arena_allocator_t* arena;
+  // Resettable payload storage, independent of symbol-scope lifetimes.
+  iree_arena_allocator_t* scratch_arena;
   // Immutable validated module facts consumed by symbol payloads.
   loom_bytecode_reader_module_view_t view;
   // Module receiving symbol operations and body IR.
@@ -42,7 +44,8 @@ typedef struct loom_bytecode_symbol_materializer_t {
 // Initializes full symbol materialization over an immutable validated view.
 void loom_bytecode_symbol_materializer_initialize(
     const loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
-    iree_arena_allocator_t* arena, iree_arena_block_pool_t* block_pool,
+    iree_arena_allocator_t* arena, iree_arena_allocator_t* scratch_arena,
+    iree_arena_block_pool_t* block_pool,
     const loom_bytecode_reader_module_view_t* module_view,
     loom_module_t* output_module,
     const loom_low_repr_environment_t* low_repr_environment,

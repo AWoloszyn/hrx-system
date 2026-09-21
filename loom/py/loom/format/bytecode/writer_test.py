@@ -103,6 +103,7 @@ from loom.ir import (
     ParameterizedAttrArray,
     PlaceholderType,
     PoolType,
+    PredicateListAttr,
     Region,
     RegisterType,
     ScalarType,
@@ -692,27 +693,20 @@ class TestTypesSection:
         self,
         ir_type: Type,
         *,
+        bindings: tuple[Type, ...] = (),
         type_defs: tuple[object, ...] | None = None,
         parameterized_attrs: tuple[object, ...] | None = None,
     ) -> None:
-        """Write a module with a value of this type, read back, verify.
-
-        For types with dynamic dims, creates index-typed SSA values
-        for each dynamic dim and populates dim_bindings accordingly.
-        Every dynamic dim must have a binding.
-        """
+        """Round-trip a complete type with its declared leading SSA arguments."""
         from loom.format.bytecode.reader import read_module as read
 
         module = Module(name="test")
-        # Create dim values for any dynamic dims in the type.
-        dim_bindings: dict[int, int] = {}
-        if hasattr(ir_type, "dims"):
-            for i, dim in enumerate(ir_type.dims):
-                if isinstance(dim, DynamicDim):
-                    dim_id = module.add_value(Value(name=f"d{i}", type=INDEX))
-                    dim_bindings[i] = dim_id
-        vid = module.add_value(Value(name="v", type=ir_type, dim_bindings=dim_bindings))
-        all_arg_ids = [*dim_bindings.values(), vid]
+        all_arg_ids = [
+            module.add_value(Value(name=f"binding{index}", type=binding))
+            for index, binding in enumerate(bindings)
+        ]
+        vid = module.add_value(Value(name="v", type=ir_type))
+        all_arg_ids.append(vid)
         yield_op = Operation(name="test.yield", operands=[vid])
         block = Block(arg_ids=all_arg_ids, ops=[yield_op])
         body = Region(blocks=[block])
@@ -774,16 +768,18 @@ class TestTypesSection:
 
     def test_tile_dynamic(self) -> None:
         self._roundtrip_type(
-            ShapedType(TypeKind.TILE, F32, (DynamicDim(), StaticDim(4)))
+            ShapedType(TypeKind.TILE, F32, (DynamicDim(0), StaticDim(4))),
+            bindings=(INDEX,),
         )
 
     def test_tile_all_dynamic(self) -> None:
         self._roundtrip_type(
-            ShapedType(TypeKind.TILE, F32, (DynamicDim(), DynamicDim()))
+            ShapedType(TypeKind.TILE, F32, (DynamicDim(0), DynamicDim(1))),
+            bindings=(INDEX, INDEX),
         )
 
     def test_dynamic_dim_missing_binding_raises(self) -> None:
-        """Dynamic dims without dim_bindings are invalid IR."""
+        """A dynamic dimension must identify its defining SSA value."""
         module = Module(name="test")
         vid = module.add_value(
             Value(name="v", type=ShapedType(TypeKind.TILE, F32, (DynamicDim(),)))
@@ -793,7 +789,7 @@ class TestTypesSection:
         body = Region(blocks=[block])
         func_op = Operation(name="func.def", attributes={"callee": "f"}, regions=[body])
         module.add_symbol(Symbol(name="f", kind=SymbolKind.FUNC_DEF, op=func_op))
-        with pytest.raises(ValueError, match=r"1 dynamic dim.*0 dim binding"):
+        with pytest.raises(ValueError, match="dynamic dimension has no SSA binding"):
             write_module(module)
 
     def test_placeholder_type_fails_loudly(self) -> None:
@@ -830,7 +826,9 @@ class TestTypesSection:
         self._roundtrip_type(ShapedType(TypeKind.VECTOR, F32, (StaticDim(0),)))
 
     def test_vector_dynamic(self) -> None:
-        self._roundtrip_type(ShapedType(TypeKind.VECTOR, I32, (DynamicDim(),)))
+        self._roundtrip_type(
+            ShapedType(TypeKind.VECTOR, I32, (DynamicDim(0),)), bindings=(INDEX,)
+        )
 
     def test_view_1d(self) -> None:
         self._roundtrip_type(ShapedType(TypeKind.VIEW, I8, (StaticDim(256),)))
@@ -847,8 +845,9 @@ class TestTypesSection:
                 TypeKind.VIEW,
                 F32,
                 (StaticDim(256),),
-                encoding=DynamicEncoding(),
-            )
+                encoding=DynamicEncoding(0),
+            ),
+            bindings=(ENCODING_LAYOUT_TYPE,),
         )
 
     def test_storage_workgroup(self) -> None:
@@ -926,7 +925,7 @@ class TestTypesSection:
         self._roundtrip_type(PoolType(StaticDim(4096)))
 
     def test_pool_dynamic(self) -> None:
-        self._roundtrip_type(PoolType(DynamicDim()))
+        self._roundtrip_type(PoolType(DynamicDim(0)), bindings=(INDEX,))
 
     def test_buffer_type(self) -> None:
         self._roundtrip_type(BUFFER_TYPE)
@@ -1345,16 +1344,22 @@ class TestOpPatterns:
 
     def test_result_dim_reference_roundtrip(self) -> None:
         """Result dim referencing another result survives bytecode round-trip."""
-        tensor_dyn = ShapedType(TypeKind.TENSOR, F32, (DynamicDim(),))
         module = Module(name="test")
+        width_id = module.add_value(Value(name="width", type=INDEX))
         input_id = module.add_value(
-            Value(name="input", type=tensor_dyn, dim_bindings={0: 0})
+            Value(
+                name="input",
+                type=ShapedType(TypeKind.TENSOR, F32, (DynamicDim(width_id),)),
+            )
         )
         # Create length first so we can reference it in output's dim.
         length_id = module.add_value(Value(name="length", type=INDEX))
         # Result 0: tensor<[%length]xf32> — dim references length directly.
         output_id = module.add_value(
-            Value(name="output", type=tensor_dyn, dim_bindings={0: length_id})
+            Value(
+                name="output",
+                type=ShapedType(TypeKind.TENSOR, F32, (DynamicDim(length_id),)),
+            )
         )
         deflate_op = Operation(
             name="test.deflate",
@@ -1362,7 +1367,7 @@ class TestOpPatterns:
             results=[output_id, length_id],
         )
         yield_op = Operation(name="test.yield", operands=[output_id])
-        block = Block(arg_ids=[input_id], ops=[deflate_op, yield_op])
+        block = Block(arg_ids=[width_id, input_id], ops=[deflate_op, yield_op])
         body = Region(blocks=[block])
         func_op = Operation(name="func.def", attributes={"callee": "f"}, regions=[body])
         module.add_symbol(Symbol(name="f", kind=SymbolKind.FUNC_DEF, op=func_op))
@@ -1376,7 +1381,7 @@ class TestOpPatterns:
         # Check the output value's dim binding references the loaded length.
         output_value = loaded.values[deflate.results[0]]
         length_value_id = deflate.results[1]
-        assert output_value.dim_bindings[0] == length_value_id
+        assert output_value.type.dims == (DynamicDim(length_value_id),)
 
     def test_nested_region(self) -> None:
         module = Module(name="test")
@@ -1764,7 +1769,7 @@ class TestCrossFormatRoundTrip:
         function = loaded.symbols[0].op
         assert function is not None
         assert loaded.symbols[0].flags == 0
-        assert function.attributes["predicates"] == []
+        assert function.attributes["predicates"] == PredicateListAttr()
         enum_op = function.regions[0].blocks[0].ops[0]
         assert len(enum_op.attributes["dict"]) == 0
         assert _roundtrip_text_through_bytecode(text) == text

@@ -6,6 +6,9 @@
 
 #include "loom/format/bytecode/reader/attribute.h"
 
+#include <cstdio>
+#include <vector>
+
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 
@@ -27,7 +30,7 @@ class BytecodeAttributeTest : public ::testing::Test {
     iree_arena_initialize(&block_pool_, &scratch_arena_);
     loom_context_initialize(iree_allocator_system(), &context_);
     IREE_ASSERT_OK(loom_context_finalize(&context_));
-    IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("attribute_test"),
+    IREE_ASSERT_OK(loom_module_allocate(&context_, iree_string_view_empty(),
                                         &block_pool_, nullptr,
                                         iree_allocator_system(), &module_));
     loom_bytecode_reader_decoder_initialize(
@@ -35,6 +38,11 @@ class BytecodeAttributeTest : public ::testing::Test {
         IREE_SV("attribute_test.loombc"), &error_count_, &decoder_);
     module_view_.strings.values = strings_;
     module_view_.strings.count = IREE_ARRAYSIZE(strings_);
+    for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(strings_); ++i) {
+      loom_string_id_t name = LOOM_STRING_ID_INVALID;
+      IREE_ASSERT_OK(loom_module_intern_string(module_, strings_[i], &name));
+      ASSERT_EQ(name, i);
+    }
   }
 
   void TearDown() override {
@@ -122,6 +130,32 @@ TEST_F(BytecodeAttributeTest, NamedPredicatesValidateAndMaterialize) {
   EXPECT_EQ(error_count_, 0u);
 }
 
+TEST_F(BytecodeAttributeTest, GlobalTypeParametersAcceptConstantPredicates) {
+  const uint8_t data[] = {
+      1, LOOM_PREDICATE_EQ, 2, LOOM_PRED_ARG_CONST, 8, LOOM_PRED_ARG_CONST, 8,
+  };
+  auto validator = MakeValidator();
+  auto cursor = MakeCursor(data, sizeof(data));
+  IREE_ASSERT_OK(loom_bytecode_attribute_validate_type_parameter(
+      &validator, &cursor, nullptr, LOOM_BYTECODE_ATTR_PREDICATE_LIST, 0));
+  EXPECT_EQ(cursor.cursor.position, sizeof(data));
+  EXPECT_EQ(error_count_, 0u);
+}
+
+TEST_F(BytecodeAttributeTest,
+       GlobalTypeParametersRequireScopeForValuePredicates) {
+  const uint8_t data[] = {
+      1, LOOM_PREDICATE_EQ, 2, LOOM_PRED_ARG_VALUE, 0, LOOM_PRED_ARG_CONST, 8,
+  };
+  auto validator = MakeValidator();
+  auto cursor = MakeCursor(data, sizeof(data));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DEFERRED,
+      loom_bytecode_attribute_validate_type_parameter(
+          &validator, &cursor, nullptr, LOOM_BYTECODE_ATTR_PREDICATE_LIST, 0));
+  EXPECT_EQ(error_count_, 1u);
+}
+
 TEST_F(BytecodeAttributeTest, SsaPredicatesResolveThroughConcreteValueMap) {
   const uint8_t data[] = {
       0x01, LOOM_PREDICATE_MUL,  0x02, LOOM_PRED_ARG_VALUE,
@@ -146,6 +180,173 @@ TEST_F(BytecodeAttributeTest, SsaPredicatesResolveThroughConcreteValueMap) {
 
   ASSERT_EQ(attr.count, 1u);
   EXPECT_EQ(attr.predicate_list[0].args[0], value_id);
+  EXPECT_EQ(error_count_, 0u);
+}
+
+TEST_F(BytecodeAttributeTest, CompleteBindingsSurviveAttributeScratchReset) {
+  loom_value_id_t width = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_define_value(
+      module_, loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), &width));
+  iree_arena_allocator_t scope_arena;
+  iree_arena_initialize(&block_pool_, &scope_arena);
+  loom_bytecode_type_bindings_t bindings = {};
+  bindings.arena = &scope_arena;
+  const loom_bytecode_attribute_ssa_materialization_scope_t scope = {
+      /*.symbol_name=*/IREE_SV("function"),
+      /*.values=*/&width,
+      /*.value_count=*/1,
+      /*.bindings=*/&bindings,
+  };
+  loom_bytecode_attribute_materializer_t materializer = MakeMaterializer();
+  // A complete pool record, then a later attribute reusing its scoped node.
+  const uint8_t first[] = {1, 4, 1, LOOM_BYTECODE_TYPE_POOL, 1, 1};
+  const uint8_t second[] = {1, 2, 0, 1};
+  loom_bytecode_reader_cursor_t first_cursor = MakeCursor(first, sizeof(first));
+  loom_attribute_t first_attr = loom_attr_absent();
+  IREE_ASSERT_OK(loom_bytecode_attribute_materialize_ssa(
+      &materializer, &first_cursor, nullptr, LOOM_BYTECODE_ATTR_TYPE,
+      &first_attr, 0, &scope));
+  EXPECT_EQ(scratch_arena_.used_allocation_size, 0u);
+  ASSERT_EQ(bindings.count, 1u);
+  EXPECT_EQ(bindings.entries[0].type, first_attr.type_id);
+
+  iree_arena_reset(&scratch_arena_);
+  iree_arena_block_pool_trim(&block_pool_);
+  loom_bytecode_reader_cursor_t second_cursor =
+      MakeCursor(second, sizeof(second));
+  loom_attribute_t second_attr = loom_attr_absent();
+  IREE_ASSERT_OK(loom_bytecode_attribute_materialize_ssa(
+      &materializer, &second_cursor, nullptr, LOOM_BYTECODE_ATTR_TYPE,
+      &second_attr, 0, &scope));
+  EXPECT_EQ(first_attr.type_id, second_attr.type_id);
+  EXPECT_EQ(bindings.count, 1u);
+  iree_arena_deinitialize(&scope_arena);
+  iree_arena_block_pool_trim(&block_pool_);
+  const loom_type_t type =
+      loom_type_table_get(&module_->types, second_attr.type_id);
+  EXPECT_EQ(loom_type_kind(type), LOOM_TYPE_POOL);
+  EXPECT_EQ(loom_dim_value_id(loom_type_dim(type, 0)), width);
+  EXPECT_EQ(error_count_, 0u);
+}
+
+TEST_F(BytecodeAttributeTest, ScopedRegisterRetainsCarrierAndBoundValueType) {
+  loom_value_id_t width = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_define_value(
+      module_, loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), &width));
+  iree_arena_allocator_t scope_arena;
+  iree_arena_initialize(&block_pool_, &scope_arena);
+  loom_bytecode_type_bindings_t bindings = {};
+  bindings.arena = &scope_arena;
+  const loom_bytecode_attribute_ssa_materialization_scope_t scope = {
+      /*.symbol_name=*/IREE_SV("function"),
+      /*.values=*/&width,
+      /*.value_count=*/1,
+      /*.bindings=*/&bindings,
+  };
+  // The vector is completed before its register parent; the parent references
+  // that final child rather than an unbound native type template.
+  const uint8_t data[] = {
+      1,
+      15,
+      2,
+      LOOM_BYTECODE_TYPE_VECTOR,
+      LOOM_SCALAR_TYPE_F32,
+      1,
+      0,
+      0,
+      1,
+      1,
+      LOOM_BYTECODE_TYPE_REGISTER,
+      1,
+      0x80,
+      0x80,
+      0x04,
+      1,
+      2,
+  };
+  loom_bytecode_attribute_materializer_t materializer = MakeMaterializer();
+  loom_bytecode_reader_cursor_t cursor = MakeCursor(data, sizeof(data));
+  loom_attribute_t attr = loom_attr_absent();
+  IREE_ASSERT_OK(loom_bytecode_attribute_materialize_ssa(
+      &materializer, &cursor, nullptr, LOOM_BYTECODE_ATTR_TYPE, &attr, 0,
+      &scope));
+  EXPECT_EQ(cursor.cursor.position, sizeof(data));
+  EXPECT_EQ(bindings.count, 2u);
+
+  iree_arena_deinitialize(&scope_arena);
+  iree_arena_reset(&scratch_arena_);
+  iree_arena_block_pool_trim(&block_pool_);
+  const loom_type_t type = loom_type_table_get(&module_->types, attr.type_id);
+  ASSERT_EQ(loom_type_kind(type), LOOM_TYPE_REGISTER);
+  EXPECT_EQ(loom_type_register_payload0(type), 1u);
+  EXPECT_EQ(loom_type_register_payload1(type), UINT64_C(1) << 16);
+  const loom_type_t* value_type = loom_type_register_value_type(type);
+  ASSERT_NE(value_type, nullptr);
+  EXPECT_EQ(loom_type_kind(*value_type), LOOM_TYPE_VECTOR);
+  EXPECT_EQ(loom_dim_value_id(loom_type_dim(*value_type, 0)), width);
+  EXPECT_EQ(error_count_, 0u);
+}
+
+TEST_F(BytecodeAttributeTest, ScopedDialectNameUsesFullStringOrdinal) {
+  // Full reads have an ordered, validated string table. Populate the actual
+  // output table so the first 17-bit name ID exercises that production
+  // contract.
+  std::vector<iree_string_view_t> strings(strings_,
+                                          strings_ + IREE_ARRAYSIZE(strings_));
+  for (uint32_t i = IREE_ARRAYSIZE(strings_); i <= UINT16_MAX; ++i) {
+    char buffer[32];
+    const int length = std::snprintf(buffer, sizeof(buffer), "name_%u", i);
+    loom_string_id_t name_id = LOOM_STRING_ID_INVALID;
+    IREE_ASSERT_OK(loom_module_intern_string(
+        module_, iree_make_string_view(buffer, length), &name_id));
+    ASSERT_EQ(name_id, i);
+    strings.push_back(loom_string_table_get(&module_->strings, name_id));
+  }
+  loom_string_id_t family_name = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_string(module_, IREE_SV("test.wide_name"),
+                                           &family_name));
+  ASSERT_EQ(family_name, UINT32_C(1) << 16);
+  strings.push_back(loom_string_table_get(&module_->strings, family_name));
+  module_view_.strings.values = strings.data();
+  module_view_.strings.count = strings.size();
+
+  loom_value_id_t width = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_define_value(
+      module_, loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), &width));
+  iree_arena_allocator_t scope_arena;
+  iree_arena_initialize(&block_pool_, &scope_arena);
+  loom_bytecode_type_bindings_t bindings = {};
+  bindings.arena = &scope_arena;
+  const loom_bytecode_attribute_ssa_materialization_scope_t scope = {
+      /*.symbol_name=*/IREE_SV("function"),
+      /*.values=*/&width,
+      /*.value_count=*/1,
+      /*.bindings=*/&bindings,
+  };
+  const uint8_t data[] = {
+      1,    10,
+      2,    LOOM_BYTECODE_TYPE_POOL,
+      1,    LOOM_BYTECODE_TYPE_DIALECT,
+      0x80, 0x80,
+      0x04, 1,
+      1,    2,
+  };
+  loom_bytecode_attribute_materializer_t materializer = MakeMaterializer();
+  loom_bytecode_reader_cursor_t cursor = MakeCursor(data, sizeof(data));
+  loom_attribute_t attr = loom_attr_absent();
+  IREE_ASSERT_OK(loom_bytecode_attribute_materialize_ssa(
+      &materializer, &cursor, nullptr, LOOM_BYTECODE_ATTR_TYPE, &attr, 0,
+      &scope));
+  iree_arena_deinitialize(&scope_arena);
+  iree_arena_reset(&scratch_arena_);
+  iree_arena_block_pool_trim(&block_pool_);
+  const loom_type_t type = loom_type_table_get(&module_->types, attr.type_id);
+  ASSERT_EQ(loom_type_kind(type), LOOM_TYPE_DIALECT);
+  EXPECT_EQ(loom_type_dialect_name_id(type), family_name);
+  ASSERT_EQ(loom_type_dialect_param_count(type), 1u);
+  EXPECT_EQ(
+      loom_dim_value_id(loom_type_dim(loom_type_dialect_params(type)[0], 0)),
+      width);
   EXPECT_EQ(error_count_, 0u);
 }
 

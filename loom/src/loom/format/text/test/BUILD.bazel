@@ -13,6 +13,11 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(
+    ["predicate_attributes.loom-test"],
+    visibility = ["//loom/py/loom/format/bytecode:__pkg__"],
+)
+
 loom_check_test_suite(
     name = "test",
     srcs = [

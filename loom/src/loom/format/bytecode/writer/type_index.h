@@ -14,14 +14,14 @@
 extern "C" {
 #endif
 
-// Exact storage node and its completed wire-equivalence class. The module owns
+// Exact canonical storage node and its dependencies. The module owns
 // all borrowed type payloads; the index owns the ordered dependency slice.
 typedef struct loom_bytecode_type_node_t {
   // Borrowed by-value type retaining the first-use physical payload.
   loom_type_t type;
   // Hash of exact storage, including payload addresses and SSA identities.
   uint32_t storage_hash;
-  // Earliest equivalent module index, retained on the wire representative.
+  // Canonical module index identifying this exact type.
   loom_type_id_t module_index;
   // Ordered immediate child-node references, including repeated occurrences.
   struct {
@@ -29,22 +29,34 @@ typedef struct loom_bytecode_type_node_t {
     iree_host_size_t begin;
     // Number of immediate dependencies.
     iree_host_size_t count;
+    // Explicit child slots at the start of the slice, excluding scalar closure.
+    iree_host_size_t explicit_count;
   } dependencies;
-  // Shallow structural hash using completed child equivalence classes.
-  uint32_t wire_hash;
-  // Wire-equivalent storage node, or UINT32_MAX during index construction.
-  uint32_t representative;
+  // Whether this node or a child contains an actual SSA binding.
+  bool has_bindings;
+  // Scope generation which owns the completed binding ordinal.
+  uint32_t binding_generation;
+  // One-based completed binding ordinal in that scope.
+  uint32_t binding;
 } loom_bytecode_type_node_t;
 
-// Invocation-owned projection from module type storage to wire equivalence.
-// Structural wire identity omits scoped SSA dimension/encoding bindings. Each
-// physically shared type is analyzed once; child equivalence is retained rather
-// than recursively recovered during numbering. The immutable module outlives
-// the index, and the supplied scratch arena owns all index storage.
+// Explicit postorder continuation retained from graph construction.
+typedef struct loom_bytecode_type_frame_t {
+  // Node being completed.
+  uint32_t node;
+  // Next immediate edge.
+  iree_host_size_t next_dependency;
+} loom_bytecode_type_frame_t;
+
+// Invocation-owned immediate dependency graph over canonical module types.
+// Each physically shared type is analyzed once. Static types use global wire
+// IDs; SSA-dependent types use scope-local records without shape folding.
+// The immutable module outlives the index, and the supplied scratch arena owns
+// all index storage.
 typedef struct loom_bytecode_type_index_t {
   // Immutable module owning all borrowed type and attribute payloads.
   const loom_module_t* module;
-  // Distinct by-value storage nodes and their retained wire representatives.
+  // Distinct by-value canonical storage nodes.
   loom_bytecode_type_node_t* nodes;
   // Number of populated storage nodes.
   iree_host_size_t count;
@@ -56,20 +68,26 @@ typedef struct loom_bytecode_type_index_t {
   iree_host_size_t slot_capacity;
   // Retained ordered immediate dependency node IDs, owned by the scratch arena.
   uint32_t* dependencies;
+  // Reusable explicit traversal stack.
+  loom_bytecode_type_frame_t* stack;
+  // Completed nodes in the current extension batch, allocated lazily.
+  uint32_t* pending;
+  // Monotonic generation assigned to each independent value scope.
+  uint32_t binding_generation;
 } loom_bytecode_type_index_t;
 
-// Builds the wire-equivalence projection without changing module or wire order.
+// Builds immediate dependency slices without changing module or wire order.
 // Fallibility is limited to scratch allocation and index-size representation.
 iree_status_t loom_bytecode_type_index_initialize(
     const loom_module_t* module, iree_arena_allocator_t* arena,
     loom_bytecode_type_index_t* out_index);
 
 // Returns the exact physical node, or NULL when the type has no retained
-// storage. Its representative owns the canonical module index used on wire.
+// storage. The node owns its canonical module index and immediate dependencies.
 const loom_bytecode_type_node_t* loom_bytecode_type_index_lookup_node(
     const loom_bytecode_type_index_t* index, loom_type_t type);
 
-// Returns the earliest module-table entry equivalent to a retained type, or
+// Returns the canonical module-table entry for a retained type, or
 // LOOM_TYPE_ID_INVALID when the type is not in the module's retained closure.
 // No structural traversal or allocation occurs during lookup.
 loom_type_id_t loom_bytecode_type_index_lookup(

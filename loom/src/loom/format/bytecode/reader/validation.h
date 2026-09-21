@@ -64,13 +64,16 @@ iree_status_t loom_bytecode_file_reader_project_index(
 // Construction facts requested by a module validation consumer.
 enum loom_bytecode_module_validation_flag_bits_e {
   LOOM_BYTECODE_MODULE_VALIDATION_NONE = 0,
-  // Retains the type plan needed by full module materialization.
-  LOOM_BYTECODE_MODULE_VALIDATION_RETAIN_TYPE_PLAN = 1u << 0,
+  // Retains a type construction plan and defers location entry validation to
+  // final construction. The caller publishes output only after it completes.
+  LOOM_BYTECODE_MODULE_VALIDATION_PREPARE_MATERIALIZATION = 1u << 0,
 };
 typedef uint32_t loom_bytecode_module_validation_flags_t;
 
 // Validates one module without producing retained index state. The default
-// retains validation facts only; full materialization requests a type plan.
+// retains validation facts only. PREPARE_MATERIALIZATION produces construction
+// input, not a complete validation result: the materializer validates deferred
+// location entries while constructing tentative output.
 iree_status_t loom_bytecode_module_validate(
     const loom_bytecode_file_reader_t* file_reader,
     const loom_bytecode_reader_module_t* module,

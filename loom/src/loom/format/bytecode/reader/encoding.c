@@ -293,6 +293,8 @@ iree_status_t loom_bytecode_encoding_table_materialize(
       loom_bytecode_encoding_attribute_materializer(materializer);
   for (uint64_t instance_index = 0; instance_index < instance_count;
        ++instance_index) {
+    const iree_arena_checkpoint_t checkpoint =
+        iree_arena_checkpoint_save(materializer->scratch_arena);
     const uint64_t family_offset =
         loom_bytecode_reader_cursor_absolute_position(&cursor);
     uint64_t family_index = 0;
@@ -342,7 +344,7 @@ iree_status_t loom_bytecode_encoding_table_materialize(
           materializer->decoder, &cursor, &value_kind));
       parameters[parameter_index].name_id = (loom_string_id_t)name_id;
       parameters[parameter_index].reserved = 0;
-      IREE_RETURN_IF_ERROR(loom_bytecode_attribute_materialize_named(
+      IREE_RETURN_IF_ERROR(loom_bytecode_attribute_decode_named(
           &attribute_materializer, &cursor, /*descriptor=*/NULL, value_kind,
           &parameters[parameter_index].value,
           materializer->module_view->types.count));
@@ -366,6 +368,7 @@ iree_status_t loom_bytecode_encoding_table_materialize(
           instance_index, IREE_SV("encoding"), family_offset,
           IREE_SV("encoding_table_must_be_deduplicated_in_canonical_order"));
     }
+    iree_arena_checkpoint_restore(&checkpoint);
   }
   return loom_bytecode_reader_expect_empty(materializer->decoder, &cursor,
                                            IREE_SV("ENCODINGS"));

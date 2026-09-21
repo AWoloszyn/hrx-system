@@ -21,6 +21,9 @@
 extern "C" {
 #endif
 
+// Maps a trusted native type kind to its independently versioned wire tag.
+uint8_t loom_bytecode_type_kind_byte(loom_type_kind_t kind);
+
 // String originating outside of the module string table.
 typedef struct loom_bytecode_external_string_t {
   // External string contents.
@@ -84,12 +87,11 @@ typedef struct loom_bytecode_numbering_t {
     } external;
   } strings;
 
-  // Structurally deduplicated type catalog and bidirectional ID projection.
+  // Global static type catalog and scope-local dependency discovery.
   struct {
     // Bytecode type IDs indexed by module type-table index.
     uint32_t* writer_ids_by_module_index;
-    // Retained projection from type storage to its wire-equivalent module
-    // entry.
+    // Canonical source identities and their immediate dependency slices.
     loom_bytecode_type_index_t index;
     // Module type-table indices indexed by bytecode type ID.
     iree_host_size_t* module_indices_by_writer_id;
@@ -106,6 +108,10 @@ typedef struct loom_bytecode_numbering_t {
     // Allocated frame capacity, reused by successive catalog roots.
     iree_host_size_t capacity;
   } traversal;
+
+  // Reusable length-prefixed type payload storage, owned by |arena| and reset
+  // between emissions. Parameter TYPE references never recursively emit it.
+  iree_string_builder_t type_record_buffer;
 
   // First-use-ordered operation catalog.
   struct {
@@ -148,10 +154,11 @@ iree_status_t loom_bytecode_numbering_intern_string_view(
     loom_bytecode_numbering_t* numbering, iree_string_view_t view,
     uint32_t* out_writer_id);
 
-// Interns a structural type and all of its dependencies.
+// Interns a structural type and all of its dependencies. When non-NULL,
+// |out_storage_node| receives the exact canonical node for scope-local records.
 iree_status_t loom_bytecode_numbering_intern_type(
     loom_bytecode_numbering_t* numbering, loom_type_t type,
-    uint32_t* out_writer_id);
+    uint32_t* out_writer_id, uint32_t* out_storage_node);
 
 // Interns the registered kind of |op| into the operation catalog.
 iree_status_t loom_bytecode_numbering_intern_op(

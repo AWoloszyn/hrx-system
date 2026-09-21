@@ -674,16 +674,15 @@ iree_status_t loom_bytecode_write_symbols_section(
           loom_func_like_cast(module, symbol->defining_op);
       if (loom_func_like_isa(func_like)) {
         loom_bytecode_value_numbering_t signature_numbering;
-        loom_bytecode_value_numbering_initialize(&signature_numbering, module,
-                                                 numbering->arena);
+        loom_bytecode_value_numbering_initialize(&signature_numbering,
+                                                 numbering);
         IREE_RETURN_IF_ERROR(loom_bytecode_write_func_metadata(
             builder, numbering, module, func_like, &signature_numbering,
             &ir_regions[module_symbol_id]));
       }
     } else if (has_global_metadata && symbol->defining_op) {
       loom_bytecode_value_numbering_t signature_numbering;
-      loom_bytecode_value_numbering_initialize(&signature_numbering, module,
-                                               numbering->arena);
+      loom_bytecode_value_numbering_initialize(&signature_numbering, numbering);
       IREE_RETURN_IF_ERROR(loom_bytecode_write_global_metadata(
           builder, numbering, module, symbol->defining_op,
           &signature_numbering));

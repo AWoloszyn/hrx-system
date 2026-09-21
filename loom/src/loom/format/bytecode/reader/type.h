@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// Canonical IR materialization from a validated type plan.
+// Shared type payload decoding and canonical IR materialization.
 
 #ifndef LOOM_FORMAT_BYTECODE_READER_TYPE_H_
 #define LOOM_FORMAT_BYTECODE_READER_TYPE_H_
@@ -40,6 +40,18 @@ typedef struct loom_bytecode_type_materializer_t {
   loom_module_t* output_module;
 } loom_bytecode_type_materializer_t;
 
+// Validates a wire kind and maps it to the independent native type kind.
+iree_status_t loom_bytecode_type_decode_kind(
+    loom_bytecode_reader_decoder_t* decoder, uint8_t kind_byte, uint64_t offset,
+    loom_type_kind_t* out_kind);
+
+// Reads and validates the two target register carrier words shared by static
+// and scoped type records. |type_index| identifies the record in diagnostics.
+iree_status_t loom_bytecode_type_read_register_carrier(
+    loom_bytecode_reader_decoder_t* decoder,
+    loom_bytecode_reader_cursor_t* cursor, uint64_t type_index,
+    uint64_t out_payload[2]);
+
 // Interns a structural type from validated parent metadata and canonical child
 // IDs. No temporary child payload is assembled. Selected readers project the
 // plan's name and dependency IDs into |module| before construction. The result
@@ -50,7 +62,8 @@ iree_status_t loom_bytecode_type_materialize_structural(
     const loom_type_id_t* dependency_ids, loom_module_t* module,
     loom_type_id_t* out_type_id);
 
-// Materializes every entry in an immutable validated type plan.
+// Consumes a validated plan in source order, replacing each entry with its
+// canonical output identity. Sparse structural child slots are consumed too.
 iree_status_t loom_bytecode_type_materialize(
     loom_bytecode_type_materializer_t* materializer);
 

@@ -52,13 +52,24 @@ iree_py_test(
 iree_py_test(
     name = "c_interop_test",
     srcs = ["c_interop_test.py"],
-    args = ["$(location //loom/src/loom/tools/loom-format:loom-format)"],
-    data = ["//loom/src/loom/tools/loom-format"],
+    args = [
+        "$(location //loom/src/loom/tools/loom-format:loom-format)",
+        "$(location //loom/src/loom/tools/loom-link:loom-link)",
+        "$(location //loom/src/loom/format/text/test:predicate_attributes.loom-test)",
+        "$(location //loom/src/loom/format/bytecode:scoped_type_interop.loom-test)",
+    ],
+    data = [
+        "//loom/src/loom/format/bytecode:scoped_type_interop.loom-test",
+        "//loom/src/loom/format/text/test:predicate_attributes.loom-test",
+        "//loom/src/loom/tools/loom-format",
+        "//loom/src/loom/tools/loom-link",
+    ],
     main = "c_interop_test.py",
     deps = [
         ":bytecode",
         "//loom/py/loom/dialect/cfg",
         "//loom/py/loom/dialect/func",
+        "//loom/py/loom/dialect/index",
         "//loom/py/loom/dialect/low",
         "//loom/py/loom/dialect/scf",
         "//loom/py/loom/dialect/test",

@@ -818,8 +818,8 @@ static iree_status_t loom_bytecode_reader_validate_module(
   IREE_RETURN_IF_ERROR(loom_bytecode_encoding_table_validate(
       &reader->decoder, reader->context, &reader->view, reader->arena,
       reader->view.sections.encodings));
-  if (iree_any_bit_set(flags,
-                       LOOM_BYTECODE_MODULE_VALIDATION_RETAIN_TYPE_PLAN)) {
+  if (iree_any_bit_set(
+          flags, LOOM_BYTECODE_MODULE_VALIDATION_PREPARE_MATERIALIZATION)) {
     IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_build(
         &reader->decoder, reader->context, &reader->view, reader->arena,
         reader->view.sections.types->bytes,
@@ -834,8 +834,14 @@ static iree_status_t loom_bytecode_reader_validate_module(
       &reader->decoder, reader->context, &reader->view, reader->arena,
       reader->view.sections.ops));
   if (reader->view.sections.locations) {
-    IREE_RETURN_IF_ERROR(loom_bytecode_location_table_validate(
-        &reader->decoder, &reader->view, reader->view.sections.locations));
+    if (iree_any_bit_set(
+            flags, LOOM_BYTECODE_MODULE_VALIDATION_PREPARE_MATERIALIZATION)) {
+      IREE_RETURN_IF_ERROR(loom_bytecode_location_table_read_count(
+          &reader->decoder, &reader->view, reader->view.sections.locations));
+    } else {
+      IREE_RETURN_IF_ERROR(loom_bytecode_location_table_validate(
+          &reader->decoder, &reader->view, reader->view.sections.locations));
+    }
   }
   if (reader->view.sections.source_trivia) {
     IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_file_header(

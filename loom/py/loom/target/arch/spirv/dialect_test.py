@@ -62,9 +62,7 @@ class SpirvDialectTest(unittest.TestCase):
     def test_cooperative_matrix_type_roundtrips_exact_payload(self) -> None:
         text = "spirv.cooperative_matrix<16x32xu8, subgroup, matrix_a>"
         type_registry = {type_def.name: type_def for type_def in ALL_SPIRV_TYPES}
-        parsed, dynamic_dims = parse_type_string(text, type_registry=type_registry)
-
-        assert dynamic_dims == {}
+        parsed = parse_type_string(text, type_registry=type_registry)
         assert isinstance(parsed, ParameterizedType)
         assert parsed.get("rows") == 16
         assert parsed.get("columns") == 32

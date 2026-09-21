@@ -67,6 +67,8 @@ typedef struct loom_bytecode_value_scope_t {
   const loom_bytecode_reader_module_view_t* module_view;
   // Module receiving decoded SSA values.
   loom_module_t* output_module;
+  // Full table state shared with complete scoped-type construction.
+  loom_bytecode_attribute_materializer_t* attributes;
   // Scratch storage for rebound type payloads.
   iree_arena_allocator_t* arena;
   // Symbol name used in malformed-input diagnostics.
@@ -91,6 +93,8 @@ typedef struct loom_bytecode_value_scope_t {
   uint64_t predefined_value_start;
   // Number of entries in |predefined_values|.
   uint16_t predefined_value_count;
+  // Completed scoped binding nodes shared with operation attributes.
+  loom_bytecode_type_bindings_t bindings;
 } loom_bytecode_value_scope_t;
 
 // Decodes and validates the allocation summary prefix of one exact root-region

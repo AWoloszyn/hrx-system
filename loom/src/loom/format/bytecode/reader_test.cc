@@ -114,10 +114,12 @@ class ReaderTest : public ::testing::Test {
   };
 
   struct ValueDefOffsets {
-    // Byte offset of the value definition's dynamic-dim binding count.
-    size_t dim_binding_count = 0;
-    // Byte offset of the value definition's SSA encoding binding.
-    size_t encoding_binding = 0;
+    // Byte offset of the tagged static or scope-local type reference.
+    size_t type_reference = 0;
+    // Byte offset of the complete scoped-record payload length.
+    size_t record_length = 0;
+    // Byte offset of the complete scoped-record payload.
+    size_t record_payload = 0;
   };
 
   struct BodyOpAttrOffsets {
@@ -1755,14 +1757,12 @@ class ReaderTest : public ::testing::Test {
                                       size_t* offset) {
     ValueDefOffsets value_def;
     ReadUVarint(bytes, offset);  // name_id
-    ReadUVarint(bytes, offset);  // type_id
-    value_def.dim_binding_count = *offset;
-    uint64_t dim_binding_count = ReadUVarint(bytes, offset);
-    for (uint64_t i = 0; i < dim_binding_count; ++i) {
-      ReadUVarint(bytes, offset);
-    }
-    value_def.encoding_binding = *offset;
-    ReadUVarint(bytes, offset);
+    value_def.type_reference = *offset;
+    ReadUVarint(bytes, offset);  // Tagged type reference.
+    value_def.record_length = *offset;
+    const uint64_t length = ReadUVarint(bytes, offset);
+    value_def.record_payload = *offset;
+    *offset += length;
     return value_def;
   }
 
@@ -1799,11 +1799,16 @@ class ReaderTest : public ::testing::Test {
         break;
       case 2:   // STRING.
       case 6:   // SYMBOL.
-      case 7:   // TYPE.
       case 10:  // ENCODING.
       case 12:  // SCOPED_ENUM.
         ReadUVarint(bytes, offset);
         break;
+      case 7: {                      // TYPE in a value scope.
+        ReadUVarint(bytes, offset);  // Tagged type reference.
+        const uint64_t length = ReadUVarint(bytes, offset);
+        *offset += length;
+        break;
+      }
       case 3:  // BOOL.
       case 4:  // ENUM.
         *offset += 1;
@@ -4899,6 +4904,69 @@ TEST_F(ReaderTest, CanonicalRoundTripPreservesLocations) {
   loom_module_free(module);
 }
 
+TEST_F(ReaderTest, FullReadOwnsUnreferencedSourceTablesInWireOrder) {
+  loom_module_t* module = CreateModule("source_tables");
+  const iree_string_view_t names[] = {
+      IREE_SV("first.loom"), IREE_SV("second.loom"), IREE_SV("unused.loom")};
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(names); ++i) {
+    loom_source_id_t source = LOOM_SOURCE_ID_INVALID;
+    IREE_ASSERT_OK(loom_module_register_source(module, names[i], &source));
+    ASSERT_EQ(source, i);
+  }
+  loom_location_id_t location = LOOM_LOCATION_UNKNOWN;
+  IREE_ASSERT_OK(loom_module_add_location(
+      module, loom_location_file_range(1, 1, 2, 3, 4), &location));
+  ASSERT_EQ(location, 1u);
+  IREE_ASSERT_OK(loom_module_add_location(
+      module, loom_location_file_range(0, 5, 6, 7, 8), &location));
+  ASSERT_EQ(location, 2u);
+  auto bytes = WriteModule(module);
+  loom_module_free(module);
+  loom_module_t* output = nullptr;
+  std::vector<std::string> errors;
+  const auto result = ReadModule(bytes, &output, &errors);
+  ASSERT_EQ(result.error_count, 0u);
+  ASSERT_NE(output, nullptr);
+  std::vector<uint8_t>().swap(bytes);
+  iree_arena_block_pool_trim(&block_pool_);
+  ASSERT_EQ(output->sources.count, IREE_ARRAYSIZE(names));
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(names); ++i) {
+    EXPECT_TRUE(iree_string_view_equal(output->sources.entries[i], names[i]));
+  }
+  ASSERT_EQ(output->locations.count, 3u);
+  EXPECT_EQ(
+      loom_location_table_const_entry(&output->locations, 1)->file.source_id,
+      1u);
+  EXPECT_EQ(
+      loom_location_table_const_entry(&output->locations, 2)->file.source_id,
+      0u);
+  loom_module_free(output);
+}
+
+TEST_F(ReaderTest, FullReadRejectsMalformedUnreferencedLocation) {
+  loom_module_t* module = CreateModule("deferred_location");
+  loom_source_id_t source = LOOM_SOURCE_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_register_source(module, IREE_SV("source.loom"), &source));
+  loom_location_id_t location = LOOM_LOCATION_UNKNOWN;
+  IREE_ASSERT_OK(loom_module_add_location(
+      module, loom_location_file_range(source, 1, 1, 1, 2), &location));
+  auto bytes = WriteModule(module);
+  loom_module_free(module);
+  size_t offset = SectionPayloadOffset(bytes, LOOM_BYTECODE_SECTION_LOCATIONS);
+  ASSERT_EQ(ReadUVarint(bytes, &offset), 2u);
+  offset += 2;  // The unknown location's kind and flags.
+  ASSERT_EQ(bytes[offset], LOOM_LOCATION_FILE);
+  bytes[offset + 1] = 0x80;
+  loom_module_t* output = nullptr;
+  std::vector<std::string> errors;
+  const auto result = ReadModule(bytes, &output, &errors);
+  EXPECT_EQ(output, nullptr);
+  EXPECT_EQ(result.error_count, 1u);
+  ASSERT_EQ(errors.size(), 1u);
+  EXPECT_EQ(errors[0], "ERR_BYTECODE_006");
+}
+
 TEST_F(ReaderTest, PreservesGlobalAndRecordDefinitionLocations) {
   for (loom_module_t* module :
        {CreateGlobalModule(), CreateTestRecordWithFutureEnumOrdinal()}) {
@@ -5045,26 +5113,30 @@ TEST_F(ReaderTest, RejectsBodySummaryCountExceedingBodyLength) {
   loom_module_free(module);
 }
 
-TEST_F(ReaderTest, RejectsMissingDynamicDimBinding) {
+TEST_F(ReaderTest, RejectsMissingDynamicTypeRecord) {
   loom_module_t* module = CreateDynamicDimFunctionModule();
   auto bytes = WriteModule(module);
   ValueDefOffsets vector_arg = RootBlockArgValueDefOffsets(bytes, 1);
-  ASSERT_EQ(bytes[vector_arg.dim_binding_count], 1u);
-  bytes[vector_arg.dim_binding_count] = 0;
+  ASSERT_EQ(bytes[vector_arg.type_reference], 1u);
+  ASSERT_GT(bytes[vector_arg.record_length], 0u);
+  ASSERT_LT(bytes[vector_arg.record_length], 0x80u);
+  bytes[vector_arg.record_length] = 0;
 
-  ExpectReadModuleError(bytes, "ERR_BYTECODE_016");
+  ExpectReadModuleError(bytes, "ERR_BYTECODE_006");
 
   loom_module_free(module);
 }
 
-TEST_F(ReaderTest, RejectsMissingSsaEncodingBinding) {
+TEST_F(ReaderTest, RejectsMissingSsaEncodingTypeRecord) {
   loom_module_t* module = CreateSsaEncodingFunctionModule();
   auto bytes = WriteModule(module);
   ValueDefOffsets view_arg = RootBlockArgValueDefOffsets(bytes, 1);
-  ASSERT_EQ(bytes[view_arg.encoding_binding], 1u);
-  bytes[view_arg.encoding_binding] = 0;
+  ASSERT_EQ(bytes[view_arg.type_reference], 1u);
+  ASSERT_GT(bytes[view_arg.record_length], 0u);
+  ASSERT_LT(bytes[view_arg.record_length], 0x80u);
+  bytes[view_arg.record_length] = 0;
 
-  ExpectReadModuleError(bytes, "ERR_BYTECODE_016");
+  ExpectReadModuleError(bytes, "ERR_BYTECODE_006");
 
   loom_module_free(module);
 }
@@ -5362,6 +5434,16 @@ TEST_F(ReaderTest, RejectsUnsupportedVersion) {
   loom_module_t* module = CreateModule("version");
   auto bytes = WriteModule(module);
   bytes[4] = LOOM_BYTECODE_FORMAT_VERSION + 1;
+
+  ExpectReadError(bytes, "ERR_BYTECODE_002");
+
+  loom_module_free(module);
+}
+
+TEST_F(ReaderTest, RejectsPreviousVersion) {
+  loom_module_t* module = CreateModule("version");
+  auto bytes = WriteModule(module);
+  bytes[4] = LOOM_BYTECODE_FORMAT_VERSION - 1;
 
   ExpectReadError(bytes, "ERR_BYTECODE_002");
 

@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// Immutable type-table facts established by bytecode validation.
+// Invocation-owned type-table facts established by bytecode validation.
 
 #ifndef LOOM_FORMAT_BYTECODE_READER_TYPE_PLAN_H_
 #define LOOM_FORMAT_BYTECODE_READER_TYPE_PLAN_H_
@@ -34,6 +34,9 @@ typedef struct loom_bytecode_type_plan_entry_t {
     loom_type_t direct_type;
     // Native layout for a structural fact; unused for parameterized facts.
     loom_bytecode_structural_type_plan_t structural;
+    // Canonical output identity after ordered full construction consumes the
+    // entry. Later entries and body references use this completion directly.
+    loom_type_id_t completed_type;
   };
   // Absolute bytecode offset of the entry kind.
   uint64_t bytecode_offset;
@@ -61,7 +64,8 @@ typedef struct loom_bytecode_structural_type_fact_t {
   loom_bytecode_type_fact_t base;
   // Native payload prefix, zero-filled beyond the kind's fixed header.
   uint64_t payload_prefix[2];
-  // Prior child type IDs in native payload order.
+  // Prior child type IDs in native payload order. Full materialization consumes
+  // these slots, replacing source ordinals with completed native IDs.
   loom_type_id_t type_ids[];
 } loom_bytecode_structural_type_fact_t;
 
@@ -80,6 +84,16 @@ typedef struct loom_bytecode_parameterized_type_fact_t {
   // Validated descriptor indices for present parameters in wire order.
   uint8_t parameter_indices[];
 } loom_bytecode_parameterized_type_fact_t;
+
+// Invocation-owned validated static type construction plan.
+typedef struct loom_bytecode_type_plan_t {
+  // Dense parent metadata, or NULL when the consumer retains only entry ranges.
+  loom_bytecode_type_plan_entry_t* entries;
+  // Number of validated source types.
+  iree_host_size_t count;
+  // Sparse non-direct facts in increasing source type order.
+  loom_bytecode_type_fact_t* facts;
+} loom_bytecode_type_plan_t;
 
 #ifdef __cplusplus
 }  // extern "C"

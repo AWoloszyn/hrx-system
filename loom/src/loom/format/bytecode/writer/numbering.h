@@ -40,6 +40,10 @@ typedef struct loom_bytecode_value_numbering_t {
   iree_host_size_t capacity;
   // Next body-local value number to assign.
   uint32_t next_number;
+  // Unique generation for completed type bindings in this wire scope.
+  uint32_t binding_generation;
+  // Number of completed bound types in this scope.
+  uint32_t binding_count;
 } loom_bytecode_value_numbering_t;
 
 // Declaration-local value closure used by a global symbol payload.
@@ -59,7 +63,7 @@ typedef struct loom_bytecode_global_value_list_t {
 // Initializes an empty body-local SSA namespace.
 void loom_bytecode_value_numbering_initialize(
     loom_bytecode_value_numbering_t* value_numbering,
-    const loom_module_t* module, iree_arena_allocator_t* arena);
+    loom_bytecode_numbering_t* numbering);
 
 // Reserves storage for at least |minimum_capacity| local values.
 iree_status_t loom_bytecode_value_numbering_ensure_capacity(

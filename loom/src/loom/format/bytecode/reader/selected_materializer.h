@@ -15,7 +15,7 @@
 extern "C" {
 #endif
 
-// Immutable inputs for one selected module materialization.
+// Inputs for one selected module materialization.
 typedef struct loom_bytecode_selected_module_materializer_t {
   // Bounded decoder sharing the public diagnostic result state.
   loom_bytecode_reader_decoder_t* decoder;

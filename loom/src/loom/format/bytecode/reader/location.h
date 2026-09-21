@@ -26,6 +26,13 @@ iree_status_t loom_bytecode_location_table_validate(
     loom_bytecode_reader_module_view_t* module_view,
     const loom_bytecode_reader_section_t* section);
 
+// Reads table bounds before full construction. Entry validation is deferred to
+// materialization, which must complete before the tentative output is exposed.
+iree_status_t loom_bytecode_location_table_read_count(
+    loom_bytecode_reader_decoder_t* decoder,
+    loom_bytecode_reader_module_view_t* module_view,
+    const loom_bytecode_reader_section_t* section);
+
 // Validates one complete LOCATIONS section and retains the exact byte range of
 // every entry.
 iree_status_t loom_bytecode_location_table_index(
@@ -40,13 +47,14 @@ iree_status_t loom_bytecode_location_table_index(
 typedef struct loom_bytecode_location_materializer_t {
   // Bounded decoder and structured diagnostic state.
   loom_bytecode_reader_decoder_t* decoder;
-  // Immutable validated module facts referenced by location entries.
-  const loom_bytecode_reader_module_view_t* module_view;
+  // Source-table facts and the location count established before construction.
+  loom_bytecode_reader_module_view_t* module_view;
   // Module receiving canonical location-table entries.
   loom_module_t* output_module;
 } loom_bytecode_location_materializer_t;
 
-// Materializes every entry in one validated LOCATIONS section.
+// Validates and constructs every entry once into tentative module-owned
+// storage.
 iree_status_t loom_bytecode_location_table_materialize(
     loom_bytecode_location_materializer_t* materializer,
     const loom_bytecode_reader_section_t* section);
