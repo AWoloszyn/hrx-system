@@ -39,10 +39,7 @@ file(WRITE "${_HRX_INSTALLED_TESTS_CTEST_FILE}"
   "set(_HRX_INSTALLED_TEST_BIN_ROOT \"\${_HRX_INSTALLED_TEST_ROOT}/bin\")\n"
   "get_filename_component(_HRX_INSTALLED_TEST_BIN_ROOT \"\${_HRX_INSTALLED_TEST_BIN_ROOT}\" ABSOLUTE)\n")
 
-set_property(GLOBAL PROPERTY HRX_INSTALLED_TEST_TARGETS "")
 set_property(GLOBAL PROPERTY HRX_INSTALLED_TEST_DEFERRED_TARGETS "")
-set_property(GLOBAL PROPERTY HRX_INSTALLED_TEST_DEFERRED_TARGET_PATHS "")
-set_property(GLOBAL PROPERTY HRX_INSTALLED_TEST_FILES "")
 set_property(GLOBAL PROPERTY HRX_INSTALLED_TEST_TMPDIRS "")
 set_property(GLOBAL PROPERTY HRX_INSTALLED_TEST_PYTHON_SOURCE_SETS "")
 
@@ -98,13 +95,18 @@ function(hrx_installed_tests_target_filename OUT_VAR TARGET_NAME)
     set(_PREFIX "")
     set(_SUFFIX "${CMAKE_EXECUTABLE_SUFFIX}")
   elseif(_TYPE STREQUAL "SHARED_LIBRARY" OR _TYPE STREQUAL "MODULE_LIBRARY")
+    if(_TYPE STREQUAL "MODULE_LIBRARY")
+      set(_LIBRARY_KIND SHARED_MODULE)
+    else()
+      set(_LIBRARY_KIND SHARED_LIBRARY)
+    endif()
     get_target_property(_PREFIX "${_TARGET}" PREFIX)
-    if(NOT _PREFIX)
-      set(_PREFIX "${CMAKE_SHARED_LIBRARY_PREFIX}")
+    if(_PREFIX STREQUAL "_PREFIX-NOTFOUND")
+      set(_PREFIX "${CMAKE_${_LIBRARY_KIND}_PREFIX}")
     endif()
     get_target_property(_SUFFIX "${_TARGET}" SUFFIX)
-    if(NOT _SUFFIX)
-      set(_SUFFIX "${CMAKE_SHARED_LIBRARY_SUFFIX}")
+    if(_SUFFIX STREQUAL "_SUFFIX-NOTFOUND")
+      set(_SUFFIX "${CMAKE_${_LIBRARY_KIND}_SUFFIX}")
     endif()
   else()
     message(FATAL_ERROR
@@ -130,12 +132,18 @@ function(hrx_installed_tests_install_target TARGET_NAME OUT_VAR)
   endif()
 
   if(NOT TARGET "${TARGET_NAME}")
-    string(MAKE_C_IDENTIFIER "${TARGET_NAME}" _SAFE_TARGET)
-    hrx_installed_tests_deferred_target_filename(_FILENAME "${TARGET_NAME}")
-    set(_INSTALLED_PATH "\${CMAKE_CURRENT_LIST_DIR}/../bin/${_SAFE_TARGET}/${_FILENAME}")
-    set_property(GLOBAL APPEND PROPERTY HRX_INSTALLED_TEST_DEFERRED_TARGETS "${TARGET_NAME}")
-    set_property(GLOBAL APPEND PROPERTY HRX_INSTALLED_TEST_DEFERRED_TARGET_PATHS
-      "${TARGET_NAME}|${_INSTALLED_PATH}")
+    # Every reference to this spelling predicts the same path. Retain it once
+    # so finalization visits each target instead of every reference pair.
+    get_property(_INSTALLED_PATH GLOBAL
+      PROPERTY "HRX_INSTALLED_TEST_DEFERRED_PATH_${TARGET_NAME}")
+    if(NOT _INSTALLED_PATH)
+      string(MAKE_C_IDENTIFIER "${TARGET_NAME}" _SAFE_TARGET)
+      hrx_installed_tests_deferred_target_filename(_FILENAME "${TARGET_NAME}")
+      set(_INSTALLED_PATH "\${CMAKE_CURRENT_LIST_DIR}/../bin/${_SAFE_TARGET}/${_FILENAME}")
+      set_property(GLOBAL APPEND PROPERTY HRX_INSTALLED_TEST_DEFERRED_TARGETS "${TARGET_NAME}")
+      set_property(GLOBAL PROPERTY "HRX_INSTALLED_TEST_DEFERRED_PATH_${TARGET_NAME}"
+        "${_INSTALLED_PATH}")
+    endif()
     set(${OUT_VAR} "${_INSTALLED_PATH}" PARENT_SCOPE)
     return()
   endif()
@@ -153,15 +161,15 @@ function(hrx_installed_tests_install_target TARGET_NAME OUT_VAR)
     string(MAKE_C_IDENTIFIER "${TARGET_NAME}" _SAFE_TARGET)
     set(_DESTINATION "${HRX_INSTALL_TESTS_DIR}/bin/${_SAFE_TARGET}")
     set(_INSTALLED_PATH "\${CMAKE_CURRENT_LIST_DIR}/../bin/${_SAFE_TARGET}/${_FILENAME}")
-    set(_INSTALL_KIND "RUNTIME")
   elseif(_TYPE STREQUAL "SHARED_LIBRARY" OR _TYPE STREQUAL "MODULE_LIBRARY")
     set(_DESTINATION "${HRX_INSTALL_TESTS_DIR}/lib")
     set(_INSTALLED_PATH "\${CMAKE_CURRENT_LIST_DIR}/../lib/${_FILENAME}")
-    set(_INSTALL_KIND "LIBRARY")
   endif()
 
-  get_property(_INSTALLED_TARGETS GLOBAL PROPERTY HRX_INSTALLED_TEST_TARGETS)
-  if(NOT "${_TARGET}" IN_LIST _INSTALLED_TARGETS)
+  # Executable aliases have distinct destinations; library aliases share one.
+  string(SHA256 _KEY "${_TARGET}|${_DESTINATION}")
+  get_property(_INSTALLED GLOBAL PROPERTY "HRX_INSTALLED_TEST_TARGET_${_KEY}")
+  if(NOT _INSTALLED)
     if(_TYPE STREQUAL "EXECUTABLE")
       install(TARGETS "${_TARGET}"
         RUNTIME DESTINATION "${_DESTINATION}" COMPONENT "${HRX_INSTALL_TESTS_COMPONENT}"
@@ -172,7 +180,7 @@ function(hrx_installed_tests_install_target TARGET_NAME OUT_VAR)
         RUNTIME DESTINATION "${_DESTINATION}" COMPONENT "${HRX_INSTALL_TESTS_COMPONENT}"
         BUNDLE DESTINATION "${_DESTINATION}" COMPONENT "${HRX_INSTALL_TESTS_COMPONENT}")
     endif()
-    set_property(GLOBAL APPEND PROPERTY HRX_INSTALLED_TEST_TARGETS "${_TARGET}")
+    set_property(GLOBAL PROPERTY "HRX_INSTALLED_TEST_TARGET_${_KEY}" ON)
   endif()
 
   set(${OUT_VAR} "${_INSTALLED_PATH}" PARENT_SCOPE)
@@ -184,14 +192,14 @@ function(hrx_installed_tests_install_source_file SOURCE_PATH DEST_REL OUT_VAR)
     return()
   endif()
 
-  set(_KEY "${SOURCE_PATH}|${DEST_REL}")
-  get_property(_INSTALLED_FILES GLOBAL PROPERTY HRX_INSTALLED_TEST_FILES)
-  if(NOT "${_KEY}" IN_LIST _INSTALLED_FILES)
+  string(SHA256 _KEY "${SOURCE_PATH}|${DEST_REL}")
+  get_property(_INSTALLED GLOBAL PROPERTY "HRX_INSTALLED_TEST_FILE_${_KEY}")
+  if(NOT _INSTALLED)
     get_filename_component(_DEST_DIR "${DEST_REL}" DIRECTORY)
     install(FILES "${SOURCE_PATH}"
       DESTINATION "${HRX_INSTALL_TESTS_DIR}/testdata/${_DEST_DIR}"
       COMPONENT "${HRX_INSTALL_TESTS_COMPONENT}")
-    set_property(GLOBAL APPEND PROPERTY HRX_INSTALLED_TEST_FILES "${_KEY}")
+    set_property(GLOBAL PROPERTY "HRX_INSTALLED_TEST_FILE_${_KEY}" ON)
   endif()
 
   set(${OUT_VAR} "\${CMAKE_CURRENT_LIST_DIR}/../testdata/${DEST_REL}" PARENT_SCOPE)
@@ -219,13 +227,13 @@ function(hrx_installed_tests_install_source_tree SOURCE_DIR DEST_REL OUT_VAR)
       "directory and would recursively package its own install output")
   endif()
 
-  set(_KEY "${SOURCE_DIR}|${DEST_REL}/")
-  get_property(_INSTALLED_FILES GLOBAL PROPERTY HRX_INSTALLED_TEST_FILES)
-  if(NOT "${_KEY}" IN_LIST _INSTALLED_FILES)
+  string(SHA256 _KEY "${SOURCE_DIR}|${DEST_REL}/")
+  get_property(_INSTALLED GLOBAL PROPERTY "HRX_INSTALLED_TEST_FILE_${_KEY}")
+  if(NOT _INSTALLED)
     install(DIRECTORY "${SOURCE_DIR}/"
       DESTINATION "${HRX_INSTALL_TESTS_DIR}/testdata/${DEST_REL}"
       COMPONENT "${HRX_INSTALL_TESTS_COMPONENT}")
-    set_property(GLOBAL APPEND PROPERTY HRX_INSTALLED_TEST_FILES "${_KEY}")
+    set_property(GLOBAL PROPERTY "HRX_INSTALLED_TEST_FILE_${_KEY}" ON)
   endif()
 
   set(${OUT_VAR} "\${CMAKE_CURRENT_LIST_DIR}/../testdata/${DEST_REL}" PARENT_SCOPE)
@@ -774,27 +782,14 @@ function(hrx_create_installed_tests)
         "Installed test target was referenced before it existed and was never created: ${_DEFERRED_TARGET}")
     endif()
     hrx_installed_tests_install_target("${_DEFERRED_TARGET}" _INSTALLED_PATH)
-    get_property(_DEFERRED_TARGET_PATHS GLOBAL PROPERTY HRX_INSTALLED_TEST_DEFERRED_TARGET_PATHS)
-    foreach(_DEFERRED_TARGET_PATH IN LISTS _DEFERRED_TARGET_PATHS)
-      string(FIND "${_DEFERRED_TARGET_PATH}" "|" _PATH_SEPARATOR_INDEX)
-      if(_PATH_SEPARATOR_INDEX LESS 0)
-        message(FATAL_ERROR
-          "Installed test target path record is malformed: ${_DEFERRED_TARGET_PATH}")
-      endif()
-      string(SUBSTRING "${_DEFERRED_TARGET_PATH}" 0 ${_PATH_SEPARATOR_INDEX} _PATH_TARGET)
-      math(EXPR _PATH_VALUE_INDEX "${_PATH_SEPARATOR_INDEX} + 1")
-      string(LENGTH "${_DEFERRED_TARGET_PATH}" _DEFERRED_TARGET_PATH_LENGTH)
-      math(EXPR _PATH_VALUE_LENGTH "${_DEFERRED_TARGET_PATH_LENGTH} - ${_PATH_VALUE_INDEX}")
-      string(SUBSTRING "${_DEFERRED_TARGET_PATH}" ${_PATH_VALUE_INDEX} ${_PATH_VALUE_LENGTH} _EXPECTED_PATH)
-      if(_PATH_TARGET STREQUAL _DEFERRED_TARGET)
-        if(NOT _EXPECTED_PATH STREQUAL _INSTALLED_PATH)
-          message(FATAL_ERROR
-            "Installed test target '${_DEFERRED_TARGET}' resolved to '${_INSTALLED_PATH}' "
-            "after a test had already recorded '${_EXPECTED_PATH}'. Add the target before "
-            "the test registration or update the deferred path inference.")
-        endif()
-      endif()
-    endforeach()
+    get_property(_EXPECTED_PATH GLOBAL
+      PROPERTY "HRX_INSTALLED_TEST_DEFERRED_PATH_${_DEFERRED_TARGET}")
+    if(NOT _EXPECTED_PATH STREQUAL _INSTALLED_PATH)
+      message(FATAL_ERROR
+        "Installed test target '${_DEFERRED_TARGET}' resolved to '${_INSTALLED_PATH}' "
+        "after a test had already recorded '${_EXPECTED_PATH}'. Add the target before "
+        "the test registration or update the deferred path inference.")
+    endif()
   endforeach()
 
   get_property(_TMPDIRS GLOBAL PROPERTY HRX_INSTALLED_TEST_TMPDIRS)
