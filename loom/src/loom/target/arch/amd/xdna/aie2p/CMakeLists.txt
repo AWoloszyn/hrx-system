@@ -473,7 +473,6 @@ loom_cc_library(
     loom::target::reporting::report
     loom::tools::loom-check::execute
     loom::tools::loom-check::provider
-  TESTONLY
   PUBLIC
 )
 endif()

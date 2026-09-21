@@ -373,7 +373,6 @@ loom_cc_library(
 
 loom_cc_library(
     name = "check_provider",
-    testonly = True,
     srcs = [
         "check/array_plan.c",
         "check/leaf.c",
@@ -384,6 +383,7 @@ loom_cc_library(
         "check/leaf.h",
         "check/provider.h",
     ],
+    visibility = ["//loom/src/loom/tools/loom-check:__pkg__"],
     deps = [
         ":array_plan",
         ":array_program",
