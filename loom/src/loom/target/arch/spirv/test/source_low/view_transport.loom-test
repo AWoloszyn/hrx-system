@@ -15,16 +15,13 @@ func.def @wide_subview_selection(%input: buffer, %byte_base0: offset, %condition
 
 // ----
 low.func.def target<spirv.logical.core> abi(shader_entry_point) @wide_subview_selection(%aligned: reg<spirv.ptr.storage_buffer>, %byte_base: reg<spirv.offset64>, %condition: reg<spirv.id : i1>) -> (reg<spirv.id : i32>) asm {
-  %24 = OpBitcast.offset64.i64 %byte_base
-  %25 = OpConstant.i64 4
-  %26 = OpIAdd.i64 %24, %25
-  %27 = OpBitcast.i64.offset64 %26
-  %28 = OpConstant.i64 8
-  %29 = OpIAdd.i64 %24, %28
-  %30 = OpBitcast.i64.offset64 %29
-  %selected_offset = OpSelect.offset64 %condition, %27, %30
-  %32 = OpPtrAccessChain.storage_buffer.i32.byte_offset %aligned, %selected_offset
-  %value = OpLoad.storage_buffer.i32 %32
+  %20 = OpConstant.offset64 4
+  %21 = OpIAdd.offset64 %byte_base, %20
+  %22 = OpConstant.offset64 8
+  %23 = OpIAdd.offset64 %byte_base, %22
+  %selected_offset = OpSelect.offset64 %condition, %21, %23
+  %25 = OpPtrAccessChain.storage_buffer.i32.byte_offset %aligned, %selected_offset
+  %value = OpLoad.storage_buffer.i32 %25
   return %value
 }
 

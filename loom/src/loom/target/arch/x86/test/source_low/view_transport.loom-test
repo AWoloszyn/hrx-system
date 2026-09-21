@@ -14,14 +14,10 @@ func.def @wide_subview_selection(%input: buffer, %byte_base0: offset, %condition
 
 // ----
 low.func.def target<x86.avx2.core> abi(object_function) @wide_subview_selection(%selected: reg<x86.gpr64>, %byte_base: reg<x86.gpr64>, %condition: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
-  %24 = mov.imm64 4
-  %25 = copy %byte_base : reg<x86.gpr64> -> reg<x86.gpr64>
-  %26 = add.gpr64 %25, %24
-  %27 = mov.imm64 8
-  %28 = copy %byte_base : reg<x86.gpr64> -> reg<x86.gpr64>
-  %29 = add.gpr64 %28, %27
-  %30 = copy %29 : reg<x86.gpr64> -> reg<x86.gpr64>
-  %selected_offset = select.gpr64 %condition, %26, %30
+  %20 = lea.disp %byte_base {disp32 = 4}
+  %21 = lea.disp %byte_base {disp32 = 8}
+  %22 = copy %21 : reg<x86.gpr64> -> reg<x86.gpr64>
+  %selected_offset = select.gpr64 %condition, %20, %22
   %value = mov.load.indexed.gpr32 %selected, %selected_offset {disp32 = 0, scale = 1}
   return %value
 }

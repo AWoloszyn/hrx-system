@@ -1,0 +1,68 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// RUN: with-checks pass decompose-view-transports
+
+func.def @forward_window(%input: buffer, %count: index, %base: offset) -> (i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %first = buffer.view %input[%base] : buffer -> view<1xi32>
+  %last = scf.for %i = [%begin to %count step %step](%window = %first : view<1xi32>) -> (view<1xi32>) {
+    %next = view.subview %window[8] : view<1xi32> -> view<1xi32>
+    scf.yield %next : view<1xi32>
+  }
+  %result = view.load %last[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+CHECK: %last_offset = scf.for *(%window_offset = %base : offset) -> (offset) {
+CHECK: * = index.constant 32 : offset
+CHECK: * = index.add %window_offset, * : offset
+CHECK: %last = buffer.view %input[%last_offset] : buffer -> view<1xi32>
+CHECK-NOT: *index.cast*
+
+// ====
+
+func.def @backward_window(%input: buffer, %count: index, %base: offset) -> (i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %first = buffer.view %input[%base] : buffer -> view<1xi32>
+  %last = scf.for %i = [%begin to %count step %step](%window = %first : view<1xi32>) -> (view<1xi32>) {
+    %next = view.subview %window[-8] : view<1xi32> -> view<1xi32>
+    scf.yield %next : view<1xi32>
+  }
+  %result = view.load %last[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+CHECK: %last_offset = scf.for *(%window_offset = %base : offset) -> (offset) {
+CHECK: * = index.constant 32 : offset
+CHECK: * = index.sub %window_offset, * : offset
+CHECK: %last = buffer.view %input[%last_offset] : buffer -> view<1xi32>
+CHECK-NOT: *index.cast*
+
+// ====
+
+func.def @wide_window(%input: buffer, %count: index, %base: offset) -> (i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %first = buffer.view %input[%base] : buffer -> view<1xi32>
+  %last = scf.for %i = [%begin to %count step %step](%window = %first : view<1xi32>) -> (view<1xi32>) {
+    %next = view.subview %window[1073741824] : view<1xi32> -> view<1xi32>
+    scf.yield %next : view<1xi32>
+  }
+  %result = view.load %last[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+CHECK: %last_offset = scf.for *(%window_offset = %base : offset) -> (offset) {
+CHECK: * = index.constant 4294967296 : offset
+CHECK: * = index.add %window_offset, * : offset
+CHECK: %last = buffer.view %input[%last_offset] : buffer -> view<1xi32>
+CHECK-NOT: *index.cast*
