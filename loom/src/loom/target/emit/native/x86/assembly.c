@@ -75,15 +75,6 @@ static bool loom_x86_assignments_match(
          lhs->location_count == rhs->location_count;
 }
 
-static iree_status_t loom_x86_register_class_kind(
-    const loom_native_assembly_packet_context_t* context,
-    const loom_low_allocation_assignment_t* assignment,
-    loom_x86_register_class_t* out_kind) {
-  return loom_x86_descriptor_set_logical_register_class(
-      context->schedule->target.descriptor_set,
-      assignment->descriptor_reg_class_id, out_kind);
-}
-
 static iree_status_t loom_x86_append_assignment(
     const loom_native_assembly_packet_context_t* context,
     const loom_low_allocation_assignment_t* assignment) {
@@ -93,9 +84,8 @@ static iree_status_t loom_x86_append_assignment(
                             " is not supported",
                             assignment->value_id);
   }
-  loom_x86_register_class_t register_class_kind = 0;
-  IREE_RETURN_IF_ERROR(
-      loom_x86_register_class_kind(context, assignment, &register_class_kind));
+  const loom_x86_register_class_t register_class_kind =
+      loom_x86_logical_register_class(assignment->descriptor_reg_class_id);
   if (register_class_kind == LOOM_X86_REGISTER_CLASS_GPR32) {
     if (assignment->location_base >= IREE_ARRAYSIZE(kX86Gpr32Names)) {
       return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
@@ -139,9 +129,9 @@ static iree_status_t loom_x86_append_copy_mnemonic(
     const loom_native_assembly_packet_context_t* context,
     const loom_low_allocation_assignment_t* destination_assignment,
     uint32_t source_register) {
-  loom_x86_register_class_t register_class_kind = 0;
-  IREE_RETURN_IF_ERROR(loom_x86_register_class_kind(
-      context, destination_assignment, &register_class_kind));
+  const loom_x86_register_class_t register_class_kind =
+      loom_x86_logical_register_class(
+          destination_assignment->descriptor_reg_class_id);
   switch (register_class_kind) {
     case LOOM_X86_REGISTER_CLASS_XMM:
     case LOOM_X86_REGISTER_CLASS_YMM:
@@ -210,9 +200,8 @@ static iree_status_t loom_x86_append_gpr32_assignment(
                             " is not supported",
                             assignment->value_id);
   }
-  loom_x86_register_class_t register_class_kind = 0;
-  IREE_RETURN_IF_ERROR(
-      loom_x86_register_class_kind(context, assignment, &register_class_kind));
+  const loom_x86_register_class_t register_class_kind =
+      loom_x86_logical_register_class(assignment->descriptor_reg_class_id);
   if (register_class_kind != LOOM_X86_REGISTER_CLASS_GPR32 &&
       register_class_kind != LOOM_X86_REGISTER_CLASS_GPR64) {
     return iree_make_status(
@@ -245,9 +234,8 @@ static iree_status_t loom_x86_append_gpr8_assignment(
                             " is not supported",
                             assignment->value_id);
   }
-  loom_x86_register_class_t register_class_kind = 0;
-  IREE_RETURN_IF_ERROR(
-      loom_x86_register_class_kind(context, assignment, &register_class_kind));
+  const loom_x86_register_class_t register_class_kind =
+      loom_x86_logical_register_class(assignment->descriptor_reg_class_id);
   if (register_class_kind != LOOM_X86_REGISTER_CLASS_GPR32) {
     return iree_make_status(
         IREE_STATUS_UNIMPLEMENTED,
@@ -632,12 +620,21 @@ static iree_status_t loom_x86_append_tied_binary_packet(
         IREE_STATUS_FAILED_PRECONDITION,
         "x86 tied binary result must share the left-hand physical register");
   }
-  IREE_RETURN_IF_ERROR(loom_x86_append_mnemonic(context));
+  const iree_string_view_t mnemonic = loom_x86_descriptor_mnemonic(context);
+  IREE_RETURN_IF_ERROR(
+      iree_string_builder_append_string(context->builder, mnemonic));
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_cstring(context->builder, " "));
   IREE_RETURN_IF_ERROR(loom_x86_append_result(context, 0));
   IREE_RETURN_IF_ERROR(
       iree_string_builder_append_cstring(context->builder, ", "));
+  if (iree_string_view_equal(mnemonic, IREE_SV("shl")) ||
+      iree_string_view_equal(mnemonic, IREE_SV("sar")) ||
+      iree_string_view_equal(mnemonic, IREE_SV("shr"))) {
+    // The descriptor's singleton count class binds ECX/RCX before allocation.
+    // Native shifts read its low byte regardless of the SSA carrier width.
+    return iree_string_builder_append_cstring(context->builder, "cl");
+  }
   return loom_x86_append_operand(context, 1);
 }
 
@@ -1071,12 +1068,10 @@ static iree_status_t loom_x86_append_transfer_packet(
     return iree_ok_status();
   }
 
-  loom_x86_register_class_t source_kind = 0;
-  loom_x86_register_class_t result_kind = 0;
-  IREE_RETURN_IF_ERROR(
-      loom_x86_register_class_kind(context, source_assignment, &source_kind));
-  IREE_RETURN_IF_ERROR(
-      loom_x86_register_class_kind(context, result_assignment, &result_kind));
+  const loom_x86_register_class_t source_kind = loom_x86_logical_register_class(
+      source_assignment->descriptor_reg_class_id);
+  const loom_x86_register_class_t result_kind = loom_x86_logical_register_class(
+      result_assignment->descriptor_reg_class_id);
   if (source_kind != result_kind) {
     iree_string_view_t source_register_class = iree_string_view_empty();
     IREE_RETURN_IF_ERROR(loom_low_allocation_assignment_register_class_name(
@@ -1256,9 +1251,9 @@ static iree_status_t loom_x86_append_cond_branch_packet(
   const loom_low_allocation_assignment_t* condition_assignment =
       loom_low_packet_operand_assignment(context->allocation, context->packet,
                                          0);
-  loom_x86_register_class_t register_class_kind = 0;
-  IREE_RETURN_IF_ERROR(loom_x86_register_class_kind(
-      context, condition_assignment, &register_class_kind));
+  const loom_x86_register_class_t register_class_kind =
+      loom_x86_logical_register_class(
+          condition_assignment->descriptor_reg_class_id);
   if (register_class_kind == LOOM_X86_REGISTER_CLASS_K) {
     IREE_RETURN_IF_ERROR(
         iree_string_builder_append_cstring(context->builder, "kortestq "));

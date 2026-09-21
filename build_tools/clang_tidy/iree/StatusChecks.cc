@@ -107,6 +107,17 @@ QualType ParameterTypeFromCall(const CallExpr* Call, unsigned Index) {
   return ParameterTypeFromCalleeExpr(Call->getCallee(), Index);
 }
 
+bool ConstructorArgumentTransfersStatus(const CXXConstructExpr* Construct,
+                                        unsigned Index) {
+  const CXXConstructorDecl* Constructor = Construct->getConstructor();
+  if (!Constructor || Index >= Constructor->getNumParams()) {
+    return false;
+  }
+  QualType ParamType =
+      Constructor->getParamDecl(Index)->getType().getNonReferenceType();
+  return IsStatusType(ParamType) && !IsBorrowedStatusType(ParamType);
+}
+
 StringRef CalleeName(const CallExpr* Call) {
   if (const FunctionDecl* Callee = Call->getDirectCallee()) {
     if (const auto* Identifier = Callee->getIdentifier()) {
@@ -679,14 +690,10 @@ class BorrowedStatusParameterAnalyzer {
       return;
     }
     if (const auto* Construct = dyn_cast<CXXConstructExpr>(Expr)) {
-      const CXXConstructorDecl* Constructor = Construct->getConstructor();
-      const bool IsStatusWrapper =
-          Constructor && Constructor->getParent() &&
-          (Constructor->getParent()->getName() == "Status" ||
-           Constructor->getParent()->getName() == "StatusOr");
-      const auto ArgUse =
-          IsStatusWrapper ? StatusUse::Transfer : StatusUse::Observe;
       for (unsigned I = 0; I < Construct->getNumArgs(); ++I) {
+        const auto ArgUse = ConstructorArgumentTransfersStatus(Construct, I)
+                                ? StatusUse::Transfer
+                                : StatusUse::Observe;
         analyzeExpression(Construct->getArg(I), ArgUse);
       }
       return;
@@ -891,14 +898,10 @@ class StatusTransferOrderAnalyzer {
       return;
     }
     if (const auto* Construct = dyn_cast<CXXConstructExpr>(Expr)) {
-      const CXXConstructorDecl* Constructor = Construct->getConstructor();
-      const bool IsStatusWrapper =
-          Constructor && Constructor->getParent() &&
-          (Constructor->getParent()->getName() == "Status" ||
-           Constructor->getParent()->getName() == "StatusOr");
       for (unsigned I = 0; I < Construct->getNumArgs(); ++I) {
         collectExpressionUses(Construct->getArg(I),
-                              /*transferred=*/IsStatusWrapper, Uses);
+                              ConstructorArgumentTransfersStatus(Construct, I),
+                              Uses);
       }
       return;
     }
@@ -2070,14 +2073,9 @@ class StatusLifetimeAnalyzer {
 
   StatusValue analyzeCXXConstruct(const CXXConstructExpr* Construct,
                                   AnalysisState& State) {
-    const CXXConstructorDecl* Constructor = Construct->getConstructor();
-    const bool IsStatusConstructor =
-        Constructor && Constructor->getParent() &&
-        (Constructor->getParent()->getName() == "Status" ||
-         Constructor->getParent()->getName() == "StatusOr");
     for (unsigned I = 0; I < Construct->getNumArgs(); ++I) {
       StatusValue ArgValue =
-          IsStatusConstructor
+          ConstructorArgumentTransfersStatus(Construct, I)
               ? analyzeTransferredExpression(Construct->getArg(I), State)
               : analyzeExpression(Construct->getArg(I), State);
       (void)ArgValue;

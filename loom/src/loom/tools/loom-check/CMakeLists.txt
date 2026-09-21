@@ -95,6 +95,7 @@ loom_cc_library(
     loom::pass::tooling
     loom::sanitizer::options
     loom::target::entry_selection
+    loom::target::function_version_projection
     loom::target::legalization
     loom::target::low_asm_diagnostics
     loom::target::low_descriptor_registry
@@ -274,12 +275,32 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    compile
+  HDRS
+    "compile.h"
+  SRCS
+    "compile.c"
+  DEPS
+    ::execute
+    iree::base
+    loom::codegen::low::repr
+    loom::link::linker
+    loom::target::entry_selection
+    loom::tooling::compile::configured
+    loom::tooling::compile::preparation
+    loom::tooling::config
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     file
   HDRS
     "file.h"
   SRCS
     "file.c"
   DEPS
+    ::compile
     ::execute
     ::json_output
     ::output
@@ -331,7 +352,11 @@ loom_cc_library(
     iree::base
     iree::base::internal::arena
     iree::base::tooling::flags
+    loom::sanitizer::options
     loom::tooling::cli::help
+    loom::tooling::compile::configured
+    loom::tooling::config
+    loom::tooling::context
   PUBLIC
 )
 

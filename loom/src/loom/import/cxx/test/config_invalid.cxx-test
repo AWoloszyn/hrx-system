@@ -1,0 +1,171 @@
+// RUN: verify
+// ERROR@+1: LOWERING/059 "one valid Loom symbol string key"
+[[loom::config]] extern const unsigned value;
+
+// ====
+// ERROR@+1: LOWERING/059 "one valid Loom symbol string key"
+[[loom::config(4)]] extern const unsigned value;
+
+// ====
+// ERROR@+1: LOWERING/059 "one valid Loom symbol string key"
+[[loom::config("")]] extern const unsigned value;
+
+// ====
+// ERROR@+1: LOWERING/059 "one valid Loom symbol string key"
+[[loom::config("first", "second")]] extern const unsigned value;
+
+// ====
+// ERROR@+1: LOWERING/059 "one valid Loom symbol string key"
+[[loom::config("bad\0key")]] extern const unsigned value;
+
+// ====
+// ERROR@+1: LOWERING/059 "one config binding"
+[[loom::config("first"), loom::config("second")]] extern const unsigned value;
+
+// ====
+// ERROR@+1: LOWERING/059 "nonvolatile const numeric scalars"
+[[loom::config("tuning.value")]] unsigned value = 5;
+
+// ====
+// ERROR@+1: LOWERING/059 "nonvolatile const numeric scalars"
+[[loom::config("tuning.value")]] extern const volatile unsigned value;
+
+// ====
+// ERROR@+1: LOWERING/059 "nonvolatile const numeric scalars"
+[[loom::config("tuning.value")]] thread_local const unsigned value = 5;
+
+// ====
+// ERROR@+1: LOWERING/059 "nonvolatile const numeric scalars"
+[[loom::config("tuning.value")]] extern const unsigned values[4];
+
+// ====
+// ERROR@+1: LOWERING/059 "nonvolatile const numeric scalars"
+[[loom::config("tuning.value")]] unsigned* const value = nullptr;
+
+// ====
+struct Value { unsigned value; };
+// ERROR@+1: LOWERING/059 "nonvolatile const numeric scalars"
+[[loom::config("tuning.value")]] extern const Value value;
+
+// ====
+unsigned runtime();
+// ERROR@+1: LOWERING/059 "constant initializer"
+[[loom::config("tuning.value")]] const unsigned value = runtime();
+
+// ====
+[[loom::config("tuning.value")]] extern const unsigned value;
+// ERROR@+1: LOWERING/059 "every config redeclaration"
+const unsigned value = 5;
+
+// ====
+// ERROR@+1: LOWERING/059 "every config redeclaration"
+extern const unsigned value;
+[[loom::config("tuning.value")]] const unsigned value = 5;
+
+// ====
+[[loom::config("tuning.value")]] extern const unsigned value;
+// ERROR@+1: LOWERING/059 "conflicting config keys"
+[[loom::config("different.value")]] extern const unsigned value;
+
+// ====
+[[loom::config("tuning.value")]] extern const unsigned first;
+// ERROR@+1: LOWERING/059 "conflicting source types"
+[[loom::config("tuning.value")]] extern const int second;
+
+// ====
+[[loom::config("tuning.value")]] const unsigned first = 5;
+// ERROR@+1: LOWERING/059 "conflicting definitions"
+[[loom::config("tuning.value")]] const unsigned second = 9;
+
+// ====
+// ERROR@+1: LOWERING/059 "namespace-scope scalar variables"
+[[loom::config("tuning.value")]] unsigned value() { return 5; }
+
+// ====
+unsigned entry() {
+  // ERROR@+1: LOWERING/059 "namespace-scope scalar variables"
+  [[loom::config("tuning.value")]] const unsigned value = 5;
+  return value;
+}
+
+// ====
+struct Settings {
+  // ERROR@+1: LOWERING/059 "namespace-scope scalar variables"
+  [[loom::config("tuning.value")]] static constexpr unsigned value = 5;
+};
+
+// ====
+template<unsigned N>
+// ERROR@+1: LOWERING/059 "namespace-scope scalar variables"
+[[loom::config("tuning.value")]] constexpr unsigned value = N;
+
+// ====
+[[loom::config("tuning.value")]] extern const unsigned value;
+// ERROR@+1: LOWERING/059 "address-of requires an existing storage-backed element"
+const unsigned* address() { return &value; }
+
+// ====
+[[loom::config("entry")]] extern const unsigned value;
+// ERROR@+1: LOWERING/059 "Loom symbol name is already reserved: entry"
+unsigned entry() { return value; }
+
+// ====
+[[loom::config("entry.workgroup_size.x")]] extern const unsigned value;
+// ERROR@+1: LOWERING/059 "Loom symbol name is already reserved: entry.workgroup_size.x"
+[[loom::kernel]] void entry() {}
+
+// ====
+// ERROR@+1: LOWERING/059 "leading attribute"
+extern const unsigned value [[loom::config("tuning.value")]];
+
+// ====
+#include <loomcxx/check.h>
+LOOM_CHECK_CASE(local_config) {
+  // ERROR@+1: LOWERING/059 "namespace-scope scalar variables"
+  [[loom::config("tuning.value")]] const unsigned value = 5;
+  loom::check::expect_equal(value, 5u);
+}
+
+// ====
+unsigned entry() {
+  // ERROR@+1: LOWERING/059 "leading attribute"
+  const unsigned value [[loom::config("tuning.value")]] = 5;
+  return value;
+}
+
+// ====
+// ERROR@+1: LOWERING/059 "namespace-scope scalar variables"
+unsigned entry([[loom::config("tuning.value")]] const unsigned value) {
+  return value;
+}
+
+// ====
+// ERROR@+1: LOWERING/059 "leading attribute"
+extern const unsigned (value [[loom::config("tuning.value")]]);
+
+// ====
+[[loom::config("tuning.value")]] extern const unsigned value;
+// ERROR@+1: PARSE/036 "static assertion expression is not an integral constant expression"
+static_assert(value == 5);
+
+// ====
+[[loom::config("tuning.value")]] extern const unsigned value;
+unsigned entry() {
+  // ERROR@+1: LOWERING/059 "if initializer/constexpr is outside this slice"
+  if constexpr (value == 5) { return 1; }
+  return 0;
+}
+
+// ====
+// ERROR@+1: LOWERING/059 "one valid Loom symbol string key"
+[[loom::config("not a symbol")]] extern const unsigned value;
+
+// ====
+struct Value {
+  // ERROR@+1: LOWERING/059 "namespace-scope scalar variables"
+  [[loom::config("value")]] static unsigned value() { return 0; }
+};
+
+// ====
+// ERROR@+1: LOWERING/059 "with a leading attribute"
+using Word = unsigned [[loom::config("word")]];

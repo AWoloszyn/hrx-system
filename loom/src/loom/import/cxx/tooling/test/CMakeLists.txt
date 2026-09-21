@@ -22,4 +22,21 @@ loom_check_test_suite(
 )
 endif()
 
+if(LOOM_IMPORT_CXX)
+loom_check_compile_tests(
+  NAME
+    "import"
+  SRC
+    "import.cxx-test"
+  REGISTERED_SRCS
+    "import.cxx-test"
+    "source_capture.cxx-test"
+  TARGETS
+    loom::target::vm::core
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/test/helper.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/test/source_capture.h"
+)
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

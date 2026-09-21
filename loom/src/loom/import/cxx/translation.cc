@@ -25,6 +25,7 @@
 
 #include "iree/base/api.h"
 #include "loom/import/cxx/binding/assumptions.h"
+#include "loom/import/cxx/binding/config.h"
 #include "loom/import/cxx/binding/intrinsics.h"
 #include "loom/import/cxx/binding/launch.h"
 #include "loom/import/cxx/binding/loop_schedule.h"
@@ -61,11 +62,14 @@ class Translator {
         locations_(unit, diagnostics, module),
         types_(unit, diagnostics),
         scalars_(unit, diagnostics, types_, locations_, builder_),
+        names_(unit, diagnostics),
+        configs_(unit, diagnostics, types_, scalars_, locations_, names_),
         vectors_(unit, diagnostics, types_, scalars_, locations_, builder_),
         storage_(unit, diagnostics, types_, scalars_, locations_, builder_),
         intrinsics_(unit, diagnostics, types_),
         launches_(unit, diagnostics),
-        functions_(unit, diagnostics, module, intrinsics_, launches_),
+        functions_(unit, diagnostics, module, intrinsics_, launches_, configs_,
+                   names_),
         options_(options),
         math_flags_(iree_any_bit_set(options.flags,
                                      LOOM_CXX_IMPORT_FLAG_APPROXIMATE_FUNCTIONS)
@@ -613,6 +617,9 @@ class Translator {
                     cxx::to_string(enumerator->name()));
       }
       if (auto* variable = cxx::symbol_cast<cxx::VariableSymbol>(id->symbol)) {
+        if (auto value = configs_.read(variable, &builder_, source)) {
+          return name(*value, cxx::to_string(variable->name()));
+        }
         if (variable->constValue() &&
             (variable->isConstexpr() ||
              unit_.typeTraits().is_const(variable->type()))) {
@@ -1016,7 +1023,11 @@ class Translator {
       if (!simple) {
         fail(ast, "unsupported local declaration");
       }
+      reject_global_binding_attributes(unit_, diagnostics_,
+                                       simple->attributeList);
       for (auto* variable : cxx::ListView{simple->initDeclaratorList}) {
+        reject_global_binding_declarator(unit_, diagnostics_,
+                                         variable->declarator);
         auto* source_variable =
             cxx::symbol_cast<cxx::VariableSymbol>(variable->symbol);
         if (!source_variable || source_variable->isStatic() ||
@@ -1442,6 +1453,10 @@ class Translator {
   Types types_;
   // Numeric builders consume evaluated operands without AST callbacks.
   Scalars scalars_;
+  // Shared output namespace for callables and configuration symbols.
+  SymbolNames names_;
+  // Namespace-scope scalar configs retain key identity across source aliases.
+  Configs configs_;
   // Explicit vector builders retain lane widths and full-width source masks.
   Vectors vectors_;
   // Memory representations retain declared array extents and access shape.

@@ -69,9 +69,8 @@ from .common import (
     _gpr64_operand,
     _gpr64_resource,
     _gpr64_result,
-    _load_effect,
-    _store_effect,
 )
+from .memory import _load_effect, _store_effect, memory_descriptors
 
 # Physical IDs follow the native GPR encoding order, including width aliases.
 _GPR_NAMES = (
@@ -94,6 +93,8 @@ _GPR_NAMES = (
 )
 _REG_RAX = "x86.rax"
 _REG_RDX = "x86.rdx"
+_REG_ECX = "x86.ecx"
+_REG_RCX = "x86.rcx"
 
 
 def _gpr32_destructive_binary_descriptor(
@@ -187,6 +188,38 @@ def _gpr64_destructive_shift_descriptor(
         source=_gpr64_operand("lhs"),
         immediate=_SHIFT64_IMMEDIATE,
         asm_suffix="gpr64",
+    )
+
+
+def _gpr_count_shift_descriptor(
+    *,
+    mnemonic: str,
+    semantic: str,
+    bit_count: int,
+) -> Descriptor:
+    result = _gpr32_result() if bit_count == 32 else _gpr64_result()
+    lhs = _gpr32_operand("lhs") if bit_count == 32 else _gpr64_operand("lhs")
+    return Descriptor(
+        key=f"x86.scalar.{mnemonic}.cl.gpr{bit_count}",
+        mnemonic=mnemonic,
+        semantic_tag=f"integer.{semantic}.i{bit_count}",
+        operands=(
+            result,
+            lhs,
+            Operand(
+                "rhs",
+                OperandRole.OPERAND,
+                (RegClassAlt(_REG_ECX if bit_count == 32 else _REG_RCX),),
+            ),
+        ),
+        constraints=_GPR_DESTRUCTIVE_LHS_CONSTRAINTS,
+        asm_forms=_asm(
+            mnemonic=f"{mnemonic}.cl.gpr{bit_count}",
+            results=("dst",),
+            operands=("lhs", "rhs"),
+        ),
+        schedule_class=_SCHEDULE_SCALAR,
+        flags=(DescriptorFlag.DEAD_REMOVABLE,),
     )
 
 
@@ -520,6 +553,13 @@ X86_SCALAR_SUFFIX_DESCRIPTORS = (
         mnemonic="shr",
         semantic_tag="integer.shru.i64",
     ),
+    *(
+        _gpr_count_shift_descriptor(
+            mnemonic=mnemonic, semantic=semantic, bit_count=bit_count
+        )
+        for bit_count in (32, 64)
+        for mnemonic, semantic in (("shl", "shl"), ("sar", "shrs"), ("shr", "shru"))
+    ),
     _gpr64_to_gpr32_truncate_descriptor(),
     _gpr_select_descriptor(32),
     _gpr_select_descriptor(64),
@@ -625,153 +665,27 @@ X86_SCALAR_SUFFIX_DESCRIPTORS = (
         schedule_class=_SCHEDULE_MEMORY_STORE_GPR32,
         flags=(DescriptorFlag.SIDE_EFFECTING,),
     ),
-    Descriptor(
-        key="x86.scalar.mov.load.gpr32",
+    *memory_descriptors(
+        key_prefix="x86.scalar",
         mnemonic="mov",
-        semantic_tag="memory.load.i32",
-        operands=(_gpr32_result(), _gpr64_resource("base")),
-        immediates=(_DISP32_IMMEDIATE,),
-        asm_forms=_asm(
-            mnemonic="mov.load.gpr32",
-            results=("dst",),
-            operands=("base",),
-            immediates=("disp32",),
-            named_immediates=True,
-        ),
-        effects=(_load_effect(32),),
-        schedule_class=_SCHEDULE_MEMORY_LOAD_GPR32,
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
+        register_class=_REG_GPR32,
+        register_suffix="gpr32",
+        semantic_type="i32",
+        width_bits=32,
+        load_schedule_class=_SCHEDULE_MEMORY_LOAD_GPR32,
+        store_schedule_class=_SCHEDULE_MEMORY_STORE_GPR32,
+        assembly_suffix=".gpr32",
     ),
-    Descriptor(
-        key="x86.scalar.mov.load.indexed.gpr32",
+    *memory_descriptors(
+        key_prefix="x86.scalar",
         mnemonic="mov",
-        semantic_tag="memory.load.indexed.i32",
-        operands=(
-            _gpr32_result(),
-            _gpr64_resource("base"),
-            _gpr64_resource("index"),
-        ),
-        immediates=(_DISP32_IMMEDIATE, _ADDRESS_SCALE_IMMEDIATE),
-        asm_forms=_asm(
-            mnemonic="mov.load.indexed.gpr32",
-            results=("dst",),
-            operands=("base", "index"),
-            immediates=("disp32", "scale"),
-            named_immediates=True,
-        ),
-        effects=(_load_effect(32),),
-        schedule_class=_SCHEDULE_MEMORY_LOAD_GPR32,
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
-    ),
-    Descriptor(
-        key="x86.scalar.mov.store.gpr32",
-        mnemonic="mov",
-        semantic_tag="memory.store.i32",
-        operands=(_gpr32_operand("value"), _gpr64_resource("base")),
-        immediates=(_DISP32_IMMEDIATE,),
-        asm_forms=_asm(
-            mnemonic="mov.store.gpr32",
-            operands=("value", "base"),
-            immediates=("disp32",),
-            named_immediates=True,
-        ),
-        effects=(_store_effect(32),),
-        schedule_class=_SCHEDULE_MEMORY_STORE_GPR32,
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
-    ),
-    Descriptor(
-        key="x86.scalar.mov.store.indexed.gpr32",
-        mnemonic="mov",
-        semantic_tag="memory.store.indexed.i32",
-        operands=(
-            _gpr32_operand("value"),
-            _gpr64_resource("base"),
-            _gpr64_resource("index"),
-        ),
-        immediates=(_DISP32_IMMEDIATE, _ADDRESS_SCALE_IMMEDIATE),
-        asm_forms=_asm(
-            mnemonic="mov.store.indexed.gpr32",
-            operands=("value", "base", "index"),
-            immediates=("disp32", "scale"),
-            named_immediates=True,
-        ),
-        effects=(_store_effect(32),),
-        schedule_class=_SCHEDULE_MEMORY_STORE_GPR32,
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
-    ),
-    Descriptor(
-        key="x86.scalar.mov.load.gpr64",
-        mnemonic="mov",
-        semantic_tag="memory.load.i64",
-        operands=(_gpr64_result(), _gpr64_resource("base")),
-        immediates=(_DISP32_IMMEDIATE,),
-        asm_forms=_asm(
-            mnemonic="mov.load.gpr64",
-            results=("dst",),
-            operands=("base",),
-            immediates=("disp32",),
-            named_immediates=True,
-        ),
-        effects=(_load_effect(64),),
-        schedule_class=_SCHEDULE_MEMORY_LOAD_GPR64,
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
-    ),
-    Descriptor(
-        key="x86.scalar.mov.load.indexed.gpr64",
-        mnemonic="mov",
-        semantic_tag="memory.load.indexed.i64",
-        operands=(
-            _gpr64_result(),
-            _gpr64_resource("base"),
-            _gpr64_resource("index"),
-        ),
-        immediates=(_DISP32_IMMEDIATE, _ADDRESS_SCALE_IMMEDIATE),
-        asm_forms=_asm(
-            mnemonic="mov.load.indexed.gpr64",
-            results=("dst",),
-            operands=("base", "index"),
-            immediates=("disp32", "scale"),
-            named_immediates=True,
-        ),
-        effects=(_load_effect(64),),
-        schedule_class=_SCHEDULE_MEMORY_LOAD_GPR64,
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
-    ),
-    Descriptor(
-        key="x86.scalar.mov.store.gpr64",
-        mnemonic="mov",
-        semantic_tag="memory.store.i64",
-        operands=(_gpr64_operand("value"), _gpr64_resource("base")),
-        immediates=(_DISP32_IMMEDIATE,),
-        asm_forms=_asm(
-            mnemonic="mov.store.gpr64",
-            operands=("value", "base"),
-            immediates=("disp32",),
-            named_immediates=True,
-        ),
-        effects=(_store_effect(64),),
-        schedule_class=_SCHEDULE_MEMORY_STORE_GPR64,
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
-    ),
-    Descriptor(
-        key="x86.scalar.mov.store.indexed.gpr64",
-        mnemonic="mov",
-        semantic_tag="memory.store.indexed.i64",
-        operands=(
-            _gpr64_operand("value"),
-            _gpr64_resource("base"),
-            _gpr64_resource("index"),
-        ),
-        immediates=(_DISP32_IMMEDIATE, _ADDRESS_SCALE_IMMEDIATE),
-        asm_forms=_asm(
-            mnemonic="mov.store.indexed.gpr64",
-            operands=("value", "base", "index"),
-            immediates=("disp32", "scale"),
-            named_immediates=True,
-        ),
-        effects=(_store_effect(64),),
-        schedule_class=_SCHEDULE_MEMORY_STORE_GPR64,
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
+        register_class=_REG_GPR64,
+        register_suffix="gpr64",
+        semantic_type="i64",
+        width_bits=64,
+        load_schedule_class=_SCHEDULE_MEMORY_LOAD_GPR64,
+        store_schedule_class=_SCHEDULE_MEMORY_STORE_GPR64,
+        assembly_suffix=".gpr64",
     ),
     Descriptor(
         key="x86.scalar.mov.gpr64",
@@ -965,6 +879,22 @@ X86_SCALAR_DESCRIPTOR_SET = DescriptorSet(
                 physical_registers=(register,),
             )
             for register_class, register in ((_REG_RAX, "rax"), (_REG_RDX, "rdx"))
+        ),
+        # Count carriers preserve the source width while both classes occupy
+        # RCX. The shift instruction reads CL; ordinary copies use ECX/RCX.
+        *(
+            RegClass(
+                register_class,
+                bit_count,
+                SpillSlotSpace.STACK,
+                flags=(
+                    RegClassFlag.PHYSICAL,
+                    RegClassFlag.UNSPILLABLE,
+                    RegClassFlag.EXPLICIT_PHYSICAL_REGISTERS,
+                ),
+                physical_registers=("rcx",),
+            )
+            for register_class, bit_count in ((_REG_ECX, 32), (_REG_RCX, 64))
         ),
     ),
     resources=(

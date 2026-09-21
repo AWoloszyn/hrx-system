@@ -13,7 +13,10 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
 #include "iree/base/tooling/flags.h"
+#include "loom/sanitizer/options.h"
 #include "loom/tooling/cli/help.h"
+#include "loom/tooling/compile/configured.h"
+#include "loom/tooling/context/context.h"
 #include "loom/tools/loom-check/file.h"
 #include "loom/tools/loom-check/json_output.h"
 #include "loom/tools/loom-check/output.h"
@@ -34,6 +37,18 @@ IREE_FLAG_NAMED(bool, list_input_formats, "list-input-formats", false,
 IREE_FLAG(string, template_root, "",
           "Filesystem root used to resolve root-relative TEMPLATE paths.\n"
           "Defaults to the current working directory.");
+IREE_FLAG(string, target, "",
+          "Qualify every input case for this family:selector through the "
+          "offline compiler. Matches diagnostic annotations or requires "
+          "a nonempty artifact. Does not execute RUN directives, compare "
+          "their goldens, apply XFAIL, or require execution hardware.");
+IREE_FLAG_LIST(string, config, "Compile-time key=value binding for --target.");
+IREE_FLAG_LIST_NAMED(string, config_file, "config-file",
+                     "JSON/JSONC compile-time bindings for --target.");
+IREE_FLAG(string, sanitizer, "none",
+          "Compiler sanitizer checks for --target, such as access.");
+IREE_FLAG_NAMED(string, sanitizer_reporting, "sanitizer-reporting", "default",
+                "Compiler sanitizer reporting: default, trap, or report-only.");
 
 typedef struct loom_check_json_flag_t {
   bool enabled;
@@ -131,9 +146,35 @@ static void loom_check_print_agents_markdown(FILE* stream) {
       "targets\n"
       "supply the template root and declare the template inputs they consume.\n"
       "\n"
+      "### Compile for a profile\n"
+      "\n"
+      "`--target=family:selector` compiles every source case or each\n"
+      "kernel in a linked `.loombc` test module through final artifact "
+      "emission.\n"
+      "A pass means a nonempty artifact or exactly matched source diagnostic\n"
+      "annotations. No device is opened and numerical checks are not "
+      "executed.\n"
+      "RUN goldens, XFAIL, and execution requirements belong to the separate\n"
+      "ordinary check outcome. TEMPLATE synchronization still applies.\n"
+      "\n"
+      "```shell\n"
+      "loom-check --target=amdgpu:gfx942 offsets.loom-test\n"
+      "loom-check --target=spirv:vulkan1.3+bda test-module.loombc\n"
+      "```\n"
+      "\n"
+      "`compile_targets` on `loom_test` uses the same root-owned test module\n"
+      "as `execution_profile`; it adds independent host-only tests. On\n"
+      "`loom_check_test_suite`, it maps existing source paths to typed target\n"
+      "profile labels. Running an owning test includes its compiler children.\n"
+      "`--config` and `--config-file` bind compile-time configuration.\n"
+      "`--sanitizer` and `--sanitizer-reporting` select compiler "
+      "instrumentation.\n"
+      "`--update` is rejected in compilation mode.\n"
+      "\n"
       "### Update expected output\n"
       "\n"
       "Pass the update flag through Bazel with `--test_arg=--update`:\n"
+      "For a target with compiler children, select its `_run` child.\n"
       "\n"
       "```shell\n"
       "iree-bazel-test --config=asan <loom-check-test-target> "
@@ -287,9 +328,16 @@ int loom_check_main(int argc, char** argv,
       "    // XFAIL: <reason>       Mark as expected failure.\n"
       "    // TEMPLATE: <path>      Root-relative authoritative corpus "
       "source.\n"
+      "    // TEMPLATE-EXCLUDE: @<case> <reason>\n"
+      "                            Omit one architecturally inapplicable "
+      "case.\n"
       "    Known REQUIRES names come from providers linked into this runner.\n"
       "    TEMPLATE is only accepted in the file preamble before the first "
       "// ==== and stale files fail before case execution.\n"
+      "    TEMPLATE-EXCLUDE belongs in that preamble, requires an exact case\n"
+      "    name and a reason, and rejects duplicate or unknown names. "
+      "Entirely\n"
+      "    inapplicable corpora need no fixture; excluding every case fails.\n"
       "    CASE directives are intentionally unsupported; function symbols are "
       "case names.\n"
       "\n"
@@ -327,11 +375,15 @@ int loom_check_main(int argc, char** argv,
   iree_flags_parse_checked(IREE_FLAGS_PARSE_MODE_DEFAULT, &argc, &argv);
 
   if (FLAG_list_input_formats) {
-    for (iree_host_size_t i = 0; i <= base_environment->input_providers.count;
-         ++i) {
+    const loom_input_provider_t* const builtin_providers[] = {
+        &loom_input_text_provider, &loom_input_bytecode_provider};
+    const iree_host_size_t builtin_count = IREE_ARRAYSIZE(builtin_providers);
+    for (iree_host_size_t i = 0;
+         i < builtin_count + base_environment->input_providers.count; ++i) {
       const loom_input_provider_t* provider =
-          i == 0 ? &loom_input_text_provider
-                 : base_environment->input_providers.values[i - 1];
+          i < builtin_count
+              ? builtin_providers[i]
+              : base_environment->input_providers.values[i - builtin_count];
       printf("%.*s:", (int)provider->name.size, provider->name.data);
       for (iree_host_size_t j = 0; j < provider->suffixes.count; ++j) {
         iree_string_view_t suffix = provider->suffixes.values[j];
@@ -349,6 +401,13 @@ int loom_check_main(int argc, char** argv,
   // Initialize context with the dialects selected by this loom-check binary.
   loom_context_t context;
   loom_context_initialize(host_allocator, &context);
+  loom_tooling_config_set_t config_set;
+  loom_tooling_config_set_initialize(host_allocator, &config_set);
+  const iree_string_view_t target = iree_make_cstring_view(FLAG_target);
+  const loom_tooling_compile_environment_t* compile_environment =
+      iree_string_view_is_empty(target)
+          ? NULL
+          : loom_tooling_configured_compile_environment();
   iree_status_t status = iree_ok_status();
   if (argc > 2) {
     status = iree_make_status(
@@ -358,14 +417,56 @@ int loom_check_main(int argc, char** argv,
         argc - 1);
   }
   if (iree_status_is_ok(status)) {
-    status =
-        loom_check_context_register_and_finalize(base_environment, &context);
+    if (compile_environment != NULL) {
+      status =
+          loom_tooling_context_register_tool_dialects_with_target_environment(
+              compile_environment->target_environment, &context);
+      if (iree_status_is_ok(status)) {
+        status = loom_context_finalize(&context);
+      }
+    } else {
+      status =
+          loom_check_context_register_and_finalize(base_environment, &context);
+    }
+  }
+  const iree_flag_string_list_t config_files = FLAG_config_file_list();
+  const iree_flag_string_list_t configs = FLAG_config_list();
+  loom_sanitizer_options_t sanitizer = {0};
+  if (iree_status_is_ok(status)) {
+    status = loom_sanitizer_options_parse_checks(
+        iree_make_cstring_view(FLAG_sanitizer), IREE_SV("--sanitizer"),
+        &sanitizer);
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_sanitizer_reporting_mode_parse(
+        iree_make_cstring_view(FLAG_sanitizer_reporting),
+        IREE_SV("--sanitizer-reporting"), &sanitizer.reporting_mode);
+  }
+  if (iree_status_is_ok(status) && compile_environment == NULL &&
+      (config_files.count > 0 || configs.count > 0 || sanitizer.checks != 0 ||
+       sanitizer.reporting_mode != LOOM_SANITIZER_REPORTING_MODE_DEFAULT)) {
+    status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "compiler options require --target");
+  }
+  for (iree_host_size_t i = 0;
+       iree_status_is_ok(status) && i < config_files.count; ++i) {
+    status = loom_tooling_config_set_append_json_file(
+        &config_set, config_files.values[i], host_allocator);
+  }
+  for (iree_host_size_t i = 0; iree_status_is_ok(status) && i < configs.count;
+       ++i) {
+    status = loom_tooling_config_set_append_assignment(&config_set,
+                                                       configs.values[i]);
   }
 
   iree_host_size_t pass_count = 0;
   iree_host_size_t fail_count = 0;
   iree_host_size_t skip_count = 0;
   const loom_check_process_options_t process_options = {
+      .compile = {.target = target,
+                  .environment = compile_environment,
+                  .config_set = &config_set,
+                  .sanitizer = sanitizer},
       .input_format = iree_make_cstring_view(FLAG_input_format),
       .update = FLAG_update,
       .verbose = FLAG_verbose,
@@ -404,6 +505,7 @@ int loom_check_main(int argc, char** argv,
   }
 
   loom_context_deinitialize(&context);
+  loom_tooling_config_set_deinitialize(&config_set);
   iree_arena_block_pool_deinitialize(&block_pool);
 
   if (had_error || fail_count > 0) {

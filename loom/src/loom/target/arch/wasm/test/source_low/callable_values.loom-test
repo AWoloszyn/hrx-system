@@ -86,7 +86,6 @@ func.def @advance_i32(%value: i32, %delta: i32) -> (i32) {
 wasm.target<simd128> @target
 
 func.def public target(@target) @call_scalar(%value: i32, %delta: i32) -> (i32) {
-  // ERROR@+1: TARGET/040 {op_name="low.func.call", field_name="callee", caller_target_name="target"}
   %result = func.call @scalar_add(%value, %delta) : (i32, i32) -> (i32)
   func.return %result : i32
 }
@@ -94,4 +93,15 @@ func.def public target(@target) @call_scalar(%value: i32, %delta: i32) -> (i32) 
 func.def @scalar_add(%value: i32, %delta: i32) -> (i32) {
   %result = scalar.addi %value, %delta : i32
   func.return %result : i32
+}
+
+// ----
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @call_scalar(%value: reg<wasm.i32>, %delta: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  %result = low.func.call pure @scalar_add(%value, %delta) : (reg<wasm.i32>, reg<wasm.i32>) -> (reg<wasm.i32>)
+  return %result
+}
+
+low.func.def target<wasm.core.simd128> @scalar_add(%value: reg<wasm.i32>, %delta: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  %result = i32.add %value, %delta
+  return %result
 }

@@ -278,6 +278,10 @@ in the consumer and use that state. The
 [checked guarded-row motif](tune-loop-schedules.md#keep-guards-and-inner-loops-in-the-source)
 demonstrates independent inner and outer policies. Stores, ordered effects,
 `scf.while`, and explicit async groups have different scheduling requirements.
+Fixed-bound tiles can pipeline reads into a subgroup or workgroup reduction;
+the collective stays in a memory-pure consumer, separate from guarded loads.
+See the [participation contract](../guide/functions-and-control.md#pipeline-reads-ahead-of-ordered-computation)
+when the tile contains collectives.
 Unannotated loops receive no read-ahead transformation.
 
 An experiment driver may bind these choices with global config keys to make
@@ -303,8 +307,35 @@ with per-instance policies, checked row-sum and packed-dot experiment harnesses,
 configuration sweeps, and actual `show`/`suggest` output. The
 [per-instance search](search-loop-schedules.md) composes two independent motifs,
 checks candidate identity, and inspects resource cliffs before device execution.
+For shared-input kernels, the
+[grouping and depth comparison](tune-loop-schedules.md#choose-grouping-and-depth-independently)
+separates load reuse from available subgroup parallelism, with different policy
+winners across workload sizes and GPU targets.
 The [control-flow guide](../guide/functions-and-control.md#unrolling-is-a-loop-policy)
 owns the exact policy and schedule semantics.
+
+For dependent route/page lookups, compare metadata and payload lead distances
+separately. The checked
+[routed-row example](tune-loop-schedules.md#separate-route-and-payload-lookahead)
+uses ordinary SSA queues to keep a row ID farther ahead than its weighted
+payload. Its matched unrolled control, numerical cases and named benchmark rows
+make source distance, native overlap and measured speed separate decisions.
+For cooperative attention, the
+[paged-attention example](tune-loop-schedules.md#pipeline-cooperative-paged-attention)
+pipelines K/V fragments into subgroup score reductions while preserving shared
+page identity, ordered softmax/PV state and ragged tail guards. Its independent
+analytic checks and matched benchmarks provide a starting point for schedule
+searches without hand-building the input queue.
+For top-k token lists, the
+[sparse attention example](tune-loop-schedules.md#pipeline-sparse-token-attention)
+separates the selected-prefix guard from physical-ID validity, with independent
+numerical checks, short allocations and poisoned inactive payloads. Preserve
+both boundaries when searching schedules for an indexer-selected workload.
+For grouped query heads, the
+[shared-loading example](tune-loop-schedules.md#share-kv-loads-across-query-heads)
+reuses K/V fragments while keeping separate queries, lengths and softmax states.
+Its independent, shared-serial and shared-pipelined callers separate reuse from
+scheduling: fewer loads can cost more live state and less subgroup parallelism.
 
 For authored native motifs, give a Low helper
 [`schedule(phased)`](../guide/functions-and-control.md#compose-independently-scheduled-helpers)

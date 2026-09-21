@@ -10,8 +10,10 @@
 #include <atomic>
 #include <string>
 #include <thread>
+#include <utility>
 
 #include "iree/testing/gtest.h"
+#include "loomc/link.h"
 #include "test/util.h"
 
 namespace {
@@ -24,6 +26,10 @@ using ModulePtr = HandlePtr<loomc_module_t, loomc_module_release>;
 using ResultPtr = HandlePtr<loomc_result_t, loomc_result_release>;
 using CompilerPtr = HandlePtr<loomc_compiler_t, loomc_compiler_release>;
 using PassPtr = HandlePtr<loomc_pass_program_t, loomc_pass_program_release>;
+using LinkBuilderPtr =
+    HandlePtr<loomc_link_index_builder_t, loomc_link_index_builder_release>;
+using LinkIndexPtr = HandlePtr<loomc_link_index_t, loomc_link_index_release>;
+using LinkerPtr = HandlePtr<loomc_linker_t, loomc_linker_release>;
 
 std::string ToString(loomc_string_view_t value) {
   return value.size ? std::string(value.data, value.size) : std::string();
@@ -172,6 +178,90 @@ TEST_F(CxxTest, RejectedSourceRetainsBorrowedContentsAndAllowsReuse) {
   auto good = Source("good.cpp", "int answer() { return 42; }");
   LOOMC_ASSERT_OK(Import(good.get()));
   ExpectSuccess(result_.get());
+}
+
+TEST_F(CxxTest, RenamedExportsLinkWithTheirTypesAfterSourceRelease) {
+  for (auto format : {LOOMC_SOURCE_FORMAT_TEXT, LOOMC_SOURCE_FORMAT_BYTECODE}) {
+    SCOPED_TRACE(format);
+    auto source = Source("library.cpp", R"(
+      [[loom::symbol("library.increment")]] unsigned increment(unsigned);
+      unsigned increment(unsigned value) { return value + 1u; }
+    )");
+    LOOMC_ASSERT_OK(Import(source.get()));
+    ExpectSuccess(result_.get());
+    loomc_module_serialize_options_t serialization = {};
+    serialization.format = format;
+    loomc_source_t* library = nullptr;
+    LOOMC_ASSERT_OK(loomc_module_serialize_to_source(
+        module_.get(), &serialization, loomc_allocator_system(), &library));
+    SourcePtr library_owner(library);
+    source.reset();
+    module_.reset();
+    result_.reset();
+
+    for (const auto& [argument_type, result_type] :
+         {std::pair{"i32", "i32"}, std::pair{"f32", "i32"},
+          std::pair{"i32", "f32"}}) {
+      const std::string signature =
+          std::string(argument_type) + ") -> (" + result_type;
+      SCOPED_TRACE(signature);
+      const std::string caller_text =
+          "func.decl @library.increment(" + signature + ")\n" +
+          "func.def public @entry(%value: " + signature + ") {\n" +
+          "  %result = func.call @library.increment(%value) : (" + signature +
+          ")\n  func.return %result : " + result_type + "\n}\n";
+      auto caller = Source("caller.loom", caller_text.c_str());
+      loomc_link_index_builder_t* builder = nullptr;
+      LOOMC_ASSERT_OK(loomc_link_index_builder_create(
+          context_.get(), nullptr, loomc_allocator_system(), &builder));
+      LinkBuilderPtr builder_owner(builder);
+      loomc_link_index_source_options_t provider = {};
+      provider.role = LOOMC_LINK_PROVIDER_ROLE_LIBRARY;
+      LOOMC_ASSERT_OK(loomc_link_index_builder_add_source(builder, library,
+                                                          &provider, nullptr));
+      provider.role = LOOMC_LINK_PROVIDER_ROLE_INPUT;
+      LOOMC_ASSERT_OK(loomc_link_index_builder_add_source(builder, caller.get(),
+                                                          &provider, nullptr));
+      loomc_link_index_t* index = nullptr;
+      loomc_result_t* result = nullptr;
+      LOOMC_ASSERT_OK(
+          loomc_link_index_builder_finish(builder, &index, &result));
+      LinkIndexPtr index_owner(index);
+      ResultPtr index_result(result);
+      ExpectSuccess(result);
+      builder_owner.reset();
+      caller.reset();
+
+      loomc_linker_t* linker = nullptr;
+      LOOMC_ASSERT_OK(loomc_linker_create(context_.get(), nullptr,
+                                          loomc_allocator_system(), &linker));
+      LinkerPtr linker_owner(linker);
+      loomc_link_options_t options = {};
+      options.link_index = index;
+      options.mode = LOOMC_LINK_MODE_LINK;
+      options.flags = LOOMC_LINK_FLAG_INCLUDE_INPUT_EXPORTS;
+      loomc_module_t* linked = nullptr;
+      LOOMC_ASSERT_OK(loomc_link_module(linker, workspace_.get(), &options,
+                                        &linked, &result));
+      ModulePtr linked_owner(linked);
+      ResultPtr link_result(result);
+      if (signature == "i32) -> (i32") {
+        ExpectSuccess(result);
+        ASSERT_NE(linked, nullptr);
+        auto text = Print(linked);
+        EXPECT_NE(text.find("@library.increment"), std::string::npos);
+        EXPECT_NE(text.find("scalar.addi"), std::string::npos);
+        EXPECT_EQ(text.find("func.decl"), std::string::npos);
+      } else {
+        EXPECT_FALSE(loomc_result_succeeded(result));
+        EXPECT_EQ(linked, nullptr);
+        ASSERT_GT(loomc_result_diagnostic_count(result), 0u);
+        const auto* diagnostic = loomc_result_diagnostic_at(result, 0);
+        EXPECT_NE(ToString(diagnostic->message).find("incompatible"),
+                  std::string::npos);
+      }
+    }
+  }
 }
 
 // An immutable cache shared by independently owned frontend invocations.
@@ -348,6 +438,96 @@ TEST_F(CxxTest, LaunchRangesUseNormalCompilationConfigValidation) {
       EXPECT_EQ(ToString(loomc_result_diagnostic_at(result, 0)->code),
                 "CONFIG/INVALID");
     }
+  }
+}
+
+TEST_F(CxxTest, ConfigProvidersSpecializeFreshBytecodeAfterImportRelease) {
+  auto source = Source("reusable.cpp", R"(
+    [[loom::config("tuning.factor")]] extern const unsigned factor;
+    unsigned entry() { return factor * 3; }
+  )");
+  LOOMC_ASSERT_OK(Import(source.get()));
+  ExpectSuccess(result_.get());
+
+  loomc_compiler_t* compiler = nullptr;
+  LOOMC_ASSERT_OK(loomc_compiler_create(context_.get(), nullptr,
+                                        loomc_allocator_system(), &compiler));
+  CompilerPtr compiler_owner(compiler);
+  loomc_pass_program_t* passes = nullptr;
+  loomc_result_t* result = nullptr;
+  LOOMC_ASSERT_OK(loomc_pass_program_create_from_pipeline_text(
+      context_.get(), loomc_make_cstring_view("canonicalize,cse,dce"), nullptr,
+      loomc_allocator_system(), &passes, &result));
+  PassPtr pass_owner(passes);
+  ResultPtr pass_result(result);
+  ExpectSuccess(result);
+  LOOMC_ASSERT_OK(loomc_compile_module(compiler, workspace_.get(), passes,
+                                       module_.get(), nullptr,
+                                       loomc_allocator_system(), &result));
+  ResultPtr cleanup_result(result);
+  ExpectSuccess(result);
+  const std::string unresolved = Print(module_.get());
+  EXPECT_NE(unresolved.find("config.get @tuning.factor"), std::string::npos);
+
+  loomc_source_t* bytecode = nullptr;
+  LOOMC_ASSERT_OK(loomc_module_serialize_bytecode_to_source(
+      module_.get(), nullptr, loomc_allocator_system(), &bytecode));
+  SourcePtr bytecode_owner(bytecode);
+  const std::string original_bytecode = Contents(bytecode);
+  source.reset();
+  result_.reset();
+  cleanup_result.reset();
+  module_.reset();
+  workspace_.reset();
+
+  for (unsigned factor : {5u, 9u}) {
+    SCOPED_TRACE(factor);
+    loomc_workspace_t* workspace = nullptr;
+    LOOMC_ASSERT_OK(
+        loomc_workspace_create(nullptr, loomc_allocator_system(), &workspace));
+    WorkspacePtr workspace_owner(workspace);
+    loomc_module_t* module = nullptr;
+    LOOMC_ASSERT_OK(loomc_module_deserialize_bytecode_from_source(
+        context_.get(), workspace, bytecode, nullptr, loomc_allocator_system(),
+        &module, &result));
+    ModulePtr module_owner(module);
+    ResultPtr deserialize_result(result);
+    ExpectSuccess(result);
+    EXPECT_EQ(Print(module), unresolved);
+
+    const std::string provider_text =
+        "[[loom::config(\"tuning.factor\")]] const unsigned factor = " +
+        std::to_string(factor) + ";";
+    auto provider_source = Source("provider.cpp", provider_text.c_str());
+    loomc_module_t* provider = nullptr;
+    LOOMC_ASSERT_OK(loomc_module_import_cxx(
+        context_.get(), workspace, provider_source.get(), nullptr,
+        loomc_allocator_system(), &provider, &result));
+    ModulePtr provider_owner(provider);
+    ResultPtr provider_result(result);
+    ExpectSuccess(result);
+    provider_source.reset();
+    provider_result.reset();
+    const std::string provider_before = Print(provider);
+    EXPECT_NE(provider_before.find("config.def @tuning.factor = " +
+                                   std::to_string(factor)),
+              std::string::npos);
+
+    loomc_compile_options_t options = {};
+    options.config_module = provider;
+    options.config_flags = LOOMC_CONFIG_POLICY_FLAG_REQUIRE_RESOLVED;
+    LOOMC_ASSERT_OK(loomc_compile_module(compiler, workspace, passes, module,
+                                         &options, loomc_allocator_system(),
+                                         &result));
+    ResultPtr compile_result(result);
+    ExpectSuccess(result);
+    const std::string specialized = Print(module);
+    EXPECT_EQ(specialized.find("config.get"), std::string::npos);
+    EXPECT_NE(specialized.find("scalar.constant " + std::to_string(factor * 3) +
+                               " : i32"),
+              std::string::npos);
+    EXPECT_EQ(Print(provider), provider_before);
+    EXPECT_EQ(Contents(bytecode), original_bytecode);
   }
 }
 

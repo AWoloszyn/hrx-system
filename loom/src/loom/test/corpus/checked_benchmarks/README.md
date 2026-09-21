@@ -101,6 +101,96 @@ and deeper lookahead increases the amount of live state and generated code.
 These programs express their pipelines with ordinary SSA and SCF, using the
 existing unroll policy independently.
 
+## Dependent Route Lookahead
+
+`routed_row_combine_f32.loom` combines selected expert-output rows into
+1024-channel token rows. Its two kernels use the same unroll factor of two.
+The serial control reads and consumes one route per logical iteration;
+the explicit pipeline reads route IDs two iterations ahead of consumption and
+weights/payloads one ahead. Carrying only the ID in the metadata stage avoids
+making the weight an immediate consumer of that lookup.
+
+The varied-input checks preserve row/weight identity across startup, drain,
+holes, duplicates and tails. Independent analytic cases check missing routes,
+floating-point recurrence order, and the benchmark outputs. Access testing uses
+undersized backing storage for inactive routes. The `n8_t1`, `n8_t16`, and
+`n8_t256` benchmark suffixes cover decode and batched combines; `n32` rows stress
+a longer recurrence. Each benchmark case launches exactly one kernel.
+
+Compare the serial and pipelined rows under the same batching and cache policy.
+Native partial waits show overlap inside the unrolled body; edge copies may
+still require completion at the backedge. Registers, code size, JIT cost and
+device time are separate evidence. The website's
+[dependent-load workflow](../../../../../docs/src/workflows/tune-loop-schedules.md#separate-route-and-payload-lookahead)
+walks through that comparison.
+
+## Cooperative Paged Attention
+
+`cooperative_paged_attention_f32.loom` assigns one subgroup to each 128-channel
+query. A runtime page loop shares one table lookup across K/V rows; a fixed
+sixteen-row inner loop pipelines guarded fragments into a subgroup QK reduction
+and ordered online softmax/PV state. Target subgroup width sets each lane's
+channel fragment. One template takes the per-caller depth and unroll factor,
+with depth-one and depth-three callers both unrolled by two.
+
+Independent analytic cases check maximum, denominator and normalized output
+for empty, absent, repeated, short and ragged pages. Varied inputs distinguish
+K/V row identity and lane fragments across shared pages and different query
+lengths. Undersized inactive backing makes accidental tail reads observable
+under the access sanitizer. Timing cases launch one kernel each, with exact
+expectations and the full K/V cache footprint.
+
+Matched benchmark names are
+`@cooperative_paged_attention_serial_n128_i256` and
+`@cooperative_paged_attention_pipelined_n128_i256`. The `n128`/`n1024` and
+`i1`/`i16`/`i256` suffixes select token and query counts. The
+[cooperative pipeline workflow](../../../../../docs/src/workflows/tune-loop-schedules.md#pipeline-cooperative-paged-attention)
+connects these workloads to native resource reports and controlled timings.
+
+## Sparse Token Attention
+
+`sparse_token_attention_f32.loom` gathers an ordered prefix of physical token
+IDs for each 128-channel query. The prefix guard protects the index read;
+an unsigned range test separately protects dependent K/V reads. Negative and
+out-of-range IDs leave all online state unchanged, while duplicates contribute
+once per occurrence. Causal selection belongs to the caller's index list.
+
+One template takes the caller's depth and unroll factor. A fixed sixteen-entry
+tile permits read-ahead into the subgroup score reduction while the outer
+prefix count stays dynamic. Matched depth-one/depth-three callers both unroll
+by two. Independent analytic cases check maximum, denominator and normalized
+output; varied queries cover shared lists and differing prefixes. Minimal
+backing and NaN-poisoned inactive payloads exercise both access boundaries.
+
+The `@sparse_token_attention_serial_n128_i256` and
+`@sparse_token_attention_pipelined_n128_i256` benchmarks launch one kernel
+each. The `n128`/`n1024` and `i1`/`i16`/`i256` suffixes select prefix and query
+counts with the same full-cache footprint. The
+[sparse attention workflow](../../../../../docs/src/workflows/tune-loop-schedules.md#pipeline-sparse-token-attention)
+connects this source to access checking, reports and schedule comparisons.
+
+## Shared K/V Across Query Heads
+
+`grouped_paged_attention_f32.loom` compares two independent query subgroups
+with one subgroup sharing K/V fragments across two distinct query heads.
+A pair owns its page table; each head retains its own length, query, online
+state and normalized output. The union prefix guards shared loads, while
+separate consumer guards preserve unequal tails and either head being empty.
+
+Independent and shared callers both use depth two and unroll two. A shared
+depth-one caller isolates pipelining. The online update is a reusable template
+whose vector width comes from the target's subgroup size. Analytic checks
+anchor both heads' states and outputs; varied pairs distinguish query and
+table ownership. Minimal backing covers ragged tails, holes and repeated pages.
+
+The `@grouped_paged_attention_independent_n128_p1024` and
+`@grouped_paged_attention_shared_n128_p1024` benchmarks compare 2048 query heads
+over the same 64 MiB K/V pool. The `n128`/`n1024` and `p1`/`p128`/`p1024`
+suffixes select token and pair counts. Sharing halves issued K/V loads for
+equal-length heads but retains more state and launches fewer subgroups. The
+[shared-loading workflow](../../../../../docs/src/workflows/tune-loop-schedules.md#share-kv-loads-across-query-heads)
+compares that tradeoff separately from pipeline depth.
+
 ## Review Questions
 
 Before adding a source file here, the review answers:

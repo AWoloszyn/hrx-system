@@ -145,6 +145,14 @@ static void loom_low_allocation_edge_copy_record_branch_payload_segments(
     loom_low_allocation_edge_copy_builder_t* builder, uint16_t payload_index,
     loom_value_id_t payload_value_id, loom_value_id_t destination_value_id) {
   const loom_low_allocation_edge_copy_context_t* context = builder->context;
+  const loom_value_ordinal_t destination_ordinal =
+      loom_low_allocation_edge_copy_value_ordinal(context,
+                                                  destination_value_id);
+  if (context->move_plan->context.assignment_map
+          .assignment_indices_by_value_ordinal[destination_ordinal] ==
+      UINT32_MAX) {
+    return;
+  }
   const loom_low_placement_relation_t* branch_relation =
       loom_low_allocation_edge_copy_branch_relation(context, payload_value_id,
                                                     destination_value_id);

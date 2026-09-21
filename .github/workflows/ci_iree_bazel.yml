@@ -221,6 +221,7 @@ jobs:
       HRX_RELEASE_TYPE: nightly
       HRX_ROCM_ROOT: ${{ github.workspace }}\build\iree-bazel-windows\rocm-root
       IREE_CI_PYTHON: python
+      IREE_CI_FAILURE_ARTIFACT_DIR: ${{ github.workspace }}\build\windows-build-failures-${{ github.run_id }}-${{ github.run_attempt }}
       PIP_CACHE_DIR: ${{ github.workspace }}\build\iree-bazel-windows\caches\pip
     steps:
       - name: Checkout repository
@@ -281,6 +282,15 @@ jobs:
             set "AR=%BAZEL_LLVM%\bin\llvm-lib.exe"
           )
           python build_tools/devtools/ci.py iree-bazel-repository-integration --amdgpu-target gfx11-generic --bazel-profile-dir "%RUNNER_TEMP%\bazel-profiles" --keep-going
+
+      - name: Upload Windows build failure evidence
+        if: ${{ always() && steps.iree_bazel_ci.outcome == 'failure' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-build-failures-bazel-${{ matrix.host_toolchain }}-attempt-${{ github.run_attempt }}
+          path: ${{ env.IREE_CI_FAILURE_ARTIFACT_DIR }}
+          if-no-files-found: warn
+          retention-days: 7
 
       - name: Upload Bazel profiles
         if: ${{ always() && steps.iree_bazel_ci.outcome != 'skipped' }}

@@ -239,6 +239,7 @@ loom_cc_library(
         "//loom/src/loom/pass:tooling",
         "//loom/src/loom/sanitizer:options",
         "//loom/src/loom/target:entry_selection",
+        "//loom/src/loom/target:function_version_projection",
         "//loom/src/loom/target:legalization",
         "//loom/src/loom/target:low_asm_diagnostics",
         "//loom/src/loom/target:low_descriptor_registry",
@@ -400,10 +401,27 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "compile",
+    srcs = ["compile.c"],
+    hdrs = ["compile.h"],
+    deps = [
+        ":execute",
+        "//loom/src/loom/codegen/low:repr",
+        "//loom/src/loom/link:linker",
+        "//loom/src/loom/target:entry_selection",
+        "//loom/src/loom/tooling/compile:configured",
+        "//loom/src/loom/tooling/compile:preparation",
+        "//loom/src/loom/tooling/config",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
     name = "file",
     srcs = ["file.c"],
     hdrs = ["file.h"],
     deps = [
+        ":compile",
         ":execute",
         ":json_output",
         ":output",
@@ -448,7 +466,11 @@ loom_cc_library(
         ":file",
         ":json_output",
         ":output",
+        "//loom/src/loom/sanitizer:options",
         "//loom/src/loom/tooling/cli:help",
+        "//loom/src/loom/tooling/compile:configured",
+        "//loom/src/loom/tooling/config",
+        "//loom/src/loom/tooling/context",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/base/tooling:flags",

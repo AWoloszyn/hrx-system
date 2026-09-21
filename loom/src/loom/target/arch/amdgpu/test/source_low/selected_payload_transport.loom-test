@@ -1,0 +1,319 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/selected_payload_transport.loom-test
+// RUN: pass source-to-low
+
+amdgpu.target<gfx11-generic> @target
+
+func.def public target(@target) @selected_truncated(%input: vector<4xi32>, %left: i64, %right: i64) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i64
+  %payload = scalar.trunci %selected : i64 to i32
+  cfg.br ^forward(%payload: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+amdgpu.target<gfx11-generic> @target
+
+low.func.def public target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @selected_truncated(%input: reg<amdgpu.vgpr x4>, %left: reg<amdgpu.sgpr x2>, %right: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr>) asm {
+  %value = slice %input[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %condition = v_cmp_gt_i32_src1_inline %value {rhs = 0}
+  %17 = slice %left[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %18 = v_mov_b32_copy %17
+  %19 = slice %right[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %20 = v_mov_b32_copy %19
+  %21 = v_cndmask_b32 %20, %18, %condition
+  %22 = slice %left[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %23 = v_mov_b32_copy %22
+  %24 = slice %right[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %25 = v_mov_b32_copy %24
+  %26 = v_cndmask_b32 %25, %23, %condition
+  %selected = concat(%21, %26) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %payload = slice %selected[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  low.br ^forward(%payload: reg<amdgpu.vgpr>)
+^forward(%carried: reg<amdgpu.vgpr>):
+  return %carried
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def public target(@target) @selected_coordinate(%input: vector<4xi32>, %left: i32, %right: i32) -> (index) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload = index.cast %selected : i32 to index
+  cfg.br ^forward(%payload: index)
+^forward(%carried: index):
+  func.return %carried : index
+}
+
+// ----
+amdgpu.target<gfx11-generic> @target
+
+low.func.def public target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @selected_coordinate(%input: reg<amdgpu.vgpr x4>, %left: reg<amdgpu.sgpr>, %right: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %value = slice %input[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %condition = v_cmp_gt_i32_src1_inline %value {rhs = 0}
+  %17 = v_mov_b32_copy %left
+  %18 = v_mov_b32_copy %right
+  %payload = v_cndmask_b32 %18, %17, %condition
+  low.br ^forward(%payload: reg<amdgpu.vgpr>)
+^forward(%carried: reg<amdgpu.vgpr>):
+  return %carried
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def public target(@target) @selected_offset(%input: vector<4xi32>, %left: i32, %right: i32) -> (offset) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload = index.cast %selected : i32 to offset
+  cfg.br ^forward(%payload: offset)
+^forward(%carried: offset):
+  func.return %carried : offset
+}
+
+// ----
+amdgpu.target<gfx11-generic> @target
+
+low.func.def public target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @selected_offset(%input: reg<amdgpu.vgpr x4>, %left: reg<amdgpu.sgpr>, %right: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %value = slice %input[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %condition = v_cmp_gt_i32_src1_inline %value {rhs = 0}
+  %17 = v_mov_b32_copy %left
+  %18 = v_mov_b32_copy %right
+  %payload = v_cndmask_b32 %18, %17, %condition
+  low.br ^forward(%payload: reg<amdgpu.vgpr>)
+^forward(%carried: reg<amdgpu.vgpr>):
+  return %carried
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def public target(@target) @selected_extended_truncation(%input: vector<4xi32>, %left: i64, %right: i64) -> (i64) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i64
+  %narrowed = scalar.trunci %selected : i64 to i32
+  %payload = scalar.extsi %narrowed : i32 to i64
+  cfg.br ^forward(%payload: i64)
+^forward(%carried: i64):
+  func.return %carried : i64
+}
+
+// ----
+amdgpu.target<gfx11-generic> @target
+
+low.func.def public target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @selected_extended_truncation(%input: reg<amdgpu.vgpr x4>, %left: reg<amdgpu.sgpr x2>, %right: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
+  %value = slice %input[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %condition = v_cmp_gt_i32_src1_inline %value {rhs = 0}
+  %18 = slice %left[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %19 = v_mov_b32_copy %18
+  %20 = slice %right[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %21 = v_mov_b32_copy %20
+  %22 = v_cndmask_b32 %21, %19, %condition
+  %23 = slice %left[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %24 = v_mov_b32_copy %23
+  %25 = slice %right[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %26 = v_mov_b32_copy %25
+  %27 = v_cndmask_b32 %26, %24, %condition
+  %selected = concat(%22, %27) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %narrowed = slice %selected[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %30 = v_ashrrev_i32_src0_inline %narrowed, 31
+  %payload = concat(%narrowed, %30) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  low.br ^forward(%payload: reg<amdgpu.vgpr x2>)
+^forward(%carried: reg<amdgpu.vgpr x2>):
+  return %carried
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def public target(@target) @uniform_selected_truncated(%value: i32, %left: i64, %right: i64) -> (i32) {
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i64
+  %payload = scalar.trunci %selected : i64 to i32
+  cfg.br ^forward(%payload: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+amdgpu.target<gfx11-generic> @target
+
+low.func.def public target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @uniform_selected_truncated(%value: reg<amdgpu.sgpr>, %left: reg<amdgpu.sgpr x2>, %right: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.sgpr>) asm {
+  %threshold = s_mov_b32 0
+  %condition = s_cmp_gt_i32 %value, %threshold
+  %16 = slice %left[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %17 = slice %right[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %18 = s_cselect_b32 %16, %17, %condition
+  %19 = slice %left[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %20 = slice %right[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %21 = s_cselect_b32 %19, %20, %condition
+  %selected = concat(%18, %21) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %payload = slice %selected[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  low.br ^forward(%payload: reg<amdgpu.sgpr>)
+^forward(%carried: reg<amdgpu.sgpr>):
+  return %carried
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def public target(@target) @independent_assumption_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload, %bounded = scalar.assume %scalar, %selected [range(%selected, 0, 42)] : i32, i32
+  cfg.br ^forward(%payload: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+amdgpu.target<gfx11-generic> @target
+
+low.func.def public target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @independent_assumption_payload(%input: reg<amdgpu.vgpr x4>, %left: reg<amdgpu.sgpr>, %right: reg<amdgpu.sgpr>, %payload: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  %value = slice %input[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %condition = v_cmp_gt_i32_src1_inline %value {rhs = 0}
+  %20 = v_mov_b32_copy %left
+  %21 = v_mov_b32_copy %right
+  %bounded = v_cndmask_b32 %21, %20, %condition
+  low.br ^forward(%payload: reg<amdgpu.sgpr>)
+^forward(%carried: reg<amdgpu.sgpr>):
+  return %carried
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def public target(@target) @selected_assumption_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload, %bounded = scalar.assume %scalar, %selected [range(%selected, 0, 42)] : i32, i32
+  cfg.br ^forward(%bounded: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+amdgpu.target<gfx11-generic> @target
+
+low.func.def public target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @selected_assumption_payload(%input: reg<amdgpu.vgpr x4>, %left: reg<amdgpu.sgpr>, %right: reg<amdgpu.sgpr>, %payload: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %value = slice %input[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %condition = v_cmp_gt_i32_src1_inline %value {rhs = 0}
+  %20 = v_mov_b32_copy %left
+  %21 = v_mov_b32_copy %right
+  %bounded = v_cndmask_b32 %21, %20, %condition
+  low.br ^forward(%bounded: reg<amdgpu.vgpr>)
+^forward(%carried: reg<amdgpu.vgpr>):
+  return %carried
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def public target(@target) @independent_transformed_assumption_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload, %bounded = scalar.assume %scalar, %selected [range(%selected, 0, 42)] : i32, i32
+  %increment = scalar.constant 3 : i32
+  %transformed = scalar.addi %payload, %increment : i32
+  cfg.br ^forward(%transformed: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+amdgpu.target<gfx11-generic> @target
+
+low.func.def public target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @independent_transformed_assumption_payload(%input: reg<amdgpu.vgpr x4>, %left: reg<amdgpu.sgpr>, %right: reg<amdgpu.sgpr>, %payload: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  %value = slice %input[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %condition = v_cmp_gt_i32_src1_inline %value {rhs = 0}
+  %22 = v_mov_b32_copy %left
+  %23 = v_mov_b32_copy %right
+  %bounded = v_cndmask_b32 %23, %22, %condition
+  %increment = s_mov_b32 3
+  %transformed = s_add_u32 %payload, %increment
+  low.br ^forward(%transformed: reg<amdgpu.sgpr>)
+^forward(%carried: reg<amdgpu.sgpr>):
+  return %carried
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def public target(@target) @selected_transformed_assumption_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload, %bounded = scalar.assume %scalar, %selected [range(%selected, 0, 42)] : i32, i32
+  %increment = scalar.constant 3 : i32
+  %transformed = scalar.addi %bounded, %increment : i32
+  cfg.br ^forward(%transformed: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+amdgpu.target<gfx11-generic> @target
+
+low.func.def public target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @selected_transformed_assumption_payload(%input: reg<amdgpu.vgpr x4>, %left: reg<amdgpu.sgpr>, %right: reg<amdgpu.sgpr>, %payload: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %value = slice %input[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %condition = v_cmp_gt_i32_src1_inline %value {rhs = 0}
+  %22 = v_mov_b32_copy %left
+  %23 = v_mov_b32_copy %right
+  %bounded = v_cndmask_b32 %23, %22, %condition
+  %increment = s_mov_b32 3
+  %26 = v_mov_b32 3
+  %transformed = v_add_u32 %bounded, %26
+  low.br ^forward(%transformed: reg<amdgpu.vgpr>)
+^forward(%carried: reg<amdgpu.vgpr>):
+  return %carried
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def public target(@target) @independent_predicate_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload = scalar.assume %scalar [lt(%scalar, %selected)] : i32
+  cfg.br ^forward(%payload: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+amdgpu.target<gfx11-generic> @target
+
+low.func.def public target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @independent_predicate_payload(%input: reg<amdgpu.vgpr x4>, %left: reg<amdgpu.sgpr>, %right: reg<amdgpu.sgpr>, %payload: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  low.br ^forward(%payload: reg<amdgpu.sgpr>)
+^forward(%carried: reg<amdgpu.sgpr>):
+  return %carried
+}

@@ -1,0 +1,229 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/selected_payload_transport.loom-test
+// RUN: emit source-low output=low
+
+wasm.target<simd128> @target
+
+func.def public target(@target) @selected_truncated(%input: vector<4xi32>, %left: i64, %right: i64) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i64
+  %payload = scalar.trunci %selected : i64 to i32
+  cfg.br ^forward(%payload: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @selected_truncated(%input: reg<wasm.v128>, %left: reg<wasm.i64>, %right: reg<wasm.i64>) -> (reg<wasm.i32>) asm {
+  %value = i32x4.extract_lane %input, 0
+  %threshold = i32.const 0
+  %condition = i32.gt_s %value, %threshold
+  %selected = i64.select %left, %right, %condition
+  %payload = i32.wrap_i64 %selected
+  return %payload
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def public target(@target) @selected_coordinate(%input: vector<4xi32>, %left: i32, %right: i32) -> (index) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload = index.cast %selected : i32 to index
+  cfg.br ^forward(%payload: index)
+^forward(%carried: index):
+  func.return %carried : index
+}
+
+// ----
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @selected_coordinate(%input: reg<wasm.v128>, %left: reg<wasm.i32>, %right: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  %value = i32x4.extract_lane %input, 0
+  %threshold = i32.const 0
+  %condition = i32.gt_s %value, %threshold
+  %payload = i32.select %left, %right, %condition
+  return %payload
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def public target(@target) @selected_offset(%input: vector<4xi32>, %left: i32, %right: i32) -> (offset) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload = index.cast %selected : i32 to offset
+  cfg.br ^forward(%payload: offset)
+^forward(%carried: offset):
+  func.return %carried : offset
+}
+
+// ----
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @selected_offset(%input: reg<wasm.v128>, %left: reg<wasm.i32>, %right: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  %value = i32x4.extract_lane %input, 0
+  %threshold = i32.const 0
+  %condition = i32.gt_s %value, %threshold
+  %payload = i32.select %left, %right, %condition
+  return %payload
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def public target(@target) @selected_extended_truncation(%input: vector<4xi32>, %left: i64, %right: i64) -> (i64) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i64
+  %narrowed = scalar.trunci %selected : i64 to i32
+  // ERROR@+1: TARGET/001 {op_name="scalar.extsi"}
+  %payload = scalar.extsi %narrowed : i32 to i64
+  cfg.br ^forward(%payload: i64)
+^forward(%carried: i64):
+  func.return %carried : i64
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def public target(@target) @uniform_selected_truncated(%value: i32, %left: i64, %right: i64) -> (i32) {
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i64
+  %payload = scalar.trunci %selected : i64 to i32
+  cfg.br ^forward(%payload: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @uniform_selected_truncated(%value: reg<wasm.i32>, %left: reg<wasm.i64>, %right: reg<wasm.i64>) -> (reg<wasm.i32>) asm {
+  %threshold = i32.const 0
+  %condition = i32.gt_s %value, %threshold
+  %selected = i64.select %left, %right, %condition
+  %payload = i32.wrap_i64 %selected
+  return %payload
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def public target(@target) @independent_assumption_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload, %bounded = scalar.assume %scalar, %selected [range(%selected, 0, 42)] : i32, i32
+  cfg.br ^forward(%payload: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @independent_assumption_payload(%input: reg<wasm.v128>, %left: reg<wasm.i32>, %right: reg<wasm.i32>, %payload: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  return %payload
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def public target(@target) @selected_assumption_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload, %bounded = scalar.assume %scalar, %selected [range(%selected, 0, 42)] : i32, i32
+  cfg.br ^forward(%bounded: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @selected_assumption_payload(%input: reg<wasm.v128>, %left: reg<wasm.i32>, %right: reg<wasm.i32>, %payload: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  %value = i32x4.extract_lane %input, 0
+  %threshold = i32.const 0
+  %condition = i32.gt_s %value, %threshold
+  %bounded = i32.select %left, %right, %condition
+  return %bounded
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def public target(@target) @independent_transformed_assumption_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload, %bounded = scalar.assume %scalar, %selected [range(%selected, 0, 42)] : i32, i32
+  %increment = scalar.constant 3 : i32
+  %transformed = scalar.addi %payload, %increment : i32
+  cfg.br ^forward(%transformed: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @independent_transformed_assumption_payload(%input: reg<wasm.v128>, %left: reg<wasm.i32>, %right: reg<wasm.i32>, %payload: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  %increment = i32.const 3
+  %transformed = i32.add %payload, %increment
+  return %transformed
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def public target(@target) @selected_transformed_assumption_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload, %bounded = scalar.assume %scalar, %selected [range(%selected, 0, 42)] : i32, i32
+  %increment = scalar.constant 3 : i32
+  %transformed = scalar.addi %bounded, %increment : i32
+  cfg.br ^forward(%transformed: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @selected_transformed_assumption_payload(%input: reg<wasm.v128>, %left: reg<wasm.i32>, %right: reg<wasm.i32>, %payload: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  %value = i32x4.extract_lane %input, 0
+  %threshold = i32.const 0
+  %condition = i32.gt_s %value, %threshold
+  %bounded = i32.select %left, %right, %condition
+  %increment = i32.const 3
+  %transformed = i32.add %bounded, %increment
+  return %transformed
+}
+
+// ====
+
+wasm.target<simd128> @target
+
+func.def public target(@target) @independent_predicate_payload(%input: vector<4xi32>, %left: i32, %right: i32, %scalar: i32) -> (i32) {
+  %value = vector.extract %input[0] : vector<4xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %value, %threshold : i32
+  %selected = scf.select %condition, %left, %right : i32
+  %payload = scalar.assume %scalar [lt(%scalar, %selected)] : i32
+  cfg.br ^forward(%payload: i32)
+^forward(%carried: i32):
+  func.return %carried : i32
+}
+
+// ----
+low.func.def public target<wasm.core.simd128>(@target) abi(wasm_function) @independent_predicate_payload(%input: reg<wasm.v128>, %left: reg<wasm.i32>, %right: reg<wasm.i32>, %payload: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  return %payload
+}

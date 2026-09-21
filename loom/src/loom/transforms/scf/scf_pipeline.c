@@ -69,6 +69,8 @@ typedef struct loom_scf_pipeline_loop_t {
   loom_value_facts_t step;
   // Source lower-bound facts used to construct the overflow-safe guard.
   loom_value_facts_t lower_bound;
+  // Exact bounds give every participant the same main/drain iteration split.
+  bool has_static_bounds;
   // Largest source-domain value representable by the selected address carrier.
   int64_t maximum_value;
 } loom_scf_pipeline_loop_t;
@@ -125,6 +127,10 @@ static iree_status_t loom_scf_pipeline_resolve_facts(
         loom_value_fact_table_lookup(facts, loom_scf_for_step(loop->source));
     loop->lower_bound = loom_value_fact_table_lookup(
         facts, loom_scf_for_lower_bound(loop->source));
+    loop->has_static_bounds =
+        loom_value_facts_is_exact(loop->lower_bound) &&
+        loom_value_facts_is_exact(loom_value_fact_table_lookup(
+            facts, loom_scf_for_upper_bound(loop->source)));
     const loom_scalar_type_t scalar_type = loom_type_element_type(
         loom_module_value_type(module, loom_scf_for_lower_bound(loop->source)));
     const int32_t bitwidth =
@@ -627,7 +633,7 @@ static iree_status_t loom_scf_pipeline_process_loop(
     loom_scf_pipeline_rejection_t rejection = {0};
     IREE_RETURN_IF_ERROR(loom_scf_pipeline_plan_build(
         context->module, loom_region_entry_block(loom_scf_for_body(source)),
-        context->arena, &plan, &rejection));
+        loop->has_static_bounds, context->arena, &plan, &rejection));
     if (rejection.op) {
       return loom_scf_pipeline_reject(context->pass, rejection.op, depth,
                                       rejection.constraint);

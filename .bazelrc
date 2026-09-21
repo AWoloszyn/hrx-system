@@ -15,6 +15,12 @@ common --enable_platform_specific_config
 # Treat stale direct dependency pins as errors instead of background warnings.
 common --check_direct_dependencies=error
 
+# Give transient repository HTTP failures four more connection attempts than
+# Bazel's default eight. Bound exponential backoff while leaving permanent HTTP
+# errors and checksum failures terminal; no build or test actions are retried.
+common --http_connector_attempts=12
+common --http_connector_retry_max_timeout=5s
+
 # Bazel's default lockfile mode is "update", which lets ordinary read-only
 # commands such as "bazel mod graph" silently rewrite MODULE.bazel.lock when
 # module extension facts change. Normal development, CI, and agent workflows
@@ -50,6 +56,10 @@ build --incompatible_default_to_explicit_init_py
 # match it to the host and destination. Native Windows defaults to clang-cl.
 build:windows-clang-cl --//build_tools/windows:compiler=clang-cl
 build:windows-msvc --//build_tools/windows:compiler=msvc
+
+# Retain failed action arguments, environment, and parameter-file paths for
+# Windows diagnostics before subsequent CI phases can replace the inputs.
+build:windows --verbose_failures
 
 # Destinations are independent of compiler selection. Native builds infer their
 # destination; cross builds preserve the native host for code generators.

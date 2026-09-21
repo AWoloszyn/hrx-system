@@ -12,13 +12,29 @@ iree_add_all_subdirs()
 if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
+    names
+  HDRS
+    "names.h"
+  SRCS
+    "names.cc"
+  DEPS
+    loom::import::cxx::source
+  PUBLIC
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_library(
+  NAME
     functions
   HDRS
     "functions.h"
   SRCS
     "functions.cc"
   DEPS
+    ::names
     iree::third_party::cxx_parser
+    loom::import::cxx::binding::config
     loom::import::cxx::binding::intrinsics
     loom::import::cxx::binding::launch
     loom::import::cxx::source
@@ -55,6 +71,7 @@ loom_cc_test(
 endif()
 
 foreach(_target IN ITEMS
+    loom_import_cxx_symbol_names.objects
     loom_import_cxx_symbol_functions.objects
     loom_import_cxx_symbol_functions_test
 )

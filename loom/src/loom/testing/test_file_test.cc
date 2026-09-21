@@ -7,6 +7,7 @@
 #include "loom/testing/test_file.h"
 
 #include <cstring>
+#include <string>
 
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
@@ -400,6 +401,71 @@ TEST_F(TestFileParseTest, MultipleTemplateDirectivesError) {
       Parse("// TEMPLATE: "
             "loom/src/loom/test/corpus/vector/arithmetic.loom-test\n"
             "// TEMPLATE: loom/src/loom/test/corpus/vector/memory.loom-test\n"
+            "\n"
+            "func.def @f() {}\n"));
+}
+
+TEST_F(TestFileParseTest, TemplateExclusionsInPreamble) {
+  IREE_ASSERT_OK(Parse(
+      "// TEMPLATE-EXCLUDE: @first requires explicit CFG support\n"
+      "// TEMPLATE: loom/src/loom/test/corpus/source_low/example.loom-test\n"
+      "// TEMPLATE-EXCLUDE: @last\t requires flat addressing \t\n"
+      "\n"
+      "func.def @middle() {}\n"));
+  ASSERT_EQ(file_.template_exclusions.count, 2);
+  EXPECT_TRUE(iree_string_view_equal(
+      file_.template_exclusions.values[0].case_name, IREE_SV("first")));
+  EXPECT_TRUE(iree_string_view_equal(file_.template_exclusions.values[0].reason,
+                                     IREE_SV("requires explicit CFG support")));
+  EXPECT_TRUE(iree_string_view_equal(
+      file_.template_exclusions.values[1].case_name, IREE_SV("last")));
+  EXPECT_TRUE(iree_string_view_equal(file_.template_exclusions.values[1].reason,
+                                     IREE_SV("requires flat addressing")));
+  ASSERT_EQ(file_.case_count, 1);
+  EXPECT_TRUE(iree_string_view_equal(file_.cases[0].input,
+                                     IREE_SV("func.def @middle() {}\n")));
+}
+
+TEST_F(TestFileParseTest, TemplateExclusionRequiresNameAndReason) {
+  const char* invalid_directives[] = {
+      "// TEMPLATE-EXCLUDE: \n",
+      "// TEMPLATE-EXCLUDE: @case\n",
+      "// TEMPLATE-EXCLUDE: @case \t\n",
+      "// TEMPLATE-EXCLUDE: case reason\n",
+      "// TEMPLATE-EXCLUDE: @ reason\n",
+      "// TEMPLATE-EXCLUDE:@case reason\n",
+      "//TEMPLATE-EXCLUDE: @case reason\n",
+  };
+  for (const char* directive : invalid_directives) {
+    SCOPED_TRACE(directive);
+    std::string source = "// TEMPLATE: corpus.loom-test\n";
+    source += directive;
+    source += "\nfunc.def @f() {}\n";
+    IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT, Parse(source.c_str()));
+  }
+}
+
+TEST_F(TestFileParseTest, TemplateExclusionRequiresTemplatePreamble) {
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      Parse("// TEMPLATE-EXCLUDE: @case requires explicit CFG support\n"
+            "func.def @f() {}\n"));
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      Parse("// TEMPLATE: corpus.loom-test\n"
+            "\n"
+            "func.def @f() {}\n"
+            "// ====\n"
+            "// TEMPLATE-EXCLUDE: @case requires explicit CFG support\n"
+            "func.def @g() {}\n"));
+}
+
+TEST_F(TestFileParseTest, DuplicateTemplateExclusionsError) {
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      Parse("// TEMPLATE: corpus.loom-test\n"
+            "// TEMPLATE-EXCLUDE: @case requires explicit CFG support\n"
+            "// TEMPLATE-EXCLUDE: @case requires flat addressing\n"
             "\n"
             "func.def @f() {}\n"));
 }

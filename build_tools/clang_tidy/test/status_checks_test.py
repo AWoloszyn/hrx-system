@@ -103,6 +103,60 @@ class StatusChecksTest(clang_tidy_test.ClangTidyAssertions):
             ],
         )
 
+    def test_constructor_parameters_define_status_ownership(self):
+        output = clang_tidy_test.run_clang_tidy(
+            clang_tidy=_ARGS.clang_tidy,
+            plugin=_ARGS.plugin,
+            checks="-*,iree-status-borrowed-parameter",
+            source=clang_tidy_test.source_path(
+                __file__, "status_constructor_checks.cc"
+            ),
+            compiler_args=["-std=c++17"],
+        )
+        self.assertContainsAll(
+            output,
+            ["borrowed_constructor_status", "observed_constructor_status"],
+        )
+        self.assertContainsNone(
+            output,
+            ["thrown_status", "value_borrow_status", "reference_borrow_status"],
+        )
+
+    def test_constructor_transfer_ends_local_status_ownership(self):
+        output = clang_tidy_test.run_clang_tidy(
+            clang_tidy=_ARGS.clang_tidy,
+            plugin=_ARGS.plugin,
+            checks="-*,iree-status-lifetime",
+            source=clang_tidy_test.source_path(
+                __file__, "status_constructor_checks.cc"
+            ),
+            compiler_args=["-std=c++17"],
+        )
+        self.assertIn("constructor_reused_status", output)
+        self.assertContainsNone(
+            output, ["local_constructor_status", "local_borrowed_status"]
+        )
+
+    def test_constructor_arguments_require_transfer_order(self):
+        output = clang_tidy_test.run_clang_tidy(
+            clang_tidy=_ARGS.clang_tidy,
+            plugin=_ARGS.plugin,
+            checks="-*,iree-status-transfer-order",
+            source=clang_tidy_test.source_path(
+                __file__, "status_constructor_checks.cc"
+            ),
+            compiler_args=["-std=c++17"],
+        )
+        self.assertIn("constructor_order_status", output)
+        self.assertContainsNone(
+            output,
+            [
+                "local_constructor_status",
+                "local_borrowed_status",
+                "constructor_reused_status",
+            ],
+        )
+
     def test_status_lifetime_is_diagnosed(self):
         output = clang_tidy_test.run_clang_tidy(
             clang_tidy=_ARGS.clang_tidy,

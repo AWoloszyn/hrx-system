@@ -13,9 +13,11 @@
 #include <unordered_set>
 #include <vector>
 
+#include "loom/import/cxx/binding/config.h"
 #include "loom/import/cxx/binding/intrinsics.h"
 #include "loom/import/cxx/binding/launch.h"
 #include "loom/import/cxx/source/locations.h"
+#include "loom/import/cxx/symbol/names.h"
 #include "loom/import/cxx/value/types.h"
 
 namespace loom::cxx_import {
@@ -47,12 +49,14 @@ class Functions {
  public:
   Functions(cxx::TranslationUnit& unit, Diagnostics& diagnostics,
             loom_module_t* module, Intrinsics& intrinsics,
-            LaunchContracts& launches)
+            LaunchContracts& launches, Configs& configs, SymbolNames& names)
       : unit_(unit),
         diagnostics_(diagnostics),
         module_(module),
         intrinsics_(intrinsics),
-        launches_(launches) {}
+        launches_(launches),
+        configs_(configs),
+        names_(names) {}
 
   // Selects explicit qualified roots or externally visible concrete
   // definitions. Called once before translating the pending worklist.
@@ -79,10 +83,13 @@ class Functions {
  private:
   enum class DeclarationScope { Namespace, Nested };
 
-  void check_declaration(cxx::FunctionSymbol* function,
+  bool admit_declaration(cxx::Symbol* symbol,
                          cxx::List<cxx::AttributeSpecifierAST*>* attributes,
                          cxx::AST* owner, DeclarationScope scope);
-  loom_symbol_ref_t create_symbol(cxx::FunctionSymbol* function);
+  void admit_symbol(cxx::Symbol* symbol,
+                    cxx::List<cxx::AttributeSpecifierAST*>* attributes);
+  loom_symbol_ref_t create_symbol(cxx::FunctionSymbol* function,
+                                  cxx::AST* source);
   void collect(cxx::List<cxx::DeclarationAST*>* declarations,
                DeclarationScope scope,
                std::vector<cxx::FunctionSymbol*>& definitions);
@@ -100,6 +107,10 @@ class Functions {
   Intrinsics& intrinsics_;
   // Retains merged launch contracts for definitions and concrete instances.
   LaunchContracts& launches_;
+  // Reconciles named scalar settings before root selection and body lowering.
+  Configs& configs_;
+  // Exact callable/configuration names and generated private names.
+  SymbolNames& names_;
   struct Benchmark {
     // Semantic declaration supplying the benchmark's name.
     cxx::FunctionSymbol* function;
@@ -121,8 +132,8 @@ class Functions {
   std::unordered_map<cxx::FunctionSymbol*, loom_symbol_ref_t> callees_;
   // Reachable worklist in deterministic discovery order.
   std::vector<cxx::FunctionSymbol*> pending_;
-  // Ordinals disambiguate overloaded or colliding source spellings.
-  std::unordered_map<std::string, unsigned> symbol_names_;
+  // Canonical declarations inherit one exact name borrowed from source text.
+  std::unordered_map<cxx::FunctionSymbol*, std::string_view> explicit_names_;
   // Source qualification retained once per reached function.
   std::unordered_map<cxx::FunctionSymbol*, std::string> qualified_names_;
 };

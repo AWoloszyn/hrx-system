@@ -4,6 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+load("//loom/build_tools/amdgpu:target_config.bzl", "LOOM_AMDGPU_SUPPORTED_TARGETS")
 load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
 
 package(
@@ -19,4 +20,11 @@ exports_files(_CASES)
 loom_check_test_suite(
     name = "test",
     srcs = _CASES,
+    compile_targets = {
+        source: ["//loom/target/amdgpu:" + target for target in LOOM_AMDGPU_SUPPORTED_TARGETS]
+        for source in [
+            "memory_address_realizations.loom-test",
+            "memory_wide_offsets.loom-test",
+        ]
+    },
 )

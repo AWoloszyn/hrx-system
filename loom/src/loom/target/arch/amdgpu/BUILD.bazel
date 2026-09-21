@@ -21,6 +21,11 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
+exports_files(
+    ["test/source_low/source_low_memory_global_atomic_gfx9_4_generic.loom-test"],
+    visibility = ["//loom/src/loom/tooling/target/amdgpu/test:__pkg__"],
+)
+
 _AMDGPU_CHECK_VISIBILITY = ["//loom/src/loom/target/arch/amdgpu/check:__pkg__"]
 
 _AMDGPU_ANALYSIS_VISIBILITY = ["//loom/src/loom/target/arch/amdgpu/analysis:__pkg__"]
@@ -534,6 +539,13 @@ loom_cc_library(
 loom_check_test_suite(
     name = "loom_check_file_test",
     srcs = glob(["test/source_low/*.loom-test"]),
+    compile_targets = {
+        "test/source_low/source_low_memory_global_atomic_gfx9_4_generic.loom-test": [
+            "//loom/target/amdgpu:gfx9-4-generic",
+            "//loom/target/amdgpu:gfx942",
+            "//loom/target/amdgpu:gfx950",
+        ],
+    },
     data = [
         "//loom/src/loom/test/corpus/source_low:async_empty.loom-test",
         "//loom/src/loom/test/corpus/source_low:async_gather.loom-test",
@@ -559,6 +571,7 @@ loom_check_test_suite(
         "//loom/src/loom/test/corpus/source_low:memory_workgroup_packed16.loom-test",
         "//loom/src/loom/test/corpus/source_low:ml_attention.loom-test",
         "//loom/src/loom/test/corpus/source_low:ml_contraction.loom-test",
+        "//loom/src/loom/test/corpus/source_low:nested_view_selection.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_address_widening.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_bitwise_constants.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_boolean_comparison.loom-test",
@@ -589,6 +602,7 @@ loom_check_test_suite(
         "//loom/src/loom/test/corpus/source_low:packed_integer_arithmetic.loom-test",
         "//loom/src/loom/test/corpus/source_low:packed_payload_offsets.loom-test",
         "//loom/src/loom/test/corpus/source_low:packed_q8_dequant_dot.loom-test",
+        "//loom/src/loom/test/corpus/source_low:selected_payload_transport.loom-test",
         "//loom/src/loom/test/corpus/source_low:shared_conditional_values.loom-test",
         "//loom/src/loom/test/corpus/source_low:sync_barrier.loom-test",
         "//loom/src/loom/test/corpus/source_low:uniform_predicate_control.loom-test",

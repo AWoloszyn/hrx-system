@@ -1,0 +1,122 @@
+// RUN: with-checks emit low-allocation @unused_entry test.i32=1
+
+test.target<low_core> @target
+
+// Unused signature parameters consume neither registers nor spill slots.
+low.func.def target<test.low.core>(@target) @unused_entry(%before: reg<test.i32>, %used: reg<test.i32>, %after: reg<test.i32>) -> (reg<test.i32>) asm {
+  return %used
+}
+
+// ----
+CHECK: assignments: 1
+CHECK: spills: 0
+
+// ====
+
+// RUN: with-checks emit low-allocation @unused_branch test.i32=1
+
+test.target<low_core> @target
+
+// The live handoff still coalesces when the same payload also feeds a dead argument.
+low.func.def target<test.low.core>(@target) @unused_branch(%input: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^exit(%input: reg<test.i32>, %input: reg<test.i32>)
+^exit(%unused: reg<test.i32>, %used: reg<test.i32>):
+  return %used
+}
+
+// ----
+CHECK: assignments: 2
+CHECK: spills: 0
+
+// ====
+
+// RUN: with-checks emit low-allocation @empty_handoff test.i32=1
+
+test.target<low_core> @target
+
+// Empty edge groups must not consume the following branch's copy group.
+low.func.def target<test.low.core>(@target) @empty_handoff(%input: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^middle(%input: reg<test.i32>)
+^middle(%unused: reg<test.i32>):
+  low.br ^exit(%input: reg<test.i32>)
+^exit(%used: reg<test.i32>):
+  return %used
+}
+
+// ----
+CHECK: assignments: 2
+CHECK: spills: 0
+
+// ====
+
+// RUN: with-checks emit low-allocation @unused_result
+
+test.target<low_core> @target
+
+// An instruction still writes its result even when the result is unused.
+low.func.def target<test.low.core>(@target) @unused_result(%input: reg<test.i32>) -> (reg<test.i32>) asm {
+  %discarded = test.add.i32 %input, %input
+  return %input
+}
+
+// ----
+CHECK: assignments: 2
+CHECK: spills: 0
+
+// ====
+
+// RUN: with-checks emit low-allocation-json @implicit_counter
+
+test.target<low_core> @target
+
+// The induction value is read by the implicit backedge even without body uses.
+low.func.def target<test.low.core>(@target) @implicit_counter(%lo: reg<test.i32>, %hi: reg<test.i32>, %step: reg<test.i32>, %seed: reg<test.i32>) -> (reg<test.i32>) asm {
+  %result = low.scf.for signed [%lo to %hi step %step] iter_args(%seed: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %state: reg<test.i32>) {
+    %next = test.add.i32 %state, %step
+    low.scf.yield %next : reg<test.i32>
+  }
+  return %result
+}
+
+// ----
+CHECK: *"name":"iv","type":"reg<test.i32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":1,"end_point":4,*
+
+// ====
+
+// RUN: with-checks emit low-allocation @attribute_use
+
+test.target<low_core> @target
+
+// Predicate references keep a parameter live without an ordinary operand use.
+low.func.def target<test.low.core>(@target) @attribute_use(%bound: reg<test.i32>, %input: reg<test.i32>) -> (reg<test.i32>) asm {
+  %assumed = low.assume %input [eq(%bound, 7)] : reg<test.i32>
+  return %assumed
+}
+
+// ----
+CHECK: assignments: 3
+CHECK: spills: 0
+
+// ====
+
+// RUN: with-checks emit liveness-json @type_use
+
+// A parameter's dependent type reads its extent even when its data is unused.
+func.def @type_use(%extent: index, %unused: vector<[%extent]xi32>) {
+  func.return
+}
+
+// ----
+CHECK: *"name":"extent","type":"index"},"class":{"type_kind":1,"type_kind_name":"scalar","element_type":1,"element_type_name":"index","register_descriptor_set":null,"register_class_id":null},"start_point":0,"end_point":1,*
+
+// ====
+
+// RUN: emit low-allocation @unused_fixed fixed=%unused:target_id:0:1
+
+test.target<low_core> @target
+
+// Fixed requests name storage-bearing values; an unused parameter has none.
+// ERROR@+1: BACKEND/033 {function_name="unused_fixed", value_name="unused", value_id="0"}
+low.func.def target<test.low.core>(@target) @unused_fixed(%unused: reg<test.i32>) asm {
+  return
+}

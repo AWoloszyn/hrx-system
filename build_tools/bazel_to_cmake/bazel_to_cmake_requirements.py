@@ -282,6 +282,14 @@ def _load_requirement_defs(repo_root: str, path: str) -> dict:
     return env
 
 
+def load_requirement_definitions(repo_root: str, label: str) -> dict | None:
+    """Loads declarative requirement exports, or returns None for another file."""
+    path = _requirements_defs_path(Path(repo_root), label)
+    if path is None:
+        return None
+    return _load_requirement_defs(repo_root, str(path))
+
+
 def _matches(pattern: str, package_name: str) -> bool:
     if pattern.endswith("/..."):
         prefix = pattern[:-4]

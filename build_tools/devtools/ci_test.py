@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import contextlib
 import io
+import json
 import os
 import re
 import shlex
@@ -46,6 +47,82 @@ from build_tools.devtools import ci, ci_config
 
 
 class CiTest(unittest.TestCase):
+    def test_keep_going_reaches_bazel_before_target_and_program_separators(self):
+        steps = [
+            ci.bazel_build_step("Build", ("//example:one", "-//example:excluded")),
+            ci.bazel_test_step("Test", ("//example:one",)),
+            ci.bazel_run_step("Run", "//example:tool", ("--nokeep_going",)),
+            ci.CiStep("Configure", ("python", "dev.py", "bazel", "configure")),
+            ci.CiStep("Other tool", ("python", "tool.py", "--", "--nokeep_going")),
+        ]
+        for keep_going in (False, True):
+            with self.subTest(keep_going=keep_going):
+                args = ci.parse_arguments(
+                    ["iree-bazel-cpu"] + (["--keep-going"] if keep_going else [])
+                )
+                with mock.patch.object(
+                    ci, "_steps_from_args", return_value=list(steps)
+                ):
+                    planned = ci.steps_from_args(args)
+                self.assertEqual(planned[3:], steps[3:])
+                for original, phase in zip(steps[:3], planned[:3]):
+                    if keep_going:
+                        self.assertEqual(phase.argv[4], "--keep_going")
+                        self.assertEqual(phase.argv[5:], original.argv[4:])
+                    else:
+                        self.assertEqual(phase, original)
+
+    def test_keep_going_captures_failure_before_next_phase_changes_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            sdk = root / "sdk"
+            sdk.mkdir()
+            includer = sdk / "wchar.h"
+            includer.write_text("#include <missing.h>\n")
+            missing = sdk / "missing.h"
+            message = (
+                f"{includer}(17): fatal error C1083: Cannot open include file: "
+                "'missing.h': No such file or directory"
+            )
+            steps = [
+                ci.CiStep(
+                    "First build",
+                    (sys.executable, "-c", f"print({message!r}); raise SystemExit(7)"),
+                ),
+                ci.CiStep(
+                    "Later build",
+                    (
+                        sys.executable,
+                        "-c",
+                        f"from pathlib import Path; Path({str(missing)!r}).write_text('now present')",
+                    ),
+                ),
+            ]
+            with (
+                mock.patch.object(ci, "REPO_ROOT", root),
+                mock.patch.dict(
+                    os.environ,
+                    {
+                        "IREE_CI_FAILURE_ARTIFACT_DIR": str(root / "artifacts"),
+                        "INCLUDE": str(sdk),
+                    },
+                ),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                result = ci.run_steps(
+                    steps, dry_run=False, keep_going=True, verbose=False
+                )
+            self.assertEqual(result, 7)
+            self.assertTrue(missing.exists())
+            manifests = list((root / "artifacts").glob("*/manifest.json"))
+            self.assertEqual(len(manifests), 1)
+            manifest = json.loads(manifests[0].read_text())
+            record = next(
+                file for file in manifest["files"] if file["path"] == str(missing)
+            )
+            self.assertIn("error", record)
+            self.assertNotIn("sha256", record)
+
     def uses_cmake_build_dir(self, step: ci.CiStep, command_name: str) -> bool:
         expected_args = (
             "--cmake-build-dir",

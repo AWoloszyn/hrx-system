@@ -85,7 +85,9 @@ void loom_check_prepare_source_low_options_initialize(
     loom_check_prepare_source_low_options_t* out_options);
 
 // Verifies |module| as source IR, lowers it through the selected source-to-low
-// pipeline, and verifies the resulting target-low module.
+// pipeline, and verifies the resulting target-low module. The caller owns
+// |out_pipeline_result| and deinitializes it after all consumers of its
+// retained function versions, including text projection, finish.
 //
 // Infrastructure failures return a non-OK status. User IR failures are emitted
 // into |diagnostic_collector| and return OK so loom-check can match structured
@@ -97,7 +99,8 @@ iree_status_t loom_check_prepare_source_low_module(
     const loom_check_environment_t* environment,
     loom_source_resolver_t source_resolver,
     loom_check_diagnostic_collector_t* diagnostic_collector,
-    iree_arena_block_pool_t* block_pool);
+    iree_arena_block_pool_t* block_pool,
+    loom_compile_pipeline_result_t* out_pipeline_result);
 
 // Runs source lowering and renders the selected artifact. User IR diagnostics
 // accumulate in the collector; infrastructure and malformed-request failures

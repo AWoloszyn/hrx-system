@@ -32,12 +32,15 @@ static iree_status_t loom_vm_check_emit(
   }
   loom_check_prepare_source_low_options_t prepare_options;
   loom_check_prepare_source_low_options_initialize(&prepare_options);
-  IREE_RETURN_IF_ERROR(loom_check_prepare_source_low_module(
+  loom_compile_pipeline_result_t pipeline_result = {0};
+  iree_status_t status = loom_check_prepare_source_low_module(
       request->module, &prepare_options, request->low_registry,
       request->environment, request->source_resolver,
-      request->diagnostic_collector, request->block_pool));
-  if (request->diagnostic_collector->count) {
-    return iree_ok_status();
+      request->diagnostic_collector, request->block_pool, &pipeline_result);
+
+  if (!iree_status_is_ok(status) || request->diagnostic_collector->count) {
+    loom_compile_pipeline_result_deinitialize(&pipeline_result);
+    return status;
   }
 
   loom_check_diagnostic_emitter_capture_t capture = {
@@ -49,13 +52,14 @@ static iree_status_t loom_vm_check_emit(
   const loom_target_emit_request_t emit_request = {
       .low_descriptor_registry = &request->low_registry->registry,
       .module = request->module,
+      .function_versions = &pipeline_result.function_versions.list,
       .diagnostic_emitter = {.fn = loom_check_diagnostic_emitter_capture_emit,
                              .user_data = &capture},
       .scratch_arena = request->case_arena,
       .allocator = request->host_allocator,
   };
   loom_target_emit_artifact_t artifact = {0};
-  iree_status_t status = loom_vm_module_emit(&emit_request, &artifact);
+  status = loom_vm_module_emit(&emit_request, &artifact);
   iree_byte_span_t contents = iree_byte_span_empty();
   if (iree_status_is_ok(status)) {
     status = iree_byte_sequence_clone(artifact.contents,
@@ -71,6 +75,7 @@ static iree_status_t loom_vm_check_emit(
         request->host_allocator);
   }
   iree_allocator_free(request->host_allocator, contents.data);
+  loom_compile_pipeline_result_deinitialize(&pipeline_result);
   return status;
 }
 

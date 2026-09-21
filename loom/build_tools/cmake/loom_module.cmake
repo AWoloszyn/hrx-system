@@ -6,6 +6,43 @@
 
 # Loom module linking helpers.
 
+# Resolve the declared library graph once every package has registered its
+# targets. Direct dependencies remain distinct from the transitive audit
+# universe, matching the public linker's strict dependency contract.
+function(_loom_module_resolve_libraries TARGET_NAME)
+  get_property(_RESOLVED TARGET "${TARGET_NAME}" PROPERTY LOOM_MODULE_LIBRARIES SET)
+  if(_RESOLVED)
+    return()
+  endif()
+  get_property(_RESOLVING TARGET "${TARGET_NAME}" PROPERTY LOOM_MODULE_RESOLVING)
+  if(_RESOLVING)
+    message(FATAL_ERROR "Cyclic Loom library dependency: ${TARGET_NAME}")
+  endif()
+  set_property(TARGET "${TARGET_NAME}" PROPERTY LOOM_MODULE_RESOLVING TRUE)
+  get_property(_DIRECT TARGET "${TARGET_NAME}" PROPERTY LOOM_MODULE_DIRECT_LIBRARIES)
+  get_property(_TARGETS TARGET "${TARGET_NAME}" PROPERTY LOOM_MODULE_LIBRARY_TARGETS)
+  set(_TRANSITIVE)
+  foreach(_DEPENDENCY IN LISTS _TARGETS)
+    _loom_module_resolve_libraries("${_DEPENDENCY}")
+    get_property(_CLOSURE TARGET "${_DEPENDENCY}" PROPERTY LOOM_MODULE_LIBRARIES)
+    list(APPEND _TRANSITIVE ${_CLOSURE})
+  endforeach()
+  list(REMOVE_DUPLICATES _TRANSITIVE)
+  if(_DIRECT)
+    list(REMOVE_ITEM _TRANSITIVE ${_DIRECT})
+  endif()
+  set_property(TARGET "${TARGET_NAME}" PROPERTY LOOM_MODULE_TRANSITIVE_LIBRARIES "${_TRANSITIVE}")
+  set_property(TARGET "${TARGET_NAME}" PROPERTY LOOM_MODULE_LIBRARIES "${_DIRECT};${_TRANSITIVE}")
+  set_property(TARGET "${TARGET_NAME}" PROPERTY LOOM_MODULE_RESOLVING FALSE)
+endfunction()
+
+function(loom_finalize_module_libraries)
+  get_property(_TARGETS GLOBAL PROPERTY LOOM_MODULE_TARGETS)
+  foreach(_TARGET IN LISTS _TARGETS)
+    _loom_module_resolve_libraries("${_TARGET}")
+  endforeach()
+endfunction()
+
 function(_loom_link_input_paths OUTPUT_PATHS OUTPUT_TARGETS)
   set(_PATHS)
   set(_TARGETS)
@@ -36,8 +73,8 @@ function(loom_module)
   if(NOT _RULE_NAME)
     message(FATAL_ERROR "loom_module requires NAME")
   endif()
-  if(NOT _RULE_SRCS)
-    message(FATAL_ERROR "loom_module requires SRCS")
+  if(NOT _RULE_SRCS AND NOT _RULE_LIBRARIES)
+    message(FATAL_ERROR "loom_module requires SRCS or LIBRARIES")
   endif()
   if(NOT _RULE_MODE)
     set(_RULE_MODE "merge")
@@ -78,6 +115,9 @@ function(loom_module)
 
   _loom_link_input_paths(_SOURCES _SOURCE_TARGETS ${_RULE_SRCS})
   _loom_link_input_paths(_LIBRARIES _LIBRARY_TARGETS ${_RULE_LIBRARIES})
+  iree_package_name(_PACKAGE_NAME)
+  set(_TARGET "${_PACKAGE_NAME}_${_RULE_NAME}")
+  set(_TRANSITIVE_LIBRARIES "$<TARGET_GENEX_EVAL:${_TARGET},$<TARGET_PROPERTY:${_TARGET},LOOM_MODULE_TRANSITIVE_LIBRARIES>>")
   set(_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/${_RULE_OUTPUT}")
   set(_ARGS
     "--mode=${_RULE_MODE}"
@@ -87,6 +127,8 @@ function(loom_module)
   foreach(_LIBRARY IN LISTS _LIBRARIES)
     list(APPEND _ARGS "--library=${_LIBRARY}")
   endforeach()
+  list(APPEND _ARGS
+    "$<$<BOOL:${_TRANSITIVE_LIBRARIES}>:--transitive-library=$<JOIN:${_TRANSITIVE_LIBRARIES},$<SEMICOLON>--transitive-library=>>")
   foreach(_ROOT IN LISTS _RULE_ROOTS)
     list(APPEND _ARGS "--root=${_ROOT}")
   endforeach()
@@ -98,9 +140,6 @@ function(loom_module)
   endif()
   if(_RULE_INCLUDE_INPUT_TESTS)
     list(APPEND _ARGS "--include-input-tests")
-  endif()
-  if(_RULE_STRICT_DEPS)
-    list(APPEND _ARGS "--strict-deps")
   endif()
   if(_RULE_INPUT_FORMAT)
     list(APPEND _ARGS "--input-format=${_RULE_INPUT_FORMAT}")
@@ -114,23 +153,28 @@ function(loom_module)
   if(_RULE_REQUIRE_RESOLVED_CONFIG)
     list(APPEND _ARGS "--require-resolved-config=true")
   endif()
+  if(_RULE_STRICT_DEPS)
+    list(APPEND _ARGS "--strict-deps")
+  endif()
   list(APPEND _ARGS "--output=${_OUTPUT}")
 
   add_custom_command(
     OUTPUT
       "${_OUTPUT}"
     COMMAND
-      "$<TARGET_FILE:loom::tools::loom-link>" ${_ARGS}
+      "$<TARGET_FILE:loom::tools::loom-link>" "${_ARGS}"
     DEPENDS
       loom::tools::loom-link
       ${_SOURCES}
-      ${_LIBRARIES}
+      "${_LIBRARIES}"
+      "${_TRANSITIVE_LIBRARIES}"
       ${_RULE_DATA}
     WORKING_DIRECTORY
       "${PROJECT_SOURCE_DIR}"
     COMMENT
       "Linking Loom module ${_RULE_OUTPUT}"
     VERBATIM
+    COMMAND_EXPAND_LISTS
   )
   set_source_files_properties(
     "${_RULE_OUTPUT}"
@@ -138,15 +182,19 @@ function(loom_module)
     PROPERTIES GENERATED TRUE
   )
 
-  iree_package_name(_PACKAGE_NAME)
-  set(_TARGET "${_PACKAGE_NAME}_${_RULE_NAME}")
   add_custom_target("${_TARGET}" DEPENDS "${_OUTPUT}")
   set_property(TARGET "${_TARGET}" PROPERTY LOOM_MODULE_FILE "${_OUTPUT}")
+  set_property(TARGET "${_TARGET}" PROPERTY LOOM_MODULE_DIRECT_LIBRARIES "${_LIBRARIES}")
+  set_property(TARGET "${_TARGET}" PROPERTY LOOM_MODULE_LIBRARY_TARGETS "${_LIBRARY_TARGETS}")
+  set_property(GLOBAL APPEND PROPERTY LOOM_MODULE_TARGETS "${_TARGET}")
   foreach(_INPUT_TARGET IN LISTS _SOURCE_TARGETS _LIBRARY_TARGETS)
     iree_register_target_dependency(
       TARGET "${_TARGET}"
       DEPENDENCY "${_INPUT_TARGET}"
     )
+  endforeach()
+  foreach(_INPUT IN LISTS _SOURCES _LIBRARIES _RULE_DATA)
+    iree_generated_output_add_consumer("${_INPUT}" "${_TARGET}")
   endforeach()
   iree_register_generated_output_producer("${_TARGET}"
     OUTPUTS "${_OUTPUT}"

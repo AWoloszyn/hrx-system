@@ -29,6 +29,8 @@ Each case is an independent translation unit. Roundtrip imports C++ and checks
 canonical Loom output; pass, verify, format, emit, and report modes consume that
 same module.
 
+Files group cases with one shared `RUN` mode declared at the top.
+
 ```cpp
 // RUN: with-checks pass canonicalize,cse,dce
 // INPUT: cxx root=twice std=c++23
@@ -37,8 +39,11 @@ int twice(int value) { return value * 2; }
 // CHECK: func.def public @twice*
 // CHECK: *scalar.shli*
 // CHECK-NOT: *scalar.muli*
+```
 
-// ====
+Diagnostic fixtures use `verify`:
+
+```cpp
 // RUN: verify
 // INPUT: cxx
 long distance(int* left, int* right) {
@@ -53,12 +58,13 @@ CHECK patterns are preserved by updates. Diagnostic annotations use the normal
 structured ERROR/WARNING/REMARK syntax; the JSON report includes suggested
 annotation edits when expectations differ.
 
-`INPUT` selects the source format and options independently of `RUN`. The first
-case's INPUT is inherited by later cases; a later INPUT replaces it for that
-case. With no INPUT, the filename selects C++ with the importer's normal
-C++26/LP64 defaults. `--input-format=cxx` selects C++ for stdin or another
-filename. `--list-input-formats` reports the formats linked into that binary.
-An importer-disabled binary rejects `.cxx-test` and explicit `cxx` input.
+The first case's `RUN` and `INPUT` establish file defaults. `INPUT` selects the
+source format and options independently of `RUN`; a later `INPUT` overrides
+the default for that case. With no `INPUT`, the filename selects C++ with the
+importer's normal C++26/LP64 defaults. `--input-format=cxx` selects C++ for
+stdin or another filename. `--list-input-formats` reports the formats linked
+into that binary. An importer-disabled binary rejects `.cxx-test` and explicit
+`cxx` input.
 
 Options use whitespace-separated `key=value` tokens. Single or double quotes
 preserve spaces within a token, and quotes/backslashes can be escaped inside
@@ -101,6 +107,125 @@ run through `//loom/src/loom/import/cxx/test:compiler_test`; native API tests
 cover ownership, source providers, and failure propagation. The
 [execution corpus](test/README.md) uses ordinary `loom_test` targets with
 independent numerical oracles.
+
+## Callable symbol names
+
+Public functions use readable Loom names: `ticks32` becomes `@ticks32`, and
+`device::ticks32` becomes `@device.ticks32`. C-linkage functions keep their
+unqualified C name. Private helpers have module-local names that can be
+disambiguated as functions become reachable.
+
+The leading `loom::symbol` attribute chooses an exact name independently of
+the C++ spelling:
+
+```cpp
+namespace arithmetic {
+[[loom::symbol("math.square.u32")]] unsigned square(unsigned);
+unsigned square(unsigned value) { return value * value; }
+
+[[loom::symbol("math.square.f32")]] float square(float value) {
+  return value * value;
+}
+}
+
+[[loom::kernel, loom::symbol("kernels.square"),
+  loom::workgroup_size(1, 1, 1)]]
+void square_kernel(unsigned* output, const unsigned* input) {
+  output[0u] = arithmetic::square(input[0u]);
+}
+```
+
+This exports `@math.square.u32`, `@math.square.f32` and `@kernels.square`.
+Authored Loom can declare and call the typed exported functions and resolve
+them against the imported library. The linker still checks argument and result
+types. Generated kernel configuration keys use the chosen name, such as
+`@kernels.square.workgroup_count.x`.
+
+The same attribute applies to declarations, definitions, kernels, check cases
+and benchmarks. One annotation on any canonical redeclaration supplies the
+name; repeated identical redeclarations agree, and conflicting names diagnose.
+Source calls and `--root` selection still use C++ names. The attribute changes
+neither visibility nor reachability: a selected root remains public, a reached
+helper remains private, and an unused helper is omitted. Ordinary called
+functions still require C++ definitions during import.
+
+Public overloads, operator functions and concrete template specializations
+require explicit names. An attribute on a primary template, member, local or
+parameter is rejected. Intrinsic bindings (`loom::op` and `loom::assume`) have
+no function symbol to rename. Names contain ASCII letters, digits, `_`, `$`, `.`
+or `-`, with no leading `@`. Functions and configuration values share one Loom
+namespace; conflicting exact names diagnose instead of receiving an automatic
+suffix.
+
+## Named configuration values
+
+An attributed `extern const` scalar declares a Loom specialization input:
+
+```cpp
+[[loom::config("tuning.factor")]] extern const unsigned factor;
+
+unsigned scale(unsigned value) { return value * factor; }
+```
+
+The declaration imports as `config.decl @tuning.factor : i32`, and each read
+becomes `config.get @tuning.factor : i32`. Unresolved reads survive ordinary
+cleanup and bytecode serialization. Import once, then specialize fresh copies
+of that module with different settings through the existing Loom config API
+or command-line inputs. `iree-test-loom` and `iree-benchmark-loom` both apply
+`--config=tuning.factor=5` when compiling called functions as well as kernels.
+
+Config values work in ordinary arithmetic, branches, loop bounds and scheduling
+attributes:
+
+```cpp
+[[loom::config("tuning.unroll")]] extern const unsigned unroll;
+[[loom::config("tuning.depth")]] extern const unsigned depth;
+
+unsigned sum(const unsigned* input, unsigned count) {
+  unsigned total = 0;
+  [[loom::unroll(unroll), loom::pipeline(depth)]]
+  for (unsigned index = 0; index < count; ++index) {
+    total += input[index];
+  }
+  return total;
+}
+```
+
+An attributed constant definition supplies an exact value:
+
+```cpp
+[[loom::config("tuning.factor")]] const unsigned factor = 5;
+```
+
+This imports as `config.def @tuning.factor = 5 : i32`. A provider translation
+unit can contain only definitions, with no functions. Embedders import it with
+`loomc_module_import_cxx` and pass the resulting module as
+`loomc_compile_options_t::config_module`; that provider is borrowed and remains
+immutable. `loom-link --mode=merge` also combines declarations and definitions.
+Supplying a provider as an ordinary rooted-link library does not bind configs.
+
+A source definition fixes that setting throughout its translation unit,
+including earlier reads and other source names using the same key. It can also
+participate in C++ constant evaluation. The initializer is an exact definition,
+not an overridable default: derived constants may already be folded during
+parsing. Reusable kernels include declaration-only headers and receive their
+config definitions at Loom compilation. Each specialization starts from the
+unresolved module again.
+
+Bindings require a leading `[[loom::config("key")]]` attribute on every
+declaration and definition, including redeclarations. Keys are explicit,
+nonempty Loom symbol spellings without `@`. Different source names with the same
+key share one binding; their source types and any exact definitions must agree. Boolean, integer,
+floating-point and enum scalars retain their source representations. Mutable,
+volatile, thread-local, local, member, pointer and aggregate bindings produce
+source diagnostics. Configs are values without addressable storage.
+
+An unresolved setting is not a C++ constant expression. Template arguments,
+`constexpr` initializers, `static_assert` and fixed type extents still require
+source-known values; use source definitions and reimport when changing C++
+types or template instantiations. Ordinary `if` remains available for Loom
+specialization; `if constexpr` requires a separate source-selection projection
+and is currently rejected by the importer.
 
 ## Executable checks and benchmarks
 
@@ -297,12 +422,16 @@ alignment can raise the final stride without changing internal member offsets.
 Standard `alignas` retains its own validation rules. Explicit alignment on shared
 arrays reaches the workgroup allocation's `align` operand.
 
+Compound `__builtin_offsetof` designators follow nested members and constant
+array indices. For example, `__builtin_offsetof(Block<unsigned>, words[2])` is
+`10`. Indices may become constant through template instantiation; the complete
+offset retains the source `size_t` width.
+
 Bitfield layouts retain actual bit positions, including fields crossing their
 declared storage units and zero-width alignment boundaries. Layout queries do
 not admit record values or bitfield memory operations into High IR. Packed base
-classes, virtual members, Microsoft bitfield ABI layouts, compound `offsetof`
-designators, aligned typedefs, and GNU `aligned` without an explicit argument
-produce source diagnostics.
+classes, virtual members, Microsoft bitfield ABI layouts, aligned typedefs,
+and GNU `aligned` without an explicit argument produce source diagnostics.
 
 Explicit fixed vectors retain their lanes and element widths in High IR:
 
@@ -596,7 +725,7 @@ header APIs, and direct API tests that do not link the aggregate importer.
 | `source/` | One configured frontend invocation, provider and diagnostic handling, immutable facade lookup, and source locations copied into the output module. |
 | `value/` | Source type/layout projection, scalar/vector SSA and buffer/origin representations, arithmetic, and memory access construction from already evaluated operands. |
 | `control/` | An immutable analysis of ordered source writes, function/iteration exits and fallthrough, and nonwrapping counted-loop eligibility. This package has no IR dependency. |
-| `binding/` | Admission and construction for generated operation bindings, kernel launch contracts, and explicit loop schedules. |
+| `binding/` | Admission and construction for generated operation bindings, named scalar configs, kernel launch contracts, and explicit loop schedules. |
 | `symbol/` | Root selection, reachable function identities, deterministic naming, and native function definitions with explicit body contracts. |
 
 `import.cc` owns the native API's validation, exception boundary, module

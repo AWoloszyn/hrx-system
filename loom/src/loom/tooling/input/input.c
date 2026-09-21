@@ -10,6 +10,7 @@
 
 #include "iree/base/internal/path.h"
 #include "loom/error/source.h"
+#include "loom/format/bytecode/reader.h"
 #include "loom/ir/module.h"
 
 iree_status_t loom_input_options_for_provider(iree_string_view_list_t entries,
@@ -62,13 +63,48 @@ const loom_input_provider_t loom_input_text_provider = {
     .load = loom_input_text_load,
 };
 
+static iree_status_t loom_input_bytecode_load(
+    const loom_input_request_t* request, loom_input_source_capture_t capture,
+    loom_context_t* context, iree_arena_block_pool_t* block_pool,
+    iree_allocator_t host_allocator, loom_module_t** out_module) {
+  if (!iree_string_view_is_empty(request->options)) {
+    return iree_make_status(
+        IREE_STATUS_INVALID_ARGUMENT,
+        "Loom bytecode input does not accept input options");
+  }
+  const loom_bytecode_read_options_t read_options = {
+      .diagnostic_sink = request->parse_options.diagnostic_sink,
+      .low_repr_environment = request->low_repr_environment,
+  };
+  loom_bytecode_read_result_t read_result = {0};
+  return loom_bytecode_read_module(
+      iree_make_const_byte_span(request->source.data, request->source.size),
+      request->path, context, block_pool, &read_options, &read_result,
+      out_module, host_allocator);
+}
+
+static const iree_string_view_t loom_input_bytecode_suffixes[] = {
+    IREE_SVL(".loombc"),
+};
+
+const loom_input_provider_t loom_input_bytecode_provider = {
+    .name = IREE_SVL("loombc"),
+    .suffixes = {IREE_ARRAYSIZE(loom_input_bytecode_suffixes),
+                 loom_input_bytecode_suffixes},
+    .load = loom_input_bytecode_load,
+};
+
 iree_status_t loom_input_provider_select(
     loom_input_provider_list_t providers, iree_string_view_t format,
     iree_string_view_t path, const loom_input_provider_t** out_provider) {
   *out_provider = NULL;
-  for (iree_host_size_t i = 0; i <= providers.count; ++i) {
+  const loom_input_provider_t* const builtin_providers[] = {
+      &loom_input_text_provider, &loom_input_bytecode_provider};
+  const iree_host_size_t builtin_count = IREE_ARRAYSIZE(builtin_providers);
+  for (iree_host_size_t i = 0; i < builtin_count + providers.count; ++i) {
     const loom_input_provider_t* provider =
-        i == 0 ? &loom_input_text_provider : providers.values[i - 1];
+        i < builtin_count ? builtin_providers[i]
+                          : providers.values[i - builtin_count];
     if (!iree_string_view_is_empty(format)) {
       if (iree_string_view_equal(format, provider->name)) {
         *out_provider = provider;

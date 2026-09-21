@@ -15,6 +15,7 @@
 #include "loom/ops/low/ops.h"
 #include "loom/ops/op_defs.h"
 #include "loom/target/entry_selection.h"
+#include "loom/target/function_version_projection.h"
 #include "loom/tools/loom-check/diagnostics.h"
 #include "loom/verify/verify.h"
 
@@ -293,7 +294,8 @@ iree_status_t loom_check_prepare_source_low_module(
     const loom_check_environment_t* environment,
     loom_source_resolver_t source_resolver,
     loom_check_diagnostic_collector_t* diagnostic_collector,
-    iree_arena_block_pool_t* block_pool) {
+    iree_arena_block_pool_t* block_pool,
+    loom_compile_pipeline_result_t* out_pipeline_result) {
   IREE_ASSERT_ARGUMENT(module);
   IREE_ASSERT_ARGUMENT(options);
   IREE_ASSERT_ARGUMENT(low_registry);
@@ -301,7 +303,7 @@ iree_status_t loom_check_prepare_source_low_module(
   IREE_ASSERT_ARGUMENT(diagnostic_collector);
   IREE_ASSERT_ARGUMENT(block_pool);
 
-  const loom_target_entry_options_t entry_options = {
+  loom_target_entry_options_t entry_options = {
       .diagnostic_sink = {.fn = loom_check_diagnostic_collector_sink,
                           .user_data = diagnostic_collector},
       .source_resolver = source_resolver,
@@ -332,11 +334,12 @@ iree_status_t loom_check_prepare_source_low_module(
   compile_options.max_errors = 20;
   compile_options.report = options->report;
 
-  loom_compile_pipeline_result_t pipeline_result = {0};
   iree_status_t status = loom_compile_run_pipeline(
-      module, &compile_options, block_pool, &pipeline_result);
-  if (iree_status_is_ok(status) && pipeline_result.pass.error_count == 0 &&
+      module, &compile_options, block_pool, out_pipeline_result);
+  if (iree_status_is_ok(status) && out_pipeline_result->pass.error_count == 0 &&
       !loom_check_diagnostic_collector_has_error(diagnostic_collector)) {
+    entry_options.function_versions =
+        &out_pipeline_result->function_versions.list;
     loom_verify_result_t verify_result = {0};
     status = loom_target_entry_verify_module(module, &entry_options, 20,
                                              &verify_result);
@@ -353,7 +356,6 @@ iree_status_t loom_check_prepare_source_low_module(
           &low_verify_result);
     }
   }
-  loom_compile_pipeline_result_deinitialize(&pipeline_result);
   return status;
 }
 
@@ -398,6 +400,58 @@ static iree_status_t loom_check_emit_write_source_low_pipeline_text(
   if (pipeline_module != NULL) {
     loom_module_free(pipeline_module);
   }
+  if (iree_status_is_ok(status)) {
+    result->has_actual_output = true;
+  }
+  return status;
+}
+
+static iree_status_t loom_check_emit_write_source_low(
+    loom_module_t* module, const loom_check_source_low_request_t* request,
+    const loom_target_low_descriptor_registry_t* low_registry,
+    loom_source_resolver_t source_resolver,
+    loom_check_diagnostic_collector_t* diagnostic_collector,
+    loom_check_result_t* result) {
+  const loom_target_entry_options_t entry_options = {
+      .diagnostic_sink = {.fn = loom_check_diagnostic_collector_sink,
+                          .user_data = diagnostic_collector},
+      .source_resolver = source_resolver,
+      .max_errors = 20,
+  };
+  loom_target_entry_diagnostic_emitter_t pass_emitter = {0};
+  loom_target_entry_diagnostic_emitter_initialize(
+      module, &entry_options, LOOM_EMITTER_PASS, &pass_emitter);
+  if (!loom_check_emit_has_low_function(module)) {
+    const loom_diagnostic_param_t params[] = {
+        loom_param_string(IREE_SV("source-to-low")),
+    };
+    const loom_diagnostic_emission_t emission = {
+        .error = LOOM_ERR_TARGET_011,
+        .params = params,
+        .param_count = IREE_ARRAYSIZE(params),
+    };
+    return iree_diagnostic_emit(loom_target_entry_emitter(&pass_emitter),
+                                &emission);
+  }
+
+  if (request->output == LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_NONE) {
+    return iree_ok_status();
+  }
+
+  if (request->output == LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_LOW) {
+    iree_status_t status = loom_check_emit_write_source_low_artifacts(
+        module, &low_registry->registry, &result->actual_output);
+    if (iree_status_is_ok(status)) {
+      result->has_actual_output = true;
+    }
+    return status;
+  }
+  loom_text_low_asm_environment_t low_asm_environment = {0};
+  loom_text_print_options_t print_options = {0};
+  loom_check_emit_initialize_source_low_print_options(
+      &low_registry->registry, &low_asm_environment, &print_options);
+  iree_status_t status = loom_text_print_module_to_builder_with_options(
+      module, &result->actual_output, &print_options);
   if (iree_status_is_ok(status)) {
     result->has_actual_output = true;
   }
@@ -462,55 +516,30 @@ iree_status_t loom_check_source_low_emit(
     prepare_options.target_specializations =
         (loom_target_specialization_request_list_t){&specialization, 1};
   }
-  IREE_RETURN_IF_ERROR(loom_check_prepare_source_low_module(
+  loom_compile_pipeline_result_t pipeline_result = {0};
+  iree_status_t status = loom_check_prepare_source_low_module(
       module, &prepare_options, low_registry, environment, source_resolver,
-      diagnostic_collector, block_pool));
-  if (loom_check_diagnostic_collector_has_error(diagnostic_collector)) {
-    return iree_ok_status();
-  }
-
-  const loom_target_entry_options_t entry_options = {
-      .diagnostic_sink = {.fn = loom_check_diagnostic_collector_sink,
-                          .user_data = diagnostic_collector},
-      .source_resolver = source_resolver,
-      .max_errors = 20,
-  };
-  loom_target_entry_diagnostic_emitter_t pass_emitter = {0};
-  loom_target_entry_diagnostic_emitter_initialize(
-      module, &entry_options, LOOM_EMITTER_PASS, &pass_emitter);
-  if (!loom_check_emit_has_low_function(module)) {
-    const loom_diagnostic_param_t params[] = {
-        loom_param_string(IREE_SV("source-to-low")),
-    };
-    const loom_diagnostic_emission_t emission = {
-        .error = LOOM_ERR_TARGET_011,
-        .params = params,
-        .param_count = IREE_ARRAYSIZE(params),
-    };
-    return iree_diagnostic_emit(loom_target_entry_emitter(&pass_emitter),
-                                &emission);
-  }
-
-  if (request->output == LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_NONE) {
-    return iree_ok_status();
-  }
-
-  if (request->output == LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_LOW) {
-    iree_status_t status = loom_check_emit_write_source_low_artifacts(
-        module, &low_registry->registry, &result->actual_output);
-    if (iree_status_is_ok(status)) {
-      result->has_actual_output = true;
+      diagnostic_collector, block_pool, &pipeline_result);
+  loom_module_t* projected_module = NULL;
+  if (iree_status_is_ok(status) &&
+      !loom_check_diagnostic_collector_has_error(diagnostic_collector)) {
+    // A standalone module must carry its resolved contexts. The Low-only
+    // operation listing omits module metadata and retains authored witnesses.
+    if (pipeline_result.function_versions.list.count != 0 &&
+        request->output == LOOM_CHECK_EMIT_SOURCE_LOW_OUTPUT_MODULE) {
+      status = loom_target_function_versions_project_module(
+          module, &pipeline_result.function_versions.list, block_pool,
+          module->allocator, &projected_module);
     }
-    return status;
+    if (iree_status_is_ok(status)) {
+      status = loom_check_emit_write_source_low(
+          projected_module != NULL ? projected_module : module, request,
+          low_registry, source_resolver, diagnostic_collector, result);
+    }
   }
-  loom_text_low_asm_environment_t low_asm_environment = {0};
-  loom_text_print_options_t print_options = {0};
-  loom_check_emit_initialize_source_low_print_options(
-      &low_registry->registry, &low_asm_environment, &print_options);
-  iree_status_t status = loom_text_print_module_to_builder_with_options(
-      module, &result->actual_output, &print_options);
-  if (iree_status_is_ok(status)) {
-    result->has_actual_output = true;
+  if (projected_module != NULL) {
+    loom_module_free(projected_module);
   }
+  loom_compile_pipeline_result_deinitialize(&pipeline_result);
   return status;
 }

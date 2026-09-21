@@ -23,6 +23,8 @@
 extern "C" {
 #endif
 
+typedef struct loom_tooling_config_set_t loom_tooling_config_set_t;
+
 typedef iree_status_t(IREE_API_PTR* loom_testbench_invocation_fn_t)(
     void* user_data, const loom_testbench_invocation_plan_t* invocation,
     iree_host_size_t workload_count, const loom_testbench_value_t* workloads,
@@ -84,13 +86,15 @@ typedef struct loom_testbench_case_plan_list_t {
 } loom_testbench_case_plan_list_t;
 
 // Binds one borrowed function-call provider to the runner's selected cases.
-// The caller owns callback state. The case list and source resolver remain live
-// through the final invocation; provider teardown must not access them after
-// the runner returns. Resolvers support compiler copies preserving source IDs.
+// The caller owns callback state. The case list, source resolver and optional
+// config set remain live through the final invocation; provider teardown must
+// not access them after the runner returns. Configuration applies to private
+// compilation copies. Resolvers support copies preserving source IDs.
 typedef loom_testbench_invocation_provider_t(
     IREE_API_PTR* loom_testbench_function_call_provider_fn_t)(
     void* user_data, loom_testbench_case_plan_list_t cases,
-    loom_source_resolver_t source_resolver);
+    loom_source_resolver_t source_resolver,
+    const loom_tooling_config_set_t* config_set);
 
 typedef struct loom_testbench_function_call_provider_callback_t {
   // Binding callback, or NULL when no function executor is linked.

@@ -41,6 +41,13 @@ previous accumulator. Stores, explicit async groups, `scf.while`, and ordered
 effects receive diagnostics at depth greater than one. These
 policies are explicit; an unannotated loop receives no read-ahead transform.
 
+Cooperative reductions can also consume read-ahead values. A requested loop
+containing subgroup or workgroup collectives needs compile-time exact bounds;
+runtime tail guards can remain inside that fixed tile. Separate guarded reads
+from the collective consumer so each can retain its own stage. The
+[collective participation contract](../guide/functions-and-control.md#pipeline-reads-ahead-of-ordered-computation)
+explains this shape and its diagnostics.
+
 ## Give each motif its own schedule
 
 This motif sums four adjacent values per row for each work-item. Its template
@@ -442,6 +449,282 @@ its benchmark workload. Hold factor two fixed while comparing depth one, two,
 and four, then investigate unrolling separately. The default demonstrates the
 policy; selecting a winner requires measurements for the intended device,
 workload, and data-reuse policy.
+
+## Separate route and payload lookahead
+
+Indirect reads have more than one useful lead distance. A routed MoE combine
+first loads a row ID, uses it to load an expert-output row, then applies that
+route's weight. The
+[`routed-row-combine.loom`](../generated/examples/guide/functions-and-control/routed-row-combine.loom)
+example expresses those stages with ordinary SSA values and `scf.for`:
+
+| Steady-state work | Logical route |
+| --- | --- |
+| Read the next row ID | `i + 2` |
+| Read the selected payload and its weight | `i + 1` |
+| Accumulate the previously loaded weighted payload | `i` |
+
+One carried ID connects the metadata and payload stages. A separate carried
+validity/weight/payload tuple connects the payload stage to the ordered sum.
+Missing IDs suppress the weight and payload accesses; invalid startup and drain
+slots leave the sum unchanged. Both kernels use unroll two, so the serial
+control isolates the effect of staging from the effect of unrolling.
+
+Where a value is consumed matters as much as its source distance. Reading a
+weight under the newly loaded ID's guard immediately needs that ID. Keeping the
+weight with the later payload stage lets the ID load precede independent work
+and shortens the weight's live range. The example's `scf.schedule.fence` keeps
+future reads ahead of older arithmetic without emitting a hardware wait.
+Register moves and actual consumers still determine native completion waits.
+
+`pipeline(%depth)` moves the ordinary read prerequisite closure together; it
+does not choose independent distances within that closure. This example shows
+the explicit source baseline for such a schedule. Its distances belong to the
+kernel, with no global configuration coupling other instances.
+
+After saving the example, check its varied inputs, missing routes, short loops
+and cancellation cases, then compare the two named workloads:
+
+```shell
+iree-test-loom routed-row-combine.loom --device=amdgpu --sanitizer=access
+
+iree-benchmark-loom routed-row-combine.loom \
+  --compare=@routed_row_combine_serial_n8_t256,@routed_row_combine_pipelined_n8_t256 \
+  --device=amdgpu --measure=dispatch_complete --batch-size=64 \
+  --interleave=ABABA --output=routed-comparison.json
+
+loom-compile routed-row-combine.loom --root=@routed_row_combine_pipelined \
+  --target=amdgpu:gfx11-generic --format=amdgpu-hsaco \
+  --output=routed.hsaco --compile-report=details \
+  --compile-report-output=routed.report.json
+loom-compile-report show routed.report.json
+loom-compile-report suggest routed.report.json
+```
+
+The `n8_t1`, `n8_t16` and `n8_t256` rows select one, sixteen and 256 tokens
+with eight routes each; `n32` rows exercise a longer recurrence. Each benchmark
+case has one dispatch and an independent analytic expectation. Compare final
+register use, code size, copy waits and JIT cost alongside device time. A partial
+wait can preserve overlap within a body while backedge copies still drain it;
+neither that wait count nor a deeper queue predicts which policy wins.
+
+## Pipeline cooperative paged attention
+
+The [cooperative paged-attention example](../generated/examples/guide/functions-and-control/cooperative-paged-attention.loom)
+uses one subgroup per 128-channel query. Each lane holds a target-sized channel
+fragment. A runtime page loop reads one ID for both K and V, skips absent pages,
+and processes a fixed tile of sixteen rows. Repeated physical pages and shared
+page tables retain their logical row order.
+
+Inside that tile, `pipeline(%depth) unroll(%factor)` advances guarded K/V loads
+ahead of the subgroup QK reduction and the online softmax/PV recurrence. A
+separate guarded consumer updates the maximum, denominator and output
+accumulator. The fixed row count preserves collective participation; the
+runtime tail predicate prevents accesses to rows beyond the sequence length.
+The outer page count remains dynamic. Both policies instantiate one template:
+the serial caller passes depth one, the pipelined caller depth three, and both
+pass unroll two.
+
+Save the example, check it, and compare the same workload and input-reuse policy:
+
+```shell
+iree-test-loom cooperative-paged-attention.loom --device=amdgpu --sanitizer=access
+
+iree-benchmark-loom cooperative-paged-attention.loom \
+  --compare=@cooperative_paged_attention_serial_n128_i256,@cooperative_paged_attention_pipelined_n128_i256 \
+  --device=amdgpu --measure=dispatch_complete --batch-size=8 \
+  --iterations=16 --warmup-iterations=3 --input-ring-count=1 \
+  --interleave=ABABA --repetitions=2 --output=cooperative-comparison.json
+
+loom-compile cooperative-paged-attention.loom \
+  --root=@cooperative_paged_attention_pipelined --target=amdgpu:gfx1151 \
+  --format=amdgpu-hsaco --output=cooperative.hsaco --compile-report=details \
+  --compile-report-output=cooperative.report.json
+loom-compile-report show cooperative.report.json
+loom-compile-report suggest cooperative.report.json
+```
+
+The benchmark names cover 128 or 1024 tokens (`n128`, `n1024`) and one, sixteen
+or 256 queries (`i1`, `i16`, `i256`). Each timing case launches one kernel.
+Independent analytic checks cover the scalar state and all output channels;
+varied-input comparisons exercise distinct queries and ragged lengths over
+shared pages. Minimal backing allocations expose accidental reads from absent
+pages or inactive tail rows.
+
+This resource comparison is generated from the two callers for `gfx1151`:
+
+--8<-- "generated/examples/guide/functions-and-control/cooperative-resources.md"
+
+The corresponding report suggests a controlled depth comparison:
+
+```text
+--8<-- "generated/examples/guide/functions-and-control/cooperative-pipeline-suggest.txt"
+```
+
+Deeper read-ahead keeps more K/V fragments live. It can overlap future loads
+with current score and PV work even when a full wait precedes queue copies at
+the backedge. Inspect the load-to-consumer window as well as wait counts:
+neither the depth nor a full wait alone establishes whether useful overlap
+survived. The checked policies are a comparison point; device measurements and
+resource costs determine the choice for another query shape or target.
+
+## Pipeline sparse token attention
+
+The [sparse token-attention example](../generated/examples/guide/functions-and-control/sparse-token-attention.loom)
+consumes a caller-selected prefix of physical token IDs. This fits top-k
+attention where an indexer has already selected the causal candidates: the
+attention kernel gathers their K/V rows in list order, including duplicates.
+Negative IDs and IDs at or beyond the runtime cache bound contribute nothing.
+
+There are two independent access boundaries. The prefix decides whether an
+index entry exists; the loaded ID decides whether a K/V row exists. The source
+keeps both guards ahead of the separate score/softmax/PV consumer:
+
+```loom
+%row_id = scf.if %active -> (i32) {
+  %loaded_id = view.load %index_view[%instance, %selected] : view<[%instances]x1024xi32> -> i32
+  scf.yield %loaded_id : i32
+} else {
+  scf.yield %absent_id : i32
+}
+%valid = scalar.cmpi ult, %row_id, %cache_limit : i32
+```
+
+The unsigned comparison excludes negative IDs as well as the upper bound.
+Guarding K/V loads alone is insufficient: an ignored suffix may contain valid
+IDs, and their rows may contain NaNs. The checked example tests that case and
+also uses index allocations ending exactly at the active prefix. Separate
+analytic checks cover maximum, denominator and every output channel; varied
+queries distinguish row identity across shared lists and different prefixes.
+
+One subgroup owns each 128-channel query. A dynamic outer loop traverses the
+selected prefix in sixteen-entry tiles; the fixed inner loop accepts
+`pipeline(%depth) unroll(%factor)`. Both callers instantiate the same template
+with unroll two, at depth one or three. The schedule advances the dependent
+ID/K/V read closure while retaining each record's validity and consumption
+order. These values belong to the caller's workload and target policy.
+
+```shell
+iree-test-loom sparse-token-attention.loom --device=amdgpu --sanitizer=access
+
+iree-benchmark-loom sparse-token-attention.loom \
+  --compare=@sparse_token_attention_serial_n128_i256,@sparse_token_attention_pipelined_n128_i256 \
+  --device=amdgpu --measure=dispatch_complete --batch-size=8 \
+  --iterations=16 --warmup-iterations=3 --input-ring-count=1 \
+  --interleave=ABABA --repetitions=2 --output=sparse-comparison.json
+
+loom-compile sparse-token-attention.loom \
+  --root=@sparse_token_attention_pipelined --target=amdgpu:gfx1151 \
+  --format=amdgpu-hsaco --output=sparse.hsaco --compile-report=details \
+  --compile-report-output=sparse.report.json
+loom-compile-report show sparse.report.json
+loom-compile-report suggest sparse.report.json
+```
+
+The generated `gfx1151` comparison makes the retained-state cost visible:
+
+--8<-- "generated/examples/guide/functions-and-control/sparse-resources.md"
+
+Inspect both dependency steps in native code. The ID must complete before it
+can form a payload address, while future K/V loads can overlap the current
+score reduction and PV update. Queue copies can still require completion at
+the backedge. Compare device time, register use, code size and JIT cost at
+matched unroll factors; a larger depth alone does not establish useful overlap.
+The `n128`/`n1024` and `i1`/`i16`/`i256` benchmark suffixes vary selected-token
+and query counts without changing the cache footprint.
+
+## Share K/V loads across query heads
+
+The [grouped paged-attention example](../generated/examples/guide/functions-and-control/grouped-paged-attention.loom)
+puts two distinct query heads in one subgroup. A pair owns one page table and
+each lane loads one K/V fragment per row for both queries. Ordinary SSA makes
+the reuse explicit:
+
+```loom
+%first_partial_score = vector.dotf %first_query_fragment, %key, %identity : vector<[%fragment_width]xf32>, vector<[%fragment_width]xf32>, f32
+%first_dot = kernel.subgroup.reduce<addf> %first_partial_score : f32
+%second_partial_score = vector.dotf %second_query_fragment, %key, %identity : vector<[%fragment_width]xf32>, vector<[%fragment_width]xf32>, f32
+%second_dot = kernel.subgroup.reduce<addf> %second_partial_score : f32
+```
+
+Each head keeps its own query, length, maximum, denominator and PV accumulator.
+The shared loop traverses the union of both prefixes. Its load guard protects
+that union; two separate consumer guards prevent the longer head from extending
+the shorter head's softmax. Both reductions participate in the fixed sixteen-row
+tile. A reusable online-update template takes the target-derived fragment width
+as an argument, so the same arithmetic handles both heads and subgroup widths.
+
+Three callers separate reuse from scheduling. `independent` launches two
+subgroups per pair; `shared` launches one, with both using depth two and unroll
+two. `shared_serial` uses the same shared body at depth one. The independent
+control reads the same pair-owned table and places the two heads in adjacent
+workgroups. All callers take policy values through template arguments.
+
+```shell
+iree-test-loom grouped-paged-attention.loom --device=amdgpu --sanitizer=access
+
+iree-benchmark-loom grouped-paged-attention.loom \
+  --compare=@grouped_paged_attention_independent_n128_p1024,@grouped_paged_attention_shared_n128_p1024 \
+  --device=amdgpu --measure=dispatch_complete --batch-size=8 \
+  --iterations=16 --warmup-iterations=3 --input-ring-count=1 \
+  --interleave=ABABA --repetitions=2 --output=grouped-comparison.json
+
+loom-compile grouped-paged-attention.loom \
+  --root=@grouped_paged_attention_shared --target=amdgpu:gfx1151 \
+  --format=amdgpu-hsaco --output=grouped.hsaco --compile-report=details \
+  --compile-report-output=grouped.report.json
+loom-compile-report show grouped.report.json
+loom-compile-report suggest grouped.report.json
+```
+
+The `n128`/`n1024` and `p1`/`p128`/`p1024` rows vary tokens and query pairs
+over the same 64 MiB K/V allocation. Each timing case launches one kernel.
+Independent analytic checks cover both states and all output channels, including
+empty heads, unequal lengths, absent pages and repeated pages. Varied queries
+and pair-owned tables distinguish identity; minimal backing exposes extra reads.
+
+The generated `gfx1151` resource comparison shows the state cost:
+
+--8<-- "generated/examples/guide/functions-and-control/grouped-resources.md"
+
+For equal lengths, sharing halves issued K/V loads per pair. Cache reuse means
+this does not imply half the DRAM traffic. The shared form also retains two
+online states per subgroup and halves the number of runnable subgroups. Small
+batches can lose performance while larger batches benefit. The balance also
+depends on the target: fewer issued loads can accompany slower execution.
+
+### Choose grouping and depth independently
+
+Grouping changes how much independent work the device can run; depth changes
+how far each subgroup reads ahead. Compare independent and shared callers at
+the same depth first, then vary depth for each form with unrolling fixed. For
+example, independent/shared at depths two and three gives four candidates, each
+with its own checked outputs and compile report. The motif's template arguments
+keep these choices local to the caller.
+
+The grouped example illustrates why both axes matter. With unroll two and a
+64 MiB K/V pool, measurements at 128 and 1,024 tokens per head favored
+independent depth three for a single query pair
+on gfx1151, RX 7900 XTX, and MI300X. At 1,024 pairs, sharing won on the first two
+devices, while MI300X still favored independent depth three. Those observations
+describe this workload and policy grid; another head width, page distribution,
+or batch size requires its own comparison.
+
+Use reports to explain each candidate's cost before spending device time.
+`show` exposes the applied schedule and final resources; `suggest` identifies
+pipeline-depth experiments and relevant native wait evidence. Compare registers,
+spills, modeled occupancy, code size, and compile time. A larger queue can
+improve overlap even without an occupancy change, while a full wait or queue
+copy can drain future loads earlier than expected.
+
+Measure the surviving candidates at the intended query count and active page
+footprint. Shared reads may already hit cache in the independent form, so
+halving issued loads does not establish a bandwidth benefit. Keep correctness,
+host completion, and device timestamps as separate evidence; alternating policy
+order and retaining stability warnings makes a small difference easier to
+judge. The [benchmark workflow](benchmark.md) owns the timing controls, and
+the [per-instance search workflow](search-loop-schedules.md) shows how to retain
+reports and correctness results across a larger candidate grid.
 
 ## Carry the experiment into a kernel
 

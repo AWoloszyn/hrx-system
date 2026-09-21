@@ -952,10 +952,26 @@ loom_cc_test(
 )
 
 loom_cc_library(
+    name = "call_context",
+    srcs = ["call_context.c"],
+    hdrs = ["call_context.h"],
+    deps = [
+        ":function",
+        "//loom/src/loom/error:emitter",
+        "//loom/src/loom/error:error_defs",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/low",
+        "//loom/src/loom/target:function_version",
+        "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
     name = "verify",
     srcs = ["verify.c"],
     hdrs = ["verify.h"],
     deps = [
+        ":call_context",
         ":function",
         ":packet",
         ":register_parts",

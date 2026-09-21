@@ -13,6 +13,48 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
+
+from build_tools.ci import rocm_environment
+
+
+class RocmSupervisorTest(unittest.TestCase):
+    def test_selects_gnu_supervisor_when_default_is_another_implementation(self):
+        paths = {"timeout": "/usr/bin/timeout", "gnutimeout": "/usr/bin/gnutimeout"}
+        with (
+            mock.patch.object(rocm_environment.shutil, "which", side_effect=paths.get),
+            mock.patch.object(
+                rocm_environment.subprocess,
+                "run",
+                side_effect=[
+                    subprocess.CompletedProcess(
+                        [], 0, "timeout (uutils coreutils) 0.2.2"
+                    ),
+                    subprocess.CompletedProcess([], 0, "timeout (GNU coreutils) 9.5"),
+                ],
+            ),
+        ):
+            self.assertEqual(
+                rocm_environment.require_gnu_timeout(), paths["gnutimeout"]
+            )
+
+    def test_missing_or_incompatible_supervisor_fails_explicitly(self):
+        for path in (None, "/usr/bin/timeout"):
+            with (
+                self.subTest(path=path),
+                mock.patch.object(rocm_environment.shutil, "which", return_value=path),
+                mock.patch.object(
+                    rocm_environment.subprocess,
+                    "run",
+                    return_value=subprocess.CompletedProcess(
+                        [], 0, "timeout (uutils coreutils) 0.2.2"
+                    ),
+                ),
+            ):
+                with self.assertRaisesRegex(
+                    RuntimeError, "GNU coreutils timeout is required"
+                ):
+                    rocm_environment.require_gnu_timeout()
 
 
 class RocmEnvironmentTest(unittest.TestCase):
@@ -20,10 +62,10 @@ class RocmEnvironmentTest(unittest.TestCase):
         script = (
             "import signal, sys; "
             "from build_tools.ci.rocm_environment import "
-            "run_probe, handle_termination; "
+            "run_probe, handle_termination, require_gnu_timeout; "
             "signal.signal(signal.SIGTERM, handle_termination); "
             f"sys.exit(run_probe([sys.executable, '-c', {native_script!r}], "
-            f"**{options!r}))"
+            f"timeout_tool=require_gnu_timeout(), **{options!r}))"
         )
         return [sys.executable, "-u", "-c", script]
 

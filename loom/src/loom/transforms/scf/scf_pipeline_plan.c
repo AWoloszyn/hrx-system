@@ -11,8 +11,9 @@
 
 static iree_status_t loom_scf_pipeline_plan_partition(
     loom_module_t* module, const loom_block_t* block,
-    const loom_local_value_domain_t* domain, iree_arena_allocator_t* arena,
-    loom_scf_pipeline_plan_t* plan, loom_scf_pipeline_rejection_t* rejection) {
+    const loom_local_value_domain_t* domain, bool has_static_bounds,
+    iree_arena_allocator_t* arena, loom_scf_pipeline_plan_t* plan,
+    loom_scf_pipeline_rejection_t* rejection) {
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, plan->body.count, sizeof(*plan->stages), (void**)&plan->stages));
   for (uint32_t i = 0; i < plan->body.count; ++i) {
@@ -21,11 +22,32 @@ static iree_status_t loom_scf_pipeline_plan_partition(
     if (operation->effects == 0) {
       continue;
     }
+    if (operation->effects == LOOM_SCF_BODY_EFFECT_CONVERGENT) {
+      if (!has_static_bounds) {
+        *rejection = (loom_scf_pipeline_rejection_t){
+            .op = operation->op,
+            .constraint = IREE_SV("compile-time exact loop bounds to preserve "
+                                  "convergent consumer participation"),
+        };
+        return iree_ok_status();
+      }
+      continue;
+    }
+    if (operation->effects ==
+        (LOOM_SCF_BODY_EFFECT_READ | LOOM_SCF_BODY_EFFECT_CONVERGENT)) {
+      *rejection = (loom_scf_pipeline_rejection_t){
+          .op = operation->op,
+          .constraint = IREE_SV("convergent operations separated from "
+                                "read-ahead loads"),
+      };
+      return iree_ok_status();
+    }
     if (operation->effects != LOOM_SCF_BODY_EFFECT_READ) {
       *rejection = (loom_scf_pipeline_rejection_t){
           .op = operation->op,
-          .constraint = IREE_SV("ordinary loads and pure operations without "
-                                "writes, ordered effects or async groups"),
+          .constraint =
+              IREE_SV("ordinary loads and memory-pure consumers without "
+                      "writes, ordered effects or async groups"),
       };
       return iree_ok_status();
     }
@@ -82,6 +104,15 @@ static iree_status_t loom_scf_pipeline_plan_partition(
             .op = operation->op,
             .constraint = IREE_SV("read-ahead prerequisites independent of "
                                   "loop-carried state"),
+        };
+        return iree_ok_status();
+      }
+      if (iree_any_bit_set(plan->body.operations[producer].effects,
+                           LOOM_SCF_BODY_EFFECT_CONVERGENT)) {
+        *rejection = (loom_scf_pipeline_rejection_t){
+            .op = plan->body.operations[producer].op,
+            .constraint = IREE_SV("read-ahead prerequisites without "
+                                  "convergent operations"),
         };
         return iree_ok_status();
       }
@@ -162,7 +193,7 @@ static iree_status_t loom_scf_pipeline_plan_partition(
 }
 
 iree_status_t loom_scf_pipeline_plan_build(
-    loom_module_t* module, const loom_block_t* block,
+    loom_module_t* module, const loom_block_t* block, bool has_static_bounds,
     iree_arena_allocator_t* arena, loom_scf_pipeline_plan_t* out_plan,
     loom_scf_pipeline_rejection_t* out_rejection) {
   *out_plan = (loom_scf_pipeline_plan_t){0};
@@ -183,7 +214,8 @@ iree_status_t loom_scf_pipeline_plan_build(
   IREE_RETURN_IF_ERROR(loom_local_value_domain_acquire_for_region(
       module, block->parent_region, arena, &domain));
   iree_status_t status = loom_scf_pipeline_plan_partition(
-      module, block, &domain, arena, out_plan, out_rejection);
+      module, block, &domain, has_static_bounds, arena, out_plan,
+      out_rejection);
   loom_local_value_domain_release(&domain);
   return status;
 }

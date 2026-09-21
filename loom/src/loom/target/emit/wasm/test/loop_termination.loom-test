@@ -20,8 +20,8 @@ CHECK: i32.lt_s
 CHECK: i32.lt_u
 CHECK: i32.sub
 CHECK: f32.select
-CHECK: br_if     0
-CHECK: br_if     1
+CHECK: br        1
+CHECK: br        2
 CHECK: i32.mul
 
 // ====
@@ -44,8 +44,8 @@ CHECK: <unsigned_hash>:
 CHECK: i32.lt_u
 CHECK: i32.sub
 CHECK: f32.select
-CHECK: br_if     0
-CHECK: br_if     1
+CHECK: br        1
+CHECK: br        2
 CHECK-NOT: i32.lt_s
 
 // ====
@@ -100,7 +100,7 @@ CHECK: <swap>:
 CHECK: <nested>:
 CHECK: i32.lt_s
 CHECK: i32.lt_u
-CHECK: br_if     0
-CHECK: br_if     1
+CHECK: br        1
+CHECK: br        2
 CHECK: if
 CHECK: else

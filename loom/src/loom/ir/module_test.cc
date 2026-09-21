@@ -828,6 +828,7 @@ TEST_F(ModuleTest, BlockRemoveArgCompactsDefinitions) {
   IREE_ASSERT_OK(loom_module_define_value(module, removed_type, &removed));
   IREE_ASSERT_OK(loom_block_add_arg(module, block, removed));
   EXPECT_TRUE(loom_module_value_has_type_uses(module, dim));
+  EXPECT_TRUE(loom_module_value_has_uses(module, dim));
 
   loom_value_id_t shifted = LOOM_VALUE_ID_INVALID;
   IREE_ASSERT_OK(loom_module_define_value(module, i32_type, &shifted));
@@ -844,6 +845,7 @@ TEST_F(ModuleTest, BlockRemoveArgCompactsDefinitions) {
   EXPECT_EQ(loom_value_def_block(loom_module_value(module, shifted)), block);
   EXPECT_EQ(loom_value_def_index(loom_module_value(module, shifted)), 1u);
   EXPECT_FALSE(loom_module_value_has_type_uses(module, dim));
+  EXPECT_FALSE(loom_module_value_has_uses(module, dim));
 
   loom_module_free(module);
 }
@@ -945,12 +947,14 @@ TEST_F(ModuleTest, BlockRemoveArgRejectsTypeAttributeUses) {
 
   EXPECT_EQ(loom_module_value(module, width)->use_count, 0u);
   EXPECT_FALSE(loom_module_value_has_type_uses(module, width));
+  EXPECT_TRUE(loom_module_value_has_uses(module, width));
   IREE_EXPECT_STATUS_IS(IREE_STATUS_FAILED_PRECONDITION,
                         loom_block_remove_arg(module, block, 0));
   EXPECT_EQ(block->arg_count, 1u);
   EXPECT_EQ(loom_value_def_block(loom_module_value(module, width)), block);
 
   IREE_ASSERT_OK(loom_op_erase(module, owner));
+  EXPECT_FALSE(loom_module_value_has_uses(module, width));
   IREE_ASSERT_OK(loom_block_remove_arg(module, block, 0));
   EXPECT_EQ(block->arg_count, 0u);
   EXPECT_FALSE(loom_value_is_block_arg(loom_module_value(module, width)));

@@ -1,0 +1,463 @@
+// Cooperative 128-channel decode attention over 16-row physical pages.
+//
+// One subgroup owns each query. Target subgroup size determines the contiguous
+// channel fragment held by each lane. Lengths are in [0, 1024]; page IDs are -1
+// (absent) or in [0, 255]. One lookup owns all K/V rows in a page, including
+// repeated physical pages. Buffers are disjoint, four-byte aligned, and contain
+// every active row; inactive rows need no backing. Scores are finite and greater
+// than -1e9. Empty/all-absent inputs produce zero output and denominator.
+//
+// QK uses a subgroup reduction; max, denominator and PV advance in source order.
+// Approximate exp and contraction model ML-fast arithmetic without reassociation.
+// Fixed row bounds preserve collective participation across the pipeline split;
+// separate guarded load/consumer regions preserve the runtime ragged tail.
+// The two callers compare serial and depth-three policies at the same unroll
+// factor. These are per-instantiation choices, not a universal schedule.
+template.decl @cooperative_paged_attention(%instance_count: index, %lengths: buffer, %query: buffer, %page_table: buffer, %keys: buffer, %values: buffer, %final_state: buffer, %output: buffer, %depth: index, %factor: index)
+
+template.def<@cooperative_paged_attention> @cooperative_paged_attention_impl(%instance_count: index, %lengths: buffer, %query: buffer, %page_table: buffer, %keys: buffer, %values: buffer, %final_state: buffer, %output: buffer, %depth: index, %factor: index) {
+  %instance_id = kernel.workgroup.id<x> : index
+  %instance, %instances = index.assume %instance_id, %instance_count [range(%instance_count, 1, 256), lt(%instance_id, %instance_count)] : index, index
+  %lane = kernel.subgroup.lane.id : index
+  %width = kernel.subgroup.size : index
+  %head_width = index.constant 128 : index
+  %fragment_width = index.div %head_width, %width : index
+  %channel = index.mul %lane, %fragment_width : index
+  %begin = index.constant 0 : index
+  %row_step = index.constant 1 : index
+  %page_rows = index.constant 16 : index
+  %base = index.constant 0 : offset
+  %first_page_id = scalar.constant 0 : i32
+  %initial_max = scalar.constant -1000000000.0 : f32
+  %identity = scalar.constant 0.0 : f32
+  %score_scale = scalar.constant 0.088388347648318447 : f32
+  %initial_accumulator = vector.splat %identity : vector<[%fragment_width]xf32>
+  %lengths_aligned = buffer.assume.alignment %lengths {minimum_alignment = 4} : buffer
+  %query_aligned = buffer.assume.alignment %query {minimum_alignment = 4} : buffer
+  %table_aligned = buffer.assume.alignment %page_table {minimum_alignment = 4} : buffer
+  %keys_aligned = buffer.assume.alignment %keys {minimum_alignment = 4} : buffer
+  %values_aligned = buffer.assume.alignment %values {minimum_alignment = 4} : buffer
+  %state_aligned = buffer.assume.alignment %final_state {minimum_alignment = 4} : buffer
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %length_storage, %query_storage, %table_storage, %key_storage, %value_storage, %state_storage, %output_storage = buffer.assume.noalias %lengths_aligned, %query_aligned, %table_aligned, %keys_aligned, %values_aligned, %state_aligned, %output_aligned : buffer, buffer, buffer, buffer, buffer, buffer, buffer
+  %length_view = buffer.view %length_storage[%base] : buffer -> view<[%instances]xi32>
+  %query_view = buffer.view %query_storage[%base] : buffer -> view<[%instances]x128xf32>
+  %table = buffer.view %table_storage[%base] : buffer -> view<[%instances]x64xi32>
+  %key_rows = buffer.view %key_storage[%base] : buffer -> view<4096x128xf32>
+  %value_rows = buffer.view %value_storage[%base] : buffer -> view<4096x128xf32>
+  %state = buffer.view %state_storage[%base] : buffer -> view<[%instances]x2xf32>
+  %output_view = buffer.view %output_storage[%base] : buffer -> view<[%instances]x128xf32>
+  %length = view.load %length_view[%instance] : view<[%instances]xi32> -> i32
+  %length_index = index.cast %length : i32 to index
+  %count = index.assume %length_index [range(%length_index, 0, 1024)] : index
+  %query_fragment = vector.load %query_view[%instance, %channel] : view<[%instances]x128xf32> -> vector<[%fragment_width]xf32>
+  %maximum, %denominator, %numerator = scf.for %page_begin = [%begin to %count step %page_rows](%page_max = %initial_max : f32, %page_sum = %identity : f32, %page_accumulator = %initial_accumulator : vector<[%fragment_width]xf32>) -> (f32, f32, vector<[%fragment_width]xf32>) {
+    %logical_page = index.div %page_begin, %page_rows : index
+    %page_id = view.load %table[%instance, %logical_page] : view<[%instances]x64xi32> -> i32
+    %present = scalar.cmpi sge, %page_id, %first_page_id : i32
+    %next_page_max, %next_page_sum, %next_page_accumulator = scf.if %present -> (f32, f32, vector<[%fragment_width]xf32>) {
+      %page_index = index.cast %page_id : i32 to index
+      %page = index.assume %page_index [range(%page_index, 0, 255)] : index
+      %page_row = index.mul %page, %page_rows : index
+      %rows_max, %rows_sum, %rows_accumulator = scf.for %row = [%begin to %page_rows step %row_step](%row_max = %page_max : f32, %row_sum = %page_sum : f32, %row_accumulator = %page_accumulator : vector<[%fragment_width]xf32>) -> (f32, f32, vector<[%fragment_width]xf32>) pipeline(%depth) unroll(%factor) {
+        %token = index.add %page_begin, %row : index
+        %valid = index.cmp slt, %token, %count : index
+        %key, %value = scf.if %valid -> (vector<[%fragment_width]xf32>, vector<[%fragment_width]xf32>) {
+          %physical_row = index.add %page_row, %row : index
+          %loaded_key = vector.load %key_rows[%physical_row, %channel] : view<4096x128xf32> -> vector<[%fragment_width]xf32>
+          %loaded_value = vector.load %value_rows[%physical_row, %channel] : view<4096x128xf32> -> vector<[%fragment_width]xf32>
+          scf.yield %loaded_key, %loaded_value : vector<[%fragment_width]xf32>, vector<[%fragment_width]xf32>
+        } else {
+          scf.yield %initial_accumulator, %initial_accumulator : vector<[%fragment_width]xf32>, vector<[%fragment_width]xf32>
+        }
+        %next_row_max, %next_row_sum, %next_row_accumulator = scf.if %valid -> (f32, f32, vector<[%fragment_width]xf32>) {
+          %partial_score = vector.dotf %query_fragment, %key, %identity : vector<[%fragment_width]xf32>, vector<[%fragment_width]xf32>, f32
+          %dot = kernel.subgroup.reduce<addf> %partial_score : f32
+          %score = scalar.mulf %dot, %score_scale : f32
+          %updated_max = scalar.maxnumf %row_max, %score : f32
+          %old_delta = scalar.subf %row_max, %updated_max : f32
+          %score_delta = scalar.subf %score, %updated_max : f32
+          %old_scale = scalar.expf<afn> %old_delta : f32
+          %weight = scalar.expf<afn> %score_delta : f32
+          %rescaled_sum = scalar.mulf<contract> %row_sum, %old_scale : f32
+          %updated_sum = scalar.addf<contract> %rescaled_sum, %weight : f32
+          %old_scale_vector = vector.splat %old_scale : vector<[%fragment_width]xf32>
+          %weight_vector = vector.splat %weight : vector<[%fragment_width]xf32>
+          %rescaled_accumulator = vector.mulf<contract> %row_accumulator, %old_scale_vector : vector<[%fragment_width]xf32>
+          %weighted_value = vector.mulf<contract> %value, %weight_vector : vector<[%fragment_width]xf32>
+          %updated_accumulator = vector.addf<contract> %rescaled_accumulator, %weighted_value : vector<[%fragment_width]xf32>
+          scf.yield %updated_max, %updated_sum, %updated_accumulator : f32, f32, vector<[%fragment_width]xf32>
+        } else {
+          scf.yield %row_max, %row_sum, %row_accumulator : f32, f32, vector<[%fragment_width]xf32>
+        }
+        scf.yield %next_row_max, %next_row_sum, %next_row_accumulator : f32, f32, vector<[%fragment_width]xf32>
+      }
+      scf.yield %rows_max, %rows_sum, %rows_accumulator : f32, f32, vector<[%fragment_width]xf32>
+    } else {
+      scf.yield %page_max, %page_sum, %page_accumulator : f32, f32, vector<[%fragment_width]xf32>
+    }
+    scf.yield %next_page_max, %next_page_sum, %next_page_accumulator : f32, f32, vector<[%fragment_width]xf32>
+  }
+  %nonempty = scalar.cmpf ogt, %denominator, %identity : f32
+  %normalized = scf.if %nonempty -> (vector<[%fragment_width]xf32>) {
+    %denominators = vector.splat %denominator : vector<[%fragment_width]xf32>
+    %result = vector.divf %numerator, %denominators : vector<[%fragment_width]xf32>
+    scf.yield %result : vector<[%fragment_width]xf32>
+  } else {
+    scf.yield %initial_accumulator : vector<[%fragment_width]xf32>
+  }
+  %leader = index.cmp eq, %lane, %begin : index
+  scf.if %leader {
+    view.store %maximum, %state[%instance, %begin] : f32, view<[%instances]x2xf32>
+    view.store %denominator, %state[%instance, %row_step] : f32, view<[%instances]x2xf32>
+  }
+  vector.store %normalized, %output_view[%instance, %channel] : vector<[%fragment_width]xf32>, view<[%instances]x128xf32>
+  template.return
+}
+
+kernel.def @cooperative_paged_attention_serial(%instance_count: index) {
+  %unit = index.constant 1 : index
+  %width = kernel.subgroup.size : index
+  kernel.launch.config workgroups(%instance_count, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%instance_count: index, %lengths: buffer, %query: buffer, %page_table: buffer, %keys: buffer, %values: buffer, %final_state: buffer, %output: buffer) {
+  %depth = index.constant 1 : index
+  %factor = index.constant 2 : index
+  template.apply<@cooperative_paged_attention>(%instance_count, %lengths, %query, %page_table, %keys, %values, %final_state, %output, %depth, %factor) : (index, buffer, buffer, buffer, buffer, buffer, buffer, buffer, index, index)
+  kernel.return
+}
+
+kernel.def @cooperative_paged_attention_pipelined(%instance_count: index) {
+  %unit = index.constant 1 : index
+  %width = kernel.subgroup.size : index
+  kernel.launch.config workgroups(%instance_count, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%instance_count: index, %lengths: buffer, %query: buffer, %page_table: buffer, %keys: buffer, %values: buffer, %final_state: buffer, %output: buffer) {
+  %depth = index.constant 3 : index
+  %factor = index.constant 2 : index
+  template.apply<@cooperative_paged_attention>(%instance_count, %lengths, %query, %page_table, %keys, %values, %final_state, %output, %depth, %factor) : (index, buffer, buffer, buffer, buffer, buffer, buffer, buffer, index, index)
+  kernel.return
+}
+
+// Varied inputs distinguish row identity, lane fragments and K/V queues. Every
+// sequence sees the same physical pages with a different ragged length and query.
+// Independent analytic cases below anchor the numerical contract of both forms.
+check.case public @cooperative_paged_attention_varied {
+  %instances = check.param.choice values([1, 16]) name("instances") : index
+  %seed = check.param.seed base(7400) count(4) : i64
+  %lengths = check.generate.iota offset(0) step(17) : tensor<[%instances]xi32>
+  %query = check.generate.random.uniform seed(%seed) range(-0.5 to 0.5) : tensor<[%instances]x128xf32>
+  %pages = check.generate.iota offset(2) step(-1) period(4) : tensor<[%instances]x64xi32>
+  %keys = check.generate.iota offset(-0.5) step(0.00390625) period(257) : tensor<48x128xf32>
+  %values = check.generate.iota offset(-3.0) step(0.03125) period(251) : tensor<48x128xf32>
+  %serial_state = check.generate.fill value(-10000.0) : tensor<[%instances]x2xf32>
+  %serial_output = check.generate.fill value(-20000.0) : tensor<[%instances]x128xf32>
+  %pipeline_state = check.generate.fill value(-30000.0) : tensor<[%instances]x2xf32>
+  %pipeline_output = check.generate.fill value(-40000.0) : tensor<[%instances]x128xf32>
+  kernel.launch @cooperative_paged_attention_serial[%instances](%instances, %lengths, %query, %pages, %keys, %values, %serial_state, %serial_output) : [index](index, tensor<[%instances]xi32>, tensor<[%instances]x128xf32>, tensor<[%instances]x64xi32>, tensor<48x128xf32>, tensor<48x128xf32>, tensor<[%instances]x2xf32>, tensor<[%instances]x128xf32>)
+  kernel.launch @cooperative_paged_attention_pipelined[%instances](%instances, %lengths, %query, %pages, %keys, %values, %pipeline_state, %pipeline_output) : [index](index, tensor<[%instances]xi32>, tensor<[%instances]x128xf32>, tensor<[%instances]x64xi32>, tensor<48x128xf32>, tensor<48x128xf32>, tensor<[%instances]x2xf32>, tensor<[%instances]x128xf32>)
+  check.expect.close actual(%pipeline_state) expected(%serial_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<[%instances]x2xf32>
+  check.expect.close actual(%pipeline_output) expected(%serial_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<[%instances]x128xf32>
+  check.return
+}
+
+// Direct normalized exponential sums provide an oracle independent of the
+// online recurrence. Query is constant q; key(row,c)=(128*row+c)/32768, so
+// score(row)=q*(row/2 + 127/512)*f32(1/sqrt(128)). Value(row,c)=4*row-37/32+c/32.
+// Thus each output channel is 4*weighted_mean(row)-37/32+c/32. Max and denominator
+// are checked independently so repeated/skipped pages cannot hide in the mean.
+check.case public @cooperative_paged_attention_empty {
+  %instances = check.literal value(1) : index
+  %lengths = check.generate.fill value(0) : tensor<1xi32>
+  %query = check.generate.fill value(0.0) : tensor<1x128xf32>
+  %pages = check.generate.iota offset(2) step(-1) period(4) : tensor<1x64xi32>
+  %keys = check.generate.iota offset(0.0) step(3.0517578125e-05) : tensor<1x128xf32>
+  %values = check.generate.iota offset(-1.15625) step(0.03125) : tensor<1x128xf32>
+  %serial_state = check.generate.fill value(-10000.0) : tensor<1x2xf32>
+  %serial_output = check.generate.fill value(-20000.0) : tensor<1x128xf32>
+  %pipeline_state = check.generate.fill value(-30000.0) : tensor<1x2xf32>
+  %pipeline_output = check.generate.fill value(-40000.0) : tensor<1x128xf32>
+  %expected_state = check.generate.iota offset(-1000000000.0) step(1000000000.0) : tensor<1x2xf32>
+  %expected_output = check.generate.iota offset(0.0) step(0.0) : tensor<1x128xf32>
+  kernel.launch @cooperative_paged_attention_serial[%instances](%instances, %lengths, %query, %pages, %keys, %values, %serial_state, %serial_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<1x128xf32>, tensor<1x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  kernel.launch @cooperative_paged_attention_pipelined[%instances](%instances, %lengths, %query, %pages, %keys, %values, %pipeline_state, %pipeline_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<1x128xf32>, tensor<1x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  check.expect.close actual(%serial_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%serial_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.expect.close actual(%pipeline_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%pipeline_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.return
+}
+
+check.case public @cooperative_paged_attention_single {
+  %instances = check.literal value(1) : index
+  %lengths = check.generate.fill value(1) : tensor<1xi32>
+  %query = check.generate.fill value(1.0) : tensor<1x128xf32>
+  %pages = check.generate.iota offset(2) step(-1) period(4) : tensor<1x64xi32>
+  %keys = check.generate.iota offset(0.0) step(3.0517578125e-05) : tensor<48x128xf32>
+  %values = check.generate.iota offset(-1.15625) step(0.03125) : tensor<48x128xf32>
+  %serial_state = check.generate.fill value(-10000.0) : tensor<1x2xf32>
+  %serial_output = check.generate.fill value(-20000.0) : tensor<1x128xf32>
+  %pipeline_state = check.generate.fill value(-30000.0) : tensor<1x2xf32>
+  %pipeline_output = check.generate.fill value(-40000.0) : tensor<1x128xf32>
+  %expected_state = check.generate.iota offset(1.4361379912152188) step(-0.43613799121521879) : tensor<1x2xf32>
+  %expected_output = check.generate.iota offset(126.84375) step(0.03125) : tensor<1x128xf32>
+  kernel.launch @cooperative_paged_attention_serial[%instances](%instances, %lengths, %query, %pages, %keys, %values, %serial_state, %serial_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<48x128xf32>, tensor<48x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  kernel.launch @cooperative_paged_attention_pipelined[%instances](%instances, %lengths, %query, %pages, %keys, %values, %pipeline_state, %pipeline_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<48x128xf32>, tensor<48x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  check.expect.close actual(%serial_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%serial_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.expect.close actual(%pipeline_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%pipeline_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.return
+}
+
+check.case public @cooperative_paged_attention_short_tile {
+  %instances = check.literal value(1) : index
+  %lengths = check.generate.fill value(15) : tensor<1xi32>
+  %query = check.generate.fill value(1.0) : tensor<1x128xf32>
+  %pages = check.generate.iota offset(2) step(-1) period(4) : tensor<1x64xi32>
+  %keys = check.generate.iota offset(0.0) step(3.0517578125e-05) : tensor<48x128xf32>
+  %values = check.generate.iota offset(-1.15625) step(0.03125) : tensor<48x128xf32>
+  %serial_state = check.generate.fill value(-10000.0) : tensor<1x2xf32>
+  %serial_output = check.generate.fill value(-20000.0) : tensor<1x128xf32>
+  %pipeline_state = check.generate.fill value(-30000.0) : tensor<1x2xf32>
+  %pipeline_output = check.generate.fill value(-40000.0) : tensor<1x128xf32>
+  %expected_state = check.generate.iota offset(2.0548564141645329) step(9.1556741521072063) : tensor<1x2xf32>
+  %expected_output = check.generate.iota offset(158.1195567350758) step(0.03125) : tensor<1x128xf32>
+  kernel.launch @cooperative_paged_attention_serial[%instances](%instances, %lengths, %query, %pages, %keys, %values, %serial_state, %serial_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<48x128xf32>, tensor<48x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  kernel.launch @cooperative_paged_attention_pipelined[%instances](%instances, %lengths, %query, %pages, %keys, %values, %pipeline_state, %pipeline_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<48x128xf32>, tensor<48x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  check.expect.close actual(%serial_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%serial_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.expect.close actual(%pipeline_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%pipeline_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.return
+}
+
+check.case public @cooperative_paged_attention_full_tile {
+  %instances = check.literal value(1) : index
+  %lengths = check.generate.fill value(16) : tensor<1xi32>
+  %query = check.generate.fill value(1.0) : tensor<1x128xf32>
+  %pages = check.generate.iota offset(2) step(-1) period(4) : tensor<1x64xi32>
+  %keys = check.generate.iota offset(0.0) step(3.0517578125e-05) : tensor<48x128xf32>
+  %values = check.generate.iota offset(-1.15625) step(0.03125) : tensor<48x128xf32>
+  %serial_state = check.generate.fill value(-10000.0) : tensor<1x2xf32>
+  %serial_output = check.generate.fill value(-20000.0) : tensor<1x128xf32>
+  %pipeline_state = check.generate.fill value(-30000.0) : tensor<1x2xf32>
+  %pipeline_output = check.generate.fill value(-40000.0) : tensor<1x128xf32>
+  %expected_state = check.generate.iota offset(2.0990505872323411) step(9.6268281245465932) : tensor<1x2xf32>
+  %expected_output = check.generate.iota offset(160.56919773605853) step(0.03125) : tensor<1x128xf32>
+  kernel.launch @cooperative_paged_attention_serial[%instances](%instances, %lengths, %query, %pages, %keys, %values, %serial_state, %serial_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<48x128xf32>, tensor<48x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  kernel.launch @cooperative_paged_attention_pipelined[%instances](%instances, %lengths, %query, %pages, %keys, %values, %pipeline_state, %pipeline_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<48x128xf32>, tensor<48x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  check.expect.close actual(%serial_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%serial_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.expect.close actual(%pipeline_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%pipeline_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.return
+}
+
+check.case public @cooperative_paged_attention_cross_page {
+  %instances = check.literal value(1) : index
+  %lengths = check.generate.fill value(17) : tensor<1xi32>
+  %query = check.generate.fill value(-1.0) : tensor<1x128xf32>
+  %pages = check.generate.iota offset(2) step(-1) period(4) : tensor<1x64xi32>
+  %keys = check.generate.iota offset(0.0) step(3.0517578125e-05) : tensor<48x128xf32>
+  %values = check.generate.iota offset(-1.15625) step(0.03125) : tensor<48x128xf32>
+  %serial_state = check.generate.fill value(-10000.0) : tensor<1x2xf32>
+  %serial_output = check.generate.fill value(-20000.0) : tensor<1x128xf32>
+  %pipeline_state = check.generate.fill value(-30000.0) : tensor<1x2xf32>
+  %pipeline_output = check.generate.fill value(-40000.0) : tensor<1x128xf32>
+  %expected_state = check.generate.iota offset(-0.72903122213028837) step(7.5106949639739078) : tensor<1x2xf32>
+  %expected_output = check.generate.iota offset(139.80673806665794) step(0.03125) : tensor<1x128xf32>
+  kernel.launch @cooperative_paged_attention_serial[%instances](%instances, %lengths, %query, %pages, %keys, %values, %serial_state, %serial_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<48x128xf32>, tensor<48x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  kernel.launch @cooperative_paged_attention_pipelined[%instances](%instances, %lengths, %query, %pages, %keys, %values, %pipeline_state, %pipeline_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<48x128xf32>, tensor<48x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  check.expect.close actual(%serial_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%serial_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.expect.close actual(%pipeline_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%pipeline_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.return
+}
+
+check.case public @cooperative_paged_attention_holes {
+  %instances = check.literal value(1) : index
+  %lengths = check.generate.fill value(64) : tensor<1xi32>
+  %query = check.generate.fill value(0.0) : tensor<1x128xf32>
+  %pages = check.generate.iota offset(2) step(-1) period(4) : tensor<1x64xi32>
+  %keys = check.generate.iota offset(0.0) step(3.0517578125e-05) : tensor<48x128xf32>
+  %values = check.generate.iota offset(-1.15625) step(0.03125) : tensor<48x128xf32>
+  %serial_state = check.generate.fill value(-10000.0) : tensor<1x2xf32>
+  %serial_output = check.generate.fill value(-20000.0) : tensor<1x128xf32>
+  %pipeline_state = check.generate.fill value(-30000.0) : tensor<1x2xf32>
+  %pipeline_output = check.generate.fill value(-40000.0) : tensor<1x128xf32>
+  %expected_state = check.generate.iota offset(0.0) step(48.0) : tensor<1x2xf32>
+  %expected_output = check.generate.iota offset(92.84375) step(0.03125) : tensor<1x128xf32>
+  kernel.launch @cooperative_paged_attention_serial[%instances](%instances, %lengths, %query, %pages, %keys, %values, %serial_state, %serial_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<48x128xf32>, tensor<48x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  kernel.launch @cooperative_paged_attention_pipelined[%instances](%instances, %lengths, %query, %pages, %keys, %values, %pipeline_state, %pipeline_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<48x128xf32>, tensor<48x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  check.expect.close actual(%serial_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%serial_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.expect.close actual(%pipeline_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%pipeline_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.return
+}
+
+check.case public @cooperative_paged_attention_repeated_page {
+  %instances = check.literal value(1) : index
+  %lengths = check.generate.fill value(65) : tensor<1xi32>
+  %query = check.generate.fill value(16.0) : tensor<1x128xf32>
+  %pages = check.generate.iota offset(2) step(-1) period(4) : tensor<1x64xi32>
+  %keys = check.generate.iota offset(0.0) step(3.0517578125e-05) : tensor<48x128xf32>
+  %values = check.generate.iota offset(-1.15625) step(0.03125) : tensor<48x128xf32>
+  %serial_state = check.generate.fill value(-10000.0) : tensor<1x2xf32>
+  %serial_output = check.generate.fill value(-20000.0) : tensor<1x128xf32>
+  %pipeline_state = check.generate.fill value(-30000.0) : tensor<1x2xf32>
+  %pipeline_output = check.generate.fill value(-40000.0) : tensor<1x128xf32>
+  %expected_state = check.generate.iota offset(33.584809395717457) step(-31.612130765705391) : tensor<1x2xf32>
+  %expected_output = check.generate.iota offset(182.95243045906494) step(0.03125) : tensor<1x128xf32>
+  kernel.launch @cooperative_paged_attention_serial[%instances](%instances, %lengths, %query, %pages, %keys, %values, %serial_state, %serial_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<48x128xf32>, tensor<48x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  kernel.launch @cooperative_paged_attention_pipelined[%instances](%instances, %lengths, %query, %pages, %keys, %values, %pipeline_state, %pipeline_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<48x128xf32>, tensor<48x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  check.expect.close actual(%serial_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%serial_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.expect.close actual(%pipeline_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%pipeline_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.return
+}
+
+check.case public @cooperative_paged_attention_ragged_backing {
+  %instances = check.literal value(1) : index
+  %lengths = check.generate.fill value(17) : tensor<1xi32>
+  %query = check.generate.fill value(1.0) : tensor<1x128xf32>
+  %pages = check.generate.iota offset(0) step(1) : tensor<1x64xi32>
+  %keys = check.generate.iota offset(0.0) step(3.0517578125e-05) : tensor<17x128xf32>
+  %values = check.generate.iota offset(-1.15625) step(0.03125) : tensor<17x128xf32>
+  %serial_state = check.generate.fill value(-10000.0) : tensor<1x2xf32>
+  %serial_output = check.generate.fill value(-20000.0) : tensor<1x128xf32>
+  %pipeline_state = check.generate.fill value(-30000.0) : tensor<1x2xf32>
+  %pipeline_output = check.generate.fill value(-40000.0) : tensor<1x128xf32>
+  %expected_state = check.generate.iota offset(0.72903122213028837) step(11.489916187010815) : tensor<1x2xf32>
+  %expected_output = check.generate.iota offset(35.046870423420522) step(0.03125) : tensor<1x128xf32>
+  kernel.launch @cooperative_paged_attention_serial[%instances](%instances, %lengths, %query, %pages, %keys, %values, %serial_state, %serial_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<17x128xf32>, tensor<17x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  kernel.launch @cooperative_paged_attention_pipelined[%instances](%instances, %lengths, %query, %pages, %keys, %values, %pipeline_state, %pipeline_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<17x128xf32>, tensor<17x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  check.expect.close actual(%serial_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%serial_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.expect.close actual(%pipeline_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%pipeline_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.return
+}
+
+check.case public @cooperative_paged_attention_absent {
+  %instances = check.literal value(1) : index
+  %lengths = check.generate.fill value(1024) : tensor<1xi32>
+  %query = check.generate.fill value(0.0) : tensor<1x128xf32>
+  %pages = check.generate.fill value(-1) : tensor<1x64xi32>
+  %keys = check.generate.iota offset(0.0) step(3.0517578125e-05) : tensor<1x128xf32>
+  %values = check.generate.iota offset(-1.15625) step(0.03125) : tensor<1x128xf32>
+  %serial_state = check.generate.fill value(-10000.0) : tensor<1x2xf32>
+  %serial_output = check.generate.fill value(-20000.0) : tensor<1x128xf32>
+  %pipeline_state = check.generate.fill value(-30000.0) : tensor<1x2xf32>
+  %pipeline_output = check.generate.fill value(-40000.0) : tensor<1x128xf32>
+  %expected_state = check.generate.iota offset(-1000000000.0) step(1000000000.0) : tensor<1x2xf32>
+  %expected_output = check.generate.iota offset(0.0) step(0.0) : tensor<1x128xf32>
+  kernel.launch @cooperative_paged_attention_serial[%instances](%instances, %lengths, %query, %pages, %keys, %values, %serial_state, %serial_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<1x128xf32>, tensor<1x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  kernel.launch @cooperative_paged_attention_pipelined[%instances](%instances, %lengths, %query, %pages, %keys, %values, %pipeline_state, %pipeline_output) : [index](index, tensor<1xi32>, tensor<1x128xf32>, tensor<1x64xi32>, tensor<1x128xf32>, tensor<1x128xf32>, tensor<1x2xf32>, tensor<1x128xf32>)
+  check.expect.close actual(%serial_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%serial_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.expect.close actual(%pipeline_state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x2xf32>
+  check.expect.close actual(%pipeline_output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<1x128xf32>
+  check.return
+}
+
+// One kernel per timing case. Zero queries make every score zero and denominator
+// equal to the sequence length. Values repeat by channel, giving an exact output
+// independent of the sampled page order while retaining the full cache footprint.
+// The varied and analytic cases above separately verify physical row identity.
+check.case public @cooperative_paged_attention_serial_n128 {
+  %instances = check.param.choice values([1, 16, 256]) name("instances") : index
+  %seed = check.literal value(7401) : i64
+  %lengths = check.generate.fill value(128) : tensor<[%instances]xi32>
+  %query = check.generate.fill value(0.0) : tensor<[%instances]x128xf32>
+  %pages = check.generate.random.uniform seed(%seed) range(0 to 255) : tensor<[%instances]x64xi32>
+  %keys = check.generate.iota offset(-0.5) step(0.00390625) period(257) : tensor<4096x128xf32>
+  %values = check.generate.iota offset(-4.0) step(0.0625) period(128) : tensor<4096x128xf32>
+  %state = check.generate.fill value(-10000.0) : tensor<[%instances]x2xf32>
+  %output = check.generate.fill value(-20000.0) : tensor<[%instances]x128xf32>
+  %expected_state = check.generate.iota offset(0.0) step(128.0) period(2) : tensor<[%instances]x2xf32>
+  %expected_output = check.generate.iota offset(-4.0) step(0.0625) period(128) : tensor<[%instances]x128xf32>
+  kernel.launch @cooperative_paged_attention_serial[%instances](%instances, %lengths, %query, %pages, %keys, %values, %state, %output) : [index](index, tensor<[%instances]xi32>, tensor<[%instances]x128xf32>, tensor<[%instances]x64xi32>, tensor<4096x128xf32>, tensor<4096x128xf32>, tensor<[%instances]x2xf32>, tensor<[%instances]x128xf32>)
+  check.expect.close actual(%state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<[%instances]x2xf32>
+  check.expect.close actual(%output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<[%instances]x128xf32>
+  check.return
+}
+
+check.benchmark<@cooperative_paged_attention_serial_n128> @cooperative_paged_attention_serial_n128_i1 {instances = 1}
+
+check.benchmark<@cooperative_paged_attention_serial_n128> @cooperative_paged_attention_serial_n128_i16 {instances = 16}
+
+check.benchmark<@cooperative_paged_attention_serial_n128> @cooperative_paged_attention_serial_n128_i256 {instances = 256}
+
+check.case public @cooperative_paged_attention_pipelined_n128 {
+  %instances = check.param.choice values([1, 16, 256]) name("instances") : index
+  %seed = check.literal value(7401) : i64
+  %lengths = check.generate.fill value(128) : tensor<[%instances]xi32>
+  %query = check.generate.fill value(0.0) : tensor<[%instances]x128xf32>
+  %pages = check.generate.random.uniform seed(%seed) range(0 to 255) : tensor<[%instances]x64xi32>
+  %keys = check.generate.iota offset(-0.5) step(0.00390625) period(257) : tensor<4096x128xf32>
+  %values = check.generate.iota offset(-4.0) step(0.0625) period(128) : tensor<4096x128xf32>
+  %state = check.generate.fill value(-10000.0) : tensor<[%instances]x2xf32>
+  %output = check.generate.fill value(-20000.0) : tensor<[%instances]x128xf32>
+  %expected_state = check.generate.iota offset(0.0) step(128.0) period(2) : tensor<[%instances]x2xf32>
+  %expected_output = check.generate.iota offset(-4.0) step(0.0625) period(128) : tensor<[%instances]x128xf32>
+  kernel.launch @cooperative_paged_attention_pipelined[%instances](%instances, %lengths, %query, %pages, %keys, %values, %state, %output) : [index](index, tensor<[%instances]xi32>, tensor<[%instances]x128xf32>, tensor<[%instances]x64xi32>, tensor<4096x128xf32>, tensor<4096x128xf32>, tensor<[%instances]x2xf32>, tensor<[%instances]x128xf32>)
+  check.expect.close actual(%state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<[%instances]x2xf32>
+  check.expect.close actual(%output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<[%instances]x128xf32>
+  check.return
+}
+
+check.benchmark<@cooperative_paged_attention_pipelined_n128> @cooperative_paged_attention_pipelined_n128_i1 {instances = 1}
+
+check.benchmark<@cooperative_paged_attention_pipelined_n128> @cooperative_paged_attention_pipelined_n128_i16 {instances = 16}
+
+check.benchmark<@cooperative_paged_attention_pipelined_n128> @cooperative_paged_attention_pipelined_n128_i256 {instances = 256}
+
+check.case public @cooperative_paged_attention_serial_n1024 {
+  %instances = check.param.choice values([1, 16, 256]) name("instances") : index
+  %seed = check.literal value(7401) : i64
+  %lengths = check.generate.fill value(1024) : tensor<[%instances]xi32>
+  %query = check.generate.fill value(0.0) : tensor<[%instances]x128xf32>
+  %pages = check.generate.random.uniform seed(%seed) range(0 to 255) : tensor<[%instances]x64xi32>
+  %keys = check.generate.iota offset(-0.5) step(0.00390625) period(257) : tensor<4096x128xf32>
+  %values = check.generate.iota offset(-4.0) step(0.0625) period(128) : tensor<4096x128xf32>
+  %state = check.generate.fill value(-10000.0) : tensor<[%instances]x2xf32>
+  %output = check.generate.fill value(-20000.0) : tensor<[%instances]x128xf32>
+  %expected_state = check.generate.iota offset(0.0) step(1024.0) period(2) : tensor<[%instances]x2xf32>
+  %expected_output = check.generate.iota offset(-4.0) step(0.0625) period(128) : tensor<[%instances]x128xf32>
+  kernel.launch @cooperative_paged_attention_serial[%instances](%instances, %lengths, %query, %pages, %keys, %values, %state, %output) : [index](index, tensor<[%instances]xi32>, tensor<[%instances]x128xf32>, tensor<[%instances]x64xi32>, tensor<4096x128xf32>, tensor<4096x128xf32>, tensor<[%instances]x2xf32>, tensor<[%instances]x128xf32>)
+  check.expect.close actual(%state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<[%instances]x2xf32>
+  check.expect.close actual(%output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<[%instances]x128xf32>
+  check.return
+}
+
+check.benchmark<@cooperative_paged_attention_serial_n1024> @cooperative_paged_attention_serial_n1024_i1 {instances = 1}
+
+check.benchmark<@cooperative_paged_attention_serial_n1024> @cooperative_paged_attention_serial_n1024_i16 {instances = 16}
+
+check.benchmark<@cooperative_paged_attention_serial_n1024> @cooperative_paged_attention_serial_n1024_i256 {instances = 256}
+
+check.case public @cooperative_paged_attention_pipelined_n1024 {
+  %instances = check.param.choice values([1, 16, 256]) name("instances") : index
+  %seed = check.literal value(7401) : i64
+  %lengths = check.generate.fill value(1024) : tensor<[%instances]xi32>
+  %query = check.generate.fill value(0.0) : tensor<[%instances]x128xf32>
+  %pages = check.generate.random.uniform seed(%seed) range(0 to 255) : tensor<[%instances]x64xi32>
+  %keys = check.generate.iota offset(-0.5) step(0.00390625) period(257) : tensor<4096x128xf32>
+  %values = check.generate.iota offset(-4.0) step(0.0625) period(128) : tensor<4096x128xf32>
+  %state = check.generate.fill value(-10000.0) : tensor<[%instances]x2xf32>
+  %output = check.generate.fill value(-20000.0) : tensor<[%instances]x128xf32>
+  %expected_state = check.generate.iota offset(0.0) step(1024.0) period(2) : tensor<[%instances]x2xf32>
+  %expected_output = check.generate.iota offset(-4.0) step(0.0625) period(128) : tensor<[%instances]x128xf32>
+  kernel.launch @cooperative_paged_attention_pipelined[%instances](%instances, %lengths, %query, %pages, %keys, %values, %state, %output) : [index](index, tensor<[%instances]xi32>, tensor<[%instances]x128xf32>, tensor<[%instances]x64xi32>, tensor<4096x128xf32>, tensor<4096x128xf32>, tensor<[%instances]x2xf32>, tensor<[%instances]x128xf32>)
+  check.expect.close actual(%state) expected(%expected_state) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<[%instances]x2xf32>
+  check.expect.close actual(%output) expected(%expected_output) atol(2.0000000000000002e-05) rtol(2.0000000000000002e-05) nan(same) : tensor<[%instances]x128xf32>
+  check.return
+}
+
+check.benchmark<@cooperative_paged_attention_pipelined_n1024> @cooperative_paged_attention_pipelined_n1024_i1 {instances = 1}
+
+check.benchmark<@cooperative_paged_attention_pipelined_n1024> @cooperative_paged_attention_pipelined_n1024_i16 {instances = 16}
+
+check.benchmark<@cooperative_paged_attention_pipelined_n1024> @cooperative_paged_attention_pipelined_n1024_i256 {instances = 256}

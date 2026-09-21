@@ -7,6 +7,9 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
+import io
+import json
 import os
 import subprocess
 import sys
@@ -23,6 +26,32 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 class CiCoreWindowsTest(unittest.TestCase):
+    def test_diagnostic_command_preserves_failure_and_success_status(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            environment = dict(os.environ)
+            environment["IREE_CI_FAILURE_ARTIFACT_DIR"] = str(root / "artifacts")
+            with contextlib.redirect_stdout(io.StringIO()):
+                with self.assertRaises(subprocess.CalledProcessError) as failure:
+                    ci_core_windows.run(
+                        [sys.executable, "-c", "raise SystemExit(17)"],
+                        cwd=root,
+                        env=environment,
+                    )
+                self.assertEqual(failure.exception.returncode, 17)
+                ci_core_windows.run(
+                    [sys.executable, "-c", "print('success')"],
+                    cwd=root,
+                    env=environment,
+                )
+            commands = [
+                json.loads(path.read_text())
+                for path in (root / "artifacts").glob("*/command.json")
+            ]
+            self.assertEqual(
+                sorted(command["returncode"] for command in commands), [0, 17]
+            )
+
     def _symlink_or_skip(self, source: Path, link: Path) -> None:
         try:
             link.symlink_to(source, target_is_directory=source.is_dir())

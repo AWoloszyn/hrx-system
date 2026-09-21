@@ -65,42 +65,19 @@ loom_cc_library(
     ],
 )
 
-loom_cc_library(
-    name = "request",
-    srcs = ["request.c"],
-    hdrs = ["request.h"],
-    visibility = ["//loom/src/loom/tools/loom-compile:__pkg__"],
-    deps = [
-        "//loom/src/loom/ir",
-        "//loom/src/loom/ops:op_defs",
-        "//loom/src/loom/ops/pipeline",
-        "//loom/src/loom/target:entry_selection",
-        "//loom/src/loom/target:projection",
-        "//loom/src/loom/target:provider",
-        "//loom/src/loom/target:selection",
-        "//loom/src/loom/tooling/compile:artifact",
-        "//runtime/src/iree/base",
-    ],
-)
-
 loom_cc_binary(
     name = "loom-compile",
     srcs = ["loom-compile.c"],
     deps = [
         ":command_backend",
         ":command_manifest",
-        ":request",
         "//loom/src/loom/codegen/low:text_asm",
         "//loom/src/loom/error:diagnostic",
         "//loom/src/loom/format/text:printer",
         "//loom/src/loom/ir",
-        "//loom/src/loom/link:linker",
-        "//loom/src/loom/ops:op_defs",
-        "//loom/src/loom/ops/kernel",
         "//loom/src/loom/sanitizer:options",
         "//loom/src/loom/target:entry_selection",
         "//loom/src/loom/target:low_descriptor_registry",
-        "//loom/src/loom/target:module_specialization",
         "//loom/src/loom/target/arch/cmd:artifact_set",
         "//loom/src/loom/target/reporting:artifact_manifest",
         "//loom/src/loom/tooling/cli:help",
@@ -108,7 +85,9 @@ loom_cc_binary(
         "//loom/src/loom/tooling/compile:configured",
         "//loom/src/loom/tooling/compile:options",
         "//loom/src/loom/tooling/compile:pipeline",
+        "//loom/src/loom/tooling/compile:preparation",
         "//loom/src/loom/tooling/compile:report_capture",
+        "//loom/src/loom/tooling/compile:request",
         "//loom/src/loom/tooling/config",
         "//loom/src/loom/tooling/context",
         "//loom/src/loom/tooling/execution:session",
@@ -136,23 +115,6 @@ loom_cc_test(
         "//loom/src/loom/target/arch/cmd:artifact_set",
         "//loom/src/loom/util:stream",
         "//runtime/src/iree/base",
-        "//runtime/src/iree/testing:gtest",
-        "//runtime/src/iree/testing:gtest_main",
-    ],
-)
-
-loom_cc_test(
-    name = "request_test",
-    srcs = ["request_test.cc"],
-    deps = [
-        ":request",
-        "//loom/src/loom/format/text:parser",
-        "//loom/src/loom/ir",
-        "//loom/src/loom/ops/low",
-        "//loom/src/loom/ops/target",
-        "//loom/src/loom/testing:context",
-        "//loom/src/loom/testing:module_ptr",
-        "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],

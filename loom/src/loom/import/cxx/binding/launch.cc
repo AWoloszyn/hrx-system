@@ -11,6 +11,7 @@
 
 #include "loom/import/cxx/source/attributes.h"
 #include "loom/import/cxx/source/error.h"
+#include "loom/import/cxx/symbol/names.h"
 #include "loom/ir/module.h"
 #include "loom/ops/config/ops.h"
 #include "loom/ops/index/ops.h"
@@ -114,8 +115,8 @@ void LaunchContracts::reject_ordinary_function(cxx::FunctionSymbol* function) {
 
 std::array<loom_value_id_t, 3> LaunchContracts::build_dimensions(
     const std::optional<Dimensions>& dimensions, std::string_view prefix,
-    std::string_view name, loom_builder_t* builder,
-    loom_location_id_t location) {
+    std::string_view name, SymbolNames& names, cxx::AST* source,
+    loom_builder_t* builder, loom_location_id_t location) {
   std::array<loom_value_id_t, 3> values;
   loom_builder_t declaration_builder;
   auto* module = builder->module;
@@ -130,6 +131,7 @@ std::array<loom_value_id_t, 3> LaunchContracts::build_dimensions(
     } else {
       auto spelling =
           std::string(prefix) + "." + std::string(name) + "." + "xyz"[axis];
+      names.reserve(spelling, source);
       loom_string_id_t name_id;
       check(loom_builder_intern_string(builder, view(spelling), &name_id));
       loom_symbol_id_t id;
@@ -170,15 +172,17 @@ std::array<loom_value_id_t, 3> LaunchContracts::build_dimensions(
 }
 
 void LaunchContracts::build(cxx::FunctionSymbol* function,
-                            std::string_view symbol, loom_builder_t* builder,
+                            std::string_view symbol, SymbolNames& names,
+                            loom_builder_t* builder,
                             loom_location_id_t location) {
   const auto found = contracts_.find(function->canonical());
   const Contract absent;
   const auto& contract = found == contracts_.end() ? absent : found->second;
-  auto count = build_dimensions(contract.count, symbol, "workgroup_count",
-                                builder, location);
-  auto size = build_dimensions(contract.size, symbol, "workgroup_size", builder,
-                               location);
+  auto count =
+      build_dimensions(contract.count, symbol, "workgroup_count", names,
+                       function->declaration(), builder, location);
+  auto size = build_dimensions(contract.size, symbol, "workgroup_size", names,
+                               function->declaration(), builder, location);
   loom_op_t* launch;
   check(loom_kernel_launch_config_build(builder, 0, count[0], count[1],
                                         count[2], size[0], size[1], size[2], 0,

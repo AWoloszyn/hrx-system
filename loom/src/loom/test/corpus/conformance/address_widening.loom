@@ -1,0 +1,138 @@
+// The same i32 payload widens with signed index and unsigned offset semantics.
+// Kernel arguments and per-lane loads exercise uniform and varying carriers.
+kernel.def @address_widening() {
+  %unit = index.constant 1 : index
+  %width = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%uniform_input: i32, %input: buffer, %output: buffer) {
+  %lane = kernel.workitem.id<x> : index
+  %base = index.constant 0 : offset
+  %second = index.constant 512 : offset
+  %third = index.constant 1024 : offset
+  %fourth = index.constant 1536 : offset
+  %input_storage = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %input_view = buffer.view %input_storage[%base] : buffer -> view<64xi32>
+  %varying_input = view.load %input_view[%lane] : view<64xi32> -> i32
+  %uniform_index = index.cast %uniform_input : i32 to index
+  %uniform_offset = index.cast %uniform_input : i32 to offset
+  %varying_index = index.cast %varying_input : i32 to index
+  %varying_offset = index.cast %varying_input : i32 to offset
+  %uniform_signed = index.cast %uniform_index : index to i64
+  %uniform_unsigned = index.cast %uniform_offset : offset to i64
+  %varying_signed = index.cast %varying_index : index to i64
+  %varying_unsigned = index.cast %varying_offset : offset to i64
+  %output_storage = buffer.assume.alignment %output {minimum_alignment = 8} : buffer
+  %uniform_signed_view = buffer.view %output_storage[%base] : buffer -> view<64xi64>
+  %uniform_unsigned_view = buffer.view %output_storage[%second] : buffer -> view<64xi64>
+  %varying_signed_view = buffer.view %output_storage[%third] : buffer -> view<64xi64>
+  %varying_unsigned_view = buffer.view %output_storage[%fourth] : buffer -> view<64xi64>
+  view.store %uniform_signed, %uniform_signed_view[%lane] : i64, view<64xi64>
+  view.store %uniform_unsigned, %uniform_unsigned_view[%lane] : i64, view<64xi64>
+  view.store %varying_signed, %varying_signed_view[%lane] : i64, view<64xi64>
+  view.store %varying_unsigned, %varying_unsigned_view[%lane] : i64, view<64xi64>
+  kernel.return
+}
+
+check.case public @address_widening_minimum {
+  %uniform_input = check.literal value(-2147483648) : i32
+  %input = check.generate.iota offset(-2147483648) step(1) : tensor<64xi32>
+  %storage = check.generate.fill value(-123) : tensor<288xi64>
+  %output = check.tensor.view %storage offset(128) : tensor<288xi64> -> tensor<256xi64>
+  kernel.launch @address_widening(%uniform_input, %input, %output) : (i32, tensor<64xi32>, tensor<256xi64>)
+  %uniform_signed = check.tensor.view %output offset(0) : tensor<256xi64> -> tensor<64xi64>
+  %uniform_unsigned = check.tensor.view %output offset(512) : tensor<256xi64> -> tensor<64xi64>
+  %varying_signed = check.tensor.view %output offset(1024) : tensor<256xi64> -> tensor<64xi64>
+  %varying_unsigned = check.tensor.view %output offset(1536) : tensor<256xi64> -> tensor<64xi64>
+  %expected_uniform_signed = check.generate.fill value(-2147483648) : tensor<64xi64>
+  %expected_uniform_unsigned = check.generate.fill value(2147483648) : tensor<64xi64>
+  %expected_varying_signed = check.generate.iota offset(-2147483648) step(1) : tensor<64xi64>
+  %expected_varying_unsigned = check.generate.iota offset(2147483648) step(1) : tensor<64xi64>
+  check.expect.bitwise actual(%uniform_signed) expected(%expected_uniform_signed) : tensor<64xi64>
+  check.expect.bitwise actual(%uniform_unsigned) expected(%expected_uniform_unsigned) : tensor<64xi64>
+  check.expect.bitwise actual(%varying_signed) expected(%expected_varying_signed) : tensor<64xi64>
+  check.expect.bitwise actual(%varying_unsigned) expected(%expected_varying_unsigned) : tensor<64xi64>
+  %prefix = check.tensor.view %storage offset(0) : tensor<288xi64> -> tensor<16xi64>
+  %suffix = check.tensor.view %storage offset(2176) : tensor<288xi64> -> tensor<16xi64>
+  %guard = check.generate.fill value(-123) : tensor<16xi64>
+  check.expect.bitwise actual(%prefix) expected(%guard) : tensor<16xi64>
+  check.expect.bitwise actual(%suffix) expected(%guard) : tensor<16xi64>
+  check.return
+}
+
+check.case public @address_widening_negative {
+  %uniform_input = check.literal value(-1) : i32
+  %input = check.generate.iota offset(-64) step(1) : tensor<64xi32>
+  %storage = check.generate.fill value(-123) : tensor<288xi64>
+  %output = check.tensor.view %storage offset(128) : tensor<288xi64> -> tensor<256xi64>
+  kernel.launch @address_widening(%uniform_input, %input, %output) : (i32, tensor<64xi32>, tensor<256xi64>)
+  %uniform_signed = check.tensor.view %output offset(0) : tensor<256xi64> -> tensor<64xi64>
+  %uniform_unsigned = check.tensor.view %output offset(512) : tensor<256xi64> -> tensor<64xi64>
+  %varying_signed = check.tensor.view %output offset(1024) : tensor<256xi64> -> tensor<64xi64>
+  %varying_unsigned = check.tensor.view %output offset(1536) : tensor<256xi64> -> tensor<64xi64>
+  %expected_uniform_signed = check.generate.fill value(-1) : tensor<64xi64>
+  %expected_uniform_unsigned = check.generate.fill value(4294967295) : tensor<64xi64>
+  %expected_varying_signed = check.generate.iota offset(-64) step(1) : tensor<64xi64>
+  %expected_varying_unsigned = check.generate.iota offset(4294967232) step(1) : tensor<64xi64>
+  check.expect.bitwise actual(%uniform_signed) expected(%expected_uniform_signed) : tensor<64xi64>
+  check.expect.bitwise actual(%uniform_unsigned) expected(%expected_uniform_unsigned) : tensor<64xi64>
+  check.expect.bitwise actual(%varying_signed) expected(%expected_varying_signed) : tensor<64xi64>
+  check.expect.bitwise actual(%varying_unsigned) expected(%expected_varying_unsigned) : tensor<64xi64>
+  %prefix = check.tensor.view %storage offset(0) : tensor<288xi64> -> tensor<16xi64>
+  %suffix = check.tensor.view %storage offset(2176) : tensor<288xi64> -> tensor<16xi64>
+  %guard = check.generate.fill value(-123) : tensor<16xi64>
+  check.expect.bitwise actual(%prefix) expected(%guard) : tensor<16xi64>
+  check.expect.bitwise actual(%suffix) expected(%guard) : tensor<16xi64>
+  check.return
+}
+
+check.case public @address_widening_zero {
+  %uniform_input = check.literal value(0) : i32
+  %input = check.generate.iota offset(0) step(1) : tensor<64xi32>
+  %storage = check.generate.fill value(-123) : tensor<288xi64>
+  %output = check.tensor.view %storage offset(128) : tensor<288xi64> -> tensor<256xi64>
+  kernel.launch @address_widening(%uniform_input, %input, %output) : (i32, tensor<64xi32>, tensor<256xi64>)
+  %uniform_signed = check.tensor.view %output offset(0) : tensor<256xi64> -> tensor<64xi64>
+  %uniform_unsigned = check.tensor.view %output offset(512) : tensor<256xi64> -> tensor<64xi64>
+  %varying_signed = check.tensor.view %output offset(1024) : tensor<256xi64> -> tensor<64xi64>
+  %varying_unsigned = check.tensor.view %output offset(1536) : tensor<256xi64> -> tensor<64xi64>
+  %expected_uniform_signed = check.generate.fill value(0) : tensor<64xi64>
+  %expected_uniform_unsigned = check.generate.fill value(0) : tensor<64xi64>
+  %expected_varying_signed = check.generate.iota offset(0) step(1) : tensor<64xi64>
+  %expected_varying_unsigned = check.generate.iota offset(0) step(1) : tensor<64xi64>
+  check.expect.bitwise actual(%uniform_signed) expected(%expected_uniform_signed) : tensor<64xi64>
+  check.expect.bitwise actual(%uniform_unsigned) expected(%expected_uniform_unsigned) : tensor<64xi64>
+  check.expect.bitwise actual(%varying_signed) expected(%expected_varying_signed) : tensor<64xi64>
+  check.expect.bitwise actual(%varying_unsigned) expected(%expected_varying_unsigned) : tensor<64xi64>
+  %prefix = check.tensor.view %storage offset(0) : tensor<288xi64> -> tensor<16xi64>
+  %suffix = check.tensor.view %storage offset(2176) : tensor<288xi64> -> tensor<16xi64>
+  %guard = check.generate.fill value(-123) : tensor<16xi64>
+  check.expect.bitwise actual(%prefix) expected(%guard) : tensor<16xi64>
+  check.expect.bitwise actual(%suffix) expected(%guard) : tensor<16xi64>
+  check.return
+}
+
+check.case public @address_widening_maximum {
+  %uniform_input = check.literal value(2147483647) : i32
+  %input = check.generate.iota offset(2147483584) step(1) : tensor<64xi32>
+  %storage = check.generate.fill value(-123) : tensor<288xi64>
+  %output = check.tensor.view %storage offset(128) : tensor<288xi64> -> tensor<256xi64>
+  kernel.launch @address_widening(%uniform_input, %input, %output) : (i32, tensor<64xi32>, tensor<256xi64>)
+  %uniform_signed = check.tensor.view %output offset(0) : tensor<256xi64> -> tensor<64xi64>
+  %uniform_unsigned = check.tensor.view %output offset(512) : tensor<256xi64> -> tensor<64xi64>
+  %varying_signed = check.tensor.view %output offset(1024) : tensor<256xi64> -> tensor<64xi64>
+  %varying_unsigned = check.tensor.view %output offset(1536) : tensor<256xi64> -> tensor<64xi64>
+  %expected_uniform_signed = check.generate.fill value(2147483647) : tensor<64xi64>
+  %expected_uniform_unsigned = check.generate.fill value(2147483647) : tensor<64xi64>
+  %expected_varying_signed = check.generate.iota offset(2147483584) step(1) : tensor<64xi64>
+  %expected_varying_unsigned = check.generate.iota offset(2147483584) step(1) : tensor<64xi64>
+  check.expect.bitwise actual(%uniform_signed) expected(%expected_uniform_signed) : tensor<64xi64>
+  check.expect.bitwise actual(%uniform_unsigned) expected(%expected_uniform_unsigned) : tensor<64xi64>
+  check.expect.bitwise actual(%varying_signed) expected(%expected_varying_signed) : tensor<64xi64>
+  check.expect.bitwise actual(%varying_unsigned) expected(%expected_varying_unsigned) : tensor<64xi64>
+  %prefix = check.tensor.view %storage offset(0) : tensor<288xi64> -> tensor<16xi64>
+  %suffix = check.tensor.view %storage offset(2176) : tensor<288xi64> -> tensor<16xi64>
+  %guard = check.generate.fill value(-123) : tensor<16xi64>
+  check.expect.bitwise actual(%prefix) expected(%guard) : tensor<16xi64>
+  check.expect.bitwise actual(%suffix) expected(%guard) : tensor<16xi64>
+  check.return
+}

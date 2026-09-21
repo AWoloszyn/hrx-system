@@ -37,6 +37,9 @@ typedef struct loom_check_diagnostic_collector_t {
   // Number of populated entries in diagnostics.
   iree_host_size_t count;
 
+  // Number of error-severity diagnostics collected so far.
+  iree_host_size_t error_count;
+
   // Allocated entry capacity of diagnostics.
   iree_host_size_t capacity;
 

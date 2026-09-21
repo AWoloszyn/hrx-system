@@ -26,6 +26,9 @@ enum loom_scf_body_effect_flag_bits_e {
   LOOM_SCF_BODY_EFFECT_NON_LOAD_READ = 1u << 3,
   // A compiler source-order constraint, independent of runtime effects.
   LOOM_SCF_BODY_EFFECT_SOURCE_ORDER = 1u << 4,
+  // Execution must preserve its original dynamic participant set. Independent
+  // memory and ordering effects remain represented by their own bits.
+  LOOM_SCF_BODY_EFFECT_CONVERGENT = 1u << 5,
 };
 
 typedef struct loom_scf_body_reference_t {

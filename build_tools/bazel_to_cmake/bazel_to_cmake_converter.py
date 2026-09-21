@@ -19,6 +19,7 @@ import os
 import re
 
 import bazel_to_cmake_config
+import bazel_to_cmake_requirements
 import bazel_to_cmake_targets
 
 _LOCATION_PATTERN = re.compile(
@@ -1189,8 +1190,11 @@ class BuildFileFunctions(object):
             rel = bzl_label[2:].replace(":", "/")
             abs_path = os.path.join(self._repo_root, rel)
 
-        namespace = {}
-        if abs_path and os.path.isfile(abs_path):
+        namespace = bazel_to_cmake_requirements.load_requirement_definitions(
+            self._repo_root, bzl_label
+        )
+        if namespace is None and abs_path and os.path.isfile(abs_path):
+            namespace = {}
             try:
                 with open(abs_path) as f:
                     exec(f.read(), namespace)
@@ -1199,6 +1203,8 @@ class BuildFileFunctions(object):
                 # Starlark-only expression failed may depend on incomplete file
                 # state and are no more trustworthy than unresolved symbols.
                 namespace = {}
+
+        namespace = namespace or {}
 
         for local_name, exported_name in requested_symbols:
             if local_name in self._exec_namespace:
@@ -1362,6 +1368,7 @@ class BuildFileFunctions(object):
         data=None,
         deps=None,
         env=None,
+        env_inherit=None,
         imports=None,
         main=None,
         package_dirs=None,
@@ -1397,6 +1404,11 @@ class BuildFileFunctions(object):
                 self._is_source_data_label(label) for label in unlocated_data
             ):
                 raise NotImplementedError(f"iree_py_test data: {name}")
+        # Tool locations are executable build dependencies as well as arguments.
+        # CTest already inherits the invoking environment, including env_inherit.
+        tool_deps = [
+            label for label in data or [] if not self._is_source_data_label(label)
+        ]
         source_list = list(srcs or [])
         main_source = None
         if main:
@@ -1424,7 +1436,7 @@ class BuildFileFunctions(object):
             "ARGS", self._convert_location_args(args), sort=False
         )
         deps_block, deps_var_block = self._convert_python_target_list_blocks(
-            name, "DEPS", deps
+            name, "DEPS", (deps or []) + tool_deps
         )
         imports_block = self._convert_string_list_block("IMPORTS", imports, sort=False)
         labels_block = self._convert_string_list_block("LABELS", tags)
@@ -2807,6 +2819,7 @@ class BuildFileFunctions(object):
         resource_group=None,
         timeout=None,
         target_compatible_with=None,
+        visibility=None,
     ):
         if self._should_skip_target(tags=tags):
             return

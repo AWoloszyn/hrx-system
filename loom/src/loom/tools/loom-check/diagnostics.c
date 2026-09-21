@@ -18,12 +18,7 @@
 
 bool loom_check_diagnostic_collector_has_error(
     const loom_check_diagnostic_collector_t* collector) {
-  for (iree_host_size_t i = 0; i < collector->count; ++i) {
-    if (collector->diagnostics[i].severity == LOOM_DIAGNOSTIC_ERROR) {
-      return true;
-    }
-  }
-  return false;
+  return collector->error_count != 0;
 }
 
 static iree_status_t loom_check_diagnostic_collector_grow(
@@ -75,6 +70,7 @@ iree_status_t loom_check_diagnostic_collector_sink(
       diagnostic, &format_options, collector->arena, collector->host_allocator,
       &collector->diagnostics[collector->count]));
   ++collector->count;
+  collector->error_count += diagnostic->severity == LOOM_DIAGNOSTIC_ERROR;
 
   loom_type_formatter_t type_formatter = {loom_check_format_type, collector};
   loom_check_diagnostic_capture_t diagnostic_capture = {

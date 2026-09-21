@@ -30,6 +30,7 @@ loom_cc_library(
     loom::target::arch::vm::provider
     loom::target::provider
     loom::tooling::compile::pipeline
+    loom::tooling::config
     loom::tooling::testbench::invocation
   PUBLIC
 )

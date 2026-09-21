@@ -491,9 +491,14 @@ static iree_status_t loom_target_callgraph_derive_context(
   loom_target_facts_builder_apply_requirement(
       callee->authored_target_requirement, candidate_facts);
 
+  // A requirement that leaves the inherited facts unchanged preserves the
+  // execution context. Keep a derived node to cache the applied requirement.
   const loom_target_callgraph_context_t* existing_context =
-      loom_target_callgraph_find_existing_equivalent_context(
-          state, callee_symbol_id, candidate_facts);
+      loom_target_facts_are_equivalent(parent->resolved_target.facts,
+                                       candidate_facts)
+          ? parent
+          : loom_target_callgraph_find_existing_equivalent_context(
+                state, callee_symbol_id, candidate_facts);
   const loom_target_facts_t* derived_facts = NULL;
   loom_target_context_ordinal_t target_context_ordinal =
       LOOM_TARGET_CONTEXT_ORDINAL_INVALID;

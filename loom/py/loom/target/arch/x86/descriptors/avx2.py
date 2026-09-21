@@ -15,6 +15,8 @@ from loom.target.low_descriptors import (
     Descriptor,
     DescriptorFlag,
     DescriptorSet,
+    Immediate,
+    ImmediateKind,
     IssueUse,
     LatencyKind,
     ModelQuality,
@@ -58,12 +60,12 @@ from .common import (
     _vector_f32_binary_descriptor,
     _vector_i32_binary_descriptor,
     _vector_lane_units,
-    _vector_memory_descriptors,
     _vector_result,
     _vector_splat_descriptor,
     _xmm_operand,
     _xmm_result,
 )
+from .memory import memory_descriptors
 from .scalar import (
     X86_SCALAR_DESCRIPTOR_SET,
     X86_SCALAR_PREFIX_DESCRIPTORS,
@@ -137,6 +139,41 @@ _X86_AVX2_VECTOR_DESCRIPTORS = (
             operands=("input",),
         ),
         schedule_class=_SCHEDULE_VECTOR_I32_XMM,
+        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+    ),
+    Descriptor(
+        key="x86.avx2.vpsllq.xmm",
+        mnemonic="vpsllq",
+        semantic_tag="integer.shl.i64x2",
+        operands=(_xmm_result(), _xmm_operand("source")),
+        immediates=(
+            Immediate("shift", ImmediateKind.UNSIGNED, bit_width=8, unsigned_max=255),
+        ),
+        asm_forms=_asm(
+            mnemonic="vpsllq.xmm",
+            results=("dst",),
+            operands=("source",),
+            immediates=("shift",),
+        ),
+        schedule_class=_SCHEDULE_VECTOR_I32_XMM,
+        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+    ),
+    Descriptor(
+        key="x86.avx2.vblendvpd.xmm",
+        mnemonic="vblendvpd",
+        semantic_tag="float.select.f64x2",
+        operands=(
+            _xmm_result(),
+            _xmm_operand("false_value"),
+            _xmm_operand("true_value"),
+            _xmm_operand("mask"),
+        ),
+        asm_forms=_asm(
+            mnemonic="vblendvpd.xmm",
+            results=("dst",),
+            operands=("false_value", "true_value", "mask"),
+        ),
+        schedule_class=_SCHEDULE_VECTOR_F32_XMM,
         flags=(DescriptorFlag.DEAD_REMOVABLE,),
     ),
     _vector_splat_descriptor(
@@ -376,14 +413,28 @@ _X86_AVX2_VECTOR_DESCRIPTORS = (
         schedule_class=_SCHEDULE_VECTOR_FMA_F32_XMM,
         flags=(DescriptorFlag.DEAD_REMOVABLE,),
     ),
-    *_vector_memory_descriptors(
+    *memory_descriptors(
         key_prefix="x86.avx2",
-        vector_bit_width=128,
+        mnemonic="vmovdqu32",
+        register_class=_REG_XMM,
+        register_suffix="xmm",
+        semantic_type="v128",
+        width_bits=128,
+        load_schedule_class=_SCHEDULE_MEMORY_LOAD_XMM,
+        store_schedule_class=_SCHEDULE_MEMORY_STORE_XMM,
+        assembly_suffix=".xmm",
         native_assembly_mnemonic="vmovdqu",
     ),
-    *_vector_memory_descriptors(
+    *memory_descriptors(
         key_prefix="x86.avx2",
-        vector_bit_width=256,
+        mnemonic="vmovdqu32",
+        register_class=_REG_YMM,
+        register_suffix="ymm",
+        semantic_type="v256",
+        width_bits=256,
+        load_schedule_class=_SCHEDULE_MEMORY_LOAD_YMM,
+        store_schedule_class=_SCHEDULE_MEMORY_STORE_YMM,
+        assembly_suffix=".ymm",
         native_assembly_mnemonic="vmovdqu",
     ),
 )

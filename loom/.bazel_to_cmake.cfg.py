@@ -85,6 +85,8 @@ _GENERATED_LOCATION_PATTERN = re.compile(r"\$\(location ([^)]+)\)")
 
 class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
     def _custom_initialize(self):
+        self._loom_module_targets = set()
+        self._loom_generated_file_families = {}
         self._loom_low_descriptor_archive_source_vars = {}
         self._loom_low_descriptor_archive_targets = {}
         self._loom_generated_external_files = {}
@@ -183,6 +185,44 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
     def loom_config_compatible_with(self, config_labels):
         return list(config_labels)
 
+    def loom_target_profile(
+        self, name, family, selector, target_compatible_with=None, **kwargs
+    ):
+        condition = self._cmake_guard_condition(target_compatible_with)
+        requires = f"  REQUIRES\n    {condition}\n" if condition else ""
+        self._converter.body += (
+            "loom_target_profile(\n"
+            + self._convert_string_arg_block("NAME", name)
+            + self._convert_string_arg_block("FAMILY", family)
+            + self._convert_string_arg_block("SELECTOR", selector)
+            + requires
+            + ")\n\n"
+        )
+
+    def loom_amdgpu_target_profile(
+        self, name, target, target_compatible_with=None, **kwargs
+    ):
+        capability = _LOOM_AMDGPU_TARGET_CONFIG[
+            "LOOM_AMDGPU_DESCRIPTOR_SET_CAPABILITY_BY_TARGET"
+        ][target]
+        self.loom_target_profile(
+            name=name,
+            family="amdgpu",
+            selector=target,
+            target_compatible_with=list(target_compatible_with or [])
+            + [
+                "//loom/config/target/arch:amdgpu",
+                "//loom/config/target/amdgpu:" + capability,
+            ],
+            **kwargs,
+        )
+
+    def loom_kernel_binary(self, name, tags=None, **kwargs):
+        if not self._should_skip_target(tags=tags):
+            raise NotImplementedError(
+                f"loom_kernel_binary requires a CMake projection: {name}"
+            )
+
     def loom_module(
         self,
         name,
@@ -194,8 +234,10 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         output=None,
         output_format="text",
         include_input_exports=False,
+        include_input_tests=False,
         strip_check=False,
         require_resolved_config=False,
+        strict_deps=False,
         tags=None,
         target_compatible_with=None,
         **kwargs,
@@ -206,6 +248,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             target_compatible_with
         )
         output = output or (name + (".loombc" if output_format == "bc" else ".loom"))
+        self._loom_module_targets.add(self._current_target_label(name))
         self._target_file_paths[self._current_target_label(name)] = (
             f"${{CMAKE_CURRENT_BINARY_DIR}}/{output}"
         )
@@ -222,10 +265,14 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         include_input_exports_block = self._convert_option_block(
             "INCLUDE_INPUT_EXPORTS", include_input_exports
         )
+        include_input_tests_block = self._convert_option_block(
+            "INCLUDE_INPUT_TESTS", include_input_tests
+        )
         strip_check_block = self._convert_option_block("STRIP_CHECK", strip_check)
         require_resolved_config_block = self._convert_option_block(
             "REQUIRE_RESOLVED_CONFIG", require_resolved_config
         )
+        strict_deps_block = self._convert_option_block("STRICT_DEPS", strict_deps)
         self._emit_platform_guard_begin(target_compatible_with)
         self._converter.body += (
             f"loom_module(\n"
@@ -238,8 +285,10 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             f"{output_block}"
             f"{output_format_block}"
             f"{include_input_exports_block}"
+            f"{include_input_tests_block}"
             f"{strip_check_block}"
             f"{require_resolved_config_block}"
+            f"{strict_deps_block}"
             f")\n\n"
         )
         self._emit_platform_guard_end(target_compatible_with)
@@ -258,14 +307,11 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
     ):
         if self._should_skip_target(tags=tags, **kwargs):
             return
-        if deps:
-            raise NotImplementedError(
-                "CMake loom_library dependencies require a relocatable library "
-                "projection preserving the transitive dependency closure"
-            )
+        self._loom_module_targets.add(self._current_target_label(name))
         blocks = [
             self._convert_string_arg_block("NAME", name, quote=False),
-            self._convert_data_srcs_block(srcs),
+            self._convert_loom_module_inputs("SRCS", srcs),
+            self._convert_loom_module_inputs("LIBRARIES", deps),
             self._convert_data_list_block(data),
             self._convert_string_arg_block("INPUT_FORMAT", input_format or None),
             self._convert_string_list_block(
@@ -280,6 +326,32 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         self._converter.body += "loom_module(\n" + "".join(blocks) + ")\n\n"
         self._emit_platform_guard_end(target_compatible_with)
 
+    def loom_execution_profile(
+        self,
+        name,
+        target_family,
+        target_class,
+        executor,
+        runner_args=None,
+        build_requirements=None,
+        run_requirements=None,
+        resource_group=None,
+        sanitizer_suppressions=None,
+        tags=None,
+    ):
+        return {
+            "name": name,
+            "target_family": target_family,
+            "target_class": target_class,
+            "executor": executor,
+            "runner_args": runner_args,
+            "build_requirements": build_requirements or [],
+            "run_requirements": run_requirements or [],
+            "resource_group": resource_group,
+            "sanitizer_suppressions": sanitizer_suppressions,
+            "tags": tags or [],
+        }
+
     def loom_test(
         self,
         name,
@@ -290,27 +362,68 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         inputopts=None,
         args=None,
         execution_profile=None,
+        compile_targets=None,
         tags=None,
         target_compatible_with=None,
         **kwargs,
     ):
-        if execution_profile is not None:
-            # Device-profile rules have explicit CMake declarations owning their
-            # platform requirements, resource groups, and sanitizer policy.
+        opaque_profile = execution_profile is not None and not isinstance(
+            execution_profile, dict
+        )
+        if opaque_profile and not compile_targets:
+            # Loaded profiles retain their explicit CMake execution declarations.
             return
         if self._should_skip_target(tags=tags, **kwargs):
             return
-        if deps:
-            raise NotImplementedError(
-                "CMake loom_test dependencies require a relocatable library "
-                "projection preserving the transitive dependency closure"
-            )
         target_compatible_with = self._apply_loom_target_compatible_with(
             target_compatible_with
         )
+        profile = {} if opaque_profile else execution_profile or {}
+        policy = bazel_to_cmake_requirements.CollectedPackagePolicy(
+            build_requirements=profile.get("build_requirements", []),
+            run_requirements=profile.get("run_requirements", []),
+            resource_group=profile.get("resource_group"),
+        )
+        labels = list(profile.get("tags", []))
+        labels.extend(policy.tags(include_run_requirements=True))
+        if profile:
+            labels.extend(
+                [
+                    "loom-execution-profile=" + profile["name"],
+                    "loom-target-family=" + profile["target_family"],
+                    "loom-target-class=" + profile["target_class"],
+                    "loom-executor=" + profile["executor"],
+                ]
+            )
+        execution_blocks = []
+        if compile_targets:
+            # Device requirements belong only to the execution children.
+            execution_requires = (
+                "FALSE"
+                if opaque_profile
+                else self._target_compatible_condition(policy.cmake_conditions())
+            )
+            execution_blocks = [
+                self._convert_string_list_block(
+                    "EXECUTION_LABELS", labels or None, sort=False
+                ),
+                (
+                    f"  EXECUTION_REQUIRES\n    {execution_requires}\n"
+                    if execution_requires
+                    else ""
+                ),
+            ]
+        else:
+            target_compatible_with = (
+                bazel_to_cmake_requirements.append_cmake_conditions(
+                    target_compatible_with, policy.cmake_conditions()
+                )
+            )
+            tags = list(tags or []) + labels
         blocks = [
             self._convert_string_arg_block("NAME", name, quote=False),
-            self._convert_data_srcs_block(srcs),
+            self._convert_loom_module_inputs("SRCS", srcs),
+            self._convert_loom_module_inputs("LIBRARIES", deps),
             self._convert_data_list_block(data),
             self._convert_string_arg_block("INPUT_FORMAT", input_format or None),
             self._convert_string_list_block(
@@ -319,7 +432,18 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
                 sort=False,
             ),
             self._convert_string_list_block("ARGS", args, sort=False),
-            self._convert_string_list_block("LABELS", tags, sort=False),
+            self._convert_string_list_block(
+                "RUNNER_ARGS",
+                self._convert_location_args(profile.get("runner_args")),
+                sort=False,
+            ),
+            self._convert_string_list_block("LABELS", tags or None, sort=False),
+            *execution_blocks,
+            self._convert_string_arg_block("RESOURCE_GROUP", policy.resource_group),
+            self._convert_sanitizer_suppressions_block(
+                profile.get("sanitizer_suppressions")
+            ),
+            self._convert_target_list_block("COMPILE_TARGETS", compile_targets),
         ]
         self._emit_platform_guard_begin(target_compatible_with)
         self._converter.body += "loom_test(\n" + "".join(blocks) + ")\n\n"
@@ -331,10 +455,12 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         converted_inputs = []
         for input_value in inputs:
             if input_value.startswith(":") or input_value.startswith("//"):
-                if self._is_source_data_label(input_value):
-                    converted_inputs.append(
-                        self._cmake_source_location_path(input_value)
-                    )
+                label = self._canonical_location_label(input_value)
+                if self._is_source_data_label(input_value) or (
+                    label in self._target_file_paths
+                    and label not in self._loom_module_targets
+                ):
+                    converted_inputs.extend(self._cmake_location_paths(input_value))
                 else:
                     converted_inputs.append(self._convert_single_target(input_value))
             else:
@@ -437,7 +563,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         )
 
     def _should_emit_python_target(self):
-        return self._current_package().startswith("loom/py/loom")
+        return self._current_package().startswith(("loom/py/loom", "loom/src/loom"))
 
     def _python_package_dirs(self):
         return [
@@ -559,6 +685,11 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         generated_external_file = self._loom_generated_external_files.get(label)
         if generated_external_file is not None:
             return [generated_external_file]
+        outputs = self._loom_generated_file_families.get(
+            self._canonical_location_label(label)
+        )
+        if outputs is not None:
+            return outputs
         return super()._cmake_location_paths(label)
 
     def loom_spirv_registry_sources(
@@ -751,6 +882,9 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             self._target_file_paths[self._current_target_label(output)] = (
                 f"${{CMAKE_CURRENT_BINARY_DIR}}/{output}"
             )
+        self._loom_generated_file_families[self._current_target_label(name)] = [
+            f"${{CMAKE_CURRENT_BINARY_DIR}}/{output}" for output in outputs
+        ]
         testonly_block = self._convert_option_block("TESTONLY", testonly)
         name_block = self._convert_string_arg_block("NAME", name, quote=False)
         generator_block = self._convert_single_target_block("GENERATOR", generator)
@@ -1293,6 +1427,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         tags=None,
         runner="//loom/src/loom/tools/loom-check:loom-check-test",
         target_compatible_with=None,
+        compile_targets=None,
         **kwargs,
     ):
         if self._should_skip_target(tags=tags, **kwargs):
@@ -1324,6 +1459,69 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             f")\n\n"
         )
         self._emit_platform_guard_end(target_compatible_with)
+        self._loom_check_compile_tests(
+            name, src, compile_targets, data, env, tags, target_compatible_with
+        )
+
+    def loom_check_compile_tests(
+        self,
+        name,
+        src,
+        targets,
+        data=None,
+        env=None,
+        tags=None,
+        args=None,
+        target_compatible_with=None,
+        **kwargs,
+    ):
+        if self._should_skip_target(tags=tags, **kwargs):
+            return
+        self._loom_check_compile_tests(
+            name,
+            src,
+            targets,
+            data,
+            env,
+            tags,
+            self._apply_loom_target_compatible_with(target_compatible_with),
+            args=args,
+        )
+
+    def _loom_check_compile_tests(
+        self,
+        name,
+        src,
+        targets,
+        data,
+        env,
+        tags,
+        target_compatible_with,
+        registered_srcs=None,
+        args=None,
+    ):
+        if not targets:
+            return
+        self._emit_platform_guard_begin(target_compatible_with)
+        self._converter.body += (
+            "loom_check_compile_tests(\n"
+            + self._convert_string_arg_block("NAME", name)
+            + self._convert_loom_module_inputs("SRC", [src])
+            + self._convert_string_list_block(
+                "REGISTERED_SRCS", registered_srcs, sort=False
+            )
+            + self._convert_target_list_block("TARGETS", targets)
+            + self._convert_string_list_block(
+                "ARGS", self._convert_location_args(args), sort=False
+            )
+            + self._convert_data_list_block(data)
+            + self._convert_string_list_block(
+                "ENV", self._convert_native_test_env(env), sort=False
+            )
+            + self._convert_string_list_block("LABELS", tags)
+            + ")\n\n"
+        )
+        self._emit_platform_guard_end(target_compatible_with)
 
     def loom_check_test_suite(
         self,
@@ -1338,6 +1536,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         resource_group=None,
         timeout=None,
         target_compatible_with=None,
+        compile_targets=None,
         **kwargs,
     ):
         del size
@@ -1385,6 +1584,22 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             f")\n\n"
         )
         self._emit_platform_guard_end(target_compatible_with)
+        for src, targets in (compile_targets or {}).items():
+            if src not in srcs and not any(
+                item.startswith("${_GLOB_") for item in srcs
+            ):
+                raise ValueError(
+                    f"compiler qualification source is not registered in {name}: {src}"
+                )
+            test_name = self._loom_check_test_base_name(src)
+            if test_name_prefix_to_strip and test_name.startswith(
+                test_name_prefix_to_strip
+            ):
+                test_name = test_name[len(test_name_prefix_to_strip) :]
+            test_name = test_name.replace("/", "_")
+            self._loom_check_compile_tests(
+                test_name, src, targets, data, env, tags, target_compatible_with, srcs
+            )
 
 
 def convert_unmatched_target(converter, target):

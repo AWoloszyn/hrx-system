@@ -22,6 +22,8 @@ loom_cc_library(
     iree::base::internal::path
     loom::error::diagnostic
     loom::error::source
+    loom::format::bytecode::reader
+    loom::format::low_repr
     loom::format::text::parser
     loom::ir
     loom::tooling::io::source

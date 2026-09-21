@@ -195,7 +195,11 @@ class CheckBody {
     if (!declaration) {
       fail(statement, "check locals require immutable scalar bindings");
     }
+    reject_global_binding_attributes(unit_, diagnostics_,
+                                     declaration->attributeList);
     for (auto* declarator : cxx::ListView{declaration->initDeclaratorList}) {
+      reject_global_binding_declarator(unit_, diagnostics_,
+                                       declarator->declarator);
       auto* variable =
           cxx::symbol_cast<cxx::VariableSymbol>(declarator->symbol);
       if (!variable || !declarator->initializer || variable->isStatic() ||

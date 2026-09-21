@@ -457,7 +457,8 @@ static bool loom_llvmir_loom_check_module_has_low_functions(
 }
 
 static iree_status_t loom_llvmir_loom_check_prepare_low_module(
-    const loom_check_emit_provider_request_t* request) {
+    const loom_check_emit_provider_request_t* request,
+    loom_compile_pipeline_result_t* out_pipeline_result) {
   if (loom_llvmir_loom_check_module_has_low_functions(request->module)) {
     return iree_ok_status();
   }
@@ -466,7 +467,7 @@ static iree_status_t loom_llvmir_loom_check_prepare_low_module(
   return loom_check_prepare_source_low_module(
       request->module, &prepare_options, request->low_registry,
       request->environment, request->source_resolver,
-      request->diagnostic_collector, request->block_pool);
+      request->diagnostic_collector, request->block_pool, out_pipeline_result);
 }
 
 static iree_status_t loom_llvmir_loom_check_emit_provider_execute(
@@ -484,9 +485,12 @@ static iree_status_t loom_llvmir_loom_check_emit_provider_execute(
         request, &profile_storage, &profile));
   }
 
-  IREE_RETURN_IF_ERROR(loom_llvmir_loom_check_prepare_low_module(request));
-  if (request->diagnostic_collector->count != 0) {
-    return iree_ok_status();
+  loom_compile_pipeline_result_t pipeline_result = {0};
+  iree_status_t status =
+      loom_llvmir_loom_check_prepare_low_module(request, &pipeline_result);
+  if (!iree_status_is_ok(status) || request->diagnostic_collector->count != 0) {
+    loom_compile_pipeline_result_deinitialize(&pipeline_result);
+    return status;
   }
 
   loom_check_diagnostic_emitter_capture_t diagnostic_capture = {
@@ -500,7 +504,8 @@ static iree_status_t loom_llvmir_loom_check_emit_provider_execute(
   loom_llvmir_emit_low_module_options_initialize(&options);
   options.target_profile_registry =
       &loom_llvmir_configured_target_profile_registry;
-  iree_status_t status = loom_llvmir_emit_low_module(
+  options.function_versions = &pipeline_result.function_versions.list;
+  status = loom_llvmir_emit_low_module(
       request->module, &request->low_registry->registry,
       (iree_diagnostic_emitter_t){
           .fn = loom_check_diagnostic_emitter_capture_emit,
@@ -533,6 +538,7 @@ static iree_status_t loom_llvmir_loom_check_emit_provider_execute(
     }
   }
   loom_llvmir_module_free(lowered_module);
+  loom_compile_pipeline_result_deinitialize(&pipeline_result);
   return status;
 }
 

@@ -46,13 +46,14 @@ IREE_FLAG(string, target, "",
           "selects a compatible target from the device and authored kernel.");
 IREE_FLAG_LIST(
     string, config,
-    "Compile-time config binding for HAL kernel launches. Repeat as "
-    "--config=key=value. Bindings not referenced by the loaded module are "
-    "ignored.");
+    "Compile-time config binding for kernel and function compilation. "
+    "Repeat as --config=key=value. "
+    "Bindings not referenced by the loaded module are ignored.");
 IREE_FLAG_LIST_NAMED(
     string, config_file, "config-file",
-    "JSON/JSONC config object file for HAL kernel launches. Repeat for "
-    "multiple files. Nested object keys are flattened with '.' separators.");
+    "JSON/JSONC config object file for kernel and function compilation. "
+    "Repeat for multiple files. "
+    "Nested object keys are flattened with '.' separators.");
 IREE_FLAG(string, sanitizer, "none",
           "Sanitizer checks inserted by the target pipeline. Use 'none', "
           "'access', 'value', 'operation', 'race', 'asan', 'ubsan', 'tsan', "
@@ -177,8 +178,9 @@ IREE_FLAG_CALLBACK_NAMED(
     &FLAG_stable_p90_to_p50_ppm, stable_p90_to_p50_ppm, "stable-p90-to-p50-ppm",
     "p90-to-p50 spread threshold in parts per million. Zero stops after the "
     "minimum count and duration are reached.");
-static iree_benchmark_loom_bool_flag_t FLAG_profile_final_batch = {.value =
-                                                                       false};
+static iree_benchmark_loom_bool_flag_t FLAG_profile_final_batch = {
+    .value = false,
+};
 IREE_FLAG_CALLBACK_NAMED(
     iree_benchmark_loom_parse_bool_flag, iree_benchmark_loom_print_bool_flag,
     &FLAG_profile_final_batch, profile_final_batch, "profile-final-batch",

@@ -57,6 +57,8 @@ bool loom_liveness_value_class_equal(loom_liveness_value_class_t lhs,
 // Half-open live interval for one value over a region-local program-point
 // number line. An interval with start_point == end_point represents a value
 // defined but not live across any point, such as a dead result.
+// Unused block arguments have no interval: unlike instruction results, they
+// require no storage for a defining write.
 typedef struct loom_liveness_interval_t {
   // SSA value represented by this interval.
   loom_value_id_t value_id;

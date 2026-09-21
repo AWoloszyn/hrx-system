@@ -216,6 +216,7 @@ loom_cc_test(
 loom_test(
     name = "vulkan_explicit_target_tests",
     srcs = ["test/spirv_vulkan_hal_actual.loom"],
+    compile_targets = ["//loom/target/spirv:vulkan1.3+bda"],
     execution_profile = SPIRV_VULKAN_EXPLICIT_TARGET_HARDWARE_PROFILE,
 )
 

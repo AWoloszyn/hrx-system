@@ -205,7 +205,8 @@ static_assert(IREE_ARRAYSIZE(kAmdgpuKernelSourceProducerFlags) ==
 static const loom_amdgpu_source_producer_flags_t
     kAmdgpuIndexSourceProducerFlags[LOOM_OP_INDEX_COUNT_] = {
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_INDEX_CAST)] =
-            LOOM_AMDGPU_SOURCE_PRODUCER_INDEX_CAST,
+            LOOM_AMDGPU_SOURCE_PRODUCER_INDEX_CAST |
+            LOOM_AMDGPU_SOURCE_PRODUCER_FOLLOWS_OPERAND,
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_INDEX_SUB)] =
             LOOM_AMDGPU_SOURCE_PRODUCER_ADDRESS_64BIT,
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_INDEX_MUL)] =
@@ -314,6 +315,8 @@ static const loom_amdgpu_source_producer_flags_t
             LOOM_AMDGPU_SOURCE_PRODUCER_SCALAR_FLOAT_CONVERSION,
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_SCALAR_FPTRUNC)] =
             LOOM_AMDGPU_SOURCE_PRODUCER_SCALAR_FLOAT_CONVERSION,
+        [LOOM_AMDGPU_OP_INDEX(LOOM_OP_SCALAR_TRUNCI)] =
+            LOOM_AMDGPU_SOURCE_PRODUCER_FOLLOWS_OPERAND,
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_SCALAR_EXTSI)] =
             LOOM_AMDGPU_SOURCE_PRODUCER_FOLLOWS_OPERAND,
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_SCALAR_EXTUI)] =
@@ -720,6 +723,10 @@ static bool loom_amdgpu_branch_payload_has_vgpr_select_dependency(
     const loom_view_region_table_t* view_regions,
     loom_amdgpu_source_value_analysis_t* analysis,
     loom_value_id_t source_value_id, loom_value_id_t excluded_value_id) {
+  // Fact identities preserve each result's corresponding payload. Predicate
+  // references constrain values without becoming physical data dependencies.
+  source_value_id =
+      loom_value_fact_table_query_identity(fact_table, source_value_id);
   if (source_value_id == excluded_value_id ||
       source_value_id >= module->values.count) {
     return false;
@@ -735,18 +742,6 @@ static bool loom_amdgpu_branch_payload_has_vgpr_select_dependency(
   if (loom_scf_select_isa(defining_op)) {
     return loom_amdgpu_analyzed_source_value_prefers_vgpr(
         module, fact_table, view_regions, analysis, source_value_id);
-  }
-
-  const loom_trait_flags_t defining_op_traits =
-      loom_op_effective_traits(module, defining_op);
-  loom_value_id_t identity_operand = LOOM_VALUE_ID_INVALID;
-  if (loom_amdgpu_source_value_fact_identity_operand(
-          value, defining_op, defining_op_traits, source_value_id,
-          &identity_operand)) {
-    return identity_operand != LOOM_VALUE_ID_INVALID &&
-           loom_amdgpu_branch_payload_has_vgpr_select_dependency(
-               module, fact_table, view_regions, analysis, identity_operand,
-               excluded_value_id);
   }
 
   loom_value_id_t lhs = LOOM_VALUE_ID_INVALID;
@@ -800,7 +795,7 @@ static bool loom_amdgpu_branch_arg_payload_prefers_vgpr(
     return false;
   }
   const loom_op_t* defining_op = loom_value_def_op(incoming_value);
-  if (defining_op == NULL || loom_value_def_index(incoming_value) != 0) {
+  if (defining_op == NULL) {
     return false;
   }
   if (analysis != NULL && loom_amdgpu_branch_payload_has_vgpr_select_dependency(
@@ -808,9 +803,10 @@ static bool loom_amdgpu_branch_arg_payload_prefers_vgpr(
                               incoming_value_id, excluded_value_id)) {
     return true;
   }
-  return loom_amdgpu_source_memory_access_prefers_vgpr(
-      module, fact_table, view_regions, analysis, defining_op,
-      loom_module_value_type(module, incoming_value_id));
+  return loom_value_def_index(incoming_value) == 0 &&
+         loom_amdgpu_source_memory_access_prefers_vgpr(
+             module, fact_table, view_regions, analysis, defining_op,
+             loom_module_value_type(module, incoming_value_id));
 }
 
 static bool loom_amdgpu_block_arg_incoming_payload_prefers_vgpr(

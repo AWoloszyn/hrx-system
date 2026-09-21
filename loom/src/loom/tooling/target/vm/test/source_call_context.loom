@@ -1,0 +1,27 @@
+vm.target<core> @authored
+
+func.def noinline target(@authored) @bound_helper(%value: i32) -> (i32) {
+  func.return %value : i32
+}
+
+func.def noinline @unbound_helper(%value: i32) -> (i32) {
+  func.return %value : i32
+}
+
+func.def public @unbound_caller(%value: i32) -> (i32) {
+  %result = func.call @bound_helper(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+func.def public target(@authored) @bound_caller(%value: i32) -> (i32) {
+  %result = func.call @unbound_helper(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+check.case public @calls_with_authored_and_inherited_targets {
+  %input = check.literal value(42) : i32
+  %first = func.call @unbound_caller(%input) : (i32) -> (i32)
+  %second = func.call @bound_caller(%first) : (i32) -> (i32)
+  check.expect.equal actual(%second) expected(%input) : i32
+  check.return
+}

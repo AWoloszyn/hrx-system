@@ -10,6 +10,50 @@
 # CMake. The generated CMake should preserve the suite declaration; this file
 # owns expansion into individual CTest entries.
 
+function(loom_check_compile_tests)
+  if(NOT IREE_BUILD_TESTS)
+    return()
+  endif()
+  cmake_parse_arguments(_RULE "" "NAME;SRC" "TARGETS;REGISTERED_SRCS;DATA;ENV;LABELS;ARGS" ${ARGN})
+  if(_RULE_REGISTERED_SRCS AND NOT _RULE_SRC IN_LIST _RULE_REGISTERED_SRCS)
+    message(FATAL_ERROR "Compiler qualification source is not registered: ${_RULE_SRC}")
+  endif()
+  _loom_link_input_paths(_SOURCE _SOURCE_TARGET ${_RULE_SRC})
+  foreach(_PROFILE IN LISTS _RULE_TARGETS)
+    iree_package_target_name(_PROFILE_TARGET "${_PROFILE}")
+    if(NOT TARGET "${_PROFILE_TARGET}")
+      message(FATAL_ERROR "Unknown Loom compiler profile: ${_PROFILE}")
+    endif()
+    get_property(_IS_PROFILE TARGET "${_PROFILE_TARGET}" PROPERTY LOOM_COMPILER_TARGET SET)
+    if(NOT _IS_PROFILE)
+      message(FATAL_ERROR "Not a Loom compiler profile: ${_PROFILE}")
+    endif()
+    get_target_property(_AVAILABLE "${_PROFILE_TARGET}" LOOM_PROFILE_AVAILABLE)
+    if(NOT _AVAILABLE)
+      continue()
+    endif()
+    if(_SOURCE_TARGET)
+      get_target_property(_SOURCE "${_SOURCE_TARGET}" LOOM_MODULE_FILE)
+    endif()
+    get_target_property(_COMPILER_TARGET "${_PROFILE_TARGET}" LOOM_COMPILER_TARGET)
+    get_target_property(_PROFILE_NAME "${_PROFILE_TARGET}" LOOM_PROFILE_NAME)
+    string(REGEX REPLACE "[-.+]" "_" _SUFFIX "${_PROFILE_NAME}")
+    iree_native_test(
+      NAME "${_RULE_NAME}_compile_${_SUFFIX}"
+      SRC loom::tools::loom-check::loom-check
+      ARGS
+        ${_RULE_ARGS}
+        "--target=${_COMPILER_TARGET}"
+        "--template-root=${IREE_ROOT_DIR}"
+        "--source-prefix-map=${IREE_ROOT_DIR}/="
+        "${_SOURCE}"
+      DATA "${_SOURCE}" ${_RULE_DATA}
+      ENV ${_RULE_ENV}
+      LABELS loom-compile hostonly ${_RULE_LABELS}
+    )
+  endforeach()
+endfunction()
+
 function(_loom_check_test_base_name OUTPUT_BASE_NAME SRC)
   if(NOT SRC MATCHES "\\.[^.]+-test$")
     message(FATAL_ERROR
