@@ -621,8 +621,8 @@ TEST_F(LowAllocationSearchTest,
   EXPECT_EQ(location_base, 0u);
 
   loom_low_allocation_interval_order_t order = {};
-  IREE_ASSERT_OK(
-      loom_low_allocation_interval_order_build(&liveness, &arena_, &order));
+  IREE_ASSERT_OK(loom_low_allocation_interval_order_build(
+      &descriptor_set, &liveness, &arena_, &order));
   IREE_ASSERT_OK(loom_low_allocation_scalar_packing_build(
       &descriptor_set, &liveness, &order, &arena_, &context.scalar_packing));
   location_base = UINT32_MAX;
@@ -998,10 +998,11 @@ TEST_F(LowAllocationSearchTest,
 
   const loom_low_allocation_class_capacity_t capacity = Capacity(
       /*max_units=*/2);
+  loom_low_allocation_search_workspace_t workspace = {};
   loom_low_allocation_search_spill_victim_set_t victim_set = {};
   IREE_ASSERT_OK(loom_low_allocation_search_find_active_spill_victim_set(
       &context, &intervals[0], &capacity,
-      /*interval_requires_register=*/false, &arena_, &victim_set));
+      /*interval_requires_register=*/false, &workspace, &arena_, &victim_set));
   ASSERT_TRUE(victim_set.found);
   EXPECT_EQ(victim_set.location_base, 0u);
   ASSERT_EQ(victim_set.assignment_count, 1u);
@@ -1135,10 +1136,11 @@ TEST_F(LowAllocationSearchTest, SelectsLowerTrafficActiveSpillVictimSetTie) {
 
   const loom_low_allocation_class_capacity_t capacity = Capacity(
       /*max_units=*/4);
+  loom_low_allocation_search_workspace_t workspace = {};
   loom_low_allocation_search_spill_victim_set_t victim_set = {};
   IREE_ASSERT_OK(loom_low_allocation_search_find_active_spill_victim_set(
       &context, &intervals[0], &capacity,
-      /*interval_requires_register=*/false, &arena_, &victim_set));
+      /*interval_requires_register=*/false, &workspace, &arena_, &victim_set));
   ASSERT_TRUE(victim_set.found);
   EXPECT_EQ(victim_set.location_base, 2u);
   ASSERT_EQ(victim_set.assignment_count, 1u);
@@ -1240,12 +1242,6 @@ TEST_F(LowAllocationSearchTest, SelectsLowerTrafficOverFewerVictims) {
   loom_low_allocation_active_set_insert(
       &active_set, &descriptor_set, assignments, IREE_ARRAYSIZE(assignments),
       /*assignment_index=*/0);
-  loom_low_allocation_active_set_insert(
-      &active_set, &descriptor_set, assignments, IREE_ARRAYSIZE(assignments),
-      /*assignment_index=*/1);
-  loom_low_allocation_active_set_insert(
-      &active_set, &descriptor_set, assignments, IREE_ARRAYSIZE(assignments),
-      /*assignment_index=*/2);
 
   loom_low_allocation_storage_lease_state_t storage_leases = {};
   loom_low_allocation_spill_plan_traffic_t spill_traffic[] = {
@@ -1280,17 +1276,71 @@ TEST_F(LowAllocationSearchTest, SelectsLowerTrafficOverFewerVictims) {
   context.storage_leases = &storage_leases;
   context.spill_traffic_by_value_ordinal = spill_traffic;
 
-  const loom_low_allocation_class_capacity_t capacity = Capacity(
-      /*max_units=*/4);
+  // Begin with one active assignment occupying a two-unit budget. Then grow
+  // the active set and budget, reusing the workspace for a different victim
+  // set.
+  const loom_low_allocation_class_capacity_t initial_capacity = Capacity(2);
+  loom_low_allocation_search_workspace_t workspace = {};
   loom_low_allocation_search_spill_victim_set_t victim_set = {};
   IREE_ASSERT_OK(loom_low_allocation_search_find_active_spill_victim_set(
-      &context, &intervals[0], &capacity,
-      /*interval_requires_register=*/false, &arena_, &victim_set));
+      &context, &intervals[0], &initial_capacity,
+      /*interval_requires_register=*/false, &workspace, &arena_, &victim_set));
   ASSERT_TRUE(victim_set.found);
-  EXPECT_EQ(victim_set.location_base, 2u);
-  ASSERT_EQ(victim_set.assignment_count, 2u);
-  EXPECT_EQ(victim_set.assignment_indices[0], 1u);
-  EXPECT_EQ(victim_set.assignment_indices[1], 2u);
+  EXPECT_EQ(victim_set.location_base, 0u);
+  ASSERT_EQ(victim_set.assignment_count, 1u);
+  EXPECT_EQ(victim_set.assignment_indices[0], 0u);
+  const iree_host_size_t initial_workspace_capacity = workspace.capacity;
+
+  loom_low_allocation_active_set_insert(
+      &active_set, &descriptor_set, assignments, IREE_ARRAYSIZE(assignments),
+      /*assignment_index=*/1);
+  loom_low_allocation_active_set_insert(
+      &active_set, &descriptor_set, assignments, IREE_ARRAYSIZE(assignments),
+      /*assignment_index=*/2);
+  const loom_low_allocation_class_capacity_t capacity = Capacity(4);
+  IREE_ASSERT_OK(loom_low_allocation_search_find_active_spill_victim_set(
+      &context, &intervals[0], &capacity,
+      /*interval_requires_register=*/false, &workspace, &arena_, &victim_set));
+  EXPECT_GT(workspace.capacity, initial_workspace_capacity);
+  const iree_host_size_t workspace_bytes = arena_.used_allocation_size;
+  for (int i = 0; i < 16; ++i) {
+    ASSERT_TRUE(victim_set.found);
+    EXPECT_EQ(victim_set.location_base, 2u);
+    ASSERT_EQ(victim_set.assignment_count, 2u);
+    EXPECT_EQ(victim_set.assignment_indices[0], 1u);
+    EXPECT_EQ(victim_set.assignment_indices[1], 2u);
+    IREE_ASSERT_OK(loom_low_allocation_search_find_active_spill_victim_set(
+        &context, &intervals[0], &capacity,
+        /*interval_requires_register=*/false, &workspace, &arena_,
+        &victim_set));
+    EXPECT_EQ(arena_.used_allocation_size, workspace_bytes);
+  }
+
+  // A smaller active set overwrites the previous result without shrinking or
+  // allocating. Making its only occupant unspillable must clear that result.
+  loom_low_allocation_active_set_remove(&active_set, assignments,
+                                        IREE_ARRAYSIZE(assignments), 1);
+  loom_low_allocation_active_set_remove(&active_set, assignments,
+                                        IREE_ARRAYSIZE(assignments), 2);
+  IREE_ASSERT_OK(loom_low_allocation_search_find_active_spill_victim_set(
+      &context, &intervals[0], &initial_capacity,
+      /*interval_requires_register=*/false, &workspace, &arena_, &victim_set));
+  ASSERT_TRUE(victim_set.found);
+  EXPECT_EQ(victim_set.location_base, 0u);
+  ASSERT_EQ(victim_set.assignment_count, 1u);
+  EXPECT_EQ(victim_set.assignment_indices[0], 0u);
+  EXPECT_EQ(arena_.used_allocation_size, workspace_bytes);
+
+  uint64_t required_register_words[] = {0};
+  context.required_register_values = {64, required_register_words};
+  iree_bitmap_set(context.required_register_values, expensive_value);
+  IREE_ASSERT_OK(loom_low_allocation_search_find_active_spill_victim_set(
+      &context, &intervals[0], &initial_capacity,
+      /*interval_requires_register=*/false, &workspace, &arena_, &victim_set));
+  EXPECT_FALSE(victim_set.found);
+  EXPECT_EQ(victim_set.assignment_count, 0u);
+  EXPECT_EQ(victim_set.assignment_indices, nullptr);
+  EXPECT_EQ(arena_.used_allocation_size, workspace_bytes);
 
   loom_module_value_ordinal_scratch_clear(module, candidate_value);
   loom_module_value_ordinal_scratch_clear(module, expensive_value);

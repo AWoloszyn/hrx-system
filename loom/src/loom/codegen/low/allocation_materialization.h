@@ -120,10 +120,13 @@ typedef struct loom_low_allocation_materialization_result_t {
 } loom_low_allocation_materialization_result_t;
 
 // Materializes spill plans in |table| into low.storage.reserve, low.spill, and
-// low.reload ops. Storage reservations are inserted in the low entry block
-// after ABI live-in/resource imports and existing storage reservations. Stores
-// are inserted at the defining point of each spilled op-result value, non-entry
-// block argument stores are inserted on incoming edges before the branch, and
+// low.reload ops. Existing entry-block storage reservations are moved to its
+// prefix after ABI live-in/resource imports without changing their relative
+// order or byte offsets. New reservations append to that prefix, dominating
+// all generated traffic even when earlier repairs inserted executable entry
+// copies. Stores are inserted at the defining point of each spilled op-result
+// value, non-entry block argument stores are inserted on incoming edges before
+// the branch, and
 // reloads are inserted immediately before each remaining original operand use.
 // Materialized non-entry block arguments are removed from the block signature
 // and from all predecessor low.br payloads.

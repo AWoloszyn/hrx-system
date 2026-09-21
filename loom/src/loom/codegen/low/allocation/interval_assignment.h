@@ -97,6 +97,9 @@ typedef struct loom_low_allocation_interval_assignment_result_t {
   iree_host_size_t remark_count;
   // Number of assignments whose location kind is SPILL_SLOT.
   iree_host_size_t spill_count;
+  // Interval ordering found a multi-unit interval in a contiguous register
+  // class. Without one, fragmentation repair repeats the same placement.
+  bool has_packable_aggregates;
 } loom_low_allocation_interval_assignment_result_t;
 
 // Assigns concrete locations for allocatable intervals in |context| and writes

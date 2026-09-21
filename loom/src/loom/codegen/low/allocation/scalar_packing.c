@@ -17,18 +17,7 @@ iree_status_t loom_low_allocation_scalar_packing_build(
     iree_arena_allocator_t* arena,
     loom_low_allocation_scalar_packing_t* out_packing) {
   *out_packing = (loom_low_allocation_scalar_packing_t){0};
-  bool has_aggregate = false;
-  for (iree_host_size_t i = 0; i < order->interval_count; ++i) {
-    const loom_liveness_interval_t* interval = order->intervals[i];
-    const loom_low_reg_class_t* reg_class =
-        &descriptor_set->reg_classes[interval->value_class.register_class_id];
-    if (interval->unit_count > 1 &&
-        !loom_low_reg_class_uses_explicit_physical_registers(reg_class)) {
-      has_aggregate = true;
-      break;
-    }
-  }
-  if (!has_aggregate) {
+  if (!order->has_packable_aggregates) {
     return iree_ok_status();
   }
 

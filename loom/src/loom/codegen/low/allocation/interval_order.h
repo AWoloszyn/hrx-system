@@ -12,6 +12,7 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
 #include "loom/analysis/liveness.h"
+#include "loom/codegen/low/descriptors.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -23,10 +24,14 @@ typedef struct loom_low_allocation_interval_order_t {
   const loom_liveness_interval_t** intervals;
   // Number of entries in |intervals|.
   iree_host_size_t interval_count;
+  // At least one multi-unit interval uses contiguous allocation units instead
+  // of explicit physical-register IDs, so scalar packing may change placement.
+  bool has_packable_aggregates;
 } loom_low_allocation_interval_order_t;
 
 // Builds the allocatable interval order for |liveness|.
 iree_status_t loom_low_allocation_interval_order_build(
+    const loom_low_descriptor_set_t* descriptor_set,
     const loom_liveness_analysis_t* liveness, iree_arena_allocator_t* arena,
     loom_low_allocation_interval_order_t* out_order);
 

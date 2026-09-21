@@ -570,6 +570,7 @@ loom_cc_library(
     loom::ops::low
     loom::ops::op_defs
     loom::ops::type_registry
+    loom::rewrite::rewriter
   PUBLIC
 )
 

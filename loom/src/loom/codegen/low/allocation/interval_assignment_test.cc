@@ -168,6 +168,7 @@ TEST_F(LowAllocationIntervalAssignmentTest,
   EXPECT_EQ(result.remark_count, 0u);
   EXPECT_EQ(result.spill_plans, nullptr);
   EXPECT_EQ(result.remarks, nullptr);
+  EXPECT_TRUE(result.has_packable_aggregates);
 
   loom_module_value_ordinal_scratch_clear(module, value);
   loom_module_value_ordinal_scratch_release(module);
@@ -361,6 +362,7 @@ TEST_F(LowAllocationIntervalAssignmentTest,
       loom_low_allocation_interval_assignment_build(&context, &result));
 
   ASSERT_EQ(result.assignment_count, 3u);
+  EXPECT_FALSE(result.has_packable_aggregates);
   EXPECT_EQ(result.assignments[0].location_base, 1u);
   EXPECT_EQ(result.assignments[0].location_count, 1u);
   EXPECT_EQ(result.assignments[1].location_base, 0u);
@@ -546,6 +548,7 @@ TEST_F(LowAllocationIntervalAssignmentTest,
   EXPECT_EQ(result.assignments[0].location_base, 3u);
   EXPECT_EQ(result.assignments[1].value_id, result_value);
   EXPECT_EQ(result.assignments[1].location_base, 3u);
+  EXPECT_FALSE(result.has_packable_aggregates);
 
   loom_module_value_ordinal_scratch_clear(module, source_value);
   loom_module_value_ordinal_scratch_clear(module, result_value);

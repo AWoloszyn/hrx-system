@@ -43,6 +43,8 @@ typedef struct loom_low_allocation_interval_assignment_state_t {
   loom_consumption_region_query_t nested_consumption_query;
   // Assignment-index window still live at the current interval start.
   loom_low_allocation_active_set_t active;
+  // Victim-search arrays reused after each selected set has been consumed.
+  loom_low_allocation_search_workspace_t search_workspace;
   // Cached predicted spill traffic, dense by liveness value ordinal.
   loom_low_allocation_spill_plan_traffic_t* spill_traffic_by_value_ordinal;
   // Lazily allocated decision array. Each allocatable interval spills at most
@@ -687,8 +689,10 @@ static iree_status_t loom_low_allocation_interval_assignment_assign(
       state->context;
   loom_low_allocation_interval_order_t order = {0};
   IREE_RETURN_IF_ERROR(loom_low_allocation_interval_order_build(
-      context->liveness, state->scratch_arena, &order));
+      context->target->descriptor_set, context->liveness, state->scratch_arena,
+      &order));
   state->interval_count = order.interval_count;
+  state->result.has_packable_aggregates = order.has_packable_aggregates;
   IREE_RETURN_IF_ERROR(
       loom_low_allocation_interval_assignment_initialize_result_storage(
           state, &order));
@@ -814,7 +818,7 @@ static iree_status_t loom_low_allocation_interval_assignment_assign(
       IREE_RETURN_IF_ERROR(
           loom_low_allocation_search_find_active_spill_victim_set(
               &search_context, interval, &capacity, interval_requires_register,
-              state->scratch_arena, &victim_set));
+              &state->search_workspace, state->scratch_arena, &victim_set));
       if (victim_set.found) {
         IREE_RETURN_IF_ERROR(
             loom_low_allocation_interval_assignment_spill_active_assignment_set(

@@ -1,0 +1,148 @@
+// RUN: with-low-asm pass low-materialize-allocation{budgets=test.i32=3}
+
+test.target<low_core> @target
+
+// Entry spills must follow their storage even when executable work precedes
+// the existing reservations, as after ABI live-range splitting.
+low.func.def target<test.low.core>(@target) @entry_spill(%a: reg<test.i32>, %b: reg<test.i32>, %c: reg<test.i32>) -> (reg<test.i32>) asm {
+  %twice = test.add.i32 %b, %b
+  %existing = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  %ab = test.add.i32 %a, %twice
+  %bc = test.add.i32 %twice, %c
+  %sum = test.add.i32 %ab, %bc
+  %out = test.add.i32 %sum, %a
+  return %out
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @entry_spill(%a: reg<test.i32>, %b: reg<test.i32>, %c: reg<test.i32>) -> (reg<test.i32>) asm {
+  %existing = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  %entry_spill_spill_storage_1 = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  low.spill %a, %entry_spill_spill_storage_1 : reg<test.i32>, low.storage<private>
+  %twice = test.add.i32 %b, %b
+  %11 = low.reload %entry_spill_spill_storage_1 : low.storage<private> -> reg<test.i32>
+  %ab = test.add.i32 %11, %twice
+  %bc = test.add.i32 %twice, %c
+  %sum = test.add.i32 %ab, %bc
+  %12 = low.reload %entry_spill_spill_storage_1 : low.storage<private> -> reg<test.i32>
+  %out = test.add.i32 %sum, %12
+  return %out
+}
+
+// ====
+
+test.target<low_core> @target
+
+// Moving an entry store past the last reservation is insufficient: an
+// instruction result may also need to spill before a later reservation.
+// Declaration order remains stable so previously assigned offsets stay valid.
+low.func.def target<test.low.core>(@target) @result_spill(%a: reg<test.i32>, %b: reg<test.i32>, %c: reg<test.i32>) -> (reg<test.i32>) asm {
+  %first = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  %ab = test.add.i32 %a, %b
+  %bc = test.add.i32 %b, %c
+  %ca = test.add.i32 %c, %a
+  %second = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
+  %sum = test.add.i32 %ab, %bc
+  %out = test.add.i32 %sum, %ca
+  return %out
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @result_spill(%a: reg<test.i32>, %b: reg<test.i32>, %c: reg<test.i32>) -> (reg<test.i32>) asm {
+  %first = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  %second = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
+  %result_spill_spill_storage_2 = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  %result_spill_spill_storage_3 = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  low.spill %a, %result_spill_spill_storage_3 : reg<test.i32>, low.storage<private>
+  %14 = low.reload %result_spill_spill_storage_3 : low.storage<private> -> reg<test.i32>
+  %ab = test.add.i32 %14, %b
+  low.spill %ab, %result_spill_spill_storage_2 : reg<test.i32>, low.storage<private>
+  %bc = test.add.i32 %b, %c
+  %15 = low.reload %result_spill_spill_storage_3 : low.storage<private> -> reg<test.i32>
+  %ca = test.add.i32 %c, %15
+  %12 = low.reload %result_spill_spill_storage_2 : low.storage<private> -> reg<test.i32>
+  %sum = test.add.i32 %12, %bc
+  %out = test.add.i32 %sum, %ca
+  return %out
+}
+
+// ====
+
+// RUN: with-low-asm pass low-materialize-allocation{budgets=test.i32=2}
+
+test.target<low_core> @target
+
+// Reservation normalization preserves the live-in preamble before its stores.
+low.func.def target<test.low.core>(@target) @live_in_spill() -> (reg<test.i32>) asm {
+  %live = live_in<test.arg0> : reg<test.i32>
+  %seed0 = test.const.i32 1
+  %seed1 = test.const.i32 2
+  %existing = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  %pair = test.add.i32 %seed0, %seed1
+  %sum0 = test.add.i32 %pair, %live
+  %sum1 = test.add.i32 %sum0, %pair
+  %out = test.add.i32 %sum1, %live
+  return %out
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @live_in_spill() -> (reg<test.i32>) asm {
+  %live = live_in<test.arg0> : reg<test.i32>
+  %existing = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  %live_in_spill_spill_storage_1 = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  low.spill %live, %live_in_spill_spill_storage_1 : reg<test.i32>, low.storage<private>
+  %seed0 = test.const.i32 1
+  %seed1 = test.const.i32 2
+  %pair = test.add.i32 %seed0, %seed1
+  %10 = low.reload %live_in_spill_spill_storage_1 : low.storage<private> -> reg<test.i32>
+  %sum0 = test.add.i32 %pair, %10
+  %sum1 = test.add.i32 %sum0, %pair
+  %11 = low.reload %live_in_spill_spill_storage_1 : low.storage<private> -> reg<test.i32>
+  %out = test.add.i32 %sum1, %11
+  return %out
+}
+
+// ====
+
+// RUN: with-low-asm pass low-materialize-allocation{budgets=test.i32=3}
+
+test.target<low_core> @target
+
+// An existing entry store stays before new entry stores even when declarations
+// move ahead of it. New reservations still follow all existing reservations.
+low.func.def target<test.low.core>(@target) @entry_traffic(%a: reg<test.i32>, %b: reg<test.i32>, %c: reg<test.i32>) -> (reg<test.i32>) asm {
+  %initial = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  low.spill %b, %initial : reg<test.i32>, low.storage<private>
+  %twice = test.add.i32 %b, %b
+  %existing = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
+  %ab = test.add.i32 %a, %twice
+  %bc = test.add.i32 %twice, %c
+  %sum = test.add.i32 %ab, %bc
+  %out = test.add.i32 %sum, %a
+  return %out
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @entry_traffic(%a: reg<test.i32>, %b: reg<test.i32>, %c: reg<test.i32>) -> (reg<test.i32>) asm {
+  %initial = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  %existing = storage {byte_alignment = 8, byte_length = 8} : low.storage<private>
+  %entry_traffic_spill_storage_2 = storage {byte_alignment = 4, byte_length = 4} : low.storage<private>
+  low.spill %b, %initial : reg<test.i32>, low.storage<private>
+  low.spill %a, %entry_traffic_spill_storage_2 : reg<test.i32>, low.storage<private>
+  %twice = test.add.i32 %b, %b
+  %12 = low.reload %entry_traffic_spill_storage_2 : low.storage<private> -> reg<test.i32>
+  %ab = test.add.i32 %12, %twice
+  %bc = test.add.i32 %twice, %c
+  %sum = test.add.i32 %ab, %bc
+  %13 = low.reload %entry_traffic_spill_storage_2 : low.storage<private> -> reg<test.i32>
+  %out = test.add.i32 %sum, %13
+  return %out
+}
