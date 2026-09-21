@@ -27,9 +27,43 @@ _EXECUTION_PROFILES = [
     ),
 ]
 
-loom_test(
-    name = "typed_views_test",
-    execution_profiles = _EXECUTION_PROFILES,
-    module = "//loom/src/loom/import/cxx/test:typed_views_module",
-    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+# Qualification is explicit: publishing a source module does not imply support
+# for its operations on every target.
+_MODULES = [
+    "aiter_swiglu_f16",
+    "assumptions",
+    "constant_loops",
+    "control_flow",
+    "early_returns",
+    "enum_values",
+    "flash_attention",
+    "increment_values",
+    "integer_increment",
+    "llama_rms_norm",
+    "pointer_walk",
+    "record_values",
+    "scheduled_sum",
+    "shaped_intrinsics",
+    "short_circuit",
+    "structured_continue",
+    "symbol_exports",
+    "typed_views",
+    "vector_depth",
+    "vector_initializers",
+    "vector_values",
+]
+
+[
+    loom_test(
+        name = module + "_test",
+        execution_profiles = _EXECUTION_PROFILES,
+        module = "//loom/src/loom/import/cxx/test:" + module + "_module",
+        target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+    )
+    for module in _MODULES
+]
+
+test_suite(
+    name = "kernels_test",
+    tests = [":" + module + "_test" for module in _MODULES],
 )

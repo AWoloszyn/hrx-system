@@ -4,13 +4,10 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-load("//build_tools/sanitizer:suppressions.bzl", "rocm_suppressions")
 load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with", "loom_generated_file", "loom_generated_file_family")
-load("//loom/build_tools/bazel:defs.bzl", "loom_execution_profile", "loom_test", "loom_test_module")
+load("//loom/build_tools/bazel:defs.bzl", "loom_test", "loom_test_module")
 load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
-load("//loom/requirements:defs.bzl", "EMIT_AMDGPU", "EXECUTE_IREE_HAL", "TARGET_ARCH_AMDGPU")
 load("//loom/target/vm:execution_profiles.bzl", "VM_REFERENCE_PROFILE")
-load("//runtime/requirements:defs.bzl", "AMDGPU_RESOURCE", "HAL_AMDGPU")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -162,43 +159,9 @@ loom_check_test_suite(
     target_compatible_with = _HOST_COMPATIBILITY,
 )
 
-# Source checks retain runtime fixture directories alongside the linked module.
-_KERNEL_COMPATIBILITY = loom_config_compatible_with([
-    "//loom/config/import:cxx",
-    "//loom/config/execute:amdgpu_hal",
-])
-
-_CXX_AMDGPU_PROFILES = [
-    loom_execution_profile(
-        name = profile_name,
-        build_requirements = [
-            TARGET_ARCH_AMDGPU,
-            EMIT_AMDGPU,
-            EXECUTE_IREE_HAL,
-            HAL_AMDGPU,
-        ],
-        executor = "hardware",
-        resource_group = "loom-amdgpu-tests",
-        run_requirements = [AMDGPU_RESOURCE],
-        runner_args = ["--device=amdgpu"] + sanitizer_args,
-        sanitizer_suppressions = rocm_suppressions,
-        target_class = "gpu",
-        target_family = "amdgpu",
-    )
-    for profile_name, sanitizer_args in [
-        ("amdgpu", []),
-        (
-            "amdgpu_access",
-            [
-                "--sanitizer=access",
-                "--sanitizer-reporting=report-only",
-            ],
-        ),
-    ]
-]
-
 # A source file and its independent reference cases form one test module.
 # Kernel names, launch configuration, and schedule variants belong to those files.
+# Target packages select applicable modules and own their execution policy.
 _KERNEL_SOURCES = [
     "aiter_swiglu_f16",
     "assumptions",
@@ -217,6 +180,7 @@ _KERNEL_SOURCES = [
     "short_circuit",
     "structured_continue",
     "symbol_exports",
+    "typed_views",
     "vector_depth",
     "vector_initializers",
     "vector_values",
@@ -240,65 +204,29 @@ _KERNEL_SOURCES = [
             source + "_checks.loom",
             source + "_arrays",
         ],
-        target_compatible_with = _KERNEL_COMPATIBILITY,
     )
     for source in _KERNEL_SOURCES
 ]
 
 [
-    loom_test(
-        name = source + "_kernel_test",
+    loom_test_module(
+        name = source + "_module",
         srcs = [
             source + ".cpp",
             ":" + source + "_checks.loom",
         ],
         data = [":" + source + "_checks_gen"],
-        execution_profiles = _CXX_AMDGPU_PROFILES,
         inputopts = ["cxx:approximate-functions=true"] if source in [
             "aiter_swiglu_f16",
             "flash_attention",
             "llama_rms_norm",
         ] else [],
-        target_compatible_with = _KERNEL_COMPATIBILITY,
+        target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
     )
     for source in _KERNEL_SOURCES
 ]
 
 test_suite(
-    name = "kernels_test",
-    tests = [":" + source + "_kernel_test" for source in _KERNEL_SOURCES],
-)
-
-test_suite(
     name = "functions_test",
     tests = [":" + source.removesuffix(".cpp") + "_test" for source in _HOST_SOURCES],
-)
-
-loom_generated_file_family(
-    name = "typed_views_checks_gen",
-    testonly = True,
-    args = [
-        "kernel",
-        "--group=typed_views",
-    ],
-    generator = "//loom/py/loom/gen/test:cxx_kernel_cases",
-    output_directories = ["typed_views_arrays"],
-    output_flags = [
-        "--output",
-        "--arrays",
-    ],
-    outputs = [
-        "typed_views_checks.loom",
-        "typed_views_arrays",
-    ],
-)
-
-loom_test_module(
-    name = "typed_views_module",
-    srcs = [
-        "typed_views.cpp",
-        ":typed_views_checks.loom",
-    ],
-    data = [":typed_views_checks_gen"],
-    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )
