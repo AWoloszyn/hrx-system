@@ -1,15 +1,72 @@
-// RUN: roundtrip
+// RUN: emit wasm-dis
+// REQUIRES: wasm-objdump
 
 wasm.target<simd128> @target
 
 low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @offset_forms(%address: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
   %scalar = i32.load %address
   i32.store %address, %scalar {offset = 16}
+  i32.store %address, %scalar
   %vector = v128.load %address {offset = 4294967295}
   v128.store %address, %vector {offset = 32}
   %byte = i32.load8_u %address {offset = 128}
   i32.store8 %address, %byte {offset = 255}
   return %scalar
+}
+
+// ----
+Disassembly of section CODE:
+
+<CODE>:
+        # 1 functions in section.
+
+<offset_forms>:
+        .local i32, v128, i32
+  local.get  0
+  i32.load  0
+  local.set  1
+  local.get  0
+  local.get  1
+  i32.store  16
+  local.get  0
+  local.get  1
+  i32.store  0
+  local.get  0
+  v128.load  4294967295
+  local.set  2
+  local.get  0
+  local.get  2
+  v128.store  32
+  local.get  0
+  i32.load8_u  128
+  local.set  3
+  local.get  0
+  local.get  3
+  i32.store8  255
+  local.get  1
+  return
+  end
+
+// ====
+
+// RUN: format bytecode
+
+wasm.target<simd128> @target
+
+// Preserve explicitly stored defaults through bytecode.
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @explicit_zero(%address: reg<wasm.i32>) -> (reg<wasm.i32>) {
+  %value = low.op<wasm.i32.load>(%address) {offset = 0} : (reg<wasm.i32>) -> reg<wasm.i32>
+  low.op<wasm.i32.store>(%address, %value) {offset = 0} : (reg<wasm.i32>, reg<wasm.i32>)
+  low.return %value : reg<wasm.i32>
+}
+
+// ----
+wasm.target<simd128> @target
+
+low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @explicit_zero(%address: reg<wasm.i32>) -> (reg<wasm.i32>) {
+  %value = low.op<wasm.i32.load>(%address) {offset = 0} : (reg<wasm.i32>) -> reg<wasm.i32>
+  low.op<wasm.i32.store>(%address, %value) {offset = 0} : (reg<wasm.i32>, reg<wasm.i32>)
+  low.return %value : reg<wasm.i32>
 }
 
 // ====
