@@ -92,7 +92,7 @@ TEST_P(EventSourceWindowsTest, UnregisterPreservesCallerOwnedHandle) {
       MakeCallback(&state), &source));
   ASSERT_NE(source, nullptr);
 
-  iree_async_proactor_unregister_event_source(proactor_, source);
+  WaitForEventSourceUnregistration(source);
   EXPECT_TRUE(SetEvent(event_handle));
   EXPECT_EQ(WaitForSingleObject(event_handle, 0), WAIT_OBJECT_0);
   EXPECT_TRUE(CloseHandle(event_handle));
@@ -116,7 +116,7 @@ TEST_P(EventSourceWindowsTest, CallbackRunsOnPollingThread) {
   EXPECT_EQ(state.thread_id, polling_thread_id);
   EXPECT_TRUE(iree_all_bits_set(state.events, IREE_ASYNC_POLL_EVENT_IN));
 
-  iree_async_proactor_unregister_event_source(proactor_, source);
+  WaitForEventSourceUnregistration(source);
   EXPECT_TRUE(CloseHandle(event_handle));
 }
 
@@ -139,7 +139,7 @@ TEST_P(EventSourceWindowsTest, RearmsAfterEachCallback) {
   }
   EXPECT_EQ(state.call_count, kSignalCount);
 
-  iree_async_proactor_unregister_event_source(proactor_, source);
+  WaitForEventSourceUnregistration(source);
   EXPECT_TRUE(CloseHandle(event_handle));
 }
 
@@ -155,7 +155,7 @@ TEST_P(EventSourceWindowsTest, SignalBeforeUnregisterRemovesCompletion) {
         iree_async_primitive_from_win32_handle((uintptr_t)event_handle),
         MakeCallback(&state), &source));
     ASSERT_TRUE(SetEvent(event_handle));
-    iree_async_proactor_unregister_event_source(proactor_, source);
+    WaitForEventSourceUnregistration(source);
     EXPECT_TRUE(CloseHandle(event_handle));
   }
 
@@ -190,7 +190,7 @@ TEST_P(EventSourceWindowsTest, DispatchesIndependentSources) {
   EXPECT_EQ(states[2].call_count, 0);
 
   for (int i = 0; i < kSourceCount; ++i) {
-    iree_async_proactor_unregister_event_source(proactor_, sources[i]);
+    WaitForEventSourceUnregistration(sources[i]);
     EXPECT_TRUE(CloseHandle(event_handles[i]));
   }
 }

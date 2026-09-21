@@ -10,6 +10,8 @@
 // poll with an OK status. These tests validate basic submit/poll/callback
 // mechanics without involving timers, I/O, or complex state.
 
+#include <thread>
+
 #include "iree/async/cts/util/registry.h"
 #include "iree/async/cts/util/test_base.h"
 #include "iree/async/operations/scheduling.h"
@@ -20,10 +22,13 @@ class NopTest : public CtsTestBase<> {};
 
 struct NopOrderState {
   struct CallbackState {
+    // Test state collecting callbacks in poll order.
     NopOrderState* owner;
+    // Submission ordinal of this operation.
     int index;
   };
 
+  // Submission ordinals observed by the polling thread.
   std::vector<int> completion_order;
 
   static void Callback(void* user_data, iree_async_operation_t* operation,
@@ -119,7 +124,8 @@ TEST_P(NopTest, CallbackReceivesOperationPointer) {
                              iree_status_t status,
                              iree_async_completion_flags_t flags) {
     *static_cast<iree_async_operation_t**>(user_data) = op;
-    iree_status_ignore(status);
+    IREE_EXPECT_OK(status);
+    EXPECT_EQ(flags, IREE_ASYNC_COMPLETION_FLAG_NONE);
   };
 
   nop.base.completion_fn = capture_callback;
@@ -129,6 +135,47 @@ TEST_P(NopTest, CallbackReceivesOperationPointer) {
   PollUntil(/*min_completions=*/1);
 
   EXPECT_EQ(received_op, &nop.base);
+}
+
+TEST_P(NopTest, CrossThreadCompletionReleasesStorage) {
+  struct State {
+    // Thread that owns poll and must receive the callback.
+    std::thread::id poll_thread = std::this_thread::get_id();
+    // Completion count observed only by the polling thread.
+    int call_count = 0;
+  } state;
+  struct Dispatch {
+    // Intrusive operation whose final callback destroys its container.
+    iree_async_nop_operation_t operation = {};
+    // Test observation storage that outlives the dispatch.
+    State* state = nullptr;
+  };
+  auto* dispatch = new Dispatch;
+  dispatch->state = &state;
+  iree_async_operation_initialize(
+      &dispatch->operation.base, IREE_ASYNC_OPERATION_TYPE_NOP,
+      IREE_ASYNC_OPERATION_FLAG_NONE,
+      [](void* user_data, iree_async_operation_t* operation,
+         iree_status_t status, iree_async_completion_flags_t flags) {
+        IREE_EXPECT_OK(status);
+        EXPECT_EQ(flags, IREE_ASYNC_COMPLETION_FLAG_NONE);
+        auto* dispatch = static_cast<Dispatch*>(user_data);
+        EXPECT_EQ(operation, &dispatch->operation.base);
+        EXPECT_EQ(std::this_thread::get_id(), dispatch->state->poll_thread);
+        ++dispatch->state->call_count;
+        delete dispatch;
+      },
+      dispatch);
+
+  // Completion may destroy dispatch before submit returns. Neither the
+  // submitter nor the backend may touch its storage after transferring it.
+  std::thread submitter([&] {
+    IREE_CHECK_OK(
+        iree_async_proactor_submit_one(proactor_, &dispatch->operation.base));
+  });
+  PollUntilCondition([&] { return state.call_count == 1; });
+  submitter.join();
+  EXPECT_EQ(state.call_count, 1);
 }
 
 // Empty submit list: should succeed with no completions.

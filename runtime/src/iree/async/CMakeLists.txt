@@ -32,6 +32,7 @@ iree_cc_library(
     "frontier.h"
     "frontier_tracker.h"
     "notification.h"
+    "notification_native.h"
     "operation.h"
     "operations/file.h"
     "operations/futex.h"
@@ -59,6 +60,7 @@ iree_cc_library(
     "frontier.c"
     "frontier_tracker.c"
     "notification.c"
+    "notification_native.c"
     "operation.c"
     "operations/message.c"
     "primitive.c"
@@ -69,6 +71,7 @@ iree_cc_library(
     "socket.c"
   DEPS
     ::types
+    iree::async::util::intrusive_list
     iree::base
     iree::base::internal
     iree::base::internal::atomic_freelist
@@ -153,6 +156,25 @@ iree_cc_test(
     iree::testing::gtest
     iree::testing::gtest_main
 )
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
+iree_cc_test(
+  NAME
+    notification_native_test
+  SRCS
+    "notification_native_test.cc"
+  DEPS
+    ::async
+    ::platform
+    iree::async::util::local_stream
+    iree::base
+    iree::base::internal::shm
+    iree::base::threading
+    iree::testing::coordinated_test
+    iree::testing::coordinated_test_main
+    iree::testing::gtest
+)
+endif()
 
 iree_cc_test(
   NAME

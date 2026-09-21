@@ -226,8 +226,9 @@ iree_status_t iree_async_proactor_io_uring_validate_operation(
             IREE_STATUS_INVALID_ARGUMENT,
             "EVENT_WAIT event belongs to a different proactor");
       }
-      if (wait->event->primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
-          wait->event->primitive.value.fd < 0) {
+      if (wait->event->native.wait_primitive.type !=
+              IREE_ASYNC_PRIMITIVE_TYPE_FD ||
+          wait->event->native.wait_primitive.value.fd < 0) {
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                 "EVENT_WAIT event has an invalid descriptor");
       }
@@ -353,11 +354,13 @@ iree_status_t iree_async_proactor_io_uring_validate_operation(
           (const iree_async_socket_send_operation_t*)operation;
       IREE_RETURN_IF_ERROR(iree_async_proactor_io_uring_validate_socket(
           proactor, send->socket, "SOCKET_SEND"));
-      if (send->send_flags & ~IREE_ASYNC_SOCKET_SEND_FLAG_MORE) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "SOCKET_SEND has unknown flags 0x%08X",
-            send->send_flags & ~IREE_ASYNC_SOCKET_SEND_FLAG_MORE);
+      const iree_async_socket_send_flags_t unknown_flags =
+          send->send_flags & ~(IREE_ASYNC_SOCKET_SEND_FLAG_MORE |
+                               IREE_ASYNC_SOCKET_SEND_FLAG_REPORT_PROGRESS);
+      if (unknown_flags) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "SOCKET_SEND has unknown flags 0x%08X",
+                                unknown_flags);
       }
       return iree_async_proactor_io_uring_validate_span_list(
           proactor, send->buffers, IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS,
@@ -371,11 +374,13 @@ iree_status_t iree_async_proactor_io_uring_validate_operation(
           proactor, send->socket, "SOCKET_SENDTO"));
       IREE_RETURN_IF_ERROR(iree_async_proactor_io_uring_validate_address(
           &send->destination, "SOCKET_SENDTO"));
-      if (send->send_flags & ~IREE_ASYNC_SOCKET_SEND_FLAG_MORE) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "SOCKET_SENDTO has unknown flags 0x%08X",
-            send->send_flags & ~IREE_ASYNC_SOCKET_SEND_FLAG_MORE);
+      const iree_async_socket_send_flags_t unknown_flags =
+          send->send_flags & ~(IREE_ASYNC_SOCKET_SEND_FLAG_MORE |
+                               IREE_ASYNC_SOCKET_SEND_FLAG_REPORT_PROGRESS);
+      if (unknown_flags) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "SOCKET_SENDTO has unknown flags 0x%08X",
+                                unknown_flags);
       }
       return iree_async_proactor_io_uring_validate_span_list(
           proactor, send->buffers, IREE_ASYNC_SOCKET_SENDTO_MAX_BUFFERS,
@@ -500,28 +505,12 @@ iree_status_t iree_async_proactor_io_uring_validate_operation(
             wait->wait_flags &
                 ~IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN);
       }
-      if (wait->notification->mode == IREE_ASYNC_NOTIFICATION_MODE_FUTEX) {
-        if (!iree_any_bit_set(
-                proactor->capabilities,
-                IREE_ASYNC_PROACTOR_CAPABILITY_FUTEX_OPERATIONS)) {
-          return iree_make_status(
-              IREE_STATUS_UNAVAILABLE,
-              "futex notification wait requires io_uring futex support");
-        }
-      } else if (wait->notification->mode ==
-                 IREE_ASYNC_NOTIFICATION_MODE_EVENT) {
-        const iree_async_primitive_t primitive =
-            wait->notification->platform.io_uring.primitive;
-        if (primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
-            primitive.value.fd < 0) {
-          return iree_make_status(
-              IREE_STATUS_INVALID_ARGUMENT,
-              "event notification wait has an invalid descriptor");
-        }
-      } else {
+      const iree_async_primitive_t primitive =
+          wait->notification->platform.io_uring.event.wait_primitive;
+      if (primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
+          primitive.value.fd < 0) {
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                                "NOTIFICATION_WAIT mode %d is invalid",
-                                (int)wait->notification->mode);
+                                "notification wait has an invalid descriptor");
       }
       return iree_ok_status();
     }
@@ -544,28 +533,13 @@ iree_status_t iree_async_proactor_io_uring_validate_operation(
             IREE_STATUS_INVALID_ARGUMENT,
             "NOTIFICATION_SIGNAL wake count must be non-negative");
       }
-      if (signal->notification->mode == IREE_ASYNC_NOTIFICATION_MODE_FUTEX) {
-        if (!iree_any_bit_set(
-                proactor->capabilities,
-                IREE_ASYNC_PROACTOR_CAPABILITY_FUTEX_OPERATIONS)) {
-          return iree_make_status(
-              IREE_STATUS_UNAVAILABLE,
-              "futex notification signal requires io_uring futex support");
-        }
-      } else if (signal->notification->mode ==
-                 IREE_ASYNC_NOTIFICATION_MODE_EVENT) {
-        const iree_async_primitive_t primitive =
-            signal->notification->platform.io_uring.signal_primitive;
-        if (primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
-            primitive.value.fd < 0) {
-          return iree_make_status(
-              IREE_STATUS_INVALID_ARGUMENT,
-              "event notification signal has an invalid descriptor");
-        }
-      } else {
-        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                                "NOTIFICATION_SIGNAL mode %d is invalid",
-                                (int)signal->notification->mode);
+      const iree_async_primitive_t primitive =
+          signal->notification->platform.io_uring.event.signal_primitive;
+      if (primitive.type != IREE_ASYNC_PRIMITIVE_TYPE_FD ||
+          primitive.value.fd < 0) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "notification signal has an invalid descriptor");
       }
       return iree_ok_status();
     }
@@ -578,6 +552,11 @@ iree_status_t iree_async_proactor_io_uring_validate_operation(
         return iree_make_status(
             IREE_STATUS_INVALID_ARGUMENT,
             "HANDLE_POLL requires a valid POSIX descriptor");
+      }
+      if (!poll->events || (poll->events & ~(IREE_ASYNC_POLL_EVENT_IN |
+                                             IREE_ASYNC_POLL_EVENT_OUT))) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "HANDLE_POLL requires IN and/or OUT interests");
       }
       return iree_ok_status();
     }

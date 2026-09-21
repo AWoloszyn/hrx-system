@@ -25,12 +25,16 @@ package(
 iree_runtime_cc_library(
     name = "io_uring",
     srcs = [
+        "event_source.c",
+        "event_source.h",
         "notification.c",
         "notification.h",
         "proactor.c",
         "proactor.h",
+        "proactor_cancel.c",
         "proactor_probe.c",
         "proactor_registration.c",
+        "proactor_shutdown.c",
         "proactor_submit.c",
         "proactor_validation.c",
         "proactor_validation.h",
@@ -204,6 +208,37 @@ iree_runtime_cc_test(
 )
 
 iree_runtime_cc_test(
+    name = "notification_test",
+    srcs = ["notification_test.cc"],
+    linkopts = [
+        "-Wl,--wrap=read",
+        "-Wl,--wrap=write",
+    ],
+    resource_group = "io_uring",
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":io_uring",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "proactor_cancel_test",
+    srcs = ["proactor_cancel_test.cc"],
+    resource_group = "io_uring",
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":io_uring",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async:types",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
     name = "proactor_registration_test",
     srcs = ["proactor_registration_test.cc"],
     resource_group = "io_uring",
@@ -233,6 +268,39 @@ iree_runtime_cc_test(
 )
 
 iree_runtime_cc_test(
+    name = "proactor_shutdown_test",
+    srcs = [
+        "event_source.h",
+        "notification.h",
+        "proactor.h",
+        "proactor_shutdown_test.cc",
+        "relay.h",
+    ],
+    linkopts = [
+        "-Wl,--wrap=iree_async_proactor_io_uring_process_cqe",
+        "-Wl,--wrap=iree_io_uring_ring_deinitialize",
+    ],
+    resource_group = "io_uring",
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        ":defs",
+        ":io_uring",
+        ":sparse_table",
+        ":uring",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async/platform/linux:signal",
+        "//runtime/src/iree/async/util:message_pool",
+        "//runtime/src/iree/async/util:semaphore_wait",
+        "//runtime/src/iree/async/util:sequence_emulation",
+        "//runtime/src/iree/async/util:signal",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:atomic_slist",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
     name = "proactor_submit_test",
     srcs = ["proactor_submit_test.cc"],
     resource_group = "io_uring",
@@ -240,6 +308,7 @@ iree_runtime_cc_test(
     deps = [
         ":io_uring",
         "//runtime/src/iree/async",
+        "//runtime/src/iree/async/util:proactor_thread",
         "//runtime/src/iree/base",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",

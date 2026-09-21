@@ -74,7 +74,7 @@ static void iree_async_proactor_io_uring_fill_event_wait(
   iree_async_event_wait_operation_t* event_wait =
       (iree_async_event_wait_operation_t*)base_operation;
 
-  int fd = event_wait->event->primitive.value.fd;
+  int fd = event_wait->event->native.wait_primitive.value.fd;
 
   // SQE 1: POLL_ADD with link to next SQE.
   // Tagged internal so process_cqe ignores it — the READ CQE handles
@@ -107,7 +107,12 @@ static void iree_async_proactor_io_uring_fill_handle_poll(
   memset(sqe, 0, sizeof(*sqe));
   sqe->opcode = IREE_IORING_OP_POLL_ADD;
   sqe->fd = handle_poll->primitive.value.fd;
-  sqe->poll32_events = POLLIN;
+  sqe->poll32_events =
+      (iree_any_bit_set(handle_poll->events, IREE_ASYNC_POLL_EVENT_IN) ? POLLIN
+                                                                       : 0) |
+      (iree_any_bit_set(handle_poll->events, IREE_ASYNC_POLL_EVENT_OUT)
+           ? POLLOUT
+           : 0);
   sqe->user_data = (uint64_t)(uintptr_t)base_operation;
 }
 
@@ -733,131 +738,7 @@ static void iree_async_proactor_io_uring_fill_futex_wake(
 }
 
 //===----------------------------------------------------------------------===//
-// Notification wait helpers
-//===----------------------------------------------------------------------===//
-
-// Fills SQE for a NOTIFICATION_WAIT operation in futex mode.
-static void iree_async_proactor_io_uring_fill_notification_wait_futex(
-    iree_io_uring_sqe_t* sqe, iree_async_operation_t* base_operation) {
-  iree_async_notification_wait_operation_t* wait =
-      (iree_async_notification_wait_operation_t*)base_operation;
-
-  if (!iree_all_bits_set(wait->wait_flags,
-                         IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN)) {
-    wait->wait_token = iree_atomic_load(wait->notification->epoch_ptr,
-                                        iree_memory_order_acquire);
-  }
-
-  int32_t futex_flags = IREE_ASYNC_FUTEX_SIZE_U32;
-  if (!iree_any_bit_set(wait->notification->flags,
-                        IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
-    futex_flags |= IREE_ASYNC_FUTEX_FLAG_PRIVATE;
-  }
-
-  memset(sqe, 0, sizeof(*sqe));
-  sqe->opcode = IREE_IORING_OP_FUTEX_WAIT;
-  sqe->fd = futex_flags;
-  sqe->addr = (uint64_t)(uintptr_t)wait->notification->epoch_ptr;
-  sqe->off = wait->wait_token;
-  sqe->len = 0;
-  sqe->futex_flags = 0;
-  sqe->addr3 = 0xffffffffU;  // FUTEX_BITSET_MATCH_ANY
-  sqe->user_data = (uint64_t)(uintptr_t)base_operation;
-}
-
-// Fills two linked SQEs for a NOTIFICATION_WAIT operation in event mode.
-// Uses POLL_ADD linked to READ, same pattern as EVENT_WAIT.
-static void iree_async_proactor_io_uring_fill_notification_wait_event(
-    iree_io_uring_sqe_t* poll_sqe, iree_io_uring_sqe_t* read_sqe,
-    iree_async_operation_t* base_operation) {
-  iree_async_notification_wait_operation_t* wait =
-      (iree_async_notification_wait_operation_t*)base_operation;
-
-  if (!iree_all_bits_set(wait->wait_flags,
-                         IREE_ASYNC_NOTIFICATION_WAIT_FLAG_USE_WAIT_TOKEN)) {
-    wait->wait_token = iree_atomic_load(wait->notification->epoch_ptr,
-                                        iree_memory_order_acquire);
-  }
-
-  int fd = wait->notification->platform.io_uring.primitive.value.fd;
-
-  // SQE 1: POLL_ADD with link to next SQE.
-  // Same TAG_LINKED_POLL pattern as EVENT_WAIT — see fill_event_wait comments.
-  memset(poll_sqe, 0, sizeof(*poll_sqe));
-  poll_sqe->opcode = IREE_IORING_OP_POLL_ADD;
-  poll_sqe->flags = IREE_IOSQE_IO_LINK;
-  poll_sqe->fd = fd;
-  poll_sqe->poll32_events = POLLIN;
-  poll_sqe->user_data = iree_io_uring_internal_encode(
-      IREE_IO_URING_TAG_LINKED_POLL, (uintptr_t)base_operation);
-
-  // SQE 2: READ to drain the eventfd counter.
-  memset(read_sqe, 0, sizeof(*read_sqe));
-  read_sqe->opcode = IREE_IORING_OP_READ;
-  read_sqe->fd = fd;
-  read_sqe->addr =
-      (uint64_t)(uintptr_t)&wait->notification->platform.io_uring.drain_buffer;
-  read_sqe->len = sizeof(wait->notification->platform.io_uring.drain_buffer);
-  read_sqe->user_data = (uint64_t)(uintptr_t)base_operation;
-}
-
-// Fills SQE for a NOTIFICATION_SIGNAL operation in futex mode.
-static void iree_async_proactor_io_uring_fill_notification_signal_futex(
-    iree_io_uring_sqe_t* sqe, iree_async_operation_t* base_operation) {
-  iree_async_notification_signal_operation_t* signal =
-      (iree_async_notification_signal_operation_t*)base_operation;
-
-  signal->woken_count = 0;
-
-  // Increment epoch before kernel FUTEX_WAKE so waiters see the new value.
-  iree_atomic_fetch_add(signal->notification->epoch_ptr, 1,
-                        iree_memory_order_release);
-
-  int32_t futex_flags = IREE_ASYNC_FUTEX_SIZE_U32;
-  if (!iree_any_bit_set(signal->notification->flags,
-                        IREE_ASYNC_NOTIFICATION_FLAG_SHARED)) {
-    futex_flags |= IREE_ASYNC_FUTEX_FLAG_PRIVATE;
-  }
-
-  memset(sqe, 0, sizeof(*sqe));
-  sqe->opcode = IREE_IORING_OP_FUTEX_WAKE;
-  sqe->fd = futex_flags;
-  sqe->addr = (uint64_t)(uintptr_t)signal->notification->epoch_ptr;
-  sqe->off = (uint64_t)signal->wake_count;
-  sqe->len = 0;
-  sqe->futex_flags = 0;
-  sqe->addr3 = 0xffffffffU;  // FUTEX_BITSET_MATCH_ANY
-  sqe->user_data = (uint64_t)(uintptr_t)base_operation;
-}
-
-// Fills SQE for a NOTIFICATION_SIGNAL operation in event mode.
-static void iree_async_proactor_io_uring_fill_notification_signal_event(
-    iree_io_uring_sqe_t* sqe, iree_async_operation_t* base_operation) {
-  iree_async_notification_signal_operation_t* signal =
-      (iree_async_notification_signal_operation_t*)base_operation;
-
-  signal->woken_count = 0;
-
-  // Increment epoch before kernel writes to eventfd.
-  iree_atomic_fetch_add(signal->notification->epoch_ptr, 1,
-                        iree_memory_order_release);
-
-  int fd = signal->notification->platform.io_uring.signal_primitive.value.fd;
-
-  // With EFD_SEMAPHORE, write(N) allows N read()s to succeed.
-  signal->write_value =
-      (signal->wake_count > 0) ? (uint64_t)signal->wake_count : UINT32_MAX;
-
-  memset(sqe, 0, sizeof(*sqe));
-  sqe->opcode = IREE_IORING_OP_WRITE;
-  sqe->fd = fd;
-  sqe->addr = (uint64_t)(uintptr_t)&signal->write_value;
-  sqe->len = sizeof(signal->write_value);
-  sqe->user_data = (uint64_t)(uintptr_t)base_operation;
-}
-
-//===----------------------------------------------------------------------===//
-// Semaphore operation helpers
+// Software operation helpers
 //===----------------------------------------------------------------------===//
 
 // Returns true for operation types executed inline while dispatching a
@@ -865,6 +746,8 @@ static void iree_async_proactor_io_uring_fill_notification_signal_event(
 static inline bool iree_async_proactor_io_uring_is_inline_software_op(
     iree_async_operation_type_t type) {
   return type == IREE_ASYNC_OPERATION_TYPE_NOP ||
+         type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL ||
+         type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT ||
          type == IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_SIGNAL ||
          type == IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_WAIT;
 }
@@ -895,7 +778,6 @@ static inline bool iree_async_proactor_io_uring_requires_userspace_continuation(
     const iree_async_operation_t* operation) {
   return operation->type == IREE_ASYNC_OPERATION_TYPE_TIMER ||
          operation->type == IREE_ASYNC_OPERATION_TYPE_FUTEX_WAIT ||
-         operation->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT ||
          iree_async_proactor_io_uring_is_submission_software_op(operation);
 }
 
@@ -954,6 +836,15 @@ iree_async_proactor_io_uring_build_software_submission_list(
     tail = &operation->next;
   }
   return head;
+}
+
+// The epoch publication belongs to execution, not native SQE construction.
+// In a linked chain this runs only after the predecessor succeeds.
+static void iree_async_proactor_io_uring_execute_notification_signal(
+    iree_async_notification_signal_operation_t* signal_op) {
+  signal_op->woken_count = -1;
+  iree_async_notification_signal(signal_op->notification,
+                                 signal_op->wake_count);
 }
 
 // Executes a SEMAPHORE_SIGNAL operation synchronously. Returns OK on success,
@@ -1035,8 +926,8 @@ static iree_status_t iree_async_proactor_io_uring_execute_semaphore_wait(
 // Iteratively dispatches a LINKED continuation chain that may contain software
 // operations. Walks the chain in order:
 //
-//   - Software ops (NOP, SEMAPHORE_SIGNAL, SEMAPHORE_WAIT): execute side
-//     effects inline and push completion to MPSC for poll-thread delivery.
+//   - Software ops: execute side effects inline and push completion to MPSC
+//     for poll-thread delivery (NOP, notification signal, semaphore ops).
 //   - Kernel ops: submit the remaining chain via submit_continuation_chain
 //     (produces CQEs counted by the CQE processing loop).
 //   - Deferred WAIT: the tracker takes ownership of the remaining chain.
@@ -1062,10 +953,19 @@ void iree_async_proactor_io_uring_dispatch_continuation_chain(
       return;
     }
 
+    if (op->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT) {
+      iree_async_io_uring_notification_submit_wait(
+          (iree_async_notification_wait_operation_t*)op);
+      return;
+    }
+
     iree_status_t op_status = iree_ok_status();
     bool deferred = false;
     if (op->type == IREE_ASYNC_OPERATION_TYPE_NOP) {
       // NOP has no side effect.
+    } else if (op->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL) {
+      iree_async_proactor_io_uring_execute_notification_signal(
+          (iree_async_notification_signal_operation_t*)op);
     } else if (op->type == IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_SIGNAL) {
       op_status = iree_async_proactor_io_uring_execute_semaphore_signal(
           (iree_async_semaphore_signal_operation_t*)op);
@@ -1273,6 +1173,12 @@ static void iree_async_proactor_io_uring_commit_software_operation(
     iree_async_operation_t* operation) {
   IREE_TRACE({ operation->submit_time_ns = iree_time_now(); });
 
+  if (operation->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT) {
+    iree_async_io_uring_notification_submit_wait(
+        (iree_async_notification_wait_operation_t*)operation);
+    return;
+  }
+
   if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
     iree_async_sequence_prepare_for_submission(
         (iree_async_sequence_operation_t*)operation);
@@ -1303,6 +1209,9 @@ static void iree_async_proactor_io_uring_commit_software_operation(
   bool deferred = false;
   if (operation->type == IREE_ASYNC_OPERATION_TYPE_NOP) {
     // NOP has no side effect.
+  } else if (operation->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL) {
+    iree_async_proactor_io_uring_execute_notification_signal(
+        (iree_async_notification_signal_operation_t*)operation);
   } else if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_SIGNAL) {
     iree_async_semaphore_signal_operation_t* signal_op =
         (iree_async_semaphore_signal_operation_t*)operation;
@@ -1374,6 +1283,10 @@ iree_status_t iree_async_proactor_io_uring_submit(
     }
     IREE_RETURN_IF_ERROR(iree_async_proactor_io_uring_validate_operation(
         proactor, operations.values[i]));
+    if (operations.values[i]->type ==
+        IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT) {
+      iree_async_operation_clear_internal_flags(operations.values[i]);
+    }
   }
   for (iree_host_size_t i = 0; i < operations.count; ++i) {
     iree_async_operation_t* operation = operations.values[i];
@@ -1401,12 +1314,6 @@ iree_status_t iree_async_proactor_io_uring_submit(
     }
     if (operation->type == IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT) {
       sqes_needed += 2;
-    } else if (operation->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT) {
-      iree_async_notification_wait_operation_t* wait =
-          (iree_async_notification_wait_operation_t*)operation;
-      sqes_needed +=
-          (wait->notification->mode == IREE_ASYNC_NOTIFICATION_MODE_FUTEX) ? 1
-                                                                           : 2;
     } else {
       sqes_needed += 1;
     }
@@ -1489,20 +1396,8 @@ iree_status_t iree_async_proactor_io_uring_submit(
         continue;
       }
 
-      // EVENT_WAIT always uses linked POLL_ADD+READ (2 SQEs).
-      // NOTIFICATION_WAIT uses 2 SQEs in event mode, 1 SQE in futex mode.
-      bool needs_two_sqes = false;
+      // EVENT_WAIT uses linked POLL_ADD+READ; notification waits are software.
       if (operation->type == IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT) {
-        needs_two_sqes = true;
-      } else if (operation->type ==
-                 IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT) {
-        iree_async_notification_wait_operation_t* wait =
-            (iree_async_notification_wait_operation_t*)operation;
-        needs_two_sqes =
-            (wait->notification->mode == IREE_ASYNC_NOTIFICATION_MODE_EVENT);
-      }
-
-      if (needs_two_sqes) {
         iree_io_uring_sqe_t* poll_sqe =
             iree_io_uring_ring_get_sqe(&proactor->ring);
         iree_io_uring_sqe_t* read_sqe =
@@ -1510,13 +1405,8 @@ iree_status_t iree_async_proactor_io_uring_submit(
         IREE_ASSERT(poll_sqe);
         IREE_ASSERT(read_sqe);
 
-        if (operation->type == IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT) {
-          iree_async_proactor_io_uring_fill_event_wait(poll_sqe, read_sqe,
-                                                       operation);
-        } else {
-          iree_async_proactor_io_uring_fill_notification_wait_event(
-              poll_sqe, read_sqe, operation);
-        }
+        iree_async_proactor_io_uring_fill_event_wait(poll_sqe, read_sqe,
+                                                     operation);
 
         // Apply kernel LINK to the terminal SQE of the internal pair when the
         // edge does not require userspace status interpretation.
@@ -1569,24 +1459,6 @@ iree_status_t iree_async_proactor_io_uring_submit(
           case IREE_ASYNC_OPERATION_TYPE_FUTEX_WAKE:
             iree_async_proactor_io_uring_fill_futex_wake(sqe, operation);
             break;
-          case IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT:
-            // Futex mode only — event mode uses 2 SQEs and is handled above.
-            iree_async_proactor_io_uring_fill_notification_wait_futex(
-                sqe, operation);
-            break;
-          case IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL: {
-            iree_async_notification_signal_operation_t* signal_op =
-                (iree_async_notification_signal_operation_t*)operation;
-            if (signal_op->notification->mode ==
-                IREE_ASYNC_NOTIFICATION_MODE_FUTEX) {
-              iree_async_proactor_io_uring_fill_notification_signal_futex(
-                  sqe, operation);
-            } else {
-              iree_async_proactor_io_uring_fill_notification_signal_event(
-                  sqe, operation);
-            }
-            break;
-          }
           case IREE_ASYNC_OPERATION_TYPE_MESSAGE:
             iree_async_proactor_io_uring_fill_message(sqe, operation);
             break;
@@ -1660,10 +1532,10 @@ iree_status_t iree_async_proactor_io_uring_submit(
   // Phase 5: Flush or wake.
   //=========================================================================
 
-  int32_t poll_tid =
-      iree_atomic_load(&proactor->poll_tid, iree_memory_order_relaxed);
-  if (poll_tid != 0) {
-    if (poll_tid == (int32_t)syscall(__NR_gettid)) {
+  int32_t dispatch_tid = iree_atomic_load(&proactor->polling.dispatch_tid,
+                                          iree_memory_order_relaxed);
+  if (dispatch_tid != 0) {
+    if (dispatch_tid == (int32_t)syscall(__NR_gettid)) {
       // Poll thread during CQE processing: flush SQEs immediately for
       // latency. This gets SQEs to the kernel promptly so inline sends
       // (where the socket buffer has room) complete during io_uring_enter.
@@ -1688,10 +1560,15 @@ iree_status_t iree_async_proactor_io_uring_submit(
       }
       return iree_ok_status();
     }
-    // Cross-thread submit while the poll thread is actively processing CQEs.
-    // The SQEs are in the ring; the poll thread's drain loop will flush them.
-    // Skip wake — the poll thread is already awake.
-    return iree_ok_status();
+    // Publish queued work to the active dispatch interval before suppressing
+    // the wake. This RMW pairs with the owner's exchange to idle: either its
+    // final drain observes our work or we observe idle and wake it below.
+    // A load alone can observe active while the final drain misses our work.
+    if (iree_atomic_compare_exchange_strong(
+            &proactor->polling.dispatch_tid, &dispatch_tid, dispatch_tid,
+            iree_memory_order_acq_rel, iree_memory_order_relaxed)) {
+      return iree_ok_status();
+    }
   }
 
   // Poll thread idle. Only the poll thread may call io_uring_enter

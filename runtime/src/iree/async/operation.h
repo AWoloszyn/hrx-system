@@ -13,8 +13,8 @@
 //
 // The ownership rule: the caller owns the operation storage after (and only
 // after) the final completion callback fires. During execution the proactor
-// may read/write any field. For multishot operations the callback fires
-// multiple times; the caller regains ownership only on the final invocation
+// may read/write any field. For multishot operations and operations reporting
+// intermediate progress, the caller regains ownership only on the final call
 // (the one without IREE_ASYNC_COMPLETION_FLAG_MORE).
 //
 // Operation subtypes are defined in iree/async/operations/*.h. Each subtype
@@ -45,7 +45,7 @@ typedef struct iree_async_region_t iree_async_region_t;
 enum iree_async_completion_flag_bits_e {
   IREE_ASYNC_COMPLETION_FLAG_NONE = 0u,
 
-  // More completions will follow for this operation (multishot).
+  // More completions will follow (multishot or intermediate progress).
   // The proactor retains ownership of the operation; the caller must not
   // modify, resubmit, or release it. When this flag is NOT set the callback
   // is final and the caller owns the operation again.

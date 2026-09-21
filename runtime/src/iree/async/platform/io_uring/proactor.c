@@ -74,11 +74,6 @@
 #define IREE_IO_URING_TSAN_COMPLETE(operation) ((void)0)
 #endif  // IREE_SANITIZER_THREAD
 
-static void iree_async_proactor_io_uring_destroy(
-    iree_async_proactor_t* base_proactor);
-static iree_status_t iree_async_proactor_io_uring_cancel(
-    iree_async_proactor_t* base_proactor, iree_async_operation_t* operation);
-
 // Wakes the proactor after another task queues a ring registration request.
 static void iree_async_proactor_io_uring_wake_registration_owner(
     void* user_data) {
@@ -138,7 +133,9 @@ iree_status_t iree_async_proactor_create_io_uring(
   // Initialize our fields.
   proactor->wake_eventfd = -1;
   proactor->wake_poll_armed = false;
-  iree_atomic_store(&proactor->poll_tid, 0, iree_memory_order_relaxed);
+  iree_atomic_store(&proactor->polling.owner_tid, 0, iree_memory_order_relaxed);
+  iree_atomic_store(&proactor->polling.dispatch_tid, 0,
+                    iree_memory_order_relaxed);
   iree_atomic_store(&proactor->next_buffer_group_id, 0,
                     iree_memory_order_relaxed);
   iree_atomic_store(&proactor->legacy_buffer_table_state,
@@ -146,6 +143,7 @@ iree_status_t iree_async_proactor_create_io_uring(
                     iree_memory_order_relaxed);
   proactor->capabilities = IREE_ASYNC_PROACTOR_CAPABILITY_NONE;
   iree_atomic_slist_initialize(&proactor->pending_software_operations);
+  iree_atomic_slist_initialize(&proactor->pending_notifications);
   iree_atomic_slist_initialize(&proactor->pending_semaphore_waits);
   iree_async_semaphore_wait_context_initialize(
       &proactor->semaphore_wait_context);
@@ -249,80 +247,6 @@ iree_status_t iree_async_proactor_create_io_uring(
   }
   IREE_TRACE_ZONE_END(z0);
   return status;
-}
-
-static void iree_async_proactor_io_uring_destroy(
-    iree_async_proactor_t* base_proactor) {
-  IREE_TRACE_ZONE_BEGIN(z0);
-  iree_async_proactor_io_uring_t* proactor =
-      iree_async_proactor_io_uring_cast(base_proactor);
-  iree_allocator_t allocator = proactor->base.allocator;
-
-  // Closing the ring synchronously terminates all kernel operations. Keep
-  // event sources, relay state, source primitives, and retained notifications
-  // alive until this completes so terminal callbacks cannot observe cleanup
-  // while the kernel still holds references.
-  iree_io_uring_ring_deinitialize(&proactor->ring);
-
-  // Clean up signal handling state.
-  if (proactor->signal.initialized) {
-    // Free all signal subscriptions.
-    for (int i = 0; i < IREE_ASYNC_SIGNAL_COUNT; ++i) {
-      while (proactor->signal.subscriptions[i]) {
-        iree_async_signal_subscription_t* subscription =
-            proactor->signal.subscriptions[i];
-        proactor->signal.subscriptions[i] = subscription->next;
-        iree_allocator_free(allocator, subscription);
-      }
-    }
-    // Free the signal event source.
-    iree_allocator_free(allocator, proactor->signal.event_source);
-    proactor->signal.event_source = NULL;
-    // Deinitialize Linux signalfd state.
-    iree_async_linux_signal_deinitialize(&proactor->signal.linux_state);
-    proactor->signal.initialized = false;
-    // Release global signal ownership so another proactor can claim it.
-    iree_async_signal_release_ownership(&proactor->base);
-  }
-
-  // Free any remaining event sources. In normal use, callers should unregister
-  // all event sources before destroying the proactor, but we clean up here to
-  // avoid leaks.
-  while (proactor->event_sources) {
-    iree_async_event_source_t* source = proactor->event_sources;
-    proactor->event_sources = source->next;
-    iree_allocator_free(source->allocator, source);
-  }
-
-  // Free any remaining relays. In normal use, callers should unregister all
-  // relays before destroying the proactor, but we clean up here to avoid leaks.
-  while (proactor->relays) {
-    iree_async_io_uring_cleanup_relay_after_ring_close(proactor,
-                                                       proactor->relays);
-  }
-
-  // Deinitialize the message pool (all entries returned to free list by now).
-  iree_async_message_pool_deinitialize(&proactor->message_pool);
-
-  iree_atomic_slist_deinitialize(&proactor->pending_software_operations);
-  iree_atomic_slist_deinitialize(&proactor->pending_semaphore_waits);
-  iree_async_semaphore_wait_context_deinitialize(
-      &proactor->semaphore_wait_context);
-
-  // Free sparse buffer table. The kernel table is automatically destroyed
-  // when the ring fd is closed; this frees the userspace slot allocator.
-  iree_io_uring_sparse_table_free(proactor->buffer_table, allocator);
-
-  // Close the wake eventfd.
-  if (proactor->wake_eventfd >= 0) {
-    close(proactor->wake_eventfd);
-    proactor->wake_eventfd = -1;
-  }
-
-  // Free the proactor structure.
-  iree_allocator_free(allocator, proactor);
-
-  IREE_TRACE_ZONE_END(z0);
 }
 
 //===----------------------------------------------------------------------===//
@@ -750,147 +674,6 @@ static inline void iree_async_proactor_io_uring_handle_message_receive_cqe(
   }
 }
 
-// Unlinks and frees an event source after its final kernel CQE.
-static void iree_async_proactor_io_uring_cleanup_event_source(
-    iree_async_proactor_io_uring_t* proactor,
-    iree_async_event_source_t* source) {
-  if (source->prev) {
-    source->prev->next = source->next;
-  } else {
-    proactor->event_sources = source->next;
-  }
-  if (source->next) {
-    source->next->prev = source->prev;
-  }
-  iree_allocator_free(source->allocator, source);
-}
-
-// Handles an EVENT_SOURCE multishot poll completion.
-static void iree_async_proactor_io_uring_handle_event_source_cqe(
-    iree_async_proactor_io_uring_t* proactor, const iree_io_uring_cqe_t* cqe) {
-  // Extract the event source pointer from the payload.
-  iree_async_event_source_t* source =
-      (iree_async_event_source_t*)(uintptr_t)iree_io_uring_internal_payload(
-          cqe->user_data);
-  if (!source) {
-    return;
-  }
-
-  // Unregistration clears the callback before queuing cancellation so a CQE
-  // already in flight cannot reach caller-owned state after unregister
-  // returns.
-  if (source->callback.fn) {
-    // Translate native poll events to cross-platform enum.
-    // cqe->res contains the poll mask for POLL_ADD completions.
-    iree_async_poll_events_t events = IREE_ASYNC_POLL_EVENT_NONE;
-    if (cqe->res >= 0) {
-      if (cqe->res & POLLIN) {
-        events |= IREE_ASYNC_POLL_EVENT_IN;
-      }
-      if (cqe->res & POLLOUT) {
-        events |= IREE_ASYNC_POLL_EVENT_OUT;
-      }
-      if (cqe->res & POLLERR) {
-        events |= IREE_ASYNC_POLL_EVENT_ERR;
-      }
-      if (cqe->res & POLLHUP) {
-        events |= IREE_ASYNC_POLL_EVENT_HUP;
-      }
-      // POLLRDHUP: peer closed write half (common during clean shutdown).
-      // POLLNVAL: fd was revoked or invalid.
-      // Both indicate the fd is no longer usable for normal I/O.
-      if (cqe->res & POLLRDHUP) {
-        events |= IREE_ASYNC_POLL_EVENT_HUP;
-      }
-      if (cqe->res & POLLNVAL) {
-        events |= IREE_ASYNC_POLL_EVENT_ERR;
-      }
-    } else {
-      // Kernel error (EBADF, ECANCELED, etc.) - treat as error event.
-      events = IREE_ASYNC_POLL_EVENT_ERR;
-    }
-
-    // Invoke the user callback with poll events. The source remains
-    // armed (multishot). CQE_F_MORE should be set for multishot poll;
-    // if not, the poll was cancelled or the fd has a terminal error.
-    source->callback.fn(source->callback.user_data, source, events);
-  }
-
-  // Multishot poll produces CQEs until cancelled. CQE_F_MORE indicates more
-  // CQEs will follow; a final CQE proves that the kernel no longer references
-  // the event source.
-  if (!(cqe->flags & IREE_IORING_CQE_F_MORE)) {
-    if (source->state ==
-            IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_PENDING ||
-        source->state ==
-            IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_SUBMITTED) {
-      iree_async_proactor_io_uring_cleanup_event_source(proactor, source);
-    } else {
-      // Preserve the caller-visible handle until explicit unregistration even
-      // though the kernel ended the persistent poll after a terminal event.
-      source->state = IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_TERMINAL;
-    }
-  }
-}
-
-// Fills an SQE that begins persistent polling for |source|.
-static void iree_async_proactor_io_uring_fill_event_source_arm_sqe(
-    iree_async_event_source_t* source, iree_io_uring_sqe_t* sqe) {
-  memset(sqe, 0, sizeof(*sqe));
-  sqe->opcode = IREE_IORING_OP_POLL_ADD;
-  sqe->fd = source->fd;
-  sqe->poll32_events = POLLIN;
-  sqe->len = IREE_IORING_POLL_ADD_MULTI;
-  sqe->user_data = iree_io_uring_internal_encode(IREE_IO_URING_TAG_EVENT_SOURCE,
-                                                 (uintptr_t)source);
-}
-
-// Fills an SQE that cancels persistent polling for |source|.
-static void iree_async_proactor_io_uring_fill_event_source_cancel_sqe(
-    iree_async_event_source_t* source, iree_io_uring_sqe_t* sqe) {
-  memset(sqe, 0, sizeof(*sqe));
-  sqe->opcode = IREE_IORING_OP_POLL_REMOVE;
-  sqe->fd = -1;
-  sqe->addr = iree_io_uring_internal_encode(IREE_IO_URING_TAG_EVENT_SOURCE,
-                                            (uintptr_t)source);
-  sqe->user_data = iree_io_uring_internal_encode(IREE_IO_URING_TAG_CANCEL, 0);
-}
-
-// Queues initial arms and cancellations deferred to the poll owner. Returns
-// true when SQ pressure left work pending.
-static bool iree_async_proactor_io_uring_retry_pending_event_sources(
-    iree_async_proactor_io_uring_t* proactor) {
-  bool has_pending = false;
-  iree_io_uring_ring_sq_lock(&proactor->ring);
-  for (iree_async_event_source_t* source = proactor->event_sources; source;
-       source = source->next) {
-    if (source->state == IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_ARM_PENDING) {
-      iree_io_uring_sqe_t* sqe = iree_io_uring_ring_get_sqe(&proactor->ring);
-      if (!sqe) {
-        has_pending = true;
-        break;
-      }
-      iree_async_proactor_io_uring_fill_event_source_arm_sqe(source, sqe);
-      source->state = IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_ACTIVE;
-      continue;
-    }
-    if (source->state !=
-        IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_PENDING) {
-      continue;
-    }
-    iree_io_uring_sqe_t* sqe = iree_io_uring_ring_get_sqe(&proactor->ring);
-    if (!sqe) {
-      has_pending = true;
-      break;
-    }
-    iree_async_proactor_io_uring_fill_event_source_cancel_sqe(source, sqe);
-    source->state =
-        IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_SUBMITTED;
-  }
-  iree_io_uring_ring_sq_unlock(&proactor->ring);
-  return has_pending;
-}
-
 // Callback for signalfd dispatch - invoked for each signal read.
 static void iree_async_proactor_io_uring_signal_dispatch_callback(
     void* user_data, iree_async_signal_t signal) {
@@ -932,16 +715,12 @@ static void iree_async_proactor_io_uring_handle_signal_cqe(
 
   // Read and dispatch all pending signals from signalfd.
   if (cqe->res >= 0 && (cqe->res & POLLIN)) {
-    iree_status_t status = iree_async_linux_signal_read_signalfd(
+    IREE_CHECK_OK(iree_async_linux_signal_read_signalfd(
         &proactor->signal.linux_state,
         (iree_async_signal_dispatch_callback_t){
             .fn = iree_async_proactor_io_uring_signal_dispatch_callback,
             .user_data = proactor,
-        });
-    // Exception: ignore here because failure requires the signalfd to be
-    // invalid (EBADF) or a kernel bug - neither of which we can recover from
-    // in a CQE handler, and both are effectively impossible in practice.
-    iree_status_ignore(status);
+        }));
   }
 
   // Multishot poll remains armed until cancelled. CQE_F_MORE indicates more
@@ -966,14 +745,6 @@ static iree_status_t iree_async_proactor_io_uring_cqe_to_status(
   // FUTEX_WAIT: -EAGAIN means value mismatch (already changed), not error.
   if (cqe->res == -EAGAIN &&
       operation->type == IREE_ASYNC_OPERATION_TYPE_FUTEX_WAIT) {
-    return iree_ok_status();
-  }
-
-  // NOTIFICATION_WAIT: -EAGAIN is a satisfied wait in futex mode (the epoch
-  // already changed) or another waiter drained the eventfd before us in event
-  // mode. Treat as success: the caller will re-check or re-wait as appropriate.
-  if (cqe->res == -EAGAIN &&
-      operation->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT) {
     return iree_ok_status();
   }
 
@@ -1052,19 +823,6 @@ static inline void iree_async_proactor_io_uring_complete_socket_recvfrom(
   recvfrom->sender.length = (iree_host_size_t)msg->msg_namelen;
 }
 
-// Handles NOTIFICATION_SIGNAL completion: populates woken_count.
-static inline void iree_async_proactor_io_uring_complete_notification_signal(
-    const iree_io_uring_cqe_t* cqe,
-    iree_async_notification_signal_operation_t* signal) {
-  if (signal->notification->mode == IREE_ASYNC_NOTIFICATION_MODE_FUTEX) {
-    signal->woken_count = cqe->res;
-  } else {
-    // Event mode: write succeeded, but we can't know how many waiters
-    // were actually woken (eventfd semantics differ from futex).
-    signal->woken_count = -1;
-  }
-}
-
 // Handles FILE_OPEN completion: imports the opened fd as a file handle.
 static iree_status_t iree_async_proactor_io_uring_complete_file_open(
     iree_async_proactor_io_uring_t* proactor, const iree_io_uring_cqe_t* cqe,
@@ -1126,10 +884,6 @@ static iree_status_t iree_async_proactor_io_uring_populate_result(
       futex_wake->woken_count = cqe->res;
       break;
     }
-    case IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL:
-      iree_async_proactor_io_uring_complete_notification_signal(
-          cqe, (iree_async_notification_signal_operation_t*)operation);
-      break;
     case IREE_ASYNC_OPERATION_TYPE_FILE_OPEN:
       return iree_async_proactor_io_uring_complete_file_open(
           proactor, cqe, (iree_async_file_open_operation_t*)operation);
@@ -1193,19 +947,24 @@ iree_async_proactor_io_uring_completion_flags(
 }
 
 // Handles internal CQEs (wake poll, cancel, fence import, message, event).
-// Returns false since internal ops don't count as user completions.
-static inline bool iree_async_proactor_io_uring_process_internal_cqe(
-    iree_async_proactor_io_uring_t* proactor, const iree_io_uring_cqe_t* cqe) {
+// Owned cancellation receipts count as user completions and report native
+// errors through the poll result instead of the target callback.
+static inline iree_host_size_t
+iree_async_proactor_io_uring_process_internal_cqe(
+    iree_async_proactor_io_uring_t* proactor, const iree_io_uring_cqe_t* cqe,
+    iree_status_t* inout_poll_status) {
   switch (iree_io_uring_internal_tag(cqe->user_data)) {
     case IREE_IO_URING_TAG_WAKE:
       iree_async_proactor_io_uring_handle_wake_completion(proactor);
       break;
-    case IREE_IO_URING_TAG_CANCEL:
-      // Cancel operation completed. The result indicates whether the cancel
-      // succeeded (0), the operation was not found (-ENOENT), or was already
-      // completing (-EALREADY). We don't need to do anything here since the
-      // target operation's CQE will deliver the final status to its callback.
-      break;
+    case IREE_IO_URING_TAG_CANCEL: {
+      iree_host_size_t completed_count = 0;
+      *inout_poll_status =
+          iree_status_join(*inout_poll_status,
+                           iree_async_proactor_io_uring_complete_cancel_request(
+                               cqe, &completed_count));
+      return completed_count;
+    }
     case IREE_IO_URING_TAG_FENCE_IMPORT:
       iree_async_proactor_io_uring_handle_fence_import_completion(proactor,
                                                                   cqe);
@@ -1225,7 +984,12 @@ static inline bool iree_async_proactor_io_uring_process_internal_cqe(
       // of either success or failure, so we discard the result.
       break;
     case IREE_IO_URING_TAG_EVENT_SOURCE:
-      iree_async_proactor_io_uring_handle_event_source_cqe(proactor, cqe);
+      iree_async_io_uring_event_source_dispatch(proactor, cqe);
+      break;
+    case IREE_IO_URING_TAG_EVENT_SOURCE_CANCEL:
+      *inout_poll_status = iree_status_join(
+          *inout_poll_status,
+          iree_async_io_uring_event_source_complete_cancel(proactor, cqe));
       break;
     case IREE_IO_URING_TAG_RELAY: {
       // Extract the relay pointer from the payload.
@@ -1234,6 +998,15 @@ static inline bool iree_async_proactor_io_uring_process_internal_cqe(
               cqe->user_data);
       iree_async_io_uring_handle_relay_cqe(proactor, relay, cqe->res,
                                            cqe->flags);
+      break;
+    }
+    case IREE_IO_URING_TAG_RELAY_CANCEL: {
+      iree_async_relay_t* relay =
+          (iree_async_relay_t*)(uintptr_t)iree_io_uring_internal_payload(
+              cqe->user_data);
+      *inout_poll_status = iree_status_join(
+          *inout_poll_status,
+          iree_async_io_uring_relay_complete_cancel(proactor, relay, cqe->res));
       break;
     }
     case IREE_IO_URING_TAG_SIGNAL:
@@ -1247,7 +1020,7 @@ static inline bool iree_async_proactor_io_uring_process_internal_cqe(
                   cqe->user_data, cqe->res, cqe->flags);
       break;
   }
-  return false;  // Internal ops don't count as user completions.
+  return 0;
 }
 
 // Returns the socket for a socket I/O operation that should propagate sticky
@@ -1283,9 +1056,10 @@ iree_async_proactor_io_uring_socket_from_io_operation(
 // Returns the number of user completions (typically 1, but can be more if
 // continuation callbacks were invoked directly; 0 if suppressed, e.g., first
 // CQE of a zero-copy send waiting for NOTIF).
-static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
-    iree_async_proactor_io_uring_t* proactor, const iree_io_uring_cqe_t* cqe) {
-  // Linked POLL_ADD head CQE for EVENT_WAIT or NOTIFICATION_WAIT (event mode).
+iree_host_size_t iree_async_proactor_io_uring_process_cqe(
+    iree_async_proactor_io_uring_t* proactor, const iree_io_uring_cqe_t* cqe,
+    iree_status_t* inout_poll_status) {
+  // Linked POLL_ADD head CQE for EVENT_WAIT.
   // Always ignored — the linked READ CQE handles resource release and user
   // callback dispatch for both success (READ returns data) and failure
   // (READ gets -ECANCELED when POLL_ADD fails).
@@ -1297,8 +1071,8 @@ static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
 
   // Handle internal operations (wake poll, cancel, fence import, message).
   if (iree_io_uring_is_internal_cqe(cqe)) {
-    iree_async_proactor_io_uring_process_internal_cqe(proactor, cqe);
-    return 0;
+    return iree_async_proactor_io_uring_process_internal_cqe(proactor, cqe,
+                                                             inout_poll_status);
   }
 
   // User operation: extract the operation pointer.
@@ -1315,7 +1089,7 @@ static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
     iree_async_io_uring_socket_send_completion_t completion =
         iree_async_io_uring_socket_process_send_cqe(
             cqe, (iree_async_socket_send_operation_t*)operation);
-    if (!completion.is_terminal) {
+    if (!completion.dispatch) {
       return 0;
     }
     status = completion.status;
@@ -1324,7 +1098,7 @@ static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
     iree_async_io_uring_socket_send_completion_t completion =
         iree_async_io_uring_socket_process_sendto_cqe(
             cqe, (iree_async_socket_sendto_operation_t*)operation);
-    if (!completion.is_terminal) {
+    if (!completion.dispatch) {
       return 0;
     }
     status = completion.status;
@@ -1371,21 +1145,25 @@ static iree_host_size_t iree_async_proactor_io_uring_process_cqe(
     }
   }
 
+  bool is_notification_monitor =
+      operation->type == IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL &&
+      iree_any_bit_set(iree_async_operation_load_internal_flags(operation),
+                       IREE_ASYNC_IO_URING_NOTIFICATION_OPERATION_MONITOR);
   iree_host_size_t completed_count =
       iree_async_operation_complete(operation, status, flags);
 
-  return completed_count;
+  return is_notification_monitor ? 0 : completed_count;
 }
 
 // Submits poll-owned event source and relay operations in SQ-sized batches.
 // Registration only creates logical handles; this is the boundary that makes
 // them kernel-visible while preserving SINGLE_ISSUER ownership.
-static iree_status_t iree_async_proactor_io_uring_submit_pending_event_monitors(
+iree_status_t iree_async_proactor_io_uring_submit_pending_event_monitors(
     iree_async_proactor_io_uring_t* proactor) {
   bool has_pending = false;
   do {
     bool has_pending_event_sources =
-        iree_async_proactor_io_uring_retry_pending_event_sources(proactor);
+        iree_async_io_uring_event_source_submit_pending(proactor);
     bool has_pending_relays =
         iree_async_io_uring_retry_pending_relays(proactor);
     has_pending = has_pending_event_sources || has_pending_relays;
@@ -1416,7 +1194,15 @@ static iree_status_t iree_async_proactor_io_uring_poll(
   // the current thread as the exclusive submitter for all io_uring_enter calls.
   IREE_RETURN_IF_ERROR(iree_io_uring_ring_enable(&proactor->ring));
 
+  int32_t owner_tid = (int32_t)syscall(__NR_gettid);
+  iree_atomic_store(&proactor->polling.owner_tid, owner_tid,
+                    iree_memory_order_relaxed);
+
   bool is_immediate = iree_timeout_is_immediate(timeout);
+
+  // Accepted notification consumers share one poll-owned native monitor.
+  // Any staged SQEs are flushed with the registrations below.
+  iree_async_io_uring_notification_drain_pending(proactor);
 
   // Submit registrations and any SQEs queued before the first poll. This must
   // happen before arming the wake source: a full pre-poll SQ must not prevent
@@ -1436,21 +1222,24 @@ static iree_status_t iree_async_proactor_io_uring_poll(
                                 /*min_complete=*/0,
                                 /*flags=*/IREE_IORING_ENTER_GETEVENTS));
 
-  // Run registered progress callbacks (e.g., SHM carrier MPSC ring polling).
-  // Force non-blocking poll whenever progress callbacks are registered: they
-  // exist to be polled, and blocking in io_uring_enter would prevent them from
-  // running until an unrelated CQE arrives. The carrier's idle spin threshold
-  // naturally transitions back to sleep mode and removes the callback, bounding
-  // the busy-loop duration.
-  iree_host_size_t progress_count =
-      iree_async_proactor_run_progress(base_proactor);
+  // Run poll-owner work before waiting for native completions.
+  iree_host_size_t progress_count = 0;
+  iree_status_t progress_status =
+      iree_async_proactor_run_progress(base_proactor, &progress_count);
+  if (!iree_status_is_ok(progress_status)) {
+    if (out_completed_count) {
+      *out_completed_count = progress_count;
+    }
+    return progress_status;
+  }
   if (progress_count > 0 || base_proactor->progress_list) {
     is_immediate = true;
   }
 
   // If no CQEs are available after flushing and timeout allows blocking,
   // wait for completions.
-  if (!iree_io_uring_ring_cq_ready(&proactor->ring) && !is_immediate) {
+  if (!iree_io_uring_ring_cq_ready(&proactor->ring) && !is_immediate &&
+      !base_proactor->cancellations.list.head) {
     iree_duration_t timeout_ns = iree_timeout_as_duration_ns(timeout);
     iree_status_t wait_status =
         iree_io_uring_ring_wait_cqe(&proactor->ring, /*min_complete=*/1,
@@ -1465,7 +1254,7 @@ static iree_status_t iree_async_proactor_io_uring_poll(
   // Mark the poll thread as active. Submit paths check this to decide whether
   // to flush SQEs directly (poll thread) or defer to wake (cross-thread).
   // Set before the first MPSC drain because drain callbacks may submit ops.
-  iree_atomic_store(&proactor->poll_tid, (int32_t)syscall(__NR_gettid),
+  iree_atomic_store(&proactor->polling.dispatch_tid, owner_tid,
                     iree_memory_order_relaxed);
 
   // First MPSC drain: software work from submit threads. This starts admitted
@@ -1477,6 +1266,7 @@ static iree_status_t iree_async_proactor_io_uring_poll(
   iree_host_size_t completed =
       progress_count +
       iree_async_proactor_io_uring_drain_pending_software_operations(proactor);
+  iree_status_t status = iree_ok_status();
 
   // Process available CQEs using a CQ tail snapshot. The snapshot bounds the
   // loop to CQEs that existed before processing started. CQEs generated by
@@ -1497,7 +1287,8 @@ static iree_status_t iree_async_proactor_io_uring_poll(
       iree_io_uring_cqe_t* cqe =
           &proactor->ring
                .cqes[*proactor->ring.cq_head & proactor->ring.cq_mask];
-      completed += iree_async_proactor_io_uring_process_cqe(proactor, cqe);
+      completed +=
+          iree_async_proactor_io_uring_process_cqe(proactor, cqe, &status);
       iree_io_uring_ring_cq_advance(&proactor->ring, 1);
     }
   }
@@ -1508,6 +1299,7 @@ static iree_status_t iree_async_proactor_io_uring_poll(
   // from Phase 4 flushes, because those CQEs correspond to operations later in
   // the chain. Example: [RECV → SIGNAL → SEND] — SIGNAL's callback must
   // fire before SEND's CQE is processed.
+  iree_async_io_uring_notification_drain_pending(proactor);
   completed +=
       iree_async_proactor_io_uring_drain_pending_software_operations(proactor);
 
@@ -1528,58 +1320,79 @@ static iree_status_t iree_async_proactor_io_uring_poll(
   // caller's next poll turn observes the ready CQE or blocks on the submitted
   // operation. No operation lifetime depends on the number of drain passes.
   for (int drain_pass = 0;
-       drain_pass < IREE_ASYNC_IO_URING_CQE_DRAIN_PASS_BUDGET; ++drain_pass) {
-    IREE_RETURN_IF_ERROR(
-        iree_io_uring_ring_submit(&proactor->ring,
-                                  /*min_complete=*/0,
-                                  /*flags=*/IREE_IORING_ENTER_GETEVENTS));
-    uint32_t drain_tail_snapshot =
-        iree_atomic_load((iree_atomic_int32_t*)proactor->ring.cq_tail,
-                         iree_memory_order_acquire);
-    if (*proactor->ring.cq_head == drain_tail_snapshot) {
-      break;
+       drain_pass < IREE_ASYNC_IO_URING_CQE_DRAIN_PASS_BUDGET &&
+       iree_status_is_ok(status);
+       ++drain_pass) {
+    iree_async_io_uring_notification_drain_pending(proactor);
+    completed += iree_async_proactor_io_uring_drain_pending_software_operations(
+        proactor);
+    status = iree_async_proactor_io_uring_submit_cancel_requests(proactor);
+    if (iree_status_is_ok(status)) {
+      status = iree_io_uring_ring_submit(&proactor->ring, /*min_complete=*/0,
+                                         IREE_IORING_ENTER_GETEVENTS);
     }
-    while (*proactor->ring.cq_head != drain_tail_snapshot) {
-      iree_io_uring_cqe_t* cqe =
-          &proactor->ring
-               .cqes[*proactor->ring.cq_head & proactor->ring.cq_mask];
-      completed += iree_async_proactor_io_uring_process_cqe(proactor, cqe);
-      iree_io_uring_ring_cq_advance(&proactor->ring, 1);
+    if (iree_status_is_ok(status)) {
+      uint32_t drain_tail_snapshot =
+          iree_atomic_load((iree_atomic_int32_t*)proactor->ring.cq_tail,
+                           iree_memory_order_acquire);
+      if (*proactor->ring.cq_head == drain_tail_snapshot) {
+        break;
+      }
+      while (*proactor->ring.cq_head != drain_tail_snapshot) {
+        iree_io_uring_cqe_t* cqe =
+            &proactor->ring
+                 .cqes[*proactor->ring.cq_head & proactor->ring.cq_mask];
+        completed +=
+            iree_async_proactor_io_uring_process_cqe(proactor, cqe, &status);
+        iree_io_uring_ring_cq_advance(&proactor->ring, 1);
+      }
     }
   }
 
-  // Clear poll thread marker. Subsequent submit calls (from message/semaphore
-  // drain callbacks, relay re-arms, etc.) use the normal wake path. SQEs they
-  // submit are flushed at the start of the next poll() call.
-  iree_atomic_store(&proactor->poll_tid, 0, iree_memory_order_relaxed);
+  // The final drains can enqueue software work for the next poll. Preserve
+  // their normal wake path, including when kernel submission failed.
+  // Acquire submissions from producers that suppressed their wake while this
+  // dispatch interval was active. Later producers observe idle and wake us.
+  iree_atomic_exchange(&proactor->polling.dispatch_tid, 0,
+                       iree_memory_order_acq_rel);
 
-  // Drain pending messages from the fallback MPSC queue.
-  // This handles messages that arrived via eventfd wake rather than MSG_RING.
-  iree_async_proactor_io_uring_drain_pending_messages(proactor);
+  if (iree_status_is_ok(status)) {
+    // Acquire notification intents from submitters that suppressed their wake
+    // before dispatch_tid became idle. A monitor staged here must be submitted
+    // before returning; future submitters use the normal wake path.
+    if (iree_async_io_uring_notification_drain_pending(proactor)) {
+      status = iree_io_uring_ring_submit(&proactor->ring, /*min_complete=*/0,
+                                         IREE_IORING_ENTER_GETEVENTS);
+    }
 
-  // Drain pending semaphore wait completions.
-  // These are pushed by timepoint callbacks when semaphores reach target
-  // values. Count them as completions since they invoke user callbacks.
-  completed +=
-      iree_async_proactor_io_uring_drain_pending_semaphore_waits(proactor);
+    // Drain pending messages from the fallback MPSC queue.
+    // This handles messages that arrived via eventfd wake rather than MSG_RING.
+    iree_async_proactor_io_uring_drain_pending_messages(proactor);
 
-  // Third MPSC drain: software work pushed during the CQE drain loop and
-  // semaphore wait dispatch. Each CQE drain pass may dispatch continuations
-  // that push software work. Semaphore wait dispatch similarly pushes
-  // continuation completions.
-  completed +=
-      iree_async_proactor_io_uring_drain_pending_software_operations(proactor);
+    // Drain pending semaphore wait completions.
+    // These are pushed by timepoint callbacks when semaphores reach target
+    // values. Count them as completions since they invoke user callbacks.
+    completed +=
+        iree_async_proactor_io_uring_drain_pending_semaphore_waits(proactor);
+
+    // Third MPSC drain: software work pushed during the CQE drain loop and
+    // semaphore wait dispatch. Each CQE drain pass may dispatch continuations
+    // that push software work. Semaphore wait dispatch similarly pushes
+    // continuation completions.
+    completed += iree_async_proactor_io_uring_drain_pending_software_operations(
+        proactor);
+  }
 
   if (out_completed_count) {
     *out_completed_count = completed;
   }
 
   // Return DEADLINE_EXCEEDED for immediate poll with no completions.
-  if (completed == 0 && is_immediate) {
-    return iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
+  if (iree_status_is_ok(status) && completed == 0 && is_immediate) {
+    status = iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
   }
 
-  return iree_ok_status();
+  return status;
 }
 
 //===----------------------------------------------------------------------===//
@@ -1620,86 +1433,6 @@ static void iree_async_proactor_io_uring_wake(
   IREE_ASSERT(result == sizeof(value),
               "failed to signal io_uring wake eventfd: %zd (errno=%d)", result,
               errno);
-}
-
-//===----------------------------------------------------------------------===//
-// Cancel
-//===----------------------------------------------------------------------===//
-
-// Requests cancellation of a software-only SEMAPHORE_WAIT operation. The poll
-// thread owns timepoint cancellation so it can join callbacks before freeing
-// the shared tracker.
-static iree_status_t iree_async_proactor_io_uring_cancel_semaphore_wait(
-    iree_async_proactor_io_uring_t* proactor,
-    iree_async_semaphore_wait_operation_t* wait_op) {
-  iree_async_semaphore_wait_context_request_cancellation(
-      &proactor->semaphore_wait_context, wait_op);
-  return iree_ok_status();
-}
-
-static iree_status_t iree_async_proactor_io_uring_cancel(
-    iree_async_proactor_t* base_proactor, iree_async_operation_t* operation) {
-  iree_async_proactor_io_uring_t* proactor =
-      iree_async_proactor_io_uring_cast(base_proactor);
-
-  // SEMAPHORE_WAIT uses software-only timepoints, not kernel operations.
-  // Handle cancellation specially.
-  if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEMAPHORE_WAIT) {
-    return iree_async_proactor_io_uring_cancel_semaphore_wait(
-        proactor, (iree_async_semaphore_wait_operation_t*)operation);
-  }
-
-  // SEQUENCE manages its own step tracking. Cancel propagates through the
-  // shared sequence_emulation cancel function, which cancels the current
-  // in-flight step via the proactor's normal cancel path (re-entering this
-  // function for the step's operation type).
-  if (operation->type == IREE_ASYNC_OPERATION_TYPE_SEQUENCE) {
-    return iree_async_sequence_cancel(
-        base_proactor, (iree_async_sequence_operation_t*)operation);
-  }
-
-  // Get an SQE for the cancel request.
-  iree_io_uring_ring_sq_lock(&proactor->ring);
-  iree_io_uring_sqe_t* sqe = iree_io_uring_ring_get_sqe(&proactor->ring);
-  if (!sqe) {
-    iree_io_uring_ring_sq_unlock(&proactor->ring);
-    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                            "SQ full, cannot submit cancel");
-  }
-
-  // Fill the cancel SQE.
-  // ASYNC_CANCEL targets operations by their user_data. The cancel SQE uses an
-  // internal token so its CQE is handled silently (the target operation's CQE
-  // delivers the actual result).
-  //
-  // EVENT_WAIT and NOTIFICATION_WAIT use linked POLL_ADD+READ pairs where:
-  //   POLL_ADD user_data = TAG_LINKED_POLL encoded with operation pointer
-  //   READ user_data = operation pointer
-  //
-  // Cancel must target the POLL_ADD because the linked READ hasn't been started
-  // by the kernel (it waits behind the POLL_ADD link). The kernel does not
-  // generate a CQE for the unstarted linked READ, so the TAG_LINKED_POLL
-  // handler dispatches the user callback from the POLL_ADD's error CQE.
-  memset(sqe, 0, sizeof(*sqe));
-  sqe->opcode = IREE_IORING_OP_ASYNC_CANCEL;
-  sqe->fd = -1;
-  if (operation->type == IREE_ASYNC_OPERATION_TYPE_EVENT_WAIT ||
-      operation->type == IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_WAIT) {
-    sqe->addr = iree_io_uring_internal_encode(IREE_IO_URING_TAG_LINKED_POLL,
-                                              (uintptr_t)operation);
-  } else {
-    sqe->addr = (uint64_t)(uintptr_t)operation;
-  }
-  sqe->user_data = iree_io_uring_internal_encode(IREE_IO_URING_TAG_CANCEL, 0);
-  iree_io_uring_ring_sq_unlock(&proactor->ring);
-
-  // Wake the poll thread to submit the pending ASYNC_CANCEL SQE.
-  // Only the poll thread may call io_uring_enter (SINGLE_ISSUER constraint),
-  // and cancel() can be called from any thread. The SQE is fully prepared in
-  // the ring; the next io_uring_enter (from poll or from the same thread's
-  // PollUntil) will submit it.
-  iree_async_proactor_wake(&proactor->base);
-  return iree_ok_status();
 }
 
 //===----------------------------------------------------------------------===//
@@ -1805,37 +1538,20 @@ static iree_status_t iree_async_proactor_io_uring_create_event(
       iree_async_proactor_io_uring_cast(base_proactor);
   iree_allocator_t allocator = proactor->base.allocator;
 
-  // Allocate and zero-initialize the event structure.
   iree_async_event_t* event = NULL;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_allocator_malloc(allocator, sizeof(*event), (void**)&event));
-  memset(event, 0, sizeof(*event));
-
-  // Create the eventfd. EFD_CLOEXEC prevents leakage to child processes.
-  // EFD_NONBLOCK is required for io_uring POLL_ADD (avoids blocking on read).
-  int eventfd_result = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK);
-  if (eventfd_result < 0) {
+  iree_status_t status = iree_async_event_native_initialize(&event->native);
+  if (iree_status_is_ok(status)) {
+    iree_atomic_ref_count_init(&event->ref_count);
+    event->proactor = base_proactor;
+    event->fixed_file_index = -1;
+    *out_event = event;
+  } else {
     iree_allocator_free(allocator, event);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(iree_status_code_from_errno(errno),
-                            "eventfd creation failed (%d)", errno);
   }
-
-  // Initialize the event structure.
-  iree_atomic_ref_count_init(&event->ref_count);
-  event->proactor = base_proactor;
-  event->primitive = iree_async_primitive_from_fd(eventfd_result);
-  // On Linux, signal_primitive is the same as primitive (eventfd is
-  // bidirectional: write to signal, read to drain).
-  event->signal_primitive = event->primitive;
-  event->fixed_file_index = -1;
-  event->pool = NULL;
-  event->pool_next = NULL;
-  event->pool_all_next = NULL;
-
-  *out_event = event;
   IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
+  return status;
 }
 
 static void iree_async_proactor_io_uring_destroy_event(
@@ -1850,11 +1566,7 @@ static void iree_async_proactor_io_uring_destroy_event(
       iree_async_proactor_io_uring_cast(base_proactor);
   iree_allocator_t allocator = proactor->base.allocator;
 
-  // Close the eventfd. On Linux, primitive == signal_primitive, so close once.
-  if (event->primitive.value.fd >= 0) {
-    close(event->primitive.value.fd);
-  }
-
+  iree_async_event_native_deinitialize(&event->native);
   iree_allocator_free(allocator, event);
   IREE_TRACE_ZONE_END(z0);
 }
@@ -1874,11 +1586,11 @@ static iree_status_t iree_async_proactor_io_uring_create_notification(
 
 static iree_status_t iree_async_proactor_io_uring_create_notification_shared(
     iree_async_proactor_t* base_proactor,
-    const iree_async_notification_shared_options_t* options,
+    iree_async_notification_native_t* native,
     iree_async_notification_t** out_notification) {
   iree_async_proactor_io_uring_t* proactor =
       iree_async_proactor_io_uring_cast(base_proactor);
-  return iree_async_io_uring_notification_create_shared(proactor, options,
+  return iree_async_io_uring_notification_create_shared(proactor, native,
                                                         out_notification);
 }
 
@@ -2018,124 +1730,6 @@ static iree_status_t iree_async_proactor_io_uring_export_fence(
   }
   IREE_TRACE_ZONE_END(z0);
   return status;
-}
-
-//===----------------------------------------------------------------------===//
-// Event source registration
-//===----------------------------------------------------------------------===//
-
-static iree_status_t iree_async_proactor_io_uring_register_event_source(
-    iree_async_proactor_t* base_proactor, iree_async_primitive_t handle,
-    iree_async_event_source_callback_t callback,
-    iree_async_event_source_t** out_event_source) {
-  IREE_TRACE_ZONE_BEGIN(z0);
-  IREE_ASSERT_ARGUMENT(out_event_source);
-  *out_event_source = NULL;
-
-  iree_async_proactor_io_uring_t* proactor =
-      iree_async_proactor_io_uring_cast(base_proactor);
-
-  // Validate arguments.
-  if (handle.type != IREE_ASYNC_PRIMITIVE_TYPE_FD) {
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "register_event_source requires an FD primitive (got type %d)",
-        (int)handle.type);
-  }
-  if (handle.value.fd < 0) {
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "register_event_source fd must be >= 0 (got %d)",
-                            handle.value.fd);
-  }
-  if (!callback.fn) {
-    IREE_TRACE_ZONE_END(z0);
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "register_event_source requires a non-NULL "
-                            "callback function");
-  }
-
-  // Allocate the event source struct.
-  iree_async_event_source_t* source = NULL;
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(
-      z0, iree_allocator_malloc(proactor->base.allocator, sizeof(*source),
-                                (void**)&source));
-
-  // Initialize the event source.
-  source->next = NULL;
-  source->prev = NULL;
-  source->proactor = base_proactor;
-  source->fd = handle.value.fd;
-  source->callback = callback;
-  source->state = IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_ARM_PENDING;
-  source->allocator = proactor->base.allocator;
-
-  // Link into the proactor's event source list.
-  source->next = proactor->event_sources;
-  if (proactor->event_sources) {
-    proactor->event_sources->prev = source;
-  }
-  proactor->event_sources = source;
-
-  // The poll owner converts ARM_PENDING into a kernel operation. This keeps
-  // io_uring_enter on the SINGLE_ISSUER thread and allows registration batches
-  // larger than the submission queue.
-  iree_async_proactor_wake(&proactor->base);
-
-  *out_event_source = source;
-  IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
-}
-
-static void iree_async_proactor_io_uring_unregister_event_source(
-    iree_async_proactor_t* base_proactor,
-    iree_async_event_source_t* event_source) {
-  if (!event_source) {
-    return;
-  }
-
-  IREE_TRACE_ZONE_BEGIN(z0);
-  iree_async_proactor_io_uring_t* proactor =
-      iree_async_proactor_io_uring_cast(base_proactor);
-
-  // An unarmed source has no kernel reference. A terminal CQE has already
-  // proven the same for a source whose persistent poll ended.
-  if (event_source->state ==
-          IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_ARM_PENDING ||
-      event_source->state == IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_TERMINAL) {
-    iree_async_proactor_io_uring_cleanup_event_source(proactor, event_source);
-    IREE_TRACE_ZONE_END(z0);
-    return;
-  }
-
-  // Suppress callbacks before racing with source CQEs already in flight. The
-  // source stays in the list until its final CQE or proactor destruction.
-  event_source->callback.fn = NULL;
-  event_source->state =
-      IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_PENDING;
-
-  // Queue POLL_REMOVE to cancel the multishot poll. If the submission queue is
-  // full, the poll loop retries after processing completions.
-  iree_io_uring_ring_sq_lock(&proactor->ring);
-  iree_io_uring_sqe_t* sqe = iree_io_uring_ring_get_sqe(&proactor->ring);
-  if (sqe) {
-    iree_async_proactor_io_uring_fill_event_source_cancel_sqe(event_source,
-                                                              sqe);
-    event_source->state =
-        IREE_ASYNC_IO_URING_EVENT_SOURCE_STATE_UNREGISTRATION_SUBMITTED;
-  }
-  iree_io_uring_ring_sq_unlock(&proactor->ring);
-
-  if (sqe) {
-    // Wake the poll thread to submit the cancellation SQE.
-    iree_async_proactor_wake(&proactor->base);
-  }
-
-  // The poll thread flushes the cancellation and owns the source until the
-  // terminal CQE. Proactor destruction closes the ring before freeing any
-  // remaining source state.
-  IREE_TRACE_ZONE_END(z0);
 }
 
 //===----------------------------------------------------------------------===//
@@ -2341,9 +1935,8 @@ const iree_async_proactor_vtable_t iree_async_proactor_io_uring_vtable = {
     .destroy_file = iree_async_proactor_io_uring_destroy_file,
     .create_event = iree_async_proactor_io_uring_create_event,
     .destroy_event = iree_async_proactor_io_uring_destroy_event,
-    .register_event_source = iree_async_proactor_io_uring_register_event_source,
-    .unregister_event_source =
-        iree_async_proactor_io_uring_unregister_event_source,
+    .register_event_source = iree_async_io_uring_event_source_register,
+    .unregister_event_source = iree_async_io_uring_event_source_unregister,
     .create_notification = iree_async_proactor_io_uring_create_notification,
     .create_notification_shared =
         iree_async_proactor_io_uring_create_notification_shared,

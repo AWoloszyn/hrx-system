@@ -10,8 +10,8 @@
 
 #include "iree/async/operations/scheduling.h"
 #include "iree/base/threading/mutex.h"
-#include "iree/net/carrier/loopback/framed_endpoint.h"
 #include "iree/net/endpoint_lifecycle.h"
+#include "iree/net/framed_endpoint.h"
 
 typedef struct iree_net_loopback_connection_t iree_net_loopback_connection_t;
 
@@ -31,7 +31,7 @@ typedef struct iree_net_loopback_endpoint_slot_t {
   iree_net_loopback_connection_t* connection;
 
   // Eagerly constructed payload endpoint for this ordinal.
-  iree_net_loopback_framed_endpoint_t* endpoint;
+  iree_net_framed_endpoint_t* endpoint;
 
   // Preallocated operation dispatching the endpoint-ready callback.
   iree_async_nop_operation_t ready_operation;
@@ -87,7 +87,7 @@ static void iree_net_loopback_connection_destroy(
 
   iree_allocator_t host_allocator = connection->base.host_allocator;
   for (uint32_t i = 0; i < connection->base.max_endpoint_count; ++i) {
-    iree_net_loopback_framed_endpoint_free(connection->endpoints[i].endpoint);
+    iree_net_framed_endpoint_free(connection->endpoints[i].endpoint);
   }
   iree_async_proactor_release(connection->proactor);
   iree_slim_mutex_deinitialize(&connection->mutex);
@@ -147,7 +147,7 @@ static void iree_net_loopback_connection_deactivation_complete(
 static void iree_net_loopback_connection_begin_endpoint_drain(
     iree_net_loopback_connection_t* connection) {
   for (uint32_t i = 0; i < connection->base.max_endpoint_count; ++i) {
-    iree_net_loopback_framed_endpoint_join_deactivation(
+    iree_net_framed_endpoint_join_deactivation(
         connection->endpoints[i].endpoint);
   }
   iree_net_endpoint_deactivation_barrier_commit(
@@ -205,7 +205,7 @@ static void iree_net_loopback_endpoint_ready_complete(
   if (iree_status_is_ok(status) &&
       connection->state == IREE_NET_LOOPBACK_CONNECTION_STATE_OPEN) {
     message_endpoint =
-        iree_net_loopback_framed_endpoint_as_message_endpoint(slot->endpoint);
+        iree_net_framed_endpoint_as_message_endpoint(slot->endpoint);
   } else if (iree_status_is_ok(status)) {
     status = iree_make_status(IREE_STATUS_CANCELLED,
                               "connection deactivated before endpoint ready");
@@ -338,7 +338,7 @@ iree_status_t iree_net_loopback_connection_create_pair(
         client_proactor, server_proactor, carrier_options, host_allocator,
         &client_carrier, &server_carrier);
     if (iree_status_is_ok(status)) {
-      status = iree_net_loopback_framed_endpoint_allocate(
+      status = iree_net_framed_endpoint_allocate(
           client_carrier, client_proactor, carrier_options->max_send_operations,
           &client_connection->deactivation_barrier, host_allocator,
           &client_connection->endpoints[i].endpoint);
@@ -347,7 +347,7 @@ iree_status_t iree_net_loopback_connection_create_pair(
       }
     }
     if (iree_status_is_ok(status)) {
-      status = iree_net_loopback_framed_endpoint_allocate(
+      status = iree_net_framed_endpoint_allocate(
           server_carrier, server_proactor, carrier_options->max_send_operations,
           &server_connection->deactivation_barrier, host_allocator,
           &server_connection->endpoints[i].endpoint);

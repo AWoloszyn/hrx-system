@@ -412,23 +412,45 @@ failure.
 
 ### Notifications (`notification.h`)
 
-Level-triggered signaling for waking worker threads from I/O completions.
-
-Unlike events (edge-triggered, one signal per wait), notifications use epoch
-counting: multiple signals coalesce, and waiters observe any signal that
-occurred after their wait was submitted.
+Epoch-based signaling for worker threads and proactor operations. Multiple
+signals may coalesce. A caller captures its wait token before checking the
+condition it protects; waiting completes when the epoch differs from that
+token. Native readiness is a wake hint, not one permit per logical observer.
 
 Key operations:
 - `iree_async_notification_signal(notification, wake_count)` -- Thread-safe,
   async-signal-safe.
-- `iree_async_notification_wait(notification, timeout)` -- Blocking wait for
-  worker threads outside the proactor's poll loop.
+- `iree_async_notification_wait(notification, wait_token, timeout)` -- Blocking
+  wait for worker threads outside the proactor's poll loop.
 - `NOTIFICATION_WAIT` / `NOTIFICATION_SIGNAL` operation types -- Async variants
   that integrate with the proactor's event loop and support LINK chains.
 
-Platform mapping: futex on Linux (when available), condvar fallback on macOS.
+Private blocking waits use futex on Linux, WaitOnAddress on Windows, or the
+local condvar implementation where native address waits are unavailable.
 On io_uring 6.7+, notification operations use kernel-side FUTEX_WAIT/WAKE for
 relay LINK chains without userspace round-trips.
+
+`runtime/src/iree/async/notification_native.h` provides shared state and native
+resources independently of a proactor. Publishers and blocking workers can use
+the native bundle directly; a managed shared notification borrows that bundle
+for async observation. Each bundle has one receiving domain with one async
+poll owner and any blocking callers sharing its native container. Independently
+imported containers can publish, but separate receiving domains need separate
+bundles. Blocking observers never drain the async doorbell.
+
+Linux combines an eventfd with a shared futex. Windows uses separate async and
+synchronous auto-reset events with local caller handoff. Apple shared waits
+require a supporting SDK and macOS 14.4 or newer; construction returns
+`UNAVAILABLE` when support is absent, without disabling private notifications.
+Publication is infallible, with no acknowledgement of peer progress, and skips
+the additional synchronous wake when no blocking callers are enrolled.
+
+The native owner keeps its mapping and resources alive through all publishers,
+blocking calls, and async consumer retirement. Terminal async completion joins
+native observation before returning the last consumer's borrowed ownership.
+Event-source and relay unregistration callbacks likewise establish when
+borrowed context and native resources can be released. A timeout on remote
+progress is not a substitute for these ownership joins.
 
 ### Relays (`relay.h`)
 

@@ -12,7 +12,7 @@
 //
 // Semantics: set() makes the event signaled (thread-safe, may be called from
 // any context). The proactor detects the signaled state during poll() and
-// delivers the completion. reset() drains the signal after handling.
+// delivers the completion and consumes the signal.
 //
 // Platform mapping:
 //   Linux:   eventfd (write to signal, read to reset)
@@ -34,38 +34,65 @@ typedef struct iree_async_event_pool_t iree_async_event_pool_t;
 typedef struct iree_async_proactor_t iree_async_proactor_t;
 
 //===----------------------------------------------------------------------===//
-// Event
+// Native event storage
 //===----------------------------------------------------------------------===//
 
-// A proactor-managed signaling primitive. Created via
-// iree_async_event_create().
+// Owned native wait/signal resources, independent of any proactor. No
+// allocation or reference count is required for the container. Keep it alive
+// until every borrower and concurrent signal call has retired; copying it does
+// not duplicate ownership. A zero-initialized instance is empty and may be
+// deinitialized.
 //
-// The event uses two primitives: one for monitoring (the proactor polls this)
-// and one for signaling (set() writes to this). On some platforms these are
-// the same handle; on others they differ:
+// Linux/Android use one coalescing eventfd; Windows uses one auto-reset Event.
+// Both primitive fields refer to the same owned handle on these platforms.
+// macOS/BSD use a pipe pair. Retaining both pipe ends keeps signaling valid
+// even after a peer closes its handles; an unpolled read end is a lifetime
+// guard, not a second consumer. Only one consumer may drain each native event.
 //
-//   Platform   | primitive (poll)   | signal_primitive (set)  | Same?
-//   -----------|--------------------|-----------------------------|------
-//   Linux      | eventfd            | eventfd (same fd)           | Yes
-//   macOS/BSD  | pipe read end      | pipe write end              | No
-//   Windows    | Win32 event        | Win32 event (same HANDLE)   | Yes
-//
-// Implementers: when primitive == signal_primitive, close only once during
-// destroy. When they differ (pipe), close both ends independently.
+// Shared notifications can borrow these primitives while a separate owner
+// retains them beyond notification/proactor teardown. Setting the native event
+// does not advance a notification epoch or wake synchronous address waiters.
+typedef struct iree_async_event_native_t {
+  // Borrowed by the single native polling/draining consumer.
+  iree_async_primitive_t wait_primitive;
+  // Written by set(); may alias wait_primitive's owned handle.
+  iree_async_primitive_t signal_primitive;
+} iree_async_event_native_t;
+
+// Creates an initially unsignaled native event with nonblocking,
+// noninheritable handles. On failure, leaves |out_event| empty.
+IREE_API_EXPORT iree_status_t
+iree_async_event_native_initialize(iree_async_event_native_t* out_event);
+
+// Closes the owned handle(s) exactly once and leaves |event| empty. All native
+// waits and signal calls must have retired before deinitialization.
+IREE_API_EXPORT void iree_async_event_native_deinitialize(
+    iree_async_event_native_t* event);
+
+// Signals an initialized native event without accessing a proactor. Thread-safe
+// against other signal calls, but not deinitialization. Multiple signals may
+// coalesce; saturation of a nonblocking native counter/pipe is already signaled
+// and needs no additional wake. Publication is infallible and does not
+// acknowledge observer progress. The owner must retain the native resources
+// until every concurrent signal call and borrowed wait has retired.
+IREE_API_EXPORT void iree_async_event_native_set(
+    const iree_async_event_native_t* event);
+
+//===----------------------------------------------------------------------===//
+// Managed event
+//===----------------------------------------------------------------------===//
+
+// A signaling primitive bound to one proactor for asynchronous waits. Created
+// via iree_async_event_create(); the proactor must outlive the managed event.
 typedef struct iree_async_event_t {
+  // References to this managed event, independent of pool ownership.
   iree_atomic_ref_count_t ref_count;
 
   // The proactor this event is bound to. Not retained.
   iree_async_proactor_t* proactor;
 
-  // Primitive monitored by the proactor for readability/signaled state.
-  // On Linux: eventfd. On macOS: pipe read end. On Windows: Win32 event.
-  iree_async_primitive_t primitive;
-
-  // Primitive written to by set() to trigger the signal.
-  // On Linux: same eventfd (write 1). On macOS: pipe write end (write 1 byte).
-  // On Windows: same Win32 event (SetEvent).
-  iree_async_primitive_t signal_primitive;
+  // Native resources owned until this managed event is destroyed.
+  iree_async_event_native_t native;
 
   // io_uring fixed file index (-1 if not registered).
   int32_t fixed_file_index;
@@ -99,7 +126,7 @@ typedef struct iree_async_event_t {
 // Implementation:
 //   io_uring: eventfd (IORING_OP_POLL_ADD for waits)
 //   IOCP: Event object (SetEvent/WaitForSingleObject)
-//   kqueue: EVFILT_USER
+//   kqueue: pipe + EVFILT_READ
 //   generic: eventfd or pipe + poll
 //
 // Note: For cross-platform notification semantics with richer features,
@@ -118,10 +145,11 @@ IREE_API_EXPORT void iree_async_event_retain(iree_async_event_t* event);
 // Decrements the reference count and destroys if it reaches zero.
 IREE_API_EXPORT void iree_async_event_release(iree_async_event_t* event);
 
-// Signals the event. Thread-safe, async-signal-safe.
+// Signals the event. Thread-safe.
 // Wakes the proactor's poll() if it is monitoring this event.
 // Idempotent: multiple calls before the wait completes are coalesced.
-IREE_API_EXPORT iree_status_t iree_async_event_set(iree_async_event_t* event);
+// Publication is infallible; completion is observed through accepted waits.
+IREE_API_EXPORT void iree_async_event_set(iree_async_event_t* event);
 
 #ifdef __cplusplus
 }  // extern "C"

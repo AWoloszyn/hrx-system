@@ -10,11 +10,12 @@
 static iree_async_io_uring_socket_send_completion_t
 iree_async_io_uring_socket_process_send_cqe_impl(
     const iree_io_uring_cqe_t* cqe, iree_async_operation_type_t operation_type,
-    int32_t* primary_result, iree_host_size_t* bytes_sent) {
+    iree_async_socket_send_flags_t send_flags, int32_t* primary_result,
+    iree_host_size_t* bytes_sent) {
   iree_async_io_uring_socket_send_completion_t completion = {
       .status = iree_ok_status(),
       .flags = IREE_ASYNC_COMPLETION_FLAG_NONE,
-      .is_terminal = true,
+      .dispatch = true,
   };
 
   bool is_notification = iree_any_bit_set(cqe->flags, IREE_IORING_CQE_F_NOTIF);
@@ -25,7 +26,11 @@ iree_async_io_uring_socket_process_send_cqe_impl(
     *primary_result = cqe->res;
     *bytes_sent = cqe->res >= 0 ? (iree_host_size_t)cqe->res : 0;
     if (iree_any_bit_set(cqe->flags, IREE_IORING_CQE_F_MORE)) {
-      completion.is_terminal = false;
+      completion.dispatch =
+          cqe->res > 0 &&
+          iree_any_bit_set(send_flags,
+                           IREE_ASYNC_SOCKET_SEND_FLAG_REPORT_PROGRESS);
+      completion.flags = IREE_ASYNC_COMPLETION_FLAG_MORE;
       return completion;
     }
   }
@@ -47,7 +52,7 @@ iree_async_io_uring_socket_process_send_cqe(
     const iree_io_uring_cqe_t* cqe,
     iree_async_socket_send_operation_t* operation) {
   return iree_async_io_uring_socket_process_send_cqe_impl(
-      cqe, IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND,
+      cqe, IREE_ASYNC_OPERATION_TYPE_SOCKET_SEND, operation->send_flags,
       &operation->platform.io_uring.primary_result, &operation->bytes_sent);
 }
 
@@ -56,6 +61,6 @@ iree_async_io_uring_socket_process_sendto_cqe(
     const iree_io_uring_cqe_t* cqe,
     iree_async_socket_sendto_operation_t* operation) {
   return iree_async_io_uring_socket_process_send_cqe_impl(
-      cqe, IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO,
+      cqe, IREE_ASYNC_OPERATION_TYPE_SOCKET_SENDTO, operation->send_flags,
       &operation->platform.io_uring.primary_result, &operation->bytes_sent);
 }

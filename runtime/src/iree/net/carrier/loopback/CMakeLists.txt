@@ -27,38 +27,19 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
-    framed_endpoint
-  HDRS
-    "framed_endpoint.h"
-  SRCS
-    "framed_endpoint.c"
-  DEPS
-    iree::async
-    iree::base
-    iree::base::core_headers
-    iree::base::threading
-    iree::net::carrier
-    iree::net::endpoint_lifecycle
-    iree::net::framing_adapter
-    iree::net::message_endpoint
-  PUBLIC
-)
-
-iree_cc_library(
-  NAME
     connection
   HDRS
     "connection.h"
   SRCS
     "connection.c"
   DEPS
-    ::framed_endpoint
     ::loopback
     iree::async
     iree::base
     iree::base::threading
     iree::net::connection
     iree::net::endpoint_lifecycle
+    iree::net::framed_endpoint
   PUBLIC
 )
 

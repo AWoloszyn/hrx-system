@@ -150,19 +150,11 @@ typedef struct iree_async_proactor_posix_t {
   // Timer state (poll thread only).
   iree_async_posix_timer_list_t timers;
 
-  // Count of fd-registered operations with CANCELLED flag set, waiting for the
-  // poll thread to remove them from the fd_map and push CANCELLED completions.
-  // Incremented by cancel() from any thread; decremented by the poll thread
-  // during drain_pending_fd_cancellations(). Used to avoid scanning the fd_map
-  // on every poll iteration when no cancellations are pending.
-  iree_atomic_int32_t pending_fd_cancellation_count;
-
-  // Count of timer operations in the timer_list with CANCELLED flag set,
-  // waiting for the poll thread to remove them and push CANCELLED completions.
-  // Incremented by cancel() from any thread; decremented by the poll thread
-  // during drain_pending_timer_cancellations(). Without this, cancelled timers
-  // linger in the timer_list until their original deadline expires.
-  iree_atomic_int32_t pending_timer_cancellation_count;
+  // Coalesced requests to service cancellation in the descriptor map or timer
+  // list. Producers set bits after marking an operation cancelled; the poll
+  // owner exchanges them for zero before scanning. Duplicate requests do not
+  // accumulate debt, and ordinary polling does not scan either collection.
+  iree_atomic_int32_t pending_cancellations;
 
   // Sequence emulator for IREE_ASYNC_OPERATION_TYPE_SEQUENCE operations.
   // Drives step-by-step execution when step_fn is set. When step_fn is NULL,
@@ -187,6 +179,24 @@ void iree_async_proactor_posix_wake_poll_thread(
 // poll thread. Matches iree_async_continuation_submit_fn_t.
 iree_status_t iree_async_proactor_posix_submit_continuation(
     void* user_data, iree_async_operation_t* chain_head);
+
+// Returns the descriptor and readiness interests of an fd-based operation.
+int iree_async_proactor_posix_operation_fd(iree_async_operation_t* operation);
+short iree_async_proactor_posix_operation_poll_events(
+    const iree_async_operation_t* operation);
+
+// Returns accepted resources and dispatches a completion on the poll owner.
+// The operation may be destroyed by the callback.
+iree_host_size_t iree_async_proactor_posix_complete_direct(
+    iree_async_proactor_posix_t* proactor, iree_async_operation_t* operation,
+    iree_status_t status, iree_async_completion_flags_t flags);
+
+// Retires a bounded batch of private fd cancellations through the existing
+// per-descriptor readiness chains. Native deregistration errors retain
+// ownership.
+iree_status_t iree_async_proactor_posix_drain_cancel_requests(
+    iree_async_proactor_posix_t* proactor,
+    iree_host_size_t* inout_completed_count);
 
 // Creates a threaded proactor using poll() + worker pool for I/O.
 // Uses the platform-default event backend (poll on most systems).

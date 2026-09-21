@@ -53,7 +53,7 @@ static iree_status_t iree_net_framing_adapter_on_frame_complete(
     return callbacks.on_message(callbacks.user_data, frame, lease);
   }
 
-  // Borrowed path: the frame is either in accumulator storage or precedes
+  // Borrowed path: the carrier needs its storage back or the frame precedes
   // later frames in a shared receive buffer. Give it independent ownership
   // without retaining a registered buffer needed for transport progress.
   iree_async_buffer_lease_t bridged_lease;

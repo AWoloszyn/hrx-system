@@ -18,6 +18,15 @@
 #include "iree/async/cts/util/test_base.h"
 #include "iree/async/operations/scheduling.h"
 
+#if defined(IREE_PLATFORM_WINDOWS)
+#include <windows.h>
+#elif defined(IREE_ASYNC_HAVE_FD)
+#include <errno.h>
+#include <fcntl.h>
+#include <poll.h>
+#include <unistd.h>
+#endif  // native handle type
+
 namespace iree::async::cts {
 
 class EventTest : public CtsTestBase<> {};
@@ -39,7 +48,7 @@ TEST_P(EventTest, SameThreadSignal) {
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait_op.base));
 
   // Signal the event from the same thread.
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
 
   // Poll should pick up the signaled event.
   PollUntil(/*min_completions=*/1);
@@ -67,20 +76,14 @@ TEST_P(EventTest, CrossThreadSignal) {
 
   IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait_op.base));
 
-  // Signal the event from another thread. The submit is synchronous, so the
-  // wait is already registered by the time the signaler starts.
-  iree_status_code_t signal_status_code = IREE_STATUS_UNKNOWN;
-  std::thread signaler([event, &signal_status_code]() {
-    iree_status_t status = iree_async_event_set(event);
-    signal_status_code = iree_status_code(status);
-    iree_status_free(status);
-  });
+  // Publication may precede native wait registration after admission; the
+  // native event retains readiness until the wait consumes it.
+  std::thread signaler([event]() { iree_async_event_set(event); });
 
   // Poll should pick up the signaled event.
   PollUntil(/*min_completions=*/1);
 
   signaler.join();
-  EXPECT_EQ(signal_status_code, IREE_STATUS_OK);
 
   EXPECT_EQ(tracker.call_count, 1);
   IREE_EXPECT_OK(tracker.ConsumeStatus());
@@ -112,8 +115,8 @@ TEST_P(EventTest, MultipleEventsPartialSignal) {
   IREE_ASSERT_OK(iree_async_proactor_submit(proactor_, list));
 
   // Signal only events 0 and 2, leaving event 1 unsignaled.
-  IREE_ASSERT_OK(iree_async_event_set(events[0]));
-  IREE_ASSERT_OK(iree_async_event_set(events[2]));
+  iree_async_event_set(events[0]);
+  iree_async_event_set(events[2]);
 
   // Poll should pick up exactly 2 completions.
   PollUntil(/*min_completions=*/2);
@@ -125,7 +128,7 @@ TEST_P(EventTest, MultipleEventsPartialSignal) {
   IREE_EXPECT_OK(trackers[2].ConsumeStatus());
 
   // Now signal event 1.
-  IREE_ASSERT_OK(iree_async_event_set(events[1]));
+  iree_async_event_set(events[1]);
   PollUntil(/*min_completions=*/1);
 
   EXPECT_EQ(trackers[1].call_count, 1);
@@ -153,7 +156,7 @@ TEST_P(EventTest, ResetAndReWait) {
     wait_op.base.user_data = &tracker;
 
     IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait_op.base));
-    IREE_ASSERT_OK(iree_async_event_set(event));
+    iree_async_event_set(event);
     PollUntil(/*min_completions=*/1);
 
     EXPECT_EQ(tracker.call_count, 1);
@@ -175,7 +178,7 @@ TEST_P(EventTest, ResetAndReWait) {
     wait_op.base.user_data = &tracker;
 
     IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &wait_op.base));
-    IREE_ASSERT_OK(iree_async_event_set(event));
+    iree_async_event_set(event);
     PollUntil(/*min_completions=*/1);
 
     EXPECT_EQ(tracker.call_count, 1);
@@ -191,7 +194,7 @@ TEST_P(EventTest, PreSignaledEvent) {
   IREE_ASSERT_OK(iree_async_event_create(proactor_, &event));
 
   // Signal BEFORE submitting the wait.
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
 
   iree_async_event_wait_operation_t wait_op;
   memset(&wait_op, 0, sizeof(wait_op));
@@ -225,12 +228,91 @@ TEST_P(EventTest, RetainRelease) {
   iree_async_event_release(event);
 
   // Event should still be usable.
-  IREE_ASSERT_OK(iree_async_event_set(event));
+  iree_async_event_set(event);
 
   // Final release destroys.
   iree_async_event_release(event);
 }
 
 CTS_REGISTER_TEST_SUITE(EventTest);
+
+#if defined(IREE_ASYNC_HAVE_FD) || defined(IREE_ASYNC_HAVE_WIN32_HANDLE)
+
+class NativeEventTest : public CtsTestBase<> {
+ protected:
+  void TearDown() override {
+    CtsTestBase<>::TearDown();
+    iree_async_event_native_deinitialize(&native_);
+  }
+
+  void ExpectReady() {
+#if defined(IREE_PLATFORM_WINDOWS)
+    EXPECT_EQ(WaitForSingleObject(
+                  (HANDLE)native_.wait_primitive.value.win32_handle, 0),
+              WAIT_OBJECT_0);
+#else
+    pollfd descriptor = {native_.wait_primitive.value.fd, POLLIN, 0};
+    EXPECT_EQ(poll(&descriptor, 1, 0), 1);
+    EXPECT_NE(descriptor.revents & POLLIN, 0);
+#endif  // IREE_PLATFORM_WINDOWS
+  }
+
+  // Owned independently of the fixture's proactor and any managed borrower.
+  iree_async_event_native_t native_ = {};
+};
+
+TEST_P(NativeEventTest, NonblockingNoninheritableHandles) {
+  IREE_ASSERT_OK(iree_async_event_native_initialize(&native_));
+  for (auto primitive : {native_.wait_primitive, native_.signal_primitive}) {
+#if defined(IREE_PLATFORM_WINDOWS)
+    DWORD flags = 0;
+    ASSERT_TRUE(
+        GetHandleInformation((HANDLE)primitive.value.win32_handle, &flags));
+    EXPECT_EQ(flags & HANDLE_FLAG_INHERIT, 0u);
+#else
+    int flags = fcntl(primitive.value.fd, F_GETFL);
+    ASSERT_GE(flags, 0);
+    EXPECT_NE(flags & O_NONBLOCK, 0);
+    flags = fcntl(primitive.value.fd, F_GETFD);
+    ASSERT_GE(flags, 0);
+    EXPECT_NE(flags & FD_CLOEXEC, 0);
+#endif  // IREE_PLATFORM_WINDOWS
+  }
+  iree_async_event_native_set(&native_);
+  ExpectReady();
+}
+
+TEST_P(NativeEventTest, SaturationIsAlreadySignaled) {
+  IREE_ASSERT_OK(iree_async_event_native_initialize(&native_));
+#if defined(IREE_PLATFORM_WINDOWS)
+  iree_async_event_native_set(&native_);
+#elif defined(IREE_ASYNC_HAVE_EVENTFD)
+  const uint64_t value = UINT64_MAX - 1;
+  ASSERT_EQ(write(native_.signal_primitive.value.fd, &value, sizeof(value)),
+            sizeof(value));
+#else
+  // With no consumer, a nonblocking pipe reaches its native capacity. The
+  // additional public set below must succeed without blocking or draining it.
+  const uint8_t value = 1;
+  ssize_t result;
+  do {
+    result = write(native_.signal_primitive.value.fd, &value, sizeof(value));
+  } while (result == sizeof(value) || (result < 0 && errno == EINTR));
+  ASSERT_EQ(result, -1);
+  ASSERT_EQ(errno, EAGAIN);
+#endif  // native event type
+  iree_async_event_native_set(&native_);
+  ExpectReady();
+#if defined(IREE_PLATFORM_WINDOWS)
+  // Auto-reset consumes the coalesced signal once, not one credit per set.
+  EXPECT_EQ(
+      WaitForSingleObject((HANDLE)native_.wait_primitive.value.win32_handle, 0),
+      WAIT_TIMEOUT);
+#endif  // IREE_PLATFORM_WINDOWS
+}
+
+CTS_REGISTER_TEST_SUITE(NativeEventTest);
+
+#endif  // native handles available
 
 }  // namespace iree::async::cts

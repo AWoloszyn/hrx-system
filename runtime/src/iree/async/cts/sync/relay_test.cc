@@ -72,6 +72,40 @@ TEST_P(RelayTest, NotificationToNotification) {
   iree_async_notification_release(sink_notification);
 }
 
+// Source observation stays on its owner; signal publication may cross owners.
+TEST_P(RelayTest, SourceOwnerIsLocalButSinkOwnerMayDiffer) {
+  iree_async_proactor_t* peer = nullptr;
+  IREE_ASSERT_OK_AND_ASSIGN(
+      peer, GetParam().factory(iree_async_proactor_options_default()));
+  iree_async_notification_t* source = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &source));
+  iree_async_notification_t* sink = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      peer, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &sink));
+  iree_async_relay_t* relay = nullptr;
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      iree_async_proactor_register_relay(
+          proactor_, iree_async_relay_source_from_notification(sink),
+          iree_async_relay_sink_signal_notification(source, 1),
+          IREE_ASYNC_RELAY_FLAG_NONE, iree_async_relay_error_callback_none(),
+          &relay));
+  EXPECT_EQ(relay, nullptr);
+  IREE_ASSERT_OK(iree_async_proactor_register_relay(
+      proactor_, iree_async_relay_source_from_notification(source),
+      iree_async_relay_sink_signal_notification(sink, 1),
+      IREE_ASYNC_RELAY_FLAG_PERSISTENT, iree_async_relay_error_callback_none(),
+      &relay));
+  iree_async_notification_signal(source, 1);
+  PollUntilNotificationEpochAdvances(sink, 0);
+  EXPECT_EQ(iree_async_notification_query_epoch(sink), 1u);
+  WaitForRelayUnregistration(relay);
+  iree_async_notification_release(sink);
+  iree_async_notification_release(source);
+  iree_async_proactor_release(peer);
+}
+
 // Persistent notification relay fires multiple times.
 TEST_P(RelayTest, PersistentNotificationRelay) {
   iree_async_notification_t* source_notification = nullptr;
@@ -195,46 +229,6 @@ TEST_P(RelayTest, MultipleNotificationRelays) {
     iree_async_notification_release(sink_notifications[i]);
   }
   iree_async_notification_release(source_notification);
-}
-
-// Notification-to-notification relay using futex mode (when available).
-// This exercises the futex re-arm logic in the relay CQE handler.
-TEST_P(RelayTest, NotificationToNotificationFutexMode) {
-  iree_async_notification_t* source_notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create(
-      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &source_notification));
-
-  iree_async_notification_t* sink_notification = nullptr;
-  IREE_ASSERT_OK(iree_async_notification_create(
-      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &sink_notification));
-
-  if (source_notification->mode != IREE_ASYNC_NOTIFICATION_MODE_FUTEX) {
-    iree_async_notification_release(source_notification);
-    iree_async_notification_release(sink_notification);
-    GTEST_SKIP() << "backend does not use futex notifications";
-  }
-
-  iree_async_relay_t* relay = nullptr;
-  IREE_ASSERT_OK(iree_async_proactor_register_relay(
-      proactor_, iree_async_relay_source_from_notification(source_notification),
-      iree_async_relay_sink_signal_notification(sink_notification, 1),
-      IREE_ASYNC_RELAY_FLAG_PERSISTENT, iree_async_relay_error_callback_none(),
-      &relay));
-  ASSERT_NE(relay, nullptr);
-
-  for (int i = 0; i < 3; ++i) {
-    uint32_t epoch_before =
-        iree_async_notification_query_epoch(sink_notification);
-
-    iree_async_notification_signal(source_notification, 1);
-    PollUntilNotificationEpochAdvances(sink_notification, epoch_before,
-                                       "futex relay sink epoch advance");
-  }
-
-  WaitForRelayUnregistration(relay);
-
-  iree_async_notification_release(source_notification);
-  iree_async_notification_release(sink_notification);
 }
 
 // Proactor destruction completes an unregistration that has not been polled.

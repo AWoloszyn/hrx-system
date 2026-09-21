@@ -468,7 +468,7 @@ class SessionTest : public ::testing::Test {
 
   void StartSessions(iree_net_session_options_t* client_options,
                      iree_net_session_options_t* server_options) {
-    CreateListener();
+    ASSERT_NO_FATAL_FAILURE(CreateListener());
     IREE_ASSERT_OK(iree_net_session_connect(
         factory_,
         iree_make_string_view(connect_address_.data(), connect_address_.size()),
@@ -487,7 +487,7 @@ class SessionTest : public ::testing::Test {
 
   void EstablishSessions(iree_net_session_options_t* client_options,
                          iree_net_session_options_t* server_options) {
-    StartSessions(client_options, server_options);
+    ASSERT_NO_FATAL_FAILURE(StartSessions(client_options, server_options));
     PollBothUntil([&] {
       return (client_state_.ready_count || client_state_.error_count) &&
              (server_state_.ready_count || server_state_.error_count);
@@ -567,7 +567,7 @@ TEST_F(SessionTest, EstablishesAndDrainsOperationalSession) {
   server_options.local_peer.application_data =
       iree_make_const_byte_span(server_metadata.data(), server_metadata.size());
 
-  EstablishSessions(&client_options, &server_options);
+  ASSERT_NO_FATAL_FAILURE(EstablishSessions(&client_options, &server_options));
   EXPECT_EQ(client_state_.remote_application_data, "server metadata");
   EXPECT_EQ(server_state_.remote_application_data, "client metadata");
   EXPECT_EQ(client_state_.remote_application_endpoint_count, 1u);
@@ -652,7 +652,7 @@ TEST_F(SessionTest, CopiedControlSendDoesNotSerializeDeactivation) {
       iree_net_session_options_default();
   iree_net_session_options_t server_options =
       iree_net_session_options_default();
-  EstablishSessions(&client_options, &server_options);
+  ASSERT_NO_FATAL_FAILURE(EstablishSessions(&client_options, &server_options));
 
   std::vector<uint8_t> payload(32 * 1024, 0xA5);
   iree_async_span_t payload_span =
@@ -712,7 +712,7 @@ TEST_F(SessionTest, CopiedControlSendDoesNotSerializeDeactivation) {
 }
 
 TEST_F(SessionTest, DeactivatesBeforeConnectCompletes) {
-  CreateListener();
+  ASSERT_NO_FATAL_FAILURE(CreateListener());
   iree_net_session_options_t options = iree_net_session_options_default();
   IREE_ASSERT_OK(iree_net_session_connect(
       factory_,
@@ -723,11 +723,37 @@ TEST_F(SessionTest, DeactivatesBeforeConnectCompletes) {
   iree_net_session_deactivate(client_session_);
   EXPECT_EQ(iree_net_session_state(client_session_),
             IREE_NET_SESSION_STATE_DRAINING);
-  PollBothUntil([&] { return client_state_.deactivated_count == 1; });
+  while (client_state_.deactivated_count == 0) {
+    Poll(client_proactor_, kSessionClientPolling);
+  }
+  EXPECT_EQ(accept_state_.callback_count, 0);
   EXPECT_EQ(client_state_.ready_count, 0);
   EXPECT_EQ(client_state_.error_count, 0);
   EXPECT_EQ(iree_net_session_state(client_session_),
             IREE_NET_SESSION_STATE_DEACTIVATED);
+}
+
+TEST_F(SessionTest, DeactivatedCallbackReleasesPendingConnectSession) {
+  ASSERT_NO_FATAL_FAILURE(CreateListener());
+  auto options = iree_net_session_options_default();
+  auto callbacks = client_state_.callbacks();
+  callbacks.on_deactivated = [](void* user_data, iree_net_session_t* session) {
+    SessionCallbackState::OnDeactivated(user_data, session);
+    iree_net_session_release(session);
+  };
+  iree_net_session_t* session = nullptr;
+  IREE_ASSERT_OK(iree_net_session_connect(
+      factory_,
+      iree_make_string_view(connect_address_.data(), connect_address_.size()),
+      client_proactor_, client_receive_pool_.pool, &options, callbacks,
+      iree_allocator_system(), &session));
+  iree_net_session_deactivate(session);
+  while (client_state_.deactivated_count == 0) {
+    Poll(client_proactor_, kSessionClientPolling);
+  }
+  EXPECT_EQ(client_state_.ready_count, 0);
+  EXPECT_EQ(client_state_.error_count, 0);
+  EXPECT_EQ(accept_state_.callback_count, 0);
 }
 
 TEST_F(SessionTest, DeactivatesWhileControlEndpointIsOpening) {
@@ -735,7 +761,7 @@ TEST_F(SessionTest, DeactivatesWhileControlEndpointIsOpening) {
       iree_net_session_options_default();
   iree_net_session_options_t server_options =
       iree_net_session_options_default();
-  StartSessions(&client_options, &server_options);
+  ASSERT_NO_FATAL_FAILURE(StartSessions(&client_options, &server_options));
 
   iree_net_session_deactivate(server_session_);
   iree_net_session_deactivate(server_session_);
@@ -754,7 +780,7 @@ TEST_F(SessionTest, EndpointCountMismatchRejectsAndAutoDeactivates) {
   iree_net_session_options_t server_options =
       iree_net_session_options_default();
   server_options.local_peer.application_endpoint_count = 2;
-  StartSessions(&client_options, &server_options);
+  ASSERT_NO_FATAL_FAILURE(StartSessions(&client_options, &server_options));
 
   PollBothUntil([&] {
     return client_state_.deactivated_count == 1 &&
@@ -778,7 +804,7 @@ TEST_F(SessionTest, DeactivationFromReadyWaitsForReadyReturn) {
       iree_net_session_options_default();
   iree_net_session_options_t server_options =
       iree_net_session_options_default();
-  EstablishSessions(&client_options, &server_options);
+  ASSERT_NO_FATAL_FAILURE(EstablishSessions(&client_options, &server_options));
   PollBothUntil([&] { return client_state_.deactivated_count == 1; });
   EXPECT_FALSE(client_state_.deactivated_during_ready);
   EXPECT_EQ(client_state_.error_count, 0);
@@ -793,7 +819,7 @@ TEST_F(SessionTest, DeactivationWaitsForPendingEndpointCallback) {
   iree_net_session_options_t server_options =
       iree_net_session_options_default();
   server_options.local_peer.application_endpoint_count = 1;
-  EstablishSessions(&client_options, &server_options);
+  ASSERT_NO_FATAL_FAILURE(EstablishSessions(&client_options, &server_options));
 
   SessionEndpointReadyState endpoint_state;
   endpoint_state.current_poll_side = &current_poll_side_;

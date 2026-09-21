@@ -16,12 +16,16 @@ iree_cc_library(
   HDRS
     "api.h"
   SRCS
+    "event_source.c"
+    "event_source.h"
     "notification.c"
     "notification.h"
     "proactor.c"
     "proactor.h"
+    "proactor_cancel.c"
     "proactor_probe.c"
     "proactor_registration.c"
+    "proactor_shutdown.c"
     "proactor_submit.c"
     "proactor_validation.c"
     "proactor_validation.h"
@@ -221,6 +225,42 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_test(
   NAME
+    notification_test
+  SRCS
+    "notification_test.cc"
+  LINKOPTS
+    "-Wl,--wrap=read"
+    "-Wl,--wrap=write"
+  DEPS
+    ::io_uring
+    iree::async
+    iree::testing::gtest
+    iree::testing::gtest_main
+  RESOURCE_GROUP
+    io_uring
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
+    proactor_cancel_test
+  SRCS
+    "proactor_cancel_test.cc"
+  DEPS
+    ::io_uring
+    iree::async
+    iree::async::types
+    iree::testing::gtest
+    iree::testing::gtest_main
+  RESOURCE_GROUP
+    io_uring
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
     proactor_registration_test
   SRCS
     "proactor_registration_test.cc"
@@ -255,12 +295,46 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_test(
   NAME
+    proactor_shutdown_test
+  SRCS
+    "event_source.h"
+    "notification.h"
+    "proactor.h"
+    "proactor_shutdown_test.cc"
+    "relay.h"
+  LINKOPTS
+    "-Wl,--wrap=iree_async_proactor_io_uring_process_cqe"
+    "-Wl,--wrap=iree_io_uring_ring_deinitialize"
+  DEPS
+    ::defs
+    ::io_uring
+    ::sparse_table
+    ::uring
+    iree::async
+    iree::async::platform::linux::signal
+    iree::async::util::message_pool
+    iree::async::util::semaphore_wait
+    iree::async::util::sequence_emulation
+    iree::async::util::signal
+    iree::base
+    iree::base::internal::atomic_slist
+    iree::testing::gtest
+    iree::testing::gtest_main
+  RESOURCE_GROUP
+    io_uring
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
     proactor_submit_test
   SRCS
     "proactor_submit_test.cc"
   DEPS
     ::io_uring
     iree::async
+    iree::async::util::proactor_thread
     iree::base
     iree::testing::gtest
     iree::testing::gtest_main

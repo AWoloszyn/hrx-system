@@ -53,7 +53,10 @@ iree_runtime_cc_library(
 iree_runtime_cc_library(
     name = "cancellation_test",
     testonly = True,
-    srcs = ["cancellation_test.cc"],
+    srcs = [
+        "cancel_request_test.cc",
+        "cancellation_test.cc",
+    ],
     deps = [
         "//runtime/src/iree/async",
         "//runtime/src/iree/async/cts/util:registry",

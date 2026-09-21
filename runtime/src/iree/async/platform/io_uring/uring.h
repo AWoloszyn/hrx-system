@@ -18,7 +18,9 @@
 //   during the entire get_sqe -> fill -> unlock sequence to prevent
 //   partially-filled SQEs from being flushed.
 //
-//   io_uring_enter is called OUTSIDE the lock and ONLY from the poll thread.
+//   io_uring_enter is called ONLY from the poll thread, normally outside the
+//   SQ lock. Cold-path cancellation may submit pending entries with the lock
+//   held to reserve a freed slot; that submission never waits for completions.
 //   This satisfies IORING_SETUP_SINGLE_ISSUER (only one thread may call
 //   io_uring_enter). Cross-thread submitters fill SQEs under the lock and wake
 //   the poll thread to flush via io_uring_enter.
@@ -86,8 +88,8 @@ typedef struct iree_io_uring_ring_t {
 
   // Local SQ tail for two-phase commit. get_sqe() increments this locally;
   // submit() flushes it to the kernel-visible *sq_tail.
-  // This separation allows rollback on encoding failure and ensures we always
-  // know how many SQEs are pending submission.
+  // This separation allows rollback on encoding failure. The kernel SQ head,
+  // not the published tail, determines which entries still need submission.
   // Protected by sq_lock.
   uint32_t sq_local_tail;
 
@@ -111,7 +113,7 @@ typedef struct iree_io_uring_ring_t {
 //===----------------------------------------------------------------------===//
 
 // Acquires the SQ lock. Must be held during get_sqe, SQE fill, rollback, and
-// sq_flush sequences. The lock is NOT held during io_uring_enter.
+// sq_flush sequences. Waiting for completion must not hold the lock.
 static inline void iree_io_uring_ring_sq_lock(iree_io_uring_ring_t* ring) {
   while (iree_atomic_exchange(&ring->sq_lock, 1, iree_memory_order_acquire)) {
     while (iree_atomic_load(&ring->sq_lock, iree_memory_order_relaxed)) {
@@ -222,10 +224,13 @@ static inline uint32_t iree_io_uring_ring_sq_space_left(
   return ring->sq_entries - (ring->sq_local_tail - head);
 }
 
-// Returns the number of SQEs prepared but not yet submitted to kernel.
+// Returns the number of prepared SQEs not yet consumed by the kernel,
+// including published entries left over from a partial submission.
 static inline uint32_t iree_io_uring_ring_sq_pending(
     iree_io_uring_ring_t* ring) {
-  return ring->sq_local_tail - *ring->sq_tail;
+  uint32_t head = iree_atomic_load((iree_atomic_int32_t*)ring->sq_head,
+                                   iree_memory_order_acquire);
+  return ring->sq_local_tail - head;
 }
 
 // Rolls back |count| uncommitted SQEs from the local tail.
@@ -244,8 +249,19 @@ iree_io_uring_sqe_t* iree_io_uring_ring_get_sqe(iree_io_uring_ring_t* ring);
 // Automatically calculates the number of SQEs to submit from ring state.
 // |min_complete| is the minimum number of CQEs to wait for (0 for non-blocking)
 // |flags| are IORING_ENTER_* flags.
+// On transient submission resource pressure, runs deferred kernel work without
+// waiting and reattempts admission once. Errors preserve published entries;
+// neither an error nor successful admission returns operation ownership.
 iree_status_t iree_io_uring_ring_submit(iree_io_uring_ring_t* ring,
                                         uint32_t min_complete, uint32_t flags);
+
+// Submits pending entries without waiting for completions or dispatching
+// callbacks. The poll owner must hold the SQ lock across this call and the
+// following get_sqe to prevent concurrent producers taking the freed slots.
+// Used by cold cancellation admission when the SQ is full. Platform failures
+// are returned without discarding published work.
+iree_status_t iree_io_uring_ring_submit_pending_locked(
+    iree_io_uring_ring_t* ring);
 
 //===----------------------------------------------------------------------===//
 // Completion queue operations
@@ -292,7 +308,10 @@ static inline void iree_io_uring_ring_cq_advance(iree_io_uring_ring_t* ring,
 // |timeout_ns| is the timeout in nanoseconds (IREE_DURATION_ZERO for
 // non-blocking, IREE_DURATION_INFINITE for infinite wait).
 //
-// Returns OK if completions are available, DEADLINE_EXCEEDED on timeout.
+// Uses the same bounded admission recovery as submit without restarting the
+// timeout. Returns OK if completions are available, DEADLINE_EXCEEDED on
+// timeout, or a native submission/wait error without discarding published
+// entries.
 iree_status_t iree_io_uring_ring_wait_cqe(iree_io_uring_ring_t* ring,
                                           uint32_t min_complete,
                                           bool flush_pending,

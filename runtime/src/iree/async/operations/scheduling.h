@@ -33,8 +33,12 @@ extern "C" {
 //   yes     | yes      | yes  | yes
 //
 // Performance:
-//   Minimal overhead: no syscall or backend completion allocation, only
-//   intrusive queue manipulation.
+//   Submission queues caller-owned storage without allocating or reserving a
+//   kernel submission/completion slot. A valid standalone NOP on a live
+//   proactor cannot be rejected for resource exhaustion. A batch containing
+//   other operation types remains subject to their admission requirements.
+//   Waking the poll owner may require a syscall. Storage returns to the caller
+//   at the final callback and may be freed from that callback.
 typedef struct iree_async_nop_operation_t {
   iree_async_operation_t base;
 } iree_async_nop_operation_t;
@@ -134,7 +138,7 @@ typedef struct iree_async_event_t iree_async_event_t;
 // Implementation:
 //   io_uring: IORING_OP_POLL_ADD on the event's eventfd.
 //   IOCP: Thread pool wait or completion port association.
-//   kqueue: EVFILT_USER.
+//   kqueue: pipe + EVFILT_READ.
 //   generic: poll/select on the event's fd.
 //
 // Threading model:
@@ -289,12 +293,17 @@ static inline void iree_async_sequence_operation_initialize(
 // Handle poll
 //===----------------------------------------------------------------------===//
 
-// One-shot readiness poll on a raw system handle (fd, HANDLE, mach_port).
+// One-shot readiness poll on a raw POSIX descriptor or Windows waitable HANDLE.
 //
-// Completes when the handle becomes ready for the requested events (readable,
-// writable, error, hangup). This is the async equivalent of poll()/select()
-// on a single handle. Unlike EVENT_WAIT, this does not drain or reset the
-// handle — it only detects readiness.
+// POSIX completes when any requested direction becomes ready, or an error or
+// hangup occurs. Readiness is advisory: a subsequent nonblocking I/O attempt
+// may still report would-block. The operation does not consume descriptor data.
+//
+// Windows supports IN only, meaning that the HANDLE became signaled. Native
+// wait semantics apply, including consumption of an auto-reset event signal.
+// This does not provide read/write readiness for a pipe or socket. Overlapped
+// I/O must observe its own terminal completion before releasing native storage;
+// cancelling this poll cancels only the wait, not the I/O being observed.
 //
 // Availability:
 //   generic | io_uring | IOCP | kqueue
@@ -317,11 +326,17 @@ static inline void iree_async_sequence_operation_initialize(
 //   On success, |result_events| is populated with the events that fired
 //   (IN, ERR, HUP, OUT). On cancellation or error, |result_events| is 0.
 typedef struct iree_async_handle_poll_operation_t {
+  // Common operation state and completion callback.
   iree_async_operation_t base;
 
   // The platform handle to poll. Must remain valid until the operation
   // completes. Caller-owned; the proactor does not close or retain it.
   iree_async_primitive_t primitive;
+
+  // Nonempty mask of IN and/or OUT interests. ERR and HUP are result-only
+  // conditions and are reported regardless of the requested directions.
+  // Windows accepts IN only; requesting OUT returns UNAVAILABLE.
+  iree_async_poll_events_t events;
 
   // Bitmask of events that triggered completion. Populated before the
   // completion callback fires. Zero on cancellation or error.
@@ -359,10 +374,9 @@ enum iree_async_notification_wait_flag_bits_e {
 //   generic | io_uring | IOCP | kqueue
 //   yes     | yes      | yes  | yes
 //
-// Implementation:
-//   io_uring 6.7+: IORING_OP_FUTEX_WAIT on epoch word.
-//   io_uring <6.7: Linked POLL_ADD + READ on eventfd.
-//   Others: Platform-specific (eventfd + poll, WaitOnAddress, etc.).
+// Native readiness is a coalescing wake indication, not proof of completion.
+// Backends recheck the original token after readiness, preserving it across
+// native rearming. A stale native wake cannot satisfy an unchanged epoch.
 //
 // Threading model:
 //   Callback fires on the poll thread when the notification is signaled.
@@ -392,47 +406,38 @@ typedef struct iree_async_notification_wait_operation_t {
 // Notification signal
 //===----------------------------------------------------------------------===//
 
-// Signals a notification, waking up to wake_count waiters.
-// Use INT32_MAX to wake all waiters (broadcast).
+// Advances a notification's epoch and wakes observers when this operation
+// executes. Use INT32_MAX to wake all blocked waiters (broadcast).
 //
 // Availability:
 //   generic | io_uring | IOCP | kqueue
 //   yes     | yes      | yes  | yes
 //
-// Implementation:
-//   io_uring 6.7+: IORING_OP_FUTEX_WAKE on epoch word.
-//   io_uring <6.7: IORING_OP_WRITE to eventfd.
-//   Others: Platform-specific (eventfd write, SetEvent, etc.).
-//
 // Threading model:
-//   Callback fires on the poll thread after the signal is processed.
-//   The signal itself happens synchronously in kernel space before the
-//   CQE is posted, so woken waiters may begin running before the
-//   signal operation's callback fires.
+//   Callback fires on the poll thread after epoch publication and native wake.
+//   Woken observers may begin running before the signal's callback fires.
 //
 // Use in LINK chains:
-//   NOTIFICATION_SIGNAL is commonly used as the final step in a linked
-//   sequence:
+//   A signal may hand completed work to waiting consumers:
 //     RECV -> NOTIFICATION_SIGNAL
-//   This wakes waiting consumer threads without returning to userspace
-//   between the I/O completion and the wake.
+//   The epoch advances only after the predecessor succeeds. A failed or
+//   cancelled predecessor cancels the signal without publishing an epoch.
 typedef struct iree_async_notification_signal_operation_t {
   iree_async_operation_t base;
 
   // The notification to signal. Retained by the proactor during execution.
   iree_async_notification_t* notification;
 
-  // Maximum number of waiters to wake. Common values:
+  // Native wake count hint, not a limit on observers seeing the new epoch.
+  // Observers that have not blocked yet may also see the publication.
+  // Common values:
   //   1: Wake a single waiter (e.g., producer/consumer handoff)
   //   INT32_MAX: Wake all waiters (broadcast)
   int32_t wake_count;
 
-  // Result: actual number of waiters woken. Populated on completion.
-  // May be less than wake_count if fewer waiters were blocked.
+  // Result: number of native waiters woken, or -1 when not available.
+  // Does not count observers that see the new epoch without blocking.
   int32_t woken_count;
-
-  // Platform-internal: buffer for eventfd write in event mode.
-  uint64_t write_value;
 } iree_async_notification_signal_operation_t;
 
 #ifdef __cplusplus

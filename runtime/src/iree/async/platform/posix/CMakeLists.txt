@@ -40,6 +40,7 @@ iree_cc_library(
     "fence.c"
     "poll_set.c"
     "proactor.c"
+    "proactor_cancel.c"
     "relay.c"
     "signal.c"
     "socket.c"
@@ -78,6 +79,22 @@ iree_cc_library(
     iree::async
     iree::base
   PUBLIC
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+iree_cc_test(
+  NAME
+    notification_wake_test
+  SRCS
+    "notification_wake_test.cc"
+  LINKOPTS
+    "-Wl,--wrap=write"
+  DEPS
+    ::posix
+    iree::async
+    iree::testing::gtest
+    iree::testing::gtest_main
 )
 endif()
 

@@ -19,11 +19,12 @@
 // iree/async/operations/futex.h which provides async io_uring operations
 // with size flags.
 //
-// Note: Futex operations are disabled under ThreadSanitizer because TSan
-// doesn't instrument futex syscalls. When IREE_SANITIZER_THREAD is defined,
-// IREE_PLATFORM_HAS_FUTEX will be defined but IREE_RUNTIME_USE_FUTEX will not,
-// causing higher-level primitives to fall back to pthread-based
-// implementations.
+// ThreadSanitizer does not instrument futex syscalls. The raw primitives remain
+// available, including Linux shared-address waits that cannot use process-local
+// pthread substitutes. Callers establish data ordering with release/acquire
+// atomics; a wake alone does not publish memory to the sanitizer. Higher-level
+// private locks select pthread implementations through IREE_RUNTIME_USE_FUTEX,
+// which remains disabled under ThreadSanitizer.
 
 #ifndef IREE_BASE_THREADING_FUTEX_H_
 #define IREE_BASE_THREADING_FUTEX_H_
@@ -61,7 +62,7 @@
 // Platform headers
 //===----------------------------------------------------------------------===//
 
-#if defined(IREE_RUNTIME_USE_FUTEX)
+#if defined(IREE_PLATFORM_HAS_FUTEX)
 
 #if defined(IREE_PLATFORM_WASM)
 // Wasm atomic wait/notify are compiler builtins — no headers needed.
@@ -89,7 +90,7 @@
 
 #endif  // IREE_PLATFORM_*
 
-#endif  // IREE_RUNTIME_USE_FUTEX
+#endif  // IREE_PLATFORM_HAS_FUTEX
 
 #ifdef __cplusplus
 extern "C" {
@@ -109,20 +110,21 @@ extern "C" {
 // Futex API
 //===----------------------------------------------------------------------===//
 
-#if defined(IREE_RUNTIME_USE_FUTEX)
+#if defined(IREE_PLATFORM_HAS_FUTEX)
 
-// Waits in the OS for the value at the specified |address| to change.
-// If the contents of |address| do not match |expected_value| the wait will
-// fail and return IREE_STATUS_UNAVAILABLE and should be retried.
+// Waits in the OS while the value at |address| matches |expected_value|.
+// A value mismatch succeeds without blocking. Wakes can be spurious, so the
+// caller must recheck its condition with the appropriate memory ordering after
+// every successful return, including interruption by an OS signal.
 //
 // |deadline_ns| can be either IREE_TIME_INFINITE_FUTURE to wait forever or an
 // absolute time to wait until prior to returning early with
 // IREE_STATUS_DEADLINE_EXCEEDED.
 //
 // Returns:
-//   IREE_STATUS_OK: Woken by another thread or value changed.
+//   IREE_STATUS_OK: Wake or value mismatch; recheck the condition.
 //   IREE_STATUS_DEADLINE_EXCEEDED: Timeout reached before wake.
-//   IREE_STATUS_UNAVAILABLE: Value at address != expected_value (retry needed).
+//   IREE_STATUS_UNAVAILABLE: Native wait failed for another reason.
 static inline iree_status_code_t iree_futex_wait(void* address,
                                                  uint32_t expected_value,
                                                  iree_time_t deadline_ns);
@@ -143,15 +145,15 @@ static inline void iree_futex_wake(void* address, int32_t count);
 // allows futex operations to work across processes sharing the same physical
 // page (e.g., via mmap MAP_SHARED or shm_open).
 //
-// On Windows, WaitOnAddress/WakeByAddress already hash by physical page, so
-// these are identical to the private variants.
+// On Windows these aliases retain private, same-process semantics:
+// WaitOnAddress/WakeByAddress cannot wake another process. Cross-process
+// notification requires a separate native wake primitive on that platform.
 //
 // On Wasm, cross-process shared memory is not meaningful, so these are
 // identical to the private variants.
 //
-// Performance: ~20ns slower per operation on Linux due to the kernel page table
-// walk. Use the private variants (iree_futex_wait/wake) when cross-process
-// semantics are not needed.
+// Linux shared waits require a kernel page lookup. Use the private variants
+// (iree_futex_wait/wake) when cross-process semantics are not needed.
 static inline iree_status_code_t iree_futex_wait_shared(
     void* address, uint32_t expected_value, iree_time_t deadline_ns);
 static inline void iree_futex_wake_shared(void* address, int32_t count);
@@ -184,9 +186,8 @@ static inline iree_status_code_t iree_futex_wait(void* address,
       (int32_t*)address, (int32_t)expected_value, timeout_ns);
   switch (rc) {
     case 0:
-      return IREE_STATUS_OK;
     case 1:
-      return IREE_STATUS_UNAVAILABLE;
+      return IREE_STATUS_OK;
     case 2:
       return IREE_STATUS_DEADLINE_EXCEEDED;
     default:
@@ -235,7 +236,7 @@ static inline void iree_futex_wake(void* address, int32_t count) {
   }
 }
 
-// WaitOnAddress/WakeByAddress already hash by physical page on Windows.
+// Windows address waits only synchronize threads within the same process.
 static inline iree_status_code_t iree_futex_wait_shared(
     void* address, uint32_t expected_value, iree_time_t deadline_ns) {
   return iree_futex_wait(address, expected_value, deadline_ns);
@@ -297,7 +298,7 @@ static inline void iree_futex_wake_shared(void* address, int32_t count) {
 
 #endif  // IREE_PLATFORM_*
 
-#endif  // IREE_RUNTIME_USE_FUTEX
+#endif  // IREE_PLATFORM_HAS_FUTEX
 
 #ifdef __cplusplus
 }  // extern "C"

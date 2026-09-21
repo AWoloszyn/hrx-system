@@ -8,6 +8,7 @@
 
 #if defined(IREE_ASYNC_HAVE_FD)
 #include <errno.h>
+#include <fcntl.h>
 #include <unistd.h>
 #endif  // IREE_ASYNC_HAVE_FD
 
@@ -29,10 +30,11 @@ iree_status_t iree_async_primitive_dup(iree_async_primitive_t primitive,
 
 #if defined(IREE_ASYNC_HAVE_FD)
     case IREE_ASYNC_PRIMITIVE_TYPE_FD: {
-      int new_fd = dup(primitive.value.fd);
+      int new_fd = fcntl(primitive.value.fd, F_DUPFD_CLOEXEC, 0);
       if (IREE_UNLIKELY(new_fd == -1)) {
         return iree_make_status(iree_status_code_from_errno(errno),
-                                "dup(%d) failed", primitive.value.fd);
+                                "fcntl(F_DUPFD_CLOEXEC) failed for fd %d",
+                                primitive.value.fd);
       }
       *out_primitive = iree_async_primitive_from_fd(new_fd);
       return iree_ok_status();

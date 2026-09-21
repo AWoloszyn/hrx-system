@@ -42,6 +42,20 @@ endif()
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 iree_cc_test(
   NAME
+    local_stream_tests
+  SRCS
+    "${PROJECT_SOURCE_DIR}/runtime/src/iree/async/cts/util/test_main.cc"
+  DEPS
+    ::backends
+    iree::async::cts::stream::local_stream_test
+    iree::async::cts::util::registry
+    iree::testing::gtest
+)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+iree_cc_test(
+  NAME
     core_tests
   SRCS
     "${PROJECT_SOURCE_DIR}/runtime/src/iree/async/cts/util/test_main.cc"

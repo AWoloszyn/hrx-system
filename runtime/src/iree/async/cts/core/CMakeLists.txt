@@ -53,6 +53,20 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    progress_test
+  SRCS
+    "progress_test.cc"
+  DEPS
+    iree::async
+    iree::async::cts::util::registry
+    iree::async::cts::util::test_base
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     resource_exhaustion_test
   SRCS
     "resource_exhaustion_test.cc"
@@ -115,6 +129,7 @@ iree_cc_library(
     ::error_propagation_test
     ::lifecycle_test
     ::nop_test
+    ::progress_test
     ::resource_exhaustion_test
     ::sequence_test
     ::timer_test

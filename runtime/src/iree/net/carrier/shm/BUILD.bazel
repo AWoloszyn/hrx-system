@@ -1,0 +1,341 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+load("//runtime/build_tools/bazel:cc.bzl", "iree_runtime_cc_library")
+load("//runtime/build_tools/bazel:cc_fuzz.bzl", "iree_runtime_cc_fuzz")
+load("//runtime/build_tools/bazel:cc_test.bzl", "iree_runtime_cc_test")
+
+package(
+    default_visibility = ["//runtime/src/iree/net/carrier/shm:__subpackages__"],
+    features = ["layering_check"],
+    licenses = ["notice"],
+)
+
+iree_runtime_cc_library(
+    name = "region",
+    srcs = ["region.c"],
+    hdrs = ["region.h"],
+    deps = [
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/internal:atomic_freelist",
+        "//runtime/src/iree/base/internal:mpsc_queue",
+        "//runtime/src/iree/base/threading",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "storage",
+    srcs = ["storage.c"],
+    hdrs = ["storage.h"],
+    deps = [
+        ":region",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/internal:atomic_freelist",
+        "//runtime/src/iree/base/internal:shm",
+        "//runtime/src/iree/base/threading",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "shm",
+    srcs = ["carrier.c"],
+    hdrs = ["carrier.h"],
+    deps = [
+        ":region",
+        ":storage",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/internal:atomic_freelist",
+        "//runtime/src/iree/base/internal:mpsc_queue",
+        "//runtime/src/iree/base/threading",
+        "//runtime/src/iree/net:carrier",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "connection",
+    srcs = ["connection.c"],
+    hdrs = ["connection.h"],
+    deps = [
+        ":region",
+        ":shm",
+        ":storage",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async/util:local_stream",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/threading",
+        "//runtime/src/iree/net:carrier",
+        "//runtime/src/iree/net:connection",
+        "//runtime/src/iree/net:endpoint_lifecycle",
+        "//runtime/src/iree/net:framed_endpoint",
+        "//runtime/src/iree/net:message_endpoint",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "handshake",
+    srcs = ["handshake.c"],
+    hdrs = ["handshake.h"],
+    deps = [
+        ":bootstrap",
+        ":connection",
+        ":shm",
+        ":storage",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async/util:local_stream",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/net:connection",
+        "//runtime/src/iree/net:transport_factory",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "connect",
+    srcs = ["connect.c"],
+    hdrs = ["connect.h"],
+    deps = [
+        ":connection",
+        ":handshake",
+        ":region",
+        ":shm",
+        ":storage",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async/util:local_stream",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/threading",
+        "//runtime/src/iree/net:connection",
+        "//runtime/src/iree/net:transport_factory",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "listener",
+    srcs = ["listener.c"],
+    hdrs = ["listener.h"],
+    deps = [
+        ":connection",
+        ":handshake",
+        ":region",
+        ":shm",
+        ":storage",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async/util:local_stream",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/threading",
+        "//runtime/src/iree/net:connection",
+        "//runtime/src/iree/net:transport_factory",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "factory",
+    srcs = ["factory.c"],
+    hdrs = ["factory.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":connect",
+        ":listener",
+        ":region",
+        ":shm",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/net:transport_factory",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "bootstrap",
+    srcs = ["bootstrap.c"],
+    hdrs = ["bootstrap.h"],
+    deps = [
+        ":region",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "region_test",
+    srcs = ["region_test.cc"],
+    deps = [
+        ":region",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/base/internal:atomic_freelist",
+        "//runtime/src/iree/base/internal:mpsc_queue",
+        "//runtime/src/iree/base/internal:shm",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "storage_test",
+    srcs = ["storage_test.cc"],
+    deps = [
+        ":region",
+        ":storage",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async:platform",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:atomic_freelist",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "carrier_test",
+    srcs = ["carrier_test.cc"],
+    deps = [
+        ":region",
+        ":shm",
+        ":storage",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async:platform",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/net:carrier",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ] + select({
+        "@platforms//os:android": ["//runtime/src/iree/async/platform/posix"],
+        "@platforms//os:linux": ["//runtime/src/iree/async/platform/posix"],
+        "@platforms//os:macos": ["//runtime/src/iree/async/platform/posix"],
+        "//conditions:default": [],
+    }),
+)
+
+iree_runtime_cc_test(
+    name = "connection_test",
+    srcs = ["connection_test.cc"],
+    deps = [
+        ":connection",
+        ":region",
+        ":shm",
+        ":storage",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async:platform",
+        "//runtime/src/iree/async/util:local_stream",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal",
+        "//runtime/src/iree/net:connection",
+        "//runtime/src/iree/net:message_endpoint",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ] + select({
+        "@platforms//os:android": ["//runtime/src/iree/async/platform/posix"],
+        "@platforms//os:linux": ["//runtime/src/iree/async/platform/posix"],
+        "@platforms//os:macos": ["//runtime/src/iree/async/platform/posix"],
+        "//conditions:default": [],
+    }),
+)
+
+iree_runtime_cc_test(
+    name = "handshake_test",
+    srcs = ["handshake_test.cc"],
+    deps = [
+        ":bootstrap",
+        ":connection",
+        ":handshake",
+        ":region",
+        ":shm",
+        ":storage",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async:platform",
+        "//runtime/src/iree/async/util:local_stream",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/net:connection",
+        "//runtime/src/iree/net:message_endpoint",
+        "//runtime/src/iree/net:transport_factory",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//runtime/src/iree/testing:temp_file",
+    ] + select({
+        "@platforms//os:android": ["//runtime/src/iree/async/platform/posix"],
+        "@platforms//os:linux": ["//runtime/src/iree/async/platform/posix"],
+        "@platforms//os:macos": ["//runtime/src/iree/async/platform/posix"],
+        "//conditions:default": [],
+    }),
+)
+
+iree_runtime_cc_test(
+    name = "factory_test",
+    srcs = ["factory_test.cc"],
+    deps = [
+        ":bootstrap",
+        ":connection",
+        ":factory",
+        ":region",
+        ":storage",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async:platform",
+        "//runtime/src/iree/async/util:local_stream",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/net:connection",
+        "//runtime/src/iree/net:message_endpoint",
+        "//runtime/src/iree/net:transport_factory",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+        "//runtime/src/iree/testing:temp_file",
+    ] + select({
+        "@platforms//os:android": ["//runtime/src/iree/async/platform/posix"],
+        "@platforms//os:linux": ["//runtime/src/iree/async/platform/posix"],
+        "@platforms//os:macos": ["//runtime/src/iree/async/platform/posix"],
+        "//conditions:default": [],
+    }),
+)
+
+iree_runtime_cc_test(
+    name = "factory_process_test",
+    srcs = ["factory_process_test.cc"],
+    target_compatible_with = select({
+        "@platforms//os:linux": [],
+        "@platforms//os:macos": [],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    deps = [
+        ":factory",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async:platform",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
+        "//runtime/src/iree/net:connection",
+        "//runtime/src/iree/net:message_endpoint",
+        "//runtime/src/iree/net:transport_factory",
+        "//runtime/src/iree/testing:coordinated_test",
+        "//runtime/src/iree/testing:coordinated_test_main",
+        "//runtime/src/iree/testing:gtest",
+    ],
+)
+
+iree_runtime_cc_test(
+    name = "bootstrap_test",
+    srcs = ["bootstrap_test.cc"],
+    deps = [
+        ":bootstrap",
+        ":region",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_fuzz(
+    name = "bootstrap_fuzz",
+    srcs = ["bootstrap_fuzz.cc"],
+    deps = [
+        ":bootstrap",
+        ":region",
+        "//runtime/src/iree/base",
+    ],
+)

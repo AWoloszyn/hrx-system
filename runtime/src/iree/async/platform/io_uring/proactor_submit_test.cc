@@ -6,14 +6,18 @@
 
 #include <sys/eventfd.h>
 
+#include <condition_variable>
+#include <mutex>
 #include <vector>
 
 #include "iree/async/file.h"
+#include "iree/async/notification.h"
 #include "iree/async/operations/file.h"
 #include "iree/async/operations/message.h"
 #include "iree/async/operations/net.h"
 #include "iree/async/operations/scheduling.h"
 #include "iree/async/platform/io_uring/api.h"
+#include "iree/async/util/proactor_thread.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 
@@ -114,6 +118,7 @@ class IoUringSubmitTest : public ::testing::Test {
     iree_async_proactor_options_t options =
         iree_async_proactor_options_default();
     options.max_concurrent_operations = kSubmissionQueueEntries;
+    options.threading_mode = IREE_ASYNC_PROACTOR_THREADING_CROSS_THREAD;
     options.allowed_capabilities &=
         ~IREE_ASYNC_PROACTOR_CAPABILITY_PROACTOR_MESSAGING;
     iree_status_t status = iree_async_proactor_create_io_uring(
@@ -126,6 +131,13 @@ class IoUringSubmitTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    if (thread_) {
+      iree_async_proactor_thread_request_stop(thread_);
+      IREE_EXPECT_OK(
+          iree_async_proactor_thread_join(thread_, IREE_DURATION_INFINITE));
+      IREE_EXPECT_OK(iree_async_proactor_thread_consume_status(thread_));
+      iree_async_proactor_thread_release(thread_);
+    }
     DrainFillers();
     iree_async_proactor_release(target_proactor_);
     iree_async_proactor_release(proactor_);
@@ -193,11 +205,49 @@ class IoUringSubmitTest : public ::testing::Test {
 
   iree_async_proactor_t* proactor_ = nullptr;
   iree_async_proactor_t* target_proactor_ = nullptr;
+  // Optional infinite-wait runner for cross-thread submission coverage.
+  iree_async_proactor_thread_t* thread_ = nullptr;
   std::vector<iree_async_timer_operation_t> filler_timers_;
   std::vector<iree_async_operation_t*> filler_operations_;
   CompletionState filler_completion_;
   uint32_t filler_count_ = 0;
 };
+
+TEST_F(IoUringSubmitTest, CrossThreadNopDoesNotLoseIdleWake) {
+  IREE_ASSERT_OK(iree_async_proactor_thread_create(
+      proactor_, iree_async_proactor_thread_options_default(),
+      iree_allocator_system(), &thread_));
+  struct State {
+    // Protects publication of completed callbacks to the submitting task.
+    std::mutex mutex;
+    // Joins actual completion without periodically waking the proactor.
+    std::condition_variable condition;
+    // Number of operations returned to the submitting task.
+    int completed_count = 0;
+  } state;
+  iree_async_nop_operation_t operation = {};
+  iree_async_operation_initialize(
+      &operation.base, IREE_ASYNC_OPERATION_TYPE_NOP, 0,
+      [](void* user_data, iree_async_operation_t*, iree_status_t status,
+         iree_async_completion_flags_t flags) {
+        IREE_EXPECT_OK(status);
+        EXPECT_EQ(flags, IREE_ASYNC_COMPLETION_FLAG_NONE);
+        auto* state = static_cast<State*>(user_data);
+        std::lock_guard<std::mutex> lock(state->mutex);
+        ++state->completed_count;
+        state->condition.notify_one();
+      },
+      &state);
+
+  // Resubmit as soon as ownership returns, racing the poller's final software
+  // drain and transition to idle. No native operation can incidentally wake a
+  // lost NOP, and the normal runner never polls on a timer.
+  for (int i = 0; i < 10000; ++i) {
+    IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
+    std::unique_lock<std::mutex> lock(state.mutex);
+    state.condition.wait(lock, [&] { return state.completed_count == i + 1; });
+  }
+}
 
 TEST_F(IoUringSubmitTest, FullSqRejectsSequenceWithoutStartingIt) {
   FillSubmissionQueue();
@@ -236,6 +286,77 @@ TEST_F(IoUringSubmitTest, FullSqRejectsSequenceWithoutStartingIt) {
             (std::vector<iree_status_code_t>{IREE_STATUS_OK}));
   EXPECT_EQ(timer_completion.status_codes,
             (std::vector<iree_status_code_t>{IREE_STATUS_OK}));
+}
+
+TEST_F(IoUringSubmitTest, FailedPredecessorDoesNotPublishNotification) {
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
+  const uint32_t initial_epoch =
+      iree_async_notification_query_epoch(notification);
+  CompletionState completion;
+  iree_async_file_open_operation_t open = {};
+  iree_async_operation_initialize(
+      &open.base, IREE_ASYNC_OPERATION_TYPE_FILE_OPEN,
+      IREE_ASYNC_OPERATION_FLAG_LINKED, CompletionState::Callback, &completion);
+  // The descriptor path names a file, not a directory. Admission succeeds but
+  // the native open fails, exercising continuation cancellation from a CQE.
+  open.path = "/dev/null/notification";
+  open.open_flags = IREE_ASYNC_FILE_OPEN_FLAG_READ;
+  iree_async_notification_signal_operation_t signal = {};
+  iree_async_operation_initialize(
+      &signal.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL,
+      IREE_ASYNC_OPERATION_FLAG_NONE, CompletionState::Callback, &completion);
+  signal.notification = notification;
+  signal.wake_count = 1;
+  iree_async_operation_t* operations[] = {&open.base, &signal.base};
+  IREE_ASSERT_OK(iree_async_proactor_submit(
+      proactor_,
+      iree_async_operation_list_make(operations, IREE_ARRAYSIZE(operations))));
+  EXPECT_EQ(iree_async_notification_query_epoch(notification), initial_epoch);
+  PollUntil(proactor_, [&] { return completion.call_count == 2; });
+  EXPECT_EQ(completion.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_FAILED_PRECONDITION,
+                                             IREE_STATUS_CANCELLED}));
+  EXPECT_EQ(iree_async_notification_query_epoch(notification), initial_epoch);
+  EXPECT_EQ(open.opened_file, nullptr);
+  iree_async_notification_release(notification);
+}
+
+TEST_F(IoUringSubmitTest, FullSqRejectsBatchWithoutPublishingNotification) {
+  FillSubmissionQueue();
+  iree_async_notification_t* notification = nullptr;
+  IREE_ASSERT_OK(iree_async_notification_create(
+      proactor_, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &notification));
+  const uint32_t initial_epoch =
+      iree_async_notification_query_epoch(notification);
+  CompletionState completion;
+  iree_async_notification_signal_operation_t signal = {};
+  iree_async_operation_initialize(
+      &signal.base, IREE_ASYNC_OPERATION_TYPE_NOTIFICATION_SIGNAL,
+      IREE_ASYNC_OPERATION_FLAG_NONE, CompletionState::Callback, &completion);
+  signal.notification = notification;
+  signal.wake_count = 1;
+  iree_async_timer_operation_t timer = {};
+  iree_async_operation_initialize(&timer.base, IREE_ASYNC_OPERATION_TYPE_TIMER,
+                                  IREE_ASYNC_OPERATION_FLAG_NONE,
+                                  CompletionState::Callback, &completion);
+  timer.deadline_ns = iree_time_now();
+  iree_async_operation_t* operations[] = {&signal.base, &timer.base};
+  auto batch =
+      iree_async_operation_list_make(operations, IREE_ARRAYSIZE(operations));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                        iree_async_proactor_submit(proactor_, batch));
+  EXPECT_EQ(iree_async_notification_query_epoch(notification), initial_epoch);
+  EXPECT_EQ(completion.call_count, 0);
+  DrainFillers();
+  IREE_ASSERT_OK(iree_async_proactor_submit(proactor_, batch));
+  PollUntil(proactor_, [&] { return completion.call_count == 2; });
+  EXPECT_EQ(completion.status_codes,
+            (std::vector<iree_status_code_t>{IREE_STATUS_OK, IREE_STATUS_OK}));
+  EXPECT_EQ(iree_async_notification_query_epoch(notification),
+            initial_epoch + 1);
+  iree_async_notification_release(notification);
 }
 
 TEST_F(IoUringSubmitTest, MalformedTailDoesNotConsumeCloseOwnership) {

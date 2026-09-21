@@ -28,6 +28,8 @@ typedef enum iree_net_tcp_send_slot_state_e {
   IREE_NET_TCP_SEND_SLOT_STATE_COMPLETING = 5,
   IREE_NET_TCP_SEND_SLOT_STATE_LOCAL_COMPLETION = 6,
   IREE_NET_TCP_SEND_SLOT_STATE_DETACHED = 7,
+  // All logical bytes accepted; native source-reuse notification outstanding.
+  IREE_NET_TCP_SEND_SLOT_STATE_RETIRING = 8,
 } iree_net_tcp_send_slot_state_t;
 
 // One bounded logical send.
@@ -78,7 +80,6 @@ typedef enum iree_net_tcp_receive_state_e {
   IREE_NET_TCP_RECEIVE_STATE_SUBMITTED = 1,
   IREE_NET_TCP_RECEIVE_STATE_CANCELLING = 2,
   IREE_NET_TCP_RECEIVE_STATE_COMPLETING = 3,
-  IREE_NET_TCP_RECEIVE_STATE_PAUSED = 4,
 } iree_net_tcp_receive_state_t;
 
 typedef enum iree_net_tcp_receive_lease_state_e {
@@ -90,14 +91,14 @@ typedef enum iree_net_tcp_receive_lease_state_e {
 typedef enum iree_net_tcp_carrier_flag_bits_e {
   IREE_NET_TCP_CARRIER_FLAG_NONE = 0u,
 
-  // One send lane is submitted or owned by its completion callback.
+  // One ordered write lane is submitted or owned by its progress callback.
   IREE_NET_TCP_CARRIER_FLAG_SEND_DISPATCH_ACTIVE = 1u << 0,
   IREE_NET_TCP_CARRIER_FLAG_SEND_SHUTDOWN_INITIATED = 1u << 1,
   IREE_NET_TCP_CARRIER_FLAG_SOCKET_WRITE_SHUTDOWN_ISSUED = 1u << 2,
 } iree_net_tcp_carrier_flag_bits_t;
 typedef uint32_t iree_net_tcp_carrier_flags_t;
 
-// Per-buffer wrapper restoring receive progress when a lease returns.
+// Per-buffer wrapper accounting for consumer ownership of native storage.
 typedef struct iree_net_tcp_receive_lease_context_t {
   // Carrier retained only while the consumer owns the wrapped lease.
   iree_net_tcp_carrier_t* carrier;
@@ -157,9 +158,6 @@ struct iree_net_tcp_carrier_t {
 
   // Mutex-protected receive operation ownership state.
   iree_net_tcp_receive_state_t receive_state;
-
-  // Incremented after every wrapped receive buffer is recycled.
-  iree_atomic_int32_t returned_buffer_epoch;
 
   // Number of receive leases currently retained by consumers.
   iree_atomic_int32_t retained_receive_lease_count;
@@ -442,27 +440,21 @@ static void iree_net_tcp_complete_detached_sends(
   }
 }
 
-// Publishes terminal failure and retires a paused receive as its final carrier
-// access. Callers retain a separate operation or lifetime reference.
+// Publishes terminal failure. Callers retain an operation or lifetime
+// reference.
 static void iree_net_tcp_publish_failure(iree_net_tcp_carrier_t* carrier,
                                          iree_status_t status) {
   IREE_ASSERT(!iree_status_is_ok(status));
   iree_status_t receive_cancel_status = iree_ok_status();
   iree_status_t send_cancel_status = iree_ok_status();
-  bool retire_paused_receive = false;
 
   iree_slim_mutex_lock(&carrier->mutex);
   carrier->flags |= IREE_NET_TCP_CARRIER_FLAG_SEND_SHUTDOWN_INITIATED |
                     IREE_NET_TCP_CARRIER_FLAG_SOCKET_WRITE_SHUTDOWN_ISSUED;
   // Accepted sends stay on their single dispatch lane so only its proactor
   // callback can deliver their terminal completions.
-  if (carrier->receive_state == IREE_NET_TCP_RECEIVE_STATE_PAUSED) {
-    carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_RETIRED;
-    retire_paused_receive = true;
-  } else {
-    receive_cancel_status =
-        iree_net_tcp_request_receive_cancellation_locked(carrier);
-  }
+  receive_cancel_status =
+      iree_net_tcp_request_receive_cancellation_locked(carrier);
   send_cancel_status = iree_net_tcp_request_send_cancellation_locked(carrier);
   iree_slim_mutex_unlock(&carrier->mutex);
 
@@ -472,9 +464,6 @@ static void iree_net_tcp_publish_failure(iree_net_tcp_carrier_t* carrier,
       status, iree_async_socket_shutdown(carrier->socket,
                                          IREE_ASYNC_SOCKET_SHUTDOWN_BOTH));
   iree_net_carrier_report_terminal_error(&carrier->base, status);
-  if (retire_paused_receive) {
-    iree_net_tcp_carrier_retire_pending_operation(carrier);
-  }
 }
 
 static void iree_net_tcp_fail_without_operation(iree_net_tcp_carrier_t* carrier,
@@ -518,6 +507,8 @@ static void iree_net_tcp_process_send_result(
     iree_net_tcp_carrier_t* carrier, iree_net_tcp_send_slot_t* slot,
     iree_status_t status, iree_host_size_t bytes_sent,
     iree_async_completion_flags_t flags);
+
+static void iree_net_tcp_advance_send_dispatch(iree_net_tcp_carrier_t* carrier);
 
 static void iree_net_tcp_local_send_completed(
     void* user_data, iree_async_operation_t* operation, iree_status_t status,
@@ -603,10 +594,32 @@ static void iree_net_tcp_socket_send_completed(
   iree_net_tcp_send_slot_t* slot = (iree_net_tcp_send_slot_t*)operation;
   iree_slim_mutex_lock(&carrier->mutex);
   IREE_ASSERT(slot->state == IREE_NET_TCP_SEND_SLOT_STATE_SUBMITTED ||
-                  slot->state == IREE_NET_TCP_SEND_SLOT_STATE_CANCELLING,
+                  slot->state == IREE_NET_TCP_SEND_SLOT_STATE_CANCELLING ||
+                  slot->state == IREE_NET_TCP_SEND_SLOT_STATE_RETIRING,
               "TCP send completed from state %d", (int)slot->state);
-  slot->state = IREE_NET_TCP_SEND_SLOT_STATE_COMPLETING;
   const iree_host_size_t bytes_sent = slot->operation.bytes_sent;
+  if (iree_any_bit_set(flags, IREE_ASYNC_COMPLETION_FLAG_MORE)) {
+    IREE_ASSERT(iree_status_is_ok(status));
+    // A partial attempt keeps the write lane until its operation can be reused.
+    // A complete logical frame relinquishes only the lane, not its source
+    // storage or user completion. No later frame can interleave its bytes.
+    const bool frame_accepted =
+        bytes_sent == slot->submitted_length &&
+        bytes_sent == slot->total_length - slot->bytes_transferred;
+    if (frame_accepted) {
+      slot->bytes_transferred = slot->total_length;
+      slot->state = IREE_NET_TCP_SEND_SLOT_STATE_RETIRING;
+    }
+    iree_slim_mutex_unlock(&carrier->mutex);
+    iree_status_free(status);
+    if (frame_accepted) {
+      iree_net_tcp_advance_send_dispatch(carrier);
+    }
+    return;
+  }
+  if (slot->state != IREE_NET_TCP_SEND_SLOT_STATE_RETIRING) {
+    slot->state = IREE_NET_TCP_SEND_SLOT_STATE_COMPLETING;
+  }
   iree_slim_mutex_unlock(&carrier->mutex);
   iree_net_tcp_process_send_result(carrier, slot, status, bytes_sent, flags);
 }
@@ -630,7 +643,7 @@ static iree_status_t iree_net_tcp_submit_send_slot_locked(
   for (iree_host_size_t i = 0; i < submitted_span_count; ++i) {
     slot->submitted_length += slot->operation.buffers.values[i].length;
   }
-  slot->operation.send_flags = IREE_ASYNC_SOCKET_SEND_FLAG_NONE;
+  slot->operation.send_flags = IREE_ASYNC_SOCKET_SEND_FLAG_REPORT_PROGRESS;
   return iree_async_proactor_submit_one(carrier->proactor,
                                         &slot->operation.base);
 }
@@ -656,6 +669,7 @@ static void iree_net_tcp_process_send_result(
     iree_net_tcp_carrier_t* carrier, iree_net_tcp_send_slot_t* slot,
     iree_status_t status, iree_host_size_t bytes_sent,
     iree_async_completion_flags_t flags) {
+  const bool is_retiring = slot->state == IREE_NET_TCP_SEND_SLOT_STATE_RETIRING;
   if (iree_any_bit_set(flags, IREE_ASYNC_COMPLETION_FLAG_CANCELLED) &&
       iree_status_is_ok(status)) {
     status = iree_make_status(IREE_STATUS_CANCELLED,
@@ -664,7 +678,7 @@ static void iree_net_tcp_process_send_result(
 
   const iree_host_size_t remaining_length =
       slot->total_length - slot->bytes_transferred;
-  if (iree_status_is_ok(status)) {
+  if (!is_retiring && iree_status_is_ok(status)) {
     if (bytes_sent == 0) {
       status = iree_make_status(IREE_STATUS_UNAVAILABLE,
                                 "TCP socket send made no forward progress");
@@ -735,13 +749,29 @@ static void iree_net_tcp_process_send_result(
   completion_callback.fn(completion_callback.user_data, status,
                          total_bytes_transferred);
 
+  if (!is_retiring) {
+    iree_net_tcp_advance_send_dispatch(carrier);
+  } else {
+    iree_slim_mutex_lock(&carrier->mutex);
+    const bool issue_write_shutdown =
+        iree_net_tcp_claim_write_shutdown_locked(carrier);
+    iree_slim_mutex_unlock(&carrier->mutex);
+    if (issue_write_shutdown) {
+      iree_net_tcp_issue_deferred_write_shutdown(carrier);
+    }
+  }
+  iree_net_tcp_carrier_retire_pending_operation(carrier);
+}
+
+// Hands the single ordered write lane to its next frame. Prior full-frame
+// writes may still own their independent slots pending native retirement.
+static void iree_net_tcp_advance_send_dispatch(
+    iree_net_tcp_carrier_t* carrier) {
   iree_net_tcp_send_slot_t* next_slot = NULL;
   iree_net_tcp_send_slot_t* detached_sends = NULL;
   iree_status_t next_submit_status = iree_ok_status();
-  bool issue_write_shutdown = false;
   iree_slim_mutex_lock(&carrier->mutex);
-  if (send_succeeded &&
-      iree_net_carrier_state(&carrier->base) == IREE_NET_CARRIER_STATE_ACTIVE &&
+  if (iree_net_carrier_state(&carrier->base) == IREE_NET_CARRIER_STATE_ACTIVE &&
       !iree_net_carrier_has_terminal_error(&carrier->base)) {
     next_slot = iree_net_tcp_pop_send_locked(carrier);
     if (next_slot) {
@@ -758,7 +788,8 @@ static void iree_net_tcp_process_send_result(
   if (!next_slot) {
     carrier->flags &= ~IREE_NET_TCP_CARRIER_FLAG_SEND_DISPATCH_ACTIVE;
   }
-  issue_write_shutdown = iree_net_tcp_claim_write_shutdown_locked(carrier);
+  const bool issue_write_shutdown =
+      iree_net_tcp_claim_write_shutdown_locked(carrier);
   iree_slim_mutex_unlock(&carrier->mutex);
 
   if (detached_sends) {
@@ -777,7 +808,6 @@ static void iree_net_tcp_process_send_result(
   if (issue_write_shutdown) {
     iree_net_tcp_issue_deferred_write_shutdown(carrier);
   }
-  iree_net_tcp_carrier_retire_pending_operation(carrier);
 }
 
 static void iree_net_tcp_socket_receive_completed(
@@ -830,20 +860,6 @@ static void iree_net_tcp_finish_receive_transition(
   }
 }
 
-static void iree_net_tcp_resume_paused_receive(
-    iree_net_tcp_carrier_t* carrier) {
-  iree_status_t submit_status = iree_ok_status();
-  bool retire_receive = false;
-  iree_slim_mutex_lock(&carrier->mutex);
-  if (carrier->receive_state == IREE_NET_TCP_RECEIVE_STATE_PAUSED) {
-    submit_status =
-        iree_net_tcp_continue_receive_locked(carrier, &retire_receive);
-  }
-  iree_slim_mutex_unlock(&carrier->mutex);
-  iree_net_tcp_finish_receive_transition(carrier, submit_status,
-                                         retire_receive);
-}
-
 static void iree_net_tcp_receive_lease_recycle(void* user_data,
                                                uint32_t buffer_index) {
   iree_net_tcp_receive_lease_context_t* context =
@@ -862,12 +878,6 @@ static void iree_net_tcp_receive_lease_recycle(void* user_data,
         &carrier->retained_receive_lease_count, 1, iree_memory_order_acq_rel);
     IREE_ASSERT(previous_count > 0,
                 "TCP carrier lost a retained receive lease");
-  }
-  iree_atomic_fetch_add(&carrier->returned_buffer_epoch, 1,
-                        iree_memory_order_release);
-  iree_net_tcp_resume_paused_receive(carrier);
-
-  if (old_state == IREE_NET_TCP_RECEIVE_LEASE_STATE_RETAINED) {
     iree_net_carrier_release(&carrier->base);
   }
 }
@@ -914,26 +924,6 @@ static void iree_net_tcp_retain_moved_receive_lease(
                 "TCP carrier lost a retained receive lease");
     iree_net_carrier_release(&carrier->base);
   }
-}
-
-// Publishes PAUSED while closing the lease-return lost-wakeup race.
-static void iree_net_tcp_pause_receive(iree_net_tcp_carrier_t* carrier,
-                                       int32_t observed_return_epoch) {
-  iree_status_t status = iree_ok_status();
-  bool retire_receive = false;
-  iree_slim_mutex_lock(&carrier->mutex);
-  IREE_ASSERT(carrier->receive_state == IREE_NET_TCP_RECEIVE_STATE_COMPLETING,
-              "TCP receive paused from state %d", (int)carrier->receive_state);
-  carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_PAUSED;
-  const int32_t current_return_epoch = iree_atomic_load(
-      &carrier->returned_buffer_epoch, iree_memory_order_acquire);
-  if (iree_net_carrier_state(&carrier->base) != IREE_NET_CARRIER_STATE_ACTIVE ||
-      iree_net_carrier_has_terminal_error(&carrier->base) ||
-      current_return_epoch != observed_return_epoch) {
-    status = iree_net_tcp_continue_receive_locked(carrier, &retire_receive);
-  }
-  iree_slim_mutex_unlock(&carrier->mutex);
-  iree_net_tcp_finish_receive_transition(carrier, status, retire_receive);
 }
 
 static void iree_net_tcp_retire_completing_receive(
@@ -998,27 +988,30 @@ static void iree_net_tcp_socket_receive_completed(
   iree_async_span_t data = iree_async_span_make(
       receive_operation->lease.span.region,
       receive_operation->lease.span.offset, receive_operation->bytes_received);
-  iree_net_tcp_receive_lease_context_t* lease_context =
-      iree_net_tcp_prepare_receive_lease(carrier, &receive_operation->lease);
+  // Only this serialized callback can increase the retained count. Concurrent
+  // returns can lower it, conservatively leaving this delivery borrowed. Keep
+  // one native buffer available for later control/release-trigger messages;
+  // framing already gives borrowed frames independent ownership when needed.
+  const int32_t retained_lease_count = iree_atomic_load(
+      &carrier->retained_receive_lease_count, iree_memory_order_acquire);
+  iree_net_tcp_receive_lease_context_t* lease_context = NULL;
+  if ((iree_host_size_t)retained_lease_count <
+      carrier->receive_lease_context_count - 1) {
+    lease_context =
+        iree_net_tcp_prepare_receive_lease(carrier, &receive_operation->lease);
+  }
   iree_status_t handler_status = carrier->base.handlers.on_receive(
-      carrier->base.handlers.user_data, data, &receive_operation->lease);
-  iree_net_tcp_retain_moved_receive_lease(carrier, lease_context,
-                                          &receive_operation->lease);
+      carrier->base.handlers.user_data, data,
+      lease_context ? &receive_operation->lease : NULL);
+  if (lease_context) {
+    iree_net_tcp_retain_moved_receive_lease(carrier, lease_context,
+                                            &receive_operation->lease);
+  }
   iree_async_buffer_lease_release(&receive_operation->lease);
 
   if (!iree_status_is_ok(handler_status)) {
     iree_net_tcp_publish_failure(carrier, handler_status);
     iree_net_tcp_retire_completing_receive(carrier);
-    return;
-  }
-
-  const int32_t return_epoch = iree_atomic_load(&carrier->returned_buffer_epoch,
-                                                iree_memory_order_acquire);
-  const int32_t retained_lease_count = iree_atomic_load(
-      &carrier->retained_receive_lease_count, iree_memory_order_acquire);
-  if ((iree_host_size_t)retained_lease_count >=
-      carrier->receive_lease_context_count) {
-    iree_net_tcp_pause_receive(carrier, return_epoch);
     return;
   }
 
@@ -1092,7 +1085,6 @@ static void iree_net_tcp_carrier_deactivate(
     iree_net_carrier_deactivate_callback_fn_t callback, void* user_data) {
   iree_net_tcp_carrier_t* carrier = iree_net_tcp_carrier_cast(base_carrier);
   iree_status_t cleanup_status = iree_ok_status();
-  bool retire_paused_receive = false;
   bool shutdown_socket = false;
   bool valid_request = false;
 
@@ -1109,13 +1101,7 @@ static void iree_net_tcp_carrier_deactivate(
     carrier->flags |= IREE_NET_TCP_CARRIER_FLAG_SEND_SHUTDOWN_INITIATED |
                       IREE_NET_TCP_CARRIER_FLAG_SOCKET_WRITE_SHUTDOWN_ISSUED;
     iree_net_carrier_set_state(base_carrier, IREE_NET_CARRIER_STATE_DRAINING);
-    if (carrier->receive_state == IREE_NET_TCP_RECEIVE_STATE_PAUSED) {
-      carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_RETIRED;
-      retire_paused_receive = true;
-    } else {
-      cleanup_status =
-          iree_net_tcp_request_receive_cancellation_locked(carrier);
-    }
+    cleanup_status = iree_net_tcp_request_receive_cancellation_locked(carrier);
     cleanup_status = iree_status_join(
         cleanup_status, iree_net_tcp_request_send_cancellation_locked(carrier));
   }
@@ -1133,9 +1119,6 @@ static void iree_net_tcp_carrier_deactivate(
   }
   if (!iree_status_is_ok(cleanup_status)) {
     iree_net_carrier_report_terminal_error(base_carrier, cleanup_status);
-  }
-  if (retire_paused_receive) {
-    iree_net_tcp_carrier_retire_pending_operation(carrier);
   }
   iree_net_tcp_carrier_retire_pending_operation(carrier);
 }
@@ -1486,8 +1469,6 @@ IREE_API_EXPORT iree_status_t iree_net_tcp_carrier_create(
                                               receive_contexts_offset);
   carrier->receive_lease_context_count = receive_buffer_count;
   carrier->receive_state = IREE_NET_TCP_RECEIVE_STATE_RETIRED;
-  iree_atomic_store(&carrier->returned_buffer_epoch, 0,
-                    iree_memory_order_relaxed);
   iree_atomic_store(&carrier->retained_receive_lease_count, 0,
                     iree_memory_order_relaxed);
   for (iree_host_size_t i = 0; i < receive_buffer_count; ++i) {

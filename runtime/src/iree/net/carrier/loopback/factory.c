@@ -97,14 +97,21 @@ typedef struct iree_net_loopback_connect_dispatch_t {
   // Operation dispatching the connect callback on the client proactor.
   iree_async_nop_operation_t operation;
 
-  // Factory retained until the connect callback retires.
+  // Factory retained through connection publication and private cleanup.
   iree_net_loopback_factory_t* factory;
 
-  // Client proactor retained until the connect callback retires.
+  // Client proactor retained through connection publication and private
+  // cleanup.
   iree_async_proactor_t* proactor;
 
   // Callback receiving the client connection or terminal failure.
   iree_net_transport_connect_callback_t callback;
+
+  // Caller storage serializing cancellation with publication.
+  iree_net_transport_connect_operation_t* connect_operation;
+
+  // Sticky intent protected by connect_operation->mutex through detachment.
+  bool cancellation_requested;
 
   // Asynchronous connection result joined with operation completion status.
   iree_status_t result_status;
@@ -329,8 +336,18 @@ static void iree_net_loopback_connect_dispatch_complete(
       (iree_net_loopback_connect_dispatch_t*)user_data;
   iree_net_transport_connect_callback_t callback = dispatch->callback;
 
+  iree_net_transport_connect_operation_t* connect_operation =
+      dispatch->connect_operation;
+  iree_slim_mutex_lock(&connect_operation->mutex);
   status = iree_status_join(status, dispatch->result_status);
   dispatch->result_status = iree_ok_status();
+  if (iree_status_is_ok(status) && dispatch->cancellation_requested) {
+    status = iree_status_from_code(IREE_STATUS_CANCELLED);
+  }
+  connect_operation->binding.cancel_fn = NULL;
+  connect_operation->binding.user_data = NULL;
+  iree_slim_mutex_unlock(&connect_operation->mutex);
+
   iree_net_connection_t* client_connection = NULL;
   if (iree_status_is_ok(status) && dispatch->accept_dispatch) {
     iree_net_loopback_accept_dispatch_t* accept_dispatch =
@@ -356,8 +373,15 @@ static void iree_net_loopback_connect_dispatch_complete(
     dispatch->accept_dispatch = NULL;
   }
 
-  callback.fn(callback.user_data, status, client_connection);
   iree_net_loopback_connect_dispatch_destroy(dispatch);
+  callback.fn(callback.user_data, status, client_connection);
+}
+
+// The already-admitted client kickoff observes this before publishing either
+// connection. No additional owner dispatch is needed.
+static void iree_net_loopback_connect_cancel(void* user_data) {
+  iree_net_loopback_connect_dispatch_t* dispatch = user_data;
+  dispatch->cancellation_requested = true;
 }
 
 //===----------------------------------------------------------------------===//
@@ -387,7 +411,8 @@ iree_net_loopback_factory_query_capabilities(
 static iree_status_t iree_net_loopback_factory_connect(
     iree_net_transport_factory_t* base_factory, iree_string_view_t address,
     iree_async_proactor_t* proactor, iree_async_buffer_pool_t* receive_pool,
-    iree_net_transport_connect_callback_t callback) {
+    iree_net_transport_connect_callback_t callback,
+    iree_net_transport_connect_operation_t* operation) {
   (void)receive_pool;
   iree_net_loopback_factory_t* factory =
       (iree_net_loopback_factory_t*)base_factory;
@@ -409,6 +434,7 @@ static iree_status_t iree_net_loopback_factory_connect(
   dispatch->proactor = proactor;
   iree_async_proactor_retain(proactor);
   dispatch->callback = callback;
+  dispatch->connect_operation = operation;
 
   iree_slim_mutex_lock(&factory->mutex);
   iree_net_loopback_listener_t* listener =
@@ -439,6 +465,8 @@ static iree_status_t iree_net_loopback_factory_connect(
   }
 
   if (iree_status_is_ok(status)) {
+    operation->binding.cancel_fn = iree_net_loopback_connect_cancel;
+    operation->binding.user_data = dispatch;
     iree_async_operation_initialize(
         &dispatch->operation.base, IREE_ASYNC_OPERATION_TYPE_NOP,
         IREE_ASYNC_OPERATION_FLAG_NONE,

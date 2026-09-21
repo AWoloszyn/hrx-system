@@ -34,7 +34,7 @@ extern "C" {
 
 // State for Linux signal handling via signalfd.
 typedef struct iree_async_linux_signal_state_t {
-  // signalfd for active signals. -1 if no signals are subscribed.
+  // Stable signalfd until deinitialize; -1 before the first subscription.
   int signal_fd;
 
   // Currently active signals (those with subscriptions).
@@ -63,7 +63,8 @@ static inline void iree_async_linux_signal_state_initialize(
 // On the first call, creates the signalfd and saves the original signal mask.
 //
 // Returns the signalfd file descriptor (for registration with poll). The fd
-// remains the same across all add_signal calls.
+// remains the same across all add_signal calls, including after removing every
+// subscription. The poll owner must retire its monitor before deinitialize.
 //
 // Thread safety: Call from main thread, serialized with poll.
 iree_status_t iree_async_linux_signal_add_signal(
@@ -73,8 +74,8 @@ iree_status_t iree_async_linux_signal_add_signal(
 // Removes |signal| from the set of handled signals.
 //
 // Unblocks |signal| via pthread_sigmask and updates the signalfd to stop
-// monitoring it. When the last signal is removed, closes the signalfd and
-// restores the original signal mask.
+// monitoring it. An empty mask retains the descriptor for the existing native
+// monitor; only deinitialize closes it and restores the original signal mask.
 //
 // Thread safety: Call from main thread, serialized with poll.
 void iree_async_linux_signal_remove_signal(

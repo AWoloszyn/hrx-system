@@ -6,15 +6,19 @@
 
 // TCP carrier implementing reliable ordered byte-stream transport.
 //
-// One logical send is submitted to the socket at a time. This preserves
-// stream ordering across partial platform sends while additional accepted
-// sends wait in a bounded carrier-owned FIFO. Registered regions are retained
-// from admission through logical completion; payload bytes remain caller-owned
-// under the generic asynchronous carrier contract.
+// One logical send owns the ordered socket write lane at a time. Once all its
+// bytes are accepted, a zero-copy send may await source retirement in its own
+// bounded slot while the next send starts. Partial writes retain the lane until
+// their operation can be reused. Additional sends wait in a bounded FIFO.
+// Registered regions are retained from admission through logical completion;
+// payload bytes remain caller-owned under the generic asynchronous carrier
+// contract. Send callbacks return source ownership and may run in a different
+// order than the bytes were written.
 //
 // Receive progress uses one pool-backed operation. A consumer may move a
-// receive lease out of its callback, and returning that lease wakes receive
-// progress if pool exhaustion paused it.
+// receive lease out of its callback. The last available native buffer is
+// delivered without a movable lease so retained data cannot block later
+// control messages. Framing gives borrowed messages independent storage.
 
 #ifndef IREE_NET_CARRIER_TCP_CARRIER_H_
 #define IREE_NET_CARRIER_TCP_CARRIER_H_

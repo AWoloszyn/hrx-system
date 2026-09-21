@@ -172,15 +172,16 @@ static inline iree_async_primitive_t iree_async_primitive_from_mach_port(
 // Lifecycle operations
 //===----------------------------------------------------------------------===//
 
-// Duplicates a primitive handle, producing an independent copy.
+// Duplicates a primitive handle, producing an independent noninheritable copy.
 //
 // The returned handle is a separate OS-level resource that must be closed
-// independently via iree_async_primitive_close(). This is used to prepare
-// handles for cross-process transfer (e.g., sending over a Unix domain socket
-// or passing via DuplicateHandle on Windows).
+// independently via iree_async_primitive_close(). POSIX descriptors are created
+// atomically with close-on-exec; Windows handles cannot be inherited. This is
+// used to prepare handles for cross-process transfer (e.g., sending over a Unix
+// domain socket or passing via DuplicateHandle on Windows).
 //
 // Platform behavior:
-//   POSIX fd:       dup(fd)
+//   POSIX fd:       fcntl(fd, F_DUPFD_CLOEXEC)
 //   Windows HANDLE: DuplicateHandle(DUPLICATE_SAME_ACCESS)
 //   Mach port:      mach_port_mod_refs(MACH_PORT_RIGHT_SEND, +1)
 //

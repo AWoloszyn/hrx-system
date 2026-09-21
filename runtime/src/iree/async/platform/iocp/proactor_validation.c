@@ -204,10 +204,10 @@ iree_status_t iree_async_proactor_iocp_validate_operation(
             IREE_STATUS_INVALID_ARGUMENT,
             "EVENT_WAIT event belongs to a different proactor");
       }
-      if (wait->event->primitive.type !=
+      if (wait->event->native.wait_primitive.type !=
               IREE_ASYNC_PRIMITIVE_TYPE_WIN32_HANDLE ||
-          wait->event->primitive.value.win32_handle == 0 ||
-          (HANDLE)wait->event->primitive.value.win32_handle ==
+          wait->event->native.wait_primitive.value.win32_handle == 0 ||
+          (HANDLE)wait->event->native.wait_primitive.value.win32_handle ==
               INVALID_HANDLE_VALUE) {
         return iree_make_status(
             IREE_STATUS_INVALID_ARGUMENT,
@@ -335,11 +335,13 @@ iree_status_t iree_async_proactor_iocp_validate_operation(
           (const iree_async_socket_send_operation_t*)operation;
       IREE_RETURN_IF_ERROR(iree_async_proactor_iocp_validate_socket(
           proactor, send->socket, "SOCKET_SEND"));
-      if (send->send_flags & ~IREE_ASYNC_SOCKET_SEND_FLAG_MORE) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "SOCKET_SEND has unknown flags 0x%08X",
-            send->send_flags & ~IREE_ASYNC_SOCKET_SEND_FLAG_MORE);
+      const iree_async_socket_send_flags_t unknown_flags =
+          send->send_flags & ~(IREE_ASYNC_SOCKET_SEND_FLAG_MORE |
+                               IREE_ASYNC_SOCKET_SEND_FLAG_REPORT_PROGRESS);
+      if (unknown_flags) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "SOCKET_SEND has unknown flags 0x%08X",
+                                unknown_flags);
       }
       return iree_async_proactor_iocp_validate_span_list(
           proactor, send->buffers, IREE_ASYNC_SOCKET_SEND_MAX_BUFFERS,
@@ -353,11 +355,13 @@ iree_status_t iree_async_proactor_iocp_validate_operation(
           proactor, send->socket, "SOCKET_SENDTO"));
       IREE_RETURN_IF_ERROR(iree_async_proactor_iocp_validate_address(
           &send->destination, "SOCKET_SENDTO"));
-      if (send->send_flags & ~IREE_ASYNC_SOCKET_SEND_FLAG_MORE) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "SOCKET_SENDTO has unknown flags 0x%08X",
-            send->send_flags & ~IREE_ASYNC_SOCKET_SEND_FLAG_MORE);
+      const iree_async_socket_send_flags_t unknown_flags =
+          send->send_flags & ~(IREE_ASYNC_SOCKET_SEND_FLAG_MORE |
+                               IREE_ASYNC_SOCKET_SEND_FLAG_REPORT_PROGRESS);
+      if (unknown_flags) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "SOCKET_SENDTO has unknown flags 0x%08X",
+                                unknown_flags);
       }
       return iree_async_proactor_iocp_validate_span_list(
           proactor, send->buffers, IREE_ASYNC_SOCKET_SENDTO_MAX_BUFFERS,
@@ -496,6 +500,17 @@ iree_status_t iree_async_proactor_iocp_validate_operation(
           (HANDLE)poll->primitive.value.win32_handle == INVALID_HANDLE_VALUE) {
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                 "HANDLE_POLL requires a valid Windows handle");
+      }
+      if (!poll->events || (poll->events & ~(IREE_ASYNC_POLL_EVENT_IN |
+                                             IREE_ASYNC_POLL_EVENT_OUT))) {
+        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                "HANDLE_POLL requires IN and/or OUT interests");
+      }
+      if (iree_any_bit_set(poll->events, IREE_ASYNC_POLL_EVENT_OUT)) {
+        return iree_make_status(
+            IREE_STATUS_UNAVAILABLE,
+            "HANDLE_POLL on Windows supports signaled handles, not writable "
+            "readiness");
       }
       return iree_ok_status();
     }

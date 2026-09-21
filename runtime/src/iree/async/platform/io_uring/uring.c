@@ -413,48 +413,94 @@ iree_io_uring_sqe_t* iree_io_uring_ring_get_sqe(iree_io_uring_ring_t* ring) {
   return sqe;
 }
 
-iree_status_t iree_io_uring_ring_submit(iree_io_uring_ring_t* ring,
-                                        uint32_t min_complete, uint32_t flags) {
-  // Flush under the SQ lock: read sq_local_tail and advance *sq_tail.
-  // The lock ensures no other thread is mid-fill when we compute to_submit.
-  iree_io_uring_ring_sq_lock(ring);
-  uint32_t to_submit = ring->sq_local_tail - *ring->sq_tail;
-  if (to_submit > 0) {
+// Publishes prepared entries and returns the submission extent. The caller
+// holds the SQ lock so another submitter cannot be mid-fill.
+static uint32_t iree_io_uring_ring_flush(iree_io_uring_ring_t* ring) {
+  uint32_t tail = ring->sq_local_tail;
+  if (tail != *ring->sq_tail) {
     // Release barrier ensures all SQE field writes complete before kernel sees
     // the new tail.
-    iree_atomic_store((iree_atomic_int32_t*)ring->sq_tail, ring->sq_local_tail,
+    iree_atomic_store((iree_atomic_int32_t*)ring->sq_tail, tail,
                       iree_memory_order_release);
   }
-  iree_io_uring_ring_sq_unlock(ring);
+  return tail;
+}
 
-  // Early return only if there's truly nothing to do: no SQEs to submit,
-  // not waiting for completions, and not explicitly requesting GETEVENTS.
-  // The GETEVENTS check is critical for DEFER_TASKRUN mode where we need to
-  // call io_uring_enter to flush deferred completions even with nothing to
-  // submit.
-  if (to_submit == 0 && min_complete == 0 &&
-      !iree_any_bit_set(flags, IREE_IORING_ENTER_GETEVENTS)) {
-    return iree_ok_status();
-  }
-
-  // io_uring_enter is called OUTSIDE the lock. Only the poll thread may call
-  // this (SINGLE_ISSUER constraint). Cross-thread submitters use wake() to
-  // trigger the poll thread's io_uring_enter instead.
-  //
-  // Retry on EINTR - signals can interrupt the syscall but it's always safe
-  // to retry. This keeps EINTR handling out of all callers.
+// A submission allocation failure bypasses deferred task work in the kernel.
+// Run that work without allocating new requests, then reattempt the frozen
+// extent. Repeated failure is terminal to this attempt, never a busy retry.
+static iree_status_t iree_io_uring_ring_recover_submission(
+    iree_io_uring_ring_t* ring, uint32_t submission_tail, uint32_t min_complete,
+    uint32_t flags) {
   int ret = 0;
   do {
+    ret = iree_io_uring_enter(ring->ring_fd, 0, 0, IREE_IORING_ENTER_GETEVENTS,
+                              NULL, 0);
+  } while (ret < 0 && errno == EINTR);
+  if (ret < 0) {
+    return iree_make_status(iree_status_code_from_errno(errno),
+                            "io_uring recovery progress failed (%d)", errno);
+  }
+  do {
+    uint32_t head = iree_atomic_load((iree_atomic_int32_t*)ring->sq_head,
+                                     iree_memory_order_acquire);
+    ret = iree_io_uring_enter(ring->ring_fd, submission_tail - head,
+                              min_complete, flags, NULL, 0);
+  } while (ret < 0 && errno == EINTR);
+  if (ret < 0) {
+    return iree_make_status(iree_status_code_from_errno(errno),
+                            "io_uring admission failed after progress (%d)",
+                            errno);
+  }
+  return iree_ok_status();
+}
+
+static iree_status_t iree_io_uring_ring_submit_extent(
+    iree_io_uring_ring_t* ring, uint32_t submission_tail, uint32_t min_complete,
+    uint32_t flags) {
+  // A published entry still needs submission until the kernel consumes it.
+  // Recompute the remaining extent on EINTR as well: the kernel may have
+  // advanced its head before returning, or may not have consumed anything.
+  int ret = 0;
+  uint32_t to_submit = 0;
+  do {
+    uint32_t head = iree_atomic_load((iree_atomic_int32_t*)ring->sq_head,
+                                     iree_memory_order_acquire);
+    to_submit = submission_tail - head;
+    // GETEVENTS must run deferred task work even when no SQEs remain.
+    if (to_submit == 0 && min_complete == 0 &&
+        !iree_any_bit_set(flags, IREE_IORING_ENTER_GETEVENTS)) {
+      return iree_ok_status();
+    }
     ret = iree_io_uring_enter(ring->ring_fd, to_submit, min_complete, flags,
                               NULL, 0);
   } while (ret < 0 && errno == EINTR);
 
   if (ret < 0) {
+    if (errno == EAGAIN && to_submit > 0) {
+      return iree_io_uring_ring_recover_submission(ring, submission_tail,
+                                                   min_complete, flags);
+    }
     return iree_make_status(iree_status_code_from_errno(errno),
                             "io_uring_enter failed (%d)", errno);
   }
 
   return iree_ok_status();
+}
+
+iree_status_t iree_io_uring_ring_submit(iree_io_uring_ring_t* ring,
+                                        uint32_t min_complete, uint32_t flags) {
+  iree_io_uring_ring_sq_lock(ring);
+  uint32_t submission_tail = iree_io_uring_ring_flush(ring);
+  iree_io_uring_ring_sq_unlock(ring);
+  return iree_io_uring_ring_submit_extent(ring, submission_tail, min_complete,
+                                          flags);
+}
+
+iree_status_t iree_io_uring_ring_submit_pending_locked(
+    iree_io_uring_ring_t* ring) {
+  return iree_io_uring_ring_submit_extent(ring, iree_io_uring_ring_flush(ring),
+                                          /*min_complete=*/0, /*flags=*/0);
 }
 
 //===----------------------------------------------------------------------===//
@@ -470,22 +516,19 @@ iree_status_t iree_io_uring_ring_wait_cqe(iree_io_uring_ring_t* ring,
     return iree_ok_status();
   }
 
-  // Calculate pending SQEs to submit (if flushing). Lock protects the
-  // sq_local_tail read and *sq_tail write against concurrent get_sqe callers.
-  uint32_t to_submit = 0;
+  // Freeze the published extent for this wait. Cross-thread preparation can
+  // continue, but only the poll owner publishes and consumes entries.
+  uint32_t submission_tail = 0;
   if (flush_pending) {
     iree_io_uring_ring_sq_lock(ring);
-    to_submit = ring->sq_local_tail - *ring->sq_tail;
-    if (to_submit > 0) {
-      iree_atomic_store((iree_atomic_int32_t*)ring->sq_tail,
-                        ring->sq_local_tail, iree_memory_order_release);
-    }
+    submission_tail = iree_io_uring_ring_flush(ring);
     iree_io_uring_ring_sq_unlock(ring);
   }
 
   // Compute absolute deadline so EINTR retries use the remaining time rather
   // than restarting the full timeout duration. Without this, frequent signals
   // (profiler sampling, etc.) cause the effective wait to grow unboundedly.
+  const bool is_immediate = timeout_ns == IREE_DURATION_ZERO;
   const bool has_timeout =
       timeout_ns > 0 && timeout_ns != IREE_DURATION_INFINITE;
   iree_time_t deadline = IREE_TIME_INFINITE_FUTURE;
@@ -508,7 +551,7 @@ iree_status_t iree_io_uring_ring_wait_cqe(iree_io_uring_ring_t* ring,
         if (iree_io_uring_ring_cq_count(ring) > 0) {
           return iree_ok_status();
         }
-        return iree_make_status(IREE_STATUS_DEADLINE_EXCEEDED, "poll timeout");
+        return iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
       }
       flags |= IREE_IORING_ENTER_EXT_ARG;
       ts.tv_sec = remaining / 1000000000LL;
@@ -519,13 +562,23 @@ iree_status_t iree_io_uring_ring_wait_cqe(iree_io_uring_ring_t* ring,
       arg_sz = sizeof(arg);
     }
 
-    int ret = iree_io_uring_enter(ring->ring_fd, to_submit, min_complete, flags,
+    uint32_t to_submit = 0;
+    if (flush_pending) {
+      uint32_t head = iree_atomic_load((iree_atomic_int32_t*)ring->sq_head,
+                                       iree_memory_order_acquire);
+      to_submit = submission_tail - head;
+    }
+    // An immediate wait still flushes pending submissions and deferred kernel
+    // work, but cannot require the kernel to produce a completion before
+    // return.
+    int ret = iree_io_uring_enter(ring->ring_fd, to_submit,
+                                  is_immediate ? 0 : min_complete, flags,
                                   arg_ptr, arg_sz);
-    // Only flush SQEs on the first iteration; subsequent retries have nothing
-    // new to submit.
-    to_submit = 0;
 
     if (ret >= 0) {
+      if (is_immediate && iree_io_uring_ring_cq_count(ring) == 0) {
+        return iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
+      }
       return iree_ok_status();
     }
 
@@ -533,13 +586,20 @@ iree_status_t iree_io_uring_ring_wait_cqe(iree_io_uring_ring_t* ring,
       if (iree_io_uring_ring_cq_count(ring) > 0) {
         return iree_ok_status();
       }
-      return iree_make_status(IREE_STATUS_DEADLINE_EXCEEDED, "poll timeout");
+      return iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
     }
     if (errno == EINTR) {
       if (iree_io_uring_ring_cq_count(ring) > 0) {
         return iree_ok_status();
       }
       // Loop retries with remaining time computed from the deadline.
+      continue;
+    }
+    if (errno == EAGAIN && to_submit > 0) {
+      // Recover admission without extending the caller's wait deadline. The
+      // next pass recomputes both the remaining extent and remaining time.
+      IREE_RETURN_IF_ERROR(iree_io_uring_ring_recover_submission(
+          ring, submission_tail, 0, IREE_IORING_ENTER_GETEVENTS));
       continue;
     }
     return iree_make_status(iree_status_code_from_errno(errno),

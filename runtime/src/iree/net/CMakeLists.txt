@@ -141,9 +141,12 @@ iree_cc_library(
     transport_factory
   HDRS
     "transport_factory.h"
+  SRCS
+    "transport_factory.c"
   DEPS
     iree::async
     iree::base
+    iree::base::threading
   PUBLIC
 )
 
@@ -157,6 +160,25 @@ iree_cc_library(
   DEPS
     iree::base
     iree::base::core_headers
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
+    framed_endpoint
+  HDRS
+    "framed_endpoint.h"
+  SRCS
+    "framed_endpoint.c"
+  DEPS
+    ::carrier
+    ::endpoint_lifecycle
+    ::framing_adapter
+    ::message_endpoint
+    iree::async
+    iree::base
+    iree::base::core_headers
+    iree::base::threading
   PUBLIC
 )
 
@@ -205,6 +227,22 @@ iree_cc_library(
     iree::base
     iree::base::threading
   PUBLIC
+)
+
+iree_cc_test(
+  NAME
+    framed_endpoint_test
+  SRCS
+    "framed_endpoint_test.cc"
+  DEPS
+    ::framed_endpoint
+    ::message_endpoint
+    iree::async
+    iree::async::platform
+    iree::base
+    iree::net::carrier::loopback
+    iree::testing::gtest
+    iree::testing::gtest_main
 )
 
 iree_cc_fuzz(

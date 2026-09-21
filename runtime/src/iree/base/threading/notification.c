@@ -234,59 +234,27 @@ void iree_notification_cancel_wait(iree_notification_t* notification) {
 
 #else
 
-// The 64-bit value used to atomically read-modify-write (RMW) the state is
-// split in two and treated as independent 32-bit ints:
-//
-//  MSB (63)                           32                               LSB (0)
-// +-------------------------------------+-------------------------------------+
-// |            epoch/notification count |                        waiter count |
-// +-------------------------------------+-------------------------------------+
-//
-// We use the epoch to wait/wake the futex (which is 32-bits), and as such when
-// we pass the value address to the futex APIs we need to ensure we are only
-// passing the most significant 32-bit value regardless of endianness.
-#if defined(IREE_ENDIANNESS_LITTLE)
-#define IREE_NOTIFICATION_EPOCH_OFFSET (/*words=*/1)
-#else
-#define IREE_NOTIFICATION_EPOCH_OFFSET (/*words=*/0)
-#endif  // IREE_ENDIANNESS_*
-#define iree_notification_epoch_address(notification) \
-  ((iree_atomic_int32_t*)(&(notification)->value) +   \
-   IREE_NOTIFICATION_EPOCH_OFFSET)
-#define IREE_NOTIFICATION_WAITER_INC 0x0000000000000001ull
-#define IREE_NOTIFICATION_WAITER_DEC 0xFFFFFFFFFFFFFFFFull
-#define IREE_NOTIFICATION_WAITER_MASK 0x00000000FFFFFFFFull
-#define IREE_NOTIFICATION_EPOCH_SHIFT 32
-#define IREE_NOTIFICATION_EPOCH_INC \
-  (0x00000001ull << IREE_NOTIFICATION_EPOCH_SHIFT)
-
 void iree_notification_initialize(iree_notification_t* out_notification) {
-  memset(out_notification, 0, sizeof(*out_notification));
+  iree_notification_state_initialize(&out_notification->state);
 }
 
 void iree_notification_deinitialize(iree_notification_t* notification) {
   // Assert no more waiters (callers must tear down waiters first).
-  SYNC_ASSERT(
-      (iree_atomic_load(&notification->value, iree_memory_order_acquire) &
-       IREE_NOTIFICATION_WAITER_MASK) == 0);
+  SYNC_ASSERT((uint32_t)iree_atomic_load(&notification->state.value,
+                                         iree_memory_order_acquire) == 0);
 }
 
 void iree_notification_post(iree_notification_t* notification, int32_t count) {
-  uint64_t previous_value =
-      iree_atomic_fetch_add(&notification->value, IREE_NOTIFICATION_EPOCH_INC,
-                            iree_memory_order_acq_rel);
   // Ensure we have at least one waiter; wake up to |count| of them.
-  if (IREE_UNLIKELY(previous_value & IREE_NOTIFICATION_WAITER_MASK)) {
-    iree_futex_wake(iree_notification_epoch_address(notification), count);
+  if (IREE_UNLIKELY(iree_notification_state_post(&notification->state))) {
+    iree_futex_wake(iree_notification_state_epoch_address(&notification->state),
+                    count);
   }
 }
 
 iree_wait_token_t iree_notification_prepare_wait(
     iree_notification_t* notification) {
-  uint64_t previous_value =
-      iree_atomic_fetch_add(&notification->value, IREE_NOTIFICATION_WAITER_INC,
-                            iree_memory_order_acq_rel);
-  return (iree_wait_token_t)(previous_value >> IREE_NOTIFICATION_EPOCH_SHIFT);
+  return iree_notification_state_prepare_wait(&notification->state);
 }
 
 typedef enum iree_notification_result_e {
@@ -297,8 +265,7 @@ typedef enum iree_notification_result_e {
 
 static iree_notification_result_t iree_notification_test_wait_condition(
     iree_notification_t* notification, iree_wait_token_t wait_token) {
-  return (iree_atomic_load(&notification->value, iree_memory_order_acquire) >>
-          IREE_NOTIFICATION_EPOCH_SHIFT) != wait_token
+  return iree_notification_state_query_epoch(&notification->state) != wait_token
              ? IREE_NOTIFICATION_RESULT_RESOLVED
              : IREE_NOTIFICATION_RESULT_UNRESOLVED;
 }
@@ -347,9 +314,9 @@ bool iree_notification_commit_wait(iree_notification_t* notification,
   // If spinning failed let the kernel do what it does ... okish at.
   if (deadline_ns != IREE_TIME_INFINITE_PAST) {
     while (result == IREE_NOTIFICATION_RESULT_UNRESOLVED) {
-      iree_status_code_t status_code =
-          iree_futex_wait(iree_notification_epoch_address(notification),
-                          wait_token, deadline_ns);
+      iree_status_code_t status_code = iree_futex_wait(
+          iree_notification_state_epoch_address(&notification->state),
+          wait_token, deadline_ns);
       if (status_code != IREE_STATUS_OK) {
         result = IREE_NOTIFICATION_RESULT_REJECTED;
         break;
@@ -358,19 +325,13 @@ bool iree_notification_commit_wait(iree_notification_t* notification,
     }
   }
 
-  uint64_t previous_value =
-      iree_atomic_fetch_add(&notification->value, IREE_NOTIFICATION_WAITER_DEC,
-                            iree_memory_order_acq_rel);
-  SYNC_ASSERT((previous_value & IREE_NOTIFICATION_WAITER_MASK) != 0);
+  iree_notification_state_cancel_wait(&notification->state);
 
   return result == IREE_NOTIFICATION_RESULT_RESOLVED;
 }
 
 void iree_notification_cancel_wait(iree_notification_t* notification) {
-  uint64_t previous_value =
-      iree_atomic_fetch_add(&notification->value, IREE_NOTIFICATION_WAITER_DEC,
-                            iree_memory_order_acq_rel);
-  SYNC_ASSERT((previous_value & IREE_NOTIFICATION_WAITER_MASK) != 0);
+  iree_notification_state_cancel_wait(&notification->state);
 }
 
 #endif  // DISABLED / HAS_FUTEX
