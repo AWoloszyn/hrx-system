@@ -565,8 +565,13 @@ static void loom_low_lower_visit_region_plan_ops(
     loom_low_lower_context_t* context, loom_region_t* source_region,
     const loom_low_lower_source_plan_observer_t* observer, void* observer_state,
     iree_host_size_t* inout_plan_capacity) {
-  for (uint16_t block_index = 0; block_index < source_region->block_count;
-       ++block_index) {
+  const uint16_t* block_order =
+      source_region == loom_func_like_body(context->source_function)
+          ? context->lowering.source_plan.block_order
+          : NULL;
+  for (uint16_t position = 0; position < source_region->block_count;
+       ++position) {
+    const uint16_t block_index = block_order ? block_order[position] : position;
     loom_block_t* block = loom_region_block(source_region, block_index);
     loom_op_t* op = NULL;
     loom_block_for_each_op(block, op) {
@@ -1173,8 +1178,13 @@ static void loom_low_lower_planning_scope_end(
 static iree_status_t loom_low_lower_plan_region(
     loom_low_lower_context_t* context, loom_region_t* source_region,
     const loom_op_t* block_arg_context_op, bool skip_entry_block_args) {
-  for (uint16_t block_index = 0; block_index < source_region->block_count;
-       ++block_index) {
+  const uint16_t* block_order =
+      source_region == loom_func_like_body(context->source_function)
+          ? context->lowering.source_plan.block_order
+          : NULL;
+  for (uint16_t position = 0; position < source_region->block_count;
+       ++position) {
+    const uint16_t block_index = block_order ? block_order[position] : position;
     loom_block_t* block = loom_region_block(source_region, block_index);
     if (!(skip_entry_block_args && block_index == 0)) {
       for (uint16_t i = 0; i < block->arg_count; ++i) {
@@ -1219,6 +1229,26 @@ iree_status_t loom_low_lower_source_plan_build(
     loom_low_lower_context_t* context, loom_region_t* source_body) {
   loom_low_lower_source_plan_t* source_plan = &context->lowering.source_plan;
   *source_plan = (loom_low_lower_source_plan_t){0};
+  if (source_body->block_count > 1) {
+    const loom_value_fact_cfg_region_t* cfg =
+        loom_low_lower_context_cfg(context);
+    source_plan->block_order = cfg->dominance.preorder.values;
+    if (cfg->dominance.preorder.count < source_body->block_count) {
+      uint16_t* block_order = NULL;
+      IREE_RETURN_IF_ERROR(loom_low_lower_allocate_function_array(
+          context, source_body->block_count, sizeof(*block_order),
+          (void**)&block_order));
+      iree_host_size_t count = cfg->dominance.preorder.count;
+      memcpy(block_order, source_plan->block_order,
+             count * sizeof(*block_order));
+      for (uint16_t i = 0; i < source_body->block_count; ++i) {
+        if (!cfg->graph.blocks[i].reachable) {
+          block_order[count++] = i;
+        }
+      }
+      source_plan->block_order = block_order;
+    }
+  }
   const loom_value_ordinal_t value_count =
       context->lowering.value_domain.value_count;
   if (value_count != 0) {

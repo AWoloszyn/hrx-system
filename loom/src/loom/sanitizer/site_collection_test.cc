@@ -282,6 +282,34 @@ TEST_F(SiteCollectionTest, AssignsDeterministicIdsInFunctionWalkOrder) {
   EXPECT_EQ(collection.rows[1].source_location, second_source_location);
   ASSERT_TRUE(loom_sanitizer_site_row_has_payload(&collection.rows[1]));
   ExpectSamePayload(second_payload, collection.rows[1].payload);
+  EXPECT_EQ(loom_sanitizer_site_collection_lookup(&collection, second_assert),
+            &collection.rows[1]);
+  EXPECT_EQ(loom_sanitizer_site_collection_lookup(&collection, first_assert),
+            &collection.rows[0]);
+  EXPECT_EQ(loom_sanitizer_site_collection_lookup(&collection, second_assert),
+            &collection.rows[1]);
+  iree_arena_deinitialize(&arena);
+}
+
+TEST_F(SiteCollectionTest, OperationIndexPreservesDenseIdsAcrossQueryOrders) {
+  loom_value_id_t value = loom_test_constant_result(BuildConstant(8));
+  loom_op_t* sites[257];
+  for (auto& site : sites) {
+    site = BuildAssertValue(value, LOOM_LOCATION_UNKNOWN);
+  }
+  FinalizeModule();
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool_, &arena);
+  loom_sanitizer_site_collection_t collection = {};
+  IREE_ASSERT_OK(loom_sanitizer_site_collection_build_region(
+      module_, body_, &arena, &collection));
+  ASSERT_EQ(collection.row_count, IREE_ARRAYSIZE(sites));
+  for (size_t i = 0; i < IREE_ARRAYSIZE(sites); ++i) {
+    const size_t index = (i * 73) % IREE_ARRAYSIZE(sites);
+    EXPECT_EQ(loom_sanitizer_site_collection_lookup(&collection, sites[index]),
+              &collection.rows[index]);
+    EXPECT_EQ(collection.rows[index].site_id, index);
+  }
   iree_arena_deinitialize(&arena);
 }
 

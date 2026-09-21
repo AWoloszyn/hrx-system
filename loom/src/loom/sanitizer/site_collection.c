@@ -36,12 +36,34 @@ typedef struct loom_sanitizer_site_collect_state_t {
   // Module that owns op locations.
   const loom_module_t* module;
 
-  // Row array allocated by the caller.
-  loom_sanitizer_site_row_t* rows;
+  // Rows and operation identity index allocated by the caller.
+  loom_sanitizer_site_collection_t* collection;
 
   // Next dense site ID and row index to assign.
   iree_host_size_t next_site_id;
 } loom_sanitizer_site_collect_state_t;
+
+static iree_host_size_t loom_sanitizer_site_operation_hash(
+    const loom_op_t* op) {
+  uint64_t value = (uint64_t)(uintptr_t)op >> 4;
+  value ^= value >> 16;
+  return (iree_host_size_t)(value * UINT64_C(0x9e3779b97f4a7c15));
+}
+
+const loom_sanitizer_site_row_t* loom_sanitizer_site_collection_lookup(
+    const loom_sanitizer_site_collection_t* collection, const loom_op_t* op) {
+  const iree_host_size_t mask = collection->operation_capacity - 1;
+  iree_host_size_t slot = loom_sanitizer_site_operation_hash(op) & mask;
+  for (;;) {
+    const uint32_t entry = collection->operation_index[slot];
+    IREE_ASSERT(entry != 0, "operation must belong to the site collection");
+    const loom_sanitizer_site_row_t* row = &collection->rows[entry - 1];
+    if (row->op == op) {
+      return row;
+    }
+    slot = (slot + 1) & mask;
+  }
+}
 
 static bool loom_sanitizer_site_op_isa(const loom_op_t* op) {
   return loom_sanitizer_assert_access_isa(op) ||
@@ -167,7 +189,8 @@ static iree_status_t loom_sanitizer_site_collect_visitor(
   IREE_RETURN_IF_ERROR(loom_sanitizer_site_location_find_payload(
       state->module, op->location, 0, &location_result));
 
-  loom_sanitizer_site_row_t* row = &state->rows[state->next_site_id];
+  loom_sanitizer_site_collection_t* collection = state->collection;
+  loom_sanitizer_site_row_t* row = &collection->rows[state->next_site_id];
   memset(row, 0, sizeof(*row));
   row->site_id = (loom_sanitizer_site_id_t)state->next_site_id;
   row->op = op;
@@ -180,6 +203,12 @@ static iree_status_t loom_sanitizer_site_collect_visitor(
     row->payload = location_result.payload;
   }
 
+  const iree_host_size_t mask = collection->operation_capacity - 1;
+  iree_host_size_t slot = loom_sanitizer_site_operation_hash(op) & mask;
+  while (collection->operation_index[slot] != 0) {
+    slot = (slot + 1) & mask;
+  }
+  collection->operation_index[slot] = (uint32_t)state->next_site_id + 1;
   ++state->next_site_id;
   return iree_ok_status();
 }
@@ -192,9 +221,24 @@ static iree_status_t loom_sanitizer_site_collection_allocate_rows(
   if (row_count == 0) {
     return iree_ok_status();
   }
-  return iree_arena_allocate_array(arena, row_count,
-                                   sizeof(loom_sanitizer_site_row_t),
-                                   (void**)&collection->rows);
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      arena, row_count, sizeof(loom_sanitizer_site_row_t),
+      (void**)&collection->rows));
+  iree_host_size_t capacity = 1;
+  while (capacity / 2 < row_count) {
+    if (capacity > IREE_HOST_SIZE_MAX / 2) {
+      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                              "sanitizer operation index capacity overflow");
+    }
+    capacity *= 2;
+  }
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      arena, capacity, sizeof(*collection->operation_index),
+      (void**)&collection->operation_index));
+  memset(collection->operation_index, 0,
+         capacity * sizeof(*collection->operation_index));
+  collection->operation_capacity = capacity;
+  return iree_ok_status();
 }
 
 iree_status_t loom_sanitizer_site_collection_build_region(
@@ -217,7 +261,7 @@ iree_status_t loom_sanitizer_site_collection_build_region(
 
   loom_sanitizer_site_collect_state_t collect_state = {
       .module = module,
-      .rows = collection.rows,
+      .collection = &collection,
       .next_site_id = 0,
   };
   IREE_RETURN_IF_ERROR(
@@ -249,7 +293,7 @@ iree_status_t loom_sanitizer_site_collection_build_function(
 
   loom_sanitizer_site_collect_state_t collect_state = {
       .module = module,
-      .rows = collection.rows,
+      .collection = &collection,
       .next_site_id = 0,
   };
   IREE_RETURN_IF_ERROR(loom_walk_function(

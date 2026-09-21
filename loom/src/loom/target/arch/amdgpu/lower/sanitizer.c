@@ -52,8 +52,6 @@ typedef struct loom_amdgpu_sanitizer_lower_state_t {
   loom_sanitizer_site_id_t site_id_base;
   // Function-local sanitizer site rows in report-site order.
   loom_sanitizer_site_collection_t site_collection;
-  // Next function-local site row expected by source-to-low planning.
-  iree_host_size_t next_site_row_index;
   // True once the runtime feedback config symbol has been looked up or created.
   bool has_feedback_config_symbol;
   // Module-local feedback channel configuration symbol.
@@ -437,19 +435,10 @@ iree_status_t loom_amdgpu_sanitizer_site_id_for_op(
     return iree_ok_status();
   }
 
-  for (iree_host_size_t i = state->next_site_row_index;
-       i < state->site_collection.row_count; ++i) {
-    const loom_sanitizer_site_row_t* row = &state->site_collection.rows[i];
-    if (row->op == source_op) {
-      state->next_site_row_index = i + 1;
-      *out_site_id = row->site_id;
-      return iree_ok_status();
-    }
-  }
-
-  IREE_ASSERT_UNREACHABLE(
-      "sanitizer site ID lookup must follow site collection order");
-  IREE_BUILTIN_UNREACHABLE();
+  *out_site_id =
+      loom_sanitizer_site_collection_lookup(&state->site_collection, source_op)
+          ->site_id;
+  return iree_ok_status();
 }
 
 static bool loom_amdgpu_sanitizer_assert_access_kinds(
