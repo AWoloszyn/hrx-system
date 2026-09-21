@@ -195,6 +195,8 @@ loom_cc_library(
     srcs = ["cache.c"],
     hdrs = ["cache.h"],
     deps = [
+        "//loom/src/loom/error:emitter",
+        "//loom/src/loom/error:error_defs",
         "//loom/src/loom/ir",
         "//runtime/src/iree/base",
     ],

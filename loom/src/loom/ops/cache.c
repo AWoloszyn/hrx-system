@@ -6,6 +6,7 @@
 
 #include "loom/ops/cache.h"
 
+#include "loom/error/error_catalog.h"
 #include "loom/ir/context.h"
 
 loom_cache_policy_t loom_cache_policy_cast(const loom_module_t* module,
@@ -84,25 +85,23 @@ loom_cache_policy_error_t loom_cache_policy_validate(
   return LOOM_CACHE_POLICY_ERROR_NONE;
 }
 
-iree_string_view_t loom_cache_policy_error_attr_name(
-    loom_cache_policy_error_t error) {
+static bool loom_cache_policy_error_is_scope(loom_cache_policy_error_t error) {
   switch (error) {
     case LOOM_CACHE_POLICY_ERROR_INVALID_SCOPE:
     case LOOM_CACHE_POLICY_ERROR_LAST_USE_SYSTEM_SCOPE:
     case LOOM_CACHE_POLICY_ERROR_BYPASS_NON_SYSTEM_SCOPE:
-      return IREE_SV("cache_scope");
+      return true;
     case LOOM_CACHE_POLICY_ERROR_INVALID_TEMPORAL:
     case LOOM_CACHE_POLICY_ERROR_LOAD_TEMPORAL:
     case LOOM_CACHE_POLICY_ERROR_STORE_TEMPORAL:
     case LOOM_CACHE_POLICY_ERROR_ATOMIC_TEMPORAL:
-      return IREE_SV("cache_temporal");
     case LOOM_CACHE_POLICY_ERROR_NONE:
-      return iree_string_view_empty();
+      return false;
   }
-  return iree_string_view_empty();
+  return false;
 }
 
-iree_string_view_t loom_cache_policy_error_expected_constraint(
+static iree_string_view_t loom_cache_policy_error_expected_constraint(
     loom_cache_policy_error_t error) {
   switch (error) {
     case LOOM_CACHE_POLICY_ERROR_INVALID_SCOPE:
@@ -123,4 +122,61 @@ iree_string_view_t loom_cache_policy_error_expected_constraint(
       return iree_string_view_empty();
   }
   return iree_string_view_empty();
+}
+
+iree_status_t loom_cache_policy_verify(const loom_module_t* module,
+                                       const loom_op_t* op,
+                                       loom_cache_policy_access_t access,
+                                       iree_diagnostic_emitter_t emitter) {
+  const loom_cache_policy_t policy = loom_cache_policy_cast(module, op);
+  const loom_attribute_t scope = loom_cache_policy_scope(policy);
+  const loom_attribute_t temporal = loom_cache_policy_temporal(policy);
+  const bool has_scope = !loom_attr_is_absent(scope);
+  const bool has_temporal = !loom_attr_is_absent(temporal);
+  if (!has_scope && !has_temporal) {
+    return iree_ok_status();
+  }
+
+  uint8_t attribute_index = 0;
+  iree_string_view_t attribute_name = iree_string_view_empty();
+  int64_t actual_value = 0;
+  iree_string_view_t expected_constraint = iree_string_view_empty();
+  if (!has_scope) {
+    attribute_index = policy.vtable->scope_attr_index;
+    attribute_name = IREE_SV("cache_scope");
+    expected_constraint = IREE_SV("present when cache_temporal is present");
+  } else if (!has_temporal) {
+    attribute_index = policy.vtable->temporal_attr_index;
+    attribute_name = IREE_SV("cache_temporal");
+    expected_constraint = IREE_SV("present when cache_scope is present");
+  } else {
+    const loom_cache_policy_error_t error = loom_cache_policy_validate(
+        loom_attr_as_enum(scope), loom_attr_as_enum(temporal), access);
+    if (error == LOOM_CACHE_POLICY_ERROR_NONE) {
+      return iree_ok_status();
+    }
+    const bool is_scope = loom_cache_policy_error_is_scope(error);
+    attribute_index = is_scope ? policy.vtable->scope_attr_index
+                               : policy.vtable->temporal_attr_index;
+    attribute_name =
+        is_scope ? IREE_SV("cache_scope") : IREE_SV("cache_temporal");
+    actual_value = loom_attr_as_enum(is_scope ? scope : temporal);
+    expected_constraint = loom_cache_policy_error_expected_constraint(error);
+  }
+
+  const loom_diagnostic_param_t params[] = {
+      loom_param_with_field_ref(
+          loom_param_string(attribute_name),
+          loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE,
+                                    attribute_index)),
+      loom_param_i64(actual_value),
+      loom_param_string(expected_constraint),
+  };
+  const loom_diagnostic_emission_t emission = {
+      .op = op,
+      .error = LOOM_ERR_STRUCTURE_014,
+      .params = params,
+      .param_count = IREE_ARRAYSIZE(params),
+  };
+  return iree_diagnostic_emit(emitter, &emission);
 }

@@ -218,6 +218,8 @@ loom_cc_library(
     "cache.c"
   DEPS
     iree::base
+    loom::error::emitter
+    loom::error::error_defs
     loom::ir
   PUBLIC
 )

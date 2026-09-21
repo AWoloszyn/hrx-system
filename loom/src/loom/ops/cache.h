@@ -15,6 +15,7 @@
 #define LOOM_OPS_CACHE_H_
 
 #include "iree/base/api.h"
+#include "loom/error/emitter.h"
 #include "loom/ir/ir.h"
 
 #ifdef __cplusplus
@@ -137,13 +138,12 @@ bool loom_cache_temporal_is_valid(uint8_t temporal);
 loom_cache_policy_error_t loom_cache_policy_validate(
     uint8_t scope, uint8_t temporal, loom_cache_policy_access_t access);
 
-// Returns the attribute name responsible for |error|.
-iree_string_view_t loom_cache_policy_error_attr_name(
-    loom_cache_policy_error_t error);
-
-// Returns the expected constraint for |error|.
-iree_string_view_t loom_cache_policy_error_expected_constraint(
-    loom_cache_policy_error_t error);
+// Verifies the paired presence and compatibility of an operation's CachePolicy
+// fields. Called after structural verification has established attribute kinds.
+iree_status_t loom_cache_policy_verify(const loom_module_t* module,
+                                       const loom_op_t* op,
+                                       loom_cache_policy_access_t access,
+                                       iree_diagnostic_emitter_t emitter);
 
 #ifdef __cplusplus
 }
