@@ -207,10 +207,6 @@ function(iree_cc_library)
       PUBLIC
         $<TARGET_PROPERTY:${_NAME},INTERFACE_SYSTEM_INCLUDE_DIRECTORIES>
     )
-    target_include_directories(${_OBJECTS_NAME}
-      PUBLIC
-        $<TARGET_PROPERTY:${_NAME},INTERFACE_INCLUDE_DIRECTORIES>
-    )
     target_compile_options(${_OBJECTS_NAME}
       PRIVATE
         $<TARGET_PROPERTY:${_NAME},COMPILE_OPTIONS>
@@ -588,10 +584,6 @@ function(iree_cc_unified_library)
   )
 
   # Forward compile usage requirements from the root library.
-  target_include_directories(${_NAME}
-    PUBLIC
-      $<TARGET_PROPERTY:${_RULE_ROOT},INTERFACE_INCLUDE_DIRECTORIES>
-  )
   target_include_directories(${_NAME}
     PUBLIC
       $<TARGET_PROPERTY:${_RULE_ROOT},INTERFACE_INCLUDE_DIRECTORIES>

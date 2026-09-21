@@ -101,6 +101,13 @@ _iree_cmake_integration_test(
 
 _iree_cmake_integration_test(
   NAME
+    cmake_library_dependencies_test
+  SRCS
+    cmake_library_dependencies_test.py
+)
+
+_iree_cmake_integration_test(
+  NAME
     cmake_python_dependencies_test
   SRCS
     cmake_python_dependencies_test.py

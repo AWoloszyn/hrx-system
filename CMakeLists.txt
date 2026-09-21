@@ -16,6 +16,12 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+# Static and object libraries need compile-time prerequisites, not completed
+# archives for every transitive link dependency. CMake retains explicit ordering
+# and code-generation dependencies when pruning these unnecessary build edges.
+option(CMAKE_OPTIMIZE_DEPENDENCIES
+  "Prune unnecessary static and object library build dependencies." ON)
+
 # Native runtime targets require thread creation. Browser WebAssembly uses its
 # host event loop, while bare-metal WebAssembly has no thread creation service.
 # Neither target links a thread library. This is a target capability, not a
