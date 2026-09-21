@@ -10,6 +10,7 @@
 #define LOOM_FORMAT_BYTECODE_WRITER_ENCODER_H_
 
 #include "iree/base/api.h"
+#include "iree/base/internal/arena.h"
 #include "iree/io/stream.h"
 #include "loom/ir/ir.h"
 
@@ -31,6 +32,21 @@ typedef struct loom_bytecode_page_writer_t {
   // Logical byte count including flushed and pending bytes.
   uint64_t total_written;
 } loom_bytecode_page_writer_t;
+
+// Contiguous payload storage for length prefixes and fixed-offset patching.
+// Growth copies only initialized bytes; all generations belong to |arena|.
+// The header must remain at a stable address while the builder is in use.
+typedef struct loom_bytecode_buffer_t {
+  // Arena owning buffer storage, borrowed for the entire buffer lifetime.
+  iree_arena_allocator_t* arena;
+  // Geometrically grown payload, reusable with iree_string_builder_reset.
+  iree_string_builder_t builder;
+} loom_bytecode_buffer_t;
+
+// Initializes an empty buffer without allocating. Deinitializing the builder
+// drops its view; the caller releases all storage by resetting its arena.
+void loom_bytecode_buffer_initialize(iree_arena_allocator_t* arena,
+                                     loom_bytecode_buffer_t* out_buffer);
 
 // Initializes |writer| to append to |stream| from logical offset zero.
 void loom_bytecode_page_writer_initialize(loom_bytecode_page_writer_t* writer,

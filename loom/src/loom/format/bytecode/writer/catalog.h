@@ -12,6 +12,7 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
 #include "loom/format/bytecode/format.h"
+#include "loom/format/bytecode/writer/encoder.h"
 #include "loom/format/bytecode/writer/type_index.h"
 #include "loom/format/low_repr.h"
 #include "loom/ir/context.h"
@@ -111,7 +112,7 @@ typedef struct loom_bytecode_numbering_t {
 
   // Reusable length-prefixed type payload storage, owned by |arena| and reset
   // between emissions. Parameter TYPE references never recursively emit it.
-  iree_string_builder_t type_record_buffer;
+  loom_bytecode_buffer_t type_record_buffer;
 
   // First-use-ordered operation catalog.
   struct {

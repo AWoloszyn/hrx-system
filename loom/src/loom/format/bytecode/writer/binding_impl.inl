@@ -7,33 +7,12 @@
 // Complete scope-local type records refer to completed children. Global TYPES
 // contain only SSA-independent types; no unbound template is retained for a
 // scoped record.
-static iree_status_t loom_bytecode_record_buffer_allocate(
-    void* self, iree_allocator_command_t command, const void* parameters,
-    void** pointer) {
-  loom_bytecode_numbering_t* numbering = self;
-  if (command == IREE_ALLOCATOR_COMMAND_FREE) {
-    *pointer = NULL;
-    return iree_ok_status();
-  }
-  IREE_ASSERT_EQ(command, IREE_ALLOCATOR_COMMAND_REALLOC);
-  const iree_allocator_alloc_params_t* request = parameters;
-  void* replacement = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate(numbering->arena,
-                                           request->byte_length, &replacement));
-  if (*pointer) {
-    memcpy(replacement, *pointer, numbering->type_record_buffer.size);
-  }
-  *pointer = replacement;
-  return iree_ok_status();
-}
-
 static iree_string_builder_t* loom_bytecode_record_buffer_reset(
     loom_bytecode_numbering_t* numbering) {
-  iree_string_builder_t* buffer = &numbering->type_record_buffer;
+  iree_string_builder_t* buffer = &numbering->type_record_buffer.builder;
   if (!buffer->allocator.ctl) {
-    iree_string_builder_initialize(
-        (iree_allocator_t){numbering, loom_bytecode_record_buffer_allocate},
-        buffer);
+    loom_bytecode_buffer_initialize(numbering->arena,
+                                    &numbering->type_record_buffer);
   }
   iree_string_builder_reset(buffer);
   return buffer;

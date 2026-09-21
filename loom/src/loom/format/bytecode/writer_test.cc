@@ -30,10 +30,21 @@ namespace {
 
 class WriterTest : public ::testing::Test {
  protected:
+  static iree_status_t AllocateContext(void* self,
+                                       iree_allocator_command_t command,
+                                       const void* parameters, void** pointer) {
+    auto* test = static_cast<WriterTest*>(self);
+    if (command != IREE_ALLOCATOR_COMMAND_FREE) {
+      ++test->context_allocation_count_;
+    }
+    const iree_allocator_t system = iree_allocator_system();
+    return system.ctl(system.self, command, parameters, pointer);
+  }
+
   void SetUp() override {
     iree_arena_block_pool_initialize(4096, iree_allocator_system(),
                                      &block_pool_);
-    loom_context_initialize(iree_allocator_system(), &context_);
+    loom_context_initialize({this, AllocateContext}, &context_);
 
     // Register dialects so the writer can resolve op names.
     iree_host_size_t global_op_count = 0;
@@ -209,8 +220,10 @@ class WriterTest : public ::testing::Test {
             IREE_IO_STREAM_MODE_READABLE | IREE_IO_STREAM_MODE_RESIZABLE,
         4096, iree_allocator_system(), &stream));
 
+    const iree_host_size_t context_allocations = context_allocation_count_;
     IREE_CHECK_OK(
         loom_bytecode_write_module(module, stream, options, &block_pool_));
+    EXPECT_EQ(context_allocation_count_, context_allocations);
 
     // Read the bytes back from the stream.
     iree_io_stream_pos_t length = iree_io_stream_length(stream);
@@ -349,7 +362,11 @@ class WriterTest : public ::testing::Test {
     return (size_t)module_offset + (size_t)section_entry.offset;
   }
 
+  // Counts context-owned requests independently of module and writer arenas.
+  iree_host_size_t context_allocation_count_ = 0;
+  // Shared pool for source IR and invocation-local writer scratch.
   iree_arena_block_pool_t block_pool_;
+  // Durable compiler descriptors whose allocator must not own writer scratch.
   loom_context_t context_;
 };
 
