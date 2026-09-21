@@ -45,8 +45,14 @@ typedef struct loom_liveness_bitset_t {
 } loom_liveness_bitset_t;
 
 typedef struct loom_liveness_block_state_t {
-  loom_liveness_bitset_t use;
-  loom_liveness_bitset_t def;
+  // First entry in the build state's compact block-use ordinal table.
+  iree_host_size_t use_start;
+  // Number of unique upward-exposed uses in this block.
+  iree_host_size_t use_count;
+  // First entry in the build state's compact block-definition ordinal table.
+  iree_host_size_t definition_start;
+  // Number of unique definitions in this block.
+  iree_host_size_t definition_count;
   loom_liveness_bitset_t live_in;
   loom_liveness_bitset_t live_out;
 } loom_liveness_block_state_t;
@@ -103,6 +109,24 @@ typedef struct loom_liveness_build_state_t {
   iree_host_size_t word_count;
   // Mutable per-block liveness state.
   loom_liveness_block_state_t* block_states;
+  // Compact upward-exposed use ordinals grouped by block.
+  loom_value_ordinal_t* block_use_ordinals;
+  // Number of initialized entries in |block_use_ordinals|.
+  iree_host_size_t block_use_count;
+  // Number of allocated entries in |block_use_ordinals|.
+  iree_host_size_t block_use_capacity;
+  // Compact definition ordinals grouped by block.
+  loom_value_ordinal_t* block_definition_ordinals;
+  // Number of initialized entries in |block_definition_ordinals|.
+  iree_host_size_t block_definition_count;
+  // Number of allocated entries in |block_definition_ordinals|.
+  iree_host_size_t block_definition_capacity;
+  // Current block generation for use and definition membership marks.
+  uint32_t block_generation;
+  // Generation in which each local value was first used by a block.
+  uint32_t* block_use_generations;
+  // Generation in which each local value was defined by a block.
+  uint32_t* block_definition_generations;
   // Mutable intervals indexed by region-local value ordinal.
   loom_liveness_mutable_interval_t* interval_states;
   // Block-local segments collected in increasing block order.
@@ -225,14 +249,6 @@ static bool loom_liveness_bitset_reset(loom_liveness_bitset_t bitset,
   return old_word != bitset.words[word_index];
 }
 
-static bool loom_liveness_bitset_test(loom_liveness_bitset_t bitset,
-                                      loom_value_ordinal_t value_ordinal) {
-  iree_host_size_t word_index = value_ordinal / 64u;
-  IREE_ASSERT(word_index < bitset.word_count);
-  uint64_t mask = UINT64_C(1) << (value_ordinal % 64u);
-  return (bitset.words[word_index] & mask) != 0;
-}
-
 static bool loom_liveness_bitset_union(loom_liveness_bitset_t target,
                                        loom_liveness_bitset_t source) {
   IREE_ASSERT(target.word_count == source.word_count);
@@ -243,16 +259,6 @@ static bool loom_liveness_bitset_union(loom_liveness_bitset_t target,
     changed |= old_word != target.words[i];
   }
   return changed;
-}
-
-static void loom_liveness_bitset_union_minus(loom_liveness_bitset_t target,
-                                             loom_liveness_bitset_t lhs,
-                                             loom_liveness_bitset_t rhs) {
-  IREE_ASSERT(target.word_count == lhs.word_count);
-  IREE_ASSERT(target.word_count == rhs.word_count);
-  for (iree_host_size_t i = 0; i < target.word_count; ++i) {
-    target.words[i] = lhs.words[i] & ~rhs.words[i];
-  }
 }
 
 static iree_host_size_t loom_liveness_bitset_count(
@@ -783,40 +789,67 @@ static iree_status_t loom_liveness_for_each_op_use(
 // Local use/def construction
 //===----------------------------------------------------------------------===//
 
-typedef struct loom_liveness_use_def_state_t {
-  loom_liveness_build_state_t* build_state;
-  loom_liveness_block_state_t* block_state;
-} loom_liveness_use_def_state_t;
+static iree_status_t loom_liveness_append_block_ordinal(
+    loom_liveness_build_state_t* state, loom_value_ordinal_t value_ordinal,
+    loom_value_ordinal_t** inout_ordinals, iree_host_size_t* inout_count,
+    iree_host_size_t* inout_capacity) {
+  if (*inout_count >= *inout_capacity) {
+    IREE_RETURN_IF_ERROR(iree_arena_grow_array(
+        state->scratch_arena, *inout_count, *inout_count + 1,
+        sizeof(**inout_ordinals), inout_capacity, (void**)inout_ordinals));
+  }
+  (*inout_ordinals)[(*inout_count)++] = value_ordinal;
+  return iree_ok_status();
+}
+
+static iree_status_t loom_liveness_add_block_definition(
+    loom_liveness_build_state_t* state, loom_value_ordinal_t value_ordinal) {
+  if (state->block_definition_generations[value_ordinal] ==
+      state->block_generation) {
+    return iree_ok_status();
+  }
+  state->block_definition_generations[value_ordinal] = state->block_generation;
+  return loom_liveness_append_block_ordinal(
+      state, value_ordinal, &state->block_definition_ordinals,
+      &state->block_definition_count, &state->block_definition_capacity);
+}
 
 static iree_status_t loom_liveness_add_block_use(void* user_data,
                                                  loom_value_id_t value_id) {
-  loom_liveness_use_def_state_t* state =
-      (loom_liveness_use_def_state_t*)user_data;
+  loom_liveness_build_state_t* build_state =
+      (loom_liveness_build_state_t*)user_data;
   const loom_value_ordinal_t value_ordinal =
-      loom_liveness_value_ordinal(state->build_state, value_id);
-  if (!loom_liveness_bitset_test(state->block_state->def, value_ordinal)) {
-    loom_liveness_bitset_set(state->block_state->use, value_ordinal);
+      loom_liveness_value_ordinal(build_state, value_id);
+  if (build_state->block_definition_generations[value_ordinal] ==
+          build_state->block_generation ||
+      build_state->block_use_generations[value_ordinal] ==
+          build_state->block_generation) {
+    return iree_ok_status();
   }
-  return iree_ok_status();
+  build_state->block_use_generations[value_ordinal] =
+      build_state->block_generation;
+  return loom_liveness_append_block_ordinal(
+      build_state, value_ordinal, &build_state->block_use_ordinals,
+      &build_state->block_use_count, &build_state->block_use_capacity);
 }
 
 static iree_status_t loom_liveness_collect_block_use_def(
     loom_liveness_build_state_t* state, const loom_block_t* block,
     loom_liveness_block_state_t* block_state) {
-  loom_liveness_use_def_state_t use_def_state = {
-      .build_state = state,
-      .block_state = block_state,
-  };
+  ++state->block_generation;
+  IREE_ASSERT_NE(state->block_generation, 0u);
+  block_state->use_start = state->block_use_count;
+  block_state->definition_start = state->block_definition_count;
   for (uint16_t i = 0; i < block->arg_count; ++i) {
     const loom_value_ordinal_t value_ordinal =
         loom_liveness_value_ordinal(state, loom_block_arg_id(block, i));
-    loom_liveness_bitset_set(block_state->def, value_ordinal);
+    IREE_RETURN_IF_ERROR(
+        loom_liveness_add_block_definition(state, value_ordinal));
   }
   for (uint16_t i = 0; i < block->arg_count; ++i) {
     IREE_RETURN_IF_ERROR(loom_liveness_for_each_type_ref(
         state->module, loom_block_arg_type(state->module, block, i),
-        loom_liveness_value_callback_make(loom_liveness_add_block_use,
-                                          &use_def_state)));
+        loom_liveness_value_callback_make(loom_liveness_add_block_use, state)));
   }
   const loom_op_t* op = NULL;
   loom_block_for_each_op(block, op) {
@@ -824,13 +857,16 @@ static iree_status_t loom_liveness_collect_block_use_def(
     for (uint16_t i = 0; i < op->result_count; ++i) {
       const loom_value_ordinal_t value_ordinal =
           loom_liveness_value_ordinal(state, results[i]);
-      loom_liveness_bitset_set(block_state->def, value_ordinal);
+      IREE_RETURN_IF_ERROR(
+          loom_liveness_add_block_definition(state, value_ordinal));
     }
     IREE_RETURN_IF_ERROR(loom_liveness_for_each_op_use(
         state->module, op,
-        loom_liveness_value_callback_make(loom_liveness_add_block_use,
-                                          &use_def_state)));
+        loom_liveness_value_callback_make(loom_liveness_add_block_use, state)));
   }
+  block_state->use_count = state->block_use_count - block_state->use_start;
+  block_state->definition_count =
+      state->block_definition_count - block_state->definition_start;
   return iree_ok_status();
 }
 
@@ -843,20 +879,29 @@ static iree_status_t loom_liveness_allocate_block_states(
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       state->scratch_arena, block_count, sizeof(*state->block_states),
       (void**)&state->block_states));
+  memset(state->block_states, 0, block_count * sizeof(*state->block_states));
   for (iree_host_size_t i = 0; i < block_count; ++i) {
     loom_liveness_block_state_t* block_state = &state->block_states[i];
-    IREE_RETURN_IF_ERROR(loom_liveness_bitset_allocate(
-        state->scratch_arena, state->word_count, &block_state->use));
-    IREE_RETURN_IF_ERROR(loom_liveness_bitset_allocate(
-        state->scratch_arena, state->word_count, &block_state->def));
     IREE_RETURN_IF_ERROR(loom_liveness_bitset_allocate(
         state->scratch_arena, state->word_count, &block_state->live_in));
     IREE_RETURN_IF_ERROR(loom_liveness_bitset_allocate(
         state->scratch_arena, state->word_count, &block_state->live_out));
-    loom_liveness_bitset_clear_all(block_state->use);
-    loom_liveness_bitset_clear_all(block_state->def);
     loom_liveness_bitset_clear_all(block_state->live_in);
     loom_liveness_bitset_clear_all(block_state->live_out);
+  }
+  if (state->value_count != 0) {
+    IREE_RETURN_IF_ERROR(
+        iree_arena_allocate_array(state->scratch_arena, state->value_count,
+                                  sizeof(*state->block_use_generations),
+                                  (void**)&state->block_use_generations));
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        state->scratch_arena, state->value_count,
+        sizeof(*state->block_definition_generations),
+        (void**)&state->block_definition_generations));
+    memset(state->block_use_generations, 0,
+           state->value_count * sizeof(*state->block_use_generations));
+    memset(state->block_definition_generations, 0,
+           state->value_count * sizeof(*state->block_definition_generations));
   }
   return iree_ok_status();
 }
@@ -885,9 +930,18 @@ static iree_status_t loom_liveness_run_dataflow(
         loom_liveness_bitset_union(
             next_live_out, state->block_states[successors.values[i]].live_in);
       }
-      loom_liveness_bitset_union_minus(next_live_in, next_live_out,
-                                       block_state->def);
-      loom_liveness_bitset_union(next_live_in, block_state->use);
+      loom_liveness_bitset_copy(next_live_in, next_live_out);
+      for (iree_host_size_t i = 0; i < block_state->definition_count; ++i) {
+        loom_liveness_bitset_reset(
+            next_live_in,
+            state
+                ->block_definition_ordinals[block_state->definition_start + i]);
+      }
+      for (iree_host_size_t i = 0; i < block_state->use_count; ++i) {
+        loom_liveness_bitset_set(
+            next_live_in,
+            state->block_use_ordinals[block_state->use_start + i]);
+      }
 
       bool block_changed =
           !loom_liveness_bitset_equals(next_live_in, block_state->live_in) ||
@@ -906,7 +960,11 @@ static void loom_liveness_initialize_local_liveness(
     loom_liveness_build_state_t* state, iree_host_size_t block_count) {
   for (iree_host_size_t i = 0; i < block_count; ++i) {
     loom_liveness_block_state_t* block_state = &state->block_states[i];
-    loom_liveness_bitset_copy(block_state->live_in, block_state->use);
+    for (iree_host_size_t j = 0; j < block_state->use_count; ++j) {
+      loom_liveness_bitset_set(
+          block_state->live_in,
+          state->block_use_ordinals[block_state->use_start + j]);
+    }
   }
 }
 
