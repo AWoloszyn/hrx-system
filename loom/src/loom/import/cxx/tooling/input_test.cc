@@ -13,6 +13,7 @@
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 #include "iree/testing/temp_file.h"
+#include "loom/error/source.h"
 #include "loom/import/cxx/import.h"
 #include "loom/import/cxx/source/catalog.h"
 #include "loom/ops/op_registry.h"

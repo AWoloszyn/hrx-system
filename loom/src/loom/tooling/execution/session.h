@@ -11,12 +11,12 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
+#include "loom/error/source.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/target/low_descriptor_registry.h"
 #include "loom/tooling/input/input.h"
 #include "loom/tooling/io/source.h"
-#include "loom/verify/verify.h"
 
 #ifdef __cplusplus
 extern "C" {

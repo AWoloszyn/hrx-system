@@ -7,10 +7,10 @@
 #ifndef LOOM_TOOLING_INPUT_INPUT_H_
 #define LOOM_TOOLING_INPUT_INPUT_H_
 
+#include "loom/error/source.h"
 #include "loom/format/text/parser.h"
 #include "loom/tooling/io/source.h"
 #include "loom/tooling/io/source_path.h"
-#include "loom/verify/verify.h"
 
 #ifdef __cplusplus
 extern "C" {

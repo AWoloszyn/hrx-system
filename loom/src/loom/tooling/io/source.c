@@ -8,6 +8,8 @@
 
 #include <string.h>
 
+#include "loom/error/source.h"
+
 void loom_tooling_source_storage_initialize(
     iree_arena_block_pool_t* block_pool,
     loom_tooling_source_storage_t* out_storage) {

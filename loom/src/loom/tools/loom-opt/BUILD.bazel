@@ -23,6 +23,7 @@ loom_cc_binary(
         "//loom/src/loom/codegen/low/pipeline:pass_environment",
         "//loom/src/loom/error:diagnostic",
         "//loom/src/loom/error:json_sink",
+        "//loom/src/loom/error:source",
         "//loom/src/loom/format/text:printer",
         "//loom/src/loom/ir",
         "//loom/src/loom/pass:builtin_registry",

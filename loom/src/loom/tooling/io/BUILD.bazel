@@ -34,7 +34,7 @@ loom_cc_library(
     srcs = ["source.c"],
     hdrs = ["source.h"],
     deps = [
-        "//loom/src/loom/verify",
+        "//loom/src/loom/error:source",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
     ],
@@ -54,6 +54,7 @@ loom_cc_test(
     srcs = ["source_test.cc"],
     deps = [
         ":source",
+        "//loom/src/loom/error:source",
         "//loom/src/loom/ir",
         "//loom/src/loom/link:linker",
         "//runtime/src/iree/base",

@@ -13,6 +13,7 @@
 #include "loom/target/tool/spirv.h"
 #include "loom/tooling/compile/pipeline.h"
 #include "loom/tools/loom-check/diagnostics.h"
+#include "loom/verify/verify.h"
 
 typedef enum loom_spirv_loom_check_input_e {
   LOOM_SPIRV_LOOM_CHECK_INPUT_LOW = 0,

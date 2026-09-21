@@ -89,6 +89,7 @@ loom_cc_library(
     loom::codegen::low::repr
     loom::codegen::low::text_asm
     loom::error::diagnostic
+    loom::error::source
     loom::format::bytecode::format
     loom::format::bytecode::reader
     loom::format::text::parser
@@ -97,7 +98,6 @@ loom_cc_library(
     loom::target::low_descriptor_registry
     loom::tooling::input
     loom::tooling::io::source
-    loom::verify
   PUBLIC
 )
 

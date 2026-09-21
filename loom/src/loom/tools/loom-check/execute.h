@@ -29,6 +29,7 @@
 #include "iree/base/internal/arena.h"
 #include "loom/codegen/low/verify.h"
 #include "loom/error/diagnostic.h"
+#include "loom/error/source.h"
 #include "loom/format/text/printer.h"
 #include "loom/ir/context.h"
 #include "loom/pass/registry.h"
@@ -45,7 +46,6 @@
 #include "loom/tools/loom-check/report.h"
 #include "loom/tools/loom-check/update.h"
 #include "loom/util/json.h"
-#include "loom/verify/verify.h"
 
 #ifdef __cplusplus
 extern "C" {

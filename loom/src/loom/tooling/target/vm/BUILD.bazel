@@ -18,6 +18,7 @@ loom_cc_library(
     srcs = ["testbench.c"],
     hdrs = ["testbench.h"],
     deps = [
+        "//loom/src/loom/error:source",
         "//loom/src/loom/link:linker",
         "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/ops/func",

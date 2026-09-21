@@ -16,8 +16,8 @@
 
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
+#include "loom/error/source.h"
 #include "loom/tooling/testbench/value_materializer.h"
-#include "loom/verify/verify.h"
 
 #ifdef __cplusplus
 extern "C" {

@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "iree/base/internal/path.h"
+#include "loom/error/source.h"
 #include "loom/ir/module.h"
 
 iree_status_t loom_input_options_for_provider(iree_string_view_list_t entries,

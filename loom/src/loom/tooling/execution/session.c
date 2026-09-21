@@ -11,6 +11,7 @@
 #include "loom/codegen/low/repr.h"
 #include "loom/codegen/low/text_asm.h"
 #include "loom/error/diagnostic.h"
+#include "loom/error/source.h"
 #include "loom/format/bytecode/format.h"
 #include "loom/format/bytecode/reader.h"
 #include "loom/format/text/parser.h"

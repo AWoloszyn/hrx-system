@@ -8,6 +8,7 @@
 
 #include "loom/codegen/low/text_asm.h"
 #include "loom/codegen/low/verify.h"
+#include "loom/error/source.h"
 #include "loom/format/text/parser.h"
 #include "loom/ir/module.h"
 #include "loom/tools/loom-check/diagnostics.h"

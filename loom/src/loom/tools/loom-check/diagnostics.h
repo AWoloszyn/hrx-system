@@ -15,12 +15,12 @@
 #include "loom/error/diagnostic.h"
 #include "loom/error/emitter.h"
 #include "loom/error/error_defs.h"
+#include "loom/error/source.h"
 #include "loom/ir/module.h"
 #include "loom/testing/test_diagnostic.h"
 #include "loom/testing/test_file.h"
 #include "loom/tools/loom-check/execute.h"
 #include "loom/tools/loom-check/report.h"
-#include "loom/verify/verify.h"
 
 #ifdef __cplusplus
 extern "C" {

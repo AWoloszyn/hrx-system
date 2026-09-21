@@ -22,6 +22,7 @@ loom_cc_library(
     iree::hal
     iree::vm
     iree::vm::bytecode::module
+    loom::error::source
     loom::link::linker
     loom::ops::func
     loom::ops::op_defs

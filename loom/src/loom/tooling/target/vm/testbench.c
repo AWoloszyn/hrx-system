@@ -10,6 +10,7 @@
 #include "iree/vm/bytecode/module.h"
 #include "iree/vm/execution.h"
 #include "iree/vm/sync.h"
+#include "loom/error/source.h"
 #include "loom/link/linker.h"
 #include "loom/ops/func/ops.h"
 #include "loom/ops/op_defs.h"

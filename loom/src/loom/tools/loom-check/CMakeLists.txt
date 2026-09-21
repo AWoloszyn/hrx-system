@@ -79,6 +79,7 @@ loom_cc_library(
     loom::error::error_defs
     loom::error::json_sink
     loom::error::renderer
+    loom::error::source
     loom::format::text::parser
     loom::format::text::printer
     loom::ir

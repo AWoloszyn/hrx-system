@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "iree/io/vec_stream.h"
+#include "loom/error/source.h"
 #include "loom/format/bytecode/format.h"
 #include "loom/format/bytecode/reader.h"
 #include "loom/format/bytecode/writer.h"

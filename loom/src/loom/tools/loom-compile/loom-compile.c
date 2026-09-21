@@ -37,6 +37,7 @@
 #include "loom/tools/loom-compile/command_backend.h"
 #include "loom/tools/loom-compile/command_manifest.h"
 #include "loom/tools/loom-compile/request.h"
+#include "loom/verify/verify.h"
 
 typedef struct loom_compile_diagnostic_sink_t {
   // Parsed module used for full type rendering.

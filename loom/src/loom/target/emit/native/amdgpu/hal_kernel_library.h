@@ -16,13 +16,13 @@
 #include "iree/base/api.h"
 #include "iree/base/byte_sequence.h"
 #include "loom/error/diagnostic.h"
+#include "loom/error/source.h"
 #include "loom/ir/ir.h"
 #include "loom/target/emit/native/amdgpu/runtime_globals.h"
 #include "loom/target/provider.h"
 #include "loom/target/reporting/artifact_manifest_collect.h"
 #include "loom/target/reporting/report.h"
 #include "loom/target/types.h"
-#include "loom/verify/verify.h"
 
 #ifdef __cplusplus
 extern "C" {

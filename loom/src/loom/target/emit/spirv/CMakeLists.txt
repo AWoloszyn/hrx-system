@@ -218,6 +218,7 @@ loom_cc_library(
     loom::target::tool::spirv
     loom::tooling::compile::pipeline
     loom::tools::loom-check::execute
+    loom::verify
   PUBLIC
 )
 endif()

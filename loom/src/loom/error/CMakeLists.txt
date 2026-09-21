@@ -49,6 +49,21 @@ loom_cc_test(
     loom::util::stream
 )
 
+loom_cc_library(
+  NAME
+    source
+  HDRS
+    "source.h"
+  SRCS
+    "source.c"
+  DEPS
+    ::diagnostic
+    iree::base
+    iree::base::internal::unicode
+    loom::ir
+  PUBLIC
+)
+
 loom_generated_cc_library(
   NAME
     error_defs

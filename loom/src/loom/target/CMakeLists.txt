@@ -826,6 +826,7 @@ loom_cc_library(
     loom::codegen::low::verify
     loom::error::diagnostic
     loom::error::error_defs
+    loom::error::source
     loom::ir
     loom::ops::func_symbol_facts
     loom::ops::op_defs

@@ -103,8 +103,8 @@ loom_cc_library(
     ::value_materializer
     iree::base
     iree::base::internal::arena
+    loom::error::source
     loom::ir
-    loom::verify
   PUBLIC
 )
 

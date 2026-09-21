@@ -9,12 +9,14 @@
 #include "loom/codegen/low/text_asm.h"
 #include "loom/codegen/low/verify.h"
 #include "loom/error/error_catalog.h"
+#include "loom/error/source.h"
 #include "loom/format/text/printer.h"
 #include "loom/ir/module.h"
 #include "loom/ops/low/ops.h"
 #include "loom/ops/op_defs.h"
 #include "loom/target/entry_selection.h"
 #include "loom/tools/loom-check/diagnostics.h"
+#include "loom/verify/verify.h"
 
 static iree_status_t loom_check_emit_parse_source_low_option(
     iree_string_view_t token, loom_check_source_low_request_t* request) {

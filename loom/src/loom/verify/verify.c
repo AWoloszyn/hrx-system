@@ -606,63 +606,6 @@ IREE_ATTRIBUTE_ALWAYS_INLINE static inline iree_status_t loom_verify_op(
 }
 
 //===----------------------------------------------------------------------===//
-// Source resolver: table-based implementation
-//===----------------------------------------------------------------------===//
-
-bool loom_source_table_resolve(void* user_data, const loom_module_t* module,
-                               loom_location_id_t location,
-                               loom_source_range_t* out_range) {
-  loom_source_table_resolver_t* table =
-      (loom_source_table_resolver_t*)user_data;
-  if (!table || table->count == 0) {
-    return false;
-  }
-  if (location == LOOM_LOCATION_UNKNOWN) {
-    return false;
-  }
-
-  // Look up the location entry from the module's location table.
-  if ((iree_host_size_t)location >= module->locations.count) {
-    return false;
-  }
-  const loom_location_entry_t* entry = &module->locations.entries[location];
-  if (entry->kind != LOOM_LOCATION_FILE) {
-    return false;
-  }
-
-  // Find the matching source buffer by source_id.
-  const loom_source_entry_t* source_entry = NULL;
-  for (iree_host_size_t i = 0; i < table->count; ++i) {
-    if (table->entries[i].source_id == entry->file.source_id) {
-      source_entry = &table->entries[i];
-      break;
-    }
-  }
-  if (!source_entry) {
-    return false;
-  }
-
-  // Compute byte offsets from line/column into the source buffer.
-  iree_host_size_t start_offset = loom_verify_source_byte_offset(
-      source_entry->source, entry->file.start_line, entry->file.start_col);
-  iree_host_size_t end_offset = loom_verify_source_byte_offset(
-      source_entry->source, entry->file.end_line, entry->file.end_col);
-
-  *out_range = (loom_source_range_t){
-      .provenance = LOOM_SOURCE_PROVENANCE_EXACT_SOURCE,
-      .filename = source_entry->filename,
-      .source = source_entry->source,
-      .start = start_offset,
-      .end = end_offset,
-      .start_line = entry->file.start_line,
-      .start_column = entry->file.start_col,
-      .end_line = entry->file.end_line,
-      .end_column = entry->file.end_col,
-  };
-  return true;
-}
-
-//===----------------------------------------------------------------------===//
 // Module and function verification entry points
 //===----------------------------------------------------------------------===//
 

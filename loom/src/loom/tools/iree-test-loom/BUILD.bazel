@@ -77,6 +77,7 @@ loom_cc_library(
     srcs = ["library_linker.c"],
     hdrs = ["library_linker.h"],
     deps = [
+        "//loom/src/loom/error:source",
         "//loom/src/loom/link:linker",
         "//loom/src/loom/tooling/execution:session",
         "//loom/src/loom/tooling/io:file",
@@ -91,6 +92,7 @@ loom_cc_test(
     tags = ["requires-filesystem"],
     deps = [
         ":library_linker",
+        "//loom/src/loom/error:source",
         "//loom/src/loom/tooling/execution:session",
         "//loom/src/loom/tooling/io:file",
         "//runtime/src/iree/base",

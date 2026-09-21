@@ -11,6 +11,7 @@
 
 #include "iree/base/api.h"
 #include "loom/error/diagnostic.h"
+#include "loom/error/source.h"
 #include "loom/tooling/execution/session.h"
 
 #ifdef __cplusplus

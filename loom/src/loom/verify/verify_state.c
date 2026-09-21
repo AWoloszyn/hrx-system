@@ -6,7 +6,6 @@
 
 #include "loom/verify/verify_state.h"
 
-#include "iree/base/internal/unicode.h"
 #include "loom/ops/op_defs.h"
 
 void loom_verify_record_diagnostic_status(loom_verify_state_t* state,
@@ -154,41 +153,6 @@ bool loom_verify_at_error_limit(const loom_verify_state_t* state) {
          state->result->error_count >= state->max_errors;
 }
 
-// Computes the byte offset into |source| for a 1-based (line, column)
-// pair. Scans for newlines to find the target line, then walks UTF-8
-// codepoints to reach the target column. Columns are counted as
-// codepoints (matching the tokenizer's convention). Returns the byte
-// offset, clamped to source.size if the position is past end.
-iree_host_size_t loom_verify_source_byte_offset(iree_string_view_t source,
-                                                uint32_t line,
-                                                uint32_t column) {
-  if (line == 0) {
-    return 0;
-  }
-  // Scan newlines to find the byte offset of the start of |line|.
-  uint32_t current_line = 1;
-  iree_host_size_t offset = 0;
-  while (current_line < line && offset < source.size) {
-    if (source.data[offset] == '\n') {
-      ++current_line;
-    }
-    ++offset;
-  }
-  if (current_line < line) {
-    return source.size;
-  }
-  // Walk UTF-8 codepoints to reach the target column (1-based).
-  // Column 1 means "start of line" = offset stays where it is.
-  iree_host_size_t line_start = offset;
-  uint32_t current_column = 1;
-  while (current_column < column && offset < source.size &&
-         source.data[offset] != '\n') {
-    iree_unicode_utf8_decode(source, &offset);
-    ++current_column;
-  }
-  (void)line_start;
-  return offset > source.size ? source.size : offset;
-}
 const loom_op_vtable_t* loom_verify_lookup_vtable(
     const loom_verify_state_t* state, loom_op_kind_t kind) {
   return loom_context_resolve_op(state->module->context, kind);

@@ -18,6 +18,7 @@
 #include "loom/error/error_defs.h"
 #include "loom/error/json_sink.h"
 #include "loom/error/renderer.h"
+#include "loom/error/source.h"
 #include "loom/format/text/parser.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"

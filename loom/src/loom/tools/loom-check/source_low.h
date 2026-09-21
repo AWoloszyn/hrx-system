@@ -9,6 +9,7 @@
 #ifndef LOOM_TOOLS_LOOM_CHECK_SOURCE_LOW_H_
 #define LOOM_TOOLS_LOOM_CHECK_SOURCE_LOW_H_
 
+#include "loom/error/source.h"
 #include "loom/target/selection.h"
 #include "loom/tools/loom-check/execute.h"
 

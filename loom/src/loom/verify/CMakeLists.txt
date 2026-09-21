@@ -31,13 +31,13 @@ loom_cc_library(
   DEPS
     iree::base
     iree::base::internal::arena
-    iree::base::internal::unicode
     loom::analysis::consumption
     loom::analysis::ownership
     loom::error::diagnostic
     loom::error::emitter
     loom::error::error_defs
     loom::error::renderer
+    loom::error::source
     loom::format::text::printer
     loom::ir
     loom::ops::callable_effects
@@ -93,6 +93,7 @@ loom_cc_test(
     loom::error::error_defs
     loom::error::json_sink
     loom::error::renderer
+    loom::error::source
     loom::format::text::parser
     loom::ir
     loom::ops::low

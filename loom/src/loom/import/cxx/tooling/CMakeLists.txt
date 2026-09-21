@@ -23,6 +23,7 @@ loom_cc_test(
     iree::testing::gtest
     iree::testing::gtest_main
     iree::testing::temp_file
+    loom::error::source
     loom::import::cxx
     loom::import::cxx::source::catalog
     loom::import::cxx::source::options
@@ -34,7 +35,6 @@ loom_cc_test(
     loom::tools::loom-check::test_util
     loom::util::json
     loom::util::stream
-    loom::verify
   LABELS
     "iree-build-requirement=loom.import.cxx"
 )
