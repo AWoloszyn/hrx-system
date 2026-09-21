@@ -447,8 +447,8 @@ static iree_status_t loom_amdgpu_wait_state_allocate(
   }
   if (builder->state_capacity != 0) {
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        builder->arena, builder->state_capacity, sizeof(*builder->states),
-        (void**)&builder->states));
+        builder->transient_arena, builder->state_capacity,
+        sizeof(*builder->states), (void**)&builder->states));
   }
   return iree_ok_status();
 }
@@ -2140,6 +2140,28 @@ static iree_status_t loom_amdgpu_wait_state_plan_build_with_scratch(
   return iree_ok_status();
 }
 
+static iree_status_t loom_amdgpu_wait_state_plan_publish(
+    const loom_amdgpu_wait_state_builder_t* builder,
+    loom_amdgpu_wait_state_plan_t* out_plan) {
+  loom_amdgpu_wait_state_t* states = NULL;
+  if (builder->state_count != 0) {
+    IREE_RETURN_IF_ERROR(
+        iree_arena_allocate_array(builder->arena, builder->state_count,
+                                  sizeof(*states), (void**)&states));
+    memcpy(states, builder->states, builder->state_count * sizeof(*states));
+  }
+  *out_plan = (loom_amdgpu_wait_state_plan_t){
+      .schedule = builder->schedule,
+      .allocation = builder->allocation,
+      .progress = builder->progress,
+      .hazard_plan = builder->hazard_plan,
+      .states = states,
+      .state_count = builder->state_count,
+  };
+  out_plan->hazard_plan.progress = &out_plan->progress;
+  return iree_ok_status();
+}
+
 iree_status_t loom_amdgpu_wait_state_plan_build(
     const loom_low_schedule_table_t* schedule,
     const loom_low_allocation_table_t* allocation,
@@ -2167,15 +2189,7 @@ iree_status_t loom_amdgpu_wait_state_plan_build(
   iree_status_t status =
       loom_amdgpu_wait_state_plan_build_with_scratch(&builder);
   if (iree_status_is_ok(status)) {
-    *out_plan = (loom_amdgpu_wait_state_plan_t){
-        .schedule = schedule,
-        .allocation = allocation,
-        .progress = builder.progress,
-        .hazard_plan = builder.hazard_plan,
-        .states = builder.states,
-        .state_count = builder.state_count,
-    };
-    out_plan->hazard_plan.progress = &out_plan->progress;
+    status = loom_amdgpu_wait_state_plan_publish(&builder, out_plan);
   }
   return status;
 }
