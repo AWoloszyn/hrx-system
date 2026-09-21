@@ -18,6 +18,7 @@
 #include "loom/ops/op_defs.h"
 #include "loom/ops/type_registry.h"
 #include "loom/rewrite/rewriter.h"
+#include "loom/target/registers.h"
 
 typedef struct loom_low_materialized_spill_slot_t {
   // SSA value ID produced by the generated low.storage.reserve op.
@@ -40,7 +41,7 @@ typedef struct loom_low_slice_reload_group_t {
   loom_value_id_t full_reload_value_id;
   // Number of slice uses in |block|.
   uint32_t slice_count;
-  // Byte traffic if each slice use reloads only its projected unit.
+  // Byte traffic estimate used to select block-local sharing.
   uint64_t narrow_reload_bytes;
   // Whether slice uses in |block| share one full-width reload.
   bool use_full_reload;
@@ -53,7 +54,7 @@ typedef struct loom_low_slice_reload_plan_t {
   uint32_t group_count;
   // Group index for each snapshotted use, or UINT32_MAX for other uses.
   uint32_t* group_indices_by_use;
-  // Byte width of each classified slice reload.
+  // Bytes per allocation unit when forming slice reload offsets.
   uint32_t unit_byte_size;
 } loom_low_slice_reload_plan_t;
 
@@ -542,24 +543,28 @@ static bool loom_low_allocation_slice_reload_use(
 }
 
 static iree_status_t loom_low_allocation_insert_slice_reload(
-    loom_module_t* module, const loom_low_allocation_spill_plan_t* plan,
-    loom_value_id_t storage_value_id, loom_op_t* slice_op,
-    uint32_t unit_byte_size) {
+    loom_module_t* module, loom_value_id_t storage_value_id,
+    loom_op_t* slice_op, uint32_t unit_byte_size,
+    loom_low_materialized_traffic_t* inout_reload_traffic) {
   const int64_t reload_offset =
       loom_low_slice_offset(slice_op) * (int64_t)unit_byte_size;
   const loom_value_id_t slice_result = loom_low_slice_result(slice_op);
+  const loom_type_t result_type = loom_module_value_type(module, slice_result);
   loom_builder_t builder;
   loom_builder_initialize(module, &module->arena, slice_op->parent_block,
                           &builder);
   loom_builder_set_before(&builder, slice_op);
   loom_op_t* reload_op = NULL;
-  IREE_RETURN_IF_ERROR(
-      loom_low_reload_build(&builder, storage_value_id, reload_offset,
-                            loom_module_value_type(module, slice_result),
-                            slice_op->location, &reload_op));
+  IREE_RETURN_IF_ERROR(loom_low_reload_build(&builder, storage_value_id,
+                                             reload_offset, result_type,
+                                             slice_op->location, &reload_op));
   IREE_RETURN_IF_ERROR(loom_value_replace_all_uses_with(
       module, slice_result, loom_low_reload_result(reload_op)));
-  return loom_op_erase(module, slice_op);
+  IREE_RETURN_IF_ERROR(loom_op_erase(module, slice_op));
+  ++inout_reload_traffic->count;
+  inout_reload_traffic->bytes +=
+      (uint64_t)unit_byte_size * loom_low_register_type_unit_count(result_type);
+  return iree_ok_status();
 }
 
 static iree_status_t loom_low_allocation_insert_full_slice_reload(
@@ -727,10 +732,8 @@ static iree_status_t loom_low_allocation_insert_reloads_for_uses(
         continue;
       }
       IREE_RETURN_IF_ERROR(loom_low_allocation_insert_slice_reload(
-          module, plan, storage_value_id, slice_op,
-          slice_reload_plan.unit_byte_size));
-      ++reload_traffic.count;
-      reload_traffic.bytes += slice_reload_plan.unit_byte_size;
+          module, storage_value_id, slice_op, slice_reload_plan.unit_byte_size,
+          &reload_traffic));
       continue;
     }
 

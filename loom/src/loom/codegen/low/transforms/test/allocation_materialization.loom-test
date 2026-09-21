@@ -156,6 +156,50 @@ low.func.def target<test.low.core>(@test_target) @wide_slice_reload_cluster(%blo
 
 // ====
 
+// RUN: with-low-asm pass low-materialize-allocation{budgets=test.i32=5}
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @wide_slice_traffic(%blocker: reg<test.i32>, %wide: reg<test.i32 x4>) -> (reg<test.i32 x3>, reg<test.i32>) asm {
+  %pressure = test.add.i32 %blocker, %blocker
+  %first = slice %wide[0] : reg<test.i32 x4> -> reg<test.i32>
+  %sum = test.add.i32 %first, %pressure
+  %part = slice %wide[1] : reg<test.i32 x4> -> reg<test.i32 x3>
+  return %part, %sum
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @wide_slice_traffic(%blocker: reg<test.i32>, %wide: reg<test.i32 x4>) -> (reg<test.i32 x3>, reg<test.i32>) asm {
+  %wide_slice_traffic_spill_storage_0 = storage {byte_alignment = 16, byte_length = 16} : low.storage<private>
+  low.spill %wide, %wide_slice_traffic_spill_storage_0 : reg<test.i32 x4>, low.storage<private>
+  %pressure = test.add.i32 %blocker, %blocker
+  %9 = low.reload %wide_slice_traffic_spill_storage_0 : low.storage<private> -> reg<test.i32>
+  %sum = test.add.i32 %9, %pressure
+  %10 = low.reload %wide_slice_traffic_spill_storage_0 {offset = 4} : low.storage<private> -> reg<test.i32 x3>
+  return %10, %sum
+}
+
+// ====
+
+// RUN: pass low-materialize-allocation{budgets=test.i32=5,diagnostics=spills}
+
+test.target<low_core> @target
+
+// WARNING@+1: BACKEND/009 "value 'wide'" "1 store(s) for 16 byte(s)" "2 reload(s) for 16 byte(s)"
+low.func.def target<test.low.core>(@target) @wide_slice_traffic(%blocker: reg<test.i32>, %wide: reg<test.i32 x4>) -> (reg<test.i32 x3>, reg<test.i32>) asm {
+  %pressure = test.add.i32 %blocker, %blocker
+  %first = slice %wide[0] : reg<test.i32 x4> -> reg<test.i32>
+  %sum = test.add.i32 %first, %pressure
+  %part = slice %wide[1] : reg<test.i32 x4> -> reg<test.i32 x3>
+  return %part, %sum
+}
+
+// ----
+
+// ====
+
 // RUN: with-low-asm pass low-materialize-allocation{budgets=test.i32=9}
 
 test.target<low_core> @test_target
