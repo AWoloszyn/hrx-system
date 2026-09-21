@@ -267,6 +267,16 @@ Use cquery when select() resolution or configured target compatibility matters."
 
 cquery evaluates select(), platform constraints, and configured target state.""",
         )
+    if command == "aquery" and lane == "bazel":
+        return CommandHelp(
+            description="Inspect Bazel compilation and execution actions.",
+            arguments="Bazel aquery expression and native bazel aquery options.",
+            epilog="""Examples:
+  python dev.py bazel aquery 'mnemonic("CppCompile", //runtime/...)'
+  python dev.py bazel aquery --output=jsonproto //runtime/src/iree/base:base
+
+aquery resolves configuration and reports actions without executing them.""",
+        )
     if command == "info" and lane == "bazel":
         return CommandHelp(
             description="Run Bazel info.",
@@ -741,6 +751,20 @@ iree-bazel-cquery --config=asan 'deps(//runtime/src/iree/base:base)'
 ```
 
 cquery expressions and native Bazel cquery options are forwarded unchanged."""
+
+    if command == "aquery":
+        return """## iree-bazel-aquery
+
+Inspect configured compilation, linking, and other build actions without
+executing them. Use this to check action inputs, command lines, and which
+clients a platform selection would compile.
+
+```bash
+iree-bazel-aquery 'mnemonic("CppCompile", //runtime/...)'
+iree-bazel-aquery --output=jsonproto //runtime/src/iree/base:base
+```
+
+Action query expressions and native Bazel aquery options are forwarded unchanged."""
 
     if command == "info":
         return """## iree-bazel-info
