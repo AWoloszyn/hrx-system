@@ -225,9 +225,9 @@ static iree_status_t loom_low_descriptor_text_asm_make_packet(
           loom_low_descriptor_has_variadic_operands(descriptor),
       .asm_immediate_count = asm_form->immediate_count,
       .immediate_count = descriptor->immediate_count,
-      .immediate_attribute_field_index = builds_as_const
-                                             ? LOOM_LOW_CONST_ATTRS_ATTR_INDEX
-                                             : LOOM_LOW_OP_ATTRS_ATTR_INDEX,
+      .immediate_attribute_field_index =
+          builds_as_const ? loom_low_const_attrs_field().index
+                          : loom_low_op_attrs_field().index,
       .has_named_immediates = has_named_immediates,
       .operation_kind = builds_as_const ? LOOM_OP_LOW_CONST : LOOM_OP_LOW_OP,
   };
@@ -1292,10 +1292,10 @@ static iree_status_t loom_low_descriptor_text_asm_describe_packet(
     const loom_module_t* module, const loom_op_t* op, bool is_const,
     loom_text_low_asm_statement_t* out_statement) {
   const uint8_t descriptor_attr_index =
-      is_const ? LOOM_LOW_CONST_DESCRIPTOR_ATTR_INDEX
-               : LOOM_LOW_OP_DESCRIPTOR_ATTR_INDEX;
-  const uint8_t attrs_attr_index =
-      is_const ? LOOM_LOW_CONST_ATTRS_ATTR_INDEX : LOOM_LOW_OP_ATTRS_ATTR_INDEX;
+      is_const ? loom_low_const_descriptor_field().index
+               : loom_low_op_descriptor_field().index;
+  const uint8_t attrs_attr_index = is_const ? loom_low_const_attrs_field().index
+                                            : loom_low_op_attrs_field().index;
 
   if (descriptor_attr_index >= op->attribute_count ||
       loom_op_attrs(op)[descriptor_attr_index].kind != LOOM_ATTR_SCOPED_ENUM) {

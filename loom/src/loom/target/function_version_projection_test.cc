@@ -442,10 +442,8 @@ func.def public target(@requirement) @entry() {
   ASSERT_TRUE(loom_test_target_isa(projected_target));
   EXPECT_EQ(loom_test_target_kind(projected_target),
             LOOM_TEST_TARGET_KIND_LOW_CORE);
-  const loom_attribute_t index_bitwidth = loom_op_const_attrs(
-      projected_target)[LOOM_TEST_TARGET_INDEX_BITWIDTH_ATTR_INDEX];
-  ASSERT_FALSE(loom_attr_is_absent(index_bitwidth));
-  EXPECT_EQ(loom_attr_as_i64(index_bitwidth), 64);
+  ASSERT_TRUE(loom_test_target_has_index_bitwidth(projected_target));
+  EXPECT_EQ(loom_test_target_index_bitwidth(projected_target), 64);
 }
 
 TEST_F(TargetFunctionVersionProjectionTest,

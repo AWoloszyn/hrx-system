@@ -317,15 +317,15 @@ static bool loom_testbench_plan_seed_parameter(
 }
 
 static bool loom_testbench_plan_parameter_name(
-    const loom_module_t* module, const loom_op_t* op, uint8_t name_attr_index,
-    loom_testbench_parameter_plan_t* parameter) {
+    const loom_module_t* module, const loom_op_t* op,
+    loom_attr_field_t name_field, loom_testbench_parameter_plan_t* parameter) {
   parameter->name_id = LOOM_STRING_ID_INVALID;
   parameter->name = iree_string_view_empty();
-  if (name_attr_index >= op->attribute_count) {
+  if (name_field.index >= op->attribute_count) {
     return true;
   }
 
-  loom_attribute_t name_attr = loom_op_const_attrs(op)[name_attr_index];
+  loom_attribute_t name_attr = loom_op_attr(op, name_field);
   if (loom_attr_is_absent(name_attr)) {
     return true;
   }
@@ -351,19 +351,19 @@ static bool loom_testbench_plan_parameter(
   if (loom_check_param_range_isa(op)) {
     return loom_testbench_plan_range_parameter(module, op, out_parameter) &&
            loom_testbench_plan_parameter_name(
-               module, op, LOOM_CHECK_PARAM_RANGE_PARAM_NAME_ATTR_INDEX,
+               module, op, loom_check_param_range_param_name_field(),
                out_parameter);
   }
   if (loom_check_param_choice_isa(op)) {
     return loom_testbench_plan_choice_parameter(module, op, out_parameter) &&
            loom_testbench_plan_parameter_name(
-               module, op, LOOM_CHECK_PARAM_CHOICE_PARAM_NAME_ATTR_INDEX,
+               module, op, loom_check_param_choice_param_name_field(),
                out_parameter);
   }
   if (loom_check_param_seed_isa(op)) {
     return loom_testbench_plan_seed_parameter(module, op, out_parameter) &&
            loom_testbench_plan_parameter_name(
-               module, op, LOOM_CHECK_PARAM_SEED_PARAM_NAME_ATTR_INDEX,
+               module, op, loom_check_param_seed_param_name_field(),
                out_parameter);
   }
   return false;

@@ -123,10 +123,10 @@ TEST_F(TargetFactsTest, ProjectionBorrowsStringsWithoutRetainingSourceAccess) {
       loom_target_bundle_table_lookup(descriptor->bundle_table, selector);
   std::vector<loom_attribute_t> attributes(vtable->attribute_count,
                                            loom_attr_absent());
-  attributes[LOOM_TARGET_GENERIC_KIND_ATTR_INDEX] = loom_attr_enum(selector);
-  attributes[LOOM_TARGET_GENERIC_EXPORT_SYMBOL_ATTR_INDEX] =
+  attributes[loom_target_generic_kind_field().index] = loom_attr_enum(selector);
+  attributes[loom_target_generic_export_symbol_field().index] =
       loom_attr_string(1);
-  attributes[LOOM_TARGET_GENERIC_CONTRACT_SET_KEY_ATTR_INDEX] =
+  attributes[loom_target_generic_contract_set_key_field().index] =
       loom_attr_string(0);
   const iree_string_view_t first_strings[] = {IREE_SV("first_contract"),
                                               IREE_SV("first_entry")};
@@ -248,7 +248,7 @@ target.generic<reference> @gpu
 )");
   const loom_symbol_id_t symbol_id = FindSymbol(module.get(), IREE_SV("gpu"));
   loom_op_t* target_op = module->symbols.entries[symbol_id].defining_op;
-  loom_op_attrs(target_op)[LOOM_TARGET_GENERIC_KIND_ATTR_INDEX] =
+  loom_op_attrs(target_op)[loom_target_generic_kind_field().index] =
       loom_attr_enum(UINT8_MAX);
 
   const loom_symbol_facts_base_t* facts = nullptr;

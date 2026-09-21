@@ -262,7 +262,7 @@ static iree_status_t loom_amdgpu_target_record_verify_features(
   const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
   IREE_ASSERT(vtable != NULL && vtable->attr_descriptors != NULL);
   const loom_attr_descriptor_t* descriptor =
-      &vtable->attr_descriptors[LOOM_AMDGPU_TARGET_FEATURES_ATTR_INDEX];
+      &vtable->attr_descriptors[loom_amdgpu_target_features_field().index];
   for (iree_host_size_t stable_value = 0;
        stable_value < LOOM_AMDGPU_TARGET_FEATURES_COUNT_; ++stable_value) {
     const bool positive =

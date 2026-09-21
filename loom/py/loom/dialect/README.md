@@ -66,7 +66,8 @@ each argument once and add no per-field function bodies. Construction continues
 to use the operation's builder.
 
 Shared validators and metadata tables use `<field>_field()` bindings. Each
-`loom_attr_field_t` occupies one byte and names a fixed stored slot. The shared
+`loom_attr_field_t` occupies one byte and names a fixed stored slot; ordinals are
+implementation details of the generated bindings. The shared
 `loom_op_attr(op, field)` reader preserves the full attribute payload and
 `loom_attr_field_diagnostic_ref(field)` identifies its source span. Handwritten
 builders initialize unfinalized storage through `loom_op_initialize_attr`; they

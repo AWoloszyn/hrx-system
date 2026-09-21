@@ -66,60 +66,51 @@ typedef enum loom_pipeline_def_retain_e {
 //   pipeline.return
 // }
 LOOM_DEFINE_ISA(loom_pipeline_def_isa, LOOM_OP_PIPELINE_DEF)
-enum {
-  LOOM_PIPELINE_DEF_CALLEE_ATTR_INDEX = 0,
-  LOOM_PIPELINE_DEF_SCOPE_ATTR_INDEX = 1,
-  LOOM_PIPELINE_DEF_VISIBILITY_ATTR_INDEX = 2,
-  LOOM_PIPELINE_DEF_RETAIN_ATTR_INDEX = 3,
-  LOOM_PIPELINE_DEF_TARGET_ATTR_INDEX = 4,
-  LOOM_PIPELINE_DEF_PREDICATES_ATTR_INDEX = 5,
-  LOOM_PIPELINE_DEF_SPECIALIZATION_COUNT_ATTR_INDEX = 6,
-};
 #define loom_pipeline_def_callee_field() \
-  ((loom_attr_field_t){LOOM_PIPELINE_DEF_CALLEE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SYMBOL(loom_pipeline_def_callee, LOOM_PIPELINE_DEF_CALLEE_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_SYMBOL(loom_pipeline_def_callee, 0)
 #define loom_pipeline_def_rewrite_callee(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_PIPELINE_DEF_CALLEE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 #define loom_pipeline_def_scope_field() \
-  ((loom_attr_field_t){LOOM_PIPELINE_DEF_SCOPE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pipeline_def_scope, LOOM_PIPELINE_DEF_SCOPE_ATTR_INDEX, loom_pipeline_def_scope_t)
+  ((loom_attr_field_t){1})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pipeline_def_scope, 1, loom_pipeline_def_scope_t)
 #define loom_pipeline_def_has_scope(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_PIPELINE_DEF_SCOPE_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 #define loom_pipeline_def_rewrite_scope(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_PIPELINE_DEF_SCOPE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 #define loom_pipeline_def_visibility_field() \
-  ((loom_attr_field_t){LOOM_PIPELINE_DEF_VISIBILITY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pipeline_def_visibility, LOOM_PIPELINE_DEF_VISIBILITY_ATTR_INDEX, loom_pipeline_def_visibility_t)
+  ((loom_attr_field_t){2})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pipeline_def_visibility, 2, loom_pipeline_def_visibility_t)
 #define loom_pipeline_def_has_visibility(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_PIPELINE_DEF_VISIBILITY_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 #define loom_pipeline_def_rewrite_visibility(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_PIPELINE_DEF_VISIBILITY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 #define loom_pipeline_def_retain_field() \
-  ((loom_attr_field_t){LOOM_PIPELINE_DEF_RETAIN_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pipeline_def_retain, LOOM_PIPELINE_DEF_RETAIN_ATTR_INDEX, loom_pipeline_def_retain_t)
+  ((loom_attr_field_t){3})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pipeline_def_retain, 3, loom_pipeline_def_retain_t)
 #define loom_pipeline_def_has_retain(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_PIPELINE_DEF_RETAIN_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 #define loom_pipeline_def_rewrite_retain(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_PIPELINE_DEF_RETAIN_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 3, (attribute))
 #define loom_pipeline_def_target_field() \
-  ((loom_attr_field_t){LOOM_PIPELINE_DEF_TARGET_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SYMBOL(loom_pipeline_def_target, LOOM_PIPELINE_DEF_TARGET_ATTR_INDEX)
+  ((loom_attr_field_t){4})
+LOOM_DEFINE_ATTR_SYMBOL(loom_pipeline_def_target, 4)
 #define loom_pipeline_def_has_target(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_PIPELINE_DEF_TARGET_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 #define loom_pipeline_def_rewrite_target(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_PIPELINE_DEF_TARGET_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 4, (attribute))
 #define loom_pipeline_def_predicates_field() \
-  ((loom_attr_field_t){LOOM_PIPELINE_DEF_PREDICATES_ATTR_INDEX})
-LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_pipeline_def_predicates, LOOM_PIPELINE_DEF_PREDICATES_ATTR_INDEX)
+  ((loom_attr_field_t){5})
+LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_pipeline_def_predicates, 5)
 #define loom_pipeline_def_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_PIPELINE_DEF_PREDICATES_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 #define loom_pipeline_def_rewrite_predicates(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_PIPELINE_DEF_PREDICATES_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 5, (attribute))
 #define loom_pipeline_def_specialization_count_field() \
-  ((loom_attr_field_t){LOOM_PIPELINE_DEF_SPECIALIZATION_COUNT_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_pipeline_def_specialization_count, LOOM_PIPELINE_DEF_SPECIALIZATION_COUNT_ATTR_INDEX)
+  ((loom_attr_field_t){6})
+LOOM_DEFINE_ATTR_I64(loom_pipeline_def_specialization_count, 6)
 #define loom_pipeline_def_rewrite_specialization_count(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_PIPELINE_DEF_SPECIALIZATION_COUNT_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 6, (attribute))
 LOOM_DEFINE_REGION(loom_pipeline_def_body, 0)
 enum loom_pipeline_def_build_flag_bits_e {
   LOOM_PIPELINE_DEF_BUILD_FLAG_HAS_SCOPE = 1u << 0,
@@ -189,14 +180,11 @@ LOOM_DEFINE_ISA(loom_pipeline_stage_isa, LOOM_OP_PIPELINE_STAGE)
 LOOM_DEFINE_OPERAND(loom_pipeline_stage_group, 0)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_pipeline_stage_inputs, 1)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_pipeline_stage_outputs, 0)
-enum {
-  LOOM_PIPELINE_STAGE_ENTRY_ATTR_INDEX = 0,
-};
 #define loom_pipeline_stage_entry_field() \
-  ((loom_attr_field_t){LOOM_PIPELINE_STAGE_ENTRY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SYMBOL(loom_pipeline_stage_entry, LOOM_PIPELINE_STAGE_ENTRY_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_SYMBOL(loom_pipeline_stage_entry, 0)
 #define loom_pipeline_stage_rewrite_entry(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_PIPELINE_STAGE_ENTRY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_pipeline_stage_build(
     loom_builder_t* builder,
     loom_symbol_ref_t entry,
@@ -235,14 +223,11 @@ iree_status_t loom_pipeline_buffer_verify(
 LOOM_DEFINE_ISA(loom_pipeline_fold_isa, LOOM_OP_PIPELINE_FOLD)
 LOOM_DEFINE_OPERAND(loom_pipeline_fold_source, 0)
 LOOM_DEFINE_RESULT(loom_pipeline_fold_result, 0)
-enum {
-  LOOM_PIPELINE_FOLD_KIND_ATTR_INDEX = 0,
-};
 #define loom_pipeline_fold_kind_field() \
-  ((loom_attr_field_t){LOOM_PIPELINE_FOLD_KIND_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pipeline_fold_kind, LOOM_PIPELINE_FOLD_KIND_ATTR_INDEX, loom_combining_kind_t)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pipeline_fold_kind, 0, loom_combining_kind_t)
 #define loom_pipeline_fold_rewrite_kind(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_PIPELINE_FOLD_KIND_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 LOOM_DEFINE_INSTANCE_FLAGS(loom_pipeline_fold_fastmath)
 iree_status_t loom_pipeline_fold_build(
     loom_builder_t* builder,
@@ -264,14 +249,11 @@ LOOM_DEFINE_SEGMENTED_OPERANDS(loom_pipeline_reduce_source_inputs, 1)
 LOOM_DEFINE_SEGMENTED_OPERAND(loom_pipeline_reduce_target_group, 2)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_pipeline_reduce_target_inputs, 3)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_pipeline_reduce_outputs, 0)
-enum {
-  LOOM_PIPELINE_REDUCE_ENTRY_ATTR_INDEX = 0,
-};
 #define loom_pipeline_reduce_entry_field() \
-  ((loom_attr_field_t){LOOM_PIPELINE_REDUCE_ENTRY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SYMBOL(loom_pipeline_reduce_entry, LOOM_PIPELINE_REDUCE_ENTRY_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_SYMBOL(loom_pipeline_reduce_entry, 0)
 #define loom_pipeline_reduce_rewrite_entry(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_PIPELINE_REDUCE_ENTRY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_pipeline_reduce_build(
     loom_builder_t* builder,
     loom_symbol_ref_t entry,

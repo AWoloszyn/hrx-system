@@ -86,7 +86,7 @@ class FormatSignaturesTest : public ::testing::Test {
         /*.args=*/{loom_config_decl_type(op), 1, 4},
     };
     IREE_ASSERT_OK(loom_op_set_attr(module_, op,
-                                    LOOM_CONFIG_DECL_PREDICATES_ATTR_INDEX,
+                                    loom_config_decl_predicates_field().index,
                                     loom_attr_predicate_list(predicate, 1)));
   }
 
@@ -172,7 +172,7 @@ TEST_F(FormatSignaturesTest, RemovingPredicateDropsAnonymousBinder) {
   ConstrainConfig(config);
   EXPECT_NE(Print(module_).find(": %0: index"), std::string::npos);
   IREE_ASSERT_OK(loom_op_set_attr(module_, config,
-                                  LOOM_CONFIG_DECL_PREDICATES_ATTR_INDEX,
+                                  loom_config_decl_predicates_field().index,
                                   loom_attribute_t{}));
   EXPECT_EQ(Print(module_), "config.decl @extent : index\n");
   ASSERT_NO_FATAL_FAILURE(RoundTrip());

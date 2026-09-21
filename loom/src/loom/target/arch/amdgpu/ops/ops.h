@@ -63,268 +63,233 @@ typedef enum loom_amdgpu_target_features_e {
 // LOOM_OP_AMDGPU_TARGET: AMDGPU target record. The selector chooses one exact, generic, or overlay target row; optional attrs preserve authored common facts and target-ID feature assertions.
 // amdgpu.target<gfx11-generic> @gfx11_generic
 LOOM_DEFINE_ISA(loom_amdgpu_target_isa, LOOM_OP_AMDGPU_TARGET)
-enum {
-  LOOM_AMDGPU_TARGET_SYMBOL_ATTR_INDEX = 0,
-  LOOM_AMDGPU_TARGET_KIND_ATTR_INDEX = 1,
-  LOOM_AMDGPU_TARGET_CODEGEN_FORMAT_ATTR_INDEX = 2,
-  LOOM_AMDGPU_TARGET_ARTIFACT_FORMAT_ATTR_INDEX = 3,
-  LOOM_AMDGPU_TARGET_DEFAULT_POINTER_BITWIDTH_ATTR_INDEX = 4,
-  LOOM_AMDGPU_TARGET_INDEX_BITWIDTH_ATTR_INDEX = 5,
-  LOOM_AMDGPU_TARGET_OFFSET_BITWIDTH_ATTR_INDEX = 6,
-  LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_X_ATTR_INDEX = 7,
-  LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_Y_ATTR_INDEX = 8,
-  LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_Z_ATTR_INDEX = 9,
-  LOOM_AMDGPU_TARGET_MAX_FLAT_WORKGROUP_SIZE_ATTR_INDEX = 10,
-  LOOM_AMDGPU_TARGET_MAX_WORKGROUP_STORAGE_BYTES_ATTR_INDEX = 11,
-  LOOM_AMDGPU_TARGET_SUBGROUP_SIZE_ATTR_INDEX = 12,
-  LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_X_ATTR_INDEX = 13,
-  LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_Y_ATTR_INDEX = 14,
-  LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_Z_ATTR_INDEX = 15,
-  LOOM_AMDGPU_TARGET_MAX_FLAT_GRID_SIZE_ATTR_INDEX = 16,
-  LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_X_ATTR_INDEX = 17,
-  LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_Y_ATTR_INDEX = 18,
-  LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_Z_ATTR_INDEX = 19,
-  LOOM_AMDGPU_TARGET_MEMORY_SPACE_GENERIC_ATTR_INDEX = 20,
-  LOOM_AMDGPU_TARGET_MEMORY_SPACE_GLOBAL_ATTR_INDEX = 21,
-  LOOM_AMDGPU_TARGET_MEMORY_SPACE_WORKGROUP_ATTR_INDEX = 22,
-  LOOM_AMDGPU_TARGET_MEMORY_SPACE_CONSTANT_ATTR_INDEX = 23,
-  LOOM_AMDGPU_TARGET_MEMORY_SPACE_PRIVATE_ATTR_INDEX = 24,
-  LOOM_AMDGPU_TARGET_MEMORY_SPACE_HOST_ATTR_INDEX = 25,
-  LOOM_AMDGPU_TARGET_MEMORY_SPACE_DESCRIPTOR_ATTR_INDEX = 26,
-  LOOM_AMDGPU_TARGET_ABI_ATTR_INDEX = 27,
-  LOOM_AMDGPU_TARGET_EXPORT_SYMBOL_ATTR_INDEX = 28,
-  LOOM_AMDGPU_TARGET_LINKAGE_ATTR_INDEX = 29,
-  LOOM_AMDGPU_TARGET_CONTRACT_SET_KEY_ATTR_INDEX = 30,
-  LOOM_AMDGPU_TARGET_CONTRACT_FEATURE_BITS_ATTR_INDEX = 31,
-  LOOM_AMDGPU_TARGET_FEATURES_ATTR_INDEX = 32,
-};
 #define loom_amdgpu_target_symbol_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_SYMBOL_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SYMBOL(loom_amdgpu_target_symbol, LOOM_AMDGPU_TARGET_SYMBOL_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_SYMBOL(loom_amdgpu_target_symbol, 0)
 #define loom_amdgpu_target_rewrite_symbol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_SYMBOL_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 #define loom_amdgpu_target_kind_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_KIND_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_kind, LOOM_AMDGPU_TARGET_KIND_ATTR_INDEX, loom_amdgpu_target_kind_t)
+  ((loom_attr_field_t){1})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_kind, 1, loom_amdgpu_target_kind_t)
 #define loom_amdgpu_target_rewrite_kind(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_KIND_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 #define loom_amdgpu_target_codegen_format_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_CODEGEN_FORMAT_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_codegen_format, LOOM_AMDGPU_TARGET_CODEGEN_FORMAT_ATTR_INDEX, loom_target_codegen_format_t)
+  ((loom_attr_field_t){2})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_codegen_format, 2, loom_target_codegen_format_t)
 #define loom_amdgpu_target_has_codegen_format(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_CODEGEN_FORMAT_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 #define loom_amdgpu_target_rewrite_codegen_format(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_CODEGEN_FORMAT_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 #define loom_amdgpu_target_artifact_format_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_ARTIFACT_FORMAT_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_artifact_format, LOOM_AMDGPU_TARGET_ARTIFACT_FORMAT_ATTR_INDEX, loom_target_artifact_format_t)
+  ((loom_attr_field_t){3})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_artifact_format, 3, loom_target_artifact_format_t)
 #define loom_amdgpu_target_has_artifact_format(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_ARTIFACT_FORMAT_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 #define loom_amdgpu_target_rewrite_artifact_format(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_ARTIFACT_FORMAT_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 3, (attribute))
 #define loom_amdgpu_target_default_pointer_bitwidth_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_DEFAULT_POINTER_BITWIDTH_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_default_pointer_bitwidth, LOOM_AMDGPU_TARGET_DEFAULT_POINTER_BITWIDTH_ATTR_INDEX)
+  ((loom_attr_field_t){4})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_default_pointer_bitwidth, 4)
 #define loom_amdgpu_target_has_default_pointer_bitwidth(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_DEFAULT_POINTER_BITWIDTH_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 #define loom_amdgpu_target_rewrite_default_pointer_bitwidth(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_DEFAULT_POINTER_BITWIDTH_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 4, (attribute))
 #define loom_amdgpu_target_index_bitwidth_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_INDEX_BITWIDTH_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_index_bitwidth, LOOM_AMDGPU_TARGET_INDEX_BITWIDTH_ATTR_INDEX)
+  ((loom_attr_field_t){5})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_index_bitwidth, 5)
 #define loom_amdgpu_target_has_index_bitwidth(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_INDEX_BITWIDTH_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 #define loom_amdgpu_target_rewrite_index_bitwidth(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_INDEX_BITWIDTH_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 5, (attribute))
 #define loom_amdgpu_target_offset_bitwidth_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_OFFSET_BITWIDTH_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_offset_bitwidth, LOOM_AMDGPU_TARGET_OFFSET_BITWIDTH_ATTR_INDEX)
+  ((loom_attr_field_t){6})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_offset_bitwidth, 6)
 #define loom_amdgpu_target_has_offset_bitwidth(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_OFFSET_BITWIDTH_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[6]))
 #define loom_amdgpu_target_rewrite_offset_bitwidth(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_OFFSET_BITWIDTH_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 6, (attribute))
 #define loom_amdgpu_target_max_workgroup_size_x_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_X_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_size_x, LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_X_ATTR_INDEX)
+  ((loom_attr_field_t){7})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_size_x, 7)
 #define loom_amdgpu_target_has_max_workgroup_size_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_X_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[7]))
 #define loom_amdgpu_target_rewrite_max_workgroup_size_x(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_X_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 7, (attribute))
 #define loom_amdgpu_target_max_workgroup_size_y_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_Y_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_size_y, LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_Y_ATTR_INDEX)
+  ((loom_attr_field_t){8})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_size_y, 8)
 #define loom_amdgpu_target_has_max_workgroup_size_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_Y_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[8]))
 #define loom_amdgpu_target_rewrite_max_workgroup_size_y(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_Y_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 8, (attribute))
 #define loom_amdgpu_target_max_workgroup_size_z_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_Z_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_size_z, LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_Z_ATTR_INDEX)
+  ((loom_attr_field_t){9})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_size_z, 9)
 #define loom_amdgpu_target_has_max_workgroup_size_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_Z_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[9]))
 #define loom_amdgpu_target_rewrite_max_workgroup_size_z(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MAX_WORKGROUP_SIZE_Z_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 9, (attribute))
 #define loom_amdgpu_target_max_flat_workgroup_size_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MAX_FLAT_WORKGROUP_SIZE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_flat_workgroup_size, LOOM_AMDGPU_TARGET_MAX_FLAT_WORKGROUP_SIZE_ATTR_INDEX)
+  ((loom_attr_field_t){10})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_flat_workgroup_size, 10)
 #define loom_amdgpu_target_has_max_flat_workgroup_size(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MAX_FLAT_WORKGROUP_SIZE_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[10]))
 #define loom_amdgpu_target_rewrite_max_flat_workgroup_size(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MAX_FLAT_WORKGROUP_SIZE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 10, (attribute))
 #define loom_amdgpu_target_max_workgroup_storage_bytes_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MAX_WORKGROUP_STORAGE_BYTES_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_storage_bytes, LOOM_AMDGPU_TARGET_MAX_WORKGROUP_STORAGE_BYTES_ATTR_INDEX)
+  ((loom_attr_field_t){11})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_storage_bytes, 11)
 #define loom_amdgpu_target_has_max_workgroup_storage_bytes(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MAX_WORKGROUP_STORAGE_BYTES_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[11]))
 #define loom_amdgpu_target_rewrite_max_workgroup_storage_bytes(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MAX_WORKGROUP_STORAGE_BYTES_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 11, (attribute))
 #define loom_amdgpu_target_subgroup_size_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_SUBGROUP_SIZE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_subgroup_size, LOOM_AMDGPU_TARGET_SUBGROUP_SIZE_ATTR_INDEX)
+  ((loom_attr_field_t){12})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_subgroup_size, 12)
 #define loom_amdgpu_target_has_subgroup_size(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_SUBGROUP_SIZE_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[12]))
 #define loom_amdgpu_target_rewrite_subgroup_size(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_SUBGROUP_SIZE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 12, (attribute))
 #define loom_amdgpu_target_max_grid_size_x_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_X_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_grid_size_x, LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_X_ATTR_INDEX)
+  ((loom_attr_field_t){13})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_grid_size_x, 13)
 #define loom_amdgpu_target_has_max_grid_size_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_X_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[13]))
 #define loom_amdgpu_target_rewrite_max_grid_size_x(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_X_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 13, (attribute))
 #define loom_amdgpu_target_max_grid_size_y_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_Y_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_grid_size_y, LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_Y_ATTR_INDEX)
+  ((loom_attr_field_t){14})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_grid_size_y, 14)
 #define loom_amdgpu_target_has_max_grid_size_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_Y_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[14]))
 #define loom_amdgpu_target_rewrite_max_grid_size_y(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_Y_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 14, (attribute))
 #define loom_amdgpu_target_max_grid_size_z_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_Z_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_grid_size_z, LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_Z_ATTR_INDEX)
+  ((loom_attr_field_t){15})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_grid_size_z, 15)
 #define loom_amdgpu_target_has_max_grid_size_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_Z_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[15]))
 #define loom_amdgpu_target_rewrite_max_grid_size_z(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MAX_GRID_SIZE_Z_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 15, (attribute))
 #define loom_amdgpu_target_max_flat_grid_size_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MAX_FLAT_GRID_SIZE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_flat_grid_size, LOOM_AMDGPU_TARGET_MAX_FLAT_GRID_SIZE_ATTR_INDEX)
+  ((loom_attr_field_t){16})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_flat_grid_size, 16)
 #define loom_amdgpu_target_has_max_flat_grid_size(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MAX_FLAT_GRID_SIZE_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[16]))
 #define loom_amdgpu_target_rewrite_max_flat_grid_size(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MAX_FLAT_GRID_SIZE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 16, (attribute))
 #define loom_amdgpu_target_max_workgroup_count_x_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_X_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_count_x, LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_X_ATTR_INDEX)
+  ((loom_attr_field_t){17})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_count_x, 17)
 #define loom_amdgpu_target_has_max_workgroup_count_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_X_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[17]))
 #define loom_amdgpu_target_rewrite_max_workgroup_count_x(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_X_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 17, (attribute))
 #define loom_amdgpu_target_max_workgroup_count_y_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_Y_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_count_y, LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_Y_ATTR_INDEX)
+  ((loom_attr_field_t){18})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_count_y, 18)
 #define loom_amdgpu_target_has_max_workgroup_count_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_Y_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[18]))
 #define loom_amdgpu_target_rewrite_max_workgroup_count_y(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_Y_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 18, (attribute))
 #define loom_amdgpu_target_max_workgroup_count_z_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_Z_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_count_z, LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_Z_ATTR_INDEX)
+  ((loom_attr_field_t){19})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_count_z, 19)
 #define loom_amdgpu_target_has_max_workgroup_count_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_Z_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[19]))
 #define loom_amdgpu_target_rewrite_max_workgroup_count_z(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MAX_WORKGROUP_COUNT_Z_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 19, (attribute))
 #define loom_amdgpu_target_memory_space_generic_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MEMORY_SPACE_GENERIC_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_generic, LOOM_AMDGPU_TARGET_MEMORY_SPACE_GENERIC_ATTR_INDEX)
+  ((loom_attr_field_t){20})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_generic, 20)
 #define loom_amdgpu_target_has_memory_space_generic(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MEMORY_SPACE_GENERIC_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[20]))
 #define loom_amdgpu_target_rewrite_memory_space_generic(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MEMORY_SPACE_GENERIC_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 20, (attribute))
 #define loom_amdgpu_target_memory_space_global_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MEMORY_SPACE_GLOBAL_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_global, LOOM_AMDGPU_TARGET_MEMORY_SPACE_GLOBAL_ATTR_INDEX)
+  ((loom_attr_field_t){21})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_global, 21)
 #define loom_amdgpu_target_has_memory_space_global(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MEMORY_SPACE_GLOBAL_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[21]))
 #define loom_amdgpu_target_rewrite_memory_space_global(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MEMORY_SPACE_GLOBAL_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 21, (attribute))
 #define loom_amdgpu_target_memory_space_workgroup_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MEMORY_SPACE_WORKGROUP_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_workgroup, LOOM_AMDGPU_TARGET_MEMORY_SPACE_WORKGROUP_ATTR_INDEX)
+  ((loom_attr_field_t){22})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_workgroup, 22)
 #define loom_amdgpu_target_has_memory_space_workgroup(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MEMORY_SPACE_WORKGROUP_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[22]))
 #define loom_amdgpu_target_rewrite_memory_space_workgroup(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MEMORY_SPACE_WORKGROUP_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 22, (attribute))
 #define loom_amdgpu_target_memory_space_constant_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MEMORY_SPACE_CONSTANT_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_constant, LOOM_AMDGPU_TARGET_MEMORY_SPACE_CONSTANT_ATTR_INDEX)
+  ((loom_attr_field_t){23})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_constant, 23)
 #define loom_amdgpu_target_has_memory_space_constant(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MEMORY_SPACE_CONSTANT_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[23]))
 #define loom_amdgpu_target_rewrite_memory_space_constant(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MEMORY_SPACE_CONSTANT_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 23, (attribute))
 #define loom_amdgpu_target_memory_space_private_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MEMORY_SPACE_PRIVATE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_private, LOOM_AMDGPU_TARGET_MEMORY_SPACE_PRIVATE_ATTR_INDEX)
+  ((loom_attr_field_t){24})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_private, 24)
 #define loom_amdgpu_target_has_memory_space_private(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MEMORY_SPACE_PRIVATE_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[24]))
 #define loom_amdgpu_target_rewrite_memory_space_private(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MEMORY_SPACE_PRIVATE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 24, (attribute))
 #define loom_amdgpu_target_memory_space_host_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MEMORY_SPACE_HOST_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_host, LOOM_AMDGPU_TARGET_MEMORY_SPACE_HOST_ATTR_INDEX)
+  ((loom_attr_field_t){25})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_host, 25)
 #define loom_amdgpu_target_has_memory_space_host(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MEMORY_SPACE_HOST_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[25]))
 #define loom_amdgpu_target_rewrite_memory_space_host(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MEMORY_SPACE_HOST_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 25, (attribute))
 #define loom_amdgpu_target_memory_space_descriptor_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_MEMORY_SPACE_DESCRIPTOR_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_descriptor, LOOM_AMDGPU_TARGET_MEMORY_SPACE_DESCRIPTOR_ATTR_INDEX)
+  ((loom_attr_field_t){26})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_descriptor, 26)
 #define loom_amdgpu_target_has_memory_space_descriptor(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_MEMORY_SPACE_DESCRIPTOR_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[26]))
 #define loom_amdgpu_target_rewrite_memory_space_descriptor(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_MEMORY_SPACE_DESCRIPTOR_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 26, (attribute))
 #define loom_amdgpu_target_abi_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_ABI_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_abi, LOOM_AMDGPU_TARGET_ABI_ATTR_INDEX, loom_target_abi_kind_t)
+  ((loom_attr_field_t){27})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_abi, 27, loom_target_abi_kind_t)
 #define loom_amdgpu_target_has_abi(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_ABI_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[27]))
 #define loom_amdgpu_target_rewrite_abi(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_ABI_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 27, (attribute))
 #define loom_amdgpu_target_export_symbol_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_EXPORT_SYMBOL_ATTR_INDEX})
-LOOM_DEFINE_ATTR_STRING(loom_amdgpu_target_export_symbol, LOOM_AMDGPU_TARGET_EXPORT_SYMBOL_ATTR_INDEX)
+  ((loom_attr_field_t){28})
+LOOM_DEFINE_ATTR_STRING(loom_amdgpu_target_export_symbol, 28)
 #define loom_amdgpu_target_has_export_symbol(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_EXPORT_SYMBOL_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[28]))
 #define loom_amdgpu_target_rewrite_export_symbol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_EXPORT_SYMBOL_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 28, (attribute))
 #define loom_amdgpu_target_linkage_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_LINKAGE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_linkage, LOOM_AMDGPU_TARGET_LINKAGE_ATTR_INDEX, loom_target_linkage_t)
+  ((loom_attr_field_t){29})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_linkage, 29, loom_target_linkage_t)
 #define loom_amdgpu_target_has_linkage(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_LINKAGE_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[29]))
 #define loom_amdgpu_target_rewrite_linkage(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_LINKAGE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 29, (attribute))
 #define loom_amdgpu_target_contract_set_key_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_CONTRACT_SET_KEY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_STRING(loom_amdgpu_target_contract_set_key, LOOM_AMDGPU_TARGET_CONTRACT_SET_KEY_ATTR_INDEX)
+  ((loom_attr_field_t){30})
+LOOM_DEFINE_ATTR_STRING(loom_amdgpu_target_contract_set_key, 30)
 #define loom_amdgpu_target_has_contract_set_key(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_CONTRACT_SET_KEY_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[30]))
 #define loom_amdgpu_target_rewrite_contract_set_key(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_CONTRACT_SET_KEY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 30, (attribute))
 #define loom_amdgpu_target_contract_feature_bits_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_CONTRACT_FEATURE_BITS_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_contract_feature_bits, LOOM_AMDGPU_TARGET_CONTRACT_FEATURE_BITS_ATTR_INDEX)
+  ((loom_attr_field_t){31})
+LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_contract_feature_bits, 31)
 #define loom_amdgpu_target_has_contract_feature_bits(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_CONTRACT_FEATURE_BITS_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[31]))
 #define loom_amdgpu_target_rewrite_contract_feature_bits(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_CONTRACT_FEATURE_BITS_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 31, (attribute))
 #define loom_amdgpu_target_features_field() \
-  ((loom_attr_field_t){LOOM_AMDGPU_TARGET_FEATURES_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SIGNED_ENUM_SET(loom_amdgpu_target_features, LOOM_AMDGPU_TARGET_FEATURES_ATTR_INDEX)
+  ((loom_attr_field_t){32})
+LOOM_DEFINE_ATTR_SIGNED_ENUM_SET(loom_amdgpu_target_features, 32)
 #define loom_amdgpu_target_has_features(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_AMDGPU_TARGET_FEATURES_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[32]))
 #define loom_amdgpu_target_rewrite_features(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_AMDGPU_TARGET_FEATURES_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 32, (attribute))
 enum loom_amdgpu_target_build_flag_bits_e {
   LOOM_AMDGPU_TARGET_BUILD_FLAG_HAS_CODEGEN_FORMAT = 1u << 0,
   LOOM_AMDGPU_TARGET_BUILD_FLAG_HAS_ARTIFACT_FORMAT = 1u << 1,

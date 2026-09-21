@@ -138,132 +138,114 @@ typedef enum loom_low_scf_for_unroll_policy_e {
 // }
 LOOM_DEFINE_ISA(loom_low_func_def_isa, LOOM_OP_LOW_FUNC_DEF)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_func_def_results, 0)
-enum {
-  LOOM_LOW_FUNC_DEF_CALLEE_ATTR_INDEX = 0,
-  LOOM_LOW_FUNC_DEF_TARGET_ATTR_INDEX = 1,
-  LOOM_LOW_FUNC_DEF_DESCRIPTOR_SET_ATTR_INDEX = 2,
-  LOOM_LOW_FUNC_DEF_ABI_ATTR_INDEX = 3,
-  LOOM_LOW_FUNC_DEF_ABI_ATTRS_ATTR_INDEX = 4,
-  LOOM_LOW_FUNC_DEF_ABI_LAYOUT_ATTR_INDEX = 5,
-  LOOM_LOW_FUNC_DEF_EXPORT_SYMBOL_ATTR_INDEX = 6,
-  LOOM_LOW_FUNC_DEF_EXPORT_ATTRS_ATTR_INDEX = 7,
-  LOOM_LOW_FUNC_DEF_VISIBILITY_ATTR_INDEX = 8,
-  LOOM_LOW_FUNC_DEF_CC_ATTR_INDEX = 9,
-  LOOM_LOW_FUNC_DEF_PURITY_ATTR_INDEX = 10,
-  LOOM_LOW_FUNC_DEF_INLINE_POLICY_ATTR_INDEX = 11,
-  LOOM_LOW_FUNC_DEF_ALLOCATION_ATTR_INDEX = 12,
-  LOOM_LOW_FUNC_DEF_SCHEDULE_ATTR_INDEX = 13,
-  LOOM_LOW_FUNC_DEF_PREDICATES_ATTR_INDEX = 14,
-  LOOM_LOW_FUNC_DEF_RETAIN_ATTR_INDEX = 15,
-};
 #define loom_low_func_def_callee_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_CALLEE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_def_callee, LOOM_LOW_FUNC_DEF_CALLEE_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_def_callee, 0)
 #define loom_low_func_def_rewrite_callee(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_CALLEE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 #define loom_low_func_def_target_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_TARGET_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_def_target, LOOM_LOW_FUNC_DEF_TARGET_ATTR_INDEX)
+  ((loom_attr_field_t){1})
+LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_def_target, 1)
 #define loom_low_func_def_has_target(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_TARGET_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 #define loom_low_func_def_rewrite_target(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_TARGET_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 #define loom_low_func_def_descriptor_set_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_DESCRIPTOR_SET_ATTR_INDEX})
-LOOM_DEFINE_ATTR_STRING(loom_low_func_def_descriptor_set, LOOM_LOW_FUNC_DEF_DESCRIPTOR_SET_ATTR_INDEX)
+  ((loom_attr_field_t){2})
+LOOM_DEFINE_ATTR_STRING(loom_low_func_def_descriptor_set, 2)
 #define loom_low_func_def_rewrite_descriptor_set(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_DESCRIPTOR_SET_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 #define loom_low_func_def_abi_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_ABI_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_abi, LOOM_LOW_FUNC_DEF_ABI_ATTR_INDEX, loom_target_abi_kind_t)
+  ((loom_attr_field_t){3})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_abi, 3, loom_target_abi_kind_t)
 #define loom_low_func_def_has_abi(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_ABI_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 #define loom_low_func_def_rewrite_abi(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_ABI_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 3, (attribute))
 #define loom_low_func_def_abi_attrs_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_ABI_ATTRS_ATTR_INDEX})
-LOOM_DEFINE_ATTR_DICT(loom_low_func_def_abi_attrs, LOOM_LOW_FUNC_DEF_ABI_ATTRS_ATTR_INDEX)
+  ((loom_attr_field_t){4})
+LOOM_DEFINE_ATTR_DICT(loom_low_func_def_abi_attrs, 4)
 #define loom_low_func_def_has_abi_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_ABI_ATTRS_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 #define loom_low_func_def_rewrite_abi_attrs(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_ABI_ATTRS_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 4, (attribute))
 #define loom_low_func_def_abi_layout_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_ABI_LAYOUT_ATTR_INDEX})
-LOOM_DEFINE_ATTR_DICT(loom_low_func_def_abi_layout, LOOM_LOW_FUNC_DEF_ABI_LAYOUT_ATTR_INDEX)
+  ((loom_attr_field_t){5})
+LOOM_DEFINE_ATTR_DICT(loom_low_func_def_abi_layout, 5)
 #define loom_low_func_def_has_abi_layout(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_ABI_LAYOUT_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 #define loom_low_func_def_rewrite_abi_layout(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_ABI_LAYOUT_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 5, (attribute))
 #define loom_low_func_def_export_symbol_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_EXPORT_SYMBOL_ATTR_INDEX})
-LOOM_DEFINE_ATTR_STRING(loom_low_func_def_export_symbol, LOOM_LOW_FUNC_DEF_EXPORT_SYMBOL_ATTR_INDEX)
+  ((loom_attr_field_t){6})
+LOOM_DEFINE_ATTR_STRING(loom_low_func_def_export_symbol, 6)
 #define loom_low_func_def_has_export_symbol(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_EXPORT_SYMBOL_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[6]))
 #define loom_low_func_def_rewrite_export_symbol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_EXPORT_SYMBOL_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 6, (attribute))
 #define loom_low_func_def_export_attrs_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_EXPORT_ATTRS_ATTR_INDEX})
-LOOM_DEFINE_ATTR_DICT(loom_low_func_def_export_attrs, LOOM_LOW_FUNC_DEF_EXPORT_ATTRS_ATTR_INDEX)
+  ((loom_attr_field_t){7})
+LOOM_DEFINE_ATTR_DICT(loom_low_func_def_export_attrs, 7)
 #define loom_low_func_def_has_export_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_EXPORT_ATTRS_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[7]))
 #define loom_low_func_def_rewrite_export_attrs(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_EXPORT_ATTRS_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 7, (attribute))
 #define loom_low_func_def_visibility_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_VISIBILITY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_visibility, LOOM_LOW_FUNC_DEF_VISIBILITY_ATTR_INDEX, loom_low_visibility_t)
+  ((loom_attr_field_t){8})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_visibility, 8, loom_low_visibility_t)
 #define loom_low_func_def_has_visibility(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_VISIBILITY_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[8]))
 #define loom_low_func_def_rewrite_visibility(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_VISIBILITY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 8, (attribute))
 #define loom_low_func_def_cc_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_CC_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_cc, LOOM_LOW_FUNC_DEF_CC_ATTR_INDEX, loom_low_cc_t)
+  ((loom_attr_field_t){9})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_cc, 9, loom_low_cc_t)
 #define loom_low_func_def_has_cc(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_CC_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[9]))
 #define loom_low_func_def_rewrite_cc(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_CC_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 9, (attribute))
 #define loom_low_func_def_purity_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_PURITY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_purity, LOOM_LOW_FUNC_DEF_PURITY_ATTR_INDEX, loom_low_purity_t)
+  ((loom_attr_field_t){10})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_purity, 10, loom_low_purity_t)
 #define loom_low_func_def_has_purity(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_PURITY_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[10]))
 #define loom_low_func_def_rewrite_purity(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_PURITY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 10, (attribute))
 #define loom_low_func_def_inline_policy_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_INLINE_POLICY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_inline_policy, LOOM_LOW_FUNC_DEF_INLINE_POLICY_ATTR_INDEX, loom_inline_policy_t)
+  ((loom_attr_field_t){11})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_inline_policy, 11, loom_inline_policy_t)
 #define loom_low_func_def_has_inline_policy(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_INLINE_POLICY_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[11]))
 #define loom_low_func_def_rewrite_inline_policy(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_INLINE_POLICY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 11, (attribute))
 #define loom_low_func_def_allocation_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_ALLOCATION_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_allocation, LOOM_LOW_FUNC_DEF_ALLOCATION_ATTR_INDEX, loom_low_allocation_t)
+  ((loom_attr_field_t){12})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_allocation, 12, loom_low_allocation_t)
 #define loom_low_func_def_has_allocation(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_ALLOCATION_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[12]))
 #define loom_low_func_def_rewrite_allocation(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_ALLOCATION_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 12, (attribute))
 #define loom_low_func_def_schedule_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_SCHEDULE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_schedule, LOOM_LOW_FUNC_DEF_SCHEDULE_ATTR_INDEX, loom_low_schedule_t)
+  ((loom_attr_field_t){13})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_schedule, 13, loom_low_schedule_t)
 #define loom_low_func_def_has_schedule(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_SCHEDULE_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[13]))
 #define loom_low_func_def_rewrite_schedule(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_SCHEDULE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 13, (attribute))
 #define loom_low_func_def_predicates_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_PREDICATES_ATTR_INDEX})
-LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_func_def_predicates, LOOM_LOW_FUNC_DEF_PREDICATES_ATTR_INDEX)
+  ((loom_attr_field_t){14})
+LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_func_def_predicates, 14)
 #define loom_low_func_def_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_PREDICATES_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[14]))
 #define loom_low_func_def_rewrite_predicates(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_PREDICATES_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 14, (attribute))
 #define loom_low_func_def_retain_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DEF_RETAIN_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_retain, LOOM_LOW_FUNC_DEF_RETAIN_ATTR_INDEX, loom_low_retain_t)
+  ((loom_attr_field_t){15})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_retain, 15, loom_low_retain_t)
 #define loom_low_func_def_has_retain(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DEF_RETAIN_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[15]))
 #define loom_low_func_def_rewrite_retain(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DEF_RETAIN_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 15, (attribute))
 LOOM_DEFINE_REGION(loom_low_func_def_body, 0)
 enum loom_low_func_def_build_flag_bits_e {
   LOOM_LOW_FUNC_DEF_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
@@ -319,156 +301,135 @@ iree_status_t loom_low_func_def_verify(
 //   low.return
 // }
 LOOM_DEFINE_ISA(loom_low_kernel_def_isa, LOOM_OP_LOW_KERNEL_DEF)
-enum {
-  LOOM_LOW_KERNEL_DEF_CALLEE_ATTR_INDEX = 0,
-  LOOM_LOW_KERNEL_DEF_TARGET_ATTR_INDEX = 1,
-  LOOM_LOW_KERNEL_DEF_DESCRIPTOR_SET_ATTR_INDEX = 2,
-  LOOM_LOW_KERNEL_DEF_ABI_LAYOUT_ATTR_INDEX = 3,
-  LOOM_LOW_KERNEL_DEF_EXPORT_SYMBOL_ATTR_INDEX = 4,
-  LOOM_LOW_KERNEL_DEF_EXPORT_LINKAGE_ATTR_INDEX = 5,
-  LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_X_ATTR_INDEX = 6,
-  LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_Y_ATTR_INDEX = 7,
-  LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_Z_ATTR_INDEX = 8,
-  LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_X_ATTR_INDEX = 9,
-  LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Y_ATTR_INDEX = 10,
-  LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Z_ATTR_INDEX = 11,
-  LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_X_ATTR_INDEX = 12,
-  LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Y_ATTR_INDEX = 13,
-  LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Z_ATTR_INDEX = 14,
-  LOOM_LOW_KERNEL_DEF_ALLOCATION_ATTR_INDEX = 15,
-  LOOM_LOW_KERNEL_DEF_SCHEDULE_ATTR_INDEX = 16,
-  LOOM_LOW_KERNEL_DEF_PREDICATES_ATTR_INDEX = 17,
-  LOOM_LOW_KERNEL_DEF_RETAIN_ATTR_INDEX = 18,
-};
 #define loom_low_kernel_def_callee_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_CALLEE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SYMBOL(loom_low_kernel_def_callee, LOOM_LOW_KERNEL_DEF_CALLEE_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_SYMBOL(loom_low_kernel_def_callee, 0)
 #define loom_low_kernel_def_rewrite_callee(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_CALLEE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 #define loom_low_kernel_def_target_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_TARGET_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SYMBOL(loom_low_kernel_def_target, LOOM_LOW_KERNEL_DEF_TARGET_ATTR_INDEX)
+  ((loom_attr_field_t){1})
+LOOM_DEFINE_ATTR_SYMBOL(loom_low_kernel_def_target, 1)
 #define loom_low_kernel_def_has_target(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_TARGET_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 #define loom_low_kernel_def_rewrite_target(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_TARGET_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 #define loom_low_kernel_def_descriptor_set_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_DESCRIPTOR_SET_ATTR_INDEX})
-LOOM_DEFINE_ATTR_STRING(loom_low_kernel_def_descriptor_set, LOOM_LOW_KERNEL_DEF_DESCRIPTOR_SET_ATTR_INDEX)
+  ((loom_attr_field_t){2})
+LOOM_DEFINE_ATTR_STRING(loom_low_kernel_def_descriptor_set, 2)
 #define loom_low_kernel_def_rewrite_descriptor_set(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_DESCRIPTOR_SET_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 #define loom_low_kernel_def_abi_layout_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_ABI_LAYOUT_ATTR_INDEX})
-LOOM_DEFINE_ATTR_DICT(loom_low_kernel_def_abi_layout, LOOM_LOW_KERNEL_DEF_ABI_LAYOUT_ATTR_INDEX)
+  ((loom_attr_field_t){3})
+LOOM_DEFINE_ATTR_DICT(loom_low_kernel_def_abi_layout, 3)
 #define loom_low_kernel_def_has_abi_layout(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_ABI_LAYOUT_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 #define loom_low_kernel_def_rewrite_abi_layout(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_ABI_LAYOUT_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 3, (attribute))
 #define loom_low_kernel_def_export_symbol_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_EXPORT_SYMBOL_ATTR_INDEX})
-LOOM_DEFINE_ATTR_STRING(loom_low_kernel_def_export_symbol, LOOM_LOW_KERNEL_DEF_EXPORT_SYMBOL_ATTR_INDEX)
+  ((loom_attr_field_t){4})
+LOOM_DEFINE_ATTR_STRING(loom_low_kernel_def_export_symbol, 4)
 #define loom_low_kernel_def_has_export_symbol(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_EXPORT_SYMBOL_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 #define loom_low_kernel_def_rewrite_export_symbol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_EXPORT_SYMBOL_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 4, (attribute))
 #define loom_low_kernel_def_export_linkage_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_EXPORT_LINKAGE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_export_linkage, LOOM_LOW_KERNEL_DEF_EXPORT_LINKAGE_ATTR_INDEX, loom_target_linkage_t)
+  ((loom_attr_field_t){5})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_export_linkage, 5, loom_target_linkage_t)
 #define loom_low_kernel_def_has_export_linkage(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_EXPORT_LINKAGE_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 #define loom_low_kernel_def_rewrite_export_linkage(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_EXPORT_LINKAGE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 5, (attribute))
 #define loom_low_kernel_def_workgroup_size_x_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_X_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_size_x, LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_X_ATTR_INDEX)
+  ((loom_attr_field_t){6})
+LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_size_x, 6)
 #define loom_low_kernel_def_has_workgroup_size_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_X_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[6]))
 #define loom_low_kernel_def_rewrite_workgroup_size_x(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_X_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 6, (attribute))
 #define loom_low_kernel_def_workgroup_size_y_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_Y_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_size_y, LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_Y_ATTR_INDEX)
+  ((loom_attr_field_t){7})
+LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_size_y, 7)
 #define loom_low_kernel_def_has_workgroup_size_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_Y_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[7]))
 #define loom_low_kernel_def_rewrite_workgroup_size_y(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_Y_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 7, (attribute))
 #define loom_low_kernel_def_workgroup_size_z_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_Z_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_size_z, LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_Z_ATTR_INDEX)
+  ((loom_attr_field_t){8})
+LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_size_z, 8)
 #define loom_low_kernel_def_has_workgroup_size_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_Z_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[8]))
 #define loom_low_kernel_def_rewrite_workgroup_size_z(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_WORKGROUP_SIZE_Z_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 8, (attribute))
 #define loom_low_kernel_def_workgroup_count_x_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_X_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_count_x, LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_X_ATTR_INDEX)
+  ((loom_attr_field_t){9})
+LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_count_x, 9)
 #define loom_low_kernel_def_has_workgroup_count_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_X_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[9]))
 #define loom_low_kernel_def_rewrite_workgroup_count_x(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_X_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 9, (attribute))
 #define loom_low_kernel_def_workgroup_count_y_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Y_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_count_y, LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Y_ATTR_INDEX)
+  ((loom_attr_field_t){10})
+LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_count_y, 10)
 #define loom_low_kernel_def_has_workgroup_count_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Y_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[10]))
 #define loom_low_kernel_def_rewrite_workgroup_count_y(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Y_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 10, (attribute))
 #define loom_low_kernel_def_workgroup_count_z_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Z_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_count_z, LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Z_ATTR_INDEX)
+  ((loom_attr_field_t){11})
+LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_count_z, 11)
 #define loom_low_kernel_def_has_workgroup_count_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Z_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[11]))
 #define loom_low_kernel_def_rewrite_workgroup_count_z(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_WORKGROUP_COUNT_Z_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 11, (attribute))
 #define loom_low_kernel_def_workgroup_cluster_size_x_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_X_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_cluster_size_x, LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_X_ATTR_INDEX)
+  ((loom_attr_field_t){12})
+LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_cluster_size_x, 12)
 #define loom_low_kernel_def_has_workgroup_cluster_size_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_X_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[12]))
 #define loom_low_kernel_def_rewrite_workgroup_cluster_size_x(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_X_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 12, (attribute))
 #define loom_low_kernel_def_workgroup_cluster_size_y_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Y_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_cluster_size_y, LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Y_ATTR_INDEX)
+  ((loom_attr_field_t){13})
+LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_cluster_size_y, 13)
 #define loom_low_kernel_def_has_workgroup_cluster_size_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Y_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[13]))
 #define loom_low_kernel_def_rewrite_workgroup_cluster_size_y(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Y_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 13, (attribute))
 #define loom_low_kernel_def_workgroup_cluster_size_z_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Z_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_cluster_size_z, LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Z_ATTR_INDEX)
+  ((loom_attr_field_t){14})
+LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_cluster_size_z, 14)
 #define loom_low_kernel_def_has_workgroup_cluster_size_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Z_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[14]))
 #define loom_low_kernel_def_rewrite_workgroup_cluster_size_z(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_WORKGROUP_CLUSTER_SIZE_Z_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 14, (attribute))
 #define loom_low_kernel_def_allocation_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_ALLOCATION_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_allocation, LOOM_LOW_KERNEL_DEF_ALLOCATION_ATTR_INDEX, loom_low_allocation_t)
+  ((loom_attr_field_t){15})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_allocation, 15, loom_low_allocation_t)
 #define loom_low_kernel_def_has_allocation(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_ALLOCATION_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[15]))
 #define loom_low_kernel_def_rewrite_allocation(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_ALLOCATION_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 15, (attribute))
 #define loom_low_kernel_def_schedule_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_SCHEDULE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_schedule, LOOM_LOW_KERNEL_DEF_SCHEDULE_ATTR_INDEX, loom_low_schedule_t)
+  ((loom_attr_field_t){16})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_schedule, 16, loom_low_schedule_t)
 #define loom_low_kernel_def_has_schedule(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_SCHEDULE_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[16]))
 #define loom_low_kernel_def_rewrite_schedule(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_SCHEDULE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 16, (attribute))
 #define loom_low_kernel_def_predicates_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_PREDICATES_ATTR_INDEX})
-LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_kernel_def_predicates, LOOM_LOW_KERNEL_DEF_PREDICATES_ATTR_INDEX)
+  ((loom_attr_field_t){17})
+LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_kernel_def_predicates, 17)
 #define loom_low_kernel_def_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_PREDICATES_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[17]))
 #define loom_low_kernel_def_rewrite_predicates(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_PREDICATES_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 17, (attribute))
 #define loom_low_kernel_def_retain_field() \
-  ((loom_attr_field_t){LOOM_LOW_KERNEL_DEF_RETAIN_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_retain, LOOM_LOW_KERNEL_DEF_RETAIN_ATTR_INDEX, loom_low_retain_t)
+  ((loom_attr_field_t){18})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_retain, 18, loom_low_retain_t)
 #define loom_low_kernel_def_has_retain(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_KERNEL_DEF_RETAIN_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[18]))
 #define loom_low_kernel_def_rewrite_retain(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_KERNEL_DEF_RETAIN_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 18, (attribute))
 LOOM_DEFINE_REGION(loom_low_kernel_def_body, 0)
 enum loom_low_kernel_def_build_flag_bits_e {
   LOOM_LOW_KERNEL_DEF_BUILD_FLAG_HAS_RETAIN = 1u << 0,
@@ -526,156 +487,135 @@ iree_status_t loom_low_kernel_def_verify(
 LOOM_DEFINE_ISA(loom_low_func_decl_isa, LOOM_OP_LOW_FUNC_DECL)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_low_func_decl_args, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_func_decl_results, 0)
-enum {
-  LOOM_LOW_FUNC_DECL_CALLEE_ATTR_INDEX = 0,
-  LOOM_LOW_FUNC_DECL_TARGET_ATTR_INDEX = 1,
-  LOOM_LOW_FUNC_DECL_DESCRIPTOR_SET_ATTR_INDEX = 2,
-  LOOM_LOW_FUNC_DECL_ABI_ATTR_INDEX = 3,
-  LOOM_LOW_FUNC_DECL_ABI_ATTRS_ATTR_INDEX = 4,
-  LOOM_LOW_FUNC_DECL_ABI_LAYOUT_ATTR_INDEX = 5,
-  LOOM_LOW_FUNC_DECL_EXPORT_SYMBOL_ATTR_INDEX = 6,
-  LOOM_LOW_FUNC_DECL_EXPORT_ATTRS_ATTR_INDEX = 7,
-  LOOM_LOW_FUNC_DECL_VISIBILITY_ATTR_INDEX = 8,
-  LOOM_LOW_FUNC_DECL_CC_ATTR_INDEX = 9,
-  LOOM_LOW_FUNC_DECL_PURITY_ATTR_INDEX = 10,
-  LOOM_LOW_FUNC_DECL_INLINE_POLICY_ATTR_INDEX = 11,
-  LOOM_LOW_FUNC_DECL_ALLOCATION_ATTR_INDEX = 12,
-  LOOM_LOW_FUNC_DECL_SCHEDULE_ATTR_INDEX = 13,
-  LOOM_LOW_FUNC_DECL_PREDICATES_ATTR_INDEX = 14,
-  LOOM_LOW_FUNC_DECL_RETAIN_ATTR_INDEX = 15,
-  LOOM_LOW_FUNC_DECL_IMPORT_KIND_ATTR_INDEX = 16,
-  LOOM_LOW_FUNC_DECL_CODE_SYMBOL_ATTR_INDEX = 17,
-  LOOM_LOW_FUNC_DECL_IMPORT_MODULE_ATTR_INDEX = 18,
-};
 #define loom_low_func_decl_callee_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_CALLEE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_decl_callee, LOOM_LOW_FUNC_DECL_CALLEE_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_decl_callee, 0)
 #define loom_low_func_decl_rewrite_callee(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_CALLEE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 #define loom_low_func_decl_target_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_TARGET_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_decl_target, LOOM_LOW_FUNC_DECL_TARGET_ATTR_INDEX)
+  ((loom_attr_field_t){1})
+LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_decl_target, 1)
 #define loom_low_func_decl_has_target(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_TARGET_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 #define loom_low_func_decl_rewrite_target(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_TARGET_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 #define loom_low_func_decl_descriptor_set_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_DESCRIPTOR_SET_ATTR_INDEX})
-LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_descriptor_set, LOOM_LOW_FUNC_DECL_DESCRIPTOR_SET_ATTR_INDEX)
+  ((loom_attr_field_t){2})
+LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_descriptor_set, 2)
 #define loom_low_func_decl_rewrite_descriptor_set(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_DESCRIPTOR_SET_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 #define loom_low_func_decl_abi_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_ABI_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_abi, LOOM_LOW_FUNC_DECL_ABI_ATTR_INDEX, loom_target_abi_kind_t)
+  ((loom_attr_field_t){3})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_abi, 3, loom_target_abi_kind_t)
 #define loom_low_func_decl_has_abi(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_ABI_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 #define loom_low_func_decl_rewrite_abi(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_ABI_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 3, (attribute))
 #define loom_low_func_decl_abi_attrs_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_ABI_ATTRS_ATTR_INDEX})
-LOOM_DEFINE_ATTR_DICT(loom_low_func_decl_abi_attrs, LOOM_LOW_FUNC_DECL_ABI_ATTRS_ATTR_INDEX)
+  ((loom_attr_field_t){4})
+LOOM_DEFINE_ATTR_DICT(loom_low_func_decl_abi_attrs, 4)
 #define loom_low_func_decl_has_abi_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_ABI_ATTRS_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 #define loom_low_func_decl_rewrite_abi_attrs(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_ABI_ATTRS_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 4, (attribute))
 #define loom_low_func_decl_abi_layout_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_ABI_LAYOUT_ATTR_INDEX})
-LOOM_DEFINE_ATTR_DICT(loom_low_func_decl_abi_layout, LOOM_LOW_FUNC_DECL_ABI_LAYOUT_ATTR_INDEX)
+  ((loom_attr_field_t){5})
+LOOM_DEFINE_ATTR_DICT(loom_low_func_decl_abi_layout, 5)
 #define loom_low_func_decl_has_abi_layout(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_ABI_LAYOUT_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 #define loom_low_func_decl_rewrite_abi_layout(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_ABI_LAYOUT_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 5, (attribute))
 #define loom_low_func_decl_export_symbol_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_EXPORT_SYMBOL_ATTR_INDEX})
-LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_export_symbol, LOOM_LOW_FUNC_DECL_EXPORT_SYMBOL_ATTR_INDEX)
+  ((loom_attr_field_t){6})
+LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_export_symbol, 6)
 #define loom_low_func_decl_has_export_symbol(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_EXPORT_SYMBOL_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[6]))
 #define loom_low_func_decl_rewrite_export_symbol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_EXPORT_SYMBOL_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 6, (attribute))
 #define loom_low_func_decl_export_attrs_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_EXPORT_ATTRS_ATTR_INDEX})
-LOOM_DEFINE_ATTR_DICT(loom_low_func_decl_export_attrs, LOOM_LOW_FUNC_DECL_EXPORT_ATTRS_ATTR_INDEX)
+  ((loom_attr_field_t){7})
+LOOM_DEFINE_ATTR_DICT(loom_low_func_decl_export_attrs, 7)
 #define loom_low_func_decl_has_export_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_EXPORT_ATTRS_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[7]))
 #define loom_low_func_decl_rewrite_export_attrs(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_EXPORT_ATTRS_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 7, (attribute))
 #define loom_low_func_decl_visibility_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_VISIBILITY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_visibility, LOOM_LOW_FUNC_DECL_VISIBILITY_ATTR_INDEX, loom_low_visibility_t)
+  ((loom_attr_field_t){8})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_visibility, 8, loom_low_visibility_t)
 #define loom_low_func_decl_has_visibility(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_VISIBILITY_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[8]))
 #define loom_low_func_decl_rewrite_visibility(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_VISIBILITY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 8, (attribute))
 #define loom_low_func_decl_cc_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_CC_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_cc, LOOM_LOW_FUNC_DECL_CC_ATTR_INDEX, loom_low_cc_t)
+  ((loom_attr_field_t){9})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_cc, 9, loom_low_cc_t)
 #define loom_low_func_decl_has_cc(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_CC_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[9]))
 #define loom_low_func_decl_rewrite_cc(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_CC_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 9, (attribute))
 #define loom_low_func_decl_purity_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_PURITY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_purity, LOOM_LOW_FUNC_DECL_PURITY_ATTR_INDEX, loom_low_purity_t)
+  ((loom_attr_field_t){10})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_purity, 10, loom_low_purity_t)
 #define loom_low_func_decl_has_purity(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_PURITY_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[10]))
 #define loom_low_func_decl_rewrite_purity(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_PURITY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 10, (attribute))
 #define loom_low_func_decl_inline_policy_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_INLINE_POLICY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_inline_policy, LOOM_LOW_FUNC_DECL_INLINE_POLICY_ATTR_INDEX, loom_inline_policy_t)
+  ((loom_attr_field_t){11})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_inline_policy, 11, loom_inline_policy_t)
 #define loom_low_func_decl_has_inline_policy(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_INLINE_POLICY_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[11]))
 #define loom_low_func_decl_rewrite_inline_policy(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_INLINE_POLICY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 11, (attribute))
 #define loom_low_func_decl_allocation_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_ALLOCATION_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_allocation, LOOM_LOW_FUNC_DECL_ALLOCATION_ATTR_INDEX, loom_low_allocation_t)
+  ((loom_attr_field_t){12})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_allocation, 12, loom_low_allocation_t)
 #define loom_low_func_decl_has_allocation(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_ALLOCATION_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[12]))
 #define loom_low_func_decl_rewrite_allocation(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_ALLOCATION_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 12, (attribute))
 #define loom_low_func_decl_schedule_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_SCHEDULE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_schedule, LOOM_LOW_FUNC_DECL_SCHEDULE_ATTR_INDEX, loom_low_schedule_t)
+  ((loom_attr_field_t){13})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_schedule, 13, loom_low_schedule_t)
 #define loom_low_func_decl_has_schedule(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_SCHEDULE_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[13]))
 #define loom_low_func_decl_rewrite_schedule(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_SCHEDULE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 13, (attribute))
 #define loom_low_func_decl_predicates_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_PREDICATES_ATTR_INDEX})
-LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_func_decl_predicates, LOOM_LOW_FUNC_DECL_PREDICATES_ATTR_INDEX)
+  ((loom_attr_field_t){14})
+LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_func_decl_predicates, 14)
 #define loom_low_func_decl_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_PREDICATES_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[14]))
 #define loom_low_func_decl_rewrite_predicates(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_PREDICATES_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 14, (attribute))
 #define loom_low_func_decl_retain_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_RETAIN_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_retain, LOOM_LOW_FUNC_DECL_RETAIN_ATTR_INDEX, loom_low_retain_t)
+  ((loom_attr_field_t){15})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_retain, 15, loom_low_retain_t)
 #define loom_low_func_decl_has_retain(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_RETAIN_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[15]))
 #define loom_low_func_decl_rewrite_retain(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_RETAIN_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 15, (attribute))
 #define loom_low_func_decl_import_kind_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_IMPORT_KIND_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_import_kind, LOOM_LOW_FUNC_DECL_IMPORT_KIND_ATTR_INDEX, loom_low_func_decl_import_kind_t)
+  ((loom_attr_field_t){16})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_import_kind, 16, loom_low_func_decl_import_kind_t)
 #define loom_low_func_decl_has_import_kind(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_IMPORT_KIND_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[16]))
 #define loom_low_func_decl_rewrite_import_kind(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_IMPORT_KIND_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 16, (attribute))
 #define loom_low_func_decl_code_symbol_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_CODE_SYMBOL_ATTR_INDEX})
-LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_code_symbol, LOOM_LOW_FUNC_DECL_CODE_SYMBOL_ATTR_INDEX)
+  ((loom_attr_field_t){17})
+LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_code_symbol, 17)
 #define loom_low_func_decl_has_code_symbol(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_CODE_SYMBOL_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[17]))
 #define loom_low_func_decl_rewrite_code_symbol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_CODE_SYMBOL_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 17, (attribute))
 #define loom_low_func_decl_import_module_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_DECL_IMPORT_MODULE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_import_module, LOOM_LOW_FUNC_DECL_IMPORT_MODULE_ATTR_INDEX)
+  ((loom_attr_field_t){18})
+LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_import_module, 18)
 #define loom_low_func_decl_has_import_module(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_DECL_IMPORT_MODULE_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[18]))
 #define loom_low_func_decl_rewrite_import_module(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_DECL_IMPORT_MODULE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 18, (attribute))
 enum loom_low_func_decl_build_flag_bits_e {
   LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
   LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 1,
@@ -747,30 +687,25 @@ iree_status_t loom_low_return_build(
 LOOM_DEFINE_ISA(loom_low_func_call_isa, LOOM_OP_LOW_FUNC_CALL)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_low_func_call_operands, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_func_call_results, 0)
-enum {
-  LOOM_LOW_FUNC_CALL_CALLEE_ATTR_INDEX = 0,
-  LOOM_LOW_FUNC_CALL_PURITY_ATTR_INDEX = 1,
-  LOOM_LOW_FUNC_CALL_INLINE_POLICY_ATTR_INDEX = 2,
-};
 #define loom_low_func_call_callee_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_CALL_CALLEE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_call_callee, LOOM_LOW_FUNC_CALL_CALLEE_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_call_callee, 0)
 #define loom_low_func_call_rewrite_callee(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_CALL_CALLEE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 #define loom_low_func_call_purity_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_CALL_PURITY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_call_purity, LOOM_LOW_FUNC_CALL_PURITY_ATTR_INDEX, loom_low_purity_t)
+  ((loom_attr_field_t){1})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_call_purity, 1, loom_low_purity_t)
 #define loom_low_func_call_has_purity(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_CALL_PURITY_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 #define loom_low_func_call_rewrite_purity(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_CALL_PURITY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 #define loom_low_func_call_inline_policy_field() \
-  ((loom_attr_field_t){LOOM_LOW_FUNC_CALL_INLINE_POLICY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_call_inline_policy, LOOM_LOW_FUNC_CALL_INLINE_POLICY_ATTR_INDEX, loom_inline_policy_t)
+  ((loom_attr_field_t){2})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_call_inline_policy, 2, loom_inline_policy_t)
 #define loom_low_func_call_has_inline_policy(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_FUNC_CALL_INLINE_POLICY_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 #define loom_low_func_call_rewrite_inline_policy(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_FUNC_CALL_INLINE_POLICY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 enum loom_low_func_call_build_flag_bits_e {
   LOOM_LOW_FUNC_CALL_BUILD_FLAG_HAS_PURITY = 1u << 0,
   LOOM_LOW_FUNC_CALL_BUILD_FLAG_HAS_INLINE_POLICY = 1u << 1,
@@ -800,45 +735,37 @@ iree_status_t loom_low_func_call_verify(
 LOOM_DEFINE_ISA(loom_low_op_isa, LOOM_OP_LOW_OP)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_low_op_operands, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_op_results, 0)
-enum {
-  LOOM_LOW_OP_DESCRIPTOR_ATTR_INDEX = 0,
-  LOOM_LOW_OP_ATTRS_ATTR_INDEX = 1,
-};
 #define loom_low_op_descriptor_field() \
-  ((loom_attr_field_t){LOOM_LOW_OP_DESCRIPTOR_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SCOPED_ENUM(loom_low_op_descriptor, LOOM_LOW_OP_DESCRIPTOR_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_SCOPED_ENUM(loom_low_op_descriptor, 0)
 #define loom_low_op_rewrite_descriptor(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_OP_DESCRIPTOR_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 LOOM_DEFINE_INSTANCE_FLAGS(loom_low_op_memory_flags)
 #define loom_low_op_attrs_field() \
-  ((loom_attr_field_t){LOOM_LOW_OP_ATTRS_ATTR_INDEX})
-LOOM_DEFINE_ATTR_DICT(loom_low_op_attrs, LOOM_LOW_OP_ATTRS_ATTR_INDEX)
+  ((loom_attr_field_t){1})
+LOOM_DEFINE_ATTR_DICT(loom_low_op_attrs, 1)
 #define loom_low_op_has_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_OP_ATTRS_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 #define loom_low_op_rewrite_attrs(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_OP_ATTRS_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 loom_trait_flags_t loom_low_op_effective_traits(const loom_op_t* op);
 
 // LOOM_OP_LOW_CONST: Descriptor-backed constant or immediate materialization into a register.
 // %c0 = low.const<amdgpu.s_mov_b32> {imm = 0} : reg<amdgpu.sgpr x1>
 LOOM_DEFINE_ISA(loom_low_const_isa, LOOM_OP_LOW_CONST)
 LOOM_DEFINE_RESULT(loom_low_const_result, 0)
-enum {
-  LOOM_LOW_CONST_DESCRIPTOR_ATTR_INDEX = 0,
-  LOOM_LOW_CONST_ATTRS_ATTR_INDEX = 1,
-};
 #define loom_low_const_descriptor_field() \
-  ((loom_attr_field_t){LOOM_LOW_CONST_DESCRIPTOR_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SCOPED_ENUM(loom_low_const_descriptor, LOOM_LOW_CONST_DESCRIPTOR_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_SCOPED_ENUM(loom_low_const_descriptor, 0)
 #define loom_low_const_rewrite_descriptor(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_CONST_DESCRIPTOR_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 #define loom_low_const_attrs_field() \
-  ((loom_attr_field_t){LOOM_LOW_CONST_ATTRS_ATTR_INDEX})
-LOOM_DEFINE_ATTR_DICT(loom_low_const_attrs, LOOM_LOW_CONST_ATTRS_ATTR_INDEX)
+  ((loom_attr_field_t){1})
+LOOM_DEFINE_ATTR_DICT(loom_low_const_attrs, 1)
 #define loom_low_const_has_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_CONST_ATTRS_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 #define loom_low_const_rewrite_attrs(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_CONST_ATTRS_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 iree_status_t loom_low_const_facts(
     loom_fact_context_t* context,
     const loom_module_t* module, const loom_op_t* op,
@@ -850,14 +777,11 @@ iree_status_t loom_low_const_facts(
 LOOM_DEFINE_ISA(loom_low_copy_isa, LOOM_OP_LOW_COPY)
 LOOM_DEFINE_OPERAND(loom_low_copy_source, 0)
 LOOM_DEFINE_RESULT(loom_low_copy_result, 0)
-enum {
-  LOOM_LOW_COPY_DETACHED_ATTR_INDEX = 0,
-};
 #define loom_low_copy_detached_field() \
-  ((loom_attr_field_t){LOOM_LOW_COPY_DETACHED_ATTR_INDEX})
-LOOM_DEFINE_ATTR_BOOL(loom_low_copy_detached, LOOM_LOW_COPY_DETACHED_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_BOOL(loom_low_copy_detached, 0)
 #define loom_low_copy_rewrite_detached(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_COPY_DETACHED_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_low_copy_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -879,14 +803,11 @@ iree_status_t loom_low_copy_verify(
 LOOM_DEFINE_ISA(loom_low_move_isa, LOOM_OP_LOW_MOVE)
 LOOM_DEFINE_OPERAND(loom_low_move_source, 0)
 LOOM_DEFINE_RESULT(loom_low_move_result, 0)
-enum {
-  LOOM_LOW_MOVE_DETACHED_ATTR_INDEX = 0,
-};
 #define loom_low_move_detached_field() \
-  ((loom_attr_field_t){LOOM_LOW_MOVE_DETACHED_ATTR_INDEX})
-LOOM_DEFINE_ATTR_BOOL(loom_low_move_detached, LOOM_LOW_MOVE_DETACHED_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_BOOL(loom_low_move_detached, 0)
 #define loom_low_move_rewrite_detached(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_MOVE_DETACHED_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_low_move_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -908,14 +829,11 @@ iree_status_t loom_low_move_verify(
 LOOM_DEFINE_ISA(loom_low_slice_isa, LOOM_OP_LOW_SLICE)
 LOOM_DEFINE_OPERAND(loom_low_slice_source, 0)
 LOOM_DEFINE_RESULT(loom_low_slice_result, 0)
-enum {
-  LOOM_LOW_SLICE_OFFSET_ATTR_INDEX = 0,
-};
 #define loom_low_slice_offset_field() \
-  ((loom_attr_field_t){LOOM_LOW_SLICE_OFFSET_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_slice_offset, LOOM_LOW_SLICE_OFFSET_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_I64(loom_low_slice_offset, 0)
 #define loom_low_slice_rewrite_offset(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_SLICE_OFFSET_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_low_slice_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -959,30 +877,25 @@ iree_status_t loom_low_concat_verify(
 LOOM_DEFINE_ISA(loom_low_invoke_isa, LOOM_OP_LOW_INVOKE)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_low_invoke_operands, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_invoke_results, 0)
-enum {
-  LOOM_LOW_INVOKE_CALLEE_ATTR_INDEX = 0,
-  LOOM_LOW_INVOKE_PURITY_ATTR_INDEX = 1,
-  LOOM_LOW_INVOKE_INLINE_POLICY_ATTR_INDEX = 2,
-};
 #define loom_low_invoke_callee_field() \
-  ((loom_attr_field_t){LOOM_LOW_INVOKE_CALLEE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_SYMBOL(loom_low_invoke_callee, LOOM_LOW_INVOKE_CALLEE_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_SYMBOL(loom_low_invoke_callee, 0)
 #define loom_low_invoke_rewrite_callee(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_INVOKE_CALLEE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 #define loom_low_invoke_purity_field() \
-  ((loom_attr_field_t){LOOM_LOW_INVOKE_PURITY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_invoke_purity, LOOM_LOW_INVOKE_PURITY_ATTR_INDEX, loom_low_purity_t)
+  ((loom_attr_field_t){1})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_invoke_purity, 1, loom_low_purity_t)
 #define loom_low_invoke_has_purity(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_INVOKE_PURITY_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 #define loom_low_invoke_rewrite_purity(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_INVOKE_PURITY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 #define loom_low_invoke_inline_policy_field() \
-  ((loom_attr_field_t){LOOM_LOW_INVOKE_INLINE_POLICY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_invoke_inline_policy, LOOM_LOW_INVOKE_INLINE_POLICY_ATTR_INDEX, loom_inline_policy_t)
+  ((loom_attr_field_t){2})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_invoke_inline_policy, 2, loom_inline_policy_t)
 #define loom_low_invoke_has_inline_policy(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_INVOKE_INLINE_POLICY_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 #define loom_low_invoke_rewrite_inline_policy(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_INVOKE_INLINE_POLICY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 enum loom_low_invoke_build_flag_bits_e {
   LOOM_LOW_INVOKE_BUILD_FLAG_HAS_PURITY = 1u << 0,
   LOOM_LOW_INVOKE_BUILD_FLAG_HAS_INLINE_POLICY = 1u << 1,
@@ -1011,20 +924,16 @@ iree_status_t loom_low_invoke_verify(
 // %slot = low.storage.reserve {byte_alignment = 4, byte_length = 16} : low.storage<private>
 LOOM_DEFINE_ISA(loom_low_storage_reserve_isa, LOOM_OP_LOW_STORAGE_RESERVE)
 LOOM_DEFINE_RESULT(loom_low_storage_reserve_storage, 0)
-enum {
-  LOOM_LOW_STORAGE_RESERVE_BYTE_LENGTH_ATTR_INDEX = 0,
-  LOOM_LOW_STORAGE_RESERVE_BYTE_ALIGNMENT_ATTR_INDEX = 1,
-};
 #define loom_low_storage_reserve_byte_length_field() \
-  ((loom_attr_field_t){LOOM_LOW_STORAGE_RESERVE_BYTE_LENGTH_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_storage_reserve_byte_length, LOOM_LOW_STORAGE_RESERVE_BYTE_LENGTH_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_I64(loom_low_storage_reserve_byte_length, 0)
 #define loom_low_storage_reserve_rewrite_byte_length(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_STORAGE_RESERVE_BYTE_LENGTH_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 #define loom_low_storage_reserve_byte_alignment_field() \
-  ((loom_attr_field_t){LOOM_LOW_STORAGE_RESERVE_BYTE_ALIGNMENT_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_storage_reserve_byte_alignment, LOOM_LOW_STORAGE_RESERVE_BYTE_ALIGNMENT_ATTR_INDEX)
+  ((loom_attr_field_t){1})
+LOOM_DEFINE_ATTR_I64(loom_low_storage_reserve_byte_alignment, 1)
 #define loom_low_storage_reserve_rewrite_byte_alignment(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_STORAGE_RESERVE_BYTE_ALIGNMENT_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 iree_status_t loom_low_storage_reserve_build(
     loom_builder_t* builder,
     int64_t byte_length,
@@ -1046,20 +955,16 @@ iree_status_t loom_low_storage_reserve_verify(
 LOOM_DEFINE_ISA(loom_low_storage_view_isa, LOOM_OP_LOW_STORAGE_VIEW)
 LOOM_DEFINE_OPERAND(loom_low_storage_view_source, 0)
 LOOM_DEFINE_RESULT(loom_low_storage_view_result, 0)
-enum {
-  LOOM_LOW_STORAGE_VIEW_OFFSET_ATTR_INDEX = 0,
-  LOOM_LOW_STORAGE_VIEW_BYTE_LENGTH_ATTR_INDEX = 1,
-};
 #define loom_low_storage_view_offset_field() \
-  ((loom_attr_field_t){LOOM_LOW_STORAGE_VIEW_OFFSET_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_storage_view_offset, LOOM_LOW_STORAGE_VIEW_OFFSET_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_I64(loom_low_storage_view_offset, 0)
 #define loom_low_storage_view_rewrite_offset(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_STORAGE_VIEW_OFFSET_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 #define loom_low_storage_view_byte_length_field() \
-  ((loom_attr_field_t){LOOM_LOW_STORAGE_VIEW_BYTE_LENGTH_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_storage_view_byte_length, LOOM_LOW_STORAGE_VIEW_BYTE_LENGTH_ATTR_INDEX)
+  ((loom_attr_field_t){1})
+LOOM_DEFINE_ATTR_I64(loom_low_storage_view_byte_length, 1)
 #define loom_low_storage_view_rewrite_byte_length(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_STORAGE_VIEW_BYTE_LENGTH_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 iree_status_t loom_low_storage_view_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -1082,14 +987,11 @@ iree_status_t loom_low_storage_view_verify(
 LOOM_DEFINE_ISA(loom_low_spill_isa, LOOM_OP_LOW_SPILL)
 LOOM_DEFINE_OPERAND(loom_low_spill_value, 0)
 LOOM_DEFINE_OPERAND(loom_low_spill_storage, 1)
-enum {
-  LOOM_LOW_SPILL_OFFSET_ATTR_INDEX = 0,
-};
 #define loom_low_spill_offset_field() \
-  ((loom_attr_field_t){LOOM_LOW_SPILL_OFFSET_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_spill_offset, LOOM_LOW_SPILL_OFFSET_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_I64(loom_low_spill_offset, 0)
 #define loom_low_spill_rewrite_offset(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_SPILL_OFFSET_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_low_spill_build(
     loom_builder_t* builder,
     loom_value_id_t value,
@@ -1106,14 +1008,11 @@ iree_status_t loom_low_spill_verify(
 LOOM_DEFINE_ISA(loom_low_reload_isa, LOOM_OP_LOW_RELOAD)
 LOOM_DEFINE_OPERAND(loom_low_reload_storage, 0)
 LOOM_DEFINE_RESULT(loom_low_reload_result, 0)
-enum {
-  LOOM_LOW_RELOAD_OFFSET_ATTR_INDEX = 0,
-};
 #define loom_low_reload_offset_field() \
-  ((loom_attr_field_t){LOOM_LOW_RELOAD_OFFSET_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_reload_offset, LOOM_LOW_RELOAD_OFFSET_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_I64(loom_low_reload_offset, 0)
 #define loom_low_reload_rewrite_offset(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_RELOAD_OFFSET_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_low_reload_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t storage,
@@ -1130,14 +1029,11 @@ iree_status_t loom_low_reload_verify(
 LOOM_DEFINE_ISA(loom_low_storage_address_isa, LOOM_OP_LOW_STORAGE_ADDRESS)
 LOOM_DEFINE_OPERAND(loom_low_storage_address_storage, 0)
 LOOM_DEFINE_RESULT(loom_low_storage_address_result, 0)
-enum {
-  LOOM_LOW_STORAGE_ADDRESS_OFFSET_ATTR_INDEX = 0,
-};
 #define loom_low_storage_address_offset_field() \
-  ((loom_attr_field_t){LOOM_LOW_STORAGE_ADDRESS_OFFSET_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_storage_address_offset, LOOM_LOW_STORAGE_ADDRESS_OFFSET_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_I64(loom_low_storage_address_offset, 0)
 #define loom_low_storage_address_rewrite_offset(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_STORAGE_ADDRESS_OFFSET_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_low_storage_address_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t storage,
@@ -1187,42 +1083,35 @@ iree_status_t loom_low_cond_br_verify(
 LOOM_DEFINE_ISA(loom_low_resource_isa, LOOM_OP_LOW_RESOURCE)
 LOOM_DEFINE_OPTIONAL_OPERAND(loom_low_resource_extent_value, 0)
 LOOM_DEFINE_RESULT(loom_low_resource_result, 0)
-enum {
-  LOOM_LOW_RESOURCE_IMPORT_KIND_ATTR_INDEX = 0,
-  LOOM_LOW_RESOURCE_INDEX_ATTR_INDEX = 1,
-  LOOM_LOW_RESOURCE_SOURCE_TYPE_ATTR_INDEX = 2,
-  LOOM_LOW_RESOURCE_EXTENT_ATTR_INDEX = 3,
-  LOOM_LOW_RESOURCE_CACHE_SWIZZLE_STRIDE_ATTR_INDEX = 4,
-};
 #define loom_low_resource_import_kind_field() \
-  ((loom_attr_field_t){LOOM_LOW_RESOURCE_IMPORT_KIND_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_resource_import_kind, LOOM_LOW_RESOURCE_IMPORT_KIND_ATTR_INDEX, loom_low_resource_import_kind_t)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_resource_import_kind, 0, loom_low_resource_import_kind_t)
 #define loom_low_resource_rewrite_import_kind(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_RESOURCE_IMPORT_KIND_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 #define loom_low_resource_index_field() \
-  ((loom_attr_field_t){LOOM_LOW_RESOURCE_INDEX_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_resource_index, LOOM_LOW_RESOURCE_INDEX_ATTR_INDEX)
+  ((loom_attr_field_t){1})
+LOOM_DEFINE_ATTR_I64(loom_low_resource_index, 1)
 #define loom_low_resource_rewrite_index(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_RESOURCE_INDEX_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 #define loom_low_resource_source_type_field() \
-  ((loom_attr_field_t){LOOM_LOW_RESOURCE_SOURCE_TYPE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_TYPE(loom_low_resource_source_type, LOOM_LOW_RESOURCE_SOURCE_TYPE_ATTR_INDEX)
+  ((loom_attr_field_t){2})
+LOOM_DEFINE_ATTR_TYPE(loom_low_resource_source_type, 2)
 #define loom_low_resource_rewrite_source_type(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_RESOURCE_SOURCE_TYPE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 #define loom_low_resource_extent_field() \
-  ((loom_attr_field_t){LOOM_LOW_RESOURCE_EXTENT_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_resource_extent, LOOM_LOW_RESOURCE_EXTENT_ATTR_INDEX)
+  ((loom_attr_field_t){3})
+LOOM_DEFINE_ATTR_I64(loom_low_resource_extent, 3)
 #define loom_low_resource_has_extent(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_RESOURCE_EXTENT_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 #define loom_low_resource_rewrite_extent(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_RESOURCE_EXTENT_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 3, (attribute))
 #define loom_low_resource_cache_swizzle_stride_field() \
-  ((loom_attr_field_t){LOOM_LOW_RESOURCE_CACHE_SWIZZLE_STRIDE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_resource_cache_swizzle_stride, LOOM_LOW_RESOURCE_CACHE_SWIZZLE_STRIDE_ATTR_INDEX)
+  ((loom_attr_field_t){4})
+LOOM_DEFINE_ATTR_I64(loom_low_resource_cache_swizzle_stride, 4)
 #define loom_low_resource_has_cache_swizzle_stride(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_RESOURCE_CACHE_SWIZZLE_STRIDE_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 #define loom_low_resource_rewrite_cache_swizzle_stride(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_RESOURCE_CACHE_SWIZZLE_STRIDE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 4, (attribute))
 enum loom_low_resource_build_flag_bits_e {
   LOOM_LOW_RESOURCE_BUILD_FLAG_HAS_EXTENT_VALUE = 1u << 0,
   LOOM_LOW_RESOURCE_BUILD_FLAG_HAS_EXTENT = 1u << 1,
@@ -1249,28 +1138,23 @@ iree_status_t loom_low_resource_verify(
 // %kernarg = low.live_in<amdgpu.kernarg_segment_ptr> : reg<amdgpu.sgpr x2>
 LOOM_DEFINE_ISA(loom_low_live_in_isa, LOOM_OP_LOW_LIVE_IN)
 LOOM_DEFINE_RESULT(loom_low_live_in_result, 0)
-enum {
-  LOOM_LOW_LIVE_IN_SOURCE_ATTR_INDEX = 0,
-  LOOM_LOW_LIVE_IN_SOURCE_ID_ATTR_INDEX = 1,
-  LOOM_LOW_LIVE_IN_ATTRS_ATTR_INDEX = 2,
-};
 #define loom_low_live_in_source_field() \
-  ((loom_attr_field_t){LOOM_LOW_LIVE_IN_SOURCE_ATTR_INDEX})
-LOOM_DEFINE_ATTR_STRING(loom_low_live_in_source, LOOM_LOW_LIVE_IN_SOURCE_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_STRING(loom_low_live_in_source, 0)
 #define loom_low_live_in_rewrite_source(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_LIVE_IN_SOURCE_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 #define loom_low_live_in_source_id_field() \
-  ((loom_attr_field_t){LOOM_LOW_LIVE_IN_SOURCE_ID_ATTR_INDEX})
-LOOM_DEFINE_ATTR_I64(loom_low_live_in_source_id, LOOM_LOW_LIVE_IN_SOURCE_ID_ATTR_INDEX)
+  ((loom_attr_field_t){1})
+LOOM_DEFINE_ATTR_I64(loom_low_live_in_source_id, 1)
 #define loom_low_live_in_rewrite_source_id(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_LIVE_IN_SOURCE_ID_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 #define loom_low_live_in_attrs_field() \
-  ((loom_attr_field_t){LOOM_LOW_LIVE_IN_ATTRS_ATTR_INDEX})
-LOOM_DEFINE_ATTR_DICT(loom_low_live_in_attrs, LOOM_LOW_LIVE_IN_ATTRS_ATTR_INDEX)
+  ((loom_attr_field_t){2})
+LOOM_DEFINE_ATTR_DICT(loom_low_live_in_attrs, 2)
 #define loom_low_live_in_has_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_LIVE_IN_ATTRS_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 #define loom_low_live_in_rewrite_attrs(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_LIVE_IN_ATTRS_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 enum loom_low_live_in_build_flag_bits_e {
   LOOM_LOW_LIVE_IN_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };
@@ -1349,22 +1233,18 @@ LOOM_DEFINE_SEGMENTED_OPERAND(loom_low_scf_for_step, 2)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_low_scf_for_iter_args, 3)
 LOOM_DEFINE_SEGMENTED_OPTIONAL_OPERAND(loom_low_scf_for_unroll_factor, 4)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_scf_for_results, 0)
-enum {
-  LOOM_LOW_SCF_FOR_SIGNEDNESS_ATTR_INDEX = 0,
-  LOOM_LOW_SCF_FOR_UNROLL_POLICY_ATTR_INDEX = 1,
-};
 #define loom_low_scf_for_signedness_field() \
-  ((loom_attr_field_t){LOOM_LOW_SCF_FOR_SIGNEDNESS_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_scf_for_signedness, LOOM_LOW_SCF_FOR_SIGNEDNESS_ATTR_INDEX, loom_low_scf_for_signedness_t)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_scf_for_signedness, 0, loom_low_scf_for_signedness_t)
 #define loom_low_scf_for_rewrite_signedness(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_SCF_FOR_SIGNEDNESS_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 #define loom_low_scf_for_unroll_policy_field() \
-  ((loom_attr_field_t){LOOM_LOW_SCF_FOR_UNROLL_POLICY_ATTR_INDEX})
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_scf_for_unroll_policy, LOOM_LOW_SCF_FOR_UNROLL_POLICY_ATTR_INDEX, loom_low_scf_for_unroll_policy_t)
+  ((loom_attr_field_t){1})
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_scf_for_unroll_policy, 1, loom_low_scf_for_unroll_policy_t)
 #define loom_low_scf_for_has_unroll_policy(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_LOW_SCF_FOR_UNROLL_POLICY_ATTR_INDEX]))
+  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 #define loom_low_scf_for_rewrite_unroll_policy(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_SCF_FOR_UNROLL_POLICY_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 LOOM_DEFINE_REGION(loom_low_scf_for_body, 0)
 enum loom_low_scf_for_build_flag_bits_e {
   LOOM_LOW_SCF_FOR_BUILD_FLAG_HAS_UNROLL_FACTOR = 1u << 0,
@@ -1436,14 +1316,11 @@ iree_status_t loom_low_schedule_fence_build(
 LOOM_DEFINE_ISA(loom_low_assume_isa, LOOM_OP_LOW_ASSUME)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_low_assume_values, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_assume_results, 0)
-enum {
-  LOOM_LOW_ASSUME_PREDICATES_ATTR_INDEX = 0,
-};
 #define loom_low_assume_predicates_field() \
-  ((loom_attr_field_t){LOOM_LOW_ASSUME_PREDICATES_ATTR_INDEX})
-LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_assume_predicates, LOOM_LOW_ASSUME_PREDICATES_ATTR_INDEX)
+  ((loom_attr_field_t){0})
+LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_assume_predicates, 0)
 #define loom_low_assume_rewrite_predicates(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), LOOM_LOW_ASSUME_PREDICATES_ATTR_INDEX, (attribute))
+  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_low_assume_build(
     loom_builder_t* builder,
     const loom_value_id_t* values,

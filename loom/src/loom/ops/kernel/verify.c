@@ -59,15 +59,15 @@ static iree_status_t loom_kernel_emit_attribute_value_constraint(
 }
 
 static bool loom_kernel_optional_attr_is_present(const loom_op_t* op,
-                                                 uint16_t attr_index) {
-  return attr_index < op->attribute_count &&
-         !loom_attr_is_absent(loom_op_attrs(op)[attr_index]);
+                                                 loom_attr_field_t field) {
+  return !loom_attr_is_absent(loom_op_attr(op, field));
 }
 
 static iree_status_t loom_kernel_verify_contract_attr_present(
-    iree_diagnostic_emitter_t emitter, const loom_op_t* op, uint16_t attr_index,
-    iree_string_view_t attr_name, iree_string_view_t expected_constraint) {
-  if (loom_kernel_optional_attr_is_present(op, attr_index)) {
+    iree_diagnostic_emitter_t emitter, const loom_op_t* op,
+    loom_attr_field_t field, iree_string_view_t attr_name,
+    iree_string_view_t expected_constraint) {
+  if (loom_kernel_optional_attr_is_present(op, field)) {
     return iree_ok_status();
   }
   return loom_kernel_emit_attribute_value_constraint(
@@ -75,9 +75,9 @@ static iree_status_t loom_kernel_verify_contract_attr_present(
 }
 
 static iree_status_t loom_kernel_verify_positive_u32_attr(
-    iree_diagnostic_emitter_t emitter, const loom_op_t* op, uint16_t attr_index,
-    int64_t value, iree_string_view_t attr_name) {
-  if (!loom_kernel_optional_attr_is_present(op, attr_index)) {
+    iree_diagnostic_emitter_t emitter, const loom_op_t* op,
+    loom_attr_field_t field, int64_t value, iree_string_view_t attr_name) {
+  if (!loom_kernel_optional_attr_is_present(op, field)) {
     return iree_ok_status();
   }
   if (value > 0 && value <= UINT32_MAX) {
@@ -499,23 +499,22 @@ static iree_status_t loom_kernel_verify_combining_kind_for_value(
 
 static iree_status_t loom_kernel_verify_cluster_attrs(
     iree_diagnostic_emitter_t emitter, const loom_op_t* op,
-    uint16_t cluster_size_attr_index, int64_t cluster_size,
-    uint16_t cluster_stride_attr_index, int64_t cluster_stride) {
+    loom_attr_field_t cluster_size_field, int64_t cluster_size,
+    loom_attr_field_t cluster_stride_field, int64_t cluster_stride) {
   const bool has_cluster_size =
-      loom_kernel_optional_attr_is_present(op, cluster_size_attr_index);
+      loom_kernel_optional_attr_is_present(op, cluster_size_field);
   const bool has_cluster_stride =
-      loom_kernel_optional_attr_is_present(op, cluster_stride_attr_index);
+      loom_kernel_optional_attr_is_present(op, cluster_stride_field);
   if (has_cluster_stride && !has_cluster_size) {
     return loom_kernel_verify_contract_attr_present(
-        emitter, op, cluster_size_attr_index, IREE_SV("cluster_size"),
+        emitter, op, cluster_size_field, IREE_SV("cluster_size"),
         IREE_SV("present when cluster_stride is present"));
   }
   IREE_RETURN_IF_ERROR(loom_kernel_verify_positive_u32_attr(
-      emitter, op, cluster_size_attr_index, cluster_size,
-      IREE_SV("cluster_size")));
-  return loom_kernel_verify_positive_u32_attr(
-      emitter, op, cluster_stride_attr_index, cluster_stride,
-      IREE_SV("cluster_stride"));
+      emitter, op, cluster_size_field, cluster_size, IREE_SV("cluster_size")));
+  return loom_kernel_verify_positive_u32_attr(emitter, op, cluster_stride_field,
+                                              cluster_stride,
+                                              IREE_SV("cluster_stride"));
 }
 
 static bool loom_kernel_try_get_block_arg_memory_space(
@@ -1484,9 +1483,9 @@ iree_status_t loom_kernel_subgroup_reduce_verify(
   IREE_RETURN_IF_ERROR(loom_kernel_verify_combining_kind_for_value(
       module, emitter, op, value_id, loom_kernel_subgroup_reduce_kind(op)));
   return loom_kernel_verify_cluster_attrs(
-      emitter, op, LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_SIZE_ATTR_INDEX,
+      emitter, op, loom_kernel_subgroup_reduce_cluster_size_field(),
       loom_kernel_subgroup_reduce_cluster_size(op),
-      LOOM_KERNEL_SUBGROUP_REDUCE_CLUSTER_STRIDE_ATTR_INDEX,
+      loom_kernel_subgroup_reduce_cluster_stride_field(),
       loom_kernel_subgroup_reduce_cluster_stride(op));
 }
 
@@ -1499,9 +1498,9 @@ iree_status_t loom_kernel_subgroup_scan_verify(
   IREE_RETURN_IF_ERROR(loom_kernel_verify_combining_kind_for_value(
       module, emitter, op, value_id, loom_kernel_subgroup_scan_kind(op)));
   return loom_kernel_verify_cluster_attrs(
-      emitter, op, LOOM_KERNEL_SUBGROUP_SCAN_CLUSTER_SIZE_ATTR_INDEX,
+      emitter, op, loom_kernel_subgroup_scan_cluster_size_field(),
       loom_kernel_subgroup_scan_cluster_size(op),
-      LOOM_KERNEL_SUBGROUP_SCAN_CLUSTER_STRIDE_ATTR_INDEX,
+      loom_kernel_subgroup_scan_cluster_stride_field(),
       loom_kernel_subgroup_scan_cluster_stride(op));
 }
 

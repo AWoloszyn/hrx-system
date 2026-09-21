@@ -168,20 +168,20 @@ TEST_F(CallableEffectsTest, PropagationRefreshesCallerEffects) {
   AppendReturn(caller);
   EXPECT_TRUE(loom_region_has_read_effects(loom_func_like_body(caller)));
   EXPECT_EQ(
-      loom_callable_effects_traits(call_op, LOOM_FUNC_CALL_PURITY_ATTR_INDEX),
+      loom_callable_effects_traits(call_op, loom_func_call_purity_field()),
       LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_UNKNOWN_EFFECTS);
   EXPECT_TRUE(iree_any_bit_set(call_op->traits, LOOM_TRAIT_CALLABLE_BOUNDARY));
 
   loom_rewriter_t rewriter = {};
   loom_rewriter_initialize(&rewriter, module_, &rewriter_arena_);
   IREE_EXPECT_OK(loom_callable_effects_propagate_purity(
-      call_op, loom_func_like_callee(pure), LOOM_FUNC_CALL_PURITY_ATTR_INDEX,
+      call_op, loom_func_like_callee(pure), loom_func_call_purity_field(),
       &rewriter));
   loom_rewriter_deinitialize(&rewriter);
 
   EXPECT_EQ(loom_func_call_purity(call_op), LOOM_FUNC_PURITY_PURE);
   EXPECT_EQ(
-      loom_callable_effects_traits(call_op, LOOM_FUNC_CALL_PURITY_ATTR_INDEX),
+      loom_callable_effects_traits(call_op, loom_func_call_purity_field()),
       LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_PURE);
   EXPECT_TRUE(iree_any_bit_set(call_op->traits, LOOM_TRAIT_CALLABLE_BOUNDARY));
   EXPECT_FALSE(loom_region_has_read_effects(loom_func_like_body(caller)));

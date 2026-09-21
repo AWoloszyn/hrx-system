@@ -522,7 +522,7 @@ class ReaderTest : public ::testing::Test {
         &builder, LOOM_TEST_RECORD_BUILD_FLAG_HAS_KIND,
         LOOM_TEST_RECORD_KIND_ARTIFACT, symbol, loom_named_attr_slice_empty(),
         LOOM_LOCATION_UNKNOWN, &record_op));
-    loom_op_attrs(record_op)[LOOM_TEST_RECORD_KIND_ATTR_INDEX] =
+    loom_op_attrs(record_op)[loom_test_record_kind_field().index] =
         loom_attr_enum(250);
     return module;
   }
@@ -4042,14 +4042,12 @@ TEST_F(ReaderTest, SymbolArraysPreserveNamesPresenceAndOrder) {
 
   loom_op_t* present_empty_op = loom_block_op(entry, 1);
   ASSERT_TRUE(loom_test_symbol_array_attrs_isa(present_empty_op));
-  EXPECT_FALSE(loom_attr_is_absent(loom_op_attrs(
-      present_empty_op)[LOOM_TEST_SYMBOL_ARRAY_ATTRS_AVAILABLE_ATTR_INDEX]));
+  EXPECT_TRUE(loom_test_symbol_array_attrs_has_available(present_empty_op));
   EXPECT_EQ(loom_test_symbol_array_attrs_available(present_empty_op).count, 0u);
 
   loom_op_t* absent_op = loom_block_op(entry, 2);
   ASSERT_TRUE(loom_test_symbol_array_attrs_isa(absent_op));
-  EXPECT_TRUE(loom_attr_is_absent(loom_op_attrs(
-      absent_op)[LOOM_TEST_SYMBOL_ARRAY_ATTRS_AVAILABLE_ATTR_INDEX]));
+  EXPECT_FALSE(loom_test_symbol_array_attrs_has_available(absent_op));
 
   loom_module_free(read_module);
   loom_module_free(module);

@@ -469,8 +469,8 @@ TEST_F(ValueReplacementTest,
           loom_make_named_attr_slice(attributes, 1),
           loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), LOOM_LOCATION_NONE,
           &owners[i]));
-      owner_ids[i] =
-          loom_op_attribute_owners(owners[i])[LOOM_TEST_ATTRS_DICT_ATTR_INDEX];
+      owner_ids[i] = loom_op_attribute_owners(
+          owners[i])[loom_test_attrs_dict_field().index];
     }
     failure_index_ = failure;
     allocation_count_ = 0;
@@ -501,12 +501,12 @@ TEST_F(ValueReplacementTest,
                                    loom_test_array_type_element_type(type));
       }
       const auto provider = loom_type_dim_value_id_at(type, 0);
-      EXPECT_EQ(
-          loom_op_attribute_owners(owners[i])[LOOM_TEST_ATTRS_DICT_ATTR_INDEX],
-          owner_ids[i]);
+      EXPECT_EQ(loom_op_attribute_owners(
+                    owners[i])[loom_test_attrs_dict_field().index],
+                owner_ids[i]);
       loom_type_use_iterator_t dependencies;
       loom_attribute_dependencies_begin(&module_->type_uses, owners[i],
-                                        LOOM_TEST_ATTRS_DICT_ATTR_INDEX,
+                                        loom_test_attrs_dict_field().index,
                                         &dependencies);
       EXPECT_EQ(loom_type_dependencies_next(&dependencies), provider);
       EXPECT_EQ(loom_type_dependencies_next(&dependencies),

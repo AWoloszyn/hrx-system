@@ -953,7 +953,7 @@ def test_generate_parameterized_attribute_array_surface() -> None:
     tables_c = generate_tables_c("test", 0x01, [holder], [tile, node])
     type_registry_h, _, type_registry_tables_c = generate_type_registry([wrapper])
 
-    assert "LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_test_holder_values, LOOM_TEST_HOLDER_VALUES_ATTR_INDEX)" in ops_h
+    assert "LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_test_holder_values, 0)" in ops_h
     assert "loom_parameterized_attr_array_t values" in ops_h
     assert "loom_optional loom_parameterized_attr_array_t tiles" in ops_h
     assert "loom_module_make_parameterized_attr_array(" in builders_c
@@ -2342,7 +2342,7 @@ def test_generate_descriptor_backed_enum_array_surface() -> None:
     builders_c = generate_builders_c("test", [op])
     tables_c = generate_tables_c("test", 0, [op])
 
-    assert "LOOM_DEFINE_ATTR_ENUM_ARRAY(loom_test_enum_arrays_required_values, LOOM_TEST_ENUM_ARRAYS_REQUIRED_VALUES_ATTR_INDEX)" in ops_h
+    assert "LOOM_DEFINE_ATTR_ENUM_ARRAY(loom_test_enum_arrays_required_values, 0)" in ops_h
     assert "loom_enum_array_t required_values" in ops_h
     assert "loom_optional loom_enum_array_t optional_values" in ops_h
     assert "LOOM_TEST_ENUM_ARRAYS_BUILD_FLAG_HAS_OPTIONAL_VALUES" in ops_h
@@ -2378,7 +2378,7 @@ def test_generate_descriptor_backed_signed_enum_set_surface() -> None:
     builders_c = generate_builders_c("test", [op])
     tables_c = generate_tables_c("test", 0, [op])
 
-    assert "LOOM_DEFINE_ATTR_SIGNED_ENUM_SET(loom_test_features_required, LOOM_TEST_FEATURES_REQUIRED_ATTR_INDEX)" in ops_h
+    assert "LOOM_DEFINE_ATTR_SIGNED_ENUM_SET(loom_test_features_required, 0)" in ops_h
     assert "loom_signed_enum_set_t required" in ops_h
     assert "loom_optional loom_signed_enum_set_t optional" in ops_h
     assert "LOOM_TEST_FEATURES_BUILD_FLAG_HAS_OPTIONAL" in ops_h
@@ -2423,7 +2423,7 @@ def test_generate_descriptor_backed_symbol_collection_surface() -> None:
     builders_c = generate_builders_c("test", [op])
     tables_c = generate_tables_c("test", 0, [op])
 
-    assert "LOOM_DEFINE_ATTR_SYMBOL_SET(loom_test_symbol_arrays_dependencies, LOOM_TEST_SYMBOL_ARRAYS_DEPENDENCIES_ATTR_INDEX)" in ops_h
+    assert "LOOM_DEFINE_ATTR_SYMBOL_SET(loom_test_symbol_arrays_dependencies, 0)" in ops_h
     assert "loom_symbol_ref_array_t dependencies" in ops_h
     assert "loom_optional loom_symbol_ref_array_t available" in ops_h
     assert "LOOM_TEST_SYMBOL_ARRAYS_BUILD_FLAG_HAS_AVAILABLE" in ops_h
@@ -3479,7 +3479,7 @@ def test_types_of_result_field_generates_result_type_list_format() -> None:
     assert "LOOM_FORMAT_KIND_OPERAND_TYPES" not in tables_c
 
 
-def test_attribute_accessors_bind_to_uppercase_schema_indices() -> None:
+def test_attribute_accessors_bind_to_schema_fields() -> None:
     dialect = Dialect("test")
     for names in (("first", "second"), ("second", "inserted", "first")):
         op = Op(
@@ -3490,10 +3490,10 @@ def test_attribute_accessors_bind_to_uppercase_schema_indices() -> None:
         )
         ops_h = generate_ops_h("test", 0, [op])
         for index, name in enumerate(names):
-            index_name = f"LOOM_TEST_FIELDS_{name.upper()}_ATTR_INDEX"
-            assert f"{index_name} = {index}," in ops_h
-            assert f"LOOM_DEFINE_ATTR_I64(loom_test_fields_{name}, {index_name})" in ops_h
-        assert not re.search(r"\bloom_\w+_ATTR_INDEX\b", ops_h)
+            assert f"#define loom_test_fields_{name}_field()" in ops_h
+            assert f"((loom_attr_field_t){{{index}}})" in ops_h
+            assert f"LOOM_DEFINE_ATTR_I64(loom_test_fields_{name}, {index})" in ops_h
+        assert "ATTR_INDEX" not in ops_h
 
 
 def test_optional_attribute_presence_uses_stored_slots_without_function_bodies() -> None:
@@ -3507,17 +3507,17 @@ def test_optional_attribute_presence_uses_stored_slots_without_function_bodies()
         op = Op("test.presence", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
         ops_h = generate_ops_h("test", 0, [op])
         index = [attr.name for attr in attrs if attr.attr_type != ATTR_TYPE_FLAGS].index("optional")
-        assert f"LOOM_TEST_PRESENCE_OPTIONAL_ATTR_INDEX = {index}," in ops_h
+        assert "ATTR_INDEX" not in ops_h
         assert "#define loom_test_presence_optional_field()" in ops_h
-        assert "((loom_attr_field_t){LOOM_TEST_PRESENCE_OPTIONAL_ATTR_INDEX})" in ops_h
+        assert f"((loom_attr_field_t){{{index}}})" in ops_h
         assert "loom_test_presence_flags_field" not in ops_h
         assert "#define loom_test_presence_has_optional(op)" in ops_h
-        assert "(!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEST_PRESENCE_OPTIONAL_ATTR_INDEX]))" in ops_h
+        assert f"(!loom_attr_is_absent(loom_op_const_attrs((op))[{index}]))" in ops_h
         assert "loom_test_presence_has_required" not in ops_h
         assert "loom_test_presence_has_flags" not in ops_h
         assert "static inline bool loom_test_presence_has_optional" not in ops_h
         assert "#define loom_test_presence_rewrite_optional(rewriter, op, attribute)" in ops_h
-        assert "loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_PRESENCE_OPTIONAL_ATTR_INDEX, (attribute))" in ops_h
+        assert f"loom_rewriter_set_attr((rewriter), (op), {index}, (attribute))" in ops_h
         assert "#define loom_test_presence_rewrite_required(rewriter, op, attribute)" in ops_h
         assert "loom_test_presence_rewrite_flags" not in ops_h
         assert "static inline iree_status_t loom_test_presence_rewrite_optional" not in ops_h
@@ -3560,7 +3560,7 @@ def test_scoped_enum_generates_domain_aware_format_metadata() -> None:
     builders_c = generate_builders_c("test", [op])
     tables_c = generate_tables_c("test", 0, [op])
 
-    assert "LOOM_DEFINE_ATTR_SCOPED_ENUM(loom_test_packet_descriptor, LOOM_TEST_PACKET_DESCRIPTOR_ATTR_INDEX)" in ops_h
+    assert "LOOM_DEFINE_ATTR_SCOPED_ENUM(loom_test_packet_descriptor, 0)" in ops_h
     assert "loom_test_packet_build(" not in ops_h
     assert "loom_test_packet_build(" not in builders_c
     assert '.name = _BSTRING(10, "descriptor")' in tables_c
@@ -3647,7 +3647,7 @@ def test_open_enum_attr_uses_byte_typedef_with_enum_constants() -> None:
     assert "} loom_test_open_enum_mode_e;" in ops_h
     assert "#define LOOM_TEST_OPEN_ENUM_MODE_KNOWN" not in ops_h
     assert "LOOM_TEST_OPEN_ENUM_MODE_BYTE_MAX_" not in ops_h
-    assert ("LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_open_enum_mode, LOOM_TEST_OPEN_ENUM_MODE_ATTR_INDEX, loom_test_open_enum_mode_t)") in ops_h
+    assert ("LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_open_enum_mode, 0, loom_test_open_enum_mode_t)") in ops_h
 
 
 def test_external_enum_alias_uses_shared_c_type_without_typedef() -> None:
@@ -3678,8 +3678,8 @@ def test_external_enum_alias_uses_shared_c_type_without_typedef() -> None:
     assert '#include "loom/shared/mode.h"' in ops_h
     assert "typedef enum loom_shared_mode_e" not in ops_h
     assert "LOOM_SHARED_MODE_FAST" not in ops_h
-    assert ("LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_first_mode, LOOM_TEST_FIRST_MODE_ATTR_INDEX, loom_shared_mode_t)") in ops_h
-    assert ("LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_second_secondary_mode, LOOM_TEST_SECOND_SECONDARY_MODE_ATTR_INDEX, loom_shared_mode_t)") in ops_h
+    assert ("LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_first_mode, 0, loom_shared_mode_t)") in ops_h
+    assert ("LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_second_secondary_mode, 0, loom_shared_mode_t)") in ops_h
     assert "loom_shared_mode_t mode" in ops_h
     assert "loom_shared_mode_t secondary_mode" in ops_h
     assert "loom_shared_mode_t mode" in builders_c

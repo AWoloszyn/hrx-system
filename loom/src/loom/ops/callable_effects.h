@@ -24,16 +24,15 @@ bool loom_callable_effects_is_pure(loom_func_like_t function);
 
 // Propagates a resolved callee's purity to |op| when the operation has no
 // explicit purity. Unresolved symbols and impure callees leave |op| unchanged.
-iree_status_t loom_callable_effects_propagate_purity(loom_op_t* op,
-                                                     loom_symbol_ref_t callee,
-                                                     uint8_t purity_attr_index,
-                                                     loom_rewriter_t* rewriter);
+iree_status_t loom_callable_effects_propagate_purity(
+    loom_op_t* op, loom_symbol_ref_t callee, loom_attr_field_t purity_field,
+    loom_rewriter_t* rewriter);
 
 // Returns the effective traits for a callable application carrying a purity
-// attribute at |purity_attr_index|. Its callable boundary remains independent
+// attribute named by |purity_field|. Its callable boundary remains independent
 // of the selected effects.
 loom_trait_flags_t loom_callable_effects_traits(const loom_op_t* op,
-                                                uint8_t purity_attr_index);
+                                                loom_attr_field_t purity_field);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -382,22 +382,15 @@ def generate_ops_h(
             else:
                 lines.append(f"LOOM_DEFINE_SUCCESSOR({prefix}_{successor.name}, {desc.index})")
 
-        # Attribute slots have uppercase names independent of accessor names.
         # Flags live in the instance word and have no attribute-array slot.
-        stored_attrs = [attr_def for attr_def in op.attrs if attr_def.attr_type != ATTR_TYPE_FLAGS]
-        if stored_attrs:
-            lines.append("enum {")
-            for index, attr_def in enumerate(stored_attrs):
-                index_name = f"{prefix}_{attr_def.name}_ATTR_INDEX".upper()
-                lines.append(f"  {index_name} = {index},")
-            lines.append("};")
+        stored_indices = {attr_def.name: index for index, attr_def in enumerate(attr_def for attr_def in op.attrs if attr_def.attr_type != ATTR_TYPE_FLAGS)}
 
         # Regular attribute accessors (excludes flags attrs).
         for attr_def in op.attrs:
             if attr_def.attr_type == ATTR_TYPE_FLAGS:
                 lines.append(f"LOOM_DEFINE_INSTANCE_FLAGS({prefix}_{attr_def.name})")
                 continue
-            desc_index = f"{prefix}_{attr_def.name}_ATTR_INDEX".upper()
+            desc_index = stored_indices[attr_def.name]
             field_name = f"{attr_def.name}_field"
             if field_name in layout.fields:
                 raise ValueError(f"{op.name}: field accessor '{prefix}_{field_name}' conflicts with field '{field_name}'")

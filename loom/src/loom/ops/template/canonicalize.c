@@ -10,23 +10,23 @@
 iree_status_t loom_template_apply_canonicalize(loom_op_t* op,
                                                loom_rewriter_t* rewriter) {
   return loom_callable_effects_propagate_purity(
-      op, loom_template_apply_family(op), LOOM_TEMPLATE_APPLY_PURITY_ATTR_INDEX,
+      op, loom_template_apply_family(op), loom_template_apply_purity_field(),
       rewriter);
 }
 
 iree_status_t loom_template_call_canonicalize(loom_op_t* op,
                                               loom_rewriter_t* rewriter) {
   return loom_callable_effects_propagate_purity(
-      op, loom_template_call_callee(op), LOOM_TEMPLATE_CALL_PURITY_ATTR_INDEX,
+      op, loom_template_call_callee(op), loom_template_call_purity_field(),
       rewriter);
 }
 
 loom_trait_flags_t loom_template_apply_effective_traits(const loom_op_t* op) {
-  return LOOM_TRAIT_CONTEXTUAL | loom_callable_effects_traits(
-                                     op, LOOM_TEMPLATE_APPLY_PURITY_ATTR_INDEX);
+  return LOOM_TRAIT_CONTEXTUAL |
+         loom_callable_effects_traits(op, loom_template_apply_purity_field());
 }
 
 loom_trait_flags_t loom_template_call_effective_traits(const loom_op_t* op) {
   return LOOM_TRAIT_CONTEXTUAL |
-         loom_callable_effects_traits(op, LOOM_TEMPLATE_CALL_PURITY_ATTR_INDEX);
+         loom_callable_effects_traits(op, loom_template_call_purity_field());
 }
