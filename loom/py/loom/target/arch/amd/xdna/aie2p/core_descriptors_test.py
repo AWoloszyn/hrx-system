@@ -61,6 +61,19 @@ from loom.target.low_descriptors import (
 )
 
 
+def test_native_immediates_match_canonical_attribute_positions() -> None:
+    for descriptor in AIE2P_CORE_DESCRIPTOR_SET.descriptors:
+        names = tuple(immediate.field_name for immediate in descriptor.immediates)
+        assert names == tuple(sorted(names))
+        for immediate in descriptor.immediates:
+            assert immediate.kind in (
+                ImmediateKind.SIGNED,
+                ImmediateKind.UNSIGNED,
+                ImmediateKind.ORDINAL,
+            )
+            assert set(immediate.flags) <= {ImmediateFlag.SYMBOLIC}
+
+
 def test_control_timing_requires_issue_stage_only_return_resources() -> None:
     descriptor_set = AIE2P_CORE_DESCRIPTOR_SET
     returned = next(

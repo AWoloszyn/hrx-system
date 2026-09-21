@@ -12,6 +12,12 @@
 #include "loom/tools/loom-check/diagnostics.h"
 #include "loom/tools/loom-check/low_emit.h"
 
+typedef enum loom_aie2p_leaf_check_report_e {
+  LOOM_AIE2P_LEAF_CHECK_REPORT_NONE = 0,
+  LOOM_AIE2P_LEAF_CHECK_REPORT_EMISSION,
+  LOOM_AIE2P_LEAF_CHECK_REPORT_CODE,
+} loom_aie2p_leaf_check_report_t;
+
 static bool loom_aie2p_leaf_check_matches(
     const loom_check_emit_provider_t* provider,
     iree_string_view_t target_name) {
@@ -34,7 +40,8 @@ static iree_status_t loom_aie2p_leaf_check_execute(
       fixed_specs[LOOM_CHECK_LOW_EMIT_MAX_ALLOCATION_FIXED_VALUES];
   iree_host_size_t fixed_spec_count = 0;
   iree_string_view_t registers = iree_string_view_empty();
-  bool emit_report = false;
+  loom_aie2p_leaf_check_report_t report_kind =
+      LOOM_AIE2P_LEAF_CHECK_REPORT_NONE;
   while (!iree_string_view_is_empty(iree_string_view_trim(remaining))) {
     iree_string_view_t token;
     iree_string_view_split(iree_string_view_trim(remaining), ' ', &token,
@@ -49,7 +56,10 @@ static iree_status_t loom_aie2p_leaf_check_execute(
       registers = value;
     } else if (iree_string_view_equal(name, IREE_SV("report")) &&
                iree_string_view_equal(value, IREE_SV("emission"))) {
-      emit_report = true;
+      report_kind = LOOM_AIE2P_LEAF_CHECK_REPORT_EMISSION;
+    } else if (iree_string_view_equal(name, IREE_SV("report")) &&
+               iree_string_view_equal(value, IREE_SV("code"))) {
+      report_kind = LOOM_AIE2P_LEAF_CHECK_REPORT_CODE;
     } else {
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "unknown aie2p-leaf option '%.*s'",
@@ -88,11 +98,13 @@ static iree_status_t loom_aie2p_leaf_check_execute(
   }
   loom_target_compile_report_t report;
   loom_target_compile_report_initialize(&report, iree_allocator_system());
-  options.compile_report = emit_report ? &report : NULL;
+  options.compile_report =
+      report_kind == LOOM_AIE2P_LEAF_CHECK_REPORT_EMISSION ? &report : NULL;
   loom_aie2p_leaf_contribution_t contribution = {0};
   iree_status_t status = loom_aie2p_leaf_compile(
       request->module, function, &options, request->case_arena, &contribution);
-  if (iree_status_is_ok(status) && emit_report) {
+  if (iree_status_is_ok(status) &&
+      report_kind == LOOM_AIE2P_LEAF_CHECK_REPORT_EMISSION) {
     status = iree_string_builder_append_format(
         &request->result->actual_output,
         "issue cycles: %" PRIu64 "\ncode bytes: %" PRIu64
@@ -109,6 +121,22 @@ static iree_status_t loom_aie2p_leaf_check_execute(
     return iree_ok_status();
   }
   IREE_RETURN_IF_ERROR(status);
+  if (report_kind == LOOM_AIE2P_LEAF_CHECK_REPORT_CODE) {
+    const loom_native_object_symbol_t* entry =
+        &contribution.object
+             .symbols[contribution.realization.entry_symbol_index];
+    const iree_const_byte_span_t code =
+        contribution.object.sections[entry->section_contribution_index]
+            .contents;
+    IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(
+        &request->result->actual_output, "code:"));
+    for (iree_host_size_t i = 0; i < code.data_length; ++i) {
+      IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+          &request->result->actual_output, " %02x", (unsigned)code.data[i]));
+    }
+    IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(
+        &request->result->actual_output, "\n"));
+  }
   while (!iree_string_view_is_empty(registers)) {
     iree_string_view_t name;
     iree_string_view_split(registers, ',', &name, &registers);

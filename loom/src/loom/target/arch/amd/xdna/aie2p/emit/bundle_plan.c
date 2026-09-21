@@ -404,40 +404,6 @@ static iree_status_t loom_aie2p_bundle_plan_analyze(
   return iree_ok_status();
 }
 
-static const loom_named_attr_t* loom_aie2p_bundle_plan_find_attr(
-    loom_named_attr_slice_t attrs, loom_string_id_t name_id) {
-  for (iree_host_size_t i = 0; i < attrs.count; ++i) {
-    if (attrs.entries[i].name_id == name_id) {
-      return &attrs.entries[i];
-    }
-  }
-  return NULL;
-}
-
-static int64_t loom_aie2p_bundle_plan_enum_value(
-    const loom_module_t* module,
-    const loom_low_descriptor_set_t* descriptor_set,
-    const loom_low_immediate_t* immediate, loom_attribute_t attr) {
-  if (attr.kind == LOOM_ATTR_I64) {
-    return attr.i64;
-  }
-  IREE_ASSERT(attr.kind == LOOM_ATTR_STRING);
-  const iree_string_view_t token = module->strings.entries[attr.string_id];
-  const loom_low_enum_domain_t* domain =
-      &descriptor_set->enum_domains[immediate->enum_domain_id];
-  for (uint16_t i = 0; i < domain->value_count; ++i) {
-    const loom_low_enum_value_t* value =
-        &descriptor_set->enum_values[domain->value_start + i];
-    if (iree_string_view_equal(
-            token, loom_low_descriptor_set_string(
-                       descriptor_set, value->token_string_offset))) {
-      return value->value;
-    }
-  }
-  IREE_ASSERT(false && "verified enum token must be in its descriptor domain");
-  return 0;
-}
-
 static iree_status_t loom_aie2p_bundle_plan_encode_packet(
     const loom_low_emission_frame_t* frame,
     const loom_low_packet_view_t* packet,
@@ -471,45 +437,23 @@ static iree_status_t loom_aie2p_bundle_plan_encode_packet(
           ? (int64_t*)iree_alloca(descriptor->immediate_count *
                                   sizeof(*immediate_values))
           : NULL;
+  // Required core immediates and canonical IR dictionaries share field-name
+  // order. Construction and Low verification establish their positional
+  // binding.
   const loom_named_attr_slice_t attrs = loom_low_packet_attrs(packet);
   for (uint16_t i = 0; i < descriptor->immediate_count; ++i) {
-    const loom_low_immediate_t* immediate =
-        &descriptor_set->immediates[descriptor->immediate_start + i];
-    if (iree_any_bit_set(immediate->flags, LOOM_LOW_IMMEDIATE_FLAG_RELATIVE)) {
-      return iree_make_status(
-          IREE_STATUS_UNIMPLEMENTED,
-          "AIE2P relative immediates require packet-offset fixup planning");
-    }
-    const iree_string_view_t field_name = loom_low_descriptor_set_string(
-        descriptor_set, immediate->field_name_string_offset);
-    const loom_string_id_t field_name_id =
-        loom_module_lookup_string(frame->module, field_name);
-    const loom_named_attr_t* attr =
-        loom_aie2p_bundle_plan_find_attr(attrs, field_name_id);
-    if (attr == NULL) {
-      IREE_ASSERT(iree_any_bit_set(immediate->flags,
-                                   LOOM_LOW_IMMEDIATE_FLAG_DEFAULT_VALUE));
-      immediate_values[i] = immediate->default_value;
-      continue;
-    }
-    if (attr->value.kind == LOOM_ATTR_SYMBOL) {
+    const loom_attribute_t value = attrs.entries[i].value;
+    if (value.kind == LOOM_ATTR_SYMBOL) {
       return iree_make_status(
           IREE_STATUS_UNIMPLEMENTED,
           "AIE2P symbolic immediates require native object fixup planning");
     }
-    if (immediate->kind == LOOM_LOW_IMMEDIATE_KIND_ENUM) {
-      immediate_values[i] = loom_aie2p_bundle_plan_enum_value(
-          frame->module, descriptor_set, immediate, attr->value);
-    } else {
-      IREE_ASSERT(attr->value.kind == LOOM_ATTR_I64);
-      immediate_values[i] = attr->value.i64;
-    }
+    immediate_values[i] = value.i64;
   }
 
-  *out_encoded_slot = loom_aie2p_descriptor_encode(
-      descriptor_set,
-      loom_aie2p_bundle_plan_descriptor_ordinal(descriptor_set, descriptor),
-      operand_assignments, immediate_values);
+  *out_encoded_slot =
+      loom_aie2p_descriptor_encode(descriptor_set, packet->descriptor_ordinal,
+                                   operand_assignments, immediate_values);
   return iree_ok_status();
 }
 
