@@ -1,0 +1,56 @@
+// Distinct control fields must retain their binding through native encoding.
+// RUN: emit aie2p-leaf @control report=code
+
+low.func.def target<amd.xdna.aie2p.core> @control(%address: reg<aie2p.em>, %id: reg<aie2p.er>) asm {
+  mov.cph %address, %id, 2, 1
+  return
+}
+
+// ----
+code: 5c 00 50 40 02 04 00 00 00 00 00 00 00 00 00 00
+
+// ====
+
+// Different field values must produce different instruction bits.
+// RUN: emit aie2p-leaf @control report=code
+
+low.func.def target<amd.xdna.aie2p.core> @control(%address: reg<aie2p.em>, %id: reg<aie2p.er>) asm {
+  mov.cph %address, %id, 1, 2
+  return
+}
+
+// ----
+code: 5c 00 50 40 01 08 00 00 00 00 00 00 00 00 00 00
+
+// ====
+
+// Every core field is required before positional encoding can consume it.
+// RUN: verify
+
+low.func.def target<amd.xdna.aie2p.core> @missing(%address: reg<aie2p.em>, %id: reg<aie2p.er>) {
+  // ERROR@+1: TARGET/047 "nw"
+  low.op<amd.xdna.aie2p.stream.write.control-packet>(%address, %id) {op = 1} : (reg<aie2p.em>, reg<aie2p.er>)
+  low.return
+}
+
+// ====
+
+// Unknown dictionary fields cannot shift the positions of verified fields.
+// RUN: verify
+
+low.func.def target<amd.xdna.aie2p.core> @unexpected(%address: reg<aie2p.em>, %id: reg<aie2p.er>) {
+  // ERROR@+1: TARGET/048 "extra"
+  low.op<amd.xdna.aie2p.stream.write.control-packet>(%address, %id) {extra = 0, nw = 2, op = 1} : (reg<aie2p.em>, reg<aie2p.er>)
+  low.return
+}
+
+// ====
+
+// Positional fields retain their descriptor's numeric type contract.
+// RUN: verify
+
+low.func.def target<amd.xdna.aie2p.core> @wrong_kind(%address: reg<aie2p.em>, %id: reg<aie2p.er>) asm {
+  // ERROR@+1: TARGET/049 "nw"
+  mov.cph %address, %id, "two", 1
+  return
+}

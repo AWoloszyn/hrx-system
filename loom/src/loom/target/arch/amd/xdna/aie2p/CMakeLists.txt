@@ -535,6 +535,7 @@ loom_check_test_suite(
     "test/descriptors/scalar_stream.loom-test"
     "test/leaf_allocation.loom-test"
     "test/leaf_expansion_timing.loom-test"
+    "test/leaf_immediates.loom-test"
     "test/leaf_interfaces.loom-test"
     "test/leaf_schedule.loom-test"
     "test/leaf_state_read_timing.loom-test"
