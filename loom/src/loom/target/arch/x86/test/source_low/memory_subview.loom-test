@@ -1,9 +1,7 @@
 // TEMPLATE: loom/src/loom/test/corpus/source_low/memory_subview.loom-test
-// RUN: emit source-low output=low
+// RUN: emit source-low target=x86:avx2 output=low
 
-x86.target<avx2> @target
-
-func.def target(@target) @subview_scalar_strided(%input: buffer, %output: buffer) -> (f32) {
+func.def @subview_scalar_strided(%input: buffer, %output: buffer) -> (f32) {
   %input_base = index.constant 8 : offset
   %output_base = index.constant 12 : offset
   %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
@@ -22,9 +20,7 @@ func.def target(@target) @subview_scalar_strided(%input: buffer, %output: buffer
 
 // ====
 
-x86.target<avx2> @target
-
-func.def target(@target) @subview_nested_dynamic(%input: buffer, %output: buffer, %base: offset, %row: index, %column: index) -> (i32) {
+func.def @subview_nested_dynamic(%input: buffer, %output: buffer, %base: offset, %row: index, %column: index) -> (i32) {
   %origin = index.assume %base [range(%base, 4, 16), mul(%base, 4)] : offset
   %row_bounded = index.assume %row [range(%row, 0, 1)] : index
   %column_bounded = index.assume %column [range(%column, 0, 2)] : index
@@ -44,7 +40,7 @@ func.def target(@target) @subview_nested_dynamic(%input: buffer, %output: buffer
 }
 
 // ----
-low.func.def target<x86.avx2.core>(@target) abi(object_function) @subview_nested_dynamic(%source_refined: reg<x86.gpr64>, %destination_inner: reg<x86.gpr64>, %origin: reg<x86.gpr64>, %row_bounded: reg<x86.gpr64>, %column_bounded: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+low.func.def target<x86.avx2.core> abi(object_function) @subview_nested_dynamic(%source_refined: reg<x86.gpr64>, %destination_inner: reg<x86.gpr64>, %origin: reg<x86.gpr64>, %row_bounded: reg<x86.gpr64>, %column_bounded: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
   %26 = mov.imm64 32
   %27 = copy %row_bounded : reg<x86.gpr64> -> reg<x86.gpr64>
   %28 = imul.gpr64 %27, %26
@@ -70,9 +66,7 @@ low.func.def target<x86.avx2.core>(@target) abi(object_function) @subview_nested
 
 // ====
 
-x86.target<avx2> @target
-
-func.def target(@target) @subview_vector_strided(%input: buffer, %output: buffer) {
+func.def @subview_vector_strided(%input: buffer, %output: buffer) {
   %input_base = index.constant 16 : offset
   %output_base = index.constant 32 : offset
   %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
@@ -88,7 +82,7 @@ func.def target(@target) @subview_vector_strided(%input: buffer, %output: buffer
 }
 
 // ----
-low.func.def target<x86.avx2.core>(@target) abi(object_function) @subview_vector_strided(%source_crop: reg<x86.gpr64>, %destination_crop: reg<x86.gpr64>) asm {
+low.func.def target<x86.avx2.core> abi(object_function) @subview_vector_strided(%source_crop: reg<x86.gpr64>, %destination_crop: reg<x86.gpr64>) asm {
   %value = vmovdqu32.load.xmm %source_crop {disp32 = 124}
   vmovdqu32.store.xmm %value, %destination_crop {disp32 = 88}
   return
@@ -96,9 +90,7 @@ low.func.def target<x86.avx2.core>(@target) abi(object_function) @subview_vector
 
 // ====
 
-x86.target<avx2> @target
-
-func.def target(@target) @subview_vector_aligned(%input: buffer, %output: buffer) {
+func.def @subview_vector_aligned(%input: buffer, %output: buffer) {
   %input_base = index.constant 32 : offset
   %output_base = index.constant 64 : offset
   %input_aligned = buffer.assume.alignment %input {minimum_alignment = 32} : buffer
@@ -114,7 +106,7 @@ func.def target(@target) @subview_vector_aligned(%input: buffer, %output: buffer
 }
 
 // ----
-low.func.def target<x86.avx2.core>(@target) abi(object_function) @subview_vector_aligned(%source_crop: reg<x86.gpr64>, %destination_crop: reg<x86.gpr64>) asm {
+low.func.def target<x86.avx2.core> abi(object_function) @subview_vector_aligned(%source_crop: reg<x86.gpr64>, %destination_crop: reg<x86.gpr64>) asm {
   %value = vmovdqu32.load.ymm %source_crop {disp32 = 256}
   vmovdqu32.store.ymm %value, %destination_crop {disp32 = 192}
   return
@@ -122,9 +114,7 @@ low.func.def target<x86.avx2.core>(@target) abi(object_function) @subview_vector
 
 // ====
 
-x86.target<avx2> @target
-
-func.def target(@target) @subview_atomic_strided(%buffer: buffer) -> (i32) {
+func.def @subview_atomic_strided(%buffer: buffer) -> (i32) {
   %base = index.constant 8 : offset
   %global = buffer.assume.memory_space<global> %buffer : buffer
   %aligned = buffer.assume.alignment %global {minimum_alignment = 4} : buffer
@@ -144,9 +134,7 @@ func.def target(@target) @subview_atomic_strided(%buffer: buffer) -> (i32) {
 
 // ====
 
-x86.target<avx2> @target
-
-func.def target(@target) @subview_prefetch_strided(%input: buffer) {
+func.def @subview_prefetch_strided(%input: buffer) {
   %base = index.constant 8 : offset
   %layout = encoding.layout.strided [8, 1] : encoding<layout>
   %view = buffer.view %input[%base] : buffer -> view<4x8xi32, %layout>
@@ -157,15 +145,13 @@ func.def target(@target) @subview_prefetch_strided(%input: buffer) {
 }
 
 // ----
-low.func.def target<x86.avx2.core>(@target) abi(object_function) @subview_prefetch_strided(%input: reg<x86.gpr64>) asm {
+low.func.def target<x86.avx2.core> abi(object_function) @subview_prefetch_strided(%input: reg<x86.gpr64>) asm {
   return
 }
 
 // ====
 
-x86.target<avx2> @target
-
-func.def target(@target) @subview_dense_rows(%input: buffer, %output: buffer) -> (i32) {
+func.def @subview_dense_rows(%input: buffer, %output: buffer) -> (i32) {
   %base = index.constant 4 : offset
   %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
   %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
@@ -179,15 +165,13 @@ func.def target(@target) @subview_dense_rows(%input: buffer, %output: buffer) ->
 }
 
 // ----
-low.func.def target<x86.avx2.core>(@target) abi(object_function) @subview_dense_rows(%source_crop: reg<x86.gpr64>, %destination_crop: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+low.func.def target<x86.avx2.core> abi(object_function) @subview_dense_rows(%source_crop: reg<x86.gpr64>, %destination_crop: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
   %value = mov.load.gpr32 %source_crop {disp32 = 80}
   mov.store.gpr32 %value, %destination_crop {disp32 = 84}
   return %value
 }
 
 // ====
-
-x86.target<avx2> @target
 
 func.def @make_storage_crop(%input: buffer, %origin: offset, %columns: index) -> (%result_storage: encoding<storage>, view<2x3xf32, %result_storage>) {
   %layout = encoding.layout.strided [%columns, 1] : encoding<layout>
@@ -205,7 +189,7 @@ func.def @read_storage_crop(%storage: encoding<storage>, %crop: view<2x3xf32, %s
   func.return %value : f32
 }
 
-func.def public target(@target) @subview_composed_helpers(%input: buffer, %output: buffer, %width: index) {
+func.def public @subview_composed_helpers(%input: buffer, %output: buffer, %width: index) {
   %columns = index.assume %width [range(%width, 8, 12)] : index
   %origin = index.constant 8 : offset
   %storage, %crop = func.call @make_storage_crop(%input, %origin, %columns) : (buffer, offset, index) -> (encoding<storage>, view<2x3xf32, %storage>)
@@ -220,9 +204,7 @@ func.def public target(@target) @subview_composed_helpers(%input: buffer, %outpu
 
 // ====
 
-x86.target<avx2> @target
-
-func.def public target(@target) @subview_composed_refined_nested(%input: buffer, %output: buffer, %base: offset, %row_pitch: index, %column_pitch: index) {
+func.def public @subview_composed_refined_nested(%input: buffer, %output: buffer, %base: offset, %row_pitch: index, %column_pitch: index) {
   %origin = index.assume %base [range(%base, 4, 12), mul(%base, 4)] : offset
   %row_stride = index.assume %row_pitch [range(%row_pitch, 8, 12)] : index
   %column_stride = index.assume %column_pitch [range(%column_pitch, 1, 2)] : index
@@ -246,8 +228,6 @@ func.def public target(@target) @subview_composed_refined_nested(%input: buffer,
 
 // ====
 
-x86.target<avx2> @target
-
 func.def @make_storage_crop(%input: buffer, %origin: offset, %columns: index) -> (%result_storage: encoding<storage>, view<2x3xf32, %result_storage>) {
   %layout = encoding.layout.strided [%columns, 1] : encoding<layout>
   %schema = encoding.define #encoding.f32 : encoding<schema>
@@ -265,7 +245,7 @@ func.def @read_storage_crop(%storage: encoding<storage>, %crop: view<2x3xf32, %s
   func.return %value : f32
 }
 
-func.def public target(@target) @subview_composed_distinct_bindings(%input: buffer, %output: buffer, %first_width: index, %second_width: index) {
+func.def public @subview_composed_distinct_bindings(%input: buffer, %output: buffer, %first_width: index, %second_width: index) {
   %first_columns = index.assume %first_width [range(%first_width, 8, 12)] : index
   %second_columns = index.assume %second_width [range(%second_width, 8, 12)] : index
   %origin = index.constant 8 : offset

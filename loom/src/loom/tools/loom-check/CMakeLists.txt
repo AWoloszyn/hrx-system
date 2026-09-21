@@ -202,7 +202,6 @@ loom_cc_library(
     iree::base::internal::arena
     loom::format::text::parser
     loom::ir
-    loom::link::linker
     loom::ops::op_defs
     loom::testing::test_file
   PUBLIC

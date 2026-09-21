@@ -243,6 +243,7 @@ low.func.def target<x86.avx2.core> abi(object_function) @wide_shift_bounded_nonz
 
 // ====
 
+// Word controls qualify the native pieces used by split-word lowering.
 func.def @word_right_shift_constants(%value: i32) -> (i32, i32, i32, i32, i32, i32, i32) {
   %identity_count = scalar.constant 0 : i32
   %single_bit = scalar.constant 1 : i32
@@ -411,6 +412,7 @@ low.func.def target<x86.avx2.core> abi(object_function) @wide_right_shift_crossi
 
 // ====
 
+// All three shifts preserve their input and the count for later arithmetic.
 func.def @word_shifts_reuse_input(%value: i32, %count: i32) -> (i32) {
   %left = scalar.shli %value, %count : i32
   %logical = scalar.shrui %value, %count : i32

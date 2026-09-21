@@ -601,8 +601,6 @@ loom_check_test_suite(
   RUNNER
     ::loom-check
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/ops/pipeline/test/output_record_shapes.loom-test"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/pipeline/record_shapes.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/callable_values.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/carried_counter_store.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/lookup_table.loom-test"

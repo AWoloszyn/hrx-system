@@ -316,7 +316,6 @@ loom_cc_library(
     deps = [
         "//loom/src/loom/format/text:parser",
         "//loom/src/loom/ir",
-        "//loom/src/loom/link:linker",
         "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/testing:test_file",
         "//runtime/src/iree/base",
