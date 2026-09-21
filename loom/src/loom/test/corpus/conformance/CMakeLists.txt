@@ -204,9 +204,9 @@ loom_execution_test(
 )
 endif()
 
-loom_test(
+loom_test_module(
   NAME
-    shrinking_view_test
+    shrinking_view_test_module
   SRCS
     "shrinking_view.loom"
 )
@@ -301,9 +301,9 @@ loom_check_compile_tests(
     loom::target::spirv::vulkan1.3+bda
 )
 
-loom_test(
+loom_test_module(
   NAME
-    view_window_walk_test
+    view_window_walk_test_module
   SRCS
     "view_window_walk.loom"
 )
