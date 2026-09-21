@@ -656,6 +656,9 @@ class BytecodeWriter:
 
     def _has_type_bindings(self, root: Any) -> bool:
         """Compute binding facts once across the invocation's shared graph."""
+        known = self._binding_facts.get(id(root))
+        if known is not None:
+            return known
         pending = [(root, False)]
         while pending:
             value, expanded = pending.pop()
@@ -680,8 +683,10 @@ class BytecodeWriter:
         return self._binding_facts[id(root)]
 
     @staticmethod
-    def _number(steps: Iterator[Any]) -> None:
+    def _number(steps: Iterator[Any] | None) -> None:
         """Complete postorder numbering without growing the Python call stack."""
+        if steps is None:
+            return
         pending = [steps]
         while pending:
             try:
@@ -689,7 +694,8 @@ class BytecodeWriter:
             except StopIteration:
                 pending.pop()
             else:
-                pending.append(child)
+                if child is not None:
+                    pending.append(child)
 
     def _number_type(self, ir_type: Type) -> None:
         self._number(self._number_type_steps(ir_type))
@@ -700,15 +706,23 @@ class BytecodeWriter:
     def _number_encoding_instance(self, value: EncodingInstance) -> None:
         self._number(self._number_encoding_steps(value))
 
-    def _number_type_steps(self, ir_type: Type) -> Iterator[Any]:
+    def _number_type_steps(self, ir_type: Type) -> Iterator[Any] | None:
+        """Finish repeated and scalar types without allocating a continuation."""
+        if id(ir_type) in self._numbered_types:
+            return None
+        self._numbered_types.add(id(ir_type))
+        if isinstance(ir_type, ScalarType):
+            self._binding_facts[id(ir_type)] = False
+            self._ctx.intern_type(ir_type)
+            return None
+        return self._number_type_children(ir_type)
+
+    def _number_type_children(self, ir_type: Type) -> Iterator[Any]:
         """Ensure a type and all its sub-types are interned.
 
         Sub-types are interned before their parent, so the reader resolves each
         child from an earlier entry in the topologically ordered type table.
         """
-        if id(ir_type) in self._numbered_types:
-            return
-        self._numbered_types.add(id(ir_type))
         # Complete immediate children before numbering their parent.
         match ir_type:
             case ShapedType(element_type=element, encoding=encoding):
@@ -748,11 +762,25 @@ class BytecodeWriter:
         value: Any,
         attr_def: Any | None = None,
         aggregate_nesting_depth: int = 0,
+    ) -> Iterator[Any] | None:
+        """Number leaves immediately; only structural children need suspension."""
+        if getattr(attr_def, "attr_type", None) == "enum":
+            return None
+        if isinstance(value, str):
+            self._ctx.intern_string(value)
+            return None
+        if isinstance(value, (int, float, bytes, bytearray)):
+            return None
+        return self._number_attr_children(value, attr_def, aggregate_nesting_depth)
+
+    def _number_attr_children(
+        self,
+        value: Any,
+        attr_def: Any | None,
+        aggregate_nesting_depth: int,
     ) -> Iterator[Any]:
         """Intern strings referenced by attribute values."""
         attr_type = getattr(attr_def, "attr_type", None)
-        if attr_type == "enum":
-            return
         if isinstance(value, SymbolNameArray):
             if attr_type != "symbol_array":
                 raise ValueError("symbol arrays require a descriptor-backed field")
@@ -793,10 +821,6 @@ class BytecodeWriter:
                 yield self._number_attr_steps(
                     element, attr_def, aggregate_nesting_depth + 1
                 )
-        elif isinstance(value, str):
-            self._ctx.intern_string(value)
-        elif isinstance(value, bytes | bytearray):
-            pass
         elif isinstance(value, _IR_TYPE_CLASSES):
             yield self._number_type_steps(cast(Type, value))
         elif isinstance(value, EncodingInstance):

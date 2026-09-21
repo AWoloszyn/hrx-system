@@ -20,6 +20,7 @@ from loom.ir import (
     Predicate,
     PredicateListAttr,
     RegisterType,
+    ScalarType,
     ShapedType,
 )
 
@@ -27,6 +28,8 @@ from loom.ir import (
 def _parts(value: Any) -> tuple[tuple[Any, ...], tuple[Any, ...]]:
     """Separate immediate identity from graph edges, without recursive hashing."""
     match value:
+        case ScalarType():
+            return (None, value), ()
         case ShapedType(
             type_kind=kind, element_type=element, dims=dims, encoding=encoding
         ):
@@ -85,6 +88,9 @@ class TypeIdentity:
 
     def intern(self, root: Any) -> int:
         """Return the canonical ID, completing each newly reached node once."""
+        completed = self._completed.get(id(root))
+        if completed is not None:
+            return completed[1]
         pending = [(root, False)]
         while pending:
             value, expanded = pending.pop()
@@ -96,7 +102,12 @@ class TypeIdentity:
                 pending.append((value, True))
                 pending.extend((child, False) for child in children)
                 continue
-            key = (label, tuple(self._completed[id(child)][1] for child in children))
+            key = (
+                label,
+                tuple(self._completed[id(child)][1] for child in children)
+                if children
+                else (),
+            )
             ordinal = self._keys.setdefault(key, len(self._keys))
             self._completed[identity] = (value, ordinal)
         return self._completed[id(root)][1]

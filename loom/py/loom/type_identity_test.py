@@ -22,6 +22,7 @@ from loom.ir import (
     PredicateArg,
     PredicateListAttr,
     RegisterType,
+    ScalarType,
     ShapedType,
     StaticDim,
     TypeKind,
@@ -83,6 +84,16 @@ def test_identities_match_structural_equality() -> None:
         # Independent construction preserves canonical absent parameter slots.
         assert left == right
         assert identities.equal(left, right)
+
+
+def test_scalar_identity_is_shared_between_roots_and_children() -> None:
+    scalar = ScalarType(F32.kind)
+    identities = TypeIdentity()
+    root = FunctionType((scalar,), (scalar,))
+    identities.intern(root)
+    assert identities.intern(scalar) == identities.intern(F32)
+    assert identities.equal(root, FunctionType((F32,), (F32,)))
+    assert not identities.equal(scalar, I32)
 
 
 def test_deep_shared_identity_is_iterative_and_sharing_independent() -> None:

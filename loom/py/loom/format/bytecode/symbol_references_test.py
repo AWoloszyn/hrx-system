@@ -18,8 +18,11 @@ from loom.ir import (
     DialectType,
     FunctionType,
     Region,
+    ShapedType,
+    StaticDim,
     SymbolName,
     SymbolNameArray,
+    TypeKind,
 )
 from loom.verify import verify_module
 
@@ -61,6 +64,32 @@ def test_shared_branches_preserve_occurrence_order_and_multiplicity() -> None:
     assert all(entry.source_root_region_index_plus_one == 0 for entry in rows[2])
     assert all(entry.target_interfaces == 0 for entry in rows[2])
     assert not any(demands)
+
+
+def test_plain_strings_and_scalar_types_do_not_hide_symbol_leaves() -> None:
+    builder = _builder()
+    builder.build(
+        "test.record",
+        attributes={
+            "symbol": "consumer",
+            "dict": {
+                "label": "first",
+                "target": SymbolName("second"),
+                "element": F32,
+                "shape": ShapedType(TypeKind.VECTOR, F32, (StaticDim(4),)),
+            },
+        },
+    )
+    body = Region(blocks=[Block()])
+    builder.build("test.func", attributes={"callee": "use_target"}, regions=[body])
+    builder.set_insertion_block(body.blocks[0])
+    builder.build("test.template_param_symbol_flags", attributes={"target": "first"})
+    builder.build("test.yield")
+    module, rows, _ = _projection(builder)
+    assert not module
+    assert [entry.target_symbol_index for entry in rows[2]] == [1]
+    assert [entry.target_symbol_index for entry in rows[3]] == [0]
+    assert rows[3][0].target_interfaces == SYMBOL_INTERFACE_BITS["record"]
 
 
 def test_unary_prefixes_share_one_nonempty_summary() -> None:
