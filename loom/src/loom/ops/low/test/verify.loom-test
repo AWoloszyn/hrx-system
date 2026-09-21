@@ -96,7 +96,7 @@ test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @storage_view_passes(%value: reg<test.i32>) -> (reg<test.i32>) asm {
   %storage = storage {byte_alignment = 16, byte_length = 64} : low.storage<scratch>
-  %view = storage_view %storage {offset = 16, byte_length = 16} : low.storage<scratch> -> low.storage<scratch>
+  %view = storage_view %storage {byte_length = 16, offset = 16} : low.storage<scratch> -> low.storage<scratch>
   low.spill %value, %view : reg<test.i32>, low.storage<scratch>
   %reload = low.reload %view : low.storage<scratch> -> reg<test.i32>
   return %reload
@@ -108,9 +108,9 @@ test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @storage_view_chain_passes(%value: reg<test.i32>) -> (reg<test.i32>) asm {
   %storage = storage {byte_alignment = 16, byte_length = 128} : low.storage<scratch>
-  %outer = storage_view %storage {offset = 16, byte_length = 96} : low.storage<scratch> -> low.storage<scratch>
-  %middle = storage_view %outer {offset = 24, byte_length = 48} : low.storage<scratch> -> low.storage<scratch>
-  %inner = storage_view %middle {offset = 8, byte_length = 16} : low.storage<scratch> -> low.storage<scratch>
+  %outer = storage_view %storage {byte_length = 96, offset = 16} : low.storage<scratch> -> low.storage<scratch>
+  %middle = storage_view %outer {byte_length = 48, offset = 24} : low.storage<scratch> -> low.storage<scratch>
+  %inner = storage_view %middle {byte_length = 16, offset = 8} : low.storage<scratch> -> low.storage<scratch>
   low.spill %value, %inner {offset = 15} : reg<test.i32>, low.storage<scratch>
   %reload = low.reload %inner {offset = 15} : low.storage<scratch> -> reg<test.i32>
   return %reload

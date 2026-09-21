@@ -13,8 +13,8 @@ func.def @i32_bitfield_extractu(%input: buffer, %output: buffer) {
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @i32_bitfield_extractu() asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 4, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 4, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %9 = v_mov_b32 0
   %loaded = global_load_b32_saddr %9, %input_view
   %nibble = v_bfe_u32_offset_width_inline %loaded {offset = 4, width = 4}
@@ -36,8 +36,8 @@ func.def @i32_bitfield_extracts(%input: buffer, %output: buffer) {
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @i32_bitfield_extracts() asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 4, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 4, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %9 = v_mov_b32 0
   %loaded = global_load_b32_saddr %9, %input_view
   %nibble = v_bfe_i32_offset_width_inline %loaded {offset = 4, width = 4}
@@ -59,8 +59,8 @@ func.def @i32_bitfield_extractu_full_width_alias(%input: buffer, %output: buffer
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @i32_bitfield_extractu_full_width_alias() asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 4, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 4, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %9 = v_mov_b32 0
   %bits = global_load_b32_saddr %9, %input_view
   global_store_b32_saddr %9, %bits, %output_view
@@ -81,8 +81,8 @@ func.def @i32_bitfield_extracts_top_aligned(%input: buffer, %output: buffer) {
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @i32_bitfield_extracts_top_aligned() asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 4, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 4, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %9 = v_mov_b32 0
   %loaded = global_load_b32_saddr %9, %input_view
   %nibble = v_ashrrev_i32_src0_inline %loaded, 28
@@ -106,9 +106,9 @@ func.def @i32_bitfield_insert(%field_buffer: buffer, %base_buffer: buffer, %outp
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @i32_bitfield_insert() asm {
-  %field_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
-  %base_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
+  %field_view = resource<hal_binding> {extent = 4, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %base_view = resource<hal_binding> {extent = 4, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 4, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %13 = v_mov_b32 0
   %field = global_load_b32_saddr %13, %field_view
   %base = global_load_b32_saddr %13, %base_view
@@ -134,9 +134,9 @@ func.def @i32_bitfield_insert_offset0(%field_buffer: buffer, %base_buffer: buffe
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @i32_bitfield_insert_offset0() asm {
-  %field_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
-  %base_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
+  %field_view = resource<hal_binding> {extent = 4, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %base_view = resource<hal_binding> {extent = 4, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 4, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %13 = v_mov_b32 0
   %field = global_load_b32_saddr %13, %field_view
   %base = global_load_b32_saddr %13, %base_view
@@ -161,8 +161,8 @@ func.def @i32_bitfield_insert_full_width_alias(%field_buffer: buffer, %base_buff
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @i32_bitfield_insert_full_width_alias() asm {
-  %field_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
+  %field_view = resource<hal_binding> {extent = 4, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 4, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %13 = v_mov_b32 0
   %inserted = global_load_b32_saddr %13, %field_view
   global_store_b32_saddr %13, %inserted, %output_view
@@ -187,8 +187,8 @@ func.def @i32_bitfield_b128_shape(%input: buffer, %output: buffer) {
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @i32_bitfield_b128_shape() asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 16} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 16} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 16, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 16, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %13 = v_mov_b32 0
   %loaded = global_load_b128_saddr %13, %input_view
   %15 = slice %loaded[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>

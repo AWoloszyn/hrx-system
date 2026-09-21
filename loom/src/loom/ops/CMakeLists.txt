@@ -15,16 +15,31 @@ loom_cc_library(
   HDRS
     "builder_macros.h"
     "op_defs.h"
-  TEXTUAL_HDRS
-    "keyword_enum.inc"
-    "keyword_table.inc"
   SRCS
     "op_defs.c"
   DEPS
+    ::format
     iree::base
     iree::base::internal::arena
     loom::ir
     loom::util::adaptive_sort
+    loom::util::bstring
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    format
+  HDRS
+    "format.h"
+  TEXTUAL_HDRS
+    "keyword_enum.inc"
+    "keyword_table.inc"
+  SRCS
+    "format.c"
+  DEPS
+    iree::base
+    loom::ir
     loom::util::bstring
   PUBLIC
 )

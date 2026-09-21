@@ -45,7 +45,7 @@ from enum import Enum, unique
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from loom import constraint_validation
-from loom.assembly import FormatElement, OptionalGroup
+from loom.assembly import AssemblyFormat, FormatElement, OptionalGroup
 from loom.errors import ErrorDef
 
 if TYPE_CHECKING:
@@ -4877,6 +4877,29 @@ def _validate_attr_params_fields(
             _validate_attr_params_fields(op_name, element.elements, attrs)
 
 
+def _validate_op_formats(op: Op) -> None:
+    """Validate every spelling against the same operation field schema."""
+    formats = [op.format]
+    if op.assembly is not None and op.assembly.elements is not None:
+        formats.append(op.assembly.elements)
+    for elements in formats:
+        _validate_scoped_enum_fields(op.name, elements, op.attrs)
+        _validate_attr_params_fields(op.name, elements, op.attrs)
+        _validate_func_args_partitions(op.name, elements, op.attrs)
+        _validate_operand_dictionaries(
+            op.name, op.operands, op.attrs, op.constraints, elements
+        )
+        _validate_format_fields(
+            op.name,
+            elements,
+            op.operands,
+            op.results,
+            op.attrs,
+            op.successors,
+            op.regions,
+        )
+
+
 def _validate_legacy_formats(
     op_name: str,
     legacy_formats: tuple[LegacyFormat, ...],
@@ -5961,6 +5984,7 @@ class Op:
     ownership_effects: Ownership actions on operand/result fields.
     symbol_def: Symbol definition descriptor for SYMBOL_DEFINE ops.
     format: Format element list describing textual assembly.
+    assembly: Short target-assembly spelling using the same operation fields.
     legacy_formats: Legacy textual formats accepted by migration tooling.
     examples: List of example IR strings for documentation.
 
@@ -6002,6 +6026,7 @@ class Op:
         Any, ...
     ] = ()  # Interface implementations (FuncLikeInterface, etc.).
     format: tuple[FormatElement, ...] = ()
+    assembly: AssemblyFormat | None = None
     legacy_formats: tuple[LegacyFormat, ...] = ()
     examples: tuple[str, ...] = ()
 
@@ -6036,6 +6061,7 @@ class Op:
         symbol_def: SymbolDefinition | None = None,
         interfaces: list[Any] | tuple[Any, ...] = (),
         format: list[FormatElement] | tuple[FormatElement, ...] = (),
+        assembly: AssemblyFormat | None = None,
         legacy_formats: list[LegacyFormat] | tuple[LegacyFormat, ...] = (),
         examples: list[str] | tuple[str, ...] = (),
     ) -> None:
@@ -6089,6 +6115,7 @@ class Op:
         object.__setattr__(self, "symbol_def", symbol_def)
         object.__setattr__(self, "interfaces", tuple(interfaces))
         object.__setattr__(self, "format", frozen_format)
+        object.__setattr__(self, "assembly", assembly)
         object.__setattr__(self, "legacy_formats", frozen_legacy_formats)
         object.__setattr__(self, "examples", tuple(examples))
         has_symbol_define = any(trait.name == "SymbolDefine" for trait in traits)
@@ -6276,23 +6303,7 @@ class Op:
             frozen_effects,
             frozen_ownership_effects,
         )
-        _validate_scoped_enum_fields(name, frozen_format, frozen_attrs)
-        _validate_attr_params_fields(name, frozen_format, frozen_attrs)
-        _validate_func_args_partitions(name, frozen_format, frozen_attrs)
-        _validate_operand_dictionaries(
-            name, frozen_operands, frozen_attrs, self.constraints, frozen_format
-        )
-        # Validate that format elements reference declared fields.
-        if frozen_format:
-            _validate_format_fields(
-                name,
-                frozen_format,
-                frozen_operands,
-                frozen_results,
-                frozen_attrs,
-                frozen_successors,
-                frozen_regions,
-            )
+        _validate_op_formats(self)
         if frozen_legacy_formats:
             _validate_legacy_formats(
                 name,

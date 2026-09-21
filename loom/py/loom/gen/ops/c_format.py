@@ -52,7 +52,7 @@ from loom.gen.assembly.tokens import KEYWORD_MAP, REGION_SYNTAX_MAP
 from loom.gen.ops import c_queries
 
 
-def translate_format_elements(op: Op) -> list[tuple[str, int, str]]:
+def translate_format_elements(op: Op, format_elements: tuple[FormatElement, ...] | None = None) -> list[tuple[str, int, str]]:
     """Translates an op's format spec to C format element initializers.
 
     Returns a list of (kind_str, field_index, data_str) triples that
@@ -408,7 +408,7 @@ def translate_format_elements(op: Op) -> list[tuple[str, int, str]]:
                 case Glue():
                     elements.append(("LOOM_FORMAT_KIND_GLUE", 0, "0"))
 
-    walk(op.format)
+    walk(op.format if format_elements is None else format_elements)
     if layout.segmented_operands:
         # The C parser appends segments directly into declaration-order storage.
         # Establish that order here so parsing needs no reordering or fixups.

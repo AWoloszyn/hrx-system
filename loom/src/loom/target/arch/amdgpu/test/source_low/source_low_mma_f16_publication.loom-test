@@ -119,7 +119,7 @@ kernel.def target(@target) @gfx1100_transposed_f32_result_to_f16_memory() {
 // ----
 low.kernel.def target<amdgpu.rdna3.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @gfx1100_transposed_f32_result_to_f16_memory() asm {
   %18 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %output = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
+  %output = resource<hal_binding> {extent = 512, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %20 = v_mov_b32 1006648320
   %lhs = concat(%20, %20, %20, %20, %20, %20, %20, %20) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
   %29 = v_mov_b32 1073758208
@@ -190,8 +190,8 @@ kernel.def target(@target) @gfx1100_loaded_init_transposed_f32_result_to_f16_mem
 // ----
 low.kernel.def target<amdgpu.rdna3.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @gfx1100_loaded_init_transposed_f32_result_to_f16_memory() asm {
   %20 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %init = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
-  %output = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
+  %init = resource<hal_binding> {extent = 1024, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output = resource<hal_binding> {extent = 512, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %23 = v_mov_b32 1006648320
   %lhs = concat(%23, %23, %23, %23, %23, %23, %23, %23) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x8>
   %32 = v_mov_b32 1073758208

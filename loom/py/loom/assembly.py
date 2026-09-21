@@ -54,6 +54,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 __all__ = [
+    "AssemblyFormat",
     # Element types.
     "Ref",
     "Refs",
@@ -936,6 +937,30 @@ type FormatElement = (
     | EncodingOf
     | Param
 )
+
+
+@dataclass(frozen=True, slots=True)
+class AssemblyFormat:
+    """Short spelling inside target assembly, sharing the canonical op layout.
+
+    name: Bare mnemonic, distinct from dotted canonical operation names.
+    elements: Alternate grammar, or None to reuse the canonical format.
+    """
+
+    name: str
+    elements: tuple[FormatElement, ...] | None = None
+
+    def __init__(
+        self,
+        name: str,
+        elements: list[FormatElement] | tuple[FormatElement, ...] | None = None,
+    ) -> None:
+        if not name.isascii() or not name.isidentifier():
+            raise ValueError(f"Assembly mnemonic must be a bare identifier: {name!r}")
+        object.__setattr__(self, "name", name)
+        object.__setattr__(
+            self, "elements", None if elements is None else tuple(elements)
+        )
 
 
 # ============================================================================

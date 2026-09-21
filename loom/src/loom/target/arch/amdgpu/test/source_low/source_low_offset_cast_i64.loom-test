@@ -72,8 +72,8 @@ kernel.def target(@target) @offset_integer_casts() {
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 4, direct_arg_count = 2, direct_arg_names = {arg0 = "uniform_input", arg1 = "varying_input"}, direct_arg_offsets = [0, 8], direct_arg_parameter_indices = [0, 1], direct_arg_sizes = [8, 8], parameter_count = 4, resource_count = 2, resource_offsets = [16, 24], resource_parameter_indices = [2, 3], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @offset_integer_casts(%uniform_bounded: reg<amdgpu.sgpr x2>, %varying_bounded: reg<amdgpu.sgpr x2>) asm {
   %lane = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %uniform_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
-  %varying_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
+  %uniform_view = resource<hal_binding> {extent = 512, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %varying_view = resource<hal_binding> {extent = 512, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %30 = slice %varying_bounded[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %31 = v_mov_b32_copy %30
   %39, %40 = v_add_co_u32 %31, %lane

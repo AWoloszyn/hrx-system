@@ -12,7 +12,7 @@ func.def target(@target) @sanitizer_repeated_dense_access_read(%input: buffer) {
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitizer_repeated_dense_access_read() asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 8} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 8, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %5 = s_getpc_b64
   %6 = slice %5[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %7 = slice %5[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -146,7 +146,7 @@ func.def target(@target) @sanitizer_repeated_aligned_rows_read(%input: buffer) {
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitizer_repeated_aligned_rows_read() asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 64} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 64, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %6 = s_getpc_b64
   %7 = slice %6[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %8 = slice %6[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -230,7 +230,7 @@ func.def target(@target) @sanitizer_aligned_granule_access_read(%input: buffer) 
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitizer_aligned_granule_access_read() asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 64} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 64, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %6 = s_getpc_b64
   %7 = slice %6[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %8 = slice %6[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -300,7 +300,7 @@ func.def target(@target) @sanitizer_cdna3_aligned_vector_read(%input: buffer) {
 
 // ----
 low.func.def target<amdgpu.cdna3.core>(@target) abi(hal_kernel) @sanitizer_cdna3_aligned_vector_read() asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 32} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 32, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %6 = s_getpc_b64
   %7 = slice %6[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %8 = slice %6[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -358,7 +358,7 @@ func.def target(@target) @sanitizer_rdna4_aligned_vector_read(%input: buffer) {
 
 // ----
 low.func.def target<amdgpu.rdna4.core>(@target) abi(hal_kernel) @sanitizer_rdna4_aligned_vector_read() asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 32} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 32, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %6 = s_getpc_b64
   %7 = slice %6[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %8 = slice %6[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>

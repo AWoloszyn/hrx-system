@@ -347,10 +347,10 @@ low.func.def target<amdgpu.cdna3.core>(@target) abi(hal_kernel) @mfma_f32_32x32x
 
 low.kernel.def target<amdgpu.cdna3.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 4, resource_count = 4, resource_offsets = [0, 8, 16, 24], resource_parameter_indices = [0, 1, 2, 3], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @mfma_f32_4x4x1_16_blocks_memory() asm {
   %332 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
-  %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
-  %init_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
-  %out_view = resource<hal_binding> {index = 3, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %lhs_view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %rhs_view = resource<hal_binding> {extent = 256, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %init_view = resource<hal_binding> {extent = 1024, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %out_view = resource<hal_binding> {extent = 1024, index = 3, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %337 = v_lshlrev_b32_src0_inline %332, 2
   %338 = s_mov_b32_m0_imm 0
   %lhs = global_load_dword_saddr %337, %lhs_view, %338
@@ -389,10 +389,10 @@ low.kernel.def target<amdgpu.cdna3.core>(@target) abi_layout({constant_count = 0
 
 low.kernel.def target<amdgpu.cdna3.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 4, resource_count = 4, resource_offsets = [0, 8, 16, 24], resource_parameter_indices = [0, 1, 2, 3], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @mfma_f32_16x16x4_f16_4_blocks_memory() asm {
   %366 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
-  %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
-  %init_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 4096} : reg<amdgpu.sgpr x2>
-  %out_view = resource<hal_binding> {index = 3, source_type = hal.buffer, extent = 4096} : reg<amdgpu.sgpr x2>
+  %lhs_view = resource<hal_binding> {extent = 512, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %rhs_view = resource<hal_binding> {extent = 512, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %init_view = resource<hal_binding> {extent = 4096, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %out_view = resource<hal_binding> {extent = 4096, index = 3, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %371 = v_lshlrev_b32_src0_inline %366, 3
   %372 = s_mov_b32_m0_imm 0
   %lhs = global_load_dwordx2_saddr %371, %lhs_view, %372
@@ -491,10 +491,10 @@ low.kernel.def target<amdgpu.cdna3.core>(@target) abi_layout({constant_count = 0
 
 low.kernel.def target<amdgpu.cdna3.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 4, resource_count = 4, resource_offsets = [0, 8, 16, 24], resource_parameter_indices = [0, 1, 2, 3], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @mfma_i32_32x32x4_i8_2_blocks_memory() asm {
   %448 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
-  %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
-  %init_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 8192} : reg<amdgpu.sgpr x2>
-  %out_view = resource<hal_binding> {index = 3, source_type = hal.buffer, extent = 8192} : reg<amdgpu.sgpr x2>
+  %lhs_view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %rhs_view = resource<hal_binding> {extent = 256, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %init_view = resource<hal_binding> {extent = 8192, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %out_view = resource<hal_binding> {extent = 8192, index = 3, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %453 = v_lshlrev_b32_src0_inline %448, 2
   %454 = s_mov_b32_m0_imm 0
   %lhs = global_load_dword_saddr %453, %lhs_view, %454
@@ -674,10 +674,10 @@ low.kernel.def target<amdgpu.cdna3.core>(@target) abi_layout({constant_count = 0
 
 low.kernel.def target<amdgpu.cdna3.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 4, resource_count = 4, resource_offsets = [0, 8, 16, 24], resource_parameter_indices = [0, 1, 2, 3], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @mfma_f64_4x4x4_4_blocks_memory() asm {
   %626 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
-  %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
-  %init_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
-  %out_view = resource<hal_binding> {index = 3, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
+  %lhs_view = resource<hal_binding> {extent = 512, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %rhs_view = resource<hal_binding> {extent = 512, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %init_view = resource<hal_binding> {extent = 512, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %out_view = resource<hal_binding> {extent = 512, index = 3, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %631 = v_and_b32_src0_inline %626, 3
   %632 = v_lshlrev_b32_src0_inline %631, 5
   %633 = v_lshrrev_b32_src0_inline %626, 2

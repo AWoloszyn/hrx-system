@@ -482,6 +482,11 @@ def generate_ops_h(
 
         lines.append("")
 
+    if any(op.assembly is not None for op in ops):
+        lines.append("// Declarative short spellings used inside target assembly regions.")
+        lines.append(f"extern const loom_op_assembly_format_table_t loom_{dialect_name}_assembly_formats;")
+        lines.append("")
+
     # Registration function.
     lines.append(f"// Returns the vtable array for the {dialect_name} dialect.")
     lines.append(f"const loom_op_vtable_t* const* loom_{dialect_name}_dialect_vtables(")

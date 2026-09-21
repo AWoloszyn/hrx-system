@@ -85,7 +85,7 @@ func.def target(@target) @bf16_score_gather_dot2(%query: vector<2xbf16>, %key_ca
 
 // ----
 low.func.def target<amdgpu.cdna3.core>(@target) abi(hal_kernel) @bf16_score_gather_dot2(%query: reg<amdgpu.vgpr>, %token_offset: reg<amdgpu.sgpr>, %acc: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %key_cache_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 8192} : reg<amdgpu.sgpr x2>
+  %key_cache_view = resource<hal_binding> {extent = 8192, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %26 = v_mov_b32 0
   %27 = s_lshl_b32_rhs_inline %token_offset, 1
   %28 = slice %key_cache_view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -212,7 +212,7 @@ func.def target(@target) @f32_uniform_smem_vector_operands(%lhs: vector<4xf32>, 
 
 // ----
 low.func.def target<amdgpu.cdna3.core>(@target) abi(hal_kernel) @f32_uniform_smem_vector_operands(%lhs: reg<amdgpu.vgpr x4>) -> (reg<amdgpu.vgpr>) asm {
-  %weights_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 32} : reg<amdgpu.sgpr x2>
+  %weights_view = resource<hal_binding> {extent = 32, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %19 = s_mov_b32 0
   %rhs = s_load_dwordx4 %weights_view, %19
   %bias = s_load_dword %weights_view, %19 {offset = 16}

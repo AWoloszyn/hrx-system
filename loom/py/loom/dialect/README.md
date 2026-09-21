@@ -258,6 +258,13 @@ The parser/printer path has no custom per-op escape hatch. When an op needs a
 new shape, extend the declarative format vocabulary or reshape the op
 declaration so the existing vocabulary can express it.
 
+An operation can declare `assembly=AssemblyFormat("mnemonic")` for a short name
+inside a target assembly region. This reuses its canonical grammar and field
+layout. An explicit element list, such as `AssemblyFormat("return",
+[Refs("values")])`, selects a different spelling through the same interpreter.
+Both forms construct the same operation; canonical format order still owns
+builder parameters, and both formats must preserve region argument ownership.
+
 ## Source Format Changes
 
 Changing the canonical `format` of an existing op changes checked-in `.loom`

@@ -20,7 +20,7 @@ iree_status_t loom_parse_format_inline_attr_dict(loom_parser_t* parser,
                                                  const loom_op_vtable_t* vtable,
                                                  loom_parsed_op_t* parsed);
 iree_status_t loom_parse_format_apply_elided_attr_defaults(
-    loom_parser_t* parser, const loom_op_vtable_t* vtable,
+    loom_parser_t* parser, const loom_op_vtable_t* vtable, loom_format_t format,
     const loom_format_element_t* inline_element, loom_parsed_op_t* parsed);
 iree_status_t loom_parse_format_operand_dict(
     loom_parser_t* parser, const loom_op_vtable_t* vtable,

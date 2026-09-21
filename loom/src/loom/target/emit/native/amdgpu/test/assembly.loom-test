@@ -1814,7 +1814,7 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_storage_address() a
   %lds0 = storage {byte_alignment = 64, byte_length = 128} : low.storage<workgroup>
   %lds1 = storage {byte_alignment = 64, byte_length = 128} : low.storage<workgroup>
   %private0 = storage {byte_alignment = 4, byte_length = 8192} : low.storage<private>
-  %lds1_view = storage_view %lds1 {offset = 16, byte_length = 32} : low.storage<workgroup> -> low.storage<workgroup>
+  %lds1_view = storage_view %lds1 {byte_length = 32, offset = 16} : low.storage<workgroup> -> low.storage<workgroup>
   %addr0 = storage_address %lds0 {offset = 12} : low.storage<workgroup> -> reg<amdgpu.vgpr>
   %addr1 = storage_address %lds1_view {offset = 4} : low.storage<workgroup> -> reg<amdgpu.vgpr>
   %addr2 = storage_address %private0 {offset = 4104} : low.storage<private> -> reg<amdgpu.vgpr>
@@ -1834,7 +1834,7 @@ amdgpu.target<gfx1100> @gfx11_target
 
 low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @gfx11_storage_address_view_assembly() asm {
   %lds = storage {byte_alignment = 64, byte_length = 128} : low.storage<workgroup>
-  %lds_view = storage_view %lds {offset = 16, byte_length = 32} : low.storage<workgroup> -> low.storage<workgroup>
+  %lds_view = storage_view %lds {byte_length = 32, offset = 16} : low.storage<workgroup> -> low.storage<workgroup>
   %addr = storage_address %lds_view {offset = 4} : low.storage<workgroup> -> reg<amdgpu.vgpr>
   return
 }

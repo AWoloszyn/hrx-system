@@ -1002,20 +1002,5 @@ TEST_F(LowAsmParserTest, RejectsTrailingTokenAfterLocation) {
   (void)diagnostics;
 }
 
-TEST_F(LowAsmParserTest, RejectsExtraReturnTypeAnnotation) {
-  const auto& diagnostics = ParseExpectErrors(
-      "low.func.def target<test.low.core> @return_type() -> "
-      "(reg<test.i32>) asm {\n"
-      "  %c0 = test.const.i32 7\n"
-      "  return %c0 : reg<test.i32>, reg<test.i32>\n"
-      "}\n");
-  const CapturedDiagnostic* diagnostic = FindDiagnostic(
-      capture_, loom_error_def_lookup(LOOM_ERROR_DOMAIN_PARSE, 34));
-  ASSERT_NE(diagnostic, nullptr);
-  EXPECT_EQ(GetStringParam(*diagnostic, 0),
-            "return type annotation count does not match value count");
-  (void)diagnostics;
-}
-
 }  // namespace
 }  // namespace loom

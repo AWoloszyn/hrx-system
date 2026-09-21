@@ -125,46 +125,16 @@ typedef struct loom_text_low_asm_diagnostic_t {
 } loom_text_low_asm_diagnostic_t;
 
 typedef enum loom_text_low_asm_statement_kind_e {
-  // Unknown or uninitialized statement kind. A valid Low body operation left
-  // unknown by both the descriptor environment and structural vocabulary is
-  // an assembly coverage error.
-  LOOM_TEXT_LOW_ASM_STATEMENT_UNKNOWN = 0,
+  // Ordinary operation interpreted through its declared format and optional
+  // assembly alias. Operation legality belongs to the dialect verifier.
+  LOOM_TEXT_LOW_ASM_STATEMENT_CANONICAL = 0,
   // Descriptor-backed packet printed as an instruction mnemonic.
   LOOM_TEXT_LOW_ASM_STATEMENT_PACKET = 1,
-  // Low return packet printed as `return`.
-  LOOM_TEXT_LOW_ASM_STATEMENT_RETURN = 2,
-  // Target-low structural intrinsic printed in asm syntax.
-  LOOM_TEXT_LOW_ASM_STATEMENT_STRUCTURAL = 3,
+  // Descriptor-backed operation with no lossless packet spelling. The packet
+  // descriptor_key identifies it for diagnostics; canonical fallback is
+  // invalid.
+  LOOM_TEXT_LOW_ASM_STATEMENT_UNAVAILABLE = 2,
 } loom_text_low_asm_statement_kind_t;
-
-typedef enum loom_text_low_asm_structural_kind_e {
-  // Unknown or uninitialized structural kind.
-  LOOM_TEXT_LOW_ASM_STRUCTURAL_UNKNOWN = 0,
-  // Function-local target resource import.
-  LOOM_TEXT_LOW_ASM_STRUCTURAL_RESOURCE = 1,
-  // Target ABI live-in register import.
-  LOOM_TEXT_LOW_ASM_STRUCTURAL_LIVE_IN = 2,
-  // Register range concatenation.
-  LOOM_TEXT_LOW_ASM_STRUCTURAL_CONCAT = 3,
-  // Register range slice projection.
-  LOOM_TEXT_LOW_ASM_STRUCTURAL_SLICE = 4,
-  // Function-local storage reservation.
-  LOOM_TEXT_LOW_ASM_STRUCTURAL_STORAGE_RESERVE = 5,
-  // Function-local storage address materialization.
-  LOOM_TEXT_LOW_ASM_STRUCTURAL_STORAGE_ADDRESS = 6,
-  // Explicit virtual-register copy/coalescing boundary.
-  LOOM_TEXT_LOW_ASM_STRUCTURAL_COPY = 7,
-  // Function-local storage subspan projection.
-  LOOM_TEXT_LOW_ASM_STRUCTURAL_STORAGE_VIEW = 8,
-  // Explicit virtual-register ownership transfer/coalescing boundary.
-  LOOM_TEXT_LOW_ASM_STRUCTURAL_MOVE = 9,
-} loom_text_low_asm_structural_kind_t;
-
-enum loom_text_low_asm_structural_build_flag_bits_e {
-  // The structural operation explicitly carries an attribute dictionary.
-  LOOM_TEXT_LOW_ASM_STRUCTURAL_BUILD_FLAG_HAS_ATTRIBUTES = 1u << 0,
-};
-typedef uint32_t loom_text_low_asm_structural_build_flags_t;
 
 enum loom_text_low_asm_packet_build_flag_bits_e {
   // No result annotation was authored. Infer ownership ties from the packet
@@ -173,28 +143,11 @@ enum loom_text_low_asm_packet_build_flag_bits_e {
 };
 typedef uint32_t loom_text_low_asm_packet_build_flags_t;
 
-typedef struct loom_text_low_asm_structural_attribute_t {
-  // Surface attribute name to print in the structural intrinsic dictionary.
-  iree_string_view_t name;
-  // Attribute payload owned by the canonical operation.
-  const loom_attribute_t* value;
-  // Optional descriptor used to print enum attributes by spelling.
-  const loom_attr_descriptor_t* descriptor;
-} loom_text_low_asm_structural_attribute_t;
-
 typedef struct loom_text_low_asm_statement_t {
   // Statement kind describing which fields below are meaningful.
   loom_text_low_asm_statement_kind_t kind;
   // Original canonical operation represented by this asm statement.
   const loom_op_t* op;
-  // Structural intrinsic kind when |kind| is STRUCTURAL.
-  loom_text_low_asm_structural_kind_t structural_kind;
-  // Presence flags for optional structural syntax.
-  loom_text_low_asm_structural_build_flags_t structural_build_flags;
-  // Structural intrinsic key printed in angle brackets, if any.
-  iree_string_view_t structural_key;
-  // Static slice offset when |structural_kind| is SLICE.
-  int64_t structural_offset;
   // Packet descriptor for descriptor-backed packet statements.
   loom_text_low_asm_packet_descriptor_t packet;
   // SSA results defined by a packet statement.
@@ -204,16 +157,12 @@ typedef struct loom_text_low_asm_statement_t {
   // Ownership ties differ from descriptor inference, requiring a complete
   // result annotation even when the result types alone could be inferred.
   bool requires_result_tie_annotation;
-  // SSA operands consumed by a packet statement, or return values for returns.
+  // SSA operands consumed by a packet statement.
   const loom_value_id_t* operands;
   // Number of SSA values in |operands|.
   uint16_t operand_count;
   // Canonical immediate attributes stored on the packet operation.
   loom_named_attr_slice_t attributes;
-  // Structural attributes with direct descriptors for typed printing.
-  loom_text_low_asm_structural_attribute_t structural_attributes[8];
-  // Number of entries populated in |structural_attributes|.
-  uint8_t structural_attribute_count;
   // True when immediate attributes correspond to a concrete op attr field.
   bool has_immediate_attribute_field;
   // Operation attribute field index storing packet immediate attributes.
@@ -224,18 +173,12 @@ typedef struct loom_text_low_asm_statement_t {
 
 // Contract for descriptor-backed statement descriptions.
 //
-// A describe callback is called after the canonical IR has been verified by the
-// owning low dialect/descriptor registry. It returns UNKNOWN for operations
-// outside its vocabulary, or a fully well-formed statement. Valid Low body
-// operations must have a lossless spelling through this environment or the
-// shared canonical structural vocabulary:
-// - PACKET result/operand counts match |packet| and all result/operand IDs are
-//   valid in the module value table.
-// - PACKET immediate attributes are canonical for |packet|; missing optional
-//   immediates are represented by descriptor defaults.
-// - RETURN operands and STRUCTURAL results/operands are valid module values.
-// - STRUCTURAL statements carry the result/operand/attribute shape required by
-//   their structural kind.
+// A describe callback consumes canonical IR and classifies descriptor-backed
+// operations independently of ordinary operation formatting. CANONICAL uses the
+// operation's generated grammar. UNAVAILABLE retains the stable descriptor key
+// for a packet that cannot be printed losslessly. PACKET carries valid module
+// values, descriptor-matching result/operand counts and canonical immediates;
+// omitted optional immediates use descriptor defaults.
 //
 // The text printer relies on this contract and only performs formatting and
 // lossless-spelling availability checks. Semantic validation belongs in the
@@ -300,25 +243,6 @@ typedef iree_status_t (*loom_text_low_asm_build_packet_fn_t)(
     iree_host_size_t tied_result_count, loom_location_id_t location,
     loom_op_t** out_op);
 
-typedef iree_status_t (*loom_text_low_asm_build_return_fn_t)(
-    const loom_text_low_asm_environment_state_t* state, loom_builder_t* builder,
-    const loom_value_id_t* values, iree_host_size_t value_count,
-    loom_location_id_t location, loom_op_t** out_op);
-
-typedef iree_status_t (*loom_text_low_asm_structural_attr_descriptor_fn_t)(
-    const loom_text_low_asm_environment_state_t* state,
-    loom_text_low_asm_structural_kind_t kind, iree_string_view_t attr_name,
-    const loom_attr_descriptor_t** out_descriptor);
-
-typedef iree_status_t (*loom_text_low_asm_build_structural_fn_t)(
-    const loom_text_low_asm_environment_state_t* state, loom_builder_t* builder,
-    loom_text_low_asm_structural_kind_t kind,
-    loom_text_low_asm_structural_build_flags_t build_flags,
-    iree_string_view_t key, const loom_value_id_t* operands,
-    iree_host_size_t operand_count, loom_named_attr_slice_t attributes,
-    int64_t offset, loom_type_t result_type, loom_location_id_t location,
-    loom_op_t** out_op);
-
 typedef iree_status_t (*loom_text_low_asm_describe_operation_fn_t)(
     const loom_text_low_asm_environment_state_t* state,
     const loom_text_low_asm_descriptor_set_t* descriptor_set,
@@ -368,18 +292,12 @@ typedef struct loom_text_low_asm_vtable_t {
   loom_text_low_asm_immediate_descriptor_fn_t immediate_descriptor;
   // Returns delimiter and cardinality metadata for one operand segment.
   loom_text_low_asm_operand_segment_descriptor_fn_t operand_segment_descriptor;
-  // Builds the canonical low operation for a parsed non-return asm packet.
+  // Builds the canonical low operation for a parsed descriptor-backed packet.
   loom_text_low_asm_build_packet_fn_t build_packet;
-  // Builds the canonical low return operation for an asm `return` packet.
-  loom_text_low_asm_build_return_fn_t build_return;
-  // Looks up a typed structural intrinsic attribute descriptor by name.
-  loom_text_low_asm_structural_attr_descriptor_fn_t structural_attr_descriptor;
-  // Builds the canonical low operation for a parsed structural intrinsic.
-  loom_text_low_asm_build_structural_fn_t build_structural;
-  // Describes a canonical operation as a printable low asm statement. Returns
-  // OK with UNKNOWN when the operation is valid but has no lossless asm form.
-  // See the statement description contract above for the validity guarantees
-  // required when a concrete statement kind is returned.
+  // Describes a canonical operation as a printable low asm statement.
+  // CANONICAL delegates to ordinary formats; UNAVAILABLE rejects packet
+  // fallback. See the statement description contract above for the validity
+  // guarantees required when a concrete statement kind is returned.
   loom_text_low_asm_describe_operation_fn_t describe_operation;
   // Resolves textual register classes while parsing target-low register types.
   loom_text_low_asm_resolve_register_type_fn_t resolve_register_type;
@@ -391,6 +309,8 @@ typedef struct loom_text_low_asm_vtable_t {
 } loom_text_low_asm_vtable_t;
 
 typedef struct loom_text_low_asm_environment_t {
+  // Generated short spellings, or NULL to use only canonical operation names.
+  const loom_op_assembly_format_table_t* operation_formats;
   // Stable-key codec for canonical Low representation values.
   loom_low_repr_environment_t low_repr;
   // Function table implementing low asm lookup, type inference, and builders.
@@ -409,10 +329,7 @@ static inline bool loom_text_low_asm_environment_is_configured(
          environment->vtable->validate_result_type &&
          environment->vtable->immediate_descriptor &&
          environment->vtable->operand_segment_descriptor &&
-         environment->vtable->build_packet &&
-         environment->vtable->build_return &&
-         environment->vtable->structural_attr_descriptor &&
-         environment->vtable->build_structural;
+         environment->vtable->build_packet;
 }
 
 static inline bool loom_text_low_asm_environment_supports_printing(

@@ -20,8 +20,8 @@ kernel.def target(@target) @vector_fptrunc_f32x66_load_store() {
 
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @vector_fptrunc_f32x66_load_store() asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 264} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 132} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 264, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 132, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %27 = s_mov_b32 0
   %28 = s_mov_b32 64
   %29 = s_mov_b32 4
@@ -93,8 +93,8 @@ kernel.def target(@target) @vector_extf_f16x34_load_store() {
 
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @vector_extf_f16x34_load_store() asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 68} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 136} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 68, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 136, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %27 = s_mov_b32 0
   %28 = s_mov_b32 32
   %29 = s_mov_b32 4

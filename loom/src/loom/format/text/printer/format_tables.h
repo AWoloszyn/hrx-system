@@ -19,7 +19,7 @@ extern "C" {
 // by the generated format.
 iree_status_t loom_print_inline_attr_dict(
     loom_print_context_t* ctx, const loom_op_t* op,
-    const loom_op_vtable_t* vtable,
+    const loom_op_vtable_t* vtable, loom_format_t format,
     const loom_format_element_t* inline_element);
 
 // Prints a named operand dictionary.

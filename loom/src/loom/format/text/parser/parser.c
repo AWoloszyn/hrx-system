@@ -629,8 +629,9 @@ static iree_status_t loom_finalize_op(
 // Op parsing
 //===----------------------------------------------------------------------===//
 
-static iree_status_t loom_parse_op_into(loom_parser_t* parser,
-                                        loom_parsed_op_t* parsed) {
+static iree_status_t loom_parse_op_into(
+    loom_parser_t* parser, loom_parsed_op_t* parsed,
+    const loom_op_assembly_format_t* assembly) {
   uint32_t errors_before = parser->error_count;
 
   // Capture the start position of the op for source location tracking.
@@ -682,12 +683,18 @@ static iree_status_t loom_parse_op_into(loom_parser_t* parser,
 
   // Parse op name.
   loom_token_t op_name_token = loom_token_none();
-  LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_OP_NAME, &op_name_token);
+  if (assembly) {
+    op_name_token = loom_tokenizer_next(&parser->tokenizer);
+  } else {
+    LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_OP_NAME, &op_name_token);
+  }
 
-  // Look up the op vtable.
-  loom_op_kind_t kind;
-  const loom_op_vtable_t* vtable = loom_context_lookup_op_by_name(
-      parser->context, op_name_token.text, &kind);
+  // Assembly lookup already resolved the canonical kind at the text boundary.
+  loom_op_kind_t kind = assembly ? assembly->kind : LOOM_OP_KIND_UNKNOWN;
+  const loom_op_vtable_t* vtable =
+      assembly ? loom_context_resolve_op(parser->context, kind)
+               : loom_context_lookup_op_by_name(parser->context,
+                                                op_name_token.text, &kind);
   if (!vtable) {
     loom_diagnostic_param_t params[] = {
         loom_param_string(op_name_token.text),
@@ -716,8 +723,8 @@ static iree_status_t loom_parse_op_into(loom_parser_t* parser,
   // Walk the format elements.
   bool func_args_consumed_by_region = false;
   iree_status_t walk_status = loom_parser_walk_format(
-      parser, vtable, op_name_token, parsed, pending_func_arg_start,
-      &func_args_consumed_by_region);
+      parser, vtable, loom_op_format(vtable, assembly), op_name_token, parsed,
+      pending_func_arg_start, &func_args_consumed_by_region);
   parser->low_repr = previous_low_repr;
   IREE_RETURN_IF_ERROR(walk_status);
 
@@ -778,10 +785,11 @@ static iree_status_t loom_parse_op_into(loom_parser_t* parser,
                                         comment_count);
 }
 
-iree_status_t loom_parse_op(loom_parser_t* parser) {
+iree_status_t loom_parse_op(loom_parser_t* parser,
+                            const loom_op_assembly_format_t* assembly) {
   loom_parsed_op_t* parsed = NULL;
   IREE_RETURN_IF_ERROR(loom_parser_acquire_parsed_op(parser, &parsed));
-  iree_status_t status = loom_parse_op_into(parser, parsed);
+  iree_status_t status = loom_parse_op_into(parser, parsed, assembly);
   loom_parser_result_scope_reset(&parser->result_scope);
   loom_parser_release_parsed_op(parser, parsed);
   return status;
@@ -804,7 +812,7 @@ static iree_status_t loom_parse_block_body(loom_parser_t* parser,
       break;
     }
     uint32_t errors_before = parser->error_count;
-    IREE_RETURN_IF_ERROR(loom_parse_op(parser));
+    IREE_RETURN_IF_ERROR(loom_parse_op(parser, NULL));
     if (parser->error_count > errors_before) {
       loom_parser_sync_to_newline(parser);
     }
@@ -1216,7 +1224,7 @@ static iree_status_t loom_parse_module_body(loom_parser_t* parser) {
 
     // Parse a top-level op (function definition, etc.).
     uint32_t errors_before = parser->error_count;
-    IREE_RETURN_IF_ERROR(loom_parse_op(parser));
+    IREE_RETURN_IF_ERROR(loom_parse_op(parser, NULL));
     if (parser->error_count > errors_before) {
       loom_parser_sync_to_newline(parser);
     }

@@ -13,6 +13,7 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "assembly_formats.loom-test"
     "assume.loom-test"
     "call_types.loom-test"
     "canonicalize.loom-test"

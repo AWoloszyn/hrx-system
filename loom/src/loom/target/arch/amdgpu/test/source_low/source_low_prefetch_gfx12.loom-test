@@ -11,7 +11,7 @@ func.def @prefetch_static(%input: buffer) {
 
 // ----
 low.func.def target<amdgpu.rdna4.core> abi(hal_kernel) @prefetch_static() asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 272} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 272, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %4 = s_mov_b32 0
   %6 = slice %input_view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %7 = slice %input_view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -43,7 +43,7 @@ kernel.def @prefetch_workgroup_id() {
 // ----
 low.kernel.def target<amdgpu.rdna4.core> abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1025, 1, 1) @prefetch_workgroup_id() asm {
   %workgroup = live_in<amdgpu.cluster_id_x> : reg<amdgpu.sgpr>
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 4100} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 4100, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %8 = s_lshl_b32_rhs_inline %workgroup, 2
   %10 = slice %input_view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %11 = slice %input_view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -81,7 +81,7 @@ kernel.def @prefetch_fixed_query_offset() {
 
 // ----
 low.kernel.def target<amdgpu.rdna4.core> abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(8, 4, 1) workgroup_count(1, 1, 1) @prefetch_fixed_query_offset() asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %14 = s_mov_b32 0
   %16 = slice %input_view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %17 = slice %input_view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>

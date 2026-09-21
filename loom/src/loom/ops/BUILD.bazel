@@ -24,16 +24,28 @@ loom_cc_library(
         "builder_macros.h",
         "op_defs.h",
     ],
+    deps = [
+        ":format",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/util:adaptive_sort",
+        "//loom/src/loom/util:bstring",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "format",
+    srcs = ["format.c"],
+    hdrs = ["format.h"],
     textual_hdrs = [
         "keyword_enum.inc",
         "keyword_table.inc",
     ],
     deps = [
         "//loom/src/loom/ir",
-        "//loom/src/loom/util:adaptive_sort",
         "//loom/src/loom/util:bstring",
         "//runtime/src/iree/base",
-        "//runtime/src/iree/base/internal:arena",
     ],
 )
 

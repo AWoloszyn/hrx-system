@@ -2,60 +2,60 @@
 
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_const_concat_uniform_zero() {
-  %zero = low.const<test.const.i32> {i32_value = 0} : reg<test.i32>
-  %quad = low.concat(%zero, %zero, %zero, %zero) : (reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>) -> reg<test.i32 x4>
-  %copy = low.copy %quad : reg<test.i32 x4> -> reg<test.i32 x4>
-  %moved = low.move %copy : reg<test.i32 x4> -> reg<test.i32 x4>
-  %slice = low.slice %moved[1] : reg<test.i32 x4> -> reg<test.i32 x2>
-  %wide = low.concat(%slice, %slice) : (reg<test.i32 x2>, reg<test.i32 x2>) -> reg<test.i32 x4>
+low.kernel.def target<test.low.core>(@target) @low_const_concat_uniform_zero() asm {
+  %zero = test.const.i32 0
+  %quad = concat(%zero, %zero, %zero, %zero) : (reg<test.i32>, reg<test.i32>, reg<test.i32>, reg<test.i32>) -> reg<test.i32 x4>
+  %copy = copy %quad : reg<test.i32 x4> -> reg<test.i32 x4>
+  %moved = move %copy : reg<test.i32 x4> -> reg<test.i32 x4>
+  %slice = slice %moved[1] : reg<test.i32 x4> -> reg<test.i32 x2>
+  %wide = concat(%slice, %slice) : (reg<test.i32 x2>, reg<test.i32 x2>) -> reg<test.i32 x4>
   %lo = test.fact_all_equal_range_lo %wide : reg<test.i32 x4> -> i64
   %hi = test.fact_all_equal_range_hi %wide : reg<test.i32 x4> -> i64
   test.use %lo, %hi : i64, i64
-  low.return
+  return
 }
 
 // ----
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_const_concat_uniform_zero() {
+low.kernel.def target<test.low.core>(@target) @low_const_concat_uniform_zero() asm {
   %lo = scalar.constant 0 : i64
   %hi = scalar.constant 0 : i64
   test.use %lo, %hi : i64, i64
-  low.return
+  return
 }
 
 // ====
 
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_concat_rejects_mixed_elements() {
-  %zero = low.const<test.const.i32> {i32_value = 0} : reg<test.i32>
-  %one = low.const<test.const.i32> {i32_value = 1} : reg<test.i32>
-  %pair = low.concat(%zero, %one) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32 x2>
+low.kernel.def target<test.low.core>(@target) @low_concat_rejects_mixed_elements() asm {
+  %zero = test.const.i32 0
+  %one = test.const.i32 1
+  %pair = concat(%zero, %one) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32 x2>
   %lo = test.fact_all_equal_range_lo %pair : reg<test.i32 x2> -> i64
   %hi = test.fact_all_equal_range_hi %pair : reg<test.i32 x2> -> i64
   test.use %lo, %hi : i64, i64
-  low.return
+  return
 }
 
 // ----
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_concat_rejects_mixed_elements() {
+low.kernel.def target<test.low.core>(@target) @low_concat_rejects_mixed_elements() asm {
   %lo = scalar.constant -9223372036854775808 : i64
   %hi = scalar.constant -9223372036854775808 : i64
   test.use %lo, %hi : i64, i64
-  low.return
+  return
 }
 
 // ====
 
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_storage_reserve_and_view_facts() {
-  %storage = low.storage.reserve {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
-  %view = low.storage.view %storage {byte_length = 64, offset = 16} : low.storage<workgroup> -> low.storage<workgroup>
+low.kernel.def target<test.low.core>(@target) @low_storage_reserve_and_view_facts() asm {
+  %storage = storage {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
+  %view = storage_view %storage {byte_length = 64, offset = 16} : low.storage<workgroup> -> low.storage<workgroup>
   %is = test.fact_is_storage_reference %storage : low.storage<workgroup> -> i1
   %same = test.fact_storage_same_backing %storage, %view : low.storage<workgroup>, low.storage<workgroup> -> i1
   %offset_lo = test.fact_storage_byte_offset_lo %view : low.storage<workgroup> -> i64
@@ -66,14 +66,14 @@ low.kernel.def target<test.low.core>(@target) @low_storage_reserve_and_view_fact
   %alignment = test.fact_storage_min_alignment %view : low.storage<workgroup> -> i64
   %space = test.fact_storage_space %storage : low.storage<workgroup> -> i64
   test.use %is, %same, %offset_lo, %offset_hi, %offset_div, %length_lo, %length_hi, %alignment, %space : i1, i1, i64, i64, i64, i64, i64, i64, i64
-  low.return
+  return
 }
 
 // ----
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_storage_reserve_and_view_facts() {
-  %storage = low.storage.reserve {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
+low.kernel.def target<test.low.core>(@target) @low_storage_reserve_and_view_facts() asm {
+  %storage = storage {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
   %is = scalar.constant true : i1
   %same = scalar.constant true : i1
   %offset_lo = scalar.constant 16 : i64
@@ -84,19 +84,19 @@ low.kernel.def target<test.low.core>(@target) @low_storage_reserve_and_view_fact
   %alignment = scalar.constant 16 : i64
   %space = scalar.constant 3 : i64
   test.use %is, %same, %offset_lo, %offset_hi, %offset_div, %length_lo, %length_hi, %alignment, %space : i1, i1, i64, i64, i64, i64, i64, i64, i64
-  low.return
+  return
 }
 
 // ====
 
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_storage_select_same_backing() {
+low.kernel.def target<test.low.core>(@target) @low_storage_select_same_backing() asm {
   %condition_seed = scalar.constant true : i1
   %cond = test.convergent %condition_seed : i1
-  %storage = low.storage.reserve {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
-  %a = low.storage.view %storage {byte_length = 32, offset = 16} : low.storage<workgroup> -> low.storage<workgroup>
-  %b = low.storage.view %storage {byte_length = 32, offset = 32} : low.storage<workgroup> -> low.storage<workgroup>
+  %storage = storage {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
+  %a = storage_view %storage {byte_length = 32, offset = 16} : low.storage<workgroup> -> low.storage<workgroup>
+  %b = storage_view %storage {byte_length = 32, offset = 32} : low.storage<workgroup> -> low.storage<workgroup>
   %selected = scf.select %cond, %a, %b : low.storage<workgroup>
   %same = test.fact_storage_same_backing %selected, %storage : low.storage<workgroup>, low.storage<workgroup> -> i1
   %offset_lo = test.fact_storage_byte_offset_lo %selected : low.storage<workgroup> -> i64
@@ -104,23 +104,23 @@ low.kernel.def target<test.low.core>(@target) @low_storage_select_same_backing()
   %offset_div = test.fact_storage_byte_offset_divisor %selected : low.storage<workgroup> -> i64
   %alignment = test.fact_storage_min_alignment %selected : low.storage<workgroup> -> i64
   test.use %same, %offset_lo, %offset_hi, %offset_div, %alignment : i1, i64, i64, i64, i64
-  low.return
+  return
 }
 
 // ----
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_storage_select_same_backing() {
+low.kernel.def target<test.low.core>(@target) @low_storage_select_same_backing() asm {
   %condition_seed = scalar.constant true : i1
   %cond = test.convergent %condition_seed : i1
-  %storage = low.storage.reserve {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
+  %storage = storage {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
   %same = scalar.constant true : i1
   %offset_lo = scalar.constant 16 : i64
   %offset_hi = scalar.constant 32 : i64
   %offset_div = scalar.constant 16 : i64
   %alignment = scalar.constant 16 : i64
   test.use %same, %offset_lo, %offset_hi, %offset_div, %alignment : i1, i64, i64, i64, i64
-  low.return
+  return
 }
 
 // ====
@@ -129,12 +129,12 @@ low.kernel.def target<test.low.core>(@target) @low_storage_select_same_backing()
 // storage identity while meeting the offsets yielded by both branch regions.
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_storage_if_same_backing() {
+low.kernel.def target<test.low.core>(@target) @low_storage_if_same_backing() asm {
   %condition_seed = scalar.constant true : i1
   %cond = test.convergent %condition_seed : i1
-  %storage = low.storage.reserve {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
-  %a = low.storage.view %storage {byte_length = 32, offset = 16} : low.storage<workgroup> -> low.storage<workgroup>
-  %b = low.storage.view %storage {byte_length = 32, offset = 32} : low.storage<workgroup> -> low.storage<workgroup>
+  %storage = storage {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
+  %a = storage_view %storage {byte_length = 32, offset = 16} : low.storage<workgroup> -> low.storage<workgroup>
+  %b = storage_view %storage {byte_length = 32, offset = 32} : low.storage<workgroup> -> low.storage<workgroup>
   %selected = scf.if %cond -> (low.storage<workgroup>) {
     test.use %a : low.storage<workgroup>
     scf.yield %a : low.storage<workgroup>
@@ -148,18 +148,18 @@ low.kernel.def target<test.low.core>(@target) @low_storage_if_same_backing() {
   %offset_div = test.fact_storage_byte_offset_divisor %selected : low.storage<workgroup> -> i64
   %alignment = test.fact_storage_min_alignment %selected : low.storage<workgroup> -> i64
   test.use %same, %offset_lo, %offset_hi, %offset_div, %alignment : i1, i64, i64, i64, i64
-  low.return
+  return
 }
 
 // ----
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_storage_if_same_backing() {
+low.kernel.def target<test.low.core>(@target) @low_storage_if_same_backing() asm {
   %condition_seed = scalar.constant true : i1
   %cond = test.convergent %condition_seed : i1
-  %storage = low.storage.reserve {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
-  %a = low.storage.view %storage {byte_length = 32, offset = 16} : low.storage<workgroup> -> low.storage<workgroup>
-  %b = low.storage.view %storage {byte_length = 32, offset = 32} : low.storage<workgroup> -> low.storage<workgroup>
+  %storage = storage {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
+  %a = storage_view %storage {byte_length = 32, offset = 16} : low.storage<workgroup> -> low.storage<workgroup>
+  %b = storage_view %storage {byte_length = 32, offset = 32} : low.storage<workgroup> -> low.storage<workgroup>
   scf.if %cond {
     test.use %a : low.storage<workgroup>
   } else {
@@ -171,7 +171,7 @@ low.kernel.def target<test.low.core>(@target) @low_storage_if_same_backing() {
   %offset_div = scalar.constant 16 : i64
   %alignment = scalar.constant 16 : i64
   test.use %same, %offset_lo, %offset_hi, %offset_div, %alignment : i1, i64, i64, i64, i64
-  low.return
+  return
 }
 
 // ====
@@ -180,11 +180,11 @@ low.kernel.def target<test.low.core>(@target) @low_storage_if_same_backing() {
 // yielded values have different backing allocations.
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_storage_if_different_backing() {
+low.kernel.def target<test.low.core>(@target) @low_storage_if_different_backing() asm {
   %condition_seed = scalar.constant true : i1
   %cond = test.convergent %condition_seed : i1
-  %lhs = low.storage.reserve {byte_alignment = 64, byte_length = 128} : low.storage<private>
-  %rhs = low.storage.reserve {byte_alignment = 64, byte_length = 128} : low.storage<private>
+  %lhs = storage {byte_alignment = 64, byte_length = 128} : low.storage<private>
+  %rhs = storage {byte_alignment = 64, byte_length = 128} : low.storage<private>
   %selected = scf.if %cond -> (low.storage<private>) {
     test.use %lhs : low.storage<private>
     scf.yield %lhs : low.storage<private>
@@ -195,17 +195,17 @@ low.kernel.def target<test.low.core>(@target) @low_storage_if_different_backing(
   %is = test.fact_is_storage_reference %selected : low.storage<private> -> i1
   %offset_lo = test.fact_storage_byte_offset_lo %selected : low.storage<private> -> i64
   test.use %is, %offset_lo : i1, i64
-  low.return
+  return
 }
 
 // ----
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_storage_if_different_backing() {
+low.kernel.def target<test.low.core>(@target) @low_storage_if_different_backing() asm {
   %condition_seed = scalar.constant true : i1
   %cond = test.convergent %condition_seed : i1
-  %lhs = low.storage.reserve {byte_alignment = 64, byte_length = 128} : low.storage<private>
-  %rhs = low.storage.reserve {byte_alignment = 64, byte_length = 128} : low.storage<private>
+  %lhs = storage {byte_alignment = 64, byte_length = 128} : low.storage<private>
+  %rhs = storage {byte_alignment = 64, byte_length = 128} : low.storage<private>
   scf.if %cond {
     test.use %lhs : low.storage<private>
   } else {
@@ -214,49 +214,49 @@ low.kernel.def target<test.low.core>(@target) @low_storage_if_different_backing(
   %is = scalar.constant false : i1
   %offset_lo = scalar.constant -9223372036854775808 : i64
   test.use %is, %offset_lo : i1, i64
-  low.return
+  return
 }
 
 // ====
 
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_storage_select_different_backing() {
+low.kernel.def target<test.low.core>(@target) @low_storage_select_different_backing() asm {
   %condition_seed = scalar.constant true : i1
   %cond = test.convergent %condition_seed : i1
-  %lhs = low.storage.reserve {byte_alignment = 64, byte_length = 128} : low.storage<private>
-  %rhs = low.storage.reserve {byte_alignment = 64, byte_length = 128} : low.storage<private>
+  %lhs = storage {byte_alignment = 64, byte_length = 128} : low.storage<private>
+  %rhs = storage {byte_alignment = 64, byte_length = 128} : low.storage<private>
   %selected = scf.select %cond, %lhs, %rhs : low.storage<private>
   %is = test.fact_is_storage_reference %selected : low.storage<private> -> i1
   %offset_lo = test.fact_storage_byte_offset_lo %selected : low.storage<private> -> i64
   test.use %is, %offset_lo : i1, i64
-  low.return
+  return
 }
 
 // ----
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_storage_select_different_backing() {
+low.kernel.def target<test.low.core>(@target) @low_storage_select_different_backing() asm {
   %condition_seed = scalar.constant true : i1
   %cond = test.convergent %condition_seed : i1
-  %lhs = low.storage.reserve {byte_alignment = 64, byte_length = 128} : low.storage<private>
-  %rhs = low.storage.reserve {byte_alignment = 64, byte_length = 128} : low.storage<private>
+  %lhs = storage {byte_alignment = 64, byte_length = 128} : low.storage<private>
+  %rhs = storage {byte_alignment = 64, byte_length = 128} : low.storage<private>
   %is = scalar.constant false : i1
   %offset_lo = scalar.constant -9223372036854775808 : i64
   test.use %is, %offset_lo : i1, i64
-  low.return
+  return
 }
 
 // ====
 
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_storage_loop_widens_unstable_offset() {
+low.kernel.def target<test.low.core>(@target) @low_storage_loop_widens_unstable_offset() asm {
   %lo = index.constant 0 : index
   %upper = index.constant 4 : index
   %step = index.constant 1 : index
-  %storage = low.storage.reserve {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
-  %initial = low.storage.view %storage {byte_length = 128} : low.storage<workgroup> -> low.storage<workgroup>
+  %storage = storage {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
+  %initial = storage_view %storage {byte_length = 128} : low.storage<workgroup> -> low.storage<workgroup>
   %result = scf.for %iv = [%lo to %upper step %step](%carry = %initial : low.storage<workgroup>) -> (low.storage<workgroup>) {
     %next = low.storage.view %carry {byte_length = 64, offset = 16} : low.storage<workgroup> -> low.storage<workgroup>
     scf.yield %next : low.storage<workgroup>
@@ -265,17 +265,17 @@ low.kernel.def target<test.low.core>(@target) @low_storage_loop_widens_unstable_
   %offset_lo = test.fact_storage_byte_offset_lo %result : low.storage<workgroup> -> i64
   %offset_hi = test.fact_storage_byte_offset_hi %result : low.storage<workgroup> -> i64
   test.use %is, %offset_lo, %offset_hi : i1, i64, i64
-  low.return
+  return
 }
 
 // ----
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @low_storage_loop_widens_unstable_offset() {
-  %storage = low.storage.reserve {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
+low.kernel.def target<test.low.core>(@target) @low_storage_loop_widens_unstable_offset() asm {
+  %storage = storage {byte_alignment = 64, byte_length = 256} : low.storage<workgroup>
   %is = scalar.constant true : i1
   %offset_lo = scalar.constant -9223372036854775808 : i64
   %offset_hi = scalar.constant 9223372036854775807 : i64
   test.use %is, %offset_lo, %offset_hi : i1, i64, i64
-  low.return
+  return
 }

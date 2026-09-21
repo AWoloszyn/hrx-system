@@ -229,7 +229,7 @@ kernel.def target(@target) @uniform_predicate_queue() {
 amdgpu.target<gfx11-generic> @target {subgroup_size = 32}
 
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 4, direct_arg_count = 4, direct_arg_names = {arg0 = "selector", arg1 = "first_flag", arg2 = "second_flag", arg3 = "limit"}, direct_arg_offsets = [0, 4, 8, 12], direct_arg_parameter_indices = [0, 1, 2, 3], direct_arg_sizes = [4, 4, 4, 4], parameter_count = 5, resource_count = 1, resource_offsets = [16], resource_parameter_indices = [4], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @uniform_predicate_queue(%selector: reg<amdgpu.sgpr>, %first_flag: reg<amdgpu.sgpr>, %second_flag: reg<amdgpu.sgpr>, %limit: reg<amdgpu.sgpr>) asm {
-  %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 4, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %begin = s_mov_b32 0
   %step = s_mov_b32 1
   %29 = s_cmp_lg_i32 %selector, %begin
@@ -330,7 +330,7 @@ kernel.def target(@target) @uniform_predicate_queue() {
 amdgpu.target<gfx11-generic> @target {subgroup_size = 64}
 
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 4, direct_arg_count = 4, direct_arg_names = {arg0 = "selector", arg1 = "first_flag", arg2 = "second_flag", arg3 = "limit"}, direct_arg_offsets = [0, 4, 8, 12], direct_arg_parameter_indices = [0, 1, 2, 3], direct_arg_sizes = [4, 4, 4, 4], parameter_count = 5, resource_count = 1, resource_offsets = [16], resource_parameter_indices = [4], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @uniform_predicate_queue(%selector: reg<amdgpu.sgpr>, %first_flag: reg<amdgpu.sgpr>, %second_flag: reg<amdgpu.sgpr>, %limit: reg<amdgpu.sgpr>) asm {
-  %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 4, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %begin = s_mov_b32 0
   %step = s_mov_b32 1
   %29 = s_cmp_lg_i32 %selector, %begin

@@ -176,23 +176,19 @@ loom_cc_library(
     name = "text_asm",
     srcs = [
         "text_asm.c",
-        "text_asm_structural.c",
     ],
     hdrs = [
         "text_asm.h",
-        "text_asm_internal.h",
     ],
     visibility = _LOW_FORMAT_CODEC_VISIBILITY,
     deps = [
         ":builder",
         ":descriptors",
         ":repr",
-        "//loom/src/loom/analysis:symbol_facts",
         "//loom/src/loom/format/text:low_asm",
         "//loom/src/loom/format/text:printer",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/low",
-        "//loom/src/loom/ops/target",
         "//loom/src/loom/target:low_asm_diagnostics",
         "//loom/src/loom/target:registers",
         "//runtime/src/iree/base",

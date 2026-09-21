@@ -161,20 +161,19 @@ static iree_status_t loom_parse_format_keyword_is_present(
 }
 
 static const loom_format_element_t* loom_format_next_non_glue(
-    const loom_op_vtable_t* vtable, uint16_t start_index) {
+    loom_format_t format, uint16_t start_index) {
   uint16_t index = start_index;
-  while (index < vtable->format_element_count &&
-         vtable->format_elements[index].kind == LOOM_FORMAT_KIND_GLUE) {
+  while (index < format.count &&
+         format.elements[index].kind == LOOM_FORMAT_KIND_GLUE) {
     ++index;
   }
-  return index < vtable->format_element_count ? &vtable->format_elements[index]
-                                              : NULL;
+  return index < format.count ? &format.elements[index] : NULL;
 }
 
-static bool loom_format_keyword_starts_clause(const loom_op_vtable_t* vtable,
+static bool loom_format_keyword_starts_clause(loom_format_t format,
                                               uint16_t keyword_index) {
   const loom_format_element_t* next =
-      loom_format_next_non_glue(vtable, (uint16_t)(keyword_index + 1));
+      loom_format_next_non_glue(format, (uint16_t)(keyword_index + 1));
   return next && next->kind == LOOM_FORMAT_KIND_KEYWORD &&
          next->data == LOOM_KW_LPAREN;
 }
@@ -198,7 +197,7 @@ static iree_status_t loom_parse_format_keyword_clause_is_present(
 // format elements to skip if the group is absent. When the group
 // is present, |*out_skip_count| is set to 0.
 static iree_status_t loom_parse_format_optional_group(
-    loom_parser_t* parser, const loom_op_vtable_t* vtable,
+    loom_parser_t* parser, const loom_op_vtable_t* vtable, loom_format_t format,
     const loom_format_element_t* element, uint16_t element_index,
     const loom_parsed_op_t* parsed, uint16_t* out_skip_count) {
   uint16_t skip_count = element->data >> 2;
@@ -218,17 +217,16 @@ static iree_status_t loom_parse_format_optional_group(
       //   anything else — fall back to peeking for an SSA value (the
       //                   common case for variadic operand groups).
       uint16_t first_inner_index = element_index + 1;
-      while (first_inner_index < vtable->format_element_count &&
-             vtable->format_elements[first_inner_index].kind ==
-                 LOOM_FORMAT_KIND_GLUE) {
+      while (first_inner_index < format.count &&
+             format.elements[first_inner_index].kind == LOOM_FORMAT_KIND_GLUE) {
         ++first_inner_index;
       }
       const loom_format_element_t* first_inner =
-          (first_inner_index < vtable->format_element_count)
-              ? &vtable->format_elements[first_inner_index]
+          (first_inner_index < format.count)
+              ? &format.elements[first_inner_index]
               : NULL;
       if (first_inner && first_inner->kind == LOOM_FORMAT_KIND_KEYWORD) {
-        if (loom_format_keyword_starts_clause(vtable, first_inner_index)) {
+        if (loom_format_keyword_starts_clause(format, first_inner_index)) {
           IREE_RETURN_IF_ERROR(loom_parse_format_keyword_clause_is_present(
               parser, first_inner, &present));
         } else {
@@ -258,17 +256,16 @@ static iree_status_t loom_parse_format_optional_group(
       // consumes the token.
       loom_token_t peek = loom_tokenizer_peek(&parser->tokenizer);
       uint16_t first_inner_index = element_index + 1;
-      while (first_inner_index < vtable->format_element_count &&
-             vtable->format_elements[first_inner_index].kind ==
-                 LOOM_FORMAT_KIND_GLUE) {
+      while (first_inner_index < format.count &&
+             format.elements[first_inner_index].kind == LOOM_FORMAT_KIND_GLUE) {
         ++first_inner_index;
       }
       const loom_format_element_t* first_inner =
-          (first_inner_index < vtable->format_element_count)
-              ? &vtable->format_elements[first_inner_index]
+          (first_inner_index < format.count)
+              ? &format.elements[first_inner_index]
               : NULL;
       if (first_inner && first_inner->kind == LOOM_FORMAT_KIND_KEYWORD) {
-        if (loom_format_keyword_starts_clause(vtable, first_inner_index)) {
+        if (loom_format_keyword_starts_clause(format, first_inner_index)) {
           IREE_RETURN_IF_ERROR(loom_parse_format_keyword_clause_is_present(
               parser, first_inner, &present));
         } else {
@@ -330,17 +327,15 @@ static iree_status_t loom_parse_format_optional_group(
     }
     case LOOM_ANCHOR_REGION: {
       uint16_t first_inner_index = element_index + 1;
-      while (first_inner_index < vtable->format_element_count &&
-             vtable->format_elements[first_inner_index].kind ==
-                 LOOM_FORMAT_KIND_GLUE) {
+      while (first_inner_index < format.count &&
+             format.elements[first_inner_index].kind == LOOM_FORMAT_KIND_GLUE) {
         ++first_inner_index;
       }
       const loom_format_element_t* first_inner =
-          first_inner_index < vtable->format_element_count
-              ? &vtable->format_elements[first_inner_index]
-              : NULL;
+          first_inner_index < format.count ? &format.elements[first_inner_index]
+                                           : NULL;
       if (first_inner && first_inner->kind == LOOM_FORMAT_KIND_KEYWORD) {
-        if (loom_format_keyword_starts_clause(vtable, first_inner_index)) {
+        if (loom_format_keyword_starts_clause(format, first_inner_index)) {
           IREE_RETURN_IF_ERROR(loom_parse_format_keyword_clause_is_present(
               parser, first_inner, &present));
         } else {
@@ -927,15 +922,13 @@ static iree_status_t loom_parse_format_resolve_loop_entry_types(
   return status;
 }
 
-iree_status_t loom_parser_walk_format(loom_parser_t* parser,
-                                      const loom_op_vtable_t* vtable,
-                                      loom_token_t op_name_token,
-                                      loom_parsed_op_t* parsed,
-                                      uint16_t pending_func_arg_start,
-                                      bool* out_func_args_consumed_by_region) {
+iree_status_t loom_parser_walk_format(
+    loom_parser_t* parser, const loom_op_vtable_t* vtable, loom_format_t format,
+    loom_token_t op_name_token, loom_parsed_op_t* parsed,
+    uint16_t pending_func_arg_start, bool* out_func_args_consumed_by_region) {
   *out_func_args_consumed_by_region = false;
-  const loom_format_element_t* elements = vtable->format_elements;
-  uint16_t element_count = vtable->format_element_count;
+  const loom_format_element_t* elements = format.elements;
+  uint16_t element_count = format.count;
   bool is_symbol_definition =
       iree_any_bit_set(vtable->traits, LOOM_TRAIT_SYMBOL_DEFINE);
 
@@ -1252,7 +1245,7 @@ iree_status_t loom_parser_walk_format(loom_parser_t* parser,
       case LOOM_FORMAT_KIND_OPTIONAL_GROUP: {
         uint16_t skip_count = 0;
         IREE_RETURN_IF_ERROR(loom_parse_format_optional_group(
-            parser, vtable, element, i, parsed, &skip_count));
+            parser, vtable, format, element, i, parsed, &skip_count));
         i += skip_count;
         break;
       }
@@ -1312,7 +1305,7 @@ iree_status_t loom_parser_walk_format(loom_parser_t* parser,
           IREE_RETURN_IF_ERROR(
               loom_parse_format_inline_attr_dict(parser, vtable, parsed));
           IREE_RETURN_IF_ERROR(loom_parse_format_apply_elided_attr_defaults(
-              parser, vtable, element, parsed));
+              parser, vtable, format, element, parsed));
         } else {
           loom_token_t start_token = loom_tokenizer_peek(&parser->tokenizer);
           loom_attribute_t attr = {0};

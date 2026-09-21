@@ -162,21 +162,17 @@ loom_cc_library(
     text_asm
   HDRS
     "text_asm.h"
-    "text_asm_internal.h"
   SRCS
     "text_asm.c"
-    "text_asm_structural.c"
   DEPS
     ::builder
     ::descriptors
     ::repr
     iree::base
-    loom::analysis::symbol_facts
     loom::format::text::low_asm
     loom::format::text::printer
     loom::ir
     loom::ops::low
-    loom::ops::target
     loom::target::low_asm_diagnostics
     loom::target::registers
   PUBLIC

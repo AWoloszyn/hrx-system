@@ -12,10 +12,12 @@ from loom.assembly import (
     COLON,
     COMMA,
     AlignedRefs,
+    AssemblyFormat,
     Attr,
     AttrDict,
     AttrParams,
     AttrTable,
+    BlockArgs,
     BlockRef,
     Clause,
     EncodingOf,
@@ -1746,6 +1748,68 @@ def test_generate_tables_aggregator_delegates_semantics_lookup() -> None:
     assert "loom_dialect_semantics_lookup(" in tables_c
     assert "kind, LOOM_DIALECT_TEST, loom_test_semantics_array," in tables_c
     assert "loom_op_dialect_id(kind)" not in tables_c
+
+
+def test_assembly_mnemonic_order_is_independent_of_operation_order() -> None:
+    dialect = Dialect("test", dialect_id=0x01)
+    ops = [
+        Op("test.first", group=dialect, assembly=AssemblyFormat("zeta")),
+        Op("test.second", group=dialect),
+        Op("test.third", group=dialect, assembly=AssemblyFormat("alpha", [])),
+    ]
+    for generate in (generate_tables_c, generate_tables_aggregator_c):
+        tables = generate("test", 0x01, ops)
+        assert tables.index('_BSTRING(5, "alpha")') < tables.index('_BSTRING(4, "zeta")')
+        assert '{_BSTRING(5, "alpha"), NULL, LOOM_OP_TEST_THIRD, 0, true}' in tables
+        assert '{_BSTRING(4, "zeta"), NULL, LOOM_OP_TEST_FIRST, 0, false}' in tables
+        indices = re.search(r"loom_test_assembly_indices\[\] = \{([^}]+)\}", tables)
+        assert indices is not None
+        assert re.findall(r"\d+", indices.group(1)) == ["1", "255", "0"]
+    shard = generate_tables_c("test", 0x01, ops, emit_registration=False, export_vtables=True)
+    assert "loom_test_assembly_formats" not in shard
+
+
+def test_assembly_format_binds_reordered_fields_to_canonical_layout() -> None:
+    for names in (("first", "second"), ("second", "first")):
+        op = Op(
+            "test.fields",
+            group=Dialect("test"),
+            operands=[Operand("value", INTEGER)],
+            attrs=[AttrDef(name, ATTR_TYPE_I64) for name in names],
+            format=[Ref("value"), Attr("first"), Attr("second")],
+            assembly=AssemblyFormat("fields", [Attr("second"), Ref("value"), Attr("first")]),
+        )
+        tables = generate_tables_c("test", 0x01, [op])
+        stream = tables.split("loom_test_fields_assembly_format[] = {", 1)[1].split("};", 1)[0]
+        assert re.findall(r"\{(LOOM_FORMAT_KIND_\w+), (\d+), 0\}", stream) == [
+            ("LOOM_FORMAT_KIND_ATTR_VALUE", str(names.index("second"))),
+            ("LOOM_FORMAT_KIND_OPERAND_REF", "0"),
+            ("LOOM_FORMAT_KIND_ATTR_VALUE", str(names.index("first"))),
+        ]
+
+
+def test_assembly_format_rejects_ambiguous_names_and_unknown_fields() -> None:
+    for name in ("", "test.copy", "two words", "é"):
+        with _raises_value_error("bare identifier"):
+            AssemblyFormat(name)
+    dialect = Dialect("test")
+    ops = [Op(f"test.{name}", group=dialect, assembly=AssemblyFormat("copy")) for name in ("first", "second")]
+    with _raises_value_error("duplicate assembly mnemonic"):
+        generate_tables_c("test", 0x01, ops)
+    with _raises_value_error("undeclared fields.*missing"):
+        Op("test.copy", group=dialect, assembly=AssemblyFormat("copy", [Ref("missing")]))
+
+
+def test_assembly_format_preserves_region_signature_ownership() -> None:
+    op = Op(
+        "test.region",
+        group=Dialect("test"),
+        regions=[RegionDef("body")],
+        format=[BlockArgs("body"), Region("body")],
+        assembly=AssemblyFormat("region", [Region("body")]),
+    )
+    with _raises_value_error("must preserve region argument ownership"):
+        generate_tables_c("test", 0x01, [op])
 
 
 def test_generate_tables_rejects_constraint_field_index_above_6_bit_max() -> None:

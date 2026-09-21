@@ -122,10 +122,10 @@ static bool loom_parse_format_element_covers_attr(
 }
 
 static bool loom_parse_format_inline_attr_covers_attr(
-    const loom_op_vtable_t* vtable, const loom_format_element_t* inline_element,
+    loom_format_t format, const loom_format_element_t* inline_element,
     uint16_t attr_index) {
-  const loom_format_element_t* elements = vtable->format_elements;
-  for (uint16_t i = 0; i < vtable->format_element_count; ++i) {
+  const loom_format_element_t* elements = format.elements;
+  for (uint16_t i = 0; i < format.count; ++i) {
     const loom_format_element_t* element = &elements[i];
     if (element == inline_element) {
       continue;
@@ -138,7 +138,7 @@ static bool loom_parse_format_inline_attr_covers_attr(
 }
 
 iree_status_t loom_parse_format_apply_elided_attr_defaults(
-    loom_parser_t* parser, const loom_op_vtable_t* vtable,
+    loom_parser_t* parser, const loom_op_vtable_t* vtable, loom_format_t format,
     const loom_format_element_t* inline_element, loom_parsed_op_t* parsed) {
   if (!vtable->attr_descriptors) {
     return iree_ok_status();
@@ -149,7 +149,7 @@ iree_status_t loom_parse_format_apply_elided_attr_defaults(
         &vtable->attr_descriptors[attr_index];
     if (!iree_any_bit_set(descriptor->flags, LOOM_ATTR_ELIDE_DEFAULT) ||
         loom_parse_format_parsed_attr_present(parsed, attr_index) ||
-        !loom_parse_format_inline_attr_covers_attr(vtable, inline_element,
+        !loom_parse_format_inline_attr_covers_attr(format, inline_element,
                                                    attr_index)) {
       continue;
     }

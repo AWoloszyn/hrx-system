@@ -1,0 +1,66 @@
+// RUN: format bytecode
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @resource_extent(%extent: reg<test.i32>) -> (reg<test.ptr>, reg<test.ptr>) asm {
+  %fixed = resource<hal_binding> {extent = 64, index = 0, source_type = hal.buffer} : reg<test.ptr>
+  %dynamic = resource<hal_binding> extent(%extent) {index = 1, source_type = hal.buffer} : reg<test.ptr>
+  return %fixed, %dynamic
+}
+
+// ====
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @register_aliases() -> (reg<test.i32>) asm {
+  %input = live_in<test.arg0> {} : reg<test.i32>
+  %pair = concat(%input, %input) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32 x2>
+  %lane = slice %pair[1] : reg<test.i32 x2> -> reg<test.i32>
+  %copied = copy %lane {detached = true} : reg<test.i32> -> reg<test.i32>
+  %moved = move %copied : reg<test.i32> -> reg<test.i32>
+  return %moved
+}
+
+// ====
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @storage_aliases() -> (reg<test.ptr>) asm {
+  %storage = storage {byte_alignment = 4, byte_length = 16} : low.storage<workgroup>
+  %window = storage_view %storage {byte_length = 8, offset = 4} : low.storage<workgroup> -> low.storage<workgroup>
+  %address = storage_address %window : low.storage<workgroup> -> reg<test.ptr>
+  return %address
+}
+
+// ====
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @empty_return() asm {
+  return
+}
+
+// ====
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @canonical_return(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.return %value : reg<test.i32>
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @canonical_return(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  return %value
+}
+
+// ====
+// RUN: verify
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @compact_return_annotation(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  // ERROR@+1: PARSE/003
+  return %value : reg<test.i32>
+}

@@ -193,8 +193,8 @@ low.kernel.def target<amdgpu.rdna3.core>(@target) abi_layout({constant_count = 3
 amdgpu.target<gfx1100> @target
 
 low.kernel.def target<amdgpu.rdna3.core>(@target) workgroup_size(64, 1, 1) @binding_pair() asm {
-  %a = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 16} : reg<amdgpu.sgpr x2>
-  %b = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 16} : reg<amdgpu.sgpr x2>
+  %a = resource<hal_binding> {extent = 16, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %b = resource<hal_binding> {extent = 16, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %offset = v_mov_b32 0
   %value = v_mov_b32 42
   global_store_b32_saddr %offset, %value, %a
@@ -222,10 +222,10 @@ low.kernel.def target<amdgpu.rdna3.core>(@target) abi_layout({constant_count = 0
 amdgpu.target<gfx1100> @target
 
 low.kernel.def target<amdgpu.rdna3.core>(@target) workgroup_size(64, 1, 1) @binding_quad() asm {
-  %a = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 16} : reg<amdgpu.sgpr x2>
-  %b = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 16} : reg<amdgpu.sgpr x2>
-  %c = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 16} : reg<amdgpu.sgpr x2>
-  %d = resource<hal_binding> {index = 3, source_type = hal.buffer, extent = 16} : reg<amdgpu.sgpr x2>
+  %a = resource<hal_binding> {extent = 16, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %b = resource<hal_binding> {extent = 16, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %c = resource<hal_binding> {extent = 16, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %d = resource<hal_binding> {extent = 16, index = 3, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %offset = v_mov_b32 0
   %value = v_mov_b32 42
   global_store_b32_saddr %offset, %value, %a
