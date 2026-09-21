@@ -1403,6 +1403,20 @@ TEST_F(ExecuteTest, EmitSourceLowRequiresTargetForFunctionSelector) {
   loom_check_result_deinitialize(&result);
 }
 
+TEST_F(ExecuteTest, PassRejectsIncompleteOrConflictingTargets) {
+  ExpectFirstFailsWithDetail(
+      "// RUN: pass target=vm:core target=vm:core source-to-low\n",
+      "duplicate pass option 'target'");
+  ExpectFirstFailsWithDetail("// RUN: pass entry=@f source-to-low\n",
+                             "pass entry requires target=family:selector");
+  ExpectFirstFailsWithDetail(
+      "// RUN: pass target=vm:core entry=@ source-to-low\n",
+      "pass expects at most one entry=@function");
+  ExpectFirstFailsWithDetail(
+      "// RUN: pass target=vm:core entry=@f entry=@g source-to-low\n",
+      "pass expects at most one entry=@function");
+}
+
 TEST_F(ExecuteTest, EmitSourceLowRejectsIncompleteOrConflictingTargets) {
   ExpectFirstFailsWithDetail("// RUN: emit source-low @ target=vm:core\n",
                              "requires a nonempty function symbol");

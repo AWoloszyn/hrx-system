@@ -138,3 +138,55 @@ CHECK: vm.target<core> @authored
 CHECK: low.func.def noinline target<vm.core>(@authored) @callee*
 CHECK: low.func.def public target<vm.core>(@authored)* @caller*
 CHECK: *low.func.call* @callee*
+
+// ====
+
+// RUN: with-checks emit vm-dis target=vm:core
+
+func.def @private_entry(%value: i32) -> (i32) {
+  func.return %value : i32
+}
+
+// ----
+CHECK: vm.module core(0.0) {
+CHECK: *control.return
+CHECK-NOT: *section exports*
+
+// ====
+
+// RUN: with-checks pass target=vm:core entry=@entry specialize-target-callgraph,inline-callables,symbol-dce
+
+func.def inline @helper(%value: i32) -> (i32) {
+  %result = scalar.addi %value, %value : i32
+  func.return %result : i32
+}
+
+func.def @entry(%value: i32) -> (i32) {
+  %result = func.call @helper(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+// ----
+CHECK: func.def @entry*
+CHECK: *scalar.addi*
+CHECK-NOT: *func.call*
+CHECK-NOT: *func.def* @helper*
+
+// ====
+
+// RUN: with-checks pass target=vm:core entry=@requested inline-callables,symbol-dce
+
+func.def inline @requested(%value: i32) -> (i32) {
+  %result = scalar.addi %value, %value : i32
+  func.return %result : i32
+}
+
+func.def public @caller(%value: i32) -> (i32) {
+  %result = func.call @requested(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+// ----
+CHECK: func.def inline @requested*
+CHECK: func.def public @caller*
+CHECK-NOT: *func.call*

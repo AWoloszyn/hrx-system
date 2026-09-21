@@ -129,6 +129,21 @@ source-located diagnostics. Functions with authored target bindings can use the
 existing whole-module form without a function or target option. Pipeline-text
 outputs describe the pipeline itself and do not accept specialization requests.
 
+Pass, pass-report, and compile-report modes accept the same target selection
+before the pipeline. An optional `entry=@function` selects an explicit entry;
+otherwise the sole definition or unique public entry is selected:
+
+```text
+// RUN: with-checks compile-report target=vm:core source-to-low,low-dce
+// RUN: pass target=vm:core entry=@entry @named_pipeline
+```
+
+Binary output uses `emit vm-dis target=vm:core` or
+`emit spirv-dis target=spirv:vulkan1.3+bda input=source-low`. These modes also
+accept `@function` for an explicit entry. The selected entry remains a compiler
+root even when private; specialization does not change source visibility or
+add an export. Its reachable helpers may be inlined and removed normally.
+
 ### Running Fixtures
 
 Use checked-in Bazel test targets for normal verification:
