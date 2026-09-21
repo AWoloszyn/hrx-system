@@ -316,6 +316,12 @@ python dev.py bazel test //runtime/src/iree/async/... --config=tsan
 
 ## IREE CI Reproduction
 
+Test jobs declare the execution resources assigned to their runner. Every
+`iree-run-requirement=...` on a test must be available; matching one participant
+does not admit a mixed test. The CI helpers derive exclusions from the owners'
+requirement declarations and reject unknown IDs before executing a test phase.
+CTest builds the concrete roots of the selected tests after filtering.
+
 IREE source-tree CI is run through the repo-local CI command script so GitHub
 workflow failures have copyable local commands. This is the script-backed
 surface; ordinary build/test docs use the `iree-bazel-*` and `iree-cmake-*`

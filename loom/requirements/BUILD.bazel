@@ -9,6 +9,8 @@ load(":defs.bzl", "REQUIREMENTS")
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(["defs.bzl"])
+
 declare_requirements(
     name = "loom_requirements",
     requirements = REQUIREMENTS,
