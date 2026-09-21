@@ -1814,7 +1814,7 @@ static iree_status_t loom_low_schedule_build(
   IREE_RETURN_IF_ERROR(loom_low_schedule_verify_structural_models(&state));
 
   const iree_host_size_t node_count = model->requirements.node_count;
-  const bool needs_liveness =
+  const bool retain_liveness =
       iree_any_bit_set(options->flags,
                        LOOM_LOW_SCHEDULE_FLAG_RETAIN_LIVENESS) ||
       iree_any_bit_set(options->diagnostic_flags,
@@ -1839,10 +1839,12 @@ static iree_status_t loom_low_schedule_build(
     status = loom_low_schedule_initialize_descriptor_tables(&state, node_count);
   }
   if (iree_status_is_ok(status) &&
-      (needs_liveness || loom_low_schedule_needs_state_liveness(&state))) {
+      (retain_liveness || loom_low_schedule_needs_state_liveness(&state))) {
+    iree_arena_allocator_t* liveness_arena =
+        retain_liveness ? arena : scratch_arena;
     status = loom_liveness_analyze_local_value_domain_with_cfg_graph(
         &model->value_domain, &model->cfg_graph, loom_liveness_order_empty(),
-        arena, &liveness);
+        liveness_arena, &liveness);
   }
   if (iree_status_is_ok(status)) {
     status = loom_low_schedule_build_dependencies(&state, &liveness);
@@ -1881,7 +1883,7 @@ static iree_status_t loom_low_schedule_build(
         .requirements = model->requirements,
         .value_ids = model->value_domain.value_ids,
         .value_count = model->value_domain.value_count,
-        .liveness = liveness,
+        .liveness = retain_liveness ? liveness : (loom_liveness_analysis_t){0},
         .pressure_summary_budgets = pressure_summary_budgets,
         .blocks = state.blocks,
         .block_count = state.body->block_count,

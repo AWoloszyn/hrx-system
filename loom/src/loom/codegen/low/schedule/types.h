@@ -720,7 +720,9 @@ typedef struct loom_low_schedule_table_t {
   const loom_value_id_t* value_ids;
   // Number of entries in |value_ids|.
   loom_value_ordinal_t value_count;
-  // Optional liveness analysis retained for table consumers that request it.
+  // Optional source-order liveness analysis. Present only when explicitly
+  // retained or required by requested diagnostics; schedule construction may
+  // consume transient liveness without publishing it here.
   loom_liveness_analysis_t liveness;
   // Effective budgets for retained source-order pressure summaries. Entries
   // correspond to liveness.pressure_summaries; UINT32_MAX means unbounded.
