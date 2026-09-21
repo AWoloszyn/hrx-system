@@ -14,6 +14,7 @@ load(
     "loom_check_test",
 )
 load("//loom/build_tools/bazel:loom_library.bzl", "loom_test")
+load("//loom/target/vm:execution_profiles.bzl", "VM_REFERENCE_PROFILE")
 
 def _find_action_with_output(env, actions, expected_basename):
     for action in actions:
@@ -103,6 +104,7 @@ def _test_execution_and_compiler_share_module(name, **kwargs):
         compile_targets = [":test_fake_profile"],
         tags = ["manual"],
         deps = [":library_dependency"],
+        execution_profiles = [VM_REFERENCE_PROFILE],
     )
     analysis_test(
         name = name,

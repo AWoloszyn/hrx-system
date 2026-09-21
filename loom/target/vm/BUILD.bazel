@@ -9,6 +9,8 @@ load("//loom/build_tools/bazel:defs.bzl", "loom_target_profile")
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(["execution_profiles.bzl"])
+
 loom_target_profile(
     name = "core",
     family = "vm",

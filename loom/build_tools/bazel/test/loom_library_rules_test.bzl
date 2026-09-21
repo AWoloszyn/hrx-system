@@ -286,7 +286,7 @@ def _test_execution_profile_contract(name, **kwargs):
             "timeout": "short",
         },
         impl = _test_execution_profile_contract_impl,
-        target = ":profiled_test_launcher",
+        target = ":profiled_test_selected_execute_reference_test_launcher",
         **kwargs
     )
 
@@ -300,6 +300,7 @@ def _test_execution_profile_contract_impl(env, target):
         env.fail("unexpected correctness runner %r" % info.test_runner)
     if info.test_runner_args != [
         "--max-samples-per-case=1",
+        "--case=benchmark_case",
         "--sample=0",
     ]:
         env.fail("unexpected correctness runner args %r" % info.test_runner_args)
@@ -311,6 +312,7 @@ def _test_execution_profile_contract_impl(env, target):
         "--output-format=jsonl",
         "--compile-report=none",
         "--max-samples-per-case=1",
+        "--case=benchmark_case",
     ]:
         env.fail("unexpected benchmark runner args %r" % info.benchmark_runner_args)
 
@@ -339,14 +341,14 @@ def _test_resource_profile_preserves_direct_execution(name, **kwargs):
             "timeout": "short",
         },
         impl = _test_resource_profile_preserves_direct_execution_impl,
-        target = ":serialized_profile_test_launcher",
+        target = ":profiled_test_all_execute_serialized_reference_test_launcher",
         **kwargs
     )
 
 def _test_resource_profile_preserves_direct_execution_impl(env, target):
     info = target[LoomExecutionTestInfo]
     env.expect.that_str(info.module.basename).equals(
-        "serialized_profile_test_module.loombc",
+        "profiled_test_module.loombc",
     )
     env.expect.that_str(info.profile_name).equals("serialized_reference")
 
@@ -424,7 +426,7 @@ def _test_suppression_profile_configures_test_environment(name, **kwargs):
             "timeout": "short",
         },
         impl = _test_suppression_profile_configures_test_environment_impl,
-        target = ":suppressed_profile_test",
+        target = ":suppressed_profile_test_execute_suppressed_reference_test",
         **kwargs
     )
 

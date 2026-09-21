@@ -304,10 +304,12 @@ Build-integrated checks use the same source file:
 
 ```python
 load("//loom/build_tools/bazel:defs.bzl", "loom_test")
+load("//loom/target/vm:execution_profiles.bzl", "VM_REFERENCE_PROFILE")
 
 loom_test(
     name = "checks_test",
     srcs = ["checks.cc"],
+    execution_profiles = [VM_REFERENCE_PROFILE],
 )
 ```
 

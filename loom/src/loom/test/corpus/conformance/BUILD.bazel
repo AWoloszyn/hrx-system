@@ -4,7 +4,9 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-load("//loom/build_tools/bazel:defs.bzl", "loom_module")
+load("//loom/build_tools/bazel:defs.bzl", "loom_module", "loom_test")
+load("//loom/target:execution_profiles.bzl", "GPU_HARDWARE_PROFILES")
+load("//loom/target/amdgpu:execution_profiles.bzl", "AMDGPU_ACCESS_PROFILE")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -20,4 +22,15 @@ loom_module(
     name = "conformance_cases",
     srcs = _CASES,
     output_format = "bc",
+)
+
+loom_test(
+    name = "condition_loops_test",
+    srcs = ["condition_loops.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/spirv:vulkan1.3+bda",
+    ],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
 )

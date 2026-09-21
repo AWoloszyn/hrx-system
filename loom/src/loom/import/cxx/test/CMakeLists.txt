@@ -67,53 +67,52 @@ loom_check_test_suite(
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_module(
+loom_test(
   NAME
-    config_values
+    config_values_test
   SRCS
     "config_values.cpp"
-  MODE merge
-  OUTPUT_FORMAT bc
-  STRICT_DEPS
 )
-endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
   NAME
-    config_five_test
-  SRCS
-    "::config_values"
+    config_values_test_five_execute_vm_reference_test
+  MODULE
+    "::config_values_test_module"
   RUNNER_ARGS
-    "--case=five"
-    "--config=tuning.factor=5"
     "--config=tuning.count=7"
     "--config=tuning.enabled=true"
+    "--config=tuning.factor=5"
+    "--case=five"
   LABELS
-    "loom-execution-profile=five"
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
     "loom-target-family=vm"
     "loom-target-class=cpu"
     "loom-executor=reference"
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
-loom_test(
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
   NAME
-    config_nine_test
-  SRCS
-    "::config_values"
+    config_values_test_nine_execute_vm_reference_test
+  MODULE
+    "::config_values_test_module"
   RUNNER_ARGS
-    "--case=nine"
-    "--config=tuning.factor=9"
     "--config=tuning.count=13"
     "--config=tuning.enabled=false"
+    "--config=tuning.factor=9"
+    "--case=nine"
   LABELS
-    "loom-execution-profile=nine"
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
     "loom-target-family=vm"
     "loom-target-class=cpu"
     "loom-executor=reference"
 )
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
@@ -353,6 +352,21 @@ loom_test(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cpp"
 )
+
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    assumptions_test_execute_vm_reference_test
+  MODULE
+    "::assumptions_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
@@ -364,6 +378,21 @@ loom_test(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/comparison_functions.cpp"
 )
+
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    comparison_functions_test_execute_vm_reference_test
+  MODULE
+    "::comparison_functions_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
@@ -375,6 +404,21 @@ loom_test(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
 )
+
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    constant_loops_test_execute_vm_reference_test
+  MODULE
+    "::constant_loops_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
@@ -386,6 +430,21 @@ loom_test(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
 )
+
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    enum_values_test_execute_vm_reference_test
+  MODULE
+    "::enum_values_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
@@ -397,6 +456,21 @@ loom_test(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
 )
+
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    increment_values_test_execute_vm_reference_test
+  MODULE
+    "::increment_values_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
@@ -408,6 +482,21 @@ loom_test(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
 )
+
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    integer_functions_test_execute_vm_reference_test
+  MODULE
+    "::integer_functions_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
@@ -419,6 +508,21 @@ loom_test(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_values.cpp"
 )
+
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    record_values_test_execute_vm_reference_test
+  MODULE
+    "::record_values_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
@@ -430,6 +534,21 @@ loom_test(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_values.cpp"
 )
+
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    schedule_values_test_execute_vm_reference_test
+  MODULE
+    "::schedule_values_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
@@ -441,6 +560,21 @@ loom_test(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
 )
+
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    shaped_intrinsics_test_execute_vm_reference_test
+  MODULE
+    "::shaped_intrinsics_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
@@ -452,6 +586,21 @@ loom_test(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
 )
+
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    structured_continue_test_execute_vm_reference_test
+  MODULE
+    "::structured_continue_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
@@ -463,6 +612,21 @@ loom_test(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
 )
+
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    vector_initializers_test_execute_vm_reference_test
+  MODULE
+    "::vector_initializers_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
@@ -474,6 +638,21 @@ loom_test(
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
 )
+
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    vector_values_test_execute_vm_reference_test
+  MODULE
+    "::vector_values_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
@@ -865,7 +1044,7 @@ loom_generated_file_family(
 )
 endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     aiter_swiglu_f16_source_test
@@ -877,6 +1056,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/aiter_swiglu_f16_checks.loom"
   INPUTOPTS
     "cxx:approximate-functions=true"
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    aiter_swiglu_f16_source_test_execute_amdgpu_test
+  MODULE
+    "::aiter_swiglu_f16_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -899,8 +1086,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     aiter_swiglu_f16_access_test
@@ -912,6 +1100,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/aiter_swiglu_f16_checks.loom"
   INPUTOPTS
     "cxx:approximate-functions=true"
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    aiter_swiglu_f16_access_test_execute_amdgpu_test
+  MODULE
+    "::aiter_swiglu_f16_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -935,8 +1131,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     assumptions_source_test
@@ -948,6 +1145,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/assumptions_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    assumptions_source_test_execute_amdgpu_test
+  MODULE
+    "::assumptions_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -970,8 +1175,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     assumptions_access_test
@@ -983,6 +1189,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/assumptions_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    assumptions_access_test_execute_amdgpu_test
+  MODULE
+    "::assumptions_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -1006,8 +1220,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     constant_loops_source_test
@@ -1019,6 +1234,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/constant_loops_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    constant_loops_source_test_execute_amdgpu_test
+  MODULE
+    "::constant_loops_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -1041,8 +1264,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     constant_loops_access_test
@@ -1054,6 +1278,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/constant_loops_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    constant_loops_access_test_execute_amdgpu_test
+  MODULE
+    "::constant_loops_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -1077,8 +1309,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     control_flow_source_test
@@ -1090,6 +1323,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/control_flow_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    control_flow_source_test_execute_amdgpu_test
+  MODULE
+    "::control_flow_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -1112,8 +1353,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     control_flow_access_test
@@ -1125,6 +1367,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/control_flow_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    control_flow_access_test_execute_amdgpu_test
+  MODULE
+    "::control_flow_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -1148,8 +1398,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     early_returns_source_test
@@ -1161,6 +1412,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/early_returns_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    early_returns_source_test_execute_amdgpu_test
+  MODULE
+    "::early_returns_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -1183,8 +1442,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     early_returns_access_test
@@ -1196,6 +1456,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/early_returns_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    early_returns_access_test_execute_amdgpu_test
+  MODULE
+    "::early_returns_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -1219,8 +1487,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     enum_values_source_test
@@ -1232,6 +1501,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/enum_values_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    enum_values_source_test_execute_amdgpu_test
+  MODULE
+    "::enum_values_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -1254,8 +1531,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     enum_values_access_test
@@ -1267,6 +1545,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/enum_values_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    enum_values_access_test_execute_amdgpu_test
+  MODULE
+    "::enum_values_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -1290,8 +1576,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     flash_attention_source_test
@@ -1303,6 +1590,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/flash_attention_checks.loom"
   INPUTOPTS
     "cxx:approximate-functions=true"
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    flash_attention_source_test_execute_amdgpu_test
+  MODULE
+    "::flash_attention_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -1325,8 +1620,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     flash_attention_access_test
@@ -1338,6 +1634,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/flash_attention_checks.loom"
   INPUTOPTS
     "cxx:approximate-functions=true"
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    flash_attention_access_test_execute_amdgpu_test
+  MODULE
+    "::flash_attention_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -1361,8 +1665,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     increment_values_source_test
@@ -1374,6 +1679,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/increment_values_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    increment_values_source_test_execute_amdgpu_test
+  MODULE
+    "::increment_values_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -1396,8 +1709,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     increment_values_access_test
@@ -1409,6 +1723,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/increment_values_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    increment_values_access_test_execute_amdgpu_test
+  MODULE
+    "::increment_values_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -1432,8 +1754,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     integer_increment_source_test
@@ -1445,6 +1768,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/integer_increment_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    integer_increment_source_test_execute_amdgpu_test
+  MODULE
+    "::integer_increment_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -1467,8 +1798,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     integer_increment_access_test
@@ -1480,6 +1812,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/integer_increment_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    integer_increment_access_test_execute_amdgpu_test
+  MODULE
+    "::integer_increment_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -1503,8 +1843,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     llama_rms_norm_source_test
@@ -1516,6 +1857,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/llama_rms_norm_checks.loom"
   INPUTOPTS
     "cxx:approximate-functions=true"
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    llama_rms_norm_source_test_execute_amdgpu_test
+  MODULE
+    "::llama_rms_norm_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -1538,8 +1887,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     llama_rms_norm_access_test
@@ -1551,6 +1901,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/llama_rms_norm_checks.loom"
   INPUTOPTS
     "cxx:approximate-functions=true"
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    llama_rms_norm_access_test_execute_amdgpu_test
+  MODULE
+    "::llama_rms_norm_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -1574,8 +1932,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     pointer_walk_source_test
@@ -1587,6 +1946,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/pointer_walk_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    pointer_walk_source_test_execute_amdgpu_test
+  MODULE
+    "::pointer_walk_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -1609,8 +1976,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     pointer_walk_access_test
@@ -1622,6 +1990,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/pointer_walk_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    pointer_walk_access_test_execute_amdgpu_test
+  MODULE
+    "::pointer_walk_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -1645,8 +2021,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     record_values_source_test
@@ -1658,6 +2035,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/record_values_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    record_values_source_test_execute_amdgpu_test
+  MODULE
+    "::record_values_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -1680,8 +2065,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     record_values_access_test
@@ -1693,6 +2079,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/record_values_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    record_values_access_test_execute_amdgpu_test
+  MODULE
+    "::record_values_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -1716,8 +2110,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     scheduled_sum_source_test
@@ -1729,6 +2124,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/scheduled_sum_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    scheduled_sum_source_test_execute_amdgpu_test
+  MODULE
+    "::scheduled_sum_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -1751,8 +2154,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     scheduled_sum_access_test
@@ -1764,6 +2168,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/scheduled_sum_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    scheduled_sum_access_test_execute_amdgpu_test
+  MODULE
+    "::scheduled_sum_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -1787,8 +2199,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     shaped_intrinsics_source_test
@@ -1800,6 +2213,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/shaped_intrinsics_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    shaped_intrinsics_source_test_execute_amdgpu_test
+  MODULE
+    "::shaped_intrinsics_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -1822,8 +2243,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     shaped_intrinsics_access_test
@@ -1835,6 +2257,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/shaped_intrinsics_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    shaped_intrinsics_access_test_execute_amdgpu_test
+  MODULE
+    "::shaped_intrinsics_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -1858,8 +2288,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     short_circuit_source_test
@@ -1871,6 +2302,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/short_circuit_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    short_circuit_source_test_execute_amdgpu_test
+  MODULE
+    "::short_circuit_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -1893,8 +2332,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     short_circuit_access_test
@@ -1906,6 +2346,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/short_circuit_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    short_circuit_access_test_execute_amdgpu_test
+  MODULE
+    "::short_circuit_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -1929,8 +2377,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     structured_continue_source_test
@@ -1942,6 +2391,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/structured_continue_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    structured_continue_source_test_execute_amdgpu_test
+  MODULE
+    "::structured_continue_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -1964,8 +2421,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     structured_continue_access_test
@@ -1977,6 +2435,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/structured_continue_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    structured_continue_access_test_execute_amdgpu_test
+  MODULE
+    "::structured_continue_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -2000,8 +2466,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     symbol_exports_source_test
@@ -2013,6 +2480,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/symbol_exports_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    symbol_exports_source_test_execute_amdgpu_test
+  MODULE
+    "::symbol_exports_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -2035,8 +2510,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     symbol_exports_access_test
@@ -2048,6 +2524,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/symbol_exports_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    symbol_exports_access_test_execute_amdgpu_test
+  MODULE
+    "::symbol_exports_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -2071,8 +2555,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     vector_depth_source_test
@@ -2084,6 +2569,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/vector_depth_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    vector_depth_source_test_execute_amdgpu_test
+  MODULE
+    "::vector_depth_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -2106,8 +2599,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     vector_depth_access_test
@@ -2119,6 +2613,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/vector_depth_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    vector_depth_access_test_execute_amdgpu_test
+  MODULE
+    "::vector_depth_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -2142,8 +2644,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     vector_initializers_source_test
@@ -2155,6 +2658,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/vector_initializers_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    vector_initializers_source_test_execute_amdgpu_test
+  MODULE
+    "::vector_initializers_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -2177,8 +2688,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     vector_initializers_access_test
@@ -2190,6 +2702,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/vector_initializers_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    vector_initializers_access_test_execute_amdgpu_test
+  MODULE
+    "::vector_initializers_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -2213,8 +2733,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     vector_values_source_test
@@ -2226,6 +2747,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/vector_values_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    vector_values_source_test_execute_amdgpu_test
+  MODULE
+    "::vector_values_source_test_module"
   ARGS
 
   RUNNER_ARGS
@@ -2248,8 +2777,9 @@ loom_test(
     rocm
 )
 endif()
+endif()
 
-if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
 loom_test(
   NAME
     vector_values_access_test
@@ -2261,6 +2791,14 @@ loom_test(
     "${CMAKE_CURRENT_BINARY_DIR}/vector_values_checks.loom"
   INPUTOPTS
 
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    vector_values_access_test_execute_amdgpu_test
+  MODULE
+    "::vector_values_access_test_module"
   ARGS
     "--sanitizer=access"
     "--sanitizer-reporting=report-only"
@@ -2283,6 +2821,7 @@ loom_test(
     lsan
     rocm
 )
+endif()
 endif()
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

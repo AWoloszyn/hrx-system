@@ -11,6 +11,7 @@ load(
     "loom_library",
     "loom_test",
 )
+load("@hrx//loom/target/vm:execution_profiles.bzl", "VM_REFERENCE_PROFILE")
 
 package(
     default_visibility = ["//visibility:private"],
@@ -25,6 +26,7 @@ loom_library(
 loom_test(
     name = "tests",
     srcs = ["tests.loom"],
+    execution_profiles = [VM_REFERENCE_PROFILE],
     tags = ["manual"],
     deps = [":kernel"],
 )

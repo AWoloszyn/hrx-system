@@ -217,7 +217,7 @@ loom_test(
     name = "vulkan_explicit_target_tests",
     srcs = ["test/spirv_vulkan_hal_actual.loom"],
     compile_targets = ["//loom/target/spirv:vulkan1.3+bda"],
-    execution_profile = SPIRV_VULKAN_EXPLICIT_TARGET_HARDWARE_PROFILE,
+    execution_profiles = [SPIRV_VULKAN_EXPLICIT_TARGET_HARDWARE_PROFILE],
 )
 
 loom_test(
@@ -232,7 +232,6 @@ loom_test(
         "test/spirv_vulkan_quantized_hal_actual.loom",
         "test/spirv_vulkan_vector_float.loom",
         "test/spirv_vulkan_workgroup_offsets.loom",
-        "//loom/src/loom/test/corpus/conformance:condition_loops.loom",
         "//loom/src/loom/test/corpus/conformance:global_atomic_add_f32.loom",
         "//loom/src/loom/test/corpus/conformance:loop_rotating_values.loom",
         "//loom/src/loom/test/corpus/conformance:loop_rotating_views.loom",
@@ -241,7 +240,7 @@ loom_test(
         "//loom/src/loom/tooling/execution/hal:testdata/dynamic_workgroup_hal_actual.loom",
         "//loom/src/loom/tooling/execution/hal:testdata/launch_schedule_hal_actual.loom",
     ],
-    execution_profile = SPIRV_VULKAN_HARDWARE_PROFILE,
+    execution_profiles = [SPIRV_VULKAN_HARDWARE_PROFILE],
 )
 
 iree_executable_test(

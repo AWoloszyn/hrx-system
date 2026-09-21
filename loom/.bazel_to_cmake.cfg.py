@@ -330,6 +330,14 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         self._converter.body += "loom_module(\n" + "".join(blocks) + ")\n\n"
         self._emit_platform_guard_end(target_compatible_with)
 
+    @staticmethod
+    def _reject_workload_args(name, args):
+        for arg in args or []:
+            if arg.split("=", 1)[0] in ("--config", "--case"):
+                raise ValueError(
+                    f"{name}: use loom_test configs and case for workload selection, not {arg}"
+                )
+
     def loom_execution_profile(
         self,
         name,
@@ -343,7 +351,9 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         sanitizer_suppressions=None,
         tags=None,
     ):
+        self._reject_workload_args(name, runner_args)
         return {
+            "kind": "loom_execution_profile",
             "name": name,
             "target_family": target_family,
             "target_class": target_class,
@@ -356,6 +366,38 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             "tags": tags or [],
         }
 
+    @staticmethod
+    def _loom_test_name_suffix(value):
+        if ":" in value:
+            value = value.split(":")[-1]
+        elif "/" in value:
+            value = value.split("/")[-1]
+        return re.sub(r"[-.+]", "_", value)
+
+    def _loom_test_variants(self, name, configs, case, variants):
+        if variants is None:
+            return {name: (configs, case)}
+        if not variants:
+            raise ValueError(
+                f"{name} variants must contain at least one named workload"
+            )
+        workloads = {}
+        for variant_name, variant in variants.items():
+            if not isinstance(variant_name, str) or not variant_name:
+                raise ValueError(f"{name} variant names must be non-empty strings")
+            for key in variant:
+                if key not in ("configs", "case"):
+                    raise ValueError(
+                        f"{name} variant {variant_name} has unknown field {key}"
+                    )
+            workload_name = name + "_" + self._loom_test_name_suffix(variant_name)
+            if workload_name in workloads:
+                raise ValueError(f"{name} has colliding variant names: {variant_name}")
+            workload_configs = dict(configs)
+            workload_configs.update(variant.get("configs", {}))
+            workloads[workload_name] = (workload_configs, variant.get("case", case))
+        return workloads
+
     def loom_test(
         self,
         name,
@@ -365,7 +407,10 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         input_format="",
         inputopts=None,
         args=None,
-        execution_profile=None,
+        configs=None,
+        case="",
+        variants=None,
+        execution_profiles=None,
         compile_targets=None,
         tags=None,
         target_compatible_with=None,
@@ -373,49 +418,15 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
     ):
         if self._should_skip_target(tags=tags, **kwargs):
             return
+        if not srcs:
+            raise ValueError(f"{name} requires at least one authored test source")
+        if not execution_profiles and not compile_targets:
+            raise ValueError(f"{name} requires execution_profiles or compile_targets")
+        self._reject_workload_args(name, args)
+        workloads = self._loom_test_variants(name, configs or {}, case, variants)
         target_compatible_with = self._apply_loom_target_compatible_with(
             target_compatible_with
         )
-        profile = execution_profile or {}
-        policy = bazel_to_cmake_requirements.CollectedPackagePolicy(
-            build_requirements=profile.get("build_requirements", []),
-            run_requirements=profile.get("run_requirements", []),
-            resource_group=profile.get("resource_group"),
-        )
-        labels = list(profile.get("tags", []))
-        labels.extend(policy.tags(include_run_requirements=True))
-        if profile:
-            labels.extend(
-                [
-                    "loom-execution-profile=" + profile["name"],
-                    "loom-target-family=" + profile["target_family"],
-                    "loom-target-class=" + profile["target_class"],
-                    "loom-executor=" + profile["executor"],
-                ]
-            )
-        execution_blocks = []
-        if compile_targets:
-            # Device requirements belong only to the execution children.
-            execution_requires = self._target_compatible_condition(
-                policy.cmake_conditions()
-            )
-            execution_blocks = [
-                self._convert_string_list_block(
-                    "EXECUTION_LABELS", labels or None, sort=False
-                ),
-                (
-                    f"  EXECUTION_REQUIRES\n    {execution_requires}\n"
-                    if execution_requires
-                    else ""
-                ),
-            ]
-        else:
-            target_compatible_with = (
-                bazel_to_cmake_requirements.append_cmake_conditions(
-                    target_compatible_with, policy.cmake_conditions()
-                )
-            )
-            tags = list(tags or []) + labels
         blocks = [
             self._convert_string_arg_block("NAME", name, quote=False),
             self._convert_loom_module_inputs("SRCS", srcs),
@@ -427,23 +438,89 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
                 self._convert_location_args(inputopts),
                 sort=False,
             ),
-            self._convert_string_list_block("ARGS", args, sort=False),
-            self._convert_string_list_block(
-                "RUNNER_ARGS",
-                self._convert_location_args(profile.get("runner_args")),
-                sort=False,
-            ),
-            self._convert_string_list_block("LABELS", tags or None, sort=False),
-            *execution_blocks,
-            self._convert_string_arg_block("RESOURCE_GROUP", policy.resource_group),
-            self._convert_sanitizer_suppressions_block(
-                profile.get("sanitizer_suppressions")
-            ),
-            self._convert_target_list_block("COMPILE_TARGETS", compile_targets),
         ]
         self._emit_platform_guard_begin(target_compatible_with)
         self._converter.body += "loom_test(\n" + "".join(blocks) + ")\n\n"
+        module = "::" + name + "_module"
+        for workload_name, (workload_configs, workload_case) in workloads.items():
+            for key, value in workload_configs.items():
+                if not isinstance(key, str) or not isinstance(value, str):
+                    raise ValueError(
+                        f"{workload_name} configs must map symbol names to string values"
+                    )
+            if not isinstance(workload_case, str):
+                raise ValueError(f"{workload_name} case must be a string")
+            config_args = [
+                f"--config={key}={workload_configs[key]}"
+                for key in sorted(workload_configs)
+            ]
+            workload_args = config_args + (
+                ["--case=" + workload_case] if workload_case else []
+            )
+            execution_names = set()
+            for profile in execution_profiles or []:
+                if profile.get("kind") != "loom_execution_profile":
+                    raise ValueError(
+                        f"{name} execution profile was not created by loom_execution_profile"
+                    )
+                suffix = self._loom_test_name_suffix(profile["name"])
+                execution_name = f"{workload_name}_execute_{suffix}_test"
+                if execution_name in execution_names:
+                    raise ValueError(
+                        f"{name} has colliding execution profiles: {profile['name']}"
+                    )
+                execution_names.add(execution_name)
+                self._loom_execution_test(
+                    execution_name, module, profile, args, tags, workload_args
+                )
+            self._loom_check_compile_tests(
+                name=workload_name,
+                src=":" + name + "_module",
+                targets=compile_targets,
+                data=None,
+                env=None,
+                tags=tags,
+                target_compatible_with=None,
+                args=config_args or None,
+            )
         self._emit_platform_guard_end(target_compatible_with)
+
+    def _loom_execution_test(self, name, module, profile, args, tags, workload_args):
+        policy = bazel_to_cmake_requirements.CollectedPackagePolicy(
+            build_requirements=profile["build_requirements"],
+            run_requirements=profile["run_requirements"],
+            resource_group=profile["resource_group"],
+        )
+        labels = list(tags or []) + profile["tags"]
+        labels.extend(policy.tags(include_run_requirements=True))
+        labels.extend(
+            [
+                "loom-execution-profile=" + profile["name"],
+                "loom-target-family=" + profile["target_family"],
+                "loom-target-class=" + profile["target_class"],
+                "loom-executor=" + profile["executor"],
+            ]
+        )
+        blocks = [
+            self._convert_string_arg_block("NAME", name, quote=False),
+            self._convert_string_arg_block("MODULE", module),
+            self._convert_string_list_block("ARGS", args, sort=False),
+            self._convert_string_list_block(
+                "RUNNER_ARGS",
+                self._convert_location_args(
+                    (profile["runner_args"] or []) + workload_args or None
+                ),
+                sort=False,
+            ),
+            self._convert_string_list_block("LABELS", labels, sort=False),
+            self._convert_string_arg_block("RESOURCE_GROUP", policy.resource_group),
+            self._convert_sanitizer_suppressions_block(
+                profile["sanitizer_suppressions"]
+            ),
+        ]
+        self._emit_platform_guard_begin(policy.cmake_conditions())
+        self._converter.body += "loom_execution_test(\n" + "".join(blocks) + ")\n\n"
+        self._emit_platform_guard_end(policy.cmake_conditions())
 
     def _convert_loom_module_inputs(self, block_name, inputs):
         if inputs is None:
