@@ -50,7 +50,7 @@ def test_attr_indices_follow_dictionary_order_after_schema_edits():
     assert "TEST_LOW_CORE_TEST_CONST_I32_ALPHA_ATTR_INDEX = 0" in removed.header
 
 
-def test_optional_field_invalidates_only_later_positions():
+def test_non_trailing_optional_field_invalidates_its_and_later_positions():
     descriptor = _descriptor("zeta", "middle", "alpha")
     descriptor = replace(
         descriptor,
@@ -58,9 +58,32 @@ def test_optional_field_invalidates_only_later_positions():
     )
     generated = _generate(descriptor)
     assert "TEST_LOW_CORE_TEST_CONST_I32_ALPHA_ATTR_INDEX = 0" in generated.header
-    assert "TEST_LOW_CORE_TEST_CONST_I32_MIDDLE_OPTIONAL_ATTR_INDEX = 1" in generated.header
+    assert "TEST_LOW_CORE_TEST_CONST_I32_MIDDLE_OPTIONAL_ATTR_INDEX" not in generated.header
     assert "TEST_LOW_CORE_TEST_CONST_I32_MIDDLE_ATTR_INDEX" not in generated.header
     assert "TEST_LOW_CORE_TEST_CONST_I32_ZETA_ATTR_INDEX" not in generated.header
+
+
+def test_trailing_optional_binding_tracks_presence_after_schema_edits():
+    def generate(*field_names):
+        descriptor = _descriptor(*field_names)
+        descriptor = replace(
+            descriptor,
+            immediates=tuple(replace(immediate, flags=(ImmediateFlag.DEFAULT_VALUE,)) if immediate.field_name == "offset" else immediate for immediate in descriptor.immediates),
+        )
+        return _generate(descriptor).header
+
+    original = generate("offset")
+    assert "TEST_LOW_CORE_TEST_CONST_I32_OFFSET_OPTIONAL_ATTR_INDEX = 0" in original
+    assert "TEST_LOW_CORE_TEST_CONST_I32_OFFSET_ATTR_INDEX" not in original
+
+    inserted_before = generate("offset", "alignment")
+    assert "TEST_LOW_CORE_TEST_CONST_I32_ALIGNMENT_ATTR_INDEX = 0" in inserted_before
+    assert "TEST_LOW_CORE_TEST_CONST_I32_OFFSET_OPTIONAL_ATTR_INDEX = 1" in inserted_before
+
+    inserted_after = generate("alignment", "offset", "zeta")
+    assert "TEST_LOW_CORE_TEST_CONST_I32_ALIGNMENT_ATTR_INDEX = 0" in inserted_after
+    assert "TEST_LOW_CORE_TEST_CONST_I32_OFFSET_OPTIONAL_ATTR_INDEX" not in inserted_after
+    assert "TEST_LOW_CORE_TEST_CONST_I32_ZETA_ATTR_INDEX" not in inserted_after
 
 
 def test_descriptor_view_bindings_use_the_view_namespace():

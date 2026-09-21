@@ -18,11 +18,11 @@ def _descriptor_attr_indices(descriptor: Descriptor) -> dict[tuple[str, bool], i
     indices: dict[tuple[str, bool], int] = {}
     for index, immediate in enumerate(sorted(descriptor.immediates, key=lambda value: value.field_name)):
         optional = ImmediateFlag.DEFAULT_VALUE in immediate.flags
-        indices[(immediate.field_name, optional)] = index
-        if optional:
-            # This field occupies the index when present. Later fields move
-            # when it is absent and therefore have no fixed-position binding.
+        if optional and index + 1 != len(descriptor.immediates):
+            # A later field makes presence at this index ambiguous. A trailing
+            # optional field is present exactly when dictionary count > index.
             break
+        indices[(immediate.field_name, optional)] = index
     return indices
 
 
@@ -36,7 +36,8 @@ def emit_attr_indices(
 
     A target's common header can pass multiple variants of the same descriptor.
     Only fields with a fixed, identical position in every variant are exposed.
-    Optional fields use OPTIONAL_ATTR_INDEX and require presence at the caller.
+    A trailing optional field uses OPTIONAL_ATTR_INDEX. The caller establishes
+    its presence by comparing the dictionary count with the index.
     """
 
     descriptor_indices: dict[str, dict[tuple[str, bool], int]] = {}

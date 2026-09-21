@@ -780,7 +780,9 @@ static iree_status_t loom_wasm_emit_i8x16_shuffle(
 static uint32_t loom_wasm_memory_offset(const loom_op_t* op,
                                         uint16_t offset_index) {
   const loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
-  return attrs.count ? (uint32_t)attrs.entries[offset_index].value.i64 : 0;
+  return attrs.count > offset_index
+             ? (uint32_t)attrs.entries[offset_index].value.i64
+             : 0;
 }
 
 static iree_status_t loom_wasm_emit_memory_load(
