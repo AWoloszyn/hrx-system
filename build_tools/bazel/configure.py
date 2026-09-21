@@ -126,11 +126,11 @@ class ConfigRequest:
     enabled_amdf_families: set[str] = field(default_factory=lambda: set(AMDF_FAMILIES))
     amdf_family_source: str | None = None
     # Explicit Vulkan API selection, independent of HAL driver selection.
-    vulkan_enabled: bool = False
+    vulkan_enabled: bool = True
     # Option spelling used for the Vulkan API selection.
     vulkan_source: str | None = None
     # Explicit D3D12 API selection; target-OS compatibility is evaluated by Bazel.
-    d3d12_enabled: bool = False
+    d3d12_enabled: bool = True
     # Option spelling used for the D3D12 API selection.
     d3d12_source: str | None = None
     rocm_path: str | None = None

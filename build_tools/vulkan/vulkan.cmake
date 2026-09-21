@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-option(IREE_ENABLE_VULKAN "Build Vulkan API clients independently of HAL drivers" OFF)
+option(IREE_ENABLE_VULKAN "Build Vulkan API clients independently of HAL drivers" ON)
 
 set(IREE_VULKAN_AVAILABLE OFF)
 if(IREE_ENABLE_VULKAN OR IREE_HAL_DRIVER_VULKAN)

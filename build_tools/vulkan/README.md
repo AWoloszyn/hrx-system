@@ -1,10 +1,10 @@
 # Vulkan API clients
 
-Vulkan API clients can build independently of the Vulkan HAL. Enable them with
-`-DIREE_ENABLE_VULKAN=ON` in either configure wrapper, or pass
-`--//build_tools/vulkan/config:enabled=true` to Bazel. The explicit option
-defaults to off. Enabling the Vulkan HAL also makes the API available; disabling
-all Vulkan clients requires both the API option and HAL driver to be off.
+Vulkan API clients are enabled by default independently of the Vulkan HAL.
+Disable the API option with `-DIREE_ENABLE_VULKAN=OFF` in either configure
+wrapper, or pass `--//build_tools/vulkan/config:enabled=false` to Bazel. Enabling
+the Vulkan HAL also makes the API available; disabling all Vulkan clients
+requires both the API option and HAL driver to be off.
 
 The existing pinned Vulkan headers are exposed through
 `//third_party:vulkan_headers`. API selection does not enable a HAL driver,
@@ -17,7 +17,6 @@ For example, the raw profile test runs on the CPU with Vulkan HAL disabled:
 
 ```bash
 iree-bazel-test --config=asan \
-  --//build_tools/vulkan/config:enabled=true \
   --//runtime/config/hal:drivers=task \
   --//loom/config/target:enable=spirv \
   //loom/binding/c/test/target/spirv:vulkan_test

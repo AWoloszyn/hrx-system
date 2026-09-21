@@ -237,7 +237,9 @@ class ConfigureBazelTest(unittest.TestCase):
         self.assertIn("build --//runtime/config/hal:drivers=task\n", config)
 
     def test_d3d12_can_be_selected_without_vulkan_or_a_hal_driver(self):
-        args = self.configure_bazel.parse_arguments(["-DIREE_ENABLE_D3D12=ON"])
+        args = self.configure_bazel.parse_arguments(
+            ["-DIREE_ENABLE_D3D12=ON", "-DIREE_ENABLE_VULKAN=OFF"]
+        )
         config = self.configure_bazel.generate_config(args)
         self.assertIn("build --//build_tools/vulkan/config:enabled=false", config)
         self.assertIn("build --//build_tools/d3d12/config:enabled=true", config)

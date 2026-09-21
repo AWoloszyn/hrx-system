@@ -1,16 +1,16 @@
 # D3D12 API clients
 
-Enable D3D12 clients with `-DIREE_ENABLE_D3D12=ON` in either configure wrapper,
-or pass `--//build_tools/d3d12/config:enabled=true` to Bazel. The option defaults
-to off and requires a Windows target. Linux-to-Windows cross-compilation uses
-the same option with the existing Windows toolchain and SDK.
+D3D12 API clients are enabled by default for Windows targets, including
+Linux-to-Windows cross-compilation with the existing toolchain and SDK. Disable
+them with `-DIREE_ENABLE_D3D12=OFF` in either configure wrapper, or pass
+`--//build_tools/d3d12/config:enabled=false` to Bazel. Other target operating
+systems remain incompatible regardless of the option value.
 
 For example, cross-build the native memory interop test:
 
 ```bash
 iree-bazel-build --config=windows-x86_64 \
   --//libamdf/config:enabled=true \
-  --//build_tools/d3d12/config:enabled=true \
   //libamdf/cts/interop/gpu/d3d12:memory_static_bin
 ```
 
