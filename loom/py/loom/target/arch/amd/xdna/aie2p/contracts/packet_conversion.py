@@ -27,6 +27,7 @@ from loom.target.contracts import (
     EmitRegisterConcat,
     EmitRegisterSlice,
     Guard,
+    ValueProject,
     ValueRef,
     Vector,
     descriptor_by_key,
@@ -413,6 +414,78 @@ def _integer_widen_rule(
     )
 
 
+def _integer_shift_rule(source_op: Op) -> DescriptorRule:
+    """Shifts uniform i32 packets through exact accumulator widening."""
+
+    packet = _exact_vector("i32", 16)
+    signedness = "signed" if source_op is vector.vector_shrsi else "unsigned"
+    widen = _descriptor(f"amd.xdna.aie2p.widen.2x.x-to-c.{signedness}.configured")
+    narrow = _descriptor(f"amd.xdna.aie2p.narrow.2x.c-to-x.{signedness}.configured")
+    shift_left = source_op is vector.vector_shli
+    distance = ValueProject.exact_i64("rhs")
+    return DescriptorRule(
+        source_op=source_op,
+        descriptor=widen,
+        guards=(
+            *(Guard.value_type(field, packet) for field in ("lhs", "rhs", "result")),
+            Guard.value_exact_i64("rhs"),
+            Guard.value_i64_range("rhs", 0, 31),
+        ),
+        emit=(
+            *(
+                EmitDescriptorOp(
+                    descriptor=_descriptor("amd.xdna.aie2p.constant.i32.shift"),
+                    results={"dst": ValueRef.temporary(name)},
+                    result_types={"dst": DescriptorResultType()},
+                    immediates={"i": amount},
+                    form=DescriptorEmitForm.CONST,
+                )
+                for name, amount in (
+                    ("upshift", distance if shift_left else 0),
+                    ("downshift", 0 if shift_left else distance),
+                )
+            ),
+            # Widen to i64 before shifting. Unsaturated SRS then selects the
+            # low i32 bits; floor rounding preserves arithmetic right shift.
+            *(
+                EmitDescriptorOp(
+                    descriptor=_descriptor(f"amd.xdna.aie2p.state.{name}.immediate"),
+                    immediates={"i": value},
+                    form=DescriptorEmitForm.OP,
+                )
+                for name, value in (
+                    ("saturation", 0),
+                    ("ups-mode", 1),
+                    ("srs-mode", 1),
+                    ("rounding", 0),
+                )
+            ),
+            EmitDescriptorOp(
+                descriptor=widen,
+                operands={
+                    "src": ValueRef.operand("lhs"),
+                    "su": ValueRef.temporary("upshift"),
+                },
+                results={"dst": ValueRef.temporary("wide")},
+                result_types={"dst": DescriptorResultType()},
+                form=DescriptorEmitForm.OP,
+            ),
+            EmitDescriptorOp(
+                descriptor=narrow,
+                operands={
+                    "src": ValueRef.temporary("wide"),
+                    "su": ValueRef.temporary("downshift"),
+                },
+                results={"dst": ValueRef.result("result")},
+                form=DescriptorEmitForm.OP,
+            ),
+        ),
+        report_key="native_"
+        + source_op.name.removeprefix("vector.")
+        + "_i32x16_uniform",
+    )
+
+
 def _f32_to_bf16_vector_rule(lane_count: int) -> DescriptorRule:
     set_rounding = _descriptor("amd.xdna.aie2p.state.rounding.immediate")
     convert = _descriptor(
@@ -596,6 +669,10 @@ def _integer_pack_rule(pack_case: IntegerPackCase) -> DescriptorRule:
 
 
 AIE2P_PACKET_CONVERSION_RULES = (
+    *(
+        _integer_shift_rule(source_op)
+        for source_op in (vector.vector_shli, vector.vector_shrui, vector.vector_shrsi)
+    ),
     *(
         _integer_bitunpack_rule(source_op, source_kind, source_lane_count)
         for source_op, source_kind in (

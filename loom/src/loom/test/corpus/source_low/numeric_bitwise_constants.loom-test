@@ -55,3 +55,68 @@ func.def @bitwise_index_constant_boundaries(%input: index) -> (index, index, ind
   %toggled = index.xori %input, %toggle : index
   func.return %masked, %tagged, %toggled : index, index, index
 }
+
+// ====
+
+func.def @vector_i32x16_uniform_shift_left(%input_arg: buffer, %output_arg: buffer) {
+  %input_buffer = buffer.assume.alignment %input_arg {minimum_alignment = 64} : buffer
+  %output_buffer = buffer.assume.alignment %output_arg {minimum_alignment = 64} : buffer
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input_buffer[%base] : buffer -> view<16xi32>
+  %output_view = buffer.view %output_buffer[%base] : buffer -> view<16xi32>
+  %input = vector.load %input_view[0] : view<16xi32> -> vector<16xi32>
+  %distance = vector.constant 23 : vector<16xi32>
+  %shifted = vector.shli %input, %distance : vector<16xi32>
+  vector.store %shifted, %output_view[0] : vector<16xi32>, view<16xi32>
+  func.return
+}
+
+// ====
+
+func.def @vector_i32x16_uniform_shift_signed(%input_arg: buffer, %output_arg: buffer) {
+  %input_buffer = buffer.assume.alignment %input_arg {minimum_alignment = 64} : buffer
+  %output_buffer = buffer.assume.alignment %output_arg {minimum_alignment = 64} : buffer
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input_buffer[%base] : buffer -> view<16xi32>
+  %output_view = buffer.view %output_buffer[%base] : buffer -> view<16xi32>
+  %input = vector.load %input_view[0] : view<16xi32> -> vector<16xi32>
+  %distance = vector.constant 7 : vector<16xi32>
+  %shifted = vector.shrsi %input, %distance : vector<16xi32>
+  vector.store %shifted, %output_view[0] : vector<16xi32>, view<16xi32>
+  func.return
+}
+
+// ====
+
+func.def @vector_i32x16_uniform_shift_unsigned(%input_arg: buffer, %output_arg: buffer) {
+  %input_buffer = buffer.assume.alignment %input_arg {minimum_alignment = 64} : buffer
+  %output_buffer = buffer.assume.alignment %output_arg {minimum_alignment = 64} : buffer
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input_buffer[%base] : buffer -> view<16xi32>
+  %output_view = buffer.view %output_buffer[%base] : buffer -> view<16xi32>
+  %input = vector.load %input_view[0] : view<16xi32> -> vector<16xi32>
+  %distance = vector.constant 31 : vector<16xi32>
+  %shifted = vector.shrui %input, %distance : vector<16xi32>
+  vector.store %shifted, %output_view[0] : vector<16xi32>, view<16xi32>
+  func.return
+}
+
+// ====
+
+func.def @vector_i32x16_uniform_shift_boundaries(%input_arg: buffer, %output_arg: buffer) {
+  %input_buffer = buffer.assume.alignment %input_arg {minimum_alignment = 64} : buffer
+  %output_buffer = buffer.assume.alignment %output_arg {minimum_alignment = 64} : buffer
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input_buffer[%base] : buffer -> view<16xi32>
+  %output_view = buffer.view %output_buffer[%base] : buffer -> view<48xi32>
+  %input = vector.load %input_view[0] : view<16xi32> -> vector<16xi32>
+  %identity_distance = vector.constant 0 : vector<16xi32>
+  %high = vector.constant 31 : vector<16xi32>
+  %identity = vector.shrsi %input, %identity_distance : vector<16xi32>
+  %highest = vector.shli %input, %high : vector<16xi32>
+  %sign = vector.shrsi %input, %high : vector<16xi32>
+  vector.store %identity, %output_view[0] : vector<16xi32>, view<48xi32>
+  vector.store %highest, %output_view[16] : vector<16xi32>, view<48xi32>
+  vector.store %sign, %output_view[32] : vector<16xi32>, view<48xi32>
+  func.return
+}
