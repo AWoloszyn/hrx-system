@@ -315,6 +315,43 @@ TEST_F(ConditionRelationMatrixTest,
   }
 }
 
+TEST_F(ConditionRelationMatrixTest, PagedViewsFindRowsAndGaps) {
+  std::array<MatrixRow, 2> first_rows = {{
+      {2, {1, 0, 0}},
+      {61, {0, 2, 0}},
+  }};
+  std::array<MatrixRow, 2> second_rows = {{
+      {66, {3, 0, 0}},
+      {125, {0, 4, 0}},
+  }};
+  const MatrixView first_contents = {
+      {first_rows.data()},
+      static_cast<uint32_t>(first_rows.size()),
+      LOOM_CONDITION_RELATION_MATRIX_VIEW_SPARSE};
+  const MatrixView second_contents = {
+      {second_rows.data()},
+      static_cast<uint32_t>(second_rows.size()),
+      LOOM_CONDITION_RELATION_MATRIX_VIEW_SPARSE};
+  const loom_condition_relation_matrix_page_t first_page = {0, 63,
+                                                            first_contents};
+  const loom_condition_relation_matrix_page_t second_page = {64, 127,
+                                                             second_contents};
+  const std::array<const loom_condition_relation_matrix_page_t*, 2> pages = {
+      &first_page, &second_page};
+  MatrixView view = {};
+  view.entries.pages = pages.data();
+  view.entry_count = static_cast<uint32_t>(pages.size());
+  view.encoding = LOOM_CONDITION_RELATION_MATRIX_VIEW_PAGES;
+
+  EXPECT_EQ(loom_condition_relation_matrix_view_find(&view, 1), nullptr);
+  ASSERT_NE(loom_condition_relation_matrix_view_find(&view, 2), nullptr);
+  EXPECT_EQ(loom_condition_relation_matrix_view_find(&view, 63), nullptr);
+  EXPECT_EQ(loom_condition_relation_matrix_view_find(&view, 64), nullptr);
+  ASSERT_NE(loom_condition_relation_matrix_view_find(&view, 66), nullptr);
+  ASSERT_NE(loom_condition_relation_matrix_view_find(&view, 125), nullptr);
+  EXPECT_EQ(loom_condition_relation_matrix_view_find(&view, 128), nullptr);
+}
+
 TEST_F(ConditionRelationMatrixTest, Width4096EdgeShapeRemainsCompact) {
   // The width-4096 crossed-overlap witness produces one edge with 8194
   // consecutive rows but only four distinct root triples.

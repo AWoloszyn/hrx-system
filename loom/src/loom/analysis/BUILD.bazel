@@ -311,6 +311,17 @@ loom_cc_library(
 )
 
 loom_cc_test(
+    name = "cfg_condition_relation_table_test",
+    srcs = ["cfg_condition_relation_table_test.cc"],
+    deps = [
+        ":cfg_condition_facts",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
     name = "cfg_condition_facts_test",
     srcs = ["cfg_condition_facts_test.cc"],
     deps = [

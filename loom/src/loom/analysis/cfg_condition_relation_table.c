@@ -8,6 +8,259 @@
 
 #include <string.h>
 
+#define LOOM_CFG_CONDITION_RELATION_PAGE_SHIFT 6
+#define LOOM_CFG_CONDITION_RELATION_PAGE_WIDTH \
+  (UINT32_C(1) << LOOM_CFG_CONDITION_RELATION_PAGE_SHIFT)
+
+typedef struct loom_cfg_condition_relation_publication_view_t {
+  // First page occurrence owned by the view.
+  uint32_t first_page;
+
+  // Number of page occurrences owned by the view.
+  uint32_t page_count;
+} loom_cfg_condition_relation_publication_view_t;
+
+typedef struct loom_cfg_condition_relation_publication_page_t {
+  // Source matrix containing the page rows.
+  loom_condition_relation_matrix_t* matrix;
+
+  // First source row in the page interval.
+  uint32_t row_begin;
+
+  // Source row following the page interval.
+  uint32_t row_end;
+
+  // First possible left-value ordinal in the page.
+  uint32_t first_left;
+
+  // Last possible left-value ordinal in the page, inclusive.
+  uint32_t last_left;
+
+  // Number of nonempty source rows in the page.
+  uint32_t live_row_count;
+
+  // First identical page occurrence in publication order.
+  uint32_t canonical_page;
+
+  // Immutable page ordinal assigned during publication.
+  uint32_t retained_page;
+
+  // First set root for this canonical page.
+  iree_host_size_t root_offset;
+
+  // Hash of the page interval and every nonempty row.
+  uint64_t hash;
+} loom_cfg_condition_relation_publication_page_t;
+
+static uint64_t loom_cfg_condition_relation_hash_combine(uint64_t hash,
+                                                         uint32_t value) {
+  hash ^= value;
+  hash *= UINT64_C(1099511628211);
+  return hash;
+}
+
+static uint64_t loom_cfg_condition_relation_publication_page_hash(
+    const loom_cfg_condition_relation_publication_page_t* page) {
+  uint64_t hash = UINT64_C(14695981039346656037);
+  hash = loom_cfg_condition_relation_hash_combine(hash, page->first_left);
+  for (uint32_t i = page->row_begin; i < page->row_end; ++i) {
+    const loom_condition_relation_matrix_row_t* row = &page->matrix->rows[i];
+    if (loom_condition_relation_matrix_row_is_empty(row)) {
+      continue;
+    }
+    hash = loom_cfg_condition_relation_hash_combine(hash, row->left);
+    for (loom_condition_relation_outcome_t outcome = 0;
+         outcome < LOOM_CONDITION_RELATION_OUTCOME_COUNT; ++outcome) {
+      hash = loom_cfg_condition_relation_hash_combine(hash,
+                                                      row->excluded[outcome]);
+    }
+  }
+  return hash;
+}
+
+static uint32_t loom_cfg_condition_relation_next_live_row(
+    const loom_cfg_condition_relation_publication_page_t* page,
+    uint32_t position) {
+  while (position < page->row_end &&
+         loom_condition_relation_matrix_row_is_empty(
+             &page->matrix->rows[position])) {
+    ++position;
+  }
+  return position;
+}
+
+static bool loom_cfg_condition_relation_publication_pages_equal(
+    const loom_cfg_condition_relation_publication_page_t* left,
+    const loom_cfg_condition_relation_publication_page_t* right) {
+  if (left->first_left != right->first_left ||
+      left->live_row_count != right->live_row_count ||
+      left->hash != right->hash) {
+    return false;
+  }
+  uint32_t left_position = left->row_begin;
+  uint32_t right_position = right->row_begin;
+  while (true) {
+    left_position =
+        loom_cfg_condition_relation_next_live_row(left, left_position);
+    right_position =
+        loom_cfg_condition_relation_next_live_row(right, right_position);
+    if (left_position == left->row_end || right_position == right->row_end) {
+      return left_position == left->row_end && right_position == right->row_end;
+    }
+    const loom_condition_relation_matrix_row_t* left_row =
+        &left->matrix->rows[left_position++];
+    const loom_condition_relation_matrix_row_t* right_row =
+        &right->matrix->rows[right_position++];
+    if (memcmp(left_row, right_row, sizeof(*left_row)) != 0) {
+      return false;
+    }
+  }
+}
+
+static uint32_t loom_cfg_condition_relation_matrix_page_count(
+    const loom_condition_relation_matrix_t* matrix) {
+  uint32_t page_count = 0;
+  uint32_t previous_page = UINT32_MAX;
+  for (uint32_t i = 0; i < matrix->row_count; ++i) {
+    const loom_condition_relation_matrix_row_t* row = &matrix->rows[i];
+    if (loom_condition_relation_matrix_row_is_empty(row)) {
+      continue;
+    }
+    const uint32_t page = row->left >> LOOM_CFG_CONDITION_RELATION_PAGE_SHIFT;
+    if (page != previous_page) {
+      ++page_count;
+      previous_page = page;
+    }
+  }
+  return page_count;
+}
+
+static void loom_cfg_condition_relation_plan_view_pages(
+    loom_condition_relation_matrix_t* matrix, uint32_t first_page,
+    loom_cfg_condition_relation_publication_view_t* out_view,
+    loom_cfg_condition_relation_publication_page_t* pages) {
+  *out_view = (loom_cfg_condition_relation_publication_view_t){
+      .first_page = first_page,
+  };
+  uint32_t previous_page = UINT32_MAX;
+  loom_cfg_condition_relation_publication_page_t* current_page = NULL;
+  for (uint32_t i = 0; i < matrix->row_count; ++i) {
+    const loom_condition_relation_matrix_row_t* row = &matrix->rows[i];
+    if (loom_condition_relation_matrix_row_is_empty(row)) {
+      continue;
+    }
+    const uint32_t page = row->left >> LOOM_CFG_CONDITION_RELATION_PAGE_SHIFT;
+    if (page != previous_page) {
+      current_page = &pages[first_page + out_view->page_count++];
+      *current_page = (loom_cfg_condition_relation_publication_page_t){
+          .matrix = matrix,
+          .row_begin = i,
+          .first_left = page << LOOM_CFG_CONDITION_RELATION_PAGE_SHIFT,
+          .last_left = (page << LOOM_CFG_CONDITION_RELATION_PAGE_SHIFT) +
+                       LOOM_CFG_CONDITION_RELATION_PAGE_WIDTH - 1,
+          .canonical_page = UINT32_MAX,
+          .retained_page = UINT32_MAX,
+      };
+      previous_page = page;
+    }
+    current_page->row_end = i + 1;
+    ++current_page->live_row_count;
+  }
+}
+
+static iree_status_t loom_cfg_condition_relation_plan_pages(
+    loom_cfg_condition_relation_table_builder_t* builder,
+    iree_arena_allocator_t* scratch_arena,
+    loom_cfg_condition_relation_publication_view_t** out_views,
+    loom_cfg_condition_relation_publication_page_t** out_pages,
+    uint32_t* out_page_count, uint32_t* out_unique_page_count,
+    uint64_t* out_unique_live_row_count) {
+  *out_views = NULL;
+  *out_pages = NULL;
+  *out_page_count = 0;
+  *out_unique_page_count = 0;
+  *out_unique_live_row_count = 0;
+
+  loom_cfg_condition_relation_publication_view_t* views = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      scratch_arena, builder->view_count, sizeof(*views), (void**)&views));
+  uint64_t total_page_count = 0;
+  for (uint32_t view = 0; view < builder->view_count; ++view) {
+    total_page_count += loom_cfg_condition_relation_matrix_page_count(
+        &builder->views[view].integer_relations);
+  }
+  if (total_page_count > UINT32_MAX) {
+    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                            "condition relation pages exceed uint32_t");
+  }
+
+  loom_cfg_condition_relation_publication_page_t* pages = NULL;
+  if (total_page_count != 0) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        scratch_arena, (iree_host_size_t)total_page_count, sizeof(*pages),
+        (void**)&pages));
+  }
+  uint32_t page_count = 0;
+  for (uint32_t view = 0; view < builder->view_count; ++view) {
+    loom_cfg_condition_relation_plan_view_pages(
+        &builder->views[view].integer_relations, page_count, &views[view],
+        pages);
+    page_count += views[view].page_count;
+  }
+  IREE_ASSERT_EQ(page_count, total_page_count);
+
+  uint32_t hash_capacity = 1;
+  while (hash_capacity < page_count) {
+    if (hash_capacity > UINT32_MAX / 2) {
+      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                              "condition relation page index exceeds uint32_t");
+    }
+    hash_capacity *= 2;
+  }
+  if (page_count != 0) {
+    if (hash_capacity > UINT32_MAX / 2) {
+      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                              "condition relation page index exceeds uint32_t");
+    }
+    hash_capacity *= 2;
+  }
+  uint32_t* hash_slots = NULL;
+  if (page_count != 0) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(scratch_arena, hash_capacity,
+                                                   sizeof(*hash_slots),
+                                                   (void**)&hash_slots));
+    memset(hash_slots, 0xFF, hash_capacity * sizeof(*hash_slots));
+  }
+
+  uint32_t unique_page_count = 0;
+  uint64_t unique_live_row_count = 0;
+  for (uint32_t i = 0; i < page_count; ++i) {
+    loom_cfg_condition_relation_publication_page_t* page = &pages[i];
+    page->hash = loom_cfg_condition_relation_publication_page_hash(page);
+    uint32_t slot = (uint32_t)page->hash & (hash_capacity - 1);
+    while (hash_slots[slot] != UINT32_MAX &&
+           !loom_cfg_condition_relation_publication_pages_equal(
+               page, &pages[hash_slots[slot]])) {
+      slot = (slot + 1) & (hash_capacity - 1);
+    }
+    if (hash_slots[slot] == UINT32_MAX) {
+      hash_slots[slot] = i;
+      page->canonical_page = i;
+      ++unique_page_count;
+      unique_live_row_count += page->live_row_count;
+    } else {
+      page->canonical_page = hash_slots[slot];
+    }
+  }
+
+  *out_views = views;
+  *out_pages = pages;
+  *out_page_count = page_count;
+  *out_unique_page_count = unique_page_count;
+  *out_unique_live_row_count = unique_live_row_count;
+  return iree_ok_status();
+}
+
 static iree_status_t loom_cfg_condition_relation_table_publish_domain(
     const loom_cfg_condition_operand_domain_t* source,
     loom_cfg_condition_operand_domain_t** out_domain,
@@ -43,11 +296,18 @@ iree_status_t loom_cfg_condition_relation_table_publish(
     loom_cfg_condition_relation_table_builder_t* builder,
     loom_cfg_condition_relation_table_t* out_table,
     iree_arena_allocator_t* scratch_arena, iree_arena_allocator_t* arena) {
-  uint64_t root_count = (uint64_t)builder->view_count * 2;
-  for (uint32_t view = 0; view < builder->view_count; ++view) {
-    root_count += (uint64_t)builder->views[view].integer_relations.row_count *
-                  LOOM_CONDITION_RELATION_OUTCOME_COUNT;
-  }
+  loom_cfg_condition_relation_publication_view_t* publication_views = NULL;
+  loom_cfg_condition_relation_publication_page_t* publication_pages = NULL;
+  uint32_t page_count = 0;
+  uint32_t unique_page_count = 0;
+  uint64_t unique_live_row_count = 0;
+  IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_plan_pages(
+      builder, scratch_arena, &publication_views, &publication_pages,
+      &page_count, &unique_page_count, &unique_live_row_count));
+
+  const uint64_t root_count =
+      (uint64_t)builder->view_count * 2 +
+      unique_live_row_count * LOOM_CONDITION_RELATION_OUTCOME_COUNT;
   if (root_count > IREE_HOST_SIZE_MAX) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "condition relation roots exceed host size");
@@ -63,12 +323,24 @@ iree_status_t loom_cfg_condition_relation_table_publish(
     for (uint8_t value = 0; value < 2; ++value) {
       roots[root_position++] = builder->views[view].boolean_values[value];
     }
-    const loom_condition_relation_matrix_t* matrix =
-        &builder->views[view].integer_relations;
-    for (uint32_t row = 0; row < matrix->row_count; ++row) {
+  }
+  for (uint32_t page = 0; page < page_count; ++page) {
+    loom_cfg_condition_relation_publication_page_t* publication_page =
+        &publication_pages[page];
+    if (publication_page->canonical_page != page) {
+      continue;
+    }
+    publication_page->root_offset = root_position;
+    for (uint32_t row = publication_page->row_begin;
+         row < publication_page->row_end; ++row) {
+      const loom_condition_relation_matrix_row_t* source_row =
+          &publication_page->matrix->rows[row];
+      if (loom_condition_relation_matrix_row_is_empty(source_row)) {
+        continue;
+      }
       for (loom_condition_relation_outcome_t outcome = 0;
            outcome < LOOM_CONDITION_RELATION_OUTCOME_COUNT; ++outcome) {
-        roots[root_position++] = matrix->rows[row].excluded[outcome];
+        roots[root_position++] = source_row->excluded[outcome];
       }
     }
   }
@@ -83,27 +355,87 @@ iree_status_t loom_cfg_condition_relation_table_publish(
     for (uint8_t value = 0; value < 2; ++value) {
       builder->views[view].boolean_values[value] = roots[root_position++];
     }
-    loom_condition_relation_matrix_t* matrix =
-        &builder->views[view].integer_relations;
-    for (uint32_t row = 0; row < matrix->row_count; ++row) {
+  }
+  for (uint32_t page = 0; page < page_count; ++page) {
+    loom_cfg_condition_relation_publication_page_t* publication_page =
+        &publication_pages[page];
+    if (publication_page->canonical_page != page) {
+      continue;
+    }
+    IREE_ASSERT_EQ(root_position, publication_page->root_offset);
+    for (uint32_t row = publication_page->row_begin;
+         row < publication_page->row_end; ++row) {
+      loom_condition_relation_matrix_row_t* target_row =
+          &publication_page->matrix->rows[row];
+      if (loom_condition_relation_matrix_row_is_empty(target_row)) {
+        continue;
+      }
       for (loom_condition_relation_outcome_t outcome = 0;
            outcome < LOOM_CONDITION_RELATION_OUTCOME_COUNT; ++outcome) {
-        matrix->rows[row].excluded[outcome] = roots[root_position++];
+        target_row->excluded[outcome] = roots[root_position++];
       }
     }
   }
+  IREE_ASSERT_EQ(root_position, root_count);
 
   loom_cfg_condition_relation_view_t* views = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, builder->view_count, sizeof(*views), (void**)&views));
+  loom_condition_relation_matrix_page_t* retained_pages = NULL;
+  if (unique_page_count != 0) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(arena, unique_page_count,
+                                                   sizeof(*retained_pages),
+                                                   (void**)&retained_pages));
+  }
+  const loom_condition_relation_matrix_page_t** retained_page_references = NULL;
+  if (page_count != 0) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        arena, page_count, sizeof(*retained_page_references),
+        (void**)&retained_page_references));
+  }
+  uint32_t next_retained_page = 0;
+  for (uint32_t page = 0; page < page_count; ++page) {
+    loom_cfg_condition_relation_publication_page_t* publication_page =
+        &publication_pages[page];
+    if (publication_page->canonical_page == page) {
+      publication_page->retained_page = next_retained_page++;
+      loom_condition_relation_matrix_page_t* retained_page =
+          &retained_pages[publication_page->retained_page];
+      *retained_page = (loom_condition_relation_matrix_page_t){
+          .first_left = publication_page->first_left,
+          .last_left = publication_page->last_left,
+      };
+      loom_condition_relation_matrix_t page_matrix = {
+          .rows = &publication_page->matrix->rows[publication_page->row_begin],
+          .row_count = publication_page->row_end - publication_page->row_begin,
+      };
+      IREE_RETURN_IF_ERROR(loom_condition_relation_matrix_view_publish(
+          &page_matrix, arena, &retained_page->contents));
+    } else {
+      publication_page->retained_page =
+          publication_pages[publication_page->canonical_page].retained_page;
+      IREE_ASSERT_NE(publication_page->retained_page, UINT32_MAX);
+    }
+    retained_page_references[page] =
+        &retained_pages[publication_page->retained_page];
+  }
+  IREE_ASSERT_EQ(next_retained_page, unique_page_count);
+
   for (uint32_t view = 0; view < builder->view_count; ++view) {
     views[view] = (loom_cfg_condition_relation_view_t){
         .boolean_values = {builder->views[view].boolean_values[0],
                            builder->views[view].boolean_values[1]},
     };
-    IREE_RETURN_IF_ERROR(loom_condition_relation_matrix_view_publish(
-        &builder->views[view].integer_relations, arena,
-        &views[view].integer_relations));
+    const loom_cfg_condition_relation_publication_view_t* publication_view =
+        &publication_views[view];
+    if (publication_view->page_count != 0) {
+      views[view].integer_relations = (loom_condition_relation_matrix_view_t){
+          .entries.pages =
+              retained_page_references + publication_view->first_page,
+          .entry_count = publication_view->page_count,
+          .encoding = LOOM_CONDITION_RELATION_MATRIX_VIEW_PAGES,
+      };
+    }
   }
 
   uint32_t* retained_edge_view_indices = NULL;

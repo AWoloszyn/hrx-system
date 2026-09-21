@@ -504,8 +504,15 @@ TEST_F(CfgConditionFactsTest, FactorizesRepeatedPayloadValues) {
   const auto* target_facts =
       loom_cfg_condition_relation_table_block(&table, target_index);
   ASSERT_NE(target_facts, nullptr);
-  EXPECT_EQ(target_facts->integer_relations.encoding,
-            LOOM_CONDITION_RELATION_MATRIX_VIEW_RANGES);
+  ASSERT_EQ(target_facts->integer_relations.encoding,
+            LOOM_CONDITION_RELATION_MATRIX_VIEW_PAGES);
+  bool has_range_page = false;
+  for (uint32_t i = 0; i < target_facts->integer_relations.entry_count; ++i) {
+    has_range_page |=
+        target_facts->integer_relations.entries.pages[i]->contents.encoding ==
+        LOOM_CONDITION_RELATION_MATRIX_VIEW_RANGES;
+  }
+  EXPECT_TRUE(has_range_page);
   for (uint16_t left = 0; left < kWidth; ++left) {
     for (uint16_t right = 0; right < kWidth; ++right) {
       EXPECT_TRUE(HasRelation(&table, target_facts,
