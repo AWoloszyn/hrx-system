@@ -598,10 +598,12 @@ function(iree_add_data_dependencies)
   set(_TARGET_DATA)
   foreach(_DATA_LABEL ${_RULE_DATA})
     set(_DATA_TARGET_NAME "${_DATA_LABEL}")
+    set(_DATA_IS_TARGET_FILE OFF)
     # Native test file locators can name a target's output before the target
     # is declared. Preserve that dependency as a target, not a source file.
     if(_DATA_TARGET_NAME MATCHES "^\\$<TARGET_FILE:([^>]+)>$")
       set(_DATA_TARGET_NAME "${CMAKE_MATCH_1}")
+      set(_DATA_IS_TARGET_FILE ON)
     endif()
     if(_DATA_TARGET_NAME MATCHES "^::")
       iree_package_ns(_DATA_PACKAGE_NS)
@@ -609,7 +611,7 @@ function(iree_add_data_dependencies)
              _DATA_TARGET_NAME "${_DATA_TARGET_NAME}")
     endif()
 
-    if(TARGET "${_DATA_TARGET_NAME}" OR
+    if(_DATA_IS_TARGET_FILE OR TARGET "${_DATA_TARGET_NAME}" OR
        "${_DATA_TARGET_NAME}" MATCHES "::")
       list(APPEND _TARGET_DATA "${_DATA_TARGET_NAME}")
       iree_register_target_dependency(
@@ -656,15 +658,27 @@ function(iree_add_data_dependencies)
     list(APPEND _FILE_DATA "${_DATA_LABEL}")
     set(_FILE_PATH ${_DATA_LABEL})
 
-    # Create a target which copies the data file into the build directory.
-    # If this file is included in multiple rules, only create the target once.
-    string(REPLACE "::" "_" _DATA_TARGET ${_DATA_LABEL})
-    string(REPLACE "/" "_" _DATA_TARGET ${_DATA_TARGET})
+    # Keep staging targets private: a file spelling must remain file DATA for
+    # later consumers. Key by destination so distinct paths and projects cannot
+    # collide, while repeated consumers share one file-producing command.
+    set(_INPUT_PATH "${PROJECT_SOURCE_DIR}/${_FILE_PATH}")
+    set(_OUTPUT_PATH "${PROJECT_BINARY_DIR}/${_FILE_PATH}")
+    cmake_path(NORMAL_PATH _OUTPUT_PATH)
+    string(SHA256 _DATA_KEY "${_OUTPUT_PATH}")
+    set(_DATA_TARGET "iree_data_${_DATA_KEY}")
     if(NOT TARGET ${_DATA_TARGET})
-      set(_INPUT_PATH "${PROJECT_SOURCE_DIR}/${_FILE_PATH}")
-      set(_OUTPUT_PATH "${PROJECT_BINARY_DIR}/${_FILE_PATH}")
-      add_custom_target(${_DATA_TARGET}
-        COMMAND ${CMAKE_COMMAND} -E copy ${_INPUT_PATH} ${_OUTPUT_PATH}
+      get_filename_component(_OUTPUT_DIR "${_OUTPUT_PATH}" DIRECTORY)
+      add_custom_command(
+        OUTPUT "${_OUTPUT_PATH}"
+        COMMAND "${CMAKE_COMMAND}" -E make_directory "${_OUTPUT_DIR}"
+        COMMAND "${CMAKE_COMMAND}" -E copy
+          "${_INPUT_PATH}" "${_OUTPUT_PATH}"
+        DEPENDS "${_INPUT_PATH}"
+        VERBATIM
+      )
+      add_custom_target(${_DATA_TARGET} DEPENDS "${_OUTPUT_PATH}")
+      iree_register_generated_output_producer(${_DATA_TARGET}
+        OUTPUTS "${_OUTPUT_PATH}"
       )
     endif()
 
