@@ -371,11 +371,30 @@ TEST_F(LowAllocationCoalescingTest, ConcatMayPrecedeItsSourceAssignments) {
   assignment_map.assignments = &first_assignment;
   assignment_map.assignment_indices_by_value_ordinal = assignment_indices;
 
+  loom_low_reg_class_t reg_class = {};
+  reg_class.flags = LOOM_LOW_REG_CLASS_FLAG_PHYSICAL;
+  reg_class.alloc_unit_bits = 32;
+  reg_class.allocatable_count = 8;
+  reg_class.spill_class_id = LOOM_LOW_REG_CLASS_NONE;
+  loom_low_descriptor_set_t descriptor_set = {};
+  descriptor_set.stable_id = 17;
+  descriptor_set.reg_classes = &reg_class;
+  descriptor_set.reg_class_count = 1;
+  loom_low_resolved_target_t target = {};
+  target.descriptor_set = &descriptor_set;
+  target.descriptor_set_key = IREE_SV("test");
+  loom_low_allocation_target_constraints_t target_constraints = {};
+  target_constraints.target = &target;
+  loom_low_allocation_search_context_t search_context = {};
+  search_context.descriptor_set = &descriptor_set;
+
   loom_low_allocation_coalescing_context_t context = {};
   context.arena = &arena_;
   context.liveness = &liveness;
   context.placement = &placement;
   context.assignment_map = &assignment_map;
+  context.target_constraints = &target_constraints;
+  context.search_context = &search_context;
 
   // Block layout can put a concat use before its defining block. Allocation
   // then reserves the result first, even when some operands were defined in
