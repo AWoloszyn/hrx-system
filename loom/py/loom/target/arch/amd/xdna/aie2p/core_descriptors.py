@@ -1350,14 +1350,20 @@ def _descriptor(spec: descriptor_specs._DescriptorSpec) -> Descriptor:
         ),
     )
     operand_names = tuple(operand.field_name for operand in operands)
+    # Required machine immediates share canonical IR dictionary order. Assembly
+    # retains the machine operand order through its independent field mapping.
+    immediates = tuple(
+        sorted(
+            (_immediate(spec.form_name, operand) for operand in immediate_inputs),
+            key=lambda immediate: immediate.field_name,
+        )
+    )
     descriptor = Descriptor(
         key=spec.key,
         mnemonic=mnemonic,
         semantic_tag=spec.semantic_tag,
         operands=operands,
-        immediates=tuple(
-            _immediate(spec.form_name, operand) for operand in immediate_inputs
-        ),
+        immediates=immediates,
         encoding_field_values=_fixed_operand_encoding_field_values(
             spec, (*implicit_outputs, *implicit_inputs)
         ),
