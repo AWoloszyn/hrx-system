@@ -106,7 +106,7 @@ class CheckOpsTest : public ::testing::Test {
 TEST_F(CheckOpsTest, RejectsAbsentBenchmarkSymbol) {
   auto* benchmark = Benchmark(loom_symbol_ref_null());
   // A native producer may omit a required attribute.
-  loom_op_attrs(benchmark)[0] = {};
+  loom_op_attrs(benchmark)[loom_check_benchmark_benchmark_field().index] = {};
   EXPECT_EQ(Verify(module_), 1u);
 }
 

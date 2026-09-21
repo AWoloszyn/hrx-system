@@ -165,7 +165,8 @@ TEST_F(EncodingFormatTest, DefineInlineSpec) {
   const loom_op_t* op = loom_block_const_op(body, 0);
   ASSERT_TRUE(loom_encoding_define_isa(op));
 
-  loom_attribute_t spec_attr = loom_op_attrs(op)[0];
+  loom_attribute_t spec_attr =
+      loom_op_attr(op, loom_encoding_define_spec_field());
   ASSERT_EQ(spec_attr.kind, LOOM_ATTR_ENCODING);
   const loom_encoding_t* spec_encoding =
       loom_module_encoding(module, loom_attr_as_encoding_id(spec_attr));
@@ -289,7 +290,8 @@ TEST_F(EncodingFormatTest, DefineAliasSpec) {
   const loom_op_t* op = loom_block_const_op(body, 0);
   ASSERT_TRUE(loom_encoding_define_isa(op));
 
-  loom_attribute_t spec_attr = loom_op_attrs(op)[0];
+  loom_attribute_t spec_attr =
+      loom_op_attr(op, loom_encoding_define_spec_field());
   ASSERT_EQ(spec_attr.kind, LOOM_ATTR_ENCODING);
   const loom_encoding_t* spec_encoding =
       loom_module_encoding(module, loom_attr_as_encoding_id(spec_attr));
@@ -319,10 +321,8 @@ TEST_F(EncodingFormatTest, CanonicalNumericSchemaHasStructuralIdentity) {
   const loom_op_t* structural_op = loom_block_const_op(body, 1);
   ASSERT_TRUE(loom_encoding_define_isa(named_op));
   ASSERT_TRUE(loom_encoding_define_isa(structural_op));
-  const uint16_t named_id =
-      loom_attr_as_encoding_id(loom_op_attrs(named_op)[0]);
-  const uint16_t structural_id =
-      loom_attr_as_encoding_id(loom_op_attrs(structural_op)[0]);
+  const uint16_t named_id = loom_encoding_define_spec(named_op);
+  const uint16_t structural_id = loom_encoding_define_spec(structural_op);
   EXPECT_EQ(named_id, structural_id);
 
   const loom_encoding_t* encoding = loom_module_encoding(module, named_id);
@@ -361,9 +361,8 @@ TEST_F(EncodingFormatTest, CanonicalNumericSchemaOverridesStructuralDefaults) {
 
   loom_block_t* body = loom_module_block(module);
   ASSERT_EQ(body->op_count, 2u);
-  EXPECT_EQ(
-      loom_attr_as_encoding_id(loom_op_attrs(loom_block_const_op(body, 0))[0]),
-      loom_attr_as_encoding_id(loom_op_attrs(loom_block_const_op(body, 1))[0]));
+  EXPECT_EQ(loom_encoding_define_spec(loom_block_const_op(body, 0)),
+            loom_encoding_define_spec(loom_block_const_op(body, 1)));
   EXPECT_EQ(PrintModule(module),
             "%named = encoding.define "
             "#encoding.f8e4m3fn<payload_elements=8> : "
@@ -407,7 +406,8 @@ TEST_F(EncodingFormatTest, DefineNestedInlineSpec) {
   const loom_op_t* op = loom_block_const_op(body, 0);
   ASSERT_TRUE(loom_encoding_define_isa(op));
 
-  loom_attribute_t spec_attr = loom_op_attrs(op)[0];
+  loom_attribute_t spec_attr =
+      loom_op_attr(op, loom_encoding_define_spec_field());
   ASSERT_EQ(spec_attr.kind, LOOM_ATTR_ENCODING);
   const loom_encoding_t* outer_encoding =
       loom_module_encoding(module, loom_attr_as_encoding_id(spec_attr));

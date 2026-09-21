@@ -391,7 +391,7 @@ class VMSourceCaptureTest : public VMImportsTest {
         loom_region_entry_block(loom_func_like_body(function))->first_op;
     ASSERT_TRUE(loom_func_location_isa(capture));
     IREE_ASSERT_OK(loom_op_set_attr(
-        input.module, capture, 0,
+        input.module, capture, loom_func_location_nodes_field().index,
         loom_attr_parameterized_array(nodes.values, nodes.count)));
 
     iree_io_stream_t* stream = nullptr;

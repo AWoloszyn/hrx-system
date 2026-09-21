@@ -118,7 +118,7 @@ static iree_status_t pattern_one_to_two(const loom_pattern_t*, loom_op_t* op,
   if (!loom_test_constant_isa(op)) {
     return iree_ok_status();
   }
-  int64_t value = loom_attr_as_i64(loom_op_attrs(op)[0]);
+  int64_t value = loom_attr_as_i64(loom_test_constant_value(op));
   if (value != 1) {
     return iree_ok_status();
   }
@@ -141,7 +141,7 @@ static iree_status_t pattern_two_to_ten(const loom_pattern_t*, loom_op_t* op,
   if (!loom_test_constant_isa(op)) {
     return iree_ok_status();
   }
-  int64_t value = loom_attr_as_i64(loom_op_attrs(op)[0]);
+  int64_t value = loom_attr_as_i64(loom_test_constant_value(op));
   if (value != 2) {
     return iree_ok_status();
   }
@@ -159,7 +159,7 @@ static iree_status_t pattern_two_error(const loom_pattern_t*, loom_op_t* op,
   if (!loom_test_constant_isa(op)) {
     return iree_ok_status();
   }
-  int64_t value = loom_attr_as_i64(loom_op_attrs(op)[0]);
+  int64_t value = loom_attr_as_i64(loom_test_constant_value(op));
   if (value != 2) {
     return iree_ok_status();
   }
@@ -194,7 +194,7 @@ TEST_F(GreedyRewriteTest, ChainedPatternsReachFixedPoint) {
   loom_value_t* value = loom_module_value(module_, final_result);
   loom_op_t* final_const = loom_value_def_op(value);
   ASSERT_NE(final_const, nullptr);
-  EXPECT_EQ(loom_attr_as_i64(loom_op_attrs(final_const)[0]), 10);
+  EXPECT_EQ(loom_attr_as_i64(loom_test_constant_value(final_const)), 10);
 }
 
 TEST_F(GreedyRewriteTest, PatternErrorPropagates) {
@@ -240,7 +240,7 @@ TEST_F(GreedyRewriteTest, UnmatchedPatternsLeaveIrUntouched) {
       loom_greedy_rewrite(&arena, module_, function_, patterns, 2, NULL));
   iree_arena_deinitialize(&arena);
 
-  EXPECT_EQ(loom_attr_as_i64(loom_op_attrs(const_op)[0]), 42);
+  EXPECT_EQ(loom_attr_as_i64(loom_test_constant_value(const_op)), 42);
 }
 
 TEST_F(GreedyRewriteTest, ExplicitTargetFactsSetAnalysisScope) {
@@ -1216,8 +1216,8 @@ TEST_P(ForwardingFactsRewriteTest, OpenQueuesRestartAcrossSemanticEdits) {
     // Changing an external producer must reach the entire queue and preserve
     // each suffix's independent lower bound.
     injected_value += count;
-    IREE_ASSERT_OK(loom_rewriter_set_attr(&rewriter, injected, 0,
-                                          loom_attr_i64(injected_value)));
+    IREE_ASSERT_OK(loom_test_constant_rewrite_value(
+        &rewriter, injected, loom_attr_i64(injected_value)));
     check(QueueState::kOpenUniform);
     IREE_ASSERT_OK(
         loom_rewriter_set_operand(&rewriter, selector, 0, unknown_id));
@@ -1706,8 +1706,8 @@ TEST_P(StructuredForwardingFactsRewriteTest,
   check(State::kOpen);
   for (int edit = 0; edit < 3; ++edit) {
     injected_value += count;
-    IREE_ASSERT_OK(loom_rewriter_set_attr(&rewriter, injected, 0,
-                                          loom_attr_i64(injected_value)));
+    IREE_ASSERT_OK(loom_test_constant_rewrite_value(
+        &rewriter, injected, loom_attr_i64(injected_value)));
     check(State::kOpen);
     IREE_ASSERT_OK(loom_rewriter_set_operand(
         &rewriter, yield, count - 1, body_args[is_while ? count - 1 : 0]));

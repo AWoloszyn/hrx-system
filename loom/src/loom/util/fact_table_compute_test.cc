@@ -232,7 +232,8 @@ TEST_F(FactTableComputeTest,
             std::vector<loom_value_id_t>({first_condition}));
 
   predicate.args[1] = loom_scf_select_result(second_select);
-  IREE_ASSERT_OK(loom_op_set_attr(module_, assume, 0,
+  IREE_ASSERT_OK(loom_op_set_attr(module_, assume,
+                                  loom_index_assume_predicates_field().index,
                                   loom_attr_predicate_list(&predicate, 1)));
   bool changed = false;
   IREE_ASSERT_OK(loom_value_fact_table_compute_op_and_report(&table_, module_,
@@ -242,7 +243,8 @@ TEST_F(FactTableComputeTest,
             std::vector<loom_value_id_t>({second_condition}));
 
   predicate.args[1] = inputs_[1];
-  IREE_ASSERT_OK(loom_op_set_attr(module_, assume, 0,
+  IREE_ASSERT_OK(loom_op_set_attr(module_, assume,
+                                  loom_index_assume_predicates_field().index,
                                   loom_attr_predicate_list(&predicate, 1)));
   IREE_ASSERT_OK(loom_value_fact_table_compute_op_and_report(&table_, module_,
                                                              assume, &changed));

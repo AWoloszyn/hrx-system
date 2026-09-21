@@ -637,7 +637,7 @@ TEST_F(BuilderTest, ReplaceAllUsesWithUpdatesPredicateAttrs) {
 
   ASSERT_TRUE(loom_test_assume_isa(assume_op));
   EXPECT_EQ(loom_test_assume_values(assume_op).values[0], new_id);
-  loom_attribute_t predicate_attr = loom_op_attrs(assume_op)[0];
+  loom_attribute_t predicate_attr = loom_test_assume_predicates(assume_op);
   ASSERT_EQ(predicate_attr.kind, LOOM_ATTR_PREDICATE_LIST);
   ASSERT_EQ(predicate_attr.count, 1u);
   ASSERT_NE(predicate_attr.predicate_list, nullptr);
@@ -709,8 +709,9 @@ TEST_F(BuilderTest, EnumAttribute) {
   loom_op_t* op = NULL;
   IREE_ASSERT_OK(loom_builder_allocate_op(&builder_, LOOM_OP_TEST_CMP, 2, 1, 0,
                                           0, 1, LOOM_LOCATION_UNKNOWN, &op));
-  loom_op_attrs(op)[0] = loom_attr_enum(3);  // "le" predicate.
-  EXPECT_EQ(loom_test_cmp_predicate(op), 3);
+  loom_op_initialize_attr(op, loom_test_cmp_predicate_field(),
+                          loom_attr_enum(LOOM_TEST_CMP_PREDICATE_LE));
+  EXPECT_EQ(loom_test_cmp_predicate(op), LOOM_TEST_CMP_PREDICATE_LE);
 }
 
 TEST_F(BuilderTest, RegionAccessor) {
@@ -815,7 +816,7 @@ TEST_F(BuilderTest, ConstantBuilder) {
   EXPECT_EQ(op->kind, LOOM_OP_TEST_CONSTANT);
   EXPECT_EQ(op->result_count, 1);
   EXPECT_EQ(op->attribute_count, 1);
-  EXPECT_EQ(loom_attr_as_i64(loom_op_attrs(op)[0]), 42);
+  EXPECT_EQ(loom_attr_as_i64(loom_test_constant_value(op)), 42);
   EXPECT_NE(loom_op_results(op)[0], LOOM_VALUE_ID_INVALID);
 }
 
@@ -986,7 +987,7 @@ TEST_F(BuilderTest, SliceBuilder) {
   EXPECT_EQ(offs.count, 1);
   EXPECT_EQ(offs.values[0], offsets[0]);
   // Verify static_offsets attr was stored.
-  loom_attribute_t attr = loom_op_attrs(op)[0];
+  loom_attribute_t attr = loom_test_slice_static_offsets(op);
   EXPECT_EQ(attr.kind, LOOM_ATTR_I64_ARRAY);
   EXPECT_EQ(attr.count, 1);
   EXPECT_EQ(attr.i64_array[0], 0);
@@ -1014,7 +1015,7 @@ TEST_F(BuilderTest, UpdateBuilder) {
   EXPECT_EQ(update_offs.values[0], offsets[0]);
   EXPECT_EQ(update_offs.values[1], offsets[1]);
   // Verify static_offsets attr.
-  loom_attribute_t attr = loom_op_attrs(op)[0];
+  loom_attribute_t attr = loom_test_update_static_offsets(op);
   EXPECT_EQ(attr.kind, LOOM_ATTR_I64_ARRAY);
   EXPECT_EQ(attr.count, 2);
   EXPECT_EQ(attr.i64_array[0], -1);
@@ -2240,7 +2241,7 @@ TEST_F(BuilderTest, DefOpPatternMatch) {
   loom_op_t* def_op = loom_value_def_op(input_value);
   ASSERT_NE(def_op, nullptr);
   EXPECT_TRUE(loom_test_constant_isa(def_op));
-  EXPECT_EQ(loom_attr_as_i64(loom_op_attrs(def_op)[0]), 42);
+  EXPECT_EQ(loom_attr_as_i64(loom_test_constant_value(def_op)), 42);
 }
 
 //===----------------------------------------------------------------------===//

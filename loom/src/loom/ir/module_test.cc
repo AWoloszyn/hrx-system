@@ -999,7 +999,8 @@ TEST_F(ModuleTest, BlockRemoveArgRejectsPredicateAttributeUses) {
       /*.reserved=*/{},
       /*.args=*/{argument, 3, 0},
   };
-  loom_op_attrs(function_op)[3] = loom_attr_predicate_list(&predicate, 1);
+  loom_op_attrs(function_op)[loom_test_func_predicates_field().index] =
+      loom_attr_predicate_list(&predicate, 1);
   IREE_ASSERT_OK(loom_module_compute_uses(module));
 
   EXPECT_TRUE(

@@ -3982,7 +3982,7 @@ TEST_F(ReaderTest, SignedEnumSetsPreserveAssertionsAndPresence) {
   EXPECT_TRUE(loom_signed_enum_set_contains_negative(
       required, LOOM_TEST_SIGNED_ENUM_SET_ATTRS_REQUIRED_FEATURES_MIDDLE));
   EXPECT_EQ(required.word_count, 4u);
-  EXPECT_FALSE(loom_attr_is_absent(loom_op_attrs(op)[1]));
+  EXPECT_TRUE(loom_test_signed_enum_set_attrs_has_optional_features(op));
   loom_signed_enum_set_t optional =
       loom_test_signed_enum_set_attrs_optional_features(op);
   EXPECT_EQ(optional.word_count, 0u);
@@ -4181,12 +4181,13 @@ TEST_F(ReaderTest, ParameterizedAttrsPreserveNamedSlotsAndPresence) {
   EXPECT_TRUE(loom_test_tile_attr_isa(exact_tiles.values[0]));
 
   loom_op_t* present_empty_array_op = loom_block_op(entry, 5);
-  EXPECT_FALSE(loom_attr_is_absent(loom_op_attrs(present_empty_array_op)[1]));
+  EXPECT_TRUE(
+      loom_test_parameterized_attr_array_has_tiles(present_empty_array_op));
   EXPECT_EQ(
       loom_test_parameterized_attr_array_tiles(present_empty_array_op).count,
       0u);
   loom_op_t* absent_array_op = loom_block_op(entry, 6);
-  EXPECT_TRUE(loom_attr_is_absent(loom_op_attrs(absent_array_op)[1]));
+  EXPECT_FALSE(loom_test_parameterized_attr_array_has_tiles(absent_array_op));
 
   loom_module_free(read_module);
   loom_module_free(module);
@@ -4256,10 +4257,11 @@ TEST_F(ReaderTest, ReadsDynamicGlobalSymbolModule) {
       loom_string_table_get(&read_module->strings, dim_value.name_id),
       IREE_SV("n")));
 
-  const loom_attribute_t* attrs = loom_op_attrs(symbol.defining_op);
-  ASSERT_EQ(attrs[1].kind, LOOM_ATTR_PREDICATE_LIST);
-  ASSERT_EQ(attrs[1].count, 1u);
-  const loom_predicate_t& predicate = attrs[1].predicate_list[0];
+  const loom_attribute_t predicates =
+      loom_global_constant_predicates(symbol.defining_op);
+  ASSERT_EQ(predicates.kind, LOOM_ATTR_PREDICATE_LIST);
+  ASSERT_EQ(predicates.count, 1u);
+  const loom_predicate_t& predicate = predicates.predicate_list[0];
   EXPECT_EQ(predicate.kind, LOOM_PREDICATE_MUL);
   EXPECT_EQ(predicate.arg_count, 2u);
   EXPECT_EQ(predicate.arg_tags[0], LOOM_PRED_ARG_VALUE);

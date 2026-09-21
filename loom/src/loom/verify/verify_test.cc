@@ -577,8 +577,10 @@ TEST_F(VerifyTest, EnumArraysPreserveValuesAndPresentEmpty) {
   EXPECT_EQ(required.values[1],
             LOOM_TEST_ENUM_ARRAY_ATTRS_REQUIRED_VALUES_HIGH);
   EXPECT_EQ(required.values[2], LOOM_TEST_ENUM_ARRAY_ATTRS_REQUIRED_VALUES_LOW);
-  EXPECT_FALSE(loom_attr_is_absent(loom_op_attrs(op)[1]));
-  EXPECT_EQ(loom_op_attrs(op)[1].kind, LOOM_ATTR_ENUM_ARRAY);
+  EXPECT_TRUE(loom_test_enum_array_attrs_has_optional_values(op));
+  EXPECT_EQ(
+      loom_op_attr(op, loom_test_enum_array_attrs_optional_values_field()).kind,
+      LOOM_ATTR_ENUM_ARRAY);
   EXPECT_EQ(loom_test_enum_array_attrs_optional_values(op).count, 0u);
 
   TerminateFunc();
@@ -769,7 +771,8 @@ TEST_F(VerifyTest, OperandDictOperandsRequireNamesAttribute) {
   IREE_ASSERT_OK(loom_test_operand_dict_build(
       &builder_, arguments[0], parameters, IREE_ARRAYSIZE(parameters), f32_type,
       LOOM_LOCATION_UNKNOWN, &op));
-  loom_op_attrs(op)[0] = loom_attr_absent();
+  loom_op_attrs(op)[loom_test_operand_dict_param_names_field().index] =
+      loom_attr_absent();
 
   TerminateFunc();
   DiagnosticCapture structured;
@@ -806,7 +809,7 @@ TEST_F(VerifyTest, OperandDictOrdinalsMustStayInOperandRange) {
   loom_named_attr_t names[] = {
       {/*.name_id=*/alpha_name, /*.reserved=*/0, /*.value=*/loom_attr_i64(1)},
   };
-  loom_op_attrs(op)[0] =
+  loom_op_attrs(op)[loom_test_operand_dict_param_names_field().index] =
       loom_make_canonical_attr_dict(names, IREE_ARRAYSIZE(names));
 
   TerminateFunc();
@@ -3280,7 +3283,8 @@ TEST_F(VerifyTest, AttrInRangeRankViolation) {
                                           0, 1, LOOM_LOCATION_UNKNOWN, &op));
   loom_op_operands(op)[0] = source;
   loom_op_results(op)[0] = result_val;
-  loom_op_attrs(op)[0] = loom_attr_i64(5);
+  loom_op_initialize_attr(op, loom_test_dim_dim_index_field(),
+                          loom_attr_i64(5));
 
   TerminateFunc();
   DiagnosticCapture structured;
@@ -3313,7 +3317,8 @@ TEST_F(VerifyTest, AttrInRangeRankNegativeIndex) {
                                           0, 1, LOOM_LOCATION_UNKNOWN, &op));
   loom_op_operands(op)[0] = source;
   loom_op_results(op)[0] = result_val;
-  loom_op_attrs(op)[0] = loom_attr_i64(-1);
+  loom_op_initialize_attr(op, loom_test_dim_dim_index_field(),
+                          loom_attr_i64(-1));
 
   TerminateFunc();
   DiagnosticCapture structured;
@@ -3346,7 +3351,8 @@ TEST_F(VerifyTest, AttrInRangeRankPasses) {
                                           0, 1, LOOM_LOCATION_UNKNOWN, &op));
   loom_op_operands(op)[0] = source;
   loom_op_results(op)[0] = result_val;
-  loom_op_attrs(op)[0] = loom_attr_i64(1);
+  loom_op_initialize_attr(op, loom_test_dim_dim_index_field(),
+                          loom_attr_i64(1));
 
   TerminateFunc();
   auto result = Verify();
