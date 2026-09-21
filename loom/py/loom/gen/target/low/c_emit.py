@@ -97,6 +97,7 @@ def emit_header_for_spec(
         f"#define {header_spec.header_guard}",
         "",
         '#include "loom/codegen/low/descriptors.h"',
+        '#include "loom/codegen/low/immediate_fields.h"',
         "",
     ]
     lines.extend(c_spelling.descriptor_ref_define(header_spec, descriptor.key, i) for i, descriptor in enumerate(header_spec.descriptors))

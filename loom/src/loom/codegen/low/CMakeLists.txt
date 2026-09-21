@@ -14,6 +14,7 @@ loom_cc_library(
     descriptors
   HDRS
     "descriptors.h"
+    "immediate_fields.h"
   SRCS
     "descriptors.c"
     "descriptors_enums.c"

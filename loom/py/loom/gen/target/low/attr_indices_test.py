@@ -108,3 +108,22 @@ def test_common_bindings_require_agreement_across_descriptor_variants():
 def test_attr_index_names_reject_c_identifier_collisions():
     with pytest.raises(ValueError, match="collides between"):
         attr_indices.emit_attr_indices("TEST", (_descriptor("same.name", "same_name"),), target_key="test")
+
+
+def test_attr_reader_macros_share_bindings_and_preserve_optional_presence():
+    descriptor = _descriptor("alpha", "offset")
+    descriptor = replace(
+        descriptor,
+        immediates=tuple(replace(immediate, flags=(ImmediateFlag.DEFAULT_VALUE,)) if immediate.field_name == "offset" else immediate for immediate in descriptor.immediates),
+    )
+    header = _generate(descriptor).header
+    assert "#define loom_test_low_core_test_const_i32_alpha(attributes)" in header
+    assert "loom_low_immediate_attr((attributes), loom_test_low_core_test_const_i32_alpha_field())" in header
+    assert "#define loom_test_low_core_test_const_i32_offset(attributes)" in header
+    assert "loom_low_optional_immediate_attr((attributes), loom_test_low_core_test_const_i32_offset_field())" in header
+    assert "static inline" not in header
+
+
+def test_attr_reader_names_reject_binding_collisions():
+    with pytest.raises(ValueError, match="collides between"):
+        attr_indices.emit_attr_indices("TEST", (_descriptor("value", "value_field"),), target_key="test")

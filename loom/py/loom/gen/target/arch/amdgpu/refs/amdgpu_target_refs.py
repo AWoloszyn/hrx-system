@@ -696,6 +696,8 @@ def _emit_tables_header(descriptor_sets: Sequence[DescriptorSet]) -> str:
         "",
         "#include <stdint.h>",
         "",
+        '#include "loom/codegen/low/immediate_fields.h"',
+        "",
         "#define LOOM_AMDGPU_DESCRIPTOR_REF_NONE UINT16_MAX",
         f"#define LOOM_AMDGPU_DESCRIPTOR_REF_COUNT {_u16_literal(len(descriptor_ref_keys))}",
         f"#define LOOM_AMDGPU_TARGET_REF_DESCRIPTOR_SET_ORDINAL_COUNT {_u16_literal(len(sorted_descriptor_set_infos()))}",

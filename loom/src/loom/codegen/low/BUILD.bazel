@@ -48,7 +48,10 @@ loom_cc_library(
         "descriptors.c",
         "descriptors_enums.c",
     ],
-    hdrs = ["descriptors.h"],
+    hdrs = [
+        "descriptors.h",
+        "immediate_fields.h",
+    ],
     visibility = _LOW_DESCRIPTOR_VISIBILITY,
     deps = [
         "//loom/src/loom/ir",

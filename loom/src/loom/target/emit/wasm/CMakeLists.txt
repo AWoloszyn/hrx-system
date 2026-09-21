@@ -163,4 +163,22 @@ loom_cc_library(
 )
 endif()
 
+if(LOOM_TARGET_ARCH_WASM AND LOOM_EMIT_WASM)
+loom_cc_test(
+  NAME
+    descriptor_fields_test
+  SRCS
+    "descriptor_fields_test.cc"
+  DEPS
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::codegen::low::descriptors
+    loom::ir
+    loom::target::arch::wasm::descriptors::descriptors_ids
+  LABELS
+    "iree-build-requirement=loom.target.arch.wasm"
+    "iree-build-requirement=loom.emit.wasm"
+)
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

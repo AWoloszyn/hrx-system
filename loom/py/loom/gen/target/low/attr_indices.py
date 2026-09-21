@@ -49,6 +49,7 @@ def emit_attr_indices(
 
     lines: list[str] = []
     constant_fields: dict[str, tuple[str, str]] = {}
+    accessor_fields: dict[str, tuple[str, str]] = {}
     for key, indices in descriptor_indices.items():
         if not indices:
             continue
@@ -63,4 +64,20 @@ def emit_attr_indices(
             constant_fields[constant] = (key, field_name)
             lines.append(f"  {constant} = {index},")
         lines.extend(["};", ""])
+        prefix = c_enum_prefix.lower()
+        if not prefix.startswith("loom_"):
+            prefix = f"loom_{prefix}"
+        for (field_name, optional), index in indices.items():
+            accessor = f"{prefix}_{descriptor_name.lower()}_{c_spelling.c_identifier(field_name)}"
+            for name in (accessor, f"{accessor}_field"):
+                if name in accessor_fields:
+                    previous_key, previous_field = accessor_fields[name]
+                    raise ValueError(f"attribute accessor '{name}' collides between '{previous_key}.{previous_field}' and '{key}.{field_name}'")
+                accessor_fields[name] = (key, field_name)
+            lines.append(f"#define {accessor}_field() \\")
+            lines.append(f"  ((loom_low_immediate_field_t){index})")
+            lines.append(f"#define {accessor}(attributes) \\")
+            reader = "loom_low_optional_immediate_attr" if optional else "loom_low_immediate_attr"
+            lines.append(f"  {reader}((attributes), {accessor}_field())")
+        lines.append("")
     return lines
