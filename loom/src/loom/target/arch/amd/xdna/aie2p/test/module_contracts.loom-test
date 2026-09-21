@@ -216,3 +216,27 @@ low.func.def target<amd.xdna.aie2p.array>(@array_target) @numeric_fold_entry() a
   %worker = worker.fold %workers, %zero, %one, 123, 0, 1, "addf", 0
   return
 }
+
+// ====
+// RUN: with-checks format bytecode
+
+aie2p.target<array> @array_target
+
+aie2p.target<core> @core_target
+
+low.func.decl target<amd.xdna.aie2p.core>(@core_target) @core_entry()
+
+low.func.def target<amd.xdna.aie2p.array>(@array_target) @immediate_roundtrip() asm {
+  %zero = constant.u32 0 : reg<aie2p.array.scalar : index>
+  %one = constant.u32 1 : reg<aie2p.array.scalar : index>
+  %workers = group %one
+  %binding = low.op<amd.xdna.aie2p.array.binding>() {ordinal = 7, access = "read_write"} : () -> reg<aie2p.array.binding>
+  %worker = low.op<amd.xdna.aie2p.array.worker.fold>(%workers, %zero, %one) {output_port = 3, kind = "addf", entry = @core_entry, output_count = 2, fast_math = 64} : (reg<aie2p.array.group>, reg<aie2p.array.scalar : index>, reg<aie2p.array.scalar : index>) -> reg<aie2p.array.worker>
+  %output = sender %worker, 3 : reg<aie2p.array.sender : tile<1xf32>>
+  return
+}
+
+// ----
+CHECK: %binding = binding 7, "read_write"
+CHECK: %worker = worker.fold %workers, %zero, %one, @core_entry, 3, 2, "addf", 64
+CHECK: %output = sender %worker, 3 : reg<aie2p.array.sender : tile<1xf32>>

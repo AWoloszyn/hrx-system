@@ -113,6 +113,40 @@ def test_worker_entries_are_explicit_symbolic_product_edges() -> None:
     assert fold.immediates[3].kind is ImmediateKind.ENUM
 
 
+def test_planner_immediate_positions_are_required_and_typed() -> None:
+    # The verified planner reads canonical dictionaries directly. Optional fields
+    # or changed spelling order would invalidate those positions.
+    layouts = {
+        "binding": (
+            ("access", ImmediateKind.ENUM),
+            ("ordinal", ImmediateKind.UNSIGNED),
+        ),
+        "worker": (("entry", ImmediateKind.ORDINAL),),
+        "worker.fold": (
+            ("entry", ImmediateKind.ORDINAL),
+            ("fast_math", ImmediateKind.UNSIGNED),
+            ("kind", ImmediateKind.ENUM),
+            ("output_count", ImmediateKind.UNSIGNED),
+            ("output_port", ImmediateKind.UNSIGNED),
+        ),
+        "sender": (("port", ImmediateKind.UNSIGNED),),
+        "receiver": (("port", ImmediateKind.UNSIGNED),),
+    }
+    descriptors = {
+        descriptor.mnemonic: descriptor
+        for descriptor in AIE2P_ARRAY_DESCRIPTOR_SET.descriptors
+    }
+    for mnemonic, layout in layouts.items():
+        descriptor = descriptors[mnemonic]
+        assert descriptor.op_kind is DescriptorOpKind.OP
+        immediates = sorted(descriptor.immediates, key=lambda value: value.field_name)
+        assert tuple((value.field_name, value.kind) for value in immediates) == layout
+        for immediate in immediates:
+            assert immediate.flags == (
+                (ImmediateFlag.SYMBOLIC,) if immediate.field_name == "entry" else ()
+            )
+
+
 def test_channels_are_typed_persistent_topology_edges() -> None:
     descriptors = {
         descriptor.key: descriptor
