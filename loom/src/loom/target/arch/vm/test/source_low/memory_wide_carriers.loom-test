@@ -21,9 +21,9 @@ func.def target(@target) @copy_wide_origin_vectors(%input: buffer, %output: buff
 // ----
 CHECK: * = constant.i64 64
 CHECK: * = constant.i64 124
-CHECK: * = buffer.load %source_view, *, *, 0, 8 : reg<vm.value : i32>
-CHECK: buffer.store %destination_view, %destination_offset, %destination_offset, *, 0, 8
-CHECK: buffer.store %destination_view, *, *, *, 0, 8
+CHECK: * = buffer.load %source_view, *, *, 0, "i32.x1" : reg<vm.value : i32>
+CHECK: buffer.store %destination_view, %destination_offset, %destination_offset, *, 0, "i32.x1"
+CHECK: buffer.store %destination_view, *, *, *, 0, "i32.x1"
 
 // ====
 
@@ -46,8 +46,8 @@ func.def target(@target) @copy_wide_origin_scalar(%input: buffer, %output: buffe
 
 // ----
 CHECK: * = constant.i64 64
-CHECK: %value = buffer.load %source_view, *, *, 0, 8 : reg<vm.value : i32>
-CHECK: buffer.store %destination_view, %destination_offset, %destination_offset, %value, 0, 8
+CHECK: %value = buffer.load %source_view, *, *, 0, "i32.x1" : reg<vm.value : i32>
+CHECK: buffer.store %destination_view, %destination_offset, %destination_offset, %value, 0, "i32.x1"
 
 // ====
 
@@ -68,8 +68,8 @@ func.def target(@target) @exchange_wide_origin(%buffer: buffer, %base_input: i64
 
 // ----
 CHECK: * = integer.add.i64 %wide_base, *
-CHECK: %previous = buffer.load %view, *, 0, 8 : reg<vm.value : i32>
-CHECK: buffer.store %view, *, %value, 0, 8
+CHECK: %previous = buffer.load %view, *, 0, "i32.x1" : reg<vm.value : i32>
+CHECK: buffer.store %view, *, %value, 0, "i32.x1"
 
 // ====
 
@@ -91,7 +91,7 @@ func.def target(@target) @exchange_signed_coordinate(%buffer: buffer, %base_inpu
 }
 
 // ----
-CHECK: * = conversion.integer %signed_position, 18 : reg<vm.value>
+CHECK: * = conversion.integer %signed_position, "s32.to.i64" : reg<vm.value>
 CHECK: * = constant.i64 48
-CHECK: %previous = buffer.load %view, *, 0, 8 : reg<vm.value : i32>
-CHECK: buffer.store %view, *, %value, 0, 8
+CHECK: %previous = buffer.load %view, *, 0, "i32.x1" : reg<vm.value : i32>
+CHECK: buffer.store %view, *, %value, 0, "i32.x1"

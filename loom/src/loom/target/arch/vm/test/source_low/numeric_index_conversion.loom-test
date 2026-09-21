@@ -46,9 +46,9 @@ func.def target(@vm) @boolean_address_cast_family(%flag: i1, %coordinate: index,
 
 // ----
 low.func.def target<vm.core>(@vm) abi(vm_function) @boolean_address_cast_family(%flag: reg<vm.value : i1>, %coordinate: reg<vm.value : i64>, %byte_offset: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i1>, reg<vm.value : i1>) asm {
-  %flag_index = conversion.integer %flag, 7
-  %index_low_bit = conversion.integer %coordinate, 26 : reg<vm.value : i1>
-  %offset_low_bit = conversion.integer %byte_offset, 26 : reg<vm.value : i1>
+  %flag_index = conversion.integer %flag, "u1.to.i64"
+  %index_low_bit = conversion.integer %coordinate, "i64.to.i1" : reg<vm.value : i1>
+  %offset_low_bit = conversion.integer %byte_offset, "i64.to.i1" : reg<vm.value : i1>
   return %flag_index, %flag_index, %index_low_bit, %offset_low_bit
 }
 
@@ -71,12 +71,12 @@ func.def target(@vm) @index_payload_cast_family(%i8: i8, %i16: i16, %i32: i32, %
 
 // ----
 low.func.def target<vm.core>(@vm) abi(vm_function) @index_payload_cast_family(%i8: reg<vm.value : i8>, %i16: reg<vm.value : i16>, %i32: reg<vm.value : i32>, %from_i64: reg<vm.value : i64>, %to_i64: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i8>, reg<vm.value : i16>, reg<vm.value : i32>, reg<vm.value : i64>) asm {
-  %from_i8 = conversion.integer %i8, 12
-  %from_i16 = conversion.integer %i16, 16
-  %from_i32 = conversion.integer %i32, 18
-  %to_i8 = conversion.integer %to_i64, 27 : reg<vm.value : i8>
-  %to_i16 = conversion.integer %to_i64, 28 : reg<vm.value : i16>
-  %to_i32 = conversion.integer %to_i64, 29 : reg<vm.value : i32>
+  %from_i8 = conversion.integer %i8, "s8.to.i64"
+  %from_i16 = conversion.integer %i16, "s16.to.i64"
+  %from_i32 = conversion.integer %i32, "s32.to.i64"
+  %to_i8 = conversion.integer %to_i64, "i64.to.i8" : reg<vm.value : i8>
+  %to_i16 = conversion.integer %to_i64, "i64.to.i16" : reg<vm.value : i16>
+  %to_i32 = conversion.integer %to_i64, "i64.to.i32" : reg<vm.value : i32>
   return %from_i8, %from_i16, %from_i32, %from_i64, %to_i8, %to_i16, %to_i32, %to_i64
 }
 
@@ -99,12 +99,12 @@ func.def target(@vm) @offset_payload_cast_family(%i8: i8, %i16: i16, %i32: i32, 
 
 // ----
 low.func.def target<vm.core>(@vm) abi(vm_function) @offset_payload_cast_family(%i8: reg<vm.value : i8>, %i16: reg<vm.value : i16>, %i32: reg<vm.value : i32>, %from_i64: reg<vm.value : i64>, %to_i64: reg<vm.value : i64>) -> (reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i64>, reg<vm.value : i8>, reg<vm.value : i16>, reg<vm.value : i32>, reg<vm.value : i64>) asm {
-  %from_i8 = conversion.integer %i8, 13
-  %from_i16 = conversion.integer %i16, 17
-  %from_i32 = conversion.integer %i32, 19
-  %to_i8 = conversion.integer %to_i64, 27 : reg<vm.value : i8>
-  %to_i16 = conversion.integer %to_i64, 28 : reg<vm.value : i16>
-  %to_i32 = conversion.integer %to_i64, 29 : reg<vm.value : i32>
+  %from_i8 = conversion.integer %i8, "u8.to.i64"
+  %from_i16 = conversion.integer %i16, "u16.to.i64"
+  %from_i32 = conversion.integer %i32, "u32.to.i64"
+  %to_i8 = conversion.integer %to_i64, "i64.to.i8" : reg<vm.value : i8>
+  %to_i16 = conversion.integer %to_i64, "i64.to.i16" : reg<vm.value : i16>
+  %to_i32 = conversion.integer %to_i64, "i64.to.i32" : reg<vm.value : i32>
   return %from_i8, %from_i16, %from_i32, %from_i64, %to_i8, %to_i16, %to_i32, %to_i64
 }
 

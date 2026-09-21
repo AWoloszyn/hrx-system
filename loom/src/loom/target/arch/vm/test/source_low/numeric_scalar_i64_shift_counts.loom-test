@@ -141,7 +141,7 @@ func.def target(@target) @wide_shift_low_word(%value: i64) -> (i32) {
 low.func.def target<vm.core>(@target) abi(vm_function) @wide_shift_low_word(%value: reg<vm.value : i64>) -> (reg<vm.value : i32>) asm {
   %count = constant.i64 6
   %shifted = integer.shift.left.i64 %value, %count
-  %result = conversion.integer %shifted, 29 : reg<vm.value : i32>
+  %result = conversion.integer %shifted, "i64.to.i32" : reg<vm.value : i32>
   return %result
 }
 

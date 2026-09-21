@@ -28,7 +28,7 @@ low.func.def target<vm.core>(@target) abi(vm_function) @packed4_payload_word_off
   %24 = integer.shift.left.i64 %word, %23
   %25 = integer.add.i64 %22, %24
   %26 = integer.add.i64 %25, %20
-  %packed_word = buffer.load %word_view, %26, %26, 0, 8 : reg<vm.value : i32>
+  %packed_word = buffer.load %word_view, %26, %26, 0, "i32.x1" : reg<vm.value : i32>
   return %packed_word
 }
 
@@ -62,13 +62,13 @@ low.func.def target<vm.core>(@target) abi(vm_function) @packed5_split_payload_of
   %27 = constant.i64 22 : reg<vm.value>
   %28 = integer.mul.i64 %block, %27
   %29 = integer.add.i64 %28, %26
-  %side_bits_word = buffer.load %low_bits_view, %29, %29, 0, 8 : reg<vm.value : i32>
+  %side_bits_word = buffer.load %low_bits_view, %29, %29, 0, "i32.x1" : reg<vm.value : i32>
   %31 = constant.i64 6
   %34 = constant.i64 2 : reg<vm.value>
   %35 = integer.shift.left.i64 %word, %34
   %36 = integer.add.i64 %28, %35
   %37 = integer.add.i64 %36, %31
-  %low_bits_word = buffer.load %low_bits_view, %37, %37, 0, 8 : reg<vm.value : i32>
+  %low_bits_word = buffer.load %low_bits_view, %37, %37, 0, "i32.x1" : reg<vm.value : i32>
   return %side_bits_word, %low_bits_word
 }
 
@@ -114,17 +114,17 @@ low.func.def target<vm.core>(@target) abi(vm_function) @packed6_split_payload_of
   %45 = constant.i64 2 : reg<vm.value>
   %46 = integer.shift.left.i64 %low_word, %45
   %47 = integer.add.i64 %44, %46
-  %low_bits_word = buffer.load %scale_view, %47, %47, 0, 8 : reg<vm.value : i32>
+  %low_bits_word = buffer.load %scale_view, %47, %47, 0, "i32.x1" : reg<vm.value : i32>
   %49 = constant.i64 128
   %53 = integer.shift.left.i64 %high_word, %45
   %54 = integer.add.i64 %44, %53
   %55 = integer.add.i64 %54, %49
-  %high_bits_word = buffer.load %scale_view, %55, %55, 0, 8 : reg<vm.value : i32>
+  %high_bits_word = buffer.load %scale_view, %55, %55, 0, "i32.x1" : reg<vm.value : i32>
   %57 = constant.i64 192
   %60 = constant.i64 1 : reg<vm.value>
   %61 = integer.shift.left.i64 %scale, %60
   %62 = integer.add.i64 %44, %61
   %63 = integer.add.i64 %62, %57
-  %scale_value = buffer.load %scale_view, %63, %63, 0, 4 : reg<vm.value : f16>
+  %scale_value = buffer.load %scale_view, %63, %63, 0, "i16.x1" : reg<vm.value : f16>
   return %low_bits_word, %high_bits_word, %scale_value
 }

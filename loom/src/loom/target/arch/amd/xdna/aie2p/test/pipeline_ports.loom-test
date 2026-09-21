@@ -121,10 +121,10 @@ low.func.def public retain target<amd.xdna.aie2p.array>(@array_target) abi(array
   %69 = worker %65, %68, @interleaved_aliases$group$0
   %70 = constant.u32 0 : reg<aie2p.array.scalar : index>
   %71 = worker %67, %70, @interleaved_aliases$group$1
-  %72 = binding 0, 1
-  %73 = binding 1, 2
-  %74 = binding 2, 2
-  %75 = binding 3, 2
+  %72 = binding 0, "read"
+  %73 = binding 1, "write"
+  %74 = binding 2, "write"
+  %75 = binding 3, "write"
   %76 = sender %72, 0 : reg<aie2p.array.sender : tile<1xi32>>
   %77 = receiver %69, 0 : reg<aie2p.array.receiver : tile<1xi32>>
   %78 = constant.u32 2 : reg<aie2p.array.scalar : index>
@@ -222,9 +222,9 @@ low.func.def public retain target<amd.xdna.aie2p.array>(@array_target) abi(array
   %23 = group %22
   %24 = constant.u32 0 : reg<aie2p.array.scalar : index>
   %25 = worker %23, %24, @add
-  %26 = binding 0, 1
-  %27 = binding 1, 2
-  %28 = binding 2, 2
+  %26 = binding 0, "read"
+  %27 = binding 1, "write"
+  %28 = binding 2, "write"
   %29 = sender %26, 0 : reg<aie2p.array.sender : tile<1xi32>>
   %30 = receiver %25, 0 : reg<aie2p.array.receiver : tile<1xi32>>
   %31 = constant.u32 2 : reg<aie2p.array.scalar : index>

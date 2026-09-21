@@ -166,44 +166,6 @@ static loom_attribute_t loom_aie2p_array_attr(const loom_module_t* module,
   return loom_aie2p_array_find_attr(module, op, name)->value;
 }
 
-static int64_t loom_aie2p_array_enum_attr_value(
-    const loom_aie2p_array_plan_builder_t* builder,
-    const loom_low_descriptor_t* descriptor, iree_string_view_t field_name,
-    loom_attribute_t attr) {
-  if (attr.kind == LOOM_ATTR_I64) {
-    return attr.i64;
-  }
-  IREE_ASSERT_EQ(attr.kind, LOOM_ATTR_STRING);
-  const iree_string_view_t token =
-      builder->module->strings.entries[attr.string_id];
-  for (uint16_t i = 0; i < descriptor->immediate_count; ++i) {
-    const loom_low_immediate_t* immediate =
-        &builder->descriptor_set->immediates[descriptor->immediate_start + i];
-    if (!iree_string_view_equal(
-            loom_low_descriptor_set_string(builder->descriptor_set,
-                                           immediate->field_name_string_offset),
-            field_name)) {
-      continue;
-    }
-    IREE_ASSERT_EQ(immediate->kind, LOOM_LOW_IMMEDIATE_KIND_ENUM);
-    const loom_low_enum_domain_t* domain =
-        &builder->descriptor_set->enum_domains[immediate->enum_domain_id];
-    for (uint16_t j = 0; j < domain->value_count; ++j) {
-      const loom_low_enum_value_t* value =
-          &builder->descriptor_set->enum_values[domain->value_start + j];
-      if (iree_string_view_equal(token, loom_low_descriptor_set_string(
-                                            builder->descriptor_set,
-                                            value->token_string_offset))) {
-        return value->value;
-      }
-    }
-    IREE_ASSERT_UNREACHABLE("verified enum token belongs to its domain");
-    return 0;
-  }
-  IREE_ASSERT_UNREACHABLE("verified descriptor immediate must be present");
-  return 0;
-}
-
 static iree_status_t loom_aie2p_array_exact_u32(
     const loom_aie2p_array_plan_builder_t* builder, loom_value_id_t value_id,
     const char* purpose, uint32_t* out_value) {
@@ -490,13 +452,8 @@ static iree_status_t loom_aie2p_array_extract_binding(
   binding->value_id = loom_op_results(op)[0];
   binding->ordinal = (uint32_t)loom_attr_as_i64(
       loom_aie2p_array_attr(builder->module, op, IREE_SV("ordinal")));
-  const loom_low_descriptor_t* descriptor =
-      &builder->descriptor_set
-           ->descriptors[AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_BINDING];
-  binding->access =
-      (loom_aie2p_array_binding_access_t)loom_aie2p_array_enum_attr_value(
-          builder, descriptor, IREE_SV("access"),
-          loom_aie2p_array_attr(builder->module, op, IREE_SV("access")));
+  binding->access = (loom_aie2p_array_binding_access_t)loom_attr_as_i64(
+      loom_aie2p_array_attr(builder->module, op, IREE_SV("access")));
   loom_aie2p_array_define_entity(builder, binding->value_id,
                                  LOOM_AIE2P_ARRAY_ENTITY_BINDING,
                                  (uint32_t)builder->binding_cursor++);
@@ -544,11 +501,7 @@ static iree_status_t loom_aie2p_array_extract_worker(
         loom_aie2p_array_attr(builder->module, op, IREE_SV("output_port")));
     worker->fold_output_count = (uint32_t)loom_attr_as_i64(
         loom_aie2p_array_attr(builder->module, op, IREE_SV("output_count")));
-    const loom_low_descriptor_t* descriptor =
-        &builder->descriptor_set
-             ->descriptors[AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_WORKER_FOLD];
-    worker->fold_kind = (loom_combining_kind_t)loom_aie2p_array_enum_attr_value(
-        builder, descriptor, IREE_SV("kind"),
+    worker->fold_kind = (loom_combining_kind_t)loom_attr_as_i64(
         loom_aie2p_array_attr(builder->module, op, IREE_SV("kind")));
     worker->fold_fast_math_flags = (uint8_t)loom_attr_as_i64(
         loom_aie2p_array_attr(builder->module, op, IREE_SV("fast_math")));

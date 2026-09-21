@@ -14,6 +14,6 @@ func.def target(@target) @offset_counter(%lower: offset, %upper: offset, %step: 
 }
 
 // ----
-CHECK: * = integer.compare.i64 %iv, %upper, 6
+CHECK: * = integer.compare.i64 %iv, %upper, "ult"
 CHECK: low.cond_br *
 CHECK: * = integer.add.i64 %iv, %positive_step

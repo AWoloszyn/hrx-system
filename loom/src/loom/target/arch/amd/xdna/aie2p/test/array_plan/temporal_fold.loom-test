@@ -18,7 +18,7 @@ low.func.def public retain target<amd.xdna.aie2p.array>(@temporal_fold_array_tar
   %binding_offset = constant.u64 64 : reg<aie2p.array.offset : offset>
 
   %group = group %lanes
-  %worker = worker.fold %group, %lane, %fold_records, @copy_f32_record, 1, 1, 1, 0
+  %worker = worker.fold %group, %lane, %fold_records, @copy_f32_record, 1, 1, "addf", 0
   %input = binding 0, "read"
   %output = binding 1, "write"
   %input_sender = sender %input, 0 : reg<aie2p.array.sender : tile<1x3x4x32xf32, #encoding.layout.strided<strides=[0, 0, 32, 1]>>>

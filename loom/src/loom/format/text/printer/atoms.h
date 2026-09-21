@@ -34,6 +34,10 @@ iree_status_t loom_print_attr(const loom_print_context_t* ctx,
                               const loom_attribute_t* attr,
                               const loom_attr_descriptor_t* descriptor);
 
+// Prints a quoted string with canonical escaping and UTF-8 validation.
+iree_status_t loom_print_string_literal(loom_output_stream_t* stream,
+                                        iree_string_view_t text);
+
 // Prints one exact-family parameterized attribute's angle payload.
 iree_status_t loom_print_parameterized_attr_parameters(
     const loom_print_context_t* ctx, const loom_attribute_t* attr,

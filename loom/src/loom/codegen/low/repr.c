@@ -7,6 +7,8 @@
 #include "loom/codegen/low/repr.h"
 
 #include "loom/codegen/low/descriptor_traits.h"
+#include "loom/codegen/low/immediates.h"
+#include "loom/ops/low/ops.h"
 
 static const loom_low_descriptor_registry_t* loom_low_repr_registry(
     const loom_low_repr_environment_state_t* state) {
@@ -63,10 +65,49 @@ static iree_string_view_t loom_low_repr_descriptor_key_impl(
                                         descriptor->key_string_offset);
 }
 
+static iree_status_t loom_low_repr_resolve_packet_attributes_impl(
+    const loom_low_repr_environment_state_t* state,
+    const loom_low_repr_descriptor_set_t* descriptor_set_handle,
+    loom_module_t* module, loom_op_t* op) {
+  (void)state;
+  const loom_low_descriptor_set_t* descriptor_set =
+      loom_low_repr_descriptor_set(descriptor_set_handle);
+  const bool is_const = loom_low_const_isa(op);
+  const uint32_t ordinal =
+      is_const ? loom_low_const_descriptor(op) : loom_low_op_descriptor(op);
+  const uint16_t attrs_index =
+      is_const ? loom_low_const_attrs_ATTR_INDEX : loom_low_op_attrs_ATTR_INDEX;
+  return loom_low_resolve_immediate_enums(module, descriptor_set,
+                                          &descriptor_set->descriptors[ordinal],
+                                          &loom_op_attrs(op)[attrs_index]);
+}
+
+static iree_string_view_t loom_low_repr_enum_value_token_impl(
+    const loom_low_repr_environment_state_t* state,
+    const loom_low_repr_descriptor_set_t* descriptor_set_handle,
+    uint16_t domain_ordinal, int64_t value) {
+  (void)state;
+  const loom_low_descriptor_set_t* descriptor_set =
+      loom_low_repr_descriptor_set(descriptor_set_handle);
+  const loom_low_enum_domain_t* domain =
+      &descriptor_set->enum_domains[domain_ordinal];
+  for (uint16_t i = 0; i < domain->value_count; ++i) {
+    const loom_low_enum_value_t* entry =
+        &descriptor_set->enum_values[domain->value_start + i];
+    if (entry->value == value) {
+      return loom_low_descriptor_set_string(descriptor_set,
+                                            entry->token_string_offset);
+    }
+  }
+  return iree_string_view_empty();
+}
+
 static const loom_low_repr_environment_vtable_t kLowReprEnvironmentVtable = {
     .lookup_descriptor_set = loom_low_repr_lookup_descriptor_set_impl,
     .resolve_descriptor = loom_low_repr_resolve_descriptor_impl,
     .descriptor_key = loom_low_repr_descriptor_key_impl,
+    .resolve_packet_attributes = loom_low_repr_resolve_packet_attributes_impl,
+    .enum_value_token = loom_low_repr_enum_value_token_impl,
 };
 
 void loom_low_repr_environment_initialize(

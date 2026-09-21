@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "loom/codegen/low/descriptor_traits.h"
+#include "loom/codegen/low/immediates.h"
 #include "loom/ir/module.h"
 #include "loom/target/registers.h"
 
@@ -120,6 +121,9 @@ iree_status_t loom_low_build_resolved_descriptor_op(
     IREE_RETURN_IF_ERROR(loom_module_make_canonical_attr_dict(
         builder->module, attrs,
         &loom_op_attrs(*out_op)[loom_low_op_attrs_ATTR_INDEX]));
+    IREE_RETURN_IF_ERROR(loom_low_resolve_immediate_enums(
+        builder->module, descriptor_set, descriptor,
+        &loom_op_attrs(*out_op)[loom_low_op_attrs_ATTR_INDEX]));
   }
   for (iree_host_size_t i = 0; i < result_count; ++i) {
     loom_value_id_t result_id = LOOM_VALUE_ID_INVALID;
@@ -154,6 +158,9 @@ iree_status_t loom_low_build_resolved_descriptor_const(
   if (attrs.count > 0) {
     IREE_RETURN_IF_ERROR(loom_module_make_canonical_attr_dict(
         builder->module, attrs,
+        &loom_op_attrs(*out_op)[loom_low_const_attrs_ATTR_INDEX]));
+    IREE_RETURN_IF_ERROR(loom_low_resolve_immediate_enums(
+        builder->module, descriptor_set, descriptor,
         &loom_op_attrs(*out_op)[loom_low_const_attrs_ATTR_INDEX]));
   }
   loom_value_id_t result_id = LOOM_VALUE_ID_INVALID;

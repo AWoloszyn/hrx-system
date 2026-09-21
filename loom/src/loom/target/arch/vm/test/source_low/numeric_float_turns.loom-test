@@ -11,8 +11,8 @@ func.def target(@vm) @turns_f32(%value: f32) -> (f32, f32) {
 
 // ----
 low.func.def target<vm.core>(@vm) abi(vm_function) @turns_f32(%value: reg<vm.value : f32>) -> (reg<vm.value : f32>, reg<vm.value : f32>) asm {
-  %sin = float.math.unary.f32 %value, 10
-  %cos = float.math.unary.f32 %value, 11
+  %sin = float.math.unary.f32 %value, "sin_turns.approx"
+  %cos = float.math.unary.f32 %value, "cos_turns.approx"
   return %sin, %cos
 }
 
@@ -30,7 +30,7 @@ func.def target(@vm) @radians_afn_f32(%value: f32) -> (f32, f32) {
 low.func.def target<vm.core>(@vm) abi(vm_function) @radians_afn_f32(%value: reg<vm.value : f32>) -> (reg<vm.value : f32>, reg<vm.value : f32>) asm {
   %14 = constant.i32 1042479491 : reg<vm.value : f32>
   %15 = float.mul.f32 %value, %14
-  %sin = float.math.unary.f32 %15, 10
-  %cos = float.math.unary.f32 %15, 11
+  %sin = float.math.unary.f32 %15, "sin_turns.approx"
+  %cos = float.math.unary.f32 %15, "cos_turns.approx"
   return %sin, %cos
 }

@@ -10,7 +10,9 @@
 // bytecode use stable descriptor keys at their input/output boundaries while
 // canonical in-memory packets retain only the dense descriptor ordinal in that
 // selected contract. This target-independent interface lets format codecs make
-// that conversion without depending on generated descriptor tables.
+// that conversion without depending on generated descriptor tables. Enum
+// literal names resolve at construction to semantic i64 values; assembly
+// recovers their readable tokens from the same representation contract.
 
 #ifndef LOOM_FORMAT_LOW_REPR_H_
 #define LOOM_FORMAT_LOW_REPR_H_
@@ -54,6 +56,23 @@ typedef iree_string_view_t (*loom_low_repr_descriptor_key_fn_t)(
     const loom_low_repr_environment_state_t* state,
     const loom_low_repr_descriptor_set_t* descriptor_set, uint32_t ordinal);
 
+// Resolves descriptor-owned literal spellings after a packet's attributes are
+// materialized. Recognized enum tokens become numeric values; invalid input is
+// retained for verification. The operation and replacement storage belong to
+// |module|. Status reports allocation failure.
+typedef iree_status_t (*loom_low_repr_resolve_packet_attributes_fn_t)(
+    const loom_low_repr_environment_state_t* state,
+    const loom_low_repr_descriptor_set_t* descriptor_set, loom_module_t* module,
+    loom_op_t* op);
+
+// Returns the stable token for a semantic enum value in |domain_ordinal|, or
+// an empty view for a numeric value outside that domain. Domain ordinals are
+// format-local descriptor metadata and never serialize.
+typedef iree_string_view_t (*loom_low_repr_enum_value_token_fn_t)(
+    const loom_low_repr_environment_state_t* state,
+    const loom_low_repr_descriptor_set_t* descriptor_set,
+    uint16_t domain_ordinal, int64_t value);
+
 typedef struct loom_low_repr_environment_vtable_t {
   // All callbacks are required. Generic format readers and writers may omit
   // the entire environment only when they do not materialize scoped Low
@@ -65,6 +84,10 @@ typedef struct loom_low_repr_environment_vtable_t {
   loom_low_repr_resolve_descriptor_fn_t resolve_descriptor;
   // Recovers stable packet keys while printing or serializing canonical IR.
   loom_low_repr_descriptor_key_fn_t descriptor_key;
+  // Resolves literal values at text and bytecode construction boundaries.
+  loom_low_repr_resolve_packet_attributes_fn_t resolve_packet_attributes;
+  // Recovers readable enum tokens at the format boundary.
+  loom_low_repr_enum_value_token_fn_t enum_value_token;
 } loom_low_repr_environment_vtable_t;
 
 // Borrowed codec environment supplied by the embedding compiler/tool.
@@ -94,6 +117,14 @@ static inline iree_string_view_t loom_low_repr_descriptor_key(
     const loom_low_repr_descriptor_set_t* descriptor_set, uint32_t ordinal) {
   return environment->vtable->descriptor_key(environment->state, descriptor_set,
                                              ordinal);
+}
+
+static inline iree_status_t loom_low_repr_resolve_packet_attributes(
+    const loom_low_repr_environment_t* environment,
+    const loom_low_repr_descriptor_set_t* descriptor_set, loom_module_t* module,
+    loom_op_t* op) {
+  return environment->vtable->resolve_packet_attributes(
+      environment->state, descriptor_set, module, op);
 }
 
 #ifdef __cplusplus

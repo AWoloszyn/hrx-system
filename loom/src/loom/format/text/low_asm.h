@@ -104,6 +104,8 @@ typedef struct loom_text_low_asm_immediate_descriptor_t {
   iree_string_view_t spelling;
   // True when the packet may omit this immediate attribute.
   bool has_default_value;
+  // Contract-local enum domain, or UINT16_MAX for a non-enum immediate.
+  uint16_t enum_domain;
   // Effective i64 value used when the packet omits this immediate.
   int64_t default_value;
 } loom_text_low_asm_immediate_descriptor_t;

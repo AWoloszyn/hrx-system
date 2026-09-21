@@ -93,7 +93,7 @@ func.def target(@target) @scalar_i64_compare_eq_scc(%lhs: i64, %rhs: i64) -> (i1
 
 // ----
 low.func.def target<vm.core>(@target) abi(vm_function) @scalar_i64_compare_eq_scc(%lhs: reg<vm.value : i64>, %rhs: reg<vm.value : i64>) -> (reg<vm.value : i1>) asm {
-  %cmp = integer.compare.i64 %lhs, %rhs, 0
+  %cmp = integer.compare.i64 %lhs, %rhs, "eq"
   return %cmp
 }
 
@@ -108,7 +108,7 @@ func.def target(@target) @scalar_i64_compare_ne_scc(%lhs: i64, %rhs: i64) -> (i1
 
 // ----
 low.func.def target<vm.core>(@target) abi(vm_function) @scalar_i64_compare_ne_scc(%lhs: reg<vm.value : i64>, %rhs: reg<vm.value : i64>) -> (reg<vm.value : i1>) asm {
-  %cmp = integer.compare.i64 %lhs, %rhs, 1
+  %cmp = integer.compare.i64 %lhs, %rhs, "ne"
   return %cmp
 }
 
@@ -123,7 +123,7 @@ func.def target(@target) @scalar_i64_compare_slt_return(%lhs: i64, %rhs: i64) ->
 
 // ----
 low.func.def target<vm.core>(@target) abi(vm_function) @scalar_i64_compare_slt_return(%lhs: reg<vm.value : i64>, %rhs: reg<vm.value : i64>) -> (reg<vm.value : i1>) asm {
-  %cmp = integer.compare.i64 %lhs, %rhs, 2
+  %cmp = integer.compare.i64 %lhs, %rhs, "slt"
   return %cmp
 }
 
@@ -143,7 +143,7 @@ func.def target(@target) @scalar_i64_compare_slt_if(%lhs: i64, %rhs: i64, %then_
 
 // ----
 low.func.def target<vm.core>(@target) abi(vm_function) @scalar_i64_compare_slt_if(%lhs: reg<vm.value : i64>, %rhs: reg<vm.value : i64>, %then_value: reg<vm.value : i32>, %else_value: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
-  %cmp = integer.compare.i64 %lhs, %rhs, 2
+  %cmp = integer.compare.i64 %lhs, %rhs, "slt"
   %result = value.select %cmp, %then_value, %else_value : reg<vm.value : i32>
   return %result
 }
@@ -162,7 +162,7 @@ func.def target(@target) @scalar_i64_compare_constant_select(%lhs: i64, %true_va
 // ----
 low.func.def target<vm.core>(@target) abi(vm_function) @scalar_i64_compare_constant_select(%lhs: reg<vm.value : i64>, %true_value: reg<vm.value : f32>, %false_value: reg<vm.value : f32>) -> (reg<vm.value : f32>) asm {
   %limit = constant.i64 4294967296
-  %cmp = integer.compare.i64 %lhs, %limit, 6
+  %cmp = integer.compare.i64 %lhs, %limit, "ult"
   %result = value.select %cmp, %true_value, %false_value : reg<vm.value : f32>
   return %result
 }
@@ -346,7 +346,7 @@ func.def target(@target) @scalar_i32_control(%lhs: i32, %rhs: i32) -> (i32) {
 low.func.def target<vm.core>(@target) abi(vm_function) @scalar_i32_control(%lhs: reg<vm.value : i32>, %rhs: reg<vm.value : i32>) -> (reg<vm.value : i32>) asm {
   %product = integer.mul.i32 %lhs, %rhs
   %mixed = integer.xor.i32 %product, %rhs
-  %less = integer.compare.i32 %lhs, %rhs, 2
+  %less = integer.compare.i32 %lhs, %rhs, "slt"
   %selected = value.select %less, %mixed, %product : reg<vm.value : i32>
   return %selected
 }

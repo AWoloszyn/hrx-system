@@ -70,7 +70,7 @@ func.def target(@target) @scalar_i32_compare_scc(%lhs: i32, %rhs: i32) -> (i1) {
 
 // ----
 low.func.def target<vm.core>(@target) abi(vm_function) @scalar_i32_compare_scc(%lhs: reg<vm.value : i32>, %rhs: reg<vm.value : i32>) -> (reg<vm.value : i1>) asm {
-  %cmp = integer.compare.i32 %lhs, %rhs, 2
+  %cmp = integer.compare.i32 %lhs, %rhs, "slt"
   return %cmp
 }
 
@@ -108,8 +108,8 @@ func.def target(@target) @scalar_i1_bitwise_scc(%lhs: i32, %rhs: i32) -> (i1) {
 // ----
 low.func.def target<vm.core>(@target) abi(vm_function) @scalar_i1_bitwise_scc(%lhs: reg<vm.value : i32>, %rhs: reg<vm.value : i32>) -> (reg<vm.value : i1>) asm {
   %inactive_condition = constant.i32 0
-  %lhs_nonzero = integer.compare.i32 %lhs, %inactive_condition, 1
-  %rhs_nonzero = integer.compare.i32 %rhs, %inactive_condition, 1
+  %lhs_nonzero = integer.compare.i32 %lhs, %inactive_condition, "ne"
+  %rhs_nonzero = integer.compare.i32 %rhs, %inactive_condition, "ne"
   %both_nonzero = integer.and.i32 %lhs_nonzero, %rhs_nonzero : reg<vm.value : i1>
   %either_nonzero = integer.or.i32 %lhs_nonzero, %rhs_nonzero : reg<vm.value : i1>
   %one_nonzero = integer.xor.i32 %both_nonzero, %either_nonzero : reg<vm.value : i1>

@@ -225,12 +225,12 @@ vm.module core(0.0) {
 
 vm.target<core> @vm
 
-// Authored Low accepts both enum spellings and numeric ordinals. Both must
-// reach the same physical selector, without interpreting string IDs as bits.
+// Named predicates reach physical selectors and equivalent comparisons share
+// one result before return-register placement.
 low.func.def public target<vm.core>(@vm) abi(vm_function) @compare_spellings(%a: reg<vm.value : i64>, %b: reg<vm.value : i64>) -> (reg<vm.value : i1>, reg<vm.value : i1>) asm {
   %named = integer.compare.i64 %a, %b, "ult"
-  %ordinal = integer.compare.i64 %a, %b, 6
-  return %named, %ordinal
+  %equivalent = integer.compare.i64 %a, %b, "ult"
+  return %named, %equivalent
 }
 
 // ----
@@ -252,13 +252,11 @@ vm.module core(0.0) {
   }
 
   section functions alignment(8) {
-    func @function0 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 3, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
+    func @function0 : @callable0 flags([]) frame(local_bytes = 0, value_registers = 2, ref_registers = 0, function_registers = 0, local_refs = 0, local_functions = 0) {
     ^bb0:
       control.block
-      %v2 = integer.compare.i64 %v0, %v1 {predicate = ult}
       %v0 = integer.compare.i64 %v0, %v1 {predicate = ult}
       %v1 = value.copy %v0
-      %v0 = value.copy %v2
       control.return
     }
   }

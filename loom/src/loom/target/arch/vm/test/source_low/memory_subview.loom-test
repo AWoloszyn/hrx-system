@@ -21,9 +21,9 @@ func.def target(@target) @subview_scalar_strided(%input: buffer, %output: buffer
 // ----
 low.func.def target<vm.core>(@target) abi(vm_function) @subview_scalar_strided(%source_crop: reg<vm.ref : buffer>, %destination_crop: reg<vm.ref : buffer>) -> (reg<vm.value : f32>) asm {
   %16 = constant.i64 84
-  %value = buffer.load %source_crop, %16, %16, 0, 8 : reg<vm.value : f32>
+  %value = buffer.load %source_crop, %16, %16, 0, "i32.x1" : reg<vm.value : f32>
   %18 = constant.i64 88
-  buffer.store %destination_crop, %18, %18, %value, 0, 8
+  buffer.store %destination_crop, %18, %18, %value, 0, "i32.x1"
   return %value
 }
 
@@ -60,10 +60,10 @@ low.func.def target<vm.core>(@target) abi(vm_function) @subview_nested_dynamic(%
   %31 = integer.shift.left.i64 %column_bounded, %30
   %32 = integer.add.i64 %29, %31
   %33 = integer.add.i64 %32, %26
-  %value = buffer.load %source_refined, %33, %33, 0, 8 : reg<vm.value : i32>
+  %value = buffer.load %source_refined, %33, %33, 0, "i32.x1" : reg<vm.value : i32>
   %35 = constant.i64 68
   %42 = integer.add.i64 %32, %35
-  buffer.store %destination_inner, %42, %42, %value, 0, 8
+  buffer.store %destination_inner, %42, %42, %value, 0, "i32.x1"
   return %value
 }
 
@@ -89,21 +89,21 @@ func.def target(@target) @subview_vector_strided(%input: buffer, %output: buffer
 // ----
 low.func.def target<vm.core>(@target) abi(vm_function) @subview_vector_strided(%source_crop: reg<vm.ref : buffer>, %destination_crop: reg<vm.ref : buffer>) asm {
   %22 = constant.i64 124
-  %23 = buffer.load %source_crop, %22, %22, 0, 8 : reg<vm.value : i32>
+  %23 = buffer.load %source_crop, %22, %22, 0, "i32.x1" : reg<vm.value : i32>
   %24 = constant.i64 128
-  %25 = buffer.load %source_crop, %24, %24, 0, 8 : reg<vm.value : i32>
+  %25 = buffer.load %source_crop, %24, %24, 0, "i32.x1" : reg<vm.value : i32>
   %26 = constant.i64 132
-  %27 = buffer.load %source_crop, %26, %26, 0, 8 : reg<vm.value : i32>
+  %27 = buffer.load %source_crop, %26, %26, 0, "i32.x1" : reg<vm.value : i32>
   %28 = constant.i64 136
-  %29 = buffer.load %source_crop, %28, %28, 0, 8 : reg<vm.value : i32>
+  %29 = buffer.load %source_crop, %28, %28, 0, "i32.x1" : reg<vm.value : i32>
   %30 = constant.i64 88
-  buffer.store %destination_crop, %30, %30, %23, 0, 8
+  buffer.store %destination_crop, %30, %30, %23, 0, "i32.x1"
   %31 = constant.i64 92
-  buffer.store %destination_crop, %31, %31, %25, 0, 8
+  buffer.store %destination_crop, %31, %31, %25, 0, "i32.x1"
   %32 = constant.i64 96
-  buffer.store %destination_crop, %32, %32, %27, 0, 8
+  buffer.store %destination_crop, %32, %32, %27, 0, "i32.x1"
   %33 = constant.i64 100
-  buffer.store %destination_crop, %33, %33, %29, 0, 8
+  buffer.store %destination_crop, %33, %33, %29, 0, "i32.x1"
   return
 }
 
@@ -129,37 +129,37 @@ func.def target(@target) @subview_vector_aligned(%input: buffer, %output: buffer
 // ----
 low.func.def target<vm.core>(@target) abi(vm_function) @subview_vector_aligned(%source_crop: reg<vm.ref : buffer>, %destination_crop: reg<vm.ref : buffer>) asm {
   %30 = constant.i64 256
-  %31 = buffer.load %source_crop, %30, %30, 0, 8 : reg<vm.value : i32>
+  %31 = buffer.load %source_crop, %30, %30, 0, "i32.x1" : reg<vm.value : i32>
   %32 = constant.i64 260
-  %33 = buffer.load %source_crop, %32, %32, 0, 8 : reg<vm.value : i32>
+  %33 = buffer.load %source_crop, %32, %32, 0, "i32.x1" : reg<vm.value : i32>
   %34 = constant.i64 264
-  %35 = buffer.load %source_crop, %34, %34, 0, 8 : reg<vm.value : i32>
+  %35 = buffer.load %source_crop, %34, %34, 0, "i32.x1" : reg<vm.value : i32>
   %36 = constant.i64 268
-  %37 = buffer.load %source_crop, %36, %36, 0, 8 : reg<vm.value : i32>
+  %37 = buffer.load %source_crop, %36, %36, 0, "i32.x1" : reg<vm.value : i32>
   %38 = constant.i64 272
-  %39 = buffer.load %source_crop, %38, %38, 0, 8 : reg<vm.value : i32>
+  %39 = buffer.load %source_crop, %38, %38, 0, "i32.x1" : reg<vm.value : i32>
   %40 = constant.i64 276
-  %41 = buffer.load %source_crop, %40, %40, 0, 8 : reg<vm.value : i32>
+  %41 = buffer.load %source_crop, %40, %40, 0, "i32.x1" : reg<vm.value : i32>
   %42 = constant.i64 280
-  %43 = buffer.load %source_crop, %42, %42, 0, 8 : reg<vm.value : i32>
+  %43 = buffer.load %source_crop, %42, %42, 0, "i32.x1" : reg<vm.value : i32>
   %44 = constant.i64 284
-  %45 = buffer.load %source_crop, %44, %44, 0, 8 : reg<vm.value : i32>
+  %45 = buffer.load %source_crop, %44, %44, 0, "i32.x1" : reg<vm.value : i32>
   %46 = constant.i64 192
-  buffer.store %destination_crop, %46, %46, %31, 0, 8
+  buffer.store %destination_crop, %46, %46, %31, 0, "i32.x1"
   %47 = constant.i64 196
-  buffer.store %destination_crop, %47, %47, %33, 0, 8
+  buffer.store %destination_crop, %47, %47, %33, 0, "i32.x1"
   %48 = constant.i64 200
-  buffer.store %destination_crop, %48, %48, %35, 0, 8
+  buffer.store %destination_crop, %48, %48, %35, 0, "i32.x1"
   %49 = constant.i64 204
-  buffer.store %destination_crop, %49, %49, %37, 0, 8
+  buffer.store %destination_crop, %49, %49, %37, 0, "i32.x1"
   %50 = constant.i64 208
-  buffer.store %destination_crop, %50, %50, %39, 0, 8
+  buffer.store %destination_crop, %50, %50, %39, 0, "i32.x1"
   %51 = constant.i64 212
-  buffer.store %destination_crop, %51, %51, %41, 0, 8
+  buffer.store %destination_crop, %51, %51, %41, 0, "i32.x1"
   %52 = constant.i64 216
-  buffer.store %destination_crop, %52, %52, %43, 0, 8
+  buffer.store %destination_crop, %52, %52, %43, 0, "i32.x1"
   %53 = constant.i64 220
-  buffer.store %destination_crop, %53, %53, %45, 0, 8
+  buffer.store %destination_crop, %53, %53, %45, 0, "i32.x1"
   return
 }
 
@@ -186,10 +186,10 @@ func.def target(@target) @subview_atomic_strided(%buffer: buffer) -> (i32) {
 low.func.def target<vm.core>(@target) abi(vm_function) @subview_atomic_strided(%crop: reg<vm.ref : buffer>) -> (reg<vm.value : i32>) asm {
   %increment = constant.i32 1
   %15 = constant.i64 84
-  buffer.atomic.reduce %crop, %15, %increment, 0, 2, 0, 3
-  %old = buffer.atomic.rmw %crop, %15, %increment, 0, 2, 0, 3 : reg<vm.value : i32>
+  buffer.atomic.reduce %crop, %15, %increment, "i32", "add.integer", "relaxed", "device"
+  %old = buffer.atomic.rmw %crop, %15, %increment, "i32", "add.integer", "relaxed", "device" : reg<vm.value : i32>
   %replacement = constant.i32 99
-  %observed = buffer.atomic.cmpxchg %crop, %15, %old, %replacement, 0, 0, 3 : reg<vm.value : i32>
+  %observed = buffer.atomic.cmpxchg %crop, %15, %old, %replacement, "relaxed.relaxed", "i32", "device" : reg<vm.value : i32>
   return %observed
 }
 
@@ -232,8 +232,8 @@ func.def target(@target) @subview_dense_rows(%input: buffer, %output: buffer) ->
 // ----
 low.func.def target<vm.core>(@target) abi(vm_function) @subview_dense_rows(%source_crop: reg<vm.ref : buffer>, %destination_crop: reg<vm.ref : buffer>) -> (reg<vm.value : i32>) asm {
   %14 = constant.i64 80
-  %value = buffer.load %source_crop, %14, %14, 0, 8 : reg<vm.value : i32>
+  %value = buffer.load %source_crop, %14, %14, 0, "i32.x1" : reg<vm.value : i32>
   %16 = constant.i64 84
-  buffer.store %destination_crop, %16, %16, %value, 0, 8
+  buffer.store %destination_crop, %16, %16, %value, 0, "i32.x1"
   return %value
 }

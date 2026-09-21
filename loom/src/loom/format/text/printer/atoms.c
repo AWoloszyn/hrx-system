@@ -24,8 +24,8 @@ iree_status_t loom_print_value_ref(const loom_print_context_t* ctx,
 // Emits a canonical JSON-compatible string literal. Stored strings are expected
 // to contain decoded UTF-8 payload bytes; this helper validates that invariant
 // before writing so malformed IR never serializes as malformed text.
-static iree_status_t loom_print_string_literal(loom_output_stream_t* stream,
-                                               iree_string_view_t text) {
+iree_status_t loom_print_string_literal(loom_output_stream_t* stream,
+                                        iree_string_view_t text) {
   IREE_RETURN_IF_ERROR(loom_output_stream_write_char(stream, '"'));
   iree_host_size_t position = 0;
   while (position < text.size) {

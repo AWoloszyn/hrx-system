@@ -18,9 +18,9 @@ func.def target(@target) @scalar_static_rank2_i32(%input: buffer, %output: buffe
 // ----
 low.func.def target<vm.core>(@target) abi(vm_function) @scalar_static_rank2_i32(%input_view: reg<vm.ref : buffer>, %output_view: reg<vm.ref : buffer>) -> (reg<vm.value : i32>) asm {
   %16 = constant.i64 32
-  %loaded = buffer.load %input_view, %16, %16, 0, 8 : reg<vm.value : i32>
+  %loaded = buffer.load %input_view, %16, %16, 0, "i32.x1" : reg<vm.value : i32>
   %18 = constant.i64 24
-  buffer.store %output_view, %18, %18, %loaded, 0, 8
+  buffer.store %output_view, %18, %18, %loaded, 0, "i32.x1"
   return %loaded
 }
 
@@ -44,9 +44,9 @@ func.def target(@target) @scalar_dynamic_view_base_i32(%input: buffer, %output: 
 low.func.def target<vm.core>(@target) abi(vm_function) @scalar_dynamic_view_base_i32(%input_view: reg<vm.ref : buffer>, %output_view: reg<vm.ref : buffer>, %base_aligned: reg<vm.value : i64>) -> (reg<vm.value : i32>) asm {
   %15 = constant.i64 8
   %16 = integer.add.i64 %base_aligned, %15
-  %loaded = buffer.load %input_view, %16, %16, 0, 8 : reg<vm.value : i32>
+  %loaded = buffer.load %input_view, %16, %16, 0, "i32.x1" : reg<vm.value : i32>
   %18 = constant.i64 0
-  buffer.store %output_view, %18, %18, %loaded, 0, 8
+  buffer.store %output_view, %18, %18, %loaded, 0, "i32.x1"
   return %loaded
 }
 
@@ -71,10 +71,10 @@ func.def target(@target) @scalar_materialized_view_base_suffix_i32(%input: buffe
 low.func.def target<vm.core>(@target) abi(vm_function) @scalar_materialized_view_base_suffix_i32(%input_view: reg<vm.ref : buffer>, %output_view: reg<vm.ref : buffer>, %base_aligned: reg<vm.value : i64>) -> (reg<vm.value : i32>) asm {
   %16 = constant.i64 12
   %17 = integer.add.i64 %base_aligned, %16
-  %loaded = buffer.load %input_view, %17, %17, 0, 8 : reg<vm.value : i32>
+  %loaded = buffer.load %input_view, %17, %17, 0, "i32.x1" : reg<vm.value : i32>
   %19 = constant.i64 16
   %20 = integer.add.i64 %base_aligned, %19
-  buffer.store %output_view, %20, %20, %loaded, 0, 8
+  buffer.store %output_view, %20, %20, %loaded, 0, "i32.x1"
   return %loaded
 }
 
@@ -98,8 +98,8 @@ func.def target(@target) @scalar_dynamic_index_i32(%input: buffer, %output: buff
 low.func.def target<vm.core>(@target) abi(vm_function) @scalar_dynamic_index_i32(%input_view: reg<vm.ref : buffer>, %output_view: reg<vm.ref : buffer>, %element_bounded: reg<vm.value : i64>) -> (reg<vm.value : i32>) asm {
   %15 = constant.i64 2 : reg<vm.value>
   %16 = integer.shift.left.i64 %element_bounded, %15
-  %loaded = buffer.load %input_view, %16, %16, 0, 8 : reg<vm.value : i32>
-  buffer.store %output_view, %16, %16, %loaded, 0, 8
+  %loaded = buffer.load %input_view, %16, %16, 0, "i32.x1" : reg<vm.value : i32>
+  buffer.store %output_view, %16, %16, %loaded, 0, "i32.x1"
   return %loaded
 }
 
@@ -128,8 +128,8 @@ low.func.def target<vm.core>(@target) abi(vm_function) @scalar_mixed_rank2_i32(%
   %30 = constant.i64 2 : reg<vm.value>
   %31 = integer.shift.left.i64 %column_bounded, %30
   %32 = integer.add.i64 %29, %31
-  %loaded = buffer.load %input_view, %32, %32, 0, 8 : reg<vm.value : i32>
-  buffer.store %output_view, %32, %32, %loaded, 0, 8
+  %loaded = buffer.load %input_view, %32, %32, 0, "i32.x1" : reg<vm.value : i32>
+  buffer.store %output_view, %32, %32, %loaded, 0, "i32.x1"
   return %loaded
 }
 
@@ -158,8 +158,8 @@ low.func.def target<vm.core>(@target) abi(vm_function) @scalar_dynamic_stride_i3
   %23 = integer.shift.left.i64 %21, %22
   %25 = integer.shift.left.i64 %column_bounded, %22
   %26 = integer.add.i64 %23, %25
-  %loaded = buffer.load %input_view, %26, %26, 0, 8 : reg<vm.value : i32>
-  buffer.store %output_view, %26, %26, %loaded, 0, 8
+  %loaded = buffer.load %input_view, %26, %26, 0, "i32.x1" : reg<vm.value : i32>
+  buffer.store %output_view, %26, %26, %loaded, 0, "i32.x1"
   return %loaded
 }
 
@@ -190,8 +190,8 @@ low.func.def target<vm.core>(@target) abi(vm_function) @scalar_subview_dynamic_i
   %23 = integer.shift.left.i64 %element_bounded, %22
   %24 = integer.add.i64 %base_aligned, %23
   %25 = integer.add.i64 %24, %21
-  %loaded = buffer.load %input_refined, %25, %25, 0, 8 : reg<vm.value : i32>
-  buffer.store %output_refined, %25, %25, %loaded, 0, 8
+  %loaded = buffer.load %input_refined, %25, %25, 0, "i32.x1" : reg<vm.value : i32>
+  buffer.store %output_refined, %25, %25, %loaded, 0, "i32.x1"
   return %loaded
 }
 
@@ -214,8 +214,8 @@ func.def target(@target) @scalar_static_rank3_i16(%input: buffer, %output: buffe
 // ----
 low.func.def target<vm.core>(@target) abi(vm_function) @scalar_static_rank3_i16(%input_view: reg<vm.ref : buffer>, %output_view: reg<vm.ref : buffer>) -> (reg<vm.value : i16>) asm {
   %16 = constant.i64 54
-  %loaded = buffer.load %input_view, %16, %16, 0, 4 : reg<vm.value : i16>
+  %loaded = buffer.load %input_view, %16, %16, 0, "i16.x1" : reg<vm.value : i16>
   %18 = constant.i64 24
-  buffer.store %output_view, %18, %18, %loaded, 0, 4
+  buffer.store %output_view, %18, %18, %loaded, 0, "i16.x1"
   return %loaded
 }

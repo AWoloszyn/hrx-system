@@ -37,27 +37,27 @@ low.func.def target<vm.core>(@target) abi(vm_function) @shared_conditional_value
   %c0 = constant.i32 0
   %completed = constant.i32 1
   %19 = constant.i64 0
-  %outer_value = buffer.load %in, %19, %19, 0, 8 : reg<vm.value : i32>
-  %outer = integer.compare.i32 %outer_value, %c0, 1
+  %outer_value = buffer.load %in, %19, %19, 0, "i32.x1" : reg<vm.value : i32>
+  %outer = integer.compare.i32 %outer_value, %c0, "ne"
   low.cond_br %outer, ^evaluate, ^fallback : reg<vm.value : i1>
 ^evaluate:
   %22 = constant.i64 4
-  %loaded = buffer.load %in, %22, %22, 0, 8 : reg<vm.value : i32>
-  buffer.store %out, %19, %19, %loaded, 0, 8
-  %inner = integer.compare.i32 %loaded, %c0, 1
+  %loaded = buffer.load %in, %22, %22, 0, "i32.x1" : reg<vm.value : i32>
+  buffer.store %out, %19, %19, %loaded, 0, "i32.x1"
+  %inner = integer.compare.i32 %loaded, %c0, "ne"
   low.cond_br %inner, ^selected, ^fallback : reg<vm.value : i1>
 ^selected:
   %result = integer.add.i32 %loaded, %loaded
-  buffer.store %out, %22, %22, %result, 0, 8
+  buffer.store %out, %22, %22, %result, 0, "i32.x1"
   low.br ^exit
 ^fallback:
   %28 = constant.i64 8
-  %fallback = buffer.load %in, %28, %28, 0, 8 : reg<vm.value : i32>
+  %fallback = buffer.load %in, %28, %28, 0, "i32.x1" : reg<vm.value : i32>
   %30 = constant.i64 4
-  buffer.store %out, %30, %30, %fallback, 0, 8
+  buffer.store %out, %30, %30, %fallback, 0, "i32.x1"
   low.br ^exit
 ^exit:
   %31 = constant.i64 8
-  buffer.store %out, %31, %31, %completed, 0, 8
+  buffer.store %out, %31, %31, %completed, 0, "i32.x1"
   return
 }

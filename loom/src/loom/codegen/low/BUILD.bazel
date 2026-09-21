@@ -88,7 +88,9 @@ loom_cc_library(
     deps = [
         ":descriptor_traits",
         ":descriptors",
+        ":immediates",
         "//loom/src/loom/format:low_repr",
+        "//loom/src/loom/ops/low",
         "//runtime/src/iree/base",
     ],
 )
@@ -111,10 +113,37 @@ loom_cc_library(
     deps = [
         ":descriptor_traits",
         ":descriptors",
+        ":immediates",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/low",
         "//loom/src/loom/target:registers",
         "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_library(
+    name = "immediates",
+    srcs = ["immediates.c"],
+    hdrs = ["immediates.h"],
+    deps = [
+        ":descriptors",
+        "//loom/src/loom/ir",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "immediates_test",
+    srcs = ["immediates_test.cc"],
+    deps = [
+        ":descriptors",
+        ":immediates",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/util:bstring",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )
 

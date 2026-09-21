@@ -1,0 +1,66 @@
+// RUN: with-checks emit spirv-dis validate
+// REQUIRES: spirv-dis, spirv-val
+
+spirv.target<vulkan1_3> @target
+
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @named_atomic_ordering() asm {
+  %storage = storage {byte_alignment = 4, byte_length = 4} : low.storage<workgroup>
+  %base = storage_address %storage : low.storage<workgroup> -> reg<spirv.ptr.workgroup.array.i32>
+  %index = OpConstant.i32 0
+  %value = OpConstant.i32 7
+  %ptr = OpAccessChain.workgroup.i32.element_index %base, %index
+  OpStore.workgroup.i32 %ptr, %index
+  %old = OpAtomicIAdd.rmw.workgroup.i32.workgroup %ptr, %value, "acquire"
+  %prior = OpAtomicCompareExchange.acq_rel.cmpxchg.workgroup.i32.workgroup %ptr, %value, %old, "acquire"
+  return
+}
+
+// ----
+CHECK: %old = OpAtomicIAdd %int %ptr %uint_2 %uint_258 %value
+CHECK: %prior = OpAtomicCompareExchange %int %ptr %uint_2 %uint_264 %uint_258 %value %old
+
+// ====
+// RUN: with-checks format bytecode
+
+spirv.target<vulkan1_3> @target
+
+low.func.def target<spirv.logical.core>(@target) @enum_input_roundtrip() asm {
+  %storage = storage {byte_alignment = 4, byte_length = 4} : low.storage<workgroup>
+  %base = storage_address %storage : low.storage<workgroup> -> reg<spirv.ptr.workgroup.array.i32>
+  %index = OpConstant.i32 0
+  %value = OpConstant.i32 7
+  %ptr = OpAccessChain.workgroup.i32.element_index %base, %index
+  %named = low.op<spirv.atomic.rmw.iadd.workgroup.i32.workgroup>(%ptr, %value) {ordering = "acquire"} : (reg<spirv.ptr.workgroup.i32>, reg<spirv.id : i32>) -> reg<spirv.id : i32>
+  %numeric = OpAtomicIAdd.rmw.workgroup.i32.workgroup %ptr, %value, 1
+  return
+}
+
+// ----
+CHECK: %named = OpAtomicIAdd.rmw.workgroup.i32.workgroup %ptr, %value, "acquire"
+CHECK: %numeric = OpAtomicIAdd.rmw.workgroup.i32.workgroup %ptr, %value, "acquire"
+
+// ====
+// RUN: verify
+
+spirv.target<vulkan1_3> @target
+
+low.func.def target<spirv.logical.core>(@target) @reject_invalid_ordering() {
+  %storage = low.storage.reserve {byte_alignment = 4, byte_length = 4} : low.storage<workgroup>
+  %base = low.storage.address %storage : low.storage<workgroup> -> reg<spirv.ptr.workgroup.array.i32>
+  %index = low.const<spirv.op_constant.i32> {i32_value = 0} : reg<spirv.id : i32>
+  %value = low.const<spirv.op_constant.i32> {i32_value = 7} : reg<spirv.id : i32>
+  %ptr = low.op<spirv.op_access_chain.workgroup.i32.element_index>(%base, %index) : (reg<spirv.ptr.workgroup.array.i32>, reg<spirv.id : i32>) -> reg<spirv.ptr.workgroup.i32>
+  // ERROR@+1: STRUCTURE/027
+  %token = low.op<spirv.atomic.rmw.iadd.workgroup.i32.workgroup>(%ptr, %value) {ordering = "unknown"} : (reg<spirv.ptr.workgroup.i32>, reg<spirv.id : i32>) -> reg<spirv.id : i32>
+  // ERROR@+1: STRUCTURE/027
+  %number = low.op<spirv.atomic.rmw.iadd.workgroup.i32.workgroup>(%ptr, %value) {ordering = 99} : (reg<spirv.ptr.workgroup.i32>, reg<spirv.id : i32>) -> reg<spirv.id : i32>
+  // ERROR@+1: TARGET/049
+  %kind = low.op<spirv.atomic.rmw.iadd.workgroup.i32.workgroup>(%ptr, %value) {ordering = true} : (reg<spirv.ptr.workgroup.i32>, reg<spirv.id : i32>) -> reg<spirv.id : i32>
+  // ERROR@+1: STRUCTURE/027
+  %failure = low.op<spirv.atomic.cmpxchg.cmpxchg.acq_rel.workgroup.i32.workgroup>(%ptr, %value, %value) {failure_ordering = "release"} : (reg<spirv.ptr.workgroup.i32>, reg<spirv.id : i32>, reg<spirv.id : i32>) -> reg<spirv.id : i32>
+  // ERROR@+1: TARGET/047
+  %missing = low.op<spirv.atomic.rmw.iadd.workgroup.i32.workgroup>(%ptr, %value) {} : (reg<spirv.ptr.workgroup.i32>, reg<spirv.id : i32>) -> reg<spirv.id : i32>
+  // ERROR@+1: TARGET/048
+  %extra = low.op<spirv.atomic.rmw.iadd.workgroup.i32.workgroup>(%ptr, %value) {extra = 0, ordering = 1} : (reg<spirv.ptr.workgroup.i32>, reg<spirv.id : i32>) -> reg<spirv.id : i32>
+  low.return
+}

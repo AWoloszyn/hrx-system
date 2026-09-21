@@ -61,8 +61,10 @@ loom_cc_library(
   DEPS
     ::descriptor_traits
     ::descriptors
+    ::immediates
     iree::base
     loom::format::low_repr
+    loom::ops::low
   PUBLIC
 )
 
@@ -88,11 +90,42 @@ loom_cc_library(
   DEPS
     ::descriptor_traits
     ::descriptors
+    ::immediates
     iree::base
     loom::ir
     loom::ops::low
     loom::target::registers
   PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    immediates
+  HDRS
+    "immediates.h"
+  SRCS
+    "immediates.c"
+  DEPS
+    ::descriptors
+    iree::base
+    iree::base::internal::arena
+    loom::ir
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    immediates_test
+  SRCS
+    "immediates_test.cc"
+  DEPS
+    ::descriptors
+    ::immediates
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+    loom::util::bstring
 )
 
 loom_cc_test(

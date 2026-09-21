@@ -10,6 +10,6 @@ func.def target(@target) @f32_inline_rounded_literal(%input: f32) -> (f32) {
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @f32_inline_rounded_literal(%input: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %result = v_mul_f32_src0_inline %input, 1042479491
+  %result = v_mul_f32_src0_inline %input, "f32_inv_2pi"
   return %result
 }
