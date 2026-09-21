@@ -172,6 +172,11 @@ IREE_API_EXPORT iree_status_t iree_async_proactor_run_progress(
       proactor->progress_list = entry;
     }
   }
-  iree_async_proactor_unregister_progress(proactor, &cursor);
+  // The private cursor remains linked even when callbacks remove other entries.
+  iree_async_progress_entry_t** cursor_link = &proactor->progress_list;
+  while (*cursor_link != &cursor) {
+    cursor_link = &(*cursor_link)->next;
+  }
+  *cursor_link = cursor.next;
   return status;
 }

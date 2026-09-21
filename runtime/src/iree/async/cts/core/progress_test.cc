@@ -57,6 +57,7 @@ TEST_P(ProgressTest, FailureRetainsEntryUntilExplicitRetirement) {
   EXPECT_EQ(completed, 1u);
   EXPECT_EQ(calls, 1);
   EXPECT_EQ(proactor_->progress_list, &work.entry);
+  EXPECT_EQ(work.entry.next, nullptr);
 
   IREE_EXPECT_OK(
       iree_async_proactor_poll(proactor_, iree_infinite_timeout(), &completed));

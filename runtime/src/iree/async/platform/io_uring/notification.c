@@ -339,13 +339,9 @@ static iree_status_t iree_async_io_uring_notification_arm_locked(
     status = iree_io_uring_ring_submit_pending_locked(&proactor->ring);
     if (iree_status_is_ok(status)) {
       sqe = iree_io_uring_ring_get_sqe(&proactor->ring);
-      if (!sqe) {
-        status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                                  "SQ remained full after submission");
-      }
     }
   }
-  if (iree_status_is_ok(status)) {
+  if (sqe) {
     iree_async_handle_poll_operation_t* poll = &notification->poll;
     iree_async_operation_initialize(
         &poll->base, IREE_ASYNC_OPERATION_TYPE_HANDLE_POLL,
@@ -356,7 +352,6 @@ static iree_status_t iree_async_io_uring_notification_arm_locked(
     poll->primitive = notification->base.platform.io_uring.event.wait_primitive;
     poll->events = IREE_ASYNC_POLL_EVENT_IN;
     poll->result_events = IREE_ASYNC_POLL_EVENT_NONE;
-    memset(sqe, 0, sizeof(*sqe));
     sqe->opcode = IREE_IORING_OP_POLL_ADD;
     sqe->fd = poll->primitive.value.fd;
     sqe->poll32_events = POLLIN;
@@ -365,6 +360,9 @@ static iree_status_t iree_async_io_uring_notification_arm_locked(
 #if defined(IREE_SANITIZER_THREAD)
     iree_atomic_store(&poll->base.tsan_bridge, 1, iree_memory_order_release);
 #endif  // IREE_SANITIZER_THREAD
+  } else if (iree_status_is_ok(status)) {
+    status = iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                              "SQ remained full after submission");
   }
   iree_io_uring_ring_sq_unlock(&proactor->ring);
   return status;
