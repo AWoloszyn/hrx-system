@@ -111,6 +111,7 @@ from loom.ir import (
 )
 from loom.stable_id import stable_id_from_string
 from loom.target.descriptor_sets import DESCRIPTOR_SET_REGISTRATIONS
+from loom.type_identity import TypeIdentity
 
 __all__ = [
     "BytecodeReader",
@@ -196,6 +197,8 @@ class BytecodeReader:
         self._strings: list[str] = []
         self._sources: list[str] = []
         self._types: list[Type] = []
+        # Temporary equality facts for repeated signature/body definitions.
+        self._type_identity = TypeIdentity()
         self._ops: list[str] = []
         self._encodings: list[EncodingInstance] = []
         self._encoding_families: list[str] = []
@@ -1038,7 +1041,9 @@ class BytecodeReader:
             if is_placeholder:
                 existing.name = value.name
                 existing.type = value.type
-            elif existing.name != value.name or existing.type != value.type:
+            elif existing.name != value.name or not self._type_identity.equal(
+                existing.type, value.type
+            ):
                 raise BytecodeError(
                     "predefined function signature value does not match body value"
                 )

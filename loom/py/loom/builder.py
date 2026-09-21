@@ -445,16 +445,18 @@ class IRBuilder:
                 f"{len(signature_arg_ids)}."
             )
         from loom.type_binding import remap_value_bindings
+        from loom.type_identity import TypeIdentity
 
         signature_types = remap_value_bindings(
             (self._module.values[value_id].type for value_id in signature_arg_ids),
             dict(zip(signature_arg_ids, projected_arg_ids, strict=True)),
         )
+        identities = TypeIdentity()
         for arg_index, (signature_type, projected_id) in enumerate(
             zip(signature_types, projected_arg_ids, strict=True)
         ):
             projected_type = self._module.values[projected_id].type
-            if projected_type != signature_type:
+            if not identities.equal(projected_type, signature_type):
                 raise ValueError(
                     f"Op '{op_name}' region '{region_name}' arg {arg_index} "
                     f"has type {projected_type!r} but function signature arg "

@@ -66,6 +66,7 @@ from loom.format.bytecode.writer import (
     SECTION_SYMBOL_REFERENCES,
     SECTION_SYMBOLS,
     SYMBOL_INTERFACE_BITS,
+    NumberingContext,
     write_module,
 )
 from loom.format.text.parser import Parser
@@ -689,6 +690,16 @@ class TestStringsSection:
 
 
 class TestTypesSection:
+    def test_catalog_deduplicates_independent_shared_graphs(self) -> None:
+        first = ShapedType(TypeKind.VECTOR, F32, (StaticDim(4),))
+        second = ShapedType(TypeKind.VECTOR, F32, (StaticDim(4),))
+        for _ in range(2048):
+            first = FunctionType((first, first), (first,))
+            second = FunctionType((second, second), (second,))
+        context = NumberingContext()
+        assert context.intern_type(first) == context.intern_type(second)
+        assert len(context.type_list) == 1
+
     def _roundtrip_type(
         self,
         ir_type: Type,

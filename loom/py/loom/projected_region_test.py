@@ -21,6 +21,7 @@ from loom.ir import (
     Block,
     DynamicDim,
     DynamicEncoding,
+    FunctionType,
     Module,
     Operation,
     ShapedType,
@@ -32,6 +33,42 @@ from loom.verify import verify_module
 
 def test_region_arg_source_accepts_func_args_field() -> None:
     assert test_split_func.regions[0].arg_source == "args"
+
+
+@pytest.mark.parametrize(("depth", "roundtrip"), [(2048, False), (6, True)])
+def test_shared_projected_signature_graph(depth: int, roundtrip: bool) -> None:
+    builder = IRBuilder()
+    builder.register_ops(ALL_TEST_OPS)
+    extent = builder.value("extent", INDEX)
+    root = ShapedType(TypeKind.VECTOR, F32, (DynamicDim(extent.id),))
+    for _ in range(depth):
+        root = FunctionType((root, root), (root,))
+    payload = builder.value("payload", root)
+    projected_ids = builder.module.clone_func_signature_args([extent.id, payload.id])
+    config = IRRegion(blocks=[Block(arg_ids=projected_ids)])
+    body = IRRegion(blocks=[Block()])
+    builder.build(
+        "test.split_func",
+        func_args=[extent, payload],
+        attributes={"callee": "shared"},
+        regions=[config, body],
+    )
+    for region in (config, body):
+        builder.set_insertion_block(region.blocks[0])
+        builder.build("test.yield")
+    module = builder.module
+    verify_module(module, ops=ALL_TEST_OPS).raise_if_errors()
+    if roundtrip:
+        module = read_module(write_module(module, op_decls=ALL_TEST_OPS))
+        verify_module(module, ops=ALL_TEST_OPS).raise_if_errors()
+    for region in module.body.ops[0].regions:
+        extent_id, payload_id = region.blocks[0].arg_ids
+        root = module.values[payload_id].type
+        for _ in range(depth):
+            assert root.arg_types[0] is root.arg_types[1]
+            assert root.arg_types[0] is root.result_types[0]
+            root = root.arg_types[0]
+        assert root.dims == (DynamicDim(extent_id),)
 
 
 def test_builder_seeds_projected_func_args_region() -> None:

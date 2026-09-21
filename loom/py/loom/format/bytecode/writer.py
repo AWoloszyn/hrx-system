@@ -76,6 +76,7 @@ from loom.ir import (
     Value,
 )
 from loom.type_binding import binding_children, iter_value_bindings
+from loom.type_identity import TypeIdentity
 
 _IR_TYPE_CLASSES = (
     ScalarType,
@@ -234,7 +235,9 @@ class NumberingContext:
         self.ops: dict[str, int] = {}
         self.sources: list[str] = []
         self._type_list: list[Type] = []
-        self._type_lookup: dict[Type, int] = {}
+        self._type_lookup: dict[int, int] = {}
+        # Invocation-local structural keys never recursively hash type DAGs.
+        self._type_identity = TypeIdentity()
         # Value definitions use string id 0 as "no SSA name". Keep the empty
         # string at bytecode string-table slot 0 so anonymous values do not
         # accidentally pick up the first real symbol name during reading.
@@ -250,11 +253,12 @@ class NumberingContext:
 
     def intern_type(self, ir_type: Type) -> int:
         """Intern a type, returning its ID."""
-        if ir_type in self._type_lookup:
-            return self._type_lookup[ir_type]
+        identity = self._type_identity.intern(ir_type)
+        if identity in self._type_lookup:
+            return self._type_lookup[identity]
         type_id = len(self._type_list)
         self._type_list.append(ir_type)
-        self._type_lookup[ir_type] = type_id
+        self._type_lookup[identity] = type_id
         return type_id
 
     def intern_op(self, op_name: str) -> int:

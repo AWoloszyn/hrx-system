@@ -43,6 +43,7 @@ iree_py_library(
     "scalar_type.py"
     "stable_id.py"
     "type_binding.py"
+    "type_identity.py"
     "verify.py"
   IMPORTS
     ".."
@@ -65,6 +66,7 @@ iree_py_test(
     "location_tag_test.py"
     "projected_region_test.py"
     "type_binding_test.py"
+    "type_identity_test.py"
     "verify_test.py"
     "tools/pytest_style_runner.py"
   ARGS
@@ -79,6 +81,7 @@ iree_py_test(
     "loom.location_tag_test"
     "loom.projected_region_test"
     "loom.type_binding_test"
+    "loom.type_identity_test"
     "loom.verify_test"
   DEPS
     loom::py::loom::package
