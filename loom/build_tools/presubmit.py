@@ -399,6 +399,7 @@ def bazel_test_command(targets: list[str] | None = None) -> list[str]:
         "test",
         "--config=presubmit",
         f"--//loom/config/target:enable={CI_LOOM_TARGETS}",
+        "--//loom/config/import:enable=cxx",
         "--test_tag_filters=" + ",".join(RESOURCE_TEST_TAG_FILTERS),
         *(targets or [BAZEL_FULL_TEST_TARGET]),
     ]

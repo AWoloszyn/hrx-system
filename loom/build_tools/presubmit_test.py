@@ -43,6 +43,7 @@ class LoomPresubmitTest(unittest.TestCase):
             "--//loom/config/target:enable=amdgpu,spirv,vm,wasm,xdna,x86",
             command,
         )
+        self.assertIn("--//loom/config/import:enable=cxx", command)
 
         tag_filter = next(
             arg for arg in command if arg.startswith("--test_tag_filters=")
@@ -60,6 +61,7 @@ class LoomPresubmitTest(unittest.TestCase):
 
         self.assertEqual(command[-2:], ["//loom/a:a_test", "//loom/b:b_test"])
         self.assertNotIn("//loom/...", command)
+        self.assertIn("--//loom/config/import:enable=cxx", command)
 
     def test_bazel_package_target_uses_nearest_build_package(self):
         with tempfile.TemporaryDirectory() as temporary_dir:

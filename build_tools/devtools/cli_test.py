@@ -783,6 +783,7 @@ class CliTest(unittest.TestCase):
 
     def test_bazel_clang_tidy_scopes_loom_enablement(self):
         cases = (
+            (["//loom/src/loom/tools/loom-import-cxx:all"], True),
             (["//loom/src/loom/target/emit/wasm:all"], True),
             (["//loom/src/loom/target/arch/wasm/..."], True),
             (["//loom/src/loom/target/arch/vm:all"], True),
@@ -813,6 +814,12 @@ class CliTest(unittest.TestCase):
                     target_flags,
                     [",".join(bazel_configure.LOOM_TARGETS)] if enabled else [],
                 )
+                importer_flags = [
+                    arg.removeprefix(bazel_configure.NATIVE_LOOM_IMPORT_FLAG + "=")
+                    for arg in command
+                    if arg.startswith(bazel_configure.NATIVE_LOOM_IMPORT_FLAG + "=")
+                ]
+                self.assertEqual(importer_flags, ["cxx"] if enabled else [])
                 self.assertEqual(command[command.index("--") + 1 :], targets)
 
     def test_bazel_clang_tidy_git_scope_uses_presubmit_provider(self):

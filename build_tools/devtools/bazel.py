@@ -409,6 +409,7 @@ def clang_tidy_configuration_args(targets: list[str]) -> list[str]:
             f"{bazel_configure.NATIVE_LOOM_TARGET_FLAG}="
             + ",".join(bazel_configure.LOOM_TARGETS)
         )
+        args.append(f"{bazel_configure.NATIVE_LOOM_IMPORT_FLAG}=cxx")
     return args
 
 
