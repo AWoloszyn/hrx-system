@@ -303,6 +303,8 @@ enum {
   LOOM_VECTOR_CONSTANT_VALUE_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ANY(loom_vector_constant_value, LOOM_VECTOR_CONSTANT_VALUE_ATTR_INDEX)
+#define loom_vector_constant_rewrite_value(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_CONSTANT_VALUE_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_constant_build(
     loom_builder_t* builder,
     loom_attribute_t value,
@@ -449,6 +451,8 @@ enum {
   LOOM_VECTOR_EXTRACT_STATIC_INDICES_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_extract_static_indices, LOOM_VECTOR_EXTRACT_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_extract_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_EXTRACT_STATIC_INDICES_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_extract_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -480,6 +484,8 @@ enum {
   LOOM_VECTOR_INSERT_STATIC_INDICES_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_insert_static_indices, LOOM_VECTOR_INSERT_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_insert_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_INSERT_STATIC_INDICES_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_insert_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t value,
@@ -511,6 +517,8 @@ enum {
   LOOM_VECTOR_SLICE_STATIC_OFFSETS_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_slice_static_offsets, LOOM_VECTOR_SLICE_STATIC_OFFSETS_ATTR_INDEX)
+#define loom_vector_slice_rewrite_static_offsets(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_SLICE_STATIC_OFFSETS_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_slice_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -539,6 +547,8 @@ enum {
   LOOM_VECTOR_CONCAT_AXIS_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64(loom_vector_concat_axis, LOOM_VECTOR_CONCAT_AXIS_ATTR_INDEX)
+#define loom_vector_concat_rewrite_axis(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_CONCAT_AXIS_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_concat_build(
     loom_builder_t* builder,
     int64_t axis,
@@ -565,6 +575,8 @@ enum {
   LOOM_VECTOR_TRANSPOSE_PERMUTATION_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_transpose_permutation, LOOM_VECTOR_TRANSPOSE_PERMUTATION_ATTR_INDEX)
+#define loom_vector_transpose_rewrite_permutation(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_TRANSPOSE_PERMUTATION_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_transpose_build(
     loom_builder_t* builder,
     const int64_t* permutation,
@@ -594,6 +606,8 @@ enum {
   LOOM_VECTOR_SHUFFLE_SOURCE_LANES_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_shuffle_source_lanes, LOOM_VECTOR_SHUFFLE_SOURCE_LANES_ATTR_INDEX)
+#define loom_vector_shuffle_rewrite_source_lanes(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_SHUFFLE_SOURCE_LANES_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_shuffle_build(
     loom_builder_t* builder,
     const int64_t* source_lanes,
@@ -622,6 +636,8 @@ enum {
   LOOM_VECTOR_INTERLEAVE_AXIS_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64(loom_vector_interleave_axis, LOOM_VECTOR_INTERLEAVE_AXIS_ATTR_INDEX)
+#define loom_vector_interleave_rewrite_axis(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_INTERLEAVE_AXIS_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_interleave_build(
     loom_builder_t* builder,
     int64_t axis,
@@ -648,6 +664,8 @@ enum {
   LOOM_VECTOR_DEINTERLEAVE_AXIS_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64(loom_vector_deinterleave_axis, LOOM_VECTOR_DEINTERLEAVE_AXIS_ATTR_INDEX)
+#define loom_vector_deinterleave_rewrite_axis(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_DEINTERLEAVE_AXIS_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_deinterleave_build(
     loom_builder_t* builder,
     int64_t axis,
@@ -700,7 +718,11 @@ enum {
   LOOM_VECTOR_TABLE_QUANTIZE_TIE_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_table_quantize_nan, LOOM_VECTOR_TABLE_QUANTIZE_NAN_ATTR_INDEX, loom_vector_table_quantize_nan_t)
+#define loom_vector_table_quantize_rewrite_nan(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_TABLE_QUANTIZE_NAN_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_table_quantize_tie, LOOM_VECTOR_TABLE_QUANTIZE_TIE_ATTR_INDEX, loom_vector_table_quantize_tie_t)
+#define loom_vector_table_quantize_rewrite_tie(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_TABLE_QUANTIZE_TIE_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_table_quantize_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t input,
@@ -759,16 +781,26 @@ enum {
   LOOM_VECTOR_FRAGMENT_LOAD_STATIC_INDICES_ATTR_INDEX = 4,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_load_role, LOOM_VECTOR_FRAGMENT_LOAD_ROLE_ATTR_INDEX, loom_vector_role_t)
+#define loom_vector_fragment_load_rewrite_role(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_FRAGMENT_LOAD_ROLE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_DICT(loom_vector_fragment_load_auxiliary_names, LOOM_VECTOR_FRAGMENT_LOAD_AUXILIARY_NAMES_ATTR_INDEX)
 #define loom_vector_fragment_load_has_auxiliary_names(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_FRAGMENT_LOAD_AUXILIARY_NAMES_ATTR_INDEX]))
+#define loom_vector_fragment_load_rewrite_auxiliary_names(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_FRAGMENT_LOAD_AUXILIARY_NAMES_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_load_cache_scope, LOOM_VECTOR_FRAGMENT_LOAD_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_fragment_load_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_FRAGMENT_LOAD_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_fragment_load_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_FRAGMENT_LOAD_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_load_cache_temporal, LOOM_VECTOR_FRAGMENT_LOAD_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_fragment_load_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_FRAGMENT_LOAD_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_fragment_load_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_FRAGMENT_LOAD_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_fragment_load_static_indices, LOOM_VECTOR_FRAGMENT_LOAD_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_fragment_load_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_FRAGMENT_LOAD_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_fragment_load_build_flag_bits_e {
   LOOM_VECTOR_FRAGMENT_LOAD_BUILD_FLAG_HAS_BLOCKS = 1u << 0,
   LOOM_VECTOR_FRAGMENT_LOAD_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 1,
@@ -819,13 +851,21 @@ enum {
   LOOM_VECTOR_FRAGMENT_STORE_STATIC_INDICES_ATTR_INDEX = 3,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_store_role, LOOM_VECTOR_FRAGMENT_STORE_ROLE_ATTR_INDEX, loom_vector_role_t)
+#define loom_vector_fragment_store_rewrite_role(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_FRAGMENT_STORE_ROLE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_store_cache_scope, LOOM_VECTOR_FRAGMENT_STORE_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_fragment_store_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_FRAGMENT_STORE_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_fragment_store_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_FRAGMENT_STORE_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_store_cache_temporal, LOOM_VECTOR_FRAGMENT_STORE_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_fragment_store_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_FRAGMENT_STORE_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_fragment_store_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_FRAGMENT_STORE_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_fragment_store_static_indices, LOOM_VECTOR_FRAGMENT_STORE_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_fragment_store_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_FRAGMENT_STORE_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_fragment_store_build_flag_bits_e {
   LOOM_VECTOR_FRAGMENT_STORE_BUILD_FLAG_HAS_BLOCKS = 1u << 0,
   LOOM_VECTOR_FRAGMENT_STORE_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 1,
@@ -868,10 +908,16 @@ LOOM_DEFINE_INSTANCE_FLAGS(loom_vector_load_memory_flags)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_load_cache_scope, LOOM_VECTOR_LOAD_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_load_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_LOAD_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_load_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_LOAD_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_load_cache_temporal, LOOM_VECTOR_LOAD_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_load_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_LOAD_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_load_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_LOAD_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_load_static_indices, LOOM_VECTOR_LOAD_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_load_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_LOAD_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_load_build_flag_bits_e {
   LOOM_VECTOR_LOAD_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_LOAD_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -916,10 +962,16 @@ LOOM_DEFINE_INSTANCE_FLAGS(loom_vector_store_memory_flags)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_store_cache_scope, LOOM_VECTOR_STORE_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_store_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_STORE_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_store_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_STORE_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_store_cache_temporal, LOOM_VECTOR_STORE_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_store_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_STORE_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_store_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_STORE_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_store_static_indices, LOOM_VECTOR_STORE_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_store_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_STORE_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_store_build_flag_bits_e {
   LOOM_VECTOR_STORE_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_STORE_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -960,10 +1012,16 @@ enum {
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_load_mask_cache_scope, LOOM_VECTOR_LOAD_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_load_mask_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_LOAD_MASK_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_load_mask_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_LOAD_MASK_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_load_mask_cache_temporal, LOOM_VECTOR_LOAD_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_load_mask_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_LOAD_MASK_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_load_mask_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_LOAD_MASK_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_load_mask_static_indices, LOOM_VECTOR_LOAD_MASK_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_load_mask_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_LOAD_MASK_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_load_mask_build_flag_bits_e {
   LOOM_VECTOR_LOAD_MASK_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_LOAD_MASK_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -1004,10 +1062,16 @@ enum {
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_store_mask_cache_scope, LOOM_VECTOR_STORE_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_store_mask_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_STORE_MASK_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_store_mask_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_STORE_MASK_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_store_mask_cache_temporal, LOOM_VECTOR_STORE_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_store_mask_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_STORE_MASK_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_store_mask_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_STORE_MASK_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_store_mask_static_indices, LOOM_VECTOR_STORE_MASK_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_store_mask_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_STORE_MASK_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_store_mask_build_flag_bits_e {
   LOOM_VECTOR_STORE_MASK_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_STORE_MASK_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -1047,10 +1111,16 @@ enum {
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_load_expand_cache_scope, LOOM_VECTOR_LOAD_EXPAND_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_load_expand_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_LOAD_EXPAND_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_load_expand_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_LOAD_EXPAND_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_load_expand_cache_temporal, LOOM_VECTOR_LOAD_EXPAND_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_load_expand_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_LOAD_EXPAND_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_load_expand_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_LOAD_EXPAND_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_load_expand_static_indices, LOOM_VECTOR_LOAD_EXPAND_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_load_expand_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_LOAD_EXPAND_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_load_expand_build_flag_bits_e {
   LOOM_VECTOR_LOAD_EXPAND_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_LOAD_EXPAND_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -1090,10 +1160,16 @@ enum {
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_store_compress_cache_scope, LOOM_VECTOR_STORE_COMPRESS_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_store_compress_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_STORE_COMPRESS_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_store_compress_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_STORE_COMPRESS_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_store_compress_cache_temporal, LOOM_VECTOR_STORE_COMPRESS_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_store_compress_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_STORE_COMPRESS_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_store_compress_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_STORE_COMPRESS_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_store_compress_static_indices, LOOM_VECTOR_STORE_COMPRESS_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_store_compress_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_STORE_COMPRESS_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_store_compress_build_flag_bits_e {
   LOOM_VECTOR_STORE_COMPRESS_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_STORE_COMPRESS_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -1132,10 +1208,16 @@ enum {
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_gather_cache_scope, LOOM_VECTOR_GATHER_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_gather_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_GATHER_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_gather_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_GATHER_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_gather_cache_temporal, LOOM_VECTOR_GATHER_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_gather_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_GATHER_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_gather_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_GATHER_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_gather_static_indices, LOOM_VECTOR_GATHER_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_gather_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_GATHER_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_gather_build_flag_bits_e {
   LOOM_VECTOR_GATHER_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_GATHER_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -1175,10 +1257,16 @@ enum {
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_scatter_cache_scope, LOOM_VECTOR_SCATTER_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_scatter_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_SCATTER_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_scatter_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_SCATTER_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_scatter_cache_temporal, LOOM_VECTOR_SCATTER_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_scatter_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_SCATTER_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_scatter_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_SCATTER_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_scatter_static_indices, LOOM_VECTOR_SCATTER_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_scatter_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_SCATTER_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_scatter_build_flag_bits_e {
   LOOM_VECTOR_SCATTER_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_SCATTER_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -1219,10 +1307,16 @@ enum {
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_gather_mask_cache_scope, LOOM_VECTOR_GATHER_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_gather_mask_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_GATHER_MASK_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_gather_mask_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_GATHER_MASK_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_gather_mask_cache_temporal, LOOM_VECTOR_GATHER_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_gather_mask_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_GATHER_MASK_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_gather_mask_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_GATHER_MASK_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_gather_mask_static_indices, LOOM_VECTOR_GATHER_MASK_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_gather_mask_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_GATHER_MASK_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_gather_mask_build_flag_bits_e {
   LOOM_VECTOR_GATHER_MASK_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_GATHER_MASK_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -1264,10 +1358,16 @@ enum {
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_scatter_mask_cache_scope, LOOM_VECTOR_SCATTER_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_scatter_mask_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_SCATTER_MASK_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_scatter_mask_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_SCATTER_MASK_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_scatter_mask_cache_temporal, LOOM_VECTOR_SCATTER_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_scatter_mask_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_SCATTER_MASK_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_scatter_mask_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_SCATTER_MASK_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_scatter_mask_static_indices, LOOM_VECTOR_SCATTER_MASK_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_scatter_mask_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_SCATTER_MASK_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_scatter_mask_build_flag_bits_e {
   LOOM_VECTOR_SCATTER_MASK_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_SCATTER_MASK_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -1308,15 +1408,27 @@ enum {
   LOOM_VECTOR_ATOMIC_REDUCE_STATIC_INDICES_ATTR_INDEX = 5,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_kind, LOOM_VECTOR_ATOMIC_REDUCE_KIND_ATTR_INDEX, loom_atomic_kind_t)
+#define loom_vector_atomic_reduce_rewrite_kind(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_REDUCE_KIND_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_ordering, LOOM_VECTOR_ATOMIC_REDUCE_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
+#define loom_vector_atomic_reduce_rewrite_ordering(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_REDUCE_ORDERING_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_scope, LOOM_VECTOR_ATOMIC_REDUCE_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
+#define loom_vector_atomic_reduce_rewrite_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_REDUCE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_cache_scope, LOOM_VECTOR_ATOMIC_REDUCE_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_atomic_reduce_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_REDUCE_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_atomic_reduce_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_REDUCE_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_cache_temporal, LOOM_VECTOR_ATOMIC_REDUCE_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_atomic_reduce_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_REDUCE_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_atomic_reduce_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_REDUCE_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_atomic_reduce_static_indices, LOOM_VECTOR_ATOMIC_REDUCE_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_atomic_reduce_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_REDUCE_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_atomic_reduce_build_flag_bits_e {
   LOOM_VECTOR_ATOMIC_REDUCE_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_ATOMIC_REDUCE_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -1360,15 +1472,27 @@ enum {
   LOOM_VECTOR_ATOMIC_REDUCE_MASK_STATIC_INDICES_ATTR_INDEX = 5,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_mask_kind, LOOM_VECTOR_ATOMIC_REDUCE_MASK_KIND_ATTR_INDEX, loom_atomic_kind_t)
+#define loom_vector_atomic_reduce_mask_rewrite_kind(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_REDUCE_MASK_KIND_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_mask_ordering, LOOM_VECTOR_ATOMIC_REDUCE_MASK_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
+#define loom_vector_atomic_reduce_mask_rewrite_ordering(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_REDUCE_MASK_ORDERING_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_mask_scope, LOOM_VECTOR_ATOMIC_REDUCE_MASK_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
+#define loom_vector_atomic_reduce_mask_rewrite_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_REDUCE_MASK_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_mask_cache_scope, LOOM_VECTOR_ATOMIC_REDUCE_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_atomic_reduce_mask_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_REDUCE_MASK_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_atomic_reduce_mask_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_REDUCE_MASK_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_mask_cache_temporal, LOOM_VECTOR_ATOMIC_REDUCE_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_atomic_reduce_mask_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_REDUCE_MASK_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_atomic_reduce_mask_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_REDUCE_MASK_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_atomic_reduce_mask_static_indices, LOOM_VECTOR_ATOMIC_REDUCE_MASK_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_atomic_reduce_mask_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_REDUCE_MASK_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_atomic_reduce_mask_build_flag_bits_e {
   LOOM_VECTOR_ATOMIC_REDUCE_MASK_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_ATOMIC_REDUCE_MASK_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -1413,15 +1537,27 @@ enum {
   LOOM_VECTOR_ATOMIC_RMW_STATIC_INDICES_ATTR_INDEX = 5,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_kind, LOOM_VECTOR_ATOMIC_RMW_KIND_ATTR_INDEX, loom_atomic_kind_t)
+#define loom_vector_atomic_rmw_rewrite_kind(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_RMW_KIND_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_ordering, LOOM_VECTOR_ATOMIC_RMW_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
+#define loom_vector_atomic_rmw_rewrite_ordering(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_RMW_ORDERING_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_scope, LOOM_VECTOR_ATOMIC_RMW_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
+#define loom_vector_atomic_rmw_rewrite_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_RMW_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_cache_scope, LOOM_VECTOR_ATOMIC_RMW_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_atomic_rmw_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_RMW_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_atomic_rmw_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_RMW_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_cache_temporal, LOOM_VECTOR_ATOMIC_RMW_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_atomic_rmw_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_RMW_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_atomic_rmw_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_RMW_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_atomic_rmw_static_indices, LOOM_VECTOR_ATOMIC_RMW_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_atomic_rmw_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_RMW_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_atomic_rmw_build_flag_bits_e {
   LOOM_VECTOR_ATOMIC_RMW_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_ATOMIC_RMW_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -1468,15 +1604,27 @@ enum {
   LOOM_VECTOR_ATOMIC_RMW_MASK_STATIC_INDICES_ATTR_INDEX = 5,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_mask_kind, LOOM_VECTOR_ATOMIC_RMW_MASK_KIND_ATTR_INDEX, loom_atomic_kind_t)
+#define loom_vector_atomic_rmw_mask_rewrite_kind(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_RMW_MASK_KIND_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_mask_ordering, LOOM_VECTOR_ATOMIC_RMW_MASK_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
+#define loom_vector_atomic_rmw_mask_rewrite_ordering(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_RMW_MASK_ORDERING_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_mask_scope, LOOM_VECTOR_ATOMIC_RMW_MASK_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
+#define loom_vector_atomic_rmw_mask_rewrite_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_RMW_MASK_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_mask_cache_scope, LOOM_VECTOR_ATOMIC_RMW_MASK_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_atomic_rmw_mask_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_RMW_MASK_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_atomic_rmw_mask_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_RMW_MASK_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_mask_cache_temporal, LOOM_VECTOR_ATOMIC_RMW_MASK_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_atomic_rmw_mask_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_RMW_MASK_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_atomic_rmw_mask_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_RMW_MASK_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_atomic_rmw_mask_static_indices, LOOM_VECTOR_ATOMIC_RMW_MASK_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_atomic_rmw_mask_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_RMW_MASK_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_atomic_rmw_mask_build_flag_bits_e {
   LOOM_VECTOR_ATOMIC_RMW_MASK_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_ATOMIC_RMW_MASK_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -1524,15 +1672,27 @@ enum {
   LOOM_VECTOR_ATOMIC_CMPXCHG_STATIC_INDICES_ATTR_INDEX = 5,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_cmpxchg_success_ordering, LOOM_VECTOR_ATOMIC_CMPXCHG_SUCCESS_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
+#define loom_vector_atomic_cmpxchg_rewrite_success_ordering(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_CMPXCHG_SUCCESS_ORDERING_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_cmpxchg_failure_ordering, LOOM_VECTOR_ATOMIC_CMPXCHG_FAILURE_ORDERING_ATTR_INDEX, loom_atomic_ordering_t)
+#define loom_vector_atomic_cmpxchg_rewrite_failure_ordering(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_CMPXCHG_FAILURE_ORDERING_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_cmpxchg_scope, LOOM_VECTOR_ATOMIC_CMPXCHG_SCOPE_ATTR_INDEX, loom_atomic_scope_t)
+#define loom_vector_atomic_cmpxchg_rewrite_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_CMPXCHG_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_cmpxchg_cache_scope, LOOM_VECTOR_ATOMIC_CMPXCHG_CACHE_SCOPE_ATTR_INDEX, loom_cache_scope_t)
 #define loom_vector_atomic_cmpxchg_has_cache_scope(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_CMPXCHG_CACHE_SCOPE_ATTR_INDEX]))
+#define loom_vector_atomic_cmpxchg_rewrite_cache_scope(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_CMPXCHG_CACHE_SCOPE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_cmpxchg_cache_temporal, LOOM_VECTOR_ATOMIC_CMPXCHG_CACHE_TEMPORAL_ATTR_INDEX, loom_cache_temporal_t)
 #define loom_vector_atomic_cmpxchg_has_cache_temporal(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ATOMIC_CMPXCHG_CACHE_TEMPORAL_ATTR_INDEX]))
+#define loom_vector_atomic_cmpxchg_rewrite_cache_temporal(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_CMPXCHG_CACHE_TEMPORAL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_atomic_cmpxchg_static_indices, LOOM_VECTOR_ATOMIC_CMPXCHG_STATIC_INDICES_ATTR_INDEX)
+#define loom_vector_atomic_cmpxchg_rewrite_static_indices(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ATOMIC_CMPXCHG_STATIC_INDICES_ATTR_INDEX, (attribute))
 enum loom_vector_atomic_cmpxchg_build_flag_bits_e {
   LOOM_VECTOR_ATOMIC_CMPXCHG_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
   LOOM_VECTOR_ATOMIC_CMPXCHG_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
@@ -1593,6 +1753,8 @@ enum {
   LOOM_VECTOR_CMPI_PREDICATE_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_cmpi_predicate, LOOM_VECTOR_CMPI_PREDICATE_ATTR_INDEX, loom_vector_cmpi_predicate_t)
+#define loom_vector_cmpi_rewrite_predicate(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_CMPI_PREDICATE_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_cmpi_build(
     loom_builder_t* builder, uint8_t predicate,
     loom_value_id_t lhs, loom_value_id_t rhs,
@@ -1615,6 +1777,8 @@ enum {
   LOOM_VECTOR_CMPF_PREDICATE_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_cmpf_predicate, LOOM_VECTOR_CMPF_PREDICATE_ATTR_INDEX, loom_vector_cmpf_predicate_t)
+#define loom_vector_cmpf_rewrite_predicate(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_CMPF_PREDICATE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_INSTANCE_FLAGS(loom_vector_cmpf_fastmath)
 iree_status_t loom_vector_cmpf_build(
     loom_builder_t* builder, uint8_t instance_flags,
@@ -1837,6 +2001,8 @@ enum {
   LOOM_VECTOR_CLAMPF_MODE_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_clampf_mode, LOOM_VECTOR_CLAMPF_MODE_ATTR_INDEX, loom_vector_clampf_mode_t)
+#define loom_vector_clampf_rewrite_mode(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_CLAMPF_MODE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_INSTANCE_FLAGS(loom_vector_clampf_fastmath)
 iree_status_t loom_vector_clampf_build(
     loom_builder_t* builder,
@@ -2839,10 +3005,14 @@ enum {
   LOOM_VECTOR_GELUF_SCALE_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_geluf_variant, LOOM_VECTOR_GELUF_VARIANT_ATTR_INDEX, loom_vector_geluf_variant_t)
+#define loom_vector_geluf_rewrite_variant(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_GELUF_VARIANT_ATTR_INDEX, (attribute))
 LOOM_DEFINE_INSTANCE_FLAGS(loom_vector_geluf_fastmath)
 LOOM_DEFINE_ATTR_F64(loom_vector_geluf_scale, LOOM_VECTOR_GELUF_SCALE_ATTR_INDEX)
 #define loom_vector_geluf_has_scale(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_GELUF_SCALE_ATTR_INDEX]))
+#define loom_vector_geluf_rewrite_scale(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_GELUF_SCALE_ATTR_INDEX, (attribute))
 enum loom_vector_geluf_build_flag_bits_e {
   LOOM_VECTOR_GELUF_BUILD_FLAG_HAS_SCALE = 1u << 0,
 };
@@ -3158,7 +3328,11 @@ enum {
   LOOM_VECTOR_BITFIELD_EXTRACTU_WIDTH_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_I64(loom_vector_bitfield_extractu_offset, LOOM_VECTOR_BITFIELD_EXTRACTU_OFFSET_ATTR_INDEX)
+#define loom_vector_bitfield_extractu_rewrite_offset(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_BITFIELD_EXTRACTU_OFFSET_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64(loom_vector_bitfield_extractu_width, LOOM_VECTOR_BITFIELD_EXTRACTU_WIDTH_ATTR_INDEX)
+#define loom_vector_bitfield_extractu_rewrite_width(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_BITFIELD_EXTRACTU_WIDTH_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_bitfield_extractu_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -3183,7 +3357,11 @@ enum {
   LOOM_VECTOR_BITFIELD_EXTRACTS_WIDTH_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_I64(loom_vector_bitfield_extracts_offset, LOOM_VECTOR_BITFIELD_EXTRACTS_OFFSET_ATTR_INDEX)
+#define loom_vector_bitfield_extracts_rewrite_offset(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_BITFIELD_EXTRACTS_OFFSET_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64(loom_vector_bitfield_extracts_width, LOOM_VECTOR_BITFIELD_EXTRACTS_WIDTH_ATTR_INDEX)
+#define loom_vector_bitfield_extracts_rewrite_width(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_BITFIELD_EXTRACTS_WIDTH_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_bitfield_extracts_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -3209,7 +3387,11 @@ enum {
   LOOM_VECTOR_BITFIELD_INSERT_WIDTH_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_I64(loom_vector_bitfield_insert_offset, LOOM_VECTOR_BITFIELD_INSERT_OFFSET_ATTR_INDEX)
+#define loom_vector_bitfield_insert_rewrite_offset(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_BITFIELD_INSERT_OFFSET_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64(loom_vector_bitfield_insert_width, LOOM_VECTOR_BITFIELD_INSERT_WIDTH_ATTR_INDEX)
+#define loom_vector_bitfield_insert_rewrite_width(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_BITFIELD_INSERT_WIDTH_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_bitfield_insert_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t field,
@@ -3234,6 +3416,8 @@ enum {
   LOOM_VECTOR_BITPACK_WIDTH_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64(loom_vector_bitpack_width, LOOM_VECTOR_BITPACK_WIDTH_ATTR_INDEX)
+#define loom_vector_bitpack_rewrite_width(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_BITPACK_WIDTH_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_bitpack_build(
     loom_builder_t* builder,
     int64_t width,
@@ -3256,6 +3440,8 @@ enum {
   LOOM_VECTOR_BITUNPACKU_WIDTH_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64(loom_vector_bitunpacku_width, LOOM_VECTOR_BITUNPACKU_WIDTH_ATTR_INDEX)
+#define loom_vector_bitunpacku_rewrite_width(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_BITUNPACKU_WIDTH_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_bitunpacku_build(
     loom_builder_t* builder,
     int64_t width,
@@ -3278,6 +3464,8 @@ enum {
   LOOM_VECTOR_BITUNPACKS_WIDTH_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64(loom_vector_bitunpacks_width, LOOM_VECTOR_BITUNPACKS_WIDTH_ATTR_INDEX)
+#define loom_vector_bitunpacks_rewrite_width(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_BITUNPACKS_WIDTH_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_bitunpacks_build(
     loom_builder_t* builder,
     int64_t width,
@@ -3346,6 +3534,8 @@ enum {
   LOOM_VECTOR_DOT4I_KIND_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_dot4i_kind, LOOM_VECTOR_DOT4I_KIND_ATTR_INDEX, loom_vector_dot4i_kind_t)
+#define loom_vector_dot4i_rewrite_kind(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_DOT4I_KIND_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_dot4i_build(
     loom_builder_t* builder,
     loom_vector_dot4i_kind_t kind,
@@ -3372,6 +3562,8 @@ enum {
   LOOM_VECTOR_DOT8I4_KIND_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_dot8i4_kind, LOOM_VECTOR_DOT8I4_KIND_ATTR_INDEX, loom_vector_dot8i4_kind_t)
+#define loom_vector_dot8i4_rewrite_kind(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_DOT8I4_KIND_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_dot8i4_build(
     loom_builder_t* builder,
     loom_vector_dot8i4_kind_t kind,
@@ -3398,6 +3590,8 @@ enum {
   LOOM_VECTOR_DOT4F8_KIND_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_dot4f8_kind, LOOM_VECTOR_DOT4F8_KIND_ATTR_INDEX, loom_vector_dot4f8_kind_t)
+#define loom_vector_dot4f8_rewrite_kind(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_DOT4F8_KIND_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_dot4f8_build(
     loom_builder_t* builder,
     loom_vector_dot4f8_kind_t kind,
@@ -3446,6 +3640,8 @@ enum {
   LOOM_VECTOR_REDUCE_KIND_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_reduce_kind, LOOM_VECTOR_REDUCE_KIND_ATTR_INDEX, loom_combining_kind_t)
+#define loom_vector_reduce_rewrite_kind(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_REDUCE_KIND_ATTR_INDEX, (attribute))
 LOOM_DEFINE_INSTANCE_FLAGS(loom_vector_reduce_fastmath)
 iree_status_t loom_vector_reduce_build(
     loom_builder_t* builder,
@@ -3477,8 +3673,12 @@ enum {
   LOOM_VECTOR_REDUCE_AXES_AXES_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_reduce_axes_kind, LOOM_VECTOR_REDUCE_AXES_KIND_ATTR_INDEX, loom_combining_kind_t)
+#define loom_vector_reduce_axes_rewrite_kind(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_REDUCE_AXES_KIND_ATTR_INDEX, (attribute))
 LOOM_DEFINE_INSTANCE_FLAGS(loom_vector_reduce_axes_fastmath)
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_vector_reduce_axes_axes, LOOM_VECTOR_REDUCE_AXES_AXES_ATTR_INDEX)
+#define loom_vector_reduce_axes_rewrite_axes(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_REDUCE_AXES_AXES_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_reduce_axes_build(
     loom_builder_t* builder,
     loom_combining_kind_t kind,
@@ -3513,6 +3713,8 @@ enum {
 LOOM_DEFINE_ATTR_DICT(loom_vector_decode_auxiliary_names, LOOM_VECTOR_DECODE_AUXILIARY_NAMES_ATTR_INDEX)
 #define loom_vector_decode_has_auxiliary_names(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_DECODE_AUXILIARY_NAMES_ATTR_INDEX]))
+#define loom_vector_decode_rewrite_auxiliary_names(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_DECODE_AUXILIARY_NAMES_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_decode_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t payload,
@@ -3545,6 +3747,8 @@ enum {
 LOOM_DEFINE_ATTR_DICT(loom_vector_encode_auxiliary_names, LOOM_VECTOR_ENCODE_AUXILIARY_NAMES_ATTR_INDEX)
 #define loom_vector_encode_has_auxiliary_names(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_ENCODE_AUXILIARY_NAMES_ATTR_INDEX]))
+#define loom_vector_encode_rewrite_auxiliary_names(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_ENCODE_AUXILIARY_NAMES_ATTR_INDEX, (attribute))
 iree_status_t loom_vector_encode_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -3578,12 +3782,18 @@ enum {
   LOOM_VECTOR_FRAGMENT_PREDICATES_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_role, LOOM_VECTOR_FRAGMENT_ROLE_ATTR_INDEX, loom_vector_role_t)
+#define loom_vector_fragment_rewrite_role(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_FRAGMENT_ROLE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_DICT(loom_vector_fragment_param_names, LOOM_VECTOR_FRAGMENT_PARAM_NAMES_ATTR_INDEX)
 #define loom_vector_fragment_has_param_names(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_FRAGMENT_PARAM_NAMES_ATTR_INDEX]))
+#define loom_vector_fragment_rewrite_param_names(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_FRAGMENT_PARAM_NAMES_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_vector_fragment_predicates, LOOM_VECTOR_FRAGMENT_PREDICATES_ATTR_INDEX)
 #define loom_vector_fragment_has_predicates(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_VECTOR_FRAGMENT_PREDICATES_ATTR_INDEX]))
+#define loom_vector_fragment_rewrite_predicates(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_FRAGMENT_PREDICATES_ATTR_INDEX, (attribute))
 enum loom_vector_fragment_build_flag_bits_e {
   LOOM_VECTOR_FRAGMENT_BUILD_FLAG_HAS_BLOCKS = 1u << 0,
   LOOM_VECTOR_FRAGMENT_BUILD_FLAG_HAS_PREDICATES = 1u << 1,
@@ -3625,6 +3835,8 @@ enum {
   LOOM_VECTOR_FRAGMENT_REPACK_ROLE_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_fragment_repack_role, LOOM_VECTOR_FRAGMENT_REPACK_ROLE_ATTR_INDEX, loom_vector_role_t)
+#define loom_vector_fragment_repack_rewrite_role(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VECTOR_FRAGMENT_REPACK_ROLE_ATTR_INDEX, (attribute))
 enum loom_vector_fragment_repack_build_flag_bits_e {
   LOOM_VECTOR_FRAGMENT_REPACK_BUILD_FLAG_HAS_BLOCKS = 1u << 0,
 };

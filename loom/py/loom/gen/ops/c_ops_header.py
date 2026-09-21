@@ -432,6 +432,11 @@ def generate_ops_h(
                     raise ValueError(f"{op.name}: presence accessor '{prefix}_{presence_name}' conflicts with field '{presence_name}'")
                 lines.append(f"#define {prefix}_{presence_name}(op) \\")
                 lines.append(f"  (!loom_attr_is_absent(loom_op_const_attrs((op))[{desc_index}]))")
+            rewrite_name = f"rewrite_{attr_def.name}"
+            if rewrite_name in layout.fields:
+                raise ValueError(f"{op.name}: rewrite accessor '{prefix}_{rewrite_name}' conflicts with field '{rewrite_name}'")
+            lines.append(f"#define {prefix}_{rewrite_name}(rewriter, op, attribute) \\")
+            lines.append(f"  loom_rewriter_set_attr((rewriter), (op), {desc_index}, (attribute))")
 
         for region_def in op.regions:
             desc = layout.fields[region_def.name]

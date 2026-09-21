@@ -81,9 +81,13 @@ enum {
   LOOM_CHECK_CASE_VISIBILITY_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_check_case_case_symbol, LOOM_CHECK_CASE_CASE_SYMBOL_ATTR_INDEX)
+#define loom_check_case_rewrite_case_symbol(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_CASE_CASE_SYMBOL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_check_case_visibility, LOOM_CHECK_CASE_VISIBILITY_ATTR_INDEX, loom_check_case_visibility_t)
 #define loom_check_case_has_visibility(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_CHECK_CASE_VISIBILITY_ATTR_INDEX]))
+#define loom_check_case_rewrite_visibility(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_CASE_VISIBILITY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_REGION(loom_check_case_body, 0)
 enum loom_check_case_build_flag_bits_e {
   LOOM_CHECK_CASE_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
@@ -113,7 +117,11 @@ enum {
   LOOM_CHECK_REQUIRES_ATTRS_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_STRING(loom_check_requires_provider, LOOM_CHECK_REQUIRES_PROVIDER_ATTR_INDEX)
+#define loom_check_requires_rewrite_provider(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_REQUIRES_PROVIDER_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_DICT(loom_check_requires_attrs, LOOM_CHECK_REQUIRES_ATTRS_ATTR_INDEX)
+#define loom_check_requires_rewrite_attrs(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_REQUIRES_ATTRS_ATTR_INDEX, (attribute))
 iree_status_t loom_check_requires_build(
     loom_builder_t* builder,
     loom_string_id_t provider,
@@ -130,10 +138,16 @@ enum {
   LOOM_CHECK_SKIP_IF_REASON_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_STRING(loom_check_skip_if_provider, LOOM_CHECK_SKIP_IF_PROVIDER_ATTR_INDEX)
+#define loom_check_skip_if_rewrite_provider(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_SKIP_IF_PROVIDER_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_DICT(loom_check_skip_if_attrs, LOOM_CHECK_SKIP_IF_ATTRS_ATTR_INDEX)
+#define loom_check_skip_if_rewrite_attrs(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_SKIP_IF_ATTRS_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_STRING(loom_check_skip_if_reason, LOOM_CHECK_SKIP_IF_REASON_ATTR_INDEX)
 #define loom_check_skip_if_has_reason(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_CHECK_SKIP_IF_REASON_ATTR_INDEX]))
+#define loom_check_skip_if_rewrite_reason(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_SKIP_IF_REASON_ATTR_INDEX, (attribute))
 enum loom_check_skip_if_build_flag_bits_e {
   LOOM_CHECK_SKIP_IF_BUILD_FLAG_HAS_REASON = 1u << 0,
 };
@@ -159,14 +173,24 @@ enum {
   LOOM_CHECK_PARAM_RANGE_PARAM_NAME_ATTR_INDEX = 4,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_check_param_range_policy, LOOM_CHECK_PARAM_RANGE_POLICY_ATTR_INDEX, loom_check_param_range_policy_t)
+#define loom_check_param_range_rewrite_policy(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_PARAM_RANGE_POLICY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ANY(loom_check_param_range_lower, LOOM_CHECK_PARAM_RANGE_LOWER_ATTR_INDEX)
+#define loom_check_param_range_rewrite_lower(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_PARAM_RANGE_LOWER_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ANY(loom_check_param_range_upper, LOOM_CHECK_PARAM_RANGE_UPPER_ATTR_INDEX)
+#define loom_check_param_range_rewrite_upper(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_PARAM_RANGE_UPPER_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ANY(loom_check_param_range_step, LOOM_CHECK_PARAM_RANGE_STEP_ATTR_INDEX)
 #define loom_check_param_range_has_step(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_CHECK_PARAM_RANGE_STEP_ATTR_INDEX]))
+#define loom_check_param_range_rewrite_step(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_PARAM_RANGE_STEP_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_STRING(loom_check_param_range_param_name, LOOM_CHECK_PARAM_RANGE_PARAM_NAME_ATTR_INDEX)
 #define loom_check_param_range_has_param_name(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_CHECK_PARAM_RANGE_PARAM_NAME_ATTR_INDEX]))
+#define loom_check_param_range_rewrite_param_name(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_PARAM_RANGE_PARAM_NAME_ATTR_INDEX, (attribute))
 enum loom_check_param_range_build_flag_bits_e {
   LOOM_CHECK_PARAM_RANGE_BUILD_FLAG_HAS_PARAM_NAME = 1u << 0,
 };
@@ -192,9 +216,13 @@ enum {
   LOOM_CHECK_PARAM_CHOICE_PARAM_NAME_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_check_param_choice_values, LOOM_CHECK_PARAM_CHOICE_VALUES_ATTR_INDEX)
+#define loom_check_param_choice_rewrite_values(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_PARAM_CHOICE_VALUES_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_STRING(loom_check_param_choice_param_name, LOOM_CHECK_PARAM_CHOICE_PARAM_NAME_ATTR_INDEX)
 #define loom_check_param_choice_has_param_name(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_CHECK_PARAM_CHOICE_PARAM_NAME_ATTR_INDEX]))
+#define loom_check_param_choice_rewrite_param_name(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_PARAM_CHOICE_PARAM_NAME_ATTR_INDEX, (attribute))
 enum loom_check_param_choice_build_flag_bits_e {
   LOOM_CHECK_PARAM_CHOICE_BUILD_FLAG_HAS_PARAM_NAME = 1u << 0,
 };
@@ -219,10 +247,16 @@ enum {
   LOOM_CHECK_PARAM_SEED_PARAM_NAME_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_I64(loom_check_param_seed_base, LOOM_CHECK_PARAM_SEED_BASE_ATTR_INDEX)
+#define loom_check_param_seed_rewrite_base(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_PARAM_SEED_BASE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64(loom_check_param_seed_count, LOOM_CHECK_PARAM_SEED_COUNT_ATTR_INDEX)
+#define loom_check_param_seed_rewrite_count(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_PARAM_SEED_COUNT_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_STRING(loom_check_param_seed_param_name, LOOM_CHECK_PARAM_SEED_PARAM_NAME_ATTR_INDEX)
 #define loom_check_param_seed_has_param_name(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_CHECK_PARAM_SEED_PARAM_NAME_ATTR_INDEX]))
+#define loom_check_param_seed_rewrite_param_name(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_PARAM_SEED_PARAM_NAME_ATTR_INDEX, (attribute))
 enum loom_check_param_seed_build_flag_bits_e {
   LOOM_CHECK_PARAM_SEED_BUILD_FLAG_HAS_PARAM_NAME = 1u << 0,
 };
@@ -245,6 +279,8 @@ enum {
   LOOM_CHECK_LITERAL_VALUE_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ANY(loom_check_literal_value, LOOM_CHECK_LITERAL_VALUE_ATTR_INDEX)
+#define loom_check_literal_rewrite_value(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_LITERAL_VALUE_ATTR_INDEX, (attribute))
 iree_status_t loom_check_literal_build(
     loom_builder_t* builder,
     loom_attribute_t value,
@@ -262,10 +298,16 @@ enum {
   LOOM_CHECK_GENERATE_IOTA_PERIOD_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_ANY(loom_check_generate_iota_offset, LOOM_CHECK_GENERATE_IOTA_OFFSET_ATTR_INDEX)
+#define loom_check_generate_iota_rewrite_offset(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_GENERATE_IOTA_OFFSET_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ANY(loom_check_generate_iota_step, LOOM_CHECK_GENERATE_IOTA_STEP_ATTR_INDEX)
+#define loom_check_generate_iota_rewrite_step(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_GENERATE_IOTA_STEP_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64(loom_check_generate_iota_period, LOOM_CHECK_GENERATE_IOTA_PERIOD_ATTR_INDEX)
 #define loom_check_generate_iota_has_period(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_CHECK_GENERATE_IOTA_PERIOD_ATTR_INDEX]))
+#define loom_check_generate_iota_rewrite_period(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_GENERATE_IOTA_PERIOD_ATTR_INDEX, (attribute))
 enum loom_check_generate_iota_build_flag_bits_e {
   LOOM_CHECK_GENERATE_IOTA_BUILD_FLAG_HAS_PERIOD = 1u << 0,
 };
@@ -288,6 +330,8 @@ enum {
   LOOM_CHECK_GENERATE_FILL_VALUE_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ANY(loom_check_generate_fill_value, LOOM_CHECK_GENERATE_FILL_VALUE_ATTR_INDEX)
+#define loom_check_generate_fill_rewrite_value(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_GENERATE_FILL_VALUE_ATTR_INDEX, (attribute))
 iree_status_t loom_check_generate_fill_build(
     loom_builder_t* builder,
     loom_attribute_t value,
@@ -305,7 +349,11 @@ enum {
   LOOM_CHECK_GENERATE_RANDOM_UNIFORM_UPPER_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_ANY(loom_check_generate_random_uniform_lower, LOOM_CHECK_GENERATE_RANDOM_UNIFORM_LOWER_ATTR_INDEX)
+#define loom_check_generate_random_uniform_rewrite_lower(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_GENERATE_RANDOM_UNIFORM_LOWER_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ANY(loom_check_generate_random_uniform_upper, LOOM_CHECK_GENERATE_RANDOM_UNIFORM_UPPER_ATTR_INDEX)
+#define loom_check_generate_random_uniform_rewrite_upper(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_GENERATE_RANDOM_UNIFORM_UPPER_ATTR_INDEX, (attribute))
 iree_status_t loom_check_generate_random_uniform_build(
     loom_builder_t* builder,
     loom_value_id_t seed,
@@ -323,6 +371,8 @@ enum {
   LOOM_CHECK_FILE_READ_NPY_PATH_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_STRING(loom_check_file_read_npy_path, LOOM_CHECK_FILE_READ_NPY_PATH_ATTR_INDEX)
+#define loom_check_file_read_npy_rewrite_path(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_FILE_READ_NPY_PATH_ATTR_INDEX, (attribute))
 iree_status_t loom_check_file_read_npy_build(
     loom_builder_t* builder,
     loom_string_id_t path,
@@ -339,9 +389,13 @@ enum {
   LOOM_CHECK_FILE_WRITE_NPY_MODE_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_STRING(loom_check_file_write_npy_path, LOOM_CHECK_FILE_WRITE_NPY_PATH_ATTR_INDEX)
+#define loom_check_file_write_npy_rewrite_path(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_FILE_WRITE_NPY_PATH_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_check_file_write_npy_mode, LOOM_CHECK_FILE_WRITE_NPY_MODE_ATTR_INDEX, loom_check_file_write_npy_mode_t)
 #define loom_check_file_write_npy_has_mode(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_CHECK_FILE_WRITE_NPY_MODE_ATTR_INDEX]))
+#define loom_check_file_write_npy_rewrite_mode(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_FILE_WRITE_NPY_MODE_ATTR_INDEX, (attribute))
 enum loom_check_file_write_npy_build_flag_bits_e {
   LOOM_CHECK_FILE_WRITE_NPY_BUILD_FLAG_HAS_MODE = 1u << 0,
 };
@@ -366,10 +420,16 @@ enum {
   LOOM_CHECK_ORACLE_CALL_CALLEE_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_STRING(loom_check_oracle_call_provider, LOOM_CHECK_ORACLE_CALL_PROVIDER_ATTR_INDEX)
+#define loom_check_oracle_call_rewrite_provider(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_ORACLE_CALL_PROVIDER_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_DICT(loom_check_oracle_call_attrs, LOOM_CHECK_ORACLE_CALL_ATTRS_ATTR_INDEX)
 #define loom_check_oracle_call_has_attrs(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_CHECK_ORACLE_CALL_ATTRS_ATTR_INDEX]))
+#define loom_check_oracle_call_rewrite_attrs(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_ORACLE_CALL_ATTRS_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_SYMBOL(loom_check_oracle_call_callee, LOOM_CHECK_ORACLE_CALL_CALLEE_ATTR_INDEX)
+#define loom_check_oracle_call_rewrite_callee(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_ORACLE_CALL_CALLEE_ATTR_INDEX, (attribute))
 enum loom_check_oracle_call_build_flag_bits_e {
   LOOM_CHECK_ORACLE_CALL_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };
@@ -424,8 +484,14 @@ enum {
   LOOM_CHECK_EXPECT_CLOSE_NAN_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_F64(loom_check_expect_close_atol, LOOM_CHECK_EXPECT_CLOSE_ATOL_ATTR_INDEX)
+#define loom_check_expect_close_rewrite_atol(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_EXPECT_CLOSE_ATOL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_F64(loom_check_expect_close_rtol, LOOM_CHECK_EXPECT_CLOSE_RTOL_ATTR_INDEX)
+#define loom_check_expect_close_rewrite_rtol(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_EXPECT_CLOSE_RTOL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_check_expect_close_nan, LOOM_CHECK_EXPECT_CLOSE_NAN_ATTR_INDEX, loom_check_expect_close_nan_t)
+#define loom_check_expect_close_rewrite_nan(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_EXPECT_CLOSE_NAN_ATTR_INDEX, (attribute))
 iree_status_t loom_check_expect_close_build(
     loom_builder_t* builder,
     loom_value_id_t actual,
@@ -445,6 +511,8 @@ enum {
   LOOM_CHECK_EXPECT_SHAPE_STATIC_DIMS_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_check_expect_shape_static_dims, LOOM_CHECK_EXPECT_SHAPE_STATIC_DIMS_ATTR_INDEX)
+#define loom_check_expect_shape_rewrite_static_dims(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_EXPECT_SHAPE_STATIC_DIMS_ATTR_INDEX, (attribute))
 iree_status_t loom_check_expect_shape_build(
     loom_builder_t* builder,
     loom_value_id_t value,
@@ -465,9 +533,13 @@ enum {
   LOOM_CHECK_EXPECT_ATTRS_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_STRING(loom_check_expect_provider, LOOM_CHECK_EXPECT_PROVIDER_ATTR_INDEX)
+#define loom_check_expect_rewrite_provider(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_EXPECT_PROVIDER_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_DICT(loom_check_expect_attrs, LOOM_CHECK_EXPECT_ATTRS_ATTR_INDEX)
 #define loom_check_expect_has_attrs(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_CHECK_EXPECT_ATTRS_ATTR_INDEX]))
+#define loom_check_expect_rewrite_attrs(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_EXPECT_ATTRS_ATTR_INDEX, (attribute))
 enum loom_check_expect_build_flag_bits_e {
   LOOM_CHECK_EXPECT_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };
@@ -490,9 +562,13 @@ enum {
   LOOM_CHECK_EXPECT_EVENT_ATTRS_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_STRING(loom_check_expect_event_provider, LOOM_CHECK_EXPECT_EVENT_PROVIDER_ATTR_INDEX)
+#define loom_check_expect_event_rewrite_provider(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_EXPECT_EVENT_PROVIDER_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_DICT(loom_check_expect_event_attrs, LOOM_CHECK_EXPECT_EVENT_ATTRS_ATTR_INDEX)
 #define loom_check_expect_event_has_attrs(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_CHECK_EXPECT_EVENT_ATTRS_ATTR_INDEX]))
+#define loom_check_expect_event_rewrite_attrs(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_EXPECT_EVENT_ATTRS_ATTR_INDEX, (attribute))
 enum loom_check_expect_event_build_flag_bits_e {
   LOOM_CHECK_EXPECT_EVENT_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };
@@ -514,10 +590,16 @@ enum {
   LOOM_CHECK_BENCHMARK_ATTRS_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_check_benchmark_benchmark, LOOM_CHECK_BENCHMARK_BENCHMARK_ATTR_INDEX)
+#define loom_check_benchmark_rewrite_benchmark(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_BENCHMARK_BENCHMARK_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_SYMBOL(loom_check_benchmark_case_ref, LOOM_CHECK_BENCHMARK_CASE_REF_ATTR_INDEX)
+#define loom_check_benchmark_rewrite_case_ref(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_BENCHMARK_CASE_REF_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_DICT(loom_check_benchmark_attrs, LOOM_CHECK_BENCHMARK_ATTRS_ATTR_INDEX)
 #define loom_check_benchmark_has_attrs(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_CHECK_BENCHMARK_ATTRS_ATTR_INDEX]))
+#define loom_check_benchmark_rewrite_attrs(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_BENCHMARK_ATTRS_ATTR_INDEX, (attribute))
 enum loom_check_benchmark_build_flag_bits_e {
   LOOM_CHECK_BENCHMARK_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };
@@ -540,6 +622,8 @@ enum {
   LOOM_CHECK_TENSOR_VIEW_BYTE_OFFSET_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64(loom_check_tensor_view_byte_offset, LOOM_CHECK_TENSOR_VIEW_BYTE_OFFSET_ATTR_INDEX)
+#define loom_check_tensor_view_rewrite_byte_offset(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_CHECK_TENSOR_VIEW_BYTE_OFFSET_ATTR_INDEX, (attribute))
 iree_status_t loom_check_tensor_view_build(
     loom_builder_t* builder,
     loom_value_id_t source,

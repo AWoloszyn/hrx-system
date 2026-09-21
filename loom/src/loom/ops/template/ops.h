@@ -79,30 +79,48 @@ enum {
   LOOM_TEMPLATE_DECL_RETAIN_ATTR_INDEX = 8,
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_decl_family, LOOM_TEMPLATE_DECL_FAMILY_ATTR_INDEX)
+#define loom_template_decl_rewrite_family(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DECL_FAMILY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_visibility, LOOM_TEMPLATE_DECL_VISIBILITY_ATTR_INDEX, loom_template_visibility_t)
 #define loom_template_decl_has_visibility(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DECL_VISIBILITY_ATTR_INDEX]))
+#define loom_template_decl_rewrite_visibility(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DECL_VISIBILITY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_cc, LOOM_TEMPLATE_DECL_CC_ATTR_INDEX, loom_template_cc_t)
 #define loom_template_decl_has_cc(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DECL_CC_ATTR_INDEX]))
+#define loom_template_decl_rewrite_cc(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DECL_CC_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_purity, LOOM_TEMPLATE_DECL_PURITY_ATTR_INDEX, loom_template_purity_t)
 #define loom_template_decl_has_purity(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DECL_PURITY_ATTR_INDEX]))
+#define loom_template_decl_rewrite_purity(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DECL_PURITY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_temperature, LOOM_TEMPLATE_DECL_TEMPERATURE_ATTR_INDEX, loom_template_temperature_t)
 #define loom_template_decl_has_temperature(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DECL_TEMPERATURE_ATTR_INDEX]))
+#define loom_template_decl_rewrite_temperature(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DECL_TEMPERATURE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_template_decl_predicates, LOOM_TEMPLATE_DECL_PREDICATES_ATTR_INDEX)
 #define loom_template_decl_has_predicates(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DECL_PREDICATES_ATTR_INDEX]))
+#define loom_template_decl_rewrite_predicates(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DECL_PREDICATES_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_decl_target, LOOM_TEMPLATE_DECL_TARGET_ATTR_INDEX)
 #define loom_template_decl_has_target(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DECL_TARGET_ATTR_INDEX]))
+#define loom_template_decl_rewrite_target(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DECL_TARGET_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_template_decl_requires, LOOM_TEMPLATE_DECL_REQUIRES_ATTR_INDEX)
 #define loom_template_decl_has_requires(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DECL_REQUIRES_ATTR_INDEX]))
+#define loom_template_decl_rewrite_requires(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DECL_REQUIRES_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_retain, LOOM_TEMPLATE_DECL_RETAIN_ATTR_INDEX, loom_template_retain_t)
 #define loom_template_decl_has_retain(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DECL_RETAIN_ATTR_INDEX]))
+#define loom_template_decl_rewrite_retain(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DECL_RETAIN_ATTR_INDEX, (attribute))
 enum loom_template_decl_build_flag_bits_e {
   LOOM_TEMPLATE_DECL_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
   LOOM_TEMPLATE_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 1,
@@ -159,34 +177,56 @@ enum {
   LOOM_TEMPLATE_DEF_RETAIN_ATTR_INDEX = 10,
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_def_family, LOOM_TEMPLATE_DEF_FAMILY_ATTR_INDEX)
+#define loom_template_def_rewrite_family(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DEF_FAMILY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_def_implementation, LOOM_TEMPLATE_DEF_IMPLEMENTATION_ATTR_INDEX)
+#define loom_template_def_rewrite_implementation(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DEF_IMPLEMENTATION_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_visibility, LOOM_TEMPLATE_DEF_VISIBILITY_ATTR_INDEX, loom_template_visibility_t)
 #define loom_template_def_has_visibility(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DEF_VISIBILITY_ATTR_INDEX]))
+#define loom_template_def_rewrite_visibility(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DEF_VISIBILITY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_cc, LOOM_TEMPLATE_DEF_CC_ATTR_INDEX, loom_template_cc_t)
 #define loom_template_def_has_cc(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DEF_CC_ATTR_INDEX]))
+#define loom_template_def_rewrite_cc(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DEF_CC_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_purity, LOOM_TEMPLATE_DEF_PURITY_ATTR_INDEX, loom_template_purity_t)
 #define loom_template_def_has_purity(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DEF_PURITY_ATTR_INDEX]))
+#define loom_template_def_rewrite_purity(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DEF_PURITY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_temperature, LOOM_TEMPLATE_DEF_TEMPERATURE_ATTR_INDEX, loom_template_temperature_t)
 #define loom_template_def_has_temperature(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DEF_TEMPERATURE_ATTR_INDEX]))
+#define loom_template_def_rewrite_temperature(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DEF_TEMPERATURE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_template_def_predicates, LOOM_TEMPLATE_DEF_PREDICATES_ATTR_INDEX)
 #define loom_template_def_has_predicates(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DEF_PREDICATES_ATTR_INDEX]))
+#define loom_template_def_rewrite_predicates(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DEF_PREDICATES_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_def_target, LOOM_TEMPLATE_DEF_TARGET_ATTR_INDEX)
 #define loom_template_def_has_target(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DEF_TARGET_ATTR_INDEX]))
+#define loom_template_def_rewrite_target(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DEF_TARGET_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_template_def_requires, LOOM_TEMPLATE_DEF_REQUIRES_ATTR_INDEX)
 #define loom_template_def_has_requires(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DEF_REQUIRES_ATTR_INDEX]))
+#define loom_template_def_rewrite_requires(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DEF_REQUIRES_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64(loom_template_def_priority, LOOM_TEMPLATE_DEF_PRIORITY_ATTR_INDEX)
 #define loom_template_def_has_priority(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DEF_PRIORITY_ATTR_INDEX]))
+#define loom_template_def_rewrite_priority(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DEF_PRIORITY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_retain, LOOM_TEMPLATE_DEF_RETAIN_ATTR_INDEX, loom_template_retain_t)
 #define loom_template_def_has_retain(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_DEF_RETAIN_ATTR_INDEX]))
+#define loom_template_def_rewrite_retain(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_DEF_RETAIN_ATTR_INDEX, (attribute))
 LOOM_DEFINE_REGION(loom_template_def_body, 0)
 enum loom_template_def_build_flag_bits_e {
   LOOM_TEMPLATE_DEF_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
@@ -246,34 +286,56 @@ enum {
   LOOM_TEMPLATE_UKERNEL_RETAIN_ATTR_INDEX = 10,
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_ukernel_family, LOOM_TEMPLATE_UKERNEL_FAMILY_ATTR_INDEX)
+#define loom_template_ukernel_rewrite_family(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_UKERNEL_FAMILY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_ukernel_implementation, LOOM_TEMPLATE_UKERNEL_IMPLEMENTATION_ATTR_INDEX)
+#define loom_template_ukernel_rewrite_implementation(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_UKERNEL_IMPLEMENTATION_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_visibility, LOOM_TEMPLATE_UKERNEL_VISIBILITY_ATTR_INDEX, loom_template_visibility_t)
 #define loom_template_ukernel_has_visibility(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_UKERNEL_VISIBILITY_ATTR_INDEX]))
+#define loom_template_ukernel_rewrite_visibility(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_UKERNEL_VISIBILITY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_cc, LOOM_TEMPLATE_UKERNEL_CC_ATTR_INDEX, loom_template_cc_t)
 #define loom_template_ukernel_has_cc(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_UKERNEL_CC_ATTR_INDEX]))
+#define loom_template_ukernel_rewrite_cc(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_UKERNEL_CC_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_purity, LOOM_TEMPLATE_UKERNEL_PURITY_ATTR_INDEX, loom_template_purity_t)
 #define loom_template_ukernel_has_purity(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_UKERNEL_PURITY_ATTR_INDEX]))
+#define loom_template_ukernel_rewrite_purity(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_UKERNEL_PURITY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_temperature, LOOM_TEMPLATE_UKERNEL_TEMPERATURE_ATTR_INDEX, loom_template_temperature_t)
 #define loom_template_ukernel_has_temperature(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_UKERNEL_TEMPERATURE_ATTR_INDEX]))
+#define loom_template_ukernel_rewrite_temperature(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_UKERNEL_TEMPERATURE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_template_ukernel_predicates, LOOM_TEMPLATE_UKERNEL_PREDICATES_ATTR_INDEX)
 #define loom_template_ukernel_has_predicates(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_UKERNEL_PREDICATES_ATTR_INDEX]))
+#define loom_template_ukernel_rewrite_predicates(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_UKERNEL_PREDICATES_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_ukernel_target, LOOM_TEMPLATE_UKERNEL_TARGET_ATTR_INDEX)
 #define loom_template_ukernel_has_target(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_UKERNEL_TARGET_ATTR_INDEX]))
+#define loom_template_ukernel_rewrite_target(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_UKERNEL_TARGET_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_template_ukernel_requires, LOOM_TEMPLATE_UKERNEL_REQUIRES_ATTR_INDEX)
 #define loom_template_ukernel_has_requires(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_UKERNEL_REQUIRES_ATTR_INDEX]))
+#define loom_template_ukernel_rewrite_requires(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_UKERNEL_REQUIRES_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64(loom_template_ukernel_priority, LOOM_TEMPLATE_UKERNEL_PRIORITY_ATTR_INDEX)
 #define loom_template_ukernel_has_priority(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_UKERNEL_PRIORITY_ATTR_INDEX]))
+#define loom_template_ukernel_rewrite_priority(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_UKERNEL_PRIORITY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_retain, LOOM_TEMPLATE_UKERNEL_RETAIN_ATTR_INDEX, loom_template_retain_t)
 #define loom_template_ukernel_has_retain(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_UKERNEL_RETAIN_ATTR_INDEX]))
+#define loom_template_ukernel_rewrite_retain(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_UKERNEL_RETAIN_ATTR_INDEX, (attribute))
 enum loom_template_ukernel_build_flag_bits_e {
   LOOM_TEMPLATE_UKERNEL_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
   LOOM_TEMPLATE_UKERNEL_BUILD_FLAG_HAS_RETAIN = 1u << 1,
@@ -324,12 +386,18 @@ enum {
   LOOM_TEMPLATE_APPLY_TEMPERATURE_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_apply_family, LOOM_TEMPLATE_APPLY_FAMILY_ATTR_INDEX)
+#define loom_template_apply_rewrite_family(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_APPLY_FAMILY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_apply_purity, LOOM_TEMPLATE_APPLY_PURITY_ATTR_INDEX, loom_template_purity_t)
 #define loom_template_apply_has_purity(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_APPLY_PURITY_ATTR_INDEX]))
+#define loom_template_apply_rewrite_purity(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_APPLY_PURITY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_apply_temperature, LOOM_TEMPLATE_APPLY_TEMPERATURE_ATTR_INDEX, loom_template_temperature_t)
 #define loom_template_apply_has_temperature(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_APPLY_TEMPERATURE_ATTR_INDEX]))
+#define loom_template_apply_rewrite_temperature(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_APPLY_TEMPERATURE_ATTR_INDEX, (attribute))
 enum loom_template_apply_build_flag_bits_e {
   LOOM_TEMPLATE_APPLY_BUILD_FLAG_HAS_PURITY = 1u << 0,
   LOOM_TEMPLATE_APPLY_BUILD_FLAG_HAS_TEMPERATURE = 1u << 1,
@@ -366,12 +434,18 @@ enum {
   LOOM_TEMPLATE_CALL_TEMPERATURE_ATTR_INDEX = 2,
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_call_callee, LOOM_TEMPLATE_CALL_CALLEE_ATTR_INDEX)
+#define loom_template_call_rewrite_callee(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_CALL_CALLEE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_call_purity, LOOM_TEMPLATE_CALL_PURITY_ATTR_INDEX, loom_template_purity_t)
 #define loom_template_call_has_purity(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_CALL_PURITY_ATTR_INDEX]))
+#define loom_template_call_rewrite_purity(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_CALL_PURITY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_call_temperature, LOOM_TEMPLATE_CALL_TEMPERATURE_ATTR_INDEX, loom_template_temperature_t)
 #define loom_template_call_has_temperature(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_TEMPLATE_CALL_TEMPERATURE_ATTR_INDEX]))
+#define loom_template_call_rewrite_temperature(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_TEMPLATE_CALL_TEMPERATURE_ATTR_INDEX, (attribute))
 enum loom_template_call_build_flag_bits_e {
   LOOM_TEMPLATE_CALL_BUILD_FLAG_HAS_PURITY = 1u << 0,
   LOOM_TEMPLATE_CALL_BUILD_FLAG_HAS_TEMPERATURE = 1u << 1,

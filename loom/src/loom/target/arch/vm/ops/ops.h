@@ -40,7 +40,11 @@ enum {
   LOOM_VM_TARGET_KIND_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_SYMBOL(loom_vm_target_symbol, LOOM_VM_TARGET_SYMBOL_ATTR_INDEX)
+#define loom_vm_target_rewrite_symbol(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VM_TARGET_SYMBOL_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vm_target_kind, LOOM_VM_TARGET_KIND_ATTR_INDEX, loom_vm_target_kind_t)
+#define loom_vm_target_rewrite_kind(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_VM_TARGET_KIND_ATTR_INDEX, (attribute))
 iree_status_t loom_vm_target_build(
     loom_builder_t* builder,
     loom_vm_target_kind_t kind,

@@ -1288,9 +1288,8 @@ iree_status_t loom_amdgpu_hal_binding_materialize(
     status = loom_amdgpu_hal_kernel_abi_make_layout_attr(
         module, &layout, scratch_arena, &abi_layout_attr);
     if (iree_status_is_ok(status)) {
-      status = loom_rewriter_set_attr(&rewriter, function_op,
-                                      LOOM_LOW_KERNEL_DEF_ABI_LAYOUT_ATTR_INDEX,
-                                      abi_layout_attr);
+      status = loom_low_kernel_def_rewrite_abi_layout(&rewriter, function_op,
+                                                      abi_layout_attr);
     }
   }
   loom_value_id_t kernarg_ptr = LOOM_VALUE_ID_INVALID;

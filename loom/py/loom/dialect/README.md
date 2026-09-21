@@ -57,6 +57,14 @@ provided zero, false, or empty values remain distinct from omission. For example
 no separate absent state. Presence queries are function-like macros that
 evaluate their operation argument once; unused queries add no C function bodies.
 
+The corresponding `rewrite_<field>(rewriter, op, attribute)` macros bind the
+field to `loom_rewriter_set_attr`. They accept a complete `loom_attribute_t`,
+including `loom_attr_absent()` for optional fields, and preserve its status,
+storage ownership, SSA reference tracking, fact updates, and rewrite worklists.
+Mutation callers include `loom/rewrite/rewriter.h`; the generated macros evaluate
+each argument once and add no per-field function bodies. Construction continues
+to use the operation's builder.
+
 The `format` order is part of the API exposed to generated Python and C builder
 surfaces. Reordering format fields changes the way generated builders ask for
 arguments even when the underlying IR fields are unchanged.

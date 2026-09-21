@@ -67,6 +67,7 @@ loom_cc_test(
     iree::testing::gtest_main
     loom::ir
     loom::ops::op_defs
+    loom::rewrite::rewriter
 )
 
 loom_cc_test(

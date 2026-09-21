@@ -3513,6 +3513,11 @@ def test_optional_attribute_presence_uses_stored_slots_without_function_bodies()
         assert "loom_test_presence_has_required" not in ops_h
         assert "loom_test_presence_has_flags" not in ops_h
         assert "static inline bool loom_test_presence_has_optional" not in ops_h
+        assert "#define loom_test_presence_rewrite_optional(rewriter, op, attribute)" in ops_h
+        assert "loom_rewriter_set_attr((rewriter), (op), LOOM_TEST_PRESENCE_OPTIONAL_ATTR_INDEX, (attribute))" in ops_h
+        assert "#define loom_test_presence_rewrite_required(rewriter, op, attribute)" in ops_h
+        assert "loom_test_presence_rewrite_flags" not in ops_h
+        assert "static inline iree_status_t loom_test_presence_rewrite_optional" not in ops_h
 
 
 def test_optional_attribute_presence_rejects_accessor_name_collisions() -> None:
@@ -3520,6 +3525,14 @@ def test_optional_attribute_presence_rejects_accessor_name_collisions() -> None:
     for attrs in (fields, list(reversed(fields))):
         op = Op("test.presence", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
         with _raises_value_error("presence accessor 'loom_test_presence_has_count' conflicts with field 'has_count'"):
+            generate_ops_h("test", 0, [op])
+
+
+def test_attribute_rewriting_rejects_accessor_name_collisions() -> None:
+    fields = [AttrDef("count", ATTR_TYPE_I64), AttrDef("rewrite_count", ATTR_TYPE_I64)]
+    for attrs in (fields, list(reversed(fields))):
+        op = Op("test.mutation", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
+        with _raises_value_error("rewrite accessor 'loom_test_mutation_rewrite_count' conflicts with field 'rewrite_count'"):
             generate_ops_h("test", 0, [op])
 
 

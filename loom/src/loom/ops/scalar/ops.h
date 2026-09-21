@@ -683,6 +683,8 @@ enum {
   LOOM_SCALAR_CLAMPF_MODE_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scalar_clampf_mode, LOOM_SCALAR_CLAMPF_MODE_ATTR_INDEX, loom_scalar_clampf_mode_t)
+#define loom_scalar_clampf_rewrite_mode(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCALAR_CLAMPF_MODE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_INSTANCE_FLAGS(loom_scalar_clampf_fastmath)
 iree_status_t loom_scalar_clampf_build(
     loom_builder_t* builder,
@@ -1231,10 +1233,14 @@ enum {
   LOOM_SCALAR_GELUF_SCALE_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scalar_geluf_variant, LOOM_SCALAR_GELUF_VARIANT_ATTR_INDEX, loom_scalar_geluf_variant_t)
+#define loom_scalar_geluf_rewrite_variant(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCALAR_GELUF_VARIANT_ATTR_INDEX, (attribute))
 LOOM_DEFINE_INSTANCE_FLAGS(loom_scalar_geluf_fastmath)
 LOOM_DEFINE_ATTR_F64(loom_scalar_geluf_scale, LOOM_SCALAR_GELUF_SCALE_ATTR_INDEX)
 #define loom_scalar_geluf_has_scale(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_SCALAR_GELUF_SCALE_ATTR_INDEX]))
+#define loom_scalar_geluf_rewrite_scale(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCALAR_GELUF_SCALE_ATTR_INDEX, (attribute))
 enum loom_scalar_geluf_build_flag_bits_e {
   LOOM_SCALAR_GELUF_BUILD_FLAG_HAS_SCALE = 1u << 0,
 };
@@ -1377,6 +1383,8 @@ enum {
   LOOM_SCALAR_CMPI_PREDICATE_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scalar_cmpi_predicate, LOOM_SCALAR_CMPI_PREDICATE_ATTR_INDEX, loom_scalar_cmpi_predicate_t)
+#define loom_scalar_cmpi_rewrite_predicate(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCALAR_CMPI_PREDICATE_ATTR_INDEX, (attribute))
 iree_status_t loom_scalar_cmpi_build(
     loom_builder_t* builder,
     loom_scalar_cmpi_predicate_t predicate,
@@ -1401,6 +1409,8 @@ enum {
   LOOM_SCALAR_CMPF_PREDICATE_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scalar_cmpf_predicate, LOOM_SCALAR_CMPF_PREDICATE_ATTR_INDEX, loom_scalar_cmpf_predicate_t)
+#define loom_scalar_cmpf_rewrite_predicate(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCALAR_CMPF_PREDICATE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_INSTANCE_FLAGS(loom_scalar_cmpf_fastmath)
 iree_status_t loom_scalar_cmpf_build(
     loom_builder_t* builder,
@@ -1659,6 +1669,8 @@ enum {
   LOOM_SCALAR_CONSTANT_VALUE_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ANY(loom_scalar_constant_value, LOOM_SCALAR_CONSTANT_VALUE_ATTR_INDEX)
+#define loom_scalar_constant_rewrite_value(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCALAR_CONSTANT_VALUE_ATTR_INDEX, (attribute))
 iree_status_t loom_scalar_constant_build(
     loom_builder_t* builder,
     loom_attribute_t value,
@@ -1874,7 +1886,11 @@ enum {
   LOOM_SCALAR_BITFIELD_EXTRACTU_WIDTH_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_I64(loom_scalar_bitfield_extractu_offset, LOOM_SCALAR_BITFIELD_EXTRACTU_OFFSET_ATTR_INDEX)
+#define loom_scalar_bitfield_extractu_rewrite_offset(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCALAR_BITFIELD_EXTRACTU_OFFSET_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64(loom_scalar_bitfield_extractu_width, LOOM_SCALAR_BITFIELD_EXTRACTU_WIDTH_ATTR_INDEX)
+#define loom_scalar_bitfield_extractu_rewrite_width(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCALAR_BITFIELD_EXTRACTU_WIDTH_ATTR_INDEX, (attribute))
 iree_status_t loom_scalar_bitfield_extractu_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -1899,7 +1915,11 @@ enum {
   LOOM_SCALAR_BITFIELD_EXTRACTS_WIDTH_ATTR_INDEX = 1,
 };
 LOOM_DEFINE_ATTR_I64(loom_scalar_bitfield_extracts_offset, LOOM_SCALAR_BITFIELD_EXTRACTS_OFFSET_ATTR_INDEX)
+#define loom_scalar_bitfield_extracts_rewrite_offset(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCALAR_BITFIELD_EXTRACTS_OFFSET_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_I64(loom_scalar_bitfield_extracts_width, LOOM_SCALAR_BITFIELD_EXTRACTS_WIDTH_ATTR_INDEX)
+#define loom_scalar_bitfield_extracts_rewrite_width(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCALAR_BITFIELD_EXTRACTS_WIDTH_ATTR_INDEX, (attribute))
 iree_status_t loom_scalar_bitfield_extracts_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -1923,6 +1943,8 @@ enum {
   LOOM_SCALAR_ASSUME_PREDICATES_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_scalar_assume_predicates, LOOM_SCALAR_ASSUME_PREDICATES_ATTR_INDEX)
+#define loom_scalar_assume_rewrite_predicates(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCALAR_ASSUME_PREDICATES_ATTR_INDEX, (attribute))
 iree_status_t loom_scalar_assume_build(
     loom_builder_t* builder,
     const loom_value_id_t* values,

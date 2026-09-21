@@ -358,9 +358,8 @@ TEST_F(GreedyRewriteTest,
   ASSERT_TRUE(loom_value_facts_as_exact_i64(
       loom_rewriter_value_facts(&rewriter, result), &value));
   EXPECT_EQ(value, 1);
-  IREE_ASSERT_OK(loom_rewriter_set_attr(&rewriter, constant_op,
-                                        LOOM_TEST_CONSTANT_VALUE_ATTR_INDEX,
-                                        loom_attr_i64(7)));
+  IREE_ASSERT_OK(loom_test_constant_rewrite_value(&rewriter, constant_op,
+                                                  loom_attr_i64(7)));
   ASSERT_TRUE(loom_value_facts_as_exact_i64(
       loom_rewriter_value_facts(&rewriter, result), &value));
   EXPECT_EQ(value, 7);
@@ -471,9 +470,8 @@ TEST_F(GreedyRewriteTest, CyclicFactsNarrowAfterSemanticUpdates) {
   // Changing the recurrence first widens the loop, then restores its exact
   // fixed point. Old arithmetic feedback must not survive the second edit.
   for (int64_t delta : {1, 0, 1, 0}) {
-    IREE_ASSERT_OK(loom_rewriter_set_attr(&rewriter, increment,
-                                          LOOM_TEST_CONSTANT_VALUE_ATTR_INDEX,
-                                          loom_attr_i64(delta)));
+    IREE_ASSERT_OK(loom_test_constant_rewrite_value(&rewriter, increment,
+                                                    loom_attr_i64(delta)));
     while (loom_op_t* op = loom_rewriter_pop(&rewriter)) {
       bool folded = false;
       IREE_ASSERT_OK(loom_rewriter_try_fold(&rewriter, op, &folded));
@@ -633,32 +631,26 @@ TEST_F(GreedyRewriteTest, InductionFactsTrackSemanticAndTopologyEdits) {
   };
   check(0, 4);
   for (int64_t bound : {5, 4}) {
-    IREE_ASSERT_OK(loom_rewriter_set_attr(&rewriter, upper,
-                                          LOOM_INDEX_CONSTANT_VALUE_ATTR_INDEX,
-                                          loom_attr_i64(bound)));
+    IREE_ASSERT_OK(loom_index_constant_rewrite_value(&rewriter, upper,
+                                                     loom_attr_i64(bound)));
     check(0, bound);
   }
   for (int64_t value : {3, 1, 2, 1}) {
-    IREE_ASSERT_OK(loom_rewriter_set_attr(&rewriter, step,
-                                          LOOM_INDEX_CONSTANT_VALUE_ATTR_INDEX,
-                                          loom_attr_i64(value)));
+    IREE_ASSERT_OK(loom_index_constant_rewrite_value(&rewriter, step,
+                                                     loom_attr_i64(value)));
     check(0, value == 3 ? 6 : 4);
   }
-  IREE_ASSERT_OK(loom_rewriter_set_attr(&rewriter, initial,
-                                        LOOM_INDEX_CONSTANT_VALUE_ATTR_INDEX,
-                                        loom_attr_i64(-2)));
+  IREE_ASSERT_OK(
+      loom_index_constant_rewrite_value(&rewriter, initial, loom_attr_i64(-2)));
   check(-2, 4);
-  IREE_ASSERT_OK(loom_rewriter_set_attr(
-      &rewriter, compare, LOOM_INDEX_CMP_PREDICATE_ATTR_INDEX,
-      loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_SLE)));
+  IREE_ASSERT_OK(loom_index_cmp_rewrite_predicate(
+      &rewriter, compare, loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_SLE)));
   check(-2, 5);
-  IREE_ASSERT_OK(loom_rewriter_set_attr(
-      &rewriter, compare, LOOM_INDEX_CMP_PREDICATE_ATTR_INDEX,
-      loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_NE)));
+  IREE_ASSERT_OK(loom_index_cmp_rewrite_predicate(
+      &rewriter, compare, loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_NE)));
   check(INT64_MIN, INT64_MAX);
-  IREE_ASSERT_OK(loom_rewriter_set_attr(
-      &rewriter, compare, LOOM_INDEX_CMP_PREDICATE_ATTR_INDEX,
-      loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_SLT)));
+  IREE_ASSERT_OK(loom_index_cmp_rewrite_predicate(
+      &rewriter, compare, loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_SLT)));
   check(-2, 4);
   IREE_ASSERT_OK(loom_rewriter_set_operand(&rewriter, backedge, 0, counter));
   check(-2, -2);
@@ -1487,9 +1479,8 @@ TEST_P(ConditionInductionFactsRewriteTest, SemanticEditsMatchFreshAnalysis) {
     loom_pass_value_fact_owner_deinitialize(&fresh_owner);
   };
   auto set_constant = [&](loom_op_t* op, int64_t value) {
-    IREE_ASSERT_OK(loom_rewriter_set_attr(&rewriter, op,
-                                          LOOM_INDEX_CONSTANT_VALUE_ATTR_INDEX,
-                                          loom_attr_i64(value)));
+    IREE_ASSERT_OK(
+        loom_index_constant_rewrite_value(&rewriter, op, loom_attr_i64(value)));
   };
   check(0, 3, 4, 4);
   set_constant(upper, 5);
@@ -1500,17 +1491,14 @@ TEST_P(ConditionInductionFactsRewriteTest, SemanticEditsMatchFreshAnalysis) {
   set_constant(step, 1);
   set_constant(initial, -2);
   check(-2, 3, 4, 6);
-  IREE_ASSERT_OK(loom_rewriter_set_attr(
-      &rewriter, compare, LOOM_INDEX_CMP_PREDICATE_ATTR_INDEX,
-      loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_SLE)));
+  IREE_ASSERT_OK(loom_index_cmp_rewrite_predicate(
+      &rewriter, compare, loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_SLE)));
   check(-2, 4, 5, 7);
-  IREE_ASSERT_OK(loom_rewriter_set_attr(
-      &rewriter, compare, LOOM_INDEX_CMP_PREDICATE_ATTR_INDEX,
-      loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_NE)));
+  IREE_ASSERT_OK(loom_index_cmp_rewrite_predicate(
+      &rewriter, compare, loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_NE)));
   check(INT64_MIN, INT64_MAX, INT64_MAX, UINT64_MAX);
-  IREE_ASSERT_OK(loom_rewriter_set_attr(
-      &rewriter, compare, LOOM_INDEX_CMP_PREDICATE_ATTR_INDEX,
-      loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_SLT)));
+  IREE_ASSERT_OK(loom_index_cmp_rewrite_predicate(
+      &rewriter, compare, loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_SLT)));
   check(-2, 3, 4, 6);
   set_constant(initial, 9);
   check(9, 0, 9, 0);
@@ -1814,9 +1802,8 @@ TEST_F(GreedyRewriteTest,
     EXPECT_TRUE(saw_predicate);
     EXPECT_TRUE(saw_type);
   };
-  IREE_ASSERT_OK(loom_rewriter_set_attr(&rewriter, bound_op,
-                                        LOOM_TEST_CONSTANT_VALUE_ATTR_INDEX,
-                                        loom_attr_i64(16)));
+  IREE_ASSERT_OK(
+      loom_test_constant_rewrite_value(&rewriter, bound_op, loom_attr_i64(16)));
   expect_users();
   IREE_ASSERT_OK(loom_rewriter_replace_all_uses_with(&rewriter, bound, input));
   expect_users();

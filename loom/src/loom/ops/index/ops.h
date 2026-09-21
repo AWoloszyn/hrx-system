@@ -69,6 +69,8 @@ enum {
   LOOM_INDEX_CONSTANT_VALUE_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ANY(loom_index_constant_value, LOOM_INDEX_CONSTANT_VALUE_ATTR_INDEX)
+#define loom_index_constant_rewrite_value(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_INDEX_CONSTANT_VALUE_ATTR_INDEX, (attribute))
 iree_status_t loom_index_constant_build(
     loom_builder_t* builder,
     loom_attribute_t value,
@@ -109,6 +111,8 @@ enum {
   LOOM_INDEX_ASSUME_PREDICATES_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_index_assume_predicates, LOOM_INDEX_ASSUME_PREDICATES_ATTR_INDEX)
+#define loom_index_assume_rewrite_predicates(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_INDEX_ASSUME_PREDICATES_ATTR_INDEX, (attribute))
 iree_status_t loom_index_assume_build(
     loom_builder_t* builder,
     const loom_value_id_t* values,
@@ -508,6 +512,8 @@ enum {
   LOOM_INDEX_CMP_PREDICATE_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_index_cmp_predicate, LOOM_INDEX_CMP_PREDICATE_ATTR_INDEX, loom_index_cmp_predicate_t)
+#define loom_index_cmp_rewrite_predicate(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_INDEX_CMP_PREDICATE_ATTR_INDEX, (attribute))
 iree_status_t loom_index_cmp_build(
     loom_builder_t* builder,
     loom_index_cmp_predicate_t predicate,

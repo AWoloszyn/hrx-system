@@ -70,9 +70,13 @@ enum {
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scf_for_unroll_policy, LOOM_SCF_FOR_UNROLL_POLICY_ATTR_INDEX, loom_scf_for_unroll_policy_t)
 #define loom_scf_for_has_unroll_policy(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_SCF_FOR_UNROLL_POLICY_ATTR_INDEX]))
+#define loom_scf_for_rewrite_unroll_policy(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCF_FOR_UNROLL_POLICY_ATTR_INDEX, (attribute))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scf_for_unroll_schedule, LOOM_SCF_FOR_UNROLL_SCHEDULE_ATTR_INDEX, loom_scf_for_unroll_schedule_t)
 #define loom_scf_for_has_unroll_schedule(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[LOOM_SCF_FOR_UNROLL_SCHEDULE_ATTR_INDEX]))
+#define loom_scf_for_rewrite_unroll_schedule(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCF_FOR_UNROLL_SCHEDULE_ATTR_INDEX, (attribute))
 LOOM_DEFINE_REGION(loom_scf_for_body, 0)
 enum loom_scf_for_build_flag_bits_e {
   LOOM_SCF_FOR_BUILD_FLAG_HAS_PIPELINE_DEPTH = 1u << 0,
@@ -151,6 +155,8 @@ enum {
   LOOM_SCF_SWITCH_CASE_KEYS_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_scf_switch_case_keys, LOOM_SCF_SWITCH_CASE_KEYS_ATTR_INDEX)
+#define loom_scf_switch_rewrite_case_keys(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCF_SWITCH_CASE_KEYS_ATTR_INDEX, (attribute))
 LOOM_DEFINE_REGION(loom_scf_switch_default_region, 0)
 LOOM_DEFINE_VARIADIC_REGIONS(loom_scf_switch_case_regions, 1)
 iree_status_t loom_scf_switch_build(
@@ -215,6 +221,8 @@ enum {
   LOOM_SCF_LOOKUP_CASE_KEYS_ATTR_INDEX = 0,
 };
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_scf_lookup_case_keys, LOOM_SCF_LOOKUP_CASE_KEYS_ATTR_INDEX)
+#define loom_scf_lookup_rewrite_case_keys(rewriter, op, attribute) \
+  loom_rewriter_set_attr((rewriter), (op), LOOM_SCF_LOOKUP_CASE_KEYS_ATTR_INDEX, (attribute))
 iree_status_t loom_scf_lookup_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t selector,
