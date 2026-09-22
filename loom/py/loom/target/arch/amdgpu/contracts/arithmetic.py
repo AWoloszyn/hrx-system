@@ -4135,26 +4135,6 @@ def _rules() -> tuple[ContractCase, ...]:
                 _F32,
                 "amdgpu.v_max_f32",
             ),
-            _binary_rule(
-                scalar_arithmetic.scalar_minsi,
-                _I32,
-                "amdgpu.v_min_i32",
-            ),
-            _binary_rule(
-                scalar_arithmetic.scalar_maxsi,
-                _I32,
-                "amdgpu.v_max_i32",
-            ),
-            _binary_rule(
-                scalar_arithmetic.scalar_minui,
-                _I32,
-                "amdgpu.v_min_u32",
-            ),
-            _binary_rule(
-                scalar_arithmetic.scalar_maxui,
-                _I32,
-                "amdgpu.v_max_u32",
-            ),
             *_f32_fma_rules(scalar_math.scalar_fmaf, _F32),
             _unary_rule(scalar_math.scalar_exp2f, _F32, "amdgpu.v_exp_f32"),
             _unary_rule(scalar_math.scalar_log2f, _F32, "amdgpu.v_log_f32"),
