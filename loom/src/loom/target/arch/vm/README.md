@@ -80,10 +80,11 @@ shared lowering machinery and the target emitter.
 
 ## Supported source boundary
 
-This compiler surface supports synchronous ordinary functions with scalar and
-buffer arguments/results, direct internal calls, branches and loops, local
-storage, typed memory operations, and referenced read-only data. Scalars
-include narrow integer and floating formats; `index` and `offset` use the
+This compiler surface supports synchronous ordinary functions with scalar,
+buffer, and declared managed reference arguments/results, direct internal calls,
+reference selection, branches and loops, local storage, typed memory operations,
+and referenced read-only data. Scalars include narrow integer and floating
+formats; `index` and `offset` use the
 profile's 64-bit carrier. Internal vector programs rely on shared legalization,
 not a public vector calling convention. Supported math modes are selected by
 the target math policy rather than by substituting a host platform's libm.
@@ -95,6 +96,26 @@ Unsupported source representations and instructions fail compilation; the
 emitter does not fall back to another execution engine. Kernel launch-config
 evaluation is a separate integration boundary, not part of compiling an
 ordinary `.vm` module.
+
+Managed reference types declare an explicit provider namespace and type name.
+For example, `hal.buffer` and `hal.buffer_view` preserve their native HAL
+identities through calls and control flow; they are distinct from the Core
+`buffer` type used for CPU byte storage. A host registers the corresponding
+native type provider before loading the image. Unknown opaque types fail
+compilation instead of being treated as untyped pointers.
+
+The optional [HAL reference provider](../../../../../../runtime/src/iree/module/hal/README.md)
+supplies canonical descriptors and typed host adapters for the two HAL types.
+Their VM references share the original HAL owner count, including buffer
+recycling and view destruction. Neither the compiler nor the generic VM links
+this provider automatically; the embedding composes the providers its modules
+use.
+
+Low reference registers retain their source types. The module planner binds
+each distinct type declaration once and emits a sorted namespace/type table;
+signatures compare both field kinds and reference identities. Runtime image
+construction resolves those keys to the host's canonical descriptors. Calls
+then move ordinary VM references without name lookup or wrapper allocation.
 
 ## Native imports and captured source
 

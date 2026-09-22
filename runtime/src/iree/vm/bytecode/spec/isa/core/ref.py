@@ -470,6 +470,65 @@ REF_STACK_DISCARD = Instruction(
     ),
 )
 
+REF_SELECT = Instruction(
+    opcode=0xD3,
+    mnemonic="ref.select",
+    since=CORE_0,
+    family=REF_FAMILY,
+    summary="Retains the selected reference into a register.",
+    fields=(
+        _ref_register(
+            "destination_r8",
+            FieldRole.RESULT,
+            RefOwnership.REPLACE_RETAIN,
+            "Ref-register ordinal replaced by the selected owner.",
+        ),
+        _value_register(
+            "condition_v8",
+            FieldRole.OPERAND,
+            "Complete 64-bit truth-condition value-register ordinal.",
+        ),
+        _ref_register(
+            "true_r8",
+            FieldRole.OPERAND,
+            RefOwnership.RETAIN,
+            "Source selected when the condition is nonzero.",
+        ),
+        _ref_register(
+            "false_r8",
+            FieldRole.OPERAND,
+            RefOwnership.RETAIN,
+            "Source selected when the condition is zero.",
+        ),
+        InstructionField(
+            Field("zero_padding_u8", U8, "Canonical zero padding.", 3),
+            FieldRole.PADDING,
+            FieldRuleUse(FieldRule.ZERO),
+        ),
+    ),
+    semantics=None,
+    behavior=(
+        "Selects true_r8 when the complete condition is nonzero, otherwise false_r8, "
+        "and creates an owned copy in destination_r8. All ref ordinals may alias."
+    ),
+    success=(
+        "A null selection publishes null; a non-null selection publishes one owner "
+        "carrying its exact object and descriptor.",
+    ),
+    assembly="%r<destination> = ref.select %v<condition>, %r<true>, %r<false>",
+    pseudocode=(
+        "selected = values[condition_v8] != 0 ? refs[true_r8] : refs[false_r8];\n"
+        "new_owner = retain_ref(selected);\n"
+        "replace_ref(&refs[destination_r8], new_owner);\n"
+        "pc = pc + 8;"
+    ),
+    ownership=(
+        "Only the selected source is retained, before releasing any previous "
+        "destination owner. Selecting a borrow creates an owner; selecting an "
+        "owned destination has no net refcount change.",
+    ),
+)
+
 REF_INSTRUCTIONS = (
     REF_NULL,
     REF_COMPARE_NULL,
@@ -482,4 +541,5 @@ REF_INSTRUCTIONS = (
     REF_STACK_STORE_RETAIN,
     REF_STACK_STORE_MOVE,
     REF_STACK_DISCARD,
+    REF_SELECT,
 )

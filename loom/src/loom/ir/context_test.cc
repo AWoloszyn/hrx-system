@@ -511,6 +511,76 @@ TEST_F(ContextTest, DialectTypeRegistrationRejectsInconsistentNames) {
                             IREE_ARRAYSIZE(kInconsistentEntries)));
 }
 
+TEST_F(ContextTest, ManagedReferenceTypeRetainsExternalIdentity) {
+  static const loom_type_reference_key_t kReference = {
+      IREE_SVL("external.provider"), IREE_SVL("resource")};
+  static const loom_type_descriptor_t kDescriptor = [] {
+    auto descriptor = kTestTypeDescriptor;
+    descriptor.semantics.semantic = LOOM_TYPE_SEMANTIC_MANAGED_REFERENCE;
+    descriptor.reference = &kReference;
+    return descriptor;
+  }();
+  const loom_type_registry_entry_t entries[] = {
+      {IREE_SV("test.type"), &kDescriptor}};
+  IREE_ASSERT_OK(loom_context_register_type_descriptors(&context_, entries, 1));
+  IREE_ASSERT_OK(loom_context_finalize(&context_));
+  EXPECT_EQ(loom_context_lookup_type_by_name(&context_, IREE_SV("test.type"))
+                ->reference,
+            &kReference);
+}
+
+TEST_F(ContextTest, RejectsInconsistentManagedReferenceDeclarationsAtomically) {
+  const loom_type_reference_key_t reference = {IREE_SVL("external"),
+                                               IREE_SVL("resource")};
+  loom_type_descriptor_t descriptor = kTestTypeDescriptor;
+  const loom_type_registry_entry_t entries[] = {
+      {IREE_SV("test.type"), &descriptor}};
+  auto expect_rejected = [&] {
+    IREE_EXPECT_STATUS_IS(
+        IREE_STATUS_INVALID_ARGUMENT,
+        loom_context_register_type_descriptors(&context_, entries, 1));
+    EXPECT_EQ(context_.registered_types.count, 0u);
+  };
+  descriptor.semantics.semantic = LOOM_TYPE_SEMANTIC_MANAGED_REFERENCE;
+  expect_rejected();
+  descriptor.reference = &reference;
+  descriptor.semantics.semantic = LOOM_TYPE_SEMANTIC_ORDINARY;
+  expect_rejected();
+  descriptor.semantics.semantic = LOOM_TYPE_SEMANTIC_MANAGED_REFERENCE;
+  descriptor.param_count = 1;
+  expect_rejected();
+  descriptor.param_count = 0;
+  descriptor.ir_kind = LOOM_TYPE_BUFFER;
+  expect_rejected();
+  descriptor.ir_kind = LOOM_TYPE_DIALECT;
+  descriptor.format_element_count = 1;
+  expect_rejected();
+}
+
+TEST_F(ContextTest, RejectsInvalidManagedReferenceNames) {
+  loom_type_reference_key_t reference = {};
+  loom_type_descriptor_t descriptor = kTestTypeDescriptor;
+  descriptor.semantics.semantic = LOOM_TYPE_SEMANTIC_MANAGED_REFERENCE;
+  descriptor.reference = &reference;
+  const loom_type_registry_entry_t entries[] = {
+      {IREE_SV("test.type"), &descriptor}};
+  const iree_string_view_t invalid_names[] = {iree_string_view_empty(),
+                                              IREE_SVL("nul\0tail"),
+                                              IREE_SVL("\xff"),
+                                              {nullptr, 1}};
+  for (auto invalid : invalid_names) {
+    reference = {invalid, IREE_SV("resource")};
+    IREE_EXPECT_STATUS_IS(
+        IREE_STATUS_INVALID_ARGUMENT,
+        loom_context_register_type_descriptors(&context_, entries, 1));
+    reference = {IREE_SV("provider"), invalid};
+    IREE_EXPECT_STATUS_IS(
+        IREE_STATUS_INVALID_ARGUMENT,
+        loom_context_register_type_descriptors(&context_, entries, 1));
+    EXPECT_EQ(context_.registered_types.count, 0u);
+  }
+}
+
 TEST_F(ContextTest, RegisterEncodingVtableAndLookupByName) {
   IREE_ASSERT_OK(
       loom_context_register_encoding_vtable(&context_, &kQ8_0EncodingVtable));

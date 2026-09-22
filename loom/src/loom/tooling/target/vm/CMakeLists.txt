@@ -107,4 +107,102 @@ loom_cc_test(
 )
 endif()
 
+if(LOOM_TARGET_ARCH_VM)
+loom_generated_file(
+  NAME
+    native_references_binary
+  GENERATOR
+    loom::tools::loom-compile
+  OUTPUT
+    "native_references.vm"
+  OUTPUT_FLAG
+    "--output="
+  ARGS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/test/native_references.loom"
+    "--target=vm:core"
+  INPUTS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/test/native_references.loom"
+  TESTONLY
+)
+endif()
+
+if(LOOM_TARGET_ARCH_VM)
+iree_c_embed_data(
+  NAME
+    native_references_bytecode
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/native_references.vm"
+  C_FILE_OUTPUT
+    "native_references_bytecode.c"
+  H_FILE_OUTPUT
+    "native_references_bytecode.h"
+  IDENTIFIER
+    "loom_vm_native_references_bytecode"
+  TESTONLY
+  PUBLIC
+)
+endif()
+
+iree_c_embed_data(
+  NAME
+    emission_test_data
+  SRCS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/vm/test/native_references.loom"
+  C_FILE_OUTPUT
+    "emission_test_data.c"
+  H_FILE_OUTPUT
+    "emission_test_data.h"
+  IDENTIFIER
+    "loom_vm_emission_test_data"
+  TESTONLY
+  PUBLIC
+)
+
+if(LOOM_TARGET_ARCH_VM)
+loom_cc_test(
+  NAME
+    emission_test
+  SRCS
+    "emission_test.cc"
+  DEPS
+    ::emission_test_data
+    ::native_references_bytecode
+    iree::base
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+    loom::ops::func
+    loom::ops::op_registry
+    loom::target::arch::vm::module
+    loom::target::arch::vm::provider
+    loom::target::provider
+    loom::tooling::compile::pipeline
+    loom::tooling::input
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_VM)
+loom_cc_test(
+  NAME
+    native_references_test
+  SRCS
+    "native_references_test.cc"
+  DEPS
+    ::native_references_bytecode
+    iree::base
+    iree::hal
+    iree::module::hal::types
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::vm
+    iree::vm::bytecode::module
+    loom::format::location
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+)
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

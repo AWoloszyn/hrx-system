@@ -9,6 +9,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "iree/base/internal/unicode.h"
+
 //===----------------------------------------------------------------------===//
 // Utilities
 //===----------------------------------------------------------------------===//
@@ -275,6 +277,40 @@ iree_status_t loom_context_register_type_descriptors(
                               "type descriptor entry %" PRIhsz
                               " has missing or inconsistent name metadata",
                               i);
+    }
+    const loom_type_descriptor_t* descriptor = entry->descriptor;
+    const loom_type_reference_key_t* reference = descriptor->reference;
+    if ((descriptor->semantics.semantic ==
+         LOOM_TYPE_SEMANTIC_MANAGED_REFERENCE) != (reference != NULL)) {
+      return iree_make_status(
+          IREE_STATUS_INVALID_ARGUMENT,
+          "type '%.*s' has inconsistent managed reference metadata",
+          (int)entry->name.size, entry->name.data);
+    }
+    if (reference != NULL) {
+      if (descriptor->ir_kind != LOOM_TYPE_DIALECT ||
+          descriptor->param_count != 0 ||
+          descriptor->format_element_count != 0 ||
+          descriptor->parameterized != NULL) {
+        return iree_make_status(
+            IREE_STATUS_INVALID_ARGUMENT,
+            "managed reference type '%.*s' must be an opaque dialect type",
+            (int)entry->name.size, entry->name.data);
+      }
+      const iree_string_view_t names[] = {reference->namespace_name,
+                                          reference->type_name};
+      for (iree_host_size_t j = 0; j < IREE_ARRAYSIZE(names); ++j) {
+        if (!names[j].data || iree_string_view_is_empty(names[j]) ||
+            iree_string_view_find_char(names[j], '\0', 0) !=
+                IREE_STRING_VIEW_NPOS ||
+            !iree_unicode_utf8_validate(names[j])) {
+          return iree_make_status(
+              IREE_STATUS_INVALID_ARGUMENT,
+              "managed reference type '%.*s' requires nonempty NUL-free UTF-8 "
+              "namespace and type names",
+              (int)entry->name.size, entry->name.data);
+        }
+      }
     }
     for (iree_host_size_t j = 0; j < context->registered_types.count; ++j) {
       if (!iree_string_view_equal(entry->name,

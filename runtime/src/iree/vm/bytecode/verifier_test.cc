@@ -165,12 +165,12 @@ TEST_F(CoreExecutionModuleVerificationTest, MapsAndVerifies) {
   EXPECT_EQ(plan.layout.imports.entry_count, 2u);
   EXPECT_EQ(plan.layout.constants.count, 0u);
   EXPECT_EQ(plan.layout.ref_types.entry_count, 1u);
-  EXPECT_EQ(plan.layout.callable_types.count, 11u);
-  EXPECT_EQ(plan.layout.exports.count, 20u);
-  EXPECT_EQ(plan.layout.functions.count, 24u);
+  EXPECT_EQ(plan.layout.callable_types.count, 12u);
+  EXPECT_EQ(plan.layout.exports.count, 21u);
+  EXPECT_EQ(plan.layout.functions.count, 25u);
   EXPECT_EQ(plan.layout.rodata.count, 1u);
-  EXPECT_EQ(plan.callable_fields.value_count, 45u);
-  EXPECT_EQ(plan.callable_fields.ref_count, 41u);
+  EXPECT_EQ(plan.callable_fields.value_count, 46u);
+  EXPECT_EQ(plan.callable_fields.ref_count, 44u);
   EXPECT_EQ(plan.callable_fields.function_count, 0u);
   EXPECT_EQ(plan.rodata_storage.copy_length, 0u);
   ASSERT_NE(plan.layout.globals.header, nullptr);

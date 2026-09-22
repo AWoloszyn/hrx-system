@@ -47,6 +47,8 @@ loom_cc_test(
     "adaptive_sort_test.cc"
   DEPS
     ::adaptive_sort
+    ::segmented_storage
+    iree::base::internal::arena
     iree::testing::gtest
     iree::testing::gtest_main
 )

@@ -12,7 +12,10 @@ package(
     licenses = ["notice"],
 )
 
-exports_files(["imports.loom"])
+exports_files([
+    "imports.loom",
+    "native_references.loom",
+])
 
 iree_execution_test_suite(
     name = "tools_test",

@@ -13,9 +13,11 @@ needs them (pool ops, host-side scheduling, etc.).
 
 hal.buffer — an opaque device buffer handle. Produced by pool.buffer,
 consumed by HAL queue operations (copies, fills, etc.).
+
+hal.buffer_view — a managed buffer range with shape, element type and encoding.
 """
 
-from loom.dsl import TypeDef
+from loom.dsl import ReferenceTypeKey, TypeDef
 
 # ============================================================================
 # hal.buffer — opaque device buffer handle
@@ -24,15 +26,23 @@ from loom.dsl import TypeDef
 hal_buffer_type = TypeDef(
     name="hal.buffer",
     doc="Opaque device buffer handle for HAL queue operations.",
+    reference=ReferenceTypeKey("hal", "buffer"),
+)
+
+hal_buffer_view_type = TypeDef(
+    name="hal.buffer_view",
+    doc="Managed HAL buffer range with shape, element type and encoding.",
+    reference=ReferenceTypeKey("hal", "buffer_view"),
 )
 
 # ============================================================================
 # Registry
 # ============================================================================
 
-ALL_HAL_TYPES: tuple[TypeDef, ...] = (hal_buffer_type,)
+ALL_HAL_TYPES: tuple[TypeDef, ...] = (hal_buffer_type, hal_buffer_view_type)
 
 __all__ = [
     "hal_buffer_type",
+    "hal_buffer_view_type",
     "ALL_HAL_TYPES",
 ]

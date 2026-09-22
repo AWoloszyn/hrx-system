@@ -21,9 +21,9 @@ typedef struct loom_vm_module_plan_t loom_vm_module_plan_t;
 typedef struct loom_vm_function_signature_t {
   // Physical argument/result counts. Serialization assigns descriptor_base.
   iree_vm_bytecode_v0_signature_row_t row;
-  // Borrowed source-ordered argument descriptors followed by result
-  // descriptors.
-  const iree_vm_bytecode_v0_signature_descriptor_row_t* fields;
+  // Module-owned argument descriptors followed by result descriptors, in
+  // source order. Metadata planning finalizes them before function emission.
+  iree_vm_bytecode_v0_signature_descriptor_row_t* fields;
 } loom_vm_function_signature_t;
 
 // Schedules and allocates one prepared VM function with the common frame

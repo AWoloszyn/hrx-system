@@ -55,6 +55,17 @@ typedef struct loom_type_format_element_t {
   uint16_t data;
 } loom_type_format_element_t;
 
+// External identity of an exact managed reference type. Names are nonempty,
+// NUL-free UTF-8 and independent of the type's source spelling. Providers bind
+// this identity to their native ownership implementation; compiler metadata
+// never contains runtime object or descriptor pointers.
+typedef struct loom_type_reference_key_t {
+  // Namespace owned by the external type provider.
+  iree_string_view_t namespace_name;
+  // Exact type name within the provider namespace.
+  iree_string_view_t type_name;
+} loom_type_reference_key_t;
+
 // Generated metadata for one registered type spelling and representation.
 typedef struct loom_type_descriptor_t {
   // B-string name with a trailing `<` outside its declared length.
@@ -73,6 +84,9 @@ typedef struct loom_type_descriptor_t {
   uint8_t format_element_count;
   // Descriptor-backed parameter schema, or NULL when not declared.
   const loom_parameterized_type_descriptor_t* parameterized;
+  // Borrowed immutable identity for MANAGED_REFERENCE, otherwise NULL. Managed
+  // references are opaque dialect types with no parameters or interior format.
+  const loom_type_reference_key_t* reference;
 } loom_type_descriptor_t;
 
 // One name-to-descriptor row in a generated type registry table.

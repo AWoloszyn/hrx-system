@@ -1,0 +1,56 @@
+func.decl import("resources") @relay(%view: hal.buffer_view, %tag: i64, %storage: hal.buffer, %site: buffer) -> (hal.buffer_view, i64, hal.buffer, buffer)
+
+func.decl import("resources") @storage(%value: hal.buffer) -> (hal.buffer)
+
+func.decl import("resources") @fail(%left: hal.buffer_view, %right: hal.buffer_view, %site: buffer)
+
+// Keep an ordinary local call between the entry and native resource service.
+func.def noinline @relay_once(%view: hal.buffer_view, %tag: i64, %buffer: hal.buffer, %site: buffer) -> (hal.buffer_view, i64, hal.buffer, buffer) {
+  %storage = func.call @storage(%buffer) : (hal.buffer) -> (hal.buffer)
+  %result, %value, %returned, %location = func.call @relay(%view, %tag, %storage, %site) : (hal.buffer_view, i64, hal.buffer, buffer) -> (hal.buffer_view, i64, hal.buffer, buffer)
+  func.return %result, %value, %returned, %location : hal.buffer_view, i64, hal.buffer, buffer
+}
+
+func.def public @roundtrip(%count: i32, %tag: i64, %left: hal.buffer_view, %right: hal.buffer_view, %storage: hal.buffer) -> (hal.buffer_view, hal.buffer_view, i64, hal.buffer, buffer) {
+  %site = func.location [#func.location.file<"resource.cc", range = [41, 3, 41, 19]>] : buffer
+  %c0 = scalar.constant 0 : i32
+  %c1 = scalar.constant 1 : i32
+  %c2 = scalar.constant 2 : i32
+  %remaining, %view, %value, %buffer, %location = scf.while(%before = %count : i32, %current = %left : hal.buffer_view, %current_tag = %tag : i64, %current_buffer = %storage : hal.buffer, %current_site = %site : buffer) -> (i32, hal.buffer_view, i64, hal.buffer, buffer) {
+    %condition = scalar.cmpi sgt, %before, %c0 : i32
+    scf.condition %condition, %before, %current, %current_tag, %current_buffer, %current_site : i1, i32, hal.buffer_view, i64, hal.buffer, buffer
+  } do(%before: i32, %current: hal.buffer_view, %current_tag: i64, %current_buffer: hal.buffer, %current_site: buffer) {
+    %use_right = scalar.cmpi eq, %before, %c2 : i32
+    %selected = scf.if %use_right -> (hal.buffer_view) {
+      scf.yield %right : hal.buffer_view
+    } else {
+      scf.yield %current : hal.buffer_view
+    }
+    %next, %next_tag, %next_buffer, %next_site = func.call @relay_once(%selected, %current_tag, %current_buffer, %current_site) : (hal.buffer_view, i64, hal.buffer, buffer) -> (hal.buffer_view, i64, hal.buffer, buffer)
+    %decremented = scalar.subi %before, %c1 : i32
+    scf.yield %decremented, %next, %next_tag, %next_buffer, %next_site : i32, hal.buffer_view, i64, hal.buffer, buffer
+  }
+  func.return %left, %view, %value, %buffer, %location : hal.buffer_view, hal.buffer_view, i64, hal.buffer, buffer
+}
+
+func.def public @select(%condition: i1, %left: hal.buffer_view, %right: hal.buffer_view) -> (hal.buffer_view) {
+  %selected = scf.select %condition, %left, %right : hal.buffer_view
+  func.return %selected : hal.buffer_view
+}
+
+// A native failure must unwind live aliases and preserve caller result storage.
+func.def public @failure(%view: hal.buffer_view, %storage: hal.buffer) -> (hal.buffer_view) {
+  %site = func.location [#func.location.file<"resource.cc", range = [73, 5, 73, 23]>] : buffer
+  %c0 = scalar.constant 0 : i64
+  %alias, %tag, %buffer, %location = func.call @relay_once(%view, %c0, %storage, %site) : (hal.buffer_view, i64, hal.buffer, buffer) -> (hal.buffer_view, i64, hal.buffer, buffer)
+  func.call @fail(%view, %alias, %location) : (hal.buffer_view, hal.buffer_view, buffer)
+  func.return %alias : hal.buffer_view
+}
+
+// Seventeen references cross both the entry ABI and native-call overflow bank.
+func.decl import("resources") @wide(%a: hal.buffer_view, %b: hal.buffer_view, %c: hal.buffer_view, %d: hal.buffer_view, %e: hal.buffer_view, %f: hal.buffer_view, %g: hal.buffer_view, %h: hal.buffer_view, %i: hal.buffer_view, %j: hal.buffer_view, %k: hal.buffer_view, %l: hal.buffer_view, %m: hal.buffer_view, %n: hal.buffer_view, %o: hal.buffer_view, %p: hal.buffer_view, %q: hal.buffer_view) -> (hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view)
+
+func.def public @overflow(%a: hal.buffer_view, %b: hal.buffer_view, %c: hal.buffer_view, %d: hal.buffer_view, %e: hal.buffer_view, %f: hal.buffer_view, %g: hal.buffer_view, %h: hal.buffer_view, %i: hal.buffer_view, %j: hal.buffer_view, %k: hal.buffer_view, %l: hal.buffer_view, %m: hal.buffer_view, %n: hal.buffer_view, %o: hal.buffer_view, %p: hal.buffer_view, %q: hal.buffer_view) -> (hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view) {
+  %r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7, %r8, %r9, %r10, %r11, %r12, %r13, %r14, %r15, %r16 = func.call @wide(%a, %b, %c, %d, %e, %f, %g, %h, %i, %j, %k, %l, %m, %n, %o, %p, %q) : (hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view) -> (hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view)
+  func.return %r0, %r1, %r2, %r3, %r4, %r5, %r6, %r7, %r8, %r9, %r10, %r11, %r12, %r13, %r14, %r15, %r16 : hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view, hal.buffer_view
+}

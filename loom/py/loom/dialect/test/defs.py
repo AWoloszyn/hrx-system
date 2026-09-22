@@ -126,6 +126,7 @@ from loom.dsl import (
     ParameterizedAttrDef,
     Reads,
     ReadWrites,
+    ReferenceTypeKey,
     RegionBranchInterface,
     RegionDef,
     Release,
@@ -450,12 +451,26 @@ test_variant_set_type = TypeDef(
     doc="Parameterized-array type-parameter lifecycle witness.",
 )
 
+test_resource_type = TypeDef(
+    "test.resource",
+    reference=ReferenceTypeKey("external.provider", "object"),
+    doc="Context-registered managed reference with an independent native identity.",
+)
+
+test_resource_alias_type = TypeDef(
+    "test.resource_alias",
+    reference=ReferenceTypeKey("external.provider", "object"),
+    doc="Distinct source type sharing the exact native reference ABI.",
+)
+
 ALL_TEST_TYPES = (
     test_scope_type,
     test_matrix_type,
     test_compact_matrix_type,
     test_array_type,
     test_variant_set_type,
+    test_resource_type,
+    test_resource_alias_type,
 )
 
 cmp_predicates = EnumDef(

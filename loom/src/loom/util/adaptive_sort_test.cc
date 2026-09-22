@@ -12,6 +12,8 @@
 #include <vector>
 
 #include "iree/testing/gtest.h"
+#include "iree/testing/status_matchers.h"
+#include "loom/util/segmented_storage.h"
 
 namespace {
 
@@ -206,6 +208,64 @@ TEST(AdaptiveSortTest, AdversarialInputsHaveNLogNComparisonBound) {
     key = state;
   }
   EXPECT_LE(SortAndVerify(generated_order).comparison_count, comparison_bound);
+}
+
+static uint32_t* SegmentedValueAt(loom_segmented_storage_t* storage,
+                                  iree_host_size_t index) {
+  auto* values = static_cast<uint32_t*>(
+      loom_segmented_storage_segment(storage, index / 32));
+  return &values[index % 32];
+}
+
+static bool SegmentedValueLess(SortCounters* counters, const uint32_t* lhs,
+                               const uint32_t* rhs) {
+  ++counters->comparison_count;
+  return *lhs < *rhs;
+}
+
+LOOM_DEFINE_ADAPTIVE_SORT_WITH_ACCESSOR(SortSegmentedValues, uint32_t,
+                                        loom_segmented_storage_t*,
+                                        SegmentedValueAt, SortCounters*,
+                                        SegmentedValueLess)
+
+TEST(AdaptiveSortTest, SegmentedRowsSortWithoutAContiguousProjection) {
+  iree_arena_block_pool_t pool;
+  iree_arena_block_pool_initialize(32 * 1024, iree_allocator_system(), &pool);
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&pool, &arena);
+  // Cross payload, insertion-budget, and pointer-directory boundaries.
+  for (iree_host_size_t count : {0, 1, 31, 32, 33, 63, 64, 65, 513, 4097}) {
+    SCOPED_TRACE(count);
+    loom_segmented_storage_t storage;
+    loom_segmented_storage_initialize(32 * sizeof(uint32_t), alignof(uint32_t),
+                                      &storage);
+    std::vector<uint32_t> expected(count);
+    for (iree_host_size_t i = 0; i < count; ++i) {
+      if (i % 32 == 0) {
+        void* segment = nullptr;
+        IREE_ASSERT_OK(
+            loom_segmented_storage_append(&storage, &arena, &segment));
+      }
+      // Nonmonotone order with duplicates exercises comparison equivalence.
+      expected[i] = static_cast<uint32_t>(((count - i) * 17) ^ (i >> 2)) & 255u;
+      *SegmentedValueAt(&storage, i) = expected[i];
+    }
+    const auto used = arena.used_allocation_size;
+    SortCounters counters;
+    SortSegmentedValues(&counters, &storage, count);
+    std::sort(expected.begin(), expected.end());
+    for (iree_host_size_t i = 0; i < count; ++i) {
+      EXPECT_EQ(*SegmentedValueAt(&storage, i), expected[i]);
+    }
+    EXPECT_EQ(arena.used_allocation_size, used);
+    EXPECT_LE(counters.comparison_count, ComparisonBound(count));
+    counters = {};
+    SortSegmentedValues(&counters, &storage, count);
+    EXPECT_LE(counters.comparison_count, count);
+    iree_arena_reset(&arena);
+  }
+  iree_arena_deinitialize(&arena);
+  iree_arena_block_pool_deinitialize(&pool);
 }
 
 }  // namespace
