@@ -203,10 +203,8 @@ iree_status_t loom_view_atomic_load_verify(const loom_module_t* module,
       loom_module_value_type(module, loom_view_atomic_load_view(op)),
       loom_view_atomic_load_static_indices(op),
       loom_view_atomic_load_indices(op).count));
-  return loom_view_verify_optional_cache_policy(
-      emitter, op, loom_view_atomic_load_cache_scope_ATTR_INDEX,
-      loom_view_atomic_load_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_LOAD);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_LOAD,
+                                  emitter);
 }
 
 iree_status_t loom_view_atomic_store_verify(const loom_module_t* module,
@@ -217,10 +215,8 @@ iree_status_t loom_view_atomic_store_verify(const loom_module_t* module,
       loom_module_value_type(module, loom_view_atomic_store_view(op)),
       loom_view_atomic_store_static_indices(op),
       loom_view_atomic_store_indices(op).count));
-  return loom_view_verify_optional_cache_policy(
-      emitter, op, loom_view_atomic_store_cache_scope_ATTR_INDEX,
-      loom_view_atomic_store_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_STORE);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_STORE,
+                                  emitter);
 }
 
 iree_status_t loom_view_atomic_reduce_verify(

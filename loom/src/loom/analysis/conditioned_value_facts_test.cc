@@ -191,8 +191,8 @@ TEST_F(ConditionedValueFactsTest,
   table = Acquire(LOOM_PASS_VALUE_FACT_SCOPE_CONDITIONED_FUNCTION);
   ExpectRange(table, live_count, 0, 31);
   loom_pass_value_fact_owner_invalidate(&owner_);
-  loom_op_attrs(guard)[loom_scalar_cmpi_predicate_ATTR_INDEX] =
-      loom_attr_enum(LOOM_SCALAR_CMPI_PREDICATE_EQ);
+  IREE_ASSERT_OK(loom_scalar_cmpi_set_predicate(
+      module_, guard, loom_attr_enum(LOOM_SCALAR_CMPI_PREDICATE_EQ)));
   table = Acquire(LOOM_PASS_VALUE_FACT_SCOPE_CONDITIONED_FUNCTION);
   ExpectRange(table, live_count, 32, 32);
   ExpectRange(table, empty_count, 0, 31);
