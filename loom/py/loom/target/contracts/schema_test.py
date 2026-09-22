@@ -1126,6 +1126,45 @@ def test_descriptor_rule_rejects_temporary_result_without_type() -> None:
         )
 
 
+def test_descriptor_rule_rejects_temporary_result_type_binding() -> None:
+    descriptor = TEST_LOW_ADD_I32_DESCRIPTOR
+
+    with pytest.raises(
+        ValueError,
+        match=r"scalar\.addi: descriptor result type 'dst' cannot bind a temporary",
+    ):
+        ContractFragment(
+            name="bad.temporary.result_type",
+            descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+            cases=(
+                DescriptorRule(
+                    source_op=scalar_arithmetic.scalar_addi,
+                    descriptor=descriptor,
+                    emit=(
+                        EmitDescriptorOp(
+                            descriptor=descriptor,
+                            operands={
+                                "lhs": ValueRef.operand("lhs"),
+                                "rhs": ValueRef.operand("rhs"),
+                            },
+                            results={"dst": ValueRef.temporary("partial")},
+                            result_types={"dst": Scalar("i32")},
+                        ),
+                        EmitDescriptorOp(
+                            descriptor=descriptor,
+                            operands={
+                                "lhs": ValueRef.temporary("partial"),
+                                "rhs": ValueRef.operand("rhs"),
+                            },
+                            results={"dst": ValueRef.result("result")},
+                            result_types={"dst": ValueRef.temporary("partial")},
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+
 def test_descriptor_rule_rejects_immediate_literal_out_of_range() -> None:
     descriptor = TEST_LOW_EXTRACT_LANE_I32_DESCRIPTOR
 

@@ -387,6 +387,11 @@ class EmitDescriptorOp:
                         f"{source_op.name}: descriptor result type "
                         f"'{descriptor_field}' cannot bind a source-memory value"
                     )
+                if binding.kind == SourceValueKind.TEMPORARY:
+                    raise ValueError(
+                        f"{source_op.name}: descriptor result type "
+                        f"'{descriptor_field}' cannot bind a temporary"
+                    )
                 _validate_value_ref(
                     source_op,
                     binding,
