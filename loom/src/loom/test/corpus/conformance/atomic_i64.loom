@@ -146,3 +146,90 @@ check.case public @integer_atomic_i64_values {
   check.expect.event<device> {count = 0, type = "asan_report"}
   check.return
 }
+
+// Four workgroups allocate unique descending tickets across a low-word borrow.
+// Only 17 lanes in each workgroup participate; the remaining lanes leave both
+// the counters and high-word bit sets untouched.
+kernel.def @contended_atomic_i64() {
+  %unit = index.constant 1 : index
+  %groups = index.constant 4 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%groups, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%global_storage: buffer, %generic_storage: buffer, %global_output: buffer, %generic_output: buffer, %initial: i64, %decrement: i64) {
+  %lane = kernel.workitem.id<x> : index
+  %active_count = index.constant 17 : index
+  %active = index.cmp ult, %lane, %active_count : index
+  %base = index.constant 8 : offset
+  %global = buffer.assume.memory_space<global> %global_storage : buffer
+  %generic = buffer.assume.memory_space<generic> %generic_storage : buffer
+  %global_cells = buffer.view %global[%base] : buffer -> view<2xi64>
+  %generic_cells = buffer.view %generic[%base] : buffer -> view<2xi64>
+  %global_slots = buffer.view %global_output[%base] : buffer -> view<68xi64>
+  %generic_slots = buffer.view %generic_output[%base] : buffer -> view<68xi64>
+  scf.if %active {
+    %lane_wide = index.cast %lane : index to i64
+    %high_word = scalar.constant 32 : i64
+    %bit = scalar.addi %lane_wide, %high_word : i64
+    %unit_wide = scalar.constant 1 : i64
+    %contribution = scalar.shli %unit_wide, %bit : i64
+    view.atomic.reduce<ori> %contribution, %global_cells[1] {ordering = relaxed, scope = device} : i64, view<2xi64>
+    view.atomic.reduce<ori> %contribution, %generic_cells[1] {ordering = relaxed, scope = device} : i64, view<2xi64>
+    %global_old = view.atomic.rmw<subi> %decrement, %global_cells[0] {ordering = relaxed, scope = device} : i64, view<2xi64> -> i64
+    %generic_old = view.atomic.rmw<subi> %decrement, %generic_cells[0] {ordering = relaxed, scope = device} : i64, view<2xi64> -> i64
+    %global_distance = scalar.subi %initial, %global_old : i64
+    %generic_distance = scalar.subi %initial, %generic_old : i64
+    // The initialized counters assign exactly 68 unique in-range tickets.
+    %global_bounded = scalar.assume %global_distance [range(%global_distance, 0, 67)] : i64
+    %generic_bounded = scalar.assume %generic_distance [range(%generic_distance, 0, 67)] : i64
+    %global_slot = index.cast %global_bounded : i64 to index
+    %generic_slot = index.cast %generic_bounded : i64 to index
+    view.store %global_old, %global_slots[%global_slot] : i64, view<68xi64>
+    view.store %generic_old, %generic_slots[%generic_slot] : i64, view<68xi64>
+  }
+  kernel.return
+}
+
+check.case public @contended_atomic_i64_values {
+  %initial = check.literal value(4294967330) : i64
+  %decrement = check.literal value(1) : i64
+  %global = check.generate.fill value(4294967330) : tensor<4xi64>
+  %generic = check.generate.fill value(4294967330) : tensor<4xi64>
+  %global_output = check.generate.fill value(-1) : tensor<70xi64>
+  %generic_output = check.generate.fill value(-1) : tensor<70xi64>
+  kernel.launch @contended_atomic_i64(%global, %generic, %global_output, %generic_output, %initial, %decrement) : (tensor<4xi64>, tensor<4xi64>, tensor<70xi64>, tensor<70xi64>, i64, i64)
+  %expected_tickets = check.generate.iota offset(4294967330) step(-1) : tensor<68xi64>
+  %expected_counter = check.generate.fill value(4294967262) : tensor<1xi64>
+  %expected_bits = check.generate.fill value(562945658454050) : tensor<1xi64>
+  %storage_guard = check.generate.fill value(4294967330) : tensor<1xi64>
+  %output_guard = check.generate.fill value(-1) : tensor<1xi64>
+  %global_tickets = check.tensor.view %global_output offset(8) : tensor<70xi64> -> tensor<68xi64>
+  %generic_tickets = check.tensor.view %generic_output offset(8) : tensor<70xi64> -> tensor<68xi64>
+  check.expect.bitwise actual(%global_tickets) expected(%expected_tickets) : tensor<68xi64>
+  check.expect.bitwise actual(%generic_tickets) expected(%expected_tickets) : tensor<68xi64>
+  %global_counter = check.tensor.view %global offset(8) : tensor<4xi64> -> tensor<1xi64>
+  %generic_counter = check.tensor.view %generic offset(8) : tensor<4xi64> -> tensor<1xi64>
+  check.expect.bitwise actual(%global_counter) expected(%expected_counter) : tensor<1xi64>
+  check.expect.bitwise actual(%generic_counter) expected(%expected_counter) : tensor<1xi64>
+  %global_bits = check.tensor.view %global offset(16) : tensor<4xi64> -> tensor<1xi64>
+  %generic_bits = check.tensor.view %generic offset(16) : tensor<4xi64> -> tensor<1xi64>
+  check.expect.bitwise actual(%global_bits) expected(%expected_bits) : tensor<1xi64>
+  check.expect.bitwise actual(%generic_bits) expected(%expected_bits) : tensor<1xi64>
+  %global_before = check.tensor.view %global offset(0) : tensor<4xi64> -> tensor<1xi64>
+  %generic_before = check.tensor.view %generic offset(0) : tensor<4xi64> -> tensor<1xi64>
+  %global_after = check.tensor.view %global offset(24) : tensor<4xi64> -> tensor<1xi64>
+  %generic_after = check.tensor.view %generic offset(24) : tensor<4xi64> -> tensor<1xi64>
+  check.expect.bitwise actual(%global_before) expected(%storage_guard) : tensor<1xi64>
+  check.expect.bitwise actual(%generic_before) expected(%storage_guard) : tensor<1xi64>
+  check.expect.bitwise actual(%global_after) expected(%storage_guard) : tensor<1xi64>
+  check.expect.bitwise actual(%generic_after) expected(%storage_guard) : tensor<1xi64>
+  %global_output_before = check.tensor.view %global_output offset(0) : tensor<70xi64> -> tensor<1xi64>
+  %generic_output_before = check.tensor.view %generic_output offset(0) : tensor<70xi64> -> tensor<1xi64>
+  %global_output_after = check.tensor.view %global_output offset(552) : tensor<70xi64> -> tensor<1xi64>
+  %generic_output_after = check.tensor.view %generic_output offset(552) : tensor<70xi64> -> tensor<1xi64>
+  check.expect.bitwise actual(%global_output_before) expected(%output_guard) : tensor<1xi64>
+  check.expect.bitwise actual(%generic_output_before) expected(%output_guard) : tensor<1xi64>
+  check.expect.bitwise actual(%global_output_after) expected(%output_guard) : tensor<1xi64>
+  check.expect.bitwise actual(%generic_output_after) expected(%output_guard) : tensor<1xi64>
+  check.expect.event<device> {count = 0, type = "asan_report"}
+  check.return
+}
