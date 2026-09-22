@@ -62,10 +62,11 @@ class Case:
         _, _, width = ELEMENTS[element]
         self.lines.append(f"  %output = check.tensor.view %storage offset({16 * width}) : tensor<{count + 32}x{element}> -> tensor<{count}x{element}>")
 
-    def array(self, name, values):
+    def array(self, name, values, element=None):
+        element = element or self.element
         filename = f"{self.name}_{name}.npy"
-        filename = self.arrays.write(filename, values, self.element)
-        self.lines.append(f'  %{name} = check.file.read.npy path("{filename}") : tensor<{len(values)}x{self.element}>')
+        filename = self.arrays.write(filename, values, element)
+        self.lines.append(f'  %{name} = check.file.read.npy path("{filename}") : tensor<{len(values)}x{element}>')
 
     def scalar(self, name, value, element):
         self.lines.append(f"  %{name} = check.literal value({value}) : {element}")
@@ -1131,6 +1132,57 @@ def volatile_memory(arrays):
     return declarations + "\n".join(cases)
 
 
+def pack_iq4xs(scale, group_scales, codes):
+    """Pack logical scales/codes into the 136-byte IQ4_XS storage layout."""
+    scale_codes = [value + 32 for value in group_scales]
+    high = sum((value >> 4) << (2 * group) for group, value in enumerate(scale_codes))
+    low = bytes((scale_codes[group] & 15) | ((scale_codes[group + 1] & 15) << 4) for group in range(0, 8, 2))
+    quants = bytes(codes[group * 32 + lane] | (codes[group * 32 + lane + 16] << 4) for group in range(8) for lane in range(16))
+    return struct.pack("<eH", scale, high) + low + quants
+
+
+def iq4xs_blocks(arrays):
+    # Expected values come from logical scales and code indices before packing.
+    # Eight blocks cover every signed six-bit scale and every nonlinear entry
+    # in both nibble positions, including distinct adjacent record contents.
+    codebook = [-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113]
+    packed = bytearray([0xA5] * 32)
+    mutated = bytearray(packed)
+    expected = []
+    for block, scale in enumerate((0.5, -0.25, 2.0, -4.0, 0.0625, -0.125, 1.0, -2.0)):
+        group_scales = [block * 8 + group - 32 for group in range(8)]
+        codes = [(3 * lane + 5 * group + 7 * block + lane // 16) % 16 for group in range(8) for lane in range(32)]
+        expected.extend(scale * group_scales[index // 32] * codebook[code] for index, code in enumerate(codes))
+        packed.extend(pack_iq4xs(scale, group_scales, codes))
+        mutated.extend(pack_iq4xs(scale, [value ^ 1 for value in group_scales], [code ^ 1 for code in codes]))
+    packed.extend([0xA5] * 32)
+    mutated.extend([0xA5] * 32)
+
+    case = Case(arrays, "iq4xs_blocks", "f32", len(expected))
+    case.array("input_storage", [signed_bits(value, 8) for value in packed], "i8")
+    case.array("original", [signed_bits(value, 8) for value in packed], "i8")
+    case.array("codebook", codebook, "i8")
+    case.lines.append("  %input = check.tensor.view %input_storage offset(32) : tensor<1152xi8> -> tensor<1088xi8>")
+    case.launch("decode_iq4xs", "%input, %codebook, %output", "tensor<1088xi8>, tensor<16xi8>, tensor<2048xf32>")
+    case.lines.append("  check.expect.bitwise actual(%input_storage) expected(%original) : tensor<1152xi8>")
+    cases = case.finish(expected)
+    input_path = arrays.write("iq4xs_update_input.npy", [signed_bits(value, 8) for value in packed], "i8")
+    expected_path = arrays.write("iq4xs_update_expected.npy", [signed_bits(value, 8) for value in mutated], "i8")
+    cases += f'''check.case public @iq4xs_update {{
+  %storage = check.file.read.npy path("{input_path}") : tensor<1152xi8>
+  %input = check.tensor.view %storage offset(32) : tensor<1152xi8> -> tensor<1088xi8>
+  kernel.launch @update_iq4xs(%input) : (tensor<1088xi8>)
+  %expected = check.file.read.npy path("{expected_path}") : tensor<1152xi8>
+  check.expect.bitwise actual(%storage) expected(%expected) : tensor<1152xi8>
+  check.expect.event<device> {{type = "asan_report", count = 0}}
+  check.return
+}}
+'''
+    declarations = "kernel.decl @decode_iq4xs() launch(%blocks: buffer, %codebook: buffer, %output: buffer)\n\n"
+    declarations += "kernel.decl @update_iq4xs() launch(%blocks: buffer)\n\n"
+    return declarations + cases
+
+
 KERNEL_GROUPS = {
     "aiter_swiglu_f16": lambda arrays: launch_grid("aiter_swiglu_f16", 3) + swiglu(arrays),
     "assumptions": assumption_kernel,
@@ -1141,6 +1193,7 @@ KERNEL_GROUPS = {
     "flash_attention": lambda arrays: launch_grid("flash_attention", 3) + attention(arrays),
     "increment_values": lambda arrays: increment_values(arrays) + "\n" + increment_pointers(arrays),
     "integer_increment": lambda arrays: integer_increment(arrays, 8, BYTE_INPUTS) + "\n" + integer_increment(arrays, 64, WIDE_INPUTS),
+    "iq4xs_blocks": iq4xs_blocks,
     "llama_rms_norm": lambda arrays: launch_grid("llama_rms_norm", 3) + rms_norm(arrays),
     "pointer_walk": pointer_walk,
     "record_values": record_values,

@@ -1,0 +1,29 @@
+// RUN: verify
+// Non-reference patterns decay arrays/functions and preserve element qualifiers.
+// References retain array extents and function types.
+static void verify_types() {
+  unsigned words[4];
+  const volatile unsigned observed[4] = {};
+  unsigned rows[2][4];
+  unsigned function(unsigned);
+  auto* pointer = words;
+  const auto* constant = words;
+  auto* const fixed = observed;
+  const auto copied = observed;
+  auto (*row)[4] = rows;
+  auto* callable = function;
+  auto& reference = words;
+  const auto& constant_reference = words;
+  auto&& forwarding_reference = words;
+  auto& function_reference = function;
+  static_assert(__is_same(decltype(pointer), unsigned*));
+  static_assert(__is_same(decltype(constant), const unsigned*));
+  static_assert(__is_same(decltype(fixed), const volatile unsigned* const));
+  static_assert(__is_same(decltype(copied), const volatile unsigned* const));
+  static_assert(__is_same(decltype(row), unsigned (*)[4]));
+  static_assert(__is_same(decltype(callable), unsigned (*)(unsigned)));
+  static_assert(__is_same(decltype(reference), unsigned (&)[4]));
+  static_assert(__is_same(decltype(constant_reference), const unsigned (&)[4]));
+  static_assert(__is_same(decltype(forwarding_reference), unsigned (&)[4]));
+  static_assert(__is_same(decltype(function_reference), unsigned (&)(unsigned)));
+}

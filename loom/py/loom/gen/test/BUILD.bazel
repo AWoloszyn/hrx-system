@@ -16,7 +16,10 @@ iree_py_binary(
     testonly = True,
     srcs = ["cxx_kernel_cases.py"],
     main = "cxx_kernel_cases.py",
-    visibility = ["//loom/src/loom/import/cxx/test:__pkg__"],
+    visibility = [
+        "//loom/src/loom/import/cxx/test:__pkg__",
+        "//loom/src/loom/tooling/target/amdgpu/test/cxx:__pkg__",
+    ],
 )
 
 iree_py_binary(

@@ -476,14 +476,16 @@ void Types::require_record_storage(const cxx::ClassType* input,
 
 int64_t Types::storage_size(const cxx::Type* input, cxx::AST* owner) {
   auto traits = unit_.typeTraits();
-  if (traits.is_pointer(input) || traits.is_reference(input) ||
-      traits.is_array(input)) {
+  if (traits.is_pointer(input) || traits.is_reference(input)) {
     diagnostics_.reject(
         unit_, owner,
-        "stored pointers, references and arrays require an object storage "
+        "stored pointers and references require an object storage "
         "representation");
   }
-  if (auto* record = cxx::type_cast<cxx::ClassType>(unqualified(input))) {
+  if (auto* array = cxx::type_cast<cxx::BoundedArrayType>(unqualified(input))) {
+    storage_size(array->elementType(), owner);
+  } else if (auto* record =
+                 cxx::type_cast<cxx::ClassType>(unqualified(input))) {
     require_record_storage(record, owner);
   } else {
     auto type = get(input, owner);

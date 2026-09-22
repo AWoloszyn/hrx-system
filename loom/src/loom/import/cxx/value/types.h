@@ -87,14 +87,14 @@ class Types {
   Types(cxx::TranslationUnit& unit, Diagnostics& diagnostics)
       : unit_(unit), diagnostics_(diagnostics) {}
 
-  // Projects a loaded value's representation independently of top-level cv
-  // qualifiers. Object storage admission belongs to partition(); access
-  // semantics belong to memory_access_flags(). Unsupported representations
-  // diagnose at owner and throw SourceRejected.
+  // Projects a leaf value's representation independently of top-level cv
+  // qualifiers. Pointers admit their pointee through storage_size(); aggregate
+  // values use partition(). Access semantics belong to memory_access_flags().
+  // Unsupported representations diagnose at owner and throw SourceRejected.
   loom_type_t get(const cxx::Type* input, cxx::AST* owner);
-  // Admits an addressable scalar, vector or plain record and returns its
-  // source-owned byte footprint. Memory admission is independent of the SSA
-  // partition: field projection does not load or copy a complete record.
+  // Admits an addressable scalar, vector, plain record or fixed array of those
+  // elements and returns its source-owned byte footprint. Memory admission is
+  // independent of the SSA partition: projection does not copy an aggregate.
   int64_t storage_size(const cxx::Type* input, cxx::AST* owner);
   // Admits a source value and returns its stable, identity-free partition.
   // Leaf carriers are static; admitted records are owned by this Types object.

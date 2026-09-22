@@ -98,8 +98,18 @@ class Storage {
   Locations& locations_;
   // Borrowed insertion point, controlled by the AST driver.
   loom_builder_t& builder_;
-  // Declared array extents retained once at the allocating producer.
-  std::unordered_map<loom_value_id_t, loom_value_id_t> array_views_;
+  // A declared scalar array's direct-index view. Other array types or interior
+  // origins sharing the allocation use ordinary object-relative addressing.
+  struct ArrayView {
+    // Unqualified source array type whose extent and stride formed the view.
+    const cxx::Type* type;
+    // Declared array origin; an interior pointer cannot reuse this view.
+    loom_value_id_t byte_offset;
+    // Typed view dominating all uses of the allocation.
+    loom_value_id_t view;
+  };
+  // Declared array views retained once at the allocating producer.
+  std::unordered_map<loom_value_id_t, ArrayView> array_views_;
 };
 
 }  // namespace loom::cxx_import

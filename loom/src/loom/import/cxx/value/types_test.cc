@@ -149,6 +149,40 @@ TEST(TypesTest, RecordMemoryUsesSourceLayoutIndependentlyOfValuePartitions) {
   EXPECT_THROW(types.storage_size(transport, owner), SourceRejected);
 }
 
+TEST(TypesTest, FixedArrayStorageRetainsNestedSourceLayout) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  Source source(IREE_SV(R"(
+    using Float4 = float __attribute__((ext_vector_type(4)));
+    struct Block {
+      _Float16 scale;
+      unsigned short scales_high;
+      unsigned char scales_low[4];
+      unsigned char quants[128];
+    };
+    struct Records { unsigned prefix; Block blocks[3]; };
+    struct Vectors { unsigned prefix; Float4 values[2][3]; };
+  )"),
+                IREE_SV("array_storage.cpp"), options);
+  Types types(source.unit(), source.diagnostics());
+  auto* owner = source.unit().ast();
+  auto* control = source.unit().control();
+  auto source_type = [&](const char* name) {
+    return (*source.unit().globalScope()->find(name).begin())->type();
+  };
+  auto* block = source_type("Block");
+  EXPECT_EQ(types.storage_size(block, owner), 136);
+  EXPECT_EQ(types.storage_size(source_type("Records"), owner), 412);
+  EXPECT_EQ(types.storage_size(source_type("Vectors"), owner), 112);
+  auto* array = control->getBoundedArrayType(block, 3);
+  EXPECT_EQ(types.storage_size(array, owner), 408);
+  EXPECT_EQ(types.partition(control->getPointerType(array), owner).kind,
+            ValueKind::Pointer);
+  EXPECT_THROW(types.partition(block, owner), SourceRejected);
+  EXPECT_THROW(types.storage_size(control->getUnboundedArrayType(block), owner),
+               SourceRejected);
+}
+
 TEST(TypesTest, ViewPartitionsBindEachDestinationShapeAndLayoutIdentity) {
   loom_cxx_import_options_t options;
   loom_cxx_import_options_initialize(&options);

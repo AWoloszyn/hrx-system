@@ -136,8 +136,11 @@ StorageAccess Storage::subscript(Pointer base, loom_value_id_t index,
   if (!unit_.typeTraits().is_integral(subscript_type)) {
     diagnostics_.reject(unit_, owner, "subscripts require integral offsets");
   }
-  if (auto* array = cxx::type_cast<cxx::BoundedArrayType>(
-          types_.unqualified(base_type))) {
+  auto* array =
+      cxx::type_cast<cxx::BoundedArrayType>(types_.unqualified(base_type));
+  auto declared = array ? array_views_.find(base.root) : array_views_.end();
+  if (declared != array_views_.end() && declared->second.type == array &&
+      declared->second.byte_offset == base.byte_offset) {
     auto input_type = types_.get(subscript_type, owner);
     loom_op_t* cast;
     if (types_.is_unsigned(subscript_type)) {
@@ -165,13 +168,14 @@ StorageAccess Storage::subscript(Pointer base, loom_value_id_t index,
     check(loom_index_cast_build(&builder_, index, input_type,
                                 loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
                                 locations_.get(owner), &cast));
-    return {array_views_.at(base.root), loom_op_results(cast)[0]};
+    return {declared->second.view, loom_op_results(cast)[0]};
   }
   auto advanced = advance(base, index, base_type, subscript_type,
                           cxx::TokenKind::T_PLUS, owner);
   auto* pointer =
       cxx::type_cast<cxx::PointerType>(types_.unqualified(base_type));
-  return dereference(advanced, pointer->elementType(), owner);
+  return dereference(
+      advanced, pointer ? pointer->elementType() : array->elementType(), owner);
 }
 
 StorageAllocation Storage::workgroup(const cxx::BoundedArrayType* array,
@@ -200,7 +204,7 @@ StorageAllocation Storage::workgroup(const cxx::BoundedArrayType* array,
   check(loom_buffer_view_build(&builder_, root, base, view_type,
                                locations_.get(owner), &op));
   auto view = loom_op_results(op)[0];
-  array_views_[root] = view;
+  array_views_[root] = {types_.unqualified(array), base, view};
   return {{root, base}, view};
 }
 

@@ -468,6 +468,10 @@ class Translator {
     if (auto* nested = cxx::ast_cast<cxx::NestedExpressionAST>(ast)) {
       return address_of(nested->expression);
     }
+    if (auto* id = cxx::ast_cast<cxx::IdExpressionAST>(ast);
+        id && unit_.typeTraits().is_array(id->type)) {
+      return expression(id);
+    }
     if (auto* member = cxx::ast_cast<cxx::MemberExpressionAST>(ast)) {
       auto* field = cxx::symbol_cast<cxx::FieldSymbol>(member->symbol);
       if (!field || field->isStatic()) {
@@ -504,7 +508,12 @@ class Translator {
     fail(ast, "address-of requires an existing storage-backed element");
   }
 
-  loom_value_id_t load(cxx::ExpressionAST* ast) {
+  Value load(cxx::ExpressionAST* ast) {
+    // An array lvalue denotes borrowed storage. Decay and subsequent element
+    // projections preserve that origin without loading or copying the array.
+    if (unit_.typeTraits().is_array(ast->type)) {
+      return address_of(ast);
+    }
     return storage_.load(address(ast), ast->type, ast);
   }
 
