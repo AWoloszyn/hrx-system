@@ -178,7 +178,7 @@ bool loom_amdgpu_memory_access_plan_select(
     loom_func_like_t source_function, const loom_target_bundle_t* bundle,
     loom_amdgpu_instruction_constraint_bits_t instruction_constraints,
     const loom_amdgpu_source_alloca_layout_t* alloca_layout,
-    const loom_op_t* source_op,
+    uint8_t read_visibility_scope, const loom_op_t* source_op,
     loom_low_source_memory_access_plan_t* out_source,
     loom_amdgpu_memory_access_selection_t* out_selection,
     loom_low_source_memory_access_diagnostic_t* out_source_diagnostic,

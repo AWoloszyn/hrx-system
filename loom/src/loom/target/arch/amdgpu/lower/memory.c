@@ -1958,6 +1958,7 @@ static bool loom_amdgpu_memory_access_try_select_global_smem(
            LOOM_VALUE_FACT_MEMORY_SPACE_CONSTANT) ||
       loom_amdgpu_memory_cache_policy_is_present(
           &candidate.source.cache_policy) ||
+      candidate.source.read_visibility_scope != LOOM_ATOMIC_SCOPE_THREAD ||
       !loom_amdgpu_memory_access_promote_scalar_materializable_terms_to_soffset(
           selection_context->materialization_plan, &candidate) ||
       !loom_amdgpu_memory_access_uses_only_scalar_address_terms(&candidate) ||
@@ -2730,7 +2731,7 @@ bool loom_amdgpu_memory_access_plan_select(
     loom_func_like_t source_function, const loom_target_bundle_t* bundle,
     loom_amdgpu_instruction_constraint_bits_t instruction_constraints,
     const loom_amdgpu_source_alloca_layout_t* alloca_layout,
-    const loom_op_t* source_op,
+    uint8_t read_visibility_scope, const loom_op_t* source_op,
     loom_low_source_memory_access_plan_t* out_source,
     loom_amdgpu_memory_access_selection_t* out_selection,
     loom_low_source_memory_access_diagnostic_t* out_source_diagnostic,
@@ -2746,6 +2747,10 @@ bool loom_amdgpu_memory_access_plan_select(
   }
 
   loom_low_source_memory_operation_kind_t kind = out_source->operation_kind;
+  if (kind == LOOM_MEMORY_ACCESS_OPERATION_LOAD &&
+      out_source->memory_space == LOOM_VALUE_FACT_MEMORY_SPACE_GLOBAL) {
+    out_source->read_visibility_scope = read_visibility_scope;
+  }
   const bool is_atomic = kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD ||
                          kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_STORE;
   if (is_atomic) {
@@ -2942,7 +2947,8 @@ static iree_status_t loom_amdgpu_memory_access_plan_select_from_context(
           analysis, loom_low_lower_context_source_function(context),
           loom_low_lower_context_bundle(context),
           target_facts->properties.instruction_constraints, alloca_layout,
-          source_op, &source, out_selection, &source_diagnostic, &diagnostic)) {
+          loom_low_lower_context_read_visibility_scope(context), source_op,
+          &source, out_selection, &source_diagnostic, &diagnostic)) {
     return iree_ok_status();
   }
   *out_selected = true;

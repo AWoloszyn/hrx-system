@@ -24,6 +24,7 @@
 #include "loom/codegen/low/descriptors.h"
 #include "loom/codegen/low/lower/module_state.h"
 #include "loom/codegen/low/lower/report.h"
+#include "loom/codegen/low/lower/visibility.h"
 #include "loom/codegen/low/memory_access.h"
 #include "loom/error/emitter.h"
 #include "loom/error/error_defs.h"
@@ -840,6 +841,10 @@ typedef struct loom_low_lower_policy_t {
   // observer sees the current op only and must not recursively inspect the
   // source function.
   const loom_low_lower_source_plan_observer_t* source_plan_observer;
+  // Optional capability/cost query for the common acquire visibility planner.
+  // It supplies target facts without traversing source operations.
+  loom_low_lower_visibility_model_t (*visibility_model)(
+      const loom_low_lower_context_t* context);
   // Optional target-owned descriptor-matrix projection used by generated
   // descriptor-matrix contract cases.
   loom_low_lower_descriptor_matrix_t descriptor_matrix;
@@ -1012,6 +1017,12 @@ loom_builder_t* loom_low_lower_context_builder(
 
 // Returns the source function being lowered.
 loom_func_like_t loom_low_lower_context_source_function(
+    const loom_low_lower_context_t* context);
+
+// Returns the function-wide required payload read scope selected before op
+// lowering. Thread scope retains eager acquisition; other scopes move cache
+// visibility to each ordinary mutable global read while retaining waits.
+uint8_t loom_low_lower_context_read_visibility_scope(
     const loom_low_lower_context_t* context);
 
 // Returns true when the source function is retained as a module root.

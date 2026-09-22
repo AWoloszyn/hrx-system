@@ -232,6 +232,11 @@ bool loom_low_lower_context_source_is_retained(
              LOOM_SYMBOL_FLAG_RETAIN);
 }
 
+uint8_t loom_low_lower_context_read_visibility_scope(
+    const loom_low_lower_context_t* context) {
+  return context->lowering.source_plan.read_visibility_scope;
+}
+
 uint16_t loom_low_lower_source_memory_root_argument_index(
     const loom_low_lower_context_t* context,
     const loom_low_source_memory_access_plan_t* source_plan) {

@@ -240,10 +240,16 @@ iree_status_t loom_amdgpu_lower_kernel_barrier(
   IREE_RETURN_IF_ERROR(
       loom_amdgpu_lower_workgroup_barrier_plan(context, source_op, plan));
   if (loom_amdgpu_kernel_barrier_global_ordering_has_acquire(source_op)) {
-    IREE_RETURN_IF_ERROR(
-        loom_amdgpu_system_memory_build_acquire_ordering_scoped(
-            builder, descriptor_set, LOOM_CACHE_SCOPE_DEVICE,
-            source_op->location));
+    if (loom_low_lower_context_read_visibility_scope(context) !=
+        LOOM_ATOMIC_SCOPE_THREAD) {
+      IREE_RETURN_IF_ERROR(loom_amdgpu_system_memory_build_load_wait(
+          builder, descriptor_set, source_op->location));
+    } else {
+      IREE_RETURN_IF_ERROR(
+          loom_amdgpu_system_memory_build_acquire_ordering_scoped(
+              builder, descriptor_set, LOOM_CACHE_SCOPE_DEVICE,
+              source_op->location));
+    }
   }
   return iree_ok_status();
 }

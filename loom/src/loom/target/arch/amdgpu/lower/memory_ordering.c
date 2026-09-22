@@ -12,6 +12,7 @@
 #include "loom/target/arch/amdgpu/lower/legality.h"
 #include "loom/target/arch/amdgpu/lower/memory.h"
 #include "loom/target/arch/amdgpu/lower/system_memory.h"
+#include "loom/target/arch/amdgpu/lower/topology.h"
 #include "loom/target/arch/amdgpu/planning/wait_packets.h"
 
 static bool loom_amdgpu_memory_ordering_available(
@@ -35,6 +36,20 @@ static bool loom_amdgpu_memory_ordering_available(
 
 static bool loom_amdgpu_memory_ordering_scope_supported(uint8_t scope) {
   return scope == LOOM_ATOMIC_SCOPE_DEVICE || scope == LOOM_ATOMIC_SCOPE_SYSTEM;
+}
+
+loom_low_lower_visibility_model_t loom_amdgpu_memory_visibility_model(
+    const loom_low_lower_context_t* context) {
+  if (!loom_amdgpu_memory_ordering_available(
+          loom_low_lower_context_descriptor_set(context))) {
+    return (loom_low_lower_visibility_model_t){0};
+  }
+  return (loom_low_lower_visibility_model_t){
+      .invocation_count = loom_amdgpu_target_wavefront_size(
+          loom_low_lower_context_bundle(context)),
+      .reuse_byte_limit = 4096,
+      .reuse_count = 2,
+  };
 }
 
 static loom_cache_scope_t loom_amdgpu_memory_ordering_cache_scope(
@@ -124,6 +139,12 @@ iree_status_t loom_amdgpu_emit_memory_ordering_suffix(
       source->atomic.ordering == LOOM_ATOMIC_ORDERING_RELAXED) {
     return iree_ok_status();
   }
+  if (loom_low_lower_context_read_visibility_scope(context) !=
+      LOOM_ATOMIC_SCOPE_THREAD) {
+    return loom_amdgpu_system_memory_build_load_wait(
+        loom_low_lower_context_builder(context),
+        loom_low_lower_context_descriptor_set(context), source_op->location);
+  }
   return loom_amdgpu_system_memory_build_acquire_ordering_scoped(
       loom_low_lower_context_builder(context),
       loom_low_lower_context_descriptor_set(context),
@@ -159,7 +180,9 @@ iree_status_t loom_amdgpu_lower_memory_fence(
   // drains those completion domains. This does not rendezvous other waves.
   IREE_RETURN_IF_ERROR(
       loom_amdgpu_emit_memory_release(context, source_op, plan->scope));
-  if (plan->ordering == LOOM_ATOMIC_ORDERING_RELEASE) {
+  if (plan->ordering == LOOM_ATOMIC_ORDERING_RELEASE ||
+      loom_low_lower_context_read_visibility_scope(context) !=
+          LOOM_ATOMIC_SCOPE_THREAD) {
     return iree_ok_status();
   }
   return loom_amdgpu_system_memory_build_acquire_ordering_scoped(

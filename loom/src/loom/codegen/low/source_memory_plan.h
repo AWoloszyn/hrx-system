@@ -283,6 +283,9 @@ typedef struct loom_low_source_memory_access_plan_t {
   uint8_t dynamic_realization_count;
   // Optional cache policy copied from the source memory op.
   loom_vector_memory_cache_policy_t cache_policy;
+  // Required visibility selected by the shared acquire plan. Thread scope
+  // means no per-access obligation. This is independent of advisory caching.
+  uint8_t read_visibility_scope;
 } loom_low_source_memory_access_plan_t;
 
 static inline bool loom_low_source_memory_access_is_dynamic(

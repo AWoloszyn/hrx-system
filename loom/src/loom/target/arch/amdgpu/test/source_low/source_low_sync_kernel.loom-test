@@ -92,8 +92,6 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(32, 1, 
   s_waitcnt_vscnt {vscnt = 0}
   s_barrier
   s_waitcnt {vmcnt = 0}
-  buffer_gl1_inv
-  buffer_gl0_inv
   return
 }
 
@@ -135,8 +133,6 @@ kernel.def target(@target) @global_acquire_barrier() {
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @global_acquire_barrier() asm {
   s_barrier
   s_waitcnt {vmcnt = 0}
-  buffer_gl1_inv
-  buffer_gl0_inv
   return
 }
 
@@ -159,8 +155,6 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 
   s_waitcnt_vscnt {vscnt = 0}
   s_barrier
   s_waitcnt {vmcnt = 0}
-  buffer_gl1_inv
-  buffer_gl0_inv
   return
 }
 

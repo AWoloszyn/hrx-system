@@ -25,6 +25,11 @@ typedef struct loom_amdgpu_memory_fence_plan_t {
   uint8_t scope;
 } loom_amdgpu_memory_fence_plan_t;
 
+// Supplies the admitted native visibility recipe and locality cost facts to
+// the shared function planner.
+loom_low_lower_visibility_model_t loom_amdgpu_memory_visibility_model(
+    const loom_low_lower_context_t* context);
+
 // Returns an empty string when a scalar atomic access has a complete native
 // implementation, or the target constraint preventing its implementation.
 iree_string_view_t loom_amdgpu_atomic_memory_rejection_key(

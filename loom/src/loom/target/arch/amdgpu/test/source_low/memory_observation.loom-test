@@ -29,8 +29,9 @@ kernel.def @poll_then_publish() {
 CHECK: %seen = global_load_b32_saddr<volatile> * {glc = 1, dlc = 1}
 CHECK: %pending = v_cmp_eq_i32* %seen*
 CHECK: global_store_b32_saddr<volatile> * {offset = 8}
-CHECK: buffer_gl0_inv
-CHECK: buffer_gl1_inv
+CHECK: s_waitcnt {vmcnt = 0}
+CHECK: s_waitcnt_vscnt {vscnt = 0}
+CHECK-NOT: buffer_gl*_inv
 CHECK-NOT: s_barrier*
 CHECK-NOT: *atomic*add*
 CHECK-NOT: *atomic*swap*

@@ -31,6 +31,7 @@ loom_cc_library(
     "source_call.h"
     "source_plan.h"
     "source_query.h"
+    "visibility.h"
   SRCS
     "call_predicates.c"
     "context.c"
@@ -51,6 +52,7 @@ loom_cc_library(
     "source_call.c"
     "source_plan.c"
     "source_query.c"
+    "visibility.c"
   DEPS
     iree::base
     iree::base::internal
@@ -75,6 +77,7 @@ loom_cc_library(
     loom::error::error_defs
     loom::ir
     loom::ir::facts
+    loom::ops::atomic
     loom::ops::buffer
     loom::ops::cfg
     loom::ops::encoding

@@ -47,6 +47,7 @@ loom_cc_library(
         "source_call.c",
         "source_plan.c",
         "source_query.c",
+        "visibility.c",
     ],
     hdrs = [
         "call_predicates.h",
@@ -67,6 +68,7 @@ loom_cc_library(
         "source_call.h",
         "source_plan.h",
         "source_query.h",
+        "visibility.h",
     ],
     visibility = _LOWER_VISIBILITY,
     deps = [
@@ -90,6 +92,7 @@ loom_cc_library(
         "//loom/src/loom/error:error_defs",
         "//loom/src/loom/ir",
         "//loom/src/loom/ir:facts",
+        "//loom/src/loom/ops:atomic",
         "//loom/src/loom/ops:func_symbol_facts",
         "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/ops:type_registry",

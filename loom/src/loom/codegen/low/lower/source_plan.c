@@ -561,9 +561,10 @@ static void loom_low_lower_analyze_storage_demands(
   }
 }
 
-static void loom_low_lower_visit_region_plan_ops(
+static iree_status_t loom_low_lower_visit_region_plan_ops(
     loom_low_lower_context_t* context, loom_region_t* source_region,
     const loom_low_lower_source_plan_observer_t* observer, void* observer_state,
+    loom_low_lower_visibility_builder_t* visibility,
     iree_host_size_t* inout_plan_capacity) {
   const uint16_t* block_order =
       source_region == loom_func_like_body(context->source_function)
@@ -577,6 +578,8 @@ static void loom_low_lower_visit_region_plan_ops(
     loom_block_for_each_op(block, op) {
       const loom_trait_flags_t traits =
           loom_op_effective_traits(context->module, op);
+      IREE_RETURN_IF_ERROR(
+          loom_low_lower_visibility_observe(context, visibility, op));
       const bool is_structural = loom_low_lower_op_is_structural(op, traits);
       if (is_structural) {
         loom_low_lower_mark_structural_storage_demands(context, op, traits);
@@ -588,9 +591,9 @@ static void loom_low_lower_visit_region_plan_ops(
         loom_region_t* const* regions = loom_op_regions(op);
         for (uint8_t i = 0; i < op->region_count; ++i) {
           if (regions[i] != NULL) {
-            loom_low_lower_visit_region_plan_ops(context, regions[i], observer,
-                                                 observer_state,
-                                                 inout_plan_capacity);
+            IREE_RETURN_IF_ERROR(loom_low_lower_visit_region_plan_ops(
+                context, regions[i], observer, observer_state, visibility,
+                inout_plan_capacity));
           }
         }
         continue;
@@ -601,6 +604,7 @@ static void loom_low_lower_visit_region_plan_ops(
       }
     }
   }
+  return iree_ok_status();
 }
 
 static iree_status_t loom_low_lower_prepare_plan(
@@ -613,8 +617,16 @@ static iree_status_t loom_low_lower_prepare_plan(
         observer->begin(observer->user_data, context, &observer_state));
   }
   iree_host_size_t plan_capacity = 0;
-  loom_low_lower_visit_region_plan_ops(context, source_body, observer,
-                                       observer_state, &plan_capacity);
+  loom_low_lower_visibility_builder_t visibility = {.body = source_body};
+  if (context->policy->visibility_model) {
+    visibility.model = context->policy->visibility_model(context);
+  }
+  IREE_RETURN_IF_ERROR(loom_low_lower_visit_region_plan_ops(
+      context, source_body, observer, observer_state, &visibility,
+      &plan_capacity));
+  IREE_RETURN_IF_ERROR(loom_low_lower_visibility_select(
+      context, &visibility,
+      &context->lowering.source_plan.read_visibility_scope));
   if (observer != NULL) {
     IREE_RETURN_IF_ERROR(observer->end(observer_state, context));
   }

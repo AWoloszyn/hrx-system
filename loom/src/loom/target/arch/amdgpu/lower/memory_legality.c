@@ -112,8 +112,8 @@ iree_status_t loom_amdgpu_low_legality_verify_memory(
           module, loom_target_low_legality_fact_table(context), descriptor_set,
           view_regions, analysis, loom_target_low_legality_function(context),
           bundle, target_facts->properties.instruction_constraints,
-          alloca_layout, op, &source, &selection, &source_diagnostic,
-          &diagnostic)) {
+          alloca_layout, LOOM_ATOMIC_SCOPE_THREAD, op, &source, &selection,
+          &source_diagnostic, &diagnostic)) {
     if (!iree_string_view_is_empty(diagnostic.atomic_constraint)) {
       return loom_amdgpu_low_legality_reject(context, op,
                                              diagnostic.atomic_constraint);
