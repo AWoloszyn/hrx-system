@@ -32,7 +32,7 @@ TEST(WasmDescriptorFieldsTest, OptionalOffsetDistinguishesZeroFromAbsence) {
   EXPECT_TRUE(loom_attr_is_absent(absent));
 }
 
-TEST(WasmDescriptorFieldsTest, NamedPayloadsAndBindingsShareDictionaryOrder) {
+TEST(WasmDescriptorFieldsTest, NamedPayloadsFollowDictionaryOrder) {
   // Canonical spelling order is hi64, lo64; wire order is lo64, hi64.
   const loom_named_attr_t entries[] = {
       {/*.name_id=*/0, /*.reserved=*/0, /*.value=*/loom_attr_i64(0x1234)},
@@ -45,12 +45,6 @@ TEST(WasmDescriptorFieldsTest, NamedPayloadsAndBindingsShareDictionaryOrder) {
       0x5678);
   EXPECT_EQ(evaluations, 1);
   EXPECT_EQ(loom_wasm_core_simd128_v128_const_hi64(attributes).i64, 0x1234);
-  static const loom_low_immediate_field_t fields[] = {
-      loom_wasm_core_simd128_v128_const_lo64_field(),
-      loom_wasm_core_simd128_v128_const_hi64_field(),
-  };
-  EXPECT_EQ(loom_low_immediate_attr(attributes, fields[0]).i64, 0x5678);
-  EXPECT_EQ(loom_low_immediate_attr(attributes, fields[1]).i64, 0x1234);
 }
 
 }  // namespace

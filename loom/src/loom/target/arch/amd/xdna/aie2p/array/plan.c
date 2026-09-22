@@ -452,11 +452,10 @@ static iree_status_t loom_aie2p_array_extract_worker(
   IREE_RETURN_IF_ERROR(loom_aie2p_array_exact_u32(
       builder, loom_op_operands(op)[1], "worker lane", &worker->lane));
   const loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
-  const loom_low_immediate_field_t entry_field =
-      rate == LOOM_AIE2P_ARRAY_WORKER_RATE_FOLDED
-          ? loom_aie2p_array_array_worker_fold_entry_field()
-          : loom_aie2p_array_array_worker_entry_field();
-  worker->entry = loom_low_immediate_attr(attrs, entry_field).symbol;
+  worker->entry = (rate == LOOM_AIE2P_ARRAY_WORKER_RATE_FOLDED
+                       ? loom_aie2p_array_array_worker_fold_entry(attrs)
+                       : loom_aie2p_array_array_worker_entry(attrs))
+                      .symbol;
   worker->fold_record_count = 0;
   worker->fold_output_port = 0;
   worker->fold_output_count = 0;
@@ -509,12 +508,12 @@ static iree_status_t loom_aie2p_array_extract_endpoint(
       &builder->endpoints[builder->endpoint_cursor];
   endpoint->value_id = loom_op_results(op)[0];
   endpoint->direction = direction;
-  const loom_low_immediate_field_t port_field =
-      direction == LOOM_AIE2P_ARRAY_ENDPOINT_DIRECTION_SEND
-          ? loom_aie2p_array_array_sender_port_field()
-          : loom_aie2p_array_array_receiver_port_field();
+  const loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
   endpoint->port =
-      (uint32_t)loom_low_immediate_attr(loom_low_op_attrs(op), port_field).i64;
+      (uint32_t)(direction == LOOM_AIE2P_ARRAY_ENDPOINT_DIRECTION_SEND
+                     ? loom_aie2p_array_array_sender_port(attrs)
+                     : loom_aie2p_array_array_receiver_port(attrs))
+          .i64;
   endpoint->message_type =
       *loom_aie2p_array_result_value_type(builder->module, op);
   endpoint->binding_view_source_endpoint_index = UINT32_MAX;

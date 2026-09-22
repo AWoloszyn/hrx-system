@@ -1278,15 +1278,15 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_verify_low_ops(
         continue;
       }
 
-      const loom_low_immediate_field_t cache_swizzle_stride_field =
-          descriptor == dynamic_buffer_descriptor
-              ? loom_amdgpu_hal_buffer_descriptor_extent_cache_swizzle_stride_field()
-              : loom_amdgpu_hal_buffer_descriptor_cache_swizzle_stride_field();
-      loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
-      const loom_attribute_t cache_swizzle_stride_attr =
-          attrs.count > cache_swizzle_stride_field
-              ? loom_low_immediate_attr(attrs, cache_swizzle_stride_field)
-              : loom_attr_absent();
+      const loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
+      loom_attribute_t cache_swizzle_stride_attr = loom_attr_absent();
+      if (attrs.count == descriptor->immediate_count) {
+        cache_swizzle_stride_attr =
+            descriptor == dynamic_buffer_descriptor
+                ? loom_amdgpu_hal_buffer_descriptor_extent_cache_swizzle_stride(
+                      attrs)
+                : loom_amdgpu_hal_buffer_descriptor_cache_swizzle_stride(attrs);
+      }
       if (cache_swizzle_stride_attr.kind != LOOM_ATTR_I64) {
         IREE_RETURN_IF_ERROR(
             loom_amdgpu_hal_kernel_abi_emit_descriptor_attr_error(

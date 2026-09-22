@@ -623,7 +623,7 @@ static iree_status_t loom_wasm_emit_memarg(loom_wasm_emit_state_t* state,
 }
 
 // Low verification establishes packet shapes and numeric immediate domains.
-// Generated field bindings map canonical dictionary order to Wasm wire order.
+// Named readers map canonical dictionary fields to Wasm wire payloads.
 // Memory offsets are the sole optional field of their packets.
 static iree_status_t loom_wasm_emit_i32_const(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
@@ -651,13 +651,12 @@ static iree_status_t loom_wasm_emit_i64_const(
 static iree_status_t loom_wasm_emit_float_const(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor) {
-  const loom_low_immediate_field_t bits_field =
+  const loom_named_attr_slice_t attrs = loom_low_const_attrs(op);
+  const loom_attribute_t bits_attr =
       descriptor->encoding_id == LOOM_WASM_OPCODE_F32_CONST
-          ? loom_wasm_core_simd128_f32_const_bits_field()
-          : loom_wasm_core_simd128_f64_const_bits_field();
-  const uint64_t bits =
-      (uint64_t)loom_low_immediate_attr(loom_low_const_attrs(op), bits_field)
-          .i64;
+          ? loom_wasm_core_simd128_f32_const_bits(attrs)
+          : loom_wasm_core_simd128_f64_const_bits(attrs);
+  const uint64_t bits = (uint64_t)bits_attr.i64;
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
   if (descriptor->encoding_id == LOOM_WASM_OPCODE_F32_CONST) {
@@ -723,10 +722,7 @@ static iree_status_t loom_wasm_emit_ternary_stack_op(
 
 static iree_status_t loom_wasm_emit_lane_stack_op(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
-    const loom_low_descriptor_t* descriptor,
-    loom_low_immediate_field_t lane_field) {
-  const uint8_t lane =
-      (uint8_t)loom_low_immediate_attr(loom_low_op_attrs(op), lane_field).i64;
+    const loom_low_descriptor_t* descriptor, uint8_t lane) {
   loom_value_slice_t operands = loom_low_op_operands(op);
   loom_value_slice_t results = loom_low_op_results(op);
   for (iree_host_size_t i = 0; i < operands.count; ++i) {
@@ -741,76 +737,66 @@ static iree_status_t loom_wasm_emit_lane_stack_op(
 static iree_status_t loom_wasm_emit_i8x16_shuffle(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor) {
-  static const uint8_t kLaneFields[16] = {
-      loom_wasm_core_simd128_i8x16_shuffle_lane0_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane1_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane2_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane3_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane4_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane5_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane6_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane7_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane8_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane9_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane10_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane11_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane12_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane13_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane14_field(),
-      loom_wasm_core_simd128_i8x16_shuffle_lane15_field(),
-  };
   loom_value_slice_t operands = loom_low_op_operands(op);
   loom_value_slice_t results = loom_low_op_results(op);
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, operands.values[0]));
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, operands.values[1]));
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
-  loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
-  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(kLaneFields); ++i) {
-    const uint8_t lane =
-        (uint8_t)loom_low_immediate_attr(attrs, kLaneFields[i]).i64;
-    IREE_RETURN_IF_ERROR(loom_wasm_binary_write_u8(&state->writer, lane));
-  }
-  return loom_wasm_emit_local_set(state, results.values[0]);
-}
-
-static uint32_t loom_wasm_memory_offset(
-    const loom_op_t* op, loom_low_immediate_field_t offset_field) {
   const loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
-  return (uint32_t)loom_low_optional_immediate_attr(attrs, offset_field).i64;
+  const uint8_t lanes[] = {
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane0(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane1(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane2(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane3(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane4(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane5(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane6(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane7(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane8(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane9(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane10(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane11(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane12(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane13(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane14(attrs).i64,
+      (uint8_t)loom_wasm_core_simd128_i8x16_shuffle_lane15(attrs).i64,
+  };
+  IREE_RETURN_IF_ERROR(
+      loom_wasm_binary_write_bytes(&state->writer, lanes, sizeof(lanes)));
+  return loom_wasm_emit_local_set(state, results.values[0]);
 }
 
 static iree_status_t loom_wasm_emit_memory_load(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor, uint8_t alignment_exponent,
-    loom_low_immediate_field_t offset_field) {
+    uint32_t offset) {
   loom_value_slice_t operands = loom_low_op_operands(op);
   loom_value_slice_t results = loom_low_op_results(op);
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, operands.values[0]));
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
-  IREE_RETURN_IF_ERROR(loom_wasm_emit_memarg(
-      state, alignment_exponent, loom_wasm_memory_offset(op, offset_field)));
+  IREE_RETURN_IF_ERROR(
+      loom_wasm_emit_memarg(state, alignment_exponent, offset));
   return loom_wasm_emit_local_set(state, results.values[0]);
 }
 
 static iree_status_t loom_wasm_emit_memory_store(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor, uint8_t alignment_exponent,
-    loom_low_immediate_field_t offset_field) {
+    uint32_t offset) {
   loom_value_slice_t operands = loom_low_op_operands(op);
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, operands.values[0]));
   IREE_RETURN_IF_ERROR(loom_wasm_emit_local_get(state, operands.values[1]));
   IREE_RETURN_IF_ERROR(
       loom_wasm_write_opcode(&state->writer, descriptor->encoding_id));
-  return loom_wasm_emit_memarg(state, alignment_exponent,
-                               loom_wasm_memory_offset(op, offset_field));
+  return loom_wasm_emit_memarg(state, alignment_exponent, offset);
 }
 
 static iree_status_t loom_wasm_emit_descriptor_packet(
     loom_wasm_emit_state_t* state, const loom_op_t* op,
     const loom_low_descriptor_t* descriptor) {
-  loom_low_immediate_field_t lane_field;
+  uint8_t lane;
   switch (descriptor->encoding_id) {
     case LOOM_WASM_OPCODE_I32_CONST:
       return loom_wasm_emit_i32_const(state, op, descriptor);
@@ -903,85 +889,129 @@ static iree_status_t loom_wasm_emit_descriptor_packet(
     case LOOM_WASM_ENCODING_I32X4_SPLAT:
       return loom_wasm_emit_unary_stack_op(state, op, descriptor);
     case LOOM_WASM_ENCODING_I64X2_EXTRACT_LANE:
-      lane_field = loom_wasm_core_simd128_i64x2_extract_lane_lane_field();
+      lane = (uint8_t)loom_wasm_core_simd128_i64x2_extract_lane_lane(
+                 loom_low_op_attrs(op))
+                 .i64;
       break;
     case LOOM_WASM_ENCODING_I64X2_REPLACE_LANE:
-      lane_field = loom_wasm_core_simd128_i64x2_replace_lane_lane_field();
+      lane = (uint8_t)loom_wasm_core_simd128_i64x2_replace_lane_lane(
+                 loom_low_op_attrs(op))
+                 .i64;
       break;
     case LOOM_WASM_ENCODING_F64X2_EXTRACT_LANE:
-      lane_field = loom_wasm_core_simd128_f64x2_extract_lane_lane_field();
+      lane = (uint8_t)loom_wasm_core_simd128_f64x2_extract_lane_lane(
+                 loom_low_op_attrs(op))
+                 .i64;
       break;
     case LOOM_WASM_ENCODING_F64X2_REPLACE_LANE:
-      lane_field = loom_wasm_core_simd128_f64x2_replace_lane_lane_field();
+      lane = (uint8_t)loom_wasm_core_simd128_f64x2_replace_lane_lane(
+                 loom_low_op_attrs(op))
+                 .i64;
       break;
     case LOOM_WASM_ENCODING_I32X4_EXTRACT_LANE:
-      lane_field = loom_wasm_core_simd128_i32x4_extract_lane_lane_field();
+      lane = (uint8_t)loom_wasm_core_simd128_i32x4_extract_lane_lane(
+                 loom_low_op_attrs(op))
+                 .i64;
       break;
     case LOOM_WASM_ENCODING_F32X4_EXTRACT_LANE:
-      lane_field = loom_wasm_core_simd128_f32x4_extract_lane_lane_field();
+      lane = (uint8_t)loom_wasm_core_simd128_f32x4_extract_lane_lane(
+                 loom_low_op_attrs(op))
+                 .i64;
       break;
     case LOOM_WASM_ENCODING_I32X4_REPLACE_LANE:
-      lane_field = loom_wasm_core_simd128_i32x4_replace_lane_lane_field();
+      lane = (uint8_t)loom_wasm_core_simd128_i32x4_replace_lane_lane(
+                 loom_low_op_attrs(op))
+                 .i64;
       break;
     case LOOM_WASM_ENCODING_F32X4_REPLACE_LANE:
-      lane_field = loom_wasm_core_simd128_f32x4_replace_lane_lane_field();
+      lane = (uint8_t)loom_wasm_core_simd128_f32x4_replace_lane_lane(
+                 loom_low_op_attrs(op))
+                 .i64;
       break;
     case LOOM_WASM_OPCODE_I32_LOAD8_U:
       return loom_wasm_emit_memory_load(
           state, op, descriptor, /*alignment_exponent=*/0,
-          loom_wasm_core_simd128_i32_load8_u_offset_field());
+          (uint32_t)loom_wasm_core_simd128_i32_load8_u_offset(
+              loom_low_op_attrs(op))
+              .i64);
     case LOOM_WASM_OPCODE_I32_LOAD16_U:
       return loom_wasm_emit_memory_load(
           state, op, descriptor, /*alignment_exponent=*/1,
-          loom_wasm_core_simd128_i32_load16_u_offset_field());
+          (uint32_t)loom_wasm_core_simd128_i32_load16_u_offset(
+              loom_low_op_attrs(op))
+              .i64);
     case LOOM_WASM_OPCODE_I32_LOAD:
       return loom_wasm_emit_memory_load(
           state, op, descriptor, /*alignment_exponent=*/2,
-          loom_wasm_core_simd128_i32_load_offset_field());
+          (uint32_t)loom_wasm_core_simd128_i32_load_offset(
+              loom_low_op_attrs(op))
+              .i64);
     case LOOM_WASM_OPCODE_F32_LOAD:
       return loom_wasm_emit_memory_load(
           state, op, descriptor, /*alignment_exponent=*/2,
-          loom_wasm_core_simd128_f32_load_offset_field());
+          (uint32_t)loom_wasm_core_simd128_f32_load_offset(
+              loom_low_op_attrs(op))
+              .i64);
     case LOOM_WASM_OPCODE_I64_LOAD:
       return loom_wasm_emit_memory_load(
           state, op, descriptor, /*alignment_exponent=*/3,
-          loom_wasm_core_simd128_i64_load_offset_field());
+          (uint32_t)loom_wasm_core_simd128_i64_load_offset(
+              loom_low_op_attrs(op))
+              .i64);
     case LOOM_WASM_OPCODE_F64_LOAD:
       return loom_wasm_emit_memory_load(
           state, op, descriptor, /*alignment_exponent=*/3,
-          loom_wasm_core_simd128_f64_load_offset_field());
+          (uint32_t)loom_wasm_core_simd128_f64_load_offset(
+              loom_low_op_attrs(op))
+              .i64);
     case LOOM_WASM_OPCODE_I32_STORE8:
       return loom_wasm_emit_memory_store(
           state, op, descriptor, /*alignment_exponent=*/0,
-          loom_wasm_core_simd128_i32_store8_offset_field());
+          (uint32_t)loom_wasm_core_simd128_i32_store8_offset(
+              loom_low_op_attrs(op))
+              .i64);
     case LOOM_WASM_OPCODE_I32_STORE16:
       return loom_wasm_emit_memory_store(
           state, op, descriptor, /*alignment_exponent=*/1,
-          loom_wasm_core_simd128_i32_store16_offset_field());
+          (uint32_t)loom_wasm_core_simd128_i32_store16_offset(
+              loom_low_op_attrs(op))
+              .i64);
     case LOOM_WASM_OPCODE_I32_STORE:
       return loom_wasm_emit_memory_store(
           state, op, descriptor, /*alignment_exponent=*/2,
-          loom_wasm_core_simd128_i32_store_offset_field());
+          (uint32_t)loom_wasm_core_simd128_i32_store_offset(
+              loom_low_op_attrs(op))
+              .i64);
     case LOOM_WASM_OPCODE_F32_STORE:
       return loom_wasm_emit_memory_store(
           state, op, descriptor, /*alignment_exponent=*/2,
-          loom_wasm_core_simd128_f32_store_offset_field());
+          (uint32_t)loom_wasm_core_simd128_f32_store_offset(
+              loom_low_op_attrs(op))
+              .i64);
     case LOOM_WASM_OPCODE_I64_STORE:
       return loom_wasm_emit_memory_store(
           state, op, descriptor, /*alignment_exponent=*/3,
-          loom_wasm_core_simd128_i64_store_offset_field());
+          (uint32_t)loom_wasm_core_simd128_i64_store_offset(
+              loom_low_op_attrs(op))
+              .i64);
     case LOOM_WASM_OPCODE_F64_STORE:
       return loom_wasm_emit_memory_store(
           state, op, descriptor, /*alignment_exponent=*/3,
-          loom_wasm_core_simd128_f64_store_offset_field());
+          (uint32_t)loom_wasm_core_simd128_f64_store_offset(
+              loom_low_op_attrs(op))
+              .i64);
     case LOOM_WASM_ENCODING_V128_LOAD:
       return loom_wasm_emit_memory_load(
           state, op, descriptor, /*alignment_exponent=*/4,
-          loom_wasm_core_simd128_v128_load_offset_field());
+          (uint32_t)loom_wasm_core_simd128_v128_load_offset(
+              loom_low_op_attrs(op))
+              .i64);
     case LOOM_WASM_ENCODING_V128_STORE:
       return loom_wasm_emit_memory_store(
           state, op, descriptor, /*alignment_exponent=*/4,
-          loom_wasm_core_simd128_v128_store_offset_field());
+          (uint32_t)loom_wasm_core_simd128_v128_store_offset(
+              loom_low_op_attrs(op))
+              .i64);
     default: {
       iree_string_view_t key = loom_low_descriptor_set_string(
           state->allocation->target.descriptor_set,
@@ -991,7 +1021,7 @@ static iree_status_t loom_wasm_emit_descriptor_packet(
                               (int)key.size, key.data);
     }
   }
-  return loom_wasm_emit_lane_stack_op(state, op, descriptor, lane_field);
+  return loom_wasm_emit_lane_stack_op(state, op, descriptor, lane);
 }
 
 static iree_status_t loom_wasm_record_descriptor_flags(

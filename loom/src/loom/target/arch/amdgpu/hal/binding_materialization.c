@@ -1016,8 +1016,7 @@ loom_amdgpu_hal_binding_materialize_buffer_descriptor_pseudo(
         buffer_resource_info,
     const loom_amdgpu_buffer_resource_record_encoding_info_t*
         record_encoding_info,
-    const loom_low_descriptor_t* descriptor,
-    loom_low_immediate_field_t cache_swizzle_stride_field,
+    const loom_low_descriptor_t* descriptor, uint32_t cache_swizzle_stride,
     loom_type_t sgpr_type, loom_type_t sgpr_x2_type) {
   const loom_value_id_t value_checkpoint =
       loom_rewriter_value_checkpoint(rewriter);
@@ -1025,10 +1024,7 @@ loom_amdgpu_hal_binding_materialize_buffer_descriptor_pseudo(
 
   loom_value_slice_t operands = loom_low_op_operands(op);
   loom_value_slice_t results = loom_low_op_results(op);
-  loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
-  const int64_t cache_swizzle_stride_attr =
-      loom_low_immediate_attr(attrs, cache_swizzle_stride_field).i64;
-  const uint32_t cache_swizzle_stride = (uint32_t)cache_swizzle_stride_attr;
+  const loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
 
   loom_amdgpu_hal_binding_descriptor_pointer_words_t pointer_words = {0};
   IREE_RETURN_IF_ERROR(loom_amdgpu_hal_binding_build_descriptor_pointer_words(
@@ -1179,14 +1175,16 @@ loom_amdgpu_hal_binding_materialize_buffer_descriptors_with_types(
           op = next_op;
           continue;
         }
-        const loom_low_immediate_field_t cache_swizzle_stride_field =
+        const loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
+        const loom_attribute_t cache_swizzle_stride =
             descriptor == dynamic_extent_descriptor
-                ? loom_amdgpu_hal_buffer_descriptor_extent_cache_swizzle_stride_field()
-                : loom_amdgpu_hal_buffer_descriptor_cache_swizzle_stride_field();
+                ? loom_amdgpu_hal_buffer_descriptor_extent_cache_swizzle_stride(
+                      attrs)
+                : loom_amdgpu_hal_buffer_descriptor_cache_swizzle_stride(attrs);
         status = loom_amdgpu_hal_binding_materialize_buffer_descriptor_pseudo(
             rewriter, op, descriptor_set, buffer_resource_info,
-            record_encoding_info, descriptor, cache_swizzle_stride_field,
-            sgpr_type, sgpr_x2_type);
+            record_encoding_info, descriptor,
+            (uint32_t)cache_swizzle_stride.i64, sgpr_type, sgpr_x2_type);
         if (iree_status_is_ok(status)) {
           ++*out_materialized_count;
         }

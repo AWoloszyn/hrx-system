@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""Schema bindings for fixed positions in canonical Low dictionaries."""
+"""Named readers for fixed positions in canonical Low dictionaries."""
 
 from __future__ import annotations
 
@@ -32,12 +32,12 @@ def emit_attr_accessors(
     *,
     target_key: str | None,
 ) -> list[str]:
-    """Emits dictionary readers and bindings shared by descriptor variants.
+    """Emits dictionary readers shared by descriptor variants.
 
     A target's common header can pass multiple variants of the same descriptor.
     Only fields with a fixed, identical position in every variant are exposed.
-    A trailing optional field returns ABSENT when omitted. Field macros also
-    let shared consumers select the binding for their actual descriptor.
+    A trailing optional field returns ABSENT when omitted. Storage positions
+    remain implementation details of the named readers.
     """
 
     descriptor_indices: dict[str, dict[tuple[str, bool], int]] = {}
@@ -59,15 +59,12 @@ def emit_attr_accessors(
         lines.append(f"// Canonical dictionary fields for {key}.")
         for (field_name, optional), index in indices.items():
             accessor = f"{prefix}_{descriptor_name}_{c_spelling.c_identifier(field_name)}"
-            for name in (accessor, f"{accessor}_field"):
-                if name in accessor_fields:
-                    previous_key, previous_field = accessor_fields[name]
-                    raise ValueError(f"attribute accessor '{name}' collides between '{previous_key}.{previous_field}' and '{key}.{field_name}'")
-                accessor_fields[name] = (key, field_name)
-            lines.append(f"#define {accessor}_field() \\")
-            lines.append(f"  ((loom_low_immediate_field_t){index})")
+            if accessor in accessor_fields:
+                previous_key, previous_field = accessor_fields[accessor]
+                raise ValueError(f"attribute accessor '{accessor}' collides between '{previous_key}.{previous_field}' and '{key}.{field_name}'")
+            accessor_fields[accessor] = (key, field_name)
             lines.append(f"#define {accessor}(attributes) \\")
             reader = "loom_low_optional_immediate_attr" if optional else "loom_low_immediate_attr"
-            lines.append(f"  {reader}((attributes), {accessor}_field())")
+            lines.append(f"  {reader}((attributes), {index})")
         lines.append("")
     return lines
