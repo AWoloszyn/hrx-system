@@ -899,6 +899,40 @@ static inline uint32_t iree_math_truncate_f32_to_bits_rounding_to_nearest_even(
   return dst_sign | dst_exp | dst_mantissa;
 }
 
+// Prepares an f64 value for narrowing with round-to-nearest-even to formats
+// with at most 22 significand bits. Inexact finite values truncate toward zero
+// and set the low significand bit, preserving which side of every destination
+// midpoint the original value occupied. Finite overflow saturates to the
+// largest f32 and nonzero underflow becomes the smallest f32 subnormal.
+// Bit construction makes this independent of host rounding and flush modes.
+static inline float iree_math_f64_to_f32_round_to_odd(double value) {
+  uint64_t source_bits = 0;
+  memcpy(&source_bits, &value, sizeof(source_bits));
+  const uint32_t sign = (uint32_t)(source_bits >> 32) & UINT32_C(0x80000000);
+  const uint64_t fraction = source_bits & UINT64_C(0x000FFFFFFFFFFFFF);
+  const int32_t exponent = (int32_t)((source_bits >> 52) & 0x7FF) - 1023;
+  uint32_t result_bits = sign;
+  if (exponent == 1024) {
+    result_bits |= UINT32_C(0x7F800000) | (fraction ? UINT32_C(0x00400000) : 0);
+  } else if (exponent > 127) {
+    result_bits |= UINT32_C(0x7F7FFFFF);
+  } else if (exponent < -149) {
+    result_bits |= (source_bits & UINT64_C(0x7FFFFFFFFFFFFFFF)) != 0;
+  } else {
+    const uint64_t significand = fraction | UINT64_C(0x0010000000000000);
+    const int32_t shift = exponent < -126 ? -exponent - 97 : 29;
+    const uint64_t discarded_mask = (UINT64_C(1) << shift) - 1;
+    result_bits |= (uint32_t)(significand >> shift) & UINT32_C(0x007FFFFF);
+    result_bits |= (significand & discarded_mask) != 0;
+    if (exponent >= -126) {
+      result_bits |= (uint32_t)(exponent + 127) << 23;
+    }
+  }
+  float result = 0.0f;
+  memcpy(&result, &result_bits, sizeof(result));
+  return result;
+}
+
 #define IREE_MATH_MAKE_FLOAT_TYPE_WIDENING_HELPERS(                          \
     NAME, INT_TYPE, EXP_BITS, MANTISSA_BITS, HAVE_INFINITY, HAVE_NAN,        \
     BIAS_TWEAK, NAN_AS_NEG_ZERO)                                             \
@@ -920,18 +954,22 @@ static inline uint32_t iree_math_truncate_f32_to_bits_rounding_to_nearest_even(
         iree_math_##NAME##_to_f32_bits(src));                                \
   }
 
-#define IREE_MATH_MAKE_FLOAT_TYPE_NARROWING_HELPERS(                         \
-    NAME, INT_TYPE, EXP_BITS, MANTISSA_BITS, HAVE_INFINITY, HAVE_NAN,        \
-    BIAS_TWEAK, NAN_AS_NEG_ZERO)                                             \
-  /* Truncates a 32-bit C `float`, rounding to nearest even. */              \
-  static inline INT_TYPE iree_math_f32_to_##NAME(float value) {              \
-    return iree_math_truncate_f32_to_bits_rounding_to_nearest_even(          \
-        value, EXP_BITS, MANTISSA_BITS, HAVE_INFINITY, HAVE_NAN, BIAS_TWEAK, \
-        NAN_AS_NEG_ZERO);                                                    \
-  }                                                                          \
-  /* Round-trip f32->f32 rounding via the narrow float type */               \
-  static inline float iree_math_round_to_nearest_##NAME(float value) {       \
-    return iree_math_##NAME##_to_f32(iree_math_f32_to_##NAME(value));        \
+#define IREE_MATH_MAKE_FLOAT_TYPE_NARROWING_HELPERS(                          \
+    NAME, INT_TYPE, EXP_BITS, MANTISSA_BITS, HAVE_INFINITY, HAVE_NAN,         \
+    BIAS_TWEAK, NAN_AS_NEG_ZERO)                                              \
+  /* Truncates a 32-bit C `float`, rounding to nearest even. */               \
+  static inline INT_TYPE iree_math_f32_to_##NAME(float value) {               \
+    return iree_math_truncate_f32_to_bits_rounding_to_nearest_even(           \
+        value, EXP_BITS, MANTISSA_BITS, HAVE_INFINITY, HAVE_NAN, BIAS_TWEAK,  \
+        NAN_AS_NEG_ZERO);                                                     \
+  }                                                                           \
+  /* Truncates f64 directly, without an intermediate nearest rounding. */     \
+  static inline INT_TYPE iree_math_f64_to_##NAME(double value) {              \
+    return iree_math_f32_to_##NAME(iree_math_f64_to_f32_round_to_odd(value)); \
+  }                                                                           \
+  /* Round-trip f32->f32 rounding via the narrow float type */                \
+  static inline float iree_math_round_to_nearest_##NAME(float value) {        \
+    return iree_math_##NAME##_to_f32(iree_math_f32_to_##NAME(value));         \
   }
 
 #define IREE_MATH_MAKE_FLOAT_TYPE_HELPERS(                              \
@@ -986,6 +1024,11 @@ static inline uint8_t iree_math_f32_to_f8e4m3fn(float value) {
     return (uint8_t)(result - 1);
   }
   return result;
+}
+
+// Truncates f64 directly with the same saturating round-to-nearest-even policy.
+static inline uint8_t iree_math_f64_to_f8e4m3fn(double value) {
+  return iree_math_f32_to_f8e4m3fn(iree_math_f64_to_f32_round_to_odd(value));
 }
 
 static inline float iree_math_round_to_nearest_f8e4m3fn(float value) {

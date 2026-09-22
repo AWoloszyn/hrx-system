@@ -45,6 +45,16 @@ TEST(TypesTest, ProjectsTheConfiguredDataModelAndRetainsSignedness) {
         LOOM_SCALAR_TYPE_BF16);
     EXPECT_EQ(types.storage_size(control->getBFloat16Type(), owner), 2);
     EXPECT_TRUE(types.is_float(control->getBFloat16Type()));
+    EXPECT_EQ(loom_type_element_type(
+                  types.get(control->getFloat8E4M3FNType(), owner)),
+              LOOM_SCALAR_TYPE_F8E4M3);
+    EXPECT_EQ(
+        loom_type_element_type(types.get(control->getFloat8E5M2Type(), owner)),
+        LOOM_SCALAR_TYPE_F8E5M2);
+    EXPECT_EQ(types.storage_size(control->getFloat8E4M3FNType(), owner), 1);
+    EXPECT_EQ(types.storage_size(control->getFloat8E5M2Type(), owner), 1);
+    EXPECT_TRUE(types.is_float(control->getFloat8E4M3FNType()));
+    EXPECT_TRUE(types.is_float(control->getFloat8E5M2Type()));
   }
 }
 

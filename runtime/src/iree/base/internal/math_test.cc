@@ -434,8 +434,8 @@ static void CheckDenormals(
   }
 }
 
-static float DecodePositiveFinite(uint32_t bits, int exp_bits,
-                                  int mantissa_bits, int bias_tweak) {
+static double DecodePositiveFinite(uint32_t bits, int exp_bits,
+                                   int mantissa_bits, int bias_tweak) {
   const uint32_t mantissa_mask = (1u << mantissa_bits) - 1;
   const uint32_t encoded_exp = (bits >> mantissa_bits) & ((1u << exp_bits) - 1);
   const uint32_t mantissa = bits & mantissa_mask;
@@ -445,36 +445,74 @@ static float DecodePositiveFinite(uint32_t bits, int exp_bits,
   const int arithmetic_exp =
       (encoded_exp == 0 ? 1 : static_cast<int>(encoded_exp)) - exp_bias -
       mantissa_bits;
-  return std::ldexp(static_cast<float>(significand), arithmetic_exp);
+  return std::ldexp(static_cast<double>(significand), arithmetic_exp);
 }
 
-template <typename UintType>
+template <typename UintType, typename FloatType = float>
 static void CheckFiniteRoundingBoundaries(
     int exp_bits, int mantissa_bits, int bias_tweak, UintType max_finite,
-    std::function<UintType(float)> convert_f32_to_small) {
+    UintType (*convert_to_small)(FloatType)) {
   const UintType sign_mask = UintType{1} << (exp_bits + mantissa_bits);
   for (UintType lower = 0; lower < max_finite; ++lower) {
     SCOPED_TRACE(::testing::Message() << "lower payload " << +lower);
     const UintType upper = lower + 1;
-    const float lower_value =
+    const FloatType lower_value =
         DecodePositiveFinite(lower, exp_bits, mantissa_bits, bias_tweak);
-    const float upper_value =
+    const FloatType upper_value =
         DecodePositiveFinite(upper, exp_bits, mantissa_bits, bias_tweak);
-    const float midpoint = lower_value + (upper_value - lower_value) * 0.5f;
-    const float below_midpoint = std::nextafter(midpoint, lower_value);
-    const float above_midpoint = std::nextafter(midpoint, upper_value);
+    const FloatType midpoint =
+        lower_value + (upper_value - lower_value) * FloatType{0.5};
+    const FloatType below_midpoint = std::nextafter(midpoint, lower_value);
+    const FloatType above_midpoint = std::nextafter(midpoint, upper_value);
     const UintType rounded_midpoint = (lower & 1) ? upper : lower;
 
-    EXPECT_EQ(lower, convert_f32_to_small(lower_value));
-    EXPECT_EQ(lower, convert_f32_to_small(below_midpoint));
-    EXPECT_EQ(rounded_midpoint, convert_f32_to_small(midpoint));
-    EXPECT_EQ(upper, convert_f32_to_small(above_midpoint));
+    EXPECT_EQ(lower, convert_to_small(lower_value));
+    EXPECT_EQ(lower, convert_to_small(below_midpoint));
+    EXPECT_EQ(rounded_midpoint, convert_to_small(midpoint));
+    EXPECT_EQ(upper, convert_to_small(above_midpoint));
 
-    EXPECT_EQ(sign_mask | lower, convert_f32_to_small(-lower_value));
-    EXPECT_EQ(sign_mask | lower, convert_f32_to_small(-below_midpoint));
-    EXPECT_EQ(sign_mask | rounded_midpoint, convert_f32_to_small(-midpoint));
-    EXPECT_EQ(sign_mask | upper, convert_f32_to_small(-above_midpoint));
+    EXPECT_EQ(sign_mask | lower, convert_to_small(-lower_value));
+    EXPECT_EQ(sign_mask | lower, convert_to_small(-below_midpoint));
+    EXPECT_EQ(sign_mask | rounded_midpoint, convert_to_small(-midpoint));
+    EXPECT_EQ(sign_mask | upper, convert_to_small(-above_midpoint));
   }
+}
+
+TEST(FloatNarrowingTest, F64RoundsEveryFiniteIntervalOnce) {
+  const auto check_boundaries = []() {
+    CheckFiniteRoundingBoundaries<uint16_t, double>(5, 10, 0, 0x7BFF,
+                                                    iree_math_f64_to_f16);
+    CheckFiniteRoundingBoundaries<uint16_t, double>(8, 7, 0, 0x7F7F,
+                                                    iree_math_f64_to_bf16);
+    CheckFiniteRoundingBoundaries<uint8_t, double>(4, 3, 0, 0x7E,
+                                                   iree_math_f64_to_f8e4m3fn);
+    CheckFiniteRoundingBoundaries<uint8_t, double>(5, 2, 0, 0x7B,
+                                                   iree_math_f64_to_f8e5m2);
+  };
+  check_boundaries();
+  const iree_fpu_state_t fpu_state =
+      iree_fpu_state_push(IREE_FPU_STATE_FLAG_FLUSH_DENORMALS_TO_ZERO);
+  check_boundaries();
+  iree_fpu_state_pop(fpu_state);
+}
+
+TEST(FloatNarrowingTest, F64PreservesSpecialAndBoundaryPolicies) {
+  EXPECT_EQ(0x7C00, iree_math_f64_to_f16(65520.0));
+  EXPECT_EQ(0x7BFF, iree_math_f64_to_f16(std::nextafter(65520.0, 0.0)));
+  EXPECT_EQ(0x7F80, iree_math_f64_to_bf16(0x1.ffp127));
+  EXPECT_EQ(0x7F7F, iree_math_f64_to_bf16(std::nextafter(0x1.ffp127, 0.0)));
+  EXPECT_EQ(0x7C, iree_math_f64_to_f8e5m2(61440.0));
+  EXPECT_EQ(0x7B, iree_math_f64_to_f8e5m2(std::nextafter(61440.0, 0.0)));
+  EXPECT_EQ(0x7E, iree_math_f64_to_f8e4m3fn(DBL_MAX));
+  EXPECT_EQ(0xFE, iree_math_f64_to_f8e4m3fn(-INFINITY));
+  EXPECT_EQ(0x7F, iree_math_f64_to_f8e4m3fn(NAN));
+  EXPECT_EQ(0x7F, iree_math_f64_to_f8e5m2(NAN));
+  EXPECT_EQ(0x7FFF, iree_math_f64_to_bf16(NAN));
+  EXPECT_EQ(0x7FFF, iree_math_f64_to_f16(NAN));
+  EXPECT_EQ(0x00, iree_math_f64_to_f8e4m3fn(DBL_MIN));
+  EXPECT_EQ(0x80, iree_math_f64_to_f8e5m2(-DBL_MIN));
+  EXPECT_EQ(0x0000, iree_math_f64_to_bf16(0.0));
+  EXPECT_EQ(0x8000, iree_math_f64_to_f16(-0.0));
 }
 
 enum class WideningExpectationKind {

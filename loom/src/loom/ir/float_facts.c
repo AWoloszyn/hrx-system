@@ -27,13 +27,13 @@ static double loom_float_round_to_type(loom_scalar_type_t scalar_type,
                                        double value) {
   switch (scalar_type) {
     case LOOM_SCALAR_TYPE_F8E4M3:
-      return iree_math_f8e4m3fn_to_f64(iree_math_f32_to_f8e4m3fn((float)value));
+      return iree_math_f8e4m3fn_to_f64(iree_math_f64_to_f8e4m3fn(value));
     case LOOM_SCALAR_TYPE_F8E5M2:
-      return iree_math_f8e5m2_to_f64(iree_math_f32_to_f8e5m2((float)value));
+      return iree_math_f8e5m2_to_f64(iree_math_f64_to_f8e5m2(value));
     case LOOM_SCALAR_TYPE_F16:
-      return iree_math_f16_to_f64(iree_math_f32_to_f16((float)value));
+      return iree_math_f16_to_f64(iree_math_f64_to_f16(value));
     case LOOM_SCALAR_TYPE_BF16:
-      return iree_math_bf16_to_f64(iree_math_f32_to_bf16((float)value));
+      return iree_math_bf16_to_f64(iree_math_f64_to_bf16(value));
     case LOOM_SCALAR_TYPE_F32:
       return (double)(float)value;
     case LOOM_SCALAR_TYPE_F64:

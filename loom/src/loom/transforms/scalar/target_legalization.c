@@ -348,7 +348,8 @@ static iree_status_t loom_scalar_legalize_extf(
   if (!loom_type_is_scalar(input_type) ||
       !loom_scalar_type_fp8_format(loom_type_element_type(input_type),
                                    &format) ||
-      !loom_type_equal(result_type, loom_type_scalar(LOOM_SCALAR_TYPE_F32))) {
+      (loom_type_element_type(result_type) != LOOM_SCALAR_TYPE_F16 &&
+       loom_type_element_type(result_type) != LOOM_SCALAR_TYPE_F32)) {
     return iree_ok_status();
   }
 
@@ -356,13 +357,28 @@ static iree_status_t loom_scalar_legalize_extf(
   loom_builder_set_before(&rewriter->builder, op);
   const loom_value_id_t value_checkpoint =
       loom_rewriter_value_checkpoint(rewriter);
-  loom_value_id_t byte_value = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_scalar_legalize_build_fp8_storage_byte(
-      &rewriter->builder, op->location, loom_scalar_extf_input(op), input_type,
-      &byte_value));
   loom_value_id_t replacement = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_scalar_legalize_build_fp8_to_f32(
-      &rewriter->builder, op->location, byte_value, &format, &replacement));
+  const loom_type_t f32_type = loom_type_scalar(LOOM_SCALAR_TYPE_F32);
+  if (loom_type_equal(result_type, f32_type)) {
+    loom_value_id_t byte_value = LOOM_VALUE_ID_INVALID;
+    IREE_RETURN_IF_ERROR(loom_scalar_legalize_build_fp8_storage_byte(
+        &rewriter->builder, op->location, loom_scalar_extf_input(op),
+        input_type, &byte_value));
+    IREE_RETURN_IF_ERROR(loom_scalar_legalize_build_fp8_to_f32(
+        &rewriter->builder, op->location, byte_value, &format, &replacement));
+  } else {
+    // F32 represents every FP8 value exactly. Keep this edge as an ordinary
+    // extension so the target can still select its native F32 conversion.
+    loom_op_t* widened = NULL;
+    IREE_RETURN_IF_ERROR(
+        loom_scalar_extf_build(&rewriter->builder, loom_scalar_extf_input(op),
+                               input_type, f32_type, op->location, &widened));
+    loom_op_t* converted = NULL;
+    IREE_RETURN_IF_ERROR(loom_scalar_fptrunc_build(
+        &rewriter->builder, loom_scalar_extf_result(widened), f32_type,
+        result_type, op->location, &converted));
+    replacement = loom_op_results(converted)[0];
+  }
   IREE_RETURN_IF_ERROR(loom_rewriter_preserve_result_names_on_new_values(
       rewriter, op, &replacement, 1, value_checkpoint));
   IREE_RETURN_IF_ERROR(

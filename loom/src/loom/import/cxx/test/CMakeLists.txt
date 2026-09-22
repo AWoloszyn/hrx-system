@@ -37,6 +37,8 @@ loom_check_test_suite(
     "enums.cxx-test"
     "enums_invalid.cxx-test"
     "float16.cxx-test"
+    "float8.cxx-test"
+    "float8_invalid.cxx-test"
     "frontend.cxx-test"
     "functions.cxx-test"
     "initializer_dependencies.cxx-test"

@@ -1,0 +1,13 @@
+func.def @float8_to_half(%e4m3: f8E4M3, %e5m2: f8E5M2) -> (f16, f16) {
+  %half_e4m3 = scalar.extf %e4m3 : f8E4M3 to f16
+  %half_e5m2 = scalar.extf %e5m2 : f8E5M2 to f16
+  func.return %half_e4m3, %half_e5m2 : f16, f16
+}
+
+// ====
+
+func.def @float8_to_bfloat(%e4m3: f8E4M3, %e5m2: f8E5M2) -> (bf16, bf16) {
+  %bfloat_e4m3 = scalar.extf %e4m3 : f8E4M3 to bf16
+  %bfloat_e5m2 = scalar.extf %e5m2 : f8E5M2 to bf16
+  func.return %bfloat_e4m3, %bfloat_e5m2 : bf16, bf16
+}

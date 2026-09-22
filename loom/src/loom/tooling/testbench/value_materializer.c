@@ -559,7 +559,7 @@ static iree_status_t loom_testbench_attr_to_scalar_value(
       if (loom_testbench_attr_as_f64(attr, &floating_value)) {
         *out_value = (iree_tooling_value_t){
             .kind = IREE_TOOLING_VALUE_KIND_RAW_U32,
-            .storage.u32 = iree_math_f32_to_f8e4m3fn((float)floating_value),
+            .storage.u32 = iree_math_f64_to_f8e4m3fn(floating_value),
         };
         return iree_ok_status();
       }
@@ -568,7 +568,7 @@ static iree_status_t loom_testbench_attr_to_scalar_value(
       if (loom_testbench_attr_as_f64(attr, &floating_value)) {
         *out_value = (iree_tooling_value_t){
             .kind = IREE_TOOLING_VALUE_KIND_RAW_U32,
-            .storage.u32 = iree_math_f32_to_f8e5m2((float)floating_value),
+            .storage.u32 = iree_math_f64_to_f8e5m2(floating_value),
         };
         return iree_ok_status();
       }
@@ -577,7 +577,7 @@ static iree_status_t loom_testbench_attr_to_scalar_value(
       if (loom_testbench_attr_as_f64(attr, &floating_value)) {
         *out_value = (iree_tooling_value_t){
             .kind = IREE_TOOLING_VALUE_KIND_RAW_U32,
-            .storage.u32 = iree_math_f32_to_f16((float)floating_value),
+            .storage.u32 = iree_math_f64_to_f16(floating_value),
         };
         return iree_ok_status();
       }
@@ -586,7 +586,7 @@ static iree_status_t loom_testbench_attr_to_scalar_value(
       if (loom_testbench_attr_as_f64(attr, &floating_value)) {
         *out_value = (iree_tooling_value_t){
             .kind = IREE_TOOLING_VALUE_KIND_RAW_U32,
-            .storage.u32 = iree_math_f32_to_bf16((float)floating_value),
+            .storage.u32 = iree_math_f64_to_bf16(floating_value),
         };
         return iree_ok_status();
       }
@@ -804,7 +804,7 @@ static bool loom_testbench_iota_i64_value(int64_t offset, int64_t step,
     uint16_t* values = (uint16_t*)(contents).data;                       \
     iree_host_size_t count = (contents).data_length / sizeof(*values);   \
     for (iree_host_size_t index = 0; index < count; ++index) {           \
-      values[index] = convert((float)(expression));                      \
+      values[index] = convert((double)(expression));                     \
     }                                                                    \
     return iree_ok_status();                                             \
   } while (0)
@@ -814,7 +814,7 @@ static bool loom_testbench_iota_i64_value(int64_t offset, int64_t step,
     uint8_t* values = (uint8_t*)(contents).data;                        \
     iree_host_size_t count = (contents).data_length / sizeof(*values);  \
     for (iree_host_size_t index = 0; index < count; ++index) {          \
-      values[index] = convert((float)(expression));                     \
+      values[index] = convert((double)(expression));                    \
     }                                                                   \
     return iree_ok_status();                                            \
   } while (0)
@@ -933,22 +933,22 @@ static iree_status_t loom_testbench_generate_float_buffer(
       switch (state->scalar_type) {
         case LOOM_SCALAR_TYPE_F8E4M3:
           LOOM_TESTBENCH_FILL_FLOAT8_TYPED(
-              contents, iree_math_f32_to_f8e4m3fn,
+              contents, iree_math_f64_to_f8e4m3fn,
               first_value + (double)loom_testbench_iota_index(state, index) *
                                 second_value);
         case LOOM_SCALAR_TYPE_F8E5M2:
           LOOM_TESTBENCH_FILL_FLOAT8_TYPED(
-              contents, iree_math_f32_to_f8e5m2,
+              contents, iree_math_f64_to_f8e5m2,
               first_value + (double)loom_testbench_iota_index(state, index) *
                                 second_value);
         case LOOM_SCALAR_TYPE_F16:
           LOOM_TESTBENCH_FILL_FLOAT16_TYPED(
-              contents, iree_math_f32_to_f16,
+              contents, iree_math_f64_to_f16,
               first_value + (double)loom_testbench_iota_index(state, index) *
                                 second_value);
         case LOOM_SCALAR_TYPE_BF16:
           LOOM_TESTBENCH_FILL_FLOAT16_TYPED(
-              contents, iree_math_f32_to_bf16,
+              contents, iree_math_f64_to_bf16,
               first_value + (double)loom_testbench_iota_index(state, index) *
                                 second_value);
         case LOOM_SCALAR_TYPE_F32:
@@ -968,16 +968,16 @@ static iree_status_t loom_testbench_generate_float_buffer(
     case LOOM_TESTBENCH_GENERATOR_FILL:
       switch (state->scalar_type) {
         case LOOM_SCALAR_TYPE_F8E4M3:
-          LOOM_TESTBENCH_FILL_FLOAT8_TYPED(contents, iree_math_f32_to_f8e4m3fn,
+          LOOM_TESTBENCH_FILL_FLOAT8_TYPED(contents, iree_math_f64_to_f8e4m3fn,
                                            first_value);
         case LOOM_SCALAR_TYPE_F8E5M2:
-          LOOM_TESTBENCH_FILL_FLOAT8_TYPED(contents, iree_math_f32_to_f8e5m2,
+          LOOM_TESTBENCH_FILL_FLOAT8_TYPED(contents, iree_math_f64_to_f8e5m2,
                                            first_value);
         case LOOM_SCALAR_TYPE_F16:
-          LOOM_TESTBENCH_FILL_FLOAT16_TYPED(contents, iree_math_f32_to_f16,
+          LOOM_TESTBENCH_FILL_FLOAT16_TYPED(contents, iree_math_f64_to_f16,
                                             first_value);
         case LOOM_SCALAR_TYPE_BF16:
-          LOOM_TESTBENCH_FILL_FLOAT16_TYPED(contents, iree_math_f32_to_bf16,
+          LOOM_TESTBENCH_FILL_FLOAT16_TYPED(contents, iree_math_f64_to_bf16,
                                             first_value);
         case LOOM_SCALAR_TYPE_F32:
           LOOM_TESTBENCH_FILL_FLOAT_TYPED(contents, float, first_value);
@@ -996,22 +996,22 @@ static iree_status_t loom_testbench_generate_float_buffer(
       switch (state->scalar_type) {
         case LOOM_SCALAR_TYPE_F8E4M3:
           LOOM_TESTBENCH_FILL_FLOAT8_TYPED(
-              contents, iree_math_f32_to_f8e4m3fn,
+              contents, iree_math_f64_to_f8e4m3fn,
               first_value + loom_testbench_random_unit_f64(&state->prng_state) *
                                 (second_value - first_value));
         case LOOM_SCALAR_TYPE_F8E5M2:
           LOOM_TESTBENCH_FILL_FLOAT8_TYPED(
-              contents, iree_math_f32_to_f8e5m2,
+              contents, iree_math_f64_to_f8e5m2,
               first_value + loom_testbench_random_unit_f64(&state->prng_state) *
                                 (second_value - first_value));
         case LOOM_SCALAR_TYPE_F16:
           LOOM_TESTBENCH_FILL_FLOAT16_TYPED(
-              contents, iree_math_f32_to_f16,
+              contents, iree_math_f64_to_f16,
               first_value + loom_testbench_random_unit_f64(&state->prng_state) *
                                 (second_value - first_value));
         case LOOM_SCALAR_TYPE_BF16:
           LOOM_TESTBENCH_FILL_FLOAT16_TYPED(
-              contents, iree_math_f32_to_bf16,
+              contents, iree_math_f64_to_bf16,
               first_value + loom_testbench_random_unit_f64(&state->prng_state) *
                                 (second_value - first_value));
         case LOOM_SCALAR_TYPE_F32:

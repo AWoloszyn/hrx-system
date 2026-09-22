@@ -19,6 +19,7 @@ exports_files([
     "cxx.BUILD.bazel",
     "enum_semantics.patch",
     "float16_semantics.patch",
+    "float8_semantics.patch",
     "include_continuation.patch",
     "include_paths.patch",
     "initializer_dependencies.patch",

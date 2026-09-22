@@ -56,8 +56,8 @@ loom_value_id_t Scalars::convert(loom_value_id_t value,
   auto* layout = unit_.control()->memoryLayout();
   if (types_.is_float(input_type) && types_.is_float(output_type) &&
       layout->sizeOf(input_type) == layout->sizeOf(output_type)) {
-    // FP16 and BF16 have different value sets despite their equal storage
-    // widths. F32 represents both exactly, so only the final cast rounds.
+    // Distinct narrow formats can have equal storage widths. F32 represents
+    // each exactly, so only the final cast rounds.
     auto widened = loom_type_scalar(LOOM_SCALAR_TYPE_F32);
     check(loom_scalar_extf_build(&builder_, value, input, widened,
                                  locations_.get(owner), &op));

@@ -255,20 +255,20 @@ uint32_t loom_amdgpu_attr_f32_bit_pattern(loom_attribute_t value) {
   return bit_pattern;
 }
 
-bool loom_amdgpu_attr_is_16bit_float_immediate(loom_attribute_t value) {
-  return value.kind == LOOM_ATTR_F64;
-}
-
-uint32_t loom_amdgpu_attr_16bit_float_bit_pattern(loom_scalar_type_t type,
-                                                  loom_attribute_t value) {
-  const float f32_value = (float)loom_attr_as_f64(value);
+uint32_t loom_amdgpu_attr_narrow_float_bit_pattern(loom_scalar_type_t type,
+                                                   loom_attribute_t value) {
+  const double f64_value = loom_attr_as_f64(value);
   switch (type) {
+    case LOOM_SCALAR_TYPE_F8E4M3:
+      return iree_math_f64_to_f8e4m3fn(f64_value);
+    case LOOM_SCALAR_TYPE_F8E5M2:
+      return iree_math_f64_to_f8e5m2(f64_value);
     case LOOM_SCALAR_TYPE_F16:
-      return iree_math_f32_to_f16(f32_value);
+      return iree_math_f64_to_f16(f64_value);
     case LOOM_SCALAR_TYPE_BF16:
-      return iree_math_f32_to_bf16(f32_value);
+      return iree_math_f64_to_bf16(f64_value);
     default:
-      IREE_ASSERT_UNREACHABLE("expected f16 or bf16");
+      IREE_ASSERT_UNREACHABLE("expected f8E4M3, f8E5M2, f16 or bf16");
       return 0;
   }
 }
@@ -538,8 +538,8 @@ static void loom_amdgpu_repeat_first_constant_bit_pattern(
   }
 }
 
-static uint32_t loom_amdgpu_repeated_integer_lane_pattern(uint32_t lane_bits,
-                                                          uint32_t bit_count) {
+static uint32_t loom_amdgpu_repeated_lane_pattern(uint32_t lane_bits,
+                                                  uint32_t bit_count) {
   IREE_ASSERT(bit_count == 8 || bit_count == 16);
   const uint32_t masked_lane_bits =
       lane_bits & iree_math_mask_low_bits_u32(UINT32_MAX, (int32_t)bit_count);
@@ -638,8 +638,7 @@ static iree_status_t loom_amdgpu_select_packed_integer_constant_plan(
       (uint32_t)value.i64, (int32_t)storage.element_bit_count);
   IREE_RETURN_IF_ERROR(loom_amdgpu_select_u32_bit_pattern_constant_plan(
       context,
-      loom_amdgpu_repeated_integer_lane_pattern(lane_bits,
-                                                storage.element_bit_count),
+      loom_amdgpu_repeated_lane_pattern(lane_bits, storage.element_bit_count),
       result, LOOM_AMDGPU_DESCRIPTOR_REF_V_MOV_B32, out_plan, out_selected));
   if (!*out_selected) {
     return iree_ok_status();
@@ -649,27 +648,29 @@ static iree_status_t loom_amdgpu_select_packed_integer_constant_plan(
   return iree_ok_status();
 }
 
-static iree_status_t loom_amdgpu_select_packed_16bit_float_constant_plan(
+static iree_status_t loom_amdgpu_select_packed_float_constant_plan(
     loom_low_lower_context_t* context, loom_type_t result_type,
     loom_attribute_t value, loom_value_id_t result,
     loom_amdgpu_constant_plan_t* out_plan, bool* out_selected) {
   *out_selected = false;
-  uint32_t unused_payload_bit_count = 0;
-  uint32_t register_count = 0;
-  if (!loom_amdgpu_type_packed_16bit_float_storage(
-          result_type, &unused_payload_bit_count, &register_count) ||
-      !loom_amdgpu_attr_is_16bit_float_immediate(value)) {
+  loom_amdgpu_vector_storage_t storage = {0};
+  if (!loom_amdgpu_type_vector_storage(result_type, &storage) ||
+      (storage.kind != LOOM_AMDGPU_VECTOR_STORAGE_KIND_PACKED_8BIT_FLOAT &&
+       storage.kind != LOOM_AMDGPU_VECTOR_STORAGE_KIND_PACKED_16BIT_FLOAT)) {
     return iree_ok_status();
   }
-  const uint32_t lane_bit_pattern = loom_amdgpu_attr_16bit_float_bit_pattern(
-      loom_type_element_type(result_type), value);
+  const uint32_t lane_bit_pattern =
+      loom_amdgpu_attr_narrow_float_bit_pattern(storage.element_type, value);
   IREE_RETURN_IF_ERROR(loom_amdgpu_select_u32_bit_pattern_constant_plan(
-      context, lane_bit_pattern | (lane_bit_pattern << 16), result,
-      LOOM_AMDGPU_DESCRIPTOR_REF_V_MOV_B32, out_plan, out_selected));
+      context,
+      loom_amdgpu_repeated_lane_pattern(lane_bit_pattern,
+                                        storage.element_bit_count),
+      result, LOOM_AMDGPU_DESCRIPTOR_REF_V_MOV_B32, out_plan, out_selected));
   if (!*out_selected) {
     return iree_ok_status();
   }
-  loom_amdgpu_repeat_first_constant_bit_pattern(out_plan, register_count);
+  loom_amdgpu_repeat_first_constant_bit_pattern(out_plan,
+                                                storage.register_count);
   return iree_ok_status();
 }
 
@@ -721,17 +722,18 @@ iree_status_t loom_amdgpu_select_scalar_constant_plan(
     return loom_amdgpu_select_f32_constant_plan(
         context, value, result, /*register_count=*/1, out_plan, out_selected);
   }
-  if (loom_amdgpu_value_is_f16_or_bf16(context, result)) {
-    if (!loom_amdgpu_attr_is_16bit_float_immediate(value)) {
-      return iree_ok_status();
-    }
-    const loom_type_t result_type =
-        loom_module_value_type(loom_low_lower_context_module(context), result);
-    return loom_amdgpu_select_u32_bit_pattern_constant_plan(
-        context,
-        loom_amdgpu_attr_16bit_float_bit_pattern(
-            loom_type_element_type(result_type), value),
-        result, LOOM_AMDGPU_DESCRIPTOR_REF_V_MOV_B32, out_plan, out_selected);
+  switch (loom_type_element_type(result_type)) {
+    case LOOM_SCALAR_TYPE_F8E4M3:
+    case LOOM_SCALAR_TYPE_F8E5M2:
+    case LOOM_SCALAR_TYPE_F16:
+    case LOOM_SCALAR_TYPE_BF16:
+      return loom_amdgpu_select_u32_bit_pattern_constant_plan(
+          context,
+          loom_amdgpu_attr_narrow_float_bit_pattern(
+              loom_type_element_type(result_type), value),
+          result, LOOM_AMDGPU_DESCRIPTOR_REF_V_MOV_B32, out_plan, out_selected);
+    default:
+      break;
   }
   IREE_RETURN_IF_ERROR(loom_amdgpu_select_narrow_integer_constant_plan(
       context, value, result, result_type, out_plan, out_selected));
@@ -814,7 +816,7 @@ iree_status_t loom_amdgpu_select_vector_constant_plan(
           LOOM_AMDGPU_DESCRIPTOR_REF_V_MOV_B32, out_plan, out_selected);
     }
   }
-  IREE_RETURN_IF_ERROR(loom_amdgpu_select_packed_16bit_float_constant_plan(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_select_packed_float_constant_plan(
       context, result_type, value, result, out_plan, out_selected));
   if (*out_selected) {
     return iree_ok_status();

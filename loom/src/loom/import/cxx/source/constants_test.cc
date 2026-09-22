@@ -162,6 +162,30 @@ TEST(FloatingConstantTest, NarrowFormatsRoundAtSourceConversionBoundaries) {
       {"(__bf16)(_Float16)1.0048828125", 1.0078125},
       {"(_Float16)65520.0", std::numeric_limits<double>::infinity()},
       {"(__bf16)0x1.ffp127", std::numeric_limits<double>::infinity()},
+      {"(__float8_e4m3fn)1.0625", 1.0},
+      {"(__float8_e4m3fn)1.1875", 1.25},
+      {"(__float8_e4m3fn)0x1.1000000000001p0", 1.125},
+      {"(__float8_e4m3fn)0x1p-10", 0.0},
+      {"(__float8_e4m3fn)0x1.8p-9", 0x1p-8},
+      {"(__float8_e4m3fn)0x1.ep-7", 0x1p-6},
+      {"(__float8_e4m3fn)1000.0", 448.0},
+      {"(__float8_e4m3fn)-0.0", -0.0},
+      {"+((__float8_e4m3fn)1.0 + (__float8_e4m3fn)0.0625)", 1.0},
+      {"-((__float8_e4m3fn)1.5 * (__float8_e4m3fn)2.0)", -3.0},
+      {"(__float8_e4m3fn)1.0 / (__float8_e4m3fn)3.0", 0.34375},
+      {"(__float8_e4m3fn)0xffffffffffffffffULL", 448.0},
+      {"(__float8_e5m2)1.125", 1.0},
+      {"(__float8_e5m2)1.375", 1.5},
+      {"(__float8_e5m2)0x1.2000000000001p0", 1.25},
+      {"(__float8_e5m2)0x1p-17", 0.0},
+      {"(__float8_e5m2)0x1.8p-16", 0x1p-15},
+      {"(__float8_e5m2)0x1.cp-15", 0x1p-14},
+      {"(__float8_e5m2)61439.0", 57344.0},
+      {"(__float8_e5m2)61440.0", std::numeric_limits<double>::infinity()},
+      {"(__float8_e5m2)-0.0", -0.0},
+      {"(__float8_e5m2)1.0 / (__float8_e5m2)3.0", 0.3125},
+      {"(__float8_e5m2)(__float8_e4m3fn)1.125", 1.0},
+      {"(__float8_e4m3fn)(__float8_e5m2)512.0", 448.0},
   };
   for (const auto& test : cases) {
     SCOPED_TRACE(test.expression);
@@ -200,6 +224,74 @@ TEST(FloatingConstantTest, NarrowFormatsRetainInfinityAndNaN) {
       } else {
         EXPECT_EQ(*result, input);
       }
+    }
+  }
+}
+
+TEST(FloatingConstantTest, Float8RoundingMatchesEveryFiniteInterval) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  Source source(IREE_SV(""), IREE_SV("float8.cpp"), options);
+  cxx::ASTInterpreter interpreter(&source.unit());
+  const struct {
+    // Canonical source format consumed by the production interpreter.
+    const cxx::Type* type;
+    // Number of encoded fraction bits.
+    unsigned fraction_bits;
+    // Bias of the encoded normal exponent.
+    int exponent_bias;
+    // Largest positive finite payload, excluding NaNs and infinity.
+    unsigned maximum_finite;
+    // Expected conversion of positive infinity under this format's policy.
+    double infinity;
+  } formats[] = {
+      {source.unit().control()->getFloat8E4M3FNType(), 3, 7, 0x7e, 448.0},
+      {source.unit().control()->getFloat8E5M2Type(), 2, 15, 0x7b,
+       std::numeric_limits<double>::infinity()},
+  };
+  for (const auto& format : formats) {
+    SCOPED_TRACE(cxx::to_string(format.type));
+    // Decode the finite value set directly from the format, independently of
+    // either the frontend's rounding helper or Loom's runtime conversion.
+    auto decode = [&](unsigned payload) {
+      auto exponent = payload >> format.fraction_bits;
+      auto fraction = payload & ((1u << format.fraction_bits) - 1);
+      return std::ldexp(
+          exponent ? (1u << format.fraction_bits) + fraction : fraction,
+          static_cast<int>(exponent ? exponent : 1) - format.exponent_bias -
+              static_cast<int>(format.fraction_bits));
+    };
+    auto expect = [&](double input, double expected) {
+      auto value =
+          interpreter.toArithmeticType(cxx::ConstValue{input}, format.type);
+      ASSERT_TRUE(value.has_value());
+      auto actual = interpreter.toDouble(*value);
+      ASSERT_TRUE(actual.has_value());
+      if (std::isnan(expected)) {
+        EXPECT_TRUE(std::isnan(*actual));
+      } else {
+        EXPECT_EQ(*actual, expected) << "input = " << input;
+        EXPECT_EQ(std::signbit(*actual), std::signbit(expected));
+      }
+    };
+    for (double sign : {1.0, -1.0}) {
+      for (unsigned payload = 0; payload <= format.maximum_finite; ++payload) {
+        SCOPED_TRACE(payload);
+        double lower = decode(payload);
+        expect(sign * lower, sign * lower);
+        if (payload == format.maximum_finite) {
+          continue;
+        }
+        double upper = decode(payload + 1);
+        double midpoint = (lower + upper) / 2.0;
+        expect(sign * std::nextafter(midpoint, lower), sign * lower);
+        expect(sign * midpoint, sign * (payload & 1 ? upper : lower));
+        expect(sign * std::nextafter(midpoint, upper), sign * upper);
+      }
+      expect(sign * std::numeric_limits<double>::infinity(),
+             sign * format.infinity);
+      expect(sign * std::numeric_limits<double>::quiet_NaN(),
+             std::numeric_limits<double>::quiet_NaN());
     }
   }
 }

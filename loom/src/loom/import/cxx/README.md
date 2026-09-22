@@ -65,6 +65,50 @@ includes. Embedded lookup and explicit include directories expose the same
 header. Mathematical operations remain in the separately included
 `<loomcxx/scalar.h>`.
 
+## Explicit 8-bit floating-point types
+
+`<loomcxx/numeric.h>` provides `loom::type::float8_e4m3fn_t` and
+`loom::type::float8_e5m2_t`. Both occupy one byte with one-byte scalar alignment.
+They are numeric types for typed storage, explicit vectors, record fields and
+ordinary C++ conversions:
+
+```cpp
+#include <loomcxx/numeric.h>
+#include <stdfloat>
+namespace loomt = loom::type;
+
+void quantize(const float* input, loomt::float8_e4m3fn_t* output,
+              unsigned index) {
+  output[index] = input[index];
+}
+
+std::bfloat16_t dequantize(loomt::float8_e4m3fn_t value) {
+  return value;
+}
+```
+
+The store retains an `f8E4M3` element type and one-byte stride. Quantization
+imports as `scalar.fptrunc`; dequantization imports as `scalar.extf` to BF16.
+The source types expose Loom's existing format contracts:
+
+| C++ type | High element | Conversion policy |
+| --- | --- | --- |
+| `float8_e4m3fn_t` | `f8E4M3` | Ties to even; finite overflow and infinities saturate to ±448; NaNs remain NaNs. |
+| `float8_e5m2_t` | `f8E5M2` | IEEE ties to even, including infinity and NaN; largest finite magnitude is 57344. |
+
+Both preserve signed zero and subnormals. Same-format arithmetic retains the
+format. Mixing the two FP8 types requires an explicit numeric cast, which
+extends exactly to F32 and then rounds to the destination. Wider FP16, BF16,
+F32 or F64 operands select that wider type. List initialization rejects
+narrowing conversions.
+
+The fundamental spellings `__float8_e4m3fn` and `__float8_e5m2` also work in C.
+Ordinary floating literals initialize them; no FP8 literal suffix is required.
+These spellings identify signed-zero formats, not the distinct FNUZ encodings.
+The optional header contains only aliases, documentation and guards, with no
+transitive includes. Scalar math templates admit these types when used without
+adding per-format declarations to every import.
+
 ## Compiler tests
 
 When the importer is enabled, `loom-check` accepts `.cxx-test` files through the

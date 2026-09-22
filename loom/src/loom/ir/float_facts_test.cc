@@ -555,6 +555,32 @@ TEST(FloatFacts, FmaPreservesSpecialValuesAndDynamicOperands) {
                  -0x1p-54);
 }
 
+TEST(FloatFacts, NarrowConstantsRetainTheirSideOfRoundingMidpoints) {
+  const struct {
+    // Destination of the source literal conversion.
+    loom_scalar_type_t type;
+    // F64 source immediately beside a destination rounding midpoint.
+    double source;
+    // Independently calculated destination value.
+    double expected;
+  } cases[] = {
+      {LOOM_SCALAR_TYPE_F8E4M3, 0x1.1000000000001p0, 1.125},
+      {LOOM_SCALAR_TYPE_F8E4M3, 0x1.2ffffffffffffp0, 1.125},
+      {LOOM_SCALAR_TYPE_F8E5M2, 0x1.2000000000001p0, 1.25},
+      {LOOM_SCALAR_TYPE_F8E5M2, 0x1.5ffffffffffffp0, 1.25},
+      {LOOM_SCALAR_TYPE_F16, 0x1.0020000000001p0, 0x1.004p0},
+      {LOOM_SCALAR_TYPE_BF16, 0x1.0100000000001p0, 0x1.02p0},
+  };
+  for (const auto& test : cases) {
+    SCOPED_TRACE(loom_scalar_type_name(test.type));
+    for (double sign : {1.0, -1.0}) {
+      EXPECT_EQ(ExactFloatValue(test.type, loom_value_facts_exact_float(
+                                               test.type, sign * test.source)),
+                sign * test.expected);
+    }
+  }
+}
+
 TEST(FloatFacts, DistinguishesFusedAndStagedF32Arithmetic) {
   loom_value_facts_t a =
       loom_value_facts_exact_float(LOOM_SCALAR_TYPE_F32, 4097.0);
