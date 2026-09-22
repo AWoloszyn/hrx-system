@@ -914,8 +914,9 @@ static inline iree_status_t iree_async_proactor_submit_one(
 //
 // Returns:
 //   IREE_STATUS_OK: One or more completions were processed, an explicit wake
-//     was observed, or an internal source or relay made progress. The completed
-//     count may be zero for wake and internal progress events.
+//     was observed, or an internal source or relay made progress. Interrupted
+//     native waits and cooperative turns may yield with zero completions;
+//     shortening the native wait does not expire the caller's timeout.
 //   IREE_STATUS_DEADLINE_EXCEEDED: Timeout expired with no completions
 //     (not an error—normal for polling loops).
 //   IREE_STATUS_ABORTED: Proactor is shutting down.

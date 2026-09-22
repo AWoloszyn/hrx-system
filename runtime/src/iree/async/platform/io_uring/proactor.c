@@ -1199,6 +1199,7 @@ static iree_status_t iree_async_proactor_io_uring_poll(
   iree_atomic_store(&proactor->polling.owner_tid, owner_tid,
                     iree_memory_order_relaxed);
 
+  iree_convert_timeout_to_absolute(&timeout);
   bool is_immediate = iree_timeout_is_immediate(timeout);
 
   // Accepted notification consumers share one poll-owned native monitor.
@@ -1388,8 +1389,10 @@ static iree_status_t iree_async_proactor_io_uring_poll(
     *out_completed_count = completed;
   }
 
-  // Return DEADLINE_EXCEEDED for immediate poll with no completions.
-  if (iree_status_is_ok(status) && completed == 0 && is_immediate) {
+  // Cooperative work can force a nonblocking native turn without expiring
+  // the caller's timeout.
+  if (iree_status_is_ok(status) && completed == 0 &&
+      iree_timeout_as_duration_ns(timeout) == 0) {
     status = iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
   }
 

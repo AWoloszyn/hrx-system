@@ -3166,6 +3166,7 @@ static iree_host_size_t iree_async_proactor_posix_drain_pending_cancellations(
 static iree_status_t iree_async_proactor_posix_poll(
     iree_async_proactor_t* base_proactor, iree_timeout_t timeout,
     iree_host_size_t* out_completed_count) {
+  iree_convert_timeout_to_absolute(&timeout);
   iree_async_proactor_posix_t* proactor =
       iree_async_proactor_posix_cast(base_proactor);
 
@@ -3283,8 +3284,11 @@ static iree_status_t iree_async_proactor_posix_poll(
       return iree_ok_status();
     }
 
-    // No completions - truly a deadline exceeded.
-    return iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
+    // Native waits may be shortened for cooperative work or internal timers.
+    // Only the caller's deadline determines whether this poll has expired.
+    return iree_timeout_as_duration_ns(timeout) > 0
+               ? iree_ok_status()
+               : iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
   }
 
   // Process expired timers BEFORE fd events (timers have priority).
@@ -3397,9 +3401,9 @@ static iree_status_t iree_async_proactor_posix_poll(
   if (out_completed_count) {
     *out_completed_count = completed_count;
   }
-  return completed_count > 0 || ready_count > 0
-             ? iree_ok_status()
-             : iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
+  // A native interruption yields control even when no descriptor was ready.
+  // The event set explicitly distinguishes this from an expired wait.
+  return iree_ok_status();
 }
 
 static void iree_async_proactor_posix_wake(

@@ -1880,6 +1880,7 @@ static iree_status_t iree_async_proactor_iocp_poll(
     iree_async_proactor_t* base_proactor, iree_timeout_t timeout,
     iree_host_size_t* out_completed_count) {
   IREE_TRACE_ZONE_BEGIN(z0);
+  iree_convert_timeout_to_absolute(&timeout);
   iree_async_proactor_iocp_t* proactor =
       iree_async_proactor_iocp_cast(base_proactor);
   iree_host_size_t completed_count = 0;
@@ -1954,9 +1955,6 @@ static iree_status_t iree_async_proactor_iocp_poll(
     IREE_TRACE_ZONE_END(z0);
     return notification_status;
   }
-
-  // Freeze relative timeouts before a possible multi-wait loop.
-  iree_convert_timeout_to_absolute(&timeout);
 
   // Phases 3-5: wait until an IOCP entry, timer, or user deadline completes.
   // GetQueuedCompletionStatusEx may report WAIT_TIMEOUT slightly before the
@@ -2182,7 +2180,9 @@ static iree_status_t iree_async_proactor_iocp_poll(
   if (!iree_status_is_ok(gqcs_status)) {
     return gqcs_status;
   }
-  return completed_count > 0 || entry_count > 0 || observed_wake
+  // Cooperative work can shorten the native wait without expiring the caller.
+  return completed_count > 0 || entry_count > 0 || observed_wake ||
+                 iree_timeout_as_duration_ns(timeout) > 0
              ? iree_ok_status()
              : iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
 }

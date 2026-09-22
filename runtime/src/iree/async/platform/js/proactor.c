@@ -391,6 +391,7 @@ static iree_status_t iree_async_proactor_js_poll(
     iree_async_proactor_t* proactor, iree_timeout_t timeout,
     iree_host_size_t* out_completed_count) {
   IREE_TRACE_ZONE_BEGIN(z0);
+  iree_convert_timeout_to_absolute(&timeout);
   iree_async_proactor_js_t* js_proactor = iree_async_proactor_js_cast(proactor);
   iree_host_size_t completed_count = 0;
 
@@ -427,10 +428,8 @@ static iree_status_t iree_async_proactor_js_poll(
   }
   IREE_TRACE_ZONE_END(z0);
 
-  // If nothing completed, report deadline exceeded. The caller can distinguish
-  // "poll found work" (OK with count > 0) from "poll found nothing within
-  // the given timeout" (DEADLINE_EXCEEDED with count == 0).
-  if (completed_count == 0) {
+  // An inline or cooperative turn can yield before the caller's deadline.
+  if (completed_count == 0 && iree_timeout_as_duration_ns(timeout) == 0) {
     return iree_status_from_code(IREE_STATUS_DEADLINE_EXCEEDED);
   }
   return iree_ok_status();
