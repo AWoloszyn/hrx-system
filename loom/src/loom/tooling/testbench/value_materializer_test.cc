@@ -186,8 +186,11 @@ class ValueMaterializerTest : public ::testing::Test {
 
 TEST_F(ValueMaterializerTest, MaterializesNarrowScalarLiterals) {
   struct NarrowScalarLiteral {
+    // Scalar format requested by the authored check value.
     loom_scalar_type_t scalar_type;
+    // Original F64 literal before destination conversion.
     double value;
+    // Expected destination payload.
     uint32_t expected_bits;
   };
   const NarrowScalarLiteral literals[] = {
@@ -195,6 +198,10 @@ TEST_F(ValueMaterializerTest, MaterializesNarrowScalarLiterals) {
       {LOOM_SCALAR_TYPE_F8E5M2, 0.25, 0x34},
       {LOOM_SCALAR_TYPE_F16, 0.5, 0x3800},
       {LOOM_SCALAR_TYPE_BF16, -2.0, 0xC000},
+      {LOOM_SCALAR_TYPE_F8E4M3, 0x1.1000000000001p0, 0x39},
+      {LOOM_SCALAR_TYPE_F8E5M2, 0x1.2000000000001p0, 0x3D},
+      {LOOM_SCALAR_TYPE_F16, 0x1.0020000000001p0, 0x3C01},
+      {LOOM_SCALAR_TYPE_BF16, 0x1.0100000000001p0, 0x3F81},
   };
 
   loom_module_t* module = nullptr;

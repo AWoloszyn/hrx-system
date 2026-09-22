@@ -261,16 +261,16 @@ bool loom_amdgpu_attr_is_narrow_float_immediate(loom_attribute_t value) {
 
 uint32_t loom_amdgpu_attr_narrow_float_bit_pattern(loom_scalar_type_t type,
                                                    loom_attribute_t value) {
-  const float f32_value = (float)loom_attr_as_f64(value);
+  const double f64_value = loom_attr_as_f64(value);
   switch (type) {
     case LOOM_SCALAR_TYPE_F8E4M3:
-      return iree_math_f32_to_f8e4m3fn(f32_value);
+      return iree_math_f64_to_f8e4m3fn(f64_value);
     case LOOM_SCALAR_TYPE_F8E5M2:
-      return iree_math_f32_to_f8e5m2(f32_value);
+      return iree_math_f64_to_f8e5m2(f64_value);
     case LOOM_SCALAR_TYPE_F16:
-      return iree_math_f32_to_f16(f32_value);
+      return iree_math_f64_to_f16(f64_value);
     case LOOM_SCALAR_TYPE_BF16:
-      return iree_math_f32_to_bf16(f32_value);
+      return iree_math_f64_to_bf16(f64_value);
     default:
       IREE_ASSERT_UNREACHABLE("expected f8E4M3, f8E5M2, f16 or bf16");
       return 0;

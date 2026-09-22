@@ -41,3 +41,13 @@ func.def @float8_special_constants() -> (f8E4M3, f8E4M3, f8E5M2, f8E5M2, f8E4M3,
   %e5_nan = scalar.constant nan : f8E5M2
   func.return %e4_positive, %e4_negative, %e5_positive, %e5_negative, %e4_nan, %e5_nan : f8E4M3, f8E4M3, f8E5M2, f8E5M2, f8E4M3, f8E5M2
 }
+
+// ====
+
+func.def @float8_midpoint_neighbors() -> (f8E4M3, f8E4M3, f8E5M2, f8E5M2) {
+  %e4_above_even = scalar.constant 1.0625000000000002 : f8E4M3
+  %e4_below_odd = scalar.constant 1.1874999999999998 : f8E4M3
+  %e5_above_even = scalar.constant 1.1250000000000002 : f8E5M2
+  %e5_below_odd = scalar.constant 1.3749999999999998 : f8E5M2
+  func.return %e4_above_even, %e4_below_odd, %e5_above_even, %e5_below_odd : f8E4M3, f8E4M3, f8E5M2, f8E5M2
+}
