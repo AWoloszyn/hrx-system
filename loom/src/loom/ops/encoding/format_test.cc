@@ -165,8 +165,7 @@ TEST_F(EncodingFormatTest, DefineInlineSpec) {
   const loom_op_t* op = loom_block_const_op(body, 0);
   ASSERT_TRUE(loom_encoding_define_isa(op));
 
-  loom_attribute_t spec_attr =
-      loom_op_attr(op, loom_encoding_define_spec_field());
+  loom_attribute_t spec_attr = loom_encoding_define_spec_attr(op);
   ASSERT_EQ(spec_attr.kind, LOOM_ATTR_ENCODING);
   const loom_encoding_t* spec_encoding =
       loom_module_encoding(module, loom_attr_as_encoding_id(spec_attr));
@@ -290,8 +289,7 @@ TEST_F(EncodingFormatTest, DefineAliasSpec) {
   const loom_op_t* op = loom_block_const_op(body, 0);
   ASSERT_TRUE(loom_encoding_define_isa(op));
 
-  loom_attribute_t spec_attr =
-      loom_op_attr(op, loom_encoding_define_spec_field());
+  loom_attribute_t spec_attr = loom_encoding_define_spec_attr(op);
   ASSERT_EQ(spec_attr.kind, LOOM_ATTR_ENCODING);
   const loom_encoding_t* spec_encoding =
       loom_module_encoding(module, loom_attr_as_encoding_id(spec_attr));
@@ -406,8 +404,7 @@ TEST_F(EncodingFormatTest, DefineNestedInlineSpec) {
   const loom_op_t* op = loom_block_const_op(body, 0);
   ASSERT_TRUE(loom_encoding_define_isa(op));
 
-  loom_attribute_t spec_attr =
-      loom_op_attr(op, loom_encoding_define_spec_field());
+  loom_attribute_t spec_attr = loom_encoding_define_spec_attr(op);
   ASSERT_EQ(spec_attr.kind, LOOM_ATTR_ENCODING);
   const loom_encoding_t* outer_encoding =
       loom_module_encoding(module, loom_attr_as_encoding_id(spec_attr));

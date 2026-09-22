@@ -578,9 +578,8 @@ TEST_F(VerifyTest, EnumArraysPreserveValuesAndPresentEmpty) {
             LOOM_TEST_ENUM_ARRAY_ATTRS_REQUIRED_VALUES_HIGH);
   EXPECT_EQ(required.values[2], LOOM_TEST_ENUM_ARRAY_ATTRS_REQUIRED_VALUES_LOW);
   EXPECT_TRUE(loom_test_enum_array_attrs_has_optional_values(op));
-  EXPECT_EQ(
-      loom_op_attr(op, loom_test_enum_array_attrs_optional_values_field()).kind,
-      LOOM_ATTR_ENUM_ARRAY);
+  EXPECT_EQ(loom_test_enum_array_attrs_optional_values_attr(op).kind,
+            LOOM_ATTR_ENUM_ARRAY);
   EXPECT_EQ(loom_test_enum_array_attrs_optional_values(op).count, 0u);
 
   TerminateFunc();
@@ -3284,8 +3283,7 @@ TEST_F(VerifyTest, AttrInRangeRankViolation) {
                                           0, 1, LOOM_LOCATION_UNKNOWN, &op));
   loom_op_operands(op)[0] = source;
   loom_op_results(op)[0] = result_val;
-  loom_op_initialize_attr(op, loom_test_dim_dim_index_field(),
-                          loom_attr_i64(5));
+  loom_test_dim_initialize_dim_index(op, loom_attr_i64(5));
 
   TerminateFunc();
   DiagnosticCapture structured;
@@ -3318,8 +3316,7 @@ TEST_F(VerifyTest, AttrInRangeRankNegativeIndex) {
                                           0, 1, LOOM_LOCATION_UNKNOWN, &op));
   loom_op_operands(op)[0] = source;
   loom_op_results(op)[0] = result_val;
-  loom_op_initialize_attr(op, loom_test_dim_dim_index_field(),
-                          loom_attr_i64(-1));
+  loom_test_dim_initialize_dim_index(op, loom_attr_i64(-1));
 
   TerminateFunc();
   DiagnosticCapture structured;
@@ -3352,8 +3349,7 @@ TEST_F(VerifyTest, AttrInRangeRankPasses) {
                                           0, 1, LOOM_LOCATION_UNKNOWN, &op));
   loom_op_operands(op)[0] = source;
   loom_op_results(op)[0] = result_val;
-  loom_op_initialize_attr(op, loom_test_dim_dim_index_field(),
-                          loom_attr_i64(1));
+  loom_test_dim_initialize_dim_index(op, loom_attr_i64(1));
 
   TerminateFunc();
   auto result = Verify();

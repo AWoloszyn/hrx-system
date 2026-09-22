@@ -66,6 +66,9 @@ def _validate_attribute_accessor_names(op: Op) -> None:
             continue
         accessors = {
             f"{attr.name}_field": "field",
+            f"{attr.name}_attr": "attribute",
+            f"initialize_{attr.name}": "initializer",
+            f"{attr.name}_diagnostic_ref": "diagnostic",
             f"set_{attr.name}": "setter",
             f"rewrite_{attr.name}": "rewrite",
         }
@@ -84,6 +87,9 @@ def generate_ops_inc(ops: Sequence[Op]) -> str:
         [
             "// clang-format off",
             "",
+            "// Complete attribute readers retain the kind and optional absence.",
+            "// Initializers write storage before finalization or an owner-managed bulk",
+            "// reference rebuild; payload storage must outlive the operation.",
             "// Named mutation forwards to the module or rewriter ownership boundary.",
             "// Setters maintain references and derived state; rewrites also notify the",
             "// active rewrite driver. Attribute payload storage must outlive the op.",
@@ -101,6 +107,12 @@ def generate_ops_inc(ops: Sequence[Op]) -> str:
         for index, attr in enumerate(attrs):
             lines.append(f"#define {prefix}_{attr.name}_field() \\")
             lines.append(f"  ((loom_attr_field_t){{{index}}})")
+            lines.append(f"#define {prefix}_{attr.name}_attr(op) \\")
+            lines.append(f"  (loom_op_const_attrs((op))[{index}])")
+            lines.append(f"#define {prefix}_initialize_{attr.name}(op, attribute) \\")
+            lines.append(f"  ((void)(loom_op_attrs((op))[{index}] = (attribute)))")
+            lines.append(f"#define {prefix}_{attr.name}_diagnostic_ref() \\")
+            lines.append(f"  loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, {index})")
             lines.append(f"#define {prefix}_set_{attr.name}(module, op, attribute) \\")
             lines.append(f"  loom_op_set_attr((module), (op), {index}, (attribute))")
             lines.append(f"#define {prefix}_rewrite_{attr.name}(rewriter, op, attribute) \\")

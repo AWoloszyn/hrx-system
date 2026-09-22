@@ -1514,8 +1514,7 @@ TEST_F(ParserTest, AttrDictEmptyArrayPayloadIsCanonical) {
   ASSERT_TRUE(loom_test_attrs_isa(attrs_op));
   ASSERT_GE(attrs_op->attribute_count, 1u);
 
-  loom_attribute_t dict_attr =
-      loom_op_attr(attrs_op, loom_test_attrs_dict_field());
+  loom_attribute_t dict_attr = loom_test_attrs_dict_attr(attrs_op);
   IREE_ASSERT_OK(loom_module_verify_canonical_attr_dict(module, dict_attr));
   ASSERT_EQ(dict_attr.kind, LOOM_ATTR_DICT);
   ASSERT_EQ(dict_attr.count, 1u);
@@ -1554,8 +1553,7 @@ TEST_F(ParserTest, AttrDictArrayPayloadMayExceedInlineParserCapacity) {
   ASSERT_NE(attrs_op, nullptr);
   ASSERT_TRUE(loom_test_attrs_isa(attrs_op));
 
-  loom_attribute_t dict_attr =
-      loom_op_attr(attrs_op, loom_test_attrs_dict_field());
+  loom_attribute_t dict_attr = loom_test_attrs_dict_attr(attrs_op);
   ASSERT_EQ(dict_attr.kind, LOOM_ATTR_DICT);
   ASSERT_EQ(dict_attr.count, 1u);
   loom_attribute_t array_attr = dict_attr.dict_entries[0].value;

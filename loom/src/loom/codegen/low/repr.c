@@ -75,13 +75,16 @@ static iree_status_t loom_low_repr_resolve_packet_attributes_impl(
   const bool is_const = loom_low_const_isa(op);
   const uint32_t ordinal =
       is_const ? loom_low_const_descriptor(op) : loom_low_op_descriptor(op);
-  const loom_attr_field_t attrs_field =
-      is_const ? loom_low_const_attrs_field() : loom_low_op_attrs_field();
-  loom_attribute_t attributes = loom_op_attr(op, attrs_field);
+  loom_attribute_t attributes =
+      is_const ? loom_low_const_attrs_attr(op) : loom_low_op_attrs_attr(op);
   IREE_RETURN_IF_ERROR(loom_low_resolve_immediate_enums(
       module, descriptor_set, &descriptor_set->descriptors[ordinal],
       &attributes));
-  loom_op_initialize_attr(op, attrs_field, attributes);
+  if (is_const) {
+    loom_low_const_initialize_attrs(op, attributes);
+  } else {
+    loom_low_op_initialize_attrs(op, attributes);
+  }
   return iree_ok_status();
 }
 

@@ -184,8 +184,7 @@ test.record @target {lanes = 64}
   loom_attribute_t dict = {};
   IREE_ASSERT_OK(loom_module_make_canonical_attr_dict(
       module.get(), loom_make_named_attr_slice(&entry, 1), &dict));
-  IREE_ASSERT_OK(loom_op_set_attr(module.get(), record_op,
-                                  loom_test_record_dict_field().index, dict));
+  IREE_ASSERT_OK(loom_test_record_set_dict(module.get(), record_op, dict));
 
   loom_symbol_fact_table_reset(&fact_table_);
   const loom_test_record_symbol_facts_t* second =

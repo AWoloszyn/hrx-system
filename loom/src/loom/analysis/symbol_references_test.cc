@@ -996,15 +996,16 @@ TEST_F(SymbolReferencesTest, RebuildsAfterAttrMutationAndErase) {
                            LOOM_SYMBOL_REFERENCE_OCCURRENCE_NESTED_ATTR),
             nullptr);
 
-  loom_op_attrs(derived_op)[loom_test_record_dict_field().index] =
-      MakeEmptyDict(module.get());
+  IREE_ASSERT_OK(loom_test_record_set_dict(module.get(), derived_op,
+                                           MakeEmptyDict(module.get())));
   table = BuildTable(module.get());
   EXPECT_EQ(FindOccurrence(table, derived_ref.symbol_id, base_ref.symbol_id,
                            LOOM_SYMBOL_REFERENCE_OCCURRENCE_NESTED_ATTR),
             nullptr);
 
-  loom_op_attrs(derived_op)[loom_test_record_dict_field().index] =
-      MakeSymbolDict(module.get(), IREE_SV("depends"), base_ref);
+  IREE_ASSERT_OK(loom_test_record_set_dict(
+      module.get(), derived_op,
+      MakeSymbolDict(module.get(), IREE_SV("depends"), base_ref)));
   table = BuildTable(module.get());
   EXPECT_NE(FindOccurrence(table, derived_ref.symbol_id, base_ref.symbol_id,
                            LOOM_SYMBOL_REFERENCE_OCCURRENCE_NESTED_ATTR),

@@ -3499,6 +3499,12 @@ def test_attribute_accessors_bind_to_schema_fields() -> None:
             assert f"#define loom_test_fields_set_{name}(module, op, attribute)" in ops_inc
             assert f"loom_op_set_attr((module), (op), {index}, (attribute))" in ops_inc
             assert f"LOOM_DEFINE_ATTR_I64(loom_test_fields_{name}, {index})" in ops_h
+            assert f"#define loom_test_fields_{name}_attr(op)" in ops_inc
+            assert f"(loom_op_const_attrs((op))[{index}])" in ops_inc
+            assert f"#define loom_test_fields_initialize_{name}(op, attribute)" in ops_inc
+            assert f"((void)(loom_op_attrs((op))[{index}] = (attribute)))" in ops_inc
+            assert f"#define loom_test_fields_{name}_diagnostic_ref()" in ops_inc
+            assert f"loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, {index})" in ops_inc
         assert "ATTR_INDEX" not in ops_h
         assert '#include "loom/ops/test/ops.inc"' in ops_h
 
@@ -3547,14 +3553,16 @@ def test_attribute_rewriting_rejects_accessor_name_collisions() -> None:
             generate_ops_h("test", 0, [op])
 
 
-def test_attribute_setting_rejects_accessor_name_collisions() -> None:
-    fields = [AttrDef("count", ATTR_TYPE_I64), AttrDef("set_count", ATTR_TYPE_I64)]
-    for attrs in (fields, list(reversed(fields))):
-        op = Op("test.mutation", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
-        with _raises_value_error("setter accessor 'loom_test_mutation_set_count' conflicts with field 'set_count'"):
-            generate_ops_h("test", 0, [op])
-        with _raises_value_error("setter accessor 'loom_test_mutation_set_count' conflicts with field 'set_count'"):
-            generate_ops_inc([op])
+def test_attribute_helpers_reject_accessor_name_collisions() -> None:
+    for name, kind in (("set_count", "setter"), ("count_attr", "attribute"), ("initialize_count", "initializer"), ("count_diagnostic_ref", "diagnostic")):
+        fields = [AttrDef("count", ATTR_TYPE_I64), AttrDef(name, ATTR_TYPE_I64)]
+        for attrs in (fields, list(reversed(fields))):
+            op = Op("test.mutation", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
+            expected = f"{kind} accessor 'loom_test_mutation_{name}' conflicts with field '{name}'"
+            with _raises_value_error(expected):
+                generate_ops_h("test", 0, [op])
+            with _raises_value_error(expected):
+                generate_ops_inc([op])
 
 
 def test_attribute_field_binding_rejects_accessor_name_collisions() -> None:

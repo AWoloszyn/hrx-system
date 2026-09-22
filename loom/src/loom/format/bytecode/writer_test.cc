@@ -1306,8 +1306,8 @@ TEST_F(WriterTest, ClosedEnumAttributeRejectsFutureOrdinal) {
   IREE_ASSERT_OK(loom_test_cmp_build(&body_builder, LOOM_TEST_CMP_PREDICATE_EQ,
                                      arg_ids[0], arg_ids[0],
                                      LOOM_LOCATION_UNKNOWN, &cmp_op));
-  loom_op_attrs(cmp_op)[loom_test_cmp_predicate_field().index] =
-      loom_attr_enum(250);
+  IREE_ASSERT_OK(
+      loom_test_cmp_set_predicate(module, cmp_op, loom_attr_enum(250)));
   loom_value_id_t result_id = loom_test_cmp_result(cmp_op);
   loom_op_t* yield_op = nullptr;
   IREE_ASSERT_OK(loom_test_yield_build(&body_builder, &result_id, 1,

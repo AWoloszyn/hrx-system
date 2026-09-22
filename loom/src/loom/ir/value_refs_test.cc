@@ -95,16 +95,17 @@ class ValueRefsTest : public ::testing::Test {
     return count;
   }
 
-  std::vector<loom_value_id_t> Outgoing(loom_op_t* op,
-                                        uint8_t attribute_index) {
+  std::vector<loom_value_id_t> Outgoing(loom_op_t* op) {
     std::vector<loom_value_id_t> result;
-    loom_type_use_iterator_t dependencies;
-    loom_attribute_dependencies_begin(&module_->type_uses, op, attribute_index,
-                                      &dependencies);
-    for (auto provider = loom_type_dependencies_next(&dependencies);
-         provider != LOOM_VALUE_ID_INVALID;
-         provider = loom_type_dependencies_next(&dependencies)) {
-      result.push_back(provider);
+    for (uint8_t index = 0; index < op->attribute_count; ++index) {
+      loom_type_use_iterator_t dependencies;
+      loom_attribute_dependencies_begin(&module_->type_uses, op, index,
+                                        &dependencies);
+      for (auto provider = loom_type_dependencies_next(&dependencies);
+           provider != LOOM_VALUE_ID_INVALID;
+           provider = loom_type_dependencies_next(&dependencies)) {
+        result.push_back(provider);
+      }
     }
     return result;
   }
@@ -273,9 +274,8 @@ TEST_F(ValueRefsTest, SubtreeWalkStopsInsideRetainedMembershipBatch) {
   loom_predicate_t predicates[] = {
       Predicate(Constant(2)), Predicate(Constant(3)), Predicate(Constant(4))};
   auto* owner = Assume(input);
-  IREE_ASSERT_OK(loom_op_set_attr(module_, owner,
-                                  loom_test_assume_predicates_field().index,
-                                  loom_attr_predicate_list(predicates, 3)));
+  IREE_ASSERT_OK(loom_test_assume_set_predicates(
+      module_, owner, loom_attr_predicate_list(predicates, 3)));
   uint32_t visit_count = 0;
   IREE_EXPECT_STATUS_IS(IREE_STATUS_ABORTED,
                         loom_op_walk_subtree_value_refs(
@@ -292,8 +292,7 @@ TEST_F(ValueRefsTest, SubtreeWalkStopsInsideRetainedMembershipBatch) {
   // The ordinary operand and two batch members precede the failure. The
   // remaining batch member is not visited and the index remains unchanged.
   EXPECT_EQ(visit_count, 3u);
-  EXPECT_EQ(Outgoing(owner, loom_test_assume_predicates_field().index).size(),
-            3u);
+  EXPECT_EQ(Outgoing(owner).size(), 3u);
 }
 
 TEST_F(ValueRefsTest, DuplicateAndSharedOwnersUnlinkExactly) {
@@ -307,9 +306,8 @@ TEST_F(ValueRefsTest, DuplicateAndSharedOwnersUnlinkExactly) {
   IREE_ASSERT_OK(loom_op_erase(module_, middle));
   EXPECT_EQ(IncomingCount(original), 2u);
   loom_predicate_t predicate = Predicate(replacement);
-  IREE_ASSERT_OK(loom_op_set_attr(module_, first,
-                                  loom_test_assume_predicates_field().index,
-                                  loom_attr_predicate_list(&predicate, 1)));
+  IREE_ASSERT_OK(loom_test_assume_set_predicates(
+      module_, first, loom_attr_predicate_list(&predicate, 1)));
   EXPECT_EQ(IncomingCount(original), 1u);
   EXPECT_EQ(IncomingCount(replacement), 1u);
   IREE_ASSERT_OK(loom_op_erase(module_, last));
@@ -333,8 +331,8 @@ TEST_F(ValueRefsTest, BulkRebuildReplacesOldOwnersAndReusesStorage) {
   loom_op_t* owner = Assume(original);
   loom_predicate_t predicate = Predicate(replacement);
   // Bulk readers populate payloads directly before their use-def rebuild.
-  loom_op_attrs(owner)[loom_test_assume_predicates_field().index] =
-      loom_attr_predicate_list(&predicate, 1);
+  loom_test_assume_initialize_predicates(
+      owner, loom_attr_predicate_list(&predicate, 1));
   IREE_ASSERT_OK(loom_module_compute_uses(module_));
   EXPECT_FALSE(HasUses(original));
   EXPECT_EQ(IncomingCount(replacement), 1u);
@@ -355,10 +353,9 @@ TEST_F(ValueRefsTest, ReplacementMergesMembershipAndPreservesEveryOccurrence) {
                                    Predicate(other)};
   predicates[1].args[0] = original;
   predicates[2].args[1] = original;
-  IREE_ASSERT_OK(loom_op_set_attr(module_, owner,
-                                  loom_test_assume_predicates_field().index,
-                                  loom_attr_predicate_list(predicates, 3)));
-  EXPECT_EQ(Outgoing(owner, loom_test_assume_predicates_field().index),
+  IREE_ASSERT_OK(loom_test_assume_set_predicates(
+      module_, owner, loom_attr_predicate_list(predicates, 3)));
+  EXPECT_EQ(Outgoing(owner),
             (std::vector<loom_value_id_t>{original, replacement, other}));
   EXPECT_EQ(IncomingCount(original), 1u);
   EXPECT_EQ(IncomingCount(replacement), 1u);
@@ -366,7 +363,7 @@ TEST_F(ValueRefsTest, ReplacementMergesMembershipAndPreservesEveryOccurrence) {
 
   IREE_ASSERT_OK(
       loom_value_replace_all_uses_with(module_, original, replacement));
-  EXPECT_EQ(Outgoing(owner, loom_test_assume_predicates_field().index),
+  EXPECT_EQ(Outgoing(owner),
             (std::vector<loom_value_id_t>{replacement, other}));
   EXPECT_FALSE(HasUses(original));
   EXPECT_EQ(IncomingCount(replacement), 1u);
@@ -382,8 +379,7 @@ TEST_F(ValueRefsTest, ReplacementMergesMembershipAndPreservesEveryOccurrence) {
   // A second merge into an already-referenced value leaves one membership
   // without dropping any payload occurrence.
   IREE_ASSERT_OK(loom_value_replace_all_uses_with(module_, replacement, other));
-  EXPECT_EQ(Outgoing(owner, loom_test_assume_predicates_field().index),
-            (std::vector<loom_value_id_t>{other}));
+  EXPECT_EQ(Outgoing(owner), (std::vector<loom_value_id_t>{other}));
   EXPECT_FALSE(HasUses(replacement));
   EXPECT_EQ(IncomingCount(other), 1u);
   IREE_ASSERT_OK(loom_op_erase(module_, owner));
@@ -422,10 +418,10 @@ TEST_F(ValueRefsTest, FailedReplacementPayloadPreservesEdgesAndCanRetry) {
   predicates.fill(Predicate(original));
   ASSERT_GT(sizeof(predicates),
             iree_arena_block_pool_max_allocation_size(&pool_));
-  IREE_ASSERT_OK(loom_op_set_attr(
-      module_, owner, loom_test_assume_predicates_field().index,
+  IREE_ASSERT_OK(loom_test_assume_set_predicates(
+      module_, owner,
       loom_attr_predicate_list(predicates.data(), predicates.size())));
-  const auto edges = Outgoing(owner, loom_test_assume_predicates_field().index);
+  const auto edges = Outgoing(owner);
   const auto attribute = loom_test_assume_predicates(owner);
   fail_allocations_ = true;
   iree_status_t status =
@@ -433,18 +429,16 @@ TEST_F(ValueRefsTest, FailedReplacementPayloadPreservesEdgesAndCanRetry) {
   fail_allocations_ = false;
   IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED, status);
   EXPECT_GT(failed_allocations_, 0u);
-  EXPECT_EQ(Outgoing(owner, loom_test_assume_predicates_field().index), edges);
-  EXPECT_TRUE(loom_attribute_equal(
-      &attribute,
-      &loom_op_const_attrs(owner)[loom_test_assume_predicates_field().index]));
+  EXPECT_EQ(Outgoing(owner), edges);
+  EXPECT_TRUE(loom_attribute_equal(&attribute,
+                                   &loom_test_assume_predicates_attr(owner)));
   EXPECT_EQ(IncomingCount(original), 1u);
   EXPECT_FALSE(HasUses(replacement));
   EXPECT_EQ(loom_op_const_operands(owner)[0], original);
 
   IREE_ASSERT_OK(
       loom_value_replace_all_uses_with(module_, original, replacement));
-  EXPECT_EQ(Outgoing(owner, loom_test_assume_predicates_field().index),
-            (std::vector<loom_value_id_t>{replacement}));
+  EXPECT_EQ(Outgoing(owner), (std::vector<loom_value_id_t>{replacement}));
   EXPECT_FALSE(HasUses(original));
   EXPECT_EQ(IncomingCount(replacement), 1u);
   EXPECT_EQ(loom_op_const_operands(owner)[0], replacement);
@@ -473,20 +467,17 @@ TEST_F(ValueRefsTest, FailedPayloadWalkPreservesOldAttributeAndIndex) {
   };
   IREE_EXPECT_STATUS_IS(
       IREE_STATUS_INVALID_ARGUMENT,
-      loom_module_set_op_attribute(module_, owner,
-                                   loom_test_assume_predicates_field().index,
-                                   loom_make_canonical_attr_dict(entries, 2)));
-  EXPECT_TRUE(loom_attribute_equal(
-      &old_attribute,
-      &loom_op_const_attrs(owner)[loom_test_assume_predicates_field().index]));
+      loom_test_assume_set_predicates(
+          module_, owner, loom_make_canonical_attr_dict(entries, 2)));
+  EXPECT_TRUE(loom_attribute_equal(&old_attribute,
+                                   &loom_test_assume_predicates_attr(owner)));
   EXPECT_EQ(IncomingCount(original), 1u);
   EXPECT_EQ(IncomingCount(replacement), 0u);
   EXPECT_FALSE(HasUses(replacement));
   // Immutable membership prepared before the validation error remains reusable.
   const auto retained = module_->type_uses.arena.used_allocation_size;
-  IREE_ASSERT_OK(loom_op_set_attr(module_, owner,
-                                  loom_test_assume_predicates_field().index,
-                                  loom_attr_predicate_list(&predicate, 1)));
+  IREE_ASSERT_OK(loom_test_assume_set_predicates(
+      module_, owner, loom_attr_predicate_list(&predicate, 1)));
   EXPECT_EQ(module_->type_uses.arena.used_allocation_size, retained);
   EXPECT_FALSE(HasUses(original));
   EXPECT_EQ(IncomingCount(replacement), 1u);
@@ -507,7 +498,7 @@ TEST_F(ValueRefsTest, ScalarRefreshDropsFormerReferenceRecords) {
       loom_make_named_attr_slice(attributes, 1),
       loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), LOOM_LOCATION_UNKNOWN, &owner));
   EXPECT_EQ(IncomingCount(value), 1u);
-  loom_op_attrs(owner)[loom_test_attrs_dict_field().index] = loom_attr_absent();
+  loom_test_attrs_initialize_dict(owner, loom_attr_absent());
   IREE_ASSERT_OK(loom_module_refresh_op_attribute_uses(module_, owner));
   EXPECT_FALSE(HasUses(value));
   EXPECT_EQ(IncomingCount(value), 0u);
@@ -530,20 +521,18 @@ TEST_F(ValueRefsTest, FailedIndexGrowthPreservesOldOwnersAndCanRetry) {
   const auto attribute =
       loom_attr_predicate_list(predicates.data(), predicates.size());
   fail_allocations_ = true;
-  iree_status_t status = loom_op_set_attr(
-      module_, owner, loom_test_assume_predicates_field().index, attribute);
+  iree_status_t status =
+      loom_test_assume_set_predicates(module_, owner, attribute);
   fail_allocations_ = false;
   IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED, status);
   EXPECT_GT(failed_allocations_, 0u);
-  EXPECT_TRUE(loom_attribute_equal(
-      &old_attribute,
-      &loom_op_const_attrs(owner)[loom_test_assume_predicates_field().index]));
+  EXPECT_TRUE(loom_attribute_equal(&old_attribute,
+                                   &loom_test_assume_predicates_attr(owner)));
   EXPECT_EQ(IncomingCount(original), 1u);
   for (const auto& predicate : predicates) {
     EXPECT_FALSE(HasUses(predicate.args[0]));
   }
-  IREE_ASSERT_OK(loom_op_set_attr(
-      module_, owner, loom_test_assume_predicates_field().index, attribute));
+  IREE_ASSERT_OK(loom_test_assume_set_predicates(module_, owner, attribute));
   EXPECT_FALSE(HasUses(original));
   for (const auto& predicate : predicates) {
     EXPECT_EQ(IncomingCount(predicate.args[0]), 1u);
@@ -583,9 +572,8 @@ TEST_F(ValueRefsTest, RepackingResultsPreservesAttributeOwnership) {
   const loom_value_id_t replacement = loom_block_arg_id(
       loom_region_entry_block(loom_test_func_body(function)), 1);
   loom_predicate_t predicate = Predicate(argument);
-  IREE_ASSERT_OK(loom_op_set_attr(module_, function,
-                                  loom_test_func_predicates_field().index,
-                                  loom_attr_predicate_list(&predicate, 1)));
+  IREE_ASSERT_OK(loom_test_func_set_predicates(
+      module_, function, loom_attr_predicate_list(&predicate, 1)));
   const auto* old_attributes = loom_op_const_attrs(function);
   const bool remove[] = {false, true, false};
   uint16_t removed_count = 0;
@@ -598,19 +586,16 @@ TEST_F(ValueRefsTest, RepackingResultsPreservesAttributeOwnership) {
   EXPECT_EQ(removed_count, 1u);
   EXPECT_NE(loom_op_const_attrs(function), old_attributes);
   EXPECT_EQ(IncomingCount(argument), 1u);
-  EXPECT_EQ(Outgoing(function, loom_test_func_predicates_field().index),
-            (std::vector<loom_value_id_t>{argument}));
+  EXPECT_EQ(Outgoing(function), (std::vector<loom_value_id_t>{argument}));
   IREE_ASSERT_OK(
       loom_value_replace_all_uses_with(module_, argument, replacement));
-  EXPECT_EQ(Outgoing(function, loom_test_func_predicates_field().index),
-            (std::vector<loom_value_id_t>{replacement}));
+  EXPECT_EQ(Outgoing(function), (std::vector<loom_value_id_t>{replacement}));
   EXPECT_FALSE(HasUses(argument));
   EXPECT_EQ(IncomingCount(replacement), 1u);
   EXPECT_EQ(loom_test_func_predicates(function).predicate_list[0].args[0],
             replacement);
-  IREE_ASSERT_OK(loom_op_set_attr(module_, function,
-                                  loom_test_func_predicates_field().index,
-                                  loom_attr_absent()));
+  IREE_ASSERT_OK(
+      loom_test_func_set_predicates(module_, function, loom_attr_absent()));
   EXPECT_FALSE(HasUses(replacement));
 }
 
@@ -656,12 +641,10 @@ TEST_F(ValueRefsTest, PredicateNestedInsideTypeKeepsAttributeOwnership) {
       loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), LOOM_LOCATION_UNKNOWN, &owner));
   EXPECT_TRUE(HasUses(original));
   EXPECT_FALSE(loom_module_value_has_type_uses(module_, original));
-  EXPECT_EQ(Outgoing(owner, loom_test_attrs_dict_field().index),
-            (std::vector<loom_value_id_t>{original}));
+  EXPECT_EQ(Outgoing(owner), (std::vector<loom_value_id_t>{original}));
   IREE_ASSERT_OK(
       loom_value_replace_all_uses_with(module_, original, replacement));
-  EXPECT_EQ(Outgoing(owner, loom_test_attrs_dict_field().index),
-            (std::vector<loom_value_id_t>{replacement}));
+  EXPECT_EQ(Outgoing(owner), (std::vector<loom_value_id_t>{replacement}));
   EXPECT_FALSE(HasUses(original));
   EXPECT_EQ(IncomingCount(replacement), 1u);
   EXPECT_FALSE(loom_module_value_has_type_uses(module_, replacement));
@@ -700,13 +683,11 @@ TEST_F(ValueRefsTest, OneOwnerRetargetsTypeAndPredicateListsTogether) {
       &builder_, LOOM_TEST_ATTRS_BUILD_FLAG_HAS_DICT, original,
       loom_make_named_attr_slice(attributes, 2),
       loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), LOOM_LOCATION_UNKNOWN, &owner));
-  EXPECT_EQ(Outgoing(owner, loom_test_attrs_dict_field().index),
-            (std::vector<loom_value_id_t>{original}));
+  EXPECT_EQ(Outgoing(owner), (std::vector<loom_value_id_t>{original}));
   EXPECT_EQ(IncomingCount(original), 1u);
   IREE_ASSERT_OK(
       loom_value_replace_all_uses_with(module_, original, replacement));
-  EXPECT_EQ(Outgoing(owner, loom_test_attrs_dict_field().index),
-            (std::vector<loom_value_id_t>{replacement}));
+  EXPECT_EQ(Outgoing(owner), (std::vector<loom_value_id_t>{replacement}));
   EXPECT_FALSE(HasUses(original));
   EXPECT_EQ(IncomingCount(replacement), 1u);
   const auto updated = loom_test_attrs_dict(owner);
@@ -757,8 +738,7 @@ TEST_F(ValueRefsTest, SharedTypePathsRetainOneOwnerAndOneProvider) {
   auto* first = TypeOwner(original, type);
   auto* second = TypeOwner(original, type);
   EXPECT_EQ(IncomingCount(original), 2u);
-  EXPECT_EQ(Outgoing(first, loom_test_attrs_dict_field().index),
-            (std::vector<loom_value_id_t>{original}));
+  EXPECT_EQ(Outgoing(first), (std::vector<loom_value_id_t>{original}));
   EXPECT_FALSE(loom_module_value_has_type_uses(module_, original));
   IREE_ASSERT_OK(
       loom_value_replace_all_uses_with(module_, original, replacement));
@@ -778,15 +758,13 @@ TEST_F(ValueRefsTest, ForwardProvidersBecomeActiveAtRefreshAndRebuild) {
                                         loom_dim_pack_dynamic(available),
                                         loom_dim_pack_dynamic(8), 0);
   auto* owner = TypeOwner(available, type);
-  EXPECT_EQ(Outgoing(owner, loom_test_attrs_dict_field().index),
-            (std::vector<loom_value_id_t>{available}));
+  EXPECT_EQ(Outgoing(owner), (std::vector<loom_value_id_t>{available}));
   while (module_->values.count <= 8) {
     Constant(module_->values.count);
   }
   EXPECT_FALSE(HasUses(8));
   IREE_ASSERT_OK(loom_module_refresh_op_attribute_uses(module_, owner));
-  EXPECT_EQ(Outgoing(owner, loom_test_attrs_dict_field().index),
-            (std::vector<loom_value_id_t>{available, 8}));
+  EXPECT_EQ(Outgoing(owner), (std::vector<loom_value_id_t>{available, 8}));
   loom_module_drop_op_attribute_uses(module_, owner);
   EXPECT_FALSE(HasUses(available));
   EXPECT_FALSE(HasUses(8));
@@ -809,28 +787,22 @@ TEST_F(ValueRefsTest, FailedOwnerGrowthLeavesPayloadAndOtherOwnersIntact) {
   auto predicate = Predicate(original);
   const auto attribute = loom_attr_predicate_list(&predicate, 1);
   for (size_t i = 0; i + 1 < owners.size(); ++i) {
-    IREE_ASSERT_OK(loom_op_set_attr(module_, owners[i],
-                                    loom_test_assume_predicates_field().index,
-                                    attribute));
+    IREE_ASSERT_OK(
+        loom_test_assume_set_predicates(module_, owners[i], attribute));
   }
   const auto previous = loom_test_assume_predicates(owners.back());
   fail_allocations_ = true;
   auto status =
-      loom_op_set_attr(module_, owners.back(),
-                       loom_test_assume_predicates_field().index, attribute);
+      loom_test_assume_set_predicates(module_, owners.back(), attribute);
   fail_allocations_ = false;
   IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED, status);
   EXPECT_GT(failed_allocations_, 0u);
   EXPECT_TRUE(loom_attribute_equal(
-      &previous,
-      &loom_op_const_attrs(
-          owners.back())[loom_test_assume_predicates_field().index]));
+      &previous, &loom_test_assume_predicates_attr(owners.back())));
   EXPECT_EQ(IncomingCount(original), owners.size() - 1);
-  EXPECT_TRUE(Outgoing(owners.back(), loom_test_assume_predicates_field().index)
-                  .empty());
-  IREE_ASSERT_OK(loom_op_set_attr(module_, owners.back(),
-                                  loom_test_assume_predicates_field().index,
-                                  attribute));
+  EXPECT_TRUE(Outgoing(owners.back()).empty());
+  IREE_ASSERT_OK(
+      loom_test_assume_set_predicates(module_, owners.back(), attribute));
   EXPECT_EQ(IncomingCount(original), owners.size());
   for (auto* owner : owners) {
     IREE_ASSERT_OK(loom_op_erase(module_, owner));
@@ -849,23 +821,22 @@ TEST_F(ValueRefsTest, SparseMembershipCrossesBitmapAndValuePageBoundaries) {
     predicates[i] = Predicate(providers[providers.size() - i - 1]);
   }
   auto* owner = Assume(1);
-  IREE_ASSERT_OK(loom_op_set_attr(
-      module_, owner, loom_test_assume_predicates_field().index,
+  IREE_ASSERT_OK(loom_test_assume_set_predicates(
+      module_, owner,
       loom_attr_predicate_list(predicates.data(), predicates.size())));
-  EXPECT_EQ(Outgoing(owner, loom_test_assume_predicates_field().index),
-            providers);
+  EXPECT_EQ(Outgoing(owner), providers);
   for (const auto provider : providers) {
     EXPECT_EQ(IncomingCount(provider), 1u);
   }
   EXPECT_EQ(IncomingCount(2), 0u);
   EXPECT_EQ(IncomingCount(126), 0u);
   IREE_ASSERT_OK(loom_value_replace_all_uses_with(module_, 63, 64));
-  EXPECT_EQ(Outgoing(owner, loom_test_assume_predicates_field().index),
+  EXPECT_EQ(Outgoing(owner),
             (std::vector<loom_value_id_t>{1, 62, 64, 65, 127, 128, 255, 256}));
   EXPECT_FALSE(HasUses(63));
   EXPECT_EQ(IncomingCount(64), 1u);
   IREE_ASSERT_OK(loom_module_compute_uses(module_));
-  EXPECT_EQ(Outgoing(owner, loom_test_assume_predicates_field().index),
+  EXPECT_EQ(Outgoing(owner),
             (std::vector<loom_value_id_t>{1, 62, 64, 65, 127, 128, 255, 256}));
   IREE_ASSERT_OK(loom_op_erase(module_, owner));
   for (const auto provider : providers) {
@@ -911,9 +882,8 @@ TEST_F(ValueRefsTest, OverlappingMembershipMatchesOwnersAcrossMutation) {
     const auto attribute =
         pattern < 0 ? loom_attr_absent()
                     : loom_attr_predicate_list(predicates[pattern].data(), 4);
-    IREE_ASSERT_OK(loom_op_set_attr(module_, owners[owner_index],
-                                    loom_test_assume_predicates_field().index,
-                                    attribute));
+    IREE_ASSERT_OK(loom_test_assume_set_predicates(module_, owners[owner_index],
+                                                   attribute));
     if (iteration % 17 == 0) {
       IREE_ASSERT_OK(loom_module_compute_uses(module_));
     }
@@ -934,8 +904,8 @@ TEST_F(ValueRefsTest, OverlappingMembershipMatchesOwnersAcrossMutation) {
       loom_attribute_users_begin(&module_->type_uses, providers[i], &users);
       for (auto user = loom_attribute_users_next(&users); user.op;
            user = loom_attribute_users_next(&users)) {
-        EXPECT_EQ(user.attribute_index,
-                  loom_test_assume_predicates_field().index);
+        EXPECT_EQ(&loom_op_const_attrs(user.op)[user.attribute_index],
+                  &loom_test_assume_predicates_attr(user.op));
         EXPECT_TRUE(actual.insert(user.op).second);
       }
       EXPECT_EQ(actual, expected);

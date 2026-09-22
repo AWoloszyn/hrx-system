@@ -709,8 +709,16 @@ TEST_F(BuilderTest, EnumAttribute) {
   loom_op_t* op = NULL;
   IREE_ASSERT_OK(loom_builder_allocate_op(&builder_, LOOM_OP_TEST_CMP, 2, 1, 0,
                                           0, 1, LOOM_LOCATION_UNKNOWN, &op));
-  loom_op_initialize_attr(op, loom_test_cmp_predicate_field(),
-                          loom_attr_enum(LOOM_TEST_CMP_PREDICATE_LE));
+  int operation_evaluations = 0;
+  int attribute_evaluations = 0;
+  loom_test_cmp_initialize_predicate(
+      (++operation_evaluations, op),
+      (++attribute_evaluations, loom_attr_enum(LOOM_TEST_CMP_PREDICATE_LE)));
+  EXPECT_EQ(operation_evaluations, 1);
+  EXPECT_EQ(attribute_evaluations, 1);
+  EXPECT_EQ(loom_test_cmp_predicate_attr((++operation_evaluations, op)).kind,
+            LOOM_ATTR_ENUM);
+  EXPECT_EQ(operation_evaluations, 2);
   EXPECT_EQ(loom_test_cmp_predicate(op), LOOM_TEST_CMP_PREDICATE_LE);
 }
 

@@ -117,8 +117,8 @@ iree_status_t loom_low_build_resolved_descriptor_op(
     memcpy(loom_op_operands(*out_op), operands,
            operand_count * sizeof(loom_value_id_t));
   }
-  loom_op_initialize_attr(*out_op, loom_low_op_descriptor_field(),
-                          loom_attr_scoped_enum(descriptor_ordinal));
+  loom_low_op_initialize_descriptor(*out_op,
+                                    loom_attr_scoped_enum(descriptor_ordinal));
   loom_attribute_t attributes = loom_attr_absent();
   if (attrs.count > 0) {
     IREE_RETURN_IF_ERROR(loom_module_make_canonical_attr_dict(
@@ -126,7 +126,7 @@ iree_status_t loom_low_build_resolved_descriptor_op(
     IREE_RETURN_IF_ERROR(loom_low_resolve_immediate_enums(
         builder->module, descriptor_set, descriptor, &attributes));
   }
-  loom_op_initialize_attr(*out_op, loom_low_op_attrs_field(), attributes);
+  loom_low_op_initialize_attrs(*out_op, attributes);
   for (iree_host_size_t i = 0; i < result_count; ++i) {
     loom_value_id_t result_id = LOOM_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(
@@ -155,8 +155,8 @@ iree_status_t loom_low_build_resolved_descriptor_const(
       location, out_op));
   (*out_op)->traits =
       loom_low_descriptor_effective_traits(descriptor_set, descriptor);
-  loom_op_initialize_attr(*out_op, loom_low_const_descriptor_field(),
-                          loom_attr_scoped_enum(descriptor_ordinal));
+  loom_low_const_initialize_descriptor(
+      *out_op, loom_attr_scoped_enum(descriptor_ordinal));
   loom_attribute_t attributes = loom_attr_absent();
   if (attrs.count > 0) {
     IREE_RETURN_IF_ERROR(loom_module_make_canonical_attr_dict(
@@ -164,7 +164,7 @@ iree_status_t loom_low_build_resolved_descriptor_const(
     IREE_RETURN_IF_ERROR(loom_low_resolve_immediate_enums(
         builder->module, descriptor_set, descriptor, &attributes));
   }
-  loom_op_initialize_attr(*out_op, loom_low_const_attrs_field(), attributes);
+  loom_low_const_initialize_attrs(*out_op, attributes);
   loom_value_id_t result_id = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(
       loom_builder_define_value(builder, result_type, &result_id));

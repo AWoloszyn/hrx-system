@@ -522,8 +522,8 @@ class ReaderTest : public ::testing::Test {
         &builder, LOOM_TEST_RECORD_BUILD_FLAG_HAS_KIND,
         LOOM_TEST_RECORD_KIND_ARTIFACT, symbol, loom_named_attr_slice_empty(),
         LOOM_LOCATION_UNKNOWN, &record_op));
-    loom_op_attrs(record_op)[loom_test_record_kind_field().index] =
-        loom_attr_enum(250);
+    IREE_CHECK_OK(
+        loom_test_record_set_kind(module, record_op, loom_attr_enum(250)));
     return module;
   }
 

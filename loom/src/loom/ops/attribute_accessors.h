@@ -25,16 +25,6 @@ static inline loom_attribute_t loom_op_attr(const loom_op_t* op,
   return loom_op_const_attrs(op)[field.index];
 }
 
-// Initializes a newly allocated operation's attribute before finalization.
-// The payload's backing storage must outlive the operation. Finalized
-// operations use loom_op_set_attr or a rewriter to maintain references and
-// derived state.
-static inline void loom_op_initialize_attr(loom_op_t* op,
-                                           loom_attr_field_t field,
-                                           loom_attribute_t attribute) {
-  loom_op_attrs(op)[field.index] = attribute;
-}
-
 // Names an attribute field for structured diagnostic source-span resolution.
 static inline loom_diagnostic_field_ref_t loom_attr_field_diagnostic_ref(
     loom_attr_field_t field) {

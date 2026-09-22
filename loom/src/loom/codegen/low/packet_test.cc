@@ -117,8 +117,8 @@ TEST(LowPacketTest, GetsDescriptorPacketOpAttrs) {
   PacketAttrTestOp low_op_storage;
   low_op_storage.op.kind = LOOM_OP_LOW_OP;
   low_op_storage.op.attribute_count = IREE_ARRAYSIZE(low_op_storage.attrs);
-  loom_op_initialize_attr(
-      &low_op_storage.op, loom_low_op_attrs_field(),
+  loom_low_op_initialize_attrs(
+      &low_op_storage.op,
       loom_make_canonical_attr_dict(named_attrs, IREE_ARRAYSIZE(named_attrs)));
 
   loom_named_attr_slice_t attrs = loom_named_attr_slice_empty();
@@ -133,8 +133,8 @@ TEST(LowPacketTest, GetsDescriptorPacketOpAttrs) {
   low_const_storage.op.kind = LOOM_OP_LOW_CONST;
   low_const_storage.op.attribute_count =
       IREE_ARRAYSIZE(low_const_storage.attrs);
-  loom_op_initialize_attr(
-      &low_const_storage.op, loom_low_const_attrs_field(),
+  loom_low_const_initialize_attrs(
+      &low_const_storage.op,
       loom_make_canonical_attr_dict(named_attrs, IREE_ARRAYSIZE(named_attrs)));
 
   attrs = loom_named_attr_slice_empty();
@@ -154,8 +154,8 @@ TEST(LowPacketTest, GetsPacketViewAttrs) {
   PacketAttrTestOp low_op_storage;
   low_op_storage.op.kind = LOOM_OP_LOW_OP;
   low_op_storage.op.attribute_count = IREE_ARRAYSIZE(low_op_storage.attrs);
-  loom_op_initialize_attr(
-      &low_op_storage.op, loom_low_op_attrs_field(),
+  loom_low_op_initialize_attrs(
+      &low_op_storage.op,
       loom_make_canonical_attr_dict(named_attrs, IREE_ARRAYSIZE(named_attrs)));
 
   loom_low_schedule_node_t node = {};
