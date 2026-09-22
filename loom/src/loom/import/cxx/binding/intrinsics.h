@@ -17,6 +17,7 @@
 
 #include "loom/import/cxx/binding/assembly.h"
 #include "loom/import/cxx/binding/atomic.h"
+#include "loom/import/cxx/binding/kernel.h"
 #include "loom/import/cxx/binding/scalar_bindings.h"
 #include "loom/import/cxx/binding/shaped.h"
 #include "loom/import/cxx/binding/view.h"
@@ -62,9 +63,10 @@ class Intrinsics {
       return loom_type_equal(type, other.type);
     }
   };
-  using Binding = std::variant<ScalarBinding, ShapedIntrinsic, ViewIntrinsic,
-                               AtomicIntrinsic, FenceIntrinsic,
-                               AssemblyIntrinsic, EqualityBinding>;
+  using Binding =
+      std::variant<ScalarBinding, ShapedIntrinsic, ViewIntrinsic,
+                   AtomicIntrinsic, FenceIntrinsic, SubgroupIntrinsic,
+                   BarrierIntrinsic, AssemblyIntrinsic, EqualityBinding>;
 
   Intrinsics(cxx::TranslationUnit& unit, Diagnostics& diagnostics, Types& types)
       : unit_(unit), diagnostics_(diagnostics), types_(types) {}

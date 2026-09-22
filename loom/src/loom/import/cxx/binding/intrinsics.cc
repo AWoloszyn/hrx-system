@@ -119,6 +119,8 @@ void Intrinsics::declaration(cxx::FunctionSymbol* function,
                (!ViewIntrinsic::supports(selected->arguments[0]->name()) &&
                 !AtomicIntrinsic::supports(selected->arguments[0]->name()) &&
                 !FenceIntrinsic::supports(selected->arguments[0]->name()) &&
+                !SubgroupIntrinsic::supports(selected->arguments[0]->name()) &&
+                !BarrierIntrinsic::supports(selected->arguments[0]->name()) &&
                 !AssemblyIntrinsic::supports(selected->arguments[0]->name()))) {
       diagnostics_.reject(unit_, owner,
                           "function template operation has no C++ projection");
@@ -193,6 +195,14 @@ Intrinsics::Binding Intrinsics::resolve(cxx::FunctionSymbol* function,
   if (auto view = ViewIntrinsic::resolve(unit_, diagnostics_, types_, signature,
                                          attribute, owner)) {
     return *view;
+  }
+  if (auto subgroup = SubgroupIntrinsic::resolve(unit_, diagnostics_, types_,
+                                                 function, attribute, owner)) {
+    return *subgroup;
+  }
+  if (auto barrier = BarrierIntrinsic::resolve(unit_, diagnostics_, function,
+                                               attribute, owner)) {
+    return *barrier;
   }
   diagnostics_.reject(unit_, owner, "operation has no C++ projection");
 }
@@ -303,6 +313,13 @@ IntrinsicCallResult Intrinsics::call(const Binding& admitted,
   }
   if (auto* fence = std::get_if<FenceIntrinsic>(binding)) {
     fence->call(builder, location);
+    return {std::nullopt};
+  }
+  if (auto* subgroup = std::get_if<SubgroupIntrinsic>(binding)) {
+    return {Value(subgroup->call(arguments, builder, location))};
+  }
+  if (auto* barrier = std::get_if<BarrierIntrinsic>(binding)) {
+    barrier->call(builder, location);
     return {std::nullopt};
   }
   std::array<loom_value_id_t, 8> inline_values;

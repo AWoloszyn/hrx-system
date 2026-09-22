@@ -7,6 +7,8 @@
 #ifndef LOOMCXX_KERNEL_H_
 #define LOOMCXX_KERNEL_H_
 
+#include <loomcxx/atomic.h>
+
 // Launch geometry belongs on the entry with loom::workgroup_size(x, y, z) and
 // loom::workgroup_count(x, y, z). Unspecified dimensions remain Loom configs.
 // The corresponding *_range attributes take xmin, xmax, ymin, ymax, zmin, zmax
@@ -52,8 +54,61 @@ struct uint3 {
 // evaluated at runtime; calls, mutation, and unsupported predicates diagnose.
 [[loom::assume]] void assume(bool condition);
 
-// Reads the target-selected subgroup width; no fixed wave size is implied.
-[[loom::subgroup_size]] unsigned subgroup_size();
+// Reads this subgroup's zero-based coordinate within the workgroup.
+[[loom::op("kernel.subgroup.id")]] unsigned subgroup_id();
+
+// Counts subgroups in the workgroup, including a partially occupied subgroup.
+[[loom::op("kernel.subgroup.count")]] unsigned subgroup_count();
+
+// Reads this invocation's physical lane, without compacting inactive lanes.
+[[loom::op("kernel.subgroup.lane.id")]] unsigned subgroup_lane_id();
+
+// Reads the target-selected execution width, including inactive lanes. It may
+// exceed the workgroup size; no fixed wave size is implied.
+[[loom::op("kernel.subgroup.size")]] unsigned subgroup_size();
+
+// Votes over the active invocations at this convergent call. These operations
+// do not synchronize memory or rendezvous with other subgroups.
+[[loom::op("kernel.subgroup.vote.any")]] bool subgroup_any(bool predicate);
+[[loom::op("kernel.subgroup.vote.all")]] bool subgroup_all(bool predicate);
+
+// Bit i describes physical lane i. Mask must be a 32- or 64-bit integer whose
+// width covers the target subgroup; the default also covers 64-lane waves.
+template <class Mask = unsigned long long>
+[[loom::op("kernel.subgroup.vote.ballot")]] Mask subgroup_ballot(
+    bool predicate);
+
+// Returns the participating lanes with the same explicit mask-width contract.
+template <class Mask = unsigned long long>
+[[loom::op("kernel.subgroup.active.mask")]] Mask subgroup_active_mask();
+
+// Broadcasts a scalar or explicit vector from the named active lane. Native
+// lane-range and uniformity requirements follow the selected High target.
+template <class T>
+[[loom::op("kernel.subgroup.broadcast")]] T subgroup_broadcast(T value,
+                                                               unsigned lane);
+
+// Broadcasts from the first active lane, which need not be lane zero.
+template <class T>
+[[loom::op("kernel.subgroup.broadcast.first")]] T subgroup_broadcast_first(
+    T value);
+
+// Memory spaces ordered by an execution barrier.
+enum class memory_space {
+  // Device-visible global storage.
+  global = 1,
+  // Storage shared by invocations within a workgroup.
+  workgroup = 2,
+};
+
+// Rendezvous of all invocations in Scope (subgroup or workgroup) with memory
+// ordering in Space. Global memory accepts acquire, release, or acq_rel;
+// workgroup memory requires acq_rel. This does not complete asynchronous DMA.
+// A system publication still needs its matching system acquire/release; this
+// barrier distributes that ordering to cooperating invocations. Callable
+// helpers may contain barriers without requiring inlining.
+template <memory_space Space, atomic::scope Scope, atomic::ordering Ordering>
+[[loom::op("kernel.barrier")]] void barrier();
 
 // Exchanges values across lanes selected by XOR within the given width.
 [[loom::shuffle_xor]] float shuffle_xor(float value, int mask, int width);
