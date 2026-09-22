@@ -537,7 +537,7 @@ iree_status_t loom_value_fact_table_propagate_origins(
 // Computes facts for a single op. Ordinary ops call their vtable fact inference
 // function; LoopLike and RegionBranch ops visit their nested regions and
 // summarize the values returned to the parent results. Ops without either form
-// of fact inference define their results with unknown facts.
+// of fact inference derive result facts only from their types.
 iree_status_t loom_value_fact_table_compute_op(loom_value_fact_table_t* table,
                                                const loom_module_t* module,
                                                const loom_op_t* op);
@@ -554,11 +554,13 @@ iree_status_t loom_value_fact_table_compute_region_tree(
     loom_value_fact_table_t* table, const loom_module_t* module,
     loom_region_t* region, loom_op_t* parent_op);
 
-// Publishes structured region results and their dependent type-extent facts.
-// Missing result facts are unknown; changes are reported to the rewrite owner.
-iree_status_t loom_value_fact_table_define_region_results(
-    loom_value_fact_table_t* table, const loom_module_t* module, loom_op_t* op,
-    loom_value_facts_t* result_facts, uint16_t result_count, bool* out_changed);
+// Applies dependent type-extent constraints to a complete result set before
+// publishing its facts. Missing result facts are unknown. Only final changes
+// are reported to the rewrite owner; provisional sibling updates are private.
+iree_status_t loom_value_fact_table_define_results(
+    loom_value_fact_table_t* table, const loom_module_t* module,
+    const loom_op_t* op, loom_value_facts_t* result_facts,
+    uint16_t result_count, bool* out_changed);
 
 // Seeds the table by running a forward pass over |region| and its nested
 // regions. |function| supplies the logical function context for op fact

@@ -119,7 +119,6 @@ func.def @masked_multiple_remainder(%input: index) -> (index) {
   func.return %remainder : index
 }
 
-// A negative mask preserves the input's nonnegative range and clears low bits.
 func.def @negative_mask_alignment(%input: index) -> (index) {
   %remainder = index.constant 0 : index
   func.return %remainder : index
@@ -220,4 +219,61 @@ func.def @loop_extent_capture(%input: buffer, %extent: i32, %count: index) -> (i
     test.use %view : view<[%extent]xi32>
   }
   func.return %less : i1
+}
+
+// ====
+
+// A dependent call signature constrains its extent regardless of result order.
+// A separate scalar result without a shape dependency stays unconstrained.
+func.decl @shape_first() -> (view<[%extent]xf32>, %extent: i32)
+
+func.decl @extent_first() -> (%extent: i32, view<[%extent]xf32>)
+
+func.decl @scalar_only() -> (i32)
+
+func.def @shape_first_nonnegative() -> (i1) {
+  %view, %extent = func.call @shape_first() : () -> (view<[%extent]xf32>, i32)
+  %c0 = scalar.constant 0 : i32
+  %nonnegative = scalar.cmpi sge, %extent, %c0 : i32
+  func.return %nonnegative : i1
+}
+
+func.def @extent_first_nonnegative() -> (i1) {
+  %extent, %view = func.call @extent_first() : () -> (i32, view<[%extent]xf32>)
+  %c0 = scalar.constant 0 : i32
+  %nonnegative = scalar.cmpi sge, %extent, %c0 : i32
+  func.return %nonnegative : i1
+}
+
+func.def @scalar_only_unconstrained() -> (i1) {
+  %value = func.call @scalar_only() : () -> (i32)
+  %c0 = scalar.constant 0 : i32
+  %nonnegative = scalar.cmpi sge, %value, %c0 : i32
+  func.return %nonnegative : i1
+}
+
+// ----
+func.decl @shape_first() -> (view<[%extent]xf32>, %extent: i32)
+
+func.decl @extent_first() -> (%extent: i32, view<[%extent]xf32>)
+
+func.decl @scalar_only() -> (i32)
+
+func.def @shape_first_nonnegative() -> (i1) {
+  %view, %extent = func.call @shape_first() : () -> (view<[%extent]xf32>, i32)
+  %nonnegative = scalar.constant true : i1
+  func.return %nonnegative : i1
+}
+
+func.def @extent_first_nonnegative() -> (i1) {
+  %extent, %view = func.call @extent_first() : () -> (i32, view<[%extent]xf32>)
+  %nonnegative = scalar.constant true : i1
+  func.return %nonnegative : i1
+}
+
+func.def @scalar_only_unconstrained() -> (i1) {
+  %value = func.call @scalar_only() : () -> (i32)
+  %c0 = scalar.constant 0 : i32
+  %nonnegative = scalar.cmpi sge, %value, %c0 : i32
+  func.return %nonnegative : i1
 }

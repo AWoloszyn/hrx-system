@@ -520,8 +520,8 @@ static iree_status_t loom_value_fact_table_compute_counted_loop_summary(
       }
     }
   }
-  return loom_value_fact_table_define_region_results(
-      table, module, loop.op, result_facts, count, out_changed);
+  return loom_value_fact_table_define_results(table, module, loop.op,
+                                              result_facts, count, out_changed);
 }
 
 // The condition's tuple has separate true-edge and false-edge observations.
@@ -695,7 +695,7 @@ static iree_status_t loom_value_fact_table_compute_condition_loop_summary(
       }
     }
   }
-  return loom_value_fact_table_define_region_results(
+  return loom_value_fact_table_define_results(
       table, module, loop.op, forwarded_facts, count, out_changed);
 }
 
