@@ -419,8 +419,10 @@ def _expect_cc_execution_dynamic_library_bindings(env, target):
     _expect_runfiles_arguments(env, target)
     runfiles_environment = target[IreeRunfilesEnvironmentInfo].environment
     env.expect.that_str(
-        runfiles_environment[_TEST_DYNAMIC_LIBRARY_ENVIRONMENT].basename,
-    ).equals("dynamic_library_root.so")
+        runfiles_environment[_TEST_DYNAMIC_LIBRARY_ENVIRONMENT],
+    ).equals(
+        RUNFILES_PATH_BEGIN + target[RunEnvironmentInfo].environment[_TEST_DYNAMIC_LIBRARY_ENVIRONMENT] + RUNFILES_PATH_END,
+    )
     run_environment = target[RunEnvironmentInfo].environment
     library_path = run_environment[_TEST_DYNAMIC_LIBRARY_ENVIRONMENT]
     if not library_path.endswith(

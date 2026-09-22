@@ -6,7 +6,7 @@
 
 """Runtime-only dynamic-library bundles and dependency-graph collection."""
 
-load(":runfiles.bzl", "IreeRunfilesEnvironmentInfo")
+load(":runfiles.bzl", "IreeRunfilesEnvironmentInfo", "RUNFILES_PATH_BEGIN", "RUNFILES_PATH_END")
 
 IreeDynamicLibraryBundleInfo = provider(
     doc = "Runtime-only dynamic-library files and exact environment bindings.",
@@ -200,7 +200,10 @@ def inject_dynamic_library_bindings(
     if run_environment == None:
         result.append(updated_run_environment)
     result.append(IreeRunfilesEnvironmentInfo(
-        environment = bindings.environment,
+        environment = {
+            name: RUNFILES_PATH_BEGIN + file.short_path + RUNFILES_PATH_END
+            for name, file in bindings.environment.items()
+        },
     ))
     return result
 

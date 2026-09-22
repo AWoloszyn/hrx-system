@@ -21,7 +21,7 @@ CALLER_ARGUMENTS_ENV = "IREE_BAZEL_LAUNCH_CALLER_ARGUMENTS"
 CALLER_CWD_ENV = "IREE_BAZEL_LAUNCH_CALLER_CWD"
 MATERIALIZE_ENV = "IREE_BAZEL_LAUNCH_MATERIALIZE"
 RUNFILES_ARGUMENTS_ENV = "IREE_BAZEL_LAUNCH_RUNFILES_ARGUMENTS"
-RUNFILES_ENVIRONMENT_NAMES_ENV = "IREE_BAZEL_LAUNCH_RUNFILES_ENVIRONMENT_NAMES"
+RUNFILES_ENVIRONMENT_ENV = "IREE_BAZEL_LAUNCH_RUNFILES_ENVIRONMENT"
 SCRIPT_PATH_ENV = "IREE_BAZEL_LAUNCH_SCRIPT_PATH"
 CONTROL_ENVIRONMENT_NAMES = (
     ARGUMENT_SEPARATOR_ENV,
@@ -29,7 +29,7 @@ CONTROL_ENVIRONMENT_NAMES = (
     CALLER_CWD_ENV,
     MATERIALIZE_ENV,
     RUNFILES_ARGUMENTS_ENV,
-    RUNFILES_ENVIRONMENT_NAMES_ENV,
+    RUNFILES_ENVIRONMENT_ENV,
     SCRIPT_PATH_ENV,
 )
 RUNFILES_PATH_BEGIN = "__IREE_BAZEL_RUNFILE_PATH_BEGIN__"
@@ -75,7 +75,7 @@ def configured_environment(
     caller_arguments: list[str],
     runfiles_arguments: list[str],
     marked_runfiles_arguments: list[str],
-    runfiles_environment_names: list[str],
+    runfiles_environment: dict[str, str],
     script_path: Path,
     materialize: bool = False,
 ) -> dict[str, str]:
@@ -101,8 +101,8 @@ def configured_environment(
         },
         separators=(",", ":"),
     )
-    environment[RUNFILES_ENVIRONMENT_NAMES_ENV] = json.dumps(
-        runfiles_environment_names,
+    environment[RUNFILES_ENVIRONMENT_ENV] = json.dumps(
+        runfiles_environment,
         separators=(",", ":"),
     )
     environment[SCRIPT_PATH_ENV] = str(script_path)
@@ -181,7 +181,7 @@ def prepare_launch(
         encoded_caller_arguments = environment.pop(CALLER_ARGUMENTS_ENV)
         caller_cwd = Path(environment.pop(CALLER_CWD_ENV))
         encoded_arguments = environment.pop(RUNFILES_ARGUMENTS_ENV)
-        encoded_names = environment.pop(RUNFILES_ENVIRONMENT_NAMES_ENV)
+        encoded_environment = environment.pop(RUNFILES_ENVIRONMENT_ENV)
         script_path = Path(environment.pop(SCRIPT_PATH_ENV))
     except KeyError as exc:
         raise ValueError(
@@ -241,15 +241,16 @@ def prepare_launch(
     default_arguments = bazel_argv[1:separator_position]
 
     try:
-        runfiles_environment_names = json.loads(encoded_names)
+        runfiles_environment = json.loads(encoded_environment)
     except json.JSONDecodeError as exc:
-        raise ValueError("invalid runfiles environment name list") from exc
-    if not isinstance(runfiles_environment_names, list) or any(
-        not isinstance(name, str) or not name for name in runfiles_environment_names
+        raise ValueError("invalid runfiles environment") from exc
+    if not isinstance(runfiles_environment, dict) or any(
+        not isinstance(name, str) or not name or not isinstance(value, str)
+        for name, value in runfiles_environment.items()
     ):
-        raise ValueError("runfiles environment names must be non-empty strings")
+        raise ValueError("runfiles environment must map non-empty names to strings")
     runfiles_environment_name_keys = [
-        environment_name_key(name) for name in runfiles_environment_names
+        environment_name_key(name) for name in runfiles_environment
     ]
     if len(runfiles_environment_name_keys) != len(set(runfiles_environment_name_keys)):
         raise ValueError("runfiles environment names must be unique")
@@ -284,24 +285,30 @@ def prepare_launch(
             f"configured Bazel target executable does not exist: {executable_path}"
         )
     target_argv = [str(executable_path), *default_arguments, *caller_arguments]
-    for name in runfiles_environment_names:
+    for name, marked_value in runfiles_environment.items():
         value = environment_value(environment, name)
         if value is None:
             raise ValueError(f"Bazel launcher did not set environment variable {name}")
-        path = Path(value)
-        if not path.is_absolute():
-            path = bazel_cwd / path
-        if not path.is_file():
-            raise FileNotFoundError(
-                f"runfile environment variable {name} points to missing file {path}"
+        expected_value = marked_value.replace(RUNFILES_PATH_BEGIN, "").replace(
+            RUNFILES_PATH_END, ""
+        )
+        if value != expected_value:
+            raise ValueError(
+                f"Bazel launcher changed runfile environment variable {name}"
             )
+        try:
+            resolved_value = resolve_marked_runfiles_arguments(
+                [marked_value], bazel_cwd=bazel_cwd
+            )[0]
+        except (ValueError, FileNotFoundError) as exc:
+            raise type(exc)(f"runfile environment variable {name}: {exc}") from exc
         name_key = environment_name_key(name)
         environment = {
             candidate_name: candidate_value
             for candidate_name, candidate_value in environment.items()
             if environment_name_key(candidate_name) != name_key
         }
-        environment[name] = str(path)
+        environment[name] = resolved_value
 
     if not caller_cwd.is_dir():
         raise NotADirectoryError(
