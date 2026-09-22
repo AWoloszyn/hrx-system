@@ -335,8 +335,8 @@ TEST_F(CSETest, RewriterReplaceAttrDictBuildsFreshCanonicalDict) {
   iree_arena_initialize(&block_pool_, &pass_arena);
   loom_rewriter_t rewriter;
   loom_rewriter_initialize(&rewriter, module_, &pass_arena);
-  IREE_ASSERT_OK(loom_rewriter_replace_attr_dict(
-      &rewriter, attrs_op, loom_test_attrs_dict_field().index,
+  IREE_ASSERT_OK(loom_test_attrs_update_dict(
+      &rewriter, attrs_op,
       loom_make_named_attr_update_slice(updates, IREE_ARRAYSIZE(updates))));
   loom_rewriter_deinitialize(&rewriter);
   iree_arena_deinitialize(&pass_arena);
@@ -391,8 +391,8 @@ TEST_F(CSETest, RewriterReplaceAttrDictRecordsTypeValueRefs) {
   iree_arena_initialize(&block_pool_, &pass_arena);
   loom_rewriter_t rewriter;
   loom_rewriter_initialize(&rewriter, module_, &pass_arena);
-  IREE_ASSERT_OK(loom_rewriter_replace_attr_dict(
-      &rewriter, attrs_op, loom_test_attrs_dict_field().index,
+  IREE_ASSERT_OK(loom_test_attrs_update_dict(
+      &rewriter, attrs_op,
       loom_make_named_attr_update_slice(updates, IREE_ARRAYSIZE(updates))));
   loom_rewriter_deinitialize(&rewriter);
   iree_arena_deinitialize(&pass_arena);

@@ -27,8 +27,8 @@ static const loom_xdna_device_profile_t* loom_aie2p_target_profile(
 static void loom_aie2p_target_facts_project(
     const loom_target_record_view_t* record, loom_target_facts_t* base_facts) {
   loom_aie2p_target_facts_t* facts = (loom_aie2p_target_facts_t*)base_facts;
-  const loom_attribute_t profile_attr = loom_target_record_view_attribute(
-      record, loom_aie2p_target_device_profile_field().index);
+  const loom_attribute_t profile_attr =
+      loom_aie2p_target_device_profile_from_record(record);
   if (!loom_attr_is_absent(profile_attr)) {
     facts->device_profile = loom_aie2p_target_profile(
         loom_target_record_view_string(record, profile_attr));

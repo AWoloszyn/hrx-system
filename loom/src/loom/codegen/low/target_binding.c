@@ -211,17 +211,17 @@ static bool loom_low_get_function_target_ref(const loom_op_t* low_func_op,
                                              uint16_t* out_target_attr_index) {
   if (loom_low_func_def_isa(low_func_op)) {
     *out_target_ref = loom_low_func_def_target(low_func_op);
-    *out_target_attr_index = loom_low_func_def_target_field().index;
+    *out_target_attr_index = loom_low_func_def_target_diagnostic_ref().index;
     return true;
   }
   if (loom_low_kernel_def_isa(low_func_op)) {
     *out_target_ref = loom_low_kernel_def_target(low_func_op);
-    *out_target_attr_index = loom_low_kernel_def_target_field().index;
+    *out_target_attr_index = loom_low_kernel_def_target_diagnostic_ref().index;
     return true;
   }
   if (loom_low_func_decl_isa(low_func_op)) {
     *out_target_ref = loom_low_func_decl_target(low_func_op);
-    *out_target_attr_index = loom_low_func_decl_target_field().index;
+    *out_target_attr_index = loom_low_func_decl_target_diagnostic_ref().index;
     return true;
   }
   return false;

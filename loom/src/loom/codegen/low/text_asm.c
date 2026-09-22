@@ -226,8 +226,8 @@ static iree_status_t loom_low_descriptor_text_asm_make_packet(
       .asm_immediate_count = asm_form->immediate_count,
       .immediate_count = descriptor->immediate_count,
       .immediate_attribute_field_index =
-          builds_as_const ? loom_low_const_attrs_field().index
-                          : loom_low_op_attrs_field().index,
+          builds_as_const ? loom_low_const_attrs_diagnostic_ref().index
+                          : loom_low_op_attrs_diagnostic_ref().index,
       .has_named_immediates = has_named_immediates,
       .operation_kind = builds_as_const ? LOOM_OP_LOW_CONST : LOOM_OP_LOW_OP,
   };
@@ -1137,14 +1137,8 @@ static iree_status_t loom_low_descriptor_text_asm_operand_segment_descriptor(
 }
 
 static iree_status_t loom_low_descriptor_text_asm_attr_slice(
-    const loom_op_t* op, uint8_t attr_index,
-    loom_named_attr_slice_t* out_attrs) {
+    loom_attribute_t attr, loom_named_attr_slice_t* out_attrs) {
   *out_attrs = loom_make_named_attr_slice(NULL, 0);
-  if (attr_index >= op->attribute_count) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "low asm packet immediate dictionary is missing");
-  }
-  const loom_attribute_t attr = loom_op_attrs(op)[attr_index];
   if (loom_attr_is_absent(attr)) {
     return iree_ok_status();
   }
@@ -1291,20 +1285,20 @@ static iree_status_t loom_low_descriptor_text_asm_describe_packet(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_module_t* module, const loom_op_t* op, bool is_const,
     loom_text_low_asm_statement_t* out_statement) {
-  const uint8_t descriptor_attr_index =
-      is_const ? loom_low_const_descriptor_field().index
-               : loom_low_op_descriptor_field().index;
-  const uint8_t attrs_attr_index = is_const ? loom_low_const_attrs_field().index
-                                            : loom_low_op_attrs_field().index;
-
-  if (descriptor_attr_index >= op->attribute_count ||
-      loom_op_attrs(op)[descriptor_attr_index].kind != LOOM_ATTR_SCOPED_ENUM) {
+  const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
+  if (op->attribute_count != vtable->attribute_count) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "low asm packet has an invalid attribute count");
+  }
+  const loom_attribute_t descriptor_attr =
+      is_const ? loom_low_const_descriptor_attr(op)
+               : loom_low_op_descriptor_attr(op);
+  if (descriptor_attr.kind != LOOM_ATTR_SCOPED_ENUM) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
         "low asm packet descriptor must be a representation-scoped enum");
   }
-  const uint32_t descriptor_ordinal =
-      loom_attr_as_scoped_enum(loom_op_attrs(op)[descriptor_attr_index]);
+  const uint32_t descriptor_ordinal = loom_attr_as_scoped_enum(descriptor_attr);
   const loom_low_descriptor_t* descriptor =
       loom_low_descriptor_set_descriptor_at(descriptor_set, descriptor_ordinal);
   if (descriptor == NULL) {
@@ -1333,8 +1327,9 @@ static iree_status_t loom_low_descriptor_text_asm_describe_packet(
   }
 
   loom_named_attr_slice_t attrs = loom_make_named_attr_slice(NULL, 0);
-  IREE_RETURN_IF_ERROR(
-      loom_low_descriptor_text_asm_attr_slice(op, attrs_attr_index, &attrs));
+  IREE_RETURN_IF_ERROR(loom_low_descriptor_text_asm_attr_slice(
+      is_const ? loom_low_const_attrs_attr(op) : loom_low_op_attrs_attr(op),
+      &attrs));
   IREE_RETURN_IF_ERROR(
       loom_low_descriptor_text_asm_validate_immediates(module, &packet, attrs));
 
@@ -1373,7 +1368,7 @@ static iree_status_t loom_low_descriptor_text_asm_describe_packet(
       .operand_count = op->operand_count,
       .attributes = attrs,
       .has_immediate_attribute_field = true,
-      .immediate_attribute_field_index = attrs_attr_index,
+      .immediate_attribute_field_index = packet.immediate_attribute_field_index,
       .location = op->location,
   };
   return iree_ok_status();

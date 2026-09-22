@@ -123,11 +123,17 @@ TEST_F(TargetFactsTest, ProjectionBorrowsStringsWithoutRetainingSourceAccess) {
       loom_target_bundle_table_lookup(descriptor->bundle_table, selector);
   std::vector<loom_attribute_t> attributes(vtable->attribute_count,
                                            loom_attr_absent());
-  attributes[loom_target_generic_kind_field().index] = loom_attr_enum(selector);
-  attributes[loom_target_generic_export_symbol_field().index] =
-      loom_attr_string(1);
-  attributes[loom_target_generic_contract_set_key_field().index] =
-      loom_attr_string(0);
+  attributes[vtable->target_like->selector_attr_index] =
+      loom_attr_enum(selector);
+  for (uint8_t i = 0; i < descriptor->projection_count; ++i) {
+    const auto& projection = descriptor->projections[i];
+    if (projection.fact_field == LOOM_TARGET_FACT_FIELD_EXPORT_SYMBOL) {
+      attributes[projection.attr_index] = loom_attr_string(1);
+    } else if (projection.fact_field ==
+               LOOM_TARGET_FACT_FIELD_CONTRACT_SET_KEY) {
+      attributes[projection.attr_index] = loom_attr_string(0);
+    }
+  }
   const iree_string_view_t first_strings[] = {IREE_SV("first_contract"),
                                               IREE_SV("first_entry")};
   const iree_string_view_t second_strings[] = {IREE_SV("second_contract"),
@@ -248,8 +254,8 @@ target.generic<reference> @gpu
 )");
   const loom_symbol_id_t symbol_id = FindSymbol(module.get(), IREE_SV("gpu"));
   loom_op_t* target_op = module->symbols.entries[symbol_id].defining_op;
-  loom_op_attrs(target_op)[loom_target_generic_kind_field().index] =
-      loom_attr_enum(UINT8_MAX);
+  IREE_ASSERT_OK(loom_target_generic_set_kind(module.get(), target_op,
+                                              loom_attr_enum(UINT8_MAX)));
 
   const loom_symbol_facts_base_t* facts = nullptr;
   IREE_ASSERT_OK(loom_symbol_fact_table_lookup(&fact_table_, module.get(),

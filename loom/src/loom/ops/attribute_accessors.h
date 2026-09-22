@@ -4,8 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// Schema-bound operation attribute access. Generated dialect APIs name fields;
-// shared readers and interpreters consume their compact slot bindings.
+// Typed attribute readers used by generated operation APIs.
 
 #ifndef LOOM_OPS_ATTRIBUTE_ACCESSORS_H_
 #define LOOM_OPS_ATTRIBUTE_ACCESSORS_H_
@@ -17,20 +16,6 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
-
-// Returns a complete stored attribute, preserving its kind and optional
-// absence.
-static inline loom_attribute_t loom_op_attr(const loom_op_t* op,
-                                            loom_attr_field_t field) {
-  return loom_op_const_attrs(op)[field.index];
-}
-
-// Names an attribute field for structured diagnostic source-span resolution.
-static inline loom_diagnostic_field_ref_t loom_attr_field_diagnostic_ref(
-    loom_attr_field_t field) {
-  return loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE,
-                                   field.index);
-}
 
 // Defines a function that reads an i64 attribute by index.
 #define LOOM_DEFINE_ATTR_I64(func_name, index)           \

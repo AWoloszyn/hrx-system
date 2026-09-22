@@ -127,7 +127,7 @@ TEST(LowPacketTest, GetsDescriptorPacketOpAttrs) {
                                            &attrs_attr_index));
   EXPECT_EQ(attrs.entries, named_attrs);
   EXPECT_EQ(attrs.count, 1u);
-  EXPECT_EQ(attrs_attr_index, loom_low_op_attrs_field().index);
+  EXPECT_EQ(attrs_attr_index, loom_low_op_attrs_diagnostic_ref().index);
 
   PacketAttrTestOp low_const_storage;
   low_const_storage.op.kind = LOOM_OP_LOW_CONST;
@@ -143,7 +143,7 @@ TEST(LowPacketTest, GetsDescriptorPacketOpAttrs) {
                                            &attrs_attr_index));
   EXPECT_EQ(attrs.entries, named_attrs);
   EXPECT_EQ(attrs.count, 1u);
-  EXPECT_EQ(attrs_attr_index, loom_low_const_attrs_field().index);
+  EXPECT_EQ(attrs_attr_index, loom_low_const_attrs_diagnostic_ref().index);
 }
 
 TEST(LowPacketTest, GetsPacketViewAttrs) {

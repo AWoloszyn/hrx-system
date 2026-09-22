@@ -15,6 +15,7 @@ from loom.dsl import (
     EncodingFamilyDef,
     Op,
     ParameterizedAttrDef,
+    TargetLikeInterface,
 )
 from loom.fields import compute_layout
 from loom.gen.ops import c_builders, c_interfaces
@@ -65,13 +66,17 @@ def _validate_attribute_accessor_names(op: Op) -> None:
         if attr.attr_type == ATTR_TYPE_FLAGS:
             continue
         accessors = {
-            f"{attr.name}_field": "field",
             f"{attr.name}_attr": "attribute",
+            f"{attr.name}_descriptor": "descriptor",
             f"initialize_{attr.name}": "initializer",
             f"{attr.name}_diagnostic_ref": "diagnostic",
             f"set_{attr.name}": "setter",
             f"rewrite_{attr.name}": "rewrite",
         }
+        if attr.attr_type == "dict":
+            accessors[f"update_{attr.name}"] = "dictionary update"
+        if any(isinstance(interface, TargetLikeInterface) for interface in op.interfaces):
+            accessors[f"{attr.name}_from_record"] = "record"
         if attr.optional:
             accessors[f"has_{attr.name}"] = "presence"
         for name, kind in accessors.items():
@@ -93,6 +98,7 @@ def generate_ops_inc(ops: Sequence[Op]) -> str:
             "// Named mutation forwards to the module or rewriter ownership boundary.",
             "// Setters maintain references and derived state; rewrites also notify the",
             "// active rewrite driver. Attribute payload storage must outlive the op.",
+            "// Dictionary updates apply named entry changes through the rewriter.",
             "// Pass ABSENT to clear an optional field. Each argument is evaluated once.",
             "",
         ]
@@ -105,10 +111,16 @@ def generate_ops_inc(ops: Sequence[Op]) -> str:
             continue
         lines.append(f"// {op.name}.")
         for index, attr in enumerate(attrs):
-            lines.append(f"#define {prefix}_{attr.name}_field() \\")
-            lines.append(f"  ((loom_attr_field_t){{{index}}})")
             lines.append(f"#define {prefix}_{attr.name}_attr(op) \\")
             lines.append(f"  (loom_op_const_attrs((op))[{index}])")
+            lines.append(f"#define {prefix}_{attr.name}_descriptor(module, op) \\")
+            lines.append(f"  (&loom_op_vtable((module), (op))->attr_descriptors[{index}])")
+            if any(isinstance(interface, TargetLikeInterface) for interface in op.interfaces):
+                lines.append(f"#define {prefix}_{attr.name}_from_record(record) \\")
+                lines.append(f"  loom_target_record_view_attribute((record), {index})")
+            if attr.attr_type == "dict":
+                lines.append(f"#define {prefix}_update_{attr.name}(rewriter, op, updates) \\")
+                lines.append(f"  loom_rewriter_replace_attr_dict((rewriter), (op), {index}, (updates))")
             lines.append(f"#define {prefix}_initialize_{attr.name}(op, attribute) \\")
             lines.append(f"  ((void)(loom_op_attrs((op))[{index}] = (attribute)))")
             lines.append(f"#define {prefix}_{attr.name}_diagnostic_ref() \\")

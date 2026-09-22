@@ -7,6 +7,7 @@
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 
 from loom.assembly import (
     COLON,
@@ -3494,8 +3495,7 @@ def test_attribute_accessors_bind_to_schema_fields() -> None:
         ops_h = generate_ops_h("test", 0, [op])
         ops_inc = generate_ops_inc([op])
         for index, name in enumerate(names):
-            assert f"#define loom_test_fields_{name}_field()" in ops_inc
-            assert f"((loom_attr_field_t){{{index}}})" in ops_inc
+            assert f"#define loom_test_fields_{name}_field()" not in ops_inc
             assert f"#define loom_test_fields_set_{name}(module, op, attribute)" in ops_inc
             assert f"loom_op_set_attr((module), (op), {index}, (attribute))" in ops_inc
             assert f"LOOM_DEFINE_ATTR_I64(loom_test_fields_{name}, {index})" in ops_h
@@ -3522,8 +3522,7 @@ def test_optional_attribute_presence_uses_stored_slots_without_function_bodies()
         ops_inc = generate_ops_inc([op])
         index = [attr.name for attr in attrs if attr.attr_type != ATTR_TYPE_FLAGS].index("optional")
         assert "ATTR_INDEX" not in ops_h
-        assert "#define loom_test_presence_optional_field()" in ops_inc
-        assert f"((loom_attr_field_t){{{index}}})" in ops_inc
+        assert "#define loom_test_presence_optional_field()" not in ops_inc
         assert "loom_test_presence_flags_field" not in ops_inc
         assert "#define loom_test_presence_has_optional(op)" in ops_h
         assert f"(!loom_attr_is_absent(loom_op_const_attrs((op))[{index}]))" in ops_h
@@ -3554,7 +3553,7 @@ def test_attribute_rewriting_rejects_accessor_name_collisions() -> None:
 
 
 def test_attribute_helpers_reject_accessor_name_collisions() -> None:
-    for name, kind in (("set_count", "setter"), ("count_attr", "attribute"), ("initialize_count", "initializer"), ("count_diagnostic_ref", "diagnostic")):
+    for name, kind in (("set_count", "setter"), ("count_attr", "attribute"), ("count_descriptor", "descriptor"), ("initialize_count", "initializer"), ("count_diagnostic_ref", "diagnostic")):
         fields = [AttrDef("count", ATTR_TYPE_I64), AttrDef(name, ATTR_TYPE_I64)]
         for attrs in (fields, list(reversed(fields))):
             op = Op("test.mutation", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
@@ -3565,12 +3564,30 @@ def test_attribute_helpers_reject_accessor_name_collisions() -> None:
                 generate_ops_inc([op])
 
 
-def test_attribute_field_binding_rejects_accessor_name_collisions() -> None:
-    fields = [AttrDef("count", ATTR_TYPE_I64), AttrDef("count_field", ATTR_TYPE_I64)]
-    for attrs in (fields, list(reversed(fields))):
-        op = Op("test.binding", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
-        with _raises_value_error("field accessor 'loom_test_binding_count_field' conflicts with field 'count_field'"):
-            generate_ops_h("test", 0, [op])
+def test_dictionary_updates_require_dictionary_fields() -> None:
+    for field_type in ("dict", ATTR_TYPE_I64):
+        op = Op("test.update", group=Dialect("test"), attrs=[AttrDef("payload", field_type)])
+        helpers = generate_ops_inc([op])
+        assert ("loom_test_update_update_payload" in helpers) == (field_type == "dict")
+        op = replace(op, attrs=[*op.attrs, AttrDef("update_payload", ATTR_TYPE_I64)])
+        if field_type == "dict":
+            with _raises_value_error("dictionary update accessor"):
+                generate_ops_inc([op])
+        else:
+            generate_ops_inc([op])
+
+
+def test_target_record_readers_follow_schema_positions() -> None:
+    op = _target_projection_test_op()
+    for attrs in (op.attrs, list(reversed(op.attrs))):
+        helpers = generate_ops_inc([replace(op, attrs=attrs)])
+        for index, attr in enumerate(attrs):
+            assert (f"#define loom_test_target_{attr.name}_from_record(record) \\\n  loom_target_record_view_attribute((record), {index})") in helpers
+    op = replace(op, attrs=[*op.attrs, AttrDef("kind_from_record", ATTR_TYPE_I64)])
+    with _raises_value_error("record accessor"):
+        generate_ops_inc([op])
+    op = replace(op, interfaces=[])
+    assert "loom_target_record_view_attribute" not in generate_ops_inc([op])
 
 
 def test_scoped_enum_generates_domain_aware_format_metadata() -> None:
