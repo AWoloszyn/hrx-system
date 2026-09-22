@@ -298,7 +298,7 @@ def emit_register_facts() -> str:
     for key, pattern, field in fields:
         access_and_flags = _REGISTER_ACCESS_IDS[field.access]
         if field.is_signed:
-            access_and_flags += " | LOOM_XDNA_REGISTER_FIELD_FLAG_SIGNED"
+            access_and_flags = f"(uint8_t){access_and_flags} | LOOM_XDNA_REGISTER_FIELD_FLAG_SIGNED"
         field_lines.append(
             "    {"
             f".name_offset = UINT16_C({string_offsets[key]}), "
