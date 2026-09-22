@@ -70,6 +70,44 @@ TEST(TypesTest, FunctionTypeEqualAndHashAreStructural) {
   EXPECT_FALSE(loom_type_equal(first.get(), different.get()));
 }
 
+TEST(TypesTest, SharedTypeSequencesKeepStructuralOwnerChecks) {
+  const auto i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+  const auto f32 = loom_type_scalar(LOOM_SCALAR_TYPE_F32);
+  std::vector<OwnedFunctionType> nodes;
+  nodes.reserve(32);
+  loom_type_t shared = i32;
+  for (int i = 0; i < 32; ++i) {
+    const loom_type_t children[] = {shared, shared};
+    nodes.emplace_back(BuildFunctionType(children, 2, nullptr, 0));
+    shared = nodes.back().get();
+  }
+  EXPECT_TRUE(loom_type_equal(shared, shared));
+
+  // Distinct owners can share an arbitrarily deep immutable child while
+  // differing in a later sibling, arity, or dialect name.
+  const loom_type_t arguments[] = {shared, i32};
+  const loom_type_t duplicate_arguments[] = {shared, i32};
+  const loom_type_t different_arguments[] = {shared, f32};
+  const auto first = BuildFunctionType(arguments, 2, nullptr, 0);
+  const auto duplicate = BuildFunctionType(duplicate_arguments, 2, nullptr, 0);
+  const auto different = BuildFunctionType(different_arguments, 2, nullptr, 0);
+  const auto fewer_arguments = BuildFunctionType(arguments, 1, nullptr, 0);
+  EXPECT_TRUE(loom_type_equal(first.get(), duplicate.get()));
+  EXPECT_FALSE(loom_type_equal(first.get(), different.get()));
+  EXPECT_FALSE(loom_type_equal(first.get(), fewer_arguments.get()));
+
+  const auto dialect = loom_type_dialect(70000u, 2, arguments);
+  EXPECT_TRUE(loom_type_equal(dialect, dialect));
+  EXPECT_TRUE(loom_type_equal(
+      dialect, loom_type_dialect(70000u, 2, duplicate_arguments)));
+  EXPECT_FALSE(loom_type_equal(
+      dialect, loom_type_dialect(70000u, 2, different_arguments)));
+  EXPECT_FALSE(
+      loom_type_equal(dialect, loom_type_dialect(70001u, 2, arguments)));
+  EXPECT_FALSE(
+      loom_type_equal(dialect, loom_type_dialect(70000u, 1, arguments)));
+}
+
 TEST(TypesTest, FunctionTypeQueriesPreserveCombinedArity) {
   const auto argument_type = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   const auto result_type = loom_type_scalar(LOOM_SCALAR_TYPE_F32);

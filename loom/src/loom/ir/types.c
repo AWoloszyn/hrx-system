@@ -52,11 +52,12 @@ iree_status_t loom_type_function_build(const loom_type_t* arg_types,
 static bool loom_type_sequence_equal(const loom_type_t* a_types,
                                      const loom_type_t* b_types,
                                      iree_host_size_t type_count) {
-  if (type_count == 0) {
+  // Identical immutable sequences need no recursive child comparison.
+  if (type_count == 0 || a_types == b_types) {
     return true;
   }
   if (!a_types || !b_types) {
-    return a_types == b_types;
+    return false;
   }
   for (iree_host_size_t i = 0; i < type_count; ++i) {
     if (!loom_type_equal(a_types[i], b_types[i])) {

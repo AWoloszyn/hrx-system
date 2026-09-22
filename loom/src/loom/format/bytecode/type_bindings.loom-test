@@ -1,5 +1,14 @@
 // RUN: format bytecode
 
+// Body arguments reuse the signature's canonical nested function types.
+// Repeated callback types retain the same body-local dimension provider.
+func.def @shared_callbacks(%width: index, %callbacks: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> (), %value: f32) -> (f32) {
+  func.return %value : f32
+}
+
+// ====
+// RUN: format bytecode
+
 // Static parameter metadata can reference a symbol declared after its user.
 // Symbols are available before the validated type plan is constructed.
 func.decl @read_static(%buffer: test.array<vector<4xf32>, metadata = {callee = @static_helper}>)
