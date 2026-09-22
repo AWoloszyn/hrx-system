@@ -243,25 +243,18 @@ if(IREE_HAL_DRIVER_AMDGPU)
   target_link_libraries(libhrx_src_libhrx_hrx PRIVATE
     iree::hal::drivers::amdgpu::registration
   )
-  target_compile_definitions(libhrx_src_libhrx_hrx.objects PRIVATE
+  target_compile_definitions(libhrx_src_libhrx_hrx PRIVATE
     HRX_HAS_IREE_AMDGPU_DRIVER
   )
 endif()
-# IREE's allocator selector is exposed as a compile definition on the base
-# library target. libhrx is compiled through IREE's object-library wrapper, so
-# forward that definition to the object targets that actually compile sources
-# using iree_allocator_system().
-foreach(_hrx_object_target
-    libhrx_src_libhrx_hrx_static.objects
-    libhrx_src_libhrx_hrx.objects)
-  target_compile_definitions(${_hrx_object_target} PRIVATE
-    $<TARGET_PROPERTY:iree_base_base,INTERFACE_COMPILE_DEFINITIONS>
-  )
+foreach(_hrx_target
+    libhrx_src_libhrx_hrx_static
+    libhrx_src_libhrx_hrx)
   foreach(_hrx_generated_header_target
       op_table_gen
       encoding_table_gen)
     if(TARGET ${_hrx_generated_header_target})
-      add_dependencies(${_hrx_object_target} ${_hrx_generated_header_target})
+      add_dependencies(${_hrx_target} ${_hrx_generated_header_target})
     endif()
   endforeach()
 endforeach()

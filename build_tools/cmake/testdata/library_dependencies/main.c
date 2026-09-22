@@ -6,7 +6,7 @@
 
 #include <stdio.h>
 
-#if defined(PRIVATE_VALUE)
+#if defined(PRIVATE_VALUE) || defined(LATE_VALUE)
 #error "Private library requirements must not escape to consumers."
 #endif
 

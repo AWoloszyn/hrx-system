@@ -9,5 +9,6 @@
 int fixture_leaf_value(void);
 
 int fixture_library_value(void) {
-  return GENERATED_VALUE + TRANSITIVE_VALUE + fixture_leaf_value();
+  return GENERATED_VALUE + TRANSITIVE_VALUE + fixture_leaf_value() +
+         PRIVATE_VALUE + LATE_VALUE;
 }

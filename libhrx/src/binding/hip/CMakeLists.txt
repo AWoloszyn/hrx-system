@@ -1015,12 +1015,12 @@ endif()
 # Point HIP DSO tests at the shared object built in this tree so they dlopen()
 # the exact artifact under test, and make sure that artifact is built first.
 # The build-tree path is only valid for the in-tree CTest run.
-if(TARGET libhrx_src_binding_hip_hip_dso_test_util.objects)
-  target_compile_definitions(libhrx_src_binding_hip_hip_dso_test_util.objects
+if(TARGET libhrx_src_binding_hip_hip_dso_test_util)
+  target_compile_definitions(libhrx_src_binding_hip_hip_dso_test_util
     PRIVATE
       "HRX_TEST_LIBAMDHIP64_PATH=\"$<TARGET_FILE:libhrx_src_binding_hip_amdhip64>\""
   )
-  add_dependencies(libhrx_src_binding_hip_hip_dso_test_util.objects
+  add_dependencies(libhrx_src_binding_hip_hip_dso_test_util
     libhrx_src_binding_hip_amdhip64
   )
 endif()
