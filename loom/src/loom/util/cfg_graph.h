@@ -93,6 +93,10 @@ typedef struct loom_cfg_block_info_t {
   uint16_t component;
   // True when this block can reach itself through one or more CFG edges.
   bool component_is_cyclic;
+  // True when a reachable DFS descendant (including this block) has an edge
+  // to this block. Every other reachable block finishes before all of its
+  // reachable predecessors in DFS postorder.
+  bool is_dfs_backedge_target;
   // Earliest DFS node reachable from this block, or UINT16_MAX if unreachable.
   // Every node in that root's DFS subtree is also reachable, including paths
   // through reconvergence.

@@ -775,14 +775,14 @@ static bool loom_cfg_simplify_is_alpha_merge_candidate(
   return true;
 }
 
-// Acyclic successors finish before their predecessors in DFS postorder, so
-// their planned destinations are final. Cyclic successors retain original
-// identities: their destinations may still change after this key is inserted.
+// Successors without incoming DFS backedges finish before every predecessor,
+// so their planned destinations are final, including within loops. Backedge
+// targets retain original identities because they may still be unfinished.
 static uint16_t loom_cfg_simplify_successor_key(const loom_cfg_graph_t* graph,
                                                 const uint16_t* destinations,
                                                 const loom_block_t* successor) {
   const uint16_t block_index = successor->region_index;
-  if (!destinations || graph->blocks[block_index].component_is_cyclic ||
+  if (!destinations || graph->blocks[block_index].is_dfs_backedge_target ||
       destinations[block_index] == 0) {
     return block_index;
   }
@@ -1135,8 +1135,8 @@ static iree_status_t loom_cfg_simplify_merge_equivalent_blocks(
   bool* remove_blocks = NULL;
   uint16_t merge_count = 0;
   iree_status_t status = iree_ok_status();
-  // Reuse the graph owner's DFS completion order. Each acyclic successor's
-  // merge is decided before its predecessors are compared, so a complete
+  // Reuse the graph owner's DFS completion order and backedge facts. Successor
+  // keys are final before their predecessors are compared, so a complete
   // equivalent tail can share this edit without another analysis refresh.
   for (iree_host_size_t i = graph->reverse_postorder.count;
        i > 0 && iree_status_is_ok(status); --i) {

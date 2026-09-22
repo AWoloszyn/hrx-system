@@ -236,9 +236,16 @@ static iree_status_t loom_cfg_graph_build_traversal(
         component_stack[component_stack_count++] = successor_index;
         stack_blocks[stack_count] = successor_index;
         stack_successor_positions[stack_count++] = 0;
-      } else if (graph->blocks[successor_index].component == UINT16_MAX) {
-        lowlinks[block_index] = iree_min(
-            lowlinks[block_index], graph->blocks[successor_index].preorder);
+      } else {
+        // Discovered blocks have a zero subtree end until their DFS frame
+        // finishes. A completed block may still be on the Tarjan stack.
+        if (graph->blocks[successor_index].preorder_end == 0) {
+          graph->blocks[successor_index].is_dfs_backedge_target = true;
+        }
+        if (graph->blocks[successor_index].component == UINT16_MAX) {
+          lowlinks[block_index] = iree_min(
+              lowlinks[block_index], graph->blocks[successor_index].preorder);
+        }
       }
       const uint16_t successor_root =
           graph->blocks[successor_index].reachability_root;
