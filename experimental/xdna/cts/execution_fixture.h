@@ -17,6 +17,8 @@
 #include "experimental/xdna/executable.h"
 #include "iree/base/internal/shm.h"
 #include "iree/hal/drivers/amd/xdna/image/aie2p/npu2.h"
+#include "iree/hal/drivers/amd/xdna/image/testdata/add_i32.h"
+#include "iree/hal/drivers/amd/xdna/image/testdata/add_i32_npu4.h"
 #include "iree/hal/drivers/amd/xdna/image/testdata/mul_i32.h"
 #include "iree/hal/drivers/amd/xdna/image/testdata/mul_i32_npu4.h"
 #include "iree/hal/drivers/amd/xdna/image/testing/image_fixture.h"
@@ -26,7 +28,7 @@
 
 namespace iree::experimental::xdna::testing {
 
-// Both canonical compiler fixtures multiply sixteen low-32-bit integer pairs.
+// Canonical compiler fixtures operate on sixteen low-32-bit integer pairs.
 constexpr size_t kElementCount = 16;
 constexpr size_t kBindingByteLength = kElementCount * sizeof(uint32_t);
 constexpr size_t kBindingByteOffset = kBindingByteLength;
@@ -43,6 +45,8 @@ constexpr BindingValues kValues = {
 
 class XdnaExecutionFixture : public XdnaDeviceFixture {
  protected:
+  enum class Program { kMultiply, kAdd };
+
   struct MappedMemory {
     // Owned allocation, or null for a view borrowing separately owned backing.
     amdf_memory_t* memory = nullptr;
@@ -84,18 +88,8 @@ class XdnaExecutionFixture : public XdnaDeviceFixture {
         << "required time-sliced XDNA contexts are unavailable";
     instruction_alignment_ = device_info.instruction.address_alignment;
 
-    iree_hal_amd_xdna_aie2p_target_t target;
     IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
-        iree_make_cstring_view(info.target_id), 1, &target));
-    const iree_file_toc_t* image = nullptr;
-    if (target.identity.device_profile_id == UINT64_C(0x5354524958000001)) {
-      image = iree_hal_amd_xdna_test_mul_i32_npu4_create();
-    } else if (target.identity.device_profile_id ==
-               UINT64_C(0x535848414C4F0001)) {
-      image = iree_hal_amd_xdna_test_mul_i32_create();
-    } else {
-      FAIL() << "no canonical multiplication fixture for " << info.target_id;
-    }
+        iree_make_cstring_view(info.target_id), 1, &target_));
     amdf_endpoint_info_t endpoint_info = {};
     endpoint_info.type = AMDF_STRUCTURE_TYPE_ENDPOINT_INFO;
     endpoint_info.structure_size = sizeof(endpoint_info);
@@ -117,13 +111,35 @@ class XdnaExecutionFixture : public XdnaDeviceFixture {
     }
     ASSERT_NE(family_ordinal, UINT32_MAX);
     queue_family_ordinal_ = family_ordinal;
+    ASSERT_NO_FATAL_FAILURE(
+        LoadProgram(Program::kMultiply, &executable_, &entry_ordinal_));
+  }
+
+  void LoadProgram(Program program, iree_hal_amd_xdna_image_t** out_image,
+                   uint32_t* out_entry_ordinal) {
+    const iree_file_toc_t* image = nullptr;
+    if (target_.identity.device_profile_id == UINT64_C(0x5354524958000001)) {
+      image = program == Program::kMultiply
+                  ? iree_hal_amd_xdna_test_mul_i32_npu4_create()
+                  : iree_hal_amd_xdna_test_add_i32_npu4_create();
+    } else if (target_.identity.device_profile_id ==
+               UINT64_C(0x535848414C4F0001)) {
+      image = program == Program::kMultiply
+                  ? iree_hal_amd_xdna_test_mul_i32_create()
+                  : iree_hal_amd_xdna_test_add_i32_create();
+    } else {
+      FAIL() << "no canonical arithmetic fixture for profile "
+             << target_.identity.device_profile_id;
+    }
     const auto* image_bytes = reinterpret_cast<const uint8_t*>(image->data);
     auto sequence = iree::hal::amd::xdna::testing::MakeOwnedByteSequence(
         std::vector<uint8_t>(image_bytes, image_bytes + image->size));
     IREE_ASSERT_OK(iree_hal_amd_xdna_image_create(
-        sequence.get(), &target, iree_allocator_system(), &executable_));
+        sequence.get(), &target_, iree_allocator_system(), out_image));
     IREE_ASSERT_OK(iree_hal_amd_xdna_image_find_entry(
-        executable_, IREE_SV("mul_i32"), &entry_ordinal_));
+        *out_image,
+        program == Program::kMultiply ? IREE_SV("mul_i32") : IREE_SV("add_i32"),
+        out_entry_ordinal));
   }
 
   void DestroyMemory(MappedMemory* memory) {
@@ -656,6 +672,8 @@ class XdnaExecutionFixture : public XdnaDeviceFixture {
 
   // Native kernel queue family selected from the libamdf endpoint.
   uint32_t queue_family_ordinal_ = UINT32_MAX;
+  // Image compatibility facts selected from the enumerated target identity.
+  iree_hal_amd_xdna_aie2p_target_t target_ = {};
   // Case-owned immutable decoded compiler image.
   iree_hal_amd_xdna_image_t* executable_ = nullptr;
   // Indexed multiplication entry in the immutable image.

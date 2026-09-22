@@ -76,6 +76,8 @@ iree_cc_test(
     ::image
     iree::base
     iree::hal::drivers::amd::xdna::image::aie2p::npu2
+    iree::hal::drivers::amd::xdna::image::testdata::add_i32
+    iree::hal::drivers::amd::xdna::image::testdata::add_i32_npu4
     iree::hal::drivers::amd::xdna::image::testdata::mul_i32
     iree::hal::drivers::amd::xdna::image::testdata::mul_i32_npu4
     iree::testing::gtest

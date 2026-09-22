@@ -11,6 +11,38 @@ iree_add_all_subdirs()
 
 iree_c_embed_data(
   NAME
+    add_i32
+  SRCS
+    "add_i32.xdna"
+  C_FILE_OUTPUT
+    "add_i32.c"
+  H_FILE_OUTPUT
+    "add_i32.h"
+  IDENTIFIER
+    "iree_hal_amd_xdna_test_add_i32"
+  TESTONLY
+  FLATTEN
+  PUBLIC
+)
+
+iree_c_embed_data(
+  NAME
+    add_i32_npu4
+  SRCS
+    "add_i32_npu4.xdna"
+  C_FILE_OUTPUT
+    "add_i32_npu4.c"
+  H_FILE_OUTPUT
+    "add_i32_npu4.h"
+  IDENTIFIER
+    "iree_hal_amd_xdna_test_add_i32_npu4"
+  TESTONLY
+  FLATTEN
+  PUBLIC
+)
+
+iree_c_embed_data(
+  NAME
     mul_i32
   SRCS
     "mul_i32.xdna"

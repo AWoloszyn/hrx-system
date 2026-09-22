@@ -4,10 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <cstring>
 #include <vector>
 
 #include "iree/hal/drivers/amd/xdna/image/aie2p/npu2.h"
 #include "iree/hal/drivers/amd/xdna/image/image.h"
+#include "iree/hal/drivers/amd/xdna/image/testdata/add_i32.h"
+#include "iree/hal/drivers/amd/xdna/image/testdata/add_i32_npu4.h"
 #include "iree/hal/drivers/amd/xdna/image/testdata/mul_i32.h"
 #include "iree/hal/drivers/amd/xdna/image/testdata/mul_i32_npu4.h"
 #include "iree/testing/gtest.h"
@@ -48,15 +51,23 @@ iree_status_t EnumerateSource(const iree_byte_sequence_t* base,
 const iree_byte_sequence_vtable_t kSourceVtable = {DestroySource,
                                                    EnumerateSource, nullptr};
 
-TEST(XdnaImageCorpusTest,
-     RetainsSegmentedCompilerImagesAcrossSupportedProfiles) {
+class XdnaImageCorpusTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(XdnaImageCorpusTest,
+       RetainsSegmentedCompilerImagesAcrossSupportedProfiles) {
   const char* targets[] = {"amd.xdna.strix_halo.17f0_11",
                            "amd.xdna.strix.17f0_10",
                            "amd.xdna.krackan.17f0_20"};
   for (size_t device = 0; device < std::size(targets); ++device) {
-    const iree_file_toc_t* file =
-        device == 0 ? iree_hal_amd_xdna_test_mul_i32_create()
-                    : iree_hal_amd_xdna_test_mul_i32_npu4_create();
+    const bool multiply = std::strcmp(GetParam(), "mul_i32") == 0;
+    const iree_file_toc_t* file = nullptr;
+    if (multiply) {
+      file = device == 0 ? iree_hal_amd_xdna_test_mul_i32_create()
+                         : iree_hal_amd_xdna_test_mul_i32_npu4_create();
+    } else {
+      file = device == 0 ? iree_hal_amd_xdna_test_add_i32_create()
+                         : iree_hal_amd_xdna_test_add_i32_npu4_create();
+    }
     iree_hal_amd_xdna_aie2p_target_t target;
     IREE_ASSERT_OK(iree_hal_amd_xdna_aie2p_npu2_target_initialize(
         iree_make_cstring_view(targets[device]), 1, &target));
@@ -74,7 +85,7 @@ TEST(XdnaImageCorpusTest,
       EXPECT_FALSE(source.destroyed);
       uint32_t ordinal = UINT32_MAX;
       IREE_EXPECT_OK(iree_hal_amd_xdna_image_find_entry(
-          image, IREE_SV("mul_i32"), &ordinal));
+          image, iree_make_cstring_view(GetParam()), &ordinal));
       const auto* tables = iree_hal_amd_xdna_image_tables(image);
       const auto entry = iree_hal_amd_xdna_image_tables_entry(tables, ordinal);
       EXPECT_EQ(entry.binding_count, 3u);
@@ -99,5 +110,8 @@ TEST(XdnaImageCorpusTest,
     }
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(ArithmeticPrograms, XdnaImageCorpusTest,
+                         ::testing::Values("mul_i32", "add_i32"));
 
 }  // namespace

@@ -13,6 +13,26 @@ package(
 )
 
 iree_c_embed_data(
+    name = "add_i32",
+    testonly = True,
+    srcs = ["add_i32.xdna"],
+    c_file_output = "add_i32.c",
+    flatten = True,
+    h_file_output = "add_i32.h",
+    identifier = "iree_hal_amd_xdna_test_add_i32",
+)
+
+iree_c_embed_data(
+    name = "add_i32_npu4",
+    testonly = True,
+    srcs = ["add_i32_npu4.xdna"],
+    c_file_output = "add_i32_npu4.c",
+    flatten = True,
+    h_file_output = "add_i32_npu4.h",
+    identifier = "iree_hal_amd_xdna_test_add_i32_npu4",
+)
+
+iree_c_embed_data(
     name = "mul_i32",
     testonly = True,
     srcs = ["mul_i32.xdna"],

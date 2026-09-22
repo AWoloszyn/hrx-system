@@ -199,6 +199,8 @@ xdna_cc_library(
         "//runtime/src/iree/base/internal:shm",
         "//runtime/src/iree/hal",
         "//runtime/src/iree/hal/drivers/amd/xdna/image/aie2p:npu2",
+        "//runtime/src/iree/hal/drivers/amd/xdna/image/testdata:add_i32",
+        "//runtime/src/iree/hal/drivers/amd/xdna/image/testdata:add_i32_npu4",
         "//runtime/src/iree/hal/drivers/amd/xdna/image/testdata:mul_i32",
         "//runtime/src/iree/hal/drivers/amd/xdna/image/testdata:mul_i32_npu4",
         "//runtime/src/iree/hal/drivers/amd/xdna/image/testing:image_fixture",
