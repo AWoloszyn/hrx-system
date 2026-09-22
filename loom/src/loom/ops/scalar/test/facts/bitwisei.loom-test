@@ -279,3 +279,67 @@ func.def @guarded_first_set_bit(%mask: i32) -> (i32, i1) {
   %bounded = scalar.constant true : i1
   func.return %lane, %bounded : i32, i1
 }
+
+// ====
+
+func.def @logical_shift_i8_bounds(%input: i8) -> (i64, i64) {
+  %amount = scalar.constant 4 : i8
+  %shifted = scalar.shrui %input, %amount : i8
+  %lo = test.fact_range_lo %shifted : i8 -> i64
+  %hi = test.fact_range_hi %shifted : i8 -> i64
+  func.return %lo, %hi : i64, i64
+}
+// ----
+func.def @logical_shift_i8_bounds(%input: i8) -> (i64, i64) {
+  %lo = scalar.constant 0 : i64
+  %hi = scalar.constant 15 : i64
+  func.return %lo, %hi : i64, i64
+}
+
+// ====
+
+func.def @logical_shift_i16_bounds(%input: i16) -> (i64, i64) {
+  %amount = scalar.constant 12 : i16
+  %shifted = scalar.shrui %input, %amount : i16
+  %lo = test.fact_range_lo %shifted : i16 -> i64
+  %hi = test.fact_range_hi %shifted : i16 -> i64
+  func.return %lo, %hi : i64, i64
+}
+// ----
+func.def @logical_shift_i16_bounds(%input: i16) -> (i64, i64) {
+  %lo = scalar.constant 0 : i64
+  %hi = scalar.constant 15 : i64
+  func.return %lo, %hi : i64, i64
+}
+
+// ====
+
+func.def @logical_shift_i32_bounds(%input: i32) -> (i64, i64) {
+  %amount = scalar.constant 28 : i32
+  %shifted = scalar.shrui %input, %amount : i32
+  %lo = test.fact_range_lo %shifted : i32 -> i64
+  %hi = test.fact_range_hi %shifted : i32 -> i64
+  func.return %lo, %hi : i64, i64
+}
+// ----
+func.def @logical_shift_i32_bounds(%input: i32) -> (i64, i64) {
+  %lo = scalar.constant 0 : i64
+  %hi = scalar.constant 15 : i64
+  func.return %lo, %hi : i64, i64
+}
+
+// ====
+
+func.def @logical_shift_i64_bounds(%input: i64) -> (i64, i64) {
+  %amount = scalar.constant 60 : i64
+  %shifted = scalar.shrui %input, %amount : i64
+  %lo = test.fact_range_lo %shifted : i64 -> i64
+  %hi = test.fact_range_hi %shifted : i64 -> i64
+  func.return %lo, %hi : i64, i64
+}
+// ----
+func.def @logical_shift_i64_bounds(%input: i64) -> (i64, i64) {
+  %lo = scalar.constant 0 : i64
+  %hi = scalar.constant 15 : i64
+  func.return %lo, %hi : i64, i64
+}

@@ -533,3 +533,22 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @offset_
   %result = s_or_b64 %15, %18
   return %result
 }
+
+// ====
+
+// RUN: pass target=amdgpu:gfx1151 canonicalize
+
+// A logical index shift uses the selected 32-bit carrier.
+func.def @logical_shift_carrier(%coordinate: index) -> (i64, i64) {
+  %amount = index.constant 1 : index
+  %shifted = index.shrui %coordinate, %amount : index
+  %lo = test.fact_range_lo %shifted : index -> i64
+  %hi = test.fact_range_hi %shifted : index -> i64
+  func.return %lo, %hi : i64, i64
+}
+// ----
+func.def @logical_shift_carrier(%coordinate: index) -> (i64, i64) {
+  %lo = scalar.constant 0 : i64
+  %hi = scalar.constant 2147483647 : i64
+  func.return %lo, %hi : i64, i64
+}

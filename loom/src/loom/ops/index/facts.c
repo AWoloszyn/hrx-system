@@ -362,7 +362,28 @@ LOOM_INDEX_BINARY_FACTS(loom_index_ori_facts, loom_value_facts_ori)
 LOOM_INDEX_BINARY_FACTS(loom_index_xori_facts, loom_value_facts_xori)
 LOOM_INDEX_BINARY_FACTS(loom_index_shli_facts, loom_value_facts_shli)
 LOOM_INDEX_BINARY_FACTS(loom_index_shrsi_facts, loom_value_facts_shrsi)
-LOOM_INDEX_BINARY_FACTS(loom_index_shrui_facts, loom_value_facts_shrui)
+iree_status_t loom_index_shrui_facts(loom_fact_context_t* context,
+                                     const loom_module_t* module,
+                                     const loom_op_t* op,
+                                     const loom_value_facts_t* operand_facts,
+                                     loom_value_facts_t* result_facts) {
+  int32_t bit_count =
+      loom_index_target_carrier_bitwidth(context, LOOM_SCALAR_TYPE_INDEX);
+  // Non-negative mathematical values shift identically at every carrier width
+  // that can represent them. Signed bit patterns require a selected carrier.
+  if (bit_count == 0 && operand_facts[0].range_lo >= 0) {
+    bit_count = 64;
+  }
+  if (bit_count <= 0) {
+    result_facts[0] = loom_value_facts_unknown();
+    loom_value_facts_propagate_binary_distribution(
+        operand_facts[0], operand_facts[1], &result_facts[0]);
+    return iree_ok_status();
+  }
+  loom_value_facts_shrui(&operand_facts[0], &operand_facts[1], bit_count,
+                         &result_facts[0]);
+  return iree_ok_status();
+}
 
 static iree_status_t loom_index_rotate_facts(
     const loom_fact_context_t* context, const loom_value_facts_t* operand_facts,
