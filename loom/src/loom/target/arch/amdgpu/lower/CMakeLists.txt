@@ -57,6 +57,7 @@ loom_cc_library(
     "abi.h"
     "arithmetic.h"
     "async.h"
+    "atomic_ordering.h"
     "bitpack.h"
     "buffer.h"
     "cluster_preamble.h"
@@ -140,6 +141,7 @@ loom_cc_library(
     "arithmetic.c"
     "async.c"
     "atomic.c"
+    "atomic_ordering.c"
     "bitpack.c"
     "buffer.c"
     "cluster_preamble.c"
@@ -292,6 +294,23 @@ loom_cc_library(
     loom::util::fact_table
     loom::util::numeric_format
   PUBLIC
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU)
+loom_cc_test(
+  NAME
+    atomic_ordering_test
+  SRCS
+    "atomic_ordering_test.cc"
+  DEPS
+    ::lower
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ops::atomic
+    loom::target::arch::amdgpu::descriptors::low_registry
+  LABELS
+    "iree-build-requirement=loom.target.arch.amdgpu"
 )
 endif()
 

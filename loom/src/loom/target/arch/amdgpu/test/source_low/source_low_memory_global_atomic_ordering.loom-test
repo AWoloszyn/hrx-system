@@ -27,7 +27,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core> abi_layout({constant_count = 0,
   %19 = s_mov_b32 256
   %20 = s_mov_b32 822173696
   %21 = concat(%18, %19, %20) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
-  s_waitcnt {vmcnt = 0}
+  s_waitcnt {vmcnt = 0, lgkmcnt = 0}
   s_waitcnt_vscnt {vscnt = 0}
   %13 = v_mov_b32 1
   buffer_atomic_add_u32 %13, %21, %10, %11
@@ -98,7 +98,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core> abi_layout({constant_count = 0,
   %21 = s_mov_b32 256
   %22 = s_mov_b32 822173696
   %23 = concat(%20, %21, %22) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
-  s_waitcnt {vmcnt = 0}
+  s_waitcnt {vmcnt = 0, lgkmcnt = 0}
   s_waitcnt_vscnt {vscnt = 0}
   %14 = v_mov_b32 1
   %old = buffer_atomic_add_u32_rtn %14, %23, %11, %12
@@ -137,7 +137,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core> abi_layout({constant_count = 0,
   %26 = s_mov_b32 256
   %27 = s_mov_b32 822173696
   %28 = concat(%25, %26, %27) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
-  s_waitcnt {vmcnt = 0}
+  s_waitcnt {vmcnt = 0, lgkmcnt = 0}
   s_waitcnt_vscnt {vscnt = 0}
   %16 = v_mov_b32 7
   %17 = v_mov_b32 9
@@ -177,7 +177,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core> abi_layout({constant_count = 0,
   %19 = s_mov_b32 256
   %20 = s_mov_b32 822173696
   %21 = concat(%18, %19, %20) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
-  s_waitcnt {vmcnt = 0}
+  s_waitcnt {vmcnt = 0, lgkmcnt = 0}
   s_waitcnt_vscnt {vscnt = 0}
   %13 = v_mov_b32 1
   buffer_atomic_add_u32 %13, %21, %10, %11
