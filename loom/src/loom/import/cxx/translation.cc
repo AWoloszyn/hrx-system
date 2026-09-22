@@ -1192,6 +1192,9 @@ class Translator {
              "check declarations cannot be called from ordinary functions");
       }
       auto* binding = intrinsics_.lookup(function, ast);
+      if (binding && std::holds_alternative<SubgroupIntrinsic>(*binding)) {
+        require_kernel_context(ast);
+      }
       auto* assembly =
           binding ? std::get_if<AssemblyIntrinsic>(binding) : nullptr;
       loom_symbol_ref_t fragment = {};
@@ -1217,23 +1220,6 @@ class Translator {
         return arguments;
       };
       loom_op_t* op;
-      if (annotated(function, "subgroup_size")) {
-        require_kernel_context(ast);
-        auto arguments = flatten_arguments();
-        auto result_type = types_.get(ast->type, ast);
-        if (!arguments.empty() ||
-            !loom_type_equal(result_type,
-                             loom_type_scalar(LOOM_SCALAR_TYPE_I32))) {
-          fail(ast, "subgroup_size requires unsigned subgroup_size()");
-        }
-        auto index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
-        check(loom_kernel_subgroup_size_build(&builder_, index_type, source,
-                                              &op));
-        auto size = result(op);
-        check(loom_index_cast_build(&builder_, size, index_type, result_type,
-                                    source, &op));
-        return result(op);
-      }
       if (annotated(function, "shuffle_xor")) {
         require_kernel_context(ast);
         auto arguments = flatten_arguments();

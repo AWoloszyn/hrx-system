@@ -627,6 +627,68 @@ generic by-reference forms, NAND, and storage outside the non-boolean integer
 subset diagnose at import. Native width, memory-space, and scope support follow
 the corresponding High operation.
 
+## Subgroup cooperation
+
+`<loomcxx/kernel.h>` exposes subgroup topology, votes, and broadcasts as typed
+High operations. `subgroup_id()`, `subgroup_count()`, `subgroup_size()`, and
+`subgroup_lane_id()` return unsigned coordinates. The execution width includes
+inactive lanes and can exceed the number of invocations in a partial subgroup.
+
+Votes observe the active invocations at the call. `subgroup_any(predicate)` and
+`subgroup_all(predicate)` return booleans. `subgroup_ballot(predicate)` returns
+a 64-bit mask, with bit *i* identifying physical lane *i*;
+`subgroup_ballot<unsigned>(predicate)` explicitly requests a 32-bit mask.
+`subgroup_active_mask<Mask>()` uses the same width contract without a predicate.
+The selected mask must cover the target subgroup width.
+
+Broadcasts preserve their scalar or explicit vector value type. A named source
+lane must be active; the target determines its range and uniformity requirements.
+`subgroup_broadcast_first(value)` selects the first active lane, including
+inside divergent control flow; that lane need not be lane zero.
+
+```cpp
+#include <loomcxx/kernel.h>
+using UInt4 = unsigned __attribute__((ext_vector_type(4)));
+
+[[loom::force_inline]] UInt4 exchange(UInt4 local, unsigned elected_lane) {
+  return loom::subgroup_broadcast(local, elected_lane);
+}
+
+[[loom::force_inline]] unsigned long long ready_streams(bool ready) {
+  return loom::subgroup_ballot(ready);
+}
+```
+
+These become `kernel.subgroup.broadcast ... : vector<4xi32>, i32` and
+`kernel.subgroup.vote.ballot ... : i1 -> i64`. Declarations use ordinary
+`[[loom::op("kernel.subgroup.broadcast")]]` bindings; custom names and concrete
+template instances use the same admission path. Calls require a kernel body or
+a `loom::force_inline` helper. Each argument is evaluated once, and the shared
+compiler owns convergence, value facts, and target lowering.
+
+Collectives do not imply memory synchronization. An execution rendezvous names
+its memory space, participant scope, and ordering separately:
+
+```cpp
+using loom::atomic::ordering;
+using loom::atomic::scope;
+
+// After observing a system publication, acquire the payload and let the
+// subgroup cooperate on it.
+loom::buffer::fence<ordering::acquire, scope::system>();
+loom::barrier<loom::memory_space::global, scope::subgroup,
+              ordering::acq_rel>();
+```
+
+The second call emits one `kernel.barrier<global> scope(subgroup)
+ordering(acq_rel)`. Barriers accept subgroup or workgroup scope. Global memory
+accepts acquire, release, or acquire-release ordering; workgroup memory requires
+acquire-release. They can live in ordinary callable helpers and do not complete
+independent asynchronous DMA. `workgroup_barrier()` retains the HIP-style
+global-and-workgroup-memory contract. Native payload widths and synchronization
+support follow the corresponding High operations; source import does not split
+values or insert target-specific instructions.
+
 ## Embedded Low assembly
 
 `loom::low::assembly` embeds a typed descriptor-backed instruction fragment in

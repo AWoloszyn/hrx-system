@@ -1,0 +1,103 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#ifndef LOOM_IMPORT_CXX_BINDING_KERNEL_H_
+#define LOOM_IMPORT_CXX_BINDING_KERNEL_H_
+
+#include <cxx/attributes.h>
+#include <cxx/symbols_fwd.h>
+
+#include <optional>
+#include <span>
+#include <string_view>
+
+#include "loom/import/cxx/value/types.h"
+#include "loom/ir/facts.h"
+#include "loom/ops/atomic.h"
+
+namespace loom::cxx_import {
+
+// Typed source projection of subgroup topology, votes, and broadcasts. Calls
+// require a kernel or required-inline helper; the translation driver owns that
+// placement check. Collective participation and convergence remain High
+// semantics, independent of the source spelling or target wave width.
+class SubgroupIntrinsic {
+ public:
+  static bool supports(std::string_view name);
+
+  // Admits one concrete scalar/vector signature. Unknown operations return
+  // nullopt; invalid source signatures diagnose at owner.
+  static std::optional<SubgroupIntrinsic> resolve(
+      cxx::TranslationUnit& unit, Diagnostics& diagnostics, Types& types,
+      cxx::FunctionSymbol* function, const cxx::Attribute& attribute,
+      cxx::AST* owner);
+
+  // Emits the admitted collective from already evaluated arguments. Topology
+  // queries project High's index result to the source's unsigned i32 value.
+  loom_value_id_t call(std::span<const Value> arguments,
+                       loom_builder_t* builder,
+                       loom_location_id_t location) const;
+
+  bool equivalent(const SubgroupIntrinsic& other) const;
+
+ private:
+  enum class Operation {
+    Id,
+    Count,
+    Size,
+    LaneId,
+    Any,
+    All,
+    Ballot,
+    ActiveMask,
+    Broadcast,
+    BroadcastFirst,
+  };
+
+  static std::optional<Operation> find(std::string_view name);
+
+  SubgroupIntrinsic(Operation operation, loom_type_t result_type)
+      : operation_(operation), result_type_(result_type) {}
+
+  // Operation selected once at declaration or template-instance admission.
+  Operation operation_;
+  // Source-selected scalar or rank-one vector representation.
+  loom_type_t result_type_;
+};
+
+// An execution rendezvous with explicit memory effects. Unlike subgroup
+// queries, High barriers may also appear in ordinary callable helpers.
+class BarrierIntrinsic {
+ public:
+  static bool supports(std::string_view name);
+
+  // Admits void() with leading memory-space, scope, and ordering template
+  // arguments. High owns the allowed combinations of memory effects.
+  static std::optional<BarrierIntrinsic> resolve(
+      cxx::TranslationUnit& unit, Diagnostics& diagnostics,
+      cxx::FunctionSymbol* function, const cxx::Attribute& attribute,
+      cxx::AST* owner);
+
+  void call(loom_builder_t* builder, loom_location_id_t location) const;
+
+  bool equivalent(const BarrierIntrinsic& other) const;
+
+ private:
+  BarrierIntrinsic(loom_value_fact_memory_space_t memory_space,
+                   loom_atomic_scope_t scope, loom_atomic_ordering_t ordering)
+      : memory_space_(memory_space), scope_(scope), ordering_(ordering) {}
+
+  // Storage space whose accesses participate in the barrier's ordering.
+  loom_value_fact_memory_space_t memory_space_;
+  // Invocations participating in the execution rendezvous.
+  loom_atomic_scope_t scope_;
+  // Memory ordering within the named space and scope.
+  loom_atomic_ordering_t ordering_;
+};
+
+}  // namespace loom::cxx_import
+
+#endif  // LOOM_IMPORT_CXX_BINDING_KERNEL_H_
