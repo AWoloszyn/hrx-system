@@ -298,6 +298,7 @@ iree_status_t loom_value_fact_table_initialize_with_arenas(
 }
 
 void loom_value_fact_table_clear_scope(loom_value_fact_table_t* table) {
+  table->has_conditioned_results = false;
   if (table->identities.capacity) {
     for (iree_host_size_t i = 0; i < table->touched_count; ++i) {
       const loom_value_id_t value_id = table->touched_values[i];
@@ -1226,6 +1227,8 @@ iree_status_t loom_value_fact_table_clone_values(
     loom_value_fact_table_t* target, loom_value_fact_table_view_t source_view,
     const loom_module_t* module) {
   const loom_value_fact_table_t* source = source_view.table;
+  // Copied results retain their source's whole-scope invalidation requirement.
+  target->has_conditioned_results |= source->has_conditioned_results;
   for (iree_host_size_t i = 0; i < source_view.value_count; ++i) {
     const loom_value_id_t value_id = source_view.value_ids[i];
     IREE_RETURN_IF_ERROR(loom_value_fact_table_clone_select_dependencies(

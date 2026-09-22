@@ -29,6 +29,9 @@ typedef enum loom_pass_value_fact_scope_kind_e {
   LOOM_PASS_VALUE_FACT_SCOPE_FUNCTION = 1,
   LOOM_PASS_VALUE_FACT_SCOPE_MODULE = 2,
   LOOM_PASS_VALUE_FACT_SCOPE_REGION = 3,
+  // Composes CFG conditions with numeric inference for an immutable function.
+  // The result cannot be maintained by the incremental rewriter.
+  LOOM_PASS_VALUE_FACT_SCOPE_CONDITIONED_FUNCTION = 4,
 } loom_pass_value_fact_scope_kind_t;
 
 typedef enum loom_pass_value_fact_owner_flag_bits_e {
@@ -63,9 +66,10 @@ typedef struct loom_pass_value_fact_scope_t {
   // Requested fact population scope.
   loom_pass_value_fact_scope_kind_t kind;
 
-  // Function context for FUNCTION and REGION scopes. REGION scopes may leave
-  // this empty when analyzing detached IR, but projected func-like regions
-  // should provide the owning function so op fact inference can query it.
+  // Function context for ordinary or conditioned FUNCTION and REGION scopes.
+  // REGION scopes may leave this empty when analyzing detached IR, but
+  // projected func-like regions provide the owning function for op fact
+  // inference.
   loom_func_like_t function;
 
   // Region root for LOOM_PASS_VALUE_FACT_SCOPE_REGION.
@@ -181,7 +185,7 @@ iree_status_t loom_pass_value_fact_owner_prepare(
 // does not invalidate its facts. Mutations affecting that scope require an
 // explicit invalidation before reacquiring it.
 iree_status_t loom_pass_value_fact_owner_acquire(
-    loom_pass_value_fact_owner_t* owner, const loom_module_t* module,
+    loom_pass_value_fact_owner_t* owner, loom_module_t* module,
     loom_pass_value_fact_scope_t scope, loom_value_fact_table_t** out_table);
 
 // Prepares scoped fact storage through a pass invocation.

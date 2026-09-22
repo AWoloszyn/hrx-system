@@ -1218,6 +1218,10 @@ iree_status_t loom_value_fact_table_compute_op_and_report(
   for (uint16_t i = 0; i < op->operand_count; ++i) {
     operand_facts[i] = loom_value_fact_table_lookup(table, operands[i]);
   }
+  if (table->context.refine_operands.fn) {
+    table->context.refine_operands.fn(table->context.refine_operands.user_data,
+                                      table, op, operand_facts);
+  }
 
   // Call the fact inference function.
   IREE_RETURN_IF_ERROR(vtable->infer_facts(&table->context, module, op,

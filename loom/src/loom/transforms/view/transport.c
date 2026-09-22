@@ -647,7 +647,7 @@ static iree_status_t loom_view_transport_rewrite(
 
 static iree_status_t loom_view_transport_add_cfg_graph(
     void* user_data, const loom_cfg_graph_t* graph) {
-  return loom_dominance_info_add_cfg_graph(user_data, graph);
+  return loom_dominance_info_add_cfg_graph(user_data, graph, NULL);
 }
 
 static iree_status_t loom_view_transport_initialize_dominance(
