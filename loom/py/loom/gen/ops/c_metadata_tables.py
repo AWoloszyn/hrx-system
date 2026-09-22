@@ -857,7 +857,7 @@ def generate_tables_c(
         lines.extend(f"extern const loom_target_fact_projector_t {symbol};" for symbol in target_like_fact_projector_symbols)
         lines.append("")
 
-    emitted_enum_case_name_arrays: set[str] = set()
+    emitted_enum_case_name_arrays: dict[str, tuple[tuple[int, str], ...]] = {}
     instance_flags_descriptors: dict[int, tuple[str, int]] = {}
 
     # Op metadata blocks.
@@ -941,14 +941,17 @@ def generate_tables_c(
 
         # Enum case name arrays. Generated C may expose an external enum alias,
         # a dialect-level shared enum, or a per-op enum typedef, but all three
-        # still need one parser/printer keyword table per C symbol name.
+        # still need one parser/printer keyword table per declarative case set.
         for attr_def in op.attrs:
             if attr_def.attr_type in ("enum", "enum_array", "signed_enum_set") and attr_def.enum_def:
                 array_name = _enum_names_array_name(op, attr_def, shared_enums)
+                cases = tuple(sorted((case.value, case.keyword) for case in attr_def.enum_def.cases))
                 if array_name in emitted_enum_case_name_arrays:
+                    if emitted_enum_case_name_arrays[array_name] != cases:
+                        raise ValueError(f"enum keyword table {array_name!r} has conflicting case sets at {op.name}.{attr_def.name}")
                     continue
                 _emit_enum_case_names(lines, array_name, attr_def.enum_def)
-                emitted_enum_case_name_arrays.add(array_name)
+                emitted_enum_case_name_arrays[array_name] = cases
 
         # Instance flag values and canonical spellings are shared by enum.
         if has_flags:

@@ -118,6 +118,17 @@ struct loom_fact_context_t {
   // generated type registry; callers that can map |type| to a descriptor can
   // return descriptor->fact_domain here.
   loom_value_fact_type_domain_resolver_callback_t resolve_type_domain;
+
+  // Optional immutable operand scope supplied by the owning analysis during
+  // a complete solve. Refinement changes the scratch operands, not the global
+  // facts of values defined outside the guarded operation.
+  struct {
+    // Borrowed state that outlives the solve.
+    void* user_data;
+    // Applies retained scope constraints to op->operand_count scratch facts.
+    void (*fn)(void* user_data, const loom_value_fact_table_t* table,
+               const loom_op_t* op, loom_value_facts_t* operand_facts);
+  } refine_operands;
 };
 
 struct loom_value_fact_table_t {
@@ -142,6 +153,10 @@ struct loom_value_fact_table_t {
   iree_host_size_t touched_capacity;
   // Context object passed to op-specific fact inference callbacks.
   loom_fact_context_t context;
+
+  // Facts derived under path conditions require whole-scope invalidation after
+  // edits. The incremental rewriter cannot maintain their guard dependencies.
+  bool has_conditioned_results;
 
   // Canonical SSA identities retained while computing value facts. Only
   // declared identity operations populate this map; numeric equality does not.

@@ -16,6 +16,7 @@ loom_cc_library(
     "call_predicates.h"
     "context.h"
     "contract_query.h"
+    "execution.h"
     "function_boundary.h"
     "lower.h"
     "module_state.h"
@@ -30,10 +31,12 @@ loom_cc_library(
     "source_call.h"
     "source_plan.h"
     "source_query.h"
+    "visibility.h"
   SRCS
     "call_predicates.c"
     "context.c"
     "contract_query.c"
+    "execution.c"
     "function_boundary.c"
     "lower.c"
     "module_state.c"
@@ -49,6 +52,7 @@ loom_cc_library(
     "source_call.c"
     "source_plan.c"
     "source_query.c"
+    "visibility.c"
   DEPS
     iree::base
     iree::base::internal
@@ -73,7 +77,9 @@ loom_cc_library(
     loom::error::error_defs
     loom::ir
     loom::ir::facts
+    loom::ops::atomic
     loom::ops::buffer
+    loom::ops::callable_effects
     loom::ops::cfg
     loom::ops::encoding
     loom::ops::func

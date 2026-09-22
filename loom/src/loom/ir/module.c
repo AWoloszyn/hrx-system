@@ -208,9 +208,10 @@ static void loom_region_adjust_summary_counts(loom_region_t* region,
                                               int32_t read_delta,
                                               int32_t write_delta,
                                               int32_t convergent_delta,
-                                              int32_t observable_delta) {
+                                              int32_t observable_delta,
+                                              int32_t memory_access_delta) {
   if (read_delta == 0 && write_delta == 0 && convergent_delta == 0 &&
-      observable_delta == 0) {
+      observable_delta == 0 && memory_access_delta == 0) {
     return;
   }
   if (read_delta != 0) {
@@ -227,13 +228,18 @@ static void loom_region_adjust_summary_counts(loom_region_t* region,
     loom_region_adjust_summary_count(&region->observable_effect_count,
                                      observable_delta);
   }
+  if (memory_access_delta != 0) {
+    loom_region_adjust_summary_count(&region->memory_access_count,
+                                     memory_access_delta);
+  }
 }
 
 static void loom_module_adjust_op_ancestor_summary_counts(
     loom_op_t* op, int32_t read_delta, int32_t write_delta,
-    int32_t convergent_delta, int32_t observable_delta) {
+    int32_t convergent_delta, int32_t observable_delta,
+    int32_t memory_access_delta) {
   if (read_delta == 0 && write_delta == 0 && convergent_delta == 0 &&
-      observable_delta == 0) {
+      observable_delta == 0 && memory_access_delta == 0) {
     return;
   }
   loom_region_t* region =
@@ -241,7 +247,8 @@ static void loom_module_adjust_op_ancestor_summary_counts(
   loom_op_t* parent_op = op->parent_op;
   while (region) {
     loom_region_adjust_summary_counts(region, read_delta, write_delta,
-                                      convergent_delta, observable_delta);
+                                      convergent_delta, observable_delta,
+                                      memory_access_delta);
     if (!parent_op) {
       break;
     }
@@ -290,8 +297,11 @@ static void loom_module_adjust_op_direct_summaries(loom_module_t* module,
   int32_t convergent_delta = loom_traits_are_convergent(traits) ? direction : 0;
   int32_t observable_delta =
       loom_traits_have_observable_effects(traits) ? direction : 0;
+  int32_t memory_access_delta =
+      loom_traits_may_access_memory(traits) ? direction : 0;
   loom_module_adjust_op_ancestor_summary_counts(
-      op, read_delta, write_delta, convergent_delta, observable_delta);
+      op, read_delta, write_delta, convergent_delta, observable_delta,
+      memory_access_delta);
   if (iree_any_bit_set(traits, LOOM_TRAIT_HINT)) {
     loom_module_adjust_op_hint_sources(op, direction);
   }
@@ -350,9 +360,12 @@ void loom_module_update_op_direct_summaries(loom_module_t* module,
   int32_t new_convergent = loom_traits_are_convergent(new_traits) ? 1 : 0;
   int32_t new_observable =
       loom_traits_have_observable_effects(new_traits) ? 1 : 0;
+  int32_t old_memory_access = loom_traits_may_access_memory(old_traits) ? 1 : 0;
+  int32_t new_memory_access = loom_traits_may_access_memory(new_traits) ? 1 : 0;
   loom_module_adjust_op_ancestor_summary_counts(
       op, new_read - old_read, new_write - old_write,
-      new_convergent - old_convergent, new_observable - old_observable);
+      new_convergent - old_convergent, new_observable - old_observable,
+      new_memory_access - old_memory_access);
   if (iree_any_bit_set(old_traits ^ new_traits, LOOM_TRAIT_HINT)) {
     loom_module_adjust_op_hint_sources(
         op, iree_any_bit_set(new_traits, LOOM_TRAIT_HINT) ? 1 : -1);

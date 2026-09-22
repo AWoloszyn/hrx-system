@@ -217,12 +217,12 @@ AMDGPU_BUFFER_RESOURCE_RECORD_ENCODINGS = (
 )
 
 AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_NONE = "none"
-AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX9_11_GLC_SLC_DLC = "gfx9_11_glc_slc_dlc"
+AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC = "gfx11_glc_slc_dlc"
 AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX12_NV_SCOPE_TH = "gfx12_nv_scope_th"
 AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX950_NT_SC0_SC1 = "gfx950_nt_sc0_sc1"
 AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODINGS = (
     AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_NONE,
-    AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX9_11_GLC_SLC_DLC,
+    AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC,
     AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX12_NV_SCOPE_TH,
     AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX950_NT_SC0_SC1,
 )
@@ -940,8 +940,8 @@ AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_INFOS: tuple[
     AmdgpuVectorMemoryCachePolicyEncodingInfo, ...
 ] = (
     AmdgpuVectorMemoryCachePolicyEncodingInfo(
-        encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX9_11_GLC_SLC_DLC,
-        selected_key="memory_cache_policy.gfx9_11_glc_slc_dlc",
+        encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC,
+        selected_key="memory_cache_policy.gfx11_glc_slc_dlc",
         cache_scopes=("device",),
         cache_temporals=("regular",),
     ),
@@ -1297,7 +1297,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         flags=AMDGPU_DESCRIPTOR_SET_INFO_FLAGS_RDNA_VOPD,
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE48_UNIFIED,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
-            cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX9_11_GLC_SLC_DLC,
+            cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC,
         ),
     ),
     AmdgpuDescriptorSetInfo(
@@ -1307,7 +1307,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         flags=AMDGPU_DESCRIPTOR_SET_INFO_FLAGS_RDNA_SCALAR_FLOAT,
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE48_UNIFIED,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
-            cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX9_11_GLC_SLC_DLC,
+            cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC,
         ),
     ),
     AmdgpuDescriptorSetInfo(
@@ -1317,7 +1317,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         flags=AMDGPU_DESCRIPTOR_SET_INFO_FLAGS_RDNA4_VOPD,
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE48_UNIFIED,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
-            cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX9_11_GLC_SLC_DLC,
+            cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC,
         ),
     ),
     AmdgpuDescriptorSetInfo(
@@ -1370,7 +1370,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         member_generator_targets=("rdna3", "rdna3_5"),
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE48_UNIFIED,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
-            cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX9_11_GLC_SLC_DLC,
+            cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC,
         ),
     ),
     AmdgpuDescriptorSetInfo(

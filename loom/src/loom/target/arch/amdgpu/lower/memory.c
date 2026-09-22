@@ -19,6 +19,7 @@
 #include "loom/target/arch/amdgpu/lower/constants.h"
 #include "loom/target/arch/amdgpu/lower/emit.h"
 #include "loom/target/arch/amdgpu/lower/memory.h"
+#include "loom/target/arch/amdgpu/lower/memory_ordering.h"
 #include "loom/target/arch/amdgpu/lower/source_value_analysis.h"
 #include "loom/target/arch/amdgpu/lower/topology.h"
 #include "loom/target/arch/amdgpu/lower/types.h"
@@ -1957,6 +1958,7 @@ static bool loom_amdgpu_memory_access_try_select_global_smem(
            LOOM_VALUE_FACT_MEMORY_SPACE_CONSTANT) ||
       loom_amdgpu_memory_cache_policy_is_present(
           &candidate.source.cache_policy) ||
+      candidate.source.read_visibility_scope != LOOM_ATOMIC_SCOPE_THREAD ||
       !loom_amdgpu_memory_access_promote_scalar_materializable_terms_to_soffset(
           selection_context->materialization_plan, &candidate) ||
       !loom_amdgpu_memory_access_uses_only_scalar_address_terms(&candidate) ||
@@ -2729,7 +2731,7 @@ bool loom_amdgpu_memory_access_plan_select(
     loom_func_like_t source_function, const loom_target_bundle_t* bundle,
     loom_amdgpu_instruction_constraint_bits_t instruction_constraints,
     const loom_amdgpu_source_alloca_layout_t* alloca_layout,
-    const loom_op_t* source_op,
+    uint8_t read_visibility_scope, const loom_op_t* source_op,
     loom_low_source_memory_access_plan_t* out_source,
     loom_amdgpu_memory_access_selection_t* out_selection,
     loom_low_source_memory_access_diagnostic_t* out_source_diagnostic,
@@ -2744,8 +2746,23 @@ bool loom_amdgpu_memory_access_plan_select(
     return false;
   }
 
-  const loom_low_source_memory_operation_kind_t kind =
-      out_source->operation_kind;
+  loom_low_source_memory_operation_kind_t kind = out_source->operation_kind;
+  if (kind == LOOM_MEMORY_ACCESS_OPERATION_LOAD &&
+      out_source->memory_space == LOOM_VALUE_FACT_MEMORY_SPACE_GLOBAL) {
+    out_source->read_visibility_scope = read_visibility_scope;
+  }
+  const bool is_atomic = kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD ||
+                         kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_STORE;
+  if (is_atomic) {
+    out_diagnostic->atomic_constraint =
+        loom_amdgpu_atomic_memory_rejection_key(descriptor_set, out_source);
+    if (!iree_string_view_is_empty(out_diagnostic->atomic_constraint)) {
+      return false;
+    }
+    kind = kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD
+               ? LOOM_MEMORY_ACCESS_OPERATION_LOAD
+               : LOOM_MEMORY_ACCESS_OPERATION_STORE;
+  }
   loom_amdgpu_memory_dynamic_term_materialization_plan_t materialization_plan;
   if (!loom_amdgpu_memory_dynamic_term_materialization_plan_build(
           module, fact_table, view_regions, analysis, out_source,
@@ -2766,6 +2783,11 @@ bool loom_amdgpu_memory_access_plan_select(
   loom_amdgpu_memory_access_t access = {
       .source = *out_source,
   };
+  if (is_atomic) {
+    // The selected naturally aligned packet supplies atomicity. Observable
+    // execution prevents Low cleanup from merging or deleting observations.
+    access.source.access_flags |= LOOM_MEMORY_ACCESS_FLAG_VOLATILE;
+  }
   const loom_type_t vector_type =
       loom_amdgpu_memory_access_source_vector_type(module, source_op);
   loom_amdgpu_memory_access_try_record_vector_width_diagnostic(
@@ -2817,7 +2839,7 @@ bool loom_amdgpu_memory_access_plan_select(
   if (access.payload_register_count <= LOOM_AMDGPU_MAX_MEMORY_32BIT_LANES &&
       (whole_register_payload || access.payload_register_count == 1)) {
     const bool allow_global_smem =
-        loom_amdgpu_type_is_32bit_memory_payload(vector_type);
+        !is_atomic && loom_amdgpu_type_is_32bit_memory_payload(vector_type);
     return loom_amdgpu_memory_access_plan_push_packet(
         &selection_context, kind, allow_global_smem, 0, &access, out_selection,
         out_diagnostic);
@@ -2925,7 +2947,8 @@ static iree_status_t loom_amdgpu_memory_access_plan_select_from_context(
           analysis, loom_low_lower_context_source_function(context),
           loom_low_lower_context_bundle(context),
           target_facts->properties.instruction_constraints, alloca_layout,
-          source_op, &source, out_selection, &source_diagnostic, &diagnostic)) {
+          loom_low_lower_context_read_visibility_scope(context), source_op,
+          &source, out_selection, &source_diagnostic, &diagnostic)) {
     return iree_ok_status();
   }
   *out_selected = true;

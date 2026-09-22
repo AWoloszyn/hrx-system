@@ -52,6 +52,10 @@ iree_string_view_t loom_amdgpu_memory_operation_name(
       return IREE_SV("atomic_rmw");
     case LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_CMPXCHG:
       return IREE_SV("atomic_cmpxchg");
+    case LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_LOAD:
+      return IREE_SV("atomic_load");
+    case LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_STORE:
+      return IREE_SV("atomic_store");
     case LOOM_LOW_SOURCE_MEMORY_OPERATION_COUNT_:
       return IREE_SV("invalid");
   }

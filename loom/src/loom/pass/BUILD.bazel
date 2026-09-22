@@ -38,6 +38,7 @@ loom_cc_library(
     hdrs = ["value_facts.h"],
     deps = [
         ":types",
+        "//loom/src/loom/analysis:conditioned_value_facts",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/ops:type_registry",

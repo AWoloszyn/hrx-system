@@ -1676,6 +1676,25 @@ static bool loom_low_source_memory_access_plan_build_byte_offset_impl(
   return true;
 }
 
+static void loom_low_source_memory_access_retain_semantics(
+    loom_memory_access_t access, loom_low_source_memory_access_plan_t* plan) {
+  plan->access_flags = loom_memory_access_flags(access);
+  if (!loom_memory_access_operation_kind_is_atomic(plan->operation_kind)) {
+    return;
+  }
+  const bool is_cmpxchg =
+      plan->operation_kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_CMPXCHG;
+  plan->atomic.ordering = loom_attr_as_enum(
+      is_cmpxchg ? loom_memory_access_atomic_success_ordering(access)
+                 : loom_memory_access_atomic_ordering(access));
+  plan->atomic.failure_ordering =
+      is_cmpxchg ? loom_attr_as_enum(
+                       loom_memory_access_atomic_failure_ordering(access))
+                 : plan->atomic.ordering;
+  plan->atomic.scope =
+      loom_attr_as_enum(loom_memory_access_atomic_scope(access));
+}
+
 bool loom_low_source_memory_access_plan_build(
     const loom_view_region_table_t* view_regions, const loom_op_t* source_op,
     loom_low_source_memory_access_plan_t* out_plan,
@@ -1724,7 +1743,7 @@ bool loom_low_source_memory_access_plan_build(
             view_regions, operation_kind, view_value_id, byte_offset_value_id,
             cache_policy, out_plan, out_diagnostic);
     if (built) {
-      out_plan->access_flags = loom_memory_access_flags(access);
+      loom_low_source_memory_access_retain_semantics(access, out_plan);
     }
     return built;
   }
@@ -1739,7 +1758,7 @@ bool loom_low_source_memory_access_plan_build(
       loom_memory_access_static_indices(access), vector_type, cache_policy,
       out_plan, out_diagnostic);
   if (built) {
-    out_plan->access_flags = loom_memory_access_flags(access);
+    loom_low_source_memory_access_retain_semantics(access, out_plan);
     out_plan->vector_offset_kind =
         loom_low_source_memory_access_vector_offset_kind(
             fact_table, loom_memory_access_offsets(access));

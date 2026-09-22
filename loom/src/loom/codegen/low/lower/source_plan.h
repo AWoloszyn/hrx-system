@@ -102,6 +102,9 @@ typedef struct loom_low_lower_descriptor_matrix_plan_t {
 
 // Function-local retained plan and source-value materialization state.
 typedef struct loom_low_lower_source_plan_t {
+  // Required visibility on mutable global reads; thread scope keeps the
+  // ordinary eager acquisition recipe. Fixed before per-operation selection.
+  uint8_t read_visibility_scope;
   // Source-body blocks in definition-before-use order, borrowed from retained
   // dominance when all blocks are reachable. Unreachable blocks follow in
   // storage order. NULL preserves the single-block structured path.

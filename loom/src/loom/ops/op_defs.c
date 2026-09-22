@@ -3385,6 +3385,7 @@ static void loom_region_reset_summaries(loom_region_t* region) {
   region->write_effect_count = 0;
   region->convergent_effect_count = 0;
   region->observable_effect_count = 0;
+  region->memory_access_count = 0;
   region->hint_source_count = 0;
   loom_block_t* block = NULL;
   loom_region_for_each_block(region, block) {

@@ -34,13 +34,17 @@ loom_trait_flags_t loom_low_descriptor_effective_traits(
     const loom_low_effect_t* effect = &descriptor_set->effects[effect_index];
     switch (effect->kind) {
       case LOOM_LOW_EFFECT_KIND_READ:
-        traits |= LOOM_TRAIT_READS_MEMORY;
+        traits |= effect->memory_space == LOOM_LOW_MEMORY_SPACE_NONE
+                      ? LOOM_TRAIT_NON_DETERMINISTIC
+                      : LOOM_TRAIT_READS_MEMORY;
         if (iree_any_bit_set(effect->flags, LOOM_LOW_EFFECT_FLAG_ORDERED)) {
           traits |= LOOM_TRAIT_OBSERVABLE_EFFECT;
         }
         break;
       case LOOM_LOW_EFFECT_KIND_WRITE:
-        traits |= LOOM_TRAIT_WRITES_MEMORY;
+        traits |= effect->memory_space == LOOM_LOW_MEMORY_SPACE_NONE
+                      ? LOOM_TRAIT_OBSERVABLE_EFFECT
+                      : LOOM_TRAIT_WRITES_MEMORY;
         if (iree_any_bit_set(effect->flags, LOOM_LOW_EFFECT_FLAG_ORDERED)) {
           traits |= LOOM_TRAIT_OBSERVABLE_EFFECT;
         }
@@ -49,9 +53,9 @@ loom_trait_flags_t loom_low_descriptor_effective_traits(
         traits |= LOOM_TRAIT_TERMINATOR;
         break;
       case LOOM_LOW_EFFECT_KIND_CALL:
-      case LOOM_LOW_EFFECT_KIND_COUNTER:
         traits |= LOOM_TRAIT_UNKNOWN_EFFECTS;
         break;
+      case LOOM_LOW_EFFECT_KIND_COUNTER:
       case LOOM_LOW_EFFECT_KIND_BARRIER:
         traits |= LOOM_TRAIT_MEMORY_FENCE;
         break;
@@ -89,7 +93,8 @@ loom_trait_flags_t loom_low_descriptor_effective_traits(
   if (!iree_any_bit_set(
           traits, LOOM_TRAIT_READS_MEMORY | LOOM_TRAIT_WRITES_MEMORY |
                       LOOM_TRAIT_NON_DETERMINISTIC | LOOM_TRAIT_MEMORY_FENCE |
-                      LOOM_TRAIT_UNIQUE_IDENTITY)) {
+                      LOOM_TRAIT_UNIQUE_IDENTITY |
+                      LOOM_TRAIT_OBSERVABLE_EFFECT)) {
     if (descriptor->effect_count == 0 &&
         iree_any_bit_set(descriptor->flags,
                          LOOM_LOW_DESCRIPTOR_FLAG_SIDE_EFFECTING)) {

@@ -8,6 +8,7 @@
 
 #include <string.h>
 
+#include "loom/analysis/conditioned_value_facts.h"
 #include "loom/ops/op_defs.h"
 #include "loom/ops/type_registry.h"
 
@@ -21,6 +22,7 @@ static bool loom_pass_value_fact_scope_equal(loom_pass_value_fact_scope_t lhs,
     case LOOM_PASS_VALUE_FACT_SCOPE_MODULE:
       return true;
     case LOOM_PASS_VALUE_FACT_SCOPE_FUNCTION:
+    case LOOM_PASS_VALUE_FACT_SCOPE_CONDITIONED_FUNCTION:
       return lhs.function.op == rhs.function.op &&
              lhs.function.vtable == rhs.function.vtable;
     case LOOM_PASS_VALUE_FACT_SCOPE_REGION:
@@ -36,6 +38,7 @@ static iree_status_t loom_pass_value_fact_scope_validate(
     loom_pass_value_fact_scope_t scope) {
   switch (scope.kind) {
     case LOOM_PASS_VALUE_FACT_SCOPE_FUNCTION:
+    case LOOM_PASS_VALUE_FACT_SCOPE_CONDITIONED_FUNCTION:
       if (!loom_func_like_isa(scope.function)) {
         return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                                 "function fact scope requires a function");
@@ -158,6 +161,7 @@ iree_status_t loom_pass_value_fact_owner_prepare(
     loom_pass_value_fact_owner_t* owner, const loom_module_t* module,
     loom_pass_value_fact_scope_t scope, loom_value_fact_table_t** out_table) {
   *out_table = NULL;
+  IREE_ASSERT(scope.kind != LOOM_PASS_VALUE_FACT_SCOPE_CONDITIONED_FUNCTION);
 
   if (owner->lifecycle_counts) {
     ++owner->lifecycle_counts->preparation_count;
@@ -171,7 +175,7 @@ iree_status_t loom_pass_value_fact_owner_prepare(
 }
 
 iree_status_t loom_pass_value_fact_owner_acquire(
-    loom_pass_value_fact_owner_t* owner, const loom_module_t* module,
+    loom_pass_value_fact_owner_t* owner, loom_module_t* module,
     loom_pass_value_fact_scope_t scope, loom_value_fact_table_t** out_table) {
   *out_table = NULL;
 
@@ -189,7 +193,16 @@ iree_status_t loom_pass_value_fact_owner_acquire(
     return iree_ok_status();
   }
 
-  loom_pass_value_fact_owner_clear_scope(owner);
+  // An unchanged ordinary function scope is the conditioned solve's baseline.
+  // Reuse it without repeating numeric inference or rebuilding its CFG tables.
+  loom_pass_value_fact_scope_t baseline_scope = scope;
+  baseline_scope.kind = LOOM_PASS_VALUE_FACT_SCOPE_FUNCTION;
+  const bool refine_existing =
+      scope.kind == LOOM_PASS_VALUE_FACT_SCOPE_CONDITIONED_FUNCTION &&
+      loom_pass_value_fact_scope_equal(owner->active_scope, baseline_scope);
+  if (!refine_existing) {
+    loom_pass_value_fact_owner_clear_scope(owner);
+  }
   owner->table.context.target_facts = scope.target_facts;
   *out_table = &owner->table;
   if (owner->lifecycle_counts) {
@@ -198,8 +211,16 @@ iree_status_t loom_pass_value_fact_owner_acquire(
   iree_status_t status = iree_ok_status();
   switch (scope.kind) {
     case LOOM_PASS_VALUE_FACT_SCOPE_FUNCTION:
-      status =
-          loom_value_fact_table_compute(&owner->table, module, scope.function);
+    case LOOM_PASS_VALUE_FACT_SCOPE_CONDITIONED_FUNCTION:
+      if (!refine_existing) {
+        status = loom_value_fact_table_compute(&owner->table, module,
+                                               scope.function);
+      }
+      if (iree_status_is_ok(status) &&
+          scope.kind == LOOM_PASS_VALUE_FACT_SCOPE_CONDITIONED_FUNCTION) {
+        status = loom_conditioned_value_facts_compute(&owner->table, module,
+                                                      scope.function);
+      }
       break;
     case LOOM_PASS_VALUE_FACT_SCOPE_REGION:
       status = loom_value_fact_table_compute_region(

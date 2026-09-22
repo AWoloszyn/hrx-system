@@ -6,6 +6,8 @@
 
 """Kernel dialect type and op definitions."""
 
+from dataclasses import replace
+
 from loom.assembly import (
     ARROW,
     COLON,
@@ -135,7 +137,12 @@ kernel_tensor_lds_descriptor_type = TypeDef(
 # Shared attrs
 # ============================================================================
 
-KernelScope = AtomicScope
+KernelScope = replace(
+    AtomicScope,
+    name="KernelScope",
+    cases=tuple(AtomicScope.case(case) for case in ("subgroup", "workgroup")),
+    doc="Execution scope participating in a kernel barrier.",
+)
 KernelMemorySpace = MemorySpace
 KernelOrdering = AtomicOrdering
 
@@ -1282,7 +1289,8 @@ kernel_barrier = Op(
         "named memory space with a required ordering. Workgroup-memory "
         "barriers synchronize either the current subgroup or workgroup with "
         "acquire-release ordering. Global-memory barriers synchronize the "
-        "current workgroup with acquire, release, or acquire-release ordering. "
+        "current subgroup or workgroup with acquire, release, or acquire-release "
+        "ordering. "
         "Async-copy completion is modeled by kernel.async.wait; use "
         "kernel.barrier only when invocations must rendezvous before "
         "consuming shared or global memory."
@@ -1317,6 +1325,7 @@ kernel_barrier = Op(
     examples=[
         "kernel.barrier<workgroup> scope(subgroup) ordering(acq_rel)",
         "kernel.barrier<workgroup> scope(workgroup) ordering(acq_rel)",
+        "kernel.barrier<global> scope(subgroup) ordering(acq_rel)",
         "kernel.barrier<global> scope(workgroup) ordering(release)",
         "kernel.barrier<global> scope(workgroup) ordering(acquire)",
     ],

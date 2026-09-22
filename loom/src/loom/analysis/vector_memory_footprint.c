@@ -1447,12 +1447,14 @@ static bool loom_vector_memory_footprint_access_is_scalar_element(
   const loom_scalar_type_t element_type = loom_type_element_type(view_type);
   switch (loom_memory_access_operation_kind(memory_access)) {
     case LOOM_MEMORY_ACCESS_OPERATION_LOAD:
+    case LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD:
       if (op->result_count != 1) {
         return false;
       }
       return loom_vector_memory_footprint_value_is_scalar_element(
           state, loom_op_const_results(op)[0], element_type);
     case LOOM_MEMORY_ACCESS_OPERATION_STORE:
+    case LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_STORE:
     case LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_REDUCE:
     case LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_RMW:
       return loom_vector_memory_footprint_value_is_scalar_element(

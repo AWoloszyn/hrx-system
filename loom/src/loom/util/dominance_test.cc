@@ -16,6 +16,7 @@
 #include "loom/ops/cfg/ops.h"
 #include "loom/ops/op_defs.h"
 #include "loom/ops/test/ops.h"
+#include "loom/util/cfg_dominance.h"
 #include "loom/util/cfg_graph.h"
 
 namespace loom {
@@ -518,8 +519,14 @@ TEST_F(DominanceTest, ScopedCfgDiamondDominanceUsesPredecessorGraph) {
   loom_dominance_info_t borrowed = {};
   borrowed.module = module_;
   borrowed.arena = &dom_arena_;
-  IREE_ASSERT_OK(loom_dominance_info_add_cfg_graph(&borrowed, &graph));
-  for (const loom_dominance_info_t* info : {&dom_info_, &borrowed}) {
+  IREE_ASSERT_OK(loom_dominance_info_add_cfg_graph(&borrowed, &graph, nullptr));
+  loom_cfg_dominance_t tree = {};
+  IREE_ASSERT_OK(loom_cfg_dominance_build(&graph, &dom_arena_, &tree));
+  loom_dominance_info_t retained = {};
+  retained.module = module_;
+  retained.arena = &dom_arena_;
+  IREE_ASSERT_OK(loom_dominance_info_add_cfg_graph(&retained, &graph, &tree));
+  for (const loom_dominance_info_t* info : {&dom_info_, &borrowed, &retained}) {
     EXPECT_TRUE(loom_dominates_op(info, entry_value, then_value));
     EXPECT_TRUE(loom_dominates_op(info, entry_value, else_value));
     EXPECT_TRUE(loom_dominates_op(info, entry_value, merge_value));

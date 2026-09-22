@@ -1,5 +1,13 @@
 // RUN: verify
 
+func.def @fence_requires_ordering() {
+  // ERROR@+1: PARSE/017 "ordering"
+  buffer.fence scope(system) ordering(relaxed)
+  func.return
+}
+
+// ====
+
 func.def @pack_requires_one_or_more_ranges() {
   // ERROR@+1: STRUCTURE/014 "byte_lengths" "0" "at least one physical byte range"
   %total = buffer.pack [] : offset

@@ -376,6 +376,7 @@ iree_status_t loom_rewriter_seed_function(loom_rewriter_t* rewriter,
 
 void loom_rewriter_attach_value_facts(loom_rewriter_t* rewriter,
                                       loom_value_fact_table_t* facts) {
+  IREE_ASSERT(!facts || !facts->has_conditioned_results);
   loom_rewriter_release_cfg_facts(rewriter);
   rewriter->fact_table = facts;
 }

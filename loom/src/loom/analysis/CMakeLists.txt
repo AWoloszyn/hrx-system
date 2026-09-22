@@ -278,6 +278,43 @@ loom_cc_library(
   PUBLIC
 )
 
+loom_cc_library(
+  NAME
+    conditioned_value_facts
+  HDRS
+    "conditioned_value_facts.h"
+  SRCS
+    "conditioned_value_facts.c"
+  DEPS
+    ::cfg_value_identity
+    ::condition_fact_scope
+    ::condition_facts
+    iree::base
+    iree::base::internal::arena
+    loom::ir
+    loom::ops::cfg
+    loom::ops::op_defs
+    loom::util::dominance
+    loom::util::fact_table
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    conditioned_value_facts_test
+  SRCS
+    "conditioned_value_facts_test.cc"
+  DEPS
+    ::conditioned_value_facts
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+    loom::ops::cfg
+    loom::ops::scalar
+    loom::ops::test
+    loom::pass::value_facts
+)
+
 loom_cc_test(
   NAME
     condition_fact_scope_test

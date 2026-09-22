@@ -10,8 +10,10 @@ from loom.dialect.atomic import AtomicKind, AtomicOrdering, AtomicScope
 from loom.dialect.view.defs import (
     ALL_VIEW_OPS,
     view_atomic_cmpxchg,
+    view_atomic_load,
     view_atomic_reduce,
     view_atomic_rmw,
+    view_atomic_store,
     view_load,
     view_ops,
     view_prefetch,
@@ -33,5 +35,7 @@ __all__ = [
     "view_atomic_reduce",
     "view_atomic_rmw",
     "view_atomic_cmpxchg",
+    "view_atomic_load",
+    "view_atomic_store",
     "view_prefetch",
 ]

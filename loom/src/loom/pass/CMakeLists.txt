@@ -45,6 +45,7 @@ loom_cc_library(
     ::types
     iree::base
     iree::base::internal::arena
+    loom::analysis::conditioned_value_facts
     loom::ir
     loom::ops::op_defs
     loom::ops::type_registry

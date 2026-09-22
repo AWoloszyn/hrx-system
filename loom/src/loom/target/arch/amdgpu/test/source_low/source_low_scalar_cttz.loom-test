@@ -113,3 +113,25 @@ low.func.def target<amdgpu.cdna3.core>(@target) abi(hal_kernel) @scalar_cttzi_i6
   %result = concat(%6, %7) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
   return %result
 }
+
+// ====
+// RUN: with-checks emit source-low output=low
+
+amdgpu.target<gfx11-generic> @target
+
+// Only the guarded definition excludes zero; the input keeps its global facts.
+func.def target(@target) @guarded_scalar_cttzi(%input: i32) -> (i32) {
+  %c0 = scalar.constant 0 : i32
+  %width = scalar.constant 32 : i32
+  %nonzero = scalar.cmpi ne, %input, %c0 : i32
+  cfg.cond_br %nonzero, ^count, ^empty
+^count:
+  %result = scalar.cttzi %input : i32
+  func.return %result : i32
+^empty:
+  func.return %width : i32
+}
+
+// ----
+CHECK: %* = s_ctz_i32_b32 %input
+CHECK-NOT: *s_min_u32*

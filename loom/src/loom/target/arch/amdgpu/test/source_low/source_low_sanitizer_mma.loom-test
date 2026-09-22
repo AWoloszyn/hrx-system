@@ -57,7 +57,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %70, %71 = v_add_co_u32 %55, %63
   %72, %73 = v_add_co_ci_u32 %57, %64, %71
   %74 = concat(%70, %72) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %75 = flat_load_dwordx2 %74 {glc = 1, dlc = 1}
+  %75 = flat_load_dwordx2 %74 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %76 = slice %75[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %77 = slice %75[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -74,7 +74,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %109, %110 = v_add_co_u32 %55, %102
   %111, %112 = v_add_co_ci_u32 %57, %103, %110
   %113 = concat(%109, %111) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %114 = flat_load_u8 %113 {glc = 1, dlc = 1}
+  %114 = flat_load_u8 %113 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %116 = v_and_b32_lit %88, 7
   %117 = v_cmp_ne_i32 %114, %47
@@ -98,7 +98,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %159, %160 = v_add_co_u32 %55, %152
   %161, %162 = v_add_co_ci_u32 %57, %153, %160
   %163 = concat(%159, %161) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %164 = flat_load_dwordx2 %163 {glc = 1, dlc = 1}
+  %164 = flat_load_dwordx2 %163 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %165 = slice %164[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %166 = slice %164[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -114,7 +114,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %198, %199 = v_add_co_u32 %55, %191
   %200, %201 = v_add_co_ci_u32 %57, %192, %199
   %202 = concat(%198, %200) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %203 = flat_load_u8 %202 {glc = 1, dlc = 1}
+  %203 = flat_load_u8 %202 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %205 = v_and_b32_lit %177, 7
   %206 = v_cmp_ne_i32 %203, %47
@@ -138,7 +138,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %249, %250 = v_add_co_u32 %55, %242
   %251, %252 = v_add_co_ci_u32 %57, %243, %250
   %253 = concat(%249, %251) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %254 = flat_load_dwordx2 %253 {glc = 1, dlc = 1}
+  %254 = flat_load_dwordx2 %253 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %255 = slice %254[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %256 = slice %254[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -154,7 +154,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %288, %289 = v_add_co_u32 %55, %281
   %290, %291 = v_add_co_ci_u32 %57, %282, %289
   %292 = concat(%288, %290) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %293 = flat_load_u8 %292 {glc = 1, dlc = 1}
+  %293 = flat_load_u8 %292 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %295 = v_and_b32_lit %267, 7
   %296 = v_cmp_ne_i32 %293, %47
@@ -178,7 +178,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %339, %340 = v_add_co_u32 %55, %332
   %341, %342 = v_add_co_ci_u32 %57, %333, %340
   %343 = concat(%339, %341) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %344 = flat_load_dwordx2 %343 {glc = 1, dlc = 1}
+  %344 = flat_load_dwordx2 %343 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %345 = slice %344[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %346 = slice %344[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -194,7 +194,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %378, %379 = v_add_co_u32 %55, %371
   %380, %381 = v_add_co_ci_u32 %57, %372, %379
   %382 = concat(%378, %380) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %383 = flat_load_u8 %382 {glc = 1, dlc = 1}
+  %383 = flat_load_u8 %382 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %385 = v_and_b32_lit %357, 7
   %386 = v_cmp_ne_i32 %383, %47
@@ -218,7 +218,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %429, %430 = v_add_co_u32 %55, %422
   %431, %432 = v_add_co_ci_u32 %57, %423, %430
   %433 = concat(%429, %431) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %434 = flat_load_dwordx2 %433 {glc = 1, dlc = 1}
+  %434 = flat_load_dwordx2 %433 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %435 = slice %434[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %436 = slice %434[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -234,7 +234,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %468, %469 = v_add_co_u32 %55, %461
   %470, %471 = v_add_co_ci_u32 %57, %462, %469
   %472 = concat(%468, %470) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %473 = flat_load_u8 %472 {glc = 1, dlc = 1}
+  %473 = flat_load_u8 %472 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %475 = v_and_b32_lit %447, 7
   %476 = v_cmp_ne_i32 %473, %47
@@ -258,7 +258,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %519, %520 = v_add_co_u32 %55, %512
   %521, %522 = v_add_co_ci_u32 %57, %513, %520
   %523 = concat(%519, %521) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %524 = flat_load_dwordx2 %523 {glc = 1, dlc = 1}
+  %524 = flat_load_dwordx2 %523 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %525 = slice %524[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %526 = slice %524[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -274,7 +274,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %558, %559 = v_add_co_u32 %55, %551
   %560, %561 = v_add_co_ci_u32 %57, %552, %559
   %562 = concat(%558, %560) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %563 = flat_load_u8 %562 {glc = 1, dlc = 1}
+  %563 = flat_load_u8 %562 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %565 = v_and_b32_lit %537, 7
   %566 = v_cmp_ne_i32 %563, %47
@@ -298,7 +298,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %609, %610 = v_add_co_u32 %55, %602
   %611, %612 = v_add_co_ci_u32 %57, %603, %610
   %613 = concat(%609, %611) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %614 = flat_load_dwordx2 %613 {glc = 1, dlc = 1}
+  %614 = flat_load_dwordx2 %613 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %615 = slice %614[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %616 = slice %614[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -314,7 +314,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %648, %649 = v_add_co_u32 %55, %641
   %650, %651 = v_add_co_ci_u32 %57, %642, %649
   %652 = concat(%648, %650) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %653 = flat_load_u8 %652 {glc = 1, dlc = 1}
+  %653 = flat_load_u8 %652 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %655 = v_and_b32_lit %627, 7
   %656 = v_cmp_ne_i32 %653, %47
@@ -338,7 +338,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %699, %700 = v_add_co_u32 %55, %692
   %701, %702 = v_add_co_ci_u32 %57, %693, %700
   %703 = concat(%699, %701) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %704 = flat_load_dwordx2 %703 {glc = 1, dlc = 1}
+  %704 = flat_load_dwordx2 %703 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %705 = slice %704[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %706 = slice %704[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -354,7 +354,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %738, %739 = v_add_co_u32 %55, %731
   %740, %741 = v_add_co_ci_u32 %57, %732, %739
   %742 = concat(%738, %740) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %743 = flat_load_u8 %742 {glc = 1, dlc = 1}
+  %743 = flat_load_u8 %742 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %745 = v_and_b32_lit %717, 7
   %746 = v_cmp_ne_i32 %743, %47
@@ -378,7 +378,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %789, %790 = v_add_co_u32 %55, %782
   %791, %792 = v_add_co_ci_u32 %57, %783, %790
   %793 = concat(%789, %791) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %794 = flat_load_dwordx2 %793 {glc = 1, dlc = 1}
+  %794 = flat_load_dwordx2 %793 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %795 = slice %794[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %796 = slice %794[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -394,7 +394,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %828, %829 = v_add_co_u32 %55, %821
   %830, %831 = v_add_co_ci_u32 %57, %822, %829
   %832 = concat(%828, %830) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %833 = flat_load_u8 %832 {glc = 1, dlc = 1}
+  %833 = flat_load_u8 %832 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %835 = v_and_b32_lit %807, 7
   %836 = v_cmp_ne_i32 %833, %47
@@ -418,7 +418,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %879, %880 = v_add_co_u32 %55, %872
   %881, %882 = v_add_co_ci_u32 %57, %873, %880
   %883 = concat(%879, %881) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %884 = flat_load_dwordx2 %883 {glc = 1, dlc = 1}
+  %884 = flat_load_dwordx2 %883 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %885 = slice %884[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %886 = slice %884[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -434,7 +434,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %918, %919 = v_add_co_u32 %55, %911
   %920, %921 = v_add_co_ci_u32 %57, %912, %919
   %922 = concat(%918, %920) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %923 = flat_load_u8 %922 {glc = 1, dlc = 1}
+  %923 = flat_load_u8 %922 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %925 = v_and_b32_lit %897, 7
   %926 = v_cmp_ne_i32 %923, %47
@@ -458,7 +458,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %969, %970 = v_add_co_u32 %55, %962
   %971, %972 = v_add_co_ci_u32 %57, %963, %970
   %973 = concat(%969, %971) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %974 = flat_load_dwordx2 %973 {glc = 1, dlc = 1}
+  %974 = flat_load_dwordx2 %973 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %975 = slice %974[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %976 = slice %974[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -474,7 +474,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %1008, %1009 = v_add_co_u32 %55, %1001
   %1010, %1011 = v_add_co_ci_u32 %57, %1002, %1009
   %1012 = concat(%1008, %1010) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %1013 = flat_load_u8 %1012 {glc = 1, dlc = 1}
+  %1013 = flat_load_u8 %1012 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %1015 = v_and_b32_lit %987, 7
   %1016 = v_cmp_ne_i32 %1013, %47
@@ -498,7 +498,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %1059, %1060 = v_add_co_u32 %55, %1052
   %1061, %1062 = v_add_co_ci_u32 %57, %1053, %1060
   %1063 = concat(%1059, %1061) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %1064 = flat_load_dwordx2 %1063 {glc = 1, dlc = 1}
+  %1064 = flat_load_dwordx2 %1063 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %1065 = slice %1064[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %1066 = slice %1064[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -514,7 +514,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %1098, %1099 = v_add_co_u32 %55, %1091
   %1100, %1101 = v_add_co_ci_u32 %57, %1092, %1099
   %1102 = concat(%1098, %1100) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %1103 = flat_load_u8 %1102 {glc = 1, dlc = 1}
+  %1103 = flat_load_u8 %1102 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %1105 = v_and_b32_lit %1077, 7
   %1106 = v_cmp_ne_i32 %1103, %47
@@ -538,7 +538,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %1149, %1150 = v_add_co_u32 %55, %1142
   %1151, %1152 = v_add_co_ci_u32 %57, %1143, %1150
   %1153 = concat(%1149, %1151) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %1154 = flat_load_dwordx2 %1153 {glc = 1, dlc = 1}
+  %1154 = flat_load_dwordx2 %1153 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %1155 = slice %1154[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %1156 = slice %1154[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -554,7 +554,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %1188, %1189 = v_add_co_u32 %55, %1181
   %1190, %1191 = v_add_co_ci_u32 %57, %1182, %1189
   %1192 = concat(%1188, %1190) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %1193 = flat_load_u8 %1192 {glc = 1, dlc = 1}
+  %1193 = flat_load_u8 %1192 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %1195 = v_and_b32_lit %1167, 7
   %1196 = v_cmp_ne_i32 %1193, %47
@@ -578,7 +578,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %1239, %1240 = v_add_co_u32 %55, %1232
   %1241, %1242 = v_add_co_ci_u32 %57, %1233, %1240
   %1243 = concat(%1239, %1241) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %1244 = flat_load_dwordx2 %1243 {glc = 1, dlc = 1}
+  %1244 = flat_load_dwordx2 %1243 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %1245 = slice %1244[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %1246 = slice %1244[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -594,7 +594,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %1278, %1279 = v_add_co_u32 %55, %1271
   %1280, %1281 = v_add_co_ci_u32 %57, %1272, %1279
   %1282 = concat(%1278, %1280) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %1283 = flat_load_u8 %1282 {glc = 1, dlc = 1}
+  %1283 = flat_load_u8 %1282 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %1285 = v_and_b32_lit %1257, 7
   %1286 = v_cmp_ne_i32 %1283, %47
@@ -618,7 +618,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %1329, %1330 = v_add_co_u32 %55, %1322
   %1331, %1332 = v_add_co_ci_u32 %57, %1323, %1330
   %1333 = concat(%1329, %1331) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %1334 = flat_load_dwordx2 %1333 {glc = 1, dlc = 1}
+  %1334 = flat_load_dwordx2 %1333 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %1335 = slice %1334[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %1336 = slice %1334[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -634,7 +634,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %1368, %1369 = v_add_co_u32 %55, %1361
   %1370, %1371 = v_add_co_ci_u32 %57, %1362, %1369
   %1372 = concat(%1368, %1370) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %1373 = flat_load_u8 %1372 {glc = 1, dlc = 1}
+  %1373 = flat_load_u8 %1372 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %1375 = v_and_b32_lit %1347, 7
   %1376 = v_cmp_ne_i32 %1373, %47
@@ -658,7 +658,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %1419, %1420 = v_add_co_u32 %55, %1412
   %1421, %1422 = v_add_co_ci_u32 %57, %1413, %1420
   %1423 = concat(%1419, %1421) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %1424 = flat_load_dwordx2 %1423 {glc = 1, dlc = 1}
+  %1424 = flat_load_dwordx2 %1423 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %1425 = slice %1424[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %1426 = slice %1424[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
@@ -674,7 +674,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %1458, %1459 = v_add_co_u32 %55, %1451
   %1460, %1461 = v_add_co_ci_u32 %57, %1452, %1459
   %1462 = concat(%1458, %1460) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %1463 = flat_load_u8 %1462 {glc = 1, dlc = 1}
+  %1463 = flat_load_u8 %1462 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %1465 = v_and_b32_lit %1437, 7
   %1466 = v_cmp_ne_i32 %1463, %47

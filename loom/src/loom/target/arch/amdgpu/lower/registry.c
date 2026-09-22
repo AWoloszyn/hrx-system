@@ -57,6 +57,7 @@
 #include "loom/target/arch/amdgpu/lower/matrix_fragment_repack.h"
 #include "loom/target/arch/amdgpu/lower/matrix_representation.h"
 #include "loom/target/arch/amdgpu/lower/memory.h"
+#include "loom/target/arch/amdgpu/lower/memory_ordering.h"
 #include "loom/target/arch/amdgpu/lower/preamble.h"
 #include "loom/target/arch/amdgpu/lower/sanitizer.h"
 #include "loom/target/arch/amdgpu/lower/sanitizer_race.h"
@@ -410,6 +411,18 @@ static iree_status_t loom_amdgpu_select_kernel_barrier_dispatch(
   (void)row;
   return loom_amdgpu_select_kernel_barrier_plan(context, source_op, out_plan);
 }
+
+static iree_status_t loom_amdgpu_select_memory_fence_dispatch(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    const loom_amdgpu_lower_dispatch_row_t* row,
+    loom_low_lower_plan_t* out_plan) {
+  (void)row;
+  return loom_amdgpu_select_memory_fence_plan(context, source_op, out_plan);
+}
+
+LOOM_AMDGPU_DEFINE_DATA_EMIT(loom_amdgpu_emit_memory_fence_dispatch,
+                             loom_amdgpu_memory_fence_plan_t,
+                             loom_amdgpu_lower_memory_fence)
 
 static iree_status_t loom_amdgpu_emit_kernel_barrier_dispatch(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
@@ -930,6 +943,8 @@ LOOM_AMDGPU_DEFINE_DATA_EMIT(loom_amdgpu_emit_sanitizer_race_sync_dispatch,
 
 #define LOOM_AMDGPU_STRUCTURAL_DIRECT_STORAGE_ROW \
   LOOM_AMDGPU_INTERNAL_DIRECT_STORAGE_ROW
+#define LOOM_AMDGPU_STRUCTURAL_DATA_STORAGE_ROW \
+  LOOM_AMDGPU_INTERNAL_DATA_STORAGE_ROW
 #define LOOM_AMDGPU_STRUCTURAL_DATA_STORAGE_REPORT_KEY_ROW \
   LOOM_AMDGPU_INTERNAL_DATA_STORAGE_REPORT_KEY_ROW
 #define LOOM_AMDGPU_VALUE_STRUCTURAL_DIRECT_STORAGE_ROW \
@@ -1415,6 +1430,8 @@ static iree_string_view_t loom_amdgpu_workgroup_reduce_plan_key(
 static iree_string_view_t loom_amdgpu_kernel_barrier_plan_key(
     const loom_op_t* source_op, const loom_amdgpu_kernel_barrier_plan_t* plan) {
   switch (plan->kind) {
+    case LOOM_AMDGPU_KERNEL_BARRIER_LOWERING_KIND_CONVERGED_SUBGROUP:
+      return IREE_SV("amdgpu.kernel_barrier.strategy.converged_subgroup");
     case LOOM_AMDGPU_KERNEL_BARRIER_LOWERING_KIND_S_BARRIER:
       return IREE_SV(
           "amdgpu.kernel_barrier.strategy.s_barrier.workgroup_rendezvous");
@@ -1709,6 +1726,7 @@ static const loom_low_lower_policy_t kAmdgpuLowLowerPolicy = {
             .user_data = NULL,
         },
     .source_plan_observer = &loom_amdgpu_matrix_representation_observer,
+    .visibility_model = loom_amdgpu_memory_visibility_model,
     .preselect_op = {.fn = loom_amdgpu_preselect_op, .user_data = NULL},
     .select_op = {.fn = loom_amdgpu_select_op, .user_data = NULL},
     .mark_plan_storage_demands = {.fn = loom_amdgpu_mark_plan_storage_demands,

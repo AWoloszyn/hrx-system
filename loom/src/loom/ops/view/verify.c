@@ -180,6 +180,45 @@ iree_status_t loom_view_store_verify(const loom_module_t* module,
                                   emitter);
 }
 
+loom_trait_flags_t loom_view_atomic_load_effective_traits(const loom_op_t* op) {
+  const loom_trait_flags_t traits = op->traits & ~LOOM_TRAIT_MEMORY_FENCE;
+  return loom_view_atomic_load_ordering(op) == LOOM_ATOMIC_ORDERING_RELAXED
+             ? traits
+             : traits | LOOM_TRAIT_MEMORY_FENCE;
+}
+
+loom_trait_flags_t loom_view_atomic_store_effective_traits(
+    const loom_op_t* op) {
+  const loom_trait_flags_t traits = op->traits & ~LOOM_TRAIT_MEMORY_FENCE;
+  return loom_view_atomic_store_ordering(op) == LOOM_ATOMIC_ORDERING_RELAXED
+             ? traits
+             : traits | LOOM_TRAIT_MEMORY_FENCE;
+}
+
+iree_status_t loom_view_atomic_load_verify(const loom_module_t* module,
+                                           const loom_op_t* op,
+                                           iree_diagnostic_emitter_t emitter) {
+  IREE_RETURN_IF_ERROR(loom_view_verify_element_access(
+      module, op, emitter, IREE_SV("view"),
+      loom_module_value_type(module, loom_view_atomic_load_view(op)),
+      loom_view_atomic_load_static_indices(op),
+      loom_view_atomic_load_indices(op).count));
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_LOAD,
+                                  emitter);
+}
+
+iree_status_t loom_view_atomic_store_verify(const loom_module_t* module,
+                                            const loom_op_t* op,
+                                            iree_diagnostic_emitter_t emitter) {
+  IREE_RETURN_IF_ERROR(loom_view_verify_element_access(
+      module, op, emitter, IREE_SV("view"),
+      loom_module_value_type(module, loom_view_atomic_store_view(op)),
+      loom_view_atomic_store_static_indices(op),
+      loom_view_atomic_store_indices(op).count));
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_STORE,
+                                  emitter);
+}
+
 iree_status_t loom_view_atomic_reduce_verify(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter) {

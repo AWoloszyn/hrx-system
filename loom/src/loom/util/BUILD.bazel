@@ -607,6 +607,7 @@ loom_cc_test(
     name = "dominance_test",
     srcs = ["dominance_test.cc"],
     deps = [
+        ":cfg_dominance",
         ":cfg_graph",
         ":dominance",
         "//loom/src/loom/ir",

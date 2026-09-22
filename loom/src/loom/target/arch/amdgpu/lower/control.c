@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "loom/analysis/condition_facts.h"
+#include "loom/ir/module.h"
 #include "loom/ops/cfg/ops.h"
 #include "loom/target/arch/amdgpu/lower/constants.h"
 #include "loom/target/arch/amdgpu/lower/emit.h"
@@ -521,14 +522,16 @@ static iree_status_t loom_amdgpu_analyze_then_masked_region(
   return iree_ok_status();
 }
 
-static iree_status_t loom_amdgpu_append_restore_block_like_dest(
+static iree_status_t loom_amdgpu_insert_restore_block_before_dest(
     loom_low_lower_context_t* context, loom_block_t* low_dest,
     loom_block_t** out_restore_block) {
   *out_restore_block = NULL;
   loom_block_t* restore_block = NULL;
-  IREE_RETURN_IF_ERROR(
-      loom_low_lower_append_low_block(context, &restore_block));
   loom_module_t* module = loom_low_lower_context_module(context);
+  // The restored continuation stays beside the masked region instead of
+  // turning every loop iteration into a trip through the function tail.
+  IREE_RETURN_IF_ERROR(loom_region_insert_block(
+      module, low_dest->parent_region, low_dest->region_index, &restore_block));
   loom_builder_t* builder = loom_low_lower_context_builder(context);
   for (uint16_t i = 0; i < low_dest->arg_count; ++i) {
     const loom_value_id_t dest_arg = loom_block_arg_id(low_dest, i);
@@ -580,7 +583,7 @@ static iree_status_t loom_amdgpu_prepare_then_masked_region(
   loom_block_t* guard_false_low_dest = NULL;
   IREE_RETURN_IF_ERROR(loom_low_lower_lookup_block(
       context, region.guard_false_dest, &guard_false_low_dest));
-  IREE_RETURN_IF_ERROR(loom_amdgpu_append_restore_block_like_dest(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_insert_restore_block_before_dest(
       context, guard_false_low_dest, &plan->restore_block));
   IREE_RETURN_IF_ERROR(loom_low_lower_interpose_successor_dest(
       context, source_op, 1, plan->restore_block, &plan->restore_dest));
@@ -596,7 +599,7 @@ static iree_status_t loom_amdgpu_prepare_then_masked_region(
     loom_block_t* continuation_low_dest = NULL;
     IREE_RETURN_IF_ERROR(loom_low_lower_lookup_block(
         context, region.continuation, &continuation_low_dest));
-    IREE_RETURN_IF_ERROR(loom_amdgpu_append_restore_block_like_dest(
+    IREE_RETURN_IF_ERROR(loom_amdgpu_insert_restore_block_before_dest(
         context, continuation_low_dest, &exit_restore_block));
     plan->merge_restore_block = exit_restore_block;
     plan->merge_restore_dest = exit_restore_dest;

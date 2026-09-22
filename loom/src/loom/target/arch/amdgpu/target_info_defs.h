@@ -465,8 +465,8 @@ typedef enum loom_amdgpu_buffer_resource_cache_swizzle_e {
 typedef enum loom_amdgpu_vector_memory_cache_policy_encoding_e {
   // Vector memory descriptors do not expose cache-policy immediates.
   LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_NONE = 0,
-  // Vector memory descriptors expose GLC/SLC/DLC cache controls.
-  LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX9_11_GLC_SLC_DLC = 1,
+  // GFX11 GLC controls read coherence; SLC/DLC are cache temporal hints.
+  LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC = 1,
   // Vector memory descriptors expose NV/SCOPE/TH cache controls.
   LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX12_NV_SCOPE_TH = 2,
   // Vector memory descriptors expose NT/SC0/SC1 cache controls.

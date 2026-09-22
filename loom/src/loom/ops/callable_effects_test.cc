@@ -135,10 +135,12 @@ TEST_F(CallableEffectsTest, DeclarationsRequireExplicitPureContract) {
   loom_func_like_t unspecified = {};
   BuildDeclaration(IREE_SV("unspecified"), /*purity=*/0, &unspecified);
   EXPECT_FALSE(loom_callable_effects_is_pure(unspecified));
+  EXPECT_TRUE(loom_callable_effects_may_access_memory(unspecified));
 
   loom_func_like_t pure = {};
   BuildDeclaration(IREE_SV("pure"), LOOM_FUNC_PURITY_PURE, &pure);
   EXPECT_TRUE(loom_callable_effects_is_pure(pure));
+  EXPECT_FALSE(loom_callable_effects_may_access_memory(pure));
 }
 
 TEST_F(CallableEffectsTest, DefinitionsUseBodyEffects) {
@@ -146,6 +148,7 @@ TEST_F(CallableEffectsTest, DefinitionsUseBodyEffects) {
   BuildDefinition(IREE_SV("pure"), &pure);
   AppendReturn(pure);
   EXPECT_TRUE(loom_callable_effects_is_pure(pure));
+  EXPECT_FALSE(loom_callable_effects_may_access_memory(pure));
 
   loom_func_like_t unknown_effects = {};
   BuildDeclaration(IREE_SV("unknown_effects"), /*purity=*/0, &unknown_effects);
@@ -155,6 +158,7 @@ TEST_F(CallableEffectsTest, DefinitionsUseBodyEffects) {
   AppendCall(impure, unknown_effects, &call_op);
   AppendReturn(impure);
   EXPECT_FALSE(loom_callable_effects_is_pure(impure));
+  EXPECT_TRUE(loom_callable_effects_may_access_memory(impure));
 }
 
 TEST_F(CallableEffectsTest, PropagationRefreshesCallerEffects) {
@@ -168,6 +172,7 @@ TEST_F(CallableEffectsTest, PropagationRefreshesCallerEffects) {
   AppendCall(caller, pure, &call_op);
   AppendReturn(caller);
   EXPECT_TRUE(loom_region_has_read_effects(loom_func_like_body(caller)));
+  EXPECT_TRUE(loom_callable_effects_may_access_memory(caller));
   EXPECT_EQ(loom_func_call_effective_traits(call_op),
             LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_UNKNOWN_EFFECTS);
   EXPECT_TRUE(iree_any_bit_set(call_op->traits, LOOM_TRAIT_CALLABLE_BOUNDARY));
@@ -185,6 +190,7 @@ TEST_F(CallableEffectsTest, PropagationRefreshesCallerEffects) {
   EXPECT_TRUE(iree_any_bit_set(call_op->traits, LOOM_TRAIT_CALLABLE_BOUNDARY));
   EXPECT_FALSE(loom_region_has_read_effects(loom_func_like_body(caller)));
   EXPECT_FALSE(loom_region_has_write_effects(loom_func_like_body(caller)));
+  EXPECT_FALSE(loom_callable_effects_may_access_memory(caller));
   EXPECT_FALSE(loom_region_has_convergent_effects(loom_func_like_body(caller)));
 }
 

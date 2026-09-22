@@ -10,12 +10,12 @@
 #include <string.h>
 
 #include "loom/codegen/low/lower/context.h"
+#include "loom/codegen/low/lower/execution.h"
 #include "loom/codegen/low/lower/rule_emit.h"
 #include "loom/codegen/low/lower/source_plan.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/func/ops.h"
-#include "loom/util/cfg_loop_nest.h"
 #include "loom/util/fact_cfg.h"
 
 enum {
@@ -480,65 +480,6 @@ static bool loom_low_lower_report_loop_region_execution_count(
   return true;
 }
 
-static iree_status_t loom_low_lower_report_calculate_source_block_counts(
-    loom_low_lower_context_t* context, loom_region_t* body,
-    iree_arena_allocator_t* analysis_arena) {
-  if (!iree_any_bit_set(body->flags, LOOM_REGION_INSTANCE_FLAG_CFG)) {
-    context->lowering.report.source_block_execution_counts[0] = 1;
-    return iree_ok_status();
-  }
-  const loom_value_fact_cfg_region_t* region =
-      loom_value_fact_table_lookup_cfg_region(context->lowering.fact_table,
-                                              body);
-  const loom_cfg_loop_nest_t* loops = &region->loops;
-  uint64_t* trip_counts = NULL;
-  if (loops->loop_count > 0) {
-    IREE_RETURN_IF_ERROR(
-        iree_arena_allocate_array(analysis_arena, loops->loop_count,
-                                  sizeof(*trip_counts), (void**)&trip_counts));
-  }
-  for (iree_host_size_t i = 0; i < loops->loop_count; ++i) {
-    const loom_loop_recurrence_facts_t recurrence =
-        loom_value_fact_induction_facts(context->lowering.fact_table,
-                                        context->module,
-                                        &region->inductions[i]);
-    if (!recurrence.trip_count_known) {
-      context->lowering.report.source_block_execution_counts_exact = false;
-      return iree_ok_status();
-    }
-    trip_counts[i] = recurrence.trip_count;
-  }
-  context->lowering.report.source_block_execution_counts_exact =
-      loom_cfg_loop_nest_calculate_block_execution_counts(
-          loops, trip_counts,
-          context->lowering.report.source_block_execution_counts);
-  return iree_ok_status();
-}
-
-static iree_status_t loom_low_lower_report_ensure_source_block_counts(
-    loom_low_lower_context_t* context) {
-  if (context->lowering.report.source_block_execution_counts_initialized) {
-    return iree_ok_status();
-  }
-  context->lowering.report.source_block_execution_counts_initialized = true;
-  context->lowering.report.source_block_execution_counts_exact = true;
-  loom_region_t* body = loom_func_like_body(context->source_function);
-  if (body == NULL || body->block_count == 0) {
-    return iree_ok_status();
-  }
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      &context->function_arena, body->block_count,
-      sizeof(*context->lowering.report.source_block_execution_counts),
-      (void**)&context->lowering.report.source_block_execution_counts));
-
-  iree_arena_allocator_t analysis_arena;
-  iree_arena_initialize(context->module->arena.block_pool, &analysis_arena);
-  iree_status_t status = loom_low_lower_report_calculate_source_block_counts(
-      context, body, &analysis_arena);
-  iree_arena_deinitialize(&analysis_arena);
-  return status;
-}
-
 static const loom_block_t* loom_low_lower_source_op_function_block(
     const loom_low_lower_context_t* context, const loom_op_t* source_op) {
   const loom_block_t* block = source_op ? source_op->parent_block : NULL;
@@ -590,14 +531,12 @@ iree_status_t loom_low_lower_source_op_execution_count_plus_one(
   uint16_t block_index = 0;
   if (body != NULL && function_block != NULL &&
       loom_region_try_block_index(body, function_block, &block_index)) {
+    const uint64_t* block_counts = NULL;
     IREE_RETURN_IF_ERROR(
-        loom_low_lower_report_ensure_source_block_counts(context));
-    if (!context->lowering.report.source_block_execution_counts_exact ||
-        block_index >= body->block_count ||
+        loom_low_lower_source_block_execution_counts(context, &block_counts));
+    if (block_counts == NULL ||
         !loom_low_lower_report_multiply_u64(
-            execution_count,
-            context->lowering.report.source_block_execution_counts[block_index],
-            &execution_count)) {
+            execution_count, block_counts[block_index], &execution_count)) {
       *out_execution_count_plus_one =
           LOOM_LOW_LOWER_MEMORY_REPORT_EXECUTION_COUNT_PLUS_ONE_UNKNOWN;
       return iree_ok_status();

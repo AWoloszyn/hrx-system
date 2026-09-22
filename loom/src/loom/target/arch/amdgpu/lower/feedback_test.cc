@@ -958,9 +958,8 @@ TEST_F(AmdgpuFeedbackTest, LoadsReservationHead) {
   ExpectGlobalLoadB64(load_op, channel_values.address,
                       LOOM_AMDGPU_FEEDBACK_CHANNEL_RESERVATION_HEAD_OFFSET,
                       reservation_head);
-  ASSERT_EQ(loom_low_op_attrs(load_op).count, 3u);
+  ASSERT_EQ(loom_low_op_attrs(load_op).count, 2u);
   ExpectAttrI64(loom_low_op_attrs(load_op), IREE_SV("glc"), 1);
-  ExpectAttrI64(loom_low_op_attrs(load_op), IREE_SV("dlc"), 1);
 }
 
 TEST_F(AmdgpuFeedbackTest, LoadsReservationHeadWithCdnaM0) {
@@ -1041,9 +1040,8 @@ TEST_F(AmdgpuFeedbackTest, LoadsReadTailWithRdnaAcquireOrdering) {
   ASSERT_NE(load_op, nullptr);
   ExpectGlobalLoadB64(load_op, channel_values.address,
                       LOOM_AMDGPU_FEEDBACK_CHANNEL_READ_TAIL_OFFSET, read_tail);
-  ASSERT_EQ(loom_low_op_attrs(load_op).count, 3u);
+  ASSERT_EQ(loom_low_op_attrs(load_op).count, 2u);
   ExpectAttrI64(loom_low_op_attrs(load_op), IREE_SV("glc"), 1);
-  ExpectAttrI64(loom_low_op_attrs(load_op), IREE_SV("dlc"), 1);
 
   std::vector<loom_op_t*> waitcnt_ops =
       OpsForDescriptorRef(LOOM_AMDGPU_DESCRIPTOR_REF_S_WAITCNT);

@@ -517,11 +517,12 @@ TEST_F(ViewRegionsTest, ReadOnlyStorageRequiresAliasOrConstantProof) {
 
 class AtomicStorageStabilityTest
     : public ViewRegionsTest,
-      public ::testing::WithParamInterface<
-          std::tuple<loom_atomic_ordering_t, loom_atomic_scope_t, bool>> {};
+      public ::testing::WithParamInterface<std::tuple<
+          loom_atomic_ordering_t, loom_atomic_scope_t, bool, loom_op_kind_t>> {
+};
 
 TEST_P(AtomicStorageStabilityTest, AcquisitionInterferesWithSharedStorage) {
-  const auto [ordering, scope, shared_stable] = GetParam();
+  const auto [ordering, scope, shared_stable, kind] = GetParam();
   const loom_value_id_t global =
       BuildReadOnlyView(BuildNoAliasBuffer(DefineBufferArg()));
   const loom_value_id_t workgroup = BuildReadOnlyView(BuildNoAliasBuffer(
@@ -538,10 +539,21 @@ TEST_P(AtomicStorageStabilityTest, AcquisitionInterferesWithSharedStorage) {
   const loom_value_id_t value = DefineScalarArg(LOOM_SCALAR_TYPE_I32);
   const int64_t indices[] = {0};
   loom_op_t* atomic = nullptr;
-  IREE_ASSERT_OK(loom_view_atomic_rmw_build(
-      &builder_, 0, LOOM_ATOMIC_KIND_ADDI, value, token, nullptr, 0, indices, 1,
-      ordering, scope, 0, 0, loom_type_scalar(LOOM_SCALAR_TYPE_I32),
-      LOOM_LOCATION_UNKNOWN, &atomic));
+  if (kind == LOOM_OP_VIEW_ATOMIC_LOAD) {
+    IREE_ASSERT_OK(loom_view_atomic_load_build(
+        &builder_, 0, token, nullptr, 0, indices, 1, ordering, scope, 0, 0,
+        loom_type_scalar(LOOM_SCALAR_TYPE_I32), LOOM_LOCATION_UNKNOWN,
+        &atomic));
+  } else if (kind == LOOM_OP_VIEW_ATOMIC_STORE) {
+    IREE_ASSERT_OK(loom_view_atomic_store_build(
+        &builder_, 0, value, token, nullptr, 0, indices, 1, ordering, scope, 0,
+        0, LOOM_LOCATION_UNKNOWN, &atomic));
+  } else {
+    IREE_ASSERT_OK(loom_view_atomic_rmw_build(
+        &builder_, 0, LOOM_ATOMIC_KIND_ADDI, value, token, nullptr, 0, indices,
+        1, ordering, scope, 0, 0, loom_type_scalar(LOOM_SCALAR_TYPE_I32),
+        LOOM_LOCATION_UNKNOWN, &atomic));
+  }
 
   loom_value_fact_table_t facts = {};
   ComputeFacts(&facts);
@@ -551,29 +563,41 @@ TEST_P(AtomicStorageStabilityTest, AcquisitionInterferesWithSharedStorage) {
   EXPECT_EQ(RootIsStable(&table, workgroup), shared_stable);
   EXPECT_TRUE(RootIsStable(&table, private_view));
   EXPECT_TRUE(RootIsStable(&table, constant));
-  EXPECT_FALSE(RootIsStable(&table, token));
+  EXPECT_EQ(RootIsStable(&table, token),
+            kind == LOOM_OP_VIEW_ATOMIC_LOAD && shared_stable);
 }
 
 INSTANTIATE_TEST_SUITE_P(
     ViewRegions, AtomicStorageStabilityTest,
-    ::testing::Values(std::make_tuple(LOOM_ATOMIC_ORDERING_RELAXED,
-                                      LOOM_ATOMIC_SCOPE_DEVICE, true),
-                      std::make_tuple(LOOM_ATOMIC_ORDERING_RELEASE,
-                                      LOOM_ATOMIC_SCOPE_DEVICE, true),
-                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
-                                      LOOM_ATOMIC_SCOPE_DEVICE, false),
-                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQ_REL,
-                                      LOOM_ATOMIC_SCOPE_DEVICE, false),
-                      std::make_tuple(LOOM_ATOMIC_ORDERING_SEQ_CST,
-                                      LOOM_ATOMIC_SCOPE_DEVICE, false),
-                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
-                                      LOOM_ATOMIC_SCOPE_THREAD, true),
-                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
-                                      LOOM_ATOMIC_SCOPE_SUBGROUP, false),
-                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
-                                      LOOM_ATOMIC_SCOPE_WORKGROUP, false),
-                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
-                                      LOOM_ATOMIC_SCOPE_SYSTEM, false)));
+    ::testing::Values(
+        std::make_tuple(LOOM_ATOMIC_ORDERING_RELAXED, LOOM_ATOMIC_SCOPE_DEVICE,
+                        true, LOOM_OP_VIEW_ATOMIC_RMW),
+        std::make_tuple(LOOM_ATOMIC_ORDERING_RELEASE, LOOM_ATOMIC_SCOPE_DEVICE,
+                        true, LOOM_OP_VIEW_ATOMIC_RMW),
+        std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE, LOOM_ATOMIC_SCOPE_DEVICE,
+                        false, LOOM_OP_VIEW_ATOMIC_RMW),
+        std::make_tuple(LOOM_ATOMIC_ORDERING_ACQ_REL, LOOM_ATOMIC_SCOPE_DEVICE,
+                        false, LOOM_OP_VIEW_ATOMIC_RMW),
+        std::make_tuple(LOOM_ATOMIC_ORDERING_SEQ_CST, LOOM_ATOMIC_SCOPE_DEVICE,
+                        false, LOOM_OP_VIEW_ATOMIC_RMW),
+        std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE, LOOM_ATOMIC_SCOPE_THREAD,
+                        true, LOOM_OP_VIEW_ATOMIC_RMW),
+        std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
+                        LOOM_ATOMIC_SCOPE_SUBGROUP, false,
+                        LOOM_OP_VIEW_ATOMIC_RMW),
+        std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
+                        LOOM_ATOMIC_SCOPE_WORKGROUP, false,
+                        LOOM_OP_VIEW_ATOMIC_RMW),
+        std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE, LOOM_ATOMIC_SCOPE_SYSTEM,
+                        false, LOOM_OP_VIEW_ATOMIC_RMW),
+        std::make_tuple(LOOM_ATOMIC_ORDERING_RELAXED, LOOM_ATOMIC_SCOPE_DEVICE,
+                        true, LOOM_OP_VIEW_ATOMIC_LOAD),
+        std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE, LOOM_ATOMIC_SCOPE_DEVICE,
+                        false, LOOM_OP_VIEW_ATOMIC_LOAD),
+        std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE, LOOM_ATOMIC_SCOPE_THREAD,
+                        true, LOOM_OP_VIEW_ATOMIC_LOAD),
+        std::make_tuple(LOOM_ATOMIC_ORDERING_RELEASE, LOOM_ATOMIC_SCOPE_DEVICE,
+                        true, LOOM_OP_VIEW_ATOMIC_STORE)));
 
 class CompareExchangeStorageStabilityTest
     : public ViewRegionsTest,
@@ -616,6 +640,38 @@ class FenceStorageStabilityTest
       public ::testing::WithParamInterface<std::tuple<
           loom_value_fact_memory_space_t, loom_atomic_ordering_t, bool, bool>> {
 };
+
+class ThreadFenceStorageStabilityTest
+    : public ViewRegionsTest,
+      public ::testing::WithParamInterface<
+          std::tuple<loom_atomic_ordering_t, loom_atomic_scope_t, bool>> {};
+
+TEST_P(ThreadFenceStorageStabilityTest, OnlyAcquisitionImportsSharedWrites) {
+  const auto [ordering, scope, shared_stable] = GetParam();
+  const loom_value_id_t global =
+      BuildReadOnlyView(BuildNoAliasBuffer(DefineBufferArg()));
+  const loom_value_id_t private_view = BuildReadOnlyView(BuildNoAliasBuffer(
+      DefineBufferArg(), LOOM_VALUE_FACT_MEMORY_SPACE_PRIVATE));
+  loom_op_t* fence = nullptr;
+  IREE_ASSERT_OK(loom_buffer_fence_build(&builder_, scope, ordering,
+                                         LOOM_LOCATION_UNKNOWN, &fence));
+
+  loom_value_fact_table_t facts = {};
+  ComputeFacts(&facts);
+  loom_view_region_table_t table = {};
+  Analyze(&facts, &table);
+  EXPECT_EQ(RootIsStable(&table, global), shared_stable);
+  EXPECT_TRUE(RootIsStable(&table, private_view));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ViewRegions, ThreadFenceStorageStabilityTest,
+    ::testing::Values(std::make_tuple(LOOM_ATOMIC_ORDERING_RELEASE,
+                                      LOOM_ATOMIC_SCOPE_SYSTEM, true),
+                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
+                                      LOOM_ATOMIC_SCOPE_SYSTEM, false),
+                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
+                                      LOOM_ATOMIC_SCOPE_THREAD, true)));
 
 TEST_P(FenceStorageStabilityTest, InterferenceRespectsOrderingAndMemorySpace) {
   const auto [memory_space, ordering, global_stable, workgroup_stable] =

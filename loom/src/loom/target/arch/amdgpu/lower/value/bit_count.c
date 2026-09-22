@@ -231,9 +231,16 @@ iree_status_t loom_amdgpu_select_scalar_cttz_plan(
   }
 
   loom_amdgpu_scalar_cttz_flags_t flags = 0;
-  const loom_value_facts_t source_facts = loom_value_fact_table_lookup(
-      loom_low_lower_context_fact_table(context), source);
-  if (loom_value_facts_is_non_zero(source_facts)) {
+  const loom_value_fact_table_t* fact_table =
+      loom_low_lower_context_fact_table(context);
+  const loom_value_facts_t source_facts =
+      loom_value_fact_table_lookup(fact_table, source);
+  const loom_value_facts_t result_facts =
+      loom_value_fact_table_lookup(fact_table, result);
+  // A guarded definition can exclude the zero-input result even when the
+  // incoming value retains its unrestricted facts for other uses.
+  if (loom_value_facts_is_non_zero(source_facts) ||
+      result_facts.range_hi < semantic_bit_width) {
     flags |= LOOM_AMDGPU_SCALAR_CTTZ_FLAG_SOURCE_NONZERO;
   }
   *out_plan = (loom_amdgpu_scalar_cttz_plan_t){

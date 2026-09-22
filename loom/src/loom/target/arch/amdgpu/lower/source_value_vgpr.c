@@ -158,6 +158,24 @@ static bool loom_amdgpu_source_value_known_distribution_facts(
   return true;
 }
 
+static bool loom_amdgpu_source_producer_result0_prefers_vgpr(
+    const loom_module_t* module, const loom_value_fact_table_t* fact_table,
+    loom_value_id_t value, const loom_op_t* defining_op,
+    loom_amdgpu_source_producer_flags_t flags) {
+  if (!iree_any_bit_set(flags,
+                        LOOM_AMDGPU_SOURCE_PRODUCER_RESULT0_UNIFORM_I32) ||
+      !loom_amdgpu_type_is_i32(loom_module_value_type(module, value)) ||
+      !fact_table ||
+      !loom_value_facts_is_subgroup_uniform(
+          loom_value_fact_table_lookup(fact_table, value))) {
+    return true;
+  }
+  // A uniform payload alone does not make a varying lane selector an SGPR.
+  return loom_kernel_subgroup_broadcast_isa(defining_op) &&
+         !loom_value_facts_is_subgroup_uniform(loom_value_fact_table_lookup(
+             fact_table, loom_kernel_subgroup_broadcast_lane(defining_op)));
+}
+
 #define LOOM_AMDGPU_OP_INDEX(kind_) ((kind_) & 0xFF)
 
 static const loom_amdgpu_source_producer_flags_t
@@ -171,9 +189,11 @@ static const loom_amdgpu_source_producer_flags_t
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_KERNEL_SUBGROUP_LANE_ID)] =
             LOOM_AMDGPU_SOURCE_PRODUCER_ALWAYS_VGPR,
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_KERNEL_SUBGROUP_BROADCAST)] =
-            LOOM_AMDGPU_SOURCE_PRODUCER_RESULT0_VGPR,
+            LOOM_AMDGPU_SOURCE_PRODUCER_RESULT0_VGPR |
+            LOOM_AMDGPU_SOURCE_PRODUCER_RESULT0_UNIFORM_I32,
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_KERNEL_SUBGROUP_BROADCAST_FIRST)] =
-            LOOM_AMDGPU_SOURCE_PRODUCER_RESULT0_VGPR,
+            LOOM_AMDGPU_SOURCE_PRODUCER_RESULT0_VGPR |
+            LOOM_AMDGPU_SOURCE_PRODUCER_RESULT0_UNIFORM_I32,
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_KERNEL_SUBGROUP_REDUCE)] =
             LOOM_AMDGPU_SOURCE_PRODUCER_RESULT0_VGPR,
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_KERNEL_SUBGROUP_SCAN)] =
@@ -261,6 +281,8 @@ static const loom_amdgpu_source_producer_flags_t
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_VIEW_ATOMIC_RMW)] =
             LOOM_AMDGPU_SOURCE_PRODUCER_ALWAYS_VGPR,
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_VIEW_ATOMIC_CMPXCHG)] =
+            LOOM_AMDGPU_SOURCE_PRODUCER_ALWAYS_VGPR,
+        [LOOM_AMDGPU_OP_INDEX(LOOM_OP_VIEW_ATOMIC_LOAD)] =
             LOOM_AMDGPU_SOURCE_PRODUCER_ALWAYS_VGPR,
 };
 static_assert(IREE_ARRAYSIZE(kAmdgpuViewSourceProducerFlags) ==
@@ -581,7 +603,10 @@ bool loom_amdgpu_source_value_directly_prefers_vgpr(
     }
     if (iree_any_bit_set(producer_flags,
                          LOOM_AMDGPU_SOURCE_PRODUCER_RESULT0_VGPR)) {
-      return loom_value_def_index(value) == 0;
+      return loom_value_def_index(value) == 0 &&
+             loom_amdgpu_source_producer_result0_prefers_vgpr(
+                 module, fact_table, source_value_id, defining_op,
+                 producer_flags);
     }
     if (iree_any_bit_set(producer_flags,
                          LOOM_AMDGPU_SOURCE_PRODUCER_INDEX_CAST)) {
@@ -1007,7 +1032,10 @@ static bool loom_amdgpu_source_value_prefers_vgpr_impl(
   }
   if (iree_any_bit_set(producer_flags,
                        LOOM_AMDGPU_SOURCE_PRODUCER_RESULT0_VGPR)) {
-    return loom_value_def_index(value) == 0;
+    return loom_value_def_index(value) == 0 &&
+           loom_amdgpu_source_producer_result0_prefers_vgpr(
+               module, fact_table, source_value_id, defining_op,
+               producer_flags);
   }
   if (iree_any_bit_set(producer_flags,
                        LOOM_AMDGPU_SOURCE_PRODUCER_VECTOR_STORAGE)) {

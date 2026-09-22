@@ -1,0 +1,30 @@
+// RUN: with-checks emit source-low target=amdgpu:gfx1151 output=low
+
+// A uniform selector carried in a vector still needs an SGPR lane operand.
+// Scalar exchange results remain in SGPRs for the following integer arithmetic.
+kernel.def @scalar_exchange() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%source_lane: i32, %input: buffer, %output: buffer) {
+  %bounded_lane = scalar.assume %source_lane [range(%source_lane, 0, 31)] : i32
+  %lane_vector = vector.splat %bounded_lane : vector<2xi32>
+  %uniform_lanes = kernel.subgroup.broadcast.first %lane_vector : vector<2xi32>
+  %lane = vector.extract %uniform_lanes[0] : vector<2xi32> -> i32
+  %position = kernel.workitem.id<x> : index
+  %base = index.constant 0 : offset
+  %source = buffer.view %input[%base] : buffer -> view<32xi32>
+  %destination = buffer.view %output[%base] : buffer -> view<32xi32>
+  %value = view.load %source[%position] : view<32xi32> -> i32
+  %selected = kernel.subgroup.broadcast %value from %lane : i32, i32
+  %first = kernel.subgroup.broadcast.first %value : i32
+  %result = scalar.addi %selected, %first : i32
+  view.store %result, %destination[%position] : i32, view<32xi32>
+  kernel.return
+}
+
+// ----
+CHECK: %selected = v_readlane_b32_src1_sgpr %value, %*
+CHECK: %first = v_readfirstlane_b32 %value
+CHECK: %result = s_add_u32 %selected, %first
+CHECK-NOT: *ds_bpermute*

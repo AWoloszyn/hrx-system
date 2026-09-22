@@ -246,6 +246,39 @@ loom_cc_library(
     ],
 )
 
+loom_cc_library(
+    name = "conditioned_value_facts",
+    srcs = ["conditioned_value_facts.c"],
+    hdrs = ["conditioned_value_facts.h"],
+    deps = [
+        ":cfg_value_identity",
+        ":condition_fact_scope",
+        ":condition_facts",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/cfg",
+        "//loom/src/loom/util:dominance",
+        "//loom/src/loom/util:fact_table",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "conditioned_value_facts_test",
+    srcs = ["conditioned_value_facts_test.cc"],
+    deps = [
+        ":conditioned_value_facts",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/cfg",
+        "//loom/src/loom/ops/scalar",
+        "//loom/src/loom/ops/test",
+        "//loom/src/loom/pass:value_facts",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
 loom_cc_test(
     name = "condition_fact_scope_test",
     srcs = ["condition_fact_scope_test.cc"],

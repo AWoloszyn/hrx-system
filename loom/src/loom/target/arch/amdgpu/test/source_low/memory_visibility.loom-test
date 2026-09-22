@@ -1,0 +1,167 @@
+// RUN: with-checks emit source-low target=amdgpu:gfx1151 output=low
+
+// Acquisition applies through aliases. Immutable data remains cacheable while
+// both mutable reads receive visibility, including the read before the fence.
+kernel.def @acquire_with_alias_and_constant() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%payload: buffer, %metadata: buffer, %output: buffer) {
+  %constant = buffer.assume.memory_space<constant> %metadata : buffer
+  %aligned = buffer.assume.alignment %constant {minimum_alignment = 4} : buffer
+  %base = index.constant 0 : offset
+  %data = buffer.view %payload[%base] : buffer -> view<1024xi32>
+  %lookup = buffer.view %aligned[%base] : buffer -> view<1xi32>
+  %destination = buffer.view %output[%base] : buffer -> view<32xi32>
+  %lane = kernel.workitem.id<x> : index
+  %before = view.load %data[%lane] : view<1024xi32> -> i32
+  buffer.fence scope(system) ordering(acquire)
+  %alias = view.subview %data[0] : view<1024xi32> -> view<32xi32>
+  %after = view.load %alias[%lane] : view<32xi32> -> i32
+  %scale = view.load %lookup[0] : view<1xi32> -> i32
+  %pair = scalar.addi %before, %after : i32
+  %result = scalar.muli %pair, %scale : i32
+  view.store %result, %destination[%lane] : i32, view<32xi32>
+  kernel.return
+}
+
+// ----
+CHECK: %before = global_load_* {glc = 1}
+CHECK: %after = global_load_* {glc = 1}
+CHECK: %scale = s_load_dword *
+CHECK: s_waitcnt {vmcnt = 0}
+CHECK: s_waitcnt_vscnt {vscnt = 0}
+CHECK-NOT: buffer_gl*_inv
+
+// ====
+
+// Two passes through a bounded 4-KiB payload retain caching. The loop counts
+// and view extent select eager acquisition before individual loads are planned.
+kernel.def @reuse_after_acquire() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%payload: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %data = buffer.view %payload[%base] : buffer -> view<1024xi32>
+  %destination = buffer.view %output[%base] : buffer -> view<32xi32>
+  %lane = kernel.workitem.id<x> : index
+  %c0 = index.constant 0 : index
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  %iterations = index.constant 64 : index
+  %mask = index.constant 1023 : index
+  %initial = scalar.constant 0 : i32
+  buffer.fence scope(system) ordering(acquire)
+  %total = scf.for %iteration = [%c0 to %iterations step %unit](%partial = %initial : i32) -> (i32) unroll(%unit) {
+    %first = index.mul %iteration, %width : index
+    %linear = index.add %first, %lane : index
+    %slot = index.andi %linear, %mask : index
+    %value = view.load %data[%slot] : view<1024xi32> -> i32
+    %next = scalar.addi %partial, %value : i32
+    scf.yield %next : i32
+  }
+  view.store %total, %destination[%lane] : i32, view<32xi32>
+  kernel.return
+}
+
+// ----
+CHECK: buffer_gl0_inv
+CHECK: buffer_gl1_inv
+CHECK: %value = global_load_b32_saddr *
+CHECK-NOT: * {glc = 1}
+
+// ====
+
+// An unmodeled read shape keeps the complete eager recipe for the function.
+kernel.def @wide_payload_after_acquire() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%payload: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %data = buffer.view %payload[%base] : buffer -> view<1024xi64>
+  %destination = buffer.view %output[%base] : buffer -> view<32xi64>
+  %lane = kernel.workitem.id<x> : index
+  buffer.fence scope(system) ordering(acquire)
+  %value = view.load %data[%lane] : view<1024xi64> -> i64
+  view.store %value, %destination[%lane] : i64, view<32xi64>
+  kernel.return
+}
+
+// ----
+CHECK: buffer_gl0_inv
+CHECK: buffer_gl1_inv
+CHECK: * = global_load_b64_saddr *
+CHECK-NOT: * {glc = 1}
+
+// ====
+// RUN: with-checks emit source-low output=low
+
+// Completion and clock sampling remain effectful without an opaque memory
+// footprint. The helper survives while ordinary payload reads remain coherent.
+amdgpu.target<gfx1151> @gpu
+
+low.func.def target<amdgpu.rdna3_5.core>(@gpu) @completed_tick() -> (reg<amdgpu.sgpr>) asm {
+  s_waitcnt {vmcnt = 0}
+  s_waitcnt_vscnt {vscnt = 0}
+  %tick = s_sendmsg_rtn_b32 {message = 131}
+  s_waitcnt {lgkmcnt = 0}
+  return %tick
+}
+
+kernel.def target(@gpu) @clocked_acquire() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%payload: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %data = buffer.view %payload[%base] : buffer -> view<1024xi32>
+  %destination = buffer.view %output[%base] : buffer -> view<2xi32>
+  buffer.fence scope(system) ordering(acquire)
+  %value = view.load %data[0] : view<1024xi32> -> i32
+  %clock = low.invoke @completed_tick() : () -> (i32)
+  view.store %value, %destination[0] : i32, view<2xi32>
+  view.store %clock, %destination[1] : i32, view<2xi32>
+  kernel.return
+}
+
+// ----
+CHECK: %value = global_load_* {glc = 1}
+CHECK: %tick = s_sendmsg_rtn_b32 {message = 131}
+CHECK: s_waitcnt {lgkmcnt = 0}
+CHECK: s_waitcnt {vmcnt = 0}
+CHECK: s_waitcnt_vscnt {vscnt = 0}
+CHECK-NOT: buffer_gl*_inv
+
+// ====
+// RUN: with-checks emit source-low output=low
+
+// A Low helper that reads memory has no selected payload access plan. Its
+// cached footprint therefore requires eager visibility at the caller's fence.
+amdgpu.target<gfx1151> @gpu
+
+low.func.def target<amdgpu.rdna3_5.core>(@gpu) @read_native(%address: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.sgpr>) asm {
+  %offset = v_mov_b32 0
+  %word = global_load_b32_saddr %offset, %address
+  s_waitcnt {vmcnt = 0}
+  %result = v_readfirstlane_b32 %word
+  return %result
+}
+
+kernel.def target(@gpu) @opaque_read_after_acquire() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%payload: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %destination = buffer.view %output[%base] : buffer -> view<1xi32>
+  buffer.fence scope(system) ordering(acquire)
+  %value = low.invoke @read_native(%payload) : (buffer) -> (i32)
+  view.store %value, %destination[0] : i32, view<1xi32>
+  kernel.return
+}
+
+// ----
+CHECK: buffer_gl0_inv
+CHECK: buffer_gl1_inv
+CHECK: %word = global_load_b32_saddr *
+CHECK-NOT: * {glc = 1}

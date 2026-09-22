@@ -6,6 +6,8 @@
 
 """Shared atomic operation vocabulary."""
 
+from dataclasses import replace
+
 from loom.dsl import EnumCase, EnumDef
 
 AtomicKind = EnumDef(
@@ -47,6 +49,27 @@ AtomicOrdering = EnumDef(
     c_type="loom_atomic_ordering_t",
     c_const_prefix="LOOM_ATOMIC_ORDERING",
     c_include="loom/ops/atomic.h",
+)
+
+AtomicLoadOrdering = replace(
+    AtomicOrdering,
+    name="AtomicLoadOrdering",
+    cases=tuple(AtomicOrdering.case(case) for case in ("relaxed", "acquire", "seq_cst")),
+    doc="Memory ordering permitted on an atomic load.",
+)
+
+AtomicStoreOrdering = replace(
+    AtomicOrdering,
+    name="AtomicStoreOrdering",
+    cases=tuple(AtomicOrdering.case(case) for case in ("relaxed", "release", "seq_cst")),
+    doc="Memory ordering permitted on an atomic store.",
+)
+
+AtomicFenceOrdering = replace(
+    AtomicOrdering,
+    name="AtomicFenceOrdering",
+    cases=tuple(AtomicOrdering.case(case) for case in ("acquire", "release", "acq_rel", "seq_cst")),
+    doc="Memory ordering permitted on a standalone fence.",
 )
 
 AtomicScope = EnumDef(

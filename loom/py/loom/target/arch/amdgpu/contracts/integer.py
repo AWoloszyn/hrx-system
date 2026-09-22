@@ -1380,6 +1380,15 @@ def _scalar_ctpopi_i32_rules() -> tuple[DescriptorRule, ...]:
 
 def _rules() -> tuple[DescriptorRule, ...]:
     rules: list[DescriptorRule] = []
+    for source_op, suffix in (
+        (scalar_arithmetic.scalar_minsi, "min_i32"),
+        (scalar_arithmetic.scalar_maxsi, "max_i32"),
+        (scalar_arithmetic.scalar_minui, "min_u32"),
+        (scalar_arithmetic.scalar_maxui, "max_u32"),
+    ):
+        rules.extend(
+            _i32_sgpr_vgpr_rules(source_op, f"amdgpu.s_{suffix}", f"amdgpu.v_{suffix}")
+        )
     rules.extend(
         _i32_sgpr_vgpr_rules(
             scalar_arithmetic.scalar_addi,

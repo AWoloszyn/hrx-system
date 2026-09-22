@@ -9,7 +9,7 @@
 import pytest
 
 from loom.assembly import AssemblyFormat, BlockArgs, Region
-from loom.dsl import ANY, ATTR_TYPE_I64, ATTR_TYPE_SYMBOL, INTEGER, SYMBOL_DEFINE, AttrDef, Dialect, Op, Operand, RegionDef, Result, SameType, SymbolDefinition, SymbolValueContract
+from loom.dsl import ANY, ATTR_TYPE_I64, ATTR_TYPE_SYMBOL, INTEGER, SYMBOL_DEFINE, AttrDef, Dialect, EnumCase, EnumDef, Op, Operand, RegionDef, Result, SameType, SymbolDefinition, SymbolValueContract
 from loom.gen.ops.c_metadata_tables import generate_tables_c
 
 
@@ -118,3 +118,28 @@ def test_constraint_count_fits_vtable_storage() -> None:
         else:
             with pytest.raises(ValueError, match="constraint count exceeds uint8_t capacity"):
                 generate_tables_c("test", 0, [op])
+
+
+def test_external_enum_conflicting_names_rejected() -> None:
+    dialect = Dialect("test")
+    ops = [
+        Op(
+            f"test.mode{value}",
+            group=dialect,
+            attrs=[
+                AttrDef(
+                    "mode",
+                    "enum",
+                    enum_def=EnumDef(
+                        "Mode",
+                        [EnumCase(keyword, value)],
+                        c_type="loom_shared_mode_t",
+                        c_const_prefix="LOOM_SHARED_MODE",
+                    ),
+                )
+            ],
+        )
+        for value, keyword in enumerate(("fast", "slow"))
+    ]
+    with pytest.raises(ValueError, match="conflicting case sets"):
+        generate_tables_c("test", 0, ops)

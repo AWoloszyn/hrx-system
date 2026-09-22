@@ -627,7 +627,7 @@ static iree_status_t loom_template_selection_add_cfg_graph(
     void* user_data, const loom_cfg_graph_t* graph) {
   loom_template_selection_cfg_builder_t* builder = user_data;
   IREE_RETURN_IF_ERROR(
-      loom_dominance_info_add_cfg_graph(&builder->dominance, graph));
+      loom_dominance_info_add_cfg_graph(&builder->dominance, graph, NULL));
   loom_template_selection_cfg_facts_t* entry = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate(builder->dominance.arena,
                                            sizeof(*entry), (void**)&entry));

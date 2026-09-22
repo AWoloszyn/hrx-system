@@ -396,9 +396,8 @@ class AmdgpuSystemMemoryTest : public ::testing::Test {
     ExpectRegisterType(loom_value_slice_get(loom_low_op_results(op), 0),
                        LOOM_AMDGPU_REG_CLASS_ID_VGPR,
                        expected_result_unit_count);
-    ExpectOpAttrs(op, {{IREE_SV("offset"), expected_byte_offset},
-                       {IREE_SV("glc"), 1},
-                       {IREE_SV("dlc"), 1}});
+    ExpectOpAttrs(
+        op, {{IREE_SV("offset"), expected_byte_offset}, {IREE_SV("glc"), 1}});
   }
 
   void ExpectReadfirstlane(const loom_op_t* op, loom_value_id_t expected_source,
@@ -426,7 +425,7 @@ class AmdgpuSystemMemoryTest : public ::testing::Test {
 
 TEST_F(AmdgpuSystemMemoryTest, AppendsLoadAttrsByArchitecture) {
   ExpectAppendedAttrs(IREE_SV("amdgpu.rdna3.core"), SystemMemoryAttrKind::kLoad,
-                      {{IREE_SV("glc"), 1}, {IREE_SV("dlc"), 1}});
+                      {{IREE_SV("glc"), 1}});
   ExpectAppendedAttrs(IREE_SV("amdgpu.cdna3.core"), SystemMemoryAttrKind::kLoad,
                       {{IREE_SV("sc0"), 1}, {IREE_SV("sc1"), 1}});
   ExpectAppendedAttrs(IREE_SV("amdgpu.rdna4.core"), SystemMemoryAttrKind::kLoad,

@@ -257,8 +257,8 @@ low.kernel.def target<amdgpu.gfx12.generic.core>(@target) abi_layout({constant_c
   %output_view = resource<hal_binding> {extent = 256, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %17 = v_lshlrev_b32_src0_inline %tid, 2
   %value = global_load_b32_saddr %17, %input_view
-  %19 = v_readfirstlane_b32 %value
-  %result = v_mov_b32_copy %19
+  %broadcast = v_readfirstlane_b32 %value
+  %result = v_mov_b32_copy %broadcast
   %21 = v_lshlrev_b32_src0_inline %tid, 2
   global_store_b32_saddr %21, %result, %output_view
   return
