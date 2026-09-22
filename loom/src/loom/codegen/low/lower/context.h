@@ -19,6 +19,7 @@
 #include "loom/analysis/symbolic_expr.h"
 #include "loom/analysis/view_regions.h"
 #include "loom/codegen/low/builder.h"
+#include "loom/codegen/low/lower/execution.h"
 #include "loom/codegen/low/lower/lower.h"
 #include "loom/codegen/low/lower/report.h"
 #include "loom/codegen/low/lower/rules.h"
@@ -67,6 +68,8 @@ typedef struct loom_low_lower_function_analysis_t {
   loom_symbolic_expr_context_t expression_context;
   // View-region table borrowing expression_context.
   loom_view_region_table_t view_regions;
+  // Source body multiplicities retained independently of optional reports.
+  loom_low_lower_execution_counts_t execution_counts;
 } loom_low_lower_function_analysis_t;
 
 typedef struct loom_low_lowering_frame_t {

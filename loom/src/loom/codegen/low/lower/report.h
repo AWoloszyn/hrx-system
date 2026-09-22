@@ -37,12 +37,6 @@ typedef struct loom_op_t loom_op_t;
 typedef struct loom_low_lower_report_state_t {
   // Number of operations finalized by the function's emission builder.
   uint64_t emitted_op_count;
-  // Source CFG block execution counts indexed by source block ordinal.
-  uint64_t* source_block_execution_counts;
-  // True after source block execution count analysis has run.
-  bool source_block_execution_counts_initialized;
-  // True when every reachable source CFG backedge was counted exactly.
-  bool source_block_execution_counts_exact;
   // Interned symbolic byte expressions used by memory interval rows.
   loom_low_lower_memory_expression_entry_t* memory_expression_entries;
   // Number of populated entries in |memory_expression_entries|.
