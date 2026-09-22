@@ -22,6 +22,9 @@ iree_status_t loom_parse_format_inline_attr_dict(loom_parser_t* parser,
 iree_status_t loom_parse_format_apply_elided_attr_defaults(
     loom_parser_t* parser, const loom_op_vtable_t* vtable, loom_format_t format,
     const loom_format_element_t* inline_element, loom_parsed_op_t* parsed);
+// Parses an optional operand dictionary, preserving each value's source span
+// while ordering the final module-owned names. Duplicate keys are diagnosed at
+// their repeated token; entry and membership scratch ends with this call.
 iree_status_t loom_parse_format_operand_dict(
     loom_parser_t* parser, const loom_op_vtable_t* vtable,
     const loom_format_element_t* element, loom_parsed_op_t* parsed);

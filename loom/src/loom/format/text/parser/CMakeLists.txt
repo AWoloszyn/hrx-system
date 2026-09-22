@@ -82,6 +82,24 @@ loom_cc_test(
 
 loom_cc_test(
   NAME
+    format_tables_test
+  SRCS
+    "format_tables_test.cc"
+  DEPS
+    ::parser_impl
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::error::error_defs
+    loom::format::text::tokenizer
+    loom::ir
+    loom::ops::op_defs
+    loom::ops::test
+    loom::testing::diagnostic_matchers
+)
+
+loom_cc_test(
+  NAME
     low_asm_test
   SRCS
     "low_asm_test.cc"
