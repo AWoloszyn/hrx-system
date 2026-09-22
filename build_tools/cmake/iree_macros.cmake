@@ -116,7 +116,7 @@ function(iree_register_target_dependency)
     ${ARGN}
   )
 
-  if(NOT _RULE_TARGET OR NOT _RULE_DEPENDENCY)
+  if("${_RULE_TARGET}" STREQUAL "" OR "${_RULE_DEPENDENCY}" STREQUAL "")
     message(FATAL_ERROR
       "iree_register_target_dependency requires TARGET and DEPENDENCY")
   endif()
@@ -128,8 +128,8 @@ endfunction()
 function(_iree_resolve_target OUTPUT_TARGET_NAME TARGET_NAME)
   set(_TARGET_NAME "${TARGET_NAME}")
   if(TARGET "${_TARGET_NAME}")
-    get_target_property(_ALIASED_TARGET "${_TARGET_NAME}" ALIASED_TARGET)
-    if(_ALIASED_TARGET)
+    get_property(_ALIASED_TARGET TARGET "${_TARGET_NAME}" PROPERTY ALIASED_TARGET)
+    if(DEFINED _ALIASED_TARGET)
       set(_TARGET_NAME "${_ALIASED_TARGET}")
     endif()
   elseif("${_TARGET_NAME}" MATCHES "::")
@@ -156,7 +156,7 @@ function(iree_finalize_target_dependencies)
     set(_UNRESOLVED_TARGET_NAME "${CMAKE_MATCH_1}")
     set(_UNRESOLVED_DEPENDENCY_TARGET_NAME "${CMAKE_MATCH_2}")
     _iree_resolve_target(_TARGET_NAME "${_UNRESOLVED_TARGET_NAME}")
-    if(NOT _TARGET_NAME)
+    if("${_TARGET_NAME}" STREQUAL "")
       message(FATAL_ERROR
         "IREE target dependency consumer does not exist: "
         "${_UNRESOLVED_TARGET_NAME}")
@@ -165,7 +165,7 @@ function(iree_finalize_target_dependencies)
       _DEPENDENCY_TARGET_NAME
       "${_UNRESOLVED_DEPENDENCY_TARGET_NAME}"
     )
-    if(NOT _DEPENDENCY_TARGET_NAME)
+    if("${_DEPENDENCY_TARGET_NAME}" STREQUAL "")
       message(FATAL_ERROR
         "IREE target ${_UNRESOLVED_TARGET_NAME} depends on missing target: "
         "${_UNRESOLVED_DEPENDENCY_TARGET_NAME}")
@@ -191,27 +191,22 @@ function(iree_generated_output_add_consumer INPUT_PATH CONSUMER_TARGET)
   if("${INPUT_PATH}" MATCHES "^\\$<")
     return()
   endif()
-  # CMake AND does not short-circuit; query only candidate source paths.
+  # Resolve relative inputs with CMake's source-before-binary precedence.
   if(NOT IS_ABSOLUTE "${INPUT_PATH}")
     if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${INPUT_PATH}")
-      return()
+      set(INPUT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/${INPUT_PATH}")
     endif()
   endif()
 
   get_filename_component(_INPUT_PATH "${INPUT_PATH}" ABSOLUTE
     BASE_DIR "${CMAKE_CURRENT_BINARY_DIR}")
   cmake_path(NORMAL_PATH _INPUT_PATH)
-  string(FIND "${_INPUT_PATH}/" "${IREE_BINARY_DIR}/" _BINARY_PATH_INDEX)
-  if(NOT _BINARY_PATH_INDEX EQUAL 0)
-    if(EXISTS "${_INPUT_PATH}")
-      return()
-    endif()
-  endif()
 
+  # Existing files may still have a producer, including outside the build tree.
   string(SHA256 _INPUT_KEY "${_INPUT_PATH}")
   get_property(_PRODUCER_TARGET GLOBAL
     PROPERTY "IREE_GENERATED_OUTPUT_PRODUCER_${_INPUT_KEY}")
-  if(_PRODUCER_TARGET)
+  if(DEFINED _PRODUCER_TARGET)
     if(NOT "${_PRODUCER_TARGET}" STREQUAL "${CONSUMER_TARGET}")
       add_dependencies("${CONSUMER_TARGET}" "${_PRODUCER_TARGET}")
     endif()
@@ -236,7 +231,7 @@ function(iree_register_generated_output_producer TARGET_NAME)
     string(SHA256 _OUTPUT_KEY "${_OUTPUT_PATH}")
     get_property(_EXISTING_PRODUCER_TARGET GLOBAL
       PROPERTY "IREE_GENERATED_OUTPUT_PRODUCER_${_OUTPUT_KEY}")
-    if(_EXISTING_PRODUCER_TARGET AND
+    if(DEFINED _EXISTING_PRODUCER_TARGET AND
        NOT "${_EXISTING_PRODUCER_TARGET}" STREQUAL "${TARGET_NAME}")
       message(FATAL_ERROR
         "Generated output ${_OUTPUT_PATH} has multiple producers: "
@@ -456,8 +451,8 @@ function(iree_package_target_name OUTPUT_TARGET_NAME TARGET_NAME)
   endif()
 
   if(TARGET "${_TARGET_NAME}")
-    get_target_property(_ALIASED_TARGET "${_TARGET_NAME}" ALIASED_TARGET)
-    if(_ALIASED_TARGET)
+    get_property(_ALIASED_TARGET TARGET "${_TARGET_NAME}" PROPERTY ALIASED_TARGET)
+    if(DEFINED _ALIASED_TARGET)
       set(_TARGET_NAME "${_ALIASED_TARGET}")
     endif()
   elseif("${_TARGET_NAME}" MATCHES "::")
