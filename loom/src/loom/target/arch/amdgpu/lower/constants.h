@@ -96,10 +96,6 @@ bool loom_amdgpu_attr_is_f32_immediate(loom_attribute_t value);
 // Returns the f32 bit pattern produced by narrowing an attribute.
 uint32_t loom_amdgpu_attr_f32_bit_pattern(loom_attribute_t value);
 
-// Returns true when an attribute can encode as a narrow float immediate
-// payload.
-bool loom_amdgpu_attr_is_narrow_float_immediate(loom_attribute_t value);
-
 // Returns the zero-extended f8E4M3/f8E5M2/f16/bf16 payload of an attribute.
 uint32_t loom_amdgpu_attr_narrow_float_bit_pattern(loom_scalar_type_t type,
                                                    loom_attribute_t value);

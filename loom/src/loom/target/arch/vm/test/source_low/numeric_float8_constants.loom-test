@@ -1,4 +1,6 @@
 // TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_float8_constants.loom-test
+// TEMPLATE-EXCLUDE: @float8_vector_midpoints VM function results use scalar or buffer carriers.
+// TEMPLATE-EXCLUDE: @float8_vector_specials VM function results use scalar or buffer carriers.
 // RUN: emit source-low target=vm:core output=low
 
 func.def @float8_finite_constants() -> (f8E4M3, f8E5M2, f8E4M3, f8E5M2, f8E4M3, f8E5M2) {

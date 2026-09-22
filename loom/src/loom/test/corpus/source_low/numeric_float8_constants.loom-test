@@ -51,3 +51,21 @@ func.def @float8_midpoint_neighbors() -> (f8E4M3, f8E4M3, f8E5M2, f8E5M2) {
   %e5_below_odd = scalar.constant 1.3749999999999998 : f8E5M2
   func.return %e4_above_even, %e4_below_odd, %e5_above_even, %e5_below_odd : f8E4M3, f8E4M3, f8E5M2, f8E5M2
 }
+
+// ====
+
+func.def @float8_vector_midpoints() -> (vector<4xf8E4M3>, vector<8xf8E5M2>) {
+  %e4_above_even = vector.constant 1.0625000000000002 : vector<4xf8E4M3>
+  %e5_below_odd = vector.constant 1.3749999999999998 : vector<8xf8E5M2>
+  func.return %e4_above_even, %e5_below_odd : vector<4xf8E4M3>, vector<8xf8E5M2>
+}
+
+// ====
+
+func.def @float8_vector_specials() -> (vector<1xf8E4M3>, vector<5xf8E4M3>, vector<4xf8E5M2>, vector<8xf8E5M2>) {
+  %e4_negative_zero = vector.constant -0.0 : vector<1xf8E4M3>
+  %e4_saturated = vector.constant inf : vector<5xf8E4M3>
+  %e5_negative_infinity = vector.constant -inf : vector<4xf8E5M2>
+  %e5_nan = vector.constant nan : vector<8xf8E5M2>
+  func.return %e4_negative_zero, %e4_saturated, %e5_negative_infinity, %e5_nan : vector<1xf8E4M3>, vector<5xf8E4M3>, vector<4xf8E5M2>, vector<8xf8E5M2>
+}
