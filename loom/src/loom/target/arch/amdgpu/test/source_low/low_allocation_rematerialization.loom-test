@@ -70,3 +70,33 @@ low.func.def target<amdgpu.rdna3.core>(@target) @rematerialization_budget_falls_
   global_store_b32 v3, v0, s[2:3] offset:0
   s_waitcnt_vscnt vscnt(0)
   s_endpgm
+
+// ====
+
+// One literal serves both add operands, preserving the three-register fit
+// without spilling the other live sum to scratch.
+// RUN: emit amdgpu-assembly @rematerialize_duplicate_operands strategy=source amdgpu.vgpr=3
+
+amdgpu.target<gfx1100> @test_target
+
+low.func.def target<amdgpu.rdna3.core>(@test_target) @rematerialize_duplicate_operands(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %literal = v_mov_b32 1234567
+  %ab = v_add_u32 %a, %b
+  %bc = v_add_u32 %b, %c
+  %twice = v_add_u32 %literal, %literal
+  %partial = v_add_u32 %ab, %twice
+  %result = v_add_u32 %partial, %bc
+  return %result
+}
+
+// ----
+  v_add_u32 v0, v0, v1
+  v_add_u32 v1, v1, v2
+  v_mov_b32 v2, 1234567
+  s_delay_alu instid0(VALU_DEP_1)
+  v_add_u32 v2, v2, v2
+  s_delay_alu instid0(VALU_DEP_1) | instid1(VALU_DEP_4)
+  v_add_u32 v0, v0, v2
+  s_delay_alu instid0(VALU_DEP_1) | instid1(VALU_DEP_4)
+  v_add_u32 v0, v0, v1
+  s_endpgm
