@@ -554,12 +554,12 @@ iree_status_t loom_value_fact_table_compute_region_tree(
     loom_value_fact_table_t* table, const loom_module_t* module,
     loom_region_t* region, loom_op_t* parent_op);
 
-// Applies dependent type-extent constraints to a complete result set before
-// publishing its facts. Missing result facts are unknown. Only final changes
-// are reported to the rewrite owner; provisional sibling updates are private.
+// Applies each result's indexed type-extent constraints before publishing its
+// facts. Missing result facts are unknown. Only final changes are reported to
+// the rewrite owner; other definitions are never modified by publication.
 iree_status_t loom_value_fact_table_define_results(
     loom_value_fact_table_t* table, const loom_module_t* module,
-    const loom_op_t* op, loom_value_facts_t* result_facts,
+    const loom_op_t* op, const loom_value_facts_t* result_facts,
     uint16_t result_count, bool* out_changed);
 
 // Seeds the table by running a forward pass over |region| and its nested

@@ -277,3 +277,198 @@ func.def @scalar_only_unconstrained() -> (i1) {
   %nonnegative = scalar.cmpi sge, %value, %c0 : i32
   func.return %nonnegative : i1
 }
+
+// ====
+
+// RUN: pass canonicalize
+func.def @shape_first(%input: buffer, %extent: i32) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %in_domain = scalar.cmpi sge, %extent, %c0 : i32
+  cfg.cond_br %in_domain, ^shaped, ^other
+^shaped:
+  %source = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+  cfg.br ^typed(%source: view<[%extent]xi32>, %extent: i32)
+^typed(%view: view<[%size]xi32>, %size: i32):
+  test.use %view : view<[%size]xi32>
+  %nonnegative = scalar.cmpi sge, %size, %c0 : i32
+  func.return %nonnegative : i1
+^other:
+  func.return %in_domain : i1
+}
+// ----
+func.def @shape_first(%input: buffer, %extent: i32) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %in_domain = scalar.cmpi sge, %extent, %c0 : i32
+  cfg.cond_br %in_domain, ^shaped, ^other
+^shaped:
+  %source = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+  cfg.br ^typed(%source: view<[%extent]xi32>, %extent: i32)
+^typed(%view: view<[%size]xi32>, %size: i32):
+  test.use %view : view<[%size]xi32>
+  %nonnegative = scalar.constant true : i1
+  func.return %nonnegative : i1
+^other:
+  func.return %in_domain : i1
+}
+
+// ====
+
+// RUN: pass canonicalize
+func.def @extent_first(%input: buffer, %extent: i32) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %in_domain = scalar.cmpi sge, %extent, %c0 : i32
+  cfg.cond_br %in_domain, ^shaped, ^other
+^shaped:
+  %source = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+  cfg.br ^typed(%extent: i32, %source: view<[%extent]xi32>)
+^typed(%size: i32, %view: view<[%size]xi32>):
+  test.use %view : view<[%size]xi32>
+  %nonnegative = scalar.cmpi sge, %size, %c0 : i32
+  func.return %nonnegative : i1
+^other:
+  func.return %in_domain : i1
+}
+// ----
+func.def @extent_first(%input: buffer, %extent: i32) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %in_domain = scalar.cmpi sge, %extent, %c0 : i32
+  cfg.cond_br %in_domain, ^shaped, ^other
+^shaped:
+  %source = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+  cfg.br ^typed(%extent: i32, %source: view<[%extent]xi32>)
+^typed(%size: i32, %view: view<[%size]xi32>):
+  test.use %view : view<[%size]xi32>
+  %nonnegative = scalar.constant true : i1
+  func.return %nonnegative : i1
+^other:
+  func.return %in_domain : i1
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Forwarding through a typed loop body must not constrain the header on the
+// zero-trip path. The body retains both its type bound and incoming upper bound.
+func.def @forwarding_extent_scope(%extent: i32, %count: i32, %input: buffer) -> (i32) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %c1 = scalar.constant 1 : i32
+  %bounded = scalar.assume %extent [range(%extent, -8, 16)] : i32
+  cfg.br ^header(%bounded: i32, %count: i32, %c0: i32)
+^header(%current: i32, %remaining: i32, %sum: i32):
+  %positive = scalar.cmpi sgt, %current, %c0 : i32
+  %repeat = scalar.cmpi sgt, %remaining, %c0 : i32
+  %enter = scalar.andi %positive, %repeat : i1
+  cfg.cond_br %enter, ^create, ^exit
+^create:
+  %source = buffer.view %input[%base] : buffer -> view<[%current]xi32>
+  cfg.br ^typed(%current: i32, %source: view<[%current]xi32>)
+^typed(%size: i32, %view: view<[%size]xi32>):
+  %limit = scalar.constant 16 : i32
+  %bounded_above = scalar.cmpi sle, %size, %limit : i32
+  test.use %bounded_above : i1
+  %nonnegative = scalar.cmpi sge, %size, %c0 : i32
+  %comparison = scf.select %nonnegative, %c1, %c0 : i32
+  %observed = view.load %view[0] : view<[%size]xi32> -> i32
+  %value = scalar.addi %observed, %comparison : i32
+  %next_sum = scalar.addi %sum, %value : i32
+  %next = scalar.subi %remaining, %c1 : i32
+  cfg.br ^header(%size: i32, %next: i32, %next_sum: i32)
+^exit:
+  %less = scalar.cmpi slt, %current, %c0 : i32
+  %comparison_exit = scf.select %less, %c1, %c0 : i32
+  %result = scalar.addi %sum, %comparison_exit : i32
+  func.return %result : i32
+}
+// ----
+func.def @forwarding_extent_scope(%extent: i32, %count: i32, %input: buffer) -> (i32) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %c1 = scalar.constant 1 : i32
+  %bounded = scalar.assume %extent [range(%extent, -8, 16)] : i32
+  cfg.br ^header(%bounded: i32, %count: i32, %c0: i32)
+^header(%current: i32, %remaining: i32, %sum: i32):
+  %positive = scalar.cmpi sgt, %current, %c0 : i32
+  %repeat = scalar.cmpi sgt, %remaining, %c0 : i32
+  %enter = scalar.andi %positive, %repeat : i1
+  cfg.cond_br %enter, ^create, ^exit
+^create:
+  %source = buffer.view %input[%base] : buffer -> view<[%current]xi32>
+  cfg.br ^typed(%current: i32, %source: view<[%current]xi32>)
+^typed(%size: i32, %view: view<[%size]xi32>):
+  %bounded_above = scalar.constant true : i1
+  test.use %bounded_above : i1
+  %comparison = scalar.constant 1 : i32
+  %observed = view.load %view[0] : view<[%size]xi32> -> i32
+  %value = scalar.addi %observed, %comparison : i32
+  %next_sum = scalar.addi %sum, %value : i32
+  %28 = scalar.constant -1 : i32
+  %next = scalar.addi %remaining, %28 : i32
+  cfg.br ^header(%size: i32, %next: i32, %next_sum: i32)
+^exit:
+  %less = scalar.cmpi slt, %current, %c0 : i32
+  %comparison_exit = scf.select %less, %c1, %c0 : i32
+  %result = scalar.addi %sum, %comparison_exit : i32
+  func.return %result : i32
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// Reconstructing a transported view leaves its extent as a scalar argument.
+// The later view type still constrains that argument before its facts publish.
+func.def @reconstructed_extent(%input: buffer, %extent: i32) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %in_domain = scalar.cmpi sge, %extent, %c0 : i32
+  cfg.cond_br %in_domain, ^forward, ^other
+^forward:
+  cfg.br ^typed(%extent: i32)
+^typed(%size: i32):
+  %view = buffer.view %input[%base] : buffer -> view<[%size]xi32>
+  test.use %view : view<[%size]xi32>
+  %nonnegative = scalar.cmpi sge, %size, %c0 : i32
+  func.return %nonnegative : i1
+^other:
+  func.return %in_domain : i1
+}
+// ----
+func.def @reconstructed_extent(%input: buffer, %extent: i32) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %in_domain = scalar.cmpi sge, %extent, %c0 : i32
+  cfg.cond_br %in_domain, ^forward, ^other
+^forward:
+  cfg.br ^typed(%extent: i32)
+^typed(%size: i32):
+  %view = buffer.view %input[%base] : buffer -> view<[%size]xi32>
+  test.use %view : view<[%size]xi32>
+  %nonnegative = scalar.constant true : i1
+  func.return %nonnegative : i1
+^other:
+  func.return %in_domain : i1
+}
+
+// ====
+
+// A declaration describes a possible call, not an executing view definition.
+// Nested parameterized types likewise do not impose a shaped-value domain.
+func.def @nonexecuting_type_uses(%size: i32, %reference: test.ref<view<[%size]xi32>>) -> (i1) {
+  func.decl @declared_shape(%view: view<[%size]xi32>)
+  %c0 = scalar.constant 0 : i32
+  %nonnegative = scalar.cmpi sge, %size, %c0 : i32
+  func.return %nonnegative : i1
+}
+// ----
+func.def @nonexecuting_type_uses(%size: i32, %reference: test.ref<view<[%size]xi32>>) -> (i1) {
+  func.decl @declared_shape(%view: view<[%size]xi32>)
+  %c0 = scalar.constant 0 : i32
+  %nonnegative = scalar.cmpi sge, %size, %c0 : i32
+  func.return %nonnegative : i1
+}
