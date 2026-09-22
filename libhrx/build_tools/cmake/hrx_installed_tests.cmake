@@ -195,16 +195,18 @@ function(hrx_installed_tests_install_source_file SOURCE_PATH DEST_REL OUT_VAR)
   endif()
 
   string(SHA256 _KEY "${SOURCE_PATH}|${DEST_REL}")
-  get_property(_INSTALLED GLOBAL PROPERTY "HRX_INSTALLED_TEST_FILE_${_KEY}")
-  if(NOT _INSTALLED)
+  get_property(_INSTALLED_PATH GLOBAL PROPERTY "HRX_INSTALLED_TEST_FILE_${_KEY}")
+  if("${_INSTALLED_PATH}" STREQUAL "")
     get_filename_component(_DEST_DIR "${DEST_REL}" DIRECTORY)
     install(FILES "${SOURCE_PATH}"
       DESTINATION "${HRX_INSTALL_TESTS_DIR}/testdata/${_DEST_DIR}"
       COMPONENT "${HRX_INSTALL_TESTS_COMPONENT}")
-    set_property(GLOBAL PROPERTY "HRX_INSTALLED_TEST_FILE_${_KEY}" ON)
+    set(_INSTALLED_PATH "\${CMAKE_CURRENT_LIST_DIR}/../testdata/${DEST_REL}")
+    set_property(GLOBAL PROPERTY "HRX_INSTALLED_TEST_FILE_${_KEY}"
+      "${_INSTALLED_PATH}")
   endif()
 
-  set(${OUT_VAR} "\${CMAKE_CURRENT_LIST_DIR}/../testdata/${DEST_REL}" PARENT_SCOPE)
+  set(${OUT_VAR} "${_INSTALLED_PATH}" PARENT_SCOPE)
 endfunction()
 
 function(hrx_installed_tests_install_source_tree SOURCE_DIR DEST_REL OUT_VAR)
@@ -230,12 +232,12 @@ function(hrx_installed_tests_install_source_tree SOURCE_DIR DEST_REL OUT_VAR)
   endif()
 
   string(SHA256 _KEY "${SOURCE_DIR}|${DEST_REL}/")
-  get_property(_INSTALLED GLOBAL PROPERTY "HRX_INSTALLED_TEST_FILE_${_KEY}")
+  get_property(_INSTALLED GLOBAL PROPERTY "HRX_INSTALLED_TEST_TREE_${_KEY}")
   if(NOT _INSTALLED)
     install(DIRECTORY "${SOURCE_DIR}/"
       DESTINATION "${HRX_INSTALL_TESTS_DIR}/testdata/${DEST_REL}"
       COMPONENT "${HRX_INSTALL_TESTS_COMPONENT}")
-    set_property(GLOBAL PROPERTY "HRX_INSTALLED_TEST_FILE_${_KEY}" ON)
+    set_property(GLOBAL PROPERTY "HRX_INSTALLED_TEST_TREE_${_KEY}" ON)
   endif()
 
   set(${OUT_VAR} "\${CMAKE_CURRENT_LIST_DIR}/../testdata/${DEST_REL}" PARENT_SCOPE)
@@ -381,12 +383,17 @@ function(hrx_installed_tests_install_data OUT_VAR)
       hrx_installed_tests_install_target("${_DATA_TARGET}" _INSTALLED_PATH)
     else()
       hrx_installed_tests_resolve_data("${_DATA}" _SOURCE_PATH _REL_PATH)
-      if(IS_DIRECTORY "${_SOURCE_PATH}")
-        hrx_installed_tests_install_source_tree(
-          "${_SOURCE_PATH}" "${_REL_PATH}" _INSTALLED_PATH)
-      else()
-        hrx_installed_tests_install_source_file(
-          "${_SOURCE_PATH}" "${_REL_PATH}" _INSTALLED_PATH)
+      # Reuse registered files before querying the filesystem for their type.
+      string(SHA256 _KEY "${_SOURCE_PATH}|${_REL_PATH}")
+      get_property(_INSTALLED_PATH GLOBAL PROPERTY "HRX_INSTALLED_TEST_FILE_${_KEY}")
+      if("${_INSTALLED_PATH}" STREQUAL "")
+        if(IS_DIRECTORY "${_SOURCE_PATH}")
+          hrx_installed_tests_install_source_tree(
+            "${_SOURCE_PATH}" "${_REL_PATH}" _INSTALLED_PATH)
+        else()
+          hrx_installed_tests_install_source_file(
+            "${_SOURCE_PATH}" "${_REL_PATH}" _INSTALLED_PATH)
+        endif()
       endif()
     endif()
     list(APPEND _INSTALLED_DATA "${_INSTALLED_PATH}")
