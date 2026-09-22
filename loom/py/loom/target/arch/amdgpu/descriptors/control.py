@@ -20,17 +20,30 @@ _SENDMSG_RTN_MESSAGE_IMMEDIATE = Immediate(
     unsigned_max=(2**8) - 1,
 )
 
-# Scalar cache mutations complete out of order through LGKM/KM. Treat the
-# changed visibility as a write so later reads wait, including across CFG edges.
-_SCALAR_CACHE_EFFECTS = (
-    _CACHE_CONTROL_EFFECT,
-    Effect(
-        EffectKind.WRITE,
-        memory_space=MemorySpace.GLOBAL,
-        flags=(EffectFlag.DEPENDENCY,),
-        counter_id=_COUNTER_SMEM,
-    ),
-)
+# Scalar mutations complete out of order, so later reads depend on their write.
+# Vector invalidation remains ordered with loads; it contributes a load-counter
+# read, while writeback contributes a store-counter write through program exit.
+_CACHE_COMPLETION_MODELS = {
+    0: (_SCHEDULE_CACHE_CONTROL, None),
+    _COUNTER_SMEM: (_SCHEDULE_SMEM_CACHE_CONTROL, EffectKind.WRITE),
+    _COUNTER_VMEM_LOAD: (_SCHEDULE_VMEM_CACHE_INVALIDATE, EffectKind.READ),
+    _COUNTER_VMEM_STORE: (_SCHEDULE_VMEM_CACHE_WRITEBACK, EffectKind.WRITE),
+}
+
+
+def _cache_control_effects(completion_counter: int) -> tuple[Effect, ...]:
+    _, effect_kind = _CACHE_COMPLETION_MODELS[completion_counter]
+    if effect_kind is None:
+        return (_CACHE_CONTROL_EFFECT,)
+    return (
+        _CACHE_CONTROL_EFFECT,
+        Effect(
+            effect_kind,
+            memory_space=MemorySpace.GLOBAL,
+            flags=(EffectFlag.DEPENDENCY,),
+            counter_id=completion_counter,
+        ),
+    )
 
 
 def _s_mov_b64_shared_base_overlay(
@@ -431,11 +444,9 @@ def _cache_control_overlay(
     semantic_tag: str,
     cache_fields: tuple[tuple[str, int], ...] = (),
     completion_counter: int = 0,
+    fixed_encoding_fields: tuple[tuple[str, AmdgpuFixedEncodingValue], ...] = (),
 ) -> AmdgpuDescriptorOverlay:
-    schedule_class, effects = {
-        0: (_SCHEDULE_CACHE_CONTROL, (_CACHE_CONTROL_EFFECT,)),
-        _COUNTER_SMEM: (_SCHEDULE_SMEM_CACHE_CONTROL, _SCALAR_CACHE_EFFECTS),
-    }[completion_counter]
+    schedule_class, _ = _CACHE_COMPLETION_MODELS[completion_counter]
     return AmdgpuDescriptorOverlay(
         descriptor_key=descriptor_key,
         instruction_name=instruction_name,
@@ -446,7 +457,8 @@ def _cache_control_overlay(
         operands=(),
         immediate_fields=_cache_field_names(cache_fields),
         immediates=_cache_immediates(cache_fields),
-        effects=effects,
+        fixed_encoding_fields=fixed_encoding_fields,
+        effects=_cache_control_effects(completion_counter),
         flags=(DescriptorFlag.SIDE_EFFECTING,),
     )
 
@@ -485,7 +497,7 @@ def _s_dcache_discard_overlay(
             AmdgpuOperandOverlay("SBASE", _sgpr_operand("base", units=2)),
             AmdgpuOperandOverlay("SOFFSET", _sgpr_operand("soffset")),
         ),
-        effects=_SCALAR_CACHE_EFFECTS,
+        effects=_cache_control_effects(_COUNTER_SMEM),
         flags=(DescriptorFlag.SIDE_EFFECTING,),
     )
 
@@ -571,6 +583,7 @@ def _gfx950_cache_control_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
         _cache_control_overlay(
             descriptor_key="amdgpu.buffer_inv",
             instruction_name="BUFFER_INV",
+            completion_counter=_COUNTER_VMEM_LOAD,
             mnemonic="buffer_inv",
             encoding_name="ENC_MUBUF",
             semantic_tag="memory.cache.invalidate.buffer",
@@ -579,6 +592,7 @@ def _gfx950_cache_control_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
         _cache_control_overlay(
             descriptor_key="amdgpu.buffer_wbl2",
             instruction_name="BUFFER_WBL2",
+            completion_counter=_COUNTER_VMEM_STORE,
             mnemonic="buffer_wbl2",
             encoding_name="ENC_MUBUF",
             semantic_tag="memory.cache.writeback.buffer.l2",
@@ -686,6 +700,8 @@ def _gfx12_cache_control_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
         _cache_control_overlay(
             descriptor_key="amdgpu.global_inv",
             instruction_name="GLOBAL_INV",
+            completion_counter=_COUNTER_VMEM_LOAD,
+            fixed_encoding_fields=(("SADDR", _predefined("NULL", "OPR_SREG")),),
             mnemonic="global_inv",
             encoding_name="ENC_VGLOBAL",
             semantic_tag="memory.cache.invalidate.global",
@@ -694,6 +710,8 @@ def _gfx12_cache_control_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
         _cache_control_overlay(
             descriptor_key="amdgpu.global_wb",
             instruction_name="GLOBAL_WB",
+            completion_counter=_COUNTER_VMEM_STORE,
+            fixed_encoding_fields=(("SADDR", _predefined("NULL", "OPR_SREG")),),
             mnemonic="global_wb",
             encoding_name="ENC_VGLOBAL",
             semantic_tag="memory.cache.writeback.global",
@@ -702,6 +720,8 @@ def _gfx12_cache_control_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
         _cache_control_overlay(
             descriptor_key="amdgpu.global_wbinv",
             instruction_name="GLOBAL_WBINV",
+            completion_counter=_COUNTER_VMEM_STORE,
+            fixed_encoding_fields=(("SADDR", _predefined("NULL", "OPR_SREG")),),
             mnemonic="global_wbinv",
             encoding_name="ENC_VGLOBAL",
             semantic_tag="memory.cache.writeback_invalidate.global",

@@ -1678,8 +1678,8 @@ static iree_status_t loom_amdgpu_wait_plan_finish_node_classification(
     frontier_node->vmem_result_order_class =
         loom_amdgpu_descriptor_vmem_result_order_class(descriptor_set,
                                                        node->descriptor);
-    if (frontier_node->vmem_result_order_class !=
-        LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE) {
+    if (node->result_count != 0 && frontier_node->vmem_result_order_class !=
+                                       LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE) {
       ++builder->vmem_result_node_count;
     }
     if (node->descriptor != NULL && node->result_count != 0) {

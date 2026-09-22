@@ -1763,9 +1763,9 @@ static iree_status_t loom_amdgpu_append_waitcnt_packet(
 }
 
 typedef enum loom_amdgpu_descriptor_packet_route_flag_bits_e {
-  // Descriptor has a memory read effect.
+  // Descriptor transfers memory into register or addressable operands.
   LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_READ_EFFECT = 1u << 0,
-  // Descriptor has a memory write effect.
+  // Descriptor transfers operands to memory.
   LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_WRITE_EFFECT = 1u << 1,
   // Descriptor has a counter effect.
   LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_COUNTER_EFFECT = 1u << 2,
@@ -1833,7 +1833,10 @@ loom_amdgpu_descriptor_packet_route_flags(
         &descriptor_set->effects[descriptor->effect_start + i];
     if (effect->kind == LOOM_LOW_EFFECT_KIND_COUNTER) {
       flags |= LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_COUNTER_EFFECT;
-    } else if (effect->memory_space != LOOM_LOW_MEMORY_SPACE_NONE) {
+    } else if (descriptor->operand_count != 0 &&
+               effect->memory_space != LOOM_LOW_MEMORY_SPACE_NONE) {
+      // Operand-free cache controls carry memory completion effects without
+      // using a load/store data-transfer spelling.
       if (effect->kind == LOOM_LOW_EFFECT_KIND_READ) {
         flags |= LOOM_AMDGPU_DESCRIPTOR_PACKET_ROUTE_FLAG_READ_EFFECT;
       } else if (effect->kind == LOOM_LOW_EFFECT_KIND_WRITE) {
