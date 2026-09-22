@@ -48,21 +48,7 @@ iree_status_t loom_artifact_target_select(
   return iree_ok_status();
 }
 
-static iree_status_t loom_artifact_candidate_publish_report(
-    const loom_compile_options_t* options,
-    const loom_artifact_candidate_t* candidate) {
-  if (options->report == NULL) {
-    return iree_ok_status();
-  }
-  loom_target_compile_report_t report = {0};
-  IREE_RETURN_IF_ERROR(loom_target_compile_report_clone(
-      &candidate->compile_report, options->report->allocator, &report));
-  loom_target_compile_report_deinitialize(options->report);
-  *options->report = report;
-  return iree_ok_status();
-}
-
-static iree_status_t loom_artifact_candidate_initialize(
+static void loom_artifact_candidate_initialize(
     const loom_artifact_provider_t* provider,
     const loom_compile_options_t* options, iree_allocator_t allocator,
     loom_artifact_candidate_t* out_candidate) {
@@ -70,28 +56,20 @@ static iree_status_t loom_artifact_candidate_initialize(
       .host_allocator = allocator,
       .provider = provider,
   };
-  loom_target_compile_report_t* report =
-      options->report != NULL ? &out_candidate->compile_report : NULL;
+  loom_target_compile_report_t* report = options->report;
   if (report == NULL) {
-    return iree_ok_status();
+    return;
   }
-  const iree_allocator_t report_allocator =
-      iree_allocator_is_null(options->report->allocator) ? iree_allocator_null()
-                                                         : allocator;
-  IREE_RETURN_IF_ERROR(loom_target_compile_report_clone(
-      options->report, report_allocator, report));
-  loom_target_compile_report_initialize_if_empty(report, report_allocator);
+  loom_target_compile_report_initialize_if_empty(report, report->allocator);
   report->artifact_kind = provider->artifact_kind;
   report->backend_name = provider->name;
   report->target_family_name = provider->target_profile_type->name;
-  return iree_ok_status();
 }
 
 static void loom_artifact_candidate_record_report_status(
     const loom_compile_options_t* options, loom_artifact_candidate_t* candidate,
     iree_status_code_t status_code) {
-  loom_target_compile_report_t* report =
-      options->report != NULL ? &candidate->compile_report : NULL;
+  loom_target_compile_report_t* report = options->report;
   if (report == NULL) {
     return;
   }
@@ -123,13 +101,9 @@ static iree_status_t loom_artifact_candidate_emit(
                             (int)provider->name.size, provider->name.data);
   }
 
-  loom_target_compile_report_t* report =
-      options->report != NULL ? &candidate->compile_report : NULL;
-  loom_compile_options_t provider_options = *options;
-  provider_options.report = report;
-  iree_status_t status = provider->emit_artifact(
-      provider, module, target, &provider_options, allocator,
-      &candidate->compiled, &candidate->artifact);
+  iree_status_t status =
+      provider->emit_artifact(provider, module, target, options, allocator,
+                              &candidate->compiled, &candidate->artifact);
   if (iree_status_is_ok(status) && candidate->compiled) {
     IREE_ASSERT(candidate->artifact.target_bundle != NULL);
     IREE_ASSERT(candidate->artifact.target_artifact_data != NULL);
@@ -153,16 +127,12 @@ iree_status_t loom_artifact_candidate_emit_target(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "artifact emission requires a selected target");
   }
-  iree_status_t status = loom_artifact_candidate_initialize(
-      provider, options, allocator, out_candidate);
-  if (iree_status_is_ok(status)) {
-    status = loom_artifact_candidate_emit(provider, target, module, options,
-                                          allocator, out_candidate);
-  }
+  loom_artifact_candidate_initialize(provider, options, allocator,
+                                     out_candidate);
+  iree_status_t status = loom_artifact_candidate_emit(
+      provider, target, module, options, allocator, out_candidate);
   loom_artifact_candidate_record_report_status(options, out_candidate,
                                                iree_status_code(status));
-  status = iree_status_join(
-      status, loom_artifact_candidate_publish_report(options, out_candidate));
   if (!iree_status_is_ok(status)) {
     loom_artifact_candidate_deinitialize(out_candidate);
   }
@@ -173,17 +143,13 @@ iree_status_t loom_artifact_candidate_emit_module_target(
     const loom_artifact_provider_t* provider, loom_module_t* module,
     const loom_compile_options_t* options, iree_allocator_t allocator,
     loom_artifact_candidate_t* out_candidate) {
-  iree_status_t status = loom_artifact_candidate_initialize(
-      provider, options, allocator, out_candidate);
-  if (iree_status_is_ok(status)) {
-    const loom_artifact_target_t authored_target = {0};
-    status = loom_artifact_candidate_emit(provider, &authored_target, module,
-                                          options, allocator, out_candidate);
-  }
+  loom_artifact_candidate_initialize(provider, options, allocator,
+                                     out_candidate);
+  const loom_artifact_target_t authored_target = {0};
+  iree_status_t status = loom_artifact_candidate_emit(
+      provider, &authored_target, module, options, allocator, out_candidate);
   loom_artifact_candidate_record_report_status(options, out_candidate,
                                                iree_status_code(status));
-  status = iree_status_join(
-      status, loom_artifact_candidate_publish_report(options, out_candidate));
   if (!iree_status_is_ok(status)) {
     loom_artifact_candidate_deinitialize(out_candidate);
   }
@@ -200,6 +166,5 @@ void loom_artifact_candidate_deinitialize(
     candidate->provider->deinitialize_artifact(
         candidate->provider, &candidate->artifact, candidate->host_allocator);
   }
-  loom_target_compile_report_deinitialize(&candidate->compile_report);
   *candidate = (loom_artifact_candidate_t){0};
 }

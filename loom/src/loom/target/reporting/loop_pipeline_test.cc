@@ -17,7 +17,7 @@
 namespace loom {
 namespace {
 
-TEST(LoopPipelineReportTest, CloneAndEntryMergeOwnScheduleRows) {
+TEST(LoopPipelineReportTest, EntryMergeOwnsScheduleRows) {
   iree_arena_block_pool_t block_pool;
   iree_arena_block_pool_initialize(4096, iree_allocator_system(), &block_pool);
   loom_context_t context;
@@ -73,43 +73,37 @@ TEST(LoopPipelineReportTest, CloneAndEntryMergeOwnScheduleRows) {
   IREE_ASSERT_OK(loom_target_compile_report_record_loop_pipelines(
       &source, module, &versions));
 
-  loom_target_compile_report_t clone;
-  IREE_ASSERT_OK(loom_target_compile_report_clone(
-      &source, iree_allocator_system(), &clone));
   loom_target_compile_report_t merged;
   loom_target_compile_report_initialize(&merged, iree_allocator_system());
   IREE_ASSERT_OK(
       loom_target_compile_report_record_entry_report(&merged, &source));
   loom_target_compile_report_deinitialize(&source);
 
-  for (const auto* report : {&clone, &merged}) {
-    EXPECT_EQ(report->loop_pipeline_rows.count, 1u);
-    EXPECT_EQ(report->loop_pipeline_stage_rows.count, 3u);
-    for (auto mode : {LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_SUMMARY,
-                      LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_DETAILS}) {
-      const loom_target_compile_report_format_options_t options = {mode};
-      iree_string_builder_t builder;
-      iree_string_builder_initialize(iree_allocator_system(), &builder);
-      IREE_ASSERT_OK(
-          loom_target_compile_report_format_text(report, &options, &builder));
-      const std::string text(iree_string_builder_buffer(&builder),
-                             iree_string_builder_size(&builder));
-      EXPECT_NE(text.find("loop_pipeline function=stream loop=0"),
+  EXPECT_EQ(merged.loop_pipeline_rows.count, 1u);
+  EXPECT_EQ(merged.loop_pipeline_stage_rows.count, 3u);
+  for (auto mode : {LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_SUMMARY,
+                    LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_DETAILS}) {
+    const loom_target_compile_report_format_options_t options = {mode};
+    iree_string_builder_t builder;
+    iree_string_builder_initialize(iree_allocator_system(), &builder);
+    IREE_ASSERT_OK(
+        loom_target_compile_report_format_text(&merged, &options, &builder));
+    const std::string text(iree_string_builder_buffer(&builder),
+                           iree_string_builder_size(&builder));
+    EXPECT_NE(text.find("loop_pipeline function=stream loop=0"),
+              std::string::npos);
+    EXPECT_NE(
+        text.find("depth=3 queue_records=2 values_per_record=2 read_count=2"),
+        std::string::npos);
+    if (mode == LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_DETAILS) {
+      EXPECT_NE(text.find("position=2 op=scalar.addf stage=consumer "
+                          "iteration_lookahead=0"),
                 std::string::npos);
-      EXPECT_NE(
-          text.find("depth=3 queue_records=2 values_per_record=2 read_count=2"),
-          std::string::npos);
-      if (mode == LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_DETAILS) {
-        EXPECT_NE(text.find("position=2 op=scalar.addf stage=consumer "
-                            "iteration_lookahead=0"),
-                  std::string::npos);
-      } else {
-        EXPECT_EQ(text.find("loop_pipeline_stage"), std::string::npos);
-      }
-      iree_string_builder_deinitialize(&builder);
+    } else {
+      EXPECT_EQ(text.find("loop_pipeline_stage"), std::string::npos);
     }
+    iree_string_builder_deinitialize(&builder);
   }
-  loom_target_compile_report_deinitialize(&clone);
   loom_target_compile_report_deinitialize(&merged);
   loom_module_free(module);
   loom_context_deinitialize(&context);

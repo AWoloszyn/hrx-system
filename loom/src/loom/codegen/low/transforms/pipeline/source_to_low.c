@@ -103,7 +103,7 @@ static const loom_pass_option_def_t kLowSourceToLowOptions[] = {
   V(statistics_type, remarks, "remarks",                                     \
     "Number of lowering remarks emitted.")                                   \
   V(statistics_type, declarations, "declarations",                           \
-    "Number of source import declarations lowered.")
+    "Number of source function declarations lowered.")
 
 LOOM_PASS_STATISTICS_DEFINE(loom_low_source_to_low_statistics,
                             loom_low_source_to_low_statistics_t,
@@ -376,7 +376,7 @@ iree_status_t loom_low_source_to_low_run(loom_pass_t* pass,
        !emitted_error_diagnostics;
        ++i) {
     const loom_low_source_selection_t* selection = &selection_list.values[i];
-    if (selection->kind != LOOM_LOW_SOURCE_SELECTION_IMPORT_DECL) {
+    if (selection->kind != LOOM_LOW_SOURCE_SELECTION_DECLARATION) {
       continue;
     }
     const loom_low_lower_options_t lower_options = {
@@ -394,8 +394,8 @@ iree_status_t loom_low_source_to_low_run(loom_pass_t* pass,
         .module_state = module_state,
     };
     loom_low_lower_result_t lower_result = {0};
-    status = loom_low_lower_import_declaration(module, selection->func,
-                                               &lower_options, &lower_result);
+    status = loom_low_lower_declaration(module, selection->func, &lower_options,
+                                        &lower_result);
     statistics->errors += (int64_t)lower_result.error_count;
     statistics->remarks += (int64_t)lower_result.remark_count;
     if (iree_status_is_ok(status) && lower_result.error_count > 0) {

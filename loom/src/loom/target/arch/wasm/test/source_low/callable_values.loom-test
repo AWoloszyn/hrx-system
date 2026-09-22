@@ -95,3 +95,22 @@ low.func.def target<wasm.core.simd128> @scalar_add(%value: reg<wasm.i32>, %delta
   %result = i32.add %value, %delta
   return %result
 }
+
+// ====
+
+// A separately compiled definition must use the same signature as its caller's
+// declaration. The declaration is resolved by IR linking, not a runtime import.
+func.def public @call_external(%value: i32) -> (i32) {
+  %result = func.call @increment(%value) : (i32) -> (i32)
+  func.return %result : i32
+}
+
+func.decl @increment(%value: i32) -> (i32)
+
+// ----
+low.func.def public target<wasm.core.simd128> abi(wasm_function) @call_external(%value: reg<wasm.i32>) -> (reg<wasm.i32>) asm {
+  %result = low.func.call @increment(%value) : (reg<wasm.i32>) -> (reg<wasm.i32>)
+  return %result
+}
+
+low.func.decl target<wasm.core.simd128> @increment(%value: reg<wasm.i32>) -> (reg<wasm.i32>)

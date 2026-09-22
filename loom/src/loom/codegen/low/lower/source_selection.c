@@ -125,7 +125,7 @@ static iree_status_t loom_low_source_selection_find_candidate_targets(
 typedef uint8_t loom_low_source_selection_filter_t;
 
 #define LOOM_LOW_SOURCE_SELECTION_FILTER_FUNCTION ((uint8_t)1u << 0)
-#define LOOM_LOW_SOURCE_SELECTION_FILTER_IMPORT_DECL ((uint8_t)1u << 1)
+#define LOOM_LOW_SOURCE_SELECTION_FILTER_DECLARATION ((uint8_t)1u << 1)
 #define LOOM_LOW_SOURCE_SELECTION_FILTER_SOURCE_OP ((uint8_t)1u << 2)
 #define LOOM_LOW_SOURCE_SELECTION_FILTER_EXECUTION ((uint8_t)1u << 3)
 
@@ -153,18 +153,16 @@ static iree_status_t loom_low_source_selection_try_symbol(
   loom_low_source_selection_kind_t kind = 0;
   if (func_facts->has_body) {
     kind = LOOM_LOW_SOURCE_SELECTION_FUNCTION;
-  } else if (func_facts->imports) {
-    kind = LOOM_LOW_SOURCE_SELECTION_IMPORT_DECL;
   } else {
-    return iree_ok_status();
+    kind = LOOM_LOW_SOURCE_SELECTION_DECLARATION;
   }
   if (kind == LOOM_LOW_SOURCE_SELECTION_FUNCTION &&
       !iree_all_bits_set(filter, LOOM_LOW_SOURCE_SELECTION_FILTER_FUNCTION)) {
     return iree_ok_status();
   }
-  if (kind == LOOM_LOW_SOURCE_SELECTION_IMPORT_DECL &&
+  if (kind == LOOM_LOW_SOURCE_SELECTION_DECLARATION &&
       !iree_all_bits_set(filter,
-                         LOOM_LOW_SOURCE_SELECTION_FILTER_IMPORT_DECL)) {
+                         LOOM_LOW_SOURCE_SELECTION_FILTER_DECLARATION)) {
     return iree_ok_status();
   }
   const loom_func_like_t function =
@@ -205,8 +203,7 @@ static iree_status_t loom_low_source_selection_try_symbol(
   if (policy == NULL) {
     return iree_ok_status();
   }
-  if (kind == LOOM_LOW_SOURCE_SELECTION_IMPORT_DECL &&
-      policy->import_decl_kind == 0) {
+  if (func_facts->imports && policy->import_decl_kind == 0) {
     return iree_ok_status();
   }
 
@@ -277,7 +274,7 @@ iree_status_t loom_low_select_source_symbols(
   return loom_low_select_source_symbols_with_filter(
       module, options,
       LOOM_LOW_SOURCE_SELECTION_FILTER_FUNCTION |
-          LOOM_LOW_SOURCE_SELECTION_FILTER_IMPORT_DECL |
+          LOOM_LOW_SOURCE_SELECTION_FILTER_DECLARATION |
           LOOM_LOW_SOURCE_SELECTION_FILTER_SOURCE_OP |
           LOOM_LOW_SOURCE_SELECTION_FILTER_EXECUTION,
       arena, out_selection_list);

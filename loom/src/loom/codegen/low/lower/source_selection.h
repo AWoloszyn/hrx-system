@@ -50,8 +50,8 @@ typedef struct loom_low_source_selection_options_t {
 typedef enum loom_low_source_selection_kind_e {
   // Target-bound function body selected for lowering or legalization.
   LOOM_LOW_SOURCE_SELECTION_FUNCTION = 1,
-  // Source external declaration selected for Low import declaration lowering.
-  LOOM_LOW_SOURCE_SELECTION_IMPORT_DECL = 2,
+  // Source declaration selected for Low callable signature lowering.
+  LOOM_LOW_SOURCE_SELECTION_DECLARATION = 2,
 } loom_low_source_selection_kind_t;
 
 typedef struct loom_low_source_selection_t {
@@ -118,7 +118,7 @@ typedef struct loom_low_source_selection_list_t {
   iree_host_size_t count;
 } loom_low_source_selection_list_t;
 
-// Selects all source function and kernel definitions plus imported function
+// Selects all source function and kernel definitions plus function
 // declarations compatible with the injected target-low registries.
 // Standalone lowering binds authored targets for execution; existing function
 // versions retain their selected modes. The function-only selectors below are

@@ -138,8 +138,6 @@ typedef struct loom_artifact_provider_registry_t {
 typedef struct loom_artifact_candidate_t {
   // Host allocator used for owned candidate storage.
   iree_allocator_t host_allocator;
-  // Structured report for this candidate.
-  loom_target_compile_report_t compile_report;
   // Artifact provider that produced |artifact|.
   const loom_artifact_provider_t* provider;
   // True when artifact bytes were produced.

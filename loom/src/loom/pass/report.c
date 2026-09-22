@@ -41,6 +41,10 @@ static void loom_pass_report_free_detail_list(
 
 void loom_pass_report_deinitialize(loom_pass_report_t* report) {
   for (iree_host_size_t i = 0; i < report->invocation_count; ++i) {
+    iree_allocator_free(report->allocator,
+                        (void*)report->invocations[i].pipeline_symbol.data);
+    iree_allocator_free(report->allocator,
+                        (void*)report->invocations[i].symbol_name.data);
     iree_allocator_free(report->allocator, report->invocations[i].statistics);
     loom_pass_report_free_detail_list(report, report->invocations[i].details);
   }
@@ -62,6 +66,21 @@ static iree_status_t loom_pass_report_ensure_invocation_capacity(
          (new_capacity - report->invocation_capacity) *
              sizeof(*report->invocations));
   report->invocation_capacity = new_capacity;
+  return iree_ok_status();
+}
+
+static iree_status_t loom_pass_report_copy_string(
+    loom_pass_report_t* report, iree_string_view_t source,
+    iree_string_view_t* out_target) {
+  *out_target = iree_string_view_empty();
+  if (iree_string_view_is_empty(source)) {
+    return iree_ok_status();
+  }
+  void* data = NULL;
+  IREE_RETURN_IF_ERROR(iree_allocator_clone(
+      report->allocator, iree_make_const_byte_span(source.data, source.size),
+      &data));
+  *out_target = iree_make_string_view((const char*)data, source.size);
   return iree_ok_status();
 }
 
@@ -115,34 +134,32 @@ iree_status_t loom_pass_report_append_invocation(
       .pass_key = invoke->descriptor->key,
       .pass_kind = invoke->info->kind,
       .anchor_kind = options->anchor_kind,
-      .pipeline_symbol = options->pipeline_symbol,
-      .symbol_name = options->symbol_name,
       .instruction_index = options->instruction_index,
       .duration_nanoseconds = options->duration_nanoseconds,
       .changed = options->changed,
       .status_code = options->status_code,
   };
-  IREE_RETURN_IF_ERROR(loom_pass_report_copy_statistics(
-      report, invoke->info, options->statistic_storage, &invocation));
-  invocation.details = options->detail_head;
-  invocation.detail_count = options->detail_count;
-  report->invocations[report->invocation_count++] = invocation;
-  return iree_ok_status();
-}
-
-static iree_status_t loom_pass_report_copy_string(
-    loom_pass_report_t* report, iree_string_view_t source,
-    iree_string_view_t* out_target) {
-  *out_target = iree_string_view_empty();
-  if (iree_string_view_is_empty(source)) {
-    return iree_ok_status();
+  iree_status_t status = loom_pass_report_copy_string(
+      report, options->pipeline_symbol, &invocation.pipeline_symbol);
+  if (iree_status_is_ok(status)) {
+    status = loom_pass_report_copy_string(report, options->symbol_name,
+                                          &invocation.symbol_name);
   }
-  void* data = NULL;
-  IREE_RETURN_IF_ERROR(iree_allocator_clone(
-      report->allocator, iree_make_const_byte_span(source.data, source.size),
-      &data));
-  *out_target = iree_make_string_view((const char*)data, source.size);
-  return iree_ok_status();
+  if (iree_status_is_ok(status)) {
+    status = loom_pass_report_copy_statistics(
+        report, invoke->info, options->statistic_storage, &invocation);
+  }
+  if (iree_status_is_ok(status)) {
+    invocation.details = options->detail_head;
+    invocation.detail_count = options->detail_count;
+    report->invocations[report->invocation_count++] = invocation;
+  } else {
+    iree_allocator_free(report->allocator,
+                        (void*)invocation.pipeline_symbol.data);
+    iree_allocator_free(report->allocator, (void*)invocation.symbol_name.data);
+    iree_allocator_free(report->allocator, invocation.statistics);
+  }
+  return status;
 }
 
 static iree_status_t loom_pass_report_copy_detail_fields(

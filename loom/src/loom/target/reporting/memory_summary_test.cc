@@ -267,6 +267,7 @@ TEST(CompileReportFormatTest, PreservesBankServiceProofAndDynamicCoverage) {
   loom_target_compile_report_initialize(&report, iree_allocator_system());
   IREE_ASSERT_OK(
       loom_target_compile_report_record_entry_report(&report, &entry_report));
+  loom_target_compile_report_deinitialize(&entry_report);
   ASSERT_EQ(report.entry_rows.count, 1u);
   const auto* entry = static_cast<const loom_target_compile_report_entry_t*>(
       loom_target_compile_report_vec_const_rows(report.entry_rows.head));
@@ -277,17 +278,7 @@ TEST(CompileReportFormatTest, PreservesBankServiceProofAndDynamicCoverage) {
   ASSERT_EQ(report.source_low_bank_service_summaries.count, 1u);
   ASSERT_EQ(report.source_low_subgroup_access_summaries.count, 3u);
 
-  loom_target_compile_report_t clone = {};
-  IREE_ASSERT_OK(loom_target_compile_report_clone(
-      &report, iree_allocator_system(), &clone));
-  EXPECT_EQ(clone.bank_service_summary.dynamic_extra_round_count, 6u);
-  EXPECT_EQ(clone.subgroup_access_summary.dynamic_gapped_packet_count, 3u);
-  ASSERT_EQ(clone.source_low_bank_service_summaries.count, 1u);
-  ASSERT_EQ(clone.source_low_subgroup_access_summaries.count, 3u);
-  loom_target_compile_report_deinitialize(&clone);
-
   loom_target_compile_report_deinitialize(&report);
-  loom_target_compile_report_deinitialize(&entry_report);
 }
 
 TEST(CompileReportFormatTest, MergesSourceLowMemorySummariesFromEntries) {

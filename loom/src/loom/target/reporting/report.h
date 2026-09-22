@@ -2103,13 +2103,6 @@ static inline bool loom_target_compile_report_wants_details(
 void loom_target_compile_report_deinitialize(
     loom_target_compile_report_t* report);
 
-// Initializes |out_target| as a deep copy of |source| using |allocator| for
-// owned row storage. Config binding strings are copied; other string views
-// remain borrowed from the same owners referenced by |source|.
-iree_status_t loom_target_compile_report_clone(
-    const loom_target_compile_report_t* source, iree_allocator_t allocator,
-    loom_target_compile_report_t* out_target);
-
 // Initializes a zeroed report only when no details have been requested or
 // populated yet. Artifact emitters use this to support direct zeroed-report
 // callers without overwriting caller-selected row storage or pass-phase rows

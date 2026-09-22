@@ -325,7 +325,7 @@ TEST(CompileReportFormatTest, EmitsOnlyValidResidencyEvidence) {
   loom_target_compile_report_deinitialize(&report);
 }
 
-TEST(CompileReportFormatTest, OwnsResidencyConstraintsAcrossMergeAndClone) {
+TEST(CompileReportFormatTest, OwnsResidencyConstraintsAcrossEntryMerge) {
   loom_target_compile_report_t report = {};
   loom_target_compile_report_initialize(&report, iree_allocator_system());
   for (const auto* function_name : {"attention", "projection"}) {
@@ -372,11 +372,7 @@ TEST(CompileReportFormatTest, OwnsResidencyConstraintsAcrossMergeAndClone) {
         loom_target_compile_report_record_entry_report(&report, &entry));
     loom_target_compile_report_deinitialize(&entry);
   }
-  loom_target_compile_report_t clone = {};
-  IREE_ASSERT_OK(loom_target_compile_report_clone(
-      &report, iree_allocator_system(), &clone));
-  loom_target_compile_report_deinitialize(&report);
-  EXPECT_EQ(clone.residency_constraint_rows.count, 4u);
+  EXPECT_EQ(report.residency_constraint_rows.count, 4u);
   for (auto mode : {LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_SUMMARY,
                     LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_DETAILS}) {
     const loom_target_compile_report_format_options_t options = {mode};
@@ -385,7 +381,7 @@ TEST(CompileReportFormatTest, OwnsResidencyConstraintsAcrossMergeAndClone) {
     loom_output_stream_t stream;
     loom_output_stream_for_builder(&builder, &stream);
     IREE_ASSERT_OK(
-        loom_target_compile_report_format_json(&clone, &options, &stream));
+        loom_target_compile_report_format_json(&report, &options, &stream));
     const auto root = ParseJsonDocument(iree_string_builder_view(&builder));
     const auto inventory = LookupObject(root, IREE_SV("residency_constraints"));
     ExpectObjectUint64Equals(inventory, IREE_SV("count"), 4);
@@ -424,7 +420,7 @@ TEST(CompileReportFormatTest, OwnsResidencyConstraintsAcrossMergeAndClone) {
     iree_string_builder_deinitialize(&builder);
     iree_string_builder_initialize(iree_allocator_system(), &builder);
     IREE_ASSERT_OK(
-        loom_target_compile_report_format_text(&clone, &options, &builder));
+        loom_target_compile_report_format_text(&report, &options, &builder));
     EXPECT_NE(
         iree_string_view_find(
             iree_string_builder_view(&builder),
@@ -434,7 +430,7 @@ TEST(CompileReportFormatTest, OwnsResidencyConstraintsAcrossMergeAndClone) {
         IREE_STRING_VIEW_NPOS);
     iree_string_builder_deinitialize(&builder);
   }
-  loom_target_compile_report_deinitialize(&clone);
+  loom_target_compile_report_deinitialize(&report);
 }
 
 TEST(CompileReportFormatTest,
@@ -561,10 +557,6 @@ TEST(CompileReportFormatTest, KeepsResidencyTransitionsOnTheirOwnEntries) {
     EXPECT_FALSE(loom_target_residency_summary_is_valid(
         &report.target_resources.residency_summary));
 
-    loom_target_compile_report_t clone = {};
-    IREE_ASSERT_OK(loom_target_compile_report_clone(
-        &report, iree_allocator_system(), &clone));
-    loom_target_compile_report_deinitialize(&report);
     iree_string_builder_t builder;
     iree_string_builder_initialize(iree_allocator_system(), &builder);
     loom_output_stream_t stream;
@@ -573,7 +565,7 @@ TEST(CompileReportFormatTest, KeepsResidencyTransitionsOnTheirOwnEntries) {
         /*.mode=*/LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_SUMMARY,
     };
     IREE_ASSERT_OK(
-        loom_target_compile_report_format_json(&clone, &options, &stream));
+        loom_target_compile_report_format_json(&report, &options, &stream));
     const auto root = ParseJsonDocument(iree_string_builder_view(&builder));
     const auto aggregate_resources =
         LookupObject(root, IREE_SV("target_resources"));
@@ -596,7 +588,7 @@ TEST(CompileReportFormatTest, KeepsResidencyTransitionsOnTheirOwnEntries) {
                                cases[entry_index].tier + 1);
     }
     iree_string_builder_deinitialize(&builder);
-    loom_target_compile_report_deinitialize(&clone);
+    loom_target_compile_report_deinitialize(&report);
   }
 }
 
@@ -763,19 +755,13 @@ TEST(CompileReportFormatTest, FormatsTargetInsertedPacketEconomics) {
   EXPECT_EQ(report.target_insertion_summary.dynamic_packet_count, 4u);
   EXPECT_EQ(report.target_insertion_rows.count, 2u);
 
-  loom_target_compile_report_t clone = {};
-  IREE_ASSERT_OK(loom_target_compile_report_clone(
-      &report, iree_allocator_system(), &clone));
-  EXPECT_EQ(clone.target_insertion_summary.static_packet_count, 2u);
-  EXPECT_EQ(clone.target_insertion_rows.count, 2u);
-
   const loom_target_compile_report_format_options_t options = {
       /*.mode=*/LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_DETAILS,
   };
   iree_string_builder_t builder;
   iree_string_builder_initialize(iree_allocator_system(), &builder);
   IREE_ASSERT_OK(
-      loom_target_compile_report_format_text(&clone, &options, &builder));
+      loom_target_compile_report_format_text(&report, &options, &builder));
   const iree_string_view_t text = iree_string_builder_view(&builder);
   EXPECT_NE(iree_string_view_find(
                 text,
@@ -801,7 +787,7 @@ TEST(CompileReportFormatTest, FormatsTargetInsertedPacketEconomics) {
   loom_output_stream_t stream;
   loom_output_stream_for_builder(&builder, &stream);
   IREE_ASSERT_OK(
-      loom_target_compile_report_format_json(&clone, &options, &stream));
+      loom_target_compile_report_format_json(&report, &options, &stream));
   const iree_string_view_t root =
       ParseJsonDocument(iree_string_builder_view(&builder));
   const iree_string_view_t target_insertions =
@@ -836,7 +822,6 @@ TEST(CompileReportFormatTest, FormatsTargetInsertedPacketEconomics) {
   ExpectObjectUint64Equals(entry_target_insertions, IREE_SV("row_count"), 1);
 
   iree_string_builder_deinitialize(&builder);
-  loom_target_compile_report_deinitialize(&clone);
   loom_target_compile_report_deinitialize(&report);
 }
 

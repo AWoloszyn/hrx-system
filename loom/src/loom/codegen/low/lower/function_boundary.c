@@ -653,7 +653,7 @@ static iree_status_t loom_low_lower_remap_decl_predicates(
   return loom_low_lower_attach_remapped_predicates(context, &remap);
 }
 
-iree_status_t loom_low_lower_import_declaration(
+iree_status_t loom_low_lower_declaration(
     loom_module_t* module, loom_func_like_t source_declaration,
     const loom_low_lower_options_t* options,
     loom_low_lower_result_t* out_result) {
@@ -661,7 +661,6 @@ iree_status_t loom_low_lower_import_declaration(
   IREE_ASSERT(loom_func_like_isa(source_declaration));
   IREE_ASSERT(options != NULL);
   IREE_ASSERT(options->policy != NULL);
-  IREE_ASSERT_NE(options->policy->import_decl_kind, 0);
   *out_result = (loom_low_lower_result_t){
       .low_func_ref = loom_symbol_ref_null(),
   };
@@ -709,16 +708,17 @@ iree_status_t loom_low_lower_import_declaration(
         loom_func_like_import_module(source_declaration);
     loom_string_id_t code_symbol =
         loom_func_like_import_symbol(source_declaration);
-    if (code_symbol == LOOM_STRING_ID_INVALID) {
-      code_symbol = module->symbols.entries[low_func_ref.symbol_id].name_id;
-    }
-    IREE_ASSERT_NE(code_symbol, LOOM_STRING_ID_INVALID);
-    IREE_ASSERT_LT(code_symbol, module->strings.count);
-    loom_low_func_decl_build_flags_t build_flags =
-        LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_IMPORT_KIND |
-        LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_CODE_SYMBOL;
-    if (import_module != LOOM_STRING_ID_INVALID) {
-      build_flags |= LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_IMPORT_MODULE;
+    loom_low_func_decl_build_flags_t build_flags = 0;
+    if (import_module != LOOM_STRING_ID_INVALID ||
+        code_symbol != LOOM_STRING_ID_INVALID) {
+      build_flags |= LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_IMPORT_KIND |
+                     LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_CODE_SYMBOL;
+      if (code_symbol == LOOM_STRING_ID_INVALID) {
+        code_symbol = module->symbols.entries[low_func_ref.symbol_id].name_id;
+      }
+      if (import_module != LOOM_STRING_ID_INVALID) {
+        build_flags |= LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_IMPORT_MODULE;
+      }
     }
     const uint8_t visibility = loom_func_like_visibility(source_declaration);
     const uint8_t cc = loom_func_like_cc(source_declaration);

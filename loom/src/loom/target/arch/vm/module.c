@@ -183,6 +183,11 @@ static iree_status_t loom_vm_module_collect(
     if (!loom_low_func_def_isa(op) && !loom_low_func_decl_isa(op)) {
       continue;
     }
+    // Unresolved IR declarations have no executable binding. A call to one is
+    // diagnosed when the function's call schedule is validated.
+    if (loom_low_func_decl_isa(op) && !loom_low_func_decl_has_import_kind(op)) {
+      continue;
+    }
     loom_func_like_t function = loom_func_like_cast(module, op);
     const loom_string_id_t contract = loom_func_like_repr_contract(function);
     if (contract == LOOM_STRING_ID_INVALID ||
