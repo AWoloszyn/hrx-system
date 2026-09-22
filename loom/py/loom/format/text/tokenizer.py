@@ -338,7 +338,8 @@ class Tokenizer:
         nested angle brackets (for encodings like
         #encoding.operand<element_format=i8, payload_elements=32,
         payload_packing=dense_lanes>>)
-        and ignores brackets inside string literals.
+        and ignores brackets inside string literals, line comments, and
+        function-type arrows.
         Returns the text between the brackets (exclusive).
         """
         start = self._position
@@ -351,6 +352,15 @@ class Tokenizer:
                 )
                 self._advance()
                 self._scan_string_content(string_location, decode=False)
+                continue
+            if character == "/" and self._peek_char() == "/":
+                while self._position < len(self._source) and self._char() != "\n":
+                    self._advance()
+                # The ordinary newline path below owns line/column accounting.
+                continue
+            if character == "-" and self._peek_char() == ">":
+                self._advance()
+                self._advance()
                 continue
             if character == "<":
                 depth += 1

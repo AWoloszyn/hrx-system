@@ -697,6 +697,25 @@ class TestInterface:
 
 
 class TestAngleBracketScan:
+    @pytest.mark.parametrize(
+        "interior",
+        [
+            "(i32) -> (f32)",
+            "test.ref<(vector<0xf32>) -> (view<4xf32>)>",
+            "((i32) -> (f32)) -> ((i64) -> (f64))",
+            'i32, metadata = {arrow = "->", text = "<tag>"}',
+            "i32, // > < -> are comment text\nmetadata = {value = 1}",
+            'test.ref<i32 // >>> " ignored\n>',
+        ],
+    )
+    def test_lexical_delimiters(self, interior: str) -> None:
+        tokenizer = Tokenizer(f"<{interior}> trailing")
+        tokenizer.expect(TokenKind.LANGLE)
+        assert tokenizer.scan_to_matching_angle_bracket() == interior
+        trailing = tokenizer.expect(TokenKind.BARE_IDENT, "trailing")
+        assert trailing.location.line == interior.count("\n") + 1
+        tokenizer.expect(TokenKind.EOF)
+
     def test_simple(self) -> None:
         tokenizer = Tokenizer("<4xf32>")
         tokenizer.expect(TokenKind.LANGLE)

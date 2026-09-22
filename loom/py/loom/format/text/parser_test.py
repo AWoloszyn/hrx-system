@@ -606,6 +606,26 @@ class TestParseDialectTypes:
         assert inner.name == "test.list"
         assert inner.params[0] == I32
 
+    def test_nested_function_type(self) -> None:
+        text = "test.ref<(test.ref<(i32) -> (f32)>) -> (view<0xf32>)>"
+        result = _parse_type(text, type_registry=self._registry())
+        assert isinstance(result, DialectType)
+        callback = result.params[0]
+        assert isinstance(callback, FunctionType)
+        inner = callback.arg_types[0].params[0]
+        assert inner == FunctionType((I32,), (F32,))
+        assert callback.result_types == (
+            ShapedType(TypeKind.VIEW, F32, (StaticDim(0),)),
+        )
+        assert print_type(result, type_registry=self._registry()) == text
+
+    def test_nested_type_comment_delimiters(self) -> None:
+        result = _parse_type(
+            'test.ref<test.ref<i32 // > < -> " ignored\n>>',
+            type_registry=self._registry(),
+        )
+        assert result.params[0].params == (I32,)
+
     def test_unknown_dotted_type_is_opaque_dialect_type(self) -> None:
         result = _parse_type("hal.unknown", type_registry=self._registry())
         assert isinstance(result, DialectType)
