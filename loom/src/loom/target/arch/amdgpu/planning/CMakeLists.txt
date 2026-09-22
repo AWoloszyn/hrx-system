@@ -356,8 +356,7 @@ loom_cc_library(
     ::wait_counters
     iree::base
     loom::codegen::low::descriptors
-    loom::ir
-    loom::ops::low
+    loom::codegen::low::packet
     loom::target::arch::amdgpu::refs::target_refs
     loom::target::arch::amdgpu::target_info_defs
   PUBLIC

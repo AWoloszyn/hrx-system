@@ -15,6 +15,7 @@ from loom.target.low_descriptors import (
     EncodingFieldValue,
     EnumDomain,
     EnumValue,
+    ImmediateFlag,
     ImmediateKind,
     InstructionClass,
     IssueUse,
@@ -30,6 +31,42 @@ from loom.target.test.descriptors import (
     TEST_LOW_CONST_I32_DESCRIPTOR,
     TEST_LOW_CORE_DESCRIPTOR_SET,
 )
+
+
+@pytest.mark.parametrize("names", permutations(("zulu", "alpha", "i32_value", "beta")))
+def test_immediate_identity_survives_declaration_order(names) -> None:
+    base = TEST_LOW_CONST_I32_DESCRIPTOR
+    fields = tuple(replace(base.immediates[0], field_name=name) for name in names)
+    descriptor = replace(base, immediates=fields)
+    compiled = compiler.compile_descriptor_set(replace(TEST_LOW_CORE_DESCRIPTOR_SET, descriptors=(descriptor,)))
+    masks = {field.field_name: mask for field, mask in zip(compiled.immediates, compiled.immediate_attribute_masks, strict=True)}
+    assert masks == {"alpha": 1, "beta": 2, "i32_value": 4, "zulu": 8}
+
+
+def test_immediate_identity_is_part_of_interned_layout() -> None:
+    base = TEST_LOW_CONST_I32_DESCRIPTOR
+    expanded = replace(
+        base,
+        key="test.const.expanded.i32",
+        mnemonic="test.const.expanded.i32",
+        immediates=(replace(base.immediates[0], field_name="alpha", flags=(ImmediateFlag.DEFAULT_VALUE,)), *base.immediates),
+    )
+    compiled = compiler.compile_descriptor_set(replace(TEST_LOW_CORE_DESCRIPTOR_SET, descriptors=(base, expanded)))
+    value_masks = [mask for field, mask in zip(compiled.immediates, compiled.immediate_attribute_masks, strict=True) if field.field_name == "i32_value"]
+    assert sorted(value_masks) == [1, 2]
+
+
+@pytest.mark.parametrize("count", [32, 33])
+def test_immediate_presence_capacity(count) -> None:
+    base = TEST_LOW_CONST_I32_DESCRIPTOR
+    fields = (*base.immediates, *(replace(base.immediates[0], field_name=f"field_{index:02}") for index in range(count - 1)))
+    descriptor_set = replace(TEST_LOW_CORE_DESCRIPTOR_SET, descriptors=(replace(base, immediates=fields),))
+    if count == 33:
+        with pytest.raises(ValueError, match="exceeds 32 immediate fields"):
+            compiler.compile_descriptor_set(descriptor_set)
+    else:
+        compiled = compiler.compile_descriptor_set(descriptor_set)
+        assert sorted(compiled.immediate_attribute_masks) == [1 << index for index in range(32)]
 
 
 def test_enum_immediate_projection_retains_semantic_values() -> None:

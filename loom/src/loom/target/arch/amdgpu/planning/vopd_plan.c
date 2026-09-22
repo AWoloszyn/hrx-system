@@ -914,44 +914,15 @@ static bool loom_amdgpu_vopd_component_result_is_used_by(
   return false;
 }
 
-static const loom_named_attr_t* loom_amdgpu_vopd_find_packet_attr(
-    const loom_low_packet_view_t* packet, loom_string_id_t name_id) {
-  if (name_id == LOOM_STRING_ID_INVALID) {
-    return NULL;
-  }
-  loom_named_attr_slice_t attrs = loom_low_packet_attrs(packet);
-  for (iree_host_size_t i = 0; i < attrs.count; ++i) {
-    const loom_named_attr_t* attr = &attrs.entries[i];
-    if (attr->name_id == name_id) {
-      return attr;
-    }
-  }
-  return NULL;
-}
-
 static uint32_t loom_amdgpu_vopd_read_immediate_u32(
     const loom_amdgpu_vopd_plan_builder_t* builder,
     const loom_low_packet_view_t* packet, uint16_t descriptor_immediate_index) {
-  IREE_ASSERT_LT(descriptor_immediate_index,
-                 packet->descriptor->immediate_count);
   const loom_low_descriptor_set_t* descriptor_set =
       builder->schedule->target.descriptor_set;
-  const uint32_t immediate_row =
-      packet->descriptor->immediate_start + descriptor_immediate_index;
-  IREE_ASSERT_LT(immediate_row, descriptor_set->immediate_count);
   const loom_low_immediate_t* immediate =
-      &descriptor_set->immediates[immediate_row];
-  iree_string_view_t immediate_name = loom_low_descriptor_set_string(
-      descriptor_set, immediate->field_name_string_offset);
-  const loom_string_id_t immediate_name_id =
-      loom_module_lookup_string(builder->schedule->module, immediate_name);
-  const loom_named_attr_t* attr =
-      loom_amdgpu_vopd_find_packet_attr(packet, immediate_name_id);
-  IREE_ASSERT(attr != NULL);
-  IREE_ASSERT_EQ(attr->value.kind, LOOM_ATTR_I64);
-  const int64_t value = attr->value.i64;
-  IREE_ASSERT(value >= 0 && value <= UINT32_MAX);
-  return (uint32_t)value;
+      &descriptor_set->immediates[packet->descriptor->immediate_start +
+                                  descriptor_immediate_index];
+  return (uint32_t)loom_low_packet_immediate_attr(packet, immediate).i64;
 }
 
 static bool loom_amdgpu_vopd_bank_compatible(uint16_t x_register,

@@ -196,6 +196,12 @@ loom_low_packet_descriptor_operand_assignment(
 loom_named_attr_slice_t loom_low_packet_attrs(
     const loom_low_packet_view_t* packet);
 
+// Reads one field from the schedule's retained immediate binding. Omission
+// remains ABSENT; numeric consumers apply the descriptor's default separately.
+loom_attribute_t loom_low_packet_immediate_attr(
+    const loom_low_packet_view_t* packet,
+    const loom_low_immediate_t* immediate);
+
 // Optional selected asm-form table for scheduled packets. Target legality or
 // target emitters populate this table when descriptor-backed packets have
 // multiple legal asm forms. Entries are indexed by packet ordinal; structural

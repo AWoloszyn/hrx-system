@@ -95,6 +95,8 @@ class _CompiledImmediateRow:
     encoding_slice_start: int
     # Resolved enum-domain identifier, or None for non-enum immediates.
     enum_domain_id: int | None
+    # One bit at the field's canonical dictionary position.
+    attribute_mask: int
 
 
 def _physical_register_packing_order(reg_class: RegClass, views: Sequence[PhysicalRegisterView]) -> list[int]:
@@ -1583,6 +1585,9 @@ def compile_descriptor_set(
         )
 
         descriptor_immediate_rows: list[_CompiledImmediateRow] = []
+        if len(descriptor.immediates) > 32:
+            raise ValueError(f"descriptor '{descriptor.key}' exceeds 32 immediate fields")
+        attribute_masks = {name: 1 << index for index, name in enumerate(sorted(immediate.field_name for immediate in descriptor.immediates))}
         for immediate in descriptor.immediates:
             encoding_slice_start, _ = append_interned_sequence(
                 immediate.encoding_slices,
@@ -1594,6 +1599,7 @@ def compile_descriptor_set(
                     immediate=immediate,
                     encoding_slice_start=encoding_slice_start,
                     enum_domain_id=(None if immediate.enum_domain is None else enum_domain_ids[immediate.enum_domain]),
+                    attribute_mask=attribute_masks[immediate.field_name],
                 )
             )
         immediate_start, _ = append_interned_sequence(
@@ -1673,6 +1679,7 @@ def compile_descriptor_set(
     immediates = [row.immediate for row in compiled_immediate_rows]
     immediate_encoding_slice_starts = [row.encoding_slice_start for row in compiled_immediate_rows]
     immediate_enum_domain_ids = [row.enum_domain_id for row in compiled_immediate_rows]
+    immediate_attribute_masks = [row.attribute_mask for row in compiled_immediate_rows]
 
     compact_start_tables = (
         ("descriptor", selected_descriptors),
@@ -1751,6 +1758,7 @@ def compile_descriptor_set(
         immediate_encoding_slice_starts=immediate_encoding_slice_starts,
         enum_values=enum_values,
         immediate_enum_domain_ids=immediate_enum_domain_ids,
+        immediate_attribute_masks=immediate_attribute_masks,
         effects=effects,
         constraints=constraints,
         storage_leases=storage_leases,

@@ -42,14 +42,15 @@ typedef struct loom_low_allocation_budget_t loom_low_allocation_budget_t;
 // Sentinel for absent schedule node indices.
 #define LOOM_LOW_SCHEDULE_NODE_NONE UINT32_MAX
 
-typedef enum loom_low_schedule_node_kind_e {
+enum loom_low_schedule_node_kind_e {
   // Ordinary structural low op such as low.copy, low.move, or low.reload.
   LOOM_LOW_SCHEDULE_NODE_STRUCTURAL = 0,
   // Descriptor-backed packet such as low.op or low.const.
   LOOM_LOW_SCHEDULE_NODE_DESCRIPTOR = 1,
   // Block terminator kept fixed after all schedulable block contents.
   LOOM_LOW_SCHEDULE_NODE_TERMINATOR = 2,
-} loom_low_schedule_node_kind_t;
+};
+typedef uint8_t loom_low_schedule_node_kind_t;
 
 enum loom_low_schedule_node_flag_bits_e {
   // Value ordinals are stored in overflow_value_ordinals instead of
@@ -297,6 +298,9 @@ typedef struct loom_low_schedule_node_t {
   uint32_t issue_group_ordinal;
   // Source memory-access record attached to this node, or NONE.
   uint32_t memory_access_record_index;
+  // Present immediate fields in canonical dictionary key order. Retained for
+  // this immutable function snapshot; descriptor alternatives preserve keys.
+  uint32_t immediate_presence;
   // Effective traits used for conservative structural ordering.
   loom_trait_flags_t traits;
   // Kind of schedule node.

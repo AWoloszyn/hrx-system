@@ -11,7 +11,7 @@
 
 #include "iree/base/api.h"
 #include "loom/codegen/low/descriptors.h"
-#include "loom/ir/ir.h"
+#include "loom/codegen/low/packet.h"
 #include "loom/target/arch/amdgpu/planning/wait_packet_data.h"
 
 #ifdef __cplusplus
@@ -68,9 +68,9 @@ typedef struct loom_amdgpu_wait_packet_bounds_t {
 // bounds and unconstrained fields never establish a counter reset.
 uint32_t loom_amdgpu_wait_packet_decode_bounds(
     const loom_low_descriptor_set_t* descriptor_set,
-    const loom_low_descriptor_t* descriptor,
-    const loom_amdgpu_wait_packet_target_t* target, const loom_module_t* module,
-    const loom_op_t* op, loom_amdgpu_wait_packet_bounds_t* out_bounds);
+    const loom_low_packet_view_t* packet,
+    const loom_amdgpu_wait_packet_target_t* target,
+    loom_amdgpu_wait_packet_bounds_t* out_bounds);
 
 #ifdef __cplusplus
 }  // extern "C"

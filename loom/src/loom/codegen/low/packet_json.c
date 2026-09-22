@@ -571,20 +571,6 @@ static iree_status_t loom_low_packet_json_write_attr(
   }
 }
 
-static const loom_named_attr_t* loom_low_packet_json_find_named_attr(
-    const loom_module_t* module, loom_named_attr_slice_t attrs,
-    iree_string_view_t name) {
-  for (iree_host_size_t i = 0; i < attrs.count; ++i) {
-    const loom_named_attr_t* attr = &attrs.entries[i];
-    if (attr->name_id < module->strings.count &&
-        iree_string_view_equal(
-            loom_string_table_get(&module->strings, attr->name_id), name)) {
-      return attr;
-    }
-  }
-  return NULL;
-}
-
 static iree_status_t loom_low_packet_json_write_named_attrs(
     const loom_module_t* module,
     const loom_text_print_options_t* type_print_options,
@@ -673,8 +659,9 @@ static iree_status_t loom_low_packet_json_write_successors(
 static iree_status_t loom_low_packet_json_write_low_packet_attrs(
     const loom_low_schedule_table_t* schedule,
     const loom_text_print_options_t* type_print_options,
-    const loom_low_schedule_node_t* node,
+    const loom_low_packet_view_t* packet,
     loom_json_object_writer_t* packet_object) {
+  const loom_low_schedule_node_t* node = packet->node;
   loom_output_stream_t* stream = packet_object->stream;
   const loom_module_t* module = schedule->module;
   loom_named_attr_slice_t attrs = loom_named_attr_slice_empty();
@@ -733,11 +720,11 @@ static iree_status_t loom_low_packet_json_write_low_packet_attrs(
     }
     IREE_RETURN_IF_ERROR(
         loom_json_object_begin_field(&immediate_object, IREE_SV("value")));
-    const loom_named_attr_t* attr =
-        loom_low_packet_json_find_named_attr(module, attrs, name);
-    if (attr) {
+    const loom_attribute_t attr =
+        loom_low_packet_immediate_attr(packet, immediate);
+    if (attr.kind != LOOM_ATTR_ABSENT) {
       IREE_RETURN_IF_ERROR(loom_low_packet_json_write_attr(
-          module, type_print_options, &attr->value, stream, 0));
+          module, type_print_options, &attr, stream, 0));
     } else if (iree_any_bit_set(immediate->flags,
                                 LOOM_LOW_IMMEDIATE_FLAG_DEFAULT_VALUE)) {
       IREE_RETURN_IF_ERROR(loom_output_stream_write_format(
@@ -855,7 +842,7 @@ static iree_status_t loom_low_packet_json_write_packet(
       allocation, type_print_options, packet, /*is_result=*/false, stream));
   if (loom_low_packet_try_op_attrs(node->op, NULL, NULL)) {
     IREE_RETURN_IF_ERROR(loom_low_packet_json_write_low_packet_attrs(
-        schedule, type_print_options, node, &object));
+        schedule, type_print_options, packet, &object));
   } else {
     IREE_RETURN_IF_ERROR(
         loom_json_object_begin_field(&object, IREE_SV("attributes")));

@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "loom/codegen/low/function.h"
+#include "loom/codegen/low/immediates.h"
 #include "loom/codegen/low/schedule/diagnostics.h"
 #include "loom/codegen/low/schedule/effect_dependencies.h"
 #include "loom/codegen/low/storage_relation.h"
@@ -97,6 +98,10 @@ static iree_status_t loom_low_schedule_resolve_descriptor(
 
   node->descriptor = packet.descriptor;
   node->source_descriptor_ordinal = packet.descriptor_ordinal;
+  node->immediate_presence = loom_low_bind_immediate_presence(
+      state->module, state->target.descriptor_set, packet.descriptor,
+      packet.kind == LOOM_LOW_DESCRIPTOR_PACKET_OP ? loom_low_op_attrs(op)
+                                                   : loom_low_const_attrs(op));
   if (iree_any_bit_set(packet.descriptor->flags,
                        LOOM_LOW_DESCRIPTOR_FLAG_EARLY_CLOBBER)) {
     node->flags |= LOOM_LOW_SCHEDULE_NODE_FLAG_EARLY_CLOBBER;

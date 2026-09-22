@@ -180,6 +180,7 @@ class CompiledDescriptorSet:
     immediate_encoding_slice_starts: list[int]
     enum_values: list[EnumValue]
     immediate_enum_domain_ids: list[int | None]
+    immediate_attribute_masks: list[int]
     effects: list[Effect]
     constraints: list[Constraint]
     storage_leases: list[StorageLease]

@@ -8,6 +8,34 @@
 
 #include <string.h>
 
+uint32_t loom_low_bind_immediate_presence(
+    const loom_module_t* module,
+    const loom_low_descriptor_set_t* descriptor_set,
+    const loom_low_descriptor_t* descriptor, loom_named_attr_slice_t attrs) {
+  if (attrs.count == 0) {
+    return 0;
+  }
+  if (attrs.count == descriptor->immediate_count) {
+    return UINT32_MAX >> (32 - attrs.count);
+  }
+  uint32_t presence = 0;
+  for (iree_host_size_t i = 0; i < attrs.count; ++i) {
+    const iree_string_view_t name =
+        loom_string_table_get(&module->strings, attrs.entries[i].name_id);
+    for (uint16_t j = 0; j < descriptor->immediate_count; ++j) {
+      const loom_low_immediate_t* immediate =
+          &descriptor_set->immediates[descriptor->immediate_start + j];
+      if (iree_string_view_equal(
+              name, loom_low_descriptor_set_string(
+                        descriptor_set, immediate->field_name_string_offset))) {
+        presence |= immediate->attribute_mask;
+        break;
+      }
+    }
+  }
+  return presence;
+}
+
 static bool loom_low_resolve_immediate_enum(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_low_descriptor_t* descriptor, iree_string_view_t name,

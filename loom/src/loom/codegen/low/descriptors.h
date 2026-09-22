@@ -756,6 +756,10 @@ typedef struct loom_low_immediate_t {
   uint16_t enum_domain_id;
   // Reserved for generator-owned immediate encoding variants.
   uint16_t encoding_id;
+  // One bit at this field's position in canonical dictionary key order.
+  // Generated descriptors have at most 32 immediates. A schedule's presence
+  // mask maps this identity to a sparse dictionary position without names.
+  uint32_t attribute_mask;
   // Inclusive signed minimum when kind is signed.
   int64_t signed_min;
   // Inclusive unsigned maximum when kind is unsigned or ordinal.
@@ -763,6 +767,9 @@ typedef struct loom_low_immediate_t {
   // Value used when a packet omits this immediate attribute.
   int64_t default_value;
 } loom_low_immediate_t;
+
+static_assert(sizeof(loom_low_immediate_t) <= 64,
+              "immediate rows must fit within one cache line");
 
 typedef struct loom_low_immediate_encoding_slice_t {
   // Target-owned encoding field populated by this slice.
