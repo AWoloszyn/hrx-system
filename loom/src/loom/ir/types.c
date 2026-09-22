@@ -49,6 +49,19 @@ iree_status_t loom_type_function_build(const loom_type_t* arg_types,
 // Type equality
 //===----------------------------------------------------------------------===//
 
+// Reusing a completed query for the same immutable by-value representation is
+// exact even when a type or attribute is caller-owned and has not been
+// interned.
+static bool loom_type_representation_equal(const loom_type_t* a,
+                                           const loom_type_t* b) {
+  return memcmp(a, b, sizeof(*a)) == 0;
+}
+
+static bool loom_attribute_representation_equal(const loom_attribute_t* a,
+                                                const loom_attribute_t* b) {
+  return memcmp(a, b, sizeof(*a)) == 0;
+}
+
 static bool loom_type_sequence_equal(const loom_type_t* a_types,
                                      const loom_type_t* b_types,
                                      iree_host_size_t type_count) {
@@ -60,6 +73,13 @@ static bool loom_type_sequence_equal(const loom_type_t* a_types,
     return false;
   }
   for (iree_host_size_t i = 0; i < type_count; ++i) {
+    // A successful comparison of the immediately preceding immutable pair is
+    // still valid under the same query. Avoid expanding repeated DAG edges as
+    // independent trees.
+    if (i > 0 && loom_type_representation_equal(&a_types[i], &a_types[i - 1]) &&
+        loom_type_representation_equal(&b_types[i], &b_types[i - 1])) {
+      continue;
+    }
     if (!loom_type_equal(a_types[i], b_types[i])) {
       return false;
     }
@@ -276,8 +296,42 @@ static bool loom_type_sequence_equal_after_value_remap(
     return source_types == target_types;
   }
   for (iree_host_size_t i = 0; i < type_count; ++i) {
+    // The remap is invariant across the sequence, so an identical adjacent
+    // source/target pair has the same result as its successful predecessor.
+    if (i > 0 &&
+        loom_type_representation_equal(&source_types[i],
+                                       &source_types[i - 1]) &&
+        loom_type_representation_equal(&target_types[i],
+                                       &target_types[i - 1])) {
+      continue;
+    }
     if (!loom_type_equal_after_value_remap(module, source_types[i],
                                            target_types[i], remap)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static bool loom_attribute_equal_after_value_remap(
+    const loom_module_t* module, loom_attribute_t source_attr,
+    loom_attribute_t target_attr, uint8_t depth,
+    const loom_type_value_remap_t* remap);
+
+static bool loom_attribute_sequence_equal_after_value_remap(
+    const loom_module_t* module, const loom_attribute_t* source_attributes,
+    const loom_attribute_t* target_attributes, iree_host_size_t attribute_count,
+    uint8_t depth, const loom_type_value_remap_t* remap) {
+  for (iree_host_size_t i = 0; i < attribute_count; ++i) {
+    if (i > 0 &&
+        loom_attribute_representation_equal(&source_attributes[i],
+                                            &source_attributes[i - 1]) &&
+        loom_attribute_representation_equal(&target_attributes[i],
+                                            &target_attributes[i - 1])) {
+      continue;
+    }
+    if (!loom_attribute_equal_after_value_remap(
+            module, source_attributes[i], target_attributes[i], depth, remap)) {
       return false;
     }
   }
@@ -342,8 +396,19 @@ static bool loom_attribute_equal_after_value_remap(
       }
       for (uint16_t i = 0; i < source_attr.count; ++i) {
         if (source_attr.dict_entries[i].name_id !=
-                target_attr.dict_entries[i].name_id ||
-            !loom_attribute_equal_after_value_remap(
+            target_attr.dict_entries[i].name_id) {
+          return false;
+        }
+        if (i > 0 &&
+            loom_attribute_representation_equal(
+                &source_attr.dict_entries[i].value,
+                &source_attr.dict_entries[i - 1].value) &&
+            loom_attribute_representation_equal(
+                &target_attr.dict_entries[i].value,
+                &target_attr.dict_entries[i - 1].value)) {
+          continue;
+        }
+        if (!loom_attribute_equal_after_value_remap(
                 module, source_attr.dict_entries[i].value,
                 target_attr.dict_entries[i].value, (uint8_t)(depth + 1),
                 remap)) {
@@ -360,15 +425,10 @@ static bool loom_attribute_equal_after_value_remap(
                                      !target_attr.parameterized_slots))) {
         return false;
       }
-      for (uint16_t i = 0; i < source_attr.count; ++i) {
-        if (!loom_attribute_equal_after_value_remap(
-                module, source_attr.parameterized_slots[i],
-                target_attr.parameterized_slots[i], (uint8_t)(depth + 1),
-                remap)) {
-          return false;
-        }
-      }
-      return true;
+      return loom_attribute_sequence_equal_after_value_remap(
+          module, source_attr.parameterized_slots,
+          target_attr.parameterized_slots, source_attr.count,
+          (uint8_t)(depth + 1), remap);
 
     case LOOM_ATTR_PARAMETERIZED_ARRAY:
       if (source_attr.count != target_attr.count ||
@@ -377,15 +437,10 @@ static bool loom_attribute_equal_after_value_remap(
                                      !target_attr.parameterized_array))) {
         return false;
       }
-      for (uint16_t i = 0; i < source_attr.count; ++i) {
-        if (!loom_attribute_equal_after_value_remap(
-                module, source_attr.parameterized_array[i],
-                target_attr.parameterized_array[i], (uint8_t)(depth + 1),
-                remap)) {
-          return false;
-        }
-      }
-      return true;
+      return loom_attribute_sequence_equal_after_value_remap(
+          module, source_attr.parameterized_array,
+          target_attr.parameterized_array, source_attr.count,
+          (uint8_t)(depth + 1), remap);
 
     default:
       return loom_attribute_equal(&source_attr, &target_attr);
@@ -496,14 +551,9 @@ bool loom_type_equal_after_value_remap(const loom_module_t* module,
       if (!source_parameters || !target_parameters) {
         return source_parameters == target_parameters;
       }
-      for (uint8_t i = 0; i < parameter_count; ++i) {
-        if (!loom_attribute_equal_after_value_remap(
-                module, source_parameters[i], target_parameters[i],
-                /*depth=*/1, remap)) {
-          return false;
-        }
-      }
-      return true;
+      return loom_attribute_sequence_equal_after_value_remap(
+          module, source_parameters, target_parameters, parameter_count,
+          /*depth=*/1, remap);
     }
 
     default:
@@ -687,7 +737,31 @@ static bool loom_type_sequence_references_value(const loom_type_t* types,
     return false;
   }
   for (iree_host_size_t i = 0; i < type_count; ++i) {
+    if (i > 0 && loom_type_representation_equal(&types[i], &types[i - 1])) {
+      continue;
+    }
     if (loom_type_references_value(module, types[i], value_id)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+static bool loom_attribute_references_value(const loom_module_t* module,
+                                            loom_attribute_t attr,
+                                            uint8_t depth,
+                                            loom_value_id_t value_id);
+
+static bool loom_attribute_sequence_references_value(
+    const loom_module_t* module, const loom_attribute_t* attributes,
+    iree_host_size_t attribute_count, uint8_t depth, loom_value_id_t value_id) {
+  for (iree_host_size_t i = 0; i < attribute_count; ++i) {
+    if (i > 0 && loom_attribute_representation_equal(&attributes[i],
+                                                     &attributes[i - 1])) {
+      continue;
+    }
+    if (loom_attribute_references_value(module, attributes[i], depth,
+                                        value_id)) {
       return true;
     }
   }
@@ -721,6 +795,11 @@ static bool loom_attribute_references_value(const loom_module_t* module,
         return false;
       }
       for (uint16_t i = 0; i < attr.count; ++i) {
+        if (i > 0 &&
+            loom_attribute_representation_equal(
+                &attr.dict_entries[i].value, &attr.dict_entries[i - 1].value)) {
+          continue;
+        }
         if (loom_attribute_references_value(module, attr.dict_entries[i].value,
                                             (uint8_t)(depth + 1), value_id)) {
           return true;
@@ -731,24 +810,16 @@ static bool loom_attribute_references_value(const loom_module_t* module,
       if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
         return false;
       }
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        if (loom_attribute_references_value(module, attr.parameterized_slots[i],
-                                            (uint8_t)(depth + 1), value_id)) {
-          return true;
-        }
-      }
-      return false;
+      return loom_attribute_sequence_references_value(
+          module, attr.parameterized_slots, attr.count, (uint8_t)(depth + 1),
+          value_id);
     case LOOM_ATTR_PARAMETERIZED_ARRAY:
       if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH) {
         return false;
       }
-      for (uint16_t i = 0; i < attr.count; ++i) {
-        if (loom_attribute_references_value(module, attr.parameterized_array[i],
-                                            (uint8_t)(depth + 1), value_id)) {
-          return true;
-        }
-      }
-      return false;
+      return loom_attribute_sequence_references_value(
+          module, attr.parameterized_array, attr.count, (uint8_t)(depth + 1),
+          value_id);
     default:
       return false;
   }
@@ -787,13 +858,8 @@ bool loom_type_references_value(const loom_module_t* module, loom_type_t type,
       const loom_attribute_t* parameters =
           loom_type_parameterized_parameters(type);
       uint8_t parameter_count = loom_type_parameterized_parameter_count(type);
-      for (uint8_t i = 0; i < parameter_count; ++i) {
-        if (loom_attribute_references_value(module, parameters[i], /*depth=*/1,
-                                            value_id)) {
-          return true;
-        }
-      }
-      return false;
+      return loom_attribute_sequence_references_value(
+          module, parameters, parameter_count, /*depth=*/1, value_id);
     }
 
     case LOOM_TYPE_REGISTER: {
@@ -831,8 +897,11 @@ static uint32_t loom_type_hash_mix_sequence(uint32_t hash,
   if (!types) {
     return hash;
   }
+  uint32_t element_hash = 0;
   for (iree_host_size_t i = 0; i < type_count; ++i) {
-    uint32_t element_hash = loom_type_hash(types[i]);
+    if (i == 0 || !loom_type_representation_equal(&types[i], &types[i - 1])) {
+      element_hash = loom_type_hash(types[i]);
+    }
     hash = loom_structural_hash_mix_u32(hash, element_hash);
   }
   return hash;
@@ -924,6 +993,26 @@ uint32_t loom_type_hash(loom_type_t type) {
   return loom_structural_hash_finalize(hash);
 }
 
+static uint32_t loom_attribute_hash_after_value_remap(
+    const loom_module_t* module, const loom_attribute_t* attribute,
+    uint8_t depth, const loom_type_value_remap_t* remap);
+
+static uint32_t loom_attribute_hash_mix_sequence_after_value_remap(
+    const loom_module_t* module, const loom_attribute_t* attributes,
+    iree_host_size_t attribute_count, uint8_t depth,
+    const loom_type_value_remap_t* remap, uint32_t hash) {
+  uint32_t attribute_hash = 0;
+  for (iree_host_size_t i = 0; i < attribute_count; ++i) {
+    if (i == 0 || !loom_attribute_representation_equal(&attributes[i],
+                                                       &attributes[i - 1])) {
+      attribute_hash = loom_attribute_hash_after_value_remap(
+          module, &attributes[i], depth, remap);
+    }
+    hash = loom_structural_hash_mix_u32(hash, attribute_hash);
+  }
+  return hash;
+}
+
 #if IREE_HAVE_ATTRIBUTE(minsize)
 __attribute__((minsize))
 #endif
@@ -969,7 +1058,7 @@ IREE_ATTRIBUTE_NOINLINE static uint32_t loom_attribute_hash_after_value_remap(
       }
       break;
 
-    case LOOM_ATTR_DICT:
+    case LOOM_ATTR_DICT: {
       hash = loom_structural_hash_mix_u16(hash, attribute->count);
       if (depth >= LOOM_ATTR_AGGREGATE_MAX_NESTING_DEPTH ||
           (attribute->count > 0 && attribute->dict_entries == NULL)) {
@@ -977,15 +1066,21 @@ IREE_ATTRIBUTE_NOINLINE static uint32_t loom_attribute_hash_after_value_remap(
             hash, (uint64_t)(uintptr_t)attribute->dict_entries);
         break;
       }
+      uint32_t value_hash = 0;
       for (uint16_t i = 0; i < attribute->count; ++i) {
         hash = loom_structural_hash_mix_u32(hash,
                                             attribute->dict_entries[i].name_id);
-        hash = loom_structural_hash_mix_u32(
-            hash, loom_attribute_hash_after_value_remap(
-                      module, &attribute->dict_entries[i].value,
-                      (uint8_t)(depth + 1), remap));
+        if (i == 0 || !loom_attribute_representation_equal(
+                          &attribute->dict_entries[i].value,
+                          &attribute->dict_entries[i - 1].value)) {
+          value_hash = loom_attribute_hash_after_value_remap(
+              module, &attribute->dict_entries[i].value, (uint8_t)(depth + 1),
+              remap);
+        }
+        hash = loom_structural_hash_mix_u32(hash, value_hash);
       }
       break;
+    }
 
     case LOOM_ATTR_PARAMETERIZED:
       hash = loom_structural_hash_mix_u32(hash, attribute->reserved_1);
@@ -996,12 +1091,9 @@ IREE_ATTRIBUTE_NOINLINE static uint32_t loom_attribute_hash_after_value_remap(
             hash, (uint64_t)(uintptr_t)attribute->parameterized_slots);
         break;
       }
-      for (uint16_t i = 0; i < attribute->count; ++i) {
-        hash = loom_structural_hash_mix_u32(
-            hash, loom_attribute_hash_after_value_remap(
-                      module, &attribute->parameterized_slots[i],
-                      (uint8_t)(depth + 1), remap));
-      }
+      hash = loom_attribute_hash_mix_sequence_after_value_remap(
+          module, attribute->parameterized_slots, attribute->count,
+          (uint8_t)(depth + 1), remap, hash);
       break;
 
     case LOOM_ATTR_PARAMETERIZED_ARRAY:
@@ -1012,12 +1104,9 @@ IREE_ATTRIBUTE_NOINLINE static uint32_t loom_attribute_hash_after_value_remap(
             hash, (uint64_t)(uintptr_t)attribute->parameterized_array);
         break;
       }
-      for (uint16_t i = 0; i < attribute->count; ++i) {
-        hash = loom_structural_hash_mix_u32(
-            hash, loom_attribute_hash_after_value_remap(
-                      module, &attribute->parameterized_array[i],
-                      (uint8_t)(depth + 1), remap));
-      }
+      hash = loom_attribute_hash_mix_sequence_after_value_remap(
+          module, attribute->parameterized_array, attribute->count,
+          (uint8_t)(depth + 1), remap, hash);
       break;
 
     default:
@@ -1035,9 +1124,12 @@ static uint32_t loom_type_hash_sequence_after_value_remap(
   if (!types) {
     return hash;
   }
+  uint32_t element_hash = 0;
   for (iree_host_size_t i = 0; i < type_count; ++i) {
-    hash = loom_structural_hash_mix_u32(
-        hash, loom_type_hash_after_value_remap(module, types[i], remap));
+    if (i == 0 || !loom_type_representation_equal(&types[i], &types[i - 1])) {
+      element_hash = loom_type_hash_after_value_remap(module, types[i], remap);
+    }
+    hash = loom_structural_hash_mix_u32(hash, element_hash);
   }
   return hash;
 }
@@ -1096,11 +1188,8 @@ loom_type_hash_after_value_remap(const loom_module_t* module, loom_type_t type,
       if (!parameters) {
         return loom_structural_hash_finalize(hash);
       }
-      for (uint8_t i = 0; i < parameter_count; ++i) {
-        hash = loom_structural_hash_mix_u32(
-            hash, loom_attribute_hash_after_value_remap(module, &parameters[i],
-                                                        /*depth=*/1, remap));
-      }
+      hash = loom_attribute_hash_mix_sequence_after_value_remap(
+          module, parameters, parameter_count, /*depth=*/1, remap, hash);
       return loom_structural_hash_finalize(hash);
     }
 

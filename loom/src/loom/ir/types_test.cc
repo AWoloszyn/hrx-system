@@ -12,6 +12,7 @@
 #include "iree/testing/status_matchers.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
+#include "loom/ir/parameterized_type.h"
 
 namespace loom {
 namespace {
@@ -56,6 +57,38 @@ static OwnedFunctionType BuildFunctionType(const loom_type_t* arg_types,
   return OwnedFunctionType(type);
 }
 
+static const loom_attr_descriptor_t kRepeatedTypeParameters[] = {
+    {
+        /*.name=*/LOOM_BSTRING_REF(4, "left"),
+        /*.attr_kind=*/LOOM_ATTR_TYPE,
+    },
+    {
+        /*.name=*/LOOM_BSTRING_REF(5, "right"),
+        /*.attr_kind=*/LOOM_ATTR_TYPE,
+    },
+};
+
+static const loom_parameterized_type_descriptor_t kRepeatedTypeDescriptor = {
+    /*.name=*/LOOM_BSTRING_REF(13, "test.repeated"),
+    /*.parameter_descriptors=*/kRepeatedTypeParameters,
+    /*.ir_kind=*/LOOM_TYPE_PARAMETERIZED,
+    /*.type_flags=*/0,
+    /*.parameter_count=*/IREE_ARRAYSIZE(kRepeatedTypeParameters),
+};
+
+static const loom_attr_descriptor_t kRepeatedDictParameters[] = {{
+    /*.name=*/LOOM_BSTRING_REF(8, "metadata"),
+    /*.attr_kind=*/LOOM_ATTR_DICT,
+}};
+
+static const loom_parameterized_type_descriptor_t kRepeatedDictDescriptor = {
+    /*.name=*/LOOM_BSTRING_REF(18, "test.repeated_dict"),
+    /*.parameter_descriptors=*/kRepeatedDictParameters,
+    /*.ir_kind=*/LOOM_TYPE_PARAMETERIZED,
+    /*.type_flags=*/0,
+    /*.parameter_count=*/IREE_ARRAYSIZE(kRepeatedDictParameters),
+};
+
 TEST(TypesTest, FunctionTypeEqualAndHashAreStructural) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   loom_type_t f32 = loom_type_scalar(LOOM_SCALAR_TYPE_F32);
@@ -74,14 +107,30 @@ TEST(TypesTest, SharedTypeSequencesKeepStructuralOwnerChecks) {
   const auto i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   const auto f32 = loom_type_scalar(LOOM_SCALAR_TYPE_F32);
   std::vector<OwnedFunctionType> nodes;
-  nodes.reserve(32);
+  std::vector<OwnedFunctionType> duplicate_nodes;
+  nodes.reserve(64);
+  duplicate_nodes.reserve(64);
   loom_type_t shared = i32;
-  for (int i = 0; i < 32; ++i) {
+  loom_type_t duplicate_shared = i32;
+  for (int i = 0; i < 64; ++i) {
     const loom_type_t children[] = {shared, shared};
+    const loom_type_t duplicate_children[] = {duplicate_shared,
+                                              duplicate_shared};
     nodes.emplace_back(BuildFunctionType(children, 2, nullptr, 0));
+    duplicate_nodes.emplace_back(
+        BuildFunctionType(duplicate_children, 2, nullptr, 0));
     shared = nodes.back().get();
+    duplicate_shared = duplicate_nodes.back().get();
   }
-  EXPECT_TRUE(loom_type_equal(shared, shared));
+  EXPECT_TRUE(loom_type_equal(shared, duplicate_shared));
+  EXPECT_EQ(loom_type_hash(shared), loom_type_hash(duplicate_shared));
+
+  const loom_type_t repeated_arguments[] = {shared, shared};
+  const loom_type_t one_different_argument[] = {duplicate_shared, f32};
+  const auto repeated = BuildFunctionType(repeated_arguments, 2, nullptr, 0);
+  const auto one_different =
+      BuildFunctionType(one_different_argument, 2, nullptr, 0);
+  EXPECT_FALSE(loom_type_equal(repeated.get(), one_different.get()));
 
   // Distinct owners can share an arbitrarily deep immutable child while
   // differing in a later sibling, arity, or dialect name.
@@ -263,6 +312,195 @@ class ModuleTypesTest : public ::testing::Test {
   loom_context_t context_;
   loom_module_t* module_ = nullptr;
 };
+
+TEST_F(ModuleTypesTest, RepeatedChildrenReuseMappedTypeQueries) {
+  const loom_value_id_t source_value = 7;
+  const loom_value_id_t target_value = 9;
+  loom_type_t source = loom_type_shaped_1d(
+      LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+      loom_dim_pack_dynamic(source_value), /*encoding_id=*/0);
+  loom_type_t target = loom_type_shaped_1d(
+      LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+      loom_dim_pack_dynamic(target_value), /*encoding_id=*/0);
+  std::vector<OwnedFunctionType> source_nodes;
+  std::vector<OwnedFunctionType> target_nodes;
+  source_nodes.reserve(64);
+  target_nodes.reserve(64);
+  for (int i = 0; i < 64; ++i) {
+    const loom_type_t source_children[] = {source, source};
+    const loom_type_t target_children[] = {target, target};
+    source_nodes.emplace_back(
+        BuildFunctionType(source_children, 2, nullptr, 0));
+    target_nodes.emplace_back(
+        BuildFunctionType(target_children, 2, nullptr, 0));
+    source = source_nodes.back().get();
+    target = target_nodes.back().get();
+  }
+  const loom_type_value_remap_t remap = {
+      /*.source_values=*/&source_value,
+      /*.target_values=*/&target_value,
+      /*.count=*/1,
+  };
+  const loom_type_t mismatched_children[] = {
+      target, loom_type_scalar(LOOM_SCALAR_TYPE_F32)};
+  const auto mismatched_target =
+      BuildFunctionType(mismatched_children, 2, nullptr, 0);
+
+  EXPECT_TRUE(
+      loom_type_equal_after_value_remap(module_, source, target, &remap));
+  EXPECT_FALSE(loom_type_equal_after_value_remap(
+      module_, source, mismatched_target.get(), &remap));
+  EXPECT_EQ(loom_type_hash_after_value_remap(module_, source, &remap),
+            loom_type_hash_after_value_remap(module_, target, nullptr));
+}
+
+TEST_F(ModuleTypesTest, RepeatedTypeAttributesReuseMappedQueries) {
+  const loom_type_t index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  loom_value_id_t source_value = LOOM_VALUE_ID_INVALID;
+  loom_value_id_t target_value = LOOM_VALUE_ID_INVALID;
+  loom_value_id_t absent_value = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_define_value(module_, index_type, &source_value));
+  IREE_ASSERT_OK(loom_module_define_value(module_, index_type, &target_value));
+  IREE_ASSERT_OK(loom_module_define_value(module_, index_type, &absent_value));
+
+  loom_type_id_t source_id = LOOM_TYPE_ID_INVALID;
+  loom_type_id_t target_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module_,
+      loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+                          loom_dim_pack_dynamic(source_value), 0),
+      &source_id));
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module_,
+      loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+                          loom_dim_pack_dynamic(target_value), 0),
+      &target_id));
+
+  loom_type_t source = {};
+  loom_type_t target = {};
+  loom_type_t shallow_source = {};
+  for (int i = 0; i < 64; ++i) {
+    const loom_attribute_t source_parameters[] = {loom_attr_type(source_id),
+                                                  loom_attr_type(source_id)};
+    const loom_attribute_t target_parameters[] = {loom_attr_type(target_id),
+                                                  loom_attr_type(target_id)};
+    IREE_ASSERT_OK(loom_module_make_parameterized_type(
+        module_, &kRepeatedTypeDescriptor, source_parameters,
+        IREE_ARRAYSIZE(source_parameters), &source, &source_id));
+    IREE_ASSERT_OK(loom_module_make_parameterized_type(
+        module_, &kRepeatedTypeDescriptor, target_parameters,
+        IREE_ARRAYSIZE(target_parameters), &target, &target_id));
+    if (i == 0) {
+      shallow_source = source;
+    }
+  }
+
+  const loom_type_value_remap_t remap = {
+      /*.source_values=*/&source_value,
+      /*.target_values=*/&target_value,
+      /*.count=*/1,
+  };
+  EXPECT_TRUE(
+      loom_type_equal_after_value_remap(module_, source, target, &remap));
+  EXPECT_EQ(loom_type_hash_after_value_remap(module_, source, &remap),
+            loom_type_hash_after_value_remap(module_, target, nullptr));
+  EXPECT_TRUE(loom_type_references_value(module_, source, source_value));
+  EXPECT_FALSE(loom_type_references_value(module_, source, absent_value));
+
+  loom_type_id_t scalar_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module_, loom_type_scalar(LOOM_SCALAR_TYPE_F32), &scalar_id));
+  const loom_type_id_t target_child_id =
+      loom_type_parameterized_parameters(target)[0].type_id;
+  const loom_attribute_t mismatched_parameters[] = {
+      loom_attr_type(target_child_id), loom_attr_type(scalar_id)};
+  const loom_type_t mismatched_target = loom_type_parameterized(
+      &kRepeatedTypeDescriptor, IREE_ARRAYSIZE(mismatched_parameters),
+      mismatched_parameters);
+  EXPECT_FALSE(loom_type_equal_after_value_remap(module_, source,
+                                                 mismatched_target, &remap));
+
+  ValueRefCapture capture = {};
+  IREE_ASSERT_OK(loom_type_walk_value_refs(module_, shallow_source,
+                                           CaptureValueRef, &capture));
+  ASSERT_EQ(capture.count, 2u);
+  EXPECT_EQ(capture.values[0], source_value);
+  EXPECT_EQ(capture.values[1], source_value);
+}
+
+TEST_F(ModuleTypesTest, NestedDictReusePreservesMappedTypeQueries) {
+  const loom_type_t index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  loom_value_id_t source_value = LOOM_VALUE_ID_INVALID;
+  loom_value_id_t target_value = LOOM_VALUE_ID_INVALID;
+  loom_value_id_t absent_value = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_define_value(module_, index_type, &source_value));
+  IREE_ASSERT_OK(loom_module_define_value(module_, index_type, &target_value));
+  IREE_ASSERT_OK(loom_module_define_value(module_, index_type, &absent_value));
+
+  loom_type_id_t source_id = LOOM_TYPE_ID_INVALID;
+  loom_type_id_t target_id = LOOM_TYPE_ID_INVALID;
+  loom_type_id_t scalar_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module_,
+      loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+                          loom_dim_pack_dynamic(source_value), 0),
+      &source_id));
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module_,
+      loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+                          loom_dim_pack_dynamic(target_value), 0),
+      &target_id));
+  IREE_ASSERT_OK(loom_module_intern_type_id(
+      module_, loom_type_scalar(LOOM_SCALAR_TYPE_F32), &scalar_id));
+
+  loom_string_id_t left_id = LOOM_STRING_ID_INVALID;
+  loom_string_id_t right_id = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_string(module_, IREE_SV("left"), &left_id));
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module_, IREE_SV("right"), &right_id));
+  const loom_named_attr_t source_entries[] = {
+      {left_id, {}, loom_attr_type(source_id)},
+      {right_id, {}, loom_attr_type(source_id)},
+  };
+  const loom_named_attr_t target_entries[] = {
+      {left_id, {}, loom_attr_type(target_id)},
+      {right_id, {}, loom_attr_type(target_id)},
+  };
+  const loom_named_attr_t mismatched_entries[] = {
+      {left_id, {}, loom_attr_type(target_id)},
+      {right_id, {}, loom_attr_type(scalar_id)},
+  };
+  const loom_attribute_t source_parameters[] = {loom_make_canonical_attr_dict(
+      source_entries, IREE_ARRAYSIZE(source_entries))};
+  const loom_attribute_t target_parameters[] = {loom_make_canonical_attr_dict(
+      target_entries, IREE_ARRAYSIZE(target_entries))};
+  const loom_attribute_t mismatched_parameters[] = {
+      loom_make_canonical_attr_dict(mismatched_entries,
+                                    IREE_ARRAYSIZE(mismatched_entries))};
+  const loom_type_t source = loom_type_parameterized(
+      &kRepeatedDictDescriptor, IREE_ARRAYSIZE(source_parameters),
+      source_parameters);
+  const loom_type_t target = loom_type_parameterized(
+      &kRepeatedDictDescriptor, IREE_ARRAYSIZE(target_parameters),
+      target_parameters);
+  const loom_type_t mismatched_target = loom_type_parameterized(
+      &kRepeatedDictDescriptor, IREE_ARRAYSIZE(mismatched_parameters),
+      mismatched_parameters);
+  const loom_type_value_remap_t remap = {
+      /*.source_values=*/&source_value,
+      /*.target_values=*/&target_value,
+      /*.count=*/1,
+  };
+
+  EXPECT_TRUE(
+      loom_type_equal_after_value_remap(module_, source, target, &remap));
+  EXPECT_FALSE(loom_type_equal_after_value_remap(module_, source,
+                                                 mismatched_target, &remap));
+  EXPECT_EQ(loom_type_hash_after_value_remap(module_, source, &remap),
+            loom_type_hash_after_value_remap(module_, target, nullptr));
+  EXPECT_TRUE(loom_type_references_value(module_, source, source_value));
+  EXPECT_FALSE(loom_type_references_value(module_, source, absent_value));
+}
 
 TEST_F(ModuleTypesTest, InvalidKindsPreserveRawIdentityForDiagnostics) {
   loom_type_t first = {};
