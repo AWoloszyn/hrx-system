@@ -65,7 +65,7 @@ typedef struct loom_cfg_loop_nest_t {
 // Entry/exit summaries and loop-tree intervals take O(B+E) time. Scratch
 // storage is released before returning; retained storage is O(B+L).
 // The graph must be produced by loom_cfg_graph_build. Rebuild after topology
-// changes. Graphs with no backward edges require no traversal or allocation.
+// changes. Acyclic graphs require no traversal or allocation.
 iree_status_t loom_cfg_loop_nest_build(const loom_cfg_graph_t* graph,
                                        const loom_cfg_dominance_t* dominance,
                                        iree_arena_allocator_t* arena,

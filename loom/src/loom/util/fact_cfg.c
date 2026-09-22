@@ -219,7 +219,7 @@ iree_status_t loom_value_fact_cfg_region_initialize(
                                            (void**)&out_region->control));
   IREE_RETURN_IF_ERROR(loom_value_fact_control_initialize(
       &out_region->control_structure, arena, out_region->control));
-  if (out_region->graph.backward_edge_count == 0) {
+  if (!out_region->graph.has_cycles) {
     return iree_ok_status();
   }
   IREE_RETURN_IF_ERROR(loom_value_fact_cfg_group_control_flow(

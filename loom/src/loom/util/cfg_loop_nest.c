@@ -257,7 +257,7 @@ iree_status_t loom_cfg_loop_nest_build(const loom_cfg_graph_t* graph,
       .graph = graph,
       .reducible = !graph->malformed,
   };
-  if (graph->malformed || graph->backward_edge_count == 0) {
+  if (graph->malformed || !graph->has_cycles) {
     return iree_ok_status();
   }
   iree_arena_allocator_t scratch_arena;

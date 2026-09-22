@@ -241,6 +241,7 @@ static iree_status_t loom_cfg_graph_build_traversal(
         // finishes. A completed block may still be on the Tarjan stack.
         if (graph->blocks[successor_index].preorder_end == 0) {
           graph->blocks[successor_index].is_dfs_backedge_target = true;
+          graph->has_cycles = true;
         }
         if (graph->blocks[successor_index].component == UINT16_MAX) {
           lowlinks[block_index] = iree_min(
