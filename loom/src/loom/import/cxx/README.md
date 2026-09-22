@@ -1482,10 +1482,10 @@ The current translation surface covers scalar and explicit vector arithmetic,
 conversions, typed-pointer indexing and arithmetic, aggregate record values,
 record field storage, local SSA values, automatic scalar and vector storage,
 conditional regions, short-circuit `&&` and `||`, counted and general `for`
-loops, `while` and `do/while` loops, fixed
-workgroup arrays, and direct calls. Unsupported reachable types and statements
-produce source diagnostics. Integral subscripts preserve
-their source width and signedness. Interior pointers carry a buffer root and an
+loops, `while` and `do/while` loops, fixed workgroup arrays, and direct calls.
+Unsupported reachable types and statements produce source diagnostics. Integral
+subscripts preserve their source width and signedness. Interior pointers carry a
+buffer root and an
 object-relative byte offset through helper arguments, returns, conditional
 regions, and loop-carried values. Kernel pointer parameters retain their
 single-buffer binding ABI. Signed displacements are combined with the current
@@ -1528,11 +1528,13 @@ unsigned update(unsigned input, bool enabled) {
 }
 ```
 
-The importer emits `buffer.alloca<private>` at the object's declaration, using
-its source size and alignment, and initializes it with an ordinary store. A
-declaration without an initializer leaves storage uninitialized for an
-output-only helper to write. Addressed by-value parameters receive a private
-copy of their incoming value. Pointers retain the same buffer and byte origin
+Automatic storage supports the same non-boolean scalar and vector types as
+typed pointer storage. The importer emits `buffer.alloca<private>` at the
+object's declaration, using its source size and alignment, and initializes it
+with a store preserving its access qualifiers. A declaration without an
+initializer leaves storage uninitialized for an output-only helper to write.
+Addressed by-value parameters receive a private copy of their incoming value.
+Pointers retain the same buffer and byte origin
 through copies and borrowed helper returns. Automatic objects retain their C++
 lifetimes; returning a pointer does not extend the pointee's lifetime. Taking an
 address in an unevaluated operand or a discarded `if constexpr` arm does not
@@ -1557,8 +1559,8 @@ storage and control-flow projections before they can be imported.
 
 Volatile scalar and vector accesses through pointers, automatic objects, and
 workgroup arrays become `view.load/store<volatile>` and
-`vector.load/store<volatile>`. The
-qualifier belongs to the accessed object: a copied pointer or a pointer member
+`vector.load/store<volatile>`. The qualifier belongs to the accessed object:
+a copied pointer or a pointer member
 retains its pointee's observation semantics. Discarded reads, including explicit
 casts to `void`, remain observable, and repeated accesses stay distinct through
 optimization. Ordinary reads retain their usual optimization.
@@ -1579,8 +1581,10 @@ preserves its element qualifier through copies, helpers and subviews;
 `loom::view::load` returns an ordinary scalar and `loom::view::store` accepts
 one. A `const volatile` element permits observations but rejects stores.
 Volatile supplies observable accesses, without atomicity, synchronization or a
-cache-coherence guarantee. Volatile automatic scalar and vector objects receive
-private storage even when their address is never taken. Stored pointer objects
+cache-coherence guarantee. Volatile scalar and vector local declarations receive
+private storage even when their address is never taken. Volatile by-value
+parameters require separating the incoming SSA signature from the qualified
+parameter object and produce a source diagnostic. Stored pointer objects
 need an object representation for their buffer and byte origin, and automatic
 record values need aggregate memory copies; those declarations produce source
 diagnostics. Namespace-scope volatile objects require global-storage projection
