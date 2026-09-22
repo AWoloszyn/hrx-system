@@ -256,7 +256,6 @@ loom_cc_test(
     name = "emit_spirv_iree_hal_test",
     srcs = ["emit_spirv_iree_hal.c"],
     resource_group = GPU_DEVICE_RESOURCE_GROUP,
-    sanitizer_suppressions = vulkan_suppressions,
     tags = [
         "driver=vulkan",
         "iree-run-requirement=vulkan.resource.device",

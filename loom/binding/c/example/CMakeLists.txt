@@ -273,9 +273,6 @@ loom_cc_test(
     "runtime-resource=vulkan-device"
   RESOURCE_GROUP
     gpu-device
-  SANITIZER_SUPPRESSIONS
-    lsan
-    vulkan
 )
 endif()
 
