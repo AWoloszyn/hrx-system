@@ -351,3 +351,113 @@ iree_py_test(
         "//loom/py/loom/error",
     ],
 )
+
+iree_py_test(
+    name = "c_builder_model_test",
+    srcs = [
+        "c_builder_model_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = ["loom.gen.ops.c_builder_model_test"],
+    main = "pytest_style_runner.py",
+    deps = [":c_tables"],
+)
+
+iree_py_test(
+    name = "c_enum_attrs_test",
+    srcs = [
+        "c_enum_attrs_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = ["loom.gen.ops.c_enum_attrs_test"],
+    main = "pytest_style_runner.py",
+    deps = [":c_tables"],
+)
+
+iree_py_test(
+    name = "c_enums_test",
+    srcs = [
+        "c_enums_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = ["loom.gen.ops.c_enums_test"],
+    main = "pytest_style_runner.py",
+    deps = [":c_tables"],
+)
+
+iree_py_test(
+    name = "c_interfaces_test",
+    srcs = [
+        "c_interfaces_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = ["loom.gen.ops.c_interfaces_test"],
+    main = "pytest_style_runner.py",
+    deps = [":c_tables"],
+)
+
+iree_py_test(
+    name = "c_metadata_tables_test",
+    srcs = [
+        "c_metadata_tables_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = ["loom.gen.ops.c_metadata_tables_test"],
+    main = "pytest_style_runner.py",
+    deps = [":c_tables"],
+)
+
+iree_py_test(
+    name = "c_names_test",
+    srcs = [
+        "c_names_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = ["loom.gen.ops.c_names_test"],
+    main = "pytest_style_runner.py",
+    deps = [":c_tables"],
+)
+
+iree_py_test(
+    name = "c_ops_header_test",
+    srcs = [
+        "c_ops_header_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = ["loom.gen.ops.c_ops_header_test"],
+    main = "pytest_style_runner.py",
+    deps = [":c_tables"],
+)
+
+iree_py_test(
+    name = "c_traits_test",
+    srcs = [
+        "c_traits_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = ["loom.gen.ops.c_traits_test"],
+    main = "pytest_style_runner.py",
+    deps = [":c_tables"],
+)
+
+iree_py_test(
+    name = "model_test",
+    srcs = [
+        "model_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = ["loom.gen.ops.model_test"],
+    main = "pytest_style_runner.py",
+    deps = [":model"],
+)
+
+iree_py_test(
+    name = "type_registry_test",
+    srcs = [
+        "type_registry_test.py",
+        "//loom/py/loom/tools:pytest_style_runner.py",
+    ],
+    args = ["loom.gen.ops.type_registry_test"],
+    main = "pytest_style_runner.py",
+    deps = [":c_tables"],
+)

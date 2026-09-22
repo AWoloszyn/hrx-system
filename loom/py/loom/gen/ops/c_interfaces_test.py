@@ -1,0 +1,451 @@
+# Copyright 2026 The IREE Authors
+#
+# Licensed under the Apache License v2.0 with LLVM Exceptions.
+# See https://llvm.org/LICENSE.txt for license information.
+# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+"""Declaration contracts required by generated interface consumers."""
+
+import pytest
+
+from loom.assembly import AttrDict, Flags, FuncArgs, Ref
+from loom.dsl import (
+    ANY,
+    ATTR_TYPE_ENUM,
+    ATTR_TYPE_FLAGS,
+    ATTR_TYPE_I64,
+    ATTR_TYPE_SYMBOL,
+    INTEGER,
+    TERMINATOR,
+    AttrDef,
+    CachePolicyInterface,
+    CallLikeInterface,
+    ConditionForwardedCountMatchesBlockArgs,
+    ConditionForwardedTypesMatchBlockArgs,
+    Constraint,
+    Dialect,
+    EnumCase,
+    EnumDef,
+    FuncLikeInterface,
+    IterArgsMatchResults,
+    LoopLikeInterface,
+    MemoryAccessInterface,
+    Op,
+    Operand,
+    Reads,
+    RegionDef,
+    Result,
+    TargetFactSpecialization,
+    TargetLikeInterface,
+    YieldCountMatchesResults,
+    YieldTypesMatchResults,
+)
+from loom.gen.ops.c_metadata_tables import generate_tables_c
+
+
+def _target_projection_test_op(
+    *,
+    fact_type: str | None = None,
+    fact_projector: str | None = None,
+    fact_specialization: TargetFactSpecialization = TargetFactSpecialization.EXACT,
+) -> Op:
+    kind = EnumDef("TargetKind", [EnumCase("generic", 0)])
+    return Op(
+        "test.target",
+        group=Dialect("test"),
+        attrs=[
+            AttrDef("symbol", ATTR_TYPE_SYMBOL),
+            AttrDef("kind", ATTR_TYPE_ENUM, enum_def=kind),
+        ],
+        interfaces=[
+            TargetLikeInterface(
+                symbol="symbol",
+                selector="kind",
+                bundle_table="loom_test_target_bundles",
+                fact_type=fact_type,
+                fact_projector=fact_projector,
+                fact_specialization=fact_specialization,
+            )
+        ],
+    )
+
+
+def test_generate_target_projection_rejects_projector_without_family_facts() -> None:
+    with pytest.raises(ValueError, match=r"family fact projector requires an external fact type"):
+        generate_tables_c(
+            "test",
+            0,
+            [_target_projection_test_op(fact_projector="loom_test_fact_projector")],
+        )
+
+
+def test_generate_target_projection_rejects_split_fact_ownership() -> None:
+    with pytest.raises(ValueError, match=r"external fact type owns its specialization"):
+        generate_tables_c(
+            "test",
+            0,
+            [
+                _target_projection_test_op(
+                    fact_type="loom_test_custom_fact_type",
+                    fact_specialization=TargetFactSpecialization.STRUCTURAL,
+                )
+            ],
+        )
+
+
+def test_generate_tables_rejects_non_string_representation_contract() -> None:
+    op = Op(
+        "test.func",
+        group=Dialect("test"),
+        operands=[Operand("args", ANY, variadic=True)],
+        attrs=[
+            AttrDef("callee", ATTR_TYPE_SYMBOL),
+            AttrDef("representation", ATTR_TYPE_I64, optional=True),
+        ],
+        interfaces=[
+            FuncLikeInterface(
+                callee="callee",
+                repr_contract="representation",
+                args="args",
+            )
+        ],
+        format=[FuncArgs("args")],
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"FuncLikeInterface on 'test\.func': attr 'representation' referenced "
+        r"by 'repr_contract' must have type 'string', got 'i64'",
+    ):
+        generate_tables_c("test", 0, [op])
+
+
+def _make_counted_loop_op(
+    *,
+    body_arg_source: str | None = "iter_args",
+    step: str | None = "step",
+    iv_type: str = "type_of:lower_bound",
+    constraints: list[Constraint] | None = None,
+) -> Op:
+    if constraints is None:
+        constraints = [
+            IterArgsMatchResults("iter_args", "results"),
+            YieldCountMatchesResults("body", "results"),
+            YieldTypesMatchResults("body", "results"),
+        ]
+    return Op(
+        "test.for",
+        group=Dialect("test"),
+        operands=[
+            Operand("lower_bound", INTEGER),
+            Operand("upper_bound", INTEGER),
+            Operand("step", INTEGER),
+            Operand("iter_args", ANY, variadic=True),
+        ],
+        results=[Result("results", ANY, variadic=True)],
+        regions=[
+            RegionDef(
+                "body",
+                single_block=True,
+                terminator="test.yield",
+                implicit_args=(("iv", iv_type),),
+                arg_source=body_arg_source,
+            )
+        ],
+        interfaces=[
+            LoopLikeInterface(
+                body="body",
+                iter_args="iter_args",
+                iv="iv",
+                lower_bound="lower_bound",
+                upper_bound="upper_bound",
+                step=step,
+            )
+        ],
+        constraints=constraints,
+    )
+
+
+def _generate_counted_loop_tables(op: Op) -> None:
+    yield_op = Op(
+        "test.yield",
+        group=Dialect("test"),
+        operands=[Operand("values", ANY, variadic=True)],
+        traits=[TERMINATOR],
+    )
+    generate_tables_c("test", 0, [yield_op, op])
+
+
+def test_generate_tables_rejects_loop_like_missing_yield_constraint() -> None:
+    op = _make_counted_loop_op(
+        constraints=[
+            IterArgsMatchResults("iter_args", "results"),
+            YieldCountMatchesResults("body", "results"),
+        ]
+    )
+
+    with pytest.raises(ValueError, match=r"LoopLikeInterface on 'test\.for': requires YieldTypesMatchResults"):
+        _generate_counted_loop_tables(op)
+
+
+def test_generate_tables_rejects_loop_like_partial_counted_range() -> None:
+    op = _make_counted_loop_op(step=None)
+
+    with pytest.raises(ValueError, match=r"LoopLikeInterface on 'test\.for': lower_bound, upper_bound, and step must be declared together"):
+        _generate_counted_loop_tables(op)
+
+
+def test_generate_tables_rejects_loop_like_unprojected_body_state() -> None:
+    op = _make_counted_loop_op(body_arg_source=None)
+
+    with pytest.raises(ValueError, match=r"LoopLikeInterface on 'test\.for': body 'body' must source carried arguments from 'iter_args'"):
+        _generate_counted_loop_tables(op)
+
+
+def test_generate_tables_rejects_counted_loop_iv_type_mismatch() -> None:
+    op = _make_counted_loop_op(iv_type="index")
+
+    with pytest.raises(
+        ValueError,
+        match=r"LoopLikeInterface on 'test\.for': induction variable 'iv' "
+        r"must use 'type_of:lower_bound'",
+    ):
+        _generate_counted_loop_tables(op)
+
+
+def _make_condition_loop_op(*, constraints: list[Constraint]) -> Op:
+    return Op(
+        "test.while",
+        group=Dialect("test"),
+        operands=[Operand("iter_args", ANY, variadic=True)],
+        results=[Result("results", ANY, variadic=True)],
+        regions=[
+            RegionDef(
+                "before",
+                single_block=True,
+                terminator="test.condition",
+            ),
+            RegionDef(
+                "after",
+                single_block=True,
+                terminator="test.yield",
+                arg_source="iter_args",
+            ),
+        ],
+        interfaces=[
+            LoopLikeInterface(
+                body="after",
+                condition_region="before",
+                iter_args="iter_args",
+            )
+        ],
+        constraints=constraints,
+    )
+
+
+def _condition_loop_constraints() -> list[Constraint]:
+    return [
+        IterArgsMatchResults("iter_args", "results"),
+        ConditionForwardedCountMatchesBlockArgs("before", "after", "results"),
+        ConditionForwardedTypesMatchBlockArgs("before", "after", "results"),
+        YieldCountMatchesResults("after", "results"),
+        YieldTypesMatchResults("after", "results"),
+    ]
+
+
+def _generate_condition_loop_tables(op: Op) -> None:
+    condition_op = Op(
+        "test.condition",
+        group=Dialect("test"),
+        operands=[
+            Operand("condition", INTEGER),
+            Operand("forwarded", ANY, variadic=True),
+        ],
+        traits=[TERMINATOR],
+    )
+    yield_op = Op(
+        "test.yield",
+        group=Dialect("test"),
+        operands=[Operand("values", ANY, variadic=True)],
+        traits=[TERMINATOR],
+    )
+    generate_tables_c("test", 0, [condition_op, yield_op, op])
+
+
+def test_generate_tables_rejects_incomplete_condition_loop_contract() -> None:
+    constraints = _condition_loop_constraints()
+    constraints.pop(1)
+    op = _make_condition_loop_op(constraints=constraints)
+
+    with pytest.raises(
+        ValueError,
+        match=r"LoopLikeInterface on 'test\.while': requires "
+        r"ConditionForwardedCountMatchesBlockArgs",
+    ):
+        _generate_condition_loop_tables(op)
+
+
+def _cache_policy_test_op(
+    names: tuple[str, ...],
+    interface: CachePolicyInterface | None = None,
+) -> Op:
+    if interface is None:
+        interface = CachePolicyInterface(cache_scope="scope", cache_temporal="temporal")
+    cache_enums = {
+        name: EnumDef(
+            name,
+            [EnumCase("default", 0)],
+            c_type=f"loom_cache_{name}_t",
+            c_const_prefix=f"LOOM_CACHE_{name.upper()}",
+            c_include="loom/ops/cache.h",
+        )
+        for name in ("scope", "temporal")
+    }
+    return Op(
+        "test.policy",
+        group=Dialect("test"),
+        attrs=[AttrDef(name, "enum", enum_def=cache_enums[name]) if name in cache_enums else AttrDef(name, "i64") for name in names],
+        interfaces=[interface],
+        format=[AttrDict()],
+    )
+
+
+def test_cache_policy_interface_rejects_missing_or_wrong_fields() -> None:
+    with pytest.raises(ValueError, match="attr 'scope' not found"):
+        generate_tables_c("test", 0, [_cache_policy_test_op(("renamed", "temporal"))])
+    op = _cache_policy_test_op(("scope", "temporal"), CachePolicyInterface(cache_scope="temporal", cache_temporal="scope"))
+    with pytest.raises(ValueError, match="must use the shared loom_cache_scope_t enum"):
+        generate_tables_c("test", 0, [op])
+
+
+def test_generate_tables_memory_access_rejects_other_instance_flags() -> None:
+    arithmetic_flags = EnumDef("ArithmeticFlags", [EnumCase("wrap", 1)])
+    op = Op(
+        "test.load",
+        group=Dialect("test"),
+        operands=[Operand("view", ANY)],
+        results=[Result("result", ANY)],
+        attrs=[AttrDef("flags", ATTR_TYPE_FLAGS, enum_def=arithmetic_flags)],
+        effects=[Reads("view")],
+        interfaces=[MemoryAccessInterface()],
+        format=[Flags("flags"), Ref("view")],
+    )
+    with pytest.raises(ValueError, match=r"MemoryAccessInterface on 'test\.load': instance flags must use the shared memory-access flag vocabulary"):
+        generate_tables_c("test", 0, [op])
+
+
+def test_generate_tables_memory_access_rejects_missing_effects() -> None:
+    op = Op(
+        "test.load",
+        group=Dialect("test"),
+        operands=[Operand("view", ANY)],
+        results=[Result("result", ANY)],
+        interfaces=[MemoryAccessInterface()],
+    )
+
+    with pytest.raises(ValueError, match=r"MemoryAccessInterface on 'test\.load': unable to infer memory access operation kind"):
+        generate_tables_c("test", 0, [op])
+
+
+def test_generate_tables_memory_access_rejects_mixed_byte_and_logical_offsets() -> None:
+    op = Op(
+        "test.load",
+        group=Dialect("test"),
+        operands=[
+            Operand("view", ANY),
+            Operand("byte_offset", ANY),
+            Operand("indices", ANY, variadic=True),
+        ],
+        results=[Result("result", ANY)],
+        effects=[Reads("view")],
+        interfaces=[MemoryAccessInterface()],
+    )
+
+    with pytest.raises(ValueError, match=r"MemoryAccessInterface on 'test\.load': byte_offset is mutually exclusive"):
+        generate_tables_c("test", 0, [op])
+
+
+def test_generate_tables_memory_access_rejects_explicit_missing_field() -> None:
+    op = Op(
+        "test.store",
+        group=Dialect("test"),
+        operands=[
+            Operand("view", ANY),
+            Operand("value", ANY),
+        ],
+        interfaces=[MemoryAccessInterface(value="payload")],
+    )
+
+    with pytest.raises(ValueError, match=r"MemoryAccessInterface on 'test\.store': operand 'payload' not found"):
+        generate_tables_c("test", 0, [op])
+
+
+def test_generate_tables_rejects_call_like_non_variadic_operand() -> None:
+    op = Op(
+        "test.call",
+        group=Dialect("test"),
+        attrs=[AttrDef("callee", "symbol")],
+        operands=[Operand("operand", ANY)],
+        results=[Result("results", ANY, variadic=True)],
+        interfaces=[
+            CallLikeInterface(
+                callee="callee",
+                operands="operand",
+                results="results",
+            ),
+        ],
+    )
+
+    with pytest.raises(ValueError, match=r"CallLikeInterface on 'test\.call': operand 'operand' must be variadic"):
+        generate_tables_c("test", 0, [op])
+
+
+def test_generate_tables_rejects_call_like_non_variadic_result() -> None:
+    op = Op(
+        "test.call",
+        group=Dialect("test"),
+        attrs=[AttrDef("callee", "symbol")],
+        operands=[Operand("operands", ANY, variadic=True)],
+        results=[Result("result", ANY)],
+        interfaces=[
+            CallLikeInterface(
+                callee="callee",
+                operands="operands",
+                results="result",
+            ),
+        ],
+    )
+
+    with pytest.raises(ValueError, match=r"CallLikeInterface on 'test\.call': result 'result' must be variadic"):
+        generate_tables_c("test", 0, [op])
+
+
+def test_generate_tables_rejects_no_result_call_like_with_results() -> None:
+    op = Op(
+        "test.call",
+        group=Dialect("test"),
+        attrs=[AttrDef("callee", "symbol")],
+        operands=[Operand("operands", ANY, variadic=True)],
+        results=[Result("result", ANY)],
+        interfaces=[
+            CallLikeInterface(
+                callee="callee",
+                operands="operands",
+                results=None,
+            ),
+        ],
+    )
+
+    with pytest.raises(ValueError, match=r"CallLikeInterface on 'test\.call': results=None requires the operation to declare no results"):
+        generate_tables_c("test", 0, [op])
+
+
+def test_accepts_complete_loop_contracts() -> None:
+    _generate_counted_loop_tables(_make_counted_loop_op())
+    _generate_condition_loop_tables(_make_condition_loop_op(constraints=_condition_loop_constraints()))
+
+
+def test_accepts_attribute_backed_and_fixed_cache_policies() -> None:
+    for names in (("scope", "temporal"), ("temporal", "inserted", "scope")):
+        generate_tables_c("test", 0, [_cache_policy_test_op(names)])
+    generate_tables_c("test", 0, [Op("test.fixed", group=Dialect("test"), interfaces=[CachePolicyInterface(None, None)])])
