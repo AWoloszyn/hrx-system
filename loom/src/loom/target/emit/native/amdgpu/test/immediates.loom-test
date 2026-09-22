@@ -58,3 +58,111 @@ low.func.def target<amdgpu.rdna3_5.core>(@target) @flat_atomic_addresses(%addres
 0xDD084000
 0x127C0800
 0xBFB00000
+
+// ====
+
+// VFLAT's GV address mode requires NULL in SADDR for loads, stores and atomics.
+// Native words are assembled independently by LLVM MC.
+// RUN: emit amdgpu-native-words @flat_addresses_gfx1200 strategy=source waits=none fixed=%address:physical_register:0:2 fixed=%value:physical_register:2:1 fixed=%wide:physical_register:4:2 fixed=%pair:physical_register:8:4 fixed=%loaded:physical_register:20:1 fixed=%loaded_wide:physical_register:22:2 fixed=%old:physical_register:24:1 fixed=%old_wide:physical_register:26:2 fixed=%compared:physical_register:28:1 fixed=%compared_wide:physical_register:30:2
+amdgpu.target<gfx1200> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @flat_addresses_gfx1200(%address: reg<amdgpu.vgpr x2>, %value: reg<amdgpu.vgpr>, %wide: reg<amdgpu.vgpr x2>, %pair: reg<amdgpu.vgpr x4>) asm {
+  %loaded = flat_load_dword %address
+  %loaded_wide = flat_load_dwordx2 %address
+  flat_store_b32 %address, %value
+  flat_store_b64 %address, %wide
+  flat_atomic_add_u32 %address, %value
+  %old = flat_atomic_add_u32_rtn %address, %value
+  flat_atomic_add_u64 %address, %wide
+  %old_wide = flat_atomic_add_u64_rtn %address, %wide
+  %compared = flat_atomic_cmpswap_b32_rtn %address, %wide
+  %compared_wide = flat_atomic_cmpswap_b64_rtn %address, %pair
+  return
+}
+
+// ----
+0xEC05007C
+0x00000014
+0x00000000
+0xEC05407C
+0x00000016
+0x00000000
+0xEC06807C
+0x01000000
+0x00000000
+0xEC06C07C
+0x02000000
+0x00000000
+0xEC0D407C
+0x01000000
+0x00000000
+0xEC0D407C
+0x01100018
+0x00000000
+0xEC10C07C
+0x02000000
+0x00000000
+0xEC10C07C
+0x0210001A
+0x00000000
+0xEC0D007C
+0x0210001C
+0x00000000
+0xEC10807C
+0x0410001E
+0x00000000
+0xBFB00000
+
+// ====
+
+// VFLAT's GV address mode requires NULL in SADDR for loads, stores and atomics.
+// Native words are assembled independently by LLVM MC.
+// RUN: emit amdgpu-native-words @flat_addresses_gfx1250 strategy=source waits=none fixed=%address:physical_register:0:2 fixed=%value:physical_register:2:1 fixed=%wide:physical_register:4:2 fixed=%pair:physical_register:8:4 fixed=%loaded:physical_register:20:1 fixed=%loaded_wide:physical_register:22:2 fixed=%old:physical_register:24:1 fixed=%old_wide:physical_register:26:2 fixed=%compared:physical_register:28:1 fixed=%compared_wide:physical_register:30:2
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @flat_addresses_gfx1250(%address: reg<amdgpu.vgpr x2>, %value: reg<amdgpu.vgpr>, %wide: reg<amdgpu.vgpr x2>, %pair: reg<amdgpu.vgpr x4>) asm {
+  %loaded = flat_load_dword %address
+  %loaded_wide = flat_load_dwordx2 %address
+  flat_store_b32 %address, %value
+  flat_store_b64 %address, %wide
+  flat_atomic_add_u32 %address, %value
+  %old = flat_atomic_add_u32_rtn %address, %value
+  flat_atomic_add_u64 %address, %wide
+  %old_wide = flat_atomic_add_u64_rtn %address, %wide
+  %compared = flat_atomic_cmpswap_b32_rtn %address, %wide
+  %compared_wide = flat_atomic_cmpswap_b64_rtn %address, %pair
+  return
+}
+
+// ----
+0xEC05007C
+0x00000014
+0x00000000
+0xEC05407C
+0x00000016
+0x00000000
+0xEC06807C
+0x01000000
+0x00000000
+0xEC06C07C
+0x02000000
+0x00000000
+0xEC0D407C
+0x01000000
+0x00000000
+0xEC0D407C
+0x01100018
+0x00000000
+0xEC10C07C
+0x02000000
+0x00000000
+0xEC10C07C
+0x0210001A
+0x00000000
+0xEC0D007C
+0x0210001C
+0x00000000
+0xEC10807C
+0x0410001E
+0x00000000
+0xBFB00000

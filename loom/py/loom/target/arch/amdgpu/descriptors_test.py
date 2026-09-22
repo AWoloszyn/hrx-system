@@ -2776,7 +2776,7 @@ def test_flat_memory_descriptors_cover_execution_families() -> None:
             rdna_store_mnemonics,
             False,
             False,
-            (),
+            (("SADDR", _predefined("NULL", "OPR_SREG")),),
             ("offset", "nv", "scope", "th"),
         ),
         (
@@ -2785,7 +2785,7 @@ def test_flat_memory_descriptors_cover_execution_families() -> None:
             rdna_store_mnemonics,
             False,
             False,
-            (),
+            (("SADDR", _predefined("NULL", "OPR_SREG")),),
             ("offset", "nv", "scope", "th"),
         ),
     ):
