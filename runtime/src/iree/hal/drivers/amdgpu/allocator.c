@@ -829,22 +829,19 @@ static iree_status_t iree_hal_amdgpu_allocator_resolve_virtual_memory_placement(
         IREE_STATUS_INVALID_ARGUMENT,
         "AMDGPU virtual-memory parameters cannot be placed on this device");
   }
-  const iree_hal_amdgpu_allocator_memory_pool_t* host_fine_pool =
-      &allocator->memory_pools
-           .host_fine[memory_placement.physical_device_ordinal];
-  if (memory_placement.memory_pool == host_fine_pool) {
-    // ROCr VMM mappings require a GPU-owned pool even when host-fine memory is
-    // also device-local on a unified-memory device.
+  // HSA VMM creates physical handles from both CPU- and GPU-owned pools. Pool
+  // ownership determines physical placement, not whether GPU queues can map
+  // the resulting handle. The selected pool must instead be visible to the
+  // device queues covered by the resolved placement.
+  if (!iree_any_bit_set(memory_placement.memory_type,
+                        IREE_HAL_MEMORY_TYPE_DEVICE_VISIBLE)) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
-        "AMDGPU virtual-memory physical backing must use a GPU-owned pool");
+        "AMDGPU virtual-memory physical backing must be device-visible");
   }
-  if (!iree_all_bits_set(memory_placement.memory_type,
-                         IREE_HAL_MEMORY_TYPE_DEVICE_LOCAL)) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "AMDGPU virtual-memory physical backing must be device-local");
-  }
+  // hsa_amd_vmem_handle_create does not currently support allocation flags.
+  // Reject placements whose semantics depend on flags instead of silently
+  // creating physical memory with different properties.
   if (memory_placement.memory_pool->allocation_flags != 0) {
     return iree_make_status(
         IREE_STATUS_UNAVAILABLE,

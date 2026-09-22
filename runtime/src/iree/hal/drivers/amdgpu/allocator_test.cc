@@ -755,17 +755,72 @@ TEST_F(AllocatorTest,
   IREE_ASSERT_OK(mapping.Unmap());
 }
 
-TEST_F(AllocatorTest, VirtualMemoryRejectsHostLocalBacking) {
+TEST_F(AllocatorTest, VirtualMemoryMapsHostLocalBacking) {
   TestLogicalDevice test_device;
   IREE_ASSERT_OK(test_device.Initialize(&libhsa_, &topology_, host_allocator_));
   iree_hal_allocator_t* allocator = test_device.allocator();
 
+  const iree_hal_buffer_params_t reservation_params =
+      DeviceLocalVirtualMemoryParams();
+  iree_device_size_t reservation_minimum_page_size = 0;
+  iree_device_size_t reservation_recommended_page_size = 0;
+  IREE_ASSERT_OK(iree_hal_allocator_virtual_memory_query_granularity(
+      allocator, reservation_params, &reservation_minimum_page_size,
+      &reservation_recommended_page_size));
+
+  const iree_hal_buffer_params_t backing_params =
+      HostLocalVirtualMemoryParams();
   iree_device_size_t minimum_page_size = 0;
   iree_device_size_t recommended_page_size = 0;
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
-                        iree_hal_allocator_virtual_memory_query_granularity(
-                            allocator, HostLocalVirtualMemoryParams(),
-                            &minimum_page_size, &recommended_page_size));
+  IREE_ASSERT_OK(iree_hal_allocator_virtual_memory_query_granularity(
+      allocator, backing_params, &minimum_page_size, &recommended_page_size));
+
+  const iree_device_size_t mapping_size =
+      iree_max(reservation_recommended_page_size, recommended_page_size);
+  ASSERT_TRUE(iree_device_size_has_alignment(mapping_size,
+                                             reservation_minimum_page_size));
+  ASSERT_TRUE(iree_device_size_has_alignment(mapping_size, minimum_page_size));
+
+  VirtualMemoryReservation virtual_memory(allocator);
+  IREE_ASSERT_OK(iree_hal_allocator_virtual_memory_reserve(
+      allocator, kQueueFamilyAffinity0, mapping_size, virtual_memory.out()));
+  PhysicalMemoryAllocation physical_memory(allocator);
+  IREE_ASSERT_OK(iree_hal_allocator_physical_memory_allocate(
+      allocator, backing_params, mapping_size, host_allocator_,
+      physical_memory.out()));
+  VirtualMemoryMapping mapping(allocator, virtual_memory.get(),
+                               /*virtual_offset=*/0, mapping_size);
+  IREE_ASSERT_OK(mapping.Map(physical_memory.get()));
+  IREE_ASSERT_OK(iree_hal_allocator_virtual_memory_protect(
+      allocator, virtual_memory.get(), /*virtual_offset=*/0, mapping_size,
+      kQueueFamilyAffinity0, IREE_HAL_VIRTUAL_MEMORY_ACCESS_SCOPE_ALL,
+      IREE_HAL_MEMORY_PROTECTION_READ_WRITE));
+
+  constexpr iree_device_size_t kTouchedSize = 256;
+  volatile uint32_t* host_ptr = static_cast<volatile uint32_t*>(
+      iree_hal_amdgpu_buffer_device_pointer(virtual_memory.get()));
+  ASSERT_NE(nullptr, host_ptr);
+  constexpr uint32_t kHostPattern = 0x484F5354u;
+  for (iree_host_size_t i = 0; i < kTouchedSize / sizeof(uint32_t); ++i) {
+    host_ptr[i] = kHostPattern;
+  }
+  std::array<uint32_t, kTouchedSize / sizeof(uint32_t)> observed = {};
+  IREE_ASSERT_OK(QueueReadbackAndWait(
+      test_device.device(), allocator, test_device.queue(),
+      virtual_memory.get(),
+      iree_make_byte_span(observed.data(), sizeof(observed))));
+  for (uint32_t value : observed) {
+    EXPECT_EQ(kHostPattern, value);
+  }
+
+  constexpr uint32_t kDevicePattern = 0x44455643u;
+  IREE_ASSERT_OK(QueueFillAndWait(test_device.device(), test_device.queue(),
+                                  virtual_memory.get(), kTouchedSize,
+                                  &kDevicePattern, sizeof(kDevicePattern)));
+  for (iree_host_size_t i = 0; i < kTouchedSize / sizeof(uint32_t); ++i) {
+    EXPECT_EQ(kDevicePattern, host_ptr[i]);
+  }
+  IREE_ASSERT_OK(mapping.Unmap());
 }
 
 TEST_F(AllocatorTest, AsanStateReservesDefaultShadowMapWhenEnabled) {
