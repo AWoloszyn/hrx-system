@@ -143,7 +143,7 @@ from loom.ir import (
 from loom.location_tag import parse_builtin_location_tag
 from loom.stable_id import stable_id_from_string
 from loom.target.descriptor_sets import DESCRIPTOR_SET_REGISTRATIONS
-from loom.type_binding import iter_value_bindings
+from loom.type_binding import iter_value_bindings, remap_value_bindings
 
 __all__ = [
     "ParseError",
@@ -549,6 +549,17 @@ class NameScope:
         if self._parent is not None:
             return self._parent.lookup(name)
         raise KeyError(f"undefined SSA value '%{name}'")
+
+    def lookup_local(self, name: str) -> int:
+        """Look up an SSA name in this scope without searching parents."""
+        try:
+            return self._names[name]
+        except KeyError:
+            raise KeyError(f"undefined local SSA value '%{name}'") from None
+
+    def local_items(self) -> tuple[tuple[str, int], ...]:
+        """Return the definitions owned by this scope."""
+        return tuple(self._names.items())
 
     def push(self) -> NameScope:
         """Create a child scope for entering a region."""
@@ -2194,20 +2205,26 @@ class Parser:
             self._tokenizer._filename,
         )
 
-    def _parse_func_arg(self) -> tuple[str, Type, int]:
-        """Parse one function argument: %name: type.
-
-        Returns (name, type, value_id).
-        """
+    def _parse_typed_arg(
+        self,
+        mode: TypeParseMode,
+        *,
+        local_binder: bool,
+    ) -> tuple[str, Type, int]:
+        """Parse and bind one ``%name: type`` argument."""
         tok = self._tokenizer
         name_tok = tok.expect(TokenKind.SSA_VALUE)
         tok.expect(TokenKind.COLON)
-        arg_type = self._parse_type(tok, self._scope, TypeParseMode.SIGNATURE)
+        arg_type = self._parse_type(tok, self._scope, mode)
 
-        # If the name was already forward-referenced in another argument's
-        # type, update the placeholder value.
+        # A local lookup lets an argument resolve a peer placeholder without
+        # mistaking a same-named value in an enclosing region for its binder.
         try:
-            value_id = self._scope.lookup(name_tok.text)
+            value_id = (
+                self._scope.lookup_local(name_tok.text)
+                if local_binder
+                else self._scope.lookup(name_tok.text)
+            )
             value = self._module.values[value_id]
             if not isinstance(value.type, PlaceholderType):
                 raise ParseError(
@@ -2226,6 +2243,16 @@ class Parser:
             )
             self._scope.define(name_tok.text, value_id)
         return name_tok.text, arg_type, value_id
+
+    def _parse_func_arg(self) -> tuple[str, Type, int]:
+        """Parse one function argument: %name: type.
+
+        Returns (name, type, value_id).
+        """
+        return self._parse_typed_arg(
+            TypeParseMode.SIGNATURE,
+            local_binder=False,
+        )
 
     def _layout(self, op_decl: Op) -> FieldLayout:
         """Get or compute the field layout for an op kind."""
@@ -3129,6 +3156,12 @@ class Parser:
                         # Body regions receive the logical FuncArgs values.
                         pre_arg_ids = parsed.func_arg_ids
                         parsed.func_args_consumed = True
+                    self._project_loop_entry_types(
+                        parsed,
+                        loop_like,
+                        name,
+                        pre_arg_ids,
+                    )
                     region = self._parse_region_with_syntax(
                         syntax,
                         implicit_terminator_decl=implicit_terminator_decl,
@@ -3670,8 +3703,49 @@ class Parser:
 
         tok.expect(TokenKind.RPAREN)
 
+    def _project_loop_entry_types(
+        self,
+        parsed: ParsedFields,
+        loop_like: LoopLikeInterface | None,
+        region_name: str,
+        entry_arg_ids: Sequence[int],
+    ) -> None:
+        """Instantiate a loop's result type scheme at one recurring entry."""
+        if loop_like is None:
+            return
+        counted = loop_like.iv is not None
+        projected_region = loop_like.body if counted else loop_like.condition_region
+        if region_name != projected_region:
+            return
+
+        # Arity mismatches belong to verification. Projection is only defined
+        # once every result position has a corresponding carried argument.
+        if len(entry_arg_ids) != len(parsed.result_types):
+            return
+
+        source_ids: list[int | None] = []
+        for index in range(len(parsed.result_types)):
+            parsed_id = (
+                parsed.result_ids[index] if index < len(parsed.result_ids) else None
+            )
+            if parsed_id is not None:
+                source_ids.append(parsed_id)
+            elif index < len(self._reserved_result_ids):
+                source_ids.append(self._reserved_result_ids[index])
+            else:
+                source_ids.append(None)
+        remap = {
+            source_id: target_id
+            for source_id, target_id in zip(source_ids, entry_arg_ids, strict=True)
+            if source_id is not None
+        }
+
+        projected_types = remap_value_bindings(parsed.result_types, remap)
+        for target_id, target_type in zip(entry_arg_ids, projected_types, strict=True):
+            self._module.values[target_id].type = target_type
+
     def _parse_block_arg(self) -> int:
-        """Create a complete argument value; its caller binds the name."""
+        """Create one CFG block argument; its caller binds the name."""
         tok = self._tokenizer
         name = tok.expect(TokenKind.SSA_VALUE).text
         tok.expect(TokenKind.COLON)
@@ -3687,14 +3761,33 @@ class Parser:
         """Parse BlockArgs into pending entry block argument metadata."""
         tok = self._tokenizer
         tok.expect(TokenKind.LPAREN)
-
-        if not tok.at(TokenKind.RPAREN):
-            while True:
-                parsed.region_arg_ids.append(self._parse_block_arg())
-                if not tok.try_consume(TokenKind.COMMA):
-                    break
-
-        tok.expect(TokenKind.RPAREN)
+        parent_scope = self._scope
+        argument_scope = parent_scope.push()
+        self._scope = argument_scope
+        try:
+            if not tok.at(TokenKind.RPAREN):
+                while True:
+                    _, _, value_id = self._parse_typed_arg(
+                        TypeParseMode.SIGNATURE,
+                        local_binder=True,
+                    )
+                    parsed.region_arg_ids.append(value_id)
+                    if not tok.try_consume(TokenKind.COMMA):
+                        break
+            tok.expect(TokenKind.RPAREN)
+            for name, value_id in argument_scope.local_items():
+                if not isinstance(self._module.values[value_id].type, PlaceholderType):
+                    continue
+                location = (
+                    argument_scope.placeholder_location(name) or tok.current_location()
+                )
+                raise ParseError(
+                    f"unresolved forward reference to '%{name}' in region arguments",
+                    location,
+                    tok._filename,
+                )
+        finally:
+            self._scope = parent_scope
 
     def _parse_one_binding(
         self,

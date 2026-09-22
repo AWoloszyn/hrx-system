@@ -211,7 +211,7 @@ def _generate_builder_implementation(
     """Generates the C builder function implementation for a complex op."""
     params = c_builder_model.extract_c_params(op, shared_enums)
     layout = compute_layout(op)
-    inferred_result_source = c_builder_model.inferred_variadic_result_type_source(op)
+    result_count_source = c_builder_model.variadic_result_count_source(op)
     params_by_field: dict[str, list[dict[str, Any]]] = {}
     for param in params:
         if "name" not in param:
@@ -293,7 +293,7 @@ def _generate_builder_implementation(
             max_value=max_variadic_operand_count,
             label=f"{op.name} operand",
         )
-    if has_variadic_result and inferred_result_source is None:
+    if has_variadic_result and result_count_source is None:
         _emit_builder_count_check(
             lines,
             count="result_count",
@@ -439,8 +439,8 @@ def _generate_builder_implementation(
         operand_count_expr = str(fixed_operand_count)
 
     # Compute result count expression.
-    if inferred_result_source is not None:
-        result_count_expr = f"(uint16_t){_c_parameter_name(inferred_result_source)}_count"
+    if result_count_source is not None:
+        result_count_expr = f"(uint16_t){_c_parameter_name(result_count_source)}_count"
     elif has_variadic_result:
         result_count_expr = "(uint16_t)result_count"
     else:
@@ -713,14 +713,17 @@ def _generate_builder_implementation(
             lines.append(f"{inner_indent}}}")
 
         # FuncArgs: concatenate authored signature groups in body argument
-        # order. The groups are syntax/API partitions over one function ABI.
+        # order. Unlike captured region inputs, these definitions are part of
+        # the signature and consume its reserved identities before results.
         if param.get("func_args") and not binding:
             for func_args_param in param["func_args"]:
                 func_args_name = func_args_param["name"]
                 lines.append(f"{inner_indent}for (iree_host_size_t _i = 0; _i < {func_args_name}_count; ++_i) {{")
                 lines.append(f"{inner_indent}  loom_value_id_t _arg_id = LOOM_VALUE_ID_INVALID;")
-                lines.append(f"{inner_indent}  IREE_RETURN_IF_ERROR(loom_builder_define_block_arg(")
-                lines.append(f"{inner_indent}      builder, _block, {func_args_name}[_i], &_arg_id));")
+                lines.append(f"{inner_indent}  IREE_RETURN_IF_ERROR(loom_builder_define_value(")
+                lines.append(f"{inner_indent}      builder, {func_args_name}[_i], &_arg_id));")
+                lines.append(f"{inner_indent}  IREE_RETURN_IF_ERROR(loom_block_add_arg(")
+                lines.append(f"{inner_indent}      builder->module, _block, _arg_id));")
                 lines.append(f"{inner_indent}}}")
 
         lines.append(f"{region_indent}}}")
@@ -1014,7 +1017,7 @@ def _generate_builder_implementation(
         if param["kind"] == "result_type":
             lines.append("  IREE_RETURN_IF_ERROR(loom_builder_define_result(")
             lines.append("      builder, result_type, &loom_op_results(*out_op)[0]));")
-        elif param["kind"] == "result_types":
+        elif param["kind"] == "result_types" and result_count_source is None:
             if has_variadic_result:
                 lines.append("  IREE_RETURN_IF_ERROR(loom_builder_define_results(")
                 lines.append("      builder, result_types, result_count, loom_op_results(*out_op)));")
@@ -1036,7 +1039,7 @@ def _generate_builder_implementation(
 
     fixed_result_constraints = fixed_result_type_constraints(op)
     has_result_type_param = any(param["kind"] in ("result_type", "result_types") for param in params)
-    if fixed_result_constraints and not has_result_type_param and inferred_result_source is None:
+    if fixed_result_constraints and not has_result_type_param and result_count_source is None:
         fixed_result_exprs = [_fixed_result_type_c_expr(constraint) for constraint in fixed_result_constraints]
         if len(fixed_result_exprs) == 1:
             lines.append("  IREE_RETURN_IF_ERROR(loom_builder_define_result(")
@@ -1049,14 +1052,30 @@ def _generate_builder_implementation(
             lines.append(f"      builder, result_types_storage, {len(fixed_result_exprs)},")
             lines.append("      loom_op_results(*out_op)));")
 
-    if inferred_result_source is not None:
-        inferred_result_name = _c_parameter_name(inferred_result_source)
+    if result_count_source is not None:
+        inferred_result_name = _c_parameter_name(result_count_source)
         lines.append(f"  for (iree_host_size_t _i = 0; _i < {inferred_result_name}_count; ++_i) {{")
         lines.append("    IREE_RETURN_IF_ERROR(loom_builder_define_result(")
         lines.append("        builder,")
-        lines.append(f"        loom_module_value_type(builder->module, {inferred_result_name}[_i]),")
+        lines.append("        result_types ? result_types[_i]")
+        lines.append(f"                     : loom_module_value_type(builder->module, {inferred_result_name}[_i]),")
         lines.append("        &loom_op_results(*out_op)[_i]));")
         lines.append("  }")
+        for param in params:
+            if param["kind"] != "auto_region":
+                continue
+            binding = param.get("binding")
+            source = binding["name"] if binding else param.get("arg_source")
+            if source != result_count_source:
+                continue
+            index = param["region_index"]
+            offset = len(param.get("implicit_args", ()))
+            lines.append(f"  if (result_types && {inferred_result_name}_count > 0) {{")
+            lines.append(f"    loom_block_t* entry = loom_region_entry_block(loom_op_regions(*out_op)[{index}]);")
+            lines.append("    IREE_RETURN_IF_ERROR(loom_ir_remap_assign_value_types(")
+            lines.append("        builder->module, loom_op_results(*out_op),")
+            lines.append(f"        entry->arg_ids + {offset}, {inferred_result_name}_count));")
+            lines.append("  }")
 
     # Populate tied result metadata.
     if static_ties:
@@ -1100,6 +1119,8 @@ def generate_builders_c(
     lines.append("")
     lines.append('#include "loom/ir/module.h"')
     lines.append('#include "loom/ops/builder_macros.h"')
+    if any(c_builder_model.variadic_result_count_source(op) is not None for op in ops):
+        lines.append('#include "loom/rewrite/remap.h"')
     if any(isinstance(element, StableKeyRef) for op in ops for element in c_builder_model.flatten_format(op.format)):
         lines.append('#include "loom/util/stable_id.h"')
     lines.append("")

@@ -1462,48 +1462,6 @@ iree_status_t loom_low_scf_for_verify(const loom_module_t* module,
         IREE_SV("either bare unroll or unroll factor, not both"), emitter);
   }
 
-  const loom_block_t* body_entry =
-      loom_low_region_entry_block_or_null(loom_low_scf_for_body(op));
-  if (!body_entry) {
-    return iree_ok_status();
-  }
-
-  loom_value_slice_t iter_args = loom_low_scf_for_iter_args(op);
-  const iree_host_size_t expected_arg_count =
-      (iree_host_size_t)iter_args.count + 1;
-  if (body_entry->arg_count != expected_arg_count) {
-    return loom_low_emit_count_mismatch(
-        emitter, op, IREE_SV("body"), body_entry->arg_count,
-        IREE_SV("1 + iter_args"), expected_arg_count);
-  }
-
-  loom_value_id_t iv_arg = loom_block_arg_id(body_entry, 0);
-  if (!loom_type_equal(
-          loom_module_value_type(module, iv_arg),
-          loom_module_value_type(module, loom_low_scf_for_lower_bound(op)))) {
-    return loom_low_emit_value_type_mismatch(
-        module, emitter, op, IREE_SV("body[0]"), iv_arg, IREE_SV("lower_bound"),
-        loom_low_scf_for_lower_bound(op));
-  }
-
-  for (uint16_t i = 0; i < iter_args.count; ++i) {
-    loom_value_id_t body_arg = loom_block_arg_id(body_entry, (uint16_t)(i + 1));
-    loom_value_id_t iter_arg = iter_args.values[i];
-    if (loom_type_equal(loom_module_value_type(module, body_arg),
-                        loom_module_value_type(module, iter_arg))) {
-      continue;
-    }
-    char body_arg_name[32];
-    char iter_arg_name[32];
-    loom_low_format_indexed_field_name(body_arg_name, sizeof(body_arg_name),
-                                       "body", (uint16_t)(i + 1));
-    loom_low_format_indexed_field_name(iter_arg_name, sizeof(iter_arg_name),
-                                       "iter_args", i);
-    return loom_low_emit_value_type_mismatch(
-        module, emitter, op, iree_make_cstring_view(body_arg_name), body_arg,
-        iree_make_cstring_view(iter_arg_name), iter_arg);
-  }
-
   return iree_ok_status();
 }
 

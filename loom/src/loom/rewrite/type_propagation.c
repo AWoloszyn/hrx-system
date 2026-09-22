@@ -58,11 +58,20 @@ struct loom_type_propagator_t {
   // Current transaction generation for candidate and worklist marks.
   uint32_t transaction_generation;
 
+  // Current enclosing fixed-point iteration for rejection marks.
+  uint32_t rejection_generation;
+
   // Candidate type for each value touched in the active transaction.
   loom_type_t* candidate_types;
 
   // Generation mark indicating that candidate_types[ordinal] is live.
   uint32_t* candidate_generations;
+
+  // Exact candidate type rejected for each value in the current iteration.
+  loom_type_t* rejected_candidate_types;
+
+  // Iteration generation in which rejected_candidate_types[ordinal] is live.
+  uint32_t* rejected_candidate_generations;
 
   // Queue generation marks indexed by value ordinal. A forwarding group's
   // first destination value owns its forwarding mark.
@@ -100,6 +109,9 @@ struct loom_type_propagator_t {
 
   // True when a candidate contradicts another candidate or existing type.
   bool conflict;
+
+  // Cumulative propagation activity for reporting and diagnostics.
+  loom_type_propagator_statistics_t statistics;
 };
 
 struct loom_type_transfer_context_t {
@@ -129,6 +141,8 @@ static iree_status_t loom_type_propagator_ensure_ordinal_capacity(
 
   loom_type_t* candidate_types = NULL;
   uint32_t* candidate_generations = NULL;
+  loom_type_t* rejected_candidate_types = NULL;
+  uint32_t* rejected_candidate_generations = NULL;
   loom_type_propagator_queue_marks_t* queue_marks = NULL;
   loom_op_t** owner_ops = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -137,6 +151,12 @@ static iree_status_t loom_type_propagator_ensure_ordinal_capacity(
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       propagator->arena, new_capacity, sizeof(*candidate_generations),
       (void**)&candidate_generations));
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      propagator->arena, new_capacity, sizeof(*rejected_candidate_types),
+      (void**)&rejected_candidate_types));
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      propagator->arena, new_capacity, sizeof(*rejected_candidate_generations),
+      (void**)&rejected_candidate_generations));
   IREE_RETURN_IF_ERROR(
       iree_arena_allocate_array(propagator->arena, new_capacity,
                                 sizeof(*queue_marks), (void**)&queue_marks));
@@ -145,6 +165,10 @@ static iree_status_t loom_type_propagator_ensure_ordinal_capacity(
   memset(candidate_types, 0, new_capacity * sizeof(*candidate_types));
   memset(candidate_generations, 0,
          new_capacity * sizeof(*candidate_generations));
+  memset(rejected_candidate_types, 0,
+         new_capacity * sizeof(*rejected_candidate_types));
+  memset(rejected_candidate_generations, 0,
+         new_capacity * sizeof(*rejected_candidate_generations));
   memset(queue_marks, 0, new_capacity * sizeof(*queue_marks));
   memset(owner_ops, 0, new_capacity * sizeof(*owner_ops));
 
@@ -153,6 +177,11 @@ static iree_status_t loom_type_propagator_ensure_ordinal_capacity(
            old_capacity * sizeof(*candidate_types));
     memcpy(candidate_generations, propagator->candidate_generations,
            old_capacity * sizeof(*candidate_generations));
+    memcpy(rejected_candidate_types, propagator->rejected_candidate_types,
+           old_capacity * sizeof(*rejected_candidate_types));
+    memcpy(rejected_candidate_generations,
+           propagator->rejected_candidate_generations,
+           old_capacity * sizeof(*rejected_candidate_generations));
     memcpy(queue_marks, propagator->queue_marks,
            old_capacity * sizeof(*queue_marks));
     memcpy(owner_ops, propagator->owner_ops, old_capacity * sizeof(*owner_ops));
@@ -160,6 +189,8 @@ static iree_status_t loom_type_propagator_ensure_ordinal_capacity(
 
   propagator->candidate_types = candidate_types;
   propagator->candidate_generations = candidate_generations;
+  propagator->rejected_candidate_types = rejected_candidate_types;
+  propagator->rejected_candidate_generations = rejected_candidate_generations;
   propagator->queue_marks = queue_marks;
   propagator->owner_ops = owner_ops;
   propagator->ordinal_capacity = new_capacity;
@@ -208,6 +239,7 @@ iree_status_t loom_type_propagator_allocate(
   propagator->arena = arena;
   propagator->refine_boundary = refine_boundary;
   propagator->transaction_generation = 1;
+  propagator->rejection_generation = 1;
   *out_propagator = propagator;
   return iree_ok_status();
 }
@@ -343,6 +375,22 @@ loom_local_value_domain_t* loom_type_propagator_value_domain(
     loom_type_propagator_t* propagator) {
   IREE_ASSERT(loom_local_value_domain_is_acquired(&propagator->value_domain));
   return &propagator->value_domain;
+}
+
+void loom_type_propagator_begin_iteration(loom_type_propagator_t* propagator) {
+  ++propagator->rejection_generation;
+  if (propagator->rejection_generation == 0) {
+    memset(propagator->rejected_candidate_generations, 0,
+           propagator->ordinal_capacity *
+               sizeof(*propagator->rejected_candidate_generations));
+    propagator->rejection_generation = 1;
+  }
+}
+
+loom_type_propagator_statistics_t loom_type_propagator_statistics(
+    const loom_type_propagator_t* propagator) {
+  return propagator ? propagator->statistics
+                    : (loom_type_propagator_statistics_t){0};
 }
 
 static bool loom_type_propagator_type_has_refinement_surface(loom_type_t type) {
@@ -606,6 +654,13 @@ static iree_status_t loom_type_propagator_seed_candidate(
   }
   if (result == LOOM_TYPE_REFINEMENT_UNCHANGED ||
       loom_type_equal(refined_type, current_type)) {
+    return iree_ok_status();
+  }
+  if (propagator->rejected_candidate_generations[value_ordinal] ==
+          propagator->rejection_generation &&
+      loom_type_equal(propagator->rejected_candidate_types[value_ordinal],
+                      refined_type)) {
+    ++propagator->statistics.rejection_cache_hit_count;
     return iree_ok_status();
   }
 
@@ -1208,6 +1263,30 @@ static iree_status_t loom_type_propagator_process_region_forwarding(
     return iree_ok_status();
   }
 
+  const loom_loop_like_t loop = loom_loop_like_cast(propagator->module, op);
+  if (loom_loop_like_has_counted_range(loop)) {
+    loom_block_t* body = loom_region_entry_block(loom_loop_like_body(loop));
+    const loom_value_id_t* arguments = body->arg_ids + 1;
+    IREE_RETURN_IF_ERROR(loom_type_propagator_seed_value_span_facts(
+        propagator, rewriter, arguments, op->result_count));
+    if (propagator->conflict) {
+      return iree_ok_status();
+    }
+    // Initial, recurring and final values are different instantiations of
+    // one tuple. Refining just an initial extent to a constant would break
+    // the entry edge when that extent changes on subsequent iterations.
+    const loom_value_slice_t initial = loom_loop_like_iter_args(loop);
+    const loom_op_t* yield = loom_block_const_last_op(body);
+    const loom_value_id_t* sources[] = {initial.values, arguments,
+                                        loom_op_const_operands(yield)};
+    for (iree_host_size_t i = 0;
+         i < IREE_ARRAYSIZE(sources) && !propagator->conflict; ++i) {
+      IREE_RETURN_IF_ERROR(loom_type_propagator_forward_source_tuple(
+          propagator, results, sources[i], op->result_count));
+    }
+    return iree_ok_status();
+  }
+
   for (uint8_t region_index = 0; region_index < op->region_count;
        ++region_index) {
     const loom_op_t* terminator = loom_region_branch_region_terminator(
@@ -1269,7 +1348,10 @@ static iree_status_t loom_type_propagator_schedule_region_forwarding(
     loom_type_propagator_t* propagator, loom_op_t* op) {
   const loom_region_branch_t branch =
       loom_region_branch_cast(propagator->module, op);
-  if (!loom_region_branch_isa(branch) || op->result_count == 0) {
+  const loom_loop_like_t loop = loom_loop_like_cast(propagator->module, op);
+  if ((!loom_region_branch_isa(branch) &&
+       !loom_loop_like_has_counted_range(loop)) ||
+      op->result_count == 0) {
     return iree_ok_status();
   }
   return loom_type_propagator_enqueue_forwarding(propagator,
@@ -1380,8 +1462,10 @@ static iree_status_t loom_type_propagator_process_use_constraints(
   const bool is_region_forwarding =
       vtable && iree_any_bit_set(vtable->traits, LOOM_TRAIT_TERMINATOR) &&
       op->parent_op &&
-      loom_region_branch_isa(
-          loom_region_branch_cast(propagator->module, op->parent_op));
+      (loom_region_branch_isa(
+           loom_region_branch_cast(propagator->module, op->parent_op)) ||
+       loom_loop_like_has_counted_range(
+           loom_loop_like_cast(propagator->module, op->parent_op)));
   if ((is_cfg_forwarding || is_region_forwarding) && !has_type_constraints &&
       !has_type_transfer && op->region_count == 0) {
     return loom_type_propagator_schedule_forwarding(propagator, op);
@@ -1393,7 +1477,9 @@ static iree_status_t loom_type_propagator_process_use_constraints(
 static iree_status_t loom_type_propagator_process_def_constraints(
     loom_type_propagator_t* propagator, const loom_rewriter_t* rewriter,
     loom_op_t* def_op, const loom_op_vtable_t* vtable) {
-  return vtable && vtable->region_branch
+  const loom_loop_like_t loop = loom_loop_like_cast(propagator->module, def_op);
+  return (vtable && vtable->region_branch) ||
+                 loom_loop_like_has_counted_range(loop)
              ? loom_type_propagator_schedule_region_forwarding(propagator,
                                                                def_op)
              : loom_type_propagator_process_op_constraints(propagator, rewriter,
@@ -1609,6 +1695,15 @@ iree_status_t loom_type_propagator_apply_op(loom_type_propagator_t* propagator,
     }
   }
   if (propagator->conflict) {
+    ++propagator->statistics.conflict_count;
+    for (iree_host_size_t i = 0; i < propagator->touched_count; ++i) {
+      const loom_value_ordinal_t value_ordinal =
+          propagator->touched_ordinals[i];
+      propagator->rejected_candidate_types[value_ordinal] =
+          propagator->candidate_types[value_ordinal];
+      propagator->rejected_candidate_generations[value_ordinal] =
+          propagator->rejection_generation;
+    }
     return iree_ok_status();
   }
   return loom_type_propagator_commit(propagator, rewriter, out_changed);

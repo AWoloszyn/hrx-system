@@ -369,6 +369,8 @@ iree_status_t loom_low_allocate_function(
       state.interval_assignment.spill_count == 0;
   if (iree_status_is_ok(status) && state.target_constraints.error_count == 0 &&
       assignment_is_final) {
+    const iree_arena_checkpoint_t relocation_checkpoint =
+        iree_arena_checkpoint_save(arena);
     const loom_low_allocation_loop_edge_relocation_context_t
         loop_edge_relocation_context = {
             .module = state.module,
@@ -391,6 +393,7 @@ iree_status_t loom_low_allocate_function(
         loop_edge_relocation_result = {0};
     status = loom_low_allocation_loop_edge_relocate(
         &loop_edge_relocation_context, &loop_edge_relocation_result);
+    iree_arena_checkpoint_restore(&relocation_checkpoint);
   }
   if (iree_status_is_ok(status) && state.target_constraints.error_count == 0) {
     status =

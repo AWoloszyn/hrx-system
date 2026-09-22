@@ -1510,7 +1510,8 @@ class Translator {
     auto source = locations_.get(ast);
     loom_op_t* op;
     check(loom_scf_while_build(&builder_, initial.data(), initial.size(),
-                               nullptr, 0, source, &op));
+                               /*result_types=*/nullptr, nullptr, 0, source,
+                               &op));
     auto* before = loom_scf_while_before(op);
     auto saved = loom_builder_enter_region(&builder_, op, before);
     bind(written, before);

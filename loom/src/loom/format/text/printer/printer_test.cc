@@ -993,7 +993,8 @@ TEST_F(PrintOpTest, LoopWithIterArgs) {
   // Builder auto-creates body region with IV block arg (index) and one
   // block arg per iter_arg (type looked up from value table).
   IREE_ASSERT_OK(loom_test_loop_build(&builder_, lower, upper, step, &init, 1,
-                                      NULL, 0, LOOM_LOCATION_UNKNOWN, &op));
+                                      /*result_types=*/nullptr, NULL, 0,
+                                      LOOM_LOCATION_UNKNOWN, &op));
   // IV is block arg 0 (%4), accumulator is block arg 1 (%5).
   // OperandRef(255) prints the IV.
   // BindingList(capture, start=3): (%5 = %3 : f32)
@@ -1012,7 +1013,8 @@ TEST_F(PrintOpTest, LoopWithoutIterArgs) {
   loom_op_t* op = NULL;
   // Builder auto-creates body region with IV block arg only (no iter_args).
   IREE_ASSERT_OK(loom_test_loop_build(&builder_, lower, upper, step, NULL, 0,
-                                      NULL, 0, LOOM_LOCATION_UNKNOWN, &op));
+                                      /*result_types=*/nullptr, NULL, 0,
+                                      LOOM_LOCATION_UNKNOWN, &op));
   // No iter_args, no results: both OptionalGroups skip their content.
   EXPECT_EQ(print_op(op, LOOM_TEXT_PRINT_DEFAULT),
             "test.loop %3 = %0 to %1 step %2 {\n"
@@ -1702,8 +1704,8 @@ TEST_F(PrintOpTest, NestedLoopInFunc) {
       loom_builder_enter_region(&builder_, func_op, func_body);
   loom_op_t* loop_op = NULL;
   IREE_ASSERT_OK(loom_test_loop_build(&builder_, lower, upper, step, NULL, 0,
-                                      NULL, 0, LOOM_LOCATION_UNKNOWN,
-                                      &loop_op));
+                                      /*result_types=*/nullptr, NULL, 0,
+                                      LOOM_LOCATION_UNKNOWN, &loop_op));
   // loop IV block arg = %6
 
   // Build a yield inside the loop body.

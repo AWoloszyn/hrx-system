@@ -1192,7 +1192,29 @@ TEST_F(FactTableTest, TypedMeetPreservesStableExtension) {
   EXPECT_EQ(uniform.element.range_lo, 7);
 }
 
-TEST_F(FactTableTest, TypedWidenDropsChangingScalarButKeepsStableExtension) {
+TEST_F(FactTableTest, TypedWidenJoinsDivisibilityIndependentlyOfRange) {
+  loom_value_fact_table_t table = {0};
+  IREE_ASSERT_OK(loom_value_fact_table_initialize(&table, &arena_, 0));
+  const auto check = [&](loom_value_facts_t previous, loom_value_facts_t next,
+                         int64_t expected_divisor) {
+    loom_value_facts_t widened;
+    IREE_ASSERT_OK(loom_value_fact_table_widen_for_type(
+        &table, nullptr, loom_type_scalar(LOOM_SCALAR_TYPE_I64), &table,
+        previous, &table, next, /*iteration=*/2, &widened));
+    EXPECT_EQ(widened.range_lo, INT64_MIN);
+    EXPECT_EQ(widened.range_hi, INT64_MAX);
+    EXPECT_EQ(widened.known_divisor, expected_divisor);
+  };
+  check(loom_value_facts_make(4, 36, 4), loom_value_facts_make(4, 68, 4), 4);
+  check(loom_value_facts_make(-24, 24, 12), loom_value_facts_make(-42, 42, 6),
+        6);
+  check(loom_value_facts_exact_i64(24), loom_value_facts_exact_i64(35), 1);
+  check(loom_value_facts_exact_i64(0), loom_value_facts_exact_i64(16), 16);
+  check(loom_value_facts_exact_i64(16), loom_value_facts_exact_i64(0), 16);
+  check(loom_value_facts_make(4, 36, 4), loom_value_facts_unknown(), 1);
+}
+
+TEST_F(FactTableTest, TypedWidenDropsChangingRangeButKeepsStableExtension) {
   loom_value_fact_table_t table = {0};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&table, &arena_, 0));
 
@@ -1213,6 +1235,7 @@ TEST_F(FactTableTest, TypedWidenDropsChangingScalarButKeepsStableExtension) {
 
   EXPECT_EQ(widened.range_lo, INT64_MIN);
   EXPECT_EQ(widened.range_hi, INT64_MAX);
+  EXPECT_EQ(widened.known_divisor, 4);
   loom_value_fact_uniform_element_t uniform = {};
   EXPECT_TRUE(loom_value_facts_query_uniform_element(&table.context, widened,
                                                      &uniform));

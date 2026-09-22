@@ -264,6 +264,62 @@ static iree_status_t loom_scf_pipeline_initialize_remap(
       &(loom_ir_remap_options_t){.allow_unmapped_values = true}, out_remap);
 }
 
+// Returns true when rebuilding from the initial operands would discard the
+// source loop's result type scheme. Ordinary invariant result types take the
+// allocation-free builder path.
+static bool loom_scf_pipeline_requires_result_scheme(
+    const loom_scf_pipeline_context_t* context, const loom_op_t* source) {
+  const loom_value_slice_t initial = loom_scf_for_iter_args(source);
+  const loom_value_id_t* results = loom_op_const_results(source);
+  for (uint16_t i = 0; i < source->result_count; ++i) {
+    if (!loom_type_equal(
+            loom_module_value_type(context->module, results[i]),
+            loom_module_value_type(context->module, initial.values[i]))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Reserves a rebuilt result tuple and projects the source result scheme onto
+// its prefix. Appended pipeline records have iteration-invariant types by the
+// planning contract and retain their types directly.
+static iree_status_t loom_scf_pipeline_reserve_result_scheme(
+    loom_scf_pipeline_context_t* context, const loom_op_t* source,
+    const loom_value_id_t* appended_values, uint16_t appended_count,
+    loom_type_t** out_result_types) {
+  const uint16_t result_count = source->result_count + appended_count;
+  loom_type_t* result_types = NULL;
+  loom_value_id_t* reserved_results = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(context->arena, result_count,
+                                                 sizeof(*result_types),
+                                                 (void**)&result_types));
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(context->arena, result_count,
+                                                 sizeof(*reserved_results),
+                                                 (void**)&reserved_results));
+
+  loom_ir_remap_t remap = {0};
+  IREE_RETURN_IF_ERROR(loom_scf_pipeline_initialize_remap(context, &remap));
+  IREE_RETURN_IF_ERROR(loom_builder_reserve_results(
+      &context->rewriter->builder, result_count, reserved_results));
+  IREE_RETURN_IF_ERROR(
+      loom_ir_remap_map_values(&remap, loom_op_const_results(source),
+                               reserved_results, source->result_count));
+  for (uint16_t i = 0; i < source->result_count; ++i) {
+    IREE_RETURN_IF_ERROR(loom_ir_remap_type(
+        &remap,
+        loom_module_value_type(context->module,
+                               loom_op_const_results(source)[i]),
+        &result_types[i]));
+  }
+  for (uint16_t i = 0; i < appended_count; ++i) {
+    result_types[source->result_count + i] =
+        loom_module_value_type(context->module, appended_values[i]);
+  }
+  *out_result_types = result_types;
+  return iree_ok_status();
+}
+
 // Rebuilt loops preserve unroll intent and original carried slots at the front
 // of the tuple. The pipeline operand is consumed exactly once by this pass.
 static iree_status_t loom_scf_pipeline_build_loop(
@@ -288,12 +344,18 @@ static iree_status_t loom_scf_pipeline_build_loop(
     flags |= LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_SCHEDULE;
     schedule = loom_scf_for_unroll_schedule(source);
   }
+  loom_type_t* result_types = NULL;
+  if (loom_scf_pipeline_requires_result_scheme(context, source)) {
+    IREE_RETURN_IF_ERROR(loom_scf_pipeline_reserve_result_scheme(
+        context, source, iter_args + source->result_count,
+        iter_arg_count - source->result_count, &result_types));
+  }
   return loom_scf_for_build(
       &context->rewriter->builder, flags, lower,
       loom_scf_for_upper_bound(source), loom_scf_for_step(source), iter_args,
-      iter_arg_count, loom_op_tied_results(source), source->tied_result_count,
-      LOOM_VALUE_ID_INVALID, factor, policy, schedule, source->location,
-      out_loop);
+      iter_arg_count, result_types, loom_op_tied_results(source),
+      source->tied_result_count, LOOM_VALUE_ID_INVALID, factor, policy,
+      schedule, source->location, out_loop);
 }
 
 static iree_status_t loom_scf_pipeline_emit_serial(
@@ -558,13 +620,19 @@ static iree_status_t loom_scf_pipeline_reconstruct(
         context, source, (int64_t)(depth - 1) * step, maximum_value,
         lower_facts, &main_lower, &condition));
     loom_type_t* result_types = NULL;
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        context->arena, source->result_count, sizeof(*result_types),
-        (void**)&result_types));
-    const loom_value_id_t* source_results = loom_op_const_results(source);
-    for (uint16_t i = 0; i < source->result_count; ++i) {
-      result_types[i] =
-          loom_module_value_type(context->module, source_results[i]);
+    if (source->result_count > 0 &&
+        loom_scf_pipeline_requires_result_scheme(context, source)) {
+      IREE_RETURN_IF_ERROR(loom_scf_pipeline_reserve_result_scheme(
+          context, source, NULL, 0, &result_types));
+    } else if (source->result_count > 0) {
+      IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+          context->arena, source->result_count, sizeof(*result_types),
+          (void**)&result_types));
+      const loom_value_id_t* source_results = loom_op_const_results(source);
+      for (uint16_t i = 0; i < source->result_count; ++i) {
+        result_types[i] =
+            loom_module_value_type(context->module, source_results[i]);
+      }
     }
     IREE_RETURN_IF_ERROR(
         loom_scf_if_build(builder, LOOM_SCF_IF_BUILD_FLAG_HAS_ELSE_REGION,

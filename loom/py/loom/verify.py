@@ -9,18 +9,21 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import Any
 
 from loom.diagnostics import DiagnosticEngine
 from loom.dsl import (
     FuncLikeInterface,
     InlinePolicy,
+    LoopLikeInterface,
     Op,
     SymbolReferenceRole,
     TypeConstraint,
     type_constraint_name,
 )
+from loom.error.structure import ERR_STRUCTURE_007
+from loom.error.type import ERR_TYPE_001, ERR_TYPE_009, ERR_TYPE_013
 from loom.fields import FieldKind, FieldLayout, compute_layout, resolve_fields
 from loom.ir import (
     Block,
@@ -44,9 +47,9 @@ from loom.ir import (
     SymbolNameSet,
     Type,
     TypeKind,
-    Value,
 )
 from loom.type_binding import binding_children, remap_value_bindings
+from loom.type_identity import TypeIdentity
 
 __all__ = [
     "ModuleVerifier",
@@ -92,11 +95,19 @@ class VerifierRegistry:
 
 
 @dataclass(frozen=True, slots=True)
+class _ConstraintValue:
+    """Value type paired with its module identity for positional remapping."""
+
+    value_id: int
+    type: Type
+
+
+@dataclass(frozen=True, slots=True)
 class _ConstraintRegionValue:
     """Resolved region data consumed by declarative constraint predicates."""
 
-    entry_args: tuple[Value | None, ...] | None
-    terminator_operands: tuple[Value | None, ...] | None
+    entry_args: tuple[_ConstraintValue | None, ...] | None
+    terminator_operands: tuple[_ConstraintValue | None, ...] | None
 
 
 @dataclass(slots=True)
@@ -222,6 +233,7 @@ class ModuleVerifier:
         parent_stack: tuple[Operation, ...],
     ) -> None:
         op_path = f"{path} {operation.name}"
+        initial_diagnostic_count = len(self.diagnostics.diagnostics)
         values_ok = self._verify_value_ids(operation.operands, f"{op_path} operands")
         values_ok &= self._verify_value_ids(operation.results, f"{op_path} results")
         self._verify_tied_results(operation, op_path)
@@ -251,6 +263,170 @@ class ModuleVerifier:
             op_path,
             parent_stack=(*parent_stack, operation),
         )
+        if (
+            values_ok
+            and shape_ok
+            and len(self.diagnostics.diagnostics) == initial_diagnostic_count
+        ):
+            self._verify_loop_type_scheme(op_decl, operation, op_path)
+
+    def _verify_loop_type_scheme(
+        self,
+        op_decl: Op,
+        operation: Operation,
+        path: str,
+    ) -> None:
+        """Verify all identities attached to a LoopLike recurring tuple."""
+        loop_like = next(
+            (
+                interface
+                for interface in op_decl.interfaces
+                if isinstance(interface, LoopLikeInterface)
+            ),
+            None,
+        )
+        if loop_like is None:
+            return
+
+        resolved = resolve_fields(self.registry.layout(op_decl), operation, self.module)
+        result_ids = operation.results
+        entry_ids_by_region: dict[str, list[int]] = {}
+        entry_types_valid = True
+        for region_name in (loop_like.body, loop_like.condition_region):
+            if region_name is None:
+                continue
+            region = resolved.region(region_name)
+            if region is None or not region.blocks:
+                return
+            entry_ids = region.blocks[0].arg_ids
+            offset = 1 if region_name == loop_like.body and loop_like.iv else 0
+            expected_count = len(result_ids) + offset
+            if len(entry_ids) != expected_count:
+                self.diagnostics.error(
+                    "loop region entry argument count mismatch",
+                    source=path,
+                    details=(
+                        f"region '{region_name}' has {len(entry_ids)} arguments, "
+                        f"expected {expected_count}",
+                    ),
+                    error_def=ERR_STRUCTURE_007,
+                )
+                entry_types_valid = False
+                continue
+
+            if offset:
+                assert loop_like.lower_bound is not None
+                lower_bound_id = resolved.value_id(loop_like.lower_bound)
+                if not self._value_types_equal_exact(lower_bound_id, entry_ids[0]):
+                    self.diagnostics.error(
+                        "loop induction variable type mismatch",
+                        source=path,
+                        details=(
+                            f"region '{region_name}' argument 0 does not match "
+                            f"the lower bound type",
+                        ),
+                        error_def=ERR_TYPE_013,
+                    )
+                    entry_types_valid = False
+
+            carried_ids = entry_ids[offset:]
+            entry_ids_by_region[region_name] = carried_ids
+            if self._verify_remapped_type_tuple(
+                result_ids,
+                carried_ids,
+                path=path,
+                relation=f"region '{region_name}' entry",
+                error_def=ERR_TYPE_013,
+                argument_offset=offset,
+            ):
+                continue
+            entry_types_valid = False
+
+        # Entry projections define the identities used by every remaining
+        # edge. Stop after diagnosing them so dependent edge checks do not
+        # obscure the owning error.
+        if not entry_types_valid:
+            return
+
+        iter_arg_ids = resolved.value_ids(loop_like.iter_args)
+        if not self._verify_remapped_type_tuple(
+            result_ids,
+            iter_arg_ids,
+            path=path,
+            relation="initial loop-carried state",
+            error_def=ERR_TYPE_001,
+        ):
+            return
+
+        body = resolved.region(loop_like.body)
+        assert body is not None and body.blocks and body.blocks[0].ops
+        yielded_ids = body.blocks[0].ops[-1].operands
+        if not self._verify_remapped_type_tuple(
+            result_ids,
+            yielded_ids,
+            path=path,
+            relation="yielded loop-carried state",
+            error_def=ERR_TYPE_009,
+        ):
+            return
+
+        if loop_like.condition_region is None:
+            return
+        condition = resolved.region(loop_like.condition_region)
+        assert condition is not None and condition.blocks and condition.blocks[0].ops
+        forwarded_ids = condition.blocks[0].ops[-1].operands[1:]
+        body_entry_ids = entry_ids_by_region[loop_like.body]
+        self._verify_remapped_type_tuple(
+            body_entry_ids,
+            forwarded_ids,
+            path=path,
+            relation="condition-forwarded loop-carried state",
+            error_def=ERR_TYPE_001,
+        )
+
+    def _value_types_equal_exact(self, lhs_id: int, rhs_id: int) -> bool:
+        lhs = self.module.values[lhs_id]
+        rhs = self.module.values[rhs_id]
+        return TypeIdentity().equal(lhs.type, rhs.type)
+
+    def _verify_remapped_type_tuple(
+        self,
+        source_ids: Sequence[int],
+        target_ids: Sequence[int],
+        *,
+        path: str,
+        relation: str,
+        error_def: Any,
+        argument_offset: int = 0,
+    ) -> bool:
+        """Compare one dependent type tuple after positional SSA remapping."""
+        if len(source_ids) != len(target_ids):
+            # Paired structural constraints own non-entry count diagnostics.
+            return False
+        remap = dict(zip(source_ids, target_ids, strict=True))
+        expected_types = remap_value_bindings(
+            (self.module.values[source_id].type for source_id in source_ids),
+            remap,
+        )
+        identities = TypeIdentity()
+        valid = True
+        for index, (expected_type, target_id) in enumerate(
+            zip(expected_types, target_ids, strict=True)
+        ):
+            target = self.module.values[target_id]
+            if identities.equal(expected_type, target.type):
+                continue
+            self.diagnostics.error(
+                "loop-carried type scheme mismatch",
+                source=path,
+                details=(
+                    f"{relation} value {index + argument_offset} does not "
+                    f"instantiate result position {index}",
+                ),
+                error_def=error_def,
+            )
+            valid = False
+        return valid
 
     def _verify_field_counts(
         self,
@@ -594,11 +770,16 @@ class ModuleVerifier:
             ok, message = constraint.check(field_values)
             if ok:
                 continue
+            error_def = constraint.error
+            if constraint.name == "IterArgsMatchResults" and " type " in message:
+                # This relation owns a structural count error and a distinct
+                # per-position type error, matching the C constraint interpreter.
+                error_def = ERR_TYPE_001
             self.diagnostics.error(
                 f"{constraint.name} constraint violated",
                 source=path,
                 details=(message,) if message else (),
-                error_def=constraint.error,
+                error_def=error_def,
             )
 
     def _constraint_field_values(
@@ -615,26 +796,25 @@ class ModuleVerifier:
                 match field_desc.kind:
                     case FieldKind.OPERAND | FieldKind.RESULT:
                         if field_desc.variadic:
-                            values[field_name] = resolved.values(field_name)
+                            values[field_name] = list(
+                                self._constraint_values(resolved.value_ids(field_name))
+                            )
                         elif field_desc.optional and not resolved.is_present(
                             field_name
                         ):
                             values[field_name] = None
                         else:
-                            values[field_name] = resolved.value(field_name)
+                            values[field_name] = self._constraint_value(
+                                resolved.value_id(field_name)
+                            )
                     case FieldKind.ATTR:
                         values[field_name] = operation.attributes.get(field_name)
                     case FieldKind.REGION:
                         region_decl = op_decl.regions[field_desc.index]
-                        signature_args = (
-                            resolved.func_args(region_decl.arg_source)[2]
-                            if region_decl.arg_source in layout.func_args_fields
-                            else None
-                        )
                         if field_desc.variadic:
                             values[field_name] = [
                                 self._constraint_region_value(
-                                    region, region_decl.terminator, signature_args
+                                    region, region_decl.terminator
                                 )
                                 for region in resolved.regions(field_name)
                             ]
@@ -642,7 +822,6 @@ class ModuleVerifier:
                             values[field_name] = self._constraint_region_value(
                                 resolved.region(field_name),
                                 region_decl.terminator,
-                                signature_args,
                             )
                     case FieldKind.SUCCESSOR:
                         values[field_name] = (
@@ -659,42 +838,28 @@ class ModuleVerifier:
             return None
         return values
 
+    def _constraint_value(self, value_id: int) -> _ConstraintValue | None:
+        """Resolve one value without hiding an invalid ID diagnostic."""
+        if not 0 <= value_id < len(self.module.values):
+            return None
+        return _ConstraintValue(value_id, self.module.values[value_id].type)
+
+    def _constraint_values(
+        self, value_ids: Sequence[int]
+    ) -> tuple[_ConstraintValue | None, ...]:
+        """Resolve a positional value tuple with its module identities."""
+        return tuple(self._constraint_value(value_id) for value_id in value_ids)
+
     def _constraint_region_value(
         self,
         region: Region | None,
         expected_terminator: str | None,
-        signature_args: Sequence[int] | None,
     ) -> _ConstraintRegionValue:
         """Resolves a region without hiding structural failures from its owner."""
         if region is None or not region.blocks:
             return _ConstraintRegionValue(None, None)
         entry_block = region.blocks[0]
-
-        def resolve(value_ids: Sequence[int]) -> tuple[Value | None, ...]:
-            values = tuple(
-                self.module.values[value_id]
-                if 0 <= value_id < len(self.module.values)
-                else None
-                for value_id in value_ids
-            )
-            if signature_args is None:
-                return values
-            # Projected regions declare fresh peers for a shared signature.
-            # Constraint values use that signature's identities; the module IR
-            # keeps its region-local types and ownership unchanged.
-            types = remap_value_bindings(
-                (value.type if value is not None else None for value in values),
-                # Arity mismatches remain the positional constraint's diagnostic.
-                dict(zip(entry_block.arg_ids, signature_args, strict=False)),
-            )
-            return tuple(
-                replace(value, type=value_type)
-                if value is not None and value_type is not value.type
-                else value
-                for value, value_type in zip(values, types, strict=True)
-            )
-
-        entry_args = resolve(entry_block.arg_ids)
+        entry_args = self._constraint_values(entry_block.arg_ids)
         if not entry_block.ops:
             return _ConstraintRegionValue(entry_args, None)
         terminator = entry_block.ops[-1]
@@ -708,7 +873,7 @@ class ModuleVerifier:
             )
         ):
             return _ConstraintRegionValue(entry_args, None)
-        terminator_operands = resolve(terminator.operands)
+        terminator_operands = self._constraint_values(terminator.operands)
         return _ConstraintRegionValue(entry_args, terminator_operands)
 
     def _verify_symbol_refs(

@@ -17,6 +17,7 @@ loom_check_test_suite(
     "load_coalescing.loom-test"
     "root_selection.loom-test"
     "transport.loom-test"
+    "transport_offsets.loom-test"
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

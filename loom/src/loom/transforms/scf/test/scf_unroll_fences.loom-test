@@ -172,7 +172,7 @@ func.def @partial_recurrence(%initial: f32, %bias: f32) -> (f32) {
   %factor = index.constant 2 : index
   %13 = index.constant 2 : index
   %14 = index.constant 4 : index
-  %17 = scf.for %row = [%begin to %14 step %13](%sum = %initial : f32) -> (f32) {
+  %15 = scf.for %row = [%begin to %14 step %13](%sum = %initial : f32) -> (f32) {
     scf.schedule.fence
     %consumed = scalar.addf %sum, %bias : f32
     scf.schedule.fence
@@ -185,7 +185,7 @@ func.def @partial_recurrence(%initial: f32, %bias: f32) -> (f32) {
     %next_1 = scalar.addf %consumed_1, %produced_1 : f32
     scf.yield %next_1 : f32
   }
-  %result = scf.for %row = [%14 to %end step %step](%sum = %17 : f32) -> (f32) {
+  %result = scf.for %row = [%14 to %end step %step](%sum = %15 : f32) -> (f32) {
     %consumed = scalar.addf %sum, %bias : f32
     scf.schedule.fence
     %produced = scalar.mulf %bias, %bias : f32

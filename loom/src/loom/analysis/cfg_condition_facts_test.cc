@@ -452,6 +452,95 @@ TEST_F(CfgConditionFactsTest, IntersectsJoinPredecessors) {
       &table, merge_facts, right_condition, &value));
 }
 
+TEST_F(CfgConditionFactsTest, PreservesPredecessorFactsAfterJoinIntersection) {
+  loom_block_t* entry = loom_region_entry_block(body_);
+  loom_block_t* less_path = AppendBlock();
+  loom_block_t* greater_path = AppendBlock();
+  loom_block_t* less_predecessor = AppendBlock();
+  loom_block_t* greater_predecessor = AppendBlock();
+  loom_block_t* merge = AppendBlock();
+  loom_block_t* exit = AppendBlock();
+
+  SetBlock(entry);
+  const loom_value_id_t path_condition =
+      AddBlockArg(entry, LOOM_SCALAR_TYPE_I1);
+  const loom_value_id_t left = AddBlockArg(entry);
+  const loom_value_id_t right = AddBlockArg(entry);
+  BuildConditionalBranch(path_condition, less_path, greater_path);
+
+  SetBlock(less_path);
+  BuildConditionalBranch(
+      BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_SLT, left, right),
+      less_predecessor, exit);
+  SetBlock(greater_path);
+  BuildConditionalBranch(
+      BuildIndexCompare(LOOM_INDEX_CMP_PREDICATE_SGT, left, right),
+      greater_predecessor, exit);
+  SetBlock(less_predecessor);
+  BuildBranch(merge);
+  SetBlock(greater_predecessor);
+  BuildBranch(merge);
+
+  loom_op_t* terminator = nullptr;
+  SetBlock(merge);
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &terminator));
+  SetBlock(exit);
+  IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
+                                       LOOM_LOCATION_UNKNOWN, &terminator));
+
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  loom_cfg_graph_t graph = {};
+  IREE_ASSERT_OK(
+      loom_cfg_graph_build(module_, body_, &analysis_arena_, &graph));
+  loom_dominance_info_t dominance = {};
+  IREE_ASSERT_OK(
+      loom_dominance_info_initialize(module_, &analysis_arena_, &dominance));
+  const loom_cfg_condition_relation_table_t table =
+      ComputeRelationTable(&graph, &dominance);
+
+  const uint16_t less_index =
+      (uint16_t)loom_cfg_graph_block_index(&graph, less_predecessor);
+  const uint16_t greater_index =
+      (uint16_t)loom_cfg_graph_block_index(&graph, greater_predecessor);
+  const uint16_t merge_index =
+      (uint16_t)loom_cfg_graph_block_index(&graph, merge);
+  const auto* less_facts =
+      loom_cfg_condition_relation_table_block(&table, less_index);
+  const auto* greater_facts =
+      loom_cfg_condition_relation_table_block(&table, greater_index);
+  const auto* merge_facts =
+      loom_cfg_condition_relation_table_block(&table, merge_index);
+  ASSERT_NE(less_facts, nullptr);
+  ASSERT_NE(greater_facts, nullptr);
+  ASSERT_NE(merge_facts, nullptr);
+  EXPECT_TRUE(HasRelation(&table, less_facts, LOOM_SYMBOLIC_INTEGER_RELATION_LT,
+                          left, right));
+  EXPECT_TRUE(HasRelation(&table, greater_facts,
+                          LOOM_SYMBOLIC_INTEGER_RELATION_GT, left, right));
+  EXPECT_FALSE(HasRelation(&table, merge_facts,
+                           LOOM_SYMBOLIC_INTEGER_RELATION_LT, left, right));
+  EXPECT_FALSE(HasRelation(&table, merge_facts,
+                           LOOM_SYMBOLIC_INTEGER_RELATION_GT, left, right));
+
+  const loom_cfg_edge_index_span_t less_edges =
+      loom_cfg_graph_successor_edges(&graph, less_index);
+  const loom_cfg_edge_index_span_t greater_edges =
+      loom_cfg_graph_successor_edges(&graph, greater_index);
+  ASSERT_EQ(less_edges.count, 1u);
+  ASSERT_EQ(greater_edges.count, 1u);
+  const auto* less_edge =
+      loom_cfg_condition_relation_table_edge(&table, less_edges.values[0]);
+  const auto* greater_edge =
+      loom_cfg_condition_relation_table_edge(&table, greater_edges.values[0]);
+  ASSERT_NE(less_edge, nullptr);
+  ASSERT_NE(greater_edge, nullptr);
+  EXPECT_TRUE(HasRelation(&table, less_edge, LOOM_SYMBOLIC_INTEGER_RELATION_LT,
+                          left, right));
+  EXPECT_TRUE(HasRelation(&table, greater_edge,
+                          LOOM_SYMBOLIC_INTEGER_RELATION_GT, left, right));
+}
+
 TEST_F(CfgConditionFactsTest, FactorizesRepeatedPayloadValues) {
   constexpr uint16_t kWidth = 16;
   loom_block_t* entry = loom_region_entry_block(body_);
@@ -504,8 +593,15 @@ TEST_F(CfgConditionFactsTest, FactorizesRepeatedPayloadValues) {
   const auto* target_facts =
       loom_cfg_condition_relation_table_block(&table, target_index);
   ASSERT_NE(target_facts, nullptr);
-  EXPECT_EQ(target_facts->integer_relations.encoding,
-            LOOM_CONDITION_RELATION_MATRIX_VIEW_RANGES);
+  ASSERT_EQ(target_facts->integer_relations.encoding,
+            LOOM_CONDITION_RELATION_MATRIX_VIEW_PAGES);
+  bool has_range_page = false;
+  for (uint32_t i = 0; i < target_facts->integer_relations.entry_count; ++i) {
+    has_range_page |=
+        target_facts->integer_relations.entries.pages[i]->contents.encoding ==
+        LOOM_CONDITION_RELATION_MATRIX_VIEW_RANGES;
+  }
+  EXPECT_TRUE(has_range_page);
   for (uint16_t left = 0; left < kWidth; ++left) {
     for (uint16_t right = 0; right < kWidth; ++right) {
       EXPECT_TRUE(HasRelation(&table, target_facts,

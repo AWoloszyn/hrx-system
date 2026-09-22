@@ -339,8 +339,9 @@ static iree_status_t loom_scf_for_rebuild_carried_state(
   iree_status_t status = loom_scf_for_build(
       &rewriter->builder, build_flags, loom_scf_for_lower_bound(op),
       loom_scf_for_upper_bound(op), loom_scf_for_step(op), kept_iter_args,
-      kept_count, tied_results, tied_result_count, pipeline_depth,
-      unroll_factor, unroll_policy, unroll_schedule, op->location, &new_loop);
+      kept_count, /*result_types=*/NULL, tied_results, tied_result_count,
+      pipeline_depth, unroll_factor, unroll_policy, unroll_schedule,
+      op->location, &new_loop);
   loom_op_t* new_yield = NULL;
   if (iree_status_is_ok(status)) {
     loom_region_t* new_body = loom_scf_for_body(new_loop);
@@ -364,6 +365,27 @@ static iree_status_t loom_scf_for_rebuild_carried_state(
     const uint16_t kept_ordinal = result_map[i];
     if (kept_ordinal == UINT16_MAX) {
       continue;
+    }
+    // Preserve the declared tuple before replacing its identities. Initial
+    // operands can have different dependent dimensions from the recurring
+    // body and result values. Indexed replacement below updates every peer
+    // reference, including references to removed invariant columns.
+    const loom_value_id_t new_argument =
+        loom_block_arg_id(new_block, (uint16_t)(1 + kept_ordinal));
+    const loom_type_t argument_type = loom_module_value_type(
+        rewriter->module, loom_block_arg_id(old_block, (uint16_t)(1 + i)));
+    if (!loom_type_equal(loom_module_value_type(rewriter->module, new_argument),
+                         argument_type)) {
+      IREE_RETURN_IF_ERROR(loom_module_set_value_type(
+          rewriter->module, new_argument, argument_type));
+    }
+    const loom_value_id_t new_result = loom_op_results(new_loop)[kept_ordinal];
+    const loom_type_t result_type =
+        loom_module_value_type(rewriter->module, loom_op_results(op)[i]);
+    if (!loom_type_equal(loom_module_value_type(rewriter->module, new_result),
+                         result_type)) {
+      IREE_RETURN_IF_ERROR(loom_module_set_value_type(rewriter->module,
+                                                      new_result, result_type));
     }
     IREE_RETURN_IF_ERROR(loom_scf_preserve_value_name(
         rewriter->module, loom_block_arg_id(old_block, (uint16_t)(1 + i)),

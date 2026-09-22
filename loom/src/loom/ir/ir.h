@@ -1271,6 +1271,9 @@ typedef struct loom_target_like_t {
 // kind. All ops implementing this interface represent iteration over
 // a single-block body region. A variadic iter_args field, matching variadic
 // results, and the body terminator form one verified loop-carried state cycle.
+// The result types describe the recurring tuple: each entry substitutes its
+// own argument identities for result identities. External references stay
+// invariant. The verifier also checks entry arity and counted IV type.
 // Exactly one of a counted range or condition region controls iteration.
 // Condition-controlled loops have a required single-block condition region.
 // Its entry arguments receive initial and backedge state; operand zero of its

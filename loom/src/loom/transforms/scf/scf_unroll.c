@@ -721,6 +721,39 @@ static iree_status_t loom_scf_unroll_initialize_iteration_remap(
       out_remap);
 }
 
+// Reserves a rebuilt operation's result identities and projects the source
+// result type scheme onto them. A dependent result type may name a sibling
+// result, so copying type objects would retain identities owned by |source|.
+static iree_status_t loom_scf_unroll_reserve_result_scheme(
+    loom_scf_unroll_context_t* context, const loom_op_t* source,
+    loom_type_t** out_result_types) {
+  *out_result_types = NULL;
+  if (source->result_count == 0) {
+    return iree_ok_status();
+  }
+
+  loom_value_id_t* reserved_results = NULL;
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      context->pass->arena, source->result_count, sizeof(*reserved_results),
+      (void**)&reserved_results));
+
+  loom_ir_remap_t remap = {0};
+  IREE_RETURN_IF_ERROR(loom_ir_remap_initialize(
+      context->module, context->module, context->pass->arena,
+      &(loom_ir_remap_options_t){
+          .allow_unmapped_values = true,
+          .remap_symbol = loom_ir_remap_symbol_callback_empty(),
+      },
+      &remap));
+  IREE_RETURN_IF_ERROR(loom_builder_reserve_results(
+      &context->rewriter->builder, source->result_count, reserved_results));
+  IREE_RETURN_IF_ERROR(
+      loom_ir_remap_map_values(&remap, loom_op_const_results(source),
+                               reserved_results, source->result_count));
+  return loom_ir_remap_value_types(&remap, loom_op_const_results(source),
+                                   source->result_count, out_result_types);
+}
+
 // Returns true when cloning the loop body must materialize and map |value_id|.
 // Operand and type references are maintained exactly. Attribute references do
 // not have individual use records, so their maintained summary bit is
@@ -793,8 +826,7 @@ static iree_status_t loom_scf_unroll_clone_guarded_iteration(
     const loom_block_t* body_block, loom_op_t* yield, loom_op_t* source,
     loom_value_id_t base, int64_t step, uint32_t ordinal,
     const loom_value_id_t* carried_values, uint16_t carried_count,
-    const loom_type_t* result_types, loom_location_id_t location,
-    loom_value_id_t* next_carried_values) {
+    loom_location_id_t location, loom_value_id_t* next_carried_values) {
   loom_builder_t* builder = &context->rewriter->builder;
   const loom_value_id_t source_iv = body_block->arg_ids[0];
   const loom_type_t type = loom_module_value_type(context->module, source_iv);
@@ -842,6 +874,9 @@ static iree_status_t loom_scf_unroll_clone_guarded_iteration(
         loom_index_sub_result(remaining), location, &comparison));
   }
   const loom_value_id_t condition = loom_index_cmp_result(comparison);
+  loom_type_t* result_types = NULL;
+  IREE_RETURN_IF_ERROR(
+      loom_scf_unroll_reserve_result_scheme(context, source, &result_types));
   loom_op_t* if_op = NULL;
   IREE_RETURN_IF_ERROR(loom_scf_if_build(
       &context->rewriter->builder,
@@ -907,25 +942,6 @@ static iree_status_t loom_scf_unroll_clone_guarded_iteration(
   return iree_ok_status();
 }
 
-static iree_status_t loom_scf_unroll_copy_result_types(
-    loom_scf_unroll_context_t* context, loom_op_t* op,
-    loom_type_t** out_result_types) {
-  *out_result_types = NULL;
-  if (op->result_count == 0) {
-    return iree_ok_status();
-  }
-  loom_type_t* result_types = NULL;
-  IREE_RETURN_IF_ERROR(
-      iree_arena_allocate_array(context->pass->arena, op->result_count,
-                                sizeof(*result_types), (void**)&result_types));
-  const loom_value_id_t* results = loom_op_const_results(op);
-  for (uint16_t i = 0; i < op->result_count; ++i) {
-    result_types[i] = loom_module_value_type(context->module, results[i]);
-  }
-  *out_result_types = result_types;
-  return iree_ok_status();
-}
-
 static iree_status_t loom_scf_unroll_adjust_tied_results_for_policy_clear(
     loom_scf_unroll_context_t* context, loom_op_t* op,
     const loom_value_slice_t iter_args, loom_tied_result_t** out_tied_results,
@@ -983,14 +999,17 @@ static iree_status_t loom_scf_unroll_clear_policy(
   loom_builder_set_before(&context->rewriter->builder, op);
   loom_value_id_t value_checkpoint =
       loom_rewriter_value_checkpoint(context->rewriter);
+  loom_type_t* result_types = NULL;
+  IREE_RETURN_IF_ERROR(
+      loom_scf_unroll_reserve_result_scheme(context, op, &result_types));
   loom_op_t* new_loop = NULL;
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &context->rewriter->builder, /*build_flags=*/0,
       loom_scf_for_lower_bound(op), loom_scf_for_upper_bound(op),
-      loom_scf_for_step(op), iter_args.values, iter_args.count, tied_results,
-      tied_result_count, /*pipeline_depth=*/LOOM_VALUE_ID_INVALID,
-      LOOM_VALUE_ID_INVALID, /*unroll_policy=*/0, /*unroll_schedule=*/0,
-      op->location, &new_loop));
+      loom_scf_for_step(op), iter_args.values, iter_args.count, result_types,
+      tied_results, tied_result_count,
+      /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
+      /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &new_loop));
 
   loom_region_t* old_body = loom_scf_for_body(op);
   loom_block_t* old_block = loom_region_entry_block(old_body);
@@ -1048,10 +1067,6 @@ static iree_status_t loom_scf_unroll_partial_unroll(
     loom_scf_unroll_partial_unroll_flags_t flags, bool* out_changed) {
   *out_changed = false;
 
-  loom_type_t* result_types = NULL;
-  IREE_RETURN_IF_ERROR(
-      loom_scf_unroll_copy_result_types(context, op, &result_types));
-
   loom_value_slice_t iter_args = loom_scf_for_iter_args(op);
   loom_tied_result_t* tied_results = NULL;
   uint16_t tied_result_count = 0;
@@ -1067,11 +1082,15 @@ static iree_status_t loom_scf_unroll_partial_unroll(
   IREE_RETURN_IF_ERROR(loom_scf_unroll_build_scaled_step(
       context, op, step, unroll_factor, index_type, &scaled_step));
 
+  loom_type_t* result_types = NULL;
+  IREE_RETURN_IF_ERROR(
+      loom_scf_unroll_reserve_result_scheme(context, op, &result_types));
   loom_op_t* new_loop = NULL;
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &context->rewriter->builder, /*build_flags=*/0,
       loom_scf_for_lower_bound(op), loom_scf_for_upper_bound(op), scaled_step,
-      iter_args.values, iter_args.count, tied_results, tied_result_count,
+      iter_args.values, iter_args.count, result_types, tied_results,
+      tied_result_count,
       /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
       /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &new_loop));
 
@@ -1116,7 +1135,7 @@ static iree_status_t loom_scf_unroll_partial_unroll(
     if (guard_iteration) {
       IREE_RETURN_IF_ERROR(loom_scf_unroll_clone_guarded_iteration(
           context, &iteration_remap, old_block, yield, op, outer_index, step,
-          ordinal, carried_values, op->result_count, result_types, op->location,
+          ordinal, carried_values, op->result_count, op->location,
           next_carried_values));
     } else {
       if (induction_variable_has_references) {
@@ -1425,11 +1444,14 @@ static iree_status_t loom_scf_unroll_partial_unroll_scheduled_with_arena(
         unroll_factor, scaled_step, &main_upper));
   }
 
+  loom_type_t* main_result_types = NULL;
+  IREE_RETURN_IF_ERROR(
+      loom_scf_unroll_reserve_result_scheme(context, op, &main_result_types));
   loom_op_t* main_loop = NULL;
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &context->rewriter->builder, /*build_flags=*/0,
       loom_scf_for_lower_bound(op), main_upper, scaled_step, iter_args.values,
-      iter_args.count, tied_results, tied_result_count,
+      iter_args.count, main_result_types, tied_results, tied_result_count,
       /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
       /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &main_loop));
 
@@ -1499,11 +1521,15 @@ static iree_status_t loom_scf_unroll_partial_unroll_scheduled_with_arena(
       IREE_RETURN_IF_ERROR(loom_scf_unroll_build_index_constant(
           context, op, step, index_type, &tail_step));
     }
+    loom_type_t* tail_result_types = NULL;
+    IREE_RETURN_IF_ERROR(
+        loom_scf_unroll_reserve_result_scheme(context, op, &tail_result_types));
     loom_op_t* tail_loop = NULL;
     IREE_RETURN_IF_ERROR(loom_scf_for_build(
         &context->rewriter->builder, /*build_flags=*/0, main_upper,
         loom_scf_for_upper_bound(op), tail_step, tail_iter_args.values,
-        tail_iter_args.count, tied_results, tied_result_count,
+        tail_iter_args.count, tail_result_types, tied_results,
+        tied_result_count,
         /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
         /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &tail_loop));
     loom_region_t* tail_body = loom_scf_for_body(tail_loop);

@@ -49,6 +49,13 @@ def _generate_builder_declaration(op: Op, prefix: str, shared_enums: SharedEnumM
     lines: list[str] = []
     c_params = c_builder_model.build_c_param_list(op, params, layout, prefix)
 
+    result_count_source = c_builder_model.variadic_result_count_source(op)
+    if result_count_source is not None:
+        lines.append(f"// result_types has {result_count_source}_count entries, or is NULL to preserve")
+        lines.append("// the initial operand types. Explicit types define the recurring tuple;")
+        lines.append("// reserve result IDs first when types refer to sibling results. Region")
+        lines.append("// entry types instantiate that tuple with their own argument identities.")
+
     # Format as multi-line declaration.
     lines.append(f"iree_status_t {prefix}_build(")
     for i, p in enumerate(c_params):

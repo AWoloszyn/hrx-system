@@ -32,6 +32,15 @@ extern "C" {
 
 typedef struct loom_type_propagator_t loom_type_propagator_t;
 
+// Cumulative activity across all transactions run by one propagator.
+typedef struct loom_type_propagator_statistics_t {
+  // Number of candidate closures rejected as inconsistent.
+  uint64_t conflict_count;
+
+  // Number of candidate seeds suppressed by an identical prior rejection.
+  uint64_t rejection_cache_hit_count;
+} loom_type_propagator_statistics_t;
+
 // Optional ownership query for callable boundary refinement. The callback
 // borrows its state for the propagator's lifetime. Without a callback, callable
 // boundary types remain fixed.
@@ -80,6 +89,15 @@ iree_status_t loom_type_propagator_prepare_function(
 // release the domain.
 loom_local_value_domain_t* loom_type_propagator_value_domain(
     loom_type_propagator_t* propagator);
+
+// Starts a new enclosing fixed-point iteration. Exact candidates rejected in
+// an earlier iteration are reconsidered because intervening rewrites may have
+// changed their constraint closure.
+void loom_type_propagator_begin_iteration(loom_type_propagator_t* propagator);
+
+// Returns cumulative propagation activity for reporting and diagnostics.
+loom_type_propagator_statistics_t loom_type_propagator_statistics(
+    const loom_type_propagator_t* propagator);
 
 // Returns true when applying the type propagator to |op| may commit a type
 // change. This is a cheap prefilter for pass hot paths: false means the op has

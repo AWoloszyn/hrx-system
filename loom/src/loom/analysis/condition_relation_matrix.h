@@ -147,7 +147,11 @@ typedef uint8_t loom_condition_relation_matrix_view_encoding_t;
 enum loom_condition_relation_matrix_view_encoding_e {
   LOOM_CONDITION_RELATION_MATRIX_VIEW_SPARSE = 0,
   LOOM_CONDITION_RELATION_MATRIX_VIEW_RANGES = 1,
+  LOOM_CONDITION_RELATION_MATRIX_VIEW_PAGES = 2,
 };
+
+typedef struct loom_condition_relation_matrix_page_t
+    loom_condition_relation_matrix_page_t;
 
 // One consecutive run of left values sharing identical excluded sets.
 typedef struct loom_condition_relation_matrix_range_t {
@@ -169,6 +173,9 @@ typedef union loom_condition_relation_matrix_view_entries_t {
 
   // Ranges sorted by first left-value ordinal.
   const loom_condition_relation_matrix_range_t* ranges;
+
+  // Shared pages sorted by their first left-value ordinal.
+  const loom_condition_relation_matrix_page_t* const* pages;
 } loom_condition_relation_matrix_view_entries_t;
 
 // Immutable matrix view retained after propagation scratch is released.
@@ -182,6 +189,19 @@ typedef struct loom_condition_relation_matrix_view_t {
   // Encoding interpreting entries.
   loom_condition_relation_matrix_view_encoding_t encoding;
 } loom_condition_relation_matrix_view_t;
+
+// One shared interval of an immutable matrix view. Page contents use sparse or
+// range encoding and never recursively contain pages.
+struct loom_condition_relation_matrix_page_t {
+  // First possible left-value ordinal in the page.
+  uint32_t first_left;
+
+  // Last possible left-value ordinal in the page, inclusive.
+  uint32_t last_left;
+
+  // Immutable rows retained for the page interval.
+  loom_condition_relation_matrix_view_t contents;
+};
 
 // Publishes the smaller exact encoding of nonempty sparse rows or consecutive
 // equal ranges into |arena|. Set roots must already be rewritten into their

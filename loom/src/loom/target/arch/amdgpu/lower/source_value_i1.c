@@ -274,10 +274,10 @@ static bool loom_amdgpu_i1_compare_values(
 static bool loom_amdgpu_i1_compare_has_direct_vgpr_operand(
     const loom_module_t* module, const loom_amdgpu_i1_compare_values_t* values,
     loom_value_id_t excluded_value_id) {
-  return loom_amdgpu_source_value_directly_prefers_vgpr(module, values->lhs,
-                                                        excluded_value_id) ||
-         loom_amdgpu_source_value_directly_prefers_vgpr(module, values->rhs,
-                                                        excluded_value_id);
+  return loom_amdgpu_source_value_directly_prefers_vgpr(
+             module, /*fact_table=*/NULL, values->lhs, excluded_value_id) ||
+         loom_amdgpu_source_value_directly_prefers_vgpr(
+             module, /*fact_table=*/NULL, values->rhs, excluded_value_id);
 }
 
 static bool loom_amdgpu_i1_compare_has_vgpr_operand(

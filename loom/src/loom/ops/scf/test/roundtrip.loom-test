@@ -170,6 +170,23 @@ func.def @count_while(%init: index, %limit: index, %one: index) -> (index) {
 
 // ====
 
+// RUN: format bytecode
+
+// Result identities describe the recurring tuple. The condition entry is
+// projected from that tuple, while explicit body arguments can refer forward
+// to peer arguments declared later in the same list.
+func.def @dependent_while(%condition: i1, %extent: index, %layout: encoding<layout>, %input: view<[%extent]xf32, %layout>) {
+  %result_view, %result_extent, %result_layout = scf.while(%before_view = %input : view<[%extent]xf32, %layout>, %before_extent = %extent : index, %before_layout = %layout : encoding<layout>) -> (view<[%result_extent]xf32, %result_layout>, index, encoding<layout>) {
+    scf.condition %condition, %before_view, %before_extent, %before_layout : i1, view<[%before_extent]xf32, %before_layout>, index, encoding<layout>
+  } do(%body_view: view<[%body_extent]xf32, %body_layout>, %body_extent: index, %body_layout: encoding<layout>) {
+    scf.yield %body_view, %body_extent, %body_layout : view<[%body_extent]xf32, %body_layout>, index, encoding<layout>
+  }
+  test.use %result_view, %result_extent, %result_layout : view<[%result_extent]xf32, %result_layout>, index, encoding<layout>
+  func.return
+}
+
+// ====
+
 // scf.if without results and without an else region.
 func.def @void_if_no_else(%cond: i1) {
   scf.if %cond {

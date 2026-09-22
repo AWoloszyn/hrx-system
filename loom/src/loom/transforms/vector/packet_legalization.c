@@ -1095,7 +1095,8 @@ static iree_status_t loom_vector_packet_staged_store(
       builder, /*build_flags=*/0, loom_index_constant_result(lower_bound_op),
       loom_index_constant_result(upper_bound_op),
       loom_index_constant_result(step_op), /*iter_args=*/NULL,
-      /*iter_args_count=*/0, /*tied_results=*/NULL, /*tied_result_count=*/0,
+      /*iter_args_count=*/0, /*result_types=*/NULL, /*tied_results=*/NULL,
+      /*tied_result_count=*/0,
       /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
       /*unroll_policy=*/0, /*unroll_schedule=*/0, store_op->location,
       &stage_loop_op));
@@ -1135,7 +1136,8 @@ static iree_status_t loom_vector_packet_staged_store(
       builder, /*build_flags=*/0, loom_index_constant_result(lower_bound_op),
       loom_index_constant_result(upper_bound_op),
       loom_index_constant_result(step_op), /*iter_args=*/NULL,
-      /*iter_args_count=*/0, /*tied_results=*/NULL, /*tied_result_count=*/0,
+      /*iter_args_count=*/0, /*result_types=*/NULL, /*tied_results=*/NULL,
+      /*tied_result_count=*/0,
       /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
       /*unroll_policy=*/0, /*unroll_schedule=*/0, store_op->location,
       &commit_loop_op));
@@ -1341,7 +1343,8 @@ iree_status_t loom_vector_packet_legalize_store(
       builder, /*build_flags=*/0, loom_index_constant_result(lower_bound_op),
       loom_index_constant_result(upper_bound_op),
       loom_index_constant_result(step_op), /*iter_args=*/NULL,
-      /*iter_args_count=*/0, /*tied_results=*/NULL, /*tied_result_count=*/0,
+      /*iter_args_count=*/0, /*result_types=*/NULL, /*tied_results=*/NULL,
+      /*tied_result_count=*/0,
       /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
       /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &loop_op));
 
@@ -1434,6 +1437,7 @@ iree_status_t loom_vector_packet_legalize_reduce(
       builder, /*build_flags=*/0, loom_index_constant_result(lower_bound_op),
       loom_index_constant_result(upper_bound_op),
       loom_index_constant_result(step_op), &initial_accumulator, 1,
+      /*result_types=*/NULL,
       /*tied_results=*/NULL, /*tied_result_count=*/0,
       /*pipeline_depth=*/LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
       /*unroll_policy=*/0, /*unroll_schedule=*/0, op->location, &loop_op));

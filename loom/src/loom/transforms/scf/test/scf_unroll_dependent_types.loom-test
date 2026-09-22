@@ -1,0 +1,133 @@
+// RUN: pass unroll-scf-for
+
+func.def @dependent_unroll_guarded_tail(%input: buffer, %base: offset, %count: index, %initial_rows: index, %layout: encoding<layout>) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %factor = index.constant 2 : index
+  %initial = buffer.view %input[%base] : buffer -> view<[%initial_rows]x4xi32, %layout>
+  %rows, %view = scf.for %i = [%begin to %count step %step](%body_rows = %initial_rows : index, %body_view = %initial : view<[%initial_rows]x4xi32, %layout>) -> (index, view<[%rows]x4xi32, %layout>) unroll(%factor) {
+    test.use %body_view : view<[%body_rows]x4xi32, %layout>
+    %next_rows = index.sub %body_rows, %step : index
+    %next = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+    scf.yield %next_rows, %next : index, view<[%next_rows]x4xi32, %layout>
+  }
+  test.use %view : view<[%rows]x4xi32, %layout>
+  func.return
+}
+
+// ----
+func.def @dependent_unroll_guarded_tail(%input: buffer, %base: offset, %count: index, %initial_rows: index, %layout: encoding<layout>) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %factor = index.constant 2 : index
+  %initial = buffer.view %input[%base] : buffer -> view<[%initial_rows]x4xi32, %layout>
+  %16 = index.constant 2 : index
+  %rows, %view = scf.for %i = [%begin to %count step %16](%body_rows = %initial_rows : index, %body_view = %initial : view<[%initial_rows]x4xi32, %layout>) -> (index, view<[%rows]x4xi32, %layout>) {
+    test.use %body_view : view<[%body_rows]x4xi32, %layout>
+    %next_rows = index.sub %body_rows, %step : index
+    %next = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+    %24 = index.constant 1 : index
+    %i_1 = index.add %i, %24 : index
+    %26 = index.cmp slt, %i_1, %count : index
+    %27, %28 = scf.if %26 -> (index, view<[%27]x4xi32, %layout>) {
+      test.use %next : view<[%next_rows]x4xi32, %layout>
+      %next_rows_1 = index.sub %next_rows, %step : index
+      %next_1 = view.subview %next[1, 0] : view<[%next_rows]x4xi32, %layout> -> view<[%next_rows_1]x4xi32, %layout>
+      scf.yield %next_rows_1, %next_1 : index, view<[%next_rows_1]x4xi32, %layout>
+    } else {
+      scf.yield %next_rows, %next : index, view<[%next_rows]x4xi32, %layout>
+    }
+    scf.yield %27, %28 : index, view<[%27]x4xi32, %layout>
+  }
+  test.use %view : view<[%rows]x4xi32, %layout>
+  func.return
+}
+
+// ====
+
+func.def @dependent_unroll_policy_clear(%input: buffer, %base: offset, %count: index, %initial_rows: index, %layout: encoding<layout>) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %factor = index.constant 1 : index
+  %initial = buffer.view %input[%base] : buffer -> view<[%initial_rows]x4xi32, %layout>
+  %rows, %view = scf.for %i = [%begin to %count step %step](%body_rows = %initial_rows : index, %body_view = %initial : view<[%initial_rows]x4xi32, %layout>) -> (index, view<[%rows]x4xi32, %layout>) unroll(%factor) {
+    test.use %body_view : view<[%body_rows]x4xi32, %layout>
+    %next_rows = index.sub %body_rows, %step : index
+    %next = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+    scf.yield %next_rows, %next : index, view<[%next_rows]x4xi32, %layout>
+  }
+  test.use %view : view<[%rows]x4xi32, %layout>
+  func.return
+}
+
+// ----
+func.def @dependent_unroll_policy_clear(%input: buffer, %base: offset, %count: index, %initial_rows: index, %layout: encoding<layout>) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %factor = index.constant 1 : index
+  %initial = buffer.view %input[%base] : buffer -> view<[%initial_rows]x4xi32, %layout>
+  %rows, %view = scf.for %i = [%begin to %count step %step](%body_rows = %initial_rows : index, %body_view = %initial : view<[%initial_rows]x4xi32, %layout>) -> (index, view<[%rows]x4xi32, %layout>) {
+    test.use %body_view : view<[%body_rows]x4xi32, %layout>
+    %next_rows = index.sub %body_rows, %step : index
+    %next = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+    scf.yield %next_rows, %next : index, view<[%next_rows]x4xi32, %layout>
+  }
+  test.use %view : view<[%rows]x4xi32, %layout>
+  func.return
+}
+
+// ====
+
+func.def @dependent_recurrence_unroll_tail(%input: buffer, %base: offset, %count: index, %initial_rows: index, %layout: encoding<layout>) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %factor = index.constant 2 : index
+  %initial = buffer.view %input[%base] : buffer -> view<[%initial_rows]x4xi32, %layout>
+  %rows, %view = scf.for %i = [%begin to %count step %step](%body_rows = %initial_rows : index, %body_view = %initial : view<[%initial_rows]x4xi32, %layout>) -> (index, view<[%rows]x4xi32, %layout>) unroll(%factor) schedule(recurrence) {
+    %producer = index.add %step, %step : index
+    test.use %body_view : view<[%body_rows]x4xi32, %layout>
+    %next_rows = index.sub %body_rows, %producer : index
+    %next = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+    scf.yield %next_rows, %next : index, view<[%next_rows]x4xi32, %layout>
+  }
+  test.use %view : view<[%rows]x4xi32, %layout>
+  func.return
+}
+
+// ----
+func.def @dependent_recurrence_unroll_tail(%input: buffer, %base: offset, %count: index, %initial_rows: index, %layout: encoding<layout>) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %factor = index.constant 2 : index
+  %initial = buffer.view %input[%base] : buffer -> view<[%initial_rows]x4xi32, %layout>
+  %17 = index.constant 2 : index
+  %18 = index.constant 0 : index
+  %19 = index.sub %count, %begin : index
+  %20 = index.max %19, %18 : index
+  %21 = index.constant 2 : index
+  %22 = index.div %20, %21 : index
+  %23 = index.mul %22, %17 : index
+  %24 = index.add %begin, %23 : index
+  %25, %26 = scf.for %i = [%begin to %24 step %17](%body_rows = %initial_rows : index, %body_view = %initial : view<[%initial_rows]x4xi32, %layout>) -> (index, view<[%25]x4xi32, %layout>) {
+    %producer = index.add %step, %step : index
+    %producer_1 = index.add %step, %step : index
+    scf.schedule.fence
+    test.use %body_view : view<[%body_rows]x4xi32, %layout>
+    %next_rows = index.sub %body_rows, %producer : index
+    %next = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+    scf.schedule.fence
+    test.use %next : view<[%next_rows]x4xi32, %layout>
+    %next_rows_1 = index.sub %next_rows, %producer_1 : index
+    %next_1 = view.subview %next[1, 0] : view<[%next_rows]x4xi32, %layout> -> view<[%next_rows_1]x4xi32, %layout>
+    scf.yield %next_rows_1, %next_1 : index, view<[%next_rows_1]x4xi32, %layout>
+  }
+  %rows, %view = scf.for %i = [%24 to %count step %step](%body_rows = %25 : index, %body_view = %26 : view<[%25]x4xi32, %layout>) -> (index, view<[%rows]x4xi32, %layout>) {
+    %producer = index.add %step, %step : index
+    test.use %body_view : view<[%body_rows]x4xi32, %layout>
+    %next_rows = index.sub %body_rows, %producer : index
+    %next = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+    scf.yield %next_rows, %next : index, view<[%next_rows]x4xi32, %layout>
+  }
+  test.use %view : view<[%rows]x4xi32, %layout>
+  func.return
+}

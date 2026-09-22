@@ -592,6 +592,11 @@ IREE_ATTRIBUTE_ALWAYS_INLINE static inline iree_status_t loom_verify_op(
   loom_verify_func_purity_body_effects(state, op, vtable);
   IREE_RETURN_IF_ERROR(loom_verify_pending_diagnostic_status(state));
 
+  if (vtable->loop_like && state->result->error_count == initial_error_count) {
+    loom_verify_loop_entry_types(state, op, vtable->loop_like);
+    IREE_RETURN_IF_ERROR(loom_verify_pending_diagnostic_status(state));
+  }
+
   // Op-specific verification callback. Runs last, and only when this op and
   // its nested regions did not emit any prior verifier errors. Callbacks may
   // assume structurally sound, type-correct IR.

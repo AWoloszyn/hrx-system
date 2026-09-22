@@ -587,6 +587,24 @@ low.func.def target<test.low.core> @fixed_loop(%initial: reg<test.fixed.r0>, %co
   }
 }
 
+TEST_F(LowEmissionFrameTest, StateOnlyScheduleLivenessIsTransient) {
+  ModulePtr module = ParseModule(R"(
+low.func.def target<test.low.core> @state_live_out(%state: reg<test.schedule_state>, %rhs: reg<test.schedule_state>) asm {
+  low.br ^use
+^use:
+  %read = test.explicit.state.add.schedule_state %rhs, %state
+  return
+}
+)");
+  loom_low_emission_frame_t frame = {};
+  IREE_ASSERT_OK(BuildFrame(module.get(), {}, &frame));
+  iree_arena_block_pool_trim(&block_pool_);
+
+  ASSERT_EQ(frame.schedule.error_count, 0u);
+  ASSERT_EQ(frame.allocation.error_count, 0u);
+  EXPECT_EQ(frame.schedule.liveness.region, nullptr);
+}
+
 TEST_F(LowEmissionFrameTest, OrderedEffectUsesDirectionalTimingEndpoints) {
   ModulePtr module = ParseModule(R"(
 low.func.def target<test.low.core> @directional_effect(%address: reg<test.ptr>, %payload: reg<test.i32 x4>) -> (reg<test.i32 x4>) asm {

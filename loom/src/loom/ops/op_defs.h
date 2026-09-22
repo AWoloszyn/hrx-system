@@ -2019,6 +2019,8 @@ void loom_builder_restore(loom_builder_t* builder, loom_builder_ip_t ip);
 // calls to loom_builder_define_value (typically from a generated builder)
 // will assign types to these values instead of allocating fresh ones.
 // loom_builder_finalize_op verifies all reserved results were consumed.
+// Callable builders consume argument signature identities before result
+// identities. Other region entry arguments are fresh, independent definitions.
 //
 // This enables constructing result types that reference other results
 // by value_id before the build call:
@@ -2106,9 +2108,9 @@ iree_status_t loom_builder_create_region(loom_builder_t* builder, loom_op_t* op,
                                          uint8_t region_index,
                                          loom_block_t** out_entry_block);
 
-// Creates a fresh value with the given type and adds it as a block
-// argument. Convenience wrapper for the define_value + block_add_arg
-// sequence that generated builders use when auto-creating regions.
+// Creates a fresh value with the given type and adds it as a block argument.
+// Region arguments never consume identities reserved for the enclosing op's
+// results, even when generated builders create regions before those results.
 iree_status_t loom_builder_define_block_arg(loom_builder_t* builder,
                                             loom_block_t* block,
                                             loom_type_t type,

@@ -599,7 +599,7 @@ low.func.def target<test.low.core>(@test_target) @if_rejects_branch_args(%condit
 test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @for_body_arg_count(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>, %init: reg<test.i32>) -> (reg<test.i32>) {
-  // ERROR@+1: STRUCTURE/013 "body" "1" "1 + iter_args" "2"
+  // ERROR@+1: STRUCTURE/007 "1" "2"
   %result = low.scf.for signed [%lower to %upper step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>) {
     low.scf.yield %init : reg<test.i32>
   }
@@ -635,7 +635,7 @@ low.func.def target<test.low.core>(@test_target) @for_bound_type_mismatch(%lower
 test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @for_iv_type_mismatch(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>) {
-  // ERROR@+1: TYPE/001 "body[0]" "lower_bound"
+  // ERROR@+1: TYPE/013 "0"
   low.scf.for signed [%lower to %upper step %step] do(%iv: reg<test.ptr>) {
     low.scf.yield
   }
@@ -647,7 +647,7 @@ low.func.def target<test.low.core>(@test_target) @for_iv_type_mismatch(%lower: r
 test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @for_body_arg_type_mismatch(%lower: reg<test.i32>, %upper: reg<test.i32>, %step: reg<test.i32>, %init: reg<test.i32>) -> (reg<test.i32>) {
-  // ERROR@+1: TYPE/001 "body[1]" "iter_args[0]"
+  // ERROR@+1: TYPE/013 "1"
   %result = low.scf.for signed [%lower to %upper step %step] iter_args(%init: reg<test.i32>) -> (reg<test.i32>) do(%iv: reg<test.i32>, %acc: reg<test.ptr>) {
     low.scf.yield %init : reg<test.i32>
   }

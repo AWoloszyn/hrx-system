@@ -566,6 +566,74 @@ static iree_status_t loom_vector_bank_sroa_build_initial_values(
   return iree_ok_status();
 }
 
+// Reserves the expanded result tuple and projects retained source result types
+// onto it. Newly materialized bank slots have static payload types and retain
+// the types of their initial values directly.
+static iree_status_t loom_vector_bank_sroa_reserve_result_scheme(
+    loom_vector_bank_sroa_context_t* context, const loom_op_t* loop,
+    const loom_vector_bank_sroa_plan_t* plan,
+    const loom_value_id_t* new_iter_args, loom_type_t** out_result_types) {
+  *out_result_types = NULL;
+  const loom_value_slice_t old_iter_args = loom_scf_for_iter_args(loop);
+  const loom_value_id_t* old_results = loom_op_const_results(loop);
+  bool requires_result_scheme = false;
+  for (uint16_t i = 0; i < plan->carried_count; ++i) {
+    if (!plan->banks[i].active &&
+        !loom_type_equal(
+            loom_module_value_type(context->module, old_results[i]),
+            loom_module_value_type(context->module, old_iter_args.values[i]))) {
+      requires_result_scheme = true;
+      break;
+    }
+  }
+  if (!requires_result_scheme) {
+    return iree_ok_status();
+  }
+
+  loom_type_t* result_types = NULL;
+  loom_value_id_t* reserved_results = NULL;
+  IREE_RETURN_IF_ERROR(
+      iree_arena_allocate_array(context->scratch_arena, plan->expanded_count,
+                                sizeof(*result_types), (void**)&result_types));
+  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+      context->scratch_arena, plan->expanded_count, sizeof(*reserved_results),
+      (void**)&reserved_results));
+  IREE_RETURN_IF_ERROR(loom_builder_reserve_results(
+      &context->rewriter->builder, plan->expanded_count, reserved_results));
+
+  loom_ir_remap_t remap = {0};
+  IREE_RETURN_IF_ERROR(loom_ir_remap_initialize(
+      context->module, context->module, context->scratch_arena,
+      &(loom_ir_remap_options_t){
+          .allow_unmapped_values = true,
+          .remap_symbol = loom_ir_remap_symbol_callback_empty(),
+      },
+      &remap));
+  for (uint16_t i = 0; i < plan->carried_count; ++i) {
+    const loom_vector_bank_sroa_bank_t* bank = &plan->banks[i];
+    if (!bank->active) {
+      IREE_RETURN_IF_ERROR(loom_ir_remap_map_value(
+          &remap, old_results[i], reserved_results[bank->expanded_base]));
+    }
+  }
+  for (uint16_t i = 0; i < plan->carried_count; ++i) {
+    const loom_vector_bank_sroa_bank_t* bank = &plan->banks[i];
+    if (!bank->active) {
+      IREE_RETURN_IF_ERROR(loom_ir_remap_type(
+          &remap, loom_module_value_type(context->module, old_results[i]),
+          &result_types[bank->expanded_base]));
+      continue;
+    }
+    for (uint16_t slot = 0; slot < bank->slot_count; ++slot) {
+      const uint16_t ordinal = (uint16_t)(bank->expanded_base + slot);
+      result_types[ordinal] =
+          loom_module_value_type(context->module, new_iter_args[ordinal]);
+    }
+  }
+  *out_result_types = result_types;
+  return iree_ok_status();
+}
+
 static loom_scf_for_build_flags_t loom_vector_bank_sroa_build_flags(
     loom_op_t* loop, loom_value_id_t* out_unroll_factor,
     loom_scf_for_unroll_policy_t* out_unroll_policy,
@@ -833,13 +901,16 @@ static iree_status_t loom_vector_bank_sroa_rewrite_loop(
     build_flags |= LOOM_SCF_FOR_BUILD_FLAG_HAS_PIPELINE_DEPTH;
     pipeline_depth = loom_scf_for_pipeline_depth(loop);
   }
+  loom_type_t* result_types = NULL;
+  IREE_RETURN_IF_ERROR(loom_vector_bank_sroa_reserve_result_scheme(
+      context, loop, plan, new_iter_args, &result_types));
   loom_op_t* new_loop = NULL;
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &context->rewriter->builder, build_flags, loom_scf_for_lower_bound(loop),
       loom_scf_for_upper_bound(loop), loom_scf_for_step(loop), new_iter_args,
-      plan->expanded_count, /*tied_results=*/NULL, /*tied_result_count=*/0,
-      pipeline_depth, unroll_factor, unroll_policy, unroll_schedule,
-      loop->location, &new_loop));
+      plan->expanded_count, result_types, /*tied_results=*/NULL,
+      /*tied_result_count=*/0, pipeline_depth, unroll_factor, unroll_policy,
+      unroll_schedule, loop->location, &new_loop));
 
   loom_builder_ip_t saved_ip = loom_builder_enter_region(
       &context->rewriter->builder, new_loop, loom_scf_for_body(new_loop));

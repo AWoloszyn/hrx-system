@@ -110,7 +110,8 @@ static iree_status_t loom_buffer_legalize_copy(
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &rewriter->builder, /*build_flags=*/0, zero,
       loom_buffer_copy_byte_length(op), one, /*iter_args=*/NULL,
-      /*iter_args_count=*/0, /*tied_results=*/NULL, /*tied_result_count=*/0,
+      /*iter_args_count=*/0, /*result_types=*/NULL, /*tied_results=*/NULL,
+      /*tied_result_count=*/0,
       /*pipeline_depth=*/LOOM_VALUE_ID_INVALID,
       /*unroll_factor=*/LOOM_VALUE_ID_INVALID, /*unroll_policy=*/0,
       /*unroll_schedule=*/0, op->location, &loop));
@@ -316,6 +317,7 @@ static iree_status_t loom_buffer_legalize_fill(
   IREE_RETURN_IF_ERROR(loom_scf_for_build(
       &rewriter->builder, /*build_flags=*/0, zero,
       loom_buffer_fill_byte_length(op), one, iter_args, iter_arg_count,
+      /*result_types=*/NULL,
       /*tied_results=*/NULL, /*tied_result_count=*/0,
       /*pipeline_depth=*/LOOM_VALUE_ID_INVALID,
       /*unroll_factor=*/LOOM_VALUE_ID_INVALID, /*unroll_policy=*/0,
@@ -457,6 +459,7 @@ static iree_status_t loom_buffer_legalize_compare(
   loom_op_t* loop = NULL;
   IREE_RETURN_IF_ERROR(loom_scf_while_build(
       &rewriter->builder, iter_args, IREE_ARRAYSIZE(iter_args),
+      /*result_types=*/NULL,
       /*tied_results=*/NULL, /*tied_result_count=*/0, op->location, &loop));
 
   loom_builder_ip_t saved_ip = loom_builder_enter_region(

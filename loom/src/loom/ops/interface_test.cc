@@ -249,9 +249,9 @@ TEST_F(InterfaceTest, LoopLikeCastReturnsValidForLoop) {
   loom_value_id_t step_id = loom_op_results(step)[0];
 
   loom_op_t* loop_op = nullptr;
-  IREE_ASSERT_OK(loom_test_loop_build(&builder_, lower_id, upper_id, step_id,
-                                      nullptr, 0, nullptr, 0,
-                                      LOOM_LOCATION_UNKNOWN, &loop_op));
+  IREE_ASSERT_OK(loom_test_loop_build(
+      &builder_, lower_id, upper_id, step_id, nullptr, 0,
+      /*result_types=*/nullptr, nullptr, 0, LOOM_LOCATION_UNKNOWN, &loop_op));
 
   loom_loop_like_t loop = loom_loop_like_cast(module_, loop_op);
   EXPECT_TRUE(loom_loop_like_isa(loop));
@@ -294,9 +294,9 @@ TEST_F(InterfaceTest, LoopLikeAccessorsForLoop) {
   loom_value_id_t step_id = loom_op_results(step)[0];
 
   loom_op_t* loop_op = nullptr;
-  IREE_ASSERT_OK(loom_test_loop_build(&builder_, lower_id, upper_id, step_id,
-                                      nullptr, 0, nullptr, 0,
-                                      LOOM_LOCATION_UNKNOWN, &loop_op));
+  IREE_ASSERT_OK(loom_test_loop_build(
+      &builder_, lower_id, upper_id, step_id, nullptr, 0,
+      /*result_types=*/nullptr, nullptr, 0, LOOM_LOCATION_UNKNOWN, &loop_op));
 
   loom_loop_like_t loop = loom_loop_like_cast(module_, loop_op);
   ASSERT_TRUE(loom_loop_like_isa(loop));
@@ -328,8 +328,8 @@ TEST_F(InterfaceTest, LoopLikeIterArgsEmpty) {
   loom_op_t* loop_op = nullptr;
   IREE_ASSERT_OK(loom_test_loop_build(
       &builder_, loom_op_results(lower)[0], loom_op_results(upper)[0],
-      loom_op_results(step)[0], nullptr, 0, nullptr, 0, LOOM_LOCATION_UNKNOWN,
-      &loop_op));
+      loom_op_results(step)[0], nullptr, 0, /*result_types=*/nullptr, nullptr,
+      0, LOOM_LOCATION_UNKNOWN, &loop_op));
 
   loom_loop_like_t loop = loom_loop_like_cast(module_, loop_op);
   loom_value_slice_t iter_args = loom_loop_like_iter_args(loop);
@@ -348,8 +348,8 @@ TEST_F(InterfaceTest, LoopLikeIterArgsNonEmpty) {
   loom_op_t* loop_op = nullptr;
   IREE_ASSERT_OK(loom_test_loop_build(
       &builder_, loom_op_results(lower)[0], loom_op_results(upper)[0],
-      loom_op_results(step)[0], init_ids, IREE_ARRAYSIZE(init_ids), nullptr, 0,
-      LOOM_LOCATION_UNKNOWN, &loop_op));
+      loom_op_results(step)[0], init_ids, IREE_ARRAYSIZE(init_ids),
+      /*result_types=*/nullptr, nullptr, 0, LOOM_LOCATION_UNKNOWN, &loop_op));
 
   loom_loop_like_t loop = loom_loop_like_cast(module_, loop_op);
   loom_value_slice_t iter_args = loom_loop_like_iter_args(loop);
@@ -403,8 +403,8 @@ TEST_F(InterfaceTest, RegionBranchCastReturnsNullForLoop) {
   loom_op_t* loop_op = nullptr;
   IREE_ASSERT_OK(loom_test_loop_build(
       &builder_, loom_op_results(lower)[0], loom_op_results(upper)[0],
-      loom_op_results(step)[0], nullptr, 0, nullptr, 0, LOOM_LOCATION_UNKNOWN,
-      &loop_op));
+      loom_op_results(step)[0], nullptr, 0, /*result_types=*/nullptr, nullptr,
+      0, LOOM_LOCATION_UNKNOWN, &loop_op));
 
   loom_region_branch_t branch = loom_region_branch_cast(module_, loop_op);
   EXPECT_FALSE(loom_region_branch_isa(branch));

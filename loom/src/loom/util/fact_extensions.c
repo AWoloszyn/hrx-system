@@ -1278,6 +1278,15 @@ iree_status_t loom_value_fact_table_widen_for_type(
   }
 
   *out_facts = loom_value_facts_unknown();
+  if (!loom_value_facts_is_float(previous) &&
+      !loom_value_facts_is_float(next)) {
+    // Range growth does not invalidate divisibility. Its join descends through
+    // positive divisors, so it converges independently of interval widening.
+    loom_value_facts_t joined;
+    loom_value_facts_meet(&previous, &next, &joined);
+    *out_facts =
+        loom_value_facts_make(INT64_MIN, INT64_MAX, joined.known_divisor);
+  }
   if (loom_value_facts_is_lane_varying(previous) ||
       loom_value_facts_is_lane_varying(next)) {
     loom_value_facts_mark_lane_distribution_for_type(type, out_facts);

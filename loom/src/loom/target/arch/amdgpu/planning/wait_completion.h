@@ -41,21 +41,24 @@ typedef struct loom_amdgpu_wait_dependency_t {
 // Per-node counter facts consumed by loop and incoming-storage frontiers.
 typedef struct loom_amdgpu_wait_completion_node_t {
   // Counters advanced when this node executes.
-  uint32_t producer_counter_mask;
+  loom_amdgpu_wait_counter_mask_t producer_counter_mask;
   // Counters advanced by writes when this node executes.
-  uint32_t write_counter_mask;
+  loom_amdgpu_wait_counter_mask_t write_counter_mask;
   // Counters guaranteed complete before this node produces new work. Includes
   // explicit/implicit resets and locally proven completion requirements.
-  uint32_t reset_counter_mask;
+  loom_amdgpu_wait_counter_mask_t reset_counter_mask;
   // This node's producer counters guaranteed complete before block exit.
-  uint32_t completed_before_block_exit_counter_mask;
+  loom_amdgpu_wait_counter_mask_t completed_before_block_exit_counter_mask;
   // Counter domains in which the node can create a target hazard.
-  uint32_t hazard_counter_mask;
+  loom_amdgpu_wait_counter_mask_t hazard_counter_mask;
   // Counter classes advanced by workgroup-memory writes.
-  uint32_t workgroup_write_counter_mask;
+  loom_amdgpu_wait_counter_mask_t workgroup_write_counter_mask;
   // Workgroup-memory write counters observed by this node's barrier.
-  uint32_t workgroup_barrier_counter_mask;
+  loom_amdgpu_wait_counter_mask_t workgroup_barrier_counter_mask;
 } loom_amdgpu_wait_completion_node_t;
+
+static_assert(sizeof(loom_amdgpu_wait_completion_node_t) == 7,
+              "wait completion facts must remain compact");
 
 // Records guaranteed local completion in |nodes| from the schedule's retained
 // counter dependencies. Requiring a local producer retires its ordered prefix;

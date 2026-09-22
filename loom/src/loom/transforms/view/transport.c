@@ -485,6 +485,32 @@ static iree_status_t loom_view_transport_materialize_offset(
   } else {
     loom_builder_set_after(builder, anchor);
   }
+  // A constant translation stays in the physical address domain. Converting
+  // a carried base to signed arithmetic and back would require a new range
+  // proof for the entire recurrence instead of just representing its step.
+  // INT64_MIN has no nonnegative magnitude in the source offset domain.
+  if (offset->base_value_id != LOOM_VALUE_ID_INVALID &&
+      expression->term_count == 0 && expression->constant != INT64_MIN) {
+    const loom_type_t type = loom_type_scalar(LOOM_SCALAR_TYPE_OFFSET);
+    const int64_t magnitude =
+        expression->constant < 0 ? -expression->constant : expression->constant;
+    loom_op_t* constant = NULL;
+    IREE_RETURN_IF_ERROR(loom_index_constant_build(
+        builder, loom_attr_i64(magnitude), type, anchor->location, &constant));
+    loom_op_t* translation = NULL;
+    if (expression->constant < 0) {
+      IREE_RETURN_IF_ERROR(loom_index_sub_build(
+          builder, offset->base_value_id, loom_index_constant_result(constant),
+          type, anchor->location, &translation));
+    } else {
+      IREE_RETURN_IF_ERROR(loom_index_add_build(
+          builder, offset->base_value_id, loom_index_constant_result(constant),
+          type, anchor->location, &translation));
+    }
+    offset->value_id = loom_op_results(translation)[0];
+    *out_value = offset->value_id;
+    return iree_ok_status();
+  }
   loom_value_id_t sum = offset->base_value_id;
   // Physical byte expressions use the full offset width. Logical index
   // carriers may be narrower on the selected target. Signed intermediates

@@ -51,11 +51,11 @@ typedef uint8_t loom_amdgpu_wait_xcnt_group_flags_t;
 // Target wait classification for one schedule node.
 typedef struct loom_amdgpu_wait_frontier_node_t {
   // Counter classes advanced by dependency-participating reads.
-  uint32_t read_counter_mask;
+  loom_amdgpu_wait_counter_mask_t read_counter_mask;
   // Counter classes advanced by dependency-participating writes.
-  uint32_t write_counter_mask;
+  loom_amdgpu_wait_counter_mask_t write_counter_mask;
   // Counter classes fully drained after this node issued.
-  uint32_t drained_after_production_counter_mask;
+  loom_amdgpu_wait_counter_mask_t drained_after_production_counter_mask;
   // Gfx125x XCNT translation group produced by this node, or zero.
   loom_amdgpu_wait_xcnt_group_flags_t xcnt_group_flags;
   // Normalized memory spaces read by this node.
@@ -65,6 +65,9 @@ typedef struct loom_amdgpu_wait_frontier_node_t {
   // Completion-order class for asynchronous VMEM results.
   loom_amdgpu_vmem_result_order_class_t vmem_result_order_class;
 } loom_amdgpu_wait_frontier_node_t;
+
+static_assert(sizeof(loom_amdgpu_wait_frontier_node_t) == 12,
+              "wait frontier node facts must remain compact");
 
 // Outstanding counter masks indexed by aliasing consumer memory space.
 typedef struct loom_amdgpu_wait_memory_state_t {

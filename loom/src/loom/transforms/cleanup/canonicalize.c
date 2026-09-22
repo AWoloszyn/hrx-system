@@ -64,9 +64,16 @@ static const loom_pass_option_def_t kCanonicalizeOptions[] = {
          "Preserve scalar loads (default) or coalesce before legalization.")},
 };
 
-#define LOOM_CANONICALIZE_STATISTICS(V, statistics_type) \
-  V(statistics_type, ops_modified, "ops-modified",       \
-    "Number of ops simplified by canonicalization.")
+#define LOOM_CANONICALIZE_STATISTICS(V, statistics_type)                       \
+  V(statistics_type, ops_modified, "ops-modified",                             \
+    "Number of ops simplified by canonicalization.")                           \
+  V(statistics_type, type_propagation_conflicts, "type-propagation-conflicts", \
+    "Number of type propagation candidate closures rejected as "               \
+    "inconsistent.")                                                           \
+  V(statistics_type, type_propagation_rejection_cache_hits,                    \
+    "type-propagation-rejection-cache-hits",                                   \
+    "Number of repeated rejected type candidates skipped within an "           \
+    "iteration.")
 
 LOOM_PASS_STATISTICS_DEFINE(loom_canonicalize_statistics,
                             loom_canonicalize_statistics_t,
@@ -1679,6 +1686,9 @@ static void loom_canonicalizer_merge_result(
   target->types_changed |= source->types_changed;
   target->boundary_maybe_changed |= source->boundary_maybe_changed;
   target->ops_modified += source->ops_modified;
+  target->type_propagation_conflicts += source->type_propagation_conflicts;
+  target->type_propagation_rejection_cache_hits +=
+      source->type_propagation_rejection_cache_hits;
 }
 
 iree_status_t loom_canonicalizer_initialize(
@@ -1730,6 +1740,9 @@ typedef struct loom_canonicalize_rewrite_state_t {
   // Table-driven type propagator for this region run.
   loom_type_propagator_t* type_propagator;
 
+  // Cumulative type propagation activity captured before region cleanup.
+  loom_type_propagator_statistics_t type_propagator_statistics;
+
   // Borrowed whole-module owner permitting callable boundary type changes.
   loom_type_propagator_boundary_callback_t refine_boundary;
 
@@ -1762,6 +1775,8 @@ static void loom_canonicalize_cleanup_region(
     void* user_data, loom_greedy_rewrite_driver_t* driver) {
   loom_canonicalize_rewrite_state_t* state =
       (loom_canonicalize_rewrite_state_t*)user_data;
+  state->type_propagator_statistics =
+      loom_type_propagator_statistics(state->type_propagator);
   loom_type_propagator_deinitialize(state->type_propagator);
   state->type_propagator = NULL;
   state->expression_context_initialized = false;
@@ -1782,6 +1797,7 @@ static iree_status_t loom_canonicalize_before_worklist(
     bool* out_changed) {
   loom_canonicalize_rewrite_state_t* state =
       (loom_canonicalize_rewrite_state_t*)user_data;
+  loom_type_propagator_begin_iteration(state->type_propagator);
   driver->rewriter.flags = 0;
   return loom_canonicalize_materialize_branch_edge_facts_in_region(
       &driver->rewriter, &state->expression_context.condition_query, region,
@@ -1962,6 +1978,12 @@ static iree_status_t loom_canonicalizer_run_precomputed_region(
       &rewrite_options, &callbacks, &rewrite_result);
   if (iree_status_is_ok(status)) {
     loom_canonicalizer_import_greedy_result(&rewrite_result, out_result);
+    if (out_result) {
+      out_result->type_propagation_conflicts =
+          (int64_t)state.type_propagator_statistics.conflict_count;
+      out_result->type_propagation_rejection_cache_hits =
+          (int64_t)state.type_propagator_statistics.rejection_cache_hit_count;
+    }
   }
   return status;
 }
@@ -2124,6 +2146,9 @@ iree_status_t loom_canonicalize_run(loom_pass_t* pass, loom_module_t* module,
     loom_canonicalize_statistics_t* statistics =
         loom_canonicalize_statistics(pass);
     statistics->ops_modified += result.ops_modified;
+    statistics->type_propagation_conflicts += result.type_propagation_conflicts;
+    statistics->type_propagation_rejection_cache_hits +=
+        result.type_propagation_rejection_cache_hits;
   }
   loom_canonicalizer_deinitialize(&canonicalizer);
   return status;

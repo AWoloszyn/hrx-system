@@ -11,6 +11,19 @@ iree_add_all_subdirs()
 
 loom_cc_test(
   NAME
+    builders_test
+  SRCS
+    "builders_test.cc"
+  DEPS
+    ::scf
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+)
+
+loom_cc_test(
+  NAME
     forwarding_equivalence_test
   SRCS
     "forwarding_equivalence_test.cc"
@@ -68,6 +81,7 @@ loom_generated_cc_library(
     loom::ir
     loom::ir::facts
     loom::ops::op_defs
+    loom::rewrite::remap
     loom::rewrite::rewriter
     loom::util::fact_table
 )

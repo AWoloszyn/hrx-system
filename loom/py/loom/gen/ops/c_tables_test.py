@@ -69,8 +69,6 @@ from loom.dsl import (
     AttrDef,
     AttrMatchesElementType,
     BitRangeWithinElementWidth,
-    BlockArgCount,
-    BlockArgsMatchTypes,
     Borrow,
     CallLikeInterface,
     CallLikeKind,
@@ -2035,13 +2033,13 @@ def test_generate_builders_keep_array_for_multiple_dynamic_fixed_results() -> No
     assert "result_types_storage" not in builders_c
 
 
-def test_generate_builders_derive_loop_results_from_iter_args() -> None:
+def test_generate_builders_infer_loop_count_with_explicit_type_scheme() -> None:
     op = _make_counted_loop_op()
 
     ops_h = generate_ops_h("test", 0, [op])
     builders_c = generate_builders_c("test", [op])
 
-    assert "const loom_type_t* result_types" not in ops_h
+    assert "const loom_type_t* result_types" in ops_h
     assert "iree_host_size_t result_count" not in ops_h
     assert "(uint16_t)iter_args_count" in builders_c
     assert "loom_module_value_type(builder->module, iter_args[_i])" in builders_c
@@ -2938,12 +2936,8 @@ def _make_condition_loop_op(*, constraints: list[Constraint]) -> Op:
 def _condition_loop_constraints() -> list[Constraint]:
     return [
         IterArgsMatchResults("iter_args", "results"),
-        BlockArgCount("before", "iter_args"),
-        BlockArgsMatchTypes("before", "iter_args"),
-        BlockArgCount("after", "iter_args"),
-        BlockArgsMatchTypes("after", "iter_args"),
-        ConditionForwardedCountMatchesBlockArgs("before", "after", "iter_args"),
-        ConditionForwardedTypesMatchBlockArgs("before", "after", "iter_args"),
+        ConditionForwardedCountMatchesBlockArgs("before", "after", "results"),
+        ConditionForwardedTypesMatchBlockArgs("before", "after", "results"),
         YieldCountMatchesResults("after", "results"),
         YieldTypesMatchResults("after", "results"),
     ]
@@ -2978,7 +2972,7 @@ def test_generate_tables_emits_condition_loop_like_interface() -> None:
 
 def test_generate_tables_rejects_incomplete_condition_loop_contract() -> None:
     constraints = _condition_loop_constraints()
-    constraints.pop(5)
+    constraints.pop(1)
     op = _make_condition_loop_op(constraints=constraints)
 
     with _raises_value_error(

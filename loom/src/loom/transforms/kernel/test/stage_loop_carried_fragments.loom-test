@@ -593,3 +593,42 @@ COMPILE-REPORT: source_low_transform[2] function=stage_fragment_loop_chain sourc
 COMPILE-REPORT: source_low_transform[3] function=stage_fragment_loop_chain source_op=scf.for transform=stage-loop-carried-fragments outcome=selected reason=staged_workgroup_memory candidates=1 selected=1 removed_loop_carried=1 removed_payload_registers=8 shape=16x16 workgroup_bytes=1024 inserted_loads=2 inserted_stores=2 barriers=2
 COMPILE-REPORT: source_low_transform[4] function=stage_nested_fragment_loops source_op=scf.for transform=stage-loop-carried-fragments outcome=selected reason=staged_workgroup_memory candidates=1 selected=1 removed_loop_carried=1 removed_payload_registers=8 shape=16x16 workgroup_bytes=1024 inserted_loads=2 inserted_stores=2 barriers=2
 COMPILE-REPORT: source_low_transform[5] function=stage_nested_fragment_loops source_op=scf.for transform=stage-loop-carried-fragments outcome=selected reason=staged_workgroup_memory candidates=1 selected=1 removed_loop_carried=1 removed_payload_registers=8 shape=16x16 workgroup_bytes=1024 inserted_loads=2 inserted_stores=2 barriers=2
+
+// ====
+// RUN: with-checks pass stage-loop-carried-fragments,dce
+
+test.target<low_core> @target {abi = hal_kernel, subgroup_size = 64}
+
+kernel.def target(@target) @stage_with_dependent_view() {
+  %unit_extent = index.constant 1 : index
+  %workgroup_size = index.constant 64 : index
+  kernel.launch.config workgroups(%unit_extent, %unit_extent, %unit_extent) workgroup_size(%workgroup_size, %unit_extent, %unit_extent) : index
+} launch(%storage: buffer, %base: offset, %initial_rows: index, %lhs_values: vector<16xbf16>, %rhs_values: vector<16xbf16>, %accumulator: vector<8xf32>) {
+  %loop_begin = index.constant 0 : index
+  %loop_step = index.constant 1 : index
+  %tile_count = index.constant 4 : index
+  %m = index.constant 16 : index
+  %n = index.constant 16 : index
+  %k = index.constant 16 : index
+  %layout = encoding.layout.dense : encoding<layout>
+  %initial_view = buffer.view %storage[%base] : buffer -> view<[%initial_rows]x4xi32, %layout>
+  %lhs = vector.fragment<lhs> %lhs_values shape [%m, %k] : vector<16xbf16>
+  %rhs = vector.fragment<rhs> %rhs_values shape [%k, %n] : vector<16xbf16>
+  %init = vector.fragment<init> %accumulator shape [%m, %n] : vector<8xf32>
+  %rows, %view, %result = scf.for %tile = [%loop_begin to %tile_count step %loop_step](%body_rows = %initial_rows : index, %body_view = %initial_view : view<[%initial_rows]x4xi32, %layout>, %acc = %init : vector<8xf32>) -> (index, view<[%rows]x4xi32, %layout>, vector<8xf32>) {
+    test.use %body_view : view<[%body_rows]x4xi32, %layout>
+    %next_rows = index.sub %body_rows, %loop_step : index
+    %next_view = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+    %next = vector.mma %lhs, %rhs, %acc : vector<16xbf16>, vector<16xbf16>, vector<8xf32>
+    scf.yield %next_rows, %next_view, %next : index, view<[%next_rows]x4xi32, %layout>, vector<8xf32>
+  }
+  test.use %view, %result : view<[%rows]x4xi32, %layout>, vector<8xf32>
+  kernel.return
+}
+
+// ----
+CHECK: %rows, %view = scf.for *(%* = %initial_rows : index, %* = %initial_view : view<[%initial_rows]x4xi32, %layout>) -> (index, view<[%rows]x4xi32, %layout>) {
+CHECK: test.use * : view<[*]x4xi32, %layout>
+CHECK: scf.yield %next_rows, %next_view : index, view<[%next_rows]x4xi32, %layout>
+CHECK: %result = vector.fragment.load<init> * -> vector<8xf32>
+CHECK: test.use %view, %result : view<[%rows]x4xi32, %layout>, vector<8xf32>

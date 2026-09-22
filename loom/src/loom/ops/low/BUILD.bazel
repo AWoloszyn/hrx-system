@@ -70,6 +70,7 @@ loom_generated_cc_library(
         "//loom/src/loom/ops:storage_facts",
         "//loom/src/loom/ops:successor_verify",
         "//loom/src/loom/ops/target",
+        "//loom/src/loom/rewrite:remap",
         "//loom/src/loom/rewrite:rewriter",
         "//loom/src/loom/target:registers",
         "//loom/src/loom/target:types",

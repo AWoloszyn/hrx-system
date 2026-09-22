@@ -1,0 +1,26 @@
+// RUN: with-checks emit source-low output=low
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @wide_branch_carrier(%initial: offset, %iteration_count: i32) -> (offset) {
+  %c0 = scalar.constant 0 : i32
+  %c1 = scalar.constant 1 : i32
+  %stride = index.constant 1 : offset
+  cfg.br ^header(%iteration_count: i32, %initial: offset)
+^header(%remaining: i32, %value: offset):
+  %next_value = index.sub %value, %stride : offset
+  %more = scalar.cmpi sgt, %remaining, %c0 : i32
+  cfg.cond_br %more, ^body, ^exit
+^body:
+  %next_remaining = scalar.subi %remaining, %c1 : i32
+  cfg.br ^header(%next_remaining: i32, %next_value: offset)
+^exit:
+  func.return %value : offset
+}
+
+// ----
+CHECK: low.func.def * @wide_branch_carrier(%initial: reg<amdgpu.sgpr x2>, * -> (reg<amdgpu.vgpr x2>) *
+CHECK: low.br ^header(*, *: reg<amdgpu.vgpr x2>)
+CHECK: ^header(*, %value: reg<amdgpu.vgpr x2>):
+CHECK: %next_value = concat(* -> reg<amdgpu.vgpr x2>
+CHECK: low.br ^header(*, %next_value: reg<amdgpu.vgpr x2>)

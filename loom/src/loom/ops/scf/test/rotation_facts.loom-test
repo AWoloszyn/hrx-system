@@ -147,6 +147,8 @@ func.def @independent_cycles(%count: index) -> (i64) {
 
 // ====
 
+// RUN: with-checks pass canonicalize
+
 // An arithmetic update breaks the forwarding cycle and still requires widening.
 func.def @changing_offsets(%count: index) -> (i64) {
   %begin = index.constant 0 : index
@@ -168,24 +170,10 @@ func.def @changing_offsets(%count: index) -> (i64) {
 }
 
 // ----
-func.def @changing_offsets(%count: index) -> (i64) {
-  %begin = index.constant 0 : index
-  %step = index.constant 1 : index
-  %seed0 = index.constant 0 : offset
-  %seed1 = index.constant 128 : offset
-  %seed2 = index.constant 256 : offset
-  %seed3 = index.constant 384 : offset
-  %last0, %last1, %last2, %last3 = scf.for %iv = [%begin to %count step %step](%slot0 = %seed0 : offset, %slot1 = %seed1 : offset, %slot2 = %seed2 : offset, %slot3 = %seed3 : offset) -> (offset, offset, offset, offset) {
-    %check0_lower = scalar.constant -9223372036854775808 : i64
-    %check0_upper = scalar.constant 9223372036854775807 : i64
-    %check0_divisor = scalar.constant 1 : i64
-    test.use %check0_lower, %check0_upper, %check0_divisor : i64, i64, i64
-    %incremented = index.add %slot0, %seed1 : offset
-    scf.yield %slot1, %slot2, %slot3, %incremented : offset, offset, offset, offset
-  }
-  %result = scalar.constant 9223372036854775807 : i64
-  func.return %result : i64
-}
+CHECK: %check0_lower = scalar.constant -9223372036854775808 : i64
+CHECK: %check0_upper = scalar.constant 9223372036854775807 : i64
+CHECK: %check0_divisor = scalar.constant 128 : i64
+CHECK: %result = scalar.constant 9223372036854775807 : i64
 
 // ====
 

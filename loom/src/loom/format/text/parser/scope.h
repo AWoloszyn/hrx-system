@@ -171,6 +171,19 @@ iree_status_t loom_parser_add_unresolved_placeholder(loom_parser_t* parser,
                                                      loom_value_id_t value_id,
                                                      loom_token_t name_token);
 
+// Binds an entry argument before parsing its type, resolving a forward
+// placeholder created within the current block_arg_scope when present.
+iree_status_t loom_parser_bind_block_arg(loom_parser_t* parser,
+                                         loom_token_t name_token,
+                                         loom_value_id_t* out_value_id);
+
+// Diagnoses unresolved peer arguments and ends the active argument list.
+iree_status_t loom_parser_finish_block_arg_scope(loom_parser_t* parser);
+
+// Ends the active argument list after another parsing error owns the
+// diagnostic.
+void loom_parser_discard_block_arg_scope(loom_parser_t* parser);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

@@ -40,6 +40,15 @@ typedef struct loom_cfg_condition_truth_t {
   loom_condition_relation_set_id_t values[2];
 } loom_cfg_condition_truth_t;
 
+typedef struct loom_cfg_condition_matrix_state_t {
+  // Candidate rows, possibly shared with another propagation state.
+  loom_condition_relation_matrix_t matrix;
+
+  // True when another state may observe the matrix storage. The rows must be
+  // copied before modification.
+  bool shared;
+} loom_cfg_condition_matrix_state_t;
+
 typedef struct loom_cfg_condition_edge_state_t {
   // Borrowed stable CFG edge metadata.
   const loom_cfg_edge_info_t* cfg_edge;
@@ -63,7 +72,7 @@ typedef struct loom_cfg_condition_edge_state_t {
   loom_cfg_condition_truth_t truth_assertions;
 
   // Current projected contribution for a join predecessor.
-  loom_condition_relation_matrix_t contribution;
+  loom_cfg_condition_matrix_state_t contribution;
 
   // Current exact-truth contribution for a join predecessor.
   loom_cfg_condition_truth_t truth_contribution;
@@ -95,7 +104,7 @@ typedef struct loom_cfg_condition_edge_state_t {
 
 typedef struct loom_cfg_condition_block_state_t {
   // Current monotone integer-relation facts.
-  loom_condition_relation_matrix_t integer_relations;
+  loom_cfg_condition_matrix_state_t integer_relations;
 
   // Current monotone exact-Boolean facts.
   loom_cfg_condition_truth_t truth;
@@ -147,6 +156,9 @@ typedef struct loom_cfg_condition_event_t {
 } loom_cfg_condition_event_t;
 
 typedef struct loom_cfg_condition_event_queue_t {
+  // Scratch arena owning dynamic event storage.
+  iree_arena_allocator_t* arena;
+
   // Prefix sum mapping block-local rows to global row ordinals.
   uint32_t* block_row_offsets;
 
@@ -156,20 +168,20 @@ typedef struct loom_cfg_condition_event_queue_t {
   // Per-block masks of queued Boolean outcomes.
   uint8_t* boolean_queued_masks;
 
-  // Fixed ring storage covering the complete event universe.
+  // Contiguous storage for currently queued events.
   loom_cfg_condition_event_t* events;
 
   // Number of entries in block_row_offsets minus one.
   uint16_t block_count;
 
-  // Ring capacity.
-  uint32_t capacity;
+  // Allocated entry count in events.
+  iree_host_size_t capacity;
 
-  // Ring head ordinal.
-  uint32_t head;
+  // First queued event in events.
+  iree_host_size_t head;
 
   // Number of queued events.
-  uint32_t count;
+  iree_host_size_t count;
 } loom_cfg_condition_event_queue_t;
 
 typedef struct loom_cfg_condition_relation_solver_t {
@@ -338,6 +350,7 @@ static iree_status_t loom_cfg_condition_event_queue_initialize(
     iree_arena_allocator_t* arena,
     loom_cfg_condition_event_queue_t* out_queue) {
   *out_queue = (loom_cfg_condition_event_queue_t){
+      .arena = arena,
       .block_count = block_count,
   };
   IREE_RETURN_IF_ERROR(
@@ -347,7 +360,7 @@ static iree_status_t loom_cfg_condition_event_queue_initialize(
   uint64_t total_row_count = 0;
   out_queue->block_row_offsets[0] = 0;
   for (uint16_t block = 0; block < block_count; ++block) {
-    total_row_count += blocks[block].integer_relations.row_count;
+    total_row_count += blocks[block].integer_relations.matrix.row_count;
     if (total_row_count > UINT32_MAX) {
       return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                               "condition event rows exceed uint32_t");
@@ -368,60 +381,62 @@ static iree_status_t loom_cfg_condition_event_queue_initialize(
         (void**)&out_queue->boolean_queued_masks));
     memset(out_queue->boolean_queued_masks, 0, block_count);
   }
-  const uint64_t event_capacity = total_row_count * 3 + block_count * 2;
-  if (event_capacity > UINT32_MAX) {
-    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                            "condition event universe exceeds uint32_t");
-  }
-  out_queue->capacity = (uint32_t)event_capacity;
-  if (event_capacity != 0) {
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        arena, (iree_host_size_t)event_capacity, sizeof(*out_queue->events),
-        (void**)&out_queue->events));
-  }
   return iree_ok_status();
 }
 
-static void loom_cfg_condition_event_queue_append(
+static iree_status_t loom_cfg_condition_event_queue_append(
     loom_cfg_condition_event_queue_t* queue, loom_cfg_condition_event_t event) {
-  IREE_ASSERT_LT(queue->count, queue->capacity);
-  const uint32_t tail = (queue->head + queue->count) % queue->capacity;
-  queue->events[tail] = event;
+  if (queue->head + queue->count == queue->capacity && queue->head != 0) {
+    memmove(queue->events, &queue->events[queue->head],
+            queue->count * sizeof(*queue->events));
+    queue->head = 0;
+  }
+  if (queue->count == queue->capacity) {
+    const iree_host_size_t minimum_capacity =
+        iree_max((iree_host_size_t)64, queue->count + 1);
+    IREE_RETURN_IF_ERROR(iree_arena_grow_array(
+        queue->arena, queue->count, minimum_capacity, sizeof(*queue->events),
+        &queue->capacity, (void**)&queue->events));
+  }
+  queue->events[queue->head + queue->count] = event;
   ++queue->count;
+  return iree_ok_status();
 }
 
-static void loom_cfg_condition_event_queue_enqueue_integer(
+static iree_status_t loom_cfg_condition_event_queue_enqueue_integer(
     loom_cfg_condition_event_queue_t* queue, uint16_t block, uint32_t row,
     loom_condition_relation_outcome_t outcome) {
   const uint32_t global_row = queue->block_row_offsets[block] + row;
   const uint8_t bit = (uint8_t)(1u << outcome);
   if ((queue->integer_queued_masks[global_row] & bit) != 0) {
-    return;
+    return iree_ok_status();
   }
-  queue->integer_queued_masks[global_row] |= bit;
-  loom_cfg_condition_event_queue_append(
+  IREE_RETURN_IF_ERROR(loom_cfg_condition_event_queue_append(
       queue, (loom_cfg_condition_event_t){
                  .row = row,
                  .block = block,
                  .outcome = outcome,
                  .kind = LOOM_CFG_CONDITION_EVENT_INTEGER,
-             });
+             }));
+  queue->integer_queued_masks[global_row] |= bit;
+  return iree_ok_status();
 }
 
-static void loom_cfg_condition_event_queue_enqueue_boolean(
+static iree_status_t loom_cfg_condition_event_queue_enqueue_boolean(
     loom_cfg_condition_event_queue_t* queue, uint16_t block, bool value) {
   const uint8_t outcome = value ? 1 : 0;
   const uint8_t bit = (uint8_t)(1u << outcome);
   if ((queue->boolean_queued_masks[block] & bit) != 0) {
-    return;
+    return iree_ok_status();
   }
-  queue->boolean_queued_masks[block] |= bit;
-  loom_cfg_condition_event_queue_append(
+  IREE_RETURN_IF_ERROR(loom_cfg_condition_event_queue_append(
       queue, (loom_cfg_condition_event_t){
                  .block = block,
                  .outcome = outcome,
                  .kind = LOOM_CFG_CONDITION_EVENT_BOOLEAN,
-             });
+             }));
+  queue->boolean_queued_masks[block] |= bit;
+  return iree_ok_status();
 }
 
 static bool loom_cfg_condition_event_queue_pop(
@@ -431,8 +446,11 @@ static bool loom_cfg_condition_event_queue_pop(
     return false;
   }
   const loom_cfg_condition_event_t event = queue->events[queue->head];
-  queue->head = (queue->head + 1) % queue->capacity;
+  ++queue->head;
   --queue->count;
+  if (queue->count == 0) {
+    queue->head = 0;
+  }
   const uint8_t bit = (uint8_t)(1u << event.outcome);
   if (event.kind == LOOM_CFG_CONDITION_EVENT_INTEGER) {
     const uint32_t global_row =
@@ -1014,6 +1032,20 @@ static iree_status_t loom_cfg_condition_relation_drop_contradictions(
   return iree_ok_status();
 }
 
+static iree_status_t loom_cfg_condition_matrix_make_writable(
+    loom_cfg_condition_relation_solver_t* solver,
+    loom_cfg_condition_matrix_state_t* state) {
+  if (!state->shared) {
+    return iree_ok_status();
+  }
+  loom_condition_relation_matrix_t matrix = {0};
+  IREE_RETURN_IF_ERROR(loom_condition_relation_matrix_clone(
+      &state->matrix, solver->scratch_arena, &matrix));
+  state->matrix = matrix;
+  state->shared = false;
+  return iree_ok_status();
+}
+
 static iree_status_t loom_cfg_condition_truth_normalize(
     loom_cfg_condition_relation_solver_t* solver,
     loom_cfg_condition_truth_t* truth) {
@@ -1314,23 +1346,26 @@ static iree_status_t loom_cfg_condition_relation_matrix_projection_is_identity(
 static iree_status_t loom_cfg_condition_relation_project_matrix(
     loom_cfg_condition_relation_solver_t* solver,
     const loom_cfg_condition_edge_state_t* edge,
-    const loom_condition_relation_matrix_t* source,
-    loom_condition_relation_matrix_t* out_matrix) {
+    loom_cfg_condition_matrix_state_t* source,
+    loom_cfg_condition_matrix_state_t* out_state) {
+  *out_state = (loom_cfg_condition_matrix_state_t){0};
   bool is_identity = false;
   IREE_RETURN_IF_ERROR(
       loom_cfg_condition_relation_matrix_projection_is_identity(
-          solver, edge, source, &is_identity));
+          solver, edge, &source->matrix, &is_identity));
   if (is_identity) {
-    // Propagation mutates matrices independently, so retain distinct storage.
-    return loom_condition_relation_matrix_clone(source, solver->scratch_arena,
-                                                out_matrix);
+    out_state->matrix = source->matrix;
+    source->shared = true;
+    out_state->shared = true;
+    return iree_ok_status();
   }
   loom_condition_relation_matrix_builder_reset(&solver->matrix_builder);
   IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_project_matrix_into_builder(
-      solver, edge, source));
+      solver, edge, &source->matrix));
   IREE_RETURN_IF_ERROR(
-      loom_cfg_condition_relation_build_matrix(solver, out_matrix));
-  return loom_cfg_condition_relation_drop_contradictions(solver, out_matrix);
+      loom_cfg_condition_relation_build_matrix(solver, &out_state->matrix));
+  return loom_cfg_condition_relation_drop_contradictions(solver,
+                                                         &out_state->matrix);
 }
 
 static iree_status_t loom_cfg_condition_relation_project_truth(
@@ -1418,8 +1453,11 @@ loom_cfg_condition_relation_build_edges(
     }
     IREE_RETURN_IF_ERROR(
         loom_cfg_condition_truth_normalize(solver, &raw_truth));
+    loom_cfg_condition_matrix_state_t raw_state = {.matrix = raw_relations};
+    loom_cfg_condition_matrix_state_t assertions = {0};
     IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_project_matrix(
-        solver, edge, &raw_relations, &edge->assertions));
+        solver, edge, &raw_state, &assertions));
+    edge->assertions = assertions.matrix;
     IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_project_truth(
         solver, edge, &raw_truth, &edge->truth_assertions));
   }
@@ -1429,8 +1467,9 @@ loom_cfg_condition_relation_build_edges(
 static iree_status_t loom_cfg_condition_relation_project_contribution(
     loom_cfg_condition_relation_solver_t* solver,
     const loom_cfg_condition_edge_state_t* edge,
-    const loom_condition_relation_matrix_t* source,
-    loom_condition_relation_matrix_t* out_contribution) {
+    loom_cfg_condition_matrix_state_t* source,
+    loom_cfg_condition_matrix_state_t* out_contribution) {
+  *out_contribution = (loom_cfg_condition_matrix_state_t){0};
   if (edge->assertions.row_count == 0) {
     return loom_cfg_condition_relation_project_matrix(solver, edge, source,
                                                       out_contribution);
@@ -1439,11 +1478,11 @@ static iree_status_t loom_cfg_condition_relation_project_contribution(
   IREE_RETURN_IF_ERROR(loom_condition_relation_matrix_builder_add_matrix(
       &solver->matrix_builder, &edge->assertions));
   IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_project_matrix_into_builder(
-      solver, edge, source));
-  IREE_RETURN_IF_ERROR(
-      loom_cfg_condition_relation_build_matrix(solver, out_contribution));
-  return loom_cfg_condition_relation_drop_contradictions(solver,
-                                                         out_contribution);
+      solver, edge, &source->matrix));
+  IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_build_matrix(
+      solver, &out_contribution->matrix));
+  return loom_cfg_condition_relation_drop_contradictions(
+      solver, &out_contribution->matrix);
 }
 
 static iree_status_t loom_cfg_condition_relation_project_truth_contribution(
@@ -1462,6 +1501,51 @@ static iree_status_t loom_cfg_condition_relation_project_truth_contribution(
   *out_contribution = edge->truth_assertions;
   return loom_cfg_condition_truth_union_into(solver, out_contribution,
                                              &projected);
+}
+
+static iree_status_t loom_cfg_condition_relation_intersect_block(
+    loom_cfg_condition_relation_solver_t* solver, uint16_t block,
+    const loom_condition_relation_matrix_t* contribution,
+    loom_cfg_condition_event_queue_t* event_queue) {
+  loom_cfg_condition_matrix_state_t* facts =
+      &solver->blocks[block].integer_relations;
+  uint32_t contribution_position = 0;
+  for (uint32_t row_index = 0; row_index < facts->matrix.row_count;
+       ++row_index) {
+    const loom_condition_relation_matrix_row_t* row =
+        &facts->matrix.rows[row_index];
+    while (contribution_position < contribution->row_count &&
+           contribution->rows[contribution_position].left < row->left) {
+      ++contribution_position;
+    }
+    const loom_condition_relation_matrix_row_t* contribution_row =
+        contribution_position < contribution->row_count &&
+                contribution->rows[contribution_position].left == row->left
+            ? &contribution->rows[contribution_position]
+            : NULL;
+    for (loom_condition_relation_outcome_t outcome = 0;
+         outcome < LOOM_CONDITION_RELATION_OUTCOME_COUNT; ++outcome) {
+      const loom_condition_relation_set_id_t incoming =
+          contribution_row ? contribution_row->excluded[outcome]
+                           : LOOM_CONDITION_RELATION_SET_EMPTY;
+      loom_condition_relation_set_id_t intersection =
+          LOOM_CONDITION_RELATION_SET_EMPTY;
+      IREE_RETURN_IF_ERROR(loom_condition_relation_set_builder_intersection(
+          solver->set_builder, row->excluded[outcome], incoming,
+          &intersection));
+      if (intersection == row->excluded[outcome]) {
+        continue;
+      }
+      IREE_RETURN_IF_ERROR(
+          loom_cfg_condition_matrix_make_writable(solver, facts));
+      facts->matrix.rows[row_index].excluded[outcome] = intersection;
+      if (event_queue != NULL) {
+        IREE_RETURN_IF_ERROR(loom_cfg_condition_event_queue_enqueue_integer(
+            event_queue, block, row_index, outcome));
+      }
+    }
+  }
+  return iree_ok_status();
 }
 
 #if IREE_HAVE_ATTRIBUTE(minsize)
@@ -1502,7 +1586,7 @@ loom_cfg_condition_relation_initialize_candidates(
       if (!edge->active || !initialized[edge->source]) {
         continue;
       }
-      loom_condition_relation_matrix_t contribution = {0};
+      loom_cfg_condition_matrix_state_t contribution = {0};
       loom_cfg_condition_truth_t truth_contribution = {0};
       IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_project_contribution(
           solver, edge, &solver->blocks[edge->source].integer_relations,
@@ -1522,15 +1606,14 @@ loom_cfg_condition_relation_initialize_candidates(
       edge->contribution = contribution;
       edge->truth_contribution = truth_contribution;
       if (first) {
-        IREE_RETURN_IF_ERROR(loom_condition_relation_matrix_clone(
-            &edge->contribution, solver->scratch_arena,
-            &solver->blocks[block].integer_relations));
+        solver->blocks[block].integer_relations = contribution;
+        edge->contribution.shared = true;
+        solver->blocks[block].integer_relations.shared = true;
         solver->blocks[block].truth = edge->truth_contribution;
         first = false;
       } else {
-        IREE_RETURN_IF_ERROR(loom_condition_relation_matrix_intersect_into(
-            solver->set_builder, &solver->blocks[block].integer_relations,
-            &edge->contribution));
+        IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_intersect_block(
+            solver, block, &edge->contribution.matrix, NULL));
         IREE_RETURN_IF_ERROR(loom_cfg_condition_truth_intersect_into(
             solver, &solver->blocks[block].truth, &edge->truth_contribution));
       }
@@ -1556,44 +1639,6 @@ loom_cfg_condition_relation_initialize_candidates(
   return iree_ok_status();
 }
 
-static iree_status_t loom_cfg_condition_relation_intersect_block(
-    loom_cfg_condition_relation_solver_t* solver, uint16_t block,
-    const loom_condition_relation_matrix_t* contribution) {
-  loom_condition_relation_matrix_t* facts =
-      &solver->blocks[block].integer_relations;
-  uint32_t contribution_position = 0;
-  for (uint32_t row_index = 0; row_index < facts->row_count; ++row_index) {
-    loom_condition_relation_matrix_row_t* row = &facts->rows[row_index];
-    while (contribution_position < contribution->row_count &&
-           contribution->rows[contribution_position].left < row->left) {
-      ++contribution_position;
-    }
-    const loom_condition_relation_matrix_row_t* contribution_row =
-        contribution_position < contribution->row_count &&
-                contribution->rows[contribution_position].left == row->left
-            ? &contribution->rows[contribution_position]
-            : NULL;
-    for (loom_condition_relation_outcome_t outcome = 0;
-         outcome < LOOM_CONDITION_RELATION_OUTCOME_COUNT; ++outcome) {
-      const loom_condition_relation_set_id_t incoming =
-          contribution_row ? contribution_row->excluded[outcome]
-                           : LOOM_CONDITION_RELATION_SET_EMPTY;
-      loom_condition_relation_set_id_t intersection =
-          LOOM_CONDITION_RELATION_SET_EMPTY;
-      IREE_RETURN_IF_ERROR(loom_condition_relation_set_builder_intersection(
-          solver->set_builder, row->excluded[outcome], incoming,
-          &intersection));
-      if (intersection == row->excluded[outcome]) {
-        continue;
-      }
-      row->excluded[outcome] = intersection;
-      loom_cfg_condition_event_queue_enqueue_integer(&solver->pending, block,
-                                                     row_index, outcome);
-    }
-  }
-  return iree_ok_status();
-}
-
 static iree_status_t loom_cfg_condition_relation_intersect_block_truth(
     loom_cfg_condition_relation_solver_t* solver, uint16_t block,
     const loom_cfg_condition_truth_t* contribution) {
@@ -1608,8 +1653,8 @@ static iree_status_t loom_cfg_condition_relation_intersect_block_truth(
       continue;
     }
     truth->values[value] = intersection;
-    loom_cfg_condition_event_queue_enqueue_boolean(&solver->pending, block,
-                                                   value != 0);
+    IREE_RETURN_IF_ERROR(loom_cfg_condition_event_queue_enqueue_boolean(
+        &solver->pending, block, value != 0));
   }
   return iree_ok_status();
 }
@@ -1627,7 +1672,7 @@ static iree_status_t loom_cfg_condition_relation_initialize_meets(
         continue;
       }
       IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_intersect_block(
-          solver, block, &edge->contribution));
+          solver, block, &edge->contribution.matrix, &solver->pending));
       IREE_RETURN_IF_ERROR(loom_cfg_condition_relation_intersect_block_truth(
           solver, block, &edge->truth_contribution));
     }
@@ -1650,10 +1695,14 @@ static iree_status_t loom_cfg_condition_relation_update_contribution_row(
     loom_condition_relation_outcome_t outcome,
     loom_cfg_condition_operand_t target_left,
     loom_condition_relation_set_id_t candidate) {
-  loom_condition_relation_matrix_t* target_facts =
+  loom_cfg_condition_matrix_state_t* target_facts =
       &solver->blocks[edge->target].integer_relations;
-  loom_condition_relation_matrix_row_t* target_row =
-      loom_condition_relation_matrix_find(target_facts, target_left);
+  const loom_condition_relation_matrix_row_t* target_row =
+      loom_condition_relation_matrix_find_const(&target_facts->matrix,
+                                                target_left);
+  const uint32_t target_row_index =
+      target_row != NULL ? (uint32_t)(target_row - target_facts->matrix.rows)
+                         : 0;
   if (edge->shares_target_facts) {
     if (target_row == NULL) {
       return iree_ok_status();
@@ -1666,18 +1715,22 @@ static iree_status_t loom_cfg_condition_relation_update_contribution_row(
     if (intersection == target_row->excluded[outcome]) {
       return iree_ok_status();
     }
-    target_row->excluded[outcome] = intersection;
-    loom_cfg_condition_event_queue_enqueue_integer(
-        &solver->pending, edge->target,
-        (uint32_t)(target_row - target_facts->rows), outcome);
-    return iree_ok_status();
+    IREE_RETURN_IF_ERROR(
+        loom_cfg_condition_matrix_make_writable(solver, target_facts));
+    target_facts->matrix.rows[target_row_index].excluded[outcome] =
+        intersection;
+    return loom_cfg_condition_event_queue_enqueue_integer(
+        &solver->pending, edge->target, target_row_index, outcome);
   }
 
-  loom_condition_relation_matrix_row_t* contribution_row =
-      loom_condition_relation_matrix_find(&edge->contribution, target_left);
+  const loom_condition_relation_matrix_row_t* contribution_row =
+      loom_condition_relation_matrix_find_const(&edge->contribution.matrix,
+                                                target_left);
   if (contribution_row == NULL) {
     return iree_ok_status();
   }
+  const uint32_t contribution_row_index =
+      (uint32_t)(contribution_row - edge->contribution.matrix.rows);
   loom_condition_relation_set_id_t contribution =
       LOOM_CONDITION_RELATION_SET_EMPTY;
   IREE_RETURN_IF_ERROR(loom_condition_relation_set_builder_intersection(
@@ -1686,7 +1739,10 @@ static iree_status_t loom_cfg_condition_relation_update_contribution_row(
   if (contribution == contribution_row->excluded[outcome]) {
     return iree_ok_status();
   }
-  contribution_row->excluded[outcome] = contribution;
+  IREE_RETURN_IF_ERROR(
+      loom_cfg_condition_matrix_make_writable(solver, &edge->contribution));
+  edge->contribution.matrix.rows[contribution_row_index].excluded[outcome] =
+      contribution;
   if (target_row == NULL) {
     return iree_ok_status();
   }
@@ -1697,11 +1753,11 @@ static iree_status_t loom_cfg_condition_relation_update_contribution_row(
   if (target == target_row->excluded[outcome]) {
     return iree_ok_status();
   }
-  target_row->excluded[outcome] = target;
-  loom_cfg_condition_event_queue_enqueue_integer(
-      &solver->pending, edge->target,
-      (uint32_t)(target_row - target_facts->rows), outcome);
-  return iree_ok_status();
+  IREE_RETURN_IF_ERROR(
+      loom_cfg_condition_matrix_make_writable(solver, target_facts));
+  target_facts->matrix.rows[target_row_index].excluded[outcome] = target;
+  return loom_cfg_condition_event_queue_enqueue_integer(
+      &solver->pending, edge->target, target_row_index, outcome);
 }
 
 static iree_status_t loom_cfg_condition_relation_propagate_integer(
@@ -1709,7 +1765,7 @@ static iree_status_t loom_cfg_condition_relation_propagate_integer(
     loom_cfg_condition_edge_state_t* edge,
     const loom_cfg_condition_event_t* event) {
   const loom_condition_relation_matrix_t* source =
-      &solver->blocks[event->block].integer_relations;
+      &solver->blocks[event->block].integer_relations.matrix;
   const loom_condition_relation_matrix_row_t* source_row =
       &source->rows[event->row];
   loom_condition_relation_set_id_t projected =
@@ -1765,8 +1821,8 @@ static iree_status_t loom_cfg_condition_relation_propagate_boolean(
         &intersection));
     if (intersection != target_truth->values[event->outcome]) {
       target_truth->values[event->outcome] = intersection;
-      loom_cfg_condition_event_queue_enqueue_boolean(
-          &solver->pending, edge->target, event->outcome != 0);
+      IREE_RETURN_IF_ERROR(loom_cfg_condition_event_queue_enqueue_boolean(
+          &solver->pending, edge->target, event->outcome != 0));
     }
     return iree_ok_status();
   }
@@ -1786,8 +1842,8 @@ static iree_status_t loom_cfg_condition_relation_propagate_boolean(
       &target));
   if (target != target_truth->values[event->outcome]) {
     target_truth->values[event->outcome] = target;
-    loom_cfg_condition_event_queue_enqueue_boolean(
-        &solver->pending, edge->target, event->outcome != 0);
+    IREE_RETURN_IF_ERROR(loom_cfg_condition_event_queue_enqueue_boolean(
+        &solver->pending, edge->target, event->outcome != 0));
   }
   return iree_ok_status();
 }
@@ -1841,7 +1897,7 @@ loom_cfg_condition_relation_publish(
       (void**)&views));
   for (uint32_t block = 0; block < graph->block_count; ++block) {
     views[block] = (loom_cfg_condition_relation_table_builder_view_t){
-        .integer_relations = solver->blocks[block].integer_relations,
+        .integer_relations = solver->blocks[block].integer_relations.matrix,
         .boolean_values = {solver->blocks[block].truth.values[0],
                            solver->blocks[block].truth.values[1]},
     };
@@ -1863,7 +1919,7 @@ loom_cfg_condition_relation_publish(
     } else {
       edge_view_indices[edge_index] = next_view;
       views[next_view++] = (loom_cfg_condition_relation_table_builder_view_t){
-          .integer_relations = edge->contribution,
+          .integer_relations = edge->contribution.matrix,
           .boolean_values = {edge->truth_contribution.values[0],
                              edge->truth_contribution.values[1]},
       };

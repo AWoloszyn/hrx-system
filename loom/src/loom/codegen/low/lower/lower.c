@@ -462,6 +462,7 @@ static iree_status_t loom_low_lower_emit_scf_for(
   IREE_RETURN_IF_ERROR(loom_low_scf_for_build(
       &context->builder, build_flags, signedness, low_lower_bound,
       low_upper_bound, low_step, low_iter_args, iter_args.count,
+      /*result_types=*/NULL,
       /*tied_results=*/NULL,
       /*tied_result_count=*/0, low_unroll_factor, unroll_policy,
       source_op->location, &low_for_op));
@@ -488,7 +489,7 @@ static iree_status_t loom_low_lower_emit_scf_while(
 
   loom_op_t* low_while_op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_scf_while_build(
-      &context->builder, low_iter_args, iter_args.count,
+      &context->builder, low_iter_args, iter_args.count, /*result_types=*/NULL,
       /*tied_results=*/NULL, /*tied_result_count=*/0, source_op->location,
       &low_while_op));
   IREE_RETURN_IF_ERROR(

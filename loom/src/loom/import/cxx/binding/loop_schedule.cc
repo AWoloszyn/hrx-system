@@ -242,8 +242,9 @@ loom_op_t* LoopSchedule::build(loom_builder_t* builder, loom_value_id_t lower,
       schedule_index(unit_, builder, unroll_factor_, unroll_factor, location);
   loom_op_t* op;
   check(loom_scf_for_build(builder, flags_, lower, upper, step, initial.data(),
-                           initial.size(), nullptr, 0, depth, factor,
-                           unroll_policy_, unroll_schedule_, location, &op));
+                           initial.size(), /*result_types=*/nullptr, nullptr, 0,
+                           depth, factor, unroll_policy_, unroll_schedule_,
+                           location, &op));
   return op;
 }
 

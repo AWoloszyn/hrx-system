@@ -361,6 +361,25 @@ loom_condition_relation_matrix_view_find(
                : NULL;
   }
 
+  if (view->encoding == LOOM_CONDITION_RELATION_MATRIX_VIEW_PAGES) {
+    while (begin < end) {
+      const uint32_t middle = begin + (end - begin) / 2;
+      if (view->entries.pages[middle]->first_left <= left) {
+        begin = middle + 1;
+      } else {
+        end = middle;
+      }
+    }
+    if (begin == 0) {
+      return NULL;
+    }
+    const loom_condition_relation_matrix_page_t* page =
+        view->entries.pages[begin - 1];
+    return left <= page->last_left
+               ? loom_condition_relation_matrix_view_find(&page->contents, left)
+               : NULL;
+  }
+
   while (begin < end) {
     const uint32_t middle = begin + (end - begin) / 2;
     if (view->entries.ranges[middle].first_left <= left) {

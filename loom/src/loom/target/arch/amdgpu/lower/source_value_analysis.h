@@ -147,9 +147,12 @@ loom_amdgpu_source_producer_flags_t loom_amdgpu_source_producer_flags(
 bool loom_amdgpu_source_value_facts_prefer_vgpr(
     const loom_module_t* module, const loom_value_fact_table_t* fact_table,
     loom_value_id_t source_value_id);
+// Queries producer-chain VGPR requirements without entering recursive value
+// analysis. |fact_table| may be NULL when only structural requirements are
+// available to the caller.
 bool loom_amdgpu_source_value_directly_prefers_vgpr(
-    const loom_module_t* module, loom_value_id_t source_value_id,
-    loom_value_id_t excluded_value_id);
+    const loom_module_t* module, const loom_value_fact_table_t* fact_table,
+    loom_value_id_t source_value_id, loom_value_id_t excluded_value_id);
 bool loom_amdgpu_op_results_prefer_vgpr(
     const loom_module_t* module, const loom_value_fact_table_t* fact_table,
     const loom_view_region_table_t* view_regions,

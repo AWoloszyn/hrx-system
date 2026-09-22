@@ -157,6 +157,8 @@ enum loom_low_schedule_value_flag_bits_e {
   LOOM_LOW_SCHEDULE_VALUE_FLAG_CANDIDATE_ALIAS_CLAIM = 1u << 3,
   // Value has at least one active incoming pressure alias relation.
   LOOM_LOW_SCHEDULE_VALUE_FLAG_ACTIVE_PRESSURE_ALIAS = 1u << 4,
+  // Value ordinal is present in the pressure state's touched-value list.
+  LOOM_LOW_SCHEDULE_VALUE_FLAG_PRESSURE_TOUCHED = 1u << 5,
 };
 typedef uint16_t loom_low_schedule_value_flags_t;
 

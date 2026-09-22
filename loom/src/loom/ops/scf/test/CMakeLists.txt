@@ -16,6 +16,7 @@ loom_check_test_suite(
     "canonicalize.loom-test"
     "canonicalize_condition_loop.loom-test"
     "convergence_facts.loom-test"
+    "dependent_types.loom-test"
     "facts.loom-test"
     "forwarding_equivalence.loom-test"
     "forwarding_facts.loom-test"

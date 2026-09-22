@@ -1,0 +1,121 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// RUN: roundtrip
+
+// Each body view refers to its carried extent and layout, while the binding
+// annotations describe the initial operands in their enclosing scope.
+func.def @changing_view(%input: buffer, %base: offset, %count: index, %initial_rows: index, %initial_layout: encoding<layout>) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %initial = buffer.view %input[%base] : buffer -> view<[%initial_rows]x4xi32, %initial_layout>
+  %rows, %layout, %view = scf.for %i = [%begin to %count step %step](%body_rows = %initial_rows : index, %body_layout = %initial_layout : encoding<layout>, %body_view = %initial : view<[%initial_rows]x4xi32, %initial_layout>) -> (index, encoding<layout>, view<[%rows]x4xi32, %layout>) {
+    test.use %body_view : view<[%body_rows]x4xi32, %body_layout>
+    %next_rows = index.sub %body_rows, %step : index
+    %next = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %body_layout> -> view<[%next_rows]x4xi32, %body_layout>
+    scf.yield %next_rows, %body_layout, %next : index, encoding<layout>, view<[%next_rows]x4xi32, %body_layout>
+  }
+  test.use %view : view<[%rows]x4xi32, %layout>
+  func.return
+}
+
+// ====
+
+// Two extents initialized with the same value have independent recurring
+// identities. A view may also precede the extent it depends on in the tuple.
+func.def @duplicate_initial_values(%input: buffer, %base: offset, %count: index, %initial_size: index) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %right_step = index.constant 2 : index
+  %initial = buffer.view %input[%base] : buffer -> view<[%initial_size]xi32>
+  %left, %left_size, %right_size, %right = scf.for %i = [%begin to %count step %step](%left_view = %initial : view<[%initial_size]xi32>, %left_extent = %initial_size : index, %right_extent = %initial_size : index, %right_view = %initial : view<[%initial_size]xi32>) -> (view<[%left_size]xi32>, index, index, view<[%right_size]xi32>) {
+    %left_next_size = index.sub %left_extent, %step : index
+    %right_next_size = index.sub %right_extent, %right_step : index
+    %left_next = view.subview %left_view[1] : view<[%left_extent]xi32> -> view<[%left_next_size]xi32>
+    %right_next = view.subview %right_view[2] : view<[%right_extent]xi32> -> view<[%right_next_size]xi32>
+    scf.yield %left_next, %left_next_size, %right_next_size, %right_next : view<[%left_next_size]xi32>, index, index, view<[%right_next_size]xi32>
+  }
+  test.use %left : view<[%left_size]xi32>
+  test.use %right : view<[%right_size]xi32>
+  func.return
+}
+
+// ====
+
+// A dependency outside the result tuple stays invariant even when another
+// occurrence of that same initial value is carried and changes.
+func.def @invariant_dimension(%input: buffer, %base: offset, %count: index, %size: index) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %initial = buffer.view %input[%base] : buffer -> view<[%size]x[%size]xi32>
+  %rows, %view = scf.for %i = [%begin to %count step %step](%body_rows = %size : index, %body_view = %initial : view<[%size]x[%size]xi32>) -> (index, view<[%rows]x[%size]xi32>) {
+    %next_rows = index.sub %body_rows, %step : index
+    %next = view.subview %body_view[1, 0] : view<[%body_rows]x[%size]xi32> -> view<[%next_rows]x[%size]xi32>
+    scf.yield %next_rows, %next : index, view<[%next_rows]x[%size]xi32>
+  }
+  test.use %view : view<[%rows]x[%size]xi32>
+  func.return
+}
+
+// ====
+
+// RUN: with-checks pass canonicalize
+
+// Removing an invariant layout column preserves the changing extent's scheme.
+// Constant refinement cannot specialize only the initial side of the loop.
+func.def @compact_invariant_layout(%input: buffer, %base: offset, %count: index) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %initial_rows = index.constant 8 : index
+  %initial_layout = encoding.layout.strided [8, 1] : encoding<layout>
+  %initial = buffer.view %input[%base] : buffer -> view<[%initial_rows]x4xi32, %initial_layout>
+  %rows, %layout, %view = scf.for %i = [%begin to %count step %step](%body_rows = %initial_rows : index, %body_layout = %initial_layout : encoding<layout>, %body_view = %initial : view<[%initial_rows]x4xi32, %initial_layout>) -> (index, encoding<layout>, view<[%rows]x4xi32, %layout>) {
+    test.use %body_view : view<[%body_rows]x4xi32, %body_layout>
+    %next_rows = index.sub %body_rows, %step : index
+    %next = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %body_layout> -> view<[%next_rows]x4xi32, %body_layout>
+    scf.yield %next_rows, %body_layout, %next : index, encoding<layout>, view<[%next_rows]x4xi32, %body_layout>
+  }
+  test.use %view : view<[%rows]x4xi32, %layout>
+  func.return
+}
+
+// ----
+CHECK: %rows, %view = scf.for * -> (index, view<[%rows]x4xi32, %initial_layout>) {
+CHECK: test.use %body_view : view<[%body_rows]x4xi32, %initial_layout>
+CHECK: test.use %view : view<[%rows]x4xi32, %initial_layout>
+CHECK-NOT: *view<8x4xi32*
+
+// ====
+
+// RUN: verify
+
+// Projecting the body types cannot hide an invalid input annotation.
+func.def @wrong_binding_annotation(%input: buffer, %base: offset, %count: index, %size: index) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %initial = buffer.view %input[%base] : buffer -> view<[%size]xi32>
+  // ERROR@+1: TYPE/001 "binding" "type annotation"
+  %rows, %view = scf.for %i = [%begin to %count step %step](%body_rows = %size : index, %body_view = %initial : view<4xi32>) -> (index, view<[%rows]xi32>) {
+    scf.yield %body_rows, %body_view : index, view<[%body_rows]xi32>
+  }
+  func.return
+}
+
+// ====
+
+// RUN: verify
+
+// Equal initial extents do not let a backedge exchange their distinct roles.
+func.def @wrong_yield_dependency(%input: buffer, %base: offset, %count: index, %size: index) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %initial = buffer.view %input[%base] : buffer -> view<[%size]xi32>
+  // ERROR@+1: TYPE/009
+  %left_size, %right_size, %view = scf.for %i = [%begin to %count step %step](%left = %size : index, %right = %size : index, %body_view = %initial : view<[%size]xi32>) -> (index, index, view<[%left_size]xi32>) {
+    scf.yield %right, %left, %body_view : index, index, view<[%left]xi32>
+  }
+  func.return
+}

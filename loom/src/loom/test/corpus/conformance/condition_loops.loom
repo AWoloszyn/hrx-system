@@ -156,3 +156,151 @@ check.case public @condition_counter_nested_disabled {
   check.expect.equal actual(%actual) expected(%expected) : tensor<12xi32>
   check.return
 }
+
+// Keep a native-width offset recurrence coherent across the condition and body
+// CFG edges while the runtime iteration bound stays narrow.
+kernel.def @condition_wide_recurrence() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%output: buffer, %initial: offset, %iteration_count_input: index) {
+  %iteration_count = index.assume %iteration_count_input [range(%iteration_count_input, 0, 3)] : index
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %stride = index.constant 1 : offset
+  %base = index.constant 0 : offset
+  %aligned_output = buffer.assume.alignment %output {minimum_alignment = 8} : buffer
+  %result_view = buffer.view %aligned_output[%base] : buffer -> view<1xi64>
+  %final_count, %final_value = scf.while(%before_count = %iteration_count : index, %before_value = %initial : offset) -> (index, offset) {
+    %more = index.cmp sgt, %before_count, %c0 : index
+    scf.condition %more, %before_count, %before_value : i1, index, offset
+  } do(%count: index, %value: offset) {
+    %next_count = index.sub %count, %c1 : index
+    %next_value = index.sub %value, %stride : offset
+    scf.yield %next_count, %next_value : index, offset
+  }
+  %wide_value = index.cast %final_value : offset to i64
+  view.store %wide_value, %result_view[0] : i64, view<1xi64>
+  kernel.return
+}
+
+check.case public @condition_wide_recurrence_case {
+  %initial = check.literal value(103) : offset
+  %iteration_count = check.literal value(3) : index
+  %actual = check.generate.fill value(-1) : tensor<1xi64>
+  %expected = check.generate.fill value(100) : tensor<1xi64>
+  kernel.launch @condition_wide_recurrence(%actual, %initial, %iteration_count) : (tensor<1xi64>, offset, index)
+  check.expect.equal actual(%actual) expected(%expected) : tensor<1xi64>
+  check.return
+}
+
+// Crop a strided view in every condition evaluation, including the final
+// false condition. Check body loads and the distinct final forwarded view.
+kernel.def @condition_view() {
+  %c1 = index.constant 1 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index
+} launch(%input: buffer, %output: buffer, %count: index) {
+  %iterations = index.assume %count [range(%count, 0, 3)] : index
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %initial_rows = index.constant 8 : index
+  %base = index.constant 4 : offset
+  %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %output_aligned = buffer.assume.alignment %output {minimum_alignment = 4} : buffer
+  %initial_layout = encoding.layout.strided [8, 1] : encoding<layout>
+  %initial_view = buffer.view %input_aligned[%base] : buffer -> view<[%initial_rows]x4xi32, %initial_layout>
+  %destination = buffer.view %output_aligned[%base] : buffer -> view<2xi32>
+  %c0_i32 = scalar.constant 0 : i32
+  %remaining, %rows, %view, %sum = scf.while(%before_remaining = %iterations : index, %before_rows = %initial_rows : index, %before_view = %initial_view : view<[%initial_rows]x4xi32, %initial_layout>, %before_sum = %c0_i32 : i32) -> (index, index, view<[%rows]x4xi32, %initial_layout>, i32) {
+    %more = index.cmp sgt, %before_remaining, %c0 : index
+    %forward_rows = index.sub %before_rows, %c1 : index
+    %forward_view = view.subview %before_view[1, 0] : view<[%before_rows]x4xi32, %initial_layout> -> view<[%forward_rows]x4xi32, %initial_layout>
+    scf.condition %more, %before_remaining, %forward_rows, %forward_view, %before_sum : i1, index, index, view<[%forward_rows]x4xi32, %initial_layout>, i32
+  } do(%body_remaining: index, %body_rows: index, %body_view: view<[%body_rows]x4xi32, %initial_layout>, %total: i32) {
+    %has_row = index.cmp sgt, %body_rows, %c0 : index
+    %value = scf.if %has_row -> (i32) {
+      %loaded = view.load %body_view[0, 1] : view<[%body_rows]x4xi32, %initial_layout> -> i32
+      scf.yield %loaded : i32
+    } else {
+      scf.yield %c0_i32 : i32
+    }
+    %next_sum = scalar.addi %total, %value : i32
+    %next_remaining = index.sub %body_remaining, %c1 : index
+    scf.yield %next_remaining, %body_rows, %body_view, %next_sum : index, index, view<[%body_rows]x4xi32, %initial_layout>, i32
+  }
+  %has_final = index.cmp sgt, %rows, %c0 : index
+  %final = scf.if %has_final -> (i32) {
+    %loaded = view.load %view[0, 1] : view<[%rows]x4xi32, %initial_layout> -> i32
+    scf.yield %loaded : i32
+  } else {
+    scf.yield %c0_i32 : i32
+  }
+  view.store %sum, %destination[0] : i32, view<2xi32>
+  view.store %final, %destination[1] : i32, view<2xi32>
+  kernel.return
+}
+
+check.case public @condition_view_0 {
+  %count = check.literal value(0) : index
+  %input = check.generate.iota offset(100) step(1) : tensor<68xi32>
+  %input_expected = check.generate.iota offset(100) step(1) : tensor<68xi32>
+  %output = check.generate.fill value(-99) : tensor<4xi32>
+  kernel.launch @condition_view(%input, %output, %count) : (tensor<68xi32>, tensor<4xi32>, index)
+  %sum = check.tensor.view %output offset(4) : tensor<4xi32> -> tensor<1xi32>
+  %final = check.tensor.view %output offset(8) : tensor<4xi32> -> tensor<1xi32>
+  %expected_sum = check.generate.fill value(0) : tensor<1xi32>
+  %expected_final = check.generate.fill value(110) : tensor<1xi32>
+  check.expect.bitwise actual(%sum) expected(%expected_sum) : tensor<1xi32>
+  check.expect.bitwise actual(%final) expected(%expected_final) : tensor<1xi32>
+  %prefix = check.tensor.view %output offset(0) : tensor<4xi32> -> tensor<1xi32>
+  %suffix = check.tensor.view %output offset(12) : tensor<4xi32> -> tensor<1xi32>
+  %guard = check.generate.fill value(-99) : tensor<1xi32>
+  check.expect.bitwise actual(%prefix) expected(%guard) : tensor<1xi32>
+  check.expect.bitwise actual(%suffix) expected(%guard) : tensor<1xi32>
+  check.expect.bitwise actual(%input) expected(%input_expected) : tensor<68xi32>
+  check.expect.event<device> {count = 0, type = "asan_report"}
+  check.return
+}
+
+check.case public @condition_view_1 {
+  %count = check.literal value(1) : index
+  %input = check.generate.iota offset(100) step(1) : tensor<68xi32>
+  %input_expected = check.generate.iota offset(100) step(1) : tensor<68xi32>
+  %output = check.generate.fill value(-99) : tensor<4xi32>
+  kernel.launch @condition_view(%input, %output, %count) : (tensor<68xi32>, tensor<4xi32>, index)
+  %sum = check.tensor.view %output offset(4) : tensor<4xi32> -> tensor<1xi32>
+  %final = check.tensor.view %output offset(8) : tensor<4xi32> -> tensor<1xi32>
+  %expected_sum = check.generate.fill value(110) : tensor<1xi32>
+  %expected_final = check.generate.fill value(118) : tensor<1xi32>
+  check.expect.bitwise actual(%sum) expected(%expected_sum) : tensor<1xi32>
+  check.expect.bitwise actual(%final) expected(%expected_final) : tensor<1xi32>
+  %prefix = check.tensor.view %output offset(0) : tensor<4xi32> -> tensor<1xi32>
+  %suffix = check.tensor.view %output offset(12) : tensor<4xi32> -> tensor<1xi32>
+  %guard = check.generate.fill value(-99) : tensor<1xi32>
+  check.expect.bitwise actual(%prefix) expected(%guard) : tensor<1xi32>
+  check.expect.bitwise actual(%suffix) expected(%guard) : tensor<1xi32>
+  check.expect.bitwise actual(%input) expected(%input_expected) : tensor<68xi32>
+  check.expect.event<device> {count = 0, type = "asan_report"}
+  check.return
+}
+
+check.case public @condition_view_3 {
+  %count = check.literal value(3) : index
+  %input = check.generate.iota offset(100) step(1) : tensor<68xi32>
+  %input_expected = check.generate.iota offset(100) step(1) : tensor<68xi32>
+  %output = check.generate.fill value(-99) : tensor<4xi32>
+  kernel.launch @condition_view(%input, %output, %count) : (tensor<68xi32>, tensor<4xi32>, index)
+  %sum = check.tensor.view %output offset(4) : tensor<4xi32> -> tensor<1xi32>
+  %final = check.tensor.view %output offset(8) : tensor<4xi32> -> tensor<1xi32>
+  %expected_sum = check.generate.fill value(354) : tensor<1xi32>
+  %expected_final = check.generate.fill value(134) : tensor<1xi32>
+  check.expect.bitwise actual(%sum) expected(%expected_sum) : tensor<1xi32>
+  check.expect.bitwise actual(%final) expected(%expected_final) : tensor<1xi32>
+  %prefix = check.tensor.view %output offset(0) : tensor<4xi32> -> tensor<1xi32>
+  %suffix = check.tensor.view %output offset(12) : tensor<4xi32> -> tensor<1xi32>
+  %guard = check.generate.fill value(-99) : tensor<1xi32>
+  check.expect.bitwise actual(%prefix) expected(%guard) : tensor<1xi32>
+  check.expect.bitwise actual(%suffix) expected(%guard) : tensor<1xi32>
+  check.expect.bitwise actual(%input) expected(%input_expected) : tensor<68xi32>
+  check.expect.event<device> {count = 0, type = "asan_report"}
+  check.return
+}

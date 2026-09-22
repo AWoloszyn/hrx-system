@@ -1,0 +1,85 @@
+// RUN: pass pipeline-scf-for
+
+func.def @dependent_pipeline_serial(%input: buffer, %base: offset, %count: index, %initial_rows: index, %initial_layout: encoding<layout>) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 1 : index
+  %initial = buffer.view %input[%base] : buffer -> view<[%initial_rows]x4xi32, %initial_layout>
+  %rows, %view = scf.for %i = [%begin to %count step %step](%body_rows = %initial_rows : index, %body_view = %initial : view<[%initial_rows]x4xi32, %initial_layout>) -> (index, view<[%rows]x4xi32, %initial_layout>) pipeline(%depth) {
+    test.use %body_view : view<[%body_rows]x4xi32, %initial_layout>
+    %next_rows = index.sub %body_rows, %step : index
+    %next = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %initial_layout> -> view<[%next_rows]x4xi32, %initial_layout>
+    scf.yield %next_rows, %next : index, view<[%next_rows]x4xi32, %initial_layout>
+  }
+  test.use %view : view<[%rows]x4xi32, %initial_layout>
+  func.return
+}
+
+// ----
+func.def @dependent_pipeline_serial(%input: buffer, %base: offset, %count: index, %initial_rows: index, %initial_layout: encoding<layout>) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 1 : index
+  %initial = buffer.view %input[%base] : buffer -> view<[%initial_rows]x4xi32, %initial_layout>
+  %rows, %view = scf.for %18 = [%begin to %count step %step](%19 = %initial_rows : index, %20 = %initial : view<[%initial_rows]x4xi32, %initial_layout>) -> (index, view<[%rows]x4xi32, %initial_layout>) {
+    test.use %20 : view<[%19]x4xi32, %initial_layout>
+    %next_rows = index.sub %19, %step : index
+    %next = view.subview %20[1, 0] : view<[%19]x4xi32, %initial_layout> -> view<[%next_rows]x4xi32, %initial_layout>
+    scf.yield %next_rows, %next : index, view<[%next_rows]x4xi32, %initial_layout>
+  }
+  test.use %view : view<[%rows]x4xi32, %initial_layout>
+  func.return
+}
+
+// ====
+
+func.def @dependent_pipeline_long(%lookup: view<64xi32>, %storage: buffer, %base: offset, %count: index, %initial_rows: index, %layout: encoding<layout>, %initial_sum: i32) -> (i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %initial = buffer.view %storage[%base] : buffer -> view<[%initial_rows]x4xi32, %layout>
+  %rows, %view, %sum = scf.for %i = [%begin to %count step %step](%body_rows = %initial_rows : index, %body_view = %initial : view<[%initial_rows]x4xi32, %layout>, %body_sum = %initial_sum : i32) -> (index, view<[%rows]x4xi32, %layout>, i32) pipeline(%depth) {
+    %loaded = view.load %lookup[%i] : view<64xi32> -> i32
+    %next_sum = scalar.addi %body_sum, %loaded : i32
+    %next_rows = index.sub %body_rows, %step : index
+    %next = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+    scf.yield %next_rows, %next, %next_sum : index, view<[%next_rows]x4xi32, %layout>, i32
+  }
+  test.use %view : view<[%rows]x4xi32, %layout>
+  func.return %sum : i32
+}
+
+// ----
+func.def @dependent_pipeline_long(%lookup: view<64xi32>, %storage: buffer, %base: offset, %count: index, %initial_rows: index, %layout: encoding<layout>, %initial_sum: i32) -> (i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %depth = index.constant 2 : index
+  %initial = buffer.view %storage[%base] : buffer -> view<[%initial_rows]x4xi32, %layout>
+  %23 = index.constant 1 : index
+  %24 = index.cmp slt, %23, %count : index
+  %rows, %view, %sum = scf.if %24 -> (index, view<[%rows]x4xi32, %layout>, i32) {
+    %loaded = view.load %lookup[%begin] : view<64xi32> -> i32
+    %29, %30, %31, %32 = scf.for %33 = [%23 to %count step %step](%34 = %initial_rows : index, %35 = %initial : view<[%initial_rows]x4xi32, %layout>, %36 = %initial_sum : i32, %37 = %loaded : i32) -> (index, view<[%29]x4xi32, %layout>, i32, i32) {
+      %loaded = view.load %lookup[%33] : view<64xi32> -> i32
+      %next_sum = scalar.addi %36, %37 : i32
+      %next_rows = index.sub %34, %step : index
+      %next = view.subview %35[1, 0] : view<[%34]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+      scf.yield %next_rows, %next, %next_sum, %loaded : index, view<[%next_rows]x4xi32, %layout>, i32, i32
+    }
+    %next_sum = scalar.addi %31, %32 : i32
+    %next_rows = index.sub %29, %step : index
+    %next = view.subview %30[1, 0] : view<[%29]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+    scf.yield %next_rows, %next, %next_sum : index, view<[%next_rows]x4xi32, %layout>, i32
+  } else {
+    %45, %46, %47 = scf.for %48 = [%begin to %count step %step](%49 = %initial_rows : index, %50 = %initial : view<[%initial_rows]x4xi32, %layout>, %51 = %initial_sum : i32) -> (index, view<[%45]x4xi32, %layout>, i32) {
+      %loaded = view.load %lookup[%48] : view<64xi32> -> i32
+      %next_sum = scalar.addi %51, %loaded : i32
+      %next_rows = index.sub %49, %step : index
+      %next = view.subview %50[1, 0] : view<[%49]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+      scf.yield %next_rows, %next, %next_sum : index, view<[%next_rows]x4xi32, %layout>, i32
+    }
+    scf.yield %45, %46, %47 : index, view<[%45]x4xi32, %layout>, i32
+  }
+  test.use %view : view<[%rows]x4xi32, %layout>
+  func.return %sum : i32
+}

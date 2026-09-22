@@ -118,7 +118,7 @@ typedef struct loom_amdgpu_vopd_plan_builder_t {
   const loom_amdgpu_address_state_plan_t* address_state;
   // Optional planned wait packets that block second-component fusion.
   const loom_amdgpu_wait_packet_plan_t* wait_packets;
-  // Arena owning all output and scratch arrays.
+  // Arena owning exact-size tables retained by the completed plan.
   iree_arena_allocator_t* arena;
   // Arena owning analysis scratch discarded after packet-plan construction.
   iree_arena_allocator_t* transient_arena;
@@ -264,7 +264,8 @@ static iree_string_view_t loom_amdgpu_vopd_op_name(uint16_t op) {
 
 const loom_amdgpu_vopd_packet_t* loom_amdgpu_vopd_plan_packet_at(
     const loom_amdgpu_vopd_plan_t* plan, iree_host_size_t packet_index) {
-  if (plan == NULL || packet_index >= plan->packet_count) {
+  if (plan == NULL || plan->packets == NULL ||
+      packet_index >= plan->packet_count) {
     return NULL;
   }
   const loom_amdgpu_vopd_packet_t* packet = &plan->packets[packet_index];
@@ -551,9 +552,9 @@ static iree_status_t loom_amdgpu_vopd_plan_allocate(
                             "range");
   }
   if (packet_count != 0) {
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(builder->arena, packet_count,
-                                                   sizeof(*builder->packets),
-                                                   (void**)&builder->packets));
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        builder->transient_arena, packet_count, sizeof(*builder->packets),
+        (void**)&builder->packets));
     for (iree_host_size_t i = 0; i < packet_count; ++i) {
       builder->packets[i] = (loom_amdgpu_vopd_packet_t){
           .role = LOOM_AMDGPU_VOPD_PACKET_ROLE_NONE,
@@ -568,12 +569,12 @@ static iree_status_t loom_amdgpu_vopd_plan_allocate(
   }
   if (builder->pair_capacity != 0) {
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        builder->arena, builder->pair_capacity, sizeof(*builder->pairs),
-        (void**)&builder->pairs));
+        builder->transient_arena, builder->pair_capacity,
+        sizeof(*builder->pairs), (void**)&builder->pairs));
   }
   if (builder->rejection_capacity != 0) {
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        builder->arena, builder->rejection_capacity,
+        builder->transient_arena, builder->rejection_capacity,
         sizeof(*builder->rejections), (void**)&builder->rejections));
   }
   loom_amdgpu_vopd_mark_address_state_insertions(builder);
@@ -1647,6 +1648,46 @@ static iree_status_t loom_amdgpu_vopd_plan_build_pairs(
   return status;
 }
 
+static iree_status_t loom_amdgpu_vopd_plan_publish(
+    const loom_amdgpu_vopd_plan_builder_t* builder,
+    loom_amdgpu_vopd_plan_t* out_plan) {
+  loom_amdgpu_vopd_pair_t* pairs = NULL;
+  if (builder->pair_count != 0) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        builder->arena, builder->pair_count, sizeof(*pairs), (void**)&pairs));
+    memcpy(pairs, builder->pairs, builder->pair_count * sizeof(*pairs));
+  }
+
+  loom_amdgpu_vopd_rejection_t* rejections = NULL;
+  if (builder->rejection_count != 0) {
+    IREE_RETURN_IF_ERROR(
+        iree_arena_allocate_array(builder->arena, builder->rejection_count,
+                                  sizeof(*rejections), (void**)&rejections));
+    memcpy(rejections, builder->rejections,
+           builder->rejection_count * sizeof(*rejections));
+  }
+
+  loom_amdgpu_vopd_packet_t* packets = NULL;
+  const iree_host_size_t packet_count = builder->schedule->scheduled_node_count;
+  if (builder->pair_count != 0) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        builder->arena, packet_count, sizeof(*packets), (void**)&packets));
+    memcpy(packets, builder->packets, packet_count * sizeof(*packets));
+  }
+
+  *out_plan = (loom_amdgpu_vopd_plan_t){
+      .schedule = builder->schedule,
+      .allocation = builder->allocation,
+      .pairs = pairs,
+      .pair_count = builder->pair_count,
+      .rejections = rejections,
+      .rejection_count = builder->rejection_count,
+      .packets = packets,
+      .packet_count = packet_count,
+  };
+  return iree_ok_status();
+}
+
 static iree_status_t loom_amdgpu_vopd_plan_unpaired_matrix_stream(
     loom_amdgpu_vopd_plan_builder_t* builder) {
   IREE_ASSERT(builder->matrix_coexecution != NULL);
@@ -1871,7 +1912,12 @@ static iree_status_t loom_amdgpu_vopd_plan_write_rejection_json(
 static iree_status_t loom_amdgpu_vopd_plan_write_packet_json(
     const loom_amdgpu_vopd_plan_t* plan, iree_host_size_t packet_index,
     loom_output_stream_t* stream) {
-  const loom_amdgpu_vopd_packet_t* packet = &plan->packets[packet_index];
+  const loom_amdgpu_vopd_packet_t empty_packet = {
+      .role = LOOM_AMDGPU_VOPD_PACKET_ROLE_NONE,
+      .pair_index = LOOM_AMDGPU_VOPD_PAIR_NONE,
+  };
+  const loom_amdgpu_vopd_packet_t* packet =
+      plan->packets == NULL ? &empty_packet : &plan->packets[packet_index];
   loom_json_object_writer_t object;
   IREE_RETURN_IF_ERROR(loom_json_object_begin(stream, &object));
   IREE_RETURN_IF_ERROR(loom_json_object_write_host_size_field(
@@ -2005,15 +2051,5 @@ iree_status_t loom_amdgpu_vopd_plan_build(
   };
   IREE_RETURN_IF_ERROR(loom_amdgpu_vopd_plan_allocate(&builder));
   IREE_RETURN_IF_ERROR(loom_amdgpu_vopd_plan_build_pairs(&builder));
-  *out_plan = (loom_amdgpu_vopd_plan_t){
-      .schedule = schedule,
-      .allocation = allocation,
-      .pairs = builder.pairs,
-      .pair_count = builder.pair_count,
-      .rejections = builder.rejections,
-      .rejection_count = builder.rejection_count,
-      .packets = builder.packets,
-      .packet_count = schedule->scheduled_node_count,
-  };
-  return iree_ok_status();
+  return loom_amdgpu_vopd_plan_publish(&builder, out_plan);
 }

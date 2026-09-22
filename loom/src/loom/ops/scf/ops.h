@@ -49,6 +49,8 @@ typedef enum loom_scf_for_unroll_schedule_e {
 //
 // The positive step visits lower, lower + step, and subsequent values strictly below the exclusive upper bound. An empty domain returns the initial carried state; otherwise results are the last iteration's yielded state. The unused induction value after the final iteration need not fit the target's address carrier.
 //
+// The result list defines the recurring type scheme for loop-carried state. A dependent result type may refer to sibling loop results; the initial operands, body arguments, and yielded values instantiate that scheme with their corresponding SSA identities. This permits a loop to carry a view whose extent or layout changes each iteration while every use still names the extent and layout in its own scope.
+//
 // The optional `pipeline(%depth)` and `unroll(%factor)` policies accept independent SSA values, including template arguments and arithmetic on specialized target properties. Pipelining runs before unrolling. Compile reports retain applied schedules and final resource costs; `loom-compile-report suggest` proposes evidence-backed comparisons. The [per-instance schedule search](../../../../workflows/search-loop-schedules.md) shows checked candidates, resource cliffs, and controlled measurements.
 // scf.for %iv = [%c0 to %n step %c1] {
 //   scf.yield
@@ -71,6 +73,10 @@ enum loom_scf_for_build_flag_bits_e {
   LOOM_SCF_FOR_BUILD_FLAG_HAS_UNROLL_SCHEDULE = 1u << 3,
 };
 typedef uint32_t loom_scf_for_build_flags_t;
+// result_types has iter_args_count entries, or is NULL to preserve
+// the initial operand types. Explicit types define the recurring tuple;
+// reserve result IDs first when types refer to sibling results. Region
+// entry types instantiate that tuple with their own argument identities.
 iree_status_t loom_scf_for_build(
     loom_builder_t* builder,
     loom_scf_for_build_flags_t build_flags,
@@ -79,6 +85,7 @@ iree_status_t loom_scf_for_build(
     loom_may_consume loom_value_id_t step,
     loom_may_consume const loom_value_id_t* iter_args,
     iree_host_size_t iter_args_count,
+    const loom_type_t* result_types,
     const loom_tied_result_t* tied_results,
     iree_host_size_t tied_result_count,
     loom_optional loom_may_consume loom_value_id_t pipeline_depth,
@@ -243,10 +250,15 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_scf_while_iter_args, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_scf_while_results, 0)
 LOOM_DEFINE_REGION(loom_scf_while_before, 0)
 LOOM_DEFINE_REGION(loom_scf_while_after, 1)
+// result_types has iter_args_count entries, or is NULL to preserve
+// the initial operand types. Explicit types define the recurring tuple;
+// reserve result IDs first when types refer to sibling results. Region
+// entry types instantiate that tuple with their own argument identities.
 iree_status_t loom_scf_while_build(
     loom_builder_t* builder,
     loom_may_consume const loom_value_id_t* iter_args,
     iree_host_size_t iter_args_count,
+    const loom_type_t* result_types,
     const loom_tied_result_t* tied_results,
     iree_host_size_t tied_result_count,
     loom_location_id_t location,

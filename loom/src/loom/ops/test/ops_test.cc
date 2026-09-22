@@ -913,7 +913,8 @@ TEST_F(BuilderTest, LoopBuilder) {
   loom_value_id_t iter_args[] = {init};
   loom_op_t* op = NULL;
   IREE_ASSERT_OK(loom_test_loop_build(&builder_, lo, hi, step, iter_args, 1,
-                                      NULL, 0, LOOM_LOCATION_UNKNOWN, &op));
+                                      /*result_types=*/nullptr, NULL, 0,
+                                      LOOM_LOCATION_UNKNOWN, &op));
   ASSERT_NE(op, nullptr);
   EXPECT_EQ(op->kind, LOOM_OP_TEST_LOOP);
   EXPECT_EQ(op->operand_count, 4);
@@ -1047,6 +1048,38 @@ TEST_F(BuilderTest, FuncBuilder) {
             LOOM_SCALAR_TYPE_F32);
   EXPECT_EQ(loom_type_element_type(loom_block_arg_type(module_, entry, 1)),
             LOOM_SCALAR_TYPE_I32);
+}
+
+TEST_F(BuilderTest, FuncBuilderConsumesReservedSignatureBeforeResults) {
+  const auto index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  loom_value_id_t signature[4];
+  IREE_ASSERT_OK(loom_builder_reserve_results(&builder_, 4, signature));
+  const loom_type_t argument_types[] = {
+      index_type,
+      loom_type_shaped_1d(LOOM_TYPE_TENSOR, LOOM_SCALAR_TYPE_F32,
+                          loom_dim_pack_dynamic(signature[0]), 0),
+  };
+  const loom_type_t result_types[] = {
+      index_type,
+      loom_type_shaped_1d(LOOM_TYPE_TENSOR, LOOM_SCALAR_TYPE_F32,
+                          loom_dim_pack_dynamic(signature[2]), 0),
+  };
+  loom_op_t* op = nullptr;
+  IREE_ASSERT_OK(loom_test_func_build(
+      &builder_, 0, 0, 0, {0, 5}, argument_types, 2, result_types, 2, nullptr,
+      0, nullptr, 0, LOOM_LOCATION_UNKNOWN, &op));
+  const auto* entry = loom_region_entry_block(loom_test_func_body(op));
+  ASSERT_EQ(entry->arg_count, 2u);
+  for (uint16_t i = 0; i < 2; ++i) {
+    EXPECT_EQ(entry->arg_ids[i], signature[i]);
+    EXPECT_EQ(loom_op_results(op)[i], signature[i + 2]);
+  }
+  EXPECT_EQ(loom_type_dim_value_id_at(
+                loom_module_value_type(module_, entry->arg_ids[1]), 0),
+            entry->arg_ids[0]);
+  EXPECT_EQ(loom_type_dim_value_id_at(
+                loom_module_value_type(module_, loom_op_results(op)[1]), 0),
+            loom_op_results(op)[0]);
 }
 
 TEST_F(BuilderTest, SplitFuncBuilderProjectsSignatureArgs) {

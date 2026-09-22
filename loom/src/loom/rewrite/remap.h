@@ -260,6 +260,18 @@ iree_status_t loom_ir_remap_value_types(loom_ir_remap_t* remap,
                                         iree_host_size_t value_count,
                                         loom_type_t** out_target_types);
 
+// Assigns a source tuple's type scheme to an existing target tuple in the same
+// module. All source identities map simultaneously to their corresponding
+// target identities; references outside the source tuple remain invariant.
+// Both tuples contain distinct defined values and are disjoint. This is the
+// construction boundary for recurring region entry types, including forward
+// references to other arguments. Scratch is pooled and released before return;
+// tuples without dependent types require no scratch allocation. Allocation or
+// encoding-width failure may leave a prefix of target types assigned.
+iree_status_t loom_ir_remap_assign_value_types(
+    loom_module_t* module, const loom_value_id_t* source_values,
+    const loom_value_id_t* target_values, iree_host_size_t value_count);
+
 // Remaps one static module encoding table ID into the target module.
 iree_status_t loom_ir_remap_encoding_id(loom_ir_remap_t* remap,
                                         uint16_t source_encoding_id,

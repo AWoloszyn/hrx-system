@@ -543,9 +543,18 @@ static bool loom_verify_region_args_match_field(
       (reference_count > 0 && !reference_values)) {
     return false;
   }
+  const loom_type_value_remap_t remap = {
+      .source_values = reference_values,
+      .target_values = region_args->values,
+      .count = reference_count,
+      .flags = reference_category == LOOM_FIELD_RESULT
+                   ? LOOM_TYPE_VALUE_REMAP_FLAG_SOURCE_DEFINITION_SLICE
+                   : 0,
+  };
   for (uint16_t i = 0; i < reference_count; ++i) {
-    if (!loom_type_equal(loom_verify_value_type(state, region_args->values[i]),
-                         loom_verify_value_type(state, reference_values[i]))) {
+    if (!loom_type_equal_after_value_remap(
+            state->module, loom_verify_value_type(state, reference_values[i]),
+            loom_verify_value_type(state, region_args->values[i]), &remap)) {
       return false;
     }
   }
@@ -1655,12 +1664,19 @@ static void loom_verify_relation_condition_forward_match(
       loom_verify_constraint_error_or(constraint, LOOM_ERR_TYPE_001);
   loom_field_ref_t forwarded_ref =
       LOOM_FIELD_REF(LOOM_FIELD_OPERAND, forward.vtable->fixed_operand_count);
+  const loom_type_value_remap_t remap = {
+      .source_values = target_args.values,
+      .target_values = forward.values,
+      .count = forward.count,
+      .flags = LOOM_TYPE_VALUE_REMAP_FLAG_SOURCE_DEFINITION_SLICE,
+  };
   for (uint16_t i = 0; i < forward.count; ++i) {
     loom_type_t forwarded_type =
         loom_verify_value_type(state, forward.values[i]);
     loom_type_t target_type =
         loom_verify_value_type(state, target_args.values[i]);
-    if (loom_type_equal(forwarded_type, target_type)) {
+    if (loom_type_equal_after_value_remap(state->module, target_type,
+                                          forwarded_type, &remap)) {
       continue;
     }
 
@@ -1897,6 +1913,9 @@ static void loom_verify_relation_variadic_match(
       .source_values = values_b,
       .target_values = values_a,
       .count = count_a,
+      .flags = LOOM_FIELD_REF_CATEGORY(ref_b) == LOOM_FIELD_RESULT
+                   ? LOOM_TYPE_VALUE_REMAP_FLAG_SOURCE_DEFINITION_SLICE
+                   : 0,
   };
   for (uint16_t i = 0; i < count_a; ++i) {
     loom_type_t type_a = loom_verify_value_type(state, values_a[i]);

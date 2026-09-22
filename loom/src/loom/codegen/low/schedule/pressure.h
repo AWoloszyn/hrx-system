@@ -65,7 +65,7 @@ struct loom_low_schedule_pressure_state_t {
   uint16_t* block_reg_class_ids;
   // True when a register class is present in block_reg_class_ids.
   uint8_t* block_reg_class_touched_flags;
-  // Value ordinals with per-block pressure state to reset before reuse.
+  // Value ordinals with pressure state to reset before list reuse.
   loom_value_ordinal_t* block_value_ordinals;
   // Candidate operand multiplicity by local value ordinal.
   uint16_t* candidate_operand_use_counts;
@@ -119,7 +119,7 @@ struct loom_low_schedule_pressure_state_t {
   uint32_t current_persistent_pressure_penalty;
   // Number of populated entries in block_reg_class_ids.
   iree_host_size_t block_reg_class_count;
-  // Number of populated entries in block_value_ordinals.
+  // Number of unique populated entries in block_value_ordinals.
   iree_host_size_t block_value_count;
   // Number of populated entries in candidate_operand_ordinals.
   iree_host_size_t candidate_operand_count;

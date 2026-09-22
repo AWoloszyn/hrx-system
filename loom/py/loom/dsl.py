@@ -5527,15 +5527,18 @@ class LoopLikeInterface(NamedTuple):
     The variadic iter_args operand is the complete loop-carried state domain.
     Implementing ops have one matching variadic result field and a required
     single-block body whose carried block arguments follow any induction
-    variable. IterArgsMatchResults, YieldCountMatchesResults, and
-    YieldTypesMatchResults constraints verify the complete state cycle.
+    variable. Each entry instantiates the result type scheme with its own
+    argument identities. The shared verifier checks that tuple and the counted
+    induction variable type. IterArgsMatchResults, YieldCountMatchesResults,
+    and YieldTypesMatchResults constraints check the incoming and yielded state.
 
     Condition-controlled loops also have a required single-block condition
     region. Its entry arguments are the initial and backedge state. Operand
     zero of its terminator is the condition, and the remaining operands form
-    the complete state tuple forwarded to the body and results. BlockArgCount,
-    BlockArgsMatchTypes, ConditionForwardedCountMatchesBlockArgs, and
-    ConditionForwardedTypesMatchBlockArgs constraints verify those edges.
+    the complete state tuple forwarded to the body and results.
+    ConditionForwardedCountMatchesBlockArgs and
+    ConditionForwardedTypesMatchBlockArgs check this edge against the recurring
+    result scheme instantiated at the body entry.
 
     Each field is the name of a region, an implicit block argument, or an
     operand on the op (or None where applicable). Exactly one control form is

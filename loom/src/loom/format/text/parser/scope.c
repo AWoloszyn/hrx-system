@@ -488,3 +488,56 @@ iree_status_t loom_parser_emit_result_count_mismatch(
   return loom_parser_emit(parser, LOOM_ERR_PARSE_009, params,
                           IREE_ARRAYSIZE(params), op_name_token);
 }
+
+void loom_parser_discard_block_arg_scope(loom_parser_t* parser) {
+  parser->unresolved_placeholders.count =
+      parser->block_arg_scope.placeholder_start;
+  parser->block_arg_scope.placeholder_start = 0;
+  parser->block_arg_scope.value_start = LOOM_VALUE_ID_INVALID;
+}
+
+iree_status_t loom_parser_finish_block_arg_scope(loom_parser_t* parser) {
+  iree_status_t status = iree_ok_status();
+  for (iree_host_size_t i = parser->block_arg_scope.placeholder_start;
+       i < parser->unresolved_placeholders.count; ++i) {
+    const loom_parser_unresolved_placeholder_t placeholder =
+        parser->unresolved_placeholders.entries[i];
+    if (loom_type_kind(loom_module_value_type(
+            parser->module, placeholder.value_id)) != LOOM_TYPE_NONE) {
+      continue;
+    }
+    loom_diagnostic_param_t params[] = {
+        loom_param_string(placeholder.name_token.text),
+    };
+    status = loom_parser_emit(parser, LOOM_ERR_PARSE_001, params,
+                              IREE_ARRAYSIZE(params), placeholder.name_token);
+    break;
+  }
+  loom_parser_discard_block_arg_scope(parser);
+  return status;
+}
+
+// Binds one block argument name before its type is parsed. A NONE-typed value
+// created since the list began is a forward reference to this binder.
+iree_status_t loom_parser_bind_block_arg(loom_parser_t* parser,
+                                         loom_token_t name_token,
+                                         loom_value_id_t* out_value_id) {
+  loom_string_id_t name_id =
+      loom_module_lookup_string(parser->module, name_token.text);
+  loom_value_id_t value_id =
+      loom_parser_scope_lookup_local(parser->scope, name_id);
+  if (value_id != LOOM_VALUE_ID_INVALID) {
+    if (value_id < parser->block_arg_scope.value_start ||
+        loom_type_kind(loom_module_value_type(parser->module, value_id)) !=
+            LOOM_TYPE_NONE) {
+      return loom_parser_emit_duplicate_value_name(parser, name_token);
+    }
+  } else {
+    IREE_RETURN_IF_ERROR(
+        loom_module_define_value(parser->module, loom_type_none(), &value_id));
+    IREE_RETURN_IF_ERROR(
+        loom_parser_define_value_name(parser, name_token, value_id));
+  }
+  *out_value_id = value_id;
+  return iree_ok_status();
+}

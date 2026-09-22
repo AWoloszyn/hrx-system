@@ -322,8 +322,8 @@ static iree_status_t loom_test_gen_region_loop(
 
   loom_op_t* loop_op = NULL;
   IREE_RETURN_IF_ERROR(loom_test_loop_build(
-      context->builder, lower, upper, step, iter_args, iter_arg_count, NULL, 0,
-      LOOM_LOCATION_UNKNOWN, &loop_op));
+      context->builder, lower, upper, step, iter_args, iter_arg_count,
+      /*result_types=*/NULL, NULL, 0, LOOM_LOCATION_UNKNOWN, &loop_op));
 
   loom_region_t* body = loom_test_loop_body(loop_op);
   loom_builder_ip_t saved =
