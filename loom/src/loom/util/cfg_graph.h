@@ -133,6 +133,9 @@ typedef struct loom_cfg_graph_t {
   // order. This is a cheap rejection fact for loop analyses; a backward edge
   // is not necessarily a semantic CFG backedge.
   iree_host_size_t backward_edge_count;
+  // True when the entry-reachable graph contains a cycle, including self-edges.
+  // Independent of region block order; unreachable cycles do not contribute.
+  bool has_cycles;
   // True when malformed successor structure was seen while building the graph.
   bool malformed;
 } loom_cfg_graph_t;

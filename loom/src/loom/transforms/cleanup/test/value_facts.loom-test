@@ -119,8 +119,161 @@ func.def @masked_multiple_remainder(%input: index) -> (index) {
   func.return %remainder : index
 }
 
-// A negative mask preserves the input's nonnegative range and clears low bits.
 func.def @negative_mask_alignment(%input: index) -> (index) {
   %remainder = index.constant 0 : index
   func.return %remainder : index
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// A branch-local view and its forwarded type cannot constrain the size
+// argument on the path that bypasses both definitions.
+func.def @cfg_extent_capture(%input: buffer, %extent: i32, %condition: i1) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %less = scalar.cmpi slt, %extent, %c0 : i32
+  cfg.cond_br %condition, ^shaped, ^plain
+^shaped:
+  %view = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+  cfg.br ^typed(%view: view<[%extent]xi32>)
+^typed(%forwarded: view<[%extent]xi32>):
+  test.use %forwarded : view<[%extent]xi32>
+  func.return %less : i1
+^plain:
+  func.return %less : i1
+}
+
+// ----
+func.def @cfg_extent_capture(%input: buffer, %extent: i32, %condition: i1) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %less = scalar.cmpi slt, %extent, %c0 : i32
+  cfg.cond_br %condition, ^shaped, ^plain
+^shaped:
+  %view = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+  cfg.br ^typed(%view: view<[%extent]xi32>)
+^typed(%forwarded: view<[%extent]xi32>):
+  test.use %forwarded : view<[%extent]xi32>
+  func.return %less : i1
+^plain:
+  func.return %less : i1
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// A structured branch has the same execution boundary as a CFG branch.
+func.def @scf_extent_capture(%input: buffer, %extent: i32, %condition: i1) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %less = scalar.cmpi slt, %extent, %c0 : i32
+  scf.if %condition {
+    %view = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+    test.use %view : view<[%extent]xi32>
+  }
+  func.return %less : i1
+}
+
+// ----
+func.def @scf_extent_capture(%input: buffer, %extent: i32, %condition: i1) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %less = scalar.cmpi slt, %extent, %c0 : i32
+  scf.if %condition {
+    %view = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+    test.use %view : view<[%extent]xi32>
+  }
+  func.return %less : i1
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// The loop may execute zero times, leaving its captured size unconstrained.
+func.def @loop_extent_capture(%input: buffer, %extent: i32, %count: index) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %less = scalar.cmpi slt, %extent, %c0 : i32
+  %start = index.constant 0 : index
+  %step = index.constant 1 : index
+  scf.for %iteration = [%start to %count step %step] {
+    %view = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+    test.use %view : view<[%extent]xi32>
+  }
+  func.return %less : i1
+}
+
+// ----
+func.def @loop_extent_capture(%input: buffer, %extent: i32, %count: index) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %less = scalar.cmpi slt, %extent, %c0 : i32
+  %start = index.constant 0 : index
+  %step = index.constant 1 : index
+  scf.for %iteration = [%start to %count step %step] {
+    %view = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+    test.use %view : view<[%extent]xi32>
+  }
+  func.return %less : i1
+}
+
+// ====
+
+// A dependent call signature constrains its extent regardless of result order.
+// A separate scalar result without a shape dependency stays unconstrained.
+func.decl @shape_first() -> (view<[%extent]xf32>, %extent: i32)
+
+func.decl @extent_first() -> (%extent: i32, view<[%extent]xf32>)
+
+func.decl @scalar_only() -> (i32)
+
+func.def @shape_first_nonnegative() -> (i1) {
+  %view, %extent = func.call @shape_first() : () -> (view<[%extent]xf32>, i32)
+  %c0 = scalar.constant 0 : i32
+  %nonnegative = scalar.cmpi sge, %extent, %c0 : i32
+  func.return %nonnegative : i1
+}
+
+func.def @extent_first_nonnegative() -> (i1) {
+  %extent, %view = func.call @extent_first() : () -> (i32, view<[%extent]xf32>)
+  %c0 = scalar.constant 0 : i32
+  %nonnegative = scalar.cmpi sge, %extent, %c0 : i32
+  func.return %nonnegative : i1
+}
+
+func.def @scalar_only_unconstrained() -> (i1) {
+  %value = func.call @scalar_only() : () -> (i32)
+  %c0 = scalar.constant 0 : i32
+  %nonnegative = scalar.cmpi sge, %value, %c0 : i32
+  func.return %nonnegative : i1
+}
+
+// ----
+func.decl @shape_first() -> (view<[%extent]xf32>, %extent: i32)
+
+func.decl @extent_first() -> (%extent: i32, view<[%extent]xf32>)
+
+func.decl @scalar_only() -> (i32)
+
+func.def @shape_first_nonnegative() -> (i1) {
+  %view, %extent = func.call @shape_first() : () -> (view<[%extent]xf32>, i32)
+  %nonnegative = scalar.constant true : i1
+  func.return %nonnegative : i1
+}
+
+func.def @extent_first_nonnegative() -> (i1) {
+  %extent, %view = func.call @extent_first() : () -> (i32, view<[%extent]xf32>)
+  %nonnegative = scalar.constant true : i1
+  func.return %nonnegative : i1
+}
+
+func.def @scalar_only_unconstrained() -> (i1) {
+  %value = func.call @scalar_only() : () -> (i32)
+  %c0 = scalar.constant 0 : i32
+  %nonnegative = scalar.cmpi sge, %value, %c0 : i32
+  func.return %nonnegative : i1
 }

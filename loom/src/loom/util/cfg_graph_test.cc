@@ -155,6 +155,7 @@ TEST_F(CfgGraphTest, BuildsSuccessorsAndPredecessorsForDiamond) {
   EXPECT_EQ(graph.block_count, 4u);
   EXPECT_EQ(graph.edge_count, 4u);
   EXPECT_EQ(graph.backward_edge_count, 0u);
+  EXPECT_FALSE(graph.has_cycles);
 
   loom_cfg_block_index_span_t entry_successors =
       loom_cfg_graph_successors(&graph, 0);
@@ -236,6 +237,7 @@ TEST_F(CfgGraphTest, TraversalRetainsLoopHeaderBeforeNonlexicalBody) {
   BuildGraph(&graph);
 
   EXPECT_FALSE(graph.malformed);
+  EXPECT_TRUE(graph.has_cycles);
   EXPECT_EQ(graph.block_count, 5u);
   EXPECT_EQ(graph.edge_count, 5u);
   EXPECT_FALSE(loom_cfg_graph_block_is_reachable(&graph, 4));
@@ -264,6 +266,32 @@ TEST_F(CfgGraphTest, TraversalVisitsSelfLoopOnce) {
   EXPECT_TRUE(graph.blocks[0].is_dfs_backedge_target);
   EXPECT_EQ(graph.blocks[0].reachability_root, 0u);
   EXPECT_EQ(graph.blocks[0].preorder_end, 1u);
+  EXPECT_TRUE(graph.has_cycles);
+}
+
+TEST_F(CfgGraphTest, ReorderedAcyclicGraphIgnoresUnreachableCycle) {
+  loom_block_t* entry = loom_region_entry_block(body_);
+  loom_block_t* continuation = AppendBlock();
+  loom_block_t* branch = AppendBlock();
+  loom_block_t* unreachable = AppendBlock();
+  SetBlock(entry);
+  BuildBranch(branch);
+  SetBlock(branch);
+  BuildBranch(continuation);
+  SetBlock(unreachable);
+  BuildBranch(unreachable);
+
+  loom_cfg_graph_t graph = {};
+  BuildGraph(&graph);
+
+  EXPECT_FALSE(graph.malformed);
+  EXPECT_EQ(graph.backward_edge_count, 2u);
+  EXPECT_FALSE(graph.has_cycles);
+  EXPECT_FALSE(graph.blocks[3].reachable);
+  ASSERT_EQ(graph.reverse_postorder.count, 3u);
+  EXPECT_EQ(graph.reverse_postorder.values[0], 0u);
+  EXPECT_EQ(graph.reverse_postorder.values[1], 2u);
+  EXPECT_EQ(graph.reverse_postorder.values[2], 1u);
 }
 
 TEST_F(CfgGraphTest, CompletedCyclicSiblingIsNotBackedgeTarget) {
@@ -361,6 +389,7 @@ TEST_F(CfgGraphTest, TraversalFactsForAllThreeBlockBinaryGraphs) {
     for (unsigned i = 0; i < graph.reverse_postorder.count; ++i) {
       reverse_postorder[graph.reverse_postorder.values[i]] = i;
     }
+    bool has_reachable_cycle = false;
     for (unsigned source = 0; source < 3; ++source) {
       const auto& info = graph.blocks[source];
       EXPECT_EQ(info.reachable, source == 0 || reaches[0][source]);
@@ -382,6 +411,7 @@ TEST_F(CfgGraphTest, TraversalFactsForAllThreeBlockBinaryGraphs) {
       }
       EXPECT_EQ(info.is_dfs_backedge_target, !finishes_before_predecessors);
       EXPECT_EQ(info.component_is_cyclic, reaches[source][source]);
+      has_reachable_cycle |= reaches[source][source];
       unsigned earliest = source;
       for (unsigned target = 0; target < 3; ++target) {
         const auto& target_info = graph.blocks[target];
@@ -405,6 +435,7 @@ TEST_F(CfgGraphTest, TraversalFactsForAllThreeBlockBinaryGraphs) {
       }
       EXPECT_EQ(info.reachability_root, earliest);
     }
+    EXPECT_EQ(graph.has_cycles, has_reachable_cycle);
     iree_arena_checkpoint_restore(&checkpoint);
   }
 }

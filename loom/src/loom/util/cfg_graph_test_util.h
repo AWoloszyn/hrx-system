@@ -74,6 +74,7 @@ class CfgGraph {
           pending.emplace_back(target, 0);
         } else if (blocks_[target].preorder_end == 0) {
           blocks_[target].is_dfs_backedge_target = true;
+          graph_.has_cycles = true;
         }
       }
       std::reverse(reverse_postorder_.begin(), reverse_postorder_.end());

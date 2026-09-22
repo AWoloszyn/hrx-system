@@ -292,6 +292,7 @@ loom_cc_test(
     loom::ir
     loom::ops::index
     loom::ops::scf
+    loom::ops::test
 )
 
 loom_cc_library(

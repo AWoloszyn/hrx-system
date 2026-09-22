@@ -13,6 +13,7 @@
 #include "loom/ir/module.h"
 #include "loom/ops/index/ops.h"
 #include "loom/ops/scf/ops.h"
+#include "loom/ops/test/ops.h"
 #include "loom/util/fact_table.h"
 
 namespace loom {
@@ -31,6 +32,9 @@ class FactTableComputeTest : public ::testing::Test {
     vtables = loom_scf_dialect_vtables(&count);
     IREE_ASSERT_OK(loom_context_register_dialect(
         &context_, LOOM_DIALECT_SCF, vtables, static_cast<uint16_t>(count)));
+    vtables = loom_test_dialect_vtables(&count);
+    IREE_ASSERT_OK(loom_context_register_dialect(
+        &context_, LOOM_DIALECT_TEST, vtables, static_cast<uint16_t>(count)));
     IREE_ASSERT_OK(loom_context_finalize(&context_));
     IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("facts"), &pool_,
                                         nullptr, iree_allocator_system(),
@@ -357,6 +361,44 @@ TEST_F(FactTableComputeTest, NumericEqualityDoesNotCreateSSAIdentity) {
   EXPECT_NE(loom_value_fact_table_query_identity(&table_, first_result),
             loom_value_fact_table_query_identity(&table_, second_result));
   EXPECT_EQ(table_.identities.entries, nullptr);
+}
+
+TEST_F(FactTableComputeTest, DependentResultsPublishOnlyFinalChanges) {
+  const loom_type_t tensor_type = loom_type_shaped_1d(
+      LOOM_TYPE_TENSOR, LOOM_SCALAR_TYPE_F32, loom_dim_pack_static(4), 0);
+  const loom_value_id_t input = DefineValue(tensor_type);
+  for (uint16_t extent_index = 0; extent_index < 2; ++extent_index) {
+    SCOPED_TRACE(extent_index);
+    const uint16_t tensor_index = 1 - extent_index;
+    loom_type_t result_types[] = {type_, type_, type_};
+    result_types[tensor_index] = tensor_type;
+    loom_op_t* op = nullptr;
+    IREE_ASSERT_OK(loom_test_deflate_build(
+        &builder_, input, result_types, IREE_ARRAYSIZE(result_types),
+        /*tied_results=*/nullptr, /*tied_result_count=*/0,
+        LOOM_LOCATION_UNKNOWN, &op));
+    const loom_value_id_t* results = loom_op_const_results(op);
+    IREE_ASSERT_OK(loom_module_set_value_type(
+        module_, results[tensor_index],
+        loom_type_shaped_1d(LOOM_TYPE_TENSOR, LOOM_SCALAR_TYPE_F32,
+                            loom_dim_pack_dynamic(results[extent_index]), 0)));
+
+    bool changed = false;
+    IREE_ASSERT_OK(loom_value_fact_table_compute_op_and_report(&table_, module_,
+                                                               op, &changed));
+    EXPECT_TRUE(changed);
+    EXPECT_TRUE(loom_value_facts_is_non_negative(
+        loom_value_fact_table_lookup(&table_, results[extent_index])));
+    EXPECT_TRUE(loom_value_fact_table_has_entry(&table_, results[2]));
+    EXPECT_TRUE(loom_value_facts_is_unknown(
+        loom_value_fact_table_lookup(&table_, results[2])));
+
+    IREE_ASSERT_OK(loom_value_fact_table_compute_op_and_report(&table_, module_,
+                                                               op, &changed));
+    EXPECT_FALSE(changed);
+    EXPECT_TRUE(loom_value_facts_is_non_negative(
+        loom_value_fact_table_lookup(&table_, results[extent_index])));
+  }
 }
 
 }  // namespace
