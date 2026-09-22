@@ -15,6 +15,7 @@
 #include "loom/ir/module.h"
 #include "loom/ir/types.h"
 #include "loom/ops/op_defs.h"
+#include "loom/ops/scalar/ops.h"
 #include "loom/ops/scf/ops.h"
 #include "loom/rewrite/rewriter.h"
 
@@ -241,17 +242,37 @@ iree_status_t loom_scf_select_canonicalize(loom_op_t* op,
           &condition)) {
     loom_value_id_t result = loom_scf_select_result(op);
     loom_type_t result_type = loom_module_value_type(rewriter->module, result);
-    int64_t true_i64 = 0;
-    int64_t false_i64 = 0;
+    bool true_arm = false;
+    bool false_arm = false;
     if (loom_type_is_scalar(result_type) &&
         loom_type_element_type(result_type) == LOOM_SCALAR_TYPE_I1 &&
-        loom_scf_value_facts_are_exact_i64(rewriter, true_value, &true_i64) &&
-        true_i64 == 1 &&
-        loom_scf_value_facts_are_exact_i64(rewriter, false_value, &false_i64) &&
-        false_i64 == 0) {
+        loom_value_facts_as_exact_bool(
+            loom_rewriter_value_facts(rewriter, true_value), &true_arm) &&
+        loom_value_facts_as_exact_bool(
+            loom_rewriter_value_facts(rewriter, false_value), &false_arm) &&
+        true_arm != false_arm) {
       loom_value_id_t condition_value = loom_scf_select_condition(op);
-      return loom_scf_replace_results_and_erase(op, rewriter, &condition_value,
-                                                1);
+      if (true_arm) {
+        return loom_scf_replace_results_and_erase(op, rewriter,
+                                                  &condition_value, 1);
+      }
+      // A context can register SCF without scalar arithmetic. Only materialize
+      // the complement when its operation belongs to the registered vocabulary.
+      if (loom_context_resolve_op(rewriter->module->context,
+                                  LOOM_OP_SCALAR_XORI)) {
+        loom_builder_set_before(&rewriter->builder, op);
+        loom_value_id_t value_checkpoint =
+            loom_rewriter_value_checkpoint(rewriter);
+        loom_op_t* inverse = NULL;
+        IREE_RETURN_IF_ERROR(loom_scalar_xori_build(
+            &rewriter->builder, condition_value, false_value, result_type,
+            op->location, &inverse));
+        loom_value_id_t replacement = loom_scalar_xori_result(inverse);
+        IREE_RETURN_IF_ERROR(loom_rewriter_preserve_result_names_on_new_values(
+            rewriter, op, &replacement, 1, value_checkpoint));
+        return loom_scf_replace_results_and_erase(op, rewriter, &replacement,
+                                                  1);
+      }
     }
     return iree_ok_status();
   }

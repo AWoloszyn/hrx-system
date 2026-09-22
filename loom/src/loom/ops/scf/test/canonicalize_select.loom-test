@@ -1,0 +1,201 @@
+// RUN: pass canonicalize
+
+// scf.select is a plain value op, so identical arms fold without needing
+// control-flow reasoning.
+func.def @select_identical_arms(%cond: i1, %value: vector<4xf32>) -> (vector<4xf32>) {
+  %result = scf.select %cond, %value, %value : vector<4xf32>
+  func.return %result : vector<4xf32>
+}
+
+// ----
+func.def @select_identical_arms(%cond: i1, %value: vector<4xf32>) -> (vector<4xf32>) {
+  func.return %value : vector<4xf32>
+}
+
+// ====
+
+// Exact condition facts fold scf.select to the chosen arm even for non-scalar
+// aggregate values.
+func.def @select_constant_condition(%value: tile<4xf32>, %other: tile<4xf32>) -> (tile<4xf32>) {
+  %cond = scalar.constant false : i1
+  %result = scf.select %cond, %value, %other : tile<4xf32>
+  func.return %result : tile<4xf32>
+}
+
+// ----
+func.def @select_constant_condition(%value: tile<4xf32>, %other: tile<4xf32>) -> (tile<4xf32>) {
+  func.return %other : tile<4xf32>
+}
+
+// ====
+
+// Exact condition facts fold scalar scf.select values to the selected arm.
+func.def @select_true_scalar() -> (i32) {
+  %cond = scalar.constant true : i1
+  %a = scalar.constant 42 : i32
+  %b = scalar.constant 99 : i32
+  %result = scf.select %cond, %a, %b : i32
+  func.return %result : i32
+}
+
+// ----
+func.def @select_true_scalar() -> (i32) {
+  %result = scalar.constant 42 : i32
+  func.return %result : i32
+}
+
+// ====
+
+func.def @select_false_scalar() -> (i32) {
+  %cond = scalar.constant false : i1
+  %a = scalar.constant 42 : i32
+  %b = scalar.constant 99 : i32
+  %result = scf.select %cond, %a, %b : i32
+  func.return %result : i32
+}
+
+// ----
+func.def @select_false_scalar() -> (i32) {
+  %result = scalar.constant 99 : i32
+  func.return %result : i32
+}
+
+// ====
+
+// Boolean identity forwards the condition without materializing arithmetic.
+func.def @select_boolean_identity(%condition: i1) -> (i1) {
+  %true = scalar.constant true : i1
+  %false = scalar.constant false : i1
+  %result = scf.select %condition, %true, %false : i1
+  func.return %result : i1
+}
+
+// ----
+func.def @select_boolean_identity(%condition: i1) -> (i1) {
+  func.return %condition : i1
+}
+
+// ====
+
+// Both Boolean spellings have the same complement normal form.
+func.def @select_boolean_complement(%condition: i1) -> (i1) {
+  %false = scalar.constant false : i1
+  %true = scalar.constant true : i1
+  %result = scf.select %condition, %false, %true : i1
+  func.return %result : i1
+}
+
+// ----
+func.def @select_boolean_complement(%condition: i1) -> (i1) {
+  %true = scalar.constant true : i1
+  %result = scalar.xori %condition, %true : i1
+  func.return %result : i1
+}
+
+// ====
+
+func.def @select_boolean_integer_literals(%condition: i1) -> (i1) {
+  %c0 = scalar.constant 0 : i1
+  %c1 = scalar.constant 1 : i1
+  %result = scf.select %condition, %c0, %c1 : i1
+  func.return %result : i1
+}
+
+// ----
+func.def @select_boolean_integer_literals(%condition: i1) -> (i1) {
+  %c1 = scalar.constant 1 : i1
+  %result = scalar.xori %condition, %c1 : i1
+  func.return %result : i1
+}
+
+// ====
+
+// The four constant-arm truth tables reduce to constants, identity and not.
+func.def @select_boolean_truth_tables(%condition: i1) -> (i1, i1, i1, i1) {
+  %false = scalar.constant false : i1
+  %true = scalar.constant true : i1
+  %both_false = scf.select %condition, %false, %false : i1
+  %complement = scf.select %condition, %false, %true : i1
+  %identity = scf.select %condition, %true, %false : i1
+  %both_true = scf.select %condition, %true, %true : i1
+  func.return %both_false, %complement, %identity, %both_true : i1, i1, i1, i1
+}
+
+// ----
+func.def @select_boolean_truth_tables(%condition: i1) -> (i1, i1, i1, i1) {
+  %true = scalar.constant true : i1
+  %both_false = scalar.constant false : i1
+  %complement = scalar.xori %condition, %true : i1
+  %both_true = scalar.constant true : i1
+  func.return %both_false, %complement, %condition, %both_true : i1, i1, i1, i1
+}
+
+// ====
+
+// Facts established by comparisons reach the same Boolean normal form.
+func.def @select_boolean_inferred_arms(%condition: i1, %value: i32) -> (i1) {
+  %false = scalar.cmpi ne, %value, %value : i32
+  %true = scalar.cmpi eq, %value, %value : i32
+  %result = scf.select %condition, %false, %true : i1
+  func.return %result : i1
+}
+
+// ----
+func.def @select_boolean_inferred_arms(%condition: i1, %value: i32) -> (i1) {
+  %true = scalar.constant true : i1
+  %result = scalar.xori %condition, %true : i1
+  func.return %result : i1
+}
+
+// ====
+
+// Complement pairs cancel through the ordinary scalar canonicalization owner.
+func.def @select_boolean_double_complement(%condition: i1) -> (i1) {
+  %false = scalar.constant false : i1
+  %true = scalar.constant true : i1
+  %inverse = scf.select %condition, %false, %true : i1
+  %result = scf.select %inverse, %false, %true : i1
+  func.return %result : i1
+}
+
+// ----
+func.def @select_boolean_double_complement(%condition: i1) -> (i1) {
+  func.return %condition : i1
+}
+
+// ====
+
+// Wider integer selection still produces its declared integer representation.
+func.def @select_integer_zero_one(%condition: i1) -> (i32) {
+  %c0 = scalar.constant 0 : i32
+  %c1 = scalar.constant 1 : i32
+  %result = scf.select %condition, %c0, %c1 : i32
+  func.return %result : i32
+}
+
+// ====
+
+// Whole-vector selection keeps its aggregate type even for uniform i1 values.
+func.def @select_boolean_vectors(%condition: i1) -> (vector<4xi1>) {
+  %false = scalar.constant false : i1
+  %true = scalar.constant true : i1
+  %zeros = vector.splat %false : vector<4xi1>
+  %ones = vector.splat %true : vector<4xi1>
+  %result = scf.select %condition, %zeros, %ones : vector<4xi1>
+  func.return %result : vector<4xi1>
+}
+
+// ----
+func.def @select_boolean_vectors(%condition: i1) -> (vector<4xi1>) {
+  %zeros = vector.constant false : vector<4xi1>
+  %ones = vector.constant true : vector<4xi1>
+  %result = scf.select %condition, %zeros, %ones : vector<4xi1>
+  func.return %result : vector<4xi1>
+}
+
+// ====
+
+func.def @select_boolean_dynamic_arms(%condition: i1, %left: i1, %right: i1) -> (i1) {
+  %result = scf.select %condition, %left, %right : i1
+  func.return %result : i1
+}

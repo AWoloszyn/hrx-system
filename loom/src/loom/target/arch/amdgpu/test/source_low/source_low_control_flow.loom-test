@@ -1782,10 +1782,10 @@ func.def target(@target) @divergent_if_i1_false_true_constants_feeds_vgpr_select
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @divergent_if_i1_false_true_constants_feeds_vgpr_select(%values: reg<amdgpu.vgpr x2>, %limit: reg<amdgpu.sgpr>, %true_value: reg<amdgpu.vgpr>, %false_value: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
   %lane = slice %values[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
-  %22 = v_mov_b32_copy %limit
-  %lane_condition = v_cmp_lt_i32 %lane, %22
-  %24 = s_mov_b64_exec_read
-  %selected_condition = s_xor_b64 %lane_condition, %24
+  %21 = v_mov_b32_copy %limit
+  %lane_condition = v_cmp_lt_i32 %lane, %21
+  %23 = s_mov_b64_exec_read
+  %selected_condition = s_xor_b64 %lane_condition, %23
   %result = v_cndmask_b32 %false_value, %true_value, %selected_condition
   return %result
 }
