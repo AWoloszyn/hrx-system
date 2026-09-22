@@ -16,13 +16,14 @@ from loom.gen.ops.c_metadata_tables import (
     generate_tables_h,
 )
 from loom.gen.ops.c_names import c_dialect_include_path as _c_dialect_include_path
-from loom.gen.ops.c_ops_header import generate_ops_h
+from loom.gen.ops.c_ops_header import generate_ops_h, generate_ops_inc
 from loom.gen.ops.model import DialectGeneration
 from loom.gen.ops.type_registry import generate_dialect_type_registry
 
 __all__ = [
     "generate_dialect_contents",
     "generate_ops_h",
+    "generate_ops_inc",
     "generate_sharded_tables_c",
     "generate_tables_aggregator_c",
     "generate_tables_c",
@@ -62,7 +63,9 @@ def generate_dialect_contents(generation: DialectGeneration) -> dict[str, str]:
             generation.ops,
             generation.parameterized_attrs,
             generation.encoding_families,
+            include_path=include_path,
         ),
+        "ops.inc": generate_ops_inc(generation.ops),
         "builders.c": c_builders.generate_builders_c(
             dialect.name,
             generation.ops,

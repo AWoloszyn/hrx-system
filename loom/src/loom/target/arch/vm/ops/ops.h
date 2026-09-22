@@ -35,16 +35,8 @@ typedef enum loom_vm_target_kind_e {
 // LOOM_OP_VM_TARGET: Selects the portable VM instruction set and host function ABI.
 // vm.target<core> @vm
 LOOM_DEFINE_ISA(loom_vm_target_isa, LOOM_OP_VM_TARGET)
-#define loom_vm_target_symbol_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_SYMBOL(loom_vm_target_symbol, 0)
-#define loom_vm_target_rewrite_symbol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_vm_target_kind_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vm_target_kind, 1, loom_vm_target_kind_t)
-#define loom_vm_target_rewrite_kind(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 iree_status_t loom_vm_target_build(
     loom_builder_t* builder,
     loom_vm_target_kind_t kind,
@@ -70,5 +62,8 @@ loom_op_semantics_t loom_vm_op_semantics(
 #ifdef __cplusplus
 }
 #endif
+
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/target/arch/vm/ops/ops.inc"
 
 #endif  // LOOM_OPS_VM_OPS_H_

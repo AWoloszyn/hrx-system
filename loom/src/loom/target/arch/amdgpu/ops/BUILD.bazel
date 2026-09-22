@@ -40,6 +40,8 @@ loom_generated_cc_library(
         "target.h",
     ],
     args = ["--dialect=amdgpu"],
+    extra_output_flags = ["--ops-include"],
+    extra_outputs = ["ops.inc"],
     generated_src_flags = [
         "--builders",
         "--tables",
@@ -49,6 +51,7 @@ loom_generated_cc_library(
         "tables.c",
     ],
     generator = "//loom/py/loom/gen/ops:c_tables_amdgpu_generator",
+    textual_hdrs = ["ops.inc"],
     visibility = (
         _AMDGPU_HAL_VISIBILITY +
         _AMDGPU_LOWER_VISIBILITY +

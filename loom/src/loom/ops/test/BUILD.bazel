@@ -37,6 +37,8 @@ loom_generated_cc_library(
         "types.h",
     ],
     args = ["--dialect=test"],
+    extra_output_flags = ["--ops-include"],
+    extra_outputs = ["ops.inc"],
     generated_src_flags = [
         "--builders",
         "--tables",
@@ -48,6 +50,7 @@ loom_generated_cc_library(
         "types.c",
     ],
     generator = "//loom/py/loom/gen/ops:c_tables_test_generator",
+    textual_hdrs = ["ops.inc"],
     deps = [
         "//loom/src/loom/analysis:symbol_facts",
         "//loom/src/loom/error:emitter",

@@ -14,6 +14,8 @@ loom_cc_library(
     op_defs
   HDRS
     "ops.h"
+  TEXTUAL_HDRS
+    "ops.inc"
   DEPS
     loom::ops::op_defs
   PUBLIC
@@ -26,6 +28,8 @@ loom_generated_cc_library(
     loom::py::loom::gen::ops::c_tables_cfg_generator
   SRCS
     "verify.c"
+  TEXTUAL_HDRS
+    "ops.inc"
   GENERATED_SRC_FLAGS
     "--builders"
     "--tables"
@@ -36,6 +40,10 @@ loom_generated_cc_library(
     "ops.h"
   ARGS
     "--dialect=cfg"
+  EXTRA_OUTPUT_FLAGS
+    "--ops-include"
+  EXTRA_OUTPUTS
+    "ops.inc"
   DEPS
     ::op_defs
     loom::error::emitter

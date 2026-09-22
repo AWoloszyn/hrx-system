@@ -50,6 +50,8 @@ loom_generated_cc_library(
         "schedule_scope.h",
     ],
     args = ["--dialect=low"],
+    extra_output_flags = ["--ops-include"],
+    extra_outputs = ["ops.inc"],
     generated_src_flags = [
         "--builders",
         "--tables",
@@ -59,6 +61,7 @@ loom_generated_cc_library(
         "tables.c",
     ],
     generator = "//loom/py/loom/gen/ops:c_tables_low_generator",
+    textual_hdrs = ["ops.inc"],
     visibility = _LOW_OPS_VISIBILITY,
     deps = [
         "//loom/src/loom/error:emitter",

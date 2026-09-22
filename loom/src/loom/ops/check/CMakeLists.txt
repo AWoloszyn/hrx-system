@@ -14,6 +14,8 @@ loom_generated_cc_library(
     check
   GENERATOR
     loom::py::loom::gen::ops::c_tables_check_generator
+  TEXTUAL_HDRS
+    "ops.inc"
   GENERATED_SRC_FLAGS
     "--builders"
     "--tables"
@@ -24,6 +26,10 @@ loom_generated_cc_library(
     "ops.h"
   ARGS
     "--dialect=check"
+  EXTRA_OUTPUT_FLAGS
+    "--ops-include"
+  EXTRA_OUTPUTS
+    "ops.inc"
   DEPS
     loom::error::error_defs
     loom::ir

@@ -18,6 +18,8 @@ loom_generated_cc_library(
     "canonicalize.c"
     "facts.c"
     "verify.c"
+  TEXTUAL_HDRS
+    "ops.inc"
   GENERATED_SRC_FLAGS
     "--builders"
     "--tables"
@@ -28,6 +30,10 @@ loom_generated_cc_library(
     "ops.h"
   ARGS
     "--dialect=global"
+  EXTRA_OUTPUT_FLAGS
+    "--ops-include"
+  EXTRA_OUTPUTS
+    "ops.inc"
   DEPS
     iree::base::core_headers
     iree::base::internal

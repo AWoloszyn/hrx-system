@@ -29,18 +29,10 @@ enum {
 // config.decl @model36.model.hidden_size : index
 LOOM_DEFINE_ISA(loom_config_decl_isa, LOOM_OP_CONFIG_DECL)
 LOOM_DEFINE_RESULT(loom_config_decl_type, 0)
-#define loom_config_decl_symbol_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_SYMBOL(loom_config_decl_symbol, 0)
-#define loom_config_decl_rewrite_symbol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_config_decl_predicates_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_config_decl_predicates, 1)
 #define loom_config_decl_has_predicates(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
-#define loom_config_decl_rewrite_predicates(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 enum loom_config_decl_build_flag_bits_e {
   LOOM_CONFIG_DECL_BUILD_FLAG_HAS_PREDICATES = 1u << 0,
 };
@@ -64,16 +56,8 @@ iree_status_t loom_config_decl_verify(
 // config.def @model36.model.hidden_size = 2048 : index
 LOOM_DEFINE_ISA(loom_config_def_isa, LOOM_OP_CONFIG_DEF)
 LOOM_DEFINE_RESULT(loom_config_def_type, 0)
-#define loom_config_def_symbol_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_SYMBOL(loom_config_def_symbol, 0)
-#define loom_config_def_rewrite_symbol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_config_def_value_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ANY(loom_config_def_value, 1)
-#define loom_config_def_rewrite_value(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 iree_status_t loom_config_def_build(
     loom_builder_t* builder,
     loom_symbol_ref_t symbol,
@@ -94,11 +78,7 @@ iree_status_t loom_config_def_verify(
 // %hidden = config.get @model36.model.hidden_size : index
 LOOM_DEFINE_ISA(loom_config_get_isa, LOOM_OP_CONFIG_GET)
 LOOM_DEFINE_RESULT(loom_config_get_result, 0)
-#define loom_config_get_config_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_SYMBOL(loom_config_get_config, 0)
-#define loom_config_get_rewrite_config(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_config_get_build(
     loom_builder_t* builder,
     loom_symbol_ref_t config,
@@ -129,5 +109,8 @@ loom_op_semantics_t loom_config_op_semantics(
 #ifdef __cplusplus
 }
 #endif
+
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/config/ops.inc"
 
 #endif  // LOOM_OPS_CONFIG_OPS_H_

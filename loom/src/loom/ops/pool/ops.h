@@ -113,4 +113,7 @@ loom_op_semantics_t loom_pool_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/pool/ops.inc"
+
 #endif  // LOOM_OPS_POOL_OPS_H_

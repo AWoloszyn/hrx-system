@@ -76,18 +76,10 @@ typedef enum loom_check_expect_close_nan_e {
 //   check.return
 // }
 LOOM_DEFINE_ISA(loom_check_case_isa, LOOM_OP_CHECK_CASE)
-#define loom_check_case_case_symbol_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_SYMBOL(loom_check_case_case_symbol, 0)
-#define loom_check_case_rewrite_case_symbol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_check_case_visibility_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_check_case_visibility, 1, loom_check_case_visibility_t)
 #define loom_check_case_has_visibility(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
-#define loom_check_case_rewrite_visibility(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 LOOM_DEFINE_REGION(loom_check_case_body, 0)
 enum loom_check_case_build_flag_bits_e {
   LOOM_CHECK_CASE_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
@@ -112,16 +104,8 @@ iree_status_t loom_check_return_build(
 // LOOM_OP_CHECK_REQUIRES: Declares a provider requirement; unmet requirements skip the case.
 // check.requires<target.feature> {feature = "amdgpu.gfx11"}
 LOOM_DEFINE_ISA(loom_check_requires_isa, LOOM_OP_CHECK_REQUIRES)
-#define loom_check_requires_provider_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_STRING(loom_check_requires_provider, 0)
-#define loom_check_requires_rewrite_provider(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_check_requires_attrs_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_DICT(loom_check_requires_attrs, 1)
-#define loom_check_requires_rewrite_attrs(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 iree_status_t loom_check_requires_build(
     loom_builder_t* builder,
     loom_string_id_t provider,
@@ -132,23 +116,11 @@ iree_status_t loom_check_requires_build(
 // LOOM_OP_CHECK_SKIP_IF: Declares a provider skip predicate for exceptional environments.
 // check.skip_if<device.memory> {max_bytes = 1073741824} reason("fixture too large")
 LOOM_DEFINE_ISA(loom_check_skip_if_isa, LOOM_OP_CHECK_SKIP_IF)
-#define loom_check_skip_if_provider_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_STRING(loom_check_skip_if_provider, 0)
-#define loom_check_skip_if_rewrite_provider(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_check_skip_if_attrs_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_DICT(loom_check_skip_if_attrs, 1)
-#define loom_check_skip_if_rewrite_attrs(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_check_skip_if_reason_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_STRING(loom_check_skip_if_reason, 2)
 #define loom_check_skip_if_has_reason(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
-#define loom_check_skip_if_rewrite_reason(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 enum loom_check_skip_if_build_flag_bits_e {
   LOOM_CHECK_SKIP_IF_BUILD_FLAG_HAS_REASON = 1u << 0,
 };
@@ -166,35 +138,15 @@ iree_status_t loom_check_skip_if_build(
 // %m = check.param.range po2 bounds(1 to 64) : index
 LOOM_DEFINE_ISA(loom_check_param_range_isa, LOOM_OP_CHECK_PARAM_RANGE)
 LOOM_DEFINE_RESULT(loom_check_param_range_result, 0)
-#define loom_check_param_range_policy_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_check_param_range_policy, 0, loom_check_param_range_policy_t)
-#define loom_check_param_range_rewrite_policy(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_check_param_range_lower_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ANY(loom_check_param_range_lower, 1)
-#define loom_check_param_range_rewrite_lower(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_check_param_range_upper_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_ANY(loom_check_param_range_upper, 2)
-#define loom_check_param_range_rewrite_upper(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
-#define loom_check_param_range_step_field() \
-  ((loom_attr_field_t){3})
 LOOM_DEFINE_ATTR_ANY(loom_check_param_range_step, 3)
 #define loom_check_param_range_has_step(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
-#define loom_check_param_range_rewrite_step(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 3, (attribute))
-#define loom_check_param_range_param_name_field() \
-  ((loom_attr_field_t){4})
 LOOM_DEFINE_ATTR_STRING(loom_check_param_range_param_name, 4)
 #define loom_check_param_range_has_param_name(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
-#define loom_check_param_range_rewrite_param_name(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 4, (attribute))
 enum loom_check_param_range_build_flag_bits_e {
   LOOM_CHECK_PARAM_RANGE_BUILD_FLAG_HAS_PARAM_NAME = 1u << 0,
 };
@@ -215,18 +167,10 @@ iree_status_t loom_check_param_range_build(
 // %k = check.param.choice values([16, 24, 32, 64]) : index
 LOOM_DEFINE_ISA(loom_check_param_choice_isa, LOOM_OP_CHECK_PARAM_CHOICE)
 LOOM_DEFINE_RESULT(loom_check_param_choice_result, 0)
-#define loom_check_param_choice_values_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_check_param_choice_values, 0)
-#define loom_check_param_choice_rewrite_values(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_check_param_choice_param_name_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_STRING(loom_check_param_choice_param_name, 1)
 #define loom_check_param_choice_has_param_name(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
-#define loom_check_param_choice_rewrite_param_name(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 enum loom_check_param_choice_build_flag_bits_e {
   LOOM_CHECK_PARAM_CHOICE_BUILD_FLAG_HAS_PARAM_NAME = 1u << 0,
 };
@@ -245,23 +189,11 @@ iree_status_t loom_check_param_choice_build(
 // %seed = check.param.seed base(0x4c6f6f6d) count(32) : i64
 LOOM_DEFINE_ISA(loom_check_param_seed_isa, LOOM_OP_CHECK_PARAM_SEED)
 LOOM_DEFINE_RESULT(loom_check_param_seed_result, 0)
-#define loom_check_param_seed_base_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_I64(loom_check_param_seed_base, 0)
-#define loom_check_param_seed_rewrite_base(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_check_param_seed_count_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_I64(loom_check_param_seed_count, 1)
-#define loom_check_param_seed_rewrite_count(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_check_param_seed_param_name_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_STRING(loom_check_param_seed_param_name, 2)
 #define loom_check_param_seed_has_param_name(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
-#define loom_check_param_seed_rewrite_param_name(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 enum loom_check_param_seed_build_flag_bits_e {
   LOOM_CHECK_PARAM_SEED_BUILD_FLAG_HAS_PARAM_NAME = 1u << 0,
 };
@@ -280,11 +212,7 @@ iree_status_t loom_check_param_seed_build(
 // %scalar = check.literal value(42) : i32
 LOOM_DEFINE_ISA(loom_check_literal_isa, LOOM_OP_CHECK_LITERAL)
 LOOM_DEFINE_RESULT(loom_check_literal_result, 0)
-#define loom_check_literal_value_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ANY(loom_check_literal_value, 0)
-#define loom_check_literal_rewrite_value(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_check_literal_build(
     loom_builder_t* builder,
     loom_attribute_t value,
@@ -296,23 +224,11 @@ iree_status_t loom_check_literal_build(
 // %lhs = check.generate.iota offset(0) step(1) : tensor<[%m]x[%n]xi32>
 LOOM_DEFINE_ISA(loom_check_generate_iota_isa, LOOM_OP_CHECK_GENERATE_IOTA)
 LOOM_DEFINE_RESULT(loom_check_generate_iota_result, 0)
-#define loom_check_generate_iota_offset_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ANY(loom_check_generate_iota_offset, 0)
-#define loom_check_generate_iota_rewrite_offset(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_check_generate_iota_step_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ANY(loom_check_generate_iota_step, 1)
-#define loom_check_generate_iota_rewrite_step(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_check_generate_iota_period_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_I64(loom_check_generate_iota_period, 2)
 #define loom_check_generate_iota_has_period(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
-#define loom_check_generate_iota_rewrite_period(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 enum loom_check_generate_iota_build_flag_bits_e {
   LOOM_CHECK_GENERATE_IOTA_BUILD_FLAG_HAS_PERIOD = 1u << 0,
 };
@@ -331,11 +247,7 @@ iree_status_t loom_check_generate_iota_build(
 // %rhs = check.generate.fill value(17) : tensor<[%m]x[%n]xi32>
 LOOM_DEFINE_ISA(loom_check_generate_fill_isa, LOOM_OP_CHECK_GENERATE_FILL)
 LOOM_DEFINE_RESULT(loom_check_generate_fill_result, 0)
-#define loom_check_generate_fill_value_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ANY(loom_check_generate_fill_value, 0)
-#define loom_check_generate_fill_rewrite_value(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_check_generate_fill_build(
     loom_builder_t* builder,
     loom_attribute_t value,
@@ -348,16 +260,8 @@ iree_status_t loom_check_generate_fill_build(
 LOOM_DEFINE_ISA(loom_check_generate_random_uniform_isa, LOOM_OP_CHECK_GENERATE_RANDOM_UNIFORM)
 LOOM_DEFINE_OPERAND(loom_check_generate_random_uniform_seed, 0)
 LOOM_DEFINE_RESULT(loom_check_generate_random_uniform_result, 0)
-#define loom_check_generate_random_uniform_lower_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ANY(loom_check_generate_random_uniform_lower, 0)
-#define loom_check_generate_random_uniform_rewrite_lower(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_check_generate_random_uniform_upper_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ANY(loom_check_generate_random_uniform_upper, 1)
-#define loom_check_generate_random_uniform_rewrite_upper(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 iree_status_t loom_check_generate_random_uniform_build(
     loom_builder_t* builder,
     loom_value_id_t seed,
@@ -371,11 +275,7 @@ iree_status_t loom_check_generate_random_uniform_build(
 // %input = check.file.read.npy path("fixtures/layer_norm/input.npy") : tensor<1024xf32>
 LOOM_DEFINE_ISA(loom_check_file_read_npy_isa, LOOM_OP_CHECK_FILE_READ_NPY)
 LOOM_DEFINE_RESULT(loom_check_file_read_npy_result, 0)
-#define loom_check_file_read_npy_path_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_STRING(loom_check_file_read_npy_path, 0)
-#define loom_check_file_read_npy_rewrite_path(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_check_file_read_npy_build(
     loom_builder_t* builder,
     loom_string_id_t path,
@@ -387,18 +287,10 @@ iree_status_t loom_check_file_read_npy_build(
 // check.file.write.npy value(%actual) path("outputs/layer_norm.actual.npy") mode(on_failure) : tensor<1024xf32>
 LOOM_DEFINE_ISA(loom_check_file_write_npy_isa, LOOM_OP_CHECK_FILE_WRITE_NPY)
 LOOM_DEFINE_OPERAND(loom_check_file_write_npy_value, 0)
-#define loom_check_file_write_npy_path_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_STRING(loom_check_file_write_npy_path, 0)
-#define loom_check_file_write_npy_rewrite_path(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_check_file_write_npy_mode_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_check_file_write_npy_mode, 1, loom_check_file_write_npy_mode_t)
 #define loom_check_file_write_npy_has_mode(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
-#define loom_check_file_write_npy_rewrite_mode(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 enum loom_check_file_write_npy_build_flag_bits_e {
   LOOM_CHECK_FILE_WRITE_NPY_BUILD_FLAG_HAS_MODE = 1u << 0,
 };
@@ -417,23 +309,11 @@ iree_status_t loom_check_file_write_npy_build(
 LOOM_DEFINE_ISA(loom_check_oracle_call_isa, LOOM_OP_CHECK_ORACLE_CALL)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_check_oracle_call_inputs, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_check_oracle_call_results, 0)
-#define loom_check_oracle_call_provider_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_STRING(loom_check_oracle_call_provider, 0)
-#define loom_check_oracle_call_rewrite_provider(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_check_oracle_call_attrs_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_DICT(loom_check_oracle_call_attrs, 1)
 #define loom_check_oracle_call_has_attrs(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
-#define loom_check_oracle_call_rewrite_attrs(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_check_oracle_call_callee_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_SYMBOL(loom_check_oracle_call_callee, 2)
-#define loom_check_oracle_call_rewrite_callee(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 enum loom_check_oracle_call_build_flag_bits_e {
   LOOM_CHECK_ORACLE_CALL_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };
@@ -482,21 +362,9 @@ iree_status_t loom_check_expect_bitwise_build(
 LOOM_DEFINE_ISA(loom_check_expect_close_isa, LOOM_OP_CHECK_EXPECT_CLOSE)
 LOOM_DEFINE_OPERAND(loom_check_expect_close_actual, 0)
 LOOM_DEFINE_OPERAND(loom_check_expect_close_expected, 1)
-#define loom_check_expect_close_atol_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_F64(loom_check_expect_close_atol, 0)
-#define loom_check_expect_close_rewrite_atol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_check_expect_close_rtol_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_F64(loom_check_expect_close_rtol, 1)
-#define loom_check_expect_close_rewrite_rtol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_check_expect_close_nan_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_check_expect_close_nan, 2, loom_check_expect_close_nan_t)
-#define loom_check_expect_close_rewrite_nan(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 iree_status_t loom_check_expect_close_build(
     loom_builder_t* builder,
     loom_value_id_t actual,
@@ -512,11 +380,7 @@ iree_status_t loom_check_expect_close_build(
 LOOM_DEFINE_ISA(loom_check_expect_shape_isa, LOOM_OP_CHECK_EXPECT_SHAPE)
 LOOM_DEFINE_OPERAND(loom_check_expect_shape_value, 0)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_check_expect_shape_dims, 1)
-#define loom_check_expect_shape_static_dims_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_check_expect_shape_static_dims, 0)
-#define loom_check_expect_shape_rewrite_static_dims(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_check_expect_shape_build(
     loom_builder_t* builder,
     loom_value_id_t value,
@@ -532,18 +396,10 @@ iree_status_t loom_check_expect_shape_build(
 LOOM_DEFINE_ISA(loom_check_expect_isa, LOOM_OP_CHECK_EXPECT)
 LOOM_DEFINE_OPERAND(loom_check_expect_actual, 0)
 LOOM_DEFINE_OPERAND(loom_check_expect_expected, 1)
-#define loom_check_expect_provider_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_STRING(loom_check_expect_provider, 0)
-#define loom_check_expect_rewrite_provider(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_check_expect_attrs_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_DICT(loom_check_expect_attrs, 1)
 #define loom_check_expect_has_attrs(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
-#define loom_check_expect_rewrite_attrs(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 enum loom_check_expect_build_flag_bits_e {
   LOOM_CHECK_EXPECT_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };
@@ -561,18 +417,10 @@ iree_status_t loom_check_expect_build(
 // LOOM_OP_CHECK_EXPECT_EVENT: Requires a structured runtime event matching a provider-specific subset pattern.
 // check.expect.event<device> {type = "asan_report", count = 1}
 LOOM_DEFINE_ISA(loom_check_expect_event_isa, LOOM_OP_CHECK_EXPECT_EVENT)
-#define loom_check_expect_event_provider_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_STRING(loom_check_expect_event_provider, 0)
-#define loom_check_expect_event_rewrite_provider(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_check_expect_event_attrs_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_DICT(loom_check_expect_event_attrs, 1)
 #define loom_check_expect_event_has_attrs(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
-#define loom_check_expect_event_rewrite_attrs(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 enum loom_check_expect_event_build_flag_bits_e {
   LOOM_CHECK_EXPECT_EVENT_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };
@@ -588,23 +436,11 @@ iree_status_t loom_check_expect_event_build(
 // LOOM_OP_CHECK_BENCHMARK: Declares a named benchmark slice over a check.case. The required symbol identifies the record in linking, reports, and benchmark selection.
 // check.benchmark<@gemv_sweep> @gemv_latency {m = 8, n = 96}
 LOOM_DEFINE_ISA(loom_check_benchmark_isa, LOOM_OP_CHECK_BENCHMARK)
-#define loom_check_benchmark_benchmark_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_SYMBOL(loom_check_benchmark_benchmark, 0)
-#define loom_check_benchmark_rewrite_benchmark(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_check_benchmark_case_ref_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_SYMBOL(loom_check_benchmark_case_ref, 1)
-#define loom_check_benchmark_rewrite_case_ref(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_check_benchmark_attrs_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_DICT(loom_check_benchmark_attrs, 2)
 #define loom_check_benchmark_has_attrs(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
-#define loom_check_benchmark_rewrite_attrs(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 enum loom_check_benchmark_build_flag_bits_e {
   LOOM_CHECK_BENCHMARK_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };
@@ -623,11 +459,7 @@ iree_status_t loom_check_benchmark_build(
 LOOM_DEFINE_ISA(loom_check_tensor_view_isa, LOOM_OP_CHECK_TENSOR_VIEW)
 LOOM_DEFINE_OPERAND(loom_check_tensor_view_source, 0)
 LOOM_DEFINE_RESULT(loom_check_tensor_view_result, 0)
-#define loom_check_tensor_view_byte_offset_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_I64(loom_check_tensor_view_byte_offset, 0)
-#define loom_check_tensor_view_rewrite_byte_offset(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_check_tensor_view_build(
     loom_builder_t* builder,
     loom_value_id_t source,
@@ -651,5 +483,8 @@ loom_op_semantics_t loom_check_op_semantics(
 #ifdef __cplusplus
 }
 #endif
+
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/check/ops.inc"
 
 #endif  // LOOM_OPS_CHECK_OPS_H_

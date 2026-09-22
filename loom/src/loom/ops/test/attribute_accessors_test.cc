@@ -95,7 +95,7 @@ TEST_F(AttributeAccessorTest, PresenceDistinguishesZeroAndEmptyFromAbsence) {
   }
 }
 
-TEST_F(AttributeAccessorTest, RewritingTransfersAndClearsAttributeReferences) {
+TEST_F(AttributeAccessorTest, MutationTransfersAndClearsAttributeReferences) {
   loom_string_id_t name = LOOM_STRING_ID_INVALID;
   IREE_ASSERT_OK(
       loom_module_intern_string(module_, IREE_SV("function"), &name));
@@ -123,6 +123,30 @@ TEST_F(AttributeAccessorTest, RewritingTransfersAndClearsAttributeReferences) {
        {},
        {second, 16}},
   };
+
+  int module_evaluations = 0;
+  int set_operation_evaluations = 0;
+  int set_attribute_evaluations = 0;
+  IREE_ASSERT_OK(loom_test_func_set_predicates(
+      (++module_evaluations, module_), (++set_operation_evaluations, function),
+      (++set_attribute_evaluations,
+       loom_attr_predicate_list(&predicates[0], 1))));
+  EXPECT_EQ(module_evaluations, 1);
+  EXPECT_EQ(set_operation_evaluations, 1);
+  EXPECT_EQ(set_attribute_evaluations, 1);
+  EXPECT_TRUE(loom_test_func_has_predicates(function));
+  EXPECT_TRUE(loom_value_has_attribute_uses(loom_module_value(module_, first)));
+  IREE_ASSERT_OK(loom_test_func_set_predicates(
+      module_, function, loom_attr_predicate_list(&predicates[1], 1)));
+  EXPECT_FALSE(
+      loom_value_has_attribute_uses(loom_module_value(module_, first)));
+  EXPECT_TRUE(
+      loom_value_has_attribute_uses(loom_module_value(module_, second)));
+  IREE_ASSERT_OK(
+      loom_test_func_set_predicates(module_, function, loom_attr_absent()));
+  EXPECT_FALSE(loom_test_func_has_predicates(function));
+  EXPECT_FALSE(
+      loom_value_has_attribute_uses(loom_module_value(module_, second)));
 
   iree_arena_allocator_t scratch;
   iree_arena_initialize(&block_pool_, &scratch);

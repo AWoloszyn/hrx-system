@@ -17,6 +17,8 @@ loom_generated_cc_library(
     loom::py::loom::gen::ops::c_tables_wasm_generator
   SRCS
     "registry.c"
+  TEXTUAL_HDRS
+    "ops.inc"
   GENERATED_SRC_FLAGS
     "--builders"
     "--tables"
@@ -28,6 +30,10 @@ loom_generated_cc_library(
     "registry.h"
   ARGS
     "--dialect=wasm"
+  EXTRA_OUTPUT_FLAGS
+    "--ops-include"
+  EXTRA_OUTPUTS
+    "ops.inc"
   DEPS
     iree::base
     loom::error::error_defs

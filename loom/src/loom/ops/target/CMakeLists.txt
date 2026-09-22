@@ -18,6 +18,8 @@ loom_generated_cc_library(
     "conditions.c"
     "facts.c"
     "verify.c"
+  TEXTUAL_HDRS
+    "ops.inc"
   GENERATED_SRC_FLAGS
     "--builders"
     "--tables"
@@ -29,6 +31,10 @@ loom_generated_cc_library(
     "ops.h"
   ARGS
     "--dialect=target"
+  EXTRA_OUTPUT_FLAGS
+    "--ops-include"
+  EXTRA_OUTPUTS
+    "ops.inc"
   DEPS
     iree::base
     loom::analysis::symbol_facts

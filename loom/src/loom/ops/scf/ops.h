@@ -63,20 +63,12 @@ LOOM_DEFINE_SEGMENTED_OPERANDS(loom_scf_for_iter_args, 3)
 LOOM_DEFINE_SEGMENTED_OPTIONAL_OPERAND(loom_scf_for_pipeline_depth, 4)
 LOOM_DEFINE_SEGMENTED_OPTIONAL_OPERAND(loom_scf_for_unroll_factor, 5)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_scf_for_results, 0)
-#define loom_scf_for_unroll_policy_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scf_for_unroll_policy, 0, loom_scf_for_unroll_policy_t)
 #define loom_scf_for_has_unroll_policy(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[0]))
-#define loom_scf_for_rewrite_unroll_policy(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_scf_for_unroll_schedule_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scf_for_unroll_schedule, 1, loom_scf_for_unroll_schedule_t)
 #define loom_scf_for_has_unroll_schedule(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
-#define loom_scf_for_rewrite_unroll_schedule(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 LOOM_DEFINE_REGION(loom_scf_for_body, 0)
 enum loom_scf_for_build_flag_bits_e {
   LOOM_SCF_FOR_BUILD_FLAG_HAS_PIPELINE_DEPTH = 1u << 0,
@@ -151,11 +143,7 @@ iree_status_t loom_scf_if_verify(
 LOOM_DEFINE_ISA(loom_scf_switch_isa, LOOM_OP_SCF_SWITCH)
 LOOM_DEFINE_OPERAND(loom_scf_switch_selector, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_scf_switch_results, 0)
-#define loom_scf_switch_case_keys_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_scf_switch_case_keys, 0)
-#define loom_scf_switch_rewrite_case_keys(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 LOOM_DEFINE_REGION(loom_scf_switch_default_region, 0)
 LOOM_DEFINE_VARIADIC_REGIONS(loom_scf_switch_case_regions, 1)
 iree_status_t loom_scf_switch_build(
@@ -216,11 +204,7 @@ LOOM_DEFINE_ISA(loom_scf_lookup_isa, LOOM_OP_SCF_LOOKUP)
 LOOM_DEFINE_OPERAND(loom_scf_lookup_selector, 0)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_scf_lookup_values, 1)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_scf_lookup_results, 0)
-#define loom_scf_lookup_case_keys_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_scf_lookup_case_keys, 0)
-#define loom_scf_lookup_rewrite_case_keys(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_scf_lookup_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t selector,
@@ -308,5 +292,8 @@ loom_op_semantics_t loom_scf_op_semantics(
 #ifdef __cplusplus
 }
 #endif
+
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/scf/ops.inc"
 
 #endif  // LOOM_OPS_SCF_OPS_H_

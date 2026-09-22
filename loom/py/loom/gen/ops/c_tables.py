@@ -9,12 +9,13 @@
 Reads Op declarations from the Python DSL and emits C op metadata per dialect:
 
   ops.h      — enum + ISA macros + accessor macros + builder declarations
+  ops.inc    — named attribute forwarding macros included by ops.h
   builders.c — builder implementations (macros for common, explicit for complex)
   tables.c   — .rodata: B-string names, format arrays, descriptors, vtables
 
 Public generated headers and compact IR lookup fragments are checked into the
 repository for code archaeology and editor/search ergonomics. Bulky generated
-C table sources and their private headers are build outputs.
+C table sources, private headers, and accessor includes are build outputs.
 
 Usage:
     python3 loom/py/loom/gen/run.py c_tables --check
@@ -36,6 +37,7 @@ from loom.gen import bootstrap as _bootstrap
 from loom.gen.ops import c_dialect, c_registry
 from loom.gen.ops.c_dialect import (
     generate_ops_h,
+    generate_ops_inc,
     generate_sharded_tables_c,
     generate_tables_aggregator_c,
     generate_tables_c,
@@ -68,6 +70,7 @@ __all__ = [
     "checked_in_file_set",
     "generate_location_tag_table_inc",
     "generate_ops_h",
+    "generate_ops_inc",
     "generate_sharded_tables_c",
     "generate_scalar_type_table_inc",
     "generate_tables_aggregator_c",
@@ -219,6 +222,7 @@ def _main_build_output_mode(parser: argparse.ArgumentParser, args: argparse.Name
 
         outputs: dict[str, Path] = {}
         _set_output(parser, outputs, "ops.h", args.ops_header)
+        _set_output(parser, outputs, "ops.inc", args.ops_include)
         _set_output(parser, outputs, "builders.c", args.builders)
         _set_output(parser, outputs, "tables.c", args.tables)
         _set_output(parser, outputs, "tables.h", args.table_header)
@@ -262,6 +266,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         help="Generate selected cross-dialect registry outputs.",
     )
     parser.add_argument("--ops-header", type=Path, help="Generated dialect ops.h path.")
+    parser.add_argument("--ops-include", type=Path, help="Generated dialect ops.inc path.")
     parser.add_argument("--builders", type=Path, help="Generated dialect builders.c path.")
     parser.add_argument("--tables", type=Path, help="Generated dialect tables.c path.")
     parser.add_argument("--types", type=Path, help="Generated dialect types.c path.")

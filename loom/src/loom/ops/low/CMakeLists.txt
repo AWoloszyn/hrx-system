@@ -20,6 +20,8 @@ loom_generated_cc_library(
     "kernel.c"
     "schedule_scope.c"
     "verify.c"
+  TEXTUAL_HDRS
+    "ops.inc"
   GENERATED_SRC_FLAGS
     "--builders"
     "--tables"
@@ -32,6 +34,10 @@ loom_generated_cc_library(
     "schedule_scope.h"
   ARGS
     "--dialect=low"
+  EXTRA_OUTPUT_FLAGS
+    "--ops-include"
+  EXTRA_OUTPUTS
+    "ops.inc"
   DEPS
     iree::base
     iree::base::internal::arena

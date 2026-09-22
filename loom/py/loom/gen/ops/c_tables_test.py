@@ -151,6 +151,7 @@ from loom.gen.ops.c_tables import (
     checked_in_file_set,
     generate_dialect_type_registry,
     generate_ops_h,
+    generate_ops_inc,
     generate_sharded_tables_c,
     generate_tables_aggregator_c,
     generate_tables_c,
@@ -255,6 +256,8 @@ def test_checked_in_file_set_separates_public_artifacts_from_build_outputs() -> 
     assert "loom/src/loom/ops/build_generated_test/ops.h" in generated_file_set.obsolete_paths
     assert "loom/src/loom/ops/op_registry.h" in generated_file_set.output_paths
     assert "loom/src/loom/ir/scalar_type_table.inc" in generated_file_set.output_paths
+    assert "loom/src/loom/ops/artifact_test/ops.inc" in generated_file_set.obsolete_paths
+    assert "loom/src/loom/ops/build_generated_test/ops.inc" in generated_file_set.obsolete_paths
     assert "loom/src/loom/ops/artifact_test/builders.c" in generated_file_set.obsolete_paths
     assert "loom/src/loom/ops/artifact_test/tables.c" in generated_file_set.obsolete_paths
     assert "loom/src/loom/ops/op_registry_tables.c" in generated_file_set.obsolete_paths
@@ -3489,11 +3492,15 @@ def test_attribute_accessors_bind_to_schema_fields() -> None:
             format=[AttrDict()],
         )
         ops_h = generate_ops_h("test", 0, [op])
+        ops_inc = generate_ops_inc([op])
         for index, name in enumerate(names):
-            assert f"#define loom_test_fields_{name}_field()" in ops_h
-            assert f"((loom_attr_field_t){{{index}}})" in ops_h
+            assert f"#define loom_test_fields_{name}_field()" in ops_inc
+            assert f"((loom_attr_field_t){{{index}}})" in ops_inc
+            assert f"#define loom_test_fields_set_{name}(module, op, attribute)" in ops_inc
+            assert f"loom_op_set_attr((module), (op), {index}, (attribute))" in ops_inc
             assert f"LOOM_DEFINE_ATTR_I64(loom_test_fields_{name}, {index})" in ops_h
         assert "ATTR_INDEX" not in ops_h
+        assert '#include "loom/ops/test/ops.inc"' in ops_h
 
 
 def test_optional_attribute_presence_uses_stored_slots_without_function_bodies() -> None:
@@ -3506,21 +3513,22 @@ def test_optional_attribute_presence_uses_stored_slots_without_function_bodies()
     for attrs in (fields, list(reversed(fields))):
         op = Op("test.presence", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
         ops_h = generate_ops_h("test", 0, [op])
+        ops_inc = generate_ops_inc([op])
         index = [attr.name for attr in attrs if attr.attr_type != ATTR_TYPE_FLAGS].index("optional")
         assert "ATTR_INDEX" not in ops_h
-        assert "#define loom_test_presence_optional_field()" in ops_h
-        assert f"((loom_attr_field_t){{{index}}})" in ops_h
-        assert "loom_test_presence_flags_field" not in ops_h
+        assert "#define loom_test_presence_optional_field()" in ops_inc
+        assert f"((loom_attr_field_t){{{index}}})" in ops_inc
+        assert "loom_test_presence_flags_field" not in ops_inc
         assert "#define loom_test_presence_has_optional(op)" in ops_h
         assert f"(!loom_attr_is_absent(loom_op_const_attrs((op))[{index}]))" in ops_h
         assert "loom_test_presence_has_required" not in ops_h
         assert "loom_test_presence_has_flags" not in ops_h
         assert "static inline bool loom_test_presence_has_optional" not in ops_h
-        assert "#define loom_test_presence_rewrite_optional(rewriter, op, attribute)" in ops_h
-        assert f"loom_rewriter_set_attr((rewriter), (op), {index}, (attribute))" in ops_h
-        assert "#define loom_test_presence_rewrite_required(rewriter, op, attribute)" in ops_h
-        assert "loom_test_presence_rewrite_flags" not in ops_h
-        assert "static inline iree_status_t loom_test_presence_rewrite_optional" not in ops_h
+        assert "#define loom_test_presence_rewrite_optional(rewriter, op, attribute)" in ops_inc
+        assert f"loom_rewriter_set_attr((rewriter), (op), {index}, (attribute))" in ops_inc
+        assert "#define loom_test_presence_rewrite_required(rewriter, op, attribute)" in ops_inc
+        assert "loom_test_presence_rewrite_flags" not in ops_inc
+        assert "static inline iree_status_t loom_test_presence_rewrite_optional" not in ops_inc
 
 
 def test_optional_attribute_presence_rejects_accessor_name_collisions() -> None:
@@ -3537,6 +3545,16 @@ def test_attribute_rewriting_rejects_accessor_name_collisions() -> None:
         op = Op("test.mutation", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
         with _raises_value_error("rewrite accessor 'loom_test_mutation_rewrite_count' conflicts with field 'rewrite_count'"):
             generate_ops_h("test", 0, [op])
+
+
+def test_attribute_setting_rejects_accessor_name_collisions() -> None:
+    fields = [AttrDef("count", ATTR_TYPE_I64), AttrDef("set_count", ATTR_TYPE_I64)]
+    for attrs in (fields, list(reversed(fields))):
+        op = Op("test.mutation", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
+        with _raises_value_error("setter accessor 'loom_test_mutation_set_count' conflicts with field 'set_count'"):
+            generate_ops_h("test", 0, [op])
+        with _raises_value_error("setter accessor 'loom_test_mutation_set_count' conflicts with field 'set_count'"):
+            generate_ops_inc([op])
 
 
 def test_attribute_field_binding_rejects_accessor_name_collisions() -> None:

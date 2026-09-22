@@ -25,6 +25,8 @@ loom_generated_cc_library(
         "ops.h",
     ],
     args = ["--dialect=kernel"],
+    extra_output_flags = ["--ops-include"],
+    extra_outputs = ["ops.inc"],
     generated_src_flags = [
         "--builders",
         "--tables",
@@ -34,6 +36,7 @@ loom_generated_cc_library(
         "tables.c",
     ],
     generator = "//loom/py/loom/gen/ops:c_tables_kernel_generator",
+    textual_hdrs = ["ops.inc"],
     deps = [
         "//loom/src/loom/analysis:control_uniformity",
         "//loom/src/loom/analysis:symbol_facts",

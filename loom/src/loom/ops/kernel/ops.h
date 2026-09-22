@@ -147,46 +147,22 @@ typedef enum loom_kernel_workgroup_scan_direction_e {
 //   kernel.return
 // }
 LOOM_DEFINE_ISA(loom_kernel_def_isa, LOOM_OP_KERNEL_DEF)
-#define loom_kernel_def_callee_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_def_callee, 0)
-#define loom_kernel_def_rewrite_callee(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_def_target_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_def_target, 1)
 #define loom_kernel_def_has_target(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
-#define loom_kernel_def_rewrite_target(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_kernel_def_export_symbol_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_STRING(loom_kernel_def_export_symbol, 2)
 #define loom_kernel_def_has_export_symbol(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
-#define loom_kernel_def_rewrite_export_symbol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
-#define loom_kernel_def_export_linkage_field() \
-  ((loom_attr_field_t){3})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_def_export_linkage, 3, loom_target_linkage_t)
 #define loom_kernel_def_has_export_linkage(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
-#define loom_kernel_def_rewrite_export_linkage(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 3, (attribute))
-#define loom_kernel_def_predicates_field() \
-  ((loom_attr_field_t){4})
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_kernel_def_predicates, 4)
 #define loom_kernel_def_has_predicates(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
-#define loom_kernel_def_rewrite_predicates(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 4, (attribute))
-#define loom_kernel_def_retain_field() \
-  ((loom_attr_field_t){5})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_def_retain, 5, loom_kernel_retain_t)
 #define loom_kernel_def_has_retain(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
-#define loom_kernel_def_rewrite_retain(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 5, (attribute))
 LOOM_DEFINE_REGION(loom_kernel_def_config, 0)
 LOOM_DEFINE_REGION(loom_kernel_def_body, 1)
 enum loom_kernel_def_build_flag_bits_e {
@@ -281,21 +257,9 @@ iree_status_t loom_kernel_exit_canonicalize(loom_op_t* op, loom_rewriter_t* rewr
 // LOOM_OP_KERNEL_BARRIER: Synchronize invocations in an explicit execution scope and fence a named memory space with a required ordering. Workgroup-memory barriers synchronize either the current subgroup or workgroup with acquire-release ordering. Global-memory barriers synchronize the current workgroup with acquire, release, or acquire-release ordering. Async-copy completion is modeled by kernel.async.wait; use kernel.barrier only when invocations must rendezvous before consuming shared or global memory.
 // kernel.barrier<workgroup> scope(subgroup) ordering(acq_rel)
 LOOM_DEFINE_ISA(loom_kernel_barrier_isa, LOOM_OP_KERNEL_BARRIER)
-#define loom_kernel_barrier_memory_space_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_barrier_memory_space, 0, loom_value_fact_memory_space_t)
-#define loom_kernel_barrier_rewrite_memory_space(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_barrier_ordering_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_barrier_ordering, 1, loom_atomic_ordering_t)
-#define loom_kernel_barrier_rewrite_ordering(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_kernel_barrier_scope_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_barrier_scope, 2, loom_atomic_scope_t)
-#define loom_kernel_barrier_rewrite_scope(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 iree_status_t loom_kernel_barrier_build(
     loom_builder_t* builder,
     loom_value_fact_memory_space_t memory_space,
@@ -313,21 +277,9 @@ LOOM_DEFINE_ISA(loom_kernel_async_copy_isa, LOOM_OP_KERNEL_ASYNC_COPY)
 LOOM_DEFINE_OPERAND(loom_kernel_async_copy_source, 0)
 LOOM_DEFINE_OPERAND(loom_kernel_async_copy_dest, 1)
 LOOM_DEFINE_RESULT(loom_kernel_async_copy_token, 0)
-#define loom_kernel_async_copy_cache_scope_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_cache_scope, 0, loom_cache_scope_t)
-#define loom_kernel_async_copy_rewrite_cache_scope(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_async_copy_cache_temporal_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_cache_temporal, 1, loom_cache_temporal_t)
-#define loom_kernel_async_copy_rewrite_cache_temporal(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_kernel_async_copy_direction_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_direction, 2, loom_kernel_direction_t)
-#define loom_kernel_async_copy_rewrite_direction(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 iree_status_t loom_kernel_async_copy_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -349,21 +301,9 @@ LOOM_DEFINE_OPERAND(loom_kernel_async_copy_mask_source, 0)
 LOOM_DEFINE_OPERAND(loom_kernel_async_copy_mask_dest, 1)
 LOOM_DEFINE_OPERAND(loom_kernel_async_copy_mask_predicate, 2)
 LOOM_DEFINE_RESULT(loom_kernel_async_copy_mask_token, 0)
-#define loom_kernel_async_copy_mask_cache_scope_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_mask_cache_scope, 0, loom_cache_scope_t)
-#define loom_kernel_async_copy_mask_rewrite_cache_scope(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_async_copy_mask_cache_temporal_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_mask_cache_temporal, 1, loom_cache_temporal_t)
-#define loom_kernel_async_copy_mask_rewrite_cache_temporal(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_kernel_async_copy_mask_direction_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_copy_mask_direction, 2, loom_kernel_direction_t)
-#define loom_kernel_async_copy_mask_rewrite_direction(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 iree_status_t loom_kernel_async_copy_mask_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -385,16 +325,8 @@ LOOM_DEFINE_ISA(loom_kernel_async_gather_isa, LOOM_OP_KERNEL_ASYNC_GATHER)
 LOOM_DEFINE_OPERAND(loom_kernel_async_gather_source, 0)
 LOOM_DEFINE_OPERAND(loom_kernel_async_gather_dest, 1)
 LOOM_DEFINE_RESULT(loom_kernel_async_gather_token, 0)
-#define loom_kernel_async_gather_cache_scope_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_gather_cache_scope, 0, loom_cache_scope_t)
-#define loom_kernel_async_gather_rewrite_cache_scope(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_async_gather_cache_temporal_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_gather_cache_temporal, 1, loom_cache_temporal_t)
-#define loom_kernel_async_gather_rewrite_cache_temporal(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 iree_status_t loom_kernel_async_gather_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -415,16 +347,8 @@ LOOM_DEFINE_OPERAND(loom_kernel_async_gather_mask_source, 0)
 LOOM_DEFINE_OPERAND(loom_kernel_async_gather_mask_dest, 1)
 LOOM_DEFINE_OPERAND(loom_kernel_async_gather_mask_predicate, 2)
 LOOM_DEFINE_RESULT(loom_kernel_async_gather_mask_token, 0)
-#define loom_kernel_async_gather_mask_cache_scope_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_gather_mask_cache_scope, 0, loom_cache_scope_t)
-#define loom_kernel_async_gather_mask_rewrite_cache_scope(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_async_gather_mask_cache_temporal_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_gather_mask_cache_temporal, 1, loom_cache_temporal_t)
-#define loom_kernel_async_gather_mask_rewrite_cache_temporal(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 iree_status_t loom_kernel_async_gather_mask_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -459,11 +383,7 @@ iree_status_t loom_kernel_async_group_verify(
 // kernel.async.wait %group {newer_groups = 0} : kernel.async.group
 LOOM_DEFINE_ISA(loom_kernel_async_wait_isa, LOOM_OP_KERNEL_ASYNC_WAIT)
 LOOM_DEFINE_OPERAND(loom_kernel_async_wait_group, 0)
-#define loom_kernel_async_wait_newer_groups_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_I64(loom_kernel_async_wait_newer_groups, 0)
-#define loom_kernel_async_wait_rewrite_newer_groups(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_kernel_async_wait_build(
     loom_builder_t* builder,
     loom_value_id_t group,
@@ -497,16 +417,8 @@ LOOM_DEFINE_OPERAND(loom_kernel_async_tensor_load_to_lds_source, 0)
 LOOM_DEFINE_OPERAND(loom_kernel_async_tensor_load_to_lds_dest, 1)
 LOOM_DEFINE_OPERAND(loom_kernel_async_tensor_load_to_lds_descriptor, 2)
 LOOM_DEFINE_RESULT(loom_kernel_async_tensor_load_to_lds_token, 0)
-#define loom_kernel_async_tensor_load_to_lds_cache_scope_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_tensor_load_to_lds_cache_scope, 0, loom_cache_scope_t)
-#define loom_kernel_async_tensor_load_to_lds_rewrite_cache_scope(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_async_tensor_load_to_lds_cache_temporal_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_tensor_load_to_lds_cache_temporal, 1, loom_cache_temporal_t)
-#define loom_kernel_async_tensor_load_to_lds_rewrite_cache_temporal(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 iree_status_t loom_kernel_async_tensor_load_to_lds_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -528,16 +440,8 @@ LOOM_DEFINE_OPERAND(loom_kernel_async_tensor_store_from_lds_source, 0)
 LOOM_DEFINE_OPERAND(loom_kernel_async_tensor_store_from_lds_dest, 1)
 LOOM_DEFINE_OPERAND(loom_kernel_async_tensor_store_from_lds_descriptor, 2)
 LOOM_DEFINE_RESULT(loom_kernel_async_tensor_store_from_lds_token, 0)
-#define loom_kernel_async_tensor_store_from_lds_cache_scope_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_tensor_store_from_lds_cache_scope, 0, loom_cache_scope_t)
-#define loom_kernel_async_tensor_store_from_lds_rewrite_cache_scope(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_async_tensor_store_from_lds_cache_temporal_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_tensor_store_from_lds_cache_temporal, 1, loom_cache_temporal_t)
-#define loom_kernel_async_tensor_store_from_lds_rewrite_cache_temporal(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 iree_status_t loom_kernel_async_tensor_store_from_lds_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -559,16 +463,8 @@ LOOM_DEFINE_OPERAND(loom_kernel_async_cluster_gather_source, 0)
 LOOM_DEFINE_OPERAND(loom_kernel_async_cluster_gather_dest, 1)
 LOOM_DEFINE_OPERAND(loom_kernel_async_cluster_gather_cluster_mask, 2)
 LOOM_DEFINE_RESULT(loom_kernel_async_cluster_gather_token, 0)
-#define loom_kernel_async_cluster_gather_cache_scope_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_cluster_gather_cache_scope, 0, loom_cache_scope_t)
-#define loom_kernel_async_cluster_gather_rewrite_cache_scope(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_async_cluster_gather_cache_temporal_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_cluster_gather_cache_temporal, 1, loom_cache_temporal_t)
-#define loom_kernel_async_cluster_gather_rewrite_cache_temporal(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 iree_status_t loom_kernel_async_cluster_gather_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -591,16 +487,8 @@ LOOM_DEFINE_OPERAND(loom_kernel_async_cluster_gather_mask_dest, 1)
 LOOM_DEFINE_OPERAND(loom_kernel_async_cluster_gather_mask_cluster_mask, 2)
 LOOM_DEFINE_OPERAND(loom_kernel_async_cluster_gather_mask_predicate, 3)
 LOOM_DEFINE_RESULT(loom_kernel_async_cluster_gather_mask_token, 0)
-#define loom_kernel_async_cluster_gather_mask_cache_scope_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_cluster_gather_mask_cache_scope, 0, loom_cache_scope_t)
-#define loom_kernel_async_cluster_gather_mask_rewrite_cache_scope(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_async_cluster_gather_mask_cache_temporal_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_async_cluster_gather_mask_cache_temporal, 1, loom_cache_temporal_t)
-#define loom_kernel_async_cluster_gather_mask_rewrite_cache_temporal(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
 iree_status_t loom_kernel_async_cluster_gather_mask_build(
     loom_builder_t* builder,
     loom_may_consume loom_value_id_t source,
@@ -620,11 +508,7 @@ iree_status_t loom_kernel_async_cluster_gather_mask_verify(
 // %tid = kernel.workitem.id<x> : index
 LOOM_DEFINE_ISA(loom_kernel_workitem_id_isa, LOOM_OP_KERNEL_WORKITEM_ID)
 LOOM_DEFINE_RESULT(loom_kernel_workitem_id_result, 0)
-#define loom_kernel_workitem_id_dimension_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workitem_id_dimension, 0, loom_kernel_dimension_t)
-#define loom_kernel_workitem_id_rewrite_dimension(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_kernel_workitem_id_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -641,11 +525,7 @@ iree_status_t loom_kernel_workitem_id_facts(
 // %bid = kernel.workgroup.id<x> : index
 LOOM_DEFINE_ISA(loom_kernel_workgroup_id_isa, LOOM_OP_KERNEL_WORKGROUP_ID)
 LOOM_DEFINE_RESULT(loom_kernel_workgroup_id_result, 0)
-#define loom_kernel_workgroup_id_dimension_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_id_dimension, 0, loom_kernel_dimension_t)
-#define loom_kernel_workgroup_id_rewrite_dimension(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_kernel_workgroup_id_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -662,11 +542,7 @@ iree_status_t loom_kernel_workgroup_id_facts(
 // %size = kernel.workgroup.size<x> : index
 LOOM_DEFINE_ISA(loom_kernel_workgroup_size_isa, LOOM_OP_KERNEL_WORKGROUP_SIZE)
 LOOM_DEFINE_RESULT(loom_kernel_workgroup_size_result, 0)
-#define loom_kernel_workgroup_size_dimension_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_size_dimension, 0, loom_kernel_dimension_t)
-#define loom_kernel_workgroup_size_rewrite_dimension(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_kernel_workgroup_size_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -683,11 +559,7 @@ iree_status_t loom_kernel_workgroup_size_facts(
 // %count = kernel.workgroup.count<x> : index
 LOOM_DEFINE_ISA(loom_kernel_workgroup_count_isa, LOOM_OP_KERNEL_WORKGROUP_COUNT)
 LOOM_DEFINE_RESULT(loom_kernel_workgroup_count_result, 0)
-#define loom_kernel_workgroup_count_dimension_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_count_dimension, 0, loom_kernel_dimension_t)
-#define loom_kernel_workgroup_count_rewrite_dimension(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_kernel_workgroup_count_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -704,11 +576,7 @@ iree_status_t loom_kernel_workgroup_count_facts(
 // %gid = kernel.workitem.dispatch.id<x> : index
 LOOM_DEFINE_ISA(loom_kernel_workitem_dispatch_id_isa, LOOM_OP_KERNEL_WORKITEM_DISPATCH_ID)
 LOOM_DEFINE_RESULT(loom_kernel_workitem_dispatch_id_result, 0)
-#define loom_kernel_workitem_dispatch_id_dimension_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workitem_dispatch_id_dimension, 0, loom_kernel_dimension_t)
-#define loom_kernel_workitem_dispatch_id_rewrite_dimension(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_kernel_workitem_dispatch_id_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -789,11 +657,7 @@ LOOM_DEFINE_OPERAND(loom_kernel_subgroup_shuffle_offset, 1)
 LOOM_DEFINE_OPERAND(loom_kernel_subgroup_shuffle_width, 2)
 LOOM_DEFINE_RESULT(loom_kernel_subgroup_shuffle_result, 0)
 LOOM_DEFINE_RESULT(loom_kernel_subgroup_shuffle_valid, 1)
-#define loom_kernel_subgroup_shuffle_mode_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_shuffle_mode, 0, loom_kernel_subgroup_shuffle_mode_t)
-#define loom_kernel_subgroup_shuffle_rewrite_mode(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_kernel_subgroup_shuffle_build(
     loom_builder_t* builder,
     loom_kernel_subgroup_shuffle_mode_t mode,
@@ -854,25 +718,13 @@ iree_status_t loom_kernel_subgroup_value_result_verify(
 LOOM_DEFINE_ISA(loom_kernel_subgroup_reduce_isa, LOOM_OP_KERNEL_SUBGROUP_REDUCE)
 LOOM_DEFINE_OPERAND(loom_kernel_subgroup_reduce_value, 0)
 LOOM_DEFINE_RESULT(loom_kernel_subgroup_reduce_result, 0)
-#define loom_kernel_subgroup_reduce_kind_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_reduce_kind, 0, loom_combining_kind_t)
-#define loom_kernel_subgroup_reduce_rewrite_kind(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_subgroup_reduce_cluster_size_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_reduce_cluster_size, 1)
 #define loom_kernel_subgroup_reduce_has_cluster_size(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
-#define loom_kernel_subgroup_reduce_rewrite_cluster_size(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_kernel_subgroup_reduce_cluster_stride_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_reduce_cluster_stride, 2)
 #define loom_kernel_subgroup_reduce_has_cluster_stride(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
-#define loom_kernel_subgroup_reduce_rewrite_cluster_stride(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 enum loom_kernel_subgroup_reduce_build_flag_bits_e {
   LOOM_KERNEL_SUBGROUP_REDUCE_BUILD_FLAG_HAS_CLUSTER_SIZE = 1u << 0,
   LOOM_KERNEL_SUBGROUP_REDUCE_BUILD_FLAG_HAS_CLUSTER_STRIDE = 1u << 1,
@@ -902,35 +754,15 @@ iree_status_t loom_kernel_subgroup_reduce_verify(
 LOOM_DEFINE_ISA(loom_kernel_subgroup_scan_isa, LOOM_OP_KERNEL_SUBGROUP_SCAN)
 LOOM_DEFINE_OPERAND(loom_kernel_subgroup_scan_value, 0)
 LOOM_DEFINE_RESULT(loom_kernel_subgroup_scan_result, 0)
-#define loom_kernel_subgroup_scan_kind_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_kind, 0, loom_combining_kind_t)
-#define loom_kernel_subgroup_scan_rewrite_kind(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_subgroup_scan_cluster_size_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_scan_cluster_size, 1)
 #define loom_kernel_subgroup_scan_has_cluster_size(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
-#define loom_kernel_subgroup_scan_rewrite_cluster_size(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_kernel_subgroup_scan_cluster_stride_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_scan_cluster_stride, 2)
 #define loom_kernel_subgroup_scan_has_cluster_stride(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
-#define loom_kernel_subgroup_scan_rewrite_cluster_stride(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
-#define loom_kernel_subgroup_scan_mode_field() \
-  ((loom_attr_field_t){3})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_mode, 3, loom_kernel_subgroup_scan_mode_t)
-#define loom_kernel_subgroup_scan_rewrite_mode(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 3, (attribute))
-#define loom_kernel_subgroup_scan_direction_field() \
-  ((loom_attr_field_t){4})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_direction, 4, loom_kernel_subgroup_scan_direction_t)
-#define loom_kernel_subgroup_scan_rewrite_direction(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 4, (attribute))
 enum loom_kernel_subgroup_scan_build_flag_bits_e {
   LOOM_KERNEL_SUBGROUP_SCAN_BUILD_FLAG_HAS_CLUSTER_SIZE = 1u << 0,
   LOOM_KERNEL_SUBGROUP_SCAN_BUILD_FLAG_HAS_CLUSTER_STRIDE = 1u << 1,
@@ -1075,11 +907,7 @@ iree_status_t loom_kernel_subgroup_match_all_verify(
 LOOM_DEFINE_ISA(loom_kernel_workgroup_reduce_isa, LOOM_OP_KERNEL_WORKGROUP_REDUCE)
 LOOM_DEFINE_OPERAND(loom_kernel_workgroup_reduce_value, 0)
 LOOM_DEFINE_RESULT(loom_kernel_workgroup_reduce_result, 0)
-#define loom_kernel_workgroup_reduce_kind_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_reduce_kind, 0, loom_combining_kind_t)
-#define loom_kernel_workgroup_reduce_rewrite_kind(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_kernel_workgroup_reduce_build(
     loom_builder_t* builder,
     loom_combining_kind_t kind,
@@ -1101,21 +929,9 @@ iree_status_t loom_kernel_workgroup_reduce_verify(
 LOOM_DEFINE_ISA(loom_kernel_workgroup_scan_isa, LOOM_OP_KERNEL_WORKGROUP_SCAN)
 LOOM_DEFINE_OPERAND(loom_kernel_workgroup_scan_value, 0)
 LOOM_DEFINE_RESULT(loom_kernel_workgroup_scan_result, 0)
-#define loom_kernel_workgroup_scan_kind_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_scan_kind, 0, loom_combining_kind_t)
-#define loom_kernel_workgroup_scan_rewrite_kind(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_workgroup_scan_mode_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_scan_mode, 1, loom_kernel_workgroup_scan_mode_t)
-#define loom_kernel_workgroup_scan_rewrite_mode(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_kernel_workgroup_scan_direction_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_workgroup_scan_direction, 2, loom_kernel_workgroup_scan_direction_t)
-#define loom_kernel_workgroup_scan_rewrite_direction(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 iree_status_t loom_kernel_workgroup_scan_build(
     loom_builder_t* builder,
     loom_combining_kind_t kind,
@@ -1190,13 +1006,9 @@ iree_status_t loom_kernel_workgroup_vote_count_verify(
 // kernel.assert %ok : i1
 LOOM_DEFINE_ISA(loom_kernel_assert_isa, LOOM_OP_KERNEL_ASSERT)
 LOOM_DEFINE_OPERAND(loom_kernel_assert_condition, 0)
-#define loom_kernel_assert_message_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_STRING(loom_kernel_assert_message, 0)
 #define loom_kernel_assert_has_message(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[0]))
-#define loom_kernel_assert_rewrite_message(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 enum loom_kernel_assert_build_flag_bits_e {
   LOOM_KERNEL_ASSERT_BUILD_FLAG_HAS_MESSAGE = 1u << 0,
 };
@@ -1213,11 +1025,7 @@ iree_status_t loom_kernel_assert_build(
 // %cluster = kernel.cluster.id<x> : index
 LOOM_DEFINE_ISA(loom_kernel_cluster_id_isa, LOOM_OP_KERNEL_CLUSTER_ID)
 LOOM_DEFINE_RESULT(loom_kernel_cluster_id_result, 0)
-#define loom_kernel_cluster_id_dimension_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_cluster_id_dimension, 0, loom_kernel_dimension_t)
-#define loom_kernel_cluster_id_rewrite_dimension(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_kernel_cluster_id_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -1235,11 +1043,7 @@ iree_status_t loom_kernel_cluster_id_facts(
 // %local_cluster_id = kernel.cluster.workgroup.id<y> : index
 LOOM_DEFINE_ISA(loom_kernel_cluster_workgroup_id_isa, LOOM_OP_KERNEL_CLUSTER_WORKGROUP_ID)
 LOOM_DEFINE_RESULT(loom_kernel_cluster_workgroup_id_result, 0)
-#define loom_kernel_cluster_workgroup_id_dimension_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_cluster_workgroup_id_dimension, 0, loom_kernel_dimension_t)
-#define loom_kernel_cluster_workgroup_id_rewrite_dimension(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_kernel_cluster_workgroup_id_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -1273,11 +1077,7 @@ iree_status_t loom_kernel_cluster_workgroup_flat_id_facts(
 // %cluster_size = kernel.cluster.size<y> : index
 LOOM_DEFINE_ISA(loom_kernel_cluster_size_isa, LOOM_OP_KERNEL_CLUSTER_SIZE)
 LOOM_DEFINE_RESULT(loom_kernel_cluster_size_result, 0)
-#define loom_kernel_cluster_size_dimension_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_cluster_size_dimension, 0, loom_kernel_dimension_t)
-#define loom_kernel_cluster_size_rewrite_dimension(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_kernel_cluster_size_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -1295,11 +1095,7 @@ iree_status_t loom_kernel_cluster_size_facts(
 // %cluster_count = kernel.cluster.count<y> : index
 LOOM_DEFINE_ISA(loom_kernel_cluster_count_isa, LOOM_OP_KERNEL_CLUSTER_COUNT)
 LOOM_DEFINE_RESULT(loom_kernel_cluster_count_result, 0)
-#define loom_kernel_cluster_count_dimension_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_cluster_count_dimension, 0, loom_kernel_dimension_t)
-#define loom_kernel_cluster_count_rewrite_dimension(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_kernel_cluster_count_build(
     loom_builder_t* builder,
     loom_kernel_dimension_t dimension,
@@ -1318,46 +1114,22 @@ iree_status_t loom_kernel_cluster_count_facts(
 LOOM_DEFINE_ISA(loom_kernel_decl_isa, LOOM_OP_KERNEL_DECL)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_decl_workloads, 0)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_decl_args, 1)
-#define loom_kernel_decl_callee_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_decl_callee, 0)
-#define loom_kernel_decl_rewrite_callee(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_decl_target_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_decl_target, 1)
 #define loom_kernel_decl_has_target(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
-#define loom_kernel_decl_rewrite_target(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_kernel_decl_export_symbol_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_STRING(loom_kernel_decl_export_symbol, 2)
 #define loom_kernel_decl_has_export_symbol(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
-#define loom_kernel_decl_rewrite_export_symbol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
-#define loom_kernel_decl_export_linkage_field() \
-  ((loom_attr_field_t){3})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_decl_export_linkage, 3, loom_target_linkage_t)
 #define loom_kernel_decl_has_export_linkage(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
-#define loom_kernel_decl_rewrite_export_linkage(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 3, (attribute))
-#define loom_kernel_decl_predicates_field() \
-  ((loom_attr_field_t){4})
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_kernel_decl_predicates, 4)
 #define loom_kernel_decl_has_predicates(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
-#define loom_kernel_decl_rewrite_predicates(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 4, (attribute))
-#define loom_kernel_decl_retain_field() \
-  ((loom_attr_field_t){5})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_decl_retain, 5, loom_kernel_retain_t)
 #define loom_kernel_decl_has_retain(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
-#define loom_kernel_decl_rewrite_retain(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 5, (attribute))
 enum loom_kernel_decl_build_flag_bits_e {
   LOOM_KERNEL_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 0,
   LOOM_KERNEL_DECL_BUILD_FLAG_HAS_TARGET = 1u << 1,
@@ -1387,25 +1159,13 @@ iree_status_t loom_kernel_decl_build(
 // kernel.entry.decl @fill(%count: index, %output: buffer)
 LOOM_DEFINE_ISA(loom_kernel_entry_decl_isa, LOOM_OP_KERNEL_ENTRY_DECL)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_kernel_entry_decl_args, 0)
-#define loom_kernel_entry_decl_callee_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_entry_decl_callee, 0)
-#define loom_kernel_entry_decl_rewrite_callee(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_kernel_entry_decl_target_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_entry_decl_target, 1)
 #define loom_kernel_entry_decl_has_target(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
-#define loom_kernel_entry_decl_rewrite_target(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_kernel_entry_decl_retain_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_entry_decl_retain, 2, loom_kernel_retain_t)
 #define loom_kernel_entry_decl_has_retain(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
-#define loom_kernel_entry_decl_rewrite_retain(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
 enum loom_kernel_entry_decl_build_flag_bits_e {
   LOOM_KERNEL_ENTRY_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 0,
   LOOM_KERNEL_ENTRY_DECL_BUILD_FLAG_HAS_TARGET = 1u << 1,
@@ -1427,11 +1187,7 @@ iree_status_t loom_kernel_entry_decl_build(
 LOOM_DEFINE_ISA(loom_kernel_launch_isa, LOOM_OP_KERNEL_LAUNCH)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_launch_workloads, 0)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_launch_arguments, 1)
-#define loom_kernel_launch_callee_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_launch_callee, 0)
-#define loom_kernel_launch_rewrite_callee(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_kernel_launch_build(
     loom_builder_t* builder,
     loom_symbol_ref_t callee,
@@ -1451,11 +1207,7 @@ LOOM_DEFINE_ISA(loom_kernel_dispatch_isa, LOOM_OP_KERNEL_DISPATCH)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_dispatch_workgroup_counts, 0)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_dispatch_arguments, 1)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_dispatch_workgroup_size, 2)
-#define loom_kernel_dispatch_callee_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_dispatch_callee, 0)
-#define loom_kernel_dispatch_rewrite_callee(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
 iree_status_t loom_kernel_dispatch_build(
     loom_builder_t* builder,
     loom_symbol_ref_t callee,
@@ -1525,5 +1277,8 @@ loom_op_semantics_t loom_kernel_op_semantics(
 #ifdef __cplusplus
 }
 #endif
+
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/kernel/ops.inc"
 
 #endif  // LOOM_OPS_KERNEL_OPS_H_

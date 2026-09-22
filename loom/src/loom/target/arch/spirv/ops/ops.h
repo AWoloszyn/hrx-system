@@ -28,226 +28,98 @@ enum {
 // LOOM_OP_SPIRV_TARGET: SPIR-V target-family record. The selector chooses an authored SPIR-V row; optional attrs structurally override common target fields.
 // spirv.target<vulkan1_3> @spv
 LOOM_DEFINE_ISA(loom_spirv_target_isa, LOOM_OP_SPIRV_TARGET)
-#define loom_spirv_target_symbol_field() \
-  ((loom_attr_field_t){0})
 LOOM_DEFINE_ATTR_SYMBOL(loom_spirv_target_symbol, 0)
-#define loom_spirv_target_rewrite_symbol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 0, (attribute))
-#define loom_spirv_target_kind_field() \
-  ((loom_attr_field_t){1})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_spirv_target_kind, 1, loom_spirv_target_kind_t)
-#define loom_spirv_target_rewrite_kind(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 1, (attribute))
-#define loom_spirv_target_codegen_format_field() \
-  ((loom_attr_field_t){2})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_spirv_target_codegen_format, 2, loom_target_codegen_format_t)
 #define loom_spirv_target_has_codegen_format(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
-#define loom_spirv_target_rewrite_codegen_format(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 2, (attribute))
-#define loom_spirv_target_artifact_format_field() \
-  ((loom_attr_field_t){3})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_spirv_target_artifact_format, 3, loom_target_artifact_format_t)
 #define loom_spirv_target_has_artifact_format(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
-#define loom_spirv_target_rewrite_artifact_format(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 3, (attribute))
-#define loom_spirv_target_default_pointer_bitwidth_field() \
-  ((loom_attr_field_t){4})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_default_pointer_bitwidth, 4)
 #define loom_spirv_target_has_default_pointer_bitwidth(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
-#define loom_spirv_target_rewrite_default_pointer_bitwidth(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 4, (attribute))
-#define loom_spirv_target_index_bitwidth_field() \
-  ((loom_attr_field_t){5})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_index_bitwidth, 5)
 #define loom_spirv_target_has_index_bitwidth(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
-#define loom_spirv_target_rewrite_index_bitwidth(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 5, (attribute))
-#define loom_spirv_target_offset_bitwidth_field() \
-  ((loom_attr_field_t){6})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_offset_bitwidth, 6)
 #define loom_spirv_target_has_offset_bitwidth(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[6]))
-#define loom_spirv_target_rewrite_offset_bitwidth(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 6, (attribute))
-#define loom_spirv_target_max_workgroup_size_x_field() \
-  ((loom_attr_field_t){7})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_max_workgroup_size_x, 7)
 #define loom_spirv_target_has_max_workgroup_size_x(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[7]))
-#define loom_spirv_target_rewrite_max_workgroup_size_x(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 7, (attribute))
-#define loom_spirv_target_max_workgroup_size_y_field() \
-  ((loom_attr_field_t){8})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_max_workgroup_size_y, 8)
 #define loom_spirv_target_has_max_workgroup_size_y(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[8]))
-#define loom_spirv_target_rewrite_max_workgroup_size_y(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 8, (attribute))
-#define loom_spirv_target_max_workgroup_size_z_field() \
-  ((loom_attr_field_t){9})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_max_workgroup_size_z, 9)
 #define loom_spirv_target_has_max_workgroup_size_z(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[9]))
-#define loom_spirv_target_rewrite_max_workgroup_size_z(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 9, (attribute))
-#define loom_spirv_target_max_flat_workgroup_size_field() \
-  ((loom_attr_field_t){10})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_max_flat_workgroup_size, 10)
 #define loom_spirv_target_has_max_flat_workgroup_size(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[10]))
-#define loom_spirv_target_rewrite_max_flat_workgroup_size(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 10, (attribute))
-#define loom_spirv_target_max_workgroup_storage_bytes_field() \
-  ((loom_attr_field_t){11})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_max_workgroup_storage_bytes, 11)
 #define loom_spirv_target_has_max_workgroup_storage_bytes(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[11]))
-#define loom_spirv_target_rewrite_max_workgroup_storage_bytes(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 11, (attribute))
-#define loom_spirv_target_subgroup_size_field() \
-  ((loom_attr_field_t){12})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_subgroup_size, 12)
 #define loom_spirv_target_has_subgroup_size(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[12]))
-#define loom_spirv_target_rewrite_subgroup_size(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 12, (attribute))
-#define loom_spirv_target_max_grid_size_x_field() \
-  ((loom_attr_field_t){13})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_max_grid_size_x, 13)
 #define loom_spirv_target_has_max_grid_size_x(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[13]))
-#define loom_spirv_target_rewrite_max_grid_size_x(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 13, (attribute))
-#define loom_spirv_target_max_grid_size_y_field() \
-  ((loom_attr_field_t){14})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_max_grid_size_y, 14)
 #define loom_spirv_target_has_max_grid_size_y(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[14]))
-#define loom_spirv_target_rewrite_max_grid_size_y(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 14, (attribute))
-#define loom_spirv_target_max_grid_size_z_field() \
-  ((loom_attr_field_t){15})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_max_grid_size_z, 15)
 #define loom_spirv_target_has_max_grid_size_z(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[15]))
-#define loom_spirv_target_rewrite_max_grid_size_z(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 15, (attribute))
-#define loom_spirv_target_max_flat_grid_size_field() \
-  ((loom_attr_field_t){16})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_max_flat_grid_size, 16)
 #define loom_spirv_target_has_max_flat_grid_size(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[16]))
-#define loom_spirv_target_rewrite_max_flat_grid_size(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 16, (attribute))
-#define loom_spirv_target_max_workgroup_count_x_field() \
-  ((loom_attr_field_t){17})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_max_workgroup_count_x, 17)
 #define loom_spirv_target_has_max_workgroup_count_x(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[17]))
-#define loom_spirv_target_rewrite_max_workgroup_count_x(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 17, (attribute))
-#define loom_spirv_target_max_workgroup_count_y_field() \
-  ((loom_attr_field_t){18})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_max_workgroup_count_y, 18)
 #define loom_spirv_target_has_max_workgroup_count_y(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[18]))
-#define loom_spirv_target_rewrite_max_workgroup_count_y(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 18, (attribute))
-#define loom_spirv_target_max_workgroup_count_z_field() \
-  ((loom_attr_field_t){19})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_max_workgroup_count_z, 19)
 #define loom_spirv_target_has_max_workgroup_count_z(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[19]))
-#define loom_spirv_target_rewrite_max_workgroup_count_z(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 19, (attribute))
-#define loom_spirv_target_memory_space_generic_field() \
-  ((loom_attr_field_t){20})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_memory_space_generic, 20)
 #define loom_spirv_target_has_memory_space_generic(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[20]))
-#define loom_spirv_target_rewrite_memory_space_generic(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 20, (attribute))
-#define loom_spirv_target_memory_space_global_field() \
-  ((loom_attr_field_t){21})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_memory_space_global, 21)
 #define loom_spirv_target_has_memory_space_global(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[21]))
-#define loom_spirv_target_rewrite_memory_space_global(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 21, (attribute))
-#define loom_spirv_target_memory_space_workgroup_field() \
-  ((loom_attr_field_t){22})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_memory_space_workgroup, 22)
 #define loom_spirv_target_has_memory_space_workgroup(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[22]))
-#define loom_spirv_target_rewrite_memory_space_workgroup(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 22, (attribute))
-#define loom_spirv_target_memory_space_constant_field() \
-  ((loom_attr_field_t){23})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_memory_space_constant, 23)
 #define loom_spirv_target_has_memory_space_constant(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[23]))
-#define loom_spirv_target_rewrite_memory_space_constant(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 23, (attribute))
-#define loom_spirv_target_memory_space_private_field() \
-  ((loom_attr_field_t){24})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_memory_space_private, 24)
 #define loom_spirv_target_has_memory_space_private(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[24]))
-#define loom_spirv_target_rewrite_memory_space_private(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 24, (attribute))
-#define loom_spirv_target_memory_space_host_field() \
-  ((loom_attr_field_t){25})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_memory_space_host, 25)
 #define loom_spirv_target_has_memory_space_host(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[25]))
-#define loom_spirv_target_rewrite_memory_space_host(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 25, (attribute))
-#define loom_spirv_target_memory_space_descriptor_field() \
-  ((loom_attr_field_t){26})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_memory_space_descriptor, 26)
 #define loom_spirv_target_has_memory_space_descriptor(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[26]))
-#define loom_spirv_target_rewrite_memory_space_descriptor(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 26, (attribute))
-#define loom_spirv_target_abi_field() \
-  ((loom_attr_field_t){27})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_spirv_target_abi, 27, loom_target_abi_kind_t)
 #define loom_spirv_target_has_abi(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[27]))
-#define loom_spirv_target_rewrite_abi(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 27, (attribute))
-#define loom_spirv_target_export_symbol_field() \
-  ((loom_attr_field_t){28})
 LOOM_DEFINE_ATTR_STRING(loom_spirv_target_export_symbol, 28)
 #define loom_spirv_target_has_export_symbol(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[28]))
-#define loom_spirv_target_rewrite_export_symbol(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 28, (attribute))
-#define loom_spirv_target_linkage_field() \
-  ((loom_attr_field_t){29})
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_spirv_target_linkage, 29, loom_target_linkage_t)
 #define loom_spirv_target_has_linkage(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[29]))
-#define loom_spirv_target_rewrite_linkage(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 29, (attribute))
-#define loom_spirv_target_contract_set_key_field() \
-  ((loom_attr_field_t){30})
 LOOM_DEFINE_ATTR_STRING(loom_spirv_target_contract_set_key, 30)
 #define loom_spirv_target_has_contract_set_key(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[30]))
-#define loom_spirv_target_rewrite_contract_set_key(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 30, (attribute))
-#define loom_spirv_target_contract_feature_bits_field() \
-  ((loom_attr_field_t){31})
 LOOM_DEFINE_ATTR_I64(loom_spirv_target_contract_feature_bits, 31)
 #define loom_spirv_target_has_contract_feature_bits(op) \
   (!loom_attr_is_absent(loom_op_const_attrs((op))[31]))
-#define loom_spirv_target_rewrite_contract_feature_bits(rewriter, op, attribute) \
-  loom_rewriter_set_attr((rewriter), (op), 31, (attribute))
 enum loom_spirv_target_build_flag_bits_e {
   LOOM_SPIRV_TARGET_BUILD_FLAG_HAS_CODEGEN_FORMAT = 1u << 0,
   LOOM_SPIRV_TARGET_BUILD_FLAG_HAS_ARTIFACT_FORMAT = 1u << 1,
@@ -337,5 +209,8 @@ loom_op_semantics_t loom_spirv_op_semantics(
 #ifdef __cplusplus
 }
 #endif
+
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/target/arch/spirv/ops/ops.inc"
 
 #endif  // LOOM_OPS_SPIRV_OPS_H_

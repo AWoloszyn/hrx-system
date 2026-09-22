@@ -771,8 +771,8 @@ TEST_F(VerifyTest, OperandDictOperandsRequireNamesAttribute) {
   IREE_ASSERT_OK(loom_test_operand_dict_build(
       &builder_, arguments[0], parameters, IREE_ARRAYSIZE(parameters), f32_type,
       LOOM_LOCATION_UNKNOWN, &op));
-  loom_op_attrs(op)[loom_test_operand_dict_param_names_field().index] =
-      loom_attr_absent();
+  IREE_ASSERT_OK(
+      loom_test_operand_dict_set_param_names(module_, op, loom_attr_absent()));
 
   TerminateFunc();
   DiagnosticCapture structured;
@@ -809,8 +809,9 @@ TEST_F(VerifyTest, OperandDictOrdinalsMustStayInOperandRange) {
   loom_named_attr_t names[] = {
       {/*.name_id=*/alpha_name, /*.reserved=*/0, /*.value=*/loom_attr_i64(1)},
   };
-  loom_op_attrs(op)[loom_test_operand_dict_param_names_field().index] =
-      loom_make_canonical_attr_dict(names, IREE_ARRAYSIZE(names));
+  IREE_ASSERT_OK(loom_test_operand_dict_set_param_names(
+      module_, op,
+      loom_make_canonical_attr_dict(names, IREE_ARRAYSIZE(names))));
 
   TerminateFunc();
   DiagnosticCapture structured;
