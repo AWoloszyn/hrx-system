@@ -31,9 +31,13 @@ def _parts(value: Any) -> tuple[tuple[Any, ...], tuple[Any, ...]]:
         case ScalarType():
             return (None, value), ()
         case ShapedType(
-            type_kind=kind, element_type=element, dims=dims, encoding=encoding
+            type_kind=kind,
+            element_type=element,
+            dims=dims,
+            encoding=encoding,
+            alignment=alignment,
         ):
-            return (ShapedType, kind, element), (*dims, encoding)
+            return (ShapedType, kind, element, alignment), (*dims, encoding)
         case FunctionType(arg_types=args, result_types=results):
             return (FunctionType, len(args)), (*args, *results)
         case DialectType(name=name, params=parameters):

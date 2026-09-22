@@ -183,7 +183,7 @@ BYTECODE_IR_KIND_BY_TYPE_KIND: dict[int, TypeKind] = {
 
 # File magic and version.
 MAGIC = b"LOOM"
-FORMAT_VERSION = 37
+FORMAT_VERSION = 38
 PRODUCER = "loom-py"
 
 SYMBOL_INTERFACE_FLAG_MASK = (1 << 14) - 1
@@ -1011,6 +1011,8 @@ class BytecodeWriter:
                 else:
                     buf.write_u8(0)  # no encoding
                     buf.write_varint(0)
+                if ir_type.type_kind == TypeKind.VIEW:
+                    buf.write_u8(ir_type.alignment or 0)
                 for dim in ir_type.dims:
                     match dim:
                         case StaticDim(size=size):

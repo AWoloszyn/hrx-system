@@ -58,6 +58,17 @@ for (const pointer of [0, 8, 64, 2048]) {
   }
 }
 
+// Include every address residue, even a misaligned buffer root, and compare
+// every untouched byte around the helper's four-byte access.
+for (const pointer of [0, 1, 64, 2049]) {
+  for (let origin = 0; origin < 8; ++origin) {
+    for (let position = 0; position < 8; ++position) {
+      exchange('exchange_packed', pointer, [origin, position],
+               origin + 8 + position * 4);
+    }
+  }
+}
+
 for (const value of [-2147483648n, -2147483647n, -1n, 0n, 1n, 2147483647n]) {
   assert.equal(exports.narrow_index(value), Number(value));
 }

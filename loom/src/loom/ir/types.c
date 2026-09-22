@@ -561,10 +561,7 @@ bool loom_type_equal_after_value_remap(const loom_module_t* module,
   }
 
   if (loom_type_is_shaped(source_type) || loom_type_is_pool(source_type)) {
-    if (loom_type_element_type(source_type) !=
-            loom_type_element_type(target_type) ||
-        loom_type_rank(source_type) != loom_type_rank(target_type) ||
-        loom_type_flags(source_type) != loom_type_flags(target_type)) {
+    if (source_type.header != target_type.header) {
       return false;
     }
     uint8_t rank = loom_type_rank(source_type);

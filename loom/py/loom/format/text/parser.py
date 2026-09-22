@@ -1866,8 +1866,10 @@ def _parse_compact_shape_type_from_tokens(
         )
     element_type = ScalarType(scalar_kind)
 
-    # Parse optional encoding.
+    # Parse optional encoding followed by the view-only access alignment.
     encoding: EncodingInstance | DynamicEncoding | None = None
+    alignment: int | None = None
+    alignment_location = element_token.location
     if tokenizer.try_consume(TokenKind.COMMA):
         if len(type_def.params) < 3:
             raise ParseError(
@@ -1875,24 +1877,47 @@ def _parse_compact_shape_type_from_tokens(
                 tokenizer.peek().location,
                 filename,
             )
-        encoding = _parse_type_encoding_from_tokens(
-            tokenizer, scope, module, mode, filename
-        )
-        if (
-            isinstance(encoding, EncodingInstance)
-            and _CURRENT_IMPLICIT_SHAPED_ATTACHMENTS is not None
-            and encoding.name in _CURRENT_IMPLICIT_SHAPED_ATTACHMENTS
-        ):
-            encoding = None
+        has_alignment = tokenizer.at(TokenKind.BARE_IDENT, "align")
+        if not has_alignment:
+            encoding = _parse_type_encoding_from_tokens(
+                tokenizer, scope, module, mode, filename
+            )
+            if (
+                isinstance(encoding, EncodingInstance)
+                and _CURRENT_IMPLICIT_SHAPED_ATTACHMENTS is not None
+                and encoding.name in _CURRENT_IMPLICIT_SHAPED_ATTACHMENTS
+            ):
+                encoding = None
+            has_alignment = tokenizer.try_consume(TokenKind.COMMA) is not None
+        if has_alignment:
+            if type_kind != TypeKind.VIEW:
+                raise ParseError(
+                    "alignment is only permitted on view types",
+                    tokenizer.peek().location,
+                    filename,
+                )
+            tokenizer.expect(TokenKind.BARE_IDENT, "align")
+            tokenizer.expect(TokenKind.LPAREN)
+            alignment_token = tokenizer.expect(TokenKind.INTEGER)
+            alignment_location = alignment_token.location
+            text = alignment_token.text
+            alignment = int(
+                text, 16 if text.lstrip("-").lower().startswith("0x") else 10
+            )
+            tokenizer.expect(TokenKind.RPAREN)
 
     tokenizer.expect(TokenKind.RANGLE)
 
-    shaped = ShapedType(
-        type_kind=type_kind,
-        element_type=element_type,
-        dims=tuple(dims),
-        encoding=encoding,
-    )
+    try:
+        shaped = ShapedType(
+            type_kind=type_kind,
+            element_type=element_type,
+            dims=tuple(dims),
+            encoding=encoding,
+            alignment=alignment,
+        )
+    except ValueError as error:
+        raise ParseError(str(error), alignment_location, filename) from error
     return shaped
 
 

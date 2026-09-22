@@ -53,7 +53,7 @@ typedef enum loom_view_prefetch_locality_e {
   LOOM_VIEW_PREFETCH_LOCALITY_COUNT_ = 4,
 } loom_view_prefetch_locality_t;
 
-// LOOM_OP_VIEW_SUBVIEW: Form a logical subview from an existing view. Offsets select the logical origin; result type dimensions provide the subview extents.
+// LOOM_OP_VIEW_SUBVIEW: Form a logical subview from an existing view. Offsets select the logical origin; result type dimensions provide the subview extents. The element-access alignment requirement is preserved; forming a subview makes no memory access or address-alignment promise.
 // %sub = view.subview %source[%row, 0] : view<[%M]x[%N]xf32, %layout> -> view<16x[%N]xf32, %layout>
 LOOM_DEFINE_ISA(loom_view_subview_isa, LOOM_OP_VIEW_SUBVIEW)
 LOOM_DEFINE_OPERAND(loom_view_subview_source, 0)
@@ -79,7 +79,7 @@ iree_status_t loom_view_subview_verify(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter);
 
-// LOOM_OP_VIEW_REFINE: Refine the static type information attached to an existing view while preserving the same storage root and byte base. This is an explicit SSA assertion point for layout, shape, and encoding facts discovered or required by earlier analysis.
+// LOOM_OP_VIEW_REFINE: Refine the static type information attached to an existing view while preserving the same storage root and byte base. This is an explicit SSA assertion point for layout, shape, encoding, and element-access requirements. An alignment qualifier changes the requirement of subsequent executed accesses, not an unconditional address fact.
 // %refined = view.refine %view : view<[%M]xf32, %layout> -> view<16xf32>
 LOOM_DEFINE_ISA(loom_view_refine_isa, LOOM_OP_VIEW_REFINE)
 LOOM_DEFINE_OPERAND(loom_view_refine_source, 0)

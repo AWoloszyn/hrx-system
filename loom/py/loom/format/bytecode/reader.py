@@ -705,6 +705,9 @@ class BytecodeReader:
             raise BytecodeError(f"shaped type rank exceeds 15: {rank}")
         encoding_attachment, offset = self._read_type_field(data, offset, values)
         enc_instance, offset = decode_varint(data, offset)
+        alignment = 0
+        if type_kind == TypeKind.VIEW:
+            alignment, offset = self._read_type_field(data, offset, values)
 
         dims: list[StaticDim | DynamicDim] = []
         for _ in range(rank):
@@ -750,6 +753,7 @@ class BytecodeReader:
                 element_type=ScalarType(elem_kind),
                 dims=tuple(dims),
                 encoding=encoding,
+                alignment=alignment or None,
             )
         except ValueError as err:
             raise BytecodeError(str(err)) from err

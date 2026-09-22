@@ -1582,6 +1582,14 @@ static bool loom_low_source_memory_access_plan_from_components(
   }
   out_plan->static_byte_offset = static_byte_offset;
   loom_low_source_memory_access_finalize_alignment(out_plan);
+  if (operation_kind != LOOM_LOW_SOURCE_MEMORY_OPERATION_VIEW_CARRIER &&
+      operation_kind != LOOM_LOW_SOURCE_MEMORY_OPERATION_PREFETCH) {
+    // An executed typed access requires its declared element alignment. This
+    // does not strengthen root or view-origin facts. Carriers, prefetch hints,
+    // and inactive masked lanes have no semantic storage access.
+    out_plan->minimum_alignment = iree_max(out_plan->minimum_alignment,
+                                           loom_type_view_alignment(view_type));
+  }
   return true;
 }
 

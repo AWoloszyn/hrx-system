@@ -121,6 +121,10 @@ iree_status_t loom_bytecode_write_types_section(
           IREE_RETURN_IF_ERROR(
               loom_bytecode_page_writer_write_uvarint(page_writer, 0));
         }
+        if (kind == LOOM_TYPE_VIEW) {
+          IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_u8(
+              page_writer, loom_type_view_alignment_override(type)));
+        }
         // Dims.
         for (uint8_t i = 0; i < rank; ++i) {
           if (loom_type_dim_is_dynamic_at(type, i)) {

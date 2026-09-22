@@ -158,6 +158,12 @@ views using the per-launch element count, and `view.load` and `view.store`
 operate in logical element coordinates. Alias independence is a fact on the
 buffers rather than an accidental consequence of different parameter names.
 
+Views also carry an element-access alignment requirement. Natural physical
+scalar alignment is the default; packed storage uses an explicit qualifier
+such as `view<4xi32, align(1)>`. [Natural alignment](buffers-views-memory.md#natural-alignment-is-the-ordinary-access-contract)
+explains why that access contract is separate from an unconditional address
+fact.
+
 ## Vectors are values, not memory
 
 A vector is a register lane grid. It can be constructed, transformed, reduced,
@@ -215,7 +221,7 @@ routing table whose producer guarantees valid expert IDs:
 ```
 
 The original value still exists. Uses that need the proven bound consume
-`%bounded_index`, making the proof edge visible. The same pattern carries
+`%bounded_expert_id`, making the proof edge visible. The same pattern carries
 alignment, memory space, aliasing, storage identity, ranges, multiplicity, and
 target facts through later transformations.
 

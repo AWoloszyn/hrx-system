@@ -36,6 +36,17 @@ loom_test(
 )
 
 loom_test(
+    name = "natural_alignment_test",
+    srcs = ["natural_alignment.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/spirv:vulkan1.3+bda",
+    ],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+)
+
+loom_test(
     name = "loop_termination_test",
     srcs = ["loop_termination.loom"],
     execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],

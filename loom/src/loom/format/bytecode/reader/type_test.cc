@@ -606,6 +606,25 @@ TEST_F(BytecodeTypeTest, RejectsOversizedFunctionCountsBeforeAllocation) {
   EXPECT_EQ(module_->types.count, 0u);
 }
 
+TEST_F(BytecodeTypeTest, ViewAlignmentValidationModesAgree) {
+  for (uint8_t alignment : {0, 1, 2, 4, 8, 3, 16, 128, 255}) {
+    const uint8_t data[] = {
+        1,
+        LOOM_BYTECODE_TYPE_VIEW,
+        LOOM_SCALAR_TYPE_I64,
+        /*rank=*/0,
+        LOOM_BYTECODE_ENCODING_ATTACHMENT_NONE,
+        /*encoding_instance=*/0,
+        alignment,
+    };
+    CheckValidationModes(data, sizeof(data),
+                         alignment == 0 || loom_type_view_alignment_is_valid(
+                                               LOOM_SCALAR_TYPE_I64, alignment)
+                             ? IREE_STATUS_OK
+                             : IREE_STATUS_DEFERRED);
+  }
+}
+
 TEST_F(BytecodeTypeTest, RejectsNoneScalarType) {
   const uint8_t data[] = {
       LOOM_BYTECODE_TYPE_SCALAR,

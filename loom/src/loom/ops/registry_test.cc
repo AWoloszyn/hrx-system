@@ -491,9 +491,9 @@ TEST(TypeRegistry, LookupBuiltinTypes) {
   desc = loom_type_registry_lookup(nullptr, iree_make_cstring_view("view"));
   ASSERT_NE(desc, nullptr);
   EXPECT_EQ(desc->ir_kind, LOOM_TYPE_VIEW);
-  EXPECT_EQ(desc->param_count, 3);
+  EXPECT_EQ(desc->param_count, 4);
   EXPECT_NE(desc->format_elements, nullptr);
-  EXPECT_EQ(desc->format_element_count, 6);
+  EXPECT_EQ(desc->format_element_count, 13);
 
   desc = loom_type_registry_lookup(nullptr, iree_make_cstring_view("buffer"));
   ASSERT_NE(desc, nullptr);
@@ -664,8 +664,8 @@ TEST(TypeRegistry, ViewFormatElements) {
   const loom_type_descriptor_t* desc =
       loom_type_registry_lookup(nullptr, iree_make_cstring_view("view"));
   ASSERT_NE(desc, nullptr);
-  ASSERT_EQ(desc->format_element_count, 6);
-  // ShapeOf, Keyword(x), ScalarOf, Optional, Keyword(,), EncodingOf.
+  ASSERT_EQ(desc->format_element_count, 13);
+  // ShapeOf, Keyword(x), ScalarOf, optional encoding and alignment clauses.
   EXPECT_EQ(desc->format_elements[0].kind, LOOM_TYPE_FMT_SHAPE);
   EXPECT_EQ(desc->format_elements[1].kind, LOOM_TYPE_FMT_KEYWORD);
   EXPECT_EQ(desc->format_elements[1].data, LOOM_KW_X);
@@ -674,6 +674,20 @@ TEST(TypeRegistry, ViewFormatElements) {
   EXPECT_EQ(desc->format_elements[4].kind, LOOM_TYPE_FMT_KEYWORD);
   EXPECT_EQ(desc->format_elements[4].data, LOOM_KW_COMMA);
   EXPECT_EQ(desc->format_elements[5].kind, LOOM_TYPE_FMT_ENCODING);
+  EXPECT_EQ(desc->format_elements[6].kind, LOOM_TYPE_FMT_OPTIONAL);
+  EXPECT_EQ(desc->format_elements[6].field_index, 3);
+  EXPECT_EQ(desc->format_elements[6].data, (6 << 8) | 3);
+  EXPECT_EQ(desc->format_elements[7].kind, LOOM_TYPE_FMT_KEYWORD);
+  EXPECT_EQ(desc->format_elements[7].data, LOOM_KW_COMMA);
+  EXPECT_EQ(desc->format_elements[8].kind, LOOM_TYPE_FMT_KEYWORD);
+  EXPECT_EQ(desc->format_elements[8].data, LOOM_KW_ALIGN);
+  EXPECT_EQ(desc->format_elements[9].kind, LOOM_TYPE_FMT_GLUE);
+  EXPECT_EQ(desc->format_elements[10].kind, LOOM_TYPE_FMT_KEYWORD);
+  EXPECT_EQ(desc->format_elements[10].data, LOOM_KW_LPAREN);
+  EXPECT_EQ(desc->format_elements[11].kind, LOOM_TYPE_FMT_ALIGNMENT);
+  EXPECT_EQ(desc->format_elements[11].field_index, 3);
+  EXPECT_EQ(desc->format_elements[12].kind, LOOM_TYPE_FMT_KEYWORD);
+  EXPECT_EQ(desc->format_elements[12].data, LOOM_KW_RPAREN);
 }
 
 }  // namespace

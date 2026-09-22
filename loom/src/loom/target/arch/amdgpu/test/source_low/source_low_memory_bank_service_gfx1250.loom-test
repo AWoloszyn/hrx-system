@@ -94,9 +94,9 @@ kernel.def target(@target) @unknown_address_alignment() {
   %bytes = index.constant 2048 : offset
   %layout = encoding.layout.strided [16, 1] : encoding<layout>
   %scratch = buffer.alloca<workgroup> align(1) %bytes : buffer
-  %view = buffer.view %scratch[%scratch_base] : buffer -> view<32x4xi32, %layout>
+  %view = buffer.view %scratch[%scratch_base] : buffer -> view<32x4xi32, %layout, align(1)>
   %value = vector.constant 1 : vector<4xi32>
-  vector.store %value, %view[%lane, 0] : vector<4xi32>, view<32x4xi32, %layout>
+  vector.store %value, %view[%lane, 0] : vector<4xi32>, view<32x4xi32, %layout, align(1)>
   kernel.return
 }
 

@@ -5,6 +5,31 @@ func.def @semantic() {
   func.return
 }
 
+// ====
+
+// A dependent signature carries its reduced access requirement after binding
+// the extent. Neither shape substitution nor exact call matching may erase it.
+func.decl @natural(%width: index, %source: view<[%width]xi32>) -> (i32)
+
+func.def @packed_cannot_call_natural(%width: index, %source: view<[%width]xi32, align(1)>) -> (i32) {
+  // ERROR@+1: TYPE/001 {field_a="operand 1", field_b="contract argument 1"}
+  %result = func.call @natural(%width, %source) : (index, view<[%width]xi32, align(1)>) -> (i32)
+  func.return %result : i32
+}
+
+// ====
+
+// Exact matching also requires an explicit relaxation at a packed boundary.
+func.decl @packed(%source: view<4xi32, align(1)>) -> (i32)
+
+func.def @natural_cannot_call_packed(%source: view<4xi32>) -> (i32) {
+  // ERROR@+1: TYPE/001 {field_a="operand 0", field_b="contract argument 0"}
+  %result = func.call @packed(%source) : (view<4xi32>) -> (i32)
+  func.return %result : i32
+}
+
+// ====
+
 // Named function results are part of the signature contract and may carry
 // postconditions relating them to function arguments.
 func.def @postcondition(%value: i32) -> (%result: i32) where [eq(%result, %value)] {

@@ -551,6 +551,8 @@ def _print_shaped_type(
                 ),
             )
 
+    if shaped.alignment is not None:
+        inner += f", align({shaped.alignment})"
     return f"{type_def.name}<{inner}>"
 
 

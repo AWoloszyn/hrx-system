@@ -9,8 +9,15 @@
 import pytest
 
 from loom.assembly import COMMA, EncodingOf, OptionalGroup, ScalarOf, ShapeOf, kw
+from loom.builtin_types import view_type
 from loom.dsl import EncodingParam, ScalarParam, ShapeParam, TypeDef
 from loom.gen.ops.type_registry import generate_type_registry
+
+
+def test_view_alignment_is_part_of_the_declared_format() -> None:
+    _, _, source = generate_type_registry([view_type])
+    assert "{LOOM_TYPE_FMT_ALIGNMENT, 3, 0}" in source
+    assert "LOOM_KW_ALIGN" in source
 
 
 def _compact_tensor_type_def(name: str) -> TypeDef:

@@ -43,6 +43,8 @@ typedef enum loom_type_format_kind_e {
   LOOM_TYPE_FMT_PARAM = 8,
   // Descriptor-backed parameter name.
   LOOM_TYPE_FMT_PARAM_KEY = 9,
+  // Explicit view element-access alignment in bytes.
+  LOOM_TYPE_FMT_ALIGNMENT = 10,
 } loom_type_format_kind_t;
 
 // Compact format instruction for a descriptor-backed type interior.

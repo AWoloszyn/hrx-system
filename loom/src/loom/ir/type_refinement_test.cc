@@ -28,7 +28,8 @@ class TypeRefinementTest : public ::testing::Test {
     iree_arena_block_pool_deinitialize(&block_pool_);
   }
 
-  loom_type_t MakeRank3Vector(uint64_t dim0, uint64_t dim1, uint64_t dim2) {
+  loom_type_t MakeRank3Type(loom_type_kind_t kind, uint64_t dim0, uint64_t dim1,
+                            uint64_t dim2) {
     loom_overflow_dim_t* dimensions = nullptr;
     IREE_CHECK_OK(iree_arena_allocate_array(&arena_, 3, sizeof(*dimensions),
                                             (void**)&dimensions));
@@ -42,8 +43,7 @@ class TypeRefinementTest : public ::testing::Test {
         !loom_dim_is_dynamic(dim2)) {
       flags |= LOOM_TYPE_FLAG_ALL_STATIC;
     }
-    type.header =
-        loom_type_make_header(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32, 3, flags);
+    type.header = loom_type_make_header(kind, LOOM_SCALAR_TYPE_F32, 3, flags);
     type.dims[0] = (uint64_t)(uintptr_t)dimensions;
     return type;
   }
@@ -69,6 +69,28 @@ TEST_F(TypeRefinementTest, DynamicDimensionNarrowsToStaticDimension) {
   EXPECT_EQ(loom_type_dim_static_size_at(refined, 0), 16);
   EXPECT_EQ(loom_type_dim_static_size_at(refined, 1), 4);
   EXPECT_TRUE(loom_type_is_all_static(refined));
+}
+
+TEST_F(TypeRefinementTest, ShapeRefinementPreservesViewAccessRequirement) {
+  const auto dynamic = loom_type_shaped_1d(LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_I64,
+                                           loom_dim_pack_dynamic(1), 0);
+  const auto fixed = loom_type_shaped_1d(LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_I64,
+                                         loom_dim_pack_static(16), 0);
+  for (uint8_t source_alignment : {1, 2, 4, 8}) {
+    for (uint8_t candidate_alignment : {1, 2, 4, 8}) {
+      const auto current =
+          loom_type_view_with_alignment(dynamic, source_alignment);
+      const auto candidate =
+          loom_type_view_with_alignment(fixed, candidate_alignment);
+      loom_type_t refined = {};
+      loom_type_refinement_result_t result = LOOM_TYPE_REFINEMENT_CONFLICT;
+      IREE_ASSERT_OK(loom_type_refine_with_candidate(
+          current, candidate, &arena_, &refined, &result));
+      EXPECT_EQ(result, LOOM_TYPE_REFINEMENT_NARROWED);
+      EXPECT_EQ(loom_type_dim_static_size_at(refined, 0), 16);
+      EXPECT_EQ(loom_type_view_alignment(refined), source_alignment);
+    }
+  }
 }
 
 TEST_F(TypeRefinementTest, StaticDimensionDoesNotWidenToDynamicDimension) {
@@ -103,11 +125,11 @@ TEST_F(TypeRefinementTest, ConflictingStaticDimensionsAreRejected) {
 
 TEST_F(TypeRefinementTest, OverflowDimensionsAreRebuiltWhenNarrowed) {
   loom_type_t current =
-      MakeRank3Vector(loom_dim_pack_dynamic(1), loom_dim_pack_static(4),
-                      loom_dim_pack_dynamic(2));
+      MakeRank3Type(LOOM_TYPE_VECTOR, loom_dim_pack_dynamic(1),
+                    loom_dim_pack_static(4), loom_dim_pack_dynamic(2));
   loom_type_t candidate =
-      MakeRank3Vector(loom_dim_pack_static(16), loom_dim_pack_static(4),
-                      loom_dim_pack_static(8));
+      MakeRank3Type(LOOM_TYPE_VECTOR, loom_dim_pack_static(16),
+                    loom_dim_pack_static(4), loom_dim_pack_static(8));
 
   loom_type_t refined = {};
   loom_type_refinement_result_t result = LOOM_TYPE_REFINEMENT_CONFLICT;
@@ -120,6 +142,28 @@ TEST_F(TypeRefinementTest, OverflowDimensionsAreRebuiltWhenNarrowed) {
   EXPECT_EQ(loom_type_dim_static_size_at(refined, 0), 16);
   EXPECT_EQ(loom_type_dim_static_size_at(refined, 1), 4);
   EXPECT_EQ(loom_type_dim_static_size_at(refined, 2), 8);
+}
+
+TEST_F(TypeRefinementTest, OverflowShapePreservesViewAccessRequirement) {
+  for (uint8_t alignment : {1, 2, 4}) {
+    auto current = loom_type_view_with_alignment(
+        MakeRank3Type(LOOM_TYPE_VIEW, loom_dim_pack_dynamic(1),
+                      loom_dim_pack_static(4), loom_dim_pack_dynamic(2)),
+        alignment);
+    auto candidate =
+        MakeRank3Type(LOOM_TYPE_VIEW, loom_dim_pack_static(16),
+                      loom_dim_pack_static(4), loom_dim_pack_static(8));
+    loom_type_t refined = {};
+    loom_type_refinement_result_t result = LOOM_TYPE_REFINEMENT_CONFLICT;
+    IREE_ASSERT_OK(loom_type_refine_shape_with_candidate(
+        current, candidate, &arena_, &refined, &result));
+    EXPECT_EQ(result, LOOM_TYPE_REFINEMENT_NARROWED);
+    EXPECT_FALSE(loom_type_has_inline_dims(refined));
+    EXPECT_TRUE(loom_type_is_all_static(refined));
+    EXPECT_EQ(loom_type_view_alignment(refined), alignment);
+    EXPECT_EQ(loom_type_dim_static_size_at(refined, 0), 16);
+    EXPECT_EQ(loom_type_dim_static_size_at(refined, 2), 8);
+  }
 }
 
 TEST_F(TypeRefinementTest, PoolDimensionNarrowsLikeOtherDimensionedTypes) {

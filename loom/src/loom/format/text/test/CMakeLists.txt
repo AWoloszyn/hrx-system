@@ -21,6 +21,7 @@ loom_check_test_suite(
     "symbol_references.loom-test"
     "type_attributes.loom-test"
     "type_scratch.loom-test"
+    "view_alignment.loom-test"
 )
 
 loom_cc_test(

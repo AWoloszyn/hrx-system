@@ -7,9 +7,9 @@ kernel.def @unaligned_observation() {
 } launch(%input: buffer) {
   %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
   %base = index.constant 1 : offset
-  %word = buffer.view %aligned[%base] : buffer -> view<1xi32>
+  %word = buffer.view %aligned[%base] : buffer -> view<1xi32, align(1)>
   // ERROR@+1: AMDGPU/023 {constraint_key="atomic.alignment"}
-  %value = view.atomic.load %word[0] {ordering = relaxed, scope = device} : view<1xi32> -> i32
+  %value = view.atomic.load %word[0] {ordering = relaxed, scope = device} : view<1xi32, align(1)> -> i32
   kernel.return
 }
 

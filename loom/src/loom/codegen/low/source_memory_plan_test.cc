@@ -41,6 +41,8 @@ TEST_F(SourceMemoryPlanTest, DynamicViewOriginRetainsCompleteAddress) {
   EXPECT_EQ(plan.dynamic_terms[0].index, base_offset);
   EXPECT_EQ(plan.dynamic_terms[0].byte_stride, 1);
   EXPECT_EQ(plan.dynamic_view_base_value_id, base_offset);
+  EXPECT_EQ(plan.root_minimum_alignment, 1u);
+  EXPECT_EQ(plan.minimum_alignment, 1u);
 }
 
 TEST_F(SourceMemoryPlanTest, StaticDenseLoadIncludesViewBase) {
@@ -80,9 +82,48 @@ TEST_F(SourceMemoryPlanTest, StaticDenseLoadIncludesViewBase) {
   EXPECT_EQ(plan.static_view_base_byte_offset, 16);
   EXPECT_EQ(plan.dynamic_view_base_value_id, LOOM_VALUE_ID_INVALID);
   EXPECT_EQ(plan.root_minimum_alignment, 1u);
-  EXPECT_EQ(plan.minimum_alignment, 1u);
+  EXPECT_EQ(plan.minimum_alignment, 4u);
   EXPECT_EQ(plan.dynamic_term_count, 0u);
   EXPECT_EQ(plan.dynamic_view_base_term_count, 0u);
+}
+
+TEST_F(SourceMemoryPlanTest, ReducedAlignmentAppliesOnlyToTypedAccess) {
+  const auto buffer = DefineBufferArg();
+  const auto base_offset = DefineOffsetArg();
+  for (uint8_t alignment : {1, 2, 4}) {
+    const auto view_type = loom_type_view_with_alignment(
+        loom_type_shaped_1d(LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_F32,
+                            loom_dim_pack_static(8), 0),
+        alignment);
+    loom_op_t* view_op = nullptr;
+    IREE_ASSERT_OK(loom_buffer_view_build(&builder_, buffer, base_offset,
+                                          view_type, LOOM_LOCATION_UNKNOWN,
+                                          &view_op));
+    const int64_t indices[] = {0};
+    loom_op_t* load_op = nullptr;
+    IREE_ASSERT_OK(loom_vector_load_build(
+        &builder_, 0, 0, loom_buffer_view_result(view_op), nullptr, 0, indices,
+        1, 0, 0, VectorType1D(4), LOOM_LOCATION_UNKNOWN, &load_op));
+    loom_op_t* prefetch_op = nullptr;
+    IREE_ASSERT_OK(loom_view_prefetch_build(
+        &builder_, loom_buffer_view_result(view_op), nullptr, 0, indices, 1,
+        LOOM_VIEW_PREFETCH_INTENT_READ, LOOM_VIEW_PREFETCH_LOCALITY_L2,
+        LOOM_LOCATION_UNKNOWN, &prefetch_op));
+    loom_value_fact_table_t facts = {0};
+    ComputeFacts(&facts);
+    loom_low_source_memory_access_plan_t plan = {};
+    loom_low_source_memory_access_diagnostic_t diagnostic = {};
+    ASSERT_TRUE(BuildPlan(&facts, view_op, &plan, &diagnostic));
+    EXPECT_EQ(plan.minimum_alignment, 1u);
+    EXPECT_EQ(plan.root_minimum_alignment, 1u);
+    ASSERT_TRUE(BuildPlan(&facts, prefetch_op, &plan, &diagnostic));
+    EXPECT_EQ(plan.minimum_alignment, 1u);
+    EXPECT_EQ(plan.root_minimum_alignment, 1u);
+    ASSERT_TRUE(BuildPlan(&facts, load_op, &plan, &diagnostic));
+    EXPECT_EQ(plan.minimum_alignment, alignment);
+    EXPECT_EQ(plan.root_minimum_alignment, 1u);
+    EXPECT_EQ(plan.vector_lane_count, 4u);
+  }
 }
 
 TEST_F(SourceMemoryPlanTest, PhysicalByteLoadUsesBufferReferenceAndOffset) {

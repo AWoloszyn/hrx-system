@@ -589,6 +589,18 @@ def _test_scoped_type_interop(
         assert attribute_type.get("element_type").dims == (
             DynamicDim(entry.arg_ids[0]),
         )
+        packed = candidate.body.ops[3]
+        width, layout, value = packed.regions[0].blocks[0].arg_ids
+        packed_type = candidate.values[value].type
+        child = packed_type.get("element_type")
+        assert child.dims[0] == DynamicDim(width)
+        assert child.encoding == DynamicEncoding(layout)
+        assert child.alignment == 2
+        metadata = packed_type.get("metadata")
+        assert metadata["fixed"].alignment == 1
+        callback = metadata["callback"]
+        assert callback.arg_types[0].alignment == 1
+        assert callback.result_types[0].alignment == 1
 
     with tempfile.TemporaryDirectory(
         prefix="loom-scoped-selected-interop-"
@@ -602,6 +614,7 @@ def _test_scoped_type_interop(
                 source_path,
                 "--root=nested",
                 "--root=type_attribute",
+                "--root=packed_views",
                 "--to=bc",
                 f"--output={selected_path}",
             ],
@@ -615,10 +628,15 @@ def _test_scoped_type_interop(
             type_defs=ALL_TEST_TYPES,
             parameterized_attrs=ALL_TEST_PARAMETERIZED_ATTRS,
         )
-    assert {symbol.name for symbol in selected.symbols} == {"nested", "type_attribute"}
+    assert {symbol.name for symbol in selected.symbols} == {
+        "nested",
+        "type_attribute",
+        "packed_views",
+    }
     selected_text = printer.print_module(selected)
     assert "metadata = {shape = vector<[%height]xf32>}" in selected_text
     assert "element_type = test.array<vector<[%width]xf32>>" in selected_text
+    assert "view<[%width]x2x3xi64, %layout, align(2)>" in selected_text
     assert printer.print_module(parser.parse(selected_text)) == selected_text
 
 

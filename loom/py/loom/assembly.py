@@ -95,6 +95,7 @@ __all__ = [
     "ShapeOf",
     "ScalarOf",
     "EncodingOf",
+    "AlignmentOf",
     "Param",
     # Union type.
     "FormatElement",
@@ -878,6 +879,17 @@ class EncodingOf:
 
 
 @dataclass(frozen=True, slots=True)
+class AlignmentOf:
+    """Reduced view element-access alignment in bytes.
+
+    The field names an AlignmentParam on the TypeDef. Surrounding format
+    elements supply the align(...) clause; this element is its integer value.
+    """
+
+    field: str
+
+
+@dataclass(frozen=True, slots=True)
 class Param:
     """A descriptor-backed value in a parameterized type interior.
 
@@ -935,6 +947,7 @@ type FormatElement = (
     | ShapeOf
     | ScalarOf
     | EncodingOf
+    | AlignmentOf
     | Param
 )
 

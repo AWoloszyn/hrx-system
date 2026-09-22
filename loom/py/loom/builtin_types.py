@@ -18,6 +18,8 @@ Dialect-specific types are declared in their respective dialect files
 
 from loom.assembly import (
     COMMA,
+    AlignmentOf,
+    Clause,
     EncodingOf,
     OptionalGroup,
     Param,
@@ -27,6 +29,7 @@ from loom.assembly import (
 )
 from loom.dsl import (
     ATTR_TYPE_ENUM,
+    AlignmentParam,
     AttrDef,
     EncodingParam,
     EnumCase,
@@ -161,7 +164,9 @@ view_type = TypeDef(
     name="view",
     doc=(
         "Typed non-owning logical coordinate space over buffer storage with "
-        "optional address layout."
+        "optional address layout. Executed element accesses require natural "
+        "physical scalar alignment unless align(...) explicitly reduces it. "
+        "Forming or transporting a view implies no access or address promise."
     ),
     ir_kind="view",
     fact_domain="loom_view_fact_domain",
@@ -169,12 +174,24 @@ view_type = TypeDef(
         ShapeParam("dims"),
         ScalarParam("element_type"),
         EncodingParam("layout"),
+        AlignmentParam(
+            "alignment",
+            doc=(
+                "Positive power-of-two byte alignment no greater than the physical "
+                "scalar's natural alignment. Omission requires natural alignment. "
+                "The requirement applies only to executed element accesses."
+            ),
+        ),
     ],
     format=[
         ShapeOf("dims"),
         kw("x"),
         ScalarOf("element_type"),
         OptionalGroup([COMMA, EncodingOf("layout")], anchor="layout"),
+        OptionalGroup(
+            [COMMA, Clause("align", AlignmentOf("alignment"))],
+            anchor="alignment",
+        ),
     ],
 )
 

@@ -9,6 +9,10 @@ test.func @type_attribute(%width: index, %value: f32) {
   test.yield
 }
 
+test.func @packed_views(%width: index, %layout: encoding<layout>, %value: test.array<view<[%width]x2x3xi64, %layout, align(2)>, metadata = {fixed = view<4xi32, align(1)>, callback = (view<[%width]xi32, align(1)>) -> (view<[%width]xi32, align(1)>) }>) {
+  test.yield
+}
+
 // ----
 test.func @nested(%width: index, %height: index, %value: test.array<test.array<vector<[%width]xf32>>, metadata = {shape = vector<[%height]xf32>}>) {
   test.yield
@@ -18,5 +22,9 @@ low.func.decl target<test.low.core> @register_value(%width: reg<test.ptr : index
 
 test.func @type_attribute(%width: index, %value: f32) {
   %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = test.array<vector<[%width]xf32>>>} : f32
+  test.yield
+}
+
+test.func @packed_views(%width: index, %layout: encoding<layout>, %value: test.array<view<[%width]x2x3xi64, %layout, align(2)>, metadata = {callback = (view<[%width]xi32, align(1)>) -> (view<[%width]xi32, align(1)>), fixed = view<4xi32, align(1)>}>) {
   test.yield
 }

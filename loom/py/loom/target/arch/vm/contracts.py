@@ -71,6 +71,7 @@ from loom.dialect.scalar import (
     math,
 )
 from loom.dialect.scf import ALL_SCF_OPS, scf_select
+from loom.error.target import ERR_TARGET_050
 from loom.ir import ScalarType, ScalarTypeKind
 from loom.target.arch.vm.descriptors import VM_CORE_DESCRIPTOR_SET, scalar_result_type
 from loom.target.contracts import (
@@ -81,6 +82,7 @@ from loom.target.contracts import (
     DirectDescriptorCase,
     EmitDescriptorOp,
     Guard,
+    GuardDiagnostic,
     RecipeRule,
     Scalar,
     SelectDescriptorCase,
@@ -94,8 +96,12 @@ from loom.target.contracts import (
     ValueRef,
     binary_descriptor_rules,
     select_descriptor_rules,
+    source_memory_minimum_alignment_param,
+    target_diagnostic,
     ternary_descriptor_rules,
+    u32_param,
     unary_descriptor_rules,
+    value_type_param,
 )
 from loom.target.contracts.memory_spaces import MEMORY_SPACE_NAMES
 from loom.target.low_descriptors import DescriptorOpKind, OperandRole
@@ -937,6 +943,23 @@ def _view_cases():
                     operation=operation,
                     memory_spaces=tuple(sorted(MEMORY_SPACE_NAMES)),
                     element_byte_count=width // 8,
+                    minimum_alignment=(
+                        0 if instruction in (BUFFER_LOAD, BUFFER_STORE) else width // 8
+                    ),
+                    diagnostic=(
+                        None
+                        if instruction in (BUFFER_LOAD, BUFFER_STORE)
+                        else GuardDiagnostic(
+                            ref=target_diagnostic(
+                                ERR_TARGET_050,
+                                value_type_param("value_type", "view"),
+                                u32_param("required_alignment", width // 8),
+                                source_memory_minimum_alignment_param(
+                                    "known_alignment"
+                                ),
+                            )
+                        )
+                    ),
                     vector_lane_count=1,
                     vector_lane_byte_stride=width // 8,
                     static_byte_offset_minimum=0 if zero_static else -(2**63),

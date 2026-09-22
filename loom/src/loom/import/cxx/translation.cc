@@ -429,49 +429,80 @@ class Translator {
     return return_sequence(continuation);
   }
 
+  StorageProjection pointer_projection(Value value, const cxx::Type* type,
+                                       cxx::AST* owner) {
+    auto* pointer = cxx::type_cast<cxx::PointerType>(types_.unqualified(type));
+    return storage_.project(value.pointer(),
+                            pointer ? pointer->elementType() : type, owner);
+  }
+
+  StorageProjection pointer_expression(cxx::ExpressionAST* ast) {
+    auto* source = cxx::Initializer::stripImplicitCasts(ast);
+    if (unit_.typeTraits().is_array(source->type)) {
+      // Direct array indexing retains its enclosing lvalue's alignment. An
+      // actual pointer value, including an explicit cast or call result, starts
+      // with its pointee contract and carries no hidden alignment component.
+      auto projection = object_address(source);
+      if (auto* member = cxx::ast_cast<cxx::MemberExpressionAST>(source)) {
+        name(projection.pointer, cxx::to_string(member->symbol->name()));
+      }
+      return projection;
+    }
+    return pointer_projection(expression(ast), ast->type, ast);
+  }
+
+  struct SubscriptOperands {
+    // Evaluated array or pointer origin with its source alignment.
+    StorageProjection base;
+    // Evaluated integral displacement, before address-width conversion.
+    loom_value_id_t index;
+    // Source array or pointer type owning the element stride.
+    const cxx::Type* base_type;
+    // Source displacement type owning its signedness and width.
+    const cxx::Type* index_type;
+  };
+
+  SubscriptOperands subscript_operands(cxx::SubscriptExpressionAST* ast) {
+    if (ast->symbol) {
+      fail(ast, "overloaded indexing is not admitted");
+    }
+    auto* base_type = ast->baseExpression->type;
+    auto* index_type = ast->indexExpression->type;
+    if (types_.vector(base_type) || types_.vector(index_type)) {
+      fail(ast, "vector lane subscripts require a value projection");
+    }
+    if (unit_.typeTraits().is_pointer(base_type) ||
+        unit_.typeTraits().is_array(base_type)) {
+      auto base = pointer_expression(ast->baseExpression);
+      auto index = expression(ast->indexExpression);
+      return {base, index.ssa(), base_type, index_type};
+    }
+    // The commuted spelling i[p] still evaluates its written base first.
+    auto index = expression(ast->baseExpression);
+    auto base = pointer_expression(ast->indexExpression);
+    return {base, index.ssa(), index_type, base_type};
+  }
+
   StorageAccess address(cxx::ExpressionAST* ast) {
     if (auto* nested = cxx::ast_cast<cxx::NestedExpressionAST>(ast)) {
       return address(nested->expression);
     }
-    if (cxx::ast_cast<cxx::MemberExpressionAST>(ast)) {
-      return storage_.dereference(address_of(ast).pointer(), ast->type, ast);
-    }
     if (auto* subscript = cxx::ast_cast<cxx::SubscriptExpressionAST>(ast)) {
-      if (subscript->symbol) {
-        fail(ast, "overloaded indexing is not admitted");
-      }
-      auto base = expression(subscript->baseExpression);
-      auto index = expression(subscript->indexExpression);
-      auto* base_type = subscript->baseExpression->type;
-      auto* index_type = subscript->indexExpression->type;
-      if (types_.vector(base_type) || types_.vector(index_type)) {
-        fail(ast, "vector lane subscripts require a value projection");
-      }
-      if (!base.is_pointer()) {
-        std::swap(base, index);
-        std::swap(base_type, index_type);
-      }
-      return storage_.subscript(base.pointer(), index.ssa(), base_type,
-                                index_type, ast);
+      auto operands = subscript_operands(subscript);
+      return storage_.subscript(operands.base, operands.index,
+                                operands.base_type, operands.index_type, ast);
     }
-    if (auto* unary = cxx::ast_cast<cxx::UnaryExpressionAST>(ast)) {
-      if (!unary->symbol && unary->op == cxx::TokenKind::T_STAR) {
-        auto base = expression(unary->expression);
-        return storage_.dereference(base.pointer(), ast->type, ast);
-      }
-    }
-    fail(ast,
-         "memory access requires a builtin subscript, dereference or field");
+    return storage_.dereference(object_address(ast), ast->type, ast);
   }
 
-  Value address_of(cxx::ExpressionAST* ast) {
+  StorageProjection object_address(cxx::ExpressionAST* ast) {
     ast = cxx::Initializer::stripImplicitCasts(ast);
     if (auto* nested = cxx::ast_cast<cxx::NestedExpressionAST>(ast)) {
-      return address_of(nested->expression);
+      return object_address(nested->expression);
     }
     if (auto* id = cxx::ast_cast<cxx::IdExpressionAST>(ast);
         id && unit_.typeTraits().is_array(id->type)) {
-      return expression(id);
+      return storage_.project(expression(id).pointer(), id->type, id);
     }
     if (auto* member = cxx::ast_cast<cxx::MemberExpressionAST>(ast)) {
       auto* field = cxx::symbol_cast<cxx::FieldSymbol>(member->symbol);
@@ -479,31 +510,18 @@ class Translator {
         fail(ast, "record storage access requires a non-static data member");
       }
       auto base = member->accessOp == cxx::TokenKind::T_MINUS_GREATER
-                      ? expression(member->baseExpression)
-                      : address_of(member->baseExpression);
-      return storage_.member(base.pointer(), field, ast);
+                      ? pointer_expression(member->baseExpression)
+                      : object_address(member->baseExpression);
+      return storage_.member(base, field, ast);
     }
     if (auto* subscript = cxx::ast_cast<cxx::SubscriptExpressionAST>(ast)) {
-      if (subscript->symbol) {
-        fail(ast, "overloaded indexing is not admitted");
-      }
-      auto base = expression(subscript->baseExpression);
-      auto index = expression(subscript->indexExpression);
-      auto* base_type = subscript->baseExpression->type;
-      auto* index_type = subscript->indexExpression->type;
-      if (types_.vector(base_type) || types_.vector(index_type)) {
-        fail(ast, "vector lanes do not have an independent storage address");
-      }
-      if (!base.is_pointer()) {
-        std::swap(base, index);
-        std::swap(base_type, index_type);
-      }
-      return storage_.advance(base.pointer(), index.ssa(), base_type,
-                              index_type, cxx::TokenKind::T_PLUS, ast);
+      auto operands = subscript_operands(subscript);
+      return storage_.advance(operands.base, operands.index, operands.base_type,
+                              operands.index_type, cxx::TokenKind::T_PLUS, ast);
     }
     if (auto* unary = cxx::ast_cast<cxx::UnaryExpressionAST>(ast)) {
       if (!unary->symbol && unary->op == cxx::TokenKind::T_STAR) {
-        return expression(unary->expression);
+        return pointer_expression(unary->expression);
       }
     }
     fail(ast, "address-of requires an existing storage-backed element");
@@ -513,7 +531,7 @@ class Translator {
     // An array lvalue denotes borrowed storage. Decay and subsequent element
     // projections preserve that origin without loading or copying the array.
     if (unit_.typeTraits().is_array(ast->type)) {
-      return address_of(ast);
+      return object_address(ast).pointer;
     }
     return storage_.load(address(ast), ast->type, ast);
   }
@@ -578,8 +596,10 @@ class Translator {
             types_.unqualified(destination->type))) {
       auto one = scalars_.integer(1, LOOM_SCALAR_TYPE_I32, source);
       updated =
-          storage_.advance(previous.pointer(), one, pointer,
-                           unit_.control()->getIntType(), operation, owner);
+          storage_
+              .advance(pointer_projection(previous, pointer, owner), one,
+                       pointer, unit_.control()->getIntType(), operation, owner)
+              .pointer;
     } else {
       if (!unit_.typeTraits().is_integral(destination->type) ||
           types_.unqualified(destination->type)->kind() ==
@@ -613,9 +633,12 @@ class Translator {
     auto old = read(target, destination);
     if (old.is_pointer()) {
       auto updated =
-          storage_.advance(old.pointer(), value.ssa(), destination->type,
-                           assignment->rightExpression->type,
-                           cxx::get_underlying_binary_op(assignment->op), ast);
+          storage_
+              .advance(pointer_projection(old, destination->type, ast),
+                       value.ssa(), destination->type,
+                       assignment->rightExpression->type,
+                       cxx::get_underlying_binary_op(assignment->op), ast)
+              .pointer;
       write(target, Value(updated), ast);
       return Value(updated);
     }
@@ -1037,15 +1060,21 @@ class Translator {
       auto right = expression(binary->rightExpression);
       if (left.is_pointer() || right.is_pointer()) {
         if (left.is_pointer() && !right.is_pointer()) {
-          return storage_.advance(
-              left.pointer(), right.ssa(), binary->leftExpression->type,
-              binary->rightExpression->type, binary->op, ast);
+          return storage_
+              .advance(
+                  pointer_projection(left, binary->leftExpression->type, ast),
+                  right.ssa(), binary->leftExpression->type,
+                  binary->rightExpression->type, binary->op, ast)
+              .pointer;
         }
         if (right.is_pointer() && !left.is_pointer() &&
             binary->op == cxx::TokenKind::T_PLUS) {
-          return storage_.advance(
-              right.pointer(), left.ssa(), binary->rightExpression->type,
-              binary->leftExpression->type, binary->op, ast);
+          return storage_
+              .advance(
+                  pointer_projection(right, binary->rightExpression->type, ast),
+                  left.ssa(), binary->rightExpression->type,
+                  binary->leftExpression->type, binary->op, ast)
+              .pointer;
         }
         fail(ast,
              "pointer arithmetic requires a pointer and an integral "
@@ -1079,7 +1108,7 @@ class Translator {
                          ast);
       }
       if (unary->op == cxx::TokenKind::T_AMP) {
-        return address_of(unary->expression);
+        return object_address(unary->expression).pointer;
       }
       if (unary->op == cxx::TokenKind::T_STAR) {
         return load(ast);

@@ -526,7 +526,7 @@ static iree_status_t loom_intern_shaped_type(
     loom_parser_t* parser, loom_type_kind_t kind,
     loom_scalar_type_t element_type, const uint64_t* dims, uint8_t rank,
     uint16_t encoding_id, loom_encoding_flags_t encoding_flags,
-    loom_type_t* out_type) {
+    uint8_t alignment, loom_type_t* out_type) {
   loom_type_t type = {0};
   if (rank == 0) {
     type = loom_type_shaped_0d(kind, element_type, encoding_id);
@@ -570,6 +570,9 @@ static iree_status_t loom_intern_shaped_type(
     type.encoding_flags = encoding_flags;
   }
 
+  if (kind == LOOM_TYPE_VIEW) {
+    type = loom_type_view_with_alignment(type, alignment);
+  }
   IREE_RETURN_IF_ERROR(loom_module_intern_type(parser->module, type, out_type));
   return loom_assign_type_binding_types(parser, *out_type);
 }
@@ -626,7 +629,8 @@ static iree_status_t loom_parse_shaped_dims(loom_parser_t* parser,
 // Parses a shaped type (tile, tensor, vector, or view) from the token stream.
 // Called after LANGLE has been consumed. Consumes tokens through RANGLE.
 //
-// Grammar: dim (x dim)* x element_type [, encoding] >
+// Grammar: dim (x dim)* x element_type [, encoding] [, align(integer)] >
+// The alignment clause is permitted only on views.
 static iree_status_t loom_parse_shaped_type(
     loom_parser_t* parser, const loom_type_descriptor_t* descriptor,
     loom_type_parse_mode_t mode, loom_type_t* out_type) {
@@ -670,15 +674,48 @@ static iree_status_t loom_parse_shaped_type(
     return loom_parser_emit(parser, LOOM_ERR_PARSE_004, params,
                             IREE_ARRAYSIZE(params), comma_token);
   }
+  uint8_t alignment = 0;
   if (loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_COMMA)) {
-    IREE_RETURN_IF_ERROR(
-        loom_parse_type_encoding(parser, mode, &encoding_id, &encoding_flags));
+    bool has_alignment =
+        loom_tokenizer_at_keyword(&parser->tokenizer, IREE_SV("align"));
+    if (!has_alignment) {
+      IREE_RETURN_IF_ERROR(loom_parse_type_encoding(parser, mode, &encoding_id,
+                                                    &encoding_flags));
+      has_alignment =
+          loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_COMMA);
+    }
+    if (has_alignment) {
+      loom_token_t token = loom_tokenizer_peek(&parser->tokenizer);
+      if (kind != LOOM_TYPE_VIEW) {
+        return loom_parser_emit_unexpected_token(
+            parser, token,
+            IREE_SV("alignment is only permitted on view types"));
+      }
+      if (!loom_tokenizer_try_consume_keyword(&parser->tokenizer,
+                                              IREE_SV("align"))) {
+        return loom_parser_emit_unexpected_token(parser, token,
+                                                 IREE_SV("align"));
+      }
+      LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_LPAREN, NULL);
+      LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_INTEGER, &token);
+      int64_t parsed_alignment = 0;
+      if (!iree_string_view_atoi_int64(token.text, &parsed_alignment) ||
+          !loom_type_view_alignment_is_valid(element_type, parsed_alignment)) {
+        return loom_parser_emit_unexpected_token(
+            parser, token,
+            IREE_SV("a positive power-of-two alignment no greater than natural "
+                    "element alignment"));
+      }
+      alignment = (uint8_t)parsed_alignment;
+      LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_RPAREN, NULL);
+    }
   }
 
   LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_RANGLE, NULL);
 
   return loom_intern_shaped_type(parser, kind, element_type, dims, rank,
-                                 encoding_id, encoding_flags, out_type);
+                                 encoding_id, encoding_flags, alignment,
+                                 out_type);
 }
 
 //===----------------------------------------------------------------------===//
