@@ -181,15 +181,28 @@ loom_execution_test(
 endif()
 endif()
 
+if(LOOM_IMPORT_CXX)
+loom_module(
+  NAME
+    atomic_implementations
+  SRCS
+    "atomic_builtins.cxx"
+    "atomics.cxx"
+  MODE merge
+  OUTPUT_FORMAT bc
+  STRICT_DEPS
+)
+endif()
+
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_test_module(
   NAME
     atomic_values_test_module
   SRCS
     "atomic_builtin_values.loom"
-    "atomic_builtins.cxx"
     "atomic_values.loom"
-    "atomics.cxx"
+  LIBRARIES
+    "::atomic_implementations"
 )
 endif()
 
@@ -948,7 +961,6 @@ loom_test_module(
     atomics_module
   SRCS
     "atomic_builtins.cxx"
-    "atomic_kernels.loom"
     "atomics.cxx"
 )
 endif()

@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with", "loom_generated_file", "loom_generated_file_family")
-load("//loom/build_tools/bazel:defs.bzl", "loom_test", "loom_test_module")
+load("//loom/build_tools/bazel:defs.bzl", "loom_library", "loom_test", "loom_test_module")
 load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
 load("//loom/target/vm:execution_profiles.bzl", "VM_REFERENCE_PROFILE")
 
@@ -159,16 +159,26 @@ loom_test(
     target_compatible_with = _HOST_COMPATIBILITY,
 )
 
+# Callable checks own the VM roots; the library supplies their implementations
+# without selecting the native kernel checks authored in the same C++ files.
+loom_library(
+    name = "atomic_implementations",
+    srcs = [
+        "atomic_builtins.cxx",
+        "atomics.cxx",
+    ],
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)
+
 loom_test(
     name = "atomic_values_test",
     srcs = [
         "atomic_builtin_values.loom",
-        "atomic_builtins.cxx",
         "atomic_values.loom",
-        "atomics.cxx",
     ],
     execution_profiles = [VM_REFERENCE_PROFILE],
     target_compatible_with = _HOST_COMPATIBILITY,
+    deps = [":atomic_implementations"],
 )
 
 loom_test(
@@ -274,7 +284,6 @@ loom_test_module(
     name = "atomics_module",
     srcs = [
         "atomic_builtins.cxx",
-        "atomic_kernels.loom",
         "atomics.cxx",
     ],
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),

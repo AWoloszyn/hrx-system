@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <loomcxx/atomic.h>
+#include <loomcxx/check.h>
 #include <loomcxx/kernel.h>
 
 using loom::atomic::kind;
@@ -131,4 +132,97 @@ void atomic_workgroup_tickets(unsigned* counts, unsigned* slots) {
   if (lane == 0) {
     counts[group + 1] = counter[0];
   }
+}
+
+LOOM_CHECK_CASE(contended_tickets) {
+  const auto counter = loom::check::fill<unsigned, 3>(37u);
+  const auto slots = loom::check::fill<unsigned, 258>(37u);
+  loom::check::launch<atomic_tickets>(counter, slots);
+  loom::check::expect_bitwise(loom::check::slice<1>(counter, 0),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_bitwise(loom::check::slice<1>(counter, 1),
+                              loom::check::fill<unsigned, 1>(293u));
+  loom::check::expect_bitwise(loom::check::slice<1>(counter, 2),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_bitwise(loom::check::slice<1>(slots, 0),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_bitwise(loom::check::slice<256>(slots, 1),
+                              loom::check::fill<unsigned, 256>(1u));
+  loom::check::expect_bitwise(loom::check::slice<1>(slots, 257),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_event("device", "count", 0, "type", "asan_report");
+}
+
+LOOM_CHECK_CASE(integer_sequences) {
+  const auto signed_words = loom::check::fill<int, 3>(37);
+  const auto signed_wide = loom::check::fill<long long, 3>(37LL);
+  const auto unsigned_wide = loom::check::fill<unsigned long long, 3>(37ULL);
+  const auto output = loom::check::fill<unsigned, 5>(37u);
+  loom::check::launch<atomic_sequences>(signed_words, signed_wide,
+                                        unsigned_wide, output);
+  loom::check::expect_bitwise(loom::check::slice<1>(signed_words, 0),
+                              loom::check::fill<int, 1>(37));
+  loom::check::expect_bitwise(loom::check::slice<1>(signed_words, 1),
+                              loom::check::fill<int, 1>(13));
+  loom::check::expect_bitwise(loom::check::slice<1>(signed_words, 2),
+                              loom::check::fill<int, 1>(37));
+  loom::check::expect_bitwise(loom::check::slice<1>(signed_wide, 0),
+                              loom::check::fill<long long, 1>(37LL));
+  loom::check::expect_bitwise(loom::check::slice<1>(signed_wide, 1),
+                              loom::check::fill<long long, 1>(13LL));
+  loom::check::expect_bitwise(loom::check::slice<1>(signed_wide, 2),
+                              loom::check::fill<long long, 1>(37LL));
+  loom::check::expect_bitwise(loom::check::slice<1>(unsigned_wide, 0),
+                              loom::check::fill<unsigned long long, 1>(37ULL));
+  loom::check::expect_bitwise(loom::check::slice<1>(unsigned_wide, 1),
+                              loom::check::fill<unsigned long long, 1>(13ULL));
+  loom::check::expect_bitwise(loom::check::slice<1>(unsigned_wide, 2),
+                              loom::check::fill<unsigned long long, 1>(37ULL));
+  loom::check::expect_bitwise(loom::check::slice<1>(output, 0),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_bitwise(loom::check::slice<3>(output, 1),
+                              loom::check::fill<unsigned, 3>(2047u));
+  loom::check::expect_bitwise(loom::check::slice<1>(output, 4),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_event("device", "count", 0, "type", "asan_report");
+}
+
+LOOM_CHECK_CASE(unsigned_comparisons) {
+  const auto storage = loom::check::fill<unsigned, 3>(37u);
+  const auto output = loom::check::fill<unsigned, 6>(37u);
+  loom::check::launch<atomic_unsigned>(storage, output);
+  loom::check::expect_bitwise(loom::check::slice<1>(storage, 0),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_bitwise(loom::check::slice<1>(storage, 1),
+                              loom::check::fill<unsigned, 1>(13u));
+  loom::check::expect_bitwise(loom::check::slice<1>(storage, 2),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_bitwise(loom::check::slice<3>(output, 0),
+                              loom::check::fill<unsigned, 3>(37u));
+  loom::check::expect_bitwise(loom::check::slice<1>(output, 3),
+                              loom::check::fill<unsigned, 1>(0x80000001u));
+  loom::check::expect_bitwise(loom::check::slice<1>(output, 4),
+                              loom::check::fill<unsigned, 1>(13u));
+  loom::check::expect_bitwise(loom::check::slice<1>(output, 5),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_event("device", "count", 0, "type", "asan_report");
+}
+
+LOOM_CHECK_CASE(workgroup_tickets) {
+  const auto counts = loom::check::fill<unsigned, 10>(37u);
+  const auto slots = loom::check::fill<unsigned, 258>(37u);
+  loom::check::launch<atomic_workgroup_tickets>(counts, slots);
+  loom::check::expect_bitwise(loom::check::slice<1>(counts, 0),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_bitwise(loom::check::slice<8>(counts, 1),
+                              loom::check::fill<unsigned, 8>(32u));
+  loom::check::expect_bitwise(loom::check::slice<1>(counts, 9),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_bitwise(loom::check::slice<1>(slots, 0),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_bitwise(loom::check::slice<256>(slots, 1),
+                              loom::check::fill<unsigned, 256>(1u));
+  loom::check::expect_bitwise(loom::check::slice<1>(slots, 257),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_event("device", "count", 0, "type", "asan_report");
 }
