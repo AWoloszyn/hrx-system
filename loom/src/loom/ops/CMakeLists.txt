@@ -327,6 +327,7 @@ loom_cc_library(
     iree::base
     loom::ir
     loom::ops::buffer
+    loom::ops::encoding
     loom::ops::vector
     loom::ops::view
     loom::util::fact_table

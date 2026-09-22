@@ -297,6 +297,7 @@ loom_cc_library(
         ":storage_facts",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/buffer",
+        "//loom/src/loom/ops/encoding",
         "//loom/src/loom/ops/vector",
         "//loom/src/loom/ops/view",
         "//loom/src/loom/util:fact_table",
