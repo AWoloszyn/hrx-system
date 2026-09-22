@@ -10,6 +10,26 @@ low.func.def target<test.low.core> @call_declaration(%extent: reg<test.i32 : ind
 
 // ====
 
+// Declaration arguments and results use different indices on the same owner.
+low.func.decl target<test.low.core> @resize(%input_width: reg<test.i32 : index>, %requested_width: reg<test.i32 : index>, %input: reg<test.i32 : vector<[%input_width]xf32>>) -> (%output_width: reg<test.i32 : index>, reg<test.i32 : vector<[%output_width]xf32>>)
+
+low.func.def target<test.low.core> @call_resize(%extent: reg<test.i32 : index>, %requested_extent: reg<test.i32 : index>, %input: reg<test.i32 : vector<[%extent]xf32>>) asm {
+  %result_extent, %result = low.func.call @resize(%extent, %requested_extent, %input) : (reg<test.i32 : index>, reg<test.i32 : index>, reg<test.i32 : vector<[%extent]xf32>>) -> (reg<test.i32 : index>, reg<test.i32 : vector<[%result_extent]xf32>>)
+  return
+}
+
+// ====
+
+low.func.decl target<test.low.core> @resize(%input_width: reg<test.i32 : index>, %requested_width: reg<test.i32 : index>, %input: reg<test.i32 : vector<[%input_width]xf32>>) -> (%output_width: reg<test.i32 : index>, reg<test.i32 : vector<[%output_width]xf32>>)
+
+low.func.def target<test.low.core> @wrong_resize_extent(%extent: reg<test.i32 : index>, %requested_extent: reg<test.i32 : index>, %input: reg<test.i32 : vector<[%extent]xf32>>) asm {
+  // ERROR@+1: TYPE/001 {field_a="result 1", field_b="contract result 1"}
+  %result_extent, %result = low.func.call @resize(%extent, %requested_extent, %input) : (reg<test.i32 : index>, reg<test.i32 : index>, reg<test.i32 : vector<[%extent]xf32>>) -> (reg<test.i32 : index>, reg<test.i32 : vector<[%extent]xf32>>)
+  return
+}
+
+// ====
+
 // Defined callees use body arguments instead of detached declaration arguments.
 low.func.def target<test.low.core> @identity(%width: reg<test.i32 : index>, %value: reg<test.i32 : vector<[%width]xf32>>) -> (reg<test.i32 : vector<[%width]xf32>>) asm {
   return %value

@@ -6,6 +6,8 @@
 
 #include "loom/ops/function_contract_verify.h"
 
+#include <utility>
+
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -53,11 +55,94 @@ class FunctionContractVerifyTest : public ::testing::Test {
     *out_symbol = loom_symbol_ref_t{/*.module_id=*/0, /*.symbol_id=*/symbol_id};
   }
 
+  void AddIndexDeclaration(iree_string_view_t name, loom_op_t** out_op) {
+    loom_symbol_ref_t symbol = loom_symbol_ref_null();
+    AddSymbol(name, &symbol);
+    const loom_type_t index = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+    const loom_type_t arguments[] = {index, index, index, index, index};
+    const loom_type_t results[] = {index, index, index, index};
+    IREE_ASSERT_OK(loom_func_decl_build(
+        &builder_, /*build_flags=*/0, /*visibility=*/0, /*retain=*/0,
+        LOOM_STRING_ID_INVALID, LOOM_STRING_ID_INVALID, /*cc=*/0,
+        /*purity=*/0, /*temperature=*/0, /*inline_policy=*/0,
+        loom_symbol_ref_null(), /*abi=*/0, loom_named_attr_slice_empty(),
+        LOOM_STRING_ID_INVALID, loom_named_attr_slice_empty(), symbol,
+        arguments, IREE_ARRAYSIZE(arguments), results, IREE_ARRAYSIZE(results),
+        /*tied_results=*/nullptr, /*tied_result_count=*/0,
+        /*predicates=*/nullptr, /*predicates_count=*/0, LOOM_LOCATION_UNKNOWN,
+        out_op));
+  }
+
   iree_arena_block_pool_t block_pool_;
   loom_context_t context_;
   loom_module_t* module_ = nullptr;
   loom_builder_t builder_ = {};
 };
+
+TEST_F(FunctionContractVerifyTest,
+       IndexedDeclarationSliceKeepsDefinitionDomains) {
+  loom_op_t* declaration = nullptr;
+  loom_op_t* other_declaration = nullptr;
+  AddIndexDeclaration(IREE_SV("source"), &declaration);
+  AddIndexDeclaration(IREE_SV("other"), &other_declaration);
+  ASSERT_NE(declaration, nullptr);
+  ASSERT_NE(other_declaration, nullptr);
+  const auto arguments = loom_func_decl_args(declaration);
+  const auto results = loom_func_decl_results(declaration);
+  const auto other_arguments = loom_func_decl_args(other_declaration);
+  loom_value_id_t targets[6] = {};
+  for (loom_value_id_t& target : targets) {
+    IREE_ASSERT_OK(loom_module_define_value(
+        module_, loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), &target));
+    IREE_ASSERT_OK(
+        loom_block_add_arg(module_, loom_module_block(module_), target));
+  }
+  const loom_type_value_remap_t result_remap = {
+      /*.source_values=*/results.values,
+      /*.target_values=*/&targets[3],
+      /*.count=*/3,
+      /*.flags=*/LOOM_TYPE_VALUE_REMAP_FLAG_SOURCE_DEFINITION_SLICE,
+  };
+  const loom_type_value_remap_t argument_remap = {
+      /*.source_values=*/&arguments.values[1],
+      /*.target_values=*/targets,
+      /*.count=*/3,
+      /*.flags=*/LOOM_TYPE_VALUE_REMAP_FLAG_SOURCE_DEFINITION_SLICE,
+      /*.next=*/&result_remap,
+  };
+
+  // The slice begins at operand one. Results, other declarations and block
+  // arguments do not become members merely by sharing an in-slice index.
+  const std::pair<loom_value_id_t, loom_value_id_t> mappings[] = {
+      {arguments.values[0], arguments.values[0]},
+      {arguments.values[1], targets[0]},
+      {arguments.values[2], targets[1]},
+      {arguments.values[3], targets[2]},
+      {arguments.values[4], arguments.values[4]},
+      {results.values[0], targets[3]},
+      {results.values[1], targets[4]},
+      {results.values[2], targets[5]},
+      {results.values[3], results.values[3]},
+      {other_arguments.values[1], other_arguments.values[1]},
+      {targets[1], targets[1]},
+  };
+  const iree_host_size_t retained_bytes = module_->arena.used_allocation_size;
+  for (const auto& [source_value, expected_value] : mappings) {
+    SCOPED_TRACE(source_value);
+    const loom_type_t source =
+        loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+                            loom_dim_pack_dynamic(source_value), 0);
+    const loom_type_t expected =
+        loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+                            loom_dim_pack_dynamic(expected_value), 0);
+    EXPECT_TRUE(loom_type_equal_after_value_remap(module_, source, expected,
+                                                  &argument_remap));
+    EXPECT_EQ(
+        loom_type_hash_after_value_remap(module_, source, &argument_remap),
+        loom_type_hash_after_value_remap(module_, expected, nullptr));
+  }
+  EXPECT_EQ(module_->arena.used_allocation_size, retained_bytes);
+}
 
 TEST_F(FunctionContractVerifyTest, RejectsPredicateValueOutsideSignature) {
   const loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
