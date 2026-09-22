@@ -43,6 +43,9 @@ iree_net_shm_factory_options_default(void) {
 // notifications are unsupported. macOS requires 14.4 or newer and a build SDK
 // providing the public shared-address wait APIs; older deployment targets may
 // still load the runtime and use other transports.
+// Windows listener/connect admission returns UNAVAILABLE before acquiring
+// resources if the proactor lacks WAIT_COMPLETION_PACKET support, which is
+// required for persistent monitoring of the native control pipe.
 //
 // POSIX addresses are Unix socket filesystem paths, or Linux/Android abstract
 // names prefixed with '@'. Listeners never remove an existing path on bind;

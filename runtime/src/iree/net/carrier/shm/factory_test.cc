@@ -72,6 +72,62 @@ struct ConnectResult {
   }
 };
 
+#if defined(IREE_PLATFORM_WINDOWS)
+TEST(ShmFactoryAvailabilityTest, MissingPipeMonitoringRejectsAdmission) {
+  auto options = iree_async_proactor_options_default();
+  options.allowed_capabilities &=
+      ~IREE_ASYNC_PROACTOR_CAPABILITY_WAIT_COMPLETION_PACKET;
+  iree_async_proactor_t* proactor = nullptr;
+  IREE_ASSERT_OK(iree_async_proactor_create_platform(
+      options, iree_allocator_system(), &proactor));
+  iree_net_transport_factory_t* factory = nullptr;
+  IREE_ASSERT_OK(
+      iree_net_shm_factory_create(nullptr, iree_allocator_system(), &factory));
+  std::string name = iree::testing::MakeTempFilePath("shm-unavailable");
+  name = name.substr(name.find_last_of("\\/") + 1);
+  auto address = iree_make_string_view(name.data(), name.size());
+  int accepts = 0;
+  iree_net_listener_t* listener = nullptr;
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_UNAVAILABLE,
+                        iree_net_transport_factory_create_listener(
+                            factory, address, proactor, nullptr,
+                            {+[](void* data, iree_status_t status,
+                                 iree_net_connection_t* connection) {
+                               ++*static_cast<int*>(data);
+                               EXPECT_EQ(connection, nullptr);
+                               iree_status_free(status);
+                             },
+                             &accepts},
+                            iree_allocator_system(), &listener));
+  EXPECT_EQ(listener, nullptr);
+  if (listener) {
+    bool stopped = false;
+    IREE_ASSERT_OK(iree_net_listener_stop(
+        listener,
+        {+[](void* data) { *static_cast<bool*>(data) = true; }, &stopped}));
+    while (!stopped) {
+      IREE_ASSERT_OK(
+          iree_async_proactor_poll(proactor, iree_infinite_timeout(), nullptr));
+    }
+    iree_net_listener_free(listener);
+  }
+  ConnectResult result;
+  iree_status_t status = iree_net_transport_factory_connect(
+      factory, address, proactor, nullptr, {ConnectResult::Complete, &result},
+      &result.operation);
+  result.pending = iree_status_is_ok(status);
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_UNAVAILABLE, status);
+  while (result.pending) {
+    IREE_ASSERT_OK(
+        iree_async_proactor_poll(proactor, iree_infinite_timeout(), nullptr));
+  }
+  EXPECT_EQ(result.count, 0);
+  EXPECT_EQ(accepts, 0);
+  iree_net_transport_factory_release(factory);
+  iree_async_proactor_release(proactor);
+}
+#endif  // IREE_PLATFORM_WINDOWS
+
 class ShmFactoryTest : public ::testing::TestWithParam<bool> {
  protected:
   void SetUp() override {
