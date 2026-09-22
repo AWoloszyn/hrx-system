@@ -33,6 +33,11 @@ iree_cc_unified_library(NAME unified ROOT ::library)
 iree_cc_binary(NAME unified_probe
   SRCS main.c "${CMAKE_CURRENT_BINARY_DIR}/producer/generated.c" DEPS ::unified)
 
+# Private link requirements stay link-only when forwarded to the unified target.
+add_library(private_usage INTERFACE)
+target_compile_definitions(private_usage INTERFACE PRIVATE_VALUE=7)
+target_link_libraries(iree_fixture_library PRIVATE private_usage)
+
 # Independent forward producers in another directory must reach both the
 # interface header's consumer and each binary's generated source.
 add_subdirectory(producer)

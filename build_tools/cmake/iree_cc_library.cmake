@@ -593,7 +593,7 @@ function(iree_cc_unified_library)
   )
   target_link_libraries(${_NAME}
     PUBLIC
-      $<TARGET_PROPERTY:${_RULE_ROOT},INTERFACE_LINK_LIBRARIES>
+      $<TARGET_GENEX_EVAL:${_RULE_ROOT},$<TARGET_PROPERTY:${_RULE_ROOT},INTERFACE_LINK_LIBRARIES>>
   )
   iree_target_sanitizer_suppressions("${_NAME}" DEPS "${_RULE_ROOT}")
 

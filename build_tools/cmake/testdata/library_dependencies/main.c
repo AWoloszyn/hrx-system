@@ -6,6 +6,10 @@
 
 #include <stdio.h>
 
+#if defined(PRIVATE_VALUE)
+#error "Private library requirements must not escape to consumers."
+#endif
+
 int fixture_library_value(void);
 int fixture_generated_value(void);
 
