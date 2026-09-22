@@ -1,0 +1,70 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_float8_widen.loom-test
+// RUN: emit source-low target=amdgpu:gfx1250 output=low
+
+func.def @float8_to_half(%e4m3: f8E4M3, %e5m2: f8E5M2) -> (f16, f16) {
+  %half_e4m3 = scalar.extf %e4m3 : f8E4M3 to f16
+  %half_e5m2 = scalar.extf %e5m2 : f8E5M2 to f16
+  func.return %half_e4m3, %half_e5m2 : f16, f16
+}
+
+// ----
+low.func.def target<amdgpu.rdna4.gfx125x.core> abi(hal_kernel) @float8_to_half(%e4m3: reg<amdgpu.vgpr>, %e5m2: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %half_e4m3 = v_cvt_f16_fp8_byte0 %e4m3
+  %half_e5m2 = v_cvt_f16_bf8_byte0 %e5m2
+  %12 = v_bfe_u32_offset_0_width_16_low16 %half_e4m3
+  %13 = v_bfe_u32_offset_0_width_16_low16 %half_e5m2
+  return %12, %13
+}
+
+// ====
+
+func.def @float8_to_bfloat(%e4m3: f8E4M3, %e5m2: f8E5M2) -> (bf16, bf16) {
+  %bfloat_e4m3 = scalar.extf %e4m3 : f8E4M3 to bf16
+  %bfloat_e5m2 = scalar.extf %e5m2 : f8E5M2 to bf16
+  func.return %bfloat_e4m3, %bfloat_e5m2 : bf16, bf16
+}
+
+// ----
+low.func.def target<amdgpu.rdna4.gfx125x.core> abi(hal_kernel) @float8_to_bfloat(%e4m3: reg<amdgpu.vgpr>, %e5m2: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %10 = v_and_b32_lit %e4m3, 255
+  %11 = v_and_b32_lit %10, 128
+  %12 = v_lshlrev_b32_src0_inline %11, 8
+  %13 = v_and_b32_lit %10, 127
+  %14 = v_lshl_add_u32_shift_imm_src2_lit %13 {shift = 4, imm32 = 15360}
+  %15 = s_mov_b32 3229614080
+  %16 = s_mov_b32 1614815232
+  %17 = v_perm_b32 %16, %15, %13
+  %18 = s_mov_b32 993737472
+  %19 = s_mov_b32 1010580540
+  %20 = v_perm_b32 %19, %18, %13
+  %21 = v_lshl_add_u32_shift_imm %20, %17, 8
+  %22 = v_cmp_lt_u32_src1_inline %13 {rhs = 8}
+  %23 = v_cndmask_b32 %14, %21, %22
+  %24 = v_or_b32 %12, %23
+  %25 = v_mov_b32 32704
+  %26 = v_mov_b32 127
+  %27 = v_cmp_eq_i32 %13, %26
+  %bfloat_e4m3 = v_cndmask_b32 %24, %25, %27
+  %29 = v_and_b32_lit %e5m2, 255
+  %30 = v_and_b32_lit %29, 128
+  %31 = v_lshlrev_b32_src0_inline %30, 8
+  %32 = v_and_b32_lit %29, 127
+  %33 = v_lshl_add_u32_shift_imm_src2_lit %32 {shift = 5, imm32 = 14336}
+  %34 = v_lshlrev_b32_src0_inline %32, 1
+  %35 = v_add_u32_src0_inline %34, 1
+  %36 = v_lshl_add_u32_shift_imm %35, %34, 8
+  %37 = s_mov_b32 931135488
+  %38 = s_mov_b32 943732736
+  %39 = v_perm_b32 %38, %37, %36
+  %40 = v_and_b32_lit %39, 65535
+  %41 = v_cmp_lt_u32_src1_inline %32 {rhs = 4}
+  %42 = v_cndmask_b32 %33, %40, %41
+  %43 = v_or_b32 %31, %42
+  %45 = v_or_b32_lit %31, 32640
+  %46 = v_mov_b32 124
+  %47 = v_cmp_eq_i32 %32, %46
+  %48 = v_cndmask_b32 %25, %45, %47
+  %50 = v_cmp_ge_u32 %32, %46
+  %bfloat_e5m2 = v_cndmask_b32 %43, %48, %50
+  return %bfloat_e4m3, %bfloat_e5m2
+}
