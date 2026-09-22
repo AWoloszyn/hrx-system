@@ -1,0 +1,61 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "attributes a failed nested record field to its C++ assertion",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/../../test/check_records.cxx",
+          "--input-options=cxx:D=CHECK_RECORD_EXPECTED=41u"
+        ]
+      },
+      "exit": 1,
+      "stdout": {
+        "contains": [
+          "\"case_count\":3",
+          "\"failed_sample_count\":1",
+          {
+            "regex": "\"source_location\":\\{\"filename\":\"[^\"]*/check_records\\.cxx\",\"start_line\":56,\"start_column\":3"
+          }
+        ]
+      }
+    },
+    {
+      "name": "retains record field assertions through linking and bytecode",
+      "steps": [
+        {
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "{srcdir}/../../test/check_records.cxx",
+              "--mode=link",
+              "--include-input-tests",
+              "--input-options=cxx:D=CHECK_RECORD_EXPECTED=41u",
+              "--to=bc",
+              "--output={tmp}/records.loombc"
+            ]
+          }
+        },
+        {
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/records.loombc"
+            ]
+          },
+          "exit": 1,
+          "stdout": {
+            "contains": [
+              "\"case_count\":3",
+              "\"failed_sample_count\":1",
+              {
+                "regex": "\"source_location\":\\{\"filename\":\"[^\"]*/check_records\\.cxx\",\"start_line\":56,\"start_column\":3"
+              }
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

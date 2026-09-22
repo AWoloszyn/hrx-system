@@ -510,6 +510,43 @@ bool Types::is_unsigned(const cxx::Type* type) {
   return traits.is_unsigned(traits.underlying_type(type));
 }
 
+// The frontend has selected the special member and checked accessibility,
+// deletion, cv and overload resolution. Source admission establishes trivial
+// lifecycle semantics before an implicit copy becomes an SSA value copy.
+void Types::admit_copy(cxx::FunctionSymbol* constructor, const cxx::Type* type,
+                       cxx::AST* owner) {
+  if (!constructor) {
+    return;
+  }
+  const auto& admitted = partition(type, owner);
+  cxx::ClassSymbol* source = nullptr;
+  bool is_record = admitted.kind == ValueKind::Record;
+  if (admitted.kind == ValueKind::Record) {
+    source = static_cast<const RecordPartition&>(admitted).source;
+  } else if (admitted.kind == ValueKind::Encoding) {
+    source = static_cast<const EncodingPartition&>(admitted).source;
+  } else if (admitted.kind == ValueKind::View) {
+    source = static_cast<const ViewPartition&>(admitted).source;
+  }
+  if (source && constructor == source->defaultConstructor()) {
+    diagnostics_.reject(
+        unit_, owner,
+        is_record ? "default record construction requires source object "
+                    "initialization semantics"
+                  : "default encoding or view construction requires "
+                    "source object initialization semantics");
+  }
+  if (!source || (constructor != source->copyConstructor() &&
+                  constructor != source->moveConstructor())) {
+    diagnostics_.reject(
+        unit_, owner,
+        is_record ? "record construction requires aggregate initialization "
+                    "or a trivial copy"
+                  : "encoding and view construction requires an operation "
+                    "result or a trivial copy");
+  }
+}
+
 void Types::require_mutable(const cxx::Type* input, cxx::AST* owner) {
   if (unit_.typeTraits().is_const(input)) {
     diagnostics_.reject(unit_, owner,

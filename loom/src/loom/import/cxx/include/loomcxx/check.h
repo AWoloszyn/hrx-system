@@ -7,9 +7,10 @@
 #ifndef LOOMCXX_CHECK_H_
 #define LOOMCXX_CHECK_H_
 
-// Declares a correctness case with immutable scalar inputs, ordinary function
-// calls, and terminal expectations. Unsupported body constructs diagnose during
-// import. Ordinary called functions retain the selected target's capabilities.
+// Declares a correctness case with immutable scalar or scalar-record values,
+// ordinary function calls, and terminal expectations. Record members can be
+// observed individually. Unsupported body constructs diagnose during import.
+// Ordinary called functions retain the selected target's capabilities.
 #define LOOM_CHECK_CASE(name) [[loom::check_case]] void name()
 
 // Measures an existing correctness case after its correctness gate passes.

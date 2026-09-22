@@ -297,7 +297,7 @@ class Translator {
       fail(owner, "local arrays require __shared__ in this slice");
     }
     types_.partition(variable->type(), owner);
-    admit_copy(variable->constructor(), variable->type(), owner);
+    types_.admit_copy(variable->constructor(), variable->type(), owner);
     values_[variable] =
         name(expression(initializer), cxx::to_string(variable->name()));
   }
@@ -697,41 +697,6 @@ class Translator {
                                 {loom_op_results(op), value_count});
   }
 
-  // The frontend has selected the special member and checked accessibility,
-  // deletion, cv and overload resolution. Source admission establishes trivial
-  // lifecycle semantics before an implicit copy becomes an SSA value copy.
-  void admit_copy(cxx::FunctionSymbol* constructor, const cxx::Type* type,
-                  cxx::AST* owner) {
-    if (!constructor) {
-      return;
-    }
-    const auto& partition = types_.partition(type, owner);
-    cxx::ClassSymbol* source = nullptr;
-    bool is_record = partition.kind == ValueKind::Record;
-    if (partition.kind == ValueKind::Record) {
-      source = static_cast<const RecordPartition&>(partition).source;
-    } else if (partition.kind == ValueKind::Encoding) {
-      source = static_cast<const EncodingPartition&>(partition).source;
-    } else if (partition.kind == ValueKind::View) {
-      source = static_cast<const ViewPartition&>(partition).source;
-    }
-    if (source && constructor == source->defaultConstructor()) {
-      fail(owner, is_record
-                      ? "default record construction requires source object "
-                        "initialization semantics"
-                      : "default encoding or view construction requires "
-                        "source object initialization semantics");
-    }
-    if (!source || (constructor != source->copyConstructor() &&
-                    constructor != source->moveConstructor())) {
-      fail(owner, is_record
-                      ? "record construction requires aggregate initialization "
-                        "or a trivial copy"
-                      : "encoding and view construction requires an operation "
-                        "result or a trivial copy");
-    }
-  }
-
   Value initialize(const cxx::Type* type,
                    cxx::List<cxx::ExpressionAST*>* elements, cxx::AST* owner) {
     if (auto* record = types_.record(type, owner)) {
@@ -842,7 +807,7 @@ class Translator {
     }
     if (auto* cast = cxx::ast_cast<cxx::ImplicitCastExpressionAST>(ast)) {
       if (cast->conversionFunction) {
-        admit_copy(cast->conversionFunction, ast->type, ast);
+        types_.admit_copy(cast->conversionFunction, ast->type, ast);
       }
       return convert(cast->expression, cast->type, ast);
     }
@@ -894,7 +859,7 @@ class Translator {
     }
     if (auto* cast = cxx::ast_cast<cxx::TypeConstructionAST>(ast)) {
       if (types_.record(ast->type, ast)) {
-        admit_copy(cast->constructorSymbol, ast->type, ast);
+        types_.admit_copy(cast->constructorSymbol, ast->type, ast);
         return initialize(ast->type, cast->expressionList, ast);
       }
       auto output = types_.get(ast->type, ast);
@@ -915,7 +880,7 @@ class Translator {
     }
     if (auto* construction =
             cxx::ast_cast<cxx::BracedTypeConstructionAST>(ast)) {
-      admit_copy(construction->constructorSymbol, ast->type, ast);
+      types_.admit_copy(construction->constructorSymbol, ast->type, ast);
       return initialize(ast->type, construction->bracedInitList->expressionList,
                         ast);
     }

@@ -62,7 +62,7 @@ class CheckBody {
           cxx::ast_cast<cxx::ExpressionStatementAST>(statement);
       if (!expression_statement) {
         fail(statement,
-             "check cases support immutable scalars, direct calls, and "
+             "check cases support immutable values, direct calls, and "
              "terminal expectations");
       }
       if (!expression_statement->expression) {
@@ -77,7 +77,7 @@ class CheckBody {
       if (intrinsics_.expectation_type(function)) {
         std::vector<loom_value_id_t> arguments;
         for (auto* argument : cxx::ListView{call->expressionList}) {
-          arguments.push_back(expression(argument));
+          arguments.push_back(expression(argument).ssa());
         }
         loom_op_t* op;
         check(loom_check_expect_equal_build(
@@ -137,11 +137,17 @@ class CheckBody {
     }
     std::vector<loom_value_id_t> arguments;
     for (auto* argument : cxx::ListView{call->expressionList}) {
-      arguments.push_back(expression(argument));
+      expression(argument).append_to(arguments);
     }
     std::vector<loom_type_t> results;
     if (types_.unqualified(call->type)->kind() != cxx::TypeKind::kVoid) {
-      results.push_back(scalar_type(call->type, call));
+      types_.append(call->type, call, results);
+      for (auto type : results) {
+        if (loom_type_kind(type) != LOOM_TYPE_SCALAR) {
+          fail(call,
+               "check call results require scalars or records of scalars");
+        }
+      }
     }
     auto symbol = functions_.declare(function);
     loom_op_t* op;
@@ -151,7 +157,7 @@ class CheckBody {
     return op;
   }
 
-  loom_value_id_t expression(cxx::ExpressionAST* source) {
+  Value expression(cxx::ExpressionAST* source) {
     if (auto* nested = cxx::ast_cast<cxx::NestedExpressionAST>(source)) {
       return expression(nested->expression);
     }
@@ -162,8 +168,24 @@ class CheckBody {
             cxx::ast_cast<cxx::DefaultInitializerExpressionAST>(source)) {
       return expression(initializer->expression);
     }
+    if (auto* initializer = cxx::ast_cast<cxx::ParenInitializerAST>(source)) {
+      if (initializer->expressionList && !initializer->expressionList->next &&
+          types_.unqualified(source->type) ==
+              types_.unqualified(initializer->expressionList->value->type)) {
+        return expression(initializer->expressionList->value);
+      }
+    }
+    if (auto* initializer = cxx::ast_cast<cxx::BracedInitListAST>(source)) {
+      if (initializer->expressionList && !initializer->expressionList->next &&
+          types_.unqualified(source->type) ==
+              types_.unqualified(initializer->expressionList->value->type)) {
+        return expression(initializer->expressionList->value);
+      }
+    }
     if (auto* call = cxx::ast_cast<cxx::CallExpressionAST>(source)) {
-      return loom_op_results(invocation(call, callee(call)))[0];
+      auto* op = invocation(call, callee(call));
+      return value_arena_.capture(types_.partition(call->type, call),
+                                  {loom_op_results(op), op->result_count});
     }
     if (auto* id = cxx::ast_cast<cxx::IdExpressionAST>(source)) {
       auto value = values_.find(id->symbol);
@@ -174,26 +196,40 @@ class CheckBody {
     if (auto constant = scalar_constant(unit_, source)) {
       return literal(*constant, source);
     }
+    if (auto* member = cxx::ast_cast<cxx::MemberExpressionAST>(source)) {
+      auto* field = cxx::symbol_cast<cxx::FieldSymbol>(member->symbol);
+      if (!field || field->isStatic()) {
+        fail(source, "record value access requires a non-static data member");
+      }
+      auto value = expression(member->baseExpression);
+      const auto& slice = types_.member(field, source);
+      return value.project(*slice.partition, slice.component_offset);
+    }
     if (auto* cast = cxx::ast_cast<cxx::ImplicitCastExpressionAST>(source)) {
-      if (!cast->conversionFunction) {
-        auto input = scalar_type(cast->expression->type, source);
-        auto output = scalar_type(cast->type, source);
-        if (loom_type_equal(input, output)) {
-          return expression(cast->expression);
-        }
+      if (cast->conversionFunction) {
+        types_.admit_copy(cast->conversionFunction, cast->type, source);
+      }
+      if (types_.unqualified(cast->expression->type) ==
+          types_.unqualified(cast->type)) {
+        return expression(cast->expression);
+      }
+      auto input = scalar_type(cast->expression->type, source);
+      auto output = scalar_type(cast->type, source);
+      if (loom_type_equal(input, output)) {
+        return expression(cast->expression);
       }
       fail(source, "runtime conversions are not supported in check cases");
     }
     fail(source,
-         "check values require scalar constants, immutable bindings, or direct "
-         "calls");
+         "check values require scalar constants, immutable bindings, record "
+         "members, or direct calls");
   }
 
   void local(cxx::DeclarationStatementAST* statement) {
     auto* declaration =
         cxx::ast_cast<cxx::SimpleDeclarationAST>(statement->declaration);
     if (!declaration) {
-      fail(statement, "check locals require immutable scalar bindings");
+      fail(statement, "check locals require immutable value bindings");
     }
     reject_global_binding_attributes(unit_, diagnostics_,
                                      declaration->attributeList);
@@ -204,19 +240,32 @@ class CheckBody {
           cxx::symbol_cast<cxx::VariableSymbol>(declarator->symbol);
       if (!variable || !declarator->initializer || variable->isStatic() ||
           variable->isExtern() || variable->isThreadLocal() ||
-          !unit_.typeTraits().is_const(variable->type())) {
+          !unit_.typeTraits().is_const(variable->type()) ||
+          unit_.typeTraits().is_volatile(variable->type())) {
         fail(declarator,
-             "check locals require initialized automatic const scalars");
+             "check locals require initialized automatic non-volatile const "
+             "values");
       }
-      scalar_type(variable->type(), declarator);
+      types_.admit_copy(variable->constructor(), variable->type(), declarator);
       auto value = expression(declarator->initializer);
       values_[variable] = value;
-      if (loom_module_value(builder_.module, value)->name_id ==
-          LOOM_STRING_ID_INVALID) {
-        loom_string_id_t name;
-        check(loom_module_intern_string(
-            builder_.module, view(cxx::to_string(variable->name())), &name));
-        check(loom_module_set_value_name(builder_.module, value, name));
+      auto hint = cxx::to_string(variable->name());
+      auto components = value.components();
+      for (size_t index = 0; index < components.size(); ++index) {
+        auto component = components[index];
+        if (loom_module_value(builder_.module, component)->name_id ==
+            LOOM_STRING_ID_INVALID) {
+          auto component_name = hint;
+          if (value.is_record()) {
+            const auto& partition =
+                static_cast<const RecordPartition&>(value.partition());
+            component_name += "_" + partition.component_names[index];
+          }
+          loom_string_id_t name;
+          check(loom_module_intern_string(builder_.module, view(component_name),
+                                          &name));
+          check(loom_module_set_value_name(builder_.module, component, name));
+        }
       }
     }
   }
@@ -229,7 +278,7 @@ class CheckBody {
   Functions& functions_;
   // Admitted declaration bindings, including equality expectations.
   Intrinsics& intrinsics_;
-  // Source scalar representation admission.
+  // Source representation admission and retained record member slices.
   Types& types_;
   // Shared constant payload encoding with ordinary functions.
   Scalars& scalars_;
@@ -237,8 +286,10 @@ class CheckBody {
   Locations& locations_;
   // Caller-owned insertion point within the check case.
   loom_builder_t& builder_;
-  // Immutable source locals mapped to native SSA values.
-  std::unordered_map<cxx::Symbol*, loom_value_id_t> values_;
+  // Immutable flattened bindings with storage owned by this check translation.
+  ValueArena value_arena_;
+  // Source locals retaining their source partition and component identities.
+  std::unordered_map<cxx::Symbol*, Value> values_;
   // The first expectation closes the invocation stage of this case.
   bool observing_ = false;
 };

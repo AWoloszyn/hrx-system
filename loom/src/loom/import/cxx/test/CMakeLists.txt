@@ -25,6 +25,7 @@ loom_check_test_suite(
     "bfloat16.cxx-test"
     "bfloat16_invalid.cxx-test"
     "check.cxx-test"
+    "check_records.cxx-test"
     "condition_declarations.cxx-test"
     "conditionals.cxx-test"
     "config.cxx-test"
@@ -90,6 +91,7 @@ loom_check_test_suite(
     "volatile_views.cxx-test"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/aligned_layout.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/check_records.cxx"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_semantics.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/locations.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/offsetof_layout.h"
@@ -98,6 +100,32 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_layout.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_values.cpp"
 )
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test_module(
+  NAME
+    check_record_values_test_module
+  SRCS
+    "check_records.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    check_record_values_test_execute_vm_reference_test
+  MODULE
+    "::check_record_values_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)

@@ -831,8 +831,29 @@ policy and applies its existing correctness gate.
 
 Case bodies admit scalar constants, initialized automatic `const` or `constexpr`
 bindings, direct calls to defined ordinary functions, and terminal
-`loom::check::expect_equal` observations. Arguments and results retain their
-source scalar types. Constant expressions are evaluated by the frontend;
+`loom::check::expect_equal` observations. Ordinary calls can return and accept
+plain records of scalars, including nested and empty records. Immutable copies
+and member reads retain each field's source type and value; expectations compare
+individual scalar fields:
+
+```cpp
+struct Observation {
+  unsigned returned;
+  unsigned updated;
+  unsigned guard;
+};
+
+Observation observe_update();  // Defined in this source or an included header.
+
+LOOM_CHECK_CASE(update_values) {
+  const auto actual = observe_update();
+  loom::check::expect_equal(actual.returned, 37u);
+  loom::check::expect_equal(actual.updated, 13u);
+  loom::check::expect_equal(actual.guard, 37u);
+}
+```
+
+Constant expressions are evaluated by the frontend;
 runtime conversions and arithmetic belong inside the ordinary called functions.
 After the first expectation, a case can contain further expectations and an
 optional final bare `return`, but no further invocations or bindings. Mutable
