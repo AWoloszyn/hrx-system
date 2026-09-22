@@ -49,6 +49,13 @@ iree_status_t loom_type_function_build(const loom_type_t* arg_types,
 // Type equality
 //===----------------------------------------------------------------------===//
 
+// Reusing a completed query for the same immutable by-value representation is
+// exact even when the type is caller-owned and has not been interned.
+static bool loom_type_representation_equal(const loom_type_t* a,
+                                           const loom_type_t* b) {
+  return memcmp(a, b, sizeof(*a)) == 0;
+}
+
 static bool loom_type_sequence_equal(const loom_type_t* a_types,
                                      const loom_type_t* b_types,
                                      iree_host_size_t type_count) {
@@ -60,6 +67,13 @@ static bool loom_type_sequence_equal(const loom_type_t* a_types,
     return false;
   }
   for (iree_host_size_t i = 0; i < type_count; ++i) {
+    // A successful comparison of the immediately preceding immutable pair is
+    // still valid under the same query. Avoid expanding repeated DAG edges as
+    // independent trees.
+    if (i > 0 && loom_type_representation_equal(&a_types[i], &a_types[i - 1]) &&
+        loom_type_representation_equal(&b_types[i], &b_types[i - 1])) {
+      continue;
+    }
     if (!loom_type_equal(a_types[i], b_types[i])) {
       return false;
     }
@@ -276,6 +290,15 @@ static bool loom_type_sequence_equal_after_value_remap(
     return source_types == target_types;
   }
   for (iree_host_size_t i = 0; i < type_count; ++i) {
+    // The remap is invariant across the sequence, so an identical adjacent
+    // source/target pair has the same result as its successful predecessor.
+    if (i > 0 &&
+        loom_type_representation_equal(&source_types[i],
+                                       &source_types[i - 1]) &&
+        loom_type_representation_equal(&target_types[i],
+                                       &target_types[i - 1])) {
+      continue;
+    }
     if (!loom_type_equal_after_value_remap(module, source_types[i],
                                            target_types[i], remap)) {
       return false;
@@ -831,8 +854,11 @@ static uint32_t loom_type_hash_mix_sequence(uint32_t hash,
   if (!types) {
     return hash;
   }
+  uint32_t element_hash = 0;
   for (iree_host_size_t i = 0; i < type_count; ++i) {
-    uint32_t element_hash = loom_type_hash(types[i]);
+    if (i == 0 || !loom_type_representation_equal(&types[i], &types[i - 1])) {
+      element_hash = loom_type_hash(types[i]);
+    }
     hash = loom_structural_hash_mix_u32(hash, element_hash);
   }
   return hash;
@@ -1035,9 +1061,12 @@ static uint32_t loom_type_hash_sequence_after_value_remap(
   if (!types) {
     return hash;
   }
+  uint32_t element_hash = 0;
   for (iree_host_size_t i = 0; i < type_count; ++i) {
-    hash = loom_structural_hash_mix_u32(
-        hash, loom_type_hash_after_value_remap(module, types[i], remap));
+    if (i == 0 || !loom_type_representation_equal(&types[i], &types[i - 1])) {
+      element_hash = loom_type_hash_after_value_remap(module, types[i], remap);
+    }
+    hash = loom_structural_hash_mix_u32(hash, element_hash);
   }
   return hash;
 }

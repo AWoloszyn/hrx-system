@@ -74,14 +74,30 @@ TEST(TypesTest, SharedTypeSequencesKeepStructuralOwnerChecks) {
   const auto i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   const auto f32 = loom_type_scalar(LOOM_SCALAR_TYPE_F32);
   std::vector<OwnedFunctionType> nodes;
-  nodes.reserve(32);
+  std::vector<OwnedFunctionType> duplicate_nodes;
+  nodes.reserve(64);
+  duplicate_nodes.reserve(64);
   loom_type_t shared = i32;
-  for (int i = 0; i < 32; ++i) {
+  loom_type_t duplicate_shared = i32;
+  for (int i = 0; i < 64; ++i) {
     const loom_type_t children[] = {shared, shared};
+    const loom_type_t duplicate_children[] = {duplicate_shared,
+                                              duplicate_shared};
     nodes.emplace_back(BuildFunctionType(children, 2, nullptr, 0));
+    duplicate_nodes.emplace_back(
+        BuildFunctionType(duplicate_children, 2, nullptr, 0));
     shared = nodes.back().get();
+    duplicate_shared = duplicate_nodes.back().get();
   }
-  EXPECT_TRUE(loom_type_equal(shared, shared));
+  EXPECT_TRUE(loom_type_equal(shared, duplicate_shared));
+  EXPECT_EQ(loom_type_hash(shared), loom_type_hash(duplicate_shared));
+
+  const loom_type_t repeated_arguments[] = {shared, shared};
+  const loom_type_t one_different_argument[] = {duplicate_shared, f32};
+  const auto repeated = BuildFunctionType(repeated_arguments, 2, nullptr, 0);
+  const auto one_different =
+      BuildFunctionType(one_different_argument, 2, nullptr, 0);
+  EXPECT_FALSE(loom_type_equal(repeated.get(), one_different.get()));
 
   // Distinct owners can share an arbitrarily deep immutable child while
   // differing in a later sibling, arity, or dialect name.
@@ -263,6 +279,47 @@ class ModuleTypesTest : public ::testing::Test {
   loom_context_t context_;
   loom_module_t* module_ = nullptr;
 };
+
+TEST_F(ModuleTypesTest, RepeatedChildrenReuseMappedTypeQueries) {
+  const loom_value_id_t source_value = 7;
+  const loom_value_id_t target_value = 9;
+  loom_type_t source = loom_type_shaped_1d(
+      LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+      loom_dim_pack_dynamic(source_value), /*encoding_id=*/0);
+  loom_type_t target = loom_type_shaped_1d(
+      LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+      loom_dim_pack_dynamic(target_value), /*encoding_id=*/0);
+  std::vector<OwnedFunctionType> source_nodes;
+  std::vector<OwnedFunctionType> target_nodes;
+  source_nodes.reserve(64);
+  target_nodes.reserve(64);
+  for (int i = 0; i < 64; ++i) {
+    const loom_type_t source_children[] = {source, source};
+    const loom_type_t target_children[] = {target, target};
+    source_nodes.emplace_back(
+        BuildFunctionType(source_children, 2, nullptr, 0));
+    target_nodes.emplace_back(
+        BuildFunctionType(target_children, 2, nullptr, 0));
+    source = source_nodes.back().get();
+    target = target_nodes.back().get();
+  }
+  const loom_type_value_remap_t remap = {
+      /*.source_values=*/&source_value,
+      /*.target_values=*/&target_value,
+      /*.count=*/1,
+  };
+  const loom_type_t mismatched_children[] = {
+      target, loom_type_scalar(LOOM_SCALAR_TYPE_F32)};
+  const auto mismatched_target =
+      BuildFunctionType(mismatched_children, 2, nullptr, 0);
+
+  EXPECT_TRUE(
+      loom_type_equal_after_value_remap(module_, source, target, &remap));
+  EXPECT_FALSE(loom_type_equal_after_value_remap(
+      module_, source, mismatched_target.get(), &remap));
+  EXPECT_EQ(loom_type_hash_after_value_remap(module_, source, &remap),
+            loom_type_hash_after_value_remap(module_, target, nullptr));
+}
 
 TEST_F(ModuleTypesTest, InvalidKindsPreserveRawIdentityForDiagnostics) {
   loom_type_t first = {};
