@@ -48,14 +48,12 @@ def _expect_runtime_compiler_policy(env, copts, cxxopts):
         _expect_value(env, copts, "/WX")
         _expect_value(env, copts, "/utf-8")
         _expect_value(env, cxxopts, "/GR-")
-        _expect_value(env, cxxopts, "/std:c++17")
         _expect_value(env, cxxopts, "/Zc:__cplusplus")
         return
     _expect_value(env, copts, "-Wall")
     _expect_value(env, copts, "-Werror")
     _expect_value(env, copts, "-Wno-unused-function")
     _expect_value(env, cxxopts, "-Wno-invalid-offsetof")
-    _expect_value(env, cxxopts, "-std=c++17")
 
 def _expect_runtime_copts(env, copts):
     if "/W3" in copts:
@@ -176,6 +174,19 @@ def _test_runtime_cxx_binary_applies_cxx_options_impl(env, target):
     _expect_no_value(env, copts, "-Wno-invalid-offsetof")
     compile_action = _find_compile_action(env, target)
     compiler_path = compile_action.argv[0].lower()
+
+    # Inspect the effective command: the Windows toolchain supplies C++17,
+    # while Unix targets select it through their private compiler options.
+    standard_options = [
+        option
+        for option in compile_action.argv
+        if option.startswith("/std:") or option.startswith("-std=")
+    ]
+    if "/W3" in copts:
+        env.expect.that_collection(standard_options).contains_exactly(["/std:c++17"])
+    else:
+        # Unix toolchains may emit a default before the target's selection.
+        env.expect.that_collection(standard_options[-1:]).contains_exactly(["-std=c++17"])
     if compiler_path.endswith("clang-cl.exe"):
         _expect_value(env, compile_action.argv, "-Wno-invalid-offsetof")
 

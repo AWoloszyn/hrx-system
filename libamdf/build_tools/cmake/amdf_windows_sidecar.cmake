@@ -4,6 +4,18 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+function(_amdf_windows_sidecar_compile_options)
+  foreach(_TARGET IN LISTS ARGN)
+    set_property(TARGET ${_TARGET} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded")
+    target_compile_definitions(${_TARGET}
+      PRIVATE
+        _DISABLE_STRING_ANNOTATION
+        _DISABLE_VECTOR_ANNOTATION
+        _ITERATOR_DEBUG_LEVEL=0
+    )
+  endforeach()
+endfunction()
+
 # Builds a private Windows DLL whose complete C++ and CRT ABI stays behind a C
 # entry point. Binary-only dependencies use their release static CRT in every
 # parent build configuration.
@@ -37,17 +49,9 @@ function(amdf_windows_sidecar_library)
 
   iree_package_name(_PACKAGE_NAME)
   set(_TARGET_NAME "${_PACKAGE_NAME}_${_RULE_NAME}")
-  set_target_properties(
+  _amdf_windows_sidecar_compile_options(
     ${_TARGET_NAME}
     ${_TARGET_NAME}.objects
-    PROPERTIES
-      MSVC_RUNTIME_LIBRARY "MultiThreaded"
-  )
-  target_compile_definitions(${_TARGET_NAME}.objects
-    PRIVATE
-      _DISABLE_STRING_ANNOTATION
-      _DISABLE_VECTOR_ANNOTATION
-      _ITERATOR_DEBUG_LEVEL=0
   )
   set_target_properties(${_TARGET_NAME} PROPERTIES
     OUTPUT_NAME "${_RULE_NAME}"
@@ -58,4 +62,15 @@ function(amdf_windows_sidecar_library)
     COMPONENT AMDF
     RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
   )
+endfunction()
+
+# Standalone implementation tests share the DLL's private release ABI.
+function(amdf_windows_sidecar_test)
+  if(NOT IREE_BUILD_TESTS)
+    return()
+  endif()
+  cmake_parse_arguments(_RULE "" "NAME" "" ${ARGN})
+  iree_cc_test(${ARGN})
+  iree_package_name(_PACKAGE_NAME)
+  _amdf_windows_sidecar_compile_options("${_PACKAGE_NAME}_${_RULE_NAME}")
 endfunction()

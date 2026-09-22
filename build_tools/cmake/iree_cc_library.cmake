@@ -17,6 +17,8 @@
 # DATA: List of other targets and files required for this binary
 # DEPS: List of other libraries to be linked in to the binary targets
 # COPTS: List of private compile options
+# CXX_STANDARD: Optional C++ standard version, such as 23.
+# CXX_FEATURES: Required private C++ runtime features: exceptions and rtti.
 # DEFINES: List of public defines
 # INCLUDES: Include directories to add to dependencies
 # SYSTEM_INCLUDES: Include directories that should be used with "SYSTEM" scope,
@@ -62,8 +64,8 @@ function(iree_cc_library)
   cmake_parse_arguments(
     _RULE
     "PUBLIC;TESTONLY;SHARED;ALWAYSLINK"
-    "PACKAGE;NAME;WINDOWS_DEF_FILE"
-    "HDRS;TEXTUAL_HDRS;SRCS;COPTS;DEFINES;LINKOPTS;DATA;DEPS;INCLUDES;SYSTEM_INCLUDES"
+    "PACKAGE;NAME;WINDOWS_DEF_FILE;CXX_STANDARD"
+    "HDRS;TEXTUAL_HDRS;SRCS;COPTS;CXX_FEATURES;DEFINES;LINKOPTS;DATA;DEPS;INCLUDES;SYSTEM_INCLUDES"
     ${ARGN}
   )
 
@@ -187,7 +189,7 @@ function(iree_cc_library)
       INTERFACE_IREE_TRANSITIVE_OBJECTS "$<TARGET_OBJECTS:${_OBJECTS_NAME}>")
     _iree_cc_library_add_object_deps(${_NAME} ${_RULE_DEPS})
 
-    # We define everything else on the regular rule. However, the object
+    # Usage requirements and caller options live on the regular rule. The object
     # library needs compiler definition related properties, so we forward them.
     # We also forward link libraries -- not because the OBJECT libraries do
     # linking but because they get transitive compile definitions from them.
@@ -202,6 +204,7 @@ function(iree_cc_library)
     )
     target_compile_options(${_OBJECTS_NAME}
       PRIVATE
+        ${IREE_DEFAULT_COPTS}
         $<TARGET_PROPERTY:${_NAME},COMPILE_OPTIONS>
     )
     target_compile_definitions(${_OBJECTS_NAME}
@@ -227,7 +230,6 @@ function(iree_cc_library)
     )
     target_compile_options(${_NAME}
       PRIVATE
-        ${IREE_DEFAULT_COPTS}
         ${_RULE_COPTS}
       INTERFACE
         ${IREE_INTERFACE_COPTS}
@@ -276,8 +278,7 @@ function(iree_cc_library)
 
     # INTERFACE libraries can't have the CXX_STANDARD property set so only
     # set here.
-    set_property(TARGET ${_OBJECTS_NAME} PROPERTY CXX_STANDARD ${IREE_CXX_STANDARD})
-    set_property(TARGET ${_OBJECTS_NAME} PROPERTY CXX_STANDARD_REQUIRED ON)
+    iree_set_cxx_options(${_OBJECTS_NAME} "${_RULE_CXX_STANDARD}" ${_RULE_CXX_FEATURES})
   elseif(NOT _RULE_IS_INTERFACE AND _RULE_ALWAYSLINK)
     # ALWAYSLINK library: OBJECT for compilation, INTERFACE for propagation.
     # The INTERFACE library propagates $<TARGET_OBJECTS:...> directly, ensuring
@@ -374,8 +375,7 @@ function(iree_cc_library)
       set_property(TARGET ${_OBJECTS_NAME} PROPERTY FOLDER ${IREE_IDE_FOLDER}/internal)
     endif()
 
-    set_property(TARGET ${_OBJECTS_NAME} PROPERTY CXX_STANDARD ${IREE_CXX_STANDARD})
-    set_property(TARGET ${_OBJECTS_NAME} PROPERTY CXX_STANDARD_REQUIRED ON)
+    iree_set_cxx_options(${_OBJECTS_NAME} "${_RULE_CXX_STANDARD}" ${_RULE_CXX_FEATURES})
   else()
     # Generating header-only library (no sources, or ALWAYSLINK on header-only
     # which is meaningless since there are no objects).

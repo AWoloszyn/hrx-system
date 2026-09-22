@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//build_tools/embed_data:build_defs.bzl", "iree_c_embed_data")
-load("//loom/build_tools/bazel:build_defs.bzl", "iree_cmake_extra_content", "loom_cc_library", "loom_cc_test", "loom_config_compatible_with")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_cc_library", "loom_cc_test", "loom_config_compatible_with")
 load("//loom/src/loom/import/cxx:build_defs.bzl", "CXX_COMPILER_OPTIONS")
 
 package(
@@ -84,7 +84,8 @@ loom_cc_library(
     name = "source",
     srcs = ["source.cc"],
     hdrs = ["source.h"],
-    cxxopts = select(CXX_COMPILER_OPTIONS),
+    cxx_features = CXX_COMPILER_OPTIONS["cxx_features"],
+    cxx_standard = CXX_COMPILER_OPTIONS["cxx_standard"],
     deps = [
         ":catalog",
         ":error",
@@ -97,7 +98,8 @@ loom_cc_library(
 loom_cc_test(
     name = "constexpr_test",
     srcs = ["constexpr_test.cc"],
-    cxxopts = select(CXX_COMPILER_OPTIONS),
+    cxx_features = CXX_COMPILER_OPTIONS["cxx_features"],
+    cxx_standard = CXX_COMPILER_OPTIONS["cxx_standard"],
     deps = [
         ":options",
         ":source",
@@ -110,7 +112,8 @@ loom_cc_test(
 loom_cc_test(
     name = "dependency_test",
     srcs = ["dependency_test.cc"],
-    cxxopts = select(CXX_COMPILER_OPTIONS),
+    cxx_features = CXX_COMPILER_OPTIONS["cxx_features"],
+    cxx_standard = CXX_COMPILER_OPTIONS["cxx_standard"],
     deps = [
         ":options",
         ":source",
@@ -123,7 +126,8 @@ loom_cc_test(
 loom_cc_test(
     name = "layout_test",
     srcs = ["layout_test.cc"],
-    cxxopts = select(CXX_COMPILER_OPTIONS),
+    cxx_features = CXX_COMPILER_OPTIONS["cxx_features"],
+    cxx_standard = CXX_COMPILER_OPTIONS["cxx_standard"],
     deps = [
         ":options",
         ":source",
@@ -137,7 +141,8 @@ loom_cc_library(
     name = "locations",
     srcs = ["locations.cc"],
     hdrs = ["locations.h"],
-    cxxopts = select(CXX_COMPILER_OPTIONS),
+    cxx_features = CXX_COMPILER_OPTIONS["cxx_features"],
+    cxx_standard = CXX_COMPILER_OPTIONS["cxx_standard"],
     deps = [
         ":error",
         ":source",
@@ -150,14 +155,16 @@ loom_cc_library(
     name = "constants",
     srcs = ["constants.cc"],
     hdrs = ["constants.h"],
-    cxxopts = select(CXX_COMPILER_OPTIONS),
+    cxx_features = CXX_COMPILER_OPTIONS["cxx_features"],
+    cxx_standard = CXX_COMPILER_OPTIONS["cxx_standard"],
     deps = ["//third_party:cxx_parser"],
 )
 
 loom_cc_test(
     name = "constants_test",
     srcs = ["constants_test.cc"],
-    cxxopts = select(CXX_COMPILER_OPTIONS),
+    cxx_features = CXX_COMPILER_OPTIONS["cxx_features"],
+    cxx_standard = CXX_COMPILER_OPTIONS["cxx_standard"],
     deps = [
         ":constants",
         ":options",
@@ -172,7 +179,8 @@ loom_cc_library(
     name = "attributes",
     srcs = ["attributes.cc"],
     hdrs = ["attributes.h"],
-    cxxopts = select(CXX_COMPILER_OPTIONS),
+    cxx_features = CXX_COMPILER_OPTIONS["cxx_features"],
+    cxx_standard = CXX_COMPILER_OPTIONS["cxx_standard"],
     deps = [
         ":source",
         "//third_party:cxx_parser",
@@ -182,7 +190,8 @@ loom_cc_library(
 loom_cc_test(
     name = "source_test",
     srcs = ["source_test.cc"],
-    cxxopts = select(CXX_COMPILER_OPTIONS),
+    cxx_features = CXX_COMPILER_OPTIONS["cxx_features"],
+    cxx_standard = CXX_COMPILER_OPTIONS["cxx_standard"],
     deps = [
         ":error",
         ":options",
@@ -196,7 +205,8 @@ loom_cc_test(
 loom_cc_test(
     name = "locations_test",
     srcs = ["locations_test.cc"],
-    cxxopts = select(CXX_COMPILER_OPTIONS),
+    cxx_features = CXX_COMPILER_OPTIONS["cxx_features"],
+    cxx_standard = CXX_COMPILER_OPTIONS["cxx_standard"],
     deps = [
         ":error",
         ":locations",
@@ -207,32 +217,4 @@ loom_cc_test(
         "//runtime/src/iree/testing:gtest_main",
         "//third_party:cxx_parser",
     ],
-)
-
-iree_cmake_extra_content(
-    """
-# Parser-facing sources use the same scoped language and unwind contract as
-# their Bazel targets. The C options and facade catalog retain normal flags.
-foreach(_target IN ITEMS
-    loom_import_cxx_source_attributes.objects
-    loom_import_cxx_source_source.objects
-    loom_import_cxx_source_locations.objects
-    loom_import_cxx_source_constants.objects
-    loom_import_cxx_source_constexpr_test
-    loom_import_cxx_source_dependency_test
-    loom_import_cxx_source_layout_test
-    loom_import_cxx_source_constants_test
-    loom_import_cxx_source_source_test
-    loom_import_cxx_source_locations_test)
-  if(TARGET ${_target})
-    target_compile_features(${_target} PRIVATE cxx_std_23)
-    if(MSVC)
-      target_compile_options(${_target} PRIVATE /EHsc /GR)
-    else()
-      target_compile_options(${_target} PRIVATE -fexceptions -frtti)
-    endif()
-  endif()
-endforeach()
-""",
-    inline = True,
 )

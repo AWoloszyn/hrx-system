@@ -19,6 +19,8 @@ def _loom_cc_test_impl(
         copts,
         conlyopts,
         cxxopts,
+        cxx_standard,
+        cxx_features,
         deps,
         **kwargs):
     policy_kwargs = dict(kwargs)
@@ -29,6 +31,9 @@ def _loom_cc_test_impl(
         copts = copts,
         conlyopts = conlyopts,
         cxxopts = cxxopts,
+        cxx_standard = cxx_standard,
+        cxx_features = cxx_features,
+        features = kwargs.pop("features", None),
     )
     iree_cc_test(
         name = name,
@@ -36,6 +41,7 @@ def _loom_cc_test_impl(
         copts = compiler_options.copts,
         conlyopts = compiler_options.conlyopts,
         cxxopts = compiler_options.cxxopts,
+        features = compiler_options.features,
         deps = loom_cc_attrs.with_loom_deps(deps),
         **kwargs
     )
@@ -44,5 +50,5 @@ loom_cc_test = macro(
     doc = """Defines a Loom C/C++ test target.""",
     implementation = _loom_cc_test_impl,
     inherit_attrs = iree_cc_test,
-    attrs = {},
+    attrs = loom_cc_attrs.cxx_attributes,
 )

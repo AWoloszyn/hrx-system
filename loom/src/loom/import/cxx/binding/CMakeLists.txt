@@ -27,6 +27,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     atomic
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "atomic.h"
   SRCS
@@ -45,6 +50,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     assumptions
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "assumptions.h"
   SRCS
@@ -61,6 +71,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     config
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "config.h"
   SRCS
@@ -84,6 +99,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     shaped
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "shaped.h"
   SRCS
@@ -101,6 +121,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     view
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "view.h"
   SRCS
@@ -126,6 +151,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     intrinsics
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "intrinsics.h"
   SRCS
@@ -148,6 +178,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     launch
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "launch.h"
   SRCS
@@ -171,6 +206,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     loop_schedule
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "loop_schedule.h"
   SRCS
@@ -194,6 +234,11 @@ loom_cc_test(
     atomic_test
   SRCS
     "atomic_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::atomic
     iree::testing::gtest
@@ -212,6 +257,11 @@ loom_cc_test(
     assumptions_test
   SRCS
     "assumptions_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::assumptions
     iree::testing::gtest
@@ -229,6 +279,11 @@ loom_cc_test(
     config_test
   SRCS
     "config_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::config
     iree::testing::gtest
@@ -249,6 +304,11 @@ loom_cc_test(
     shaped_test
   SRCS
     "shaped_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::shaped
     iree::testing::gtest
@@ -260,29 +320,5 @@ loom_cc_test(
     "iree-build-requirement=loom.import.cxx"
 )
 endif()
-
-foreach(_target IN ITEMS
-    loom_import_cxx_binding_atomic.objects
-    loom_import_cxx_binding_atomic_test
-    loom_import_cxx_binding_assumptions.objects
-    loom_import_cxx_binding_config.objects
-    loom_import_cxx_binding_intrinsics.objects
-    loom_import_cxx_binding_shaped.objects
-    loom_import_cxx_binding_view.objects
-    loom_import_cxx_binding_launch.objects
-    loom_import_cxx_binding_loop_schedule.objects
-    loom_import_cxx_binding_shaped_test
-    loom_import_cxx_binding_assumptions_test
-    loom_import_cxx_binding_config_test
-)
-  if(TARGET ${_target})
-    target_compile_features(${_target} PRIVATE cxx_std_23)
-    if(MSVC)
-      target_compile_options(${_target} PRIVATE /EHsc /GR)
-    else()
-      target_compile_options(${_target} PRIVATE -fexceptions -frtti)
-    endif()
-  endif()
-endforeach()
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

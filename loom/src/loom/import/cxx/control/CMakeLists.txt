@@ -13,6 +13,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     analysis
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "analysis.h"
   SRCS
@@ -31,6 +36,11 @@ loom_cc_test(
     analysis_test
   SRCS
     "analysis_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::analysis
     iree::testing::gtest
@@ -43,18 +53,5 @@ loom_cc_test(
     "iree-build-requirement=loom.import.cxx"
 )
 endif()
-
-foreach(_target IN ITEMS
-    loom_import_cxx_control_analysis.objects
-    loom_import_cxx_control_analysis_test)
-  if(TARGET ${_target})
-    target_compile_features(${_target} PRIVATE cxx_std_23)
-    if(MSVC)
-      target_compile_options(${_target} PRIVATE /EHsc /GR)
-    else()
-      target_compile_options(${_target} PRIVATE -fexceptions -frtti)
-    endif()
-  endif()
-endforeach()
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

@@ -80,7 +80,57 @@ diff --git a/cc/private/toolchain/windows_cc_configure.bzl b/cc/private/toolchai
 diff --git a/cc/private/toolchain/windows_cc_toolchain_config.bzl b/cc/private/toolchain/windows_cc_toolchain_config.bzl
 --- a/cc/private/toolchain/windows_cc_toolchain_config.bzl
 +++ b/cc/private/toolchain/windows_cc_toolchain_config.bzl
-@@ -1033,7 +1033,10 @@
+@@ -664,24 +664,43 @@
+                 flag_set(
+                     actions = [ACTION_NAMES.c_compile, ACTION_NAMES.cpp_compile],
+                     flag_groups = [flag_group(flags = ["/MT"])],
+-                    with_features = [with_feature_set(not_features = ["dbg"])],
++                    with_features = [
++                        with_feature_set(not_features = ["dbg"]),
++                        with_feature_set(features = ["static_link_msvcrt_release"]),
++                    ],
+                 ),
+                 flag_set(
+                     actions = [ACTION_NAMES.c_compile, ACTION_NAMES.cpp_compile],
+                     flag_groups = [flag_group(flags = ["/MTd"])],
+-                    with_features = [with_feature_set(features = ["dbg"])],
++                    with_features = [with_feature_set(
++                        features = ["dbg"],
++                        not_features = ["static_link_msvcrt_release"],
++                    )],
+                 ),
+                 flag_set(
+                     actions = all_link_actions,
+                     flag_groups = [flag_group(flags = ["/DEFAULTLIB:libcmt.lib"])],
+-                    with_features = [with_feature_set(not_features = ["dbg"])],
++                    with_features = [
++                        with_feature_set(not_features = ["dbg"]),
++                        with_feature_set(features = ["static_link_msvcrt_release"]),
++                    ],
+                 ),
+                 flag_set(
+                     actions = all_link_actions,
+                     flag_groups = [flag_group(flags = ["/DEFAULTLIB:libcmtd.lib"])],
+-                    with_features = [with_feature_set(features = ["dbg"])],
+-                ),
+-            ],
++                    with_features = [with_feature_set(
++                        features = ["dbg"],
++                        not_features = ["static_link_msvcrt_release"],
++                    )],
++                ),
++            ],
++        )
++
++        # Binary-only dependencies can require the release static CRT even
++        # when their caller retains debug code generation and PDBs.
++        static_link_msvcrt_release_feature = feature(
++            name = "static_link_msvcrt_release",
++            implies = ["static_link_msvcrt"],
+         )
+
+         dynamic_link_msvcrt_feature = feature(
+@@ -1033,7 +1052,10 @@
 
          windows_export_all_symbols_feature = feature(name = "windows_export_all_symbols")
 
@@ -92,7 +142,7 @@ diff --git a/cc/private/toolchain/windows_cc_toolchain_config.bzl b/cc/private/t
 
          include_paths_feature = feature(
              name = "include_paths",
-@@ -1330,6 +1333,18 @@
+@@ -1330,6 +1352,18 @@
                  ),
              ],
              implies = ["msvc_compile_env", "msvc_link_env"],
@@ -111,7 +161,15 @@ diff --git a/cc/private/toolchain/windows_cc_toolchain_config.bzl b/cc/private/t
          )
 
          symbol_check_feature = feature(
-@@ -1398,6 +1413,7 @@
+@@ -1374,6 +1408,7 @@
+             default_link_flags_feature,
+             linker_param_file_feature,
+             static_link_msvcrt_feature,
++            static_link_msvcrt_release_feature,
+             dynamic_link_msvcrt_feature,
+             dbg_feature,
+             fastbuild_feature,
+@@ -1398,6 +1433,7 @@
              supports_dynamic_linker_feature,
              supports_interface_shared_libraries_feature,
              symbol_check_feature,
@@ -119,7 +177,7 @@ diff --git a/cc/private/toolchain/windows_cc_toolchain_config.bzl b/cc/private/t
          ]
      else:
          targets_windows_feature = feature(
-@@ -1755,6 +1771,10 @@
+@@ -1755,6 +1791,10 @@
  cc_toolchain_config = rule(
      implementation = _impl,
      attrs = {

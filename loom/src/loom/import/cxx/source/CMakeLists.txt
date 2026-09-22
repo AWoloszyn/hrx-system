@@ -106,6 +106,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     source
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "source.h"
   SRCS
@@ -126,6 +131,11 @@ loom_cc_test(
     constexpr_test
   SRCS
     "constexpr_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::options
     ::source
@@ -143,6 +153,11 @@ loom_cc_test(
     dependency_test
   SRCS
     "dependency_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::options
     ::source
@@ -160,6 +175,11 @@ loom_cc_test(
     layout_test
   SRCS
     "layout_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::options
     ::source
@@ -175,6 +195,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     locations
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "locations.h"
   SRCS
@@ -192,6 +217,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     constants
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "constants.h"
   SRCS
@@ -208,6 +238,11 @@ loom_cc_test(
     constants_test
   SRCS
     "constants_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::constants
     ::options
@@ -224,6 +259,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     attributes
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "attributes.h"
   SRCS
@@ -241,6 +281,11 @@ loom_cc_test(
     source_test
   SRCS
     "source_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::error
     ::options
@@ -259,6 +304,11 @@ loom_cc_test(
     locations_test
   SRCS
     "locations_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::error
     ::locations
@@ -272,28 +322,5 @@ loom_cc_test(
     "iree-build-requirement=loom.import.cxx"
 )
 endif()
-
-# Parser-facing sources use the same scoped language and unwind contract as
-# their Bazel targets. The C options and facade catalog retain normal flags.
-foreach(_target IN ITEMS
-    loom_import_cxx_source_attributes.objects
-    loom_import_cxx_source_source.objects
-    loom_import_cxx_source_locations.objects
-    loom_import_cxx_source_constants.objects
-    loom_import_cxx_source_constexpr_test
-    loom_import_cxx_source_dependency_test
-    loom_import_cxx_source_layout_test
-    loom_import_cxx_source_constants_test
-    loom_import_cxx_source_source_test
-    loom_import_cxx_source_locations_test)
-  if(TARGET ${_target})
-    target_compile_features(${_target} PRIVATE cxx_std_23)
-    if(MSVC)
-      target_compile_options(${_target} PRIVATE /EHsc /GR)
-    else()
-      target_compile_options(${_target} PRIVATE -fexceptions -frtti)
-    endif()
-  endif()
-endforeach()
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

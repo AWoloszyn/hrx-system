@@ -104,6 +104,22 @@ class AmdfBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         # environment bindings carried by this rule.
         del kwargs
 
+    def amdf_windows_sidecar_test(self, **kwargs):
+        kwargs = dict(kwargs)
+        kwargs["target_compatible_with"] = [
+            "@platforms//cpu:x86_64",
+            "@platforms//os:windows",
+        ]
+        body_start = len(self._converter.body)
+        self.amdf_cc_test(**kwargs)
+        emitted_body = self._converter.body[body_start:]
+        self._converter.body = self._converter.body[:body_start]
+        self._converter.body += emitted_body.replace(
+            "iree_cc_test(",
+            "amdf_windows_sidecar_test(",
+            1,
+        )
+
     def amdf_library(
         self,
         name,

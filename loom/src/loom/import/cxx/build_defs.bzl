@@ -7,6 +7,6 @@
 """Compiler options for parser-facing C++ importer packages."""
 
 CXX_COMPILER_OPTIONS = {
-    "@platforms//os:windows": ["/std:c++latest", "/EHsc", "/GR"],
-    "//conditions:default": ["-std=c++23", "-fexceptions", "-frtti"],
+    "cxx_features": ["exceptions", "rtti"],
+    "cxx_standard": "c++23",
 }

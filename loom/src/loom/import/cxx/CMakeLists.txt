@@ -31,6 +31,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     cxx
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "import.h"
   SRCS
@@ -80,14 +85,3 @@ loom_cc_library(
 endif()
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###
-
-# The parser uses C++23 and C++ exceptions internally. These requirements do not
-# escape the C import API or affect other Loom targets.
-if(TARGET loom_import_cxx_cxx.objects)
-  target_compile_features(loom_import_cxx_cxx.objects PRIVATE cxx_std_23)
-  if(MSVC)
-    target_compile_options(loom_import_cxx_cxx.objects PRIVATE /EHsc /GR)
-  else()
-    target_compile_options(loom_import_cxx_cxx.objects PRIVATE -fexceptions -frtti)
-  endif()
-endif()

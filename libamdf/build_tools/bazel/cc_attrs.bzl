@@ -15,7 +15,7 @@ def _with_amdf_deps(deps):
         deps = []
     return deps + _AMDF_DEPS
 
-def _with_amdf_compiler_options(copts, conlyopts, cxxopts):
+def _with_amdf_compiler_options(copts, conlyopts, cxxopts, features = None):
     # Public declarations opt in to ELF visibility through AMDF_API.
     copts = (copts or []) + select({
         "@platforms//os:windows": [],
@@ -25,6 +25,7 @@ def _with_amdf_compiler_options(copts, conlyopts, cxxopts):
         copts = copts,
         conlyopts = conlyopts,
         cxxopts = cxxopts,
+        features = features,
         # C++ clients in this package use standard designated initializers.
         # This is private build policy, not a requirement on the public C ABI.
         cxx_standard = "c++20",

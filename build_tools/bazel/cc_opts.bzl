@@ -45,8 +45,6 @@ _CLANG_COPTS = [
 _CLANG_CONLYOPTS = []
 
 _CLANG_CXXOPTS = [
-    "-fno-exceptions",
-    "-fno-rtti",
     "-Wno-c++20-extensions",
     "-Wno-ambiguous-member-template",
     "-Wno-invalid-offsetof",
@@ -78,8 +76,6 @@ _GCC_CONLYOPTS = [
 ]
 
 _GCC_CXXOPTS = [
-    "-fno-exceptions",
-    "-fno-rtti",
     "-Wno-invalid-offsetof",
     "-Wno-overloaded-virtual",
 ]
@@ -127,7 +123,6 @@ _MSVC_ONLY_COPTS = [
 _MSVC_CONLYOPTS = []
 
 _MSVC_CXXOPTS = [
-    "/GR-",
     "/Zc:__cplusplus",
 ]
 
@@ -181,16 +176,42 @@ def _iree_code_compiler_options(
         copts = None,
         conlyopts = None,
         cxxopts = None,
-        cxx_standard = "c++17"):
+        cxx_standard = "c++17",
+        cxx_features = None,
+        features = None):
     """Returns compiler options for first-party IREE C/C++ targets.
 
     Callers pass through target-specific options exactly as they would on a
     native C/C++ rule. This helper prepends IREE's compiler-conditioned policy
     while preserving configurable values such as `select()` expressions.
-    Project wrappers may select their C++ standard without appending a second
-    conflicting language-mode option. The repository default remains C++17.
+    Project wrappers select the C++ standard and optional exceptions/RTTI before
+    flags are assembled. They forward the returned toolchain features along
+    with the compiler options when selecting a non-default language mode.
     """
+    if cxx_features == None:
+        cxx_features = []
+    for cxx_feature in cxx_features:
+        if cxx_feature not in ["exceptions", "rtti"]:
+            fail("unsupported C++ feature: " + cxx_feature)
+    unix_cxx_options = [
+        "-std=" + cxx_standard,
+        "-fexceptions" if "exceptions" in cxx_features else "-fno-exceptions",
+        "-frtti" if "rtti" in cxx_features else "-fno-rtti",
+    ]
+    windows_cxx_options = ["/GR" if "rtti" in cxx_features else "/GR-"]
+    windows_features = []
+
+    # rules_cc owns the Windows C++17 default. A target selecting another
+    # standard replaces that feature instead of overriding its command line.
+    if cxx_standard != "c++17":
+        windows_standard = "c++latest" if cxx_standard == "c++23" else cxx_standard
+        windows_cxx_options.append("/std:" + windows_standard)
+        windows_features.append("-default_cpp_std")
     return struct(
+        features = _append(
+            features,
+            _compiler_options([], [], windows_features, windows_features),
+        ),
         copts = _append(
             _compiler_options(
                 _CLANG_COPTS,
@@ -211,10 +232,10 @@ def _iree_code_compiler_options(
         ),
         cxxopts = _append(
             _compiler_options(
-                ["-std=" + cxx_standard] + _CLANG_CXXOPTS,
-                ["-std=" + cxx_standard] + _GCC_CXXOPTS,
-                ["/std:" + cxx_standard] + _CLANG_CL_CXXOPTS,
-                ["/std:" + cxx_standard] + _MSVC_CXXOPTS,
+                unix_cxx_options + _CLANG_CXXOPTS,
+                unix_cxx_options + _GCC_CXXOPTS,
+                windows_cxx_options + _CLANG_CL_CXXOPTS,
+                windows_cxx_options + _MSVC_CXXOPTS,
             ),
             cxxopts,
         ),

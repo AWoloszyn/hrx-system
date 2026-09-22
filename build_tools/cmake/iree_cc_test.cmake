@@ -23,6 +23,8 @@ include("${CMAKE_CURRENT_LIST_DIR}/iree_test_arguments.cmake")
 # DATA: List of other targets and files required for this binary.
 # DEPS: List of other libraries to be linked in to the binary targets.
 # COPTS: List of private compile options.
+# CXX_STANDARD: Optional C++ standard version, such as 23.
+# CXX_FEATURES: Required private C++ runtime features: exceptions and rtti.
 # DEFINES: List of public defines.
 # LINKOPTS: List of link options.
 # GROUP: Optional test group to add the target to.
@@ -69,8 +71,8 @@ function(iree_cc_test)
   cmake_parse_arguments(
     _RULE
     ""
-    "NAME;RESOURCE_GROUP"
-    "ARGS;SRCS;COPTS;DEFINES;LINKOPTS;DATA;DEPS;LABELS;GROUP;TIMEOUT;ENV;SANITIZER_SUPPRESSIONS"
+    "NAME;RESOURCE_GROUP;CXX_STANDARD"
+    "ARGS;SRCS;COPTS;CXX_FEATURES;DEFINES;LINKOPTS;DATA;DEPS;LABELS;GROUP;TIMEOUT;ENV;SANITIZER_SUPPRESSIONS"
     ${ARGN}
   )
 
@@ -138,8 +140,7 @@ function(iree_cc_test)
   # Add all IREE targets to a folder in the IDE for organization.
   set_property(TARGET ${_NAME} PROPERTY FOLDER ${IREE_IDE_FOLDER}/test)
 
-  set_property(TARGET ${_NAME} PROPERTY CXX_STANDARD ${IREE_CXX_STANDARD})
-  set_property(TARGET ${_NAME} PROPERTY CXX_STANDARD_REQUIRED ON)
+  iree_set_cxx_options(${_NAME} "${_RULE_CXX_STANDARD}" ${_RULE_CXX_FEATURES})
 
   list(APPEND _RULE_DEPS "gmock")
 

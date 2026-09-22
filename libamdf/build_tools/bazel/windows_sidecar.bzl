@@ -7,6 +7,21 @@
 """Private Windows DLLs that isolate binary-only C++ and CRT ABIs."""
 
 load(":cc.bzl", "amdf_cc_binary")
+load(":cc_test.bzl", "amdf_cc_test")
+
+# Binary-only C++ dependencies retain their release ABI in every build mode.
+_SIDECAR_ATTRIBUTES = {
+    "features": ["static_link_msvcrt_release"],
+    "local_defines": [
+        "_DISABLE_STRING_ANNOTATION",
+        "_DISABLE_VECTOR_ANNOTATION",
+        "_ITERATOR_DEBUG_LEVEL=0",
+    ],
+    "target_compatible_with": [
+        "@platforms//cpu:x86_64",
+        "@platforms//os:windows",
+    ],
+}
 
 def amdf_windows_sidecar_library(
         name,
@@ -29,18 +44,24 @@ def amdf_windows_sidecar_library(
     amdf_cc_binary(
         name = name,
         srcs = srcs,
-        copts = ["/MT"],
-        local_defines = [
-            "_DISABLE_STRING_ANNOTATION",
-            "_DISABLE_VECTOR_ANNOTATION",
-            "_ITERATOR_DEBUG_LEVEL=0",
-        ],
         deps = deps,
         linkopts = linkopts,
         linkshared = True,
-        target_compatible_with = [
-            "@platforms//cpu:x86_64",
-            "@platforms//os:windows",
-        ],
         visibility = visibility,
+        **_SIDECAR_ATTRIBUTES
+    )
+
+def amdf_windows_sidecar_test(name, srcs, deps = None):
+    """Tests private sidecar implementation with its production C++ and CRT ABI.
+
+    Args:
+      name: Test target name.
+      srcs: Sidecar implementation and test sources.
+      deps: Private link dependencies using the release static CRT.
+    """
+    amdf_cc_test(
+        name = name,
+        srcs = srcs,
+        deps = deps,
+        **_SIDECAR_ATTRIBUTES
     )
