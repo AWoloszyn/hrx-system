@@ -29,3 +29,37 @@ low.func.def target<test.low.core>(@target) @ordinary_reads(%first_address: reg<
 // ----
 CHECK: *"dependency_count":0,*
 CHECK: *"dependencies":[],*
+
+// ====
+// RUN: with-checks emit low-schedule-json @ordered_read_completion strategy=source
+
+// Source ordering through a barrier does not complete an asynchronous read.
+// Its memory dependency must still reach the later write directly.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @ordered_read_completion(%address: reg<test.ptr>, %value: reg<test.i32 x4>) asm {
+  %loaded = test.load.v4i32<volatile> %address
+  test.barrier
+  test.store.v4i32 %address, %value
+  return
+}
+
+// ----
+CHECK: *"from":0,"to":2,"kind":"effect",*"producer_event":"test.memory.read",*"consumer_event":"test.memory.write",*
+
+// ====
+// RUN: with-checks emit low-schedule-json @ordered_write_completion strategy=source
+
+// The scheduler preserves the memory producer across an ordered instruction;
+// completion planning decides which counters that instruction actually drains.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @ordered_write_completion(%address: reg<test.ptr>, %value: reg<test.i32 x4>) asm {
+  test.store.v4i32 %address, %value
+  test.barrier
+  %loaded = test.load.v4i32 %address
+  return
+}
+
+// ----
+CHECK: *"from":0,"to":2,"kind":"effect",*"producer_event":"test.memory.write",*"consumer_event":"test.memory.read",*
