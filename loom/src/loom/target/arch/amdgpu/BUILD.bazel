@@ -589,6 +589,7 @@ loom_check_test_suite(
         "//loom/src/loom/test/corpus/source_low:numeric_conversion_float8.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_conversion_wide.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_f32_memory.loom-test",
+        "//loom/src/loom/test/corpus/source_low:numeric_float8_constants.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_float8_widen.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_float_comparison_flags.loom-test",
         "//loom/src/loom/test/corpus/source_low:numeric_float_signs.loom-test",

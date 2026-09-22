@@ -1,0 +1,43 @@
+func.def @float8_finite_constants() -> (f8E4M3, f8E5M2, f8E4M3, f8E5M2, f8E4M3, f8E5M2) {
+  %e4_negative = scalar.constant -1.5 : f8E4M3
+  %e5_fraction = scalar.constant 1.25 : f8E5M2
+  %e4_smallest = scalar.constant 0.001953125 : f8E4M3
+  %e5_smallest = scalar.constant 1.52587890625e-05 : f8E5M2
+  %e4_largest = scalar.constant 448.0 : f8E4M3
+  %e5_largest = scalar.constant 57344.0 : f8E5M2
+  func.return %e4_negative, %e5_fraction, %e4_smallest, %e5_smallest, %e4_largest, %e5_largest : f8E4M3, f8E5M2, f8E4M3, f8E5M2, f8E4M3, f8E5M2
+}
+
+// ====
+
+func.def @float8_rounding_constants() -> (f8E4M3, f8E4M3, f8E5M2, f8E5M2, f8E4M3, f8E5M2) {
+  %e4_even_lower = scalar.constant 1.0625 : f8E4M3
+  %e4_even_upper = scalar.constant 1.1875 : f8E4M3
+  %e5_even_lower = scalar.constant 1.125 : f8E5M2
+  %e5_even_upper = scalar.constant 1.375 : f8E5M2
+  %e4_saturated = scalar.constant 61440.0 : f8E4M3
+  %e5_overflow = scalar.constant 61440.0 : f8E5M2
+  func.return %e4_even_lower, %e4_even_upper, %e5_even_lower, %e5_even_upper, %e4_saturated, %e5_overflow : f8E4M3, f8E4M3, f8E5M2, f8E5M2, f8E4M3, f8E5M2
+}
+
+// ====
+
+func.def @float8_signed_zeros() -> (f8E4M3, f8E5M2, f8E4M3, f8E5M2) {
+  %e4_positive = scalar.constant 0.0 : f8E4M3
+  %e5_positive = scalar.constant 0.0 : f8E5M2
+  %e4_negative = scalar.constant -0.0 : f8E4M3
+  %e5_negative = scalar.constant -0.0 : f8E5M2
+  func.return %e4_positive, %e5_positive, %e4_negative, %e5_negative : f8E4M3, f8E5M2, f8E4M3, f8E5M2
+}
+
+// ====
+
+func.def @float8_special_constants() -> (f8E4M3, f8E4M3, f8E5M2, f8E5M2, f8E4M3, f8E5M2) {
+  %e4_positive = scalar.constant inf : f8E4M3
+  %e4_negative = scalar.constant -inf : f8E4M3
+  %e5_positive = scalar.constant inf : f8E5M2
+  %e5_negative = scalar.constant -inf : f8E5M2
+  %e4_nan = scalar.constant nan : f8E4M3
+  %e5_nan = scalar.constant nan : f8E5M2
+  func.return %e4_positive, %e4_negative, %e5_positive, %e5_negative, %e4_nan, %e5_nan : f8E4M3, f8E4M3, f8E5M2, f8E5M2, f8E4M3, f8E5M2
+}
