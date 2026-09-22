@@ -240,6 +240,9 @@ iree_string_view_trim(iree_string_view_t value) {
 
 IREE_API_EXPORT iree_string_view_t iree_string_view_substr(
     iree_string_view_t value, iree_host_size_t pos, iree_host_size_t n) {
+  if (iree_string_view_is_empty(value)) {
+    return value;
+  }
   pos = iree_min_host_size(pos, value.size);
   n = iree_min_host_size(n, value.size - pos);
   return iree_make_string_view(value.data + pos, n);

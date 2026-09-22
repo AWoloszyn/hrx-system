@@ -467,6 +467,9 @@ TEST(StringViewTest, Substr) {
     return ToString(
         iree_string_view_substr(iree_make_cstring_view(value), pos, n));
   };
+  EXPECT_EQ(substr(nullptr, 0, 0), "");
+  EXPECT_EQ(substr(nullptr, 0, 1), "");
+  EXPECT_EQ(substr(nullptr, 1, IREE_STRING_VIEW_NPOS), "");
   EXPECT_EQ(substr("", 0, 0), "");
   EXPECT_EQ(substr("", 0, 1), "");
   EXPECT_EQ(substr("", 0, IREE_STRING_VIEW_NPOS), "");
