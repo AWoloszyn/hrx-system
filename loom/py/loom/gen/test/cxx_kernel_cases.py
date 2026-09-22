@@ -1143,29 +1143,32 @@ def pack_iq4xs(scale, group_scales, codes):
 
 def iq4xs_blocks(arrays):
     # Expected values come from logical scales and code indices before packing.
-    # Eight blocks cover every signed six-bit scale and every nonlinear entry
-    # in both nibble positions, including distinct adjacent record contents.
+    # Eight blocks cover every signed six-bit scale and all 256 packed byte
+    # values, including distinct adjacent record contents. Low codes permute
+    # all sixteen entries; group-dependent high codes span every pairing.
     codebook = [-127, -104, -83, -65, -49, -35, -22, -10, 1, 13, 25, 38, 53, 69, 89, 113]
     packed = bytearray([0xA5] * 32)
     mutated = bytearray(packed)
     expected = []
     for block, scale in enumerate((0.5, -0.25, 2.0, -4.0, 0.0625, -0.125, 1.0, -2.0)):
         group_scales = [block * 8 + group - 32 for group in range(8)]
-        codes = [(3 * lane + 5 * group + 7 * block + lane // 16) % 16 for group in range(8) for lane in range(32)]
+        codes = [(3 * lane + 5 * group + 7 * block + (lane // 16) * (group + 8 * block)) % 16 for group in range(8) for lane in range(32)]
         expected.extend(scale * group_scales[index // 32] * codebook[code] for index, code in enumerate(codes))
         packed.extend(pack_iq4xs(scale, group_scales, codes))
         mutated.extend(pack_iq4xs(scale, [value ^ 1 for value in group_scales], [code ^ 1 for code in codes]))
     packed.extend([0xA5] * 32)
     mutated.extend([0xA5] * 32)
 
-    case = Case(arrays, "iq4xs_blocks", "f32", len(expected))
-    case.array("input_storage", [signed_bits(value, 8) for value in packed], "i8")
-    case.array("original", [signed_bits(value, 8) for value in packed], "i8")
-    case.array("codebook", codebook, "i8")
-    case.lines.append("  %input = check.tensor.view %input_storage offset(32) : tensor<1152xi8> -> tensor<1088xi8>")
-    case.launch("decode_iq4xs", "%input, %codebook, %output", "tensor<1088xi8>, tensor<16xi8>, tensor<2048xf32>")
-    case.lines.append("  check.expect.bitwise actual(%input_storage) expected(%original) : tensor<1152xi8>")
-    cases = case.finish(expected)
+    cases = ""
+    for kernel in ("decode_iq4xs", "decode_iq4xs_packed"):
+        case = Case(arrays, kernel + "_values", "f32", len(expected))
+        case.array("input_storage", [signed_bits(value, 8) for value in packed], "i8")
+        case.array("original", [signed_bits(value, 8) for value in packed], "i8")
+        case.array("codebook", codebook, "i8")
+        case.lines.append("  %input = check.tensor.view %input_storage offset(32) : tensor<1152xi8> -> tensor<1088xi8>")
+        case.launch(kernel, "%input, %codebook, %output", "tensor<1088xi8>, tensor<16xi8>, tensor<2048xf32>")
+        case.lines.append("  check.expect.bitwise actual(%input_storage) expected(%original) : tensor<1152xi8>")
+        cases += case.finish(expected)
     input_path = arrays.write("iq4xs_update_input.npy", [signed_bits(value, 8) for value in packed], "i8")
     expected_path = arrays.write("iq4xs_update_expected.npy", [signed_bits(value, 8) for value in mutated], "i8")
     cases += f'''check.case public @iq4xs_update {{
@@ -1179,6 +1182,7 @@ def iq4xs_blocks(arrays):
 }}
 '''
     declarations = "kernel.decl @decode_iq4xs() launch(%blocks: buffer, %codebook: buffer, %output: buffer)\n\n"
+    declarations += "kernel.decl @decode_iq4xs_packed() launch(%blocks: buffer, %codebook: buffer, %output: buffer)\n\n"
     declarations += "kernel.decl @update_iq4xs() launch(%blocks: buffer)\n\n"
     return declarations + cases
 

@@ -1214,6 +1214,19 @@ TEST_F(FactTableTest, TypedWidenJoinsDivisibilityIndependentlyOfRange) {
   check(loom_value_facts_make(4, 36, 4), loom_value_facts_unknown(), 1);
 }
 
+TEST_F(FactTableTest, TypedWidenRetainsNarrowIntegerDomain) {
+  loom_value_fact_table_t table = {0};
+  IREE_ASSERT_OK(loom_value_fact_table_initialize(&table, &arena_, 0));
+  loom_value_facts_t widened;
+  IREE_ASSERT_OK(loom_value_fact_table_widen_for_type(
+      &table, nullptr, loom_type_scalar(LOOM_SCALAR_TYPE_I8), &table,
+      loom_value_facts_make(0, 4, 4), &table, loom_value_facts_make(0, 8, 4),
+      /*iteration=*/2, &widened));
+  EXPECT_EQ(widened.range_lo, -128);
+  EXPECT_EQ(widened.range_hi, 127);
+  EXPECT_EQ(widened.known_divisor, 4);
+}
+
 TEST_F(FactTableTest, TypedWidenDropsChangingRangeButKeepsStableExtension) {
   loom_value_fact_table_t table = {0};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&table, &arena_, 0));

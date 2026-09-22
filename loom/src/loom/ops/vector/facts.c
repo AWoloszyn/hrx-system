@@ -2551,32 +2551,43 @@ static iree_status_t loom_vector_integer_binary_summary_facts(
     loom_fact_context_t* context, const loom_value_facts_t* operand_facts,
     loom_value_facts_t* result_facts,
     loom_vector_integer_binary_transfer_fn_t transfer_fn) {
-  loom_value_facts_t lhs = {0};
-  loom_value_facts_t rhs = {0};
-  if (loom_vector_facts_query_uniform_element(context, operand_facts[0],
-                                              &lhs) &&
-      loom_vector_facts_query_uniform_element(context, operand_facts[1],
-                                              &rhs)) {
+  // A missing summary is top, not a reason to skip scalar transfer: a known
+  // mask can bound an otherwise unknown lane. Uniform summaries describe facts
+  // shared by every lane, without requiring equal runtime lane values.
+  loom_value_facts_t lhs = loom_value_facts_unknown();
+  loom_value_facts_t rhs = loom_value_facts_unknown();
+  bool lhs_is_uniform =
+      loom_vector_facts_query_uniform_element(context, operand_facts[0], &lhs);
+  bool rhs_is_uniform =
+      loom_vector_facts_query_uniform_element(context, operand_facts[1], &rhs);
+  iree_host_size_t lane_count = 0;
+  if ((lhs_is_uniform && rhs_is_uniform) ||
+      !loom_vector_facts_query_binary_lane_count(
+          context, operand_facts[0], operand_facts[1], &lane_count)) {
+    if (!lhs_is_uniform && !rhs_is_uniform) {
+      return loom_vector_make_unknown_facts(result_facts);
+    }
     loom_value_facts_t element = loom_value_facts_unknown();
     transfer_fn(&lhs, &rhs, &element);
+    if (loom_value_facts_is_unknown(element)) {
+      return loom_vector_make_unknown_facts(result_facts);
+    }
     return loom_value_facts_make_uniform_element(context, element,
                                                  &result_facts[0]);
   }
 
-  iree_host_size_t lane_count = 0;
-  if (!loom_vector_facts_query_binary_lane_count(
-          context, operand_facts[0], operand_facts[1], &lane_count)) {
-    result_facts[0] = loom_value_facts_unknown();
-    return iree_ok_status();
-  }
   loom_value_facts_t lanes[LOOM_VALUE_FACT_SMALL_STATIC_LANE_LIMIT] = {{0}};
+  bool has_lane_facts = false;
   for (iree_host_size_t i = 0; i < lane_count; ++i) {
-    if (!loom_vector_facts_query_lane(context, operand_facts[0], i, &lhs) ||
-        !loom_vector_facts_query_lane(context, operand_facts[1], i, &rhs)) {
-      result_facts[0] = loom_value_facts_unknown();
-      return iree_ok_status();
-    }
-    transfer_fn(&lhs, &rhs, &lanes[i]);
+    loom_value_facts_t lane_lhs = lhs;
+    loom_value_facts_t lane_rhs = rhs;
+    loom_vector_facts_query_lane(context, operand_facts[0], i, &lane_lhs);
+    loom_vector_facts_query_lane(context, operand_facts[1], i, &lane_rhs);
+    transfer_fn(&lane_lhs, &lane_rhs, &lanes[i]);
+    has_lane_facts |= !loom_value_facts_is_unknown(lanes[i]);
+  }
+  if (!has_lane_facts) {
+    return loom_vector_make_unknown_facts(result_facts);
   }
   loom_value_fact_small_static_lanes_t lane_slice = {
       .lanes = lanes,

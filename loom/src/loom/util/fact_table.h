@@ -537,7 +537,8 @@ iree_status_t loom_value_fact_table_propagate_origins(
 // Computes facts for a single op. Ordinary ops call their vtable fact inference
 // function; LoopLike and RegionBranch ops visit their nested regions and
 // summarize the values returned to the parent results. Ops without either form
-// of fact inference derive result facts only from their types.
+// of fact inference derive result facts only from their types. Scalar integer
+// results retain their type's numeric domain even when inference is unknown.
 iree_status_t loom_value_fact_table_compute_op(loom_value_fact_table_t* table,
                                                const loom_module_t* module,
                                                const loom_op_t* op);

@@ -472,3 +472,120 @@ func.def @nonexecuting_type_uses(%size: i32, %reference: test.ref<view<[%size]xi
   %nonnegative = scalar.cmpi sge, %size, %c0 : i32
   func.return %nonnegative : i1
 }
+
+// ====
+
+// Unknown operation inference retains the verified scalar result type domain.
+func.def @scalar_load_retains_byte_domain(%input: view<1xi8>) -> (i64, i64) {
+  %value = view.load %input[0] : view<1xi8> -> i8
+  %wide = scalar.extsi %value : i8 to i64
+  %lower = test.fact_range_lo %wide : i64 -> i64
+  %upper = test.fact_range_hi %wide : i64 -> i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ----
+func.def @scalar_load_retains_byte_domain(%input: view<1xi8>) -> (i64, i64) {
+  %lower = scalar.constant -128 : i64
+  %upper = scalar.constant 127 : i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ====
+
+func.def @dynamic_extract_retains_halfword_domain(%input: vector<8xi16>, %lane: index) -> (i64, i64) {
+  %value = vector.extract %input[%lane] : vector<8xi16> -> i16
+  %wide = scalar.extsi %value : i16 to i64
+  %lower = test.fact_range_lo %wide : i64 -> i64
+  %upper = test.fact_range_hi %wide : i64 -> i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ----
+func.def @dynamic_extract_retains_halfword_domain(%input: vector<8xi16>, %lane: index) -> (i64, i64) {
+  %lower = scalar.constant -32768 : i64
+  %upper = scalar.constant 32767 : i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ====
+
+func.def @loaded_lane_retains_byte_domain(%input: view<16xi8>) -> (i64, i64) {
+  %packed = vector.load %input[0] : view<16xi8> -> vector<16xi8>
+  %value = vector.extract %packed[0] : vector<16xi8> -> i8
+  %wide = scalar.extsi %value : i8 to i64
+  %lower = test.fact_range_lo %wide : i64 -> i64
+  %upper = test.fact_range_hi %wide : i64 -> i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ----
+func.def @loaded_lane_retains_byte_domain(%input: view<16xi8>) -> (i64, i64) {
+  %lower = scalar.constant -128 : i64
+  %upper = scalar.constant 127 : i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ====
+
+func.def @loaded_boolean_retains_logical_domain(%input: view<1xi1>) -> (i64, i64) {
+  %value = view.load %input[0] : view<1xi1> -> i1
+  %wide = scalar.extui %value : i1 to i64
+  %lower = test.fact_range_lo %wide : i64 -> i64
+  %upper = test.fact_range_hi %wide : i64 -> i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ----
+func.def @loaded_boolean_retains_logical_domain(%input: view<1xi1>) -> (i64, i64) {
+  %lower = scalar.constant 0 : i64
+  %upper = scalar.constant 1 : i64
+  func.return %lower, %upper : i64, i64
+}
+
+// ====
+
+// Intersecting the type domain retains narrower ranges and divisibility.
+func.def @inferred_domain_retains_refinements(%input: i8) -> (i64, i64, i64) {
+  %bounded = scalar.assume %input [range(%input, -12, 12), mul(%input, 4)] : i8
+  %wide = scalar.extsi %bounded : i8 to i64
+  %lower = test.fact_range_lo %wide : i64 -> i64
+  %upper = test.fact_range_hi %wide : i64 -> i64
+  %divisor = test.fact_divisor %wide : i64 -> i64
+  func.return %lower, %upper, %divisor : i64, i64, i64
+}
+
+// ----
+func.def @inferred_domain_retains_refinements(%input: i8) -> (i64, i64, i64) {
+  %lower = scalar.constant -12 : i64
+  %upper = scalar.constant 12 : i64
+  %divisor = scalar.constant 4 : i64
+  func.return %lower, %upper, %divisor : i64, i64, i64
+}
+
+// ====
+
+// RUN: with-checks pass canonicalize
+
+// Widening the loop-carried byte may discard the recurrence's range, but not
+// the type bounds consumed by an extension inside the loop body.
+func.def @loop_widening_retains_byte_domain(%n: index) -> (i8, i64, i64) {
+  %start = index.constant 0 : index
+  %end = index.assume %n [range(%n, 1, 8)] : index
+  %step = index.constant 1 : index
+  %initial_byte = scalar.constant 0 : i8
+  %increment = scalar.constant 1 : i8
+  %initial = scalar.constant 0 : i64
+  %result, %lower, %upper = scf.for %iv = [%start to %end step %step](%carried = %initial_byte : i8, %previous_lower = %initial : i64, %previous_upper = %initial : i64) -> (i8, i64, i64) {
+    %wide = scalar.extsi %carried : i8 to i64
+    %body_lower = test.fact_range_lo %wide : i64 -> i64
+    %body_upper = test.fact_range_hi %wide : i64 -> i64
+    %next = scalar.addi %carried, %increment : i8
+    scf.yield %next, %body_lower, %body_upper : i8, i64, i64
+  }
+  func.return %result, %lower, %upper : i8, i64, i64
+}
+
+// ----
+CHECK: %body_lower = scalar.constant -128 : i64
+CHECK: %body_upper = scalar.constant 127 : i64

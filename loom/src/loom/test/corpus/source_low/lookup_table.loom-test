@@ -77,6 +77,24 @@ func.def @i8_table_lookup_u4_dynamic_table(%grid: vector<16xi8>, %packed: vector
 
 // ====
 
+func.def @i8_table_lookup_masked_codes(%grid: vector<16xi8>, %packed: vector<4xi8>) -> (vector<4xi8>) {
+  %mask = vector.constant 15 : vector<4xi8>
+  %codes = vector.andi %packed, %mask : vector<4xi8>
+  %decoded = vector.table.lookup %grid[%codes] : vector<16xi8>, vector<4xi8> -> vector<4xi8>
+  func.return %decoded : vector<4xi8>
+}
+
+// ====
+
+func.def @i8_table_lookup_shifted_codes(%grid: vector<16xi8>, %packed: vector<4xi8>) -> (vector<4xi8>) {
+  %shift = vector.constant 4 : vector<4xi8>
+  %codes = vector.shrui %packed, %shift : vector<4xi8>
+  %decoded = vector.table.lookup %grid[%codes] : vector<16xi8>, vector<4xi8> -> vector<4xi8>
+  func.return %decoded : vector<4xi8>
+}
+
+// ====
+
 func.def @i8_table_lookup_u4_constant_table(%packed: vector<2xi8>) -> (vector<4xi8>) {
   %g0 = scalar.constant 0 : i8
   %g1 = scalar.constant -1 : i8

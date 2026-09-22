@@ -131,6 +131,6 @@ func.def @injected_offset(%count: index, %inject: i1) -> (i64) {
 }
 
 // ----
-CHECK: %lower = scalar.constant -9223372036854775808 : i64
+CHECK: %lower = scalar.constant 0 : i64
 CHECK: %upper = scalar.constant 9223372036854775807 : i64
 CHECK: %alignment = scalar.constant 128 : i64

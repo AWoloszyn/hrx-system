@@ -22,12 +22,12 @@ low.func.def target<amdgpu.cdna4.core>(@gfx950) abi(hal_kernel) @i8_table_lookup
   %17 = slice %grid[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
   %18 = slice %grid[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
   %19 = v_and_b32_lit %codes, 117901063
-  %20 = v_perm_b32 %15, %16, %19
-  %21 = v_perm_b32 %17, %18, %19
+  %20 = v_perm_b32 %16, %15, %19
+  %21 = v_perm_b32 %18, %17, %19
   %22 = v_and_b32_lit %codes, 134744072
   %23 = v_lshrrev_b32_src0_inline %22, 1
   %24 = v_or_b32_lit %23, 50462976
-  %decoded = v_perm_b32 %20, %21, %24
+  %decoded = v_perm_b32 %21, %20, %24
   return %decoded
 }
 
@@ -55,12 +55,12 @@ low.func.def target<amdgpu.rdna4.core>(@gfx1200) abi(hal_kernel) @i8_table_looku
   %17 = slice %grid[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
   %18 = slice %grid[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
   %19 = v_and_b32_lit %codes, 117901063
-  %20 = v_perm_b32 %15, %16, %19
-  %21 = v_perm_b32 %17, %18, %19
+  %20 = v_perm_b32 %16, %15, %19
+  %21 = v_perm_b32 %18, %17, %19
   %22 = v_and_b32_lit %codes, 134744072
   %23 = v_lshrrev_b32_src0_inline %22, 1
   %24 = v_or_b32_lit %23, 50462976
-  %decoded = v_perm_b32 %20, %21, %24
+  %decoded = v_perm_b32 %21, %20, %24
   return %decoded
 }
 
@@ -88,11 +88,98 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@gfx1250) abi(hal_kernel) @i8_tab
   %17 = slice %grid[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
   %18 = slice %grid[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
   %19 = v_and_b32_lit %codes, 117901063
-  %20 = v_perm_b32 %15, %16, %19
-  %21 = v_perm_b32 %17, %18, %19
+  %20 = v_perm_b32 %16, %15, %19
+  %21 = v_perm_b32 %18, %17, %19
   %22 = v_and_b32_lit %codes, 134744072
   %23 = v_lshrrev_b32_src0_inline %22, 1
   %24 = v_or_b32_lit %23, 50462976
-  %decoded = v_perm_b32 %20, %21, %24
+  %decoded = v_perm_b32 %21, %20, %24
+  return %decoded
+}
+
+// ====
+
+amdgpu.target<gfx950> @gfx950
+
+func.def target(@gfx950) @i8_table_lookup_masked_codes_gfx950(%grid: vector<16xi8>, %packed: vector<4xi8>) -> (vector<4xi8>) {
+  %mask = vector.constant 15 : vector<4xi8>
+  %codes = vector.andi %packed, %mask : vector<4xi8>
+  %decoded = vector.table.lookup %grid[%codes] : vector<16xi8>, vector<4xi8> -> vector<4xi8>
+  func.return %decoded : vector<4xi8>
+}
+
+// ----
+low.func.def target<amdgpu.cdna4.core>(@gfx950) abi(hal_kernel) @i8_table_lookup_masked_codes_gfx950(%grid: reg<amdgpu.vgpr x4>, %packed: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %mask = v_mov_b32 252645135
+  %codes = v_and_b32 %packed, %mask
+  %11 = slice %grid[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %12 = slice %grid[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %13 = slice %grid[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %14 = slice %grid[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %15 = v_and_b32_lit %codes, 117901063
+  %16 = v_perm_b32 %12, %11, %15
+  %17 = v_perm_b32 %14, %13, %15
+  %18 = v_and_b32_lit %codes, 134744072
+  %19 = v_lshrrev_b32_src0_inline %18, 1
+  %20 = v_or_b32_lit %19, 50462976
+  %decoded = v_perm_b32 %17, %16, %20
+  return %decoded
+}
+
+// ====
+
+amdgpu.target<gfx1200> @gfx1200
+
+func.def target(@gfx1200) @i8_table_lookup_masked_codes_gfx1200(%grid: vector<16xi8>, %packed: vector<4xi8>) -> (vector<4xi8>) {
+  %mask = vector.constant 15 : vector<4xi8>
+  %codes = vector.andi %packed, %mask : vector<4xi8>
+  %decoded = vector.table.lookup %grid[%codes] : vector<16xi8>, vector<4xi8> -> vector<4xi8>
+  func.return %decoded : vector<4xi8>
+}
+
+// ----
+low.func.def target<amdgpu.rdna4.core>(@gfx1200) abi(hal_kernel) @i8_table_lookup_masked_codes_gfx1200(%grid: reg<amdgpu.vgpr x4>, %packed: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %mask = v_mov_b32 252645135
+  %codes = v_and_b32 %packed, %mask
+  %11 = slice %grid[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %12 = slice %grid[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %13 = slice %grid[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %14 = slice %grid[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %15 = v_and_b32_lit %codes, 117901063
+  %16 = v_perm_b32 %12, %11, %15
+  %17 = v_perm_b32 %14, %13, %15
+  %18 = v_and_b32_lit %codes, 134744072
+  %19 = v_lshrrev_b32_src0_inline %18, 1
+  %20 = v_or_b32_lit %19, 50462976
+  %decoded = v_perm_b32 %17, %16, %20
+  return %decoded
+}
+
+// ====
+
+amdgpu.target<gfx1250> @gfx1250
+
+func.def target(@gfx1250) @i8_table_lookup_masked_codes_gfx1250(%grid: vector<16xi8>, %packed: vector<4xi8>) -> (vector<4xi8>) {
+  %mask = vector.constant 15 : vector<4xi8>
+  %codes = vector.andi %packed, %mask : vector<4xi8>
+  %decoded = vector.table.lookup %grid[%codes] : vector<16xi8>, vector<4xi8> -> vector<4xi8>
+  func.return %decoded : vector<4xi8>
+}
+
+// ----
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@gfx1250) abi(hal_kernel) @i8_table_lookup_masked_codes_gfx1250(%grid: reg<amdgpu.vgpr x4>, %packed: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %mask = v_mov_b32 252645135
+  %codes = v_and_b32 %packed, %mask
+  %11 = slice %grid[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %12 = slice %grid[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %13 = slice %grid[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %14 = slice %grid[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %15 = v_and_b32_lit %codes, 117901063
+  %16 = v_perm_b32 %12, %11, %15
+  %17 = v_perm_b32 %14, %13, %15
+  %18 = v_and_b32_lit %codes, 134744072
+  %19 = v_lshrrev_b32_src0_inline %18, 1
+  %20 = v_or_b32_lit %19, 50462976
+  %decoded = v_perm_b32 %17, %16, %20
   return %decoded
 }

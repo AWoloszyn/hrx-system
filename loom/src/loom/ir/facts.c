@@ -297,7 +297,7 @@ loom_value_facts_t loom_value_facts_clamp_domain(loom_value_facts_t facts,
           : 0;
   result.flags |=
       (facts.flags &
-       (LOOM_VALUE_FACT_UNIFORM_SCOPE_MASK | LOOM_VALUE_FACT_LANE_VARYING |
+       (LOOM_VALUE_FACT_NON_ZERO | LOOM_VALUE_FACT_DISTRIBUTION_MASK |
         LOOM_VALUE_FACT_LANE_PREDICATE | LOOM_VALUE_FACT_SUBGROUP_LANE_MASK)) |
       preserved_topology_flags;
   result.extension_id = facts.extension_id;
