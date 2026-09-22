@@ -33,6 +33,7 @@ _EXECUTION_PROFILES = [
 _MODULES = [
     "aiter_swiglu_f16",
     "assumptions",
+    "atomics",
     "constant_loops",
     "control_flow",
     "early_returns",

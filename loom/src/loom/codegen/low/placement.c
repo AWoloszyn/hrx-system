@@ -58,6 +58,7 @@ bool loom_low_placement_relation_compose_tied_concat_source(
   // so the operand can reserve the eventual aligned aggregate.
   if (tied_relation->cause != LOOM_LOW_PLACEMENT_CAUSE_TIED_RESULT ||
       concat_relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT ||
+      !loom_low_placement_relation_can_alias(concat_relation) ||
       !iree_all_bits_set(
           tied_relation->flags,
           LOOM_LOW_PLACEMENT_RELATION_FLAG_HARD |
@@ -352,6 +353,9 @@ loom_low_placement_flags_from_storage_relation(
   if (iree_any_bit_set(flags, LOOM_LOW_STORAGE_RELATION_FLAG_PREFERRED)) {
     placement_flags |= LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED;
   }
+  if (iree_any_bit_set(flags, LOOM_LOW_STORAGE_RELATION_FLAG_WRITES_STORAGE)) {
+    placement_flags |= LOOM_LOW_PLACEMENT_RELATION_FLAG_WRITES_STORAGE;
+  }
   return placement_flags;
 }
 
@@ -425,6 +429,7 @@ static iree_status_t loom_low_placement_collect_op_relations(
         .cause = cause,
         .flags = loom_low_placement_flags_from_storage_relation(
             storage_relation.flags),
+        .write_point = operation_point->end_point,
         .priority = 1,
     };
     if (placement_relation.cause == LOOM_LOW_PLACEMENT_CAUSE_LOW_SCF_YIELD ||

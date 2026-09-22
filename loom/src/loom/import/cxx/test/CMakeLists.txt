@@ -16,6 +16,8 @@ loom_check_test_suite(
   SRCS
     "assumptions.cxx-test"
     "assumptions_invalid.cxx-test"
+    "atomics.cxx-test"
+    "atomics_invalid.cxx-test"
     "check.cxx-test"
     "condition_declarations.cxx-test"
     "conditionals.cxx-test"
@@ -123,6 +125,33 @@ loom_execution_test(
     constexpr_values_test_execute_vm_reference_test
   MODULE
     "::constexpr_values_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test_module(
+  NAME
+    atomic_values_test_module
+  SRCS
+    "atomic_values.loom"
+    "atomics.cpp"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    atomic_values_test_execute_vm_reference_test
+  MODULE
+    "::atomic_values_test_module"
   LABELS
     "iree-build-requirement=loom.target.arch.vm"
     "loom-execution-profile=vm_reference"
@@ -862,6 +891,16 @@ loom_check_test_suite(
     vm_compiler_test
   SRCS
     "vm_lowering.cxx-test"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_test_module(
+  NAME
+    atomics_module
+  SRCS
+    "atomic_kernels.loom"
+    "atomics.cpp"
 )
 endif()
 

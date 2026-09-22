@@ -21,10 +21,15 @@ loom_check_test_suite(
     name = "test",
     srcs = _CASES,
     compile_targets = {
-        source: ["//loom/target/amdgpu:" + target for target in LOOM_AMDGPU_SUPPORTED_TARGETS]
-        for source in [
-            "memory_address_realizations.loom-test",
-            "memory_wide_offsets.loom-test",
-        ]
+        "memory_address_realizations.loom-test": ["//loom/target/amdgpu:" + target for target in LOOM_AMDGPU_SUPPORTED_TARGETS],
+        # Ordered global atomics require RDNA memory-ordering support.
+        "memory_atomic_preservation.loom-test": [
+            "//loom/target/amdgpu:gfx11-generic",
+            "//loom/target/amdgpu:gfx1151",
+            "//loom/target/amdgpu:gfx12-generic",
+            "//loom/target/amdgpu:gfx1250",
+            "//loom/target/amdgpu:gfx12-5-generic",
+        ],
+        "memory_wide_offsets.loom-test": ["//loom/target/amdgpu:" + target for target in LOOM_AMDGPU_SUPPORTED_TARGETS],
     },
 )

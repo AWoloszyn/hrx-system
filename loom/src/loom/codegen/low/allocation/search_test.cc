@@ -164,7 +164,7 @@ loom_low_placement_relation_t LocationRelation(
 uint32_t FindFreeLocationWithPlacement(
     loom_module_t* module, iree_arena_allocator_t* arena,
     loom_value_id_t candidate_value, loom_value_id_t counterpart_value,
-    uint32_t max_units, const loom_low_placement_relation_t* relation,
+    uint32_t max_units, loom_low_placement_relation_t* relation,
     const loom_low_descriptor_set_t* physical_descriptor_set = nullptr) {
   loom_module_value_ordinal_scratch_acquire(module);
   loom_module_value_ordinal_scratch_set(module, candidate_value,
@@ -494,7 +494,7 @@ TEST_F(LowAllocationSearchTest, ExplicitCandidateOrderAndSoftPreference) {
                 module, &arena_, candidate_value, counterpart_value,
                 /*max_units=*/4, /*relation=*/nullptr, &descriptor_set),
             2u);
-  const loom_low_placement_relation_t relation = LocationRelation(
+  loom_low_placement_relation_t relation = LocationRelation(
       /*result_ordinal=*/0, /*source_ordinal=*/1,
       LOOM_LOW_PLACEMENT_RELATION_DISJOINT_STORAGE, /*location_mask=*/0);
   // The first candidate is legal but has a penalty; the next candidate has
@@ -692,7 +692,7 @@ TEST_F(LowAllocationSearchTest, SelectsDifferentMaskedResultLocation) {
   loom_module_t* module = AllocateModule();
   const loom_value_id_t candidate_value = DefineValue(module);
   const loom_value_id_t counterpart_value = DefineValue(module);
-  const loom_low_placement_relation_t relation = LocationRelation(
+  loom_low_placement_relation_t relation = LocationRelation(
       /*result_ordinal=*/0, /*source_ordinal=*/1,
       LOOM_LOW_PLACEMENT_RELATION_DIFFERENT_MASKED_LOCATION,
       /*location_mask=*/1);
@@ -709,7 +709,7 @@ TEST_F(LowAllocationSearchTest, SelectsDifferentMaskedSourceLocation) {
   loom_module_t* module = AllocateModule();
   const loom_value_id_t candidate_value = DefineValue(module);
   const loom_value_id_t counterpart_value = DefineValue(module);
-  const loom_low_placement_relation_t relation = LocationRelation(
+  loom_low_placement_relation_t relation = LocationRelation(
       /*result_ordinal=*/1, /*source_ordinal=*/0,
       LOOM_LOW_PLACEMENT_RELATION_DIFFERENT_MASKED_LOCATION,
       /*location_mask=*/1);
@@ -726,7 +726,7 @@ TEST_F(LowAllocationSearchTest, SelectsDisjointStorage) {
   loom_module_t* module = AllocateModule();
   const loom_value_id_t candidate_value = DefineValue(module);
   const loom_value_id_t counterpart_value = DefineValue(module);
-  const loom_low_placement_relation_t relation = LocationRelation(
+  loom_low_placement_relation_t relation = LocationRelation(
       /*result_ordinal=*/0, /*source_ordinal=*/1,
       LOOM_LOW_PLACEMENT_RELATION_DISJOINT_STORAGE,
       /*location_mask=*/0, /*priority=*/1);
@@ -743,7 +743,7 @@ TEST_F(LowAllocationSearchTest, FallsBackWhenPreferenceCannotBeSatisfied) {
   loom_module_t* module = AllocateModule();
   const loom_value_id_t candidate_value = DefineValue(module);
   const loom_value_id_t counterpart_value = DefineValue(module);
-  const loom_low_placement_relation_t relation = LocationRelation(
+  loom_low_placement_relation_t relation = LocationRelation(
       /*result_ordinal=*/0, /*source_ordinal=*/1,
       LOOM_LOW_PLACEMENT_RELATION_DIFFERENT_MASKED_LOCATION,
       /*location_mask=*/1);

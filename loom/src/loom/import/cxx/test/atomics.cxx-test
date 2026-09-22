@@ -1,0 +1,91 @@
+// RUN: roundtrip
+#include <loomcxx/atomic.h>
+using loom::atomic::kind;
+using loom::atomic::ordering;
+using loom::atomic::scope;
+
+// Interior pointers retain their allocation and byte origin through helpers.
+static unsigned ticket(volatile unsigned* counter) {
+  return loom::view::atomic::rmw<kind::addi, ordering::relaxed, scope::device>(
+      1u, counter);
+}
+unsigned claim(unsigned* counter) { return ticket(counter + 1); }
+
+void accumulate(long long value, long long* destination) {
+  loom::view::atomic::reduce<kind::maxsi, ordering::release, scope::workgroup>(
+      value, destination);
+}
+
+unsigned long long replace(unsigned long long expected,
+                           unsigned long long replacement,
+                           unsigned long long* destination) {
+  return loom::view::atomic::cmpxchg<ordering::acq_rel, ordering::acquire,
+                                    scope::system>(
+      expected, replacement, destination);
+}
+
+// ----
+func.def public @claim(%counter: buffer, %counter_byte_offset: offset) -> (i32) {
+  %3 = scalar.constant 1 : i32
+  %4 = scalar.extsi %3 : i32 to i64
+  %5 = scalar.constant 4 : i64
+  %6 = scalar.muli %4, %5 : i64
+  %7 = index.cast %counter_byte_offset : offset to i64
+  %8 = scalar.addi %7, %6 : i64
+  %9 = scalar.assume %8 [range(%8, 0, 9223372036854775807)] : i64
+  %10 = index.cast %9 : i64 to offset
+  %11 = func.call @ticket(%counter, %10) : (buffer, offset) -> (i32)
+  func.return %11 : i32
+}
+
+func.def public @accumulate(%value: i64, %destination: buffer, %destination_byte_offset: offset) {
+  %15 = buffer.view %destination[%destination_byte_offset] : buffer -> view<1xi64>
+  view.atomic.reduce<maxsi> %value, %15[0] {ordering = release, scope = workgroup} : i64, view<1xi64>
+  func.return
+}
+
+func.def public @replace(%expected: i64, %replacement: i64, %destination: buffer, %destination_byte_offset: offset) -> (i64) {
+  %21 = buffer.view %destination[%destination_byte_offset] : buffer -> view<1xi64>
+  %22 = view.atomic.cmpxchg %expected, %replacement, %21[0] {failure_ordering = acquire, scope = system, success_ordering = acq_rel} : i64, view<1xi64> -> i64
+  func.return %22 : i64
+}
+
+func.def @ticket(%counter: buffer, %counter_byte_offset: offset) -> (i32) {
+  %26 = scalar.constant 1 : i32
+  %27 = buffer.view %counter[%counter_byte_offset] : buffer -> view<1xi32>
+  %28 = view.atomic.rmw<addi> %26, %27[0] {ordering = relaxed, scope = device} : i32, view<1xi32> -> i32
+  func.return %28 : i32
+}
+
+// ====
+#include <loomcxx/atomic.h>
+using loom::atomic::kind;
+using loom::atomic::ordering;
+using loom::atomic::scope;
+
+// Source widths are retained; the selected target owns native width support.
+unsigned char add_byte(unsigned char value, unsigned char* destination) {
+  return loom::view::atomic::rmw<kind::addi, ordering::relaxed, scope::device>(
+      value, destination);
+}
+
+unsigned short replace_half(unsigned short expected,
+                            unsigned short replacement,
+                            volatile unsigned short* destination) {
+  return loom::view::atomic::cmpxchg<ordering::acq_rel, ordering::acquire,
+                                    scope::device>(
+      expected, replacement, destination);
+}
+
+// ----
+func.def public @add_byte(%value: i8, %destination: buffer, %destination_byte_offset: offset) -> (i8) {
+  %4 = buffer.view %destination[%destination_byte_offset] : buffer -> view<1xi8>
+  %5 = view.atomic.rmw<addi> %value, %4[0] {ordering = relaxed, scope = device} : i8, view<1xi8> -> i8
+  func.return %5 : i8
+}
+
+func.def public @replace_half(%expected: i16, %replacement: i16, %destination: buffer, %destination_byte_offset: offset) -> (i16) {
+  %11 = buffer.view %destination[%destination_byte_offset] : buffer -> view<1xi16>
+  %12 = view.atomic.cmpxchg %expected, %replacement, %11[0] {failure_ordering = acquire, scope = device, success_ordering = acq_rel} : i16, view<1xi16> -> i16
+  func.return %12 : i16
+}

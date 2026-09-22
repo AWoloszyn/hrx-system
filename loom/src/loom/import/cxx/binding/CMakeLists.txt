@@ -26,6 +26,24 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
+    atomic
+  HDRS
+    "atomic.h"
+  SRCS
+    "atomic.cc"
+  DEPS
+    iree::third_party::cxx_parser
+    loom::import::cxx::source::error
+    loom::import::cxx::value::storage
+    loom::ops::atomic
+    loom::ops::view
+  PUBLIC
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_library(
+  NAME
     assumptions
   HDRS
     "assumptions.h"
@@ -113,6 +131,7 @@ loom_cc_library(
   SRCS
     "intrinsics.cc"
   DEPS
+    ::atomic
     ::scalar_bindings
     ::shaped
     ::view
@@ -172,6 +191,24 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_test(
   NAME
+    atomic_test
+  SRCS
+    "atomic_test.cc"
+  DEPS
+    ::atomic
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::third_party::cxx_parser
+    loom::import::cxx::source
+    loom::import::cxx::value::types
+  LABELS
+    "iree-build-requirement=loom.import.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_test(
+  NAME
     assumptions_test
   SRCS
     "assumptions_test.cc"
@@ -225,6 +262,8 @@ loom_cc_test(
 endif()
 
 foreach(_target IN ITEMS
+    loom_import_cxx_binding_atomic.objects
+    loom_import_cxx_binding_atomic_test
     loom_import_cxx_binding_assumptions.objects
     loom_import_cxx_binding_config.objects
     loom_import_cxx_binding_intrinsics.objects

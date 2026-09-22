@@ -374,6 +374,67 @@ float read_view(View source) {
 specialization deduces its own return type. The generic reader accepts either
 type, and Loom retains the shape and layout facts through the helper calls.
 
+## Integer atomics
+
+`<loomcxx/atomic.h>` exposes scalar atomic updates through ordinary typed
+pointers. The kind, ordering and scope use the same names as High IR, with
+explicit template arguments. Pointer arithmetic and helper calls preserve the
+original allocation and byte origin.
+
+```cpp
+#include <loomcxx/atomic.h>
+#include <loomcxx/kernel.h>
+
+using loom::atomic::kind;
+using loom::atomic::ordering;
+using loom::atomic::scope;
+
+[[loom::kernel, loom::workgroup_size(32, 1, 1),
+  loom::workgroup_count(8, 1, 1)]]
+void claim_slots(unsigned* counter, unsigned* slots) {
+  // The caller initializes the counter to zero and provides 256 slots.
+  unsigned ticket = loom::view::atomic::rmw<
+      kind::addi, ordering::relaxed, scope::device>(1u, counter);
+  slots[ticket] = 1;
+}
+
+unsigned replace(unsigned* pointer, unsigned expected, unsigned replacement) {
+  return loom::view::atomic::cmpxchg<
+      ordering::acq_rel, ordering::acquire, scope::device>(
+      expected, replacement, pointer);
+}
+```
+
+The atomic operations import directly as:
+
+```loom
+%cell = buffer.view %counter[%counter_byte_offset] : buffer -> view<1xi32>
+%ticket = view.atomic.rmw<addi> %increment, %cell[0] {ordering = relaxed, scope = device} : i32, view<1xi32> -> i32
+%old = view.atomic.cmpxchg %expected, %replacement, %cell[0] {failure_ordering = acquire, scope = device, success_ordering = acq_rel} : i32, view<1xi32> -> i32
+```
+
+`rmw<kind, ordering, scope>(value, pointer)` returns the old memory value.
+`reduce<kind, ordering, scope>(value, pointer)` performs an atomic update without
+a result. Integer kinds include exchange, addition, subtraction, bitwise
+AND/OR/XOR, and signed or unsigned minimum/maximum. Minimum/maximum signedness
+must agree with the source integer type; the High payload itself is signless.
+
+`cmpxchg<success, failure, scope>(expected, replacement, pointer)` returns the
+old value on both success and failure. It writes exactly when the old bits
+equal `expected`, without spurious failure or an output parameter. Failure
+ordering cannot release or be stronger than success ordering. The declaration
+binding validates this pair using the same contract as High IR.
+
+Pointers identify live, naturally aligned, non-boolean integer objects.
+Volatile pointers are accepted, and const destinations reject. These bindings
+preserve the chosen scope; the target diagnoses unsupported widths, memory
+spaces and synchronization contracts. For example, AMDGPU global storage uses
+device scope and workgroup storage uses workgroup scope. System-scope native
+publication requires a target provider and backing-memory contract that the
+current AMDGPU provider does not yet admit. Atomic load/store and standalone
+fence bindings likewise require their shared High contracts; an RMW or barrier
+does not substitute for them.
+
 ## Executable checks and benchmarks
 
 Include `<loomcxx/check.h>` to author a correctness case beside its implementation:

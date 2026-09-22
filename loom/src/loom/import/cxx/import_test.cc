@@ -273,13 +273,17 @@ TEST_F(ImportTest, RejectsUnknownLanguageStandard) {
 TEST_F(ImportTest, EmbeddedFacadeAndExternalProviderAgree) {
   const auto source = IREE_SV(
       "#include <hip/hip_runtime.h>\n#include <hip/hip_fp16.h>\n"
+      "#include <loomcxx/atomic.h>\n"
       "__global__ [[loom::workgroup_size(64, 1, 1), loom::workgroup_count(2, "
       "1, 1)]] "
       "void entry(const float* input, float* output) { "
       "unsigned index = blockIdx.x * blockDim.x + threadIdx.x; "
       "__builtin_assume(index < 128u); "
       "output[index] = fmaxf(__shfl_xor(__expf(input[index]), 1), 0.0f); }"
-      "__device__ float convert(half value) { return __half2float(value); }");
+      "__device__ float convert(half value) { return __half2float(value); }"
+      "unsigned claim(unsigned* pointer) { return loom::view::atomic::rmw<"
+      "loom::atomic::kind::addi, loom::atomic::ordering::relaxed, "
+      "loom::atomic::scope::device>(1u, pointer); }");
   IREE_ASSERT_OK(Import(source));
   if (loom::cxx_import::builtin_include_root().empty()) {
     EXPECT_EQ(module_, nullptr);
@@ -291,12 +295,14 @@ TEST_F(ImportTest, EmbeddedFacadeAndExternalProviderAgree) {
   EXPECT_NE(embedded.find("kernel.def @entry"), std::string::npos);
   EXPECT_NE(embedded.find("scalar.expf<afn>"), std::string::npos);
   EXPECT_NE(embedded.find("kernel.subgroup.shuffle"), std::string::npos);
+  EXPECT_NE(embedded.find("view.atomic.rmw<addi>"), std::string::npos);
 
   // The provider borrows the same immutable source bytes under an external
   // include root; preprocessing and binding resolution remain identical.
   for (const char* name :
        {"hip/hip_runtime.h", "hip/hip_fp16.h", "loomcxx/kernel.h",
-        "loomcxx/math.h", "loomcxx/scalar.h", "loomcxx/view.h"}) {
+        "loomcxx/atomic.h", "loomcxx/math.h", "loomcxx/scalar.h",
+        "loomcxx/view.h"}) {
     auto contents = loom::cxx_import::builtin_include(name);
     ASSERT_TRUE(contents.has_value());
     headers_[std::string("/edited/") + name] = *contents;

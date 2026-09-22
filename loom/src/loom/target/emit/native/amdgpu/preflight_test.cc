@@ -7,6 +7,7 @@
 #include "loom/target/emit/native/amdgpu/preflight.h"
 
 #include <string>
+#include <vector>
 
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
@@ -193,11 +194,14 @@ class AmdgpuNativePreflightTest : public ::testing::Test {
   }
 
   loom_low_allocation_table_t Allocation(
-      const loom_low_descriptor_set_t* descriptor_set) const {
+      const loom_low_descriptor_set_t* descriptor_set) {
+    physical_extents_.assign(descriptor_set->reg_class_count, 0);
     loom_low_allocation_table_t allocation = {};
     allocation.module = module_;
     allocation.function_op = function_op_;
     allocation.target = ResolvedTarget(descriptor_set);
+    allocation.physical_extents.ends_by_reg_class = physical_extents_.data();
+    allocation.physical_extents.count = physical_extents_.size();
     return allocation;
   }
 
@@ -210,6 +214,8 @@ class AmdgpuNativePreflightTest : public ::testing::Test {
   loom_builder_t body_builder_;
   // Complete AMDGPU facts matching the selected descriptor set.
   loom_amdgpu_target_facts_t target_facts_ = {};
+  // Allocation-owned extents, including move scratch and excluding fixed state.
+  std::vector<uint32_t> physical_extents_;
 };
 
 TEST_F(AmdgpuNativePreflightTest,
@@ -261,7 +267,7 @@ TEST_F(AmdgpuNativePreflightTest,
   EXPECT_EQ(emission.string_params[7], "AGPR kernel-descriptor");
 }
 
-TEST_F(AmdgpuNativePreflightTest, TtmpFixedLocationsDoNotIncreaseSgprMetadata) {
+TEST_F(AmdgpuNativePreflightTest, UsesCompleteRetainedRegisterExtents) {
   const loom_low_descriptor_set_t* descriptor_set =
       LookupAmdgpuGfx125xDescriptorSet();
   ASSERT_NE(descriptor_set, nullptr);
@@ -287,6 +293,9 @@ TEST_F(AmdgpuNativePreflightTest, TtmpFixedLocationsDoNotIncreaseSgprMetadata) {
   loom_low_allocation_table_t allocation = Allocation(descriptor_set);
   allocation.assignments = assignments;
   allocation.assignment_count = IREE_ARRAYSIZE(assignments);
+  physical_extents_[LOOM_AMDGPU_REG_CLASS_ID_SGPR] = 6;
+  // Parallel moves use v8 even though no SSA assignment names that temporary.
+  physical_extents_[LOOM_AMDGPU_REG_CLASS_ID_VGPR] = 9;
 
   loom_amdgpu_native_preflight_t preflight = {};
   IREE_ASSERT_OK(loom_amdgpu_native_preflight_analyze(
@@ -294,6 +303,7 @@ TEST_F(AmdgpuNativePreflightTest, TtmpFixedLocationsDoNotIncreaseSgprMetadata) {
 
   EXPECT_EQ(preflight.error_count, 0u);
   EXPECT_EQ(preflight.next_free_sgpr, 6u);
+  EXPECT_EQ(preflight.next_free_vgpr, 9u);
 }
 
 TEST_F(AmdgpuNativePreflightTest, StackStorageUnsupportedEmitsDiagnostic) {

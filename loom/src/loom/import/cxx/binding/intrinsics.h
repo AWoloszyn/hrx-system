@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <variant>
 
+#include "loom/import/cxx/binding/atomic.h"
 #include "loom/import/cxx/binding/scalar_bindings.h"
 #include "loom/import/cxx/binding/shaped.h"
 #include "loom/import/cxx/binding/view.h"
@@ -31,9 +32,9 @@ struct IntrinsicCallResult {
   std::optional<Value> value;
 };
 
-// Resolves annotated source declarations against scalar, shaped, and check
-// operation contracts at admission. Calls consume the retained binding
-// directly; typed builders consume the resulting trusted signature.
+// Resolves annotated source declarations against operation contracts at
+// admission. Calls consume the retained binding directly; typed builders
+// consume the resulting trusted signature.
 class Intrinsics {
  public:
   Intrinsics(cxx::TranslationUnit& unit, Diagnostics& diagnostics, Types& types)
@@ -57,8 +58,8 @@ class Intrinsics {
   // Emits an owned concrete operation using source-preserving argument values.
   IntrinsicCallResult call(cxx::FunctionSymbol* function,
                            std::span<const Value> arguments, ValueArena& arena,
-                           cxx::AST* owner, uint8_t math_flags,
-                           loom_builder_t* builder,
+                           Storage& storage, cxx::AST* owner,
+                           uint8_t math_flags, loom_builder_t* builder,
                            loom_location_id_t location);
 
  private:
@@ -83,7 +84,7 @@ class Intrinsics {
     }
   };
   using Binding = std::variant<ScalarBinding, ShapedIntrinsic, ViewIntrinsic,
-                               EqualityBinding>;
+                               AtomicIntrinsic, EqualityBinding>;
 
   Binding resolve(cxx::FunctionSymbol* function,
                   const cxx::Attribute& attribute, cxx::AST* owner);

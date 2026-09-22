@@ -1173,7 +1173,8 @@ iree_status_t loom_low_allocation_unit_liveness_propagate_storage_relations(
     const bool is_tied_result =
         relation->cause == LOOM_LOW_PLACEMENT_CAUSE_TIED_RESULT;
     const bool is_concat_part =
-        relation->cause == LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT;
+        relation->cause == LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT &&
+        loom_low_placement_relation_can_alias(relation);
     if (!is_tied_result && !is_concat_part) {
       continue;
     }

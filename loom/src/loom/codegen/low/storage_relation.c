@@ -113,7 +113,8 @@ static void loom_low_storage_relation_from_value_relation(
                                     LOOM_VALUE_RELATION_FLAG_TYPE_CHANGE),
                   "verified low tied result must not change storage type");
       cause = LOOM_LOW_STORAGE_RELATION_CAUSE_TIED_RESULT;
-      flags = LOOM_LOW_STORAGE_RELATION_FLAG_HARD;
+      flags = LOOM_LOW_STORAGE_RELATION_FLAG_HARD |
+              LOOM_LOW_STORAGE_RELATION_FLAG_WRITES_STORAGE;
       break;
     case LOOM_VALUE_RELATION_FACT_IDENTITY:
     case LOOM_VALUE_RELATION_VALUE_ALIAS:

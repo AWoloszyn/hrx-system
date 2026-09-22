@@ -735,6 +735,35 @@ loom_cc_library(
   PUBLIC
 )
 
+loom_cc_library(
+  NAME
+    destructive_reuse
+  HDRS
+    "destructive_reuse.h"
+  SRCS
+    "destructive_reuse.c"
+  DEPS
+    ::unit_liveness
+    iree::base
+    iree::base::internal::arena
+    loom::codegen::low::placement
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    destructive_reuse_test
+  SRCS
+    "destructive_reuse_test.cc"
+  DEPS
+    ::destructive_reuse
+    ::unit_liveness
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::codegen::low::placement
+)
+
 loom_cc_test(
   NAME
     unit_liveness_test

@@ -653,6 +653,31 @@ loom_cc_library(
     ],
 )
 
+loom_cc_library(
+    name = "destructive_reuse",
+    srcs = ["destructive_reuse.c"],
+    hdrs = ["destructive_reuse.h"],
+    deps = [
+        ":unit_liveness",
+        "//loom/src/loom/codegen/low:placement",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "destructive_reuse_test",
+    srcs = ["destructive_reuse_test.cc"],
+    deps = [
+        ":destructive_reuse",
+        ":unit_liveness",
+        "//loom/src/loom/codegen/low:placement",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
 loom_cc_test(
     name = "unit_liveness_test",
     srcs = ["unit_liveness_test.cc"],
