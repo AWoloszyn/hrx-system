@@ -85,6 +85,14 @@ class ValueRef:
             field="",
         )
 
+    @classmethod
+    def source_memory_root(cls) -> Self:
+        """Returns the storage root selected by source-memory analysis."""
+        return cls(
+            kind=SourceValueKind.SOURCE_MEMORY_ROOT,
+            field="",
+        )
+
     def validate(
         self,
         source_op: Op,
@@ -169,6 +177,18 @@ class ValueRef:
             if self.element != 0:
                 raise ValueError(
                     f"{source_op.name}: {subject} source-memory address must not "
+                    "select an element"
+                )
+            return
+        if self.kind == SourceValueKind.SOURCE_MEMORY_ROOT:
+            if self.field:
+                raise ValueError(
+                    f"{source_op.name}: {subject} source-memory root must not "
+                    "name a source field"
+                )
+            if self.element != 0:
+                raise ValueError(
+                    f"{source_op.name}: {subject} source-memory root must not "
                     "select an element"
                 )
             return

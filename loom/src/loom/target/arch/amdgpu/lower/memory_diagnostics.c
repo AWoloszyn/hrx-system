@@ -56,6 +56,8 @@ iree_string_view_t loom_amdgpu_memory_operation_name(
       return IREE_SV("atomic_load");
     case LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_STORE:
       return IREE_SV("atomic_store");
+    case LOOM_LOW_SOURCE_MEMORY_OPERATION_VIEW_CARRIER:
+      return IREE_SV("view_carrier");
     case LOOM_LOW_SOURCE_MEMORY_OPERATION_COUNT_:
       return IREE_SV("invalid");
   }

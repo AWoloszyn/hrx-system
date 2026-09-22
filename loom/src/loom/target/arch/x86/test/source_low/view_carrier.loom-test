@@ -1,0 +1,210 @@
+// RUN: emit source-low output=low
+
+x86.target<avx2> @target
+
+func.def target(@target) @distinct_root_cfg(%first: buffer, %second: buffer, %first_offset: offset, %second_offset: offset, %condition: i1) -> (i32) {
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %first_view = buffer.view %first[%first_offset] : buffer -> view<1xi32>
+  cfg.br ^join(%first_view: view<1xi32>)
+^right:
+  %second_view = buffer.view %second[%second_offset] : buffer -> view<1xi32>
+  cfg.br ^join(%second_view: view<1xi32>)
+^join(%selected: view<1xi32>):
+  %value = view.load %selected[0] : view<1xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @distinct_root_cfg(%first: reg<x86.gpr64>, %second: reg<x86.gpr64>, %first_offset: reg<x86.gpr64>, %second_offset: reg<x86.gpr64>, %condition: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
+  low.cond_br %condition, ^left, ^right : reg<x86.gpr32>
+^left:
+  %first_view = lea.add_scale %first, %first_offset {disp32 = 0, scale = 1}
+  low.br ^join(%first_view: reg<x86.gpr64>)
+^right:
+  %second_view = lea.add_scale %second, %second_offset {disp32 = 0, scale = 1}
+  low.br ^join(%second_view: reg<x86.gpr64>)
+^join(%selected: reg<x86.gpr64>):
+  %value = mov.load.gpr32 %selected {disp32 = 0}
+  return %value
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @distinct_root_loop(%first: buffer, %second: buffer, %first_offset: offset, %second_offset: offset, %count: index) -> (i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %first_view = buffer.view %first[%first_offset] : buffer -> view<1xi32>
+  %second_view = buffer.view %second[%second_offset] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index, %first_view: view<1xi32>)
+^header(%iteration: index, %selected: view<1xi32>):
+  %continue = index.cmp slt, %iteration, %count : index
+  cfg.cond_br %continue, ^body, ^exit
+^body:
+  %next = index.add %iteration, %step : index
+  cfg.br ^header(%next: index, %second_view: view<1xi32>)
+^exit:
+  %value = view.load %selected[0] : view<1xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @distinct_root_loop(%first: reg<x86.gpr64>, %second: reg<x86.gpr64>, %first_offset: reg<x86.gpr64>, %second_offset: reg<x86.gpr64>, %count: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %begin = mov.imm64 0
+  %first_view = lea.add_scale %first, %first_offset {disp32 = 0, scale = 1}
+  %second_view = lea.add_scale %second, %second_offset {disp32 = 0, scale = 1}
+  low.br ^header(%begin: reg<x86.gpr64>, %first_view: reg<x86.gpr64>)
+^header(%iteration: reg<x86.gpr64>, %selected: reg<x86.gpr64>):
+  %continue = cmp.slt.gpr64 %iteration, %count
+  low.cond_br %continue, ^body, ^exit : reg<x86.gpr32>
+^body:
+  %next = lea.disp %iteration {disp32 = 1}
+  low.br ^header(%next: reg<x86.gpr64>, %second_view: reg<x86.gpr64>)
+^exit:
+  %value = mov.load.gpr32 %selected {disp32 = 0}
+  return %value
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @dynamic_layout_subview_cfg(%first: buffer, %second: buffer, %first_base: offset, %second_base: offset, %column_count_input: index, %row_stride_input: index, %condition: i1) -> (i32) {
+  %column_count = index.assume %column_count_input [range(%column_count_input, 1, 64)] : index
+  %row_stride = index.assume %row_stride_input [range(%row_stride_input, 1, 1024)] : index
+  %layout = encoding.layout.strided [%row_stride, 1] : encoding<layout>
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %first_matrix = buffer.view %first[%first_base] : buffer -> view<2x[%column_count]xi32, %layout>
+  %first_row = view.subview %first_matrix[1, 0] : view<2x[%column_count]xi32, %layout> -> view<1x[%column_count]xi32, %layout>
+  cfg.br ^join(%first_row: view<1x[%column_count]xi32, %layout>)
+^right:
+  %second_matrix = buffer.view %second[%second_base] : buffer -> view<2x[%column_count]xi32, %layout>
+  %second_row = view.subview %second_matrix[1, 0] : view<2x[%column_count]xi32, %layout> -> view<1x[%column_count]xi32, %layout>
+  cfg.br ^join(%second_row: view<1x[%column_count]xi32, %layout>)
+^join(%selected: view<1x[%column_count]xi32, %layout>):
+  %refined = view.refine %selected : view<1x[%column_count]xi32, %layout> -> view<1x[%column_count]xi32, %layout>
+  %value = view.load %refined[0, 0] : view<1x[%column_count]xi32, %layout> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @dynamic_layout_subview_cfg(%first: reg<x86.gpr64>, %second: reg<x86.gpr64>, %first_base: reg<x86.gpr64>, %second_base: reg<x86.gpr64>, %column_count: reg<x86.gpr64>, %row_stride: reg<x86.gpr64>, %condition: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
+  low.cond_br %condition, ^left, ^right : reg<x86.gpr32>
+^left:
+  %27 = mov.imm64 4
+  %28 = copy %row_stride : reg<x86.gpr64> -> reg<x86.gpr64>
+  %29 = imul.gpr64 %28, %27
+  %30 = copy %first_base : reg<x86.gpr64> -> reg<x86.gpr64>
+  %31 = add.gpr64 %30, %29
+  %first_row = lea.add_scale %first, %31 {disp32 = 0, scale = 1}
+  low.br ^join(%first_row: reg<x86.gpr64>)
+^right:
+  %33 = mov.imm64 4
+  %34 = copy %row_stride : reg<x86.gpr64> -> reg<x86.gpr64>
+  %35 = imul.gpr64 %34, %33
+  %36 = copy %second_base : reg<x86.gpr64> -> reg<x86.gpr64>
+  %37 = add.gpr64 %36, %35
+  %second_row = lea.add_scale %second, %37 {disp32 = 0, scale = 1}
+  low.br ^join(%second_row: reg<x86.gpr64>)
+^join(%refined: reg<x86.gpr64>):
+  %value = mov.load.gpr32 %refined {disp32 = 0}
+  return %value
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @local_view_stays_folded(%input: buffer, %base: offset) -> (i32) {
+  %view = buffer.view %input[%base] : buffer -> view<1xi32>
+  %value = view.load %view[0] : view<1xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @local_view_stays_folded(%input: reg<x86.gpr64>, %base: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %value = mov.load.indexed.gpr32 %input, %base {disp32 = 0, scale = 1}
+  return %value
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @return_distinct_root_view(%first: buffer, %second: buffer, %first_offset: offset, %second_offset: offset, %condition: i1) -> (view<1xi32>) {
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %first_view = buffer.view %first[%first_offset] : buffer -> view<1xi32>
+  cfg.br ^join(%first_view: view<1xi32>)
+^right:
+  %second_view = buffer.view %second[%second_offset] : buffer -> view<1xi32>
+  cfg.br ^join(%second_view: view<1xi32>)
+^join(%selected: view<1xi32>):
+  func.return %selected : view<1xi32>
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @return_distinct_root_view(%first: reg<x86.gpr64>, %second: reg<x86.gpr64>, %first_offset: reg<x86.gpr64>, %second_offset: reg<x86.gpr64>, %condition: reg<x86.gpr32>) -> (reg<x86.gpr64>) asm {
+  low.cond_br %condition, ^left, ^right : reg<x86.gpr32>
+^left:
+  %first_view = lea.add_scale %first, %first_offset {disp32 = 0, scale = 1}
+  low.br ^join(%first_view: reg<x86.gpr64>)
+^right:
+  %second_view = lea.add_scale %second, %second_offset {disp32 = 0, scale = 1}
+  low.br ^join(%second_view: reg<x86.gpr64>)
+^join(%selected: reg<x86.gpr64>):
+  return %selected
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @wide_static_carrier(%first: buffer, %second: buffer, %condition: i1) -> (i32) {
+  %first_offset = index.constant 1099511627776 : offset
+  %second_offset = index.constant 1099511627780 : offset
+  %first_view = buffer.view %first[%first_offset] : buffer -> view<1xi32>
+  %second_view = buffer.view %second[%second_offset] : buffer -> view<1xi32>
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  cfg.br ^join(%first_view: view<1xi32>)
+^right:
+  cfg.br ^join(%second_view: view<1xi32>)
+^join(%selected: view<1xi32>):
+  %value = view.load %selected[0] : view<1xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @wide_static_carrier(%first: reg<x86.gpr64>, %second: reg<x86.gpr64>, %condition: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
+  %15 = mov.imm64 1099511627776
+  %first_view = lea %first, %15
+  %17 = mov.imm64 1099511627780
+  %second_view = lea %second, %17
+  low.cond_br %condition, ^left, ^right : reg<x86.gpr32>
+^left:
+  low.br ^join(%first_view: reg<x86.gpr64>)
+^right:
+  low.br ^join(%second_view: reg<x86.gpr64>)
+^join(%selected: reg<x86.gpr64>):
+  %value = mov.load.gpr32 %selected {disp32 = 0}
+  return %value
+}
+
+// ====
+
+x86.target<avx2> @target
+
+func.def target(@target) @load_view_argument(%input: view<1xi32>) -> (i32) {
+  %value = view.load %input[0] : view<1xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<x86.avx2.core>(@target) abi(object_function) @load_view_argument(%input: reg<x86.gpr64>) -> (reg<x86.gpr32>) asm {
+  %value = mov.load.gpr32 %input {disp32 = 0}
+  return %value
+}

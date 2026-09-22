@@ -41,8 +41,8 @@ low.func.def target<x86.avx2.core> abi(object_function) @derived_selection(%firs
   low.br ^_bb6(%pair_root: reg<x86.gpr64>, %57: reg<x86.gpr64>)
 ^_bb5:
   low.br ^_bb6(%third_aligned: reg<x86.gpr64>, %base2: reg<x86.gpr64>)
-^_bb6(%selected: reg<x86.gpr64>, %selected_offset: reg<x86.gpr64>):
-  %value = mov.load.indexed.gpr32 %selected, %selected_offset {disp32 = 0, scale = 1}
+^_bb6(%selected_root: reg<x86.gpr64>, %selected_offset: reg<x86.gpr64>):
+  %value = mov.load.indexed.gpr32 %selected_root, %selected_offset {disp32 = 0, scale = 1}
   return %value
 }
 
@@ -74,18 +74,18 @@ func.def @selection_with_side_effects(%first: buffer, %second: buffer, %third: b
 }
 
 // ----
-low.func.def target<x86.avx2.core> abi(object_function) @selection_with_side_effects(%first_view: reg<x86.gpr64>, %second_aligned: reg<x86.gpr64>, %third_view: reg<x86.gpr64>, %select_first: reg<x86.gpr32>, %select_pair: reg<x86.gpr32>, %enter: reg<x86.gpr32>, %side: reg<x86.gpr32>, %initial: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
+low.func.def target<x86.avx2.core> abi(object_function) @selection_with_side_effects(%first_aligned: reg<x86.gpr64>, %second_aligned: reg<x86.gpr64>, %third_aligned: reg<x86.gpr64>, %select_first: reg<x86.gpr32>, %select_pair: reg<x86.gpr32>, %enter: reg<x86.gpr32>, %side: reg<x86.gpr32>, %initial: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
   low.cond_br %enter, ^producer, ^exit : reg<x86.gpr32>
 ^producer:
-  mov.store.gpr32 %initial, %third_view {disp32 = 0}
+  mov.store.gpr32 %initial, %third_aligned {disp32 = 0}
   low.cond_br %side, ^_bb2, ^_bb3 : reg<x86.gpr32>
 ^_bb2:
-  mov.store.gpr32 %initial, %first_view {disp32 = 0}
+  mov.store.gpr32 %initial, %first_aligned {disp32 = 0}
   low.br ^_bb3
 ^_bb3:
   low.cond_br %select_first, ^_bb4, ^_bb5 : reg<x86.gpr32>
 ^_bb4:
-  low.br ^_bb6(%first_view: reg<x86.gpr64>)
+  low.br ^_bb6(%first_aligned: reg<x86.gpr64>)
 ^_bb5:
   low.br ^_bb6(%second_aligned: reg<x86.gpr64>)
 ^_bb6(%pair_root: reg<x86.gpr64>):
@@ -93,9 +93,9 @@ low.func.def target<x86.avx2.core> abi(object_function) @selection_with_side_eff
 ^_bb7:
   low.br ^_bb9(%pair_root: reg<x86.gpr64>)
 ^_bb8:
-  low.br ^_bb9(%third_view: reg<x86.gpr64>)
-^_bb9(%selected: reg<x86.gpr64>):
-  %result = mov.load.gpr32 %selected {disp32 = 0}
+  low.br ^_bb9(%third_aligned: reg<x86.gpr64>)
+^_bb9(%selected_root: reg<x86.gpr64>):
+  %result = mov.load.gpr32 %selected_root {disp32 = 0}
   return %result
 ^exit:
   return %initial

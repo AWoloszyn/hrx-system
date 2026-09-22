@@ -946,6 +946,7 @@ loom_cc_library(
     loom::analysis::view_regions
     loom::ir
     loom::ir::facts
+    loom::ops::buffer
     loom::ops::kernel
     loom::ops::vector
     loom::ops::view

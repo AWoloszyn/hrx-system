@@ -16,11 +16,11 @@ func.def @copy_narrow_static(%input: buffer, %output: buffer) {
 }
 
 // ----
-low.func.def target<x86.scalar.core> abi(object_function) @copy_narrow_static(%source_words: reg<x86.gpr64>, %destination_words: reg<x86.gpr64>) asm {
-  %byte = movzx.load.u8.gpr32 %source_words {disp32 = 3}
-  %word = movzx.load.u16.gpr32 %source_words {disp32 = 5}
-  mov.store.u8.gpr32 %byte, %destination_words {disp32 = 3}
-  mov.store.u16.gpr32 %word, %destination_words {disp32 = 5}
+low.func.def target<x86.scalar.core> abi(object_function) @copy_narrow_static(%input: reg<x86.gpr64>, %output: reg<x86.gpr64>) asm {
+  %byte = movzx.load.u8.gpr32 %input {disp32 = 3}
+  %word = movzx.load.u16.gpr32 %input {disp32 = 5}
+  mov.store.u8.gpr32 %byte, %output {disp32 = 3}
+  mov.store.u16.gpr32 %word, %output {disp32 = 5}
   return
 }
 
@@ -42,11 +42,11 @@ func.def @copy_narrow_index(%input: buffer, %output: buffer, %element: index) {
 }
 
 // ----
-low.func.def target<x86.scalar.core> abi(object_function) @copy_narrow_index(%source_words: reg<x86.gpr64>, %destination_words: reg<x86.gpr64>, %position: reg<x86.gpr64>) asm {
-  %byte = movzx.load.indexed.u8.gpr32 %source_words, %position {disp32 = 1, scale = 1}
-  %word = movzx.load.indexed.u16.gpr32 %source_words, %position {disp32 = 33, scale = 2}
-  mov.store.indexed.u8.gpr32 %byte, %destination_words, %position {disp32 = 1, scale = 1}
-  mov.store.indexed.u16.gpr32 %word, %destination_words, %position {disp32 = 33, scale = 2}
+low.func.def target<x86.scalar.core> abi(object_function) @copy_narrow_index(%input: reg<x86.gpr64>, %output: reg<x86.gpr64>, %position: reg<x86.gpr64>) asm {
+  %byte = movzx.load.indexed.u8.gpr32 %input, %position {disp32 = 1, scale = 1}
+  %word = movzx.load.indexed.u16.gpr32 %input, %position {disp32 = 33, scale = 2}
+  mov.store.indexed.u8.gpr32 %byte, %output, %position {disp32 = 1, scale = 1}
+  mov.store.indexed.u16.gpr32 %word, %output, %position {disp32 = 33, scale = 2}
   return
 }
 
@@ -69,24 +69,24 @@ func.def @copy_narrow_origin(%input: buffer, %output: buffer, %byte_offset: offs
 }
 
 // ----
-low.func.def target<x86.scalar.core> abi(object_function) @copy_narrow_origin(%source_words: reg<x86.gpr64>, %destination_words: reg<x86.gpr64>, %base: reg<x86.gpr64>, %position: reg<x86.gpr64>) asm {
+low.func.def target<x86.scalar.core> abi(object_function) @copy_narrow_origin(%input: reg<x86.gpr64>, %output: reg<x86.gpr64>, %base: reg<x86.gpr64>, %position: reg<x86.gpr64>) asm {
   %18 = copy %base : reg<x86.gpr64> -> reg<x86.gpr64>
   %19 = add.gpr64 %18, %position
-  %byte = movzx.load.indexed.u8.gpr32<volatile> %source_words, %19 {disp32 = 0, scale = 1}
+  %byte = movzx.load.indexed.u8.gpr32<volatile> %input, %19 {disp32 = 0, scale = 1}
   %21 = mov.imm64 2
   %22 = copy %position : reg<x86.gpr64> -> reg<x86.gpr64>
   %23 = imul.gpr64 %22, %21
   %24 = copy %base : reg<x86.gpr64> -> reg<x86.gpr64>
   %25 = add.gpr64 %24, %23
-  %word = movzx.load.indexed.u16.gpr32<volatile> %source_words, %25 {disp32 = 33, scale = 1}
+  %word = movzx.load.indexed.u16.gpr32<volatile> %input, %25 {disp32 = 33, scale = 1}
   %27 = copy %base : reg<x86.gpr64> -> reg<x86.gpr64>
   %28 = add.gpr64 %27, %position
-  mov.store.indexed.u8.gpr32<volatile> %byte, %destination_words, %28 {disp32 = 0, scale = 1}
+  mov.store.indexed.u8.gpr32<volatile> %byte, %output, %28 {disp32 = 0, scale = 1}
   %30 = copy %position : reg<x86.gpr64> -> reg<x86.gpr64>
   %31 = imul.gpr64 %30, %21
   %32 = copy %base : reg<x86.gpr64> -> reg<x86.gpr64>
   %33 = add.gpr64 %32, %31
-  mov.store.indexed.u16.gpr32<volatile> %word, %destination_words, %33 {disp32 = 33, scale = 1}
+  mov.store.indexed.u16.gpr32<volatile> %word, %output, %33 {disp32 = 33, scale = 1}
   return
 }
 
@@ -110,12 +110,12 @@ func.def @copy_narrow_stride(%input: buffer, %output: buffer, %column_count: ind
 }
 
 // ----
-low.func.def target<x86.scalar.core> abi(object_function) @copy_narrow_stride(%source_words: reg<x86.gpr64>, %destination_words: reg<x86.gpr64>, %columns: reg<x86.gpr64>, %row: reg<x86.gpr64>, %column: reg<x86.gpr64>) asm {
+low.func.def target<x86.scalar.core> abi(object_function) @copy_narrow_stride(%input: reg<x86.gpr64>, %output: reg<x86.gpr64>, %columns: reg<x86.gpr64>, %row: reg<x86.gpr64>, %column: reg<x86.gpr64>) asm {
   %21 = copy %row : reg<x86.gpr64> -> reg<x86.gpr64>
   %22 = imul.gpr64 %21, %columns
   %23 = copy %22 : reg<x86.gpr64> -> reg<x86.gpr64>
   %24 = add.gpr64 %23, %column
-  %byte = movzx.load.indexed.u8.gpr32 %source_words, %24 {disp32 = 1, scale = 1}
+  %byte = movzx.load.indexed.u8.gpr32 %input, %24 {disp32 = 1, scale = 1}
   %26 = copy %row : reg<x86.gpr64> -> reg<x86.gpr64>
   %27 = imul.gpr64 %26, %columns
   %28 = mov.imm64 2
@@ -125,12 +125,12 @@ low.func.def target<x86.scalar.core> abi(object_function) @copy_narrow_stride(%s
   %33 = imul.gpr64 %32, %28
   %34 = copy %30 : reg<x86.gpr64> -> reg<x86.gpr64>
   %35 = add.gpr64 %34, %33
-  %word = movzx.load.indexed.u16.gpr32 %source_words, %35 {disp32 = 65, scale = 1}
+  %word = movzx.load.indexed.u16.gpr32 %input, %35 {disp32 = 65, scale = 1}
   %37 = copy %row : reg<x86.gpr64> -> reg<x86.gpr64>
   %38 = imul.gpr64 %37, %columns
   %39 = copy %38 : reg<x86.gpr64> -> reg<x86.gpr64>
   %40 = add.gpr64 %39, %column
-  mov.store.indexed.u8.gpr32 %byte, %destination_words, %40 {disp32 = 1, scale = 1}
+  mov.store.indexed.u8.gpr32 %byte, %output, %40 {disp32 = 1, scale = 1}
   %41 = copy %row : reg<x86.gpr64> -> reg<x86.gpr64>
   %42 = imul.gpr64 %41, %columns
   %44 = copy %42 : reg<x86.gpr64> -> reg<x86.gpr64>
@@ -139,7 +139,7 @@ low.func.def target<x86.scalar.core> abi(object_function) @copy_narrow_stride(%s
   %48 = imul.gpr64 %47, %28
   %49 = copy %45 : reg<x86.gpr64> -> reg<x86.gpr64>
   %50 = add.gpr64 %49, %48
-  mov.store.indexed.u16.gpr32 %word, %destination_words, %50 {disp32 = 65, scale = 1}
+  mov.store.indexed.u16.gpr32 %word, %output, %50 {disp32 = 65, scale = 1}
   return
 }
 
@@ -160,11 +160,11 @@ func.def @exchange_narrow(%buffer: buffer, %byte_value: i8, %word_value: i16) ->
 }
 
 // ----
-low.func.def target<x86.scalar.core> abi(object_function) @exchange_narrow(%words: reg<x86.gpr64>, %byte_value: reg<x86.gpr32>, %word_value: reg<x86.gpr32>) -> (reg<x86.gpr32>, reg<x86.gpr32>) asm {
-  %previous_byte = movzx.load.u8.gpr32 %words {disp32 = 0}
-  %previous_word = movzx.load.u16.gpr32 %words {disp32 = 1}
-  mov.store.u8.gpr32 %byte_value, %words {disp32 = 0}
-  mov.store.u16.gpr32 %word_value, %words {disp32 = 1}
+low.func.def target<x86.scalar.core> abi(object_function) @exchange_narrow(%buffer: reg<x86.gpr64>, %byte_value: reg<x86.gpr32>, %word_value: reg<x86.gpr32>) -> (reg<x86.gpr32>, reg<x86.gpr32>) asm {
+  %previous_byte = movzx.load.u8.gpr32 %buffer {disp32 = 0}
+  %previous_word = movzx.load.u16.gpr32 %buffer {disp32 = 1}
+  mov.store.u8.gpr32 %byte_value, %buffer {disp32 = 0}
+  mov.store.u16.gpr32 %word_value, %buffer {disp32 = 1}
   %20 = copy %previous_byte : reg<x86.gpr32> -> reg<x86.gpr32>
   %byte_bits = and.imm.gpr32 %20 {imm32 = 255}
   %22 = copy %previous_word : reg<x86.gpr32> -> reg<x86.gpr32>

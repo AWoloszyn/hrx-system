@@ -40,8 +40,8 @@ func.def @constant_remainder_loaded(%input: buffer) -> (i32, index) {
 }
 
 // ----
-low.func.def target<x86.avx2.core> abi(object_function) @constant_remainder_loaded(%input_view: reg<x86.gpr64>) -> (reg<x86.gpr32>, reg<x86.gpr64>) asm {
-  %value = mov.load.gpr32 %input_view {disp32 = 0}
+low.func.def target<x86.avx2.core> abi(object_function) @constant_remainder_loaded(%aligned_input: reg<x86.gpr64>) -> (reg<x86.gpr32>, reg<x86.gpr64>) asm {
+  %value = mov.load.gpr32 %aligned_input {disp32 = 0}
   %18 = copy %value : reg<x86.gpr32> -> reg<x86.gpr32>
   %19 = movzx.gpr64.gpr32 %18
   %20 = mov.imm64 2863311531

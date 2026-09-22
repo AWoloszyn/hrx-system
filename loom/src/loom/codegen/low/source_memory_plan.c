@@ -14,6 +14,7 @@
 #include "loom/codegen/low/memory_access.h"
 #include "loom/ir/facts.h"
 #include "loom/ir/module.h"
+#include "loom/ops/buffer/ops.h"
 #include "loom/ops/kernel/ops.h"
 #include "loom/ops/vector/ops.h"
 #include "loom/ops/view/ops.h"
@@ -1679,11 +1680,13 @@ static bool loom_low_source_memory_access_plan_build_byte_offset_impl(
 static void loom_low_source_memory_access_retain_semantics(
     loom_memory_access_t access, loom_low_source_memory_access_plan_t* plan) {
   plan->access_flags = loom_memory_access_flags(access);
-  if (!loom_memory_access_operation_kind_is_atomic(plan->operation_kind)) {
+  const loom_memory_access_operation_kind_t operation_kind =
+      (loom_memory_access_operation_kind_t)plan->operation_kind;
+  if (!loom_memory_access_operation_kind_is_atomic(operation_kind)) {
     return;
   }
   const bool is_cmpxchg =
-      plan->operation_kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_CMPXCHG;
+      operation_kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_CMPXCHG;
   plan->atomic.ordering = loom_attr_as_enum(
       is_cmpxchg ? loom_memory_access_atomic_success_ordering(access)
                  : loom_memory_access_atomic_ordering(access));
@@ -1707,6 +1710,16 @@ bool loom_low_source_memory_access_plan_build(
 
   loom_memory_access_t access = loom_memory_access_cast(module, source_op);
   if (!loom_memory_access_isa(access)) {
+    loom_value_id_t carrier_view_value_id = LOOM_VALUE_ID_INVALID;
+    if (loom_buffer_view_isa(source_op)) {
+      carrier_view_value_id = loom_buffer_view_result(source_op);
+    } else if (loom_view_subview_isa(source_op)) {
+      carrier_view_value_id = loom_view_subview_result(source_op);
+    }
+    if (carrier_view_value_id != LOOM_VALUE_ID_INVALID) {
+      return loom_low_source_memory_access_plan_build_view_origin(
+          view_regions, carrier_view_value_id, out_plan, out_diagnostic);
+    }
     out_diagnostic->rejection_bits |=
         LOOM_LOW_SOURCE_MEMORY_ACCESS_REJECTION_UNSUPPORTED_OP;
     return false;
@@ -1779,6 +1792,38 @@ bool loom_low_source_memory_access_plan_build_indexed(
   return loom_low_source_memory_access_plan_build_indexed_impl(
       view_regions, operation_kind, view_value_id, dynamic_indices,
       static_indices, vector_type, cache_policy, out_plan, out_diagnostic);
+}
+
+bool loom_low_source_memory_access_plan_build_view_origin(
+    const loom_view_region_table_t* view_regions, loom_value_id_t view_value_id,
+    loom_low_source_memory_access_plan_t* out_plan,
+    loom_low_source_memory_access_diagnostic_t* out_diagnostic) {
+  *out_plan = (loom_low_source_memory_access_plan_t){0};
+  *out_diagnostic = (loom_low_source_memory_access_diagnostic_t){0};
+  const loom_module_t* module = view_regions->expression_context->module;
+  if (view_value_id >= module->values.count) {
+    out_diagnostic->rejection_bits |=
+        LOOM_LOW_SOURCE_MEMORY_ACCESS_REJECTION_VIEW_SOURCE;
+    return false;
+  }
+
+  const loom_type_t view_type = loom_module_value_type(module, view_value_id);
+  if (!loom_type_is_view(view_type)) {
+    out_diagnostic->rejection_bits |=
+        LOOM_LOW_SOURCE_MEMORY_ACCESS_REJECTION_VIEW_SOURCE;
+    return false;
+  }
+  const loom_type_t vector_type =
+      loom_low_source_memory_element_vector_type(view_type);
+  int64_t zero_indices[LOOM_ENCODING_ADDRESS_LAYOUT_MAX_RANK] = {0};
+  const loom_attribute_t static_indices =
+      loom_attr_i64_array(zero_indices, loom_type_rank(view_type));
+  const loom_vector_memory_cache_policy_t cache_policy = {0};
+  return loom_low_source_memory_access_plan_from_components(
+      view_regions, LOOM_LOW_SOURCE_MEMORY_OPERATION_VIEW_CARRIER,
+      view_value_id, (loom_value_slice_t){0}, static_indices, view_type,
+      vector_type, /*whole_view=*/false, cache_policy, out_plan,
+      out_diagnostic);
 }
 
 bool loom_low_source_memory_access_plan_build_view(

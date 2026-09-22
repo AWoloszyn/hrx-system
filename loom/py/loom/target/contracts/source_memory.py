@@ -33,6 +33,7 @@ class SourceMemoryOperation(Enum):
     ATOMIC_REDUCE = "atomic_reduce"
     ATOMIC_RMW = "atomic_rmw"
     ATOMIC_CMPXCHG = "atomic_cmpxchg"
+    VIEW_CARRIER = "view_carrier"
 
 
 @unique

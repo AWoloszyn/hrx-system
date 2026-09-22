@@ -33,26 +33,29 @@ typedef struct loom_view_region_table_t loom_view_region_table_t;
 
 #define LOOM_LOW_SOURCE_MEMORY_ACCESS_BYTE_SHIFT_NONE UINT32_MAX
 
-typedef loom_memory_access_operation_kind_t
-    loom_low_source_memory_operation_kind_t;
+typedef uint8_t loom_low_source_memory_operation_kind_t;
 
-#define LOOM_LOW_SOURCE_MEMORY_OPERATION_LOAD LOOM_MEMORY_ACCESS_OPERATION_LOAD
-#define LOOM_LOW_SOURCE_MEMORY_OPERATION_STORE \
-  LOOM_MEMORY_ACCESS_OPERATION_STORE
-#define LOOM_LOW_SOURCE_MEMORY_OPERATION_PREFETCH \
-  LOOM_MEMORY_ACCESS_OPERATION_PREFETCH
-#define LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_REDUCE \
-  LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_REDUCE
-#define LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_RMW \
-  LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_RMW
-#define LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_CMPXCHG \
-  LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_CMPXCHG
-#define LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_LOAD \
-  LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD
-#define LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_STORE \
-  LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_STORE
-#define LOOM_LOW_SOURCE_MEMORY_OPERATION_COUNT_ \
-  LOOM_MEMORY_ACCESS_OPERATION_COUNT_
+enum loom_low_source_memory_operation_kind_e {
+  // MemoryAccess interface operation kinds retain their canonical ordinals.
+  LOOM_LOW_SOURCE_MEMORY_OPERATION_LOAD = LOOM_MEMORY_ACCESS_OPERATION_LOAD,
+  LOOM_LOW_SOURCE_MEMORY_OPERATION_STORE = LOOM_MEMORY_ACCESS_OPERATION_STORE,
+  LOOM_LOW_SOURCE_MEMORY_OPERATION_PREFETCH =
+      LOOM_MEMORY_ACCESS_OPERATION_PREFETCH,
+  LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_REDUCE =
+      LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_REDUCE,
+  LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_RMW =
+      LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_RMW,
+  LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_CMPXCHG =
+      LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_CMPXCHG,
+  LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_LOAD =
+      LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD,
+  LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_STORE =
+      LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_STORE,
+  // Produces the complete address of a view without performing memory IO.
+  LOOM_LOW_SOURCE_MEMORY_OPERATION_VIEW_CARRIER =
+      LOOM_MEMORY_ACCESS_OPERATION_COUNT_,
+  LOOM_LOW_SOURCE_MEMORY_OPERATION_COUNT_,
+};
 
 typedef enum loom_low_source_memory_dynamic_index_source_e {
   // The access has no dynamic index.
@@ -389,6 +392,17 @@ bool loom_low_source_memory_access_plan_build_indexed(
     loom_value_id_t view_value_id, loom_value_slice_t dynamic_indices,
     loom_attribute_t static_indices, loom_type_t vector_type,
     loom_vector_memory_cache_policy_t cache_policy,
+    loom_low_source_memory_access_plan_t* out_plan,
+    loom_low_source_memory_access_diagnostic_t* out_diagnostic);
+
+// Builds the complete root-relative address plan for a typed view origin.
+//
+// Unlike whole-view planning, this describes one logical element at the view
+// origin. Dynamic shapes and arbitrary valid strides therefore do not need a
+// contiguous-footprint proof. The resulting plan retains every dynamic term
+// needed to materialize the view's complete address.
+bool loom_low_source_memory_access_plan_build_view_origin(
+    const loom_view_region_table_t* view_regions, loom_value_id_t view_value_id,
     loom_low_source_memory_access_plan_t* out_plan,
     loom_low_source_memory_access_diagnostic_t* out_diagnostic);
 

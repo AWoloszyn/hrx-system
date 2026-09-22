@@ -17,8 +17,8 @@ func.def @copy_wide_origin_vectors(%input: buffer, %output: buffer, %byte_offset
 }
 
 // ----
-CHECK: * = mov.load.indexed.gpr32 %source_view, %destination_offset {disp32 = 64, scale = 1}
-CHECK: mov.store.indexed.gpr32 *, %destination_view, %destination_offset {disp32 = 60, scale = 1}
+CHECK: * = mov.load.indexed.gpr32 %source, %destination_offset {disp32 = 64, scale = 1}
+CHECK: mov.store.indexed.gpr32 *, %destination, %destination_offset {disp32 = 60, scale = 1}
 
 // ====
 
@@ -38,8 +38,8 @@ func.def @copy_wide_origin_scalar(%input: buffer, %output: buffer, %byte_offset_
 }
 
 // ----
-CHECK: %value = mov.load.indexed.gpr32 %source_view, %destination_offset {disp32 = 64, scale = 1}
-CHECK: mov.store.indexed.gpr32 %value, %destination_view, %destination_offset {disp32 = 0, scale = 1}
+CHECK: %value = mov.load.indexed.gpr32 %source, %destination_offset {disp32 = 64, scale = 1}
+CHECK: mov.store.indexed.gpr32 %value, %destination, %destination_offset {disp32 = 0, scale = 1}
 
 // ====
 
@@ -57,8 +57,8 @@ func.def @exchange_wide_origin(%buffer: buffer, %base_input: i64, %position_inpu
 }
 
 // ----
-CHECK: %previous = mov.load.indexed.gpr32 %view, * {disp32 = 16, scale = 1}
-CHECK: mov.store.indexed.gpr32 %value, %view, * {disp32 = 16, scale = 1}
+CHECK: %previous = mov.load.indexed.gpr32 %aligned_buffer, * {disp32 = 16, scale = 1}
+CHECK: mov.store.indexed.gpr32 %value, %aligned_buffer, * {disp32 = 16, scale = 1}
 
 // ====
 
@@ -79,5 +79,5 @@ func.def @exchange_signed_coordinate(%buffer: buffer, %base_input: offset, %posi
 
 // ----
 CHECK: * = movsxd.gpr64.gpr32 %signed_position
-CHECK: %previous = mov.load.indexed.gpr32 %view, * {disp32 = 48, scale = 1}
-CHECK: mov.store.indexed.gpr32 %value, %view, * {disp32 = 48, scale = 1}
+CHECK: %previous = mov.load.indexed.gpr32 %aligned_buffer, * {disp32 = 48, scale = 1}
+CHECK: mov.store.indexed.gpr32 %value, %aligned_buffer, * {disp32 = 48, scale = 1}

@@ -185,6 +185,7 @@ static bool loom_low_lower_rule_value_ref_source_value(
     case LOOM_LOW_LOWER_VALUE_REF_SOURCE_MEMORY_DYNAMIC_BYTE_OFFSET:
       return false;
     case LOOM_LOW_LOWER_VALUE_REF_SOURCE_MEMORY_ADDRESS:
+    case LOOM_LOW_LOWER_VALUE_REF_SOURCE_MEMORY_ROOT:
       return false;
     default:
       IREE_ASSERT_UNREACHABLE("unknown source-low value ref kind");
@@ -200,6 +201,7 @@ static bool loom_low_lower_rule_value_ref_uses_source_memory_plan(
     case LOOM_LOW_LOWER_VALUE_REF_SOURCE_MEMORY_DYNAMIC_TERM:
     case LOOM_LOW_LOWER_VALUE_REF_SOURCE_MEMORY_DYNAMIC_BYTE_OFFSET:
     case LOOM_LOW_LOWER_VALUE_REF_SOURCE_MEMORY_ADDRESS:
+    case LOOM_LOW_LOWER_VALUE_REF_SOURCE_MEMORY_ROOT:
       return true;
     default:
       return false;
@@ -309,6 +311,14 @@ static void loom_low_lower_mark_rule_storage_demands(
          operand_ordinal < emit->operand_ref_count; ++operand_ordinal) {
       const uint16_t value_ref_index =
           (uint16_t)(emit->operand_ref_start + operand_ordinal);
+      const loom_low_lower_value_ref_t* value_ref =
+          &rule_set->value_refs[value_ref_index];
+      if (value_ref->kind == LOOM_LOW_LOWER_VALUE_REF_SOURCE_MEMORY_ROOT) {
+        IREE_ASSERT(selected_plan->source_memory_access != NULL);
+        loom_low_lower_mark_value_storage_required(
+            context, selected_plan->source_memory_access->root_value_id);
+        continue;
+      }
       loom_value_id_t source_value_id = LOOM_VALUE_ID_INVALID;
       if (loom_low_lower_rule_value_ref_source_value(
               context, selected_plan, value_ref_index, &source_value_id)) {

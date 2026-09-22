@@ -27,7 +27,10 @@ from loom.dsl import Op
 from loom.target.arch.x86.contracts.integer_division import (
     unsigned_constant_division_rules,
 )
-from loom.target.arch.x86.contracts.memory import x86_scalar_memory_rules
+from loom.target.arch.x86.contracts.memory import (
+    x86_scalar_memory_rules,
+    x86_view_carrier_rules,
+)
 from loom.target.arch.x86.descriptors import X86_SCALAR_DESCRIPTOR_SET
 from loom.target.contracts import (
     AttrProject,
@@ -424,18 +427,11 @@ def _integer_compare_rule(
 
 
 def _view_alias_rules() -> Iterable[ValueAliasRule]:
-    # The retained memory plan owns every byte origin; view values carry only
-    # the underlying resource identity.
-    for source_op, operand in (
-        (buffer.buffer_view, "buffer"),
-        (view.view_subview, "source"),
-        (view.view_refine, "source"),
-    ):
-        yield ValueAliasRule(
-            source_op=source_op,
-            source=ValueRef.operand(operand),
-            result=ValueRef.result("result"),
-        )
+    yield ValueAliasRule(
+        source_op=view.view_refine,
+        source=ValueRef.operand("source"),
+        result=ValueRef.result("result"),
+    )
 
 
 def _buffer_load_i8_u_rule(
@@ -915,6 +911,9 @@ def _madd_address_rules(
 def _cases() -> Sequence[ContractCase]:
     descriptor_lookup = _descriptor
     return (
+        *x86_view_carrier_rules(
+            descriptor_lookup, diagnostic=_SOURCE_MEMORY_DIAGNOSTIC
+        ),
         *_view_alias_rules(),
         _buffer_load_i8_u_rule(descriptor_lookup),
         _buffer_store_i8_rule(descriptor_lookup),
