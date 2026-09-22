@@ -1,0 +1,21 @@
+// RUN: pass target=vm:core specialize-target-callgraph,decompose-view-boundaries,dce,decompose-view-root-selections,dce,scf-to-cfg,cfg-simplify,canonicalize,cse,branch-sink
+
+func.def noinline @identity(%input: view<1xi32>) -> (view<1xi32>) {
+  func.return %input : view<1xi32>
+}
+
+func.def public @caller(%storage: buffer, %offset: offset) -> (view<1xi32>) {
+  %input = buffer.view %storage[%offset] : buffer -> view<1xi32>
+  %result = test.invoke @identity(%input) : (view<1xi32>) -> (view<1xi32>)
+  func.return %result : view<1xi32>
+}
+
+// ----
+func.def noinline @identity(%input_root: buffer, %input_offset: offset) -> (buffer, offset) {
+  func.return %input_root, %input_offset : buffer, offset
+}
+
+func.def public @caller(%storage: buffer, %offset: offset) -> (buffer, offset) {
+  %result_root, %result_offset = test.invoke @identity(%storage, %offset) : (buffer, offset) -> (buffer, offset)
+  func.return %result_root, %result_offset : buffer, offset
+}

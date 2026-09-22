@@ -13,6 +13,7 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "boundary_transport.loom-test"
     "linearize_view_accesses.loom-test"
     "load_coalescing.loom-test"
     "root_selection.loom-test"

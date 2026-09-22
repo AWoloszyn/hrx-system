@@ -51,6 +51,7 @@
 #include "loom/transforms/vector/memory_footprint.h"
 #include "loom/transforms/vector/sink_single_use_reads.h"
 #include "loom/transforms/vector/to_scalar.h"
+#include "loom/transforms/view/boundary_transport.h"
 #include "loom/transforms/view/linearize_view_accesses.h"
 #include "loom/transforms/view/transport.h"
 
@@ -321,8 +322,8 @@ static const loom_pass_option_schema_t kTemplateSelectionOptionSchema[] = {
     },
 };
 
-static const loom_pass_requirement_def_t
-    kTargetCallgraphSpecializationRequirements[] = {
+static const loom_pass_requirement_def_t kMutableFunctionVersionRequirements[] =
+    {
         {
             .capability_type = &loom_target_pass_capability_type,
             .key = IREE_SVL(
@@ -389,6 +390,14 @@ static const loom_pass_descriptor_t kBuiltinPassDescriptors[] = {
         .key = IREE_SVL("decompose-scf-layout-transports"),
         .info = loom_decompose_scf_layout_transports_pass_info,
         .function_run = loom_decompose_scf_layout_transports_run,
+    },
+    {
+        .key = IREE_SVL("decompose-view-boundaries"),
+        .info = loom_decompose_view_boundaries_pass_info,
+        .module_run = loom_decompose_view_boundaries_run,
+        .requirement_defs = kMutableFunctionVersionRequirements,
+        .requirement_count =
+            IREE_ARRAYSIZE(kMutableFunctionVersionRequirements),
     },
     {
         .key = IREE_SVL("decompose-view-root-selections"),
@@ -565,9 +574,9 @@ static const loom_pass_descriptor_t kBuiltinPassDescriptors[] = {
         .key = IREE_SVL("specialize-target-callgraph"),
         .info = loom_target_callgraph_specialization_pass_info,
         .module_run = loom_target_callgraph_specialization_run,
-        .requirement_defs = kTargetCallgraphSpecializationRequirements,
+        .requirement_defs = kMutableFunctionVersionRequirements,
         .requirement_count =
-            IREE_ARRAYSIZE(kTargetCallgraphSpecializationRequirements),
+            IREE_ARRAYSIZE(kMutableFunctionVersionRequirements),
     },
     {
         .key = IREE_SVL("sroa-vector-banks"),

@@ -78,6 +78,15 @@ typedef enum loom_target_low_call_policy_e {
   LOOM_TARGET_LOW_CALL_POLICY_REQUIRE_INLINE = 1,
 } loom_target_low_call_policy_t;
 
+// Physical representation policy for source view values that survive across
+// function and CFG boundaries.
+typedef enum loom_target_view_boundary_carrier_e {
+  // Preserve one semantic view value for target-selected direct lowering.
+  LOOM_TARGET_VIEW_BOUNDARY_CARRIER_DIRECT = 0,
+  // Expand the view into its materializing buffer and root-relative offset.
+  LOOM_TARGET_VIEW_BOUNDARY_CARRIER_BUFFER_OFFSET = 1,
+} loom_target_view_boundary_carrier_t;
+
 // Selects Low call policy for one caller's resolved target context.
 //
 // The query is intentionally per resolved caller rather than per module: one
@@ -328,6 +337,9 @@ struct loom_target_provider_t {
   // calls. A REQUIRE_INLINE result applies before source-to-Low as well as to
   // retained Low edges; it is an emission requirement, not an authored hint.
   loom_target_select_low_call_policy_fn_t select_low_call_policy;
+  // Physical carrier requested for source views that remain at retained
+  // function or CFG boundaries after common-root transport.
+  loom_target_view_boundary_carrier_t view_boundary_carrier;
   // Target-family fact representation owned by this provider. This is required
   // for providers with authored target definitions but no structured profile.
   // When |profile_type| is also present, both must name the same fact type.
