@@ -7,8 +7,6 @@
 #include "loom/target/arch/amdgpu/planning/wait_packet_tables.h"
 
 #include "iree/base/bitfield.h"
-#include "loom/ir/module.h"
-#include "loom/ops/low/ops.h"
 #include "loom/target/arch/amdgpu/target_info_defs.h"
 
 void loom_amdgpu_wait_packet_analyze_target(
@@ -75,52 +73,28 @@ loom_amdgpu_wait_packet_find_descriptor_template(
   return &target->descriptors[descriptor_index];
 }
 
-static const loom_named_attr_t* loom_amdgpu_wait_packet_find_attr(
-    const loom_module_t* module, loom_named_attr_slice_t attrs,
-    iree_string_view_t name) {
-  const loom_string_id_t name_id = loom_module_lookup_string(module, name);
-  if (name_id == LOOM_STRING_ID_INVALID) {
-    return NULL;
-  }
-  for (iree_host_size_t i = 0; i < attrs.count; ++i) {
-    if (attrs.entries[i].name_id == name_id) {
-      return &attrs.entries[i];
-    }
-  }
-  return NULL;
-}
-
-static uint16_t loom_amdgpu_wait_packet_immediate_value(
-    const loom_module_t* module, const loom_op_t* op,
-    const loom_amdgpu_wait_packet_descriptor_immediate_template_t* immediate) {
-  const loom_named_attr_t* attr = loom_amdgpu_wait_packet_find_attr(
-      module, loom_low_op_attrs(op), immediate->name);
-  if (attr == NULL) {
-    return immediate->no_wait_value;
-  }
-  IREE_ASSERT_EQ(attr->value.kind, LOOM_ATTR_I64);
-  IREE_ASSERT_GE(attr->value.i64, 0);
-  IREE_ASSERT_LE((uint64_t)attr->value.i64, UINT16_MAX);
-  return (uint16_t)attr->value.i64;
-}
-
 uint32_t loom_amdgpu_wait_packet_decode_bounds(
     const loom_low_descriptor_set_t* descriptor_set,
-    const loom_low_descriptor_t* descriptor,
-    const loom_amdgpu_wait_packet_target_t* target, const loom_module_t* module,
-    const loom_op_t* op, loom_amdgpu_wait_packet_bounds_t* out_bounds) {
+    const loom_low_packet_view_t* packet,
+    const loom_amdgpu_wait_packet_target_t* target,
+    loom_amdgpu_wait_packet_bounds_t* out_bounds) {
   for (uint32_t slot = 0; slot < LOOM_AMDGPU_WAIT_COUNTER_SLOT_COUNT; ++slot) {
     out_bounds->target_counts[slot] = UINT16_MAX;
   }
   const loom_amdgpu_wait_packet_descriptor_template_t* packet_descriptor =
-      loom_amdgpu_wait_packet_find_descriptor_template(descriptor_set,
-                                                       descriptor, target);
+      loom_amdgpu_wait_packet_find_descriptor_template(
+          descriptor_set, packet->descriptor, target);
   uint32_t counter_mask = 0;
   for (uint16_t i = 0; i < packet_descriptor->immediate_count; ++i) {
     const loom_amdgpu_wait_packet_descriptor_immediate_template_t* immediate =
         loom_amdgpu_wait_packet_descriptor_immediate(packet_descriptor, i);
-    const uint16_t value =
-        loom_amdgpu_wait_packet_immediate_value(module, op, immediate);
+    const loom_low_immediate_t* field =
+        &descriptor_set->immediates[packet->descriptor->immediate_start +
+                                    immediate->descriptor_immediate_index];
+    const loom_attribute_t attr = loom_low_packet_immediate_attr(packet, field);
+    const uint16_t value = attr.kind == LOOM_ATTR_ABSENT
+                               ? immediate->no_wait_value
+                               : (uint16_t)attr.i64;
     if (value == immediate->no_wait_value) {
       continue;
     }

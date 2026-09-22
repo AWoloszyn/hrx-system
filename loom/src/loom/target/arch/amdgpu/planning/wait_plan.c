@@ -1726,10 +1726,12 @@ static iree_status_t loom_amdgpu_wait_plan_finish_node_classification(
     }
     if (node_state->explicit_wait_counter_mask != 0 &&
         !has_generic_counter_effect) {
+      const loom_low_packet_view_t packet =
+          loom_low_packet_at_node(schedule, i);
       node_state->explicit_wait_counter_mask =
-          loom_amdgpu_wait_packet_decode_bounds(
-              descriptor_set, node->descriptor, &builder->wait_packet_target,
-              schedule->module, node->op, &node_state->wait_bounds);
+          loom_amdgpu_wait_packet_decode_bounds(descriptor_set, &packet,
+                                                &builder->wait_packet_target,
+                                                &node_state->wait_bounds);
       node_state->flags |= LOOM_AMDGPU_WAIT_NODE_STATE_EXPLICIT_WAIT;
     }
     IREE_ASSERT(node_state->explicit_wait_counter_mask == 0 ||
