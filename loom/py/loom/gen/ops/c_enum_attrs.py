@@ -151,7 +151,10 @@ def enum_names_array_name(
     """Returns the enum keyword table symbol for an enum attribute."""
     if attr_def.enum_def is not None and attr_def.enum_def.c_type is not None:
         c_name_prefix, _ = enum_c_prefix(op, attr_def, shared_enums)
-        return f"{c_name_prefix}_names"
+        # Multiple declarative case sets may use the same C representation.
+        # The enum definition, not its C typedef, owns the accepted keywords.
+        definition_name = c_identifier(attr_def.enum_def.name, case=CIdentifierCase.LOWER)
+        return f"{c_name_prefix}_{definition_name}_names"
     shared = shared_enums.get(id(attr_def.enum_def)) if attr_def.enum_def is not None else None
     if shared:
         return f"{shared[0]}_names"
