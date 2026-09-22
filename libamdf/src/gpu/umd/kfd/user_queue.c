@@ -61,12 +61,6 @@ struct amdf_gpu_umd_user_queue_t {
   amdf_atomic_uint64_t terminal_status;
 };
 
-// One host view of queue-owned storage.
-struct amdf_gpu_umd_user_queue_mapping_t {
-  // Host allocator copied for mapping destruction.
-  amdf_allocator_t host_allocator;
-};
-
 static amdf_atomic_uint64_t* amdf_gpu_kfd_user_queue_control_value(
     const amdf_gpu_umd_user_queue_t* queue, size_t byte_offset) {
   return (amdf_atomic_uint64_t*)((uint8_t*)queue->control.host_pointer +
@@ -434,14 +428,6 @@ amdf_status_t amdf_gpu_umd_user_queue_map(
   if (producer_device != NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_UNSUPPORTED);
   }
-  amdf_gpu_umd_user_queue_mapping_t* mapping = NULL;
-  const amdf_status_t status = amdf_calloc(
-      queue->device->host_allocator, sizeof(*mapping),
-      amdf_alignof(amdf_gpu_umd_user_queue_mapping_t), (void**)&mapping);
-  if (!amdf_status_is_ok(status)) {
-    return status;
-  }
-  mapping->host_allocator = queue->device->host_allocator;
   const amdf_gpu_umd_user_queue_mapping_result_t result = {
       .ring_address = (uintptr_t)((uint8_t*)queue->ring.host_pointer +
                                   queue->plan.ring.primary_byte_offset),
@@ -458,7 +444,8 @@ amdf_status_t amdf_gpu_umd_user_queue_map(
               : (uintptr_t)((uint8_t*)queue->ring.host_pointer +
                             queue->plan.ring.metadata_byte_offset),
   };
-  *out_mapping = mapping;
+  // The public mapping owns the borrow; the queue already owns every mapping.
+  *out_mapping = (amdf_gpu_umd_user_queue_mapping_t*)queue;
   *out_result = result;
   return AMDF_STATUS_OK;
 }
@@ -468,8 +455,6 @@ amdf_status_t amdf_gpu_umd_user_queue_mapping_destroy(
   if (mapping == NULL) {
     return amdf_make_api_status(AMDF_STATUS_CODE_INVALID_ARGUMENT);
   }
-  const amdf_allocator_t host_allocator = mapping->host_allocator;
-  amdf_free(host_allocator, mapping);
   return AMDF_STATUS_OK;
 }
 

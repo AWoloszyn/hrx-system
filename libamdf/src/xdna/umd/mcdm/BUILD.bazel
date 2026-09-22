@@ -205,9 +205,7 @@ amdf_cc_library(
     target_compatible_with = MCDM_COMPATIBILITY,
     deps = [
         ":context_state",
-        ":device_state",
         ":kernel_execution",
-        "//libamdf/src:allocator",
         "//libamdf/src/xdna/umd:kernel_queue",
     ],
 )
@@ -323,9 +321,11 @@ amdf_cc_test(
         ":context_state",
         ":device_state",
         ":kernel_execution",
+        ":kernel_queue",
         ":memory",
         "//libamdf/src:allocator",
         "//libamdf/src/xdna:device_profile",
+        "//libamdf/src/xdna/umd:kernel_queue",
         "//libamdf/src/xdna/umd:memory",
         "//third_party:google_test",
         "//third_party:google_test_main",
