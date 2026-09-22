@@ -1471,6 +1471,26 @@ typedef struct loom_cache_policy_vtable_t {
 // Op vtable
 //===----------------------------------------------------------------------===//
 
+// One declared spelling of an operation's instance flags. Aggregate aliases
+// carry their complete bitmask instead of introducing a new bit.
+typedef struct loom_instance_flag_case_t {
+  // Keyword accepted by the text parser.
+  loom_bstring_t name;
+  // Declared value stored in loom_op_t::instance_flags.
+  uint8_t value;
+} loom_instance_flag_case_t;
+
+// Shared format metadata for one instance-flag enum. Individual bits appear
+// first in ascending value order, followed by zero and aggregate aliases.
+typedef struct loom_instance_flags_descriptor_t {
+  // Generated cases shared by operations with the same flag enum.
+  const loom_instance_flag_case_t* cases;
+  // Total number of accepted spellings, including aliases.
+  uint16_t case_count;
+  // Number of leading individual-bit cases used for canonical printing.
+  uint8_t bit_count;
+} loom_instance_flags_descriptor_t;
+
 // Per-op metadata in .rodata. One vtable per op kind.
 //
 // Contains everything the printer, parser, verifier, and diagnostics
@@ -1543,9 +1563,11 @@ struct loom_op_vtable_t {
   loom_op_verify_fn_t verify;
   const uint8_t* name;
   const loom_format_element_t* format_elements;
-  const loom_bstring_t* instance_flags_case_names;
+  // Shared flag spellings, or NULL when the operation has no instance flags.
+  const loom_instance_flags_descriptor_t* instance_flags;
   uint16_t format_element_count;
-  uint8_t instance_flags_case_count;
+  // Union of declared individual bits; zero for operations without flags.
+  uint8_t instance_flags_mask;
   // String attribute that identifies a keyed module record. Valid when
   // LOOM_OP_VTABLE_KEYED_MODULE_RECORD is set.
   uint8_t module_record_key_attr_index;

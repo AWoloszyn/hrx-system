@@ -1,0 +1,104 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_float_comparison_flags.loom-test
+// RUN: emit source-low target=amd.xdna.aie2p:core output=low
+
+func.def @non_nan_relations(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
+  %equal = scalar.cmpf<nnan> oeq, %lhs, %rhs : f32
+  %less = scalar.cmpf<nnan> olt, %lhs, %rhs : f32
+  %unordered_less = scalar.cmpf<nnan> ult, %lhs, %rhs : f32
+  func.return %equal, %less, %unordered_less : i1, i1, i1
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @non_nan_relations(%lhs: reg<aie2p.er>, %rhs: reg<aie2p.er>) -> (reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>) asm {
+  %13 = mov.i32 2147483647
+  %18 = and %lhs, %13
+  %19 = and %rhs, %13
+  %21 = or %18, %19
+  %22 = eqz %21
+  %23 = eq %lhs, %rhs
+  %24 = or %23, %22
+  %equal = or %24, %24
+  %42 = mov.i32 -2147483648
+  %43 = mov.short -1
+  %44 = mov.short 1
+  %53 = and %lhs, %42
+  %54 = xor %lhs, %43
+  %55 = xor %lhs, %42
+  %56 = copy %53 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %57 = sel.nez %54, %55, %56
+  %58 = and %rhs, %42
+  %59 = xor %rhs, %43
+  %60 = xor %rhs, %42
+  %61 = copy %58 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %62 = sel.nez %59, %60, %61
+  %63 = xor %22, %44
+  %64 = ltu %57, %62
+  %65 = and %64, %63
+  %less = or %65, %65
+  %84 = copy %53 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %85 = sel.nez %54, %55, %84
+  %89 = copy %58 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %90 = sel.nez %59, %60, %89
+  %92 = ltu %85, %90
+  %93 = and %92, %63
+  %unordered_less = or %93, %93
+  return %equal, %less, %unordered_less
+}
+
+// ====
+
+func.def @non_nan_classifications(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
+  %ordered = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  %unordered = scalar.cmpf<nnan> uno, %lhs, %rhs : f32
+  %fast_ordered = scalar.cmpf<reassoc|nnan|ninf|nsz|arcp|contract|afn> ord, %lhs, %rhs : f32
+  func.return %ordered, %unordered, %fast_ordered : i1, i1, i1
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @non_nan_classifications(%lhs: reg<aie2p.er>, %rhs: reg<aie2p.er>) -> (reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>) asm {
+  %ordered = mov.short 1
+  %unordered = mov.short 0
+  return %ordered, %unordered, %ordered
+}
+
+// ====
+
+// Only nnan excludes NaNs; neighboring comparisons retain their own flags.
+func.def @independent_nan_permissions(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
+  %ordinary = scalar.cmpf ord, %lhs, %rhs : f32
+  %non_nan = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  %other_flags = scalar.cmpf<reassoc|ninf|nsz|arcp|contract|afn> ord, %lhs, %rhs : f32
+  func.return %ordinary, %non_nan, %other_flags : i1, i1, i1
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @independent_nan_permissions(%lhs: reg<aie2p.er>, %rhs: reg<aie2p.er>) -> (reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>) asm {
+  %14 = mov.i32 2147483647
+  %17 = mov.short 1
+  %18 = mov.i32 2139095040
+  %19 = and %lhs, %14
+  %20 = and %rhs, %14
+  %21 = ltu %18, %19
+  %22 = ltu %18, %20
+  %23 = or %21, %22
+  %ordinary = xor %23, %17
+  return %ordinary, %17, %ordinary
+}
+
+// ====
+
+// Early comparison facts eliminate boolean widening before target selection.
+func.def @non_nan_integer_classifications(%lhs: f32, %rhs: f32) -> (i32, i32) {
+  %ordered = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  %unordered = scalar.cmpf<nnan> uno, %lhs, %rhs : f32
+  %ordered_integer = scalar.extui %ordered : i1 to i32
+  %unordered_integer = scalar.extui %unordered : i1 to i32
+  func.return %ordered_integer, %unordered_integer : i32, i32
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @non_nan_integer_classifications(%lhs: reg<aie2p.er>, %rhs: reg<aie2p.er>) -> (reg<aie2p.er>, reg<aie2p.er>) asm {
+  %ordered_integer = mov.short 1
+  %unordered_integer = mov.short 0
+  return %ordered_integer, %unordered_integer
+}

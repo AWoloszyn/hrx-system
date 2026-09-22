@@ -38,7 +38,7 @@ class ScalarProgram:
 
     def constant(
         self,
-        result_name: str,
+        result_name: str | None,
         value: int | ValueProject,
         *,
         descriptor_key: str | None = None,
@@ -49,7 +49,11 @@ class ScalarProgram:
                 if isinstance(value, int) and _SHORT_MIN <= value <= _SHORT_MAX
                 else "amd.xdna.aie2p.constant.i32"
             )
-        result = self.temporary(result_name)
+        result = (
+            ValueRef.result("result")
+            if result_name is None
+            else self.temporary(result_name)
+        )
         self.emits.append(
             EmitDescriptorOp(
                 descriptor=descriptor_by_key(AIE2P_CORE_DESCRIPTOR_SET, descriptor_key),

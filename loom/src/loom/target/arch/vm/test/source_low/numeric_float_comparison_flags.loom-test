@@ -1,0 +1,68 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_float_comparison_flags.loom-test
+// RUN: emit source-low target=vm:core output=low
+
+func.def @non_nan_relations(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
+  %equal = scalar.cmpf<nnan> oeq, %lhs, %rhs : f32
+  %less = scalar.cmpf<nnan> olt, %lhs, %rhs : f32
+  %unordered_less = scalar.cmpf<nnan> ult, %lhs, %rhs : f32
+  func.return %equal, %less, %unordered_less : i1, i1, i1
+}
+
+// ----
+low.func.def target<vm.core> abi(vm_function) @non_nan_relations(%lhs: reg<vm.value : f32>, %rhs: reg<vm.value : f32>) -> (reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>) asm {
+  %equal = float.compare.f32 %lhs, %rhs, "oeq"
+  %less = float.compare.f32 %lhs, %rhs, "olt"
+  %unordered_less = float.compare.f32 %lhs, %rhs, "ult"
+  return %equal, %less, %unordered_less
+}
+
+// ====
+
+func.def @non_nan_classifications(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
+  %ordered = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  %unordered = scalar.cmpf<nnan> uno, %lhs, %rhs : f32
+  %fast_ordered = scalar.cmpf<reassoc|nnan|ninf|nsz|arcp|contract|afn> ord, %lhs, %rhs : f32
+  func.return %ordered, %unordered, %fast_ordered : i1, i1, i1
+}
+
+// ----
+low.func.def target<vm.core> abi(vm_function) @non_nan_classifications(%lhs: reg<vm.value : f32>, %rhs: reg<vm.value : f32>) -> (reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>) asm {
+  %ordered = constant.i32 1 : reg<vm.value : i1>
+  %unordered = constant.i32 0 : reg<vm.value : i1>
+  return %ordered, %unordered, %ordered
+}
+
+// ====
+
+// Only nnan excludes NaNs; neighboring comparisons retain their own flags.
+func.def @independent_nan_permissions(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
+  %ordinary = scalar.cmpf ord, %lhs, %rhs : f32
+  %non_nan = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  %other_flags = scalar.cmpf<reassoc|ninf|nsz|arcp|contract|afn> ord, %lhs, %rhs : f32
+  func.return %ordinary, %non_nan, %other_flags : i1, i1, i1
+}
+
+// ----
+low.func.def target<vm.core> abi(vm_function) @independent_nan_permissions(%lhs: reg<vm.value : f32>, %rhs: reg<vm.value : f32>) -> (reg<vm.value : i1>, reg<vm.value : i1>, reg<vm.value : i1>) asm {
+  %ordinary = float.compare.f32 %lhs, %rhs, "ord"
+  %non_nan = constant.i32 1 : reg<vm.value : i1>
+  return %ordinary, %non_nan, %ordinary
+}
+
+// ====
+
+// Early comparison facts eliminate boolean widening before target selection.
+func.def @non_nan_integer_classifications(%lhs: f32, %rhs: f32) -> (i32, i32) {
+  %ordered = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  %unordered = scalar.cmpf<nnan> uno, %lhs, %rhs : f32
+  %ordered_integer = scalar.extui %ordered : i1 to i32
+  %unordered_integer = scalar.extui %unordered : i1 to i32
+  func.return %ordered_integer, %unordered_integer : i32, i32
+}
+
+// ----
+low.func.def target<vm.core> abi(vm_function) @non_nan_integer_classifications(%lhs: reg<vm.value : f32>, %rhs: reg<vm.value : f32>) -> (reg<vm.value : i32>, reg<vm.value : i32>) asm {
+  %ordered_integer = constant.i32 1
+  %unordered_integer = constant.i32 0
+  return %ordered_integer, %unordered_integer
+}

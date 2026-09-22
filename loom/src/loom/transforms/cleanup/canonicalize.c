@@ -29,6 +29,7 @@
 #include "loom/rewrite/greedy.h"
 #include "loom/rewrite/rewriter.h"
 #include "loom/rewrite/type_propagation.h"
+#include "loom/target/math_policy.h"
 #include "loom/target/pass_environment.h"
 #include "loom/transforms/view/load_coalescing.h"
 #include "loom/util/walk.h"
@@ -1963,6 +1964,7 @@ static iree_status_t loom_canonicalizer_run_precomputed_region(
   loom_greedy_rewrite_options_t rewrite_options = {
       .max_iterations = max_iterations,
       .materialize_constant = loom_constant_build,
+      .math_policy = options ? options->math_policy : NULL,
   };
   loom_greedy_rewrite_callbacks_t callbacks = {
       .user_data = &state,
@@ -2131,6 +2133,11 @@ iree_status_t loom_canonicalize_run(loom_pass_t* pass, loom_module_t* module,
   if (!target_resolved) {
     run_options.target_facts = NULL;
   }
+  const loom_target_math_pass_capability_t* math_capability =
+      loom_target_math_pass_capability_from_pass(pass);
+  run_options.math_policy = loom_target_math_policy_registry_lookup_for_bundle(
+      loom_target_math_pass_capability_policy_registry(math_capability),
+      loom_target_facts_bundle(run_options.target_facts));
 
   loom_canonicalizer_t canonicalizer;
   IREE_RETURN_IF_ERROR(loom_canonicalizer_initialize(

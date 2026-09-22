@@ -42,6 +42,7 @@ loom_cc_library(
         "//loom/src/loom/rewrite:greedy",
         "//loom/src/loom/rewrite:rewriter",
         "//loom/src/loom/rewrite:type_propagation",
+        "//loom/src/loom/target:math_policy",
         "//loom/src/loom/target:pass_environment",
         "//loom/src/loom/transforms/view:load_coalescing",
         "//loom/src/loom/util:fact_table",

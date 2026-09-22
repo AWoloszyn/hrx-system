@@ -70,16 +70,13 @@ static loom_amdgpu_math_policy_flags_t loom_amdgpu_math_policy_flags(
   return payload != NULL ? payload->flags : LOOM_AMDGPU_MATH_POLICY_FLAG_NONE;
 }
 
-static bool loom_amdgpu_math_query_is_packed_bf16_vector(
-    const loom_target_math_query_t* query) {
-  if (query->lane_domain != LOOM_TARGET_MATH_LANE_DOMAIN_VECTOR ||
-      !loom_type_is_vector(query->value_type) ||
-      loom_type_rank(query->value_type) != 1 ||
-      !loom_type_is_all_static(query->value_type) ||
-      loom_type_element_type(query->value_type) != LOOM_SCALAR_TYPE_BF16) {
+static bool loom_amdgpu_math_type_is_packed_float16_vector(
+    loom_type_t value_type) {
+  if (!loom_type_is_vector(value_type) || loom_type_rank(value_type) != 1 ||
+      !loom_type_is_all_static(value_type)) {
     return false;
   }
-  const int64_t lane_count = loom_type_dim_static_size_at(query->value_type, 0);
+  const int64_t lane_count = loom_type_dim_static_size_at(value_type, 0);
   return lane_count > 0 &&
          lane_count <= LOOM_AMDGPU_MAX_PACKED_16BIT_FLOAT_LANES &&
          (lane_count % 2) == 0;
@@ -93,7 +90,26 @@ static bool loom_amdgpu_math_policy_has_native_packed_bf16_binary(
              LOOM_AMDGPU_MATH_POLICY_FLAG_NATIVE_PACKED_BF16_BINARY) &&
          (query->math_op == LOOM_TARGET_MATH_OP_ADDF ||
           query->math_op == LOOM_TARGET_MATH_OP_MULF) &&
-         loom_amdgpu_math_query_is_packed_bf16_vector(query);
+         query->element_type == LOOM_SCALAR_TYPE_BF16 &&
+         loom_amdgpu_math_type_is_packed_float16_vector(query->value_type);
+}
+
+static bool loom_amdgpu_math_prefer_fma(
+    const loom_target_math_policy_t* policy, loom_type_t value_type,
+    loom_target_math_fastmath_flags_t fastmath_flags) {
+  (void)fastmath_flags;
+  const loom_scalar_type_t element_type = loom_type_element_type(value_type);
+  if (element_type == LOOM_SCALAR_TYPE_F32) {
+    return true;
+  }
+  if (!loom_amdgpu_math_type_is_packed_float16_vector(value_type)) {
+    return false;
+  }
+  return element_type == LOOM_SCALAR_TYPE_F16 ||
+         (element_type == LOOM_SCALAR_TYPE_BF16 &&
+          iree_any_bit_set(
+              loom_amdgpu_math_policy_flags(policy),
+              LOOM_AMDGPU_MATH_POLICY_FLAG_NATIVE_PACKED_BF16_BINARY));
 }
 
 static loom_target_math_policy_decision_t loom_amdgpu_math_rewrite_if_afn(
@@ -245,6 +261,7 @@ static void loom_amdgpu_math_policy_query(
 static const loom_target_math_policy_t kAmdgpuMathPolicy = {
     .name = IREE_SVL("amdgpu-math"),
     .query = loom_amdgpu_math_policy_query,
+    .prefer_fma = loom_amdgpu_math_prefer_fma,
 };
 
 static const loom_amdgpu_math_policy_payload_t
@@ -255,6 +272,7 @@ static const loom_amdgpu_math_policy_payload_t
 static const loom_target_math_policy_t kAmdgpuNativePackedBf16MathPolicy = {
     .name = IREE_SVL("amdgpu-native-packed-bf16-math"),
     .query = loom_amdgpu_math_policy_query,
+    .prefer_fma = loom_amdgpu_math_prefer_fma,
     .user_data = &kAmdgpuNativePackedBf16MathPayload,
 };
 

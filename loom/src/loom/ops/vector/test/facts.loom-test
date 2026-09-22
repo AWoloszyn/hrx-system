@@ -1,5 +1,45 @@
 // RUN: pass canonicalize
 
+// Per-lane FMA facts preserve the exact side of a narrow rounding midpoint.
+func.def @fmaf_bf16_single_rounding() -> (bf16, bf16) {
+  %a0 = scalar.constant 1.0078125 : bf16
+  %a1 = scalar.constant -1.0078125 : bf16
+  %c0 = scalar.constant -9.3132257461547852e-10 : bf16
+  %c1 = scalar.constant 9.3132257461547852e-10 : bf16
+  %a = vector.from_elements %a0, %a1 : vector<2xbf16>
+  %b = vector.constant 1.5 : vector<2xbf16>
+  %c = vector.from_elements %c0, %c1 : vector<2xbf16>
+  %r = vector.fmaf %a, %b, %c : vector<2xbf16>
+  %positive = vector.extract %r[0] : vector<2xbf16> -> bf16
+  %negative = vector.extract %r[1] : vector<2xbf16> -> bf16
+  func.return %positive, %negative : bf16, bf16
+}
+// ----
+func.def @fmaf_bf16_single_rounding() -> (bf16, bf16) {
+  %positive = scalar.constant 1.5078125 : bf16
+  %negative = scalar.constant -1.5078125 : bf16
+  func.return %positive, %negative : bf16, bf16
+}
+
+// ====
+
+// Dot accumulation uses the same single-rounding FMA facts as scalar and
+// lanewise operations, including a uniform input fact representation.
+func.def @dotf_bf16_single_rounding() -> (bf16) {
+  %a = vector.constant 1.0078125 : vector<1xbf16>
+  %b = vector.constant 1.5 : vector<1xbf16>
+  %c = scalar.constant -9.3132257461547852e-10 : bf16
+  %r = vector.dotf %a, %b, %c : vector<1xbf16>, vector<1xbf16>, bf16
+  func.return %r : bf16
+}
+// ----
+func.def @dotf_bf16_single_rounding() -> (bf16) {
+  %r = scalar.constant 1.5078125 : bf16
+  func.return %r : bf16
+}
+
+// ====
+
 // Lanewise i1 signed extension maps the logical true bit to negative one.
 func.def @extsi_uniform_i1(%x: i1) -> (i64, i64) {
   %bits = vector.splat %x : vector<4xi1>

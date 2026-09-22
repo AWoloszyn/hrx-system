@@ -1434,7 +1434,7 @@ static iree_status_t loom_aie2p_array_resident_materialize_worker(
       loom_region_block(resident_body, source_block_start);
 
   const iree_host_size_t port_state_count =
-      builder->plan->worker_plans[worker_index].port_count;
+      builder->plan->worker_plans[worker_index].requirements->resource_count;
   loom_aie2p_array_resident_port_state_t* port_states = NULL;
   if (port_state_count != 0) {
     IREE_RETURN_IF_ERROR(

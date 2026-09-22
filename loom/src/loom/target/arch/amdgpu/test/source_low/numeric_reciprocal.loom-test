@@ -1,0 +1,28 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_reciprocal.loom-test
+// RUN: emit source-low target=amdgpu:gfx11-generic output=low
+
+func.def @scalar_f32_reciprocal(%input: f32) -> (f32) {
+  %numerator = scalar.constant 1.0 : f32
+  %result = scalar.divf<arcp> %numerator, %input : f32
+  func.return %result : f32
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @scalar_f32_reciprocal(%input: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %result = v_rcp_f32 %input
+  return %result
+}
+
+// ====
+
+func.def @scalar_f32_reciprocal_multiply(%numerator: f32, %denominator: f32) -> (f32) {
+  %result = scalar.divf<arcp> %numerator, %denominator : f32
+  func.return %result : f32
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @scalar_f32_reciprocal_multiply(%numerator: reg<amdgpu.vgpr>, %denominator: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %7 = v_rcp_f32 %denominator
+  %result = v_mul_f32 %numerator, %7
+  return %result
+}

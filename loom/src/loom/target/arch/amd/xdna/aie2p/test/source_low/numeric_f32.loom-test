@@ -638,3 +638,29 @@ low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @integer_
   %unsigned_value = add.rr %21, %23
   return %signed_value, %unsigned_value
 }
+
+// ====
+
+// RUN: emit source-low output=low
+
+aie2p.target<core> @target
+
+func.def target(@target) @reciprocal_strict(%input: f32) -> (f32) {
+  %numerator = scalar.constant 1.0 : f32
+  // ERROR@+1: TARGET/003 {op_name="scalar.divf", subject_role="flags", subject_name="fastmath", constraint_key="has_all.arcp"}
+  %result = scalar.divf %numerator, %input : f32
+  func.return %result : f32
+}
+
+// ====
+
+// RUN: emit source-low output=low
+
+aie2p.target<core> @target
+
+func.def target(@target) @reciprocal_afn(%input: f32) -> (f32) {
+  %numerator = scalar.constant 1.0 : f32
+  // ERROR@+1: TARGET/003 {op_name="scalar.divf", subject_role="flags", subject_name="fastmath", constraint_key="has_all.arcp"}
+  %result = scalar.divf<afn> %numerator, %input : f32
+  func.return %result : f32
+}

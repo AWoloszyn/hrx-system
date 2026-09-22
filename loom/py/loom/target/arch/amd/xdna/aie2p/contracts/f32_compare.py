@@ -32,10 +32,14 @@ _FLOAT_PREDICATES = (
 )
 
 
-def _comparison_program(predicate: str) -> ScalarProgram:
+def _comparison_program(predicate: str, *, no_nan: bool) -> ScalarProgram:
     """Builds one IEEE-754 comparison over binary32 bit patterns."""
 
     program = ScalarProgram()
+    if no_nan and predicate in ("ord", "uno"):
+        program.constant(None, int(predicate == "ord"))
+        return program
+
     lhs = ValueRef.operand("lhs")
     rhs = ValueRef.operand("rhs")
     absolute_mask = program.constant("absolute_mask", 0x7FFFFFFF)
@@ -46,9 +50,12 @@ def _comparison_program(predicate: str) -> ScalarProgram:
 
     lhs_absolute = program.binary("lhs_absolute", "and.i32", lhs, absolute_mask)
     rhs_absolute = program.binary("rhs_absolute", "and.i32", rhs, absolute_mask)
-    lhs_nan = program.binary("lhs_nan", "cmp.ult.i32", infinity, lhs_absolute)
-    rhs_nan = program.binary("rhs_nan", "cmp.ult.i32", infinity, rhs_absolute)
-    unordered = program.binary("unordered", "or.i32", lhs_nan, rhs_nan)
+    if no_nan:
+        unordered = program.constant("unordered", 0)
+    else:
+        lhs_nan = program.binary("lhs_nan", "cmp.ult.i32", infinity, lhs_absolute)
+        rhs_nan = program.binary("rhs_nan", "cmp.ult.i32", infinity, rhs_absolute)
+        unordered = program.binary("unordered", "or.i32", lhs_nan, rhs_nan)
 
     absolute_union = program.binary(
         "absolute_union", "or.i32", lhs_absolute, rhs_absolute
@@ -104,7 +111,9 @@ def _comparison_program(predicate: str) -> ScalarProgram:
     else:
         raise ValueError(f"unsupported binary32 comparison predicate {predicate}")
 
-    if ordered_predicate:
+    if no_nan:
+        program.binary(None, "or.i32", relation_value, relation_value)
+    elif ordered_predicate:
         ordered = program.binary("ordered", "xor.i32", unordered, one)
         program.binary(None, "and.i32", relation_value, ordered)
     else:
@@ -112,8 +121,8 @@ def _comparison_program(predicate: str) -> ScalarProgram:
     return program
 
 
-def _comparison_rule(predicate: str) -> DescriptorRule:
-    program = _comparison_program(predicate)
+def _comparison_rule(predicate: str, *, no_nan: bool) -> DescriptorRule:
+    program = _comparison_program(predicate, no_nan=no_nan)
     return DescriptorRule(
         source_op=scalar_comparison.scalar_cmpf,
         descriptor=program.emits[-1].descriptor,
@@ -122,12 +131,17 @@ def _comparison_rule(predicate: str) -> DescriptorRule:
             Guard.value_type("lhs", _F32),
             Guard.value_type("rhs", _F32),
             Guard.value_type("result", _I1),
+            *((Guard.instance_flags_has_all("fastmath", "nnan"),) if no_nan else ()),
         ),
         emit=program.emits,
-        report_key="exact_binary32_compare",
+        report_key="exact_binary32_compare_nnan"
+        if no_nan
+        else "exact_binary32_compare",
     )
 
 
 AIE2P_F32_COMPARE_RULES = tuple(
-    _comparison_rule(predicate) for predicate in _FLOAT_PREDICATES
+    _comparison_rule(predicate, no_nan=no_nan)
+    for no_nan in (True, False)
+    for predicate in _FLOAT_PREDICATES
 )

@@ -602,6 +602,7 @@ iree_status_t loom_math_legalize_run(loom_pass_t* pass, loom_module_t* module,
                                         &driver);
   loom_greedy_rewrite_options_t rewrite_options = {
       .max_iterations = options ? options->max_iterations : 0,
+      .math_policy = policy,
   };
   loom_greedy_rewrite_callbacks_t callbacks = {
       .user_data = &state,

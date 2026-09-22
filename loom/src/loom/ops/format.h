@@ -72,8 +72,8 @@ enum loom_format_kind_e {
   // Suppress space before the next token.
   LOOM_FORMAT_KIND_GLUE = 16,
   // Per-instance flags in angle brackets: <flag1|flag2>.
-  // Glued to the preceding token (op name). field_index indexes into
-  // the vtable's instance_flags_case_names. Reads/writes op->instance_flags.
+  // Glued to the preceding token (op name). Uses the vtable's instance_flags
+  // descriptor and reads/writes op->instance_flags. field_index is unused.
   LOOM_FORMAT_KIND_FLAGS = 17,
 
   // Bare symbolic key in angle brackets: <tile.contract>.

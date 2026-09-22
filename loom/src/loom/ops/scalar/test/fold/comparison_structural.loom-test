@@ -134,7 +134,7 @@ func.def @cmpi_nuw_does_not_imply_signed_order(%value: i32) -> (i1) {
 
 // ====
 
-// cmpf same-value proofs require nnan; NaN-sensitive forms stay conservative.
+// NaN-sensitive same-value comparisons fold only with nnan.
 func.def @cmpf_same_value(%x: f32) -> (i1, i1, i1) {
   %eq = scalar.cmpf<nnan> oeq, %x, %x : f32
   %uno = scalar.cmpf<nnan> uno, %x, %x : f32

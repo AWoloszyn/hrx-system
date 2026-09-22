@@ -1,5 +1,46 @@
 // RUN: pass canonicalize
 
+// FMA rounds directly to its result type. Rounding through F32 first loses
+// the tiny addend that places this exact result below a BF16 midpoint. The
+// afn permission also permits the exact constant answer.
+func.def @fmaf_bf16_single_rounding() -> (bf16, bf16) {
+  %a = scalar.constant 1.0078125 : bf16
+  %b = scalar.constant 1.5 : bf16
+  %c = scalar.constant -9.3132257461547852e-10 : bf16
+  %strict = scalar.fmaf %a, %b, %c : bf16
+  %approximate = scalar.fmaf<afn> %a, %b, %c : bf16
+  func.return %strict, %approximate : bf16, bf16
+}
+// ----
+func.def @fmaf_bf16_single_rounding() -> (bf16, bf16) {
+  %strict = scalar.constant 1.5078125 : bf16
+  %approximate = scalar.constant 1.5078125 : bf16
+  func.return %strict, %approximate : bf16, bf16
+}
+
+// ====
+
+// F16 and F8E5M2 also lose the side of a midpoint through an F32 intermediate.
+func.def @fmaf_narrow_single_rounding() -> (f16, f8E5M2) {
+  %a16 = scalar.constant 1.0009765625 : f16
+  %b16 = scalar.constant 1.5 : f16
+  %c16 = scalar.constant -5.9604644775390625e-08 : f16
+  %r16 = scalar.fmaf %a16, %b16, %c16 : f16
+  %a8 = scalar.constant -160.0 : f8E5M2
+  %b8 = scalar.constant 96.0 : f8E5M2
+  %c8 = scalar.constant 7.62939453125e-05 : f8E5M2
+  %r8 = scalar.fmaf %a8, %b8, %c8 : f8E5M2
+  func.return %r16, %r8 : f16, f8E5M2
+}
+// ----
+func.def @fmaf_narrow_single_rounding() -> (f16, f8E5M2) {
+  %r16 = scalar.constant 1.5009765625 : f16
+  %r8 = scalar.constant -14336.0 : f8E5M2
+  func.return %r16, %r8 : f16, f8E5M2
+}
+
+// ====
+
 // IEEE minimumf propagates NaN instead of selecting the non-NaN operand.
 func.def @minimumf_propagates_nan() -> (i1) {
   %neg = scalar.constant -1.0 : f32

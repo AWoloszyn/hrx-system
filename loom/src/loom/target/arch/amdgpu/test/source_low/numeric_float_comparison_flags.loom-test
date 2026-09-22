@@ -1,0 +1,70 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_float_comparison_flags.loom-test
+// RUN: emit source-low target=amdgpu:gfx11-generic output=low
+
+func.def @non_nan_relations(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
+  %equal = scalar.cmpf<nnan> oeq, %lhs, %rhs : f32
+  %less = scalar.cmpf<nnan> olt, %lhs, %rhs : f32
+  %unordered_less = scalar.cmpf<nnan> ult, %lhs, %rhs : f32
+  func.return %equal, %less, %unordered_less : i1, i1, i1
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @non_nan_relations(%lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) asm {
+  %equal = v_cmp_eq_f32 %lhs, %rhs
+  %less = v_cmp_lt_f32 %lhs, %rhs
+  %unordered_less = v_cmp_nge_f32 %lhs, %rhs
+  return %equal, %less, %unordered_less
+}
+
+// ====
+
+func.def @non_nan_classifications(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
+  %ordered = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  %unordered = scalar.cmpf<nnan> uno, %lhs, %rhs : f32
+  %fast_ordered = scalar.cmpf<reassoc|nnan|ninf|nsz|arcp|contract|afn> ord, %lhs, %rhs : f32
+  func.return %ordered, %unordered, %fast_ordered : i1, i1, i1
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @non_nan_classifications(%lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>) -> (reg<amdgpu.scc>, reg<amdgpu.scc>, reg<amdgpu.scc>) asm {
+  %16 = s_mov_b32 0
+  %ordered = s_cmp_eq_i32 %16, %16
+  %unordered = s_cmp_lg_i32 %16, %16
+  return %ordered, %unordered, %ordered
+}
+
+// ====
+
+// Only nnan excludes NaNs; neighboring comparisons retain their own flags.
+func.def @independent_nan_permissions(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
+  %ordinary = scalar.cmpf ord, %lhs, %rhs : f32
+  %non_nan = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  %other_flags = scalar.cmpf<reassoc|ninf|nsz|arcp|contract|afn> ord, %lhs, %rhs : f32
+  func.return %ordinary, %non_nan, %other_flags : i1, i1, i1
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @independent_nan_permissions(%lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.scc>, reg<amdgpu.sgpr x2>) asm {
+  %ordinary = v_cmp_o_f32 %lhs, %rhs
+  %15 = s_mov_b32 0
+  %non_nan = s_cmp_eq_i32 %15, %15
+  return %ordinary, %non_nan, %ordinary
+}
+
+// ====
+
+// Early comparison facts eliminate boolean widening before target selection.
+func.def @non_nan_integer_classifications(%lhs: f32, %rhs: f32) -> (i32, i32) {
+  %ordered = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  %unordered = scalar.cmpf<nnan> uno, %lhs, %rhs : f32
+  %ordered_integer = scalar.extui %ordered : i1 to i32
+  %unordered_integer = scalar.extui %unordered : i1 to i32
+  func.return %ordered_integer, %unordered_integer : i32, i32
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @non_nan_integer_classifications(%lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) asm {
+  %ordered_integer = s_mov_b32 1
+  %unordered_integer = s_mov_b32 0
+  return %ordered_integer, %unordered_integer
+}

@@ -22,6 +22,7 @@ loom_cc_library(
     loom::ir
     loom::ir::facts
     loom::ops::op_defs
+    loom::target::math_policy
     loom::util::fact_table
   PUBLIC
 )

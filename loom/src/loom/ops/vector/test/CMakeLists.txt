@@ -17,6 +17,7 @@ loom_check_test_suite(
     "block_quant_samples.loom-test"
     "bytecode.loom-test"
     "canonicalize.loom-test"
+    "comparisonf.loom-test"
     "facts.loom-test"
     "float_conversion_facts.loom-test"
     "roundtrip.loom-test"

@@ -401,6 +401,24 @@ iree_py_test(
 
 iree_py_test(
   NAME
+    c_instance_flags_test
+  MAIN
+    "../../tools/pytest_style_runner.py"
+  SRCS
+    "c_instance_flags_test.py"
+    "../../tools/pytest_style_runner.py"
+  ARGS
+    "loom.gen.ops.c_instance_flags_test"
+  DEPS
+    loom::py::loom::gen::ops::c_tables
+  PACKAGE_DIRS
+    "${PROJECT_SOURCE_DIR}/loom/py"
+    "${PROJECT_BINARY_DIR}/loom/py"
+    "${PROJECT_SOURCE_DIR}"
+)
+
+iree_py_test(
+  NAME
     c_tables_test
   MAIN
     "../../tools/pytest_style_runner.py"

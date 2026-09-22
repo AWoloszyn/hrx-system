@@ -11,6 +11,7 @@
 
 #include "iree/base/api.h"
 #include "loom/analysis/consumption.h"
+#include "loom/analysis/liveness.h"
 #include "loom/codegen/low/allocation/assignment.h"
 #include "loom/codegen/low/placement.h"
 
@@ -25,6 +26,8 @@ typedef iree_status_t (*loom_low_allocation_edge_alias_consumption_query_fn_t)(
 typedef struct loom_low_allocation_edge_alias_context_t {
   // Function-local placement relations.
   const loom_low_placement_table_t* placement;
+  // Borrowed semantic live segments in the placement value domain.
+  const loom_liveness_analysis_t* liveness;
   // Callback that lazily returns a consumption query for one relation region.
   loom_low_allocation_edge_alias_consumption_query_fn_t consumption_query;
   // Opaque caller state passed to consumption_query.

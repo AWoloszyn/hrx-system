@@ -638,3 +638,69 @@ low.func.def target<test.low.core>(@target) @overlapping_slice_reloads(%blocker:
   %out = test.add.i32 %sum2, %pressure
   return %out
 }
+
+// ====
+
+// Repeated operands of one instruction share a single rematerialization.
+// Three registers hold both live sums and one literal without spill traffic.
+// RUN: pass low-materialize-allocation{budgets=test.i32=3}
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @rematerialize_duplicate_operands(%a: reg<test.i32>, %b: reg<test.i32>, %c: reg<test.i32>) -> (reg<test.i32>) asm {
+  %literal = test.const.i32 7
+  %ab = test.add.i32 %a, %b
+  %bc = test.add.i32 %b, %c
+  %twice = test.add.i32 %literal, %literal
+  %partial = test.add.i32 %ab, %twice
+  %result = test.add.i32 %partial, %bc
+  return %result
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @rematerialize_duplicate_operands(%a: reg<test.i32>, %b: reg<test.i32>, %c: reg<test.i32>) -> (reg<test.i32>) asm {
+  %ab = test.add.i32 %a, %b
+  %bc = test.add.i32 %b, %c
+  %literal_remat = test.const.i32 7
+  %twice = test.add.i32 %literal_remat, %literal_remat
+  %partial = test.add.i32 %ab, %twice
+  %result = test.add.i32 %partial, %bc
+  return %result
+}
+
+// ====
+
+// CSE appends the second literal's use after the first literal's later user.
+// The two uses by twice are therefore separated in the captured use list.
+// RUN: pass low-cse,low-materialize-allocation{budgets=test.i32=3}
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @rematerialize_interleaved_operands(%a: reg<test.i32>, %b: reg<test.i32>, %c: reg<test.i32>) -> (reg<test.i32>) asm {
+  %literal = test.const.i32 7
+  %same = test.const.i32 7
+  %ab = test.add.i32 %a, %b
+  %bc = test.add.i32 %b, %c
+  %twice = test.add.i32 %literal, %same
+  %partial = test.add.i32 %ab, %twice
+  %tail = test.add.i32 %bc, %literal
+  %result = test.add.i32 %partial, %tail
+  return %result
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @rematerialize_interleaved_operands(%a: reg<test.i32>, %b: reg<test.i32>, %c: reg<test.i32>) -> (reg<test.i32>) asm {
+  %ab = test.add.i32 %a, %b
+  %bc = test.add.i32 %b, %c
+  %literal_remat$12 = test.const.i32 7
+  %twice = test.add.i32 %literal_remat$12, %literal_remat$12
+  %partial = test.add.i32 %ab, %twice
+  %literal_remat$13 = test.const.i32 7
+  %tail = test.add.i32 %bc, %literal_remat$13
+  %result = test.add.i32 %partial, %tail
+  return %result
+}

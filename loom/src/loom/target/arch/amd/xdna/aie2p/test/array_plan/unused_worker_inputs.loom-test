@@ -1,0 +1,163 @@
+// RUN: emit aie2p-array-plan @discard_then_increment
+
+// Discarding a payload keeps its channel credit protocol. A following worker
+// binds its own pointers after the first worker's full topology-port range.
+
+aie2p.target<array> @array_target
+
+aie2p.target<core> @core_target
+
+func.def target(@core_target) @replace(%input: buffer, %output_arg: buffer) {
+  %output = buffer.assume.alignment %output_arg {minimum_alignment = 64} : buffer
+  %base = index.constant 0 : offset
+  %output_view = buffer.view %output[%base] : buffer -> view<16xi32>
+  %value = vector.constant 1 : vector<16xi32>
+  vector.store %value, %output_view[0] : vector<16xi32>, view<16xi32>
+  func.return
+}
+
+func.def target(@core_target) @following(%input_arg: buffer, %output_arg: buffer) {
+  %input, %output = buffer.assume.alignment %input_arg, %output_arg {minimum_alignment = 64} : buffer, buffer
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input[%base] : buffer -> view<16xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<16xi32>
+  %value = vector.load %input_view[0] : view<16xi32> -> vector<16xi32>
+  %increment = vector.constant 1 : vector<16xi32>
+  %next = vector.addi %value, %increment : vector<16xi32>
+  vector.store %next, %output_view[0] : vector<16xi32>, view<16xi32>
+  func.return
+}
+
+pipeline.def<kernel> public retain target(@array_target) @discard_then_increment() launch(%input: buffer, %output: buffer) {
+  %worker_count = index.constant 1 : index
+  %base = index.constant 0 : offset
+  %first_workers = group.create %worker_count : index -> group
+  %second_workers = group.create %worker_count : index -> group
+  %input_view = buffer.view %input[%base] : buffer -> view<1x4x16xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<1x4x16xi32>
+  %flow = pipeline.scatter %input_view across %first_workers : view<1x4x16xi32>, group -> pipeline.flow<tile<16xi32>>
+  %first = pipeline.stage @replace on %first_workers(%flow) : (group, pipeline.flow<tile<16xi32>>) -> (pipeline.flow<tile<16xi32>>)
+  %second = pipeline.stage @following on %second_workers(%first) : (group, pipeline.flow<tile<16xi32>>) -> (pipeline.flow<tile<16xi32>>)
+  pipeline.write %second to %output_view : pipeline.flow<tile<16xi32>>, view<1x4x16xi32>
+  pipeline.return
+}
+
+// ----
+array @discard_then_increment family=amd.xdna.npu2 groups=2 workers=2 bindings=2 channels=3 slots=6 locks=6 dma=4 routes=9
+binding index=0 ordinal=0 access=read
+binding index=1 ordinal=1 access=write
+worker index=0 group=0 lane=0 entry=@replace tile=(0,2) resources=1 storage-domains=0
+worker index=1 group=1 lane=0 entry=@following tile=(0,3) resources=2 storage-domains=0
+channel index=0 transport=external-dma record-bytes=64 capacity=2 records=4 sender=binding[0]:0 partition=0/1 receiver=worker[0]:0
+channel index=1 transport=neighbor-memory record-bytes=64 capacity=2 records=4 sender=worker[0]:1 receiver=worker[1]:0
+channel index=2 transport=external-dma record-bytes=64 capacity=2 records=4 sender=worker[1]:1 receiver=binding[1]:0 partition=0/1
+worker-port worker=0 port=0 direction=receive channel=0 first-slot=0
+worker-port worker=0 port=1 direction=send channel=1 first-slot=2
+worker-port worker=1 port=0 direction=receive channel=1 first-slot=2
+worker-port worker=1 port=1 direction=send channel=2 first-slot=4
+slot channel=0 index=0 owner=(0,2) offset=0x00000 bytes=64 sender=external receiver=0x70000
+slot channel=0 index=1 owner=(0,2) offset=0x04000 bytes=64 sender=external receiver=0x74000
+slot channel=1 index=0 owner=(0,2) offset=0x08000 bytes=64 sender=0x78000 receiver=0x48000
+slot channel=1 index=1 owner=(0,2) offset=0x0c000 bytes=64 sender=0x7c000 receiver=0x4c000
+slot channel=2 index=0 owner=(0,3) offset=0x00000 bytes=64 sender=0x70000 receiver=external
+slot channel=2 index=1 owner=(0,3) offset=0x04000 bytes=64 sender=0x74000 receiver=external
+lock channel=0 tile=(0,2) id=0 ring=receive role=credit initial=2
+lock channel=0 tile=(0,2) id=1 ring=receive role=ready initial=0
+lock channel=1 tile=(0,2) id=2 ring=send role=credit initial=2
+lock channel=1 tile=(0,2) id=3 ring=send role=ready initial=0
+lock channel=2 tile=(0,3) id=0 ring=send role=credit initial=2
+lock channel=2 tile=(0,3) id=1 ring=send role=ready initial=0
+dma channel=0 tile=(0,2) side=compute direction=stream-to-memory engine-channel=0 bd-start=0 bd-count=2
+dma channel=0 tile=(0,0) side=shim direction=memory-to-stream engine-channel=0 bd-start=0 bd-count=1
+dma channel=2 tile=(0,3) side=compute direction=memory-to-stream engine-channel=0 bd-start=0 bd-count=2
+dma channel=2 tile=(0,0) side=shim direction=stream-to-memory engine-channel=0 bd-start=1 bd-count=1
+route channel=0 tile=(0,0) kind=shim-mux source=dma[0] destination=north[3]
+route channel=0 tile=(0,0) kind=switch source=south[3] destination=north[0]
+route channel=0 tile=(0,1) kind=switch source=south[0] destination=north[0]
+route channel=0 tile=(0,2) kind=switch source=south[0] destination=dma[0]
+route channel=2 tile=(0,3) kind=switch source=dma[0] destination=south[0]
+route channel=2 tile=(0,2) kind=switch source=north[0] destination=south[0]
+route channel=2 tile=(0,1) kind=switch source=north[0] destination=south[0]
+route channel=2 tile=(0,0) kind=switch source=north[0] destination=south[2]
+route channel=2 tile=(0,0) kind=shim-mux source=north[2] destination=dma[0]
+completion-route index=0 shim=(0,0) source=0 destination=2 packet=0 arbiter=0 master-select=0 rule-slot=0
+binding-patch ordinal=0 channel=0 shim=(0,0) direction=memory-to-stream dma-channel=0 partition=0/1 offset=0 span=256 transfer=256 repeat=1
+binding-patch ordinal=1 channel=2 shim=(0,0) direction=stream-to-memory dma-channel=0 partition=0/1 offset=0 span=256 transfer=256 repeat=1 completion-route=0
+
+array-program records=55 writes=25 masked-writes=24 block-writes=4 tile-loads=2 waits=0
+array-block record=35 address=0x0021d000 words=[0x00000010,0x00000000,0x00000000,0x00000000,0x00000000,0x0e043fe0]
+array-block record=36 address=0x0021d020 words=[0x04000010,0x00000000,0x00000000,0x00000000,0x00000000,0x06043fe0]
+array-block record=37 address=0x0031d000 words=[0x00000010,0x00000000,0x00000000,0x00000000,0x00000000,0x0e041fe1]
+array-block record=38 address=0x0031d020 words=[0x04000010,0x00000000,0x00000000,0x00000000,0x00000000,0x06041fe1]
+array-tile-load record=39 tile-program=0
+array-tile-load record=40 tile-program=1
+control-program records=6 writes=2 masked-writes=1 block-writes=2 tile-loads=0 waits=1 relocations=2
+control-block record=0 address=0x0001d000 words=[0x00000040,0x00000000,0x00000000,0x00000000,0xc0000000,0x02000000,0x00000000,0x02000000]
+control-write record=1 address=0x0001d214 value=0x00000000
+control-block record=2 address=0x0001d020 words=[0x00000040,0x00000000,0x00000000,0x00000000,0xc0000000,0x02000000,0x00000000,0x02000000]
+control-mask-write record=3 address=0x0001d200 mask=0x00001f00 value=0x00000000
+control-write record=4 address=0x0001d204 value=0x80000001
+control-wait record=5 tile=(0,0) direction=stream-to-memory dma-channel=0 columns=1 rows=1
+control-relocation index=0 record=0 word=1 binding=0 addend=0 alignment=4
+control-relocation index=1 record=2 word=1 binding=1 addend=0 alignment=4
+
+resident-program workers=2
+resident worker=0 entry=@discard_then_increment$worker$0 tile=(0,2) code-bytes=128 resources=0 fixups=1
+resident worker=1 entry=@discard_then_increment$worker$1 tile=(0,3) code-bytes=170 resources=0 fixups=1
+
+low.func.def retain target<amd.xdna.aie2p.core>(@core_target) @discard_then_increment$worker$0() asm {
+  %acquire_delta = mov.short -1
+  %release_delta = mov.short 1
+  %85 = mov.local-address 491520
+  low.br ^_bb1(%85: reg<aie2p.ep>)
+^_bb1(%79: reg<aie2p.ep>):
+  acq %acquire_delta, 49
+  acq %acquire_delta, 50
+  low.br ^_bb2
+^_bb2:
+  %output_view = copy %79 : reg<aie2p.ep> -> reg<aie2p.ep>
+  %77 = mov.short 1
+  %value = vbcst.32 %77
+  vst.512.i32x16 %value, %output_view, 0
+  low.br ^_bb3
+^_bb3:
+  rel %release_delta, 51
+  rel %release_delta, 48
+  %81 = mov.address-to-scalar %79
+  %82 = mov.i32 16384
+  %83 = xor %81, %82
+  %84 = mov.scalar-to-address %83
+  low.br ^_bb1(%84: reg<aie2p.ep>)
+}
+
+low.func.def retain target<amd.xdna.aie2p.core>(@core_target) @discard_then_increment$worker$1() asm {
+  %acquire_delta = mov.short -1
+  %release_delta = mov.short 1
+  %105 = mov.local-address 294912
+  %106 = mov.local-address 458752
+  low.br ^_bb1(%105: reg<aie2p.ep>, %106: reg<aie2p.ep>)
+^_bb1(%94: reg<aie2p.ep>, %96: reg<aie2p.ep>):
+  acq %acquire_delta, 3
+  acq %acquire_delta, 48
+  low.br ^_bb2
+^_bb2:
+  %input_view = copy %94 : reg<aie2p.ep> -> reg<aie2p.ep>
+  %output_view = copy %96 : reg<aie2p.ep> -> reg<aie2p.ep>
+  %value = vlda.512.i32x16 %input_view, 0
+  %91 = mov.short 1
+  %increment = vbcst.32 %91
+  %next = vadd.32 %value, %increment
+  vst.512.i32x16 %next, %output_view, 0
+  low.br ^_bb3
+^_bb3:
+  rel %release_delta, 49
+  rel %release_delta, 2
+  %98 = mov.address-to-scalar %94
+  %99 = mov.i32 16384
+  %100 = xor %98, %99
+  %101 = mov.scalar-to-address %100
+  %102 = mov.address-to-scalar %96
+  %103 = xor %102, %99
+  %104 = mov.scalar-to-address %103
+  low.br ^_bb1(%101: reg<aie2p.ep>, %104: reg<aie2p.ep>)
+}

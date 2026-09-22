@@ -26,6 +26,7 @@
 #include "loom/target/legalization.h"
 #include "loom/target/low_descriptor_registry.h"
 #include "loom/target/low_legality.h"
+#include "loom/target/math_policy.h"
 #include "loom/target/reporting/report.h"
 #include "loom/util/adaptive_sort.h"
 #include "loom/util/walk.h"
@@ -1723,6 +1724,10 @@ static iree_status_t loom_low_target_legalize_function(
   };
   const loom_greedy_rewrite_options_t rewrite_options = {
       .max_iterations = pass_state->max_iterations,
+      .math_policy = loom_target_math_policy_registry_lookup_for_bundle(
+          loom_target_math_pass_capability_policy_registry(
+              loom_target_math_pass_capability_from_pass(pass)),
+          loom_low_source_selection_target_bundle(selection)),
   };
   const loom_greedy_rewrite_callbacks_t rewrite_callbacks = {
       .user_data = &state,

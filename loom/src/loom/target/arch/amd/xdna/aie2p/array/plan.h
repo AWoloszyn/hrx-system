@@ -124,7 +124,8 @@ typedef struct loom_aie2p_array_endpoint_t {
   uint32_t owner_index;
   // Port ordinal in the owner ABI.
   uint32_t port;
-  // Matched leaf resource ordinal for a worker endpoint; unused for bindings.
+  // Matched leaf resource ordinal for a worker endpoint, or UINT32_MAX when
+  // its pointer is unused by the leaf. Unused for bindings.
   uint32_t worker_resource_ordinal;
   // Typed tile value transported through this endpoint.
   loom_type_t message_type;
@@ -402,8 +403,9 @@ typedef struct loom_aie2p_array_plan_t {
   // Number of worker ABI port bindings.
   iree_host_size_t worker_port_count;
   // Worker port row indices in each worker's leaf resource declaration order.
-  // Uses the same worker ranges as worker_ports and shares its arena
-  // allocation.
+  // Each worker range starts at first_port and contains resource_count entries
+  // from its requirements. It shares the worker_ports allocation; unused
+  // topology ports require synchronization but have no resource-map entry.
   const uint32_t* worker_resource_ports;
   // Logical channel slots with endpoint-local storage views.
   const loom_aie2p_array_channel_slot_t* channel_slots;

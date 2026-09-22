@@ -91,14 +91,14 @@ static iree_status_t loom_low_allocation_edge_alias_value_range_used_after(
 }
 
 static iree_status_t
-loom_low_allocation_edge_alias_destination_used_after_candidate_definition(
+loom_low_allocation_edge_alias_destination_may_survive_candidate_definition(
     const loom_low_allocation_edge_alias_context_t* context,
     const loom_liveness_interval_t* interval,
     const loom_low_placement_relation_t* relation,
     const loom_low_allocation_assignment_t* counterpart,
     uint32_t destination_unit_offset, uint32_t destination_unit_count,
-    bool* out_used_after) {
-  *out_used_after = false;
+    bool* out_may_survive) {
+  *out_may_survive = false;
   const loom_value_id_t destination_value_id =
       loom_low_placement_value_id(context->placement, relation->result_ordinal);
   const loom_value_t* destination_value =
@@ -112,13 +112,21 @@ loom_low_allocation_edge_alias_destination_used_after_candidate_definition(
   const loom_value_t* candidate_value =
       loom_module_value(context->placement->module, candidate_value_id);
   if (loom_value_is_block_arg(candidate_value)) {
-    // A backedge consumes the old source but defines both header arguments
-    // again. No use of the old source after that edge does not prove that the
-    // newly defined arguments may alias: they can have distinct entry values
-    // and be read together in this iteration, including on the loop exit.
-    *out_used_after = candidate_value_id != destination_value_id &&
-                      loom_value_def_block(candidate_value) ==
-                          loom_value_def_block(destination_value);
+    // A join defines its argument before any operation in that block. Its
+    // eventual backedge cannot overwrite an old destination value still live
+    // at this definition point. Structured regions retain their edge handoffs.
+    if (candidate_value_id != destination_value_id &&
+        loom_value_def_block(candidate_value)->parent_region ==
+            loom_value_def_block(destination_value)->parent_region) {
+      const uint32_t definition_point =
+          interval->value_id == destination_value_id ? counterpart->start_point
+                                                     : interval->start_point;
+      const loom_liveness_segment_range_t segments =
+          loom_liveness_segment_range_for_value_ordinal(
+              context->liveness, relation->result_ordinal);
+      *out_may_survive = loom_liveness_segment_range_contains(
+          context->liveness->segments, segments, definition_point);
+    }
     return iree_ok_status();
   }
   const loom_op_t* candidate_op = loom_value_def_op(candidate_value);
@@ -127,7 +135,7 @@ loom_low_allocation_edge_alias_destination_used_after_candidate_definition(
   }
   return loom_low_allocation_edge_alias_value_range_used_after(
       context, candidate_op, destination_value_id, destination_unit_offset,
-      destination_unit_count, out_used_after);
+      destination_unit_count, out_may_survive);
 }
 
 iree_status_t loom_low_allocation_edge_alias_allows_counterpart_overlap(
@@ -143,13 +151,13 @@ iree_status_t loom_low_allocation_edge_alias_allows_counterpart_overlap(
       !loom_low_placement_cause_is_edge(relation->cause)) {
     return iree_ok_status();
   }
-  bool destination_used_after_candidate_definition = false;
+  bool destination_may_survive_candidate_definition = false;
   IREE_RETURN_IF_ERROR(
-      loom_low_allocation_edge_alias_destination_used_after_candidate_definition(
+      loom_low_allocation_edge_alias_destination_may_survive_candidate_definition(
           context, interval, relation, counterpart, destination_unit_offset,
           destination_unit_count,
-          &destination_used_after_candidate_definition));
-  if (destination_used_after_candidate_definition) {
+          &destination_may_survive_candidate_definition));
+  if (destination_may_survive_candidate_definition) {
     return iree_ok_status();
   }
   switch (relation->cause) {

@@ -16,6 +16,7 @@
 #include "loom/codegen/low/target_binding.h"
 #include "loom/error/error_catalog.h"
 #include "loom/ir/module.h"
+#include "loom/ir/structural_hash.h"
 #include "loom/ops/op_defs.h"
 #include "loom/rewrite/materialize.h"
 #include "loom/rewrite/remap.h"
@@ -23,26 +24,27 @@
 
 void loom_low_rematerialization_invalidate_placement(
     loom_low_rematerialization_state_t* state) {
-  iree_bitmap_reset_all(state->per_use_values);
+  iree_bitmap_reset_all(state->per_user_values);
 }
 
-static iree_status_t loom_low_rematerialization_reserve_per_use_values(
+static iree_status_t loom_low_rematerialization_reserve_per_user_values(
     loom_low_rematerialization_state_t* state,
     iree_host_size_t required_bit_count) {
   const iree_host_size_t required_word_count =
       iree_bitmap_calculate_words(required_bit_count);
   iree_host_size_t word_capacity =
-      iree_bitmap_calculate_words(state->per_use_values.bit_count);
+      iree_bitmap_calculate_words(state->per_user_values.bit_count);
   if (required_word_count > word_capacity) {
     const iree_host_size_t old_word_count = word_capacity;
     IREE_RETURN_IF_ERROR(iree_arena_grow_array(
         state->arena, old_word_count, required_word_count,
-        sizeof(*state->per_use_values.words), &word_capacity,
-        (void**)&state->per_use_values.words));
-    memset(state->per_use_values.words + old_word_count, 0,
+        sizeof(*state->per_user_values.words), &word_capacity,
+        (void**)&state->per_user_values.words));
+    memset(state->per_user_values.words + old_word_count, 0,
            (word_capacity - old_word_count) *
-               sizeof(*state->per_use_values.words));
-    state->per_use_values.bit_count = word_capacity * IREE_BITMAP_BITS_PER_WORD;
+               sizeof(*state->per_user_values.words));
+    state->per_user_values.bit_count =
+        word_capacity * IREE_BITMAP_BITS_PER_WORD;
   }
   return iree_ok_status();
 }
@@ -147,8 +149,8 @@ iree_status_t loom_low_rematerialize_value_uses(
   if (value_id == LOOM_VALUE_ID_INVALID) {
     return iree_ok_status();
   }
-  if (value_id < state->per_use_values.bit_count &&
-      iree_bitmap_test(state->per_use_values, value_id)) {
+  if (value_id < state->per_user_values.bit_count &&
+      iree_bitmap_test(state->per_user_values, value_id)) {
     return iree_ok_status();
   }
 
@@ -222,9 +224,21 @@ iree_status_t loom_low_rematerialize_value_uses(
   }
 
   // Each eligible packet has one result and no regions. Reserve membership for
-  // its per-operand clones before any mutation changes the module value count.
-  IREE_RETURN_IF_ERROR(loom_low_rematerialization_reserve_per_use_values(
+  // its per-user clones before any mutation changes the module value count.
+  IREE_RETURN_IF_ERROR(loom_low_rematerialization_reserve_per_user_values(
       state, module->values.count + use_count));
+  // Index users by their first rewritten captured use. That exact operand
+  // retains the clone ID for other occurrences in the same instruction.
+  const iree_host_size_t user_capacity =
+      iree_host_size_next_power_of_two((iree_host_size_t)use_count * 2);
+  const iree_host_size_t user_mask = user_capacity - 1;
+  uint32_t inline_user_uses[16];
+  uint32_t* user_uses = inline_user_uses;
+  if (user_capacity > IREE_ARRAYSIZE(inline_user_uses)) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        arena, user_capacity, sizeof(*user_uses), (void**)&user_uses));
+  }
+  memset(user_uses, 0, user_capacity * sizeof(*user_uses));
   loom_rewriter_t rewriter = {0};
   loom_low_value_rematerialization_result_t result = {
       .value_id = value_id,
@@ -232,18 +246,36 @@ iree_status_t loom_low_rematerialize_value_uses(
   loom_rewriter_initialize(&rewriter, module, arena);
   iree_status_t status = iree_ok_status();
   for (uint32_t i = 0; i < use_count && iree_status_is_ok(status); ++i) {
+    loom_op_t* user_op = loom_use_user_op(uses[i]);
+    const uint32_t user_hash =
+        loom_structural_hash_finalize(loom_structural_hash_mix_u64(
+            loom_structural_hash_initialize(), (uint64_t)(uintptr_t)user_op));
+    iree_host_size_t user_slot = user_hash & user_mask;
+    while (user_uses[user_slot] != 0 &&
+           loom_use_user_op(uses[user_uses[user_slot] - 1]) != user_op) {
+      user_slot = (user_slot + 1) & user_mask;
+    }
+    const bool first_user_use = user_uses[user_slot] == 0;
     loom_value_id_t cloned_value_id = LOOM_VALUE_ID_INVALID;
-    status = loom_low_rematerialization_clone_for_use(
-        &rewriter, defining_op, result_index, value_id, uses[i], arena,
-        &cloned_value_id);
-    if (iree_status_is_ok(status)) {
-      status = loom_rewriter_set_operand(&rewriter, loom_use_user_op(uses[i]),
-                                         loom_use_operand_index(uses[i]),
-                                         cloned_value_id);
+    if (first_user_use) {
+      status = loom_low_rematerialization_clone_for_use(
+          &rewriter, defining_op, result_index, value_id, uses[i], arena,
+          &cloned_value_id);
+    } else {
+      const loom_use_t first_use = uses[user_uses[user_slot] - 1];
+      cloned_value_id =
+          loom_op_operands(user_op)[loom_use_operand_index(first_use)];
     }
     if (iree_status_is_ok(status)) {
-      iree_bitmap_set(state->per_use_values, cloned_value_id);
-      ++result.cloned_packet_count;
+      status = loom_rewriter_set_operand(
+          &rewriter, user_op, loom_use_operand_index(uses[i]), cloned_value_id);
+    }
+    if (iree_status_is_ok(status)) {
+      if (first_user_use) {
+        user_uses[user_slot] = i + 1;
+        iree_bitmap_set(state->per_user_values, cloned_value_id);
+        ++result.cloned_packet_count;
+      }
       ++result.rewritten_operand_count;
     }
   }

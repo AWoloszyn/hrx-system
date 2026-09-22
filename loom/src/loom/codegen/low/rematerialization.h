@@ -9,7 +9,8 @@
 // This layer mutates IR only when a pure descriptor packet explicitly opts its
 // result in to rematerialization. Allocation and scheduling retain the evidence
 // that selects a candidate; this utility owns cloning the producer near each
-// use and removing the original long-lived value.
+// user and removing the original long-lived value. Repeated operands in one
+// user share the same cloned producer.
 
 #ifndef LOOM_CODEGEN_LOW_REMATERIALIZATION_H_
 #define LOOM_CODEGEN_LOW_REMATERIALIZATION_H_
@@ -37,7 +38,7 @@ typedef enum loom_low_allocation_rematerialization_trigger_e {
 typedef struct loom_low_value_rematerialization_result_t {
   // SSA value whose defining packet was rematerialized.
   loom_value_id_t value_id;
-  // Number of descriptor packet clones inserted near operand users.
+  // Number of descriptor packet clones inserted, one per distinct user.
   uint32_t cloned_packet_count;
   // Number of operand uses rewritten to cloned packet results.
   uint32_t rewritten_operand_count;
@@ -53,24 +54,25 @@ typedef struct loom_low_allocation_rematerialization_result_t {
 // Retained producer facts for one scheduling/allocation repair lifecycle.
 // Initialize with the repair arena and an empty bitmap before the first
 // attempt. The arena and state survive analysis rebuilds until the repair loop
-// finishes. Per-use clones already have the narrowest definition placement this
-// transform can provide; inserting other operand definitions does not make them
-// candidates again. Spill materialization can insert reloads between clones and
-// their users, invalidating that placement fact. Value IDs remain stable across
-// the supported repair mutations.
+// finishes. Per-user clones already have the narrowest definition placement
+// this transform can provide; inserting other operand definitions does not make
+// them candidates again. Spill materialization can insert reloads between
+// clones and their users, invalidating that placement fact. Value IDs remain
+// stable across the supported repair mutations.
 typedef struct loom_low_rematerialization_state_t {
   // Arena retaining clone membership across repair attempts.
   iree_arena_allocator_t* arena;
-  // Module value IDs cloned near uses since the last placement invalidation.
-  iree_bitmap_t per_use_values;
+  // Module value IDs cloned near users since the last placement invalidation.
+  iree_bitmap_t per_user_values;
 } loom_low_rematerialization_state_t;
 
-// Invalidates per-use placement after spill traffic changes live ranges.
+// Invalidates per-user placement after spill traffic changes live ranges.
 // Retains allocated membership storage for subsequent repair attempts.
 void loom_low_rematerialization_invalidate_placement(
     loom_low_rematerialization_state_t* state);
 
-// Rematerializes a descriptor-backed SSA value near all of its uses.
+// Rematerializes a descriptor-backed SSA value once near each distinct user.
+// Multiple operands of that user share one rematerialized value.
 //
 // Returns OK with a zero result when |value_id| is not a safe rematerialization
 // candidate. When rewritten, callers must discard analyses of the old IR and

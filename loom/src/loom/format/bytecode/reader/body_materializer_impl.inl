@@ -238,18 +238,6 @@ iree_status_t LOOM_BYTECODE_BODY_VALUE_SCOPE_INITIALIZE_FRESH(
   return iree_ok_status();
 }
 
-static uint8_t loom_bytecode_instance_flags_mask(
-    const loom_op_vtable_t* vtable) {
-  if (!iree_all_bits_set(vtable->vtable_flags,
-                         LOOM_OP_VTABLE_HAS_INSTANCE_FLAGS)) {
-    return 0;
-  }
-  if (vtable->instance_flags_case_count >= 8) {
-    return UINT8_MAX;
-  }
-  return (uint8_t)((1u << vtable->instance_flags_case_count) - 1u);
-}
-
 typedef struct loom_bytecode_body_op_record_t {
   // Materialized operation awaiting nested regions and finalization.
   loom_op_t* op;
@@ -280,7 +268,7 @@ loom_bytecode_body_reader_read_op_record(
       loom_bytecode_reader_cursor_absolute_position(cursor);
   IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_u8(body_reader->values.decoder,
                                                     cursor, &instance_flags));
-  uint8_t instance_flags_mask = loom_bytecode_instance_flags_mask(vtable);
+  uint8_t instance_flags_mask = vtable->instance_flags_mask;
   if (iree_any_bit_set(instance_flags, (uint8_t)~instance_flags_mask)) {
     return loom_bytecode_value_scope_emit_invalid(
         &body_reader->values, instance_flags_offset,

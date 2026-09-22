@@ -118,6 +118,10 @@ struct loom_rewriter_t {
   // loom_rewriter_enable_analysis. NULL means analysis is disabled.
   loom_value_fact_table_t* fact_table;
 
+  // Borrowed math policy selected once for this rewrite scope. NULL preserves
+  // target-neutral optional arithmetic choices until a target is selected.
+  const struct loom_target_math_policy_t* math_policy;
+
   // Structural snapshots published into the fact table for edited regions.
   struct {
     // Region-address hash buckets for O(1) snapshot storage lookup.
@@ -142,6 +146,11 @@ void loom_rewriter_initialize(loom_rewriter_t* rewriter, loom_module_t* module,
                               iree_arena_allocator_t* arena);
 
 void loom_rewriter_deinitialize(loom_rewriter_t* rewriter);
+
+// Queries the retained target preference after the caller has established that
+// multiply and add both permit contraction. Does not resolve target context.
+bool loom_rewriter_prefers_fma(const loom_rewriter_t* rewriter,
+                               loom_type_t value_type, uint8_t fastmath_flags);
 
 // Enables tracking of operations affected by subsequent mutations. Calling this
 // on an enabled rewriter preserves its pending operations and allocated

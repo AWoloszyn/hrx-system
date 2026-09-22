@@ -137,12 +137,22 @@ typedef void (*loom_target_math_policy_query_fn_t)(
     const loom_target_math_query_t* query,
     loom_target_math_policy_decision_t* out_decision);
 
+// Returns true when contracting a permitted multiply/add of |value_type| into
+// FMA selects a supported, worthwhile implementation. |fastmath_flags| is the
+// intersection of the two operations' permissions. This is an optimization
+// preference, not a legality query for an explicitly authored FMA.
+typedef bool (*loom_target_math_prefer_fma_fn_t)(
+    const loom_target_math_policy_t* policy, loom_type_t value_type,
+    loom_target_math_fastmath_flags_t fastmath_flags);
+
 struct loom_target_math_policy_t {
   // Stable policy name used in diagnostics.
   iree_string_view_t name;
   // Target-owned decision callback.
   loom_target_math_policy_query_fn_t query;
-  // Target-owned immutable payload forwarded to |query|.
+  // Optional contraction preference. NULL preserves separate multiply/add.
+  loom_target_math_prefer_fma_fn_t prefer_fma;
+  // Target-owned immutable payload available to the policy callbacks.
   const void* user_data;
 };
 

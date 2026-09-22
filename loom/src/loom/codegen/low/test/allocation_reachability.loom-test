@@ -1,3 +1,34 @@
+// RUN: with-checks emit low-allocation-json @rotating_join
+
+// The next iteration's value is defined at the join before the current value
+// contributes to this iteration's sum. Their later backedge handoff cannot
+// justify overwriting the current value when entering the join.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @rotating_join(%done: reg<test.i32>, %choose: reg<test.i32>, %seed: reg<test.i32>, %initial_sum: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^loop(%seed: reg<test.i32>, %initial_sum: reg<test.i32>)
+^loop(%current: reg<test.i32>, %sum: reg<test.i32>):
+  low.cond_br %done, ^exit, ^body : reg<test.i32>
+^body:
+  low.cond_br %choose, ^refill, ^empty : reg<test.i32>
+^refill:
+  %fresh = test.const.i32 23
+  low.br ^join(%fresh: reg<test.i32>)
+^empty:
+  %zero = test.const.i32 0
+  low.br ^join(%zero: reg<test.i32>)
+^join(%next: reg<test.i32>):
+  %updated = test.add.i32 %sum, %current
+  low.br ^loop(%next: reg<test.i32>, %updated: reg<test.i32>)
+^exit:
+  return %sum
+}
+
+// ----
+CHECK: *"spill_count":0,*"name":"current"*"location":{"kind":"target_id","base":0,"count":1}*"name":"next"*"location":{"kind":"target_id","base":4,"count":1}*
+
+// ====
+
 // RUN: emit low-allocation-json @sibling_loops_share_invariants
 
 // Exit-first traversal reaches the second loop before either loop body. The

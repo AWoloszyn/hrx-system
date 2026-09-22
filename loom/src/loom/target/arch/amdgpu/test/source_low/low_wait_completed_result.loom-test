@@ -316,9 +316,9 @@ low.func.def target<amdgpu.rdna3.core>(@target) @copied_lane_completes_backedge(
   v_add_u32 v7, v12, v6
   global_load_b64 v[8:9], v0, s[0:1] offset:16
 .Lbb3:
-  s_add_u32 s3, s3, s4
   s_waitcnt vmcnt(0) lgkmcnt(63)
   v_mov_b32 v4, v8
+  s_add_u32 s3, s3, s4
   s_branch .Lbb1
 .Lbb4:
   s_endpgm

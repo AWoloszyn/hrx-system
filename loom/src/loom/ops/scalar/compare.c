@@ -186,12 +186,28 @@ bool loom_scalar_cmpi_result_from_facts(loom_scalar_type_t type,
                                                 out_result);
 }
 
-bool loom_scalar_cmpf_same_value_result(uint8_t predicate, bool* out_result) {
+bool loom_scalar_cmpf_constant_result(uint8_t predicate, loom_value_id_t lhs,
+                                      loom_value_id_t rhs, uint8_t fastmath,
+                                      bool* out_result) {
+  bool no_nan = (fastmath & LOOM_SCALAR_FASTMATHFLAGS_NNAN) != 0;
+  if (no_nan && (predicate == LOOM_SCALAR_CMPF_PREDICATE_ORD ||
+                 predicate == LOOM_SCALAR_CMPF_PREDICATE_UNO)) {
+    *out_result = predicate == LOOM_SCALAR_CMPF_PREDICATE_ORD;
+    return true;
+  }
+  if (lhs != rhs) {
+    return false;
+  }
   switch ((loom_scalar_cmpf_predicate_t)predicate) {
     case LOOM_SCALAR_CMPF_PREDICATE_OEQ:
     case LOOM_SCALAR_CMPF_PREDICATE_OGE:
     case LOOM_SCALAR_CMPF_PREDICATE_OLE:
     case LOOM_SCALAR_CMPF_PREDICATE_ORD:
+      if (!no_nan) {
+        return false;
+      }
+      *out_result = true;
+      return true;
     case LOOM_SCALAR_CMPF_PREDICATE_UEQ:
     case LOOM_SCALAR_CMPF_PREDICATE_UGE:
     case LOOM_SCALAR_CMPF_PREDICATE_ULE:
@@ -200,10 +216,15 @@ bool loom_scalar_cmpf_same_value_result(uint8_t predicate, bool* out_result) {
     case LOOM_SCALAR_CMPF_PREDICATE_OGT:
     case LOOM_SCALAR_CMPF_PREDICATE_OLT:
     case LOOM_SCALAR_CMPF_PREDICATE_ONE:
+      *out_result = false;
+      return true;
     case LOOM_SCALAR_CMPF_PREDICATE_UGT:
     case LOOM_SCALAR_CMPF_PREDICATE_ULT:
     case LOOM_SCALAR_CMPF_PREDICATE_UNE:
     case LOOM_SCALAR_CMPF_PREDICATE_UNO:
+      if (!no_nan) {
+        return false;
+      }
       *out_result = false;
       return true;
     default:

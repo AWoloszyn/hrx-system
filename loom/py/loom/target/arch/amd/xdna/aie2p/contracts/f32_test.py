@@ -18,6 +18,9 @@ from loom.target.arch.amd.xdna.aie2p.contracts.f32 import AIE2P_F32_RULES
 from loom.target.arch.amd.xdna.aie2p.contracts.f32_compare import (
     AIE2P_F32_COMPARE_RULES,
 )
+from loom.target.arch.amd.xdna.aie2p.contracts.floating_sign import (
+    AIE2P_FLOATING_SIGN_RULES,
+)
 from loom.target.arch.amd.xdna.aie2p.core_descriptors import (
     AIE2P_CORE_DESCRIPTOR_SET,
 )
@@ -138,7 +141,11 @@ def _evaluate_rule(rule: DescriptorRule, inputs: dict[str, int]) -> int:
 
 
 def _rule(report_key: str) -> DescriptorRule:
-    candidates = [rule for rule in AIE2P_F32_RULES if rule.report_key == report_key]
+    candidates = [
+        rule
+        for rule in (*AIE2P_F32_RULES, *AIE2P_FLOATING_SIGN_RULES)
+        if rule.report_key == report_key
+    ]
     assert len(candidates) == 1
     return candidates[0]
 
@@ -546,20 +553,28 @@ def test_f32_compare_programs_match_ieee_oracle() -> None:
     rules_by_predicate = {}
     for rule in AIE2P_F32_COMPARE_RULES:
         predicate = rule.guards[0].enum_keyword
-        assert predicate not in rules_by_predicate
-        rules_by_predicate[predicate] = rule
-    assert set(rules_by_predicate) == set(predicates)
+        no_nan = rule.report_key == "exact_binary32_compare_nnan"
+        key = (predicate, no_nan)
+        assert key not in rules_by_predicate
+        rules_by_predicate[key] = rule
+    assert set(rules_by_predicate) == {
+        (predicate, no_nan) for predicate in predicates for no_nan in (False, True)
+    }
     pairs = [(lhs, rhs) for lhs in _EDGE_VALUES for rhs in _EDGE_VALUES]
     random_source = random.Random(0xA1E2C32)
     pairs.extend(
         (random_source.getrandbits(32), random_source.getrandbits(32))
         for _ in range(1024)
     )
-    for predicate in predicates:
-        rule = rules_by_predicate[predicate]
+    for (predicate, no_nan), rule in rules_by_predicate.items():
         rule.validate(AIE2P_CORE_DESCRIPTOR_SET)
-        assert rule.emit[-1].results["d0"].kind is SourceValueKind.RESULT
+        assert any(
+            result.kind is SourceValueKind.RESULT
+            for result in rule.emit[-1].results.values()
+        )
         for lhs, rhs in pairs:
+            if no_nan and (_is_f32_nan(lhs) or _is_f32_nan(rhs)):
+                continue
             actual = _evaluate_rule(rule, {"lhs": lhs, "rhs": rhs})
             expected = _reference_compare(predicate, lhs, rhs)
             assert actual == expected, (

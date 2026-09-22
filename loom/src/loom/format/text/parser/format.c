@@ -358,10 +358,11 @@ static iree_status_t loom_parse_format_optional_group(
 }
 
 // Parses an instance flag list: flag1|flag2.
-// Matches flag names against the vtable's flag case names.
+// Matches declared spellings, including aggregate aliases, to their values.
 static iree_status_t loom_parse_format_instance_flag_list(
     loom_parser_t* parser, const loom_op_vtable_t* vtable, uint8_t* out_flags) {
   uint8_t flags = 0;
+  const loom_instance_flags_descriptor_t* descriptor = vtable->instance_flags;
   bool first = true;
   while (!loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_RANGLE) &&
          !loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_EOF)) {
@@ -373,10 +374,9 @@ static iree_status_t loom_parse_format_instance_flag_list(
     loom_token_t flag_token = loom_token_none();
     LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_BARE_IDENT, &flag_token);
     bool found = false;
-    for (uint8_t bit = 0; bit < vtable->instance_flags_case_count; ++bit) {
-      if (loom_bstring_equal(vtable->instance_flags_case_names[bit],
-                             flag_token.text)) {
-        flags |= (1u << bit);
+    for (uint16_t i = 0; i < descriptor->case_count; ++i) {
+      if (loom_bstring_equal(descriptor->cases[i].name, flag_token.text)) {
+        flags |= descriptor->cases[i].value;
         found = true;
         break;
       }

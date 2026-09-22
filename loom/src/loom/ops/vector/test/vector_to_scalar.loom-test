@@ -715,8 +715,8 @@ func.def @static_product_reduce_without_contract(%lhs: vector<4xf32>, %rhs: vect
 
 // ====
 
-// Contracted product reductions use a small FMA accumulator forest instead of
-// a single lane-ordered chain.
+// Target-neutral reduction lowering preserves the separate rounding choices.
+// Contraction permission survives on the generated multiply and add operations.
 func.def @static_product_reduce_with_contract(%lhs: vector<8xf32>, %rhs: vector<8xf32>, %zero: f32) -> (f32) {
   %product = vector.mulf<reassoc|nnan|ninf|nsz|contract> %lhs, %rhs : vector<8xf32>
   %r = vector.reduce<addf, reassoc|nnan|ninf|nsz|contract> %product, %zero : vector<8xf32>, f32
@@ -727,31 +727,36 @@ func.def @static_product_reduce_with_contract(%lhs: vector<8xf32>, %rhs: vector<
 func.def @static_product_reduce_with_contract(%lhs: vector<8xf32>, %rhs: vector<8xf32>, %zero: f32) -> (f32) {
   %6 = vector.extract %lhs[0] : vector<8xf32> -> f32
   %7 = vector.extract %rhs[0] : vector<8xf32> -> f32
-  %8 = scalar.fmaf<reassoc|nnan|ninf|nsz|contract> %6, %7, %zero : f32
+  %8 = scalar.mulf<reassoc|nnan|ninf|nsz|contract> %6, %7 : f32
   %9 = vector.extract %lhs[1] : vector<8xf32> -> f32
   %10 = vector.extract %rhs[1] : vector<8xf32> -> f32
   %11 = scalar.mulf<reassoc|nnan|ninf|nsz|contract> %9, %10 : f32
-  %12 = vector.extract %lhs[2] : vector<8xf32> -> f32
-  %13 = vector.extract %rhs[2] : vector<8xf32> -> f32
-  %14 = scalar.mulf<reassoc|nnan|ninf|nsz|contract> %12, %13 : f32
-  %15 = vector.extract %lhs[3] : vector<8xf32> -> f32
-  %16 = vector.extract %rhs[3] : vector<8xf32> -> f32
-  %17 = scalar.mulf<reassoc|nnan|ninf|nsz|contract> %15, %16 : f32
-  %18 = vector.extract %lhs[4] : vector<8xf32> -> f32
-  %19 = vector.extract %rhs[4] : vector<8xf32> -> f32
-  %20 = scalar.fmaf<reassoc|nnan|ninf|nsz|contract> %18, %19, %8 : f32
-  %21 = vector.extract %lhs[5] : vector<8xf32> -> f32
-  %22 = vector.extract %rhs[5] : vector<8xf32> -> f32
-  %23 = scalar.fmaf<reassoc|nnan|ninf|nsz|contract> %21, %22, %11 : f32
-  %24 = vector.extract %lhs[6] : vector<8xf32> -> f32
-  %25 = vector.extract %rhs[6] : vector<8xf32> -> f32
-  %26 = scalar.fmaf<reassoc|nnan|ninf|nsz|contract> %24, %25, %14 : f32
-  %27 = vector.extract %lhs[7] : vector<8xf32> -> f32
-  %28 = vector.extract %rhs[7] : vector<8xf32> -> f32
-  %29 = scalar.fmaf<reassoc|nnan|ninf|nsz|contract> %27, %28, %17 : f32
-  %30 = scalar.addf<reassoc|nnan|ninf|nsz|contract> %20, %23 : f32
-  %31 = scalar.addf<reassoc|nnan|ninf|nsz|contract> %26, %29 : f32
-  %r = scalar.addf<reassoc|nnan|ninf|nsz|contract> %30, %31 : f32
+  %12 = scalar.addf<reassoc|nnan|ninf|nsz|contract> %8, %11 : f32
+  %13 = vector.extract %lhs[2] : vector<8xf32> -> f32
+  %14 = vector.extract %rhs[2] : vector<8xf32> -> f32
+  %15 = scalar.mulf<reassoc|nnan|ninf|nsz|contract> %13, %14 : f32
+  %16 = vector.extract %lhs[3] : vector<8xf32> -> f32
+  %17 = vector.extract %rhs[3] : vector<8xf32> -> f32
+  %18 = scalar.mulf<reassoc|nnan|ninf|nsz|contract> %16, %17 : f32
+  %19 = scalar.addf<reassoc|nnan|ninf|nsz|contract> %15, %18 : f32
+  %20 = scalar.addf<reassoc|nnan|ninf|nsz|contract> %12, %19 : f32
+  %21 = vector.extract %lhs[4] : vector<8xf32> -> f32
+  %22 = vector.extract %rhs[4] : vector<8xf32> -> f32
+  %23 = scalar.mulf<reassoc|nnan|ninf|nsz|contract> %21, %22 : f32
+  %24 = vector.extract %lhs[5] : vector<8xf32> -> f32
+  %25 = vector.extract %rhs[5] : vector<8xf32> -> f32
+  %26 = scalar.mulf<reassoc|nnan|ninf|nsz|contract> %24, %25 : f32
+  %27 = scalar.addf<reassoc|nnan|ninf|nsz|contract> %23, %26 : f32
+  %28 = vector.extract %lhs[6] : vector<8xf32> -> f32
+  %29 = vector.extract %rhs[6] : vector<8xf32> -> f32
+  %30 = scalar.mulf<reassoc|nnan|ninf|nsz|contract> %28, %29 : f32
+  %31 = vector.extract %lhs[7] : vector<8xf32> -> f32
+  %32 = vector.extract %rhs[7] : vector<8xf32> -> f32
+  %33 = scalar.mulf<reassoc|nnan|ninf|nsz|contract> %31, %32 : f32
+  %34 = scalar.addf<reassoc|nnan|ninf|nsz|contract> %30, %33 : f32
+  %35 = scalar.addf<reassoc|nnan|ninf|nsz|contract> %27, %34 : f32
+  %36 = scalar.addf<reassoc|nnan|ninf|nsz|contract> %20, %35 : f32
+  %r = scalar.addf<reassoc|nnan|ninf|nsz|contract> %zero, %36 : f32
   func.return %r : f32
 }
 

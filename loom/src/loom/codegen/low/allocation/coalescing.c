@@ -191,6 +191,7 @@ loom_low_allocation_coalescing_can_ignore_relation_counterpart_conflict(
   }
   const loom_low_allocation_edge_alias_context_t edge_alias_context = {
       .placement = context->placement,
+      .liveness = context->liveness,
       .consumption_query = context->consumption_query,
       .user_data = context->user_data,
   };
@@ -791,7 +792,13 @@ static iree_status_t loom_low_allocation_coalescing_append_interval_at_location(
   }
   const uint32_t alignment =
       loom_low_allocation_live_range_interval_alignment(interval);
-  if (location_base % alignment != 0) {
+  const loom_low_reg_class_t* reg_class =
+      &context->search_context->descriptor_set
+           ->reg_classes[capacity.descriptor_reg_class_id];
+  // Physical IDs name declared views; the capacity check validates their
+  // ordered units. Only linear register locations have numeric alignment.
+  if (!loom_low_reg_class_uses_explicit_physical_registers(reg_class) &&
+      location_base % alignment != 0) {
     return iree_ok_status();
   }
   // Coalesced assignments commit through the normal append path, which records
@@ -1112,7 +1119,14 @@ static iree_status_t loom_low_allocation_coalescing_assign_concat_interval(
         (void**)&ignored_value_ids));
   }
 
-  uint32_t result_location_base = 0;
+  uint16_t interval_reg_class_id = LOOM_LOW_REG_CLASS_NONE;
+  IREE_RETURN_IF_ERROR(loom_low_allocation_target_constraints_resolve_reg_class(
+      context->target_constraints, interval->value_class,
+      &interval_reg_class_id, NULL));
+  loom_low_allocation_assignment_t result_assignment = {
+      .descriptor_reg_class_id = interval_reg_class_id,
+      .location_count = interval->unit_count,
+  };
   uint32_t coalesced_unit_count = 0;
   uint16_t ignored_value_count = 0;
   const loom_low_allocation_assignment_t* first_assignment = NULL;
@@ -1142,17 +1156,21 @@ static iree_status_t loom_low_allocation_coalescing_assign_concat_interval(
                               "low.concat placement relation exceeds source "
                               "assignment units");
     }
-    const uint32_t source_unit_location =
-        source_assignment->location_base + relation->source_unit_offset;
-    if (source_unit_location < relation->result_unit_offset) {
-      return iree_ok_status();
-    }
-    const uint32_t candidate_base =
-        source_unit_location - relation->result_unit_offset;
     if (!first_assignment) {
-      result_location_base = candidate_base;
+      result_assignment.location_kind = source_assignment->location_kind;
+      if (!loom_low_allocation_storage_find_subrange_alias_location(
+              context->search_context->descriptor_set, interval_reg_class_id,
+              result_assignment.location_kind, interval->unit_count,
+              relation->result_unit_offset, source_assignment,
+              relation->source_unit_offset, relation->unit_count,
+              &result_assignment.location_base)) {
+        return iree_ok_status();
+      }
       first_assignment = source_assignment;
-    } else if (result_location_base != candidate_base) {
+    } else if (!loom_low_allocation_storage_assignment_subranges_equal(
+                   context->search_context->descriptor_set, &result_assignment,
+                   relation->result_unit_offset, source_assignment,
+                   relation->source_unit_offset, relation->unit_count)) {
       return iree_ok_status();
     }
     if (relation->unit_count > UINT32_MAX - coalesced_unit_count) {
@@ -1196,15 +1214,10 @@ static iree_status_t loom_low_allocation_coalescing_assign_concat_interval(
             edge_relation->unit_count)) {
       continue;
     }
-    if (result_location_base > UINT32_MAX - edge_relation->source_unit_offset) {
-      continue;
-    }
-    const uint32_t source_unit_location =
-        result_location_base + edge_relation->source_unit_offset;
-    const uint32_t destination_unit_location =
-        destination_assignment->location_base +
-        edge_relation->result_unit_offset;
-    if (source_unit_location != destination_unit_location) {
+    if (!loom_low_allocation_storage_assignment_subranges_equal(
+            context->search_context->descriptor_set, &result_assignment,
+            edge_relation->source_unit_offset, destination_assignment,
+            edge_relation->result_unit_offset, edge_relation->unit_count)) {
       continue;
     }
     IREE_RETURN_IF_ERROR(
@@ -1214,13 +1227,9 @@ static iree_status_t loom_low_allocation_coalescing_assign_concat_interval(
             edge_relation->result_unit_offset, edge_relation->unit_count,
             ignored_value_ids, ignored_value_capacity, &ignored_value_count));
   }
-  uint16_t interval_reg_class_id = LOOM_LOW_REG_CLASS_NONE;
-  IREE_RETURN_IF_ERROR(loom_low_allocation_target_constraints_resolve_reg_class(
-      context->target_constraints, interval->value_class,
-      &interval_reg_class_id, NULL));
   return loom_low_allocation_coalescing_append_interval_at_location(
       context, interval, interval_reg_class_id, first_assignment->location_kind,
-      result_location_base, interval->unit_count, ignored_value_ids,
+      result_assignment.location_base, interval->unit_count, ignored_value_ids,
       ignored_value_count, ignored_value_ids, ignored_storage_lease_value_count,
       out_assigned);
 }
@@ -1454,13 +1463,20 @@ loom_low_allocation_coalescing_assign_concat_source_from_edge_destination(
             concat_relation->unit_count)) {
       continue;
     }
-    const uint32_t destination_unit_location =
-        destination_assignment->location_base + destination_unit_offset;
-    if (destination_unit_location < concat_relation->source_unit_offset) {
+    uint16_t interval_reg_class_id = LOOM_LOW_REG_CLASS_NONE;
+    IREE_RETURN_IF_ERROR(
+        loom_low_allocation_target_constraints_resolve_reg_class(
+            context->target_constraints, interval->value_class,
+            &interval_reg_class_id, NULL));
+    uint32_t source_location_base = 0;
+    if (!loom_low_allocation_storage_find_subrange_alias_location(
+            context->search_context->descriptor_set, interval_reg_class_id,
+            destination_assignment->location_kind, interval->unit_count,
+            concat_relation->source_unit_offset, destination_assignment,
+            destination_unit_offset, concat_relation->unit_count,
+            &source_location_base)) {
       continue;
     }
-    const uint32_t source_location_base =
-        destination_unit_location - concat_relation->source_unit_offset;
     const loom_value_id_t* ignored_value_ids = NULL;
     uint16_t ignored_value_count = 0;
     const loom_value_id_t destination_value_id =
@@ -1471,11 +1487,6 @@ loom_low_allocation_coalescing_assign_concat_source_from_edge_destination(
             &destination_value_id, destination_unit_offset,
             concat_relation->unit_count, &ignored_value_ids,
             &ignored_value_count));
-    uint16_t interval_reg_class_id = LOOM_LOW_REG_CLASS_NONE;
-    IREE_RETURN_IF_ERROR(
-        loom_low_allocation_target_constraints_resolve_reg_class(
-            context->target_constraints, interval->value_class,
-            &interval_reg_class_id, NULL));
     IREE_RETURN_IF_ERROR(
         loom_low_allocation_coalescing_append_interval_at_location(
             context, interval, interval_reg_class_id,
@@ -1927,13 +1938,20 @@ iree_status_t loom_low_allocation_coalescing_assign_edge_source_interval(
       continue;
     }
 
-    const uint32_t destination_unit_location =
-        destination_assignment->location_base + relation->result_unit_offset;
-    if (destination_unit_location < relation->source_unit_offset) {
+    uint16_t interval_reg_class_id = LOOM_LOW_REG_CLASS_NONE;
+    IREE_RETURN_IF_ERROR(
+        loom_low_allocation_target_constraints_resolve_reg_class(
+            context->target_constraints, interval->value_class,
+            &interval_reg_class_id, NULL));
+    uint32_t source_location_base = 0;
+    if (!loom_low_allocation_storage_find_subrange_alias_location(
+            context->search_context->descriptor_set, interval_reg_class_id,
+            destination_assignment->location_kind, interval->unit_count,
+            relation->source_unit_offset, destination_assignment,
+            relation->result_unit_offset, relation->unit_count,
+            &source_location_base)) {
       continue;
     }
-    const uint32_t source_location_base =
-        destination_unit_location - relation->source_unit_offset;
     const loom_value_id_t* ignored_value_ids = NULL;
     uint16_t ignored_value_count = 0;
     const loom_value_id_t destination_value_id =
@@ -1943,11 +1961,6 @@ iree_status_t loom_low_allocation_coalescing_assign_edge_source_interval(
             context, interval, relation, destination_assignment,
             &destination_value_id, relation->result_unit_offset,
             relation->unit_count, &ignored_value_ids, &ignored_value_count));
-    uint16_t interval_reg_class_id = LOOM_LOW_REG_CLASS_NONE;
-    IREE_RETURN_IF_ERROR(
-        loom_low_allocation_target_constraints_resolve_reg_class(
-            context->target_constraints, interval->value_class,
-            &interval_reg_class_id, NULL));
     IREE_RETURN_IF_ERROR(
         loom_low_allocation_coalescing_append_interval_at_location(
             context, interval, interval_reg_class_id,

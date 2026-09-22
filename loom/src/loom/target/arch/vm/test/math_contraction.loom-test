@@ -1,0 +1,90 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/math_contraction.loom-test
+// TEMPLATE-EXCLUDE: @vector4_contract This profile does not implement this vector callable ABI.
+// TEMPLATE-EXCLUDE: @vector4_reduce This profile does not implement this vector callable ABI.
+// TEMPLATE-EXCLUDE: @vector16_contract This profile does not implement this vector callable ABI.
+// RUN: emit source-low target=vm:core output=low
+
+func.def @scalar_contract(%a: f32, %b: f32, %c: f32) -> (f32) {
+  %product = scalar.mulf<contract> %a, %b : f32
+  %result = scalar.addf<contract> %product, %c : f32
+  func.return %result : f32
+}
+
+// ----
+low.func.def target<vm.core> abi(vm_function) @scalar_contract(%a: reg<vm.value : f32>, %b: reg<vm.value : f32>, %c: reg<vm.value : f32>) -> (reg<vm.value : f32>) asm {
+  %result = float.fma.f32 %a, %b, %c
+  return %result
+}
+
+// ====
+
+func.def @scalar_swapped(%a: f32, %b: f32, %c: f32) -> (f32) {
+  %product = scalar.mulf<contract> %a, %b : f32
+  %result = scalar.addf<contract> %c, %product : f32
+  func.return %result : f32
+}
+
+// ----
+low.func.def target<vm.core> abi(vm_function) @scalar_swapped(%a: reg<vm.value : f32>, %b: reg<vm.value : f32>, %c: reg<vm.value : f32>) -> (reg<vm.value : f32>) asm {
+  %result = float.fma.f32 %a, %b, %c
+  return %result
+}
+
+// ====
+
+func.def @scalar_nonadjacent(%a: f32, %b: f32, %c: f32) -> (f32) {
+  %product = scalar.mulf<contract> %a, %b : f32
+  %addend = scalar.mulf %c, %c : f32
+  %result = scalar.addf<contract> %product, %addend : f32
+  func.return %result : f32
+}
+
+// ----
+low.func.def target<vm.core> abi(vm_function) @scalar_nonadjacent(%a: reg<vm.value : f32>, %b: reg<vm.value : f32>, %c: reg<vm.value : f32>) -> (reg<vm.value : f32>) asm {
+  %addend = float.mul.f32 %c, %c
+  %result = float.fma.f32 %a, %b, %addend
+  return %result
+}
+
+// ====
+
+func.def @scalar_multiuse(%a: f32, %b: f32, %c: f32) -> (f32, f32) {
+  %product = scalar.mulf<contract> %a, %b : f32
+  %result = scalar.addf<contract> %product, %c : f32
+  func.return %product, %result : f32, f32
+}
+
+// ----
+low.func.def target<vm.core> abi(vm_function) @scalar_multiuse(%a: reg<vm.value : f32>, %b: reg<vm.value : f32>, %c: reg<vm.value : f32>) -> (reg<vm.value : f32>, reg<vm.value : f32>) asm {
+  %product = float.mul.f32 %a, %b
+  %result = float.add.f32 %product, %c
+  return %product, %result
+}
+
+// ====
+
+func.def @scalar_one_flag(%a: f32, %b: f32, %c: f32) -> (f32) {
+  %product = scalar.mulf<contract> %a, %b : f32
+  %result = scalar.addf %product, %c : f32
+  func.return %result : f32
+}
+
+// ----
+low.func.def target<vm.core> abi(vm_function) @scalar_one_flag(%a: reg<vm.value : f32>, %b: reg<vm.value : f32>, %c: reg<vm.value : f32>) -> (reg<vm.value : f32>) asm {
+  %product = float.mul.f32 %a, %b
+  %result = float.add.f32 %product, %c
+  return %result
+}
+
+// ====
+
+func.def @scalar_explicit(%a: f32, %b: f32, %c: f32) -> (f32) {
+  %result = scalar.fmaf %a, %b, %c : f32
+  func.return %result : f32
+}
+
+// ----
+low.func.def target<vm.core> abi(vm_function) @scalar_explicit(%a: reg<vm.value : f32>, %b: reg<vm.value : f32>, %c: reg<vm.value : f32>) -> (reg<vm.value : f32>) asm {
+  %result = float.fma.f32 %a, %b, %c
+  return %result
+}
