@@ -1,0 +1,185 @@
+// Scalar invalidation must complete before a following read. The return also
+// needs the separate completion of the load issued after that invalidation.
+// RUN: emit amdgpu-assembly @scalar_invalidate strategy=source
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @scalar_invalidate(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  s_dcache_inv
+  %loaded = s_load_dword %base, %offset
+  return %loaded
+}
+
+// ----
+  s_dcache_inv
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_load_dword s3, s[0:1], s2 offset:0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_endpgm
+
+// ====
+
+// A partial scalar wait does not establish completion of an invalidation.
+// RUN: emit amdgpu-assembly @partial_scalar_invalidate strategy=source
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @partial_scalar_invalidate(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  s_gl1_inv
+  s_waitcnt {lgkmcnt = 1}
+  %loaded = s_load_dword %base, %offset
+  return %loaded
+}
+
+// ----
+  s_gl1_inv
+  s_waitcnt vmcnt(63) lgkmcnt(1)
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_load_dword s3, s[0:1], s2 offset:0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_endpgm
+
+// ====
+
+// An authored full wait covers the invalidation without a second planned wait.
+// RUN: emit amdgpu-assembly @completed_scalar_invalidate strategy=source
+amdgpu.target<gfx1201> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @completed_scalar_invalidate(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  s_dcache_inv
+  s_wait_kmcnt {kmcnt = 0}
+  low.br ^read
+^read:
+  %loaded = s_load_dword %base, %offset
+  return %loaded
+}
+
+// ----
+  s_dcache_inv
+  s_wait_kmcnt kmcnt(0)
+.Lbb1:
+  s_load_dword s3, s[0:1], s2 offset:0
+  s_wait_kmcnt kmcnt(0)
+  s_endpgm
+
+// ====
+
+// Only one path completes the invalidation, so the join must wait before reading.
+// RUN: emit amdgpu-assembly @scalar_invalidate_join strategy=source
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @scalar_invalidate_join(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %condition: reg<amdgpu.scc>) -> (reg<amdgpu.sgpr>) asm {
+  s_dcache_inv
+  low.cond_br %condition, ^drain, ^pending : reg<amdgpu.scc>
+^drain:
+  s_waitcnt {lgkmcnt = 0}
+  low.br ^read
+^pending:
+  low.br ^read
+^read:
+  %loaded = s_load_dword %base, %offset
+  return %loaded
+}
+
+// ----
+  s_dcache_inv
+  s_cbranch_scc0 .Lbb2
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_branch .Lbb3
+.Lbb2:
+.Lbb3:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_load_dword s3, s[0:1], s2 offset:0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_endpgm
+
+// ====
+
+// The completed read from a previous iteration cannot complete a new invalidation.
+// RUN: emit amdgpu-assembly @scalar_invalidate_loop strategy=source
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @scalar_invalidate_loop(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>, %wanted: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  low.br ^invalidate
+^invalidate:
+  s_dcache_inv
+  low.br ^read
+^read:
+  %loaded = s_load_dword %base, %offset
+  %ready = s_cmp_eq_i32 %loaded, %wanted
+  low.cond_br %ready, ^done, ^invalidate : reg<amdgpu.scc>
+^done:
+  return %loaded
+}
+
+// ----
+.Lbb1:
+  s_dcache_inv
+.Lbb2:
+  s_wait_kmcnt kmcnt(0)
+  s_load_dword s4, s[0:1], s2 offset:0
+  s_wait_kmcnt kmcnt(0)
+  s_cmp_eq_i32 s4, s3
+  s_delay_alu instid0(SALU_CYCLE_1)
+  s_cbranch_scc0 .Lbb1
+.Lbb3:
+  s_endpgm
+
+// ====
+
+// CDNA scalar writeback and invalidation use LGKM even without an SSA result.
+// Each control drains earlier work before producing its own completion event.
+// RUN: emit amdgpu-assembly @scalar_cache_controls strategy=source
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @scalar_cache_controls(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  s_dcache_wb
+  s_dcache_inv
+  s_dcache_wb_vol
+  s_dcache_inv_vol
+  low.br ^read
+^read:
+  %loaded = s_load_dword %base, %offset
+  return %loaded
+}
+
+// ----
+  s_dcache_wb
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_dcache_inv
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_dcache_wb_vol
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_dcache_inv_vol
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_load_dword s3, s[0:1], s2 offset:0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_endpgm
+
+// ====
+
+// Discarding two lines increments LGKM twice, but an unordered scalar operation
+// always needs a zero wait. A partial wait cannot release the later read.
+// RUN: emit amdgpu-assembly @scalar_cache_discard strategy=source
+amdgpu.target<gfx950> @target
+
+low.func.def target<amdgpu.cdna4.core>(@target) @scalar_cache_discard(%base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  s_dcache_discard %base, %offset
+  s_dcache_discard_x2 %base, %offset
+  s_waitcnt {lgkmcnt = 1}
+  low.br ^read
+^read:
+  %loaded = s_load_dword %base, %offset
+  return %loaded
+}
+
+// ----
+  s_dcache_discard s[0:1], s2
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_dcache_discard_x2 s[0:1], s2
+  s_waitcnt vmcnt(63) lgkmcnt(1)
+.Lbb1:
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_load_dword s3, s[0:1], s2 offset:0
+  s_waitcnt vmcnt(63) lgkmcnt(0)
+  s_endpgm

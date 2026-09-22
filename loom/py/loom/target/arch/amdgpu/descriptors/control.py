@@ -20,6 +20,18 @@ _SENDMSG_RTN_MESSAGE_IMMEDIATE = Immediate(
     unsigned_max=(2**8) - 1,
 )
 
+# Scalar cache mutations complete out of order through LGKM/KM. Treat the
+# changed visibility as a write so later reads wait, including across CFG edges.
+_SCALAR_CACHE_EFFECTS = (
+    _CACHE_CONTROL_EFFECT,
+    Effect(
+        EffectKind.WRITE,
+        memory_space=MemorySpace.GLOBAL,
+        flags=(EffectFlag.DEPENDENCY,),
+        counter_id=_COUNTER_SMEM,
+    ),
+)
+
 
 def _s_mov_b64_shared_base_overlay(
     *, encoding_condition: str = "default"
@@ -418,18 +430,23 @@ def _cache_control_overlay(
     encoding_name: str,
     semantic_tag: str,
     cache_fields: tuple[tuple[str, int], ...] = (),
+    completion_counter: int = 0,
 ) -> AmdgpuDescriptorOverlay:
+    schedule_class, effects = {
+        0: (_SCHEDULE_CACHE_CONTROL, (_CACHE_CONTROL_EFFECT,)),
+        _COUNTER_SMEM: (_SCHEDULE_SMEM_CACHE_CONTROL, _SCALAR_CACHE_EFFECTS),
+    }[completion_counter]
     return AmdgpuDescriptorOverlay(
         descriptor_key=descriptor_key,
         instruction_name=instruction_name,
         mnemonic=mnemonic,
         encoding_name=encoding_name,
         semantic_tag=semantic_tag,
-        schedule_class=_SCHEDULE_CACHE_CONTROL,
+        schedule_class=schedule_class,
         operands=(),
         immediate_fields=_cache_field_names(cache_fields),
         immediates=_cache_immediates(cache_fields),
-        effects=(_CACHE_CONTROL_EFFECT,),
+        effects=effects,
         flags=(DescriptorFlag.SIDE_EFFECTING,),
     )
 
@@ -463,12 +480,12 @@ def _s_dcache_discard_overlay(
         mnemonic=mnemonic,
         encoding_name="ENC_SMEM",
         semantic_tag=semantic_tag,
-        schedule_class=_SCHEDULE_CACHE_CONTROL,
+        schedule_class=_SCHEDULE_SMEM_CACHE_CONTROL,
         operands=(
             AmdgpuOperandOverlay("SBASE", _sgpr_operand("base", units=2)),
             AmdgpuOperandOverlay("SOFFSET", _sgpr_operand("soffset")),
         ),
-        effects=(_CACHE_CONTROL_EFFECT,),
+        effects=_SCALAR_CACHE_EFFECTS,
         flags=(DescriptorFlag.SIDE_EFFECTING,),
     )
 
@@ -572,6 +589,7 @@ def _gfx950_cache_control_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
             instruction_name="S_DCACHE_INV",
             mnemonic="s_dcache_inv",
             encoding_name="ENC_SMEM",
+            completion_counter=_COUNTER_SMEM,
             semantic_tag="memory.cache.invalidate.data",
         ),
         _cache_control_overlay(
@@ -579,6 +597,7 @@ def _gfx950_cache_control_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
             instruction_name="S_DCACHE_WB",
             mnemonic="s_dcache_wb",
             encoding_name="ENC_SMEM",
+            completion_counter=_COUNTER_SMEM,
             semantic_tag="memory.cache.writeback.data",
         ),
         _cache_control_overlay(
@@ -586,6 +605,7 @@ def _gfx950_cache_control_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
             instruction_name="S_DCACHE_INV_VOL",
             mnemonic="s_dcache_inv_vol",
             encoding_name="ENC_SMEM",
+            completion_counter=_COUNTER_SMEM,
             semantic_tag="memory.cache.invalidate.data.volatile",
         ),
         _cache_control_overlay(
@@ -593,6 +613,7 @@ def _gfx950_cache_control_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
             instruction_name="S_DCACHE_WB_VOL",
             mnemonic="s_dcache_wb_vol",
             encoding_name="ENC_SMEM",
+            completion_counter=_COUNTER_SMEM,
             semantic_tag="memory.cache.writeback.data.volatile",
         ),
         _cache_control_overlay(
@@ -638,6 +659,7 @@ def _gfx11_cache_control_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
             instruction_name="S_DCACHE_INV",
             mnemonic="s_dcache_inv",
             encoding_name="ENC_SMEM",
+            completion_counter=_COUNTER_SMEM,
             semantic_tag="memory.cache.invalidate.data",
         ),
         _cache_control_overlay(
@@ -645,6 +667,7 @@ def _gfx11_cache_control_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
             instruction_name="S_GL1_INV",
             mnemonic="s_gl1_inv",
             encoding_name="ENC_SMEM",
+            completion_counter=_COUNTER_SMEM,
             semantic_tag="memory.cache.invalidate.global.l1",
         ),
         _cache_control_overlay(
@@ -689,6 +712,7 @@ def _gfx12_cache_control_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
             instruction_name="S_DCACHE_INV",
             mnemonic="s_dcache_inv",
             encoding_name="ENC_SMEM",
+            completion_counter=_COUNTER_SMEM,
             semantic_tag="memory.cache.invalidate.data",
         ),
         _cache_control_overlay(
