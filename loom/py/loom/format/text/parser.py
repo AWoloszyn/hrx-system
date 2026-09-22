@@ -3741,9 +3741,7 @@ class Parser:
         }
 
         projected_types = remap_value_bindings(parsed.result_types, remap)
-        for target_id, target_type in zip(
-            entry_arg_ids, projected_types, strict=True
-        ):
+        for target_id, target_type in zip(entry_arg_ids, projected_types, strict=True):
             self._module.values[target_id].type = target_type
 
     def _parse_block_arg(self) -> int:

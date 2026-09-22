@@ -377,7 +377,7 @@ TEST_F(TypePropagationTest, RejectedCandidateClosureRunsOncePerIteration) {
   iree_arena_allocator_t pass_arena;
   iree_arena_initialize(&block_pool_, &pass_arena);
   loom_rewriter_t rewriter;
-  IREE_ASSERT_OK(loom_rewriter_initialize(&rewriter, module_, &pass_arena));
+  loom_rewriter_initialize(&rewriter, module_, &pass_arena);
   loom_type_propagator_t* propagator = NULL;
   IREE_ASSERT_OK(
       loom_type_propagator_allocate(module_, {}, &pass_arena, &propagator));

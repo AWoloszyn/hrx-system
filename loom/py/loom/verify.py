@@ -47,7 +47,6 @@ from loom.ir import (
     SymbolNameSet,
     Type,
     TypeKind,
-    Value,
 )
 from loom.type_binding import binding_children, remap_value_bindings
 from loom.type_identity import TypeIdentity
@@ -798,9 +797,7 @@ class ModuleVerifier:
                     case FieldKind.OPERAND | FieldKind.RESULT:
                         if field_desc.variadic:
                             values[field_name] = list(
-                                self._constraint_values(
-                                    resolved.value_ids(field_name)
-                                )
+                                self._constraint_values(resolved.value_ids(field_name))
                             )
                         elif field_desc.optional and not resolved.is_present(
                             field_name
