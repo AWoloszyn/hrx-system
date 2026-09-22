@@ -8,6 +8,8 @@
 
 #include <string.h>
 
+#include "loom/ir/type_dependencies.h"
+#include "loom/ir/type_identity.h"
 #include "loom/ir/types.h"
 
 #define LOOM_CFG_VALUE_IDENTITY_INVALID UINT32_MAX
@@ -375,6 +377,10 @@ typedef struct loom_cfg_value_identity_state_t {
   // First obligation endpoint resolved to this state.
   uint32_t first_endpoint;
 
+  // Self-normalized type hash of the argument root, or zero for an external
+  // root.
+  uint32_t type_hash;
+
   // Hash of the active equation's label and transitions.
   uint64_t signature;
 } loom_cfg_value_identity_state_t;
@@ -657,6 +663,46 @@ static void loom_cfg_value_identity_refinement_remove_component_member(
   --refinement->components[component].member_count;
 }
 
+// Module values carry canonical types. If a pointer-backed type does not
+// reference its own argument, self normalization leaves it unchanged and its
+// canonical identity supplies both equality and a retained structural hash.
+// Inline leaves keep their bounded direct comparison without an index lookup.
+static loom_type_id_t loom_cfg_value_identity_unmapped_type_id(
+    const loom_module_t* module, loom_value_id_t value_id, loom_type_t type) {
+  if (!loom_type_identity_key(type)) {
+    return LOOM_TYPE_ID_INVALID;
+  }
+  const loom_type_id_t type_id = loom_type_identity_find(module, type);
+  const loom_type_dependency_id_t dependencies =
+      loom_type_table_dependencies(&module->types, type_id);
+  return loom_type_dependencies_contains(&module->type_uses, dependencies,
+                                         value_id)
+             ? LOOM_TYPE_ID_INVALID
+             : type_id;
+}
+
+static uint32_t loom_cfg_value_identity_refinement_type_hash(
+    const loom_cfg_value_identity_refinement_t* refinement, uint32_t root) {
+  if (loom_cfg_value_identity_refinement_argument_ordinal(refinement, root) ==
+      LOOM_CFG_VALUE_IDENTITY_INVALID) {
+    return 0;
+  }
+  const loom_module_t* module = refinement->projection->region->graph.module;
+  const loom_value_id_t value_id = refinement->values[root].value_id;
+  const loom_value_id_t normalized_id = LOOM_VALUE_ID_INVALID;
+  const loom_type_value_remap_t remap = {
+      .source_values = &value_id,
+      .target_values = &normalized_id,
+      .count = 1,
+  };
+  const loom_type_t type = loom_module_value_type(module, value_id);
+  const loom_type_id_t type_id =
+      loom_cfg_value_identity_unmapped_type_id(module, value_id, type);
+  return type_id != LOOM_TYPE_ID_INVALID
+             ? loom_type_table_hash(&module->types, type_id)
+             : loom_type_hash_after_value_remap(module, type, &remap);
+}
+
 static uint64_t loom_cfg_value_identity_refinement_label_hash(
     const loom_cfg_value_identity_refinement_t* refinement, uint32_t state) {
   const uint32_t root = refinement->components[state].root;
@@ -669,19 +715,9 @@ static uint64_t loom_cfg_value_identity_refinement_label_hash(
   const loom_value_fact_cfg_argument_t* descriptor =
       loom_cfg_value_identity_projection_argument(refinement->projection,
                                                   argument);
-  const loom_module_t* module = refinement->projection->region->graph.module;
-  const loom_value_id_t value_id = refinement->values[root].value_id;
-  const loom_value_id_t normalized_id = LOOM_VALUE_ID_INVALID;
-  const loom_type_value_remap_t remap = {
-      .source_values = &value_id,
-      .target_values = &normalized_id,
-      .count = 1,
-  };
-  const uint64_t type_hash = loom_type_hash_after_value_remap(
-      module, loom_module_value_type(module, value_id), &remap);
   return loom_cfg_value_identity_mix64(
-      ((uint64_t)descriptor->block_index << 32) ^ type_hash ^
-      UINT64_C(0x612b0da9));
+      ((uint64_t)descriptor->block_index << 32) ^
+      refinement->states[state].type_hash ^ UINT64_C(0x612b0da9));
 }
 
 static bool loom_cfg_value_identity_refinement_same_label(
@@ -715,6 +751,16 @@ static bool loom_cfg_value_identity_refinement_same_label(
   const loom_value_id_t right_value = refinement->values[right_root].value_id;
   const loom_type_t left_type = loom_module_value_type(module, left_value);
   const loom_type_t right_type = loom_module_value_type(module, right_value);
+  const loom_type_id_t left_type_id =
+      loom_cfg_value_identity_unmapped_type_id(module, left_value, left_type);
+  if (left_type_id != LOOM_TYPE_ID_INVALID) {
+    const loom_type_id_t right_type_id =
+        loom_cfg_value_identity_unmapped_type_id(module, right_value,
+                                                 right_type);
+    if (right_type_id != LOOM_TYPE_ID_INVALID) {
+      return left_type_id == right_type_id;
+    }
+  }
   const loom_type_value_remap_t left_to_right = {
       .source_values = &left_value,
       .target_values = &right_value,
@@ -1128,6 +1174,7 @@ IREE_ATTRIBUTE_NOINLINE static void loom_cfg_value_identity_refinement_cut(
   const uint32_t old_component = refinement->values[child].component;
   const uint32_t old_root = refinement->components[old_component].root;
   const uint64_t old_signature = refinement->states[old_component].signature;
+  const uint32_t old_type_hash = refinement->states[old_component].type_hash;
   const uint32_t old_group = refinement->states[old_component].group;
 
   loom_cfg_value_identity_refinement_unlink_forest_edge(refinement, child,
@@ -1196,6 +1243,9 @@ IREE_ATTRIBUTE_NOINLINE static void loom_cfg_value_identity_refinement_cut(
   const uint32_t old_root_component = refinement->values[old_root].component;
   const uint32_t child_component = refinement->values[child].component;
   refinement->states[old_root_component].signature = old_signature;
+  refinement->states[old_root_component].type_hash = old_type_hash;
+  refinement->states[child_component].type_hash =
+      loom_cfg_value_identity_refinement_type_hash(refinement, child);
   // Relabel the old active equation before exposing and activating child.
   refinement->values[child].parent = LOOM_CFG_VALUE_IDENTITY_INVALID;
   loom_cfg_value_identity_refinement_activate_argument(refinement, child);
@@ -1444,6 +1494,8 @@ static iree_status_t loom_cfg_value_identity_refinement_initialize(
         .next = LOOM_CFG_VALUE_IDENTITY_INVALID,
         .first_inverse = LOOM_CFG_VALUE_IDENTITY_INVALID,
         .first_endpoint = LOOM_CFG_VALUE_IDENTITY_INVALID,
+        .type_hash = loom_cfg_value_identity_refinement_type_hash(
+            refinement, refinement->components[state].root),
     };
     uint32_t bucket = (uint32_t)loom_cfg_value_identity_refinement_label_hash(
                           refinement, state) &
