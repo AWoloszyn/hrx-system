@@ -147,6 +147,15 @@ publication is therefore not a nonblocking OS contract. Multiple contexts can
 independently own instruction backing and queues. Those backing lifetimes are
 distinct from residency of application state in the physical tiles.
 
+Keeping these public owners alive does not keep an idle device powered. Native
+runtime suspension can discard physical tile state while retaining the public
+context and its backing. The next submission can synchronously wake the device
+and restore native contexts before accepting the command. The caller still
+supplies instructions that establish the application state needed for that
+independent submission; libamdf does not detect lost tile state, replay program
+setup or issue keepalive work. Eager queue preparation therefore does not imply
+bounded wake-up latency or preservation of state between submissions.
+
 The returned increasing, opaque submission number identifies accepted work.
 Several commands can be published before waiting for the last accepted point;
 that wait covers the queue's accepted prefix. The caller performs checked

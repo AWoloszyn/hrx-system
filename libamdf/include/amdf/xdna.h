@@ -402,7 +402,8 @@ typedef struct amdf_xdna_api_t {
   /// provider-owned firmware bootstrap work. Failure leaves `out_queue`
   /// unchanged; any unfinished bootstrap ownership remains with the context.
   /// Native packet storage, completion resources and required bootstrap are
-  /// ready before success. Their costs never move to first submission or wait.
+  /// ready before success; libamdf does not defer preparation to submission or
+  /// wait. A live queue does not prevent native idle suspension.
   amdf_status_t(AMDF_CALL* kernel_queue_create)(
       amdf_xdna_context_t* context,
       const amdf_xdna_kernel_queue_create_info_t* create_info,
@@ -435,7 +436,9 @@ typedef struct amdf_xdna_api_t {
   /// starting value or dense-numbering guarantee. Waiting for one point covers
   /// earlier accepted commands, not independently scheduled descendants.
   /// This is not a wait-free guarantee. Native publication can block acquiring
-  /// driver admission credits even when library packet capacity remains. It
+  /// driver admission credits or synchronously resuming an idle device, even
+  /// when library packet capacity remains. Native resume may restore firmware
+  /// and contexts without restoring application tile state. The native call
   /// may publish queue-owned packet cache lines, not caller instruction/data
   /// bytes. Preserving the first native completion identity can require a
   /// one-time fence transfer after acceptance and before later publication;
