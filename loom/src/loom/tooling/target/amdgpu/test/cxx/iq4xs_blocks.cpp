@@ -46,6 +46,34 @@ void decode_iq4xs(const IQ4XSBlock* blocks, const signed char* codebook,
   output[group_index * 32 + lane] = group_scale(block, group) * codebook[code];
 }
 
+using Bytes4 = unsigned char __attribute__((ext_vector_type(4)));
+using Codes4 = signed char __attribute__((ext_vector_type(4)));
+using Codebook16 = signed char __attribute__((ext_vector_type(16)));
+using Float4 = float __attribute__((ext_vector_type(4)));
+
+[[loom::op("vector.table.lookup")]]
+Codes4 lookup(Codebook16 table, Bytes4 indices);
+
+// One workgroup decodes a whole block. Each workitem expands four packed bytes
+// into four weights in each half of its group using register table lookups.
+[[loom::kernel, loom::workgroup_size(32, 1, 1), loom::workgroup_count(8, 1, 1)]]
+void decode_iq4xs_packed(const IQ4XSBlock* blocks, const Codebook16* codebook,
+                         Float4* output) {
+  unsigned block_index = loom::workgroup_id.x;
+  unsigned lane = loom::workitem_id.x;
+  auto* block = &blocks[block_index];
+  unsigned group = lane / 4;
+  unsigned chunk = lane % 4;
+  auto* quants = reinterpret_cast<const Bytes4*>(block->quants);
+  Bytes4 packed = quants[group * 4 + chunk];
+  auto low_codes = lookup(*codebook, packed & 15);
+  auto high_codes = lookup(*codebook, packed >> 4);
+  Float4 scales = group_scale(block, group);
+  unsigned position = block_index * 64 + group * 8 + chunk;
+  output[position] = __builtin_convertvector(low_codes, Float4) * scales;
+  output[position + 4] = __builtin_convertvector(high_codes, Float4) * scales;
+}
+
 // Updating both inline byte arrays must preserve the base scale, high scale
 // bits and neighboring records. Each byte has exactly one writing workitem.
 [[loom::kernel, loom::workgroup_size(32, 1, 1), loom::workgroup_count(8, 1, 1)]]

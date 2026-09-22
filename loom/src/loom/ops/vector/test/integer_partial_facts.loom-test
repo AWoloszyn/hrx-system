@@ -1,0 +1,106 @@
+// RUN: pass canonicalize
+
+// One mask bounds every unknown lane without enumerating a large vector or
+// claiming that the runtime lane values are equal.
+func.def @uniform_mask(%input: vector<32xi8>) -> (i64, i64, i1) {
+  %mask = vector.constant 15 : vector<32xi8>
+  %masked = vector.andi %input, %mask : vector<32xi8>
+  %lo = test.fact_all_equal_range_lo %masked : vector<32xi8> -> i64
+  %hi = test.fact_all_equal_range_hi %masked : vector<32xi8> -> i64
+  %uniform = test.fact_subgroup_uniform %masked : vector<32xi8> -> i1
+  func.return %lo, %hi, %uniform : i64, i64, i1
+}
+// ----
+func.def @uniform_mask(%input: vector<32xi8>) -> (i64, i64, i1) {
+  %lo = scalar.constant 0 : i64
+  %hi = scalar.constant 15 : i64
+  %uniform = scalar.constant false : i1
+  func.return %lo, %hi, %uniform : i64, i64, i1
+}
+
+// ====
+
+func.def @commuted_uniform_mask(%input: vector<32xi8>) -> (i64, i64) {
+  %mask = vector.constant 15 : vector<32xi8>
+  %masked = vector.andi %mask, %input : vector<32xi8>
+  %lo = test.fact_all_equal_range_lo %masked : vector<32xi8> -> i64
+  %hi = test.fact_all_equal_range_hi %masked : vector<32xi8> -> i64
+  func.return %lo, %hi : i64, i64
+}
+// ----
+func.def @commuted_uniform_mask(%input: vector<32xi8>) -> (i64, i64) {
+  %lo = scalar.constant 0 : i64
+  %hi = scalar.constant 15 : i64
+  func.return %lo, %hi : i64, i64
+}
+
+// ====
+
+// A runtime mask with a retained bound works without an exact mask value.
+func.def @bounded_mask(%input: vector<4xi8>, %mask: i8) -> (i64, i64) {
+  %limit = scalar.constant 15 : i8
+  %bounded = scalar.andi %mask, %limit : i8
+  %masks = vector.splat %bounded : vector<4xi8>
+  %masked = vector.andi %input, %masks : vector<4xi8>
+  %lo = test.fact_all_equal_range_lo %masked : vector<4xi8> -> i64
+  %hi = test.fact_all_equal_range_hi %masked : vector<4xi8> -> i64
+  func.return %lo, %hi : i64, i64
+}
+// ----
+func.def @bounded_mask(%input: vector<4xi8>, %mask: i8) -> (i64, i64) {
+  %lo = scalar.constant 0 : i64
+  %hi = scalar.constant 15 : i64
+  func.return %lo, %hi : i64, i64
+}
+
+// ====
+
+// Independent lane masks retain independent bounds in both operand orders.
+func.def @lane_masks(%input: vector<4xi8>) -> (i64, i64, i64, i64) {
+  %c1 = scalar.constant 1 : i8
+  %c15 = scalar.constant 15 : i8
+  %c63 = scalar.constant 63 : i8
+  %c0 = scalar.constant 0 : i8
+  %masks = vector.from_elements %c1, %c15, %c63, %c0 : vector<4xi8>
+  %masked = vector.andi %input, %masks : vector<4xi8>
+  %commuted = vector.andi %masks, %input : vector<4xi8>
+  %lane0 = vector.extract %masked[0] : vector<4xi8> -> i8
+  %lane1 = vector.extract %commuted[1] : vector<4xi8> -> i8
+  %lane2 = vector.extract %masked[2] : vector<4xi8> -> i8
+  %lane3 = vector.extract %commuted[3] : vector<4xi8> -> i8
+  %hi0 = test.fact_range_hi %lane0 : i8 -> i64
+  %hi1 = test.fact_range_hi %lane1 : i8 -> i64
+  %hi2 = test.fact_range_hi %lane2 : i8 -> i64
+  %hi3 = test.fact_range_hi %lane3 : i8 -> i64
+  func.return %hi0, %hi1, %hi2, %hi3 : i64, i64, i64, i64
+}
+// ----
+func.def @lane_masks(%input: vector<4xi8>) -> (i64, i64, i64, i64) {
+  %hi0 = scalar.constant 1 : i64
+  %hi1 = scalar.constant 15 : i64
+  %hi2 = scalar.constant 63 : i64
+  %hi3 = scalar.constant 0 : i64
+  func.return %hi0, %hi1, %hi2, %hi3 : i64, i64, i64, i64
+}
+
+// ====
+
+// Unknown inputs and transfers that cannot derive a bound remain unknown.
+func.def @unknown_results(%lhs: vector<4xi8>, %rhs: vector<4xi8>) -> (i64, i64, i64, i64) {
+  %masked = vector.andi %lhs, %rhs : vector<4xi8>
+  %increment = vector.constant 15 : vector<4xi8>
+  %added = vector.addi %lhs, %increment : vector<4xi8>
+  %masked_lo = test.fact_all_equal_range_lo %masked : vector<4xi8> -> i64
+  %masked_hi = test.fact_all_equal_range_hi %masked : vector<4xi8> -> i64
+  %added_lo = test.fact_all_equal_range_lo %added : vector<4xi8> -> i64
+  %added_hi = test.fact_all_equal_range_hi %added : vector<4xi8> -> i64
+  func.return %masked_lo, %masked_hi, %added_lo, %added_hi : i64, i64, i64, i64
+}
+// ----
+func.def @unknown_results(%lhs: vector<4xi8>, %rhs: vector<4xi8>) -> (i64, i64, i64, i64) {
+  %masked_lo = scalar.constant -9223372036854775808 : i64
+  %masked_hi = scalar.constant -9223372036854775808 : i64
+  %added_lo = scalar.constant -9223372036854775808 : i64
+  %added_hi = scalar.constant -9223372036854775808 : i64
+  func.return %masked_lo, %masked_hi, %added_lo, %added_hi : i64, i64, i64, i64
+}

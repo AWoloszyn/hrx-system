@@ -196,6 +196,84 @@ low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @i8_table_lookup_
 
 // ====
 
+func.def @i8_table_lookup_masked_codes(%grid: vector<16xi8>, %packed: vector<4xi8>) -> (vector<4xi8>) {
+  %mask = vector.constant 15 : vector<4xi8>
+  %codes = vector.andi %packed, %mask : vector<4xi8>
+  %decoded = vector.table.lookup %grid[%codes] : vector<16xi8>, vector<4xi8> -> vector<4xi8>
+  func.return %decoded : vector<4xi8>
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @i8_table_lookup_masked_codes(%grid: reg<amdgpu.vgpr x4>, %packed: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %mask = v_mov_b32 252645135
+  %codes = v_and_b32 %packed, %mask
+  %11 = slice %grid[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %12 = slice %grid[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %13 = slice %grid[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %14 = slice %grid[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %15 = v_and_b32_lit %codes, 117901063
+  %16 = v_perm_b32 %12, %11, %15
+  %17 = v_perm_b32 %14, %13, %15
+  %18 = v_and_b32_lit %codes, 134744072
+  %19 = v_lshrrev_b32_src0_inline %18, 1
+  %20 = v_or_b32_lit %19, 50462976
+  %decoded = v_perm_b32 %17, %16, %20
+  return %decoded
+}
+
+// ====
+
+func.def @i8_table_lookup_shifted_codes(%grid: vector<16xi8>, %packed: vector<4xi8>) -> (vector<4xi8>) {
+  %shift = vector.constant 4 : vector<4xi8>
+  %codes = vector.shrui %packed, %shift : vector<4xi8>
+  %decoded = vector.table.lookup %grid[%codes] : vector<16xi8>, vector<4xi8> -> vector<4xi8>
+  func.return %decoded : vector<4xi8>
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @i8_table_lookup_shifted_codes(%grid: reg<amdgpu.vgpr x4>, %packed: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %42 = v_bfe_i32_offset_width_inline %packed {offset = 0, width = 8}
+  %43 = v_and_b32_lit %42, 255
+  %44 = v_lshrrev_b32_lit %43, 4
+  %45 = v_bfe_i32_offset_width_inline %44 {offset = 0, width = 8}
+  %46 = v_bfe_i32_offset_width_inline %packed {offset = 8, width = 8}
+  %47 = v_and_b32_lit %46, 255
+  %48 = v_lshrrev_b32_lit %47, 4
+  %49 = v_bfe_i32_offset_width_inline %48 {offset = 0, width = 8}
+  %50 = v_bfe_i32_offset_width_inline %packed {offset = 16, width = 8}
+  %51 = v_and_b32_lit %50, 255
+  %52 = v_lshrrev_b32_lit %51, 4
+  %53 = v_bfe_i32_offset_width_inline %52 {offset = 0, width = 8}
+  %54 = v_ashrrev_i32_src0_inline %packed, 24
+  %55 = v_and_b32_lit %54, 255
+  %56 = v_lshrrev_b32_lit %55, 4
+  %57 = v_bfe_i32_offset_width_inline %56 {offset = 0, width = 8}
+  %58 = v_and_b32_lit %45, 255
+  %59 = v_and_b32_lit %49, 255
+  %60 = v_lshlrev_b32_src0_inline %59, 8
+  %61 = v_or_b32 %58, %60
+  %62 = v_and_b32_lit %53, 255
+  %63 = v_lshlrev_b32_src0_inline %62, 16
+  %64 = v_or_b32 %61, %63
+  %65 = v_and_b32_lit %57, 255
+  %66 = v_lshlrev_b32_src0_inline %65, 24
+  %codes = v_or_b32 %64, %66
+  %68 = slice %grid[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %69 = slice %grid[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %70 = slice %grid[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %71 = slice %grid[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %72 = v_and_b32_lit %codes, 117901063
+  %73 = v_perm_b32 %69, %68, %72
+  %74 = v_perm_b32 %71, %70, %72
+  %75 = v_and_b32_lit %codes, 134744072
+  %76 = v_lshrrev_b32_src0_inline %75, 1
+  %77 = v_or_b32_lit %76, 50462976
+  %decoded = v_perm_b32 %74, %73, %77
+  return %decoded
+}
+
+// ====
+
 func.def @i8_table_lookup_u4_constant_table(%packed: vector<2xi8>) -> (vector<4xi8>) {
   %g0 = scalar.constant 0 : i8
   %g1 = scalar.constant -1 : i8
