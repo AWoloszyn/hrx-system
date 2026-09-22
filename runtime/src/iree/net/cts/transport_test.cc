@@ -1744,6 +1744,11 @@ TEST_F(TransportTest, MovedMessagesSurviveConnectionTeardown) {
 
   StopAndFreeListener();
   DeactivateAndRelease(client_connection_, client_proactor_, kClientPolling);
+  // Observe actual peer departure while the receiving connection and moved
+  // leases are still live, before asking the receiver to deactivate locally.
+  PollUntil(server_proactor_, kServerPolling,
+            [&] { return retained.errors != 0; });
+  EXPECT_EQ(retained.errors, 1);
   DeactivateAndRelease(server_connection_, server_proactor_, kServerPolling);
   iree_net_transport_factory_release(factory_);
   factory_ = nullptr;
