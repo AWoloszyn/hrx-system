@@ -1287,47 +1287,40 @@ void loom_value_facts_shli(const loom_value_facts_t* lhs,
 }
 
 void loom_value_facts_shrui(const loom_value_facts_t* lhs,
-                            const loom_value_facts_t* rhs,
+                            const loom_value_facts_t* rhs, int32_t bit_count,
                             loom_value_facts_t* out) {
-  const loom_value_facts_t lhs_facts = *lhs;
+  const loom_value_facts_t lhs_facts =
+      bit_count == 64 ? *lhs : loom_value_facts_wrap_integer(*lhs, bit_count);
   const loom_value_facts_t rhs_facts = *rhs;
-  int64_t lhs_lo = lhs_facts.range_lo, lhs_hi = lhs_facts.range_hi;
-  int64_t rhs_lo = rhs_facts.range_lo, rhs_hi = rhs_facts.range_hi;
-  int64_t lhs_divisor = lhs_facts.known_divisor;
-
-  // Shift amount must be exact and in [0, 63].
-  if (rhs_lo != rhs_hi || rhs_lo < 0 || rhs_lo > 63) {
+  const int64_t shift = rhs_facts.range_lo;
+  if (shift != rhs_facts.range_hi || shift < 0 || shift >= bit_count) {
     *out = loom_value_facts_unknown();
-    loom_value_facts_propagate_binary_distribution(lhs_facts, rhs_facts, out);
-    return;
-  }
-  int64_t shift = rhs_lo;
-  if (shift == 63) {
-    // A 64-bit logical shift by 63 extracts the source sign bit.
-    if (lhs_lo >= 0) {
-      *out = loom_value_facts_exact_i64(0);
-    } else if (lhs_hi < 0) {
-      *out = loom_value_facts_exact_i64(1);
-    } else {
-      *out = loom_value_facts_make(0, 1, 1);
+  } else if (shift == 0) {
+    // Identity retains the signed fact domain, including the source sign bit.
+    *out = lhs_facts;
+  } else {
+    const uint64_t mask = UINT64_MAX >> (64 - bit_count);
+    int64_t lo = 0;
+    int64_t hi = (int64_t)(mask >> shift);
+    if (lhs_facts.range_lo >= 0 || lhs_facts.range_hi < 0) {
+      // Within either half of the signed domain, raw bits are monotonic.
+      // A range crossing zero instead spans both ends of the unsigned domain.
+      lo = (int64_t)(((uint64_t)lhs_facts.range_lo & mask) >> shift);
+      hi = (int64_t)(((uint64_t)lhs_facts.range_hi & mask) >> shift);
     }
-    loom_value_facts_propagate_binary_distribution(lhs_facts, rhs_facts, out);
-    return;
+    int64_t divisor = lhs_facts.known_divisor;
+    if (lhs_facts.range_lo < 0) {
+      // Reinterpreting a signed value adds 2^bit_count. Only the power-of-two
+      // factor of its divisor necessarily survives that addition.
+      divisor &= -divisor;
+    }
+    // No positive signed divisor contains a factor of 2^63.
+    const uint64_t factor = UINT64_C(1) << shift;
+    divisor = (uint64_t)divisor % factor == 0
+                  ? (int64_t)((uint64_t)divisor / factor)
+                  : 1;
+    *out = loom_value_facts_make(lo, hi, divisor);
   }
-  int64_t factor = (int64_t)1 << shift;
-
-  // Divisor: independent of sign. Computed before range check.
-  int64_t divisor = (lhs_divisor % factor == 0) ? lhs_divisor / factor : 1;
-
-  // Range requires non-negative input for unsigned shift semantics.
-  if (lhs_lo < 0) {
-    *out = loom_value_facts_make(INT64_MIN, INT64_MAX, divisor);
-    loom_value_facts_propagate_binary_distribution(lhs_facts, rhs_facts, out);
-    return;
-  }
-  int64_t lo = lhs_lo >> shift;
-  int64_t hi = lhs_hi >> shift;
-  *out = loom_value_facts_make(lo, hi, divisor);
   loom_value_facts_propagate_binary_distribution(lhs_facts, rhs_facts, out);
 }
 

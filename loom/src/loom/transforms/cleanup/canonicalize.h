@@ -29,6 +29,9 @@ enum loom_canonicalizer_flag_bits_e {
   // Combine adjacent view loads into vector loads. Enabled only by cleanup
   // before target legalization; ordinary cleanup preserves scalar loads.
   LOOM_CANONICALIZER_FLAG_COALESCE_VIEW_LOADS = 1u << 0,
+  // Reconstruct register table lookups from scalar extracts before target
+  // legalization. Ordinary cleanup preserves the scalarized representation.
+  LOOM_CANONICALIZER_FLAG_COMBINE_TABLE_LOOKUPS = 1u << 1,
 };
 typedef uint32_t loom_canonicalizer_flags_t;
 

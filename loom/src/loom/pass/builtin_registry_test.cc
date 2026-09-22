@@ -86,6 +86,13 @@ TEST(PassBuiltinRegistryTest, ValidatesBuiltinOptionSchemas) {
   IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
                         loom_pass_descriptor_validate_options(
                             canonicalize, IREE_SV("view-loads=invalid")));
+  IREE_ASSERT_OK(loom_pass_descriptor_validate_options(
+      canonicalize, IREE_SV("table-lookups=combine")));
+  IREE_ASSERT_OK(loom_pass_descriptor_validate_options(
+      canonicalize, IREE_SV("table-lookups=preserve")));
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                        loom_pass_descriptor_validate_options(
+                            canonicalize, IREE_SV("table-lookups=invalid")));
 
   const loom_pass_descriptor_t* math =
       LookupBuiltinPass(IREE_SV("legalize-math"));

@@ -1734,3 +1734,21 @@ func.def @predicate_attribute_keeps_dynamic_bound(%origin0: index, %count: index
   %origin = index.assume %origin0 [lt(%origin0, %max_vector_origin)] : index
   func.return %origin : index
 }
+
+// ====
+
+// A signed bit pattern cannot acquire a width-dependent bound before target
+// selection, even when its source bits and shift count are exact.
+func.def @logical_shift_requires_carrier() -> (index) {
+  %bits = index.constant -1 : index
+  %amount = index.constant 1 : index
+  %shifted = index.shrui %bits, %amount : index
+  func.return %shifted : index
+}
+// ----
+func.def @logical_shift_requires_carrier() -> (index) {
+  %bits = index.constant -1 : index
+  %amount = index.constant 1 : index
+  %shifted = index.shrui %bits, %amount : index
+  func.return %shifted : index
+}

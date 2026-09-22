@@ -886,8 +886,11 @@ void loom_value_facts_remsi(const loom_value_facts_t* lhs,
 void loom_value_facts_shli(const loom_value_facts_t* lhs,
                            const loom_value_facts_t* rhs,
                            loom_value_facts_t* out);
+// Logical right shift in a verified integer width in [1, 64]. Interprets
+// source facts as raw bits at that width; a nonzero shift clears the sign bit.
+// Non-exact or out-of-domain shift amounts produce unknown facts.
 void loom_value_facts_shrui(const loom_value_facts_t* lhs,
-                            const loom_value_facts_t* rhs,
+                            const loom_value_facts_t* rhs, int32_t bit_count,
                             loom_value_facts_t* out);
 void loom_value_facts_shrsi(const loom_value_facts_t* lhs,
                             const loom_value_facts_t* rhs,

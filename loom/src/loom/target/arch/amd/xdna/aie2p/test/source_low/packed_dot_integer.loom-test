@@ -130,12 +130,10 @@ low.func.def target<amd.xdna.aie2p.core> abi(object_function) @dot8i4_u4u4(%lhs:
   %123 = add.rr %115, %122
   %124 = mov.short -28
   %125 = lshl %68, %124
-  %126 = and %125, %71
-  %128 = lshl %69, %124
-  %129 = and %128, %71
-  %130 = mul %126, %129
-  %131 = add.rr %123, %130
-  %dot = vbcst.32 %131
+  %127 = lshl %69, %124
+  %128 = mul %125, %127
+  %129 = add.rr %123, %128
+  %dot = vbcst.32 %129
   return %dot
 }
 
@@ -349,16 +347,14 @@ low.func.def target<amd.xdna.aie2p.core> abi(object_function) @dot8i4_s4s4(%lhs:
   %197 = mul %190, %196
   %198 = add.rr %184, %197
   %200 = lshl %100, %107
-  %201 = and %200, %103
-  %202 = lshl %201, %104
-  %204 = ashl %202, %107
-  %206 = lshl %101, %107
-  %207 = and %206, %103
-  %208 = lshl %207, %104
-  %210 = ashl %208, %107
-  %211 = mul %204, %210
-  %212 = add.rr %198, %211
-  %dot = vbcst.32 %212
+  %201 = lshl %200, %104
+  %203 = ashl %201, %107
+  %205 = lshl %101, %107
+  %206 = lshl %205, %104
+  %208 = ashl %206, %107
+  %209 = mul %203, %208
+  %210 = add.rr %198, %209
+  %dot = vbcst.32 %210
   return %dot
 }
 
@@ -438,14 +434,12 @@ low.func.def target<amd.xdna.aie2p.core> abi(object_function) @dot8i4_u4s4(%lhs:
   %160 = mul %153, %159
   %161 = add.rr %150, %160
   %163 = lshl %84, %92
-  %164 = and %163, %87
-  %166 = lshl %85, %92
-  %167 = and %166, %87
-  %168 = lshl %167, %88
-  %170 = ashl %168, %92
-  %171 = mul %164, %170
-  %172 = add.rr %161, %171
-  %dot = vbcst.32 %172
+  %165 = lshl %85, %92
+  %166 = lshl %165, %88
+  %168 = ashl %166, %92
+  %169 = mul %163, %168
+  %170 = add.rr %161, %169
+  %dot = vbcst.32 %170
   return %dot
 }
 
@@ -525,14 +519,12 @@ low.func.def target<amd.xdna.aie2p.core> abi(object_function) @dot8i4_s4u4(%lhs:
   %160 = mul %156, %159
   %161 = add.rr %150, %160
   %163 = lshl %84, %91
-  %164 = and %163, %87
-  %165 = lshl %164, %88
-  %167 = ashl %165, %91
-  %169 = lshl %85, %91
-  %170 = and %169, %87
-  %171 = mul %167, %170
-  %172 = add.rr %161, %171
-  %dot = vbcst.32 %172
+  %164 = lshl %163, %88
+  %166 = ashl %164, %91
+  %168 = lshl %85, %91
+  %169 = mul %166, %168
+  %170 = add.rr %161, %169
+  %dot = vbcst.32 %170
   return %dot
 }
 
@@ -618,14 +610,12 @@ low.func.def target<amd.xdna.aie2p.core> abi(object_function) @dot8i4_s4u4_q4_of
   %166 = mul %162, %165
   %167 = add.rr %156, %166
   %169 = lshl %90, %97
-  %170 = and %169, %93
-  %171 = lshl %170, %94
-  %173 = ashl %171, %97
-  %175 = lshl %91, %97
-  %176 = and %175, %93
-  %177 = mul %173, %176
-  %178 = add.rr %167, %177
-  %dot = vbcst.32 %178
+  %170 = lshl %169, %94
+  %172 = ashl %170, %97
+  %174 = lshl %91, %97
+  %175 = mul %172, %174
+  %176 = add.rr %167, %175
+  %dot = vbcst.32 %176
   return %dot
 }
 

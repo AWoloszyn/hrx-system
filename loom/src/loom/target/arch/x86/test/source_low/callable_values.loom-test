@@ -46,9 +46,28 @@ func.def public @call_vector_result(%input: i32, %lane: index) -> (i32) where [r
 }
 
 func.def @select_lane(%values: vector<4xi32>, %lane: index) -> (i32) where [range(%lane, 0, 3)] {
-  // ERROR@+1: TARGET/004 {op_name="vector.extract", subject_role="operand_segment", subject_name="indices", constraint_key="operand_segment_count", expected_count="0"}
   %result = vector.extract %values[%lane] : vector<4xi32> -> i32
   func.return %result : i32
+}
+
+// ----
+low.func.def public target<x86.avx2.core> abi(object_function) @call_vector_result(%input: reg<x86.gpr32>, %lane: reg<x86.gpr64>) -> (reg<x86.gpr32>) where [range(%lane, 0, 3)] asm {
+  %c1 = mov.imm32 1
+  %c2 = mov.imm32 2
+  %c3 = mov.imm32 3
+  %31 = mov.imm64 3
+  %32 = cmp.eq.gpr64 %lane, %31
+  %33 = mov.imm64 2
+  %34 = cmp.eq.gpr64 %lane, %33
+  %35 = mov.imm64 1
+  %36 = cmp.eq.gpr64 %lane, %35
+  %37 = copy %input : reg<x86.gpr32> -> reg<x86.gpr32>
+  %38 = select.gpr32 %36, %c1, %37
+  %39 = copy %38 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %40 = select.gpr32 %34, %c2, %39
+  %41 = copy %40 : reg<x86.gpr32> -> reg<x86.gpr32>
+  %result = select.gpr32 %32, %c3, %41
+  return %result
 }
 
 // ====

@@ -116,12 +116,12 @@ low.func.def public target<amd.xdna.aie2p.core> abi(object_function) @call_loop(
   %c1 = mov.short 1
   low.br ^_bb1(%c0: reg<aie2p.er>, %value: reg<aie2p.er>)
 ^_bb1(%i: reg<aie2p.er>, %current: reg<aie2p.er>):
-  %36 = lt %i, %count
-  low.cond_br %36, ^_bb2, ^_bb3 : reg<aie2p.er>
+  %35 = lt %i, %count
+  low.cond_br %35, ^_bb2, ^_bb3 : reg<aie2p.er>
 ^_bb2:
   %result = add.rr %current, %delta
-  %38 = add.rr %i, %c1
-  low.br ^_bb1(%38: reg<aie2p.er>, %result: reg<aie2p.er>)
+  %37 = add.rr %i, %c1
+  low.br ^_bb1(%37: reg<aie2p.er>, %result: reg<aie2p.er>)
 ^_bb3:
   return %current
 }

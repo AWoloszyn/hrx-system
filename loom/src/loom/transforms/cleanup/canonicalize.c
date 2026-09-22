@@ -22,6 +22,7 @@
 #include "loom/ops/special_values.h"
 #include "loom/ops/type_registry.h"
 #include "loom/ops/vector/ops.h"
+#include "loom/ops/vector/table.h"
 #include "loom/ops/view/ops.h"
 #include "loom/pass/pipeline.h"
 #include "loom/pass/registry.h"
@@ -63,6 +64,9 @@ static const loom_pass_option_def_t kCanonicalizeOptions[] = {
     {IREE_SVL("view-loads"),
      IREE_SVL(
          "Preserve scalar loads (default) or coalesce before legalization.")},
+    {IREE_SVL("table-lookups"),
+     IREE_SVL("Preserve scalar extracts (default) or combine register table "
+              "lookups before legalization.")},
 };
 
 #define LOOM_CANONICALIZE_STATISTICS(V, statistics_type)                       \
@@ -98,6 +102,18 @@ static iree_status_t loom_canonicalize_parse_option(void* user_data,
                                                     iree_string_view_t value) {
   loom_canonicalizer_options_t* options =
       (loom_canonicalizer_options_t*)user_data;
+  if (iree_string_view_equal(name, IREE_SV("table-lookups"))) {
+    if (iree_string_view_equal(value, IREE_SV("combine"))) {
+      options->flags |= LOOM_CANONICALIZER_FLAG_COMBINE_TABLE_LOOKUPS;
+    } else if (iree_string_view_equal(value, IREE_SV("preserve"))) {
+      options->flags &= ~LOOM_CANONICALIZER_FLAG_COMBINE_TABLE_LOOKUPS;
+    } else {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "pass 'canonicalize' option 'table-lookups' must "
+                              "be 'combine' or 'preserve'");
+    }
+    return iree_ok_status();
+  }
   if (iree_string_view_equal(name, IREE_SV("view-loads"))) {
     if (iree_string_view_equal(value, IREE_SV("coalesce"))) {
       options->flags |= LOOM_CANONICALIZER_FLAG_COALESCE_VIEW_LOADS;
@@ -151,6 +167,13 @@ iree_status_t loom_canonicalize_create(loom_pass_t* pass,
       if (iree_string_view_equal(option->schema->name, IREE_SV("view-loads"))) {
         if (option->enum_value_index == 0) {
           options->flags |= LOOM_CANONICALIZER_FLAG_COALESCE_VIEW_LOADS;
+        }
+        continue;
+      }
+      if (iree_string_view_equal(option->schema->name,
+                                 IREE_SV("table-lookups"))) {
+        if (option->enum_value_index == 0) {
+          options->flags |= LOOM_CANONICALIZER_FLAG_COMBINE_TABLE_LOOKUPS;
         }
         continue;
       }
@@ -1915,17 +1938,33 @@ static iree_status_t loom_canonicalize_rewrite_op(
   }
 
   // Structural canonicalization patterns.
-  if (!vtable || !vtable->canonicalize) {
-    return iree_ok_status();
+  if (vtable && vtable->canonicalize) {
+    rewriter->flags = 0;
+    IREE_RETURN_IF_ERROR(vtable->canonicalize(op, rewriter));
+    if (iree_any_bit_set(rewriter->flags, LOOM_REWRITER_FLAG_CHANGED)) {
+      loom_greedy_rewrite_result_record_change(
+          result, rewriter, LOOM_GREEDY_REWRITE_CHANGE_FLAG_COUNT_MODIFIED_OP);
+      *out_changed = true;
+      return iree_ok_status();
+    }
   }
-
-  rewriter->flags = 0;
-  IREE_RETURN_IF_ERROR(vtable->canonicalize(op, rewriter));
-  if (iree_any_bit_set(rewriter->flags, LOOM_REWRITER_FLAG_CHANGED)) {
-    loom_greedy_rewrite_result_record_change(
-        result, rewriter, LOOM_GREEDY_REWRITE_CHANGE_FLAG_COUNT_MODIFIED_OP);
-    *out_changed = true;
-    return iree_ok_status();
+  if ((loom_vector_from_elements_isa(op) || loom_vector_table_lookup_isa(op)) &&
+      iree_any_bit_set(state->flags,
+                       LOOM_CANONICALIZER_FLAG_COMBINE_TABLE_LOOKUPS)) {
+    bool combined = false;
+    if (loom_vector_from_elements_isa(op)) {
+      IREE_RETURN_IF_ERROR(
+          loom_vector_from_elements_to_table_lookup(op, rewriter, &combined));
+    } else {
+      IREE_RETURN_IF_ERROR(
+          loom_vector_table_lookup_simplify_indices(op, rewriter, &combined));
+    }
+    if (combined) {
+      loom_greedy_rewrite_result_record_change(
+          result, rewriter, LOOM_GREEDY_REWRITE_CHANGE_FLAG_COUNT_MODIFIED_OP);
+      *out_changed = true;
+      return iree_ok_status();
+    }
   }
   loom_greedy_rewrite_result_record_rewriter_flags(result, rewriter);
   return iree_ok_status();

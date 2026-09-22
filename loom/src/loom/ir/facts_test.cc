@@ -1671,19 +1671,98 @@ TEST(ShruiTransfer, SignBitShift) {
   loom_value_facts_t out;
 
   loom_value_facts_t non_negative = loom_value_facts_make(0, INT64_MAX, 1);
-  loom_value_facts_shrui(&non_negative, &shift, &out);
+  loom_value_facts_shrui(&non_negative, &shift, 64, &out);
   EXPECT_TRUE(loom_value_facts_is_exact(out));
   EXPECT_EQ(out.range_lo, 0);
 
   loom_value_facts_t negative = loom_value_facts_make(INT64_MIN, -1, 1);
-  loom_value_facts_shrui(&negative, &shift, &out);
+  loom_value_facts_shrui(&negative, &shift, 64, &out);
   EXPECT_TRUE(loom_value_facts_is_exact(out));
   EXPECT_EQ(out.range_lo, 1);
 
   loom_value_facts_t unknown = loom_value_facts_unknown();
-  loom_value_facts_shrui(&unknown, &shift, &out);
+  loom_value_facts_shrui(&unknown, &shift, 64, &out);
   EXPECT_EQ(out.range_lo, 0);
   EXPECT_EQ(out.range_hi, 1);
+}
+
+TEST(ShruiTransfer, ByteRangesContainEveryShiftedValue) {
+  for (int64_t divisor : {1, 2, 3, 6, 16}) {
+    for (int64_t lo : {-128, -97, -32, -1, 0, 17, 96, 127}) {
+      for (int64_t hi : {-128, -32, -1, 0, 31, 127}) {
+        if (lo > hi) {
+          continue;
+        }
+        loom_value_facts_t source = loom_value_facts_make(lo, hi, divisor);
+        for (int64_t count = 0; count < 8; ++count) {
+          const loom_value_facts_t shift = loom_value_facts_exact_i64(count);
+          loom_value_facts_t result;
+          loom_value_facts_shrui(&source, &shift, 8, &result);
+          for (int64_t value = lo; value <= hi; ++value) {
+            if (value % source.known_divisor != 0) {
+              continue;
+            }
+            const int64_t expected =
+                count == 0 ? value
+                           : ((value + 256) % 256) / (INT64_C(1) << count);
+            EXPECT_LE(result.range_lo, expected);
+            EXPECT_GE(result.range_hi, expected);
+            EXPECT_EQ(expected % result.known_divisor, 0);
+          }
+        }
+      }
+    }
+  }
+}
+
+TEST(ShruiTransfer, ExactBytesAndWidthBounds) {
+  for (int64_t value = -128; value <= 127; ++value) {
+    const loom_value_facts_t source = loom_value_facts_exact_i64(value);
+    for (int64_t count = 0; count < 8; ++count) {
+      const loom_value_facts_t shift = loom_value_facts_exact_i64(count);
+      loom_value_facts_t result;
+      loom_value_facts_shrui(&source, &shift, 8, &result);
+      const int64_t expected =
+          count == 0 ? value : ((value + 256) % 256) / (INT64_C(1) << count);
+      EXPECT_TRUE(loom_value_facts_is_exact(result));
+      EXPECT_EQ(result.range_lo, expected);
+    }
+  }
+  for (int32_t width : {1, 2, 4, 8, 16, 32, 64}) {
+    const loom_value_facts_t source = loom_value_facts_unknown();
+    for (int64_t count = 0; count < width; ++count) {
+      const loom_value_facts_t shift = loom_value_facts_exact_i64(count);
+      loom_value_facts_t result;
+      loom_value_facts_shrui(&source, &shift, width, &result);
+      const bool signed_range = count == 0 && width > 1;
+      const int64_t maximum =
+          (int64_t)(UINT64_MAX >> (64 - width + (signed_range ? 1 : count)));
+      EXPECT_EQ(result.range_lo, signed_range ? -maximum - 1 : 0);
+      EXPECT_EQ(result.range_hi, maximum);
+    }
+  }
+}
+
+TEST(ShruiTransfer, DistributionAndUnknownAmounts) {
+  loom_value_facts_t source = loom_value_facts_make(-128, 127, 16);
+  loom_value_facts_mark_lane_varying(&source);
+  const loom_value_facts_t shift = loom_value_facts_exact_i64(3);
+  loom_value_facts_t result;
+  loom_value_facts_shrui(&source, &shift, 8, &result);
+  EXPECT_EQ(result.range_lo, 0);
+  EXPECT_EQ(result.range_hi, 31);
+  EXPECT_EQ(result.known_divisor, 2);
+  EXPECT_TRUE(loom_value_facts_is_lane_varying(result));
+  EXPECT_FALSE(loom_value_facts_is_subgroup_uniform(result));
+
+  for (loom_value_facts_t amount :
+       {loom_value_facts_unknown(), loom_value_facts_make(1, 7, 1),
+        loom_value_facts_exact_i64(8), loom_value_facts_exact_i64(-1)}) {
+    loom_value_facts_shrui(&source, &amount, 8, &result);
+    EXPECT_EQ(result.range_lo, INT64_MIN);
+    EXPECT_EQ(result.range_hi, INT64_MAX);
+    EXPECT_TRUE(loom_value_facts_is_lane_varying(result));
+  }
 }
 
 TEST(ShrsiTransfer, SignBitShift) {
