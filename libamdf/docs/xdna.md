@@ -186,6 +186,57 @@ uses the complete setup-and-execution range to establish its application tile
 state; time-sliced context lifetime alone does not guarantee that state survives
 between submissions.
 
+## Resident work and early admission
+
+A resident service can process many logical operations inside one native
+invocation. CPU and GPU producers publish application records to shared memory;
+tile programs consume them and publish results through their device-visible
+protocol. Those records do not require additional libamdf submissions, native
+packet slots, or host notification requests. The compiler and HAL own this
+protocol, including readiness, backpressure, stop, and drain.
+
+For a frame or pipeline batch, the caller can submit prepared native work before
+the CPU has finished constructing its input. The device program waits for an
+explicit publication edge before reading each payload. This overlaps native
+admission and tile setup with CPU production. Accepted submission is not worker
+readiness; a program that needs that distinction publishes its own ready state.
+An unused reservation still owns accepted work: the producer closes it through
+the program's protocol and lets it drain before releasing its backing. A worker
+blocked on a stream read needs that stream's wake mechanism to observe a stop;
+changing a separate memory word does not itself unblock the read.
+
+A long-lived service can span several bounded native invocations, or epochs.
+Each epoch performs many logical operations and finishes at an application
+boundary. Its successor establishes its tile execution from explicit state in
+ordinary shared memory. A cursor, accumulator, or queue position can be part of
+the predecessor's normal output; the successor can consume it directly without
+a CPU copy. Immutable data and state already in shared memory need no checkpoint
+copy. The compiler determines the live state, not libamdf or a generic hardware
+snapshot. Retaining the public context alone does not preserve tile-local state.
+
+Prepared successors can be queued before an epoch finishes. This permits native
+handoff without an intervening CPU completion wait; it does not reserve the
+array against other contexts. Each independent invocation still establishes
+its required application state. Ordering between queues, devices, and logical
+operations remains the caller's responsibility. The epoch's final completion
+protocol covers its relevant tile and DMA users before their storage is reused;
+a GPU consumer or independently scheduled descendant can have a later last use.
+
+Native watchdog and preemption policy is separate from logical service progress.
+Advancing application records does not necessarily produce driver-visible
+progress. Epoch duration includes waiting for producers and downstream credits,
+not just arithmetic. The caller chooses work and drain bounds appropriate to
+its native execution contract. A fixed operation count does not bound a program
+that can wait indefinitely for input. Keeping one invocation alive indefinitely
+is not implied by context creation or successful short execution.
+
+`AMDF_TIMEOUT_INFINITE` removes the calling thread's wait deadline; it neither
+disables a native watchdog nor extends an execution budget. A timeout does not
+cancel accepted work. A native execution failure is not success merely because
+some logical outputs arrived. The caller reconciles checked retirement and its
+own output protocol before releasing storage or deciding whether an operation
+can be repeated; libamdf cannot safely replay opaque application work.
+
 ## Power policy and measurement
 
 Sustained XDNA measurements require an explicitly held-active device throughout
