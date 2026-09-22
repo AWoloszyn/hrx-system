@@ -146,3 +146,23 @@ loom_test(
     execution_profiles = _EXECUTION_PROFILES,
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )
+
+loom_test(
+    name = "vector_constants_test",
+    srcs = [
+        "vector_constants.cpp",
+        "vector_constants.loom",
+    ],
+    execution_profiles = _EXECUTION_PROFILES,
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)
+
+loom_test(
+    name = "vector_conversion_test",
+    srcs = [
+        "vector_conversion.cpp",
+        "vector_conversion.loom",
+    ],
+    execution_profiles = _EXECUTION_PROFILES,
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)

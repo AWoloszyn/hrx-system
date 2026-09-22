@@ -33,6 +33,12 @@ class Vectors {
   // here.
   loom_value_id_t convert(loom_value_id_t value, const cxx::Type* input_type,
                           const cxx::Type* output_type, cxx::AST* owner);
+  // Applies an explicit numeric conversion to each lane. Frontend semantics
+  // have established vector operands with the same number of elements.
+  loom_value_id_t convert_elements(loom_value_id_t value,
+                                   const cxx::Type* input_type,
+                                   const cxx::Type* output_type,
+                                   cxx::AST* owner);
   // Operands already have the source operation's common vector type.
   loom_value_id_t binary(cxx::TokenKind token, loom_value_id_t left,
                          loom_value_id_t right, const cxx::Type* input_type,
@@ -45,6 +51,9 @@ class Vectors {
   // trailing lanes are zero, as in a C/C++ aggregate initializer.
   loom_value_id_t construct(std::span<const loom_value_id_t> elements,
                             const cxx::Type* source_type, cxx::AST* owner);
+  // Materializes the typed lanes of a frontend vector constant.
+  loom_value_id_t constant(const cxx::ConstValue& value,
+                           const cxx::Type* source_type, cxx::AST* owner);
   // Reads one lane. Source-defined indices are nonnegative and below the lane
   // count; the index carrier does not change that source bounds contract.
   loom_value_id_t extract(loom_value_id_t value, loom_value_id_t index,

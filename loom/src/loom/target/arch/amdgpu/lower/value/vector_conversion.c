@@ -181,6 +181,15 @@ static const loom_amdgpu_vector_conversion_lane_rule_t
     kAmdgpuVectorConversionLaneRulesByScalarOp
         [LOOM_AMDGPU_SCALAR_CONVERSION_OP_COUNT_] = {
             LOOM_AMDGPU_VECTOR_CONVERSION_LANE_RULE_ROW(
+                EXTSI, LOOM_AMDGPU_DESCRIPTOR_REF_NONE,
+                LOOM_SCALAR_TYPE_SET_INTEGER_PAYLOAD_LE32,
+                LOOM_SCALAR_TYPE_SET_INTEGER_PAYLOAD_LE32,
+                LOOM_AMDGPU_VECTOR_CONVERSION_LANE_RULE_SIGN_EXTEND_PACKED_SOURCE),
+            LOOM_AMDGPU_VECTOR_CONVERSION_LANE_RULE_ROW(
+                EXTUI, LOOM_AMDGPU_DESCRIPTOR_REF_NONE,
+                LOOM_SCALAR_TYPE_SET_INTEGER_PAYLOAD_LE32,
+                LOOM_SCALAR_TYPE_SET_INTEGER_PAYLOAD_LE32, 0),
+            LOOM_AMDGPU_VECTOR_CONVERSION_LANE_RULE_ROW(
                 TRUNCI, LOOM_AMDGPU_DESCRIPTOR_REF_NONE,
                 LOOM_SCALAR_TYPE_SET_INTEGER_PAYLOAD,
                 LOOM_SCALAR_TYPE_SET_INTEGER_PAYLOAD,
@@ -542,7 +551,10 @@ static iree_status_t loom_amdgpu_extract_vector_conversion_packed_lane(
           : LOOM_AMDGPU_BITFIELD_EXTRACT_MODE_RAW_SHIFTED;
   if (plan->kind ==
           LOOM_AMDGPU_VECTOR_CONVERSION_KIND_PACKED_INTEGER_TO_PACKED_INTEGER &&
-      plan->convert_descriptor_ref == LOOM_AMDGPU_DESCRIPTOR_REF_NONE) {
+      plan->convert_descriptor_ref == LOOM_AMDGPU_DESCRIPTOR_REF_NONE &&
+      plan->source_bit_count > plan->result_bit_count) {
+    // Narrowing masks away adjacent source lanes when packing the result.
+    // Widening must first clear those bits to preserve zero extension.
     return loom_amdgpu_extract_packed_register_lane(
         context, source_op, low_source, &extract_plan, lane_index, extract_mode,
         lane_type, out_lane);

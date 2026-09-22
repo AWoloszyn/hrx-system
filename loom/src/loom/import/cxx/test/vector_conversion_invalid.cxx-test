@@ -1,0 +1,45 @@
+// RUN: verify
+using Float4 = float __attribute__((ext_vector_type(4)));
+Float4 entry(float value) {
+  // ERROR@+1: PARSE/036 "requires source and destination vector types"
+  return __builtin_convertvector(value, Float4);
+}
+
+// ====
+using Float4 = float __attribute__((ext_vector_type(4)));
+float entry(Float4 value) {
+  // ERROR@+1: PARSE/036 "requires source and destination vector types"
+  return __builtin_convertvector(value, float);
+}
+
+// ====
+using Float4 = float __attribute__((ext_vector_type(4)));
+using Int2 = int __attribute__((ext_vector_type(2)));
+Int2 entry(Float4 value) {
+  // ERROR@+1: PARSE/036 "requires the same number of elements"
+  return __builtin_convertvector(value, Int2);
+}
+
+// ====
+using Float4 = float __attribute__((ext_vector_type(4)));
+Float4 entry(Float4 value) {
+  // ERROR@+1: PARSE/036 "requires source and destination vector types"
+  return __builtin_convertvector(value, Float4&);
+}
+
+// ====
+using Float4 = float __attribute__((ext_vector_type(4)));
+using Int4 = int __attribute__((ext_vector_type(4)));
+constexpr Float4 values{0x1p31f, 1, 2, 3};
+// ERROR@+1: PARSE/036 "constexpr variable must be initialized"
+constexpr auto converted = __builtin_convertvector(values, Int4);
+int entry() { return 0; }
+
+// ====
+using Float4 = float __attribute__((ext_vector_type(4)));
+using Int2 = int __attribute__((ext_vector_type(2)));
+template <typename To, typename From>
+// ERROR@+1: PARSE/036 "requires the same number of elements"
+To convert(From value) { return __builtin_convertvector(value, To); }
+// REMARK@+1: PARSE/036 "in instantiation of function template specialization"
+Int2 entry(Float4 value) { return convert<Int2>(value); }
