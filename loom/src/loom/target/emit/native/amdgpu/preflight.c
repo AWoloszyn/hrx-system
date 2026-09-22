@@ -6,8 +6,6 @@
 
 #include "loom/target/emit/native/amdgpu/preflight.h"
 
-#include <inttypes.h>
-
 #include "loom/codegen/low/diagnostics.h"
 #include "loom/codegen/low/storage_layout.h"
 #include "loom/ops/type_registry.h"
@@ -32,20 +30,6 @@ static bool loom_amdgpu_native_preflight_metadata_free_register_class(
       &descriptor_set->reg_classes[reg_class_id];
   return iree_all_bits_set(reg_class->flags,
                            LOOM_LOW_REG_CLASS_FLAG_UNSPILLABLE);
-}
-
-static iree_status_t loom_amdgpu_native_preflight_update_high_water(
-    uint32_t location_base, uint32_t location_count, uint32_t* inout_value) {
-  const uint64_t next_free = (uint64_t)location_base + location_count;
-  if (next_free > UINT32_MAX) {
-    return iree_make_status(
-        IREE_STATUS_OUT_OF_RANGE,
-        "AMDGPU native emission register high-water mark overflows");
-  }
-  if ((uint32_t)next_free > *inout_value) {
-    *inout_value = (uint32_t)next_free;
-  }
-  return iree_ok_status();
 }
 
 static iree_status_t
@@ -175,6 +159,14 @@ static iree_status_t loom_amdgpu_native_preflight_collect_register_usage(
     const loom_low_allocation_table_t* allocation,
     const loom_amdgpu_native_preflight_options_t* options,
     loom_amdgpu_native_preflight_t* preflight) {
+  // Allocation retains the complete physical footprint, including temporaries
+  // used to sequence parallel moves that have no corresponding SSA value.
+  preflight->next_free_sgpr =
+      allocation->physical_extents
+          .ends_by_reg_class[LOOM_AMDGPU_REG_CLASS_ID_SGPR];
+  preflight->next_free_vgpr =
+      allocation->physical_extents
+          .ends_by_reg_class[LOOM_AMDGPU_REG_CLASS_ID_VGPR];
   for (iree_host_size_t i = 0; i < allocation->assignment_count; ++i) {
     const loom_low_allocation_assignment_t* assignment =
         &allocation->assignments[i];
@@ -185,24 +177,8 @@ static iree_status_t loom_amdgpu_native_preflight_collect_register_usage(
         LOOM_LOW_ALLOCATION_LOCATION_PHYSICAL_REGISTER) {
       continue;
     }
-    if (assignment->descriptor_reg_class_id == LOOM_AMDGPU_REG_CLASS_ID_SGPR) {
-      const loom_low_reg_class_t* reg_class =
-          &allocation->target.descriptor_set
-               ->reg_classes[assignment->descriptor_reg_class_id];
-      if (loom_low_reg_class_fixed_location_range_contains(
-              reg_class, assignment->location_base,
-              assignment->location_count)) {
-        continue;
-      }
-      IREE_RETURN_IF_ERROR(loom_amdgpu_native_preflight_update_high_water(
-          assignment->location_base, assignment->location_count,
-          &preflight->next_free_sgpr));
-      continue;
-    }
-    if (assignment->descriptor_reg_class_id == LOOM_AMDGPU_REG_CLASS_ID_VGPR) {
-      IREE_RETURN_IF_ERROR(loom_amdgpu_native_preflight_update_high_water(
-          assignment->location_base, assignment->location_count,
-          &preflight->next_free_vgpr));
+    if (assignment->descriptor_reg_class_id == LOOM_AMDGPU_REG_CLASS_ID_SGPR ||
+        assignment->descriptor_reg_class_id == LOOM_AMDGPU_REG_CLASS_ID_VGPR) {
       continue;
     }
     if (loom_amdgpu_register_class_is_agpr(

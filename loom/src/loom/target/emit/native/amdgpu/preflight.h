@@ -7,8 +7,8 @@
 // AMDGPU native emission preflight over target-low tables.
 //
 // This layer validates the target-independent native fragment contract and
-// derives AMDGPU register metadata facts before text, binary, metadata, or
-// descriptor emission consume the function.
+// projects retained physical extents into AMDGPU register metadata before
+// text, binary, metadata, or descriptor emission consume the function.
 
 #ifndef LOOM_TARGET_EMIT_NATIVE_AMDGPU_PREFLIGHT_H_
 #define LOOM_TARGET_EMIT_NATIVE_AMDGPU_PREFLIGHT_H_
@@ -29,9 +29,9 @@ typedef struct loom_amdgpu_native_preflight_t {
   const loom_low_allocation_table_t* allocation;
   // Number of blocking target diagnostics emitted during preflight.
   iree_host_size_t error_count;
-  // Highest SGPR index used by the function body plus one.
+  // Highest SGPR index used by the body or structural moves plus one.
   uint32_t next_free_sgpr;
-  // Highest VGPR index used by the function body plus one.
+  // Highest VGPR index used by the body or structural moves plus one.
   uint32_t next_free_vgpr;
 } loom_amdgpu_native_preflight_t;
 
