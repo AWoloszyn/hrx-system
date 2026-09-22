@@ -1,0 +1,219 @@
+// RUN: emit vm-dis
+
+vm.target<core> @vm
+
+// Identical native names with different argument or result reference types
+// remain distinct imports. Declaration order does not determine type ordinals.
+func.decl import("resources", "relay") target(@vm) @view(%value: hal.buffer_view) -> (hal.buffer_view)
+
+func.decl import("resources", "relay") target(@vm) @bytes(%value: buffer) -> (buffer)
+
+func.decl import("resources", "relay") target(@vm) @storage(%value: hal.buffer) -> (hal.buffer)
+
+func.decl import("resources", "make") target(@vm) @make_view() -> (hal.buffer_view)
+
+func.decl import("resources", "make") target(@vm) @make_storage() -> (hal.buffer)
+
+func.def public target(@vm) @roundtrip(%view: hal.buffer_view, %bytes: buffer, %storage: hal.buffer) -> (hal.buffer_view, buffer, hal.buffer, hal.buffer_view, hal.buffer) {
+  %v = func.call @view(%view) : (hal.buffer_view) -> (hal.buffer_view)
+  %b = func.call @bytes(%bytes) : (buffer) -> (buffer)
+  %s = func.call @storage(%storage) : (hal.buffer) -> (hal.buffer)
+  %new_v = func.call @make_view() : () -> (hal.buffer_view)
+  %new_s = func.call @make_storage() : () -> (hal.buffer)
+  func.return %v, %b, %s, %new_v, %new_s : hal.buffer_view, buffer, hal.buffer, hal.buffer_view, hal.buffer
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "roundtrip"
+    string @string1 = "hal"
+    string @string2 = "buffer"
+    string @string3 = "buffer_view"
+    string @string4 = "vm"
+    string @string5 = "buffer"
+    string @string6 = "resources"
+    string @string7 = "make"
+    string @string8 = "make"
+    string @string9 = "relay"
+    string @string10 = "relay"
+    string @string11 = "relay"
+  }
+
+  section ref_types alignment(8) {
+    namespace @ref_group0 name(@string1) {
+      ref_type @ref_type0 name(@string2)
+      ref_type @ref_type1 name(@string3)
+    }
+    namespace @ref_group1 name(@string4) {
+      ref_type @ref_type2 name(@string5)
+    }
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 () -> (ref(@ref_type0))
+    signature @signature1 () -> (ref(@ref_type1))
+    signature @signature2 (ref(@ref_type0)) -> (ref(@ref_type0))
+    signature @signature3 (ref(@ref_type1)) -> (ref(@ref_type1))
+    signature @signature4 (ref(@ref_type2)) -> (ref(@ref_type2))
+    signature @signature5 (ref(@ref_type1), ref(@ref_type2), ref(@ref_type0)) -> (ref(@ref_type1), ref(@ref_type2), ref(@ref_type0), ref(@ref_type1), ref(@ref_type0))
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+    callable @callable1 flags([]) depth(0) : @signature1
+    callable @callable2 flags([]) depth(0) : @signature2
+    callable @callable3 flags([]) depth(0) : @signature3
+    callable @callable4 flags([]) depth(0) : @signature4
+    callable @callable5 flags([]) depth(0) : @signature5
+  }
+
+  section imports alignment(8) {
+    group @import_group0 module_name(@string6) {
+      import @import0 name(@string7) flags([]) : @callable0
+      import @import1 name(@string8) flags([]) : @callable1
+      import @import2 name(@string9) flags([]) : @callable2
+      import @import3 name(@string10) flags([]) : @callable3
+      import @import4 name(@string11) flags([]) : @callable4
+    }
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable5 = @function0
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable5 flags([has_call]) frame(local_bytes = 0, value_registers = 0, ref_registers = 5, function_registers = 0, local_refs = 1, local_functions = 0) {
+    ^bb0:
+      control.block
+      ref.stack.store.retain %r0, #r0
+      control.call @import3 {direct_ref_move_mask = 0x0001}
+      ref.stack.store.move %r0, #r0
+      %r0 = ref.stack.load.move #r0
+      ref.stack.store.retain %r0, #r0
+      %r0 = ref.retain %r1
+      control.call @import4 {direct_ref_move_mask = 0x0001}
+      %r1 = ref.move %r0
+      %r0 = ref.stack.load.move #r0
+      ref.stack.store.retain %r0, #r0
+      %r0 = ref.retain %r2
+      control.call @import2 {direct_ref_move_mask = 0x0001}
+      %r2 = ref.move %r0
+      %r0 = ref.stack.load.move #r0
+      ref.stack.store.retain %r0, #r0
+      control.call @import1 {direct_ref_move_mask = 0x0000}
+      %r3 = ref.move %r0
+      %r0 = ref.stack.load.move #r0
+      ref.stack.store.retain %r0, #r0
+      control.call @import0 {direct_ref_move_mask = 0x0000}
+      %r4 = ref.move %r0
+      %r0 = ref.stack.load.move #r0
+      control.return
+    }
+  }
+
+}
+
+// ====
+// RUN: emit vm-dis
+
+vm.target<core> @vm
+
+// These types are registered by the test dialect, outside the common registry.
+// Their shared declared identity differs from both source spellings.
+func.decl import("custom", "relay") target(@vm) @first(%value: test.resource) -> (test.resource)
+
+func.decl import("custom", "relay") target(@vm) @second(%value: test.resource_alias) -> (test.resource_alias)
+
+func.def public target(@vm) @custom(%first: test.resource, %second: test.resource_alias) -> (test.resource, test.resource_alias) {
+  %a = func.call @first(%first) : (test.resource) -> (test.resource)
+  %b = func.call @second(%second) : (test.resource_alias) -> (test.resource_alias)
+  func.return %a, %b : test.resource, test.resource_alias
+}
+
+// ----
+vm.module core(0.0) {
+  section strings alignment(8) {
+    string @string0 = "custom"
+    string @string1 = "external.provider"
+    string @string2 = "object"
+    string @string3 = "custom"
+    string @string4 = "relay"
+  }
+
+  section ref_types alignment(8) {
+    namespace @ref_group0 name(@string1) {
+      ref_type @ref_type0 name(@string2)
+    }
+  }
+
+  section signatures alignment(8) {
+    signature @signature0 (ref(@ref_type0)) -> (ref(@ref_type0))
+    signature @signature1 (ref(@ref_type0), ref(@ref_type0)) -> (ref(@ref_type0), ref(@ref_type0))
+  }
+
+  section callable_types alignment(8) {
+    callable @callable0 flags([]) depth(0) : @signature0
+    callable @callable1 flags([]) depth(0) : @signature1
+  }
+
+  section imports alignment(8) {
+    group @import_group0 module_name(@string3) {
+      import @import0 name(@string4) flags([]) : @callable0
+    }
+  }
+
+  section exports alignment(8) {
+    export @export0 name(@string0) : @callable1 = @function0
+  }
+
+  section functions alignment(8) {
+    func @function0 : @callable1 flags([has_call]) frame(local_bytes = 0, value_registers = 0, ref_registers = 2, function_registers = 0, local_refs = 1, local_functions = 0) {
+    ^bb0:
+      control.block
+      ref.stack.store.retain %r0, #r0
+      control.call @import0 {direct_ref_move_mask = 0x0001}
+      ref.stack.store.move %r0, #r0
+      %r0 = ref.stack.load.move #r0
+      ref.stack.store.retain %r0, #r0
+      %r0 = ref.retain %r1
+      control.call @import0 {direct_ref_move_mask = 0x0001}
+      %r1 = ref.move %r0
+      %r0 = ref.stack.load.move #r0
+      control.return
+    }
+  }
+
+}
+
+// ====
+// RUN: emit source-low output=low
+
+vm.target<core> @vm
+
+func.def target(@vm) @select_view(%condition: i1, %left: hal.buffer_view, %right: hal.buffer_view) -> (hal.buffer_view) {
+  %selected = scf.if %condition -> (hal.buffer_view) {
+    scf.yield %left : hal.buffer_view
+  } else {
+    scf.yield %right : hal.buffer_view
+  }
+  func.return %selected : hal.buffer_view
+}
+
+// ----
+low.func.def target<vm.core>(@vm) abi(vm_function) @select_view(%condition: reg<vm.value : i1>, %left: reg<vm.ref : hal.buffer_view>, %right: reg<vm.ref : hal.buffer_view>) -> (reg<vm.ref : hal.buffer_view>) asm {
+  %selected = ref.select %condition, %left, %right : reg<vm.ref : hal.buffer_view>
+  return %selected
+}
+
+// ====
+// RUN: emit source-low output=low
+
+vm.target<core> @vm
+
+// ERROR@+1: TARGET/031
+func.def target(@vm) @unsupported(%value: unregistered.resource) {
+  func.return
+}
+
+// ----

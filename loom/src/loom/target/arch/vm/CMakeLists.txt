@@ -27,6 +27,44 @@ endif()
 if(LOOM_TARGET_ARCH_VM)
 loom_cc_library(
   NAME
+    types
+  HDRS
+    "types.h"
+  SRCS
+    "types.c"
+  DEPS
+    iree::base
+    iree::base::internal::arena
+    loom::ir
+    loom::ops::type_registry
+    loom::util::adaptive_sort
+    loom::util::segmented_storage
+  PUBLIC
+)
+endif()
+
+if(LOOM_TARGET_ARCH_VM)
+loom_cc_test(
+  NAME
+    types_test
+  SRCS
+    "types_test.cc"
+  DEPS
+    ::types
+    iree::base
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+    loom::ops::type_registry
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_VM)
+loom_cc_library(
+  NAME
     module
   HDRS
     "function.h"
@@ -35,6 +73,7 @@ loom_cc_library(
     "function.c"
     "module.c"
   DEPS
+    ::types
     iree::base
     iree::io::stream
     iree::vm::bytecode::wire
@@ -69,6 +108,7 @@ loom_cc_library(
   DEPS
     ::module
     ::records
+    ::types
     iree::base
     loom::codegen::low::lower
     loom::error::error_defs
@@ -98,6 +138,7 @@ loom_check_test_suite(
     "test/emission.loom-test"
     "test/imports.loom-test"
     "test/math_policy.loom-test"
+    "test/native_references.loom-test"
     "test/scalar.loom-test"
     "test/source_low/buffer_access.loom-test"
     "test/source_low/buffer_calls.loom-test"
@@ -214,6 +255,7 @@ loom_check_compile_tests(
     "test/emission.loom-test"
     "test/imports.loom-test"
     "test/math_policy.loom-test"
+    "test/native_references.loom-test"
     "test/scalar.loom-test"
     "test/source_low/buffer_access.loom-test"
     "test/source_low/buffer_calls.loom-test"

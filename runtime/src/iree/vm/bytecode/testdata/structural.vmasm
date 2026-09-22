@@ -224,6 +224,7 @@ vm.module core(0.0) {
       %v0 = ref.compare.null %r0
       %v0 = ref.compare.eq %r0, %r0
       %r0 = ref.retain %r0
+      %r0 = ref.select %v0, %r0, %r1
       %r0 = ref.move %r1
       ref.discard %r0
       %r0 = ref.stack.load.retain #r0

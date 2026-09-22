@@ -160,6 +160,7 @@ from loom.dsl import (
     PositiveBitWidthAttr,
     RanksMatch,
     Reads,
+    ReferenceTypeKey,
     RegionDef,
     Result,
     ResultOwnershipEffect,
@@ -2146,13 +2147,41 @@ class TestTypeDef:
         assert type_def.semantic == TypeSemantic.CONTROL_TOKEN
         assert type_def.contracts == (ContractFamily.KERNEL_ASYNC,)
 
-    def test_managed_reference_semantic_is_explicit(self) -> None:
+    def test_reference_identity_selects_managed_semantics(self) -> None:
         type_def = TypeDef(
             "test.ref",
-            semantic=TypeSemantic.MANAGED_REFERENCE,
+            reference=ReferenceTypeKey("external.provider", "resource"),
         )
 
         assert type_def.semantic == TypeSemantic.MANAGED_REFERENCE
+        assert type_def.reference == ReferenceTypeKey("external.provider", "resource")
+
+    def test_managed_reference_requires_identity(self) -> None:
+        with _raises(ValueError, match="managed reference semantics require"):
+            TypeDef("test.ref", semantic=TypeSemantic.MANAGED_REFERENCE)
+
+    def test_reference_identity_rejects_incompatible_semantics(self) -> None:
+        with _raises(ValueError, match="managed reference semantics require"):
+            TypeDef(
+                "test.ref",
+                semantic=TypeSemantic.CONTROL_TOKEN,
+                reference=ReferenceTypeKey("test", "object"),
+            )
+
+    def test_managed_reference_requires_opaque_dialect_type(self) -> None:
+        identity = ReferenceTypeKey("test", "object")
+        with _raises(ValueError, match="require an opaque dialect type"):
+            TypeDef("test.ref", reference=identity, ir_kind="buffer")
+        with _raises(ValueError, match="require an opaque dialect type"):
+            TypeDef("test.ref", reference=identity, format=[kw("object")])
+        with _raises(ValueError, match="require an opaque dialect type"):
+            TypeDef("test.ref", reference=identity, params=[AttrDef("count", "i64")])
+
+    def test_reference_identity_rejects_invalid_names(self) -> None:
+        for invalid in ("", "nul\0tail", "\ud800"):
+            for names in ((invalid, "object"), ("provider", invalid)):
+                with _raises(ValueError, match="nonempty NUL-free UTF-8"):
+                    ReferenceTypeKey(*names)
 
     def test_descriptor_parameters_support_positional_and_keyed_formats(self) -> None:
         type_def = TypeDef(

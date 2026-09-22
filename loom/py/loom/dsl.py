@@ -166,6 +166,7 @@ __all__ = [
     "ConditionRefinement",
     "ConditionRefinementTruth",
     "TypeSemantic",
+    "ReferenceTypeKey",
     "OpCategory",
     # Trait constructors.
     "AllTypesMatch",
@@ -1434,6 +1435,30 @@ class TypeSemantic(Enum):
     @property
     def c_name(self) -> str:
         return str(self.value)
+
+
+@dataclass(frozen=True, slots=True)
+class ReferenceTypeKey:
+    """Exact external identity, independent of a managed type's source spelling."""
+
+    # Namespace owned by the native type provider.
+    namespace_name: str
+    # Type name within that provider namespace.
+    type_name: str
+
+    def __post_init__(self) -> None:
+        for field, value in (
+            ("namespace_name", self.namespace_name),
+            ("type_name", self.type_name),
+        ):
+            if not value or "\0" in value:
+                raise ValueError(f"reference {field} must be nonempty NUL-free UTF-8")
+            try:
+                value.encode("utf-8")
+            except UnicodeEncodeError as error:
+                raise ValueError(
+                    f"reference {field} must be nonempty NUL-free UTF-8"
+                ) from error
 
 
 # ============================================================================
@@ -4177,6 +4202,8 @@ class TypeDef:
     The optional fact_domain names a C ``loom_value_fact_domain_t`` symbol
     attached to the generated type descriptor; typed fact extensions use the
     value's type to find this domain instead of a global schema registry.
+    An opaque dialect type can declare ``reference=ReferenceTypeKey(...)`` to
+    select managed ownership and its exact external namespace/type identity.
 
     Scalar types (f32, i32, index) are NOT TypeDefs — they are
     keywords handled by a fixed name table. TypeDefs are for
@@ -4220,6 +4247,7 @@ class TypeDef:
     fact_domain: str | None = None
     semantic: TypeSemantic = TypeSemantic.ORDINARY
     contracts: tuple[ContractFamily, ...] = ()
+    reference: ReferenceTypeKey | None = None
 
     def __init__(
         self,
@@ -4231,11 +4259,29 @@ class TypeDef:
         ir_kind: str = "dialect",
         python_type: type[Any] | None = None,
         fact_domain: str | None = None,
-        semantic: TypeSemantic = TypeSemantic.ORDINARY,
+        semantic: TypeSemantic | None = None,
         contracts: list[ContractFamily] | tuple[ContractFamily, ...] = (),
+        reference: ReferenceTypeKey | None = None,
     ) -> None:
         frozen_params = tuple(params)
         frozen_format = tuple(format)
+        if semantic is None:
+            semantic = (
+                TypeSemantic.MANAGED_REFERENCE
+                if reference is not None
+                else TypeSemantic.ORDINARY
+            )
+        if (semantic == TypeSemantic.MANAGED_REFERENCE) != (reference is not None):
+            raise ValueError(
+                f"TypeDef '{name}': managed reference semantics require exactly "
+                "one reference identity"
+            )
+        if reference is not None and (
+            ir_kind != "dialect" or frozen_params or frozen_format
+        ):
+            raise ValueError(
+                f"TypeDef '{name}': managed references require an opaque dialect type"
+            )
         attribute_parameters = tuple(
             parameter for parameter in frozen_params if isinstance(parameter, AttrDef)
         )
@@ -4333,6 +4379,7 @@ class TypeDef:
         object.__setattr__(self, "fact_domain", fact_domain)
         object.__setattr__(self, "semantic", semantic)
         object.__setattr__(self, "contracts", tuple(contracts))
+        object.__setattr__(self, "reference", reference)
 
     def __repr__(self) -> str:
         return f"TypeDef({self.name!r})"

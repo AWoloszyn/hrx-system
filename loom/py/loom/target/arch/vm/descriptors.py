@@ -55,6 +55,7 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerDivisionSemantics,
     IntegerUnarySemantics,
 )
+from iree.vm.bytecode.spec.isa.core.ref import REF_SELECT
 from iree.vm.bytecode.spec.isa.core.rules import FieldRule, RecordRuleKind, StateAccess
 from iree.vm.bytecode.spec.isa.core.stack import MEMORY_FORMAT_SELECTOR
 from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY, VALUE_SELECT
@@ -484,6 +485,7 @@ VM_CORE_DESCRIPTOR_SET = DescriptorSet(
     descriptors=(
         _descriptor(VALUE_COPY, ScalarTypeKind.I64),
         _descriptor(VALUE_SELECT, ScalarTypeKind.I64),
+        _descriptor(REF_SELECT, None),
         *(_constant_descriptor(op) for op in (CONSTANT_I32, CONSTANT_I64)),
         *(_descriptor(op, ScalarTypeKind.I64) for op in _SCALAR_CONVERSIONS),
         *(

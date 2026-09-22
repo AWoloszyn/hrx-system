@@ -15,6 +15,7 @@
 #include "loom/ops/global/ops.h"
 #include "loom/ops/low/ops.h"
 #include "loom/target/arch/vm/function.h"
+#include "loom/target/arch/vm/types.h"
 #include "loom/target/function_version.h"
 
 // A signature is ordered by argument count/types then result
@@ -35,6 +36,11 @@ static int loom_vm_signature_compare(const void* lhs_ptr, const void* rhs_ptr) {
     if (comparison) {
       return comparison;
     }
+    comparison = (int)lhs->signature.fields[i].type_ordinal_u16 -
+                 (int)rhs->signature.fields[i].type_ordinal_u16;
+    if (comparison) {
+      return comparison;
+    }
   }
   comparison = (int)lhs->results.count - (int)rhs->results.count;
   if (comparison) {
@@ -43,6 +49,12 @@ static int loom_vm_signature_compare(const void* lhs_ptr, const void* rhs_ptr) {
   for (uint16_t i = 0; i < lhs->results.count; ++i) {
     comparison = (int)lhs->signature.fields[lhs->argument_count + i].kind_u16 -
                  (int)rhs->signature.fields[rhs->argument_count + i].kind_u16;
+    if (comparison) {
+      return comparison;
+    }
+    comparison =
+        (int)lhs->signature.fields[lhs->argument_count + i].type_ordinal_u16 -
+        (int)rhs->signature.fields[rhs->argument_count + i].type_ordinal_u16;
     if (comparison) {
       return comparison;
     }
@@ -98,11 +110,15 @@ static iree_status_t loom_vm_signature_type(loom_type_t type,
   };
   const loom_type_t* value_type = loom_type_register_value_type(type);
   if (value_type) {
-    if (loom_type_is_buffer(*value_type)) {
+    if (loom_type_is_buffer(*value_type) ||
+        (loom_type_is_dialect(*value_type) &&
+         loom_type_dialect_param_count(*value_type) == 0)) {
       *out_kind = IREE_VM_BYTECODE_SIGNATURE_KIND_REF;
       return iree_ok_status();
     }
-    const uint8_t kind = kScalarKinds[loom_type_element_type(*value_type)];
+    const uint8_t kind = loom_type_is_scalar(*value_type)
+                             ? kScalarKinds[loom_type_element_type(*value_type)]
+                             : 0;
     if (kind) {
       *out_kind = kind;
       return iree_ok_status();
@@ -223,24 +239,51 @@ static iree_status_t loom_vm_module_collect(
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       request->scratch_arena, iree_max(descriptor_count, 1),
       sizeof(*descriptors), (void**)&descriptors));
-  bool uses_buffer_type = false;
-  for (uint32_t i = 0; i < count && iree_status_is_ok(status); ++i) {
-    loom_vm_module_callable_t* entry = &functions[i];
-    entry->signature.fields = descriptors;
+  for (uint32_t i = 0; i < count; ++i) {
+    functions[i].signature.fields = descriptors;
+    descriptors += functions[i].argument_count + functions[i].results.count;
+  }
+  *out_functions = (loom_vm_module_plan_t){
+      .values = functions,
+      .bindings_by_symbol = bindings_by_symbol,
+      .count = count,
+      .definition_count = definition_count,
+      .rodata = {.ordinals_by_symbol = ordinals_by_symbol,
+                 .symbols = rodata_symbols,
+                 .symbol_count = rodata_count,
+                 .values = rodata,
+                 .alignment = IREE_VM_BYTECODE_IMAGE_ALIGNMENT},
+  };
+  return iree_ok_status();
+}
+
+// Signature fields own provisional canonical ordinals while metadata is built.
+// No per-occurrence reference records or source-sized lookup arrays are needed.
+static iree_status_t loom_vm_module_resolve_signatures(
+    const loom_target_emit_request_t* request, loom_vm_module_plan_t* functions,
+    loom_vm_reference_plan_t* references) {
+  const loom_module_t* module = request->module;
+  iree_status_t status = iree_ok_status();
+  for (uint32_t i = 0; i < functions->count && iree_status_is_ok(status); ++i) {
+    loom_vm_module_callable_t* entry = &functions->values[i];
+    iree_vm_bytecode_v0_signature_descriptor_row_t* descriptors =
+        entry->signature.fields;
     const uint32_t field_count = entry->argument_count + entry->results.count;
     for (uint32_t j = 0; j < field_count && iree_status_is_ok(status); ++j) {
       const loom_value_id_t value =
           j < entry->argument_count
               ? entry->arguments[j]
               : entry->results.values[j - entry->argument_count];
+      const loom_type_t type = loom_module_value_type(module, value);
       descriptors[j].type_ordinal_u16 = 0;
-      status = loom_vm_signature_type(loom_module_value_type(module, value),
-                                      &descriptors[j].kind_u16);
+      status = loom_vm_signature_type(type, &descriptors[j].kind_u16);
       if (iree_status_is_ok(status)) {
         iree_vm_bytecode_v0_signature_row_t* row = &entry->signature.row;
         uint16_t* bank_count;
         if (descriptors[j].kind_u16 == IREE_VM_BYTECODE_SIGNATURE_KIND_REF) {
-          uses_buffer_type = true;
+          status = loom_vm_reference_plan_bind(
+              references, module, *loom_type_register_value_type(type),
+              request->scratch_arena, &descriptors[j].type_ordinal_u16);
           bank_count = j < entry->argument_count ? &row->argument_ref_count_u16
                                                  : &row->result_ref_count_u16;
         } else {
@@ -251,20 +294,25 @@ static iree_status_t loom_vm_module_collect(
         ++(*bank_count);
       }
     }
-    descriptors += field_count;
   }
-  if (iree_status_is_ok(status)) {
-    *out_functions = (loom_vm_module_plan_t){
-        .values = functions,
-        .bindings_by_symbol = bindings_by_symbol,
-        .count = count,
-        .rodata = {.ordinals_by_symbol = ordinals_by_symbol,
-                   .symbols = rodata_symbols,
-                   .symbol_count = rodata_count,
-                   .values = rodata,
-                   .alignment = IREE_VM_BYTECODE_IMAGE_ALIGNMENT},
-        .uses_buffer_type = uses_buffer_type,
-    };
+  if (iree_status_is_ok(status) &&
+      loom_vm_reference_plan_finalize(references)) {
+    for (uint32_t i = 0; i < functions->count; ++i) {
+      loom_vm_module_callable_t* entry = &functions->values[i];
+      if (!entry->signature.row.argument_ref_count_u16 &&
+          !entry->signature.row.result_ref_count_u16) {
+        continue;
+      }
+      const uint32_t field_count = entry->argument_count + entry->results.count;
+      for (uint32_t j = 0; j < field_count; ++j) {
+        iree_vm_bytecode_v0_signature_descriptor_row_t* field =
+            &entry->signature.fields[j];
+        if (field->kind_u16 == IREE_VM_BYTECODE_SIGNATURE_KIND_REF) {
+          field->type_ordinal_u16 = loom_vm_reference_plan_ordinal(
+              references, field->type_ordinal_u16);
+        }
+      }
+    }
   }
   return status;
 }
@@ -298,37 +346,37 @@ static iree_status_t loom_vm_stream_patch(iree_io_stream_t* stream,
   return iree_io_stream_seek(stream, IREE_IO_STREAM_SEEK_SET, end);
 }
 
-static iree_status_t loom_vm_module_write(
-    const loom_target_emit_request_t* request, loom_vm_module_plan_t functions,
-    iree_io_stream_t* stream) {
+static iree_status_t loom_vm_module_write_metadata(
+    const loom_target_emit_request_t* request, loom_vm_module_plan_t* functions,
+    iree_io_stream_t* stream,
+    iree_vm_bytecode_v0_section_directory_row_t* directory,
+    uint16_t* out_section_count) {
+  loom_vm_reference_plan_t references = {0};
+  IREE_RETURN_IF_ERROR(
+      loom_vm_module_resolve_signatures(request, functions, &references));
   // Sorted views retain direct call bindings and definition order while
   // interning signatures and imports for canonical runtime tables.
   loom_vm_module_callable_t** sorted = NULL;
   IREE_RETURN_IF_ERROR(
-      iree_arena_allocate_array(request->scratch_arena, 4 * functions.count,
+      iree_arena_allocate_array(request->scratch_arena, 3 * functions->count,
                                 sizeof(*sorted), (void**)&sorted));
-  loom_vm_module_callable_t** definitions = sorted + functions.count;
-  loom_vm_module_callable_t** exports = definitions + functions.count;
-  loom_vm_module_callable_t** imports = exports + functions.count;
-  uint32_t function_count = 0;
+  loom_vm_module_callable_t** exports = sorted + functions->count;
+  loom_vm_module_callable_t** imports = exports + functions->count;
   uint32_t export_count = 0;
   uint32_t import_count = 0;
-  for (uint32_t i = 0; i < functions.count; ++i) {
-    loom_vm_module_callable_t* entry = &functions.values[i];
+  for (uint32_t i = 0; i < functions->count; ++i) {
+    loom_vm_module_callable_t* entry = &functions->values[i];
     sorted[i] = entry;
     if (entry->target_kind ==
         IREE_VM_BYTECODE_CONTROL_CALL_TARGET_REQUIRED_IMPORT) {
       imports[import_count++] = entry;
-    } else {
-      definitions[function_count++] = entry;
-      if (!iree_string_view_is_empty(entry->export_name)) {
-        exports[export_count++] = entry;
-      }
+    } else if (!iree_string_view_is_empty(entry->export_name)) {
+      exports[export_count++] = entry;
     }
   }
-  qsort(sorted, functions.count, sizeof(*sorted), loom_vm_signature_compare);
+  qsort(sorted, functions->count, sizeof(*sorted), loom_vm_signature_compare);
   uint32_t callable_count = 0;
-  for (uint32_t i = 0; i < functions.count; ++i) {
+  for (uint32_t i = 0; i < functions->count; ++i) {
     loom_vm_module_callable_t* entry = sorted[i];
     if (!callable_count ||
         loom_vm_signature_compare(&sorted[callable_count - 1], &entry)) {
@@ -351,7 +399,9 @@ static iree_status_t loom_vm_module_write(
 
   iree_string_view_t* strings = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      request->scratch_arena, export_count + 2 + 2 * import_count,
+      request->scratch_arena,
+      iree_max(1, export_count + references.count + references.group_count +
+                      2 * import_count),
       sizeof(*strings), (void**)&strings));
   uint32_t string_count = 0;
   for (uint32_t i = 0; i < export_count; ++i) {
@@ -363,10 +413,33 @@ static iree_status_t loom_vm_module_write(
     }
     strings[string_count++] = exports[i]->export_name;
   }
-  // Buffer type strings follow export names, retaining their direct ordinals.
-  if (functions.uses_buffer_type) {
-    strings[string_count++] = IREE_SV("vm");
-    strings[string_count++] = IREE_SV("buffer");
+  iree_vm_bytecode_v0_ref_type_group_row_t* reference_groups = NULL;
+  iree_vm_bytecode_v0_ref_type_entry_row_t* reference_entries = NULL;
+  if (references.count) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        request->scratch_arena, references.group_count,
+        sizeof(*reference_groups), (void**)&reference_groups));
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        request->scratch_arena, references.count, sizeof(*reference_entries),
+        (void**)&reference_entries));
+  }
+  uint32_t reference_group_count = 0;
+  for (uint32_t i = 0; i < references.count; ++i) {
+    const loom_type_reference_key_t* key =
+        loom_vm_reference_plan_key(&references, (uint16_t)i);
+    if (!i || !iree_string_view_equal(
+                  loom_vm_reference_plan_key(&references, (uint16_t)(i - 1))
+                      ->namespace_name,
+                  key->namespace_name)) {
+      reference_groups[reference_group_count++] =
+          (iree_vm_bytecode_v0_ref_type_group_row_t){
+              .namespace_string_u16 = (uint16_t)string_count};
+      strings[string_count++] = key->namespace_name;
+    }
+    ++reference_groups[reference_group_count - 1].entry_count_u32;
+    reference_entries[i] = (iree_vm_bytecode_v0_ref_type_entry_row_t){
+        .type_name_string_u16 = (uint16_t)string_count};
+    strings[string_count++] = key->type_name;
   }
   iree_vm_bytecode_v0_import_group_row_t* import_groups = NULL;
   iree_vm_bytecode_v0_import_entry_row_t* import_entries = NULL;
@@ -403,13 +476,12 @@ static iree_status_t loom_vm_module_write(
       .magic_u8 = {'I', 'R', 'E', 'E', 'V', 'M', 0, 0},
       .core_major_u16 = IREE_VM_BYTECODE_CORE_MAJOR,
       .core_required_minor_u16 = IREE_VM_BYTECODE_CORE_MINOR,
-      .section_count_u16 = 2 * (callable_count != 0) + (function_count != 0) +
-                           (export_count != 0) + (string_count != 0) +
-                           functions.uses_buffer_type + (import_count != 0) +
-                           (functions.rodata.symbol_count != 0),
+      .section_count_u16 =
+          2 * (callable_count != 0) + (functions->definition_count != 0) +
+          (export_count != 0) + (string_count != 0) + (references.count != 0) +
+          (import_count != 0) + (functions->rodata.symbol_count != 0),
   };
   IREE_RETURN_IF_ERROR(iree_io_stream_write(stream, sizeof(header), &header));
-  iree_vm_bytecode_v0_section_directory_row_t directory[8] = {0};
   IREE_RETURN_IF_ERROR(iree_io_stream_write(
       stream, header.section_count_u16 * sizeof(directory[0]), directory));
   uint16_t section = 0;
@@ -440,20 +512,20 @@ static iree_status_t loom_vm_module_write(
         iree_io_stream_offset(stream) - start;
   }
 
-  if (functions.uses_buffer_type) {
+  if (references.count) {
     IREE_RETURN_IF_ERROR(
         loom_vm_section_begin(stream, IREE_VM_BYTECODE_SECTION_REF_TYPES,
                               &directory[section], &start));
     const iree_vm_bytecode_v0_ref_types_header_t types_header = {
-        .group_count_u32 = 1};
-    const iree_vm_bytecode_v0_ref_type_group_row_t group = {
-        .namespace_string_u16 = (uint16_t)export_count, .entry_count_u32 = 1};
-    const iree_vm_bytecode_v0_ref_type_entry_row_t entry = {
-        .type_name_string_u16 = (uint16_t)(export_count + 1)};
+        .group_count_u32 = references.group_count};
     IREE_RETURN_IF_ERROR(
         iree_io_stream_write(stream, sizeof(types_header), &types_header));
-    IREE_RETURN_IF_ERROR(iree_io_stream_write(stream, sizeof(group), &group));
-    IREE_RETURN_IF_ERROR(iree_io_stream_write(stream, sizeof(entry), &entry));
+    IREE_RETURN_IF_ERROR(iree_io_stream_write(
+        stream, references.group_count * sizeof(*reference_groups),
+        reference_groups));
+    IREE_RETURN_IF_ERROR(iree_io_stream_write(
+        stream, references.count * sizeof(*reference_entries),
+        reference_entries));
     directory[section++].byte_length_u64 =
         iree_io_stream_offset(stream) - start;
   }
@@ -536,6 +608,26 @@ static iree_status_t loom_vm_module_write(
     directory[section++].byte_length_u64 =
         iree_io_stream_offset(stream) - start;
   }
+  *out_section_count = section;
+  return iree_ok_status();
+}
+
+static iree_status_t loom_vm_module_write(
+    const loom_target_emit_request_t* request, loom_vm_module_plan_t functions,
+    iree_io_stream_t* stream) {
+  iree_vm_bytecode_v0_section_directory_row_t directory[8] = {0};
+  uint16_t section = 0;
+  // Keys, hash buckets and sorted metadata views die before function scratch.
+  // Final descriptors and direct call bindings were allocated before this
+  // scope.
+  const iree_arena_checkpoint_t metadata_checkpoint =
+      iree_arena_checkpoint_save(request->scratch_arena);
+  iree_status_t status = loom_vm_module_write_metadata(
+      request, &functions, stream, directory, &section);
+  iree_arena_checkpoint_restore(&metadata_checkpoint);
+  IREE_RETURN_IF_ERROR(status);
+  const uint32_t function_count = functions.definition_count;
+  iree_io_stream_pos_t start = 0;
   const uint8_t zero = 0;
   if (function_count) {
     IREE_RETURN_IF_ERROR(
@@ -555,7 +647,12 @@ static iree_status_t loom_vm_module_write(
     iree_arena_initialize(request->scratch_arena->block_pool, &function_arena);
     loom_target_emit_request_t function_request = *request;
     function_request.scratch_arena = &function_arena;
-    for (uint32_t i = 0; i < function_count && iree_status_is_ok(status); ++i) {
+    for (uint32_t i = 0; i < functions.count && iree_status_is_ok(status);
+         ++i) {
+      const loom_vm_module_callable_t* entry = &functions.values[i];
+      if (entry->target_kind != IREE_VM_BYTECODE_CONTROL_CALL_TARGET_LOCAL) {
+        continue;
+      }
       const iree_io_stream_pos_t offset =
           iree_io_stream_offset(stream) - bytecode_base;
       if (offset > UINT32_MAX) {
@@ -564,19 +661,19 @@ static iree_status_t loom_vm_module_write(
         continue;
       }
       iree_vm_bytecode_v0_function_row_t row = {
-          .callable_type_ordinal_u16 = definitions[i]->callable_ordinal,
+          .callable_type_ordinal_u16 = entry->callable_ordinal,
           .bytecode_offset_u32 = (uint32_t)offset,
       };
-      status = loom_vm_function_emit(
-          &function_request, definitions[i]->function,
-          definitions[i]->target_facts, &definitions[i]->signature, &functions,
-          stream, &row);
+      status = loom_vm_function_emit(&function_request, entry->function,
+                                     entry->target_facts, &entry->signature,
+                                     &functions, stream, &row);
       iree_arena_reset(&function_arena);
       if (iree_status_is_ok(status)) {
         functions_header.maximum_block_count_u32 = iree_max(
             functions_header.maximum_block_count_u32, row.block_count_u32);
         status = loom_vm_stream_patch(
-            stream, start + sizeof(functions_header) + i * sizeof(row),
+            stream,
+            start + sizeof(functions_header) + entry->ordinal * sizeof(row),
             iree_make_const_byte_span(&row, sizeof(row)));
       }
     }
@@ -631,24 +728,30 @@ static iree_status_t loom_vm_module_write(
       }
     }
     IREE_RETURN_IF_ERROR(status);
-    directory[section].byte_length_u64 = iree_io_stream_offset(stream) - start;
+    directory[section++].byte_length_u64 =
+        iree_io_stream_offset(stream) - start;
   }
   return loom_vm_stream_patch(
-      stream, sizeof(header),
-      iree_make_const_byte_span(
-          directory, header.section_count_u16 * sizeof(directory[0])));
+      stream, sizeof(iree_vm_bytecode_v0_image_header_t),
+      iree_make_const_byte_span(directory, section * sizeof(directory[0])));
 }
 
 iree_status_t loom_vm_module_emit(const loom_target_emit_request_t* request,
                                   loom_target_emit_artifact_t* out_artifact) {
   *out_artifact = (loom_target_emit_artifact_t){0};
+  const iree_arena_checkpoint_t checkpoint =
+      iree_arena_checkpoint_save(request->scratch_arena);
   loom_vm_module_plan_t functions = {0};
-  IREE_RETURN_IF_ERROR(loom_vm_module_collect(request, &functions));
+  iree_status_t status = loom_vm_module_collect(request, &functions);
   iree_io_stream_t* stream = NULL;
-  IREE_RETURN_IF_ERROR(iree_io_vec_stream_create(
-      IREE_IO_STREAM_MODE_WRITABLE | IREE_IO_STREAM_MODE_SEEKABLE, 32 * 1024,
-      request->allocator, &stream));
-  iree_status_t status = loom_vm_module_write(request, functions, stream);
+  if (iree_status_is_ok(status)) {
+    status = iree_io_vec_stream_create(
+        IREE_IO_STREAM_MODE_WRITABLE | IREE_IO_STREAM_MODE_SEEKABLE, 32 * 1024,
+        request->allocator, &stream);
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_vm_module_write(request, functions, stream);
+  }
   if (iree_status_is_ok(status)) {
     status = iree_io_vec_stream_move_contents(stream, &out_artifact->contents);
   }
@@ -657,5 +760,6 @@ iree_status_t loom_vm_module_emit(const loom_target_emit_request_t* request,
         LOOM_TARGET_ARTIFACT_FORMAT_VM_BINARY;
   }
   iree_io_stream_release(stream);
+  iree_arena_checkpoint_restore(&checkpoint);
   return status;
 }

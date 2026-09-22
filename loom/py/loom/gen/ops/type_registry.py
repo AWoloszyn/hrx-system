@@ -29,6 +29,7 @@ from loom.gen.ops.c_parameterized_types import (
 from loom.gen.ops.c_parameterized_types import (
     generate_source_lines as _generate_parameterized_type_source_lines,
 )
+from loom.gen.support.c import c_string_view
 from loom.gen.support.generated_file import line_comment_header
 
 COPYRIGHT = """\
@@ -273,6 +274,11 @@ def _append_type_definition_source(source: list[str], all_types: Sequence[Any]) 
         else:
             format_ref = "NULL"
             format_count = 0
+        if type_def.reference is not None:
+            source.append(f"static const loom_type_reference_key_t loom_type_{ident}_reference = {{")
+            source.append(f"    .namespace_name = {c_string_view(type_def.reference.namespace_name)},")
+            source.append(f"    .type_name = {c_string_view(type_def.reference.type_name)},")
+            source.append("};")
         source.append(f"static const loom_type_descriptor_t loom_type_{ident}_descriptor = {{")
         source.append(f"    .name = loom_type_{ident}_name,")
         source.append(f"    .ir_kind = {ir_kind},")
@@ -286,6 +292,8 @@ def _append_type_definition_source(source: list[str], all_types: Sequence[Any]) 
             source.append(f"    .format_element_count = {format_count},")
         if type_def.uses_attribute_parameters:
             source.append(f"    .parameterized = &{type_descriptor_symbol(type_def)},")
+        if type_def.reference is not None:
+            source.append(f"    .reference = &loom_type_{ident}_reference,")
         source.append("};")
         source.append("")
 

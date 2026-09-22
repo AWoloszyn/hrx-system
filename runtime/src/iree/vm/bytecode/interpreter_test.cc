@@ -383,6 +383,72 @@ TEST_F(BytecodeInterpreterTest, TransfersRefsThroughBorrowAndMoveCalls) {
   EXPECT_EQ(moved_release_count, 1);
 }
 
+TEST_F(BytecodeInterpreterTest, SelectsOwnedRefBeforeReplacingAliasedRegister) {
+  for (int64_t condition : {int64_t{0}, int64_t{1} << 40}) {
+    SCOPED_TRACE(condition);
+    uint8_t storage[2] = {1, 2};
+    int releases[2] = {};
+    iree_vm_buffer_t* buffers[2] = {};
+    for (size_t i = 0; i < 2; ++i) {
+      IREE_ASSERT_OK(iree_vm_buffer_wrap(IREE_VM_BUFFER_ACCESS_FLAG_READ,
+                                         iree_make_byte_span(&storage[i], 1),
+                                         {RecordBufferRelease, &releases[i]},
+                                         iree_allocator_system(), &buffers[i]));
+    }
+    const size_t selected = condition ? 0 : 1;
+    iree_vm_buffer_t* expected = buffers[selected];
+    iree_vm_variant_t arguments[] = {
+        iree_vm_variant_from_i64(condition),
+        iree_vm_buffer_variant_from_ptr_move(&types_, &buffers[0]),
+        iree_vm_buffer_variant_from_ptr_move(&types_, &buffers[1]),
+    };
+    iree_vm_variant_t results[1] = {};
+    IREE_ASSERT_OK(iree_vm_invoke(invocation_,
+                                  LookupFunction(IREE_SV("select_refs")),
+                                  iree_vm_variant_span_from_array(arguments),
+                                  iree_vm_variant_span_from_array(results)));
+    iree_vm_buffer_t* returned = nullptr;
+    IREE_ASSERT_OK(iree_vm_buffer_ptr_from_variant_borrowed(&types_, results[0],
+                                                            &returned));
+    EXPECT_EQ(returned, expected);
+    EXPECT_EQ(releases[selected], 0);
+    EXPECT_EQ(releases[1 - selected], 1);
+    iree_vm_variant_reset(&results[0]);
+    EXPECT_EQ(releases[0], 1);
+    EXPECT_EQ(releases[1], 1);
+  }
+}
+
+TEST_F(BytecodeInterpreterTest, SelectsBorrowedAliasesAndNull) {
+  uint8_t storage = 42;
+  int releases = 0;
+  iree_vm_buffer_t* buffer = nullptr;
+  IREE_ASSERT_OK(iree_vm_buffer_wrap(
+      IREE_VM_BUFFER_ACCESS_FLAG_READ, iree_make_byte_span(&storage, 1),
+      {RecordBufferRelease, &releases}, iree_allocator_system(), &buffer));
+  for (iree_vm_buffer_t* right :
+       {buffer, static_cast<iree_vm_buffer_t*>(nullptr)}) {
+    iree_vm_variant_t arguments[] = {
+        iree_vm_variant_from_i64(0),
+        iree_vm_buffer_variant_from_ptr_borrowed(&types_, buffer),
+        iree_vm_buffer_variant_from_ptr_borrowed(&types_, right),
+    };
+    iree_vm_variant_t results[1] = {};
+    IREE_ASSERT_OK(iree_vm_invoke(invocation_,
+                                  LookupFunction(IREE_SV("select_refs")),
+                                  iree_vm_variant_span_from_array(arguments),
+                                  iree_vm_variant_span_from_array(results)));
+    iree_vm_buffer_t* returned = nullptr;
+    IREE_ASSERT_OK(iree_vm_buffer_ptr_from_variant_borrowed(&types_, results[0],
+                                                            &returned));
+    EXPECT_EQ(returned, right);
+    iree_vm_variant_reset(&results[0]);
+    EXPECT_EQ(releases, 0);
+  }
+  iree_vm_buffer_release(buffer);
+  EXPECT_EQ(releases, 1);
+}
+
 TEST_F(BytecodeInterpreterTest, ReleasesMovedRefDiscardedByChild) {
   std::array<uint8_t, 1> storage = {0};
   int release_count = 0;

@@ -57,6 +57,8 @@ typedef struct loom_vm_module_plan_t {
   loom_vm_module_callable_t** bindings_by_symbol;
   // Number of records in |values|, bounded by the module symbol ID space.
   uint32_t count;
+  // Number of local definitions, retaining their collected ordinal space.
+  uint32_t definition_count;
   // Read-only payloads retained for the module's data section.
   struct {
     // Symbol-indexed data ordinals; UINT16_MAX marks an unreferenced payload.
@@ -72,8 +74,6 @@ typedef struct loom_vm_module_plan_t {
     // Maximum block alignment, at least the image's eight-byte alignment.
     uint32_t alignment;
   } rodata;
-  // Whether any signature names the Core buffer reference type.
-  bool uses_buffer_type;
 } loom_vm_module_plan_t;
 
 // Emits VM functions in a prepared mixed-target module as one immutable .vm
@@ -84,7 +84,9 @@ typedef struct loom_vm_module_plan_t {
 // alignment and map to module-owned immutable buffers. Bytes are appended once
 // to a segmented stream and fixed table rows are backpatched. No instruction
 // sizing pass or contiguous image is required. Success transfers the byte
-// sequence to |out_artifact|; failure publishes none.
+// sequence to |out_artifact|; failure publishes none. All emission-local
+// scratch is reclaimed before returning, preserving the caller's preceding
+// allocations.
 iree_status_t loom_vm_module_emit(const loom_target_emit_request_t* request,
                                   loom_target_emit_artifact_t* out_artifact);
 

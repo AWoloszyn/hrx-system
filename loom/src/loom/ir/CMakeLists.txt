@@ -96,6 +96,7 @@ loom_cc_library(
     iree::base
     iree::base::internal
     iree::base::internal::arena
+    iree::base::internal::unicode
     loom::error::emitter
     loom::util::adaptive_sort
     loom::util::bstring

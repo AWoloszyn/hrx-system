@@ -49,6 +49,7 @@ from iree.vm.bytecode.spec.isa.core.integer import (
     IntegerUnaryOperation,
     IntegerUnarySemantics,
 )
+from iree.vm.bytecode.spec.isa.core.ref import REF_SELECT
 from iree.vm.bytecode.spec.isa.core.rules import RecordRuleKind
 from iree.vm.bytecode.spec.isa.core.stack import MEMORY_FORMAT_SELECTOR
 from iree.vm.bytecode.spec.isa.core.value import VALUE_COPY, VALUE_SELECT
@@ -1178,6 +1179,27 @@ VM_CORE_CONTRACT_FRAGMENT = ContractFragment(
     + tuple(_buffer_cases())
     + (RecipeRule(source_op=global_load),)
     + tuple(_view_cases())
+    + (
+        DescriptorRule(
+            source_op=scf_select,
+            guards=(
+                Guard.value_type("condition", Scalar("i1")),
+                Guard.low_value_register_class("true_value", "vm.ref"),
+            ),
+            emit=(
+                EmitDescriptorOp(
+                    descriptor=_DESCRIPTORS[REF_SELECT.opcode],
+                    form=DescriptorEmitForm.OP,
+                    operands={
+                        "condition_v8": ValueRef.operand("condition"),
+                        "true_r8": ValueRef.operand("true_value"),
+                        "false_r8": ValueRef.operand("false_value"),
+                    },
+                    results={"destination_r8": ValueRef.result("result")},
+                ),
+            ),
+        ),
+    )
     + select_descriptor_rules(
         (
             SelectDescriptorCase(

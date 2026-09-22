@@ -43,6 +43,8 @@ loom_cc_test(
     srcs = ["adaptive_sort_test.cc"],
     deps = [
         ":adaptive_sort",
+        ":segmented_storage",
+        "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/testing:gtest",
         "//runtime/src/iree/testing:gtest_main",
     ],

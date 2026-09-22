@@ -1195,6 +1195,15 @@ iree_vm_bytecode_dispatch_ref_move: {
                             &refs[record->source_r8]);
   IREE_VM_BYTECODE_DISPATCH_NEXT(iree_vm_bytecode_ref_move_t);
 }
+iree_vm_bytecode_dispatch_ref_select: {
+  const iree_vm_bytecode_ref_select_t* record =
+      (const iree_vm_bytecode_ref_select_t*)record_data;
+  const iree_vm_ref_t selected = values[record->condition_v8]
+                                     ? refs[record->true_r8]
+                                     : refs[record->false_r8];
+  iree_vm_bytecode_ref_retain(&refs[record->destination_r8], selected);
+  IREE_VM_BYTECODE_DISPATCH_NEXT(iree_vm_bytecode_ref_select_t);
+}
 iree_vm_bytecode_dispatch_ref_discard: {
   const iree_vm_bytecode_ref_discard_t* record =
       (const iree_vm_bytecode_ref_discard_t*)record_data;

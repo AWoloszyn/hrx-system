@@ -115,6 +115,7 @@ from loom.dsl import (
     PositiveBitWidthAttr,
     Reads,
     ReadWrites,
+    ReferenceTypeKey,
     RegionDef,
     Result,
     Retain,
@@ -338,10 +339,13 @@ def test_generate_type_registry_emits_type_semantics() -> None:
 
     reference_type = TypeDef(
         name="test.ref",
-        semantic=TypeSemantic.MANAGED_REFERENCE,
+        reference=ReferenceTypeKey("external.provider", 'resource"name'),
     )
     _, _, reference_tables_c = generate_type_registry([reference_type])
     assert ".semantic = LOOM_TYPE_SEMANTIC_MANAGED_REFERENCE," in reference_tables_c
+    assert '.namespace_name = IREE_SVL("external.provider"),' in reference_tables_c
+    assert r'.type_name = IREE_SVL("resource\"name"),' in reference_tables_c
+    assert ".reference = &loom_type_test_ref_reference," in reference_tables_c
 
 
 def test_generate_dialect_type_registry_emits_owned_shard() -> None:
