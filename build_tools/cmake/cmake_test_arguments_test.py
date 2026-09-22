@@ -7,10 +7,7 @@
 from __future__ import annotations
 
 import json
-import os
 import shutil
-import subprocess
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,13 +16,15 @@ from types import SimpleNamespace
 import bazel_to_cmake_converter
 import bazel_to_cmake_targets
 
-from build_tools.cmake.test_environment import configured_cmake_arguments
+from build_tools.cmake.test_environment import (
+    REPO_ROOT,
+    build_project,
+    configure_project,
+    install_project,
+    test_project,
+)
 
-REPO_ROOT = Path(__file__).resolve().parents[2]
-FIXTURE_SOURCE_DIR = Path(__file__).resolve().parent / "testdata/test_arguments"
-CMAKE_COMMAND = os.environ["IREE_TEST_CMAKE_COMMAND"]
-CTEST_COMMAND = os.environ["IREE_TEST_CTEST_COMMAND"]
-CONFIGURATION = os.environ.get("IREE_TEST_CMAKE_BUILD_TYPE") or "Release"
+FIXTURE = REPO_ROOT / "build_tools/cmake/testdata/test_arguments"
 
 
 class FixtureBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
@@ -34,42 +33,17 @@ class FixtureBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
 
 
 class CMakeTestArgumentsTest(unittest.TestCase):
-    def run_command(self, *arguments: str) -> str:
-        result = subprocess.run(
-            arguments,
-            check=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
-        self.assertEqual(result.returncode, 0, result.stdout)
-        return result.stdout
-
-    def configure_arguments(self, source: Path, build: Path) -> list[str]:
-        return [
-            CMAKE_COMMAND,
-            "-S",
-            str(source),
-            "-B",
-            str(build),
-            *configured_cmake_arguments(),
-            f"-DIREE_REPO_ROOT={REPO_ROOT}",
-            f"-DPython3_EXECUTABLE={sys.executable}",
-        ]
-
-    def test_file_identity_survives_generation_and_relocation(self):
+    def test_converted_files_and_arguments_survive_generation_and_relocation(self):
         with tempfile.TemporaryDirectory(prefix="cmake test arguments ") as temporary:
             root = Path(temporary)
-            source = root / "source with spaces"
-            build = root / "build with spaces"
-            shutil.copytree(FIXTURE_SOURCE_DIR, source)
+            source, build = root / "source with spaces", root / "build with spaces"
+            shutil.copytree(FIXTURE, source)
             runner_directory = source / "build_tools/testing"
             runner_directory.mkdir(parents=True)
             for name in ("execution.py", "execution_main.py"):
                 shutil.copy2(REPO_ROOT / "build_tools/testing" / name, runner_directory)
 
-            # Exercise repository-relative inputs declared in a subdirectory
-            # through the real converter and its project-root convention.
+            # Run actual converter output through the native/C/Python rules.
             package = source / "converted"
             package.mkdir()
             converter = SimpleNamespace(body="")
@@ -87,33 +61,33 @@ class CMakeTestArgumentsTest(unittest.TestCase):
                 srcs=["//:reader.py", "//:reader_helper.py"],
                 main="reader.py",
                 args=["$(location //tools:runner)", "$(locations :inputs)"],
-                data=[":inputs", "//tools:runner"],
+                data=[":inputs", "//:first input.txt", "//tools:runner"],
                 package_dirs=["${PROJECT_SOURCE_DIR}"],
             )
+            suppression = {"lsan": "//:lsan_suppressions_fixture.txt"}
+            functions.cc_test(
+                name="compiled_reader",
+                srcs=["//:reader.cc"],
+                args=["--wrapped=[$(location //:fixture.txt)]", "--check-suppression"],
+                env={"TEST_INPUT": "$(rootpath //:fixture.txt.more)"},
+                sanitizer_suppressions=suppression,
+            )
+            functions.native_test(
+                name="environment_reader",
+                src="//tools:runner",
+                args=["--check-suppression", "--input=$(location //:fixture.txt)"],
+                env={"TEST_INPUT": "$(location //:fixture.txt)"},
+                data=[":inputs", "//tools:runner"],
+                sanitizer_suppressions=suppression,
+            )
             (package / "CMakeLists.txt").write_text(converter.body)
-            self.run_command(*self.configure_arguments(source, build))
-            build_command = [
-                CMAKE_COMMAND,
-                "--build",
-                str(build),
-                "--config",
-                CONFIGURATION,
-                "--parallel",
-                "4",
-            ]
-            ctest_command = [
-                CTEST_COMMAND,
-                "--test-dir",
-                str(build),
-                "--build-config",
-                CONFIGURATION,
-            ]
-            self.run_command(*build_command)
-            self.run_command(*ctest_command, "--output-on-failure", "--no-tests=error")
-            tests = json.loads(self.run_command(*ctest_command, "--show-only=json-v1"))
+            configure_project(source, build)
+            build_project(build)
+            test_project(build)
+            tests = json.loads(test_project(build, "--show-only=json-v1"))["tests"]
             converted = next(
                 test
-                for test in tests["tests"]
+                for test in tests
                 if test["name"] == "fixture/converted/converted_python"
             )
             self.assertEqual(
@@ -122,76 +96,43 @@ class CMakeTestArgumentsTest(unittest.TestCase):
             )
 
             generated = [build / "generated.py", build / "generated.txt"]
-            modification_times = [path.stat().st_mtime_ns for path in generated]
-            self.run_command(*build_command)
+            timestamps = [path.stat().st_mtime_ns for path in generated]
+            build_project(build)
             self.assertEqual(
-                [path.stat().st_mtime_ns for path in generated], modification_times
+                [path.stat().st_mtime_ns for path in generated], timestamps
             )
             with (source / "reader.py").open("a") as output:
                 output.write('\nprint("updated Python source")\n')
             with (source / "fixture.txt").open("a") as output:
                 output.write("updated input\n")
-            self.run_command(*build_command)
-            self.assertEqual(
-                generated[0].read_bytes(), (source / "reader.py").read_bytes()
-            )
-            self.assertEqual(
-                generated[1].read_bytes(), (source / "fixture.txt").read_bytes()
-            )
-            for path in generated:
-                path.unlink()
-            self.run_command(*build_command)
-            self.assertIn(
-                "updated Python source", self.run_command(*ctest_command, "--verbose")
-            )
+            build_project(build)
+            for output, input_name in zip(generated, ("reader.py", "fixture.txt")):
+                self.assertEqual(
+                    output.read_bytes(), (source / input_name).read_bytes()
+                )
+                output.unlink()
+            build_project(build)
+            self.assertIn("updated Python source", test_project(build, "--verbose"))
 
             prefix = root / "install"
-            self.run_command(
-                CMAKE_COMMAND,
-                "--install",
-                str(build),
-                "--config",
-                CONFIGURATION,
-                "--prefix",
-                str(prefix),
-                "--component",
-                "FixtureTests",
-            )
+            install_project(build, prefix)
             relocated = root / "relocated install"
             prefix.rename(relocated)
             source.rename(root / "retired source")
             build.rename(root / "retired build")
-            self.run_command(
-                CTEST_COMMAND,
-                "--test-dir",
-                str(relocated / "share/tests"),
-                "--build-config",
-                CONFIGURATION,
-                "--output-on-failure",
-                "--no-tests=error",
-            )
+            test_project(relocated / "share/tests")
 
     def test_malformed_locators_fail_at_registration(self):
-        for argument in ("--input={{}}", "--input={{missing"):
-            with (
-                self.subTest(argument=argument),
-                tempfile.TemporaryDirectory() as temporary,
-            ):
-                root = Path(temporary)
-                source = root / "source"
-                shutil.copytree(FIXTURE_SOURCE_DIR, source)
-                result = subprocess.run(
-                    [
-                        *self.configure_arguments(source, root / "build"),
+        with tempfile.TemporaryDirectory() as temporary:
+            for index, argument in enumerate(("--input={{}}", "--input={{missing")):
+                with self.subTest(argument=argument):
+                    output = configure_project(
+                        FIXTURE,
+                        Path(temporary) / str(index),
                         f"-DIREE_TEST_INVALID_ARGUMENT={argument}",
-                    ],
-                    check=False,
-                    text=True,
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.STDOUT,
-                )
-                self.assertNotEqual(result.returncode, 0, result.stdout)
-                self.assertIn("Invalid file locator in test argument", result.stdout)
+                        expect_failure=True,
+                    )
+                    self.assertIn("Invalid file locator", output)
 
 
 if __name__ == "__main__":

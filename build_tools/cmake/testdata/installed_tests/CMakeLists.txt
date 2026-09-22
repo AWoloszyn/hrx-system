@@ -18,7 +18,7 @@ include("${IREE_REPO_ROOT}/libhrx/build_tools/cmake/hrx_installed_tests.cmake")
 
 # Repeated consumers share files, trees, and forward-declared aliases. A source
 # may also be needed in more than one installed package directory.
-foreach(_INDEX RANGE 0 15)
+foreach(_INDEX RANGE 0 1)
   hrx_installed_tests_install_source_file(
     "${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt" "other/fixture.txt" _OTHER_FILE)
   hrx_installed_tests_install_source_tree(

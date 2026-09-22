@@ -6,4 +6,8 @@
 
 file(READ "${INPUT}" _VALUE)
 string(STRIP "${_VALUE}" _VALUE)
-file(WRITE "${OUTPUT}" "#define GENERATED_VALUE ${_VALUE}\n")
+if(OUTPUT MATCHES "[.]c$")
+  file(WRITE "${OUTPUT}" "int fixture_generated_value(void) { return ${_VALUE}; }\n")
+else()
+  file(WRITE "${OUTPUT}" "#define GENERATED_VALUE ${_VALUE}\n")
+endif()

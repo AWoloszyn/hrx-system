@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "generated.h"
+#include "producer/generated.h"
 
 int fixture_leaf_value(void);
 

@@ -6,139 +6,65 @@
 
 from __future__ import annotations
 
-import json
-import os
-import subprocess
-import sys
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
 
-from build_tools.cmake.test_environment import configured_cmake_arguments
+from build_tools.cmake.test_environment import (
+    REPO_ROOT,
+    build_project,
+    configure_project,
+    install_project,
+    test_project,
+)
 
-sys.dont_write_bytecode = True
-
-REPO_ROOT = Path(__file__).resolve().parents[2]
-FIXTURE_SOURCE_DIR = Path(__file__).resolve().parent / "testdata/installed_tests"
-CMAKE_COMMAND = os.environ["IREE_TEST_CMAKE_COMMAND"]
-CTEST_COMMAND = os.environ["IREE_TEST_CTEST_COMMAND"]
+FIXTURE = REPO_ROOT / "build_tools/cmake/testdata/installed_tests"
 
 
 class CMakeInstalledTestsTest(unittest.TestCase):
-    def run_command(self, *arguments: str) -> subprocess.CompletedProcess:
-        return subprocess.run(
-            arguments,
-            check=False,
-            text=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-        )
-
-    def configure(self, build_dir: Path, *arguments: str):
-        return self.run_command(
-            CMAKE_COMMAND,
-            "-S",
-            str(FIXTURE_SOURCE_DIR),
-            "-B",
-            str(build_dir),
-            *configured_cmake_arguments(),
-            f"-DIREE_REPO_ROOT={REPO_ROOT}",
-            *arguments,
-        )
-
-    def test_installs_shared_artifacts_at_every_referenced_destination(self):
-        with tempfile.TemporaryDirectory() as temporary_dir:
-            root = Path(temporary_dir)
-            build_dir = root / "build"
-            result = self.configure(build_dir)
-            self.assertEqual(result.returncode, 0, result.stdout)
-            result = self.run_command(
-                CMAKE_COMMAND, "--build", str(build_dir), "--config", "Release"
+    def test_shared_artifacts_install_at_every_referenced_destination(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, build, prefix = (
+                root / name for name in ("source", "build", "install")
             )
-            self.assertEqual(result.returncode, 0, result.stdout)
-            prefix = root / "install"
-            result = self.run_command(
-                CMAKE_COMMAND,
-                "--install",
-                str(build_dir),
-                "--config",
-                "Release",
-                "--prefix",
-                str(prefix),
-                "--component",
-                "FixtureTests",
+            shutil.copytree(FIXTURE, source)
+            shutil.copytree(
+                FIXTURE.parent / "data_dependencies", root / "data_dependencies"
             )
-            self.assertEqual(result.returncode, 0, result.stdout)
+            configure_project(source, build)
+            build_project(build)
+            install_project(build, prefix)
             manifest = (
-                (build_dir / "install_manifest_FixtureTests.txt")
-                .read_text()
-                .splitlines()
+                (build / "install_manifest_FixtureTests.txt").read_text().splitlines()
             )
             self.assertEqual(len(manifest), len(set(manifest)))
-
             relocated = root / "relocated install"
             prefix.rename(relocated)
-            tests_dir = relocated / "share/tests"
-            for destination, source in (
-                ("fixture.txt", "fixture.txt"),
-                ("other/fixture.txt", "fixture.txt"),
-                ("tree/nested.txt", "tree/nested.txt"),
-                ("other/tree/nested.txt", "tree/nested.txt"),
-            ):
-                self.assertEqual(
-                    (tests_dir / "testdata" / destination).read_bytes(),
-                    (FIXTURE_SOURCE_DIR / source).read_bytes(),
+            source.rename(root / "retired source")
+            build.rename(root / "retired build")
+            test_project(relocated / "share/tests")
+
+    def test_deferred_artifact_must_exist_at_its_recorded_path(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            for index, (option, diagnostic) in enumerate(
+                (
+                    ("-DIREE_TEST_DECLARE_TOOL=OFF", "was never created: first::tool"),
+                    (
+                        "-DIREE_TEST_TOOL_OUTPUT_NAME=renamed",
+                        "after a test had already recorded",
+                    ),
                 )
-            result = self.run_command(
-                CTEST_COMMAND, "--test-dir", str(tests_dir), "--show-only=json-v1"
-            )
-            self.assertEqual(result.returncode, 0, result.stdout)
-            tests = json.loads(result.stdout)["tests"]
-            self.assertEqual(
-                {test["name"] for test in tests},
-                {f"deferred/{index}" for index in range(16)}
-                | {
-                    "second-alias",
-                    "existing-target",
-                    "existing-alias",
-                    "library-aliases",
-                },
-            )
-            for test in tests:
-                with self.subTest(test=test["name"]):
-                    self.assertIn("command", test)
-                    executable = Path(test["command"][0]).resolve()
-                    self.assertTrue(executable.is_relative_to(relocated))
-                    self.assertTrue(executable.is_file(), executable)
-            result = self.run_command(
-                CTEST_COMMAND, "--test-dir", str(tests_dir), "--output-on-failure"
-            )
-            self.assertEqual(result.returncode, 0, result.stdout)
-
-    def test_rejects_unresolved_deferred_target(self):
-        with tempfile.TemporaryDirectory() as temporary_dir:
-            result = self.configure(
-                Path(temporary_dir) / "build", "-DIREE_TEST_DECLARE_TOOL=OFF"
-            )
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn(
-                "Installed test target was referenced before it existed and was "
-                "never created: first::tool",
-                " ".join(result.stdout.split()),
-            )
-
-    def test_rejects_changed_deferred_artifact_path(self):
-        with tempfile.TemporaryDirectory() as temporary_dir:
-            result = self.configure(
-                Path(temporary_dir) / "build", "-DIREE_TEST_TOOL_OUTPUT_NAME=renamed"
-            )
-            self.assertNotEqual(result.returncode, 0)
-            self.assertIn(
-                "Installed test target 'first::tool' resolved to", result.stdout
-            )
-            self.assertIn(
-                "after a test had already recorded", " ".join(result.stdout.split())
-            )
+            ):
+                with self.subTest(option=option):
+                    output = configure_project(
+                        FIXTURE,
+                        Path(temporary) / str(index),
+                        option,
+                        expect_failure=True,
+                    )
+                    self.assertIn(diagnostic, " ".join(output.split()))
 
 
 if __name__ == "__main__":

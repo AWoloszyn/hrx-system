@@ -7,8 +7,9 @@
 #include <stdio.h>
 
 int fixture_library_value(void);
+int fixture_generated_value(void);
 
 int main(void) {
-  printf("%d\n", fixture_library_value());
+  printf("%d\n", fixture_library_value() + fixture_generated_value());
   return 0;
 }

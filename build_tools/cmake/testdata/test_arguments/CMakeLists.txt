@@ -34,14 +34,6 @@ endif()
 
 add_executable(reader reader.cc)
 add_executable(iree::tools::runner ALIAS reader)
-iree_cc_test(NAME compiled_reader SRCS reader.cc
-  ARGS "--wrapped=[{{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt}}]" --check-suppression
-  ENV "TEST_INPUT={{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt.more}}"
-  SANITIZER_SUPPRESSIONS lsan fixture)
-iree_native_test(NAME environment_reader SRC reader
-  ARGS --check-suppression
-  ENV "TEST_INPUT={{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt}}"
-  SANITIZER_SUPPRESSIONS lsan fixture)
 iree_execution_test_suite(NAME execution_reader
   MANIFESTS suppression.test.json TOOLS reader=reader
   SANITIZER_SUPPRESSIONS lsan fixture)
@@ -68,39 +60,29 @@ add_custom_target(generate_python DEPENDS
 iree_register_generated_output_producer(generate_python
   OUTPUTS generated.py reader_helper.py)
 
-iree_native_test(NAME standalone SRC reader
-  ARGS "{{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt}}")
-iree_native_test(NAME absolute_flag SRC reader DATA fixture.txt
-  ARGS "--input={{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt}}")
-iree_native_test(NAME located_flag SRC reader DATA "${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt"
-  ARGS "--input={{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt}}")
-iree_native_test(NAME wrapped_location SRC reader
-  ARGS "--wrapped=[{{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt}}]")
-iree_native_test(NAME paired_locations SRC reader
-  ARGS "--pair={{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt}}|{{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt.more}}")
-iree_native_test(NAME literal_filename SRC reader DATA fixture.txt
-  ARGS "--literal=fixture.txt")
-iree_native_test(NAME overlapping_names SRC reader DATA fixture.txt fixture.txt.more
-  ARGS "{{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt.more}}")
-iree_native_test(NAME filenames_with_spaces SRC reader
-  ARGS "{{first input.txt}}" "{{second input.txt}}")
-if(UNIX)
-  # These are legal file names, not serialized record delimiters or targets.
-  foreach(_NAME "a|b.txt" "a::b.txt")
-    file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/${_NAME}" "payload\n")
-    string(MAKE_C_IDENTIFIER "${_NAME}" _TEST_NAME)
-    iree_native_test(NAME "filename_${_TEST_NAME}" SRC reader
-      ARGS "{{${CMAKE_CURRENT_SOURCE_DIR}/${_NAME}}}")
-  endforeach()
-endif()
 add_custom_command(OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/generated.txt"
   COMMAND "${CMAKE_COMMAND}" -E copy "${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt"
     "${CMAKE_CURRENT_BINARY_DIR}/generated.txt"
   DEPENDS fixture.txt VERBATIM)
 add_custom_target(generate_data DEPENDS "${CMAKE_CURRENT_BINARY_DIR}/generated.txt")
 iree_register_generated_output_producer(generate_data OUTPUTS generated.txt)
-iree_native_test(NAME generated_location SRC reader
-  ARGS "{{${CMAKE_CURRENT_BINARY_DIR}/generated.txt}}")
+set(_PATH_ARGS
+  "{{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt}}"
+  "--input={{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt}}"
+  "--wrapped=[{{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt}}]"
+  "--pair={{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt}}|{{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt.more}}"
+  "--literal=fixture.txt"
+  "{{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt.more}}"
+  "{{first input.txt}}" "{{second input.txt}}"
+  "{{${CMAKE_CURRENT_BINARY_DIR}/generated.txt}}")
+if(UNIX)
+  foreach(_NAME "a|b.txt" "a::b.txt")
+    file(WRITE "${CMAKE_CURRENT_SOURCE_DIR}/${_NAME}" "payload\n")
+    list(APPEND _PATH_ARGS "{{${CMAKE_CURRENT_SOURCE_DIR}/${_NAME}}}")
+  endforeach()
+endif()
+iree_native_test(NAME file_arguments SRC reader
+  ARGS ${_PATH_ARGS} DATA fixture.txt fixture.txt.more)
 iree_native_test(NAME source_working_directory SRC reader
   WORKING_DIRECTORY "${PROJECT_SOURCE_DIR}" ARGS fixture.txt DATA fixture.txt)
 

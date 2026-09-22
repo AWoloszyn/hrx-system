@@ -507,72 +507,6 @@ cc_library(
             converter.body,
         )
 
-    def test_py_test_allows_unlocated_source_data(self):
-        repo_root = Path(__file__).resolve().parents[2]
-        converter = SimpleNamespace(body="")
-        functions = _PythonBuildFileFunctions(
-            converter=converter,
-            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
-            build_dir="build_tools/bazel_to_cmake",
-            repo_root=str(repo_root),
-        )
-
-        functions.iree_py_test(
-            name="source_data_test",
-            srcs=["config_test.py"],
-            args=["bazel_to_cmake_config_test"],
-            data=["//build_tools/bazel_to_cmake:config_test.py"],
-            main="config_test.py",
-            deps=[],
-        )
-
-        self.assertIn("iree_py_test(", converter.body)
-
-    def test_py_test_preserves_all_sources_and_main(self):
-        repo_root = Path(__file__).resolve().parents[2]
-        converter = SimpleNamespace(body="")
-        functions = _PythonBuildFileFunctions(
-            converter=converter,
-            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
-            build_dir="build_tools/bazel_to_cmake",
-            repo_root=str(repo_root),
-        )
-
-        functions.iree_py_test(
-            name="multi_source_test",
-            srcs=["config_test.py", "bazel_to_cmake_targets_test.py"],
-            main="config_test.py",
-            deps=[],
-        )
-
-        self.assertIn('MAIN\n    "config_test.py"', converter.body)
-        self.assertIn(
-            'SRCS\n    "config_test.py"\n    "bazel_to_cmake_targets_test.py"',
-            converter.body,
-        )
-
-    def test_native_python_test_builds_its_tool_arguments(self):
-        converter = SimpleNamespace(body="")
-        functions = _PythonBuildFileFunctions(
-            converter=converter,
-            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
-            build_dir="build_tools/example",
-            repo_root="/repo",
-        )
-
-        functions.iree_py_test(
-            name="tool_test",
-            srcs=["test.py"],
-            args=["$(location //third_party:spirv_dis)"],
-            data=["//third_party:spirv_dis"],
-            env_inherit=["PATH"],
-        )
-
-        self.assertIn(
-            '"{{$<TARGET_FILE:iree::third_party::spirv_dis>}}"', converter.body
-        )
-        self.assertIn('DATA\n    "iree::third_party::spirv_dis"', converter.body)
-
     def test_py_test_maps_size_to_default_timeout(self):
         repo_root = Path(__file__).resolve().parents[2]
         for size, timeout in {
@@ -817,30 +751,6 @@ cc_library(
                         "RESOURCE_GROUP\n    " + resource_group, converter.body
                     )
 
-    def test_native_test_converts_location_args_to_file_locators(self):
-        converter = SimpleNamespace(body="")
-        functions = bazel_to_cmake_converter.BuildFileFunctions(
-            converter=converter,
-            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
-            build_dir="/repo/pkg",
-            repo_root="/repo",
-        )
-
-        functions.native_test(
-            name="location_test",
-            src="//tools:runner",
-            args=[
-                "$(location input.txt)",
-                "--flag=$(location nested/input.bin)",
-            ],
-        )
-
-        self.assertIn('"{{${PROJECT_SOURCE_DIR}/pkg/input.txt}}"', converter.body)
-        self.assertIn(
-            '"--flag={{${PROJECT_SOURCE_DIR}/pkg/nested/input.bin}}"',
-            converter.body,
-        )
-
     def test_native_test_rejects_multiple_files_in_single_file_locations(self):
         for kind in ("location", "rootpath", "execpath"):
             for field in ("args", "env"):
@@ -863,31 +773,6 @@ cc_library(
                             src="//tools:runner",
                             **{field: value},
                         )
-
-    def test_native_test_preserves_file_and_target_data(self):
-        repo_root = Path(__file__).resolve().parents[2]
-        converter = SimpleNamespace(body="")
-        functions = bazel_to_cmake_converter.BuildFileFunctions(
-            converter=converter,
-            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
-            build_dir=str(repo_root / "build_tools/testing/test"),
-            repo_root=str(repo_root),
-        )
-
-        functions.native_test(
-            name="data_test",
-            src="//tools:runner",
-            data=[
-                "input.txt",
-                "//third_party:spirv_val",
-            ],
-        )
-
-        self.assertIn(
-            '"${PROJECT_SOURCE_DIR}/build_tools/testing/test/input.txt"',
-            converter.body,
-        )
-        self.assertIn('"iree::third_party::spirv_val"', converter.body)
 
     def test_cc_binary_benchmark_converts_location_args_to_source_paths(self):
         converter = SimpleNamespace(body="")
@@ -1032,34 +917,6 @@ iree_execution_test_suite(
         self.assertIn('    "${_GLOB_X_TXT}"', cmake)
         self.assertNotIn("::${_GLOB_X_TXT}", cmake)
 
-    def test_native_test_converts_location_env(self):
-        converter = SimpleNamespace(body="")
-        functions = bazel_to_cmake_converter.BuildFileFunctions(
-            converter=converter,
-            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
-            build_dir="/repo/pkg",
-            repo_root="/repo",
-        )
-
-        functions.native_test(
-            name="location_env_test",
-            src="//tools:runner",
-            env={
-                "FIXTURE": "$(location input.txt)",
-                "SPIRV_VAL": "$(rootpath //third_party:spirv_val)",
-            },
-        )
-
-        self.assertIn("ENV", converter.body)
-        self.assertIn(
-            '"FIXTURE={{${PROJECT_SOURCE_DIR}/pkg/input.txt}}"',
-            converter.body,
-        )
-        self.assertIn(
-            '"SPIRV_VAL={{$<TARGET_FILE:iree::third_party::spirv_val>}}"',
-            converter.body,
-        )
-
     def test_native_test_omits_unresolved_external_location_env(self):
         converter = SimpleNamespace(body="")
         functions = bazel_to_cmake_converter.BuildFileFunctions(
@@ -1109,86 +966,6 @@ iree_execution_test_suite(
         self.assertIn('CMAKE_SYSTEM_NAME STREQUAL "Linux"', converter.body)
         self.assertIn(
             "-Wl,--version-script=${CMAKE_CURRENT_SOURCE_DIR}/exports.map",
-            converter.body,
-        )
-        self.assertNotIn("$(location", converter.body)
-
-    def test_cc_test_emits_sanitizer_suppressions(self):
-        converter = SimpleNamespace(body="")
-        functions = bazel_to_cmake_converter.BuildFileFunctions(
-            converter=converter,
-            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
-            build_dir="",
-        )
-
-        functions.cc_test(
-            name="vulkan_test",
-            srcs=["vulkan_test.cc"],
-            sanitizer_suppressions={
-                "lsan": "//build_tools/sanitizer:lsan_suppressions_vulkan.txt",
-            },
-        )
-
-        self.assertIn("SANITIZER_SUPPRESSIONS", converter.body)
-        self.assertIn("    lsan", converter.body)
-        self.assertIn("    vulkan", converter.body)
-
-    def test_cc_test_converts_location_args(self):
-        converter = SimpleNamespace(body="")
-        functions = bazel_to_cmake_converter.BuildFileFunctions(
-            converter=converter,
-            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
-            build_dir="/repo/pkg",
-            repo_root="/repo",
-        )
-
-        functions.cc_binary(
-            name="fixture_tool",
-            srcs=["fixture_tool.cc"],
-        )
-        functions.cc_test(
-            name="location_test",
-            srcs=["location_test.cc"],
-            args=[
-                "$(location input.txt)",
-                "--tool=$(location //pkg:fixture_tool)",
-                "--runner=$(location //tools:runner)",
-            ],
-        )
-
-        self.assertIn('"{{${PROJECT_SOURCE_DIR}/pkg/input.txt}}"', converter.body)
-        self.assertIn(
-            '"--tool={{${PROJECT_SOURCE_DIR}/pkg/fixture_tool}}"',
-            converter.body,
-        )
-        self.assertIn(
-            '"--runner={{$<TARGET_FILE:iree::tools::runner>}}"',
-            converter.body,
-        )
-        self.assertNotIn("$(location", converter.body)
-
-    def test_cc_test_converts_env(self):
-        converter = SimpleNamespace(body="")
-        functions = bazel_to_cmake_converter.BuildFileFunctions(
-            converter=converter,
-            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
-            build_dir="/repo/pkg",
-            repo_root="/repo",
-        )
-
-        functions.cc_test(
-            name="env_test",
-            srcs=["env_test.cc"],
-            env={
-                "FEATURE": "enabled",
-                "FIXTURE": "$(location input.txt)",
-            },
-        )
-
-        self.assertIn("ENV", converter.body)
-        self.assertIn('"FEATURE=enabled"', converter.body)
-        self.assertIn(
-            '"FIXTURE={{${PROJECT_SOURCE_DIR}/pkg/input.txt}}"',
             converter.body,
         )
         self.assertNotIn("$(location", converter.body)
