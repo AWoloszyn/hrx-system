@@ -28,6 +28,7 @@
 #include "loom/tooling/config/config.h"
 #include "loom/tooling/execution/execution_backend.h"
 #include "loom/tooling/execution/hal/artifact.h"
+#include "loom/tooling/execution/hal/testbench_staging.h"
 #include "loom/tooling/io/source.h"
 #include "loom/util/fact_table.h"
 
@@ -1052,17 +1053,50 @@ iree_status_t loom_run_hal_testbench_actual_invoke(
 
   loom_run_hal_invocation_plan_t plan = {0};
   loom_run_hal_iteration_t iteration = {0};
+  loom_run_hal_testbench_staging_t staging = {0};
   status = loom_run_hal_invocation_plan_prepare_from_lists(
       &invocation_options, &bindings, /*expected_bindings=*/NULL,
       /*max_output_element_count=*/0, provider->context->host_allocator, &plan);
   loom_run_hal_binding_list_deinitialize(&bindings);
   if (iree_status_is_ok(status)) {
+    iree_hal_buffer_binding_t device_bindings[LOOM_RUN_HAL_MAX_BINDING_COUNT];
+    for (iree_host_size_t i = 0; i < plan.bindings.count; ++i) {
+      const iree_tooling_buffer_binding_t* binding = &plan.bindings.values[i];
+      device_bindings[i] = (iree_hal_buffer_binding_t){
+          .buffer = binding->buffer,
+          .offset = binding->byte_offset,
+          .length = binding->byte_length,
+      };
+    }
+    status = loom_run_hal_testbench_staging_initialize(
+        &provider->context->runtime, plan.bindings.count, device_bindings,
+        provider->context->host_allocator, &staging);
+    if (iree_status_is_ok(status)) {
+      for (iree_host_size_t i = 0; i < plan.bindings.count; ++i) {
+        iree_tooling_buffer_binding_t* binding = &plan.bindings.values[i];
+        iree_hal_buffer_retain(device_bindings[i].buffer);
+        iree_tooling_buffer_binding_deinitialize(binding);
+        *binding = (iree_tooling_buffer_binding_t){
+            .kind = IREE_TOOLING_BUFFER_BINDING_KIND_STORAGE_BUFFER,
+            .buffer = device_bindings[i].buffer,
+            .byte_offset = device_bindings[i].offset,
+            .byte_length = device_bindings[i].length,
+        };
+      }
+    }
+  }
+  if (iree_status_is_ok(status)) {
     status = loom_run_hal_invocation_dispatch_plan(
         &provider->context->runtime, &provider->prepared_candidate, &plan,
         provider->context->host_allocator, &iteration);
   }
+  if (iree_status_is_ok(status)) {
+    status = loom_run_hal_testbench_staging_readback(
+        &provider->context->runtime, &staging);
+  }
   loom_run_hal_iteration_deinitialize(&iteration);
   loom_run_hal_invocation_plan_deinitialize(&plan);
+  loom_run_hal_testbench_staging_deinitialize(&staging);
   return status;
 }
 
@@ -1516,12 +1550,24 @@ static iree_status_t loom_run_hal_testbench_actual_sequence_invoke_span(
         span, sample_ordinal));
   }
   loom_run_hal_testbench_actual_sequence_populate_binding_table(span);
-  return loom_run_hal_dispatch_sequence_execute(
-      &span->context->runtime, sample_sequence,
-      (iree_hal_buffer_binding_table_t){
-          .count = span->binding_count,
-          .bindings = span->binding_table,
-      });
+  loom_run_hal_testbench_staging_t staging = {0};
+  iree_status_t status = loom_run_hal_testbench_staging_initialize(
+      &span->context->runtime, span->binding_count, span->binding_table,
+      execution->host_allocator, &staging);
+  if (iree_status_is_ok(status)) {
+    status = loom_run_hal_dispatch_sequence_execute(
+        &span->context->runtime, sample_sequence,
+        (iree_hal_buffer_binding_table_t){
+            .count = span->binding_count,
+            .bindings = span->binding_table,
+        });
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_run_hal_testbench_staging_readback(&span->context->runtime,
+                                                     &staging);
+  }
+  loom_run_hal_testbench_staging_deinitialize(&staging);
+  return status;
 }
 
 static iree_status_t loom_run_hal_testbench_actual_sequence_query_issue(

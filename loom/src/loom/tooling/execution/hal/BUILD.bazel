@@ -105,6 +105,17 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "testbench_staging",
+    srcs = ["testbench_staging.c"],
+    hdrs = ["testbench_staging.h"],
+    deps = [
+        ":runtime",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/hal",
+    ],
+)
+
+loom_cc_library(
     name = "testbench_actual",
     srcs = ["testbench_actual.c"],
     hdrs = ["testbench_actual.h"],
@@ -114,6 +125,7 @@ loom_cc_library(
         ":device_provider",
         ":invocation",
         ":runtime",
+        ":testbench_staging",
         "//loom/src/loom/analysis:kernel_launch_config",
         "//loom/src/loom/analysis:symbol_facts",
         "//loom/src/loom/error:diagnostic",

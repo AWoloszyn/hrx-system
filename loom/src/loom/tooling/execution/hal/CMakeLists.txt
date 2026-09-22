@@ -148,6 +148,20 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    testbench_staging
+  HDRS
+    "testbench_staging.h"
+  SRCS
+    "testbench_staging.c"
+  DEPS
+    ::runtime
+    iree::base
+    iree::hal
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     testbench_actual
   HDRS
     "testbench_actual.h"
@@ -159,6 +173,7 @@ loom_cc_library(
     ::device_provider
     ::invocation
     ::runtime
+    ::testbench_staging
     iree::base
     iree::hal
     iree::tooling::device_util
