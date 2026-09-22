@@ -43,7 +43,7 @@ AtomicOrdering = EnumDef(
         EnumCase("acq_rel", 3, doc="Acquire and release ordering."),
         EnumCase("seq_cst", 4, doc="Sequentially consistent ordering."),
     ],
-    doc="Atomic memory ordering. The relaxed case lowers to LLVM monotonic RMW ordering.",
+    doc="Atomic memory ordering between memory accesses.",
     c_type="loom_atomic_ordering_t",
     c_const_prefix="LOOM_ATOMIC_ORDERING",
     c_include="loom/ops/atomic.h",

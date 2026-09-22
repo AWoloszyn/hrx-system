@@ -1,0 +1,135 @@
+// RUN: verify
+#include <loomcxx/atomic.h>
+using namespace loom::atomic;
+unsigned entry(unsigned* pointer) {
+  // ERROR@+1: LOWERING/059 "atomic binding requires an integer kind"
+  return loom::view::atomic::rmw<kind(255), ordering::relaxed, scope::device>(1u, pointer);
+}
+
+// ====
+#include <loomcxx/atomic.h>
+using namespace loom::atomic;
+unsigned entry(unsigned* pointer) {
+  // ERROR@+1: LOWERING/059 "atomic selectors require constant enum values"
+  return loom::view::atomic::rmw<kind::addi, ordering(-1), scope::device>(1u, pointer);
+}
+
+// ====
+#include <loomcxx/atomic.h>
+using namespace loom::atomic;
+unsigned entry(unsigned* pointer) {
+  // ERROR@+1: LOWERING/059 "unknown atomic ordering"
+  return loom::view::atomic::rmw<kind::addi, ordering(5), scope::device>(1u, pointer);
+}
+
+// ====
+#include <loomcxx/atomic.h>
+using namespace loom::atomic;
+unsigned entry(unsigned* pointer) {
+  // ERROR@+1: LOWERING/059 "unknown atomic scope"
+  return loom::view::atomic::rmw<kind::addi, ordering::relaxed, scope(5)>(1u, pointer);
+}
+
+// ====
+#include <loomcxx/atomic.h>
+using namespace loom::atomic;
+int entry(int* pointer) {
+  // ERROR@+1: LOWERING/059 "relaxed, acquire, or seq_cst failure ordering"
+  return loom::view::atomic::cmpxchg<ordering::acq_rel, ordering::release, scope::device>(1, 2, pointer);
+}
+
+// ====
+#include <loomcxx/atomic.h>
+using namespace loom::atomic;
+int entry(int* pointer) {
+  // ERROR@+1: LOWERING/059 "failure ordering no stronger than success ordering"
+  return loom::view::atomic::cmpxchg<ordering::relaxed, ordering::acquire, scope::device>(1, 2, pointer);
+}
+
+// ====
+#include <loomcxx/atomic.h>
+using namespace loom::atomic;
+// Boolean object storage is rejected before the atomic call is reached.
+// ERROR@+1: LOWERING/059 "memory objects require non-boolean scalar, vector or plain record storage"
+bool entry(bool* pointer) {
+  return loom::view::atomic::rmw<kind::andi, ordering::relaxed, scope::device>(true, pointer);
+}
+
+// ====
+#include <loomcxx/atomic.h>
+using namespace loom::atomic;
+float entry(float* pointer) {
+  // ERROR@+1: LOWERING/059 "atomic destination requires a non-boolean integer"
+  return loom::view::atomic::rmw<kind::addi, ordering::relaxed, scope::device>(1.0f, pointer);
+}
+
+// ====
+#include <loomcxx/atomic.h>
+using namespace loom::atomic;
+enum class Flag : unsigned { set = 1 };
+Flag entry(Flag* pointer) {
+  // ERROR@+1: LOWERING/059 "atomic destination requires a non-boolean integer"
+  return loom::view::atomic::rmw<kind::ori, ordering::relaxed, scope::device>(Flag::set, pointer);
+}
+
+// ====
+#include <loomcxx/atomic.h>
+using namespace loom::atomic;
+unsigned entry(unsigned* pointer) {
+  // ERROR@+1: LOWERING/059 "atomic minimum/maximum signedness must match the destination element type"
+  return loom::view::atomic::rmw<kind::minsi, ordering::relaxed, scope::device>(1u, pointer);
+}
+
+// ====
+#include <loomcxx/atomic.h>
+using namespace loom::atomic;
+int entry(int* pointer) {
+  // ERROR@+1: LOWERING/059 "atomic binding requires an integer kind"
+  return loom::view::atomic::rmw<kind::addf, ordering::relaxed, scope::device>(1, pointer);
+}
+
+// ====
+// Custom operation declarations use the same admission boundary as the facade.
+template <int Kind, int Ordering, int Scope>
+[[loom::op("view.atomic.rmw")]] int custom(int, const int*);
+int entry(const int* pointer) {
+  // ERROR@+1: LOWERING/059 "atomic destination requires a mutable pointer"
+  return custom<2, 0, 3>(1, pointer);
+}
+
+// ====
+template <int Kind, int Ordering, int Scope>
+[[loom::op("view.atomic.rmw")]] int custom(unsigned, int*);
+int entry(int* pointer) {
+  // ERROR@+1: LOWERING/059 "atomic operands must match the destination element type"
+  return custom<2, 0, 3>(1u, pointer);
+}
+
+// ====
+template <int Kind, int Ordering, int Scope>
+[[loom::op("view.atomic.reduce")]] int custom(int, int*);
+int entry(int* pointer) {
+  // ERROR@+1: LOWERING/059 "atomic result must be the destination element type, or void for reduction"
+  return custom<2, 0, 3>(1, pointer);
+}
+
+// ====
+template <int Kind, int Ordering, int Scope>
+[[loom::op("view.atomic.rmw")]] int custom(int*);
+int entry(int* pointer) {
+  // ERROR@+1: LOWERING/059 "atomic declaration has the wrong operand count"
+  return custom<2, 0, 3>(pointer);
+}
+
+// ====
+// ERROR@+1: LOWERING/059 "atomic binding requires three leading constant template arguments"
+[[loom::op("view.atomic.rmw")]] int custom(int, int*);
+
+// ====
+// Numeric selectors cannot silently truncate a floating template argument.
+template <auto Kind, auto Ordering, auto Scope>
+[[loom::op("view.atomic.rmw")]] int custom(int, int*);
+int entry(int* pointer) {
+  // ERROR@+1: LOWERING/059 "atomic selectors require constant enum values"
+  return custom<2.5, 0, 3>(1, pointer);
+}

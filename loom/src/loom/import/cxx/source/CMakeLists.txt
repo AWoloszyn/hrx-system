@@ -14,6 +14,7 @@ iree_c_embed_data(
   NAME
     embedded_loomcxx_headers
   SRCS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/atomic.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/check.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"

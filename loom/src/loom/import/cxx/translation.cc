@@ -1186,8 +1186,9 @@ class Translator {
         return result(op);
       }
       if (intrinsics_.owns(function, ast)) {
-        auto called = intrinsics_.call(function, source_arguments, value_arena_,
-                                       ast, math_flags_, &builder_, source);
+        auto called =
+            intrinsics_.call(function, source_arguments, value_arena_, storage_,
+                             ast, math_flags_, &builder_, source);
         if (!called.value) {
           fail(ast, "void intrinsic cannot be used as a value");
         }
@@ -1714,7 +1715,7 @@ class Translator {
             arguments.push_back(expression(argument));
           }
           auto called =
-              intrinsics_.call(function, arguments, value_arena_, ast,
+              intrinsics_.call(function, arguments, value_arena_, storage_, ast,
                                math_flags_, &builder_, locations_.get(ast));
           if (called.value) {
             fail(ast, "value-producing intrinsic reached a void call");

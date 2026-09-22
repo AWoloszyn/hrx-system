@@ -103,7 +103,8 @@ void Intrinsics::declaration(cxx::FunctionSymbol* function,
   }
   if (function->isTemplatePattern()) {
     if (selected->arguments.size() != 1 ||
-        !ViewIntrinsic::supports(selected->arguments[0]->name())) {
+        (!ViewIntrinsic::supports(selected->arguments[0]->name()) &&
+         !AtomicIntrinsic::supports(selected->arguments[0]->name()))) {
       diagnostics_.reject(unit_, owner,
                           "function template operation has no C++ projection");
     }
@@ -161,6 +162,10 @@ Intrinsics::Binding Intrinsics::resolve(cxx::FunctionSymbol* function,
   if (auto shaped = ShapedIntrinsic::resolve(unit_, diagnostics_, types_,
                                              signature, attribute, owner)) {
     return *shaped;
+  }
+  if (auto atomic = AtomicIntrinsic::resolve(unit_, diagnostics_, types_,
+                                             function, attribute, owner)) {
+    return *atomic;
   }
   if (auto view = ViewIntrinsic::resolve(unit_, diagnostics_, types_, signature,
                                          attribute, owner)) {
@@ -264,14 +269,17 @@ bool Intrinsics::owns(cxx::FunctionSymbol* function, cxx::AST* owner) {
 
 IntrinsicCallResult Intrinsics::call(cxx::FunctionSymbol* function,
                                      std::span<const Value> arguments,
-                                     ValueArena& arena, cxx::AST* owner,
-                                     uint8_t math_flags,
+                                     ValueArena& arena, Storage& storage,
+                                     cxx::AST* owner, uint8_t math_flags,
                                      loom_builder_t* builder,
                                      loom_location_id_t location) {
   auto* binding = concrete_binding(function, owner);
   IREE_ASSERT(binding);
   if (auto* view = std::get_if<ViewIntrinsic>(binding)) {
     return {view->call(arguments, types_, arena, owner, builder, location)};
+  }
+  if (auto* atomic = std::get_if<AtomicIntrinsic>(binding)) {
+    return {atomic->call(arguments, storage, owner, builder, location)};
   }
   std::array<loom_value_id_t, 8> inline_values;
   std::vector<loom_value_id_t> overflow;
