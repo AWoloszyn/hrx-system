@@ -1,0 +1,32 @@
+// RUN: roundtrip
+
+func.def @ordered_bindings(%source: f32, %extent: index, %view: view<[%extent]xf32>) -> (f32) {
+  %empty = test.operand_dict %source {} : f32
+  %result = test.operand_dict %empty {view = %view : view<[%extent]xf32>, scale = %source : f32, extent = %extent : index} : f32
+  func.return %result : f32
+}
+
+// ----
+func.def @ordered_bindings(%source: f32, %extent: index, %view: view<[%extent]xf32>) -> (f32) {
+  %empty = test.operand_dict %source : f32
+  %result = test.operand_dict %empty {extent = %extent : index, scale = %source : f32, view = %view : view<[%extent]xf32>} : f32
+  func.return %result : f32
+}
+
+// ====
+// RUN: verify
+
+func.def @duplicate_key(%source: f32) {
+  // ERROR@+1: PARSE/027 "scale"
+  %result = test.operand_dict %source {scale = %source : f32, bias = %source : f32, scale = %missing : i32} : f32
+  func.return
+}
+
+// ====
+// RUN: verify
+
+func.def @annotated_type(%source: f32) {
+  // ERROR@+1: TYPE/001 "scale" "f32" "type annotation" "i32"
+  %result = test.operand_dict %source {scale = %source : i32} : f32
+  func.return
+}

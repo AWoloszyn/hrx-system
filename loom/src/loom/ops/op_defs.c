@@ -1951,29 +1951,6 @@ iree_status_t loom_builder_copy_bytes_attr_storage(
   return iree_ok_status();
 }
 
-static iree_status_t loom_builder_compare_string_ids(
-    const loom_module_t* module, loom_string_id_t lhs_id,
-    loom_string_id_t rhs_id, int* out_comparison) {
-  if (lhs_id == LOOM_STRING_ID_INVALID || lhs_id >= module->strings.count) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "operand dictionary key string id %u is out of range (module has "
-        "%" PRIhsz " strings)",
-        lhs_id, module->strings.count);
-  }
-  if (rhs_id == LOOM_STRING_ID_INVALID || rhs_id >= module->strings.count) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "operand dictionary key string id %u is out of range (module has "
-        "%" PRIhsz " strings)",
-        rhs_id, module->strings.count);
-  }
-  *out_comparison =
-      iree_string_view_compare(loom_string_table_get(&module->strings, lhs_id),
-                               loom_string_table_get(&module->strings, rhs_id));
-  return iree_ok_status();
-}
-
 iree_status_t loom_builder_set_operand_dict(
     loom_builder_t* builder, loom_named_value_slice_t named_values,
     loom_value_id_t* operand_storage, loom_attribute_t* out_names_attr) {
@@ -2007,12 +1984,6 @@ iree_status_t loom_builder_set_operand_dict(
                             named_values.count, (unsigned)UINT16_MAX);
   }
 
-  loom_named_value_t* sorted_values = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      builder->arena, named_values.count, sizeof(*sorted_values),
-      (void**)&sorted_values));
-
-  iree_host_size_t sorted_count = 0;
   for (iree_host_size_t i = 0; i < named_values.count; ++i) {
     const loom_named_value_t entry = named_values.entries[i];
     if (entry.reserved != 0) {
@@ -2036,46 +2007,40 @@ iree_status_t loom_builder_set_operand_dict(
           " values)",
           entry.value_id, builder->module->values.count);
     }
-
-    iree_host_size_t insert_index = sorted_count;
-    while (insert_index > 0) {
-      int comparison = 0;
-      IREE_RETURN_IF_ERROR(loom_builder_compare_string_ids(
-          builder->module, entry.name_id,
-          sorted_values[insert_index - 1].name_id, &comparison));
-      if (comparison == 0) {
-        iree_string_view_t name =
-            loom_string_table_get(&builder->module->strings, entry.name_id);
-        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                                "duplicate operand dictionary key '%.*s'",
-                                (int)name.size, name.data);
-      }
-      if (comparison > 0) {
-        break;
-      }
-      sorted_values[insert_index] = sorted_values[insert_index - 1];
-      --insert_index;
-    }
-
-    sorted_values[insert_index] = entry;
-    ++sorted_count;
   }
 
   loom_named_attr_t* name_entries = NULL;
   IREE_RETURN_IF_ERROR(
-      iree_arena_allocate_array(builder->arena, named_values.count,
+      iree_arena_allocate_array(&builder->module->arena, named_values.count,
                                 sizeof(*name_entries), (void**)&name_entries));
-  for (iree_host_size_t i = 0; i < sorted_count; ++i) {
-    operand_storage[i] = sorted_values[i].value_id;
+  // Until canonical positions are assigned, each entry carries its paired SSA
+  // value. Sorting the owned entries keeps names and values together without
+  // retaining a separate permutation or caller-owned payload.
+  for (iree_host_size_t i = 0; i < named_values.count; ++i) {
     name_entries[i] = (loom_named_attr_t){
-        .name_id = sorted_values[i].name_id,
+        .name_id = named_values.entries[i].name_id,
         .reserved = 0,
-        .value = loom_attr_i64((int64_t)i),
+        .value = loom_attr_i64(named_values.entries[i].value_id),
     };
   }
-  return loom_module_make_canonical_attr_dict(
-      builder->module, loom_make_named_attr_slice(name_entries, sorted_count),
-      out_names_attr);
+  loom_module_sort_attr_dict_entries(builder->module, name_entries,
+                                     named_values.count);
+  for (iree_host_size_t i = 1; i < named_values.count; ++i) {
+    if (name_entries[i - 1].name_id == name_entries[i].name_id) {
+      iree_string_view_t name = loom_string_table_get(&builder->module->strings,
+                                                      name_entries[i].name_id);
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "duplicate operand dictionary key '%.*s'",
+                              (int)name.size, name.data);
+    }
+  }
+  for (iree_host_size_t i = 0; i < named_values.count; ++i) {
+    operand_storage[i] = (loom_value_id_t)name_entries[i].value.i64;
+    name_entries[i].value = loom_attr_i64((int64_t)i);
+  }
+  *out_names_attr =
+      loom_make_canonical_attr_dict(name_entries, named_values.count);
+  return iree_ok_status();
 }
 
 static iree_status_t loom_builder_validate_operand_segments(

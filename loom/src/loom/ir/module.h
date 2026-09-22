@@ -392,6 +392,15 @@ iree_status_t loom_module_make_canonical_attribute(
     loom_module_t* module, const loom_attr_descriptor_t* descriptor,
     loom_attribute_t value, loom_attribute_t* out_value);
 
+// Sorts mutable dictionary entries by their module-interned key spelling.
+// All keys must already be valid string IDs in |module|. Values move with their
+// keys and are otherwise unchanged; duplicate keys remain adjacent. Ordering
+// uses linear comparisons for ordered input and O(n log n) comparisons in the
+// worst case, without allocating scratch storage.
+void loom_module_sort_attr_dict_entries(const loom_module_t* module,
+                                        loom_named_attr_t* entries,
+                                        iree_host_size_t count);
+
 // Builds a canonical DICT attribute in |module| from |entries|.
 //
 // The input entries may be in any order and may point to temporary storage.
@@ -449,7 +458,11 @@ iree_status_t loom_module_make_parameterized_type(
 // either inserts/replaces one key or removes it. Duplicate keys in |updates|
 // are rejected so patch semantics stay order-independent. Replacement values
 // are recursively canonicalized, unchanged base values are reused by value, and
-// the resulting entry array is arena-owned by |module|.
+// the resulting entry array is arena-owned by |module|. Input arrays remain
+// unchanged; temporary update ordering is released before returning. The entry
+// limit applies to the actual result, including removals and replacements,
+// rather than the sum of the two input counts. Failures leave |*out_attr|
+// absent.
 iree_status_t loom_module_replace_canonical_attr_dict(
     loom_module_t* module, loom_named_attr_slice_t base_entries,
     loom_named_attr_update_slice_t updates, loom_attribute_t* out_attr);

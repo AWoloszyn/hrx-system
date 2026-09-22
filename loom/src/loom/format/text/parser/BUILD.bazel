@@ -85,6 +85,23 @@ loom_cc_test(
 )
 
 loom_cc_test(
+    name = "format_tables_test",
+    srcs = ["format_tables_test.cc"],
+    deps = [
+        ":parser_impl",
+        "//loom/src/loom/error:error_defs",
+        "//loom/src/loom/format/text:tokenizer",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/test",
+        "//loom/src/loom/testing:diagnostic_matchers",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
     name = "low_asm_test",
     srcs = ["low_asm_test.cc"],
     deps = [

@@ -1631,7 +1631,10 @@ iree_status_t loom_builder_intern_string(loom_builder_t* builder,
 // Writes the sorted operand values into |operand_storage| and writes a
 // canonical DICT attribute to |out_names_attr| mapping each key to its operand
 // ordinal relative to |operand_storage|. Empty dictionaries produce an absent
-// names attribute so optional OperandDict fields print nothing.
+// names attribute so optional OperandDict fields print nothing. Input entries
+// are borrowed and may appear in any order; duplicate keys are rejected. The
+// module owns the final name entries, with no retained sorting scratch. Sorting
+// takes linear comparisons for ordered input and O(n log n) in the worst case.
 iree_status_t loom_builder_set_operand_dict(
     loom_builder_t* builder, loom_named_value_slice_t named_values,
     loom_value_id_t* operand_storage, loom_attribute_t* out_names_attr);

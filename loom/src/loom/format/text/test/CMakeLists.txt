@@ -14,6 +14,7 @@ loom_check_test_suite(
     test
   SRCS
     "instance_flags.loom-test"
+    "operand_dictionaries.loom-test"
     "predicate_attributes.loom-test"
     "signature_binders.loom-test"
     "ssa_names.loom-test"
