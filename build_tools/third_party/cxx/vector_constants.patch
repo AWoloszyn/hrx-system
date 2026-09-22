@@ -79,6 +79,7 @@ diff --git a/src/parser/cxx/ast_interpreter_statements.cc b/src/parser/cxx/ast_i
      setLocal(var, *initVal);
      registerAutomaticObject(var);
 diff --git a/tests/unit_tests/sema/vector_constants_01.cc b/tests/unit_tests/sema/vector_constants_01.cc
+new file mode 100644
 --- /dev/null
 +++ b/tests/unit_tests/sema/vector_constants_01.cc
 @@ -0,0 +1,33 @@
