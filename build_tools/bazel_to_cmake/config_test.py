@@ -970,6 +970,26 @@ iree_execution_test_suite(
         )
         self.assertNotIn("$(location", converter.body)
 
+    def test_cc_library_emits_dependency_suppressions(self):
+        converter = SimpleNamespace(body="")
+        functions = bazel_to_cmake_converter.BuildFileFunctions(
+            converter=converter,
+            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
+            build_dir="",
+        )
+
+        functions.cc_library(
+            name="libvulkan",
+            srcs=["vulkan_test.cc"],
+            sanitizer_suppressions={
+                "lsan": "//build_tools/sanitizer:lsan_suppressions_vulkan.txt",
+            },
+        )
+
+        self.assertIn("SANITIZER_SUPPRESSIONS", converter.body)
+        self.assertIn("    lsan", converter.body)
+        self.assertIn("    vulkan", converter.body)
+
     def test_execution_test_suite_emits_target_compatible_guard(self):
         converter = SimpleNamespace(body="")
         functions = bazel_to_cmake_converter.BuildFileFunctions(
@@ -1027,28 +1047,6 @@ iree_execution_test_suite(
             converter.body,
         )
         self.assertIn("loom-compile=", converter.body)
-
-    def test_execution_test_suite_emits_sanitizer_suppressions(self):
-        converter = SimpleNamespace(body="")
-        functions = bazel_to_cmake_converter.BuildFileFunctions(
-            converter=converter,
-            targets=bazel_to_cmake_targets.TargetConverter(repo_map={"@hrx": ""}),
-            build_dir="/repo/pkg",
-            repo_root="/repo",
-        )
-
-        functions.iree_execution_test_suite(
-            name="execution_test",
-            manifests=["test.json"],
-            tools={"runner": "//tools:runner"},
-            sanitizer_suppressions={
-                "lsan": "//build_tools/sanitizer:lsan_suppressions_vulkan.txt",
-            },
-        )
-
-        self.assertIn("SANITIZER_SUPPRESSIONS", converter.body)
-        self.assertIn("    lsan", converter.body)
-        self.assertIn("    vulkan", converter.body)
 
     def test_execution_test_suite_emits_resource_group(self):
         converter = SimpleNamespace(body="")

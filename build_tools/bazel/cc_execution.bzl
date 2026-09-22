@@ -7,24 +7,23 @@
 """Shared implementation helpers for executable rules derived from rules_cc."""
 
 load(
-    ":dynamic_library_bundle.bzl",
-    "collect_dynamic_library_bundles",
-    "has_dynamic_library_bundles",
-    "inject_dynamic_library_bindings",
+    ":execution_requirements.bzl",
+    "collect_execution_requirements",
+    "inject_execution_requirements",
 )
 load(":runfiles.bzl", "create_runfiles_arguments_info")
 
 _RULES_CC_LINK_EXTRA_LIB = Label("@rules_cc//:link_extra_lib")
 
 cc_execution_attrs = {
-    "dynamic_library_data": attr.label_list(
+    "execution_data": attr.label_list(
         allow_files = True,
-        aspects = [collect_dynamic_library_bundles],
-        doc = "Internal mirror of data used to collect configured dynamic-library bundles.",
+        aspects = [collect_execution_requirements],
+        doc = "Internal mirror of data used to collect configured runtime requirements.",
     ),
-    "dynamic_library_deps": attr.label_list(
-        aspects = [collect_dynamic_library_bundles],
-        doc = "Internal mirror of deps used to collect configured dynamic-library bundles.",
+    "execution_deps": attr.label_list(
+        aspects = [collect_execution_requirements],
+        doc = "Internal mirror of deps used to collect configured runtime requirements.",
     ),
 }
 
@@ -52,8 +51,8 @@ def cc_execution_initializer(
             deps = deps + [_RULES_CC_LINK_EXTRA_LIB]
     return {
         "deps": deps,
-        "dynamic_library_data": data,
-        "dynamic_library_deps": original_deps,
+        "execution_data": data,
+        "execution_deps": original_deps,
     }
 
 def cc_execution_impl(ctx):
@@ -72,9 +71,7 @@ def cc_execution_impl(ctx):
     )
     if runfiles_arguments != None:
         providers.append(runfiles_arguments)
-    dependencies = ctx.attr.dynamic_library_data + ctx.attr.dynamic_library_deps
-    if not has_dynamic_library_bundles(dependencies):
-        return providers
+    dependencies = ctx.attr.execution_data + ctx.attr.execution_deps
     executable = None
     for value in providers:
         # rules_cc returns DebugPackageInfo as a Starlark provider. Its
@@ -85,7 +82,7 @@ def cc_execution_impl(ctx):
             break
     if executable == None:
         fail("%s rules_cc parent did not return DebugPackageInfo" % ctx.label)
-    return inject_dynamic_library_bindings(
+    return inject_execution_requirements(
         ctx,
         providers,
         dependencies,

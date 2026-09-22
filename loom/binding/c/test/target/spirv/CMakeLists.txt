@@ -109,9 +109,6 @@ loom_cc_test(
     "iree-build-requirement=loom.target.arch.spirv"
   RESOURCE_GROUP
     gpu-device
-  SANITIZER_SUPPRESSIONS
-    lsan
-    vulkan
 )
 endif()
 

@@ -4,9 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""Runtime-only dynamic-library bundles and dependency-graph collection."""
-
-load(":runfiles.bzl", "IreeRunfilesEnvironmentInfo")
+"""Runtime-only dynamic-library bundles and their environment bindings."""
 
 IreeDynamicLibraryBundleInfo = provider(
     doc = "Runtime-only dynamic-library files and exact environment bindings.",
@@ -24,16 +22,6 @@ IreeDynamicLibraryBindingsInfo = provider(
         "has_bundles": "Whether the configured graph contains a bundle target.",
     },
 )
-
-_TRAVERSED_ATTRS = [
-    "actual",
-    "data",
-    "deps",
-    "implementation_deps",
-    "runtime_deps",
-    "src",
-    "srcs",
-]
 
 def _validate_environment_name(name):
     if not name:
@@ -88,122 +76,6 @@ def merge_dynamic_library_bindings(bindings, owner):
         has_bundles = has_bundles,
     )
 
-def has_dynamic_library_bundles(dependencies):
-    """Returns whether aspect-bearing dependencies contain a bundle target.
-
-    Args:
-      dependencies: Targets that may carry IreeDynamicLibraryBindingsInfo.
-
-    Returns:
-      True if any configured dependency graph contains a bundle target.
-    """
-    for dependency in dependencies:
-        if (
-            IreeDynamicLibraryBindingsInfo in dependency and
-            dependency[IreeDynamicLibraryBindingsInfo].has_bundles
-        ):
-            return True
-    return False
-
-def inject_dynamic_library_bindings(
-        ctx,
-        providers,
-        dependencies,
-        executable):
-    """Adds collected dynamic-library runfiles and environment to an executable.
-
-    The input providers normally come from an existing executable rule. Every
-    provider other than DefaultInfo and RunEnvironmentInfo is returned
-    unchanged, and IreeRunfilesEnvironmentInfo identifies the injected entries
-    for launchers that intentionally change away from Bazel's runfiles working
-    directory. If the configured dependency graph contains no bundles, the
-    original provider list is returned without reconstruction.
-
-    Args:
-      ctx: Rule context for the executable receiving the bindings.
-      providers: Providers produced for the executable before injection.
-      dependencies: Aspect-bearing dependencies that may carry
-        IreeDynamicLibraryBindingsInfo.
-      executable: Executable file retained in the reconstructed DefaultInfo.
-
-    Returns:
-      The executable providers with conditional runfiles and environment
-      injection.
-    """
-    collected_bindings = [
-        dependency[IreeDynamicLibraryBindingsInfo]
-        for dependency in dependencies
-        if IreeDynamicLibraryBindingsInfo in dependency
-    ]
-    if not has_dynamic_library_bundles(dependencies):
-        return providers
-    bindings = merge_dynamic_library_bindings(collected_bindings, ctx.label)
-
-    default_info = None
-    run_environment = None
-    for value in providers:
-        value_type = type(value)
-        if value_type == "DefaultInfo":
-            if default_info != None:
-                fail("%s produced more than one DefaultInfo provider" % ctx.label)
-            default_info = value
-        elif value_type == "RunEnvironmentInfo":
-            if run_environment != None:
-                fail("%s produced more than one RunEnvironmentInfo provider" % ctx.label)
-            run_environment = value
-
-    if default_info == None:
-        fail("%s cannot receive dynamic-library bindings without DefaultInfo" % ctx.label)
-
-    environment = dict(run_environment.environment if run_environment else {})
-    inherited_environment = list(
-        run_environment.inherited_environment if run_environment else [],
-    )
-    for name, file in bindings.environment.items():
-        if name in inherited_environment:
-            fail(
-                "%s both inherits and binds dynamic-library environment variable %s" %
-                (ctx.label, name),
-            )
-        root_path = file.short_path
-        existing = environment.get(name)
-        if existing != None and existing != root_path:
-            fail(
-                "%s sets dynamic-library environment variable %s to both %r and %r" %
-                (ctx.label, name, existing, root_path),
-            )
-        environment[name] = root_path
-
-    added_runfiles = ctx.runfiles(transitive_files = bindings.files)
-    default_runfiles = default_info.default_runfiles or ctx.runfiles()
-    data_runfiles = default_info.data_runfiles or ctx.runfiles()
-    updated_default_info = DefaultInfo(
-        data_runfiles = data_runfiles.merge(added_runfiles),
-        default_runfiles = default_runfiles.merge(added_runfiles),
-        executable = executable,
-        files = default_info.files,
-    )
-    updated_run_environment = RunEnvironmentInfo(
-        environment = environment,
-        inherited_environment = inherited_environment,
-    )
-
-    result = []
-    for value in providers:
-        value_type = type(value)
-        if value_type == "DefaultInfo":
-            result.append(updated_default_info)
-        elif value_type == "RunEnvironmentInfo":
-            result.append(updated_run_environment)
-        else:
-            result.append(value)
-    if run_environment == None:
-        result.append(updated_run_environment)
-    result.append(IreeRunfilesEnvironmentInfo(
-        environment = bindings.environment,
-    ))
-    return result
-
 def _iree_dynamic_library_bundle_impl(ctx):
     environment = {}
     environment_files = []
@@ -238,39 +110,4 @@ iree_dynamic_library_bundle = rule(
         ),
     },
     doc = "Carries dynamic libraries as runtime data without exposing C/C++ linker inputs.",
-)
-
-def _dependency_values(ctx, attr_name):
-    if not hasattr(ctx.rule.attr, attr_name):
-        return []
-    value = getattr(ctx.rule.attr, attr_name)
-    if type(value) == type([]):
-        return value
-    if value:
-        return [value]
-    return []
-
-def _collect_dynamic_library_bundles_impl(target, ctx):
-    bindings = []
-
-    if IreeDynamicLibraryBundleInfo in target:
-        bundle = target[IreeDynamicLibraryBundleInfo]
-        bindings.append(IreeDynamicLibraryBindingsInfo(
-            environment = bundle.environment,
-            files = bundle.files,
-            has_bundles = True,
-        ))
-
-    for attr_name in _TRAVERSED_ATTRS:
-        for dependency in _dependency_values(ctx, attr_name):
-            if IreeDynamicLibraryBindingsInfo not in dependency:
-                continue
-            bindings.append(dependency[IreeDynamicLibraryBindingsInfo])
-
-    return [merge_dynamic_library_bindings(bindings, target.label)]
-
-collect_dynamic_library_bundles = aspect(
-    implementation = _collect_dynamic_library_bundles_impl,
-    attr_aspects = _TRAVERSED_ATTRS,
-    doc = "Collects runtime-only dynamic-library bundles from dependency and data edges.",
 )

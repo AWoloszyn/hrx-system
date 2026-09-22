@@ -96,22 +96,30 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           "$PWD\.venv\Scripts" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-      - name: Check native accelerator access
+      - name: Check native accelerator and GPU access
         shell: powershell
         run: |
           Get-CimInstance Win32_OperatingSystem -ErrorAction Stop |
             Format-List Caption, Version, BuildNumber
           $accelerators = @(Get-PnpDevice -Class ComputeAccelerator -PresentOnly -ErrorAction Stop)
-          $accelerators | Format-Table Status, Class, FriendlyName, InstanceId -AutoSize
-          foreach ($accelerator in $accelerators) {
-            Write-Output $accelerator.InstanceId
-            Get-PnpDeviceProperty -InstanceId $accelerator.InstanceId -ErrorAction Stop -KeyName `
+          $gpus = @(Get-PnpDevice -Class Display -PresentOnly -ErrorAction Stop |
+            Where-Object InstanceId -Like 'PCI\VEN_1002&*')
+          $devices = $accelerators + $gpus
+          $devices | Format-Table Status, Class, FriendlyName, InstanceId -AutoSize
+          foreach ($device in $devices) {
+            Write-Output $device.InstanceId
+            Get-PnpDeviceProperty -InstanceId $device.InstanceId -ErrorAction Stop -KeyName `
               DEVPKEY_Device_DriverVersion, DEVPKEY_Device_DriverDate, DEVPKEY_Device_DriverInfPath |
               Format-Table KeyName, Data -AutoSize
           }
           if (-not ($accelerators | Where-Object Status -eq 'OK')) {
             throw 'The AMD client runner requires a healthy native compute accelerator.'
           }
+          if (-not ($gpus | Where-Object Status -eq 'OK')) {
+            throw 'The AMD client runner requires a healthy AMD GPU.'
+          }
+          (Get-Item (Join-Path $env:SystemRoot 'System32\vulkan-1.dll') -ErrorAction Stop).VersionInfo |
+            Format-List FileName, FileVersion, ProductVersion
 
       - name: Build and test the AMD client
         id: client_ci
@@ -130,6 +138,7 @@ jobs:
           python build_tools/devtools/ci.py iree-bazel-amd-client --bazel-profile-dir "%RUNNER_TEMP%\bazel-profiles"
 
       - name: Upload Bazel profiles
+        continue-on-error: true
         if: ${{ always() && steps.client_ci.outcome != 'skipped' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -149,5 +158,11 @@ jobs:
             bazel-testlogs/libamdf/**/test.xml
             bazel-testlogs/experimental/xdna/**/test.log
             bazel-testlogs/experimental/xdna/**/test.xml
+            bazel-testlogs/runtime/src/iree/hal/drivers/vulkan/**/test.log
+            bazel-testlogs/runtime/src/iree/hal/drivers/vulkan/**/test.xml
+            bazel-testlogs/loom/binding/c/test/target/spirv/**/test.log
+            bazel-testlogs/loom/binding/c/test/target/spirv/**/test.xml
+            bazel-testlogs/loom/src/loom/tooling/target/spirv/**/test.log
+            bazel-testlogs/loom/src/loom/tooling/target/spirv/**/test.xml
           if-no-files-found: warn
           retention-days: 7

@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 include("${CMAKE_CURRENT_LIST_DIR}/iree_test_arguments.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../sanitizer/iree_sanitizer_suppressions.cmake")
 
 # iree_cc_test()
 #
@@ -155,12 +156,6 @@ function(iree_cc_test)
   set(_IREE_TEST_CAN_REGISTER OFF)
 
   set(_ENVIRONMENT_VARS)
-  if(_RULE_SANITIZER_SUPPRESSIONS)
-    iree_append_sanitizer_suppression_environment(
-      _ENVIRONMENT_VARS
-      ${_RULE_SANITIZER_SUPPRESSIONS}
-    )
-  endif()
   list(APPEND _ENVIRONMENT_VARS ${_RULE_ENV})
 
   iree_resolve_test_arguments(_TEST_ARGS _ARG_DATA
@@ -217,8 +212,15 @@ function(iree_cc_test)
   iree_resolve_test_arguments(_TEST_ENVIRONMENT _ENV_DATA
     iree_build_test_file_argument ${_ENVIRONMENT_VARS})
   list(APPEND _RULE_DATA ${_ARG_DATA} ${_ENV_DATA})
-  iree_add_data_dependencies(NAME ${_NAME} DATA ${_RULE_DATA})
-  set_property(TEST ${_NAME_PATH} APPEND PROPERTY ENVIRONMENT ${_TEST_ENVIRONMENT})
+  iree_add_data_dependencies(NAME ${_NAME} DATA ${_RULE_DATA}
+    OUT_TARGET_DATA _DATA_TARGETS)
+  iree_target_sanitizer_suppressions("${_NAME}"
+    DEPS ${_RULE_DEPS} ${_DATA_TARGETS}
+    SUPPRESSIONS ${_RULE_SANITIZER_SUPPRESSIONS}
+    ENV ${_TEST_ENVIRONMENT})
+  set_property(TEST ${_NAME_PATH} APPEND PROPERTY ENVIRONMENT
+    ${_TEST_ENVIRONMENT}
+    "$<TARGET_PROPERTY:${_NAME},IREE_SANITIZER_ENVIRONMENT>")
 
   if(NOT DEFINED _RULE_TIMEOUT)
     set(_RULE_TIMEOUT 60)
@@ -255,6 +257,8 @@ function(iree_cc_test)
           ${_RULE_ARGS}
         DATA
           ${_RULE_DATA}
+        SANITIZER_TARGET
+          "${_NAME}"
         ENVIRONMENT
           ${_ENVIRONMENT_VARS}
         LABELS

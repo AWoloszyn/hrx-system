@@ -66,11 +66,11 @@ BAZEL_LAUNCH_METADATA_QUERY_EXPRESSION = (
     "argument for key, value in providers(target).items() "
     f'if key.endswith("{RUNFILES_ARGUMENTS_PROVIDER_SUFFIX}") '
     "for argument in value.marked_arguments], "
-    '"environment_names": sorted(['
-    "name for key, value in providers(target).items() "
+    '"environment": {'
+    "name: marked_value for key, value in providers(target).items() "
     f'if key.endswith("{RUNFILES_ENVIRONMENT_PROVIDER_SUFFIX}") '
-    "for name in value.environment"
-    ']), "inherited_environment_names": sorted('
+    "for name, marked_value in value.environment.items()"
+    '}, "inherited_environment_names": sorted('
     'providers(target)["RunEnvironmentInfo"].inherited_environment '
     'if "RunEnvironmentInfo" in providers(target) else []), '
     '"run_environment_names": sorted('
@@ -132,7 +132,7 @@ class BazelLaunchMetadata:
     executable_path: Path
     runfiles_arguments: list[str] = field(default_factory=list)
     marked_runfiles_arguments: list[str] = field(default_factory=list)
-    runfiles_environment_names: list[str] = field(default_factory=list)
+    runfiles_environment: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -144,7 +144,7 @@ class BazelLaunch:
     program_args: list[str] = field(default_factory=list)
     runfiles_arguments: list[str] = field(default_factory=list)
     marked_runfiles_arguments: list[str] = field(default_factory=list)
-    runfiles_environment_names: list[str] = field(default_factory=list)
+    runfiles_environment: dict[str, str] = field(default_factory=dict)
 
     def argv(self, env: dict[str, str] | None) -> list[str]:
         if os.name != "nt":
@@ -168,7 +168,7 @@ class BazelLaunch:
             caller_arguments=self.program_args,
             runfiles_arguments=self.runfiles_arguments,
             marked_runfiles_arguments=self.marked_runfiles_arguments,
-            runfiles_environment_names=self.runfiles_environment_names,
+            runfiles_environment=self.runfiles_environment,
             script_path=self.script_path,
             materialize=materialize,
         )
@@ -542,7 +542,6 @@ def parse_bazel_launch_metadata(
             return None
 
     environment_fields = (
-        "environment_names",
         "inherited_environment_names",
         "run_environment_names",
     )
@@ -577,7 +576,14 @@ def parse_bazel_launch_metadata(
         )
         return None
 
-    environment_names = payload["environment_names"]
+    environment = payload.get("environment")
+    if not isinstance(environment, dict) or any(
+        not isinstance(name, str) or not name or not isinstance(value, str)
+        for name, value in environment.items()
+    ):
+        print(f"dev.py: invalid runfiles environment for {target}", file=sys.stderr)
+        return None
+    environment_names = list(environment)
     environment_name_keys = [
         bazel_launcher.environment_name_key(name) for name in environment_names
     ]
@@ -619,7 +625,7 @@ def parse_bazel_launch_metadata(
         executable_path=executable_path,
         runfiles_arguments=arguments,
         marked_runfiles_arguments=marked_arguments,
-        runfiles_environment_names=environment_names,
+        runfiles_environment=environment,
     )
 
 
@@ -867,7 +873,7 @@ def generate_bazel_launch(
         program_args=program_args,
         runfiles_arguments=metadata.runfiles_arguments,
         marked_runfiles_arguments=metadata.marked_runfiles_arguments,
-        runfiles_environment_names=metadata.runfiles_environment_names,
+        runfiles_environment=metadata.runfiles_environment,
     )
 
 

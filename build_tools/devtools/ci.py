@@ -606,6 +606,15 @@ def xdna_steps(targets: tuple[str, ...], config: str | None) -> list[CiStep]:
 def amd_client_steps(targets: tuple[str, ...], config: str | None) -> list[CiStep]:
     config_name = f" / {config.upper()}" if config is not None else ""
     options = ci_config.AMD_CLIENT_BAZEL_OPTIONS
+    default_targets = ci_config.AMD_CLIENT_BAZEL_TARGETS
+    resources = ci_config.XDNA_RESOURCES
+    test_tag_filters = ci_config.XDNA_BAZEL_TEST_TAG_FILTERS
+    if sys.platform == "win32":
+        options = ci_config.AMD_CLIENT_WINDOWS_BAZEL_OPTIONS
+        default_targets = ci_config.AMD_CLIENT_WINDOWS_BAZEL_TARGETS
+        resources = ci_config.AMD_CLIENT_WINDOWS_RESOURCES
+        test_tag_filters += ci_config.VULKAN_BAZEL_TEST_TAG_FILTERS
+    targets = targets or default_targets
     return [
         bazel_configure_step(extra_options=options),
         bazel_build_step(
@@ -618,8 +627,8 @@ def amd_client_steps(targets: tuple[str, ...], config: str | None) -> list[CiSte
             f"Test IREE / AMD RDNA+XDNA{config_name}",
             targets,
             config=config,
-            test_tag_filters=ci_config.AMD_CLIENT_BAZEL_TEST_TAG_FILTERS,
-            available_resources=ci_config.XDNA_RESOURCES,
+            test_tag_filters=test_tag_filters,
+            available_resources=resources,
             bazel_options=options + ci_config.AMD_CLIENT_BAZEL_TEST_OPTIONS,
         ),
     ]
@@ -1157,7 +1166,7 @@ def _steps_from_args(args: argparse.Namespace) -> list[CiStep]:
     bazel_target, sanitizer = BAZEL_COMMANDS[args.command]
     if bazel_target == "amd-client":
         return amd_client_steps(
-            tuple(args.target) if args.target else ci_config.AMD_CLIENT_BAZEL_TARGETS,
+            tuple(args.target or ()),
             sanitizer,
         )
     if bazel_target == "xdna":

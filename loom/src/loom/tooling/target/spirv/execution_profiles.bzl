@@ -7,7 +7,6 @@
 """Execution profiles owned by the Loom SPIR-V target provider."""
 
 load("//build_tools/bazel:test_resources.bzl", "GPU_DEVICE_RESOURCE_GROUP")
-load("//build_tools/sanitizer:suppressions.bzl", "vulkan_suppressions")
 load("//build_tools/vulkan/requirements:defs.bzl", "VULKAN_DEVICE_RESOURCE")
 load("//loom/build_tools/bazel:defs.bzl", "loom_execution_profile")
 load(
@@ -37,7 +36,6 @@ def _spirv_vulkan_hardware_profile(name, runner_args = []):
             "--device=vulkan",
             "--vulkan_validation_layers=false",
         ] + runner_args,
-        sanitizer_suppressions = vulkan_suppressions,
         target_class = "gpu",
         target_family = "spirv",
     )

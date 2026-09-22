@@ -76,9 +76,6 @@ loom_execution_test(
     "loom-executor=hardware"
   RESOURCE_GROUP
     "gpu-device"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    vulkan
 )
 endif()
 
@@ -172,9 +169,6 @@ loom_execution_test(
     "loom-executor=hardware"
   RESOURCE_GROUP
     "gpu-device"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    vulkan
 )
 endif()
 
@@ -257,9 +251,6 @@ loom_execution_test(
     "loom-executor=hardware"
   RESOURCE_GROUP
     "gpu-device"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    vulkan
 )
 endif()
 
@@ -354,9 +345,6 @@ loom_execution_test(
     "loom-executor=hardware"
   RESOURCE_GROUP
     "gpu-device"
-  SANITIZER_SUPPRESSIONS
-    lsan
-    vulkan
 )
 endif()
 

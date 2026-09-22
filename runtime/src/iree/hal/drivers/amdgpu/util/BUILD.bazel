@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//build_tools/amdgpu:cts.bzl", "iree_amdgpu_hal_cts_testdata")
+load("//build_tools/sanitizer:suppressions.bzl", "hsa_suppressions")
 load(
     "//runtime/build_tools/bazel:amdgpu_binary.bzl",
     "iree_amdgpu_binary_variants_embed_data",
@@ -32,6 +33,7 @@ iree_runtime_cc_library(
     hdrs = [
         "libhsa.h",
     ],
+    sanitizer_suppressions = hsa_suppressions,
     textual_hdrs = [
         "libhsa_tables.h",
     ],

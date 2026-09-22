@@ -1679,6 +1679,7 @@ class BuildFileFunctions(object):
         system_includes=None,
         alwayslink=None,
         shared=None,
+        sanitizer_suppressions=None,
         target_compatible_with=None,
         **kwargs,
     ):
@@ -1717,6 +1718,10 @@ class BuildFileFunctions(object):
             "SYSTEM_INCLUDES", system_includes
         )
 
+        sanitizer_suppressions_block = self._convert_sanitizer_suppressions_block(
+            sanitizer_suppressions
+        )
+
         self._emit_platform_guard_begin(target_compatible_with)
         if platform_copts_block:
             self._converter.body += platform_copts_block
@@ -1741,6 +1746,7 @@ class BuildFileFunctions(object):
             f"{testonly_block}"
             f"{alwayslink_block}"
             f"{shared_block}"
+            f"{sanitizer_suppressions_block}"
             f"{linkopts_block}"
             f"{includes_block}"
             f"{system_includes_block}"
@@ -2636,7 +2642,6 @@ class BuildFileFunctions(object):
         data=None,
         args=None,
         resource_group=None,
-        sanitizer_suppressions=None,
         tags=None,
         timeout=None,
         size=None,
@@ -2652,9 +2657,6 @@ class BuildFileFunctions(object):
         data_block = self._convert_data_list_block(data)
         args_block = self._convert_string_list_block(
             "ARGS", self._convert_location_args(args), sort=False
-        )
-        sanitizer_suppressions_block = self._convert_sanitizer_suppressions_block(
-            sanitizer_suppressions
         )
         labels_block = self._convert_string_list_block("LABELS", tags)
         resource_group_block = self._convert_string_arg_block(
@@ -2677,7 +2679,6 @@ class BuildFileFunctions(object):
             f"{tools_block}"
             f"{data_block}"
             f"{args_block}"
-            f"{sanitizer_suppressions_block}"
             f"{labels_block}"
             f"{resource_group_block}"
             f"{timeout_block}"

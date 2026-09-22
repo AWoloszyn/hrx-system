@@ -25,6 +25,9 @@ iree_cc_library(
     iree::base::internal::dynamic_library
     iree::base::internal::path
     iree::third_party::hsa_runtime_headers
+  SANITIZER_SUPPRESSIONS
+    lsan
+    hsa
   PUBLIC
 )
 endif()

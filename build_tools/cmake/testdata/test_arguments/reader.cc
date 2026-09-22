@@ -31,8 +31,8 @@ int main(int argc, char** argv) {
     if (argument == "--check-suppression") {
       const char* environment = std::getenv("LSAN_OPTIONS");
       std::string options(environment ? environment : "");
-      std::string prefix = "suppressions=";
-      std::string suffix = ":allow_addr2line=1";
+      std::string prefix = "suppressions=\"";
+      std::string suffix = "\":allow_addr2line=1";
       auto suffix_position = options.rfind(suffix);
       valid =
           options.rfind(prefix, 0) == 0 &&

@@ -7,7 +7,6 @@
 # Focused CTS coverage for the Vulkan HAL.
 
 load("//build_tools/embed_data:build_defs.bzl", "iree_c_embed_data")
-load("//build_tools/sanitizer:suppressions.bzl", "vulkan_suppressions")
 load("//build_tools/spirv:asm_module.bzl", "iree_spirv_asm_module")
 load("//runtime/build_tools/bazel:cc.bzl", "iree_runtime_cc_library")
 load("//runtime/build_tools/bazel:cc_test.bzl", "iree_runtime_cc_test")
@@ -296,7 +295,6 @@ iree_runtime_cc_test(
         "bda_dispatch_validation_test.cc",
         "//runtime/src/iree/hal/cts/util:test_main.cc",
     ],
-    sanitizer_suppressions = vulkan_suppressions,
     tags = [
         "vulkan_uses_vk_khr_buffer_device_address",
     ],
@@ -317,7 +315,6 @@ iree_runtime_cc_test(
         "bda_spirv_test.cc",
         "//runtime/src/iree/hal/cts/util:test_main.cc",
     ],
-    sanitizer_suppressions = vulkan_suppressions,
     tags = [
         "vulkan_uses_vk_khr_buffer_device_address",
     ],

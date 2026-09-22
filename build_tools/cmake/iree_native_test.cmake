@@ -5,6 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 include("${CMAKE_CURRENT_LIST_DIR}/iree_test_arguments.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/../sanitizer/iree_sanitizer_suppressions.cmake")
 
 # iree_native_test()
 #
@@ -79,14 +80,7 @@ function(iree_native_test)
     list(APPEND _RULE_ARGS "--device=${_RULE_DRIVER}")
   endif()
 
-  set(_TEST_ENVIRONMENT_VARS)
-  if(_RULE_SANITIZER_SUPPRESSIONS)
-    iree_append_sanitizer_suppression_environment(
-      _TEST_ENVIRONMENT_VARS
-      ${_RULE_SANITIZER_SUPPRESSIONS}
-    )
-  endif()
-  list(APPEND _TEST_ENVIRONMENT_VARS ${_RULE_ENV})
+  set(_TEST_ENVIRONMENT_VARS ${_RULE_ENV})
 
   iree_resolve_test_arguments(_TEST_ARGS _ARG_DATA
     iree_build_test_file_argument ${_RULE_ARGS})
@@ -122,6 +116,11 @@ function(iree_native_test)
     TARGET ${_TEST_BUILD_TARGET}
     PROPERTY FOLDER ${IREE_IDE_FOLDER}/test
   )
+
+  iree_target_sanitizer_suppressions("${_TEST_BUILD_TARGET}"
+    DEPS "${_SRC_TARGET}" ${_TEST_TARGET_DATA}
+    SUPPRESSIONS ${_RULE_SANITIZER_SUPPRESSIONS}
+    ENV ${_TEST_ENVIRONMENT})
 
   set(_TEST_RUNTIME_DATA ${_TEST_FILE_DATA})
   foreach(_DATA_TARGET IN LISTS _TEST_TARGET_DATA)
@@ -175,6 +174,9 @@ function(iree_native_test)
     set_property(TEST ${_TEST_NAME} PROPERTY DISABLED ${_RULE_DISABLED})
   endif()
 
+  set_property(TEST ${_TEST_NAME} APPEND PROPERTY ENVIRONMENT
+    "$<TARGET_PROPERTY:${_TEST_BUILD_TARGET},IREE_SANITIZER_ENVIRONMENT>")
+
   if(IREE_TEST_REGISTRATION_FUNCTION AND
      NOT IREE_SKIP_TEST_REGISTRATION)
     set(_IREE_REGISTERED_WILL_FAIL)
@@ -201,6 +203,8 @@ function(iree_native_test)
           "${_RULE_WORKING_DIRECTORY}"
         DATA
           ${_RULE_DATA}
+        SANITIZER_TARGET
+          "${_TEST_BUILD_TARGET}"
         ENVIRONMENT
           ${_TEST_ENVIRONMENT_VARS}
         LABELS

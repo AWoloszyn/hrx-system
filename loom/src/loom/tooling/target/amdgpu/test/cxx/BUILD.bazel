@@ -4,7 +4,6 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-load("//build_tools/sanitizer:suppressions.bzl", "rocm_suppressions")
 load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with")
 load("//loom/build_tools/bazel:defs.bzl", "loom_test")
 load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test")
@@ -16,7 +15,6 @@ package(default_visibility = ["//visibility:public"])
 _EXECUTION_PROFILES = [
     amdgpu_execution_profile(
         name = "amdgpu",
-        sanitizer_suppressions = rocm_suppressions,
     ),
     amdgpu_execution_profile(
         name = "amdgpu_access",
@@ -24,7 +22,6 @@ _EXECUTION_PROFILES = [
             "--sanitizer=access",
             "--sanitizer-reporting=report-only",
         ],
-        sanitizer_suppressions = rocm_suppressions,
     ),
 ]
 

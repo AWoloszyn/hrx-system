@@ -82,6 +82,58 @@ class ExecutionUnitTest(unittest.TestCase):
                 runner.run_manifest(manifest_path), execution.RunSummary(case_count=1)
             )
 
+    def test_tool_environment_is_scoped_and_resolved_before_chdir(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            suppression = root / "suppression file.txt"
+            suppression.write_text("leak:external_driver\n")
+            environments = root / "environment.json"
+            environments.write_text(
+                json.dumps(
+                    {
+                        "configured": {
+                            "LSAN_OPTIONS": 'suppressions="__IREE_BAZEL_RUNFILE_PATH_BEGIN__'
+                            + str(suppression)
+                            + '__IREE_BAZEL_RUNFILE_PATH_END__":verbosity=1',
+                        },
+                    }
+                )
+            )
+            probe = "import os; print(os.environ.get('LSAN_OPTIONS', 'unset'))"
+            tools = {
+                name: execution.ToolCommand(sys.executable, ("-c", probe))
+                for name in ("configured", "ordinary")
+            }
+            execution.apply_tool_environment(tools, str(environments))
+            manifest = root / "test.json"
+            manifest.write_text(
+                json.dumps(
+                    {
+                        "version": 1,
+                        "cases": [
+                            {
+                                "name": "configured tool",
+                                "run": {"tool": "configured"},
+                                "stdout": {
+                                    "contains": [
+                                        f'suppressions="{suppression}":verbosity=1'
+                                    ]
+                                },
+                            },
+                            {
+                                "name": "ordinary tool",
+                                "run": {"tool": "ordinary"},
+                                "stdout": {"contains": ["unset"]},
+                            },
+                        ],
+                    }
+                )
+            )
+            with mock.patch.dict(os.environ):
+                os.environ.pop("LSAN_OPTIONS", None)
+                result = execution.ExecutionRunner(tools=tools).run_manifest(manifest)
+            self.assertEqual(result, execution.RunSummary(case_count=2))
+
     def test_parse_tool_bindings_appends_fixed_arguments(self):
         with tempfile.TemporaryDirectory() as directory:
             executable = Path(directory) / "fixture"
@@ -259,7 +311,7 @@ class ExecutionUnitTest(unittest.TestCase):
 
             env = {
                 "LSAN_OPTIONS": (
-                    "verbosity=1" + os.pathsep + "suppressions=build_tools/sanitizer/"
+                    "verbosity=1:suppressions=build_tools/sanitizer/"
                     "lsan_suppressions_vulkan.txt"
                 ),
             }
@@ -274,7 +326,7 @@ class ExecutionUnitTest(unittest.TestCase):
 
             self.assertEqual(
                 env["LSAN_OPTIONS"],
-                "verbosity=1" + os.pathsep + f"suppressions={suppression_path}",
+                f'verbosity=1:suppressions="{suppression_path}"',
             )
 
 

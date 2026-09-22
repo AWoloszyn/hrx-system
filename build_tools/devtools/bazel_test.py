@@ -144,7 +144,7 @@ class BazelTest(unittest.TestCase):
                     "executable": "bazel-out/bin/pkg/configured_tool.exe",
                     "argument_provider_count": 1,
                     "arguments": ["", "--input=path/to/input"],
-                    "environment_names": ["IREE_EXAMPLE_LIBRARY"],
+                    "environment": {"IREE_EXAMPLE_LIBRARY": "marked-library"},
                     "inherited_environment_names": ["HOME"],
                     "marked_arguments": [
                         "",
@@ -194,7 +194,7 @@ class BazelTest(unittest.TestCase):
                     + "path/to/input"
                     + bazel_dev.bazel_launcher.RUNFILES_PATH_END,
                 ],
-                runfiles_environment_names=["IREE_EXAMPLE_LIBRARY"],
+                runfiles_environment={"IREE_EXAMPLE_LIBRARY": "marked-library"},
             ),
         )
         query_argv = run_captured.call_args.args[0]
@@ -221,7 +221,7 @@ class BazelTest(unittest.TestCase):
                 "executable": f"bazel-out/bin/{label.rsplit(':', 1)[1]}.exe",
                 "argument_provider_count": 0,
                 "arguments": [],
-                "environment_names": [],
+                "environment": {},
                 "inherited_environment_names": [],
                 "marked_arguments": [],
                 "run_environment_names": [],
@@ -290,7 +290,7 @@ class BazelTest(unittest.TestCase):
                     "executable": "bazel-out/bin/pkg/tool.exe",
                     "argument_provider_count": 0,
                     "arguments": [],
-                    "environment_names": [],
+                    "environment": {},
                     "inherited_environment_names": [],
                     "marked_arguments": [],
                     "run_environment_names": [bazel_dev.bazel_launcher.CALLER_CWD_ENV],
@@ -351,7 +351,9 @@ class BazelTest(unittest.TestCase):
                             executable_path=executable_path,
                             runfiles_arguments=["--input=path/to/input"],
                             marked_runfiles_arguments=["--input=path/to/input"],
-                            runfiles_environment_names=["IREE_EXAMPLE_LIBRARY"],
+                            runfiles_environment={
+                                "IREE_EXAMPLE_LIBRARY": "marked-library"
+                            },
                         ),
                     ),
                 ),
@@ -394,8 +396,8 @@ class BazelTest(unittest.TestCase):
             self.assertEqual(launch.program_args, ["--flag", "two words"])
             self.assertEqual(launch.runfiles_arguments, ["--input=path/to/input"])
             self.assertEqual(
-                launch.runfiles_environment_names,
-                ["IREE_EXAMPLE_LIBRARY"],
+                launch.runfiles_environment,
+                {"IREE_EXAMPLE_LIBRARY": "marked-library"},
             )
             run_under_command.assert_called_once_with(executable_path)
 
@@ -460,7 +462,7 @@ class BazelTest(unittest.TestCase):
                 script_path=script_path,
                 run_cwd=caller_cwd,
                 argument_separator="separator",
-                runfiles_environment_names=["IREE_EXAMPLE_LIBRARY"],
+                runfiles_environment={"IREE_EXAMPLE_LIBRARY": "marked-library"},
             )
             process_launch = bazel_dev.bazel_launcher.ProcessLaunch(
                 argv=["C:/work/tool.exe", "two words"],
@@ -545,7 +547,7 @@ class BazelTest(unittest.TestCase):
                 script_path=script_path,
                 run_cwd=caller_cwd,
                 argument_separator="separator",
-                runfiles_environment_names=["IREE_EXAMPLE_LIBRARY"],
+                runfiles_environment={"IREE_EXAMPLE_LIBRARY": "marked-library"},
             )
             process_launch = bazel_dev.BazelProcess(
                 target=command.target,
@@ -663,7 +665,7 @@ class BazelTest(unittest.TestCase):
             metadata_by_target = {
                 target: bazel_dev.BazelLaunchMetadata(
                     executable_path=temporary_path / f"fuzzer-{index}",
-                    runfiles_environment_names=[f"FUZZER_{index}"],
+                    runfiles_environment={f"FUZZER_{index}": "marked-library"},
                 )
                 for index, target in enumerate(targets)
             }

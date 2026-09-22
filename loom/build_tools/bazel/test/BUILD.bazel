@@ -29,7 +29,6 @@ load(
     ":loom_library_rules_test.bzl",
     "REFERENCE_PROFILE",
     "SERIALIZED_REFERENCE_PROFILE",
-    "SUPPRESSED_REFERENCE_PROFILE",
     "loom_library_rules_test_suite",
 )
 load(
@@ -160,14 +159,6 @@ loom_test(
         "all": {"case": ""},
         "selected": {},
     },
-)
-
-loom_test(
-    name = "suppressed_profile_test",
-    srcs = ["profile_cases.loom"],
-    execution_profiles = [SUPPRESSED_REFERENCE_PROFILE],
-    tags = ["manual"],
-    deps = [":library_dependency"],
 )
 
 loom_check_test(

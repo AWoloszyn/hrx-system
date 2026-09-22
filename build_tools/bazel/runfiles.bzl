@@ -17,7 +17,7 @@ IreeRunfilesArgumentsInfo = provider(
 IreeRunfilesEnvironmentInfo = provider(
     doc = "RunEnvironmentInfo entries whose values are rooted in target runfiles.",
     fields = {
-        "environment": "Environment variable names mapped to their runfile targets.",
+        "environment": "Environment values with graph-proven runfile path spans delimited for host resolution.",
     },
 )
 

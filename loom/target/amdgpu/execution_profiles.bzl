@@ -20,10 +20,10 @@ load(
     "HAL_AMDGPU",
 )
 
-def amdgpu_execution_profile(name, runner_args = [], sanitizer_suppressions = None, tags = []):
+def amdgpu_execution_profile(name, runner_args = [], tags = []):
     """Defines AMDGPU execution with shared device and resource requirements.
 
-    Callers own instrumentation, diagnostic reporting and suppression policy.
+    Callers own instrumentation and diagnostic reporting.
     Workload configuration and case selection remain on the test declaration.
     """
     return loom_execution_profile(
@@ -38,7 +38,6 @@ def amdgpu_execution_profile(name, runner_args = [], sanitizer_suppressions = No
         resource_group = GPU_DEVICE_RESOURCE_GROUP,
         run_requirements = [AMDGPU_RESOURCE],
         runner_args = ["--device=amdgpu"] + runner_args,
-        sanitizer_suppressions = sanitizer_suppressions,
         tags = tags,
         target_class = "gpu",
         target_family = "amdgpu",

@@ -40,6 +40,7 @@ file(WRITE "${_HRX_INSTALLED_TESTS_CTEST_FILE}"
   "set(_HRX_INSTALLED_TEST_BIN_ROOT \"\${_HRX_INSTALLED_TEST_ROOT}/bin\")\n"
   "get_filename_component(_HRX_INSTALLED_TEST_BIN_ROOT \"\${_HRX_INSTALLED_TEST_BIN_ROOT}\" ABSOLUTE)\n")
 
+set_property(GLOBAL PROPERTY HRX_INSTALLED_TEST_SANITIZER_TARGETS "")
 set_property(GLOBAL PROPERTY HRX_INSTALLED_TEST_DEFERRED_TARGETS "")
 set_property(GLOBAL PROPERTY HRX_INSTALLED_TEST_TMPDIRS "")
 set_property(GLOBAL PROPERTY HRX_INSTALLED_TEST_PYTHON_SOURCE_SETS "")
@@ -482,7 +483,7 @@ function(hrx_register_installed_test)
   cmake_parse_arguments(
     _RULE
     "WILL_FAIL;DISABLED"
-    "NAME;TARGET;COMMAND;TIMEOUT;RESOURCE_GROUP;WORKING_DIRECTORY"
+    "NAME;TARGET;COMMAND;TIMEOUT;RESOURCE_GROUP;WORKING_DIRECTORY;SANITIZER_TARGET"
     "ARGS;DATA;ENVIRONMENT;ENVIRONMENT_MODIFICATION;LABELS;REQUIRED_FILES"
     ${ARGN}
   )
@@ -497,6 +498,11 @@ function(hrx_register_installed_test)
     set(_COMMAND "${_RULE_COMMAND}")
   else()
     message(FATAL_ERROR "hrx_register_installed_test requires TARGET or COMMAND")
+  endif()
+
+  if(_RULE_SANITIZER_TARGET)
+    set_property(GLOBAL APPEND PROPERTY HRX_INSTALLED_TEST_SANITIZER_TARGETS
+      "${_RULE_NAME}|${_RULE_SANITIZER_TARGET}")
   endif()
 
   hrx_installed_tests_install_data(_INSTALLED_DATA ${_RULE_DATA})
@@ -676,6 +682,28 @@ function(hrx_create_installed_tests)
   if(NOT _ENABLED)
     return()
   endif()
+
+  # Resolve dependency-owned suppression policy after all target metadata is
+  # complete, and package its files alongside the relocated test executable.
+  get_property(_SANITIZER_TARGETS GLOBAL PROPERTY HRX_INSTALLED_TEST_SANITIZER_TARGETS)
+  foreach(_ENTRY IN LISTS _SANITIZER_TARGETS)
+    string(REPLACE "|" ";" _PAIR "${_ENTRY}")
+    list(GET _PAIR 0 _TEST_NAME)
+    list(GET _PAIR 1 _TARGET_NAME)
+    get_property(_ENVIRONMENT_ARGUMENTS TARGET "${_TARGET_NAME}"
+      PROPERTY IREE_SANITIZER_ENVIRONMENT_ARGUMENTS)
+    iree_resolve_test_arguments(_ENVIRONMENT _FILES
+      hrx_installed_test_file_argument ${_ENVIRONMENT_ARGUMENTS})
+    if(_ENVIRONMENT)
+      # CTest's ENVIRONMENT property handler appends entries across calls.
+      set(_LINE "set_tests_properties(")
+      hrx_installed_tests_append_quoted(_LINE "${_TEST_NAME}")
+      string(APPEND _LINE " PROPERTIES")
+      hrx_installed_tests_append_property(_LINE "ENVIRONMENT" "${_ENVIRONMENT}")
+      string(APPEND _LINE ")\n")
+      file(APPEND "${_HRX_INSTALLED_TESTS_CTEST_FILE}" "${_LINE}")
+    endif()
+  endforeach()
 
   get_property(_PYTHON_SOURCE_SETS GLOBAL
     PROPERTY HRX_INSTALLED_TEST_PYTHON_SOURCE_SETS)

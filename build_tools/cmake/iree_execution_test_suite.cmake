@@ -21,8 +21,6 @@ include("${CMAKE_CURRENT_LIST_DIR}/iree_test_arguments.cmake")
 # LABELS: additional labels to apply to the test.
 # RESOURCE_GROUP: If set, tests sharing the same RESOURCE_GROUP name will not
 #     run concurrently.
-# SANITIZER_SUPPRESSIONS: Sanitizer/name pairs selecting suppression files.
-#     For example: lsan vulkan.
 # TIMEOUT: test timeout in seconds.
 
 function(iree_execution_test_suite)
@@ -37,7 +35,7 @@ function(iree_execution_test_suite)
     _RULE
     ""
     "NAME;RESOURCE_GROUP;TIMEOUT"
-    "MANIFESTS;TOOLS;DATA;ARGS;LABELS;SANITIZER_SUPPRESSIONS"
+    "MANIFESTS;TOOLS;DATA;ARGS;LABELS"
     ${ARGN}
   )
 
@@ -73,6 +71,7 @@ function(iree_execution_test_suite)
   endforeach()
 
   set(_TOOL_TARGETS)
+  set(_CONFIGURED_TOOLS)
   set(_TOOL_PYTHON_PACKAGE_DIRS)
   foreach(_TOOL IN LISTS _RULE_TOOLS)
     if(NOT _TOOL MATCHES "^([^=]+)=(.+)$")
@@ -83,6 +82,7 @@ function(iree_execution_test_suite)
     set(_TOOL_TARGET "${CMAKE_MATCH_2}")
     string(REGEX REPLACE "^::" "${_PACKAGE_NS}::" _TOOL_TARGET "${_TOOL_TARGET}")
     list(APPEND _TOOL_TARGETS "${_TOOL_TARGET}")
+    list(APPEND _CONFIGURED_TOOLS "${_TOOL_NAME}=${_TOOL_TARGET}")
     iree_package_target_name(_TOOL_CMAKE_TARGET "${_TOOL_TARGET}")
     set(_TOOL_IS_PYTHON FALSE)
     if(TARGET "${_TOOL_CMAKE_TARGET}")
@@ -133,15 +133,7 @@ function(iree_execution_test_suite)
     )
   endforeach()
   set(_ENVIRONMENT_VARS "PYTHONDONTWRITEBYTECODE=1")
-  if(_RULE_SANITIZER_SUPPRESSIONS)
-    iree_append_sanitizer_suppression_environment(
-      _ENVIRONMENT_VARS
-      ${_RULE_SANITIZER_SUPPRESSIONS}
-    )
-  endif()
-  iree_resolve_test_arguments(_TEST_ENVIRONMENT _ENV_DATA
-    iree_build_test_file_argument ${_ENVIRONMENT_VARS})
-  set(_DATA_DEPENDENCIES ${_ENV_DATA})
+  set(_DATA_DEPENDENCIES)
   foreach(_DATA IN LISTS _RULE_DATA)
     if(IS_ABSOLUTE "${_DATA}" OR
        TARGET "${_DATA}" OR
@@ -167,6 +159,12 @@ function(iree_execution_test_suite)
   foreach(_DATA_TARGET IN LISTS _TEST_TARGET_DATA)
     list(APPEND _REQUIRED_FILES "$<TARGET_FILE:${_DATA_TARGET}>")
   endforeach()
+
+  set(_TOOL_ENVIRONMENT_FILE "${CMAKE_CURRENT_BINARY_DIR}/${_RULE_NAME}.tool-environment.json")
+  list(APPEND _TEST_ARGS "--tool-environment=${_TOOL_ENVIRONMENT_FILE}")
+  set_property(TARGET "${_TEST_TARGET_NAME}" PROPERTY IREE_EXECUTION_TOOL_ENVIRONMENT_FILE "${_TOOL_ENVIRONMENT_FILE}")
+  set_property(TARGET "${_TEST_TARGET_NAME}" PROPERTY IREE_EXECUTION_TOOLS "${_CONFIGURED_TOOLS}")
+  set_property(GLOBAL APPEND PROPERTY IREE_EXECUTION_TOOL_ENVIRONMENT_TARGETS "${_TEST_TARGET_NAME}")
 
   list(APPEND _TEST_ARGS ${_RULE_ARGS})
 
@@ -203,5 +201,34 @@ function(iree_execution_test_suite)
   iree_python_test_add_package_dirs(
     "${_TEST_NAME}" ${_TOOL_PYTHON_PACKAGE_DIRS}
   )
-  set_property(TEST ${_TEST_NAME} APPEND PROPERTY ENVIRONMENT ${_TEST_ENVIRONMENT})
+  set_property(TEST ${_TEST_NAME} APPEND PROPERTY ENVIRONMENT ${_ENVIRONMENT_VARS})
+endfunction()
+
+# Tool runtime metadata is complete after dependency policy has been resolved.
+# Each subprocess receives only its own environment, including merged sanitizer
+# policy for executables that contain several external runtime integrations.
+function(iree_finalize_execution_tool_environments)
+  get_property(_TARGETS GLOBAL PROPERTY IREE_EXECUTION_TOOL_ENVIRONMENT_TARGETS)
+  foreach(_TARGET IN LISTS _TARGETS)
+    get_property(_OUTPUT TARGET "${_TARGET}" PROPERTY IREE_EXECUTION_TOOL_ENVIRONMENT_FILE)
+    get_property(_TOOLS TARGET "${_TARGET}" PROPERTY IREE_EXECUTION_TOOLS)
+    set(_JSON "{}")
+    foreach(_TOOL IN LISTS _TOOLS)
+      string(REGEX MATCH "^([^=]+)=(.+)$" _MATCH "${_TOOL}")
+      set(_NAME "${CMAKE_MATCH_1}")
+      _iree_resolve_target(_TOOL_TARGET "${CMAKE_MATCH_2}")
+      get_property(_ENVIRONMENT TARGET "${_TOOL_TARGET}" PROPERTY IREE_SANITIZER_ENVIRONMENT)
+      set(_ENVIRONMENT_JSON "{}")
+      foreach(_ENTRY IN LISTS _ENVIRONMENT)
+        string(REGEX MATCH "^([^=]+)=(.*)$" _MATCH "${_ENTRY}")
+        set(_KEY "${CMAKE_MATCH_1}")
+        set(_VALUE "${CMAKE_MATCH_2}")
+        string(REPLACE "\\" "\\\\" _VALUE "${_VALUE}")
+        string(REPLACE "\"" "\\\"" _VALUE "${_VALUE}")
+        string(JSON _ENVIRONMENT_JSON SET "${_ENVIRONMENT_JSON}" "${_KEY}" "\"${_VALUE}\"")
+      endforeach()
+      string(JSON _JSON SET "${_JSON}" "${_NAME}" "${_ENVIRONMENT_JSON}")
+    endforeach()
+    file(CONFIGURE OUTPUT "${_OUTPUT}" CONTENT "@_JSON@" @ONLY)
+  endforeach()
 endfunction()

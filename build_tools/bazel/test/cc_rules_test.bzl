@@ -419,8 +419,10 @@ def _expect_cc_execution_dynamic_library_bindings(env, target):
     _expect_runfiles_arguments(env, target)
     runfiles_environment = target[IreeRunfilesEnvironmentInfo].environment
     env.expect.that_str(
-        runfiles_environment[_TEST_DYNAMIC_LIBRARY_ENVIRONMENT].basename,
-    ).equals("dynamic_library_root.so")
+        runfiles_environment[_TEST_DYNAMIC_LIBRARY_ENVIRONMENT],
+    ).equals(
+        RUNFILES_PATH_BEGIN + target[RunEnvironmentInfo].environment[_TEST_DYNAMIC_LIBRARY_ENVIRONMENT] + RUNFILES_PATH_END,
+    )
     run_environment = target[RunEnvironmentInfo].environment
     library_path = run_environment[_TEST_DYNAMIC_LIBRARY_ENVIRONMENT]
     if not library_path.endswith(
@@ -465,15 +467,61 @@ def _test_cc_test_rejects_conflicting_dynamic_library_env(name, **kwargs):
 def _test_cc_test_rejects_conflicting_dynamic_library_env_impl(env, target):
     env.expect.that_target(target).failures().contains_predicate(
         matching.contains(
-            "sets dynamic-library environment variable %s to both" %
+            "sets runtime environment variable %s to both" %
             _TEST_DYNAMIC_LIBRARY_ENVIRONMENT,
         ),
     )
+
+def _test_cc_binary_merges_dependency_suppressions(name, **kwargs):
+    # A diamond reaches the same policy twice; a second runtime contributes
+    # another LSan file and an independent sanitizer kind.
+    iree_cc_library(
+        name = name + "_first",
+        sanitizer_suppressions = {"lsan": "//build_tools/sanitizer:lsan_suppressions_hsa.txt"},
+        tags = ["manual"],
+    )
+    iree_cc_library(
+        name = name + "_second",
+        deps = [":" + name + "_first"],
+        sanitizer_suppressions = {
+            "lsan": "//build_tools/sanitizer:lsan_suppressions_vulkan.txt",
+            "tsan": ":empty_suppressions.txt",
+        },
+        tags = ["manual"],
+    )
+    util.helper_target(
+        iree_cc_binary,
+        name = name + "_subject",
+        deps = [":" + name + "_first", ":" + name + "_second"],
+        srcs = [name + "_subject.cc"],
+        tags = ["manual"],
+    )
+    analysis_test(
+        name = name,
+        impl = _test_cc_binary_merges_dependency_suppressions_impl,
+        target = name + "_subject",
+        **kwargs
+    )
+
+def _test_cc_binary_merges_dependency_suppressions_impl(env, target):
+    options = target[RunEnvironmentInfo].environment
+    env.expect.that_collection(options.keys()).contains_exactly(["LSAN_OPTIONS", "TSAN_OPTIONS"])
+    env.expect.that_str(options["TSAN_OPTIONS"]).contains("empty_suppressions.txt")
+    actions = [action for action in target[TestingAspectInfo].actions if action.mnemonic == "SanitizerSuppressions"]
+    env.expect.that_int(len(actions)).equals(1)
+    env.expect.that_collection([file.basename for file in actions[0].inputs.to_list()]).contains_exactly([
+        "lsan_suppressions_hsa.txt",
+        "lsan_suppressions_vulkan.txt",
+    ])
+    output = actions[0].outputs.to_list()[0]
+    env.expect.that_str(options["LSAN_OPTIONS"]).equals('suppressions="' + output.short_path + '":allow_addr2line=1')
+    env.expect.that_collection(target[DefaultInfo].default_runfiles.files.to_list()).contains(output)
 
 def cc_rules_test_suite(name):
     test_suite(
         name = name,
         tests = [
+            _test_cc_binary_merges_dependency_suppressions,
             _test_cc_library_preserves_system_include_inputs,
             _test_cc_library_preserves_language_compile_options,
             _test_cc_binary_preserves_system_include_inputs,

@@ -4,6 +4,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+include("${CMAKE_CURRENT_LIST_DIR}/../sanitizer/iree_sanitizer_suppressions.cmake")
+
 # iree_cc_binary()
 #
 # CMake function to imitate Bazel's cc_binary rule.
@@ -157,7 +159,10 @@ function(iree_cc_binary)
       ${_RULE_DEPS}
       ${IREE_DEFAULT_LINK_LIBRARIES}
   )
-  iree_add_data_dependencies(NAME ${_NAME} DATA ${_RULE_DATA})
+  iree_add_data_dependencies(NAME ${_NAME} DATA ${_RULE_DATA}
+    OUT_TARGET_DATA _DATA_TARGETS)
+  iree_target_sanitizer_suppressions("${_NAME}"
+    DEPS ${_RULE_DEPS} ${_DATA_TARGETS})
 
   # Add all IREE targets to a folder in the IDE for organization.
   set_property(TARGET ${_NAME} PROPERTY FOLDER ${IREE_IDE_FOLDER}/binaries)

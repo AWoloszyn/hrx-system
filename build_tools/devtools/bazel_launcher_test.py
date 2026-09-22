@@ -56,7 +56,7 @@ class BazelLauncherTest(unittest.TestCase):
                     caller_arguments=[],
                     runfiles_arguments=[],
                     marked_runfiles_arguments=[],
-                    runfiles_environment_names=[],
+                    runfiles_environment={},
                     script_path=script_path,
                 )
 
@@ -96,8 +96,12 @@ class BazelLauncherTest(unittest.TestCase):
                         ],
                     }
                 ),
-                bazel_launcher.RUNFILES_ENVIRONMENT_NAMES_ENV: json.dumps(
-                    ["IREE_EXAMPLE_LIBRARY"]
+                bazel_launcher.RUNFILES_ENVIRONMENT_ENV: json.dumps(
+                    {
+                        "IREE_EXAMPLE_LIBRARY": bazel_launcher.RUNFILES_PATH_BEGIN
+                        + "runtime/libexample.so"
+                        + bazel_launcher.RUNFILES_PATH_END
+                    }
                 ),
                 bazel_launcher.SCRIPT_PATH_ENV: str(script_path),
                 "IREE_EXAMPLE_LIBRARY": "runtime/libexample.so",
@@ -146,7 +150,7 @@ class BazelLauncherTest(unittest.TestCase):
                 caller_arguments=caller_arguments,
                 runfiles_arguments=[],
                 marked_runfiles_arguments=[],
-                runfiles_environment_names=[],
+                runfiles_environment={},
                 script_path=temporary_path / "launch.bat",
             )
 
@@ -199,7 +203,11 @@ class BazelLauncherTest(unittest.TestCase):
                 caller_arguments=[],
                 runfiles_arguments=[],
                 marked_runfiles_arguments=[],
-                runfiles_environment_names=["IREE_EXAMPLE_LIBRARY"],
+                runfiles_environment={
+                    "IREE_EXAMPLE_LIBRARY": bazel_launcher.RUNFILES_PATH_BEGIN
+                    + "missing.so"
+                    + bazel_launcher.RUNFILES_PATH_END
+                },
                 script_path=temporary_path / "launch.sh",
             )
 
@@ -222,7 +230,11 @@ class BazelLauncherTest(unittest.TestCase):
                 caller_arguments=[],
                 runfiles_arguments=[],
                 marked_runfiles_arguments=[],
-                runfiles_environment_names=["IREE_EXAMPLE_LIBRARY"],
+                runfiles_environment={
+                    "IREE_EXAMPLE_LIBRARY": bazel_launcher.RUNFILES_PATH_BEGIN
+                    + str(library_path)
+                    + bazel_launcher.RUNFILES_PATH_END
+                },
                 script_path=temporary_path / "launch.bat",
             )
 
@@ -257,7 +269,11 @@ class BazelLauncherTest(unittest.TestCase):
                 caller_arguments=["two words"],
                 runfiles_arguments=[],
                 marked_runfiles_arguments=[],
-                runfiles_environment_names=["IREE_EXAMPLE_LIBRARY"],
+                runfiles_environment={
+                    "IREE_EXAMPLE_LIBRARY": bazel_launcher.RUNFILES_PATH_BEGIN
+                    + str(library_path)
+                    + bazel_launcher.RUNFILES_PATH_END
+                },
                 script_path=script_path,
                 materialize=True,
             )
@@ -293,7 +309,11 @@ class BazelLauncherTest(unittest.TestCase):
                 caller_arguments=["two words"],
                 runfiles_arguments=[],
                 marked_runfiles_arguments=[],
-                runfiles_environment_names=["IREE_EXAMPLE_LIBRARY"],
+                runfiles_environment={
+                    "IREE_EXAMPLE_LIBRARY": bazel_launcher.RUNFILES_PATH_BEGIN
+                    + str(library_path)
+                    + bazel_launcher.RUNFILES_PATH_END
+                },
                 script_path=script_path,
                 materialize=True,
             )
@@ -331,7 +351,11 @@ class BazelLauncherTest(unittest.TestCase):
                 caller_arguments=[],
                 runfiles_arguments=[],
                 marked_runfiles_arguments=[],
-                runfiles_environment_names=["IREE_EXAMPLE_LIBRARY"],
+                runfiles_environment={
+                    "IREE_EXAMPLE_LIBRARY": bazel_launcher.RUNFILES_PATH_BEGIN
+                    + "missing.so"
+                    + bazel_launcher.RUNFILES_PATH_END
+                },
                 script_path=script_path,
             )
 
@@ -344,7 +368,7 @@ class BazelLauncherTest(unittest.TestCase):
                 )
 
             self.assertEqual(result, 127)
-            self.assertIn("points to missing file", error_output.getvalue())
+            self.assertIn("points to missing path", error_output.getvalue())
             self.assertFalse(script_path.exists())
 
     def test_handoff_process_waits_for_the_direct_windows_child(self):
@@ -371,6 +395,8 @@ class BazelLauncherTest(unittest.TestCase):
             library_path = runfiles_cwd / "runtime" / "libexample.so"
             library_path.parent.mkdir()
             library_path.write_text("fixture", encoding="utf-8")
+            suppression_path = runfiles_cwd / "driver suppressions.txt"
+            suppression_path.write_text("leak:external_driver\n", encoding="utf-8")
             caller_cwd = temporary_path / "caller"
             caller_cwd.mkdir()
             output_path = caller_cwd / "launch.json"
@@ -381,6 +407,7 @@ class BazelLauncherTest(unittest.TestCase):
                 {
                     "IREE_EXAMPLE_LIBRARY": "runtime/libexample.so",
                     "IREE_EXPLICIT_ENV": "preserved",
+                    "LSAN_OPTIONS": "suppressions=driver suppressions.txt:allow_addr2line=1",
                 }
             )
             environment = bazel_launcher.configured_environment(
@@ -390,7 +417,16 @@ class BazelLauncherTest(unittest.TestCase):
                 caller_arguments=["two words"],
                 runfiles_arguments=[],
                 marked_runfiles_arguments=[],
-                runfiles_environment_names=["IREE_EXAMPLE_LIBRARY"],
+                runfiles_environment={
+                    "IREE_EXAMPLE_LIBRARY": bazel_launcher.RUNFILES_PATH_BEGIN
+                    + "runtime/libexample.so"
+                    + bazel_launcher.RUNFILES_PATH_END,
+                    "LSAN_OPTIONS": "suppressions="
+                    + bazel_launcher.RUNFILES_PATH_BEGIN
+                    + "driver suppressions.txt"
+                    + bazel_launcher.RUNFILES_PATH_END
+                    + ":allow_addr2line=1",
+                },
                 script_path=script_path,
             )
             child_source = """
@@ -404,6 +440,7 @@ pathlib.Path(sys.argv[1]).write_text(json.dumps({
     "cwd": os.getcwd(),
     "explicit": os.environ["IREE_EXPLICIT_ENV"],
     "library": os.environ["IREE_EXAMPLE_LIBRARY"],
+    "lsan_options": os.environ["LSAN_OPTIONS"],
     "pid": os.getpid(),
     "private_environment": sorted(
         name for name in os.environ if name.startswith("IREE_BAZEL_LAUNCH_")
@@ -438,6 +475,10 @@ pathlib.Path(sys.argv[1]).write_text(json.dumps({
             self.assertEqual(payload["cwd"], str(caller_cwd))
             self.assertEqual(payload["explicit"], "preserved")
             self.assertEqual(payload["library"], str(library_path))
+            self.assertEqual(
+                payload["lsan_options"],
+                f"suppressions={suppression_path}:allow_addr2line=1",
+            )
             self.assertEqual(payload["private_environment"], [])
             self.assertFalse(script_path.exists())
             if os.name == "posix":
