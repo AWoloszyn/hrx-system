@@ -1,0 +1,27 @@
+// RUN: format bytecode
+
+func.def @non_nan_relations(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
+  %equal = scalar.cmpf<nnan> oeq, %lhs, %rhs : f32
+  %less = scalar.cmpf<nnan> olt, %lhs, %rhs : f32
+  %unordered_less = scalar.cmpf<nnan> ult, %lhs, %rhs : f32
+  func.return %equal, %less, %unordered_less : i1, i1, i1
+}
+
+// ====
+
+func.def @non_nan_classifications(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
+  %ordered = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  %unordered = scalar.cmpf<nnan> uno, %lhs, %rhs : f32
+  %fast_ordered = scalar.cmpf<reassoc|nnan|ninf|nsz|arcp|contract|afn> ord, %lhs, %rhs : f32
+  func.return %ordered, %unordered, %fast_ordered : i1, i1, i1
+}
+
+// ====
+
+// Only nnan excludes NaNs; neighboring comparisons retain their own flags.
+func.def @independent_nan_permissions(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
+  %ordinary = scalar.cmpf ord, %lhs, %rhs : f32
+  %non_nan = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  %other_flags = scalar.cmpf<reassoc|ninf|nsz|arcp|contract|afn> ord, %lhs, %rhs : f32
+  func.return %ordinary, %non_nan, %other_flags : i1, i1, i1
+}
