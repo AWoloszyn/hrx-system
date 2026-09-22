@@ -21,7 +21,6 @@ from loom.gen.support.files import write_text_file
 from loom.gen.support.generated_file import GeneratedFileSet, line_comment_header, maintain_generated_file_set
 
 _GENERATOR = "loom.gen.cxx.intrinsics"
-_FLOAT_TYPES = ("_Float16", "__bf16", "float", "double")
 DESCRIPTION = "Loom C++ scalar declarations"
 REGENERATE_COMMAND = "python3 loom/py/loom/gen/run.py cxx_intrinsics --in-place"
 
@@ -89,9 +88,9 @@ def generate_header(ops: Sequence[Op]) -> str:
             flags = ', "afn"' if namespace else ""
             lines.append("")
             lines.extend("// " + line for line in textwrap.wrap(op.doc, 76))
-            for spelling in _FLOAT_TYPES:
-                arguments = ", ".join(f"{spelling} {operand.name}" for operand in op.operands)
-                lines.append(f'[[loom::op("{op.name}"{flags})]] {spelling} {name}({arguments});')
+            arguments = ", ".join(f"Float {operand.name}" for operand in op.operands)
+            lines.append("template <class Float> requires (__is_floating_point(Float))")
+            lines.append(f'[[loom::op("{op.name}"{flags})]] Float {name}({arguments});')
         if namespace:
             lines.extend(["", f"}}  // namespace {namespace}"])
     lines.extend(["", "}  // namespace loom::scalar", "", "#endif  // LOOMCXX_SCALAR_H_", ""])

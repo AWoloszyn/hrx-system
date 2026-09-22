@@ -1054,14 +1054,22 @@ headers. Building with `--//loom/config/import/cxx:embed_includes=false`, or
 `-DLOOM_IMPORT_CXX_EMBED_INCLUDES=OFF` in CMake, also removes those header
 contents from the library and its rebuild dependencies.
 
-Canonical Python op declarations generate the typed `_Float16`, `__bf16`,
-`float` and `double` overloads in `loomcxx/scalar.h`, their documentation, and native
-binding entries. For example, `loom::scalar::expf(x)` imports `scalar.expf`;
+Canonical Python op declarations generate constrained function templates in
+`loomcxx/scalar.h`, their documentation, and native binding entries. The header
+declares each operation once; concrete signatures are admitted only when used,
+so supporting another numeric format does not add eagerly parsed overloads.
+For example, `loom::scalar::expf(x)` imports `scalar.expf`;
 `loom::scalar::approximate::expf(x)` explicitly grants AFN. The HIP spelling
 `__expf(x)` is an ordinary inline wrapper around that declaration. An explicit
 `[[loom::op("scalar.expf", "afn")]] float custom_exp(float);` declaration uses
 the same checked binding. Incorrect arity, types, flags, or attribute arguments
 produce source diagnostics.
+
+Deduced scalar calls accept `_Float16`, `__bf16`, `float`, or `double`, with
+matching operand types. An explicit template argument requests conversion:
+`loom::scalar::mulf<__bf16>(value, 5.0f)` converts the second operand to BF16
+before emitting a BF16 multiply. Custom operation templates retain their
+declared math permissions across every concrete specialization.
 
 Register lookup and mixed-width integer dots use the same declaration binding,
 with independently typed operands and explicit dot signedness:

@@ -60,6 +60,8 @@ loom_check_test_suite(
     "records_invalid.cxx-test"
     "scalar.cxx-test"
     "scalar_invalid.cxx-test"
+    "scalar_templates.cxx-test"
+    "scalar_templates_invalid.cxx-test"
     "schedule_lowering.cxx-test"
     "schedules.cxx-test"
     "schedules_invalid.cxx-test"

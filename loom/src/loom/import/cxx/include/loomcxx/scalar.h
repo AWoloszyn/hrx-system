@@ -16,604 +16,406 @@
 namespace loom::scalar {
 
 // Floating-point absolute value.
-[[loom::op("scalar.absf")]] _Float16 absf(_Float16 input);
-[[loom::op("scalar.absf")]] __bf16 absf(__bf16 input);
-[[loom::op("scalar.absf")]] float absf(float input);
-[[loom::op("scalar.absf")]] double absf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.absf")]] Float absf(Float input);
 
 // Arccosine.
-[[loom::op("scalar.acosf")]] _Float16 acosf(_Float16 input);
-[[loom::op("scalar.acosf")]] __bf16 acosf(__bf16 input);
-[[loom::op("scalar.acosf")]] float acosf(float input);
-[[loom::op("scalar.acosf")]] double acosf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.acosf")]] Float acosf(Float input);
 
 // Inverse hyperbolic cosine.
-[[loom::op("scalar.acoshf")]] _Float16 acoshf(_Float16 input);
-[[loom::op("scalar.acoshf")]] __bf16 acoshf(__bf16 input);
-[[loom::op("scalar.acoshf")]] float acoshf(float input);
-[[loom::op("scalar.acoshf")]] double acoshf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.acoshf")]] Float acoshf(Float input);
 
 // Floating-point addition.
-[[loom::op("scalar.addf")]] _Float16 addf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.addf")]] __bf16 addf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.addf")]] float addf(float lhs, float rhs);
-[[loom::op("scalar.addf")]] double addf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.addf")]] Float addf(Float lhs, Float rhs);
 
 // Arcsine.
-[[loom::op("scalar.asinf")]] _Float16 asinf(_Float16 input);
-[[loom::op("scalar.asinf")]] __bf16 asinf(__bf16 input);
-[[loom::op("scalar.asinf")]] float asinf(float input);
-[[loom::op("scalar.asinf")]] double asinf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.asinf")]] Float asinf(Float input);
 
 // Inverse hyperbolic sine.
-[[loom::op("scalar.asinhf")]] _Float16 asinhf(_Float16 input);
-[[loom::op("scalar.asinhf")]] __bf16 asinhf(__bf16 input);
-[[loom::op("scalar.asinhf")]] float asinhf(float input);
-[[loom::op("scalar.asinhf")]] double asinhf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.asinhf")]] Float asinhf(Float input);
 
 // Two-argument arctangent: atan2(y, x).
-[[loom::op("scalar.atan2f")]] _Float16 atan2f(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.atan2f")]] __bf16 atan2f(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.atan2f")]] float atan2f(float lhs, float rhs);
-[[loom::op("scalar.atan2f")]] double atan2f(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.atan2f")]] Float atan2f(Float lhs, Float rhs);
 
 // Arctangent.
-[[loom::op("scalar.atanf")]] _Float16 atanf(_Float16 input);
-[[loom::op("scalar.atanf")]] __bf16 atanf(__bf16 input);
-[[loom::op("scalar.atanf")]] float atanf(float input);
-[[loom::op("scalar.atanf")]] double atanf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.atanf")]] Float atanf(Float input);
 
 // Inverse hyperbolic tangent.
-[[loom::op("scalar.atanhf")]] _Float16 atanhf(_Float16 input);
-[[loom::op("scalar.atanhf")]] __bf16 atanhf(__bf16 input);
-[[loom::op("scalar.atanhf")]] float atanhf(float input);
-[[loom::op("scalar.atanhf")]] double atanhf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.atanhf")]] Float atanhf(Float input);
 
 // Cube root.
-[[loom::op("scalar.cbrtf")]] _Float16 cbrtf(_Float16 input);
-[[loom::op("scalar.cbrtf")]] __bf16 cbrtf(__bf16 input);
-[[loom::op("scalar.cbrtf")]] float cbrtf(float input);
-[[loom::op("scalar.cbrtf")]] double cbrtf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.cbrtf")]] Float cbrtf(Float input);
 
 // Round toward positive infinity.
-[[loom::op("scalar.ceilf")]] _Float16 ceilf(_Float16 input);
-[[loom::op("scalar.ceilf")]] __bf16 ceilf(__bf16 input);
-[[loom::op("scalar.ceilf")]] float ceilf(float input);
-[[loom::op("scalar.ceilf")]] double ceilf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.ceilf")]] Float ceilf(Float input);
 
 // Copy sign of rhs onto magnitude of lhs.
-[[loom::op("scalar.copysignf")]] _Float16 copysignf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.copysignf")]] __bf16 copysignf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.copysignf")]] float copysignf(float lhs, float rhs);
-[[loom::op("scalar.copysignf")]] double copysignf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.copysignf")]] Float copysignf(Float lhs, Float rhs);
 
 // Cosine.
-[[loom::op("scalar.cosf")]] _Float16 cosf(_Float16 input);
-[[loom::op("scalar.cosf")]] __bf16 cosf(__bf16 input);
-[[loom::op("scalar.cosf")]] float cosf(float input);
-[[loom::op("scalar.cosf")]] double cosf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.cosf")]] Float cosf(Float input);
 
 // Hyperbolic cosine.
-[[loom::op("scalar.coshf")]] _Float16 coshf(_Float16 input);
-[[loom::op("scalar.coshf")]] __bf16 coshf(__bf16 input);
-[[loom::op("scalar.coshf")]] float coshf(float input);
-[[loom::op("scalar.coshf")]] double coshf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.coshf")]] Float coshf(Float input);
 
 // Cosine over turns: cos(2*pi*x), preserving finite-input periodicity and
 // exact quarter-turn cardinals. Non-finite inputs produce NaN.
-[[loom::op("scalar.costurnsf")]] _Float16 costurnsf(_Float16 input);
-[[loom::op("scalar.costurnsf")]] __bf16 costurnsf(__bf16 input);
-[[loom::op("scalar.costurnsf")]] float costurnsf(float input);
-[[loom::op("scalar.costurnsf")]] double costurnsf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.costurnsf")]] Float costurnsf(Float input);
 
 // Floating-point division.
-[[loom::op("scalar.divf")]] _Float16 divf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.divf")]] __bf16 divf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.divf")]] float divf(float lhs, float rhs);
-[[loom::op("scalar.divf")]] double divf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.divf")]] Float divf(Float lhs, Float rhs);
 
 // Complementary error function: 1 - erf(x).
-[[loom::op("scalar.erfcf")]] _Float16 erfcf(_Float16 input);
-[[loom::op("scalar.erfcf")]] __bf16 erfcf(__bf16 input);
-[[loom::op("scalar.erfcf")]] float erfcf(float input);
-[[loom::op("scalar.erfcf")]] double erfcf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.erfcf")]] Float erfcf(Float input);
 
 // Error function (used in GeLU activation).
-[[loom::op("scalar.erff")]] _Float16 erff(_Float16 input);
-[[loom::op("scalar.erff")]] __bf16 erff(__bf16 input);
-[[loom::op("scalar.erff")]] float erff(float input);
-[[loom::op("scalar.erff")]] double erff(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.erff")]] Float erff(Float input);
 
 // Base-2 exponential: 2^x.
-[[loom::op("scalar.exp2f")]] _Float16 exp2f(_Float16 input);
-[[loom::op("scalar.exp2f")]] __bf16 exp2f(__bf16 input);
-[[loom::op("scalar.exp2f")]] float exp2f(float input);
-[[loom::op("scalar.exp2f")]] double exp2f(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.exp2f")]] Float exp2f(Float input);
 
 // Exponential: e^x.
-[[loom::op("scalar.expf")]] _Float16 expf(_Float16 input);
-[[loom::op("scalar.expf")]] __bf16 expf(__bf16 input);
-[[loom::op("scalar.expf")]] float expf(float input);
-[[loom::op("scalar.expf")]] double expf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.expf")]] Float expf(Float input);
 
 // Exponential minus one: e^x - 1 (numerically stable near 0).
-[[loom::op("scalar.expm1f")]] _Float16 expm1f(_Float16 input);
-[[loom::op("scalar.expm1f")]] __bf16 expm1f(__bf16 input);
-[[loom::op("scalar.expm1f")]] float expm1f(float input);
-[[loom::op("scalar.expm1f")]] double expm1f(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.expm1f")]] Float expm1f(Float input);
 
 // Round toward negative infinity.
-[[loom::op("scalar.floorf")]] _Float16 floorf(_Float16 input);
-[[loom::op("scalar.floorf")]] __bf16 floorf(__bf16 input);
-[[loom::op("scalar.floorf")]] float floorf(float input);
-[[loom::op("scalar.floorf")]] double floorf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.floorf")]] Float floorf(Float input);
 
 // Fused multiply-add: a*b + c with single rounding.
-[[loom::op("scalar.fmaf")]] _Float16 fmaf(_Float16 a, _Float16 b, _Float16 c);
-[[loom::op("scalar.fmaf")]] __bf16 fmaf(__bf16 a, __bf16 b, __bf16 c);
-[[loom::op("scalar.fmaf")]] float fmaf(float a, float b, float c);
-[[loom::op("scalar.fmaf")]] double fmaf(double a, double b, double c);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.fmaf")]] Float fmaf(Float a, Float b, Float c);
 
 // Base-10 logarithm.
-[[loom::op("scalar.log10f")]] _Float16 log10f(_Float16 input);
-[[loom::op("scalar.log10f")]] __bf16 log10f(__bf16 input);
-[[loom::op("scalar.log10f")]] float log10f(float input);
-[[loom::op("scalar.log10f")]] double log10f(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.log10f")]] Float log10f(Float input);
 
 // Natural logarithm of 1+x: ln(1+x) (numerically stable near 0).
-[[loom::op("scalar.log1pf")]] _Float16 log1pf(_Float16 input);
-[[loom::op("scalar.log1pf")]] __bf16 log1pf(__bf16 input);
-[[loom::op("scalar.log1pf")]] float log1pf(float input);
-[[loom::op("scalar.log1pf")]] double log1pf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.log1pf")]] Float log1pf(Float input);
 
 // Base-2 logarithm.
-[[loom::op("scalar.log2f")]] _Float16 log2f(_Float16 input);
-[[loom::op("scalar.log2f")]] __bf16 log2f(__bf16 input);
-[[loom::op("scalar.log2f")]] float log2f(float input);
-[[loom::op("scalar.log2f")]] double log2f(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.log2f")]] Float log2f(Float input);
 
 // Natural logarithm: ln(x).
-[[loom::op("scalar.logf")]] _Float16 logf(_Float16 input);
-[[loom::op("scalar.logf")]] __bf16 logf(__bf16 input);
-[[loom::op("scalar.logf")]] float logf(float input);
-[[loom::op("scalar.logf")]] double logf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.logf")]] Float logf(Float input);
 
 // Logistic sigmoid: 1 / (1 + exp(-x)).
-[[loom::op("scalar.logisticf")]] _Float16 logisticf(_Float16 input);
-[[loom::op("scalar.logisticf")]] __bf16 logisticf(__bf16 input);
-[[loom::op("scalar.logisticf")]] float logisticf(float input);
-[[loom::op("scalar.logisticf")]] double logisticf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.logisticf")]] Float logisticf(Float input);
 
 // IEEE 754 maximum (NaN propagates).
-[[loom::op("scalar.maximumf")]] _Float16 maximumf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.maximumf")]] __bf16 maximumf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.maximumf")]] float maximumf(float lhs, float rhs);
-[[loom::op("scalar.maximumf")]] double maximumf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.maximumf")]] Float maximumf(Float lhs, Float rhs);
 
 // C99 fmax (NaN ignored, returns the non-NaN operand).
-[[loom::op("scalar.maxnumf")]] _Float16 maxnumf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.maxnumf")]] __bf16 maxnumf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.maxnumf")]] float maxnumf(float lhs, float rhs);
-[[loom::op("scalar.maxnumf")]] double maxnumf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.maxnumf")]] Float maxnumf(Float lhs, Float rhs);
 
 // IEEE 754 minimum (NaN propagates).
-[[loom::op("scalar.minimumf")]] _Float16 minimumf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.minimumf")]] __bf16 minimumf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.minimumf")]] float minimumf(float lhs, float rhs);
-[[loom::op("scalar.minimumf")]] double minimumf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.minimumf")]] Float minimumf(Float lhs, Float rhs);
 
 // C99 fmin (NaN ignored, returns the non-NaN operand).
-[[loom::op("scalar.minnumf")]] _Float16 minnumf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.minnumf")]] __bf16 minnumf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.minnumf")]] float minnumf(float lhs, float rhs);
-[[loom::op("scalar.minnumf")]] double minnumf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.minnumf")]] Float minnumf(Float lhs, Float rhs);
 
 // Floating-point multiplication.
-[[loom::op("scalar.mulf")]] _Float16 mulf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.mulf")]] __bf16 mulf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.mulf")]] float mulf(float lhs, float rhs);
-[[loom::op("scalar.mulf")]] double mulf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.mulf")]] Float mulf(Float lhs, Float rhs);
 
 // Floating-point negation.
-[[loom::op("scalar.negf")]] _Float16 negf(_Float16 input);
-[[loom::op("scalar.negf")]] __bf16 negf(__bf16 input);
-[[loom::op("scalar.negf")]] float negf(float input);
-[[loom::op("scalar.negf")]] double negf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.negf")]] Float negf(Float input);
 
 // Power: x^y.
-[[loom::op("scalar.powf")]] _Float16 powf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.powf")]] __bf16 powf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.powf")]] float powf(float lhs, float rhs);
-[[loom::op("scalar.powf")]] double powf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.powf")]] Float powf(Float lhs, Float rhs);
 
 // Floating-point remainder (C fmod semantics).
-[[loom::op("scalar.remf")]] _Float16 remf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.remf")]] __bf16 remf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.remf")]] float remf(float lhs, float rhs);
-[[loom::op("scalar.remf")]] double remf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.remf")]] Float remf(Float lhs, Float rhs);
 
 // Round to nearest, ties to even (IEEE 754 default rounding).
-[[loom::op("scalar.roundevenf")]] _Float16 roundevenf(_Float16 input);
-[[loom::op("scalar.roundevenf")]] __bf16 roundevenf(__bf16 input);
-[[loom::op("scalar.roundevenf")]] float roundevenf(float input);
-[[loom::op("scalar.roundevenf")]] double roundevenf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.roundevenf")]] Float roundevenf(Float input);
 
 // Round to nearest, ties away from zero.
-[[loom::op("scalar.roundf")]] _Float16 roundf(_Float16 input);
-[[loom::op("scalar.roundf")]] __bf16 roundf(__bf16 input);
-[[loom::op("scalar.roundf")]] float roundf(float input);
-[[loom::op("scalar.roundf")]] double roundf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.roundf")]] Float roundf(Float input);
 
 // Reciprocal square root: 1/sqrt(x).
-[[loom::op("scalar.rsqrtf")]] _Float16 rsqrtf(_Float16 input);
-[[loom::op("scalar.rsqrtf")]] __bf16 rsqrtf(__bf16 input);
-[[loom::op("scalar.rsqrtf")]] float rsqrtf(float input);
-[[loom::op("scalar.rsqrtf")]] double rsqrtf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.rsqrtf")]] Float rsqrtf(Float input);
 
 // Floating-point sign: returns -1.0, 0.0, or 1.0.
-[[loom::op("scalar.signf")]] _Float16 signf(_Float16 input);
-[[loom::op("scalar.signf")]] __bf16 signf(__bf16 input);
-[[loom::op("scalar.signf")]] float signf(float input);
-[[loom::op("scalar.signf")]] double signf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.signf")]] Float signf(Float input);
 
 // SiLU activation: x * logistic(x).
-[[loom::op("scalar.siluf")]] _Float16 siluf(_Float16 input);
-[[loom::op("scalar.siluf")]] __bf16 siluf(__bf16 input);
-[[loom::op("scalar.siluf")]] float siluf(float input);
-[[loom::op("scalar.siluf")]] double siluf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.siluf")]] Float siluf(Float input);
 
 // Sine.
-[[loom::op("scalar.sinf")]] _Float16 sinf(_Float16 input);
-[[loom::op("scalar.sinf")]] __bf16 sinf(__bf16 input);
-[[loom::op("scalar.sinf")]] float sinf(float input);
-[[loom::op("scalar.sinf")]] double sinf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.sinf")]] Float sinf(Float input);
 
 // Hyperbolic sine.
-[[loom::op("scalar.sinhf")]] _Float16 sinhf(_Float16 input);
-[[loom::op("scalar.sinhf")]] __bf16 sinhf(__bf16 input);
-[[loom::op("scalar.sinhf")]] float sinhf(float input);
-[[loom::op("scalar.sinhf")]] double sinhf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.sinhf")]] Float sinhf(Float input);
 
 // Sine over turns: sin(2*pi*x), preserving finite-input periodicity and exact
 // quarter-turn cardinals. Non-finite inputs produce NaN.
-[[loom::op("scalar.sinturnsf")]] _Float16 sinturnsf(_Float16 input);
-[[loom::op("scalar.sinturnsf")]] __bf16 sinturnsf(__bf16 input);
-[[loom::op("scalar.sinturnsf")]] float sinturnsf(float input);
-[[loom::op("scalar.sinturnsf")]] double sinturnsf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.sinturnsf")]] Float sinturnsf(Float input);
 
 // Softplus activation: log(1 + exp(x)).
-[[loom::op("scalar.softplusf")]] _Float16 softplusf(_Float16 input);
-[[loom::op("scalar.softplusf")]] __bf16 softplusf(__bf16 input);
-[[loom::op("scalar.softplusf")]] float softplusf(float input);
-[[loom::op("scalar.softplusf")]] double softplusf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.softplusf")]] Float softplusf(Float input);
 
 // Square root.
-[[loom::op("scalar.sqrtf")]] _Float16 sqrtf(_Float16 input);
-[[loom::op("scalar.sqrtf")]] __bf16 sqrtf(__bf16 input);
-[[loom::op("scalar.sqrtf")]] float sqrtf(float input);
-[[loom::op("scalar.sqrtf")]] double sqrtf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.sqrtf")]] Float sqrtf(Float input);
 
 // Floating-point subtraction.
-[[loom::op("scalar.subf")]] _Float16 subf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.subf")]] __bf16 subf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.subf")]] float subf(float lhs, float rhs);
-[[loom::op("scalar.subf")]] double subf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.subf")]] Float subf(Float lhs, Float rhs);
 
 // Tangent.
-[[loom::op("scalar.tanf")]] _Float16 tanf(_Float16 input);
-[[loom::op("scalar.tanf")]] __bf16 tanf(__bf16 input);
-[[loom::op("scalar.tanf")]] float tanf(float input);
-[[loom::op("scalar.tanf")]] double tanf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.tanf")]] Float tanf(Float input);
 
 // Hyperbolic tangent.
-[[loom::op("scalar.tanhf")]] _Float16 tanhf(_Float16 input);
-[[loom::op("scalar.tanhf")]] __bf16 tanhf(__bf16 input);
-[[loom::op("scalar.tanhf")]] float tanhf(float input);
-[[loom::op("scalar.tanhf")]] double tanhf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.tanhf")]] Float tanhf(Float input);
 
 // Round toward zero (C trunc).
-[[loom::op("scalar.truncf")]] _Float16 truncf(_Float16 input);
-[[loom::op("scalar.truncf")]] __bf16 truncf(__bf16 input);
-[[loom::op("scalar.truncf")]] float truncf(float input);
-[[loom::op("scalar.truncf")]] double truncf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.truncf")]] Float truncf(Float input);
 
 namespace approximate {
 
 // Floating-point absolute value.
-[[loom::op("scalar.absf", "afn")]] _Float16 absf(_Float16 input);
-[[loom::op("scalar.absf", "afn")]] __bf16 absf(__bf16 input);
-[[loom::op("scalar.absf", "afn")]] float absf(float input);
-[[loom::op("scalar.absf", "afn")]] double absf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.absf", "afn")]] Float absf(Float input);
 
 // Arccosine.
-[[loom::op("scalar.acosf", "afn")]] _Float16 acosf(_Float16 input);
-[[loom::op("scalar.acosf", "afn")]] __bf16 acosf(__bf16 input);
-[[loom::op("scalar.acosf", "afn")]] float acosf(float input);
-[[loom::op("scalar.acosf", "afn")]] double acosf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.acosf", "afn")]] Float acosf(Float input);
 
 // Inverse hyperbolic cosine.
-[[loom::op("scalar.acoshf", "afn")]] _Float16 acoshf(_Float16 input);
-[[loom::op("scalar.acoshf", "afn")]] __bf16 acoshf(__bf16 input);
-[[loom::op("scalar.acoshf", "afn")]] float acoshf(float input);
-[[loom::op("scalar.acoshf", "afn")]] double acoshf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.acoshf", "afn")]] Float acoshf(Float input);
 
 // Floating-point addition.
-[[loom::op("scalar.addf", "afn")]] _Float16 addf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.addf", "afn")]] __bf16 addf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.addf", "afn")]] float addf(float lhs, float rhs);
-[[loom::op("scalar.addf", "afn")]] double addf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.addf", "afn")]] Float addf(Float lhs, Float rhs);
 
 // Arcsine.
-[[loom::op("scalar.asinf", "afn")]] _Float16 asinf(_Float16 input);
-[[loom::op("scalar.asinf", "afn")]] __bf16 asinf(__bf16 input);
-[[loom::op("scalar.asinf", "afn")]] float asinf(float input);
-[[loom::op("scalar.asinf", "afn")]] double asinf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.asinf", "afn")]] Float asinf(Float input);
 
 // Inverse hyperbolic sine.
-[[loom::op("scalar.asinhf", "afn")]] _Float16 asinhf(_Float16 input);
-[[loom::op("scalar.asinhf", "afn")]] __bf16 asinhf(__bf16 input);
-[[loom::op("scalar.asinhf", "afn")]] float asinhf(float input);
-[[loom::op("scalar.asinhf", "afn")]] double asinhf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.asinhf", "afn")]] Float asinhf(Float input);
 
 // Two-argument arctangent: atan2(y, x).
-[[loom::op("scalar.atan2f", "afn")]] _Float16 atan2f(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.atan2f", "afn")]] __bf16 atan2f(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.atan2f", "afn")]] float atan2f(float lhs, float rhs);
-[[loom::op("scalar.atan2f", "afn")]] double atan2f(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.atan2f", "afn")]] Float atan2f(Float lhs, Float rhs);
 
 // Arctangent.
-[[loom::op("scalar.atanf", "afn")]] _Float16 atanf(_Float16 input);
-[[loom::op("scalar.atanf", "afn")]] __bf16 atanf(__bf16 input);
-[[loom::op("scalar.atanf", "afn")]] float atanf(float input);
-[[loom::op("scalar.atanf", "afn")]] double atanf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.atanf", "afn")]] Float atanf(Float input);
 
 // Inverse hyperbolic tangent.
-[[loom::op("scalar.atanhf", "afn")]] _Float16 atanhf(_Float16 input);
-[[loom::op("scalar.atanhf", "afn")]] __bf16 atanhf(__bf16 input);
-[[loom::op("scalar.atanhf", "afn")]] float atanhf(float input);
-[[loom::op("scalar.atanhf", "afn")]] double atanhf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.atanhf", "afn")]] Float atanhf(Float input);
 
 // Cube root.
-[[loom::op("scalar.cbrtf", "afn")]] _Float16 cbrtf(_Float16 input);
-[[loom::op("scalar.cbrtf", "afn")]] __bf16 cbrtf(__bf16 input);
-[[loom::op("scalar.cbrtf", "afn")]] float cbrtf(float input);
-[[loom::op("scalar.cbrtf", "afn")]] double cbrtf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.cbrtf", "afn")]] Float cbrtf(Float input);
 
 // Round toward positive infinity.
-[[loom::op("scalar.ceilf", "afn")]] _Float16 ceilf(_Float16 input);
-[[loom::op("scalar.ceilf", "afn")]] __bf16 ceilf(__bf16 input);
-[[loom::op("scalar.ceilf", "afn")]] float ceilf(float input);
-[[loom::op("scalar.ceilf", "afn")]] double ceilf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.ceilf", "afn")]] Float ceilf(Float input);
 
 // Copy sign of rhs onto magnitude of lhs.
-[[loom::op("scalar.copysignf", "afn")]] _Float16 copysignf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.copysignf", "afn")]] __bf16 copysignf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.copysignf", "afn")]] float copysignf(float lhs, float rhs);
-[[loom::op("scalar.copysignf", "afn")]] double copysignf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.copysignf", "afn")]] Float copysignf(Float lhs, Float rhs);
 
 // Cosine.
-[[loom::op("scalar.cosf", "afn")]] _Float16 cosf(_Float16 input);
-[[loom::op("scalar.cosf", "afn")]] __bf16 cosf(__bf16 input);
-[[loom::op("scalar.cosf", "afn")]] float cosf(float input);
-[[loom::op("scalar.cosf", "afn")]] double cosf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.cosf", "afn")]] Float cosf(Float input);
 
 // Hyperbolic cosine.
-[[loom::op("scalar.coshf", "afn")]] _Float16 coshf(_Float16 input);
-[[loom::op("scalar.coshf", "afn")]] __bf16 coshf(__bf16 input);
-[[loom::op("scalar.coshf", "afn")]] float coshf(float input);
-[[loom::op("scalar.coshf", "afn")]] double coshf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.coshf", "afn")]] Float coshf(Float input);
 
 // Cosine over turns: cos(2*pi*x), preserving finite-input periodicity and
 // exact quarter-turn cardinals. Non-finite inputs produce NaN.
-[[loom::op("scalar.costurnsf", "afn")]] _Float16 costurnsf(_Float16 input);
-[[loom::op("scalar.costurnsf", "afn")]] __bf16 costurnsf(__bf16 input);
-[[loom::op("scalar.costurnsf", "afn")]] float costurnsf(float input);
-[[loom::op("scalar.costurnsf", "afn")]] double costurnsf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.costurnsf", "afn")]] Float costurnsf(Float input);
 
 // Floating-point division.
-[[loom::op("scalar.divf", "afn")]] _Float16 divf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.divf", "afn")]] __bf16 divf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.divf", "afn")]] float divf(float lhs, float rhs);
-[[loom::op("scalar.divf", "afn")]] double divf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.divf", "afn")]] Float divf(Float lhs, Float rhs);
 
 // Complementary error function: 1 - erf(x).
-[[loom::op("scalar.erfcf", "afn")]] _Float16 erfcf(_Float16 input);
-[[loom::op("scalar.erfcf", "afn")]] __bf16 erfcf(__bf16 input);
-[[loom::op("scalar.erfcf", "afn")]] float erfcf(float input);
-[[loom::op("scalar.erfcf", "afn")]] double erfcf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.erfcf", "afn")]] Float erfcf(Float input);
 
 // Error function (used in GeLU activation).
-[[loom::op("scalar.erff", "afn")]] _Float16 erff(_Float16 input);
-[[loom::op("scalar.erff", "afn")]] __bf16 erff(__bf16 input);
-[[loom::op("scalar.erff", "afn")]] float erff(float input);
-[[loom::op("scalar.erff", "afn")]] double erff(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.erff", "afn")]] Float erff(Float input);
 
 // Base-2 exponential: 2^x.
-[[loom::op("scalar.exp2f", "afn")]] _Float16 exp2f(_Float16 input);
-[[loom::op("scalar.exp2f", "afn")]] __bf16 exp2f(__bf16 input);
-[[loom::op("scalar.exp2f", "afn")]] float exp2f(float input);
-[[loom::op("scalar.exp2f", "afn")]] double exp2f(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.exp2f", "afn")]] Float exp2f(Float input);
 
 // Exponential: e^x.
-[[loom::op("scalar.expf", "afn")]] _Float16 expf(_Float16 input);
-[[loom::op("scalar.expf", "afn")]] __bf16 expf(__bf16 input);
-[[loom::op("scalar.expf", "afn")]] float expf(float input);
-[[loom::op("scalar.expf", "afn")]] double expf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.expf", "afn")]] Float expf(Float input);
 
 // Exponential minus one: e^x - 1 (numerically stable near 0).
-[[loom::op("scalar.expm1f", "afn")]] _Float16 expm1f(_Float16 input);
-[[loom::op("scalar.expm1f", "afn")]] __bf16 expm1f(__bf16 input);
-[[loom::op("scalar.expm1f", "afn")]] float expm1f(float input);
-[[loom::op("scalar.expm1f", "afn")]] double expm1f(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.expm1f", "afn")]] Float expm1f(Float input);
 
 // Round toward negative infinity.
-[[loom::op("scalar.floorf", "afn")]] _Float16 floorf(_Float16 input);
-[[loom::op("scalar.floorf", "afn")]] __bf16 floorf(__bf16 input);
-[[loom::op("scalar.floorf", "afn")]] float floorf(float input);
-[[loom::op("scalar.floorf", "afn")]] double floorf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.floorf", "afn")]] Float floorf(Float input);
 
 // Fused multiply-add: a*b + c with single rounding.
-[[loom::op("scalar.fmaf", "afn")]] _Float16 fmaf(_Float16 a, _Float16 b, _Float16 c);
-[[loom::op("scalar.fmaf", "afn")]] __bf16 fmaf(__bf16 a, __bf16 b, __bf16 c);
-[[loom::op("scalar.fmaf", "afn")]] float fmaf(float a, float b, float c);
-[[loom::op("scalar.fmaf", "afn")]] double fmaf(double a, double b, double c);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.fmaf", "afn")]] Float fmaf(Float a, Float b, Float c);
 
 // Base-10 logarithm.
-[[loom::op("scalar.log10f", "afn")]] _Float16 log10f(_Float16 input);
-[[loom::op("scalar.log10f", "afn")]] __bf16 log10f(__bf16 input);
-[[loom::op("scalar.log10f", "afn")]] float log10f(float input);
-[[loom::op("scalar.log10f", "afn")]] double log10f(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.log10f", "afn")]] Float log10f(Float input);
 
 // Natural logarithm of 1+x: ln(1+x) (numerically stable near 0).
-[[loom::op("scalar.log1pf", "afn")]] _Float16 log1pf(_Float16 input);
-[[loom::op("scalar.log1pf", "afn")]] __bf16 log1pf(__bf16 input);
-[[loom::op("scalar.log1pf", "afn")]] float log1pf(float input);
-[[loom::op("scalar.log1pf", "afn")]] double log1pf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.log1pf", "afn")]] Float log1pf(Float input);
 
 // Base-2 logarithm.
-[[loom::op("scalar.log2f", "afn")]] _Float16 log2f(_Float16 input);
-[[loom::op("scalar.log2f", "afn")]] __bf16 log2f(__bf16 input);
-[[loom::op("scalar.log2f", "afn")]] float log2f(float input);
-[[loom::op("scalar.log2f", "afn")]] double log2f(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.log2f", "afn")]] Float log2f(Float input);
 
 // Natural logarithm: ln(x).
-[[loom::op("scalar.logf", "afn")]] _Float16 logf(_Float16 input);
-[[loom::op("scalar.logf", "afn")]] __bf16 logf(__bf16 input);
-[[loom::op("scalar.logf", "afn")]] float logf(float input);
-[[loom::op("scalar.logf", "afn")]] double logf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.logf", "afn")]] Float logf(Float input);
 
 // Logistic sigmoid: 1 / (1 + exp(-x)).
-[[loom::op("scalar.logisticf", "afn")]] _Float16 logisticf(_Float16 input);
-[[loom::op("scalar.logisticf", "afn")]] __bf16 logisticf(__bf16 input);
-[[loom::op("scalar.logisticf", "afn")]] float logisticf(float input);
-[[loom::op("scalar.logisticf", "afn")]] double logisticf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.logisticf", "afn")]] Float logisticf(Float input);
 
 // IEEE 754 maximum (NaN propagates).
-[[loom::op("scalar.maximumf", "afn")]] _Float16 maximumf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.maximumf", "afn")]] __bf16 maximumf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.maximumf", "afn")]] float maximumf(float lhs, float rhs);
-[[loom::op("scalar.maximumf", "afn")]] double maximumf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.maximumf", "afn")]] Float maximumf(Float lhs, Float rhs);
 
 // C99 fmax (NaN ignored, returns the non-NaN operand).
-[[loom::op("scalar.maxnumf", "afn")]] _Float16 maxnumf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.maxnumf", "afn")]] __bf16 maxnumf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.maxnumf", "afn")]] float maxnumf(float lhs, float rhs);
-[[loom::op("scalar.maxnumf", "afn")]] double maxnumf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.maxnumf", "afn")]] Float maxnumf(Float lhs, Float rhs);
 
 // IEEE 754 minimum (NaN propagates).
-[[loom::op("scalar.minimumf", "afn")]] _Float16 minimumf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.minimumf", "afn")]] __bf16 minimumf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.minimumf", "afn")]] float minimumf(float lhs, float rhs);
-[[loom::op("scalar.minimumf", "afn")]] double minimumf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.minimumf", "afn")]] Float minimumf(Float lhs, Float rhs);
 
 // C99 fmin (NaN ignored, returns the non-NaN operand).
-[[loom::op("scalar.minnumf", "afn")]] _Float16 minnumf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.minnumf", "afn")]] __bf16 minnumf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.minnumf", "afn")]] float minnumf(float lhs, float rhs);
-[[loom::op("scalar.minnumf", "afn")]] double minnumf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.minnumf", "afn")]] Float minnumf(Float lhs, Float rhs);
 
 // Floating-point multiplication.
-[[loom::op("scalar.mulf", "afn")]] _Float16 mulf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.mulf", "afn")]] __bf16 mulf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.mulf", "afn")]] float mulf(float lhs, float rhs);
-[[loom::op("scalar.mulf", "afn")]] double mulf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.mulf", "afn")]] Float mulf(Float lhs, Float rhs);
 
 // Floating-point negation.
-[[loom::op("scalar.negf", "afn")]] _Float16 negf(_Float16 input);
-[[loom::op("scalar.negf", "afn")]] __bf16 negf(__bf16 input);
-[[loom::op("scalar.negf", "afn")]] float negf(float input);
-[[loom::op("scalar.negf", "afn")]] double negf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.negf", "afn")]] Float negf(Float input);
 
 // Power: x^y.
-[[loom::op("scalar.powf", "afn")]] _Float16 powf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.powf", "afn")]] __bf16 powf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.powf", "afn")]] float powf(float lhs, float rhs);
-[[loom::op("scalar.powf", "afn")]] double powf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.powf", "afn")]] Float powf(Float lhs, Float rhs);
 
 // Floating-point remainder (C fmod semantics).
-[[loom::op("scalar.remf", "afn")]] _Float16 remf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.remf", "afn")]] __bf16 remf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.remf", "afn")]] float remf(float lhs, float rhs);
-[[loom::op("scalar.remf", "afn")]] double remf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.remf", "afn")]] Float remf(Float lhs, Float rhs);
 
 // Round to nearest, ties to even (IEEE 754 default rounding).
-[[loom::op("scalar.roundevenf", "afn")]] _Float16 roundevenf(_Float16 input);
-[[loom::op("scalar.roundevenf", "afn")]] __bf16 roundevenf(__bf16 input);
-[[loom::op("scalar.roundevenf", "afn")]] float roundevenf(float input);
-[[loom::op("scalar.roundevenf", "afn")]] double roundevenf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.roundevenf", "afn")]] Float roundevenf(Float input);
 
 // Round to nearest, ties away from zero.
-[[loom::op("scalar.roundf", "afn")]] _Float16 roundf(_Float16 input);
-[[loom::op("scalar.roundf", "afn")]] __bf16 roundf(__bf16 input);
-[[loom::op("scalar.roundf", "afn")]] float roundf(float input);
-[[loom::op("scalar.roundf", "afn")]] double roundf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.roundf", "afn")]] Float roundf(Float input);
 
 // Reciprocal square root: 1/sqrt(x).
-[[loom::op("scalar.rsqrtf", "afn")]] _Float16 rsqrtf(_Float16 input);
-[[loom::op("scalar.rsqrtf", "afn")]] __bf16 rsqrtf(__bf16 input);
-[[loom::op("scalar.rsqrtf", "afn")]] float rsqrtf(float input);
-[[loom::op("scalar.rsqrtf", "afn")]] double rsqrtf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.rsqrtf", "afn")]] Float rsqrtf(Float input);
 
 // SiLU activation: x * logistic(x).
-[[loom::op("scalar.siluf", "afn")]] _Float16 siluf(_Float16 input);
-[[loom::op("scalar.siluf", "afn")]] __bf16 siluf(__bf16 input);
-[[loom::op("scalar.siluf", "afn")]] float siluf(float input);
-[[loom::op("scalar.siluf", "afn")]] double siluf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.siluf", "afn")]] Float siluf(Float input);
 
 // Sine.
-[[loom::op("scalar.sinf", "afn")]] _Float16 sinf(_Float16 input);
-[[loom::op("scalar.sinf", "afn")]] __bf16 sinf(__bf16 input);
-[[loom::op("scalar.sinf", "afn")]] float sinf(float input);
-[[loom::op("scalar.sinf", "afn")]] double sinf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.sinf", "afn")]] Float sinf(Float input);
 
 // Hyperbolic sine.
-[[loom::op("scalar.sinhf", "afn")]] _Float16 sinhf(_Float16 input);
-[[loom::op("scalar.sinhf", "afn")]] __bf16 sinhf(__bf16 input);
-[[loom::op("scalar.sinhf", "afn")]] float sinhf(float input);
-[[loom::op("scalar.sinhf", "afn")]] double sinhf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.sinhf", "afn")]] Float sinhf(Float input);
 
 // Sine over turns: sin(2*pi*x), preserving finite-input periodicity and exact
 // quarter-turn cardinals. Non-finite inputs produce NaN.
-[[loom::op("scalar.sinturnsf", "afn")]] _Float16 sinturnsf(_Float16 input);
-[[loom::op("scalar.sinturnsf", "afn")]] __bf16 sinturnsf(__bf16 input);
-[[loom::op("scalar.sinturnsf", "afn")]] float sinturnsf(float input);
-[[loom::op("scalar.sinturnsf", "afn")]] double sinturnsf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.sinturnsf", "afn")]] Float sinturnsf(Float input);
 
 // Softplus activation: log(1 + exp(x)).
-[[loom::op("scalar.softplusf", "afn")]] _Float16 softplusf(_Float16 input);
-[[loom::op("scalar.softplusf", "afn")]] __bf16 softplusf(__bf16 input);
-[[loom::op("scalar.softplusf", "afn")]] float softplusf(float input);
-[[loom::op("scalar.softplusf", "afn")]] double softplusf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.softplusf", "afn")]] Float softplusf(Float input);
 
 // Square root.
-[[loom::op("scalar.sqrtf", "afn")]] _Float16 sqrtf(_Float16 input);
-[[loom::op("scalar.sqrtf", "afn")]] __bf16 sqrtf(__bf16 input);
-[[loom::op("scalar.sqrtf", "afn")]] float sqrtf(float input);
-[[loom::op("scalar.sqrtf", "afn")]] double sqrtf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.sqrtf", "afn")]] Float sqrtf(Float input);
 
 // Floating-point subtraction.
-[[loom::op("scalar.subf", "afn")]] _Float16 subf(_Float16 lhs, _Float16 rhs);
-[[loom::op("scalar.subf", "afn")]] __bf16 subf(__bf16 lhs, __bf16 rhs);
-[[loom::op("scalar.subf", "afn")]] float subf(float lhs, float rhs);
-[[loom::op("scalar.subf", "afn")]] double subf(double lhs, double rhs);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.subf", "afn")]] Float subf(Float lhs, Float rhs);
 
 // Tangent.
-[[loom::op("scalar.tanf", "afn")]] _Float16 tanf(_Float16 input);
-[[loom::op("scalar.tanf", "afn")]] __bf16 tanf(__bf16 input);
-[[loom::op("scalar.tanf", "afn")]] float tanf(float input);
-[[loom::op("scalar.tanf", "afn")]] double tanf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.tanf", "afn")]] Float tanf(Float input);
 
 // Hyperbolic tangent.
-[[loom::op("scalar.tanhf", "afn")]] _Float16 tanhf(_Float16 input);
-[[loom::op("scalar.tanhf", "afn")]] __bf16 tanhf(__bf16 input);
-[[loom::op("scalar.tanhf", "afn")]] float tanhf(float input);
-[[loom::op("scalar.tanhf", "afn")]] double tanhf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.tanhf", "afn")]] Float tanhf(Float input);
 
 // Round toward zero (C trunc).
-[[loom::op("scalar.truncf", "afn")]] _Float16 truncf(_Float16 input);
-[[loom::op("scalar.truncf", "afn")]] __bf16 truncf(__bf16 input);
-[[loom::op("scalar.truncf", "afn")]] float truncf(float input);
-[[loom::op("scalar.truncf", "afn")]] double truncf(double input);
+template <class Float> requires (__is_floating_point(Float))
+[[loom::op("scalar.truncf", "afn")]] Float truncf(Float input);
 
 }  // namespace approximate
 

@@ -23,11 +23,11 @@
 namespace loom::cxx_import {
 namespace {
 
-const cxx::Attribute* operation_attribute(cxx::FunctionSymbol* function) {
-  if (!function->attributes()) {
+const cxx::Attribute* operation_attribute(const cxx::AttributeMap* attributes) {
+  if (!attributes) {
     return nullptr;
   }
-  for (const auto& attribute : *function->attributes()) {
+  for (const auto& attribute : *attributes) {
     if (attribute.attributeNamespace && attribute.name &&
         attribute.attributeNamespace->name() == "loom" &&
         attribute.name->name() == "op") {
@@ -92,27 +92,39 @@ void Intrinsics::declaration(cxx::FunctionSymbol* function,
           }
         }
       });
-  const cxx::Attribute* selected = operation_attribute(function);
-  if (!selected) {
+  if (!found) {
+    if (operation_attribute(function->attributes())) {
+      diagnostics_.reject(unit_, owner,
+                          "operation bindings require leading attributes on a "
+                          "plain function declaration");
+    }
     return;
   }
-  if (!found) {
-    diagnostics_.reject(unit_, owner,
-                        "operation bindings require leading attributes on a "
-                        "plain function declaration");
+
+  // Specifiers retain their own resolved arguments. A symbol's merged map
+  // cannot distinguish conflicting source redeclarations.
+  const cxx::Attribute* selected = nullptr;
+  for (auto* specifier : cxx::ListView{attributes}) {
+    if (auto* attribute = operation_attribute(specifier->attributes)) {
+      selected = attribute;
+      break;
+    }
   }
   if (function->isTemplatePattern()) {
-    if (selected->arguments.size() != 1 ||
-        (!ViewIntrinsic::supports(selected->arguments[0]->name()) &&
-         !AtomicIntrinsic::supports(selected->arguments[0]->name()) &&
-         !AssemblyIntrinsic::supports(selected->arguments[0]->name()))) {
+    TemplateBinding binding{selected, std::nullopt};
+    if (auto* scalar = loom_cxx_scalar_binding_find(
+            view(selected->arguments[0]->name()))) {
+      binding.scalar = resolve_scalar_operation(scalar, *selected, owner);
+    } else if (selected->arguments.size() != 1 ||
+               (!ViewIntrinsic::supports(selected->arguments[0]->name()) &&
+                !AtomicIntrinsic::supports(selected->arguments[0]->name()) &&
+                !AssemblyIntrinsic::supports(selected->arguments[0]->name()))) {
       diagnostics_.reject(unit_, owner,
                           "function template operation has no C++ projection");
     }
-    auto spelling = std::string(selected->arguments[0]->name());
-    auto [entry, inserted] =
-        template_bindings_.try_emplace(function->canonical(), spelling);
-    if (!inserted && entry->second != spelling) {
+    auto [entry, inserted] = template_bindings_.try_emplace(
+        function->canonical(), std::move(binding));
+    if (!inserted && *entry->second.attribute != *selected) {
       diagnostics_.reject(unit_, owner,
                           "conflicting intrinsic template redeclarations");
     }
@@ -158,7 +170,8 @@ Intrinsics::Binding Intrinsics::resolve(cxx::FunctionSymbol* function,
   }
   if (auto* scalar =
           loom_cxx_scalar_binding_find(view(attribute.arguments[0]->name()))) {
-    return resolve_scalar(scalar, signature, attribute, owner);
+    return resolve_scalar(resolve_scalar_operation(scalar, attribute, owner),
+                          signature, owner);
   }
   if (auto shaped = ShapedIntrinsic::resolve(unit_, diagnostics_, types_,
                                              signature, attribute, owner)) {
@@ -179,11 +192,26 @@ Intrinsics::Binding Intrinsics::resolve(cxx::FunctionSymbol* function,
   diagnostics_.reject(unit_, owner, "operation has no C++ projection");
 }
 
+Intrinsics::ScalarOperation Intrinsics::resolve_scalar_operation(
+    const loom_cxx_scalar_binding_t* scalar, const cxx::Attribute& attribute,
+    cxx::AST* owner) {
+  ScalarOperation result{scalar};
+  for (size_t index = 1; index < attribute.arguments.size(); ++index) {
+    uint8_t flag;
+    if (!scalar->has_fastmath ||
+        !loom_cxx_scalar_flag_parse(view(attribute.arguments[index]->name()),
+                                    &flag)) {
+      diagnostics_.reject(unit_, owner,
+                          "intrinsic has an unsupported fast-math flag");
+    }
+    result.flags |= flag;
+  }
+  return result;
+}
+
 Intrinsics::ScalarBinding Intrinsics::resolve_scalar(
-    const loom_cxx_scalar_binding_t* scalar, const cxx::FunctionType* signature,
-    const cxx::Attribute& attribute, cxx::AST* owner) {
-  ScalarBinding result;
-  result.scalar = scalar;
+    ScalarOperation operation, const cxx::FunctionType* signature,
+    cxx::AST* owner) {
   const auto& traits = unit_.typeTraits();
   const auto* return_type = traits.remove_cv(signature->returnType());
   if (!types_.is_float(return_type)) {
@@ -192,7 +220,7 @@ Intrinsics::ScalarBinding Intrinsics::resolve_scalar(
         "scalar intrinsic result must be _Float16, __bf16, float, or double");
   }
   if (signature->isVariadic() ||
-      signature->parameterTypes().size() != result.scalar->operand_count) {
+      signature->parameterTypes().size() != operation.scalar->operand_count) {
     diagnostics_.reject(unit_, owner,
                         "intrinsic declaration has the wrong operand count");
   }
@@ -203,18 +231,7 @@ Intrinsics::ScalarBinding Intrinsics::resolve_scalar(
           "intrinsic operands must have the result's floating-point type");
     }
   }
-  for (size_t index = 1; index < attribute.arguments.size(); ++index) {
-    uint8_t flag;
-    if (!result.scalar->has_fastmath ||
-        !loom_cxx_scalar_flag_parse(view(attribute.arguments[index]->name()),
-                                    &flag)) {
-      diagnostics_.reject(unit_, owner,
-                          "intrinsic has an unsupported fast-math flag");
-    }
-    result.flags |= flag;
-  }
-  result.type = types_.get(return_type, owner);
-  return result;
+  return {operation, types_.get(return_type, owner)};
 }
 
 std::optional<loom_type_t> Intrinsics::expectation_type(
@@ -244,14 +261,18 @@ Intrinsics::Binding* Intrinsics::concrete_binding(cxx::FunctionSymbol* function,
   if (pattern == template_bindings_.end()) {
     return nullptr;
   }
-  auto* attribute = operation_attribute(function);
-  if (!attribute || attribute->arguments.size() != 1 ||
-      attribute->arguments[0]->name() != pattern->second) {
+  auto* attribute = operation_attribute(function->attributes());
+  if (!attribute || *attribute != *pattern->second.attribute) {
     diagnostics_.reject(
         unit_, owner,
         "intrinsic specialization does not preserve its template binding");
   }
-  auto binding = resolve(function, *attribute, owner);
+  Binding binding =
+      pattern->second.scalar
+          ? resolve_scalar(*pattern->second.scalar,
+                           cxx::type_cast<cxx::FunctionType>(function->type()),
+                           owner)
+          : resolve(function, *attribute, owner);
   auto inserted =
       bindings_.try_emplace(function->canonical(), std::move(binding));
   return &inserted.first->second;
@@ -280,8 +301,9 @@ IntrinsicCallResult Intrinsics::call(const Binding& admitted,
   auto flattened = flatten(arguments, inline_values, overflow);
   if (auto* scalar = std::get_if<ScalarBinding>(binding)) {
     loom_op_t* op;
-    check(scalar->scalar->build(builder, scalar->flags | math_flags,
-                                flattened.data(), scalar->type, location, &op));
+    check(scalar->operation.scalar->build(
+        builder, scalar->operation.flags | math_flags, flattened.data(),
+        scalar->type, location, &op));
     return {Value(loom_op_results(op)[0])};
   }
   const auto& shaped = std::get<ShapedIntrinsic>(admitted);

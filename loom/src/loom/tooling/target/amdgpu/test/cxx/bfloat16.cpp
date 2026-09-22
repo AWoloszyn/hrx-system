@@ -5,6 +5,7 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include <loomcxx/kernel.h>
+#include <loomcxx/scalar.h>
 
 #include <stdfloat>
 
@@ -20,13 +21,13 @@ struct Packet {
 };
 
 [[loom::force_inline]] static BFloat4 scale(Packet value) {
-  return value.samples * value.gain;
+  return value.samples * loom::scalar::absf(value.gain);
 }
 
 [[loom::kernel, loom::workgroup_size(32, 1, 1), loom::workgroup_count(1, 1, 1)]]
 void scale_bfloat_vectors(const BFloat4* input, BFloat4* output) {
   unsigned lane = loom::workitem_id.x;
-  output[lane + 1] = scale(Packet{input[lane + 1], 2.0bf16});
+  output[lane + 1] = scale(Packet{input[lane + 1], -2.0bf16});
 }
 
 [[loom::kernel, loom::workgroup_size(32, 1, 1), loom::workgroup_count(1, 1, 1)]]
