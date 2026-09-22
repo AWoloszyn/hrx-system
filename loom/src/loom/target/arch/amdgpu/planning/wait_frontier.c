@@ -973,8 +973,12 @@ bool loom_amdgpu_wait_frontier_producer_is_complete(
   const uint32_t pending_writes = loom_amdgpu_wait_frontier_memory_query(
       frontier, node->write_space_flags,
       LOOM_AMDGPU_WAIT_MEMORY_ACCESS_FLAG_WRITE);
+  // An external-resource result has no memory alias set. Empty alias state
+  // cannot prove it complete; the result's storage lease carries that fact.
   const uint32_t pending_counter_mask =
-      (pending_reads | pending_writes) & counter_mask;
+      node->read_space_flags == 0 && node->write_space_flags == 0
+          ? counter_mask
+          : (pending_reads | pending_writes) & counter_mask;
   if (pending_counter_mask == 0) {
     return true;
   }

@@ -19,6 +19,7 @@
 #include "loom/target/arch/amdgpu/planning/matrix_wait_states.h"
 #include "loom/target/arch/amdgpu/planning/structural_packet.h"
 #include "loom/target/arch/amdgpu/planning/vopd_plan.h"
+#include "loom/target/arch/amdgpu/planning/wait_plan.h"
 #include "loom/target/arch/amdgpu/refs/target_refs.h"
 #include "loom/target/arch/amdgpu/target_info.h"
 
@@ -218,6 +219,8 @@ typedef struct loom_amdgpu_wait_state_builder_t {
   const loom_low_schedule_table_t* schedule;
   // Allocation table being analyzed.
   const loom_low_allocation_table_t* allocation;
+  // Canonical authored-wait elisions, which supply no instruction progress.
+  const loom_amdgpu_wait_plan_t* wait_plan;
   // Final VOPD memberships indexed by scheduled packet.
   const loom_amdgpu_vopd_packet_t* vopd_packets;
   // Final VOPD pairs referenced by |vopd_packets|.
@@ -2101,6 +2104,11 @@ static iree_status_t loom_amdgpu_wait_state_plan_build_with_scratch(
          scheduled_ordinal < block->scheduled_node_count; ++scheduled_ordinal) {
       const loom_low_packet_view_t packet = loom_low_packet_at_block_ordinal(
           builder->schedule, (uint32_t)block_index, scheduled_ordinal);
+      if (loom_amdgpu_wait_plan_elides_node(builder->wait_plan,
+                                            packet.node_index)) {
+        builder->packet_instruction_counts[packet.packet_index] = 0;
+        continue;
+      }
       const loom_amdgpu_vopd_packet_role_t vopd_role =
           builder->vopd_packets != NULL
               ? builder->vopd_packets[packet.packet_index].role
@@ -2136,6 +2144,7 @@ iree_status_t loom_amdgpu_wait_state_plan_build(
     const loom_low_schedule_table_t* schedule,
     const loom_low_allocation_table_t* allocation,
     const loom_amdgpu_processor_properties_t* processor_properties,
+    const loom_amdgpu_wait_plan_t* wait_plan,
     const struct loom_amdgpu_vopd_plan_t* vopd_plan,
     loom_amdgpu_matrix_coexecution_t* matrix_coexecution,
     iree_arena_allocator_t* arena, iree_arena_allocator_t* transient_arena,
@@ -2147,6 +2156,7 @@ iree_status_t loom_amdgpu_wait_state_plan_build(
       .schedule = schedule,
       .allocation = allocation,
       .processor_properties = processor_properties,
+      .wait_plan = wait_plan,
       .vopd_packets = has_vopd_pairs ? vopd_plan->packets : NULL,
       .vopd_pairs = has_vopd_pairs ? vopd_plan->pairs : NULL,
       .descriptor_set = schedule->target.descriptor_set,

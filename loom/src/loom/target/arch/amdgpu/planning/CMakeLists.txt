@@ -194,6 +194,7 @@ loom_cc_library(
     ::matrix_wait_states
     ::structural_packet
     ::vopd_plan
+    ::wait_plan
     iree::base
     iree::base::internal::arena
     loom::codegen::low::allocation

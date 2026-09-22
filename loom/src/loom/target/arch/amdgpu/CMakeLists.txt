@@ -534,13 +534,40 @@ loom_cc_library(
 )
 endif()
 
-file(GLOB _GLOB_TEST_SOURCE_LOW_X_LOOM_TEST LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS test/source_low/*.loom-test)
+if(LOOM_TARGET_ARCH_AMDGPU)
+iree_native_test(
+  NAME
+    "memory_stability"
+  ARGS
+    "${CMAKE_CURRENT_SOURCE_DIR}/test/source_low/memory_stability.loom-test"
+  SRC
+    loom::tools::loom-check::loom-check-test
+  LABELS
+    "loom-check"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU)
+loom_check_compile_tests(
+  NAME
+    "memory_stability"
+  SRC
+    "test/source_low/memory_stability.loom-test"
+  TARGETS
+    loom::target::amdgpu::gfx1151
+    loom::target::amdgpu::gfx1200
+)
+endif()
+
+file(GLOB _GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_BE73FC6D LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS test/source_low/*.loom-test)
+file(GLOB _GLOB_TEST/SOURCE_LOW/MEMORY_STABILITY_LOOM-TEST_BE73FC6D LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS test/source_low/memory_stability.loom-test)
+list(REMOVE_ITEM _GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_BE73FC6D ${_GLOB_TEST/SOURCE_LOW/MEMORY_STABILITY_LOOM-TEST_BE73FC6D})
 if(LOOM_TARGET_ARCH_AMDGPU)
 loom_check_test_suite(
   NAME
     loom_check_file_test
   SRCS
-    "${_GLOB_TEST_SOURCE_LOW_X_LOOM_TEST}"
+    "${_GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_BE73FC6D}"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/async_empty.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/async_gather.loom-test"
@@ -623,7 +650,7 @@ loom_check_compile_tests(
   SRC
     "test/source_low/source_low_memory_global_atomic_gfx9_4_generic.loom-test"
   REGISTERED_SRCS
-    "${_GLOB_TEST_SOURCE_LOW_X_LOOM_TEST}"
+    "${_GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_BE73FC6D}"
   TARGETS
     loom::target::amdgpu::gfx9-4-generic
     loom::target::amdgpu::gfx942

@@ -260,12 +260,15 @@ def _s_sendmsg_overlay() -> AmdgpuDescriptorOverlay:
         mnemonic="s_sendmsg",
         encoding_name="ENC_SOPP",
         semantic_tag="control.message.send",
-        schedule_class=_SCHEDULE_MODE_CONTROL,
+        schedule_class=_SCHEDULE_MESSAGE,
         operands=(),
         immediate_fields=("SIMM16",),
         immediates=(_u32_immediate("message"),),
         implicit_operands=(_implicit_m0_input(),),
-        effects=(_CACHE_CONTROL_EFFECT,),
+        effects=(
+            _CACHE_CONTROL_EFFECT,
+            Effect(EffectKind.WRITE, counter_id=_COUNTER_SMEM),
+        ),
         flags=(DescriptorFlag.SIDE_EFFECTING,),
         asm_forms=_asm(
             mnemonic="s_sendmsg",
@@ -283,11 +286,16 @@ def _s_sendmsg_rtn_b32_overlay() -> AmdgpuDescriptorOverlay:
         mnemonic="s_sendmsg_rtn_b32",
         encoding_name="ENC_SOP1",
         semantic_tag="control.message.send.return.u32",
-        schedule_class=_SCHEDULE_MODE_CONTROL,
+        schedule_class=_SCHEDULE_MESSAGE,
         operands=(AmdgpuOperandOverlay("SDST", _sgpr_result()),),
         immediate_fields=("SSRC0",),
         immediates=(_SENDMSG_RTN_MESSAGE_IMMEDIATE,),
-        effects=(_CACHE_CONTROL_EFFECT,),
+        # The message has no memory alias, but writes SDST asynchronously through
+        # LGKM/KM. Its explicit counter also owns the result storage lease.
+        effects=(
+            _CACHE_CONTROL_EFFECT,
+            Effect(EffectKind.READ, counter_id=_COUNTER_SMEM),
+        ),
         flags=(DescriptorFlag.SIDE_EFFECTING,),
     )
 

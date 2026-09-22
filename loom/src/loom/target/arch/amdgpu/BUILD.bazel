@@ -12,6 +12,7 @@ load(
 )
 load(
     "//loom/build_tools/bazel:loom_check.bzl",
+    "loom_check_test",
     "loom_check_test_suite",
 )
 
@@ -530,9 +531,21 @@ loom_cc_library(
     ],
 )
 
+loom_check_test(
+    name = "memory_stability",
+    src = "test/source_low/memory_stability.loom-test",
+    compile_targets = [
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/amdgpu:gfx1200",
+    ],
+)
+
 loom_check_test_suite(
     name = "loom_check_file_test",
-    srcs = glob(["test/source_low/*.loom-test"]),
+    srcs = glob(
+        ["test/source_low/*.loom-test"],
+        exclude = ["test/source_low/memory_stability.loom-test"],
+    ),
     compile_targets = {
         "test/source_low/source_low_memory_global_atomic_gfx9_4_generic.loom-test": [
             "//loom/target/amdgpu:gfx9-4-generic",

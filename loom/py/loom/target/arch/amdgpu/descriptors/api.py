@@ -1118,7 +1118,12 @@ def _amdgpu_storage_lease_counter_masks(
     read_counter_mask = 0
     write_counter_mask = 0
     for effect in descriptor.effects:
-        if not _amdgpu_storage_lease_effect_is_dependency_memory(effect):
+        # External-resource reads can complete asynchronously without aliasing
+        # memory. Their explicit counter protects the destination storage too.
+        if (
+            effect.counter_id == 0
+            and not _amdgpu_storage_lease_effect_is_dependency_memory(effect)
+        ):
             continue
         if effect.kind is EffectKind.READ:
             read_counter_mask |= _amdgpu_effect_counter_mask(

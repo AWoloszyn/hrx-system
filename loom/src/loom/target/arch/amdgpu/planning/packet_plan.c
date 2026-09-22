@@ -55,8 +55,9 @@ iree_status_t loom_amdgpu_packet_plan_build(
   }
   if (iree_status_is_ok(status)) {
     status = loom_amdgpu_wait_state_plan_build(
-        schedule, allocation, processor_properties, &out_plan->vopd_plan,
-        matrix_coexecution, arena, &transient_arena, &out_plan->wait_states);
+        schedule, allocation, processor_properties, &out_plan->wait_plan,
+        &out_plan->vopd_plan, matrix_coexecution, arena, &transient_arena,
+        &out_plan->wait_states);
   }
   iree_arena_deinitialize(&transient_arena);
   return status;

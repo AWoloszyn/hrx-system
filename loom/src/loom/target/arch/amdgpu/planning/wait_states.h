@@ -33,6 +33,7 @@ extern "C" {
 #endif
 
 struct loom_amdgpu_vopd_plan_t;
+struct loom_amdgpu_wait_plan_t;
 struct loom_amdgpu_matrix_coexecution_t;
 struct loom_amdgpu_processor_info_t;
 
@@ -142,13 +143,15 @@ iree_string_view_t loom_amdgpu_wait_state_action_name(
     loom_amdgpu_wait_state_action_t action);
 
 // Builds fixed AMDGPU wait-state insertions from the final scheduled,
-// allocated, and VOPD-packetized low function. |vopd_plan| may be NULL when
-// the target has no native packetization. The caller must keep the input plans
-// immutable and |arena| alive for as long as |out_plan| is used.
+// allocated, and VOPD-packetized low function. Elided authored waits in
+// |wait_plan| provide no instruction-slot progress. |vopd_plan| may be NULL
+// when the target has no native packetization. The caller must keep the input
+// plans immutable and |arena| alive for as long as |out_plan| is used.
 iree_status_t loom_amdgpu_wait_state_plan_build(
     const loom_low_schedule_table_t* schedule,
     const loom_low_allocation_table_t* allocation,
     const struct loom_amdgpu_processor_properties_t* processor_properties,
+    const struct loom_amdgpu_wait_plan_t* wait_plan,
     const struct loom_amdgpu_vopd_plan_t* vopd_plan,
     struct loom_amdgpu_matrix_coexecution_t* matrix_coexecution,
     iree_arena_allocator_t* arena, iree_arena_allocator_t* transient_arena,

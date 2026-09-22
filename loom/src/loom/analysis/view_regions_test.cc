@@ -7,6 +7,7 @@
 #include "loom/analysis/view_regions.h"
 
 #include <cstdint>
+#include <tuple>
 
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
@@ -17,6 +18,7 @@
 #include "loom/ops/buffer/ops.h"
 #include "loom/ops/encoding/ops.h"
 #include "loom/ops/index/ops.h"
+#include "loom/ops/kernel/ops.h"
 #include "loom/ops/scf/ops.h"
 #include "loom/ops/test/ops.h"
 #include "loom/ops/type_registry.h"
@@ -38,6 +40,7 @@ class ViewRegionsTest : public ::testing::Test {
     RegisterDialect(LOOM_DIALECT_BUFFER, loom_buffer_dialect_vtables);
     RegisterDialect(LOOM_DIALECT_ENCODING, loom_encoding_dialect_vtables);
     RegisterDialect(LOOM_DIALECT_INDEX, loom_index_dialect_vtables);
+    RegisterDialect(LOOM_DIALECT_KERNEL, loom_kernel_dialect_vtables);
     RegisterDialect(LOOM_DIALECT_SCF, loom_scf_dialect_vtables);
     RegisterDialect(LOOM_DIALECT_TEST, loom_test_dialect_vtables);
     RegisterDialect(LOOM_DIALECT_VECTOR, loom_vector_dialect_vtables);
@@ -181,8 +184,10 @@ class ViewRegionsTest : public ::testing::Test {
     return loom_encoding_layout_strided_result(op);
   }
 
-  loom_type_t ViewType1D(int64_t extent, loom_value_id_t layout) {
-    loom_type_t type = loom_type_shaped_1d(LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_F32,
+  loom_type_t ViewType1D(
+      int64_t extent, loom_value_id_t layout,
+      loom_scalar_type_t element_type = LOOM_SCALAR_TYPE_F32) {
+    loom_type_t type = loom_type_shaped_1d(LOOM_TYPE_VIEW, element_type,
                                            loom_dim_pack_static(extent), 0);
     type.encoding_id = (uint16_t)layout;
     type.encoding_flags = LOOM_ENCODING_FLAG_SSA;
@@ -197,6 +202,62 @@ class ViewRegionsTest : public ::testing::Test {
     type.encoding_id = (uint16_t)layout;
     type.encoding_flags = LOOM_ENCODING_FLAG_SSA;
     return type;
+  }
+
+  loom_value_id_t BuildNoAliasBuffer(
+      loom_value_id_t buffer, loom_value_fact_memory_space_t memory_space =
+                                  LOOM_VALUE_FACT_MEMORY_SPACE_GLOBAL) {
+    loom_op_t* space = nullptr;
+    IREE_CHECK_OK(loom_buffer_assume_memory_space_build(
+        &builder_, memory_space, buffer, loom_type_buffer(),
+        LOOM_LOCATION_UNKNOWN, &space));
+    const loom_value_id_t buffer_with_space =
+        loom_buffer_assume_memory_space_result(space);
+    const loom_type_t buffer_type = loom_type_buffer();
+    loom_op_t* noalias = nullptr;
+    IREE_CHECK_OK(loom_buffer_assume_noalias_build(
+        &builder_, &buffer_with_space, 1, &buffer_type, 1,
+        LOOM_LOCATION_UNKNOWN, &noalias));
+    return loom_op_results(noalias)[0];
+  }
+
+  loom_value_id_t BuildView(
+      loom_value_id_t buffer,
+      loom_scalar_type_t element_type = LOOM_SCALAR_TYPE_F32) {
+    const loom_value_id_t layout = BuildDenseLayout();
+    const loom_value_id_t base =
+        loom_index_constant_result(BuildOffsetConstant(0));
+    loom_op_t* view = nullptr;
+    IREE_CHECK_OK(loom_buffer_view_build(&builder_, buffer, base,
+                                         ViewType1D(4, layout, element_type),
+                                         LOOM_LOCATION_UNKNOWN, &view));
+    return loom_buffer_view_result(view);
+  }
+
+  loom_value_id_t BuildReadOnlyView(loom_value_id_t buffer) {
+    const loom_value_id_t view = BuildView(buffer);
+    const int64_t indices[] = {0};
+    loom_op_t* load = nullptr;
+    IREE_CHECK_OK(loom_vector_load_build(&builder_, 0, 0, view, nullptr, 0,
+                                         indices, 1, 0, 0, VectorType1D(4),
+                                         LOOM_LOCATION_UNKNOWN, &load));
+    return view;
+  }
+
+  loom_value_id_t DefineScalarArg(loom_scalar_type_t element_type) {
+    loom_value_id_t value = LOOM_VALUE_ID_INVALID;
+    IREE_CHECK_OK(loom_builder_define_block_arg(
+        &builder_, loom_region_entry_block(loom_func_like_body(function_)),
+        loom_type_scalar(element_type), &value));
+    return value;
+  }
+
+  bool RootIsStable(loom_view_region_table_t* table, loom_value_id_t view) {
+    const loom_view_region_t* region = nullptr;
+    IREE_CHECK_OK(loom_view_region_table_get(table, view, &region));
+    return loom_view_region_table_root_is_stable(table, region->root_value_id,
+                                                 region->alias_scope_id,
+                                                 region->memory_space);
   }
 
   loom_type_t VectorType1D(int64_t extent) {
@@ -379,6 +440,252 @@ TEST_F(ViewRegionsTest, ProvesDisjointReadAndWriteViewsInOneSlab) {
   EXPECT_EQ(write_region->access_flags, LOOM_VIEW_ACCESS_WRITE);
   EXPECT_EQ(loom_view_region_table_root_access_flags(&table, buffer),
             LOOM_VIEW_ACCESS_READ | LOOM_VIEW_ACCESS_WRITE);
+  EXPECT_FALSE(RootIsStable(&table, loom_buffer_view_result(read_view_op)));
+}
+
+TEST_F(ViewRegionsTest, UnknownEffectsPreventStorageStability) {
+  const loom_value_id_t buffer = DefineBufferArg();
+  const loom_value_id_t view = BuildReadOnlyView(BuildNoAliasBuffer(buffer));
+  loom_op_t* opaque = nullptr;
+  IREE_ASSERT_OK(loom_test_clause_copy_build(&builder_, buffer, buffer,
+                                             LOOM_LOCATION_UNKNOWN, &opaque));
+  loom_value_fact_table_t facts = {};
+  ComputeFacts(&facts);
+  loom_view_region_table_t table = {};
+  Analyze(&facts, &table);
+  EXPECT_EQ(loom_view_region_table_root_access_flags(&table, buffer),
+            LOOM_VIEW_ACCESS_READ);
+  EXPECT_FALSE(RootIsStable(&table, view));
+}
+
+TEST_F(ViewRegionsTest, UnmodeledFencePreventsStorageStability) {
+  const loom_value_id_t buffer = DefineBufferArg();
+  const loom_value_id_t view = BuildReadOnlyView(BuildNoAliasBuffer(buffer));
+  loom_op_t* fence = nullptr;
+  IREE_ASSERT_OK(loom_test_memory_fence_build(
+      &builder_, buffer, loom_type_buffer(), LOOM_LOCATION_UNKNOWN, &fence));
+  loom_value_fact_table_t facts = {};
+  ComputeFacts(&facts);
+  loom_view_region_table_t table = {};
+  Analyze(&facts, &table);
+  EXPECT_EQ(loom_view_region_table_root_access_flags(&table, buffer),
+            LOOM_VIEW_ACCESS_READ);
+  EXPECT_FALSE(RootIsStable(&table, view));
+}
+
+TEST_F(ViewRegionsTest, RawByteWriteSharesTypedViewRoot) {
+  const loom_value_id_t buffer = DefineBufferArg();
+  const loom_value_id_t unique = BuildNoAliasBuffer(buffer);
+  const loom_value_id_t view = BuildReadOnlyView(unique);
+  const loom_value_id_t base =
+      loom_index_constant_result(BuildOffsetConstant(0));
+  const loom_value_id_t byte = DefineScalarArg(LOOM_SCALAR_TYPE_I32);
+  loom_op_t* store = nullptr;
+  IREE_ASSERT_OK(loom_buffer_store_i8_build(&builder_, byte, unique, base,
+                                            LOOM_LOCATION_UNKNOWN, &store));
+  loom_value_fact_table_t facts = {};
+  ComputeFacts(&facts);
+  loom_view_region_table_t table = {};
+  Analyze(&facts, &table);
+  EXPECT_EQ(loom_view_region_table_root_access_flags(&table, buffer),
+            LOOM_VIEW_ACCESS_READ | LOOM_VIEW_ACCESS_WRITE);
+  EXPECT_FALSE(RootIsStable(&table, view));
+}
+
+TEST_F(ViewRegionsTest, ReadOnlyStorageRequiresAliasOrConstantProof) {
+  const loom_value_id_t unique =
+      BuildReadOnlyView(BuildNoAliasBuffer(DefineBufferArg()));
+  const loom_value_id_t unmarked = BuildReadOnlyView(DefineBufferArg());
+  loom_op_t* constant = nullptr;
+  IREE_ASSERT_OK(loom_buffer_assume_memory_space_build(
+      &builder_, LOOM_VALUE_FACT_MEMORY_SPACE_CONSTANT, DefineBufferArg(),
+      loom_type_buffer(), LOOM_LOCATION_UNKNOWN, &constant));
+  const loom_value_id_t immutable =
+      BuildReadOnlyView(loom_buffer_assume_memory_space_result(constant));
+  const loom_value_id_t unread =
+      BuildView(BuildNoAliasBuffer(DefineBufferArg()));
+
+  loom_value_fact_table_t facts = {};
+  ComputeFacts(&facts);
+  loom_view_region_table_t table = {};
+  Analyze(&facts, &table);
+  EXPECT_TRUE(RootIsStable(&table, unique));
+  EXPECT_FALSE(RootIsStable(&table, unmarked));
+  EXPECT_TRUE(RootIsStable(&table, immutable));
+  EXPECT_FALSE(RootIsStable(&table, unread));
+}
+
+class AtomicStorageStabilityTest
+    : public ViewRegionsTest,
+      public ::testing::WithParamInterface<
+          std::tuple<loom_atomic_ordering_t, loom_atomic_scope_t, bool>> {};
+
+TEST_P(AtomicStorageStabilityTest, AcquisitionInterferesWithSharedStorage) {
+  const auto [ordering, scope, shared_stable] = GetParam();
+  const loom_value_id_t global =
+      BuildReadOnlyView(BuildNoAliasBuffer(DefineBufferArg()));
+  const loom_value_id_t workgroup = BuildReadOnlyView(BuildNoAliasBuffer(
+      DefineBufferArg(), LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP));
+  const loom_value_id_t private_view = BuildReadOnlyView(BuildNoAliasBuffer(
+      DefineBufferArg(), LOOM_VALUE_FACT_MEMORY_SPACE_PRIVATE));
+  const loom_value_id_t constant = BuildReadOnlyView(BuildNoAliasBuffer(
+      DefineBufferArg(), LOOM_VALUE_FACT_MEMORY_SPACE_CONSTANT));
+  // The token's memory space does not bound the acquired payload's space.
+  const loom_value_id_t token =
+      BuildView(BuildNoAliasBuffer(DefineBufferArg(),
+                                   LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP),
+                LOOM_SCALAR_TYPE_I32);
+  const loom_value_id_t value = DefineScalarArg(LOOM_SCALAR_TYPE_I32);
+  const int64_t indices[] = {0};
+  loom_op_t* atomic = nullptr;
+  IREE_ASSERT_OK(loom_view_atomic_rmw_build(
+      &builder_, 0, LOOM_ATOMIC_KIND_ADDI, value, token, nullptr, 0, indices, 1,
+      ordering, scope, 0, 0, loom_type_scalar(LOOM_SCALAR_TYPE_I32),
+      LOOM_LOCATION_UNKNOWN, &atomic));
+
+  loom_value_fact_table_t facts = {};
+  ComputeFacts(&facts);
+  loom_view_region_table_t table = {};
+  Analyze(&facts, &table);
+  EXPECT_EQ(RootIsStable(&table, global), shared_stable);
+  EXPECT_EQ(RootIsStable(&table, workgroup), shared_stable);
+  EXPECT_TRUE(RootIsStable(&table, private_view));
+  EXPECT_TRUE(RootIsStable(&table, constant));
+  EXPECT_FALSE(RootIsStable(&table, token));
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ViewRegions, AtomicStorageStabilityTest,
+    ::testing::Values(std::make_tuple(LOOM_ATOMIC_ORDERING_RELAXED,
+                                      LOOM_ATOMIC_SCOPE_DEVICE, true),
+                      std::make_tuple(LOOM_ATOMIC_ORDERING_RELEASE,
+                                      LOOM_ATOMIC_SCOPE_DEVICE, true),
+                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
+                                      LOOM_ATOMIC_SCOPE_DEVICE, false),
+                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQ_REL,
+                                      LOOM_ATOMIC_SCOPE_DEVICE, false),
+                      std::make_tuple(LOOM_ATOMIC_ORDERING_SEQ_CST,
+                                      LOOM_ATOMIC_SCOPE_DEVICE, false),
+                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
+                                      LOOM_ATOMIC_SCOPE_THREAD, true),
+                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
+                                      LOOM_ATOMIC_SCOPE_SUBGROUP, false),
+                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
+                                      LOOM_ATOMIC_SCOPE_WORKGROUP, false),
+                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
+                                      LOOM_ATOMIC_SCOPE_SYSTEM, false)));
+
+class CompareExchangeStorageStabilityTest
+    : public ViewRegionsTest,
+      public ::testing::WithParamInterface<
+          std::tuple<loom_atomic_ordering_t, loom_atomic_ordering_t, bool>> {};
+
+TEST_P(CompareExchangeStorageStabilityTest, AcquiringOrderingsInterfere) {
+  const auto [success_ordering, failure_ordering, stable] = GetParam();
+  const loom_value_id_t payload =
+      BuildReadOnlyView(BuildNoAliasBuffer(DefineBufferArg()));
+  const loom_value_id_t token =
+      BuildView(BuildNoAliasBuffer(DefineBufferArg()), LOOM_SCALAR_TYPE_I32);
+  const loom_value_id_t expected = DefineScalarArg(LOOM_SCALAR_TYPE_I32);
+  const loom_value_id_t replacement = DefineScalarArg(LOOM_SCALAR_TYPE_I32);
+  const int64_t indices[] = {0};
+  loom_op_t* atomic = nullptr;
+  IREE_ASSERT_OK(loom_view_atomic_cmpxchg_build(
+      &builder_, 0, expected, replacement, token, nullptr, 0, indices, 1,
+      success_ordering, failure_ordering, LOOM_ATOMIC_SCOPE_DEVICE, 0, 0,
+      loom_type_scalar(LOOM_SCALAR_TYPE_I32), LOOM_LOCATION_UNKNOWN, &atomic));
+
+  loom_value_fact_table_t facts = {};
+  ComputeFacts(&facts);
+  loom_view_region_table_t table = {};
+  Analyze(&facts, &table);
+  EXPECT_EQ(RootIsStable(&table, payload), stable);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ViewRegions, CompareExchangeStorageStabilityTest,
+    ::testing::Values(std::make_tuple(LOOM_ATOMIC_ORDERING_RELEASE,
+                                      LOOM_ATOMIC_ORDERING_RELAXED, true),
+                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQUIRE,
+                                      LOOM_ATOMIC_ORDERING_RELAXED, false),
+                      std::make_tuple(LOOM_ATOMIC_ORDERING_ACQ_REL,
+                                      LOOM_ATOMIC_ORDERING_ACQUIRE, false)));
+
+class FenceStorageStabilityTest
+    : public ViewRegionsTest,
+      public ::testing::WithParamInterface<std::tuple<
+          loom_value_fact_memory_space_t, loom_atomic_ordering_t, bool, bool>> {
+};
+
+TEST_P(FenceStorageStabilityTest, InterferenceRespectsOrderingAndMemorySpace) {
+  const auto [memory_space, ordering, global_stable, workgroup_stable] =
+      GetParam();
+  const loom_value_id_t global =
+      BuildReadOnlyView(BuildNoAliasBuffer(DefineBufferArg()));
+  const loom_value_id_t workgroup = BuildReadOnlyView(BuildNoAliasBuffer(
+      DefineBufferArg(), LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP));
+  loom_op_t* fence = nullptr;
+  IREE_ASSERT_OK(loom_kernel_barrier_build(
+      &builder_, memory_space, LOOM_ATOMIC_SCOPE_WORKGROUP, ordering,
+      LOOM_LOCATION_UNKNOWN, &fence));
+
+  loom_value_fact_table_t facts = {};
+  ComputeFacts(&facts);
+  loom_view_region_table_t table = {};
+  Analyze(&facts, &table);
+  EXPECT_EQ(RootIsStable(&table, global), global_stable);
+  EXPECT_EQ(RootIsStable(&table, workgroup), workgroup_stable);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ViewRegions, FenceStorageStabilityTest,
+    ::testing::Values(
+        std::make_tuple(LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP,
+                        LOOM_ATOMIC_ORDERING_ACQ_REL, true, false),
+        std::make_tuple(LOOM_VALUE_FACT_MEMORY_SPACE_GLOBAL,
+                        LOOM_ATOMIC_ORDERING_ACQUIRE, false, true),
+        std::make_tuple(LOOM_VALUE_FACT_MEMORY_SPACE_GLOBAL,
+                        LOOM_ATOMIC_ORDERING_RELEASE, true, true)));
+
+TEST_F(ViewRegionsTest, SubviewWriteSharesStorageRoot) {
+  const loom_value_id_t buffer = DefineBufferArg();
+  const loom_value_id_t view = BuildReadOnlyView(BuildNoAliasBuffer(buffer));
+  const int64_t indices[] = {0};
+  loom_op_t* alias = nullptr;
+  IREE_ASSERT_OK(loom_view_subview_build(
+      &builder_, view, nullptr, 0, indices, 1,
+      loom_module_value_type(module_, view), LOOM_LOCATION_UNKNOWN, &alias));
+  loom_op_t* store = nullptr;
+  IREE_ASSERT_OK(loom_view_store_build(
+      &builder_, 0, 0, DefineScalarArg(LOOM_SCALAR_TYPE_F32),
+      loom_view_subview_result(alias), nullptr, 0, indices, 1, 0, 0,
+      LOOM_LOCATION_UNKNOWN, &store));
+
+  loom_value_fact_table_t facts = {};
+  ComputeFacts(&facts);
+  loom_view_region_table_t table = {};
+  Analyze(&facts, &table);
+  EXPECT_EQ(loom_view_region_table_root_access_flags(&table, buffer),
+            LOOM_VIEW_ACCESS_READ | LOOM_VIEW_ACCESS_WRITE);
+  EXPECT_FALSE(RootIsStable(&table, view));
+}
+
+TEST_F(ViewRegionsTest, WriteWithoutComparableAliasPreventsStorageStability) {
+  const loom_value_id_t buffer = DefineBufferArg();
+  const loom_value_id_t view = BuildReadOnlyView(BuildNoAliasBuffer(buffer));
+  loom_op_t* store = nullptr;
+  IREE_ASSERT_OK(loom_buffer_store_i8_build(
+      &builder_, DefineScalarArg(LOOM_SCALAR_TYPE_I32), DefineBufferArg(),
+      loom_index_constant_result(BuildOffsetConstant(0)), LOOM_LOCATION_UNKNOWN,
+      &store));
+
+  loom_value_fact_table_t facts = {};
+  ComputeFacts(&facts);
+  loom_view_region_table_t table = {};
+  Analyze(&facts, &table);
+  EXPECT_EQ(loom_view_region_table_root_access_flags(&table, buffer),
+            LOOM_VIEW_ACCESS_READ);
+  EXPECT_FALSE(RootIsStable(&table, view));
 }
 
 TEST_F(ViewRegionsTest, PrecomputesReusedMemoryIndexExpression) {

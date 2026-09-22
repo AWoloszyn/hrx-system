@@ -1947,7 +1947,10 @@ static iree_status_t loom_amdgpu_encode_packet(
       loom_amdgpu_encode_wait_packets_before_packet(state, packet));
   IREE_RETURN_IF_ERROR(
       loom_amdgpu_encode_wait_states_before_packet(state, packet));
-  if (loom_low_packet_is_compile_time_only(packet)) {
+  if (loom_low_packet_is_compile_time_only(packet) ||
+      (state->packet_plan.wait_packets != NULL &&
+       loom_amdgpu_wait_plan_elides_node(
+           state->packet_plan.wait_packets->wait_plan, packet->node_index))) {
     return iree_ok_status();
   }
   if (packet->descriptor != NULL) {

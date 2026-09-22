@@ -1,0 +1,64 @@
+// RUN: with-checks emit source-low target=amdgpu:gfx1151 output=low
+
+// AMDGPU acquisition refreshes vector caches. Both register preference and
+// memory selection must keep an externally mutable payload out of scalar caches.
+// A producer waits for the initial reads' acknowledgements before publishing.
+kernel.def @read_after_acquire_publication() {
+  %c1 = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%width, %c1, %c1) : index
+} launch(%payload: buffer, %progress: buffer, %output: buffer) {
+  %payload_aligned, %progress_aligned, %output_aligned = buffer.assume.alignment %payload, %progress, %output {minimum_alignment = 4} : buffer, buffer, buffer
+  %payload_unique, %progress_unique, %output_unique = buffer.assume.noalias %payload_aligned, %progress_aligned, %output_aligned : buffer, buffer, buffer
+  %base = index.constant 0 : offset
+  %lane = kernel.workitem.id<x> : index
+  %pixels = buffer.view %payload_unique[%base] : buffer -> view<1xi32>
+  %notice = buffer.view %progress_unique[%base] : buffer -> view<2xi32>
+  %destination = buffer.view %output_unique[%base] : buffer -> view<32x2xi32>
+  %c0 = scalar.constant 0 : i32
+  %c1 = scalar.constant 1 : i32
+  %before = view.load %pixels[0] : view<1xi32> -> i32
+  %acknowledgement = scalar.addi %before, %c1 : i32
+  view.atomic.reduce<addi> %acknowledgement, %notice[0] {ordering = release, scope = device} : i32, view<2xi32>
+  scf.while {
+    %seen = view.atomic.rmw<addi> %c0, %notice[1] {ordering = acquire, scope = device} : i32, view<2xi32> -> i32
+    %pending = scalar.cmpi eq, %seen, %c0 : i32
+    scf.condition %pending : i1
+  } do {
+    scf.yield
+  }
+  %after = view.load %pixels[0] : view<1xi32> -> i32
+  view.store %before, %destination[%lane, 0] : i32, view<32x2xi32>
+  view.store %after, %destination[%lane, 1] : i32, view<32x2xi32>
+  kernel.return
+}
+
+// ----
+CHECK: %before = global_load_*
+CHECK: %after = global_load_*
+CHECK-NOT: * = s_load_dword *
+
+// ====
+
+// Immutable storage retains scalar loads even when another root is acquired.
+kernel.def @constant_across_acquire() {
+  %c1 = index.constant 1 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index
+} launch(%input: buffer, %progress: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %constant = buffer.assume.memory_space<constant> %input : buffer
+  %input_aligned, %progress_aligned, %output_aligned = buffer.assume.alignment %constant, %progress, %output {minimum_alignment = 4} : buffer, buffer, buffer
+  %source_unique, %progress_unique, %output_unique = buffer.assume.noalias %input_aligned, %progress_aligned, %output_aligned : buffer, buffer, buffer
+  %source = buffer.view %source_unique[%base] : buffer -> view<1xi32>
+  %notice = buffer.view %progress_unique[%base] : buffer -> view<1xi32>
+  %destination = buffer.view %output_unique[%base] : buffer -> view<1xi32>
+  %c0 = scalar.constant 0 : i32
+  %seen = view.atomic.rmw<addi> %c0, %notice[0] {ordering = acquire, scope = device} : i32, view<1xi32> -> i32
+  %value = view.load %source[0] : view<1xi32> -> i32
+  view.store %value, %destination[0] : i32, view<1xi32>
+  kernel.return
+}
+
+// ----
+CHECK: %value = s_load_dword *
+CHECK-NOT: * = global_load_*

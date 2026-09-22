@@ -7,11 +7,12 @@
 // AMDGPU wait-counter planning over scheduled target-low functions.
 //
 // The shared low scheduler records target-neutral descriptor facts in scheduled
-// order. This layer owns the AMDGPU interpretation of those facts: memory
-// packets create outstanding wait-counter work, explicit wait packets bound
-// or drain counters, and missing waits are reported as planned insertions
-// before the packet that needs the wait. The plan is a table only; IR
-// materialization is a later target-owned pass.
+// order. This layer owns the AMDGPU interpretation of those facts: asynchronous
+// packets create outstanding counter work, and explicit waits bound or drain
+// counters. The immutable plan retains missing waits as insertions and
+// redundant authored full waits as elisions. Packetization, fixed-delay
+// planning, and native emission consume these decisions without changing the
+// source IR.
 
 #ifndef LOOM_TARGET_ARCH_AMDGPU_PLANNING_WAIT_PLAN_H_
 #define LOOM_TARGET_ARCH_AMDGPU_PLANNING_WAIT_PLAN_H_
@@ -48,13 +49,13 @@ typedef enum loom_amdgpu_wait_plan_reason_e {
   LOOM_AMDGPU_WAIT_PLAN_REASON_UNKNOWN = 0,
   // Explicit wait packet in the low stream bounds or drains this counter.
   LOOM_AMDGPU_WAIT_PLAN_REASON_EXPLICIT_PACKET = 1,
-  // A consumer uses a value produced by an outstanding memory load.
+  // A consumer uses an outstanding asynchronous result.
   LOOM_AMDGPU_WAIT_PLAN_REASON_SSA_USE = 2,
   // A barrier observes memory that may still have outstanding packets.
   LOOM_AMDGPU_WAIT_PLAN_REASON_BARRIER = 3,
   // Reason identifier 4 is reserved to keep report identifiers stable.
   // A packet overwrites physical registers that still receive an outstanding
-  // memory-read result.
+  // asynchronous result.
   LOOM_AMDGPU_WAIT_PLAN_REASON_READ_RESULT_REUSE = 5,
   // An RDNA VALU consumes a nearby TRANS result before va_vdst is drained.
   LOOM_AMDGPU_WAIT_PLAN_REASON_TRANS_RESULT_USE = 6,
@@ -135,7 +136,21 @@ typedef struct loom_amdgpu_wait_plan_t {
   const loom_amdgpu_wait_plan_action_t* actions;
   // Number of action records.
   iree_host_size_t action_count;
+  // Node-indexed bitset of redundant authored full memory waits. NULL when no
+  // wait is elided. These nodes emit neither an instruction nor counter
+  // progress; packetization, fixed-delay planning, and emission share this
+  // decision.
+  const uint64_t* elided_wait_nodes;
 } loom_amdgpu_wait_plan_t;
+
+// Returns whether the canonical counter walk proved an authored wait redundant.
+// A NULL plan preserves every authored packet.
+static inline bool loom_amdgpu_wait_plan_elides_node(
+    const loom_amdgpu_wait_plan_t* plan, uint32_t node_index) {
+  return plan != NULL && plan->elided_wait_nodes != NULL &&
+         (plan->elided_wait_nodes[node_index / 64] &
+          (UINT64_C(1) << (node_index % 64))) != 0;
+}
 
 // Returns the stable diagnostic spelling for an AMDGPU wait counter id.
 iree_string_view_t loom_amdgpu_wait_counter_name(uint16_t counter_id);

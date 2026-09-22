@@ -24,20 +24,6 @@
 #include "loom/util/cfg_graph.h"
 #include "loom/util/fact_table.h"
 
-static bool loom_amdgpu_source_memory_root_is_read_only(
-    const loom_low_source_memory_access_plan_t* plan,
-    const loom_view_region_table_t* view_regions) {
-  if (view_regions == NULL ||
-      plan->alias_scope_id == LOOM_VALUE_FACT_ALIAS_SCOPE_ID_NONE) {
-    return false;
-  }
-  const loom_view_access_flags_t access_flags =
-      loom_view_region_table_root_access_flags(view_regions,
-                                               plan->root_value_id);
-  return iree_all_bits_set(access_flags, LOOM_VIEW_ACCESS_READ) &&
-         !iree_any_bit_set(access_flags, LOOM_VIEW_ACCESS_WRITE);
-}
-
 static bool loom_amdgpu_source_memory_terms_prefer_vgpr(
     const loom_module_t* module, const loom_value_fact_table_t* fact_table,
     const loom_view_region_table_t* view_regions,
@@ -97,7 +83,9 @@ static bool loom_amdgpu_source_memory_access_prefers_vgpr(
           plan.cache_policy.build_flags,
           LOOM_VECTOR_MEMORY_CACHE_POLICY_BUILD_FLAG_SCOPE |
               LOOM_VECTOR_MEMORY_CACHE_POLICY_BUILD_FLAG_TEMPORAL) ||
-      !loom_amdgpu_source_memory_root_is_read_only(&plan, view_regions) ||
+      !loom_view_region_table_root_is_stable(view_regions, plan.root_value_id,
+                                             plan.alias_scope_id,
+                                             plan.memory_space) ||
       loom_amdgpu_source_memory_terms_prefer_vgpr(
           module, fact_table, view_regions, analysis, &plan)) {
     return true;

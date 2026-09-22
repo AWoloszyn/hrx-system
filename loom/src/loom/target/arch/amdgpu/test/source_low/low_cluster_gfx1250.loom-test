@@ -39,7 +39,6 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @cluster_disjoint_workgr
   cluster_load_async_to_lds_b128 v0, v1, s[4:5]
   s_wait_asynccnt asynccnt(0)
   ds_write_b128 v2, v[8:11] offset:0
-  s_wait_asynccnt 0
   s_endpgm
 
 // ====
@@ -60,7 +59,6 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @cluster_overlapping_wor
   cluster_load_async_to_lds_b128 v0, v1, s[4:5]
   s_wait_asynccnt asynccnt(0)
   ds_write_b128 v2, v[8:11] offset:0
-  s_wait_asynccnt 0
   s_endpgm
 
 // ====
@@ -81,7 +79,6 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @cluster_unknown_workgro
   cluster_load_async_to_lds_b128 v0, v1, s[4:5]
   s_wait_asynccnt asynccnt(0)
   ds_write_b128 v2, v[8:11] offset:0
-  s_wait_asynccnt 0
   s_endpgm
 
 // ====

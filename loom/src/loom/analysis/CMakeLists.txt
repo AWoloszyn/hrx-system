@@ -1231,6 +1231,7 @@ loom_cc_library(
     loom::ir::facts
     loom::ops::buffer
     loom::ops::encoding
+    loom::ops::kernel
     loom::ops::op_defs
     loom::ops::view
     loom::util::fact_table
@@ -1251,6 +1252,7 @@ loom_cc_test(
     loom::ops::buffer
     loom::ops::encoding
     loom::ops::index
+    loom::ops::kernel
     loom::ops::scf
     loom::ops::test
     loom::ops::type_registry

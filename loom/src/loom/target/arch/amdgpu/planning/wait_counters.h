@@ -21,7 +21,7 @@ enum loom_amdgpu_wait_counter_e {
   LOOM_AMDGPU_WAIT_COUNTER_VMEM_STORE = 2,
   // LDS/DS dependency and completion counter.
   LOOM_AMDGPU_WAIT_COUNTER_LDS = 3,
-  // Scalar-memory dependency counter.
+  // Scalar-memory and message dependency counter (LGKM/KM).
   LOOM_AMDGPU_WAIT_COUNTER_SMEM = 4,
   // ALU dependency counter used by depctr-style wait packets.
   LOOM_AMDGPU_WAIT_COUNTER_ALU = 5,
