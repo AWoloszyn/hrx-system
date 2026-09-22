@@ -128,7 +128,10 @@ loom_test(
         "amdgpu_hal_actual.loom",
         "generated_tensor_cases.loom",
     ],
-    execution_profiles = [AMDGPU_HARDWARE_PROFILE],
+    execution_profiles = [
+        AMDGPU_HARDWARE_PROFILE,
+        AMDGPU_ACCESS_PROFILE,
+    ],
 )
 
 loom_test(
@@ -361,4 +364,16 @@ loom_test(
     name = "tsan_test",
     srcs = ["//loom/src/loom/test/corpus/sanitizer:amdgpu_tsan_actual.loom"],
     execution_profiles = [AMDGPU_TSAN_PROFILE],
+)
+
+iree_execution_test_suite(
+    name = "check_requirements_test",
+    data = ["check_requirements.loom"],
+    manifests = ["check-requirements.test.json"],
+    tags = ["hostonly"],
+    target_compatible_with = loom_config_compatible_with(["//loom/config/execute:amdgpu_hal"]),
+    tools = {
+        "iree-benchmark-loom": "//loom/src/loom/tools/iree-benchmark-loom",
+        "iree-test-loom": "//loom/src/loom/tools/iree-test-loom",
+    },
 )

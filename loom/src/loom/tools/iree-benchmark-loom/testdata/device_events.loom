@@ -1,0 +1,13 @@
+check.case @no_events {
+  check.expect.event<device> {count = 0, type = "asan_report"}
+  check.return
+}
+
+check.benchmark<@no_events> @no_events_benchmark
+
+check.case @missing_event {
+  check.expect.event<device> {count = 1, type = "asan_report"}
+  check.return
+}
+
+check.benchmark<@missing_event> @missing_event_benchmark

@@ -376,6 +376,8 @@ typedef struct loom_testbench_case_plan_t {
   iree_string_view_t name;
   // True when the check.case is public testbench API.
   bool is_public;
+  // True when an expectation observes sample-scoped HAL device events.
+  bool has_device_event_expectation;
   // Parameter plans in source order.
   const loom_testbench_parameter_plan_t* parameters;
   // Number of entries in |parameters|.

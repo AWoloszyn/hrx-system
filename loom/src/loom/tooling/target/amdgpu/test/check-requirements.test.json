@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "runs scalar cases and skips unavailable device requirements",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/check_requirements.loom"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"case_count\":2",
+          "\"sample_count\":1",
+          "\"skipped_case_count\":1",
+          "\"case\":\"scalar_case\"",
+          "\"failure_count\":0",
+          "\"code\":\"provider_unavailable\""
+        ]
+      }
+    },
+    {
+      "name": "skips benchmarks whose device requirement is unavailable",
+      "run": {
+        "tool": "iree-benchmark-loom",
+        "args": [
+          "{srcdir}/check_requirements.loom",
+          "--iterations=1",
+          "--warmup-iterations=0",
+          "--output-format=jsonl"
+        ]
+      },
+      "stdout": {
+        "contains": [
+          "\"state\":\"skipped\"",
+          "\"failed_benchmark_count\":0"
+        ]
+      }
+    }
+  ]
+}

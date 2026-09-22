@@ -75,9 +75,6 @@ IREE_FLAG_NAMED(string, sanitizer_reporting, "sanitizer-reporting", "default",
 enum {
   // Target-linked requirement providers.
   IREE_TEST_LOOM_MAX_REQUIREMENT_PROVIDERS = 8,
-  // Maximum device events retained per sample for structured event
-  // expectations.
-  IREE_TEST_LOOM_DEVICE_EVENT_CAPACITY = 256,
 };
 
 typedef struct iree_test_loom_file_provider_t {
@@ -223,24 +220,10 @@ static bool iree_test_loom_case_has_kernel_launch(
   return case_plan->kernel_launch_count != 0;
 }
 
-static bool iree_test_loom_case_has_device_event_expectation(
-    const loom_testbench_case_plan_t* case_plan) {
-  for (iree_host_size_t i = 0; i < case_plan->expectation_count; ++i) {
-    const loom_testbench_expectation_plan_t* expectation =
-        &case_plan->expectations[i];
-    if (expectation->kind == LOOM_TESTBENCH_EXPECTATION_EVENT &&
-        iree_string_view_equal(expectation->event.provider,
-                               IREE_SV("device"))) {
-      return true;
-    }
-  }
-  return false;
-}
-
 static bool iree_test_loom_selected_cases_have_device_event_expectation(
     loom_testbench_case_plan_list_t cases) {
   for (iree_host_size_t i = 0; i < cases.count; ++i) {
-    if (iree_test_loom_case_has_device_event_expectation(cases.values[i])) {
+    if (cases.values[i]->has_device_event_expectation) {
       return true;
     }
   }
@@ -806,7 +789,7 @@ int iree_test_loom_main(int argc, char** argv,
     if (iree_status_is_ok(status) &&
         iree_test_loom_selected_cases_have_device_event_expectation(selected)) {
       status = loom_testbench_device_event_capture_initialize(
-          IREE_TEST_LOOM_DEVICE_EVENT_CAPACITY, allocator,
+          LOOM_TESTBENCH_DEVICE_EVENT_DEFAULT_CAPACITY, allocator,
           &device_event_capture);
       if (iree_status_is_ok(status)) {
         device_event_capture_initialized = true;
