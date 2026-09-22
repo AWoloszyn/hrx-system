@@ -2915,9 +2915,129 @@ iree_status_t loom_module_make_parameterized_attr_array(
       module, attributes.values, attributes.count, /*depth=*/0, out_attr);
 }
 
+// One sorted update and the base range it consumes. The merge records these
+// positions once, before allocating the exact result, so materialization only
+// copies retained ranges and canonicalizes replacement values.
+typedef struct loom_attr_dict_update_step_t {
+  // Ordinal of the borrowed update, sorted by its key spelling.
+  uint32_t update_index;
+  // Unchanged base entries to copy before applying this update.
+  uint16_t prefix_count;
+  // First unconsumed base entry after this update.
+  uint16_t next_base_index;
+} loom_attr_dict_update_step_t;
+
+typedef struct loom_attr_dict_update_order_t {
+  // Module that owns every validated update key.
+  const loom_module_t* module;
+  // Borrowed updates whose ordinals are sorted.
+  const loom_named_attr_update_t* updates;
+} loom_attr_dict_update_order_t;
+
+static bool loom_module_attr_dict_update_less(
+    const loom_attr_dict_update_order_t* order,
+    const loom_attr_dict_update_step_t* lhs,
+    const loom_attr_dict_update_step_t* rhs) {
+  return iree_string_view_compare(
+             loom_string_table_get(&order->module->strings,
+                                   order->updates[lhs->update_index].name_id),
+             loom_string_table_get(&order->module->strings,
+                                   order->updates[rhs->update_index].name_id)) <
+         0;
+}
+
+LOOM_DEFINE_ADAPTIVE_SORT_WITH_CONTEXT(loom_module_sort_attr_dict_updates,
+                                       loom_attr_dict_update_step_t,
+                                       const loom_attr_dict_update_order_t*,
+                                       loom_module_attr_dict_update_less)
+
+static iree_status_t loom_module_merge_attr_dict_updates(
+    loom_module_t* module, loom_named_attr_slice_t base_entries,
+    loom_named_attr_update_slice_t updates, loom_attr_dict_update_step_t* steps,
+    loom_attribute_t* out_attr) {
+  for (iree_host_size_t i = 0; i < updates.count; ++i) {
+    steps[i] = (loom_attr_dict_update_step_t){.update_index = (uint32_t)i};
+  }
+  const loom_attr_dict_update_order_t order = {module, updates.updates};
+  loom_module_sort_attr_dict_updates(&order, steps, updates.count);
+
+  iree_host_size_t base_index = 0;
+  iree_host_size_t result_count = base_entries.count;
+  for (iree_host_size_t i = 0; i < updates.count; ++i) {
+    const loom_named_attr_update_t* update =
+        &updates.updates[steps[i].update_index];
+    iree_string_view_t key =
+        loom_string_table_get(&module->strings, update->name_id);
+    if (i > 0 &&
+        updates.updates[steps[i - 1].update_index].name_id == update->name_id) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "duplicate dict attribute update key '%.*s'",
+                              (int)key.size, key.data);
+    }
+    iree_host_size_t prefix_start = base_index;
+    while (base_index < base_entries.count &&
+           iree_string_view_compare(
+               loom_string_table_get(&module->strings,
+                                     base_entries.entries[base_index].name_id),
+               key) < 0) {
+      ++base_index;
+    }
+    steps[i].prefix_count = (uint16_t)(base_index - prefix_start);
+    bool found = base_index < base_entries.count &&
+                 base_entries.entries[base_index].name_id == update->name_id;
+    base_index += found;
+    steps[i].next_base_index = (uint16_t)base_index;
+    result_count += !update->remove;
+    result_count -= found;
+  }
+  if (result_count > UINT16_MAX) {
+    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                            "dict attribute replacement has %" PRIhsz
+                            " entries, exceeding max %u",
+                            result_count, (unsigned)UINT16_MAX);
+  }
+
+  loom_named_attr_t* result_entries = NULL;
+  if (result_count > 0) {
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(&module->arena, result_count,
+                                                   sizeof(*result_entries),
+                                                   (void**)&result_entries));
+  }
+  base_index = 0;
+  iree_host_size_t result_index = 0;
+  for (iree_host_size_t i = 0; i < updates.count; ++i) {
+    if (steps[i].prefix_count) {
+      memcpy(result_entries + result_index, base_entries.entries + base_index,
+             steps[i].prefix_count * sizeof(*result_entries));
+      result_index += steps[i].prefix_count;
+    }
+    base_index = steps[i].next_base_index;
+    const loom_named_attr_update_t* update =
+        &updates.updates[steps[i].update_index];
+    if (!update->remove) {
+      loom_attribute_t canonical_value = {0};
+      IREE_RETURN_IF_ERROR(loom_module_canonicalize_attr_value(
+          module, /*descriptor=*/NULL, update->value, /*depth=*/1,
+          &canonical_value));
+      result_entries[result_index++] = (loom_named_attr_t){
+          .name_id = update->name_id,
+          .reserved = 0,
+          .value = canonical_value,
+      };
+    }
+  }
+  if (base_index < base_entries.count) {
+    memcpy(result_entries + result_index, base_entries.entries + base_index,
+           (base_entries.count - base_index) * sizeof(*result_entries));
+  }
+  *out_attr = loom_make_canonical_attr_dict(result_entries, result_count);
+  return iree_ok_status();
+}
+
 iree_status_t loom_module_replace_canonical_attr_dict(
     loom_module_t* module, loom_named_attr_slice_t base_entries,
     loom_named_attr_update_slice_t updates, loom_attribute_t* out_attr) {
+  *out_attr = loom_attr_absent();
   if (base_entries.count > 0 && !base_entries.entries) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -2928,110 +3048,39 @@ iree_status_t loom_module_replace_canonical_attr_dict(
         IREE_STATUS_INVALID_ARGUMENT,
         "non-empty dict attribute update list has a NULL update pointer");
   }
-  if (base_entries.count > UINT16_MAX || updates.count > UINT16_MAX ||
-      base_entries.count + updates.count > UINT16_MAX) {
+  if (base_entries.count > UINT16_MAX || updates.count > UINT16_MAX) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                            "dict attribute replacement would exceed %u "
+                            "dict attribute replacement inputs exceed %u "
                             "entries (%" PRIhsz " base + %" PRIhsz " updates)",
                             (unsigned)UINT16_MAX, base_entries.count,
                             updates.count);
   }
-
   loom_attribute_t base_attr =
       loom_make_canonical_attr_dict(base_entries.entries, base_entries.count);
   IREE_RETURN_IF_ERROR(
       loom_module_verify_canonical_attr_dict(module, base_attr));
-
   for (iree_host_size_t i = 0; i < updates.count; ++i) {
-    iree_string_view_t key_name = iree_string_view_empty();
+    iree_string_view_t key = iree_string_view_empty();
     IREE_RETURN_IF_ERROR(loom_module_resolve_attr_dict_key_name(
-        module, updates.updates[i].name_id, &key_name));
-    for (iree_host_size_t j = 0; j < i; ++j) {
-      if (updates.updates[j].name_id == updates.updates[i].name_id) {
-        return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                                "duplicate dict attribute update key '%.*s'",
-                                (int)key_name.size, key_name.data);
-      }
-    }
+        module, updates.updates[i].name_id, &key));
   }
 
-  if (base_entries.count == 0 && updates.count == 0) {
-    *out_attr = loom_make_canonical_attr_dict(NULL, 0);
-    return iree_ok_status();
+  loom_attr_dict_update_step_t inline_steps[16];
+  if (updates.count <= IREE_ARRAYSIZE(inline_steps)) {
+    return loom_module_merge_attr_dict_updates(module, base_entries, updates,
+                                               inline_steps, out_attr);
   }
-
-  iree_host_size_t max_count = base_entries.count + updates.count;
-  loom_named_attr_t* merged_entries = NULL;
-  if (max_count > 0) {
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(&module->arena, max_count,
-                                                   sizeof(loom_named_attr_t),
-                                                   (void**)&merged_entries));
+  iree_arena_allocator_t scratch_arena;
+  iree_arena_initialize(module->arena.block_pool, &scratch_arena);
+  loom_attr_dict_update_step_t* steps = NULL;
+  iree_status_t status = iree_arena_allocate_array(
+      &scratch_arena, updates.count, sizeof(*steps), (void**)&steps);
+  if (iree_status_is_ok(status)) {
+    status = loom_module_merge_attr_dict_updates(module, base_entries, updates,
+                                                 steps, out_attr);
   }
-  iree_host_size_t merged_count = base_entries.count;
-  if (base_entries.count > 0) {
-    memcpy(merged_entries, base_entries.entries,
-           base_entries.count * sizeof(loom_named_attr_t));
-  }
-
-  for (iree_host_size_t update_index = 0; update_index < updates.count;
-       ++update_index) {
-    const loom_named_attr_update_t* update = &updates.updates[update_index];
-    iree_string_view_t update_key_name = iree_string_view_empty();
-    IREE_RETURN_IF_ERROR(loom_module_resolve_attr_dict_key_name(
-        module, update->name_id, &update_key_name));
-
-    iree_host_size_t entry_index = 0;
-    bool found_existing = false;
-    while (entry_index < merged_count) {
-      iree_string_view_t entry_key_name = iree_string_view_empty();
-      IREE_RETURN_IF_ERROR(loom_module_resolve_attr_dict_key_name(
-          module, merged_entries[entry_index].name_id, &entry_key_name));
-      int comparison =
-          iree_string_view_compare(entry_key_name, update_key_name);
-      if (comparison == 0) {
-        found_existing = true;
-        break;
-      }
-      if (comparison > 0) {
-        break;
-      }
-      ++entry_index;
-    }
-
-    if (update->remove) {
-      if (!found_existing) {
-        continue;
-      }
-      for (iree_host_size_t i = entry_index + 1; i < merged_count; ++i) {
-        merged_entries[i - 1] = merged_entries[i];
-      }
-      --merged_count;
-      continue;
-    }
-
-    loom_attribute_t canonical_value = {0};
-    IREE_RETURN_IF_ERROR(loom_module_canonicalize_attr_value(
-        module, /*descriptor=*/NULL, update->value, /*depth=*/1,
-        &canonical_value));
-    if (found_existing) {
-      merged_entries[entry_index].value = canonical_value;
-      merged_entries[entry_index].reserved = 0;
-      continue;
-    }
-
-    for (iree_host_size_t i = merged_count; i > entry_index; --i) {
-      merged_entries[i] = merged_entries[i - 1];
-    }
-    merged_entries[entry_index] = (loom_named_attr_t){
-        .name_id = update->name_id,
-        .reserved = 0,
-        .value = canonical_value,
-    };
-    ++merged_count;
-  }
-
-  *out_attr = loom_make_canonical_attr_dict(merged_entries, merged_count);
-  return iree_ok_status();
+  iree_arena_deinitialize(&scratch_arena);
+  return status;
 }
 
 static iree_status_t loom_module_verify_canonical_attr_header(

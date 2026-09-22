@@ -458,7 +458,11 @@ iree_status_t loom_module_make_parameterized_type(
 // either inserts/replaces one key or removes it. Duplicate keys in |updates|
 // are rejected so patch semantics stay order-independent. Replacement values
 // are recursively canonicalized, unchanged base values are reused by value, and
-// the resulting entry array is arena-owned by |module|.
+// the resulting entry array is arena-owned by |module|. Input arrays remain
+// unchanged; temporary update ordering is released before returning. The entry
+// limit applies to the actual result, including removals and replacements,
+// rather than the sum of the two input counts. Failures leave |*out_attr|
+// absent.
 iree_status_t loom_module_replace_canonical_attr_dict(
     loom_module_t* module, loom_named_attr_slice_t base_entries,
     loom_named_attr_update_slice_t updates, loom_attribute_t* out_attr);
