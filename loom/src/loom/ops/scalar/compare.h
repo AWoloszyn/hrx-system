@@ -42,8 +42,11 @@ bool loom_scalar_cmpi_result_from_facts(loom_scalar_type_t type,
                                         const loom_value_facts_t* rhs_facts,
                                         bool* out_result);
 
-// Proves the result of comparing one non-NaN float SSA value to itself.
-bool loom_scalar_cmpf_same_value_result(uint8_t predicate, bool* out_result);
+// Proves a constant float comparison from operand identity and fastmath flags.
+// NaN-sensitive identities and ord/uno require the comparison's nnan promise.
+bool loom_scalar_cmpf_constant_result(uint8_t predicate, loom_value_id_t lhs,
+                                      loom_value_id_t rhs, uint8_t fastmath,
+                                      bool* out_result);
 
 // Proves a float comparison result from exact operand values.
 bool loom_scalar_cmpf_exact_result(uint8_t predicate, double lhs, double rhs,

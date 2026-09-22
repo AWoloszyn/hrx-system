@@ -3623,6 +3623,13 @@ iree_status_t loom_vector_cmpf_facts(loom_fact_context_t* context,
                                      const loom_value_facts_t* operand_facts,
                                      loom_value_facts_t* result_facts) {
   uint8_t predicate = loom_vector_cmpf_predicate(op);
+  bool result = false;
+  if (loom_scalar_cmpf_constant_result(
+          predicate, loom_vector_cmpf_lhs(op), loom_vector_cmpf_rhs(op),
+          loom_vector_cmpf_fastmath(op), &result)) {
+    return loom_value_facts_make_uniform_element(
+        context, loom_value_facts_exact_i64(result ? 1 : 0), &result_facts[0]);
+  }
   const loom_scalar_type_t scalar_type = loom_type_element_type(
       loom_module_value_type(module, loom_vector_cmpf_lhs(op)));
   loom_value_facts_t lhs = {0};
@@ -3633,7 +3640,6 @@ iree_status_t loom_vector_cmpf_facts(loom_fact_context_t* context,
                                               &rhs)) {
     double lhs_value = 0.0;
     double rhs_value = 0.0;
-    bool result = false;
     loom_value_facts_t element = loom_vector_boolean_range_facts();
     const bool has_known_nan =
         loom_value_facts_is_nan(lhs) || loom_value_facts_is_nan(rhs);
@@ -3669,7 +3675,6 @@ iree_status_t loom_vector_cmpf_facts(loom_fact_context_t* context,
     }
     double lhs_value = 0.0;
     double rhs_value = 0.0;
-    bool result = false;
     lanes[i] = loom_vector_boolean_range_facts();
     const bool has_known_nan =
         loom_value_facts_is_nan(lhs) || loom_value_facts_is_nan(rhs);

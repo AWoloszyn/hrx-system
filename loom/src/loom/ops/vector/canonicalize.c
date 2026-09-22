@@ -12,6 +12,7 @@
 #include "loom/ops/encoding/auxiliary.h"
 #include "loom/ops/index/ops.h"
 #include "loom/ops/op_defs.h"
+#include "loom/ops/scalar/compare.h"
 #include "loom/ops/scalar/ops.h"
 #include "loom/ops/scf/ops.h"
 #include "loom/ops/vector/memory.h"
@@ -1786,56 +1787,6 @@ static iree_status_t loom_vector_canonicalize_select(loom_op_t* op,
   return iree_ok_status();
 }
 
-static bool loom_vector_cmpi_same_operand_result(uint8_t predicate,
-                                                 bool* out_value) {
-  switch ((loom_vector_cmpi_predicate_t)predicate) {
-    case LOOM_VECTOR_CMPI_PREDICATE_EQ:
-    case LOOM_VECTOR_CMPI_PREDICATE_SLE:
-    case LOOM_VECTOR_CMPI_PREDICATE_SGE:
-    case LOOM_VECTOR_CMPI_PREDICATE_ULE:
-    case LOOM_VECTOR_CMPI_PREDICATE_UGE:
-      *out_value = true;
-      return true;
-    case LOOM_VECTOR_CMPI_PREDICATE_NE:
-    case LOOM_VECTOR_CMPI_PREDICATE_SLT:
-    case LOOM_VECTOR_CMPI_PREDICATE_SGT:
-    case LOOM_VECTOR_CMPI_PREDICATE_ULT:
-    case LOOM_VECTOR_CMPI_PREDICATE_UGT:
-      *out_value = false;
-      return true;
-    case LOOM_VECTOR_CMPI_PREDICATE_COUNT_:
-      return false;
-  }
-  return false;
-}
-
-static bool loom_vector_cmpf_same_operand_result(uint8_t predicate,
-                                                 bool* out_value) {
-  switch ((loom_vector_cmpf_predicate_t)predicate) {
-    case LOOM_VECTOR_CMPF_PREDICATE_OGT:
-    case LOOM_VECTOR_CMPF_PREDICATE_OLT:
-    case LOOM_VECTOR_CMPF_PREDICATE_ONE:
-      *out_value = false;
-      return true;
-    case LOOM_VECTOR_CMPF_PREDICATE_UEQ:
-    case LOOM_VECTOR_CMPF_PREDICATE_UGE:
-    case LOOM_VECTOR_CMPF_PREDICATE_ULE:
-      *out_value = true;
-      return true;
-    case LOOM_VECTOR_CMPF_PREDICATE_OEQ:
-    case LOOM_VECTOR_CMPF_PREDICATE_OGE:
-    case LOOM_VECTOR_CMPF_PREDICATE_OLE:
-    case LOOM_VECTOR_CMPF_PREDICATE_ORD:
-    case LOOM_VECTOR_CMPF_PREDICATE_UGT:
-    case LOOM_VECTOR_CMPF_PREDICATE_ULT:
-    case LOOM_VECTOR_CMPF_PREDICATE_UNE:
-    case LOOM_VECTOR_CMPF_PREDICATE_UNO:
-    case LOOM_VECTOR_CMPF_PREDICATE_COUNT_:
-      return false;
-  }
-  return false;
-}
-
 static iree_status_t loom_vector_canonicalize_comparison(
     loom_op_t* op, loom_rewriter_t* rewriter, bool* out_changed) {
   *out_changed = false;
@@ -1844,16 +1795,14 @@ static iree_status_t loom_vector_canonicalize_comparison(
                                                  : loom_vector_cmpf_lhs(op);
   loom_value_id_t rhs = loom_vector_cmpi_isa(op) ? loom_vector_cmpi_rhs(op)
                                                  : loom_vector_cmpf_rhs(op);
-  if (lhs != rhs) {
-    return iree_ok_status();
-  }
-
   bool value = false;
-  bool has_result = loom_vector_cmpi_isa(op)
-                        ? loom_vector_cmpi_same_operand_result(
+  bool has_result =
+      loom_vector_cmpi_isa(op)
+          ? lhs == rhs && loom_scalar_cmpi_same_value_result(
                               loom_vector_cmpi_predicate(op), &value)
-                        : loom_vector_cmpf_same_operand_result(
-                              loom_vector_cmpf_predicate(op), &value);
+          : loom_scalar_cmpf_constant_result(
+                loom_vector_cmpf_predicate(op), lhs, rhs,
+                loom_vector_cmpf_fastmath(op), &value);
   if (!has_result) {
     return iree_ok_status();
   }

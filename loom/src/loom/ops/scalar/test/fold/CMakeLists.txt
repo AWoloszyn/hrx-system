@@ -19,6 +19,7 @@ loom_check_test_suite(
     "bitwisei.loom-test"
     "bitwisei_structural.loom-test"
     "comparison_structural.loom-test"
+    "comparisonf.loom-test"
     "comparisoni.loom-test"
     "conversion_structural.loom-test"
     "conversioni.loom-test"

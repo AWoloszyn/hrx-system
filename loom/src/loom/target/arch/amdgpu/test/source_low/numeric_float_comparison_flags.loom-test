@@ -26,9 +26,10 @@ func.def @non_nan_classifications(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
 }
 
 // ----
-low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @non_nan_classifications(%lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) asm {
-  %ordered = v_cmp_o_f32 %lhs, %rhs
-  %unordered = v_cmp_u_f32 %lhs, %rhs
+low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @non_nan_classifications(%lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>) -> (reg<amdgpu.scc>, reg<amdgpu.scc>, reg<amdgpu.scc>) asm {
+  %16 = s_mov_b32 0
+  %ordered = s_cmp_eq_i32 %16, %16
+  %unordered = s_cmp_lg_i32 %16, %16
   return %ordered, %unordered, %ordered
 }
 
@@ -43,7 +44,27 @@ func.def @independent_nan_permissions(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
 }
 
 // ----
-low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @independent_nan_permissions(%lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr x2>) asm {
+low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @independent_nan_permissions(%lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr x2>, reg<amdgpu.scc>, reg<amdgpu.sgpr x2>) asm {
   %ordinary = v_cmp_o_f32 %lhs, %rhs
-  return %ordinary, %ordinary, %ordinary
+  %15 = s_mov_b32 0
+  %non_nan = s_cmp_eq_i32 %15, %15
+  return %ordinary, %non_nan, %ordinary
+}
+
+// ====
+
+// Early comparison facts eliminate boolean widening before target selection.
+func.def @non_nan_integer_classifications(%lhs: f32, %rhs: f32) -> (i32, i32) {
+  %ordered = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  %unordered = scalar.cmpf<nnan> uno, %lhs, %rhs : f32
+  %ordered_integer = scalar.extui %ordered : i1 to i32
+  %unordered_integer = scalar.extui %unordered : i1 to i32
+  func.return %ordered_integer, %unordered_integer : i32, i32
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @non_nan_integer_classifications(%lhs: reg<amdgpu.vgpr>, %rhs: reg<amdgpu.vgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) asm {
+  %ordered_integer = s_mov_b32 1
+  %unordered_integer = s_mov_b32 0
+  return %ordered_integer, %unordered_integer
 }

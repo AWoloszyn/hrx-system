@@ -73,14 +73,32 @@ func.def @independent_nan_permissions(%lhs: f32, %rhs: f32) -> (i1, i1, i1) {
 
 // ----
 low.func.def target<amd.xdna.aie2p.core> abi(object_function) @independent_nan_permissions(%lhs: reg<aie2p.er>, %rhs: reg<aie2p.er>) -> (reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>) asm {
-  %13 = mov.i32 2147483647
-  %16 = mov.short 1
-  %17 = mov.i32 2139095040
-  %18 = and %lhs, %13
-  %19 = and %rhs, %13
-  %20 = ltu %17, %18
-  %21 = ltu %17, %19
-  %22 = or %20, %21
-  %ordinary = xor %22, %16
-  return %ordinary, %16, %ordinary
+  %14 = mov.i32 2147483647
+  %17 = mov.short 1
+  %18 = mov.i32 2139095040
+  %19 = and %lhs, %14
+  %20 = and %rhs, %14
+  %21 = ltu %18, %19
+  %22 = ltu %18, %20
+  %23 = or %21, %22
+  %ordinary = xor %23, %17
+  return %ordinary, %17, %ordinary
+}
+
+// ====
+
+// Early comparison facts eliminate boolean widening before target selection.
+func.def @non_nan_integer_classifications(%lhs: f32, %rhs: f32) -> (i32, i32) {
+  %ordered = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  %unordered = scalar.cmpf<nnan> uno, %lhs, %rhs : f32
+  %ordered_integer = scalar.extui %ordered : i1 to i32
+  %unordered_integer = scalar.extui %unordered : i1 to i32
+  func.return %ordered_integer, %unordered_integer : i32, i32
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @non_nan_integer_classifications(%lhs: reg<aie2p.er>, %rhs: reg<aie2p.er>) -> (reg<aie2p.er>, reg<aie2p.er>) asm {
+  %ordered_integer = mov.short 1
+  %unordered_integer = mov.short 0
+  return %ordered_integer, %unordered_integer
 }

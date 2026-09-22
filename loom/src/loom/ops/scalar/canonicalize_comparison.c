@@ -238,9 +238,8 @@ iree_status_t loom_scalar_cmpf_canonicalize(loom_op_t* op,
   uint8_t predicate = loom_scalar_cmpf_predicate(op);
 
   bool result = false;
-  if (lhs == rhs &&
-      (op->instance_flags & LOOM_SCALAR_FASTMATHFLAGS_NNAN) != 0 &&
-      loom_scalar_cmpf_same_value_result(predicate, &result)) {
+  if (loom_scalar_cmpf_constant_result(
+          predicate, lhs, rhs, loom_scalar_cmpf_fastmath(op), &result)) {
     return loom_scalar_replace_single_result_with_i64_constant(op, rewriter,
                                                                result ? 1 : 0);
   }

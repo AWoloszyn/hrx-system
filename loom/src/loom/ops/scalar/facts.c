@@ -628,10 +628,9 @@ iree_status_t loom_scalar_cmpf_facts(loom_fact_context_t* context,
                                      const loom_value_facts_t* operand_facts,
                                      loom_value_facts_t* result_facts) {
   bool result = false;
-  if (loom_scalar_cmpf_lhs(op) == loom_scalar_cmpf_rhs(op) &&
-      (loom_scalar_cmpf_fastmath(op) & LOOM_SCALAR_FASTMATHFLAGS_NNAN) != 0 &&
-      loom_scalar_cmpf_same_value_result(loom_scalar_cmpf_predicate(op),
-                                         &result)) {
+  if (loom_scalar_cmpf_constant_result(
+          loom_scalar_cmpf_predicate(op), loom_scalar_cmpf_lhs(op),
+          loom_scalar_cmpf_rhs(op), loom_scalar_cmpf_fastmath(op), &result)) {
     result_facts[0] = loom_value_facts_exact_i64(result ? 1 : 0);
     return iree_ok_status();
   }

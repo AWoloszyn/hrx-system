@@ -1,0 +1,213 @@
+// RUN: pass canonicalize
+
+func.def @same_value_0(%lhs: f32) -> (i1, i1, i1, i1, i1, i1, i1) {
+  %oeq = scalar.cmpf oeq, %lhs, %lhs : f32
+  %ogt = scalar.cmpf ogt, %lhs, %lhs : f32
+  %oge = scalar.cmpf oge, %lhs, %lhs : f32
+  %olt = scalar.cmpf olt, %lhs, %lhs : f32
+  %ole = scalar.cmpf ole, %lhs, %lhs : f32
+  %one = scalar.cmpf one, %lhs, %lhs : f32
+  %ord = scalar.cmpf ord, %lhs, %lhs : f32
+  func.return %oeq, %ogt, %oge, %olt, %ole, %one, %ord : i1, i1, i1, i1, i1, i1, i1
+}
+
+// ----
+func.def @same_value_0(%lhs: f32) -> (i1, i1, i1, i1, i1, i1, i1) {
+  %oeq = scalar.cmpf oeq, %lhs, %lhs : f32
+  %ogt = scalar.constant false : i1
+  %oge = scalar.cmpf oge, %lhs, %lhs : f32
+  %olt = scalar.constant false : i1
+  %ole = scalar.cmpf ole, %lhs, %lhs : f32
+  %one = scalar.constant false : i1
+  %ord = scalar.cmpf ord, %lhs, %lhs : f32
+  func.return %oeq, %ogt, %oge, %olt, %ole, %one, %ord : i1, i1, i1, i1, i1, i1, i1
+}
+
+// ====
+
+func.def @same_value_1(%lhs: f32) -> (i1, i1, i1, i1, i1, i1, i1) {
+  %ueq = scalar.cmpf ueq, %lhs, %lhs : f32
+  %ugt = scalar.cmpf ugt, %lhs, %lhs : f32
+  %uge = scalar.cmpf uge, %lhs, %lhs : f32
+  %ult = scalar.cmpf ult, %lhs, %lhs : f32
+  %ule = scalar.cmpf ule, %lhs, %lhs : f32
+  %une = scalar.cmpf une, %lhs, %lhs : f32
+  %uno = scalar.cmpf uno, %lhs, %lhs : f32
+  func.return %ueq, %ugt, %uge, %ult, %ule, %une, %uno : i1, i1, i1, i1, i1, i1, i1
+}
+
+// ----
+func.def @same_value_1(%lhs: f32) -> (i1, i1, i1, i1, i1, i1, i1) {
+  %ueq = scalar.constant true : i1
+  %ugt = scalar.cmpf ugt, %lhs, %lhs : f32
+  %uge = scalar.constant true : i1
+  %ult = scalar.cmpf ult, %lhs, %lhs : f32
+  %ule = scalar.constant true : i1
+  %une = scalar.cmpf une, %lhs, %lhs : f32
+  %uno = scalar.cmpf uno, %lhs, %lhs : f32
+  func.return %ueq, %ugt, %uge, %ult, %ule, %une, %uno : i1, i1, i1, i1, i1, i1, i1
+}
+
+// ====
+
+func.def @same_value_nnan_0(%lhs: f32) -> (i1, i1, i1, i1, i1, i1, i1) {
+  %oeq = scalar.cmpf<nnan> oeq, %lhs, %lhs : f32
+  %ogt = scalar.cmpf<nnan> ogt, %lhs, %lhs : f32
+  %oge = scalar.cmpf<nnan> oge, %lhs, %lhs : f32
+  %olt = scalar.cmpf<nnan> olt, %lhs, %lhs : f32
+  %ole = scalar.cmpf<nnan> ole, %lhs, %lhs : f32
+  %one = scalar.cmpf<nnan> one, %lhs, %lhs : f32
+  %ord = scalar.cmpf<nnan> ord, %lhs, %lhs : f32
+  func.return %oeq, %ogt, %oge, %olt, %ole, %one, %ord : i1, i1, i1, i1, i1, i1, i1
+}
+
+// ----
+func.def @same_value_nnan_0(%lhs: f32) -> (i1, i1, i1, i1, i1, i1, i1) {
+  %oeq = scalar.constant true : i1
+  %ogt = scalar.constant false : i1
+  %oge = scalar.constant true : i1
+  %olt = scalar.constant false : i1
+  %ole = scalar.constant true : i1
+  %one = scalar.constant false : i1
+  %ord = scalar.constant true : i1
+  func.return %oeq, %ogt, %oge, %olt, %ole, %one, %ord : i1, i1, i1, i1, i1, i1, i1
+}
+
+// ====
+
+func.def @same_value_nnan_1(%lhs: f32) -> (i1, i1, i1, i1, i1, i1, i1) {
+  %ueq = scalar.cmpf<nnan> ueq, %lhs, %lhs : f32
+  %ugt = scalar.cmpf<nnan> ugt, %lhs, %lhs : f32
+  %uge = scalar.cmpf<nnan> uge, %lhs, %lhs : f32
+  %ult = scalar.cmpf<nnan> ult, %lhs, %lhs : f32
+  %ule = scalar.cmpf<nnan> ule, %lhs, %lhs : f32
+  %une = scalar.cmpf<nnan> une, %lhs, %lhs : f32
+  %uno = scalar.cmpf<nnan> uno, %lhs, %lhs : f32
+  func.return %ueq, %ugt, %uge, %ult, %ule, %une, %uno : i1, i1, i1, i1, i1, i1, i1
+}
+
+// ----
+func.def @same_value_nnan_1(%lhs: f32) -> (i1, i1, i1, i1, i1, i1, i1) {
+  %ueq = scalar.constant true : i1
+  %ugt = scalar.constant false : i1
+  %uge = scalar.constant true : i1
+  %ult = scalar.constant false : i1
+  %ule = scalar.constant true : i1
+  %une = scalar.constant false : i1
+  %uno = scalar.constant false : i1
+  func.return %ueq, %ugt, %uge, %ult, %ule, %une, %uno : i1, i1, i1, i1, i1, i1, i1
+}
+
+// ====
+
+func.def @different_values_nnan_0(%lhs: f32, %rhs: f32) -> (i1, i1, i1, i1, i1, i1, i1) {
+  %oeq = scalar.cmpf<nnan> oeq, %lhs, %rhs : f32
+  %ogt = scalar.cmpf<nnan> ogt, %lhs, %rhs : f32
+  %oge = scalar.cmpf<nnan> oge, %lhs, %rhs : f32
+  %olt = scalar.cmpf<nnan> olt, %lhs, %rhs : f32
+  %ole = scalar.cmpf<nnan> ole, %lhs, %rhs : f32
+  %one = scalar.cmpf<nnan> one, %lhs, %rhs : f32
+  %ord = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  func.return %oeq, %ogt, %oge, %olt, %ole, %one, %ord : i1, i1, i1, i1, i1, i1, i1
+}
+
+// ----
+func.def @different_values_nnan_0(%lhs: f32, %rhs: f32) -> (i1, i1, i1, i1, i1, i1, i1) {
+  %oeq = scalar.cmpf<nnan> oeq, %lhs, %rhs : f32
+  %ogt = scalar.cmpf<nnan> ogt, %lhs, %rhs : f32
+  %oge = scalar.cmpf<nnan> oge, %lhs, %rhs : f32
+  %olt = scalar.cmpf<nnan> olt, %lhs, %rhs : f32
+  %ole = scalar.cmpf<nnan> ole, %lhs, %rhs : f32
+  %one = scalar.cmpf<nnan> one, %lhs, %rhs : f32
+  %ord = scalar.constant true : i1
+  func.return %oeq, %ogt, %oge, %olt, %ole, %one, %ord : i1, i1, i1, i1, i1, i1, i1
+}
+
+// ====
+
+func.def @different_values_nnan_1(%lhs: f32, %rhs: f32) -> (i1, i1, i1, i1, i1, i1, i1) {
+  %ueq = scalar.cmpf<nnan> ueq, %lhs, %rhs : f32
+  %ugt = scalar.cmpf<nnan> ugt, %lhs, %rhs : f32
+  %uge = scalar.cmpf<nnan> uge, %lhs, %rhs : f32
+  %ult = scalar.cmpf<nnan> ult, %lhs, %rhs : f32
+  %ule = scalar.cmpf<nnan> ule, %lhs, %rhs : f32
+  %une = scalar.cmpf<nnan> une, %lhs, %rhs : f32
+  %uno = scalar.cmpf<nnan> uno, %lhs, %rhs : f32
+  func.return %ueq, %ugt, %uge, %ult, %ule, %une, %uno : i1, i1, i1, i1, i1, i1, i1
+}
+
+// ----
+func.def @different_values_nnan_1(%lhs: f32, %rhs: f32) -> (i1, i1, i1, i1, i1, i1, i1) {
+  %ueq = scalar.cmpf<nnan> ueq, %lhs, %rhs : f32
+  %ugt = scalar.cmpf<nnan> ugt, %lhs, %rhs : f32
+  %uge = scalar.cmpf<nnan> uge, %lhs, %rhs : f32
+  %ult = scalar.cmpf<nnan> ult, %lhs, %rhs : f32
+  %ule = scalar.cmpf<nnan> ule, %lhs, %rhs : f32
+  %une = scalar.cmpf<nnan> une, %lhs, %rhs : f32
+  %uno = scalar.constant false : i1
+  func.return %ueq, %ugt, %uge, %ult, %ule, %une, %uno : i1, i1, i1, i1, i1, i1, i1
+}
+
+// ====
+
+// Other flags do not exclude NaNs or strengthen a neighboring comparison.
+func.def @independent_permissions(%lhs: f32, %rhs: f32) -> (i1, i1, i1, i1) {
+  %plain = scalar.cmpf ord, %lhs, %rhs : f32
+  %nnan = scalar.cmpf<nnan> ord, %lhs, %rhs : f32
+  %other = scalar.cmpf<reassoc|ninf|nsz|arcp|contract|afn> ord, %lhs, %rhs : f32
+  %same_other = scalar.cmpf<reassoc|ninf|nsz|arcp|contract|afn> oeq, %lhs, %lhs : f32
+  func.return %plain, %nnan, %other, %same_other : i1, i1, i1, i1
+}
+
+// ----
+func.def @independent_permissions(%lhs: f32, %rhs: f32) -> (i1, i1, i1, i1) {
+  %plain = scalar.cmpf ord, %lhs, %rhs : f32
+  %nnan = scalar.constant true : i1
+  %other = scalar.cmpf<reassoc|ninf|nsz|arcp|contract|afn> ord, %lhs, %rhs : f32
+  %same_other = scalar.cmpf<reassoc|ninf|nsz|arcp|contract|afn> oeq, %lhs, %lhs : f32
+  func.return %plain, %nnan, %other, %same_other : i1, i1, i1, i1
+}
+
+// ====
+
+// Exact boolean facts reach widening before target selection.
+func.def @classification_consumers(%lhs: bf16, %rhs: bf16) -> (i32, i64, i64) {
+  %ordered = scalar.cmpf<nnan> ord, %lhs, %rhs : bf16
+  %unordered = scalar.cmpf<nnan> uno, %lhs, %rhs : bf16
+  %wide = scalar.extui %ordered : i1 to i32
+  %lo = test.fact_range_lo %unordered : i1 -> i64
+  %hi = test.fact_range_hi %unordered : i1 -> i64
+  func.return %wide, %lo, %hi : i32, i64, i64
+}
+
+// ----
+func.def @classification_consumers(%lhs: bf16, %rhs: bf16) -> (i32, i64, i64) {
+  %wide = scalar.constant 1 : i32
+  %lo = scalar.constant 0 : i64
+  %hi = scalar.constant 0 : i64
+  func.return %wide, %lo, %hi : i32, i64, i64
+}
+
+// ====
+
+// The identity proof keeps strict NaN, signed-zero and infinity answers.
+func.def @exceptional_values() -> (i1, i1, i1, i1) {
+  %nan = scalar.constant nan : f64
+  %c0 = scalar.constant 0.0 : f64
+  %cn0 = scalar.constant -0.0 : f64
+  %infinity = scalar.constant inf : f64
+  %nan_ordered = scalar.cmpf ord, %nan, %nan : f64
+  %nan_unordered_equal = scalar.cmpf ueq, %nan, %nan : f64
+  %zero_equal = scalar.cmpf<nnan> oeq, %c0, %cn0 : f64
+  %infinity_equal = scalar.cmpf<nnan> oeq, %infinity, %infinity : f64
+  func.return %nan_ordered, %nan_unordered_equal, %zero_equal, %infinity_equal : i1, i1, i1, i1
+}
+
+// ----
+func.def @exceptional_values() -> (i1, i1, i1, i1) {
+  %nan_ordered = scalar.constant false : i1
+  %nan_unordered_equal = scalar.constant true : i1
+  %zero_equal = scalar.constant true : i1
+  %infinity_equal = scalar.constant true : i1
+  func.return %nan_ordered, %nan_unordered_equal, %zero_equal, %infinity_equal : i1, i1, i1, i1
+}
