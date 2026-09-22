@@ -22,6 +22,17 @@ from loom.target.arch.amdgpu.contracts.materializers import (
     ADDRESS_VGPR_MATERIALIZER,
     F32_VGPR_MATERIALIZER,
 )
+from loom.target.arch.amdgpu.contracts.packed_i8 import (
+    PACKED_I8_TYPE as _VEC_I8_PACKED,
+)
+from loom.target.arch.amdgpu.contracts.packed_i8 import (
+    PACKED_I8_TYPE_DIAGNOSTIC as _VEC_I8_PACKED_DIAGNOSTIC,
+)
+from loom.target.arch.amdgpu.contracts.packed_i8 import (
+    packed_i8_add_rule,
+    packed_i8_logical_shift_rules,
+    packed_i8_sub_rule,
+)
 from loom.target.arch.amdgpu.descriptors import (
     AMDGPU_SOURCE_INLINE_F32_VALUES,
     build_amdgpu_contract_descriptor_set,
@@ -274,11 +285,6 @@ _VEC_I16_PACKED = Vector(
     minimum_lanes=2,
     maximum_lanes="LOOM_AMDGPU_MAX_PACKED_I16_LANES",
 )
-_VEC_I8_PACKED = Vector(
-    "i8",
-    minimum_lanes=1,
-    maximum_lanes="LOOM_AMDGPU_MAX_PACKED_I8_LANES",
-)
 _VEC_F8E4M3_PACKED = Vector(
     "f8E4M3",
     minimum_lanes=1,
@@ -305,8 +311,6 @@ _F32_ABS_MASK = 0x7FFFFFFF
 _F32_ONE_BITS = 0x3F800000
 _F32_SIGN_MASK = 0x80000000
 _BF16_ROUND_BIAS = 0x7FFF
-_PACKED_I8_LOW7_MASK = 0x7F7F7F7F
-_PACKED_I8_SIGN_MASK = 0x80808080
 
 _VEC_I32_DIAGNOSTIC = GuardDiagnostic(
     subject_role="type",
@@ -347,11 +351,6 @@ _VEC_I16_PACKED_DIAGNOSTIC = GuardDiagnostic(
     subject_role="type",
     subject_name="vector<i16>",
     constraint_key="amdgpu.arithmetic.vector_i16_packed",
-)
-_VEC_I8_PACKED_DIAGNOSTIC = GuardDiagnostic(
-    subject_role="type",
-    subject_name="vector<i8>",
-    constraint_key="amdgpu.arithmetic.vector_i8_packed",
 )
 _VEC_F8_PACKED_DIAGNOSTIC = GuardDiagnostic(
     subject_role="type",
@@ -2314,162 +2313,6 @@ def _literal_binary_rule(
     )
 
 
-def _packed_i8_add_rule() -> DescriptorRule:
-    and_literal = _descriptor("amdgpu.v_and_b32.lit")
-    add = _descriptor("amdgpu.v_add_u32")
-    xor_bits = _descriptor("amdgpu.v_xor_b32")
-    result_type = {"dst": ValueRef.result("result")}
-    return DescriptorRule(
-        source_op=vector.vector_addi,
-        descriptor=add,
-        guards=(
-            *_typed_guards(("lhs", "rhs", "result"), _VEC_I8_PACKED),
-            Guard.descriptor_available(and_literal),
-            Guard.descriptor_available(add),
-            Guard.descriptor_available(xor_bits),
-        ),
-        emit=(
-            EmitDescriptorOp(
-                descriptor=and_literal,
-                operands={"rhs": ValueRef.operand("lhs")},
-                results={"dst": ValueRef.temporary("lhs_low")},
-                result_types=result_type,
-                immediates={"imm32": _PACKED_I8_LOW7_MASK},
-                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
-            ),
-            EmitDescriptorOp(
-                descriptor=and_literal,
-                operands={"rhs": ValueRef.operand("rhs")},
-                results={"dst": ValueRef.temporary("rhs_low")},
-                result_types=result_type,
-                immediates={"imm32": _PACKED_I8_LOW7_MASK},
-                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
-            ),
-            EmitDescriptorOp(
-                descriptor=add,
-                operands={
-                    "lhs": ValueRef.temporary("lhs_low"),
-                    "rhs": ValueRef.temporary("rhs_low"),
-                },
-                results={"dst": ValueRef.temporary("low_sum")},
-                result_types=result_type,
-                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
-            ),
-            EmitDescriptorOp(
-                descriptor=xor_bits,
-                operands={
-                    "lhs": ValueRef.operand("lhs"),
-                    "rhs": ValueRef.operand("rhs"),
-                },
-                results={"dst": ValueRef.temporary("high_xor")},
-                result_types=result_type,
-                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
-            ),
-            EmitDescriptorOp(
-                descriptor=and_literal,
-                operands={"rhs": ValueRef.temporary("high_xor")},
-                results={"dst": ValueRef.temporary("high_bits")},
-                result_types=result_type,
-                immediates={"imm32": _PACKED_I8_SIGN_MASK},
-                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
-            ),
-            EmitDescriptorOp(
-                descriptor=xor_bits,
-                operands={
-                    "lhs": ValueRef.temporary("low_sum"),
-                    "rhs": ValueRef.temporary("high_bits"),
-                },
-                results={"dst": ValueRef.result("result")},
-                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
-            ),
-        ),
-    )
-
-
-def _packed_i8_sub_rule() -> DescriptorRule:
-    and_literal = _descriptor("amdgpu.v_and_b32.lit")
-    or_literal = _descriptor("amdgpu.v_or_b32.lit")
-    sub = _descriptor("amdgpu.v_sub_u32")
-    xor_bits = _descriptor("amdgpu.v_xor_b32")
-    xor_literal = _descriptor("amdgpu.v_xor_b32.lit")
-    result_type = {"dst": ValueRef.result("result")}
-    return DescriptorRule(
-        source_op=vector.vector_subi,
-        descriptor=sub,
-        guards=(
-            *_typed_guards(("lhs", "rhs", "result"), _VEC_I8_PACKED),
-            Guard.descriptor_available(and_literal),
-            Guard.descriptor_available(or_literal),
-            Guard.descriptor_available(sub),
-            Guard.descriptor_available(xor_bits),
-            Guard.descriptor_available(xor_literal),
-        ),
-        emit=(
-            EmitDescriptorOp(
-                descriptor=or_literal,
-                operands={"rhs": ValueRef.operand("lhs")},
-                results={"dst": ValueRef.temporary("lhs_guard")},
-                result_types=result_type,
-                immediates={"imm32": _PACKED_I8_SIGN_MASK},
-                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
-            ),
-            EmitDescriptorOp(
-                descriptor=and_literal,
-                operands={"rhs": ValueRef.operand("rhs")},
-                results={"dst": ValueRef.temporary("rhs_low")},
-                result_types=result_type,
-                immediates={"imm32": _PACKED_I8_LOW7_MASK},
-                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
-            ),
-            EmitDescriptorOp(
-                descriptor=sub,
-                operands={
-                    "lhs": ValueRef.temporary("lhs_guard"),
-                    "rhs": ValueRef.temporary("rhs_low"),
-                },
-                results={"dst": ValueRef.temporary("low_diff")},
-                result_types=result_type,
-                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
-            ),
-            EmitDescriptorOp(
-                descriptor=xor_bits,
-                operands={
-                    "lhs": ValueRef.operand("lhs"),
-                    "rhs": ValueRef.operand("rhs"),
-                },
-                results={"dst": ValueRef.temporary("high_xor")},
-                result_types=result_type,
-                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
-            ),
-            EmitDescriptorOp(
-                descriptor=xor_literal,
-                operands={"rhs": ValueRef.temporary("high_xor")},
-                results={"dst": ValueRef.temporary("high_toggled")},
-                result_types=result_type,
-                immediates={"imm32": _PACKED_I8_SIGN_MASK},
-                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
-            ),
-            EmitDescriptorOp(
-                descriptor=and_literal,
-                operands={"rhs": ValueRef.temporary("high_toggled")},
-                results={"dst": ValueRef.temporary("high_bits")},
-                result_types=result_type,
-                immediates={"imm32": _PACKED_I8_SIGN_MASK},
-                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
-            ),
-            EmitDescriptorOp(
-                descriptor=xor_bits,
-                operands={
-                    "lhs": ValueRef.temporary("low_diff"),
-                    "rhs": ValueRef.temporary("high_bits"),
-                },
-                results={"dst": ValueRef.result("result")},
-                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
-            ),
-        ),
-    )
-
-
 def _f32_literal_binary_rule(
     source_op: Op,
     type_pattern: TypePattern,
@@ -3851,7 +3694,7 @@ def _rules() -> tuple[ContractCase, ...]:
                 _VEC_I16_PACKED_STORAGE,
                 "amdgpu.v_pk_add_u16",
             ),
-            _packed_i8_add_rule(),
+            packed_i8_add_rule(_DESCRIPTOR_SET),
             _literal_binary_rule(
                 vector.vector_addi,
                 "amdgpu.v_add_u32.lit",
@@ -3869,7 +3712,7 @@ def _rules() -> tuple[ContractCase, ...]:
     )
     rules.extend(
         (
-            _packed_i8_sub_rule(),
+            packed_i8_sub_rule(_DESCRIPTOR_SET),
             _binary_rule(
                 vector.vector_subi,
                 _VEC_I16_PACKED_STORAGE,
@@ -3985,6 +3828,7 @@ def _rules() -> tuple[ContractCase, ...]:
                 ),
             )
         )
+    rules.extend(packed_i8_logical_shift_rules(_DESCRIPTOR_SET))
     rules.extend(_vector_bitfield_rules())
     rules.extend(_vector_packed_integer_recipe_rules())
     for source_op, descriptor_key in (

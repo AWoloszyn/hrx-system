@@ -26,6 +26,7 @@ iree_py_library(
     "materializers.py"
     "matrix.py"
     "memory.py"
+    "packed_i8.py"
     "reduce.py"
     "sanitizer.py"
     "view.py"

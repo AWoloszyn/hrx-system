@@ -1132,6 +1132,27 @@ def volatile_memory(arrays):
     return declarations + "\n".join(cases)
 
 
+def packed_byte_shifts(arrays):
+    # Every byte position sees all 256 values, with different adjacent bytes.
+    values = [(packet + lane * 73) % 256 for packet in range(256) for lane in range(8)]
+    expected = []
+    for packet in range(256):
+        lanes = values[packet * 8 : (packet + 1) * 8]
+        for amount in range(8):
+            expected.extend((value * 2**amount) % 256 for value in lanes)
+            expected.extend(value // 2**amount for value in lanes)
+        expected.extend((value * 2 ** (value % 8)) % 256 for value in lanes)
+        expected.extend(value // 2 ** (value % 8) for value in lanes)
+        expected.extend(255 if value % 2 else 0 for value in lanes)
+    case = Case(arrays, "packed_byte_shifts_values", "i8", len(expected))
+    inputs = [signed_bits(value, 8) for value in values]
+    case.array("input", inputs)
+    case.array("original", inputs)
+    case.launch("packed_byte_shifts", "%input, %output", f"tensor<{len(values)}xi8>, tensor<{len(expected)}xi8>")
+    case.lines.append(f"  check.expect.bitwise actual(%input) expected(%original) : tensor<{len(values)}xi8>")
+    return "kernel.decl @packed_byte_shifts() launch(%input: buffer, %output: buffer)\n\n" + case.finish([signed_bits(value, 8) for value in expected])
+
+
 def pack_iq4xs(scale, group_scales, codes):
     """Pack logical scales/codes into the 136-byte IQ4_XS storage layout."""
     scale_codes = [value + 32 for value in group_scales]
@@ -1199,6 +1220,7 @@ KERNEL_GROUPS = {
     "integer_increment": lambda arrays: integer_increment(arrays, 8, BYTE_INPUTS) + "\n" + integer_increment(arrays, 64, WIDE_INPUTS),
     "iq4xs_blocks": iq4xs_blocks,
     "llama_rms_norm": lambda arrays: launch_grid("llama_rms_norm", 3) + rms_norm(arrays),
+    "packed_byte_shifts": packed_byte_shifts,
     "pointer_walk": pointer_walk,
     "record_values": record_values,
     "scheduled_sum": scheduled_sum,
