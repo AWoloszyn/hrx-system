@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @logical_constants() -> (f32, f64, i1, i1) {
   %narrow = scalar.constant 1.25 : f32
   %wide = scalar.constant 4294967297.5 : f64

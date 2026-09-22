@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def public @selected_truncated(%input: vector<4xi32>, %left: i64, %right: i64) -> (i32) {
   %value = vector.extract %input[0] : vector<4xi32> -> i32
   %threshold = scalar.constant 0 : i32

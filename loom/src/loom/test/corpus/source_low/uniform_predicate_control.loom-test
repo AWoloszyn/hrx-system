@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 kernel.def @uniform_select_guard() {
   %unit = index.constant 1 : index
   %width = index.constant 64 : index

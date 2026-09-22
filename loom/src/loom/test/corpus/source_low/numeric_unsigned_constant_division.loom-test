@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @quotient_by_three(%input: i32) -> (i32) {
   %divisor = scalar.constant 3 : i32
   %quotient = scalar.divui %input, %divisor : i32

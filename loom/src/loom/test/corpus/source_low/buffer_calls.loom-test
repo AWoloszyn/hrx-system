@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @buffer_pair(%a: buffer, %tag: i64, %b: buffer) -> (buffer, i64, buffer) {
   func.return %b, %tag, %a : buffer, i64, buffer
 }

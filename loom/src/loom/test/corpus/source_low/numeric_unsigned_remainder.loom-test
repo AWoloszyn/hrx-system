@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @unsigned_remainder_i32(%value: i32, %divisor: i32) -> (i32) {
   %remainder = scalar.remui %value, %divisor : i32
   func.return %remainder : i32

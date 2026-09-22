@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @index_constants() -> (index, index, offset) {
   %minimum = index.constant -2147483648 : index
   %maximum = index.constant 2147483647 : index

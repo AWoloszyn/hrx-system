@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @vector_extf_bf16x32(%input: vector<32xbf16>) -> (vector<32xf32>) {
   %converted = vector.extf %input : vector<32xbf16> to vector<32xf32>
   func.return %converted : vector<32xf32>

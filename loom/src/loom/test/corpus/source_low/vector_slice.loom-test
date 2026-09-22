@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @i32x4_slice_middle(%values: vector<4xi32>) -> (vector<2xi32>) {
   %middle = vector.slice %values[1] : vector<4xi32> -> vector<2xi32>
   func.return %middle : vector<2xi32>

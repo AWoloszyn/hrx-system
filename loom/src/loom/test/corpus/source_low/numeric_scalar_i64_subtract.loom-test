@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @uniform_subtract(%lhs: i64, %rhs: i64) -> (i64) {
   %difference = scalar.subi %lhs, %rhs : i64
   func.return %difference : i64

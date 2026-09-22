@@ -275,13 +275,15 @@ stack into each unit-test executable.
 
 Source-lowering programs with meaningful consumers on several targets belong in
 the [common corpus](src/loom/test/corpus/source_low/README.md). Shared input without
-its own expectations is exported `.loom` data, not a standalone roundtrip test.
-Target fixtures consume it through `TEMPLATE`, which copies the authoritative
-source without declaration overlays or semantic additions. Target profiles are
-compiler options in RUN directives. Each consumer contributes lowered-output
-expectations, execution results, or precise diagnostics for intentional rejection
-behavior. Successful compilation alone is not a correctness assertion, and a
-missing implementation is a work item rather than expected corpus behavior.
+its own expectations is exported data, not a standalone roundtrip test. The
+`.loom-test` suffix may select the multi-case container format; build registration
+determines whether that container is a test. Target fixtures consume it through
+`TEMPLATE`, which copies the authoritative source without declaration overlays or
+semantic additions. Target profiles are compiler options in RUN directives. Each
+consumer contributes lowered-output expectations, execution results, or precise
+diagnostics for intentional rejection behavior. Successful compilation alone is
+not a correctness assertion, and a missing implementation is a work item rather
+than expected corpus behavior.
 
 Corpus membership does not require a copy for every backend or profile. Each
 instantiation needs an independently useful assertion. Mixed fixtures can use

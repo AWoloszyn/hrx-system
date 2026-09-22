@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @turns_f32(%value: f32) -> (f32, f32) {
   %sin = scalar.sinturnsf %value : f32
   %cos = scalar.costurnsf %value : f32
