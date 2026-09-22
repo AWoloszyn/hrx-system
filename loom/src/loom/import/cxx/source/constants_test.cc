@@ -97,5 +97,20 @@ TEST(IntegerConstantTest, PreservesNegativeSignedValues) {
   }
 }
 
+TEST(IntegerConstantTest, ZeroExtendsUnsignedComplementAtSourceWidth) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  for (auto expression : {"~0u", "static_cast<unsigned long long>(~0u)",
+                          "~0xffffffff00000000ULL"}) {
+    SCOPED_TRACE(expression);
+    std::string text =
+        "auto entry() { return " + std::string(expression) + "; }";
+    Source source(view(text), IREE_SV("complement.cpp"), options);
+    auto* result = returned(source);
+    ASSERT_NE(result, nullptr);
+    EXPECT_EQ(integer_constant(source.unit(), result), INT64_C(0xffffffff));
+  }
+}
+
 }  // namespace
 }  // namespace loom::cxx_import

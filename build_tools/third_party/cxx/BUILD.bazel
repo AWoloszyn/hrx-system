@@ -28,4 +28,5 @@ exports_files([
     "qualified_template_calls.patch",
     "record_layout_owner.patch",
     "template_lookahead.patch",
+    "unsigned_complement.patch",
 ])
