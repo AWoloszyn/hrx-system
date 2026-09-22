@@ -26,6 +26,29 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
+    assembly
+  HDRS
+    "assembly.h"
+  SRCS
+    "assembly.cc"
+  DEPS
+    iree::third_party::cxx_parser
+    loom::error::source
+    loom::format::text::parser
+    loom::import::cxx::source::attributes
+    loom::import::cxx::source::error
+    loom::import::cxx::symbol::names
+    loom::import::cxx::value::types
+    loom::ir
+    loom::ops::low
+    loom::verify
+  PUBLIC
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_library(
+  NAME
     atomic
   CXX_STANDARD
     23
@@ -161,6 +184,7 @@ loom_cc_library(
   SRCS
     "intrinsics.cc"
   DEPS
+    ::assembly
     ::atomic
     ::scalar_bindings
     ::shaped

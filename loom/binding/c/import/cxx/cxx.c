@@ -12,6 +12,7 @@
 #include "loomc/iree.h"
 #include "module.h"
 #include "result.h"
+#include "target.h"
 
 IREE_STATIC_ASSERT_ENUM_EQ(LOOMC_CXX_DATA_MODEL_LP64, LOOM_CXX_DATA_MODEL_LP64,
                            "public LP64 layout matches the native importer");
@@ -229,6 +230,9 @@ loomc_status_t loomc_module_import_cxx(
   if (loomc_status_is_ok(status)) {
     native_options.diagnostic_sink =
         (loom_diagnostic_sink_t){loomc_cxx_capture_diagnostic, &invocation};
+    loomc_target_pass_environment_initialize_text_asm_environment(
+        loomc_context_target_pass_environment(context),
+        &native_options.low_asm_environment);
     if (options && options->source_provider.fn) {
       invocation.provider = options->source_provider;
       native_options.source_provider =

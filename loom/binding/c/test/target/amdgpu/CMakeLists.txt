@@ -25,6 +25,22 @@ loom_cc_test(
 )
 endif()
 
+if(LOOM_BUILD AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_IMPORT_CXX AND LOOM_IMPORT_CXX_EMBED_INCLUDES)
+loom_cc_test(
+  NAME
+    cxx_test
+  SRCS
+    "cxx_test.cc"
+  DEPS
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::binding::c::import::cxx
+    loom::binding::c::loomc
+    loom::binding::c::target::amdgpu
+    loom::binding::c::test::test_util
+)
+endif()
+
 if(LOOM_BUILD AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 loom_cc_test(
   NAME

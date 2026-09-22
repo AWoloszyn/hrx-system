@@ -15,6 +15,7 @@
 #include "loom/format/text/parser/context.h"
 #include "loom/format/text/parser/diagnostics.h"
 #include "loom/format/text/parser/format.h"
+#include "loom/format/text/parser/format_signatures.h"
 #include "loom/format/text/parser/locations.h"
 #include "loom/format/text/parser/low_asm.h"
 #include "loom/format/text/parser/pipeline.h"
@@ -1236,6 +1237,48 @@ static iree_status_t loom_parse_module_body(loom_parser_t* parser) {
 // Public API
 //===----------------------------------------------------------------------===//
 
+static iree_status_t loom_parser_initialize(
+    loom_module_t* module, loom_source_range_t source,
+    const loom_text_parse_options_t* options, loom_parser_scope_t* root_scope,
+    loom_parser_t* parser) {
+  loom_source_id_t source_id = LOOM_SOURCE_ID_INVALID;
+  if (!iree_string_view_is_empty(source.filename)) {
+    IREE_RETURN_IF_ERROR(
+        loom_module_register_source(module, source.filename, &source_id));
+  }
+  *parser = (loom_parser_t){
+      .context = module->context,
+      .module = module,
+      .filename = source.filename,
+      .source = source.source,
+      .source_id = source_id,
+      .cached_location =
+          {
+              .source_name = source.filename,
+              .source_id = source_id,
+          },
+      .diagnostic_sink =
+          options ? options->diagnostic_sink : (loom_diagnostic_sink_t){0},
+      .max_errors = options && options->max_errors ? options->max_errors : 20,
+      .scope = root_scope,
+      .definition_scope = {.pop_at = UINT16_MAX},
+      .block_arg_scope = {.value_start = LOOM_VALUE_ID_INVALID},
+  };
+  if (options) {
+    parser->low_asm_environment = options->low_asm_environment;
+  }
+  iree_arena_initialize(module->arena.block_pool, &parser->parser_arena);
+  loom_tokenizer_initialize(iree_string_view_substr(source.source, source.start,
+                                                    source.end - source.start),
+                            source.filename, &parser->parser_arena,
+                            &parser->tokenizer);
+  parser->tokenizer.line = source.start_line;
+  parser->tokenizer.column = source.start_column;
+  loom_builder_initialize(module, &module->arena, loom_module_block(module),
+                          &parser->builder);
+  return iree_ok_status();
+}
+
 static iree_status_t loom_text_parse_impl(
     iree_string_view_t source, iree_string_view_t filename,
     loom_context_t* context, iree_arena_block_pool_t* block_pool,
@@ -1253,55 +1296,22 @@ static iree_status_t loom_text_parse_impl(
   IREE_RETURN_IF_ERROR(loom_module_allocate(context, IREE_SV(""), block_pool,
                                             NULL, context->allocator, &module));
 
-  // Register the source filename for location tracking. This interns the string
-  // into the module so locations can reference it by module-local ID.
-  iree_status_t status = iree_ok_status();
-  loom_source_id_t source_id = LOOM_SOURCE_ID_INVALID;
-  if (!iree_string_view_is_empty(filename)) {
-    status = loom_module_register_source(module, filename, &source_id);
-  }
+  const loom_source_range_t source_range = {
+      .provenance = LOOM_SOURCE_PROVENANCE_EXACT_SOURCE,
+      .filename = filename,
+      .source = source,
+      .end = source.size,
+      .start_line = 1,
+      .start_column = 1,
+  };
+  loom_parser_scope_t root_scope = {0};
+  loom_parser_t parser;
+  iree_status_t status = loom_parser_initialize(module, source_range, options,
+                                                &root_scope, &parser);
   if (!iree_status_is_ok(status)) {
     loom_module_free(module);
     return status;
   }
-
-  // Initialize the parser.
-  loom_parser_scope_t root_scope = {0};
-  loom_parser_t parser = {
-      .context = context,
-      .module = module,
-      .filename = filename,
-      .source = source,
-      .source_id = source_id,
-      .cached_location =
-          {
-              .source_name = filename,
-              .source_id = source_id,
-          },
-      .diagnostic_sink =
-          options ? options->diagnostic_sink : (loom_diagnostic_sink_t){0},
-      .max_errors = options ? options->max_errors : 0,
-      .scope = &root_scope,
-      .definition_scope =
-          {
-              .pop_at = UINT16_MAX,
-          },
-      .block_arg_scope =
-          {
-              .value_start = LOOM_VALUE_ID_INVALID,
-          },
-  };
-  if (options) {
-    parser.low_asm_environment = options->low_asm_environment;
-  }
-  if (parser.max_errors == 0) {
-    parser.max_errors = 20;
-  }
-  iree_arena_initialize(block_pool, &parser.parser_arena);
-  loom_tokenizer_initialize(source, filename, &parser.parser_arena,
-                            &parser.tokenizer);
-  loom_builder_initialize(module, &module->arena, loom_module_block(module),
-                          &parser.builder);
 
   // Parse the module body.
   status = loom_parse_module_body(&parser);
@@ -1385,4 +1395,149 @@ iree_status_t loom_text_parse_with_symbol_references(
   return loom_text_parse_impl(source, filename, context, block_pool, options,
                               symbol_reference_arena, out_symbol_references,
                               out_module);
+}
+
+static iree_status_t loom_parse_low_assembly_function(
+    loom_parser_t* parser, iree_string_view_t representation_contract,
+    loom_symbol_id_t symbol, loom_op_t** out_function) {
+  loom_token_t start = loom_tokenizer_peek(&parser->tokenizer);
+  if (!loom_text_low_asm_environment_is_configured(
+          &parser->low_asm_environment)) {
+    return loom_parser_emit_low_asm_error(
+        parser, start,
+        IREE_SV("Low assembly requires a descriptor environment"));
+  }
+  parser->low_repr.contract_key = representation_contract;
+  parser->low_repr.descriptor_set = loom_low_repr_lookup_descriptor_set(
+      &parser->low_asm_environment.low_repr, representation_contract);
+  if (!parser->low_repr.descriptor_set) {
+    return loom_parser_emit_low_asm_error(
+        parser, start,
+        IREE_SV("function representation contract is not available"));
+  }
+  loom_op_kind_t kind;
+  const loom_op_vtable_t* vtable = loom_context_lookup_op_by_name(
+      parser->context, IREE_SV("low.func.def"), &kind);
+  if (!vtable) {
+    return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
+                            "Low assembly requires the Low dialect");
+  }
+
+  loom_parsed_op_t parsed;
+  loom_parsed_op_initialize(&parsed);
+  loom_string_id_t contract;
+  IREE_RETURN_IF_ERROR(loom_module_intern_string(
+      parser->module, representation_contract, &contract));
+  IREE_RETURN_IF_ERROR(loom_parsed_op_set_attribute(
+      &parsed, &parser->parser_arena,
+      vtable->func_like->repr_contract_attr_index, loom_attr_string(contract)));
+  IREE_RETURN_IF_ERROR(loom_parsed_op_set_attribute(
+      &parsed, &parser->parser_arena, vtable->func_like->callee_attr_index,
+      loom_attr_symbol((loom_symbol_ref_t){.symbol_id = symbol})));
+
+  IREE_RETURN_IF_ERROR(loom_parser_definition_scope_push(parser, 0, 0));
+  const loom_format_element_t arguments = {
+      .kind = LOOM_FORMAT_KIND_FUNC_ARGS,
+      .field_index = LOOM_OPERAND_INDEX_NONE,
+  };
+  IREE_RETURN_IF_ERROR(
+      loom_parse_format_func_args(parser, vtable, &arguments, 0, &parsed));
+  if (parser->error_count) {
+    return iree_ok_status();
+  }
+  if (loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_ARROW)) {
+    const loom_format_element_t results = {
+        .kind = LOOM_FORMAT_KIND_RESULT_TYPE_LIST,
+        .data = LOOM_RESULT_TYPE_LIST_PARENS,
+    };
+    IREE_RETURN_IF_ERROR(loom_parse_format_result_type_list(
+        parser, vtable, start, &results, &parsed,
+        /*is_symbol_definition=*/true));
+  }
+  if (parser->error_count) {
+    return iree_ok_status();
+  }
+  if (loom_tokenizer_try_consume_keyword(&parser->tokenizer,
+                                         IREE_SV("where"))) {
+    loom_attribute_t predicates;
+    IREE_RETURN_IF_ERROR(
+        loom_parse_predicate_list(parser, LOOM_TYPE_PARSE_BODY, &predicates));
+    IREE_RETURN_IF_ERROR(loom_parsed_op_set_attribute(
+        &parsed, &parser->parser_arena,
+        vtable->func_like->predicates_attr_index, predicates));
+  }
+  if (parser->error_count) {
+    return iree_ok_status();
+  }
+  IREE_RETURN_IF_ERROR(loom_parser_definition_scope_pop_if_needed(parser, 0));
+  if (parser->error_count) {
+    return iree_ok_status();
+  }
+  IREE_RETURN_IF_ERROR(
+      loom_parse_format_project_func_args(parser, 0, /*clone_values=*/false));
+
+  loom_region_t* region = NULL;
+  IREE_RETURN_IF_ERROR(loom_parse_low_asm_inherited_region(
+      parser, loom_op_vtable_region_descriptor(vtable, 0), &region));
+  if (parser->error_count) {
+    return iree_ok_status();
+  }
+  if (!loom_tokenizer_at(&parser->tokenizer, LOOM_TOKEN_EOF)) {
+    return loom_parser_emit_unexpected_token(
+        parser, loom_tokenizer_peek(&parser->tokenizer),
+        IREE_SV("end of assembly"));
+  }
+  for (iree_host_size_t index = 0; index < parser->symbol_origins.count &&
+                                   !loom_parser_at_error_limit(parser);
+       ++index) {
+    loom_token_t token = parser->symbol_origins.entries[index].token;
+    loom_diagnostic_param_t parameter = loom_param_string(token.text);
+    IREE_RETURN_IF_ERROR(
+        loom_parser_emit(parser, LOOM_ERR_SYMBOL_002, &parameter, 1, token));
+  }
+  if (parser->error_count) {
+    return iree_ok_status();
+  }
+  region->source_flags |= LOOM_REGION_SOURCE_FLAG_EXPLICIT_LOW_ASM;
+  IREE_RETURN_IF_ERROR(
+      loom_parsed_op_set_region(&parsed, &parser->parser_arena, 0, region));
+  loom_location_id_t location = LOOM_LOCATION_UNKNOWN;
+  if (parser->source_id != LOOM_SOURCE_ID_INVALID) {
+    IREE_RETURN_IF_ERROR(loom_module_add_location(
+        parser->module,
+        loom_location_file_range(
+            parser->source_id, (uint16_t)start.line, (uint16_t)start.column,
+            (uint16_t)parser->tokenizer.consumed_end_line,
+            (uint16_t)parser->tokenizer.consumed_end_column),
+        &location));
+  }
+  return loom_finalize_op(parser, kind, vtable, &parsed, location,
+                          out_function);
+}
+
+iree_status_t loom_text_parse_low_assembly(
+    loom_source_range_t source, iree_string_view_t representation_contract,
+    loom_symbol_id_t symbol, loom_module_t* module,
+    const loom_text_parse_options_t* options, loom_op_t** out_function) {
+  *out_function = NULL;
+  if (source.start > source.end || source.end > source.source.size ||
+      !source.start_line || !source.start_column) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "invalid assembly source range");
+  }
+  loom_parser_scope_t root_scope = {0};
+  loom_parser_t parser;
+  IREE_RETURN_IF_ERROR(
+      loom_parser_initialize(module, source, options, &root_scope, &parser));
+  loom_op_t* function = NULL;
+  iree_status_t status = loom_parse_low_assembly_function(
+      &parser, representation_contract, symbol, &function);
+  status = iree_status_join(status,
+                            loom_tokenizer_consume_status(&parser.tokenizer));
+  loom_tokenizer_deinitialize(&parser.tokenizer);
+  iree_arena_deinitialize(&parser.parser_arena);
+  if (iree_status_is_ok(status) && !parser.error_count) {
+    *out_function = function;
+  }
+  return status;
 }

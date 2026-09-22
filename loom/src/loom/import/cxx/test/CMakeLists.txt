@@ -14,6 +14,8 @@ loom_check_test_suite(
   NAME
     compiler_test
   SRCS
+    "assembly.cxx-test"
+    "assembly_invalid.cxx-test"
     "assumptions.cxx-test"
     "assumptions_invalid.cxx-test"
     "atomics.cxx-test"

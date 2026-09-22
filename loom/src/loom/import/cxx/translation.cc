@@ -87,6 +87,7 @@ class Translator {
       function(functions_.pending()[index]);
     }
     functions_.build_benchmarks(locations_, &builder_);
+    assembly_fragments_.verify(module_, options_.diagnostic_sink);
   }
 
  private:
@@ -1144,9 +1145,23 @@ class Translator {
         fail(ast,
              "check declarations cannot be called from ordinary functions");
       }
+      auto* binding = intrinsics_.lookup(function, ast);
+      auto* assembly =
+          binding ? std::get_if<AssemblyIntrinsic>(binding) : nullptr;
+      loom_symbol_ref_t fragment = {};
+      auto* expressions = call->expressionList;
+      if (assembly) {
+        fragment =
+            assembly->fragment(unit_, diagnostics_, expressions->value, names_,
+                               assembly_fragments_, module_, options_);
+        expressions = expressions->next;
+      }
       std::vector<Value> source_arguments;
-      for (auto* argument : cxx::ListView{call->expressionList}) {
+      for (auto* argument : cxx::ListView{expressions}) {
         source_arguments.push_back(expression(argument));
+      }
+      if (assembly) {
+        return *assembly->call(fragment, source_arguments, &builder_, source);
       }
       auto flatten_arguments = [&] {
         std::vector<loom_value_id_t> arguments;
@@ -1185,9 +1200,9 @@ class Translator {
             &op));
         return result(op);
       }
-      if (intrinsics_.owns(function, ast)) {
+      if (binding) {
         auto called =
-            intrinsics_.call(function, source_arguments, value_arena_, storage_,
+            intrinsics_.call(*binding, source_arguments, value_arena_, storage_,
                              ast, math_flags_, &builder_, source);
         if (!called.value) {
           fail(ast, "void intrinsic cannot be used as a value");
@@ -1710,13 +1725,27 @@ class Translator {
           fail(ast,
                "check declarations cannot be called from ordinary functions");
         }
-        if (function && intrinsics_.owns(function, ast)) {
+        auto* binding = function ? intrinsics_.lookup(function, ast) : nullptr;
+        if (binding) {
+          auto* assembly = std::get_if<AssemblyIntrinsic>(binding);
+          loom_symbol_ref_t fragment = {};
+          auto* expressions = call->expressionList;
+          if (assembly) {
+            fragment = assembly->fragment(
+                unit_, diagnostics_, expressions->value, names_,
+                assembly_fragments_, module_, options_);
+            expressions = expressions->next;
+          }
           std::vector<Value> arguments;
-          for (auto* argument : cxx::ListView{call->expressionList}) {
+          for (auto* argument : cxx::ListView{expressions}) {
             arguments.push_back(expression(argument));
           }
+          if (assembly) {
+            assembly->call(fragment, arguments, &builder_, locations_.get(ast));
+            return;
+          }
           auto called =
-              intrinsics_.call(function, arguments, value_arena_, storage_, ast,
+              intrinsics_.call(*binding, arguments, value_arena_, storage_, ast,
                                math_flags_, &builder_, locations_.get(ast));
           if (called.value) {
             fail(ast, "value-producing intrinsic reached a void call");
@@ -1783,6 +1812,8 @@ class Translator {
   Storage storage_;
   // Retained generated operation bindings for reached source declarations.
   Intrinsics intrinsics_;
+  // Literal admission records one batch for source-boundary verification.
+  AssemblyFragments assembly_fragments_;
   // Admitted launch contracts, including bounds from function redeclarations.
   LaunchContracts launches_;
   // Root selection, native definition contracts and reachable identities.

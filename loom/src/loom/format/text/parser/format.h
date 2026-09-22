@@ -22,6 +22,11 @@ iree_status_t loom_parse_format_flags(loom_parser_t* parser,
                                       const loom_op_vtable_t* vtable,
                                       loom_parsed_op_t* parsed);
 
+// Transfers signature arguments to the next region entry, optionally cloning
+// their identities for regions that project a distinct copy of the signature.
+iree_status_t loom_parse_format_project_func_args(
+    loom_parser_t* parser, uint16_t pending_func_arg_start, bool clone_values);
+
 iree_status_t loom_parser_walk_format(
     loom_parser_t* parser, const loom_op_vtable_t* vtable, loom_format_t format,
     loom_token_t op_name_token, loom_parsed_op_t* parsed,

@@ -8,6 +8,7 @@
 #define LOOM_IMPORT_CXX_SOURCE_OPTIONS_H_
 
 #include "loom/error/diagnostic.h"
+#include "loom/format/text/low_asm.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -73,6 +74,9 @@ typedef struct loom_cxx_define_t {
 typedef struct loom_cxx_import_options_t {
   // Source diagnostics; a NULL callback silently counts errors.
   loom_diagnostic_sink_t diagnostic_sink;
+  // Borrowed descriptor environment for embedded Low assembly. Empty permits
+  // ordinary source import but rejects assembly literals requiring a contract.
+  loom_text_low_asm_environment_t low_asm_environment;
   // Frontend standard spelling, such as c23 or c++26. Empty selects c++26.
   iree_string_view_t standard;
   // Source ABI triple for the frontend's type layout, not an output target.

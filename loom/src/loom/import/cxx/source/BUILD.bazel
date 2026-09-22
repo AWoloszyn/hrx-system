@@ -25,6 +25,7 @@ iree_c_embed_data(
         "//loom/src/loom/import/cxx:include/loomcxx/atomic.h",
         "//loom/src/loom/import/cxx:include/loomcxx/check.h",
         "//loom/src/loom/import/cxx:include/loomcxx/kernel.h",
+        "//loom/src/loom/import/cxx:include/loomcxx/low.h",
         "//loom/src/loom/import/cxx:include/loomcxx/math.h",
         "//loom/src/loom/import/cxx:include/loomcxx/scalar.h",
         "//loom/src/loom/import/cxx:include/loomcxx/view.h",
@@ -71,7 +72,10 @@ loom_cc_library(
     srcs = ["options.c"],
     hdrs = ["options.h"],
     visibility = ["//visibility:public"],
-    deps = ["//loom/src/loom/error:diagnostic"],
+    deps = [
+        "//loom/src/loom/error:diagnostic",
+        "//loom/src/loom/format/text:low_asm",
+    ],
 )
 
 loom_cc_library(

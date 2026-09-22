@@ -17,6 +17,7 @@ iree_c_embed_data(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/atomic.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/check.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/low.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/math.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/scalar.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/view.h"
@@ -86,6 +87,7 @@ loom_cc_library(
     "options.c"
   DEPS
     loom::error::diagnostic
+    loom::format::text::low_asm
   PUBLIC
 )
 endif()

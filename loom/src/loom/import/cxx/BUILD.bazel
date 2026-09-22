@@ -20,6 +20,7 @@ exports_files([
     "include/loomcxx/atomic.h",
     "include/loomcxx/check.h",
     "include/loomcxx/kernel.h",
+    "include/loomcxx/low.h",
     "include/loomcxx/math.h",
     "include/loomcxx/scalar.h",
     "include/loomcxx/view.h",

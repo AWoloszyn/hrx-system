@@ -1,0 +1,107 @@
+// RUN: verify
+#include <loomcxx/low.h>
+struct Contract {};
+int entry(int value) {
+  // ERROR@+1: LOWERING/059 "assembly contract type requires loom::representation"
+  return loom::low::assembly<Contract, int>(R"(() {})", value);
+}
+
+// ====
+#include <loomcxx/low.h>
+// ERROR@+1: LOWERING/059 "assembly contract requires one nonempty string representation binding"
+struct [[loom::representation("test.low.core", 42)]] Contract {};
+int entry(int value) {
+  return loom::low::assembly<Contract, int>(R"(() {})", value);
+}
+
+// ====
+#include <loomcxx/low.h>
+// ERROR@+1: LOWERING/059 "assembly contract requires one nonempty string representation binding"
+struct [[loom::representation("test.low.core"), loom::representation("test.low.alt")]] Contract {};
+int entry(int value) {
+  return loom::low::assembly<Contract, int>(R"(() {})", value);
+}
+
+// ====
+#include <loomcxx/low.h>
+struct [[loom::representation("test.low.core")]] Contract {};
+int entry(int value) {
+  // ERROR@+1: LOWERING/059 "assembly requires one narrow raw string literal"
+  return loom::low::assembly<Contract, int>("() {}", value);
+}
+
+// ====
+#include <loomcxx/low.h>
+struct [[loom::representation("test.low.core")]] Contract {};
+int entry(int value) {
+  // ERROR@+1: LOWERING/059 "assembly requires one narrow raw string literal"
+  return loom::low::assembly<Contract, int>(R"(() )" R"({})", value);
+}
+
+// ====
+#include <loomcxx/low.h>
+struct [[loom::representation("test.low.core")]] Contract {};
+int entry(int value) {
+  // ERROR@+1: LOWERING/059 "assembly register signature must match the C++ operand and result counts"
+  return loom::low::assembly<Contract, int>(R"(
+      (%value: reg<test.i32>) -> (reg<test.i32>) { return %value }
+  )");
+}
+
+// ====
+#include <loomcxx/low.h>
+struct [[loom::representation("test.low.core")]] Contract {};
+int entry(int value) {
+  // ERROR@+1: LOWERING/059 "assembly register signature must match the C++ operand and result counts"
+  return loom::low::assembly<Contract, int>(R"(() { return })");
+}
+
+// ====
+#include <loomcxx/low.h>
+struct [[loom::representation("test.low.core")]] Contract {};
+int entry(int value) {
+  return loom::low::assembly<Contract, int>(R"(
+      (%value: reg<test.i32>) -> (reg<test.i32>) {
+        // ERROR@+1: PARSE/034 "invalid low asm syntax: unknown low asm mnemonic"
+        unknown_instruction %value
+        return %value
+      }
+  )", value);
+}
+
+// ====
+#include <loomcxx/low.h>
+struct [[loom::representation("test.low.missing")]] Contract {};
+int entry(int value) {
+  return loom::low::assembly<Contract, int>(R"(
+      // ERROR@+1: PARSE/034 "invalid low asm syntax: function representation contract is not available"
+      (%value: reg<test.i32>) -> (reg<test.i32>) { return %value }
+  )", value);
+}
+
+// ====
+#include <loomcxx/low.h>
+struct [[loom::representation("test.low.core")]] Contract {};
+int entry(int value) {
+  return loom::low::assembly<Contract, int>(R"(
+      // ERROR@+1: PARSE/001 "undefined SSA value '%outer'"
+      (%value: reg<test.i32>) -> (reg<test.i32>) { return %outer }
+  )", value);
+}
+
+// ====
+#include <loomcxx/low.h>
+struct [[loom::representation("test.low.core")]] Contract {};
+// Parsed bodies are verified together with their original source snapshots.
+int missing_result(int value) {
+  return loom::low::assembly<Contract, int>(R"(
+      // ERROR@+1: STRUCTURE/008 "yield has 0 operands, expected 1"
+      (%value: reg<test.i32>) -> (reg<test.i32>) { return }
+  )", value);
+}
+int wrong_result(int value) {
+  return loom::low::assembly<Contract, int>(R"(
+      // ERROR@+1: TYPE/009 "yielded value has type reg<...>, but expected reg<...>"
+      (%value: reg<test.i32>) -> (reg<test.i32 x2>) { return %value }
+  )", value);
+}
