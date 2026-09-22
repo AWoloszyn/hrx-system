@@ -53,7 +53,23 @@ typedef struct loom_bytecode_attribute_ssa_validation_scope_t {
   uint64_t value_count;
 } loom_bytecode_attribute_ssa_validation_scope_t;
 
-// Materialization map for predicate VALUE arguments encoded as SSA numbers.
+// One completed type identity retained by an SSA scope.
+typedef struct loom_bytecode_type_binding_t {
+  // Destination-owned complete canonical type.
+  loom_type_id_t type;
+} loom_bytecode_type_binding_t;
+
+typedef struct loom_bytecode_type_bindings_t {
+  // Scope lifetime, independent of checkpoints for one attribute or record.
+  iree_arena_allocator_t* arena;
+  // Completed nodes owned by the scope arena.
+  loom_bytecode_type_binding_t* entries;
+  // Number of completed nodes.
+  iree_host_size_t count;
+  // Allocated entry capacity.
+  iree_host_size_t capacity;
+} loom_bytecode_type_bindings_t;
+
 typedef struct loom_bytecode_attribute_ssa_materialization_scope_t {
   // Symbol owning the SSA namespace, used in malformed-input diagnostics.
   iree_string_view_t symbol_name;
@@ -61,7 +77,44 @@ typedef struct loom_bytecode_attribute_ssa_materialization_scope_t {
   const loom_value_id_t* values;
   // Number of entries in |values| available at the attribute use.
   uint64_t value_count;
+  // Binding interner shared by definitions and attributes in this scope.
+  loom_bytecode_type_bindings_t* bindings;
 } loom_bytecode_attribute_ssa_materialization_scope_t;
+
+// Validates and resolves a static ordinal or a prior complete scope node.
+iree_status_t loom_bytecode_type_project_completed(
+    loom_bytecode_attribute_materializer_t* materializer,
+    loom_bytecode_reader_cursor_t* cursor,
+    const loom_bytecode_attribute_ssa_materialization_scope_t* scope,
+    uint64_t reference, loom_type_id_t* out_type);
+
+// Constructs complete scoped records using ordered full-reader tables.
+iree_status_t loom_bytecode_type_materialize_bindings(
+    loom_bytecode_attribute_materializer_t* materializer,
+    loom_bytecode_reader_cursor_t* cursor,
+    const loom_bytecode_attribute_ssa_materialization_scope_t* scope,
+    uint64_t source_type_id, loom_type_id_t* out_type_id);
+
+// Constructs a complete parameterized type from scratch-owned parameter slots.
+iree_status_t loom_bytecode_attribute_decode_complete_type(
+    loom_bytecode_attribute_materializer_t* materializer,
+    loom_bytecode_reader_cursor_t* cursor,
+    const loom_bytecode_attribute_ssa_materialization_scope_t* values,
+    loom_type_id_t* out_type);
+
+// Decodes into scratch-owned slots referencing completed native table entries.
+// The owning constructor canonicalizes the aggregate once before scratch reset.
+iree_status_t loom_bytecode_attribute_decode_named(
+    loom_bytecode_attribute_materializer_t* materializer,
+    loom_bytecode_reader_cursor_t* cursor,
+    const loom_attr_descriptor_t* descriptor, loom_bytecode_attr_kind_t kind,
+    loom_attribute_t* out_attr, iree_host_size_t available_type_count);
+
+// Skips a bounded scoped-type payload during symbol indexing. The full or
+// selected materializer owns validation and construction of reached records.
+iree_status_t loom_bytecode_skip_type_bindings(
+    loom_bytecode_reader_decoder_t* decoder,
+    loom_bytecode_reader_cursor_t* cursor);
 
 // One decoded predicate with source-domain VALUE arguments and diagnostics.
 typedef struct loom_bytecode_wire_predicate_t {
@@ -123,6 +176,13 @@ uint8_t loom_bytecode_attribute_find_parameter_index(
     const loom_attr_descriptor_t* parameter_descriptors,
     uint8_t parameter_count, iree_string_view_t parameter_name,
     uint8_t start_index);
+
+// Validates a global type parameter, which cannot contain predicate SSA values.
+iree_status_t loom_bytecode_attribute_validate_type_parameter(
+    loom_bytecode_attribute_validator_t* validator,
+    loom_bytecode_reader_cursor_t* cursor,
+    const loom_attr_descriptor_t* descriptor, loom_bytecode_attr_kind_t kind,
+    iree_host_size_t available_type_count);
 
 // Validates an attribute whose predicate VALUE arguments are STRINGS ordinals.
 iree_status_t loom_bytecode_attribute_validate_named(

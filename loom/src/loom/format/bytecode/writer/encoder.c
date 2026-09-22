@@ -13,6 +13,38 @@
 #include "loom/ir/module.h"
 
 //===----------------------------------------------------------------------===//
+// Arena-backed payload buffer
+//===----------------------------------------------------------------------===//
+
+static iree_status_t loom_bytecode_buffer_allocate(
+    void* self, iree_allocator_command_t command, const void* parameters,
+    void** pointer) {
+  loom_bytecode_buffer_t* buffer = self;
+  if (command == IREE_ALLOCATOR_COMMAND_FREE) {
+    *pointer = NULL;
+    return iree_ok_status();
+  }
+  IREE_ASSERT_EQ(command, IREE_ALLOCATOR_COMMAND_REALLOC);
+  const iree_allocator_alloc_params_t* request = parameters;
+  void* replacement = NULL;
+  IREE_RETURN_IF_ERROR(
+      iree_arena_allocate(buffer->arena, request->byte_length, &replacement));
+  if (*pointer) {
+    memcpy(replacement, *pointer, buffer->builder.size);
+  }
+  *pointer = replacement;
+  return iree_ok_status();
+}
+
+void loom_bytecode_buffer_initialize(iree_arena_allocator_t* arena,
+                                     loom_bytecode_buffer_t* out_buffer) {
+  out_buffer->arena = arena;
+  iree_string_builder_initialize(
+      (iree_allocator_t){out_buffer, loom_bytecode_buffer_allocate},
+      &out_buffer->builder);
+}
+
+//===----------------------------------------------------------------------===//
 // Page-buffered stream writer
 //===----------------------------------------------------------------------===//
 //

@@ -29,7 +29,7 @@ loom_bytecode_symbol_attribute_materializer(
       .decoder = &materializer->decoder,
       .context = materializer->context,
       .module_view = &materializer->view,
-      .scratch_arena = materializer->arena,
+      .scratch_arena = materializer->scratch_arena,
       .output_module = materializer->output_module,
   };
 }
@@ -194,7 +194,8 @@ static iree_status_t loom_bytecode_symbol_policy_materialize_region(
 
 void loom_bytecode_symbol_materializer_initialize(
     const loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
-    iree_arena_allocator_t* arena, iree_arena_block_pool_t* block_pool,
+    iree_arena_allocator_t* arena, iree_arena_allocator_t* scratch_arena,
+    iree_arena_block_pool_t* block_pool,
     const loom_bytecode_reader_module_view_t* module_view,
     loom_module_t* output_module,
     const loom_low_repr_environment_t* low_repr_environment,
@@ -203,6 +204,7 @@ void loom_bytecode_symbol_materializer_initialize(
       .decoder = *decoder,
       .context = context,
       .arena = arena,
+      .scratch_arena = scratch_arena,
       .view = *module_view,
       .output_module = output_module,
       .low_repr_environment = *low_repr_environment,
@@ -213,7 +215,7 @@ void loom_bytecode_symbol_materializer_initialize(
               .decoder = &out_materializer->decoder,
               .context = context,
               .module_view = &out_materializer->view,
-              .scratch_arena = arena,
+              .scratch_arena = scratch_arena,
               .output_module = output_module,
           },
       .block_pool = block_pool,

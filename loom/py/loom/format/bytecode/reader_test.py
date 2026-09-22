@@ -35,6 +35,7 @@ from loom.format.bytecode.encoding import (
 from loom.format.bytecode.reader import BytecodeError, BytecodeReader, read_module
 from loom.format.bytecode.writer import (
     BYTECODE_TYPE_KIND_BY_IR_KIND,
+    FORMAT_VERSION,
     LOCATION_MODE_FULL_LOCATIONS,
     LOCATION_MODE_NO_LOCATIONS,
     SECTION_ENCODINGS,
@@ -52,6 +53,7 @@ from loom.ir import (
     ATTR_AGGREGATE_MAX_NESTING_DEPTH,
     BF16,
     BUFFER_TYPE,
+    ENCODING_TYPE,
     F32,
     I8,
     I32,
@@ -133,27 +135,6 @@ def _test_ptr_register_type(
     )
 
 
-def _make_value_with_bindings(
-    module: Module, name: str, value_type: Type
-) -> tuple[int, list[int]]:
-    """Create a value with proper dim_bindings for any dynamic dims.
-
-    Returns (value_id, list of dim value_ids that must be block args).
-    """
-    dim_bindings: dict[int, int] = {}
-    dim_value_ids: list[int] = []
-    if hasattr(value_type, "dims"):
-        for i, dim in enumerate(value_type.dims):
-            if isinstance(dim, DynamicDim):
-                dim_id = module.add_value(Value(name=f"{name}_d{i}", type=INDEX))
-                dim_bindings[i] = dim_id
-                dim_value_ids.append(dim_id)
-    value_id = module.add_value(
-        Value(name=name, type=value_type, dim_bindings=dim_bindings)
-    )
-    return value_id, dim_value_ids
-
-
 def _make_func(
     module: Module,
     name: str,
@@ -173,15 +154,14 @@ def _make_func(
     # Create anonymous result value IDs at module level.
     result_ids = []
     for rt in result_types:
-        rid, _ = _make_value_with_bindings(module, "", rt)
+        rid = module.add_value(Value(name="", type=rt))
         result_ids.append(rid)
 
     if is_declaration:
         # func.decl: args are operands.
         operand_ids = []
         for i, at in enumerate(arg_types):
-            vid, dim_ids = _make_value_with_bindings(module, f"{name}_arg{i}", at)
-            operand_ids.extend(dim_ids)
+            vid = module.add_value(Value(name=f"{name}_arg{i}", type=at))
             operand_ids.append(vid)
         op = Operation(
             name="func.decl",
@@ -194,8 +174,7 @@ def _make_func(
         # func.def: args are entry block arguments.
         arg_ids = []
         for i, at in enumerate(arg_types):
-            vid, dim_ids = _make_value_with_bindings(module, f"{name}_arg{i}", at)
-            arg_ids.extend(dim_ids)
+            vid = module.add_value(Value(name=f"{name}_arg{i}", type=at))
             arg_ids.append(vid)
         body_ops = ops or [
             Operation(name="test.yield", operands=arg_ids[-1:] if arg_ids else [])
@@ -426,6 +405,12 @@ class TestBadMagic:
 
 
 class TestBadVersion:
+    def test_previous_version(self) -> None:
+        data = bytearray(write_module(Module(name="version")))
+        data[4] = FORMAT_VERSION - 1
+        with pytest.raises(BytecodeError, match="unsupported format version"):
+            read_module(bytes(data))
+
     def test_future_version(self) -> None:
         data = bytearray(b"LOOM")
         data.append(0xFF)
@@ -808,6 +793,7 @@ class TestMalformedEncodingSection:
             _name_id, offset = decode_varint(data, offset)
         instance_count, offset = decode_varint(data, offset)
         assert instance_count == 1
+        _type_prefix_count, offset = decode_varint(data, offset)
         _family_index, offset = decode_varint(data, offset)
 
         data[offset] = 0x7F
@@ -828,7 +814,10 @@ class TestMalformedTypeSection:
         reader = BytecodeReader(b"", type_defs=type_defs)
         reader._encodings = encodings or []
         reader._strings = strings or []
-        reader._read_types_section((0, data))
+        count, offset = decode_varint(data, 0)
+        offset = reader._read_type_prefix(data, offset, count)
+        if offset != len(data):
+            raise BytecodeError("TYPES section has trailing bytes")
         return reader._types
 
     def test_unassigned_kind_is_rejected(self) -> None:
@@ -877,6 +866,20 @@ class TestMalformedTypeSection:
             ]
         )
         with pytest.raises(BytecodeError, match="unknown encoding attachment"):
+            self._read_types(data)
+
+    def test_global_type_requires_scope_independent_encoding(self) -> None:
+        data = bytes(
+            [
+                1,  # type count
+                BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.TENSOR],
+                F32.kind.value,
+                0,  # rank
+                2,  # SSA encoding belongs to a scoped record
+                0,  # attachment id
+            ]
+        )
+        with pytest.raises(BytecodeError, match="SSA encoding requires a scoped type"):
             self._read_types(data)
 
     def test_static_encoding_id_zero_is_rejected(self) -> None:
@@ -1128,9 +1131,9 @@ class TestModuleStructure:
 
 
 class TestTypeRoundTrips:
-    def _roundtrip_type(self, ir_type: Type) -> Type:
+    def _roundtrip_type(self, ir_type: Type, bindings: tuple[Type, ...] = ()) -> Type:
         module = Module(name="test")
-        _make_func(module, "f", [ir_type])
+        _make_func(module, "f", [*bindings, ir_type])
         loaded = _roundtrip(module)
         loaded_op = loaded.symbols[0].op
         assert loaded_op is not None
@@ -1201,8 +1204,8 @@ class TestTypeRoundTrips:
         assert self._roundtrip_type(t) == t
 
     def test_vector_dynamic(self) -> None:
-        t = ShapedType(TypeKind.VECTOR, I32, (DynamicDim(),))
-        assert self._roundtrip_type(t) == t
+        t = ShapedType(TypeKind.VECTOR, I32, (DynamicDim(0),))
+        assert self._roundtrip_type(t, (INDEX,)) == t
 
     def test_view_1d(self) -> None:
         t = ShapedType(TypeKind.VIEW, I8, (StaticDim(256),))
@@ -1227,20 +1230,20 @@ class TestTypeRoundTrips:
             TypeKind.VIEW,
             F32,
             (StaticDim(256),),
-            encoding=DynamicEncoding(),
+            encoding=DynamicEncoding(0),
         )
-        loaded = self._roundtrip_type(t)
+        loaded = self._roundtrip_type(t, (ENCODING_TYPE,))
         assert isinstance(loaded, ShapedType)
         assert loaded.type_kind == TypeKind.VIEW
-        assert isinstance(loaded.encoding, DynamicEncoding)
+        assert loaded.encoding == DynamicEncoding(0)
 
     def test_tile_dynamic(self) -> None:
-        t = ShapedType(TypeKind.TILE, F32, (DynamicDim(), StaticDim(4)))
-        assert self._roundtrip_type(t) == t
+        t = ShapedType(TypeKind.TILE, F32, (DynamicDim(0), StaticDim(4)))
+        assert self._roundtrip_type(t, (INDEX,)) == t
 
     def test_tile_all_dynamic(self) -> None:
-        t = ShapedType(TypeKind.TILE, F32, (DynamicDim(), DynamicDim()))
-        assert self._roundtrip_type(t) == t
+        t = ShapedType(TypeKind.TILE, F32, (DynamicDim(0), DynamicDim(1)))
+        assert self._roundtrip_type(t, (INDEX, INDEX)) == t
 
     def test_tile_large_dim(self) -> None:
         t = ShapedType(TypeKind.TENSOR, F32, (StaticDim(1048576),))
@@ -1874,16 +1877,12 @@ class TestImportRoundTrips:
 
     def test_import_with_full_signature(self) -> None:
         """Import carries full type information for linker verification."""
-        tile_t = ShapedType(TypeKind.TILE, F32, (DynamicDim(), StaticDim(4)))
         module = Module(name="test")
         dim_vid = module.add_value(Value(name="M", type=INDEX))
-        arg0_vid = module.add_value(
-            Value(name="", type=tile_t, dim_bindings={0: dim_vid})
-        )
+        tile_t = ShapedType(TypeKind.TILE, F32, (DynamicDim(dim_vid), StaticDim(4)))
+        arg0_vid = module.add_value(Value(name="", type=tile_t))
         arg1_vid = module.add_value(Value(name="", type=I32))
-        result_vid = module.add_value(
-            Value(name="", type=tile_t, dim_bindings={0: dim_vid})
-        )
+        result_vid = module.add_value(Value(name="", type=tile_t))
         op = Operation(
             name="func.decl",
             operands=[dim_vid, arg0_vid, arg1_vid],

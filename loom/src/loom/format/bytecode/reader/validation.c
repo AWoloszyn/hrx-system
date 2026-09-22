@@ -815,27 +815,32 @@ static iree_status_t loom_bytecode_reader_validate_module(
   IREE_RETURN_IF_ERROR(loom_bytecode_source_table_read(
       &reader->decoder, reader->view.sections.sources, reader->arena,
       reader->arena, &reader->view));
+  loom_bytecode_type_validation_t types;
+  IREE_RETURN_IF_ERROR(loom_bytecode_type_validation_begin(
+      &reader->decoder, reader->context, &reader->view,
+      reader->view.sections.types->bytes,
+      reader->view.sections.types->absolute_offset,
+      iree_any_bit_set(flags,
+                       LOOM_BYTECODE_MODULE_VALIDATION_PREPARE_MATERIALIZATION)
+          ? LOOM_BYTECODE_TYPE_RETAIN_PLAN
+          : LOOM_BYTECODE_TYPE_RETAIN_NONE,
+      reader->arena, &types));
   IREE_RETURN_IF_ERROR(loom_bytecode_encoding_table_validate(
-      &reader->decoder, reader->context, &reader->view, reader->arena,
+      &reader->decoder, reader->context, &reader->view, reader->arena, &types,
       reader->view.sections.encodings));
-  if (iree_any_bit_set(flags,
-                       LOOM_BYTECODE_MODULE_VALIDATION_RETAIN_TYPE_PLAN)) {
-    IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_build(
-        &reader->decoder, reader->context, &reader->view, reader->arena,
-        reader->view.sections.types->bytes,
-        reader->view.sections.types->absolute_offset));
-  } else {
-    IREE_RETURN_IF_ERROR(loom_bytecode_type_table_validate(
-        &reader->decoder, reader->context, &reader->view,
-        reader->view.sections.types->bytes,
-        reader->view.sections.types->absolute_offset));
-  }
+  IREE_RETURN_IF_ERROR(loom_bytecode_type_validation_finish(&types));
   IREE_RETURN_IF_ERROR(loom_bytecode_operation_table_validate(
       &reader->decoder, reader->context, &reader->view, reader->arena,
       reader->view.sections.ops));
   if (reader->view.sections.locations) {
-    IREE_RETURN_IF_ERROR(loom_bytecode_location_table_validate(
-        &reader->decoder, &reader->view, reader->view.sections.locations));
+    if (iree_any_bit_set(
+            flags, LOOM_BYTECODE_MODULE_VALIDATION_PREPARE_MATERIALIZATION)) {
+      IREE_RETURN_IF_ERROR(loom_bytecode_location_table_read_count(
+          &reader->decoder, &reader->view, reader->view.sections.locations));
+    } else {
+      IREE_RETURN_IF_ERROR(loom_bytecode_location_table_validate(
+          &reader->decoder, &reader->view, reader->view.sections.locations));
+    }
   }
   if (reader->view.sections.source_trivia) {
     IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_file_header(
@@ -1011,15 +1016,19 @@ static iree_status_t loom_bytecode_reader_index_module(
   metadata->sources.values = reader->view.sources.values;
   metadata->sources.count = reader->view.sources.count;
 
-  IREE_RETURN_IF_ERROR(loom_bytecode_encoding_table_index(
-      &reader->decoder, reader->context, &reader->view, reader->arena,
-      reader->view.sections.encodings, retained_arena,
-      &metadata->encodings.entries, &metadata->encodings.count));
-  IREE_RETURN_IF_ERROR(loom_bytecode_type_table_index(
+  loom_bytecode_type_validation_t types;
+  IREE_RETURN_IF_ERROR(loom_bytecode_type_validation_begin(
       &reader->decoder, reader->context, &reader->view,
       reader->view.sections.types->bytes,
-      reader->view.sections.types->absolute_offset, retained_arena,
-      &metadata->types.entries, &metadata->types.count));
+      reader->view.sections.types->absolute_offset,
+      LOOM_BYTECODE_TYPE_RETAIN_RANGES, retained_arena, &types));
+  IREE_RETURN_IF_ERROR(loom_bytecode_encoding_table_index(
+      &reader->decoder, reader->context, &reader->view, reader->arena, &types,
+      reader->view.sections.encodings, retained_arena,
+      &metadata->encodings.entries, &metadata->encodings.count));
+  IREE_RETURN_IF_ERROR(loom_bytecode_type_validation_finish(&types));
+  metadata->types.entries = types.entries;
+  metadata->types.count = reader->view.types.count;
   IREE_RETURN_IF_ERROR(loom_bytecode_operation_table_index(
       &reader->decoder, reader->context, &reader->view, reader->arena,
       reader->view.sections.ops, retained_arena, &metadata->ops.entries,

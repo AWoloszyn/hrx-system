@@ -103,6 +103,7 @@ TEST_F(BytecodeEncodingTest, MaterializesCanonicalTable) {
       0x01,  // Family count.
       0x01,  // Family name string ordinal.
       0x01,  // Instance count.
+      0x00,  // Completed type prefix.
       0x00,  // Instance family ordinal.
       0x00,  // No alias.
       0x01,  // Parameter count.
@@ -118,12 +119,21 @@ TEST_F(BytecodeEncodingTest, MaterializesCanonicalTable) {
       /*.absolute_offset=*/41,
       /*.bytes=*/iree_make_const_byte_span(data, sizeof(data)),
   };
+  loom_bytecode_type_materializer_t types = {
+      /*.decoder=*/&decoder_,
+      /*.bytecode=*/{},
+      /*.context=*/&context_,
+      /*.module_view=*/&module_view_,
+      /*.scratch_arena=*/&scratch_arena_,
+      /*.output_module=*/module_,
+  };
   loom_bytecode_encoding_materializer_t materializer = {
       /*.decoder=*/&decoder_,
       /*.context=*/&context_,
       /*.module_view=*/&module_view_,
       /*.scratch_arena=*/&scratch_arena_,
       /*.output_module=*/module_,
+      /*.types=*/&types,
   };
 
   IREE_ASSERT_OK(

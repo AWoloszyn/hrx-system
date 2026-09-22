@@ -14,17 +14,24 @@ loom_cc_library(
     attribute
   HDRS
     "attribute.h"
+    "type.h"
+  TEXTUAL_HDRS
+    "attribute_materializer_impl.inl"
+    "scoped_type_impl.inl"
   SRCS
     "attribute.c"
+    "type.c"
   DEPS
     ::decoder
     ::module_view
+    ::type_plan
     iree::base
     iree::base::internal::arena
     loom::error::error_defs
     loom::format::bytecode::format
     loom::ir
     loom::ir::symbol_map
+    loom::ops::type_registry
   PUBLIC
 )
 
@@ -86,6 +93,7 @@ loom_cc_library(
     ::attribute
     ::decoder
     ::module_view
+    ::type_validator
     iree::base
     iree::base::internal::arena
     loom::error::error_defs
@@ -195,13 +203,13 @@ loom_cc_library(
   SRCS
     "materializer.c"
   DEPS
+    ::attribute
     ::decoder
     ::encoding
     ::location
     ::module_view
     ::string_table
     ::symbol_materializer
-    ::type
     iree::base
     iree::base::internal::arena
     loom::error::error_defs
@@ -286,33 +294,14 @@ loom_cc_library(
   PUBLIC
 )
 
-loom_cc_library(
-  NAME
-    type
-  HDRS
-    "type.h"
-  SRCS
-    "type.c"
-  DEPS
-    ::attribute
-    ::decoder
-    ::module_view
-    ::type_plan
-    iree::base
-    iree::base::internal::arena
-    loom::error::error_defs
-    loom::ir
-  PUBLIC
-)
-
 loom_cc_test(
   NAME
     type_test
   SRCS
     "type_test.cc"
   DEPS
+    ::attribute
     ::module_view
-    ::type
     ::type_validator
     iree::base::internal::arena
     iree::testing::gtest
@@ -402,7 +391,6 @@ loom_cc_library(
     ::decoder
     ::module_view
     ::selected_projection
-    ::type
     ::type_plan
     ::type_validator
     iree::base
@@ -411,6 +399,7 @@ loom_cc_library(
     loom::format::bytecode::format
     loom::format::bytecode::index
     loom::ir
+    loom::ops::type_registry
   PUBLIC
 )
 
@@ -469,6 +458,7 @@ loom_cc_library(
     "selected_materializer.c"
   DEPS
     ::decoder
+    ::selected_projection
     ::selected_symbol
     ::selected_tables
     iree::base

@@ -176,11 +176,15 @@ class FieldLayout:
     variadic_region: str | None  # Name of the variadic region, if any.
     segmented_operands: bool = False
     func_body_region_index: int | None = None
+    # Signature fields introduced by FuncArgs in the operation format.
+    func_args_fields: frozenset[str] = frozenset()
     # Regions whose entry arguments are declared in their parent's format.
     entry_args_declared_by_parent: frozenset[str] = frozenset()
 
 
-def _entry_args_declared_by_parent(op_decl: Op) -> frozenset[str]:
+def _signature_fields_and_regions(
+    op_decl: Op,
+) -> tuple[frozenset[str], frozenset[str]]:
     declared: set[str] = set()
     func_args: set[str] = set()
     implicit_names = {
@@ -219,7 +223,7 @@ def _entry_args_declared_by_parent(op_decl: Op) -> frozenset[str]:
     declared.update(
         region.name for region in op_decl.regions if region.arg_source in func_args
     )
-    return frozenset(declared)
+    return frozenset(func_args), frozenset(declared)
 
 
 def compute_layout(op_decl: Op) -> FieldLayout:
@@ -382,6 +386,9 @@ def compute_layout(op_decl: Op) -> FieldLayout:
                 required_region_count += 1
             fixed_region_count += 1
 
+    func_args_fields, entry_args_declared_by_parent = _signature_fields_and_regions(
+        op_decl
+    )
     return FieldLayout(
         fields=fields,
         fixed_operand_count=fixed_operand_count,
@@ -395,7 +402,8 @@ def compute_layout(op_decl: Op) -> FieldLayout:
         variadic_region=variadic_region,
         segmented_operands=segmented_operands,
         func_body_region_index=_func_body_region_index(op_decl),
-        entry_args_declared_by_parent=_entry_args_declared_by_parent(op_decl),
+        func_args_fields=func_args_fields,
+        entry_args_declared_by_parent=entry_args_declared_by_parent,
     )
 
 

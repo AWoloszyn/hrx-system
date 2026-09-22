@@ -50,11 +50,17 @@ void loom_bytecode_selected_symbol_materializer_initialize(
     const loom_low_repr_environment_t* low_repr_environment,
     loom_bytecode_selected_symbol_materializer_t* out_materializer);
 
-// Predeclares and materializes |selected_symbols| in source-ordinal order.
+// Predeclares |selected_symbols| in source-ordinal order.
 //
 // The sequence must be strictly increasing and contain only ordinals from the
 // validated source metadata. Every symbol is predeclared before any payload is
 // decoded so selected symbol references resolve without further reachability.
+iree_status_t loom_bytecode_selected_symbols_predeclare(
+    loom_bytecode_selected_symbol_materializer_t* materializer,
+    const loom_bytecode_selected_symbol_t* selected_symbols,
+    iree_host_size_t selected_symbol_count);
+
+// Materializes payloads for the already predeclared selected symbol sequence.
 iree_status_t loom_bytecode_selected_symbols_materialize(
     loom_bytecode_selected_symbol_materializer_t* materializer,
     const loom_bytecode_selected_symbol_t* selected_symbols,

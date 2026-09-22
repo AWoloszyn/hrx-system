@@ -23,22 +23,53 @@ extern "C" {
 typedef struct loom_bytecode_reader_module_view_t
     loom_bytecode_reader_module_view_t;
 
-// Validates one TYPES section, retaining only the count needed by later tables.
-// No construction payloads or scratch allocations are produced.
-iree_status_t loom_bytecode_type_table_validate(
-    loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
-    loom_bytecode_reader_module_view_t* module_view,
-    iree_const_byte_span_t section_bytes, uint64_t section_absolute_offset);
+// Facts retained by the consumer of one forward TYPES cursor.
+typedef enum loom_bytecode_type_retention_e {
+  LOOM_BYTECODE_TYPE_RETAIN_NONE = 0,
+  LOOM_BYTECODE_TYPE_RETAIN_RANGES,
+  LOOM_BYTECODE_TYPE_RETAIN_PLAN,
+} loom_bytecode_type_retention_t;
 
-// Validates one TYPES section and retains its byte ranges directly in
-// |retained_arena|. Construction payloads are not retained.
-iree_status_t loom_bytecode_type_table_index(
+// A forward type-table cursor advanced between completed encoding entries.
+typedef struct loom_bytecode_type_validation_t {
+  // Bounded decoder and public diagnostic state.
+  loom_bytecode_reader_decoder_t* decoder;
+  // Finalized type and attribute descriptor registry.
+  loom_context_t* context;
+  // Table facts whose encoding prefix bounds each newly decoded type.
+  loom_bytecode_reader_module_view_t* module_view;
+  // Owner of retained plans or index ranges; unused for count-only validation.
+  iree_arena_allocator_t* arena;
+  // Validated end of the TYPES prefix already consumed from the cursor.
+  loom_type_id_t position;
+  // Next type entry in the bounded TYPES payload.
+  loom_bytecode_reader_cursor_t cursor;
+  // Consumer policy chosen once by the module reader.
+  loom_bytecode_type_retention_t retention;
+  // Retained entry ranges when the consumer requests an index.
+  loom_bytecode_table_entry_metadata_t* entries;
+  // Last full-reader sparse fact, allowing constant-time append across
+  // prefixes.
+  loom_bytecode_type_fact_t* last_fact;
+} loom_bytecode_type_validation_t;
+
+// Reads the declared type count and allocates only the requested retained
+// facts.
+iree_status_t loom_bytecode_type_validation_begin(
     loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
     loom_bytecode_reader_module_view_t* module_view,
     iree_const_byte_span_t section_bytes, uint64_t section_absolute_offset,
-    iree_arena_allocator_t* retained_arena,
-    loom_bytecode_table_entry_metadata_t** out_entries,
-    iree_host_size_t* out_count);
+    loom_bytecode_type_retention_t retention, iree_arena_allocator_t* arena,
+    loom_bytecode_type_validation_t* out_validation);
+
+// Consumes the newly available prefix. The owning encoding decoder establishes
+// monotonic |type_count| within the declared count before calling this method.
+iree_status_t loom_bytecode_type_validation_advance(
+    loom_bytecode_type_validation_t* validation, iree_host_size_t type_count);
+
+// Consumes remaining types after all encodings and verifies exact section use.
+iree_status_t loom_bytecode_type_validation_finish(
+    loom_bytecode_type_validation_t* validation);
 
 // Decodes one retained, already bounded TYPES entry into the same immutable
 // fact representation used by the full sequential validator. |type_index| is
@@ -50,13 +81,6 @@ iree_status_t loom_bytecode_type_plan_decode_indexed_entry(
     iree_const_byte_span_t entry_bytes, uint64_t entry_absolute_offset,
     loom_bytecode_type_plan_entry_t* out_plan_entry,
     loom_bytecode_type_fact_t** out_fact);
-
-// Validates one TYPES section and builds its immutable topological plan.
-iree_status_t loom_bytecode_type_plan_build(
-    loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
-    loom_bytecode_reader_module_view_t* module_view,
-    iree_arena_allocator_t* scratch_arena, iree_const_byte_span_t section_bytes,
-    uint64_t section_absolute_offset);
 
 #ifdef __cplusplus
 }  // extern "C"

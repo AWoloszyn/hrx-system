@@ -14,12 +14,15 @@ loom_cc_library(
     attribute
   HDRS
     "attribute.h"
+  TEXTUAL_HDRS
+    "binding_impl.inl"
   SRCS
     "attribute.c"
   DEPS
     ::encoder
     ::numbering
     iree::base
+    loom::ir
   PUBLIC
 )
 
@@ -51,6 +54,7 @@ loom_cc_library(
     "catalog.c"
     "type_index.c"
   DEPS
+    ::encoder
     iree::base
     iree::base::internal::arena
     loom::format::bytecode::format
@@ -69,11 +73,25 @@ loom_cc_library(
     "encoder.c"
   DEPS
     iree::base
+    iree::base::internal::arena
     iree::io::stream
     loom::format::bytecode::format
     loom::format::bytecode::varint
     loom::ir
   PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    encoder_test
+  SRCS
+    "encoder_test.cc"
+  DEPS
+    ::encoder
+    iree::base
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
 )
 
 loom_cc_test(

@@ -83,6 +83,91 @@
           "stderr": {"empty": true}
         }
       ]
+    },
+    {
+      "name": "preserves scoped Low types through selected bytecode linking",
+      "steps": [
+        {
+          "name": "encode",
+          "run": {
+            "tool": "loom-format",
+            "args": [
+              "--to=bc",
+              "--output={tmp}/bindings.loombc",
+              "{srcdir}/loom_link_type_bindings.loom"
+            ]
+          }
+        },
+        {
+          "name": "register-value-type",
+          "run": {
+            "tool": "loom-link",
+            "args": ["--root=register_type_binding", "{tmp}/bindings.loombc"]
+          },
+          "stdout": {
+            "contains": [
+              "@register_type_binding(%width: reg<amdgpu.sgpr : index>, %value: reg<amdgpu.vgpr : vector<[%width]xf32>>) asm {",
+              "return"
+            ],
+            "not_contains": ["@resource_type_binding", "vector<?", "low.return"]
+          },
+          "stderr": {"empty": true}
+        },
+        {
+          "name": "resource-type-attribute",
+          "run": {
+            "tool": "loom-link",
+            "args": ["--root=resource_type_binding", "{tmp}/bindings.loombc"]
+          },
+          "stdout": {
+            "contains": [
+              "@resource_type_binding(%width: reg<amdgpu.sgpr : index>) asm {",
+              "source_type = vector<[%width]xf32>"
+            ],
+            "not_contains": ["@register_type_binding", "vector<?", "low.return"]
+          },
+          "stderr": {"empty": true}
+        },
+        {
+          "name": "project-register-signature",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "--root=register_type_binding",
+              "{tmp}/bindings.loombc",
+              "{srcdir}/loom_link_type_binding_declaration.loom"
+            ]
+          },
+          "stdout": {
+            "contains": [
+              "@register_type_binding$link0(%width: reg<amdgpu.sgpr : index>, %value: reg<amdgpu.vgpr : vector<[%width]xf32>>) asm {",
+              "low.func.decl public retain target<amdgpu.rdna3.core> @register_type_binding(%width: reg<amdgpu.sgpr : index>, %value: reg<amdgpu.vgpr : vector<[%width]xf32>>)"
+            ],
+            "not_contains": ["@resource_type_binding", "vector<?", "low.return"]
+          },
+          "stderr": {"empty": true}
+        },
+        {
+          "name": "call-projected-register-signature",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "--root=call_register_type_binding",
+              "{tmp}/bindings.loombc",
+              "{srcdir}/loom_link_type_binding_declaration.loom"
+            ]
+          },
+          "stdout": {
+            "contains": [
+              "@register_type_binding$link0(%width: reg<amdgpu.sgpr : index>, %value: reg<amdgpu.vgpr : vector<[%width]xf32>>) asm {",
+              "@call_register_type_binding(%width: reg<amdgpu.sgpr : index>, %value: reg<amdgpu.vgpr : vector<[%width]xf32>>) asm {",
+              "low.func.call @register_type_binding"
+            ],
+            "not_contains": ["@resource_type_binding", "vector<?", "low.return"]
+          },
+          "stderr": {"empty": true}
+        }
+      ]
     }
   ]
 }

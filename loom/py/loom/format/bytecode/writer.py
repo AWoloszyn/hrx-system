@@ -19,11 +19,10 @@ identical bytes. This is required for caching and CAS storage.
 from __future__ import annotations
 
 import struct
-from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from collections.abc import Iterable, Iterator, Mapping, Sequence
 from typing import Any, ClassVar, cast
 
-from loom.dsl import FuncLikeInterface, SymbolReferenceRole
+from loom.dsl import FuncLikeInterface
 from loom.fields import compute_layout, resolve_fields
 from loom.format.block_order import ordered_blocks
 from loom.format.bytecode.encoding import ByteBuffer
@@ -33,6 +32,7 @@ from loom.format.bytecode.op_decls import (
     func_like_interface_for_op,
     symbol_def_for_op,
 )
+from loom.format.bytecode.symbol_references import SymbolReferenceProjectionBuilder
 from loom.ir import (
     ATTR_AGGREGATE_MAX_NESTING_DEPTH,
     REGION_SOURCE_FLAG_MASK,
@@ -57,6 +57,7 @@ from loom.ir import (
     PoolType,
     Predicate,
     PredicateArg,
+    PredicateListAttr,
     Region,
     RegisterType,
     ScalarType,
@@ -74,6 +75,8 @@ from loom.ir import (
     TypeKind,
     Value,
 )
+from loom.type_binding import binding_children, iter_value_bindings
+from loom.type_identity import TypeIdentity
 
 _IR_TYPE_CLASSES = (
     ScalarType,
@@ -180,25 +183,9 @@ BYTECODE_IR_KIND_BY_TYPE_KIND: dict[int, TypeKind] = {
 
 # File magic and version.
 MAGIC = b"LOOM"
-FORMAT_VERSION = 36
+FORMAT_VERSION = 37
 PRODUCER = "loom-py"
 
-SYMBOL_INTERFACE_BITS = {
-    "func_like": 1 << 0,
-    "global": 1 << 1,
-    "executable": 1 << 2,
-    "record": 1 << 3,
-    "target": 1 << 4,
-    "config": 1 << 5,
-    "rodata": 1 << 6,
-    "kernel": 1 << 7,
-    "callable": 1 << 8,
-    "command_program": 1 << 9,
-    "template_family": 1 << 10,
-    "template_provider": 1 << 11,
-    "kernel_entry": 1 << 12,
-    "pipeline": 1 << 13,
-}
 SYMBOL_INTERFACE_FLAG_MASK = (1 << 14) - 1
 
 SOURCE_TRIVIA_LEADING_BLANK_LINE = 1
@@ -232,7 +219,19 @@ class NumberingContext:
         self.ops: dict[str, int] = {}
         self.sources: list[str] = []
         self._type_list: list[Type] = []
-        self._type_lookup: dict[Type, int] = {}
+        self._type_lookup: dict[int, int] = {}
+        # Invocation-local structural keys never recursively hash type DAGs.
+        self._type_identity = TypeIdentity()
+        # Static encodings are invocation-owned and complete after their types.
+        self.encodings: list[EncodingInstance] = []
+        # Completed type prefix immediately before each encoding was published.
+        self.encoding_type_counts: list[int] = []
+        # Physical encoding identities mapped to their canonical wire ordinals.
+        self.encoding_indices: dict[int, int] = {}
+        # Structural identities shared with the invocation's type catalog.
+        self._encoding_lookup: dict[int, int] = {}
+        # Authored aliases mapped to identities to reject conflicting names.
+        self._encoding_aliases: dict[str, int] = {}
         # Value definitions use string id 0 as "no SSA name". Keep the empty
         # string at bytecode string-table slot 0 so anonymous values do not
         # accidentally pick up the first real symbol name during reading.
@@ -248,11 +247,12 @@ class NumberingContext:
 
     def intern_type(self, ir_type: Type) -> int:
         """Intern a type, returning its ID."""
-        if ir_type in self._type_lookup:
-            return self._type_lookup[ir_type]
+        identity = self._type_identity.intern(ir_type)
+        if identity in self._type_lookup:
+            return self._type_lookup[identity]
         type_id = len(self._type_list)
         self._type_list.append(ir_type)
-        self._type_lookup[ir_type] = type_id
+        self._type_lookup[identity] = type_id
         return type_id
 
     def intern_op(self, op_name: str) -> int:
@@ -262,6 +262,26 @@ class NumberingContext:
         op_id = len(self.ops)
         self.ops[op_name] = op_id
         return op_id
+
+    def intern_encoding(self, instance: EncodingInstance) -> None:
+        """Publish an encoding after all of its parameter dependencies complete."""
+        identity = self._type_identity.intern(instance)
+        if instance.alias:
+            previous = self._encoding_aliases.setdefault(instance.alias, identity)
+            if previous != identity:
+                raise ValueError(
+                    f"encoding alias {instance.alias!r} already names a "
+                    "different encoding"
+                )
+        index = self._encoding_lookup.get(identity)
+        if index is None:
+            index = len(self.encodings)
+            self._encoding_lookup[identity] = index
+            self.encodings.append(instance)
+            self.encoding_type_counts.append(len(self._type_list))
+        elif instance.alias and not self.encodings[index].alias:
+            self.encodings[index] = instance
+        self.encoding_indices[id(instance)] = index
 
     @property
     def string_list(self) -> list[str]:
@@ -286,252 +306,19 @@ class NumberingContext:
 
 
 # ============================================================================
-# Symbol reference projection
-# ============================================================================
-
-
-@dataclass(frozen=True, slots=True)
-class _SymbolReferenceSourceScope:
-    """Symbol and independently serializable root that own a reference."""
-
-    symbol_index: int | None = None
-    root_region_index_plus_one: int = 0
-
-
-@dataclass(frozen=True, slots=True)
-class _SymbolReferenceRecord:
-    """Wire symbol reference with its source contract or root region."""
-
-    source_root_region_index_plus_one: int
-    target_symbol_index: int
-    target_interfaces: int = 0
-
-
-class _SymbolReferenceProjectionBuilder:
-    """Builds wire-symbol dependency and abstract-provider rows."""
-
-    def __init__(
-        self,
-        module: Module,
-        wire_symbol_indices: dict[str, int],
-        op_decls_by_name: Mapping[str, Any],
-    ) -> None:
-        self._module = module
-        self._wire_symbol_indices = wire_symbol_indices
-        self._op_decls_by_name = op_decls_by_name
-        self._module_dependencies: list[_SymbolReferenceRecord] = []
-        self._symbol_dependencies: list[list[_SymbolReferenceRecord]] = [
-            [] for _ in wire_symbol_indices
-        ]
-        self._symbol_template_demands: list[list[_SymbolReferenceRecord]] = [
-            [] for _ in wire_symbol_indices
-        ]
-
-    def build(
-        self,
-    ) -> tuple[
-        tuple[_SymbolReferenceRecord, ...],
-        tuple[tuple[_SymbolReferenceRecord, ...], ...],
-        tuple[tuple[_SymbolReferenceRecord, ...], ...],
-    ]:
-        """Builds rows in the linked-list order used by the C analysis."""
-        module_scope = _SymbolReferenceSourceScope()
-        for operation in self._module.body.ops:
-            self._visit_operation(module_scope, operation)
-        for encoding in self._module.encodings:
-            self._visit_encoding(module_scope, encoding)
-        return (
-            tuple(reversed(self._module_dependencies)),
-            tuple(tuple(reversed(row)) for row in self._symbol_dependencies),
-            tuple(tuple(reversed(row)) for row in self._symbol_template_demands),
-        )
-
-    def _add_dependency(
-        self,
-        source_scope: _SymbolReferenceSourceScope,
-        name: str,
-        target_interfaces: int,
-    ) -> None:
-        try:
-            target_symbol_index = self._wire_symbol_indices[name]
-        except KeyError as exc:
-            raise ValueError(f"unresolved symbol dependency {name!r}") from exc
-        record = _SymbolReferenceRecord(
-            source_root_region_index_plus_one=source_scope.root_region_index_plus_one,
-            target_symbol_index=target_symbol_index,
-            target_interfaces=target_interfaces,
-        )
-        if source_scope.symbol_index is None:
-            self._module_dependencies.append(record)
-        else:
-            self._symbol_dependencies[source_scope.symbol_index].append(record)
-
-    def _visit_attr(
-        self,
-        source_scope: _SymbolReferenceSourceScope,
-        value: Any,
-        attr_def: Any | None = None,
-    ) -> None:
-        attr_type = getattr(attr_def, "attr_type", None)
-        symbol_ref = getattr(attr_def, "symbol_ref", None)
-        is_availability = (
-            symbol_ref is not None
-            and symbol_ref.role is SymbolReferenceRole.AVAILABILITY
-        )
-        target_interfaces = 0
-        if symbol_ref is not None:
-            for interface in symbol_ref.interfaces:
-                target_interfaces |= SYMBOL_INTERFACE_BITS[interface]
-        if attr_type == "symbol" or isinstance(value, SymbolName):
-            if not is_availability:
-                self._add_dependency(source_scope, str(value), target_interfaces)
-            return
-        if attr_type == "symbol_array" or isinstance(value, SymbolNameArray):
-            if not is_availability:
-                for name in value:
-                    self._add_dependency(source_scope, str(name), target_interfaces)
-            return
-        if attr_type == "symbol_set" or isinstance(value, SymbolNameSet):
-            if not is_availability:
-                for name in value:
-                    self._add_dependency(source_scope, str(name), target_interfaces)
-            return
-        if isinstance(value, _IR_TYPE_CLASSES):
-            self._visit_type(source_scope, cast(Type, value))
-            return
-        if isinstance(value, EncodingInstance):
-            self._visit_encoding(source_scope, value)
-            return
-        if isinstance(value, ParameterizedAttr):
-            for parameter, slot in zip(
-                value.definition.parameters, value.slots, strict=True
-            ):
-                if slot is not None:
-                    self._visit_attr(source_scope, slot, parameter)
-            return
-        if isinstance(value, ParameterizedAttrArray):
-            for element in value:
-                self._visit_attr(source_scope, element)
-            return
-        if isinstance(value, Mapping):
-            for nested_value in value.values():
-                self._visit_attr(source_scope, nested_value)
-            return
-        if isinstance(value, list | tuple):
-            for nested_value in value:
-                self._visit_attr(source_scope, nested_value)
-
-    def _visit_encoding(
-        self,
-        source_scope: _SymbolReferenceSourceScope,
-        encoding: EncodingInstance,
-    ) -> None:
-        for _, parameter_value in encoding.params:
-            self._visit_attr(source_scope, parameter_value)
-
-    def _visit_type(
-        self, source_scope: _SymbolReferenceSourceScope, ir_type: Type
-    ) -> None:
-        match ir_type:
-            case ShapedType(element_type=element_type, encoding=encoding):
-                self._visit_type(source_scope, element_type)
-                if isinstance(encoding, EncodingInstance):
-                    self._visit_encoding(source_scope, encoding)
-            case FunctionType(arg_types=args, result_types=results):
-                for nested_type in (*args, *results):
-                    self._visit_type(source_scope, nested_type)
-            case DialectType(params=parameters):
-                for nested_type in parameters:
-                    self._visit_type(source_scope, nested_type)
-            case ParameterizedType(definition=definition, slots=slots):
-                for parameter, value in zip(definition.params, slots, strict=True):
-                    if value is not None:
-                        self._visit_attr(source_scope, value, parameter)
-            case RegisterType(value_type=value_type) if value_type is not None:
-                self._visit_type(source_scope, value_type)
-            case _:
-                pass
-
-    def _visit_value(
-        self, source_scope: _SymbolReferenceSourceScope, value_id: int
-    ) -> None:
-        if 0 <= value_id < len(self._module.values):
-            self._visit_type(source_scope, self._module.values[value_id].type)
-
-    def _visit_region(
-        self, source_scope: _SymbolReferenceSourceScope, region: Region
-    ) -> None:
-        for block in region.blocks:
-            for argument_id in block.arg_ids:
-                self._visit_value(source_scope, argument_id)
-            for operation in block.ops:
-                self._visit_operation(source_scope, operation)
-
-    def _visit_operation(
-        self, source_scope: _SymbolReferenceSourceScope, operation: Operation
-    ) -> None:
-        op_decl = self._op_decls_by_name.get(operation.name)
-        symbol_def = getattr(op_decl, "symbol_def", None)
-        nested_source_scope = source_scope
-        defines_symbol = False
-        if symbol_def is not None:
-            symbol_name = operation.attributes.get(symbol_def.field)
-            if isinstance(symbol_name, str):
-                try:
-                    nested_source_scope = _SymbolReferenceSourceScope(
-                        symbol_index=self._wire_symbol_indices[symbol_name]
-                    )
-                    defines_symbol = True
-                except KeyError as exc:
-                    raise ValueError(
-                        f"symbol-defining operation {operation.name!r} names "
-                        f"unindexed symbol {symbol_name!r}"
-                    ) from exc
-
-        if operation.name == "template.apply":
-            family = operation.attributes.get("family")
-            if nested_source_scope.symbol_index is None:
-                raise ValueError("template.apply is not owned by a module symbol")
-            if not isinstance(family, str):
-                raise ValueError("template.apply family must be a symbol")
-            try:
-                family_symbol_ordinal = self._wire_symbol_indices[family]
-            except KeyError as exc:
-                raise ValueError(
-                    f"template.apply references unknown family {family!r}"
-                ) from exc
-            self._symbol_template_demands[nested_source_scope.symbol_index].append(
-                _SymbolReferenceRecord(
-                    source_root_region_index_plus_one=(
-                        nested_source_scope.root_region_index_plus_one
-                    ),
-                    target_symbol_index=family_symbol_ordinal,
-                )
-            )
-
-        for value_id in (*operation.operands, *operation.results):
-            self._visit_value(nested_source_scope, value_id)
-        for key, value in operation.attributes.items():
-            if symbol_def is not None and key == symbol_def.field:
-                continue
-            self._visit_attr(
-                nested_source_scope,
-                value,
-                attr_def_for_op(self._op_decls_by_name, operation.name, key),
-            )
-        for region_index, region in enumerate(operation.regions):
-            child_source_scope = nested_source_scope
-            if defines_symbol:
-                child_source_scope = _SymbolReferenceSourceScope(
-                    symbol_index=nested_source_scope.symbol_index,
-                    root_region_index_plus_one=region_index + 1,
-                )
-            self._visit_region(child_source_scope, region)
-
-
-# ============================================================================
 # Bytecode writer
 # ============================================================================
+
+
+class _ValueNumbering(dict[int, int]):
+    """One independently decoded SSA namespace and its completed type records."""
+
+    def __init__(self, values: Mapping[int, int] | None = None) -> None:
+        super().__init__(values or {})
+        # Scope-local completed ordinals, keyed by source type identity.
+        self.types: dict[int, int] = {}
+        # Completed type/attribute nodes in this scope's dependency traversal.
+        self.completed: set[int] = set()
 
 
 class BytecodeWriter:
@@ -565,6 +352,10 @@ class BytecodeWriter:
         self._location_mode = location_mode
         self._op_decls_by_name = build_op_decl_map(op_decls)
         self._ctx = NumberingContext()
+        # Indexed binding facts for each reachable type/attribute graph node.
+        self._binding_facts: dict[int, bool] = {}
+        # Physical type nodes whose strings and immediate children are numbered.
+        self._numbered_types: set[int] = set()
         # Dominance order retained once for value numbering and block emission.
         self._region_blocks: dict[int, list[Block]] = {}
         self._wire_symbols, self._wire_symbol_indices = (
@@ -575,8 +366,9 @@ class BytecodeWriter:
             self._module_dependencies,
             self._symbol_dependencies,
             self._symbol_template_demands,
-        ) = _SymbolReferenceProjectionBuilder(
+        ) = SymbolReferenceProjectionBuilder(
             self._module,
+            self._ctx.encodings,
             self._wire_symbol_indices,
             self._op_decls_by_name,
         ).build()
@@ -608,6 +400,11 @@ class BytecodeWriter:
         # Sources.
         self._ctx.sources = list(module.sources)
 
+        # Preserve authored catalog order, completing mixed dependencies first.
+        # Reachable encodings absent from that catalog are numbered below.
+        for encoding in module.encodings:
+            self._number_encoding_instance(encoding)
+
         # Walk symbols.
         for symbol in self._wire_symbols:
             self._ctx.intern_string(symbol.name)
@@ -627,11 +424,6 @@ class BytecodeWriter:
                         f"symbol {symbol.name!r} of kind {symbol.kind.name} "
                         "has no supported defining op"
                     )
-
-        # Encodings: recursively number child encoding params before parents so
-        # the ENCODINGS section has no forward references.
-        for enc in module.encodings:
-            self._number_encoding_instance(enc)
 
     def _number_func_op(self, op: Operation) -> None:
         """Number all entities in a func-like op (func.def, func.decl, etc.)."""
@@ -828,27 +620,22 @@ class BytecodeWriter:
             while scan_index < len(local_values):
                 value = module.values[local_values[scan_index]]
                 scan_index += 1
-                for binding_id in value.dim_bindings.values():
-                    add_value(binding_id)
-                if value.encoding_binding >= 0:
-                    add_value(value.encoding_binding)
+                collect_attr_value(value.type)
             return scan_index
+
+        def collect_attr_value(value: Any) -> None:
+            for binding in iter_value_bindings(value):
+                value_id = (
+                    binding.value
+                    if isinstance(binding, PredicateArg)
+                    else binding.value_id
+                )
+                if value_id is not None:
+                    add_value(value_id)
 
         for result_id in op.results:
             add_value(result_id)
         scan_index = collect_value_bindings(0)
-
-        def collect_attr_value(value: Any) -> None:
-            if isinstance(value, list) and value and isinstance(value[0], Predicate):
-                for predicate in value:
-                    for arg in predicate.args:
-                        if arg.tag != "value":
-                            continue
-                        add_value(arg.value)
-                return
-            if isinstance(value, Mapping):
-                for nested_value in value.values():
-                    collect_attr_value(nested_value)
 
         for key, value in op.attributes.items():
             if key == "symbol":
@@ -898,31 +685,93 @@ class BytecodeWriter:
         for region in op.regions:
             self._number_region(region)
 
+    def _has_type_bindings(self, root: Any) -> bool:
+        """Compute binding facts once across the invocation's shared graph."""
+        known = self._binding_facts.get(id(root))
+        if known is not None:
+            return known
+        pending = [(root, False)]
+        while pending:
+            value, expanded = pending.pop()
+            identity = id(value)
+            if identity in self._binding_facts:
+                continue
+            children = tuple(binding_children(value))
+            if children and not expanded:
+                pending.append((value, True))
+                pending.extend((child, False) for child in children)
+                continue
+            bound = any(self._binding_facts[id(child)] for child in children)
+            if isinstance(value, DynamicDim):
+                if value.value_id is None:
+                    raise ValueError("dynamic dimension has no SSA binding")
+                bound = True
+            elif isinstance(value, DynamicEncoding):
+                bound = True
+            elif isinstance(value, PredicateArg):
+                bound |= value.tag == "value"
+            self._binding_facts[identity] = bound
+        return self._binding_facts[id(root)]
+
+    @staticmethod
+    def _number(steps: Iterator[Any] | None) -> None:
+        """Complete postorder numbering without growing the Python call stack."""
+        if steps is None:
+            return
+        pending = [steps]
+        while pending:
+            try:
+                child = next(pending[-1])
+            except StopIteration:
+                pending.pop()
+            else:
+                if child is not None:
+                    pending.append(child)
+
     def _number_type(self, ir_type: Type) -> None:
+        self._number(self._number_type_steps(ir_type))
+
+    def _number_attr_value(self, value: Any, attr_def: Any | None = None) -> None:
+        self._number(self._number_attr_steps(value, attr_def))
+
+    def _number_encoding_instance(self, value: EncodingInstance) -> None:
+        self._number(self._number_encoding_steps(value))
+
+    def _number_type_steps(self, ir_type: Type) -> Iterator[Any] | None:
+        """Finish repeated and scalar types without allocating a continuation."""
+        if id(ir_type) in self._numbered_types:
+            return None
+        self._numbered_types.add(id(ir_type))
+        if isinstance(ir_type, ScalarType):
+            self._binding_facts[id(ir_type)] = False
+            self._ctx.intern_type(ir_type)
+            return None
+        return self._number_type_children(ir_type)
+
+    def _number_type_children(self, ir_type: Type) -> Iterator[Any]:
         """Ensure a type and all its sub-types are interned.
 
-        Sub-types are interned BEFORE their parent so that the type
-        table is in topological order (the reader can resolve forward
-        references by index).
+        Sub-types are interned before their parent, so the reader resolves each
+        child from an earlier entry in the topologically ordered type table.
         """
-        # Recurse into sub-types first (topological order).
+        # Complete immediate children before numbering their parent.
         match ir_type:
-            case ShapedType(element_type=elem, encoding=enc):
-                self._number_type(elem)
-                if isinstance(enc, EncodingInstance):
-                    self._number_encoding_instance(enc)
+            case ShapedType(element_type=element, encoding=encoding):
+                yield self._number_type_steps(element)
+                if isinstance(encoding, EncodingInstance):
+                    yield self._number_encoding_steps(encoding)
             case FunctionType(arg_types=args, result_types=results):
-                for t in args:
-                    self._number_type(t)
-                for t in results:
-                    self._number_type(t)
-            case DialectType(name=name, params=params):
+                for child in args:
+                    yield self._number_type_steps(child)
+                for child in results:
+                    yield self._number_type_steps(child)
+            case DialectType(name=name, params=parameters):
                 self._ctx.intern_string(name)
-                for p in params:
-                    self._number_type(p)
+                for parameter in parameters:
+                    yield self._number_type_steps(parameter)
             case RegisterType(value_type=value_type):
                 if value_type is not None:
-                    self._number_type(value_type)
+                    yield self._number_type_steps(value_type)
             case ParameterizedType(
                 definition=definition,
                 slots=slots,
@@ -932,22 +781,37 @@ class BytecodeWriter:
                     if value is None:
                         continue
                     self._ctx.intern_string(parameter.name)
-                    self._number_attr_value(value, parameter)
+                    yield self._number_attr_steps(value, parameter)
             case _:
                 pass
         # Intern the parent AFTER sub-types (ensures sub-types have lower IDs).
-        self._ctx.intern_type(ir_type)
+        if not self._has_type_bindings(ir_type):
+            self._ctx.intern_type(ir_type)
 
-    def _number_attr_value(
+    def _number_attr_steps(
         self,
         value: Any,
         attr_def: Any | None = None,
         aggregate_nesting_depth: int = 0,
-    ) -> None:
+    ) -> Iterator[Any] | None:
+        """Number leaves immediately; only structural children need suspension."""
+        if getattr(attr_def, "attr_type", None) == "enum":
+            return None
+        if isinstance(value, str):
+            self._ctx.intern_string(value)
+            return None
+        if isinstance(value, (int, float, bytes, bytearray)):
+            return None
+        return self._number_attr_children(value, attr_def, aggregate_nesting_depth)
+
+    def _number_attr_children(
+        self,
+        value: Any,
+        attr_def: Any | None,
+        aggregate_nesting_depth: int,
+    ) -> Iterator[Any]:
         """Intern strings referenced by attribute values."""
         attr_type = getattr(attr_def, "attr_type", None)
-        if attr_type == "enum":
-            return
         if isinstance(value, SymbolNameArray):
             if attr_type != "symbol_array":
                 raise ValueError("symbol arrays require a descriptor-backed field")
@@ -971,7 +835,9 @@ class BytecodeWriter:
                 if slot is None:
                     continue
                 self._ctx.intern_string(parameter.name)
-                self._number_attr_value(slot, parameter, aggregate_nesting_depth + 1)
+                yield self._number_attr_steps(
+                    slot, parameter, aggregate_nesting_depth + 1
+                )
         elif isinstance(value, ParameterizedAttrArray):
             if aggregate_nesting_depth >= ATTR_AGGREGATE_MAX_NESTING_DEPTH:
                 raise ValueError(
@@ -983,15 +849,13 @@ class BytecodeWriter:
                     "parameterized attribute arrays require a descriptor-backed field"
                 )
             for element in value:
-                self._number_attr_value(element, attr_def, aggregate_nesting_depth + 1)
-        elif isinstance(value, str):
-            self._ctx.intern_string(value)
-        elif isinstance(value, bytes | bytearray):
-            pass
+                yield self._number_attr_steps(
+                    element, attr_def, aggregate_nesting_depth + 1
+                )
         elif isinstance(value, _IR_TYPE_CLASSES):
-            self._number_type(cast(Type, value))
+            yield self._number_type_steps(cast(Type, value))
         elif isinstance(value, EncodingInstance):
-            self._number_encoding_instance(value)
+            yield self._number_encoding_steps(value)
         elif isinstance(value, Mapping):
             if aggregate_nesting_depth >= ATTR_AGGREGATE_MAX_NESTING_DEPTH:
                 raise ValueError(
@@ -1000,22 +864,26 @@ class BytecodeWriter:
                 )
             for k, v in value.items():
                 self._ctx.intern_string(k)
-                self._number_attr_value(
+                yield self._number_attr_steps(
                     v, aggregate_nesting_depth=aggregate_nesting_depth + 1
                 )
         elif isinstance(value, list | tuple):
             for item in value:
-                self._number_attr_value(item)
+                yield self._number_attr_steps(item)
 
-    def _number_encoding_instance(self, value: EncodingInstance) -> None:
-        """Intern one static encoding and any nested encoding-valued params."""
+    def _number_encoding_steps(self, value: EncodingInstance) -> Iterator[Any]:
+        """Complete one encoding's mixed type/attribute dependencies once."""
+        if id(value) in self._ctx.encoding_indices:
+            return
         for param_name, param_value in value.params:
             self._ctx.intern_string(param_name)
-            self._number_attr_value(param_value)
+            yield self._number_attr_steps(param_value)
+            if self._has_type_bindings(param_value):
+                raise ValueError("static encoding parameters cannot capture SSA values")
         self._ctx.intern_string(value.name)
         if value.alias:
             self._ctx.intern_string(value.alias)
-        self._module.add_encoding(value)
+        self._ctx.intern_encoding(value)
 
     # --- Pass 2: Section writers ---
 
@@ -1066,7 +934,7 @@ class BytecodeWriter:
     def _write_encodings(self) -> bytes:
         """Write the ENCODINGS section."""
         buf = ByteBuffer()
-        encodings = self._module.encodings
+        encodings = self._ctx.encodings
 
         # Encoding family registry from unique encoding names.
         family_names: list[str] = []
@@ -1082,7 +950,10 @@ class BytecodeWriter:
 
         # Encoding instances.
         buf.write_varint(len(encodings))
-        for enc in encodings:
+        for enc, type_count in zip(
+            encodings, self._ctx.encoding_type_counts, strict=True
+        ):
+            buf.write_varint(type_count)
             buf.write_varint(family_map[enc.name])
             alias_string_id_plus1 = self._ctx.strings[enc.alias] + 1 if enc.alias else 0
             buf.write_varint(alias_string_id_plus1)
@@ -1103,8 +974,17 @@ class BytecodeWriter:
             self._write_one_type(buf, ir_type)
         return buf.get_bytes()
 
-    def _write_one_type(self, buf: ByteBuffer, ir_type: Type) -> None:
-        """Serialize one type entry."""
+    def _type_reference(self, ir_type: Type, values: _ValueNumbering | None) -> int:
+        if values is None:
+            return self._ctx.intern_type(ir_type)
+        if self._binding_facts[id(ir_type)]:
+            return (values.types[id(ir_type)] << 1) | 1
+        return self._ctx.intern_type(ir_type) << 1
+
+    def _write_one_type(
+        self, buf: ByteBuffer, ir_type: Type, values: _ValueNumbering | None = None
+    ) -> None:
+        """Serialize a static table entry or a complete scoped record."""
         match ir_type:
             case NoneType():
                 buf.write_u8(BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.NONE])
@@ -1115,25 +995,19 @@ class BytecodeWriter:
                 buf.write_u8(BYTECODE_TYPE_KIND_BY_IR_KIND[ir_type.type_kind])
                 buf.write_u8(ir_type.element_type.kind.value)
                 buf.write_u8(ir_type.rank)
-                # Encoding attachment: 0 = none, 1 = static (table index
-                # follows), 2 = dynamic SSA (value_id on the Value, not the
-                # type).
+                # Encoding attachment: 0 = none, 1 = static, 2 = scoped SSA.
                 if isinstance(ir_type.encoding, DynamicEncoding):
                     buf.write_u8(2)  # dynamic SSA encoding
-                    buf.write_varint(0)
-                elif isinstance(ir_type.encoding, EncodingInstance):
-                    # Find the encoding in the module's table.
-                    enc_index = 0
-                    for i, enc in enumerate(self._module.encodings):
-                        if enc == ir_type.encoding:
-                            enc_index = i + 1  # 1-based
-                            break
-                    if enc_index == 0:
-                        raise ValueError(
-                            f"encoding {ir_type.encoding!r} was not numbered"
+                    buf.write_varint(
+                        self._value_number_or_error(
+                            values, ir_type.encoding.value_id, "dynamic encoding"
                         )
+                    )
+                elif isinstance(ir_type.encoding, EncodingInstance):
                     buf.write_u8(1)  # static encoding
-                    buf.write_varint(enc_index)
+                    buf.write_varint(
+                        self._ctx.encoding_indices[id(ir_type.encoding)] + 1
+                    )
                 else:
                     buf.write_u8(0)  # no encoding
                     buf.write_varint(0)
@@ -1142,22 +1016,31 @@ class BytecodeWriter:
                         case StaticDim(size=size):
                             buf.write_u8(0)  # is_dynamic = false
                             buf.write_varint(size)
-                        case DynamicDim():
+                        case DynamicDim(value_id=value_id):
                             buf.write_u8(1)  # is_dynamic = true
+                            if values is not None:
+                                buf.write_varint(
+                                    0
+                                    if value_id is None
+                                    else 1
+                                    + self._value_number_or_error(
+                                        values, value_id, "dynamic dimension"
+                                    )
+                                )
             case FunctionType(arg_types=args, result_types=results):
                 buf.write_u8(BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.FUNCTION])
                 buf.write_varint(len(args))
                 buf.write_varint(len(results))
                 for arg in args:
-                    buf.write_varint(self._ctx.intern_type(arg))
+                    buf.write_varint(self._type_reference(arg, values))
                 for result in results:
-                    buf.write_varint(self._ctx.intern_type(result))
+                    buf.write_varint(self._type_reference(result, values))
             case DialectType(name=name, params=params):
                 buf.write_u8(BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.DIALECT])
                 buf.write_varint(self._ctx.strings[name])
                 buf.write_varint(len(params))
                 for param in params:
-                    buf.write_varint(self._ctx.intern_type(param))
+                    buf.write_varint(self._type_reference(param, values))
             case ParameterizedType(
                 definition=definition,
                 slots=slots,
@@ -1172,7 +1055,13 @@ class BytecodeWriter:
                 buf.write_varint(len(present_parameters))
                 for parameter, value in present_parameters:
                     buf.write_varint(self._ctx.strings[parameter.name])
-                    self._write_attr_value(buf, value, attr_def=parameter)
+                    self._write_attr_value(
+                        buf,
+                        value,
+                        values,
+                        attr_def=parameter,
+                        completed_types=values is not None,
+                    )
             case RegisterType(
                 descriptor_set_stable_id=descriptor_set_stable_id,
                 register_class_id=register_class_id,
@@ -1182,9 +1071,10 @@ class BytecodeWriter:
                 buf.write_u8(BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.REGISTER])
                 buf.write_varint(descriptor_set_stable_id)
                 buf.write_varint(register_class_id | (unit_count << 16))
-                buf.write_u8(1 if value_type is not None else 0)
+                if values is None:
+                    buf.write_u8(1 if value_type is not None else 0)
                 if value_type is not None:
-                    buf.write_varint(self._ctx.intern_type(value_type))
+                    buf.write_varint(self._type_reference(value_type, values))
             case StorageType(space=space):
                 buf.write_u8(BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.STORAGE])
                 buf.write_u8(space.value)
@@ -1193,6 +1083,14 @@ class BytecodeWriter:
                 buf.write_u8(role.value)
             case PoolType(block_size=block_size):
                 buf.write_u8(BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.POOL])
+                if values is not None:
+                    buf.write_varint(
+                        1
+                        + self._value_number_or_error(
+                            values, block_size.value_id, "pool dimension"
+                        )
+                    )
+                    return
                 match block_size:
                     case StaticDim(size=size):
                         buf.write_u8(0)  # static
@@ -1275,7 +1173,7 @@ class BytecodeWriter:
 
     def _write_root_region_payload(self, buf: ByteBuffer, region: Region) -> None:
         """Write one root region with an independent SSA namespace."""
-        value_numbers: dict[int, int] = {}
+        value_numbers = _ValueNumbering()
         self._assign_value_numbers(region, value_numbers)
         value_count, region_count, block_count, op_count = self._count_region_tree(
             region
@@ -1362,7 +1260,7 @@ class BytecodeWriter:
         return value_count, region_count, block_count, op_count
 
     def _value_number_or_error(
-        self, value_numbers: dict[int, int], value_id: int, context: str
+        self, value_numbers: _ValueNumbering, value_id: int, context: str
     ) -> int:
         try:
             return value_numbers[value_id]
@@ -1372,7 +1270,7 @@ class BytecodeWriter:
             ) from exc
 
     def _write_region(
-        self, buf: ByteBuffer, region: Region, value_numbers: dict[int, int]
+        self, buf: ByteBuffer, region: Region, value_numbers: _ValueNumbering
     ) -> None:
         """Write a region (source_flags + block_count + blocks)."""
         if region.source_flags < 0 or (region.source_flags & ~REGION_SOURCE_FLAG_MASK):
@@ -1390,7 +1288,7 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         block: Block,
-        value_numbers: dict[int, int],
+        value_numbers: _ValueNumbering,
         block_indices: dict[int, int],
     ) -> None:
         """Write a block (label, args, ops)."""
@@ -1411,37 +1309,44 @@ class BytecodeWriter:
         for op in live_ops:
             self._write_operation(buf, op, value_numbers, block_indices)
 
-    def _write_dim_bindings(
-        self, buf: ByteBuffer, value: Value, value_numbers: dict[int, int]
+    def _write_type_use(
+        self, buf: ByteBuffer, ir_type: Type, values: _ValueNumbering | None
     ) -> None:
-        """Write dim bindings and encoding binding for a value.
-
-        Every dynamic dim in the value's type must have a corresponding
-        entry in dim_bindings referencing an SSA value. Missing bindings
-        indicate invalid IR (anonymous dynamic dims are not permitted).
-        """
-        dims = value.type.dims if hasattr(value.type, "dims") else ()
-        dynamic_count = sum(1 for d in dims if isinstance(d, DynamicDim))
-        if dynamic_count > 0 and len(value.dim_bindings) != dynamic_count:
-            raise ValueError(
-                f"value '{value.name}' has {dynamic_count} dynamic dim(s) "
-                f"but {len(value.dim_bindings)} dim binding(s) — every "
-                f"dynamic dim must reference an SSA value"
-            )
-        buf.write_varint(dynamic_count)
-        for _position, value_id in sorted(value.dim_bindings.items()):
-            value_number = self._value_number_or_error(
-                value_numbers, value_id, "dynamic dimension binding"
-            )
-            buf.write_signed_varint(value_number)
-        # Encoding binding: 0 = none, else 1 + value_number.
-        if value.encoding_binding >= 0:
-            value_number = self._value_number_or_error(
-                value_numbers, value.encoding_binding, "dynamic encoding binding"
-            )
-            buf.write_varint(1 + value_number)
-        else:
+        """Extend the current scope with final records and select its root."""
+        bound = self._binding_facts[id(ir_type)]
+        if values is None:
+            if bound:
+                raise ValueError("SSA-bound type requires a value scope")
+            buf.write_varint(self._ctx.intern_type(ir_type))
+            return
+        buf.write_varint(1 if bound else self._ctx.intern_type(ir_type) << 1)
+        if not bound:
             buf.write_varint(0)
+            return
+        records: list[Type] = []
+        pending = [(ir_type, False)]
+        while pending:
+            value, expanded = pending.pop()
+            identity = id(value)
+            if identity in values.completed or not self._binding_facts[identity]:
+                continue
+            children = tuple(binding_children(value))
+            if children and not expanded:
+                pending.append((value, True))
+                pending.extend((child, False) for child in reversed(children))
+                continue
+            values.completed.add(identity)
+            if isinstance(value, _IR_TYPE_CLASSES):
+                values.types[identity] = len(values.types)
+                records.append(value)
+        payload = ByteBuffer()
+        payload.write_varint(len(records))
+        for record in records:
+            self._write_one_type(payload, record, values)
+        payload.write_varint(values.types[id(ir_type)] + 1)
+        data = payload.get_bytes()
+        buf.write_varint(len(data))
+        buf.write_bytes(data)
 
     def _write_source_trivia(
         self,
@@ -1464,17 +1369,16 @@ class BytecodeWriter:
             buf.write_bytes(encoded)
 
     def _write_value_def(
-        self, buf: ByteBuffer, value: Value, value_numbers: dict[int, int]
+        self, buf: ByteBuffer, value: Value, value_numbers: _ValueNumbering
     ) -> None:
         buf.write_varint(self._ctx.strings.get(value.name, 0))
-        buf.write_varint(self._ctx.intern_type(value.type))
-        self._write_dim_bindings(buf, value, value_numbers)
+        self._write_type_use(buf, value.type, value_numbers)
 
     def _write_operation(
         self,
         buf: ByteBuffer,
         op: Operation,
-        value_numbers: dict[int, int],
+        value_numbers: _ValueNumbering,
         block_indices: dict[int, int],
     ) -> None:
         """Write a single operation."""
@@ -1558,9 +1462,10 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         value: ParameterizedAttr,
-        value_numbers: dict[int, int] | None,
+        value_numbers: _ValueNumbering | None,
         attr_def: Any | None,
         aggregate_nesting_depth: int,
+        completed_types: bool,
     ) -> None:
         """Write a parameterized attribute payload without its kind byte."""
         if aggregate_nesting_depth >= ATTR_AGGREGATE_MAX_NESTING_DEPTH:
@@ -1591,15 +1496,17 @@ class BytecodeWriter:
                 value_numbers,
                 parameter_by_name[parameter_name],
                 aggregate_nesting_depth + 1,
+                completed_types=completed_types,
             )
 
     def _write_parameterized_attr_value(
         self,
         buf: ByteBuffer,
         value: ParameterizedAttr,
-        value_numbers: dict[int, int] | None,
+        value_numbers: _ValueNumbering | None,
         attr_def: Any | None,
         aggregate_nesting_depth: int,
+        completed_types: bool,
     ) -> None:
         """Write a complete descriptor-backed parameterized attribute."""
         if attr_def is not None and getattr(attr_def, "attr_type", None) != (
@@ -1615,15 +1522,17 @@ class BytecodeWriter:
             value_numbers,
             attr_def,
             aggregate_nesting_depth,
+            completed_types,
         )
 
     def _write_parameterized_attr_array_value(
         self,
         buf: ByteBuffer,
         value: ParameterizedAttrArray,
-        value_numbers: dict[int, int] | None,
+        value_numbers: _ValueNumbering | None,
         attr_def: Any | None,
         aggregate_nesting_depth: int,
+        completed_types: bool,
     ) -> None:
         """Write a descriptor-backed ordered parameterized attribute array."""
         if aggregate_nesting_depth >= ATTR_AGGREGATE_MAX_NESTING_DEPTH:
@@ -1644,14 +1553,16 @@ class BytecodeWriter:
                 value_numbers,
                 attr_def,
                 aggregate_nesting_depth + 1,
+                completed_types,
             )
 
     def _write_dict_attr_value(
         self,
         buf: ByteBuffer,
         value: Mapping[str, Any],
-        value_numbers: dict[int, int] | None,
+        value_numbers: _ValueNumbering | None,
         aggregate_nesting_depth: int,
+        completed_types: bool,
     ) -> None:
         """Write a canonical generic attribute dictionary."""
         if aggregate_nesting_depth >= ATTR_AGGREGATE_MAX_NESTING_DEPTH:
@@ -1668,15 +1579,17 @@ class BytecodeWriter:
                 item,
                 value_numbers,
                 aggregate_nesting_depth=aggregate_nesting_depth + 1,
+                completed_types=completed_types,
             )
 
     def _dispatch_parameterized_attr_value(
         self,
         buf: ByteBuffer,
         value: Any,
-        value_numbers: dict[int, int] | None,
+        value_numbers: _ValueNumbering | None,
         attr_def: Any | None,
         aggregate_nesting_depth: int,
+        completed_types: bool,
     ) -> bool:
         """Writes or rejects a parameterized field, returning whether handled."""
         attr_type = getattr(attr_def, "attr_type", None)
@@ -1687,6 +1600,7 @@ class BytecodeWriter:
                 value_numbers,
                 attr_def,
                 aggregate_nesting_depth,
+                completed_types,
             )
             return True
         if isinstance(value, ParameterizedAttrArray):
@@ -1696,6 +1610,7 @@ class BytecodeWriter:
                 value_numbers,
                 attr_def,
                 aggregate_nesting_depth,
+                completed_types,
             )
             return True
         if attr_type == "parameterized":
@@ -1714,9 +1629,11 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         value: Any,
-        value_numbers: dict[int, int] | None = None,
+        value_numbers: _ValueNumbering | None = None,
         attr_def: Any | None = None,
         aggregate_nesting_depth: int = 0,
+        *,
+        completed_types: bool = False,
     ) -> None:
         """Write an attribute value with its kind byte."""
         attr_type = getattr(attr_def, "attr_type", None)
@@ -1726,23 +1643,19 @@ class BytecodeWriter:
             value_numbers,
             attr_def,
             aggregate_nesting_depth,
+            completed_types,
         ):
             return
         if self._dispatch_symbol_attr_value(buf, value, attr_def):
             return
-        if attr_type == "predicate_list":
-            if not isinstance(value, list) or not all(
+        if attr_type == "predicate_list" or isinstance(value, PredicateListAttr):
+            if not isinstance(value, list | PredicateListAttr) or not all(
                 isinstance(predicate, Predicate) for predicate in value
             ):
                 raise TypeError(
-                    "predicate-list attribute value must be a list of Predicate "
+                    "predicate-list attribute value must contain Predicate "
                     f"objects, got {value!r}"
                 )
-            buf.write_u8(ATTR_KIND_PREDICATE_LIST)
-            self._write_predicate_list(buf, value, value_numbers)
-            return
-        # Check for predicate list attribute (list of Predicate objects).
-        if isinstance(value, list) and value and isinstance(value[0], Predicate):
             buf.write_u8(ATTR_KIND_PREDICATE_LIST)
             self._write_predicate_list(buf, value, value_numbers)
             return
@@ -1757,11 +1670,14 @@ class BytecodeWriter:
             buf.write_u8(ATTR_KIND_SCOPED_ENUM)
             buf.write_varint(self._ctx.strings[value])
             return
-        if attr_type == "type":
+        if attr_type == "type" or isinstance(value, _IR_TYPE_CLASSES):
             if not isinstance(value, _IR_TYPE_CLASSES):
                 raise TypeError(f"type attribute value must be a Type, got {value!r}")
             buf.write_u8(ATTR_KIND_TYPE)
-            buf.write_varint(self._ctx.intern_type(cast(Type, value)))
+            if completed_types:
+                buf.write_varint(self._type_reference(value, value_numbers))
+            else:
+                self._write_type_use(buf, value, value_numbers)
             return
         if attr_type == "bytes":
             if not isinstance(value, bytes | bytearray):
@@ -1802,11 +1718,11 @@ class BytecodeWriter:
             raise ValueError("symbol sets require a descriptor-backed field")
         elif isinstance(value, Mapping):
             self._write_dict_attr_value(
-                buf, value, value_numbers, aggregate_nesting_depth
+                buf, value, value_numbers, aggregate_nesting_depth, completed_types
             )
         elif isinstance(value, EncodingInstance):
             buf.write_u8(ATTR_KIND_ENCODING)
-            buf.write_varint(self._module.add_encoding(value) + 1)
+            buf.write_varint(self._ctx.encoding_indices[id(value)] + 1)
         elif isinstance(value, list | tuple):
             # Check if all ints → i64_array.
             if all(isinstance(v, int) for v in value):
@@ -1969,8 +1885,8 @@ class BytecodeWriter:
     def _write_predicate_list(
         self,
         buf: ByteBuffer,
-        predicates: list[Predicate],
-        value_numbers: dict[int, int] | None = None,
+        predicates: Sequence[Predicate],
+        value_numbers: _ValueNumbering | None = None,
     ) -> None:
         """Write a predicate list: count + per-predicate data."""
         buf.write_varint(len(predicates))
@@ -1987,7 +1903,7 @@ class BytecodeWriter:
         self,
         buf: ByteBuffer,
         arg: PredicateArg,
-        value_numbers: dict[int, int] | None = None,
+        value_numbers: _ValueNumbering | None = None,
     ) -> None:
         """Write a single predicate argument: tag + value."""
         match arg.tag:
@@ -2152,12 +2068,14 @@ class BytecodeWriter:
                 # Result types and tied results.
                 result_ids = op.results
                 tied_results = op.tied_results
-                signature_value_numbers = {
-                    value_id: value_number
-                    for value_number, value_id in enumerate(
-                        [*workload_arg_ids, *arg_ids, *result_ids]
-                    )
-                }
+                signature_value_numbers = _ValueNumbering(
+                    {
+                        value_id: value_number
+                        for value_number, value_id in enumerate(
+                            [*workload_arg_ids, *arg_ids, *result_ids]
+                        )
+                    }
+                )
 
                 buf.write_varint(len(workload_arg_ids))
                 buf.write_varint(len(arg_ids))
@@ -2236,10 +2154,12 @@ class BytecodeWriter:
 
                 result_ids = list(op.results)
                 local_value_ids = self._collect_global_local_values(op)
-                local_value_numbers = {
-                    value_id: value_number
-                    for value_number, value_id in enumerate(local_value_ids)
-                }
+                local_value_numbers = _ValueNumbering(
+                    {
+                        value_id: value_number
+                        for value_number, value_id in enumerate(local_value_ids)
+                    }
+                )
                 buf.write_varint(len(result_ids))
                 buf.write_varint(len(local_value_ids))
                 for value_id in local_value_ids:

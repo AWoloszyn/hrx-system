@@ -101,10 +101,9 @@ TEST_F(BytecodeSelectedBodyTest, ProjectsHighValueReferencesToCompactIds) {
       &value_scope));
 
   const uint8_t value_bytes[] = {
-      kSourceOrdinal,  // Value name STRINGS ordinal.
-      kSourceOrdinal,  // Value type TYPES ordinal.
-      0x00,            // Dynamic dimension binding count.
-      0x00,            // Encoding binding.
+      kSourceOrdinal,      // Value name STRINGS ordinal.
+      kSourceOrdinal * 2,  // Static TYPES reference.
+      0x00,                // No scoped type records.
   };
   loom_bytecode_reader_cursor_t cursor;
   loom_bytecode_reader_cursor_initialize(value_bytes, sizeof(value_bytes),

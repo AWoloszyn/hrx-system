@@ -31,7 +31,9 @@ iree_status_t loom_parse_symbol_ref_attr(loom_parser_t* parser,
 iree_status_t loom_parse_generic_attr_value(loom_parser_t* parser,
                                             uint16_t nesting_depth,
                                             loom_attribute_t* out_attr);
+// Parses a bracketed predicate list using the enclosing SSA binding mode.
 iree_status_t loom_parse_predicate_list(loom_parser_t* parser,
+                                        loom_type_parse_mode_t type_mode,
                                         loom_attribute_t* out_attr);
 iree_status_t loom_parse_attr_dict(loom_parser_t* parser,
                                    loom_attribute_t* out_attr);

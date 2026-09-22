@@ -41,9 +41,8 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
 
-from loom.assembly import Clause, FuncArgs, OptionalGroup, Scope
 from loom.dsl import FuncLikeInterface, Op, TypeDef
-from loom.fields import FieldLayout
+from loom.fields import FieldLayout, compute_layout
 from loom.ir import (
     LOCATION_UNKNOWN,
     VALUE_DEF_BLOCK_NONE,
@@ -219,32 +218,6 @@ def _find_func_like_interface(op_decl: Op) -> FuncLikeInterface | None:
     return None
 
 
-def _find_func_args_field(op_decl: Op) -> str:
-    """Return the explicit FuncArgs format field for a bodyful func-like op."""
-
-    def walk(elements: Sequence[Any]) -> str | None:
-        for element in elements:
-            match element:
-                case FuncArgs(field=name):
-                    return name
-                case (
-                    Clause(elements=inner)
-                    | OptionalGroup(elements=inner)
-                    | Scope(elements=inner)
-                ):
-                    nested = walk(inner)
-                    if nested is not None:
-                        return nested
-                case _:
-                    continue
-        return None
-
-    field = walk(op_decl.format)
-    if field is None:
-        raise ValueError(f"Op '{op_decl.name}' has no explicit FuncArgs format field.")
-    return field
-
-
 class IRBuilder:
     """Generic IR builder: constructs Operations from Op declarations.
 
@@ -300,6 +273,7 @@ class IRBuilder:
         """Register op declarations."""
         for op in ops:
             self._op_registry[op.name] = op
+            self._layouts[op.name] = compute_layout(op)
 
     def register_types(self, types: Sequence[TypeDef]) -> None:
         """Register type declarations."""
@@ -424,11 +398,11 @@ class IRBuilder:
                     entry_block.arg_ids.extend(func_arg_ids)
 
         signature_arg_ids = list(body_region.blocks[0].arg_ids)
-        func_args_field = _find_func_args_field(op_decl)
+        func_args_fields = self._layouts[op_decl.name].func_args_fields
         for region_index, region_def in enumerate(op_decl.regions):
             if region_index == body_region_index:
                 continue
-            if region_def.arg_source != func_args_field:
+            if region_def.arg_source not in func_args_fields:
                 continue
             while len(region_list) <= region_index:
                 region_list.append(Region())
@@ -470,12 +444,19 @@ class IRBuilder:
                 f"{len(projected_arg_ids)} args but function signature has "
                 f"{len(signature_arg_ids)}."
             )
-        for arg_index, (signature_id, projected_id) in enumerate(
-            zip(signature_arg_ids, projected_arg_ids, strict=True)
+        from loom.type_binding import remap_value_bindings
+        from loom.type_identity import TypeIdentity
+
+        signature_types = remap_value_bindings(
+            (self._module.values[value_id].type for value_id in signature_arg_ids),
+            dict(zip(signature_arg_ids, projected_arg_ids, strict=True)),
+        )
+        identities = TypeIdentity()
+        for arg_index, (signature_type, projected_id) in enumerate(
+            zip(signature_types, projected_arg_ids, strict=True)
         ):
-            signature_type = self._module.values[signature_id].type
             projected_type = self._module.values[projected_id].type
-            if projected_type != signature_type:
+            if not identities.equal(projected_type, signature_type):
                 raise ValueError(
                     f"Op '{op_name}' region '{region_name}' arg {arg_index} "
                     f"has type {projected_type!r} but function signature arg "

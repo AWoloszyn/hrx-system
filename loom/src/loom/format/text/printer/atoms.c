@@ -21,6 +21,61 @@ iree_status_t loom_print_value_ref(const loom_print_context_t* ctx,
                                               ctx->module, value_id);
 }
 
+static iree_status_t loom_print_predicate_arg(const loom_print_context_t* ctx,
+                                              uint8_t tag, int64_t value) {
+  switch (tag) {
+    case LOOM_PRED_ARG_VALUE:
+      return loom_print_value_ref(ctx, (loom_value_id_t)value);
+    case LOOM_PRED_ARG_CONST:
+      return loom_output_stream_write_format(ctx->stream, "%" PRId64, value);
+    default:
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "unknown predicate arg tag %d", (int)tag);
+  }
+}
+
+iree_status_t loom_print_predicate_list(const loom_print_context_t* ctx,
+                                        const loom_predicate_t* predicates,
+                                        uint16_t count) {
+  if (count > 0 && !predicates) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "predicate list has count %u but NULL predicates",
+                            count);
+  }
+  IREE_RETURN_IF_ERROR(loom_output_stream_write_char(ctx->stream, '['));
+  for (uint16_t i = 0; i < count; ++i) {
+    if (i > 0) {
+      IREE_RETURN_IF_ERROR(loom_output_stream_write_cstring(ctx->stream, ", "));
+    }
+    const loom_predicate_t* predicate = &predicates[i];
+    const char* name = loom_predicate_kind_name(predicate->kind);
+    if (!name) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "unknown predicate kind %d",
+                              (int)predicate->kind);
+    }
+    uint8_t argument_count =
+        loom_predicate_kind_argument_count(predicate->kind);
+    if (predicate->arg_count != argument_count) {
+      return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                              "predicate kind %s expects %u arguments, got %u",
+                              name, argument_count, predicate->arg_count);
+    }
+    IREE_RETURN_IF_ERROR(loom_output_stream_write_cstring(ctx->stream, name));
+    IREE_RETURN_IF_ERROR(loom_output_stream_write_char(ctx->stream, '('));
+    for (uint8_t j = 0; j < argument_count; ++j) {
+      if (j > 0) {
+        IREE_RETURN_IF_ERROR(
+            loom_output_stream_write_cstring(ctx->stream, ", "));
+      }
+      IREE_RETURN_IF_ERROR(loom_print_predicate_arg(ctx, predicate->arg_tags[j],
+                                                    predicate->args[j]));
+    }
+    IREE_RETURN_IF_ERROR(loom_output_stream_write_char(ctx->stream, ')'));
+  }
+  return loom_output_stream_write_char(ctx->stream, ']');
+}
+
 // Emits a canonical JSON-compatible string literal. Stored strings are expected
 // to contain decoded UTF-8 payload bytes; this helper validates that invariant
 // before writing so malformed IR never serializes as malformed text.
@@ -1173,6 +1228,12 @@ static iree_status_t loom_print_attr_impl(
       }
       return loom_output_stream_write_format(stream, "type<%" PRIu32 ">",
                                              attr->type_id);
+    case LOOM_ATTR_PREDICATE_LIST: {
+      IREE_RETURN_IF_ERROR(
+          loom_output_stream_write_cstring(stream, "predicates"));
+      return loom_print_predicate_list(type_context, attr->predicate_list,
+                                       attr->count);
+    }
     case LOOM_ATTR_ENCODING:
       return loom_print_static_encoding(
           stream, module, loom_attr_as_encoding_id(*attr), type_context);

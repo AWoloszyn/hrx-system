@@ -363,16 +363,20 @@ class TestStorageType:
 
 class TestDynamicEncoding:
     def test_hashable(self) -> None:
-        a = DynamicEncoding()
-        b = DynamicEncoding()
+        a = DynamicEncoding(0)
+        b = DynamicEncoding(0)
         assert a == b
         assert hash(a) == hash(b)
         assert len({a, b}) == 1
 
+    def test_identity_is_part_of_equality(self) -> None:
+        assert DynamicEncoding(0) != DynamicEncoding(1)
+        assert len({DynamicEncoding(0), DynamicEncoding(1)}) == 2
+
 
 class TestShapedTypeWithDynamicEncoding:
     def test_dynamic_encoding_creates(self) -> None:
-        t = ShapedType(TypeKind.TILE, F32, (StaticDim(4),), encoding=DynamicEncoding())
+        t = ShapedType(TypeKind.TILE, F32, (StaticDim(4),), encoding=DynamicEncoding(0))
         assert t.has_encoding
         assert t.has_dynamic_encoding
         assert not t.has_static_encoding
@@ -391,12 +395,12 @@ class TestShapedTypeWithDynamicEncoding:
         assert not t.has_dynamic_encoding
 
     def test_distinct_from_no_encoding(self) -> None:
-        a = ShapedType(TypeKind.TILE, F32, (StaticDim(4),), encoding=DynamicEncoding())
+        a = ShapedType(TypeKind.TILE, F32, (StaticDim(4),), encoding=DynamicEncoding(0))
         b = ShapedType(TypeKind.TILE, F32, (StaticDim(4),))
         assert a != b
 
     def test_distinct_from_static_encoding(self) -> None:
-        a = ShapedType(TypeKind.TILE, F32, (StaticDim(4),), encoding=DynamicEncoding())
+        a = ShapedType(TypeKind.TILE, F32, (StaticDim(4),), encoding=DynamicEncoding(0))
         enc = EncodingInstance(name="q8_0")
         b = ShapedType(TypeKind.TILE, F32, (StaticDim(4),), encoding=enc)
         assert a != b
@@ -545,18 +549,22 @@ class TestValues:
         assert v.is_consumed
 
     def test_dim_bindings(self) -> None:
-        ty = ShapedType(TypeKind.TILE, F32, (DynamicDim(), StaticDim(4)))
-        v = Value(name="r", type=ty, dim_bindings={0: 42})
-        assert v.dim_bindings[0] == 42
+        ty = ShapedType(TypeKind.TILE, F32, (DynamicDim(42), StaticDim(4)))
+        v = Value(name="r", type=ty)
+        assert v.type.dims[0] == DynamicDim(42)
 
-    def test_encoding_binding_default(self) -> None:
-        v = Value(name="x", type=F32)
-        assert v.encoding_binding == -1
+    def test_dimension_identity_distinguishes_complete_types(self) -> None:
+        first = ShapedType(TypeKind.TILE, F32, (DynamicDim(0),))
+        second = ShapedType(TypeKind.TILE, F32, (DynamicDim(1),))
+        assert first != second
+        assert len({first, second}) == 2
 
     def test_encoding_binding(self) -> None:
-        ty = ShapedType(TypeKind.TILE, F32, (StaticDim(4),), encoding=DynamicEncoding())
-        v = Value(name="t", type=ty, encoding_binding=42)
-        assert v.encoding_binding == 42
+        ty = ShapedType(
+            TypeKind.TILE, F32, (StaticDim(4),), encoding=DynamicEncoding(42)
+        )
+        v = Value(name="t", type=ty)
+        assert v.type.encoding == DynamicEncoding(42)
 
     def test_definition_defaults_are_explicitly_unattached(self) -> None:
         v = Value(name="x", type=F32)

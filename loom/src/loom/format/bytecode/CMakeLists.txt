@@ -14,6 +14,8 @@ loom_check_test_suite(
     test
   SRCS
     "catalog_order.loom-test"
+    "scoped_type_interop.loom-test"
+    "type_bindings.loom-test"
 )
 
 loom_cc_library(
@@ -189,6 +191,7 @@ loom_cc_test(
     reader_test
   SRCS
     "function_projection_reader_test.cc"
+    "mixed_tables_test.cc"
     "reader_test.cc"
   DEPS
     ::format

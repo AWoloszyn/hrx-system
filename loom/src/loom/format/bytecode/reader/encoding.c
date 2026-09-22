@@ -20,6 +20,8 @@ typedef struct loom_bytecode_encoding_validator_t {
   iree_arena_allocator_t* scratch_arena;
   // Module facts populated by encoding validation.
   loom_bytecode_reader_module_view_t* module_view;
+  // Forward TYPES cursor sharing the completed encoding prefix.
+  loom_bytecode_type_validation_t* types;
 } loom_bytecode_encoding_validator_t;
 
 typedef struct loom_bytecode_encoding_table_t {
@@ -125,6 +127,22 @@ static iree_status_t loom_bytecode_encoding_decode_entry(
     loom_bytecode_encoding_validator_t* validator,
     loom_bytecode_encoding_table_t* table, iree_host_size_t index,
     loom_bytecode_encoding_metadata_t* out_metadata) {
+  const uint64_t prefix_offset =
+      loom_bytecode_reader_cursor_absolute_position(&table->cursor);
+  uint64_t type_count = 0;
+  IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_uvarint(
+      validator->decoder, &table->cursor, &type_count));
+  if (type_count < validator->types->position ||
+      type_count > validator->module_view->types.count) {
+    return loom_bytecode_reader_emit_invalid_field(
+        validator->decoder, IREE_SV("ENCODINGS"), IREE_SV("instance"), index,
+        IREE_SV("type_prefix_count"), prefix_offset,
+        IREE_SV("type_prefix_must_advance_within_the_declared_type_table"));
+  }
+  IREE_RETURN_IF_ERROR(loom_bytecode_type_validation_advance(
+      validator->types, (iree_host_size_t)type_count));
+  // Selected loading starts at the instance payload, after the full-reader
+  // ordering word. Its reached-only scheduler never consumes a type prefix.
   const uint64_t entry_offset =
       loom_bytecode_reader_cursor_absolute_position(&table->cursor);
   const uint64_t family_offset = entry_offset;
@@ -179,7 +197,7 @@ static iree_status_t loom_bytecode_encoding_decode_entry(
         validator->decoder, &table->cursor, &value_kind));
     IREE_RETURN_IF_ERROR(loom_bytecode_attribute_validate_named(
         &table->attributes, &table->cursor, /*descriptor=*/NULL, value_kind,
-        validator->module_view->types.count));
+        validator->types->position));
   }
   *out_metadata = (loom_bytecode_encoding_metadata_t){
       .entry_offset = entry_offset,
@@ -204,12 +222,14 @@ iree_status_t loom_bytecode_encoding_table_validate(
     loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
     loom_bytecode_reader_module_view_t* module_view,
     iree_arena_allocator_t* scratch_arena,
+    loom_bytecode_type_validation_t* types,
     const loom_bytecode_reader_section_t* section) {
   loom_bytecode_encoding_validator_t validator = {
       .decoder = decoder,
       .context = context,
       .scratch_arena = scratch_arena,
       .module_view = module_view,
+      .types = types,
   };
   loom_bytecode_encoding_table_t table;
   IREE_RETURN_IF_ERROR(
@@ -226,6 +246,7 @@ iree_status_t loom_bytecode_encoding_table_index(
     loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
     loom_bytecode_reader_module_view_t* module_view,
     iree_arena_allocator_t* scratch_arena,
+    loom_bytecode_type_validation_t* types,
     const loom_bytecode_reader_section_t* section,
     iree_arena_allocator_t* retained_arena,
     loom_bytecode_encoding_metadata_t** out_entries,
@@ -237,6 +258,7 @@ iree_status_t loom_bytecode_encoding_table_index(
       .context = context,
       .scratch_arena = scratch_arena,
       .module_view = module_view,
+      .types = types,
   };
   loom_bytecode_encoding_table_t table;
   IREE_RETURN_IF_ERROR(
@@ -293,6 +315,13 @@ iree_status_t loom_bytecode_encoding_table_materialize(
       loom_bytecode_encoding_attribute_materializer(materializer);
   for (uint64_t instance_index = 0; instance_index < instance_count;
        ++instance_index) {
+    uint64_t type_prefix_count = 0;
+    IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_uvarint(
+        materializer->decoder, &cursor, &type_prefix_count));
+    IREE_RETURN_IF_ERROR(loom_bytecode_type_materialize_prefix(
+        materializer->types, (iree_host_size_t)type_prefix_count));
+    const iree_arena_checkpoint_t checkpoint =
+        iree_arena_checkpoint_save(materializer->scratch_arena);
     const uint64_t family_offset =
         loom_bytecode_reader_cursor_absolute_position(&cursor);
     uint64_t family_index = 0;
@@ -342,10 +371,10 @@ iree_status_t loom_bytecode_encoding_table_materialize(
           materializer->decoder, &cursor, &value_kind));
       parameters[parameter_index].name_id = (loom_string_id_t)name_id;
       parameters[parameter_index].reserved = 0;
-      IREE_RETURN_IF_ERROR(loom_bytecode_attribute_materialize_named(
+      IREE_RETURN_IF_ERROR(loom_bytecode_attribute_decode_named(
           &attribute_materializer, &cursor, /*descriptor=*/NULL, value_kind,
           &parameters[parameter_index].value,
-          materializer->module_view->types.count));
+          (iree_host_size_t)type_prefix_count));
     }
 
     const loom_encoding_t encoding = {
@@ -366,6 +395,7 @@ iree_status_t loom_bytecode_encoding_table_materialize(
           instance_index, IREE_SV("encoding"), family_offset,
           IREE_SV("encoding_table_must_be_deduplicated_in_canonical_order"));
     }
+    iree_arena_checkpoint_restore(&checkpoint);
   }
   return loom_bytecode_reader_expect_empty(materializer->decoder, &cursor,
                                            IREE_SV("ENCODINGS"));

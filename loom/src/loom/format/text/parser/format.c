@@ -1183,7 +1183,8 @@ iree_status_t loom_parser_walk_format(loom_parser_t* parser,
       case LOOM_FORMAT_KIND_PREDICATE_LIST: {
         loom_token_t start_token = loom_tokenizer_peek(&parser->tokenizer);
         loom_attribute_t attr = {0};
-        IREE_RETURN_IF_ERROR(loom_parse_predicate_list(parser, &attr));
+        IREE_RETURN_IF_ERROR(
+            loom_parse_predicate_list(parser, LOOM_TYPE_PARSE_BODY, &attr));
         IREE_RETURN_IF_ERROR(loom_parsed_op_set_attribute(
             parsed, &parser->parser_arena, element->field_index, attr));
         IREE_RETURN_IF_ERROR(loom_parse_format_add_field_span(

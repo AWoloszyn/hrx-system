@@ -10,6 +10,7 @@
 #define LOOM_FORMAT_BYTECODE_READER_SELECTED_ATTRIBUTE_H_
 
 #include "loom/format/bytecode/reader/attribute.h"
+#include "loom/format/bytecode/reader/type_plan.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -18,32 +19,31 @@ extern "C" {
 typedef struct loom_bytecode_selected_table_materializer_t
     loom_bytecode_selected_table_materializer_t;
 
-// Result of one selected attribute materialization attempt.
-typedef enum loom_bytecode_selected_attribute_state_e {
-  // Every referenced table identity was available and |out_attr| is canonical.
-  LOOM_BYTECODE_SELECTED_ATTRIBUTE_READY = 0,
-  // Missing table identities were scheduled and |out_attr| is not usable.
-  LOOM_BYTECODE_SELECTED_ATTRIBUTE_WAITING = 1,
-} loom_bytecode_selected_attribute_state_t;
+// Decodes a validated static parameterized type into scratch-owned slots.
+// Missing table identities are scheduled directly into the returned slots;
+// the caller retains scratch until those dependencies have completed.
+iree_status_t loom_bytecode_selected_attribute_decode_static_type(
+    loom_bytecode_selected_table_materializer_t* materializer,
+    loom_bytecode_reader_cursor_t* cursor, loom_type_id_t source_type_id,
+    const loom_parameterized_type_descriptor_t** out_descriptor,
+    loom_attribute_t** out_parameters);
+
+// Constructs a complete parameterized type from scratch-owned parameter slots.
+iree_status_t loom_bytecode_selected_attribute_decode_complete_type(
+    loom_bytecode_selected_table_materializer_t* materializer,
+    loom_bytecode_reader_cursor_t* cursor,
+    const loom_bytecode_attribute_ssa_materialization_scope_t* values,
+    loom_type_id_t* out_type);
 
 // Decodes an attribute whose predicate VALUE arguments are STRINGS ordinals.
-// Returned aggregate payloads are scratch-owned and contain target-domain IDs.
-// The caller canonicalizes the value only after the containing entry is ready.
+// Returned aggregate payloads are scratch-owned. Missing table identities are
+// scheduled into stable slots within the payload; the caller retains scratch
+// until those dependencies complete and then canonicalizes the value.
 iree_status_t loom_bytecode_selected_attribute_decode_named(
     loom_bytecode_selected_table_materializer_t* materializer,
     loom_bytecode_reader_cursor_t* cursor,
     const loom_attr_descriptor_t* descriptor, loom_bytecode_attr_kind_t kind,
-    loom_attribute_t* out_attr, iree_host_size_t available_type_count,
-    loom_bytecode_selected_attribute_state_t* out_state);
-
-// Decodes an attribute whose predicate VALUE arguments are SSA numbers.
-iree_status_t loom_bytecode_selected_attribute_decode_ssa(
-    loom_bytecode_selected_table_materializer_t* materializer,
-    loom_bytecode_reader_cursor_t* cursor,
-    const loom_attr_descriptor_t* descriptor, loom_bytecode_attr_kind_t kind,
-    loom_attribute_t* out_attr, iree_host_size_t available_type_count,
-    const loom_bytecode_attribute_ssa_materialization_scope_t* ssa_scope,
-    loom_bytecode_selected_attribute_state_t* out_state);
+    loom_attribute_t* out_attr, iree_host_size_t available_type_count);
 
 // Materializes an attribute whose predicate VALUE arguments are STRINGS
 // ordinals. Reached table dependencies are materialized synchronously and the

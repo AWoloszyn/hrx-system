@@ -13,6 +13,42 @@
 #include "loom/ir/parameterized_type.h"
 #include "loom/ops/op_defs.h"
 
+uint8_t loom_bytecode_type_kind_byte(loom_type_kind_t kind) {
+  switch (kind) {
+    case LOOM_TYPE_NONE:
+      return LOOM_BYTECODE_TYPE_NONE;
+    case LOOM_TYPE_SCALAR:
+      return LOOM_BYTECODE_TYPE_SCALAR;
+    case LOOM_TYPE_TILE:
+      return LOOM_BYTECODE_TYPE_TILE;
+    case LOOM_TYPE_TENSOR:
+      return LOOM_BYTECODE_TYPE_TENSOR;
+    case LOOM_TYPE_VECTOR:
+      return LOOM_BYTECODE_TYPE_VECTOR;
+    case LOOM_TYPE_VIEW:
+      return LOOM_BYTECODE_TYPE_VIEW;
+    case LOOM_TYPE_BUFFER:
+      return LOOM_BYTECODE_TYPE_BUFFER;
+    case LOOM_TYPE_FUNCTION:
+      return LOOM_BYTECODE_TYPE_FUNCTION;
+    case LOOM_TYPE_DIALECT:
+      return LOOM_BYTECODE_TYPE_DIALECT;
+    case LOOM_TYPE_REGISTER:
+      return LOOM_BYTECODE_TYPE_REGISTER;
+    case LOOM_TYPE_STORAGE:
+      return LOOM_BYTECODE_TYPE_STORAGE;
+    case LOOM_TYPE_PARAMETERIZED:
+      return LOOM_BYTECODE_TYPE_PARAMETERIZED;
+    case LOOM_TYPE_ENCODING:
+      return LOOM_BYTECODE_TYPE_ENCODING;
+    case LOOM_TYPE_POOL:
+      return LOOM_BYTECODE_TYPE_POOL;
+    default:
+      IREE_ASSERT_UNREACHABLE("verified native type kind");
+      IREE_BUILTIN_UNREACHABLE();
+  }
+}
+
 //===----------------------------------------------------------------------===//
 // Numbering context
 //===----------------------------------------------------------------------===//
@@ -222,6 +258,13 @@ iree_status_t loom_bytecode_numbering_intern_string_view(
 // Publishes a completed type only after its ordered catalog storage is ready.
 static iree_status_t loom_bytecode_numbering_append_type(
     loom_bytecode_numbering_t* numbering, loom_type_id_t module_index) {
+  const loom_bytecode_type_node_t* node = loom_bytecode_type_index_lookup_node(
+      &numbering->types.index,
+      loom_type_table_get(&numbering->module->types, module_index));
+  if (node->has_bindings) {
+    numbering->types.writer_ids_by_module_index[module_index] = UINT32_MAX - 1;
+    return iree_ok_status();
+  }
   if (numbering->types.count >= (1u << 16)) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "bytecode type count exceeds format maximum (64K)");
@@ -586,7 +629,7 @@ enum loom_bytecode_catalog_frame_kind_e {
 typedef struct loom_bytecode_catalog_frame_t {
   // Immutable source payload selected by kind.
   union {
-    // Exact physical source type, not its wire-equivalent representative.
+    // Exact canonical source type and its immediate dependency slice.
     const loom_bytecode_type_node_t* type;
     // Attribute payloads and their field contracts.
     struct {
@@ -629,18 +672,11 @@ static iree_status_t loom_bytecode_catalog_push(
   return iree_ok_status();
 }
 
-static loom_type_id_t loom_bytecode_catalog_module_index(
-    const loom_bytecode_numbering_t* numbering,
-    const loom_bytecode_type_node_t* node) {
-  return numbering->types.index.nodes[node->representative].module_index;
-}
-
 // Begins a first-use type. Leaf and completed types need no continuation.
 static iree_status_t loom_bytecode_catalog_enter_type(
     loom_bytecode_numbering_t* numbering, iree_host_size_t* count,
     const loom_bytecode_type_node_t* node) {
-  const loom_type_id_t module_index =
-      loom_bytecode_catalog_module_index(numbering, node);
+  const loom_type_id_t module_index = node->module_index;
   if (numbering->types.writer_ids_by_module_index[module_index] !=
       LOOM_WRITER_ID_NONE) {
     return iree_ok_status();
@@ -699,8 +735,7 @@ static iree_status_t loom_bytecode_catalog_enter_type(
         numbering->types.index
             .dependencies[node->dependencies.begin + position];
     const loom_type_id_t child_module_index =
-        loom_bytecode_catalog_module_index(
-            numbering, &numbering->types.index.nodes[child]);
+        numbering->types.index.nodes[child].module_index;
     if (numbering->types.writer_ids_by_module_index[child_module_index] ==
         LOOM_WRITER_ID_NONE) {
       break;
@@ -744,8 +779,7 @@ static iree_status_t loom_bytecode_catalog_complete(
         }
         --count;
         status = loom_bytecode_numbering_append_type(
-            numbering,
-            loom_bytecode_catalog_module_index(numbering, frame.value.type));
+            numbering, frame.value.type->module_index);
         break;
       case LOOM_BYTECODE_CATALOG_TYPE_PARAMETERS:
       case LOOM_BYTECODE_CATALOG_ATTRIBUTE_PARAMETERS: {
@@ -961,7 +995,7 @@ static iree_status_t loom_bytecode_catalog_complete(
 
 iree_status_t loom_bytecode_numbering_intern_type(
     loom_bytecode_numbering_t* numbering, loom_type_t type,
-    uint32_t* out_writer_id) {
+    uint32_t* out_writer_id, uint32_t* out_storage_node) {
   const loom_bytecode_type_node_t* node =
       loom_bytecode_type_index_lookup_node(&numbering->types.index, type);
   if (!node) {
@@ -972,8 +1006,7 @@ iree_status_t loom_bytecode_numbering_intern_type(
                             (unsigned)loom_type_rank(type),
                             numbering->module->types.count);
   }
-  const loom_type_id_t module_index =
-      loom_bytecode_catalog_module_index(numbering, node);
+  const loom_type_id_t module_index = node->module_index;
   if (numbering->types.writer_ids_by_module_index[module_index] ==
       LOOM_WRITER_ID_NONE) {
     iree_host_size_t count = 0;
@@ -982,6 +1015,9 @@ iree_status_t loom_bytecode_numbering_intern_type(
     IREE_RETURN_IF_ERROR(loom_bytecode_catalog_complete(numbering, count));
   }
   *out_writer_id = numbering->types.writer_ids_by_module_index[module_index];
+  if (out_storage_node) {
+    *out_storage_node = (uint32_t)(node - numbering->types.index.nodes);
+  }
   return iree_ok_status();
 }
 
@@ -1025,5 +1061,22 @@ iree_status_t loom_bytecode_number_encoding(
     IREE_RETURN_IF_ERROR(
         loom_bytecode_number_attr_value(numbering, attr->value, NULL));
   }
+  const iree_host_size_t chunk_index =
+      (encoding_id - 1) %
+      IREE_ARRAYSIZE(numbering->encoding_prefixes.last->type_counts);
+  if (chunk_index == 0) {
+    loom_bytecode_encoding_prefix_chunk_t* chunk = NULL;
+    IREE_RETURN_IF_ERROR(
+        iree_arena_allocate(numbering->arena, sizeof(*chunk), (void**)&chunk));
+    chunk->next = NULL;
+    if (numbering->encoding_prefixes.last) {
+      numbering->encoding_prefixes.last->next = chunk;
+    } else {
+      numbering->encoding_prefixes.first = chunk;
+    }
+    numbering->encoding_prefixes.last = chunk;
+  }
+  numbering->encoding_prefixes.last->type_counts[chunk_index] =
+      (uint32_t)numbering->types.count;
   return iree_ok_status();
 }

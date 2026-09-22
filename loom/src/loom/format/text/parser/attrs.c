@@ -16,6 +16,7 @@
 #include "loom/format/text/parser/types.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
+#include "loom/ops/type_registry.h"
 
 static bool loom_parse_special_f64_spelling(iree_string_view_t text,
                                             double* out_value) {
@@ -450,6 +451,18 @@ static iree_status_t loom_parse_attr_value_at_depth(
     uint16_t nesting_depth, loom_type_parse_mode_t type_mode,
     loom_attribute_t* out_attr);
 
+static iree_status_t loom_parse_type_attr(loom_parser_t* parser,
+                                          loom_type_parse_mode_t type_mode,
+                                          loom_attribute_t* out_attr) {
+  loom_type_t type = loom_type_none();
+  IREE_RETURN_IF_ERROR(loom_parse_type(parser, type_mode, &type));
+  loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
+  IREE_RETURN_IF_ERROR(
+      loom_module_intern_type_id(parser->module, type, &type_id));
+  *out_attr = loom_attr_type(type_id);
+  return iree_ok_status();
+}
+
 static iree_status_t loom_parse_generic_attr_value_with_type_mode(
     loom_parser_t* parser, uint16_t nesting_depth,
     loom_type_parse_mode_t type_mode, loom_attribute_t* out_attr);
@@ -758,18 +771,20 @@ static iree_status_t loom_parse_attr_value_at_depth(
     case LOOM_ATTR_I64_ARRAY: {
       return loom_parse_i64_array_attr(parser, out_attr);
     }
+    case LOOM_ATTR_PREDICATE_LIST: {
+      if (!loom_tokenizer_try_consume_keyword(&parser->tokenizer,
+                                              IREE_SV("predicates"))) {
+        return loom_parser_emit_unexpected_token(
+            parser, loom_tokenizer_peek(&parser->tokenizer),
+            IREE_SV("'predicates'"));
+      }
+      return loom_parse_predicate_list(parser, type_mode, out_attr);
+    }
     case LOOM_ATTR_BYTES: {
       return loom_parse_bytes_attr(parser, out_attr);
     }
-    case LOOM_ATTR_TYPE: {
-      loom_type_t type = {0};
-      IREE_RETURN_IF_ERROR(loom_parse_type(parser, type_mode, &type));
-      loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
-      IREE_RETURN_IF_ERROR(
-          loom_module_intern_type_id(parser->module, type, &type_id));
-      *out_attr = loom_attr_type(type_id);
-      return iree_ok_status();
-    }
+    case LOOM_ATTR_TYPE:
+      return loom_parse_type_attr(parser, type_mode, out_attr);
     case LOOM_ATTR_ENCODING: {
       uint16_t encoding_id = 0;
       IREE_RETURN_IF_ERROR(loom_parse_static_encoding(
@@ -898,6 +913,7 @@ static const struct {
 };
 
 static iree_status_t loom_parse_predicate(loom_parser_t* parser,
+                                          loom_type_parse_mode_t type_mode,
                                           loom_predicate_t* out_predicate) {
   // Parse predicate kind name.
   loom_token_t name_token = loom_token_none();
@@ -947,7 +963,12 @@ static iree_status_t loom_parse_predicate(loom_parser_t* parser,
       // SSA value reference.
       loom_tokenizer_next(&parser->tokenizer);
       loom_value_id_t value_id = LOOM_VALUE_ID_INVALID;
-      LOOM_PARSE_RESOLVE_VALUE(parser, arg_token, &value_id);
+      const uint32_t errors_before = parser->error_count;
+      IREE_RETURN_IF_ERROR(
+          loom_resolve_type_reference(parser, arg_token, type_mode, &value_id));
+      if (parser->error_count > errors_before) {
+        return iree_ok_status();
+      }
       predicate.arg_tags[predicate.arg_count] = LOOM_PRED_ARG_VALUE;
       predicate.args[predicate.arg_count] = (int64_t)value_id;
     } else if (arg_token.kind == LOOM_TOKEN_INTEGER) {
@@ -1004,6 +1025,7 @@ static iree_status_t loom_parse_predicate_array_attr(
 }
 
 iree_status_t loom_parse_predicate_list(loom_parser_t* parser,
+                                        loom_type_parse_mode_t type_mode,
                                         loom_attribute_t* out_attr) {
   // [pred(args), ...]
   if (!loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_LBRACKET)) {
@@ -1031,7 +1053,13 @@ iree_status_t loom_parse_predicate_list(loom_parser_t* parser,
           &parser->parser_arena, count, count + 1, sizeof(*predicates),
           &capacity, (void**)&predicates));
     }
-    IREE_RETURN_IF_ERROR(loom_parse_predicate(parser, &predicates[count++]));
+    const uint32_t errors_before = parser->error_count;
+    IREE_RETURN_IF_ERROR(
+        loom_parse_predicate(parser, type_mode, &predicates[count]));
+    if (parser->error_count > errors_before) {
+      return iree_ok_status();
+    }
+    ++count;
   }
 
   if (!loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_RBRACKET)) {
@@ -1102,6 +1130,14 @@ static iree_status_t loom_parse_generic_attr_value_with_type_mode(
       if (loom_parse_next_generic_attr_is_bytes(parser)) {
         return loom_parse_bytes_attr(parser, out_attr);
       }
+      if (iree_string_view_equal(value_token.text, IREE_SV("predicates"))) {
+        loom_tokenizer_t lookahead = parser->tokenizer;
+        loom_tokenizer_next(&lookahead);
+        if (loom_tokenizer_at(&lookahead, LOOM_TOKEN_LBRACKET)) {
+          loom_tokenizer_next(&parser->tokenizer);
+          return loom_parse_predicate_list(parser, type_mode, out_attr);
+        }
+      }
       double special_value = 0.0;
       if (loom_parse_special_f64_spelling(value_token.text, &special_value)) {
         loom_tokenizer_next(&parser->tokenizer);
@@ -1118,6 +1154,12 @@ static iree_status_t loom_parse_generic_attr_value_with_type_mode(
         *out_attr = loom_attr_bool(false);
         return iree_ok_status();
       }
+      loom_scalar_type_t scalar_type = LOOM_SCALAR_TYPE_NONE;
+      if (loom_scalar_type_parse(value_token.text, &scalar_type) ||
+          iree_string_view_equal(value_token.text, IREE_SV("reg")) ||
+          loom_type_registry_lookup(parser->context, value_token.text)) {
+        return loom_parse_type_attr(parser, type_mode, out_attr);
+      }
       loom_tokenizer_next(&parser->tokenizer);
       loom_string_id_t ident_id = LOOM_STRING_ID_INVALID;
       IREE_RETURN_IF_ERROR(loom_module_intern_string(
@@ -1125,6 +1167,9 @@ static iree_status_t loom_parse_generic_attr_value_with_type_mode(
       *out_attr = loom_attr_string(ident_id);
       return iree_ok_status();
     }
+    case LOOM_TOKEN_OP_NAME:
+    case LOOM_TOKEN_LPAREN:
+      return loom_parse_type_attr(parser, type_mode, out_attr);
     case LOOM_TOKEN_LBRACKET:
       return loom_parse_i64_array_attr(parser, out_attr);
     case LOOM_TOKEN_HASH_ATTR: {

@@ -12,6 +12,7 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
 #include "loom/format/bytecode/format.h"
+#include "loom/format/bytecode/writer/encoder.h"
 #include "loom/format/bytecode/writer/type_index.h"
 #include "loom/format/low_repr.h"
 #include "loom/ir/context.h"
@@ -20,6 +21,9 @@
 #ifdef __cplusplus
 extern "C" {
 #endif
+
+// Maps a trusted native type kind to its independently versioned wire tag.
+uint8_t loom_bytecode_type_kind_byte(loom_type_kind_t kind);
 
 // String originating outside of the module string table.
 typedef struct loom_bytecode_external_string_t {
@@ -38,6 +42,15 @@ typedef struct loom_bytecode_op_entry_t {
   // Bytecode string-table ID naming |kind|.
   uint32_t string_writer_id;
 } loom_bytecode_op_entry_t;
+
+// Sequential catalog-completion facts retained until ENCODINGS emission.
+// Fixed-size chunks fit the arena pool and are consumed without random lookup.
+typedef struct loom_bytecode_encoding_prefix_chunk_t {
+  // Next chunk in encoding order, or NULL at the end.
+  struct loom_bytecode_encoding_prefix_chunk_t* next;
+  // Completed static type counts before the corresponding encoding entries.
+  uint32_t type_counts[128];
+} loom_bytecode_encoding_prefix_chunk_t;
 
 // First-use-ordered bytecode catalogs derived while streaming one module.
 typedef struct loom_bytecode_numbering_t {
@@ -84,12 +97,11 @@ typedef struct loom_bytecode_numbering_t {
     } external;
   } strings;
 
-  // Structurally deduplicated type catalog and bidirectional ID projection.
+  // Global static type catalog and scope-local dependency discovery.
   struct {
     // Bytecode type IDs indexed by module type-table index.
     uint32_t* writer_ids_by_module_index;
-    // Retained projection from type storage to its wire-equivalent module
-    // entry.
+    // Canonical source identities and their immediate dependency slices.
     loom_bytecode_type_index_t index;
     // Module type-table indices indexed by bytecode type ID.
     iree_host_size_t* module_indices_by_writer_id;
@@ -99,6 +111,14 @@ typedef struct loom_bytecode_numbering_t {
     iree_host_size_t capacity;
   } types;
 
+  // Static type completion order established by encoding parameter numbering.
+  struct {
+    // First chunk, consumed in encoding order by the section writer.
+    loom_bytecode_encoding_prefix_chunk_t* first;
+    // Current chunk receiving newly numbered encoding completion facts.
+    loom_bytecode_encoding_prefix_chunk_t* last;
+  } encoding_prefixes;
+
   // Reusable continuations for interleaved type and attribute discovery.
   struct {
     // Arena-owned suspended work; borrowed source payloads remain immutable.
@@ -106,6 +126,10 @@ typedef struct loom_bytecode_numbering_t {
     // Allocated frame capacity, reused by successive catalog roots.
     iree_host_size_t capacity;
   } traversal;
+
+  // Reusable length-prefixed type payload storage, owned by |arena| and reset
+  // between emissions. Parameter TYPE references never recursively emit it.
+  loom_bytecode_buffer_t type_record_buffer;
 
   // First-use-ordered operation catalog.
   struct {
@@ -148,10 +172,11 @@ iree_status_t loom_bytecode_numbering_intern_string_view(
     loom_bytecode_numbering_t* numbering, iree_string_view_t view,
     uint32_t* out_writer_id);
 
-// Interns a structural type and all of its dependencies.
+// Interns a structural type and all of its dependencies. When non-NULL,
+// |out_storage_node| receives the exact canonical node for scope-local records.
 iree_status_t loom_bytecode_numbering_intern_type(
     loom_bytecode_numbering_t* numbering, loom_type_t type,
-    uint32_t* out_writer_id);
+    uint32_t* out_writer_id, uint32_t* out_storage_node);
 
 // Interns the registered kind of |op| into the operation catalog.
 iree_status_t loom_bytecode_numbering_intern_op(

@@ -22,9 +22,11 @@ typedef struct loom_bytecode_module_materialization_t {
   loom_context_t* context;
   // Resettable storage for transient materialization state.
   iree_arena_allocator_t* arena;
+  // Checkpointed construction payloads never own completed scope bindings.
+  iree_arena_allocator_t construction_arena;
   // Bounded decoder sharing the public diagnostic result state.
   loom_bytecode_reader_decoder_t decoder;
-  // Immutable validated module facts consumed by every table materializer.
+  // Validated module facts whose type-plan slots become completed identities.
   loom_bytecode_reader_module_view_t view;
   // Block source for the output module and root-region-local arenas.
   iree_arena_block_pool_t* block_pool;
@@ -57,8 +59,9 @@ static iree_status_t loom_bytecode_module_materialize_tables(
     loom_bytecode_module_materialization_t* reader) {
   loom_bytecode_symbol_materializer_t symbol_materializer;
   loom_bytecode_symbol_materializer_initialize(
-      &reader->decoder, reader->context, reader->arena, reader->block_pool,
-      &reader->view, reader->output_module, &reader->low_repr_environment,
+      &reader->decoder, reader->context, reader->arena,
+      &reader->construction_arena, reader->block_pool, &reader->view,
+      reader->output_module, &reader->low_repr_environment,
       &symbol_materializer);
   IREE_RETURN_IF_ERROR(loom_bytecode_string_table_materialize(
       &reader->view, reader->output_module));
@@ -74,25 +77,28 @@ static iree_status_t loom_bytecode_module_materialize_tables(
   }
   IREE_RETURN_IF_ERROR(loom_bytecode_source_table_materialize(
       &reader->view, reader->output_module));
-  loom_bytecode_encoding_materializer_t encoding_materializer = {
-      .decoder = &reader->decoder,
-      .context = reader->context,
-      .module_view = &reader->view,
-      .scratch_arena = reader->arena,
-      .output_module = reader->output_module,
-  };
-  IREE_RETURN_IF_ERROR(loom_bytecode_encoding_table_materialize(
-      &encoding_materializer, reader->view.sections.encodings));
   IREE_RETURN_IF_ERROR(loom_bytecode_symbols_predeclare(&symbol_materializer));
   loom_bytecode_type_materializer_t type_materializer = {
       .decoder = &reader->decoder,
       .bytecode = reader->bytecode,
       .context = reader->context,
       .module_view = &reader->view,
-      .scratch_arena = reader->arena,
+      .scratch_arena = &reader->construction_arena,
       .output_module = reader->output_module,
+      .next_fact = reader->view.types.facts,
   };
-  IREE_RETURN_IF_ERROR(loom_bytecode_type_materialize(&type_materializer));
+  loom_bytecode_encoding_materializer_t encoding_materializer = {
+      .decoder = &reader->decoder,
+      .context = reader->context,
+      .module_view = &reader->view,
+      .scratch_arena = &reader->construction_arena,
+      .output_module = reader->output_module,
+      .types = &type_materializer,
+  };
+  IREE_RETURN_IF_ERROR(loom_bytecode_encoding_table_materialize(
+      &encoding_materializer, reader->view.sections.encodings));
+  IREE_RETURN_IF_ERROR(loom_bytecode_type_materialize_prefix(
+      &type_materializer, reader->view.types.count));
   if (reader->view.sections.locations) {
     loom_bytecode_location_materializer_t location_materializer = {
         .decoder = &reader->decoder,
@@ -122,6 +128,7 @@ iree_status_t loom_bytecode_module_materialize(
       .low_repr_environment = materializer->low_repr_environment,
   };
 
+  iree_arena_initialize(materializer->block_pool, &state.construction_arena);
   iree_status_t status = loom_bytecode_module_allocate_output(&state);
   if (iree_status_is_ok(status)) {
     status = loom_bytecode_module_materialize_tables(&state);
@@ -133,5 +140,6 @@ iree_status_t loom_bytecode_module_materialize(
   if (state.output_module) {
     loom_module_free(state.output_module);
   }
+  iree_arena_deinitialize(&state.construction_arena);
   return status;
 }

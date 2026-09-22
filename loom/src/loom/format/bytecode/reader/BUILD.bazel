@@ -19,16 +19,28 @@ package(
 
 loom_cc_library(
     name = "attribute",
-    srcs = ["attribute.c"],
-    hdrs = ["attribute.h"],
+    srcs = [
+        "attribute.c",
+        "type.c",
+    ],
+    hdrs = [
+        "attribute.h",
+        "type.h",
+    ],
+    textual_hdrs = [
+        "attribute_materializer_impl.inl",
+        "scoped_type_impl.inl",
+    ],
     visibility = ["//loom/src/loom/format/bytecode:__pkg__"],
     deps = [
         ":decoder",
         ":module_view",
+        ":type_plan",
         "//loom/src/loom/error:error_defs",
         "//loom/src/loom/format/bytecode:format",
         "//loom/src/loom/ir",
         "//loom/src/loom/ir:symbol_map",
+        "//loom/src/loom/ops:type_registry",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
     ],
@@ -85,6 +97,7 @@ loom_cc_library(
         ":attribute",
         ":decoder",
         ":module_view",
+        ":type_validator",
         "//loom/src/loom/error:error_defs",
         "//loom/src/loom/format/bytecode:index",
         "//loom/src/loom/ir",
@@ -184,13 +197,13 @@ loom_cc_library(
     hdrs = ["materializer.h"],
     visibility = ["//loom/src/loom/format/bytecode:__pkg__"],
     deps = [
+        ":attribute",
         ":decoder",
         ":encoding",
         ":location",
         ":module_view",
         ":string_table",
         ":symbol_materializer",
-        ":type",
         "//loom/src/loom/error:error_defs",
         "//loom/src/loom/format:low_repr",
         "//loom/src/loom/ir",
@@ -269,29 +282,12 @@ loom_cc_library(
     ],
 )
 
-loom_cc_library(
-    name = "type",
-    srcs = ["type.c"],
-    hdrs = ["type.h"],
-    visibility = ["//loom/src/loom/format/bytecode:__pkg__"],
-    deps = [
-        ":attribute",
-        ":decoder",
-        ":module_view",
-        ":type_plan",
-        "//loom/src/loom/error:error_defs",
-        "//loom/src/loom/ir",
-        "//runtime/src/iree/base",
-        "//runtime/src/iree/base/internal:arena",
-    ],
-)
-
 loom_cc_test(
     name = "type_test",
     srcs = ["type_test.cc"],
     deps = [
+        ":attribute",
         ":module_view",
-        ":type",
         ":type_validator",
         "//loom/src/loom/format/bytecode:format",
         "//loom/src/loom/ir",
@@ -376,13 +372,13 @@ loom_cc_library(
         ":decoder",
         ":module_view",
         ":selected_projection",
-        ":type",
         ":type_plan",
         ":type_validator",
         "//loom/src/loom/error:error_defs",
         "//loom/src/loom/format/bytecode:format",
         "//loom/src/loom/format/bytecode:index",
         "//loom/src/loom/ir",
+        "//loom/src/loom/ops:type_registry",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
     ],
@@ -436,6 +432,7 @@ loom_cc_library(
     visibility = ["//loom/src/loom/format/bytecode:__pkg__"],
     deps = [
         ":decoder",
+        ":selected_projection",
         ":selected_symbol",
         ":selected_tables",
         "//loom/src/loom/format:low_repr",

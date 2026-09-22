@@ -178,9 +178,14 @@ TEST_F(BytecodeLocationTest, RejectsCoordinateOutsideRuntimeWidth) {
 }
 
 TEST_F(BytecodeLocationTest, MaterializesCanonicalTable) {
+  uint8_t payload[sizeof(kLocationTable)];
+  std::memcpy(payload, kLocationTable, sizeof(payload));
   const loom_bytecode_reader_section_t section =
-      MakeSection(kLocationTable, sizeof(kLocationTable));
-  module_view_.locations.count = 5;
+      MakeSection(payload, sizeof(payload));
+  IREE_ASSERT_OK(loom_bytecode_location_table_read_count(
+      &decoder_, &module_view_, &section));
+  EXPECT_EQ(module_view_.locations.count, 5u);
+  EXPECT_EQ(module_->locations.count, 0u);
   loom_bytecode_location_materializer_t materializer = {
       /*.decoder=*/&decoder_,
       /*.module_view=*/&module_view_,
@@ -189,6 +194,9 @@ TEST_F(BytecodeLocationTest, MaterializesCanonicalTable) {
 
   IREE_ASSERT_OK(
       loom_bytecode_location_table_materialize(&materializer, &section));
+  std::memset(payload, 0, sizeof(payload));
+  iree_arena_reset(&retained_arena_);
+  iree_arena_block_pool_trim(&block_pool_);
 
   ASSERT_EQ(module_->locations.count, 5u);
   const loom_location_entry_t& file =
@@ -221,6 +229,26 @@ TEST_F(BytecodeLocationTest, MaterializesCanonicalTable) {
   ASSERT_EQ(tagged.tagged.data_length, 2u);
   EXPECT_EQ(std::memcmp(tagged.tagged.data, "de", 2), 0);
   EXPECT_EQ(error_count_, 0u);
+}
+
+TEST_F(BytecodeLocationTest, MaterializationValidatesDeferredEntries) {
+  const uint8_t payload[] = {
+      2, LOOM_LOCATION_NONE, 0, LOOM_LOCATION_FILE, 0x80, 0, 1, 2, 3, 4};
+  const loom_bytecode_reader_section_t section =
+      MakeSection(payload, sizeof(payload));
+  IREE_ASSERT_OK(loom_bytecode_location_table_read_count(
+      &decoder_, &module_view_, &section));
+  EXPECT_EQ(error_count_, 0u);
+  loom_bytecode_location_materializer_t materializer = {
+      /*.decoder=*/&decoder_,
+      /*.module_view=*/&module_view_,
+      /*.output_module=*/module_,
+  };
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_DEFERRED,
+      loom_bytecode_location_table_materialize(&materializer, &section));
+  EXPECT_EQ(error_count_, 1u);
+  EXPECT_EQ(module_->locations.count, 0u);
 }
 
 }  // namespace

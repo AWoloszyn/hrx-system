@@ -105,6 +105,8 @@ iree_execution_test_suite(
     "loom-link=loom::tools::loom-link"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/loom_link_low.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/loom_link_type_binding_declaration.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/target/amdgpu/test/loom_link_type_bindings.loom"
   LABELS
     "hostonly"
 )

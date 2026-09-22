@@ -86,6 +86,7 @@ from loom.ir import (
     PoolType,
     Predicate,
     PredicateArg,
+    PredicateListAttr,
     Region,
     RegisterType,
     ScalarType,
@@ -110,6 +111,7 @@ from loom.ir import (
 )
 from loom.stable_id import stable_id_from_string
 from loom.target.descriptor_sets import DESCRIPTOR_SET_REGISTRATIONS
+from loom.type_identity import TypeIdentity
 
 __all__ = [
     "BytecodeReader",
@@ -165,6 +167,15 @@ def _register_name_for_payload(
     return None
 
 
+class _ValueMap(list[int]):
+    """Module identities and completed types for one independent SSA scope."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        # Final types in scoped record order; released when the scope completes.
+        self.types: list[Type] = []
+
+
 class BytecodeReader:
     """Reads .loombc bytes and constructs an ir.py Module."""
 
@@ -186,6 +197,8 @@ class BytecodeReader:
         self._strings: list[str] = []
         self._sources: list[str] = []
         self._types: list[Type] = []
+        # Temporary equality facts for repeated signature/body definitions.
+        self._type_identity = TypeIdentity()
         self._ops: list[str] = []
         self._encodings: list[EncodingInstance] = []
         self._encoding_families: list[str] = []
@@ -213,10 +226,12 @@ class BytecodeReader:
             self._read_strings_section(sections[SECTION_STRINGS])
         if SECTION_SOURCES in sections:
             self._read_sources_section(sections[SECTION_SOURCES])
-        if SECTION_ENCODINGS in sections:
-            self._read_encodings_section(sections[SECTION_ENCODINGS])
-        if SECTION_TYPES in sections:
-            self._read_types_section(sections[SECTION_TYPES])
+        for kind, name in ((SECTION_TYPES, "TYPES"), (SECTION_ENCODINGS, "ENCODINGS")):
+            if kind not in sections:
+                raise BytecodeError(f"missing {name} section")
+        self._read_types_and_encodings(
+            sections[SECTION_TYPES], sections[SECTION_ENCODINGS]
+        )
         if SECTION_OPS in sections:
             self._read_ops_section(sections[SECTION_OPS])
 
@@ -460,8 +475,14 @@ class BytecodeReader:
             offset += length
             self._sources.append(text)
 
-    def _read_encodings_section(self, section: tuple[int, bytes]) -> None:
-        _, data = section
+    def _read_types_and_encodings(
+        self, type_section: tuple[int, bytes], encoding_section: tuple[int, bytes]
+    ) -> None:
+        """Merge static tables using the writer's completed-type prefixes."""
+        _, type_data = type_section
+        type_count, type_offset = decode_varint(type_data, 0)
+        self._types = []
+        _, data = encoding_section
         offset = 0
 
         # Encoding family registry.
@@ -475,6 +496,14 @@ class BytecodeReader:
         instance_count, offset = decode_varint(data, offset)
         self._encodings = []
         for _ in range(instance_count):
+            type_prefix_count, offset = decode_varint(data, offset)
+            if not len(self._types) <= type_prefix_count <= type_count:
+                raise BytecodeError(
+                    "encoding type prefix must advance within the declared type table"
+                )
+            type_offset = self._read_type_prefix(
+                type_data, type_offset, type_prefix_count
+            )
             family_index, offset = decode_varint(data, offset)
             if family_index >= len(self._encoding_families):
                 raise BytecodeError(
@@ -506,8 +535,24 @@ class BytecodeReader:
             self._encodings.append(
                 EncodingInstance(name=name, alias=alias, params=tuple(param_list))
             )
+        if offset != len(data):
+            raise BytecodeError("ENCODINGS section has trailing bytes")
+        type_offset = self._read_type_prefix(type_data, type_offset, type_count)
+        if type_offset != len(type_data):
+            raise BytecodeError("TYPES section has trailing bytes")
 
-    def _resolve_prior_type(self, type_index: int, field_name: str) -> Type:
+    def _resolve_prior_type(
+        self, type_index: int, field_name: str, values: _ValueMap | None = None
+    ) -> Type:
+        if values is not None:
+            if type_index & 1:
+                ordinal = type_index >> 1
+                if ordinal >= len(values.types):
+                    raise BytecodeError(
+                        f"{field_name} must refer to a completed scoped type"
+                    )
+                return values.types[ordinal]
+            type_index >>= 1
         if type_index >= len(self._types):
             raise BytecodeError(
                 f"{field_name} index {type_index} must refer to a prior type "
@@ -515,16 +560,20 @@ class BytecodeReader:
             )
         return self._types[type_index]
 
-    def _read_register_type(self, data: bytes, offset: int) -> tuple[RegisterType, int]:
+    def _read_register_type(
+        self, data: bytes, offset: int, values: _ValueMap | None = None
+    ) -> tuple[RegisterType, int]:
         try:
             descriptor_set_stable_id, offset = decode_varint(data, offset)
             payload1, offset = decode_varint(data, offset)
         except ValueError as err:
             raise BytecodeError(f"malformed register carrier payload: {err}") from err
-        if offset >= len(data):
-            raise BytecodeError("register value type presence is truncated")
-        has_value_type = data[offset]
-        offset += 1
+        has_value_type = 1
+        if values is None:
+            if offset >= len(data):
+                raise BytecodeError("register value type presence is truncated")
+            has_value_type = data[offset]
+            offset += 1
         register_class_id = payload1 & 0xFFFF
         unit_count = (payload1 >> 16) & 0xFFFFFFFF
         if descriptor_set_stable_id == 0:
@@ -546,7 +595,7 @@ class BytecodeReader:
                     f"malformed register value type reference: {err}"
                 ) from err
             value_type = self._resolve_prior_type(
-                value_type_index, "register value type"
+                value_type_index, "register value type", values
             )
         name = _register_name_for_payload(descriptor_set_stable_id, register_class_id)
         try:
@@ -562,7 +611,7 @@ class BytecodeReader:
         return ir_type, offset
 
     def _read_parameterized_type(
-        self, data: bytes, offset: int
+        self, data: bytes, offset: int, values: _ValueMap | None = None
     ) -> tuple[ParameterizedType, int]:
         family_id, offset = decode_varint(data, offset)
         if family_id >= len(self._strings):
@@ -611,7 +660,11 @@ class BytecodeReader:
                     "declaration order"
                 )
             parameter_value, offset = self._read_attr_value(
-                data, offset, attr_def=parameter_def
+                data,
+                offset,
+                value_map=values,
+                attr_def=parameter_def,
+                completed_types=values is not None,
             )
             parameters[parameter_name] = parameter_value
             previous_index = parameter_index
@@ -621,148 +674,203 @@ class BytecodeReader:
         except (TypeError, ValueError) as err:
             raise BytecodeError(str(err)) from err
 
-    def _read_types_section(self, section: tuple[int, bytes]) -> None:
-        _, data = section
-        offset = 0
-        count, offset = decode_varint(data, offset)
-        self._types = []
-        for _ in range(count):
-            kind = data[offset]
-            offset += 1
-            try:
-                type_kind = BYTECODE_IR_KIND_BY_TYPE_KIND[kind]
-            except KeyError as err:
-                raise BytecodeError(f"unknown type kind: {kind}") from err
-            ir_type: Type
-            match type_kind:
-                case TypeKind.NONE:
-                    ir_type = NONE_TYPE
-                case TypeKind.SCALAR:
-                    scalar_kind = ScalarTypeKind(data[offset])
-                    offset += 1
-                    ir_type = ScalarType(scalar_kind)
-                case TypeKind.TILE | TypeKind.TENSOR | TypeKind.VECTOR | TypeKind.VIEW:
-                    elem_kind = ScalarTypeKind(data[offset])
-                    offset += 1
-                    rank = data[offset]
-                    offset += 1
-                    encoding_attachment = data[offset]
-                    offset += 1
-                    enc_instance, offset = decode_varint(data, offset)
-
-                    dims: list[StaticDim | DynamicDim] = []
-                    for _ in range(rank):
-                        is_dynamic = data[offset]
-                        offset += 1
-                        if is_dynamic:
-                            dims.append(DynamicDim())
-                        else:
-                            size, offset = decode_varint(data, offset)
-                            dims.append(StaticDim(size))
-
-                    encoding: EncodingInstance | DynamicEncoding | None = None
-                    match encoding_attachment:
-                        case 0:
-                            if enc_instance != 0:
-                                raise BytecodeError(
-                                    "none encoding attachment must have id 0"
-                                )
-                        case 1:
-                            if enc_instance == 0 or enc_instance > len(self._encodings):
-                                raise BytecodeError(
-                                    f"static encoding id out of range: {enc_instance}"
-                                )
-                            encoding = self._encodings[enc_instance - 1]
-                        case 2:
-                            if enc_instance != 0:
-                                raise BytecodeError(
-                                    "dynamic encoding attachment must have id 0"
-                                )
-                            encoding = DynamicEncoding()
-                        case _:
-                            raise BytecodeError(
-                                f"unknown encoding attachment: {encoding_attachment}"
-                            )
-                    if type_kind == TypeKind.VECTOR and encoding is not None:
-                        raise BytecodeError(
-                            "vector types must not carry encoding/layout suffixes"
-                        )
-
-                    try:
-                        ir_type = ShapedType(
-                            type_kind=type_kind,
-                            element_type=ScalarType(elem_kind),
-                            dims=tuple(dims),
-                            encoding=encoding,
-                        )
-                    except ValueError as err:
-                        raise BytecodeError(str(err)) from err
-                case TypeKind.FUNCTION:
-                    arg_count, offset = decode_varint(data, offset)
-                    result_count, offset = decode_varint(data, offset)
-                    arg_types = []
-                    for _ in range(arg_count):
-                        type_idx, offset = decode_varint(data, offset)
-                        arg_types.append(
-                            self._resolve_prior_type(type_idx, "function argument type")
-                        )
-                    result_types = []
-                    for _ in range(result_count):
-                        type_idx, offset = decode_varint(data, offset)
-                        result_types.append(
-                            self._resolve_prior_type(type_idx, "function result type")
-                        )
-                    ir_type = FunctionType(tuple(arg_types), tuple(result_types))
-                case TypeKind.DIALECT:
-                    name_id, offset = decode_varint(data, offset)
-                    param_count, offset = decode_varint(data, offset)
-                    params = []
-                    for _ in range(param_count):
-                        type_idx, offset = decode_varint(data, offset)
-                        params.append(
-                            self._resolve_prior_type(type_idx, "dialect parameter type")
-                        )
-                    ir_type = DialectType(self._strings[name_id], tuple(params))
-                case TypeKind.REGISTER:
-                    ir_type, offset = self._read_register_type(data, offset)
-                case TypeKind.PARAMETERIZED:
-                    ir_type, offset = self._read_parameterized_type(data, offset)
-                case TypeKind.STORAGE:
-                    space_byte = data[offset]
-                    offset += 1
-                    try:
-                        ir_type = StorageType(StorageSpace(space_byte))
-                    except ValueError as err:
-                        raise BytecodeError(
-                            f"unknown storage space byte: {space_byte}"
-                        ) from err
-                case TypeKind.ENCODING:
-                    role_byte = data[offset]
-                    offset += 1
-                    try:
-                        role = EncodingRole(role_byte)
-                    except ValueError as e:
-                        raise BytecodeError(
-                            f"unsupported encoding role byte: {role_byte}"
-                        ) from e
-                    ir_type = (
-                        ENCODING_TYPE
-                        if role == EncodingRole.UNKNOWN
-                        else EncodingType(role)
-                    )
-                case TypeKind.POOL:
-                    is_dynamic = data[offset]
-                    offset += 1
-                    if is_dynamic:
-                        ir_type = PoolType(block_size=DynamicDim())
-                    else:
-                        size, offset = decode_varint(data, offset)
-                        ir_type = PoolType(block_size=StaticDim(size))
-                case TypeKind.BUFFER:
-                    ir_type = BUFFER_TYPE
-                case _:
-                    raise BytecodeError(f"unsupported type kind: {type_kind.name}")
+    def _read_type_prefix(self, data: bytes, offset: int, count: int) -> int:
+        """Complete each newly available type once before publishing an encoding."""
+        for _ in range(len(self._types), count):
+            ir_type, offset = self._read_one_type(data, offset)
             self._types.append(ir_type)
+        return offset
+
+    @staticmethod
+    def _read_type_field(
+        data: bytes, offset: int, values: _ValueMap | None
+    ) -> tuple[int, int]:
+        if values is not None:
+            return decode_varint(data, offset)
+        if offset >= len(data):
+            raise BytecodeError("truncated type field")
+        return data[offset], offset + 1
+
+    def _read_shaped_type(
+        self,
+        data: bytes,
+        offset: int,
+        type_kind: TypeKind,
+        values: _ValueMap | None,
+    ) -> tuple[ShapedType, int]:
+        element, offset = self._read_type_field(data, offset, values)
+        elem_kind = ScalarTypeKind(element)
+        rank, offset = self._read_type_field(data, offset, values)
+        if rank > 15:
+            raise BytecodeError(f"shaped type rank exceeds 15: {rank}")
+        encoding_attachment, offset = self._read_type_field(data, offset, values)
+        enc_instance, offset = decode_varint(data, offset)
+
+        dims: list[StaticDim | DynamicDim] = []
+        for _ in range(rank):
+            is_dynamic, offset = self._read_type_field(data, offset, values)
+            if is_dynamic not in (0, 1):
+                raise BytecodeError(f"invalid dimension kind: {is_dynamic}")
+            if is_dynamic:
+                value_id = None
+                if values is not None:
+                    reference, offset = decode_varint(data, offset)
+                    if reference:
+                        value_id = self._map_value_ref(reference - 1, values)
+                dims.append(DynamicDim(value_id))
+            else:
+                size, offset = decode_varint(data, offset)
+                dims.append(StaticDim(size))
+
+        encoding: EncodingInstance | DynamicEncoding | None = None
+        match encoding_attachment:
+            case 0:
+                if enc_instance != 0:
+                    raise BytecodeError("none encoding attachment must have id 0")
+            case 1:
+                if enc_instance == 0 or enc_instance > len(self._encodings):
+                    raise BytecodeError(
+                        f"static encoding id out of range: {enc_instance}"
+                    )
+                encoding = self._encodings[enc_instance - 1]
+            case 2:
+                if values is None:
+                    raise BytecodeError("SSA encoding requires a scoped type")
+                encoding = DynamicEncoding(self._map_value_ref(enc_instance, values))
+            case _:
+                raise BytecodeError(
+                    f"unknown encoding attachment: {encoding_attachment}"
+                )
+        if type_kind == TypeKind.VECTOR and encoding is not None:
+            raise BytecodeError("vector types must not carry encoding/layout suffixes")
+
+        try:
+            ir_type = ShapedType(
+                type_kind=type_kind,
+                element_type=ScalarType(elem_kind),
+                dims=tuple(dims),
+                encoding=encoding,
+            )
+        except ValueError as err:
+            raise BytecodeError(str(err)) from err
+        return ir_type, offset
+
+    def _read_one_type(
+        self, data: bytes, offset: int, values: _ValueMap | None = None
+    ) -> tuple[Type, int]:
+        kind, offset = self._read_type_field(data, offset, None)
+        try:
+            type_kind = BYTECODE_IR_KIND_BY_TYPE_KIND[kind]
+        except KeyError as err:
+            raise BytecodeError(f"unknown type kind: {kind}") from err
+        if values is not None and type_kind not in (
+            TypeKind.TILE,
+            TypeKind.TENSOR,
+            TypeKind.VECTOR,
+            TypeKind.VIEW,
+            TypeKind.POOL,
+            TypeKind.FUNCTION,
+            TypeKind.DIALECT,
+            TypeKind.REGISTER,
+            TypeKind.PARAMETERIZED,
+        ):
+            raise BytecodeError(f"unsupported scoped type kind: {type_kind.name}")
+        ir_type: Type
+        match type_kind:
+            case TypeKind.NONE:
+                ir_type = NONE_TYPE
+            case TypeKind.SCALAR:
+                scalar_kind = ScalarTypeKind(data[offset])
+                offset += 1
+                ir_type = ScalarType(scalar_kind)
+            case TypeKind.TILE | TypeKind.TENSOR | TypeKind.VECTOR | TypeKind.VIEW:
+                return self._read_shaped_type(data, offset, type_kind, values)
+            case TypeKind.FUNCTION:
+                arg_count, offset = decode_varint(data, offset)
+                result_count, offset = decode_varint(data, offset)
+                if max(arg_count, result_count) > 0xFFFF:
+                    raise BytecodeError("function type arity exceeds UINT16_MAX")
+                arg_types = []
+                for _ in range(arg_count):
+                    type_idx, offset = decode_varint(data, offset)
+                    arg_types.append(
+                        self._resolve_prior_type(
+                            type_idx, "function argument type", values
+                        )
+                    )
+                result_types = []
+                for _ in range(result_count):
+                    type_idx, offset = decode_varint(data, offset)
+                    result_types.append(
+                        self._resolve_prior_type(
+                            type_idx, "function result type", values
+                        )
+                    )
+                ir_type = FunctionType(tuple(arg_types), tuple(result_types))
+            case TypeKind.DIALECT:
+                name_id, offset = decode_varint(data, offset)
+                param_count, offset = decode_varint(data, offset)
+                if name_id >= len(self._strings) or param_count > 0xFFFF:
+                    raise BytecodeError(
+                        "dialect type name or parameter count out of range"
+                    )
+                params = []
+                for _ in range(param_count):
+                    type_idx, offset = decode_varint(data, offset)
+                    params.append(
+                        self._resolve_prior_type(
+                            type_idx, "dialect parameter type", values
+                        )
+                    )
+                ir_type = DialectType(self._strings[name_id], tuple(params))
+            case TypeKind.REGISTER:
+                ir_type, offset = self._read_register_type(data, offset, values)
+            case TypeKind.PARAMETERIZED:
+                ir_type, offset = self._read_parameterized_type(data, offset, values)
+            case TypeKind.STORAGE:
+                space_byte = data[offset]
+                offset += 1
+                try:
+                    ir_type = StorageType(StorageSpace(space_byte))
+                except ValueError as err:
+                    raise BytecodeError(
+                        f"unknown storage space byte: {space_byte}"
+                    ) from err
+            case TypeKind.ENCODING:
+                role_byte = data[offset]
+                offset += 1
+                try:
+                    role = EncodingRole(role_byte)
+                except ValueError as e:
+                    raise BytecodeError(
+                        f"unsupported encoding role byte: {role_byte}"
+                    ) from e
+                ir_type = (
+                    ENCODING_TYPE
+                    if role == EncodingRole.UNKNOWN
+                    else EncodingType(role)
+                )
+            case TypeKind.POOL:
+                if values is not None:
+                    reference, offset = decode_varint(data, offset)
+                    value_id = (
+                        self._map_value_ref(reference - 1, values)
+                        if reference
+                        else None
+                    )
+                    return PoolType(DynamicDim(value_id)), offset
+                is_dynamic = data[offset]
+                offset += 1
+                if is_dynamic:
+                    ir_type = PoolType(block_size=DynamicDim())
+                else:
+                    size, offset = decode_varint(data, offset)
+                    ir_type = PoolType(block_size=StaticDim(size))
+            case TypeKind.BUFFER:
+                ir_type = BUFFER_TYPE
+            case _:
+                raise BytecodeError(f"unsupported type kind: {type_kind.name}")
+        return ir_type, offset
 
     def _read_ops_section(self, section: tuple[int, bytes]) -> None:
         _, data = section
@@ -860,7 +968,7 @@ class BytecodeReader:
             raise BytecodeError("SOURCE_TRIVIA section has trailing bytes")
         return file_header
 
-    def _map_value_ref(self, value_ref: int, value_map: list[int]) -> int:
+    def _map_value_ref(self, value_ref: int, value_map: _ValueMap) -> int:
         """Translate an available function-local value number to a module value id."""
         if 0 <= value_ref < len(value_map):
             return value_map[value_ref]
@@ -872,7 +980,7 @@ class BytecodeReader:
     def _reserve_value_defs(
         self,
         module: Module,
-        value_map: list[int],
+        value_map: _ValueMap,
         count: int,
         predefined_values: list[int] | None = None,
     ) -> list[int]:
@@ -893,12 +1001,43 @@ class BytecodeReader:
             reserved.append(value_id)
         return reserved
 
+    def _read_type_use(
+        self, data: bytes, offset: int, values: _ValueMap | None
+    ) -> tuple[Type, int]:
+        reference, offset = decode_varint(data, offset)
+        if values is None:
+            return self._resolve_prior_type(reference, "attribute type"), offset
+        length, offset = decode_varint(data, offset)
+        if not length:
+            if reference & 1:
+                raise BytecodeError("scoped type requires a complete record payload")
+            return self._resolve_prior_type(reference, "value type", values), offset
+        if reference != 1:
+            raise BytecodeError("static type has an unexpected scoped record payload")
+        end = offset + length
+        if end > len(data):
+            raise BytecodeError("scoped type payload exceeds its enclosing record")
+        payload = data[offset:end]
+        try:
+            count, position = decode_varint(payload, 0)
+            for _ in range(count):
+                value_type, position = self._read_one_type(payload, position, values)
+                values.types.append(value_type)
+            root, position = decode_varint(payload, position)
+        except ValueError as error:
+            raise BytecodeError(f"malformed scoped type record: {error}") from error
+        if position != length:
+            raise BytecodeError("scoped type payload has trailing bytes")
+        if not 1 <= root <= len(values.types):
+            raise BytecodeError("scoped type root must name a completed type")
+        return values.types[root - 1], end
+
     def _read_value_def(
         self,
         data: bytes,
         offset: int,
         module: Module,
-        value_map: list[int],
+        value_map: _ValueMap,
         target_value_id: int | None = None,
     ) -> tuple[int, int]:
         """Read one SSA value definition and return its module value id."""
@@ -908,48 +1047,20 @@ class BytecodeReader:
                 f"value name string_id {name_id} out of range "
                 f"(string table has {len(self._strings)} entries)"
             )
-        type_idx, offset = decode_varint(data, offset)
-        if type_idx >= len(self._types):
-            raise BytecodeError(
-                f"value type index {type_idx} out of range "
-                f"(type table has {len(self._types)} entries)"
-            )
-
-        dim_count, offset = decode_varint(data, offset)
-        dim_bindings: dict[int, int] = {}
-        for dimension_index in range(dim_count):
-            value_ref, offset = decode_signed_varint(data, offset)
-            dim_bindings[dimension_index] = self._map_value_ref(value_ref, value_map)
-
-        enc_binding_raw, offset = decode_varint(data, offset)
-        encoding_binding = enc_binding_raw - 1 if enc_binding_raw > 0 else -1
-        if encoding_binding >= 0:
-            encoding_binding = self._map_value_ref(encoding_binding, value_map)
+        value_type, offset = self._read_type_use(data, offset, value_map)
 
         value = Value(
             name="" if name_id == 0 else self._strings[name_id],
-            type=self._types[type_idx],
-            dim_bindings=dim_bindings,
-            encoding_binding=encoding_binding,
+            type=value_type,
         )
         if target_value_id is not None:
             existing = module.values[target_value_id]
-            is_placeholder = (
-                existing.name == ""
-                and existing.type == NONE_TYPE
-                and not existing.dim_bindings
-                and existing.encoding_binding == -1
-            )
+            is_placeholder = existing.name == "" and existing.type == NONE_TYPE
             if is_placeholder:
                 existing.name = value.name
                 existing.type = value.type
-                existing.dim_bindings = value.dim_bindings
-                existing.encoding_binding = value.encoding_binding
-            elif (
-                existing.name != value.name
-                or existing.type != value.type
-                or existing.dim_bindings != value.dim_bindings
-                or existing.encoding_binding != value.encoding_binding
+            elif existing.name != value.name or not self._type_identity.equal(
+                existing.type, value.type
             ):
                 raise BytecodeError(
                     "predefined function signature value does not match body value"
@@ -962,7 +1073,7 @@ class BytecodeReader:
         data: bytes,
         offset: int,
         module: Module,
-        value_map: list[int],
+        value_map: _ValueMap,
         target_value_ids: list[int],
         start_index: int,
         count: int,
@@ -1081,7 +1192,7 @@ class BytecodeReader:
                 arg_count, offset = decode_varint(sym_data, offset)
                 result_count, offset = decode_varint(sym_data, offset)
 
-                signature_value_map: list[int] = []
+                signature_value_map = _ValueMap()
                 signature_value_ids = self._reserve_value_defs(
                     module,
                     signature_value_map,
@@ -1273,7 +1384,7 @@ class BytecodeReader:
                     raise BytecodeError(
                         "global symbol local_value_count must cover all results"
                     )
-                local_value_map: list[int] = []
+                local_value_map = _ValueMap()
                 local_value_ids = self._reserve_value_defs(
                     module, local_value_map, local_value_count
                 )
@@ -1525,7 +1636,7 @@ class BytecodeReader:
             raise BytecodeError("symbol visibility byte does not match flags")
 
     def _function_predicates_attr_name(
-        self, op_name: str, flags: int, predicates: list[Predicate]
+        self, op_name: str, flags: int, predicates: PredicateListAttr
     ) -> str | None:
         """Resolve and validate function predicate attribute presence."""
         has_predicates = bool(flags & _SYMBOL_FLAG_PREDICATES)
@@ -1706,7 +1817,7 @@ class BytecodeReader:
         the root entry arguments.
         """
         offset = 0
-        value_map: list[int] = []
+        value_map = _ValueMap()
         _value_count, offset = decode_varint(data, offset)
         _region_count, offset = decode_varint(data, offset)
         _block_count, offset = decode_varint(data, offset)
@@ -1765,7 +1876,7 @@ class BytecodeReader:
         data: bytes,
         offset: int,
         module: Module,
-        value_map: list[int],
+        value_map: _ValueMap,
         predefined_values: list[int] | None,
     ) -> tuple[Region, int]:
         source_flags, offset = decode_varint(data, offset)
@@ -1794,7 +1905,7 @@ class BytecodeReader:
         data: bytes,
         offset: int,
         module: Module,
-        value_map: list[int],
+        value_map: _ValueMap,
         predefined_values: list[int] | None,
         block: Block,
         region_blocks: list[Block],
@@ -1840,7 +1951,7 @@ class BytecodeReader:
         data: bytes,
         offset: int,
         module: Module,
-        value_map: list[int],
+        value_map: _ValueMap,
         region_blocks: list[Block],
     ) -> tuple[Operation, int]:
         op_table_index_plus1, offset = decode_varint(data, offset)
@@ -1957,9 +2068,10 @@ class BytecodeReader:
         data: bytes,
         offset: int,
         module: Module | None,
-        value_map: list[int] | None,
+        value_map: _ValueMap | None,
         expected_definition: Any | None,
         aggregate_nesting_depth: int,
+        completed_types: bool,
     ) -> tuple[ParameterizedAttr, int]:
         """Read a parameterized attribute payload without a kind byte."""
         if aggregate_nesting_depth >= ATTR_AGGREGATE_MAX_NESTING_DEPTH:
@@ -2025,6 +2137,7 @@ class BytecodeReader:
                 value_map,
                 parameter_def,
                 aggregate_nesting_depth + 1,
+                completed_types=completed_types,
             )
             parameters[parameter_name] = parameter_value
             previous_index = parameter_index
@@ -2038,9 +2151,11 @@ class BytecodeReader:
         data: bytes,
         offset: int,
         module: Module | None = None,
-        value_map: list[int] | None = None,
+        value_map: _ValueMap | None = None,
         attr_def: Any | None = None,
         aggregate_nesting_depth: int = 0,
+        *,
+        completed_types: bool = False,
     ) -> tuple[Any, int]:
         kind = data[offset]
         offset += 1
@@ -2069,8 +2184,12 @@ class BytecodeReader:
                 string_id, offset = decode_varint(data, offset)
                 return SymbolName(self._strings[string_id]), offset
             case 7:  # TYPE
-                type_idx, offset = decode_varint(data, offset)
-                return self._resolve_prior_type(type_idx, "attribute type"), offset
+                if completed_types:
+                    reference, offset = decode_varint(data, offset)
+                    return self._resolve_prior_type(
+                        reference, "attribute type", value_map
+                    ), offset
+                return self._read_type_use(data, offset, value_map)
             case 8:  # PREDICATE_LIST
                 predicates, offset = self._read_predicate_list(data, offset, value_map)
                 return predicates, offset
@@ -2088,6 +2207,7 @@ class BytecodeReader:
                     module,
                     value_map,
                     aggregate_nesting_depth + 1,
+                    completed_types=completed_types,
                 )
             case 10:  # ENCODING
                 encoding_id, offset = decode_varint(data, offset)
@@ -2136,6 +2256,7 @@ class BytecodeReader:
                     value_map,
                     getattr(attr_def, "parameterized_attr", None),
                     aggregate_nesting_depth,
+                    completed_types,
                 )
             case 15:  # PARAMETERIZED_ARRAY
                 if getattr(attr_def, "attr_type", None) != "parameterized_array":
@@ -2164,6 +2285,7 @@ class BytecodeReader:
                         value_map,
                         expected_definition,
                         aggregate_nesting_depth + 1,
+                        completed_types,
                     )
                     values.append(value)
                 return ParameterizedAttrArray(values), offset
@@ -2286,8 +2408,10 @@ class BytecodeReader:
         offset: int,
         count: int,
         module: Module | None = None,
-        value_map: list[int] | None = None,
+        value_map: _ValueMap | None = None,
         aggregate_nesting_depth: int = 0,
+        *,
+        completed_types: bool = False,
     ) -> tuple[CanonicalAttrDict, int]:
         """Read canonical dict attr entries and verify sorted/deduped order."""
         entries: list[tuple[str, Any]] = []
@@ -2313,6 +2437,7 @@ class BytecodeReader:
                 module,
                 value_map,
                 aggregate_nesting_depth=aggregate_nesting_depth,
+                completed_types=completed_types,
             )
             entries.append((key, value))
             previous_key = key
@@ -2324,7 +2449,7 @@ class BytecodeReader:
         offset: int,
         count: int,
         module: Module | None = None,
-        value_map: list[int] | None = None,
+        value_map: _ValueMap | None = None,
         op_name: str | None = None,
     ) -> tuple[dict[str, Any], int]:
         """Read op attribute entries, preserving payload order."""
@@ -2382,8 +2507,8 @@ class BytecodeReader:
         self,
         data: bytes,
         offset: int,
-        value_map: list[int] | None = None,
-    ) -> tuple[list[Predicate], int]:
+        value_map: _ValueMap | None = None,
+    ) -> tuple[PredicateListAttr, int]:
         """Read a predicate list: count + per-predicate data."""
         count, offset = decode_varint(data, offset)
         predicates: list[Predicate] = []
@@ -2400,13 +2525,13 @@ class BytecodeReader:
                 arg, offset = self._read_predicate_arg(data, offset, value_map)
                 args.append(arg)
             predicates.append(Predicate(kind=kind, args=tuple(args)))
-        return predicates, offset
+        return PredicateListAttr(predicates), offset
 
     def _read_predicate_arg(
         self,
         data: bytes,
         offset: int,
-        value_map: list[int] | None = None,
+        value_map: _ValueMap | None = None,
     ) -> tuple[PredicateArg, int]:
         """Read a single predicate argument: tag + value."""
         tag_byte = data[offset]

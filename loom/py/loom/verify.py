@@ -9,7 +9,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from loom.diagnostics import DiagnosticEngine
@@ -32,6 +32,7 @@ from loom.ir import (
     Module,
     Operation,
     PoolType,
+    PredicateArg,
     Region,
     RegisterType,
     ScalarType,
@@ -45,6 +46,7 @@ from loom.ir import (
     TypeKind,
     Value,
 )
+from loom.type_binding import binding_children, remap_value_bindings
 
 __all__ = [
     "ModuleVerifier",
@@ -105,9 +107,12 @@ class ModuleVerifier:
     diagnostics: DiagnosticEngine
     registry: VerifierRegistry = field(default_factory=VerifierRegistry.from_ops)
     _symbols_by_name: dict[str, Symbol] = field(default_factory=dict, init=False)
+    # Per-invocation validity for completed nodes in the type/attribute DAG.
+    _binding_validity: dict[int, bool] = field(default_factory=dict, init=False)
 
     def verify(self) -> None:
         """Verify the module and append diagnostics for every detected error."""
+        self._binding_validity.clear()
         self._verify_symbol_table()
         self._verify_top_level_operation_ownership()
         for operation_index, operation in enumerate(self.module.body.ops):
@@ -235,6 +240,7 @@ class ModuleVerifier:
         self._verify_traits(op_decl, op_path, parent_stack)
         shape_ok = self._verify_field_counts(op_decl, operation, op_path)
         self._verify_attrs(op_decl, operation, op_path)
+        self._verify_binding_graph(operation.attributes, op_path)
         if values_ok and shape_ok:
             self._verify_type_constraints(op_decl, operation, op_path)
             self._verify_declarative_constraints(op_decl, operation, op_path)
@@ -620,16 +626,23 @@ class ModuleVerifier:
                         values[field_name] = operation.attributes.get(field_name)
                     case FieldKind.REGION:
                         region_decl = op_decl.regions[field_desc.index]
+                        signature_args = (
+                            resolved.func_args(region_decl.arg_source)[2]
+                            if region_decl.arg_source in layout.func_args_fields
+                            else None
+                        )
                         if field_desc.variadic:
                             values[field_name] = [
                                 self._constraint_region_value(
-                                    region, region_decl.terminator
+                                    region, region_decl.terminator, signature_args
                                 )
                                 for region in resolved.regions(field_name)
                             ]
                         else:
                             values[field_name] = self._constraint_region_value(
-                                resolved.region(field_name), region_decl.terminator
+                                resolved.region(field_name),
+                                region_decl.terminator,
+                                signature_args,
                             )
                     case FieldKind.SUCCESSOR:
                         values[field_name] = (
@@ -650,17 +663,38 @@ class ModuleVerifier:
         self,
         region: Region | None,
         expected_terminator: str | None,
+        signature_args: Sequence[int] | None,
     ) -> _ConstraintRegionValue:
         """Resolves a region without hiding structural failures from its owner."""
         if region is None or not region.blocks:
             return _ConstraintRegionValue(None, None)
         entry_block = region.blocks[0]
-        entry_args = tuple(
-            self.module.values[value_id]
-            if 0 <= value_id < len(self.module.values)
-            else None
-            for value_id in entry_block.arg_ids
-        )
+
+        def resolve(value_ids: Sequence[int]) -> tuple[Value | None, ...]:
+            values = tuple(
+                self.module.values[value_id]
+                if 0 <= value_id < len(self.module.values)
+                else None
+                for value_id in value_ids
+            )
+            if signature_args is None:
+                return values
+            # Projected regions declare fresh peers for a shared signature.
+            # Constraint values use that signature's identities; the module IR
+            # keeps its region-local types and ownership unchanged.
+            types = remap_value_bindings(
+                (value.type if value is not None else None for value in values),
+                # Arity mismatches remain the positional constraint's diagnostic.
+                dict(zip(entry_block.arg_ids, signature_args, strict=False)),
+            )
+            return tuple(
+                replace(value, type=value_type)
+                if value is not None and value_type is not value.type
+                else value
+                for value, value_type in zip(values, types, strict=True)
+            )
+
+        entry_args = resolve(entry_block.arg_ids)
         if not entry_block.ops:
             return _ConstraintRegionValue(entry_args, None)
         terminator = entry_block.ops[-1]
@@ -674,12 +708,7 @@ class ModuleVerifier:
             )
         ):
             return _ConstraintRegionValue(entry_args, None)
-        terminator_operands = tuple(
-            self.module.values[value_id]
-            if 0 <= value_id < len(self.module.values)
-            else None
-            for value_id in terminator.operands
-        )
+        terminator_operands = resolve(terminator.operands)
         return _ConstraintRegionValue(entry_args, terminator_operands)
 
     def _verify_symbol_refs(
@@ -996,92 +1025,46 @@ class ModuleVerifier:
                 ok = False
                 continue
             value = self.module.values[value_id]
-            ok &= self._verify_value_bindings(value, value_id, source)
+            ok &= self._verify_binding_graph(value.type, source)
         return ok
 
-    def _verify_value_bindings(self, value: Any, value_id: int, source: str) -> bool:
-        ok = True
-        required_dim_positions = set(_dynamic_dim_positions(value.type))
-        provided_dim_positions = set(value.dim_bindings)
-        missing_dim_positions = sorted(required_dim_positions - provided_dim_positions)
-        if missing_dim_positions:
-            positions = ", ".join(str(position) for position in missing_dim_positions)
-            self.diagnostics.error(
-                "dynamic dimension has no SSA binding",
-                source=source,
-                details=(
-                    f"value {value_id} has dynamic dimension position(s) "
-                    f"{positions} without dim_bindings entries",
-                ),
-            )
-            ok = False
-        unexpected_dim_positions = sorted(
-            provided_dim_positions - required_dim_positions
-        )
-        if unexpected_dim_positions:
-            positions = ", ".join(
-                str(position) for position in unexpected_dim_positions
-            )
-            self.diagnostics.error(
-                "static dimension has unexpected SSA binding",
-                source=source,
-                details=(
-                    f"value {value_id} has dim_bindings entries for "
-                    f"non-dynamic dimension position(s) {positions}",
-                ),
-            )
-            ok = False
-        for dim_position, binding_id in value.dim_bindings.items():
-            if binding_id < 0 or binding_id >= len(self.module.values):
+    def _verify_binding_graph(self, root: Any, source: str) -> bool:
+        pending = [(root, False)]
+        validity = self._binding_validity
+        while pending:
+            value, expanded = pending.pop()
+            identity = id(value)
+            if identity in validity:
+                continue
+            children = tuple(binding_children(value))
+            if children and not expanded:
+                pending.append((value, True))
+                pending.extend((child, False) for child in children)
+                continue
+            valid = all(validity[id(child)] for child in children)
+            if isinstance(value, DynamicDim | DynamicEncoding):
+                binding_id = value.value_id
+                kind = "dimension" if isinstance(value, DynamicDim) else "encoding"
+            elif isinstance(value, PredicateArg) and value.tag == "value":
+                binding_id = value.value
+                kind = "predicate"
+            else:
+                validity[identity] = valid
+                continue
+            if binding_id is None:
                 self.diagnostics.error(
-                    "dynamic dimension references missing value",
-                    source=source,
-                    details=(
-                        f"value {value_id} dim binding {dim_position} "
-                        f"references value id {binding_id}",
-                    ),
+                    f"dynamic {kind} has no SSA binding", source=source
                 )
-                ok = False
-        if _has_dynamic_encoding(value.type) and value.encoding_binding < 0:
-            self.diagnostics.error(
-                "dynamic encoding has no SSA binding",
-                source=source,
-                details=(f"value {value_id} has dynamic encoding without binding",),
-            )
-            ok = False
-        if value.encoding_binding >= 0 and value.encoding_binding >= len(
-            self.module.values
-        ):
-            self.diagnostics.error(
-                "dynamic encoding references missing value",
-                source=source,
-                details=(
-                    f"value {value_id} references encoding value id "
-                    f"{value.encoding_binding}",
-                ),
-            )
-            ok = False
-        return ok
-
-
-def _dynamic_dim_positions(value_type: Type) -> tuple[int, ...]:
-    if isinstance(value_type, ShapedType):
-        return tuple(
-            position
-            for position, dim in enumerate(value_type.dims)
-            if isinstance(dim, DynamicDim)
-        )
-    if isinstance(value_type, PoolType) and isinstance(
-        value_type.block_size, DynamicDim
-    ):
-        return (0,)
-    return ()
-
-
-def _has_dynamic_encoding(value_type: Type) -> bool:
-    return isinstance(value_type, ShapedType) and isinstance(
-        value_type.encoding, DynamicEncoding
-    )
+                valid = False
+            elif not 0 <= binding_id < len(self.module.values):
+                self.diagnostics.error(
+                    f"dynamic {kind} references missing value",
+                    source=source,
+                    details=(f"binding references value id {binding_id}",),
+                )
+                valid = False
+            validity[identity] = valid
+        return validity[id(root)]
 
 
 def verify_module(

@@ -415,14 +415,14 @@ def _physical_view_extents(
         )
         return None
     extents: list[ValueRef] = []
-    for position, dim in enumerate(view_type.dims):
+    for dim in view_type.dims:
         if isinstance(dim, StaticDim):
             extents.append(
                 context.ensure_constant(str(dim.size), "index", f"c{dim.size}")
             )
             continue
         if isinstance(dim, DynamicDim):
-            value_id = view_value.dim_bindings.get(position)
+            value_id = dim.value_id
             if value_id is None:
                 context.record_blocked(
                     node_text(diagnostic_owner),

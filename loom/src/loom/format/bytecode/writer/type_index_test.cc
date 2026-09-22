@@ -110,13 +110,13 @@ TEST_F(TypeIndexTest, ShapedTypesRetainTheirScalarDependency) {
         &index, loom_type_table_get(&module_->types, type));
     ASSERT_NE(node, nullptr);
     ASSERT_EQ(node->dependencies.count, 1u);
+    EXPECT_EQ(node->dependencies.explicit_count, 0u);
     EXPECT_EQ(&index.nodes[index.dependencies[node->dependencies.begin]],
               scalar);
   }
 }
 
-TEST_F(TypeIndexTest,
-       WireEquivalenceIgnoresScopedBindingsThroughSharedChildren) {
+TEST_F(TypeIndexTest, CanonicalIdentityPreservesScopedBindingsThroughChildren) {
   const loom_type_t dimension_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
   loom_value_id_t dimensions[2];
   IREE_ASSERT_OK(
@@ -142,6 +142,9 @@ TEST_F(TypeIndexTest,
     EXPECT_NE(first[i], second[i]);
     EXPECT_EQ(loom_bytecode_type_index_lookup(
                   &index, loom_type_table_get(&module_->types, second[i])),
+              second[i]);
+    EXPECT_EQ(loom_bytecode_type_index_lookup(
+                  &index, loom_type_table_get(&module_->types, first[i])),
               first[i]);
   }
 }
@@ -166,7 +169,7 @@ TEST_F(TypeIndexTest, GeneralConstructionRetainsCanonicalChildren) {
   EXPECT_EQ(loom_bytecode_type_index_lookup(&index, argument), child);
 }
 
-TEST_F(TypeIndexTest, ParameterAttributesRetainTypeDependencyClasses) {
+TEST_F(TypeIndexTest, ParameterAttributesRetainTypeDependencyIdentity) {
   static const loom_attr_descriptor_t parameters[] = {{
       /*.name=*/LOOM_BSTRING_REF(8, "metadata"),
       /*.attr_kind=*/LOOM_ATTR_DICT,
@@ -200,6 +203,9 @@ TEST_F(TypeIndexTest, ParameterAttributesRetainTypeDependencyClasses) {
   IREE_ASSERT_OK(loom_bytecode_type_index_initialize(module_, &arena_, &index));
   EXPECT_EQ(loom_bytecode_type_index_lookup(
                 &index, loom_type_table_get(&module_->types, parent_ids[1])),
+            parent_ids[1]);
+  EXPECT_EQ(loom_bytecode_type_index_lookup(
+                &index, loom_type_table_get(&module_->types, parent_ids[0])),
             parent_ids[0]);
 }
 

@@ -1,0 +1,25 @@
+// RUN: roundtrip
+
+// The kind prefix distinguishes even empty predicates from integer arrays.
+test.decl @static_predicates(%values: test.array<i32, metadata = {empty = predicates[], integers = [], literal = predicates, nested = {constraints = predicates[eq(4, 4), pow2(16), range(8, 0, 32)]}}>)
+
+// ----
+test.decl @static_predicates(%values: test.array<i32, metadata = {empty = predicates[], integers = [], literal = "predicates", nested = {constraints = predicates[eq(4, 4), pow2(16), range(8, 0, 32)]}}>)
+
+// ====
+// RUN: roundtrip
+
+// Predicate arguments share the declaration's forward-binding scope with type
+// dimensions, including values that occur only inside a nested dictionary.
+test.decl @dependent_predicates(%values: test.array<vector<[%width]xf32>, metadata = {constraints = predicates[eq(%width, %height), pow2(%width)], nested = {constraints = predicates[finite(%sample)]}}>, %width: index, %height: index, %sample: f32)
+
+// ====
+// RUN: roundtrip
+
+// Ordinary predicate fields retain their compact spelling; generic dictionary
+// leaves use the same SSA names and preserve independent values.
+func.def retain @body_predicates(%width: index, %height: index, %input: f32) -> (f32) {
+  %bounded = index.assume %width [range(%width, 1, 64)] : index
+  %configured = test.attrs %input {metadata = {constraints = predicates[lt(%bounded, %height)], nested = {constraints = predicates[finite(%input)]}}} : f32
+  func.return %configured : f32
+}

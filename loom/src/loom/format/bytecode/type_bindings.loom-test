@@ -1,0 +1,49 @@
+// RUN: format bytecode
+
+// Static parameter metadata can reference a symbol declared after its user.
+// Symbols are available before the validated type plan is constructed.
+func.decl @read_static(%buffer: test.array<vector<4xf32>, metadata = {callee = @static_helper}>)
+
+func.decl @static_helper(%value: f32) -> (f32)
+
+// ====
+// RUN: format bytecode
+
+// Repeated nested TYPE leaves share a scoped construction without losing
+// dimensions carried outside the inline dimension storage.
+func.def @reuse_shape(%width: index, %buffer: test.ref<vector<[%width]xf32>>, %value: f32) -> (f32) {
+  %first = test.attrs %value {shape = #test.options<mode = fast, element_type = test.variant_set<[#test.options<mode = precise, element_type = vector<2x[%width]x4xf32>>, #test.options<mode = fast, element_type = vector<[%width]xf32>>]>>} : f32
+  %second = test.attrs %first {shape = #test.options<mode = fast, element_type = test.variant_set<[#test.options<mode = precise, element_type = vector<2x[%width]x4xf32>>, #test.options<mode = fast, element_type = vector<[%width]xf32>>]>>} : f32
+  func.return %second : f32
+}
+
+// ====
+// RUN: format bytecode
+
+// Identical type shapes bind to the dimensions of their own function scope.
+func.def @left_shape(%width: index, %buffer: test.ref<vector<[%width]xf32>>, %value: f32) -> (f32) {
+  %annotated = test.attrs %value {shape = #test.options<mode = fast, element_type = test.array<vector<[%width]xf32>>>} : f32
+  func.return %annotated : f32
+}
+
+func.def @right_shape(%peer_width: index, %peer_buffer: test.ref<vector<[%peer_width]xf32>>, %peer_value: f32) -> (f32) {
+  %peer_annotated = test.attrs %peer_value {shape = #test.options<mode = fast, element_type = test.array<vector<[%peer_width]xf32>>>} : f32
+  func.return %peer_annotated : f32
+}
+
+// ====
+// RUN: format bytecode
+
+// A register keeps both its physical carrier and its SSA-bound semantic type.
+low.func.def target<test.low.core> @register_type_binding(%width: reg<test.i32 : index>, %value: reg<test.i32 : vector<[%width]xf32>>) asm {
+  return
+}
+
+// ====
+// RUN: format bytecode
+
+// TYPE attributes use the same scope as the Low function's value definitions.
+low.func.def target<test.low.core> @resource_type_binding(%width: reg<test.i32 : index>) asm {
+  %resource = resource<native_pointer> {index = 0, source_type = vector<[%width]xf32>} : reg<test.ptr>
+  return
+}

@@ -108,6 +108,9 @@ def _validate_positional_types(
             f"'{lhs_name}' count {len(lhs_items)} != "
             f"'{rhs_name}' count {len(rhs_items)}",
         )
+    from loom.type_identity import TypeIdentity
+
+    identities = TypeIdentity()
     for (lhs_display_name, lhs_item), (rhs_display_name, rhs_item) in zip(
         lhs_items, rhs_items, strict=True
     ):
@@ -125,7 +128,7 @@ def _validate_positional_types(
             if element_types
             else _field_value_type(rhs_item)
         )
-        if lhs_type != rhs_type:
+        if not identities.equal(lhs_type, rhs_type):
             return (
                 False,
                 f"'{lhs_display_name}' type {lhs_type} != "

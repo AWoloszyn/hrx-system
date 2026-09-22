@@ -58,9 +58,9 @@ typedef struct loom_bytecode_table_entry_metadata_t {
 
 // Validated ENCODINGS instance record exposed by the bytecode index.
 typedef struct loom_bytecode_encoding_metadata_t {
-  // Absolute file byte offset of the instance entry.
+  // Absolute file byte offset of the instance payload, after its type prefix.
   uint64_t entry_offset;
-  // Byte length of the instance entry.
+  // Byte length of the instance payload, excluding its type prefix.
   uint64_t entry_length;
   // Source STRINGS ordinal naming the encoding family.
   uint32_t name_string_index;

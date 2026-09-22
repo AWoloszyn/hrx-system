@@ -49,6 +49,7 @@ from loom.importers.tilelang.ops.topology import (
 from loom.ir import (
     I32,
     INDEX,
+    DynamicEncoding,
     EncodingInstance,
     ScalarType,
     ShapedType,
@@ -2794,7 +2795,9 @@ def _region_has_dense_layout(
     if context.dense_layout is None:
         return False
     view = context.builder.module.values[region.view.id]
-    return view.encoding_binding == context.dense_layout.id
+    return isinstance(view.type, ShapedType) and view.type.encoding == DynamicEncoding(
+        context.dense_layout.id
+    )
 
 
 def _same_value_sequence(

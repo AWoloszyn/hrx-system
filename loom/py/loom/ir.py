@@ -24,7 +24,7 @@ from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum, unique
 from itertools import pairwise
-from typing import Any
+from typing import Any, overload
 
 from loom.location_tag import (
     LOCATION_TAG_SANITIZER_SITE,
@@ -111,6 +111,7 @@ __all__ = [
     "replace_canonical_attr_dict",
     "PredicateArg",
     "Predicate",
+    "PredicateListAttr",
     "PREDICATE_KINDS",
     "evaluate_predicate",
     "evaluate_predicates",
@@ -178,12 +179,13 @@ class StaticDim:
 
 @dataclass(frozen=True, slots=True)
 class DynamicDim:
-    """A dynamic dimension. The actual size is bound at the use site,
-    not in the type. Types are structural — DynamicDim carries no
-    value reference."""
+    """A dimension bound to a module SSA value, or an unbound dimension."""
+
+    # Module value providing the dimension, or None for an unbound dimension.
+    value_id: int | None = None
 
     def __repr__(self) -> str:
-        return "?"
+        return "?" if self.value_id is None else f"[%{self.value_id}]"
 
 
 # A dimension is either static or dynamic.
@@ -288,9 +290,9 @@ F64 = ScalarType(ScalarTypeKind.F64)
 class ShapedType:
     """A shaped type with shape, element type, and optional encoding/layout.
 
-    Types are structural: dynamic dims are DynamicDim() flags, not
-    references to specific SSA values. The binding of dynamic dims to
-    values happens on the Value that carries this type.
+    Dynamic dimensions and encodings carry module SSA identities directly.
+    Nested types and type attributes retain the same complete identity as
+    value types, independently of their position in a containing type.
 
     Tensor, tile, and vector shaped types describe SSA values at different
     lowering levels. View shaped types describe typed, non-owning logical
@@ -357,7 +359,7 @@ class ShapedType:
                     case StaticDim(size=s):
                         dim_strs.append(str(s))
                     case DynamicDim():
-                        dim_strs.append("?")
+                        dim_strs.append(repr(d))
             shape = "x".join(dim_strs)
             return f"{kind_name}<{shape}x{self.element_type}>"
         return f"{kind_name}<{self.element_type}>"
@@ -645,9 +647,8 @@ class PoolType:
     encoding — it's untyped bytes. Element type and encoding are
     imposed by pool ops at access time.
 
-    Dynamic block_size uses the same DynamicDim/dim_bindings mechanism
-    as shaped types: the Value carrying this type binds the dim at
-    position 0 to an index-typed SSA value.
+    A dynamic block_size carries the index-typed SSA value that supplies its
+    size, just like a dynamic dimension in a shaped type.
     """
 
     block_size: Dim
@@ -799,14 +800,10 @@ LOCATION_UNKNOWN = 0  # Location ID 0 is always unknown.
 
 @dataclass(frozen=True, slots=True)
 class DynamicEncoding:
-    """A dynamic encoding bound at the use site via an SSA value of
-    type EncodingType. The Value carrying this type holds the binding
-    in its encoding_binding field.
+    """An encoding bound to a module SSA value of EncodingType."""
 
-    Analogous to DynamicDim for shape dimensions: the type is
-    structural and carries no value reference. The binding lives on
-    the Value, not the Type.
-    """
+    # Module value providing the encoding.
+    value_id: int
 
 
 @dataclass(frozen=True, slots=True, eq=False)
@@ -944,6 +941,37 @@ class Predicate:
 
     kind: str
     args: tuple[PredicateArg, ...]
+
+
+@dataclass(frozen=True, slots=True, init=False)
+class PredicateListAttr(Sequence[Predicate]):
+    """Ordered predicates whose attribute kind survives empty generic payloads."""
+
+    # Immutable predicate payload, distinct from an integer array even if empty.
+    values: tuple[Predicate, ...]
+
+    def __init__(self, values: Iterable[Predicate] = ()) -> None:
+        frozen_values = tuple(values)
+        if len(frozen_values) > 0xFFFF:
+            raise ValueError("predicate list length exceeds UINT16_MAX")
+        if not all(isinstance(value, Predicate) for value in frozen_values):
+            raise TypeError("predicate lists require Predicate elements")
+        object.__setattr__(self, "values", frozen_values)
+
+    def __iter__(self) -> Iterator[Predicate]:
+        return iter(self.values)
+
+    def __len__(self) -> int:
+        return len(self.values)
+
+    @overload
+    def __getitem__(self, index: int) -> Predicate: ...
+
+    @overload
+    def __getitem__(self, index: slice) -> tuple[Predicate, ...]: ...
+
+    def __getitem__(self, index: int | slice) -> Predicate | tuple[Predicate, ...]:
+        return self.values[index]
 
 
 def _resolve_predicate_arg(
@@ -1676,17 +1704,12 @@ class Value:
     """An SSA value (operation result or block argument).
 
     Values live in the module's value table, accessed by integer ID.
-    The type is structural (no SSA value references in dims).
-    dim_bindings maps dynamic dim positions to the value IDs that
-    provide the runtime sizes.
+    The complete type owns its dynamic dimension and encoding references,
+    including those nested in child types or type-parameter attributes.
 
     name: Bare name without the '%' sigil. A value named "x" prints
     as %x; a value named "" is unnamed and gets an auto-name from
     its value ID (%0, %1, ...).
-
-    encoding_binding: when the value's type has DynamicEncoding, this
-    holds the value_id of the encoding-typed SSA value that provides
-    the encoding at runtime. -1 means no binding.
 
     def_op_index/def_block_index/def_result_index locate the definition:
       - Operation result values:
@@ -1717,8 +1740,6 @@ class Value:
     def_op_index: int = VALUE_DEF_OP_NONE
     def_block_index: int = VALUE_DEF_BLOCK_NONE
     def_result_index: int = 0
-    dim_bindings: dict[int, int] = field(default_factory=dict)
-    encoding_binding: int = -1
     location_id: int = LOCATION_UNKNOWN
     uses: list[Use] = field(default_factory=list)
 
@@ -2144,12 +2165,17 @@ class Module:
     def clone_func_signature_args(self, arg_ids: Sequence[int]) -> list[int]:
         """Project signature arguments into an independent region entry.
 
-        Direct dimension and encoding references to peer arguments follow the
+        Nested dimension and encoding references to peer arguments follow the
         cloned identities. References outside the signature retain their IDs.
         Definition ownership is assigned when the new region is attached.
         """
+        from loom.type_binding import remap_value_bindings
+
         first_id = len(self.values)
         remap = {arg_id: first_id + index for index, arg_id in enumerate(arg_ids)}
+        types = remap_value_bindings(
+            (self.values[arg_id].type for arg_id in arg_ids), remap
+        )
         cloned_ids: list[int] = []
         for index, arg_id in enumerate(arg_ids):
             source = self.values[arg_id]
@@ -2157,16 +2183,9 @@ class Module:
                 self.add_value(
                     Value(
                         name=source.name,
-                        type=source.type,
+                        type=types[index],
                         flags=source.flags,
                         def_result_index=index,
-                        dim_bindings={
-                            position: remap.get(value_id, value_id)
-                            for position, value_id in source.dim_bindings.items()
-                        },
-                        encoding_binding=remap.get(
-                            source.encoding_binding, source.encoding_binding
-                        ),
                     )
                 )
             )

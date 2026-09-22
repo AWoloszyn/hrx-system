@@ -16,10 +16,12 @@ loom_cc_library(
     name = "attribute",
     srcs = ["attribute.c"],
     hdrs = ["attribute.h"],
+    textual_hdrs = ["binding_impl.inl"],
     visibility = ["//loom/src/loom/format/bytecode:__pkg__"],
     deps = [
         ":encoder",
         ":numbering",
+        "//loom/src/loom/ir",
         "//runtime/src/iree/base",
     ],
 )
@@ -52,6 +54,7 @@ loom_cc_library(
     ],
     visibility = ["//loom/src/loom/format/bytecode:__pkg__"],
     deps = [
+        ":encoder",
         "//loom/src/loom/format:low_repr",
         "//loom/src/loom/format/bytecode:format",
         "//loom/src/loom/ir",
@@ -71,7 +74,20 @@ loom_cc_library(
         "//loom/src/loom/format/bytecode:varint",
         "//loom/src/loom/ir",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/io:stream",
+    ],
+)
+
+loom_cc_test(
+    name = "encoder_test",
+    srcs = ["encoder_test.cc"],
+    deps = [
+        ":encoder",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )
 

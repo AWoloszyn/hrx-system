@@ -83,142 +83,17 @@ static iree_status_t loom_bytecode_body_reader_read_region(
     loom_bytecode_reader_cursor_t* cursor, loom_builder_t* builder,
     loom_op_t* parent_op, uint32_t depth, loom_region_t** out_region);
 
-// Resolves region-local dimension and encoding bindings in |base_type|. Returns
-// its canonical type-table ID when no binding changes the type, or INVALID
-// alongside the rebound type otherwise.
-static iree_status_t loom_bytecode_value_scope_bind_type(
-    loom_bytecode_body_policy_value_scope_t* value_scope,
-    loom_bytecode_reader_cursor_t* cursor, loom_type_t base_type,
-    loom_type_id_t base_type_id, uint64_t dim_binding_count,
-    loom_type_t* out_type, loom_type_id_t* out_canonical_type_id) {
-  loom_type_t type = base_type;
-  uint8_t rank = loom_type_rank(base_type);
-  uint64_t dynamic_count = 0;
-  uint64_t dims[LOOM_TYPE_MAX_RANK] = {0};
-  for (uint8_t i = 0; i < rank; ++i) {
-    dims[i] = loom_type_dim(base_type, i);
-    if (loom_dim_is_dynamic(dims[i])) {
-      ++dynamic_count;
-    }
-  }
-  if (dim_binding_count != dynamic_count) {
-    return loom_bytecode_value_scope_emit_invalid(
-        value_scope, loom_bytecode_reader_cursor_absolute_position(cursor),
-        IREE_SV("dynamic_dimension_binding_count_does_not_match_the_type"));
-  }
-  for (uint8_t i = 0; i < rank; ++i) {
-    if (!loom_dim_is_dynamic(dims[i])) {
-      continue;
-    }
-    int64_t value_number = 0;
-    uint64_t ref_offset = loom_bytecode_reader_cursor_absolute_position(cursor);
-    IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_svarint(
-        value_scope->decoder, cursor, &value_number));
-    if (value_number < 0) {
-      return loom_bytecode_value_scope_emit_invalid(
-          value_scope, ref_offset,
-          IREE_SV("dynamic_dimension_value_reference_must_be_non_negative"));
-    }
-    loom_value_id_t value_id = LOOM_VALUE_ID_INVALID;
-    IREE_RETURN_IF_ERROR(loom_bytecode_value_scope_lookup_value(
-        value_scope, (uint64_t)value_number, value_scope->available_value_count,
-        ref_offset,
-        IREE_SV("dynamic dimension value reference must target an available "
-                "value"),
-        &value_id));
-    dims[i] = loom_dim_pack_dynamic(value_id);
-  }
-
-  uint64_t encoding_binding = 0;
-  IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_uvarint(
-      value_scope->decoder, cursor, &encoding_binding));
-
-  if (loom_type_has_ssa_encoding(base_type)) {
-    if (encoding_binding == 0) {
-      return loom_bytecode_value_scope_emit_invalid(
-          value_scope, loom_bytecode_reader_cursor_absolute_position(cursor),
-          IREE_SV("ssa_encoding_binding_is_required_by_the_type"));
-    }
-    uint64_t value_number = encoding_binding - 1;
-    loom_value_id_t value_id = LOOM_VALUE_ID_INVALID;
-    IREE_RETURN_IF_ERROR(loom_bytecode_value_scope_lookup_value(
-        value_scope, value_number, value_scope->available_value_count,
-        loom_bytecode_reader_cursor_absolute_position(cursor),
-        IREE_SV("ssa_encoding_value_reference_must_target_an_available_value"),
-        &value_id));
-    if (value_id > UINT16_MAX) {
-      return loom_bytecode_value_scope_emit_invalid(
-          value_scope, loom_bytecode_reader_cursor_absolute_position(cursor),
-          IREE_SV("ssa_encoding_value_id_exceeds_type_payload_width"));
-    }
-    type.encoding_id = (uint16_t)value_id;
-  } else if (encoding_binding != 0) {
-    return loom_bytecode_value_scope_emit_invalid(
-        value_scope, loom_bytecode_reader_cursor_absolute_position(cursor),
-        IREE_SV("ssa_encoding_binding_is_present_for_a_type_without_one"));
-  }
-  uint16_t rebound_encoding_id = type.encoding_id;
-
-  if (dynamic_count == 0 && !loom_type_has_ssa_encoding(base_type)) {
-    *out_type = base_type;
-    *out_canonical_type_id = base_type_id;
-    return iree_ok_status();
-  }
-
-  if (rank == 0) {
-    *out_type = type;
-    *out_canonical_type_id = LOOM_TYPE_ID_INVALID;
-    return iree_ok_status();
-  }
-  if (rank == 1) {
-    type = loom_type_shaped_1d(loom_type_kind(base_type),
-                               loom_type_element_type(base_type), dims[0],
-                               rebound_encoding_id);
-  } else if (rank == 2) {
-    type = loom_type_shaped_2d(loom_type_kind(base_type),
-                               loom_type_element_type(base_type), dims[0],
-                               dims[1], rebound_encoding_id);
-  } else {
-    loom_overflow_dim_t* overflow_dims = NULL;
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(value_scope->arena, rank,
-                                                   sizeof(loom_overflow_dim_t),
-                                                   (void**)&overflow_dims));
-    uint8_t flags = 0;
-    bool all_static = true;
-    for (uint8_t i = 0; i < rank; ++i) {
-      overflow_dims[i] = dims[i];
-      if (loom_dim_is_dynamic(dims[i])) {
-        all_static = false;
-      }
-    }
-    if (all_static) {
-      flags |= LOOM_TYPE_FLAG_ALL_STATIC;
-    }
-    type.header =
-        loom_type_make_header(loom_type_kind(base_type),
-                              loom_type_element_type(base_type), rank, flags);
-    type.dims[0] = (uint64_t)(uintptr_t)overflow_dims;
-  }
-  type.encoding_flags = base_type.encoding_flags;
-  type.encoding_id = rebound_encoding_id;
-  *out_type = type;
-  *out_canonical_type_id = LOOM_TYPE_ID_INVALID;
-  return iree_ok_status();
-}
-
 iree_status_t LOOM_BYTECODE_BODY_VALUE_SCOPE_MATERIALIZE_DEFINITION(
     loom_bytecode_body_policy_value_scope_t* value_scope,
     loom_bytecode_reader_cursor_t* cursor, loom_value_id_t* out_value_id) {
   uint64_t name_offset = loom_bytecode_reader_cursor_absolute_position(cursor);
   uint64_t name_id = 0;
   uint64_t type_id = 0;
-  uint64_t dim_binding_count = 0;
+
   IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_uvarint(value_scope->decoder,
                                                          cursor, &name_id));
   IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_uvarint(value_scope->decoder,
                                                          cursor, &type_id));
-  IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_uvarint(
-      value_scope->decoder, cursor, &dim_binding_count));
 
   if (value_scope->next_value_number >= value_scope->available_value_count) {
     return loom_bytecode_value_scope_emit_invalid(
@@ -231,16 +106,17 @@ iree_status_t LOOM_BYTECODE_BODY_VALUE_SCOPE_MATERIALIZE_DEFINITION(
         value_scope, name_id, IREE_SV("value_name"), name_offset,
         &value_name_id));
   }
-  loom_type_id_t target_type_id = LOOM_TYPE_ID_INVALID;
-  loom_type_t base_type = {0};
-  IREE_RETURN_IF_ERROR(loom_bytecode_body_policy_materialize_type(
-      value_scope, type_id, name_offset, &target_type_id, &base_type));
-
-  loom_type_t type = {0};
+  const loom_bytecode_attribute_ssa_materialization_scope_t bindings = {
+      .symbol_name = value_scope->symbol_name,
+      .values = value_scope->value_map,
+      .value_count = value_scope->available_value_count,
+      .bindings = &value_scope->bindings,
+  };
   loom_type_id_t canonical_type_id = LOOM_TYPE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_bytecode_value_scope_bind_type(
-      value_scope, cursor, base_type, target_type_id, dim_binding_count, &type,
-      &canonical_type_id));
+  IREE_RETURN_IF_ERROR(loom_bytecode_body_policy_materialize_type_bindings(
+      value_scope, cursor, &bindings, type_id, &canonical_type_id));
+  const loom_type_t type = loom_type_table_get(
+      &value_scope->output_module->types, canonical_type_id);
   loom_value_id_t value_id =
       value_scope->value_map[value_scope->next_value_number];
   const bool is_predefined =
@@ -270,7 +146,8 @@ iree_status_t LOOM_BYTECODE_BODY_VALUE_SCOPE_MATERIALIZE_DEFINITION(
     return iree_ok_status();
   }
 
-  if (canonical_type_id != LOOM_TYPE_ID_INVALID) {
+  if (loom_type_table_dependencies(&value_scope->output_module->types,
+                                   canonical_type_id) == 0) {
     // This exact type-table entry has no region-local bindings and the reserved
     // value is fresh, so installing it cannot invalidate type-use state.
     loom_module_value(value_scope->output_module, value_id)->type =
@@ -607,7 +484,8 @@ loom_bytecode_body_reader_read_op_record(
           .symbol_name = body_reader->values.symbol_name,
           .values = body_reader->values.value_map,
           .value_count = body_reader->values.next_value_number,
-      };
+          .bindings = &body_reader->values.bindings,
+  };
   for (uint64_t i = 0; i < present_attr_count; ++i) {
     uint64_t key_offset = loom_bytecode_reader_cursor_absolute_position(cursor);
     uint64_t key_id = 0;
@@ -728,7 +606,8 @@ loom_bytecode_body_reader_read_op_record(
   if (has_effective_traits) {
     op->traits = effective_traits;
     IREE_RETURN_IF_ERROR(loom_low_repr_resolve_packet_attributes(
-        loom_bytecode_body_policy_low_repr_environment(body_reader->materializer),
+        loom_bytecode_body_policy_low_repr_environment(
+            body_reader->materializer),
         body_reader->low_descriptor_set, builder->module, op));
   }
   if (source_trivia.leading_blank_line) {
@@ -957,8 +836,7 @@ iree_status_t LOOM_BYTECODE_BODY_MATERIALIZE_REGION(
     const loom_bytecode_region_summary_t* summary, loom_builder_t* builder,
     loom_op_t* parent_op, uint8_t region_index,
     loom_bytecode_region_materialization_flags_t flags,
-    const loom_value_id_t* predefined_values,
-    uint16_t predefined_value_count,
+    const loom_value_id_t* predefined_values, uint16_t predefined_value_count,
     const loom_low_repr_descriptor_set_t* low_descriptor_set) {
   iree_arena_allocator_t body_arena;
   iree_arena_initialize(loom_bytecode_body_policy_block_pool(materializer),
@@ -1003,8 +881,7 @@ iree_status_t LOOM_BYTECODE_BODY_MATERIALIZE_REGION(
     body_reader.values.predefined_value_start = 0;
     body_reader.values.predefined_value_count = predefined_value_count;
     body_reader.expect_predefined_entry_args = iree_any_bit_set(
-        flags,
-        LOOM_BYTECODE_REGION_MATERIALIZATION_FLAG_BIND_ENTRY_ARGUMENTS);
+        flags, LOOM_BYTECODE_REGION_MATERIALIZATION_FLAG_BIND_ENTRY_ARGUMENTS);
     loom_region_t* region = NULL;
     status = loom_bytecode_body_reader_read_region(
         &body_reader, &cursor, builder, parent_op, 0, &region);

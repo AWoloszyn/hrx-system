@@ -28,11 +28,13 @@ static void loom_bytecode_body_policy_initialize_value_scope(
       .decoder = materializer->attributes.decoder,
       .module_view = materializer->attributes.module_view,
       .output_module = materializer->attributes.output_module,
+      .attributes = &materializer->attributes,
       .arena = arena,
       .symbol_name = symbol_name,
       .payload_offset = payload_offset,
       .value_map = value_map,
       .value_capacity = value_count,
+      .bindings = {.arena = arena},
   };
 }
 
@@ -81,17 +83,13 @@ static iree_status_t loom_bytecode_body_policy_project_string(
   return iree_ok_status();
 }
 
-static iree_status_t loom_bytecode_body_policy_materialize_type(
-    loom_bytecode_body_policy_value_scope_t* value_scope, uint64_t type_id,
-    uint64_t offset, loom_type_id_t* out_type_id, loom_type_t* out_type) {
-  if (type_id >= value_scope->output_module->types.count) {
-    return loom_bytecode_reader_emit_table_ref(
-        value_scope->decoder, IREE_SV("TYPES"), type_id,
-        value_scope->output_module->types.count, offset);
-  }
-  *out_type_id = (loom_type_id_t)type_id;
-  *out_type = loom_type_table_get(&value_scope->output_module->types, type_id);
-  return iree_ok_status();
+static iree_status_t loom_bytecode_body_policy_materialize_type_bindings(
+    loom_bytecode_body_policy_value_scope_t* values,
+    loom_bytecode_reader_cursor_t* cursor,
+    const loom_bytecode_attribute_ssa_materialization_scope_t* scope,
+    uint64_t source_type_id, loom_type_id_t* out_type_id) {
+  return loom_bytecode_type_materialize_bindings(
+      values->attributes, cursor, scope, source_type_id, out_type_id);
 }
 
 static iree_status_t loom_bytecode_body_policy_materialize_location(

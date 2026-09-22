@@ -80,6 +80,7 @@ from loom.ir import (
     ParameterizedAttr,
     ParameterizedAttrArray,
     ParameterizedType,
+    PredicateListAttr,
     RegisterType,
     ScalarType,
     ScalarTypeKind,
@@ -110,15 +111,9 @@ _TEST_PTR_REGISTER_CLASS_ID = next(
 # ============================================================================
 
 
-def _parse(text: str, **kwargs: Any) -> tuple[Type, dict[int, int]]:
-    """Parse a type string, returning (type, dim_bindings)."""
-    result: tuple[Type, dict[int, int]] = parse_type_string(text, **kwargs)
-    return result
-
-
 def _parse_type(text: str, **kwargs: Any) -> Type:
-    """Parse a type string, returning just the type."""
-    return _parse(text, **kwargs)[0]
+    """Parse a complete type, including nested SSA identities."""
+    return parse_type_string(text, **kwargs)
 
 
 def _test_ptr_register_type(
@@ -339,10 +334,9 @@ class TestParseDynamicDims:
         dim_id = module.add_value(Value(name="M", type=INDEX))
         scope.define("M", dim_id)
 
-        result, bindings = _parse("tile<[%M]x4xf32>", scope=scope, module=module)
+        result = _parse_type("tile<[%M]x4xf32>", scope=scope, module=module)
         assert isinstance(result, ShapedType)
-        assert result.dims == (DynamicDim(), StaticDim(4))
-        assert bindings[0] == dim_id
+        assert result.dims == (DynamicDim(dim_id), StaticDim(4))
 
     def test_all_dynamic(self) -> None:
         scope = NameScope()
@@ -352,11 +346,9 @@ class TestParseDynamicDims:
         scope.define("M", m_id)
         scope.define("K", k_id)
 
-        result, bindings = _parse("tensor<[%M]x[%K]xf32>", scope=scope, module=module)
+        result = _parse_type("tensor<[%M]x[%K]xf32>", scope=scope, module=module)
         assert isinstance(result, ShapedType)
-        assert result.dims == (DynamicDim(), DynamicDim())
-        assert bindings[0] == m_id
-        assert bindings[1] == k_id
+        assert result.dims == (DynamicDim(m_id), DynamicDim(k_id))
 
     def test_dynamic_vector(self) -> None:
         scope = NameScope()
@@ -364,15 +356,14 @@ class TestParseDynamicDims:
         n_id = module.add_value(Value(name="N", type=INDEX))
         scope.define("N", n_id)
 
-        result, bindings = _parse("vector<[%N]xi32>", scope=scope, module=module)
+        result = _parse_type("vector<[%N]xi32>", scope=scope, module=module)
         assert isinstance(result, ShapedType)
         assert result.type_kind == TypeKind.VECTOR
-        assert result.dims == (DynamicDim(),)
-        assert bindings[0] == n_id
+        assert result.dims == (DynamicDim(n_id),)
 
     def test_undefined_dim_fails(self) -> None:
         with pytest.raises(ParseError, match="undefined SSA value"):
-            _parse("tile<[%M]xf32>")
+            _parse_type("tile<[%M]xf32>")
 
 
 # ============================================================================
@@ -390,7 +381,7 @@ class TestParseEncoding:
 
     def test_encoding_with_params(self) -> None:
         module = Module()
-        result, _ = _parse("tile<256xi8, #q8_0<block=32>>", module=module)
+        result = _parse_type("tile<256xi8, #q8_0<block=32>>", module=module)
         assert isinstance(result, ShapedType)
         assert result.has_encoding
         assert len(module.encodings) == 1
@@ -399,14 +390,14 @@ class TestParseEncoding:
 
     def test_encoding_dedup(self) -> None:
         module = Module()
-        _parse("tile<128xi8, #q8_0<block=32>>", module=module)
-        _parse("tile<256xi8, #q8_0<block=32>>", module=module)
+        _parse_type("tile<128xi8, #q8_0<block=32>>", module=module)
+        _parse_type("tile<256xi8, #q8_0<block=32>>", module=module)
         assert len(module.encodings) == 1  # Same encoding, deduplicated.
 
     def test_different_encodings(self) -> None:
         module = Module()
-        _parse("tile<128xi8, #q8_0>", module=module)
-        _parse("tile<256xi8, #q6_k>", module=module)
+        _parse_type("tile<128xi8, #q8_0>", module=module)
+        _parse_type("tile<256xi8, #q6_k>", module=module)
         assert len(module.encodings) == 2
 
     def test_malformed_encoding_params_gives_parse_error(self) -> None:
@@ -414,11 +405,11 @@ class TestParseEncoding:
         from loom.format.text.tokenizer import ParseError as TokenError
 
         with pytest.raises((ParseError, TokenError), match="expected EQUALS"):
-            _parse("tile<256xi8, #q8_0<block32>>")
+            _parse_type("tile<256xi8, #q8_0<block32>>")
 
     def test_encoding_multiple_params(self) -> None:
         module = Module()
-        result, _ = _parse("tile<256xi8, #q8_0<block=32, group=128>>", module=module)
+        result = _parse_type("tile<256xi8, #q8_0<block=32, group=128>>", module=module)
         assert isinstance(result, ShapedType)
         assert result.has_encoding
         enc = module.encodings[0]
@@ -426,7 +417,7 @@ class TestParseEncoding:
 
     def test_view_static_layout(self) -> None:
         module = Module()
-        result, _ = _parse("view<256xf32, #strided<stride=64>>", module=module)
+        result = _parse_type("view<256xf32, #strided<stride=64>>", module=module)
         assert isinstance(result, ShapedType)
         assert result.type_kind == TypeKind.VIEW
         assert result.has_encoding
@@ -442,16 +433,15 @@ class TestParseEncoding:
         scope.define("N", n_id)
         scope.define("layout", layout_id)
 
-        result, bindings = _parse("view<[%N]xf32, %layout>", scope=scope, module=module)
+        result = _parse_type("view<[%N]xf32, %layout>", scope=scope, module=module)
         assert isinstance(result, ShapedType)
         assert result.type_kind == TypeKind.VIEW
-        assert result.encoding == DynamicEncoding()
-        assert bindings[0] == n_id
-        assert bindings[-1] == layout_id
+        assert result.encoding == DynamicEncoding(layout_id)
+        assert result.dims == (DynamicDim(n_id),)
 
     def test_vector_encoding_fails(self) -> None:
         with pytest.raises(ParseError, match="must not carry"):
-            _parse("vector<4xf32, #dense>")
+            _parse_type("vector<4xf32, #dense>")
 
 
 # ============================================================================
@@ -747,7 +737,7 @@ class TestParseDescriptorBackedTypes:
 class TestTypeRoundTrip:
     def _roundtrip(self, text: str, **kwargs: Any) -> None:
         """Parse then print, assert identical."""
-        parsed_type, _ = _parse(text, **kwargs)
+        parsed_type = _parse_type(text, **kwargs)
         printed = print_type(parsed_type)
         assert printed == text, f"Round-trip failed: {text!r} -> {printed!r}"
 
@@ -2534,14 +2524,13 @@ class TestParseDynamicEncoding:
         scope = NameScope()
         enc_id = module.add_value(Value(name="enc", type=ENCODING_TYPE))
         scope.define("enc", enc_id)
-        shaped_type, bindings = _parse("tile<4xf32, %enc>", scope=scope, module=module)
+        shaped_type = _parse_type("tile<4xf32, %enc>", scope=scope, module=module)
         assert isinstance(shaped_type, ShapedType)
         assert shaped_type.type_kind == TypeKind.TILE
         assert shaped_type.element_type == F32
         assert shaped_type.dims == (StaticDim(4),)
         assert isinstance(shaped_type.encoding, DynamicEncoding)
-        # Encoding binding uses sentinel key -1.
-        assert bindings[-1] == enc_id
+        assert shaped_type.encoding == DynamicEncoding(enc_id)
 
     def test_static_encoding_still_works(self) -> None:
         """tile<4xf32, #q8_0> still parses as static encoding."""
@@ -2561,7 +2550,7 @@ class TestParseDynamicEncoding:
         from loom.format.text.tokenizer import ParseError as TokParseError
 
         with pytest.raises((ParseError, TokParseError, KeyError)):
-            _parse("tile<4xf32, %undefined>")
+            _parse_type("tile<4xf32, %undefined>")
 
     def test_non_encoding_typed_value_errors(self) -> None:
         """Referencing a non-encoding-typed value in encoding position errors."""
@@ -2571,7 +2560,7 @@ class TestParseDynamicEncoding:
         x_id = module.add_value(Value(name="x", type=I32))
         scope.define("x", x_id)
         with pytest.raises((ParseError, ValueError)):
-            _parse("tile<4xf32, %x>", scope=scope, module=module)
+            _parse_type("tile<4xf32, %x>", scope=scope, module=module)
 
 
 # ============================================================================
@@ -2601,10 +2590,10 @@ class TestParsePoolType:
         scope = NameScope()
         bs_id = module.add_value(Value(name="BS", type=INDEX))
         scope.define("BS", bs_id)
-        pool_type, bindings = _parse("pool<[%BS]>", scope=scope, module=module)
+        pool_type = _parse_type("pool<[%BS]>", scope=scope, module=module)
         assert isinstance(pool_type, PoolType)
         assert pool_type.has_dynamic_block_size
-        assert bindings[0] == bs_id
+        assert pool_type.block_size == DynamicDim(bs_id)
 
     def test_pool_roundtrip(self) -> None:
         """pool<[%BS]> round-trips through parse → print in a function."""
@@ -2641,7 +2630,7 @@ class TestParsePredicates:
         absent_op = absent_module.symbols[0].op
         assert present_op is not None
         assert absent_op is not None
-        assert present_op.attributes["predicates"] == []
+        assert present_op.attributes["predicates"] == PredicateListAttr()
         assert "predicates" not in absent_op.attributes
         assert _op_printer().print_module(present_module) == present_text
         assert _op_printer().print_module(absent_module) == absent_text

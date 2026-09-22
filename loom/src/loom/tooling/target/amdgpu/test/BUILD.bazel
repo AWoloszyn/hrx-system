@@ -97,7 +97,11 @@ loom_check_compile_tests(
 
 iree_execution_test_suite(
     name = "loom_link_execution_test",
-    data = ["loom_link_low.loom"],
+    data = [
+        "loom_link_low.loom",
+        "loom_link_type_binding_declaration.loom",
+        "loom_link_type_bindings.loom",
+    ],
     manifests = ["loom-link-amdgpu.test.json"],
     tags = ["hostonly"],
     target_compatible_with = _AMDGPU_ARTIFACTS_COMPATIBLE_WITH,

@@ -13,9 +13,11 @@ loom_check_test_suite(
   NAME
     test
   SRCS
+    "predicate_attributes.loom-test"
     "signature_binders.loom-test"
     "ssa_names.loom-test"
     "symbol_references.loom-test"
+    "type_attributes.loom-test"
     "type_scratch.loom-test"
 )
 

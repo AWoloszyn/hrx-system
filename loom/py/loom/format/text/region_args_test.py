@@ -16,7 +16,7 @@ from loom.format.bytecode.reader import read_module
 from loom.format.bytecode.writer import write_module
 from loom.format.text.parser import ParseError, Parser
 from loom.format.text.printer import Printer
-from loom.ir import F32
+from loom.ir import F32, DynamicDim, DynamicEncoding
 
 
 def _formats() -> tuple[Parser, Printer]:
@@ -72,11 +72,9 @@ def test_region_argument_type_bindings(argument_form: str) -> None:
         argument = candidate.values[argument_id]
         if argument_form == "element":
             assert argument.type == F32
-            assert argument.dim_bindings == {}
-            assert argument.encoding_binding == -1
         else:
-            assert argument.dim_bindings == {0: entry.arg_ids[0]}
-            assert argument.encoding_binding == entry.arg_ids[1]
+            assert argument.type.dims == (DynamicDim(entry.arg_ids[0]),)
+            assert argument.type.encoding == DynamicEncoding(entry.arg_ids[1])
         assert nested.ops[0].operands[0] == argument_id
         assert entry.ops[1].operands[0] == entry.arg_ids[2]
 

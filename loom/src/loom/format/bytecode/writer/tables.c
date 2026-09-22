@@ -11,62 +11,6 @@
 #include "loom/ir/parameterized_type.h"
 #include "loom/ops/op_defs.h"
 
-//===----------------------------------------------------------------------===//
-// Type kind mapping (C enum → bytecode kind byte)
-//===----------------------------------------------------------------------===//
-
-static iree_status_t loom_bytecode_type_kind_byte(loom_type_kind_t kind,
-                                                  uint8_t* out_byte) {
-  switch (kind) {
-    case LOOM_TYPE_NONE:
-      *out_byte = LOOM_BYTECODE_TYPE_NONE;
-      return iree_ok_status();
-    case LOOM_TYPE_SCALAR:
-      *out_byte = LOOM_BYTECODE_TYPE_SCALAR;
-      return iree_ok_status();
-    case LOOM_TYPE_TILE:
-      *out_byte = LOOM_BYTECODE_TYPE_TILE;
-      return iree_ok_status();
-    case LOOM_TYPE_TENSOR:
-      *out_byte = LOOM_BYTECODE_TYPE_TENSOR;
-      return iree_ok_status();
-    case LOOM_TYPE_VECTOR:
-      *out_byte = LOOM_BYTECODE_TYPE_VECTOR;
-      return iree_ok_status();
-    case LOOM_TYPE_VIEW:
-      *out_byte = LOOM_BYTECODE_TYPE_VIEW;
-      return iree_ok_status();
-    case LOOM_TYPE_BUFFER:
-      *out_byte = LOOM_BYTECODE_TYPE_BUFFER;
-      return iree_ok_status();
-    case LOOM_TYPE_FUNCTION:
-      *out_byte = LOOM_BYTECODE_TYPE_FUNCTION;
-      return iree_ok_status();
-    case LOOM_TYPE_DIALECT:
-      *out_byte = LOOM_BYTECODE_TYPE_DIALECT;
-      return iree_ok_status();
-    case LOOM_TYPE_REGISTER:
-      *out_byte = LOOM_BYTECODE_TYPE_REGISTER;
-      return iree_ok_status();
-    case LOOM_TYPE_STORAGE:
-      *out_byte = LOOM_BYTECODE_TYPE_STORAGE;
-      return iree_ok_status();
-    case LOOM_TYPE_PARAMETERIZED:
-      *out_byte = LOOM_BYTECODE_TYPE_PARAMETERIZED;
-      return iree_ok_status();
-    case LOOM_TYPE_ENCODING:
-      *out_byte = LOOM_BYTECODE_TYPE_ENCODING;
-      return iree_ok_status();
-    case LOOM_TYPE_POOL:
-      *out_byte = LOOM_BYTECODE_TYPE_POOL;
-      return iree_ok_status();
-    default:
-      break;
-  }
-  return iree_make_status(IREE_STATUS_INVALID_ARGUMENT, "unknown type kind %d",
-                          (int)kind);
-}
-
 static iree_status_t loom_bytecode_encoding_role_byte(loom_encoding_role_t role,
                                                       uint8_t* out_byte) {
   switch (role) {
@@ -133,8 +77,7 @@ iree_status_t loom_bytecode_write_types_section(
     loom_type_t type = loom_type_table_get(&module->types, module_index);
     loom_type_kind_t kind = loom_type_kind(type);
 
-    uint8_t kind_byte = 0;
-    IREE_RETURN_IF_ERROR(loom_bytecode_type_kind_byte(kind, &kind_byte));
+    const uint8_t kind_byte = loom_bytecode_type_kind_byte(kind);
     IREE_RETURN_IF_ERROR(
         loom_bytecode_page_writer_write_u8(page_writer, kind_byte));
 
@@ -167,12 +110,7 @@ iree_status_t loom_bytecode_write_types_section(
         IREE_RETURN_IF_ERROR(
             loom_bytecode_page_writer_write_u8(page_writer, rank));
         // Encoding.
-        if (loom_type_has_ssa_encoding(type)) {
-          IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_u8(
-              page_writer, LOOM_BYTECODE_ENCODING_ATTACHMENT_SSA));
-          IREE_RETURN_IF_ERROR(
-              loom_bytecode_page_writer_write_uvarint(page_writer, 0));
-        } else if (loom_type_has_static_encoding(type)) {
+        if (loom_type_has_static_encoding(type)) {
           IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_u8(
               page_writer, LOOM_BYTECODE_ENCODING_ATTACHMENT_STATIC));
           IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_uvarint(
@@ -208,7 +146,7 @@ iree_status_t loom_bytecode_write_types_section(
         for (iree_host_size_t i = 0; i < type_count; ++i) {
           uint32_t sub_type_id = 0;
           IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_type(
-              numbering, func_data->types[i], &sub_type_id));
+              numbering, func_data->types[i], &sub_type_id, NULL));
           IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_uvarint(
               page_writer, sub_type_id));
         }
@@ -232,7 +170,7 @@ iree_status_t loom_bytecode_write_types_section(
         for (uint16_t i = 0; i < param_count; ++i) {
           uint32_t param_type_id = 0;
           IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_type(
-              numbering, params[i], &param_type_id));
+              numbering, params[i], &param_type_id, NULL));
           IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_uvarint(
               page_writer, param_type_id));
         }
@@ -271,7 +209,7 @@ iree_status_t loom_bytecode_write_types_section(
           IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_uvarint(
               page_writer, parameter_name_id));
           IREE_RETURN_IF_ERROR(loom_bytecode_write_attr_value(
-              page_writer, numbering, /*value_numbering=*/NULL, parameters[i],
+              page_writer, numbering, NULL, parameters[i],
               parameter_descriptor));
         }
         break;
@@ -287,7 +225,7 @@ iree_status_t loom_bytecode_write_types_section(
         if (value_type) {
           uint32_t value_type_id = 0;
           IREE_RETURN_IF_ERROR(loom_bytecode_numbering_intern_type(
-              numbering, *value_type, &value_type_id));
+              numbering, *value_type, &value_type_id, NULL));
           IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_uvarint(
               page_writer, value_type_id));
         }
@@ -323,9 +261,8 @@ iree_status_t loom_bytecode_write_types_section(
         break;
       }
       default:
-        // Unreachable: loom_bytecode_type_kind_byte above rejects
-        // unknown kinds before we get here.
-        break;
+        IREE_ASSERT_UNREACHABLE("verified native type kind");
+        IREE_BUILTIN_UNREACHABLE();
     }
   }
 
@@ -380,8 +317,17 @@ iree_status_t loom_bytecode_write_encodings_section(
   // Encoding instances.
   IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_uvarint(
       page_writer, module->encodings.count));
+  const loom_bytecode_encoding_prefix_chunk_t* prefixes =
+      numbering->encoding_prefixes.first;
   for (iree_host_size_t i = 0; i < module->encodings.count; ++i) {
     const loom_encoding_t* encoding = &module->encodings.entries[i];
+    const iree_host_size_t prefix_index =
+        i % IREE_ARRAYSIZE(prefixes->type_counts);
+    if (i > 0 && prefix_index == 0) {
+      prefixes = prefixes->next;
+    }
+    IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_uvarint(
+        page_writer, prefixes->type_counts[prefix_index]));
 
     // Find the family index for this encoding's name.
     uint32_t family_index = 0;

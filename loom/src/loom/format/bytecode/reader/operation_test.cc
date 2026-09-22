@@ -76,7 +76,7 @@ class BytecodeOperationTest : public ::testing::Test {
   iree_arena_block_pool_t block_pool_;
   // Storage for dense resolved operation facts.
   iree_arena_allocator_t scratch_arena_;
-  // Storage retaining operation names beyond validation.
+  // Storage retaining resolved operation metadata beyond validation.
   iree_arena_allocator_t retained_arena_;
   // Finalized operation registry.
   loom_context_t context_;
@@ -101,7 +101,7 @@ TEST_F(BytecodeOperationTest, ValidatesAndResolvesDenseTable) {
   EXPECT_EQ(error_count_, 0u);
 }
 
-TEST_F(BytecodeOperationTest, RetainsRegisteredNames) {
+TEST_F(BytecodeOperationTest, RetainsResolvedOperations) {
   const uint8_t data[] = {
       0x01,  // Operation count.
       0x01,  // func.return string ordinal.
@@ -118,7 +118,8 @@ TEST_F(BytecodeOperationTest, RetainsRegisteredNames) {
   ASSERT_EQ(count, 1u);
   ASSERT_NE(entries, nullptr);
   EXPECT_TRUE(iree_string_view_equal(entries[0].name, IREE_SV("func.return")));
-  EXPECT_EQ(module_view_.ops.kinds[0], LOOM_OP_FUNC_RETURN);
+  EXPECT_EQ(entries[0].vtable, module_view_.ops.values[0]);
+  EXPECT_EQ(entries[0].kind, LOOM_OP_FUNC_RETURN);
   EXPECT_EQ(error_count_, 0u);
 }
 

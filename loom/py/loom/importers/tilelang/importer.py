@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections import Counter
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from loom.builder import ValueRef
@@ -439,13 +439,13 @@ def _map_kernel_arguments(
         argument = shell.body_arguments_by_ordinal[binding.ordinal]
         buffer = _refine_kernel_buffer_argument(binding, argument, context)
         view_type = context.buffer_view_type(binding.buffer)
-        dim_bindings = _dynamic_view_dimension_bindings(
+        view_type = _bind_dynamic_view_type(
             context,
             converter,
             binding.buffer,
             view_type,
         )
-        if dim_bindings is None:
+        if view_type is None:
             return False
         view = context.builder.buffer.view(
             buffer=buffer,
@@ -453,8 +453,6 @@ def _map_kernel_arguments(
             results=[view_type],
             name=_buffer_view_name(binding, context),
         )
-        context.bind_buffer_view_layout(view, binding.buffer)
-        _bind_dynamic_view_dimensions(context, view, dim_bindings)
         context.map_value(binding.source, view, str(view_type))
         context.map_value(binding.buffer, view, str(view_type))
         data = getattr(binding.buffer, "data", None)
@@ -556,13 +554,13 @@ def _buffer_view_name(
     return context.reserve_name(base_name)
 
 
-def _dynamic_view_dimension_bindings(
+def _bind_dynamic_view_type(
     context: TileLangConversionContext,
     converter: TileLangConverter,
     buffer: object,
     view_type: ShapedType,
-) -> dict[int, ValueRef] | None:
-    dim_bindings: dict[int, ValueRef] = {}
+) -> ShapedType | None:
+    dimensions = list(view_type.dims)
     shape = tuple(getattr(buffer, "shape", ()) or ())
     for position, dim in enumerate(view_type.dims):
         if not isinstance(dim, DynamicDim):
@@ -589,19 +587,8 @@ def _dynamic_view_dimension_bindings(
                 "as an index value",
             )
             return None
-        dim_bindings[position] = mapped_dim
-    return dim_bindings
-
-
-def _bind_dynamic_view_dimensions(
-    context: TileLangConversionContext,
-    view: ValueRef,
-    dim_bindings: Mapping[int, ValueRef],
-) -> None:
-    if dim_bindings:
-        context.builder.module.values[view.id].dim_bindings = {
-            position: binding.id for position, binding in dim_bindings.items()
-        }
+        dimensions[position] = DynamicDim(mapped_dim.id)
+    return replace(view_type, dims=tuple(dimensions))
 
 
 def _launch_topology(prim_func: object) -> _LaunchTopology:

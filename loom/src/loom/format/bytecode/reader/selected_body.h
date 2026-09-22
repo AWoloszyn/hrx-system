@@ -58,6 +58,8 @@ typedef struct loom_bytecode_selected_value_scope_t {
   uint64_t predefined_value_start;
   // Number of entries in |predefined_values|.
   uint16_t predefined_value_count;
+  // Completed scoped binding nodes shared with operation attributes.
+  loom_bytecode_type_bindings_t bindings;
 } loom_bytecode_selected_value_scope_t;
 
 // Initializes a selected value scope whose map consists of fresh module values.

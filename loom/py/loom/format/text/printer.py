@@ -110,6 +110,7 @@ from loom.ir import (
     PoolType,
     Predicate,
     PredicateArg,
+    PredicateListAttr,
     Region,
     RegisterType,
     ScalarType,
@@ -121,7 +122,6 @@ from loom.ir import (
     SymbolNameArray,
     SymbolNameSet,
     Type,
-    Value,
 )
 from loom.location_tag import builtin_location_tag_name
 
@@ -166,37 +166,22 @@ __all__ = [
 
 
 class TypePrintContext:
-    """Context for printing types with dim names and encodings.
-
-    When printing a type that belongs to a specific Value, the context
-    provides dim name resolution (DynamicDim -> [%M]) and encoding
-    resolution (encoding_instance -> #enc or
-    #encoding.operand<element_format=i8, payload_elements=32,
-    payload_packing=dense_lanes>).
-
-    Without context, dynamic dims print as '?' and encodings are omitted.
-    """
+    """Module naming and encoding spelling shared by values and type attributes."""
 
     __slots__ = (
-        "_dim_bindings",
         "_encoding_alias_selectors",
-        "_encoding_binding",
         "_use_aliases",
         "_value_name",
     )
 
     def __init__(
         self,
-        dim_bindings: dict[int, int],
         module: Module,
-        encoding_binding: int = -1,
         use_aliases: bool = True,
         encoding_alias_selectors: _EncodingAliasSelectors | None = None,
         value_name: Callable[[int], str] | None = None,
     ) -> None:
-        self._dim_bindings = dim_bindings
         self._encoding_alias_selectors = encoding_alias_selectors
-        self._encoding_binding = encoding_binding
         self._use_aliases = use_aliases
         self._value_name = (
             value_name
@@ -204,25 +189,9 @@ class TypePrintContext:
             else lambda value_id: resolve_value_name(module, value_id)
         )
 
-    def dim_name(self, position: int) -> str | None:
-        """Get the name for a dynamic dim at the given position.
-
-        Returns %name if a binding is present, or None.
-        """
-        value_id = self._dim_bindings.get(position)
-        if value_id is None:
-            return None
+    def value_name(self, value_id: int) -> str:
+        """Resolve the module SSA identity retained by a type binding."""
         return self._value_name(value_id)
-
-    def encoding_binding_name(self) -> str | None:
-        """Get the SSA name for a dynamic encoding binding.
-
-        Returns %name when the value has a DynamicEncoding and a valid
-        encoding_binding. Returns None if no binding is set.
-        """
-        if self._encoding_binding < 0:
-            return None
-        return self._value_name(self._encoding_binding)
 
 
 def _select_canonical_encoding_alias(
@@ -549,13 +518,15 @@ def _print_shaped_type(
         inner = repr(shaped.element_type)
     else:
         dim_parts: list[str] = []
-        for i, dim in enumerate(shaped.dims):
+        for dim in shaped.dims:
             match dim:
                 case StaticDim(size=size):
                     dim_parts.append(str(size))
-                case DynamicDim():
-                    dim_name = context.dim_name(i) if context else None
-                    if dim_name is not None:
+                case DynamicDim(value_id=value_id):
+                    if value_id is not None:
+                        dim_name = (
+                            context.value_name(value_id) if context else f"%{value_id}"
+                        )
                         dim_parts.append(f"[{dim_name}]")
                     else:
                         dim_parts.append("?")
@@ -566,11 +537,10 @@ def _print_shaped_type(
         enc = shaped.encoding
         if isinstance(enc, DynamicEncoding):
             # SSA encoding — resolve through context.
-            enc_name = context.encoding_binding_name() if context else None
-            if enc_name is not None:
-                inner += f", {enc_name}"
-            else:
-                inner += ", ?"
+            enc_name = (
+                context.value_name(enc.value_id) if context else f"%{enc.value_id}"
+            )
+            inner += f", {enc_name}"
         elif isinstance(enc, EncodingInstance):
             use_aliases = context._use_aliases if context else True
             inner += ", " + _format_encoding_instance(
@@ -593,9 +563,9 @@ def _print_pool_type(
     match pool.block_size:
         case StaticDim(size=size):
             return f"{type_def.name}<{size}>"
-        case DynamicDim():
-            dim_name = context.dim_name(0) if context else None
-            if dim_name is not None:
+        case DynamicDim(value_id=value_id):
+            if value_id is not None:
+                dim_name = context.value_name(value_id) if context else f"%{value_id}"
                 return f"{type_def.name}<[{dim_name}]>"
             return f"{type_def.name}<?>"
         case _:
@@ -799,7 +769,9 @@ def _format_attr_value(
                 f"symbol-set attribute value must be SymbolNameSet: {value!r}"
             )
         return "[" + ", ".join("@" + str(element) for element in value) + "]"
-    if attr_def is not None and attr_def.attr_type == "type":
+    if (attr_def is not None and attr_def.attr_type == "type") or isinstance(
+        value, _IR_TYPE_CLASSES
+    ):
         if not isinstance(value, _IR_TYPE_CLASSES):
             raise TypeError(f"type attribute value must be a Type: {value!r}")
         return print_type(cast(Type, value), type_context, type_registry)
@@ -817,6 +789,15 @@ def _format_attr_value(
         return "@" + str(value)
     if isinstance(value, bytes | bytearray):
         return f'bytes("{bytes(value).hex()}")'
+    if isinstance(value, PredicateListAttr) or (
+        attr_def is not None and attr_def.attr_type == "predicate_list"
+    ):
+        value_name = (
+            type_context._value_name
+            if type_context is not None
+            else lambda value_id: f"%{value_id}"
+        )
+        return "predicates" + _format_predicate_list(value, value_name)
     if isinstance(value, EnumArrayAttr):
         raise ValueError("enum arrays require a descriptor-backed field")
     if isinstance(value, SignedEnumSetAttr):
@@ -1094,7 +1075,7 @@ def _format_predicate(predicate: Predicate, value_name: Callable[[int], str]) ->
 
 
 def _format_predicate_list(
-    predicates: list[Predicate], value_name: Callable[[int], str]
+    predicates: Sequence[Predicate], value_name: Callable[[int], str]
 ) -> str:
     """Format a predicate list: [pred(...), pred(...)]."""
     parts = [_format_predicate(p, value_name) for p in predicates]
@@ -1204,12 +1185,10 @@ class Printer:
         """Resolve a value ID to its SSA name."""
         return self._name_plan.names[value_id]
 
-    def _type_context(self, value: Value, module: Module) -> TypePrintContext:
-        """Create a TypePrintContext for a value's dim and encoding bindings."""
+    def _type_context(self, module: Module) -> TypePrintContext:
+        """Use the same planned SSA names in every type-bearing position."""
         return TypePrintContext(
-            value.dim_bindings,
             module,
-            encoding_binding=value.encoding_binding,
             use_aliases=self._use_aliases,
             encoding_alias_selectors=self._encoding_alias_selectors,
             value_name=self._value_name,
@@ -1222,6 +1201,8 @@ class Printer:
         *,
         type_context: TypePrintContext | None = None,
     ) -> str:
+        if type_context is None:
+            type_context = self._type_context(self._module)
         return _format_attr_value(
             value,
             attr_def,
@@ -1239,6 +1220,7 @@ class Printer:
         return _format_parameterized_attr_parameters(
             value,
             definition,
+            type_context=self._type_context(self._module),
             type_registry=self._type_registry,
             encoding_alias_selectors=self._encoding_alias_selectors,
             use_encoding_aliases=self._use_aliases,
@@ -1247,7 +1229,7 @@ class Printer:
     def _print_value_type(self, value_id: int, module: Module) -> str:
         """Print the type of a value with dim names and encodings."""
         value = module.values[value_id]
-        context = self._type_context(value, module)
+        context = self._type_context(module)
         return print_type(value.type, context, self._type_registry)
 
     # --- Output ---

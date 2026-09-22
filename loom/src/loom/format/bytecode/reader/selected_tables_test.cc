@@ -468,21 +468,52 @@ TEST_F(BytecodeSelectedTablesTest, MaterializesDeepTypeChainIteratively) {
   loom_bytecode_selected_table_materializer_t materializer;
   InitializeMaterializer(bytecode, &metadata, &materializer);
 
+  // A projection reader can retain header payloads in this same arena while
+  // independently materializing another root. Only root-local scratch ends.
+  uint32_t* header_payload = nullptr;
+  IREE_ASSERT_OK(
+      iree_arena_allocate_array(&scratch_arena_, 64, sizeof(*header_payload),
+                                reinterpret_cast<void**>(&header_payload)));
+  for (uint32_t i = 0; i < 64; ++i) {
+    header_payload[i] = i + 7;
+  }
+  const auto header_checkpoint = iree_arena_checkpoint_save(&scratch_arena_);
   loom_type_id_t target_type_id = LOOM_TYPE_ID_INVALID;
   IREE_ASSERT_OK(loom_bytecode_selected_table_materialize_type(
       &materializer, kTypeCount - 1, &target_type_id));
   EXPECT_EQ(target_type_id, kTypeCount - 1);
   EXPECT_EQ(module_->types.count, kTypeCount);
   EXPECT_EQ(materializer.projection.buckets.count, kTypeCount);
-  EXPECT_GE(materializer.worklist.capacity, kTypeCount);
+  EXPECT_EQ(materializer.worklist.count, 0u);
+  EXPECT_EQ(scratch_arena_.used_allocation_size,
+            header_checkpoint.used_allocation_size);
+  EXPECT_EQ(scratch_arena_.total_allocation_size,
+            header_checkpoint.total_allocation_size);
+  EXPECT_EQ(scratch_arena_.block_head, header_checkpoint.block_head);
+  for (uint32_t i = 0; i < 64; ++i) {
+    EXPECT_EQ(header_payload[i], i + 7);
+  }
   EXPECT_EQ(error_count_, 0u);
   loom_bytecode_selected_table_materializer_deinitialize(&materializer);
+  iree_arena_reset(&scratch_arena_);
+  bytecode.clear();
+  bytecode.shrink_to_fit();
+
+  loom_type_t type = loom_type_table_get(&module_->types, target_type_id);
+  for (uint32_t i = 1; i < kTypeCount; ++i) {
+    const auto* function = loom_type_func_data(type);
+    ASSERT_NE(function, nullptr);
+    ASSERT_EQ(function->arg_count, 1u);
+    ASSERT_EQ(function->result_count, 0u);
+    type = function->types[0];
+  }
+  EXPECT_EQ(loom_type_kind(type), LOOM_TYPE_NONE);
 }
 
-TEST_F(BytecodeSelectedTablesTest, MaterializesWideTypeReferencesInOneRetry) {
+TEST_F(BytecodeSelectedTablesTest, ReusesWorklistAcrossWideTypeRoots) {
   constexpr uint32_t kArgumentCount = 4096;
   std::vector<uint8_t> bytecode;
-  loom_bytecode_table_entry_metadata_t entries[2] = {};
+  loom_bytecode_table_entry_metadata_t entries[4] = {};
   entries[0].entry_offset = bytecode.size();
   bytecode.push_back(LOOM_BYTECODE_TYPE_NONE);
   entries[0].entry_length = bytecode.size() - entries[0].entry_offset;
@@ -494,6 +525,18 @@ TEST_F(BytecodeSelectedTablesTest, MaterializesWideTypeReferencesInOneRetry) {
     AppendUVarint(/*type_id=*/0, &bytecode);
   }
   entries[1].entry_length = bytecode.size() - entries[1].entry_offset;
+  entries[2].entry_offset = bytecode.size();
+  bytecode.push_back(LOOM_BYTECODE_TYPE_SCALAR);
+  bytecode.push_back(LOOM_SCALAR_TYPE_F32);
+  entries[2].entry_length = bytecode.size() - entries[2].entry_offset;
+  entries[3].entry_offset = bytecode.size();
+  bytecode.push_back(LOOM_BYTECODE_TYPE_FUNCTION);
+  AppendUVarint(kArgumentCount - 1, &bytecode);
+  AppendUVarint(/*result_count=*/0, &bytecode);
+  for (uint32_t i = 0; i < kArgumentCount - 1; ++i) {
+    AppendUVarint(/*type_id=*/2, &bytecode);
+  }
+  entries[3].entry_length = bytecode.size() - entries[3].entry_offset;
   loom_bytecode_module_metadata_t metadata = {};
   metadata.types = {IREE_ARRAYSIZE(entries), entries};
   loom_bytecode_selected_table_materializer_t materializer;
@@ -507,9 +550,37 @@ TEST_F(BytecodeSelectedTablesTest, MaterializesWideTypeReferencesInOneRetry) {
   EXPECT_EQ(loom_type_func_arg_count(loom_type_table_get(&module_->types, 1)),
             kArgumentCount);
   EXPECT_EQ(materializer.projection.buckets.count, 2u);
-  EXPECT_GE(materializer.worklist.capacity, kArgumentCount);
+  EXPECT_EQ(materializer.worklist.count, 0u);
+  EXPECT_EQ(scratch_arena_.used_allocation_size, 0u);
+  // The frontier is wide but the projection contains only four identities.
+  // Stack storage stays pooled and serves the next independent root unchanged.
+  EXPECT_EQ(materializer.retained_arena.allocation_head, nullptr);
+  const auto retained_bytes = materializer.retained_arena.used_allocation_size;
+  IREE_ASSERT_OK(loom_bytecode_selected_table_materialize_type(
+      &materializer, /*source_type_id=*/3, &target_type_id));
+  EXPECT_EQ(target_type_id, 3u);
+  EXPECT_EQ(module_->types.count, 4u);
+  EXPECT_EQ(materializer.projection.buckets.count, 4u);
+  EXPECT_EQ(materializer.worklist.count, 0u);
+  EXPECT_EQ(scratch_arena_.used_allocation_size, 0u);
+  EXPECT_EQ(materializer.retained_arena.allocation_head, nullptr);
+  EXPECT_EQ(materializer.retained_arena.used_allocation_size, retained_bytes);
   EXPECT_EQ(error_count_, 0u);
   loom_bytecode_selected_table_materializer_deinitialize(&materializer);
+  iree_arena_reset(&scratch_arena_);
+
+  const auto* function =
+      loom_type_func_data(loom_type_table_get(&module_->types, 1));
+  ASSERT_NE(function, nullptr);
+  for (uint32_t i = 0; i < kArgumentCount; ++i) {
+    EXPECT_EQ(loom_type_kind(function->types[i]), LOOM_TYPE_NONE);
+  }
+  function = loom_type_func_data(loom_type_table_get(&module_->types, 3));
+  ASSERT_NE(function, nullptr);
+  ASSERT_EQ(function->arg_count, kArgumentCount - 1);
+  for (uint32_t i = 0; i < kArgumentCount - 1; ++i) {
+    EXPECT_EQ(loom_type_element_type(function->types[i]), LOOM_SCALAR_TYPE_F32);
+  }
 }
 
 TEST_F(BytecodeSelectedTablesTest, MaterializesDeepLocationChainIteratively) {
@@ -541,7 +612,7 @@ TEST_F(BytecodeSelectedTablesTest, MaterializesDeepLocationChainIteratively) {
   EXPECT_EQ(target_location_id, kLocationCount - 1);
   EXPECT_EQ(module_->locations.count, kLocationCount);
   EXPECT_EQ(materializer.projection.buckets.count, kLocationCount - 1);
-  EXPECT_GE(materializer.worklist.capacity, kLocationCount - 1);
+  EXPECT_EQ(materializer.worklist.count, 0u);
   EXPECT_EQ(error_count_, 0u);
   loom_bytecode_selected_table_materializer_deinitialize(&materializer);
 }

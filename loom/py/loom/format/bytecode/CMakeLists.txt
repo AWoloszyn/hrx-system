@@ -17,6 +17,7 @@ iree_py_library(
     "encoding.py"
     "op_decls.py"
     "reader.py"
+    "symbol_references.py"
     "writer.py"
   DEPS
     loom::py::loom::core
@@ -31,12 +32,16 @@ iree_py_test(
     "../../tools/pytest_style_runner.py"
   SRCS
     "encoding_test.py"
+    "mixed_tables_test.py"
     "reader_test.py"
+    "symbol_references_test.py"
     "writer_test.py"
     "../../tools/pytest_style_runner.py"
   ARGS
     "loom.format.bytecode.encoding_test"
+    "loom.format.bytecode.mixed_tables_test"
     "loom.format.bytecode.reader_test"
+    "loom.format.bytecode.symbol_references_test"
     "loom.format.bytecode.writer_test"
   DEPS
     loom::py::loom::format::bytecode::bytecode
@@ -58,16 +63,21 @@ iree_py_test(
     "c_interop_test.py"
   ARGS
     "$<TARGET_FILE:loom::tools::loom-format::loom-format>"
+    "$<TARGET_FILE:loom::tools::loom-link::loom-link>"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/format/text/test/predicate_attributes.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/format/bytecode/scoped_type_interop.loom-test"
   DEPS
     loom::py::loom::format::bytecode::bytecode
     loom::py::loom::dialect::cfg::cfg
     loom::py::loom::dialect::func::func
+    loom::py::loom::dialect::index::index
     loom::py::loom::dialect::low::low
     loom::py::loom::dialect::scf::scf
     loom::py::loom::dialect::test::test
     loom::py::loom::format::text::text
     loom::py::loom::target::test::descriptors
     loom::tools::loom-format::loom-format
+    loom::tools::loom-link::loom-link
   PACKAGE_DIRS
     "${PROJECT_SOURCE_DIR}/loom/py"
     "${PROJECT_BINARY_DIR}/loom/py"
