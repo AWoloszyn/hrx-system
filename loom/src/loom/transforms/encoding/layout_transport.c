@@ -784,10 +784,28 @@ static iree_status_t loom_cfg_layout_transport_apply(
   return iree_ok_status();
 }
 
+static bool loom_cfg_layout_transport_may_have_candidate(
+    const loom_module_t* module, const loom_region_t* body) {
+  for (uint16_t block_index = 1; block_index < body->block_count;
+       ++block_index) {
+    const loom_block_t* block = loom_region_const_block(body, block_index);
+    for (uint16_t arg_index = 0; arg_index < block->arg_count; ++arg_index) {
+      const loom_type_t type =
+          loom_module_value_type(module, loom_block_arg_id(block, arg_index));
+      if (loom_type_is_encoding(type) &&
+          loom_type_encoding_role(type) == LOOM_ENCODING_ROLE_ADDRESS_LAYOUT) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 iree_status_t loom_decompose_cfg_layout_transports_run(
     loom_pass_t* pass, loom_module_t* module, loom_func_like_t function) {
   loom_region_t* body = loom_func_like_body(function);
-  if (!body || body->block_count < 2) {
+  if (!body || body->block_count < 2 ||
+      !loom_cfg_layout_transport_may_have_candidate(module, body)) {
     return iree_ok_status();
   }
 

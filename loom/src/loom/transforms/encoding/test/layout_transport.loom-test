@@ -216,6 +216,18 @@ func.def @reports_batched_fact_cost(%condition: i1) -> (encoding<layout>) {
   func.return %layout : encoding<layout>
 }
 
+// An ordinary multi-block function takes the structural fast path. Its block
+// signatures contain no address-layout values, so it does not acquire facts.
+func.def @reports_no_layout_fact_cost(%condition: i1, %left: index, %right: index) -> (index) {
+  cfg.cond_br %condition, ^take_left, ^take_right
+^take_left:
+  cfg.br ^join(%left: index)
+^take_right:
+  cfg.br ^join(%right: index)
+^join(%value: index):
+  func.return %value : index
+}
+
 // ----
 CHECK: *"changed":true,*
 CHECK: *"layouts-decomposed":1,"stride-args-inserted":2,"branch-edges-rewritten":2}*
