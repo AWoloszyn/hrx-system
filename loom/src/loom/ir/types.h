@@ -638,8 +638,11 @@ static inline bool loom_register_class_name_is_qualified(
 // One-way SSA value map used when comparing types across forwarding
 // boundaries.
 enum loom_type_value_remap_flag_bits_e {
-  // source_values is a contiguous definition-index slice from one op or block.
-  // Membership and absence can be resolved without scanning the span.
+  // source_values is a contiguous slice of block arguments, operation results,
+  // or declaration arguments. Declaration arguments are indexed by their sole
+  // ordinary operand use, which is their definition site. These are separate
+  // index domains even when a declaration also owns results. Membership and
+  // absence have bounded lookup independent of the span length.
   LOOM_TYPE_VALUE_REMAP_FLAG_SOURCE_DEFINITION_SLICE = 1u << 0,
 };
 typedef uint16_t loom_type_value_remap_flags_t;

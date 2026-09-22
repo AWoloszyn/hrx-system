@@ -321,10 +321,15 @@ static iree_status_t loom_function_contract_verify_boundary(
       .count = result_count,
       .flags = LOOM_TYPE_VALUE_REMAP_FLAG_SOURCE_DEFINITION_SLICE,
   };
+  // FuncLike arguments form one definition slice. Checking at most two IDs
+  // directly needs fewer loads than decoding their definition sites.
   const loom_type_value_remap_t signature_remap = {
       .source_values = signature->argument_ids,
       .target_values = boundary->argument_ids,
       .count = argument_count,
+      .flags = argument_count > 2
+                   ? LOOM_TYPE_VALUE_REMAP_FLAG_SOURCE_DEFINITION_SLICE
+                   : 0,
       .next = &result_remap,
   };
 

@@ -52,11 +52,12 @@ iree_status_t loom_type_function_build(const loom_type_t* arg_types,
 static bool loom_type_sequence_equal(const loom_type_t* a_types,
                                      const loom_type_t* b_types,
                                      iree_host_size_t type_count) {
-  if (type_count == 0) {
+  // Identical immutable sequences need no recursive child comparison.
+  if (type_count == 0 || a_types == b_types) {
     return true;
   }
   if (!a_types || !b_types) {
-    return a_types == b_types;
+    return false;
   }
   for (iree_host_size_t i = 0; i < type_count; ++i) {
     if (!loom_type_equal(a_types[i], b_types[i])) {
@@ -188,19 +189,34 @@ static loom_value_id_t loom_type_remap_value(
           loom_value_is_block_arg(value)) {
         continue;
       }
+      uint16_t first_index = loom_value_def_index(first_value);
+      uint16_t value_index = loom_value_def_index(value);
       if (loom_value_is_block_arg(first_value)) {
         if (loom_value_def_block(first_value) != loom_value_def_block(value)) {
           continue;
         }
       } else {
         const loom_op_t* owner_op = loom_value_def_op(first_value);
-        IREE_ASSERT(owner_op != NULL);
-        if (owner_op != loom_value_def_op(value)) {
-          continue;
+        if (owner_op) {
+          if (owner_op != loom_value_def_op(value)) {
+            continue;
+          }
+        } else {
+          // Declaration operands and results have independent index domains.
+          // The declaration's ordinary operand link owns its argument index.
+          IREE_ASSERT_EQ(first_value->use_count, 1);
+          if (loom_value_def_op(value) || value->use_count != 1) {
+            continue;
+          }
+          const loom_use_t first_use = loom_value_uses(first_value)[0];
+          const loom_use_t value_use = loom_value_uses(value)[0];
+          if (loom_use_user_op(first_use) != loom_use_user_op(value_use)) {
+            continue;
+          }
+          first_index = loom_use_operand_index(first_use);
+          value_index = loom_use_operand_index(value_use);
         }
       }
-      const uint16_t first_index = loom_value_def_index(first_value);
-      const uint16_t value_index = loom_value_def_index(value);
       if (value_index < first_index) {
         continue;
       }

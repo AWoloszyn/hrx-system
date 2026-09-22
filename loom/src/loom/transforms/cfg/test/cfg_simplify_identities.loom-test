@@ -270,3 +270,108 @@ func.def @removes_unused_mutually_dependent_arguments(%choose: i1, %left_first: 
 func.def @removes_unused_mutually_dependent_arguments(%choose: i1, %left_first: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%left_second]xf32>>}>, %left_second: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%left_first]xf32>>}>, %right_first: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%right_second]xf32>>}>, %right_second: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%right_first]xf32>>}>) {
   func.return
 }
+
+// ====
+
+// RUN: pass cfg-simplify
+
+// Repeated callback children share a canonical type. Their external dimension
+// is unaffected by comparing the carried arguments with one another.
+func.def @compacts_cyclic_callback_arguments(%select: i1, %again: i1, %width: index, %left: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> (), %right: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> ()) {
+  cfg.cond_br %select, ^left_path, ^right_path
+^left_path:
+  cfg.br ^loop(%left: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> (), %left: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> ())
+^right_path:
+  cfg.br ^loop(%right: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> (), %right: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> ())
+^loop(%first: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> (), %second: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> ()):
+  cfg.cond_br %again, ^feedback, ^exit
+^feedback:
+  cfg.br ^loop(%second: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> (), %first: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> ())
+^exit:
+  test.use %first, %second : ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> (), ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> ()
+  func.return
+}
+
+// ----
+func.def @compacts_cyclic_callback_arguments(%select: i1, %again: i1, %width: index, %left: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> (), %right: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> ()) {
+  cfg.cond_br %select, ^left_path, ^right_path
+^left_path:
+  cfg.br ^loop(%left: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> ())
+^right_path:
+  cfg.br ^loop(%right: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> ())
+^loop(%first: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> ()):
+  cfg.cond_br %again, ^feedback, ^exit
+^feedback:
+  cfg.br ^loop(%first: ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> ())
+^exit:
+  test.use %first, %first : ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> (), ((vector<[%width]xf32>) -> (), (vector<[%width]xf32>) -> ()) -> ()
+  func.return
+}
+
+// ====
+
+// RUN: pass cfg-simplify
+
+// These columns have the same canonical payload but different self-reference
+// roles. Normalizing the first column changes its type; normalizing the second
+// does not. Storage identity alone cannot establish their normalized equality.
+func.def @preserves_distinct_self_reference_roles(%select: i1, %again: i1, %left: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%left]xf32>>}>, %right: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%right]xf32>>}>) {
+  cfg.cond_br %select, ^left_path, ^right_path
+^left_path:
+  cfg.br ^loop(%left: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%left]xf32>>}>, %left: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%left]xf32>>}>)
+^right_path:
+  cfg.br ^loop(%right: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%right]xf32>>}>, %right: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%right]xf32>>}>)
+^loop(%first: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%first]xf32>>}>, %second: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%first]xf32>>}>):
+  cfg.cond_br %again, ^feedback, ^exit
+^feedback:
+  cfg.br ^loop(%first: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%first]xf32>>}>, %second: test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%first]xf32>>}>)
+^exit:
+  test.use %first, %second : test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%first]xf32>>}>, test.array<i32, metadata = {options = #test.options<mode = fast, element_type = vector<[%first]xf32>>}>
+  func.return
+}
+
+// ====
+
+// RUN: pass cfg-simplify
+
+// Upstream values share a type but have different self-reference roles. A
+// downstream join must retain its own label when their provisional equality
+// is disproven. Tail copies enlarge one side without changing its identity.
+func.def @preserves_labels_after_identity_splits(%select: i1, %choose: i1, %again: i1, %left: test.ref<vector<[%left]xf32>>, %right: test.ref<vector<[%right]xf32>>) {
+  cfg.cond_br %select, ^left_path, ^right_path
+^left_path:
+  cfg.br ^providers(%left: test.ref<vector<[%left]xf32>>, %left: test.ref<vector<[%left]xf32>>)
+^right_path:
+  cfg.br ^providers(%right: test.ref<vector<[%right]xf32>>, %right: test.ref<vector<[%right]xf32>>)
+^providers(%provider: test.ref<vector<[%provider]xf32>>, %peer: test.ref<vector<[%provider]xf32>>):
+  cfg.cond_br %choose, ^first_path, ^second_path
+^first_path:
+  cfg.br ^loop(%provider: test.ref<vector<[%provider]xf32>>, %provider: test.ref<vector<[%provider]xf32>>)
+^second_path:
+  cfg.br ^loop(%peer: test.ref<vector<[%provider]xf32>>, %peer: test.ref<vector<[%provider]xf32>>)
+^loop(%first: test.ref<vector<[%provider]xf32>>, %second: test.ref<vector<[%provider]xf32>>):
+  cfg.cond_br %again, ^feedback, ^exit
+^feedback:
+  cfg.br ^loop(%second: test.ref<vector<[%provider]xf32>>, %first: test.ref<vector<[%provider]xf32>>)
+^exit:
+  cfg.br ^tail(%first: test.ref<vector<[%provider]xf32>>, %first: test.ref<vector<[%provider]xf32>>, %second: test.ref<vector<[%provider]xf32>>)
+^tail(%first_copy: test.ref<vector<[%provider]xf32>>, %second_copy: test.ref<vector<[%provider]xf32>>, %peer_copy: test.ref<vector<[%provider]xf32>>):
+  test.use %first_copy, %second_copy, %peer_copy : test.ref<vector<[%provider]xf32>>, test.ref<vector<[%provider]xf32>>, test.ref<vector<[%provider]xf32>>
+  func.return
+}
+
+// ----
+func.def @preserves_labels_after_identity_splits(%select: i1, %choose: i1, %again: i1, %left: test.ref<vector<[%left]xf32>>, %right: test.ref<vector<[%right]xf32>>) {
+  cfg.cond_br %select, ^left_path, ^right_path
+^left_path:
+  cfg.br ^providers(%left: test.ref<vector<[%left]xf32>>)
+^right_path:
+  cfg.br ^providers(%right: test.ref<vector<[%right]xf32>>)
+^providers(%provider: test.ref<vector<[%provider]xf32>>):
+  cfg.br ^loop
+^loop:
+  cfg.cond_br %again, ^loop, ^exit
+^exit:
+  test.use %provider, %provider, %provider : test.ref<vector<[%provider]xf32>>, test.ref<vector<[%provider]xf32>>, test.ref<vector<[%provider]xf32>>
+  func.return
+}
