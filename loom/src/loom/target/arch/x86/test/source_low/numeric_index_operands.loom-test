@@ -16,8 +16,8 @@ func.def @uniform_lhs_index_operands(%input: buffer, %uniform: index) -> (index,
 }
 
 // ----
-low.func.def target<x86.avx2.core> abi(object_function) @uniform_lhs_index_operands(%input_view: reg<x86.gpr64>, %uniform: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>) asm {
-  %word = mov.load.gpr32 %input_view {disp32 = 0}
+low.func.def target<x86.avx2.core> abi(object_function) @uniform_lhs_index_operands(%aligned_input: reg<x86.gpr64>, %uniform: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>) asm {
+  %word = mov.load.gpr32 %aligned_input {disp32 = 0}
   %value = movsxd.gpr64.gpr32 %word
   %26 = copy %uniform : reg<x86.gpr64> -> reg<x86.gpr64>
   %multiply = imul.gpr64 %26, %value
@@ -49,8 +49,8 @@ func.def @uniform_rhs_index_operands(%input: buffer, %uniform: index) -> (index,
 }
 
 // ----
-low.func.def target<x86.avx2.core> abi(object_function) @uniform_rhs_index_operands(%input_view: reg<x86.gpr64>, %uniform: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>) asm {
-  %word = mov.load.gpr32 %input_view {disp32 = 0}
+low.func.def target<x86.avx2.core> abi(object_function) @uniform_rhs_index_operands(%aligned_input: reg<x86.gpr64>, %uniform: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>) asm {
+  %word = mov.load.gpr32 %aligned_input {disp32 = 0}
   %value = movsxd.gpr64.gpr32 %word
   %26 = copy %value : reg<x86.gpr64> -> reg<x86.gpr64>
   %multiply = imul.gpr64 %26, %uniform
@@ -85,8 +85,8 @@ func.def @constant_index_operands(%input: buffer) -> (index, index, index, index
 }
 
 // ----
-low.func.def target<x86.avx2.core> abi(object_function) @constant_index_operands(%input_view: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>) asm {
-  %word = mov.load.gpr32 %input_view {disp32 = 0}
+low.func.def target<x86.avx2.core> abi(object_function) @constant_index_operands(%aligned_input: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>) asm {
+  %word = mov.load.gpr32 %aligned_input {disp32 = 0}
   %value = movsxd.gpr64.gpr32 %word
   %factor = mov.imm64 65
   %26 = copy %value : reg<x86.gpr64> -> reg<x86.gpr64>
@@ -145,9 +145,9 @@ func.def @varying_index_operands(%input: buffer) -> (index, index, index, index,
 }
 
 // ----
-low.func.def target<x86.avx2.core> abi(object_function) @varying_index_operands(%input_view: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>) asm {
-  %lhs_word = mov.load.gpr32 %input_view {disp32 = 0}
-  %rhs_word = mov.load.gpr32 %input_view {disp32 = 4}
+low.func.def target<x86.avx2.core> abi(object_function) @varying_index_operands(%aligned_input: reg<x86.gpr64>) -> (reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>, reg<x86.gpr64>) asm {
+  %lhs_word = mov.load.gpr32 %aligned_input {disp32 = 0}
+  %rhs_word = mov.load.gpr32 %aligned_input {disp32 = 4}
   %lhs = movsxd.gpr64.gpr32 %lhs_word
   %rhs = movsxd.gpr64.gpr32 %rhs_word
   %28 = copy %lhs : reg<x86.gpr64> -> reg<x86.gpr64>
@@ -178,8 +178,8 @@ func.def @bounded_offset_difference(%input: buffer, %wide_limit: offset) -> (off
 }
 
 // ----
-low.func.def target<x86.avx2.core> abi(object_function) @bounded_offset_difference(%input_view: reg<x86.gpr64>, %limit: reg<x86.gpr64>) -> (reg<x86.gpr64>) asm {
-  %bounded_word = mov.load.gpr32 %input_view {disp32 = 0}
+low.func.def target<x86.avx2.core> abi(object_function) @bounded_offset_difference(%aligned_input: reg<x86.gpr64>, %limit: reg<x86.gpr64>) -> (reg<x86.gpr64>) asm {
+  %bounded_word = mov.load.gpr32 %aligned_input {disp32 = 0}
   %position = movzx.gpr64.gpr32 %bounded_word
   %16 = copy %limit : reg<x86.gpr64> -> reg<x86.gpr64>
   %remaining = sub.gpr64 %16, %position

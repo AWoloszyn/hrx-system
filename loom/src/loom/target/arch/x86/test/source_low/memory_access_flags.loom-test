@@ -11,9 +11,9 @@ func.def @observe_scalar(%input: buffer) -> (i32, i32) {
 }
 
 // ----
-low.func.def target<x86.avx2.core> abi(object_function) @observe_scalar(%source: reg<x86.gpr64>) -> (reg<x86.gpr32>, reg<x86.gpr32>) asm {
-  %first = mov.load.gpr32<volatile> %source {disp32 = 0}
-  %second = mov.load.gpr32<volatile> %source {disp32 = 0}
+low.func.def target<x86.avx2.core> abi(object_function) @observe_scalar(%aligned: reg<x86.gpr64>) -> (reg<x86.gpr32>, reg<x86.gpr32>) asm {
+  %first = mov.load.gpr32<volatile> %aligned {disp32 = 0}
+  %second = mov.load.gpr32<volatile> %aligned {disp32 = 0}
   return %first, %second
 }
 
@@ -29,9 +29,9 @@ func.def @observe_unused(%input: buffer) {
 }
 
 // ----
-low.func.def target<x86.avx2.core> abi(object_function) @observe_unused(%source: reg<x86.gpr64>) asm {
-  %first = mov.load.gpr32<volatile> %source {disp32 = 0}
-  %second = mov.load.gpr32<volatile> %source {disp32 = 4}
+low.func.def target<x86.avx2.core> abi(object_function) @observe_unused(%aligned: reg<x86.gpr64>) asm {
+  %first = mov.load.gpr32<volatile> %aligned {disp32 = 0}
+  %second = mov.load.gpr32<volatile> %aligned {disp32 = 4}
   return
 }
 
@@ -47,9 +47,9 @@ func.def @repeat_store(%output: buffer, %value: i32) {
 }
 
 // ----
-low.func.def target<x86.avx2.core> abi(object_function) @repeat_store(%destination: reg<x86.gpr64>, %value: reg<x86.gpr32>) asm {
-  mov.store.gpr32<volatile> %value, %destination {disp32 = 0}
-  mov.store.gpr32<volatile> %value, %destination {disp32 = 0}
+low.func.def target<x86.avx2.core> abi(object_function) @repeat_store(%aligned: reg<x86.gpr64>, %value: reg<x86.gpr32>) asm {
+  mov.store.gpr32<volatile> %value, %aligned {disp32 = 0}
+  mov.store.gpr32<volatile> %value, %aligned {disp32 = 0}
   return
 }
 
@@ -69,71 +69,71 @@ func.def @observe_vector(%input: buffer, %output: buffer) {
 }
 
 // ----
-low.func.def target<x86.avx2.core> abi(object_function) @observe_vector(%source: reg<x86.gpr64>, %destination: reg<x86.gpr64>) asm {
-  %109 = mov.load.gpr32<volatile> %source {disp32 = 0}
-  %110 = mov.load.gpr32<volatile> %source {disp32 = 4}
-  %111 = mov.load.gpr32<volatile> %source {disp32 = 8}
-  %112 = mov.load.gpr32<volatile> %source {disp32 = 12}
-  %113 = mov.load.gpr32<volatile> %source {disp32 = 16}
-  %114 = mov.load.gpr32<volatile> %source {disp32 = 20}
-  %115 = mov.load.gpr32<volatile> %source {disp32 = 24}
-  %116 = mov.load.gpr32<volatile> %source {disp32 = 28}
-  %117 = mov.load.gpr32<volatile> %source {disp32 = 32}
-  %118 = mov.load.gpr32<volatile> %source {disp32 = 36}
-  %119 = mov.load.gpr32<volatile> %source {disp32 = 40}
-  %120 = mov.load.gpr32<volatile> %source {disp32 = 44}
-  %121 = mov.load.gpr32<volatile> %source {disp32 = 48}
-  %122 = mov.load.gpr32<volatile> %source {disp32 = 52}
-  %123 = mov.load.gpr32<volatile> %source {disp32 = 56}
-  %124 = mov.load.gpr32<volatile> %source {disp32 = 60}
-  %125 = mov.load.gpr32<volatile> %source {disp32 = 0}
-  %126 = mov.load.gpr32<volatile> %source {disp32 = 4}
-  %127 = mov.load.gpr32<volatile> %source {disp32 = 8}
-  %128 = mov.load.gpr32<volatile> %source {disp32 = 12}
-  %129 = mov.load.gpr32<volatile> %source {disp32 = 16}
-  %130 = mov.load.gpr32<volatile> %source {disp32 = 20}
-  %131 = mov.load.gpr32<volatile> %source {disp32 = 24}
-  %132 = mov.load.gpr32<volatile> %source {disp32 = 28}
-  %133 = mov.load.gpr32<volatile> %source {disp32 = 32}
-  %134 = mov.load.gpr32<volatile> %source {disp32 = 36}
-  %135 = mov.load.gpr32<volatile> %source {disp32 = 40}
-  %136 = mov.load.gpr32<volatile> %source {disp32 = 44}
-  %137 = mov.load.gpr32<volatile> %source {disp32 = 48}
-  %138 = mov.load.gpr32<volatile> %source {disp32 = 52}
-  %139 = mov.load.gpr32<volatile> %source {disp32 = 56}
-  %140 = mov.load.gpr32<volatile> %source {disp32 = 60}
-  mov.store.gpr32<volatile> %109, %destination {disp32 = 0}
-  mov.store.gpr32<volatile> %110, %destination {disp32 = 4}
-  mov.store.gpr32<volatile> %111, %destination {disp32 = 8}
-  mov.store.gpr32<volatile> %112, %destination {disp32 = 12}
-  mov.store.gpr32<volatile> %113, %destination {disp32 = 16}
-  mov.store.gpr32<volatile> %114, %destination {disp32 = 20}
-  mov.store.gpr32<volatile> %115, %destination {disp32 = 24}
-  mov.store.gpr32<volatile> %116, %destination {disp32 = 28}
-  mov.store.gpr32<volatile> %117, %destination {disp32 = 32}
-  mov.store.gpr32<volatile> %118, %destination {disp32 = 36}
-  mov.store.gpr32<volatile> %119, %destination {disp32 = 40}
-  mov.store.gpr32<volatile> %120, %destination {disp32 = 44}
-  mov.store.gpr32<volatile> %121, %destination {disp32 = 48}
-  mov.store.gpr32<volatile> %122, %destination {disp32 = 52}
-  mov.store.gpr32<volatile> %123, %destination {disp32 = 56}
-  mov.store.gpr32<volatile> %124, %destination {disp32 = 60}
-  mov.store.gpr32<volatile> %125, %destination {disp32 = 64}
-  mov.store.gpr32<volatile> %126, %destination {disp32 = 68}
-  mov.store.gpr32<volatile> %127, %destination {disp32 = 72}
-  mov.store.gpr32<volatile> %128, %destination {disp32 = 76}
-  mov.store.gpr32<volatile> %129, %destination {disp32 = 80}
-  mov.store.gpr32<volatile> %130, %destination {disp32 = 84}
-  mov.store.gpr32<volatile> %131, %destination {disp32 = 88}
-  mov.store.gpr32<volatile> %132, %destination {disp32 = 92}
-  mov.store.gpr32<volatile> %133, %destination {disp32 = 96}
-  mov.store.gpr32<volatile> %134, %destination {disp32 = 100}
-  mov.store.gpr32<volatile> %135, %destination {disp32 = 104}
-  mov.store.gpr32<volatile> %136, %destination {disp32 = 108}
-  mov.store.gpr32<volatile> %137, %destination {disp32 = 112}
-  mov.store.gpr32<volatile> %138, %destination {disp32 = 116}
-  mov.store.gpr32<volatile> %139, %destination {disp32 = 120}
-  mov.store.gpr32<volatile> %140, %destination {disp32 = 124}
+low.func.def target<x86.avx2.core> abi(object_function) @observe_vector(%source_aligned: reg<x86.gpr64>, %destination_aligned: reg<x86.gpr64>) asm {
+  %109 = mov.load.gpr32<volatile> %source_aligned {disp32 = 0}
+  %110 = mov.load.gpr32<volatile> %source_aligned {disp32 = 4}
+  %111 = mov.load.gpr32<volatile> %source_aligned {disp32 = 8}
+  %112 = mov.load.gpr32<volatile> %source_aligned {disp32 = 12}
+  %113 = mov.load.gpr32<volatile> %source_aligned {disp32 = 16}
+  %114 = mov.load.gpr32<volatile> %source_aligned {disp32 = 20}
+  %115 = mov.load.gpr32<volatile> %source_aligned {disp32 = 24}
+  %116 = mov.load.gpr32<volatile> %source_aligned {disp32 = 28}
+  %117 = mov.load.gpr32<volatile> %source_aligned {disp32 = 32}
+  %118 = mov.load.gpr32<volatile> %source_aligned {disp32 = 36}
+  %119 = mov.load.gpr32<volatile> %source_aligned {disp32 = 40}
+  %120 = mov.load.gpr32<volatile> %source_aligned {disp32 = 44}
+  %121 = mov.load.gpr32<volatile> %source_aligned {disp32 = 48}
+  %122 = mov.load.gpr32<volatile> %source_aligned {disp32 = 52}
+  %123 = mov.load.gpr32<volatile> %source_aligned {disp32 = 56}
+  %124 = mov.load.gpr32<volatile> %source_aligned {disp32 = 60}
+  %125 = mov.load.gpr32<volatile> %source_aligned {disp32 = 0}
+  %126 = mov.load.gpr32<volatile> %source_aligned {disp32 = 4}
+  %127 = mov.load.gpr32<volatile> %source_aligned {disp32 = 8}
+  %128 = mov.load.gpr32<volatile> %source_aligned {disp32 = 12}
+  %129 = mov.load.gpr32<volatile> %source_aligned {disp32 = 16}
+  %130 = mov.load.gpr32<volatile> %source_aligned {disp32 = 20}
+  %131 = mov.load.gpr32<volatile> %source_aligned {disp32 = 24}
+  %132 = mov.load.gpr32<volatile> %source_aligned {disp32 = 28}
+  %133 = mov.load.gpr32<volatile> %source_aligned {disp32 = 32}
+  %134 = mov.load.gpr32<volatile> %source_aligned {disp32 = 36}
+  %135 = mov.load.gpr32<volatile> %source_aligned {disp32 = 40}
+  %136 = mov.load.gpr32<volatile> %source_aligned {disp32 = 44}
+  %137 = mov.load.gpr32<volatile> %source_aligned {disp32 = 48}
+  %138 = mov.load.gpr32<volatile> %source_aligned {disp32 = 52}
+  %139 = mov.load.gpr32<volatile> %source_aligned {disp32 = 56}
+  %140 = mov.load.gpr32<volatile> %source_aligned {disp32 = 60}
+  mov.store.gpr32<volatile> %109, %destination_aligned {disp32 = 0}
+  mov.store.gpr32<volatile> %110, %destination_aligned {disp32 = 4}
+  mov.store.gpr32<volatile> %111, %destination_aligned {disp32 = 8}
+  mov.store.gpr32<volatile> %112, %destination_aligned {disp32 = 12}
+  mov.store.gpr32<volatile> %113, %destination_aligned {disp32 = 16}
+  mov.store.gpr32<volatile> %114, %destination_aligned {disp32 = 20}
+  mov.store.gpr32<volatile> %115, %destination_aligned {disp32 = 24}
+  mov.store.gpr32<volatile> %116, %destination_aligned {disp32 = 28}
+  mov.store.gpr32<volatile> %117, %destination_aligned {disp32 = 32}
+  mov.store.gpr32<volatile> %118, %destination_aligned {disp32 = 36}
+  mov.store.gpr32<volatile> %119, %destination_aligned {disp32 = 40}
+  mov.store.gpr32<volatile> %120, %destination_aligned {disp32 = 44}
+  mov.store.gpr32<volatile> %121, %destination_aligned {disp32 = 48}
+  mov.store.gpr32<volatile> %122, %destination_aligned {disp32 = 52}
+  mov.store.gpr32<volatile> %123, %destination_aligned {disp32 = 56}
+  mov.store.gpr32<volatile> %124, %destination_aligned {disp32 = 60}
+  mov.store.gpr32<volatile> %125, %destination_aligned {disp32 = 64}
+  mov.store.gpr32<volatile> %126, %destination_aligned {disp32 = 68}
+  mov.store.gpr32<volatile> %127, %destination_aligned {disp32 = 72}
+  mov.store.gpr32<volatile> %128, %destination_aligned {disp32 = 76}
+  mov.store.gpr32<volatile> %129, %destination_aligned {disp32 = 80}
+  mov.store.gpr32<volatile> %130, %destination_aligned {disp32 = 84}
+  mov.store.gpr32<volatile> %131, %destination_aligned {disp32 = 88}
+  mov.store.gpr32<volatile> %132, %destination_aligned {disp32 = 92}
+  mov.store.gpr32<volatile> %133, %destination_aligned {disp32 = 96}
+  mov.store.gpr32<volatile> %134, %destination_aligned {disp32 = 100}
+  mov.store.gpr32<volatile> %135, %destination_aligned {disp32 = 104}
+  mov.store.gpr32<volatile> %136, %destination_aligned {disp32 = 108}
+  mov.store.gpr32<volatile> %137, %destination_aligned {disp32 = 112}
+  mov.store.gpr32<volatile> %138, %destination_aligned {disp32 = 116}
+  mov.store.gpr32<volatile> %139, %destination_aligned {disp32 = 120}
+  mov.store.gpr32<volatile> %140, %destination_aligned {disp32 = 124}
   return
 }
 
@@ -151,11 +151,11 @@ func.def @observe_byte(%input: buffer, %output: buffer) {
 }
 
 // ----
-low.func.def target<x86.avx2.core> abi(object_function) @observe_byte(%source: reg<x86.gpr64>, %destination: reg<x86.gpr64>) asm {
-  %first = movzx.load.u8.gpr32<volatile> %source {disp32 = 0}
-  %second = movzx.load.u8.gpr32<volatile> %source {disp32 = 0}
-  mov.store.u8.gpr32<volatile> %first, %destination {disp32 = 0}
-  mov.store.u8.gpr32<volatile> %second, %destination {disp32 = 1}
+low.func.def target<x86.avx2.core> abi(object_function) @observe_byte(%input: reg<x86.gpr64>, %output: reg<x86.gpr64>) asm {
+  %first = movzx.load.u8.gpr32<volatile> %input {disp32 = 0}
+  %second = movzx.load.u8.gpr32<volatile> %input {disp32 = 0}
+  mov.store.u8.gpr32<volatile> %first, %output {disp32 = 0}
+  mov.store.u8.gpr32<volatile> %second, %output {disp32 = 1}
   return
 }
 
@@ -171,9 +171,9 @@ func.def @observe_dynamic_address(%input: buffer, %byte_offset: offset) -> (i32,
 }
 
 // ----
-low.func.def target<x86.avx2.core> abi(object_function) @observe_dynamic_address(%source: reg<x86.gpr64>, %base: reg<x86.gpr64>) -> (reg<x86.gpr32>, reg<x86.gpr32>) asm {
-  %first = mov.load.indexed.gpr32<volatile> %source, %base {disp32 = 0, scale = 1}
-  %second = mov.load.indexed.gpr32<volatile> %source, %base {disp32 = 4, scale = 1}
+low.func.def target<x86.avx2.core> abi(object_function) @observe_dynamic_address(%aligned: reg<x86.gpr64>, %base: reg<x86.gpr64>) -> (reg<x86.gpr32>, reg<x86.gpr32>) asm {
+  %first = mov.load.indexed.gpr32<volatile> %aligned, %base {disp32 = 0, scale = 1}
+  %second = mov.load.indexed.gpr32<volatile> %aligned, %base {disp32 = 4, scale = 1}
   return %first, %second
 }
 
@@ -189,7 +189,7 @@ func.def @ordinary_scalar(%input: buffer) -> (i32, i32) {
 }
 
 // ----
-low.func.def target<x86.avx2.core> abi(object_function) @ordinary_scalar(%source: reg<x86.gpr64>) -> (reg<x86.gpr32>, reg<x86.gpr32>) asm {
-  %first = mov.load.gpr32 %source {disp32 = 0}
+low.func.def target<x86.avx2.core> abi(object_function) @ordinary_scalar(%aligned: reg<x86.gpr64>) -> (reg<x86.gpr32>, reg<x86.gpr32>) asm {
+  %first = mov.load.gpr32 %aligned {disp32 = 0}
   return %first, %first
 }

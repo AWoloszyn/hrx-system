@@ -207,9 +207,9 @@ func.def @i32x4_memory_copy(%input: buffer, %output: buffer) {
 }
 
 // ----
-low.func.def target<x86.avx512.core> abi(object_function) @i32x4_memory_copy(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>) asm {
-  %loaded = vmovdqu32.load.xmm %input_view {disp32 = 0}
-  vmovdqu32.store.xmm %loaded, %output_view {disp32 = 0}
+low.func.def target<x86.avx512.core> abi(object_function) @i32x4_memory_copy(%input: reg<x86.gpr64>, %output: reg<x86.gpr64>) asm {
+  %loaded = vmovdqu32.load.xmm %input {disp32 = 0}
+  vmovdqu32.store.xmm %loaded, %output {disp32 = 0}
   return
 }
 
@@ -226,9 +226,9 @@ func.def @i32x4_memory_indexed(%input: buffer, %output: buffer, %i: index) {
 }
 
 // ----
-low.func.def target<x86.avx512.core> abi(object_function) @i32x4_memory_indexed(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>, %bounded_i: reg<x86.gpr64>) asm {
-  %loaded = vmovdqu32.load.indexed.xmm %input_view, %bounded_i {disp32 = 0, scale = 4}
-  vmovdqu32.store.indexed.xmm %loaded, %output_view, %bounded_i {disp32 = 0, scale = 4}
+low.func.def target<x86.avx512.core> abi(object_function) @i32x4_memory_indexed(%input: reg<x86.gpr64>, %output: reg<x86.gpr64>, %bounded_i: reg<x86.gpr64>) asm {
+  %loaded = vmovdqu32.load.indexed.xmm %input, %bounded_i {disp32 = 0, scale = 4}
+  vmovdqu32.store.indexed.xmm %loaded, %output, %bounded_i {disp32 = 0, scale = 4}
   return
 }
 
@@ -244,9 +244,9 @@ func.def @f32x4_memory_copy(%input: buffer, %output: buffer) {
 }
 
 // ----
-low.func.def target<x86.avx512.core> abi(object_function) @f32x4_memory_copy(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>) asm {
-  %loaded = vmovdqu32.load.xmm %input_view {disp32 = 0}
-  vmovdqu32.store.xmm %loaded, %output_view {disp32 = 0}
+low.func.def target<x86.avx512.core> abi(object_function) @f32x4_memory_copy(%input: reg<x86.gpr64>, %output: reg<x86.gpr64>) asm {
+  %loaded = vmovdqu32.load.xmm %input {disp32 = 0}
+  vmovdqu32.store.xmm %loaded, %output {disp32 = 0}
   return
 }
 
@@ -266,10 +266,10 @@ func.def @f32x4_memory_indexed_add(%lhs: buffer, %rhs: buffer, %output: buffer, 
 }
 
 // ----
-low.func.def target<x86.avx512.core> abi(object_function) @f32x4_memory_indexed_add(%lhs_view: reg<x86.gpr64>, %rhs_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>, %bounded_i: reg<x86.gpr64>) asm {
-  %lhs_v = vmovdqu32.load.indexed.xmm %lhs_view, %bounded_i {disp32 = 0, scale = 4}
-  %rhs_v = vmovdqu32.load.indexed.xmm %rhs_view, %bounded_i {disp32 = 0, scale = 4}
+low.func.def target<x86.avx512.core> abi(object_function) @f32x4_memory_indexed_add(%lhs: reg<x86.gpr64>, %rhs: reg<x86.gpr64>, %output: reg<x86.gpr64>, %bounded_i: reg<x86.gpr64>) asm {
+  %lhs_v = vmovdqu32.load.indexed.xmm %lhs, %bounded_i {disp32 = 0, scale = 4}
+  %rhs_v = vmovdqu32.load.indexed.xmm %rhs, %bounded_i {disp32 = 0, scale = 4}
   %sum = vaddps.xmm %lhs_v, %rhs_v
-  vmovdqu32.store.indexed.xmm %sum, %output_view, %bounded_i {disp32 = 0, scale = 4}
+  vmovdqu32.store.indexed.xmm %sum, %output, %bounded_i {disp32 = 0, scale = 4}
   return
 }

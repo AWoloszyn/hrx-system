@@ -136,71 +136,71 @@ func.def @vector_i32x16_uniform_shift_left(%input_arg: buffer, %output_arg: buff
 }
 
 // ----
-low.func.def target<x86.scalar.core> abi(object_function) @vector_i32x16_uniform_shift_left(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>) asm {
-  %77 = mov.load.gpr32 %input_view {disp32 = 0}
+low.func.def target<x86.scalar.core> abi(object_function) @vector_i32x16_uniform_shift_left(%input_buffer: reg<x86.gpr64>, %output_buffer: reg<x86.gpr64>) asm {
+  %77 = mov.load.gpr32 %input_buffer {disp32 = 0}
   %78 = copy %77 : reg<x86.gpr32> -> reg<x86.gpr32>
   %79 = shl.imm.gpr32 %78 {shift = 23}
-  %80 = mov.load.gpr32 %input_view {disp32 = 4}
+  %80 = mov.load.gpr32 %input_buffer {disp32 = 4}
   %81 = copy %80 : reg<x86.gpr32> -> reg<x86.gpr32>
   %82 = shl.imm.gpr32 %81 {shift = 23}
-  %83 = mov.load.gpr32 %input_view {disp32 = 8}
+  %83 = mov.load.gpr32 %input_buffer {disp32 = 8}
   %84 = copy %83 : reg<x86.gpr32> -> reg<x86.gpr32>
   %85 = shl.imm.gpr32 %84 {shift = 23}
-  %86 = mov.load.gpr32 %input_view {disp32 = 12}
+  %86 = mov.load.gpr32 %input_buffer {disp32 = 12}
   %87 = copy %86 : reg<x86.gpr32> -> reg<x86.gpr32>
   %88 = shl.imm.gpr32 %87 {shift = 23}
-  %89 = mov.load.gpr32 %input_view {disp32 = 16}
+  %89 = mov.load.gpr32 %input_buffer {disp32 = 16}
   %90 = copy %89 : reg<x86.gpr32> -> reg<x86.gpr32>
   %91 = shl.imm.gpr32 %90 {shift = 23}
-  %92 = mov.load.gpr32 %input_view {disp32 = 20}
+  %92 = mov.load.gpr32 %input_buffer {disp32 = 20}
   %93 = copy %92 : reg<x86.gpr32> -> reg<x86.gpr32>
   %94 = shl.imm.gpr32 %93 {shift = 23}
-  %95 = mov.load.gpr32 %input_view {disp32 = 24}
+  %95 = mov.load.gpr32 %input_buffer {disp32 = 24}
   %96 = copy %95 : reg<x86.gpr32> -> reg<x86.gpr32>
   %97 = shl.imm.gpr32 %96 {shift = 23}
-  %98 = mov.load.gpr32 %input_view {disp32 = 28}
+  %98 = mov.load.gpr32 %input_buffer {disp32 = 28}
   %99 = copy %98 : reg<x86.gpr32> -> reg<x86.gpr32>
   %100 = shl.imm.gpr32 %99 {shift = 23}
-  %101 = mov.load.gpr32 %input_view {disp32 = 32}
+  %101 = mov.load.gpr32 %input_buffer {disp32 = 32}
   %102 = copy %101 : reg<x86.gpr32> -> reg<x86.gpr32>
   %103 = shl.imm.gpr32 %102 {shift = 23}
-  %104 = mov.load.gpr32 %input_view {disp32 = 36}
+  %104 = mov.load.gpr32 %input_buffer {disp32 = 36}
   %105 = copy %104 : reg<x86.gpr32> -> reg<x86.gpr32>
   %106 = shl.imm.gpr32 %105 {shift = 23}
-  %107 = mov.load.gpr32 %input_view {disp32 = 40}
+  %107 = mov.load.gpr32 %input_buffer {disp32 = 40}
   %108 = copy %107 : reg<x86.gpr32> -> reg<x86.gpr32>
   %109 = shl.imm.gpr32 %108 {shift = 23}
-  %110 = mov.load.gpr32 %input_view {disp32 = 44}
+  %110 = mov.load.gpr32 %input_buffer {disp32 = 44}
   %111 = copy %110 : reg<x86.gpr32> -> reg<x86.gpr32>
   %112 = shl.imm.gpr32 %111 {shift = 23}
-  %113 = mov.load.gpr32 %input_view {disp32 = 48}
+  %113 = mov.load.gpr32 %input_buffer {disp32 = 48}
   %114 = copy %113 : reg<x86.gpr32> -> reg<x86.gpr32>
   %115 = shl.imm.gpr32 %114 {shift = 23}
-  %116 = mov.load.gpr32 %input_view {disp32 = 52}
+  %116 = mov.load.gpr32 %input_buffer {disp32 = 52}
   %117 = copy %116 : reg<x86.gpr32> -> reg<x86.gpr32>
   %118 = shl.imm.gpr32 %117 {shift = 23}
-  %119 = mov.load.gpr32 %input_view {disp32 = 56}
+  %119 = mov.load.gpr32 %input_buffer {disp32 = 56}
   %120 = copy %119 : reg<x86.gpr32> -> reg<x86.gpr32>
   %121 = shl.imm.gpr32 %120 {shift = 23}
-  %122 = mov.load.gpr32 %input_view {disp32 = 60}
+  %122 = mov.load.gpr32 %input_buffer {disp32 = 60}
   %123 = copy %122 : reg<x86.gpr32> -> reg<x86.gpr32>
   %124 = shl.imm.gpr32 %123 {shift = 23}
-  mov.store.gpr32 %79, %output_view {disp32 = 0}
-  mov.store.gpr32 %82, %output_view {disp32 = 4}
-  mov.store.gpr32 %85, %output_view {disp32 = 8}
-  mov.store.gpr32 %88, %output_view {disp32 = 12}
-  mov.store.gpr32 %91, %output_view {disp32 = 16}
-  mov.store.gpr32 %94, %output_view {disp32 = 20}
-  mov.store.gpr32 %97, %output_view {disp32 = 24}
-  mov.store.gpr32 %100, %output_view {disp32 = 28}
-  mov.store.gpr32 %103, %output_view {disp32 = 32}
-  mov.store.gpr32 %106, %output_view {disp32 = 36}
-  mov.store.gpr32 %109, %output_view {disp32 = 40}
-  mov.store.gpr32 %112, %output_view {disp32 = 44}
-  mov.store.gpr32 %115, %output_view {disp32 = 48}
-  mov.store.gpr32 %118, %output_view {disp32 = 52}
-  mov.store.gpr32 %121, %output_view {disp32 = 56}
-  mov.store.gpr32 %124, %output_view {disp32 = 60}
+  mov.store.gpr32 %79, %output_buffer {disp32 = 0}
+  mov.store.gpr32 %82, %output_buffer {disp32 = 4}
+  mov.store.gpr32 %85, %output_buffer {disp32 = 8}
+  mov.store.gpr32 %88, %output_buffer {disp32 = 12}
+  mov.store.gpr32 %91, %output_buffer {disp32 = 16}
+  mov.store.gpr32 %94, %output_buffer {disp32 = 20}
+  mov.store.gpr32 %97, %output_buffer {disp32 = 24}
+  mov.store.gpr32 %100, %output_buffer {disp32 = 28}
+  mov.store.gpr32 %103, %output_buffer {disp32 = 32}
+  mov.store.gpr32 %106, %output_buffer {disp32 = 36}
+  mov.store.gpr32 %109, %output_buffer {disp32 = 40}
+  mov.store.gpr32 %112, %output_buffer {disp32 = 44}
+  mov.store.gpr32 %115, %output_buffer {disp32 = 48}
+  mov.store.gpr32 %118, %output_buffer {disp32 = 52}
+  mov.store.gpr32 %121, %output_buffer {disp32 = 56}
+  mov.store.gpr32 %124, %output_buffer {disp32 = 60}
   return
 }
 
@@ -220,71 +220,71 @@ func.def @vector_i32x16_uniform_shift_signed(%input_arg: buffer, %output_arg: bu
 }
 
 // ----
-low.func.def target<x86.scalar.core> abi(object_function) @vector_i32x16_uniform_shift_signed(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>) asm {
-  %77 = mov.load.gpr32 %input_view {disp32 = 0}
+low.func.def target<x86.scalar.core> abi(object_function) @vector_i32x16_uniform_shift_signed(%input_buffer: reg<x86.gpr64>, %output_buffer: reg<x86.gpr64>) asm {
+  %77 = mov.load.gpr32 %input_buffer {disp32 = 0}
   %78 = copy %77 : reg<x86.gpr32> -> reg<x86.gpr32>
   %79 = sar.imm.gpr32 %78 {shift = 7}
-  %80 = mov.load.gpr32 %input_view {disp32 = 4}
+  %80 = mov.load.gpr32 %input_buffer {disp32 = 4}
   %81 = copy %80 : reg<x86.gpr32> -> reg<x86.gpr32>
   %82 = sar.imm.gpr32 %81 {shift = 7}
-  %83 = mov.load.gpr32 %input_view {disp32 = 8}
+  %83 = mov.load.gpr32 %input_buffer {disp32 = 8}
   %84 = copy %83 : reg<x86.gpr32> -> reg<x86.gpr32>
   %85 = sar.imm.gpr32 %84 {shift = 7}
-  %86 = mov.load.gpr32 %input_view {disp32 = 12}
+  %86 = mov.load.gpr32 %input_buffer {disp32 = 12}
   %87 = copy %86 : reg<x86.gpr32> -> reg<x86.gpr32>
   %88 = sar.imm.gpr32 %87 {shift = 7}
-  %89 = mov.load.gpr32 %input_view {disp32 = 16}
+  %89 = mov.load.gpr32 %input_buffer {disp32 = 16}
   %90 = copy %89 : reg<x86.gpr32> -> reg<x86.gpr32>
   %91 = sar.imm.gpr32 %90 {shift = 7}
-  %92 = mov.load.gpr32 %input_view {disp32 = 20}
+  %92 = mov.load.gpr32 %input_buffer {disp32 = 20}
   %93 = copy %92 : reg<x86.gpr32> -> reg<x86.gpr32>
   %94 = sar.imm.gpr32 %93 {shift = 7}
-  %95 = mov.load.gpr32 %input_view {disp32 = 24}
+  %95 = mov.load.gpr32 %input_buffer {disp32 = 24}
   %96 = copy %95 : reg<x86.gpr32> -> reg<x86.gpr32>
   %97 = sar.imm.gpr32 %96 {shift = 7}
-  %98 = mov.load.gpr32 %input_view {disp32 = 28}
+  %98 = mov.load.gpr32 %input_buffer {disp32 = 28}
   %99 = copy %98 : reg<x86.gpr32> -> reg<x86.gpr32>
   %100 = sar.imm.gpr32 %99 {shift = 7}
-  %101 = mov.load.gpr32 %input_view {disp32 = 32}
+  %101 = mov.load.gpr32 %input_buffer {disp32 = 32}
   %102 = copy %101 : reg<x86.gpr32> -> reg<x86.gpr32>
   %103 = sar.imm.gpr32 %102 {shift = 7}
-  %104 = mov.load.gpr32 %input_view {disp32 = 36}
+  %104 = mov.load.gpr32 %input_buffer {disp32 = 36}
   %105 = copy %104 : reg<x86.gpr32> -> reg<x86.gpr32>
   %106 = sar.imm.gpr32 %105 {shift = 7}
-  %107 = mov.load.gpr32 %input_view {disp32 = 40}
+  %107 = mov.load.gpr32 %input_buffer {disp32 = 40}
   %108 = copy %107 : reg<x86.gpr32> -> reg<x86.gpr32>
   %109 = sar.imm.gpr32 %108 {shift = 7}
-  %110 = mov.load.gpr32 %input_view {disp32 = 44}
+  %110 = mov.load.gpr32 %input_buffer {disp32 = 44}
   %111 = copy %110 : reg<x86.gpr32> -> reg<x86.gpr32>
   %112 = sar.imm.gpr32 %111 {shift = 7}
-  %113 = mov.load.gpr32 %input_view {disp32 = 48}
+  %113 = mov.load.gpr32 %input_buffer {disp32 = 48}
   %114 = copy %113 : reg<x86.gpr32> -> reg<x86.gpr32>
   %115 = sar.imm.gpr32 %114 {shift = 7}
-  %116 = mov.load.gpr32 %input_view {disp32 = 52}
+  %116 = mov.load.gpr32 %input_buffer {disp32 = 52}
   %117 = copy %116 : reg<x86.gpr32> -> reg<x86.gpr32>
   %118 = sar.imm.gpr32 %117 {shift = 7}
-  %119 = mov.load.gpr32 %input_view {disp32 = 56}
+  %119 = mov.load.gpr32 %input_buffer {disp32 = 56}
   %120 = copy %119 : reg<x86.gpr32> -> reg<x86.gpr32>
   %121 = sar.imm.gpr32 %120 {shift = 7}
-  %122 = mov.load.gpr32 %input_view {disp32 = 60}
+  %122 = mov.load.gpr32 %input_buffer {disp32 = 60}
   %123 = copy %122 : reg<x86.gpr32> -> reg<x86.gpr32>
   %124 = sar.imm.gpr32 %123 {shift = 7}
-  mov.store.gpr32 %79, %output_view {disp32 = 0}
-  mov.store.gpr32 %82, %output_view {disp32 = 4}
-  mov.store.gpr32 %85, %output_view {disp32 = 8}
-  mov.store.gpr32 %88, %output_view {disp32 = 12}
-  mov.store.gpr32 %91, %output_view {disp32 = 16}
-  mov.store.gpr32 %94, %output_view {disp32 = 20}
-  mov.store.gpr32 %97, %output_view {disp32 = 24}
-  mov.store.gpr32 %100, %output_view {disp32 = 28}
-  mov.store.gpr32 %103, %output_view {disp32 = 32}
-  mov.store.gpr32 %106, %output_view {disp32 = 36}
-  mov.store.gpr32 %109, %output_view {disp32 = 40}
-  mov.store.gpr32 %112, %output_view {disp32 = 44}
-  mov.store.gpr32 %115, %output_view {disp32 = 48}
-  mov.store.gpr32 %118, %output_view {disp32 = 52}
-  mov.store.gpr32 %121, %output_view {disp32 = 56}
-  mov.store.gpr32 %124, %output_view {disp32 = 60}
+  mov.store.gpr32 %79, %output_buffer {disp32 = 0}
+  mov.store.gpr32 %82, %output_buffer {disp32 = 4}
+  mov.store.gpr32 %85, %output_buffer {disp32 = 8}
+  mov.store.gpr32 %88, %output_buffer {disp32 = 12}
+  mov.store.gpr32 %91, %output_buffer {disp32 = 16}
+  mov.store.gpr32 %94, %output_buffer {disp32 = 20}
+  mov.store.gpr32 %97, %output_buffer {disp32 = 24}
+  mov.store.gpr32 %100, %output_buffer {disp32 = 28}
+  mov.store.gpr32 %103, %output_buffer {disp32 = 32}
+  mov.store.gpr32 %106, %output_buffer {disp32 = 36}
+  mov.store.gpr32 %109, %output_buffer {disp32 = 40}
+  mov.store.gpr32 %112, %output_buffer {disp32 = 44}
+  mov.store.gpr32 %115, %output_buffer {disp32 = 48}
+  mov.store.gpr32 %118, %output_buffer {disp32 = 52}
+  mov.store.gpr32 %121, %output_buffer {disp32 = 56}
+  mov.store.gpr32 %124, %output_buffer {disp32 = 60}
   return
 }
 
@@ -304,71 +304,71 @@ func.def @vector_i32x16_uniform_shift_unsigned(%input_arg: buffer, %output_arg: 
 }
 
 // ----
-low.func.def target<x86.scalar.core> abi(object_function) @vector_i32x16_uniform_shift_unsigned(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>) asm {
-  %77 = mov.load.gpr32 %input_view {disp32 = 0}
+low.func.def target<x86.scalar.core> abi(object_function) @vector_i32x16_uniform_shift_unsigned(%input_buffer: reg<x86.gpr64>, %output_buffer: reg<x86.gpr64>) asm {
+  %77 = mov.load.gpr32 %input_buffer {disp32 = 0}
   %78 = copy %77 : reg<x86.gpr32> -> reg<x86.gpr32>
   %79 = shr.imm.gpr32 %78 {shift = 31}
-  %80 = mov.load.gpr32 %input_view {disp32 = 4}
+  %80 = mov.load.gpr32 %input_buffer {disp32 = 4}
   %81 = copy %80 : reg<x86.gpr32> -> reg<x86.gpr32>
   %82 = shr.imm.gpr32 %81 {shift = 31}
-  %83 = mov.load.gpr32 %input_view {disp32 = 8}
+  %83 = mov.load.gpr32 %input_buffer {disp32 = 8}
   %84 = copy %83 : reg<x86.gpr32> -> reg<x86.gpr32>
   %85 = shr.imm.gpr32 %84 {shift = 31}
-  %86 = mov.load.gpr32 %input_view {disp32 = 12}
+  %86 = mov.load.gpr32 %input_buffer {disp32 = 12}
   %87 = copy %86 : reg<x86.gpr32> -> reg<x86.gpr32>
   %88 = shr.imm.gpr32 %87 {shift = 31}
-  %89 = mov.load.gpr32 %input_view {disp32 = 16}
+  %89 = mov.load.gpr32 %input_buffer {disp32 = 16}
   %90 = copy %89 : reg<x86.gpr32> -> reg<x86.gpr32>
   %91 = shr.imm.gpr32 %90 {shift = 31}
-  %92 = mov.load.gpr32 %input_view {disp32 = 20}
+  %92 = mov.load.gpr32 %input_buffer {disp32 = 20}
   %93 = copy %92 : reg<x86.gpr32> -> reg<x86.gpr32>
   %94 = shr.imm.gpr32 %93 {shift = 31}
-  %95 = mov.load.gpr32 %input_view {disp32 = 24}
+  %95 = mov.load.gpr32 %input_buffer {disp32 = 24}
   %96 = copy %95 : reg<x86.gpr32> -> reg<x86.gpr32>
   %97 = shr.imm.gpr32 %96 {shift = 31}
-  %98 = mov.load.gpr32 %input_view {disp32 = 28}
+  %98 = mov.load.gpr32 %input_buffer {disp32 = 28}
   %99 = copy %98 : reg<x86.gpr32> -> reg<x86.gpr32>
   %100 = shr.imm.gpr32 %99 {shift = 31}
-  %101 = mov.load.gpr32 %input_view {disp32 = 32}
+  %101 = mov.load.gpr32 %input_buffer {disp32 = 32}
   %102 = copy %101 : reg<x86.gpr32> -> reg<x86.gpr32>
   %103 = shr.imm.gpr32 %102 {shift = 31}
-  %104 = mov.load.gpr32 %input_view {disp32 = 36}
+  %104 = mov.load.gpr32 %input_buffer {disp32 = 36}
   %105 = copy %104 : reg<x86.gpr32> -> reg<x86.gpr32>
   %106 = shr.imm.gpr32 %105 {shift = 31}
-  %107 = mov.load.gpr32 %input_view {disp32 = 40}
+  %107 = mov.load.gpr32 %input_buffer {disp32 = 40}
   %108 = copy %107 : reg<x86.gpr32> -> reg<x86.gpr32>
   %109 = shr.imm.gpr32 %108 {shift = 31}
-  %110 = mov.load.gpr32 %input_view {disp32 = 44}
+  %110 = mov.load.gpr32 %input_buffer {disp32 = 44}
   %111 = copy %110 : reg<x86.gpr32> -> reg<x86.gpr32>
   %112 = shr.imm.gpr32 %111 {shift = 31}
-  %113 = mov.load.gpr32 %input_view {disp32 = 48}
+  %113 = mov.load.gpr32 %input_buffer {disp32 = 48}
   %114 = copy %113 : reg<x86.gpr32> -> reg<x86.gpr32>
   %115 = shr.imm.gpr32 %114 {shift = 31}
-  %116 = mov.load.gpr32 %input_view {disp32 = 52}
+  %116 = mov.load.gpr32 %input_buffer {disp32 = 52}
   %117 = copy %116 : reg<x86.gpr32> -> reg<x86.gpr32>
   %118 = shr.imm.gpr32 %117 {shift = 31}
-  %119 = mov.load.gpr32 %input_view {disp32 = 56}
+  %119 = mov.load.gpr32 %input_buffer {disp32 = 56}
   %120 = copy %119 : reg<x86.gpr32> -> reg<x86.gpr32>
   %121 = shr.imm.gpr32 %120 {shift = 31}
-  %122 = mov.load.gpr32 %input_view {disp32 = 60}
+  %122 = mov.load.gpr32 %input_buffer {disp32 = 60}
   %123 = copy %122 : reg<x86.gpr32> -> reg<x86.gpr32>
   %124 = shr.imm.gpr32 %123 {shift = 31}
-  mov.store.gpr32 %79, %output_view {disp32 = 0}
-  mov.store.gpr32 %82, %output_view {disp32 = 4}
-  mov.store.gpr32 %85, %output_view {disp32 = 8}
-  mov.store.gpr32 %88, %output_view {disp32 = 12}
-  mov.store.gpr32 %91, %output_view {disp32 = 16}
-  mov.store.gpr32 %94, %output_view {disp32 = 20}
-  mov.store.gpr32 %97, %output_view {disp32 = 24}
-  mov.store.gpr32 %100, %output_view {disp32 = 28}
-  mov.store.gpr32 %103, %output_view {disp32 = 32}
-  mov.store.gpr32 %106, %output_view {disp32 = 36}
-  mov.store.gpr32 %109, %output_view {disp32 = 40}
-  mov.store.gpr32 %112, %output_view {disp32 = 44}
-  mov.store.gpr32 %115, %output_view {disp32 = 48}
-  mov.store.gpr32 %118, %output_view {disp32 = 52}
-  mov.store.gpr32 %121, %output_view {disp32 = 56}
-  mov.store.gpr32 %124, %output_view {disp32 = 60}
+  mov.store.gpr32 %79, %output_buffer {disp32 = 0}
+  mov.store.gpr32 %82, %output_buffer {disp32 = 4}
+  mov.store.gpr32 %85, %output_buffer {disp32 = 8}
+  mov.store.gpr32 %88, %output_buffer {disp32 = 12}
+  mov.store.gpr32 %91, %output_buffer {disp32 = 16}
+  mov.store.gpr32 %94, %output_buffer {disp32 = 20}
+  mov.store.gpr32 %97, %output_buffer {disp32 = 24}
+  mov.store.gpr32 %100, %output_buffer {disp32 = 28}
+  mov.store.gpr32 %103, %output_buffer {disp32 = 32}
+  mov.store.gpr32 %106, %output_buffer {disp32 = 36}
+  mov.store.gpr32 %109, %output_buffer {disp32 = 40}
+  mov.store.gpr32 %112, %output_buffer {disp32 = 44}
+  mov.store.gpr32 %115, %output_buffer {disp32 = 48}
+  mov.store.gpr32 %118, %output_buffer {disp32 = 52}
+  mov.store.gpr32 %121, %output_buffer {disp32 = 56}
+  mov.store.gpr32 %124, %output_buffer {disp32 = 60}
   return
 }
 
@@ -393,23 +393,23 @@ func.def @vector_i32x16_uniform_shift_boundaries(%input_arg: buffer, %output_arg
 }
 
 // ----
-low.func.def target<x86.scalar.core> abi(object_function) @vector_i32x16_uniform_shift_boundaries(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>) asm {
-  %210 = mov.load.gpr32 %input_view {disp32 = 0}
-  %211 = mov.load.gpr32 %input_view {disp32 = 4}
-  %212 = mov.load.gpr32 %input_view {disp32 = 8}
-  %213 = mov.load.gpr32 %input_view {disp32 = 12}
-  %214 = mov.load.gpr32 %input_view {disp32 = 16}
-  %215 = mov.load.gpr32 %input_view {disp32 = 20}
-  %216 = mov.load.gpr32 %input_view {disp32 = 24}
-  %217 = mov.load.gpr32 %input_view {disp32 = 28}
-  %218 = mov.load.gpr32 %input_view {disp32 = 32}
-  %219 = mov.load.gpr32 %input_view {disp32 = 36}
-  %220 = mov.load.gpr32 %input_view {disp32 = 40}
-  %221 = mov.load.gpr32 %input_view {disp32 = 44}
-  %222 = mov.load.gpr32 %input_view {disp32 = 48}
-  %223 = mov.load.gpr32 %input_view {disp32 = 52}
-  %224 = mov.load.gpr32 %input_view {disp32 = 56}
-  %225 = mov.load.gpr32 %input_view {disp32 = 60}
+low.func.def target<x86.scalar.core> abi(object_function) @vector_i32x16_uniform_shift_boundaries(%input_buffer: reg<x86.gpr64>, %output_buffer: reg<x86.gpr64>) asm {
+  %210 = mov.load.gpr32 %input_buffer {disp32 = 0}
+  %211 = mov.load.gpr32 %input_buffer {disp32 = 4}
+  %212 = mov.load.gpr32 %input_buffer {disp32 = 8}
+  %213 = mov.load.gpr32 %input_buffer {disp32 = 12}
+  %214 = mov.load.gpr32 %input_buffer {disp32 = 16}
+  %215 = mov.load.gpr32 %input_buffer {disp32 = 20}
+  %216 = mov.load.gpr32 %input_buffer {disp32 = 24}
+  %217 = mov.load.gpr32 %input_buffer {disp32 = 28}
+  %218 = mov.load.gpr32 %input_buffer {disp32 = 32}
+  %219 = mov.load.gpr32 %input_buffer {disp32 = 36}
+  %220 = mov.load.gpr32 %input_buffer {disp32 = 40}
+  %221 = mov.load.gpr32 %input_buffer {disp32 = 44}
+  %222 = mov.load.gpr32 %input_buffer {disp32 = 48}
+  %223 = mov.load.gpr32 %input_buffer {disp32 = 52}
+  %224 = mov.load.gpr32 %input_buffer {disp32 = 56}
+  %225 = mov.load.gpr32 %input_buffer {disp32 = 60}
   %226 = copy %210 : reg<x86.gpr32> -> reg<x86.gpr32>
   %227 = shl.imm.gpr32 %226 {shift = 31}
   %228 = copy %211 : reg<x86.gpr32> -> reg<x86.gpr32>
@@ -474,53 +474,53 @@ low.func.def target<x86.scalar.core> abi(object_function) @vector_i32x16_uniform
   %287 = sar.imm.gpr32 %286 {shift = 31}
   %288 = copy %225 : reg<x86.gpr32> -> reg<x86.gpr32>
   %289 = sar.imm.gpr32 %288 {shift = 31}
-  mov.store.gpr32 %210, %output_view {disp32 = 0}
-  mov.store.gpr32 %211, %output_view {disp32 = 4}
-  mov.store.gpr32 %212, %output_view {disp32 = 8}
-  mov.store.gpr32 %213, %output_view {disp32 = 12}
-  mov.store.gpr32 %214, %output_view {disp32 = 16}
-  mov.store.gpr32 %215, %output_view {disp32 = 20}
-  mov.store.gpr32 %216, %output_view {disp32 = 24}
-  mov.store.gpr32 %217, %output_view {disp32 = 28}
-  mov.store.gpr32 %218, %output_view {disp32 = 32}
-  mov.store.gpr32 %219, %output_view {disp32 = 36}
-  mov.store.gpr32 %220, %output_view {disp32 = 40}
-  mov.store.gpr32 %221, %output_view {disp32 = 44}
-  mov.store.gpr32 %222, %output_view {disp32 = 48}
-  mov.store.gpr32 %223, %output_view {disp32 = 52}
-  mov.store.gpr32 %224, %output_view {disp32 = 56}
-  mov.store.gpr32 %225, %output_view {disp32 = 60}
-  mov.store.gpr32 %227, %output_view {disp32 = 64}
-  mov.store.gpr32 %229, %output_view {disp32 = 68}
-  mov.store.gpr32 %231, %output_view {disp32 = 72}
-  mov.store.gpr32 %233, %output_view {disp32 = 76}
-  mov.store.gpr32 %235, %output_view {disp32 = 80}
-  mov.store.gpr32 %237, %output_view {disp32 = 84}
-  mov.store.gpr32 %239, %output_view {disp32 = 88}
-  mov.store.gpr32 %241, %output_view {disp32 = 92}
-  mov.store.gpr32 %243, %output_view {disp32 = 96}
-  mov.store.gpr32 %245, %output_view {disp32 = 100}
-  mov.store.gpr32 %247, %output_view {disp32 = 104}
-  mov.store.gpr32 %249, %output_view {disp32 = 108}
-  mov.store.gpr32 %251, %output_view {disp32 = 112}
-  mov.store.gpr32 %253, %output_view {disp32 = 116}
-  mov.store.gpr32 %255, %output_view {disp32 = 120}
-  mov.store.gpr32 %257, %output_view {disp32 = 124}
-  mov.store.gpr32 %259, %output_view {disp32 = 128}
-  mov.store.gpr32 %261, %output_view {disp32 = 132}
-  mov.store.gpr32 %263, %output_view {disp32 = 136}
-  mov.store.gpr32 %265, %output_view {disp32 = 140}
-  mov.store.gpr32 %267, %output_view {disp32 = 144}
-  mov.store.gpr32 %269, %output_view {disp32 = 148}
-  mov.store.gpr32 %271, %output_view {disp32 = 152}
-  mov.store.gpr32 %273, %output_view {disp32 = 156}
-  mov.store.gpr32 %275, %output_view {disp32 = 160}
-  mov.store.gpr32 %277, %output_view {disp32 = 164}
-  mov.store.gpr32 %279, %output_view {disp32 = 168}
-  mov.store.gpr32 %281, %output_view {disp32 = 172}
-  mov.store.gpr32 %283, %output_view {disp32 = 176}
-  mov.store.gpr32 %285, %output_view {disp32 = 180}
-  mov.store.gpr32 %287, %output_view {disp32 = 184}
-  mov.store.gpr32 %289, %output_view {disp32 = 188}
+  mov.store.gpr32 %210, %output_buffer {disp32 = 0}
+  mov.store.gpr32 %211, %output_buffer {disp32 = 4}
+  mov.store.gpr32 %212, %output_buffer {disp32 = 8}
+  mov.store.gpr32 %213, %output_buffer {disp32 = 12}
+  mov.store.gpr32 %214, %output_buffer {disp32 = 16}
+  mov.store.gpr32 %215, %output_buffer {disp32 = 20}
+  mov.store.gpr32 %216, %output_buffer {disp32 = 24}
+  mov.store.gpr32 %217, %output_buffer {disp32 = 28}
+  mov.store.gpr32 %218, %output_buffer {disp32 = 32}
+  mov.store.gpr32 %219, %output_buffer {disp32 = 36}
+  mov.store.gpr32 %220, %output_buffer {disp32 = 40}
+  mov.store.gpr32 %221, %output_buffer {disp32 = 44}
+  mov.store.gpr32 %222, %output_buffer {disp32 = 48}
+  mov.store.gpr32 %223, %output_buffer {disp32 = 52}
+  mov.store.gpr32 %224, %output_buffer {disp32 = 56}
+  mov.store.gpr32 %225, %output_buffer {disp32 = 60}
+  mov.store.gpr32 %227, %output_buffer {disp32 = 64}
+  mov.store.gpr32 %229, %output_buffer {disp32 = 68}
+  mov.store.gpr32 %231, %output_buffer {disp32 = 72}
+  mov.store.gpr32 %233, %output_buffer {disp32 = 76}
+  mov.store.gpr32 %235, %output_buffer {disp32 = 80}
+  mov.store.gpr32 %237, %output_buffer {disp32 = 84}
+  mov.store.gpr32 %239, %output_buffer {disp32 = 88}
+  mov.store.gpr32 %241, %output_buffer {disp32 = 92}
+  mov.store.gpr32 %243, %output_buffer {disp32 = 96}
+  mov.store.gpr32 %245, %output_buffer {disp32 = 100}
+  mov.store.gpr32 %247, %output_buffer {disp32 = 104}
+  mov.store.gpr32 %249, %output_buffer {disp32 = 108}
+  mov.store.gpr32 %251, %output_buffer {disp32 = 112}
+  mov.store.gpr32 %253, %output_buffer {disp32 = 116}
+  mov.store.gpr32 %255, %output_buffer {disp32 = 120}
+  mov.store.gpr32 %257, %output_buffer {disp32 = 124}
+  mov.store.gpr32 %259, %output_buffer {disp32 = 128}
+  mov.store.gpr32 %261, %output_buffer {disp32 = 132}
+  mov.store.gpr32 %263, %output_buffer {disp32 = 136}
+  mov.store.gpr32 %265, %output_buffer {disp32 = 140}
+  mov.store.gpr32 %267, %output_buffer {disp32 = 144}
+  mov.store.gpr32 %269, %output_buffer {disp32 = 148}
+  mov.store.gpr32 %271, %output_buffer {disp32 = 152}
+  mov.store.gpr32 %273, %output_buffer {disp32 = 156}
+  mov.store.gpr32 %275, %output_buffer {disp32 = 160}
+  mov.store.gpr32 %277, %output_buffer {disp32 = 164}
+  mov.store.gpr32 %279, %output_buffer {disp32 = 168}
+  mov.store.gpr32 %281, %output_buffer {disp32 = 172}
+  mov.store.gpr32 %283, %output_buffer {disp32 = 176}
+  mov.store.gpr32 %285, %output_buffer {disp32 = 180}
+  mov.store.gpr32 %287, %output_buffer {disp32 = 184}
+  mov.store.gpr32 %289, %output_buffer {disp32 = 188}
   return
 }

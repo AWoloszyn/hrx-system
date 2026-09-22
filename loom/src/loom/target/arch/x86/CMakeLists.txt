@@ -161,6 +161,7 @@ loom_check_test_suite(
     "test/source_low/source_low_v4.loom-test"
     "test/source_low/uniform_predicate_control.loom-test"
     "test/source_low/vector_large_insert.loom-test"
+    "test/source_low/view_carrier.loom-test"
     "test/source_low/view_transport.loom-test"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/callable_values.loom-test"

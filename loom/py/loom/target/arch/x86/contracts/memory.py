@@ -11,6 +11,7 @@ from __future__ import annotations
 from collections.abc import Callable, Sequence
 from enum import Enum
 
+from loom.dialect.buffer import defs as buffer
 from loom.dialect.vector import defs as vector
 from loom.dialect.view import defs as view
 from loom.dsl import Op
@@ -199,7 +200,7 @@ def _memory_rule(
     diagnostic: GuardDiagnostic,
 ) -> DescriptorRule:
     descriptor = descriptor_lookup(descriptor_key)
-    operands = {"base": ValueRef.operand("view")}
+    operands = {"base": ValueRef.source_memory_root()}
     results: dict[str, ValueRef] = {}
     if operation is SourceMemoryOperation.LOAD:
         type_field = "result"
@@ -358,7 +359,7 @@ def _full_width_memory_rules(
                 form=DescriptorEmitForm.OP,
                 descriptor=descriptor,
                 operands={
-                    "base": ValueRef.operand("view"),
+                    "base": ValueRef.source_memory_root(),
                     "index": byte_offset,
                     **value_operands,
                 },
@@ -376,6 +377,152 @@ def _full_width_memory_rules(
             )
         )
     return tuple(rules)
+
+
+def _view_carrier_constraint(
+    *,
+    element_byte_count: int,
+    dynamic: bool,
+    full_width_static_offset: bool,
+    diagnostic: GuardDiagnostic,
+) -> SourceMemoryConstraint:
+    return SourceMemoryConstraint(
+        operation=SourceMemoryOperation.VIEW_CARRIER,
+        root_kind=SourceMemoryRootKind.BLOCK_ARGUMENT,
+        memory_spaces=("unknown", "generic", "global"),
+        element_byte_count=element_byte_count,
+        vector_lane_count=1,
+        vector_lane_byte_stride=element_byte_count,
+        static_byte_offset_minimum=(
+            _I64_MIN if full_width_static_offset else _DISP32_MIN
+        ),
+        static_byte_offset_maximum=(
+            _I64_MAX if full_width_static_offset else _DISP32_MAX
+        ),
+        dynamic_term_count=None if dynamic else 0,
+        dynamic_term_count_minimum=1 if dynamic else 0,
+        dynamic_view_base_term_count=None,
+        allow_dynamic_stride_values=dynamic,
+        diagnostic=diagnostic,
+    )
+
+
+def _view_carrier_rule(
+    source_op: Op,
+    *,
+    element_byte_count: int,
+    dynamic: bool,
+    full_width_static_offset: bool,
+    descriptor_lookup: _DescriptorLookup,
+    diagnostic: GuardDiagnostic,
+) -> DescriptorRule:
+    source_memory = _view_carrier_constraint(
+        element_byte_count=element_byte_count,
+        dynamic=dynamic,
+        full_width_static_offset=full_width_static_offset,
+        diagnostic=diagnostic,
+    )
+    root = ValueRef.source_memory_root()
+    result = ValueRef.result("result")
+    emits: list[EmitDescriptorOp] = []
+    if not full_width_static_offset:
+        descriptor = descriptor_lookup(
+            "x86.scalar.lea.add_scale.gpr64" if dynamic else "x86.scalar.lea.disp.gpr64"
+        )
+        operands = {"base": root}
+        immediates: dict[str, SourceMemoryProject | int] = {
+            "disp32": SourceMemoryProject.static_byte_offset()
+        }
+        if dynamic:
+            operands["index"] = ValueRef.source_memory_dynamic_byte_offset()
+            immediates["scale"] = 1
+        emits.append(
+            EmitDescriptorOp(
+                descriptor=descriptor,
+                operands=operands,
+                results={"dst": result},
+                immediates=immediates,
+                source_memory=source_memory,
+                source_memory_byte_offset_materializer=(
+                    _byte_offset_materializer(descriptor_lookup) if dynamic else None
+                ),
+                form=DescriptorEmitForm.OP,
+            )
+        )
+        return DescriptorRule(
+            source_op=source_op,
+            descriptor=descriptor,
+            emit=tuple(emits),
+        )
+
+    static_offset = ValueRef.temporary("static_byte_offset")
+    byte_offset = static_offset
+    emits.append(
+        EmitDescriptorOp(
+            descriptor=descriptor_lookup("x86.scalar.movimm.gpr64"),
+            results={"dst": static_offset},
+            result_types={"dst": _I64},
+            immediates={"imm64": SourceMemoryProject.static_byte_offset()},
+            source_memory=source_memory,
+            form=DescriptorEmitForm.CONST,
+        )
+    )
+    if dynamic:
+        byte_offset = ValueRef.temporary("byte_offset")
+        emits.append(
+            EmitDescriptorOp(
+                descriptor=descriptor_lookup("x86.scalar.add.gpr64"),
+                operands={
+                    "lhs": static_offset,
+                    "rhs": ValueRef.source_memory_dynamic_byte_offset(),
+                },
+                results={"dst": byte_offset},
+                result_types={"dst": _I64},
+                source_memory=source_memory,
+                source_memory_byte_offset_materializer=(
+                    _byte_offset_materializer(descriptor_lookup)
+                ),
+                form=DescriptorEmitForm.OP,
+            )
+        )
+    descriptor = descriptor_lookup("x86.scalar.lea.add.gpr64")
+    emits.append(
+        EmitDescriptorOp(
+            descriptor=descriptor,
+            operands={"lhs": root, "rhs": byte_offset},
+            results={"dst": result},
+            source_memory=source_memory,
+            form=DescriptorEmitForm.OP,
+        )
+    )
+    return DescriptorRule(
+        source_op=source_op,
+        descriptor=descriptor,
+        emit=tuple(emits),
+    )
+
+
+def x86_view_carrier_rules(
+    descriptor_lookup: _DescriptorLookup,
+    *,
+    diagnostic: GuardDiagnostic,
+) -> tuple[DescriptorRule, ...]:
+    """Materializes demanded typed views as one complete-address GPR."""
+
+    return tuple(
+        _view_carrier_rule(
+            source_op,
+            element_byte_count=element_byte_count,
+            dynamic=dynamic,
+            full_width_static_offset=full_width_static_offset,
+            descriptor_lookup=descriptor_lookup,
+            diagnostic=diagnostic,
+        )
+        for source_op in (buffer.buffer_view, view.view_subview)
+        for element_byte_count in (1, 2, 4, 8)
+        for full_width_static_offset in (False, True)
+        for dynamic in (False, True)
+    )
 
 
 def x86_scalar_memory_rules(

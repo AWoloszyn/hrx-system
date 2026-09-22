@@ -141,9 +141,9 @@ func.def target(@target) @scalar_i64_static_memory(%input: buffer, %output: buff
 }
 
 // ----
-low.func.def target<x86.scalar.core>(@target) abi(object_function) @scalar_i64_static_memory(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>) asm {
-  %loaded = mov.load.gpr64 %input_view {disp32 = 24}
-  mov.store.gpr64 %loaded, %output_view {disp32 = 40}
+low.func.def target<x86.scalar.core>(@target) abi(object_function) @scalar_i64_static_memory(%input: reg<x86.gpr64>, %output: reg<x86.gpr64>) asm {
+  %loaded = mov.load.gpr64 %input {disp32 = 24}
+  mov.store.gpr64 %loaded, %output {disp32 = 40}
   return
 }
 
@@ -163,10 +163,10 @@ func.def target(@target) @scalar_i64_dynamic_memory(%input: buffer, %output: buf
 }
 
 // ----
-low.func.def target<x86.scalar.core>(@target) abi(object_function) @scalar_i64_dynamic_memory(%input_view: reg<x86.gpr64>, %output_view: reg<x86.gpr64>, %bounded_i: reg<x86.gpr64>) asm {
-  %loaded = mov.load.indexed.gpr64 %input_view, %bounded_i {disp32 = 0, scale = 8}
+low.func.def target<x86.scalar.core>(@target) abi(object_function) @scalar_i64_dynamic_memory(%input: reg<x86.gpr64>, %output: reg<x86.gpr64>, %bounded_i: reg<x86.gpr64>) asm {
+  %loaded = mov.load.indexed.gpr64 %input, %bounded_i {disp32 = 0, scale = 8}
   %13 = copy %loaded : reg<x86.gpr64> -> reg<x86.gpr64>
   %incremented = add.gpr64 %13, %loaded
-  mov.store.indexed.gpr64 %incremented, %output_view, %bounded_i {disp32 = 0, scale = 8}
+  mov.store.indexed.gpr64 %incremented, %output, %bounded_i {disp32 = 0, scale = 8}
   return
 }

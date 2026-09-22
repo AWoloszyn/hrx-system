@@ -120,7 +120,7 @@ static bool loom_x86_source_type_supported(void* user_data,
 }
 
 static bool loom_x86_type_is_address_gpr64(loom_type_t type) {
-  if (loom_type_is_buffer(type)) {
+  if (loom_type_is_buffer(type) || loom_type_is_view(type)) {
     return true;
   }
   if (!loom_type_is_scalar(type)) {
