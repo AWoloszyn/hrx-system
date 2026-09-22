@@ -214,6 +214,7 @@ loom_cc_library(
     loom::codegen::low::verify
     loom::error::error_defs
     loom::ir
+    loom::ops::low
     loom::ops::op_defs
     loom::target::projection
   PUBLIC
@@ -474,6 +475,7 @@ loom_cc_library(
     loom::codegen::low::function_requirements
     loom::codegen::low::storage_layout
     loom::codegen::low::text_asm
+    loom::error::error_defs
     loom::format::text::printer
     loom::ir
     loom::ops::low
@@ -510,13 +512,17 @@ loom_check_test_suite(
     "test/array_plan/dma_loopback.loom-test"
     "test/array_plan/dma_service.loom-test"
     "test/array_plan/endpoint_storage.loom-test"
+    "test/array_plan/entry_admission.loom-test"
     "test/array_plan/mixed_transport_fan_in.loom-test"
     "test/array_plan/multicast.loom-test"
+    "test/array_plan/multicast_ownership.loom-test"
+    "test/array_plan/multicast_prefix.loom-test"
     "test/array_plan/packed_record.loom-test"
     "test/array_plan/pipeline_record_shapes.loom-test"
     "test/array_plan/pipeline_views.loom-test"
     "test/array_plan/record_contracts.loom-test"
     "test/array_plan/ring_wrap.loom-test"
+    "test/array_plan/route_capacity.loom-test"
     "test/array_plan/strided_transfer.loom-test"
     "test/array_plan/temporal_fold.loom-test"
     "test/array_plan/unused_worker_inputs.loom-test"

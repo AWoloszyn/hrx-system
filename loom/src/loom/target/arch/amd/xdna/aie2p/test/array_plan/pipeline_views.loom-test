@@ -32,7 +32,7 @@ func.def target(@core_target) @copy_record(%input: buffer, %output: buffer) {
 }
 
 // ----
-array @broadcast_read_array family=amd.xdna.npu2 groups=1 workers=2 bindings=2 channels=4 slots=8 locks=8 dma=7 routes=18
+array @broadcast_read_array family=amd.xdna.npu2 groups=1 workers=2 bindings=2 channels=4 slots=8 locks=8 dma=7 routes=15
 binding index=0 ordinal=0 access=read
 binding index=1 ordinal=1 access=write
 worker index=0 group=0 lane=0 entry=@copy_record tile=(0,2) resources=2 storage-domains=0
@@ -72,10 +72,7 @@ route channel=0 tile=(0,0) kind=shim-mux source=dma[0] destination=north[3]
 route channel=0 tile=(0,0) kind=switch source=south[3] destination=north[0]
 route channel=0 tile=(0,1) kind=switch source=south[0] destination=north[0]
 route channel=0 tile=(0,2) kind=switch source=south[0] destination=dma[0]
-route channel=1 tile=(0,0) kind=shim-mux source=dma[0] destination=north[3]
-route channel=1 tile=(0,0) kind=switch source=south[3] destination=north[1]
-route channel=1 tile=(0,1) kind=switch source=south[1] destination=north[1]
-route channel=1 tile=(0,2) kind=switch source=south[1] destination=north[0]
+route channel=1 tile=(0,2) kind=switch source=south[0] destination=north[0]
 route channel=1 tile=(0,3) kind=switch source=south[0] destination=dma[0]
 route channel=2 tile=(0,2) kind=switch source=dma[0] destination=south[0]
 route channel=2 tile=(0,1) kind=switch source=north[0] destination=south[0]
@@ -93,17 +90,17 @@ binding-dimension channel=0 index=1 step=2 wrap=0
 binding-patch ordinal=1 channel=2 shim=(0,0) direction=stream-to-memory dma-channel=0 partition=0/2 offset=128 span=12 transfer=12 repeat=1 completion-route=0
 binding-patch ordinal=1 channel=3 shim=(0,0) direction=stream-to-memory dma-channel=1 partition=1/2 offset=140 span=12 transfer=12 repeat=1 completion-route=0
 
-array-program records=76 writes=42 masked-writes=24 block-writes=8 tile-loads=2 waits=0
-array-block record=50 address=0x0021d000 words=[0x00000001,0x00000000,0x00000000,0x00000000,0x00000000,0x0e043fe0]
-array-block record=51 address=0x0021d020 words=[0x04000001,0x00000000,0x00000000,0x00000000,0x00000000,0x06043fe0]
-array-block record=52 address=0x0031d000 words=[0x00000001,0x00000000,0x00000000,0x00000000,0x00000000,0x0e043fe0]
-array-block record=53 address=0x0031d020 words=[0x04000001,0x00000000,0x00000000,0x00000000,0x00000000,0x06043fe0]
-array-block record=54 address=0x0021d040 words=[0x08000001,0x00000000,0x00000000,0x00000000,0x00000000,0x1e045fe3]
-array-block record=55 address=0x0021d060 words=[0x0c000001,0x00000000,0x00000000,0x00000000,0x00000000,0x16045fe3]
-array-block record=56 address=0x0031d040 words=[0x08000001,0x00000000,0x00000000,0x00000000,0x00000000,0x1e045fe3]
-array-block record=57 address=0x0031d060 words=[0x0c000001,0x00000000,0x00000000,0x00000000,0x00000000,0x16045fe3]
-array-tile-load record=58 tile-program=0
-array-tile-load record=59 tile-program=1
+array-program records=72 writes=38 masked-writes=24 block-writes=8 tile-loads=2 waits=0
+array-block record=46 address=0x0021d000 words=[0x00000001,0x00000000,0x00000000,0x00000000,0x00000000,0x0e043fe0]
+array-block record=47 address=0x0021d020 words=[0x04000001,0x00000000,0x00000000,0x00000000,0x00000000,0x06043fe0]
+array-block record=48 address=0x0031d000 words=[0x00000001,0x00000000,0x00000000,0x00000000,0x00000000,0x0e043fe0]
+array-block record=49 address=0x0031d020 words=[0x04000001,0x00000000,0x00000000,0x00000000,0x00000000,0x06043fe0]
+array-block record=50 address=0x0021d040 words=[0x08000001,0x00000000,0x00000000,0x00000000,0x00000000,0x1e045fe3]
+array-block record=51 address=0x0021d060 words=[0x0c000001,0x00000000,0x00000000,0x00000000,0x00000000,0x16045fe3]
+array-block record=52 address=0x0031d040 words=[0x08000001,0x00000000,0x00000000,0x00000000,0x00000000,0x1e045fe3]
+array-block record=53 address=0x0031d060 words=[0x0c000001,0x00000000,0x00000000,0x00000000,0x00000000,0x16045fe3]
+array-tile-load record=54 tile-program=0
+array-tile-load record=55 tile-program=1
 control-program records=10 writes=3 masked-writes=2 block-writes=3 tile-loads=0 waits=2 relocations=3
 control-block record=0 address=0x0001d000 words=[0x00000003,0x00000000,0x00000000,0x00100000,0xc0000001,0x02000000,0x00000000,0x02000000]
 control-write record=1 address=0x0001d214 value=0x00000000

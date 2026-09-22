@@ -28,6 +28,45 @@ from loom.target.arch.amd.xdna.array.npu2 import (
 )
 
 
+@pytest.mark.parametrize("tile_kind", tuple(TileKind))
+def test_validator_rejects_dma_mapping_outside_stream_ports(
+    tile_kind: TileKind,
+) -> None:
+    family = NPU2_ARRAY_FAMILY
+    port = StreamPort.SOUTH if tile_kind is TileKind.SHIM_NOC else StreamPort.DMA
+    capacity = next(
+        row.count
+        for row in family.stream_ports
+        if row.tile_kind is tile_kind
+        and row.direction is StreamDirection.SLAVE
+        and row.port is port
+    )
+    tiles = tuple(
+        replace(tile, dma=replace(tile.dma, memory_to_stream_port_base=capacity))
+        if tile.kind is tile_kind
+        else tile
+        for tile in family.tiles
+    )
+    with pytest.raises(ValueError, match="DMA mapping exceeds"):
+        validate_array_family(replace(family, tiles=tiles))
+
+
+def test_validator_rejects_missing_routing_port() -> None:
+    family = NPU2_ARRAY_FAMILY
+    # The last ordinal row can disappear without breaking ordinal density.
+    ports = tuple(
+        row
+        for row in family.stream_ports
+        if not (
+            row.tile_kind is TileKind.COMPUTE
+            and row.direction is StreamDirection.MASTER
+            and row.port is StreamPort.EAST
+        )
+    )
+    with pytest.raises(ValueError, match="missing routing port east"):
+        validate_array_family(replace(family, stream_ports=ports))
+
+
 def test_npu2_topology_and_resource_domains_are_complete() -> None:
     family = NPU2_ARRAY_FAMILY
 

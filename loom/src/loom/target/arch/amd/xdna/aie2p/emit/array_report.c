@@ -441,9 +441,8 @@ iree_status_t loom_aie2p_array_report_record(
     const loom_aie2p_array_worker_t* worker = &plan->workers[i];
     const loom_aie2p_leaf_realization_t* realization =
         &tiles[i].contribution->realization;
-    const loom_xdna_tile_facts_t* tile_facts = NULL;
-    IREE_RETURN_IF_ERROR(loom_xdna_array_tile_facts(
-        plan->family, worker->coordinate, &tile_facts));
+    const loom_xdna_tile_facts_t* tile_facts =
+        loom_xdna_array_tile_facts(plan->family, worker->coordinate);
     loom_aie2p_array_report_tile_usage_t usage = {0};
     loom_aie2p_array_report_query_tile_usage(plan, worker->coordinate,
                                              &tile_facts->memory, &usage);

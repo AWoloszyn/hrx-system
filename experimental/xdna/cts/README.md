@@ -62,6 +62,17 @@ random inputs; binding tails and unchanged inputs are checked as well. This test
 uses the same native execution path and resource lease without requiring the
 C++ importer.
 
+`multicast_npu2_test` distributes eight A streams to two consumers each and two
+distinct B streams to eight consumers each. Sixteen workers span eight columns
+and two rows, retaining separate capacity-two or capacity-three receiver rings.
+Each consumes 33 records, repeatedly wrapping both input rings and its
+capacity-two output ring. An input-dependent modulo-2^32 recurrence varies the
+work across consumers and records; its final state contributes to every output
+word. The independent integer oracle checks all 8,448 output words, unchanged
+inputs and head/tail guards through three establishing invocations. This is
+finite multicast/backpressure coverage, not a timing or changed-image lifecycle
+test.
+
 `temporal_fold_npu2_test` covers first-copy bits independently from subsequent
 addition: a one-record 1024-element F32 fold preserves negative zero, while
 three-record 1024- and 80-element folds check ordered cancellation, exactly

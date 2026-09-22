@@ -741,14 +741,18 @@ static iree_status_t loom_spirv_low_verify_packet(
 
 static iree_status_t loom_spirv_low_verify_transfer(
     loom_spirv_low_verify_state_t* state, const loom_op_t* op) {
-  loom_spirv_value_type_t source_type = {0};
-  if (!loom_spirv_low_value_type_table_lookup(
-          &state->value_types, loom_op_const_operands(op)[0], &source_type)) {
-    return iree_ok_status();
+  const loom_value_id_t* operands = loom_op_const_operands(op);
+  const loom_value_id_t* results = loom_op_const_results(op);
+  iree_status_t status = iree_ok_status();
+  for (uint16_t i = 0; i < op->result_count && iree_status_is_ok(status); ++i) {
+    loom_spirv_value_type_t source_type = {0};
+    if (loom_spirv_low_value_type_table_lookup(&state->value_types, operands[i],
+                                               &source_type)) {
+      status = loom_spirv_low_value_type_table_define(
+          &state->value_types, results[i], source_type, state->arena);
+    }
   }
-  return loom_spirv_low_value_type_table_define(&state->value_types,
-                                                loom_op_const_results(op)[0],
-                                                source_type, state->arena);
+  return status;
 }
 
 static iree_status_t loom_spirv_low_emit_return_type_mismatch(
@@ -1363,6 +1367,11 @@ static iree_status_t loom_spirv_low_verify_op(
     return iree_ok_status();
   }
   const loom_op_t* op = packet->op;
+  if (loom_traits_are_compile_time_only(op->traits)) {
+    // Compile-time results are ordinal storage identities. Resultless hints
+    // need no type entries; required native scheduling was checked upstream.
+    return loom_spirv_low_verify_transfer(state, op);
+  }
   if (loom_low_return_isa(op)) {
     return loom_spirv_low_verify_return(context, state, op);
   }

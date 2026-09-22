@@ -1668,6 +1668,20 @@ ERR_TARGET_091 = ErrorDef(
     fix_hint="Convert returning values to a representation supported on every path.",
 )
 
+# ERR_TARGET_092: An array stream cannot be routed within link capacity.
+ERR_TARGET_092 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=92,
+    severity=Severity.ERROR,
+    summary="Array stream link capacity is exhausted.",
+    message=(
+        "AIE2P array channel {channel} cannot be routed because a stream link "
+        "has no free channels"
+    ),
+    params=(ErrorParam("channel", ParamKind.U32),),
+    fix_hint="Reduce independent streams crossing the link or change worker placement.",
+)
+
 # ERR_TARGET_093: AIE2P array pipeline requires kernel materialization scope.
 ERR_TARGET_093 = ErrorDef(
     domain=ErrorDomain.TARGET,
@@ -1753,6 +1767,72 @@ ERR_TARGET_097 = ErrorDef(
     fix_hint="Split the stages across groups or reduce distinct boundary flows.",
 )
 
+# ERR_TARGET_120: A worker coordinate lies outside the physical array.
+ERR_TARGET_120 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=120,
+    severity=Severity.ERROR,
+    summary="Array worker coordinate is outside the device.",
+    message=(
+        "AIE2P worker coordinate ({column}, {row}) is outside the "
+        "{column_count}-column, {row_count}-row array"
+    ),
+    params=(
+        ErrorParam("column", ParamKind.U32),
+        ErrorParam("row", ParamKind.U32),
+        ErrorParam("column_count", ParamKind.U32),
+        ErrorParam("row_count", ParamKind.U32),
+    ),
+    fix_hint="Place the worker on a compute tile within the physical array.",
+)
+
+# ERR_TARGET_123: AIE2P array body contains an operation outside its topology.
+ERR_TARGET_123 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=123,
+    severity=Severity.ERROR,
+    summary="AIE2P array body contains a non-topology operation.",
+    message=(
+        "AIE2P array programs contain topology packets and low.return; "
+        "'{op_name}' is not an array topology operation"
+    ),
+    params=(ErrorParam("op_name", ParamKind.STRING),),
+    fix_hint="Place executable computation in a resident core worker.",
+)
+
+# ERR_TARGET_124: AIE2P array packet result requires a tile payload.
+ERR_TARGET_124 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=124,
+    severity=Severity.ERROR,
+    summary="AIE2P array packet result requires a tile payload.",
+    message=(
+        "AIE2P array descriptor '{descriptor}' requires a tile-valued result "
+        "register; got {result_type}"
+    ),
+    params=(
+        ErrorParam("descriptor", ParamKind.STRING),
+        ErrorParam("result_type", ParamKind.TYPE),
+    ),
+    fix_hint="Specify the transported tile type in the result register.",
+)
+
+# ERR_TARGET_125: AIE2P resident worker materialization requires a definition.
+ERR_TARGET_125 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=125,
+    severity=Severity.ERROR,
+    summary="AIE2P resident worker materialization requires a definition.",
+    message=(
+        "AIE2P resident worker '@{entry}' requires a local core function "
+        "definition before array materialization"
+    ),
+    params=(ErrorParam("entry", ParamKind.STRING),),
+    fix_hint=(
+        "Link the core worker definition into the module before emitting the array."
+    ),
+)
+
 ALL_TARGET_ERRORS = (
     ERR_TARGET_001,
     ERR_TARGET_002,
@@ -1835,9 +1915,14 @@ ALL_TARGET_ERRORS = (
     ERR_TARGET_089,
     ERR_TARGET_090,
     ERR_TARGET_091,
+    ERR_TARGET_092,
     ERR_TARGET_093,
     ERR_TARGET_094,
     ERR_TARGET_095,
     ERR_TARGET_096,
     ERR_TARGET_097,
+    ERR_TARGET_120,
+    ERR_TARGET_123,
+    ERR_TARGET_124,
+    ERR_TARGET_125,
 )

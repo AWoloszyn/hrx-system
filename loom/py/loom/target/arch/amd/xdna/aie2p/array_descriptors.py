@@ -454,6 +454,7 @@ AIE2P_ARRAY_DESCRIPTOR_SET = DescriptorSet(
     c_table_prefix="Aie2pArray",
     c_enum_prefix="AIE2P_ARRAY",
     generator_version=2,
+    requires_structured_control_flow=True,
     reg_classes=(
         _reference_reg_class(_REG_SCALAR),
         _reference_reg_class(_REG_OFFSET, bit_width=64),

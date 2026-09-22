@@ -158,11 +158,6 @@ static iree_status_t loom_aie2p_xdna_collect_source_leaves(
       ++leaf_count;
     }
   }
-  if (leaf_count == 0) {
-    return iree_make_status(IREE_STATUS_NOT_FOUND,
-                            "AIE2P array program has no core workers");
-  }
-
   loom_aie2p_array_leaf_t* leaves = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       request->scratch_arena, leaf_count, sizeof(*leaves), (void**)&leaves));
@@ -235,9 +230,8 @@ static iree_status_t loom_aie2p_xdna_plan_tile_link(
 
   const loom_xdna_tile_coordinate_t coordinate =
       plan->worker_plans[worker_index].coordinate;
-  const loom_xdna_tile_facts_t* tile = NULL;
-  IREE_RETURN_IF_ERROR(
-      loom_xdna_array_tile_facts(plan->family, coordinate, &tile));
+  const loom_xdna_tile_facts_t* tile =
+      loom_xdna_array_tile_facts(plan->family, coordinate);
   if (tile->kind != LOOM_XDNA_TILE_KIND_COMPUTE) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "AIE2P resident worker is not on a compute tile");
@@ -366,10 +360,14 @@ iree_status_t loom_aie2p_xdna_artifact_emit(
       loom_target_compile_report_record_low_kernel_workload(
           request->compile_report, source_entry->function_op);
     }
+    bool valid = false;
     IREE_RETURN_IF_ERROR(loom_aie2p_array_plan_build(
         request->module, source_entry->function_op, source_leaves,
         source_leaf_count, request->diagnostic_emitter, request->scratch_arena,
-        &array_plans[i]));
+        &array_plans[i], &valid));
+    if (!valid) {
+      return iree_ok_status();
+    }
     IREE_RETURN_IF_ERROR(loom_aie2p_array_program_build(
         &array_plans[i], request->scratch_arena, &array_programs[i]));
     loom_aie2p_array_resident_program_t resident_program = {0};

@@ -358,6 +358,46 @@ def _validate_stream_ports(family: ArrayFamily) -> None:
                     )
                 expected_ordinal += row.count
 
+    ranges = {
+        (row.tile_kind, row.direction, row.port): row for row in family.stream_ports
+    }
+    for tile in family.tiles:
+        routing_ports = (StreamPort.NORTH, StreamPort.SOUTH)
+        if tile.kind is not TileKind.MEMORY:
+            routing_ports += (StreamPort.WEST, StreamPort.EAST)
+        for direction in StreamDirection:
+            for port in (*routing_ports, StreamPort.TILE_CONTROL):
+                if (tile.kind, direction, port) not in ranges:
+                    raise ValueError(
+                        f"{tile.kind.value}.{direction.value}: missing routing "
+                        f"port {port.value}"
+                    )
+        dma = tile.dma
+        if dma is None:
+            continue
+        port = StreamPort.SOUTH if tile.kind is TileKind.SHIM_NOC else StreamPort.DMA
+        for direction, base, stride in (
+            (
+                StreamDirection.SLAVE,
+                dma.memory_to_stream_port_base,
+                dma.memory_to_stream_port_stride,
+            ),
+            (
+                StreamDirection.MASTER,
+                dma.stream_to_memory_port_base,
+                dma.stream_to_memory_port_stride,
+            ),
+        ):
+            row = ranges.get((tile.kind, direction, port))
+            if (
+                row is None
+                or base + (dma.channel_count_per_direction - 1) * stride >= row.count
+            ):
+                raise ValueError(
+                    f"{tile.kind.value}.{direction.value}: DMA mapping exceeds "
+                    f"stream port {port.value}"
+                )
+
 
 def _register_offsets(pattern: RegisterPattern) -> tuple[int, ...]:
     if not pattern.dimensions:

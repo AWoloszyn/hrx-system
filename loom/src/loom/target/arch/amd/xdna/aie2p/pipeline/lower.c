@@ -90,9 +90,8 @@ static iree_status_t loom_aie2p_pipeline_placement_initialize(
           .column = column,
           .row = row,
       };
-      const loom_xdna_tile_facts_t* tile = NULL;
-      IREE_RETURN_IF_ERROR(
-          loom_xdna_array_tile_facts(family, coordinate, &tile));
+      const loom_xdna_tile_facts_t* tile =
+          loom_xdna_array_tile_facts(family, coordinate);
       if (tile->kind == LOOM_XDNA_TILE_KIND_COMPUTE) {
         placement->compute_coordinates[placement->compute_coordinate_count++] =
             coordinate;
