@@ -79,6 +79,16 @@ struct TrialControl {
 
 enum class PeerRole { kProducer, kConsumer };
 
+// Original receive views owned beyond the callback by a moved lease.
+struct RetainedCommand {
+  // Signal metadata reread when consuming the message, not copied on receipt.
+  iree_net_queue_frontier_view_t signal_frontier;
+  // Original bytes that must remain valid until consumption.
+  iree_const_byte_span_t payload;
+  // Moved endpoint storage ownership, returned by the receiving poll owner.
+  iree_async_buffer_lease_t lease;
+};
+
 // A concrete checked-transfer application, not a scheduler or HAL emulator.
 struct TransferPeer {
   // Shared immutable workload dimensions.
@@ -113,6 +123,25 @@ struct TransferPeer {
   uint64_t progress_messages = 0;
   // Maximum submitted-minus-observed records on any timeline.
   uint64_t window_high_water = 0;
+  // Observations of independent progress while timeline 0 remains behind.
+  uint64_t independent_progress_messages = 0;
+  // Bounded application ownership for deferred timeline-0 consumption.
+  struct {
+    // Descriptors reserved at setup for at most one record window.
+    std::vector<RetainedCommand> commands;
+    // Last received timeline-0 coordinate, not a completion witness.
+    uint64_t received = 0;
+    // Payload bytes currently held by the commands.
+    uint64_t bytes = 0;
+    // Records checked outside their receive callbacks in the measured phase.
+    uint64_t records = 0;
+    // Completed retained windows in the measured phase.
+    uint64_t windows = 0;
+    // Largest number of held messages in the measured phase.
+    uint64_t messages_high_water = 0;
+    // Largest retained payload footprint in the measured phase.
+    uint64_t bytes_high_water = 0;
+  } retained;
 
   TransferPeer(const TransferTrialOptions& options, TrialControl& control,
                PeerRole role)
@@ -124,11 +153,74 @@ struct TransferPeer {
     for (size_t i = 0; i < payload.size(); ++i) {
       payload[i] = static_cast<uint8_t>((i * 131 + i / 251 + 17) & 0xFF);
     }
+    if (role == PeerRole::kConsumer &&
+        options.consumer_mode == TransferConsumerMode::kRetainedWindow) {
+      retained.commands.reserve(options.window_size);
+    }
   }
 
   ~TransferPeer() {
+    ReleaseRetained();
     iree_net_queue_channel_free(channel);
     iree_net_session_release(session);
+  }
+
+  void ReleaseRetained() {
+    for (auto& command : retained.commands) {
+      iree_async_buffer_lease_release(&command.lease);
+    }
+    retained.commands.clear();
+    retained.bytes = 0;
+  }
+
+  iree_status_t Consume(iree_async_frontier_entry_t entry,
+                        iree_const_byte_span_t bytes) {
+    const uint64_t count = bytes.data_length / options.record_size;
+    if (entry.axis >= kTimelineCount ||
+        entry.epoch != observed[entry.axis] + count ||
+        memcmp(bytes.data, payload.data(), bytes.data_length) != 0) {
+      return iree_make_status(IREE_STATUS_DATA_LOSS,
+                              "checked-transfer bytes or timeline differ");
+    }
+    observed[entry.axis] = entry.epoch;
+    return iree_ok_status();
+  }
+
+  void ConsumeRetained() {
+    if (retained.commands.empty()) {
+      return;
+    }
+    const uint64_t phase_end =
+        observed[0] < options.warmup_records
+            ? options.warmup_records
+            : options.warmup_records + options.measured_records;
+    const uint64_t window_end =
+        observed[0] +
+        std::min<uint64_t>(options.window_size, phase_end - observed[0]);
+    if (retained.received != window_end || submitted[1] < window_end) {
+      return;
+    }
+    // Timeline 1's earlier ADVANCE is already captured by the transport. The
+    // producer can observe that independent progress before this completion.
+    iree_status_t status = iree_ok_status();
+    for (size_t i = 0;
+         i < retained.commands.size() && iree_status_is_ok(status); ++i) {
+      const auto& command = retained.commands[i];
+      auto entry =
+          iree_net_queue_frontier_view_get(&command.signal_frontier, 0);
+      if (entry.axis != 0) {
+        status = iree_make_status(IREE_STATUS_DATA_LOSS,
+                                  "retained timeline metadata changed");
+      } else {
+        status = Consume(entry, command.payload);
+      }
+    }
+    if (iree_status_is_ok(status)) {
+      retained.records += retained.bytes / options.record_size;
+      ++retained.windows;
+    }
+    ReleaseRetained();
+    control.Fail(status);
   }
 
   static void OnSend(void* user_data, iree_status_t status, iree_host_size_t) {
@@ -189,6 +281,12 @@ struct TransferPeer {
     }
     if (role == PeerRole::kConsumer) {
       FlushProgress();
+      if (!retained.commands.empty()) {
+        ConsumeRetained();
+        if (!control.failed.load(std::memory_order_acquire)) {
+          FlushProgress();
+        }
+      }
       return;
     }
     size_t stalled_timelines = 0;
@@ -258,7 +356,7 @@ struct TransferPeer {
       void* user_data, uint32_t queue_id,
       const iree_net_queue_frontier_view_t* wait_frontier,
       const iree_net_queue_frontier_view_t* signal_frontier,
-      iree_const_byte_span_t payload, iree_async_buffer_lease_t*) {
+      iree_const_byte_span_t payload, iree_async_buffer_lease_t* lease) {
     auto& peer = *static_cast<TransferPeer*>(user_data);
     if (peer.role != PeerRole::kConsumer ||
         queue_id != IREE_NET_QUEUE_ID_NONE || wait_frontier->count != 0 ||
@@ -273,15 +371,27 @@ struct TransferPeer {
       return iree_make_status(IREE_STATUS_DATA_LOSS,
                               "invalid checked-transfer payload extent");
     }
-    const uint64_t count = payload.data_length / peer.options.record_size;
-    if (entry.epoch != peer.observed[entry.axis] + count ||
-        memcmp(payload.data, peer.payload.data(), payload.data_length) != 0) {
-      return iree_make_status(IREE_STATUS_DATA_LOSS,
-                              "checked-transfer bytes or timeline differ");
+    if (entry.axis == 0 &&
+        peer.options.consumer_mode == TransferConsumerMode::kRetainedWindow) {
+      auto& retained = peer.retained;
+      const uint64_t count = payload.data_length / peer.options.record_size;
+      if (entry.epoch != retained.received + count ||
+          entry.epoch - peer.observed[0] > peer.options.window_size ||
+          retained.commands.size() == peer.options.window_size) {
+        return iree_make_status(IREE_STATUS_DATA_LOSS,
+                                "retained command exceeds its window");
+      }
+      retained.commands.push_back({*signal_frontier, payload, *lease});
+      *lease = {};
+      retained.received = entry.epoch;
+      retained.bytes += payload.data_length;
+      retained.messages_high_water = std::max<uint64_t>(
+          retained.messages_high_water, retained.commands.size());
+      retained.bytes_high_water =
+          std::max(retained.bytes_high_water, retained.bytes);
+      return iree_ok_status();
     }
-    // This application consumes each timeline synchronously. The completed
-    // prefix is witnessed by those reads, not inferred from message admission.
-    peer.observed[entry.axis] = entry.epoch;
+    IREE_RETURN_IF_ERROR(peer.Consume(entry, payload));
     if (peer.options.progress_policy == TransferProgressPolicy::kImmediate) {
       peer.FlushProgress();
     }
@@ -307,6 +417,9 @@ struct TransferPeer {
           std::max(peer.observed[entry.axis], entry.epoch);
     }
     ++peer.progress_messages;
+    if (peer.observed[1] > peer.observed[0]) {
+      ++peer.independent_progress_messages;
+    }
     return iree_ok_status();
   }
 
@@ -356,7 +469,8 @@ struct TransferPeer {
 
   bool Done(uint64_t target) const {
     return channel && observed == Positions{target, target} &&
-           submitted == observed && sends == completions;
+           submitted == observed && sends == completions &&
+           retained.commands.empty();
   }
 };
 
@@ -491,6 +605,12 @@ struct TrialSide {
       }
       if (!control.warmup_drained.load(std::memory_order_relaxed) &&
           Done(options.warmup_records)) {
+        for (auto& peer : peers) {
+          peer->retained.records = 0;
+          peer->retained.windows = 0;
+          peer->retained.messages_high_water = 0;
+          peer->retained.bytes_high_water = 0;
+        }
         control.warmup_drained.store(true, std::memory_order_release);
         iree_async_proactor_wake(control.proactors[0]);
       }
@@ -541,8 +661,17 @@ struct TrialSide {
       result->command_messages += peer->sends;
       result->source_completions += peer->completions;
       result->progress_messages += peer->progress_messages;
+      result->independent_progress_messages +=
+          peer->independent_progress_messages;
       result->window_high_water =
           std::max(result->window_high_water, peer->window_high_water);
+      result->retained.records += peer->retained.records;
+      result->retained.windows += peer->retained.windows;
+      result->retained.messages_high_water =
+          std::max(result->retained.messages_high_water,
+                   peer->retained.messages_high_water);
+      result->retained.bytes_high_water = std::max(
+          result->retained.bytes_high_water, peer->retained.bytes_high_water);
     }
   }
 };
@@ -604,6 +733,7 @@ iree_status_t RunTransferTrial(
     }
   }
   control.Fail(status);
+  TransferTrialResult consumer_result;
   std::thread consumer_thread([&] {
     consumer.RunConsumer();
     // A failure wakes the producer, which publishes closing before both owners
@@ -611,6 +741,7 @@ iree_status_t RunTransferTrial(
     while (!control.closing.load(std::memory_order_acquire)) {
       consumer.Poll();
     }
+    consumer.Accumulate(&consumer_result);
     consumer.Shutdown();
   });
 
@@ -640,6 +771,7 @@ iree_status_t RunTransferTrial(
   result.command_messages -= warmup.command_messages;
   result.source_completions -= warmup.source_completions;
   result.progress_messages -= warmup.progress_messages;
+  result.independent_progress_messages -= warmup.independent_progress_messages;
   result.records =
       options.measured_records * kTimelineCount * options.connection_count;
   result.payload_bytes = result.records * options.record_size;
@@ -654,6 +786,7 @@ iree_status_t RunTransferTrial(
   control.Wake();
   producer.Shutdown();
   consumer_thread.join();
+  result.retained = consumer_result.retained;
   if (!control.failed.load(std::memory_order_acquire)) {
     *out_result = result;
   }

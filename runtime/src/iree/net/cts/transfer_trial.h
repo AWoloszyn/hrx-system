@@ -20,6 +20,14 @@ enum class TransferProgressPolicy {
   kPollTurn,
 };
 
+// Application receive ownership, independent of the transport's storage choice.
+enum class TransferConsumerMode {
+  // Check bytes within each receive callback.
+  kInline,
+  // Retain timeline 0 until timeline 1 has reported a whole window's progress.
+  kRetainedWindow,
+};
+
 // Fixed workload shared by transport correctness tests and benchmarks.
 struct TransferTrialOptions {
   // Connections sharing one producer proactor and one consumer proactor.
@@ -38,6 +46,8 @@ struct TransferTrialOptions {
   uint64_t measured_records = 1024;
   // Application policy for sending completed-frontier ADVANCE messages.
   TransferProgressPolicy progress_policy = TransferProgressPolicy::kPollTurn;
+  // Whether one consumer retains original receive storage across callbacks.
+  TransferConsumerMode consumer_mode = TransferConsumerMode::kInline;
 };
 
 // Measurements of the fixed workload, excluding setup, warm-up and teardown.
@@ -58,6 +68,19 @@ struct TransferTrialResult {
   uint64_t progress_messages = 0;
   // Maximum unobserved records on any one timeline during measurement.
   uint64_t window_high_water = 0;
+  // Progress reports showing timeline 1 ahead of timeline 0.
+  uint64_t independent_progress_messages = 0;
+  // Receive ownership measurements, excluding warm-up.
+  struct {
+    // Records checked through original views after their callbacks returned.
+    uint64_t records = 0;
+    // Windows consumed only after independent progress was published.
+    uint64_t windows = 0;
+    // Largest number of simultaneously held messages on any connection.
+    uint64_t messages_high_water = 0;
+    // Largest sum of held payload bytes on any connection, excluding framing.
+    uint64_t bytes_high_water = 0;
+  } retained;
   // Actual producer proactor capabilities after the named backend mask.
   iree_async_proactor_capabilities_t proactor_capabilities = 0;
 };
@@ -78,9 +101,13 @@ struct TransferTrialMeasurement {
 // Runs a checked-transfer trial using real sessions and queue channels.
 //
 // Two application timelines per connection advance independently after payload
-// validation. Each timeline is consumed synchronously in message order; that
-// application contract establishes its completed prefix, not queue submission
-// order. Reporting coalesces only those witnessed coordinates.
+// validation. Each timeline is consumed in message order; that application
+// contract establishes its completed prefix, not queue submission order.
+// Retained-window consumption moves timeline 0's original views and leases out
+// of the receive callback until a window arrives and timeline 1's covering
+// progress report is admitted. The poll owner then checks and releases the
+// retained messages. Phase tails release without waiting for unsubmitted work.
+// Reporting coalesces only witnessed coordinates.
 //
 // The producer runs on the caller, the consumer on a dedicated test-application
 // thread. Each owns its proactor throughout polling and cleanup. Borrowed SG

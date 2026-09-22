@@ -6,6 +6,8 @@
 
 #include "iree/net/cts/transfer_trial.h"
 
+#include <algorithm>
+
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
 
@@ -38,6 +40,24 @@ class TransferTrialTest
     EXPECT_LE(result.progress_messages, result.command_messages);
     EXPECT_GT(result.window_high_water, 0u);
     EXPECT_LE(result.window_high_water, options.window_size);
+    if (options.consumer_mode == TransferConsumerMode::kRetainedWindow) {
+      EXPECT_EQ(result.retained.records,
+                options.connection_count * options.measured_records);
+      EXPECT_EQ(result.retained.windows,
+                options.connection_count *
+                    ((options.measured_records + options.window_size - 1) /
+                     options.window_size));
+      EXPECT_GT(result.retained.messages_high_water, 0u);
+      EXPECT_LE(result.retained.messages_high_water, options.window_size);
+      EXPECT_EQ(
+          result.retained.bytes_high_water,
+          std::min<uint64_t>(options.window_size, options.measured_records) *
+              options.record_size);
+      EXPECT_GT(result.independent_progress_messages, 0u);
+    } else {
+      EXPECT_EQ(result.retained.records, 0u);
+      EXPECT_EQ(result.retained.messages_high_water, 0u);
+    }
   }
 };
 
@@ -73,6 +93,50 @@ TEST_P(TransferTrialTest, BorrowedFragmentsCrossReceiveBufferBoundaries) {
 
 TEST_P(TransferTrialTest, ManyConnectionsSharePollOwnersUnderPressure) {
   TransferTrialOptions options;
+  options.connection_count = 16;
+  options.batch_size = 3;
+  options.window_size = 257;
+  options.fragment_count = 4;
+  options.warmup_records = 7;
+  options.measured_records = 263;
+  Run(options);
+}
+
+TEST_P(TransferTrialTest, RetainedUnitWindowsPreserveIndependentProgress) {
+  TransferTrialOptions options;
+  options.consumer_mode = TransferConsumerMode::kRetainedWindow;
+  options.window_size = 1;
+  options.warmup_records = 3;
+  options.measured_records = 19;
+  options.progress_policy = TransferProgressPolicy::kImmediate;
+  Run(options);
+}
+
+TEST_P(TransferTrialTest, RetainedPartialWindowsReleasePhaseTails) {
+  TransferTrialOptions options;
+  options.consumer_mode = TransferConsumerMode::kRetainedWindow;
+  options.batch_size = 7;
+  options.window_size = 13;
+  options.fragment_count = 4;
+  options.warmup_records = 17;
+  options.measured_records = 113;
+  Run(options);
+}
+
+TEST_P(TransferTrialTest, RetainedViewsOutliveReceiveStorageRecycling) {
+  TransferTrialOptions options;
+  options.consumer_mode = TransferConsumerMode::kRetainedWindow;
+  options.record_size = 65537;
+  options.window_size = 65;
+  options.fragment_count = 4;
+  options.warmup_records = 3;
+  options.measured_records = 131;
+  Run(options);
+}
+
+TEST_P(TransferTrialTest, RetainedWindowsSharePollOwnersUnderPressure) {
+  TransferTrialOptions options;
+  options.consumer_mode = TransferConsumerMode::kRetainedWindow;
   options.connection_count = 16;
   options.batch_size = 3;
   options.window_size = 257;
