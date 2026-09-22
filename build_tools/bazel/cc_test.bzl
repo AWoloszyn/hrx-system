@@ -14,9 +14,8 @@ load(
     rules_cc_test = "cc_test",
 )
 load(
-    "//build_tools/sanitizer:suppressions.bzl",
-    "iree_sanitizer_suppression_data",
-    "iree_sanitizer_suppression_env",
+    "//build_tools/sanitizer:build_defs.bzl",
+    "declare_sanitizer_suppressions",
 )
 load(":cc_attrs.bzl", "cc_attrs")
 load(
@@ -59,8 +58,7 @@ def _iree_cc_test_impl(
         tags,
         resource_group,
         **kwargs):
-    data = iree_sanitizer_suppression_data(data, sanitizer_suppressions)
-    env = iree_sanitizer_suppression_env(env, sanitizer_suppressions)
+    data = declare_sanitizer_suppressions(name, data, sanitizer_suppressions, testonly = True)
     target_attrs = cc_attrs.collect(
         srcs = srcs,
         hdrs = None,
@@ -110,12 +108,12 @@ iree_cc_test = macro(
             "args": attr.string_list(
                 doc = "Command-line arguments passed to the test binary.",
             ),
-            "dynamic_library_data": None,
-            "dynamic_library_deps": None,
             "env": attr.string_dict(
                 configurable = False,
                 doc = "Environment variables passed to the test binary.",
             ),
+            "execution_data": None,
+            "execution_deps": None,
             "resource_group": attr.string(
                 configurable = False,
                 doc = "Local resource name used to serialize tests competing for the same host resource.",

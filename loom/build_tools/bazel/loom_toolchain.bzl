@@ -6,6 +6,8 @@
 
 """Loom authoring toolchain declarations."""
 
+load("//build_tools/bazel:runfiles.bzl", "IreeRunfilesEnvironmentInfo")
+
 _TOOLCHAIN_TYPES = {
     "benchmark": Label("//loom/build_tools/bazel:benchmark_toolchain_type"),
     "compile": Label("//loom/build_tools/bazel:compile_toolchain_type"),
@@ -19,6 +21,8 @@ def _tool_info(target):
     default_info = target[DefaultInfo]
     return struct(
         executable = default_info.files_to_run.executable,
+        environment = target[RunEnvironmentInfo].environment if RunEnvironmentInfo in target else {},
+        runfiles_environment = target[IreeRunfilesEnvironmentInfo].environment if IreeRunfilesEnvironmentInfo in target else {},
         files_to_run = default_info.files_to_run,
         runfiles = default_info.default_runfiles,
     )

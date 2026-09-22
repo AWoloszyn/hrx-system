@@ -51,6 +51,8 @@ class ToolCommand:
 
     executable: str
     arguments: tuple[str, ...] = ()
+    # Configured runtime environment applied only to this tool's subprocess.
+    environment: dict[str, str] = dataclasses.field(default_factory=dict)
 
 
 def resolve_runfile(path: str) -> Path:
@@ -88,26 +90,28 @@ _SANITIZER_OPTION_ENV_NAMES = (
     "UBSAN_OPTIONS",
 )
 
-_SANITIZER_RUNFILE_OPTIONS = frozenset({"suppressions"})
+# compiler-rt uses the same separators and quoted values on every platform.
+_SANITIZER_SUPPRESSION_OPTION = re.compile(
+    r"""(?P<prefix>(?:^|[:,\s])suppressions=)(?P<value>"[^"]*"|'[^']*'|[^:,\s]+)"""
+)
 
 
 def _resolve_sanitizer_options(value: str) -> str:
     """Resolves runfile paths inside sanitizer option strings."""
-    entries = value.split(os.pathsep)
-    for index, entry in enumerate(entries):
-        key, separator, option_value = entry.partition("=")
-        if (
-            separator
-            and key in _SANITIZER_RUNFILE_OPTIONS
-            and option_value
-            and not Path(option_value).is_absolute()
-        ):
-            try:
-                option_value = str(resolve_runfile(option_value))
-            except FileNotFoundError:
-                pass
-            entries[index] = key + separator + option_value
-    return os.pathsep.join(entries)
+
+    def resolve(match: re.Match[str]) -> str:
+        path = match.group("value")
+        if path.startswith(("'", '"')):
+            path = path[1:-1]
+        if not path or Path(path).is_absolute():
+            return match.group(0)
+        try:
+            resolved = resolve_runfile(path)
+        except FileNotFoundError as exc:
+            raise SchemaError(f"sanitizer suppression file is missing: {path}") from exc
+        return match.group("prefix") + f'"{resolved}"'
+
+    return _SANITIZER_SUPPRESSION_OPTION.sub(resolve, value)
 
 
 def _resolve_sanitizer_env(env: dict[str, str]) -> None:
@@ -341,6 +345,7 @@ class ExecutionRunner:
             case_name, step_name, run.get("stdin", step.get("stdin")), step_outputs
         )
         env = dict(os.environ)
+        env.update(command.environment)
         env.update(
             {
                 key: _as_string(value, f"{case_name}:{step_name}.env[{key!r}]")
@@ -715,6 +720,24 @@ def parse_tool_bindings(
     }
 
 
+def apply_tool_environment(tools: dict[str, ToolCommand], path: str) -> None:
+    """Resolves configured tool environments before cases change directories."""
+    environments = _as_mapping(_load_manifest(resolve_runfile(path)), path)
+    path_pattern = re.compile(
+        r"__IREE_BAZEL_RUNFILE_PATH_BEGIN__(.*?)__IREE_BAZEL_RUNFILE_PATH_END__"
+    )
+    for name, entries in environments.items():
+        if name not in tools:
+            raise SchemaError(f"{path}: environment references unknown tool {name!r}")
+        environment = {}
+        for key, value in _as_mapping(entries, f"{path}:{name}").items():
+            value = _as_string(value, f"{path}:{name}:{key}")
+            environment[key] = path_pattern.sub(
+                lambda match: str(resolve_runfile(match.group(1))), value
+            )
+        tools[name] = dataclasses.replace(tools[name], environment=environment)
+
+
 def run_from_args(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -730,6 +753,9 @@ def run_from_args(argv: list[str]) -> int:
         help="Fixed tool argument as name=argument.",
     )
     parser.add_argument(
+        "--tool-environment", help="Configured per-tool runtime environment JSON."
+    )
+    parser.add_argument(
         "--case", action="append", default=[], help="Only run a case name."
     )
     parser.add_argument(
@@ -741,8 +767,11 @@ def run_from_args(argv: list[str]) -> int:
     args = parser.parse_args(argv)
     if not args.manifest:
         raise SchemaError("at least one --manifest is required")
+    tools = parse_tool_bindings(args.tool, args.tool_arg)
+    if args.tool_environment:
+        apply_tool_environment(tools, args.tool_environment)
     runner = ExecutionRunner(
-        tools=parse_tool_bindings(args.tool, args.tool_arg),
+        tools=tools,
         case_filters=set(args.case),
         keep_temp=args.keep_temp,
         list_only=args.list,

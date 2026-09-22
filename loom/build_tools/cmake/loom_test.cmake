@@ -73,7 +73,7 @@ function(_loom_declare_execution_test ID)
   get_property(IREE_PACKAGE_ROOT_PREFIX GLOBAL PROPERTY "${ID}_PACKAGE_PATH")
   get_property(_ARGUMENTS GLOBAL PROPERTY "${ID}_ARGUMENTS")
   cmake_parse_arguments(
-    _RULE "" "NAME;MODULE;RESOURCE_GROUP" "ARGS;RUNNER_ARGS;LABELS;SANITIZER_SUPPRESSIONS" ${_ARGUMENTS}
+    _RULE "" "NAME;MODULE;RESOURCE_GROUP" "ARGS;RUNNER_ARGS;LABELS" ${_ARGUMENTS}
   )
   if(_RULE_UNPARSED_ARGUMENTS)
     message(FATAL_ERROR "Unknown loom_execution_test arguments: ${_RULE_UNPARSED_ARGUMENTS}")
@@ -88,7 +88,6 @@ function(_loom_declare_execution_test ID)
     DATA ${_DATA}
     LABELS ${_RULE_LABELS}
     RESOURCE_GROUP "${_RULE_RESOURCE_GROUP}"
-    SANITIZER_SUPPRESSIONS ${_RULE_SANITIZER_SUPPRESSIONS}
   )
   iree_native_test(
     NAME "${_RULE_NAME}_benchmark"
@@ -98,7 +97,6 @@ function(_loom_declare_execution_test ID)
     DATA ${_DATA}
     LABELS ${_RULE_LABELS}
     RESOURCE_GROUP "${_RULE_RESOURCE_GROUP}"
-    SANITIZER_SUPPRESSIONS ${_RULE_SANITIZER_SUPPRESSIONS}
   )
   iree_package_name(_PACKAGE_NAME)
   foreach(_SUFFIX "" "_benchmark")

@@ -35,9 +35,9 @@ endif()
 
 add_executable(reader reader.cc)
 add_executable(iree::tools::runner ALIAS reader)
+iree_target_sanitizer_suppressions(reader SUPPRESSIONS lsan fixture)
 iree_execution_test_suite(NAME execution_reader
-  MANIFESTS suppression.test.json TOOLS reader=reader
-  SANITIZER_SUPPRESSIONS lsan fixture)
+  MANIFESTS suppression.test.json TOOLS reader=reader)
 iree_py_test(NAME python_reader MAIN reader.py SRCS reader.py reader_helper.py
   PACKAGE_DIRS "${CMAKE_CURRENT_SOURCE_DIR}"
   ARGS "{{$<TARGET_FILE:late_reader>}}" "{{${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt}}")
@@ -90,5 +90,7 @@ iree_native_test(NAME source_working_directory SRC reader
 add_subdirectory(nested)
 add_subdirectory(converted)
 iree_finalize_target_dependencies()
+iree_finalize_sanitizer_suppressions()
+iree_finalize_execution_tool_environments()
 iree_create_ctest_customization()
 hrx_create_installed_tests()

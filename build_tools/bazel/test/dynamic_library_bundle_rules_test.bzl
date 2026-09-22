@@ -14,9 +14,9 @@ load(
     "//build_tools/bazel:dynamic_library_bundle.bzl",
     "IreeDynamicLibraryBindingsInfo",
     "IreeDynamicLibraryBundleInfo",
-    "collect_dynamic_library_bundles",
     "iree_dynamic_library_bundle",
 )
+load("//build_tools/bazel:execution_requirements.bzl", "collect_execution_requirements")
 
 _TEST_ENVIRONMENT_NAME = "IREE_TEST_DYNAMIC_LIBRARY_PATH"
 
@@ -27,7 +27,7 @@ _collect_bindings = rule(
     implementation = _collect_bindings_impl,
     attrs = {
         "target": attr.label(
-            aspects = [collect_dynamic_library_bundles],
+            aspects = [collect_execution_requirements],
             mandatory = True,
         ),
     },

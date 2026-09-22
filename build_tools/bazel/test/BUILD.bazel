@@ -35,6 +35,8 @@ load(":query_rules_test.bzl", "query_rules_test_suite")
 
 package(default_visibility = ["//visibility:public"])
 
+exports_files(["empty_suppressions.txt"])
+
 iree_dynamic_library_bundle(
     name = "dynamic_library_environment_bundle",
     srcs = [

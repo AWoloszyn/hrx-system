@@ -139,7 +139,6 @@ iree_runtime_cc_test(
 iree_runtime_cc_test(
     name = "buffer_tests",
     srcs = ["//runtime/src/iree/hal/cts/util:test_main.cc"],
-    sanitizer_suppressions = vulkan_suppressions,
     deps = [
         ":backends",
         "//runtime/src/iree/base/tooling:flags",

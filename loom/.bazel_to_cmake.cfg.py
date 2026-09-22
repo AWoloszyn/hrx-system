@@ -348,7 +348,6 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         build_requirements=None,
         run_requirements=None,
         resource_group=None,
-        sanitizer_suppressions=None,
         tags=None,
     ):
         self._reject_workload_args(name, runner_args)
@@ -362,7 +361,6 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             "build_requirements": build_requirements or [],
             "run_requirements": run_requirements or [],
             "resource_group": resource_group,
-            "sanitizer_suppressions": sanitizer_suppressions,
             "tags": tags or [],
         }
 
@@ -557,9 +555,6 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             ),
             self._convert_string_list_block("LABELS", labels, sort=False),
             self._convert_string_arg_block("RESOURCE_GROUP", policy.resource_group),
-            self._convert_sanitizer_suppressions_block(
-                profile["sanitizer_suppressions"]
-            ),
         ]
         self._emit_platform_guard_begin(policy.cmake_conditions())
         self._converter.body += "loom_execution_test(\n" + "".join(blocks) + ")\n\n"

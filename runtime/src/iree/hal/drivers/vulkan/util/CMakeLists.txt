@@ -25,6 +25,9 @@ iree_cc_library(
     iree::base::internal::path
     iree::hal::drivers::vulkan::api
     iree::third_party::vulkan_headers
+  SANITIZER_SUPPRESSIONS
+    lsan
+    vulkan
   PUBLIC
 )
 endif()

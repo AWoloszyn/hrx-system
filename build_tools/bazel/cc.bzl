@@ -21,6 +21,7 @@ load(
     "@rules_cc//cc/private/rules_impl:cc_binary.bzl",
     rules_cc_binary = "cc_binary",
 )
+load("//build_tools/sanitizer:build_defs.bzl", "declare_sanitizer_suppressions")
 load(":cc_attrs.bzl", "cc_attrs")
 load(
     ":cc_execution.bzl",
@@ -59,7 +60,9 @@ def _iree_cc_library_impl(
         linkopts,
         linkstatic,
         alwayslink,
+        sanitizer_suppressions,
         **kwargs):
+    data = declare_sanitizer_suppressions(name, data, sanitizer_suppressions, kwargs.get("testonly", False))
     target_attrs = cc_attrs.collect(
         srcs = srcs,
         hdrs = hdrs,
@@ -101,6 +104,10 @@ iree_cc_library = macro(
         {
             "alwayslink": attr.bool(
                 doc = "Whether to force this library into binaries that depend on it.",
+            ),
+            "sanitizer_suppressions": attr.string_dict(
+                configurable = False,
+                doc = "Sanitizer suppression files owned by this runtime dependency.",
             ),
         },
     ),
@@ -173,8 +180,8 @@ iree_cc_binary = macro(
             "args": attr.string_list(
                 doc = "Command-line arguments used when this binary is run by Bazel.",
             ),
-            "dynamic_library_data": None,
-            "dynamic_library_deps": None,
+            "execution_data": None,
+            "execution_deps": None,
             "linkshared": attr.bool(
                 doc = "Whether to create a shared library.",
             ),

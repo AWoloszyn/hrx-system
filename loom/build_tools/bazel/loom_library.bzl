@@ -9,11 +9,7 @@
 load("@rules_shell//shell:sh_test.bzl", "sh_test")
 load("//build_tools/bazel:cc_attrs.bzl", "cc_attrs")
 load("//build_tools/bazel:requirements.bzl", "apply_test_requirements")
-load(
-    "//build_tools/sanitizer:suppressions.bzl",
-    "iree_sanitizer_suppression_data",
-    "iree_sanitizer_suppression_env",
-)
+load("//build_tools/bazel:runfiles.bzl", "RUNFILES_PATH_BEGIN", "RUNFILES_PATH_END")
 load(":loom_binary.bzl", "LoomBinaryInfo", "loom_kernel_binary")
 load(":loom_check.bzl", "loom_check_compile_tests")
 load(
@@ -70,7 +66,6 @@ def loom_execution_profile(
         build_requirements = [],
         run_requirements = [],
         resource_group = None,
-        sanitizer_suppressions = None,
         tags = []):
     """Defines immutable policy for Loom test execution.
 
@@ -84,8 +79,6 @@ def loom_execution_profile(
       build_requirements: Build requirements needed by the execution runners.
       run_requirements: Runtime resources needed to execute the test.
       resource_group: Optional local resource group serializing competing tests.
-      sanitizer_suppressions: Sanitizer suppression files keyed by sanitizer
-        name and required by the execution environment.
       tags: Additional stable tags applied to generated tests.
 
     Returns:
@@ -129,7 +122,6 @@ def loom_execution_profile(
         resource_group = resource_group,
         run_requirements = run_requirements,
         runner_args = runner_args,
-        sanitizer_suppressions = sanitizer_suppressions,
         tags = tags,
         target_class = target_class,
         target_family = target_family,
@@ -240,6 +232,20 @@ def _tool_runfiles(ctx, tool, files):
 def _shell_quote(value):
     return "'" + value.replace("'", "'\"'\"'") + "'"
 
+def _tool_environment(tool):
+    # The launcher has entered the workspace runfiles directory. Resolve only
+    # graph-proven path spans so each child receives its own runtime policy.
+    entries = []
+    for name, value in sorted(tool.environment.items()):
+        if name in tool.runfiles_environment:
+            value = _shell_quote(tool.runfiles_environment[name])
+            value = value.replace(RUNFILES_PATH_BEGIN, "'\"${PWD}/")
+            value = value.replace(RUNFILES_PATH_END, "\"'")
+        else:
+            value = _shell_quote(value)
+        entries.append(name + "=" + value)
+    return "env " + " ".join(entries) + " " if entries else ""
+
 def _write_test_launcher(ctx, tool, input_file, tool_args):
     output = ctx.actions.declare_file(ctx.label.name + ".sh")
     command_args = "".join([
@@ -251,10 +257,11 @@ def _write_test_launcher(ctx, tool, input_file, tool_args):
         "set -euo pipefail\n" +
         "RUNFILES=\"${{RUNFILES_DIR:-$0.runfiles}}\"\n" +
         "cd \"${{RUNFILES}}/{workspace}\"\n" +
-        "exec \"${{PWD}}/{tool}\" \"${{PWD}}/{input}\"{args}\n"
+        "exec {environment}\"${{PWD}}/{tool}\" \"${{PWD}}/{input}\"{args}\n"
     ).format(
         workspace = ctx.workspace_name,
         tool = tool.executable.short_path,
+        environment = _tool_environment(tool),
         input = input_file.short_path,
         args = command_args,
     )
@@ -286,11 +293,13 @@ def _write_execution_test_launcher(
         "set -euo pipefail\n" +
         "RUNFILES=\"${{RUNFILES_DIR:-$0.runfiles}}\"\n" +
         "cd \"${{RUNFILES}}/{workspace}\"\n" +
-        "\"${{PWD}}/{test_tool}\" \"${{PWD}}/{module}\"{test_args}\n" +
-        "exec \"${{PWD}}/{benchmark_tool}\" \"${{PWD}}/{module}\"{benchmark_args}\n"
+        "{test_environment}\"${{PWD}}/{test_tool}\" \"${{PWD}}/{module}\"{test_args}\n" +
+        "exec {benchmark_environment}\"${{PWD}}/{benchmark_tool}\" \"${{PWD}}/{module}\"{benchmark_args}\n"
     ).format(
         workspace = ctx.workspace_name,
         test_tool = test_tool.executable.short_path,
+        test_environment = _tool_environment(test_tool),
+        benchmark_environment = _tool_environment(benchmark_tool),
         benchmark_tool = benchmark_tool.executable.short_path,
         module = module.short_path,
         test_args = test_args,
@@ -550,16 +559,6 @@ def _declare_execution_test(
         run_requirements = profile.run_requirements,
         resource_group = profile.resource_group,
     )
-    test_kwargs["data"] = iree_sanitizer_suppression_data(
-        [],
-        profile.sanitizer_suppressions,
-    )
-    test_env = iree_sanitizer_suppression_env(
-        None,
-        profile.sanitizer_suppressions,
-    )
-    if test_env:
-        test_kwargs["env"] = test_env
     if target_compatible_with:
         test_kwargs["target_compatible_with"] = test_kwargs.get("target_compatible_with", []) + target_compatible_with
     resource_group = test_kwargs.pop("resource_group", None)

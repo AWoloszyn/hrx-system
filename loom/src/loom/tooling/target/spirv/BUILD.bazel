@@ -259,11 +259,7 @@ iree_executable_test(
     ],
     data = [
         "test/multiple_entries.loom",
-        vulkan_suppressions["lsan"],
     ],
-    env = {
-        "LSAN_OPTIONS": "suppressions=$(location " + vulkan_suppressions["lsan"] + "):allow_addr2line=1",
-    },
     resource_group = GPU_DEVICE_RESOURCE_GROUP,
     tags = [
         "iree-run-requirement=vulkan.resource.device",

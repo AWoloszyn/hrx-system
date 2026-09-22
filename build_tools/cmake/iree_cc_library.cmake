@@ -4,6 +4,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+include("${CMAKE_CURRENT_LIST_DIR}/../sanitizer/iree_sanitizer_suppressions.cmake")
+
 # iree_cc_library()
 #
 # CMake function to imitate Bazel's cc_library rule.
@@ -16,6 +18,7 @@
 # SRCS: List of source files for the library
 # DATA: List of other targets and files required for this binary
 # DEPS: List of other libraries to be linked in to the binary targets
+# SANITIZER_SUPPRESSIONS: Sanitizer/name pairs owned by this runtime dependency.
 # COPTS: List of private compile options
 # CXX_STANDARD: Optional C++ standard version, such as 23.
 # CXX_FEATURES: Required private C++ runtime features: exceptions and rtti.
@@ -65,7 +68,7 @@ function(iree_cc_library)
     _RULE
     "PUBLIC;TESTONLY;SHARED;ALWAYSLINK"
     "PACKAGE;NAME;WINDOWS_DEF_FILE;CXX_STANDARD"
-    "HDRS;TEXTUAL_HDRS;SRCS;COPTS;CXX_FEATURES;DEFINES;LINKOPTS;DATA;DEPS;INCLUDES;SYSTEM_INCLUDES"
+    "HDRS;TEXTUAL_HDRS;SRCS;COPTS;CXX_FEATURES;DEFINES;LINKOPTS;DATA;DEPS;INCLUDES;SYSTEM_INCLUDES;SANITIZER_SUPPRESSIONS"
     ${ARGN}
   )
 
@@ -247,7 +250,8 @@ function(iree_cc_library)
         ${IREE_DEFAULT_LINK_LIBRARIES}
     )
 
-    iree_add_data_dependencies(NAME ${_NAME} DATA ${_RULE_DATA})
+    iree_add_data_dependencies(NAME ${_NAME} DATA ${_RULE_DATA}
+      OUT_TARGET_DATA _DATA_TARGETS)
     target_compile_definitions(${_NAME}
       PUBLIC
         ${_RULE_DEFINES}
@@ -359,7 +363,8 @@ function(iree_cc_library)
         ${_RULE_DEPS}
     )
 
-    iree_add_data_dependencies(NAME ${_NAME} DATA ${_RULE_DATA})
+    iree_add_data_dependencies(NAME ${_NAME} DATA ${_RULE_DATA}
+      OUT_TARGET_DATA _DATA_TARGETS)
 
     if(BUILD_SHARED_LIBS AND IREE_SUPPORTS_VISIBILITY_DEFAULT)
       target_compile_options(${_OBJECTS_NAME} PRIVATE
@@ -404,7 +409,8 @@ function(iree_cc_library)
         ${_RULE_DEPS}
     )
     _iree_cc_library_add_object_deps(${_NAME} ${_RULE_DEPS})
-    iree_add_data_dependencies(NAME ${_NAME} DATA ${_RULE_DATA})
+    iree_add_data_dependencies(NAME ${_NAME} DATA ${_RULE_DATA}
+      OUT_TARGET_DATA _DATA_TARGETS)
     target_compile_definitions(${_NAME}
       INTERFACE
         ${_RULE_DEFINES}
@@ -462,6 +468,9 @@ function(iree_cc_library)
       iree_add_alias_library(${_PACKAGE_NS} ${_NAME})
     endif()
   endif()
+  iree_target_sanitizer_suppressions("${_NAME}"
+    DEPS ${_RULE_DEPS} ${_DATA_TARGETS}
+    SUPPRESSIONS ${_RULE_SANITIZER_SUPPRESSIONS})
 endfunction()
 
 # _iree_cc_library_add_object_deps()
@@ -586,6 +595,7 @@ function(iree_cc_unified_library)
     PUBLIC
       $<TARGET_PROPERTY:${_RULE_ROOT},INTERFACE_LINK_LIBRARIES>
   )
+  iree_target_sanitizer_suppressions("${_NAME}" DEPS "${_RULE_ROOT}")
 
   iree_install_targets(
     TARGETS ${_NAME}

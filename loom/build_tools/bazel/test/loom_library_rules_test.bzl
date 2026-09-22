@@ -33,17 +33,6 @@ SERIALIZED_REFERENCE_PROFILE = loom_execution_profile(
     target_family = "test",
 )
 
-SUPPRESSED_REFERENCE_PROFILE = loom_execution_profile(
-    name = "suppressed_reference",
-    executor = "reference",
-    runner_args = ["--max-samples-per-case=1"],
-    sanitizer_suppressions = {
-        "lsan": "//build_tools/sanitizer:lsan_suppressions_vulkan.txt",
-    },
-    target_class = "cpu",
-    target_family = "test",
-)
-
 def _find_action(env, actions, mnemonic):
     for action in actions:
         if action.mnemonic == mnemonic:
@@ -419,27 +408,6 @@ def _test_execution_module_links_root_tests_impl(env, target):
     _expect_no_basename(env, inputs, "profile_cases.loom")
     _expect_no_basename(env, inputs, "profile_benchmarks.loom")
 
-def _test_suppression_profile_configures_test_environment(name, **kwargs):
-    analysis_test(
-        name = name,
-        attr_values = {
-            "timeout": "short",
-        },
-        impl = _test_suppression_profile_configures_test_environment_impl,
-        target = ":suppressed_profile_test_execute_suppressed_reference_test",
-        **kwargs
-    )
-
-def _test_suppression_profile_configures_test_environment_impl(env, target):
-    test_env = target[TestingAspectInfo].attrs.env
-    expected = (
-        "suppressions=$(location " +
-        "//build_tools/sanitizer:lsan_suppressions_vulkan.txt):" +
-        "allow_addr2line=1"
-    )
-    if test_env.get("LSAN_OPTIONS") != expected:
-        env.fail("unexpected LSAN_OPTIONS in %r" % test_env)
-
 def loom_library_rules_test_suite(name):
     test_suite(
         name = name,
@@ -452,7 +420,6 @@ def loom_library_rules_test_suite(name):
             _test_library_keeps_dependency_module_separate,
             _test_redundant_direct_dependency_is_not_transitive,
             _test_resource_profile_preserves_direct_execution,
-            _test_suppression_profile_configures_test_environment,
             _test_transitive_audit_universe_is_separate,
         ],
     )

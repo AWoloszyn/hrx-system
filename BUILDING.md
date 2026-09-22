@@ -314,6 +314,18 @@ python dev.py bazel test //runtime/... --config=asan
 python dev.py bazel test //runtime/src/iree/async/... --config=tsan
 ```
 
+External runtime integrations declare `sanitizer_suppressions` on their owning
+library. C/C++ tests and tools inherit those sets through their configured
+dependencies; multiple files for the same sanitizer are concatenated into one
+file. For example, a tool with both Vulkan and HSA integrations receives both
+sets in its `LSAN_OPTIONS`. SDK headers alone carry no driver suppression policy.
+
+Bazel run/test, the `iree-bazel-*` launch wrappers, Loom test launchers, and CTest
+supply this environment and the required files. Installed CTest suites package
+and relocate the files with their tests. A raw executable launched outside these
+runners requires its own sanitizer environment. Suppression metadata selects
+runtime policy; the build configuration still selects instrumentation.
+
 ## IREE CI Reproduction
 
 Test jobs declare the execution resources assigned to their runner. Every

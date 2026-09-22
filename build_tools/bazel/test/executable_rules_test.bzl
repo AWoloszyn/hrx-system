@@ -7,7 +7,8 @@
 """Analysis tests for executable wrapper Bazel rules."""
 
 load("@rules_testing//lib:analysis_test.bzl", "analysis_test", "test_suite")
-load("@rules_testing//lib:util.bzl", "TestingAspectInfo")
+load("@rules_testing//lib:util.bzl", "TestingAspectInfo", "util")
+load("//build_tools/bazel:cc.bzl", "iree_cc_binary", "iree_cc_library")
 load(
     "//build_tools/bazel:executable.bzl",
     "IreeExecutableInfo",
@@ -128,6 +129,55 @@ def _test_executable_test_applies_resource_group_tags_impl(env, target):
         "resource_group:shared-device",
     ])
 
+def _test_executable_wrapper_composes_source_suppressions(name, **kwargs):
+    iree_cc_library(
+        name = name + "_first",
+        sanitizer_suppressions = {"lsan": "//build_tools/sanitizer:lsan_suppressions_hsa.txt"},
+        tags = ["manual"],
+    )
+    iree_cc_library(
+        name = name + "_second",
+        sanitizer_suppressions = {"lsan": "//build_tools/sanitizer:lsan_suppressions_vulkan.txt"},
+        tags = ["manual"],
+    )
+    util.helper_target(
+        iree_cc_binary,
+        name = name + "_binary",
+        deps = [":" + name + "_first"],
+        srcs = [name + "_binary.cc"],
+        tags = ["manual"],
+    )
+    iree_executable_alias(
+        name = name + "_alias",
+        src = ":" + name + "_binary",
+        tags = ["manual"],
+    )
+    iree_executable_test(
+        name = name + "_subject",
+        src = ":" + name + "_alias",
+        data = [":" + name + "_second"],
+        tags = ["manual"],
+    )
+    analysis_test(
+        name = name,
+        impl = _test_executable_wrapper_composes_source_suppressions_impl,
+        target = name + "_subject",
+        **kwargs
+    )
+
+def _test_executable_wrapper_composes_source_suppressions_impl(env, target):
+    actions = [action for action in target[TestingAspectInfo].actions if action.mnemonic == "SanitizerSuppressions"]
+    env.expect.that_int(len(actions)).equals(1)
+    env.expect.that_collection([file.basename for file in actions[0].inputs.to_list()]).contains_exactly([
+        "lsan_suppressions_hsa.txt",
+        "lsan_suppressions_vulkan.txt",
+    ])
+    output = actions[0].outputs.to_list()[0]
+    env.expect.that_str(target[RunEnvironmentInfo].environment["LSAN_OPTIONS"]).equals(
+        'suppressions="' + output.short_path + '":allow_addr2line=1',
+    )
+    env.expect.that_collection(target[DefaultInfo].default_runfiles.files.to_list()).contains(output)
+
 def executable_rules_test_suite(name):
     test_suite(
         name = name,
@@ -135,5 +185,6 @@ def executable_rules_test_suite(name):
             _test_executable_alias_wraps_source,
             _test_executable_test_wraps_source,
             _test_executable_test_applies_resource_group_tags,
+            _test_executable_wrapper_composes_source_suppressions,
         ],
     )

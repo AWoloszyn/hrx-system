@@ -14,9 +14,9 @@ load(
 )
 load(":cc_attrs.bzl", "cc_attrs")
 load(
-    ":dynamic_library_bundle.bzl",
-    "collect_dynamic_library_bundles",
-    "inject_dynamic_library_bindings",
+    ":execution_requirements.bzl",
+    "collect_execution_requirements",
+    "inject_execution_requirements",
 )
 load(":runfiles.bzl", "create_runfiles_arguments_info")
 
@@ -237,7 +237,7 @@ def _iree_executable_alias_impl(ctx):
     )
     if runfiles_arguments != None:
         providers.append(runfiles_arguments)
-    return inject_dynamic_library_bindings(
+    return inject_execution_requirements(
         ctx,
         providers,
         ctx.attr.data + [ctx.attr.src],
@@ -292,7 +292,7 @@ def _iree_executable_test_impl(ctx):
     )
     if runfiles_arguments != None:
         providers.append(runfiles_arguments)
-    return inject_dynamic_library_bindings(
+    return inject_execution_requirements(
         ctx,
         providers,
         ctx.attr.data + [ctx.attr.src],
@@ -302,7 +302,7 @@ def _iree_executable_test_impl(ctx):
 _SHARED_ATTRS = {
     "data": attr.label_list(
         allow_files = True,
-        aspects = [collect_dynamic_library_bundles],
+        aspects = [collect_execution_requirements],
         doc = "Runtime data dependencies available to the wrapped executable.",
     ),
     "out": attr.string(
@@ -310,7 +310,7 @@ _SHARED_ATTRS = {
     ),
     "src": attr.label(
         allow_files = True,
-        aspects = [collect_wasm_js, collect_dynamic_library_bundles],
+        aspects = [collect_wasm_js, collect_execution_requirements],
         cfg = "target",
         doc = "Executable target or file to expose.",
         executable = True,
