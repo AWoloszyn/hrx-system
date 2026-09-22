@@ -4,10 +4,4 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include <generated.h>
-
-int fixture_leaf_value(void);
-
-int fixture_library_value(void) {
-  return GENERATED_VALUE + TRANSITIVE_VALUE + fixture_leaf_value();
-}
+#error "The inactive include directory must not precede the generated header."

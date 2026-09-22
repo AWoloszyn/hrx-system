@@ -108,8 +108,7 @@ function(iree_cc_test)
   endforeach()
   target_include_directories(${_NAME} SYSTEM
     PUBLIC
-      "$<BUILD_INTERFACE:${IREE_SOURCE_DIR}>"
-      "$<BUILD_INTERFACE:${IREE_BINARY_DIR}>"
+      "$<BUILD_INTERFACE:${IREE_SOURCE_DIR};${IREE_BINARY_DIR}>"
   )
   target_compile_definitions(${_NAME}
     PUBLIC

@@ -54,7 +54,7 @@ add_custom_command(
     "${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt"
     "${_GENERATED_DATA}"
   DEPENDS
-    fixture.txt
+    "${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt"
 )
 add_custom_target(generated_data DEPENDS "${_GENERATED_DATA}")
 iree_register_generated_output_producer(generated_data

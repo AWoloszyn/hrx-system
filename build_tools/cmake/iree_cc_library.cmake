@@ -127,13 +127,6 @@ function(iree_cc_library)
     set(_RULE_IS_INTERFACE 0)
   endif()
 
-  # Wrap user specified INCLUDES in the $<BUILD_INTERFACE:>
-  # generator.
-  list(TRANSFORM _RULE_INCLUDES PREPEND "$<BUILD_INTERFACE:")
-  list(TRANSFORM _RULE_INCLUDES APPEND ">")
-  list(TRANSFORM _RULE_SYSTEM_INCLUDES PREPEND "$<BUILD_INTERFACE:")
-  list(TRANSFORM _RULE_SYSTEM_INCLUDES APPEND ">")
-
   # Bazel hdrs can name generated files. Point missing headers at the binary
   # tree so target_sources can attach the producer custom command edge.
   set(_RULE_HDR_TARGET_SRCS)
@@ -222,18 +215,15 @@ function(iree_cc_library)
         $<TARGET_GENEX_EVAL:${_NAME},$<TARGET_PROPERTY:${_NAME},INTERFACE_LINK_LIBRARIES>>
     )
 
+    # Wrap whole lists to preserve conditions spanning multiple directories.
+    # This also avoids per-directory expression work in transitive consumers.
     target_include_directories(${_NAME}
       PUBLIC
-        "$<BUILD_INTERFACE:${IREE_SOURCE_DIR}>"
-        "$<BUILD_INTERFACE:${IREE_BINARY_DIR}>"
-    )
-    target_include_directories(${_NAME}
-      PUBLIC
-        ${_RULE_INCLUDES}
+        "$<BUILD_INTERFACE:${IREE_SOURCE_DIR};${IREE_BINARY_DIR};${_RULE_INCLUDES}>"
     )
     target_include_directories(${_NAME}
       SYSTEM PUBLIC
-        ${_RULE_SYSTEM_INCLUDES}
+        "$<BUILD_INTERFACE:${_RULE_SYSTEM_INCLUDES}>"
     )
     target_compile_options(${_NAME}
       PRIVATE
@@ -319,13 +309,11 @@ function(iree_cc_library)
     )
     target_include_directories(${_NAME}
       INTERFACE
-        "$<BUILD_INTERFACE:${IREE_SOURCE_DIR}>"
-        "$<BUILD_INTERFACE:${IREE_BINARY_DIR}>"
-        ${_RULE_INCLUDES}
+        "$<BUILD_INTERFACE:${IREE_SOURCE_DIR};${IREE_BINARY_DIR};${_RULE_INCLUDES}>"
     )
     target_include_directories(${_NAME}
       SYSTEM INTERFACE
-        ${_RULE_SYSTEM_INCLUDES}
+        "$<BUILD_INTERFACE:${_RULE_SYSTEM_INCLUDES}>"
     )
     target_link_options(${_NAME}
       INTERFACE
@@ -394,13 +382,11 @@ function(iree_cc_library)
     add_library(${_NAME} INTERFACE)
     target_include_directories(${_NAME}
       INTERFACE
-        "$<BUILD_INTERFACE:${IREE_SOURCE_DIR}>"
-        "$<BUILD_INTERFACE:${IREE_BINARY_DIR}>"
-        ${_RULE_INCLUDES}
+        "$<BUILD_INTERFACE:${IREE_SOURCE_DIR};${IREE_BINARY_DIR};${_RULE_INCLUDES}>"
     )
     target_include_directories(${_NAME}
       SYSTEM INTERFACE
-        ${_RULE_SYSTEM_INCLUDES}
+        "$<BUILD_INTERFACE:${_RULE_SYSTEM_INCLUDES}>"
     )
     target_link_options(${_NAME}
       INTERFACE

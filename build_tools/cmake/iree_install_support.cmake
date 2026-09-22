@@ -65,7 +65,7 @@ endfunction()
 function(iree_install_targets)
   cmake_parse_arguments(
     _RULE
-    "FIX_INCLUDE_DIRS"
+    ""
     "COMPONENT;EXPORT_SET"
     "HDRS;TARGETS"
     ${ARGN}
@@ -94,14 +94,6 @@ function(iree_install_targets)
 
   # Process targets.
   set_property(TARGET ${_RULE_TARGETS} APPEND PROPERTY EXPORT_PROPERTIES iree_ALIAS_TO)
-  foreach(_target ${_RULE_TARGETS})
-    if(_RULE_FIX_INCLUDE_DIRS)
-      get_target_property(_include_dirs ${_target} INTERFACE_INCLUDE_DIRECTORIES)
-      list(TRANSFORM _include_dirs PREPEND "$<BUILD_INTERFACE:")
-      list(TRANSFORM _include_dirs APPEND ">")
-      set_target_properties(${_target} PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "${_include_dirs}")
-    endif()
-  endforeach()
 
   # Add it to the global property that will be processed at the end of the build.
   set_property(GLOBAL APPEND PROPERTY "IREE_EXPORT_TARGETS_${_EXPORT_SET}" ${_RULE_TARGETS})
