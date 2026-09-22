@@ -402,6 +402,23 @@ loom_cc_test(
 
 loom_cc_test(
   NAME
+    report_test
+  SRCS
+    "report_test.cc"
+  DEPS
+    ::report
+    ::tooling
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::format::text::parser
+    loom::ir
+    loom::pass::test::harness
+    loom::util::stream
+)
+
+loom_cc_test(
+  NAME
     tooling_test
   SRCS
     "tooling_test.cc"

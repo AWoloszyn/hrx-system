@@ -83,9 +83,9 @@ typedef struct loom_pass_report_invocation_t {
   loom_pass_kind_t pass_kind;
   // Anchor kind active for this invocation.
   loom_pass_kind_t anchor_kind;
-  // Symbol name of the source pass.pipeline that produced this invocation.
+  // Report-owned name of the source pass.pipeline for this invocation.
   iree_string_view_t pipeline_symbol;
-  // Current symbol name when the invocation runs at function anchor.
+  // Report-owned symbol name captured at the current invocation anchor.
   iree_string_view_t symbol_name;
   // Program instruction index for deterministic correlation with traces.
   iree_host_size_t instruction_index;
@@ -195,9 +195,9 @@ void loom_pass_report_initialize(iree_allocator_t allocator,
 void loom_pass_report_deinitialize(loom_pass_report_t* report);
 
 // Appends one pass invocation record, copying statistic values from typed
-// statistic storage into report-owned storage. Descriptor metadata and symbol
-// strings are borrowed from static registries or live modules and must outlive
-// the report.
+// statistic storage and symbol names into report-owned storage. Descriptor
+// metadata is borrowed from static registries and must outlive the report.
+// Takes ownership of pending detail rows only on success.
 iree_status_t loom_pass_report_append_invocation(
     loom_pass_report_t* report,
     const loom_pass_report_invocation_options_t* options);
