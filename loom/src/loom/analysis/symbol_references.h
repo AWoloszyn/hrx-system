@@ -163,6 +163,15 @@ typedef struct loom_symbol_reference_symbol_occurrences_t {
   uint32_t template_demand_count;
 } loom_symbol_reference_symbol_occurrences_t;
 
+// Direct call occurrences classified during reference publication.
+typedef struct loom_symbol_reference_call_counts_t {
+  // Number of direct calls across all call kinds and graph roles.
+  uint32_t count;
+  // Subset of |count| for exact template.call operations. Abstract
+  // template.apply demands are counted separately.
+  uint32_t template_count;
+} loom_symbol_reference_call_counts_t;
+
 // Built reference table for one module snapshot.
 typedef struct loom_symbol_reference_table_t {
   // Module this table was built from.
@@ -179,6 +188,8 @@ typedef struct loom_symbol_reference_table_t {
   loom_symbol_reference_occurrence_id_t first_module_occurrence_id;
   // Number of module-root occurrences.
   uint32_t module_occurrence_count;
+  // Call counts retained by the reference producer for plan sizing.
+  loom_symbol_reference_call_counts_t calls;
   // Abstract template.apply provider demands owned by module symbols.
   struct {
     // Demand records owned by the caller-provided arena.

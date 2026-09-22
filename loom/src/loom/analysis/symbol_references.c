@@ -48,6 +48,8 @@ typedef struct loom_symbol_reference_builder_t {
   loom_symbol_reference_occurrence_id_t first_module_occurrence_id;
   // Number of module-root occurrences.
   uint32_t module_occurrence_count;
+  // Direct call counts accumulated as occurrences are published.
+  loom_symbol_reference_call_counts_t calls;
   // Mutable template-demand storage and family summary.
   struct {
     // Demand entries.
@@ -144,7 +146,7 @@ static iree_status_t loom_symbol_reference_builder_append_occurrence(
   if (builder->occurrences.count >= UINT32_MAX) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "symbol reference table exceeds %u occurrences",
-                            (unsigned)(UINT32_MAX - 1));
+                            (unsigned)UINT32_MAX);
   }
   const uint32_t segment_offset =
       builder->occurrences.count &
@@ -177,6 +179,11 @@ static iree_status_t loom_symbol_reference_builder_append_occurrence(
   builder->symbols[target_symbol_id].first_incoming_occurrence_id =
       occurrence_id;
   ++builder->symbols[target_symbol_id].incoming_count;
+
+  if (kind == LOOM_SYMBOL_REFERENCE_OCCURRENCE_CALL) {
+    ++builder->calls.count;
+    builder->calls.template_count += loom_template_call_isa(user_op);
+  }
 
   if (source_scope.symbol_id == LOOM_SYMBOL_ID_INVALID) {
     occurrence->next_outgoing_occurrence_id =
@@ -232,7 +239,7 @@ static iree_status_t loom_symbol_reference_append_template_demand(
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "symbol reference table exceeds %u abstract "
                             "provider demands",
-                            (unsigned)(UINT32_MAX - 1));
+                            (unsigned)UINT32_MAX);
   }
   if (builder->template_demands.count >= builder->template_demands.capacity) {
     IREE_RETURN_IF_ERROR(
@@ -323,7 +330,7 @@ static iree_status_t loom_symbol_reference_append_template_provider(
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "symbol reference table exceeds %u template "
                             "providers",
-                            (unsigned)(UINT32_MAX - 1));
+                            (unsigned)UINT32_MAX);
   }
   if (builder->template_providers.count >=
       builder->template_providers.capacity) {
@@ -644,6 +651,7 @@ iree_status_t loom_symbol_reference_table_build(
       .occurrence_count = builder.occurrences.count,
       .first_module_occurrence_id = builder.first_module_occurrence_id,
       .module_occurrence_count = builder.module_occurrence_count,
+      .calls = builder.calls,
       .template_demands =
           {
               .values = builder.template_demands.values,

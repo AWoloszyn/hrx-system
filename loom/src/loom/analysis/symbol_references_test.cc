@@ -291,6 +291,8 @@ TEST_F(SymbolReferencesTest, IndexedRowsAndAdjacencyCrossSegmentBoundaries) {
     IREE_ASSERT_OK(loom_symbol_reference_table_build(module.get(),
                                                      &storage.arena, &table));
     ASSERT_EQ(table.occurrence_count, count);
+    EXPECT_EQ(table.calls.count, 0u);
+    EXPECT_EQ(table.calls.template_count, 0u);
     ASSERT_EQ(table.symbols[0].incoming_count, count);
     ASSERT_EQ(table.symbols[1].outgoing_count, count);
     EXPECT_EQ(table.occurrences.segment_count,
@@ -407,6 +409,8 @@ func.def @entry() -> (index) {
   loom_symbol_id_t entry = FindSymbol(module.get(), IREE_SV("entry"));
 
   loom_symbol_reference_table_t table = BuildTable(module.get());
+  EXPECT_EQ(table.calls.count, 1u);
+  EXPECT_EQ(table.calls.template_count, 0u);
 
   const loom_symbol_reference_occurrence_t* read_occurrence = FindOccurrence(
       table, reader, state, LOOM_SYMBOL_REFERENCE_OCCURRENCE_GLOBAL_ACCESS);
@@ -456,6 +460,8 @@ func.def @entry() {
   const loom_symbol_id_t entry = FindSymbol(module.get(), IREE_SV("entry"));
 
   const loom_symbol_reference_table_t table = BuildTable(module.get());
+  EXPECT_EQ(table.calls.count, 2u);
+  EXPECT_EQ(table.calls.template_count, 0u);
 
   const loom_symbol_reference_occurrence_t* launch_occurrence = FindOccurrence(
       table, entry, logical, LOOM_SYMBOL_REFERENCE_OCCURRENCE_CALL);
@@ -535,6 +541,49 @@ test.split_func @split_root() {
   EXPECT_EQ(implementation_occurrence->source_root_region_index_plus_one, 2u);
 }
 
+TEST_F(SymbolReferencesTest, TemplateCallCountsFollowSnapshotLifetime) {
+  ModulePtr module = AllocateModule();
+  const auto empty = BuildTable(module.get());
+  EXPECT_EQ(empty.calls.count, 0u);
+  EXPECT_EQ(empty.calls.template_count, 0u);
+
+  loom_builder_t builder = {};
+  loom_builder_initialize(module.get(), &module->arena,
+                          loom_module_block(module.get()), &builder);
+  const auto family = AddSymbol(module.get(), IREE_SV("family"));
+  loom_op_t* declaration = nullptr;
+  IREE_ASSERT_OK(loom_template_decl_build(
+      &builder, 0, 0, 0, 0, 0, 0, loom_symbol_ref_null(),
+      loom_parameterized_attr_array_empty(), family, nullptr, 0, nullptr, 0,
+      nullptr, 0, nullptr, 0, LOOM_LOCATION_UNKNOWN, &declaration));
+  const auto provider = AddSymbol(module.get(), IREE_SV("provider"));
+  loom_op_t* definition = nullptr;
+  IREE_ASSERT_OK(loom_template_def_build(
+      &builder, 0, family, 0, 0, 0, 0, 0, loom_symbol_ref_null(),
+      loom_parameterized_attr_array_empty(), 0, provider, nullptr, 0, nullptr,
+      0, nullptr, 0, nullptr, 0, LOOM_LOCATION_UNKNOWN, &definition));
+  loom_builder_enter_region(&builder, definition,
+                            loom_template_def_body(definition));
+  loom_op_t* call = nullptr;
+  IREE_ASSERT_OK(loom_template_call_build(&builder, 0, 0, 0, provider, nullptr,
+                                          0, nullptr, 0, nullptr, 0,
+                                          LOOM_LOCATION_UNKNOWN, &call));
+  loom_op_t* terminator = nullptr;
+  IREE_ASSERT_OK(loom_template_return_build(
+      &builder, nullptr, 0, LOOM_LOCATION_UNKNOWN, &terminator));
+
+  const auto before = BuildTable(module.get());
+  EXPECT_EQ(before.calls.count, 1u);
+  EXPECT_EQ(before.calls.template_count, 1u);
+  EXPECT_GT(before.occurrence_count, before.calls.count);
+  IREE_ASSERT_OK(loom_op_erase(module.get(), call));
+  const auto after = BuildTable(module.get());
+  EXPECT_EQ(after.calls.count, 0u);
+  EXPECT_EQ(after.calls.template_count, 0u);
+  EXPECT_EQ(before.calls.count, 1u);
+  EXPECT_EQ(before.calls.template_count, 1u);
+}
+
 TEST_F(SymbolReferencesTest, TemplateDemandsRetainOwningSymbol) {
   ModulePtr module = ParseModule(R"(
 template.decl @outer.contract(%value: i32) -> (i32)
@@ -565,6 +614,8 @@ func.def public @entry(%arg: i32) -> (i32) {
 
   const loom_symbol_reference_table_t table = BuildTable(module.get());
 
+  EXPECT_EQ(table.calls.count, 0u);
+  EXPECT_EQ(table.calls.template_count, 0u);
   ASSERT_EQ(table.template_demands.count, 2u);
   ASSERT_EQ(table.template_demands.family_count, 1u);
   ASSERT_NE(table.template_demands.family_symbol_ids, nullptr);
