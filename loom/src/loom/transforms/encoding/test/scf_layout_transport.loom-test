@@ -489,3 +489,23 @@ func.def @for_layout_view(%input: buffer, %count: index, %choose: i1) -> (f32) {
   %value = view.load %view[0, 1] : view<4x4xf32, %layout> -> f32
   func.return %value : f32
 }
+
+// ====
+// RUN: pass decompose-scf-layout-transports,vector-memory-footprint
+
+// Dense and strided arms have no common address recipe. Layout transport must
+// not guess one; the ordinary memory-footprint boundary retains its diagnostic.
+func.def @incompatible_selected_layout(%input: buffer, %condition: i1) -> (vector<4xf32>) {
+  %base = index.constant 0 : offset
+  %layout = scf.if %condition -> (encoding<layout>) {
+    %dense = encoding.layout.dense : encoding<layout>
+    scf.yield %dense : encoding<layout>
+  } else {
+    %strided = encoding.layout.strided [4, 1] : encoding<layout>
+    scf.yield %strided : encoding<layout>
+  }
+  %view = buffer.view %input[%base] : buffer -> view<4x4xf32, %layout>
+  // ERROR@+1: SUBRANGE/007 "vector.load" "requires a resolved view layout"
+  %value = vector.load %view[0, 0] : view<4x4xf32, %layout> -> vector<4xf32>
+  func.return %value : vector<4xf32>
+}
