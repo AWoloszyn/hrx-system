@@ -142,9 +142,11 @@ typedef struct loom_private_storage_signature_t {
   struct loom_private_storage_signature_t* next;
 } loom_private_storage_signature_t;
 
-// Immutable allocation/access/value-flow result for one function. All storage
-// belongs to the pass arena. The local domain remains acquired until release;
-// mutation invalidates the analysis, so consumers replay retained decisions.
+// Retained allocation/access/value-flow plan for one function. All storage
+// belongs to the pass arena. The local domain remains acquired until release.
+// Admission and incoming edges are fixed after construction; rewriting updates
+// only the SSA correspondence and representative links. Consumers replay these
+// decisions after mutation invalidates the borrowed analysis facts.
 typedef struct loom_private_storage_plan_t {
   // Module whose IR identities the plan borrows.
   loom_module_t* module;
