@@ -37,7 +37,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %37, %38 = v_add_co_u32 %22, %30
   %39, %40 = v_add_co_ci_u32 %24, %31, %38
   %41 = concat(%37, %39) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %42 = flat_load_u8 %41 {glc = 1, dlc = 1}
+  %42 = flat_load_u8 %41 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %44 = v_and_b32_lit %18, 7
   %45 = v_add_u32_lit %44, 3
@@ -56,7 +56,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %79, %80 = v_add_co_u32 %22, %72
   %81, %82 = v_add_co_ci_u32 %24, %73, %80
   %83 = concat(%79, %81) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %84 = flat_load_u8 %83 {glc = 1, dlc = 1}
+  %84 = flat_load_u8 %83 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %86 = v_and_b32_lit %58, 7
   %87 = v_cmp_ne_i32 %84, %14
@@ -128,7 +128,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %37, %38 = v_add_co_u32 %22, %30
   %39, %40 = v_add_co_ci_u32 %24, %31, %38
   %41 = concat(%37, %39) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %42 = flat_load_u8 %41 {glc = 1, dlc = 1}
+  %42 = flat_load_u8 %41 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %44 = v_and_b32_lit %18, 7
   %45 = v_add_u32_lit %44, 3
@@ -147,7 +147,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %79, %80 = v_add_co_u32 %22, %72
   %81, %82 = v_add_co_ci_u32 %24, %73, %80
   %83 = concat(%79, %81) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %84 = flat_load_u8 %83 {glc = 1, dlc = 1}
+  %84 = flat_load_u8 %83 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %86 = v_and_b32_lit %58, 7
   %87 = v_cmp_ne_i32 %84, %14
@@ -221,7 +221,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %39, %40 = v_add_co_u32 %24, %32
   %41, %42 = v_add_co_ci_u32 %26, %33, %40
   %43 = concat(%39, %41) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %44 = flat_load_u8 %43 {glc = 1, dlc = 1}
+  %44 = flat_load_u8 %43 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %45 = v_cmp_ne_i32 %44, %16
   %46 = v_mov_b32 7
@@ -234,7 +234,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %74, %75 = v_add_co_u32 %24, %67
   %76, %77 = v_add_co_ci_u32 %26, %68, %75
   %78 = concat(%74, %76) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %79 = flat_load_u8 %78 {glc = 1, dlc = 1}
+  %79 = flat_load_u8 %78 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %81 = v_and_b32_lit %53, 7
   %82 = v_cmp_ne_i32 %79, %16
@@ -306,7 +306,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %37, %38 = v_add_co_u32 %22, %30
   %39, %40 = v_add_co_ci_u32 %24, %31, %38
   %41 = concat(%37, %39) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %42 = flat_load_u16 %41 {glc = 1, dlc = 1}
+  %42 = flat_load_u16 %41 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %43 = v_cmp_ne_i32 %42, %14
   %44 = v_mov_b32 15
@@ -319,7 +319,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %72, %73 = v_add_co_u32 %22, %65
   %74, %75 = v_add_co_ci_u32 %24, %66, %73
   %76 = concat(%72, %74) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %77 = flat_load_u8 %76 {glc = 1, dlc = 1}
+  %77 = flat_load_u8 %76 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %79 = v_and_b32_lit %51, 7
   %80 = v_cmp_ne_i32 %77, %14
@@ -392,7 +392,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %37, %38 = v_add_co_u32 %22, %30
   %39, %40 = v_add_co_ci_u32 %24, %31, %38
   %41 = concat(%37, %39) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %42 = flat_load_u8 %41 {glc = 1, dlc = 1}
+  %42 = flat_load_u8 %41 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %44 = v_and_b32_lit %18, 7
   %45 = v_add_u32_lit %44, 3
@@ -411,7 +411,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %79, %80 = v_add_co_u32 %22, %72
   %81, %82 = v_add_co_ci_u32 %24, %73, %80
   %83 = concat(%79, %81) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %84 = flat_load_u8 %83 {glc = 1, dlc = 1}
+  %84 = flat_load_u8 %83 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %86 = v_and_b32_lit %58, 7
   %87 = v_cmp_ne_i32 %84, %14
@@ -455,7 +455,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %152, %153 = v_add_co_u32 %137, %145
   %154, %155 = v_add_co_ci_u32 %139, %146, %153
   %156 = concat(%152, %154) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %157 = flat_load_u8 %156 {glc = 1, dlc = 1}
+  %157 = flat_load_u8 %156 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %159 = v_and_b32_lit %133, 7
   %160 = v_add_u32_lit %159, 3
@@ -474,7 +474,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %194, %195 = v_add_co_u32 %137, %187
   %196, %197 = v_add_co_ci_u32 %139, %188, %195
   %198 = concat(%194, %196) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %199 = flat_load_u8 %198 {glc = 1, dlc = 1}
+  %199 = flat_load_u8 %198 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %201 = v_and_b32_lit %173, 7
   %202 = v_cmp_ne_i32 %199, %117
@@ -550,7 +550,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %41, %42 = v_add_co_u32 %26, %34
   %43, %44 = v_add_co_ci_u32 %28, %35, %42
   %45 = concat(%41, %43) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %46 = flat_load_u8 %45 {glc = 1, dlc = 1}
+  %46 = flat_load_u8 %45 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %48 = v_and_b32_lit %22, 7
   %49 = v_add_u32_lit %48, 3
@@ -569,7 +569,7 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @sanitiz
   %83, %84 = v_add_co_u32 %26, %76
   %85, %86 = v_add_co_ci_u32 %28, %77, %84
   %87 = concat(%83, %85) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %88 = flat_load_u8 %87 {glc = 1, dlc = 1}
+  %88 = flat_load_u8 %87 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %90 = v_and_b32_lit %62, 7
   %91 = v_cmp_ne_i32 %88, %18
@@ -827,7 +827,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %48, %49 = v_add_co_u32 %33, %41
   %50, %51 = v_add_co_ci_u32 %35, %42, %49
   %52 = concat(%48, %50) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %53 = flat_load_u8 %52 {glc = 1, dlc = 1}
+  %53 = flat_load_u8 %52 {glc = 1}
   s_waitcnt {vmcnt = 0}
   %55 = v_and_b32_lit %26, 7
   %56 = v_cmp_ne_i32 %53, %19

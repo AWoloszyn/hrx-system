@@ -26,8 +26,8 @@ kernel.def @acquire_with_alias_and_constant() {
 }
 
 // ----
-CHECK: %before = global_load_* {glc = 1, slc = 1}
-CHECK: %after = global_load_* {glc = 1, slc = 1}
+CHECK: %before = global_load_* {glc = 1}
+CHECK: %after = global_load_* {glc = 1}
 CHECK: %scale = s_load_dword *
 CHECK: s_waitcnt {vmcnt = 0}
 CHECK: s_waitcnt_vscnt {vscnt = 0}
@@ -69,7 +69,7 @@ kernel.def @reuse_after_acquire() {
 CHECK: buffer_gl0_inv
 CHECK: buffer_gl1_inv
 CHECK: %value = global_load_b32_saddr *
-CHECK-NOT: * {glc = 1, slc = 1}
+CHECK-NOT: * {glc = 1}
 
 // ====
 
@@ -93,13 +93,13 @@ kernel.def @wide_payload_after_acquire() {
 CHECK: buffer_gl0_inv
 CHECK: buffer_gl1_inv
 CHECK: * = global_load_b64_saddr *
-CHECK-NOT: * {glc = 1, slc = 1}
+CHECK-NOT: * {glc = 1}
 
 // ====
 // RUN: with-checks emit source-low output=low
 
 // Completion and clock sampling remain effectful without an opaque memory
-// footprint. The helper must survive while ordinary payload reads use bypass.
+// footprint. The helper survives while ordinary payload reads remain coherent.
 amdgpu.target<gfx1151> @gpu
 
 low.func.def target<amdgpu.rdna3_5.core>(@gpu) @completed_tick() -> (reg<amdgpu.sgpr>) asm {
@@ -126,7 +126,7 @@ kernel.def target(@gpu) @clocked_acquire() {
 }
 
 // ----
-CHECK: %value = global_load_* {glc = 1, slc = 1}
+CHECK: %value = global_load_* {glc = 1}
 CHECK: %tick = s_sendmsg_rtn_b32 {message = 131}
 CHECK: s_waitcnt {lgkmcnt = 0}
 CHECK: s_waitcnt {vmcnt = 0}
@@ -164,4 +164,4 @@ kernel.def target(@gpu) @opaque_read_after_acquire() {
 CHECK: buffer_gl0_inv
 CHECK: buffer_gl1_inv
 CHECK: %word = global_load_b32_saddr *
-CHECK-NOT: * {glc = 1, slc = 1}
+CHECK-NOT: * {glc = 1}

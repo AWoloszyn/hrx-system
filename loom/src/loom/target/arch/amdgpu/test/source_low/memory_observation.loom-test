@@ -26,7 +26,7 @@ kernel.def @poll_then_publish() {
 }
 
 // ----
-CHECK: %seen = global_load_b32_saddr<volatile> * {glc = 1, dlc = 1}
+CHECK: %seen = global_load_b32_saddr<volatile> * {glc = 1}
 CHECK: %pending = v_cmp_eq_i32* %seen*
 CHECK: global_store_b32_saddr<volatile> * {offset = 8}
 CHECK: s_waitcnt {vmcnt = 0}

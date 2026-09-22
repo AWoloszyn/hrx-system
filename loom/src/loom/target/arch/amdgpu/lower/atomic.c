@@ -240,7 +240,7 @@ static const loom_amdgpu_atomic_global_ordering_rule_t
     kAmdgpuAtomicGlobalOrderingRules
         [LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX950_NT_SC0_SC1 +
          1] = {
-            [LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX9_11_GLC_SLC_DLC] =
+            [LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC] =
                 {
                     .flags = LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_SUPPORTED,
                     .release_wait_masks =

@@ -860,10 +860,10 @@ static iree_status_t loom_amdgpu_append_memory_cache_attrs(
     // The common plan retained the acquire completion and requires these
     // reads to reach the coherent backing. Advisory cache preferences cannot
     // replace or suppress the selected visibility obligation.
-    IREE_RETURN_IF_ERROR(loom_amdgpu_append_i64_attr(
-        context, IREE_SV("glc"), 1, attrs, attr_capacity, inout_attr_count));
-    return loom_amdgpu_append_i64_attr(context, IREE_SV("slc"), 1, attrs,
-                                       attr_capacity, inout_attr_count);
+    return loom_amdgpu_system_memory_append_load_attrs(
+        loom_low_lower_context_builder(context),
+        loom_low_lower_context_descriptor_set(context), attrs, attr_capacity,
+        inout_attr_count);
   }
   if (access->source.operation_kind ==
       LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD) {

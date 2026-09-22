@@ -21,7 +21,7 @@ static bool loom_amdgpu_memory_ordering_available(
   // LDS/scalar counters. Other cache hierarchies require their own complete
   // ordering recipe, including cross-address-space completion.
   if (loom_amdgpu_memory_cache_policy_descriptor_encoding(descriptor_set) !=
-      LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX9_11_GLC_SLC_DLC) {
+      LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC) {
     return false;
   }
   loom_amdgpu_wait_packet_selection_t selection = {0};

@@ -301,10 +301,9 @@ static iree_status_t loom_amdgpu_system_memory_append_u32_attr(
 typedef uint32_t loom_amdgpu_system_memory_attr_flags_t;
 
 #define LOOM_AMDGPU_SYSTEM_MEMORY_ATTR_GLC ((uint32_t)1u << 0)
-#define LOOM_AMDGPU_SYSTEM_MEMORY_ATTR_DLC ((uint32_t)1u << 1)
-#define LOOM_AMDGPU_SYSTEM_MEMORY_ATTR_SC0 ((uint32_t)1u << 2)
-#define LOOM_AMDGPU_SYSTEM_MEMORY_ATTR_SC1 ((uint32_t)1u << 3)
-#define LOOM_AMDGPU_SYSTEM_MEMORY_ATTR_SCOPE ((uint32_t)1u << 4)
+#define LOOM_AMDGPU_SYSTEM_MEMORY_ATTR_SC0 ((uint32_t)1u << 1)
+#define LOOM_AMDGPU_SYSTEM_MEMORY_ATTR_SC1 ((uint32_t)1u << 2)
+#define LOOM_AMDGPU_SYSTEM_MEMORY_ATTR_SCOPE ((uint32_t)1u << 3)
 
 typedef struct loom_amdgpu_system_memory_attr_field_t {
   // Presence bit required for this descriptor attribute.
@@ -318,10 +317,6 @@ static const loom_amdgpu_system_memory_attr_field_t
         {
             .flag = LOOM_AMDGPU_SYSTEM_MEMORY_ATTR_GLC,
             .name = IREE_SVL("glc"),
-        },
-        {
-            .flag = LOOM_AMDGPU_SYSTEM_MEMORY_ATTR_DLC,
-            .name = IREE_SVL("dlc"),
         },
         {
             .flag = LOOM_AMDGPU_SYSTEM_MEMORY_ATTR_SC0,
@@ -403,9 +398,10 @@ typedef struct loom_amdgpu_system_memory_policy_t {
 static const loom_amdgpu_system_memory_policy_t kAmdgpuSystemMemoryPolicies[] = {
     {
         .encoding =
-            LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX9_11_GLC_SLC_DLC,
-        .load_attrs = LOOM_AMDGPU_SYSTEM_MEMORY_ATTR_GLC |
-                      LOOM_AMDGPU_SYSTEM_MEMORY_ATTR_DLC,
+            LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC,
+        // GFX11 GLC bypasses both GL0 and GL1. DLC is a last-level cache
+        // temporal hint and is not required for coherent publication reads.
+        .load_attrs = LOOM_AMDGPU_SYSTEM_MEMORY_ATTR_GLC,
         .release_actions =
             {
                 LOOM_AMDGPU_SYSTEM_MEMORY_WAIT(
