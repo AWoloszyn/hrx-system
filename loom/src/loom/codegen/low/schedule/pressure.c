@@ -303,6 +303,24 @@ static void loom_low_schedule_note_block_pressure_reg_class(
       reg_class_id;
 }
 
+// Retains one reset record per SSA value even when the value has several
+// disjoint live segments during the reverse source-order sweep.
+static void loom_low_schedule_track_pressure_value(
+    loom_low_schedule_build_state_t* state,
+    loom_low_schedule_pressure_state_t* pressure_state,
+    loom_value_ordinal_t value_ordinal) {
+  loom_low_schedule_value_record_t* value = &state->values[value_ordinal];
+  if (iree_any_bit_set(value->flags,
+                       LOOM_LOW_SCHEDULE_VALUE_FLAG_PRESSURE_TOUCHED)) {
+    return;
+  }
+  IREE_ASSERT_LT(pressure_state->block_value_count,
+                 state->value_domain->value_count);
+  value->flags |= LOOM_LOW_SCHEDULE_VALUE_FLAG_PRESSURE_TOUCHED;
+  pressure_state->block_value_ordinals[pressure_state->block_value_count++] =
+      value_ordinal;
+}
+
 static inline uint16_t loom_low_schedule_alias_set_id(
     const loom_low_schedule_build_state_t* state, uint16_t reg_class_id) {
   return reg_class_id == LOOM_LOW_REG_CLASS_NONE
@@ -548,10 +566,9 @@ static void loom_low_schedule_add_source_pressure_value(
       loom_low_schedule_pressure_alias_append_source_baseline_result(
           state, pressure_state, block_index, value_ordinal);
   IREE_ASSERT_LE(source_owned_units, value->unit_count);
+  loom_low_schedule_track_pressure_value(state, pressure_state, value_ordinal);
   value->flags |= LOOM_LOW_SCHEDULE_VALUE_FLAG_LIVE;
   value->live_unit_count = value->unit_count - source_owned_units;
-  pressure_state->block_value_ordinals[pressure_state->block_value_count++] =
-      value_ordinal;
   uint32_t transferred_units = 0;
   if (value->live_unit_count == value->unit_count &&
       !iree_any_bit_set(value->flags,
@@ -616,7 +633,8 @@ void loom_low_schedule_reset_source_pressure_sweep(
   for (iree_host_size_t i = 0; i < pressure_state->block_value_count; ++i) {
     loom_low_schedule_value_record_t* value =
         &state->values[pressure_state->block_value_ordinals[i]];
-    value->flags &= ~(LOOM_LOW_SCHEDULE_VALUE_FLAG_LIVE |
+    value->flags &= ~(LOOM_LOW_SCHEDULE_VALUE_FLAG_PRESSURE_TOUCHED |
+                      LOOM_LOW_SCHEDULE_VALUE_FLAG_LIVE |
                       LOOM_LOW_SCHEDULE_VALUE_FLAG_ACTIVE_PRESSURE_ALIAS);
     value->live_unit_count = 0;
   }
@@ -641,8 +659,8 @@ static void loom_low_schedule_note_block_pressure_use(
   loom_low_schedule_value_record_t* value = &state->values[value_ordinal];
   IREE_ASSERT_LE(use_count, UINT32_MAX - value->remaining_use_count);
   if (value->remaining_use_count == 0) {
-    pressure_state->block_value_ordinals[pressure_state->block_value_count++] =
-        value_ordinal;
+    loom_low_schedule_track_pressure_value(state, pressure_state,
+                                           value_ordinal);
     const uint16_t reg_class_id = value->register_class_id;
     if (reg_class_id != LOOM_LOW_REG_CLASS_NONE) {
       const uint32_t packing_reserve_units =
@@ -689,7 +707,8 @@ void loom_low_schedule_pressure_initialize_block(
     state->values[ordinal].remaining_use_count = 0;
     state->values[ordinal].live_unit_count = 0;
     state->values[ordinal].flags &=
-        ~(LOOM_LOW_SCHEDULE_VALUE_FLAG_LIVE |
+        ~(LOOM_LOW_SCHEDULE_VALUE_FLAG_PRESSURE_TOUCHED |
+          LOOM_LOW_SCHEDULE_VALUE_FLAG_LIVE |
           LOOM_LOW_SCHEDULE_VALUE_FLAG_ACTIVE_PRESSURE_ALIAS);
   }
   pressure_state->block_value_count = 0;
