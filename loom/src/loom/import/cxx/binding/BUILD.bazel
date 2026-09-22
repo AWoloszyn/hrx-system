@@ -27,7 +27,8 @@ loom_cc_library(
     name = "assembly",
     srcs = ["assembly.cc"],
     hdrs = ["assembly.h"],
-    cxxopts = select(CXX_COMPILER_OPTIONS),
+    cxx_features = CXX_COMPILER_OPTIONS["cxx_features"],
+    cxx_standard = CXX_COMPILER_OPTIONS["cxx_standard"],
     deps = [
         "//loom/src/loom/error:source",
         "//loom/src/loom/format/text:parser",

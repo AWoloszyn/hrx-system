@@ -12,6 +12,7 @@
 #include "loom/error/error_catalog.h"
 #include "loom/format/text/parser/accumulator.h"
 #include "loom/format/text/parser/aliases.h"
+#include "loom/format/text/parser/attrs.h"
 #include "loom/format/text/parser/context.h"
 #include "loom/format/text/parser/diagnostics.h"
 #include "loom/format/text/parser/format.h"
@@ -615,10 +616,12 @@ static iree_status_t loom_finalize_op(
         parser->module, op));
   }
 
-  // Link symbol-defining ops incrementally so the symbol table has
-  // valid defining_op pointers throughout parsing. Use-def chains
-  // are built in batch by loom_module_compute_uses after parsing.
-  if (iree_any_bit_set(vtable->traits, LOOM_TRAIT_SYMBOL_DEFINE)) {
+  // Fragments join an already-built module and finalize each operation here.
+  // Whole-module parsing rebuilds use/def state in one batch, but still needs
+  // symbol links throughout parsing.
+  if (parser->finalize_operations) {
+    IREE_RETURN_IF_ERROR(loom_builder_finalize_op(&parser->builder, op));
+  } else if (iree_any_bit_set(vtable->traits, LOOM_TRAIT_SYMBOL_DEFINE)) {
     loom_module_link_symbol_defining_op(parser->module, op, vtable);
   }
 
@@ -1529,6 +1532,7 @@ iree_status_t loom_text_parse_low_assembly(
   loom_parser_t parser;
   IREE_RETURN_IF_ERROR(
       loom_parser_initialize(module, source, options, &root_scope, &parser));
+  parser.finalize_operations = true;
   loom_op_t* function = NULL;
   iree_status_t status = loom_parse_low_assembly_function(
       &parser, representation_contract, symbol, &function);

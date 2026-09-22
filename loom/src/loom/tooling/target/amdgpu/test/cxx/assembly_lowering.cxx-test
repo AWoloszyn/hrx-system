@@ -5,8 +5,7 @@ struct [[loom::representation("amdgpu.gfx11.generic.core")]] Contract {};
 using Word = float __attribute__((ext_vector_type(1)));
 Word pack(Word even, Word odd) {
   return loom::low::assembly<Contract, Word>(R"loom(
-      (%even: reg<amdgpu.vgpr>, %odd: reg<amdgpu.vgpr>)
-          -> (reg<amdgpu.vgpr>) {
+      (%even: reg<amdgpu.vgpr>, %odd: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) {
         %selector = s_mov_b32 0x05040100
         %packed = v_perm_b32 %odd, %even, %selector
         return %packed

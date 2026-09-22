@@ -109,14 +109,15 @@ iree_status_t loom_text_parse_with_symbol_references(
 // The result is a normal low.func.def inserted at module scope. All persistent
 // IR and source identities belong to |module|; source bytes and the descriptor
 // environment need only remain valid during this call. Existing function
-// bodies in the module are neither traversed nor rebuilt. The caller performs
-// semantic verification before passing the module to compiler transforms;
-// several parsed functions may be verified in one batch.
+// bodies in the module are neither traversed nor rebuilt. Parsed operations
+// maintain use/def state at construction. The caller performs semantic
+// verification before passing the module to compiler transforms; several
+// parsed functions may be verified in one batch.
 //
 // Parse errors are delivered through the diagnostic sink and return OK with
 // |*out_function| NULL. Infrastructure failures return a non-OK status. On
 // either failure, the destination module may contain partial construction and
-// must be discarded. This function does not build module-wide use lists.
+// must be discarded.
 iree_status_t loom_text_parse_low_assembly(
     loom_source_range_t source, iree_string_view_t representation_contract,
     loom_symbol_id_t symbol, loom_module_t* module,

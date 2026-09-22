@@ -14,8 +14,7 @@ using Float = float __attribute__((ext_vector_type(1)));
 template <class T>
 static T pack(T even, T odd) {
   return loom::low::assembly<Contract, T>(R"loom(
-      (%even: reg<amdgpu.vgpr>, %odd: reg<amdgpu.vgpr>)
-          -> (reg<amdgpu.vgpr>) {
+      (%even: reg<amdgpu.vgpr>, %odd: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) {
         %selector = s_mov_b32 0x05040100
         %packed = v_perm_b32 %odd, %even, %selector
         return %packed

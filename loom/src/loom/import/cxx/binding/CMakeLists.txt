@@ -27,6 +27,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     assembly
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "assembly.h"
   SRCS

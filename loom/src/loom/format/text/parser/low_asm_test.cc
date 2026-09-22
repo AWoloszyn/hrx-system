@@ -304,9 +304,18 @@ TEST_F(LowAsmParserTest, EmbeddedAssemblyOwnsIrAndPreservesModule) {
   auto* add = loom_block_op(entry, 0);
   EXPECT_EQ(loom_op_operands(add)[0], loom_block_arg_id(entry, 0));
   EXPECT_EQ(loom_op_operands(add)[1], loom_block_arg_id(entry, 0));
+  EXPECT_EQ(loom_module_value(module, loom_block_arg_id(entry, 0))->use_count,
+            2u);
+  auto* sum = loom_module_value(module, loom_op_results(add)[0]);
+  EXPECT_EQ(loom_value_def_op(sum), add);
+  ASSERT_EQ(sum->use_count, 1u);
+  EXPECT_EQ(loom_use_user_op(loom_value_uses(sum)[0]), loom_block_op(entry, 1));
   EXPECT_EQ(StringFromId(module, loom_func_like_repr_contract(
                                      loom_func_like_cast(module, function))),
             "test.low.core");
+  IREE_ASSERT_OK(loom_op_erase(module, function));
+  EXPECT_EQ(loom_module_block(module)->op_count, 1u);
+  EXPECT_EQ(loom_block_op(loom_module_block(module), 0), existing);
   loom_module_free(module);
 }
 
