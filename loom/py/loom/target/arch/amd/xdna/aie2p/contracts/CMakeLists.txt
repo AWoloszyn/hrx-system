@@ -21,6 +21,7 @@ iree_py_library(
     "f32.py"
     "f32_compare.py"
     "floating.py"
+    "floating_sign.py"
     "i64.py"
     "index_conversion.py"
     "integer_division.py"

@@ -13,7 +13,6 @@ from typing import Literal
 
 from loom.dialect.scalar import arithmetic as scalar_arithmetic
 from loom.dialect.scalar import math as scalar_math
-from loom.dialect.vector import defs as vector
 from loom.dsl import Op
 from loom.target.arch.amd.xdna.aie2p.contracts.conversion import (
     emit_round_nearest_f32_to_i32,
@@ -27,20 +26,16 @@ from loom.target.arch.amd.xdna.aie2p.core_descriptors import (
     AIE2P_CORE_DESCRIPTOR_SET,
 )
 from loom.target.contracts import (
-    DescriptorEmitForm,
-    DescriptorResultType,
     DescriptorRule,
     EmitDescriptorOp,
     Guard,
     Scalar,
     ValueRef,
-    Vector,
     descriptor_by_key,
 )
 from loom.target.low_descriptors import Descriptor
 
 _F32 = Scalar("f32")
-_F32_VECTOR = Vector("f32", minimum_static_elements=1, maximum_static_elements=16)
 _ExtremumKind = Literal["minimum", "maximum"]
 _NaNPolicy = Literal["number", "ieee"]
 
@@ -937,162 +932,6 @@ def emit_f32_multiply(
     return tuple(program.emits)
 
 
-def _f32_abs_rule() -> DescriptorRule:
-    program = _F32Program()
-    absolute_mask = program.constant("absolute_mask", 0x7FFFFFFF)
-    program.binary(
-        None,
-        "and.i32",
-        ValueRef.operand("input"),
-        absolute_mask,
-    )
-    return DescriptorRule(
-        source_op=scalar_arithmetic.scalar_absf,
-        descriptor=program.emits[-1].descriptor,
-        guards=tuple(Guard.value_type(field, _F32) for field in ("input", "result")),
-        emit=tuple(program.emits),
-        report_key="exact_binary32_abs",
-    )
-
-
-def _f32_neg_rule() -> DescriptorRule:
-    program = _F32Program()
-    sign_mask = program.constant("sign_mask", -(1 << 31))
-    program.binary(
-        None,
-        "xor.i32",
-        ValueRef.operand("input"),
-        sign_mask,
-    )
-    return DescriptorRule(
-        source_op=scalar_arithmetic.scalar_negf,
-        descriptor=program.emits[-1].descriptor,
-        guards=tuple(Guard.value_type(field, _F32) for field in ("input", "result")),
-        emit=tuple(program.emits),
-        report_key="exact_binary32_neg",
-    )
-
-
-def _vector_f32_abs_rule() -> DescriptorRule:
-    constant = _descriptor("amd.xdna.aie2p.constant.i32")
-    splat = _descriptor("amd.xdna.aie2p.splat.i32x16")
-    bitwise_and = _descriptor("amd.xdna.aie2p.and.bits512")
-    return DescriptorRule(
-        source_op=vector.vector_absf,
-        descriptor=bitwise_and,
-        guards=tuple(
-            Guard.value_type(field, _F32_VECTOR) for field in ("input", "result")
-        ),
-        emit=(
-            EmitDescriptorOp(
-                descriptor=constant,
-                results={"dst": ValueRef.temporary("absolute_mask_scalar")},
-                result_types={"dst": DescriptorResultType()},
-                immediates={"i": 0x7FFFFFFF},
-                form=DescriptorEmitForm.CONST,
-            ),
-            EmitDescriptorOp(
-                descriptor=splat,
-                operands={"src": ValueRef.temporary("absolute_mask_scalar")},
-                results={"dst": ValueRef.temporary("absolute_mask")},
-                result_types={"dst": ValueRef.operand("input")},
-                form=DescriptorEmitForm.OP,
-            ),
-            EmitDescriptorOp(
-                descriptor=bitwise_and,
-                operands={
-                    "s1": ValueRef.operand("input"),
-                    "s2": ValueRef.temporary("absolute_mask"),
-                },
-                results={"d": ValueRef.result("result")},
-                form=DescriptorEmitForm.OP,
-            ),
-        ),
-        report_key="native_vector_binary32_abs",
-    )
-
-
-def _vector_f32_neg_rule() -> DescriptorRule:
-    constant = _descriptor("amd.xdna.aie2p.constant.i32")
-    splat = _descriptor("amd.xdna.aie2p.splat.i32x16")
-    bitwise_or = _descriptor("amd.xdna.aie2p.or.bits512")
-    bitwise_and = _descriptor("amd.xdna.aie2p.and.bits512")
-    subtract = _descriptor("amd.xdna.aie2p.sub.i32x16")
-    return DescriptorRule(
-        source_op=vector.vector_negf,
-        descriptor=subtract,
-        guards=tuple(
-            Guard.value_type(field, _F32_VECTOR) for field in ("input", "result")
-        ),
-        emit=(
-            EmitDescriptorOp(
-                descriptor=constant,
-                results={"dst": ValueRef.temporary("sign_mask_scalar")},
-                result_types={"dst": DescriptorResultType()},
-                immediates={"i": -(1 << 31)},
-                form=DescriptorEmitForm.CONST,
-            ),
-            EmitDescriptorOp(
-                descriptor=splat,
-                operands={"src": ValueRef.temporary("sign_mask_scalar")},
-                results={"dst": ValueRef.temporary("sign_mask")},
-                result_types={"dst": ValueRef.operand("input")},
-                form=DescriptorEmitForm.OP,
-            ),
-            EmitDescriptorOp(
-                descriptor=bitwise_or,
-                operands={
-                    "s1": ValueRef.operand("input"),
-                    "s2": ValueRef.temporary("sign_mask"),
-                },
-                results={"d": ValueRef.temporary("union")},
-                result_types={"d": ValueRef.operand("input")},
-                form=DescriptorEmitForm.OP,
-            ),
-            EmitDescriptorOp(
-                descriptor=bitwise_and,
-                operands={
-                    "s1": ValueRef.operand("input"),
-                    "s2": ValueRef.temporary("sign_mask"),
-                },
-                results={"d": ValueRef.temporary("intersection")},
-                result_types={"d": ValueRef.operand("input")},
-                form=DescriptorEmitForm.OP,
-            ),
-            EmitDescriptorOp(
-                descriptor=subtract,
-                operands={
-                    "s1": ValueRef.temporary("union"),
-                    "s2": ValueRef.temporary("intersection"),
-                },
-                results={"d": ValueRef.result("result")},
-                form=DescriptorEmitForm.OP,
-            ),
-        ),
-        report_key="native_vector_binary32_neg",
-    )
-
-
-def _f32_copysign_rule() -> DescriptorRule:
-    program = _F32Program()
-    absolute_mask = program.constant("absolute_mask", 0x7FFFFFFF)
-    sign_mask = program.constant("sign_mask", -(1 << 31))
-    magnitude = program.binary(
-        "magnitude", "and.i32", ValueRef.operand("lhs"), absolute_mask
-    )
-    sign = program.binary("sign", "and.i32", ValueRef.operand("rhs"), sign_mask)
-    program.binary(None, "or.i32", magnitude, sign)
-    return DescriptorRule(
-        source_op=scalar_arithmetic.scalar_copysignf,
-        descriptor=program.emits[-1].descriptor,
-        guards=tuple(
-            Guard.value_type(field, _F32) for field in ("lhs", "rhs", "result")
-        ),
-        emit=tuple(program.emits),
-        report_key="exact_binary32_copysign",
-    )
-
-
 def _emit_roundeven_f32_to_i32(program: _F32Program, input_value: ValueRef) -> ValueRef:
     return emit_round_nearest_f32_to_i32(
         program,
@@ -1635,11 +1474,6 @@ _F32_MULTIPLY_EMITS = emit_f32_multiply()
 _F32_FMA_EMITS = _f32_fma_emits()
 
 AIE2P_F32_RULES = (
-    _f32_abs_rule(),
-    _f32_neg_rule(),
-    _vector_f32_abs_rule(),
-    _vector_f32_neg_rule(),
-    _f32_copysign_rule(),
     _f32_arcp_reciprocal_rule(),
     _f32_arcp_div_rule(),
     _f32_extremum_rule(scalar_arithmetic.scalar_minimumf, "minimum", "ieee"),

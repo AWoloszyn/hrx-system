@@ -18,6 +18,9 @@ from loom.target.arch.amd.xdna.aie2p.contracts.f32 import AIE2P_F32_RULES
 from loom.target.arch.amd.xdna.aie2p.contracts.f32_compare import (
     AIE2P_F32_COMPARE_RULES,
 )
+from loom.target.arch.amd.xdna.aie2p.contracts.floating_sign import (
+    AIE2P_FLOATING_SIGN_RULES,
+)
 from loom.target.arch.amd.xdna.aie2p.core_descriptors import (
     AIE2P_CORE_DESCRIPTOR_SET,
 )
@@ -138,7 +141,11 @@ def _evaluate_rule(rule: DescriptorRule, inputs: dict[str, int]) -> int:
 
 
 def _rule(report_key: str) -> DescriptorRule:
-    candidates = [rule for rule in AIE2P_F32_RULES if rule.report_key == report_key]
+    candidates = [
+        rule
+        for rule in (*AIE2P_F32_RULES, *AIE2P_FLOATING_SIGN_RULES)
+        if rule.report_key == report_key
+    ]
     assert len(candidates) == 1
     return candidates[0]
 
