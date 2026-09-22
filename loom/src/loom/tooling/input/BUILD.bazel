@@ -6,6 +6,8 @@ package(
     licenses = ["notice"],
 )
 
+exports_files(["testdata/duplicate_symbols.loom-test"])
+
 loom_cc_library(
     name = "input",
     srcs = ["input.c"],

@@ -59,6 +59,7 @@ loom_cc_binary(
 
 iree_execution_test_suite(
     name = "execution_test",
+    data = ["//loom/src/loom/tooling/input:testdata/duplicate_symbols.loom-test"],
     manifests = ["loom-format.test.json"],
     tags = ["hostonly"],
     tools = {

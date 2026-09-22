@@ -64,6 +64,7 @@ iree_execution_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/link/testdata/provider_roots/unused.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/link/testdata/template_selection/missing_provider.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/link/testdata/template_selection/root.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/input/testdata/duplicate_symbols.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/loom-link/testdata/dependency_component.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/loom-link/testdata/dependency_direct.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/loom-link/testdata/dependency_transitive.loom"

@@ -64,6 +64,8 @@ iree_execution_test_suite(
     "loom-format.test.json"
   TOOLS
     "loom-format=::loom-format"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tooling/input/testdata/duplicate_symbols.loom-test"
   LABELS
     "hostonly"
 )

@@ -1,0 +1,7 @@
+// RUN: verify
+
+kernel.decl @collision() launch()
+// ERROR@+1: SYMBOL/005 "collision"
+check.case public @collision {
+  check.return
+}

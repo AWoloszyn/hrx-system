@@ -70,6 +70,7 @@ iree_execution_test_suite(
         "//loom/src/loom/link/testdata:provider_roots/unused.loom",
         "//loom/src/loom/link/testdata:template_selection/missing_provider.loom",
         "//loom/src/loom/link/testdata:template_selection/root.loom",
+        "//loom/src/loom/tooling/input:testdata/duplicate_symbols.loom-test",
     ],
     manifests = ["loom-link.test.json"],
     tags = ["hostonly"],

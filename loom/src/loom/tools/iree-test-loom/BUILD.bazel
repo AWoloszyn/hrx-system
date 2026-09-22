@@ -157,6 +157,7 @@ iree_execution_test_suite(
         "testdata/linked_input_cases.loom",
         "testdata/requirement_cases.loom",
         "testdata/scalar_cases.loom",
+        "//loom/src/loom/tooling/input:testdata/duplicate_symbols.loom-test",
     ],
     manifests = ["iree-test-loom.test.json"],
     tags = ["hostonly"],
