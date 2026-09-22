@@ -53,15 +53,14 @@ low.kernel.def target<amdgpu.rdna3_5.core>(@gpu) abi_layout({constant_count = 0,
   %46 = s_ctz_i32_b32 %mask
   %47 = s_mov_b32 32
   %selected = s_min_u32 %46, %47
-  %49 = v_mov_b32_copy %selected
-  %50 = v_lshlrev_b32_src0_inline %49, 2
-  %value = ds_bpermute_b32 %50, %cursor
-  low.br ^store(%value: reg<amdgpu.vgpr>)
+  %value = v_readlane_b32_src1_sgpr %cursor, %selected
+  %50 = v_mov_b32_copy %value
+  low.br ^store(%50: reg<amdgpu.vgpr>)
 ^empty:
-  %52 = v_mov_b32 0
-  low.br ^store(%52: reg<amdgpu.vgpr>)
+  %51 = v_mov_b32 0
+  low.br ^store(%51: reg<amdgpu.vgpr>)
 ^store(%chosen: reg<amdgpu.vgpr>):
-  %53 = v_lshlrev_b32_src0_inline %lane, 2
-  global_store_b32_saddr %53, %chosen, %destination
+  %52 = v_lshlrev_b32_src0_inline %lane, 2
+  global_store_b32_saddr %52, %chosen, %destination
   return
 }

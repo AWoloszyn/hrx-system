@@ -975,6 +975,8 @@ typedef struct loom_amdgpu_subgroup_broadcast_plan_t {
   loom_low_lower_resolved_descriptor_t exchange_descriptor;
   // Descriptor row publishing an SGPR read result back to VGPRs.
   loom_low_lower_resolved_descriptor_t scalar_copy_descriptor;
+  // Descriptor row extracting a proven-uniform lane index from a VGPR.
+  loom_low_lower_resolved_descriptor_t scalar_lane_descriptor;
   // Source value broadcast from source_lane.
   loom_value_id_t value;
   // Result value receiving the broadcast payload.
@@ -989,6 +991,8 @@ typedef struct loom_amdgpu_subgroup_broadcast_plan_t {
   uint32_t register_count;
   // Native exchange and publication strategy selected during planning.
   loom_amdgpu_subgroup_broadcast_strategy_t strategy;
+  // Whether the mapped result requires copying the scalar read into VGPRs.
+  bool result_in_vgpr;
 } loom_amdgpu_subgroup_broadcast_plan_t;
 
 typedef struct loom_amdgpu_subgroup_broadcast_first_plan_t {
@@ -1002,6 +1006,8 @@ typedef struct loom_amdgpu_subgroup_broadcast_first_plan_t {
   loom_amdgpu_subgroup_payload_kind_t payload_kind;
   // Number of 32-bit registers in the broadcast payload.
   uint32_t register_count;
+  // Whether the mapped result requires copying the scalar read into VGPRs.
+  bool result_in_vgpr;
 } loom_amdgpu_subgroup_broadcast_first_plan_t;
 
 typedef enum loom_amdgpu_crosslane_kind_e {

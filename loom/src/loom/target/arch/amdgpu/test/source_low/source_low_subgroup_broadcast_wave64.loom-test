@@ -27,8 +27,8 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
   %output_view = resource<hal_binding> {extent = 256, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %18 = v_lshlrev_b32_src0_inline %tid, 2
   %value = global_load_b32_saddr %18, %input_view
-  %20 = v_readlane_b32_src1_inline %value, 33
-  %result = v_mov_b32_copy %20
+  %broadcast = v_readlane_b32_src1_inline %value, 33
+  %result = v_mov_b32_copy %broadcast
   %22 = v_lshlrev_b32_src0_inline %tid, 2
   global_store_b32_saddr %22, %result, %output_view
   return
@@ -109,8 +109,8 @@ low.kernel.def target<amdgpu.rdna3_5.core>(@target) abi_layout({constant_count =
   %output_view = resource<hal_binding> {extent = 256, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %22 = v_lshlrev_b32_src0_inline %tid, 2
   %value = global_load_b32_saddr %22, %input_view
-  %24 = v_readlane_b32_src1_sgpr %value, %source_lane_i32
-  %result = v_mov_b32_copy %24
+  %broadcast = v_readlane_b32_src1_sgpr %value, %source_lane_i32
+  %result = v_mov_b32_copy %broadcast
   %26 = v_lshlrev_b32_src0_inline %tid, 2
   global_store_b32_saddr %26, %result, %output_view
   return
