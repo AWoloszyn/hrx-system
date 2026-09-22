@@ -173,10 +173,10 @@ def _require_exact_result_type_pattern(
     descriptor_field: str,
     type_pattern: TypePattern,
 ) -> None:
-    if type_pattern.kind == "view":
+    if type_pattern.kind in {"buffer", "view"}:
         raise ValueError(
             f"{source_op.name}: descriptor emit result type pattern for "
-            f"'{descriptor_field}' cannot synthesize view types"
+            f"'{descriptor_field}' cannot synthesize {type_pattern.kind} types"
         )
     if len(type_pattern.elements) != 1:
         raise ValueError(

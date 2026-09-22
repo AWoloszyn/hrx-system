@@ -132,7 +132,7 @@ def _source_memory_constraint(
     }
     return SourceMemoryConstraint(
         operation=operation,
-        root_kind=SourceMemoryRootKind.BLOCK_ARGUMENT,
+        root_kind=SourceMemoryRootKind.ANY,
         memory_spaces=("unknown", "generic", "global"),
         element_byte_count=element_byte_count,
         vector_lane_count=lane_count,
@@ -311,7 +311,7 @@ def _full_width_memory_rules(
     for dynamic in (False, True):
         source_memory = SourceMemoryConstraint(
             operation=operation,
-            root_kind=SourceMemoryRootKind.BLOCK_ARGUMENT,
+            root_kind=SourceMemoryRootKind.ANY,
             memory_spaces=("unknown", "generic", "global"),
             element_byte_count=element_byte_count,
             vector_lane_count=lane_count,
@@ -388,7 +388,7 @@ def _view_carrier_constraint(
 ) -> SourceMemoryConstraint:
     return SourceMemoryConstraint(
         operation=SourceMemoryOperation.VIEW_CARRIER,
-        root_kind=SourceMemoryRootKind.BLOCK_ARGUMENT,
+        root_kind=SourceMemoryRootKind.ANY,
         memory_spaces=("unknown", "generic", "global"),
         element_byte_count=element_byte_count,
         vector_lane_count=1,

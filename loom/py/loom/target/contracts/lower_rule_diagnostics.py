@@ -38,6 +38,8 @@ from loom.target.low_descriptors import (
 
 
 def _type_pattern_text(type_pattern: TypePattern) -> str:
+    if type_pattern.kind == "buffer":
+        return "buffer"
     element_text = _type_pattern_element_text(type_pattern)
     if type_pattern.kind == "scalar":
         return element_text
