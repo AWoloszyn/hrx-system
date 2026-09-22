@@ -1158,6 +1158,9 @@ typedef enum loom_amdgpu_kernel_barrier_lowering_kind_e {
   LOOM_AMDGPU_KERNEL_BARRIER_LOWERING_KIND_LDS_WAIT = 2,
   // Emit the split signal/wait barrier packet pair used by GFX12+ targets.
   LOOM_AMDGPU_KERNEL_BARRIER_LOWERING_KIND_SPLIT_BARRIER = 3,
+  // Converged wave execution supplies the rendezvous; memory ordering is
+  // separate.
+  LOOM_AMDGPU_KERNEL_BARRIER_LOWERING_KIND_CONVERGED_SUBGROUP = 4,
 } loom_amdgpu_kernel_barrier_lowering_kind_t;
 
 typedef struct loom_amdgpu_kernel_barrier_plan_t {

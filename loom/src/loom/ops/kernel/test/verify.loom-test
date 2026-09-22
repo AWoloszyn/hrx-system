@@ -470,16 +470,8 @@ func.def @barrier_rejects_acquire_ordering() {
 // ====
 
 func.def @barrier_rejects_device_scope() {
-  // ERROR@+1: STRUCTURE/014 "scope" "3" "subgroup or workgroup scope for workgroup memory"
+  // ERROR@+1: PARSE/017 "scope"
   kernel.barrier<workgroup> scope(device) ordering(acq_rel)
-  func.return
-}
-
-// ====
-
-func.def @global_barrier_rejects_subgroup_scope() {
-  // ERROR@+1: STRUCTURE/014 "scope" "1" "workgroup scope for global memory"
-  kernel.barrier<global> scope(subgroup) ordering(acquire)
   func.return
 }
 

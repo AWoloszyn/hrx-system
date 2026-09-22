@@ -1430,6 +1430,8 @@ static iree_string_view_t loom_amdgpu_workgroup_reduce_plan_key(
 static iree_string_view_t loom_amdgpu_kernel_barrier_plan_key(
     const loom_op_t* source_op, const loom_amdgpu_kernel_barrier_plan_t* plan) {
   switch (plan->kind) {
+    case LOOM_AMDGPU_KERNEL_BARRIER_LOWERING_KIND_CONVERGED_SUBGROUP:
+      return IREE_SV("amdgpu.kernel_barrier.strategy.converged_subgroup");
     case LOOM_AMDGPU_KERNEL_BARRIER_LOWERING_KIND_S_BARRIER:
       return IREE_SV(
           "amdgpu.kernel_barrier.strategy.s_barrier.workgroup_rendezvous");

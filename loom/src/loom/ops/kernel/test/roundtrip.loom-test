@@ -136,6 +136,7 @@ func.def @subgroup_barrier() {
 // ====
 
 func.def @global_barriers() {
+  kernel.barrier<global> scope(subgroup) ordering(acq_rel)
   kernel.barrier<global> scope(workgroup) ordering(release)
   kernel.barrier<global> scope(workgroup) ordering(acquire)
   kernel.barrier<global> scope(workgroup) ordering(acq_rel)

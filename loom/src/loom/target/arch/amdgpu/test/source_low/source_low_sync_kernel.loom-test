@@ -437,3 +437,39 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_c
 ^_bb2:
   return
 }
+
+// ====
+
+amdgpu.target<gfx11-generic> @target {subgroup_size = 32}
+
+// A subgroup may exchange global data without making its peer wave rendezvous.
+kernel.def target(@target) @subgroup_global_acq_rel_barrier() {
+  %unit = index.constant 1 : index
+  %threads = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%threads, %unit, %unit) : index
+} launch() {
+  %subgroup = kernel.subgroup.id : index
+  %c0 = index.constant 0 : index
+  %first_subgroup = index.cmp eq, %subgroup, %c0 : index
+  scf.if %first_subgroup {
+    kernel.barrier<global> scope(subgroup) ordering(acq_rel)
+  }
+  kernel.return
+}
+
+// ----
+low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @subgroup_global_acq_rel_barrier() asm {
+  %5 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
+  %subgroup = v_lshrrev_b32_src0_inline %5, 5
+  %first_subgroup = v_cmp_eq_i32_src1_inline %subgroup {rhs = 0}
+  %8 = s_mov_b64_exec_read
+  %9, %10 = s_and_b64_scc %first_subgroup, %8
+  low.cond_br %10, ^_bb1, ^_bb2 : reg<amdgpu.scc>
+^_bb1:
+  s_waitcnt {vmcnt = 0}
+  s_waitcnt_vscnt {vscnt = 0}
+  s_waitcnt {vmcnt = 0}
+  low.br ^_bb2
+^_bb2:
+  return
+}

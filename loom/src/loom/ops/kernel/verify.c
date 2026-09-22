@@ -1375,19 +1375,6 @@ iree_status_t loom_kernel_barrier_verify(const loom_module_t* module,
                   "acquire, release, or acq_rel ordering for global memory"));
   }
 
-  loom_atomic_scope_t scope = loom_kernel_barrier_scope(op);
-  const bool scope_supported =
-      memory_space == LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP
-          ? scope == LOOM_ATOMIC_SCOPE_SUBGROUP ||
-                scope == LOOM_ATOMIC_SCOPE_WORKGROUP
-          : scope == LOOM_ATOMIC_SCOPE_WORKGROUP;
-  if (!scope_supported) {
-    return loom_kernel_emit_attribute_value_constraint(
-        emitter, op, IREE_SV("scope"), scope,
-        memory_space == LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP
-            ? IREE_SV("subgroup or workgroup scope for workgroup memory")
-            : IREE_SV("workgroup scope for global memory"));
-  }
   return iree_ok_status();
 }
 
