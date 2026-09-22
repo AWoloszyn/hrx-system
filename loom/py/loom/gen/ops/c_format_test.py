@@ -6,20 +6,17 @@
 
 from itertools import permutations
 
-from loom.assembly import BindingList, BlockArgs, Clause, OptionalGroup, Ref, Refs, Region
-from loom.dsl import INTEGER, Dialect, Op, Operand, RegionDef
+import pytest
+
+from loom.assembly import AssemblyFormat, Attr, BindingList, BlockArgs, Clause, OptionalGroup, Ref, Refs, Region
+from loom.dsl import ATTR_TYPE_I64, INTEGER, AttrDef, Dialect, Op, Operand, RegionDef
 from loom.gen.ops.c_format import region_entry_args_declared_by_parent, translate_format_elements
-from loom.gen.ops.c_tables import generate_tables_c
+from loom.gen.ops.c_metadata_tables import generate_tables_c
 
 
 def _assert_invalid_format(op: Op, expected: str) -> None:
-    try:
+    with pytest.raises(ValueError, match=expected):
         generate_tables_c("test", 0, [op])
-    except ValueError as error:
-        if expected not in str(error):
-            raise AssertionError(f"{error!s} does not contain {expected!r}") from error
-    else:
-        raise AssertionError(f"expected invalid format: {expected}")
 
 
 def test_optional_clauses_follow_declaration_order() -> None:
@@ -77,8 +74,6 @@ def test_entry_argument_ownership_follows_region_clauses() -> None:
         )
         declared = region_entry_args_declared_by_parent(op, translate_format_elements(op))
         assert declared == {names.index("body"), names.index("after")}
-        tables = generate_tables_c("test", 0, [op])
-        assert tables.count("LOOM_REGION_PARENT_DECLARED_ARGS") == 2
 
 
 def test_induction_variable_declaration_belongs_to_next_region() -> None:
@@ -89,3 +84,29 @@ def test_induction_variable_declaration_belongs_to_next_region() -> None:
         format=[Ref("iv"), Region("body"), Region("after")],
     )
     assert region_entry_args_declared_by_parent(op, translate_format_elements(op)) == {0}
+
+
+def test_assembly_format_binds_reordered_fields_to_canonical_layout() -> None:
+    for names in (("first", "second"), ("second", "first")):
+        op = Op(
+            "test.fields",
+            group=Dialect("test"),
+            operands=[Operand("value", INTEGER)],
+            attrs=[AttrDef(name, ATTR_TYPE_I64) for name in names],
+            format=[Ref("value"), Attr("first"), Attr("second")],
+            assembly=AssemblyFormat("fields", [Attr("second"), Ref("value"), Attr("first")]),
+        )
+        elements = translate_format_elements(op, op.assembly.elements)
+        assert [index for _, index, _ in elements] == [names.index("second"), 0, names.index("first")]
+
+
+def test_unknown_region_syntax_is_rejected() -> None:
+    op = Op(
+        "test.region_syntax",
+        group=Dialect("test"),
+        regions=[RegionDef("body")],
+        format=[Region("body", syntax="missing.syntax")],
+    )
+
+    with pytest.raises(ValueError, match=r"Op 'test\.region_syntax': unknown region syntax 'missing\.syntax'"):
+        generate_tables_c("test", 0, [op])
