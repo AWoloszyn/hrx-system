@@ -170,7 +170,8 @@ TEST_F(ModuleDictionaryTest, InvalidKeysAreRejectedBeforeSorting) {
 }
 
 TEST_F(ModuleDictionaryTest, ReplacementCapacityUsesTheActualResult) {
-  for (uint32_t count : {0, 1, 16, 17, 64, 65, 40000, UINT16_MAX}) {
+  constexpr uint32_t counts[] = {0, 1, 16, 17, 64, 65, 40000, UINT16_MAX};
+  for (uint32_t count : counts) {
     SCOPED_TRACE(count);
     auto entries = Entries(count);
     std::vector<loom_named_attr_update_t> updates;
