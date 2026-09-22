@@ -4,13 +4,17 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// Promotes simple invocation-private fragment buffers into SSA values.
+// Promotes invocation-private scalar cells and fragment buffers into SSA.
 //
-// The pass recognizes rank-1 private alloca views that are initialized by one
-// full-domain scalar copy loop and replaces later scalar private loads with
-// vector.extract operations from a single vector.load. The transformation keeps
-// frontend fragment intent out of target lowering without inventing a target
-// private memory fallback.
+// Allocation-wide byte-region and value-flow planning replaces scalar storage
+// with ordinary control-flow results and arguments. Aliases to the same typed
+// cell share state; disjoint fields retain independent state. Unknown
+// observers, incompatible overlaps, and observable accesses keep the allocation
+// in memory.
+//
+// Full-domain scalar copy loops into rank-1 private views additionally become
+// vector loads with scalar extracts. Both mechanisms preserve frontend intent
+// in shared IR before target lowering.
 
 #ifndef LOOM_TRANSFORMS_PROMOTE_PRIVATE_FRAGMENTS_H_
 #define LOOM_TRANSFORMS_PROMOTE_PRIVATE_FRAGMENTS_H_

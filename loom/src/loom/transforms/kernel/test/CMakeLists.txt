@@ -19,6 +19,7 @@ loom_check_test_suite(
     "promote_private_fragments.loom-test"
     "promote_private_fragments_after_unroll.loom-test"
     "promote_private_fragments_footprint.loom-test"
+    "promote_private_storage.loom-test"
     "stage_loop_carried_fragments.loom-test"
 )
 

@@ -271,7 +271,7 @@ func.def @erase_noop_private_slot_before_static_forward(%output: buffer, %lhs: i
 
 // ====
 
-func.def @keeps_conditionally_stored_scalar_slot(%output: buffer, %value: i64, %cond: i1) {
+func.def @promote_conditionally_stored_scalar_slot(%output: buffer, %value: i64, %cond: i1) {
   %base = index.constant 0 : offset
   %output_view = buffer.view %output[%base] : buffer -> view<1xi64>
   %slot_bytes = index.constant 8 : offset
@@ -289,20 +289,17 @@ func.def @keeps_conditionally_stored_scalar_slot(%output: buffer, %value: i64, %
 }
 
 // ----
-func.def @keeps_conditionally_stored_scalar_slot(%output: buffer, %value: i64, %cond: i1) {
+func.def @promote_conditionally_stored_scalar_slot(%output: buffer, %value: i64, %cond: i1) {
   %base = index.constant 0 : offset
   %output_view = buffer.view %output[%base] : buffer -> view<1xi64>
-  %slot_bytes = index.constant 8 : offset
-  %slot_buffer = buffer.alloca<private> align(8) %slot_bytes : buffer
-  %slot = buffer.view %slot_buffer[%base] : buffer -> view<1xi64>
   %slot_index = index.constant 0 : index
   %initial = scalar.constant 0 : i64
-  view.store %initial, %slot[%slot_index] : i64, view<1xi64>
-  scf.if %cond {
-    view.store %value, %slot[%slot_index] : i64, view<1xi64>
+  %11 = scf.if %cond -> (i64) {
+    scf.yield %value : i64
+  } else {
+    scf.yield %initial : i64
   }
-  %selected = view.load %slot[%slot_index] : view<1xi64> -> i64
-  view.store %selected, %output_view[%slot_index] : i64, view<1xi64>
+  view.store %11, %output_view[%slot_index] : i64, view<1xi64>
   func.return
 }
 
