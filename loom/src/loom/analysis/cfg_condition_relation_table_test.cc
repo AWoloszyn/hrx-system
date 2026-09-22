@@ -56,14 +56,19 @@ class CfgConditionRelationTableTest : public ::testing::Test {
 
 TEST_F(CfgConditionRelationTableTest, InternsEqualPagesAcrossViews) {
   const SetId set_a = Intern({3, 5});
+  const SetId set_shared = Intern({7});
   const SetId set_b = Intern({67});
   const SetId set_c = Intern({68});
-  std::array<MatrixRow, 2> first_rows = {{
+  std::array<MatrixRow, 4> first_rows = {{
       {1, {set_a, 0, 0}},
+      {3, {0, 0, 0}},
+      {5, {0, set_shared, 0}},
       {65, {0, set_b, 0}},
   }};
-  std::array<MatrixRow, 2> second_rows = {{
+  std::array<MatrixRow, 4> second_rows = {{
       {1, {set_a, 0, 0}},
+      {4, {0, 0, 0}},
+      {5, {0, set_shared, 0}},
       {66, {0, set_c, 0}},
   }};
   std::array<loom_cfg_condition_relation_table_builder_view_t, 2> views = {};
@@ -91,6 +96,13 @@ TEST_F(CfgConditionRelationTableTest, InternsEqualPagesAcrossViews) {
   ASSERT_EQ(second.entry_count, 2u);
   EXPECT_EQ(first.entries.pages[0], second.entries.pages[0]);
   EXPECT_NE(first.entries.pages[1], second.entries.pages[1]);
+  EXPECT_NE(loom_condition_relation_matrix_view_find(&first, 1), nullptr);
+  EXPECT_EQ(loom_condition_relation_matrix_view_find(&first, 3), nullptr);
+  EXPECT_NE(loom_condition_relation_matrix_view_find(&first, 5), nullptr);
+  EXPECT_NE(loom_condition_relation_matrix_view_find(&first, 65), nullptr);
+  EXPECT_EQ(loom_condition_relation_matrix_view_find(&first, 66), nullptr);
+  EXPECT_EQ(loom_condition_relation_matrix_view_find(&second, 65), nullptr);
+  EXPECT_NE(loom_condition_relation_matrix_view_find(&second, 66), nullptr);
 }
 
 }  // namespace

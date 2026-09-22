@@ -21,8 +21,8 @@ typedef struct loom_cfg_condition_relation_publication_view_t {
 } loom_cfg_condition_relation_publication_view_t;
 
 typedef struct loom_cfg_condition_relation_publication_page_t {
-  // Source matrix containing the page rows.
-  loom_condition_relation_matrix_t* matrix;
+  // Source view containing the page rows.
+  uint32_t view;
 
   // First source row in the page interval.
   uint32_t row_begin;
@@ -30,27 +30,45 @@ typedef struct loom_cfg_condition_relation_publication_page_t {
   // Source row following the page interval.
   uint32_t row_end;
 
-  // First possible left-value ordinal in the page.
-  uint32_t first_left;
-
-  // Last possible left-value ordinal in the page, inclusive.
-  uint32_t last_left;
-
-  // Number of nonempty source rows in the page.
-  uint32_t live_row_count;
-
   // First identical page occurrence in publication order.
   uint32_t canonical_page;
 
   // Immutable page ordinal assigned during publication.
   uint32_t retained_page;
-
-  // First set root for this canonical page.
-  iree_host_size_t root_offset;
-
-  // Hash of the page interval and every nonempty row.
-  uint64_t hash;
 } loom_cfg_condition_relation_publication_page_t;
+
+static_assert(sizeof(loom_cfg_condition_relation_publication_page_t) == 20,
+              "condition page planning records must remain 20 bytes");
+
+static loom_condition_relation_matrix_t*
+loom_cfg_condition_relation_publication_page_matrix(
+    const loom_cfg_condition_relation_table_builder_t* builder,
+    const loom_cfg_condition_relation_publication_page_t* page) {
+  return &builder->views[page->view].integer_relations;
+}
+
+static uint32_t loom_cfg_condition_relation_publication_page_first_left(
+    const loom_cfg_condition_relation_table_builder_t* builder,
+    const loom_cfg_condition_relation_publication_page_t* page) {
+  const loom_condition_relation_matrix_t* matrix =
+      loom_cfg_condition_relation_publication_page_matrix(builder, page);
+  const uint32_t left = matrix->rows[page->row_begin].left;
+  return (left >> LOOM_CFG_CONDITION_RELATION_PAGE_SHIFT)
+         << LOOM_CFG_CONDITION_RELATION_PAGE_SHIFT;
+}
+
+static uint32_t loom_cfg_condition_relation_publication_page_live_row_count(
+    const loom_cfg_condition_relation_table_builder_t* builder,
+    const loom_cfg_condition_relation_publication_page_t* page) {
+  const loom_condition_relation_matrix_t* matrix =
+      loom_cfg_condition_relation_publication_page_matrix(builder, page);
+  uint32_t live_row_count = 0;
+  for (uint32_t row = page->row_begin; row < page->row_end; ++row) {
+    live_row_count +=
+        loom_condition_relation_matrix_row_is_empty(&matrix->rows[row]) ? 0 : 1;
+  }
+  return live_row_count;
+}
 
 static uint64_t loom_cfg_condition_relation_hash_combine(uint64_t hash,
                                                          uint32_t value) {
@@ -60,11 +78,16 @@ static uint64_t loom_cfg_condition_relation_hash_combine(uint64_t hash,
 }
 
 static uint64_t loom_cfg_condition_relation_publication_page_hash(
+    const loom_cfg_condition_relation_table_builder_t* builder,
     const loom_cfg_condition_relation_publication_page_t* page) {
+  const loom_condition_relation_matrix_t* matrix =
+      loom_cfg_condition_relation_publication_page_matrix(builder, page);
   uint64_t hash = UINT64_C(14695981039346656037);
-  hash = loom_cfg_condition_relation_hash_combine(hash, page->first_left);
+  hash = loom_cfg_condition_relation_hash_combine(
+      hash,
+      loom_cfg_condition_relation_publication_page_first_left(builder, page));
   for (uint32_t i = page->row_begin; i < page->row_end; ++i) {
-    const loom_condition_relation_matrix_row_t* row = &page->matrix->rows[i];
+    const loom_condition_relation_matrix_row_t* row = &matrix->rows[i];
     if (loom_condition_relation_matrix_row_is_empty(row)) {
       continue;
     }
@@ -79,38 +102,44 @@ static uint64_t loom_cfg_condition_relation_publication_page_hash(
 }
 
 static uint32_t loom_cfg_condition_relation_next_live_row(
+    const loom_cfg_condition_relation_table_builder_t* builder,
     const loom_cfg_condition_relation_publication_page_t* page,
     uint32_t position) {
+  const loom_condition_relation_matrix_t* matrix =
+      loom_cfg_condition_relation_publication_page_matrix(builder, page);
   while (position < page->row_end &&
-         loom_condition_relation_matrix_row_is_empty(
-             &page->matrix->rows[position])) {
+         loom_condition_relation_matrix_row_is_empty(&matrix->rows[position])) {
     ++position;
   }
   return position;
 }
 
 static bool loom_cfg_condition_relation_publication_pages_equal(
+    const loom_cfg_condition_relation_table_builder_t* builder,
     const loom_cfg_condition_relation_publication_page_t* left,
     const loom_cfg_condition_relation_publication_page_t* right) {
-  if (left->first_left != right->first_left ||
-      left->live_row_count != right->live_row_count ||
-      left->hash != right->hash) {
+  if (loom_cfg_condition_relation_publication_page_first_left(builder, left) !=
+      loom_cfg_condition_relation_publication_page_first_left(builder, right)) {
     return false;
   }
+  const loom_condition_relation_matrix_t* left_matrix =
+      loom_cfg_condition_relation_publication_page_matrix(builder, left);
+  const loom_condition_relation_matrix_t* right_matrix =
+      loom_cfg_condition_relation_publication_page_matrix(builder, right);
   uint32_t left_position = left->row_begin;
   uint32_t right_position = right->row_begin;
   while (true) {
     left_position =
-        loom_cfg_condition_relation_next_live_row(left, left_position);
-    right_position =
-        loom_cfg_condition_relation_next_live_row(right, right_position);
+        loom_cfg_condition_relation_next_live_row(builder, left, left_position);
+    right_position = loom_cfg_condition_relation_next_live_row(builder, right,
+                                                               right_position);
     if (left_position == left->row_end || right_position == right->row_end) {
       return left_position == left->row_end && right_position == right->row_end;
     }
     const loom_condition_relation_matrix_row_t* left_row =
-        &left->matrix->rows[left_position++];
+        &left_matrix->rows[left_position++];
     const loom_condition_relation_matrix_row_t* right_row =
-        &right->matrix->rows[right_position++];
+        &right_matrix->rows[right_position++];
     if (memcmp(left_row, right_row, sizeof(*left_row)) != 0) {
       return false;
     }
@@ -136,9 +165,12 @@ static uint32_t loom_cfg_condition_relation_matrix_page_count(
 }
 
 static void loom_cfg_condition_relation_plan_view_pages(
-    loom_condition_relation_matrix_t* matrix, uint32_t first_page,
+    loom_cfg_condition_relation_table_builder_t* builder, uint32_t view,
+    uint32_t first_page,
     loom_cfg_condition_relation_publication_view_t* out_view,
     loom_cfg_condition_relation_publication_page_t* pages) {
+  loom_condition_relation_matrix_t* matrix =
+      &builder->views[view].integer_relations;
   *out_view = (loom_cfg_condition_relation_publication_view_t){
       .first_page = first_page,
   };
@@ -153,18 +185,14 @@ static void loom_cfg_condition_relation_plan_view_pages(
     if (page != previous_page) {
       current_page = &pages[first_page + out_view->page_count++];
       *current_page = (loom_cfg_condition_relation_publication_page_t){
-          .matrix = matrix,
+          .view = view,
           .row_begin = i,
-          .first_left = page << LOOM_CFG_CONDITION_RELATION_PAGE_SHIFT,
-          .last_left = (page << LOOM_CFG_CONDITION_RELATION_PAGE_SHIFT) +
-                       LOOM_CFG_CONDITION_RELATION_PAGE_WIDTH - 1,
           .canonical_page = UINT32_MAX,
           .retained_page = UINT32_MAX,
       };
       previous_page = page;
     }
     current_page->row_end = i + 1;
-    ++current_page->live_row_count;
   }
 }
 
@@ -202,9 +230,8 @@ static iree_status_t loom_cfg_condition_relation_plan_pages(
   }
   uint32_t page_count = 0;
   for (uint32_t view = 0; view < builder->view_count; ++view) {
-    loom_cfg_condition_relation_plan_view_pages(
-        &builder->views[view].integer_relations, page_count, &views[view],
-        pages);
+    loom_cfg_condition_relation_plan_view_pages(builder, view, page_count,
+                                                &views[view], pages);
     page_count += views[view].page_count;
   }
   IREE_ASSERT_EQ(page_count, total_page_count);
@@ -236,18 +263,21 @@ static iree_status_t loom_cfg_condition_relation_plan_pages(
   uint64_t unique_live_row_count = 0;
   for (uint32_t i = 0; i < page_count; ++i) {
     loom_cfg_condition_relation_publication_page_t* page = &pages[i];
-    page->hash = loom_cfg_condition_relation_publication_page_hash(page);
-    uint32_t slot = (uint32_t)page->hash & (hash_capacity - 1);
+    const uint64_t hash =
+        loom_cfg_condition_relation_publication_page_hash(builder, page);
+    uint32_t slot = (uint32_t)hash & (hash_capacity - 1);
     while (hash_slots[slot] != UINT32_MAX &&
            !loom_cfg_condition_relation_publication_pages_equal(
-               page, &pages[hash_slots[slot]])) {
+               builder, page, &pages[hash_slots[slot]])) {
       slot = (slot + 1) & (hash_capacity - 1);
     }
     if (hash_slots[slot] == UINT32_MAX) {
       hash_slots[slot] = i;
       page->canonical_page = i;
       ++unique_page_count;
-      unique_live_row_count += page->live_row_count;
+      unique_live_row_count +=
+          loom_cfg_condition_relation_publication_page_live_row_count(builder,
+                                                                      page);
     } else {
       page->canonical_page = hash_slots[slot];
     }
@@ -330,11 +360,13 @@ iree_status_t loom_cfg_condition_relation_table_publish(
     if (publication_page->canonical_page != page) {
       continue;
     }
-    publication_page->root_offset = root_position;
+    loom_condition_relation_matrix_t* matrix =
+        loom_cfg_condition_relation_publication_page_matrix(builder,
+                                                            publication_page);
     for (uint32_t row = publication_page->row_begin;
          row < publication_page->row_end; ++row) {
       const loom_condition_relation_matrix_row_t* source_row =
-          &publication_page->matrix->rows[row];
+          &matrix->rows[row];
       if (loom_condition_relation_matrix_row_is_empty(source_row)) {
         continue;
       }
@@ -362,11 +394,12 @@ iree_status_t loom_cfg_condition_relation_table_publish(
     if (publication_page->canonical_page != page) {
       continue;
     }
-    IREE_ASSERT_EQ(root_position, publication_page->root_offset);
+    loom_condition_relation_matrix_t* matrix =
+        loom_cfg_condition_relation_publication_page_matrix(builder,
+                                                            publication_page);
     for (uint32_t row = publication_page->row_begin;
          row < publication_page->row_end; ++row) {
-      loom_condition_relation_matrix_row_t* target_row =
-          &publication_page->matrix->rows[row];
+      loom_condition_relation_matrix_row_t* target_row = &matrix->rows[row];
       if (loom_condition_relation_matrix_row_is_empty(target_row)) {
         continue;
       }
@@ -401,12 +434,18 @@ iree_status_t loom_cfg_condition_relation_table_publish(
       publication_page->retained_page = next_retained_page++;
       loom_condition_relation_matrix_page_t* retained_page =
           &retained_pages[publication_page->retained_page];
+      const uint32_t first_left =
+          loom_cfg_condition_relation_publication_page_first_left(
+              builder, publication_page);
       *retained_page = (loom_condition_relation_matrix_page_t){
-          .first_left = publication_page->first_left,
-          .last_left = publication_page->last_left,
+          .first_left = first_left,
+          .last_left = first_left + LOOM_CFG_CONDITION_RELATION_PAGE_WIDTH - 1,
       };
+      loom_condition_relation_matrix_t* matrix =
+          loom_cfg_condition_relation_publication_page_matrix(builder,
+                                                              publication_page);
       loom_condition_relation_matrix_t page_matrix = {
-          .rows = &publication_page->matrix->rows[publication_page->row_begin],
+          .rows = &matrix->rows[publication_page->row_begin],
           .row_count = publication_page->row_end - publication_page->row_begin,
       };
       IREE_RETURN_IF_ERROR(loom_condition_relation_matrix_view_publish(
