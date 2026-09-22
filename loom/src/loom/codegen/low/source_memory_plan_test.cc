@@ -114,6 +114,62 @@ TEST_F(SourceMemoryPlanTest, PhysicalByteLoadUsesBufferReferenceAndOffset) {
   EXPECT_EQ(plan.dynamic_term_count, 0u);
 }
 
+class WideAlignmentSourceMemoryPlanTest
+    : public SourceMemoryPlanTest,
+      public ::testing::WithParamInterface<int> {};
+
+TEST_P(WideAlignmentSourceMemoryPlanTest, RetainsPowerOfTwoDivisibility) {
+  const int64_t root_alignment = INT64_C(1) << GetParam();
+  const uint32_t retained_alignment = UINT32_C(1)
+                                      << (GetParam() < 31 ? GetParam() : 31);
+  const loom_value_id_t buffer =
+      BuildAligned(DefineBufferArg(), root_alignment);
+  const int64_t byte_offsets[] = {0, 3, 4, 5, 12, 15, 16};
+  const uint32_t expected_alignments[] = {
+      retained_alignment, 1, 4, 1, 4, 1, 16};
+  const loom_type_t view_type =
+      loom_type_shaped_1d(LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_I8, 1, 0);
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(byte_offsets); ++i) {
+    SCOPED_TRACE(byte_offsets[i]);
+    const loom_value_id_t byte_offset =
+        loom_index_constant_result(BuildOffsetConstant(byte_offsets[i]));
+    loom_op_t* byte_load_op = nullptr;
+    IREE_ASSERT_OK(loom_buffer_load_i8_u_build(
+        &builder_, buffer, byte_offset, LOOM_LOCATION_UNKNOWN, &byte_load_op));
+    loom_op_t* view_op = nullptr;
+    IREE_ASSERT_OK(loom_buffer_view_build(&builder_, buffer, byte_offset,
+                                          view_type, LOOM_LOCATION_UNKNOWN,
+                                          &view_op));
+    const int64_t static_index = 0;
+    loom_op_t* view_load_op = nullptr;
+    IREE_ASSERT_OK(loom_view_load_build(&builder_, 0, /*instance_flags=*/0,
+                                        loom_buffer_view_result(view_op),
+                                        nullptr, 0, &static_index, 1, 0, 0,
+                                        loom_type_scalar(LOOM_SCALAR_TYPE_I8),
+                                        LOOM_LOCATION_UNKNOWN, &view_load_op));
+
+    loom_value_fact_table_t facts = {0};
+    ComputeFacts(&facts);
+    for (const loom_op_t* op : {byte_load_op, view_load_op, view_op}) {
+      loom_low_source_memory_access_plan_t plan = {};
+      loom_low_source_memory_access_diagnostic_t diagnostic = {0};
+      ASSERT_TRUE(BuildPlan(&facts, op, &plan, &diagnostic));
+      EXPECT_EQ(plan.root_minimum_alignment, retained_alignment);
+      EXPECT_EQ(plan.minimum_alignment, expected_alignments[i]);
+    }
+
+    loom_low_source_memory_access_plan_t plan = {};
+    loom_low_source_memory_access_diagnostic_t diagnostic = {0};
+    ASSERT_TRUE(BuildViewPlan(&facts, loom_buffer_view_result(view_op), &plan,
+                              &diagnostic));
+    EXPECT_EQ(plan.root_minimum_alignment, retained_alignment);
+    EXPECT_EQ(plan.minimum_alignment, expected_alignments[i]);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(RootAlignment, WideAlignmentSourceMemoryPlanTest,
+                         ::testing::Values(4, 31, 32, 40, 62));
+
 TEST_F(SourceMemoryPlanTest, PhysicalByteStoreRetainsDynamicOffset) {
   const loom_value_id_t buffer = DefineBufferArg();
   const loom_value_id_t byte_offset = DefineOffsetArg();

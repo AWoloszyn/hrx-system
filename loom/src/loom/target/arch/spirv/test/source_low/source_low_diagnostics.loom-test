@@ -203,6 +203,53 @@ func.def target(@target) @storage_buffer_i32_rejects_misaligned_static_offset(%i
 
 spirv.target<vulkan1_3> @target
 
+// Narrowing a wide root-alignment fact must preserve a power-of-two divisor,
+// not saturate to an odd integer that shares factors with the displacement.
+func.def target(@target) @storage_buffer_i32_rejects_odd_offset_from_wide_aligned_root(%input: buffer) -> (i32) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 1099511627776} : buffer
+  %offset = index.constant 5 : offset
+  %input_view = buffer.view %aligned[%offset] : buffer -> view<1xi32>
+  // ERROR@+1: TARGET/050 {required_alignment="4", known_alignment="1"}
+  %loaded = view.load %input_view[0] : view<1xi32> -> i32
+  func.return %loaded : i32
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @storage_buffer_i32_rejects_odd_stride_from_wide_aligned_root(%input: buffer, %byte_offset: offset) -> (i32) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 1099511627776} : buffer
+  %offset = index.assume %byte_offset [range(%byte_offset, 0, 60), mul(%byte_offset, 5)] : offset
+  %input_view = buffer.view %aligned[%offset] : buffer -> view<1xi32>
+  // ERROR@+1: TARGET/050 {required_alignment="4", known_alignment="1"}
+  %loaded = view.load %input_view[0] : view<1xi32> -> i32
+  func.return %loaded : i32
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @storage_buffer_i32_accepts_even_stride_from_wide_aligned_root(%input: buffer, %byte_offset: offset) -> (i32) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 1099511627776} : buffer
+  %offset = index.assume %byte_offset [range(%byte_offset, 0, 60), mul(%byte_offset, 12)] : offset
+  %input_view = buffer.view %aligned[%offset] : buffer -> view<1xi32>
+  %loaded = view.load %input_view[0] : view<1xi32> -> i32
+  func.return %loaded : i32
+}
+
+// ----
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @storage_buffer_i32_accepts_even_stride_from_wide_aligned_root(%aligned: reg<spirv.ptr.storage_buffer>, %offset: reg<spirv.offset64>) -> (reg<spirv.id : i32>) asm {
+  %10 = OpPtrAccessChain.storage_buffer.i32.byte_offset %aligned, %offset
+  %loaded = OpLoad.storage_buffer.i32 %10
+  return %loaded
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
 func.def target(@target) @storage_buffer_i32_rejects_wide_index(%input: buffer, %element0: index) -> (i32) {
   %input_base = index.constant 0 : offset
   %element = index.assume %element0 [range(%element0, 0, 2147483648)] : index

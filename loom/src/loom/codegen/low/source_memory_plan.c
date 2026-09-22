@@ -126,7 +126,10 @@ static uint32_t loom_low_source_memory_clamp_alignment(uint64_t alignment) {
   if (alignment == 0) {
     return 1;
   }
-  return alignment > UINT32_MAX ? UINT32_MAX : (uint32_t)alignment;
+  // Preserve a power-of-two divisor when narrowing the guarantee. Saturating
+  // to UINT32_MAX would introduce odd factors into address-offset GCDs.
+  const uint32_t maximum_alignment = UINT32_C(1) << 31;
+  return (uint32_t)iree_min(alignment, maximum_alignment);
 }
 
 static uint32_t loom_low_source_memory_combine_alignment(uint32_t alignment,
