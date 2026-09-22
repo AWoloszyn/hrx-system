@@ -13,6 +13,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     representation
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "representation.h"
   SRCS
@@ -29,6 +34,11 @@ loom_cc_test(
     representation_test
   SRCS
     "representation_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::representation
     iree::testing::gtest
@@ -42,6 +52,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     types
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "types.h"
   SRCS
@@ -60,6 +75,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     signature
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "signature.h"
   SRCS
@@ -77,6 +97,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     scalar
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "scalar.h"
   SRCS
@@ -98,6 +123,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     vector
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "vector.h"
   SRCS
@@ -119,6 +149,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     storage
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "storage.h"
   SRCS
@@ -168,6 +203,11 @@ loom_cc_test(
     types_test
   SRCS
     "types_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::types
     iree::testing::gtest
@@ -187,6 +227,11 @@ loom_cc_test(
     signature_test
   SRCS
     "signature_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::builder_test
     ::signature
@@ -205,6 +250,11 @@ loom_cc_test(
     scalar_test
   SRCS
     "scalar_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::builder_test
     ::scalar
@@ -228,6 +278,11 @@ loom_cc_test(
     vector_test
   SRCS
     "vector_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::builder_test
     ::scalar
@@ -248,6 +303,11 @@ loom_cc_test(
     storage_test
   SRCS
     "storage_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::builder_test
     ::representation
@@ -267,29 +327,5 @@ loom_cc_test(
     "iree-build-requirement=loom.import.cxx"
 )
 endif()
-
-foreach(_target IN ITEMS
-    loom_import_cxx_value_representation.objects
-    loom_import_cxx_value_representation_test
-    loom_import_cxx_value_signature.objects
-    loom_import_cxx_value_signature_test
-    loom_import_cxx_value_types.objects
-    loom_import_cxx_value_types_test
-    loom_import_cxx_value_scalar.objects
-    loom_import_cxx_value_scalar_test
-    loom_import_cxx_value_vector.objects
-    loom_import_cxx_value_vector_test
-    loom_import_cxx_value_storage.objects
-    loom_import_cxx_value_storage_test
-    )
-  if(TARGET ${_target})
-    target_compile_features(${_target} PRIVATE cxx_std_23)
-    if(MSVC)
-      target_compile_options(${_target} PRIVATE /EHsc /GR)
-    else()
-      target_compile_options(${_target} PRIVATE -fexceptions -frtti)
-    endif()
-  endif()
-endforeach()
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

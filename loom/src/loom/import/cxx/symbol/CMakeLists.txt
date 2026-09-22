@@ -13,6 +13,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     names
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "names.h"
   SRCS
@@ -27,6 +32,11 @@ if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
     functions
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   HDRS
     "functions.h"
   SRCS
@@ -57,6 +67,11 @@ loom_cc_test(
     functions_test
   SRCS
     "functions_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
   DEPS
     ::functions
     iree::testing::gtest
@@ -70,20 +85,5 @@ loom_cc_test(
     "iree-build-requirement=loom.import.cxx"
 )
 endif()
-
-foreach(_target IN ITEMS
-    loom_import_cxx_symbol_names.objects
-    loom_import_cxx_symbol_functions.objects
-    loom_import_cxx_symbol_functions_test
-)
-  if(TARGET ${_target})
-    target_compile_features(${_target} PRIVATE cxx_std_23)
-    if(MSVC)
-      target_compile_options(${_target} PRIVATE /EHsc /GR)
-    else()
-      target_compile_options(${_target} PRIVATE -fexceptions -frtti)
-    endif()
-  endif()
-endforeach()
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

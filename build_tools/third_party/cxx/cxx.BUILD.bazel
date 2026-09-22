@@ -26,5 +26,6 @@ cc_library(
         ],
     }),
     defines = ['CXX_VERSION="1.2.0"'],
+    features = ["-default_cpp_std"],
     includes = ["src/parser"],
 )

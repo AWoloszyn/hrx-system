@@ -13,19 +13,42 @@ _LOOM_DEPS = [
     Label("//loom/src:defines"),
 ]
 
+_CXX_ATTRIBUTES = {
+    "cxx_features": attr.string_list(
+        configurable = False,
+        doc = "Optional C++ runtime features: exceptions and rtti.",
+    ),
+    "cxx_standard": attr.string(
+        configurable = False,
+        default = "c++17",
+        values = ["c++17", "c++20", "c++23"],
+        doc = "C++ language standard for this target.",
+    ),
+}
+
 def _with_loom_deps(deps):
     if deps == None:
         deps = []
     return deps + _LOOM_DEPS
 
-def _with_loom_compiler_options(copts, conlyopts, cxxopts):
+def _with_loom_compiler_options(
+        copts,
+        conlyopts,
+        cxxopts,
+        cxx_standard = "c++17",
+        cxx_features = None,
+        features = None):
     return cc_opts.iree_code_compiler_options(
         copts = copts,
         conlyopts = conlyopts,
         cxxopts = cxxopts,
+        cxx_standard = cxx_standard,
+        cxx_features = cxx_features,
+        features = features,
     )
 
 loom_cc_attrs = struct(
+    cxx_attributes = _CXX_ATTRIBUTES,
     with_loom_compiler_options = _with_loom_compiler_options,
     with_loom_deps = _with_loom_deps,
 )

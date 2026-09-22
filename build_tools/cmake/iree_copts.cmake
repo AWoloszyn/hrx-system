@@ -63,6 +63,23 @@
 
 set(IREE_CXX_STANDARD ${CMAKE_CXX_STANDARD})
 
+# Sets private language requirements on the target that owns compilation.
+function(iree_set_cxx_options TARGET STANDARD)
+  if(NOT STANDARD)
+    set(STANDARD ${IREE_CXX_STANDARD})
+  endif()
+  foreach(_FEATURE IN LISTS ARGN)
+    if(NOT _FEATURE STREQUAL "exceptions" AND NOT _FEATURE STREQUAL "rtti")
+      message(FATAL_ERROR "Unsupported C++ feature: ${_FEATURE}")
+    endif()
+  endforeach()
+  set_target_properties(${TARGET} PROPERTIES
+    CXX_STANDARD "${STANDARD}"
+    CXX_STANDARD_REQUIRED ON
+    IREE_CXX_FEATURES "${ARGN}"
+  )
+endfunction()
+
 # TODO(benvanik): fix these names (or remove entirely).
 set(IREE_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR})
 set(IREE_SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR})
@@ -85,8 +102,8 @@ iree_select_compiler_opts(IREE_DEFAULT_COPTS
   CLANG_OR_GCC
     # Keep runtime C++ targets free of RTTI and exceptions unless a leaf target
     # has a specific ABI requirement.
-    "$<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>"
-    "$<$<COMPILE_LANGUAGE:CXX>:-fno-exceptions>"
+    "$<$<COMPILE_LANGUAGE:CXX>:$<IF:$<IN_LIST:rtti,$<TARGET_PROPERTY:IREE_CXX_FEATURES>>,-frtti,-fno-rtti>>"
+    "$<$<COMPILE_LANGUAGE:CXX>:$<IF:$<IN_LIST:exceptions,$<TARGET_PROPERTY:IREE_CXX_FEATURES>>,-fexceptions,-fno-exceptions>>"
 
   MSVC_OR_CLANG_CL
     # Interpret source files as UTF-8 and use UTF-8 for narrow literals. This
@@ -125,7 +142,7 @@ iree_select_compiler_opts(IREE_DEFAULT_COPTS
     # - /GR - Enable generation of RTTI (default)
     # - /GR- - Disables generation of RTTI
     # https://docs.microsoft.com/en-us/cpp/build/reference/gr-enable-run-time-type-information?view=msvc-160
-    "/GR-"
+    "$<$<COMPILE_LANGUAGE:CXX>:$<IF:$<IN_LIST:rtti,$<TARGET_PROPERTY:IREE_CXX_FEATURES>>,/GR,/GR->>"
 
     # Default max section count is 64k, which can be inadequate for large
     # generated sources or heavily templated code.

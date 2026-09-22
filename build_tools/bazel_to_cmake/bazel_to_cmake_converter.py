@@ -1668,6 +1668,8 @@ class BuildFileFunctions(object):
         textual_hdrs=None,
         srcs=None,
         copts=None,
+        cxx_standard=None,
+        cxx_features=None,
         defines=None,
         data=None,
         deps=None,
@@ -1683,6 +1685,14 @@ class BuildFileFunctions(object):
         if self._should_skip_target(**kwargs):
             return
         name_block = self._convert_string_arg_block("NAME", name, quote=False)
+        if cxx_standard is not None and cxx_standard not in ("c++17", "c++20", "c++23"):
+            raise ValueError(f"Unsupported C++ standard: {cxx_standard}")
+        cxx_standard_block = self._convert_string_arg_block(
+            "CXX_STANDARD", cxx_standard[3:] if cxx_standard else None, quote=False
+        )
+        cxx_features_block = self._convert_string_list_block(
+            "CXX_FEATURES", cxx_features
+        )
         hdrs_block = self._convert_srcs_block(hdrs, block_name="HDRS")
         textual_hdrs_block = self._convert_srcs_block(
             textual_hdrs, block_name="TEXTUAL_HDRS"
@@ -1720,6 +1730,8 @@ class BuildFileFunctions(object):
             f"iree_cc_library(\n"
             f"{name_block}"
             f"{copts_block}"
+            f"{cxx_standard_block}"
+            f"{cxx_features_block}"
             f"{hdrs_block}"
             f"{textual_hdrs_block}"
             f"{srcs_block}"
@@ -1754,6 +1766,8 @@ class BuildFileFunctions(object):
         hdrs=None,
         srcs=None,
         copts=None,
+        cxx_standard=None,
+        cxx_features=None,
         defines=None,
         linkopts=None,
         data=None,
@@ -1779,6 +1793,14 @@ class BuildFileFunctions(object):
                     resource_group = tag[len("resource_group:") :]
                     break
         name_block = self._convert_string_arg_block("NAME", name, quote=False)
+        if cxx_standard is not None and cxx_standard not in ("c++17", "c++20", "c++23"):
+            raise ValueError(f"Unsupported C++ standard: {cxx_standard}")
+        cxx_standard_block = self._convert_string_arg_block(
+            "CXX_STANDARD", cxx_standard[3:] if cxx_standard else None, quote=False
+        )
+        cxx_features_block = self._convert_string_list_block(
+            "CXX_FEATURES", cxx_features
+        )
         hdrs_block = self._convert_srcs_block(hdrs, block_name="HDRS")
         srcs_block = self._convert_srcs_block(srcs)
         copts_block, platform_copts_block = self._convert_platform_select_strings(
@@ -1827,6 +1849,8 @@ class BuildFileFunctions(object):
             f"{hdrs_block}"
             f"{srcs_block}"
             f"{copts_block}"
+            f"{cxx_standard_block}"
+            f"{cxx_features_block}"
             f"{defines_block}"
             f"{linkopts_block}"
             f"{data_block}"

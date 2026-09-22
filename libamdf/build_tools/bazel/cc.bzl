@@ -33,6 +33,7 @@ def _amdf_cc_library_impl(
         copts = copts,
         conlyopts = conlyopts,
         cxxopts = cxxopts,
+        features = kwargs.pop("features", None),
     )
     iree_cc_library(
         name = name,
@@ -40,6 +41,7 @@ def _amdf_cc_library_impl(
         copts = compiler_options.copts,
         conlyopts = compiler_options.conlyopts,
         cxxopts = compiler_options.cxxopts,
+        features = compiler_options.features,
         deps = amdf_cc_attrs.with_amdf_deps(deps),
         **kwargs
     )
@@ -67,6 +69,7 @@ def _amdf_cc_binary_impl(
         copts = copts,
         conlyopts = conlyopts,
         cxxopts = cxxopts,
+        features = kwargs.pop("features", None),
     )
     iree_cc_binary(
         name = name,
@@ -74,6 +77,7 @@ def _amdf_cc_binary_impl(
         copts = compiler_options.copts,
         conlyopts = compiler_options.conlyopts,
         cxxopts = compiler_options.cxxopts,
+        features = compiler_options.features,
         deps = amdf_cc_attrs.with_amdf_deps(deps),
         **kwargs
     )
