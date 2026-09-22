@@ -308,6 +308,12 @@ scf_for = Op(
         "the initial carried state; otherwise results are the last iteration's "
         "yielded state. The unused induction value after the final iteration "
         "need not fit the target's address carrier.\n\n"
+        "The result list defines the recurring type scheme for loop-carried "
+        "state. A dependent result type may refer to sibling loop results; "
+        "the initial operands, body arguments, and yielded values instantiate "
+        "that scheme with their corresponding SSA identities. This permits a "
+        "loop to carry a view whose extent or layout changes each iteration "
+        "while every use still names the extent and layout in its own scope.\n\n"
         "The optional `pipeline(%depth)` and `unroll(%factor)` policies accept "
         "independent SSA values, including template arguments and arithmetic on "
         "specialized target properties. Pipelining runs before unrolling. "
@@ -335,7 +341,12 @@ scf_for = Op(
             ADDRESS,
             doc="Positive step in the lower-bound address domain.",
         ),
-        Operand("iter_args", ANY, variadic=True),
+        Operand(
+            "iter_args",
+            ANY,
+            variadic=True,
+            doc="Initial loop-carried state. Dependent types use the identities of these initial operands.",
+        ),
         Operand(
             "pipeline_depth",
             INDEX,
@@ -365,11 +376,18 @@ scf_for = Op(
             doc="Optional schedule used when materializing unrolled loop body copies.",
         ),
     ],
-    results=[Result("results", ANY, variadic=True)],
+    results=[
+        Result(
+            "results",
+            ANY,
+            variadic=True,
+            doc="Final loop-carried state and recurring type scheme. Dependent types may refer to sibling results.",
+        )
+    ],
     regions=[
         RegionDef(
             "body",
-            doc="Loop body. Terminated by scf.yield.",
+            doc="Loop body. Carried entry arguments instantiate the result type scheme with body-local identities. Terminated by scf.yield.",
             single_block=True,
             terminator="scf.yield",
             implicit_args=(("iv", "type_of:lower_bound"),),

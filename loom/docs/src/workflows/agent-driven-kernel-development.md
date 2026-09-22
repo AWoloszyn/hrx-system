@@ -269,6 +269,15 @@ handles runtime tails. `pipeline(%depth)` moves ordinary loads and their
 prerequisites ahead of ordered computation. Pipelining runs before unrolling,
 so depth counts original iterations. Each control also works independently.
 
+Loop-carried views may change extent or layout from one iteration to the next.
+Carry the dynamic extent or encoding beside the view and make the loop result
+type refer to its sibling result. The initial operand, body argument, yield,
+and final result then state the same relationship with their local SSA values.
+The [dependent carried-view guide](../guide/functions-and-control.md#change-a-carried-views-shape)
+shows the complete spelling and a checked shrinking-view witness. This keeps
+ragged windows and progressively consumed pages in structured IR, where normal
+unrolling, pipelining, and report workflows can preserve and inspect them.
+
 Streaming reductions, guarded ragged rows, and packed dequantization/dot loops
 are useful candidates. Ordinary loads and pure operations may contain nested
 `scf.if` and `scf.for`; each structured operation stays intact in its stage.

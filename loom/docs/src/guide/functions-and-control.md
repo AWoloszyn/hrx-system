@@ -422,6 +422,40 @@ alignment, and synchronization contracts. Rotating a view does not establish
 completion of an asynchronous producer; consumption and storage reuse follow
 the program's completion dependencies.
 
+### Change a carried view's shape
+
+A loop can change a carried view's extent or layout. Its result list defines
+the recurring tuple, including relationships between sibling results. Each
+edge expresses that same relationship with the SSA values in its own scope.
+This shrinking view carries a row count beside the view whose first dimension
+uses it:
+
+```loom
+%rows, %view = scf.for %iteration = [%begin to %count step %step](
+    %carried_rows = %initial_rows : index,
+    %carried_view = %initial_view : view<[%initial_rows]x4xi32>
+  ) -> (index, view<[%rows]x4xi32>) {
+  %next_rows = index.sub %carried_rows, %step : index
+  %next_view = view.subview %carried_view[1, 0] : view<[%carried_rows]x4xi32> -> view<[%next_rows]x4xi32>
+  scf.yield %next_rows, %next_view : index, view<[%next_rows]x4xi32>
+}
+%final = view.load %view[0, 1] : view<[%rows]x4xi32> -> i32
+```
+
+The initial view names `%initial_rows`, the body view names `%carried_rows`, the
+yielded view names `%next_rows`, and the final view names `%rows`. These are
+separate SSA definitions of one positional type relationship. A type that
+keeps an initial or body-local identity on the wrong edge is rejected instead
+of being treated as a static annotation.
+
+The [checked shrinking-view
+case](https://github.com/ROCm/hrx-system/blob/main/loom/src/loom/test/corpus/conformance/shrinking_view.loom)
+changes the row extent while carrying its strided layout, consumes the view in
+the loop body, and checks the final view after zero, one, and three iterations
+on AMDGPU and Vulkan. Pipelining, unrolling, fusion, and other loop
+reconstruction retain the recurring type scheme; their ordinary legality rules
+still apply to the loop's effects and dependencies.
+
 Scalar values can rotate through the same carried tuple. A loop may issue a
 future input load before computing with an older carried input. On AMDGPU,
 completion waits account for register copies used to carry those values: a
