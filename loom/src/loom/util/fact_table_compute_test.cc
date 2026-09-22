@@ -398,6 +398,16 @@ TEST_F(FactTableComputeTest, DependentResultsPublishOnlyFinalChanges) {
     EXPECT_FALSE(changed);
     EXPECT_TRUE(loom_value_facts_is_non_negative(
         loom_value_fact_table_lookup(&table_, results[extent_index])));
+
+    // Type edits update the canonical use index before producer inference.
+    // Removing the shaped use withdraws its domain without a separate cache.
+    IREE_ASSERT_OK(loom_module_set_value_type(module_, results[tensor_index],
+                                              tensor_type));
+    IREE_ASSERT_OK(loom_value_fact_table_compute_op_and_report(&table_, module_,
+                                                               op, &changed));
+    EXPECT_TRUE(changed);
+    EXPECT_TRUE(loom_value_facts_is_unknown(
+        loom_value_fact_table_lookup(&table_, results[extent_index])));
   }
 }
 

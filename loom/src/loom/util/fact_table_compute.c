@@ -88,16 +88,6 @@ static iree_status_t loom_value_fact_table_seed_view_arg(
   return loom_value_fact_table_define(table, value_id, facts);
 }
 
-static iree_status_t loom_value_fact_table_define_if_changed(
-    loom_value_fact_table_t* table, loom_value_id_t value_id,
-    loom_value_facts_t facts, bool* out_changed) {
-  loom_value_facts_t old_facts = loom_value_fact_table_lookup(table, value_id);
-  if (out_changed && !loom_value_facts_equal(old_facts, facts)) {
-    *out_changed = true;
-  }
-  return loom_value_fact_table_define(table, value_id, facts);
-}
-
 static bool loom_value_fact_table_dynamic_extent_type_supported(
     loom_type_t type) {
   if (!loom_type_is_scalar(type)) {
@@ -125,49 +115,53 @@ static loom_value_facts_t loom_value_fact_table_clamp_scalar_type_domain(
   return loom_value_facts_clamp_domain(facts, lo, hi);
 }
 
-static iree_status_t loom_value_fact_table_seed_dynamic_extent(
-    loom_value_fact_table_t* table, const loom_module_t* module,
-    const loom_block_t* block, loom_value_id_t value_id,
-    const loom_op_t* result_op, loom_value_facts_t* result_facts,
-    bool* out_changed) {
-  if (value_id == LOOM_VALUE_ID_INVALID || value_id >= module->values.count) {
-    return iree_ok_status();
-  }
-  if (!loom_value_fact_table_dynamic_extent_type_supported(
-          loom_module_value_type(module, value_id))) {
-    return iree_ok_status();
-  }
-
-  // A type constrains its extents where the typed value is defined. A view
-  // created in a conditional block cannot narrow a captured size on paths
-  // that skip that block. Only values defined in the same execution block
-  // receive global facts from this type.
-  const loom_value_t* value = loom_module_value(module, value_id);
-  const loom_block_t* defining_block = NULL;
-  const loom_op_t* defining_op = NULL;
+// Declaration arguments have no executing definition.
+static const loom_block_t* loom_value_fact_table_definition_block(
+    const loom_value_t* value) {
   if (loom_value_is_block_arg(value)) {
-    defining_block = loom_value_def_block(value);
-  } else {
-    defining_op = loom_value_def_op(value);
-    defining_block = defining_op ? defining_op->parent_block : NULL;
+    return loom_value_def_block(value);
   }
-  if (defining_block != block) {
-    return iree_ok_status();
-  }
+  const loom_op_t* op = loom_value_def_op(value);
+  return op ? op->parent_block : NULL;
+}
 
-  if (result_facts && defining_op == result_op) {
-    const uint16_t result_index = loom_value_def_index(value);
-    result_facts[result_index] = loom_value_fact_table_clamp_scalar_type_domain(
-        module, value_id,
-        loom_value_facts_non_negative_extent(result_facts[result_index]));
-    return iree_ok_status();
+// A shaped type references scalar values only through its dimensions; its
+// optional layout reference has encoding type. Consume the maintained reverse
+// type-use index instead of finding extents by walking other definitions.
+static bool loom_value_fact_table_has_extent_domain(const loom_module_t* module,
+                                                    loom_value_id_t value_id) {
+  if (!loom_value_fact_table_dynamic_extent_type_supported(
+          loom_module_value_type(module, value_id)) ||
+      !loom_module_value_has_type_uses(module, value_id)) {
+    return false;
   }
+  const loom_block_t* block = loom_value_fact_table_definition_block(
+      loom_module_value(module, value_id));
+  if (!block) {
+    return false;
+  }
+  loom_type_use_iterator_t users;
+  loom_module_value_type_users(module, value_id, &users);
+  for (loom_value_id_t user_id = loom_type_users_next(&users);
+       user_id != LOOM_VALUE_ID_INVALID;
+       user_id = loom_type_users_next(&users)) {
+    if (!loom_type_is_shaped(loom_module_value_type(module, user_id))) {
+      continue;
+    }
+    // A conditional view cannot constrain captures on paths that skip it.
+    if (loom_value_fact_table_definition_block(
+            loom_module_value(module, user_id)) == block) {
+      return true;
+    }
+  }
+  return false;
+}
 
-  loom_value_facts_t current = loom_value_fact_table_lookup(table, value_id);
-  loom_value_facts_t extent = loom_value_fact_table_clamp_scalar_type_domain(
-      module, value_id, loom_value_facts_non_negative_extent(current));
-  return loom_value_fact_table_define_if_changed(table, value_id, extent,
-                                                 out_changed);
+static loom_value_facts_t loom_value_fact_table_clamp_extent_domain(
+    const loom_module_t* module, loom_value_id_t value_id,
+    loom_value_facts_t facts) {
+  return loom_value_fact_table_clamp_scalar_type_domain(
+      module, value_id, loom_value_facts_non_negative_extent(facts));
 }
 
 static iree_status_t loom_value_fact_table_seed_scalar_arg(
@@ -199,25 +193,6 @@ static loom_value_facts_t loom_value_fact_table_unknown_for_value(
         loom_value_fact_table_clamp_scalar_type_domain(module, value_id, facts);
   }
   return facts;
-}
-
-static iree_status_t loom_value_fact_table_seed_type_extent_facts(
-    loom_value_fact_table_t* table, const loom_module_t* module,
-    const loom_block_t* block, loom_type_t type, const loom_op_t* result_op,
-    loom_value_facts_t* result_facts, bool* out_changed) {
-  if (!loom_type_is_shaped(type)) {
-    return iree_ok_status();
-  }
-  uint8_t rank = loom_type_rank(type);
-  for (uint8_t i = 0; i < rank; ++i) {
-    if (!loom_type_dim_is_dynamic_at(type, i)) {
-      continue;
-    }
-    IREE_RETURN_IF_ERROR(loom_value_fact_table_seed_dynamic_extent(
-        table, module, block, loom_type_dim_value_id_at(type, i), result_op,
-        result_facts, out_changed));
-  }
-  return iree_ok_status();
 }
 
 static void loom_value_fact_table_apply_operand_distribution(
@@ -379,9 +354,13 @@ static iree_status_t loom_value_fact_table_seed_block_args(
       IREE_RETURN_IF_ERROR(
           loom_value_fact_table_define(table, value_id, facts));
     }
-    IREE_RETURN_IF_ERROR(loom_value_fact_table_seed_type_extent_facts(
-        table, module, block, type, /*result_op=*/NULL,
-        /*result_facts=*/NULL, /*out_changed=*/NULL));
+    if (loom_value_fact_table_has_extent_domain(module, value_id)) {
+      IREE_RETURN_IF_ERROR(loom_value_fact_table_define(
+          table, value_id,
+          loom_value_fact_table_clamp_extent_domain(
+              module, value_id,
+              loom_value_fact_table_lookup(table, value_id))));
+    }
   }
   IREE_RETURN_IF_ERROR(loom_value_fact_table_apply_func_predicates(
       table, module, block, parent_op));
@@ -407,11 +386,7 @@ static iree_status_t loom_value_fact_table_define_block_arg_facts(
            table, facts))) {
     *out_changed = true;
   }
-  IREE_RETURN_IF_ERROR(loom_value_fact_table_define(table, arg_id, facts));
-  return loom_value_fact_table_seed_type_extent_facts(
-      table, module, loom_value_def_block(loom_module_value(module, arg_id)),
-      type, /*result_op=*/NULL,
-      /*result_facts=*/NULL, out_changed);
+  return loom_value_fact_table_define(table, arg_id, facts);
 }
 
 static iree_status_t loom_value_fact_table_join_cfg_block_arg_incoming(
@@ -548,27 +523,41 @@ static iree_status_t loom_value_fact_table_compute_cfg_block_arg(
       loom_value_facts_mark_lane_distribution_for_type(type, &incoming_facts);
     }
   }
-  loom_value_facts_t facts = incoming_facts;
-  if (widen && !exits_at_header &&
-      loom_value_fact_table_has_entry(table, arg_id)) {
-    loom_value_facts_t current_facts =
-        loom_value_fact_table_lookup(table, arg_id);
-    IREE_RETURN_IF_ERROR(loom_value_fact_table_widen_for_type(
-        table, module, type, table, current_facts, table, incoming_facts,
-        iteration, &facts));
-  }
-  if (header_loop != LOOM_CFG_LOOP_NEST_NONE &&
-      region->inductions[header_loop].value == arg_id) {
-    const loom_loop_recurrence_facts_t recurrence =
-        loom_value_fact_induction_facts(table, module,
-                                        &region->inductions[header_loop]);
-    facts = loom_value_facts_clamp_domain(facts, recurrence.values.range_lo,
-                                          recurrence.values.range_hi);
-  }
+  // Forwarding members share numeric inputs, but their type constraints are
+  // local to each definition's execution block. Settle each complete equation
+  // before widening or comparing it with the previous iteration.
   for (iree_host_size_t member = 0; member < member_count; ++member) {
     loom_value_id_t value_id =
         component ? region->arguments[component->nodes[member]].value_id
                   : arg_id;
+    loom_type_t member_type = loom_module_value_type(module, value_id);
+    const bool is_extent =
+        loom_value_fact_table_has_extent_domain(module, value_id);
+    loom_value_facts_t facts = incoming_facts;
+    if (is_extent) {
+      facts =
+          loom_value_fact_table_clamp_extent_domain(module, value_id, facts);
+    }
+    if (widen && !exits_at_header &&
+        loom_value_fact_table_has_entry(table, value_id)) {
+      loom_value_facts_t current_facts =
+          loom_value_fact_table_lookup(table, value_id);
+      IREE_RETURN_IF_ERROR(loom_value_fact_table_widen_for_type(
+          table, module, member_type, table, current_facts, table, facts,
+          iteration, &facts));
+      if (is_extent) {
+        facts =
+            loom_value_fact_table_clamp_extent_domain(module, value_id, facts);
+      }
+    }
+    if (header_loop != LOOM_CFG_LOOP_NEST_NONE &&
+        region->inductions[header_loop].value == value_id) {
+      const loom_loop_recurrence_facts_t recurrence =
+          loom_value_fact_induction_facts(table, module,
+                                          &region->inductions[header_loop]);
+      facts = loom_value_facts_clamp_domain(facts, recurrence.values.range_lo,
+                                            recurrence.values.range_hi);
+    }
     bool changed = false;
     IREE_RETURN_IF_ERROR(loom_value_fact_table_define_block_arg_facts(
         table, module, value_id, facts, &changed));
@@ -1004,35 +993,19 @@ static iree_status_t loom_value_fact_table_seed_projected_func_args(
 
 iree_status_t loom_value_fact_table_define_results(
     loom_value_fact_table_t* table, const loom_module_t* module,
-    const loom_op_t* op, loom_value_facts_t* result_facts,
+    const loom_op_t* op, const loom_value_facts_t* result_facts,
     uint16_t result_count, bool* out_changed) {
   const loom_value_id_t* results = loom_op_const_results(op);
-  if (result_count < op->result_count) {
-    loom_value_facts_t* full_result_facts = NULL;
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        table->transient_arena, op->result_count, sizeof(*full_result_facts),
-        (void**)&full_result_facts));
-    for (uint16_t i = 0; i < op->result_count; ++i) {
-      full_result_facts[i] =
-          i < result_count ? result_facts[i] : loom_value_facts_unknown();
-    }
-    result_facts = full_result_facts;
-  }
   for (uint16_t i = 0; i < op->result_count; ++i) {
     loom_value_id_t result = results[i];
     if (result == LOOM_VALUE_ID_INVALID || result >= module->values.count) {
       continue;
     }
-    IREE_RETURN_IF_ERROR(loom_value_fact_table_seed_type_extent_facts(
-        table, module, op->parent_block, loom_module_value_type(module, result),
-        op, result_facts, out_changed));
-  }
-  for (uint16_t i = 0; i < op->result_count; ++i) {
-    loom_value_id_t result = results[i];
-    if (result == LOOM_VALUE_ID_INVALID || result >= module->values.count) {
-      continue;
+    loom_value_facts_t facts =
+        i < result_count ? result_facts[i] : loom_value_facts_unknown();
+    if (loom_value_fact_table_has_extent_domain(module, result)) {
+      facts = loom_value_fact_table_clamp_extent_domain(module, result, facts);
     }
-    loom_value_facts_t facts = result_facts[i];
     loom_type_t type = loom_module_value_type(module, result);
     if (out_changed &&
         (!loom_value_fact_table_has_entry(table, result) ||
