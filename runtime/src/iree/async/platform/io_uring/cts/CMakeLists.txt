@@ -201,12 +201,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_binary_benchmark(
   NAME
     buffer_benchmarks
-  SRCS
-    "${PROJECT_SOURCE_DIR}/runtime/src/iree/async/cts/util/benchmark_main.cc"
   DEPS
     ::backends
     iree::async::cts::buffer::all_benchmarks
-    iree::async::cts::util::registry
+    iree::async::cts::util::benchmark_main
     iree::third_party::google_benchmark
   TESTONLY
 )
@@ -216,12 +214,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_binary_benchmark(
   NAME
     core_benchmarks
-  SRCS
-    "${PROJECT_SOURCE_DIR}/runtime/src/iree/async/cts/util/benchmark_main.cc"
   DEPS
     ::backends
     iree::async::cts::core::all_benchmarks
-    iree::async::cts::util::registry
+    iree::async::cts::util::benchmark_main
     iree::third_party::google_benchmark
   TESTONLY
 )
@@ -231,12 +227,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_binary_benchmark(
   NAME
     event_benchmarks
-  SRCS
-    "${PROJECT_SOURCE_DIR}/runtime/src/iree/async/cts/util/benchmark_main.cc"
   DEPS
     ::backends
     iree::async::cts::event::all_benchmarks
-    iree::async::cts::util::registry
+    iree::async::cts::util::benchmark_main
     iree::third_party::google_benchmark
   TESTONLY
 )
@@ -246,12 +240,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_binary_benchmark(
   NAME
     futex_benchmarks
-  SRCS
-    "${PROJECT_SOURCE_DIR}/runtime/src/iree/async/cts/util/benchmark_main.cc"
   DEPS
     ::backends
     iree::async::cts::futex::all_benchmarks
-    iree::async::cts::util::registry
+    iree::async::cts::util::benchmark_main
     iree::third_party::google_benchmark
   TESTONLY
 )
@@ -261,12 +253,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_binary_benchmark(
   NAME
     socket_benchmarks
-  SRCS
-    "${PROJECT_SOURCE_DIR}/runtime/src/iree/async/cts/util/benchmark_main.cc"
   DEPS
     ::backends
     iree::async::cts::socket::all_benchmarks
-    iree::async::cts::util::registry
+    iree::async::cts::util::benchmark_main
     iree::third_party::google_benchmark
   TESTONLY
 )
@@ -276,12 +266,10 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
 iree_cc_binary_benchmark(
   NAME
     sync_benchmarks
-  SRCS
-    "${PROJECT_SOURCE_DIR}/runtime/src/iree/async/cts/util/benchmark_main.cc"
   DEPS
     ::backends
     iree::async::cts::sync::all_benchmarks
-    iree::async::cts::util::registry
+    iree::async::cts::util::benchmark_main
     iree::third_party::google_benchmark
   TESTONLY
 )

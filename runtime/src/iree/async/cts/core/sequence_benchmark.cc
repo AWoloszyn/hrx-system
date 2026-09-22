@@ -186,7 +186,7 @@ static void BM_SequenceVsRawLinked(::benchmark::State& state,
 
   if (!(context->capabilities &
         IREE_ASYNC_PROACTOR_CAPABILITY_LINKED_OPERATIONS)) {
-    state.SkipWithError("Backend lacks LINKED_OPERATIONS capability");
+    state.SkipWithMessage("Backend lacks LINKED_OPERATIONS capability");
     DestroyBenchmarkContext(context);
     return;
   }

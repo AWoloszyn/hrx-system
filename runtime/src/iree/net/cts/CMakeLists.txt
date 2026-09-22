@@ -57,6 +57,21 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    transfer_benchmarks
+  SRCS
+    "transfer_benchmark.cc"
+  DEPS
+    ::transfer_trial
+    ::transport_backend
+    iree::async::cts::util::registry
+    iree::third_party::google_benchmark
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     transport_tests
   SRCS
     "session_test.cc"

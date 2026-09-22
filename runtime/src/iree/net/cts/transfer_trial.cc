@@ -552,7 +552,8 @@ struct TrialSide {
 iree_status_t RunTransferTrial(
     const TransportBackend& transport,
     const iree::async::cts::ProactorFactory& create_proactor,
-    const TransferTrialOptions& options, TransferTrialResult* out_result) {
+    const TransferTrialOptions& options, TransferTrialResult* out_result,
+    TransferTrialMeasurement measurement) {
   *out_result = {};
   if (!options.connection_count || !options.record_size ||
       !options.batch_size || !options.window_size || !options.fragment_count ||
@@ -623,9 +624,15 @@ iree_status_t RunTransferTrial(
   for (auto& peer : producer.peers) {
     peer->window_high_water = 0;
   }
+  if (measurement.begin) {
+    measurement.begin(measurement.user_data);
+  }
   const auto start = std::chrono::steady_clock::now();
   producer.RunProducer(options.warmup_records + options.measured_records);
   const auto end = std::chrono::steady_clock::now();
+  if (measurement.end) {
+    measurement.end(measurement.user_data);
+  }
   TransferTrialResult result;
   result.available = true;
   producer.Accumulate(&result);

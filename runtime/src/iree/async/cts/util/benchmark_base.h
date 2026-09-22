@@ -191,7 +191,8 @@ inline bool PollOneProgressEvent(iree_async_proactor_t* proactor) {
 }
 
 // Creates a benchmark context with a proactor from the given factory.
-// Returns nullptr and calls state.SkipWithError() on failure.
+// Returns nullptr and reports unavailable backends as skips, other failures as
+// errors.
 // This is the preferred overload for link-time composed benchmarks.
 inline BenchmarkContext* CreateBenchmarkContext(const ProactorFactory& factory,
                                                 ::benchmark::State& state) {
@@ -200,9 +201,9 @@ inline BenchmarkContext* CreateBenchmarkContext(const ProactorFactory& factory,
   auto result = factory(iree_async_proactor_options_default());
   if (!result.ok()) {
     if (result.status().code() == iree::StatusCode::kUnavailable) {
-      state.SkipWithError("Backend unavailable on this system");
+      state.SkipWithMessage(result.status().ToString());
     } else {
-      state.SkipWithError("Proactor creation failed");
+      state.SkipWithError(result.status().ToString());
     }
     delete context;
     return nullptr;
@@ -227,11 +228,11 @@ inline BenchmarkContext* CreateBenchmarkContext(ProactorCreateFn create_fn,
       create_fn(options, iree_allocator_system(), &context->proactor);
   if (!iree_status_is_ok(status)) {
     if (iree_status_is_unavailable(status)) {
-      state.SkipWithError("Backend unavailable on this system");
+      state.SkipWithMessage(iree::Status::ToString(status));
     } else {
-      state.SkipWithError("Proactor creation failed");
+      state.SkipWithError(iree::Status::ToString(status));
     }
-    iree_status_ignore(status);
+    iree_status_free(status);
     delete context;
     return nullptr;
   }
@@ -258,7 +259,7 @@ inline bool RequireCapability(BenchmarkContext* context,
                               iree_async_proactor_capabilities_t required,
                               ::benchmark::State& state) {
   if (!(context->capabilities & required)) {
-    state.SkipWithError("Backend lacks required capability");
+    state.SkipWithMessage("Backend lacks required capability");
     return false;
   }
   return true;
@@ -269,7 +270,7 @@ inline bool RequireCapability(BenchmarkContext* context,
 inline bool RequireMultiNuma(BenchmarkContext* context,
                              ::benchmark::State& state) {
   if (!context->numa.is_multi_numa) {
-    state.SkipWithError("Single NUMA node system");
+    state.SkipWithMessage("Single NUMA node system");
     return false;
   }
   return true;

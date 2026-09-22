@@ -36,4 +36,20 @@ iree_cc_test(
     iree::testing::temp_file
 )
 
+iree_cc_binary_benchmark(
+  NAME
+    transfer_benchmarks
+  SRCS
+    "backend.cc"
+  DEPS
+    iree::async::cts::util::benchmark_main
+    iree::async::cts::util::platform_backends
+    iree::net::carrier::shm::factory
+    iree::net::cts::transfer_benchmarks
+    iree::net::cts::transport_backend
+    iree::testing::temp_file
+    iree::third_party::google_benchmark
+  TESTONLY
+)
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

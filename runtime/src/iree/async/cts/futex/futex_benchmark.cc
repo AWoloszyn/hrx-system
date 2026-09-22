@@ -195,12 +195,12 @@ static void BM_CrossThread(::benchmark::State& state,
 // Placeholder benchmarks when futex is not available.
 static void BM_WakeNoWaiters(::benchmark::State& state,
                              const ProactorFactory& factory) {
-  state.SkipWithError("Futex not available on this platform");
+  state.SkipWithMessage("Futex not available on this platform");
 }
 
 static void BM_CrossThread(::benchmark::State& state,
                            const ProactorFactory& factory) {
-  state.SkipWithError("Futex not available on this platform");
+  state.SkipWithMessage("Futex not available on this platform");
 }
 
 #endif  // IREE_RUNTIME_USE_FUTEX

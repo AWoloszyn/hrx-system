@@ -62,9 +62,9 @@ class EventBenchmarkContext {
     auto result = factory(iree_async_proactor_options_default());
     if (!result.ok()) {
       if (result.status().code() == iree::StatusCode::kUnavailable) {
-        state.SkipWithError("Backend unavailable on this system");
+        state.SkipWithMessage(result.status().ToString());
       } else {
-        state.SkipWithError("Proactor creation failed");
+        state.SkipWithError(result.status().ToString());
       }
       return nullptr;
     }

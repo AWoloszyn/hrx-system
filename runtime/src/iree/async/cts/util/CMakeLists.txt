@@ -21,6 +21,19 @@ iree_cc_library(
   PUBLIC
 )
 
+iree_cc_library(
+  NAME
+    benchmark_main
+  SRCS
+    "benchmark_main.cc"
+  DEPS
+    ::registry
+    iree::testing::benchmark
+    iree::third_party::google_benchmark
+  TESTONLY
+  PUBLIC
+)
+
 set(_platform_backends_platform_deps "")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   list(APPEND _platform_backends_platform_deps iree::async::platform::io_uring::cts::backends)

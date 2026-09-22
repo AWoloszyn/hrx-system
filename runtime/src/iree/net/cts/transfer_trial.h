@@ -62,6 +62,19 @@ struct TransferTrialResult {
   iree_async_proactor_capabilities_t proactor_capabilities = 0;
 };
 
+// Optional outer measurement hooks, called on the producer thread. A benchmark
+// uses these to exclude setup/warm-up/teardown from process CPU accounting too.
+// Both hooks are supplied together or both are null. They run once each around
+// the measured phase, never inside message callbacks or per-record work.
+struct TransferTrialMeasurement {
+  // Begins outer measurement after both warm-up ownership joins.
+  void (*begin)(void* user_data) = nullptr;
+  // Ends outer measurement after producer progress and source callbacks join.
+  void (*end)(void* user_data) = nullptr;
+  // Borrowed context valid until RunTransferTrial returns.
+  void* user_data = nullptr;
+};
+
 // Runs a checked-transfer trial using real sessions and queue channels.
 //
 // Two application timelines per connection advance independently after payload
@@ -81,7 +94,8 @@ struct TransferTrialResult {
 iree_status_t RunTransferTrial(
     const TransportBackend& transport,
     const iree::async::cts::ProactorFactory& create_proactor,
-    const TransferTrialOptions& options, TransferTrialResult* out_result);
+    const TransferTrialOptions& options, TransferTrialResult* out_result,
+    TransferTrialMeasurement measurement = {});
 
 }  // namespace iree::net::cts
 

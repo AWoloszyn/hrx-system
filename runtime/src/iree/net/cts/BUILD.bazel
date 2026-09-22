@@ -52,6 +52,19 @@ iree_runtime_cc_library(
 )
 
 iree_runtime_cc_library(
+    name = "transfer_benchmarks",
+    testonly = True,
+    srcs = ["transfer_benchmark.cc"],
+    deps = [
+        ":transfer_trial",
+        ":transport_backend",
+        "//runtime/src/iree/async/cts/util:registry",
+        "//third_party:google_benchmark",
+    ],
+    alwayslink = True,
+)
+
+iree_runtime_cc_library(
     name = "transport_tests",
     testonly = True,
     srcs = [
