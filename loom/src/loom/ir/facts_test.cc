@@ -1703,7 +1703,8 @@ TEST(ShruiTransfer, ByteRangesContainEveryShiftedValue) {
               continue;
             }
             const int64_t expected =
-                count == 0 ? value : ((value + 256) % 256) / (1 << count);
+                count == 0 ? value
+                           : ((value + 256) % 256) / (INT64_C(1) << count);
             EXPECT_LE(result.range_lo, expected);
             EXPECT_GE(result.range_hi, expected);
             EXPECT_EQ(expected % result.known_divisor, 0);
@@ -1722,7 +1723,7 @@ TEST(ShruiTransfer, ExactBytesAndWidthBounds) {
       loom_value_facts_t result;
       loom_value_facts_shrui(&source, &shift, 8, &result);
       const int64_t expected =
-          count == 0 ? value : ((value + 256) % 256) / (1 << count);
+          count == 0 ? value : ((value + 256) % 256) / (INT64_C(1) << count);
       EXPECT_TRUE(loom_value_facts_is_exact(result));
       EXPECT_EQ(result.range_lo, expected);
     }
