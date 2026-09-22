@@ -879,7 +879,10 @@ static iree_status_t loom_value_fact_table_compute_cfg_region_tree(
       IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_cfg_block_tree(
           table, module, block, &changed));
     }
-    if (!changed) {
+    // Reverse postorder is topological on a DAG. Each definition publishes its
+    // complete type-constrained facts, so no later block can refine it
+    // backward.
+    if (!graph->has_cycles || !changed) {
       converged = true;
       break;
     }
