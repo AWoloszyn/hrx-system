@@ -142,6 +142,12 @@ static iree_status_t loom_low_lower_rule_low_value(
           context, rule_set, source_op, source_memory, source_memory_access,
           out_low_value_id);
     }
+    case LOOM_LOW_LOWER_VALUE_REF_SOURCE_MEMORY_ROOT:
+      IREE_ASSERT(source_memory != NULL);
+      IREE_ASSERT(source_memory_access != NULL);
+      IREE_ASSERT_EQ(value_ref->materializer_index, 0);
+      return loom_low_lower_lookup_value(
+          context, source_memory_access->root_value_id, out_low_value_id);
     default:
       IREE_ASSERT_UNREACHABLE("unknown generated value ref kind");
       IREE_BUILTIN_UNREACHABLE();

@@ -9,6 +9,40 @@
 namespace loom {
 namespace {
 
+TEST_F(SourceMemoryPlanTest, DynamicViewOriginRetainsCompleteAddress) {
+  const loom_value_id_t buffer = DefineBufferArg();
+  const loom_value_id_t extent = DefineIndexArg();
+  const loom_value_id_t base_offset = DefineOffsetArg();
+  const loom_value_id_t layout = BuildDenseLayout();
+  loom_type_t view_type = loom_type_shaped_1d(
+      LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_F32, loom_dim_pack_dynamic(extent), 0);
+  view_type.encoding_id = (uint16_t)layout;
+  view_type.encoding_flags = LOOM_ENCODING_FLAG_SSA;
+
+  loom_op_t* view_op = nullptr;
+  IREE_ASSERT_OK(loom_buffer_view_build(&builder_, buffer, base_offset,
+                                        view_type, LOOM_LOCATION_UNKNOWN,
+                                        &view_op));
+
+  loom_value_fact_table_t facts = {0};
+  ComputeFacts(&facts);
+  loom_low_source_memory_access_plan_t plan = {};
+  loom_low_source_memory_access_diagnostic_t diagnostic = {0};
+  ASSERT_TRUE(BuildPlan(&facts, view_op, &plan, &diagnostic));
+  EXPECT_EQ(plan.operation_kind, LOOM_LOW_SOURCE_MEMORY_OPERATION_VIEW_CARRIER);
+  EXPECT_EQ(plan.view_value_id, loom_buffer_view_result(view_op));
+  EXPECT_EQ(plan.root_value_id, buffer);
+  EXPECT_EQ(plan.element_byte_count, 4u);
+  EXPECT_EQ(plan.vector_lane_count, 1u);
+  EXPECT_EQ(plan.vector_lane_byte_stride, 4);
+  EXPECT_EQ(plan.static_byte_offset, 0);
+  ASSERT_EQ(plan.dynamic_term_count, 1u);
+  EXPECT_EQ(plan.dynamic_view_base_term_count, 1u);
+  EXPECT_EQ(plan.dynamic_terms[0].index, base_offset);
+  EXPECT_EQ(plan.dynamic_terms[0].byte_stride, 1);
+  EXPECT_EQ(plan.dynamic_view_base_value_id, base_offset);
+}
+
 TEST_F(SourceMemoryPlanTest, StaticDenseLoadIncludesViewBase) {
   loom_value_id_t buffer = DefineBufferArg();
   loom_value_id_t layout = BuildDenseLayout();

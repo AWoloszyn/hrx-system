@@ -382,6 +382,7 @@ class EmitDescriptorOp:
                     SourceValueKind.SOURCE_MEMORY_DYNAMIC_TERM,
                     SourceValueKind.SOURCE_MEMORY_DYNAMIC_BYTE_OFFSET,
                     SourceValueKind.SOURCE_MEMORY_ADDRESS,
+                    SourceValueKind.SOURCE_MEMORY_ROOT,
                 ):
                     raise ValueError(
                         f"{source_op.name}: descriptor result type "
@@ -527,6 +528,14 @@ class EmitDescriptorOp:
                 if descriptor is not None:
                     _require_descriptor(descriptor_set, descriptor)
             _validate_address_materializer(source_op, materializer)
+        for descriptor_field, value_ref in operand_bindings.items():
+            if value_ref.kind != SourceValueKind.SOURCE_MEMORY_ROOT:
+                continue
+            if self.source_memory is None:
+                raise ValueError(
+                    f"{source_op.name}: descriptor '{self.descriptor.key}' "
+                    f"operand '{descriptor_field}' needs a source-memory emit"
+                )
         for descriptor_field, value_ref in operand_bindings.items():
             if value_ref.kind != SourceValueKind.SOURCE_MEMORY_DYNAMIC_TERM:
                 continue
@@ -739,6 +748,7 @@ def _validate_structural_result(
             SourceValueKind.SOURCE_MEMORY_DYNAMIC_TERM,
             SourceValueKind.SOURCE_MEMORY_DYNAMIC_BYTE_OFFSET,
             SourceValueKind.SOURCE_MEMORY_ADDRESS,
+            SourceValueKind.SOURCE_MEMORY_ROOT,
         ):
             raise ValueError(
                 f"{source_op.name}: {subject} type cannot bind source memory"

@@ -250,6 +250,8 @@ def _source_value_index(
         return 0
     if value_ref.kind == SourceValueKind.SOURCE_MEMORY_ADDRESS:
         return 0
+    if value_ref.kind == SourceValueKind.SOURCE_MEMORY_ROOT:
+        return 0
     raise ValueError(f"source value field '{value_ref.field}' is not declared")
 
 

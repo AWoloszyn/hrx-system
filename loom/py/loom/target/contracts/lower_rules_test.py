@@ -483,6 +483,42 @@ def _source_memory_address_rule(
     )
 
 
+def _source_memory_root_rule(*, with_source_memory: bool) -> ContractFragment:
+    return ContractFragment(
+        name="test.source-memory-root",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=[
+            DescriptorRule(
+                source_op=vector.vector_load,
+                descriptor=TEST_LOW_LOAD_V4I32_DESCRIPTOR,
+                guards=(Guard.value_type("result", Vector("i32", lanes=4)),),
+                emit=(
+                    EmitDescriptorOp(
+                        descriptor=TEST_LOW_LOAD_V4I32_DESCRIPTOR,
+                        operands={"address": ValueRef.source_memory_root()},
+                        results={"dst": ValueRef.result("result")},
+                        source_memory=(
+                            SourceMemoryConstraint(
+                                operation=SourceMemoryOperation.LOAD,
+                                memory_spaces=("global",),
+                                element_byte_count=4,
+                                vector_lane_count=4,
+                                vector_lane_byte_stride=4,
+                                static_byte_offset_minimum=0,
+                                static_byte_offset_maximum=(2**31) - 1,
+                                dynamic_term_count=None,
+                                dynamic_term_count_minimum=0,
+                            )
+                            if with_source_memory
+                            else None
+                        ),
+                    ),
+                ),
+            )
+        ],
+    )
+
+
 def _i32_source_memory_address_materializer() -> SourceMemoryAddressMaterializer:
     return SourceMemoryAddressMaterializer(
         const_coordinate=TEST_LOW_CONST_I32_DESCRIPTOR,
@@ -1337,6 +1373,32 @@ def test_compile_lower_rule_set_compiles_complete_source_memory_address() -> Non
     )
     source_memory = compiled.source_memories[emit.source_memory_ordinal - 1]
     assert source_memory.address_materializer is materializer
+
+
+def test_compile_lower_rule_set_compiles_source_memory_root() -> None:
+    compiled = compile_lower_rule_set(
+        _source_memory_root_rule(with_source_memory=True),
+        dialect_ops={"vector": ALL_VECTOR_OPS},
+    )
+
+    emit = compiled.emits[0]
+    value_refs = compiled.value_refs[
+        emit.operand_ref_start : emit.operand_ref_start + emit.operand_ref_count
+    ]
+    assert tuple(value_ref.kind for value_ref in value_refs) == (
+        SourceValueKind.SOURCE_MEMORY_ROOT,
+    )
+    assert emit.source_memory_ordinal != 0
+
+
+def test_source_memory_root_requires_source_memory_emit() -> None:
+    _expect_value_error(
+        lambda: compile_lower_rule_set(
+            _source_memory_root_rule(with_source_memory=False),
+            dialect_ops={"vector": ALL_VECTOR_OPS},
+        ),
+        "operand 'address' needs a source-memory emit",
+    )
 
 
 def test_complete_address_compiles_element_coordinate_policy() -> None:

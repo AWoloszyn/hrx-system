@@ -107,6 +107,8 @@ enum loom_low_lower_value_ref_kind_e {
   LOOM_LOW_LOWER_VALUE_REF_SOURCE_MEMORY_DYNAMIC_BYTE_OFFSET = 5,
   // Complete target address materialized from one source-memory plan.
   LOOM_LOW_LOWER_VALUE_REF_SOURCE_MEMORY_ADDRESS = 6,
+  // Storage root selected by one source-memory plan.
+  LOOM_LOW_LOWER_VALUE_REF_SOURCE_MEMORY_ROOT = 7,
   // Maximum value-ref kind plus one.
   LOOM_LOW_LOWER_VALUE_REF_COUNT_,
 };
