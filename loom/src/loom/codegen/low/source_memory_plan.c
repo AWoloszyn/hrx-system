@@ -1708,19 +1708,18 @@ bool loom_low_source_memory_access_plan_build(
   const loom_value_fact_table_t* fact_table =
       view_regions->expression_context->fact_table;
 
-  loom_value_id_t carrier_view_value_id = LOOM_VALUE_ID_INVALID;
-  if (loom_buffer_view_isa(source_op)) {
-    carrier_view_value_id = loom_buffer_view_result(source_op);
-  } else if (loom_view_subview_isa(source_op)) {
-    carrier_view_value_id = loom_view_subview_result(source_op);
-  }
-  if (carrier_view_value_id != LOOM_VALUE_ID_INVALID) {
-    return loom_low_source_memory_access_plan_build_view_origin(
-        view_regions, carrier_view_value_id, out_plan, out_diagnostic);
-  }
-
   loom_memory_access_t access = loom_memory_access_cast(module, source_op);
   if (!loom_memory_access_isa(access)) {
+    loom_value_id_t carrier_view_value_id = LOOM_VALUE_ID_INVALID;
+    if (loom_buffer_view_isa(source_op)) {
+      carrier_view_value_id = loom_buffer_view_result(source_op);
+    } else if (loom_view_subview_isa(source_op)) {
+      carrier_view_value_id = loom_view_subview_result(source_op);
+    }
+    if (carrier_view_value_id != LOOM_VALUE_ID_INVALID) {
+      return loom_low_source_memory_access_plan_build_view_origin(
+          view_regions, carrier_view_value_id, out_plan, out_diagnostic);
+    }
     out_diagnostic->rejection_bits |=
         LOOM_LOW_SOURCE_MEMORY_ACCESS_REJECTION_UNSUPPORTED_OP;
     return false;
