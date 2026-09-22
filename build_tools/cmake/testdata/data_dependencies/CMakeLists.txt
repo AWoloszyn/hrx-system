@@ -16,13 +16,14 @@ set(IREE_IDE_FOLDER IREE)
 include("${IREE_REPO_ROOT}/build_tools/cmake/iree_macros.cmake")
 
 add_custom_target(data_consumer)
-set(_GENERATED_DATA "${CMAKE_BINARY_DIR}/generated.txt")
+set(IREE_TEST_GENERATED_DATA "${CMAKE_BINARY_DIR}/generated.txt"
+  CACHE FILEPATH "Generated DATA output")
 iree_add_data_dependencies(
   NAME
     data_consumer
   DATA
     fixture.txt
-    "${_GENERATED_DATA}"
+    "${IREE_TEST_GENERATED_DATA}"
     fixture::tool
 )
 
@@ -48,17 +49,31 @@ endif()
 
 add_custom_command(
   OUTPUT
-    "${_GENERATED_DATA}"
+    "${IREE_TEST_GENERATED_DATA}"
   COMMAND
     "${CMAKE_COMMAND}" -E copy
     "${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt"
-    "${_GENERATED_DATA}"
+    "${IREE_TEST_GENERATED_DATA}"
   DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/fixture.txt"
 )
-add_custom_target(generated_data DEPENDS "${_GENERATED_DATA}")
-iree_register_generated_output_producer(generated_data
-  OUTPUTS "${_GENERATED_DATA}"
+# Producer names are identities even when CMake would treat them as false.
+add_custom_target(generated_data-NOTFOUND DEPENDS "${IREE_TEST_GENERATED_DATA}")
+iree_register_generated_output_producer(generated_data-NOTFOUND
+  OUTPUTS "${IREE_TEST_GENERATED_DATA}"
 )
+
+add_custom_target(later_data_consumer)
+iree_add_data_dependencies(
+  NAME later_data_consumer
+  DATA fixture.txt "${IREE_TEST_GENERATED_DATA}" fixture::tool
+)
+
+option(IREE_TEST_DUPLICATE_PRODUCER "Declare conflicting output ownership" OFF)
+if(IREE_TEST_DUPLICATE_PRODUCER)
+  add_custom_target(duplicate_data)
+  iree_register_generated_output_producer(duplicate_data
+    OUTPUTS "${IREE_TEST_GENERATED_DATA}")
+endif()
 
 iree_finalize_target_dependencies()

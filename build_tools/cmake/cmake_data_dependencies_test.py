@@ -72,41 +72,69 @@ class CMakeDataDependenciesTest(unittest.TestCase):
             ):
                 self.assertIn(payload, output)
 
-    def test_file_and_forward_target_data_build_their_producers(self):
+    def test_file_and_target_data_build_their_producers(self):
         with tempfile.TemporaryDirectory() as temporary:
-            for index, (target, reference) in enumerate(
+            for index, (target, reference, output_directory) in enumerate(
                 (
-                    ("data_consumer", "fixture::tool"),
-                    ("tool_path_consumer", "fixture::tool"),
-                    ("tool_path_consumer", "data_tool"),
+                    ("data_consumer", "fixture::tool", "build"),
+                    ("data_consumer", "fixture::tool", "source"),
+                    ("later_data_consumer", "fixture::tool", "source"),
+                    ("tool_path_consumer", "fixture::tool", "build"),
+                    ("tool_path_consumer", "data_tool", "build"),
                 )
             ):
-                with self.subTest(target=target, reference=reference):
-                    build = Path(temporary) / str(index)
+                with self.subTest(
+                    target=target,
+                    reference=reference,
+                    output_directory=output_directory,
+                ):
+                    root = Path(temporary) / str(index)
+                    source, build = root / "source", root / "build"
+                    shutil.copytree(FIXTURES / "data_dependencies", source)
+                    generated = root / output_directory / "generated.txt"
                     configure_project(
-                        FIXTURES / "data_dependencies",
+                        source,
                         build,
                         f"-DIREE_TEST_TOOL_REFERENCE={reference}",
+                        f"-DIREE_TEST_GENERATED_DATA={generated}",
                     )
                     build_project(build, target)
                     self.assertTrue((build / "tool-built.marker").is_file())
-                    if target == "data_consumer":
-                        for name in ("fixture.txt", "generated.txt"):
-                            self.assertEqual(
-                                (build / name).read_text(), "fixture data\n"
-                            )
+                    if target != "tool_path_consumer":
+                        for path in (build / "fixture.txt", generated):
+                            self.assertEqual(path.read_text(), "fixture data\n")
+                        # Existing outputs retain their producer across configure.
+                        configure_project(source, build)
+                        (source / "fixture.txt").write_text("updated fixture\n")
+                        build_project(build, target)
+                        for path in (build / "fixture.txt", generated):
+                            self.assertEqual(path.read_text(), "updated fixture\n")
+                        generated.unlink()
+                        build_project(build, target)
+                        self.assertEqual(generated.read_text(), "updated fixture\n")
 
-    def test_missing_target_reports_the_consumer(self):
-        with tempfile.TemporaryDirectory() as temporary:
-            output = configure_project(
-                FIXTURES / "data_dependencies",
-                Path(temporary),
+    def test_invalid_dependencies_report_the_owner(self):
+        for option, message in (
+            (
                 "-DIREE_TEST_DECLARE_TOOL=OFF",
-                expect_failure=True,
-            )
-            self.assertIn(
-                "data_consumer depends on missing target: fixture::tool", output
-            )
+                "data_consumer depends on missing target: fixture::tool",
+            ),
+            (
+                "-DIREE_TEST_DUPLICATE_PRODUCER=ON",
+                "has multiple producers: generated_data-NOTFOUND and duplicate_data",
+            ),
+        ):
+            with (
+                self.subTest(option=option),
+                tempfile.TemporaryDirectory() as temporary,
+            ):
+                output = configure_project(
+                    FIXTURES / "data_dependencies",
+                    Path(temporary),
+                    option,
+                    expect_failure=True,
+                )
+                self.assertIn(message, " ".join(output.split()))
 
 
 if __name__ == "__main__":
