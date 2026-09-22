@@ -596,6 +596,19 @@ static iree_status_t loom_private_storage_flow_region(
       (!region->graph || region->graph->edge_count == 0)) {
     return loom_private_storage_flow_events(builder, region->events[0], state);
   }
+  if (!region->graph) {
+    // A function can contain disconnected blocks without any CFG edges. Each
+    // block starts with independent state; definitions do not cross between
+    // those blocks merely because they are adjacent in the region's storage.
+    for (uint16_t b = 0; b < region->region->block_count; ++b) {
+      loom_private_storage_value_t** block_state = NULL;
+      IREE_RETURN_IF_ERROR(
+          loom_private_storage_copy_state(builder, state, &block_state));
+      IREE_RETURN_IF_ERROR(loom_private_storage_flow_events(
+          builder, region->events[b], block_state));
+    }
+    return iree_ok_status();
+  }
   const loom_cfg_graph_t* graph = region->graph;
   loom_private_storage_value_t*** exits = NULL;
   loom_private_storage_signature_t** signatures = NULL;
