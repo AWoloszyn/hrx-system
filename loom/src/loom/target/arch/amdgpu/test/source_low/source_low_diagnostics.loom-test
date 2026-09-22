@@ -404,24 +404,6 @@ kernel.def target(@target) @cache_policy_workgroup_store_rejected() {
 
 amdgpu.target<gfx11-generic> @target
 
-kernel.def target(@target) @global_atomic_system_scope_rejected() {
-  %c1 = index.constant 1 : index
-  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index
-} launch(%input: buffer) {
-  %tid = kernel.workitem.id<x> : index
-  %input_base = index.constant 0 : offset
-  %global = buffer.assume.memory_space<global> %input : buffer
-  %view = buffer.view %global[%input_base] : buffer -> view<64xi32>
-  %atomic_increment = scalar.constant 1 : i32
-  // ERROR@+1: AMDGPU/023 {constraint_key="atomic.scope"}
-  view.atomic.reduce<addi> %atomic_increment, %view[%tid] {ordering = release, scope = system} : i32, view<64xi32>
-  kernel.return
-}
-
-// ====
-
-amdgpu.target<gfx11-generic> @target
-
 kernel.def target(@target) @global_dynamic_offset_sum_flat() {
   %c1 = index.constant 1 : index
   %c4 = index.constant 4 : index

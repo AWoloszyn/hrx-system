@@ -1,0 +1,48 @@
+// RUN: with-checks emit source-low target=amdgpu:gfx1151 output=low
+
+// Publishing a global word releases earlier LDS accesses as well. Loading the
+// payload first keeps the kernarg wait from accidentally completing the store.
+kernel.def @publish_workgroup_storage() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%input: buffer, %publication: buffer) {
+  %base = index.constant 0 : offset
+  %bytes = index.constant 4 : offset
+  %scratch = buffer.alloca<workgroup> align(4) %bytes : buffer
+  %local = buffer.view %scratch[%base] : buffer -> view<1xi32>
+  %source = buffer.view %input[%base] : buffer -> view<1xi32>
+  %word = buffer.view %publication[%base] : buffer -> view<1xi32>
+  %value = view.load %source[0] : view<1xi32> -> i32
+  view.store %value, %local[0] : i32, view<1xi32>
+  view.atomic.reduce<addi> %value, %word[0] {ordering = release, scope = system} : i32, view<1xi32>
+  kernel.return
+}
+
+// ----
+CHECK: ds_write_b32 *
+CHECK: s_waitcnt {vmcnt = 0, lgkmcnt = 0}
+CHECK: s_waitcnt_vscnt {vscnt = 0}
+CHECK: buffer_atomic_add_u32 *
+
+// ====
+
+// A generic address can select global or LDS memory. CAS acquisition must
+// complete both domains before any following payload access, even on failure.
+func.def @acquire_generic_compare_exchange(%storage: buffer) -> (i64) {
+  %base = index.constant 0 : offset
+  %generic = buffer.assume.memory_space<generic> %storage : buffer
+  %word = buffer.view %generic[%base] : buffer -> view<1xi64>
+  %expected = scalar.constant 4294967299 : i64
+  %replacement = scalar.constant 8589934597 : i64
+  %old = view.atomic.cmpxchg %expected, %replacement, %word[0] {failure_ordering = acquire, scope = system, success_ordering = acq_rel} : i64, view<1xi64> -> i64
+  func.return %old : i64
+}
+
+// ----
+CHECK: s_waitcnt {vmcnt = 0, lgkmcnt = 0}
+CHECK: s_waitcnt_vscnt {vscnt = 0}
+CHECK: %old = flat_atomic_cmpswap_b64_rtn *
+CHECK: s_waitcnt {vmcnt = 0}
+CHECK: s_waitcnt {lgkmcnt = 0}
+CHECK: buffer_gl1_inv
+CHECK: buffer_gl0_inv

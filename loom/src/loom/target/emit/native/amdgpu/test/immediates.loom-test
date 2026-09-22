@@ -29,3 +29,32 @@ low.func.def target<amdgpu.rdna3.core>(@target) @sparse_store_fields(%addr: reg<
 0xDC6AE00C
 0x00000100
 0xBFB00000
+
+// ====
+
+// Flat atomics use both address VGPRs and encode SADDR as NULL, not s0.
+// Encodings are independently assembled for GFX11 by LLVM MC.
+// RUN: emit amdgpu-native-words @flat_atomic_addresses strategy=source waits=none fixed=%address:physical_register:0:2 fixed=%value:physical_register:2:1 fixed=%wide:physical_register:4:2 fixed=%pair:physical_register:8:4 fixed=%old:physical_register:12:1 fixed=%old_wide:physical_register:14:2 fixed=%compared:physical_register:16:1 fixed=%compared_wide:physical_register:18:2
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @flat_atomic_addresses(%address: reg<amdgpu.vgpr x2>, %value: reg<amdgpu.vgpr>, %wide: reg<amdgpu.vgpr x2>, %pair: reg<amdgpu.vgpr x4>) asm {
+  flat_atomic_add_u32 %address, %value
+  %old = flat_atomic_add_u32_rtn %address, %value
+  %old_wide = flat_atomic_add_u64_rtn %address, %wide
+  %compared = flat_atomic_cmpswap_b32_rtn %address, %wide
+  %compared_wide = flat_atomic_cmpswap_b64_rtn %address, %pair
+  return
+}
+
+// ----
+0xDCD40000
+0x007C0200
+0xDCD44000
+0x0C7C0200
+0xDD0C4000
+0x0E7C0400
+0xDCD04000
+0x107C0400
+0xDD084000
+0x127C0800
+0xBFB00000

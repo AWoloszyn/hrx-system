@@ -1386,6 +1386,7 @@ def _gfx11_core_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
             return_field_value=1,
             cache_fields=_GFX9_11_VECTOR_CACHE_FIELDS,
             implicit_flat_scratch=True,
+            fixed_saddr=_predefined("NULL", "OPR_SREG"),
         ),
         *_ds_memory_overlays(include_u16_d16_loads=True),
         *_ds_crosslane_overlays(),
