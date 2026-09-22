@@ -1,0 +1,177 @@
+// RUN: emit source-low @lookup target=amdgpu:gfx1151 output=low
+
+#include <loomcxx/kernel.h>
+
+using Bytes4 = unsigned char __attribute__((ext_vector_type(4)));
+using Codes4 = signed char __attribute__((ext_vector_type(4)));
+using Codebook16 = signed char __attribute__((ext_vector_type(16)));
+
+static Codes4 lookup_indexed(Codebook16 table, Bytes4 indices) {
+  return {table[indices[0]], table[indices[1]], table[indices[2]],
+          table[indices[3]]};
+}
+
+// Facts from the caller recover packed indices after helper inlining. This
+// reaches three byte permutes without a target intrinsic or operation binding.
+[[loom::kernel, loom::workgroup_size(32, 1, 1),
+  loom::workgroup_count(1, 1, 1)]]
+void lookup(const Bytes4* input, const Codebook16* codebook, Codes4* output) {
+  unsigned position = loom::workitem_id.x;
+  Bytes4 indices = input[position] & 15;
+  output[position] = lookup_indexed(*codebook, indices);
+}
+
+// ----
+low.kernel.def target<amdgpu.rdna3_5.core> abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @lookup() asm {
+  %position = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
+  %input = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %codebook = resource<hal_binding> {extent = 16, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output = resource<hal_binding> {index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %85 = v_mov_b32 0
+  %86 = concat(%position, %85) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %87 = s_mov_b32 2
+  %91 = v_lshlrev_b64 %87, %86
+  %93 = v_mov_b32 252645135
+  %94 = slice %91[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %95 = global_load_b32_saddr %94, %input
+  %indices = v_and_b32 %95, %93
+  %98 = global_load_b128_saddr %85, %codebook
+  %99 = slice %98[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %100 = slice %98[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %101 = slice %98[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %102 = slice %98[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %103 = v_and_b32_lit %indices, 117901063
+  %104 = v_perm_b32 %100, %99, %103
+  %105 = v_perm_b32 %102, %101, %103
+  %106 = v_and_b32_lit %indices, 134744072
+  %107 = v_lshrrev_b32_src0_inline %106, 1
+  %108 = v_or_b32_lit %107, 50462976
+  %109 = v_perm_b32 %105, %104, %108
+  global_store_b32_saddr %94, %109, %output
+  return
+}
+
+// ====
+
+#include <loomcxx/kernel.h>
+
+using Bytes4 = unsigned char __attribute__((ext_vector_type(4)));
+using Codes4 = signed char __attribute__((ext_vector_type(4)));
+using Codebook16 = signed char __attribute__((ext_vector_type(16)));
+
+// Constant register tables reach the same packed lookup without table loads.
+[[loom::kernel, loom::workgroup_size(32, 1, 1),
+  loom::workgroup_count(1, 1, 1)]]
+void lookup(const Bytes4* input, Codes4* output) {
+  constexpr Codebook16 table = {-127, -104, -83, -65, -49, -35, -22, -10,
+                               1,    13,   25,  38,  53,  69,  89,  113};
+  unsigned position = loom::workitem_id.x;
+  Bytes4 indices = input[position] & 15;
+  Codes4 result = {table[indices[0]], table[indices[1]], table[indices[2]],
+                   table[indices[3]]};
+  output[position] = result;
+}
+
+// ----
+low.kernel.def target<amdgpu.rdna3_5.core> abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @lookup() asm {
+  %position = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
+  %input = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %93 = v_mov_b32 3215825025
+  %94 = v_mov_b32 4142587343
+  %95 = v_mov_b32 639175937
+  %96 = v_mov_b32 1901675829
+  %98 = v_mov_b32 0
+  %99 = concat(%position, %98) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %100 = s_mov_b32 2
+  %104 = v_lshlrev_b64 %100, %99
+  %106 = v_mov_b32 252645135
+  %107 = slice %104[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %108 = global_load_b32_saddr %107, %input
+  %indices = v_and_b32 %108, %106
+  %114 = v_and_b32_lit %indices, 117901063
+  %115 = v_perm_b32 %94, %93, %114
+  %116 = v_perm_b32 %96, %95, %114
+  %117 = v_and_b32_lit %indices, 134744072
+  %118 = v_lshrrev_b32_src0_inline %117, 1
+  %119 = v_or_b32_lit %118, 50462976
+  %result = v_perm_b32 %116, %115, %119
+  global_store_b32_saddr %107, %result, %output
+  return
+}
+
+// ====
+
+#include <loomcxx/kernel.h>
+
+using Bytes4 = unsigned char __attribute__((ext_vector_type(4)));
+using Codes4 = signed char __attribute__((ext_vector_type(4)));
+using Codebook16 = signed char __attribute__((ext_vector_type(16)));
+
+static Codes4 lookup_indexed(Codebook16 table, Bytes4 indices) {
+  return {table[indices[0]], table[indices[1]], table[indices[2]],
+          table[indices[3]]};
+}
+
+// Logical shifts retain the zero-fill range before target legalization.
+// Promotion removal must consume that bound while indices are still packed.
+[[loom::kernel, loom::workgroup_size(32, 1, 1),
+  loom::workgroup_count(1, 1, 1)]]
+void lookup(const Bytes4* input, const Codebook16* codebook, Codes4* output) {
+  unsigned position = loom::workitem_id.x;
+  Bytes4 indices = input[position] >> 4;
+  output[position] = lookup_indexed(*codebook, indices);
+}
+
+// ----
+low.kernel.def target<amdgpu.rdna3_5.core> abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @lookup() asm {
+  %position = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
+  %input = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %codebook = resource<hal_binding> {extent = 16, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output = resource<hal_binding> {index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %118 = v_mov_b32 0
+  %119 = concat(%position, %118) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %120 = s_mov_b32 2
+  %124 = v_lshlrev_b64 %120, %119
+  %126 = slice %124[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %127 = global_load_i8_saddr %126, %input
+  %128 = v_and_b32_lit %127, 255
+  %129 = v_lshrrev_b32_lit %128, 4
+  %130 = v_bfe_i32_offset_width_inline %129 {offset = 0, width = 8}
+  %132 = global_load_i8_saddr %126, %input {offset = 1}
+  %133 = v_and_b32_lit %132, 255
+  %134 = v_lshrrev_b32_lit %133, 4
+  %135 = v_bfe_i32_offset_width_inline %134 {offset = 0, width = 8}
+  %137 = global_load_i8_saddr %126, %input {offset = 2}
+  %138 = v_and_b32_lit %137, 255
+  %139 = v_lshrrev_b32_lit %138, 4
+  %140 = v_bfe_i32_offset_width_inline %139 {offset = 0, width = 8}
+  %142 = global_load_i8_saddr %126, %input {offset = 3}
+  %143 = v_and_b32_lit %142, 255
+  %144 = v_lshrrev_b32_lit %143, 4
+  %145 = v_bfe_i32_offset_width_inline %144 {offset = 0, width = 8}
+  %146 = v_and_b32_lit %130, 255
+  %147 = v_and_b32_lit %135, 255
+  %148 = v_lshlrev_b32_src0_inline %147, 8
+  %149 = v_or_b32 %146, %148
+  %150 = v_and_b32_lit %140, 255
+  %151 = v_lshlrev_b32_src0_inline %150, 16
+  %152 = v_or_b32 %149, %151
+  %153 = v_and_b32_lit %145, 255
+  %154 = v_lshlrev_b32_src0_inline %153, 24
+  %indices = v_or_b32 %152, %154
+  %157 = global_load_b128_saddr %118, %codebook
+  %158 = slice %157[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %159 = slice %157[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %160 = slice %157[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %161 = slice %157[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %162 = v_and_b32_lit %indices, 117901063
+  %163 = v_perm_b32 %159, %158, %162
+  %164 = v_perm_b32 %161, %160, %162
+  %165 = v_and_b32_lit %indices, 134744072
+  %166 = v_lshrrev_b32_src0_inline %165, 1
+  %167 = v_or_b32_lit %166, 50462976
+  %168 = v_perm_b32 %164, %163, %167
+  global_store_b32_saddr %126, %168, %output
+  return
+}

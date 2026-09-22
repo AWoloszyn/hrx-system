@@ -59,12 +59,23 @@ static const loom_pass_option_enum_value_t kCanonicalizeViewLoadValues[] = {
     {.value = IREE_SVL("preserve")},
 };
 
+static const loom_pass_option_enum_value_t kCanonicalizeTableLookupValues[] = {
+    {.value = IREE_SVL("combine")},
+    {.value = IREE_SVL("preserve")},
+};
+
 static const loom_pass_option_schema_t kCanonicalizeOptionSchema[] = {
     {
         .name = IREE_SVL("max-iterations"),
         .kind = LOOM_PASS_OPTION_SCHEMA_UINT32,
         .minimum_uint32 = 1,
         .maximum_uint32 = UINT32_MAX,
+    },
+    {
+        .name = IREE_SVL("table-lookups"),
+        .kind = LOOM_PASS_OPTION_SCHEMA_ENUM,
+        .enum_values = kCanonicalizeTableLookupValues,
+        .enum_value_count = IREE_ARRAYSIZE(kCanonicalizeTableLookupValues),
     },
     {
         .name = IREE_SVL("view-loads"),

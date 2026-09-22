@@ -171,12 +171,18 @@ static iree_status_t loom_target_pipeline_build_canonicalize_body(
   return loom_target_pipeline_build_run(builder, IREE_SV("canonicalize"));
 }
 
-static iree_status_t loom_target_pipeline_build_coalescing_canonicalize_body(
+static iree_status_t loom_target_pipeline_build_source_canonicalize_body(
     loom_builder_t* builder, void* user_data) {
   (void)user_data;
-  return loom_target_pipeline_build_run_with_string_option(
-      builder, IREE_SV("canonicalize"), IREE_SV("view-loads"),
-      IREE_SV("coalesce"));
+  loom_named_attr_t options[2] = {0};
+  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_string_attr(
+      builder, IREE_SV("view-loads"), IREE_SV("coalesce"), &options[0]));
+  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_string_attr(
+      builder, IREE_SV("table-lookups"), IREE_SV("combine"), &options[1]));
+  loom_op_t* run_op = NULL;
+  return loom_pass_ir_build_run(
+      builder, LOOM_PASS_RUN_BUILD_FLAG_HAS_OPTIONS, IREE_SV("canonicalize"),
+      loom_make_named_attr_slice(options, IREE_ARRAYSIZE(options)), &run_op);
 }
 
 static iree_status_t
@@ -185,7 +191,7 @@ loom_target_pipeline_build_cleanup_expanded_target_functions(
   (void)user_data;
   loom_op_t* for_op = NULL;
   return loom_target_pipeline_build_for_target_functions(
-      builder, loom_target_pipeline_build_coalescing_canonicalize_body, NULL,
+      builder, loom_target_pipeline_build_source_canonicalize_body, NULL,
       &for_op);
 }
 
@@ -307,7 +313,7 @@ loom_target_pipeline_build_source_normalization_before_authoring_expansion(
   IREE_RETURN_IF_ERROR(loom_target_pipeline_build_run(
       builder, IREE_SV("promote-private-fragments")));
   IREE_RETURN_IF_ERROR(
-      loom_target_pipeline_build_coalescing_canonicalize_body(builder, NULL));
+      loom_target_pipeline_build_source_canonicalize_body(builder, NULL));
   return loom_target_pipeline_build_run(builder, IREE_SV("cse"));
 }
 
@@ -433,7 +439,9 @@ static iree_status_t loom_target_pipeline_build_inlined_source_cleanup_body(
     IREE_RETURN_IF_ERROR(
         loom_target_pipeline_build_run(builder, IREE_SV("cfg-simplify")));
   }
-  return loom_target_pipeline_build_cleanup(builder);
+  IREE_RETURN_IF_ERROR(
+      loom_target_pipeline_build_source_canonicalize_body(builder, NULL));
+  return loom_target_pipeline_build_run(builder, IREE_SV("cse"));
 }
 
 static iree_status_t loom_target_pipeline_build_inlined_source_cleanup(
@@ -446,9 +454,9 @@ static iree_status_t loom_target_pipeline_build_inlined_source_cleanup(
 
 static iree_status_t loom_target_pipeline_build_required_source_inlining(
     loom_builder_t* builder, void* user_data) {
-  // Remove boundaries without a target ABI before physical representation
-  // selection. Inlining CFG bodies introduces entry and return forwarding
-  // blocks, so restore source normal form before lowering the merged function.
+  // Remove boundaries without a target ABI before target legalization so
+  // caller facts guide representation selection. Inlining CFG bodies introduces
+  // entry and return forwarding blocks; restore source normal form afterward.
   IREE_RETURN_IF_ERROR(loom_target_pipeline_build_run_with_string_option(
       builder, IREE_SV("inline-callables"), IREE_SV("policy"),
       IREE_SV("target")));
@@ -514,6 +522,8 @@ static iree_status_t loom_target_pipeline_build_source_low_body(
   // any target-aware function pass observes those callees.
   IREE_RETURN_IF_ERROR(loom_target_pipeline_build_run(
       builder, IREE_SV("specialize-target-callgraph")));
+  IREE_RETURN_IF_ERROR(
+      loom_target_pipeline_build_required_source_inlining(builder, user_data));
   IREE_RETURN_IF_ERROR(loom_target_pipeline_build_for_target_functions(
       builder,
       loom_target_pipeline_build_math_legalization_after_authoring_expansion,
@@ -561,8 +571,6 @@ static iree_status_t loom_target_pipeline_build_source_low_body(
         builder, loom_target_pipeline_build_vector_memory_footprint, user_data,
         &for_op));
   }
-  IREE_RETURN_IF_ERROR(
-      loom_target_pipeline_build_required_source_inlining(builder, user_data));
   IREE_RETURN_IF_ERROR(loom_target_pipeline_contribute_phase(
       builder, context, LOOM_TARGET_PIPELINE_PHASE_SOURCE_TO_LOW));
   if (control_flow_lowering ==

@@ -319,3 +319,47 @@ low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @i8_table_lookup_
   %decoded = v_perm_b32 %41, %40, %44
   return %decoded
 }
+
+// ====
+
+// Masked byte indices survive the promotions introduced by C++ subscripts.
+func.def @i8_table_indexed_bytes(%table: vector<16xi8>, %raw: vector<4xi8>) -> (vector<4xi8>) {
+  %mask = vector.constant 15 : vector<4xi8>
+  %indices = vector.andi %raw, %mask : vector<4xi8>
+  %a = vector.extract %indices[0] : vector<4xi8> -> i8
+  %b = vector.extract %indices[1] : vector<4xi8> -> i8
+  %c = vector.extract %indices[2] : vector<4xi8> -> i8
+  %d = vector.extract %indices[3] : vector<4xi8> -> i8
+  %ua = scalar.extui %a : i8 to i32
+  %ub = scalar.extui %b : i8 to i32
+  %uc = scalar.extui %c : i8 to i32
+  %ud = scalar.extui %d : i8 to i32
+  %ia = index.cast %ua : i32 to index
+  %ib = index.cast %ub : i32 to index
+  %ic = index.cast %uc : i32 to index
+  %id = index.cast %ud : i32 to index
+  %va = vector.extract %table[%ia] : vector<16xi8> -> i8
+  %vb = vector.extract %table[%ib] : vector<16xi8> -> i8
+  %vc = vector.extract %table[%ic] : vector<16xi8> -> i8
+  %vd = vector.extract %table[%id] : vector<16xi8> -> i8
+  %result = vector.from_elements %va, %vb, %vc, %vd : vector<4xi8>
+  func.return %result : vector<4xi8>
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @i8_table_indexed_bytes(%table: reg<amdgpu.vgpr x4>, %raw: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %mask = v_mov_b32 252645135
+  %indices = v_and_b32 %raw, %mask
+  %31 = slice %table[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %32 = slice %table[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %33 = slice %table[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %34 = slice %table[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %35 = v_and_b32_lit %indices, 117901063
+  %36 = v_perm_b32 %32, %31, %35
+  %37 = v_perm_b32 %34, %33, %35
+  %38 = v_and_b32_lit %indices, 134744072
+  %39 = v_lshrrev_b32_src0_inline %38, 1
+  %40 = v_or_b32_lit %39, 50462976
+  %result = v_perm_b32 %37, %36, %40
+  return %result
+}

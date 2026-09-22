@@ -117,3 +117,29 @@ func.def @i8_table_lookup_u4_constant_table(%packed: vector<2xi8>) -> (vector<4x
   %decoded = vector.table.lookup %grid[%codes] : vector<16xi8>, vector<4xi8> -> vector<4xi8>
   func.return %decoded : vector<4xi8>
 }
+
+// ====
+
+// Masked byte indices survive the promotions introduced by C++ subscripts.
+func.def @i8_table_indexed_bytes(%table: vector<16xi8>, %raw: vector<4xi8>) -> (vector<4xi8>) {
+  %mask = vector.constant 15 : vector<4xi8>
+  %indices = vector.andi %raw, %mask : vector<4xi8>
+  %a = vector.extract %indices[0] : vector<4xi8> -> i8
+  %b = vector.extract %indices[1] : vector<4xi8> -> i8
+  %c = vector.extract %indices[2] : vector<4xi8> -> i8
+  %d = vector.extract %indices[3] : vector<4xi8> -> i8
+  %ua = scalar.extui %a : i8 to i32
+  %ub = scalar.extui %b : i8 to i32
+  %uc = scalar.extui %c : i8 to i32
+  %ud = scalar.extui %d : i8 to i32
+  %ia = index.cast %ua : i32 to index
+  %ib = index.cast %ub : i32 to index
+  %ic = index.cast %uc : i32 to index
+  %id = index.cast %ud : i32 to index
+  %va = vector.extract %table[%ia] : vector<16xi8> -> i8
+  %vb = vector.extract %table[%ib] : vector<16xi8> -> i8
+  %vc = vector.extract %table[%ic] : vector<16xi8> -> i8
+  %vd = vector.extract %table[%id] : vector<16xi8> -> i8
+  %result = vector.from_elements %va, %vb, %vc, %vd : vector<4xi8>
+  func.return %result : vector<4xi8>
+}

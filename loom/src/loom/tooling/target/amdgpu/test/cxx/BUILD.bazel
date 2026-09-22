@@ -131,6 +131,7 @@ loom_check_test(
     for name in [
         "assembly_lowering",
         "assembly_invalid",
+        "vector_lookup",
     ]
 ]
 
@@ -180,6 +181,13 @@ loom_test(
         "vector_conversion.cxx",
         "vector_conversion.loom",
     ],
+    execution_profiles = _EXECUTION_PROFILES,
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)
+
+loom_test(
+    name = "vector_lookup_test",
+    srcs = ["vector_lookup.cxx"],
     execution_profiles = _EXECUTION_PROFILES,
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )

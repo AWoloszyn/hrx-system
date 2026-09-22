@@ -384,3 +384,61 @@ low.func.def target<amd.xdna.aie2p.core> abi(object_function) @i8_table_lookup_u
   %decoded = vinsert.8.reg %172, %174, %165
   return %decoded
 }
+
+// ====
+
+// Masked byte indices survive the promotions introduced by C++ subscripts.
+func.def @i8_table_indexed_bytes(%table: vector<16xi8>, %raw: vector<4xi8>) -> (vector<4xi8>) {
+  %mask = vector.constant 15 : vector<4xi8>
+  %indices = vector.andi %raw, %mask : vector<4xi8>
+  %a = vector.extract %indices[0] : vector<4xi8> -> i8
+  %b = vector.extract %indices[1] : vector<4xi8> -> i8
+  %c = vector.extract %indices[2] : vector<4xi8> -> i8
+  %d = vector.extract %indices[3] : vector<4xi8> -> i8
+  %ua = scalar.extui %a : i8 to i32
+  %ub = scalar.extui %b : i8 to i32
+  %uc = scalar.extui %c : i8 to i32
+  %ud = scalar.extui %d : i8 to i32
+  %ia = index.cast %ua : i32 to index
+  %ib = index.cast %ub : i32 to index
+  %ic = index.cast %uc : i32 to index
+  %id = index.cast %ud : i32 to index
+  %va = vector.extract %table[%ia] : vector<16xi8> -> i8
+  %vb = vector.extract %table[%ib] : vector<16xi8> -> i8
+  %vc = vector.extract %table[%ic] : vector<16xi8> -> i8
+  %vd = vector.extract %table[%id] : vector<16xi8> -> i8
+  %result = vector.from_elements %va, %vb, %vc, %vd : vector<4xi8>
+  func.return %result : vector<4xi8>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @i8_table_indexed_bytes(%table: reg<aie2p.vec256 x2>, %raw: reg<aie2p.vec256 x2>) -> (reg<aie2p.vec256 x2>) asm {
+  %54 = vextract.8.imm %raw, 0
+  %55 = mov.short 15
+  %56 = and %54, %55
+  %57 = extend.s8 %56
+  %58 = vextract.8.reg %table, %57
+  %59 = vextract.8.imm %raw, 1
+  %60 = and %59, %55
+  %61 = extend.s8 %60
+  %62 = vextract.8.reg %table, %61
+  %63 = vextract.8.imm %raw, 2
+  %64 = and %63, %55
+  %65 = extend.s8 %64
+  %66 = vextract.8.reg %table, %65
+  %67 = vextract.8.imm %raw, 3
+  %68 = and %67, %55
+  %69 = extend.s8 %68
+  %70 = vextract.8.reg %table, %69
+  %71 = vbcst.8 %58
+  %72 = mov.short 1
+  %73 = copy %72 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %74 = vinsert.8.reg %71, %73, %62
+  %75 = mov.short 2
+  %76 = copy %75 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %77 = vinsert.8.reg %74, %76, %66
+  %78 = mov.short 3
+  %79 = copy %78 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %result = vinsert.8.reg %77, %79, %70
+  return %result
+}

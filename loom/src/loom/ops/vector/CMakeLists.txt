@@ -32,6 +32,7 @@ loom_generated_cc_library(
     "memory.c"
     "scalarization.c"
     "storage.c"
+    "table.c"
     "type_transfer.c"
     "verify.c"
   TEXTUAL_HDRS
@@ -77,6 +78,7 @@ loom_generated_cc_library(
     "ops.h"
     "scalarization.h"
     "storage.h"
+    "table.h"
     "tables.h"
   ARGS
     "--dialect=vector"

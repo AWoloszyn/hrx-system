@@ -1437,6 +1437,31 @@ products to its accumulator, wrapping to 32 bits. The `s8s8`, `u8s8`, `s8u8`,
 and `u8u8` kinds must match the declared byte signedness. Input vectors have
 equal lane counts, with four input lanes per accumulator/result lane.
 
+Ordinary vector subscripting can reach the same register-table operation through
+shared canonicalization. For example, a four-byte code vector can select from a
+16-byte codebook without an operation binding:
+
+```cpp
+using Bytes4 = unsigned char __attribute__((ext_vector_type(4)));
+using Codes4 = signed char __attribute__((ext_vector_type(4)));
+using Codebook16 = signed char __attribute__((ext_vector_type(16)));
+
+Codes4 decode(Codebook16 table, Bytes4 packed) {
+  Bytes4 indices = packed & 15;
+  return {table[indices[0]], table[indices[1]], table[indices[2]],
+          table[indices[3]]};
+}
+```
+
+The importer CLI and source-lowering pipeline enable
+`canonicalize{table-lookups=combine}` before target legalization. After that
+cleanup, the body is a byte-vector mask and one
+`vector.table.lookup` using that byte vector. On supported AMDGPU targets this
+selects three byte permutes. The rewrite preserves C++ promotions when removing
+them would change the numeric indices, and also applies to directly authored
+Loom extracts and vector construction. Reordered and repeated selectors keep
+their original lane mapping.
+
 Lookup supports integer or floating-point tables and integer index vectors.
 Its result has the table's C++ element type and the index vector's lane count;
 each index must be in the table's range. Calls retain the shared register-table
