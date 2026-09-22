@@ -272,6 +272,9 @@ typedef struct amdf_gpu_kernel_command_t {
   uint64_t byte_length;
 } amdf_gpu_kernel_command_t;
 
+/// Default pending capacity for kernel-mediated GPU queues.
+#define AMDF_GPU_KERNEL_QUEUE_DEFAULT_PENDING_SUBMISSION_COUNT 4096u
+
 /// Parameters used to acquire one kernel-mediated GPU queue.
 typedef struct amdf_gpu_kernel_queue_create_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_GPU_KERNEL_QUEUE_CREATE_INFO`.
@@ -283,8 +286,8 @@ typedef struct amdf_gpu_kernel_queue_create_info_t {
   /// Endpoint-local PM4 or SDMA family supporting kernel publication.
   uint32_t queue_family_ordinal;
   /// Maximum accepted submissions that may remain unretired, or zero for
-  /// AMDF_KERNEL_QUEUE_DEFAULT_PENDING_SUBMISSION_COUNT. This admission bound
-  /// does not reserve native driver capacity or retain command memory.
+  /// AMDF_GPU_KERNEL_QUEUE_DEFAULT_PENDING_SUBMISSION_COUNT. This admission
+  /// bound does not reserve native driver capacity or retain command memory.
   uint32_t maximum_pending_submission_count;
 } amdf_gpu_kernel_queue_create_info_t;
 

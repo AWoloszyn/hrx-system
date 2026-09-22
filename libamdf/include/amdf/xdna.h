@@ -289,6 +289,11 @@ typedef struct amdf_xdna_context_placement_info_t {
   uint32_t column_count;
 } amdf_xdna_context_placement_info_t;
 
+/// Default pending capacity for kernel-mediated XDNA queues.
+/// Native transport storage is prepared for the entire window. Work scheduled
+/// within persistent programs does not consume additional submission slots.
+#define AMDF_XDNA_KERNEL_QUEUE_DEFAULT_PENDING_SUBMISSION_COUNT 128u
+
 /// Parameters used to acquire one kernel-mediated XDNA queue.
 typedef struct amdf_xdna_kernel_queue_create_info_t {
   /// Must be `AMDF_STRUCTURE_TYPE_XDNA_KERNEL_QUEUE_CREATE_INFO`.
@@ -300,8 +305,9 @@ typedef struct amdf_xdna_kernel_queue_create_info_t {
   /// Endpoint-local XDNA family supporting kernel publication.
   uint32_t queue_family_ordinal;
   /// Maximum accepted submissions that may remain unretired, or zero for
-  /// AMDF_KERNEL_QUEUE_DEFAULT_PENDING_SUBMISSION_COUNT. Native packet/result
-  /// storage for this capacity is allocated before creation returns.
+  /// AMDF_XDNA_KERNEL_QUEUE_DEFAULT_PENDING_SUBMISSION_COUNT. Native
+  /// packet/result storage for this capacity is allocated before creation
+  /// returns.
   uint32_t maximum_pending_submission_count;
 } amdf_xdna_kernel_queue_create_info_t;
 

@@ -184,7 +184,7 @@ amdf_status_t AMDF_CALL amdf_gpu_kernel_queue_create(
       .maximum_pending_submission_count =
           create_info->maximum_pending_submission_count != 0
               ? create_info->maximum_pending_submission_count
-              : AMDF_KERNEL_QUEUE_DEFAULT_PENDING_SUBMISSION_COUNT,
+              : AMDF_GPU_KERNEL_QUEUE_DEFAULT_PENDING_SUBMISSION_COUNT,
       .maximum_command_count = 1,
   };
   amdf_atomic_uint32_initialize(&queue->publishing, 0);

@@ -190,9 +190,6 @@ typedef struct amdf_queue_family_info_t {
 /// An infinite timeout accepted by operations that explicitly wait.
 #define AMDF_TIMEOUT_INFINITE UINT64_MAX
 
-/// Default pending capacity for configurable kernel-mediated queues.
-#define AMDF_KERNEL_QUEUE_DEFAULT_PENDING_SUBMISSION_COUNT 4096u
-
 /// Lifecycle state shared by native user and kernel queues.
 typedef uint32_t amdf_queue_state_t;
 enum amdf_queue_state_e {
