@@ -25,6 +25,8 @@ loom_check_test_suite(
     "bfloat16.cxx-test"
     "bfloat16_invalid.cxx-test"
     "check.cxx-test"
+    "check_records.cxx-test"
+    "check_resources.cxx-test"
     "condition_declarations.cxx-test"
     "conditionals.cxx-test"
     "config.cxx-test"
@@ -90,14 +92,41 @@ loom_check_test_suite(
     "volatile_views.cxx-test"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/aligned_layout.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/check_records.cxx"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_semantics.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/locations.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/offsetof_layout.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/packed_enums.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/packed_layout.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_layout.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_values.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_values.cxx"
 )
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test_module(
+  NAME
+    check_record_values_test_module
+  SRCS
+    "check_records.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    check_record_values_test_execute_vm_reference_test
+  MODULE
+    "::check_record_values_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
 endif()
 
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
@@ -105,7 +134,7 @@ loom_test_module(
   NAME
     condition_values_test_module
   SRCS
-    "condition_values.cpp"
+    "condition_values.cxx"
 )
 endif()
 
@@ -131,7 +160,7 @@ loom_test_module(
   NAME
     constexpr_values_test_module
   SRCS
-    "constexpr_values.cpp"
+    "constexpr_values.cxx"
 )
 endif()
 
@@ -158,9 +187,9 @@ loom_test_module(
     atomic_values_test_module
   SRCS
     "atomic_builtin_values.loom"
-    "atomic_builtins.cpp"
+    "atomic_builtins.cxx"
     "atomic_values.loom"
-    "atomics.cpp"
+    "atomics.cxx"
 )
 endif()
 
@@ -186,7 +215,7 @@ loom_test_module(
   NAME
     storage_values_test_module
   SRCS
-    "storage_updates.cpp"
+    "storage_updates.cxx"
     "storage_values.loom"
 )
 endif()
@@ -213,7 +242,7 @@ loom_test_module(
   NAME
     packed_memory_values_test_module
   SRCS
-    "packed_memory.cpp"
+    "packed_memory.cxx"
     "packed_memory_values.loom"
 )
 endif()
@@ -240,7 +269,7 @@ loom_test_module(
   NAME
     record_memory_values_test_module
   SRCS
-    "record_memory.cpp"
+    "record_memory.cxx"
     "record_memory_values.loom"
 )
 endif()
@@ -267,7 +296,7 @@ loom_test_module(
   NAME
     volatile_values_test_module
   SRCS
-    "volatile_memory.cpp"
+    "volatile_memory.cxx"
     "volatile_values.loom"
 )
 endif()
@@ -294,7 +323,7 @@ loom_test_module(
   NAME
     config_values_test_module
   SRCS
-    "config_values.cpp"
+    "config_values.cxx"
 )
 endif()
 
@@ -347,14 +376,14 @@ loom_generated_file(
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "assumptions_cases.cc"
+    "assumptions_cases.cxx"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cpp"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cxx"
   INPUTS
-    "assumptions.cpp"
+    "assumptions.cxx"
   TESTONLY
 )
 endif()
@@ -366,14 +395,14 @@ loom_generated_file(
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "comparison_functions_cases.cc"
+    "comparison_functions_cases.cxx"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/comparison_functions.cpp"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/comparison_functions.cxx"
   INPUTS
-    "comparison_functions.cpp"
+    "comparison_functions.cxx"
   TESTONLY
 )
 endif()
@@ -385,14 +414,14 @@ loom_generated_file(
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "constant_loops_cases.cc"
+    "constant_loops_cases.cxx"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cxx"
   INPUTS
-    "constant_loops.cpp"
+    "constant_loops.cxx"
   TESTONLY
 )
 endif()
@@ -404,14 +433,14 @@ loom_generated_file(
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "enum_values_cases.cc"
+    "enum_values_cases.cxx"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cxx"
   INPUTS
-    "enum_values.cpp"
+    "enum_values.cxx"
   TESTONLY
 )
 endif()
@@ -423,14 +452,14 @@ loom_generated_file(
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "increment_values_cases.cc"
+    "increment_values_cases.cxx"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cxx"
   INPUTS
-    "increment_values.cpp"
+    "increment_values.cxx"
   TESTONLY
 )
 endif()
@@ -442,14 +471,14 @@ loom_generated_file(
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "integer_functions_cases.cc"
+    "integer_functions_cases.cxx"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cxx"
   INPUTS
-    "integer_functions.cpp"
+    "integer_functions.cxx"
   TESTONLY
 )
 endif()
@@ -461,14 +490,14 @@ loom_generated_file(
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "record_values_cases.cc"
+    "record_values_cases.cxx"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_values.cpp"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_values.cxx"
   INPUTS
-    "record_values.cpp"
+    "record_values.cxx"
   TESTONLY
 )
 endif()
@@ -480,14 +509,14 @@ loom_generated_file(
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "schedule_values_cases.cc"
+    "schedule_values_cases.cxx"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_values.cpp"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_values.cxx"
   INPUTS
-    "schedule_values.cpp"
+    "schedule_values.cxx"
   TESTONLY
 )
 endif()
@@ -499,14 +528,14 @@ loom_generated_file(
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "shaped_intrinsics_cases.cc"
+    "shaped_intrinsics_cases.cxx"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cxx"
   INPUTS
-    "shaped_intrinsics.cpp"
+    "shaped_intrinsics.cxx"
   TESTONLY
 )
 endif()
@@ -518,14 +547,14 @@ loom_generated_file(
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "structured_continue_cases.cc"
+    "structured_continue_cases.cxx"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cxx"
   INPUTS
-    "structured_continue.cpp"
+    "structured_continue.cxx"
   TESTONLY
 )
 endif()
@@ -537,14 +566,14 @@ loom_generated_file(
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "vector_initializers_cases.cc"
+    "vector_initializers_cases.cxx"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cxx"
   INPUTS
-    "vector_initializers.cpp"
+    "vector_initializers.cxx"
   TESTONLY
 )
 endif()
@@ -556,14 +585,14 @@ loom_generated_file(
   GENERATOR
     loom::py::loom::gen::test::cxx_kernel_cases
   OUTPUT
-    "vector_values_cases.cc"
+    "vector_values_cases.cxx"
   OUTPUT_FLAG
     "--output"
   ARGS
     "host"
-    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
+    "--source=${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cxx"
   INPUTS
-    "vector_values.cpp"
+    "vector_values.cxx"
   TESTONLY
 )
 endif()
@@ -573,9 +602,9 @@ loom_test_module(
   NAME
     assumptions_test_module
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/assumptions_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/assumptions_cases.cxx"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/assumptions.cxx"
 )
 endif()
 
@@ -601,9 +630,9 @@ loom_test_module(
   NAME
     comparison_functions_test_module
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/comparison_functions_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/comparison_functions_cases.cxx"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/comparison_functions.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/comparison_functions.cxx"
 )
 endif()
 
@@ -629,9 +658,9 @@ loom_test_module(
   NAME
     constant_loops_test_module
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/constant_loops_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/constant_loops_cases.cxx"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/constant_loops.cxx"
 )
 endif()
 
@@ -657,9 +686,9 @@ loom_test_module(
   NAME
     enum_values_test_module
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/enum_values_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/enum_values_cases.cxx"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/enum_values.cxx"
 )
 endif()
 
@@ -685,9 +714,9 @@ loom_test_module(
   NAME
     increment_values_test_module
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/increment_values_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/increment_values_cases.cxx"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/increment_values.cxx"
 )
 endif()
 
@@ -713,9 +742,9 @@ loom_test_module(
   NAME
     integer_functions_test_module
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/integer_functions_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/integer_functions_cases.cxx"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/integer_functions.cxx"
 )
 endif()
 
@@ -741,9 +770,9 @@ loom_test_module(
   NAME
     record_values_test_module
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/record_values_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/record_values_cases.cxx"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_values.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/record_values.cxx"
 )
 endif()
 
@@ -769,9 +798,9 @@ loom_test_module(
   NAME
     schedule_values_test_module
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/schedule_values_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/schedule_values_cases.cxx"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_values.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/schedule_values.cxx"
 )
 endif()
 
@@ -797,9 +826,9 @@ loom_test_module(
   NAME
     shaped_intrinsics_test_module
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/shaped_intrinsics_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/shaped_intrinsics_cases.cxx"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/shaped_intrinsics.cxx"
 )
 endif()
 
@@ -825,9 +854,9 @@ loom_test_module(
   NAME
     structured_continue_test_module
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/structured_continue_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/structured_continue_cases.cxx"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/structured_continue.cxx"
 )
 endif()
 
@@ -853,9 +882,9 @@ loom_test_module(
   NAME
     vector_initializers_test_module
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/vector_initializers_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/vector_initializers_cases.cxx"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_initializers.cxx"
 )
 endif()
 
@@ -881,9 +910,9 @@ loom_test_module(
   NAME
     vector_values_test_module
   SRCS
-    "${CMAKE_CURRENT_BINARY_DIR}/vector_values_cases.cc"
+    "${CMAKE_CURRENT_BINARY_DIR}/vector_values_cases.cxx"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_values.cxx"
 )
 endif()
 
@@ -918,10 +947,9 @@ loom_test_module(
   NAME
     atomics_module
   SRCS
-    "atomic_builtin_kernels.loom"
-    "atomic_builtins.cpp"
+    "atomic_builtins.cxx"
     "atomic_kernels.loom"
-    "atomics.cpp"
+    "atomics.cxx"
 )
 endif()
 
@@ -931,7 +959,7 @@ loom_test_module(
     storage_updates_module
   SRCS
     "storage_kernels.loom"
-    "storage_updates.cpp"
+    "storage_updates.cxx"
 )
 endif()
 
@@ -940,7 +968,7 @@ loom_test_module(
   NAME
     packed_memory_module
   SRCS
-    "packed_memory.cpp"
+    "packed_memory.cxx"
     "packed_memory_kernels.loom"
 )
 endif()
@@ -950,7 +978,7 @@ loom_test_module(
   NAME
     record_memory_module
   SRCS
-    "record_memory.cpp"
+    "record_memory.cxx"
     "record_memory_kernels.loom"
 )
 endif()
@@ -1378,7 +1406,7 @@ loom_test_module(
   NAME
     aiter_swiglu_f16_module
   SRCS
-    "aiter_swiglu_f16.cpp"
+    "aiter_swiglu_f16.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/aiter_swiglu_f16_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/aiter_swiglu_f16_arrays"
@@ -1393,7 +1421,7 @@ loom_test_module(
   NAME
     assumptions_module
   SRCS
-    "assumptions.cpp"
+    "assumptions.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/assumptions_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/assumptions_arrays"
@@ -1408,7 +1436,7 @@ loom_test_module(
   NAME
     constant_loops_module
   SRCS
-    "constant_loops.cpp"
+    "constant_loops.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/constant_loops_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/constant_loops_arrays"
@@ -1423,7 +1451,7 @@ loom_test_module(
   NAME
     control_flow_module
   SRCS
-    "control_flow.cpp"
+    "control_flow.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/control_flow_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/control_flow_arrays"
@@ -1438,7 +1466,7 @@ loom_test_module(
   NAME
     early_returns_module
   SRCS
-    "early_returns.cpp"
+    "early_returns.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/early_returns_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/early_returns_arrays"
@@ -1453,7 +1481,7 @@ loom_test_module(
   NAME
     enum_values_module
   SRCS
-    "enum_values.cpp"
+    "enum_values.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/enum_values_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/enum_values_arrays"
@@ -1468,7 +1496,7 @@ loom_test_module(
   NAME
     flash_attention_module
   SRCS
-    "flash_attention.cpp"
+    "flash_attention.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/flash_attention_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/flash_attention_arrays"
@@ -1483,7 +1511,7 @@ loom_test_module(
   NAME
     increment_values_module
   SRCS
-    "increment_values.cpp"
+    "increment_values.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/increment_values_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/increment_values_arrays"
@@ -1498,7 +1526,7 @@ loom_test_module(
   NAME
     integer_increment_module
   SRCS
-    "integer_increment.cpp"
+    "integer_increment.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/integer_increment_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/integer_increment_arrays"
@@ -1513,7 +1541,7 @@ loom_test_module(
   NAME
     llama_rms_norm_module
   SRCS
-    "llama_rms_norm.cpp"
+    "llama_rms_norm.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/llama_rms_norm_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/llama_rms_norm_arrays"
@@ -1528,7 +1556,7 @@ loom_test_module(
   NAME
     pointer_walk_module
   SRCS
-    "pointer_walk.cpp"
+    "pointer_walk.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/pointer_walk_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/pointer_walk_arrays"
@@ -1543,7 +1571,7 @@ loom_test_module(
   NAME
     record_values_module
   SRCS
-    "record_values.cpp"
+    "record_values.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/record_values_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/record_values_arrays"
@@ -1558,7 +1586,7 @@ loom_test_module(
   NAME
     scheduled_sum_module
   SRCS
-    "scheduled_sum.cpp"
+    "scheduled_sum.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/scheduled_sum_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/scheduled_sum_arrays"
@@ -1573,7 +1601,7 @@ loom_test_module(
   NAME
     shaped_intrinsics_module
   SRCS
-    "shaped_intrinsics.cpp"
+    "shaped_intrinsics.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/shaped_intrinsics_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/shaped_intrinsics_arrays"
@@ -1588,7 +1616,7 @@ loom_test_module(
   NAME
     short_circuit_module
   SRCS
-    "short_circuit.cpp"
+    "short_circuit.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/short_circuit_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/short_circuit_arrays"
@@ -1603,7 +1631,7 @@ loom_test_module(
   NAME
     structured_continue_module
   SRCS
-    "structured_continue.cpp"
+    "structured_continue.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/structured_continue_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/structured_continue_arrays"
@@ -1618,7 +1646,7 @@ loom_test_module(
   NAME
     symbol_exports_module
   SRCS
-    "symbol_exports.cpp"
+    "symbol_exports.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/symbol_exports_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/symbol_exports_arrays"
@@ -1633,7 +1661,7 @@ loom_test_module(
   NAME
     typed_views_module
   SRCS
-    "typed_views.cpp"
+    "typed_views.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/typed_views_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/typed_views_arrays"
@@ -1648,7 +1676,7 @@ loom_test_module(
   NAME
     vector_depth_module
   SRCS
-    "vector_depth.cpp"
+    "vector_depth.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/vector_depth_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/vector_depth_arrays"
@@ -1663,7 +1691,7 @@ loom_test_module(
   NAME
     vector_initializers_module
   SRCS
-    "vector_initializers.cpp"
+    "vector_initializers.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/vector_initializers_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/vector_initializers_arrays"
@@ -1678,7 +1706,7 @@ loom_test_module(
   NAME
     vector_values_module
   SRCS
-    "vector_values.cpp"
+    "vector_values.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/vector_values_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/vector_values_arrays"
@@ -1693,7 +1721,7 @@ loom_test_module(
   NAME
     volatile_memory_module
   SRCS
-    "volatile_memory.cpp"
+    "volatile_memory.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/volatile_memory_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/volatile_memory_arrays"

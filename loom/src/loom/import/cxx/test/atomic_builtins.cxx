@@ -4,6 +4,9 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <loomcxx/check.h>
+#include <loomcxx/kernel.h>
+
 // Every update checks its returned value, independently of the final storage.
 // The unsigned sequence crosses zero and alternates old/new fetch conventions.
 unsigned builtin_fetch_values(volatile unsigned* storage) {
@@ -83,4 +86,57 @@ unsigned builtin_wide_values(unsigned long long* storage) {
   failures += !__atomic_compare_exchange_n(word, word, 0x100000004ULL, false,
                                            __ATOMIC_SEQ_CST, __ATOMIC_SEQ_CST);
   return failures;
+}
+
+[[loom::kernel, loom::workgroup_size(1, 1, 1), loom::workgroup_count(1, 1, 1)]]
+void builtin_updates(unsigned* storage, unsigned long long* wide,
+                     unsigned* evaluations, unsigned* output) {
+  output[0] = builtin_fetch_values(storage);
+  output[1] = builtin_signed_wrap(reinterpret_cast<int*>(storage + 3));
+  output[2] = builtin_compare_values(storage + 6, evaluations);
+  output[3] = builtin_wide_values(wide);
+}
+
+LOOM_CHECK_CASE(builtin_update_values) {
+  loom::check::require("hal.amdgpu.descriptor_set", "descriptor_set",
+                       "amdgpu.rdna3_5.core");
+  const auto storage = loom::check::fill<unsigned, 10>(37u);
+  const auto wide = loom::check::fill<unsigned long long, 4>(37ULL);
+  const auto evaluations = loom::check::fill<unsigned, 6>(0u);
+  const auto output = loom::check::fill<unsigned, 4>(37u);
+  loom::check::launch<builtin_updates>(storage, wide, evaluations, output);
+  loom::check::expect_bitwise(output, loom::check::fill<unsigned, 4>(0u));
+  loom::check::expect_bitwise(loom::check::slice<1>(storage, 0),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_bitwise(loom::check::slice<1>(storage, 1),
+                              loom::check::fill<unsigned, 1>(49u));
+  loom::check::expect_bitwise(loom::check::slice<2>(storage, 2),
+                              loom::check::fill<unsigned, 2>(37u));
+  loom::check::expect_bitwise(loom::check::slice<1>(storage, 4),
+                              loom::check::fill<unsigned, 1>(2147483647u));
+  loom::check::expect_bitwise(loom::check::slice<2>(storage, 5),
+                              loom::check::fill<unsigned, 2>(37u));
+  loom::check::expect_bitwise(loom::check::slice<1>(storage, 7),
+                              loom::check::fill<unsigned, 1>(13u));
+  loom::check::expect_bitwise(loom::check::slice<1>(storage, 8),
+                              loom::check::fill<unsigned, 1>(7u));
+  loom::check::expect_bitwise(loom::check::slice<1>(storage, 9),
+                              loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_bitwise(loom::check::slice<1>(wide, 0),
+                              loom::check::fill<unsigned long long, 1>(37ULL));
+  loom::check::expect_bitwise(
+      loom::check::slice<1>(wide, 1),
+      loom::check::fill<unsigned long long, 1>(4294967300ULL));
+  loom::check::expect_bitwise(
+      loom::check::slice<1>(wide, 2),
+      loom::check::fill<unsigned long long, 1>(4294967299ULL));
+  loom::check::expect_bitwise(loom::check::slice<1>(wide, 3),
+                              loom::check::fill<unsigned long long, 1>(37ULL));
+  loom::check::expect_bitwise(loom::check::slice<1>(evaluations, 0),
+                              loom::check::fill<unsigned, 1>(0u));
+  loom::check::expect_bitwise(loom::check::slice<4>(evaluations, 1),
+                              loom::check::fill<unsigned, 4>(2u));
+  loom::check::expect_bitwise(loom::check::slice<1>(evaluations, 5),
+                              loom::check::fill<unsigned, 1>(0u));
+  loom::check::expect_event("device", "count", 0, "type", "asan_report");
 }

@@ -51,6 +51,7 @@ loom_cc_library(
     loom::error::diagnostic
     loom::error::error_defs
     loom::import::cxx::binding::assumptions
+    loom::import::cxx::binding::check
     loom::import::cxx::binding::config
     loom::import::cxx::binding::intrinsics
     loom::import::cxx::binding::launch

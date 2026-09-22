@@ -70,7 +70,7 @@ TEST(CxxAssemblyTest, SourceAndEnvironmentOwnershipSurvivesBothFormats) {
       }
     )cpp";
     loomc_source_options_t source_options = {};
-    source_options.identifier = loomc_make_cstring_view("assembly.cpp");
+    source_options.identifier = loomc_make_cstring_view("assembly.cxx");
     source_options.contents = loomc_make_byte_span(text, sizeof(text) - 1);
     source_options.storage = LOOMC_SOURCE_STORAGE_COPY;
     loomc_source_t* source = nullptr;

@@ -23,7 +23,7 @@ iree_py_binary(
 xdna_execution_test_suite(
     name = "assembly_pack_npu2_test",
     data = [
-        "testdata/assembly_pack.cpp",
+        "testdata/assembly_pack.cxx",
         "testdata/assembly_pack.loom",
         "//loom/src/loom/import/cxx:include/loomcxx/low.h",
     ],
@@ -87,8 +87,9 @@ xdna_execution_test_suite(
     name = "packed_memory_npu2_test",
     data = [
         "testdata/packed_memory.loom",
+        "//loom/src/loom/import/cxx:include/loomcxx/atomic.h",
         "//loom/src/loom/import/cxx:include/loomcxx/kernel.h",
-        "//loom/src/loom/import/cxx/test:packed_memory.cpp",
+        "//loom/src/loom/import/cxx/test:packed_memory.cxx",
     ],
     manifests = ["packed_memory_npu2.test.json"],
     tags = ["manual"],
@@ -124,8 +125,9 @@ iree_py_binary(
 xdna_execution_test_suite(
     name = "vector_copy_npu2_test",
     data = [
-        "testdata/vector_copy.cpp",
+        "testdata/vector_copy.cxx",
         "testdata/vector_copy.loom",
+        "//loom/src/loom/import/cxx:include/loomcxx/atomic.h",
         "//loom/src/loom/import/cxx:include/loomcxx/kernel.h",
     ],
     manifests = ["vector_copy_npu2.test.json"],

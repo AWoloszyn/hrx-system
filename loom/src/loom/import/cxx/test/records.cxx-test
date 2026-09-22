@@ -55,20 +55,20 @@ func.def public @temporary(%value: i32) -> (i32) {
 // INPUT: cxx data-model=lp64
 // RUN: verify
 // Source layouts remain independent of flattened High component order.
-#include "record_values.cpp"
+#include "record_values.cxx"
 static_assert(sizeof(State) == 32);
 static_assert(sizeof(void*) == 8 && sizeof(long) == 8);
 
 // ====
 // INPUT: cxx data-model=llp64
 // RUN: verify
-#include "record_values.cpp"
+#include "record_values.cxx"
 static_assert(sizeof(State) == 32);
 static_assert(sizeof(void*) == 8 && sizeof(long) == 4);
 
 // ====
 // INPUT: cxx data-model=ilp32
 // RUN: verify
-#include "record_values.cpp"
+#include "record_values.cxx"
 static_assert(sizeof(State) == 32);
 static_assert(sizeof(void*) == 4 && sizeof(long) == 4);

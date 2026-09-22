@@ -14,7 +14,7 @@ iree_c_embed_data(
   NAME
     kernels
   SRCS
-    "kernels.cpp"
+    "kernels.cxx"
   C_FILE_OUTPUT
     "kernels.c"
   H_FILE_OUTPUT

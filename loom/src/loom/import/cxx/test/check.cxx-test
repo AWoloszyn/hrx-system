@@ -115,7 +115,7 @@ LOOM_CHECK_CASE(undefined_case);
 // RUN: verify
 #include <loomcxx/check.h>
 LOOM_CHECK_CASE(mutable_local) {
-  // ERROR@+1: LOWERING/059 "check locals require initialized automatic const scalars"
+  // ERROR@+1: LOWERING/059 "check locals require initialized automatic non-volatile const values"
   int value = 3;
 }
 
@@ -123,7 +123,7 @@ LOOM_CHECK_CASE(mutable_local) {
 // RUN: verify
 #include <loomcxx/check.h>
 LOOM_CHECK_CASE(branch) {
-  // ERROR@+1: LOWERING/059 "check cases support immutable scalars, direct calls, and terminal expectations"
+  // ERROR@+1: LOWERING/059 "check cases support immutable values, direct calls, and terminal expectations"
   if (true) loom::check::expect_equal(1, 1);
 }
 
@@ -133,7 +133,7 @@ LOOM_CHECK_CASE(branch) {
 int identity(int value) { return value; }
 LOOM_CHECK_CASE(arithmetic) {
   const auto actual = identity(3);
-  // ERROR@+1: LOWERING/059 "check values require scalar constants, immutable bindings, or direct calls"
+  // ERROR@+1: LOWERING/059 "check values require scalar constants, immutable bindings, record members, or direct calls"
   loom::check::expect_equal(actual + 1, 4);
 }
 

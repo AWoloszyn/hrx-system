@@ -93,12 +93,12 @@ iree_execution_test_suite(
     "iree-test-loom=loom::tools::iree-test-loom"
     "loom-link=loom::tools::loom-link"
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.cc"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.cxx"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_library.cc"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_library.cxx"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/record_input.loom"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/record_library.cc"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/source_input.cc"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/record_library.cxx"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/source_input.cxx"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/source_input.h"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/source_input.loom"
 )
@@ -109,7 +109,7 @@ loom_test_module(
   NAME
     source_test_module
   SRCS
-    "check_cases.cc"
+    "check_cases.cxx"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/tooling/check_cases.h"
   INPUTOPTS

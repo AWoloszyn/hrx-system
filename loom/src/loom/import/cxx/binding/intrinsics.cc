@@ -121,6 +121,8 @@ void Intrinsics::declaration(cxx::FunctionSymbol* function,
                 !FenceIntrinsic::supports(selected->arguments[0]->name()) &&
                 !SubgroupIntrinsic::supports(selected->arguments[0]->name()) &&
                 !BarrierIntrinsic::supports(selected->arguments[0]->name()) &&
+                !CheckIntrinsic::parse_operation(
+                    selected->arguments[0]->name()) &&
                 !AssemblyIntrinsic::supports(selected->arguments[0]->name()))) {
       diagnostics_.reject(unit_, owner,
                           "function template operation has no C++ projection");
@@ -153,23 +155,9 @@ Intrinsics::Binding Intrinsics::resolve(cxx::FunctionSymbol* function,
                                         const cxx::Attribute& attribute,
                                         cxx::AST* owner) {
   auto* signature = cxx::type_cast<cxx::FunctionType>(function->type());
-  if (attribute.arguments[0]->name() == "check.expect.equal") {
-    auto parameters = signature->parameterTypes();
-    if (attribute.arguments.size() != 1 || signature->isVariadic() ||
-        signature->returnType()->kind() != cxx::TypeKind::kVoid ||
-        parameters.size() != 2 ||
-        types_.unqualified(parameters[0]) !=
-            types_.unqualified(parameters[1])) {
-      diagnostics_.reject(
-          unit_, owner,
-          "check.expect.equal requires void(T, T) with one scalar type");
-    }
-    auto type = types_.get(parameters[0], owner);
-    if (loom_type_kind(type) != LOOM_TYPE_SCALAR) {
-      diagnostics_.reject(unit_, owner,
-                          "check.expect.equal requires scalar operands");
-    }
-    return EqualityBinding{type};
+  if (auto binding = CheckIntrinsic::resolve(unit_, diagnostics_, types_,
+                                             function, attribute, owner)) {
+    return *binding;
   }
   if (auto* scalar =
           loom_cxx_scalar_binding_find(view(attribute.arguments[0]->name()))) {
@@ -249,17 +237,6 @@ Intrinsics::ScalarBinding Intrinsics::resolve_scalar(
   return {operation, types_.get(return_type, owner)};
 }
 
-std::optional<loom_type_t> Intrinsics::expectation_type(
-    cxx::FunctionSymbol* function) const {
-  auto entry = bindings_.find(function->canonical());
-  if (entry != bindings_.end()) {
-    if (auto* binding = std::get_if<EqualityBinding>(&entry->second)) {
-      return binding->type;
-    }
-  }
-  return std::nullopt;
-}
-
 Intrinsics::Binding* Intrinsics::concrete_binding(cxx::FunctionSymbol* function,
                                                   cxx::AST* owner) {
   auto entry = bindings_.find(function->canonical());
@@ -296,6 +273,12 @@ Intrinsics::Binding* Intrinsics::concrete_binding(cxx::FunctionSymbol* function,
 Intrinsics::Binding* Intrinsics::lookup(cxx::FunctionSymbol* function,
                                         cxx::AST* owner) {
   return concrete_binding(function, owner);
+}
+
+const CheckIntrinsic* Intrinsics::check_binding(cxx::FunctionSymbol* function,
+                                                cxx::AST* owner) {
+  auto* binding = lookup(function, owner);
+  return binding ? std::get_if<CheckIntrinsic>(binding) : nullptr;
 }
 
 IntrinsicCallResult Intrinsics::call(const Binding& admitted,

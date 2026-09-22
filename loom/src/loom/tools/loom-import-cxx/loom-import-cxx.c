@@ -197,7 +197,7 @@ int main(int argc, char** argv) {
   iree_flags_set_usage(
       "loom-import-cxx",
       "Imports one C/C++ translation unit into editable Loom IR.\n"
-      "Usage: loom-import-cxx [options] source.cpp\n"
+      "Usage: loom-import-cxx [options] source.cxx\n"
       "Use --I=path and --D=NAME=VALUE for source configuration.\n"
       "Unspecified kernel dimensions become config.decl symbols.\n");
   loom_tooling_cli_set_default_help_filter();

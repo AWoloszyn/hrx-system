@@ -182,6 +182,27 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_library(
   NAME
+    check
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
+  HDRS
+    "check.h"
+  SRCS
+    "check.cc"
+  DEPS
+    iree::third_party::cxx_parser
+    loom::import::cxx::source::attributes
+    loom::import::cxx::value::types
+  PUBLIC
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_library(
+  NAME
     kernel
   CXX_STANDARD
     23
@@ -220,6 +241,7 @@ loom_cc_library(
   DEPS
     ::assembly
     ::atomic
+    ::check
     ::kernel
     ::scalar_bindings
     ::shaped

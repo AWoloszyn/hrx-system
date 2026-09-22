@@ -114,6 +114,9 @@ const Partition* Types::special(const cxx::Type* input, cxx::AST* owner) {
   if (name == "view") {
     return view(type, owner);
   }
+  if (name == "tensor") {
+    return tensor(type, owner);
+  }
   diagnostics_.reject(unit_, owner, "unknown Loom source type binding");
 }
 
@@ -242,6 +245,64 @@ const ViewPartition* Types::view(const cxx::ClassType* input, cxx::AST* owner) {
   return admitted;
 }
 
+const TensorPartition* Types::tensor(const cxx::ClassType* input,
+                                     cxx::AST* owner) {
+  auto* source = input->definition();
+  if (auto found = tensors_.find(source); found != tensors_.end()) {
+    return found->second.get();
+  }
+  auto traits = unit_.typeTraits();
+  if (source) {
+    traits.requireCompleteClass(source);
+    source = input->definition();
+  }
+  if (!source || !source->isComplete() || source->isUnion() ||
+      !source->baseClasses().empty() || !traits.is_trivially_copyable(input) ||
+      !traits.has_trivial_destructor(input)) {
+    diagnostics_.reject(unit_, owner,
+                        "tensor values require a complete trivial class "
+                        "without bases");
+  }
+  auto arguments = cxx::class_template_arguments(source);
+  if (arguments.size() != 2) {
+    diagnostics_.reject(unit_, owner,
+                        "rank-one tensor values require an element and extent "
+                        "argument");
+  }
+  auto* element = cxx::template_argument_type(arguments[0]);
+  auto element_type = get(element, owner);
+  auto bytes = unit_.control()->memoryLayout()->sizeOf(element);
+  if (loom_type_kind(element_type) != LOOM_TYPE_SCALAR ||
+      loom_type_element_type(element_type) == LOOM_SCALAR_TYPE_I1 ||
+      traits.is_const(element) || traits.is_volatile(element) || !bytes ||
+      !*bytes) {
+    diagnostics_.reject(unit_, owner,
+                        "tensor elements require unqualified non-boolean "
+                        "scalar types");
+  }
+  auto extent = cxx::template_argument_value(arguments[1]);
+  cxx::ASTInterpreter interpreter(&unit_);
+  auto count = extent ? interpreter.toInt(*extent) : std::nullopt;
+  if (!count || *count < 0 ||
+      static_cast<uint64_t>(*count) > INT64_MAX / *bytes) {
+    diagnostics_.reject(unit_, owner,
+                        "tensor extent requires a nonnegative constant with "
+                        "a representable byte length");
+  }
+  auto result = std::make_unique<TensorPartition>();
+  result->kind = ValueKind::Tensor;
+  result->component_count = 1;
+  result->source = source;
+  result->element_type = element;
+  result->type = loom_type_shaped_1d(LOOM_TYPE_TENSOR,
+                                     loom_type_element_type(element_type),
+                                     loom_dim_pack_static(*count), 0);
+  result->element_bytes = *bytes;
+  auto* admitted = result.get();
+  tensors_.emplace(source, std::move(result));
+  return admitted;
+}
+
 const RecordPartition* Types::record(const cxx::Type* input, cxx::AST* owner) {
   if (!input) {
     return nullptr;
@@ -316,6 +377,7 @@ void Types::append_component_names(const Partition& partition,
   switch (partition.kind) {
     case ValueKind::SSA:
     case ValueKind::Encoding:
+    case ValueKind::Tensor:
       append({});
       return;
     case ValueKind::Pointer:
@@ -428,6 +490,14 @@ loom_type_t Types::get(const cxx::Type* input, cxx::AST* ast) {
       storage_size(pointer->elementType(), ast);
       return loom_type_buffer();
     }
+    case cxx::TypeKind::kClass: {
+      auto* admitted = special(input, ast);
+      if (admitted && admitted->kind == ValueKind::Tensor) {
+        return static_cast<const TensorPartition*>(admitted)->type;
+      }
+      diagnostics_.reject(unit_, ast,
+                          "unsupported C++ type: " + cxx::to_string(input));
+    }
     default:
       diagnostics_.reject(unit_, ast,
                           "unsupported C++ type: " + cxx::to_string(input));
@@ -510,6 +580,46 @@ bool Types::is_unsigned(const cxx::Type* type) {
   return traits.is_unsigned(traits.underlying_type(type));
 }
 
+// The frontend has selected the special member and checked accessibility,
+// deletion, cv and overload resolution. Source admission establishes trivial
+// lifecycle semantics before an implicit copy becomes an SSA value copy.
+void Types::admit_copy(cxx::FunctionSymbol* constructor, const cxx::Type* type,
+                       cxx::AST* owner) {
+  if (!constructor) {
+    return;
+  }
+  const auto& admitted = partition(type, owner);
+  cxx::ClassSymbol* source = nullptr;
+  bool is_record = admitted.kind == ValueKind::Record;
+  if (admitted.kind == ValueKind::Record) {
+    source = static_cast<const RecordPartition&>(admitted).source;
+  } else if (admitted.kind == ValueKind::Encoding) {
+    source = static_cast<const EncodingPartition&>(admitted).source;
+  } else if (admitted.kind == ValueKind::View) {
+    source = static_cast<const ViewPartition&>(admitted).source;
+  } else if (admitted.kind == ValueKind::Tensor) {
+    source = static_cast<const TensorPartition&>(admitted).source;
+  }
+  if (source && constructor == source->defaultConstructor()) {
+    diagnostics_.reject(
+        unit_, owner,
+        is_record ? "default record construction requires source object "
+                    "initialization semantics"
+                  : "default encoding, view or tensor construction requires "
+                    "source object initialization semantics");
+  }
+  if (!source || (constructor != source->copyConstructor() &&
+                  constructor != source->moveConstructor())) {
+    diagnostics_.reject(
+        unit_, owner,
+        is_record
+            ? "record construction requires aggregate initialization "
+              "or a trivial copy"
+            : "encoding, view and tensor construction requires an operation "
+              "result or a trivial copy");
+  }
+}
+
 void Types::require_mutable(const cxx::Type* input, cxx::AST* owner) {
   if (unit_.typeTraits().is_const(input)) {
     diagnostics_.reject(unit_, owner,
@@ -547,6 +657,9 @@ void Types::append_bound(const cxx::Type* input, cxx::AST* owner,
     case ValueKind::Encoding:
       output.push_back(
           loom_type_encoding_with_role(LOOM_ENCODING_ROLE_ADDRESS_LAYOUT));
+      return;
+    case ValueKind::Tensor:
+      output.push_back(static_cast<const TensorPartition&>(admitted).type);
       return;
     case ValueKind::Record: {
       const auto& record = static_cast<const RecordPartition&>(admitted);

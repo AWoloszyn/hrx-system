@@ -1176,6 +1176,10 @@ static void loom_testbench_plan_case_body(
               LOOM_TESTBENCH_ISSUE_INVALID_EXPECTATION, case_index,
               LOOM_TESTBENCH_BENCHMARK_INDEX_INVALID, op, case_plan->ref);
         }
+        case_plan->has_device_event_expectation |=
+            expectation->kind == LOOM_TESTBENCH_EXPECTATION_EVENT &&
+            iree_string_view_equal(expectation->event.provider,
+                                   IREE_SV("device"));
         continue;
       }
     }

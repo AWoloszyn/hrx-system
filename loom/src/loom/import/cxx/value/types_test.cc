@@ -117,7 +117,7 @@ TEST(TypesTest, RecordMemoryUsesSourceLayoutIndependentlyOfValuePartitions) {
     template<class T> struct Box { unsigned char tag; T value; };
     using Concrete = Box<unsigned>;
   )"),
-                IREE_SV("record_memory.cpp"), options);
+                IREE_SV("record_memory.cxx"), options);
   Types types(source.unit(), source.diagnostics());
   auto* owner = source.unit().ast();
   auto* control = source.unit().control();

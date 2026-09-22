@@ -234,7 +234,7 @@ execution profiles without repeating the import or link:
 # In the corpus package:
 loom_test_module(
     name = "copy_cases",
-    srcs = ["copy.cpp", ":copy_checks.loom"],
+    srcs = ["copy.cxx", ":copy_checks.loom"],
     data = [":reference_arrays"],
     visibility = ["//visibility:public"],
 )

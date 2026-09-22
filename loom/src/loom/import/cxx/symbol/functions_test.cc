@@ -37,7 +37,7 @@ TEST_F(FunctionsTest, RootsQueueEachConcreteHelperOnceWithPrivateVisibility) {
     int unused(int x) { return x; }
     int entry(int x) { return scale<3>(x) + scale<3>(x); }
   )"),
-                IREE_SV("functions.cpp"), options());
+                IREE_SV("functions.cxx"), options());
   Types types(source.unit(), source.diagnostics());
   Locations locations(source.unit(), source.diagnostics(), module_);
   Intrinsics intrinsics(source.unit(), source.diagnostics(), types);

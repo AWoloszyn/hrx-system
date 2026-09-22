@@ -22,9 +22,9 @@ iree_c_embed_data(
     name = "kernels",
     testonly = True,
     srcs = [
-        "//loom/src/loom/import/cxx/test:aiter_swiglu_f16.cpp",
-        "//loom/src/loom/import/cxx/test:flash_attention.cpp",
-        "//loom/src/loom/import/cxx/test:llama_rms_norm.cpp",
+        "//loom/src/loom/import/cxx/test:aiter_swiglu_f16.cxx",
+        "//loom/src/loom/import/cxx/test:flash_attention.cxx",
+        "//loom/src/loom/import/cxx/test:llama_rms_norm.cxx",
     ],
     c_file_output = "kernels.c",
     flatten = True,

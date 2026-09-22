@@ -22,7 +22,7 @@
               "--isystem={srcdir}/../../../loom/src/loom/import/cxx/include",
               "--to=bc",
               "--output={tmp}/copy.loombc",
-              "{srcdir}/../../../loom/src/loom/import/cxx/test/packed_memory.cpp"
+              "{srcdir}/../../../loom/src/loom/import/cxx/test/packed_memory.cxx"
             ]
           }
         },

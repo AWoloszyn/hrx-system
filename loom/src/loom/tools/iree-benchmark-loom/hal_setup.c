@@ -35,17 +35,17 @@ static iree_status_t iree_benchmark_loom_initialize_sequence_compile_context(
   context->benchmark_materializer =
       options->case_execution_options->materializer;
 
-  iree_status_t status = loom_run_hal_testbench_context_ensure_runtime(
-      &options->hal_context->execution);
   loom_testbench_requirement_result_t requirement_result = {0};
-  if (iree_status_is_ok(status)) {
-    status = iree_benchmark_loom_evaluate_case_requirements(
-        options->hal_context->configuration, &options->hal_context->execution,
-        options->module_plan, case_plan, &requirement_result);
-  }
+  iree_status_t status = iree_benchmark_loom_evaluate_case_requirements(
+      options->hal_context->configuration, &options->hal_context->execution,
+      options->module_plan, case_plan, &requirement_result);
   if (iree_status_is_ok(status) && requirement_result.skipped) {
     context->skipped = true;
     return iree_ok_status();
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_run_hal_testbench_context_ensure_runtime(
+        &options->hal_context->execution);
   }
 
   if (iree_status_is_ok(status)) {
@@ -128,10 +128,6 @@ static iree_status_t iree_benchmark_loom_initialize_single_compile_context(
 
   iree_status_t status =
       loom_run_hal_testbench_select_kernel_launch(case_plan, &kernel_launch);
-  if (iree_status_is_ok(status)) {
-    status = loom_run_hal_testbench_context_ensure_runtime(
-        &options->hal_context->execution);
-  }
   loom_testbench_requirement_result_t requirement_result = {0};
   if (iree_status_is_ok(status)) {
     status = iree_benchmark_loom_evaluate_case_requirements(
@@ -141,6 +137,10 @@ static iree_status_t iree_benchmark_loom_initialize_single_compile_context(
   if (iree_status_is_ok(status) && requirement_result.skipped) {
     context->skipped = true;
     return iree_ok_status();
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_run_hal_testbench_context_ensure_runtime(
+        &options->hal_context->execution);
   }
 
   if (iree_status_is_ok(status)) {

@@ -72,9 +72,16 @@ test_suite(
 )
 
 loom_test(
+    name = "check_resources_test",
+    srcs = ["check_resources.cxx"],
+    execution_profiles = _EXECUTION_PROFILES,
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)
+
+loom_test(
     name = "assembly_test",
     srcs = [
-        "assembly.cpp",
+        "assembly.cxx",
         "assembly.loom",
     ],
     execution_profiles = _EXECUTION_PROFILES,
@@ -84,7 +91,7 @@ loom_test(
 loom_test(
     name = "atomic_publication_test",
     srcs = [
-        "atomic_publication.cpp",
+        "atomic_publication.cxx",
         "atomic_publication.loom",
     ],
     execution_profiles = _EXECUTION_PROFILES,
@@ -94,7 +101,7 @@ loom_test(
 loom_test(
     name = "subgroups_test",
     srcs = [
-        "subgroups.cpp",
+        "subgroups.cxx",
         "subgroups.loom",
     ],
     execution_profiles = _EXECUTION_PROFILES,
@@ -130,7 +137,7 @@ loom_check_test(
 loom_test(
     name = "float16_test",
     srcs = [
-        "float16.cpp",
+        "float16.cxx",
         "float16.loom",
     ],
     execution_profiles = _EXECUTION_PROFILES,
@@ -140,7 +147,7 @@ loom_test(
 loom_test(
     name = "bfloat16_test",
     srcs = [
-        "bfloat16.cpp",
+        "bfloat16.cxx",
         "bfloat16.loom",
     ],
     execution_profiles = _EXECUTION_PROFILES,
@@ -150,7 +157,7 @@ loom_test(
 loom_test(
     name = "float8_test",
     srcs = [
-        "float8.cpp",
+        "float8.cxx",
         "float8.loom",
     ],
     execution_profiles = _EXECUTION_PROFILES,
@@ -160,7 +167,7 @@ loom_test(
 loom_test(
     name = "vector_constants_test",
     srcs = [
-        "vector_constants.cpp",
+        "vector_constants.cxx",
         "vector_constants.loom",
     ],
     execution_profiles = _EXECUTION_PROFILES,
@@ -170,7 +177,7 @@ loom_test(
 loom_test(
     name = "vector_conversion_test",
     srcs = [
-        "vector_conversion.cpp",
+        "vector_conversion.cxx",
         "vector_conversion.loom",
     ],
     execution_profiles = _EXECUTION_PROFILES,
@@ -199,7 +206,7 @@ loom_generated_file_family(
 loom_test(
     name = "iq4xs_blocks_test",
     srcs = [
-        "iq4xs_blocks.cpp",
+        "iq4xs_blocks.cxx",
         ":iq4xs_blocks_checks.loom",
     ],
     data = [":iq4xs_blocks_checks_gen"],

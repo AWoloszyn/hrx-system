@@ -42,7 +42,7 @@ class CxxSourceScenario final : public TargetCompileScenario {
         loomc_make_cstring_view("cxx-source-to-hsaco"),
         LOOMC_TARGET_CONTROL_FLOW_LOWERING_CFG));
 
-    std::string filename = std::string(kernel_) + ".cpp";
+    std::string filename = std::string(kernel_) + ".cxx";
     auto embedded = FindEmbeddedSource(loomc_cxx_benchmark_kernels_create(),
                                        loomc_cxx_benchmark_kernels_size(),
                                        filename.c_str());

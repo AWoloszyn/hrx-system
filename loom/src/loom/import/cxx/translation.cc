@@ -109,7 +109,8 @@ class Translator {
   Value convert(cxx::ExpressionAST* input_ast, const cxx::Type* output_type,
                 cxx::AST* owner) {
     auto value = expression(input_ast);
-    if (value.is_record() || value.is_encoding() || value.is_view()) {
+    if (value.is_record() || value.is_encoding() || value.is_view() ||
+        value.is_tensor()) {
       if (&types_.partition(output_type, owner) != &value.partition()) {
         fail(owner, "conversion must preserve the source value type");
       }
@@ -182,7 +183,7 @@ class Translator {
       auto pointer = value.pointer();
       name(pointer.root, hint);
       name(pointer.byte_offset, hint + "_byte_offset");
-    } else if (value.is_encoding()) {
+    } else if (value.is_encoding() || value.is_tensor()) {
       name(value.components()[0], hint);
     } else {
       name(value.ssa(), hint);
@@ -297,7 +298,7 @@ class Translator {
       fail(owner, "local arrays require __shared__ in this slice");
     }
     types_.partition(variable->type(), owner);
-    admit_copy(variable->constructor(), variable->type(), owner);
+    types_.admit_copy(variable->constructor(), variable->type(), owner);
     values_[variable] =
         name(expression(initializer), cxx::to_string(variable->name()));
   }
@@ -640,6 +641,8 @@ class Translator {
       source = static_cast<const EncodingPartition&>(partition).source;
     } else if (partition.kind == ValueKind::View) {
       source = static_cast<const ViewPartition&>(partition).source;
+    } else if (partition.kind == ValueKind::Tensor) {
+      source = static_cast<const TensorPartition&>(partition).source;
     }
     if ((assignment->symbol &&
          (!source ||
@@ -697,41 +700,6 @@ class Translator {
                                 {loom_op_results(op), value_count});
   }
 
-  // The frontend has selected the special member and checked accessibility,
-  // deletion, cv and overload resolution. Source admission establishes trivial
-  // lifecycle semantics before an implicit copy becomes an SSA value copy.
-  void admit_copy(cxx::FunctionSymbol* constructor, const cxx::Type* type,
-                  cxx::AST* owner) {
-    if (!constructor) {
-      return;
-    }
-    const auto& partition = types_.partition(type, owner);
-    cxx::ClassSymbol* source = nullptr;
-    bool is_record = partition.kind == ValueKind::Record;
-    if (partition.kind == ValueKind::Record) {
-      source = static_cast<const RecordPartition&>(partition).source;
-    } else if (partition.kind == ValueKind::Encoding) {
-      source = static_cast<const EncodingPartition&>(partition).source;
-    } else if (partition.kind == ValueKind::View) {
-      source = static_cast<const ViewPartition&>(partition).source;
-    }
-    if (source && constructor == source->defaultConstructor()) {
-      fail(owner, is_record
-                      ? "default record construction requires source object "
-                        "initialization semantics"
-                      : "default encoding or view construction requires "
-                        "source object initialization semantics");
-    }
-    if (!source || (constructor != source->copyConstructor() &&
-                    constructor != source->moveConstructor())) {
-      fail(owner, is_record
-                      ? "record construction requires aggregate initialization "
-                        "or a trivial copy"
-                      : "encoding and view construction requires an operation "
-                        "result or a trivial copy");
-    }
-  }
-
   Value initialize(const cxx::Type* type,
                    cxx::List<cxx::ExpressionAST*>* elements, cxx::AST* owner) {
     if (auto* record = types_.record(type, owner)) {
@@ -753,14 +721,16 @@ class Translator {
     }
     const auto& partition = types_.partition(type, owner);
     if (partition.kind == ValueKind::Encoding ||
-        partition.kind == ValueKind::View) {
+        partition.kind == ValueKind::View ||
+        partition.kind == ValueKind::Tensor) {
       if (elements && !elements->next &&
           types_.unqualified(elements->value->type) ==
               types_.unqualified(type)) {
         return expression(elements->value);
       }
       fail(owner,
-           "encoding and view values require an operation result or a copy");
+           "encoding, view and tensor values require an operation result or a "
+           "copy");
     }
     if (auto* vector = types_.vector(type)) {
       std::vector<loom_value_id_t> components;
@@ -842,7 +812,7 @@ class Translator {
     }
     if (auto* cast = cxx::ast_cast<cxx::ImplicitCastExpressionAST>(ast)) {
       if (cast->conversionFunction) {
-        admit_copy(cast->conversionFunction, ast->type, ast);
+        types_.admit_copy(cast->conversionFunction, ast->type, ast);
       }
       return convert(cast->expression, cast->type, ast);
     }
@@ -894,7 +864,7 @@ class Translator {
     }
     if (auto* cast = cxx::ast_cast<cxx::TypeConstructionAST>(ast)) {
       if (types_.record(ast->type, ast)) {
-        admit_copy(cast->constructorSymbol, ast->type, ast);
+        types_.admit_copy(cast->constructorSymbol, ast->type, ast);
         return initialize(ast->type, cast->expressionList, ast);
       }
       auto output = types_.get(ast->type, ast);
@@ -915,7 +885,7 @@ class Translator {
     }
     if (auto* construction =
             cxx::ast_cast<cxx::BracedTypeConstructionAST>(ast)) {
-      admit_copy(construction->constructorSymbol, ast->type, ast);
+      types_.admit_copy(construction->constructorSymbol, ast->type, ast);
       return initialize(ast->type, construction->bracedInitList->expressionList,
                         ast);
     }
@@ -1185,7 +1155,7 @@ class Translator {
       if (!function) {
         fail(ast, "call must resolve to a function symbol");
       }
-      if (intrinsics_.expectation_type(function) ||
+      if (intrinsics_.check_binding(function, ast) ||
           functions_.is_check_case(function) ||
           annotated(function, "check_benchmark")) {
         fail(ast,
@@ -1754,7 +1724,7 @@ class Translator {
         }
         auto* function =
             id ? cxx::symbol_cast<cxx::FunctionSymbol>(id->symbol) : nullptr;
-        if (function && (intrinsics_.expectation_type(function) ||
+        if (function && (intrinsics_.check_binding(function, ast) ||
                          functions_.is_check_case(function) ||
                          annotated(function, "check_benchmark"))) {
           fail(ast,

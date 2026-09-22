@@ -77,6 +77,19 @@ struct ViewPartition final : Partition {
   std::vector<std::string> component_names;
 };
 
+// Canonical dense rank-one tensor handle. Its static shape and element type
+// refine one High tensor value; copying a handle preserves its storage alias.
+struct TensorPartition final : Partition {
+  // Concrete source specialization retaining copy and lifetime semantics.
+  cxx::ClassSymbol* source;
+  // Source element type used for generation payloads and scalar admission.
+  const cxx::Type* element_type;
+  // High tensor representation, with an inline static extent.
+  loom_type_t type;
+  // Source element byte width used to translate element origins to bytes.
+  uint64_t element_bytes;
+};
+
 // Projects resolved C++ types using the translation unit's explicit data model.
 // Source signedness remains available even when both types share one IR
 // carrier. Enums use their resolved underlying integer representation; nominal
@@ -112,6 +125,10 @@ class Types {
   const RecordPartition* record(const cxx::Type* input, cxx::AST* owner);
   // Direct lookup of a member slice retained by its owning record's admission.
   const MemberPartition& member(cxx::FieldSymbol* field, cxx::AST* owner);
+  // Admits a resolved constructor only when the source partition represents
+  // a trivial copy or move. A null constructor requires no lifecycle action.
+  void admit_copy(cxx::FunctionSymbol* constructor, const cxx::Type* type,
+                  cxx::AST* owner);
   // Admits mutation of the source object before projection removes qualifiers.
   // A const pointer binding is immutable; a pointer to const has an immutable
   // pointee but the binding itself may still change.
@@ -141,6 +158,7 @@ class Types {
   const EncodingPartition* encoding(const cxx::ClassType* input,
                                     cxx::AST* owner);
   const ViewPartition* view(const cxx::ClassType* input, cxx::AST* owner);
+  const TensorPartition* tensor(const cxx::ClassType* input, cxx::AST* owner);
   void append_component_names(const Partition& partition,
                               std::string_view prefix,
                               std::vector<std::string>& output);
@@ -157,6 +175,9 @@ class Types {
       encodings_;
   // Admitted view specializations retaining element and extent contracts.
   std::unordered_map<cxx::ClassSymbol*, std::unique_ptr<ViewPartition>> views_;
+  // Admitted tensor handles retaining their element and static extent.
+  std::unordered_map<cxx::ClassSymbol*, std::unique_ptr<TensorPartition>>
+      tensors_;
   // Member identity indexes the slice established by record admission.
   std::unordered_map<cxx::FieldSymbol*, MemberPartition> members_;
   // Completed memory admission; layouts remain owned by the source symbols.

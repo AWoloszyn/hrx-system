@@ -7,9 +7,10 @@
 #ifndef LOOMCXX_CHECK_H_
 #define LOOMCXX_CHECK_H_
 
-// Declares a correctness case with immutable scalar inputs, ordinary function
-// calls, and terminal expectations. Unsupported body constructs diagnose during
-// import. Ordinary called functions retain the selected target's capabilities.
+// Declares a correctness case with immutable scalar and scalar-record values,
+// tensor handles, ordinary calls, kernel launches and terminal expectations.
+// Unsupported body constructs diagnose during import. Ordinary called functions
+// retain the selected target's capabilities.
 #define LOOM_CHECK_CASE(name) [[loom::check_case]] void name()
 
 // Measures an existing correctness case after its correctness gate passes.
@@ -18,6 +19,48 @@
   [[loom::check_benchmark(case_name)]] void name()
 
 namespace loom::check {
+
+// A dense rank-one tensor handle. Copies share storage owned by the check
+// runner; const qualifies the handle, not its contents. Count is a static
+// element count. Kernels receive its storage through their buffer bindings.
+template <class T, __SIZE_TYPE__ Count>
+class [[loom::type("tensor")]] tensor {
+  // Source handle representation with ordinary trivial-copy semantics.
+  T* data_;
+};
+
+// Generates Count elements with one compile-time scalar payload.
+template <class T, __SIZE_TYPE__ Count>
+[[loom::op("check.generate.fill")]] tensor<T, Count> fill(T value);
+
+// Aliases Count elements beginning at a compile-time element offset. The
+// selected range must lie within source; no data is copied.
+template <__SIZE_TYPE__ Count, class T, __SIZE_TYPE__ SourceCount>
+[[loom::op("check.tensor.view")]] tensor<T, Count> slice(
+    tensor<T, SourceCount> source, __SIZE_TYPE__ element_offset);
+
+// Launches a statically named kernel using its declared geometry and configs.
+// Tensors bind buffer parameters; scalars retain the kernel's ABI types.
+template <auto Kernel, class... Args>
+[[loom::op("kernel.launch")]] void launch(Args... args);
+
+// Requires exact payload equality, including floating-point bit patterns.
+template <class T, __SIZE_TYPE__ Count>
+[[loom::op("check.expect.bitwise")]] void expect_bitwise(
+    tensor<T, Count> actual, tensor<T, Count> expected);
+
+// Declares provider metadata using a string provider followed by name/value
+// pairs. Names and string values are literals; scalar values are compile-time
+// constants. The selected provider owns the meaning of the attributes.
+template <class... Attributes>
+[[loom::op("check.requires")]] void require(const char* provider,
+                                            Attributes... attributes);
+
+// Observes provider events with the same metadata spelling as require().
+// For example: expect_event("device", "type", "asan_report", "count", 0).
+template <class... Attributes>
+[[loom::op("check.expect.event")]] void expect_event(const char* provider,
+                                                     Attributes... attributes);
 
 // Compares two values of the same scalar type. An expectation is a terminal
 // observation; subsequent function invocations are not admitted in the case.

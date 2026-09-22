@@ -22,7 +22,7 @@ _COMPATIBLE_WITH = loom_config_compatible_with([
 
 iree_c_embed_data(
     name = "kernels",
-    srcs = ["kernels.cpp"],
+    srcs = ["kernels.cxx"],
     c_file_output = "kernels.c",
     flatten = True,
     h_file_output = "kernels.h",

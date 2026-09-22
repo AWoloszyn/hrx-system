@@ -23,6 +23,8 @@ extern "C" {
 #endif
 
 enum {
+  // Default maximum number of retained device events per checked sample.
+  LOOM_TESTBENCH_DEVICE_EVENT_DEFAULT_CAPACITY = 256,
   // Maximum copied byte length for each event string field.
   LOOM_TESTBENCH_DEVICE_EVENT_STRING_CAPACITY = IREE_MAX_PATH,
   // Maximum copied byte length for event payloads and implementation payloads.

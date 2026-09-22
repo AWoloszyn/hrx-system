@@ -231,7 +231,7 @@ TEST(FloatingConstantTest, NarrowFormatsRetainInfinityAndNaN) {
 TEST(FloatingConstantTest, Float8RoundingMatchesEveryFiniteInterval) {
   loom_cxx_import_options_t options;
   loom_cxx_import_options_initialize(&options);
-  Source source(IREE_SV(""), IREE_SV("float8.cpp"), options);
+  Source source(IREE_SV(""), IREE_SV("float8.cxx"), options);
   cxx::ASTInterpreter interpreter(&source.unit());
   const struct {
     // Canonical source format consumed by the production interpreter.

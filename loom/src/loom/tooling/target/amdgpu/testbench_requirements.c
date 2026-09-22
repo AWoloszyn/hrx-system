@@ -25,7 +25,6 @@ static iree_status_t loom_amdgpu_hal_testbench_query_descriptor_set_requirement(
   iree_string_view_t required_descriptor_set = iree_string_view_empty();
   IREE_RETURN_IF_ERROR(loom_testbench_requirement_read_string_attr(
       module, attrs, IREE_SV("descriptor_set"), &required_descriptor_set));
-  IREE_RETURN_IF_ERROR(loom_run_hal_testbench_context_ensure_runtime(context));
   if (context->device_provider == NULL ||
       !iree_string_view_equal(context->device_provider->driver_name,
                               IREE_SV("amdgpu"))) {
@@ -37,6 +36,7 @@ static iree_status_t loom_amdgpu_hal_testbench_query_descriptor_set_requirement(
     };
     return iree_ok_status();
   }
+  IREE_RETURN_IF_ERROR(loom_run_hal_testbench_context_ensure_runtime(context));
   if (context->device_provider->select_target == NULL) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
                             "AMDGPU requirement provider is missing a device "

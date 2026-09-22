@@ -122,7 +122,7 @@ embedding programs:
 
 - `compile_text.c` compiles in-memory Loom text and consumes diagnostics.
 - `cxx/jit_amdgpu.c` imports the HIP-style C++ translation unit in
-  `cxx/kernels.cpp`, emits one HSACO, and executes both kernels through IREE
+  `cxx/kernels.cxx`, emits one HSACO, and executes both kernels through IREE
   HAL using the imported launch contracts.
 - `link_modules.c` links multiple sources and turns module artifacts back into
   source handles.

@@ -110,6 +110,7 @@ loom_cc_library(
     loom::tooling::input::flags
     loom::tooling::io::file
     loom::tooling::testbench
+    loom::tooling::testbench::device_event
     loom::tooling::testbench::executor
     loom::tooling::testbench::invocation
     loom::tooling::testbench::issue_report
@@ -274,6 +275,7 @@ iree_execution_test_suite(
   TOOLS
     "iree-benchmark-loom=::iree-benchmark-loom"
   DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/iree-benchmark-loom/testdata/device_events.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/tools/iree-benchmark-loom/testdata/scalar_benchmarks.loom"
   LABELS
     "hostonly"

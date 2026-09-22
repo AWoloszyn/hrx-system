@@ -17,6 +17,7 @@
 #include "loom/tooling/compile/report_capture.h"
 #include "loom/tooling/config/config.h"
 #include "loom/tooling/io/file.h"
+#include "loom/tooling/testbench/device_event.h"
 #include "loom/tooling/testbench/executor.h"
 #include "loom/tools/iree-benchmark-loom/comparison_execution.h"
 #include "loom/tools/iree-benchmark-loom/context.h"
@@ -212,6 +213,8 @@ iree_status_t iree_benchmark_loom_run_file(
   hal_context.config_set = benchmark_options->config_set;
   loom_run_hal_testbench_context_set_runtime_sanitizer_options(
       &hal_context.execution, &benchmark_options->sanitizer);
+  loom_testbench_device_event_capture_t device_event_capture = {0};
+  bool device_event_capture_initialized = false;
   iree_arena_allocator_t plan_arena;
   memset(&plan_arena, 0, sizeof(plan_arena));
   iree_arena_allocator_t execution_arena;
@@ -421,6 +424,27 @@ iree_status_t iree_benchmark_loom_run_file(
       }
     }
 
+    bool needs_device_events = false;
+    for (iree_host_size_t i = 0;
+         iree_status_is_ok(status) && i < work_plan.selected_benchmark_count;
+         ++i) {
+      needs_device_events |= work_plan.selected_benchmarks[i]
+                                 .case_plan->has_device_event_expectation;
+    }
+    if (iree_status_is_ok(status) && !benchmark_options->dry_run &&
+        needs_device_events) {
+      status = loom_testbench_device_event_capture_initialize(
+          LOOM_TESTBENCH_DEVICE_EVENT_DEFAULT_CAPACITY, allocator,
+          &device_event_capture);
+      if (iree_status_is_ok(status)) {
+        device_event_capture_initialized = true;
+        execution_options.device_event_capture = &device_event_capture;
+        loom_run_hal_testbench_context_set_device_event_sink(
+            &hal_context.execution,
+            loom_testbench_device_event_capture_sink(&device_event_capture));
+      }
+    }
+
     const loom_testbench_function_call_provider_callback_t function_calls =
         options->configuration->function_call_provider;
     if (iree_status_is_ok(status) && failure_count == 0 && function_calls.fn) {
@@ -575,6 +599,9 @@ iree_status_t iree_benchmark_loom_run_file(
   iree_arena_deinitialize(&plan_arena);
   loom_run_module_deinitialize(&run_module);
   iree_benchmark_loom_hal_context_deinitialize(&hal_context);
+  if (device_event_capture_initialized) {
+    loom_testbench_device_event_capture_deinitialize(&device_event_capture);
+  }
   loom_tooling_config_set_deinitialize(&config_set);
   iree_benchmark_loom_file_provider_deinitialize(&file_provider);
   iree_benchmark_loom_artifact_bundle_deinitialize(&artifact_bundle);

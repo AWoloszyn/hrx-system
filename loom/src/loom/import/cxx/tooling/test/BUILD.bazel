@@ -1,3 +1,4 @@
+load("//build_tools/testing:build_defs.bzl", "iree_execution_test_suite")
 load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with")
 load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
 
@@ -20,4 +21,18 @@ loom_check_test_suite(
         "source_capture.h",
     ],
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)
+
+iree_execution_test_suite(
+    name = "record_execution_test",
+    data = ["//loom/src/loom/import/cxx/test:check_records.cxx"],
+    manifests = ["records.test.json"],
+    target_compatible_with = loom_config_compatible_with([
+        "//loom/config/import:cxx",
+        "//loom/config/target/arch:vm",
+    ]),
+    tools = {
+        "iree-test-loom": "//loom/src/loom/tools/iree-test-loom",
+        "loom-link": "//loom/src/loom/tools/loom-link",
+    },
 )
