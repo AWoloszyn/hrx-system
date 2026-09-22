@@ -191,17 +191,21 @@ function(iree_generated_output_add_consumer INPUT_PATH CONSUMER_TARGET)
   if("${INPUT_PATH}" MATCHES "^\\$<")
     return()
   endif()
-  if(NOT IS_ABSOLUTE "${INPUT_PATH}" AND
-     EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${INPUT_PATH}")
-    return()
+  # CMake AND does not short-circuit; query only candidate source paths.
+  if(NOT IS_ABSOLUTE "${INPUT_PATH}")
+    if(EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/${INPUT_PATH}")
+      return()
+    endif()
   endif()
 
   get_filename_component(_INPUT_PATH "${INPUT_PATH}" ABSOLUTE
     BASE_DIR "${CMAKE_CURRENT_BINARY_DIR}")
   cmake_path(NORMAL_PATH _INPUT_PATH)
   string(FIND "${_INPUT_PATH}/" "${IREE_BINARY_DIR}/" _BINARY_PATH_INDEX)
-  if(NOT _BINARY_PATH_INDEX EQUAL 0 AND EXISTS "${_INPUT_PATH}")
-    return()
+  if(NOT _BINARY_PATH_INDEX EQUAL 0)
+    if(EXISTS "${_INPUT_PATH}")
+      return()
+    endif()
   endif()
 
   string(SHA256 _INPUT_KEY "${_INPUT_PATH}")
