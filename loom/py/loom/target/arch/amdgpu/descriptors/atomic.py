@@ -54,14 +54,21 @@ def _buffer_atomic_asm(
 
 @dataclass(frozen=True, slots=True)
 class _AtomicRow:
+    # Stable descriptor key suffix shared by architecture spellings.
     descriptor_suffix: str
+    # Architecture-specific assembly suffix.
     mnemonic_suffix: str
+    # Canonical vendor instruction name or alias.
     instruction_name: str
+    # Target-independent operation and value type within the memory family.
     semantic_suffix: str
+    # Vendor format of the implicit memory operands.
     data_format_name: str
-    memory_data_format_name: str
+    # Whether a reduction descriptor is provided without a result.
     has_no_return_form: bool
+    # Number of 32-bit VGPR units in each value and returned result.
     value_units: int
+    # Exact memory read and write width in bits.
     width_bits: int
 
 
@@ -71,7 +78,6 @@ def _atomic_row(
     semantic_suffix: str,
     data_format_name: str,
     *,
-    memory_data_format_name: str | None = None,
     mnemonic_suffix: str | None = None,
     has_no_return_form: bool = True,
     value_units: int = 1,
@@ -83,10 +89,40 @@ def _atomic_row(
         instruction_name=instruction_name,
         semantic_suffix=semantic_suffix,
         data_format_name=data_format_name,
-        memory_data_format_name=memory_data_format_name or data_format_name,
         has_no_return_form=has_no_return_form,
         value_units=value_units,
         width_bits=width_bits,
+    )
+
+
+def _integer64_atomic_rows(
+    family: str, *, cdna_mnemonics: bool = False
+) -> tuple[_AtomicRow, ...]:
+    # The three memory families share integer semantics and the vendor's X2
+    # instruction aliases. CDNA retains those aliases as its assembly spelling.
+    return tuple(
+        _atomic_row(
+            suffix,
+            f"{family}_ATOMIC_{legacy_suffix.upper()}",
+            semantic,
+            data_format,
+            mnemonic_suffix=legacy_suffix if cdna_mnemonics else suffix,
+            has_no_return_form=semantic != "exchange.u64",
+            value_units=2,
+            width_bits=64,
+        )
+        for suffix, legacy_suffix, semantic, data_format in (
+            ("add_u64", "add_x2", "add.u64", "FMT_NUM_U64"),
+            ("sub_u64", "sub_x2", "sub.u64", "FMT_NUM_U64"),
+            ("min_i64", "smin_x2", "min.i64", "FMT_NUM_I64"),
+            ("max_i64", "smax_x2", "max.i64", "FMT_NUM_I64"),
+            ("min_u64", "umin_x2", "min.u64", "FMT_NUM_U64"),
+            ("max_u64", "umax_x2", "max.u64", "FMT_NUM_U64"),
+            ("and_b64", "and_x2", "and.b64", "FMT_NUM_B64"),
+            ("or_b64", "or_x2", "or.b64", "FMT_NUM_B64"),
+            ("xor_b64", "xor_x2", "xor.b64", "FMT_NUM_B64"),
+            ("swap_u64", "swap_x2", "exchange.u64", "FMT_NUM_B64"),
+        )
     )
 
 
@@ -341,24 +377,7 @@ _GLOBAL_ATOMIC_BASE_ROWS = (
 )
 
 _GLOBAL_ATOMIC_TAIL_ROWS = (
-    _atomic_row(
-        "add_u64",
-        "GLOBAL_ATOMIC_ADD_X2",
-        "add.u64",
-        "FMT_NUM_U64",
-        value_units=2,
-        width_bits=64,
-    ),
-    _atomic_row(
-        "swap_u64",
-        "GLOBAL_ATOMIC_SWAP_X2",
-        "exchange.u64",
-        "FMT_NUM_U64",
-        memory_data_format_name="FMT_NUM_B64",
-        has_no_return_form=False,
-        value_units=2,
-        width_bits=64,
-    ),
+    *_integer64_atomic_rows("GLOBAL"),
     _atomic_row("min_f32", "GLOBAL_ATOMIC_MIN_F32", "minnum.f32", "FMT_NUM_F32"),
     _atomic_row("max_f32", "GLOBAL_ATOMIC_MAX_F32", "maxnum.f32", "FMT_NUM_F32"),
 )
@@ -459,26 +478,7 @@ _GLOBAL_ATOMIC_GFX940_ROWS = (
         has_no_return_form=False,
     ),
     _atomic_row("add_f32", "GLOBAL_ATOMIC_ADD_F32", "add.f32", "FMT_NUM_F32"),
-    _atomic_row(
-        "add_u64",
-        "GLOBAL_ATOMIC_ADD_X2",
-        "add.u64",
-        "FMT_NUM_U64",
-        mnemonic_suffix="add_x2",
-        value_units=2,
-        width_bits=64,
-    ),
-    _atomic_row(
-        "swap_u64",
-        "GLOBAL_ATOMIC_SWAP_X2",
-        "exchange.u64",
-        "FMT_NUM_U64",
-        memory_data_format_name="FMT_NUM_B64",
-        mnemonic_suffix="swap_x2",
-        has_no_return_form=False,
-        value_units=2,
-        width_bits=64,
-    ),
+    *_integer64_atomic_rows("GLOBAL", cdna_mnemonics=True),
 )
 
 
@@ -512,7 +512,7 @@ def _global_atomic_overlays(
                     instruction_name=row.instruction_name,
                     mnemonic=f"global_atomic_{row.mnemonic_suffix}",
                     semantic_tag=f"memory.global.atomic.{row.semantic_suffix}",
-                    data_format_name=row.memory_data_format_name,
+                    data_format_name=row.data_format_name,
                     returns_old_value=False,
                     encoding_name=encoding_name,
                     address_field_name=address_field_name,
@@ -539,7 +539,7 @@ def _global_atomic_overlays(
                 instruction_name=row.instruction_name,
                 mnemonic=f"global_atomic_{row.mnemonic_suffix}",
                 semantic_tag=f"memory.global.atomic.{row.semantic_suffix}.return",
-                data_format_name=row.memory_data_format_name,
+                data_format_name=row.data_format_name,
                 returns_old_value=True,
                 encoding_name=encoding_name,
                 address_field_name=address_field_name,
@@ -627,28 +627,21 @@ _FLAT_ATOMIC_BASE_ROWS = (
     ),
 )
 
-_FLAT_ATOMIC_TAIL_ROWS = (
-    _atomic_row(
-        "add_u64",
-        "FLAT_ATOMIC_ADD_X2",
-        "add.u64",
-        "FMT_NUM_U64",
-        value_units=2,
-        width_bits=64,
-    ),
+_FLAT_ATOMIC_FLOAT_ROWS = (
     _atomic_row("min_f32", "FLAT_ATOMIC_MIN_F32", "minnum.f32", "FMT_NUM_F32"),
     _atomic_row("max_f32", "FLAT_ATOMIC_MAX_F32", "maxnum.f32", "FMT_NUM_F32"),
 )
 
 _FLAT_ATOMIC_GFX11_ROWS = (
     *_FLAT_ATOMIC_BASE_ROWS,
-    *_FLAT_ATOMIC_TAIL_ROWS,
+    *_integer64_atomic_rows("FLAT"),
+    *_FLAT_ATOMIC_FLOAT_ROWS,
 )
 
 _FLAT_ATOMIC_GFX12_ROWS = (
     *_FLAT_ATOMIC_BASE_ROWS,
     _atomic_row("add_f32", "FLAT_ATOMIC_ADD_F32", "add.f32", "FMT_NUM_F32"),
-    *_FLAT_ATOMIC_TAIL_ROWS[:-2],
+    *_integer64_atomic_rows("FLAT"),
     _atomic_row(
         "pk_add_f16",
         "FLAT_ATOMIC_PK_ADD_F16",
@@ -738,15 +731,7 @@ _FLAT_ATOMIC_GFX950_ROWS = (
         has_no_return_form=False,
     ),
     _atomic_row("add_f32", "FLAT_ATOMIC_ADD_F32", "add.f32", "FMT_NUM_F32"),
-    _atomic_row(
-        "add_u64",
-        "FLAT_ATOMIC_ADD_X2",
-        "add.u64",
-        "FMT_NUM_U64",
-        mnemonic_suffix="add_x2",
-        value_units=2,
-        width_bits=64,
-    ),
+    *_integer64_atomic_rows("FLAT", cdna_mnemonics=True),
     _atomic_row(
         "pk_add_f16",
         "FLAT_ATOMIC_PK_ADD_F16",
@@ -1324,7 +1309,7 @@ def _buffer_atomic_overlays(
                     instruction_name=row.instruction_name,
                     mnemonic=f"buffer_atomic_{row.mnemonic_suffix}",
                     semantic_tag=f"memory.global.atomic.{row.semantic_suffix}",
-                    data_format_name=row.memory_data_format_name,
+                    data_format_name=row.data_format_name,
                     returns_old_value=False,
                     encoding_name=encoding_name,
                     resource_field_name=resource_field_name,
@@ -1342,7 +1327,7 @@ def _buffer_atomic_overlays(
                 instruction_name=row.instruction_name,
                 mnemonic=f"buffer_atomic_{row.mnemonic_suffix}",
                 semantic_tag=(f"memory.global.atomic.{row.semantic_suffix}.return"),
-                data_format_name=row.memory_data_format_name,
+                data_format_name=row.data_format_name,
                 returns_old_value=True,
                 encoding_name=encoding_name,
                 resource_field_name=resource_field_name,

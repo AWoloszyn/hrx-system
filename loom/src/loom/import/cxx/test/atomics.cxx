@@ -94,42 +94,12 @@ unsigned atomic_u64(unsigned long long* storage) {
   return sequence<kind::minui, kind::maxui>(storage + 1);
 }
 
-// Exchange, addition and CAS exercise both words on targets with a narrower
-// native 64-bit combining vocabulary than the source operation family.
-template <class T>
-static unsigned wide_sequence(volatile T* destination) {
-  constexpr T payload = T(0x1234567887654321LL);
-  unsigned passed = 0;
-  if (rmw<kind::xchgi, ordering::relaxed, scope::device>(T(-4), destination) ==
-      T(37)) {
-    passed |= 1;
-  }
-  if (rmw<kind::addi, ordering::relaxed, scope::device>(T(3), destination) ==
-      T(-4)) {
-    passed |= 2;
-  }
-  reduce<kind::addi, ordering::relaxed, scope::device>(T(2), destination);
-  if (cmpxchg<ordering::acq_rel, ordering::acquire, scope::device>(
-          T(1), payload, destination) == T(1)) {
-    passed |= 4;
-  }
-  if (cmpxchg<ordering::acquire, ordering::relaxed, scope::device>(
-          T(2), T(3), destination) == payload) {
-    passed |= 8;
-  }
-  if (rmw<kind::xchgi, ordering::seq_cst, scope::device>(T(13), destination) ==
-      payload) {
-    passed |= 16;
-  }
-  return passed;
-}
-
 [[loom::kernel, loom::workgroup_size(1, 1, 1), loom::workgroup_count(1, 1, 1)]]
 void atomic_sequences(int* signed_words, long long* signed_wide,
                       unsigned long long* unsigned_wide, unsigned* output) {
   output[1] = atomic_i32(signed_words);
-  output[2] = wide_sequence(signed_wide + 1);
-  output[3] = wide_sequence(unsigned_wide + 1);
+  output[2] = atomic_i64(signed_wide);
+  output[3] = atomic_u64(unsigned_wide);
 }
 
 [[loom::kernel, loom::workgroup_size(1, 1, 1), loom::workgroup_count(1, 1, 1)]]

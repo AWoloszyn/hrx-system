@@ -1,0 +1,311 @@
+// Native words are assembled independently by LLVM MC. Each family covers
+// no-result and returned pairs, including signed and bitwise operations.
+// RUN: emit amdgpu-native-words @wide_gfx942 strategy=source waits=none fixed=%address:physical_register:0:2 fixed=%offset:physical_register:2:1 fixed=%value:physical_register:4:2 fixed=%base:physical_register:0:2 fixed=%global_sub_u64:physical_register:8:2 fixed=%flat_sub_u64:physical_register:8:2 fixed=%global_min_i64:physical_register:8:2 fixed=%flat_min_i64:physical_register:8:2 fixed=%global_xor_b64:physical_register:8:2 fixed=%flat_xor_b64:physical_register:8:2
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @wide_gfx942(%address: reg<amdgpu.vgpr x2>, %offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr x2>, %base: reg<amdgpu.sgpr x2>, %m0: reg<amdgpu.m0>) asm {
+  global_atomic_sub_x2_saddr %offset, %value, %base, %m0
+  %global_sub_u64 = global_atomic_sub_x2_rtn_saddr %offset, %value, %base, %m0
+  flat_atomic_sub_x2 %address, %value, %m0
+  %flat_sub_u64 = flat_atomic_sub_x2_rtn %address, %value, %m0 : reg<amdgpu.vgpr x2>
+  global_atomic_smin_x2_saddr %offset, %value, %base, %m0
+  %global_min_i64 = global_atomic_smin_x2_rtn_saddr %offset, %value, %base, %m0
+  flat_atomic_smin_x2 %address, %value, %m0
+  %flat_min_i64 = flat_atomic_smin_x2_rtn %address, %value, %m0 : reg<amdgpu.vgpr x2>
+  global_atomic_xor_x2_saddr %offset, %value, %base, %m0
+  %global_xor_b64 = global_atomic_xor_x2_rtn_saddr %offset, %value, %base, %m0
+  flat_atomic_xor_x2 %address, %value, %m0
+  %flat_xor_b64 = flat_atomic_xor_x2_rtn %address, %value, %m0 : reg<amdgpu.vgpr x2>
+  return
+}
+
+// ----
+0xDD8C8000
+0x00000402
+0xDD8D8000
+0x08000402
+0xDD8C0000
+0x00000400
+0xDD8D0000
+0x08000400
+0xDD908000
+0x00000402
+0xDD918000
+0x08000402
+0xDD900000
+0x00000400
+0xDD910000
+0x08000400
+0xDDA88000
+0x00000402
+0xDDA98000
+0x08000402
+0xDDA80000
+0x00000400
+0xDDA90000
+0x08000400
+0xBF810000
+
+// ====
+
+// RUN: emit amdgpu-native-words @wide_gfx950 strategy=source waits=none fixed=%address:physical_register:0:2 fixed=%offset:physical_register:2:1 fixed=%value:physical_register:4:2 fixed=%base:physical_register:0:2 fixed=%global_sub_u64:physical_register:8:2 fixed=%flat_sub_u64:physical_register:8:2 fixed=%global_min_i64:physical_register:8:2 fixed=%flat_min_i64:physical_register:8:2 fixed=%global_xor_b64:physical_register:8:2 fixed=%flat_xor_b64:physical_register:8:2
+amdgpu.target<gfx950> @target
+
+low.func.def target<amdgpu.cdna4.core>(@target) @wide_gfx950(%address: reg<amdgpu.vgpr x2>, %offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr x2>, %base: reg<amdgpu.sgpr x2>, %m0: reg<amdgpu.m0>) asm {
+  global_atomic_sub_x2_saddr %offset, %value, %base, %m0
+  %global_sub_u64 = global_atomic_sub_x2_rtn_saddr %offset, %value, %base, %m0
+  flat_atomic_sub_x2 %address, %value, %m0
+  %flat_sub_u64 = flat_atomic_sub_x2_rtn %address, %value, %m0 : reg<amdgpu.vgpr x2>
+  global_atomic_smin_x2_saddr %offset, %value, %base, %m0
+  %global_min_i64 = global_atomic_smin_x2_rtn_saddr %offset, %value, %base, %m0
+  flat_atomic_smin_x2 %address, %value, %m0
+  %flat_min_i64 = flat_atomic_smin_x2_rtn %address, %value, %m0 : reg<amdgpu.vgpr x2>
+  global_atomic_xor_x2_saddr %offset, %value, %base, %m0
+  %global_xor_b64 = global_atomic_xor_x2_rtn_saddr %offset, %value, %base, %m0
+  flat_atomic_xor_x2 %address, %value, %m0
+  %flat_xor_b64 = flat_atomic_xor_x2_rtn %address, %value, %m0 : reg<amdgpu.vgpr x2>
+  return
+}
+
+// ----
+0xDD8C8000
+0x00000402
+0xDD8D8000
+0x08000402
+0xDD8C0000
+0x00000400
+0xDD8D0000
+0x08000400
+0xDD908000
+0x00000402
+0xDD918000
+0x08000402
+0xDD900000
+0x00000400
+0xDD910000
+0x08000400
+0xDDA88000
+0x00000402
+0xDDA98000
+0x08000402
+0xDDA80000
+0x00000400
+0xDDA90000
+0x08000400
+0xBF810000
+
+// ====
+
+// RUN: emit amdgpu-native-words @wide_gfx1100 strategy=source waits=none fixed=%address:physical_register:0:2 fixed=%offset:physical_register:2:1 fixed=%value:physical_register:4:2 fixed=%base:physical_register:0:2 fixed=%global_sub_u64:physical_register:8:2 fixed=%flat_sub_u64:physical_register:8:2 fixed=%global_min_i64:physical_register:8:2 fixed=%flat_min_i64:physical_register:8:2 fixed=%global_xor_b64:physical_register:8:2 fixed=%flat_xor_b64:physical_register:8:2
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @wide_gfx1100(%address: reg<amdgpu.vgpr x2>, %offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr x2>, %base: reg<amdgpu.sgpr x2>) asm {
+  global_atomic_sub_u64_saddr %offset, %value, %base
+  %global_sub_u64 = global_atomic_sub_u64_rtn_saddr %offset, %value, %base
+  flat_atomic_sub_u64 %address, %value
+  %flat_sub_u64 = flat_atomic_sub_u64_rtn %address, %value
+  global_atomic_min_i64_saddr %offset, %value, %base
+  %global_min_i64 = global_atomic_min_i64_rtn_saddr %offset, %value, %base
+  flat_atomic_min_i64 %address, %value
+  %flat_min_i64 = flat_atomic_min_i64_rtn %address, %value
+  global_atomic_xor_b64_saddr %offset, %value, %base
+  %global_xor_b64 = global_atomic_xor_b64_rtn_saddr %offset, %value, %base
+  flat_atomic_xor_b64 %address, %value
+  %flat_xor_b64 = flat_atomic_xor_b64_rtn %address, %value
+  return
+}
+
+// ----
+0xDD120000
+0x00000402
+0xDD124000
+0x08000402
+0xDD100000
+0x007C0400
+0xDD104000
+0x087C0400
+0xDD160000
+0x00000402
+0xDD164000
+0x08000402
+0xDD140000
+0x007C0400
+0xDD144000
+0x087C0400
+0xDD2E0000
+0x00000402
+0xDD2E4000
+0x08000402
+0xDD2C0000
+0x007C0400
+0xDD2C4000
+0x087C0400
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-native-words @wide_gfx1151 strategy=source waits=none fixed=%address:physical_register:0:2 fixed=%offset:physical_register:2:1 fixed=%value:physical_register:4:2 fixed=%base:physical_register:0:2 fixed=%global_sub_u64:physical_register:8:2 fixed=%flat_sub_u64:physical_register:8:2 fixed=%global_min_i64:physical_register:8:2 fixed=%flat_min_i64:physical_register:8:2 fixed=%global_xor_b64:physical_register:8:2 fixed=%flat_xor_b64:physical_register:8:2
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @wide_gfx1151(%address: reg<amdgpu.vgpr x2>, %offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr x2>, %base: reg<amdgpu.sgpr x2>) asm {
+  global_atomic_sub_u64_saddr %offset, %value, %base
+  %global_sub_u64 = global_atomic_sub_u64_rtn_saddr %offset, %value, %base
+  flat_atomic_sub_u64 %address, %value
+  %flat_sub_u64 = flat_atomic_sub_u64_rtn %address, %value
+  global_atomic_min_i64_saddr %offset, %value, %base
+  %global_min_i64 = global_atomic_min_i64_rtn_saddr %offset, %value, %base
+  flat_atomic_min_i64 %address, %value
+  %flat_min_i64 = flat_atomic_min_i64_rtn %address, %value
+  global_atomic_xor_b64_saddr %offset, %value, %base
+  %global_xor_b64 = global_atomic_xor_b64_rtn_saddr %offset, %value, %base
+  flat_atomic_xor_b64 %address, %value
+  %flat_xor_b64 = flat_atomic_xor_b64_rtn %address, %value
+  return
+}
+
+// ----
+0xDD120000
+0x00000402
+0xDD124000
+0x08000402
+0xDD100000
+0x007C0400
+0xDD104000
+0x087C0400
+0xDD160000
+0x00000402
+0xDD164000
+0x08000402
+0xDD140000
+0x007C0400
+0xDD144000
+0x087C0400
+0xDD2E0000
+0x00000402
+0xDD2E4000
+0x08000402
+0xDD2C0000
+0x007C0400
+0xDD2C4000
+0x087C0400
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-native-words @wide_gfx1200 strategy=source waits=none fixed=%address:physical_register:0:2 fixed=%offset:physical_register:2:1 fixed=%value:physical_register:4:2 fixed=%base:physical_register:0:2 fixed=%global_sub_u64:physical_register:8:2 fixed=%flat_sub_u64:physical_register:8:2 fixed=%global_min_i64:physical_register:8:2 fixed=%flat_min_i64:physical_register:8:2 fixed=%global_xor_b64:physical_register:8:2 fixed=%flat_xor_b64:physical_register:8:2
+amdgpu.target<gfx1200> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @wide_gfx1200(%address: reg<amdgpu.vgpr x2>, %offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr x2>, %base: reg<amdgpu.sgpr x2>) asm {
+  global_atomic_sub_u64_saddr %offset, %value, %base
+  %global_sub_u64 = global_atomic_sub_u64_rtn_saddr %offset, %value, %base
+  flat_atomic_sub_u64 %address, %value
+  %flat_sub_u64 = flat_atomic_sub_u64_rtn %address, %value
+  global_atomic_min_i64_saddr %offset, %value, %base
+  %global_min_i64 = global_atomic_min_i64_rtn_saddr %offset, %value, %base
+  flat_atomic_min_i64 %address, %value
+  %flat_min_i64 = flat_atomic_min_i64_rtn %address, %value
+  global_atomic_xor_b64_saddr %offset, %value, %base
+  %global_xor_b64 = global_atomic_xor_b64_rtn_saddr %offset, %value, %base
+  flat_atomic_xor_b64 %address, %value
+  %flat_xor_b64 = flat_atomic_xor_b64_rtn %address, %value
+  return
+}
+
+// ----
+0xEE110000
+0x02000000
+0x00000002
+0xEE110000
+0x02100008
+0x00000002
+0xEC11007C
+0x02000000
+0x00000000
+0xEC11007C
+0x02100008
+0x00000000
+0xEE114000
+0x02000000
+0x00000002
+0xEE114000
+0x02100008
+0x00000002
+0xEC11407C
+0x02000000
+0x00000000
+0xEC11407C
+0x02100008
+0x00000000
+0xEE12C000
+0x02000000
+0x00000002
+0xEE12C000
+0x02100008
+0x00000002
+0xEC12C07C
+0x02000000
+0x00000000
+0xEC12C07C
+0x02100008
+0x00000000
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-native-words @wide_gfx1250 strategy=source waits=none fixed=%address:physical_register:0:2 fixed=%offset:physical_register:2:1 fixed=%value:physical_register:4:2 fixed=%base:physical_register:0:2 fixed=%global_sub_u64:physical_register:8:2 fixed=%flat_sub_u64:physical_register:8:2 fixed=%global_min_i64:physical_register:8:2 fixed=%flat_min_i64:physical_register:8:2 fixed=%global_xor_b64:physical_register:8:2 fixed=%flat_xor_b64:physical_register:8:2
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @wide_gfx1250(%address: reg<amdgpu.vgpr x2>, %offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr x2>, %base: reg<amdgpu.sgpr x2>) asm {
+  global_atomic_sub_u64_saddr %offset, %value, %base
+  %global_sub_u64 = global_atomic_sub_u64_rtn_saddr %offset, %value, %base
+  flat_atomic_sub_u64 %address, %value
+  %flat_sub_u64 = flat_atomic_sub_u64_rtn %address, %value
+  global_atomic_min_i64_saddr %offset, %value, %base
+  %global_min_i64 = global_atomic_min_i64_rtn_saddr %offset, %value, %base
+  flat_atomic_min_i64 %address, %value
+  %flat_min_i64 = flat_atomic_min_i64_rtn %address, %value
+  global_atomic_xor_b64_saddr %offset, %value, %base
+  %global_xor_b64 = global_atomic_xor_b64_rtn_saddr %offset, %value, %base
+  flat_atomic_xor_b64 %address, %value
+  %flat_xor_b64 = flat_atomic_xor_b64_rtn %address, %value
+  return
+}
+
+// ----
+0xEE110000
+0x02000000
+0x00000002
+0xEE110000
+0x02100008
+0x00000002
+0xEC11007C
+0x02000000
+0x00000000
+0xEC11007C
+0x02100008
+0x00000000
+0xEE114000
+0x02000000
+0x00000002
+0xEE114000
+0x02100008
+0x00000002
+0xEC11407C
+0x02000000
+0x00000000
+0xEC11407C
+0x02100008
+0x00000000
+0xEE12C000
+0x02000000
+0x00000002
+0xEE12C000
+0x02100008
+0x00000002
+0xEC12C07C
+0x02000000
+0x00000000
+0xEC12C07C
+0x02100008
+0x00000000
+0xBFB00000

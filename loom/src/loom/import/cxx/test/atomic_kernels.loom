@@ -58,7 +58,7 @@ check.case @integer_sequences {
   %wide_results = check.tensor.view %output offset(8) : tensor<5xi32> -> tensor<2xi32>
   %output_after = check.tensor.view %output offset(16) : tensor<5xi32> -> tensor<1xi32>
   %expected_results = check.generate.fill value(2047) : tensor<1xi32>
-  %expected_wide_results = check.generate.fill value(31) : tensor<2xi32>
+  %expected_wide_results = check.generate.fill value(2047) : tensor<2xi32>
   check.expect.bitwise actual(%output_before) expected(%guard32) : tensor<1xi32>
   check.expect.bitwise actual(%results) expected(%expected_results) : tensor<1xi32>
   check.expect.bitwise actual(%wide_results) expected(%expected_wide_results) : tensor<2xi32>
