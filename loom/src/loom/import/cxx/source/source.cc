@@ -151,6 +151,8 @@ class SourceToolchain final : public cxx::Toolchain {
       addCommonC23Macros();
     } else {
       addCommonCxx26Macros();
+      defineMacro("__STDCPP_FLOAT16_T__", "1");
+      defineMacro("__STDCPP_BFLOAT16_T__", "1");
     }
   }
 };

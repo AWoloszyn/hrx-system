@@ -12,6 +12,23 @@ iree_add_all_subdirs()
 if(LOOM_IMPORT_CXX AND LOOM_IMPORT_CXX_EMBED_INCLUDES)
 iree_c_embed_data(
   NAME
+    embedded_standard_headers
+  SRCS
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/stdfloat"
+  C_FILE_OUTPUT
+    "embedded_standard_headers.c"
+  H_FILE_OUTPUT
+    "embedded_standard_headers.h"
+  IDENTIFIER
+    "loom_cxx_embedded_standard_headers"
+  FLATTEN
+  PUBLIC
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_IMPORT_CXX_EMBED_INCLUDES)
+iree_c_embed_data(
+  NAME
     embedded_loomcxx_headers
   SRCS
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/atomic.h"
@@ -61,6 +78,7 @@ set(_catalog_platform_deps "")
 if(LOOM_IMPORT_CXX_EMBED_INCLUDES)
   list(APPEND _catalog_platform_deps ::embedded_hip_headers)
   list(APPEND _catalog_platform_deps ::embedded_loomcxx_headers)
+  list(APPEND _catalog_platform_deps ::embedded_standard_headers)
 endif()
 loom_cc_library(
   NAME

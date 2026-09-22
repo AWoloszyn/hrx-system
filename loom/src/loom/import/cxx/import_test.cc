@@ -320,4 +320,31 @@ TEST_F(ImportTest, EmbeddedFacadeAndExternalProviderAgree) {
   EXPECT_EQ(Print(), embedded);
 }
 
+TEST_F(ImportTest, StandardFloatFacadeNeedsOnlyOneHeader) {
+  auto contents = loom::cxx_import::builtin_include("stdfloat");
+  if (!contents) {
+    GTEST_SKIP() << "Embedded includes are disabled";
+  }
+  const auto source = IREE_SV(
+      "#include <stdfloat>\n#include <stdfloat>\n"
+      "static_assert(__STDCPP_FLOAT16_T__ && __STDCPP_BFLOAT16_T__);\n"
+      "std::bfloat16_t entry(std::float16_t value) { "
+      "return (std::bfloat16_t)value; }\n");
+  IREE_ASSERT_OK(Import(source));
+  ASSERT_NE(module_, nullptr);
+  auto embedded = Print();
+
+  headers_["/numeric/stdfloat"] = *contents;
+  const iree_string_view_t path = IREE_SV("/numeric");
+  options_.include_paths = &path;
+  options_.include_path_count = 1;
+  options_.source_provider = {ProvideSource, this};
+  options_.flags |= LOOM_CXX_IMPORT_FLAG_NO_BUILTIN_INCLUDES;
+  IREE_ASSERT_OK(Import(source));
+  ASSERT_NE(module_, nullptr);
+  EXPECT_EQ(Print(), embedded);
+  EXPECT_EQ(source_requests_.size(), 1u);
+  EXPECT_EQ(source_requests_.at("/numeric/stdfloat"), 1);
+}
+
 }  // namespace

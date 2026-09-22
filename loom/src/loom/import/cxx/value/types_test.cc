@@ -40,6 +40,11 @@ TEST(TypesTest, ProjectsTheConfiguredDataModelAndRetainsSignedness) {
     EXPECT_EQ(loom_type_kind(types.get(
                   control->getPointerType(control->getFloatType()), owner)),
               LOOM_TYPE_BUFFER);
+    EXPECT_EQ(
+        loom_type_element_type(types.get(control->getBFloat16Type(), owner)),
+        LOOM_SCALAR_TYPE_BF16);
+    EXPECT_EQ(types.storage_size(control->getBFloat16Type(), owner), 2);
+    EXPECT_TRUE(types.is_float(control->getBFloat16Type()));
   }
 }
 

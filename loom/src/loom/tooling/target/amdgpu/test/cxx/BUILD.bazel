@@ -116,3 +116,13 @@ loom_test(
     execution_profiles = _EXECUTION_PROFILES,
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )
+
+loom_test(
+    name = "bfloat16_test",
+    srcs = [
+        "bfloat16.cpp",
+        "bfloat16.loom",
+    ],
+    execution_profiles = _EXECUTION_PROFILES,
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)

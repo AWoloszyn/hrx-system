@@ -34,7 +34,7 @@ float entry(int x) { return broken(x); }
 // ====
 // RUN: verify
 // Generated intrinsic signatures are checked.
-// ERROR@+1: LOWERING/059 "scalar intrinsic result must be _Float16, float, or double"
+// ERROR@+1: LOWERING/059 "scalar intrinsic result must be _Float16, __bf16, float, or double"
 [[loom::op("scalar.expf")]] int broken(int);
 int entry(int x) { return broken(x); }
 

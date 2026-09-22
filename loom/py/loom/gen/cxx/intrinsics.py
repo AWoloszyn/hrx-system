@@ -21,7 +21,7 @@ from loom.gen.support.files import write_text_file
 from loom.gen.support.generated_file import GeneratedFileSet, line_comment_header, maintain_generated_file_set
 
 _GENERATOR = "loom.gen.cxx.intrinsics"
-_FLOAT_TYPES = ("_Float16", "float", "double")
+_FLOAT_TYPES = ("_Float16", "__bf16", "float", "double")
 DESCRIPTION = "Loom C++ scalar declarations"
 REGENERATE_COMMAND = "python3 loom/py/loom/gen/run.py cxx_intrinsics --in-place"
 

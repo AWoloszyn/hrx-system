@@ -30,6 +30,8 @@ loom_check_test_suite(
         "assumptions_invalid.cxx-test",
         "atomics.cxx-test",
         "atomics_invalid.cxx-test",
+        "bfloat16.cxx-test",
+        "bfloat16_invalid.cxx-test",
         "check.cxx-test",
         "condition_declarations.cxx-test",
         "conditionals.cxx-test",

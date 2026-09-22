@@ -20,6 +20,16 @@ _EMBED_COMPATIBLE_WITH = loom_config_compatible_with([
 ])
 
 iree_c_embed_data(
+    name = "embedded_standard_headers",
+    srcs = ["//loom/src/loom/import/cxx:include/stdfloat"],
+    c_file_output = "embedded_standard_headers.c",
+    flatten = True,
+    h_file_output = "embedded_standard_headers.h",
+    identifier = "loom_cxx_embedded_standard_headers",
+    target_compatible_with = _EMBED_COMPATIBLE_WITH,
+)
+
+iree_c_embed_data(
     name = "embedded_loomcxx_headers",
     srcs = [
         "//loom/src/loom/import/cxx:include/loomcxx/atomic.h",
@@ -62,6 +72,7 @@ loom_cc_library(
         "//loom/config/import/cxx:embed_includes_enabled": [
             ":embedded_hip_headers",
             ":embedded_loomcxx_headers",
+            ":embedded_standard_headers",
         ],
         "//conditions:default": [],
     }),

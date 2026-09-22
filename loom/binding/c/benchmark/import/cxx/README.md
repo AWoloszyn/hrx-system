@@ -1,4 +1,14 @@
-# C++ source to HSACO
+# C++ import and compilation benchmarks
+
+`source_to_module_benchmark` measures preprocessing, source type checking,
+import, module verification, and release through `loomc_module_import_cxx`.
+Its `NoIncludes` and `StdFloat` cases use the same BF16 function body; the
+second adds only `#include <stdfloat>`. Comparing them isolates the cost of the
+numeric facade. The source handle, context, and workspace are reused while
+every iteration parses the source again. These cases need the C++ importer
+and embedded includes, without requiring a target backend.
+
+## Source to HSACO
 
 This Google Benchmark measures the public C++ importer through final HSACO
 emission for the maintained attention, llama.cpp RMSNorm, and aiter FP16 SwiGLU

@@ -186,21 +186,10 @@ Intrinsics::ScalarBinding Intrinsics::resolve_scalar(
   result.scalar = scalar;
   const auto& traits = unit_.typeTraits();
   const auto* return_type = traits.remove_cv(signature->returnType());
-  loom_scalar_type_t scalar_type;
-  switch (return_type->kind()) {
-    case cxx::TypeKind::kFloat16:
-      scalar_type = LOOM_SCALAR_TYPE_F16;
-      break;
-    case cxx::TypeKind::kFloat:
-      scalar_type = LOOM_SCALAR_TYPE_F32;
-      break;
-    case cxx::TypeKind::kDouble:
-      scalar_type = LOOM_SCALAR_TYPE_F64;
-      break;
-    default:
-      diagnostics_.reject(
-          unit_, owner,
-          "scalar intrinsic result must be _Float16, float, or double");
+  if (!types_.is_float(return_type)) {
+    diagnostics_.reject(
+        unit_, owner,
+        "scalar intrinsic result must be _Float16, __bf16, float, or double");
   }
   if (signature->isVariadic() ||
       signature->parameterTypes().size() != result.scalar->operand_count) {
@@ -224,7 +213,7 @@ Intrinsics::ScalarBinding Intrinsics::resolve_scalar(
     }
     result.flags |= flag;
   }
-  result.type = loom_type_scalar(scalar_type);
+  result.type = types_.get(return_type, owner);
   return result;
 }
 
