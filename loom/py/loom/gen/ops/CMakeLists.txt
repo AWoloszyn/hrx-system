@@ -419,4 +419,184 @@ iree_py_test(
     "${PROJECT_SOURCE_DIR}"
 )
 
+iree_py_test(
+  NAME
+    c_builder_model_test
+  MAIN
+    "../../tools/pytest_style_runner.py"
+  SRCS
+    "c_builder_model_test.py"
+    "../../tools/pytest_style_runner.py"
+  ARGS
+    "loom.gen.ops.c_builder_model_test"
+  DEPS
+    loom::py::loom::gen::ops::c_tables
+  PACKAGE_DIRS
+    "${PROJECT_SOURCE_DIR}/loom/py"
+    "${PROJECT_BINARY_DIR}/loom/py"
+    "${PROJECT_SOURCE_DIR}"
+)
+
+iree_py_test(
+  NAME
+    c_enum_attrs_test
+  MAIN
+    "../../tools/pytest_style_runner.py"
+  SRCS
+    "c_enum_attrs_test.py"
+    "../../tools/pytest_style_runner.py"
+  ARGS
+    "loom.gen.ops.c_enum_attrs_test"
+  DEPS
+    loom::py::loom::gen::ops::c_tables
+  PACKAGE_DIRS
+    "${PROJECT_SOURCE_DIR}/loom/py"
+    "${PROJECT_BINARY_DIR}/loom/py"
+    "${PROJECT_SOURCE_DIR}"
+)
+
+iree_py_test(
+  NAME
+    c_enums_test
+  MAIN
+    "../../tools/pytest_style_runner.py"
+  SRCS
+    "c_enums_test.py"
+    "../../tools/pytest_style_runner.py"
+  ARGS
+    "loom.gen.ops.c_enums_test"
+  DEPS
+    loom::py::loom::gen::ops::c_tables
+  PACKAGE_DIRS
+    "${PROJECT_SOURCE_DIR}/loom/py"
+    "${PROJECT_BINARY_DIR}/loom/py"
+    "${PROJECT_SOURCE_DIR}"
+)
+
+iree_py_test(
+  NAME
+    c_interfaces_test
+  MAIN
+    "../../tools/pytest_style_runner.py"
+  SRCS
+    "c_interfaces_test.py"
+    "../../tools/pytest_style_runner.py"
+  ARGS
+    "loom.gen.ops.c_interfaces_test"
+  DEPS
+    loom::py::loom::gen::ops::c_tables
+  PACKAGE_DIRS
+    "${PROJECT_SOURCE_DIR}/loom/py"
+    "${PROJECT_BINARY_DIR}/loom/py"
+    "${PROJECT_SOURCE_DIR}"
+)
+
+iree_py_test(
+  NAME
+    c_metadata_tables_test
+  MAIN
+    "../../tools/pytest_style_runner.py"
+  SRCS
+    "c_metadata_tables_test.py"
+    "../../tools/pytest_style_runner.py"
+  ARGS
+    "loom.gen.ops.c_metadata_tables_test"
+  DEPS
+    loom::py::loom::gen::ops::c_tables
+  PACKAGE_DIRS
+    "${PROJECT_SOURCE_DIR}/loom/py"
+    "${PROJECT_BINARY_DIR}/loom/py"
+    "${PROJECT_SOURCE_DIR}"
+)
+
+iree_py_test(
+  NAME
+    c_names_test
+  MAIN
+    "../../tools/pytest_style_runner.py"
+  SRCS
+    "c_names_test.py"
+    "../../tools/pytest_style_runner.py"
+  ARGS
+    "loom.gen.ops.c_names_test"
+  DEPS
+    loom::py::loom::gen::ops::c_tables
+  PACKAGE_DIRS
+    "${PROJECT_SOURCE_DIR}/loom/py"
+    "${PROJECT_BINARY_DIR}/loom/py"
+    "${PROJECT_SOURCE_DIR}"
+)
+
+iree_py_test(
+  NAME
+    c_ops_header_test
+  MAIN
+    "../../tools/pytest_style_runner.py"
+  SRCS
+    "c_ops_header_test.py"
+    "../../tools/pytest_style_runner.py"
+  ARGS
+    "loom.gen.ops.c_ops_header_test"
+  DEPS
+    loom::py::loom::gen::ops::c_tables
+  PACKAGE_DIRS
+    "${PROJECT_SOURCE_DIR}/loom/py"
+    "${PROJECT_BINARY_DIR}/loom/py"
+    "${PROJECT_SOURCE_DIR}"
+)
+
+iree_py_test(
+  NAME
+    c_traits_test
+  MAIN
+    "../../tools/pytest_style_runner.py"
+  SRCS
+    "c_traits_test.py"
+    "../../tools/pytest_style_runner.py"
+  ARGS
+    "loom.gen.ops.c_traits_test"
+  DEPS
+    loom::py::loom::gen::ops::c_tables
+  PACKAGE_DIRS
+    "${PROJECT_SOURCE_DIR}/loom/py"
+    "${PROJECT_BINARY_DIR}/loom/py"
+    "${PROJECT_SOURCE_DIR}"
+)
+
+iree_py_test(
+  NAME
+    model_test
+  MAIN
+    "../../tools/pytest_style_runner.py"
+  SRCS
+    "model_test.py"
+    "../../tools/pytest_style_runner.py"
+  ARGS
+    "loom.gen.ops.model_test"
+  DEPS
+    loom::py::loom::gen::ops::model
+  PACKAGE_DIRS
+    "${PROJECT_SOURCE_DIR}/loom/py"
+    "${PROJECT_BINARY_DIR}/loom/py"
+    "${PROJECT_SOURCE_DIR}"
+)
+
+iree_py_test(
+  NAME
+    type_registry_test
+  MAIN
+    "../../tools/pytest_style_runner.py"
+  SRCS
+    "type_registry_test.py"
+    "../../tools/pytest_style_runner.py"
+  ARGS
+    "loom.gen.ops.type_registry_test"
+  DEPS
+    loom::py::loom::gen::ops::c_tables
+  PACKAGE_DIRS
+    "${PROJECT_SOURCE_DIR}/loom/py"
+    "${PROJECT_BINARY_DIR}/loom/py"
+    "${PROJECT_SOURCE_DIR}"
+)
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

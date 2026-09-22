@@ -16,6 +16,7 @@ from loom.assembly import (
     COLON,
     COMMA,
     EQUALS,
+    AssemblyFormat,
     Attr,
     BlockRef,
     Clause,
@@ -3704,3 +3705,41 @@ class TestSymbolKernelContract:
                 regions=[RegionDef("body")],
                 format=[FuncArgs("args")],
             )
+
+
+def test_condition_refinement_requires_a_required_operand_and_i1_result() -> None:
+    dialect = Dialect("test")
+    refinement = dsl.ConditionRefinement(
+        source="value",
+        truth=dsl.ConditionRefinementTruth.TRUE,
+        materialize="loom_test_is_positive_materialize",
+    )
+
+    with _raises(ValueError, match="does not name an operand"):
+        Op(
+            "test.missing_source",
+            group=dialect,
+            results=[Result("matches", TypeConstraint.I1)],
+            condition_refinement=refinement,
+        )
+    with _raises(ValueError, match="must be a required non-variadic operand"):
+        Op(
+            "test.optional_source",
+            group=dialect,
+            operands=[Operand("value", INTEGER, optional=True)],
+            results=[Result("matches", TypeConstraint.I1)],
+            condition_refinement=refinement,
+        )
+    with _raises(ValueError, match="requires exactly one non-variadic i1 result"):
+        Op(
+            "test.non_boolean",
+            group=dialect,
+            operands=[Operand("value", INTEGER)],
+            results=[Result("result", INTEGER)],
+            condition_refinement=refinement,
+        )
+
+
+def test_assembly_format_rejects_undeclared_fields() -> None:
+    with _raises(ValueError, match="undeclared fields.*missing"):
+        Op("test.copy", assembly=AssemblyFormat("copy", [Ref("missing")]))

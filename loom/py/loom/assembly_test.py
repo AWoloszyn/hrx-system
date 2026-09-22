@@ -6,6 +6,8 @@
 
 """Tests for loom.assembly — assembly format elements."""
 
+import pytest
+
 from loom.assembly import (
     ARROW,
     COLON,
@@ -20,6 +22,7 @@ from loom.assembly import (
     RPAREN,
     TO,
     AlignedRefs,
+    AssemblyFormat,
     Attr,
     AttrDict,
     AttrTable,
@@ -378,3 +381,9 @@ class TestFormatSpecs:
         # scf.yield %a, %b : type, type
         fmt = [Refs("values"), COLON, TypesOf("values")]
         assert len(fmt) == 3
+
+
+@pytest.mark.parametrize("name", ["", "test.copy", "two words", "é"])
+def test_assembly_mnemonics_require_bare_identifiers(name: str) -> None:
+    with pytest.raises(ValueError, match="bare identifier"):
+        AssemblyFormat(name)

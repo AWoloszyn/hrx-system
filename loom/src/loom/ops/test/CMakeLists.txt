@@ -78,6 +78,21 @@ loom_cc_test(
 
 loom_cc_test(
   NAME
+    builders_test
+  SRCS
+    "builders_test.cc"
+  DEPS
+    ::test
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+    loom::ops::global
+    loom::ops::op_defs
+)
+
+loom_cc_test(
+  NAME
     ops_test
   SRCS
     "ops_test.cc"
