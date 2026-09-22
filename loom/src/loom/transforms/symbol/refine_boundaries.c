@@ -22,7 +22,7 @@
 #include "loom/ops/type_registry.h"
 #include "loom/pass/pipeline.h"
 #include "loom/pass/registry.h"
-#include "loom/transforms/cleanup/canonicalize.h"
+#include "loom/transforms/cleanup/canonicalizer.h"
 #include "loom/transforms/symbol/boundary_graph.h"
 #include "loom/transforms/symbol/boundary_pruning.h"
 #include "loom/transforms/symbol/boundary_specialization.h"

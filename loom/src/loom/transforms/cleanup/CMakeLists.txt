@@ -11,12 +11,52 @@ iree_add_all_subdirs()
 
 loom_cc_library(
   NAME
+    branch_facts
+  HDRS
+    "branch_facts.h"
+  SRCS
+    "branch_facts.c"
+  DEPS
+    iree::base
+    loom::analysis::condition_facts
+    loom::ir
+    loom::ops::index
+    loom::ops::scalar
+    loom::ops::scf
+    loom::rewrite::greedy
+    loom::rewrite::rewriter
+    loom::util::walk
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     canonicalize
   HDRS
     "canonicalize.h"
   SRCS
     "canonicalize.c"
   DEPS
+    ::canonicalizer
+    iree::base
+    iree::base::internal::arena
+    loom::pass::pipeline
+    loom::pass::registry
+    loom::pass::types
+    loom::target::math_policy
+    loom::target::pass_environment
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    canonicalizer
+  HDRS
+    "canonicalizer.h"
+  SRCS
+    "canonicalizer.c"
+  DEPS
+    ::branch_facts
     iree::base
     iree::base::internal
     loom::analysis::condition_facts
@@ -26,33 +66,27 @@ loom_cc_library(
     loom::ops::index
     loom::ops::op_defs
     loom::ops::scalar
-    loom::ops::scf
     loom::ops::special_values
     loom::ops::type_registry
     loom::ops::vector
     loom::ops::view
-    loom::pass::pipeline
-    loom::pass::registry
     loom::pass::types
     loom::pass::value_facts
     loom::rewrite::greedy
     loom::rewrite::rewriter
     loom::rewrite::type_propagation
-    loom::target::math_policy
-    loom::target::pass_environment
     loom::transforms::view::load_coalescing
     loom::util::fact_table
-    loom::util::walk
   PUBLIC
 )
 
 loom_cc_test(
   NAME
-    canonicalize_test
+    canonicalizer_test
   SRCS
-    "canonicalize_test.cc"
+    "canonicalizer_test.cc"
   DEPS
-    ::canonicalize
+    ::canonicalizer
     iree::base::internal::arena
     iree::testing::gtest
     iree::testing::gtest_main

@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "loom/transforms/cleanup/canonicalize.h"
+#include "loom/transforms/cleanup/canonicalizer.h"
 
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
@@ -22,19 +22,7 @@
 namespace loom {
 namespace {
 
-static iree_status_t InitializePassStatistics(loom_pass_t* pass,
-                                              iree_arena_allocator_t* arena) {
-  const loom_pass_statistic_layout_t* layout = pass->info->statistic_layout;
-  if (!layout) {
-    return iree_ok_status();
-  }
-  IREE_RETURN_IF_ERROR(iree_arena_allocate(arena, layout->storage_size,
-                                           (void**)&pass->statistic_storage));
-  memset(pass->statistic_storage, 0, layout->storage_size);
-  return iree_ok_status();
-}
-
-class CanonicalizeTest : public ::testing::Test {
+class CanonicalizerTest : public ::testing::Test {
  protected:
   void SetUp() override {
     iree_arena_block_pool_initialize(4096, iree_allocator_system(),
@@ -82,21 +70,19 @@ class CanonicalizeTest : public ::testing::Test {
     iree_arena_block_pool_deinitialize(&block_pool_);
   }
 
-  iree_status_t run_canonicalize() {
+  iree_status_t run_canonicalize(loom_func_like_t function) {
     iree_arena_allocator_t pass_arena;
     iree_arena_initialize(&block_pool_, &pass_arena);
-    loom_pass_t pass;
-    memset(&pass, 0, sizeof(pass));
-    pass.info = loom_canonicalize_pass_info();
-    pass.instance_arena = &pass_arena;
-    pass.arena = &pass_arena;
     loom_pass_value_fact_owner_t value_facts = {};
     loom_pass_value_fact_owner_initialize(&block_pool_, &value_facts);
-    pass.value_facts = &value_facts;
-    iree_status_t status = InitializePassStatistics(&pass, &pass_arena);
+    loom_canonicalizer_t canonicalizer;
+    iree_status_t status = loom_canonicalizer_initialize(
+        module_, &pass_arena, &value_facts, &canonicalizer);
     if (iree_status_is_ok(status)) {
-      status = loom_canonicalize_run(&pass, module_, func_like_);
+      status = loom_canonicalizer_run_function(&canonicalizer, function,
+                                               nullptr, nullptr);
     }
+    loom_canonicalizer_deinitialize(&canonicalizer);
     loom_pass_value_fact_owner_deinitialize(&value_facts);
     iree_arena_deinitialize(&pass_arena);
     return status;
@@ -144,7 +130,7 @@ class CanonicalizeTest : public ::testing::Test {
   loom_builder_t builder_;
 };
 
-TEST_F(CanonicalizeTest, AddiZeroRight) {
+TEST_F(CanonicalizerTest, AddiZeroRight) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   // %x = constant 42
@@ -169,13 +155,13 @@ TEST_F(CanonicalizeTest, AddiZeroRight) {
   IREE_ASSERT_OK(
       loom_test_use_build(&builder_, &result, 1, LOOM_LOCATION_UNKNOWN, &use));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
 
   // addi folded to a constant with value 42.
   EXPECT_EQ(constant_value(loom_op_operands(use)[0]), 42);
 }
 
-TEST_F(CanonicalizeTest, AddiZeroLeft) {
+TEST_F(CanonicalizerTest, AddiZeroLeft) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   // %zero = constant 0
@@ -200,11 +186,11 @@ TEST_F(CanonicalizeTest, AddiZeroLeft) {
   IREE_ASSERT_OK(
       loom_test_use_build(&builder_, &result, 1, LOOM_LOCATION_UNKNOWN, &use));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
   EXPECT_EQ(constant_value(loom_op_operands(use)[0]), 42);
 }
 
-TEST_F(CanonicalizeTest, ConstantFoldAddi) {
+TEST_F(CanonicalizerTest, ConstantFoldAddi) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   // %a = constant 1, %b = constant 2, %r = addi %a, %b
@@ -228,12 +214,12 @@ TEST_F(CanonicalizeTest, ConstantFoldAddi) {
   IREE_ASSERT_OK(
       loom_test_use_build(&builder_, &result, 1, LOOM_LOCATION_UNKNOWN, &use));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
   // addi(1, 2) folded to constant 3.
   EXPECT_EQ(constant_value(loom_op_operands(use)[0]), 3);
 }
 
-TEST_F(CanonicalizeTest, ChainedFolds) {
+TEST_F(CanonicalizerTest, ChainedFolds) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   // %x = constant 42
@@ -268,13 +254,13 @@ TEST_F(CanonicalizeTest, ChainedFolds) {
   IREE_ASSERT_OK(
       loom_test_use_build(&builder_, &b, 1, LOOM_LOCATION_UNKNOWN, &use));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
 
   // Both addi ops fold to constant 42. neg uses the folded result.
   EXPECT_EQ(constant_value(loom_op_operands(use)[0]), 42);
 }
 
-TEST_F(CanonicalizeTest, MultipleUsersRevisited) {
+TEST_F(CanonicalizerTest, MultipleUsersRevisited) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   // %x = constant 5
@@ -316,14 +302,14 @@ TEST_F(CanonicalizeTest, MultipleUsersRevisited) {
   IREE_ASSERT_OK(
       loom_test_use_build(&builder_, &c, 1, LOOM_LOCATION_UNKNOWN, &use_c));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
 
   // All addi ops fold: a=5, b=5, c=10. neg_b uses 5, neg_c uses 10.
   EXPECT_EQ(constant_value(loom_op_operands(use_b)[0]), 5);
   EXPECT_EQ(constant_value(loom_op_operands(use_c)[0]), 10);
 }
 
-TEST_F(CanonicalizeTest, NewOpsAddedToWorklist) {
+TEST_F(CanonicalizerTest, NewOpsAddedToWorklist) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   // test.neg has no fold — it should pass through without folding.
@@ -338,19 +324,19 @@ TEST_F(CanonicalizeTest, NewOpsAddedToWorklist) {
   IREE_ASSERT_OK(
       loom_test_use_build(&builder_, &x, 1, LOOM_LOCATION_UNKNOWN, &use));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
   // neg has no fold or canonicalize. constant has fold but is already a
   // constant — nothing to fold to. Both survive.
   EXPECT_EQ(constant_value(loom_op_operands(use)[0]), 7);
 }
 
-TEST_F(CanonicalizeTest, EmptyFunctionNoOps) {
+TEST_F(CanonicalizerTest, EmptyFunctionNoOps) {
   // Empty function body — canonicalize should succeed with nothing to do.
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
   EXPECT_EQ(count_live_ops(), 0);
 }
 
-TEST_F(CanonicalizeTest, WorklistDedupPreventsRedundantWork) {
+TEST_F(CanonicalizerTest, WorklistDedupPreventsRedundantWork) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   // %x = constant 42
@@ -391,13 +377,13 @@ TEST_F(CanonicalizeTest, WorklistDedupPreventsRedundantWork) {
   IREE_ASSERT_OK(
       loom_test_use_build(&builder_, &c, 1, LOOM_LOCATION_UNKNOWN, &use));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
 
   // All three addi ops fold: a=42, b=42, c=84. neg uses 84.
   EXPECT_EQ(constant_value(loom_op_operands(use)[0]), 84);
 }
 
-TEST_F(CanonicalizeTest, ScalarPoisonPropagatesThroughPureOp) {
+TEST_F(CanonicalizerTest, ScalarPoisonPropagatesThroughPureOp) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   loom_value_id_t x = LOOM_VALUE_ID_INVALID;
@@ -418,7 +404,7 @@ TEST_F(CanonicalizeTest, ScalarPoisonPropagatesThroughPureOp) {
   IREE_ASSERT_OK(
       loom_test_use_build(&builder_, &result, 1, LOOM_LOCATION_UNKNOWN, &use));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
 
   loom_value_id_t observed = loom_op_operands(use)[0];
   loom_op_t* def = loom_value_def_op(loom_module_value(module_, observed));
@@ -427,7 +413,7 @@ TEST_F(CanonicalizeTest, ScalarPoisonPropagatesThroughPureOp) {
   EXPECT_NE(observed, result);
 }
 
-TEST_F(CanonicalizeTest, VectorPoisonPropagatesThroughPureOp) {
+TEST_F(CanonicalizerTest, VectorPoisonPropagatesThroughPureOp) {
   loom_type_t v4f32 = loom_type_shaped_1d(
       LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32, loom_dim_pack_static(4), 0);
 
@@ -449,7 +435,7 @@ TEST_F(CanonicalizeTest, VectorPoisonPropagatesThroughPureOp) {
   IREE_ASSERT_OK(
       loom_test_use_build(&builder_, &result, 1, LOOM_LOCATION_UNKNOWN, &use));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
 
   loom_value_id_t observed = loom_op_operands(use)[0];
   loom_op_t* def = loom_value_def_op(loom_module_value(module_, observed));
@@ -458,7 +444,7 @@ TEST_F(CanonicalizeTest, VectorPoisonPropagatesThroughPureOp) {
   EXPECT_NE(observed, result);
 }
 
-TEST_F(CanonicalizeTest, PoisonBeatsFmaiZeroMultiplier) {
+TEST_F(CanonicalizerTest, PoisonBeatsFmaiZeroMultiplier) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   loom_value_id_t c = LOOM_VALUE_ID_INVALID;
@@ -483,7 +469,7 @@ TEST_F(CanonicalizeTest, PoisonBeatsFmaiZeroMultiplier) {
   IREE_ASSERT_OK(
       loom_test_use_build(&builder_, &result, 1, LOOM_LOCATION_UNKNOWN, &use));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
 
   loom_value_id_t observed = loom_op_operands(use)[0];
   loom_op_t* def = loom_value_def_op(loom_module_value(module_, observed));
@@ -496,28 +482,12 @@ TEST_F(CanonicalizeTest, PoisonBeatsFmaiZeroMultiplier) {
 // Fixed point and edge cases
 //===----------------------------------------------------------------------===//
 
-TEST_F(CanonicalizeTest, NullFunctionBody) {
-  // A zero-initialized func_like is the invalid/null sentinel — canonicalize
-  // must handle it gracefully and return OK.
-  loom_func_like_t empty_func = {};
-
-  iree_arena_allocator_t pass_arena;
-  iree_arena_initialize(&block_pool_, &pass_arena);
-  loom_pass_t pass;
-  memset(&pass, 0, sizeof(pass));
-  pass.info = loom_canonicalize_pass_info();
-  pass.instance_arena = &pass_arena;
-  pass.arena = &pass_arena;
-  loom_pass_value_fact_owner_t value_facts = {};
-  loom_pass_value_fact_owner_initialize(&block_pool_, &value_facts);
-  pass.value_facts = &value_facts;
-  IREE_ASSERT_OK(InitializePassStatistics(&pass, &pass_arena));
-  IREE_EXPECT_OK(loom_canonicalize_run(&pass, module_, empty_func));
-  loom_pass_value_fact_owner_deinitialize(&value_facts);
-  iree_arena_deinitialize(&pass_arena);
+TEST_F(CanonicalizerTest, NullFunctionBody) {
+  // The empty function sentinel has no regions or worklist to process.
+  IREE_EXPECT_OK(run_canonicalize({}));
 }
 
-TEST_F(CanonicalizeTest, FixedPointConvergence) {
+TEST_F(CanonicalizerTest, FixedPointConvergence) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   // Build a foldable pattern, run canonicalize, then run again.
@@ -541,17 +511,17 @@ TEST_F(CanonicalizeTest, FixedPointConvergence) {
   IREE_ASSERT_OK(
       loom_test_use_build(&builder_, &result, 1, LOOM_LOCATION_UNKNOWN, &use));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
   EXPECT_EQ(constant_value(loom_op_operands(use)[0]), 42);
 
   // Second run — nothing should change. The fold already happened.
   int ops_before = count_live_ops();
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
   EXPECT_EQ(count_live_ops(), ops_before);
   EXPECT_EQ(constant_value(loom_op_operands(use)[0]), 42);
 }
 
-TEST_F(CanonicalizeTest, DriverReusesFactsAcrossNoopRuns) {
+TEST_F(CanonicalizerTest, DriverReusesFactsAcrossNoopRuns) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   loom_op_t* constant = NULL;
   IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(42), i32,
@@ -595,7 +565,7 @@ TEST_F(CanonicalizeTest, DriverReusesFactsAcrossNoopRuns) {
   iree_arena_deinitialize(&pass_arena);
 }
 
-TEST_F(CanonicalizeTest, DriverFactsMatchFreshRecomputationAfterChanges) {
+TEST_F(CanonicalizerTest, DriverFactsMatchFreshRecomputationAfterChanges) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   loom_op_t* const_forty = NULL;
@@ -666,7 +636,7 @@ TEST_F(CanonicalizeTest, DriverFactsMatchFreshRecomputationAfterChanges) {
   iree_arena_deinitialize(&pass_arena);
 }
 
-TEST_F(CanonicalizeTest, DriverAcceptsSeedFacts) {
+TEST_F(CanonicalizerTest, DriverAcceptsSeedFacts) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   loom_value_id_t arg = LOOM_VALUE_ID_INVALID;
@@ -746,7 +716,7 @@ TEST_F(CanonicalizeTest, DriverAcceptsSeedFacts) {
   iree_arena_deinitialize(&seed_arena);
 }
 
-TEST_F(CanonicalizeTest, DriverPreservesExplicitTargetFactsAcrossSideRegions) {
+TEST_F(CanonicalizerTest, DriverPreservesExplicitTargetFactsAcrossSideRegions) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   loom_builder_t module_builder;
@@ -832,7 +802,7 @@ TEST_F(CanonicalizeTest, DriverPreservesExplicitTargetFactsAcrossSideRegions) {
   iree_arena_deinitialize(&seed_arena);
 }
 
-TEST_F(CanonicalizeTest, RegionDriverAcceptsSeedFacts) {
+TEST_F(CanonicalizerTest, RegionDriverAcceptsSeedFacts) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   loom_builder_t module_builder;
@@ -904,7 +874,7 @@ TEST_F(CanonicalizeTest, RegionDriverAcceptsSeedFacts) {
   iree_arena_deinitialize(&seed_arena);
 }
 
-TEST_F(CanonicalizeTest, DriverResetsScratchArenaBetweenRuns) {
+TEST_F(CanonicalizerTest, DriverResetsScratchArenaBetweenRuns) {
   iree_arena_allocator_t pass_arena;
   iree_arena_initialize(&block_pool_, &pass_arena);
   loom_pass_value_fact_owner_t value_facts = {};
@@ -930,7 +900,7 @@ TEST_F(CanonicalizeTest, DriverResetsScratchArenaBetweenRuns) {
   iree_arena_deinitialize(&pass_arena);
 }
 
-TEST_F(CanonicalizeTest, OpWithoutCanonicalizeUntouched) {
+TEST_F(CanonicalizerTest, OpWithoutCanonicalizeUntouched) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   // test.neg has no canonicalize callback. It should pass through
@@ -955,7 +925,7 @@ TEST_F(CanonicalizeTest, OpWithoutCanonicalizeUntouched) {
   IREE_ASSERT_OK(
       loom_test_use_build(&builder_, &c, 1, LOOM_LOCATION_UNKNOWN, &use));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
   // test.neg has no fold or canonicalize. The chain survives
   // because test.use keeps it alive.
   EXPECT_EQ(constant_value(loom_op_operands(neg1)[0]), 7);
@@ -966,7 +936,7 @@ TEST_F(CanonicalizeTest, OpWithoutCanonicalizeUntouched) {
 // Nested regions
 //===----------------------------------------------------------------------===//
 
-TEST_F(CanonicalizeTest, NestedRegionOpsCanonicalized) {
+TEST_F(CanonicalizerTest, NestedRegionOpsCanonicalized) {
   // The rewriter's seed_function descends into nested regions so
   // foldable ops inside a test.map body are visited and canonicalized.
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
@@ -1000,7 +970,7 @@ TEST_F(CanonicalizeTest, NestedRegionOpsCanonicalized) {
 
   loom_builder_restore(&builder_, saved);
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
 
   // The inner addi(arg, 0) folded — use now references %arg directly.
   EXPECT_EQ(loom_op_operands(inner_use)[0], arg);
@@ -1010,7 +980,7 @@ TEST_F(CanonicalizeTest, NestedRegionOpsCanonicalized) {
 // test.counter: multi-step, error, fixed point
 //===----------------------------------------------------------------------===//
 
-TEST_F(CanonicalizeTest, CounterFixedPoint) {
+TEST_F(CanonicalizerTest, CounterFixedPoint) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   // counter(0) — already at fixed point, no change.
@@ -1023,14 +993,14 @@ TEST_F(CanonicalizeTest, CounterFixedPoint) {
   IREE_ASSERT_OK(
       loom_test_use_build(&builder_, &result, 1, LOOM_LOCATION_UNKNOWN, &use));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
 
   // Counter untouched. neg still uses the original result.
   EXPECT_EQ(loom_op_operands(use)[0], result);
   EXPECT_FALSE(counter->flags & LOOM_OP_FLAG_DEAD);
 }
 
-TEST_F(CanonicalizeTest, CounterSingleStep) {
+TEST_F(CanonicalizerTest, CounterSingleStep) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   // counter(1) → counter(0). One step, then fixed point.
@@ -1043,7 +1013,7 @@ TEST_F(CanonicalizeTest, CounterSingleStep) {
   IREE_ASSERT_OK(loom_test_use_build(&builder_, &original_result, 1,
                                      LOOM_LOCATION_UNKNOWN, &use));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
 
   // The original counter(1) was erased and replaced by counter(0).
   EXPECT_TRUE(counter->flags & LOOM_OP_FLAG_DEAD);
@@ -1056,7 +1026,7 @@ TEST_F(CanonicalizeTest, CounterSingleStep) {
   EXPECT_EQ(loom_test_counter_value(new_counter), 0);
 }
 
-TEST_F(CanonicalizeTest, CounterMultiStep) {
+TEST_F(CanonicalizerTest, CounterMultiStep) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   // counter(5) → counter(4) → counter(3) → counter(2) → counter(1) →
@@ -1070,7 +1040,7 @@ TEST_F(CanonicalizeTest, CounterMultiStep) {
   IREE_ASSERT_OK(loom_test_use_build(&builder_, &original_result, 1,
                                      LOOM_LOCATION_UNKNOWN, &use));
 
-  IREE_ASSERT_OK(run_canonicalize());
+  IREE_ASSERT_OK(run_canonicalize(func_like_));
 
   // The final counter should have value 0.
   loom_value_id_t final_result = loom_op_operands(use)[0];
@@ -1080,7 +1050,7 @@ TEST_F(CanonicalizeTest, CounterMultiStep) {
   EXPECT_EQ(loom_test_counter_value(final_counter), 0);
 }
 
-TEST_F(CanonicalizeTest, CounterErrorPropagation) {
+TEST_F(CanonicalizerTest, CounterErrorPropagation) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   // counter(-1) — canonicalize returns IREE_STATUS_INTERNAL.
@@ -1094,10 +1064,10 @@ TEST_F(CanonicalizeTest, CounterErrorPropagation) {
       loom_test_use_build(&builder_, &result, 1, LOOM_LOCATION_UNKNOWN, &use));
 
   // The error should propagate through canonicalize.
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INTERNAL, run_canonicalize());
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INTERNAL, run_canonicalize(func_like_));
 }
 
-TEST_F(CanonicalizeTest, CounterErrorMidWorklist) {
+TEST_F(CanonicalizerTest, CounterErrorMidWorklist) {
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
 
   // Build a healthy op, then a failing op. The healthy op may be
@@ -1120,7 +1090,7 @@ TEST_F(CanonicalizeTest, CounterErrorMidWorklist) {
   IREE_ASSERT_OK(loom_test_use_build(&builder_, &fail_result, 1,
                                      LOOM_LOCATION_UNKNOWN, &neg2));
 
-  IREE_EXPECT_STATUS_IS(IREE_STATUS_INTERNAL, run_canonicalize());
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_INTERNAL, run_canonicalize(func_like_));
 }
 
 }  // namespace
