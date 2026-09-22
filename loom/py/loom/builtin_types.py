@@ -77,6 +77,7 @@ encoding_type = TypeDef(
     doc="Encoding SSA value with an optional semantic role.",
     ir_kind="encoding",
     python_type=EncodingType,
+    fact_domain="loom_encoding_fact_domain",
     params=[
         AttrDef(
             "role",

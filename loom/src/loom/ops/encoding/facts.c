@@ -19,6 +19,151 @@
 #include "loom/ops/encoding/summary.h"
 #include "loom/util/fact_table.h"
 
+typedef enum loom_encoding_fact_merge_kind_e {
+  LOOM_ENCODING_FACT_MERGE_MEET = 0,
+  LOOM_ENCODING_FACT_MERGE_WIDEN = 1,
+} loom_encoding_fact_merge_kind_t;
+
+static iree_status_t loom_encoding_facts_merge_scalar(
+    loom_encoding_fact_merge_kind_t merge_kind, uint32_t iteration,
+    const loom_module_t* module, loom_value_fact_table_t* target,
+    const loom_value_fact_table_t* lhs_table, loom_value_facts_t lhs,
+    const loom_value_fact_table_t* rhs_table, loom_value_facts_t rhs,
+    loom_value_facts_t* out_facts) {
+  const loom_type_t index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  if (merge_kind == LOOM_ENCODING_FACT_MERGE_WIDEN) {
+    return loom_value_fact_table_widen_for_type(target, module, index_type,
+                                                lhs_table, lhs, rhs_table, rhs,
+                                                iteration, out_facts);
+  }
+  return loom_value_fact_table_meet_for_type(
+      target, module, index_type, lhs_table, lhs, rhs_table, rhs, out_facts);
+}
+
+static iree_status_t loom_encoding_facts_merge_address_layout(
+    loom_encoding_fact_merge_kind_t merge_kind, uint32_t iteration,
+    const loom_module_t* module, loom_value_fact_table_t* target,
+    const loom_value_fact_table_t* lhs_table,
+    loom_value_fact_address_layout_t lhs,
+    const loom_value_fact_table_t* rhs_table,
+    loom_value_fact_address_layout_t rhs,
+    loom_value_fact_address_layout_t* out_layout,
+    loom_value_facts_t* stride_storage) {
+  *out_layout = (loom_value_fact_address_layout_t){0};
+  if (lhs.kind != rhs.kind) {
+    return iree_ok_status();
+  }
+  if (lhs.kind == LOOM_VALUE_FACT_ADDRESS_LAYOUT_DENSE) {
+    out_layout->kind = LOOM_VALUE_FACT_ADDRESS_LAYOUT_DENSE;
+    return iree_ok_status();
+  }
+  if (lhs.kind != LOOM_VALUE_FACT_ADDRESS_LAYOUT_STRIDED ||
+      lhs.rank != rhs.rank || !lhs.strides || !rhs.strides) {
+    return iree_ok_status();
+  }
+
+  for (uint8_t i = 0; i < lhs.rank; ++i) {
+    IREE_RETURN_IF_ERROR(loom_encoding_facts_merge_scalar(
+        merge_kind, iteration, module, target, lhs_table, lhs.strides[i],
+        rhs_table, rhs.strides[i], &stride_storage[i]));
+  }
+  *out_layout = (loom_value_fact_address_layout_t){
+      .kind = LOOM_VALUE_FACT_ADDRESS_LAYOUT_STRIDED,
+      .rank = lhs.rank,
+      .strides = stride_storage,
+  };
+  return iree_ok_status();
+}
+
+static loom_value_fact_storage_schema_t
+loom_encoding_facts_merge_storage_schema(loom_value_fact_storage_schema_t lhs,
+                                         loom_value_fact_storage_schema_t rhs) {
+  loom_value_fact_storage_schema_t result = {0};
+  if (!loom_value_fact_encoded_operand_schema_equal(lhs.encoded_operand,
+                                                    rhs.encoded_operand)) {
+    return result;
+  }
+  result.encoded_operand = lhs.encoded_operand;
+  if (lhs.static_spec_encoding_id == rhs.static_spec_encoding_id) {
+    result.static_spec_encoding_id = lhs.static_spec_encoding_id;
+  }
+  return result;
+}
+
+static iree_status_t loom_encoding_facts_merge_extension(
+    loom_encoding_fact_merge_kind_t merge_kind, uint32_t iteration,
+    const loom_module_t* module, loom_type_t type,
+    loom_value_fact_table_t* target, const loom_value_fact_table_t* lhs_table,
+    loom_value_facts_t lhs, const loom_value_fact_table_t* rhs_table,
+    loom_value_facts_t rhs, loom_value_facts_t* inout_facts) {
+  loom_value_fact_encoding_summary_t lhs_summary = {0};
+  loom_value_fact_encoding_summary_t rhs_summary = {0};
+  if (!loom_value_facts_query_encoding_summary(&lhs_table->context, lhs,
+                                               &lhs_summary) ||
+      !loom_value_facts_query_encoding_summary(&rhs_table->context, rhs,
+                                               &rhs_summary)) {
+    inout_facts->extension_id = LOOM_VALUE_FACT_EXTENSION_ID_NONE;
+    return iree_ok_status();
+  }
+
+  const loom_encoding_role_t type_role = loom_type_encoding_role(type);
+  if (lhs_summary.role != rhs_summary.role ||
+      (type_role != LOOM_ENCODING_ROLE_UNKNOWN &&
+       lhs_summary.role != LOOM_ENCODING_ROLE_UNKNOWN &&
+       lhs_summary.role != type_role)) {
+    inout_facts->extension_id = LOOM_VALUE_FACT_EXTENSION_ID_NONE;
+    return iree_ok_status();
+  }
+
+  loom_value_facts_t stride_storage[LOOM_ENCODING_ADDRESS_LAYOUT_MAX_RANK] = {
+      0};
+  loom_value_fact_encoding_summary_t result = {
+      .role = type_role != LOOM_ENCODING_ROLE_UNKNOWN ? type_role
+                                                      : lhs_summary.role,
+      .static_spec_encoding_id = lhs_summary.static_spec_encoding_id ==
+                                         rhs_summary.static_spec_encoding_id
+                                     ? lhs_summary.static_spec_encoding_id
+                                     : 0,
+      .storage_schema = loom_encoding_facts_merge_storage_schema(
+          lhs_summary.storage_schema, rhs_summary.storage_schema),
+  };
+  IREE_RETURN_IF_ERROR(loom_encoding_facts_merge_address_layout(
+      merge_kind, iteration, module, target, lhs_table,
+      lhs_summary.address_layout, rhs_table, rhs_summary.address_layout,
+      &result.address_layout, stride_storage));
+  return loom_value_facts_make_encoding_summary(&target->context, result,
+                                                inout_facts);
+}
+
+static iree_status_t loom_encoding_facts_meet_extension(
+    const loom_value_fact_domain_t* domain, const loom_module_t* module,
+    loom_type_t type, loom_value_fact_table_t* target,
+    const loom_value_fact_table_t* lhs_table, loom_value_facts_t lhs,
+    const loom_value_fact_table_t* rhs_table, loom_value_facts_t rhs,
+    loom_value_facts_t* inout_facts) {
+  (void)domain;
+  return loom_encoding_facts_merge_extension(LOOM_ENCODING_FACT_MERGE_MEET, 0,
+                                             module, type, target, lhs_table,
+                                             lhs, rhs_table, rhs, inout_facts);
+}
+
+static iree_status_t loom_encoding_facts_widen_extension(
+    const loom_value_fact_domain_t* domain, const loom_module_t* module,
+    loom_type_t type, loom_value_fact_table_t* target,
+    const loom_value_fact_table_t* previous_table, loom_value_facts_t previous,
+    const loom_value_fact_table_t* next_table, loom_value_facts_t next,
+    uint32_t iteration, loom_value_facts_t* inout_facts) {
+  (void)domain;
+  return loom_encoding_facts_merge_extension(
+      LOOM_ENCODING_FACT_MERGE_WIDEN, iteration, module, type, target,
+      previous_table, previous, next_table, next, inout_facts);
+}
+
+const loom_value_fact_domain_t loom_encoding_fact_domain = {
+    .meet_extension = loom_encoding_facts_meet_extension,
+    .widen_extension = loom_encoding_facts_widen_extension,
+};
+
 static loom_value_fact_address_layout_t loom_encoding_facts_dense_layout(void) {
   return (loom_value_fact_address_layout_t){
       .kind = LOOM_VALUE_FACT_ADDRESS_LAYOUT_DENSE,

@@ -109,6 +109,20 @@ loom_cc_benchmark(
 
 loom_cc_test(
   NAME
+    facts_test
+  SRCS
+    "facts_test.cc"
+  DEPS
+    ::encoding
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ops::type_registry
+    loom::util::fact_table
+)
+
+loom_cc_test(
+  NAME
     format_test
   SRCS
     "format_test.cc"
@@ -138,6 +152,7 @@ loom_cc_test(
     iree::testing::gtest_main
     loom::format::text::parser
     loom::ir
+    loom::util::fact_table
     loom::util::numeric_format
 )
 

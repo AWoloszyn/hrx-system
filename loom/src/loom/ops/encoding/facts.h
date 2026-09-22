@@ -16,6 +16,12 @@
 extern "C" {
 #endif
 
+// Joins encoding summaries across value selection and loop transport.
+// Compatible strided address layouts retain their kind, rank, and per-axis
+// numeric stride facts while exact encoding identities remain exact only when
+// every incoming value shares them.
+extern const loom_value_fact_domain_t loom_encoding_fact_domain;
+
 // Builds exact value facts for a verified static encoding specification.
 // |result_type| supplies the role carried by the SSA value.
 iree_status_t loom_encoding_static_value_facts(loom_fact_context_t* context,

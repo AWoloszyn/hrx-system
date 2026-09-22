@@ -422,6 +422,37 @@ alignment, and synchronization contracts. Rotating a view does not establish
 completion of an asynchronous producer; consumption and storage reuse follow
 the program's completion dependencies.
 
+### Select and carry address layouts
+
+An address layout is an SSA value. Select a runtime layout directly when the
+same logical matrix may use different physical strides, then name the selected
+value in the view type:
+
+```loom
+%row_major = encoding.layout.strided [%columns, 1] : encoding<layout>
+%column_major = encoding.layout.strided [1, %rows] : encoding<layout>
+%layout = scf.if %use_rows -> (encoding<layout>) {
+  scf.yield %row_major : encoding<layout>
+} else {
+  scf.yield %column_major : encoding<layout>
+}
+%matrix = buffer.view %storage[%base] : buffer -> view<[%rows]x[%columns]xf32, %layout>
+%value = view.load %matrix[%row, %column] : view<[%rows]x[%columns]xf32, %layout> -> f32
+```
+
+The strides are measured in elements and may be runtime values. `scf.if`,
+`scf.for`, and `scf.while` preserve the selected per-axis strides, so a loop can
+rotate or replace a layout along with other recurrence state. The source keeps
+logical coordinates and one semantic layout value instead of reproducing each
+candidate as flattened address arithmetic.
+
+The [checked strided-layout
+case](https://github.com/ROCm/hrx-system/blob/main/loom/src/loom/test/corpus/conformance/strided_layout_recurrence.loom)
+selects between two runtime pitches, rotates them through counted and condition
+loops, and verifies the resulting addresses through a nonzero buffer origin.
+When a carried view's type refers to the layout, carry the layout beside the
+view as shown in the next section.
+
 ### Change a carried view's shape
 
 A loop can change a carried view's extent or layout. Its result list defines

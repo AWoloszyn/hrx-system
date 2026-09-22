@@ -278,6 +278,12 @@ shows the complete spelling and a checked shrinking-view witness. This keeps
 ragged windows and progressively consumed pages in structured IR, where normal
 unrolling, pipelining, and report workflows can preserve and inspect them.
 
+When the physical pitch itself changes, select or carry an
+`encoding.layout.strided` value rather than expanding each candidate into
+manual address arithmetic. The [address-layout
+guide](../guide/functions-and-control.md#select-and-carry-address-layouts)
+shows runtime pitches through selections and loop recurrences.
+
 Streaming reductions, guarded ragged rows, and packed dequantization/dot loops
 are useful candidates. Ordinary loads and pure operations may contain nested
 `scf.if` and `scf.for`; each structured operation stays intact in its stage.
