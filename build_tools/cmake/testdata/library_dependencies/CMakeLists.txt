@@ -21,7 +21,11 @@ include("${IREE_REPO_ROOT}/build_tools/cmake/iree_cc_binary.cmake")
 iree_cc_library(NAME headers
   TEXTUAL_HDRS "${CMAKE_CURRENT_BINARY_DIR}/producer/generated.h")
 iree_cc_library(NAME leaf SRCS leaf.c DEFINES TRANSITIVE_VALUE=3)
-iree_cc_library(NAME library SRCS library.c DEPS ::leaf ::headers)
+# A false condition excludes the entire list; active system includes keep their
+# order. The inactive header catches either a leaked path or reordered includes.
+iree_cc_library(NAME library SRCS library.c DEPS ::leaf ::headers
+  INCLUDES "$<0:${CMAKE_CURRENT_BINARY_DIR}/unused;${CMAKE_CURRENT_SOURCE_DIR}/inactive>"
+  SYSTEM_INCLUDES "$<1:${CMAKE_CURRENT_BINARY_DIR}/producer;${CMAKE_CURRENT_SOURCE_DIR}/inactive>")
 iree_cc_binary(NAME probe
   SRCS main.c "${CMAKE_CURRENT_BINARY_DIR}/producer/generated.c" DEPS ::library)
 iree_cc_unified_library(NAME unified ROOT ::library)
