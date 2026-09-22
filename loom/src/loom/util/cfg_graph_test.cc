@@ -244,6 +244,8 @@ TEST_F(CfgGraphTest, TraversalRetainsLoopHeaderBeforeNonlexicalBody) {
   EXPECT_EQ(graph.reverse_postorder.values[1], 3u);
   EXPECT_EQ(graph.reverse_postorder.values[2], 2u);
   EXPECT_EQ(graph.reverse_postorder.values[3], 1u);
+  EXPECT_TRUE(graph.blocks[3].is_dfs_backedge_target);
+  EXPECT_FALSE(graph.blocks[1].is_dfs_backedge_target);
 }
 
 TEST_F(CfgGraphTest, TraversalVisitsSelfLoopOnce) {
@@ -259,11 +261,67 @@ TEST_F(CfgGraphTest, TraversalVisitsSelfLoopOnce) {
   ASSERT_EQ(graph.reverse_postorder.count, 1u);
   EXPECT_EQ(graph.reverse_postorder.values[0], 0u);
   EXPECT_TRUE(graph.blocks[0].component_is_cyclic);
+  EXPECT_TRUE(graph.blocks[0].is_dfs_backedge_target);
   EXPECT_EQ(graph.blocks[0].reachability_root, 0u);
   EXPECT_EQ(graph.blocks[0].preorder_end, 1u);
 }
 
-TEST_F(CfgGraphTest, ReachabilityProofsForAllThreeBlockBinaryGraphs) {
+TEST_F(CfgGraphTest, CompletedCyclicSiblingIsNotBackedgeTarget) {
+  loom_block_t* entry = loom_region_entry_block(body_);
+  loom_block_t* header = AppendBlock();
+  loom_block_t* first = AppendBlock();
+  loom_block_t* second = AppendBlock();
+  SetBlock(entry);
+  BuildBranch(header);
+  SetBlock(header);
+  BuildConditionalBranch(first, second);
+  SetBlock(first);
+  BuildBranch(header);
+  SetBlock(second);
+  BuildBranch(first);
+
+  loom_cfg_graph_t graph = {};
+  BuildGraph(&graph);
+
+  ASSERT_FALSE(graph.malformed);
+  EXPECT_TRUE(graph.blocks[1].is_dfs_backedge_target);
+  // First has completed when second reaches it, although both still belong
+  // to the unfinished strongly connected component rooted at header.
+  for (unsigned i = 2; i < 4; ++i) {
+    EXPECT_TRUE(graph.blocks[i].component_is_cyclic);
+    EXPECT_FALSE(graph.blocks[i].is_dfs_backedge_target);
+  }
+}
+
+TEST_F(CfgGraphTest, NestedLoopsRetainBothBackedgeTargets) {
+  loom_block_t* entry = loom_region_entry_block(body_);
+  loom_block_t* outer_header = AppendBlock();
+  loom_block_t* inner_header = AppendBlock();
+  loom_block_t* inner_body = AppendBlock();
+  loom_block_t* outer_latch = AppendBlock();
+  loom_block_t* exit_block = AppendBlock();
+  SetBlock(entry);
+  BuildBranch(outer_header);
+  SetBlock(outer_header);
+  BuildConditionalBranch(inner_header, exit_block);
+  SetBlock(inner_header);
+  BuildConditionalBranch(inner_body, outer_latch);
+  SetBlock(inner_body);
+  BuildBranch(inner_header);
+  SetBlock(outer_latch);
+  BuildBranch(outer_header);
+
+  loom_cfg_graph_t graph = {};
+  BuildGraph(&graph);
+
+  ASSERT_FALSE(graph.malformed);
+  EXPECT_TRUE(graph.blocks[1].is_dfs_backedge_target);
+  EXPECT_TRUE(graph.blocks[2].is_dfs_backedge_target);
+  EXPECT_FALSE(graph.blocks[3].is_dfs_backedge_target);
+  EXPECT_FALSE(graph.blocks[4].is_dfs_backedge_target);
+}
+
+TEST_F(CfgGraphTest, TraversalFactsForAllThreeBlockBinaryGraphs) {
   loom_block_t* blocks[] = {loom_region_entry_block(body_), AppendBlock(),
                             AppendBlock()};
   loom_op_t* branches[3];
@@ -299,13 +357,30 @@ TEST_F(CfgGraphTest, ReachabilityProofsForAllThreeBlockBinaryGraphs) {
     loom_cfg_graph_t graph = {};
     BuildGraph(&graph);
     ASSERT_FALSE(graph.malformed);
+    unsigned reverse_postorder[3] = {};
+    for (unsigned i = 0; i < graph.reverse_postorder.count; ++i) {
+      reverse_postorder[graph.reverse_postorder.values[i]] = i;
+    }
     for (unsigned source = 0; source < 3; ++source) {
       const auto& info = graph.blocks[source];
       EXPECT_EQ(info.reachable, source == 0 || reaches[0][source]);
       if (!info.reachable) {
         EXPECT_EQ(info.component, UINT16_MAX);
+        EXPECT_FALSE(info.is_dfs_backedge_target);
         continue;
       }
+      // A backedge target is precisely a block that does not finish before
+      // every reachable predecessor. Check the retained consumer contract
+      // independently of the DFS frame state used to produce the flag.
+      bool finishes_before_predecessors = true;
+      const auto predecessors = loom_cfg_graph_predecessors(&graph, source);
+      for (unsigned i = 0; i < predecessors.count; ++i) {
+        const unsigned predecessor = predecessors.values[i];
+        finishes_before_predecessors &=
+            !graph.blocks[predecessor].reachable ||
+            reverse_postorder[source] > reverse_postorder[predecessor];
+      }
+      EXPECT_EQ(info.is_dfs_backedge_target, !finishes_before_predecessors);
       EXPECT_EQ(info.component_is_cyclic, reaches[source][source]);
       unsigned earliest = source;
       for (unsigned target = 0; target < 3; ++target) {

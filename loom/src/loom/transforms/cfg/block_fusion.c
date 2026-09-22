@@ -67,16 +67,6 @@ iree_status_t loom_cfg_fuse_single_predecessor_blocks(
   }
   loom_op_t** predecessor_branches = NULL;
   bool* remove_blocks = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, graph->block_count, sizeof(*predecessor_branches),
-      (void**)&predecessor_branches));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(arena, graph->block_count,
-                                                 sizeof(*remove_blocks),
-                                                 (void**)&remove_blocks));
-  memset(predecessor_branches, 0,
-         graph->block_count * sizeof(*predecessor_branches));
-  memset(remove_blocks, 0, graph->block_count * sizeof(*remove_blocks));
-
   uint16_t fusion_count = 0;
   for (iree_host_size_t i = 0; i < graph->reverse_postorder.count; ++i) {
     uint16_t block_index = graph->reverse_postorder.values[i];
@@ -90,6 +80,17 @@ iree_status_t loom_cfg_fuse_single_predecessor_blocks(
     if (!loom_cfg_block_arguments_can_replace(
             rewriter->module, dominance, block, replacements, predecessor_br)) {
       continue;
+    }
+    if (!predecessor_branches) {
+      // The branch table and removal mask share one lazy edit allocation.
+      IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+          arena, graph->block_count,
+          sizeof(*predecessor_branches) + sizeof(*remove_blocks),
+          (void**)&predecessor_branches));
+      remove_blocks = (bool*)(predecessor_branches + graph->block_count);
+      memset(predecessor_branches, 0,
+             graph->block_count *
+                 (sizeof(*predecessor_branches) + sizeof(*remove_blocks)));
     }
     predecessor_branches[block_index] = predecessor_br;
     remove_blocks[block_index] = true;
