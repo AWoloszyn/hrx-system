@@ -54,6 +54,21 @@ loom_check_compile_tests(
 
 loom_check_compile_tests(
   NAME
+    "memory_atomic_preservation"
+  SRC
+    "memory_atomic_preservation.loom-test"
+  REGISTERED_SRCS
+    "${_GLOB_X_LOOM_TEST}"
+  TARGETS
+    loom::target::amdgpu::gfx11-generic
+    loom::target::amdgpu::gfx1151
+    loom::target::amdgpu::gfx12-5-generic
+    loom::target::amdgpu::gfx12-generic
+    loom::target::amdgpu::gfx1250
+)
+
+loom_check_compile_tests(
+  NAME
     "memory_wide_offsets"
   SRC
     "memory_wide_offsets.loom-test"

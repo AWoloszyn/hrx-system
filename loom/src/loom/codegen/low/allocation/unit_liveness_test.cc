@@ -220,7 +220,7 @@ TEST_F(LowAllocationUnitLivenessTest, ExtendsTiedResultSourceUnits) {
           .count,
       1u);
 
-  const loom_low_placement_relation_t relations[] = {
+  loom_low_placement_relation_t relations[] = {
       {
           /*.op=*/nullptr,
           /*.result_ordinal=*/1,
@@ -228,7 +228,7 @@ TEST_F(LowAllocationUnitLivenessTest, ExtendsTiedResultSourceUnits) {
           /*.result_unit_offset=*/0,
           /*.source_unit_offset=*/0,
           /*.unit_count=*/2,
-          /*.location_mask=*/0,
+          {/*.location_mask=*/0},
           /*.kind=*/LOOM_LOW_PLACEMENT_RELATION_SAME_STORAGE,
           /*.cause=*/LOOM_LOW_PLACEMENT_CAUSE_TIED_RESULT,
           /*.flags=*/LOOM_LOW_PLACEMENT_RELATION_FLAG_HARD,
@@ -302,7 +302,7 @@ TEST_F(LowAllocationUnitLivenessTest,
       module, &target, nullptr, &value_domain, &liveness, &arena_,
       &unit_liveness));
 
-  const loom_low_placement_relation_t relations[] = {
+  loom_low_placement_relation_t relations[] = {
       {
           /*.op=*/nullptr,
           /*.result_ordinal=*/1,
@@ -310,7 +310,7 @@ TEST_F(LowAllocationUnitLivenessTest,
           /*.result_unit_offset=*/0,
           /*.source_unit_offset=*/0,
           /*.unit_count=*/2,
-          /*.location_mask=*/0,
+          {/*.location_mask=*/0},
           /*.kind=*/LOOM_LOW_PLACEMENT_RELATION_SAME_STORAGE,
           /*.cause=*/LOOM_LOW_PLACEMENT_CAUSE_TIED_RESULT,
           /*.flags=*/LOOM_LOW_PLACEMENT_RELATION_FLAG_HARD,
@@ -323,10 +323,11 @@ TEST_F(LowAllocationUnitLivenessTest,
           /*.result_unit_offset=*/0,
           /*.source_unit_offset=*/0,
           /*.unit_count=*/2,
-          /*.location_mask=*/0,
+          {/*.location_mask=*/0},
           /*.kind=*/LOOM_LOW_PLACEMENT_RELATION_CONTIGUOUS_PART,
           /*.cause=*/LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT,
-          /*.flags=*/LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED,
+          /*.flags=*/LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED |
+              LOOM_LOW_PLACEMENT_RELATION_FLAG_CAN_ALIAS_STORAGE,
           /*.priority=*/0,
       },
       {
@@ -336,10 +337,11 @@ TEST_F(LowAllocationUnitLivenessTest,
           /*.result_unit_offset=*/2,
           /*.source_unit_offset=*/0,
           /*.unit_count=*/2,
-          /*.location_mask=*/0,
+          {/*.location_mask=*/0},
           /*.kind=*/LOOM_LOW_PLACEMENT_RELATION_CONTIGUOUS_PART,
           /*.cause=*/LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT,
-          /*.flags=*/LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED,
+          /*.flags=*/LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED |
+              LOOM_LOW_PLACEMENT_RELATION_FLAG_CAN_ALIAS_STORAGE,
           /*.priority=*/0,
       },
   };

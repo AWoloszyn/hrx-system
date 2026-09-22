@@ -72,7 +72,7 @@ TEST(LowAllocationRelocationGroupTest, RetainsCoalescedTransportClosure) {
                      : LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED);
     return row;
   };
-  const loom_low_placement_relation_t relations[] = {
+  loom_low_placement_relation_t relations[] = {
       relation(1, 0, 0, 2, 2, LOOM_LOW_PLACEMENT_CAUSE_LOW_SLICE),
       relation(2, 1, 0, 1, 1, LOOM_LOW_PLACEMENT_CAUSE_LOW_SLICE),
       relation(3, 2, 0, 0, 1, LOOM_LOW_PLACEMENT_CAUSE_TIED_RESULT),

@@ -68,6 +68,9 @@ enum loom_low_storage_relation_flag_bits_e {
   // An optional placement objective, such as removing a move, freeing fixed
   // storage, or enabling instruction pairing. It does not establish legality.
   LOOM_LOW_STORAGE_RELATION_FLAG_PREFERRED = 1u << 1,
+  // A tied result writes new contents into the source storage. Identity
+  // aliases require the same storage without changing its contents.
+  LOOM_LOW_STORAGE_RELATION_FLAG_WRITES_STORAGE = 1u << 2,
 };
 
 // Bitset of loom_low_storage_relation_flag_bits_e values.

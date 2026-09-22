@@ -193,7 +193,8 @@ loom_low_allocation_concat_reservation_default_source_assembles_result(
   for (uint32_t i = 0; i < result_range->count; ++i) {
     const loom_low_placement_relation_t* sibling_relation =
         &context->placement->relations[result_range->start + i];
-    if (sibling_relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT) {
+    if (sibling_relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT ||
+        !loom_low_placement_relation_can_alias(sibling_relation)) {
       continue;
     }
     const loom_liveness_interval_t* sibling_interval =

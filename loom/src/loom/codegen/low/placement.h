@@ -64,6 +64,8 @@ enum loom_low_placement_relation_flag_bits_e {
   LOOM_LOW_PLACEMENT_RELATION_FLAG_PREFERRED = 1u << 1,
   // The relation can justify overlapping target-visible storage.
   LOOM_LOW_PLACEMENT_RELATION_FLAG_CAN_ALIAS_STORAGE = 1u << 2,
+  // The required tie writes new contents instead of forwarding an identity.
+  LOOM_LOW_PLACEMENT_RELATION_FLAG_WRITES_STORAGE = 1u << 3,
 };
 
 // Bitset of loom_low_placement_relation_flag_bits_e values.
@@ -133,8 +135,12 @@ typedef struct loom_low_placement_relation_t {
   uint32_t source_unit_offset;
   // Number of units covered by this relation.
   uint32_t unit_count;
-  // Low location bits compared by DIFFERENT_MASKED_LOCATION.
-  uint32_t location_mask;
+  union {
+    // Low location bits compared by DIFFERENT_MASKED_LOCATION.
+    uint32_t location_mask;
+    // Accepted program point of a WRITES_STORAGE relation's write.
+    uint32_t write_point;
+  };
   // Structural relation shape.
   loom_low_placement_relation_kind_t kind;
   // IR feature that created the relation.
@@ -178,8 +184,9 @@ typedef struct loom_low_placement_table_t {
   const loom_value_id_t* value_ids;
   // Number of local value IDs.
   loom_value_ordinal_t value_count;
-  // Placement relations grouped by result value ordinal.
-  const loom_low_placement_relation_t* relations;
+  // Placement relations grouped by result value ordinal. Allocation refines
+  // optional alias permissions before assigning any concrete locations.
+  loom_low_placement_relation_t* relations;
   // Number of relation records.
   iree_host_size_t relation_count;
   // Number of relations constraining concrete location choice.

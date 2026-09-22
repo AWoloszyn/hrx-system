@@ -9,6 +9,7 @@
 #include <string.h>
 
 #include "loom/codegen/low/allocation/copy_decision.h"
+#include "loom/codegen/low/allocation/destructive_reuse.h"
 #include "loom/codegen/low/allocation/edge_copy.h"
 #include "loom/codegen/low/allocation/interval_assignment.h"
 #include "loom/codegen/low/allocation/live_range.h"
@@ -288,6 +289,10 @@ iree_status_t loom_low_allocate_function(
     status = loom_low_allocation_unit_liveness_initialize(
         model->module, &state.target, &state.placement, value_domain,
         &state.liveness, arena, &state.unit_liveness);
+  }
+  if (iree_status_is_ok(status) && state.target_constraints.error_count == 0) {
+    status = loom_low_allocation_refine_destructive_reuse(
+        &state.unit_liveness, &state.placement, arena);
   }
   if (iree_status_is_ok(status) && state.target_constraints.error_count == 0) {
     status = loom_low_allocation_unit_liveness_propagate_storage_relations(

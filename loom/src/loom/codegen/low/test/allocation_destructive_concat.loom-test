@@ -1,0 +1,121 @@
+// RUN: emit low-allocation-json @entry
+
+// The low component remains observable after the tuple is overwritten.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @entry(%low: reg<test.i32 x2>, %high: reg<test.i32 x2>) -> (reg<test.i32 x4>, reg<test.i32 x2>) asm {
+  %tuple = concat(%low, %high) : (reg<test.i32 x2>, reg<test.i32 x2>) -> reg<test.i32 x4>
+  %result = test.early_tied.v4i32 %tuple
+  return %result, %low
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"entry","target":"target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":4,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":4,"name":"tuple","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":1,"end_point":3,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}},{"index":1,"value":{"id":1,"name":"high","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":1,"unit_count":2,"location":{"kind":"target_id","base":2,"count":2}},{"index":2,"value":{"id":0,"name":"low","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":3,"unit_count":2,"location":{"kind":"target_id","base":4,"count":2}},{"index":3,"value":{"id":5,"name":"result","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":2,"end_point":3,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}}],"spill_plans":[],"copy_decisions":[],"remarks":[]}
+
+// ====
+
+// The high component remains observable after the tuple is overwritten.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @entry(%low: reg<test.i32 x2>, %high: reg<test.i32 x2>) -> (reg<test.i32 x4>, reg<test.i32 x2>) asm {
+  %tuple = concat(%low, %high) : (reg<test.i32 x2>, reg<test.i32 x2>) -> reg<test.i32 x4>
+  %result = test.early_tied.v4i32 %tuple
+  return %result, %high
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"entry","target":"target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":4,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":4,"name":"tuple","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":1,"end_point":3,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}},{"index":1,"value":{"id":0,"name":"low","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":1,"unit_count":2,"location":{"kind":"target_id","base":0,"count":2}},{"index":2,"value":{"id":1,"name":"high","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":3,"unit_count":2,"location":{"kind":"target_id","base":4,"count":2}},{"index":3,"value":{"id":5,"name":"result","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":2,"end_point":3,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}}],"spill_plans":[],"copy_decisions":[],"remarks":[]}
+
+// ====
+
+// Dead components still assemble directly into the destructive destination.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @entry(%low: reg<test.i32 x2>, %high: reg<test.i32 x2>) -> (reg<test.i32 x4>) asm {
+  %tuple = concat(%low, %high) : (reg<test.i32 x2>, reg<test.i32 x2>) -> reg<test.i32 x4>
+  %result = test.early_tied.v4i32 %tuple
+  return %result
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"entry","target":"target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":4,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":3,"name":"tuple","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":1,"end_point":3,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}},{"index":1,"value":{"id":0,"name":"low","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":1,"unit_count":2,"location":{"kind":"target_id","base":0,"count":2}},{"index":2,"value":{"id":1,"name":"high","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":1,"unit_count":2,"location":{"kind":"target_id","base":2,"count":2}},{"index":3,"value":{"id":4,"name":"result","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":2,"end_point":3,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}}],"spill_plans":[],"copy_decisions":[],"remarks":[]}
+
+// ====
+
+// A nested concat preserves a live component at its first packing boundary.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @entry(%low: reg<test.i32>, %next: reg<test.i32>, %high: reg<test.i32 x2>) -> (reg<test.i32 x4>, reg<test.i32>) asm {
+  %pair = concat(%low, %next) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32 x2>
+  %tuple = concat(%pair, %high) : (reg<test.i32 x2>, reg<test.i32 x2>) -> reg<test.i32 x4>
+  %result = test.early_tied.v4i32 %tuple
+  return %result, %low
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"entry","target":"target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":6,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":5,"name":"pair","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":1,"end_point":2,"unit_count":2,"location":{"kind":"target_id","base":0,"count":2}},{"index":1,"value":{"id":1,"name":"next","type":"reg<test.i32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":1,"unit_count":1,"location":{"kind":"target_id","base":1,"count":1}},{"index":2,"value":{"id":2,"name":"high","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":2,"unit_count":2,"location":{"kind":"target_id","base":2,"count":2}},{"index":3,"value":{"id":0,"name":"low","type":"reg<test.i32>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":4,"unit_count":1,"location":{"kind":"target_id","base":4,"count":1}},{"index":4,"value":{"id":6,"name":"tuple","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":2,"end_point":4,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}},{"index":5,"value":{"id":7,"name":"result","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":3,"end_point":4,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}}],"spill_plans":[],"copy_decisions":[],"remarks":[]}
+
+// ====
+
+// Slicing retains the original low units after the packed value is consumed.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @entry(%source: reg<test.i32 x4>, %tail: reg<test.i32 x2>) -> (reg<test.i32 x4>, reg<test.i32 x2>) asm {
+  %part = slice %source[0] : reg<test.i32 x4> -> reg<test.i32 x2>
+  %tuple = concat(%part, %tail) : (reg<test.i32 x2>, reg<test.i32 x2>) -> reg<test.i32 x4>
+  %result = test.early_tied.v4i32 %tuple
+  %preserved = slice %source[0] : reg<test.i32 x4> -> reg<test.i32 x2>
+  return %result, %preserved
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"entry","target":"target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":6,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":5,"name":"tuple","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":2,"end_point":5,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}},{"index":1,"value":{"id":1,"name":"tail","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":2,"unit_count":2,"location":{"kind":"target_id","base":2,"count":2}},{"index":2,"value":{"id":0,"name":"source","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":4,"unit_count":4,"location":{"kind":"target_id","base":4,"count":4}},{"index":3,"value":{"id":4,"name":"part","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":1,"end_point":2,"unit_count":2,"location":{"kind":"target_id","base":0,"count":2}},{"index":4,"value":{"id":6,"name":"result","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":3,"end_point":5,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}},{"index":5,"value":{"id":7,"name":"preserved","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":4,"end_point":5,"unit_count":2,"location":{"kind":"target_id","base":4,"count":2}}],"spill_plans":[],"copy_decisions":[],"remarks":[]}
+
+// ====
+
+// Only the untouched high units remain live; the low slice can coalesce.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @entry(%source: reg<test.i32 x4>, %tail: reg<test.i32 x2>) -> (reg<test.i32 x4>, reg<test.i32 x2>) asm {
+  %part = slice %source[0] : reg<test.i32 x4> -> reg<test.i32 x2>
+  %tuple = concat(%part, %tail) : (reg<test.i32 x2>, reg<test.i32 x2>) -> reg<test.i32 x4>
+  %result = test.early_tied.v4i32 %tuple
+  %preserved = slice %source[2] : reg<test.i32 x4> -> reg<test.i32 x2>
+  return %result, %preserved
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"entry","target":"target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":6,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":5,"name":"tuple","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":2,"end_point":5,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}},{"index":1,"value":{"id":1,"name":"tail","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":2,"unit_count":2,"location":{"kind":"target_id","base":2,"count":2}},{"index":2,"value":{"id":0,"name":"source","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":4,"unit_count":4,"location":{"kind":"target_id","base":4,"count":4}},{"index":3,"value":{"id":4,"name":"part","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":1,"end_point":2,"unit_count":2,"location":{"kind":"target_id","base":0,"count":2}},{"index":4,"value":{"id":6,"name":"result","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":3,"end_point":5,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}},{"index":5,"value":{"id":7,"name":"preserved","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":4,"end_point":5,"unit_count":2,"location":{"kind":"target_id","base":6,"count":2}}],"spill_plans":[],"copy_decisions":[],"remarks":[]}
+
+// ====
+
+// An identity between packing and consumption preserves the same obligation.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @entry(%low: reg<test.i32 x2>, %high: reg<test.i32 x2>) -> (reg<test.i32 x4>, reg<test.i32 x2>) asm {
+  %tuple = concat(%low, %high) : (reg<test.i32 x2>, reg<test.i32 x2>) -> reg<test.i32 x4>
+  %alias = low.assume %tuple [range(%tuple, 0, 1024)] : reg<test.i32 x4>
+  %result = test.early_tied.v4i32 %alias
+  return %result, %high
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"entry","target":"target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":5,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":4,"name":"tuple","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":1,"end_point":3,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}},{"index":1,"value":{"id":0,"name":"low","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":1,"unit_count":2,"location":{"kind":"target_id","base":0,"count":2}},{"index":2,"value":{"id":1,"name":"high","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":4,"unit_count":2,"location":{"kind":"target_id","base":4,"count":2}},{"index":3,"value":{"id":5,"name":"alias","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":2,"end_point":4,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}},{"index":4,"value":{"id":6,"name":"result","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":3,"end_point":4,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}}],"spill_plans":[],"copy_decisions":[],"remarks":[]}
+
+// ====
+
+// Component preservation crosses the return edge.
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @entry(%low: reg<test.i32 x2>, %high: reg<test.i32 x2>) -> (reg<test.i32 x4>, reg<test.i32 x2>) asm {
+  low.br ^consume
+^consume:
+  %tuple = concat(%low, %high) : (reg<test.i32 x2>, reg<test.i32 x2>) -> reg<test.i32 x4>
+  %result = test.early_tied.v4i32 %tuple
+  low.br ^exit(%result: reg<test.i32 x4>)
+^exit(%returned: reg<test.i32 x4>):
+  return %returned, %high
+}
+
+// ----
+{"format":"loom.low.allocation.v0","function":"entry","target":"target","descriptor_set":"test.low.core","allocation_mode":"virtual","assignment_count":5,"remark_count":0,"copy_decision_count":0,"spill_count":0,"spill_plan_count":0,"coalesced_copy_count":0,"materialized_copy_count":0,"assignments":[{"index":0,"value":{"id":4,"name":"tuple","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":3,"end_point":5,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}},{"index":1,"value":{"id":0,"name":"low","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":3,"unit_count":2,"location":{"kind":"target_id","base":0,"count":2}},{"index":2,"value":{"id":1,"name":"high","type":"reg<test.i32 x2>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":0,"end_point":7,"unit_count":2,"location":{"kind":"target_id","base":4,"count":2}},{"index":3,"value":{"id":5,"name":"result","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":4,"end_point":5,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}},{"index":4,"value":{"id":6,"name":"returned","type":"reg<test.i32 x4>"},"class":{"type_kind":12,"type_kind_name":"register","element_type":0,"element_type_name":null,"register_class":"test.i32"},"start_point":6,"end_point":7,"unit_count":4,"location":{"kind":"target_id","base":0,"count":4}}],"spill_plans":[],"copy_decisions":[],"remarks":[]}

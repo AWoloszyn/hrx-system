@@ -1081,6 +1081,9 @@ static iree_status_t loom_low_allocation_coalescing_assign_concat_interval(
     if (relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT) {
       continue;
     }
+    if (!loom_low_placement_relation_can_alias(relation)) {
+      return iree_ok_status();
+    }
     if (concat_source_count == UINT16_MAX) {
       return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                               "low.concat placement source count exceeds "
@@ -1225,7 +1228,8 @@ static iree_status_t loom_low_allocation_coalescing_assign_concat_interval(
 static bool loom_low_allocation_coalescing_relation_source_matches_interval(
     const loom_low_placement_relation_t* relation,
     const loom_liveness_interval_t* interval) {
-  if (relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT) {
+  if (relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT ||
+      !loom_low_placement_relation_can_alias(relation)) {
     return false;
   }
   return relation->source_unit_offset <= interval->unit_count &&
@@ -1349,7 +1353,8 @@ static iree_status_t loom_low_allocation_coalescing_concat_ignored_sources(
   for (uint32_t i = 0; i < range->count; ++i) {
     const loom_low_placement_relation_t* relation =
         &context->placement->relations[range->start + i];
-    if (relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT) {
+    if (relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT ||
+        !loom_low_placement_relation_can_alias(relation)) {
       continue;
     }
     if (*out_ignored_value_count == UINT16_MAX) {
@@ -1369,7 +1374,8 @@ static iree_status_t loom_low_allocation_coalescing_concat_ignored_sources(
   for (uint32_t i = 0; i < range->count; ++i) {
     const loom_low_placement_relation_t* relation =
         &context->placement->relations[range->start + i];
-    if (relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT) {
+    if (relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT ||
+        !loom_low_placement_relation_can_alias(relation)) {
       continue;
     }
     (*out_ignored_value_ids)[ignored_value_index++] =
@@ -1674,6 +1680,7 @@ loom_low_allocation_coalescing_assign_concat_source_relation(
         &context->placement->relations[result_range.start + result_index];
     if (sibling_relation == relation ||
         sibling_relation->cause != LOOM_LOW_PLACEMENT_CAUSE_LOW_CONCAT ||
+        !loom_low_placement_relation_can_alias(sibling_relation) ||
         sibling_relation->source_ordinal == relation->source_ordinal) {
       continue;
     }

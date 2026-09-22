@@ -528,6 +528,7 @@ loom_cc_library(
     loom::codegen::low::allocation::assignment_map
     loom::codegen::low::allocation::coalescing
     loom::codegen::low::allocation::copy_decision
+    loom::codegen::low::allocation::destructive_reuse
     loom::codegen::low::allocation::diagnostics
     loom::codegen::low::allocation::edge_copy
     loom::codegen::low::allocation::interval_assignment
