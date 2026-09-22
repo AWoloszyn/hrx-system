@@ -8,8 +8,9 @@ legalization preserves the representation chosen by that legalization.
 `combine` runs the same simplifications and adds source representation
 combines. Adjacent scalar loads can become a vector load; scalar table
 extracts followed by vector construction can become `vector.table.lookup`.
-These operations may need target legalization, so `combine` belongs before
-that boundary. The source pipeline and C++ importer CLI select this pass.
+Ordered scalar rounding and conversion chains can become elementwise vector
+operations. These operations may need target legalization, so `combine` belongs
+before that boundary. The source pipeline and C++ importer CLI select this pass.
 
 For example, a pipeline can use:
 

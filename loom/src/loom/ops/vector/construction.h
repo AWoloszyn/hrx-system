@@ -1,0 +1,35 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+#ifndef LOOM_OPS_VECTOR_CONSTRUCTION_H_
+#define LOOM_OPS_VECTOR_CONSTRUCTION_H_
+
+#include "loom/rewrite/rewriter.h"
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+// Folds a vector.from_elements of every unmodified source lane, in order, to
+// that source. This identity introduces no operation and is valid at any phase.
+// Nonmatching constructions remain unchanged and allocate no scratch storage.
+iree_status_t loom_vector_from_elements_fold_source(loom_op_t* op,
+                                                    loom_rewriter_t* rewriter,
+                                                    bool* out_changed);
+
+// Combines identical scalar rounding/conversion chains on ordered source lanes
+// into elementwise vector operations. Only run before target legalization:
+// scalarization deliberately decomposes these operations into the same chains.
+// The bounded matcher borrows verified IR and allocates only on a match.
+iree_status_t loom_vector_from_elements_combine_lanes(loom_op_t* op,
+                                                      loom_rewriter_t* rewriter,
+                                                      bool* out_changed);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif  // LOOM_OPS_VECTOR_CONSTRUCTION_H_

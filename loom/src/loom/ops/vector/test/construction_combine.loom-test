@@ -1,0 +1,89 @@
+// RUN: pass combine
+
+// Scalar lane chains produced by importers fold back to the equivalent vector
+// operations before target legalization chooses their physical representation.
+func.def @from_elements_of_scalarized_quantizer_chain(%values: vector<4xf32>) -> (vector<4xi8>) {
+  %lane0 = vector.extract %values[0] : vector<4xf32> -> f32
+  %rounded0 = scalar.roundevenf %lane0 : f32
+  %i32_0 = scalar.fptosi %rounded0 : f32 to i32
+  %i8_0 = scalar.trunci %i32_0 : i32 to i8
+  %lane1 = vector.extract %values[1] : vector<4xf32> -> f32
+  %rounded1 = scalar.roundevenf %lane1 : f32
+  %i32_1 = scalar.fptosi %rounded1 : f32 to i32
+  %i8_1 = scalar.trunci %i32_1 : i32 to i8
+  %lane2 = vector.extract %values[2] : vector<4xf32> -> f32
+  %rounded2 = scalar.roundevenf %lane2 : f32
+  %i32_2 = scalar.fptosi %rounded2 : f32 to i32
+  %i8_2 = scalar.trunci %i32_2 : i32 to i8
+  %lane3 = vector.extract %values[3] : vector<4xf32> -> f32
+  %rounded3 = scalar.roundevenf %lane3 : f32
+  %i32_3 = scalar.fptosi %rounded3 : f32 to i32
+  %i8_3 = scalar.trunci %i32_3 : i32 to i8
+  %packed = vector.from_elements %i8_0, %i8_1, %i8_2, %i8_3 : vector<4xi8>
+  func.return %packed : vector<4xi8>
+}
+// ----
+func.def @from_elements_of_scalarized_quantizer_chain(%values: vector<4xf32>) -> (vector<4xi8>) {
+  %19 = vector.roundevenf %values : vector<4xf32>
+  %20 = vector.fptosi %19 : vector<4xf32> to vector<4xi32>
+  %packed = vector.trunci %20 : vector<4xi32> to vector<4xi8>
+  func.return %packed : vector<4xi8>
+}
+
+// ====
+
+// The same scalar integer conversion can feed a floating-point q-sum path and
+// a packed-byte path. Source combination reconstructs both vector chains; CSE in
+// the normal cleanup pipeline merges the duplicated vector.fptosi.
+func.def @from_elements_of_scalarized_quantizer_dual_use(%values: vector<4xf32>) -> (vector<4xf32>, vector<4xi8>) {
+  %lane0 = vector.extract %values[0] : vector<4xf32> -> f32
+  %i32_0 = scalar.fptosi %lane0 : f32 to i32
+  %f32_0 = scalar.sitofp %i32_0 : i32 to f32
+  %i8_0 = scalar.trunci %i32_0 : i32 to i8
+  %lane1 = vector.extract %values[1] : vector<4xf32> -> f32
+  %i32_1 = scalar.fptosi %lane1 : f32 to i32
+  %f32_1 = scalar.sitofp %i32_1 : i32 to f32
+  %i8_1 = scalar.trunci %i32_1 : i32 to i8
+  %lane2 = vector.extract %values[2] : vector<4xf32> -> f32
+  %i32_2 = scalar.fptosi %lane2 : f32 to i32
+  %f32_2 = scalar.sitofp %i32_2 : i32 to f32
+  %i8_2 = scalar.trunci %i32_2 : i32 to i8
+  %lane3 = vector.extract %values[3] : vector<4xf32> -> f32
+  %i32_3 = scalar.fptosi %lane3 : f32 to i32
+  %f32_3 = scalar.sitofp %i32_3 : i32 to f32
+  %i8_3 = scalar.trunci %i32_3 : i32 to i8
+  %q_f32 = vector.from_elements %f32_0, %f32_1, %f32_2, %f32_3 : vector<4xf32>
+  %q_i8 = vector.from_elements %i8_0, %i8_1, %i8_2, %i8_3 : vector<4xi8>
+  func.return %q_f32, %q_i8 : vector<4xf32>, vector<4xi8>
+}
+// ----
+func.def @from_elements_of_scalarized_quantizer_dual_use(%values: vector<4xf32>) -> (vector<4xf32>, vector<4xi8>) {
+  %23 = vector.fptosi %values : vector<4xf32> to vector<4xi32>
+  %q_f32 = vector.sitofp %23 : vector<4xi32> to vector<4xf32>
+  %21 = vector.fptosi %values : vector<4xf32> to vector<4xi32>
+  %q_i8 = vector.trunci %21 : vector<4xi32> to vector<4xi8>
+  func.return %q_f32, %q_i8 : vector<4xf32>, vector<4xi8>
+}
+
+// ====
+
+// Reconstruction retains source lane order and per-lane numerical permissions.
+func.def @different_rounding_permissions(%values: vector<2xf32>) -> (vector<2xf32>) {
+  %left = vector.extract %values[0] : vector<2xf32> -> f32
+  %right = vector.extract %values[1] : vector<2xf32> -> f32
+  %rounded_left = scalar.roundevenf<nnan> %left : f32
+  %rounded_right = scalar.roundevenf %right : f32
+  %result = vector.from_elements %rounded_left, %rounded_right : vector<2xf32>
+  func.return %result : vector<2xf32>
+}
+
+// ====
+
+func.def @reordered_conversions(%values: vector<2xf32>) -> (vector<2xi32>) {
+  %left = vector.extract %values[1] : vector<2xf32> -> f32
+  %right = vector.extract %values[0] : vector<2xf32> -> f32
+  %converted_left = scalar.fptosi %left : f32 to i32
+  %converted_right = scalar.fptosi %right : f32 to i32
+  %result = vector.from_elements %converted_left, %converted_right : vector<2xi32>
+  func.return %result : vector<2xi32>
+}

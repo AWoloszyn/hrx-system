@@ -6,6 +6,7 @@
 
 #include "loom/transforms/cleanup/canonicalize.h"
 
+#include "loom/ops/vector/construction.h"
 #include "loom/ops/vector/ops.h"
 #include "loom/ops/vector/table.h"
 #include "loom/ops/view/ops.h"
@@ -127,6 +128,11 @@ static iree_status_t loom_combine_patterns(
                                              out_changed);
   }
   if (loom_vector_from_elements_isa(op)) {
+    IREE_RETURN_IF_ERROR(
+        loom_vector_from_elements_combine_lanes(op, rewriter, out_changed));
+    if (*out_changed) {
+      return iree_ok_status();
+    }
     return loom_vector_from_elements_to_table_lookup(op, rewriter, out_changed);
   }
   if (loom_vector_table_lookup_isa(op)) {

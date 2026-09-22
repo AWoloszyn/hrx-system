@@ -27,6 +27,7 @@ loom_generated_cc_library(
     loom::py::loom::gen::ops::c_tables_vector_generator
   SRCS
     "canonicalize.c"
+    "construction.c"
     "facts.c"
     "fragment.c"
     "memory.c"
@@ -73,6 +74,7 @@ loom_generated_cc_library(
     "tables/reduction.c"
     "tables/table.c"
   HDRS
+    "construction.h"
     "fragment.h"
     "memory.h"
     "ops.h"

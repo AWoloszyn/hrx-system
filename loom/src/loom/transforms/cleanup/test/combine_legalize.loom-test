@@ -25,3 +25,25 @@ func.def @adjacent_loads(%view: view<2xf16>) -> (f16, f16) {
   %right = view.load %view[1] : view<2xf16> -> f16
   func.return %left, %right : f16, f16
 }
+
+// ====
+
+// Cleanup must not reconstruct vector conversions from their scalar lowering.
+func.def @scalarized_conversion(%values: vector<4xf32>) -> (vector<4xi32>) {
+  %result = vector.fptosi %values : vector<4xf32> to vector<4xi32>
+  func.return %result : vector<4xi32>
+}
+
+// ----
+func.def @scalarized_conversion(%values: vector<4xf32>) -> (vector<4xi32>) {
+  %3 = vector.extract %values[0] : vector<4xf32> -> f32
+  %4 = scalar.fptosi %3 : f32 to i32
+  %5 = vector.extract %values[1] : vector<4xf32> -> f32
+  %6 = scalar.fptosi %5 : f32 to i32
+  %7 = vector.extract %values[2] : vector<4xf32> -> f32
+  %8 = scalar.fptosi %7 : f32 to i32
+  %9 = vector.extract %values[3] : vector<4xf32> -> f32
+  %10 = scalar.fptosi %9 : f32 to i32
+  %result = vector.from_elements %4, %6, %8, %10 : vector<4xi32>
+  func.return %result : vector<4xi32>
+}
