@@ -7,6 +7,8 @@
 #include "loom/tooling/execution/hal/candidate.h"
 
 #include <cstring>
+#include <string>
+#include <vector>
 
 #include "iree/base/byte_sequence.h"
 #include "iree/testing/gtest.h"
@@ -50,6 +52,7 @@ bool g_fake_hal_emit_was_called = false;
 loom_target_compile_report_t* g_fake_hal_emit_report = nullptr;
 const loom_function_version_list_t* g_fake_hal_emit_function_versions = nullptr;
 uint32_t g_fake_hal_emit_source_to_low_max_errors = 0;
+uint32_t g_fake_hal_artifact_release_count = 0;
 const uint8_t kFakeHalExecutableData[] = {0x7F, 'E', 'L', 'F'};
 const uint8_t kFakeHalTargetArtifactData[] = {'h', 's', 'a', 'c', 'o'};
 static const loom_target_snapshot_t kFakeSnapshot = {
@@ -155,12 +158,30 @@ iree_status_t FakeHalEmitArtifact(const loom_artifact_provider_t* provider,
   return iree_ok_status();
 }
 
+iree_status_t FakeHalFailAfterArtifactEmission(
+    const loom_artifact_provider_t* provider, loom_module_t* module,
+    const loom_artifact_target_t* target, const loom_compile_options_t* options,
+    iree_allocator_t allocator, bool* out_emitted,
+    loom_artifact_t* out_artifact) {
+  IREE_RETURN_IF_ERROR(FakeHalEmitArtifact(
+      provider, module, target, options, allocator, out_emitted, out_artifact));
+  const loom_target_compile_report_config_binding_row_t row = {
+      IREE_SVL("phase"),
+      IREE_SVL("emission"),
+  };
+  IREE_RETURN_IF_ERROR(loom_target_compile_report_record_config_binding_row(
+      options->report, &row));
+  return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                          "provider failed after producing artifact bytes");
+}
+
 void FakeHalDeinitializeArtifact(const loom_artifact_provider_t* provider,
                                  loom_artifact_t* artifact,
                                  iree_allocator_t allocator) {
   (void)provider;
   auto* storage = static_cast<fake_hal_artifact_storage_t*>(artifact->storage);
   if (storage != nullptr) {
+    ++g_fake_hal_artifact_release_count;
     iree_byte_sequence_release(storage->target_artifact);
     iree_byte_sequence_release(storage->executable);
     iree_allocator_free(allocator, storage);
@@ -191,6 +212,7 @@ class HalCandidateTest : public ::testing::Test {
     g_fake_hal_emit_report = nullptr;
     g_fake_hal_emit_function_versions = nullptr;
     g_fake_hal_emit_source_to_low_max_errors = 0;
+    g_fake_hal_artifact_release_count = 0;
     loom_run_session_options_t options = {};
     loom_run_session_options_initialize(&options);
     options.register_context = (loom_run_register_context_callback_t){
@@ -242,8 +264,7 @@ TEST_F(HalCandidateTest, EmitHalExecutableCandidate) {
       &kFakeDeviceProvider, &kFakeDeviceTarget, &run_module, &options,
       iree_allocator_system(), &candidate));
   EXPECT_TRUE(g_fake_hal_emit_was_called);
-  EXPECT_EQ(g_fake_hal_emit_report,
-            &candidate.artifact_candidate.compile_report);
+  EXPECT_EQ(g_fake_hal_emit_report, &report);
   EXPECT_EQ(g_fake_hal_emit_function_versions, &function_versions);
   EXPECT_EQ(g_fake_hal_emit_source_to_low_max_errors, 73u);
   EXPECT_EQ(candidate.provider, &kFakeDeviceProvider);
@@ -271,23 +292,14 @@ TEST_F(HalCandidateTest, EmitHalExecutableCandidate) {
   EXPECT_EQ(memcmp(executable.contents().data, kFakeHalExecutableData,
                    sizeof(kFakeHalExecutableData)),
             0);
-  EXPECT_EQ(candidate.artifact_candidate.compile_report.artifact_kind,
+  EXPECT_EQ(report.artifact_kind,
             LOOM_TARGET_COMPILE_ARTIFACT_KIND_HAL_EXECUTABLE);
-  EXPECT_EQ(candidate.artifact_candidate.compile_report.status_code,
-            IREE_STATUS_OK);
-  EXPECT_TRUE(iree_string_view_equal(
-      candidate.artifact_candidate.compile_report.backend_name,
-      IREE_SV("fake-hal")));
-  EXPECT_TRUE(iree_string_view_equal(
-      candidate.artifact_candidate.compile_report.target_key,
-      IREE_SV("fake-hal-target")));
-  EXPECT_TRUE(iree_string_view_equal(
-      candidate.artifact_candidate.compile_report.artifact_format,
-      IREE_SV("elf")));
-  EXPECT_EQ(candidate.artifact_candidate.compile_report.artifact_size,
-            sizeof(kFakeHalExecutableData));
-  EXPECT_EQ(report.artifact_size,
-            candidate.artifact_candidate.compile_report.artifact_size);
+  EXPECT_EQ(report.status_code, IREE_STATUS_OK);
+  EXPECT_TRUE(iree_string_view_equal(report.backend_name, IREE_SV("fake-hal")));
+  EXPECT_TRUE(
+      iree_string_view_equal(report.target_key, IREE_SV("fake-hal-target")));
+  EXPECT_TRUE(iree_string_view_equal(report.artifact_format, IREE_SV("elf")));
+  EXPECT_EQ(report.artifact_size, sizeof(kFakeHalExecutableData));
 
   loom_run_hal_candidate_deinitialize(&candidate);
   EXPECT_EQ(candidate.provider, nullptr);
@@ -309,9 +321,6 @@ TEST_F(HalCandidateTest, EmitHalExecutableCandidateWithoutReport) {
       iree_allocator_system(), &candidate));
   EXPECT_TRUE(g_fake_hal_emit_was_called);
   EXPECT_EQ(g_fake_hal_emit_report, nullptr);
-  EXPECT_EQ(candidate.artifact_candidate.compile_report.detail_flags,
-            LOOM_TARGET_COMPILE_REPORT_DETAIL_NONE);
-  EXPECT_EQ(candidate.artifact_candidate.compile_report.artifact_size, 0u);
 
   loom_run_hal_candidate_deinitialize(&candidate);
   loom_run_module_deinitialize(&run_module);
@@ -332,6 +341,61 @@ TEST_F(HalCandidateTest, EmitHalRequiresTarget) {
                             iree_allocator_system(), &candidate));
   EXPECT_EQ(candidate.provider, nullptr);
 
+  loom_run_module_deinitialize(&run_module);
+}
+
+TEST_F(HalCandidateTest, ProviderFailurePreservesCallerReport) {
+  loom_run_module_t run_module = {};
+  IREE_ASSERT_OK(Parse(IREE_SV(kHalSource), &run_module));
+
+  loom_target_compile_report_t report;
+  loom_target_compile_report_initialize(&report, iree_allocator_system());
+  report.requested_detail_flags =
+      LOOM_TARGET_COMPILE_REPORT_DETAIL_CONFIG_BINDING_ROWS;
+  const loom_target_compile_report_config_binding_row_t row = {
+      IREE_SVL("phase"),
+      IREE_SVL("compilation"),
+  };
+  IREE_ASSERT_OK(
+      loom_target_compile_report_record_config_binding_row(&report, &row));
+  const auto* original_rows = report.config_binding_rows.head;
+
+  loom_compile_options_t options = {};
+  InitializeCompileOptions(&run_module, &options);
+  options.report = &report;
+  loom_artifact_provider_t artifact_provider = kFakeArtifactProvider;
+  artifact_provider.emit_artifact = FakeHalFailAfterArtifactEmission;
+  loom_device_provider_t device_provider = kFakeDeviceProvider;
+  device_provider.artifact_provider = &artifact_provider;
+
+  loom_run_hal_candidate_t candidate = {};
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED,
+                        loom_run_hal_candidate_emit_target(
+                            &device_provider, &kFakeDeviceTarget, &run_module,
+                            &options, iree_allocator_system(), &candidate));
+  EXPECT_EQ(g_fake_hal_emit_report, &report);
+  EXPECT_EQ(g_fake_hal_artifact_release_count, 1u);
+  EXPECT_EQ(candidate.provider, nullptr);
+  EXPECT_EQ(candidate.artifact_candidate.artifact.storage, nullptr);
+  EXPECT_EQ(report.status_code, IREE_STATUS_RESOURCE_EXHAUSTED);
+  EXPECT_EQ(report.config_binding_rows.head, original_rows);
+  EXPECT_EQ(report.config_binding_rows.count, 2u);
+
+  std::vector<std::string> phases;
+  for (const auto* block = report.config_binding_rows.head; block != nullptr;
+       block = block->next) {
+    const auto* rows =
+        static_cast<const loom_target_compile_report_config_binding_row_t*>(
+            loom_target_compile_report_vec_const_rows(block));
+    for (iree_host_size_t i = 0; i < block->count; ++i) {
+      phases.emplace_back(rows[i].value.data, rows[i].value.size);
+    }
+  }
+  EXPECT_EQ(phases, (std::vector<std::string>{"compilation", "emission"}));
+
+  loom_run_hal_candidate_deinitialize(&candidate);
+  EXPECT_EQ(g_fake_hal_artifact_release_count, 1u);
+  loom_target_compile_report_deinitialize(&report);
   loom_run_module_deinitialize(&run_module);
 }
 

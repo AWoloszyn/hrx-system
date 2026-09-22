@@ -28,7 +28,7 @@ static iree_status_t loom_target_compile_report_pipeline_plan_copy_rows(
   return iree_ok_status();
 }
 
-void loom_target_compile_report_pipeline_plan_deinitialize(
+static void loom_target_compile_report_pipeline_plan_deinitialize(
     loom_target_compile_report_pipeline_plan_t* plan,
     iree_allocator_t host_allocator) {
   if (plan == NULL) {
@@ -39,7 +39,7 @@ void loom_target_compile_report_pipeline_plan_deinitialize(
   *plan = (loom_target_compile_report_pipeline_plan_t){0};
 }
 
-iree_status_t loom_target_compile_report_pipeline_plan_clone(
+static iree_status_t loom_target_compile_report_pipeline_plan_clone(
     const loom_target_compile_report_pipeline_plan_t* source,
     loom_target_compile_report_pipeline_plan_t* out_target,
     iree_allocator_t host_allocator) {
@@ -83,35 +83,6 @@ void loom_target_compile_report_pipeline_plan_list_deinitialize(
   }
   iree_allocator_free(host_allocator, list->values);
   *list = (loom_target_compile_report_pipeline_plan_list_t){0};
-}
-
-iree_status_t loom_target_compile_report_pipeline_plan_list_clone(
-    const loom_target_compile_report_pipeline_plan_list_t* source,
-    loom_target_compile_report_pipeline_plan_list_t* out_target,
-    iree_allocator_t host_allocator) {
-  *out_target = (loom_target_compile_report_pipeline_plan_list_t){0};
-  if (source->count == 0 || iree_allocator_is_null(host_allocator)) {
-    return iree_ok_status();
-  }
-  loom_target_compile_report_pipeline_plan_t* values = NULL;
-  IREE_RETURN_IF_ERROR(iree_allocator_malloc_array(
-      host_allocator, source->count, sizeof(*values), (void**)&values));
-  out_target->values = values;
-  out_target->capacity = source->count;
-  iree_status_t status = iree_ok_status();
-  for (iree_host_size_t i = 0; i < source->count && iree_status_is_ok(status);
-       ++i) {
-    status = loom_target_compile_report_pipeline_plan_clone(
-        &source->values[i], &values[i], host_allocator);
-    if (iree_status_is_ok(status)) {
-      ++out_target->count;
-    }
-  }
-  if (!iree_status_is_ok(status)) {
-    loom_target_compile_report_pipeline_plan_list_deinitialize(out_target,
-                                                               host_allocator);
-  }
-  return status;
 }
 
 static iree_status_t loom_target_compile_report_pipeline_plan_list_reserve(

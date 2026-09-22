@@ -379,7 +379,7 @@ TEST(CompileReportFormatTest, FormatsAndAggregatesLowPlanningStatistics) {
   loom_target_compile_report_deinitialize(&report);
 }
 
-TEST(CompileReportFormatTest, FormatsAndClonesPipelinePlans) {
+TEST(CompileReportFormatTest, OwnsAndFormatsPipelinePlans) {
   loom_target_compile_report_pipeline_worker_row_t worker = {};
   worker.worker_index = 0;
   worker.group_index = 2;
@@ -484,16 +484,9 @@ TEST(CompileReportFormatTest, FormatsAndClonesPipelinePlans) {
   ASSERT_NE(report.pipeline_plans.values[0].worker_rows,
             report.pipeline_plans.values[1].worker_rows);
 
-  loom_target_compile_report_t clone = {};
-  IREE_ASSERT_OK(loom_target_compile_report_clone(
-      &report, iree_allocator_system(), &clone));
-  ASSERT_EQ(clone.pipeline_plans.count, 2u);
-  ASSERT_NE(clone.pipeline_plans.values[0].worker_rows,
-            report.pipeline_plans.values[0].worker_rows);
-  ASSERT_NE(clone.pipeline_plans.values[0].channel_rows,
-            report.pipeline_plans.values[0].channel_rows);
-  ASSERT_NE(clone.pipeline_plans.values[1].worker_rows,
-            report.pipeline_plans.values[1].worker_rows);
+  worker = {};
+  channel = {};
+  pipeline_plan = {};
 
   iree_string_builder_t builder;
   iree_string_builder_initialize(iree_allocator_system(), &builder);
@@ -503,7 +496,7 @@ TEST(CompileReportFormatTest, FormatsAndClonesPipelinePlans) {
       /*.mode=*/LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_DETAILS,
   };
   IREE_ASSERT_OK(
-      loom_target_compile_report_format_json(&clone, &options, &stream));
+      loom_target_compile_report_format_json(&report, &options, &stream));
   const iree_string_view_t root =
       ParseJsonDocument(iree_string_builder_view(&builder));
   const iree_string_view_t plans =
@@ -532,7 +525,6 @@ TEST(CompileReportFormatTest, FormatsAndClonesPipelinePlans) {
   ExpectObjectValueEquals(second_plan, IREE_SV("root"), IREE_SV("q4_gate_up"));
   iree_string_builder_deinitialize(&builder);
 
-  loom_target_compile_report_deinitialize(&clone);
   loom_target_compile_report_deinitialize(&report);
 }
 

@@ -83,12 +83,3 @@ iree_status_t loom_target_compile_report_row_list_append_all(
   }
   return iree_ok_status();
 }
-
-iree_status_t loom_target_compile_report_row_list_clone(
-    const loom_target_compile_report_row_list_t* source,
-    iree_host_size_t row_size, iree_allocator_t allocator,
-    loom_target_compile_report_row_list_t* target) {
-  *target = (loom_target_compile_report_row_list_t){0};
-  return loom_target_compile_report_row_list_append_all(target, source,
-                                                        row_size, allocator);
-}

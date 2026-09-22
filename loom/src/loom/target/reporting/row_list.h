@@ -28,12 +28,6 @@ iree_status_t loom_target_compile_report_row_list_append_all(
     const loom_target_compile_report_row_list_t* source,
     iree_host_size_t row_size, iree_allocator_t allocator);
 
-// Initializes |target| as an owned copy of |source|.
-iree_status_t loom_target_compile_report_row_list_clone(
-    const loom_target_compile_report_row_list_t* source,
-    iree_host_size_t row_size, iree_allocator_t allocator,
-    loom_target_compile_report_row_list_t* target);
-
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

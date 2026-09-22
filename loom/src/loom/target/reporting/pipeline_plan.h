@@ -256,26 +256,9 @@ typedef struct loom_target_compile_report_pipeline_plan_list_t {
   iree_host_size_t capacity;
 } loom_target_compile_report_pipeline_plan_list_t;
 
-// Releases row storage owned by |plan| and resets it to zero.
-void loom_target_compile_report_pipeline_plan_deinitialize(
-    loom_target_compile_report_pipeline_plan_t* plan,
-    iree_allocator_t host_allocator);
-
-// Initializes |out_target| as an owned copy of |source|.
-iree_status_t loom_target_compile_report_pipeline_plan_clone(
-    const loom_target_compile_report_pipeline_plan_t* source,
-    loom_target_compile_report_pipeline_plan_t* out_target,
-    iree_allocator_t host_allocator);
-
 // Releases every plan owned by |list| and resets it to empty.
 void loom_target_compile_report_pipeline_plan_list_deinitialize(
     loom_target_compile_report_pipeline_plan_list_t* list,
-    iree_allocator_t host_allocator);
-
-// Initializes |out_target| as an owned copy of |source|.
-iree_status_t loom_target_compile_report_pipeline_plan_list_clone(
-    const loom_target_compile_report_pipeline_plan_list_t* source,
-    loom_target_compile_report_pipeline_plan_list_t* out_target,
     iree_allocator_t host_allocator);
 
 // Records one pipeline realization, copying detail rows only when requested.
