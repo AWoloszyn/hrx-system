@@ -93,7 +93,7 @@ typedef struct loom_parser_t {
   // Pending CFG successor labels awaiting the end of their enclosing region.
   loom_parser_pending_successor_refs_t pending_successor_refs;
 
-  // First source occurrence of every module symbol created during parsing.
+  // Definition admission and source origins for parser-created module symbols.
   loom_parser_symbol_origins_t symbol_origins;
 
   // Placeholder values created by ARG-mode type parsing.

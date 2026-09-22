@@ -1064,13 +1064,21 @@ iree_status_t loom_parser_walk_format(
         break;
       }
 
-      case LOOM_FORMAT_KIND_ATTR_VALUE: {
+      case LOOM_FORMAT_KIND_ATTR_VALUE:
+      case LOOM_FORMAT_KIND_SYMBOL_REF: {
         loom_token_t start_token = loom_tokenizer_peek(&parser->tokenizer);
         const loom_attr_descriptor_t* descriptor =
             &vtable->attr_descriptors[element->field_index];
         loom_attribute_t attr = {0};
         uint32_t attr_errors_before = parser->error_count;
-        IREE_RETURN_IF_ERROR(loom_parse_attr_value(parser, descriptor, &attr));
+        if (vtable->symbol_def &&
+            element->field_index == vtable->symbol_def->name_attr_index) {
+          IREE_RETURN_IF_ERROR(loom_parse_symbol_ref_attr(
+              parser, /*is_definition=*/true, &attr));
+        } else {
+          IREE_RETURN_IF_ERROR(
+              loom_parse_attr_value(parser, descriptor, &attr));
+        }
         if (parser->error_count > attr_errors_before) {
           return iree_ok_status();
         }
@@ -1079,22 +1087,6 @@ iree_status_t loom_parser_walk_format(
         IREE_RETURN_IF_ERROR(loom_parse_format_add_field_span(
             parser, parsed, LOOM_LOCATION_FIELD_ATTRIBUTE, element->field_index,
             start_token));
-        break;
-      }
-
-      case LOOM_FORMAT_KIND_SYMBOL_REF: {
-        loom_token_t token = loom_tokenizer_peek(&parser->tokenizer);
-        loom_attribute_t attr = {0};
-        uint32_t attr_errors_before = parser->error_count;
-        IREE_RETURN_IF_ERROR(loom_parse_symbol_ref_attr(parser, &attr));
-        if (parser->error_count > attr_errors_before) {
-          return iree_ok_status();
-        }
-        IREE_RETURN_IF_ERROR(loom_parsed_op_set_attribute(
-            parsed, &parser->parser_arena, element->field_index, attr));
-        IREE_RETURN_IF_ERROR(loom_parsed_op_add_field_span(
-            parsed, &parser->parser_arena, LOOM_LOCATION_FIELD_ATTRIBUTE,
-            element->field_index, token, token.line, token.end_column));
         break;
       }
 
