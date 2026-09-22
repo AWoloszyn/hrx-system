@@ -101,10 +101,11 @@ iree_status_t loom_cfg_forward_empty_blocks(
   }
   uint16_t* targets = NULL;
   const loom_op_t** payloads = NULL;
+  // Payload pointers and target indices share one projection lifetime.
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, graph->block_count, sizeof(*targets), (void**)&targets));
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, graph->block_count, sizeof(*payloads), (void**)&payloads));
+      arena, graph->block_count, sizeof(*payloads) + sizeof(*targets),
+      (void**)&payloads));
+  targets = (uint16_t*)(payloads + graph->block_count);
   memset(payloads, 0, graph->block_count * sizeof(*payloads));
   bool has_forwarding = false;
   for (uint16_t i = 0; i < graph->block_count; ++i) {
@@ -131,8 +132,6 @@ iree_status_t loom_cfg_forward_empty_blocks(
       loom_cfg_resolve_forwarding_targets(targets, graph->block_count, arena));
 
   loom_cfg_forward_edge_t* edits = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, graph->edge_count, sizeof(*edits), (void**)&edits));
   iree_host_size_t edit_count = 0;
   for (iree_host_size_t i = 0; i < graph->edge_count; ++i) {
     const loom_cfg_edge_info_t* edge = &graph->edges[i];
@@ -155,6 +154,10 @@ iree_status_t loom_cfg_forward_empty_blocks(
     }
     if (edit.destination == graph->blocks[edge->target_block_index].block) {
       continue;
+    }
+    if (!edits) {
+      IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+          arena, graph->edge_count, sizeof(*edits), (void**)&edits));
     }
     edits[edit_count++] = edit;
   }

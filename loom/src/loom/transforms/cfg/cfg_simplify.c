@@ -1070,16 +1070,8 @@ static bool loom_cfg_simplify_can_redirect_block_predecessors(
 static uint16_t loom_cfg_simplify_find_equivalent_block(
     const loom_cfg_simplify_state_t* state, const loom_cfg_graph_t* graph,
     loom_cfg_simplify_block_hash_table_t* table, const uint16_t* destinations,
-    uint16_t block_index) {
-  if (!loom_cfg_simplify_is_alpha_merge_candidate(state, graph, block_index)) {
-    return 0;
-  }
+    uint16_t block_index, uint32_t fingerprint) {
   const loom_block_t* block = graph->blocks[block_index].block;
-  uint32_t fingerprint = 0;
-  if (!loom_cfg_simplify_alpha_block_fingerprint(graph, destinations, block,
-                                                 &fingerprint)) {
-    return 0;
-  }
   iree_host_size_t slot = fingerprint & (table->capacity - 1);
   while (table->entries[slot].block_index != 0) {
     const loom_cfg_simplify_block_hash_entry_t* entry = &table->entries[slot];
@@ -1128,9 +1120,6 @@ static iree_status_t loom_cfg_simplify_merge_equivalent_blocks(
     return iree_ok_status();
   }
   loom_cfg_simplify_block_hash_table_t table = {0};
-  IREE_RETURN_IF_ERROR(loom_cfg_simplify_block_hash_table_initialize(
-      state->analysis_arena, graph->block_count, &table));
-
   uint16_t* destinations = NULL;
   bool* remove_blocks = NULL;
   uint16_t merge_count = 0;
@@ -1141,8 +1130,22 @@ static iree_status_t loom_cfg_simplify_merge_equivalent_blocks(
   for (iree_host_size_t i = graph->reverse_postorder.count;
        i > 0 && iree_status_is_ok(status); --i) {
     const uint16_t block_index = graph->reverse_postorder.values[i - 1];
+    if (!loom_cfg_simplify_is_alpha_merge_candidate(state, graph,
+                                                    block_index)) {
+      continue;
+    }
+    uint32_t fingerprint = 0;
+    if (!loom_cfg_simplify_alpha_block_fingerprint(
+            graph, destinations, graph->blocks[block_index].block,
+            &fingerprint)) {
+      continue;
+    }
+    if (!table.entries) {
+      IREE_RETURN_IF_ERROR(loom_cfg_simplify_block_hash_table_initialize(
+          state->analysis_arena, graph->block_count, &table));
+    }
     uint16_t destination = loom_cfg_simplify_find_equivalent_block(
-        state, graph, &table, destinations, block_index);
+        state, graph, &table, destinations, block_index, fingerprint);
     if (destination == 0) {
       continue;
     }
