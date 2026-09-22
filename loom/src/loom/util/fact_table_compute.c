@@ -144,14 +144,30 @@ static loom_value_facts_t loom_value_fact_table_clamp_scalar_type_domain(
 
 static iree_status_t loom_value_fact_table_seed_dynamic_extent(
     loom_value_fact_table_t* table, const loom_module_t* module,
-    loom_value_id_t value_id, const loom_value_id_t* result_ids,
-    uint16_t result_count, loom_value_facts_t* result_facts,
-    bool* out_changed) {
+    const loom_block_t* block, loom_value_id_t value_id,
+    const loom_value_id_t* result_ids, uint16_t result_count,
+    loom_value_facts_t* result_facts, bool* out_changed) {
   if (value_id == LOOM_VALUE_ID_INVALID || value_id >= module->values.count) {
     return iree_ok_status();
   }
   if (!loom_value_fact_table_dynamic_extent_type_supported(
           loom_module_value_type(module, value_id))) {
+    return iree_ok_status();
+  }
+
+  // A type constrains its extents where the typed value is defined. A view
+  // created in a conditional block cannot narrow a captured size on paths
+  // that skip that block. Only values defined in the same execution block
+  // receive global facts from this type.
+  const loom_value_t* value = loom_module_value(module, value_id);
+  const loom_block_t* defining_block = NULL;
+  if (loom_value_is_block_arg(value)) {
+    defining_block = loom_value_def_block(value);
+  } else {
+    const loom_op_t* defining_op = loom_value_def_op(value);
+    defining_block = defining_op ? defining_op->parent_block : NULL;
+  }
+  if (defining_block != block) {
     return iree_ok_status();
   }
 
@@ -204,7 +220,8 @@ static loom_value_facts_t loom_value_fact_table_unknown_for_value(
 
 static iree_status_t loom_value_fact_table_seed_type_extent_facts(
     loom_value_fact_table_t* table, const loom_module_t* module,
-    loom_type_t type, const loom_value_id_t* result_ids, uint16_t result_count,
+    const loom_block_t* block, loom_type_t type,
+    const loom_value_id_t* result_ids, uint16_t result_count,
     loom_value_facts_t* result_facts, bool* out_changed) {
   if (!loom_type_is_shaped(type)) {
     return iree_ok_status();
@@ -215,7 +232,7 @@ static iree_status_t loom_value_fact_table_seed_type_extent_facts(
       continue;
     }
     IREE_RETURN_IF_ERROR(loom_value_fact_table_seed_dynamic_extent(
-        table, module, loom_type_dim_value_id_at(type, i), result_ids,
+        table, module, block, loom_type_dim_value_id_at(type, i), result_ids,
         result_count, result_facts, out_changed));
   }
   return iree_ok_status();
@@ -381,7 +398,7 @@ static iree_status_t loom_value_fact_table_seed_block_args(
           loom_value_fact_table_define(table, value_id, facts));
     }
     IREE_RETURN_IF_ERROR(loom_value_fact_table_seed_type_extent_facts(
-        table, module, type, /*result_ids=*/NULL, /*result_count=*/0,
+        table, module, block, type, /*result_ids=*/NULL, /*result_count=*/0,
         /*result_facts=*/NULL, /*out_changed=*/NULL));
   }
   IREE_RETURN_IF_ERROR(loom_value_fact_table_apply_func_predicates(
@@ -410,7 +427,8 @@ static iree_status_t loom_value_fact_table_define_block_arg_facts(
   }
   IREE_RETURN_IF_ERROR(loom_value_fact_table_define(table, arg_id, facts));
   return loom_value_fact_table_seed_type_extent_facts(
-      table, module, type, /*result_ids=*/NULL, /*result_count=*/0,
+      table, module, loom_value_def_block(loom_module_value(module, arg_id)),
+      type, /*result_ids=*/NULL, /*result_count=*/0,
       /*result_facts=*/NULL, out_changed);
 }
 
@@ -1025,8 +1043,8 @@ iree_status_t loom_value_fact_table_define_region_results(
       continue;
     }
     IREE_RETURN_IF_ERROR(loom_value_fact_table_seed_type_extent_facts(
-        table, module, loom_module_value_type(module, result), results,
-        op->result_count, result_facts, out_changed));
+        table, module, op->parent_block, loom_module_value_type(module, result),
+        results, op->result_count, result_facts, out_changed));
   }
   for (uint16_t i = 0; i < op->result_count; ++i) {
     loom_value_id_t result = results[i];
@@ -1196,7 +1214,8 @@ iree_status_t loom_value_fact_table_compute_op_and_report(
       IREE_RETURN_IF_ERROR(
           loom_value_fact_table_define(table, results[i], unknown_facts));
       IREE_RETURN_IF_ERROR(loom_value_fact_table_seed_type_extent_facts(
-          table, module, loom_module_value_type(module, results[i]),
+          table, module, op->parent_block,
+          loom_module_value_type(module, results[i]),
           /*result_ids=*/NULL, /*result_count=*/0, /*result_facts=*/NULL,
           out_changed));
     }
@@ -1258,8 +1277,9 @@ iree_status_t loom_value_fact_table_compute_op_and_report(
       continue;
     }
     IREE_RETURN_IF_ERROR(loom_value_fact_table_seed_type_extent_facts(
-        table, module, loom_module_value_type(module, results[i]), results,
-        op->result_count, result_facts, out_changed));
+        table, module, op->parent_block,
+        loom_module_value_type(module, results[i]), results, op->result_count,
+        result_facts, out_changed));
   }
 
   // Store result facts.

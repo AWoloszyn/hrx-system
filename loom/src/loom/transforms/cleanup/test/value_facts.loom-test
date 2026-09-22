@@ -124,3 +124,100 @@ func.def @negative_mask_alignment(%input: index) -> (index) {
   %remainder = index.constant 0 : index
   func.return %remainder : index
 }
+
+// ====
+
+// RUN: pass canonicalize
+
+// A branch-local view and its forwarded type cannot constrain the size
+// argument on the path that bypasses both definitions.
+func.def @cfg_extent_capture(%input: buffer, %extent: i32, %condition: i1) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %less = scalar.cmpi slt, %extent, %c0 : i32
+  cfg.cond_br %condition, ^shaped, ^plain
+^shaped:
+  %view = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+  cfg.br ^typed(%view: view<[%extent]xi32>)
+^typed(%forwarded: view<[%extent]xi32>):
+  test.use %forwarded : view<[%extent]xi32>
+  func.return %less : i1
+^plain:
+  func.return %less : i1
+}
+
+// ----
+func.def @cfg_extent_capture(%input: buffer, %extent: i32, %condition: i1) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %less = scalar.cmpi slt, %extent, %c0 : i32
+  cfg.cond_br %condition, ^shaped, ^plain
+^shaped:
+  %view = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+  cfg.br ^typed(%view: view<[%extent]xi32>)
+^typed(%forwarded: view<[%extent]xi32>):
+  test.use %forwarded : view<[%extent]xi32>
+  func.return %less : i1
+^plain:
+  func.return %less : i1
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// A structured branch has the same execution boundary as a CFG branch.
+func.def @scf_extent_capture(%input: buffer, %extent: i32, %condition: i1) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %less = scalar.cmpi slt, %extent, %c0 : i32
+  scf.if %condition {
+    %view = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+    test.use %view : view<[%extent]xi32>
+  }
+  func.return %less : i1
+}
+
+// ----
+func.def @scf_extent_capture(%input: buffer, %extent: i32, %condition: i1) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %less = scalar.cmpi slt, %extent, %c0 : i32
+  scf.if %condition {
+    %view = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+    test.use %view : view<[%extent]xi32>
+  }
+  func.return %less : i1
+}
+
+// ====
+
+// RUN: pass canonicalize
+
+// The loop may execute zero times, leaving its captured size unconstrained.
+func.def @loop_extent_capture(%input: buffer, %extent: i32, %count: index) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %less = scalar.cmpi slt, %extent, %c0 : i32
+  %start = index.constant 0 : index
+  %step = index.constant 1 : index
+  scf.for %iteration = [%start to %count step %step] {
+    %view = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+    test.use %view : view<[%extent]xi32>
+  }
+  func.return %less : i1
+}
+
+// ----
+func.def @loop_extent_capture(%input: buffer, %extent: i32, %count: index) -> (i1) {
+  %base = index.constant 0 : offset
+  %c0 = scalar.constant 0 : i32
+  %less = scalar.cmpi slt, %extent, %c0 : i32
+  %start = index.constant 0 : index
+  %step = index.constant 1 : index
+  scf.for %iteration = [%start to %count step %step] {
+    %view = buffer.view %input[%base] : buffer -> view<[%extent]xi32>
+    test.use %view : view<[%extent]xi32>
+  }
+  func.return %less : i1
+}
