@@ -125,6 +125,10 @@ struct TransferPeer {
   uint64_t window_high_water = 0;
   // Observations of independent progress while timeline 0 remains behind.
   uint64_t independent_progress_messages = 0;
+  // Saved completed prefix waiting for publication after a newer snapshot.
+  Positions saved_progress = {};
+  // Older progress reports observed after a dominating snapshot.
+  uint64_t saved_progress_messages = 0;
   // Bounded application ownership for deferred timeline-0 consumption.
   struct {
     // Descriptors reserved at setup for at most one record window.
@@ -187,7 +191,7 @@ struct TransferPeer {
   }
 
   void ConsumeRetained() {
-    if (retained.commands.empty()) {
+    if (retained.commands.empty() || saved_progress != Positions{}) {
       return;
     }
     const uint64_t phase_end =
@@ -214,6 +218,10 @@ struct TransferPeer {
       } else {
         status = Consume(entry, command.payload);
       }
+      if (iree_status_is_ok(status) && i == 0 && retained.commands.size() > 1 &&
+          options.progress_order == TransferProgressOrder::kNewestThenSaved) {
+        saved_progress = observed;
+      }
     }
     if (iree_status_is_ok(status)) {
       retained.records += retained.bytes / options.record_size;
@@ -233,45 +241,65 @@ struct TransferPeer {
     static_cast<TransferPeer*>(user_data)->control.EndpointError(status);
   }
 
-  // Feedback is generated storage, so neither the received payload nor its
-  // lease is retained by an ADVANCE send. Coalescing never delays an idle tail.
-  void FlushProgress() {
-    if (!channel || observed == submitted) {
-      return;
-    }
+  bool SendProgress(const Positions& positions) {
     auto budget = iree_net_queue_channel_query_send_budget(channel);
     const uint8_t count =
-        static_cast<uint8_t>((observed[0] != 0) + (observed[1] != 0));
+        static_cast<uint8_t>((positions[0] != 0) + (positions[1] != 0));
     if (!budget.slots ||
         budget.bytes < IREE_NET_QUEUE_MESSAGE_HEADER_SIZE +
                            count * IREE_NET_QUEUE_FRONTIER_ENTRY_SIZE) {
-      return;
+      return false;
     }
+    struct Progress {
+      // Owner retaining each accepted send through its terminal callback.
+      TransferPeer* peer;
+      // Completed snapshot copied synchronously by the admitted builder.
+      const Positions* positions;
+    } progress{this, &positions};
     iree_net_queue_channel_send_params_t params = {};
     params.signal_frontier_count = count;
-    params.build = +[](void* user_data,
-                       const iree_net_queue_message_builder_t* builder) {
-      auto& peer = *static_cast<TransferPeer*>(user_data);
-      size_t index = 0;
-      for (size_t axis = 0; axis < kTimelineCount; ++axis) {
-        if (peer.observed[axis]) {
-          iree_net_queue_frontier_builder_set(
-              &builder->signal_frontier, index++, {axis, peer.observed[axis]});
-        }
-      }
-      peer.submitted = peer.observed;
-      ++peer.sends;
-      return iree_ok_status();
-    };
-    params.build_user_data = this;
+    params.build =
+        +[](void* user_data, const iree_net_queue_message_builder_t* builder) {
+          auto& progress = *static_cast<Progress*>(user_data);
+          size_t index = 0;
+          for (size_t axis = 0; axis < kTimelineCount; ++axis) {
+            if ((*progress.positions)[axis]) {
+              iree_net_queue_frontier_builder_set(
+                  &builder->signal_frontier, index++,
+                  {axis, (*progress.positions)[axis]});
+            }
+          }
+          ++progress.peer->sends;
+          return iree_ok_status();
+        };
+    params.build_user_data = &progress;
     params.completion_callback = {OnSend, this};
     iree_status_t status =
         iree_net_queue_channel_send_advance(channel, &params);
+    const bool accepted = iree_status_is_ok(status);
     if (iree_status_is_resource_exhausted(status)) {
       // Advisory admission may race. A later source completion retries flush.
       iree_status_free(status);
     } else {
       control.Fail(status);
+    }
+    return accepted;
+  }
+
+  // Feedback captures coordinates, never receive storage. A saved older prefix
+  // follows the full window that dominates it, even across admission pressure.
+  void FlushProgress() {
+    if (!channel) {
+      return;
+    }
+    if (observed != submitted) {
+      if (!SendProgress(observed)) {
+        return;
+      }
+      submitted = observed;
+    }
+    if (saved_progress != Positions{} && SendProgress(saved_progress)) {
+      saved_progress = {};
     }
   }
 
@@ -406,6 +434,7 @@ struct TransferPeer {
       return iree_make_status(IREE_STATUS_DATA_LOSS,
                               "unexpected checked-transfer progress envelope");
     }
+    bool has_older_coordinate = false;
     for (size_t i = 0; i < signal_frontier->count; ++i) {
       auto entry = iree_net_queue_frontier_view_get(signal_frontier, i);
       if (entry.axis >= kTimelineCount ||
@@ -413,10 +442,14 @@ struct TransferPeer {
         return iree_make_status(IREE_STATUS_DATA_LOSS,
                                 "progress exceeds submitted timeline");
       }
+      has_older_coordinate |= entry.epoch < peer.observed[entry.axis];
       peer.observed[entry.axis] =
           std::max(peer.observed[entry.axis], entry.epoch);
     }
     ++peer.progress_messages;
+    if (has_older_coordinate) {
+      ++peer.saved_progress_messages;
+    }
     if (peer.observed[1] > peer.observed[0]) {
       ++peer.independent_progress_messages;
     }
@@ -468,9 +501,26 @@ struct TransferPeer {
   }
 
   bool Done(uint64_t target) const {
+    // The fixed producer shape gives one saved prefix per multi-message
+    // window. Join its observation too, not just the earlier dominating report.
+    uint64_t saved_report_count = 0;
+    if (role == PeerRole::kProducer &&
+        options.progress_order == TransferProgressOrder::kNewestThenSaved) {
+      auto count = [&](uint64_t records) {
+        return (options.window_size > options.batch_size
+                    ? records / options.window_size
+                    : 0) +
+               (records % options.window_size > options.batch_size ? 1 : 0);
+      };
+      saved_report_count = count(options.warmup_records);
+      if (target > options.warmup_records) {
+        saved_report_count += count(target - options.warmup_records);
+      }
+    }
     return channel && observed == Positions{target, target} &&
            submitted == observed && sends == completions &&
-           retained.commands.empty();
+           retained.commands.empty() && saved_progress == Positions{} &&
+           saved_progress_messages == saved_report_count;
   }
 };
 
@@ -663,6 +713,7 @@ struct TrialSide {
       result->progress_messages += peer->progress_messages;
       result->independent_progress_messages +=
           peer->independent_progress_messages;
+      result->saved_progress_messages += peer->saved_progress_messages;
       result->window_high_water =
           std::max(result->window_high_water, peer->window_high_water);
       result->retained.records += peer->retained.records;
@@ -689,6 +740,8 @@ iree_status_t RunTransferTrial(
       options.fragment_count > options.record_size || !options.warmup_records ||
       !options.measured_records ||
       options.batch_size > SIZE_MAX / options.record_size ||
+      (options.progress_order == TransferProgressOrder::kNewestThenSaved &&
+       options.consumer_mode != TransferConsumerMode::kRetainedWindow) ||
       options.measured_records > UINT64_MAX - options.warmup_records ||
       options.connection_count > UINT64_MAX / kTimelineCount /
                                      options.measured_records /
@@ -772,6 +825,7 @@ iree_status_t RunTransferTrial(
   result.source_completions -= warmup.source_completions;
   result.progress_messages -= warmup.progress_messages;
   result.independent_progress_messages -= warmup.independent_progress_messages;
+  result.saved_progress_messages -= warmup.saved_progress_messages;
   result.records =
       options.measured_records * kTimelineCount * options.connection_count;
   result.payload_bytes = result.records * options.record_size;

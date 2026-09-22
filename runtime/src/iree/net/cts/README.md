@@ -41,6 +41,14 @@ are not copied by the workload. A carrier may use independent framing storage
 to preserve receive headroom when native leases are held; the workload neither
 requires nor pretends to measure a particular storage strategy.
 
+The CTS also publishes a completed retained window before an unsent, saved
+first-message prefix of that window. Both frontiers describe work actually read;
+the newer one dominates the older one. The receiver merges coordinates without
+rewinding progress. Each phase joins the expected saved observations as well as
+source callbacks, so a late warm-up report cannot escape into measured work or
+be hidden by teardown. This is application publication order over an ordered
+transport, not fabricated transport callback reordering.
+
 Two feedback policies expose the tradeoff between prompt reporting and coalescing:
 
 - `immediate` attempts feedback from each receive callback. Admission pressure

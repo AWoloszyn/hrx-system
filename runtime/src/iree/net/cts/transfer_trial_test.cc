@@ -37,7 +37,13 @@ class TransferTrialTest
                    options.batch_size));
     EXPECT_LE(result.command_messages, result.records);
     EXPECT_GT(result.progress_messages, 0u);
-    EXPECT_LE(result.progress_messages, result.command_messages);
+    EXPECT_LE(result.progress_messages,
+              result.command_messages + result.saved_progress_messages);
+    if (options.progress_order == TransferProgressOrder::kNewestThenSaved) {
+      EXPECT_GT(result.saved_progress_messages, 0u);
+    } else {
+      EXPECT_EQ(result.saved_progress_messages, 0u);
+    }
     EXPECT_GT(result.window_high_water, 0u);
     EXPECT_LE(result.window_high_water, options.window_size);
     if (options.consumer_mode == TransferConsumerMode::kRetainedWindow) {
@@ -143,6 +149,32 @@ TEST_P(TransferTrialTest, RetainedWindowsSharePollOwnersUnderPressure) {
   options.fragment_count = 4;
   options.warmup_records = 7;
   options.measured_records = 263;
+  Run(options);
+}
+
+TEST_P(TransferTrialTest, DominatingProgressPrecedesSavedPrefixes) {
+  TransferTrialOptions options;
+  options.consumer_mode = TransferConsumerMode::kRetainedWindow;
+  options.progress_order = TransferProgressOrder::kNewestThenSaved;
+  options.batch_size = 7;
+  options.window_size = 13;
+  options.fragment_count = 4;
+  options.warmup_records = 17;
+  options.measured_records = 113;
+  Run(options);
+}
+
+TEST_P(TransferTrialTest, SavedPrefixesJoinAcrossIndependentConnections) {
+  TransferTrialOptions options;
+  options.consumer_mode = TransferConsumerMode::kRetainedWindow;
+  options.progress_order = TransferProgressOrder::kNewestThenSaved;
+  options.connection_count = 16;
+  options.batch_size = 3;
+  options.window_size = 257;
+  options.fragment_count = 4;
+  options.warmup_records = 7;
+  options.measured_records = 263;
+  options.progress_policy = TransferProgressPolicy::kImmediate;
   Run(options);
 }
 

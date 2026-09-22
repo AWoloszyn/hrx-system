@@ -28,6 +28,14 @@ enum class TransferConsumerMode {
   kRetainedWindow,
 };
 
+// Publication order of valid completed snapshots, not transport delivery order.
+enum class TransferProgressOrder {
+  // Report the latest completed snapshot without retaining an older one.
+  kMonotonic,
+  // Report a retained window before its saved first-message completed prefix.
+  kNewestThenSaved,
+};
+
 // Fixed workload shared by transport correctness tests and benchmarks.
 struct TransferTrialOptions {
   // Connections sharing one producer proactor and one consumer proactor.
@@ -48,6 +56,8 @@ struct TransferTrialOptions {
   TransferProgressPolicy progress_policy = TransferProgressPolicy::kPollTurn;
   // Whether one consumer retains original receive storage across callbacks.
   TransferConsumerMode consumer_mode = TransferConsumerMode::kInline;
+  // Saved-prefix publication requires retained-window consumption.
+  TransferProgressOrder progress_order = TransferProgressOrder::kMonotonic;
 };
 
 // Measurements of the fixed workload, excluding setup, warm-up and teardown.
@@ -70,6 +80,8 @@ struct TransferTrialResult {
   uint64_t window_high_water = 0;
   // Progress reports showing timeline 1 ahead of timeline 0.
   uint64_t independent_progress_messages = 0;
+  // Older completed snapshots observed after a dominating frontier.
+  uint64_t saved_progress_messages = 0;
   // Receive ownership measurements, excluding warm-up.
   struct {
     // Records checked through original views after their callbacks returned.
@@ -108,6 +120,9 @@ struct TransferTrialMeasurement {
 // progress report is admitted. The poll owner then checks and releases the
 // retained messages. Phase tails release without waiting for unsubmitted work.
 // Reporting coalesces only witnessed coordinates.
+// Newest-then-saved publication retains the first-message completed prefix of
+// each multi-message window, publishing it only after the full window frontier.
+// Each phase also joins those late observations before completing.
 //
 // The producer runs on the caller, the consumer on a dedicated test-application
 // thread. Each owns its proactor throughout polling and cleanup. Borrowed SG
