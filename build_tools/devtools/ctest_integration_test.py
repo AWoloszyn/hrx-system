@@ -6,121 +6,125 @@
 
 from __future__ import annotations
 
+import json
 import os
-import subprocess
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
-from build_tools.cmake.test_environment import configured_cmake_arguments
+from build_tools.cmake.test_environment import (
+    CMAKE_COMMAND,
+    CONFIGURATION,
+    CTEST_COMMAND,
+    REPO_ROOT,
+    configure_project,
+    test_project,
+)
 from build_tools.devtools import ctest as ctest_dev
-from build_tools.devtools.environment import REPO_ROOT
 
-FIXTURE_SOURCE_DIR = REPO_ROOT / "build_tools/cmake/testdata/test_metadata"
-CMAKE_COMMAND = os.environ["IREE_TEST_CMAKE_COMMAND"]
-CTEST_COMMAND = os.environ["IREE_TEST_CTEST_COMMAND"]
+FIXTURES = REPO_ROOT / "build_tools/cmake/testdata"
 
 
 class CTestIntegrationTest(unittest.TestCase):
-    def test_stale_graph_is_refreshed_before_ctest_selection(self):
-        with tempfile.TemporaryDirectory() as temporary_dir:
-            temporary_path = Path(temporary_dir)
-            build_dir = temporary_path / "build"
-            extension_file = temporary_path / "extension.cmake"
-            extension_file.write_text("")
-            subprocess.run(
-                [
-                    CMAKE_COMMAND,
-                    "-S",
-                    str(FIXTURE_SOURCE_DIR),
-                    "-B",
-                    str(build_dir),
-                    *configured_cmake_arguments(),
-                    f"-DIREE_REPO_ROOT={REPO_ROOT}",
-                    f"-DIREE_TEST_METADATA_EXTENSION_FILE={extension_file}",
-                ],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
-            extension_file.write_text("add_metadata_test(host-late host_late_root)\n")
-
+    def test_shared_closure_is_fresh_and_visited_once(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source, build = root / "source with spaces", root / "build with spaces"
+            shutil.copytree(FIXTURES / "selected_build", source)
+            configure_project(source, build)
             step = ctest_dev.CTestBuildAndRunStep(
                 cmake=CMAKE_COMMAND,
                 ctest=CTEST_COMMAND,
-                build_dir=build_dir,
-                arguments=["-R", "^host"],
+                build_dir=build,
+                arguments=["-R", "^(left|right)$", "-C", CONFIGURATION],
                 cwd=REPO_ROOT,
+                env={**os.environ, "CMAKE_BUILD_PARALLEL_LEVEL": "2"},
+            )
+            make_temporary = root / "make $files = # '"
+            make_temporary.mkdir()
+
+            def check(build_count):
+                # Exercise the real Make/shell boundary, including cleanup.
+                with mock.patch.object(tempfile, "tempdir", str(make_temporary)):
+                    self.assertEqual(step.run(), 0)
+                self.assertEqual(list(make_temporary.iterdir()), [])
+                generator = os.environ["IREE_TEST_CMAKE_GENERATOR"]
+                if generator == "Unix Makefiles" or generator.startswith("Ninja"):
+                    self.assertEqual(
+                        (build / "visits.txt").read_text().splitlines(),
+                        ["visit"] * build_count,
+                    )
+                for name in ("left", "right"):
+                    self.assertEqual(
+                        (build / f"{name}.ran").read_text().splitlines(),
+                        ["run"] * build_count,
+                    )
+
+            check(1)
+            tests = json.loads(
+                test_project(build, "-R", "^left$", "--show-only=json-v1")
+            )["tests"]
+            executable = Path(tests[0]["command"][0])
+            timestamp = executable.stat().st_mtime_ns
+            check(2)
+            self.assertEqual(executable.stat().st_mtime_ns, timestamp)
+            # Runtime expected values make stale compilation fail the actual test.
+            (source / "value.txt").write_text("5\n")
+            (source / "expected.txt").write_text("6\n")
+            check(3)
+            shared = source / "shared.c"
+            shared.write_text(shared.read_text().replace("+ 1", "+ 2"))
+            (source / "expected.txt").write_text("7\n")
+            check(4)
+            executable.unlink()
+            check(5)
+
+            # A failed build must not run the previously built executables.
+            shared.write_text("#error selected build must stop\n")
+            with mock.patch.object(tempfile, "tempdir", str(make_temporary)):
+                self.assertNotEqual(step.run(), 0)
+            self.assertEqual(list(make_temporary.iterdir()), [])
+            for name in ("left", "right"):
+                self.assertEqual(
+                    (build / f"{name}.ran").read_text().splitlines(), ["run"] * 5
+                )
+
+    def test_selection_builds_only_its_refreshed_closure_and_fixtures(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            build, extension = root / "build", root / "extension.cmake"
+            extension.write_text("")
+            configure_project(
+                FIXTURES / "test_metadata",
+                build,
+                f"-DIREE_TEST_METADATA_EXTENSION_FILE={extension}",
             )
 
-            self.assertEqual(step.run(), 0)
-            self.assertTrue((build_dir / "host.built").is_file())
-            self.assertTrue((build_dir / "host-late.built").is_file())
+            def select(pattern):
+                step = ctest_dev.CTestBuildAndRunStep(
+                    cmake=CMAKE_COMMAND,
+                    ctest=CTEST_COMMAND,
+                    build_dir=build,
+                    arguments=["-R", pattern, "-C", CONFIGURATION],
+                    cwd=REPO_ROOT,
+                )
+                self.assertEqual(step.run(), 0)
 
-    def test_selected_runner_builds_only_the_selected_closure(self):
-        with tempfile.TemporaryDirectory() as temporary_dir:
-            build_dir = Path(temporary_dir) / "build"
-            subprocess.run(
-                [
-                    CMAKE_COMMAND,
-                    "-S",
-                    str(FIXTURE_SOURCE_DIR),
-                    "-B",
-                    str(build_dir),
-                    *configured_cmake_arguments(),
-                    f"-DIREE_REPO_ROOT={REPO_ROOT}",
-                ],
-                check=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,
-                text=True,
-            )
-            step = ctest_dev.CTestBuildAndRunStep(
-                cmake=CMAKE_COMMAND,
-                ctest=CTEST_COMMAND,
-                build_dir=build_dir,
-                arguments=["-R", "^source-only$"],
-                cwd=REPO_ROOT,
-            )
-            self.assertEqual(step.run(), 0)
-            self.assertFalse((build_dir / "host.built").exists())
-
-            step = ctest_dev.CTestBuildAndRunStep(
-                cmake=CMAKE_COMMAND,
-                ctest=CTEST_COMMAND,
-                build_dir=build_dir,
-                arguments=["-R", "^host$"],
-                cwd=REPO_ROOT,
-            )
-            self.assertEqual(step.run(), 0)
-            self.assertTrue((build_dir / "host.built").is_file())
-            self.assertFalse((build_dir / "benchmark.built").exists())
-
-            step = ctest_dev.CTestBuildAndRunStep(
-                cmake=CMAKE_COMMAND,
-                ctest=CTEST_COMMAND,
-                build_dir=build_dir,
-                arguments=["-R", "^fixture-required$"],
-                cwd=REPO_ROOT,
-            )
-            self.assertEqual(step.run(), 0)
-            for test_name in (
-                "fixture-setup",
-                "fixture-required",
-                "fixture-cleanup",
-            ):
-                self.assertTrue((build_dir / f"{test_name}.built").is_file())
-
-            step = ctest_dev.CTestBuildAndRunStep(
-                cmake=CMAKE_COMMAND,
-                ctest=CTEST_COMMAND,
-                build_dir=build_dir,
-                arguments=["-R", "^tool-backed$"],
-                cwd=REPO_ROOT,
-            )
-            self.assertEqual(step.run(), 0)
-            self.assertTrue((build_dir / "tool.built").is_file())
+            select("^source-only$")
+            self.assertFalse((build / "host.built").exists())
+            select("^host$")
+            self.assertTrue((build / "host.built").is_file())
+            self.assertFalse((build / "benchmark.built").exists())
+            select("^fixture-required$")
+            for name in ("fixture-setup", "fixture-required", "fixture-cleanup"):
+                self.assertTrue((build / f"{name}.built").is_file())
+            select("^tool-backed$")
+            self.assertTrue((build / "tool.built").is_file())
+            extension.write_text("add_metadata_test(host-late host_late_root)\n")
+            select("^host")
+            self.assertTrue((build / "host-late.built").is_file())
 
 
 if __name__ == "__main__":

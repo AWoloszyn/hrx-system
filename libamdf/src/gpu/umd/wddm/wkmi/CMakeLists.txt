@@ -171,7 +171,7 @@ iree_cc_test(
   SRCS
     "adapter_test.cc"
   DATA
-    ::fake_wkmi_bridge_test
+    "libamdf::src::gpu::umd::wddm::wkmi::fake_wkmi_bridge_test"
   DEPS
     ::adapter
     ::loader
@@ -180,7 +180,7 @@ iree_cc_test(
     iree::third_party::google_test_main
     libamdf::src::allocator
   ENV
-    "AMDF_WKMI_BRIDGE_PATH=$<TARGET_FILE:libamdf::src::gpu::umd::wddm::wkmi::fake_wkmi_bridge_test>"
+    "AMDF_WKMI_BRIDGE_PATH={{$<TARGET_FILE:libamdf::src::gpu::umd::wddm::wkmi::fake_wkmi_bridge_test>}}"
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.gpu"
@@ -211,7 +211,7 @@ iree_cc_test(
   SRCS
     "loader_test.cc"
   DATA
-    ::fake_wkmi_bridge_test
+    "libamdf::src::gpu::umd::wddm::wkmi::fake_wkmi_bridge_test"
   DEPS
     ::loader
     amdf::headers
@@ -219,7 +219,7 @@ iree_cc_test(
     iree::third_party::google_test_main
     libamdf::src::allocator
   ENV
-    "AMDF_WKMI_BRIDGE_PATH=$<TARGET_FILE:libamdf::src::gpu::umd::wddm::wkmi::fake_wkmi_bridge_test>"
+    "AMDF_WKMI_BRIDGE_PATH={{$<TARGET_FILE:libamdf::src::gpu::umd::wddm::wkmi::fake_wkmi_bridge_test>}}"
   LABELS
     "iree-build-requirement=libamdf"
     "iree-build-requirement=libamdf.gpu"

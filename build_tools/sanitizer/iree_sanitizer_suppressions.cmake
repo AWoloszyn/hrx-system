@@ -24,6 +24,8 @@ function(iree_sanitizer_suppression_file OUTPUT_VARIABLE SANITIZER NAME)
   set(${OUTPUT_VARIABLE} "${${_VARIABLE_NAME}}" PARENT_SCOPE)
 endfunction()
 
+# Appends test-registration environment entries with explicit file locators so
+# each consumer can resolve suppression files in its build or installed tree.
 function(iree_append_sanitizer_suppression_environment OUTPUT_VARIABLE)
   set(_ENVIRONMENT ${${OUTPUT_VARIABLE}})
   set(_ARGS ${ARGN})
@@ -39,7 +41,7 @@ function(iree_append_sanitizer_suppression_environment OUTPUT_VARIABLE)
     list(POP_FRONT _ARGS _NAME)
     string(TOUPPER "${_SANITIZER}" _SANITIZER_UPPER)
     iree_sanitizer_suppression_file(_SUPPRESSION_FILE "${_SANITIZER}" "${_NAME}")
-    set(_SANITIZER_OPTIONS "suppressions=${_SUPPRESSION_FILE}")
+    set(_SANITIZER_OPTIONS "suppressions={{${_SUPPRESSION_FILE}}}")
     if(_SANITIZER_UPPER STREQUAL "LSAN")
       list(APPEND _SANITIZER_OPTIONS "allow_addr2line=1")
     endif()

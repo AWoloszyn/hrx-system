@@ -8,7 +8,6 @@
 
 from __future__ import annotations
 
-import shlex
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -18,14 +17,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     _remove_script_directory_from_sys_path(Path(__file__).resolve().parent)
     from loom.importers.check.main import main as import_check_main
 
-    return import_check_main(_expand_args(sys.argv[1:] if argv is None else argv))
-
-
-def _expand_args(argv: Sequence[str]) -> list[str]:
-    expanded: list[str] = []
-    for arg in argv:
-        expanded.extend(shlex.split(arg))
-    return expanded
+    return import_check_main(sys.argv[1:] if argv is None else argv)
 
 
 def _remove_script_directory_from_sys_path(script_directory: Path) -> None:

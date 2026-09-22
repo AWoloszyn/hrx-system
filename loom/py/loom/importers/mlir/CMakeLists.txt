@@ -117,14 +117,16 @@ iree_py_test(
   ARGS
     "mlir"
     "--fail-on-skip"
-    "--loom-opt=$<TARGET_FILE:loom::tools::loom-opt::loom-opt>"
+    "--loom-opt={{$<TARGET_FILE:loom::tools::loom-opt::loom-opt>}}"
+    "{{${PROJECT_SOURCE_DIR}/loom/py/loom/importers/mlir/testdata/vector_reduce_amdgpu.mlir}}"
+  DATA
     "${PROJECT_SOURCE_DIR}/loom/py/loom/importers/mlir/testdata/vector_reduce_amdgpu.mlir"
+    "loom::tools::loom-opt::loom-opt"
   DEPS
     loom::py::loom::importers::mlir::mlir_packages
     loom::py::loom::importers::check::check
     loom::py::loom::importers::check::mlir::mlir
     loom::py::loom::importers::check::tilelang::tilelang
-    loom::tools::loom-opt::loom-opt
   PACKAGE_DIRS
     "${PROJECT_SOURCE_DIR}/loom/py"
     "${PROJECT_BINARY_DIR}/loom/py"

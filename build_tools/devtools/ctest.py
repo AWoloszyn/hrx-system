@@ -12,9 +12,12 @@ import json
 import os
 import subprocess
 import sys
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
+from build_tools.devtools import cmake_cache, cmake_file_api, cmake_make
 from build_tools.devtools.command_plan import CommandStep, quote_command
 
 BUILD_TARGETS_CATALOG_FILENAME = "iree_ctest_build_targets.json"
@@ -170,10 +173,7 @@ def cmake_refresh_command(
     return command
 
 
-def _command_length(arguments: list[str]) -> int:
-    return sum(len(argument) + 1 for argument in arguments)
-
-
+@contextmanager
 def cmake_build_commands(
     cmake: str,
     build_dir: Path,
@@ -181,31 +181,47 @@ def cmake_build_commands(
     *,
     build_config: str | None = None,
     max_command_length: int = MAX_BUILD_COMMAND_LENGTH,
-) -> list[list[str]]:
+) -> Iterator[list[list[str]]]:
     if not build_targets:
-        return []
+        yield []
+        return
 
     command_prefix = [cmake, "--build", str(build_dir)]
     if build_config:
         command_prefix.extend(["--config", build_config])
+
+    if len(build_targets) > 1:
+        cache = {
+            entry.name: entry.value for entry in cmake_cache.load_cmake_cache(build_dir)
+        }
+        if cache["CMAKE_GENERATOR"] == "Unix Makefiles":
+            with cmake_make.selected_build_arguments(
+                build_dir, build_targets
+            ) as arguments:
+                yield [[*command_prefix, *arguments]]
+            return
+
     command_prefix.append("--target")
 
     commands = []
     batch = []
+    prefix_length = sum(len(argument) + 1 for argument in command_prefix)
+    batch_length = prefix_length
     for build_target in build_targets:
-        candidate = [*command_prefix, *batch, build_target]
-        if batch and _command_length(candidate) > max_command_length:
-            commands.append([*command_prefix, *batch])
-            batch = []
-            candidate = [*command_prefix, build_target]
-        if _command_length(candidate) > max_command_length:
+        target_length = len(build_target) + 1
+        if prefix_length + target_length > max_command_length:
             raise CTestMetadataError(
                 f"CMake build target exceeds the command-length limit: {build_target}"
             )
+        if batch and batch_length + target_length > max_command_length:
+            commands.append([*command_prefix, *batch])
+            batch = []
+            batch_length = prefix_length
         batch.append(build_target)
+        batch_length += target_length
     if batch:
         commands.append([*command_prefix, *batch])
-    return commands
+    yield commands
 
 
 @dataclass(frozen=True)
@@ -346,49 +362,54 @@ class CTestBuildAndRunStep:
                 selection_result.stdout,
                 build_target_catalog_payload,
             )
-            build_commands = cmake_build_commands(
+            with cmake_build_commands(
                 self.cmake,
                 self.build_dir,
                 selection.build_targets,
                 build_config=build_config,
-            )
-        except CTestMetadataError as exc:
+            ) as build_commands:
+                if build_commands:
+                    print(
+                        f"dev.py: building {len(selection.build_targets)} target(s) "
+                        f"for {len(selection.test_names)} selected CTest test(s)"
+                    )
+                    sys.stdout.flush()
+                elif verbose:
+                    print(
+                        f"dev.py: {len(selection.test_names)} selected CTest test(s) "
+                        "require no build"
+                    )
+
+                for build_command in build_commands:
+                    if verbose:
+                        print("dev.py: build selected CTest roots")
+                        print("  " + quote_command(build_command))
+                        sys.stdout.flush()
+                    try:
+                        build_result = subprocess.run(
+                            build_command,
+                            cwd=self.cwd,
+                            env=self.env,
+                        )
+                    except OSError as exc:
+                        print(
+                            f"dev.py: failed to run {quote_command(build_command)}: {exc}",
+                            file=sys.stderr,
+                        )
+                        return 127
+                    if build_result.returncode != 0:
+                        return build_result.returncode
+        except (
+            CTestMetadataError,
+            cmake_make.MakeBuildError,
+            cmake_file_api.FileApiError,
+            OSError,
+        ) as exc:
             print(
-                f"dev.py: invalid selected CTest build closure: {exc}", file=sys.stderr
+                f"dev.py: failed to prepare selected CTest build closure: {exc}",
+                file=sys.stderr,
             )
             return 1
-
-        if build_commands:
-            print(
-                f"dev.py: building {len(selection.build_targets)} target(s) "
-                f"for {len(selection.test_names)} selected CTest test(s)"
-            )
-            sys.stdout.flush()
-        elif verbose:
-            print(
-                f"dev.py: {len(selection.test_names)} selected CTest test(s) "
-                "require no build"
-            )
-
-        for build_command in build_commands:
-            if verbose:
-                print("dev.py: build selected CTest roots")
-                print("  " + quote_command(build_command))
-                sys.stdout.flush()
-            try:
-                build_result = subprocess.run(
-                    build_command,
-                    cwd=self.cwd,
-                    env=self.env,
-                )
-            except OSError as exc:
-                print(
-                    f"dev.py: failed to run {quote_command(build_command)}: {exc}",
-                    file=sys.stderr,
-                )
-                return 127
-            if build_result.returncode != 0:
-                return build_result.returncode
 
         run_command = ctest_run_command(
             self.ctest,

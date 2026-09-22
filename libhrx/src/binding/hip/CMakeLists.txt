@@ -660,14 +660,14 @@ iree_cc_test(
   SRCS
     "hip_api_name_test.cc"
   DATA
-    ::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     iree::testing::gtest
     iree::testing::gtest_main
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
 )
 endif()
 
@@ -679,7 +679,7 @@ iree_cc_test(
     "api.h"
     "hip_array_copy_spt_api_test.cc"
   DATA
-    ::amdhip64_array_lease_test
+    "libhrx::src::binding::hip::amdhip64_array_lease_test"
   DEPS
     ${CMAKE_DL_LIBS}
     ::hip_dso_test_util
@@ -687,7 +687,7 @@ iree_cc_test(
     iree::testing::gtest_main
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64_array_lease_test>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64_array_lease_test>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -709,7 +709,7 @@ iree_cc_test(
     "hip_device_attribute_validation_test_shim.c"
     "hip_device_attribute_validation_test_shim.h"
   DATA
-    ::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     ::hip_dso_test_util
@@ -717,7 +717,7 @@ iree_cc_test(
     iree::testing::gtest_main
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -734,7 +734,7 @@ iree_cc_test(
     "api.h"
     "hip_unified_addressing_attribute_api_test.cc"
   DATA
-    ::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     ::hip_dso_test_util
@@ -742,7 +742,7 @@ iree_cc_test(
     iree::testing::gtest_main
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -761,7 +761,7 @@ iree_cc_test(
     "hip_device_attribute_validation_test_shim.c"
     "hip_device_attribute_validation_test_shim.h"
   DATA
-    ::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     ::hip_dso_test_util
@@ -769,7 +769,7 @@ iree_cc_test(
     iree::testing::gtest_main
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
     "ROCR_VISIBLE_DEVICES=-1"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
@@ -786,7 +786,7 @@ iree_cc_test(
   SRCS
     "hip_execution_resource_api_test.cc"
   DATA
-    ::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     ::execution_resource
@@ -794,7 +794,7 @@ iree_cc_test(
     iree::testing::gtest_main
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -814,14 +814,14 @@ iree_cc_test(
     "api.h"
     "hip_device_contracts_api_test.cc"
   DATA
-    ::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ::hip_dso_test_util
     iree::testing::gtest
     iree::testing::gtest_main
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -837,7 +837,7 @@ iree_cc_test(
   SRCS
     "hip_stream_value_api_test.cc"
   DATA
-    ::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     ::launch_params
@@ -845,7 +845,7 @@ iree_cc_test(
     iree::testing::gtest_main
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -865,7 +865,7 @@ iree_cc_test(
     "api.h"
     "hip_get_proc_address_test.cc"
   DATA
-    ::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     ::hip_dso_test_util
@@ -873,7 +873,7 @@ iree_cc_test(
     iree::testing::gtest_main
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   LABELS
     "iree-run-requirement=runtime.resource.amd_gpu"
     "runtime-resource=amd-gpu"
@@ -889,7 +889,7 @@ iree_cc_test(
   SRCS
     "hip_memory_pool_api_test.cc"
   DATA
-    ::amdhip64
+    "libhrx::src::binding::hip::amdhip64"
   DEPS
     ${CMAKE_DL_LIBS}
     ::launch_params
@@ -897,7 +897,7 @@ iree_cc_test(
     iree::testing::gtest_main
     libhrx_defs
   ENV
-    "HRX_TEST_LIBAMDHIP64=$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>"
+    "HRX_TEST_LIBAMDHIP64={{$<TARGET_FILE:libhrx::src::binding::hip::amdhip64>}}"
   SANITIZER_SUPPRESSIONS
     lsan
     hsa

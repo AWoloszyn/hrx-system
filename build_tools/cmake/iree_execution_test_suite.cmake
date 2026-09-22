@@ -4,6 +4,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+include("${CMAKE_CURRENT_LIST_DIR}/iree_test_arguments.cmake")
+
 # iree_execution_test_suite()
 #
 # Creates a CTest test that runs JSON execution manifests for command-line
@@ -130,7 +132,16 @@ function(iree_execution_test_suite)
         "${_TOOL_TARGET}"
     )
   endforeach()
-  set(_DATA_DEPENDENCIES)
+  set(_ENVIRONMENT_VARS "PYTHONDONTWRITEBYTECODE=1")
+  if(_RULE_SANITIZER_SUPPRESSIONS)
+    iree_append_sanitizer_suppression_environment(
+      _ENVIRONMENT_VARS
+      ${_RULE_SANITIZER_SUPPRESSIONS}
+    )
+  endif()
+  iree_resolve_test_arguments(_TEST_ENVIRONMENT _ENV_DATA
+    iree_build_test_file_argument ${_ENVIRONMENT_VARS})
+  set(_DATA_DEPENDENCIES ${_ENV_DATA})
   foreach(_DATA IN LISTS _RULE_DATA)
     if(IS_ABSOLUTE "${_DATA}" OR
        TARGET "${_DATA}" OR
@@ -189,15 +200,8 @@ function(iree_execution_test_suite)
     LABELS
       ${_RULE_LABELS}
   )
-  set(_ENVIRONMENT_VARS "PYTHONDONTWRITEBYTECODE=1")
   iree_python_test_add_package_dirs(
     "${_TEST_NAME}" ${_TOOL_PYTHON_PACKAGE_DIRS}
   )
-  if(_RULE_SANITIZER_SUPPRESSIONS)
-    iree_append_sanitizer_suppression_environment(
-      _ENVIRONMENT_VARS
-      ${_RULE_SANITIZER_SUPPRESSIONS}
-    )
-  endif()
-  set_property(TEST ${_TEST_NAME} APPEND PROPERTY ENVIRONMENT ${_ENVIRONMENT_VARS})
+  set_property(TEST ${_TEST_NAME} APPEND PROPERTY ENVIRONMENT ${_TEST_ENVIRONMENT})
 endfunction()

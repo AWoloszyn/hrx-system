@@ -43,6 +43,11 @@ iree_py_test(
     "../../tools/pytest_style_runner.py"
   ARGS
     "loom.gen.test.numeric_conversion_matrix_test"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/encoding/fp8_bidirectional_decode_e4m3.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/encoding/fp8_bidirectional_decode_e5m2.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/encoding/fp8_bidirectional_encode_e4m3.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/encoding/fp8_bidirectional_encode_e5m2.loom"
   DEPS
     loom::py::loom::gen::test::numeric_conversion_matrix
   PACKAGE_DIRS

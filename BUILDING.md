@@ -850,6 +850,10 @@ ctest --test-dir build/cmake --output-on-failure -R hrx
 In the raw pipeline, `selected-root-a selected-root-b` stands for the stable
 union produced by joining the selected CTest names with the validated
 `iree_ctest_build_targets.json` catalog generated beside the CTest files.
+The wrapper refreshes that graph before selecting tests. With Unix Makefiles,
+it combines the selected roots into one native dependency traversal, so tests
+sharing a compiler or runner share its build preparation too. Normal source,
+generated-input, and missing-output checks still run for every selected root.
 
 ## Platform-Specific Host Builds
 

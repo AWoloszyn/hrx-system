@@ -16,6 +16,7 @@ from unittest import mock
 
 from build_tools.devtools import cmake as cmake_dev
 from build_tools.devtools import (
+    cmake_cache,
     cmake_file_api,
     cmake_fuzz,
     cmake_try,
@@ -588,11 +589,11 @@ class CMakeTest(unittest.TestCase):
 
     def test_try_cache_copy_preserves_project_configuration(self):
         entries = [
-            cmake_try.CMakeCacheEntry("IREE_HAL_DRIVER_AMDGPU", "BOOL", "OFF"),
-            cmake_try.CMakeCacheEntry("LIBHRX_BUILD", "BOOL", "OFF"),
-            cmake_try.CMakeCacheEntry("CMAKE_C_COMPILER", "FILEPATH", "/bin/cc"),
-            cmake_try.CMakeCacheEntry("BENCHMARK_ENABLE_TESTING", "BOOL", "OFF"),
-            cmake_try.CMakeCacheEntry("CMAKE_GENERATOR", "INTERNAL", "Ninja"),
+            cmake_cache.CMakeCacheEntry("IREE_HAL_DRIVER_AMDGPU", "BOOL", "OFF"),
+            cmake_cache.CMakeCacheEntry("LIBHRX_BUILD", "BOOL", "OFF"),
+            cmake_cache.CMakeCacheEntry("CMAKE_C_COMPILER", "FILEPATH", "/bin/cc"),
+            cmake_cache.CMakeCacheEntry("BENCHMARK_ENABLE_TESTING", "BOOL", "OFF"),
+            cmake_cache.CMakeCacheEntry("CMAKE_GENERATOR", "INTERNAL", "Ninja"),
         ]
 
         with tempfile.TemporaryDirectory() as temporary_dir:

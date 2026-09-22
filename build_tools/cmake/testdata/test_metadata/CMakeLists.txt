@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 cmake_minimum_required(VERSION 3.26)
-project(iree_cmake_test_metadata_test C)
+project(iree_cmake_test_metadata_test NONE)
 
 if(NOT IREE_REPO_ROOT)
   message(FATAL_ERROR "IREE_REPO_ROOT is required")
@@ -42,15 +42,6 @@ add_metadata_test(host host_root)
 
 add_metadata_test(benchmark benchmark_root)
 set_property(TEST benchmark PROPERTY LABELS benchmark)
-
-add_metadata_test(runtime-resource runtime_resource_root)
-set_property(
-  TEST runtime-resource
-  PROPERTY LABELS runtime-resource=amd-gpu
-)
-
-add_metadata_test(manual manual_root)
-set_property(TEST manual PROPERTY LABELS manual)
 
 add_metadata_test(fixture-setup fixture_setup_root)
 set_property(TEST fixture-setup PROPERTY FIXTURES_SETUP shared-fixture)
@@ -89,50 +80,6 @@ set(IREE_TEST_METADATA_EXTENSION_FILE "" CACHE FILEPATH
   "Optional CMake test metadata fixture extension")
 if(IREE_TEST_METADATA_EXTENSION_FILE)
   include("${IREE_TEST_METADATA_EXTENSION_FILE}")
-endif()
-
-option(IREE_TEST_ADD_UNMANAGED_TEST "Add a test without build metadata" OFF)
-if(IREE_TEST_ADD_UNMANAGED_TEST)
-  add_test(NAME unmanaged COMMAND "${CMAKE_COMMAND}" -E true)
-endif()
-
-option(IREE_TEST_ADD_MISSING_ROOT "Add a test with a missing build root" OFF)
-if(IREE_TEST_ADD_MISSING_ROOT)
-  add_test(NAME missing-root COMMAND "${CMAKE_COMMAND}" -E true)
-  iree_register_test_build_targets(
-    missing-root
-    TARGETS missing_root
-  )
-endif()
-
-option(IREE_TEST_ADD_ALIAS_ROOT "Add a test with an alias build root" OFF)
-if(IREE_TEST_ADD_ALIAS_ROOT)
-  add_library(alias_root_actual INTERFACE)
-  add_library(alias_root ALIAS alias_root_actual)
-  add_test(NAME alias-root COMMAND "${CMAKE_COMMAND}" -E true)
-  iree_register_test_build_targets(alias-root TARGETS alias_root)
-endif()
-
-option(
-  IREE_TEST_ADD_IMPORTED_ROOT
-  "Add a test with an imported build root"
-  OFF
-)
-if(IREE_TEST_ADD_IMPORTED_ROOT)
-  add_executable(imported_root IMPORTED)
-  add_test(NAME imported-root COMMAND "${CMAKE_COMMAND}" -E true)
-  iree_register_test_build_targets(imported-root TARGETS imported_root)
-endif()
-
-option(
-  IREE_TEST_ADD_INTERFACE_ROOT
-  "Add a test with an interface-library build root"
-  OFF
-)
-if(IREE_TEST_ADD_INTERFACE_ROOT)
-  add_library(interface_root INTERFACE)
-  add_test(NAME interface-root COMMAND "${CMAKE_COMMAND}" -E true)
-  iree_register_test_build_targets(interface-root TARGETS interface_root)
 endif()
 
 iree_finalize_test_build_targets()

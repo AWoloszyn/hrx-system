@@ -24,26 +24,16 @@ iree_add_data_dependencies(
     fixture.txt
     "${_GENERATED_DATA}"
     fixture::tool
-  OUT_FILE_DATA
-    _FILE_DATA
-  OUT_TARGET_DATA
-    _TARGET_DATA
 )
 
-if(NOT "${_FILE_DATA}" STREQUAL "fixture.txt;${_GENERATED_DATA}")
-  message(FATAL_ERROR "Unexpected file DATA: ${_FILE_DATA}")
-endif()
-if(NOT "${_TARGET_DATA}" STREQUAL "fixture::tool")
-  message(FATAL_ERROR "Unexpected target DATA: ${_TARGET_DATA}")
-endif()
-
 option(IREE_TEST_DECLARE_TOOL "Declare the later DATA tool target" ON)
+set(IREE_TEST_TOOL_REFERENCE fixture::tool CACHE STRING "Later tool target spelling")
 add_custom_target(tool_path_consumer)
 iree_add_data_dependencies(
   NAME
     tool_path_consumer
   DATA
-    "$<TARGET_FILE:fixture::tool>"
+    "$<TARGET_FILE:${IREE_TEST_TOOL_REFERENCE}>"
 )
 if(IREE_TEST_DECLARE_TOOL)
   add_executable(data_tool tool.c)

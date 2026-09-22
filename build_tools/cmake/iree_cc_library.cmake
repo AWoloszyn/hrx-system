@@ -207,10 +207,6 @@ function(iree_cc_library)
       PUBLIC
         $<TARGET_PROPERTY:${_NAME},INTERFACE_SYSTEM_INCLUDE_DIRECTORIES>
     )
-    target_include_directories(${_OBJECTS_NAME}
-      PUBLIC
-        $<TARGET_PROPERTY:${_NAME},INTERFACE_INCLUDE_DIRECTORIES>
-    )
     target_compile_options(${_OBJECTS_NAME}
       PRIVATE
         $<TARGET_PROPERTY:${_NAME},COMPILE_OPTIONS>
@@ -438,8 +434,8 @@ function(iree_cc_library)
     set(_GENERATED_INPUT_CONSUMER ${_OBJECTS_NAME})
   endif()
   foreach(_GENERATED_INPUT IN LISTS
-      _RULE_GENERATED_SRC_TARGET_SRCS
-      _RULE_GENERATED_HDR_FILES)
+      _RULE_SRC_TARGET_SRCS
+      _RULE_HDR_TARGET_SRCS)
     iree_generated_output_add_consumer(
       "${_GENERATED_INPUT}"
       "${_GENERATED_INPUT_CONSUMER}"
@@ -588,10 +584,6 @@ function(iree_cc_unified_library)
   )
 
   # Forward compile usage requirements from the root library.
-  target_include_directories(${_NAME}
-    PUBLIC
-      $<TARGET_PROPERTY:${_RULE_ROOT},INTERFACE_INCLUDE_DIRECTORIES>
-  )
   target_include_directories(${_NAME}
     PUBLIC
       $<TARGET_PROPERTY:${_RULE_ROOT},INTERFACE_INCLUDE_DIRECTORIES>

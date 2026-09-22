@@ -545,10 +545,12 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         blocks = [
             self._convert_string_arg_block("NAME", name, quote=False),
             self._convert_string_arg_block("MODULE", module),
-            self._convert_string_list_block("ARGS", args, sort=False),
+            self._convert_string_list_block(
+                "ARGS", self._convert_test_location_args(args), sort=False
+            ),
             self._convert_string_list_block(
                 "RUNNER_ARGS",
-                self._convert_location_args(
+                self._convert_test_location_args(
                     (profile["runner_args"] or []) + workload_args or None
                 ),
                 sort=False,
@@ -1554,11 +1556,11 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         name_block = self._convert_string_arg_block("NAME", name)
         test_binary_block = self._convert_single_target_block("SRC", runner)
         args_block = self._convert_string_list_block(
-            "ARGS", [f"${{CMAKE_CURRENT_SOURCE_DIR}}/{src}"]
+            "ARGS", ["{{${CMAKE_CURRENT_SOURCE_DIR}/%s}}" % src]
         )
         data_block = self._convert_data_list_block(data)
         env_block = self._convert_string_list_block(
-            "ENV", self._convert_native_test_env(env), sort=False
+            "ENV", self._convert_test_env(env), sort=False
         )
         labels_block = self._convert_string_list_block("LABELS", combined_tags)
         self._emit_platform_guard_begin(target_compatible_with)
@@ -1626,11 +1628,11 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             )
             + self._convert_target_list_block("TARGETS", targets)
             + self._convert_string_list_block(
-                "ARGS", self._convert_location_args(args), sort=False
+                "ARGS", self._convert_test_location_args(args), sort=False
             )
             + self._convert_data_list_block(data)
             + self._convert_string_list_block(
-                "ENV", self._convert_native_test_env(env), sort=False
+                "ENV", self._convert_test_env(env), sort=False
             )
             + self._convert_string_list_block("LABELS", tags)
             + ")\n\n"
@@ -1673,7 +1675,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         )
         data_block = self._convert_data_list_block(data)
         env_block = self._convert_string_list_block(
-            "ENV", self._convert_native_test_env(env), sort=False
+            "ENV", self._convert_test_env(env), sort=False
         )
         labels_block = self._convert_string_list_block("LABELS", tags)
         test_name_prefix_to_strip_block = self._convert_string_arg_block(

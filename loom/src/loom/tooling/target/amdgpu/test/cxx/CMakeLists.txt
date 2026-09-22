@@ -1464,7 +1464,7 @@ iree_native_test(
   NAME
     "storage_division"
   ARGS
-    "${CMAKE_CURRENT_SOURCE_DIR}/storage_division.cxx-test"
+    "{{${CMAKE_CURRENT_SOURCE_DIR}/storage_division.cxx-test}}"
   SRC
     loom::tools::loom-check
   LABELS

@@ -41,12 +41,13 @@ function(loom_check_compile_tests)
     iree_native_test(
       NAME "${_RULE_NAME}_compile_${_SUFFIX}"
       SRC loom::tools::loom-check::loom-check
+      WORKING_DIRECTORY "${IREE_ROOT_DIR}"
       ARGS
         ${_RULE_ARGS}
         "--target=${_COMPILER_TARGET}"
-        "--template-root=${IREE_ROOT_DIR}"
+        "--template-root=."
         "--source-prefix-map=${IREE_ROOT_DIR}/="
-        "${_SOURCE}"
+        "{{${_SOURCE}}}"
       DATA "${_SOURCE}" ${_RULE_DATA}
       ENV ${_RULE_ENV}
       LABELS loom-compile hostonly ${_RULE_LABELS}
@@ -142,11 +143,12 @@ function(loom_check_test_suite)
     iree_native_test(
       NAME
         "${_TEST_NAME}"
+      WORKING_DIRECTORY "${IREE_ROOT_DIR}"
       ARGS
         "--source-prefix-map=${IREE_ROOT_DIR}/="
-        "--source-prefix-map=${_ABS_SRC}=${_LOGICAL_SRC}"
-        "--template-root=${IREE_ROOT_DIR}"
-        "${_ABS_SRC}"
+        "--source-prefix-map={{${_ABS_SRC}}}=${_LOGICAL_SRC}"
+        "--template-root=."
+        "{{${_ABS_SRC}}}"
       SRC
         ${_RULE_RUNNER}
       ${_DATA_ARG}

@@ -539,7 +539,7 @@ iree_native_test(
   NAME
     "memory_stability"
   ARGS
-    "${CMAKE_CURRENT_SOURCE_DIR}/test/source_low/memory_stability.loom-test"
+    "{{${CMAKE_CURRENT_SOURCE_DIR}/test/source_low/memory_stability.loom-test}}"
   SRC
     loom::tools::loom-check::loom-check-test
   LABELS

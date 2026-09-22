@@ -7,6 +7,7 @@
 from __future__ import annotations
 
 import json
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -93,13 +94,19 @@ class CTestTest(unittest.TestCase):
                     ctest_dev.parse_ctest_selection(model, catalog)
 
     def test_build_commands_are_stable_and_command_length_safe(self):
-        commands = ctest_dev.cmake_build_commands(
-            "cmake",
-            Path("build"),
-            tuple(f"target_{index:02d}" for index in range(20)),
-            build_config="RelWithDebInfo",
-            max_command_length=100,
-        )
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            build_dir = Path(temporary_dir)
+            (build_dir / "CMakeCache.txt").write_text(
+                "CMAKE_GENERATOR:INTERNAL=Ninja\n"
+            )
+            with ctest_dev.cmake_build_commands(
+                "cmake",
+                build_dir,
+                tuple(f"target_{index:02d}" for index in range(20)),
+                build_config="RelWithDebInfo",
+                max_command_length=len(str(build_dir)) + 100,
+            ) as commands:
+                commands = list(commands)
 
         self.assertGreater(len(commands), 1)
         self.assertEqual(
@@ -113,14 +120,14 @@ class CTestTest(unittest.TestCase):
         for command in commands:
             self.assertLessEqual(
                 sum(len(argument) + 1 for argument in command),
-                100,
+                len(str(build_dir)) + 100,
             )
             self.assertEqual(
                 command[:6],
                 [
                     "cmake",
                     "--build",
-                    "build",
+                    str(build_dir),
                     "--config",
                     "RelWithDebInfo",
                     "--target",
