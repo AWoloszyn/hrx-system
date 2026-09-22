@@ -11,6 +11,7 @@ import pytest
 from loom.target.arch.amd.xdna.aie.machine import (
     decode_immediate,
     encode_immediate,
+    has_property,
     validate_machine_table,
 )
 from loom.target.arch.amd.xdna.aie2p.core_encoding_data import CORE_ENCODING_TABLE
@@ -19,6 +20,18 @@ from loom.target.arch.amd.xdna.aie2p.core_machine_data import CORE_MACHINE_TABLE
 
 def test_core_machine_table_is_structurally_complete() -> None:
     validate_machine_table(CORE_MACHINE_TABLE, CORE_ENCODING_TABLE)
+
+
+@pytest.mark.parametrize(
+    "name", ["EVENT_ERROR", "EVENT_WARNING", "EVENT_event0", "EVENT_event1"]
+)
+def test_event_markers_preserve_upstream_side_effects(name: str) -> None:
+    # AIE2PGenInstrInfo.td marks the event instructions as side-effecting even
+    # though they have no explicit operands or register definitions.
+    form = next(form for form in CORE_MACHINE_TABLE.forms if form.name == name)
+    assert has_property(form, "hasSideEffects")
+    assert not form.outputs and not form.inputs
+    assert not form.implicit_defs and not form.implicit_uses
 
 
 def test_atomic_units_preserve_subregister_aliasing() -> None:

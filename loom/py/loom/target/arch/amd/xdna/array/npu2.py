@@ -45,8 +45,9 @@ def _field(
     bit_width: int = 1,
     *,
     signed: bool = False,
+    access: RegisterAccess = RegisterAccess.READ_WRITE,
 ) -> RegisterField:
-    return RegisterField(name, least_significant_bit, bit_width, signed)
+    return RegisterField(name, least_significant_bit, bit_width, signed, access)
 
 
 def _pattern(
@@ -55,13 +56,11 @@ def _pattern(
     base_offset: int,
     fields: tuple[RegisterField, ...],
     *dimensions: RegisterDimension,
-    access: RegisterAccess = RegisterAccess.READ_WRITE,
 ) -> RegisterPattern:
     return RegisterPattern(
         key=key,
         module=module,
         base_offset=base_offset,
-        access=access,
         dimensions=dimensions,
         fields=fields,
         provenance=_REGISTER_PROVENANCE,
@@ -273,9 +272,9 @@ def _dma_channel_patterns(
         ),
     )
     queue_fields = (
-        _field("enable_token_issue", 31),
-        _field("repeat_count", 16, 8),
-        _field("start_bd_id", 0, bd_id_bits),
+        _field("enable_token_issue", 31, access=RegisterAccess.WRITE_ONLY),
+        _field("repeat_count", 16, 8, access=RegisterAccess.WRITE_ONLY),
+        _field("start_bd_id", 0, bd_id_bits, access=RegisterAccess.WRITE_ONLY),
     )
     return (
         _pattern(f"{key}.s2mm.control", module, s2mm_base, s2mm_fields, channel),
@@ -285,7 +284,6 @@ def _dma_channel_patterns(
             s2mm_base + 4,
             queue_fields,
             channel,
-            access=RegisterAccess.WRITE_ONLY,
         ),
         _pattern(f"{key}.mm2s.control", module, mm2s_base, mm2s_fields, channel),
         _pattern(
@@ -294,7 +292,6 @@ def _dma_channel_patterns(
             mm2s_base + 4,
             queue_fields,
             channel,
-            access=RegisterAccess.WRITE_ONLY,
         ),
     )
 
@@ -373,6 +370,22 @@ def _stream_register_patterns(
             RegisterDimension("slave_port", slave_count, 0x10),
             RegisterDimension("slot", 4, 4),
         ),
+        *(
+            _pattern(
+                f"{key}.stream.event_port_selection{word}",
+                module,
+                base_offset + 0xF00 + word * 4,
+                tuple(
+                    field
+                    for slot in range(4)
+                    for field in (
+                        _field(f"port{word * 4 + slot}_master", slot * 8 + 5),
+                        _field(f"port{word * 4 + slot}_id", slot * 8, 5),
+                    )
+                ),
+            )
+            for word in range(2)
+        ),
     )
 
 
@@ -401,6 +414,172 @@ _STREAM_REGISTER_PATTERNS = (
 )
 
 
+def _event_register_patterns(
+    *,
+    key: str,
+    module: RegisterModule,
+    base_offset: int,
+    event_bits: int,
+    broadcast_switch_count: int,
+) -> tuple[RegisterPattern, ...]:
+    # The pinned aie-rt module definitions and AM025 register database share
+    # this layout. Memory tiles have 8-bit events; the other modules use 7.
+    # Only the core trace unit supports PC and instruction-execution modes.
+    return (
+        _pattern(
+            f"{key}.timer_control",
+            module,
+            base_offset,
+            (
+                _field("reset", 31, access=RegisterAccess.WRITE_ONLY),
+                _field("reset_event", 8, event_bits),
+            ),
+        ),
+        _pattern(
+            f"{key}.event_generate",
+            module,
+            base_offset + 0x08,
+            (_field("event", 0, event_bits, access=RegisterAccess.WRITE_ONLY),),
+        ),
+        _pattern(
+            f"{key}.event_broadcast",
+            module,
+            base_offset + 0x10,
+            (_field("event", 0, event_bits),),
+            RegisterDimension("broadcast_channel", 16, 4),
+        ),
+        *(
+            _pattern(
+                f"{key}.event_broadcast.{direction}.{action}",
+                module,
+                base_offset + 0x50 + direction_index * 0x10 + action_offset,
+                (_field("channels", 0, 16, access=access),),
+                RegisterDimension("broadcast_switch", broadcast_switch_count, 0x40),
+            )
+            for direction_index, direction in enumerate(
+                ("south", "west", "north", "east")
+            )
+            for action, action_offset, access in (
+                ("set", 0, RegisterAccess.WRITE_ONLY),
+                ("clear", 4, RegisterAccess.WRITE_ONLY),
+                ("value", 8, RegisterAccess.READ_ONLY),
+            )
+        ),
+        _pattern(
+            f"{key}.trace_control0",
+            module,
+            base_offset + 0xD0,
+            (
+                _field("stop_event", 24, event_bits),
+                _field("start_event", 16, event_bits),
+                *((_field("mode", 0, 2),) if module is RegisterModule.CORE else ()),
+            ),
+        ),
+        _pattern(
+            f"{key}.trace_control1",
+            module,
+            base_offset + 0xD4,
+            (_field("packet_type", 12, 3), _field("packet_id", 0, 5)),
+        ),
+        _pattern(
+            f"{key}.trace_status",
+            module,
+            base_offset + 0xD8,
+            (
+                _field("state", 8, 2, access=RegisterAccess.READ_ONLY),
+                _field("mode", 0, 3, access=RegisterAccess.READ_ONLY),
+            ),
+        ),
+        *(
+            _pattern(
+                f"{key}.trace_event{word}",
+                module,
+                base_offset + 0xE0 + word * 4,
+                tuple(
+                    _field(f"event{word * 4 + slot}", slot * 8, event_bits)
+                    for slot in range(4)
+                ),
+            )
+            for word in range(2)
+        ),
+        *(
+            _pattern(
+                f"{key}.timer_{name}",
+                module,
+                base_offset + offset,
+                (_field("value", 0, 32, access=access),),
+            )
+            for name, offset, access in (
+                ("trigger_low", 0xF0, RegisterAccess.READ_WRITE),
+                ("trigger_high", 0xF4, RegisterAccess.READ_WRITE),
+                ("low", 0xF8, RegisterAccess.READ_ONLY),
+                ("high", 0xFC, RegisterAccess.READ_ONLY),
+            )
+        ),
+        _pattern(
+            f"{key}.combo_event_inputs",
+            module,
+            base_offset + 0x400,
+            tuple(
+                _field(f"event_{name}", index * 8, event_bits)
+                for index, name in enumerate(("a", "b", "c", "d"))
+            ),
+        ),
+        _pattern(
+            f"{key}.combo_event_control",
+            module,
+            base_offset + 0x404,
+            tuple(_field(f"combo{index}", index * 8, 2) for index in range(3)),
+        ),
+        _pattern(
+            f"{key}.edge_event_control",
+            module,
+            base_offset + 0x408,
+            tuple(
+                field
+                for index in range(2)
+                for field in (
+                    _field(f"event{index}", index * 16, event_bits),
+                    _field(f"rising{index}", index * 16 + 9),
+                    _field(f"falling{index}", index * 16 + 10),
+                )
+            ),
+        ),
+    )
+
+
+_EVENT_REGISTER_PATTERNS = (
+    *_event_register_patterns(
+        key="core",
+        module=RegisterModule.CORE,
+        base_offset=0x34000,
+        event_bits=7,
+        broadcast_switch_count=1,
+    ),
+    *_event_register_patterns(
+        key="compute_memory",
+        module=RegisterModule.COMPUTE_MEMORY,
+        base_offset=0x14000,
+        event_bits=7,
+        broadcast_switch_count=1,
+    ),
+    *_event_register_patterns(
+        key="memory_tile",
+        module=RegisterModule.MEMORY_TILE,
+        base_offset=0x94000,
+        event_bits=8,
+        broadcast_switch_count=2,
+    ),
+    *_event_register_patterns(
+        key="shim_pl",
+        module=RegisterModule.SHIM_PL,
+        base_offset=0x34000,
+        event_bits=7,
+        broadcast_switch_count=2,
+    ),
+)
+
+
 def _lock_pattern(
     key: str,
     module: RegisterModule,
@@ -425,48 +604,6 @@ _FIXED_REGISTER_PATTERNS = (
         RegisterModule.CORE,
         0x32000,
         (_field("reset", 1), _field("enable", 0)),
-    ),
-    # Core trace unit, from aie-rt's XAIE2PGBL_CORE_MODULE_TRACE_* definitions.
-    _pattern(
-        "core.trace_control0",
-        RegisterModule.CORE,
-        0x340D0,
-        (
-            _field("stop_event", 24, 7),
-            _field("start_event", 16, 7),
-            _field("mode", 0, 2),
-        ),
-    ),
-    _pattern(
-        "core.trace_control1",
-        RegisterModule.CORE,
-        0x340D4,
-        (
-            _field("packet_type", 12, 3),
-            _field("packet_id", 0, 5),
-        ),
-    ),
-    _pattern(
-        "core.trace_event0",
-        RegisterModule.CORE,
-        0x340E0,
-        (
-            _field("event3", 24, 7),
-            _field("event2", 16, 7),
-            _field("event1", 8, 7),
-            _field("event0", 0, 7),
-        ),
-    ),
-    _pattern(
-        "core.trace_event1",
-        RegisterModule.CORE,
-        0x340E4,
-        (
-            _field("event7", 24, 7),
-            _field("event6", 16, 7),
-            _field("event5", 8, 7),
-            _field("event4", 0, 7),
-        ),
     ),
     _pattern(
         "shim_noc.mux_config",
@@ -755,6 +892,7 @@ NPU2_ARRAY_FAMILY = ArrayFamily(
         *_SHIM_DMA_BD_PATTERNS,
         *_DMA_CHANNEL_PATTERNS,
         *_STREAM_REGISTER_PATTERNS,
+        *_EVENT_REGISTER_PATTERNS,
         *_FIXED_REGISTER_PATTERNS,
     ),
     provenance=_ARRAY_PROVENANCE,

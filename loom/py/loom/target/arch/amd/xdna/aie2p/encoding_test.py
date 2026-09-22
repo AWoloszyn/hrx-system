@@ -12,9 +12,11 @@ from loom.target.arch.amd.xdna.aie.encoding import (
     BitMapping,
     BundleFieldEncoding,
     BundleFormatEncoding,
+    BundleInstance,
     EncodingTable,
     InstructionInstance,
     decode_instruction_fields,
+    encode_bundle,
     encode_instruction,
     encode_witness,
     gather_bits,
@@ -180,3 +182,27 @@ def test_bundle_prefixes_must_be_unambiguous() -> None:
 def test_core_table_reproduces_retained_vector_leaves() -> None:
     for witness in CORE_ENCODING_WITNESSES:
         assert encode_witness(CORE_ENCODING_TABLE, witness) == witness.expected_bytes
+
+
+@pytest.mark.parametrize(
+    ("instruction", "expected_bytes"),
+    [
+        ("EVENT_ERROR", bytes.fromhex("18 00 10 16")),
+        ("EVENT_WARNING", bytes.fromhex("18 00 10 14")),
+        ("EVENT_event0", bytes.fromhex("18 00 10 10")),
+        ("EVENT_event1", bytes.fromhex("18 00 10 12")),
+    ],
+)
+def test_event_instructions_match_llvm_aie_binary_oracle(
+    instruction: str,
+    expected_bytes: bytes,
+) -> None:
+    # llvm/test/CodeGen/AIE/aie2p/BinaryOutput/event.mir at
+    # LLVM_AIE_SOURCE_COMMIT retains these complete instruction bundles.
+    assert (
+        encode_bundle(
+            CORE_ENCODING_TABLE,
+            BundleInstance("I32_ALU", (InstructionInstance(instruction),)),
+        )
+        == expected_bytes
+    )

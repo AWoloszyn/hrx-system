@@ -82,6 +82,7 @@ _STREAM_PORT_IDS = {
 _REGISTER_ACCESS_IDS = {
     RegisterAccess.READ_WRITE: "LOOM_XDNA_REGISTER_ACCESS_READ_WRITE",
     RegisterAccess.WRITE_ONLY: "LOOM_XDNA_REGISTER_ACCESS_WRITE_ONLY",
+    RegisterAccess.READ_ONLY: "LOOM_XDNA_REGISTER_ACCESS_READ_ONLY",
 }
 
 
@@ -289,21 +290,22 @@ def emit_register_facts() -> str:
             f".provenance_bits = UINT32_C(0x{int(pattern.provenance):08x}), "
             f".dimensions = {{{dimension_values[0]}, {dimension_values[1]}}}, "
             f".module = {_REGISTER_MODULE_IDS[pattern.module]}, "
-            f".access = {_REGISTER_ACCESS_IDS[pattern.access]}, "
             f".dimension_count = {len(pattern.dimensions)}"
             "},"
         )
 
     field_lines = ["    {0},"]
     for key, pattern, field in fields:
-        flags = int(field.is_signed)
+        access_and_flags = _REGISTER_ACCESS_IDS[field.access]
+        if field.is_signed:
+            access_and_flags += " | LOOM_XDNA_REGISTER_FIELD_FLAG_SIGNED"
         field_lines.append(
             "    {"
             f".name_offset = UINT16_C({string_offsets[key]}), "
             f".pattern_id = {pattern_ids[pattern.key]}, "
             f".least_significant_bit = {field.least_significant_bit}, "
             f".bit_width = {field.bit_width}, "
-            f".flags = {flags}"
+            f".access_and_flags = {access_and_flags}"
             "},"
         )
     lines = [

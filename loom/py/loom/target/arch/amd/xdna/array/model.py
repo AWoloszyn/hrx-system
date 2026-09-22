@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""Validated physical-array and configuration-register source schema."""
+"""Validated physical-array and register-field source schema."""
 
 from __future__ import annotations
 
@@ -38,7 +38,7 @@ class TileKind(Enum):
 
 
 class RegisterModule(Enum):
-    """Independently addressed configuration-register module."""
+    """Independently addressed register module."""
 
     CORE = "core"
     COMPUTE_MEMORY = "compute_memory"
@@ -73,6 +73,7 @@ class RegisterAccess(Enum):
 
     READ_WRITE = "read_write"
     WRITE_ONLY = "write_only"
+    READ_ONLY = "read_only"
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,12 +177,14 @@ class RegisterDimension:
 
 @dataclass(frozen=True, slots=True)
 class RegisterField:
-    """One semantically writable field within a 32-bit register."""
+    """One software-visible field within a 32-bit register."""
 
     name: str
     least_significant_bit: int
     bit_width: int
     is_signed: bool = False
+    # Hardware access is field-local, including registers with mixed access.
+    access: RegisterAccess = RegisterAccess.READ_WRITE
 
     @property
     def mask(self) -> int:
@@ -196,7 +199,6 @@ class RegisterPattern:
     key: str
     module: RegisterModule
     base_offset: int
-    access: RegisterAccess
     dimensions: tuple[RegisterDimension, ...]
     fields: tuple[RegisterField, ...]
     provenance: Provenance
