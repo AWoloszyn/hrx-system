@@ -1,0 +1,205 @@
+// RUN: pass combine
+
+// Dynamic extraction and reconstruction preserve the register table operation.
+func.def @dynamic_table(%table: vector<16xf32>, %left: index, %right: index) -> (vector<2xf32>) {
+  %a = vector.extract %table[%left] : vector<16xf32> -> f32
+  %b = vector.extract %table[%right] : vector<16xf32> -> f32
+  %result = vector.from_elements %a, %b : vector<2xf32>
+  func.return %result : vector<2xf32>
+}
+
+// ----
+func.def @dynamic_table(%table: vector<16xf32>, %left: index, %right: index) -> (vector<2xf32>) {
+  %7 = vector.from_elements %left, %right : vector<2xindex>
+  %result = vector.table.lookup %table[%7] : vector<16xf32>, vector<2xindex> -> vector<2xf32>
+  func.return %result : vector<2xf32>
+}
+
+// ====
+
+// Masked byte indices survive the promotions introduced by C++ subscripts.
+func.def @promoted_bytes(%table: vector<16xi8>, %raw: vector<4xi8>) -> (vector<4xi8>) {
+  %mask = vector.constant 15 : vector<4xi8>
+  %indices = vector.andi %raw, %mask : vector<4xi8>
+  %a = vector.extract %indices[0] : vector<4xi8> -> i8
+  %b = vector.extract %indices[1] : vector<4xi8> -> i8
+  %c = vector.extract %indices[2] : vector<4xi8> -> i8
+  %d = vector.extract %indices[3] : vector<4xi8> -> i8
+  %ua = scalar.extui %a : i8 to i32
+  %ub = scalar.extui %b : i8 to i32
+  %uc = scalar.extui %c : i8 to i32
+  %ud = scalar.extui %d : i8 to i32
+  %ia = index.cast %ua : i32 to index
+  %ib = index.cast %ub : i32 to index
+  %ic = index.cast %uc : i32 to index
+  %id = index.cast %ud : i32 to index
+  %va = vector.extract %table[%ia] : vector<16xi8> -> i8
+  %vb = vector.extract %table[%ib] : vector<16xi8> -> i8
+  %vc = vector.extract %table[%ic] : vector<16xi8> -> i8
+  %vd = vector.extract %table[%id] : vector<16xi8> -> i8
+  %result = vector.from_elements %va, %vb, %vc, %vd : vector<4xi8>
+  func.return %result : vector<4xi8>
+}
+
+// ----
+func.def @promoted_bytes(%table: vector<16xi8>, %raw: vector<4xi8>) -> (vector<4xi8>) {
+  %mask = vector.constant 15 : vector<4xi8>
+  %indices = vector.andi %raw, %mask : vector<4xi8>
+  %result = vector.table.lookup %table[%indices] : vector<16xi8>, vector<4xi8> -> vector<4xi8>
+  func.return %result : vector<4xi8>
+}
+
+// ====
+
+// An unsigned byte may select lanes 128..255. Keep zero extension when the
+// narrow signed interpretation would change that value.
+func.def @unsigned_high_bit(%table: vector<256xi8>, %indices: vector<2xi8>) -> (vector<2xi8>) {
+  %a = vector.extract %indices[0] : vector<2xi8> -> i8
+  %b = vector.extract %indices[1] : vector<2xi8> -> i8
+  %ua = scalar.extui %a : i8 to i32
+  %ub = scalar.extui %b : i8 to i32
+  %ia = index.cast %ua : i32 to index
+  %ib = index.cast %ub : i32 to index
+  %va = vector.extract %table[%ia] : vector<256xi8> -> i8
+  %vb = vector.extract %table[%ib] : vector<256xi8> -> i8
+  %result = vector.from_elements %va, %vb : vector<2xi8>
+  func.return %result : vector<2xi8>
+}
+
+// ----
+func.def @unsigned_high_bit(%table: vector<256xi8>, %indices: vector<2xi8>) -> (vector<2xi8>) {
+  %a = vector.extract %indices[0] : vector<2xi8> -> i8
+  %b = vector.extract %indices[1] : vector<2xi8> -> i8
+  %ua = scalar.extui %a : i8 to i32
+  %ub = scalar.extui %b : i8 to i32
+  %14 = vector.from_elements %ua, %ub : vector<2xi32>
+  %result = vector.table.lookup %table[%14] : vector<256xi8>, vector<2xi32> -> vector<2xi8>
+  func.return %result : vector<2xi8>
+}
+
+// ====
+
+// An unrestricted wide input must retain its address-domain conversion and
+// the target's representability checks.
+func.def @wide_indices(%table: vector<16xi8>, %a: i64, %b: i64) -> (vector<2xi8>) {
+  %ia = index.cast %a : i64 to index
+  %ib = index.cast %b : i64 to index
+  %va = vector.extract %table[%ia] : vector<16xi8> -> i8
+  %vb = vector.extract %table[%ib] : vector<16xi8> -> i8
+  %result = vector.from_elements %va, %vb : vector<2xi8>
+  func.return %result : vector<2xi8>
+}
+
+// ----
+func.def @wide_indices(%table: vector<16xi8>, %a: i64, %b: i64) -> (vector<2xi8>) {
+  %ia = index.cast %a : i64 to index
+  %ib = index.cast %b : i64 to index
+  %9 = vector.from_elements %ia, %ib : vector<2xindex>
+  %result = vector.table.lookup %table[%9] : vector<16xi8>, vector<2xindex> -> vector<2xi8>
+  func.return %result : vector<2xi8>
+}
+
+// ====
+
+// Signed extension preserves the numeric index, including its sign.
+func.def @signed_promotion(%table: vector<64xf16>, %a: i8, %b: i8) -> (vector<2xf16>) {
+  %sa = scalar.extsi %a : i8 to i32
+  %sb = scalar.extsi %b : i8 to i32
+  %ia = index.cast %sa : i32 to index
+  %ib = index.cast %sb : i32 to index
+  %va = vector.extract %table[%ia] : vector<64xf16> -> f16
+  %vb = vector.extract %table[%ib] : vector<64xf16> -> f16
+  %result = vector.from_elements %va, %vb : vector<2xf16>
+  func.return %result : vector<2xf16>
+}
+
+// ----
+func.def @signed_promotion(%table: vector<64xf16>, %a: i8, %b: i8) -> (vector<2xf16>) {
+  %13 = vector.from_elements %a, %b : vector<2xi8>
+  %result = vector.table.lookup %table[%13] : vector<64xf16>, vector<2xi8> -> vector<2xf16>
+  func.return %result : vector<2xf16>
+}
+
+// ====
+
+// Output order and repeated selectors remain explicit, independent of table
+// length, result shape, and the original index vector's lane order.
+func.def @reordered_and_repeated(%table: vector<7xf32>, %indices: vector<2xi32>) -> (vector<2x2xf32>) {
+  %a = vector.extract %indices[0] : vector<2xi32> -> i32
+  %b = vector.extract %indices[1] : vector<2xi32> -> i32
+  %ia = index.cast %a : i32 to index
+  %ib = index.cast %b : i32 to index
+  %va = vector.extract %table[%ia] : vector<7xf32> -> f32
+  %vb = vector.extract %table[%ib] : vector<7xf32> -> f32
+  %result = vector.from_elements %vb, %va, %vb, %va : vector<2x2xf32>
+  func.return %result : vector<2x2xf32>
+}
+
+// ----
+func.def @reordered_and_repeated(%table: vector<7xf32>, %indices: vector<2xi32>) -> (vector<2x2xf32>) {
+  %a = vector.extract %indices[0] : vector<2xi32> -> i32
+  %b = vector.extract %indices[1] : vector<2xi32> -> i32
+  %12 = vector.from_elements %b, %a, %b, %a : vector<2x2xi32>
+  %result = vector.table.lookup %table[%12] : vector<7xf32>, vector<2x2xi32> -> vector<2x2xf32>
+  func.return %result : vector<2x2xf32>
+}
+
+// ====
+
+// A constant selector can share the narrowed representation when it fits.
+func.def @mixed_selectors(%table: vector<16xf32>, %a: i8) -> (vector<2xf32>) {
+  %ia = index.cast %a : i8 to index
+  %va = vector.extract %table[%ia] : vector<16xf32> -> f32
+  %vb = vector.extract %table[12] : vector<16xf32> -> f32
+  %result = vector.from_elements %va, %vb : vector<2xf32>
+  func.return %result : vector<2xf32>
+}
+
+// ----
+func.def @mixed_selectors(%table: vector<16xf32>, %a: i8) -> (vector<2xf32>) {
+  %10 = scalar.constant 12 : i8
+  %11 = vector.from_elements %a, %10 : vector<2xi8>
+  %result = vector.table.lookup %table[%11] : vector<16xf32>, vector<2xi8> -> vector<2xf32>
+  func.return %result : vector<2xf32>
+}
+
+// ====
+
+// A constant that exceeds the signed narrow domain prevents narrowing of the
+// whole index vector; table length is not permission to truncate indices.
+func.def @wide_constant_selector(%table: vector<256xf32>, %a: i8) -> (vector<2xf32>) {
+  %ia = index.cast %a : i8 to index
+  %va = vector.extract %table[%ia] : vector<256xf32> -> f32
+  %vb = vector.extract %table[200] : vector<256xf32> -> f32
+  %result = vector.from_elements %va, %vb : vector<2xf32>
+  func.return %result : vector<2xf32>
+}
+
+// ----
+func.def @wide_constant_selector(%table: vector<256xf32>, %a: i8) -> (vector<2xf32>) {
+  %ia = index.cast %a : i8 to index
+  %7 = index.constant 200 : index
+  %8 = vector.from_elements %ia, %7 : vector<2xindex>
+  %result = vector.table.lookup %table[%8] : vector<256xf32>, vector<2xindex> -> vector<2xf32>
+  func.return %result : vector<2xf32>
+}
+
+// ====
+
+// Distinct SSA tables cannot be combined, even when their types match.
+func.def @different_tables(%left: vector<16xf32>, %right: vector<16xf32>, %index: index) -> (vector<2xf32>) {
+  %a = vector.extract %left[%index] : vector<16xf32> -> f32
+  %b = vector.extract %right[%index] : vector<16xf32> -> f32
+  %result = vector.from_elements %a, %b : vector<2xf32>
+  func.return %result : vector<2xf32>
+}
+
+// ====
+
+// A multi-axis source is not a rank-one register table.
+func.def @multi_axis_source(%table: vector<2x4xf32>, %index: index) -> (vector<2xf32>) {
+  %a = vector.extract %table[0, %index] : vector<2x4xf32> -> f32
+  %b = vector.extract %table[1, %index] : vector<2x4xf32> -> f32
+  %result = vector.from_elements %a, %b : vector<2xf32>
+  func.return %result : vector<2xf32>
+}

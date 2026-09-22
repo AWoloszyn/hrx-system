@@ -37,8 +37,8 @@ typedef struct PipelineRunCounts {
   int first_target_inlining_ordinal = 0;
   // Lexical pass-run ordinal of the last target-required call inlining.
   int last_target_inlining_ordinal = 0;
-  // Last source cleanup allowed to reconstruct register table lookups.
-  int last_table_combination_ordinal = 0;
+  // Last source combination before target legalization.
+  int last_source_combination_ordinal = 0;
   // First target legalization pass that selects physical representations.
   int first_target_legalization_ordinal = 0;
   // Number of source-to-low pass runs.
@@ -136,12 +136,9 @@ iree_status_t InspectPipelineRun(void* user_data, loom_op_t* op,
           count_context->current_run_ordinal;
     }
     counts->last_target_inlining_ordinal = count_context->current_run_ordinal;
-  } else if (iree_string_view_equal(key, IREE_SV("canonicalize")) &&
-             iree_string_view_equal(FindStringOption(count_context->module,
-                                                     loom_pass_run_options(op),
-                                                     IREE_SV("table-lookups")),
-                                    IREE_SV("combine"))) {
-    counts->last_table_combination_ordinal = count_context->current_run_ordinal;
+  } else if (iree_string_view_equal(key, IREE_SV("combine"))) {
+    counts->last_source_combination_ordinal =
+        count_context->current_run_ordinal;
   } else if (iree_string_view_equal(key, IREE_SV("target-legalize"))) {
     if (counts->first_target_legalization_ordinal == 0) {
       counts->first_target_legalization_ordinal =
@@ -255,8 +252,8 @@ TEST_F(TargetPipelineTest, ZeroChecksBuildsNoSanitizerPassSlots) {
   EXPECT_LT(counts.target_callgraph_specialization_ordinal,
             counts.first_target_inlining_ordinal);
   EXPECT_LT(counts.first_target_inlining_ordinal,
-            counts.last_table_combination_ordinal);
-  EXPECT_LT(counts.last_table_combination_ordinal,
+            counts.last_source_combination_ordinal);
+  EXPECT_LT(counts.last_source_combination_ordinal,
             counts.first_target_legalization_ordinal);
   EXPECT_LT(counts.first_target_legalization_ordinal,
             counts.source_to_low_ordinal);

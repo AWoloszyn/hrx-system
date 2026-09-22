@@ -14,6 +14,7 @@ loom_check_test_suite(
     test
   SRCS
     "callable_types.loom-test"
+    "combine_legalize.loom-test"
     "dce.loom-test"
     "hint_lifetime.loom-test"
     "value_facts.loom-test"

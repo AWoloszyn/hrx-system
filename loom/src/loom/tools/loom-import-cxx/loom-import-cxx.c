@@ -167,8 +167,7 @@ static iree_status_t loom_cxx_cli_import(
     };
     loom_pass_run_result_t result = {0};
     status = loom_pass_tool_run_flat_pipeline(
-        module, IREE_SV("canonicalize{table-lookups=combine},cse,dce"),
-        &pass_options, &result);
+        module, IREE_SV("combine,cse,dce"), &pass_options, &result);
     if (iree_status_is_ok(status) && result.error_count) {
       status = iree_make_status(IREE_STATUS_INTERNAL, "import cleanup failed");
     }

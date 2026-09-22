@@ -36,7 +36,7 @@
 #include "loom/ops/test/registry.h"
 #include "loom/ops/vector/ops.h"
 #include "loom/pass/value_facts.h"
-#include "loom/transforms/cleanup/canonicalize.h"
+#include "loom/transforms/cleanup/canonicalizer.h"
 #include "loom/util/fact_table.h"
 #include "loom/util/stream.h"
 #include "loom/verify/verify.h"

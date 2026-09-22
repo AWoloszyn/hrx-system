@@ -1,4 +1,4 @@
-// RUN: pass canonicalize{table-lookups=combine},cse
+// RUN: pass combine,cse
 
 using Bytes4 = unsigned char __attribute__((ext_vector_type(4)));
 using Codes4 = signed char __attribute__((ext_vector_type(4)));

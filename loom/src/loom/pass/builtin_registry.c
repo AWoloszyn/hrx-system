@@ -54,34 +54,12 @@
 #include "loom/transforms/view/linearize_view_accesses.h"
 #include "loom/transforms/view/transport.h"
 
-static const loom_pass_option_enum_value_t kCanonicalizeViewLoadValues[] = {
-    {.value = IREE_SVL("coalesce")},
-    {.value = IREE_SVL("preserve")},
-};
-
-static const loom_pass_option_enum_value_t kCanonicalizeTableLookupValues[] = {
-    {.value = IREE_SVL("combine")},
-    {.value = IREE_SVL("preserve")},
-};
-
 static const loom_pass_option_schema_t kCanonicalizeOptionSchema[] = {
     {
         .name = IREE_SVL("max-iterations"),
         .kind = LOOM_PASS_OPTION_SCHEMA_UINT32,
         .minimum_uint32 = 1,
         .maximum_uint32 = UINT32_MAX,
-    },
-    {
-        .name = IREE_SVL("table-lookups"),
-        .kind = LOOM_PASS_OPTION_SCHEMA_ENUM,
-        .enum_values = kCanonicalizeTableLookupValues,
-        .enum_value_count = IREE_ARRAYSIZE(kCanonicalizeTableLookupValues),
-    },
-    {
-        .name = IREE_SVL("view-loads"),
-        .kind = LOOM_PASS_OPTION_SCHEMA_ENUM,
-        .enum_values = kCanonicalizeViewLoadValues,
-        .enum_value_count = IREE_ARRAYSIZE(kCanonicalizeViewLoadValues),
     },
 };
 
@@ -370,7 +348,7 @@ static const loom_pass_descriptor_t kBuiltinPassDescriptors[] = {
         .key = IREE_SVL("canonicalize"),
         .info = loom_canonicalize_pass_info,
         .function_run = loom_canonicalize_run,
-        .create = loom_canonicalize_create,
+        .create = loom_canonicalizer_pass_create,
         .option_schema = kCanonicalizeOptionSchema,
         .option_schema_count = IREE_ARRAYSIZE(kCanonicalizeOptionSchema),
     },
@@ -383,6 +361,14 @@ static const loom_pass_descriptor_t kBuiltinPassDescriptors[] = {
         .key = IREE_SVL("cfg-simplify"),
         .info = loom_cfg_simplify_pass_info,
         .function_run = loom_cfg_simplify_run,
+    },
+    {
+        .key = IREE_SVL("combine"),
+        .info = loom_combine_pass_info,
+        .function_run = loom_combine_run,
+        .create = loom_canonicalizer_pass_create,
+        .option_schema = kCanonicalizeOptionSchema,
+        .option_schema_count = IREE_ARRAYSIZE(kCanonicalizeOptionSchema),
     },
     {
         .key = IREE_SVL("cse"),

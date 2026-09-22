@@ -307,7 +307,7 @@ loom_cc_library(
     loom::pass::types
     loom::rewrite::materialize
     loom::rewrite::remap
-    loom::transforms::cleanup::canonicalize
+    loom::transforms::cleanup::canonicalizer
     loom::util::fact_table
     loom::util::walk
   PUBLIC
