@@ -22,6 +22,7 @@
 #include "loom/ops/encoding/families.h"
 #include "loom/ops/encoding/operand.h"
 #include "loom/ops/encoding/ops.h"
+#include "loom/util/fact_table.h"
 #include "loom/util/numeric_format.h"
 
 namespace loom {
@@ -732,6 +733,61 @@ TEST(EncodingStorageQueryTest, AbsentShapedAttachmentIsDense) {
   EXPECT_FALSE(loom_encoding_query_type_address_layout(
       /*context=*/nullptr, /*module=*/nullptr, vector_type,
       /*stride_storage=*/nullptr, /*stride_capacity=*/0, &vector_layout));
+}
+
+TEST(EncodingStorageQueryTest, ValueLayoutKeepsNumericAndSsaAxesSeparate) {
+  iree_arena_block_pool_t block_pool;
+  iree_arena_block_pool_initialize(4096, iree_allocator_system(), &block_pool);
+  iree_arena_allocator_t arena;
+  iree_arena_initialize(&block_pool, &arena);
+  loom_value_fact_table_t table = {};
+  IREE_ASSERT_OK(loom_value_fact_table_initialize(&table, &arena, 0));
+
+  const loom_value_id_t layout_value = 7;
+  const loom_value_id_t dynamic_stride = 3;
+  const loom_value_facts_t numeric_strides[] = {
+      loom_value_facts_make(4, 4096, 4), loom_value_facts_exact_i64(1)};
+  loom_value_fact_encoding_summary_t summary = {};
+  summary.role = LOOM_ENCODING_ROLE_ADDRESS_LAYOUT;
+  summary.address_layout = {LOOM_VALUE_FACT_ADDRESS_LAYOUT_STRIDED,
+                            IREE_ARRAYSIZE(numeric_strides), numeric_strides};
+  loom_value_facts_t facts;
+  IREE_ASSERT_OK(
+      loom_value_facts_make_encoding_summary(&table.context, summary, &facts));
+  IREE_ASSERT_OK(loom_value_fact_table_define(&table, layout_value, facts));
+  const loom_value_id_t stride_values[] = {dynamic_stride,
+                                           LOOM_VALUE_ID_INVALID};
+  IREE_ASSERT_OK(loom_value_fact_table_define_layout_strides(
+      &table, layout_value, {stride_values, IREE_ARRAYSIZE(stride_values)}));
+
+  loom_value_fact_address_layout_t layout = {};
+  ASSERT_TRUE(loom_encoding_query_value_address_layout(&table.context,
+                                                       layout_value, &layout));
+  EXPECT_EQ(layout.kind, LOOM_VALUE_FACT_ADDRESS_LAYOUT_STRIDED);
+  ASSERT_EQ(layout.rank, IREE_ARRAYSIZE(numeric_strides));
+  EXPECT_EQ(layout.strides[0].range_lo, 4);
+  EXPECT_EQ(layout.strides[0].range_hi, 4096);
+  int64_t unit_stride = 0;
+  EXPECT_TRUE(loom_value_facts_as_exact_i64(layout.strides[1], &unit_stride));
+  EXPECT_EQ(unit_stride, 1);
+
+  const loom_value_fact_layout_strides_t bindings =
+      loom_encoding_query_value_layout_strides(&table.context, layout_value);
+  ASSERT_EQ(bindings.count, IREE_ARRAYSIZE(stride_values));
+  EXPECT_EQ(bindings.values[0], dynamic_stride);
+  EXPECT_EQ(bindings.values[1], LOOM_VALUE_ID_INVALID);
+
+  loom_value_fact_address_layout_t absent_layout = {};
+  EXPECT_FALSE(loom_encoding_query_value_address_layout(
+      /*context=*/nullptr, layout_value, &absent_layout));
+  EXPECT_EQ(absent_layout.kind, LOOM_VALUE_FACT_ADDRESS_LAYOUT_UNKNOWN);
+  EXPECT_EQ(loom_encoding_query_value_layout_strides(
+                /*context=*/nullptr, layout_value)
+                .count,
+            0);
+
+  iree_arena_deinitialize(&arena);
+  iree_arena_block_pool_deinitialize(&block_pool);
 }
 
 TEST_F(EncodingStorageTest, InternExactComposedStorageSummary) {

@@ -138,6 +138,7 @@ loom_cc_test(
     iree::testing::gtest_main
     loom::format::text::parser
     loom::ir
+    loom::util::fact_table
     loom::util::numeric_format
 )
 

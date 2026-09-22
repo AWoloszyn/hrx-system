@@ -70,6 +70,20 @@ bool loom_encoding_query_static_address_layout(
     loom_value_facts_t* stride_storage, iree_host_size_t stride_capacity,
     loom_value_fact_address_layout_t* out_layout);
 
+// Queries an SSA encoding value's address-layout summary from context-owned
+// facts. The returned stride facts borrow fact-table storage. This does not
+// inspect the value's producer or recover scope-local SSA stride bindings.
+bool loom_encoding_query_value_address_layout(
+    const loom_fact_context_t* context, loom_value_id_t value_id,
+    loom_value_fact_address_layout_t* out_layout);
+
+// Queries retained per-axis SSA stride bindings for an encoding value. Static
+// axes use INVALID; their values live in the numeric layout summary. An empty
+// slice means no scoped materialization is available. Storage is owned by
+// |context|'s fact table and survives until its scope is cleared.
+loom_value_fact_layout_strides_t loom_encoding_query_value_layout_strides(
+    const loom_fact_context_t* context, loom_value_id_t value_id);
+
 // Decodes a static storage-schema encoding into a summary. Generic operand
 // schemas fill in packed fragment and scale facts; other schema
 // families still return true with only static_spec_encoding_id populated.

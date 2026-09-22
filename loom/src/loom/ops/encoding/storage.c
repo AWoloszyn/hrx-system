@@ -480,6 +480,29 @@ static bool loom_encoding_facts_address_layout(
   return true;
 }
 
+bool loom_encoding_query_value_address_layout(
+    const loom_fact_context_t* context, loom_value_id_t value_id,
+    loom_value_fact_address_layout_t* out_layout) {
+  if (!out_layout) {
+    return false;
+  }
+  *out_layout = (loom_value_fact_address_layout_t){0};
+  if (!context || !context->table || value_id == LOOM_VALUE_ID_INVALID) {
+    return false;
+  }
+  return loom_encoding_facts_address_layout(
+      context, loom_value_fact_table_lookup(context->table, value_id),
+      out_layout);
+}
+
+loom_value_fact_layout_strides_t loom_encoding_query_value_layout_strides(
+    const loom_fact_context_t* context, loom_value_id_t value_id) {
+  if (!context || !context->table || value_id == LOOM_VALUE_ID_INVALID) {
+    return (loom_value_fact_layout_strides_t){0};
+  }
+  return loom_value_fact_table_query_layout_strides(context->table, value_id);
+}
+
 static bool loom_encoding_value_storage_schema(
     const loom_fact_context_t* context, loom_value_facts_t facts,
     loom_value_fact_storage_schema_t* out_schema) {
@@ -525,10 +548,8 @@ bool loom_encoding_query_type_address_layout(
   if (!loom_type_has_ssa_encoding(type) || !context || !context->table) {
     return false;
   }
-  loom_value_id_t value_id = loom_type_encoding_value_id(type);
-  loom_value_facts_t facts =
-      loom_value_fact_table_lookup(context->table, value_id);
-  return loom_encoding_facts_address_layout(context, facts, out_layout);
+  return loom_encoding_query_value_address_layout(
+      context, loom_type_encoding_value_id(type), out_layout);
 }
 
 loom_value_fact_layout_strides_t loom_encoding_query_type_layout_strides(
@@ -536,8 +557,8 @@ loom_value_fact_layout_strides_t loom_encoding_query_type_layout_strides(
   if (!context || !loom_type_has_ssa_encoding(type)) {
     return (loom_value_fact_layout_strides_t){0};
   }
-  return loom_value_fact_table_query_layout_strides(
-      context->table, loom_type_encoding_value_id(type));
+  return loom_encoding_query_value_layout_strides(
+      context, loom_type_encoding_value_id(type));
 }
 
 bool loom_encoding_query_type_storage_schema(
