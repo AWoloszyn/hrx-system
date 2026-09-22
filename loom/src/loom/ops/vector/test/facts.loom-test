@@ -714,6 +714,33 @@ func.def @table_lookup_small_lanes() -> (f16, f16) {
 
 // ====
 
+// Packed codes can select different quarters of a sixteen-byte signed table.
+func.def @table_lookup_mixed_quarters() -> (i8, i8, i8, i8) {
+  %base = scalar.constant -127 : i8
+  %step = scalar.constant 16 : i8
+  %table = vector.iota %base step %step : vector<16xi8>
+  %low = scalar.constant 28 : i8
+  %high = scalar.constant 122 : i8
+  %packed = vector.from_elements %low, %high : vector<2xi8>
+  %codes = vector.bitunpacku<4> %packed : vector<2xi8> -> vector<4xi8>
+  %values = vector.table.lookup %table[%codes] : vector<16xi8>, vector<4xi8> -> vector<4xi8>
+  %r0 = vector.extract %values[0] : vector<4xi8> -> i8
+  %r1 = vector.extract %values[1] : vector<4xi8> -> i8
+  %r2 = vector.extract %values[2] : vector<4xi8> -> i8
+  %r3 = vector.extract %values[3] : vector<4xi8> -> i8
+  func.return %r0, %r1, %r2, %r3 : i8, i8, i8, i8
+}
+// ----
+func.def @table_lookup_mixed_quarters() -> (i8, i8, i8, i8) {
+  %r0 = scalar.constant 65 : i8
+  %r1 = scalar.constant -111 : i8
+  %r2 = scalar.constant 33 : i8
+  %r3 = scalar.constant -15 : i8
+  func.return %r0, %r1, %r2, %r3 : i8, i8, i8, i8
+}
+
+// ====
+
 // Table quantization facts count ordered threshold comparisons directly.
 func.def @table_quantize_small_lanes() -> (i8, i8, i8) {
   %t0 = scalar.constant -1.0 : f16
