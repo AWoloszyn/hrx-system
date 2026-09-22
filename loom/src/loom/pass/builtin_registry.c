@@ -30,6 +30,7 @@
 #include "loom/transforms/cleanup/cse.h"
 #include "loom/transforms/cleanup/dce.h"
 #include "loom/transforms/cleanup/strip_hints.h"
+#include "loom/transforms/encoding/layout_transport.h"
 #include "loom/transforms/func/locations.h"
 #include "loom/transforms/kernel/kernel_async_legality.h"
 #include "loom/transforms/kernel/kernel_resources.h"
@@ -381,6 +382,11 @@ static const loom_pass_descriptor_t kBuiltinPassDescriptors[] = {
         .key = IREE_SVL("dce"),
         .info = loom_dce_pass_info,
         .function_run = loom_dce_run,
+    },
+    {
+        .key = IREE_SVL("decompose-cfg-layout-transports"),
+        .info = loom_decompose_cfg_layout_transports_pass_info,
+        .function_run = loom_decompose_cfg_layout_transports_run,
     },
     {
         .key = IREE_SVL("decompose-view-root-selections"),

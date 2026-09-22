@@ -1,0 +1,222 @@
+// RUN: pass decompose-cfg-layout-transports
+
+// Distinct static layouts become ordinary scalar stride payloads at the join.
+func.def @diamond(%input: buffer, %condition: i1) -> (f32) {
+  %base = index.constant 0 : offset
+  cfg.cond_br %condition, ^row, ^column
+^row:
+  %row_layout = encoding.layout.strided [4, 1] : encoding<layout>
+  cfg.br ^join(%row_layout: encoding<layout>)
+^column:
+  %column_layout = encoding.layout.strided [1, 64] : encoding<layout>
+  cfg.br ^join(%column_layout: encoding<layout>)
+^join(%layout: encoding<layout>):
+  %view = buffer.view %input[%base] : buffer -> view<4x4xf32, %layout>
+  %value = view.load %view[0, 1] : view<4x4xf32, %layout> -> f32
+  func.return %value : f32
+}
+
+// ----
+func.def @diamond(%input: buffer, %condition: i1) -> (f32) {
+  %base = index.constant 0 : offset
+  cfg.cond_br %condition, ^row, ^column
+^row:
+  %row_layout = encoding.layout.strided [4, 1] : encoding<layout>
+  %12 = index.constant 4 : index
+  %13 = index.constant 1 : index
+  cfg.br ^join(%12: index, %13: index)
+^column:
+  %column_layout = encoding.layout.strided [1, 64] : encoding<layout>
+  %14 = index.constant 1 : index
+  %15 = index.constant 64 : index
+  cfg.br ^join(%14: index, %15: index)
+^join(%layout_stride_0: index, %layout_stride_1: index):
+  %layout = encoding.layout.strided [%layout_stride_0, %layout_stride_1] : encoding<layout>
+  %view = buffer.view %input[%base] : buffer -> view<4x4xf32, %layout>
+  %value = view.load %view[0, 1] : view<4x4xf32, %layout> -> f32
+  func.return %value : f32
+}
+
+// ====
+
+// Axes that remain exact stay static; only the varying axis crosses the CFG.
+func.def @dynamic_axis(%input: buffer, %condition: i1, %left_stride: index, %right_stride: index) -> (f32) {
+  %base = index.constant 0 : offset
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %left_layout = encoding.layout.strided [%left_stride, 1] : encoding<layout>
+  cfg.br ^join(%left_layout: encoding<layout>)
+^right:
+  %right_layout = encoding.layout.strided [%right_stride, 1] : encoding<layout>
+  cfg.br ^join(%right_layout: encoding<layout>)
+^join(%layout: encoding<layout>):
+  %view = buffer.view %input[%base] : buffer -> view<4x4xf32, %layout>
+  %value = view.load %view[1, 0] : view<4x4xf32, %layout> -> f32
+  func.return %value : f32
+}
+
+// ----
+func.def @dynamic_axis(%input: buffer, %condition: i1, %left_stride: index, %right_stride: index) -> (f32) {
+  %base = index.constant 0 : offset
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %left_layout = encoding.layout.strided [%left_stride, 1] : encoding<layout>
+  cfg.br ^join(%left_stride: index)
+^right:
+  %right_layout = encoding.layout.strided [%right_stride, 1] : encoding<layout>
+  cfg.br ^join(%right_stride: index)
+^join(%layout_stride_0: index):
+  %layout = encoding.layout.strided [%layout_stride_0, 1] : encoding<layout>
+  %view = buffer.view %input[%base] : buffer -> view<4x4xf32, %layout>
+  %value = view.load %view[1, 0] : view<4x4xf32, %layout> -> f32
+  func.return %value : f32
+}
+
+// ====
+
+// A downstream join consumes the scalarized descriptor produced by an
+// upstream join without recovering either layout from its predecessors.
+func.def @nested_joins(%input: buffer, %first: i1, %second: i1) -> (f32) {
+  %base = index.constant 0 : offset
+  cfg.cond_br %first, ^row, ^column
+^row:
+  %row_layout = encoding.layout.strided [4, 1] : encoding<layout>
+  cfg.br ^inner(%row_layout: encoding<layout>)
+^column:
+  %column_layout = encoding.layout.strided [1, 64] : encoding<layout>
+  cfg.br ^inner(%column_layout: encoding<layout>)
+^inner(%inner_layout: encoding<layout>):
+  cfg.cond_br %second, ^forward, ^wide
+^forward:
+  cfg.br ^outer(%inner_layout: encoding<layout>)
+^wide:
+  %wide_layout = encoding.layout.strided [8, 2] : encoding<layout>
+  cfg.br ^outer(%wide_layout: encoding<layout>)
+^outer(%outer_layout: encoding<layout>):
+  %view = buffer.view %input[%base] : buffer -> view<4x4xf32, %outer_layout>
+  %value = view.load %view[1, 1] : view<4x4xf32, %outer_layout> -> f32
+  func.return %value : f32
+}
+
+// ----
+func.def @nested_joins(%input: buffer, %first: i1, %second: i1) -> (f32) {
+  %base = index.constant 0 : offset
+  cfg.cond_br %first, ^row, ^column
+^row:
+  %row_layout = encoding.layout.strided [4, 1] : encoding<layout>
+  %18 = index.constant 4 : index
+  %19 = index.constant 1 : index
+  cfg.br ^inner(%18: index, %19: index)
+^column:
+  %column_layout = encoding.layout.strided [1, 64] : encoding<layout>
+  %20 = index.constant 1 : index
+  %21 = index.constant 64 : index
+  cfg.br ^inner(%20: index, %21: index)
+^inner(%inner_layout_stride_0: index, %inner_layout_stride_1: index):
+  %inner_layout = encoding.layout.strided [%inner_layout_stride_0, %inner_layout_stride_1] : encoding<layout>
+  cfg.cond_br %second, ^forward, ^wide
+^forward:
+  cfg.br ^outer(%inner_layout_stride_0: index, %inner_layout_stride_1: index)
+^wide:
+  %wide_layout = encoding.layout.strided [8, 2] : encoding<layout>
+  %22 = index.constant 8 : index
+  %23 = index.constant 2 : index
+  cfg.br ^outer(%22: index, %23: index)
+^outer(%outer_layout_stride_0: index, %outer_layout_stride_1: index):
+  %outer_layout = encoding.layout.strided [%outer_layout_stride_0, %outer_layout_stride_1] : encoding<layout>
+  %view = buffer.view %input[%base] : buffer -> view<4x4xf32, %outer_layout>
+  %value = view.load %view[1, 1] : view<4x4xf32, %outer_layout> -> f32
+  func.return %value : f32
+}
+
+// ====
+
+// Mutually dependent header and latch layouts become a closed scalar cycle.
+func.def @loop_rotation(%input: buffer, %iterate: i1, %keep: i1) -> (f32) {
+  %base = index.constant 0 : offset
+  %initial_layout = encoding.layout.strided [4, 1] : encoding<layout>
+  cfg.br ^header(%initial_layout: encoding<layout>)
+^header(%carried_layout: encoding<layout>):
+  cfg.cond_br %iterate, ^body, ^exit
+^body:
+  cfg.cond_br %keep, ^unchanged, ^changed
+^unchanged:
+  cfg.br ^latch(%carried_layout: encoding<layout>)
+^changed:
+  %column_layout = encoding.layout.strided [1, 64] : encoding<layout>
+  cfg.br ^latch(%column_layout: encoding<layout>)
+^latch(%next_layout: encoding<layout>):
+  cfg.br ^header(%next_layout: encoding<layout>)
+^exit:
+  %view = buffer.view %input[%base] : buffer -> view<4x4xf32, %carried_layout>
+  %value = view.load %view[0, 1] : view<4x4xf32, %carried_layout> -> f32
+  func.return %value : f32
+}
+
+// ----
+func.def @loop_rotation(%input: buffer, %iterate: i1, %keep: i1) -> (f32) {
+  %base = index.constant 0 : offset
+  %initial_layout = encoding.layout.strided [4, 1] : encoding<layout>
+  %17 = index.constant 4 : index
+  %18 = index.constant 1 : index
+  cfg.br ^header(%17: index, %18: index)
+^header(%carried_layout_stride_0: index, %carried_layout_stride_1: index):
+  %carried_layout = encoding.layout.strided [%carried_layout_stride_0, %carried_layout_stride_1] : encoding<layout>
+  cfg.cond_br %iterate, ^body, ^exit
+^body:
+  cfg.cond_br %keep, ^unchanged, ^changed
+^unchanged:
+  cfg.br ^latch(%carried_layout_stride_0: index, %carried_layout_stride_1: index)
+^changed:
+  %column_layout = encoding.layout.strided [1, 64] : encoding<layout>
+  %19 = index.constant 1 : index
+  %20 = index.constant 64 : index
+  cfg.br ^latch(%19: index, %20: index)
+^latch(%next_layout_stride_0: index, %next_layout_stride_1: index):
+  %next_layout = encoding.layout.strided [%next_layout_stride_0, %next_layout_stride_1] : encoding<layout>
+  cfg.br ^header(%next_layout_stride_0: index, %next_layout_stride_1: index)
+^exit:
+  %view = buffer.view %input[%base] : buffer -> view<4x4xf32, %carried_layout>
+  %value = view.load %view[0, 1] : view<4x4xf32, %carried_layout> -> f32
+  func.return %value : f32
+}
+
+// ====
+
+// Equal descriptors need no scalar transport.
+func.def @equal_layouts_unchanged(%input: buffer, %condition: i1) -> (f32) {
+  %base = index.constant 0 : offset
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %left_layout = encoding.layout.strided [4, 1] : encoding<layout>
+  cfg.br ^join(%left_layout: encoding<layout>)
+^right:
+  %right_layout = encoding.layout.strided [4, 1] : encoding<layout>
+  cfg.br ^join(%right_layout: encoding<layout>)
+^join(%layout: encoding<layout>):
+  %view = buffer.view %input[%base] : buffer -> view<4x4xf32, %layout>
+  %value = view.load %view[0, 1] : view<4x4xf32, %layout> -> f32
+  func.return %value : f32
+}
+
+// ====
+// RUN: with-checks pass-report decompose-cfg-layout-transports
+
+// The pass acquires and recomputes one function fact scope for the whole
+// diamond, independent of predecessor count and layout rank.
+func.def @reports_batched_fact_cost(%condition: i1) -> (encoding<layout>) {
+  cfg.cond_br %condition, ^row, ^column
+^row:
+  %row_layout = encoding.layout.strided [4, 1] : encoding<layout>
+  cfg.br ^join(%row_layout: encoding<layout>)
+^column:
+  %column_layout = encoding.layout.strided [1, 64] : encoding<layout>
+  cfg.br ^join(%column_layout: encoding<layout>)
+^join(%layout: encoding<layout>):
+  func.return %layout : encoding<layout>
+}
+
+// ----
+CHECK: *"changed":true,*
+CHECK: *"layouts-decomposed":1,"stride-args-inserted":2,"branch-edges-rewritten":2}*
+CHECK: *"category":"value-facts","acquisition_count":1,*"recomputation_count":1,*

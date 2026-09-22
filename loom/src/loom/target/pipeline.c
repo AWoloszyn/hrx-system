@@ -388,6 +388,8 @@ loom_target_pipeline_build_cfg_source_finalization_after_legalize(
       loom_target_pipeline_build_run(builder, IREE_SV("scf-to-cfg")));
   IREE_RETURN_IF_ERROR(
       loom_target_pipeline_build_run(builder, IREE_SV("cfg-simplify")));
+  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_run(
+      builder, IREE_SV("decompose-cfg-layout-transports")));
   // This is the final source canonicalization boundary before lowering. Run it
   // even when CFG simplification made no change because canonicalization may
   // have independent pending work, such as propagating callee purity.
