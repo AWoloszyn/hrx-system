@@ -13,6 +13,18 @@ package(
 )
 
 iree_runtime_cc_test(
+    name = "transfer_trial_tests",
+    srcs = ["backend.cc"],
+    deps = [
+        "//runtime/src/iree/async/cts/util:platform_backends",
+        "//runtime/src/iree/async/cts/util:test_main",
+        "//runtime/src/iree/net/carrier/loopback:factory",
+        "//runtime/src/iree/net/cts:transfer_trial_tests",
+        "//runtime/src/iree/net/cts:transport_backend",
+    ],
+)
+
+iree_runtime_cc_test(
     name = "transport_tests",
     srcs = ["backend.cc"],
     deps = [

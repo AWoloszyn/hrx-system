@@ -10,6 +10,7 @@
 # Suite (CTS). Test logic lives in separate category directories (socket/,
 # core/, etc.) while this directory provides the foundation.
 
+load("//build_tools/bazel:select.bzl", "iree_select")
 load("//runtime/build_tools/bazel:cc.bzl", "iree_runtime_cc_library")
 
 package(
@@ -23,6 +24,34 @@ exports_files([
     "test_main.cc",
     "benchmark_main.cc",
 ])
+
+# Proper package dependencies for composed CTS binaries.
+iree_runtime_cc_library(
+    name = "test_main",
+    testonly = True,
+    srcs = ["test_main.cc"],
+    deps = [
+        ":registry",
+        "//runtime/src/iree/testing:gtest",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "platform_backends",
+    testonly = True,
+    deps = iree_select({
+        "@platforms//os:linux": [
+            "//runtime/src/iree/async/platform/io_uring/cts:backends",
+            "//runtime/src/iree/async/platform/posix/cts:backends",
+        ],
+        "@platforms//os:windows": [
+            "//runtime/src/iree/async/platform/iocp/cts:backends",
+        ],
+        "//conditions:default": [
+            "//runtime/src/iree/async/platform/posix/cts:backends",
+        ],
+    }),
+)
 
 #===------------------------------------------------------------------------===#
 # Registry system
