@@ -1535,20 +1535,6 @@ static bool loom_amdgpu_wait_plan_descriptor_has_xcnt_source_lease(
   return false;
 }
 
-static bool loom_amdgpu_wait_plan_node_is_smem_schedule_class(
-    const loom_low_descriptor_set_t* descriptor_set,
-    const loom_low_schedule_node_t* node) {
-  if (node->schedule_class == NULL) {
-    return false;
-  }
-  const iree_string_view_t schedule_class_name = loom_low_descriptor_set_string(
-      descriptor_set, node->schedule_class->name_string_ref);
-  return iree_string_view_equal(schedule_class_name,
-                                IREE_SV("amdgpu.smem.load")) ||
-         iree_string_view_equal(schedule_class_name,
-                                IREE_SV("amdgpu.smem.store"));
-}
-
 static bool loom_amdgpu_wait_plan_descriptor_writes_exec(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_low_descriptor_t* descriptor) {
@@ -1573,14 +1559,7 @@ static bool loom_amdgpu_wait_plan_descriptor_writes_exec(
       const uint16_t reg_class_id =
           descriptor_set->reg_class_alts[operand->reg_class_alt_start + j]
               .reg_class_id;
-      if (reg_class_id == LOOM_LOW_REG_CLASS_NONE ||
-          reg_class_id >= descriptor_set->reg_class_count) {
-        continue;
-      }
-      const iree_string_view_t reg_class_name = loom_low_descriptor_set_string(
-          descriptor_set,
-          descriptor_set->reg_classes[reg_class_id].name_string_ref);
-      if (iree_string_view_equal(reg_class_name, IREE_SV("amdgpu.exec"))) {
+      if (reg_class_id == LOOM_AMDGPU_REG_CLASS_ID_EXEC) {
         return true;
       }
     }
@@ -1674,8 +1653,8 @@ static iree_status_t loom_amdgpu_wait_plan_finish_node_classification(
     if (loom_amdgpu_wait_plan_descriptor_has_xcnt_source_lease(
             descriptor_set, node->descriptor)) {
       node_state->source_counter_mask |= LOOM_AMDGPU_WAIT_COUNTER_MASK_X;
-      node_state->flags |= loom_amdgpu_wait_plan_node_is_smem_schedule_class(
-                               descriptor_set, node)
+      node_state->flags |= iree_any_bit_set(node_state->hazard_counter_mask,
+                                            LOOM_AMDGPU_WAIT_COUNTER_MASK_SMEM)
                                ? LOOM_AMDGPU_WAIT_NODE_STATE_XCNT_SMEM_PRODUCER
                                : LOOM_AMDGPU_WAIT_NODE_STATE_XCNT_VMEM_PRODUCER;
       frontier_node->xcnt_group_flags =
