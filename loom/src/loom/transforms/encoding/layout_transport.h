@@ -28,9 +28,9 @@ const loom_pass_info_t* loom_decompose_scf_layout_transports_pass_info(void);
 iree_status_t loom_decompose_cfg_layout_transports_run(
     loom_pass_t* pass, loom_module_t* module, loom_func_like_t function);
 
-// Replaces varying strided-layout results of structured selections with the
-// index-valued strides selected by those operations. A local
-// encoding.layout.strided rebuilds each semantic result.
+// Replaces varying strided-layout results of structured selections and loops
+// with their index-valued strides. A local encoding.layout.strided rebuilds
+// each semantic result and loop-region argument.
 iree_status_t loom_decompose_scf_layout_transports_run(
     loom_pass_t* pass, loom_module_t* module, loom_func_like_t function);
 
