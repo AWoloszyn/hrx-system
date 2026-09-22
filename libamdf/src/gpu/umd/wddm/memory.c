@@ -108,16 +108,23 @@ static void amdf_windows_gpu_memory_plan(
 static amdf_status_t amdf_windows_gpu_memory_allocate_host_storage(
     const amdf_windows_gpu_memory_plan_t* plan, amdf_gpu_umd_memory_t* memory) {
   uint64_t reservation_byte_length = plan->byte_length;
+  DWORD allocation_type = MEM_RESERVE | MEM_COMMIT;
   if (plan->alignment > AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY) {
     const uint64_t alignment_slack =
         plan->alignment - AMDF_WINDOWS_GPU_RESERVATION_GRANULARITY;
     reservation_byte_length += alignment_slack;
+    // Stronger alignment needs a selected subrange, not committed padding.
+    allocation_type = MEM_RESERVE;
   }
 
   memory->host_reservation = VirtualAlloc(NULL, (SIZE_T)reservation_byte_length,
-                                          MEM_RESERVE, PAGE_READWRITE);
+                                          allocation_type, PAGE_READWRITE);
   if (memory->host_reservation == NULL) {
     return amdf_make_status(AMDF_STATUS_DOMAIN_WIN32, GetLastError());
+  }
+  if ((allocation_type & MEM_COMMIT) != 0) {
+    memory->host_pointer = memory->host_reservation;
+    return AMDF_STATUS_OK;
   }
   uint64_t aligned_pointer = 0;
   if (!amdf_windows_gpu_align_up((uint64_t)(uintptr_t)memory->host_reservation,
