@@ -7,6 +7,7 @@
 load(
     "//loom/build_tools/bazel:build_defs.bzl",
     "loom_cc_library",
+    "loom_cc_test",
     "loom_generated_cc_library",
 )
 
@@ -132,5 +133,17 @@ loom_cc_library(
         ":loom_check",
         "//loom/src/loom/tools/loom-check:provider",
         "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_test(
+    name = "descriptor_fields_test",
+    srcs = ["descriptor_fields_test.cc"],
+    deps = [
+        "//loom/src/loom/codegen/low:descriptors",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/target/arch/wasm/descriptors:descriptors_ids",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )

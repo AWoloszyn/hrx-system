@@ -127,7 +127,7 @@ iree_status_t loom_text_print_operation_with_options(
       loom_print_context_make(module, stream, options, &name_plan);
   iree_status_t status = loom_print_op_comments(&ctx, op);
   if (iree_status_is_ok(status)) {
-    status = loom_print_op(&ctx, op);
+    status = loom_print_op(&ctx, op, NULL);
   }
   loom_print_name_plan_deinitialize(&name_plan);
   return status;
@@ -182,7 +182,7 @@ iree_status_t loom_text_print_operation_with_field_callback(
   };
   iree_status_t status = loom_print_op_comments(&ctx, op);
   if (iree_status_is_ok(status)) {
-    status = loom_print_op(&ctx, op);
+    status = loom_print_op(&ctx, op, NULL);
   }
   loom_print_name_plan_deinitialize(&name_plan);
   return status;

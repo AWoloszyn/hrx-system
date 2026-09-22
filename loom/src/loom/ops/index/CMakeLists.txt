@@ -14,6 +14,8 @@ loom_cc_library(
     op_defs
   HDRS
     "ops.h"
+  TEXTUAL_HDRS
+    "ops.inc"
   DEPS
     loom::ops::op_defs
   PUBLIC
@@ -30,6 +32,8 @@ loom_generated_cc_library(
     "compare.c"
     "facts.c"
     "verify.c"
+  TEXTUAL_HDRS
+    "ops.inc"
   GENERATED_SRC_FLAGS
     "--builders"
     "--tables"
@@ -42,6 +46,10 @@ loom_generated_cc_library(
     "ops.h"
   ARGS
     "--dialect=index"
+  EXTRA_OUTPUT_FLAGS
+    "--ops-include"
+  EXTRA_OUTPUTS
+    "ops.inc"
   DEPS
     ::op_defs
     iree::base::internal

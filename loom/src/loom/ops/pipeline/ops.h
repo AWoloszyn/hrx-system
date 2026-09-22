@@ -262,4 +262,7 @@ loom_op_semantics_t loom_pipeline_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/pipeline/ops.inc"
+
 #endif  // LOOM_OPS_PIPELINE_OPS_H_

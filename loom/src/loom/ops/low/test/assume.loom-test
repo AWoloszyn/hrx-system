@@ -48,22 +48,22 @@ low.kernel.def target<test.low.core>(@target) @assume_type_mismatch(%value: reg<
 
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @assume_exact_fact(%value: reg<test.i32>) {
+low.kernel.def target<test.low.core>(@target) @assume_exact_fact(%value: reg<test.i32>) asm {
   %exact = low.assume %value [eq(%value, 3)] : reg<test.i32>
   %lo = test.fact_all_equal_range_lo %exact : reg<test.i32> -> i64
   %hi = test.fact_all_equal_range_hi %exact : reg<test.i32> -> i64
   test.use %lo, %hi : i64, i64
-  low.return
+  return
 }
 
 // ----
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @assume_exact_fact(%value: reg<test.i32>) {
+low.kernel.def target<test.low.core>(@target) @assume_exact_fact(%value: reg<test.i32>) asm {
   %lo = scalar.constant 3 : i64
   %hi = scalar.constant 3 : i64
   test.use %lo, %hi : i64, i64
-  low.return
+  return
 }
 
 // ====
@@ -72,20 +72,20 @@ low.kernel.def target<test.low.core>(@target) @assume_exact_fact(%value: reg<tes
 
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @assume_relational_facts(%lhs: reg<test.i32>, %rhs: reg<test.i32>) {
+low.kernel.def target<test.low.core>(@target) @assume_relational_facts(%lhs: reg<test.i32>, %rhs: reg<test.i32>) asm {
   %bounded_lhs, %bounded_rhs = low.assume %lhs, %rhs [lt(%lhs, %rhs), range(%lhs, 32, 4096), range(%rhs, 1, 2048)] : reg<test.i32>, reg<test.i32>
   %lhs_hi = test.fact_all_equal_range_hi %bounded_lhs : reg<test.i32> -> i64
   %rhs_lo = test.fact_all_equal_range_lo %bounded_rhs : reg<test.i32> -> i64
   test.use %lhs_hi, %rhs_lo : i64, i64
-  low.return
+  return
 }
 
 // ----
 test.target<low_core> @target
 
-low.kernel.def target<test.low.core>(@target) @assume_relational_facts(%lhs: reg<test.i32>, %rhs: reg<test.i32>) {
+low.kernel.def target<test.low.core>(@target) @assume_relational_facts(%lhs: reg<test.i32>, %rhs: reg<test.i32>) asm {
   %lhs_hi = scalar.constant 2047 : i64
   %rhs_lo = scalar.constant 33 : i64
   test.use %lhs_hi, %rhs_lo : i64, i64
-  low.return
+  return
 }

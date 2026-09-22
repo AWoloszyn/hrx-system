@@ -17,6 +17,7 @@ package(
 loom_cc_library(
     name = "op_defs",
     hdrs = ["ops.h"],
+    textual_hdrs = ["ops.inc"],
     deps = ["//loom/src/loom/ops:op_defs"],
 )
 
@@ -35,6 +36,8 @@ loom_generated_cc_library(
         "ops.h",
     ],
     args = ["--dialect=index"],
+    extra_output_flags = ["--ops-include"],
+    extra_outputs = ["ops.inc"],
     generated_src_flags = [
         "--builders",
         "--tables",
@@ -44,6 +47,7 @@ loom_generated_cc_library(
         "tables.c",
     ],
     generator = "//loom/py/loom/gen/ops:c_tables_index_generator",
+    textual_hdrs = ["ops.inc"],
     deps = [
         ":op_defs",
         "//loom/src/loom/error:emitter",

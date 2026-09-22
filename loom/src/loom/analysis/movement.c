@@ -438,12 +438,11 @@ static iree_status_t loom_movement_apply_vector_access(
   return iree_ok_status();
 }
 
-static bool loom_movement_cache_policy_from_attrs(
-    loom_attribute_t cache_scope_attr, loom_attribute_t cache_temporal_attr,
+static bool loom_movement_cache_policy_from_op(
+    const loom_module_t* module, const loom_op_t* op,
     loom_vector_memory_cache_policy_t* out_policy,
     loom_movement_diagnostic_t* diagnostic) {
-  if (!loom_vector_memory_cache_policy_from_attrs(
-          cache_scope_attr, cache_temporal_attr, out_policy)) {
+  if (!loom_vector_memory_cache_policy_from_op(module, op, out_policy)) {
     diagnostic->rejection_bits |= LOOM_MOVEMENT_REJECTION_CACHE_POLICY;
     return false;
   }
@@ -491,10 +490,8 @@ static iree_status_t loom_movement_describe_scalar(
 
   request->layout_kind = LOOM_MOVEMENT_LAYOUT_SCALAR_ELEMENT;
   request->schema_kind = LOOM_MOVEMENT_SCHEMA_TYPED_ELEMENT;
-  if (!loom_movement_cache_policy_from_attrs(
-          loom_memory_access_cache_scope(access),
-          loom_memory_access_cache_temporal(access), &request->cache_policy,
-          diagnostic)) {
+  if (!loom_movement_cache_policy_from_op(module, op, &request->cache_policy,
+                                          diagnostic)) {
     return loom_movement_describe_result(false, out_described);
   }
 
@@ -768,9 +765,6 @@ typedef struct loom_movement_async_descriptor_t {
   // Operand index of the optional cluster mask value.
   uint8_t cluster_mask_operand_index;
 
-  // Attribute index of the optional direction enum.
-  uint8_t direction_attr_index;
-
   // Constant direction enum when no direction attribute is present.
   uint8_t direction_value;
 } loom_movement_async_descriptor_t;
@@ -780,7 +774,7 @@ typedef struct loom_movement_async_descriptor_t {
     layout_kind_value, transfer_mode_value, source_operand_index_value, \
     dest_operand_index_value, mask_operand_index_value,                 \
     descriptor_operand_index_value, cluster_mask_operand_index_value,   \
-    direction_attr_index_value, direction_value_value)                  \
+    direction_value_value)                                              \
   {                                                                     \
       .op_kind = (op_kind_value),                                       \
       .movement_kind = (movement_kind_value),                           \
@@ -792,7 +786,6 @@ typedef struct loom_movement_async_descriptor_t {
       .mask_operand_index = (mask_operand_index_value),                 \
       .descriptor_operand_index = (descriptor_operand_index_value),     \
       .cluster_mask_operand_index = (cluster_mask_operand_index_value), \
-      .direction_attr_index = (direction_attr_index_value),             \
       .direction_value = (direction_value_value),                       \
   }
 
@@ -803,48 +796,44 @@ static const loom_movement_async_descriptor_t
             LOOM_MOVEMENT_LAYOUT_BYTE_RANGE,
             LOOM_MOVEMENT_ASYNC_TRANSFER_EQUAL_ENDPOINTS, 0, 1,
             LOOM_MOVEMENT_ABSENT_INDEX, LOOM_MOVEMENT_ABSENT_INDEX,
-            LOOM_MOVEMENT_ABSENT_INDEX, 2, UINT8_MAX),
+            LOOM_MOVEMENT_ABSENT_INDEX, UINT8_MAX),
         LOOM_MOVEMENT_ASYNC_DESCRIPTOR(
             LOOM_OP_KERNEL_ASYNC_COPY_MASK,
             LOOM_MOVEMENT_KIND_KERNEL_ASYNC_COPY_MASK,
             LOOM_MOVEMENT_REQUEST_MASKED, LOOM_MOVEMENT_LAYOUT_BYTE_RANGE,
             LOOM_MOVEMENT_ASYNC_TRANSFER_EQUAL_ENDPOINTS, 0, 1, 2,
-            LOOM_MOVEMENT_ABSENT_INDEX, LOOM_MOVEMENT_ABSENT_INDEX, 2,
-            UINT8_MAX),
+            LOOM_MOVEMENT_ABSENT_INDEX, LOOM_MOVEMENT_ABSENT_INDEX, UINT8_MAX),
         LOOM_MOVEMENT_ASYNC_DESCRIPTOR(
             LOOM_OP_KERNEL_ASYNC_GATHER, LOOM_MOVEMENT_KIND_KERNEL_ASYNC_GATHER,
             0, LOOM_MOVEMENT_LAYOUT_SUBGROUP_GATHER,
             LOOM_MOVEMENT_ASYNC_TRANSFER_SOURCE_LENGTH, 0, 1,
             LOOM_MOVEMENT_ABSENT_INDEX, LOOM_MOVEMENT_ABSENT_INDEX,
-            LOOM_MOVEMENT_ABSENT_INDEX, LOOM_MOVEMENT_ABSENT_INDEX, UINT8_MAX),
+            LOOM_MOVEMENT_ABSENT_INDEX, UINT8_MAX),
         LOOM_MOVEMENT_ASYNC_DESCRIPTOR(
             LOOM_OP_KERNEL_ASYNC_GATHER_MASK,
             LOOM_MOVEMENT_KIND_KERNEL_ASYNC_GATHER_MASK,
             LOOM_MOVEMENT_REQUEST_MASKED, LOOM_MOVEMENT_LAYOUT_SUBGROUP_GATHER,
             LOOM_MOVEMENT_ASYNC_TRANSFER_SOURCE_LENGTH, 0, 1, 2,
-            LOOM_MOVEMENT_ABSENT_INDEX, LOOM_MOVEMENT_ABSENT_INDEX,
-            LOOM_MOVEMENT_ABSENT_INDEX, UINT8_MAX),
+            LOOM_MOVEMENT_ABSENT_INDEX, LOOM_MOVEMENT_ABSENT_INDEX, UINT8_MAX),
         LOOM_MOVEMENT_ASYNC_DESCRIPTOR(
             LOOM_OP_KERNEL_ASYNC_CLUSTER_GATHER,
             LOOM_MOVEMENT_KIND_KERNEL_ASYNC_CLUSTER_GATHER, 0,
             LOOM_MOVEMENT_LAYOUT_CLUSTER_GATHER,
             LOOM_MOVEMENT_ASYNC_TRANSFER_EQUAL_ENDPOINTS, 0, 1,
             LOOM_MOVEMENT_ABSENT_INDEX, LOOM_MOVEMENT_ABSENT_INDEX, 2,
-            LOOM_MOVEMENT_ABSENT_INDEX, UINT8_MAX),
+            UINT8_MAX),
         LOOM_MOVEMENT_ASYNC_DESCRIPTOR(
             LOOM_OP_KERNEL_ASYNC_CLUSTER_GATHER_MASK,
             LOOM_MOVEMENT_KIND_KERNEL_ASYNC_CLUSTER_GATHER_MASK,
             LOOM_MOVEMENT_REQUEST_MASKED, LOOM_MOVEMENT_LAYOUT_CLUSTER_GATHER,
             LOOM_MOVEMENT_ASYNC_TRANSFER_EQUAL_ENDPOINTS, 0, 1, 3,
-            LOOM_MOVEMENT_ABSENT_INDEX, 2, LOOM_MOVEMENT_ABSENT_INDEX,
-            UINT8_MAX),
+            LOOM_MOVEMENT_ABSENT_INDEX, 2, UINT8_MAX),
         LOOM_MOVEMENT_ASYNC_DESCRIPTOR(
             LOOM_OP_KERNEL_ASYNC_TENSOR_LOAD_TO_LDS,
             LOOM_MOVEMENT_KIND_KERNEL_ASYNC_TENSOR_LOAD_TO_LDS, 0,
             LOOM_MOVEMENT_LAYOUT_TENSOR_TILE,
             LOOM_MOVEMENT_ASYNC_TRANSFER_EQUAL_ENDPOINTS, 0, 1,
             LOOM_MOVEMENT_ABSENT_INDEX, 2, LOOM_MOVEMENT_ABSENT_INDEX,
-            LOOM_MOVEMENT_ABSENT_INDEX,
             LOOM_KERNEL_DIRECTION_GLOBAL_TO_WORKGROUP),
         LOOM_MOVEMENT_ASYNC_DESCRIPTOR(
             LOOM_OP_KERNEL_ASYNC_TENSOR_STORE_FROM_LDS,
@@ -852,7 +841,6 @@ static const loom_movement_async_descriptor_t
             LOOM_MOVEMENT_LAYOUT_TENSOR_TILE,
             LOOM_MOVEMENT_ASYNC_TRANSFER_EQUAL_ENDPOINTS, 0, 1,
             LOOM_MOVEMENT_ABSENT_INDEX, 2, LOOM_MOVEMENT_ABSENT_INDEX,
-            LOOM_MOVEMENT_ABSENT_INDEX,
             LOOM_KERNEL_DIRECTION_WORKGROUP_TO_GLOBAL),
 };
 
@@ -935,18 +923,25 @@ static iree_status_t loom_movement_describe_async(
         operands[descriptor->cluster_mask_operand_index];
   }
 
-  const loom_attribute_t* attrs = loom_op_const_attrs(op);
-  if (!loom_movement_cache_policy_from_attrs(
-          attrs[0], attrs[1], &request->cache_policy, diagnostic)) {
+  if (!loom_movement_cache_policy_from_op(analysis->expression_context.module,
+                                          op, &request->cache_policy,
+                                          diagnostic)) {
     return loom_movement_describe_result(false, out_described);
   }
-  if (descriptor->direction_attr_index != LOOM_MOVEMENT_ABSENT_INDEX) {
+  uint8_t direction = descriptor->direction_value;
+  switch (descriptor->movement_kind) {
+    case LOOM_MOVEMENT_KIND_KERNEL_ASYNC_COPY:
+      direction = loom_kernel_async_copy_direction(op);
+      break;
+    case LOOM_MOVEMENT_KIND_KERNEL_ASYNC_COPY_MASK:
+      direction = loom_kernel_async_copy_mask_direction(op);
+      break;
+    default:
+      break;
+  }
+  if (direction != UINT8_MAX) {
     request->flags |= LOOM_MOVEMENT_REQUEST_HAS_DIRECTION;
-    request->direction =
-        (uint8_t)loom_attr_as_enum(attrs[descriptor->direction_attr_index]);
-  } else if (descriptor->direction_value != UINT8_MAX) {
-    request->flags |= LOOM_MOVEMENT_REQUEST_HAS_DIRECTION;
-    request->direction = descriptor->direction_value;
+    request->direction = direction;
   }
 
   IREE_RETURN_IF_ERROR(loom_movement_endpoint_for_view(

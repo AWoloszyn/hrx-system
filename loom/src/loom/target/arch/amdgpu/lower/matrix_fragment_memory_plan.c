@@ -18,6 +18,7 @@
 #include "loom/ir/scalar_type.h"
 #include "loom/ir/types.h"
 #include "loom/ops/buffer/ops.h"
+#include "loom/ops/cache.h"
 #include "loom/ops/encoding/storage.h"
 #include "loom/ops/kernel/ops.h"
 #include "loom/ops/low/ops.h"
@@ -1182,9 +1183,11 @@ static bool loom_amdgpu_fragment_memory_query_view_strides(
 }
 
 static void loom_amdgpu_fragment_memory_source_from_op(
-    const loom_op_t* source_op,
+    const loom_module_t* module, const loom_op_t* source_op,
     loom_low_source_memory_operation_kind_t operation_kind,
     loom_amdgpu_fragment_memory_source_t* out_source) {
+  const loom_cache_policy_t cache_policy =
+      loom_cache_policy_cast(module, source_op);
   *out_source = (loom_amdgpu_fragment_memory_source_t){
       .vector_role = LOOM_VECTOR_ROLE_COUNT_,
       .view = LOOM_VALUE_ID_INVALID,
@@ -1194,8 +1197,8 @@ static void loom_amdgpu_fragment_memory_source_from_op(
       .columns = LOOM_VALUE_ID_INVALID,
       .static_indices = loom_attr_absent(),
       .dynamic_indices = {0},
-      .cache_scope = loom_attr_absent(),
-      .cache_temporal = loom_attr_absent(),
+      .cache_scope = loom_cache_policy_scope(cache_policy),
+      .cache_temporal = loom_cache_policy_temporal(cache_policy),
   };
   if (operation_kind == LOOM_LOW_SOURCE_MEMORY_OPERATION_LOAD) {
     out_source->vector_role = loom_vector_fragment_load_role(source_op);
@@ -1207,10 +1210,6 @@ static void loom_amdgpu_fragment_memory_source_from_op(
     out_source->static_indices =
         loom_vector_fragment_load_static_indices(source_op);
     out_source->dynamic_indices = loom_vector_fragment_load_indices(source_op);
-    out_source->cache_scope = loom_op_attrs(
-        source_op)[loom_vector_fragment_load_cache_scope_ATTR_INDEX];
-    out_source->cache_temporal = loom_op_attrs(
-        source_op)[loom_vector_fragment_load_cache_temporal_ATTR_INDEX];
     return;
   }
 
@@ -1223,10 +1222,6 @@ static void loom_amdgpu_fragment_memory_source_from_op(
   out_source->static_indices =
       loom_vector_fragment_store_static_indices(source_op);
   out_source->dynamic_indices = loom_vector_fragment_store_indices(source_op);
-  out_source->cache_scope = loom_op_attrs(
-      source_op)[loom_vector_fragment_store_cache_scope_ATTR_INDEX];
-  out_source->cache_temporal = loom_op_attrs(
-      source_op)[loom_vector_fragment_store_cache_temporal_ATTR_INDEX];
 }
 
 static bool loom_amdgpu_fragment_memory_fp8_load_scale_source(
@@ -1627,7 +1622,7 @@ static bool loom_amdgpu_analyze_vector_fragment_memory_plan_impl(
       .source_function = source_function,
   };
   loom_amdgpu_fragment_memory_source_t source = {0};
-  loom_amdgpu_fragment_memory_source_from_op(source_op, operation_kind,
+  loom_amdgpu_fragment_memory_source_from_op(module, source_op, operation_kind,
                                              &source);
   loom_amdgpu_fragment_memory_prepared_t prepared = {0};
   if (!loom_amdgpu_fragment_memory_prepare(
@@ -1676,7 +1671,7 @@ iree_status_t loom_amdgpu_query_accumulator_fragment_store_representations(
   };
   loom_amdgpu_fragment_memory_source_t source = {0};
   loom_amdgpu_fragment_memory_source_from_op(
-      source_op, LOOM_LOW_SOURCE_MEMORY_OPERATION_STORE, &source);
+      module, source_op, LOOM_LOW_SOURCE_MEMORY_OPERATION_STORE, &source);
   loom_amdgpu_fragment_memory_prepared_t prepared = {0};
   if (!loom_amdgpu_fragment_memory_prepare(
           &environment, &source, LOOM_LOW_SOURCE_MEMORY_OPERATION_STORE,
@@ -1816,7 +1811,8 @@ iree_status_t loom_amdgpu_low_legality_verify_vector_fragment_memory(
       .source_function = loom_target_low_legality_function(context),
   };
   loom_amdgpu_fragment_memory_source_t source = {0};
-  loom_amdgpu_fragment_memory_source_from_op(op, operation_kind, &source);
+  loom_amdgpu_fragment_memory_source_from_op(module, op, operation_kind,
+                                             &source);
   loom_amdgpu_fragment_memory_diagnostic_t diagnostic = {0};
   loom_amdgpu_fragment_memory_plan_t plan = {0};
   loom_amdgpu_fragment_memory_prepared_t prepared = {0};

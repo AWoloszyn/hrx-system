@@ -188,4 +188,7 @@ loom_op_semantics_t loom_amdgpu_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/target/arch/amdgpu/ops/ops.inc"
+
 #endif  // LOOM_OPS_AMDGPU_OPS_H_

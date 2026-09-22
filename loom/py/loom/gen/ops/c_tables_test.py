@@ -7,15 +7,18 @@
 import re
 from collections.abc import Iterator
 from contextlib import contextmanager
+from dataclasses import replace
 
 from loom.assembly import (
     COLON,
     COMMA,
     AlignedRefs,
+    AssemblyFormat,
     Attr,
     AttrDict,
     AttrParams,
     AttrTable,
+    BlockArgs,
     BlockRef,
     Clause,
     EncodingOf,
@@ -70,6 +73,7 @@ from loom.dsl import (
     AttrMatchesElementType,
     BitRangeWithinElementWidth,
     Borrow,
+    CachePolicyInterface,
     CallLikeInterface,
     CallLikeKind,
     ConditionForwardedCountMatchesBlockArgs,
@@ -148,6 +152,7 @@ from loom.gen.ops.c_tables import (
     checked_in_file_set,
     generate_dialect_type_registry,
     generate_ops_h,
+    generate_ops_inc,
     generate_sharded_tables_c,
     generate_tables_aggregator_c,
     generate_tables_c,
@@ -252,6 +257,8 @@ def test_checked_in_file_set_separates_public_artifacts_from_build_outputs() -> 
     assert "loom/src/loom/ops/build_generated_test/ops.h" in generated_file_set.obsolete_paths
     assert "loom/src/loom/ops/op_registry.h" in generated_file_set.output_paths
     assert "loom/src/loom/ir/scalar_type_table.inc" in generated_file_set.output_paths
+    assert "loom/src/loom/ops/artifact_test/ops.inc" in generated_file_set.obsolete_paths
+    assert "loom/src/loom/ops/build_generated_test/ops.inc" in generated_file_set.obsolete_paths
     assert "loom/src/loom/ops/artifact_test/builders.c" in generated_file_set.obsolete_paths
     assert "loom/src/loom/ops/artifact_test/tables.c" in generated_file_set.obsolete_paths
     assert "loom/src/loom/ops/op_registry_tables.c" in generated_file_set.obsolete_paths
@@ -1747,6 +1754,68 @@ def test_generate_tables_aggregator_delegates_semantics_lookup() -> None:
     assert "loom_op_dialect_id(kind)" not in tables_c
 
 
+def test_assembly_mnemonic_order_is_independent_of_operation_order() -> None:
+    dialect = Dialect("test", dialect_id=0x01)
+    ops = [
+        Op("test.first", group=dialect, assembly=AssemblyFormat("zeta")),
+        Op("test.second", group=dialect),
+        Op("test.third", group=dialect, assembly=AssemblyFormat("alpha", [])),
+    ]
+    for generate in (generate_tables_c, generate_tables_aggregator_c):
+        tables = generate("test", 0x01, ops)
+        assert tables.index('_BSTRING(5, "alpha")') < tables.index('_BSTRING(4, "zeta")')
+        assert '{_BSTRING(5, "alpha"), NULL, LOOM_OP_TEST_THIRD, 0, true}' in tables
+        assert '{_BSTRING(4, "zeta"), NULL, LOOM_OP_TEST_FIRST, 0, false}' in tables
+        indices = re.search(r"loom_test_assembly_indices\[\] = \{([^}]+)\}", tables)
+        assert indices is not None
+        assert re.findall(r"\d+", indices.group(1)) == ["1", "255", "0"]
+    shard = generate_tables_c("test", 0x01, ops, emit_registration=False, export_vtables=True)
+    assert "loom_test_assembly_formats" not in shard
+
+
+def test_assembly_format_binds_reordered_fields_to_canonical_layout() -> None:
+    for names in (("first", "second"), ("second", "first")):
+        op = Op(
+            "test.fields",
+            group=Dialect("test"),
+            operands=[Operand("value", INTEGER)],
+            attrs=[AttrDef(name, ATTR_TYPE_I64) for name in names],
+            format=[Ref("value"), Attr("first"), Attr("second")],
+            assembly=AssemblyFormat("fields", [Attr("second"), Ref("value"), Attr("first")]),
+        )
+        tables = generate_tables_c("test", 0x01, [op])
+        stream = tables.split("loom_test_fields_assembly_format[] = {", 1)[1].split("};", 1)[0]
+        assert re.findall(r"\{(LOOM_FORMAT_KIND_\w+), (\d+), 0\}", stream) == [
+            ("LOOM_FORMAT_KIND_ATTR_VALUE", str(names.index("second"))),
+            ("LOOM_FORMAT_KIND_OPERAND_REF", "0"),
+            ("LOOM_FORMAT_KIND_ATTR_VALUE", str(names.index("first"))),
+        ]
+
+
+def test_assembly_format_rejects_ambiguous_names_and_unknown_fields() -> None:
+    for name in ("", "test.copy", "two words", "é"):
+        with _raises_value_error("bare identifier"):
+            AssemblyFormat(name)
+    dialect = Dialect("test")
+    ops = [Op(f"test.{name}", group=dialect, assembly=AssemblyFormat("copy")) for name in ("first", "second")]
+    with _raises_value_error("duplicate assembly mnemonic"):
+        generate_tables_c("test", 0x01, ops)
+    with _raises_value_error("undeclared fields.*missing"):
+        Op("test.copy", group=dialect, assembly=AssemblyFormat("copy", [Ref("missing")]))
+
+
+def test_assembly_format_preserves_region_signature_ownership() -> None:
+    op = Op(
+        "test.region",
+        group=Dialect("test"),
+        regions=[RegionDef("body")],
+        format=[BlockArgs("body"), Region("body")],
+        assembly=AssemblyFormat("region", [Region("body")]),
+    )
+    with _raises_value_error("must preserve region argument ownership"):
+        generate_tables_c("test", 0x01, [op])
+
+
 def test_generate_tables_rejects_constraint_field_index_above_6_bit_max() -> None:
     op = Op(
         "test.wide",
@@ -2982,6 +3051,60 @@ def test_generate_tables_rejects_incomplete_condition_loop_contract() -> None:
         _generate_condition_loop_tables(op)
 
 
+def _cache_policy_test_op(
+    names: tuple[str, ...],
+    interface: CachePolicyInterface | None = None,
+) -> Op:
+    if interface is None:
+        interface = CachePolicyInterface(cache_scope="scope", cache_temporal="temporal")
+    cache_enums = {
+        name: EnumDef(
+            name,
+            [EnumCase("default", 0)],
+            c_type=f"loom_cache_{name}_t",
+            c_const_prefix=f"LOOM_CACHE_{name.upper()}",
+            c_include="loom/ops/cache.h",
+        )
+        for name in ("scope", "temporal")
+    }
+    return Op(
+        "test.policy",
+        group=Dialect("test"),
+        attrs=[AttrDef(name, "enum", enum_def=cache_enums[name]) if name in cache_enums else AttrDef(name, "i64") for name in names],
+        interfaces=[interface],
+        format=[AttrDict()],
+    )
+
+
+def test_cache_policy_interface_follows_declared_fields() -> None:
+    for names in (("scope", "temporal"), ("temporal", "inserted", "scope")):
+        op = _cache_policy_test_op(names)
+        tables_c = generate_tables_c("test", 0, [op])
+        assert f".scope_attr_index = {names.index('scope')}," in tables_c
+        assert f".temporal_attr_index = {names.index('temporal')}," in tables_c
+        assert ".cache_policy = { .available = true," in tables_c
+
+
+def test_cache_policy_interface_rejects_missing_or_wrong_fields() -> None:
+    with _raises_value_error("attr 'scope' not found"):
+        generate_tables_c("test", 0, [_cache_policy_test_op(("renamed", "temporal"))])
+    op = _cache_policy_test_op(("scope", "temporal"), CachePolicyInterface(cache_scope="temporal", cache_temporal="scope"))
+    with _raises_value_error("must use the shared loom_cache_scope_t enum"):
+        generate_tables_c("test", 0, [op])
+
+
+def test_cache_policy_interface_can_describe_fixed_default_policy() -> None:
+    op = Op(
+        "test.fixed_policy",
+        group=Dialect("test"),
+        interfaces=[CachePolicyInterface(None, None)],
+    )
+    tables_c = generate_tables_c("test", 0, [op])
+    assert ".scope_attr_index = 255," in tables_c
+    assert ".temporal_attr_index = 255," in tables_c
+    assert ".cache_policy = { .available = true," in tables_c
+
+
 def test_generate_tables_memory_access_defaults_use_matching_fields() -> None:
     op = Op(
         "test.load",
@@ -3005,7 +3128,6 @@ def test_generate_tables_memory_access_defaults_use_matching_fields() -> None:
     assert ".value_operand_index = 255," in tables_c
     assert ".indices_operand_field_index = 1," in tables_c
     assert ".static_indices_attr_index = 0," in tables_c
-    assert ".cache_scope_attr_index = 255," in tables_c
 
 
 def test_generate_tables_memory_access_flags_use_shared_vocabulary() -> None:
@@ -3359,6 +3481,116 @@ def test_types_of_result_field_generates_result_type_list_format() -> None:
 
     assert "LOOM_FORMAT_KIND_RESULT_TYPE_LIST" in tables_c
     assert "LOOM_FORMAT_KIND_OPERAND_TYPES" not in tables_c
+
+
+def test_attribute_accessors_bind_to_schema_fields() -> None:
+    dialect = Dialect("test")
+    for names in (("first", "second"), ("second", "inserted", "first")):
+        op = Op(
+            "test.fields",
+            group=dialect,
+            attrs=[AttrDef(name, ATTR_TYPE_I64) for name in names],
+            format=[AttrDict()],
+        )
+        ops_h = generate_ops_h("test", 0, [op])
+        ops_inc = generate_ops_inc([op])
+        for index, name in enumerate(names):
+            assert f"#define loom_test_fields_{name}_field()" not in ops_inc
+            assert f"#define loom_test_fields_set_{name}(module, op, attribute)" in ops_inc
+            assert f"loom_op_set_attr((module), (op), {index}, (attribute))" in ops_inc
+            assert f"LOOM_DEFINE_ATTR_I64(loom_test_fields_{name}, {index})" in ops_h
+            assert f"#define loom_test_fields_{name}_attr(op)" in ops_inc
+            assert f"(loom_op_const_attrs((op))[{index}])" in ops_inc
+            assert f"#define loom_test_fields_initialize_{name}(op, attribute)" in ops_inc
+            assert f"((void)(loom_op_attrs((op))[{index}] = (attribute)))" in ops_inc
+            assert f"#define loom_test_fields_{name}_diagnostic_ref()" in ops_inc
+            assert f"loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, {index})" in ops_inc
+        assert "ATTR_INDEX" not in ops_h
+        assert '#include "loom/ops/test/ops.inc"' in ops_h
+
+
+def test_optional_attribute_presence_uses_stored_slots_without_function_bodies() -> None:
+    flags = EnumDef("Flags", [EnumCase("enabled", 1)])
+    fields = [
+        AttrDef("required", ATTR_TYPE_I64),
+        AttrDef("flags", ATTR_TYPE_FLAGS, optional=True, enum_def=flags),
+        AttrDef("optional", ATTR_TYPE_I64, optional=True),
+    ]
+    for attrs in (fields, list(reversed(fields))):
+        op = Op("test.presence", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
+        ops_h = generate_ops_h("test", 0, [op])
+        ops_inc = generate_ops_inc([op])
+        index = [attr.name for attr in attrs if attr.attr_type != ATTR_TYPE_FLAGS].index("optional")
+        assert "ATTR_INDEX" not in ops_h
+        assert "#define loom_test_presence_optional_field()" not in ops_inc
+        assert "loom_test_presence_flags_field" not in ops_inc
+        assert "loom_test_presence_has_" not in ops_h
+        assert "#define loom_test_presence_has_optional(op)" in ops_inc
+        assert f"(!loom_attr_is_absent(loom_op_const_attrs((op))[{index}]))" in ops_inc
+        assert "loom_test_presence_has_required" not in ops_inc
+        assert "loom_test_presence_has_flags" not in ops_inc
+        assert "static inline bool loom_test_presence_has_optional" not in ops_inc
+        assert "#define loom_test_presence_rewrite_optional(rewriter, op, attribute)" in ops_inc
+        assert f"loom_rewriter_set_attr((rewriter), (op), {index}, (attribute))" in ops_inc
+        assert "#define loom_test_presence_rewrite_required(rewriter, op, attribute)" in ops_inc
+        assert "loom_test_presence_rewrite_flags" not in ops_inc
+        assert "static inline iree_status_t loom_test_presence_rewrite_optional" not in ops_inc
+
+
+def test_optional_attribute_presence_rejects_accessor_name_collisions() -> None:
+    fields = [AttrDef("count", ATTR_TYPE_I64, optional=True), AttrDef("has_count", ATTR_TYPE_I64)]
+    for attrs in (fields, list(reversed(fields))):
+        op = Op("test.presence", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
+        with _raises_value_error("presence accessor 'loom_test_presence_has_count' conflicts with field 'has_count'"):
+            generate_ops_h("test", 0, [op])
+        with _raises_value_error("presence accessor 'loom_test_presence_has_count' conflicts with field 'has_count'"):
+            generate_ops_inc([op])
+
+
+def test_attribute_rewriting_rejects_accessor_name_collisions() -> None:
+    fields = [AttrDef("count", ATTR_TYPE_I64), AttrDef("rewrite_count", ATTR_TYPE_I64)]
+    for attrs in (fields, list(reversed(fields))):
+        op = Op("test.mutation", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
+        with _raises_value_error("rewrite accessor 'loom_test_mutation_rewrite_count' conflicts with field 'rewrite_count'"):
+            generate_ops_h("test", 0, [op])
+
+
+def test_attribute_helpers_reject_accessor_name_collisions() -> None:
+    for name, kind in (("set_count", "setter"), ("count_attr", "attribute"), ("count_descriptor", "descriptor"), ("initialize_count", "initializer"), ("count_diagnostic_ref", "diagnostic")):
+        fields = [AttrDef("count", ATTR_TYPE_I64), AttrDef(name, ATTR_TYPE_I64)]
+        for attrs in (fields, list(reversed(fields))):
+            op = Op("test.mutation", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
+            expected = f"{kind} accessor 'loom_test_mutation_{name}' conflicts with field '{name}'"
+            with _raises_value_error(expected):
+                generate_ops_h("test", 0, [op])
+            with _raises_value_error(expected):
+                generate_ops_inc([op])
+
+
+def test_dictionary_updates_require_dictionary_fields() -> None:
+    for field_type in ("dict", ATTR_TYPE_I64):
+        op = Op("test.update", group=Dialect("test"), attrs=[AttrDef("payload", field_type)])
+        helpers = generate_ops_inc([op])
+        assert ("loom_test_update_update_payload" in helpers) == (field_type == "dict")
+        op = replace(op, attrs=[*op.attrs, AttrDef("update_payload", ATTR_TYPE_I64)])
+        if field_type == "dict":
+            with _raises_value_error("dictionary update accessor"):
+                generate_ops_inc([op])
+        else:
+            generate_ops_inc([op])
+
+
+def test_target_record_readers_follow_schema_positions() -> None:
+    op = _target_projection_test_op()
+    for attrs in (op.attrs, list(reversed(op.attrs))):
+        helpers = generate_ops_inc([replace(op, attrs=attrs)])
+        for index, attr in enumerate(attrs):
+            assert (f"#define loom_test_target_{attr.name}_from_record(record) \\\n  loom_target_record_view_attribute((record), {index})") in helpers
+    op = replace(op, attrs=[*op.attrs, AttrDef("kind_from_record", ATTR_TYPE_I64)])
+    with _raises_value_error("record accessor"):
+        generate_ops_inc([op])
+    op = replace(op, interfaces=[])
+    assert "loom_target_record_view_attribute" not in generate_ops_inc([op])
 
 
 def test_scoped_enum_generates_domain_aware_format_metadata() -> None:

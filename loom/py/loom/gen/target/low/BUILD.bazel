@@ -31,6 +31,7 @@ iree_py_library(
     name = "low_descriptors",
     srcs = [
         "__init__.py",
+        "attr_indices.py",
         "c_emit.py",
         "c_spelling.py",
         "compiled.py",
@@ -106,6 +107,7 @@ iree_py_binary(
 iree_py_test(
     name = "low_descriptors_test",
     srcs = [
+        "attr_indices_test.py",
         "compiler_test.py",
         "low_descriptor_shard_test.py",
         "low_descriptors_test.py",
@@ -114,6 +116,7 @@ iree_py_test(
         "//loom/py/loom/tools:pytest_style_runner.py",
     ],
     args = [
+        "loom.gen.target.low.attr_indices_test",
         "loom.gen.target.low.compiler_test",
         "loom.gen.target.low.low_descriptor_shard_test",
         "loom.gen.target.low.low_descriptors_test",

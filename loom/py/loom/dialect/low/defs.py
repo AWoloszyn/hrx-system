@@ -25,6 +25,7 @@ from loom.assembly import (
     LPAREN,
     RBRACKET,
     RPAREN,
+    AssemblyFormat,
     Attr,
     AttrDict,
     BindingList,
@@ -664,6 +665,7 @@ low_func_decl = Op(
 
 low_return = Op(
     "low.return",
+    assembly=AssemblyFormat("return", [Refs("values")]),
     group=low_ops,
     phase=OpPhase.EXECUTABLE,
     doc="Return register values from a low function.",
@@ -1227,6 +1229,7 @@ low_assume = Op(
 
 low_copy = Op(
     "low.copy",
+    assembly=AssemblyFormat("copy"),
     group=low_ops,
     phase=OpPhase.EXECUTABLE,
     doc=(
@@ -1268,6 +1271,7 @@ low_copy = Op(
 
 low_move = Op(
     "low.move",
+    assembly=AssemblyFormat("move"),
     group=low_ops,
     phase=OpPhase.EXECUTABLE,
     doc=("Transfer a virtual-register value and its exact ownership state to a fresh virtual-register identity. The source is invalid after the move."),
@@ -1308,6 +1312,7 @@ low_move = Op(
 
 low_slice = Op(
     "low.slice",
+    assembly=AssemblyFormat("slice"),
     group=low_ops,
     doc="Project a contiguous subrange from a register-range value.",
     attrs=[
@@ -1345,6 +1350,7 @@ low_slice = Op(
 
 low_concat = Op(
     "low.concat",
+    assembly=AssemblyFormat("concat"),
     group=low_ops,
     phase=OpPhase.EXECUTABLE,
     doc=("Compose one fresh register-range identity from ordered register subranges."),
@@ -1381,6 +1387,7 @@ low_concat = Op(
 
 low_live_in = Op(
     "low.live_in",
+    assembly=AssemblyFormat("live_in"),
     group=low_ops,
     doc="Import a target-provided ABI live-in register value at low-function entry.",
     attrs=[
@@ -1407,6 +1414,7 @@ low_live_in = Op(
 
 low_storage_reserve = Op(
     "low.storage.reserve",
+    assembly=AssemblyFormat("storage"),
     group=low_ops,
     phase=OpPhase.EXECUTABLE,
     doc="Reserve target-low function-local storage and preserve its segment footprint.",
@@ -1434,6 +1442,7 @@ low_storage_reserve = Op(
 
 low_storage_view = Op(
     "low.storage.view",
+    assembly=AssemblyFormat("storage_view"),
     group=low_ops,
     phase=OpPhase.EXECUTABLE,
     doc="Project a byte subspan from function-local storage.",
@@ -1530,6 +1539,7 @@ low_reload = Op(
 
 low_storage_address = Op(
     "low.storage.address",
+    assembly=AssemblyFormat("storage_address"),
     group=low_ops,
     phase=OpPhase.EXECUTABLE,
     doc="Materialize a target address for function-local storage.",
@@ -1559,6 +1569,7 @@ low_storage_address = Op(
 
 low_resource = Op(
     "low.resource",
+    assembly=AssemblyFormat("resource"),
     group=low_ops,
     phase=OpPhase.EXECUTABLE,
     doc="Import a function-local target resource into a low register value.",

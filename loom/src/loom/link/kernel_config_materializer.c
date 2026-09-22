@@ -175,12 +175,12 @@ static iree_status_t loom_link_kernel_config_build_declaration(
            operand_count * sizeof(loom_value_id_t));
   }
   loom_attribute_t* attributes = loom_op_attrs(declaration);
-  attributes[loom_kernel_decl_callee_ATTR_INDEX] =
-      header->attributes[loom_kernel_def_callee_ATTR_INDEX];
-  attributes[loom_kernel_decl_target_ATTR_INDEX] =
-      header->attributes[loom_kernel_def_target_ATTR_INDEX];
+  attributes[vtable->func_like->callee_attr_index] =
+      header->attributes[header->func_like->callee_attr_index];
+  attributes[vtable->func_like->target_attr_index] =
+      header->attributes[header->func_like->target_attr_index];
   const loom_attribute_t source_predicates =
-      header->attributes[loom_kernel_def_predicates_ATTR_INDEX];
+      header->attributes[header->func_like->predicates_attr_index];
   if (!loom_attr_is_absent(source_predicates)) {
     loom_predicate_t* predicates = NULL;
     IREE_RETURN_IF_ERROR(
@@ -188,7 +188,7 @@ static iree_status_t loom_link_kernel_config_build_declaration(
                                   sizeof(*predicates), (void**)&predicates));
     memcpy(predicates, source_predicates.predicate_list,
            source_predicates.count * sizeof(*predicates));
-    attributes[loom_kernel_decl_predicates_ATTR_INDEX] =
+    attributes[vtable->func_like->predicates_attr_index] =
         loom_attr_predicate_list(predicates, source_predicates.count);
   }
   IREE_RETURN_IF_ERROR(loom_builder_finalize_op(builder, declaration));
@@ -216,7 +216,7 @@ static iree_status_t loom_link_kernel_config_copy_workload_predicates(
     loom_ir_remap_t* remap, iree_arena_allocator_t* scratch_arena,
     loom_op_t* helper_op) {
   const loom_attribute_t source_predicates =
-      header->attributes[loom_kernel_def_predicates_ATTR_INDEX];
+      header->attributes[header->func_like->predicates_attr_index];
   if (loom_attr_is_absent(source_predicates)) {
     return iree_ok_status();
   }
@@ -243,8 +243,8 @@ static iree_status_t loom_link_kernel_config_copy_workload_predicates(
                                                     &target_predicates));
   loom_rewriter_t rewriter;
   loom_rewriter_initialize(&rewriter, module, scratch_arena);
-  const iree_status_t status = loom_rewriter_set_attr(
-      &rewriter, helper_op, loom_func_def_predicates_ATTR_INDEX,
+  const iree_status_t status = loom_func_def_rewrite_predicates(
+      &rewriter, helper_op,
       loom_attr_predicate_list(target_predicates, workload_predicate_count));
   loom_rewriter_deinitialize(&rewriter);
   return status;
@@ -297,7 +297,7 @@ static iree_status_t loom_link_kernel_config_build_helper(
       loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
   };
   const loom_attribute_t target_attr =
-      header->attributes[loom_kernel_def_target_ATTR_INDEX];
+      header->attributes[header->func_like->target_attr_index];
   const loom_symbol_ref_t target_ref = loom_attr_is_absent(target_attr)
                                            ? loom_symbol_ref_null()
                                            : loom_attr_as_symbol(target_attr);
@@ -536,7 +536,7 @@ static iree_status_t loom_link_kernel_config_copy_ir_predicates(
     loom_link_kernel_config_ir_projection_t* projection,
     loom_func_like_t source_function, loom_ir_remap_t* remap,
     loom_link_kernel_config_predicate_projection_t predicate_projection,
-    loom_op_t* target_op, uint8_t target_attr_index) {
+    loom_func_like_t target_function) {
   uint16_t source_predicate_count = 0;
   const loom_predicate_t* source_predicates =
       loom_func_like_predicates(source_function, &source_predicate_count);
@@ -570,7 +570,8 @@ static iree_status_t loom_link_kernel_config_copy_ir_predicates(
   loom_rewriter_initialize(&rewriter, projection->target_module,
                            projection->scratch_arena);
   const iree_status_t status = loom_rewriter_set_attr(
-      &rewriter, target_op, target_attr_index,
+      &rewriter, target_function.op,
+      target_function.vtable->predicates_attr_index,
       loom_attr_predicate_list(target_predicates, selected_predicate_count));
   loom_rewriter_deinitialize(&rewriter);
   return status;
@@ -628,9 +629,8 @@ static iree_status_t loom_link_kernel_config_build_ir_declaration(
   IREE_RETURN_IF_ERROR(
       loom_ir_remap_location_id(&remap, source_op->location, &location));
 
-  const loom_attribute_t* source_attrs = loom_op_const_attrs(source_op);
   loom_kernel_decl_build_flags_t build_flags = 0;
-  if (!loom_attr_is_absent(source_attrs[loom_kernel_def_retain_ATTR_INDEX])) {
+  if (loom_kernel_def_has_retain(source_op)) {
     build_flags |= LOOM_KERNEL_DECL_BUILD_FLAG_HAS_RETAIN;
   }
   if (loom_symbol_ref_is_valid(target)) {
@@ -639,8 +639,7 @@ static iree_status_t loom_link_kernel_config_build_ir_declaration(
   if (export_symbol != LOOM_STRING_ID_INVALID) {
     build_flags |= LOOM_KERNEL_DECL_BUILD_FLAG_HAS_EXPORT_SYMBOL;
   }
-  if (!loom_attr_is_absent(
-          source_attrs[loom_kernel_def_export_linkage_ATTR_INDEX])) {
+  if (loom_kernel_def_has_export_linkage(source_op)) {
     build_flags |= LOOM_KERNEL_DECL_BUILD_FLAG_HAS_EXPORT_LINKAGE;
   }
   const loom_symbol_ref_t target_callee = {
@@ -676,8 +675,7 @@ static iree_status_t loom_link_kernel_config_build_ir_declaration(
       &remap));
   return loom_link_kernel_config_copy_ir_predicates(
       projection, source_function, &remap,
-      LOOM_LINK_KERNEL_CONFIG_PREDICATE_PROJECTION_ALL, *out_declaration,
-      loom_kernel_decl_predicates_ATTR_INDEX);
+      LOOM_LINK_KERNEL_CONFIG_PREDICATE_PROJECTION_ALL, target_function);
 }
 
 static iree_status_t loom_link_kernel_config_build_ir_helper(
@@ -742,8 +740,7 @@ static iree_status_t loom_link_kernel_config_build_ir_helper(
       source_workloads.count, &remap));
   IREE_RETURN_IF_ERROR(loom_link_kernel_config_copy_ir_predicates(
       projection, source_function, &remap,
-      LOOM_LINK_KERNEL_CONFIG_PREDICATE_PROJECTION_MAPPED_VALUES, helper_op,
-      loom_func_def_predicates_ATTR_INDEX));
+      LOOM_LINK_KERNEL_CONFIG_PREDICATE_PROJECTION_MAPPED_VALUES, helper));
 
   const loom_region_t* source_region = loom_kernel_def_config(source_op);
   const loom_block_t* source_block =

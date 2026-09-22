@@ -33,6 +33,7 @@ from loom.dsl import (
     SCALAR,
     VIEW,
     AttrDef,
+    CachePolicyInterface,
     ContractFamily,
     Dialect,
     EnumCase,
@@ -119,14 +120,12 @@ def _memory_access_interface(
     value: str | None = None,
     expected: str | None = None,
     replacement: str | None = None,
-    cache: bool = True,
     atomic_kind: str | None = None,
     atomic_ordering: str | None = None,
     atomic_success_ordering: str | None = None,
     atomic_failure_ordering: str | None = None,
     atomic_scope: str | None = None,
 ) -> MemoryAccessInterface:
-    cache_fields = {} if cache else {"cache_scope": None, "cache_temporal": None}
     return MemoryAccessInterface(
         value=value,
         expected=expected,
@@ -136,7 +135,6 @@ def _memory_access_interface(
         atomic_success_ordering=atomic_success_ordering,
         atomic_failure_ordering=atomic_failure_ordering,
         atomic_scope=atomic_scope,
-        **cache_fields,
     )
 
 
@@ -249,7 +247,7 @@ view_load = Op(
     ],
     constraints=[SameElementType("view", "result")],
     effects=[Reads("view")],
-    interfaces=[_memory_access_interface()],
+    interfaces=[CachePolicyInterface(), _memory_access_interface()],
     effective_traits="loom_memory_access_effective_traits",
     verify="loom_view_load_verify",
     facts="loom_view_load_facts",
@@ -289,7 +287,7 @@ view_store = Op(
     ],
     constraints=[SameElementType("value", "view")],
     effects=[Writes("view")],
-    interfaces=[_memory_access_interface(value="value")],
+    interfaces=[CachePolicyInterface(), _memory_access_interface(value="value")],
     effective_traits="loom_memory_access_effective_traits",
     verify="loom_view_store_verify",
     format=[
@@ -386,7 +384,7 @@ view_atomic_reduce = Op(
     constraints=[SameElementType("value", "view")],
     effects=[ReadWrites("view")],
     contracts=[ContractFamily.MEMORY_ATOMIC],
-    interfaces=[_atomic_memory_access_interface(value="value")],
+    interfaces=[CachePolicyInterface(), _atomic_memory_access_interface(value="value")],
     verify="loom_view_atomic_reduce_verify",
     format=[
         TemplateParam("kind"),
@@ -422,7 +420,7 @@ view_atomic_rmw = Op(
     ],
     effects=[ReadWrites("view")],
     contracts=[ContractFamily.MEMORY_ATOMIC],
-    interfaces=[_atomic_memory_access_interface(value="value")],
+    interfaces=[CachePolicyInterface(), _atomic_memory_access_interface(value="value")],
     verify="loom_view_atomic_rmw_verify",
     format=[
         TemplateParam("kind"),
@@ -468,13 +466,14 @@ view_atomic_cmpxchg = Op(
     effects=[ReadWrites("view")],
     contracts=[ContractFamily.MEMORY_ATOMIC],
     interfaces=[
+        CachePolicyInterface(),
         _memory_access_interface(
             expected="expected",
             replacement="replacement",
             atomic_success_ordering="success_ordering",
             atomic_failure_ordering="failure_ordering",
             atomic_scope="scope",
-        )
+        ),
     ],
     verify="loom_view_atomic_cmpxchg_verify",
     format=[
@@ -524,7 +523,7 @@ view_prefetch = Op(
         ),
     ],
     traits=[HINT],
-    interfaces=[_memory_access_interface(cache=False)],
+    interfaces=[CachePolicyInterface(None, None), _memory_access_interface()],
     verify="loom_view_prefetch_verify",
     format=[
         Ref("view"),

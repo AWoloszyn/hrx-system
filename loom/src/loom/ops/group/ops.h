@@ -54,4 +54,7 @@ loom_op_semantics_t loom_group_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/group/ops.inc"
+
 #endif  // LOOM_OPS_GROUP_OPS_H_

@@ -43,10 +43,9 @@ static iree_status_t loom_global_load_rodata_facts(
     if ((uint64_t)contents.data_length <= (uint64_t)INT64_MAX) {
       byte_extent = loom_value_facts_exact_i64((int64_t)contents.data_length);
     }
-    loom_attribute_t alignment = loom_op_const_attrs(
-        definition_op)[loom_global_rodata_def_alignment_ATTR_INDEX];
-    if (!loom_attr_is_absent(alignment)) {
-      minimum_alignment = (uint64_t)loom_attr_as_i64(alignment);
+    if (loom_global_rodata_def_has_alignment(definition_op)) {
+      minimum_alignment =
+          (uint64_t)loom_global_rodata_def_alignment(definition_op);
     }
   }
 

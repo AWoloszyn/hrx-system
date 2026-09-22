@@ -729,6 +729,9 @@ static_assert(offsetof(loom_low_operand_t, source_binding) == 9,
 static_assert(offsetof(loom_low_operand_t, flags) == 12,
               "source binding must not move operand flags");
 
+// Interpretation and encoding of one declared immediate. Table order follows
+// the descriptor declaration; canonical packet dictionaries follow field name
+// order. Generated field accessors bind the two through immediate_fields.h.
 typedef struct loom_low_immediate_t {
   // String-table offset for the immediate field name.
   loom_bstring_table_offset_t field_name_string_offset;

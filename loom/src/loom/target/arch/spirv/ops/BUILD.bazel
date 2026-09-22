@@ -37,6 +37,8 @@ loom_generated_cc_library(
         "types.h",
     ],
     args = ["--dialect=spirv"],
+    extra_output_flags = ["--ops-include"],
+    extra_outputs = ["ops.inc"],
     generated_src_flags = [
         "--builders",
         "--tables",
@@ -48,6 +50,7 @@ loom_generated_cc_library(
         "types.c",
     ],
     generator = "//loom/py/loom/gen/ops:c_tables_spirv_generator",
+    textual_hdrs = ["ops.inc"],
     visibility = _SPIRV_ROOT_VISIBILITY + _SPIRV_LOWER_VISIBILITY + _SPIRV_TOOLING_VISIBILITY,
     deps = [
         "//loom/src/loom/error:error_defs",

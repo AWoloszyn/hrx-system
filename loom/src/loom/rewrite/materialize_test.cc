@@ -964,7 +964,7 @@ TEST_F(MaterializeTest, MovesBlockOpsAndRemapsPredicateAttrs) {
   EXPECT_EQ(source_block->op_count, 0u);
   EXPECT_EQ(assume_op->parent_block, loom_module_block(source_));
   EXPECT_EQ(loom_test_assume_values(assume_op).values[0], target_dim);
-  loom_attribute_t predicates = loom_op_attrs(assume_op)[0];
+  loom_attribute_t predicates = loom_test_assume_predicates(assume_op);
   ASSERT_EQ(predicates.kind, LOOM_ATTR_PREDICATE_LIST);
   ASSERT_EQ(predicates.count, 1u);
   EXPECT_EQ(predicates.predicate_list[0].args[0], (int64_t)target_dim);
@@ -1015,9 +1015,9 @@ TEST_F(MaterializeTest, ClonedPredicateOwnersRemainModuleLocal) {
       loom_test_constant_result(replacement_constant);
   IREE_ASSERT_OK(
       loom_value_replace_all_uses_with(target_, target_value, replacement));
-  EXPECT_EQ(loom_op_const_attrs(source_owner)[0].predicate_list[0].args[0],
+  EXPECT_EQ(loom_test_assume_predicates(source_owner).predicate_list[0].args[0],
             source_value);
-  EXPECT_EQ(loom_op_const_attrs(target_owner)[0].predicate_list[0].args[0],
+  EXPECT_EQ(loom_test_assume_predicates(target_owner).predicate_list[0].args[0],
             replacement);
   EXPECT_FALSE(
       loom_value_has_attribute_uses(loom_module_value(target_, target_value)));

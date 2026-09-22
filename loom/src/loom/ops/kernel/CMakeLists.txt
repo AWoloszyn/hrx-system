@@ -19,6 +19,8 @@ loom_generated_cc_library(
     "facts.c"
     "launch_config.c"
     "verify.c"
+  TEXTUAL_HDRS
+    "ops.inc"
   GENERATED_SRC_FLAGS
     "--builders"
     "--tables"
@@ -30,6 +32,10 @@ loom_generated_cc_library(
     "ops.h"
   ARGS
     "--dialect=kernel"
+  EXTRA_OUTPUT_FLAGS
+    "--ops-include"
+  EXTRA_OUTPUTS
+    "ops.inc"
   DEPS
     iree::base::internal
     loom::analysis::control_uniformity

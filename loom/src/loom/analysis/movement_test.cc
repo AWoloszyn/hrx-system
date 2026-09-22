@@ -253,6 +253,7 @@ TEST_F(MovementTest, ClassifiesStaticDenseVectorLoadFootprint) {
   loom_movement_diagnostic_t diagnostic = {};
   ASSERT_TRUE(Describe(&analysis, op, &request, &diagnostic));
   EXPECT_EQ(request.kind, LOOM_MOVEMENT_KIND_VECTOR_LOAD);
+  EXPECT_EQ(request.cache_policy.build_flags, 0u);
   EXPECT_EQ(request.layout_kind, LOOM_MOVEMENT_LAYOUT_DENSE);
   EXPECT_EQ(request.schema_kind, LOOM_MOVEMENT_SCHEMA_TYPED_ELEMENT);
   EXPECT_TRUE(
@@ -421,9 +422,8 @@ TEST_F(MovementTest, ClassifiesMaskedLoadPolicyAndMask) {
   EXPECT_EQ(request.layout_kind, LOOM_MOVEMENT_LAYOUT_DENSE);
   EXPECT_TRUE(iree_any_bit_set(request.flags, LOOM_MOVEMENT_REQUEST_MASKED));
   EXPECT_EQ(request.mask_value_id, mask);
-  EXPECT_TRUE(
-      iree_any_bit_set(request.cache_policy.build_flags,
-                       LOOM_VECTOR_MEMORY_CACHE_POLICY_BUILD_FLAG_SCOPE));
+  EXPECT_EQ(request.cache_policy.build_flags,
+            LOOM_VECTOR_MEMORY_CACHE_POLICY_BUILD_FLAG_SCOPE);
   EXPECT_EQ(request.cache_policy.cache_scope, LOOM_CACHE_SCOPE_CU);
 }
 
@@ -506,6 +506,11 @@ TEST_F(MovementTest, ClassifiesAsyncCopyAsBytePreserving) {
   loom_movement_diagnostic_t diagnostic = {};
   ASSERT_TRUE(Describe(&analysis, op, &request, &diagnostic));
   EXPECT_EQ(request.kind, LOOM_MOVEMENT_KIND_KERNEL_ASYNC_COPY);
+  EXPECT_EQ(request.cache_policy.cache_scope, LOOM_CACHE_SCOPE_CU);
+  EXPECT_EQ(request.cache_policy.cache_temporal, LOOM_CACHE_TEMPORAL_REGULAR);
+  EXPECT_EQ(request.cache_policy.build_flags,
+            LOOM_VECTOR_MEMORY_CACHE_POLICY_BUILD_FLAG_SCOPE |
+                LOOM_VECTOR_MEMORY_CACHE_POLICY_BUILD_FLAG_TEMPORAL);
   EXPECT_EQ(request.layout_kind, LOOM_MOVEMENT_LAYOUT_BYTE_RANGE);
   EXPECT_EQ(request.schema_kind, LOOM_MOVEMENT_SCHEMA_BYTE_PRESERVING);
   EXPECT_TRUE(iree_all_bits_set(request.flags,
@@ -571,6 +576,9 @@ TEST_F(MovementTest, ClassifiesAsyncClusterGatherControlOperands) {
   loom_movement_diagnostic_t diagnostic = {};
   ASSERT_TRUE(Describe(&analysis, op, &request, &diagnostic));
   EXPECT_EQ(request.kind, LOOM_MOVEMENT_KIND_KERNEL_ASYNC_CLUSTER_GATHER_MASK);
+  EXPECT_EQ(request.cache_policy.cache_scope, LOOM_CACHE_SCOPE_SE);
+  EXPECT_EQ(request.cache_policy.cache_temporal,
+            LOOM_CACHE_TEMPORAL_HIGH_TEMPORAL);
   EXPECT_EQ(request.layout_kind, LOOM_MOVEMENT_LAYOUT_CLUSTER_GATHER);
   EXPECT_TRUE(iree_all_bits_set(request.flags,
                                 LOOM_MOVEMENT_REQUEST_ASYNC |

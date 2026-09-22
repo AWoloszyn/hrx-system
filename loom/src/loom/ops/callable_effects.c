@@ -23,33 +23,21 @@ bool loom_callable_effects_is_pure(loom_func_like_t function) {
   return loom_func_like_purity(function) != 0;
 }
 
-iree_status_t loom_callable_effects_propagate_purity(
-    loom_op_t* op, loom_symbol_ref_t callee, uint8_t purity_attr_index,
-    loom_rewriter_t* rewriter) {
-  if (loom_attr_as_enum(loom_op_attrs(op)[purity_attr_index]) != 0 ||
-      !loom_symbol_ref_is_valid(callee) || callee.module_id != 0 ||
-      callee.symbol_id >= rewriter->module->symbols.count) {
-    return iree_ok_status();
+bool loom_callable_effects_callee_is_pure(const loom_module_t* module,
+                                          loom_symbol_ref_t callee) {
+  if (!loom_symbol_ref_is_valid(callee) || callee.module_id != 0 ||
+      callee.symbol_id >= module->symbols.count) {
+    return false;
   }
-
-  const loom_symbol_t* symbol =
-      &rewriter->module->symbols.entries[callee.symbol_id];
+  const loom_symbol_t* symbol = &module->symbols.entries[callee.symbol_id];
   if (!symbol->defining_op) {
-    return iree_ok_status();
+    return false;
   }
-  loom_func_like_t function =
-      loom_func_like_cast(rewriter->module, symbol->defining_op);
-  if (!loom_callable_effects_is_pure(function)) {
-    return iree_ok_status();
-  }
-  return loom_rewriter_set_attr(rewriter, op, purity_attr_index,
-                                loom_attr_enum(1));
+  return loom_callable_effects_is_pure(
+      loom_func_like_cast(module, symbol->defining_op));
 }
 
-loom_trait_flags_t loom_callable_effects_traits(const loom_op_t* op,
-                                                uint8_t purity_attr_index) {
-  if (loom_attr_as_enum(loom_op_const_attrs(op)[purity_attr_index]) != 0) {
-    return LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_PURE;
-  }
-  return LOOM_TRAIT_CALLABLE_BOUNDARY | LOOM_TRAIT_UNKNOWN_EFFECTS;
+loom_trait_flags_t loom_callable_effects_traits(uint8_t purity) {
+  return LOOM_TRAIT_CALLABLE_BOUNDARY |
+         (purity ? LOOM_TRAIT_PURE : LOOM_TRAIT_UNKNOWN_EFFECTS);
 }

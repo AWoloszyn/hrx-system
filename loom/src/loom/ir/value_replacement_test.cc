@@ -462,15 +462,15 @@ TEST_F(ValueReplacementTest,
     const loom_named_attr_t attributes[] = {
         {key, {}, loom_attr_type(Intern(original))}};
     std::array<loom_op_t*, 2> owners;
-    std::array<loom_attribute_owner_id_t, 2> owner_ids;
+    std::array<std::vector<loom_attribute_owner_id_t>, 2> owner_ids;
     for (size_t i = 0; i < owners.size(); ++i) {
       IREE_ASSERT_OK(loom_test_attrs_build(
           &builder_, LOOM_TEST_ATTRS_BUILD_FLAG_HAS_DICT, old_id_,
           loom_make_named_attr_slice(attributes, 1),
           loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), LOOM_LOCATION_NONE,
           &owners[i]));
-      owner_ids[i] =
-          loom_op_attribute_owners(owners[i])[loom_test_attrs_dict_ATTR_INDEX];
+      const auto* ids = loom_op_attribute_owners(owners[i]);
+      owner_ids[i].assign(ids, ids + owners[i]->attribute_count);
     }
     failure_index_ = failure;
     allocation_count_ = 0;
@@ -501,16 +501,22 @@ TEST_F(ValueReplacementTest,
                                    loom_test_array_type_element_type(type));
       }
       const auto provider = loom_type_dim_value_id_at(type, 0);
-      EXPECT_EQ(
-          loom_op_attribute_owners(owners[i])[loom_test_attrs_dict_ATTR_INDEX],
-          owner_ids[i]);
-      loom_type_use_iterator_t dependencies;
-      loom_attribute_dependencies_begin(&module_->type_uses, owners[i],
-                                        loom_test_attrs_dict_ATTR_INDEX,
-                                        &dependencies);
-      EXPECT_EQ(loom_type_dependencies_next(&dependencies), provider);
-      EXPECT_EQ(loom_type_dependencies_next(&dependencies),
-                LOOM_VALUE_ID_INVALID);
+      uint8_t reference_owner_count = 0;
+      for (uint8_t index = 0; index < owners[i]->attribute_count; ++index) {
+        EXPECT_EQ(loom_op_attribute_owners(owners[i])[index],
+                  owner_ids[i][index]);
+        loom_type_use_iterator_t dependencies;
+        loom_attribute_dependencies_begin(&module_->type_uses, owners[i], index,
+                                          &dependencies);
+        const auto first = loom_type_dependencies_next(&dependencies);
+        if (first != LOOM_VALUE_ID_INVALID) {
+          EXPECT_EQ(first, provider);
+          ++reference_owner_count;
+        }
+        EXPECT_EQ(loom_type_dependencies_next(&dependencies),
+                  LOOM_VALUE_ID_INVALID);
+      }
+      EXPECT_EQ(reference_owner_count, 1);
       EXPECT_EQ(loom_test_attrs_input(owners[i]),
                 succeeded ? new_id_ : old_id_);
     }

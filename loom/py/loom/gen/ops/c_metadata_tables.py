@@ -61,6 +61,7 @@ from loom.gen.ops.c_names import (
 from loom.gen.ops.c_names import (
     c_encoding_family_prefix as _c_encoding_family_prefix,
 )
+from loom.gen.ops.c_names import c_enum_name as _c_enum_name
 from loom.gen.ops.c_names import (
     c_parameterized_attr_enum_name as _c_parameterized_attr_enum_name,
 )
@@ -725,6 +726,50 @@ def _emit_encoding_family_tables(
 # ============================================================================
 
 
+def _emit_assembly_formats(lines: list[str], dialect_name: str, ops: Sequence[Op]) -> None:
+    assembly_ops = sorted((op for op in ops if op.assembly is not None), key=lambda op: op.assembly.name)
+    if not assembly_ops:
+        return
+    if len(assembly_ops) >= 256:
+        raise ValueError("Assembly format count exceeds uint8_t index capacity")
+    names = [op.assembly.name for op in assembly_ops]
+    if len(names) != len(set(names)):
+        raise ValueError(f"Dialect {dialect_name!r}: duplicate assembly mnemonic")
+    for op in assembly_ops:
+        if op.assembly.elements is None:
+            continue
+        elements = c_format.translate_format_elements(op, op.assembly.elements)
+        canonical_regions = c_format.region_entry_args_declared_by_parent(op, c_format.translate_format_elements(op))
+        if c_format.region_entry_args_declared_by_parent(op, elements) != canonical_regions:
+            raise ValueError(f"Op {op.name!r}: assembly format must preserve region argument ownership")
+        if elements:
+            lines.append(f"static const loom_format_element_t {_c_prefix(op)}_assembly_format[] = {{")
+            for kind, index, data in elements:
+                lines.append(f"    {{{kind}, {index}, {data}}},")
+            lines.append("};")
+    lines.append(f"static const loom_op_assembly_format_t loom_{dialect_name}_assembly_entries[] = {{")
+    for op in assembly_ops:
+        custom = op.assembly.elements is not None
+        elements = c_format.translate_format_elements(op, op.assembly.elements) if custom else []
+        pointer = f"{_c_prefix(op)}_assembly_format" if elements else "NULL"
+        name = _bstring_expr(op.assembly.name)
+        lines.append(f"    {{{name}, {pointer}, {_c_enum_name(op)}, {len(elements)}, {'true' if custom else 'false'}}},")
+    lines.append("};")
+    indices = {op.name: index for index, op in enumerate(assembly_ops)}
+    c_arrays.append_value_array(lines, "uint8_t", f"loom_{dialect_name}_assembly_indices", [str(indices.get(op.name, 255)) for op in ops])
+    lines.extend(
+        [
+            f"const loom_op_assembly_format_table_t loom_{dialect_name}_assembly_formats = {{",
+            f"    .entries = loom_{dialect_name}_assembly_entries,",
+            f"    .op_indices = loom_{dialect_name}_assembly_indices,",
+            f"    .entry_count = {len(assembly_ops)},",
+            f"    .dialect_id = {_c_dialect_enum(dialect_name)},",
+            "};",
+            "",
+        ]
+    )
+
+
 def generate_tables_c(
     dialect_name: str,
     dialect_id: int,
@@ -946,9 +991,10 @@ def generate_tables_c(
         # Region descriptors.
         if op.regions:
             implicit_terminator = c_traits.implicit_terminator_kind(op, ops_by_name)
+            parent_declared_args = c_format.region_entry_args_declared_by_parent(op, elements)
             lines.append(f"static const loom_region_descriptor_t {prefix}_region_desc[] = {{")
             func_args_fields = c_queries.func_args_field_names(op)
-            for region_def in op.regions:
+            for region_index, region_def in enumerate(op.regions):
                 region_flags = []
                 if region_def.single_block:
                     region_flags.append("LOOM_REGION_SINGLE_BLOCK")
@@ -956,6 +1002,8 @@ def generate_tables_c(
                     region_flags.append("LOOM_REGION_OPTIONAL")
                 if region_def.arg_source in func_args_fields:
                     region_flags.append("LOOM_REGION_PROJECT_FUNC_ARGS")
+                if region_index in parent_declared_args:
+                    region_flags.append("LOOM_REGION_PARENT_DECLARED_ARGS")
                 buffer_arg_memory_space = region_def.buffer_arg_memory_space
                 if buffer_arg_memory_space is not None:
                     if buffer_arg_memory_space != "global":
@@ -1129,7 +1177,7 @@ def generate_tables_c(
         type_transfer_fn = op.type_transfer or "NULL"
         verify_fn = op.verify or "NULL"
         eff_traits = op.effective_traits or "NULL"
-        interface_ptrs = {spec.vtable_field: c_interfaces.interface_vtable_ptr(op, spec) for spec in c_interfaces.INTERFACES}
+        interface_initializers = {spec.vtable_field: c_interfaces.interface_vtable_initializer(op, spec) for spec in c_interfaces.INTERFACES}
         symbol_def_ptr = f"&{prefix}_symbol_def" if op.symbol_def is not None else "NULL"
         has_placement = any(trait.name in ("HasParent", "HasAncestor", "NoAncestor") for trait in op.traits)
         placement_ptr = f"&{prefix}_placement" if has_placement else "NULL"
@@ -1204,9 +1252,9 @@ def generate_tables_c(
             )
             lines.append(f"    .module_record_key_attr_index = {key_attr_index},")
         for spec in c_interfaces.INTERFACES:
-            interface_ptr = interface_ptrs[spec.vtable_field]
-            if interface_ptr != "NULL":
-                lines.append(f"    .{spec.vtable_field} = {interface_ptr},")
+            initializer = interface_initializers[spec.vtable_field]
+            if initializer is not None:
+                lines.append(f"    .{spec.vtable_field} = {initializer},")
         if symbol_def_ptr != "NULL":
             lines.append(f"    .symbol_def = {symbol_def_ptr},")
         if placement_ptr != "NULL":
@@ -1221,6 +1269,9 @@ def generate_tables_c(
     _emit_encoding_auxiliary_key_descriptors(lines, dialect_name, encoding_families)
     _emit_parameterized_attr_tables(lines, dialect_name, parameterized_attrs, encoding_enum_names)
     _emit_encoding_family_tables(lines, encoding_families, encoding_enum_names)
+
+    if emit_registration:
+        _emit_assembly_formats(lines, dialect_name, ops)
 
     lines.append("#undef _OP_NAME")
     lines.append("#undef _BSTRING")
@@ -1314,6 +1365,7 @@ def generate_tables_aggregator_c(
         f"loom_{dialect_name}_vtable_array",
         [f"&{_c_prefix(op)}_vtable" for op in ops],
     )
+    _emit_assembly_formats(lines, dialect_name, ops)
     condition_refinement_indexes = _emit_condition_refinement_table(lines, dialect_name, ops)
     c_arrays.append_struct_array(
         lines,

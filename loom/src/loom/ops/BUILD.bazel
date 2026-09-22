@@ -21,19 +21,33 @@ loom_cc_library(
     name = "op_defs",
     srcs = ["op_defs.c"],
     hdrs = [
+        "attribute_accessors.h",
         "builder_macros.h",
         "op_defs.h",
     ],
+    deps = [
+        ":format",
+        "//loom/src/loom/error:emitter",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/util:adaptive_sort",
+        "//loom/src/loom/util:bstring",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
+    name = "format",
+    srcs = ["format.c"],
+    hdrs = ["format.h"],
     textual_hdrs = [
         "keyword_enum.inc",
         "keyword_table.inc",
     ],
     deps = [
         "//loom/src/loom/ir",
-        "//loom/src/loom/util:adaptive_sort",
         "//loom/src/loom/util:bstring",
         "//runtime/src/iree/base",
-        "//runtime/src/iree/base/internal:arena",
     ],
 )
 
@@ -102,7 +116,6 @@ loom_cc_library(
     deps = [
         ":op_defs",
         "//loom/src/loom/ir",
-        "//loom/src/loom/rewrite:rewriter",
         "//runtime/src/iree/base",
     ],
 )
@@ -182,7 +195,12 @@ loom_cc_library(
     name = "cache",
     srcs = ["cache.c"],
     hdrs = ["cache.h"],
-    deps = ["//runtime/src/iree/base"],
+    deps = [
+        "//loom/src/loom/error:emitter",
+        "//loom/src/loom/error:error_defs",
+        "//loom/src/loom/ir",
+        "//runtime/src/iree/base",
+    ],
 )
 
 loom_cc_library(

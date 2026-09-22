@@ -273,7 +273,11 @@ IREE_ATTRIBUTE_NOINLINE static iree_status_t loom_vm_function_packet(
     if (packet[0] == IREE_VM_BYTECODE_OPCODE_CONSTANT_I32 ||
         packet[0] == IREE_VM_BYTECODE_OPCODE_CONSTANT_I64) {
       // Verified i32 immediates already have a zero high half.
-      const uint64_t bits = (uint64_t)attributes.entries[0].value.i64;
+      const loom_attribute_t bits_attr =
+          packet[0] == IREE_VM_BYTECODE_OPCODE_CONSTANT_I32
+              ? loom_vm_core_constant_i32_bits(attributes)
+              : loom_vm_core_constant_i64_bits(attributes);
+      const uint64_t bits = (uint64_t)bits_attr.i64;
       if (bits == 0) {
         packet[0] = IREE_VM_BYTECODE_OPCODE_CONSTANT_ZERO;
         packet_length = sizeof(iree_vm_bytecode_constant_zero_t);

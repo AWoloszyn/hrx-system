@@ -23,6 +23,8 @@ loom_generated_cc_library(
         "target.h",
     ],
     args = ["--dialect=aie2p"],
+    extra_output_flags = ["--ops-include"],
+    extra_outputs = ["ops.inc"],
     generated_hdr_flags = ["--ops-header"],
     generated_hdrs = ["ops.h"],
     generated_src_flags = [
@@ -34,6 +36,7 @@ loom_generated_cc_library(
         "tables.c",
     ],
     generator = "//loom/py/loom/gen/ops:c_tables_aie2p_generator",
+    textual_hdrs = ["ops.inc"],
     visibility = ["//loom/src/loom/target/arch/amd/xdna/aie2p:__pkg__"],
     deps = [
         "//loom/src/loom/error:error_defs",

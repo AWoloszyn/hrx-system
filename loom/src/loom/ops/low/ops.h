@@ -914,6 +914,9 @@ iree_status_t loom_low_schedule_control_verify(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter);
 
+// Declarative short spellings used inside target assembly regions.
+extern const loom_op_assembly_format_table_t loom_low_assembly_formats;
+
 // Returns the vtable array for the low dialect.
 const loom_op_vtable_t* const* loom_low_dialect_vtables(
     iree_host_size_t* out_count);
@@ -929,5 +932,8 @@ loom_op_semantics_t loom_low_op_semantics(
 #ifdef __cplusplus
 }
 #endif
+
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/low/ops.inc"
 
 #endif  // LOOM_OPS_LOW_OPS_H_

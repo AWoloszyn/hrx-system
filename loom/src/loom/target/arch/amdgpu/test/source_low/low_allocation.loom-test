@@ -100,9 +100,9 @@ amdgpu.target<gfx1100> @target {subgroup_size = 64}
 low.kernel.def target<amdgpu.rdna3.core>(@target) workgroup_size(32, 1, 1) @predicated_tile_sweep_bindings_survive_exec_edges() asm {
   %row_group = live_in<amdgpu.workgroup_id.x> : reg<amdgpu.sgpr>
   %lane = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %src0_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 524288} : reg<amdgpu.sgpr x2>
-  %src1_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 6308736} : reg<amdgpu.sgpr x2>
-  %dst_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 1048576} : reg<amdgpu.sgpr x2>
+  %src0_view = resource<hal_binding> {extent = 524288, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %src1_view = resource<hal_binding> {extent = 6308736, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %dst_view = resource<hal_binding> {extent = 1048576, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %zero = s_mov_b32 0
   %limit = s_mov_b32 128
   %step = s_mov_b32 16

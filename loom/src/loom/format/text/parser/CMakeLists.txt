@@ -37,7 +37,6 @@ loom_cc_library(
     "format_tables.c"
     "locations.c"
     "low_asm.c"
-    "low_asm_structural.c"
     "parser.c"
     "pipeline.c"
     "scope.c"

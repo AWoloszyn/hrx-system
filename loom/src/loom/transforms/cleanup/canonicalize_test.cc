@@ -133,7 +133,7 @@ class CanonicalizeTest : public ::testing::Test {
     if (!def) {
       return INT64_MIN;
     }
-    return loom_attr_as_i64(loom_op_attrs(def)[0]);
+    return loom_attr_as_i64(loom_test_constant_value(def));
   }
 
   iree_arena_block_pool_t block_pool_;

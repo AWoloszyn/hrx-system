@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""C ops.h declaration generation for Loom dialect ops."""
+"""C operation declarations and generated accessor definitions."""
 
 from __future__ import annotations
 
@@ -15,6 +15,7 @@ from loom.dsl import (
     EncodingFamilyDef,
     Op,
     ParameterizedAttrDef,
+    TargetLikeInterface,
 )
 from loom.fields import compute_layout
 from loom.gen.ops import c_builders, c_interfaces
@@ -59,15 +60,94 @@ def _doc_comment_lines(doc: str) -> list[str]:
     return [f"// {line}" if line else "//" for line in doc.splitlines()]
 
 
+def _validate_attribute_accessor_names(op: Op) -> None:
+    fields = compute_layout(op).fields
+    for attr in op.attrs:
+        if attr.attr_type == ATTR_TYPE_FLAGS:
+            continue
+        accessors = {
+            f"{attr.name}_attr": "attribute",
+            f"{attr.name}_descriptor": "descriptor",
+            f"initialize_{attr.name}": "initializer",
+            f"{attr.name}_diagnostic_ref": "diagnostic",
+            f"set_{attr.name}": "setter",
+            f"rewrite_{attr.name}": "rewrite",
+        }
+        if attr.attr_type == "dict":
+            accessors[f"update_{attr.name}"] = "dictionary update"
+        if any(isinstance(interface, TargetLikeInterface) for interface in op.interfaces):
+            accessors[f"{attr.name}_from_record"] = "record"
+        if attr.optional:
+            accessors[f"has_{attr.name}"] = "presence"
+        for name, kind in accessors.items():
+            if name in fields:
+                raise ValueError(f"{op.name}: {kind} accessor '{_c_prefix(op)}_{name}' conflicts with field '{name}'")
+
+
+def generate_ops_inc(ops: Sequence[Op]) -> str:
+    """Generates forwarding macros included by the dialect's public header."""
+    lines = [COPYRIGHT]
+    lines.extend(line_comment_header("//", generator="loom.gen.ops.c_tables"))
+    lines.extend(
+        [
+            "// clang-format off",
+            "",
+            "// Complete attribute readers retain the kind and optional absence.",
+            "// Initializers write storage before finalization or an owner-managed bulk",
+            "// reference rebuild; payload storage must outlive the operation.",
+            "// Named mutation forwards to the module or rewriter ownership boundary.",
+            "// Setters maintain references and derived state; rewrites also notify the",
+            "// active rewrite driver. Attribute payload storage must outlive the op.",
+            "// Dictionary updates apply named entry changes through the rewriter.",
+            "// Pass ABSENT to clear an optional field. Each argument is evaluated once.",
+            "",
+        ]
+    )
+    for op in ops:
+        _validate_attribute_accessor_names(op)
+        prefix = _c_prefix(op)
+        attrs = [attr for attr in op.attrs if attr.attr_type != ATTR_TYPE_FLAGS]
+        if not attrs:
+            continue
+        lines.append(f"// {op.name}.")
+        for index, attr in enumerate(attrs):
+            if attr.optional:
+                lines.append(f"#define {prefix}_has_{attr.name}(op) \\")
+                lines.append(f"  (!loom_attr_is_absent(loom_op_const_attrs((op))[{index}]))")
+            lines.append(f"#define {prefix}_{attr.name}_attr(op) \\")
+            lines.append(f"  (loom_op_const_attrs((op))[{index}])")
+            lines.append(f"#define {prefix}_{attr.name}_descriptor(module, op) \\")
+            lines.append(f"  (&loom_op_vtable((module), (op))->attr_descriptors[{index}])")
+            if any(isinstance(interface, TargetLikeInterface) for interface in op.interfaces):
+                lines.append(f"#define {prefix}_{attr.name}_from_record(record) \\")
+                lines.append(f"  loom_target_record_view_attribute((record), {index})")
+            if attr.attr_type == "dict":
+                lines.append(f"#define {prefix}_update_{attr.name}(rewriter, op, updates) \\")
+                lines.append(f"  loom_rewriter_replace_attr_dict((rewriter), (op), {index}, (updates))")
+            lines.append(f"#define {prefix}_initialize_{attr.name}(op, attribute) \\")
+            lines.append(f"  ((void)(loom_op_attrs((op))[{index}] = (attribute)))")
+            lines.append(f"#define {prefix}_{attr.name}_diagnostic_ref() \\")
+            lines.append(f"  loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, {index})")
+            lines.append(f"#define {prefix}_set_{attr.name}(module, op, attribute) \\")
+            lines.append(f"  loom_op_set_attr((module), (op), {index}, (attribute))")
+            lines.append(f"#define {prefix}_rewrite_{attr.name}(rewriter, op, attribute) \\")
+            lines.append(f"  loom_rewriter_set_attr((rewriter), (op), {index}, (attribute))")
+        lines.append("")
+    return "\n".join(lines)
+
+
 def generate_ops_h(
     dialect_name: str,
     dialect_id: int,
     ops: Sequence[Op],
     parameterized_attrs: Sequence[ParameterizedAttrDef] = (),
     encoding_families: Sequence[EncodingFamilyDef] = (),
+    *,
+    include_path: str | None = None,
 ) -> str:
     """Generates the ops.h header for a dialect."""
     _validate_encoding_family_c_names(encoding_families)
+    include_path = include_path or f"loom/ops/{dialect_name}"
 
     lines: list[str] = []
     guard = _guard_name(dialect_name)
@@ -382,14 +462,16 @@ def generate_ops_h(
             else:
                 lines.append(f"LOOM_DEFINE_SUCCESSOR({prefix}_{successor.name}, {desc.index})")
 
+        # Flags live in the instance word and have no attribute-array slot.
+        stored_indices = {attr_def.name: index for index, attr_def in enumerate(attr_def for attr_def in op.attrs if attr_def.attr_type != ATTR_TYPE_FLAGS)}
+
         # Regular attribute accessors (excludes flags attrs).
-        non_flags_index = 0
+        _validate_attribute_accessor_names(op)
         for attr_def in op.attrs:
             if attr_def.attr_type == ATTR_TYPE_FLAGS:
                 lines.append(f"LOOM_DEFINE_INSTANCE_FLAGS({prefix}_{attr_def.name})")
                 continue
-            desc_index = non_flags_index
-            non_flags_index += 1
+            desc_index = stored_indices[attr_def.name]
             macro_map = {
                 "i64": "LOOM_DEFINE_ATTR_I64",
                 "f64": "LOOM_DEFINE_ATTR_F64",
@@ -474,6 +556,11 @@ def generate_ops_h(
 
         lines.append("")
 
+    if any(op.assembly is not None for op in ops):
+        lines.append("// Declarative short spellings used inside target assembly regions.")
+        lines.append(f"extern const loom_op_assembly_format_table_t loom_{dialect_name}_assembly_formats;")
+        lines.append("")
+
     # Registration function.
     lines.append(f"// Returns the vtable array for the {dialect_name} dialect.")
     lines.append(f"const loom_op_vtable_t* const* loom_{dialect_name}_dialect_vtables(")
@@ -504,6 +591,9 @@ def generate_ops_h(
     lines.append("#ifdef __cplusplus")
     lines.append("}")
     lines.append("#endif")
+    lines.append("")
+    lines.append("// Additional named attribute helpers are generated with this dialect.")
+    lines.append(f'#include "{include_path}/ops.inc"')
     lines.append("")
     lines.append(f"#endif  // {guard}")
     lines.append("")

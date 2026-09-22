@@ -45,6 +45,8 @@ loom_generated_cc_library(
         "tables.h",
     ],
     args = ["--dialect=vector"],
+    extra_output_flags = ["--ops-include"],
+    extra_outputs = ["ops.inc"],
     generated_src_flags = [
         "--builders",
         "--tables",
@@ -82,7 +84,10 @@ loom_generated_cc_library(
         "tables/table.c",
     ],
     generator = "//loom/py/loom/gen/ops:c_tables_vector_generator",
-    textual_hdrs = [":scalarization_rows.inl"],
+    textual_hdrs = [
+        "ops.inc",
+        ":scalarization_rows.inl",
+    ],
     deps = [
         "//loom/src/loom/error:emitter",
         "//loom/src/loom/error:error_defs",

@@ -126,8 +126,7 @@ iree_status_t loom_materialize_locations_run(loom_pass_t* pass,
   for (iree_host_size_t i = 0; i < captures.count && iree_status_is_ok(status);
        ++i) {
     loom_op_t* op = captures.values[i];
-    const loom_attribute_t nodes =
-        loom_op_attrs(op)[loom_func_location_nodes_ATTR_INDEX];
+    const loom_attribute_t nodes = loom_func_location_nodes_attr(op);
     iree_host_size_t slot = loom_attribute_hash(&nodes) & (capacity - 1);
     while (!loom_attr_is_absent(entries[slot].nodes) &&
            !loom_attribute_equal(&entries[slot].nodes, &nodes)) {

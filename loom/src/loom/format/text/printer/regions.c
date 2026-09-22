@@ -164,7 +164,8 @@ iree_status_t loom_print_successor_ref(loom_print_context_t* ctx,
 // Op and region printing.
 //===----------------------------------------------------------------------===//
 
-iree_status_t loom_print_op(loom_print_context_t* ctx, const loom_op_t* op) {
+iree_status_t loom_print_op(loom_print_context_t* ctx, const loom_op_t* op,
+                            const loom_op_assembly_format_t* assembly) {
   const loom_op_vtable_t* vtable = NULL;
   if (ctx->module->context) {
     vtable = loom_context_resolve_op(ctx->module->context, op->kind);
@@ -205,14 +206,19 @@ iree_status_t loom_print_op(loom_print_context_t* ctx, const loom_op_t* op) {
 
   // Print op name.
   if (iree_status_is_ok(status)) {
-    status = loom_print_emit(ctx, loom_op_vtable_name(vtable), false);
+    status = loom_print_emit(ctx,
+                             assembly && assembly->name
+                                 ? loom_bstring_view(assembly->name)
+                                 : loom_op_vtable_name(vtable),
+                             false);
   }
 
   // Walk format elements. Regions are printed inline when their REGION format
   // element is encountered, properly interleaving tokens with region bodies.
   const loom_text_low_repr_context_t previous_low_repr = ctx->low_repr;
   if (iree_status_is_ok(status)) {
-    status = loom_print_format_elements(ctx, op, vtable);
+    status = loom_print_format_elements(ctx, op, vtable,
+                                        loom_op_format(vtable, assembly));
   }
   ctx->low_repr = previous_low_repr;
 
@@ -329,7 +335,7 @@ static iree_status_t loom_print_region_blocks(
       printed_any = true;
       IREE_RETURN_IF_ERROR(loom_print_op_comments(ctx, current_op));
       IREE_RETURN_IF_ERROR(loom_print_indent(ctx));
-      IREE_RETURN_IF_ERROR(loom_print_op(ctx, current_op));
+      IREE_RETURN_IF_ERROR(loom_print_op(ctx, current_op, NULL));
     }
   }
   return iree_ok_status();
@@ -365,7 +371,7 @@ static iree_status_t loom_print_module_op(loom_print_context_t* ctx,
   *printed_any = true;
   IREE_RETURN_IF_ERROR(loom_print_op_comments(ctx, op));
   IREE_RETURN_IF_ERROR(loom_print_indent(ctx));
-  return loom_print_op(ctx, op);
+  return loom_print_op(ctx, op, NULL);
 }
 
 iree_status_t loom_print_module_body(loom_print_context_t* ctx,

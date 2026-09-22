@@ -76,10 +76,8 @@ iree_status_t loom_scf_unroll_create(loom_pass_t* pass,
 
 static bool loom_scf_unroll_policy_present(loom_op_t* op) {
   return loom_scf_for_unroll_factor_is_present(op) ||
-         !loom_attr_is_absent(
-             loom_op_attrs(op)[loom_scf_for_unroll_policy_ATTR_INDEX]) ||
-         !loom_attr_is_absent(
-             loom_op_attrs(op)[loom_scf_for_unroll_schedule_ATTR_INDEX]);
+         loom_scf_for_has_unroll_policy(op) ||
+         loom_scf_for_has_unroll_schedule(op);
 }
 
 typedef struct loom_scf_unroll_loop_list_t {
@@ -1589,10 +1587,8 @@ static iree_status_t loom_scf_unroll_try_unroll(
   }
 
   bool has_unroll_factor = loom_scf_for_unroll_factor_is_present(op);
-  bool has_unroll_policy = !loom_attr_is_absent(
-      loom_op_attrs(op)[loom_scf_for_unroll_policy_ATTR_INDEX]);
-  bool has_unroll_schedule = !loom_attr_is_absent(
-      loom_op_attrs(op)[loom_scf_for_unroll_schedule_ATTR_INDEX]);
+  bool has_unroll_policy = loom_scf_for_has_unroll_policy(op);
+  bool has_unroll_schedule = loom_scf_for_has_unroll_schedule(op);
   if (has_unroll_factor && has_unroll_policy) {
     return loom_scf_unroll_emit_policy_error(
         context, op, IREE_SV("unroll"), 2,

@@ -15,8 +15,8 @@ static void loom_amdgpu_target_facts_project(
   const loom_amdgpu_target_info_t* target =
       loom_amdgpu_target_info_find_target_by_kind(record->selector);
   IREE_ASSERT(target != NULL);
-  const loom_attribute_t features_attr = loom_target_record_view_attribute(
-      record, loom_amdgpu_target_features_ATTR_INDEX);
+  const loom_attribute_t features_attr =
+      loom_amdgpu_target_features_from_record(record);
   const loom_signed_enum_set_t features =
       loom_attr_is_absent(features_attr)
           ? loom_signed_enum_set_empty()

@@ -17,6 +17,7 @@ from loom.dsl import (
     ATTR_TYPE_I64,
     ATTR_TYPE_PARAMETERIZED_ARRAY,
     ATTR_TYPE_STRING,
+    CachePolicyInterface,
     CallLikeInterface,
     CallLikeKind,
     EffectKind,
@@ -43,15 +44,15 @@ _MEMORY_ACCESS_OPERATION_KIND_MAP: dict[MemoryAccessOperationKind, str] = {
     MemoryAccessOperationKind.ATOMIC_CMPXCHG: "LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_CMPXCHG",
 }
 
-# Interfaces declared in the Python DSL are emitted as per-op .rodata vtable
-# structs on the C side. Each interface also has a pointer slot on cache line 3
-# of loom_op_vtable_t.
+# Interfaces declared in the Python DSL are emitted as per-op metadata on the C
+# side. Most have a separate .rodata struct and a pointer on loom_op_vtable_t;
+# small bindings can be stored inline in that vtable.
 #
 # Adding a new interface is four steps:
 #   1. Declare the Python NamedTuple in dsl.py.
 #   2. Add the C struct, fat reference, cast function, and inline accessors to
 #      ir.h / op_defs.{h,c}.
-#   3. Add a pointer slot on cache line 3 of loom_op_vtable_t in ir.h.
+#   3. Add the interface storage to loom_op_vtable_t in ir.h.
 #   4. Add an InterfaceSpec entry to INTERFACES below.
 #
 # The generator code is entirely table-driven off INTERFACES. Adding an
@@ -100,6 +101,8 @@ class InterfaceSpec:
         only needs one identifier per interface.
     fields: Ordered tuple of InterfaceFieldSpec for every field on the C
         struct. Order matches the desired .rodata emission order.
+    inline: Store the binding directly in loom_op_vtable_t. Inline structs
+        include an available byte so zero initialization denotes nonmembership.
     """
 
     python_class: type
@@ -107,11 +110,23 @@ class InterfaceSpec:
     c_struct: str
     vtable_field: str
     fields: tuple[InterfaceFieldSpec, ...]
+    inline: bool = False
 
 
 # Registry of all interfaces known to the generator. Adding a new interface is
 # a single entry here plus the C-side struct/cast code.
 INTERFACES: tuple[InterfaceSpec, ...] = (
+    InterfaceSpec(
+        python_class=CachePolicyInterface,
+        name="CachePolicyInterface",
+        c_struct="loom_cache_policy_vtable_t",
+        vtable_field="cache_policy",
+        inline=True,
+        fields=(
+            InterfaceFieldSpec("cache_scope", "scope_attr_index", "attr", expected_attr_type="enum"),
+            InterfaceFieldSpec("cache_temporal", "temporal_attr_index", "attr", expected_attr_type="enum"),
+        ),
+    ),
     InterfaceSpec(
         python_class=CallLikeInterface,
         name="CallLikeInterface",
@@ -228,8 +243,6 @@ INTERFACES: tuple[InterfaceSpec, ...] = (
             InterfaceFieldSpec("offsets", "offsets_operand_index", "operand"),
             InterfaceFieldSpec("indices", "indices_operand_field_index", "operand"),
             InterfaceFieldSpec("static_indices", "static_indices_attr_index", "attr"),
-            InterfaceFieldSpec("cache_scope", "cache_scope_attr_index", "attr"),
-            InterfaceFieldSpec("cache_temporal", "cache_temporal_attr_index", "attr"),
             InterfaceFieldSpec("atomic_kind", "atomic_kind_attr_index", "attr"),
             InterfaceFieldSpec("atomic_ordering", "atomic_ordering_attr_index", "attr"),
             InterfaceFieldSpec("atomic_success_ordering", "atomic_success_ordering_attr_index", "attr"),
@@ -553,11 +566,6 @@ def _validate_memory_access_interface(op: Op, iface: MemoryAccessInterface, inte
     if byte_offset_index is not None and (offsets_index is not None or indices_index is not None or static_indices_index is not None):
         raise ValueError(f"{interface_name} on {op.name!r}: byte_offset is mutually exclusive with logical indices and per-lane offsets")
 
-    cache_scope_index = _resolve_soft_memory_field(op, iface, "cache_scope", "attr", interface_name)
-    cache_temporal_index = _resolve_soft_memory_field(op, iface, "cache_temporal", "attr", interface_name)
-    if (cache_scope_index is None) != (cache_temporal_index is None):
-        raise ValueError(f"{interface_name} on {op.name!r}: cache_scope and cache_temporal must be declared together")
-
     atomic_ordering_index = _resolve_soft_memory_field(op, iface, "atomic_ordering", "attr", interface_name)
     atomic_success_ordering_index = _resolve_soft_memory_field(op, iface, "atomic_success_ordering", "attr", interface_name)
     atomic_failure_ordering_index = _resolve_soft_memory_field(op, iface, "atomic_failure_ordering", "attr", interface_name)
@@ -623,19 +631,29 @@ def emit_target_like_descriptor(op: Op, iface: TargetLikeInterface, lines: list[
     lines.append("")
 
 
-def emit_interface_vtable(op: Op, spec: InterfaceSpec, lines: list[str]) -> None:
-    """Appends the .rodata struct declaration for |op|'s |spec| interface."""
-    iface = c_queries.find_interface(op, spec.python_class)
-    if iface is None:
-        return
+def _validate_cache_policy_interface(op: Op, iface: CachePolicyInterface, interface_name: str) -> None:
+    if (iface.cache_scope is None) != (iface.cache_temporal is None):
+        raise ValueError(f"{interface_name} on {op.name!r}: cache_scope and cache_temporal must be declared together")
+    for name, c_type in ((iface.cache_scope, "loom_cache_scope_t"), (iface.cache_temporal, "loom_cache_temporal_t")):
+        index = c_queries.resolve_attr_index(op, name, interface_name)
+        if index == 0xFF:
+            continue
+        attr_def = c_queries.non_flags_attrs(op)[index]
+        if attr_def.attr_type != "enum" or attr_def.enum_def is None or attr_def.enum_def.c_type != c_type:
+            raise ValueError(f"{interface_name} on {op.name!r}: attr {name!r} must use the shared {c_type} enum")
+
+
+def _interface_field_initializers(op: Op, spec: InterfaceSpec, iface: Any) -> list[str]:
+    """Resolves and validates the fields of an implemented interface."""
+    if isinstance(iface, CachePolicyInterface):
+        _validate_cache_policy_interface(op, iface, spec.name)
     if isinstance(iface, CallLikeInterface):
         _validate_call_like_interface(op, iface, spec.name)
     if isinstance(iface, LoopLikeInterface):
         _validate_loop_like_interface(op, iface, spec.name)
     if isinstance(iface, MemoryAccessInterface):
         _validate_memory_access_interface(op, iface, spec.name)
-    prefix = c_prefix(op)
-    lines.append(f"static const {spec.c_struct} {prefix}_{spec.vtable_field} = {{")
+    lines = ["    .available = true,"] if spec.inline else []
     for field_spec in spec.fields:
         value_str = _resolve_interface_field(op, iface, field_spec, spec.name)
         lines.append(f"    .{field_spec.c_field} = {value_str},")
@@ -659,14 +677,28 @@ def emit_interface_vtable(op: Op, spec: InterfaceSpec, lines: list[str]) -> None
         layout = compute_layout(op)
         lines.append(f"    .operand_field_count = {len(op.operands)},")
         lines.append(f"    .segmented_operands = {'true' if layout.segmented_operands else 'false'},")
+    return lines
+
+
+def emit_interface_vtable(op: Op, spec: InterfaceSpec, lines: list[str]) -> None:
+    """Appends a separate metadata declaration for pointer-based interfaces."""
+    iface = c_queries.find_interface(op, spec.python_class)
+    if iface is None or spec.inline:
+        return
+    lines.append(f"static const {spec.c_struct} {c_prefix(op)}_{spec.vtable_field} = {{")
+    lines.extend(_interface_field_initializers(op, spec, iface))
     lines.append("};")
     lines.append("")
 
 
-def interface_vtable_ptr(op: Op, spec: InterfaceSpec) -> str:
-    """Returns the C expression for the interface pointer on the main vtable."""
-    if c_queries.find_interface(op, spec.python_class) is None:
-        return "NULL"
+def interface_vtable_initializer(op: Op, spec: InterfaceSpec) -> str | None:
+    """Returns the binding initializer, or None when the interface is absent."""
+    iface = c_queries.find_interface(op, spec.python_class)
+    if iface is None:
+        return None
+    if spec.inline:
+        fields = " ".join(line.strip() for line in _interface_field_initializers(op, spec, iface))
+        return f"{{ {fields} }}"
     return f"&{c_prefix(op)}_{spec.vtable_field}"
 
 

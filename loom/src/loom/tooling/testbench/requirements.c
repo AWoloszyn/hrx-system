@@ -156,13 +156,9 @@ static iree_status_t loom_testbench_requirement_evaluate_provider(
 static iree_string_view_t loom_testbench_requirement_display_message(
     const loom_module_t* module, const loom_op_t* op,
     iree_string_view_t provider_display_message) {
-  if (loom_check_skip_if_isa(op)) {
-    loom_attribute_t reason_attr =
-        loom_op_attrs(op)[loom_check_skip_if_reason_ATTR_INDEX];
-    if (reason_attr.kind == LOOM_ATTR_STRING) {
-      return loom_testbench_requirement_module_string(
-          module, loom_attr_as_string_id(reason_attr));
-    }
+  if (loom_check_skip_if_isa(op) && loom_check_skip_if_has_reason(op)) {
+    return loom_testbench_requirement_module_string(
+        module, loom_check_skip_if_reason(op));
   }
   return provider_display_message;
 }

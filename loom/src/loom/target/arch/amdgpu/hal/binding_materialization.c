@@ -15,7 +15,6 @@
 #include "loom/ops/low/ops.h"
 #include "loom/rewrite/rewriter.h"
 #include "loom/target/arch/amdgpu/buffer_resource.h"
-#include "loom/target/arch/amdgpu/hal/binding_descriptor.h"
 #include "loom/target/arch/amdgpu/hal/kernel_abi.h"
 #include "loom/target/arch/amdgpu/refs/target_refs.h"
 #include "loom/target/arch/amdgpu/target_info.h"
@@ -1017,19 +1016,15 @@ loom_amdgpu_hal_binding_materialize_buffer_descriptor_pseudo(
         buffer_resource_info,
     const loom_amdgpu_buffer_resource_record_encoding_info_t*
         record_encoding_info,
-    const loom_low_descriptor_t* descriptor, loom_type_t sgpr_type,
-    loom_type_t sgpr_x2_type) {
+    const loom_low_descriptor_t* descriptor, uint32_t cache_swizzle_stride,
+    loom_type_t sgpr_type, loom_type_t sgpr_x2_type) {
   const loom_value_id_t value_checkpoint =
       loom_rewriter_value_checkpoint(rewriter);
   loom_builder_set_before(&rewriter->builder, op);
 
   loom_value_slice_t operands = loom_low_op_operands(op);
   loom_value_slice_t results = loom_low_op_results(op);
-  loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
-  const int64_t cache_swizzle_stride_attr =
-      attrs.entries[LOOM_AMDGPU_HAL_BUFFER_DESCRIPTOR_ATTR_CACHE_SWIZZLE_STRIDE]
-          .value.i64;
-  const uint32_t cache_swizzle_stride = (uint32_t)cache_swizzle_stride_attr;
+  const loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
 
   loom_amdgpu_hal_binding_descriptor_pointer_words_t pointer_words = {0};
   IREE_RETURN_IF_ERROR(loom_amdgpu_hal_binding_build_descriptor_pointer_words(
@@ -1062,8 +1057,7 @@ loom_amdgpu_hal_binding_materialize_buffer_descriptor_pseudo(
   if (has_dynamic_extent) {
     num_records_word2 = operands.values[1];
   } else {
-    const int64_t extent =
-        attrs.entries[LOOM_AMDGPU_HAL_BUFFER_DESCRIPTOR_ATTR_EXTENT].value.i64;
+    const int64_t extent = loom_amdgpu_hal_buffer_descriptor_extent(attrs).i64;
     static_range_word = loom_amdgpu_hal_binding_descriptor_range_word(extent);
     const uint32_t encoded_word2 =
         static_range_word >> num_records_word1_bit_count;
@@ -1181,9 +1175,16 @@ loom_amdgpu_hal_binding_materialize_buffer_descriptors_with_types(
           op = next_op;
           continue;
         }
+        const loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
+        const loom_attribute_t cache_swizzle_stride =
+            descriptor == dynamic_extent_descriptor
+                ? loom_amdgpu_hal_buffer_descriptor_extent_cache_swizzle_stride(
+                      attrs)
+                : loom_amdgpu_hal_buffer_descriptor_cache_swizzle_stride(attrs);
         status = loom_amdgpu_hal_binding_materialize_buffer_descriptor_pseudo(
             rewriter, op, descriptor_set, buffer_resource_info,
-            record_encoding_info, descriptor, sgpr_type, sgpr_x2_type);
+            record_encoding_info, descriptor,
+            (uint32_t)cache_swizzle_stride.i64, sgpr_type, sgpr_x2_type);
         if (iree_status_is_ok(status)) {
           ++*out_materialized_count;
         }
@@ -1283,9 +1284,8 @@ iree_status_t loom_amdgpu_hal_binding_materialize(
     status = loom_amdgpu_hal_kernel_abi_make_layout_attr(
         module, &layout, scratch_arena, &abi_layout_attr);
     if (iree_status_is_ok(status)) {
-      status = loom_rewriter_set_attr(&rewriter, function_op,
-                                      loom_low_kernel_def_abi_layout_ATTR_INDEX,
-                                      abi_layout_attr);
+      status = loom_low_kernel_def_rewrite_abi_layout(&rewriter, function_op,
+                                                      abi_layout_attr);
     }
   }
   loom_value_id_t kernarg_ptr = LOOM_VALUE_ID_INVALID;

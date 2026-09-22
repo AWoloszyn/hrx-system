@@ -258,7 +258,8 @@ static iree_status_t loom_math_legalize_source_initialize(
 }
 
 static double loom_math_legalize_gelu_logistic_scale(const loom_op_t* op) {
-  return loom_attr_as_f64(loom_op_attrs(op)[1]);
+  return loom_scalar_geluf_isa(op) ? loom_scalar_geluf_scale(op)
+                                   : loom_vector_geluf_scale(op);
 }
 
 static iree_status_t loom_math_legalize_build_constant(

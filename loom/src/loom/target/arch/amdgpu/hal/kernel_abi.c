@@ -14,7 +14,6 @@
 #include "loom/ir/module.h"
 #include "loom/ops/low/ops.h"
 #include "loom/target/arch/amdgpu/error_catalog.h"
-#include "loom/target/arch/amdgpu/hal/binding_descriptor.h"
 #include "loom/target/arch/amdgpu/refs/target_refs.h"
 #include "loom/target/arch/amdgpu/target_info.h"
 #include "loom/target/registers.h"
@@ -562,8 +561,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_emit_binding_index_duplicate(
   const loom_diagnostic_related_op_t related[] = {{
       .label = IREE_SV("previous binding"),
       .op = previous_op,
-      .field_ref = loom_diagnostic_field_ref(
-          LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, loom_low_resource_index_ATTR_INDEX),
+      .field_ref = loom_low_resource_index_diagnostic_ref(),
   }};
   return loom_amdgpu_hal_kernel_abi_emit(
       emitter, resource_op, LOOM_ERR_AMDGPU_011, params, IREE_ARRAYSIZE(params),
@@ -623,8 +621,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_emit_live_in_duplicate(
   const loom_diagnostic_related_op_t related[] = {{
       .label = IREE_SV("previous live-in"),
       .op = previous_op,
-      .field_ref = loom_diagnostic_field_ref(
-          LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, loom_low_live_in_source_ATTR_INDEX),
+      .field_ref = loom_low_live_in_source_diagnostic_ref(),
   }};
   return loom_amdgpu_hal_kernel_abi_emit(
       emitter, live_in_op, LOOM_ERR_AMDGPU_015, params, IREE_ARRAYSIZE(params),
@@ -645,8 +642,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_emit_fixed_live_in_overlap(
   const loom_diagnostic_related_op_t related[] = {{
       .label = IREE_SV("conflicting live-in"),
       .op = conflicting_op,
-      .field_ref = loom_diagnostic_field_ref(
-          LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, loom_low_live_in_source_ATTR_INDEX),
+      .field_ref = loom_low_live_in_source_diagnostic_ref(),
   }};
   return loom_amdgpu_hal_kernel_abi_emit(
       emitter, live_in_op, LOOM_ERR_AMDGPU_045, params, IREE_ARRAYSIZE(params),
@@ -665,8 +661,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_emit_workitem_live_in_mix(
   const loom_diagnostic_related_op_t related[] = {{
       .label = IREE_SV("conflicting live-in"),
       .op = conflicting_op,
-      .field_ref = loom_diagnostic_field_ref(
-          LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE, loom_low_live_in_source_ATTR_INDEX),
+      .field_ref = loom_low_live_in_source_diagnostic_ref(),
   }};
   return loom_amdgpu_hal_kernel_abi_emit(
       emitter, live_in_op, LOOM_ERR_AMDGPU_016, params, IREE_ARRAYSIZE(params),
@@ -943,8 +938,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_make_layout_u32_array_attr(
 
 bool loom_amdgpu_hal_kernel_abi_has_layout_attr(const loom_op_t* function_op) {
   return loom_low_kernel_def_isa(function_op) &&
-         !loom_attr_is_absent(loom_op_attrs(
-             function_op)[loom_low_kernel_def_abi_layout_ATTR_INDEX]);
+         loom_low_kernel_def_has_abi_layout(function_op);
 }
 
 iree_status_t loom_amdgpu_hal_kernel_abi_make_layout_attr(
@@ -1284,33 +1278,25 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_verify_low_ops(
         continue;
       }
 
-      loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
-      if (attrs.count <=
-              LOOM_AMDGPU_HAL_BUFFER_DESCRIPTOR_ATTR_CACHE_SWIZZLE_STRIDE ||
-          attrs.entries
-                  [LOOM_AMDGPU_HAL_BUFFER_DESCRIPTOR_ATTR_CACHE_SWIZZLE_STRIDE]
-                      .value.kind != LOOM_ATTR_I64) {
-        loom_attr_kind_t actual_kind = LOOM_ATTR_ABSENT;
-        if (attrs.count >
-            LOOM_AMDGPU_HAL_BUFFER_DESCRIPTOR_ATTR_CACHE_SWIZZLE_STRIDE) {
-          actual_kind =
-              (loom_attr_kind_t)attrs
-                  .entries
-                      [LOOM_AMDGPU_HAL_BUFFER_DESCRIPTOR_ATTR_CACHE_SWIZZLE_STRIDE]
-                  .value.kind;
-        }
+      const loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
+      loom_attribute_t cache_swizzle_stride_attr = loom_attr_absent();
+      if (attrs.count == descriptor->immediate_count) {
+        cache_swizzle_stride_attr =
+            descriptor == dynamic_buffer_descriptor
+                ? loom_amdgpu_hal_buffer_descriptor_extent_cache_swizzle_stride(
+                      attrs)
+                : loom_amdgpu_hal_buffer_descriptor_cache_swizzle_stride(attrs);
+      }
+      if (cache_swizzle_stride_attr.kind != LOOM_ATTR_I64) {
         IREE_RETURN_IF_ERROR(
             loom_amdgpu_hal_kernel_abi_emit_descriptor_attr_error(
-                op, IREE_SV("cache_swizzle_stride"), actual_kind, max_errors,
+                op, IREE_SV("cache_swizzle_stride"),
+                (loom_attr_kind_t)cache_swizzle_stride_attr.kind, max_errors,
                 emitter, result));
         continue;
       }
 
-      const int64_t cache_swizzle_stride =
-          attrs
-              .entries
-                  [LOOM_AMDGPU_HAL_BUFFER_DESCRIPTOR_ATTR_CACHE_SWIZZLE_STRIDE]
-              .value.i64;
+      const int64_t cache_swizzle_stride = cache_swizzle_stride_attr.i64;
       if (cache_swizzle_stride == 0 || supports_cache_swizzle) {
         continue;
       }

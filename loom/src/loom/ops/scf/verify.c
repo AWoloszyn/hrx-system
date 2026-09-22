@@ -169,10 +169,8 @@ iree_status_t loom_scf_for_verify(const loom_module_t* module,
                                   iree_diagnostic_emitter_t emitter) {
   (void)module;
   bool has_unroll_factor = loom_scf_for_unroll_factor_is_present(op);
-  bool has_unroll_policy = !loom_attr_is_absent(
-      loom_op_attrs(op)[loom_scf_for_unroll_policy_ATTR_INDEX]);
-  bool has_unroll_schedule = !loom_attr_is_absent(
-      loom_op_attrs(op)[loom_scf_for_unroll_schedule_ATTR_INDEX]);
+  bool has_unroll_policy = loom_scf_for_has_unroll_policy(op);
+  bool has_unroll_schedule = loom_scf_for_has_unroll_schedule(op);
   if (has_unroll_factor && has_unroll_policy) {
     return loom_scf_emit_attribute_value_constraint(
         emitter, op, IREE_SV("unroll"), 2,

@@ -319,7 +319,8 @@ static iree_status_t loom_refine_boundaries_clone_function_specialization(
   for (uint8_t i = 0; i < source_op->attribute_count; ++i) {
     target_attrs[i] = source_attrs[i];
   }
-  target_attrs[0] = loom_attr_symbol(target_ref);
+  target_attrs[function_info->function.vtable->callee_attr_index] =
+      loom_attr_symbol(target_ref);
   if (function_info->function.vtable->predicates_attr_index !=
       LOOM_ATTR_INDEX_NONE) {
     target_attrs[function_info->function.vtable->predicates_attr_index] =

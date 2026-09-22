@@ -278,7 +278,7 @@ static bool loom_testbench_plan_range_parameter(
 static bool loom_testbench_plan_choice_parameter(
     const loom_module_t* module, const loom_op_t* op,
     loom_testbench_parameter_plan_t* out_parameter) {
-  loom_attribute_t values = loom_op_const_attrs(op)[0];
+  loom_attribute_t values = loom_check_param_choice_values(op);
   if (values.kind != LOOM_ATTR_I64_ARRAY || values.count == 0) {
     return false;
   }
@@ -317,15 +317,10 @@ static bool loom_testbench_plan_seed_parameter(
 }
 
 static bool loom_testbench_plan_parameter_name(
-    const loom_module_t* module, const loom_op_t* op, uint8_t name_attr_index,
+    const loom_module_t* module, loom_attribute_t name_attr,
     loom_testbench_parameter_plan_t* parameter) {
   parameter->name_id = LOOM_STRING_ID_INVALID;
   parameter->name = iree_string_view_empty();
-  if (name_attr_index >= op->attribute_count) {
-    return true;
-  }
-
-  loom_attribute_t name_attr = loom_op_const_attrs(op)[name_attr_index];
   if (loom_attr_is_absent(name_attr)) {
     return true;
   }
@@ -351,19 +346,19 @@ static bool loom_testbench_plan_parameter(
   if (loom_check_param_range_isa(op)) {
     return loom_testbench_plan_range_parameter(module, op, out_parameter) &&
            loom_testbench_plan_parameter_name(
-               module, op, loom_check_param_range_param_name_ATTR_INDEX,
+               module, loom_check_param_range_param_name_attr(op),
                out_parameter);
   }
   if (loom_check_param_choice_isa(op)) {
     return loom_testbench_plan_choice_parameter(module, op, out_parameter) &&
            loom_testbench_plan_parameter_name(
-               module, op, loom_check_param_choice_param_name_ATTR_INDEX,
+               module, loom_check_param_choice_param_name_attr(op),
                out_parameter);
   }
   if (loom_check_param_seed_isa(op)) {
     return loom_testbench_plan_seed_parameter(module, op, out_parameter) &&
            loom_testbench_plan_parameter_name(
-               module, op, loom_check_param_seed_param_name_ATTR_INDEX,
+               module, loom_check_param_seed_param_name_attr(op),
                out_parameter);
   }
   return false;
@@ -394,10 +389,8 @@ static bool loom_testbench_plan_value_source(
     out_source->type = loom_testbench_value_type(module, out_source->value_id);
     out_source->iota.offset = loom_check_generate_iota_offset(op);
     out_source->iota.step = loom_check_generate_iota_step(op);
-    loom_attribute_t period_attr =
-        loom_op_attrs(op)[loom_check_generate_iota_period_ATTR_INDEX];
-    if (!loom_attr_is_absent(period_attr)) {
-      int64_t period = loom_attr_as_i64(period_attr);
+    if (loom_check_generate_iota_has_period(op)) {
+      int64_t period = loom_check_generate_iota_period(op);
       if (period <= 0 || (uint64_t)period > (uint64_t)IREE_HOST_SIZE_MAX) {
         return false;
       }
@@ -474,11 +467,9 @@ static bool loom_testbench_plan_file_write(
   out_file_write->path_id = loom_check_file_write_npy_path(op);
   out_file_write->path =
       loom_testbench_string_from_id(module, out_file_write->path_id);
-  loom_attribute_t mode_attr = loom_op_const_attrs(op)[1];
-  out_file_write->mode =
-      loom_attr_is_absent(mode_attr)
-          ? LOOM_CHECK_FILE_WRITE_NPY_MODE_ON_FAILURE
-          : (loom_check_file_write_npy_mode_t)loom_attr_as_enum(mode_attr);
+  out_file_write->mode = loom_check_file_write_npy_has_mode(op)
+                             ? loom_check_file_write_npy_mode(op)
+                             : LOOM_CHECK_FILE_WRITE_NPY_MODE_ON_FAILURE;
   return out_file_write->value_id < module->values.count &&
          out_file_write->path_id < module->strings.count &&
          out_file_write->mode > 0 &&

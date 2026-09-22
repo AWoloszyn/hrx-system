@@ -45,7 +45,7 @@ from enum import Enum, unique
 from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 from loom import constraint_validation
-from loom.assembly import FormatElement, OptionalGroup
+from loom.assembly import AssemblyFormat, FormatElement, OptionalGroup
 from loom.errors import ErrorDef
 
 if TYPE_CHECKING:
@@ -266,6 +266,7 @@ __all__ = [
     "LegacyFieldMapping",
     "LegacyFormat",
     # Interfaces.
+    "CachePolicyInterface",
     "CallLikeInterface",
     "CallLikeKind",
     "FuncLikeInterface",
@@ -4876,6 +4877,29 @@ def _validate_attr_params_fields(
             _validate_attr_params_fields(op_name, element.elements, attrs)
 
 
+def _validate_op_formats(op: Op) -> None:
+    """Validate every spelling against the same operation field schema."""
+    formats = [op.format]
+    if op.assembly is not None and op.assembly.elements is not None:
+        formats.append(op.assembly.elements)
+    for elements in formats:
+        _validate_scoped_enum_fields(op.name, elements, op.attrs)
+        _validate_attr_params_fields(op.name, elements, op.attrs)
+        _validate_func_args_partitions(op.name, elements, op.attrs)
+        _validate_operand_dictionaries(
+            op.name, op.operands, op.attrs, op.constraints, elements
+        )
+        _validate_format_fields(
+            op.name,
+            elements,
+            op.operands,
+            op.results,
+            op.attrs,
+            op.successors,
+            op.regions,
+        )
+
+
 def _validate_legacy_formats(
     op_name: str,
     legacy_formats: tuple[LegacyFormat, ...],
@@ -5600,6 +5624,20 @@ class RegionBranchInterface(NamedTuple):
 _DEFAULT_INTERFACE_FIELD = object()
 
 
+class CachePolicyInterface(NamedTuple):
+    """Advisory cache policy shared by single-access and transfer operations.
+
+    Fields name declared enum attributes, independently of memory endpoint
+    layout. Both may be None for operations with a fixed default policy.
+    Missing named fields are schema errors, not implicit default policies.
+    """
+
+    # Attribute in the shared CacheScope enum domain, or None.
+    cache_scope: str | None = "cache_scope"
+    # Attribute in the shared CacheTemporal enum domain, or None.
+    cache_temporal: str | None = "cache_temporal"
+
+
 @unique
 class MemoryAccessOperationKind(Enum):
     """Operation family represented by a MemoryAccess op shape."""
@@ -5648,10 +5686,6 @@ class MemoryAccessInterface:
     indices: str | None = None
     # Attr naming the full-rank static logical origin indices.
     static_indices: str | None = None
-    # Optional cache/coherency scope attr.
-    cache_scope: str | None = None
-    # Optional temporal cache-policy attr.
-    cache_temporal: str | None = None
     # Atomic update kind attr.
     atomic_kind: str | None = None
     # Single atomic memory-ordering attr.
@@ -5680,8 +5714,6 @@ class MemoryAccessInterface:
         offsets: str | None | object = _DEFAULT_INTERFACE_FIELD,
         indices: str | None | object = _DEFAULT_INTERFACE_FIELD,
         static_indices: str | None | object = _DEFAULT_INTERFACE_FIELD,
-        cache_scope: str | None | object = _DEFAULT_INTERFACE_FIELD,
-        cache_temporal: str | None | object = _DEFAULT_INTERFACE_FIELD,
         atomic_kind: str | None | object = _DEFAULT_INTERFACE_FIELD,
         atomic_ordering: str | None | object = _DEFAULT_INTERFACE_FIELD,
         atomic_success_ordering: str | None | object = _DEFAULT_INTERFACE_FIELD,
@@ -5731,16 +5763,6 @@ class MemoryAccessInterface:
             self,
             "static_indices",
             _resolve("static_indices", static_indices, "static_indices"),
-        )
-        object.__setattr__(
-            self,
-            "cache_scope",
-            _resolve("cache_scope", cache_scope, "cache_scope"),
-        )
-        object.__setattr__(
-            self,
-            "cache_temporal",
-            _resolve("cache_temporal", cache_temporal, "cache_temporal"),
         )
         object.__setattr__(
             self,
@@ -5962,6 +5984,7 @@ class Op:
     ownership_effects: Ownership actions on operand/result fields.
     symbol_def: Symbol definition descriptor for SYMBOL_DEFINE ops.
     format: Format element list describing textual assembly.
+    assembly: Short target-assembly spelling using the same operation fields.
     legacy_formats: Legacy textual formats accepted by migration tooling.
     examples: List of example IR strings for documentation.
 
@@ -6003,6 +6026,7 @@ class Op:
         Any, ...
     ] = ()  # Interface implementations (FuncLikeInterface, etc.).
     format: tuple[FormatElement, ...] = ()
+    assembly: AssemblyFormat | None = None
     legacy_formats: tuple[LegacyFormat, ...] = ()
     examples: tuple[str, ...] = ()
 
@@ -6037,6 +6061,7 @@ class Op:
         symbol_def: SymbolDefinition | None = None,
         interfaces: list[Any] | tuple[Any, ...] = (),
         format: list[FormatElement] | tuple[FormatElement, ...] = (),
+        assembly: AssemblyFormat | None = None,
         legacy_formats: list[LegacyFormat] | tuple[LegacyFormat, ...] = (),
         examples: list[str] | tuple[str, ...] = (),
     ) -> None:
@@ -6090,6 +6115,7 @@ class Op:
         object.__setattr__(self, "symbol_def", symbol_def)
         object.__setattr__(self, "interfaces", tuple(interfaces))
         object.__setattr__(self, "format", frozen_format)
+        object.__setattr__(self, "assembly", assembly)
         object.__setattr__(self, "legacy_formats", frozen_legacy_formats)
         object.__setattr__(self, "examples", tuple(examples))
         has_symbol_define = any(trait.name == "SymbolDefine" for trait in traits)
@@ -6277,23 +6303,7 @@ class Op:
             frozen_effects,
             frozen_ownership_effects,
         )
-        _validate_scoped_enum_fields(name, frozen_format, frozen_attrs)
-        _validate_attr_params_fields(name, frozen_format, frozen_attrs)
-        _validate_func_args_partitions(name, frozen_format, frozen_attrs)
-        _validate_operand_dictionaries(
-            name, frozen_operands, frozen_attrs, self.constraints, frozen_format
-        )
-        # Validate that format elements reference declared fields.
-        if frozen_format:
-            _validate_format_fields(
-                name,
-                frozen_format,
-                frozen_operands,
-                frozen_results,
-                frozen_attrs,
-                frozen_successors,
-                frozen_regions,
-            )
+        _validate_op_formats(self)
         if frozen_legacy_formats:
             _validate_legacy_formats(
                 name,

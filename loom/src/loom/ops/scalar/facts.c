@@ -142,7 +142,7 @@ iree_status_t loom_scalar_constant_facts(
     loom_fact_context_t* context, const loom_module_t* module,
     const loom_op_t* op, const loom_value_facts_t* operand_facts,
     loom_value_facts_t* result_facts) {
-  loom_attribute_t attr = loom_op_attrs(op)[0];
+  loom_attribute_t attr = loom_scalar_constant_value(op);
   loom_value_id_t result_id = loom_scalar_constant_result(op);
   loom_type_t result_type = loom_module_value_type(module, result_id);
   loom_scalar_type_t result_element_type = loom_type_element_type(result_type);
@@ -347,12 +347,11 @@ iree_status_t loom_scalar_geluf_facts(loom_fact_context_t* context,
                                         &result_facts[0]);
       return iree_ok_status();
     case LOOM_SCALAR_GELUF_VARIANT_LOGISTIC: {
-      loom_attribute_t scale_attr = loom_op_attrs(op)[1];
-      if (loom_attr_is_absent(scale_attr)) {
+      if (!loom_scalar_geluf_has_scale(op)) {
         result_facts[0] = loom_value_facts_unknown();
         return iree_ok_status();
       }
-      const double scale = loom_attr_as_f64(scale_attr);
+      const double scale = loom_scalar_geluf_scale(op);
       double input = 0.0;
       if (!loom_value_facts_as_exact_float(scalar_type, operand_facts[0],
                                            &input)) {
@@ -1103,7 +1102,7 @@ iree_status_t loom_scalar_assume_facts(loom_fact_context_t* context,
   for (uint16_t i = fact_count; i < op->result_count; ++i) {
     result_facts[i] = loom_value_facts_unknown();
   }
-  loom_attribute_t pred_attr = loom_op_attrs(op)[0];
+  loom_attribute_t pred_attr = loom_scalar_assume_predicates(op);
   const loom_predicate_t* predicates = pred_attr.predicate_list;
   uint16_t predicate_count = pred_attr.count;
   loom_value_slice_t values = loom_scalar_assume_values(op);

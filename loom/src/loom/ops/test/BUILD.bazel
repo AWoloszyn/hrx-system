@@ -37,6 +37,8 @@ loom_generated_cc_library(
         "types.h",
     ],
     args = ["--dialect=test"],
+    extra_output_flags = ["--ops-include"],
+    extra_outputs = ["ops.inc"],
     generated_src_flags = [
         "--builders",
         "--tables",
@@ -48,6 +50,7 @@ loom_generated_cc_library(
         "types.c",
     ],
     generator = "//loom/py/loom/gen/ops:c_tables_test_generator",
+    textual_hdrs = ["ops.inc"],
     deps = [
         "//loom/src/loom/analysis:symbol_facts",
         "//loom/src/loom/error:emitter",
@@ -65,6 +68,20 @@ loom_generated_cc_library(
         "//loom/src/loom/target/test:target_record_table",
         "//loom/src/loom/util:fact_table",
         "//runtime/src/iree/base",
+    ],
+)
+
+loom_cc_test(
+    name = "attribute_accessors_test",
+    srcs = ["attribute_accessors_test.cc"],
+    deps = [
+        ":test",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/rewrite:rewriter",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
     ],
 )
 

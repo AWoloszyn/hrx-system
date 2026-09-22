@@ -123,7 +123,8 @@ TEST_F(OperandDictionaryTest, PermutationsAndScratchReuse) {
     for (uint16_t i = 0; i < count; ++i) {
       names[i].value = loom_attr_i64(count - i - 1);
     }
-    loom_op_attrs(op)[0] = loom_make_canonical_attr_dict(names.data(), count);
+    IREE_ASSERT_OK(loom_test_operand_dict_set_param_names(
+        module_, op, loom_make_canonical_attr_dict(names.data(), count)));
     const auto used_before = state_.arena.used_allocation_size;
     const auto capacity_before = state_.operand_dictionary.word_capacity;
     Check(op, 0);
@@ -143,7 +144,8 @@ TEST_F(OperandDictionaryTest, DuplicateOrdinalsAcrossWords) {
     SCOPED_TRACE(count);
     loom_op_t* op = Dictionary(count);
     auto names = Names(op);
-    loom_op_attrs(op)[0] = loom_make_canonical_attr_dict(names.data(), count);
+    IREE_ASSERT_OK(loom_test_operand_dict_set_param_names(
+        module_, op, loom_make_canonical_attr_dict(names.data(), count)));
     for (uint16_t duplicate : {0, count - 2}) {
       names.back().value = loom_attr_i64(duplicate);
       Check(op, 1);
@@ -159,8 +161,8 @@ TEST_F(OperandDictionaryTest, EveryRepeatedOrdinalIsDiagnosed) {
   for (auto& entry : names) {
     entry.value = loom_attr_i64(64);
   }
-  loom_op_attrs(op)[0] =
-      loom_make_canonical_attr_dict(names.data(), names.size());
+  IREE_ASSERT_OK(loom_test_operand_dict_set_param_names(
+      module_, op, loom_make_canonical_attr_dict(names.data(), names.size())));
   Check(op, 64);
 }
 
@@ -170,8 +172,8 @@ TEST_F(OperandDictionaryTest, ErrorBudgetBoundsFallbackAttempts) {
   for (auto& entry : names) {
     entry.value = loom_attr_i64(0);
   }
-  loom_op_attrs(op)[0] =
-      loom_make_canonical_attr_dict(names.data(), names.size());
+  IREE_ASSERT_OK(loom_test_operand_dict_set_param_names(
+      module_, op, loom_make_canonical_attr_dict(names.data(), names.size())));
   struct Capture {
     // Number of diagnostic sink calls.
     uint32_t count = 0;
@@ -243,8 +245,8 @@ TEST_F(OperandDictionaryTest, ErrorBudgetBoundsCountsWithoutSink) {
   for (auto& entry : names) {
     entry.value = loom_attr_i64(0);
   }
-  loom_op_attrs(op)[0] =
-      loom_make_canonical_attr_dict(names.data(), names.size());
+  IREE_ASSERT_OK(loom_test_operand_dict_set_param_names(
+      module_, op, loom_make_canonical_attr_dict(names.data(), names.size())));
   state_.max_errors = 2;
   Check(op, 2);
 }
@@ -255,8 +257,8 @@ TEST_F(OperandDictionaryTest, SinkFailureAtErrorBudgetIsPreserved) {
   for (auto& entry : names) {
     entry.value = loom_attr_i64(0);
   }
-  loom_op_attrs(op)[0] =
-      loom_make_canonical_attr_dict(names.data(), names.size());
+  IREE_ASSERT_OK(loom_test_operand_dict_set_param_names(
+      module_, op, loom_make_canonical_attr_dict(names.data(), names.size())));
   state_.max_errors = 1;
   uint32_t sink_calls = 0;
   state_.sink = {
@@ -275,8 +277,8 @@ TEST_F(OperandDictionaryTest, SinkFailureAtErrorBudgetIsPreserved) {
 TEST_F(OperandDictionaryTest, InvalidOrdinalsDoNotClaimBits) {
   loom_op_t* op = Dictionary(65);
   auto names = Names(op);
-  loom_op_attrs(op)[0] =
-      loom_make_canonical_attr_dict(names.data(), names.size());
+  IREE_ASSERT_OK(loom_test_operand_dict_set_param_names(
+      module_, op, loom_make_canonical_attr_dict(names.data(), names.size())));
   names[0].value = loom_attr_f64(0.0);
   names[1].value = loom_attr_i64(-1);
   names[2].value = loom_attr_i64(INT64_MAX);
@@ -289,8 +291,8 @@ TEST_F(OperandDictionaryTest, InvalidOrdinalsDoNotClaimBits) {
 TEST_F(OperandDictionaryTest, InvalidKeyStillClaimsValidOrdinal) {
   loom_op_t* op = Dictionary(2);
   auto names = Names(op);
-  loom_op_attrs(op)[0] =
-      loom_make_canonical_attr_dict(names.data(), names.size());
+  IREE_ASSERT_OK(loom_test_operand_dict_set_param_names(
+      module_, op, loom_make_canonical_attr_dict(names.data(), names.size())));
   names.back().value = loom_attr_i64(0);
   names[0].name_id = LOOM_STRING_ID_INVALID;
   Check(op, 2);

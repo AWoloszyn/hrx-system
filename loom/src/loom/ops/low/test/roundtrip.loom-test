@@ -92,6 +92,18 @@ low.func.def target<test.low.core>(@test_target) @storage_view(%value: reg<test.
   return %reload
 }
 
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @storage_view(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %storage = storage {byte_alignment = 16, byte_length = 64} : low.storage<scratch>
+  %whole = storage_view %storage {byte_length = 64} : low.storage<scratch> -> low.storage<scratch>
+  %tail = storage_view %whole {byte_length = 16, offset = 16} : low.storage<scratch> -> low.storage<scratch>
+  low.spill %value, %tail : reg<test.i32>, low.storage<scratch>
+  %reload = low.reload %tail : low.storage<scratch> -> reg<test.i32>
+  return %reload
+}
+
 // ====
 
 test.target<low_core> @test_target

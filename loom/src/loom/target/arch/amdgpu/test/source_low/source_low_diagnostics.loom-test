@@ -25,7 +25,7 @@ kernel.def target(@target) @lds_b32_diagnostics() {
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @lds_b32_diagnostics() asm {
   %tid = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %13 = storage {byte_alignment = 16, byte_length = 256} : low.storage<workgroup>
   %stored_value = v_mov_b32 1
   %16 = v_lshlrev_b32_src0_inline %tid, 2
@@ -63,7 +63,7 @@ kernel.def target(@target) @lds_padded_diagnostics() {
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @lds_padded_diagnostics() asm {
   %tid = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 1024, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %14 = storage {byte_alignment = 16, byte_length = 2048} : low.storage<workgroup>
   %16 = v_mov_b32 1
   %stored_value = concat(%16, %16, %16, %16) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x4>
@@ -104,7 +104,7 @@ kernel.def target(@target) @lds_read2_write2_diagnostics() {
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @lds_read2_write2_diagnostics() asm {
   %tid = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 512, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %14 = storage {byte_alignment = 16, byte_length = 2048} : low.storage<workgroup>
   %16 = v_mov_b32 1
   %19 = v_lshlrev_b32_src0_inline %tid, 5
@@ -142,7 +142,7 @@ kernel.def target(@target) @lds_dense_b128_diagnostics() {
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @lds_dense_b128_diagnostics() asm {
   %tid = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 1024, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %13 = storage {byte_alignment = 16, byte_length = 1024} : low.storage<workgroup>
   %15 = v_mov_b32 1
   %stored_value = concat(%15, %15, %15, %15) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x4>
@@ -181,8 +181,8 @@ kernel.def target(@target) @lds_f16_subword_stride_diagnostics() {
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @lds_f16_subword_stride_diagnostics() asm {
   %lane = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 256, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %16 = storage {byte_alignment = 4, byte_length = 256} : low.storage<workgroup>
   %18 = v_lshlrev_b32_src0_inline %lane, 1
   %loaded = global_load_b32_saddr %18, %input_view
@@ -217,7 +217,7 @@ func.def target(@target) @dynamic_scaled_index_large_extent_flat_load(%input: bu
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @dynamic_scaled_index_large_extent_flat_load(%bounded_index: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 4294967296} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 4294967296, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %10 = v_mov_b32 0
   %11 = s_lshl_b32_rhs_inline %bounded_index, 2
   %12 = slice %input_view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
@@ -290,7 +290,7 @@ kernel.def target(@target) @fragment_store_launch_subgroup_footprint() {
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(64, 1, 1) @fragment_store_launch_subgroup_footprint() asm {
   %workgroup = live_in<amdgpu.workgroup_id.x> : reg<amdgpu.sgpr>
   %19 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 262144} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 262144, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %subgroup = v_lshrrev_b32_src0_inline %19, 5
   %22 = v_mov_b32 0
   %31 = v_and_b32_src0_inline %19, 31

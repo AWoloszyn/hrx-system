@@ -482,21 +482,6 @@ typedef struct loom_symbolic_expr_identity_chain_step_t {
   loom_attribute_t predicates_attr;
 } loom_symbolic_expr_identity_chain_step_t;
 
-static bool loom_symbolic_expr_predicate_list_attr(const loom_op_t* op,
-                                                   loom_attribute_t* out_attr) {
-  *out_attr = (loom_attribute_t){0};
-  if (op->attribute_count == 0) {
-    return false;
-  }
-  const loom_attribute_t attr = loom_op_attrs(op)[0];
-  if (attr.kind != LOOM_ATTR_PREDICATE_LIST ||
-      (attr.count != 0 && attr.predicate_list == NULL)) {
-    return false;
-  }
-  *out_attr = attr;
-  return true;
-}
-
 static bool loom_symbolic_expr_identity_chain_step(
     const loom_symbolic_expr_context_t* context, loom_value_id_t value_id,
     loom_symbolic_expr_identity_chain_flags_t flags,
@@ -527,10 +512,13 @@ static bool loom_symbolic_expr_identity_chain_step(
   }
 
   loom_value_slice_t values = {.values = NULL, .count = 0};
+  loom_attribute_t predicates;
   if (loom_index_assume_isa(defining_op)) {
     values = loom_index_assume_values(defining_op);
+    predicates = loom_index_assume_predicates(defining_op);
   } else if (loom_scalar_assume_isa(defining_op)) {
     values = loom_scalar_assume_values(defining_op);
+    predicates = loom_scalar_assume_predicates(defining_op);
   } else {
     return false;
   }
@@ -540,8 +528,7 @@ static bool loom_symbolic_expr_identity_chain_step(
     return false;
   }
   out_step->next_value = values.values[result_index];
-  (void)loom_symbolic_expr_predicate_list_attr(defining_op,
-                                               &out_step->predicates_attr);
+  out_step->predicates_attr = predicates;
   return true;
 }
 

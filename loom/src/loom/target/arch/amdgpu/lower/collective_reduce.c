@@ -34,28 +34,9 @@ static uint32_t loom_amdgpu_subgroup_u32_log2(uint32_t value) {
   return log2;
 }
 
-static bool loom_amdgpu_subgroup_optional_attr_is_present(const loom_op_t* op,
-                                                          uint16_t attr_index) {
-  return attr_index < op->attribute_count &&
-         !loom_attr_is_absent(loom_op_attrs(op)[attr_index]);
-}
-
 static bool loom_amdgpu_subgroup_reduce_has_cluster_attrs(const loom_op_t* op) {
-  return loom_amdgpu_subgroup_optional_attr_is_present(
-             op, loom_kernel_subgroup_reduce_cluster_size_ATTR_INDEX) ||
-         loom_amdgpu_subgroup_optional_attr_is_present(
-             op, loom_kernel_subgroup_reduce_cluster_stride_ATTR_INDEX);
-}
-
-static bool loom_amdgpu_subgroup_reduce_has_cluster_size(const loom_op_t* op) {
-  return loom_amdgpu_subgroup_optional_attr_is_present(
-      op, loom_kernel_subgroup_reduce_cluster_size_ATTR_INDEX);
-}
-
-static bool loom_amdgpu_subgroup_reduce_has_cluster_stride(
-    const loom_op_t* op) {
-  return loom_amdgpu_subgroup_optional_attr_is_present(
-      op, loom_kernel_subgroup_reduce_cluster_stride_ATTR_INDEX);
+  return loom_kernel_subgroup_reduce_has_cluster_size(op) ||
+         loom_kernel_subgroup_reduce_has_cluster_stride(op);
 }
 
 static bool loom_amdgpu_subgroup_cluster_size_is_supported(
@@ -97,11 +78,11 @@ static bool loom_amdgpu_subgroup_reduce_resolve_shape(
       loom_amdgpu_subgroup_reduce_has_cluster_attrs(op);
   int64_t cluster_size = 0;
   if (has_cluster_attrs) {
-    if (loom_amdgpu_subgroup_reduce_has_cluster_stride(op)) {
+    if (loom_kernel_subgroup_reduce_has_cluster_stride(op)) {
       *out_failure = LOOM_AMDGPU_SUBGROUP_REDUCE_SHAPE_FAILURE_CLUSTER_STRIDE;
       return false;
     }
-    if (!loom_amdgpu_subgroup_reduce_has_cluster_size(op)) {
+    if (!loom_kernel_subgroup_reduce_has_cluster_size(op)) {
       *out_failure = LOOM_AMDGPU_SUBGROUP_REDUCE_SHAPE_FAILURE_CLUSTER_SIZE;
       return false;
     }

@@ -825,9 +825,7 @@ TEST_F(LowLowerPassTest,
   const uint32_t target_ordinal = loom_low_descriptor_set_lookup_descriptor(
       target_descriptor_set, IREE_SV("test.projectable_effect.i32"));
   ASSERT_NE(target_ordinal, LOOM_LOW_DESCRIPTOR_ORDINAL_NONE);
-  EXPECT_EQ(loom_attr_as_scoped_enum(
-                loom_op_const_attrs(packet)[loom_low_op_descriptor_ATTR_INDEX]),
-            target_ordinal);
+  EXPECT_EQ(loom_low_op_descriptor(packet), target_ordinal);
 }
 
 TEST_F(LowLowerPassTest, InlineRetainsCalleeWithImmutableFunctionVersion) {

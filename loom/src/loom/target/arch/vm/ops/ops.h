@@ -63,4 +63,7 @@ loom_op_semantics_t loom_vm_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/target/arch/vm/ops/ops.inc"
+
 #endif  // LOOM_OPS_VM_OPS_H_

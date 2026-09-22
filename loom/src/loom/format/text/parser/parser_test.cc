@@ -1059,10 +1059,10 @@ TEST_F(ParserTest, SymbolArraysRoundTripOrderDuplicatesAndPresentEmpty) {
   EXPECT_EQ(available.values[0].symbol_id, dependencies.values[1].symbol_id);
 
   loom_op_t* present_empty_op = loom_block_op(body, 3);
-  EXPECT_FALSE(loom_attr_is_absent(loom_op_attrs(present_empty_op)[1]));
+  EXPECT_TRUE(loom_test_symbol_array_attrs_has_available(present_empty_op));
   EXPECT_EQ(loom_test_symbol_array_attrs_available(present_empty_op).count, 0u);
   loom_op_t* absent_op = loom_block_op(body, 4);
-  EXPECT_TRUE(loom_attr_is_absent(loom_op_attrs(absent_op)[1]));
+  EXPECT_FALSE(loom_test_symbol_array_attrs_has_available(absent_op));
   loom_module_free(module);
 }
 
@@ -1296,11 +1296,11 @@ TEST_F(ParserTest, ParameterizedAttrArraysPreserveOrderFamiliesAndPresence) {
   EXPECT_TRUE(loom_test_tile_attr_isa(tiles.values[0]));
 
   loom_op_t* present_empty_op = loom_block_op(body, 1);
-  EXPECT_FALSE(loom_attr_is_absent(loom_op_attrs(present_empty_op)[1]));
+  EXPECT_TRUE(loom_test_parameterized_attr_array_has_tiles(present_empty_op));
   EXPECT_EQ(loom_test_parameterized_attr_array_tiles(present_empty_op).count,
             0u);
   loom_op_t* absent_op = loom_block_op(body, 2);
-  EXPECT_TRUE(loom_attr_is_absent(loom_op_attrs(absent_op)[1]));
+  EXPECT_FALSE(loom_test_parameterized_attr_array_has_tiles(absent_op));
 
   loom_module_free(module);
 }
@@ -1514,7 +1514,7 @@ TEST_F(ParserTest, AttrDictEmptyArrayPayloadIsCanonical) {
   ASSERT_TRUE(loom_test_attrs_isa(attrs_op));
   ASSERT_GE(attrs_op->attribute_count, 1u);
 
-  loom_attribute_t dict_attr = loom_op_attrs(attrs_op)[0];
+  loom_attribute_t dict_attr = loom_test_attrs_dict_attr(attrs_op);
   IREE_ASSERT_OK(loom_module_verify_canonical_attr_dict(module, dict_attr));
   ASSERT_EQ(dict_attr.kind, LOOM_ATTR_DICT);
   ASSERT_EQ(dict_attr.count, 1u);
@@ -1553,7 +1553,7 @@ TEST_F(ParserTest, AttrDictArrayPayloadMayExceedInlineParserCapacity) {
   ASSERT_NE(attrs_op, nullptr);
   ASSERT_TRUE(loom_test_attrs_isa(attrs_op));
 
-  loom_attribute_t dict_attr = loom_op_attrs(attrs_op)[0];
+  loom_attribute_t dict_attr = loom_test_attrs_dict_attr(attrs_op);
   ASSERT_EQ(dict_attr.kind, LOOM_ATTR_DICT);
   ASSERT_EQ(dict_attr.count, 1u);
   loom_attribute_t array_attr = dict_attr.dict_entries[0].value;
@@ -1633,7 +1633,7 @@ TEST_F(ParserTest, EmptyPredicateListPayloadRoundTripsExplicitly) {
   ASSERT_TRUE(loom_test_assume_isa(assume_op));
   ASSERT_GE(assume_op->attribute_count, 1u);
 
-  loom_attribute_t predicates = loom_op_attrs(assume_op)[0];
+  loom_attribute_t predicates = loom_test_assume_predicates(assume_op);
   EXPECT_EQ(predicates.kind, LOOM_ATTR_PREDICATE_LIST);
   EXPECT_EQ(predicates.count, 0u);
   EXPECT_EQ(predicates.predicate_list, nullptr);

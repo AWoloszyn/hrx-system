@@ -163,4 +163,7 @@ loom_op_semantics_t loom_global_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/global/ops.inc"
+
 #endif  // LOOM_OPS_GLOBAL_OPS_H_

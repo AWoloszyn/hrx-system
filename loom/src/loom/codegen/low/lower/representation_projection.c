@@ -34,8 +34,8 @@ typedef struct loom_low_representation_value_update_t {
 typedef struct loom_low_representation_descriptor_update_t {
   // Descriptor-backed packet whose ordinal is projected.
   loom_op_t* op;
-  // Attribute containing the descriptor ordinal.
-  uint8_t attr_index;
+  // Source representation descriptor ordinal retained during planning.
+  uint32_t source_ordinal;
   // Target representation descriptor ordinal.
   uint32_t ordinal;
   // Generic IR traits implied by the target representation descriptor.
@@ -186,15 +186,13 @@ static iree_status_t loom_low_representation_plan_value(
 }
 
 static iree_status_t loom_low_representation_plan_descriptor(
-    loom_op_t* op, uint8_t attr_index,
+    loom_op_t* op, uint32_t source_ordinal,
     const loom_low_representation_projection_t* projection,
     loom_low_representation_projection_plan_t* plan) {
   if (plan->descriptor_count >= plan->descriptor_capacity) {
     return iree_make_status(IREE_STATUS_INTERNAL,
                             "low representation descriptor plan overflow");
   }
-  const uint32_t source_ordinal =
-      loom_attr_as_scoped_enum(loom_op_const_attrs(op)[attr_index]);
   const loom_low_descriptor_t* source_descriptor =
       loom_low_descriptor_set_descriptor_at(projection->source_descriptor_set,
                                             source_ordinal);
@@ -236,7 +234,7 @@ static iree_status_t loom_low_representation_plan_descriptor(
   plan->descriptor_updates[plan->descriptor_count++] =
       (loom_low_representation_descriptor_update_t){
           .op = op,
-          .attr_index = attr_index,
+          .source_ordinal = source_ordinal,
           .ordinal = target_ordinal,
           .effective_traits = loom_low_descriptor_effective_traits(
               projection->target_descriptor_set, target_descriptor),
@@ -250,10 +248,10 @@ static iree_status_t loom_low_representation_plan_op(
     loom_low_representation_projection_plan_t* plan) {
   if (loom_low_op_isa(op)) {
     IREE_RETURN_IF_ERROR(loom_low_representation_plan_descriptor(
-        op, loom_low_op_descriptor_ATTR_INDEX, projection, plan));
+        op, loom_low_op_descriptor(op), projection, plan));
   } else if (loom_low_const_isa(op)) {
     IREE_RETURN_IF_ERROR(loom_low_representation_plan_descriptor(
-        op, loom_low_const_descriptor_ATTR_INDEX, projection, plan));
+        op, loom_low_const_descriptor(op), projection, plan));
   }
 
   const loom_value_id_t* results = loom_op_const_results(op);
@@ -327,9 +325,16 @@ static iree_status_t loom_low_representation_apply_plan(
   for (iree_host_size_t i = 0; i < plan->descriptor_count; ++i) {
     const loom_low_representation_descriptor_update_t* update =
         &plan->descriptor_updates[i];
-    loom_attribute_t* attr = &loom_op_attrs(update->op)[update->attr_index];
-    if (loom_attr_as_scoped_enum(*attr) != update->ordinal) {
-      *attr = loom_attr_scoped_enum(update->ordinal);
+    if (update->source_ordinal != update->ordinal) {
+      const loom_attribute_t descriptor =
+          loom_attr_scoped_enum(update->ordinal);
+      if (loom_low_const_isa(update->op)) {
+        IREE_RETURN_IF_ERROR(
+            loom_low_const_set_descriptor(module, update->op, descriptor));
+      } else {
+        IREE_RETURN_IF_ERROR(
+            loom_low_op_set_descriptor(module, update->op, descriptor));
+      }
       *out_changed = true;
     }
     if (update->op->traits != update->effective_traits) {

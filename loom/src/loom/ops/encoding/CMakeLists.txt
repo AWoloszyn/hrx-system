@@ -26,6 +26,8 @@ loom_generated_cc_library(
     "storage.c"
     "summary.c"
     "verify.c"
+  TEXTUAL_HDRS
+    "ops.inc"
   GENERATED_SRC_FLAGS
     "--builders"
     "--tables"
@@ -45,6 +47,10 @@ loom_generated_cc_library(
     "summary.h"
   ARGS
     "--dialect=encoding"
+  EXTRA_OUTPUT_FLAGS
+    "--ops-include"
+  EXTRA_OUTPUTS
+    "ops.inc"
   DEPS
     iree::base
     loom::error::emitter

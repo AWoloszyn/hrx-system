@@ -31,7 +31,10 @@ iree_status_t loom_parser_append_implicit_terminator(
     loom_parser_t* parser, const loom_region_descriptor_t* region_descriptor,
     loom_block_t* block);
 
-iree_status_t loom_parse_op(loom_parser_t* parser);
+// Parses one operation using an already-resolved assembly spelling, or NULL
+// to resolve the canonical dotted name at the current token position.
+iree_status_t loom_parse_op(loom_parser_t* parser,
+                            const loom_op_assembly_format_t* assembly);
 
 typedef iree_status_t (*loom_parse_region_body_fn_t)(
     loom_parser_t* parser, const loom_region_descriptor_t* region_descriptor,

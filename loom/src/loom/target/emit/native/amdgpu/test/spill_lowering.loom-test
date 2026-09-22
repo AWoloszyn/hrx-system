@@ -475,8 +475,8 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @storage_views_survive_spi
   low.br ^body
 ^body:
   %storage = storage {byte_alignment = 16, byte_length = 32} : low.storage<scratch>
-  %outer = storage_view %storage {offset = 8, byte_length = 16} : low.storage<scratch> -> low.storage<scratch>
-  %manual = storage_view %outer {offset = 4, byte_length = 8} : low.storage<scratch> -> low.storage<scratch>
+  %outer = storage_view %storage {byte_length = 16, offset = 8} : low.storage<scratch> -> low.storage<scratch>
+  %manual = storage_view %outer {byte_length = 8, offset = 4} : low.storage<scratch> -> low.storage<scratch>
   %mask0 = v_cmp_lt_u32 %lhs0, %rhs0
   low.spill %mask0, %manual : reg<amdgpu.sgpr x2>, low.storage<scratch>
   %mask1 = v_cmp_lt_u32 %lhs1, %rhs1

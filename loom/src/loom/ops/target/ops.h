@@ -209,4 +209,7 @@ const loom_parameterized_attr_descriptor_t* loom_target_dialect_parameterized_at
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/target/ops.inc"
+
 #endif  // LOOM_OPS_TARGET_OPS_H_

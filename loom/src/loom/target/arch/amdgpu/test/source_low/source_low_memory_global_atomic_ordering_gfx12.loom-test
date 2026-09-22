@@ -16,7 +16,7 @@ kernel.def @global_atomic_release_reduce_i32() {
 
 // ----
 low.kernel.def target<amdgpu.rdna4.core> abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @global_atomic_release_reduce_i32() asm {
-  %view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
+  %view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %10 = v_mov_b32 0
   %11 = v_mov_b32 1
   global_atomic_add_u32_saddr %10, %11, %view {scope = 2}
@@ -40,7 +40,7 @@ kernel.def @global_atomic_acquire_rmw_i32() {
 
 // ----
 low.kernel.def target<amdgpu.rdna4.core> abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @global_atomic_acquire_rmw_i32() asm {
-  %view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
+  %view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %11 = v_mov_b32 0
   %12 = v_mov_b32 1
   %old = global_atomic_add_u32_rtn_saddr %11, %12, %view {scope = 2}
@@ -66,7 +66,7 @@ kernel.def @global_atomic_acq_rel_rmw_i32() {
 
 // ----
 low.kernel.def target<amdgpu.rdna4.core> abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @global_atomic_acq_rel_rmw_i32() asm {
-  %view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
+  %view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %11 = v_mov_b32 0
   %12 = v_mov_b32 1
   %old = global_atomic_add_u32_rtn_saddr %11, %12, %view {scope = 2}
@@ -93,7 +93,7 @@ kernel.def @global_atomic_acq_rel_cmpxchg_i32() {
 
 // ----
 low.kernel.def target<amdgpu.rdna4.core> abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @global_atomic_acq_rel_cmpxchg_i32() asm {
-  %view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
+  %view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %13 = v_mov_b32 0
   %14 = v_mov_b32 7
   %15 = v_mov_b32 9
@@ -121,7 +121,7 @@ kernel.def @global_atomic_seq_cst_reduce_i32() {
 
 // ----
 low.kernel.def target<amdgpu.rdna4.core> abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @global_atomic_seq_cst_reduce_i32() asm {
-  %view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
+  %view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %10 = v_mov_b32 0
   %11 = v_mov_b32 1
   global_atomic_add_u32_saddr %10, %11, %view {scope = 2}

@@ -150,4 +150,7 @@ loom_op_semantics_t loom_spirv_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/target/arch/spirv/ops/ops.inc"
+
 #endif  // LOOM_OPS_SPIRV_OPS_H_

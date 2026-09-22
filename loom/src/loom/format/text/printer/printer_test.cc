@@ -848,7 +848,8 @@ TEST_F(PrintOpTest, UpdateWithTiedResult) {
   loom_op_operands(op)[1] = target;
   loom_op_operands(op)[2] = offset;
   int64_t static_offsets[] = {INT64_MIN};
-  loom_op_attrs(op)[0] = loom_attr_i64_array(static_offsets, 1);
+  loom_test_update_initialize_static_offsets(
+      op, loom_attr_i64_array(static_offsets, 1));
   loom_value_id_t result_id = def(tensor_type);
   loom_op_results(op)[0] = result_id;
   loom_tied_result_t tied = {0, 1};
@@ -1301,12 +1302,13 @@ TEST_F(PrintOpTest,
   loom_value_id_t input = def(f32);
 
   loom_op_t* op = NULL;
-  IREE_ASSERT_OK(loom_test_attrs_build(&builder_, 0, input,
-                                       loom_make_named_attr_slice(NULL, 0), f32,
-                                       LOOM_LOCATION_UNKNOWN, &op));
+  IREE_ASSERT_OK(loom_builder_allocate_op(&builder_, LOOM_OP_TEST_ATTRS, 1, 1,
+                                          0, 0, 1, LOOM_LOCATION_UNKNOWN, &op));
+  loom_op_operands(op)[0] = input;
+  loom_op_results(op)[0] = def(f32);
 
-  loom_op_attrs(op)[0] =
-      loom_make_canonical_attr_dict(/*entries=*/NULL, /*count=*/1);
+  loom_test_attrs_initialize_dict(
+      op, loom_make_canonical_attr_dict(/*entries=*/NULL, /*count=*/1));
 
   IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
                         print_op_status(op, LOOM_TEXT_PRINT_DEFAULT));
@@ -1317,11 +1319,12 @@ TEST_F(PrintOpTest, AttrsOpWithWrongDictAttrKindReturnsInvalidArgument) {
   loom_value_id_t input = def(f32);
 
   loom_op_t* op = NULL;
-  IREE_ASSERT_OK(loom_test_attrs_build(&builder_, 0, input,
-                                       loom_make_named_attr_slice(NULL, 0), f32,
-                                       LOOM_LOCATION_UNKNOWN, &op));
+  IREE_ASSERT_OK(loom_builder_allocate_op(&builder_, LOOM_OP_TEST_ATTRS, 1, 1,
+                                          0, 0, 1, LOOM_LOCATION_UNKNOWN, &op));
+  loom_op_operands(op)[0] = input;
+  loom_op_results(op)[0] = def(f32);
 
-  loom_op_attrs(op)[0] = loom_attr_i64(1);
+  loom_test_attrs_initialize_dict(op, loom_attr_i64(1));
 
   IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
                         print_op_status(op, LOOM_TEXT_PRINT_DEFAULT));
@@ -2764,7 +2767,8 @@ TEST_F(PrintOpTest, BoundsCheckIndexListDynamicOutOfRange) {
                                           LOOM_LOCATION_UNKNOWN, &op));
   loom_op_operands(op)[0] = source;
   loom_op_operands(op)[1] = target;
-  loom_op_attrs(op)[0] = loom_attr_i64_array(static_offsets, 1);
+  loom_test_update_initialize_static_offsets(
+      op, loom_attr_i64_array(static_offsets, 1));
   loom_op_results(op)[0] = def(tensor_type);
   loom_op_tied_results(op)[0] = (loom_tied_result_t){
       /*.result_index=*/0,

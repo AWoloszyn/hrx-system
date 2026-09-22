@@ -55,7 +55,7 @@ static bool loom_print_format_element_covers_attr(
 }
 
 static bool loom_print_inline_attr_dict_attr_present(
-    const loom_op_t* op, const loom_op_vtable_t* vtable,
+    const loom_op_t* op, const loom_op_vtable_t* vtable, loom_format_t format,
     const loom_format_element_t* inline_element, uint16_t attr_index) {
   if (attr_index >= op->attribute_count) {
     return false;
@@ -69,8 +69,8 @@ static bool loom_print_inline_attr_dict_attr_present(
   if (loom_attr_descriptor_elides_value(descriptor, attr)) {
     return false;
   }
-  const loom_format_element_t* elements = vtable->format_elements;
-  for (uint16_t i = 0; i < vtable->format_element_count; ++i) {
+  const loom_format_element_t* elements = format.elements;
+  for (uint16_t i = 0; i < format.count; ++i) {
     const loom_format_element_t* element = &elements[i];
     if (element == inline_element) {
       continue;
@@ -83,7 +83,7 @@ static bool loom_print_inline_attr_dict_attr_present(
 }
 
 static bool loom_print_find_next_inline_attr(
-    const loom_op_t* op, const loom_op_vtable_t* vtable,
+    const loom_op_t* op, const loom_op_vtable_t* vtable, loom_format_t format,
     const loom_format_element_t* inline_element, bool has_previous_name,
     iree_string_view_t previous_name, uint16_t* out_attr_index,
     const loom_attr_descriptor_t** out_descriptor) {
@@ -94,8 +94,8 @@ static bool loom_print_find_next_inline_attr(
 
   uint16_t count = iree_min(vtable->attribute_count, op->attribute_count);
   for (uint16_t i = 0; i < count; ++i) {
-    if (!loom_print_inline_attr_dict_attr_present(op, vtable, inline_element,
-                                                  i)) {
+    if (!loom_print_inline_attr_dict_attr_present(op, vtable, format,
+                                                  inline_element, i)) {
       continue;
     }
     const loom_attr_descriptor_t* descriptor = &vtable->attr_descriptors[i];
@@ -123,7 +123,7 @@ static bool loom_print_find_next_inline_attr(
 
 iree_status_t loom_print_inline_attr_dict(
     loom_print_context_t* ctx, const loom_op_t* op,
-    const loom_op_vtable_t* vtable,
+    const loom_op_vtable_t* vtable, loom_format_t format,
     const loom_format_element_t* inline_element) {
   if (!vtable->attr_descriptors) {
     return iree_ok_status();
@@ -135,7 +135,7 @@ iree_status_t loom_print_inline_attr_dict(
   for (;;) {
     uint16_t attr_index = 0;
     const loom_attr_descriptor_t* descriptor = NULL;
-    if (!loom_print_find_next_inline_attr(op, vtable, inline_element,
+    if (!loom_print_find_next_inline_attr(op, vtable, format, inline_element,
                                           has_previous_name, previous_name,
                                           &attr_index, &descriptor)) {
       break;

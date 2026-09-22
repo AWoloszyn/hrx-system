@@ -16,11 +16,6 @@ package(
 )
 
 loom_cc_library(
-    name = "binding_descriptor",
-    hdrs = ["binding_descriptor.h"],
-)
-
-loom_cc_library(
     name = "kernel_abi",
     srcs = ["kernel_abi.c"],
     hdrs = ["kernel_abi.h"],
@@ -30,7 +25,6 @@ loom_cc_library(
         "//loom/src/loom/target/emit/native/amdgpu:__pkg__",
     ],
     deps = [
-        ":binding_descriptor",
         "//loom/src/loom/codegen/low:allocation",
         "//loom/src/loom/codegen/low:function",
         "//loom/src/loom/codegen/low:target_binding",
@@ -56,7 +50,6 @@ loom_cc_library(
         "//loom/src/loom/target/emit/native/amdgpu:__pkg__",
     ],
     deps = [
-        ":binding_descriptor",
         ":kernel_abi",
         "//loom/src/loom/codegen/low:allocation",
         "//loom/src/loom/codegen/low:builder",

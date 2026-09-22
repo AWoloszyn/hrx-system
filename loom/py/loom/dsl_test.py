@@ -1193,8 +1193,6 @@ class TestInterfaces:
         assert interface.value == "value"
         assert interface.indices == "indices"
         assert interface.static_indices == "static_indices"
-        assert interface.cache_scope == "cache_scope"
-        assert interface.cache_temporal == "cache_temporal"
         assert interface.atomic_kind == "kind"
         assert interface.atomic_ordering == "ordering"
         assert interface.atomic_success_ordering == "success_ordering"
@@ -1203,11 +1201,11 @@ class TestInterfaces:
         assert interface._explicit_fields == frozenset()
 
     def test_memory_access_interface_tracks_explicit_overrides(self) -> None:
-        interface = MemoryAccessInterface(value="stored", cache_scope=None)
+        interface = MemoryAccessInterface(value="stored", mask=None)
 
         assert interface.value == "stored"
-        assert interface.cache_scope is None
-        assert interface._explicit_fields == frozenset({"value", "cache_scope"})
+        assert interface.mask is None
+        assert interface._explicit_fields == frozenset({"value", "mask"})
 
 
 # ============================================================================

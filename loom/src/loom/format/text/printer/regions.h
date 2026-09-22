@@ -42,7 +42,8 @@ iree_status_t loom_print_successor_ref(loom_print_context_t* ctx,
                                        uint8_t successor_index);
 
 // Prints one ordinary operation at the current indentation level.
-iree_status_t loom_print_op(loom_print_context_t* ctx, const loom_op_t* op);
+iree_status_t loom_print_op(loom_print_context_t* ctx, const loom_op_t* op,
+                            const loom_op_assembly_format_t* assembly);
 
 // Returns true when |op| is the region's default terminator and has no payload
 // that must be preserved textually.

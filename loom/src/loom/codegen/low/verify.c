@@ -1111,10 +1111,8 @@ static iree_status_t loom_low_verify_emit_resource_register_class_missing(
   loom_diagnostic_param_t params[] = {
       loom_param_string(function_state->function_name),
       loom_param_string(IREE_SV("resource")),
-      loom_param_with_field_ref(
-          loom_param_string(IREE_SV("low.resource")),
-          loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE,
-                                    loom_low_resource_import_kind_ATTR_INDEX)),
+      loom_param_with_field_ref(loom_param_string(IREE_SV("low.resource")),
+                                loom_low_resource_import_kind_diagnostic_ref()),
       loom_param_with_field_ref(
           loom_param_type(actual_type),
           loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_RESULT, 0)),
@@ -1131,10 +1129,8 @@ static iree_status_t loom_low_verify_emit_resource_unit_count_exceeded(
   loom_diagnostic_param_t params[] = {
       loom_param_string(function_state->function_name),
       loom_param_string(IREE_SV("resource")),
-      loom_param_with_field_ref(
-          loom_param_string(IREE_SV("low.resource")),
-          loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE,
-                                    loom_low_resource_import_kind_ATTR_INDEX)),
+      loom_param_with_field_ref(loom_param_string(IREE_SV("low.resource")),
+                                loom_low_resource_import_kind_diagnostic_ref()),
       loom_param_with_field_ref(
           loom_param_type(actual_type),
           loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_RESULT, 0)),

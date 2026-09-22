@@ -27,6 +27,8 @@ loom_generated_cc_library(
         "registry.h",
     ],
     args = ["--dialect=x86"],
+    extra_output_flags = ["--ops-include"],
+    extra_outputs = ["ops.inc"],
     generated_src_flags = [
         "--builders",
         "--tables",
@@ -36,6 +38,7 @@ loom_generated_cc_library(
         "tables.c",
     ],
     generator = "//loom/py/loom/gen/ops:c_tables_x86_generator",
+    textual_hdrs = ["ops.inc"],
     visibility = _X86_ROOT_VISIBILITY,
     deps = [
         "//loom/src/loom/error:error_defs",

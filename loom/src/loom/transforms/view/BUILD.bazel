@@ -19,6 +19,7 @@ loom_cc_library(
     deps = [
         "//loom/src/loom/ir",
         "//loom/src/loom/ir:facts",
+        "//loom/src/loom/ops:cache",
         "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/ops/buffer",
         "//loom/src/loom/ops/encoding",
@@ -82,6 +83,7 @@ loom_cc_library(
     deps = [
         "//loom/src/loom/ir",
         "//loom/src/loom/ops:atomic",
+        "//loom/src/loom/ops:cache",
         "//loom/src/loom/ops:op_defs",
         "//loom/src/loom/ops/scalar",
         "//loom/src/loom/ops/scf",

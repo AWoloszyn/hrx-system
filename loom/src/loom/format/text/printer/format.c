@@ -121,9 +121,10 @@ iree_status_t loom_print_instance_flags(loom_print_context_t* ctx,
 
 iree_status_t loom_print_format_elements(loom_print_context_t* ctx,
                                          const loom_op_t* op,
-                                         const loom_op_vtable_t* vtable) {
-  const loom_format_element_t* elements = vtable->format_elements;
-  uint16_t element_count = vtable->format_element_count;
+                                         const loom_op_vtable_t* vtable,
+                                         loom_format_t format) {
+  const loom_format_element_t* elements = format.elements;
+  uint16_t element_count = format.count;
 
   for (uint16_t i = 0; i < element_count; ++i) {
     const loom_format_element_t* element = &elements[i];
@@ -381,7 +382,7 @@ iree_status_t loom_print_format_elements(loom_print_context_t* ctx,
         if (iree_any_bit_set(element->data,
                              LOOM_ATTR_DICT_FORMAT_INLINE_ATTRS)) {
           IREE_RETURN_IF_ERROR(
-              loom_print_inline_attr_dict(ctx, op, vtable, element));
+              loom_print_inline_attr_dict(ctx, op, vtable, format, element));
           break;
         }
         // AttrDict reads a LOOM_ATTR_DICT attribute at field_index and

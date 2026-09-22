@@ -1926,4 +1926,7 @@ loom_op_semantics_t loom_scalar_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/scalar/ops.inc"
+
 #endif  // LOOM_OPS_SCALAR_OPS_H_

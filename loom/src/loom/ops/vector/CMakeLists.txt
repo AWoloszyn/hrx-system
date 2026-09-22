@@ -35,6 +35,7 @@ loom_generated_cc_library(
     "type_transfer.c"
     "verify.c"
   TEXTUAL_HDRS
+    "ops.inc"
     "scalarization_rows.inl"
   GENERATED_SRC_FLAGS
     "--builders"
@@ -79,6 +80,10 @@ loom_generated_cc_library(
     "tables.h"
   ARGS
     "--dialect=vector"
+  EXTRA_OUTPUT_FLAGS
+    "--ops-include"
+  EXTRA_OUTPUTS
+    "ops.inc"
   DEPS
     iree::base
     iree::base::internal

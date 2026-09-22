@@ -15,6 +15,8 @@
 #define LOOM_OPS_CACHE_H_
 
 #include "iree/base/api.h"
+#include "loom/error/emitter.h"
+#include "loom/ir/ir.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -89,6 +91,43 @@ typedef enum loom_cache_policy_error_e {
   LOOM_CACHE_POLICY_ERROR_BYPASS_NON_SYSTEM_SCOPE = 7,
 } loom_cache_policy_error_t;
 
+// Non-owning view of an operation's advisory cache policy.
+typedef struct loom_cache_policy_t {
+  // Attribute storage borrowed from the operation. Resolved once when casting
+  // so each field query only applies its generated index.
+  const loom_attribute_t* attributes;
+  // Generated field bindings, or NULL when the interface is absent.
+  const loom_cache_policy_vtable_t* vtable;
+} loom_cache_policy_t;
+
+// Returns whether the operation implements CachePolicy.
+static inline bool loom_cache_policy_isa(loom_cache_policy_t policy) {
+  return policy.vtable != NULL;
+}
+
+// Returns the operation's CachePolicy view, or an empty view for nonmembers.
+loom_cache_policy_t loom_cache_policy_cast(const loom_module_t* module,
+                                           const loom_op_t* op);
+
+// Returns the authored scope attribute, preserving optional absence. The
+// generated interface owns the slot; verified consumers need no layout checks.
+static inline loom_attribute_t loom_cache_policy_scope(
+    loom_cache_policy_t policy) {
+  return policy.vtable &&
+                 policy.vtable->scope_attr_index != LOOM_ATTR_INDEX_NONE
+             ? policy.attributes[policy.vtable->scope_attr_index]
+             : loom_attr_absent();
+}
+
+// Returns the authored temporal attribute, preserving optional absence.
+static inline loom_attribute_t loom_cache_policy_temporal(
+    loom_cache_policy_t policy) {
+  return policy.vtable &&
+                 policy.vtable->temporal_attr_index != LOOM_ATTR_INDEX_NONE
+             ? policy.attributes[policy.vtable->temporal_attr_index]
+             : loom_attr_absent();
+}
+
 // Returns true when |scope| is a known loom_cache_scope_t value.
 bool loom_cache_scope_is_valid(uint8_t scope);
 
@@ -99,13 +138,12 @@ bool loom_cache_temporal_is_valid(uint8_t temporal);
 loom_cache_policy_error_t loom_cache_policy_validate(
     uint8_t scope, uint8_t temporal, loom_cache_policy_access_t access);
 
-// Returns the attribute name responsible for |error|.
-iree_string_view_t loom_cache_policy_error_attr_name(
-    loom_cache_policy_error_t error);
-
-// Returns the expected constraint for |error|.
-iree_string_view_t loom_cache_policy_error_expected_constraint(
-    loom_cache_policy_error_t error);
+// Verifies the paired presence and compatibility of an operation's CachePolicy
+// fields. Called after structural verification has established attribute kinds.
+iree_status_t loom_cache_policy_verify(const loom_module_t* module,
+                                       const loom_op_t* op,
+                                       loom_cache_policy_access_t access,
+                                       iree_diagnostic_emitter_t emitter);
 
 #ifdef __cplusplus
 }

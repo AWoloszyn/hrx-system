@@ -60,8 +60,8 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@paired_scope_target) abi_layou
   %a_rhs = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %b_lhs = resource<hal_binding> {index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %b_rhs = resource<hal_binding> {index = 3, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
-  %a_view = resource<hal_binding> {index = 4, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
-  %b_view = resource<hal_binding> {index = 5, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %a_view = resource<hal_binding> {extent = 1024, index = 4, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %b_view = resource<hal_binding> {extent = 1024, index = 5, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   low.schedule.begin
   %lane$63 = v_and_b32_src0_inline %lane$46, 15
   %byte_offset = v_lshlrev_b32_src0_inline %lane$63, 6

@@ -538,4 +538,7 @@ const loom_parameterized_attr_descriptor_t* loom_encoding_dialect_parameterized_
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/encoding/ops.inc"
+
 #endif  // LOOM_OPS_ENCODING_OPS_H_

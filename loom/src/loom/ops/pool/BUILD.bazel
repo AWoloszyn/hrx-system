@@ -16,6 +16,8 @@ loom_generated_cc_library(
     name = "pool",
     hdrs = ["ops.h"],
     args = ["--dialect=pool"],
+    extra_output_flags = ["--ops-include"],
+    extra_outputs = ["ops.inc"],
     generated_src_flags = [
         "--builders",
         "--tables",
@@ -25,6 +27,7 @@ loom_generated_cc_library(
         "tables.c",
     ],
     generator = "//loom/py/loom/gen/ops:c_tables_pool_generator",
+    textual_hdrs = ["ops.inc"],
     deps = [
         "//loom/src/loom/error:error_defs",
         "//loom/src/loom/ir",

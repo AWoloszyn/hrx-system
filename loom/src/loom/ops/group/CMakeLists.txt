@@ -16,6 +16,8 @@ loom_generated_cc_library(
     loom::py::loom::gen::ops::c_tables_group_generator
   SRCS
     "verify.c"
+  TEXTUAL_HDRS
+    "ops.inc"
   GENERATED_SRC_FLAGS
     "--builders"
     "--tables"
@@ -26,6 +28,10 @@ loom_generated_cc_library(
     "ops.h"
   ARGS
     "--dialect=group"
+  EXTRA_OUTPUT_FLAGS
+    "--ops-include"
+  EXTRA_OUTPUTS
+    "ops.inc"
   DEPS
     iree::base
     loom::error::emitter

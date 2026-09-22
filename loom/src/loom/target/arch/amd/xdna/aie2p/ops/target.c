@@ -27,8 +27,8 @@ static const loom_xdna_device_profile_t* loom_aie2p_target_profile(
 static void loom_aie2p_target_facts_project(
     const loom_target_record_view_t* record, loom_target_facts_t* base_facts) {
   loom_aie2p_target_facts_t* facts = (loom_aie2p_target_facts_t*)base_facts;
-  const loom_attribute_t profile_attr = loom_target_record_view_attribute(
-      record, loom_aie2p_target_device_profile_ATTR_INDEX);
+  const loom_attribute_t profile_attr =
+      loom_aie2p_target_device_profile_from_record(record);
   if (!loom_attr_is_absent(profile_attr)) {
     facts->device_profile = loom_aie2p_target_profile(
         loom_target_record_view_string(record, profile_attr));
@@ -108,13 +108,11 @@ iree_status_t loom_aie2p_target_record_verify(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter) {
   IREE_RETURN_IF_ERROR(loom_target_record_verify(module, op, emitter));
-  const loom_attribute_t profile_attr =
-      loom_op_const_attrs(op)[loom_aie2p_target_device_profile_ATTR_INDEX];
-  if (loom_attr_is_absent(profile_attr)) {
+  if (!loom_aie2p_target_has_device_profile(op)) {
     return iree_ok_status();
   }
 
-  const loom_string_id_t profile_id = loom_attr_as_string_id(profile_attr);
+  const loom_string_id_t profile_id = loom_aie2p_target_device_profile(op);
   IREE_ASSERT_LT(profile_id, module->strings.count);
   const iree_string_view_t profile =
       loom_string_table_get(&module->strings, profile_id);
@@ -125,9 +123,7 @@ iree_status_t loom_aie2p_target_record_verify(
   const loom_diagnostic_param_t params[] = {
       loom_param_with_field_ref(
           loom_param_string(profile),
-          loom_diagnostic_field_ref(
-              LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE,
-              loom_aie2p_target_device_profile_ATTR_INDEX)),
+          loom_aie2p_target_device_profile_diagnostic_ref()),
   };
   const loom_diagnostic_emission_t emission = {
       .op = op,

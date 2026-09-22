@@ -4,13 +4,15 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include "loom/codegen/low/text_asm.h"
+
 #include <inttypes.h>
 
 #include "loom/codegen/low/builder.h"
 #include "loom/codegen/low/repr.h"
-#include "loom/codegen/low/text_asm_internal.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
+#include "loom/ops/low/ops.h"
 #include "loom/target/registers.h"
 
 static const loom_low_descriptor_registry_t*
@@ -223,9 +225,9 @@ static iree_status_t loom_low_descriptor_text_asm_make_packet(
           loom_low_descriptor_has_variadic_operands(descriptor),
       .asm_immediate_count = asm_form->immediate_count,
       .immediate_count = descriptor->immediate_count,
-      .immediate_attribute_field_index = builds_as_const
-                                             ? loom_low_const_attrs_ATTR_INDEX
-                                             : loom_low_op_attrs_ATTR_INDEX,
+      .immediate_attribute_field_index =
+          builds_as_const ? loom_low_const_attrs_diagnostic_ref().index
+                          : loom_low_op_attrs_diagnostic_ref().index,
       .has_named_immediates = has_named_immediates,
       .operation_kind = builds_as_const ? LOOM_OP_LOW_CONST : LOOM_OP_LOW_OP,
   };
@@ -1134,23 +1136,9 @@ static iree_status_t loom_low_descriptor_text_asm_operand_segment_descriptor(
   return iree_ok_status();
 }
 
-static iree_status_t loom_low_descriptor_text_asm_build_return(
-    const loom_text_low_asm_environment_state_t* state, loom_builder_t* builder,
-    const loom_value_id_t* values, iree_host_size_t value_count,
-    loom_location_id_t location, loom_op_t** out_op) {
-  (void)state;
-  return loom_low_return_build(builder, values, value_count, location, out_op);
-}
-
 static iree_status_t loom_low_descriptor_text_asm_attr_slice(
-    const loom_op_t* op, uint8_t attr_index,
-    loom_named_attr_slice_t* out_attrs) {
+    loom_attribute_t attr, loom_named_attr_slice_t* out_attrs) {
   *out_attrs = loom_make_named_attr_slice(NULL, 0);
-  if (attr_index >= op->attribute_count) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "low asm packet immediate dictionary is missing");
-  }
-  const loom_attribute_t attr = loom_op_attrs(op)[attr_index];
   if (loom_attr_is_absent(attr)) {
     return iree_ok_status();
   }
@@ -1189,22 +1177,6 @@ static iree_status_t loom_low_descriptor_text_asm_find_attr(
         module, &attrs.entries[i], &attr_name));
     if (iree_string_view_equal(attr_name, field_name)) {
       *out_found = true;
-      return iree_ok_status();
-    }
-  }
-  return iree_ok_status();
-}
-
-iree_status_t loom_low_descriptor_text_asm_lookup_attr(
-    const loom_module_t* module, loom_named_attr_slice_t attrs,
-    iree_string_view_t field_name, const loom_named_attr_t** out_attr) {
-  *out_attr = NULL;
-  for (iree_host_size_t i = 0; i < attrs.count; ++i) {
-    iree_string_view_t attr_name = iree_string_view_empty();
-    IREE_RETURN_IF_ERROR(loom_low_descriptor_text_asm_attr_name(
-        module, &attrs.entries[i], &attr_name));
-    if (iree_string_view_equal(attr_name, field_name)) {
-      *out_attr = &attrs.entries[i];
       return iree_ok_status();
     }
   }
@@ -1313,20 +1285,20 @@ static iree_status_t loom_low_descriptor_text_asm_describe_packet(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_module_t* module, const loom_op_t* op, bool is_const,
     loom_text_low_asm_statement_t* out_statement) {
-  const uint8_t descriptor_attr_index =
-      is_const ? loom_low_const_descriptor_ATTR_INDEX
-               : loom_low_op_descriptor_ATTR_INDEX;
-  const uint8_t attrs_attr_index =
-      is_const ? loom_low_const_attrs_ATTR_INDEX : loom_low_op_attrs_ATTR_INDEX;
-
-  if (descriptor_attr_index >= op->attribute_count ||
-      loom_op_attrs(op)[descriptor_attr_index].kind != LOOM_ATTR_SCOPED_ENUM) {
+  const loom_op_vtable_t* vtable = loom_op_vtable(module, op);
+  if (op->attribute_count != vtable->attribute_count) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "low asm packet has an invalid attribute count");
+  }
+  const loom_attribute_t descriptor_attr =
+      is_const ? loom_low_const_descriptor_attr(op)
+               : loom_low_op_descriptor_attr(op);
+  if (descriptor_attr.kind != LOOM_ATTR_SCOPED_ENUM) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
         "low asm packet descriptor must be a representation-scoped enum");
   }
-  const uint32_t descriptor_ordinal =
-      loom_attr_as_scoped_enum(loom_op_attrs(op)[descriptor_attr_index]);
+  const uint32_t descriptor_ordinal = loom_attr_as_scoped_enum(descriptor_attr);
   const loom_low_descriptor_t* descriptor =
       loom_low_descriptor_set_descriptor_at(descriptor_set, descriptor_ordinal);
   if (descriptor == NULL) {
@@ -1335,6 +1307,11 @@ static iree_status_t loom_low_descriptor_text_asm_describe_packet(
         "low asm packet descriptor is outside the active representation "
         "contract");
   }
+
+  out_statement->kind = LOOM_TEXT_LOW_ASM_STATEMENT_UNAVAILABLE;
+  IREE_RETURN_IF_ERROR(loom_low_descriptor_text_asm_string(
+      descriptor_set, descriptor->key_string_offset,
+      &out_statement->packet.descriptor_key));
 
   loom_text_low_asm_packet_descriptor_t packet = {0};
   IREE_RETURN_IF_ERROR(loom_low_descriptor_text_asm_lookup_packet_by_ordinal(
@@ -1350,8 +1327,9 @@ static iree_status_t loom_low_descriptor_text_asm_describe_packet(
   }
 
   loom_named_attr_slice_t attrs = loom_make_named_attr_slice(NULL, 0);
-  IREE_RETURN_IF_ERROR(
-      loom_low_descriptor_text_asm_attr_slice(op, attrs_attr_index, &attrs));
+  IREE_RETURN_IF_ERROR(loom_low_descriptor_text_asm_attr_slice(
+      is_const ? loom_low_const_attrs_attr(op) : loom_low_op_attrs_attr(op),
+      &attrs));
   IREE_RETURN_IF_ERROR(
       loom_low_descriptor_text_asm_validate_immediates(module, &packet, attrs));
 
@@ -1390,7 +1368,7 @@ static iree_status_t loom_low_descriptor_text_asm_describe_packet(
       .operand_count = op->operand_count,
       .attributes = attrs,
       .has_immediate_attribute_field = true,
-      .immediate_attribute_field_index = attrs_attr_index,
+      .immediate_attribute_field_index = packet.immediate_attribute_field_index,
       .location = op->location,
   };
   return iree_ok_status();
@@ -1405,16 +1383,6 @@ static iree_status_t loom_low_descriptor_text_asm_describe_operation(
   *out_statement = (loom_text_low_asm_statement_t){0};
   const loom_low_descriptor_set_t* descriptor_set =
       loom_low_descriptor_text_asm_descriptor_set(descriptor_set_handle);
-  if (loom_low_return_isa(op)) {
-    *out_statement = (loom_text_low_asm_statement_t){
-        .kind = LOOM_TEXT_LOW_ASM_STATEMENT_RETURN,
-        .op = op,
-        .operands = loom_low_return_values(op).values,
-        .operand_count = (uint16_t)loom_low_return_values(op).count,
-        .location = op->location,
-    };
-    return iree_ok_status();
-  }
   if (loom_low_const_isa(op)) {
     return loom_low_descriptor_text_asm_describe_packet(
         descriptor_set, module, op, /*is_const=*/true, out_statement);
@@ -1423,8 +1391,7 @@ static iree_status_t loom_low_descriptor_text_asm_describe_operation(
     return loom_low_descriptor_text_asm_describe_packet(
         descriptor_set, module, op, /*is_const=*/false, out_statement);
   }
-  return loom_low_descriptor_text_asm_describe_structural_operation(
-      module, op, out_statement);
+  return iree_ok_status();
 }
 
 static iree_status_t loom_low_descriptor_text_asm_resolve_register_type(
@@ -1524,10 +1491,6 @@ static const loom_text_low_asm_vtable_t kLowDescriptorTextAsmVtable = {
     .operand_segment_descriptor =
         loom_low_descriptor_text_asm_operand_segment_descriptor,
     .build_packet = loom_low_descriptor_text_asm_build_packet,
-    .build_return = loom_low_descriptor_text_asm_build_return,
-    .structural_attr_descriptor =
-        loom_low_descriptor_text_asm_structural_attr_descriptor,
-    .build_structural = loom_low_descriptor_text_asm_build_structural,
     .describe_operation = loom_low_descriptor_text_asm_describe_operation,
     .resolve_register_type = loom_low_descriptor_text_asm_resolve_register_type,
     .lookup_register_descriptor_set =
@@ -1548,10 +1511,6 @@ static const loom_text_low_asm_vtable_t kLowDescriptorTextAsmDiagnosticVtable = 
     .operand_segment_descriptor =
         loom_low_descriptor_text_asm_operand_segment_descriptor,
     .build_packet = loom_low_descriptor_text_asm_build_packet,
-    .build_return = loom_low_descriptor_text_asm_build_return,
-    .structural_attr_descriptor =
-        loom_low_descriptor_text_asm_structural_attr_descriptor,
-    .build_structural = loom_low_descriptor_text_asm_build_structural,
     .describe_operation = loom_low_descriptor_text_asm_describe_operation,
     .resolve_register_type = loom_low_descriptor_text_asm_resolve_register_type,
     .lookup_register_descriptor_set =
@@ -1564,6 +1523,7 @@ void loom_low_descriptor_text_asm_environment_initialize(
     const loom_low_descriptor_registry_t* descriptor_registry,
     loom_text_low_asm_environment_t* out_environment) {
   *out_environment = (loom_text_low_asm_environment_t){
+      .operation_formats = &loom_low_assembly_formats,
       .vtable = &kLowDescriptorTextAsmVtable,
       .state =
           (const loom_text_low_asm_environment_state_t*)descriptor_registry,
@@ -1582,6 +1542,7 @@ void loom_low_descriptor_text_asm_environment_initialize_with_diagnostics(
       .diagnostic_provider_list = diagnostic_provider_list,
   };
   *out_environment = (loom_text_low_asm_environment_t){
+      .operation_formats = &loom_low_assembly_formats,
       .vtable = &kLowDescriptorTextAsmDiagnosticVtable,
       .state = (const loom_text_low_asm_environment_state_t*)out_storage,
   };

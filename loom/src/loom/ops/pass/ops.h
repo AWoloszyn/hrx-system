@@ -200,4 +200,7 @@ loom_op_semantics_t loom_pass_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/pass/ops.inc"
+
 #endif  // LOOM_OPS_PASS_OPS_H_

@@ -20,6 +20,8 @@ loom_generated_cc_library(
     "reference.c"
     "type_transfer.c"
     "verify.c"
+  TEXTUAL_HDRS
+    "ops.inc"
   GENERATED_SRC_FLAGS
     "--builders"
     "--tables"
@@ -32,6 +34,10 @@ loom_generated_cc_library(
     "reference.h"
   ARGS
     "--dialect=view"
+  EXTRA_OUTPUT_FLAGS
+    "--ops-include"
+  EXTRA_OUTPUTS
+    "ops.inc"
   DEPS
     iree::base::internal
     loom::error::emitter

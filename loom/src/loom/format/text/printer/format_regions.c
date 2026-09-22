@@ -56,55 +56,6 @@ static char loom_print_region_syntax_first_char(loom_print_context_t* ctx,
   }
 }
 
-static bool loom_print_region_entry_args_declared_by_parent(
-    const loom_op_vtable_t* vtable,
-    const loom_region_descriptor_t* region_descriptor, uint8_t region_index,
-    const loom_format_element_t* region_element) {
-  if (vtable->func_like &&
-      vtable->func_like->body_region_index == region_index) {
-    return true;
-  }
-  if (region_descriptor && iree_any_bit_set(region_descriptor->flags,
-                                            LOOM_REGION_PROJECT_FUNC_ARGS)) {
-    return true;
-  }
-
-  bool pending_entry_args = false;
-  for (uint16_t i = 0; i < vtable->format_element_count; ++i) {
-    const loom_format_element_t* element = &vtable->format_elements[i];
-    if (element == region_element) {
-      return pending_entry_args;
-    }
-
-    switch ((loom_format_kind_t)element->kind) {
-      case LOOM_FORMAT_KIND_OPERAND_REF: {
-        if (element->field_index == 0xFF) {
-          pending_entry_args = true;
-        }
-        break;
-      }
-      case LOOM_FORMAT_KIND_BINDING_LIST:
-      case LOOM_FORMAT_KIND_FUNC_ARGS: {
-        pending_entry_args = true;
-        break;
-      }
-      case LOOM_FORMAT_KIND_BLOCK_ARGS: {
-        if (element->field_index == region_index) {
-          pending_entry_args = true;
-        }
-        break;
-      }
-      case LOOM_FORMAT_KIND_REGION: {
-        pending_entry_args = false;
-        break;
-      }
-      default:
-        break;
-    }
-  }
-  return false;
-}
-
 static iree_status_t loom_print_region_body_with_syntax(
     loom_print_context_t* ctx, const loom_region_t* region,
     const loom_region_descriptor_t* region_descriptor,
@@ -182,9 +133,8 @@ iree_status_t loom_print_region_element(loom_print_context_t* ctx,
   }
   loom_region_t* region = loom_op_regions(op)[element->field_index];
   loom_region_syntax_t syntax = (loom_region_syntax_t)element->data;
-  const bool region_args_declared_by_parent =
-      loom_print_region_entry_args_declared_by_parent(
-          vtable, region_descriptor, (uint8_t)element->field_index, element);
+  const bool region_args_declared_by_parent = iree_any_bit_set(
+      region_descriptor->flags, LOOM_REGION_PARENT_DECLARED_ARGS);
   iree_host_size_t region_start = loom_print_next_token_start_offset(
       ctx, /*glue=*/false,
       loom_print_region_syntax_first_char(ctx, region, syntax));

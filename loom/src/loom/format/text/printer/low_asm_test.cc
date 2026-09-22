@@ -307,7 +307,7 @@ TEST_F(LowAsmPrinterTest, PrintsStructuralIntrinsics) {
       "  %moved = move %copied : reg<test.i32> -> reg<test.i32>\n"
       "  %storage = storage {byte_alignment = 4, byte_length = 16} : "
       "low.storage<workgroup>\n"
-      "  %window = storage_view %storage {offset = 4, byte_length = 8} : "
+      "  %window = storage_view %storage {byte_length = 8, offset = 4} : "
       "low.storage<workgroup> -> low.storage<workgroup>\n"
       "  %addr = storage_address %window : "
       "low.storage<workgroup> -> reg<test.i32>\n"
@@ -426,6 +426,31 @@ TEST_F(LowAsmPrinterTest, RejectsMissingPrintEnvironment) {
       PrintModuleStatus(
           module, /*configure_environment=*/false,
           LOOM_TEXT_PRINT_DEFAULT | LOOM_TEXT_PRINT_REQUIRE_LOW_ASM));
+  loom_module_free(module);
+}
+
+TEST_F(LowAsmPrinterTest, RejectsTruncatedPacketBeforeReadingAttributes) {
+  loom_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
+                                      nullptr, iree_allocator_system(),
+                                      &module));
+  loom_text_low_asm_environment_t environment = {};
+  loom_low_descriptor_text_asm_environment_initialize(&low_descriptor_registry_,
+                                                      &environment);
+  const auto* descriptor_set = loom_low_repr_lookup_descriptor_set(
+      &environment.low_repr, IREE_SV("test.low.core"));
+  ASSERT_NE(descriptor_set, nullptr);
+  for (const auto kind : {LOOM_OP_LOW_CONST, LOOM_OP_LOW_OP}) {
+    // The public printer can receive unfinished storage. The truncated packet
+    // has no attribute allocation, so even its descriptor must not be read.
+    loom_op_t op = {};
+    op.kind = kind;
+    loom_text_low_asm_statement_t statement = {};
+    IREE_EXPECT_STATUS_IS(
+        IREE_STATUS_INVALID_ARGUMENT,
+        environment.vtable->describe_operation(
+            environment.state, descriptor_set, module, &op, &statement));
+  }
   loom_module_free(module);
 }
 

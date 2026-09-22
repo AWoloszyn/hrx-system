@@ -13,6 +13,7 @@
 #include "loom/ir/scalar_type.h"
 #include "loom/ir/types.h"
 #include "loom/ops/buffer/ops.h"
+#include "loom/ops/cache.h"
 #include "loom/ops/encoding/storage.h"
 #include "loom/ops/index/ops.h"
 #include "loom/ops/op_defs.h"
@@ -886,10 +887,10 @@ static iree_status_t loom_linearize_view_accesses_rewrite_load(
                                              ? 0
                                              : IREE_ARRAYSIZE(dynamic_indices);
   loom_view_load_build_flags_t build_flags = 0;
-  loom_attribute_t cache_scope = loom_memory_access_cache_scope(
-      loom_memory_access_cast(context->module, load_op));
-  loom_attribute_t cache_temporal = loom_memory_access_cache_temporal(
-      loom_memory_access_cast(context->module, load_op));
+  const loom_cache_policy_t policy =
+      loom_cache_policy_cast(context->module, load_op);
+  const loom_attribute_t cache_scope = loom_cache_policy_scope(policy);
+  const loom_attribute_t cache_temporal = loom_cache_policy_temporal(policy);
   if (cache_scope.kind != 0) {
     build_flags |= LOOM_VIEW_LOAD_BUILD_FLAG_HAS_CACHE_SCOPE;
   }
@@ -964,10 +965,10 @@ static iree_status_t loom_linearize_view_accesses_rewrite_store(
                                              ? 0
                                              : IREE_ARRAYSIZE(dynamic_indices);
   loom_view_store_build_flags_t build_flags = 0;
-  loom_attribute_t cache_scope = loom_memory_access_cache_scope(
-      loom_memory_access_cast(context->module, store_op));
-  loom_attribute_t cache_temporal = loom_memory_access_cache_temporal(
-      loom_memory_access_cast(context->module, store_op));
+  const loom_cache_policy_t policy =
+      loom_cache_policy_cast(context->module, store_op);
+  const loom_attribute_t cache_scope = loom_cache_policy_scope(policy);
+  const loom_attribute_t cache_temporal = loom_cache_policy_temporal(policy);
   if (cache_scope.kind != 0) {
     build_flags |= LOOM_VIEW_STORE_BUILD_FLAG_HAS_CACHE_SCOPE;
   }

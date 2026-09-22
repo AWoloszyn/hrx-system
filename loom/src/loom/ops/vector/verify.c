@@ -63,13 +63,10 @@ static iree_status_t loom_vector_emit_attribute_kind_mismatch(
 
 static iree_status_t loom_vector_emit_indexed_attribute_kind_mismatch(
     iree_diagnostic_emitter_t emitter, const loom_op_t* op,
-    iree_string_view_t attr_name, uint16_t attr_index,
+    iree_string_view_t attr_name, loom_diagnostic_field_ref_t field,
     loom_attr_kind_t actual_kind, loom_attr_kind_t expected_kind) {
   loom_diagnostic_param_t params[] = {
-      loom_param_with_field_ref(
-          loom_param_string(attr_name),
-          loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_ATTRIBUTE,
-                                    attr_index)),
+      loom_param_with_field_ref(loom_param_string(attr_name), field),
       loom_param_u32(actual_kind),
       loom_param_u32(expected_kind),
   };
@@ -668,50 +665,6 @@ static iree_status_t loom_vector_verify_gather_scatter_access(
   return iree_ok_status();
 }
 
-static iree_status_t loom_vector_verify_optional_cache_policy(
-    iree_diagnostic_emitter_t emitter, const loom_op_t* op,
-    uint16_t cache_scope_attr_index, uint16_t cache_temporal_attr_index,
-    loom_cache_policy_access_t access) {
-  loom_attribute_t cache_scope_attr = loom_op_attrs(op)[cache_scope_attr_index];
-  loom_attribute_t cache_temporal_attr =
-      loom_op_attrs(op)[cache_temporal_attr_index];
-  bool has_cache_scope = !loom_attr_is_absent(cache_scope_attr);
-  bool has_cache_temporal = !loom_attr_is_absent(cache_temporal_attr);
-  if (!has_cache_scope && !has_cache_temporal) {
-    return iree_ok_status();
-  }
-  if (!has_cache_scope) {
-    return loom_vector_emit_attribute_value_constraint(
-        emitter, op, IREE_SV("cache_scope"), 0,
-        IREE_SV("present when cache_temporal is present"));
-  }
-  if (!has_cache_temporal) {
-    return loom_vector_emit_attribute_value_constraint(
-        emitter, op, IREE_SV("cache_temporal"), 0,
-        IREE_SV("present when cache_scope is present"));
-  }
-  if (cache_scope_attr.kind != LOOM_ATTR_ENUM ||
-      cache_temporal_attr.kind != LOOM_ATTR_ENUM) {
-    return iree_ok_status();
-  }
-
-  uint8_t cache_scope = loom_attr_as_enum(cache_scope_attr);
-  uint8_t cache_temporal = loom_attr_as_enum(cache_temporal_attr);
-  loom_cache_policy_error_t error =
-      loom_cache_policy_validate(cache_scope, cache_temporal, access);
-  if (error == LOOM_CACHE_POLICY_ERROR_NONE) {
-    return iree_ok_status();
-  }
-  iree_string_view_t attr_name = loom_cache_policy_error_attr_name(error);
-  int64_t actual_value =
-      iree_string_view_equal(attr_name, IREE_SV("cache_scope"))
-          ? cache_scope
-          : cache_temporal;
-  return loom_vector_emit_attribute_value_constraint(
-      emitter, op, attr_name, actual_value,
-      loom_cache_policy_error_expected_constraint(error));
-}
-
 iree_status_t loom_vector_poison_verify(const loom_module_t* module,
                                         const loom_op_t* op,
                                         iree_diagnostic_emitter_t emitter) {
@@ -801,10 +754,8 @@ iree_status_t loom_vector_load_verify(const loom_module_t* module,
       module, emitter, op, IREE_SV("result"), /*vector_is_result=*/true,
       view_type, result_type, LOOM_VALUE_ID_INVALID,
       loom_vector_load_static_indices(op), loom_vector_load_indices(op).count));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_load_cache_scope_ATTR_INDEX,
-      loom_vector_load_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_LOAD);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_LOAD,
+                                  emitter);
 }
 
 iree_status_t loom_vector_store_verify(const loom_module_t* module,
@@ -819,10 +770,8 @@ iree_status_t loom_vector_store_verify(const loom_module_t* module,
       view_type, value_type, LOOM_VALUE_ID_INVALID,
       loom_vector_store_static_indices(op),
       loom_vector_store_indices(op).count));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_store_cache_scope_ATTR_INDEX,
-      loom_vector_store_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_STORE);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_STORE,
+                                  emitter);
 }
 
 iree_status_t loom_vector_fragment_store_verify(
@@ -835,10 +784,8 @@ iree_status_t loom_vector_fragment_store_verify(
   IREE_RETURN_IF_ERROR(loom_vector_verify_fragment_memory_origin(
       emitter, op, view_type, loom_vector_fragment_store_static_indices(op),
       loom_vector_fragment_store_indices(op).count, fragment_rank));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_fragment_store_cache_scope_ATTR_INDEX,
-      loom_vector_fragment_store_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_STORE);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_STORE,
+                                  emitter);
 }
 
 iree_status_t loom_vector_load_mask_verify(const loom_module_t* module,
@@ -853,10 +800,8 @@ iree_status_t loom_vector_load_mask_verify(const loom_module_t* module,
       view_type, result_type, loom_vector_load_mask_mask(op),
       loom_vector_load_mask_static_indices(op),
       loom_vector_load_mask_indices(op).count));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_load_mask_cache_scope_ATTR_INDEX,
-      loom_vector_load_mask_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_LOAD);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_LOAD,
+                                  emitter);
 }
 
 iree_status_t loom_vector_store_mask_verify(const loom_module_t* module,
@@ -871,10 +816,8 @@ iree_status_t loom_vector_store_mask_verify(const loom_module_t* module,
       view_type, value_type, loom_vector_store_mask_mask(op),
       loom_vector_store_mask_static_indices(op),
       loom_vector_store_mask_indices(op).count));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_store_mask_cache_scope_ATTR_INDEX,
-      loom_vector_store_mask_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_STORE);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_STORE,
+                                  emitter);
 }
 
 iree_status_t loom_vector_load_expand_verify(
@@ -893,10 +836,8 @@ iree_status_t loom_vector_load_expand_verify(
       view_type, result_type, loom_vector_load_expand_mask(op),
       loom_vector_load_expand_static_indices(op),
       loom_vector_load_expand_indices(op).count));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_load_expand_cache_scope_ATTR_INDEX,
-      loom_vector_load_expand_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_LOAD);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_LOAD,
+                                  emitter);
 }
 
 iree_status_t loom_vector_store_compress_verify(
@@ -915,10 +856,8 @@ iree_status_t loom_vector_store_compress_verify(
       view_type, value_type, loom_vector_store_compress_mask(op),
       loom_vector_store_compress_static_indices(op),
       loom_vector_store_compress_indices(op).count));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_store_compress_cache_scope_ATTR_INDEX,
-      loom_vector_store_compress_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_STORE);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_STORE,
+                                  emitter);
 }
 
 iree_status_t loom_vector_gather_verify(const loom_module_t* module,
@@ -932,10 +871,8 @@ iree_status_t loom_vector_gather_verify(const loom_module_t* module,
       emitter, op, view_type, offsets_type,
       loom_vector_gather_static_indices(op),
       loom_vector_gather_indices(op).count));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_gather_cache_scope_ATTR_INDEX,
-      loom_vector_gather_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_LOAD);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_LOAD,
+                                  emitter);
 }
 
 iree_status_t loom_vector_scatter_verify(const loom_module_t* module,
@@ -949,10 +886,8 @@ iree_status_t loom_vector_scatter_verify(const loom_module_t* module,
       emitter, op, view_type, offsets_type,
       loom_vector_scatter_static_indices(op),
       loom_vector_scatter_indices(op).count));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_scatter_cache_scope_ATTR_INDEX,
-      loom_vector_scatter_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_STORE);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_STORE,
+                                  emitter);
 }
 
 iree_status_t loom_vector_gather_mask_verify(
@@ -966,10 +901,8 @@ iree_status_t loom_vector_gather_mask_verify(
       emitter, op, view_type, offsets_type,
       loom_vector_gather_mask_static_indices(op),
       loom_vector_gather_mask_indices(op).count));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_gather_mask_cache_scope_ATTR_INDEX,
-      loom_vector_gather_mask_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_LOAD);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_LOAD,
+                                  emitter);
 }
 
 iree_status_t loom_vector_scatter_mask_verify(
@@ -983,10 +916,8 @@ iree_status_t loom_vector_scatter_mask_verify(
       emitter, op, view_type, offsets_type,
       loom_vector_scatter_mask_static_indices(op),
       loom_vector_scatter_mask_indices(op).count));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_scatter_mask_cache_scope_ATTR_INDEX,
-      loom_vector_scatter_mask_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_STORE);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_STORE,
+                                  emitter);
 }
 
 iree_status_t loom_vector_atomic_reduce_verify(
@@ -1005,10 +936,8 @@ iree_status_t loom_vector_atomic_reduce_verify(
   IREE_RETURN_IF_ERROR(loom_vector_verify_atomic_kind(
       emitter, op, IREE_SV("value"), value_type,
       loom_vector_atomic_reduce_kind(op), /*allow_exchange=*/false));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_atomic_reduce_cache_scope_ATTR_INDEX,
-      loom_vector_atomic_reduce_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_ATOMIC);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_ATOMIC,
+                                  emitter);
 }
 
 iree_status_t loom_vector_atomic_reduce_mask_verify(
@@ -1027,10 +956,8 @@ iree_status_t loom_vector_atomic_reduce_mask_verify(
   IREE_RETURN_IF_ERROR(loom_vector_verify_atomic_kind(
       emitter, op, IREE_SV("value"), value_type,
       loom_vector_atomic_reduce_mask_kind(op), /*allow_exchange=*/false));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_atomic_reduce_mask_cache_scope_ATTR_INDEX,
-      loom_vector_atomic_reduce_mask_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_ATOMIC);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_ATOMIC,
+                                  emitter);
 }
 
 iree_status_t loom_vector_atomic_rmw_verify(const loom_module_t* module,
@@ -1049,10 +976,8 @@ iree_status_t loom_vector_atomic_rmw_verify(const loom_module_t* module,
   IREE_RETURN_IF_ERROR(loom_vector_verify_atomic_kind(
       emitter, op, IREE_SV("value"), value_type,
       loom_vector_atomic_rmw_kind(op), /*allow_exchange=*/true));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_atomic_rmw_cache_scope_ATTR_INDEX,
-      loom_vector_atomic_rmw_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_ATOMIC);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_ATOMIC,
+                                  emitter);
 }
 
 iree_status_t loom_vector_atomic_rmw_mask_verify(
@@ -1071,10 +996,8 @@ iree_status_t loom_vector_atomic_rmw_mask_verify(
   IREE_RETURN_IF_ERROR(loom_vector_verify_atomic_kind(
       emitter, op, IREE_SV("value"), value_type,
       loom_vector_atomic_rmw_mask_kind(op), /*allow_exchange=*/true));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_atomic_rmw_mask_cache_scope_ATTR_INDEX,
-      loom_vector_atomic_rmw_mask_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_ATOMIC);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_ATOMIC,
+                                  emitter);
 }
 
 iree_status_t loom_vector_atomic_cmpxchg_verify(
@@ -1091,10 +1014,8 @@ iree_status_t loom_vector_atomic_cmpxchg_verify(
   IREE_RETURN_IF_ERROR(loom_vector_verify_atomic_cmpxchg_ordering(
       emitter, op, loom_vector_atomic_cmpxchg_success_ordering(op),
       loom_vector_atomic_cmpxchg_failure_ordering(op)));
-  return loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_atomic_cmpxchg_cache_scope_ATTR_INDEX,
-      loom_vector_atomic_cmpxchg_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_ATOMIC);
+  return loom_cache_policy_verify(module, op, LOOM_CACHE_POLICY_ACCESS_ATOMIC,
+                                  emitter);
 }
 
 iree_status_t loom_vector_extract_verify(const loom_module_t* module,
@@ -1923,10 +1844,8 @@ iree_status_t loom_vector_fragment_load_verify(
   IREE_RETURN_IF_ERROR(loom_vector_verify_fragment_memory_origin(
       emitter, op, view_type, loom_vector_fragment_load_static_indices(op),
       loom_vector_fragment_load_indices(op).count, fragment_rank));
-  IREE_RETURN_IF_ERROR(loom_vector_verify_optional_cache_policy(
-      emitter, op, loom_vector_fragment_load_cache_scope_ATTR_INDEX,
-      loom_vector_fragment_load_cache_temporal_ATTR_INDEX,
-      LOOM_CACHE_POLICY_ACCESS_LOAD));
+  IREE_RETURN_IF_ERROR(loom_cache_policy_verify(
+      module, op, LOOM_CACHE_POLICY_ACCESS_LOAD, emitter));
 
   loom_encoding_auxiliary_view_t auxiliary;
   iree_string_view_t unknown_key = iree_string_view_empty();
@@ -2045,22 +1964,21 @@ iree_status_t loom_vector_transform_verify(const loom_module_t* module,
 iree_status_t loom_vector_geluf_verify(const loom_module_t* module,
                                        const loom_op_t* op,
                                        iree_diagnostic_emitter_t emitter) {
-  loom_attribute_t scale_attr = loom_op_attrs(op)[1];
-  bool has_scale = !loom_attr_is_absent(scale_attr);
+  const bool has_scale = loom_vector_geluf_has_scale(op);
   if (loom_vector_geluf_variant(op) == LOOM_VECTOR_GELUF_VARIANT_LOGISTIC) {
     if (has_scale) {
       return iree_ok_status();
     }
     return loom_vector_emit_indexed_attribute_kind_mismatch(
-        emitter, op, IREE_SV("scale"), /*attr_index=*/1, LOOM_ATTR_ABSENT,
-        LOOM_ATTR_F64);
+        emitter, op, IREE_SV("scale"), loom_vector_geluf_scale_diagnostic_ref(),
+        LOOM_ATTR_ABSENT, LOOM_ATTR_F64);
   }
   if (!has_scale) {
     return iree_ok_status();
   }
   return loom_vector_emit_indexed_attribute_kind_mismatch(
-      emitter, op, IREE_SV("scale"), /*attr_index=*/1, scale_attr.kind,
-      LOOM_ATTR_ABSENT);
+      emitter, op, IREE_SV("scale"), loom_vector_geluf_scale_diagnostic_ref(),
+      LOOM_ATTR_F64, LOOM_ATTR_ABSENT);
 }
 
 iree_status_t loom_vector_reduce_verify(const loom_module_t* module,

@@ -24,7 +24,7 @@ iree_status_t loom_test_addi_canonicalize(loom_op_t* op,
   if (!loom_value_is_block_arg(rhs_value)) {
     loom_op_t* rhs_def = loom_value_def_op(rhs_value);
     if (rhs_def && loom_test_constant_isa(rhs_def)) {
-      int64_t value = loom_attr_as_i64(loom_op_attrs(rhs_def)[0]);
+      int64_t value = loom_attr_as_i64(loom_test_constant_value(rhs_def));
       if (value == 0) {
         return loom_rewriter_replace_all_uses_and_erase(rewriter, op, &lhs, 1);
       }
@@ -36,7 +36,7 @@ iree_status_t loom_test_addi_canonicalize(loom_op_t* op,
   if (!loom_value_is_block_arg(lhs_value)) {
     loom_op_t* lhs_def = loom_value_def_op(lhs_value);
     if (lhs_def && loom_test_constant_isa(lhs_def)) {
-      int64_t value = loom_attr_as_i64(loom_op_attrs(lhs_def)[0]);
+      int64_t value = loom_attr_as_i64(loom_test_constant_value(lhs_def));
       if (value == 0) {
         return loom_rewriter_replace_all_uses_and_erase(rewriter, op, &rhs, 1);
       }

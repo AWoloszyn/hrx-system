@@ -287,12 +287,10 @@ iree_status_t loom_global_rodata_def_verify(const loom_module_t* module,
                                             const loom_op_t* op,
                                             iree_diagnostic_emitter_t emitter) {
   (void)module;
-  loom_attribute_t alignment =
-      loom_op_attrs(op)[loom_global_rodata_def_alignment_ATTR_INDEX];
-  if (loom_attr_is_absent(alignment)) {
+  if (!loom_global_rodata_def_has_alignment(op)) {
     return iree_ok_status();
   }
-  int64_t value = loom_attr_as_i64(alignment);
+  int64_t value = loom_global_rodata_def_alignment(op);
   if (iree_math_is_power_of_two_i64(value)) {
     return iree_ok_status();
   }

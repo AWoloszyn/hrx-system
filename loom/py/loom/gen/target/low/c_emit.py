@@ -13,7 +13,7 @@ from collections.abc import Sequence
 from loom.gen.support import c_arrays
 from loom.gen.support.generated_file import line_comment_header
 from loom.gen.support.string_pool import emit_c_string_table
-from loom.gen.target.low import c_spelling, validation
+from loom.gen.target.low import attr_indices, c_spelling, validation
 from loom.gen.target.low.compiled import (
     CompiledAsmForm,
     CompiledDescriptorSet,
@@ -97,6 +97,7 @@ def emit_header_for_spec(
         f"#define {header_spec.header_guard}",
         "",
         '#include "loom/codegen/low/descriptors.h"',
+        '#include "loom/codegen/low/immediate_fields.h"',
         "",
     ]
     lines.extend(c_spelling.descriptor_ref_define(header_spec, descriptor.key, i) for i, descriptor in enumerate(header_spec.descriptors))
@@ -106,6 +107,8 @@ def emit_header_for_spec(
     )
     if header_spec.target_key is not None:
         lines.append(f"#define {header_spec.c_enum_prefix}_TARGET_ID UINT64_C(0x{descriptor_stable_id(header_spec.target_key):016x})")
+    lines.append("")
+    lines.extend(attr_indices.emit_attr_accessors(header_spec.c_enum_prefix, header_spec.descriptors, target_key=header_spec.target_key))
     missing_reg_classes = [reg_class.name for reg_class in header_spec.reg_classes if reg_class.name not in compiled.reg_class_ids]
     if missing_reg_classes:
         raise ValueError(f"descriptor set header '{header_spec.key}' references reg classes missing from storage set '{compiled.spec.key}': {', '.join(missing_reg_classes)}")

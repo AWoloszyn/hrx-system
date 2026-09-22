@@ -34,9 +34,9 @@ kernel.def target(@target) @smfmac_fp8_compact_lhs_memory() {
 // ----
 low.kernel.def target<amdgpu.cdna3.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @smfmac_fp8_compact_lhs_memory() asm {
   %26 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
-  %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
-  %out_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %lhs_view = resource<hal_binding> {extent = 512, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %rhs_view = resource<hal_binding> {extent = 1024, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %out_view = resource<hal_binding> {extent = 1024, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %metadata = v_mov_b32 1145324612
   %31 = v_and_b32_src0_inline %26, 15
   %32 = v_lshlrev_b32_src0_inline %31, 5
@@ -108,9 +108,9 @@ kernel.def target(@target) @smfmac_fp8_compact_lhs_memory() {
 // ----
 low.kernel.def target<amdgpu.cdna4.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @smfmac_fp8_compact_lhs_memory() asm {
   %26 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
-  %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 2048} : reg<amdgpu.sgpr x2>
-  %out_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %lhs_view = resource<hal_binding> {extent = 1024, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %rhs_view = resource<hal_binding> {extent = 2048, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %out_view = resource<hal_binding> {extent = 1024, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %metadata = v_mov_b32 1145324612
   %31 = v_and_b32_src0_inline %26, 15
   %32 = v_lshlrev_b32_src0_inline %31, 6
@@ -185,9 +185,9 @@ kernel.def target(@target) @swmmac_f16_compact_lhs_memory() {
 // ----
 low.kernel.def target<amdgpu.rdna4.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @swmmac_f16_compact_lhs_memory() asm {
   %26 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
-  %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
-  %out_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %lhs_view = resource<hal_binding> {extent = 512, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %rhs_view = resource<hal_binding> {extent = 1024, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %out_view = resource<hal_binding> {extent = 1024, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %metadata = v_mov_b32 1145324612
   %31 = v_and_b32_src0_inline %26, 15
   %32 = v_lshlrev_b32_src0_inline %31, 5
@@ -263,9 +263,9 @@ kernel.def target(@target) @swmmac_fp8_compact_lhs_memory() {
 // ----
 low.kernel.def target<amdgpu.rdna4.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @swmmac_fp8_compact_lhs_memory() asm {
   %26 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
-  %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
-  %out_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %lhs_view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %rhs_view = resource<hal_binding> {extent = 512, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %out_view = resource<hal_binding> {extent = 1024, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %metadata = v_mov_b32 1145324612
   %31 = v_and_b32_src0_inline %26, 15
   %32 = v_lshlrev_b32_src0_inline %31, 4
@@ -339,9 +339,9 @@ kernel.def target(@target) @swmmac_fp8_compact_lhs_memory() {
 // ----
 low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @swmmac_fp8_compact_lhs_memory() asm {
   %26 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
-  %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 2048} : reg<amdgpu.sgpr x2>
-  %out_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %lhs_view = resource<hal_binding> {extent = 1024, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %rhs_view = resource<hal_binding> {extent = 2048, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %out_view = resource<hal_binding> {extent = 1024, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %30 = v_mov_b32 1145324612
   %metadata = concat(%30, %30) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
   %33 = v_and_b32_src0_inline %26, 15
@@ -422,9 +422,9 @@ kernel.def target(@target) @smfmac_i8_compact_lhs_memory() {
 // ----
 low.kernel.def target<amdgpu.cdna3.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @smfmac_i8_compact_lhs_memory() asm {
   %26 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
-  %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
-  %out_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %lhs_view = resource<hal_binding> {extent = 512, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %rhs_view = resource<hal_binding> {extent = 1024, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %out_view = resource<hal_binding> {extent = 1024, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %metadata = v_mov_b32 1145324612
   %31 = v_and_b32_src0_inline %26, 15
   %32 = v_lshlrev_b32_src0_inline %31, 5
@@ -496,9 +496,9 @@ kernel.def target(@target) @swmmac_u8_compact_lhs_memory() {
 // ----
 low.kernel.def target<amdgpu.rdna4.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @swmmac_u8_compact_lhs_memory() asm {
   %26 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
-  %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 512} : reg<amdgpu.sgpr x2>
-  %out_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %lhs_view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %rhs_view = resource<hal_binding> {extent = 512, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %out_view = resource<hal_binding> {extent = 1024, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %metadata = v_mov_b32 1145324612
   %31 = v_and_b32_src0_inline %26, 15
   %32 = v_lshlrev_b32_src0_inline %31, 4
@@ -620,9 +620,9 @@ kernel.def target(@target) @swmmac_u8_compact_lhs_memory() {
 // ----
 low.kernel.def target<amdgpu.rdna4.gfx125x.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 3, resource_count = 3, resource_offsets = [0, 8, 16], resource_parameter_indices = [0, 1, 2], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @swmmac_u8_compact_lhs_memory() asm {
   %26 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %lhs_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
-  %rhs_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 2048} : reg<amdgpu.sgpr x2>
-  %out_view = resource<hal_binding> {index = 2, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %lhs_view = resource<hal_binding> {extent = 1024, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %rhs_view = resource<hal_binding> {extent = 2048, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %out_view = resource<hal_binding> {extent = 1024, index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %30 = v_mov_b32 1145324612
   %metadata = concat(%30, %30) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
   %33 = v_and_b32_src0_inline %26, 15

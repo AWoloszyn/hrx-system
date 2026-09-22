@@ -40,10 +40,6 @@ static iree_string_view_t loom_test_symbol_definition_name(
   return loom_symbol_definition_descriptor_name(symbol->definition);
 }
 
-static loom_symbol_ref_t loom_test_call_like_callee(const loom_op_t* op) {
-  return loom_attr_as_symbol(loom_op_const_attrs(op)[0]);
-}
-
 static iree_status_t loom_test_emit_callee_diagnostic(
     iree_diagnostic_emitter_t emitter, const loom_op_t* call_op,
     const loom_op_t* definition_op, const loom_error_def_t* error,
@@ -78,8 +74,7 @@ static iree_status_t loom_test_emit_callee_kind_mismatch(
 }
 
 static const loom_symbol_t* loom_test_lookup_callee_symbol(
-    const loom_module_t* module, const loom_op_t* call_op) {
-  loom_symbol_ref_t callee = loom_test_call_like_callee(call_op);
+    const loom_module_t* module, loom_symbol_ref_t callee) {
   if (!loom_symbol_ref_is_valid(callee) || callee.module_id != 0 ||
       callee.symbol_id >= module->symbols.count) {
     return NULL;
@@ -416,7 +411,9 @@ static iree_status_t loom_test_verify_call_like_result_types(
 iree_status_t loom_test_call_like_verify(const loom_module_t* module,
                                          const loom_op_t* op,
                                          iree_diagnostic_emitter_t emitter) {
-  const loom_symbol_t* symbol = loom_test_lookup_callee_symbol(module, op);
+  const loom_symbol_ref_t callee =
+      loom_call_like_callee(loom_call_like_cast(module, (loom_op_t*)op));
+  const loom_symbol_t* symbol = loom_test_lookup_callee_symbol(module, callee);
   if (!symbol) {
     return iree_ok_status();
   }
@@ -426,8 +423,8 @@ iree_status_t loom_test_call_like_verify(const loom_module_t* module,
     return iree_ok_status();
   }
   if (!loom_test_load_callee_signature(module, symbol, &signature)) {
-    return loom_test_emit_callee_kind_mismatch(
-        module, op, emitter, loom_test_call_like_callee(op), symbol);
+    return loom_test_emit_callee_kind_mismatch(module, op, emitter, callee,
+                                               symbol);
   }
 
   IREE_RETURN_IF_ERROR(loom_test_verify_call_like_argument_count(

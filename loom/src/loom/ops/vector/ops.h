@@ -3384,4 +3384,7 @@ loom_op_semantics_t loom_vector_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/vector/ops.inc"
+
 #endif  // LOOM_OPS_VECTOR_OPS_H_

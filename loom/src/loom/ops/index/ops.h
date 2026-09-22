@@ -529,4 +529,7 @@ loom_op_semantics_t loom_index_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/index/ops.inc"
+
 #endif  // LOOM_OPS_INDEX_OPS_H_

@@ -257,7 +257,7 @@ def _valid_contract_descriptors() -> tuple[Descriptor, ...]:
 
 
 def test_target_refs_header_is_constant_fragment() -> None:
-    source = amdgpu_target_refs._emit_tables_header()
+    source = amdgpu_target_refs._emit_tables_header((_descriptor_set(*_valid_contract_descriptors()),))
 
     assert "typedef " not in source
     assert "extern " not in source

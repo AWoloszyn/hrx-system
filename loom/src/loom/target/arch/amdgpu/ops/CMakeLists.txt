@@ -19,6 +19,8 @@ loom_generated_cc_library(
     "fact_projection.c"
     "registry.c"
     "target.c"
+  TEXTUAL_HDRS
+    "ops.inc"
   GENERATED_SRC_FLAGS
     "--builders"
     "--tables"
@@ -31,6 +33,10 @@ loom_generated_cc_library(
     "target.h"
   ARGS
     "--dialect=amdgpu"
+  EXTRA_OUTPUT_FLAGS
+    "--ops-include"
+  EXTRA_OUTPUTS
+    "ops.inc"
   DEPS
     iree::base
     loom::error::error_defs

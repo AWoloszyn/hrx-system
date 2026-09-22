@@ -78,7 +78,7 @@ kernel.def @attention_probability_value_mma_repack() {
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core> abi_layout({constant_count = 24, direct_arg_count = 3, direct_arg_names = {arg0 = "probabilities", arg1 = "values", arg2 = "init_accumulator"}, direct_arg_offsets = [0, 32, 64], direct_arg_parameter_indices = [0, 1, 2], direct_arg_sizes = [32, 32, 32], parameter_count = 4, resource_count = 1, resource_offsets = [96], resource_parameter_indices = [3], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @attention_probability_value_mma_repack(%probability_fragment: reg<amdgpu.vgpr x8>, %rhs: reg<amdgpu.vgpr x8>, %init: reg<amdgpu.vgpr x8>) asm {
   %22 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 1024, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %24 = slice %probability_fragment[0] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
   %25 = slice %probability_fragment[1] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
   %26 = slice %probability_fragment[2] : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr>
@@ -230,7 +230,7 @@ kernel.def @attention_loop_carried_accumulator_barrier() {
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core> abi_layout({constant_count = 32, direct_arg_count = 4, direct_arg_names = {arg0 = "lhs_values", arg1 = "rhs_values0", arg2 = "rhs_values1", arg3 = "init_accumulator"}, direct_arg_offsets = [0, 32, 64, 96], direct_arg_parameter_indices = [0, 1, 2, 3], direct_arg_sizes = [32, 32, 32, 32], parameter_count = 5, resource_count = 1, resource_offsets = [128], resource_parameter_indices = [4], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @attention_loop_carried_accumulator_barrier(%lhs: reg<amdgpu.vgpr x8>, %rhs0: reg<amdgpu.vgpr x8>, %rhs1: reg<amdgpu.vgpr x8>, %init: reg<amdgpu.vgpr x8>) asm {
   %32 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 1024, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %34 = copy %init : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
   %carried_init = v_wmma_f32_16x16x16_bf16 %lhs, %rhs0, %34
   s_waitcnt {lgkmcnt = 0}
@@ -300,7 +300,7 @@ kernel.def @attention_tail_peel_accumulator_merge() {
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core> abi_layout({constant_count = 33, direct_arg_count = 5, direct_arg_names = {arg0 = "lhs_values", arg1 = "rhs_values0", arg2 = "rhs_values1", arg3 = "init_accumulator", arg4 = "tail_tile_count"}, direct_arg_offsets = [0, 32, 64, 96, 128], direct_arg_parameter_indices = [0, 1, 2, 3, 4], direct_arg_sizes = [32, 32, 32, 32, 4], parameter_count = 6, resource_count = 1, resource_offsets = [136], resource_parameter_indices = [5], uses_kernarg_segment_ptr = true}) workgroup_size(32, 1, 1) workgroup_count(1, 1, 1) @attention_tail_peel_accumulator_merge(%lhs: reg<amdgpu.vgpr x8>, %rhs0: reg<amdgpu.vgpr x8>, %rhs1: reg<amdgpu.vgpr x8>, %init: reg<amdgpu.vgpr x8>, %tail_tile_count: reg<amdgpu.sgpr>) asm {
   %39 = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %output_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 1024} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 1024, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %no_tail_tiles = s_mov_b32 0
   %42 = copy %init : reg<amdgpu.vgpr x8> -> reg<amdgpu.vgpr x8>
   %tail_init = v_wmma_f32_16x16x16_bf16 %lhs, %rhs0, %42

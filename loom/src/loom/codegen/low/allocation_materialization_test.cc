@@ -110,9 +110,10 @@ test.target<low_core> @test_target
 
 low.func.def target<test.low.core>(@test_target) @stale_slice_plan(%wide: reg<test.i32 x4>) -> (reg<test.i32>) asm {
   %lane = slice %wide[1] : reg<test.i32 x4> -> reg<test.i32>
-  return %lane : reg<test.i32>
+  return %lane
 }
 )");
+  ASSERT_NE(module.get(), nullptr);
   loom_op_t* function_op =
       FindLowFunction(module.get(), IREE_SV("stale_slice_plan"));
   const loom_value_id_t wide = FindValueByName(module.get(), IREE_SV("wide"));

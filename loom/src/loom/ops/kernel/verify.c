@@ -58,28 +58,13 @@ static iree_status_t loom_kernel_emit_attribute_value_constraint(
       emitter, op, attr_name, actual_value, expected_constraint);
 }
 
-static bool loom_kernel_optional_attr_is_present(const loom_op_t* op,
-                                                 uint16_t attr_index) {
-  return attr_index < op->attribute_count &&
-         !loom_attr_is_absent(loom_op_attrs(op)[attr_index]);
-}
-
-static iree_status_t loom_kernel_verify_contract_attr_present(
-    iree_diagnostic_emitter_t emitter, const loom_op_t* op, uint16_t attr_index,
-    iree_string_view_t attr_name, iree_string_view_t expected_constraint) {
-  if (loom_kernel_optional_attr_is_present(op, attr_index)) {
-    return iree_ok_status();
-  }
-  return loom_kernel_emit_attribute_value_constraint(
-      emitter, op, attr_name, /*actual_value=*/0, expected_constraint);
-}
-
 static iree_status_t loom_kernel_verify_positive_u32_attr(
-    iree_diagnostic_emitter_t emitter, const loom_op_t* op, uint16_t attr_index,
-    int64_t value, iree_string_view_t attr_name) {
-  if (!loom_kernel_optional_attr_is_present(op, attr_index)) {
+    iree_diagnostic_emitter_t emitter, const loom_op_t* op,
+    loom_attribute_t attribute, iree_string_view_t attr_name) {
+  if (loom_attr_is_absent(attribute)) {
     return iree_ok_status();
   }
+  const int64_t value = loom_attr_as_i64(attribute);
   if (value > 0 && value <= UINT32_MAX) {
     return iree_ok_status();
   }
@@ -499,23 +484,17 @@ static iree_status_t loom_kernel_verify_combining_kind_for_value(
 
 static iree_status_t loom_kernel_verify_cluster_attrs(
     iree_diagnostic_emitter_t emitter, const loom_op_t* op,
-    uint16_t cluster_size_attr_index, int64_t cluster_size,
-    uint16_t cluster_stride_attr_index, int64_t cluster_stride) {
-  const bool has_cluster_size =
-      loom_kernel_optional_attr_is_present(op, cluster_size_attr_index);
-  const bool has_cluster_stride =
-      loom_kernel_optional_attr_is_present(op, cluster_stride_attr_index);
-  if (has_cluster_stride && !has_cluster_size) {
-    return loom_kernel_verify_contract_attr_present(
-        emitter, op, cluster_size_attr_index, IREE_SV("cluster_size"),
+    loom_attribute_t cluster_size, loom_attribute_t cluster_stride) {
+  if (!loom_attr_is_absent(cluster_stride) &&
+      loom_attr_is_absent(cluster_size)) {
+    return loom_kernel_emit_attribute_value_constraint(
+        emitter, op, IREE_SV("cluster_size"), 0,
         IREE_SV("present when cluster_stride is present"));
   }
   IREE_RETURN_IF_ERROR(loom_kernel_verify_positive_u32_attr(
-      emitter, op, cluster_size_attr_index, cluster_size,
-      IREE_SV("cluster_size")));
-  return loom_kernel_verify_positive_u32_attr(
-      emitter, op, cluster_stride_attr_index, cluster_stride,
-      IREE_SV("cluster_stride"));
+      emitter, op, cluster_size, IREE_SV("cluster_size")));
+  return loom_kernel_verify_positive_u32_attr(emitter, op, cluster_stride,
+                                              IREE_SV("cluster_stride"));
 }
 
 static bool loom_kernel_try_get_block_arg_memory_space(
@@ -805,26 +784,6 @@ static iree_status_t loom_kernel_verify_async_copy_memory_spaces(
       IREE_SV("global_to_workgroup or workgroup_to_global"));
 }
 
-static iree_status_t loom_kernel_verify_async_cache_policy(
-    iree_diagnostic_emitter_t emitter, const loom_op_t* op, uint8_t cache_scope,
-    uint8_t cache_temporal, bool is_store) {
-  loom_cache_policy_error_t error =
-      loom_cache_policy_validate(cache_scope, cache_temporal,
-                                 is_store ? LOOM_CACHE_POLICY_ACCESS_STORE
-                                          : LOOM_CACHE_POLICY_ACCESS_LOAD);
-  if (error == LOOM_CACHE_POLICY_ERROR_NONE) {
-    return iree_ok_status();
-  }
-  iree_string_view_t attr_name = loom_cache_policy_error_attr_name(error);
-  int64_t actual_value =
-      iree_string_view_equal(attr_name, IREE_SV("cache_scope"))
-          ? cache_scope
-          : cache_temporal;
-  return loom_kernel_emit_attribute_value_constraint(
-      emitter, op, attr_name, actual_value,
-      loom_cache_policy_error_expected_constraint(error));
-}
-
 static iree_status_t loom_kernel_verify_copy_token_group_use(
     const loom_module_t* module, iree_diagnostic_emitter_t emitter,
     const loom_op_t* op, loom_value_id_t token_id) {
@@ -970,40 +929,41 @@ static iree_status_t loom_kernel_verify_gather_memory_spaces(
 static iree_status_t loom_kernel_verify_async_copy_like(
     const loom_module_t* module, iree_diagnostic_emitter_t emitter,
     const loom_op_t* op, loom_value_id_t source_id, loom_value_id_t dest_id,
-    uint8_t direction, uint8_t cache_scope, uint8_t cache_temporal,
-    loom_value_id_t token_id) {
+    uint8_t direction, loom_value_id_t token_id) {
   IREE_RETURN_IF_ERROR(loom_kernel_verify_result_async_token(
       module, emitter, op, IREE_SV("token"), token_id));
   IREE_RETURN_IF_ERROR(loom_kernel_verify_same_static_byte_count(
       module, emitter, op, source_id, dest_id));
   IREE_RETURN_IF_ERROR(loom_kernel_verify_async_copy_memory_spaces(
       module, emitter, op, source_id, dest_id, direction));
-  IREE_RETURN_IF_ERROR(loom_kernel_verify_async_cache_policy(
-      emitter, op, cache_scope, cache_temporal,
-      direction == LOOM_KERNEL_DIRECTION_WORKGROUP_TO_GLOBAL));
+  IREE_RETURN_IF_ERROR(loom_cache_policy_verify(
+      module, op,
+      direction == LOOM_KERNEL_DIRECTION_WORKGROUP_TO_GLOBAL
+          ? LOOM_CACHE_POLICY_ACCESS_STORE
+          : LOOM_CACHE_POLICY_ACCESS_LOAD,
+      emitter));
   return loom_kernel_verify_copy_token_group_use(module, emitter, op, token_id);
 }
 
 static iree_status_t loom_kernel_verify_async_gather_like(
     const loom_module_t* module, iree_diagnostic_emitter_t emitter,
     const loom_op_t* op, loom_value_id_t source_id, loom_value_id_t dest_id,
-    uint8_t cache_scope, uint8_t cache_temporal, loom_value_id_t token_id) {
+    loom_value_id_t token_id) {
   IREE_RETURN_IF_ERROR(loom_kernel_verify_result_async_token(
       module, emitter, op, IREE_SV("token"), token_id));
   IREE_RETURN_IF_ERROR(loom_kernel_verify_gather_destination(
       module, emitter, op, source_id, dest_id));
   IREE_RETURN_IF_ERROR(loom_kernel_verify_gather_memory_spaces(
       module, emitter, op, source_id, dest_id));
-  IREE_RETURN_IF_ERROR(loom_kernel_verify_async_cache_policy(
-      emitter, op, cache_scope, cache_temporal, /*is_store=*/false));
+  IREE_RETURN_IF_ERROR(loom_cache_policy_verify(
+      module, op, LOOM_CACHE_POLICY_ACCESS_LOAD, emitter));
   return loom_kernel_verify_copy_token_group_use(module, emitter, op, token_id);
 }
 
 static iree_status_t loom_kernel_verify_async_cluster_gather_like(
     const loom_module_t* module, iree_diagnostic_emitter_t emitter,
     const loom_op_t* op, loom_value_id_t source_id, loom_value_id_t dest_id,
-    loom_value_id_t cluster_mask_id, uint8_t cache_scope,
-    uint8_t cache_temporal, loom_value_id_t token_id) {
+    loom_value_id_t cluster_mask_id, loom_value_id_t token_id) {
   IREE_RETURN_IF_ERROR(loom_kernel_verify_result_async_token(
       module, emitter, op, IREE_SV("token"), token_id));
   IREE_RETURN_IF_ERROR(loom_kernel_verify_cluster_static_byte_count(
@@ -1012,8 +972,8 @@ static iree_status_t loom_kernel_verify_async_cluster_gather_like(
       module, emitter, op, source_id, dest_id));
   IREE_RETURN_IF_ERROR(loom_kernel_verify_operand_i32(
       module, emitter, op, IREE_SV("cluster_mask"), cluster_mask_id));
-  IREE_RETURN_IF_ERROR(loom_kernel_verify_async_cache_policy(
-      emitter, op, cache_scope, cache_temporal, /*is_store=*/false));
+  IREE_RETURN_IF_ERROR(loom_cache_policy_verify(
+      module, op, LOOM_CACHE_POLICY_ACCESS_LOAD, emitter));
   return loom_kernel_verify_copy_token_group_use(module, emitter, op, token_id);
 }
 
@@ -1071,8 +1031,8 @@ static iree_status_t loom_kernel_verify_tensor_endpoint_types(
 static iree_status_t loom_kernel_verify_async_tensor_like(
     const loom_module_t* module, iree_diagnostic_emitter_t emitter,
     const loom_op_t* op, loom_value_id_t source_id, loom_value_id_t dest_id,
-    loom_value_id_t descriptor_id, uint8_t direction, uint8_t cache_scope,
-    uint8_t cache_temporal, loom_value_id_t token_id) {
+    loom_value_id_t descriptor_id, uint8_t direction,
+    loom_value_id_t token_id) {
   IREE_RETURN_IF_ERROR(loom_kernel_verify_result_async_token(
       module, emitter, op, IREE_SV("token"), token_id));
   IREE_RETURN_IF_ERROR(loom_kernel_verify_operand_tensor_lds_descriptor(
@@ -1081,9 +1041,12 @@ static iree_status_t loom_kernel_verify_async_tensor_like(
       module, emitter, op, source_id, dest_id));
   IREE_RETURN_IF_ERROR(loom_kernel_verify_async_copy_memory_spaces(
       module, emitter, op, source_id, dest_id, direction));
-  IREE_RETURN_IF_ERROR(loom_kernel_verify_async_cache_policy(
-      emitter, op, cache_scope, cache_temporal,
-      direction == LOOM_KERNEL_DIRECTION_WORKGROUP_TO_GLOBAL));
+  IREE_RETURN_IF_ERROR(loom_cache_policy_verify(
+      module, op,
+      direction == LOOM_KERNEL_DIRECTION_WORKGROUP_TO_GLOBAL
+          ? LOOM_CACHE_POLICY_ACCESS_STORE
+          : LOOM_CACHE_POLICY_ACCESS_LOAD,
+      emitter));
   return loom_kernel_verify_copy_token_group_use(module, emitter, op, token_id);
 }
 
@@ -1500,10 +1463,8 @@ iree_status_t loom_kernel_subgroup_reduce_verify(
   IREE_RETURN_IF_ERROR(loom_kernel_verify_combining_kind_for_value(
       module, emitter, op, value_id, loom_kernel_subgroup_reduce_kind(op)));
   return loom_kernel_verify_cluster_attrs(
-      emitter, op, loom_kernel_subgroup_reduce_cluster_size_ATTR_INDEX,
-      loom_kernel_subgroup_reduce_cluster_size(op),
-      loom_kernel_subgroup_reduce_cluster_stride_ATTR_INDEX,
-      loom_kernel_subgroup_reduce_cluster_stride(op));
+      emitter, op, loom_kernel_subgroup_reduce_cluster_size_attr(op),
+      loom_kernel_subgroup_reduce_cluster_stride_attr(op));
 }
 
 iree_status_t loom_kernel_subgroup_scan_verify(
@@ -1515,10 +1476,8 @@ iree_status_t loom_kernel_subgroup_scan_verify(
   IREE_RETURN_IF_ERROR(loom_kernel_verify_combining_kind_for_value(
       module, emitter, op, value_id, loom_kernel_subgroup_scan_kind(op)));
   return loom_kernel_verify_cluster_attrs(
-      emitter, op, loom_kernel_subgroup_scan_cluster_size_ATTR_INDEX,
-      loom_kernel_subgroup_scan_cluster_size(op),
-      loom_kernel_subgroup_scan_cluster_stride_ATTR_INDEX,
-      loom_kernel_subgroup_scan_cluster_stride(op));
+      emitter, op, loom_kernel_subgroup_scan_cluster_size_attr(op),
+      loom_kernel_subgroup_scan_cluster_stride_attr(op));
 }
 
 iree_status_t loom_kernel_subgroup_mask_result_verify(
@@ -1570,8 +1529,6 @@ iree_status_t loom_kernel_async_copy_verify(const loom_module_t* module,
   return loom_kernel_verify_async_copy_like(
       module, emitter, op, loom_kernel_async_copy_source(op),
       loom_kernel_async_copy_dest(op), loom_kernel_async_copy_direction(op),
-      loom_kernel_async_copy_cache_scope(op),
-      loom_kernel_async_copy_cache_temporal(op),
       loom_kernel_async_copy_token(op));
 }
 
@@ -1582,8 +1539,6 @@ iree_status_t loom_kernel_async_copy_mask_verify(
       module, emitter, op, loom_kernel_async_copy_mask_source(op),
       loom_kernel_async_copy_mask_dest(op),
       loom_kernel_async_copy_mask_direction(op),
-      loom_kernel_async_copy_mask_cache_scope(op),
-      loom_kernel_async_copy_mask_cache_temporal(op),
       loom_kernel_async_copy_mask_token(op));
 }
 
@@ -1592,10 +1547,7 @@ iree_status_t loom_kernel_async_gather_verify(
     iree_diagnostic_emitter_t emitter) {
   return loom_kernel_verify_async_gather_like(
       module, emitter, op, loom_kernel_async_gather_source(op),
-      loom_kernel_async_gather_dest(op),
-      loom_kernel_async_gather_cache_scope(op),
-      loom_kernel_async_gather_cache_temporal(op),
-      loom_kernel_async_gather_token(op));
+      loom_kernel_async_gather_dest(op), loom_kernel_async_gather_token(op));
 }
 
 iree_status_t loom_kernel_async_gather_mask_verify(
@@ -1604,8 +1556,6 @@ iree_status_t loom_kernel_async_gather_mask_verify(
   return loom_kernel_verify_async_gather_like(
       module, emitter, op, loom_kernel_async_gather_mask_source(op),
       loom_kernel_async_gather_mask_dest(op),
-      loom_kernel_async_gather_mask_cache_scope(op),
-      loom_kernel_async_gather_mask_cache_temporal(op),
       loom_kernel_async_gather_mask_token(op));
 }
 
@@ -1616,8 +1566,6 @@ iree_status_t loom_kernel_async_cluster_gather_verify(
       module, emitter, op, loom_kernel_async_cluster_gather_source(op),
       loom_kernel_async_cluster_gather_dest(op),
       loom_kernel_async_cluster_gather_cluster_mask(op),
-      loom_kernel_async_cluster_gather_cache_scope(op),
-      loom_kernel_async_cluster_gather_cache_temporal(op),
       loom_kernel_async_cluster_gather_token(op));
 }
 
@@ -1628,8 +1576,6 @@ iree_status_t loom_kernel_async_cluster_gather_mask_verify(
       module, emitter, op, loom_kernel_async_cluster_gather_mask_source(op),
       loom_kernel_async_cluster_gather_mask_dest(op),
       loom_kernel_async_cluster_gather_mask_cluster_mask(op),
-      loom_kernel_async_cluster_gather_mask_cache_scope(op),
-      loom_kernel_async_cluster_gather_mask_cache_temporal(op),
       loom_kernel_async_cluster_gather_mask_token(op));
 }
 
@@ -1641,8 +1587,6 @@ iree_status_t loom_kernel_async_tensor_load_to_lds_verify(
       loom_kernel_async_tensor_load_to_lds_dest(op),
       loom_kernel_async_tensor_load_to_lds_descriptor(op),
       LOOM_KERNEL_DIRECTION_GLOBAL_TO_WORKGROUP,
-      loom_kernel_async_tensor_load_to_lds_cache_scope(op),
-      loom_kernel_async_tensor_load_to_lds_cache_temporal(op),
       loom_kernel_async_tensor_load_to_lds_token(op));
 }
 
@@ -1654,8 +1598,6 @@ iree_status_t loom_kernel_async_tensor_store_from_lds_verify(
       loom_kernel_async_tensor_store_from_lds_dest(op),
       loom_kernel_async_tensor_store_from_lds_descriptor(op),
       LOOM_KERNEL_DIRECTION_WORKGROUP_TO_GLOBAL,
-      loom_kernel_async_tensor_store_from_lds_cache_scope(op),
-      loom_kernel_async_tensor_store_from_lds_cache_temporal(op),
       loom_kernel_async_tensor_store_from_lds_token(op));
 }
 

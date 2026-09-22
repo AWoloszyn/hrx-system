@@ -165,16 +165,12 @@ static iree_status_t loom_aie2p_leaf_object_collect_resources(
 
     loom_aie2p_leaf_resource_flags_t flags = 0;
     uint64_t extent = 0;
-    const loom_attribute_t extent_attr =
-        loom_op_attrs(op)[loom_low_resource_extent_ATTR_INDEX];
-    if (!loom_attr_is_absent(extent_attr)) {
+    if (loom_low_resource_has_extent(op)) {
       flags |= LOOM_AIE2P_LEAF_RESOURCE_FLAG_STATIC_EXTENT;
       extent = (uint64_t)loom_low_resource_extent(op);
     }
     uint32_t cache_swizzle_stride = 0;
-    const loom_attribute_t swizzle_attr =
-        loom_op_attrs(op)[loom_low_resource_cache_swizzle_stride_ATTR_INDEX];
-    if (!loom_attr_is_absent(swizzle_attr)) {
+    if (loom_low_resource_has_cache_swizzle_stride(op)) {
       flags |= LOOM_AIE2P_LEAF_RESOURCE_FLAG_CACHE_SWIZZLE_STRIDE;
       cache_swizzle_stride =
           (uint32_t)loom_low_resource_cache_swizzle_stride(op);

@@ -15,22 +15,6 @@
 #include "loom/util/adaptive_sort.h"
 
 //===----------------------------------------------------------------------===//
-// Keyword B-string table
-//===----------------------------------------------------------------------===//
-
-// Generated from KEYWORD_MAP in c_tables.py — do not edit manually.
-static const loom_bstring_t loom_keyword_bstrings[LOOM_KW_COUNT_] = {
-#include "loom/ops/keyword_table.inc"
-};
-
-loom_bstring_t loom_keyword_bstring(loom_keyword_id_t keyword_id) {
-  if (keyword_id >= LOOM_KW_COUNT_) {
-    return NULL;
-  }
-  return loom_keyword_bstrings[keyword_id];
-}
-
-//===----------------------------------------------------------------------===//
 // Vtable helpers
 //===----------------------------------------------------------------------===//
 
@@ -1546,20 +1530,6 @@ loom_attribute_t loom_memory_access_static_indices(
   const loom_memory_access_vtable_t* vtable = loom_memory_access_vtable(access);
   return loom_memory_access_attr(access, vtable
                                              ? vtable->static_indices_attr_index
-                                             : LOOM_ATTR_INDEX_NONE);
-}
-
-loom_attribute_t loom_memory_access_cache_scope(loom_memory_access_t access) {
-  const loom_memory_access_vtable_t* vtable = loom_memory_access_vtable(access);
-  return loom_memory_access_attr(
-      access, vtable ? vtable->cache_scope_attr_index : LOOM_ATTR_INDEX_NONE);
-}
-
-loom_attribute_t loom_memory_access_cache_temporal(
-    loom_memory_access_t access) {
-  const loom_memory_access_vtable_t* vtable = loom_memory_access_vtable(access);
-  return loom_memory_access_attr(access, vtable
-                                             ? vtable->cache_temporal_attr_index
                                              : LOOM_ATTR_INDEX_NONE);
 }
 

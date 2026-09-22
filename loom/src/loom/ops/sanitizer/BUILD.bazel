@@ -22,6 +22,8 @@ loom_generated_cc_library(
     ],
     hdrs = ["ops.h"],
     args = ["--dialect=sanitizer"],
+    extra_output_flags = ["--ops-include"],
+    extra_outputs = ["ops.inc"],
     generated_src_flags = [
         "--builders",
         "--tables",
@@ -31,6 +33,7 @@ loom_generated_cc_library(
         "tables.c",
     ],
     generator = "//loom/py/loom/gen/ops:c_tables_sanitizer_generator",
+    textual_hdrs = ["ops.inc"],
     deps = [
         "//loom/src/loom/error:emitter",
         "//loom/src/loom/error:error_defs",

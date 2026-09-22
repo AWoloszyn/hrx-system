@@ -44,6 +44,7 @@ from loom.dsl import (
     SAFE_TO_SPECULATE,
     VIEW,
     AttrDef,
+    CachePolicyInterface,
     Dialect,
     LegacyFormat,
     MemoryAccessInterface,
@@ -425,7 +426,7 @@ buffer_load_i8_u = Op(
         Result("result", I32, doc="Loaded unsigned byte zero-extended to i32."),
     ],
     effects=[Reads("source")],
-    interfaces=[MemoryAccessInterface(view="source")],
+    interfaces=[CachePolicyInterface(None, None), MemoryAccessInterface(view="source")],
     facts="loom_buffer_load_i8_u_facts",
     format=[
         Ref("source"),
@@ -450,7 +451,7 @@ buffer_store_i8 = Op(
         Operand("byte_offset", OFFSET, doc="Byte offset into the target buffer."),
     ],
     effects=[Writes("target")],
-    interfaces=[MemoryAccessInterface(view="target")],
+    interfaces=[CachePolicyInterface(None, None), MemoryAccessInterface(view="target")],
     format=[
         Ref("value"),
         COMMA,

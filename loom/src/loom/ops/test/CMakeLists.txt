@@ -21,6 +21,8 @@ loom_generated_cc_library(
     "registry.c"
     "symbol_facts.c"
     "verify.c"
+  TEXTUAL_HDRS
+    "ops.inc"
   GENERATED_SRC_FLAGS
     "--builders"
     "--tables"
@@ -36,6 +38,10 @@ loom_generated_cc_library(
     "types.h"
   ARGS
     "--dialect=test"
+  EXTRA_OUTPUT_FLAGS
+    "--ops-include"
+  EXTRA_OUTPUTS
+    "ops.inc"
   DEPS
     iree::base
     loom::analysis::symbol_facts
@@ -53,6 +59,21 @@ loom_generated_cc_library(
     loom::target::test::target_record_table
     loom::target::types
     loom::util::fact_table
+)
+
+loom_cc_test(
+  NAME
+    attribute_accessors_test
+  SRCS
+    "attribute_accessors_test.cc"
+  DEPS
+    ::test
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+    loom::ops::op_defs
+    loom::rewrite::rewriter
 )
 
 loom_cc_test(

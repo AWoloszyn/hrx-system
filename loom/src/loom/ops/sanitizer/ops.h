@@ -246,4 +246,7 @@ loom_op_semantics_t loom_sanitizer_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/sanitizer/ops.inc"
+
 #endif  // LOOM_OPS_SANITIZER_OPS_H_

@@ -157,4 +157,7 @@ loom_op_semantics_t loom_wasm_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/target/arch/wasm/ops/ops.inc"
+
 #endif  // LOOM_OPS_WASM_OPS_H_

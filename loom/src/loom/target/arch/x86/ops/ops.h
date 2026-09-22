@@ -162,4 +162,7 @@ loom_op_semantics_t loom_x86_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/target/arch/x86/ops/ops.inc"
+
 #endif  // LOOM_OPS_X86_OPS_H_

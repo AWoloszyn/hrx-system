@@ -46,13 +46,13 @@ from loom.assembly import (
 from loom.assembly import (
     Region as RegionFmt,
 )
-from loom.dsl import Op
+from loom.dsl import FuncLikeInterface, Op
 from loom.fields import FieldKind, compute_layout
 from loom.gen.assembly.tokens import KEYWORD_MAP, REGION_SYNTAX_MAP
 from loom.gen.ops import c_queries
 
 
-def translate_format_elements(op: Op) -> list[tuple[str, int, str]]:
+def translate_format_elements(op: Op, format_elements: tuple[FormatElement, ...] | None = None) -> list[tuple[str, int, str]]:
     """Translates an op's format spec to C format element initializers.
 
     Returns a list of (kind_str, field_index, data_str) triples that
@@ -408,7 +408,7 @@ def translate_format_elements(op: Op) -> list[tuple[str, int, str]]:
                 case Glue():
                     elements.append(("LOOM_FORMAT_KIND_GLUE", 0, "0"))
 
-    walk(op.format)
+    walk(op.format if format_elements is None else format_elements)
     if layout.segmented_operands:
         # The C parser appends segments directly into declaration-order storage.
         # Establish that order here so parsing needs no reordering or fixups.
@@ -431,3 +431,26 @@ def translate_format_elements(op: Op) -> list[tuple[str, int, str]]:
                 raise ValueError(f"Op '{op.name}': segmented operands must appear in declaration order; '{op.operands[index].name}' follows '{op.operands[previous_index].name}' in the format")
             previous_index = index
     return elements
+
+
+def region_entry_args_declared_by_parent(op: Op, elements: list[tuple[str, int, str]]) -> set[int]:
+    """Retains which region signatures are already spelled by the parent."""
+    func_args_fields = c_queries.func_args_field_names(op)
+    declared = {index for index, region in enumerate(op.regions) if region.arg_source in func_args_fields}
+    func_like = c_queries.find_interface(op, FuncLikeInterface)
+    if func_like is not None and func_like.body is not None:
+        declared.add(c_queries.resolve_region_index(op, func_like.body, "FuncLikeInterface"))
+
+    pending_args = False
+    pending_regions: set[int] = set()
+    for kind, index, _ in elements:
+        if kind in ("LOOM_FORMAT_KIND_BINDING_LIST", "LOOM_FORMAT_KIND_FUNC_ARGS") or (kind == "LOOM_FORMAT_KIND_OPERAND_REF" and index == 0xFF):
+            pending_args = True
+        elif kind == "LOOM_FORMAT_KIND_BLOCK_ARGS":
+            pending_regions.add(index)
+        elif kind == "LOOM_FORMAT_KIND_REGION":
+            if pending_args or index in pending_regions:
+                declared.add(index)
+            pending_args = False
+            pending_regions.clear()
+    return declared

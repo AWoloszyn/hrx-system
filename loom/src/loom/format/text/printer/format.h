@@ -23,7 +23,8 @@ iree_status_t loom_print_instance_flags(loom_print_context_t* ctx,
 // Prints |op| using its generated assembly-format element stream.
 iree_status_t loom_print_format_elements(loom_print_context_t* ctx,
                                          const loom_op_t* op,
-                                         const loom_op_vtable_t* vtable);
+                                         const loom_op_vtable_t* vtable,
+                                         loom_format_t format);
 
 #ifdef __cplusplus
 }  // extern "C"

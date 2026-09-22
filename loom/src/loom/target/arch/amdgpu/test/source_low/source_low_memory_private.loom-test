@@ -24,8 +24,8 @@ kernel.def target(@target) @private_f32_dynamic_roundtrip() {
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @private_f32_dynamic_roundtrip() asm {
   %lane = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 256} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 256, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %16 = storage {byte_alignment = 4, byte_length = 256} : low.storage<private>
   %18 = v_lshlrev_b32_src0_inline %lane, 2
   %loaded = global_load_b32_saddr %18, %input_view
@@ -72,8 +72,8 @@ kernel.def target(@target) @private_root_static_offsets() {
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(2, 1, 1) workgroup_count(1, 1, 1) @private_root_static_offsets() asm {
   %lane = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 8} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 16} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 8, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 16, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %23 = storage {byte_alignment = 4, byte_length = 8} : low.storage<private>
   %24 = storage {byte_alignment = 8, byte_length = 16} : low.storage<private>
   %27 = v_mov_b32 0
@@ -121,8 +121,8 @@ kernel.def target(@target) @private_f16_static_and_dynamic_roundtrip() {
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(2, 1, 1) workgroup_count(1, 1, 1) @private_f16_static_and_dynamic_roundtrip() asm {
   %lane = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 4, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 4, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %18 = storage {byte_alignment = 2, byte_length = 4} : low.storage<private>
   %20 = v_mov_b32 0
   %static_value = global_load_d16_b16_saddr %20, %input_view
@@ -169,8 +169,8 @@ kernel.def target(@target) @private_bf16_static_and_dynamic_roundtrip() {
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(2, 1, 1) workgroup_count(1, 1, 1) @private_bf16_static_and_dynamic_roundtrip() asm {
   %lane = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 4} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 4, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 4, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %18 = storage {byte_alignment = 2, byte_length = 4} : low.storage<private>
   %20 = v_mov_b32 0
   %static_value = global_load_d16_b16_saddr %20, %input_view
@@ -217,8 +217,8 @@ kernel.def target(@target) @private_i8_static_and_dynamic_roundtrip() {
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core>(@target) abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(2, 1, 1) workgroup_count(1, 1, 1) @private_i8_static_and_dynamic_roundtrip() asm {
   %lane = live_in<amdgpu.workitem_id.x> : reg<amdgpu.vgpr>
-  %input_view = resource<hal_binding> {index = 0, source_type = hal.buffer, extent = 2} : reg<amdgpu.sgpr x2>
-  %output_view = resource<hal_binding> {index = 1, source_type = hal.buffer, extent = 2} : reg<amdgpu.sgpr x2>
+  %input_view = resource<hal_binding> {extent = 2, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output_view = resource<hal_binding> {extent = 2, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %18 = storage {byte_alignment = 1, byte_length = 2} : low.storage<private>
   %20 = v_mov_b32 0
   %static_value = global_load_i8_saddr %20, %input_view

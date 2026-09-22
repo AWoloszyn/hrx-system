@@ -439,15 +439,6 @@ static bool loom_amdgpu_source_scalar_float_result_follows_operands(
              module, defining_op, result_type);
 }
 
-static bool loom_amdgpu_workitem_dimension_is_valid(
-    const loom_op_t* defining_op) {
-  return iree_any_bit_set(loom_amdgpu_source_producer_flags(defining_op->kind),
-                          LOOM_AMDGPU_SOURCE_PRODUCER_WORKITEM_DIMENSION) &&
-         defining_op->attribute_count != 0 &&
-         loom_attr_as_enum(loom_op_attrs(defining_op)[0]) <
-             LOOM_KERNEL_DIMENSION_COUNT_;
-}
-
 static bool loom_amdgpu_distribution_transfer_result_prefers_vgpr(
     const loom_module_t* module, const loom_value_fact_table_t* fact_table,
     const loom_view_region_table_t* view_regions,
@@ -1008,7 +999,7 @@ static bool loom_amdgpu_source_value_prefers_vgpr_impl(
 
   if (iree_any_bit_set(producer_flags,
                        LOOM_AMDGPU_SOURCE_PRODUCER_WORKITEM_DIMENSION)) {
-    return loom_amdgpu_workitem_dimension_is_valid(defining_op);
+    return true;
   }
   if (iree_any_bit_set(producer_flags,
                        LOOM_AMDGPU_SOURCE_PRODUCER_ALWAYS_VGPR)) {

@@ -460,4 +460,7 @@ loom_op_semantics_t loom_check_op_semantics(
 }
 #endif
 
+// Additional named attribute helpers are generated with this dialect.
+#include "loom/ops/check/ops.inc"
+
 #endif  // LOOM_OPS_CHECK_OPS_H_

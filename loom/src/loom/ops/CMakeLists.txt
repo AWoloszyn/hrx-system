@@ -13,18 +13,35 @@ loom_cc_library(
   NAME
     op_defs
   HDRS
+    "attribute_accessors.h"
     "builder_macros.h"
     "op_defs.h"
+  SRCS
+    "op_defs.c"
+  DEPS
+    ::format
+    iree::base
+    iree::base::internal::arena
+    loom::error::emitter
+    loom::ir
+    loom::util::adaptive_sort
+    loom::util::bstring
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
+    format
+  HDRS
+    "format.h"
   TEXTUAL_HDRS
     "keyword_enum.inc"
     "keyword_table.inc"
   SRCS
-    "op_defs.c"
+    "format.c"
   DEPS
     iree::base
-    iree::base::internal::arena
     loom::ir
-    loom::util::adaptive_sort
     loom::util::bstring
   PUBLIC
 )
@@ -106,7 +123,6 @@ loom_cc_library(
     ::op_defs
     iree::base
     loom::ir
-    loom::rewrite::rewriter
   PUBLIC
 )
 
@@ -203,6 +219,9 @@ loom_cc_library(
     "cache.c"
   DEPS
     iree::base
+    loom::error::emitter
+    loom::error::error_defs
+    loom::ir
   PUBLIC
 )
 

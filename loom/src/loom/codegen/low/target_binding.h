@@ -158,9 +158,9 @@ static inline void loom_low_descriptor_packet_initialize(
 static inline uint16_t loom_low_descriptor_packet_attribute_index(
     const loom_low_descriptor_packet_t* packet) {
   if (packet->kind == LOOM_LOW_DESCRIPTOR_PACKET_OP) {
-    return loom_low_op_descriptor_ATTR_INDEX;
+    return loom_low_op_descriptor_diagnostic_ref().index;
   }
-  return loom_low_const_descriptor_ATTR_INDEX;
+  return loom_low_const_descriptor_diagnostic_ref().index;
 }
 
 // Returns the stable descriptor spelling for diagnostics and presentation.
