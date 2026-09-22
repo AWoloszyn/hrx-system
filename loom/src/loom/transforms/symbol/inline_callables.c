@@ -403,7 +403,7 @@ static iree_status_t loom_inline_allocate_state(
   loom_pass_t* pass = state->pass;
   loom_module_t* module = state->module;
   iree_host_size_t entry_capacity = 0;
-  if (!iree_host_size_checked_add(state->options.references->occurrence_count,
+  if (!iree_host_size_checked_add(state->options.references->calls.count,
                                   state->options.additional_call_capacity,
                                   &entry_capacity) ||
       entry_capacity > UINT32_MAX) {
@@ -1553,6 +1553,11 @@ static iree_status_t loom_inline_callables_plan_initialize(
       .version_owner = loom_target_pass_capability_function_version_owner(
           loom_target_pass_capability_from_pass(pass)),
   };
+  // Non-call references only affect transfer policy when calls are present.
+  if (options->references->calls.count == 0 &&
+      options->additional_call_capacity == 0) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_inline_allocate_state(state));
   loom_inline_initialize_symbol_infos(state);
   return loom_inline_build_plan(state);

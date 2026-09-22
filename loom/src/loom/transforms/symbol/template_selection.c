@@ -1238,18 +1238,9 @@ static iree_status_t loom_template_selection_build_liveness(
 
 static iree_status_t loom_template_selection_allocate_entries(
     loom_template_selection_state_t* state) {
-  iree_host_size_t exact_call_count = 0;
-  for (iree_host_size_t i = 0; i < state->references.occurrence_count; ++i) {
-    const loom_symbol_reference_occurrence_t* occurrence =
-        loom_symbol_reference_table_occurrence(&state->references, i);
-    if (occurrence->kind == LOOM_SYMBOL_REFERENCE_OCCURRENCE_CALL &&
-        occurrence->user_op != NULL &&
-        loom_template_call_isa(occurrence->user_op)) {
-      ++exact_call_count;
-    }
-  }
   if (!iree_host_size_checked_add(state->references.template_demands.count,
-                                  exact_call_count, &state->entry_capacity)) {
+                                  state->references.calls.template_count,
+                                  &state->entry_capacity)) {
     return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
                             "template application entry count overflow");
   }
