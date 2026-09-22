@@ -1356,6 +1356,8 @@ TEST_P(ConditionInductionFactsRewriteTest, SemanticEditsMatchFreshAnalysis) {
   const auto bitwidth = std::get<1>(GetParam());
   const auto permute = std::get<2>(GetParam());
   const auto type = loom_type_scalar(scalar_type);
+  const int64_t domain_minimum =
+      scalar_type == LOOM_SCALAR_TYPE_OFFSET ? 0 : INT64_MIN;
   auto constant = [&](int64_t value) {
     loom_op_t* op = nullptr;
     IREE_EXPECT_OK(loom_index_constant_build(&builder_, loom_attr_i64(value),
@@ -1489,17 +1491,21 @@ TEST_P(ConditionInductionFactsRewriteTest, SemanticEditsMatchFreshAnalysis) {
   check(0, 3, 6, 2);
   set_constant(upper, 4);
   set_constant(step, 1);
-  set_constant(initial, -2);
-  check(-2, 3, 4, 6);
+  // Offset constants stay in their unsigned domain; index also exercises a
+  // negative initial value. Both cases change the recurrence's trip count.
+  const int64_t edited_initial =
+      scalar_type == LOOM_SCALAR_TYPE_OFFSET ? 2 : -2;
+  set_constant(initial, edited_initial);
+  check(edited_initial, 3, 4, 4 - edited_initial);
   IREE_ASSERT_OK(loom_index_cmp_rewrite_predicate(
       &rewriter, compare, loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_SLE)));
-  check(-2, 4, 5, 7);
+  check(edited_initial, 4, 5, 5 - edited_initial);
   IREE_ASSERT_OK(loom_index_cmp_rewrite_predicate(
       &rewriter, compare, loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_NE)));
-  check(INT64_MIN, INT64_MAX, INT64_MAX, UINT64_MAX);
+  check(domain_minimum, INT64_MAX, INT64_MAX, UINT64_MAX);
   IREE_ASSERT_OK(loom_index_cmp_rewrite_predicate(
       &rewriter, compare, loom_attr_enum(LOOM_INDEX_CMP_PREDICATE_SLT)));
-  check(-2, 3, 4, 6);
+  check(edited_initial, 3, 4, 4 - edited_initial);
   set_constant(initial, 9);
   check(9, 0, 9, 0);
   IREE_ASSERT_OK(loom_rewriter_set_operand(&rewriter, yield, 0, position));
@@ -1537,7 +1543,7 @@ TEST_P(ConditionInductionFactsRewriteTest, SemanticEditsMatchFreshAnalysis) {
   set_constant(initial, maximum - 1);
   set_constant(upper, maximum);
   set_constant(step, 2);
-  check(INT64_MIN, INT64_MAX, INT64_MAX, UINT64_MAX);
+  check(domain_minimum, INT64_MAX, INT64_MAX, UINT64_MAX);
   set_constant(initial, 0);
   set_constant(upper, 4);
   set_constant(step, 1);
