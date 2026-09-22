@@ -458,7 +458,17 @@ iree_status_t loom_scalar_shli_facts(loom_fact_context_t* context,
   return iree_ok_status();
 }
 BINARY_FACTS(loom_scalar_shrsi_facts, loom_value_facts_shrsi)
-BINARY_FACTS(loom_scalar_shrui_facts, loom_value_facts_shrui)
+iree_status_t loom_scalar_shrui_facts(loom_fact_context_t* context,
+                                      const loom_module_t* module,
+                                      const loom_op_t* op,
+                                      const loom_value_facts_t* operand_facts,
+                                      loom_value_facts_t* result_facts) {
+  const int32_t bit_count =
+      loom_scalar_type_bitwidth(loom_scalar_result_element_type(module, op));
+  loom_value_facts_shrui(&operand_facts[0], &operand_facts[1], bit_count,
+                         &result_facts[0]);
+  return iree_ok_status();
+}
 
 static bool loom_scalar_integer_bitwidth(loom_type_t type,
                                          int32_t* out_bitwidth) {
