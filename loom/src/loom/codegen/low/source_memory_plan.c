@@ -126,7 +126,10 @@ static uint32_t loom_low_source_memory_clamp_alignment(uint64_t alignment) {
   if (alignment == 0) {
     return 1;
   }
-  return alignment > UINT32_MAX ? UINT32_MAX : (uint32_t)alignment;
+  // Preserve a power-of-two divisor when narrowing the guarantee. Saturating
+  // to UINT32_MAX would introduce odd factors into address-offset GCDs.
+  const uint32_t maximum_alignment = UINT32_C(1) << 31;
+  return (uint32_t)iree_min(alignment, maximum_alignment);
 }
 
 static uint32_t loom_low_source_memory_combine_alignment(uint32_t alignment,
@@ -1579,6 +1582,14 @@ static bool loom_low_source_memory_access_plan_from_components(
   }
   out_plan->static_byte_offset = static_byte_offset;
   loom_low_source_memory_access_finalize_alignment(out_plan);
+  if (operation_kind != LOOM_LOW_SOURCE_MEMORY_OPERATION_VIEW_CARRIER &&
+      operation_kind != LOOM_LOW_SOURCE_MEMORY_OPERATION_PREFETCH) {
+    // An executed typed access requires its declared element alignment. This
+    // does not strengthen root or view-origin facts. Carriers, prefetch hints,
+    // and inactive masked lanes have no semantic storage access.
+    out_plan->minimum_alignment = iree_max(out_plan->minimum_alignment,
+                                           loom_type_view_alignment(view_type));
+  }
   return true;
 }
 

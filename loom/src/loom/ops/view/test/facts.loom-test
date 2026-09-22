@@ -1,5 +1,29 @@
 // RUN: pass canonicalize
 
+// Qualification and carrier formation do not assert address alignment, even
+// when the natural requirement is stronger than a known odd origin.
+func.def @access_requirement_is_not_an_address_fact(%buffer: buffer) -> (i64, i64, i64, i64) {
+  %odd = index.constant 1 : offset
+  %packed = buffer.view %buffer[%odd] : buffer -> view<4xi32, align(1)>
+  %natural = view.refine %packed : view<4xi32, align(1)> -> view<4xi32>
+  %sub = view.subview %natural[1] : view<4xi32> -> view<2xi32>
+  %origin = test.fact_view_min_alignment %natural : view<4xi32> -> i64
+  %root = test.fact_view_root_min_alignment %natural : view<4xi32> -> i64
+  %sub_origin = test.fact_view_min_alignment %sub : view<2xi32> -> i64
+  %sub_root = test.fact_view_root_min_alignment %sub : view<2xi32> -> i64
+  func.return %origin, %root, %sub_origin, %sub_root : i64, i64, i64, i64
+}
+// ----
+func.def @access_requirement_is_not_an_address_fact(%buffer: buffer) -> (i64, i64, i64, i64) {
+  %origin = scalar.constant 1 : i64
+  %root = scalar.constant 1 : i64
+  %sub_origin = scalar.constant 1 : i64
+  %sub_root = scalar.constant 1 : i64
+  func.return %origin, %root, %sub_origin, %sub_root : i64, i64, i64, i64
+}
+
+// ====
+
 // Buffer entry arguments seed storage-root facts.
 func.def @buffer_arg_reference(%buffer: buffer) -> (i1) {
   %is = test.fact_is_buffer_reference %buffer : buffer -> i1

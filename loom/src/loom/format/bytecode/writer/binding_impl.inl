@@ -57,6 +57,10 @@ static iree_status_t loom_bytecode_emit_complete_type(
             values, loom_type_encoding_value_id(type), &encoding));
       }
       IREE_RETURN_IF_ERROR(loom_bytecode_emit_uvarint(sink, encoding));
+      if (loom_type_kind(type) == LOOM_TYPE_VIEW) {
+        IREE_RETURN_IF_ERROR(loom_bytecode_emit_uvarint(
+            sink, loom_type_view_alignment_override(type)));
+      }
       for (uint8_t i = 0; i < loom_type_rank(type); ++i) {
         const uint64_t dimension = loom_type_dim(type, i);
         const bool dynamic = loom_dim_is_dynamic(dimension);

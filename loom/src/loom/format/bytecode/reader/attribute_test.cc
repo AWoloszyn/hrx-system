@@ -287,6 +287,57 @@ TEST_F(BytecodeAttributeTest, ScopedRegisterRetainsCarrierAndBoundValueType) {
   EXPECT_EQ(error_count_, 0u);
 }
 
+TEST_F(BytecodeAttributeTest, ScopedViewAlignmentValidatesBeforeNarrowing) {
+  loom_value_id_t width = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_define_value(
+      module_, loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), &width));
+  for (uint16_t alignment : {0, 1, 2, 4, 8, 3, 16, 128, 255, 256}) {
+    SCOPED_TRACE(alignment);
+    iree_arena_allocator_t scope_arena;
+    iree_arena_initialize(&block_pool_, &scope_arena);
+    loom_bytecode_type_bindings_t bindings = {};
+    bindings.arena = &scope_arena;
+    const loom_bytecode_attribute_ssa_materialization_scope_t scope = {
+        /*.symbol_name=*/IREE_SV("function"),
+        /*.values=*/&width,
+        /*.value_count=*/1,
+        /*.bindings=*/&bindings,
+    };
+    // One scoped view node with a dynamic dimension and no encoding. All
+    // fields after the kind use varints, unlike the global type table.
+    std::vector<uint8_t> data = {
+        1, 0, 1, LOOM_BYTECODE_TYPE_VIEW, LOOM_SCALAR_TYPE_I64, 1, 0, 0};
+    if (alignment < 128) {
+      data.push_back((uint8_t)alignment);
+    } else {
+      data.push_back((uint8_t)(alignment | 0x80));
+      data.push_back((uint8_t)(alignment >> 7));
+    }
+    data.insert(data.end(), {1, 1, 1});  // Dynamic dimension, binder, root.
+    data[1] = (uint8_t)(data.size() - 2);
+    auto materializer = MakeMaterializer();
+    auto cursor = MakeCursor(data.data(), data.size());
+    loom_attribute_t attr = loom_attr_absent();
+    error_count_ = 0;
+    iree_status_t status = loom_bytecode_attribute_materialize_ssa(
+        &materializer, &cursor, nullptr, LOOM_BYTECODE_ATTR_TYPE, &attr, 0,
+        &scope);
+    if (alignment == 0 ||
+        loom_type_view_alignment_is_valid(LOOM_SCALAR_TYPE_I64, alignment)) {
+      IREE_EXPECT_OK(status);
+      EXPECT_EQ(error_count_, 0u);
+      const loom_type_t type =
+          loom_type_table_get(&module_->types, attr.type_id);
+      EXPECT_EQ(loom_type_view_alignment(type), alignment ? alignment : 8);
+      EXPECT_EQ(loom_dim_value_id(loom_type_dim(type, 0)), width);
+    } else {
+      IREE_EXPECT_STATUS_IS(IREE_STATUS_DEFERRED, status);
+      EXPECT_EQ(error_count_, 1u);
+    }
+    iree_arena_deinitialize(&scope_arena);
+  }
+}
+
 TEST_F(BytecodeAttributeTest, ScopedDialectNameUsesFullStringOrdinal) {
   // Full reads have an ordered, validated string table. Populate the actual
   // output table so the first 17-bit name ID exercises that production

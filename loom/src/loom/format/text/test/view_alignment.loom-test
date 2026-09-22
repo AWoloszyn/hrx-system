@@ -1,0 +1,64 @@
+// RUN: roundtrip
+
+// Natural alignment has one canonical spelling. Reduced requirements survive
+// rank-zero, inline, overflow, encoded, and nested signature representations.
+func.decl @views(%layout: encoding<layout>, %scalar: view<i64, align(8)>, %word: view<4xi32, align(01)>, %grid: view<2x3xf32, align(0x2)>, %volume: view<2x3x4xi64, %layout, align(4)>, %callback: (view<1xi32, align(1)>) -> (view<1xi32, align(1)>))
+
+// ----
+func.decl @views(%layout: encoding<layout>, %scalar: view<i64>, %word: view<4xi32, align(1)>, %grid: view<2x3xf32, align(2)>, %volume: view<2x3x4xi64, %layout, align(4)>, %callback: (view<1xi32, align(1)>) -> (view<1xi32, align(1)>))
+
+// ====
+// RUN: verify
+
+// Zero is an internal natural-alignment sentinel, not a source qualifier.
+// ERROR@+1: PARSE/003 "a positive power-of-two alignment no greater than natural element alignment"
+func.decl @zero(%input: view<1xi32, align(0)>)
+
+// ====
+// RUN: verify
+
+// ERROR@+1: PARSE/003 "a positive power-of-two alignment no greater than natural element alignment"
+func.decl @negative(%input: view<1xi32, align(-1)>)
+
+// ====
+// RUN: verify
+
+// ERROR@+1: PARSE/003 "a positive power-of-two alignment no greater than natural element alignment"
+func.decl @not_power_of_two(%input: view<1xi32, align(3)>)
+
+// ====
+// RUN: verify
+
+// Stronger address guarantees are independent facts, not access qualifiers.
+// ERROR@+1: PARSE/003 "a positive power-of-two alignment no greater than natural element alignment"
+func.decl @overaligned(%input: view<1xi32, align(8)>)
+
+// ====
+// RUN: verify
+
+// ERROR@+1: PARSE/003 "a positive power-of-two alignment no greater than natural element alignment"
+func.decl @overflow(%input: view<1xi64, align(18446744073709551616)>)
+
+// ====
+// RUN: verify
+
+// ERROR@+1: PARSE/003 "alignment is only permitted on view types"
+func.decl @tile(%input: tile<1xi32, align(1)>)
+
+// ====
+// RUN: verify
+
+// ERROR@+1: PARSE/003 "alignment is only permitted on view types"
+func.decl @tensor(%input: tensor<1xi32, align(1)>)
+
+// ====
+// RUN: verify
+
+// ERROR@+1: PARSE/004
+func.decl @vector(%input: vector<1xi32, align(1)>)
+
+// ====
+// RUN: verify
+
+// ERROR@+1: PARSE/003
+func.decl @duplicate(%input: view<1xi32, align(1), align(2)>)

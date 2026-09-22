@@ -85,12 +85,21 @@ static iree_status_t loom_bytecode_read_complete_type(
         materializer->decoder, cursor, &attachment));
     IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_uvarint(
         materializer->decoder, cursor, &encoding));
+    uint64_t alignment = 0;
+    if (kind == LOOM_TYPE_VIEW) {
+      IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_uvarint(
+          materializer->decoder, cursor, &alignment));
+    }
     if (element >= LOOM_SCALAR_TYPE_COUNT_ ||
         !loom_scalar_type_is_valid(element) || rank > LOOM_TYPE_MAX_RANK ||
         attachment > 2 ||
         (kind == LOOM_TYPE_VECTOR && (rank == 0 || attachment != 0))) {
       return loom_bytecode_complete_type_invalid(materializer, cursor,
                                                  IREE_SV("shape"));
+    }
+    if (alignment && !loom_type_view_alignment_is_valid(element, alignment)) {
+      return loom_bytecode_complete_type_invalid(materializer, cursor,
+                                                 IREE_SV("access_alignment"));
     }
     uint16_t target_encoding = 0;
     if (attachment == 1) {
@@ -143,6 +152,9 @@ static iree_status_t loom_bytecode_read_complete_type(
                                   (all_static ? LOOM_TYPE_FLAG_ALL_STATIC : 0));
     type.encoding_id = target_encoding;
     type.encoding_flags = attachment == 2 ? LOOM_ENCODING_FLAG_SSA : 0;
+    if (kind == LOOM_TYPE_VIEW) {
+      type = loom_type_view_with_alignment(type, (uint8_t)alignment);
+    }
     if (rank > 2) {
       type.dims[0] = (uint64_t)(uintptr_t)dimensions;
     } else {

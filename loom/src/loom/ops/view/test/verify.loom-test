@@ -131,6 +131,33 @@ func.def @refine_static_dimension_mismatch(%buffer: buffer, %offset: offset) {
 
 // ====
 
+// Subviews preserve the source access contract in both directions.
+func.def @subview_cannot_strengthen_alignment(%source: view<4xi32, align(1)>) {
+  // ERROR@+1: TYPE/003 "the same element-access alignment as the result view"
+  %result = view.subview %source[1] : view<4xi32, align(1)> -> view<2xi32>
+  func.return
+}
+
+// ====
+
+func.def @subview_cannot_weaken_alignment(%source: view<4xi32>) {
+  // ERROR@+1: TYPE/003 "the same element-access alignment as the result view"
+  %result = view.subview %source[1] : view<4xi32> -> view<2xi32, align(1)>
+  func.return
+}
+
+// ====
+
+// Explicit qualification changes requirements without changing the address.
+func.def @refine_access_alignment(%source: view<4xi32, align(1)>) {
+  %natural = view.refine %source : view<4xi32, align(1)> -> view<4xi32>
+  %packed = view.refine %natural : view<4xi32> -> view<4xi32, align(2)>
+  %sub = view.subview %packed[1] : view<4xi32, align(2)> -> view<2xi32, align(2)>
+  func.return
+}
+
+// ====
+
 // view.refine can strengthen a dynamic layout known to be dense to the native
 // dense representation.
 func.def @refine_native_dense_result_layout(%buffer: buffer, %offset: offset, %m: index) {

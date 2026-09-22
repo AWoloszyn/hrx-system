@@ -392,6 +392,11 @@ loom_print_shaped_interior(loom_output_stream_t* stream, loom_type_t type,
           loom_print_static_encoding(stream, module, type.encoding_id, ctx));
     }
   }
+  if (loom_type_kind(type) == LOOM_TYPE_VIEW &&
+      loom_type_view_alignment_override(type)) {
+    IREE_RETURN_IF_ERROR(loom_output_stream_write_format(
+        stream, ", align(%u)", loom_type_view_alignment_override(type)));
+  }
   return iree_ok_status();
 }
 

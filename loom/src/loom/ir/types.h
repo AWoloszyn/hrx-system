@@ -362,7 +362,7 @@ typedef struct loom_type_t {
   //           (encoding), or loom_storage_space_t (storage)
   //   [16:19] rank (0-LOOM_TYPE_MAX_RANK for shaped types, 0 otherwise)
   //   [20:23] loom_type_flags_e (inline_dims, all_static)
-  //   [24:31] reserved
+  //   [24:31] view access alignment override in bytes (0 = natural)
   uint32_t header;
 
   // Index into the module's encoding table (1-based, 0 = no encoding).
@@ -444,6 +444,52 @@ static inline uint8_t loom_type_rank(loom_type_t type) {
 
 static inline uint8_t loom_type_flags(loom_type_t type) {
   return (uint8_t)((type.header >> 20) & 0xF);
+}
+
+// Returns a view's explicitly reduced element-access alignment in bytes, or
+// zero for natural scalar storage alignment. Only view types carry this field.
+// This is an access precondition, not a promise about a view's address when
+// formed, sliced, passed, or used by an inactive masked lane.
+static inline uint8_t loom_type_view_alignment_override(loom_type_t type) {
+  return (uint8_t)(type.header >> 24);
+}
+
+// Returns the natural byte alignment of a view's physical scalar element.
+// Sub-byte element types still require a supported storage representation;
+// their byte alignment does not make them individually byte-addressable.
+static inline uint8_t loom_type_view_natural_alignment(loom_type_t type) {
+  return (uint8_t)iree_max(
+      1, loom_scalar_type_bitwidth(loom_type_element_type(type)) / 8);
+}
+
+// Returns the alignment required by each executed typed element access.
+// The requirement is independent of vector width and allocation alignment.
+static inline uint8_t loom_type_view_alignment(loom_type_t type) {
+  uint8_t alignment_override = loom_type_view_alignment_override(type);
+  return alignment_override ? alignment_override
+                            : loom_type_view_natural_alignment(type);
+}
+
+// Validates an explicit view alignment at an input boundary. Natural alignment
+// is accepted and canonicalized away by loom_type_view_with_alignment.
+static inline bool loom_type_view_alignment_is_valid(
+    loom_scalar_type_t element_type, uint64_t alignment) {
+  return alignment != 0 && (alignment & (alignment - 1)) == 0 &&
+         alignment <=
+             (uint64_t)iree_max(1, loom_scalar_type_bitwidth(element_type) / 8);
+}
+
+// Sets a view's element-access requirement. The caller supplies either zero
+// for natural alignment or a validated explicit alignment. Explicit natural
+// alignment is canonicalized to zero so equivalent types have one identity.
+static inline loom_type_t loom_type_view_with_alignment(loom_type_t type,
+                                                        uint8_t alignment) {
+  if (alignment == loom_type_view_natural_alignment(type)) {
+    alignment = 0;
+  }
+  type.header =
+      (type.header & UINT32_C(0x00FFFFFF)) | ((uint32_t)alignment << 24);
+  return type;
 }
 
 static inline bool loom_type_has_inline_dims(loom_type_t type) {

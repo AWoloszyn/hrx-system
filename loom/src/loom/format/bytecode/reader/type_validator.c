@@ -211,8 +211,8 @@ static iree_status_t loom_bytecode_type_plan_build_shaped(
     const loom_bytecode_reader_module_view_t* module_view,
     iree_arena_allocator_t* scratch_arena, loom_type_kind_t kind,
     loom_scalar_type_t element_type, uint8_t rank, uint8_t attachment,
-    uint64_t encoding_instance, const uint64_t* dims, loom_type_t* out_type,
-    uint64_t offset) {
+    uint64_t encoding_instance, uint8_t alignment, const uint64_t* dims,
+    loom_type_t* out_type, uint64_t offset) {
   if (!loom_scalar_type_is_valid(element_type)) {
     return loom_bytecode_reader_emit_enum_value(
         decoder, IREE_SV("element_type"), element_type, LOOM_SCALAR_TYPE_COUNT_,
@@ -267,6 +267,14 @@ static iree_status_t loom_bytecode_type_plan_build_shaped(
         IREE_SV("encoding_attachment"), offset,
         IREE_SV("vector_types_must_not_carry_encoding_or_layout_attachments"));
   }
+  if (alignment &&
+      !loom_type_view_alignment_is_valid(element_type, alignment)) {
+    return loom_bytecode_reader_emit_invalid_field(
+        decoder, IREE_SV("TYPES"), IREE_SV("type"), 0,
+        IREE_SV("access_alignment"), offset,
+        IREE_SV(
+            "view_alignment_must_be_a_power_of_two_no_greater_than_natural"));
+  }
   if (!out_type) {
     return iree_ok_status();
   }
@@ -295,6 +303,9 @@ static iree_status_t loom_bytecode_type_plan_build_shaped(
     type.header = loom_type_make_header(kind, element_type, rank, flags);
     type.encoding_id = encoding_id;
     type.dims[0] = (uint64_t)(uintptr_t)overflow_dims;
+  }
+  if (kind == LOOM_TYPE_VIEW) {
+    type = loom_type_view_with_alignment(type, alignment);
   }
   *out_type = type;
   return iree_ok_status();
@@ -360,6 +371,11 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
       uint64_t encoding_instance = 0;
       IREE_RETURN_IF_ERROR(loom_bytecode_reader_read_uvarint(
           decoder, cursor, &encoding_instance));
+      uint8_t alignment = 0;
+      if (kind == LOOM_TYPE_VIEW) {
+        IREE_RETURN_IF_ERROR(
+            loom_bytecode_reader_read_u8(decoder, cursor, &alignment));
+      }
       uint64_t dims[LOOM_TYPE_MAX_RANK] = {0};
       if (rank > LOOM_TYPE_MAX_RANK) {
         return loom_bytecode_reader_emit_invalid_field(
@@ -394,7 +410,8 @@ static iree_status_t loom_bytecode_type_plan_decode_entry(
       IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_build_shaped(
           decoder, module_view, scratch_arena, kind,
           (loom_scalar_type_t)element_type, rank, attachment, encoding_instance,
-          dims, out_plan_entry ? &direct_type : NULL, attachment_offset));
+          alignment, dims, out_plan_entry ? &direct_type : NULL,
+          attachment_offset));
       break;
     }
     case LOOM_TYPE_FUNCTION: {

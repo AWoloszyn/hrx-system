@@ -79,9 +79,9 @@ logical coordinates while retaining the same storage root and address layout:
 %tile = view.subview %matrix[%row, %column] : view<[%m]x[%n]xf32> -> view<16x32xf32>
 ```
 
-[`view.refine`](../reference/dialects/view/ops/refine.md) changes only the known
-shape or layout facts of the same view and byte base. Neither operation is an
-allocation or a data movement.
+[`view.refine`](../reference/dialects/view/ops/refine.md) explicitly qualifies
+the shape, layout, or element-access alignment of the same view and byte base.
+Neither operation is an allocation or a data movement.
 
 Views over a common buffer can be carried through structured loops or selected
 as whole values. Their storage identity stays fixed while the chosen byte
@@ -96,6 +96,49 @@ strides without flattening logical indices into source-level pointer
 arithmetic. [Selecting and carrying address
 layouts](functions-and-control.md#select-and-carry-address-layouts) shows the
 complete relationship and a checked target-execution example.
+
+## Natural alignment is the ordinary access contract
+
+An ordinary typed access requires the natural alignment of its physical scalar
+element. An `i32` or `f32` access requires four-byte alignment without an authored
+assumption; `i64` and `f64` require eight. For byte-addressable physical scalars,
+the requirement is their storage byte width. The width of a transferred vector
+does not increase it: loading `vector<16xi8>` from an `i8` view requires only
+byte alignment.
+
+Packed storage carries an explicitly reduced requirement in the view type:
+
+```loom
+%packed = buffer.view %storage[%byte_offset] : buffer -> view<4xi32, align(1)>
+%word = view.load %packed[0] : view<4xi32, align(1)> -> i32
+```
+
+`align(...)` takes a positive power of two no greater than natural element
+alignment. Thus `view<4xi64, align(4)>` admits four-byte-aligned words, while
+`view<4xi32, align(4)>` canonicalizes to `view<4xi32>`. When a layout is present,
+the qualifier follows it: `view<4xi32, %layout, align(1)>`.
+
+This is a requirement on an executed access, not an unconditional fact about
+the view's origin. Forming, passing, or slicing a view performs no access.
+Inactive masked lanes have no alignment requirement, and an all-false mask can
+use an empty view at an otherwise unaligned origin. Prefetch hints likewise
+make no semantic access. An active access that violates its declared alignment
+is outside the language contract; it does not request runtime alignment checks
+or automatic fallback.
+
+The qualifier travels through function signatures and subviews. Exact call
+matching distinguishes packed and natural views. An explicit `view.refine`
+can relax or strengthen the requirement for subsequent accesses; automatic
+shape refinement preserves the existing alignment contract. Stronger address
+facts remain separate: `buffer.assume.alignment` describes the allocation root,
+and an assumption of one-byte root alignment cannot relax an ordinary `i32`
+access.
+
+Reduced alignment does not guarantee that every target implements the access.
+Targets diagnose unsupported memory contracts, including atomic operations
+whose required indivisible access cannot be implemented at that alignment.
+Alignment also grants no extra readable or writable bytes: footprint, masking,
+and bounds remain independent contracts.
 
 ## State storage facts at the boundary that knows them
 

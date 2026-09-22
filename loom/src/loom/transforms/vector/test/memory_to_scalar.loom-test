@@ -11,23 +11,23 @@ func.def @dense_vector_memory_stays_vector(%input: buffer, %output: buffer, %ori
 
 // ====
 
-func.def @masked_dense_memory_scalarizes(%input: buffer, %output: buffer, %origin: index, %mask: vector<2xi1>, %old: vector<2xf32>, %value: vector<2xf32>) -> (vector<2xf32>) {
-  %base = index.constant 0 : offset
-  %input_view = buffer.view %input[%base] : buffer -> view<32xf32>
-  %output_view = buffer.view %output[%base] : buffer -> view<32xf32>
-  %loaded = vector.load.mask %input_view[%origin], %mask, %old : view<32xf32>, vector<2xi1>, vector<2xf32>
-  vector.store.mask %value, %output_view[%origin], %mask : vector<2xf32>, view<32xf32>, vector<2xi1>
+func.def @masked_packed_memory_scalarizes(%input: buffer, %output: buffer, %origin: index, %mask: vector<2xi1>, %old: vector<2xf32>, %value: vector<2xf32>) -> (vector<2xf32>) {
+  %base = index.constant 2 : offset
+  %input_view = buffer.view %input[%base] : buffer -> view<32xf32, align(2)>
+  %output_view = buffer.view %output[%base] : buffer -> view<32xf32, align(2)>
+  %loaded = vector.load.mask %input_view[%origin], %mask, %old : view<32xf32, align(2)>, vector<2xi1>, vector<2xf32>
+  vector.store.mask %value, %output_view[%origin], %mask : vector<2xf32>, view<32xf32, align(2)>, vector<2xi1>
   func.return %loaded : vector<2xf32>
 }
 
 // ----
-func.def @masked_dense_memory_scalarizes(%input: buffer, %output: buffer, %origin: index, %mask: vector<2xi1>, %old: vector<2xf32>, %value: vector<2xf32>) -> (vector<2xf32>) {
-  %base = index.constant 0 : offset
-  %input_view = buffer.view %input[%base] : buffer -> view<32xf32>
-  %output_view = buffer.view %output[%base] : buffer -> view<32xf32>
+func.def @masked_packed_memory_scalarizes(%input: buffer, %output: buffer, %origin: index, %mask: vector<2xi1>, %old: vector<2xf32>, %value: vector<2xf32>) -> (vector<2xf32>) {
+  %base = index.constant 2 : offset
+  %input_view = buffer.view %input[%base] : buffer -> view<32xf32, align(2)>
+  %output_view = buffer.view %output[%base] : buffer -> view<32xf32, align(2)>
   %17 = vector.extract %mask[0] : vector<2xi1> -> i1
   %18 = scf.if %17 -> (f32) {
-    %19 = view.load %input_view[%origin] : view<32xf32> -> f32
+    %19 = view.load %input_view[%origin] : view<32xf32, align(2)> -> f32
     scf.yield %19 : f32
   } else {
     %20 = vector.extract %old[0] : vector<2xf32> -> f32
@@ -37,7 +37,7 @@ func.def @masked_dense_memory_scalarizes(%input: buffer, %output: buffer, %origi
   %22 = scf.if %21 -> (f32) {
     %23 = index.constant 1 : index
     %24 = index.add %origin, %23 : index
-    %25 = view.load %input_view[%24] : view<32xf32> -> f32
+    %25 = view.load %input_view[%24] : view<32xf32, align(2)> -> f32
     scf.yield %25 : f32
   } else {
     %26 = vector.extract %old[1] : vector<2xf32> -> f32
@@ -49,11 +49,11 @@ func.def @masked_dense_memory_scalarizes(%input: buffer, %output: buffer, %origi
   %15 = index.constant 1 : index
   %16 = index.add %origin, %15 : index
   scf.if %17 {
-    view.store %12, %output_view[%origin] : f32, view<32xf32>
+    view.store %12, %output_view[%origin] : f32, view<32xf32, align(2)>
   } else {
   }
   scf.if %21 {
-    view.store %14, %output_view[%16] : f32, view<32xf32>
+    view.store %14, %output_view[%16] : f32, view<32xf32, align(2)>
   } else {
   }
   func.return %loaded : vector<2xf32>
@@ -61,31 +61,31 @@ func.def @masked_dense_memory_scalarizes(%input: buffer, %output: buffer, %origi
 
 // ====
 
-func.def @per_lane_memory_scalarizes(%input: buffer, %output: buffer, %origin: index, %offsets: vector<2xindex>, %value: vector<2xf32>) -> (vector<2xf32>) {
-  %base = index.constant 0 : offset
-  %input_view = buffer.view %input[%base] : buffer -> view<32xf32>
-  %output_view = buffer.view %output[%base] : buffer -> view<32xf32>
-  %loaded = vector.gather %input_view[%origin][%offsets] : view<32xf32>, vector<2xindex> -> vector<2xf32>
-  vector.scatter %value, %output_view[%origin][%offsets] : vector<2xf32>, view<32xf32>, vector<2xindex>
+func.def @per_lane_packed_memory_scalarizes(%input: buffer, %output: buffer, %origin: index, %offsets: vector<2xindex>, %value: vector<2xf32>) -> (vector<2xf32>) {
+  %base = index.constant 1 : offset
+  %input_view = buffer.view %input[%base] : buffer -> view<32xf32, align(1)>
+  %output_view = buffer.view %output[%base] : buffer -> view<32xf32, align(1)>
+  %loaded = vector.gather %input_view[%origin][%offsets] : view<32xf32, align(1)>, vector<2xindex> -> vector<2xf32>
+  vector.scatter %value, %output_view[%origin][%offsets] : vector<2xf32>, view<32xf32, align(1)>, vector<2xindex>
   func.return %loaded : vector<2xf32>
 }
 
 // ----
-func.def @per_lane_memory_scalarizes(%input: buffer, %output: buffer, %origin: index, %offsets: vector<2xindex>, %value: vector<2xf32>) -> (vector<2xf32>) {
-  %base = index.constant 0 : offset
-  %input_view = buffer.view %input[%base] : buffer -> view<32xf32>
-  %output_view = buffer.view %output[%base] : buffer -> view<32xf32>
+func.def @per_lane_packed_memory_scalarizes(%input: buffer, %output: buffer, %origin: index, %offsets: vector<2xindex>, %value: vector<2xf32>) -> (vector<2xf32>) {
+  %base = index.constant 1 : offset
+  %input_view = buffer.view %input[%base] : buffer -> view<32xf32, align(1)>
+  %output_view = buffer.view %output[%base] : buffer -> view<32xf32, align(1)>
   %16 = vector.extract %offsets[0] : vector<2xindex> -> index
   %17 = index.add %origin, %16 : index
-  %18 = view.load %input_view[%17] : view<32xf32> -> f32
+  %18 = view.load %input_view[%17] : view<32xf32, align(1)> -> f32
   %19 = vector.extract %offsets[1] : vector<2xindex> -> index
   %20 = index.add %origin, %19 : index
-  %21 = view.load %input_view[%20] : view<32xf32> -> f32
+  %21 = view.load %input_view[%20] : view<32xf32, align(1)> -> f32
   %loaded = vector.from_elements %18, %21 : vector<2xf32>
   %10 = vector.extract %value[0] : vector<2xf32> -> f32
   %13 = vector.extract %value[1] : vector<2xf32> -> f32
-  view.store %10, %output_view[%17] : f32, view<32xf32>
-  view.store %13, %output_view[%20] : f32, view<32xf32>
+  view.store %10, %output_view[%17] : f32, view<32xf32, align(1)>
+  view.store %13, %output_view[%20] : f32, view<32xf32, align(1)>
   func.return %loaded : vector<2xf32>
 }
 

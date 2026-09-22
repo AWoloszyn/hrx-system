@@ -32,7 +32,12 @@ from loom.format.bytecode.encoding import (
     encode_signed_varint,
     encode_varint,
 )
-from loom.format.bytecode.reader import BytecodeError, BytecodeReader, read_module
+from loom.format.bytecode.reader import (
+    BytecodeError,
+    BytecodeReader,
+    _ValueMap,
+    read_module,
+)
 from loom.format.bytecode.writer import (
     BYTECODE_TYPE_KIND_BY_IR_KIND,
     FORMAT_VERSION,
@@ -824,6 +829,46 @@ class TestMalformedTypeSection:
         with pytest.raises(BytecodeError, match="unknown type kind: 4"):
             self._read_types(bytes([1, 4]))
 
+    @pytest.mark.parametrize("alignment", [3, 16, 128, 255])
+    def test_invalid_view_alignment_is_rejected(self, alignment: int) -> None:
+        data = bytes(
+            [
+                1,
+                BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.VIEW],
+                I64.kind.value,
+                0,
+                0,
+                0,
+                alignment,
+            ]
+        )
+        with pytest.raises(BytecodeError, match="positive power of two"):
+            self._read_types(data)
+
+    @pytest.mark.parametrize("alignment", [3, 16, 128, 255, 256, 1 << 32])
+    def test_invalid_scoped_view_alignment_is_rejected(self, alignment: int) -> None:
+        # Scoped fields are varints. Validate before narrowing to the type's
+        # byte-sized alignment field, including values that would truncate to 0.
+        payload = (
+            bytes(
+                [
+                    1,
+                    BYTECODE_TYPE_KIND_BY_IR_KIND[TypeKind.VIEW],
+                    I64.kind.value,
+                    1,
+                    0,
+                    0,
+                ]
+            )
+            + encode_varint(alignment)
+            + bytes([1, 1, 1])
+        )
+        data = bytes([1]) + encode_varint(len(payload)) + payload
+        values = _ValueMap()
+        values.append(0)
+        with pytest.raises(BytecodeError, match="positive power of two"):
+            BytecodeReader(b"")._read_type_use(data, 0, values)
+
     def test_vector_rank_zero_is_rejected(self) -> None:
         data = bytes(
             [
@@ -1210,6 +1255,19 @@ class TestTypeRoundTrips:
     def test_view_1d(self) -> None:
         t = ShapedType(TypeKind.VIEW, I8, (StaticDim(256),))
         assert self._roundtrip_type(t) == t
+
+    @pytest.mark.parametrize("alignment", [1, 2, 4, 8])
+    @pytest.mark.parametrize("dynamic", [False, True])
+    def test_view_alignment(self, alignment: int, dynamic: bool) -> None:
+        view = ShapedType(
+            TypeKind.VIEW,
+            I64,
+            (DynamicDim(0) if dynamic else StaticDim(4), StaticDim(3), StaticDim(2)),
+            encoding=DynamicEncoding(1) if dynamic else None,
+            alignment=alignment,
+        )
+        prefix = (INDEX, ENCODING_TYPE) if dynamic else ()
+        assert self._roundtrip_type(view, prefix) == view
 
     def test_view_with_layout(self) -> None:
         layout = EncodingInstance(name="strided", params=(("stride", 64),))

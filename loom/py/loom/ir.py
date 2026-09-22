@@ -306,12 +306,20 @@ class ShapedType:
     bound via SSA value. Since all variants are frozen and hashable,
     ShapedType remains internable. Vector types are pure register lane grids
     and do not carry encoding/layout attachments.
+
+    A view's alignment is an element-access precondition in bytes, not a fact
+    about its address. None means natural scalar storage alignment. Explicit
+    powers of two may reduce that requirement; an explicit natural alignment
+    canonicalizes to None. Forming a view and inactive masked lanes imply no
+    access or alignment promise.
     """
 
     type_kind: TypeKind  # TILE, TENSOR, VECTOR, or VIEW
     element_type: ScalarType
     dims: tuple[Dim, ...]
     encoding: EncodingInstance | DynamicEncoding | None = None
+    # Reduced byte alignment required by executed view element accesses.
+    alignment: int | None = None
 
     def __post_init__(self) -> None:
         if self.type_kind not in (
@@ -329,6 +337,30 @@ class ShapedType:
                 raise ValueError("vector types must have rank >= 1")
             if self.encoding is not None:
                 raise ValueError("vector types must not carry encodings/layouts")
+        if self.alignment is not None:
+            if self.type_kind != TypeKind.VIEW:
+                raise ValueError("only view types may carry an access alignment")
+            natural_alignment = max(1, self.element_type.bitwidth // 8)
+            if (
+                not isinstance(self.alignment, int)
+                or isinstance(self.alignment, bool)
+                or self.alignment <= 0
+                or self.alignment & (self.alignment - 1)
+                or self.alignment > natural_alignment
+            ):
+                raise ValueError(
+                    "view alignment must be a positive power of two no greater "
+                    f"than natural element alignment ({natural_alignment})"
+                )
+            if self.alignment == natural_alignment:
+                object.__setattr__(self, "alignment", None)
+
+    @property
+    def access_alignment(self) -> int:
+        """Byte alignment required by an executed view element access."""
+        if self.type_kind != TypeKind.VIEW:
+            raise ValueError("only view types have an access alignment")
+        return self.alignment or max(1, self.element_type.bitwidth // 8)
 
     @property
     def rank(self) -> int:
@@ -352,6 +384,7 @@ class ShapedType:
 
     def __repr__(self) -> str:
         kind_name = _SHAPED_TYPE_KIND_NAMES[self.type_kind]
+        alignment = f", align({self.alignment})" if self.alignment else ""
         if self.dims:
             dim_strs = []
             for d in self.dims:
@@ -361,8 +394,8 @@ class ShapedType:
                     case DynamicDim():
                         dim_strs.append(repr(d))
             shape = "x".join(dim_strs)
-            return f"{kind_name}<{shape}x{self.element_type}>"
-        return f"{kind_name}<{self.element_type}>"
+            return f"{kind_name}<{shape}x{self.element_type}{alignment}>"
+        return f"{kind_name}<{self.element_type}{alignment}>"
 
 
 _SHAPED_TYPE_KIND_NAMES: dict[TypeKind, str] = {

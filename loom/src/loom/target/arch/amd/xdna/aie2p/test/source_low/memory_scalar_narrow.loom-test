@@ -1,0 +1,235 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/memory_scalar_narrow.loom
+// RUN: emit source-low target=amd.xdna.aie2p:core output=low
+
+func.def @copy_narrow_static(%input: buffer, %output: buffer) {
+  %byte_base = index.constant 0 : offset
+  %word_base = index.constant 1 : offset
+  %source_bytes = buffer.view %input[%byte_base] : buffer -> view<8xi8>
+  %source_words = buffer.view %input[%word_base] : buffer -> view<4xi16, align(1)>
+  %destination_bytes = buffer.view %output[%byte_base] : buffer -> view<8xi8>
+  %destination_words = buffer.view %output[%word_base] : buffer -> view<4xi16, align(1)>
+  %byte = view.load %source_bytes[3] : view<8xi8> -> i8
+  %word = view.load %source_words[2] : view<4xi16, align(1)> -> i16
+  view.store %byte, %destination_bytes[3] : i8, view<8xi8>
+  view.store %word, %destination_words[2] : i16, view<4xi16, align(1)>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @copy_narrow_static() asm {
+  %source_words = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %destination_words = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %byte = lda.u8 %source_words, 3
+  %13 = lda.u8 %source_words, 5
+  %14 = lda.u8 %source_words, 6
+  %15 = mov.short 8
+  %16 = lshl %14, %15
+  %word = or %13, %16
+  st.s8 %byte, %destination_words, 3
+  %18 = mov.short -8
+  st.s8 %word, %destination_words, 5
+  %19 = lshl %word, %18
+  st.s8 %19, %destination_words, 6
+  return
+}
+
+// ====
+
+func.def @copy_narrow_index(%input: buffer, %output: buffer, %element: index) {
+  %position = index.assume %element [range(%element, 0, 15)] : index
+  %byte_base = index.constant 1 : offset
+  %word_base = index.constant 33 : offset
+  %source_bytes = buffer.view %input[%byte_base] : buffer -> view<16xi8>
+  %source_words = buffer.view %input[%word_base] : buffer -> view<16xi16, align(1)>
+  %destination_bytes = buffer.view %output[%byte_base] : buffer -> view<16xi8>
+  %destination_words = buffer.view %output[%word_base] : buffer -> view<16xi16, align(1)>
+  %byte = view.load %source_bytes[%position] : view<16xi8> -> i8
+  %word = view.load %source_words[%position] : view<16xi16, align(1)> -> i16
+  view.store %byte, %destination_bytes[%position] : i8, view<16xi8>
+  view.store %word, %destination_words[%position] : i16, view<16xi16, align(1)>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @copy_narrow_index(%position: reg<aie2p.er>) asm {
+  %source_words = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %destination_words = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %15 = add %position, 1
+  %16 = mov.address-index %15
+  %byte = lda.i8.index %source_words, %16
+  %18 = mov.i32 1
+  %19 = lshl %position, %18
+  %20 = add %19, 33
+  %21 = mov.address-index %20
+  %22 = lda.i8.index %source_words, %21
+  %23 = mov.static-byte-offset 34
+  %26 = add.rr %19, %23
+  %27 = mov.address-index %26
+  %28 = lda.i8.index %source_words, %27
+  %29 = mov.short 8
+  %30 = lshl %28, %29
+  %word = or %22, %30
+  %32 = add %position, 1
+  %33 = mov.address-index %32
+  st.i8.index %byte, %destination_words, %33
+  %34 = mov.short -8
+  %37 = add %19, 33
+  %38 = mov.address-index %37
+  st.i8.index %word, %destination_words, %38
+  %39 = lshl %word, %34
+  %43 = add.rr %19, %23
+  %44 = mov.address-index %43
+  st.i8.index %39, %destination_words, %44
+  return
+}
+
+// ====
+
+func.def @copy_narrow_origin(%input: buffer, %output: buffer, %byte_offset: offset, %element: index) {
+  %base = index.assume %byte_offset [range(%byte_offset, 0, 128)] : offset
+  %position = index.assume %element [range(%element, 0, 15)] : index
+  %prefix = index.constant 33 : offset
+  %word_base = index.add %base, %prefix : offset
+  %source_bytes = buffer.view %input[%base] : buffer -> view<16xi8>
+  %source_words = buffer.view %input[%word_base] : buffer -> view<16xi16, align(1)>
+  %destination_bytes = buffer.view %output[%base] : buffer -> view<16xi8>
+  %destination_words = buffer.view %output[%word_base] : buffer -> view<16xi16, align(1)>
+  %byte = view.load<volatile> %source_bytes[%position] : view<16xi8> -> i8
+  %word = view.load<volatile> %source_words[%position] : view<16xi16, align(1)> -> i16
+  view.store<volatile> %byte, %destination_bytes[%position] : i8, view<16xi8>
+  view.store<volatile> %word, %destination_words[%position] : i16, view<16xi16, align(1)>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @copy_narrow_origin(%base: reg<aie2p.er>, %position: reg<aie2p.er>) asm {
+  %source_words = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %destination_words = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %18 = add.rr %base, %position
+  %19 = mov.address-index %18
+  %byte = lda.i8.index.volatile<volatile> %source_words, %19
+  %21 = mov.i32 1
+  %22 = lshl %position, %21
+  %23 = add.rr %base, %22
+  %24 = add %23, 33
+  %25 = mov.address-index %24
+  %26 = lda.i8.index.volatile<volatile> %source_words, %25
+  %27 = mov.static-byte-offset 34
+  %30 = add.rr %base, %22
+  %31 = add.rr %30, %27
+  %32 = mov.address-index %31
+  %33 = lda.i8.index.volatile<volatile> %source_words, %32
+  %34 = mov.short 8
+  %35 = lshl %33, %34
+  %word = or %26, %35
+  %37 = add.rr %base, %position
+  %38 = mov.address-index %37
+  st.i8.index.volatile<volatile> %byte, %destination_words, %38
+  %39 = mov.short -8
+  %42 = add.rr %base, %22
+  %43 = add %42, 33
+  %44 = mov.address-index %43
+  st.i8.index.volatile<volatile> %word, %destination_words, %44
+  %45 = lshl %word, %39
+  %49 = add.rr %base, %22
+  %50 = add.rr %49, %27
+  %51 = mov.address-index %50
+  st.i8.index.volatile<volatile> %45, %destination_words, %51
+  return
+}
+
+// ====
+
+func.def @copy_narrow_stride(%input: buffer, %output: buffer, %column_count: index, %row_index: index, %column_index: index) {
+  %columns = index.assume %column_count [range(%column_count, 1, 16)] : index
+  %row = index.assume %row_index [range(%row_index, 0, 3)] : index
+  %column = index.assume %column_index [range(%column_index, 0, 15), lt(%column_index, %columns)] : index
+  %byte_base = index.constant 1 : offset
+  %word_base = index.constant 65 : offset
+  %source_bytes = buffer.view %input[%byte_base] : buffer -> view<4x[%columns]xi8>
+  %source_words = buffer.view %input[%word_base] : buffer -> view<4x[%columns]xi16, align(1)>
+  %destination_bytes = buffer.view %output[%byte_base] : buffer -> view<4x[%columns]xi8>
+  %destination_words = buffer.view %output[%word_base] : buffer -> view<4x[%columns]xi16, align(1)>
+  %byte = view.load %source_bytes[%row, %column] : view<4x[%columns]xi8> -> i8
+  %word = view.load %source_words[%row, %column] : view<4x[%columns]xi16, align(1)> -> i16
+  view.store %byte, %destination_bytes[%row, %column] : i8, view<4x[%columns]xi8>
+  view.store %word, %destination_words[%row, %column] : i16, view<4x[%columns]xi16, align(1)>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @copy_narrow_stride(%columns: reg<aie2p.er>, %row: reg<aie2p.er>, %column: reg<aie2p.er>) asm {
+  %source_words = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %destination_words = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %21 = mul %row, %columns
+  %22 = add.rr %21, %column
+  %23 = add %22, 1
+  %24 = mov.address-index %23
+  %byte = lda.i8.index %source_words, %24
+  %26 = mov.static-byte-offset 65
+  %28 = mov.i32 1
+  %29 = lshl %21, %28
+  %31 = lshl %column, %28
+  %32 = add.rr %29, %31
+  %33 = add.rr %32, %26
+  %34 = mov.address-index %33
+  %35 = lda.i8.index %source_words, %34
+  %36 = mov.static-byte-offset 66
+  %42 = add.rr %29, %31
+  %43 = add.rr %42, %36
+  %44 = mov.address-index %43
+  %45 = lda.i8.index %source_words, %44
+  %46 = mov.short 8
+  %47 = lshl %45, %46
+  %word = or %35, %47
+  %50 = add.rr %21, %column
+  %51 = add %50, 1
+  %52 = mov.address-index %51
+  st.i8.index %byte, %destination_words, %52
+  %53 = mov.short -8
+  %60 = add.rr %29, %31
+  %61 = add.rr %60, %26
+  %62 = mov.address-index %61
+  st.i8.index %word, %destination_words, %62
+  %63 = lshl %word, %53
+  %70 = add.rr %29, %31
+  %71 = add.rr %70, %36
+  %72 = mov.address-index %71
+  st.i8.index %63, %destination_words, %72
+  return
+}
+
+// ====
+
+func.def @exchange_narrow(%buffer: buffer, %byte_value: i8, %word_value: i16) -> (i32, i32) {
+  %byte_base = index.constant 0 : offset
+  %word_base = index.constant 1 : offset
+  %bytes = buffer.view %buffer[%byte_base] : buffer -> view<1xi8>
+  %words = buffer.view %buffer[%word_base] : buffer -> view<1xi16, align(1)>
+  %previous_byte = view.load %bytes[0] : view<1xi8> -> i8
+  %previous_word = view.load %words[0] : view<1xi16, align(1)> -> i16
+  view.store %byte_value, %bytes[0] : i8, view<1xi8>
+  view.store %word_value, %words[0] : i16, view<1xi16, align(1)>
+  %byte_bits = scalar.extui %previous_byte : i8 to i32
+  %word_bits = scalar.extui %previous_word : i16 to i32
+  func.return %byte_bits, %word_bits : i32, i32
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @exchange_narrow(%byte_value: reg<aie2p.er>, %word_value: reg<aie2p.er>) -> (reg<aie2p.er>, reg<aie2p.er>) asm {
+  %words = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %previous_byte = lda.u8 %words, 0
+  %19 = lda.u8 %words, 1
+  %20 = lda.u8 %words, 2
+  %21 = mov.short 8
+  %22 = lshl %20, %21
+  %previous_word = or %19, %22
+  st.s8 %byte_value, %words, 0
+  %24 = mov.short -8
+  st.s8 %word_value, %words, 1
+  %25 = lshl %word_value, %24
+  st.s8 %25, %words, 2
+  %byte_bits = extend.u8 %previous_byte
+  %word_bits = extend.u16 %previous_word
+  return %byte_bits, %word_bits
+}

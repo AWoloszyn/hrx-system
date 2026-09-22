@@ -300,6 +300,32 @@ class TestParseShapedStatic:
         assert result.element_type == I8
         assert result.dims == (StaticDim(256),)
 
+    @pytest.mark.parametrize("alignment", [1, 2, 4, 8])
+    def test_view_alignment(self, alignment: int) -> None:
+        result = _parse_type(f"view<4xi64, align({alignment})>")
+        assert isinstance(result, ShapedType)
+        assert result.access_alignment == alignment
+        assert result.alignment == (alignment if alignment < 8 else None)
+        expected = (
+            "view<4xi64>" if alignment == 8 else f"view<4xi64, align({alignment})>"
+        )
+        assert print_type(result) == expected
+
+    @pytest.mark.parametrize("alignment", [0, -1, 3, 16, 256, 2**64])
+    def test_view_invalid_alignment(self, alignment: int) -> None:
+        with pytest.raises(ParseError, match="positive power of two"):
+            _parse_type(f"view<4xi64, align({alignment})>")
+
+    @pytest.mark.parametrize("spelling", ["02", "0x2", "0X2"])
+    def test_view_alignment_integer_spelling(self, spelling: str) -> None:
+        result = _parse_type(f"view<4xi64, align({spelling})>")
+        assert print_type(result) == "view<4xi64, align(2)>"
+
+    @pytest.mark.parametrize("kind", ["tile", "tensor"])
+    def test_non_view_alignment(self, kind: str) -> None:
+        with pytest.raises(ParseError, match="only permitted on view types"):
+            _parse_type(f"{kind}<4xi64, align(1)>")
+
     def test_tile_0d(self) -> None:
         result = _parse_type("tile<f32>")
         assert isinstance(result, ShapedType)
@@ -606,6 +632,26 @@ class TestParseDialectTypes:
         assert inner.name == "test.list"
         assert inner.params[0] == I32
 
+    def test_nested_function_type(self) -> None:
+        text = "test.ref<(test.ref<(i32) -> (f32)>) -> (view<0xf32>)>"
+        result = _parse_type(text, type_registry=self._registry())
+        assert isinstance(result, DialectType)
+        callback = result.params[0]
+        assert isinstance(callback, FunctionType)
+        inner = callback.arg_types[0].params[0]
+        assert inner == FunctionType((I32,), (F32,))
+        assert callback.result_types == (
+            ShapedType(TypeKind.VIEW, F32, (StaticDim(0),)),
+        )
+        assert print_type(result, type_registry=self._registry()) == text
+
+    def test_nested_type_comment_delimiters(self) -> None:
+        result = _parse_type(
+            'test.ref<test.ref<i32 // > < -> " ignored\n>>',
+            type_registry=self._registry(),
+        )
+        assert result.params[0].params == (I32,)
+
     def test_unknown_dotted_type_is_opaque_dialect_type(self) -> None:
         result = _parse_type("hal.unknown", type_registry=self._registry())
         assert isinstance(result, DialectType)
@@ -752,6 +798,9 @@ class TestTypeRoundTrip:
         self._roundtrip("vector<16xf32>")
         self._roundtrip("vector<4x16xf32>")
         self._roundtrip("view<256xi8>")
+        self._roundtrip("view<256xi32, align(1)>")
+        self._roundtrip("view<i64, align(4)>")
+        self._roundtrip("view<2x3x4xf64, align(2)>")
         self._roundtrip("tile<f32>")
 
     def test_buffer_roundtrip(self) -> None:

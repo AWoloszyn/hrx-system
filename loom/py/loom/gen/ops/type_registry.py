@@ -99,6 +99,7 @@ def _translate_type_format_elements(
 ) -> list[str]:
     """Translate a TypeDef's format elements to C initializer strings."""
     from loom.assembly import (
+        AlignmentOf,
         Attr,
         Clause,
         EncodingOf,
@@ -124,6 +125,8 @@ def _translate_type_format_elements(
                 return [f"{{LOOM_TYPE_FMT_SCALAR, {param_index(field)}, 0}}"]
             case EncodingOf(field=field):
                 return [f"{{LOOM_TYPE_FMT_ENCODING, {param_index(field)}, 0}}"]
+            case AlignmentOf(field=field):
+                return [f"{{LOOM_TYPE_FMT_ALIGNMENT, {param_index(field)}, 0}}"]
             case TypeOf(field=field):
                 return [f"{{LOOM_TYPE_FMT_TYPE, {param_index(field)}, 0}}"]
             case Attr(field=field):

@@ -91,8 +91,7 @@ static iree_status_t loom_type_refinement_rebuild_dimensions(
 
   loom_type_t refined = current_type;
   refined.header =
-      loom_type_make_header(loom_type_kind(current_type),
-                            loom_type_element_type(current_type), rank, flags);
+      (current_type.header & ~(UINT32_C(0xF) << 20)) | ((uint32_t)flags << 20);
   refined.dims[0] = 0;
   refined.dims[1] = 0;
 
@@ -123,9 +122,8 @@ static iree_status_t loom_type_refinement_rebuild_dimensions(
 static iree_status_t loom_type_refinement_rebuild_element_or_role(
     loom_type_t current_type, uint8_t element_or_role, loom_type_t* out_type) {
   *out_type = current_type;
-  out_type->header = loom_type_make_header(
-      loom_type_kind(current_type), (loom_scalar_type_t)element_or_role,
-      loom_type_rank(current_type), loom_type_flags(current_type));
+  out_type->header = (current_type.header & ~(UINT32_C(0xFF) << 8)) |
+                     ((uint32_t)element_or_role << 8);
   return iree_ok_status();
 }
 

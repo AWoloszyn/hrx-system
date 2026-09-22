@@ -85,7 +85,7 @@ extern "C" {
 
 #define LOOM_BYTECODE_MAGIC "LOOM"
 #define LOOM_BYTECODE_MAGIC_LENGTH 4
-#define LOOM_BYTECODE_FORMAT_VERSION 37
+#define LOOM_BYTECODE_FORMAT_VERSION 38
 
 #define LOOM_BYTECODE_SOURCE_TRIVIA_LEADING_BLANK_LINE (1u << 0)
 #define LOOM_BYTECODE_SOURCE_TRIVIA_COMMENT_COUNT_SHIFT 1
@@ -352,6 +352,9 @@ typedef enum loom_bytecode_section_kind_e {
 //             1 = static (instance index follows).
 //             Must be 0 for VECTOR.
 //       [encoding_instance: varint] (0 = none, else 1-based instance index)
+//       (VIEW only: [access_alignment: byte])
+//             0 = natural physical scalar alignment; otherwise a positive
+//             power of two no larger than that natural alignment.
 //       For each dim (rank times):
 //         [is_dynamic: byte]      (0 = static, 1 = dynamic)
 //         (if static: [size: varint]))
@@ -431,6 +434,7 @@ typedef enum loom_bytecode_section_kind_e {
 //     Attachment 0 requires reference 0; attachment 1 names a one-based static
 //     ENCODINGS instance; attachment 2 names a zero-based SSA value in scope.
 //     VECTOR requires attachment 0.
+//     VIEW then carries access_alignment (0 = natural, otherwise reduced).
 //     For each dimension: is_dynamic, dimension_payload.
 //     A static payload is its size. A dynamic payload is 0 for an unbound
 //     dimension, otherwise the scope-local SSA value number plus 1.

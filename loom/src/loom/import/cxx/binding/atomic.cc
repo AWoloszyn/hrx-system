@@ -339,8 +339,9 @@ std::optional<Value> AtomicIntrinsic::call(std::span<const Value> arguments,
                                            Storage& storage, cxx::AST* owner,
                                            loom_builder_t* builder,
                                            loom_location_id_t location) const {
-  auto access =
-      storage.dereference(arguments.back().pointer(), element_type_, owner);
+  auto access = storage.dereference(
+      storage.project(arguments.back().pointer(), element_type_, owner),
+      element_type_, owner);
   const int64_t index = 0;
   loom_op_t* op;
   switch (operation_) {
@@ -390,8 +391,9 @@ std::optional<Value> AtomicBuiltin::call(std::span<const Value> arguments,
     return intrinsic_.call(arguments, storage, owner, builder, location);
   }
   if (result_ == Result::Success) {
-    auto access =
-        storage.dereference(arguments[1].pointer(), expected_type_, owner);
+    auto access = storage.dereference(
+        storage.project(arguments[1].pointer(), expected_type_, owner),
+        expected_type_, owner);
     auto expected = storage.load(access, expected_type_, owner);
     std::array<Value, 3> normalized = {Value(expected), arguments[2],
                                        arguments[0]};

@@ -75,23 +75,23 @@ func.def @common_root(%input: buffer, %condition: i1) -> (view<16xf32>) {
 
 // Nested selections reuse the previously selected coordinate instead of
 // reconstructing its provenance from the replacement view.
-func.def @nested_roots(%first: buffer, %second: buffer, %third: buffer, %select_first: i1, %select_third: i1) -> (view<1xi32>) {
-  %base0 = index.constant 0 : offset
-  %base1 = index.constant 4 : offset
-  %base2 = index.constant 8 : offset
-  %first_view = buffer.view %first[%base0] : buffer -> view<1xi32>
-  %second_view = buffer.view %second[%base1] : buffer -> view<1xi32>
-  %third_view = buffer.view %third[%base2] : buffer -> view<1xi32>
-  %pair = scf.select %select_first, %first_view, %second_view : view<1xi32>
-  %selected = scf.select %select_third, %third_view, %pair : view<1xi32>
-  func.return %selected : view<1xi32>
+func.def @nested_packed_roots(%first: buffer, %second: buffer, %third: buffer, %select_first: i1, %select_third: i1) -> (view<1xi32, align(2)>) {
+  %base0 = index.constant 2 : offset
+  %base1 = index.constant 6 : offset
+  %base2 = index.constant 10 : offset
+  %first_view = buffer.view %first[%base0] : buffer -> view<1xi32, align(2)>
+  %second_view = buffer.view %second[%base1] : buffer -> view<1xi32, align(2)>
+  %third_view = buffer.view %third[%base2] : buffer -> view<1xi32, align(2)>
+  %pair = scf.select %select_first, %first_view, %second_view : view<1xi32, align(2)>
+  %selected = scf.select %select_third, %third_view, %pair : view<1xi32, align(2)>
+  func.return %selected : view<1xi32, align(2)>
 }
 
 // ----
-func.def @nested_roots(%first: buffer, %second: buffer, %third: buffer, %select_first: i1, %select_third: i1) -> (view<1xi32>) {
-  %base0 = index.constant 0 : offset
-  %base1 = index.constant 4 : offset
-  %base2 = index.constant 8 : offset
+func.def @nested_packed_roots(%first: buffer, %second: buffer, %third: buffer, %select_first: i1, %select_third: i1) -> (view<1xi32, align(2)>) {
+  %base0 = index.constant 2 : offset
+  %base1 = index.constant 6 : offset
+  %base2 = index.constant 10 : offset
   %pair_root, %pair_offset = scf.if %select_first -> (buffer, offset) {
     scf.yield %first, %base0 : buffer, offset
   } else {
@@ -102,8 +102,8 @@ func.def @nested_roots(%first: buffer, %second: buffer, %third: buffer, %select_
   } else {
     scf.yield %pair_root, %pair_offset : buffer, offset
   }
-  %selected = buffer.view %selected_root[%selected_offset] : buffer -> view<1xi32>
-  func.return %selected : view<1xi32>
+  %selected = buffer.view %selected_root[%selected_offset] : buffer -> view<1xi32, align(2)>
+  func.return %selected : view<1xi32, align(2)>
 }
 
 // ====

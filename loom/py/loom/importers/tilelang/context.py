@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 from loom.builder import ValueRef
@@ -149,10 +149,8 @@ class TileLangConversionContext(SourceImportSession):
         if view_type.encoding is not None:
             return view_type
         encoding = self.storage_encoding_for_buffer(buffer)
-        return ShapedType(
-            view_type.type_kind,
-            view_type.element_type,
-            view_type.dims,
+        return replace(
+            view_type,
             encoding=DynamicEncoding(encoding.id),
         )
 

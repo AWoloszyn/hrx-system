@@ -41,6 +41,8 @@ TEST_F(SourceMemoryPlanTest, DynamicViewOriginRetainsCompleteAddress) {
   EXPECT_EQ(plan.dynamic_terms[0].index, base_offset);
   EXPECT_EQ(plan.dynamic_terms[0].byte_stride, 1);
   EXPECT_EQ(plan.dynamic_view_base_value_id, base_offset);
+  EXPECT_EQ(plan.root_minimum_alignment, 1u);
+  EXPECT_EQ(plan.minimum_alignment, 1u);
 }
 
 TEST_F(SourceMemoryPlanTest, StaticDenseLoadIncludesViewBase) {
@@ -80,9 +82,100 @@ TEST_F(SourceMemoryPlanTest, StaticDenseLoadIncludesViewBase) {
   EXPECT_EQ(plan.static_view_base_byte_offset, 16);
   EXPECT_EQ(plan.dynamic_view_base_value_id, LOOM_VALUE_ID_INVALID);
   EXPECT_EQ(plan.root_minimum_alignment, 1u);
-  EXPECT_EQ(plan.minimum_alignment, 1u);
+  EXPECT_EQ(plan.minimum_alignment, 4u);
   EXPECT_EQ(plan.dynamic_term_count, 0u);
   EXPECT_EQ(plan.dynamic_view_base_term_count, 0u);
+}
+
+TEST_F(SourceMemoryPlanTest, ReducedAlignmentAppliesOnlyToTypedAccess) {
+  const auto buffer = DefineBufferArg();
+  const auto base_offset = DefineOffsetArg();
+  for (uint8_t alignment : {1, 2, 4}) {
+    const auto view_type = loom_type_view_with_alignment(
+        loom_type_shaped_1d(LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_F32,
+                            loom_dim_pack_static(8), 0),
+        alignment);
+    loom_op_t* view_op = nullptr;
+    IREE_ASSERT_OK(loom_buffer_view_build(&builder_, buffer, base_offset,
+                                          view_type, LOOM_LOCATION_UNKNOWN,
+                                          &view_op));
+    const int64_t indices[] = {0};
+    loom_op_t* load_op = nullptr;
+    IREE_ASSERT_OK(loom_vector_load_build(
+        &builder_, 0, 0, loom_buffer_view_result(view_op), nullptr, 0, indices,
+        1, 0, 0, VectorType1D(4), LOOM_LOCATION_UNKNOWN, &load_op));
+    loom_op_t* prefetch_op = nullptr;
+    IREE_ASSERT_OK(loom_view_prefetch_build(
+        &builder_, loom_buffer_view_result(view_op), nullptr, 0, indices, 1,
+        LOOM_VIEW_PREFETCH_INTENT_READ, LOOM_VIEW_PREFETCH_LOCALITY_L2,
+        LOOM_LOCATION_UNKNOWN, &prefetch_op));
+    loom_value_fact_table_t facts = {0};
+    ComputeFacts(&facts);
+    loom_low_source_memory_access_plan_t plan = {};
+    loom_low_source_memory_access_diagnostic_t diagnostic = {};
+    ASSERT_TRUE(BuildPlan(&facts, view_op, &plan, &diagnostic));
+    EXPECT_EQ(plan.minimum_alignment, 1u);
+    EXPECT_EQ(plan.root_minimum_alignment, 1u);
+    ASSERT_TRUE(BuildPlan(&facts, prefetch_op, &plan, &diagnostic));
+    EXPECT_EQ(plan.minimum_alignment, 1u);
+    EXPECT_EQ(plan.root_minimum_alignment, 1u);
+    ASSERT_TRUE(BuildPlan(&facts, load_op, &plan, &diagnostic));
+    EXPECT_EQ(plan.minimum_alignment, alignment);
+    EXPECT_EQ(plan.root_minimum_alignment, 1u);
+    EXPECT_EQ(plan.vector_lane_count, 4u);
+  }
+}
+
+TEST_F(SourceMemoryPlanTest, PackedSubviewRetainsStrongerAddressAlignment) {
+  const auto root = DefineBufferArg();
+  const auto buffer = BuildAligned(root, 64);
+  const auto base = loom_index_constant_result(BuildOffsetConstant(0));
+  for (uint8_t alignment : {1, 2, 4}) {
+    SCOPED_TRACE(alignment);
+    const auto source_type = loom_type_view_with_alignment(
+        loom_type_shaped_1d(LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_F32,
+                            loom_dim_pack_static(32), 0),
+        alignment);
+    const auto subview_type = loom_type_view_with_alignment(
+        loom_type_shaped_1d(LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_F32,
+                            loom_dim_pack_static(16), 0),
+        alignment);
+    loom_op_t* source = nullptr;
+    IREE_ASSERT_OK(loom_buffer_view_build(&builder_, buffer, base, source_type,
+                                          LOOM_LOCATION_UNKNOWN, &source));
+    const int64_t subview_offset = 1;
+    loom_op_t* subview = nullptr;
+    IREE_ASSERT_OK(loom_view_subview_build(
+        &builder_, loom_buffer_view_result(source), nullptr, 0, &subview_offset,
+        1, subview_type, LOOM_LOCATION_UNKNOWN, &subview));
+    const int64_t indices[] = {0, 3, 15};
+    const uint32_t expected_alignments[] = {4, 16, 64};
+    loom_op_t* loads[IREE_ARRAYSIZE(indices)] = {};
+    for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(indices); ++i) {
+      IREE_ASSERT_OK(loom_view_load_build(
+          &builder_, 0, 0, loom_view_subview_result(subview), nullptr, 0,
+          &indices[i], 1, 0, 0, loom_type_scalar(LOOM_SCALAR_TYPE_F32),
+          LOOM_LOCATION_UNKNOWN, &loads[i]));
+    }
+    loom_value_fact_table_t facts = {};
+    ComputeFacts(&facts);
+    loom_low_source_memory_access_plan_t plan = {};
+    loom_low_source_memory_access_diagnostic_t diagnostic = {};
+    ASSERT_TRUE(BuildPlan(&facts, subview, &plan, &diagnostic));
+    EXPECT_EQ(plan.root_minimum_alignment, 64u);
+    EXPECT_EQ(plan.minimum_alignment, 4u);
+    ASSERT_TRUE(BuildViewPlan(&facts, loom_view_subview_result(subview), &plan,
+                              &diagnostic));
+    EXPECT_EQ(plan.minimum_alignment, 4u);
+    for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(indices); ++i) {
+      SCOPED_TRACE(indices[i]);
+      ASSERT_TRUE(BuildPlan(&facts, loads[i], &plan, &diagnostic));
+      EXPECT_EQ(plan.root_value_id, root);
+      EXPECT_EQ(plan.root_minimum_alignment, 64u);
+      EXPECT_EQ(plan.static_byte_offset, (1 + indices[i]) * 4);
+      EXPECT_EQ(plan.minimum_alignment, expected_alignments[i]);
+    }
+  }
 }
 
 TEST_F(SourceMemoryPlanTest, PhysicalByteLoadUsesBufferReferenceAndOffset) {
@@ -113,6 +206,62 @@ TEST_F(SourceMemoryPlanTest, PhysicalByteLoadUsesBufferReferenceAndOffset) {
   EXPECT_EQ(plan.minimum_alignment, 4u);
   EXPECT_EQ(plan.dynamic_term_count, 0u);
 }
+
+class WideAlignmentSourceMemoryPlanTest
+    : public SourceMemoryPlanTest,
+      public ::testing::WithParamInterface<int> {};
+
+TEST_P(WideAlignmentSourceMemoryPlanTest, RetainsPowerOfTwoDivisibility) {
+  const int64_t root_alignment = INT64_C(1) << GetParam();
+  const uint32_t retained_alignment = UINT32_C(1)
+                                      << (GetParam() < 31 ? GetParam() : 31);
+  const loom_value_id_t buffer =
+      BuildAligned(DefineBufferArg(), root_alignment);
+  const int64_t byte_offsets[] = {0, 3, 4, 5, 12, 15, 16};
+  const uint32_t expected_alignments[] = {
+      retained_alignment, 1, 4, 1, 4, 1, 16};
+  const loom_type_t view_type =
+      loom_type_shaped_1d(LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_I8, 1, 0);
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(byte_offsets); ++i) {
+    SCOPED_TRACE(byte_offsets[i]);
+    const loom_value_id_t byte_offset =
+        loom_index_constant_result(BuildOffsetConstant(byte_offsets[i]));
+    loom_op_t* byte_load_op = nullptr;
+    IREE_ASSERT_OK(loom_buffer_load_i8_u_build(
+        &builder_, buffer, byte_offset, LOOM_LOCATION_UNKNOWN, &byte_load_op));
+    loom_op_t* view_op = nullptr;
+    IREE_ASSERT_OK(loom_buffer_view_build(&builder_, buffer, byte_offset,
+                                          view_type, LOOM_LOCATION_UNKNOWN,
+                                          &view_op));
+    const int64_t static_index = 0;
+    loom_op_t* view_load_op = nullptr;
+    IREE_ASSERT_OK(loom_view_load_build(&builder_, 0, /*instance_flags=*/0,
+                                        loom_buffer_view_result(view_op),
+                                        nullptr, 0, &static_index, 1, 0, 0,
+                                        loom_type_scalar(LOOM_SCALAR_TYPE_I8),
+                                        LOOM_LOCATION_UNKNOWN, &view_load_op));
+
+    loom_value_fact_table_t facts = {0};
+    ComputeFacts(&facts);
+    for (const loom_op_t* op : {byte_load_op, view_load_op, view_op}) {
+      loom_low_source_memory_access_plan_t plan = {};
+      loom_low_source_memory_access_diagnostic_t diagnostic = {0};
+      ASSERT_TRUE(BuildPlan(&facts, op, &plan, &diagnostic));
+      EXPECT_EQ(plan.root_minimum_alignment, retained_alignment);
+      EXPECT_EQ(plan.minimum_alignment, expected_alignments[i]);
+    }
+
+    loom_low_source_memory_access_plan_t plan = {};
+    loom_low_source_memory_access_diagnostic_t diagnostic = {0};
+    ASSERT_TRUE(BuildViewPlan(&facts, loom_buffer_view_result(view_op), &plan,
+                              &diagnostic));
+    EXPECT_EQ(plan.root_minimum_alignment, retained_alignment);
+    EXPECT_EQ(plan.minimum_alignment, expected_alignments[i]);
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(RootAlignment, WideAlignmentSourceMemoryPlanTest,
+                         ::testing::Values(4, 31, 32, 40, 62));
 
 TEST_F(SourceMemoryPlanTest, PhysicalByteStoreRetainsDynamicOffset) {
   const loom_value_id_t buffer = DefineBufferArg();

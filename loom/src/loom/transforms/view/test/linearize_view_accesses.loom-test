@@ -213,3 +213,19 @@ func.def @leave_rank1_and_strided_views(%input: buffer, %zero_bytes: offset, %ro
   test.use %dense, %strided : f32, f32
   func.return
 }
+
+// ====
+// RUN: with-checks pass linearize-view-accesses,canonicalize,cse
+
+// Rebuilding a multidimensional view must preserve reduced alignment instead
+// of silently adopting the new type's natural default.
+func.def @linearize_packed_load(%input: buffer, %origin: offset, %row: index, %column: index) {
+  %view = buffer.view %input[%origin] : buffer -> view<4x128xf16, align(1)>
+  %value = view.load %view[%row, %column] : view<4x128xf16, align(1)> -> f16
+  test.use %value : f16
+  func.return
+}
+
+// ----
+CHECK: %view = buffer.view %input[%origin] : buffer -> view<512xf16, align(1)>
+CHECK: %value = view.load %view[*] : view<512xf16, align(1)> -> f16

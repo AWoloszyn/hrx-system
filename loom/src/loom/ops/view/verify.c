@@ -135,6 +135,15 @@ iree_status_t loom_view_subview_verify(const loom_module_t* module,
   loom_attribute_t static_offsets = loom_view_subview_static_offsets(op);
   loom_type_t source_type =
       loom_module_value_type(module, loom_view_subview_source(op));
+  loom_type_t result_type =
+      loom_module_value_type(module, loom_view_subview_result(op));
+  if (loom_type_is_view(source_type) && loom_type_is_view(result_type) &&
+      loom_type_view_alignment(source_type) !=
+          loom_type_view_alignment(result_type)) {
+    return loom_view_emit_operand_constraint(
+        emitter, op, IREE_SV("source"), source_type,
+        IREE_SV("the same element-access alignment as the result view"));
+  }
   return loom_view_verify_index_list_rank(
       module, op, emitter, IREE_SV("source"), source_type, static_offsets,
       loom_view_subview_offsets(op).count);

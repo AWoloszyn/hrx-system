@@ -216,7 +216,8 @@ typedef struct loom_low_source_memory_access_plan_t {
   loom_low_source_memory_address_layout_t address_layout;
   // Source SSA value that represents the storage root.
   loom_value_id_t root_value_id;
-  // Minimum provable byte alignment of the storage root base address.
+  // Minimum provable power-of-two byte alignment of the storage root base
+  // address, capped at the largest power of two representable in uint32_t.
   uint32_t root_minimum_alignment;
   // Comparable alias scope for disjointness proofs, or NONE.
   loom_value_fact_alias_scope_id_t alias_scope_id;
@@ -245,7 +246,10 @@ typedef struct loom_low_source_memory_access_plan_t {
   // |static_view_base_byte_offset|. Unknown when only independent canonical
   // term facts are available.
   loom_value_facts_t dynamic_view_base_byte_facts;
-  // Minimum provable byte alignment of the final accessed address.
+  // Minimum power-of-two byte alignment at this access, combining proved
+  // address facts and the typed access requirement. Carriers, prefetch hints,
+  // and physical-byte operations use only address facts; this never strengthens
+  // the root.
   uint32_t minimum_alignment;
   // Dynamic address terms. The first |dynamic_view_base_term_count| entries
   // belong to the source view base; remaining entries describe indexed access.

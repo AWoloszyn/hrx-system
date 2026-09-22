@@ -236,6 +236,35 @@ class TestShapedTypes:
         assert t.is_all_static
         assert repr(t) == "vector<16xf32>"
 
+    @pytest.mark.parametrize("element", [I1, I8, I32, I64, F16, F32, F64, INDEX])
+    def test_view_alignment_canonicalization(self, element: ScalarType) -> None:
+        natural = ShapedType(TypeKind.VIEW, element, (StaticDim(4),))
+        alignment = max(1, element.bitwidth // 8)
+        explicit = ShapedType(TypeKind.VIEW, element, natural.dims, alignment=alignment)
+        assert explicit == natural
+        assert hash(explicit) == hash(natural)
+        assert explicit.alignment is None
+        assert explicit.access_alignment == alignment
+        assert repr(explicit) == repr(natural)
+        while alignment > 1:
+            alignment //= 2
+            reduced = ShapedType(
+                TypeKind.VIEW, element, natural.dims, alignment=alignment
+            )
+            assert reduced != natural
+            assert reduced.access_alignment == alignment
+            assert f", align({alignment})>" in repr(reduced)
+
+    @pytest.mark.parametrize("alignment", [0, -1, 3, 16, 256, True, 1.5])
+    def test_invalid_view_alignment(self, alignment: object) -> None:
+        with pytest.raises(ValueError, match="positive power of two"):
+            ShapedType(TypeKind.VIEW, I64, (), alignment=alignment)
+
+    @pytest.mark.parametrize("kind", [TypeKind.TILE, TypeKind.TENSOR, TypeKind.VECTOR])
+    def test_non_view_alignment_rejected(self, kind: TypeKind) -> None:
+        with pytest.raises(ValueError, match="only view types"):
+            ShapedType(kind, I32, (StaticDim(4),), alignment=1)
+
     def test_vector_zero_extent_is_empty_not_rank_zero(self) -> None:
         t = ShapedType(TypeKind.VECTOR, F32, (StaticDim(0),))
         assert t.type_kind == TypeKind.VECTOR

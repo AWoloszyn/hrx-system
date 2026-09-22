@@ -104,3 +104,34 @@ static_assert(sizeof(VectorPacket) == 17 && alignof(VectorPacket) == 1);
 void packed_vector_kernel(const VectorPacket* input, VectorPacket* output) {
   output->value = input->value;
 }
+
+struct [[gnu::packed]] ArrayPacket {
+  // The two-dimensional array starts at a byte-aligned origin.
+  unsigned char tag;
+  // Each projection retains the enclosing record's reduced alignment.
+  unsigned values[2][3];
+};
+static_assert(sizeof(ArrayPacket) == 25 && alignof(ArrayPacket) == 1);
+
+void packed_array_copy(const ArrayPacket* input, volatile ArrayPacket* output,
+                       unsigned* observations) {
+  for (unsigned row = 0; row < 2; ++row) {
+    for (unsigned column = 0; column < 3; ++column) {
+      output->values[row][column] = input->values[row][column];
+    }
+  }
+  unsigned object = 0, row = 0, column = 0;
+  output[object++].values[row++][column++] += 1u;
+  unsigned reverse = 0;
+  (reverse++)[output[0].values[1]] += 2u;
+  observations[0] = object;
+  observations[1] = row;
+  observations[2] = column;
+  observations[3] = reverse;
+}
+
+[[loom::kernel, loom::workgroup_size(1, 1, 1), loom::workgroup_count(1, 1, 1)]]
+void packed_array_kernel(const ArrayPacket* input, volatile ArrayPacket* output,
+                         unsigned* observations) {
+  packed_array_copy(input, output, observations);
+}

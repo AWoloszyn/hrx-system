@@ -557,6 +557,8 @@ static iree_status_t loom_linearize_view_accesses_get_linear_view(
       LOOM_TYPE_VIEW, loom_type_element_type(view_type),
       loom_dim_pack_static(linear_length), view_type.encoding_id);
   linear_type.encoding_flags = view_type.encoding_flags;
+  linear_type = loom_type_view_with_alignment(
+      linear_type, loom_type_view_alignment(view_type));
 
   loom_builder_t* builder = &context->rewriter->builder;
   loom_builder_ip_t saved_ip = loom_builder_save(builder);

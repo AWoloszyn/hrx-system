@@ -93,6 +93,11 @@ def test_generated_reference_links_resolve() -> None:
 def test_reference_renders_semantics_and_canonical_examples() -> None:
     files = generate_reference_files()
 
+    view = files["types/view.md"]
+    assert "| `alignment` | alignment | optional |" in view
+    assert "Omission requires natural alignment." in view
+    assert "only to executed element accesses." in view
+
     vector_load = files["dialects/vector/ops/load.md"]
     assert "Load a vector footprint" in vector_load
     assert "`MemoryAccess`" in vector_load

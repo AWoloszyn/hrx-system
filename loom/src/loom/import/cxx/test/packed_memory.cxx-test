@@ -16,8 +16,8 @@ func.def public @read(%records: buffer, %records_byte_offset: offset, %index: i3
   %10 = index.cast %9 : i64 to offset
   %11 = index.constant 1 : offset
   %12 = index.add %10, %11 : offset
-  %13 = buffer.view %records[%12] : buffer -> view<1xi32>
-  %value = view.load %13[0] : view<1xi32> -> i32
+  %13 = buffer.view %records[%12] : buffer -> view<1xi32, align(1)>
+  %value = view.load %13[0] : view<1xi32, align(1)> -> i32
   func.return %value : i32
 }
 
@@ -35,11 +35,11 @@ func.def public @update(%records: buffer, %records_byte_offset: offset) {
   %10 = index.cast %9 : i64 to offset
   %11 = index.constant 1 : offset
   %12 = index.add %10, %11 : offset
-  %13 = buffer.view %records[%12] : buffer -> view<1xi32>
-  %14 = view.load %13[0] : view<1xi32> -> i32
+  %13 = buffer.view %records[%12] : buffer -> view<1xi32, align(1)>
+  %14 = view.load %13[0] : view<1xi32, align(1)> -> i32
   %16 = scalar.constant 1 : i32
   %17 = scalar.shrui %14, %16 : i32
-  view.store %17, %13[0] : i32, view<1xi32>
+  view.store %17, %13[0] : i32, view<1xi32, align(1)>
   func.return
 }
 
@@ -63,10 +63,10 @@ func.def public @update(%records: buffer, %records_byte_offset: offset) {
   %12 = index.add %10, %11 : offset
   %13 = index.constant 4 : offset
   %14 = index.add %12, %13 : offset
-  %15 = buffer.view %records[%14] : buffer -> view<1xf32>
-  %16 = view.load<volatile> %15[0] : view<1xf32> -> f32
+  %15 = buffer.view %records[%14] : buffer -> view<1xf32, align(2)>
+  %16 = view.load<volatile> %15[0] : view<1xf32, align(2)> -> f32
   %17 = scalar.addf %16, %2 : f32
-  view.store<volatile> %17, %15[0] : f32, view<1xf32>
+  view.store<volatile> %17, %15[0] : f32, view<1xf32, align(2)>
   func.return
 }
 
@@ -89,16 +89,16 @@ func.def public @copy(%output: buffer, %output_byte_offset: offset, %input: buff
   %11 = index.cast %10 : i64 to offset
   %12 = index.constant 1 : offset
   %13 = index.add %11, %12 : offset
-  %14 = buffer.view %input[%13] : buffer -> view<1xf64>
-  %value = view.load %14[0] : view<1xf64> -> f64
+  %14 = buffer.view %input[%13] : buffer -> view<1xf64, align(1)>
+  %value = view.load %14[0] : view<1xf64, align(1)> -> f64
   %27 = scalar.constant 16 : i64
   %20 = index.cast %output_byte_offset : offset to i64
   %21 = scalar.addi %20, %27 : i64
   %22 = scalar.assume %21 [range(%21, 0, 9223372036854775807)] : i64
   %23 = index.cast %22 : i64 to offset
   %25 = index.add %23, %12 : offset
-  %26 = buffer.view %output[%25] : buffer -> view<1xf64>
-  view.store %value, %26[0] : f64, view<1xf64>
+  %26 = buffer.view %output[%25] : buffer -> view<1xf64, align(1)>
+  view.store %value, %26[0] : f64, view<1xf64, align(1)>
   func.return
 }
 
@@ -112,10 +112,10 @@ void copy(Record* output, const Record* input) { output->value = input->value; }
 func.def public @copy(%output: buffer, %output_byte_offset: offset, %input: buffer, %input_byte_offset: offset) {
   %4 = index.constant 1 : offset
   %5 = index.add %input_byte_offset, %4 : offset
-  %6 = buffer.view %input[%5] : buffer -> view<4xi32>
-  %value = vector.load %6[0] : view<4xi32> -> vector<4xi32>
+  %6 = buffer.view %input[%5] : buffer -> view<4xi32, align(1)>
+  %value = vector.load %6[0] : view<4xi32, align(1)> -> vector<4xi32>
   %9 = index.add %output_byte_offset, %4 : offset
-  %10 = buffer.view %output[%9] : buffer -> view<4xi32>
-  vector.store %value, %10[0] : vector<4xi32>, view<4xi32>
+  %10 = buffer.view %output[%9] : buffer -> view<4xi32, align(1)>
+  vector.store %value, %10[0] : vector<4xi32>, view<4xi32, align(1)>
   func.return
 }

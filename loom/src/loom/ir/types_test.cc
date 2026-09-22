@@ -103,6 +103,38 @@ TEST(TypesTest, FunctionTypeEqualAndHashAreStructural) {
   EXPECT_FALSE(loom_type_equal(first.get(), different.get()));
 }
 
+TEST(TypesTest, ViewAccessAlignmentHasCanonicalTypeIdentity) {
+  for (loom_scalar_type_t element = LOOM_SCALAR_TYPE_INDEX;
+       element < LOOM_SCALAR_TYPE_COUNT_; ++element) {
+    const loom_type_t natural = loom_type_shaped_1d(LOOM_TYPE_VIEW, element,
+                                                    loom_dim_pack_static(4), 0);
+    const uint8_t natural_alignment = loom_type_view_natural_alignment(natural);
+    EXPECT_EQ(loom_type_view_alignment(natural), natural_alignment);
+    EXPECT_EQ(loom_type_view_alignment_override(natural), 0);
+    const auto explicit_natural =
+        loom_type_view_with_alignment(natural, natural_alignment);
+    EXPECT_TRUE(loom_type_equal(natural, explicit_natural));
+    EXPECT_EQ(loom_type_hash(natural), loom_type_hash(explicit_natural));
+    for (uint8_t alignment = 1; alignment < natural_alignment; alignment *= 2) {
+      EXPECT_TRUE(loom_type_view_alignment_is_valid(element, alignment));
+      const auto reduced = loom_type_view_with_alignment(natural, alignment);
+      EXPECT_EQ(loom_type_view_alignment(reduced), alignment);
+      EXPECT_EQ(loom_type_view_alignment_override(reduced), alignment);
+      EXPECT_FALSE(loom_type_equal(natural, reduced));
+      const auto natural_signature =
+          BuildFunctionType(&natural, 1, &natural, 1);
+      const auto reduced_signature =
+          BuildFunctionType(&reduced, 1, &reduced, 1);
+      EXPECT_FALSE(
+          loom_type_equal(natural_signature.get(), reduced_signature.get()));
+    }
+    for (uint64_t invalid :
+         {UINT64_C(0), UINT64_C(3), UINT64_C(16), UINT64_C(256), UINT64_MAX}) {
+      EXPECT_FALSE(loom_type_view_alignment_is_valid(element, invalid));
+    }
+  }
+}
+
 TEST(TypesTest, SharedTypeSequencesKeepStructuralOwnerChecks) {
   const auto i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   const auto f32 = loom_type_scalar(LOOM_SCALAR_TYPE_F32);
@@ -755,6 +787,34 @@ TEST_F(ModuleTypesTest, RegisterValueTypeParticipatesInStructuralLifecycle) {
   EXPECT_EQ(loom_type_hash_after_value_remap(module_, source, &remap),
             loom_type_hash_after_value_remap(module_, target, nullptr));
   EXPECT_FALSE(loom_type_equal(source, target));
+}
+
+TEST_F(ModuleTypesTest, ValueRemapPreservesViewAccessAlignment) {
+  const auto source = loom_type_view_with_alignment(
+      loom_type_shaped_1d(LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_I32,
+                          loom_dim_pack_dynamic(7), 0),
+      1);
+  const auto natural_target = loom_type_shaped_1d(
+      LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_I32, loom_dim_pack_dynamic(9), 0);
+  const auto target = loom_type_view_with_alignment(natural_target, 1);
+  loom_value_id_t source_values[] = {7};
+  loom_value_id_t target_values[] = {9};
+  const loom_type_value_remap_t remap = {source_values, target_values,
+                                         IREE_ARRAYSIZE(source_values)};
+  EXPECT_TRUE(
+      loom_type_equal_after_value_remap(module_, source, target, &remap));
+  EXPECT_EQ(loom_type_hash_after_value_remap(module_, source, &remap),
+            loom_type_hash_after_value_remap(module_, target, nullptr));
+  EXPECT_FALSE(loom_type_equal_after_value_remap(module_, source,
+                                                 natural_target, &remap));
+  const auto source_signature = BuildFunctionType(&source, 1, &source, 1);
+  const auto target_signature = BuildFunctionType(&target, 1, &target, 1);
+  const auto natural_signature =
+      BuildFunctionType(&natural_target, 1, &natural_target, 1);
+  EXPECT_TRUE(loom_type_equal_after_value_remap(
+      module_, source_signature.get(), target_signature.get(), &remap));
+  EXPECT_FALSE(loom_type_equal_after_value_remap(
+      module_, source_signature.get(), natural_signature.get(), &remap));
 }
 
 TEST_F(ModuleTypesTest, ValueRemapComposesDiscontiguousSpans) {

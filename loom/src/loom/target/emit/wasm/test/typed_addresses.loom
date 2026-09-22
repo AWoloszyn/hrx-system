@@ -1,5 +1,22 @@
 wasm.target<simd128> @target
 
+// Packed requirements survive slicing and the callable boundary. No pointer
+// origin or index divisibility is needed for these ordinary unaligned accesses.
+func.def inline target(@target) @exchange_packed_view(%view: view<8xi32, align(1)>, %position: index, %value: i32) -> (i32) where [range(%position, 0, 7)] {
+  %previous = view.load %view[%position] : view<8xi32, align(1)> -> i32
+  view.store %value, %view[%position] : i32, view<8xi32, align(1)>
+  func.return %previous : i32
+}
+
+func.def public target(@target) @exchange_packed(%buffer: buffer, %origin_input: offset, %position_input: index, %value: i32) -> (i32) {
+  %origin = index.assume %origin_input [range(%origin_input, 0, 7)] : offset
+  %position = index.assume %position_input [range(%position_input, 0, 7)] : index
+  %view = buffer.view %buffer[%origin] : buffer -> view<16xi32, align(1)>
+  %window = view.subview %view[2] : view<16xi32, align(1)> -> view<8xi32, align(1)>
+  %previous = func.call @exchange_packed_view(%window, %position, %value) : (view<8xi32, align(1)>, index, i32) -> (i32)
+  func.return %previous : i32
+}
+
 func.def public target(@target) @exchange_wide_origin(%buffer: buffer, %base_input: i64, %position_input: index, %value: i32) -> (i32) {
   %aligned_buffer = buffer.assume.alignment %buffer {minimum_alignment = 8} : buffer
   %wide_base = scalar.assume %base_input [range(%base_input, 0, 128), mul(%base_input, 8)] : i64
