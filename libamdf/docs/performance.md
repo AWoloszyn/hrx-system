@@ -37,6 +37,37 @@ planning storage scales with the declared consumer set. The result is sufficient
 for each successfully admitted backing with matching construction inputs, so
 recording and submission can reuse it without querying individual bindings.
 
+## Native storage and borrowed views
+
+Queue capacity controls preparation cost as well as admission. The native
+providers establish all packet and response storage before returning a queue;
+they do not allocate another object when a submission claims a slot.
+
+| Provider | Native storage for a pending capacity of N |
+| --- | --- |
+| Linux XDNA DRM | N page-sized command BOs and mappings. The submission ABI names a BO without a byte offset; deferred kernel processing reads and updates that BO through completion. Independently pending packets therefore require distinct BO identities. |
+| Windows XDNA MCDM | One fixed-stride command allocation and one compact response allocation. Commands use allocation-relative addresses; each response occupies an eight-byte cell. The response allocation has a distinct native role. |
+| Windows GPU WDDM | One prepared native queue with reusable submission metadata and a wait event. Pending capacity needs fence counters, not N native command allocations. |
+
+These counts exclude context initialization and caller-owned instruction/data
+memory. At XDNA's default capacity of 128, Linux command backing occupies
+512 KiB across 128 BOs on a system with 4 KiB pages. Windows XDNA allocates
+1 MiB for its current 8192-byte transport stride and one 4 KiB page for
+responses. Explicitly requesting 4096 slots costs 16 MiB on Linux or 32 MiB
+plus 32 KiB on Windows. Fixed backing removes per-slot native allocation calls;
+it does not make the byte cost independent of capacity. Transport storage
+remains live until checked retirement permits reuse, even when the publication
+call has returned.
+
+Host-visible memory already owns its persistent native mapping. Creating a
+public host view allocates its one metadata record and borrows that mapping;
+the GPU and XDNA providers allocate no second native view record. Creating a
+host producer view of a Linux GPU user queue likewise borrows the queue's
+established ring, control and doorbell mappings. Releasing a view releases no
+backing; the caller releases views before destroying their owner. Cache
+operations translate the view range to the backing once, then apply its
+established recipe.
+
 ## Synchronization is path-specific
 
 Kernel publication and retirement use atomic ownership state. A competing
@@ -49,10 +80,12 @@ adds a mutex to every handle or a reference-count operation to every metadata
 read changes the steady-state contract.
 
 GPU and XDNA kernel queues have a configurable pending-submission capacity,
-defaulting to 4096. The native publication claim lasts only through the driver
-call; it does not serialize submissions against execution completion. Accepted and
-checked-retired fence points account for the pending window without a
-per-submission allocation, command copy, or memory-retention list. When the
+defaulting to 4096 for GPUs and 128 for XDNA. Work scheduled within persistent
+programs does not consume additional kernel submission slots. The native
+publication claim lasts only through the driver call; it does not serialize
+submissions against execution completion. Accepted and checked-retired fence
+points account for the pending window without a per-submission allocation,
+command copy, or memory-retention list. When the
 window fills, submission refreshes native progress without waiting and reclaims
 completed credits before returning `BUSY` if capacity is still unavailable.
 GPU queues need only the fence counters. XDNA additionally retains preallocated

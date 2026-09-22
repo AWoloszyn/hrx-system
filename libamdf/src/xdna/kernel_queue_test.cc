@@ -228,12 +228,20 @@ class XdnaKernelQueueTest : public ::testing::Test {
   uint64_t submission = 0;
 };
 
-TEST_F(XdnaKernelQueueTest, DefaultCapacityHoldsAnEntirePendingWindow) {
+class XdnaKernelQueueCapacityTest
+    : public XdnaKernelQueueTest,
+      public ::testing::WithParamInterface<uint32_t> {};
+
+TEST_P(XdnaKernelQueueCapacityTest, HoldsAnEntirePendingWindow) {
+  ASSERT_EQ(CreateQueue(GetParam()), AMDF_STATUS_OK);
   amdf_kernel_queue_info_t info = {};
   info.type = AMDF_STRUCTURE_TYPE_KERNEL_QUEUE_INFO;
   info.structure_size = sizeof(info);
   ASSERT_EQ(amdf_kernel_queue_query_info(queue, &info), AMDF_STATUS_OK);
   ASSERT_GT(info.maximum_pending_submission_count, 1u);
+  if (GetParam() != 0) {
+    ASSERT_EQ(info.maximum_pending_submission_count, GetParam());
+  }
   uint64_t last = 0;
   for (uint32_t i = 0; i < info.maximum_pending_submission_count; ++i) {
     ASSERT_EQ(SubmitCommand(&last), AMDF_STATUS_OK);
@@ -250,6 +258,9 @@ TEST_F(XdnaKernelQueueTest, DefaultCapacityHoldsAnEntirePendingWindow) {
     EXPECT_EQ(slot.retirement_count, 1u);
   }
 }
+
+INSTANTIATE_TEST_SUITE_P(DefaultAndExplicit, XdnaKernelQueueCapacityTest,
+                         ::testing::Values(0u, 4096u));
 
 TEST_F(XdnaKernelQueueTest, WrapsAndReclaimsResultsWithoutHostWaits) {
   ASSERT_EQ(CreateQueue(3), AMDF_STATUS_OK);

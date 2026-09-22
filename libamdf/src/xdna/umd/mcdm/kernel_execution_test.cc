@@ -12,6 +12,7 @@
 
 #include "gtest/gtest.h"
 #include "libamdf/src/allocator.h"
+#include "libamdf/src/xdna/umd/kernel_queue.h"
 #include "libamdf/src/xdna/umd/mcdm/context.h"
 #include "libamdf/src/xdna/umd/memory.h"
 
@@ -464,6 +465,42 @@ class WindowsXdnaKernelExecutionTest
   // Caller-owned auto-reset wake destination, closed after native teardown.
   HANDLE event_ = nullptr;
 };
+
+TEST_P(WindowsXdnaKernelExecutionTest, QueueLeasesReuseContextWithoutMetadata) {
+  amdf_xdna_umd_memory_result_t result = {};
+  ASSERT_EQ(amdf_xdna_umd_memory_prepare_private(&context_, &profile_, &create_,
+                                                 &memory_, &result),
+            AMDF_STATUS_OK);
+  device_.host_allocator.allocate = [](void*, uint64_t, uint64_t) -> void* {
+    ADD_FAILURE() << "the queue lease needs no additional host allocation";
+    return nullptr;
+  };
+  uint64_t previous_submission = 0;
+  for (uint32_t round = 0; round < 2; ++round) {
+    amdf_xdna_umd_kernel_queue_t* queue = nullptr;
+    ASSERT_EQ(amdf_xdna_umd_kernel_queue_create(&context_, 2, &queue),
+              AMDF_STATUS_OK);
+    auto* const sentinel =
+        reinterpret_cast<amdf_xdna_umd_kernel_queue_t*>(uintptr_t{1});
+    amdf_xdna_umd_kernel_queue_t* rejected_queue = sentinel;
+    EXPECT_EQ(amdf_xdna_umd_kernel_queue_create(&context_, 2, &rejected_queue),
+              amdf_make_api_status(AMDF_STATUS_CODE_RESOURCE_EXHAUSTED));
+    EXPECT_EQ(rejected_queue, sentinel);
+    uint64_t submission = 0;
+    EXPECT_EQ(
+        amdf_xdna_umd_kernel_queue_submit(
+            queue, 1, result.device_address + round * 64, 64, &submission),
+        AMDF_STATUS_OK);
+    EXPECT_GT(submission, previous_submission);
+    EXPECT_EQ(amdf_xdna_umd_kernel_queue_query_progress(queue), submission);
+    amdf_xdna_umd_kernel_queue_retire_command(queue, 1);
+    EXPECT_EQ(amdf_xdna_umd_kernel_queue_query_terminal_status(queue),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(native_.instruction_address, result.device_address + round * 64);
+    EXPECT_EQ(amdf_xdna_umd_kernel_queue_destroy(queue), AMDF_STATUS_OK);
+    previous_submission = submission;
+  }
+}
 
 TEST_P(WindowsXdnaKernelExecutionTest,
        NotificationsBorrowCallerEventWithoutConsumingResults) {

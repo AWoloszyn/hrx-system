@@ -127,10 +127,15 @@ amdf_status_t publish_instructions(
 
 Queues admit one instruction range per submission and a configurable number of
 unretired submissions. Set `maximum_pending_submission_count` at queue creation;
-zero selects the default of 4096, and `kernel_queue_query_info` reports the
+zero selects the default of 128, and `kernel_queue_query_info` reports the
 effective capacity. The library publication path performs no allocation,
 instruction parsing, relocation, argument resolution, native submission retry,
 sleep or host wait.
+
+The default limits native transport preparation cost while accommodating
+overlapped launches. Applications with deeper host-driven pipelines can request
+a larger window explicitly. Work scheduled within a persistent program does
+not consume additional kernel submission slots.
 
 The queue preallocates native packet and result storage for the complete window.
 Completed slots are reclaimed when submission reaches that bound, without an

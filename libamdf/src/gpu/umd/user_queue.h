@@ -94,6 +94,8 @@ amdf_status_t amdf_gpu_umd_user_queue_create(
 
 // Maps one queue into the host when `producer_device` is NULL, or into the
 // exact producer device otherwise. Failure leaves both outputs unchanged.
+// A host view borrows queue-owned mappings without allocation or native calls.
+// The common mapping owner keeps the queue live for the borrow's lifetime.
 amdf_status_t amdf_gpu_umd_user_queue_map(
     amdf_gpu_umd_user_queue_t* queue, amdf_gpu_umd_device_t* producer_device,
     amdf_gpu_umd_user_queue_mapping_t** out_mapping,

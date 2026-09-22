@@ -250,7 +250,7 @@ amdf_status_t AMDF_CALL amdf_xdna_kernel_queue_create(
   const uint32_t capacity =
       create_info->maximum_pending_submission_count != 0
           ? create_info->maximum_pending_submission_count
-          : AMDF_KERNEL_QUEUE_DEFAULT_PENDING_SUBMISSION_COUNT;
+          : AMDF_XDNA_KERNEL_QUEUE_DEFAULT_PENDING_SUBMISSION_COUNT;
   const size_t slot_count = capacity;
   if (slot_count >
       (SIZE_MAX - sizeof(*queue)) / sizeof(queue->native_submissions[0])) {

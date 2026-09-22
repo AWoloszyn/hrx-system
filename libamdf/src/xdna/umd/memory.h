@@ -127,7 +127,9 @@ amdf_status_t amdf_xdna_umd_memory_destroy(amdf_xdna_umd_memory_t* memory);
 // the caller preserves any separately owned backing those resources can reach.
 void amdf_xdna_umd_memory_abandon(amdf_xdna_umd_memory_t* memory);
 
-// Creates one explicit host mapping.
+// Borrows a view of the memory's persistent native host mapping. Current native
+// providers need no allocation or system call; the common host view owns the
+// borrow and keeps the memory live by caller contract, not by reference count.
 amdf_status_t amdf_xdna_umd_memory_map(
     amdf_xdna_umd_memory_t* memory,
     const amdf_host_mapping_capabilities_t* capabilities,
@@ -135,10 +137,11 @@ amdf_status_t amdf_xdna_umd_memory_map(
     amdf_xdna_umd_host_mapping_t** out_mapping,
     amdf_xdna_umd_host_mapping_result_t* out_result);
 
-// Performs one host cache ownership transition.
+// Performs one host cache operation over a validated memory-relative range.
+// The common mapping boundary translates its view-relative offset once.
 amdf_status_t amdf_xdna_umd_host_mapping_cache_control(
     amdf_xdna_umd_host_mapping_t* mapping,
-    amdf_host_cache_operation_t operation, uint64_t byte_offset,
+    amdf_host_cache_operation_t operation, uint64_t memory_byte_offset,
     uint64_t byte_length);
 
 // Releases a lightweight host view; its memory owns the native mapping.

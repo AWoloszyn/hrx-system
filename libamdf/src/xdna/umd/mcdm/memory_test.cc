@@ -52,7 +52,7 @@ struct FakeKmtState {
   uint32_t destroy_failures_remaining = 0;
   // Real host backing borrowed by the modeled native allocation.
   const void* host_pointer = nullptr;
-  // Memory and host-view metadata returned to the host allocator.
+  // Memory metadata returned to the host allocator.
   uint32_t metadata_free_count = 0;
   // Flags observed in the residency request.
   D3DDDI_MAKERESIDENT_FLAGS resident_flags = {};
@@ -278,14 +278,60 @@ TEST_F(WindowsXdnaMemoryTest, CompletesOnlyAfterMapAndOrdinaryResidency) {
     EXPECT_EQ(actual.range_granularity, expected.range_granularity);
   }
   EXPECT_TRUE(amdf_status_is_ok(amdf_xdna_umd_host_mapping_cache_control(
-      mapping, AMDF_HOST_CACHE_OPERATION_FLUSH, 0, map_result.byte_length)));
+      mapping, AMDF_HOST_CACHE_OPERATION_FLUSH, map_info.byte_offset,
+      map_result.byte_length)));
   EXPECT_TRUE(amdf_status_is_ok(amdf_xdna_umd_host_mapping_cache_control(
-      mapping, AMDF_HOST_CACHE_OPERATION_INVALIDATE, 0,
+      mapping, AMDF_HOST_CACHE_OPERATION_INVALIDATE, map_info.byte_offset,
       map_result.byte_length)));
   amdf_xdna_umd_host_mapping_destroy(mapping);
 
   EXPECT_TRUE(amdf_status_is_ok(amdf_xdna_umd_memory_destroy(memory)));
   EXPECT_EQ(state_.operations.back(), Operation::kDestroy);
+}
+
+TEST_F(WindowsXdnaMemoryTest, BorrowsIndependentSubrangesWithoutAllocating) {
+  amdf_xdna_umd_memory_t* memory = nullptr;
+  amdf_xdna_umd_memory_result_t result = {};
+  ASSERT_EQ(amdf_xdna_umd_memory_prepare(&device_, &profile_, &create_info_,
+                                         &memory, &result),
+            AMDF_STATUS_OK);
+  device_.host_allocator.allocate = [](void*, uint64_t, uint64_t) -> void* {
+    ADD_FAILURE() << "a persistent native host view requires no allocation";
+    return nullptr;
+  };
+  const size_t native_operation_count = state_.operations.size();
+  amdf_memory_map_info_t request = {};
+  request.byte_length = 64;
+  request.flags = AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE;
+  amdf_xdna_umd_host_mapping_t* mappings[2] = {};
+  amdf_xdna_umd_host_mapping_result_t views[2] = {};
+  for (size_t i = 0; i < 2; ++i) {
+    request.byte_offset = 128 + i * 256;
+    ASSERT_EQ(amdf_xdna_umd_memory_map(memory, &profile_.host_mapping, &request,
+                                       &mappings[i], &views[i]),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(
+        views[i].pointer,
+        static_cast<const uint8_t*>(state_.host_pointer) + request.byte_offset);
+    EXPECT_EQ(views[i].byte_length, request.byte_length);
+    std::memset(views[i].pointer, 0xA0 + i, request.byte_length);
+    EXPECT_EQ(amdf_xdna_umd_host_mapping_cache_control(
+                  mappings[i], AMDF_HOST_CACHE_OPERATION_FLUSH,
+                  request.byte_offset, request.byte_length),
+              AMDF_STATUS_OK);
+  }
+  amdf_xdna_umd_host_mapping_destroy(mappings[0]);
+  EXPECT_EQ(amdf_xdna_umd_host_mapping_cache_control(
+                mappings[1], AMDF_HOST_CACHE_OPERATION_INVALIDATE, 384, 64),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[63], 0xA1);
+  amdf_xdna_umd_host_mapping_destroy(mappings[1]);
+  EXPECT_EQ(static_cast<const uint8_t*>(state_.host_pointer)[128], 0xA0);
+  EXPECT_EQ(static_cast<const uint8_t*>(state_.host_pointer)[384], 0xA1);
+  EXPECT_EQ(state_.operations.size(), native_operation_count);
+  EXPECT_EQ(state_.metadata_free_count, 0u);
+  EXPECT_EQ(amdf_xdna_umd_memory_destroy(memory), AMDF_STATUS_OK);
+  EXPECT_EQ(state_.metadata_free_count, 1u);
 }
 
 TEST_F(WindowsXdnaMemoryTest, ExposesExactSystemMemoryProfile) {

@@ -269,10 +269,8 @@ iree_cc_library(
     "kernel_queue.c"
   DEPS
     ::context_state
-    ::device_state
     ::kernel_execution
     amdf::headers
-    libamdf::src::allocator
     libamdf::src::xdna::umd::kernel_queue
   PUBLIC
 )
@@ -428,12 +426,14 @@ iree_cc_test(
     ::context_state
     ::device_state
     ::kernel_execution
+    ::kernel_queue
     ::memory
     amdf::headers
     iree::third_party::google_test
     iree::third_party::google_test_main
     libamdf::src::allocator
     libamdf::src::xdna::device_profile
+    libamdf::src::xdna::umd::kernel_queue
     libamdf::src::xdna::umd::memory
   LABELS
     "iree-build-requirement=libamdf"

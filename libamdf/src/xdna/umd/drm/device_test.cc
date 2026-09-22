@@ -287,8 +287,8 @@ TEST_P(LinuxXdnaDeviceTest, MemoryDoesNotDependOnSchedulingContexts) {
   EXPECT_EQ(views[0].pointer, views[1].pointer);
   std::memset(views[0].pointer, 0xA5, map_info.byte_length);
   ASSERT_EQ(amdf_xdna_umd_host_mapping_cache_control(
-                mappings[0], AMDF_HOST_CACHE_OPERATION_FLUSH, 0,
-                map_info.byte_length),
+                mappings[0], AMDF_HOST_CACHE_OPERATION_FLUSH,
+                map_info.byte_offset, map_info.byte_length),
             AMDF_STATUS_OK);
   amdf_xdna_umd_host_mapping_destroy(mappings[0]);
   mappings[0] = nullptr;
@@ -304,8 +304,8 @@ TEST_P(LinuxXdnaDeviceTest, MemoryDoesNotDependOnSchedulingContexts) {
   EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[0], 0xA5);
   EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[4095], 0xA5);
   ASSERT_EQ(amdf_xdna_umd_host_mapping_cache_control(
-                mappings[1], AMDF_HOST_CACHE_OPERATION_INVALIDATE, 0,
-                map_info.byte_length),
+                mappings[1], AMDF_HOST_CACHE_OPERATION_INVALIDATE,
+                map_info.byte_offset, map_info.byte_length),
             AMDF_STATUS_OK);
   EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[4095], 0xA5);
 

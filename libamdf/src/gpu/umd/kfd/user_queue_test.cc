@@ -484,6 +484,39 @@ TEST_F(KfdUserQueueTest, PublishesExactNativeQueueAndHostMapping) {
       0);
 }
 
+TEST_F(KfdUserQueueTest, BorrowsExistingHostMappingsWithoutAllocating) {
+  ASSERT_NO_FATAL_FAILURE(CreateQueue());
+  device_.host_allocator.allocate = [](void*, uint64_t, uint64_t) -> void* {
+    ADD_FAILURE() << "queue-owned host mappings require no new allocation";
+    return nullptr;
+  };
+  ASSERT_NO_FATAL_FAILURE(MapQueue());
+  amdf_gpu_umd_user_queue_mapping_t* second_mapping = nullptr;
+  amdf_gpu_umd_user_queue_mapping_result_t second_result = {};
+  ASSERT_EQ(amdf_gpu_umd_user_queue_map(queue_, nullptr, &second_mapping,
+                                        &second_result),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(second_result.ring_address, mapping_result_.ring_address);
+  EXPECT_EQ(second_result.read_index_address,
+            mapping_result_.read_index_address);
+  EXPECT_EQ(second_result.write_index_address,
+            mapping_result_.write_index_address);
+  EXPECT_EQ(second_result.doorbell_address, mapping_result_.doorbell_address);
+  EXPECT_EQ(amdf_gpu_umd_user_queue_mapping_destroy(second_mapping),
+            AMDF_STATUS_OK);
+  // Releasing either borrow must leave the queue's control page and doorbell
+  // live for the other. The fake native dependency consumes no commands.
+  amdf_atomic_uint64_store_release(WriteIndex(), 7);
+  amdf_atomic_uint64_store_release(ReadIndex(), 3);
+  amdf_user_queue_status_t status = {};
+  ASSERT_EQ(amdf_gpu_umd_user_queue_query_status(queue_, &status),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(status.producer_index, 7u);
+  EXPECT_EQ(status.consumed_index, 3u);
+  EXPECT_EQ(native_state_.buffer_destroy_count, 0);
+  EXPECT_EQ(native_state_.doorbell_unmap_count, 0);
+}
+
 TEST_F(KfdUserQueueTest, ComputeStorageUsesReportedTopologyAcrossGfx11) {
   device_.topology.properties.gfx_ip = {11, 0, 0};
   device_.topology.properties.compute.compute_unit_count = 3;

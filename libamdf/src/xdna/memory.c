@@ -60,8 +60,9 @@ static amdf_status_t amdf_xdna_host_mapping_cache_control(
     amdf_host_mapping_t* base_mapping, amdf_host_cache_operation_t operation,
     uint64_t byte_offset, uint64_t byte_length) {
   amdf_xdna_host_mapping_t* mapping = (amdf_xdna_host_mapping_t*)base_mapping;
-  return amdf_xdna_umd_host_mapping_cache_control(mapping->umd, operation,
-                                                  byte_offset, byte_length);
+  return amdf_xdna_umd_host_mapping_cache_control(
+      mapping->umd, operation,
+      base_mapping->info.memory_byte_offset + byte_offset, byte_length);
 }
 
 static void amdf_xdna_host_mapping_destroy_native(

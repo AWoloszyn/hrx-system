@@ -59,12 +59,12 @@ and scheduling stay above the library. XDNA data memory is resident for its
 allocation lifetime, without a per-invocation list of indirect data buffers.
 
 Kernel-mediated queues admit a configurable window of pending submissions,
-defaulting to 4096. Callers can publish independent immutable command ranges
-without waiting between them, then use synchronous waits or nonwaiting checked
-status refresh to reclaim completed work. XDNA queues can notify a caller-owned
-native event for an accepted point, allowing one persistent event-loop
-registration to serve the queue. Notifications prompt a status refresh; they
-are not a second completion or retirement mechanism.
+defaulting to 128 for XDNA and 4096 for GPUs. Callers can publish independent
+immutable command ranges without waiting between them, then use synchronous
+waits or nonwaiting checked status refresh to reclaim completed work. XDNA
+queues can notify a caller-owned native event for an accepted point, allowing
+one persistent event-loop registration to serve the queue. Notifications prompt
+a status refresh; they are not a second completion or retirement mechanism.
 
 This is the device-access foundation for a runtime that owns its execution
 model. It replaces the need to adopt XRT or ROCr for native access while

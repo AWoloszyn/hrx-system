@@ -275,6 +275,52 @@ TEST(LinuxXdnaMemoryPairTest, DescribesOnlyTheExactLocalXdnaSite) {
   EXPECT_EQ(std::memcmp(&description, &original, sizeof(description)), 0);
 }
 
+TEST(LinuxXdnaHostViewTest, BorrowsIndependentSubrangesWithoutAllocating) {
+  alignas(64) uint8_t backing[1024] = {};
+  amdf_xdna_umd_device_t device = {};
+  device.host_allocator = amdf_allocator_system();
+  device.host_allocator.allocate = [](void*, uint64_t, uint64_t) -> void* {
+    ADD_FAILURE() << "a persistent native host view requires no allocation";
+    return nullptr;
+  };
+  device.cache_line_size = 64;
+  amdf_xdna_umd_memory_t memory = {};
+  memory.device = &device;
+  memory.buffer.host_pointer = backing;
+  memory.source_byte_offset = 17;
+  const amdf_host_mapping_capabilities_t capabilities = {
+      .supported_access =
+          AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE,
+  };
+  amdf_memory_map_info_t request = {};
+  request.byte_length = 64;
+  request.flags = AMDF_MEMORY_MAP_FLAG_READ | AMDF_MEMORY_MAP_FLAG_WRITE;
+  amdf_xdna_umd_host_mapping_t* mappings[2] = {};
+  amdf_xdna_umd_host_mapping_result_t views[2] = {};
+  for (size_t i = 0; i < 2; ++i) {
+    request.byte_offset = 128 + i * 256;
+    ASSERT_EQ(amdf_xdna_umd_memory_map(&memory, &capabilities, &request,
+                                       &mappings[i], &views[i]),
+              AMDF_STATUS_OK);
+    EXPECT_EQ(views[i].pointer,
+              backing + memory.source_byte_offset + request.byte_offset);
+    EXPECT_EQ(views[i].byte_length, request.byte_length);
+    std::memset(views[i].pointer, 0xA0 + i, request.byte_length);
+    EXPECT_EQ(amdf_xdna_umd_host_mapping_cache_control(
+                  mappings[i], AMDF_HOST_CACHE_OPERATION_FLUSH,
+                  request.byte_offset, request.byte_length),
+              AMDF_STATUS_OK);
+  }
+  amdf_xdna_umd_host_mapping_destroy(mappings[0]);
+  EXPECT_EQ(amdf_xdna_umd_host_mapping_cache_control(
+                mappings[1], AMDF_HOST_CACHE_OPERATION_INVALIDATE, 384, 64),
+            AMDF_STATUS_OK);
+  EXPECT_EQ(static_cast<uint8_t*>(views[1].pointer)[63], 0xA1);
+  amdf_xdna_umd_host_mapping_destroy(mappings[1]);
+  EXPECT_EQ(backing[17 + 128], 0xA0);
+  EXPECT_EQ(backing[17 + 384], 0xA1);
+}
+
 TEST(LinuxXdnaMemoryProfileTest,
      SeparatesOwnedImportedAndRegisteredHostProfiles) {
   const amdf_xdna_device_profile_t device_profile = {

@@ -167,6 +167,12 @@ amdf_status_t amdf_linux_xdna_buffer_attach(
       buffer->mapping.base = mapping;
       buffer->mapping.byte_length = buffer->byte_length;
     }
+    if (buffer->type == AMDXDNA_BO_CMD) {
+      // KMQ packets are parsed and completed by the kernel CPU. They need a
+      // shared host mapping, not a device address or a second SVA query.
+      buffer->host_pointer = mapping;
+      return AMDF_STATUS_OK;
+    }
     // mmap establishes SVA; the pre-mmap query does not yet have its address.
     if (ioctl(descriptor, DRM_IOCTL_AMDXDNA_GET_BO_INFO, &info) != 0) {
       return amdf_linux_error(errno);
@@ -176,7 +182,7 @@ amdf_status_t amdf_linux_xdna_buffer_attach(
     }
     buffer->host_pointer = mapping;
   }
-  // PASID-backed SHARE/CMD buffers use the mapped user VA when the driver
+  // PASID-backed SHARE buffers use the mapped user VA when the driver
   // reports no separate device address. Heap and IOVA addresses stay explicit.
   buffer->device_address = info.xdna_addr == AMDXDNA_INVALID_ADDR
                                ? (uintptr_t)buffer->host_pointer
