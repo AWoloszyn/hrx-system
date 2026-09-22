@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @wide_shift_constant(%values: vector<2xi64>) -> (i64) {
   %value = vector.extract %values[0] : vector<2xi64> -> i64
   %count = scalar.constant 31 : i64

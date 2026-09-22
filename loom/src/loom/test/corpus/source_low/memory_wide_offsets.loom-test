@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 kernel.def @wide_offset_unsigned_index() {
   %unit = index.constant 1 : index
   %lane_count = index.constant 64 : index

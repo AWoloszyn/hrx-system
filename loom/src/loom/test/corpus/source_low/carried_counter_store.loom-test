@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @carried_counter_store(%output: buffer) {
   %begin = index.constant 0 : index
   %step = index.constant 1 : index

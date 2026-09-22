@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @rounding_f32(%value: f32) -> (f32, f32, f32, f32, f32) {
   %ceil = scalar.ceilf %value : f32
   %floor = scalar.floorf %value : f32

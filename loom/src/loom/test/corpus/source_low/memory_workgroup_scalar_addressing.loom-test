@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @workgroup_static_rank2_i32(%value: i32) -> (i32) {
   %byte_length = index.constant 256 : offset
   %base = index.constant 8 : offset

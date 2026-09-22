@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @subview_scalar_strided(%input: buffer, %output: buffer) -> (f32) {
   %input_base = index.constant 8 : offset
   %output_base = index.constant 12 : offset

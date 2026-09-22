@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 kernel.def @index_madd_global_b32() {
   %unit = index.constant 1 : index
   %tile = index.constant 4 : index

@@ -9,22 +9,13 @@
 
 iree_add_all_subdirs()
 
-file(GLOB _GLOB_X_LOOM_TEST LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS *.loom-test)
 file(GLOB _GLOB_X_LOOM LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS *.loom)
-loom_check_test_suite(
-  NAME
-    test
-  SRCS
-    "${_GLOB_X_LOOM_TEST}"
-)
-
+file(GLOB _GLOB_X_LOOM_TEST LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS *.loom-test)
 loom_check_compile_tests(
   NAME
     "memory_address_realizations"
   SRC
     "memory_address_realizations.loom-test"
-  REGISTERED_SRCS
-    "${_GLOB_X_LOOM_TEST}"
   TARGETS
     loom::target::amdgpu::gfx11-generic
     loom::target::amdgpu::gfx1100
@@ -57,8 +48,6 @@ loom_check_compile_tests(
     "memory_atomic_preservation"
   SRC
     "memory_atomic_preservation.loom-test"
-  REGISTERED_SRCS
-    "${_GLOB_X_LOOM_TEST}"
   TARGETS
     loom::target::amdgpu::gfx11-generic
     loom::target::amdgpu::gfx1151
@@ -72,8 +61,6 @@ loom_check_compile_tests(
     "memory_wide_offsets"
   SRC
     "memory_wide_offsets.loom-test"
-  REGISTERED_SRCS
-    "${_GLOB_X_LOOM_TEST}"
   TARGETS
     loom::target::amdgpu::gfx11-generic
     loom::target::amdgpu::gfx1100

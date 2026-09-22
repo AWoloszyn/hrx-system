@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @byte_checksum(%byte_count: i64, %byte_start: i64, %pattern: i32) -> (i32) {
   %count_input = scalar.assume %byte_count [range(%byte_count, 0, 9223372036854775807)] : i64
   %length = index.cast %count_input : i64 to offset

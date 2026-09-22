@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 kernel.def @address_guarded_rows() {
   %unit = index.constant 1 : index
   %groups = index.constant 4 : index

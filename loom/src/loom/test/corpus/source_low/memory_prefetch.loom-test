@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @prefetch_static(%input: buffer) {
   %base = index.constant 16 : offset
   %input_view = buffer.view %input[%base] : buffer -> view<64xi32>

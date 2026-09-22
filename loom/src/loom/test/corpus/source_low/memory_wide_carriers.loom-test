@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @copy_wide_origin_vectors(%input: buffer, %output: buffer, %byte_offset_input: i64) {
   %source = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
   %destination = buffer.assume.alignment %output {minimum_alignment = 64} : buffer

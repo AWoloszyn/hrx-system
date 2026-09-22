@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @generic_atomic_i32_static(%input: buffer) {
   %buffer_base = index.constant 0 : offset
   %generic = buffer.assume.memory_space<generic> %input : buffer

@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 // A derived selection retains both the selected buffer and its byte base.
 func.def @derived_selection(%first: buffer, %second: buffer, %third: buffer, %position_input: index, %select_first: i1, %select_pair: i1) -> (i32) {
   %position = index.assume %position_input [range(%position_input, 1, 2)] : index

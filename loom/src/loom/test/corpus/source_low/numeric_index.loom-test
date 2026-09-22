@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @index_arithmetic(%lhs0: index, %rhs0: index, %stride: offset) -> (index, index, index, index, index, index, index, index, offset) {
   %lhs, %rhs = index.assume %lhs0, %rhs0 [range(%lhs0, 0, 2147483647), range(%rhs0, 1, 1024)] : index, index
   %add = index.add %lhs, %rhs : index

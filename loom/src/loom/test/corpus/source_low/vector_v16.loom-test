@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @i32x16_arith(%lhs: vector<16xi32>, %rhs: vector<16xi32>) -> (vector<16xi32>) {
   %sum = vector.addi %lhs, %rhs : vector<16xi32>
   %diff = vector.subi %sum, %rhs : vector<16xi32>

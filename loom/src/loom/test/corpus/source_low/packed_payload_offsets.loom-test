@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @packed4_payload_word_offset(%weights: buffer, %block0: index, %word0: index) -> (i32) {
   %block = index.assume %block0 [range(%block0, 0, 63)] : index
   %word = index.assume %word0 [range(%word0, 0, 3)] : index

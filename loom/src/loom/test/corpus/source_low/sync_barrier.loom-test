@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @workgroup_barrier() {
   kernel.barrier<workgroup> scope(workgroup) ordering(acq_rel)
   func.return

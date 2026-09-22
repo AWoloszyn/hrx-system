@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def public @boolean_comparisons(%left: i32, %right: i32) -> (i32) {
   %c0 = scalar.constant 0 : i32
   %lhs = scalar.cmpi ne, %left, %c0 : i32

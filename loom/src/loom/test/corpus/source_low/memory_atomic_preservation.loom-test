@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 // CAS packing borrows constants that remain observable after consumption.
 kernel.def @preserve_expected() {
   %c1 = index.constant 1 : index

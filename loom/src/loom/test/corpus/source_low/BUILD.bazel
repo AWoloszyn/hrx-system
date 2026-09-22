@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//loom/build_tools/amdgpu:target_config.bzl", "LOOM_AMDGPU_SUPPORTED_TARGETS")
-load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
+load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_compile_tests")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -13,23 +13,32 @@ package(
     licenses = ["notice"],  # Apache 2.0
 )
 
-_CASES = glob(["*.loom-test"])
+exports_files(glob([
+    "*.loom",
+    "*.loom-test",
+]))
 
-exports_files(_CASES + glob(["*.loom"]))
+loom_check_compile_tests(
+    name = "memory_address_realizations",
+    src = "memory_address_realizations.loom-test",
+    targets = ["//loom/target/amdgpu:" + target for target in LOOM_AMDGPU_SUPPORTED_TARGETS],
+)
 
-loom_check_test_suite(
-    name = "test",
-    srcs = _CASES,
-    compile_targets = {
-        "memory_address_realizations.loom-test": ["//loom/target/amdgpu:" + target for target in LOOM_AMDGPU_SUPPORTED_TARGETS],
-        # Ordered global atomics require RDNA memory-ordering support.
-        "memory_atomic_preservation.loom-test": [
-            "//loom/target/amdgpu:gfx11-generic",
-            "//loom/target/amdgpu:gfx1151",
-            "//loom/target/amdgpu:gfx12-generic",
-            "//loom/target/amdgpu:gfx1250",
-            "//loom/target/amdgpu:gfx12-5-generic",
-        ],
-        "memory_wide_offsets.loom-test": ["//loom/target/amdgpu:" + target for target in LOOM_AMDGPU_SUPPORTED_TARGETS],
-    },
+# Ordered global atomics require RDNA memory-ordering support.
+loom_check_compile_tests(
+    name = "memory_atomic_preservation",
+    src = "memory_atomic_preservation.loom-test",
+    targets = [
+        "//loom/target/amdgpu:gfx11-generic",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/amdgpu:gfx12-generic",
+        "//loom/target/amdgpu:gfx1250",
+        "//loom/target/amdgpu:gfx12-5-generic",
+    ],
+)
+
+loom_check_compile_tests(
+    name = "memory_wide_offsets",
+    src = "memory_wide_offsets.loom-test",
+    targets = ["//loom/target/amdgpu:" + target for target in LOOM_AMDGPU_SUPPORTED_TARGETS],
 )

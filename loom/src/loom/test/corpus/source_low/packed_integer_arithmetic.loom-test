@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @i8x8_bitwise_storage_tuple(%lhs: vector<8xi8>, %rhs: vector<8xi8>) -> (vector<8xi8>, vector<8xi8>, vector<8xi8>) {
   %and = vector.andi %lhs, %rhs : vector<8xi8>
   %or = vector.ori %lhs, %rhs : vector<8xi8>

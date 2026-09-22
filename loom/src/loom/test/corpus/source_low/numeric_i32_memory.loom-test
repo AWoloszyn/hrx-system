@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 kernel.def @i32_bitwise() {
   %unit = index.constant 1 : index
   %workgroup_size = index.constant 64 : index

@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @i32_to_i8x4_bitcast(%word: vector<1xi32>) -> (vector<4xi8>) {
   %bytes = vector.bitcast %word : vector<1xi32> to vector<4xi8>
   func.return %bytes : vector<4xi8>

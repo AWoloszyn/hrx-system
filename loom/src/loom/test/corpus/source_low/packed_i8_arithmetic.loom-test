@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @i8x4_addi_arguments(%lhs: vector<4xi8>, %rhs: vector<4xi8>) -> (vector<4xi8>) {
   %sum = vector.addi %lhs, %rhs : vector<4xi8>
   func.return %sum : vector<4xi8>

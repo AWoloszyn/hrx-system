@@ -2,10 +2,12 @@
 
 This directory contains shared source programs for tests that assert lowered
 output or execution results. Shared input without its own expectations is
-exported `.loom` data, not a standalone roundtrip test. Its value comes from the
-consumers' assertions: selected instructions, addressing, access widths, returned
-values, or other observable behavior. Parser/printer roundtrip coverage belongs
-beside the corresponding format implementation.
+exported data, not a standalone roundtrip test. Most files retain the
+`.loom-test` suffix because it selects the multi-case container format; package
+registration determines whether a file is a test. Their value comes from the
+consumers' assertions: selected instructions, addressing, access widths,
+returned values, or other observable behavior. Parser/printer roundtrip coverage
+belongs beside the corresponding format implementation.
 
 A target participates through a `TEMPLATE` fixture with its own compiler options,
 RUN mode, and output assertions, or through an execution test with an independent

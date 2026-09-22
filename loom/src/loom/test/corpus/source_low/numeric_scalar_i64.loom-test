@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @scalar_i64_bitwise_sgpr(%lhs: i64, %rhs: i64) -> (i64, i64, i64) {
   %and = scalar.andi %lhs, %rhs : i64
   %or = scalar.ori %and, %lhs : i64

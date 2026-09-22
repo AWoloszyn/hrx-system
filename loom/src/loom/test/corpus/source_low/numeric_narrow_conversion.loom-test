@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @extend_narrow(%arg0: f8E4M3, %arg1: f8E5M2, %arg2: f16, %arg3: bf16) -> (f32, f32, f32, f32) {
   %result0 = scalar.extf %arg0 : f8E4M3 to f32
   %result1 = scalar.extf %arg1 : f8E5M2 to f32

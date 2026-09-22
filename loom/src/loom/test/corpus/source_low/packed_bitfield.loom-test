@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 func.def @i32_bitfield_extractu(%input: buffer, %output: buffer) {
   %buffer_base = index.constant 0 : offset
   %input_view = buffer.view %input[%buffer_base] : buffer -> view<1xi32>

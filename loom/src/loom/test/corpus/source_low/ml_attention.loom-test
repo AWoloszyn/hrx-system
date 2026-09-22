@@ -1,5 +1,3 @@
-// RUN: roundtrip
-
 // Online attention keeps numerically stable softmax state across score blocks:
 // the running max rescales the previous sum/accumulator and the new score
 // contributes one weighted value vector.
