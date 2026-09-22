@@ -78,7 +78,7 @@ iree_cc_library(
 endif()
 
 if(IREE_ARCH STREQUAL "x86_64" AND CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
-iree_cc_test(
+amdf_windows_sidecar_test(
   NAME
     allocation_test
   SRCS
@@ -88,12 +88,6 @@ iree_cc_test(
     "allocation.h"
     "allocation_test.cc"
     "bridge_allocator.h"
-  COPTS
-    "/MT"
-  DEFINES
-    "_DISABLE_STRING_ANNOTATION"
-    "_DISABLE_VECTOR_ANNOTATION"
-    "_ITERATOR_DEBUG_LEVEL=0"
   DEPS
     ::bridge_api
     amdf::headers
@@ -105,7 +99,7 @@ iree_cc_test(
 endif()
 
 if(IREE_ARCH STREQUAL "x86_64" AND CMAKE_SYSTEM_NAME STREQUAL "Windows" AND AMDF_BUILD AND (AMDF_FAMILY_RDNA OR AMDF_FAMILY_CDNA))
-iree_cc_test(
+amdf_windows_sidecar_test(
   NAME
     kernel_queue_test
   SRCS
@@ -115,12 +109,6 @@ iree_cc_test(
     "kernel_queue.cc"
     "kernel_queue.h"
     "kernel_queue_test.cc"
-  COPTS
-    "/MT"
-  DEFINES
-    "_DISABLE_STRING_ANNOTATION"
-    "_DISABLE_VECTOR_ANNOTATION"
-    "_ITERATOR_DEBUG_LEVEL=0"
   DEPS
     ::bridge_api
     amdf::headers
