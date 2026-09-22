@@ -24,7 +24,7 @@
               "--D=SCALAR_COPY=0",
               "--to=bc",
               "--output={tmp}/copy.loombc",
-              "{srcdir}/testdata/vector_copy.cpp"
+              "{srcdir}/testdata/vector_copy.cxx"
             ]
           }
         },
@@ -105,7 +105,7 @@
               "--D=SCALAR_COPY=1",
               "--to=bc",
               "--output={tmp}/copy.loombc",
-              "{srcdir}/testdata/vector_copy.cpp"
+              "{srcdir}/testdata/vector_copy.cxx"
             ]
           }
         },

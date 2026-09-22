@@ -7,7 +7,7 @@
         "tool": "iree-test-loom",
         "args": [
           "{srcdir}/source_input.loom",
-          "--library={srcdir}/source_input.cc",
+          "--library={srcdir}/source_input.cxx",
           "--input-options=cxx:D=CHECK_BIAS=1"
         ]
       },
@@ -24,7 +24,7 @@
       "run": {
         "tool": "iree-test-loom",
         "args": [
-          "{srcdir}/check_cases.cc"
+          "{srcdir}/check_cases.cxx"
         ]
       },
       "stdout": {
@@ -39,8 +39,8 @@
       "run": {
         "tool": "iree-test-loom",
         "args": [
-          "{srcdir}/check_cases.cc",
-          "--library={srcdir}/check_library.cc"
+          "{srcdir}/check_cases.cxx",
+          "--library={srcdir}/check_library.cxx"
         ]
       },
       "stdout": {
@@ -55,7 +55,7 @@
       "run": {
         "tool": "iree-benchmark-loom",
         "args": [
-          "{srcdir}/check_cases.cc",
+          "{srcdir}/check_cases.cxx",
           "--iterations=1",
           "--warmup-iterations=0",
           "--output-format=jsonl"
@@ -68,11 +68,11 @@
       }
     },
     {
-      "name": "reports an authored assertion in check_cases.cc",
+      "name": "reports an authored assertion in check_cases.cxx",
       "run": {
         "tool": "iree-test-loom",
         "args": [
-          "{srcdir}/check_cases.cc",
+          "{srcdir}/check_cases.cxx",
           "--input-options=cxx:D=CHECK_EXPECTED=1u",
           "--source-prefix-map={srcdir}=source"
         ]
@@ -81,7 +81,7 @@
       "stdout": {
         "contains": [
           "\"failed_sample_count\":1",
-          "\"source_location\":{\"filename\":\"source/check_cases.cc\",\"start_line\":21,\"start_column\":3"
+          "\"source_location\":{\"filename\":\"source/check_cases.cxx\",\"start_line\":21,\"start_column\":3"
         ]
       }
     },
@@ -90,7 +90,7 @@
       "run": {
         "tool": "iree-test-loom",
         "args": [
-          "{srcdir}/check_cases.cc",
+          "{srcdir}/check_cases.cxx",
           "--input-options=cxx:D=CHECK_HEADER_EXPECTED=6u",
           "--source-prefix-map={srcdir}=source"
         ]
@@ -108,7 +108,7 @@
       "run": {
         "tool": "iree-test-loom",
         "args": [
-          "{srcdir}/check_cases.cc",
+          "{srcdir}/check_cases.cxx",
           "--input-options=cxx:D=CHECK_MATH=1",
           "--source-prefix-map={srcdir}=source"
         ]
@@ -131,8 +131,8 @@
           "run": {
             "tool": "loom-link",
             "args": [
-              "{srcdir}/check_cases.cc",
-              "{srcdir}/check_library.cc",
+              "{srcdir}/check_cases.cxx",
+              "{srcdir}/check_library.cxx",
               "--mode=link",
               "--include-input-tests",
               "--input-options=cxx:D=CHECK_HEADER_EXPECTED=6u",
@@ -166,7 +166,7 @@
       "run": {
         "tool": "iree-test-loom",
         "args": [
-          "{srcdir}/check_cases.cc",
+          "{srcdir}/check_cases.cxx",
           "--input-options=cxx:D=CHECK_MATH=1",
           "--case=wraps_byte"
         ]
@@ -183,7 +183,7 @@
       "run": {
         "tool": "iree-benchmark-loom",
         "args": [
-          "{srcdir}/check_cases.cc",
+          "{srcdir}/check_cases.cxx",
           "--input-options=cxx:D=CHECK_MATH=1",
           "--iterations=1",
           "--warmup-iterations=0",
@@ -205,7 +205,7 @@
           "run": {
             "tool": "loom-link",
             "args": [
-              "{srcdir}/record_library.cc",
+              "{srcdir}/record_library.cxx",
               "--to=text",
               "--output={tmp}/record_library.loom"
             ]
@@ -238,7 +238,7 @@
           "run": {
             "tool": "loom-link",
             "args": [
-              "{srcdir}/record_library.cc",
+              "{srcdir}/record_library.cxx",
               "--to=bc",
               "--output={tmp}/record_library.loombc"
             ]

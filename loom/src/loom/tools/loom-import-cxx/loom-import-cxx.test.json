@@ -8,7 +8,7 @@
         "args": [
           "--builtin-includes=false",
           "--I={srcdir}/../../import/cxx/include",
-          "{srcdir}/testdata/hip_kernels.cpp"
+          "{srcdir}/testdata/hip_kernels.cxx"
         ]
       },
       "stdout": {
@@ -28,7 +28,7 @@
       "name": "imports multiple kernels and included template helpers",
       "run": {
         "tool": "loom-import-cxx",
-        "args": ["{srcdir}/testdata/kernels.cpp"]
+        "args": ["{srcdir}/testdata/kernels.cxx"]
       },
       "stdout": {
         "contains": {
@@ -45,7 +45,7 @@
       "name": "exports an explicit root and retains its private callee",
       "run": {
         "tool": "loom-import-cxx",
-        "args": ["--root=second", "{srcdir}/testdata/functions.cpp"]
+        "args": ["--root=second", "{srcdir}/testdata/functions.cxx"]
       },
       "stdout": {
         "contains": {"unordered": ["func.def public @second", "func.def @twice"]},
@@ -59,7 +59,7 @@
           "name": "import",
           "run": {
             "tool": "loom-import-cxx",
-            "args": ["--to=bc", "--output={tmp}/module.loombc", "{srcdir}/testdata/functions.cpp"]
+            "args": ["--to=bc", "--output={tmp}/module.loombc", "{srcdir}/testdata/functions.cxx"]
           }
         },
         {
@@ -153,17 +153,17 @@
       "name": "reports input file failures through status diagnostics",
       "run": {
         "tool": "loom-import-cxx",
-        "args": ["{tmp}/absent.cpp"]
+        "args": ["{tmp}/absent.cxx"]
       },
       "exit": {"code": 1},
       "stdout": {"empty": true},
-      "stderr": {"contains": {"unordered": ["NOT_FOUND", "absent.cpp"]}}
+      "stderr": {"contains": {"unordered": ["NOT_FOUND", "absent.cxx"]}}
     },
     {
       "name": "fails if imported IR cannot be written",
       "run": {
         "tool": "loom-import-cxx",
-        "args": ["--output={tmp}/missing/output.loom", "{srcdir}/testdata/functions.cpp"]
+        "args": ["--output={tmp}/missing/output.loom", "{srcdir}/testdata/functions.cxx"]
       },
       "exit": {"code": 1},
       "stdout": {"empty": true},
@@ -174,7 +174,7 @@
       "name": "reports a missing root",
       "run": {
         "tool": "loom-import-cxx",
-        "args": ["--root=absent", "{srcdir}/testdata/functions.cpp"]
+        "args": ["--root=absent", "{srcdir}/testdata/functions.cxx"]
       },
       "exit": {"code": 1},
       "stdout": {"empty": true},

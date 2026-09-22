@@ -31,7 +31,7 @@ iree_execution_test_suite(
     "loom-import-cxx=loom::tools::loom-import-cxx"
     "loom-link=loom::tools::loom-link"
   DATA
-    "${PROJECT_SOURCE_DIR}/experimental/xdna/cts/testdata/assembly_pack.cpp"
+    "${PROJECT_SOURCE_DIR}/experimental/xdna/cts/testdata/assembly_pack.cxx"
     "${PROJECT_SOURCE_DIR}/experimental/xdna/cts/testdata/assembly_pack.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/low.h"
   LABELS
@@ -101,7 +101,7 @@ iree_execution_test_suite(
   DATA
     "${PROJECT_SOURCE_DIR}/experimental/xdna/cts/testdata/packed_memory.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/packed_memory.cpp"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/packed_memory.cxx"
   LABELS
     "manual"
     "iree-build-requirement=libamdf"
@@ -135,7 +135,7 @@ iree_execution_test_suite(
     "loom-import-cxx=loom::tools::loom-import-cxx"
     "loom-link=loom::tools::loom-link"
   DATA
-    "${PROJECT_SOURCE_DIR}/experimental/xdna/cts/testdata/vector_copy.cpp"
+    "${PROJECT_SOURCE_DIR}/experimental/xdna/cts/testdata/vector_copy.cxx"
     "${PROJECT_SOURCE_DIR}/experimental/xdna/cts/testdata/vector_copy.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
   LABELS

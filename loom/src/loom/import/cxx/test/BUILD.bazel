@@ -15,11 +15,11 @@ package(
 )
 
 exports_files([
-    "aiter_swiglu_f16.cpp",
+    "aiter_swiglu_f16.cxx",
     "check_records.cxx",
-    "flash_attention.cpp",
-    "llama_rms_norm.cpp",
-    "packed_memory.cpp",
+    "flash_attention.cxx",
+    "llama_rms_norm.cxx",
+    "packed_memory.cxx",
 ])
 
 loom_check_test_suite(
@@ -111,7 +111,7 @@ loom_check_test_suite(
         "packed_enums.h",
         "packed_layout.h",
         "record_layout.h",
-        "record_values.cpp",
+        "record_values.cxx",
     ],
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )
@@ -119,18 +119,18 @@ loom_check_test_suite(
 # Each source retains independent mathematical references and imports its
 # implementation through the same source path as handwritten check cases.
 _HOST_SOURCES = [
-    "assumptions.cpp",
-    "comparison_functions.cpp",
-    "constant_loops.cpp",
-    "enum_values.cpp",
-    "increment_values.cpp",
-    "integer_functions.cpp",
-    "record_values.cpp",
-    "schedule_values.cpp",
-    "shaped_intrinsics.cpp",
-    "structured_continue.cpp",
-    "vector_initializers.cpp",
-    "vector_values.cpp",
+    "assumptions.cxx",
+    "comparison_functions.cxx",
+    "constant_loops.cxx",
+    "enum_values.cxx",
+    "increment_values.cxx",
+    "integer_functions.cxx",
+    "record_values.cxx",
+    "schedule_values.cxx",
+    "shaped_intrinsics.cxx",
+    "structured_continue.cxx",
+    "vector_initializers.cxx",
+    "vector_values.cxx",
 ]
 
 _HOST_COMPATIBILITY = loom_config_compatible_with([
@@ -147,14 +147,14 @@ loom_test(
 
 loom_test(
     name = "condition_values_test",
-    srcs = ["condition_values.cpp"],
+    srcs = ["condition_values.cxx"],
     execution_profiles = [VM_REFERENCE_PROFILE],
     target_compatible_with = _HOST_COMPATIBILITY,
 )
 
 loom_test(
     name = "constexpr_values_test",
-    srcs = ["constexpr_values.cpp"],
+    srcs = ["constexpr_values.cxx"],
     execution_profiles = [VM_REFERENCE_PROFILE],
     target_compatible_with = _HOST_COMPATIBILITY,
 )
@@ -163,9 +163,9 @@ loom_test(
     name = "atomic_values_test",
     srcs = [
         "atomic_builtin_values.loom",
-        "atomic_builtins.cpp",
+        "atomic_builtins.cxx",
         "atomic_values.loom",
-        "atomics.cpp",
+        "atomics.cxx",
     ],
     execution_profiles = [VM_REFERENCE_PROFILE],
     target_compatible_with = _HOST_COMPATIBILITY,
@@ -174,7 +174,7 @@ loom_test(
 loom_test(
     name = "storage_values_test",
     srcs = [
-        "storage_updates.cpp",
+        "storage_updates.cxx",
         "storage_values.loom",
     ],
     execution_profiles = [VM_REFERENCE_PROFILE],
@@ -184,7 +184,7 @@ loom_test(
 loom_test(
     name = "packed_memory_values_test",
     srcs = [
-        "packed_memory.cpp",
+        "packed_memory.cxx",
         "packed_memory_values.loom",
     ],
     execution_profiles = [VM_REFERENCE_PROFILE],
@@ -194,7 +194,7 @@ loom_test(
 loom_test(
     name = "record_memory_values_test",
     srcs = [
-        "record_memory.cpp",
+        "record_memory.cxx",
         "record_memory_values.loom",
     ],
     execution_profiles = [VM_REFERENCE_PROFILE],
@@ -204,7 +204,7 @@ loom_test(
 loom_test(
     name = "volatile_values_test",
     srcs = [
-        "volatile_memory.cpp",
+        "volatile_memory.cxx",
         "volatile_values.loom",
     ],
     execution_profiles = [VM_REFERENCE_PROFILE],
@@ -213,7 +213,7 @@ loom_test(
 
 loom_test(
     name = "config_values_test",
-    srcs = ["config_values.cpp"],
+    srcs = ["config_values.cxx"],
     configs = {"tuning.enabled": "true"},
     execution_profiles = [VM_REFERENCE_PROFILE],
     target_compatible_with = _HOST_COMPATIBILITY,
@@ -238,7 +238,7 @@ loom_test(
 
 [
     loom_generated_file(
-        name = source.removesuffix(".cpp") + "_cases_gen",
+        name = source.removesuffix(".cxx") + "_cases_gen",
         testonly = True,
         args = [
             "host",
@@ -246,7 +246,7 @@ loom_test(
         ],
         generator = "//loom/py/loom/gen/test:cxx_kernel_cases",
         inputs = [source],
-        output = source.removesuffix(".cpp") + "_cases.cc",
+        output = source.removesuffix(".cxx") + "_cases.cxx",
         output_flag = "--output",
         target_compatible_with = _HOST_COMPATIBILITY,
     )
@@ -255,8 +255,8 @@ loom_test(
 
 [
     loom_test(
-        name = source.removesuffix(".cpp") + "_test",
-        srcs = [":" + source.removesuffix(".cpp") + "_cases.cc"],
+        name = source.removesuffix(".cxx") + "_test",
+        srcs = [":" + source.removesuffix(".cxx") + "_cases.cxx"],
         data = [source],
         execution_profiles = [VM_REFERENCE_PROFILE],
         target_compatible_with = _HOST_COMPATIBILITY,
@@ -273,9 +273,9 @@ loom_check_test_suite(
 loom_test_module(
     name = "atomics_module",
     srcs = [
-        "atomic_builtins.cpp",
+        "atomic_builtins.cxx",
         "atomic_kernels.loom",
-        "atomics.cpp",
+        "atomics.cxx",
     ],
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )
@@ -284,7 +284,7 @@ loom_test_module(
     name = "storage_updates_module",
     srcs = [
         "storage_kernels.loom",
-        "storage_updates.cpp",
+        "storage_updates.cxx",
     ],
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )
@@ -292,7 +292,7 @@ loom_test_module(
 loom_test_module(
     name = "packed_memory_module",
     srcs = [
-        "packed_memory.cpp",
+        "packed_memory.cxx",
         "packed_memory_kernels.loom",
     ],
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
@@ -301,7 +301,7 @@ loom_test_module(
 loom_test_module(
     name = "record_memory_module",
     srcs = [
-        "record_memory.cpp",
+        "record_memory.cxx",
         "record_memory_kernels.loom",
     ],
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
@@ -361,7 +361,7 @@ _KERNEL_SOURCES = [
     loom_test_module(
         name = source + "_module",
         srcs = [
-            source + ".cpp",
+            source + ".cxx",
             ":" + source + "_checks.loom",
         ],
         data = [":" + source + "_checks_gen"],
@@ -377,5 +377,5 @@ _KERNEL_SOURCES = [
 
 test_suite(
     name = "functions_test",
-    tests = [":" + source.removesuffix(".cpp") + "_test" for source in _HOST_SOURCES],
+    tests = [":" + source.removesuffix(".cxx") + "_test" for source in _HOST_SOURCES],
 )

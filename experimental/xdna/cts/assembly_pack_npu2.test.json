@@ -23,7 +23,7 @@
               "--root=pack_blocks",
               "--to=bc",
               "--output={tmp}/pack.loombc",
-              "{srcdir}/testdata/assembly_pack.cpp"
+              "{srcdir}/testdata/assembly_pack.cxx"
             ]
           }
         },

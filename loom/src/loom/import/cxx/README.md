@@ -13,7 +13,7 @@ are confined to the frontend implementation.
 ```sh
 iree-bazel-run --config=loom-importer-cxx \
   //loom/src/loom/tools/loom-import-cxx -- \
-  --I=include --std=c++26 --root=attention attention.cpp
+  --I=include --std=c++26 --root=attention attention.cxx
 ```
 
 `loom-import-cxx` imports one translation unit, runs canonicalization, common
@@ -743,7 +743,7 @@ Packed saturate_s4(SignedBytes values) {
 High `vector.bitpack` packs low bits; this fragment also selects the hardware's
 saturation behavior. Its control-register writes and the pack's state reads
 are descriptor effects visible to optimization and scheduling. The native
-[packing test](../../../../../experimental/xdna/cts/testdata/assembly_pack.cpp)
+[packing test](../../../../../experimental/xdna/cts/testdata/assembly_pack.cxx)
 alternates saturated and unsaturated fragments on the same inputs, within
 ordinary C++ vector loads, stores, and loops.
 
@@ -955,6 +955,10 @@ benchmark smoke check. Dependency libraries retain their own tests; linking one
 does not implicitly add its cases to the root's suite.
 
 ## Source input and diagnostic ownership
+
+Repository-authored C++ programs use `.cxx`; compiler expectation fixtures use
+`.cxx-test`. Kernels, helpers, check cases and benchmarks can share one `.cxx`
+translation unit.
 
 `loom-link`, `iree-test-loom`, `iree-benchmark-loom`, and `iree-run-loom` share
 the optional input provider used by `loom-check`. Enabled binaries recognize
@@ -1222,7 +1226,7 @@ u32x16 replace_depth(u32x16 previous, u32x16 depth) {
 This imports as `vector<16xi32>` arguments, vector constants, `vector.andi` and
 `vector.ori`. Vector pointers use contiguous `vector.load` and `vector.store`,
 with source object sizes determining pointer strides. The
-`test/vector_depth.cpp` example combines a vector depth recurrence with a scalar
+`test/vector_depth.cxx` example combines a vector depth recurrence with a scalar
 tail and ordinary pointer reinterpretation.
 
 GNU `vector_size` and Clang `ext_vector_type` forms admit arithmetic, bitwise

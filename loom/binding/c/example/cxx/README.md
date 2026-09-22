@@ -1,7 +1,7 @@
 # C++ source to GPU execution
 
 `jit_amdgpu.c` is a C embedding that compiles the standalone HIP-style C++
-translation unit in `kernels.cpp`, emits one HSACO, loads it through IREE HAL
+translation unit in `kernels.cxx`, emits one HSACO, loads it through IREE HAL
 and executes both kernels. Each kernel checks 128 values and surrounding
 guards. The shared template helper calls the generated scalar FMA binding
 through the ordinary HIP header facade.

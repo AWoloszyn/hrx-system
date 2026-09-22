@@ -1215,18 +1215,18 @@ KERNEL_GROUPS = {
 
 
 HOST_REFERENCES = {
-    "assumptions.cpp": assumption_functions,
-    "comparison_functions.cpp": comparison_functions,
-    "constant_loops.cpp": constant_loop_functions,
-    "enum_values.cpp": enum_functions,
-    "increment_values.cpp": increment_functions,
-    "integer_functions.cpp": integer_functions,
-    "record_values.cpp": record_functions,
-    "schedule_values.cpp": schedule_functions,
-    "shaped_intrinsics.cpp": shaped_intrinsic_values,
-    "structured_continue.cpp": continue_functions,
-    "vector_initializers.cpp": vector_constructor_values,
-    "vector_values.cpp": vector_values,
+    "assumptions.cxx": assumption_functions,
+    "comparison_functions.cxx": comparison_functions,
+    "constant_loops.cxx": constant_loop_functions,
+    "enum_values.cxx": enum_functions,
+    "increment_values.cxx": increment_functions,
+    "integer_functions.cxx": integer_functions,
+    "record_values.cxx": record_functions,
+    "schedule_values.cxx": schedule_functions,
+    "shaped_intrinsics.cxx": shaped_intrinsic_values,
+    "structured_continue.cxx": continue_functions,
+    "vector_initializers.cxx": vector_constructor_values,
+    "vector_values.cxx": vector_values,
 }
 
 

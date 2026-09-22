@@ -1427,7 +1427,7 @@ loom_test_module(
   NAME
     assembly_test_module
   SRCS
-    "assembly.cpp"
+    "assembly.cxx"
     "assembly.loom"
 )
 endif()
@@ -1489,7 +1489,7 @@ loom_test_module(
   NAME
     atomic_publication_test_module
   SRCS
-    "atomic_publication.cpp"
+    "atomic_publication.cxx"
     "atomic_publication.loom"
 )
 endif()
@@ -1551,7 +1551,7 @@ loom_test_module(
   NAME
     subgroups_test_module
   SRCS
-    "subgroups.cpp"
+    "subgroups.cxx"
     "subgroups.loom"
 )
 endif()
@@ -1652,7 +1652,7 @@ loom_test_module(
   NAME
     float16_test_module
   SRCS
-    "float16.cpp"
+    "float16.cxx"
     "float16.loom"
 )
 endif()
@@ -1714,7 +1714,7 @@ loom_test_module(
   NAME
     bfloat16_test_module
   SRCS
-    "bfloat16.cpp"
+    "bfloat16.cxx"
     "bfloat16.loom"
 )
 endif()
@@ -1776,7 +1776,7 @@ loom_test_module(
   NAME
     float8_test_module
   SRCS
-    "float8.cpp"
+    "float8.cxx"
     "float8.loom"
 )
 endif()
@@ -1838,7 +1838,7 @@ loom_test_module(
   NAME
     vector_constants_test_module
   SRCS
-    "vector_constants.cpp"
+    "vector_constants.cxx"
     "vector_constants.loom"
 )
 endif()
@@ -1900,7 +1900,7 @@ loom_test_module(
   NAME
     vector_conversion_test_module
   SRCS
-    "vector_conversion.cpp"
+    "vector_conversion.cxx"
     "vector_conversion.loom"
 )
 endif()
@@ -1981,7 +1981,7 @@ loom_test_module(
   NAME
     iq4xs_blocks_test_module
   SRCS
-    "iq4xs_blocks.cpp"
+    "iq4xs_blocks.cxx"
     "${CMAKE_CURRENT_BINARY_DIR}/iq4xs_blocks_checks.loom"
   DATA
     "${CMAKE_CURRENT_BINARY_DIR}/iq4xs_blocks_arrays"
