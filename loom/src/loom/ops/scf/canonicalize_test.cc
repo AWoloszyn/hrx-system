@@ -105,6 +105,60 @@ TEST_P(ScfCanonicalizeTest, ComplementUsesRegisteredScalarVocabulary) {
   }
 }
 
+TEST_P(ScfCanonicalizeTest, EmptyThenInversionPreservesGuardedEffects) {
+  loom_value_id_t condition = LOOM_VALUE_ID_INVALID;
+  IREE_ASSERT_OK(loom_builder_define_block_arg(
+      &builder_, loom_module_block(module_),
+      loom_type_scalar(LOOM_SCALAR_TYPE_I1), &condition));
+  loom_op_t* conditional = nullptr;
+  IREE_ASSERT_OK(loom_scf_if_build(
+      &builder_, LOOM_SCF_IF_BUILD_FLAG_HAS_ELSE_REGION, condition, nullptr, 0,
+      nullptr, 0, LOOM_LOCATION_UNKNOWN, &conditional));
+  auto saved = loom_builder_enter_region(&builder_, conditional,
+                                         loom_scf_if_then_region(conditional));
+  loom_op_t* yield = nullptr;
+  IREE_ASSERT_OK(loom_scf_yield_build(&builder_, nullptr, 0,
+                                      LOOM_LOCATION_UNKNOWN, &yield));
+  loom_builder_restore(&builder_, saved);
+  saved = loom_builder_enter_region(&builder_, conditional,
+                                    loom_scf_if_else_region(conditional));
+  loom_op_t* effect = nullptr;
+  IREE_ASSERT_OK(loom_test_use_build(&builder_, &condition, 1,
+                                     LOOM_LOCATION_UNKNOWN, &effect));
+  IREE_ASSERT_OK(loom_scf_yield_build(&builder_, nullptr, 0,
+                                      LOOM_LOCATION_UNKNOWN, &yield));
+  loom_builder_restore(&builder_, saved);
+  rewriter_.materialize_constant =
+      [](loom_builder_t* builder, loom_value_facts_t facts, loom_type_t type,
+         loom_location_id_t location, loom_value_id_t* out_value) {
+        loom_op_t* constant = nullptr;
+        IREE_RETURN_IF_ERROR(loom_test_constant_build(
+            builder, loom_attr_i64(facts.range_lo), type, location, &constant));
+        *out_value = loom_test_constant_result(constant);
+        return iree_ok_status();
+      };
+
+  IREE_ASSERT_OK(loom_scf_if_canonicalize(conditional, &rewriter_));
+  auto* last = loom_module_block(module_)->last_op;
+  ASSERT_TRUE(loom_scf_if_isa(last));
+  if (GetParam()) {
+    EXPECT_TRUE(conditional->flags & LOOM_OP_FLAG_DEAD);
+    EXPECT_EQ(loom_scf_if_else_region(last), nullptr);
+    EXPECT_EQ(loom_region_entry_block(loom_scf_if_then_region(last))->first_op,
+              effect);
+    auto* inverse = loom_value_def_op(
+        loom_module_value(module_, loom_scf_if_condition(last)));
+    ASSERT_TRUE(loom_scalar_xori_isa(inverse));
+    EXPECT_EQ(loom_scalar_xori_lhs(inverse), condition);
+  } else {
+    EXPECT_EQ(last, conditional);
+    EXPECT_FALSE(conditional->flags & LOOM_OP_FLAG_DEAD);
+    EXPECT_EQ(loom_region_entry_block(loom_scf_if_else_region(last))->first_op,
+              effect);
+    EXPECT_EQ(rewriter_.created_op_count, 0u);
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(ScalarRegistration, ScfCanonicalizeTest,
                          ::testing::Bool());
 

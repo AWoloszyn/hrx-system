@@ -1528,22 +1528,22 @@ static iree_status_t loom_scf_if_normalize_empty_then(
   if (then_block->first_op != then_block->last_op) {
     return iree_ok_status();
   }
+  if (!loom_context_resolve_op(rewriter->module->context,
+                               LOOM_OP_SCALAR_XORI)) {
+    return iree_ok_status();
+  }
   loom_region_t* else_region = loom_scf_if_else_region(op);
   loom_op_t* else_yield = loom_region_entry_block(else_region)->last_op;
   loom_builder_set_before(&rewriter->builder, op);
   loom_type_t boolean_type = loom_type_scalar(LOOM_SCALAR_TYPE_I1);
-  loom_value_id_t false_value = LOOM_VALUE_ID_INVALID;
   loom_value_id_t true_value = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(
-      loom_rewriter_build_constant(rewriter, loom_value_facts_exact_i64(0),
-                                   boolean_type, op->location, &false_value));
   IREE_RETURN_IF_ERROR(
       loom_rewriter_build_constant(rewriter, loom_value_facts_exact_i64(1),
                                    boolean_type, op->location, &true_value));
   loom_op_t* inverse = NULL;
-  IREE_RETURN_IF_ERROR(loom_scf_select_build(
-      &rewriter->builder, loom_scf_if_condition(op), false_value, true_value,
-      boolean_type, op->location, &inverse));
+  IREE_RETURN_IF_ERROR(
+      loom_scalar_xori_build(&rewriter->builder, loom_scf_if_condition(op),
+                             true_value, boolean_type, op->location, &inverse));
   loom_op_t* replacement = NULL;
   IREE_RETURN_IF_ERROR(loom_scf_if_build(&rewriter->builder, 0,
                                          loom_op_results(inverse)[0], NULL, 0,

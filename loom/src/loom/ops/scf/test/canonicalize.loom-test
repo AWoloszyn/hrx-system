@@ -13,9 +13,9 @@ func.def @empty_then_guard(%stop: i1, %input: view<1xi32>, %output: view<1xi32>)
 
 // ----
 func.def @empty_then_guard(%stop: i1, %input: view<1xi32>, %output: view<1xi32>) {
-  %5 = scalar.constant true : i1
-  %7 = scalar.xori %stop, %5 : i1
-  scf.if %7 {
+  %4 = scalar.constant true : i1
+  %5 = scalar.xori %stop, %4 : i1
+  scf.if %5 {
     %value = view.load %input[0] : view<1xi32> -> i32
     view.store %value, %output[0] : i32, view<1xi32>
   }
@@ -53,9 +53,9 @@ func.def @empty_then_loop(%stop: i1, %output: view<1xi32>, %count: index, %value
 
 // ----
 func.def @empty_then_loop(%stop: i1, %output: view<1xi32>, %count: index, %value: i32) {
-  %8 = scalar.constant true : i1
-  %10 = scalar.xori %stop, %8 : i1
-  scf.if %10 {
+  %7 = scalar.constant true : i1
+  %8 = scalar.xori %stop, %7 : i1
+  scf.if %8 {
     %start = index.constant 0 : index
     %step = index.constant 1 : index
     scf.for %iteration = [%start to %count step %step] {
