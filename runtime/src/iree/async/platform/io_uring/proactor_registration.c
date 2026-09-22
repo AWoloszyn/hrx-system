@@ -796,12 +796,12 @@ iree_status_t iree_async_proactor_io_uring_register_slab(
                             buffer_count, (unsigned)UINT16_MAX);
   }
 
-  // If slab will be used for recv (WRITE access) AND the kernel supports
-  // MULTISHOT (5.19+), create a provided buffer ring for kernel-managed buffer
-  // selection.
+  // Provided-buffer rings (5.19+) also serve one-shot pooled receives. Kernel
+  // support governs their creation, not the caller's multishot capability mask.
+  // The MULTISHOT probe establishes the required kernel version.
   bool create_recv_ring =
       (access_flags & IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE) != 0 &&
-      iree_any_bit_set(proactor->capabilities,
+      iree_any_bit_set(proactor->kernel_capabilities,
                        IREE_ASYNC_PROACTOR_CAPABILITY_MULTISHOT);
   // PBUF_RING requires power-of-2 buffer count.
   if (create_recv_ring && (buffer_count & (buffer_count - 1)) != 0) {

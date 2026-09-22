@@ -180,18 +180,19 @@ iree_status_t iree_async_proactor_create_io_uring(
   // are available.
   if (iree_status_is_ok(status)) {
     status = iree_async_proactor_io_uring_detect_capabilities(
-        &proactor->ring, proactor->ring.features, &proactor->capabilities);
+        &proactor->ring, proactor->ring.features,
+        &proactor->kernel_capabilities);
   }
 
   // Sparse fixed-buffer tables are an internal kernel mechanism, not a public
-  // capability applications can disable. Capture support before applying the
-  // caller's capability mask.
+  // capability applications can disable.
   bool supports_sparse_buffer_table = iree_any_bit_set(
-      proactor->capabilities, IREE_ASYNC_PROACTOR_CAPABILITY_MULTISHOT);
+      proactor->kernel_capabilities, IREE_ASYNC_PROACTOR_CAPABILITY_MULTISHOT);
 
   // Apply the allowed_capabilities mask from options.
   if (iree_status_is_ok(status)) {
-    proactor->capabilities &= options.allowed_capabilities;
+    proactor->capabilities =
+        proactor->kernel_capabilities & options.allowed_capabilities;
   }
 
   // Create sparse buffer table on 5.19+ kernels for dynamic buffer
