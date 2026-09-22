@@ -700,9 +700,11 @@ static iree_status_t loom_amdgpu_lower_vector_table_lookup_packed_i8_u4_permute(
   loom_type_t result_type = loom_type_none();
   IREE_RETURN_IF_ERROR(loom_amdgpu_low_result_type(context, source_op,
                                                    plan->result, &result_type));
+  // Selector bytes 0..3 read SRC1 and 4..7 read SRC0. Each pair places
+  // its earlier logical table quarter in SRC1.
   const loom_value_id_t low_lookup_operands[3] = {
-      table_registers[0],
       table_registers[1],
+      table_registers[0],
       low_selector,
   };
   loom_op_t* low_lookup_op = NULL;
@@ -713,8 +715,8 @@ static iree_status_t loom_amdgpu_lower_vector_table_lookup_packed_i8_u4_permute(
       source_op->location, &low_lookup_op));
 
   const loom_value_id_t high_lookup_operands[3] = {
-      table_registers[2],
       table_registers[3],
+      table_registers[2],
       low_selector,
   };
   loom_op_t* high_lookup_op = NULL;
@@ -739,8 +741,8 @@ static iree_status_t loom_amdgpu_lower_vector_table_lookup_packed_i8_u4_permute(
       &merge_selector));
 
   const loom_value_id_t merge_operands[3] = {
-      loom_value_slice_get(loom_low_op_results(low_lookup_op), 0),
       loom_value_slice_get(loom_low_op_results(high_lookup_op), 0),
+      loom_value_slice_get(loom_low_op_results(low_lookup_op), 0),
       merge_selector,
   };
   loom_op_t* merge_op = NULL;

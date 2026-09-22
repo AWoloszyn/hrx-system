@@ -1,0 +1,39 @@
+// Runtime table entries and packed codes exercise all sixteen selector values.
+kernel.def @lookup_packed_nibbles() {
+  %unit = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%input: buffer, %table: buffer, %output: buffer) {
+  %base_offset = index.constant 0 : offset
+  %lane = kernel.workitem.id<x> : index
+  %code_count = index.constant 4 : index
+  %position = index.mul %lane, %code_count : index
+  %input_view = buffer.view %input[%base_offset] : buffer -> view<128xi8>
+  %table_view = buffer.view %table[%base_offset] : buffer -> view<16xi8>
+  %output_view = buffer.view %output[%base_offset] : buffer -> view<128xi8>
+  %packed = vector.load %input_view[%position] : view<128xi8> -> vector<2xi8>
+  %codes = vector.bitunpacku<4> %packed : vector<2xi8> -> vector<4xi8>
+  %values = vector.load %table_view[0] : view<16xi8> -> vector<16xi8>
+  %decoded = vector.table.lookup %values[%codes] : vector<16xi8>, vector<4xi8> -> vector<4xi8>
+  vector.store %decoded, %output_view[%position] : vector<4xi8>, view<128xi8>
+  kernel.return
+}
+
+check.case public @packed_table_lookup {
+  // The low halves are 0x3210, 0x7654, 0xba98, and 0xfedc. Every
+  // four-workitem group decodes the sixteen logical codes in order.
+  %input = check.generate.iota offset(12816) step(17476) period(4) : tensor<32xi32>
+  %table = check.generate.iota offset(-127) step(16) : tensor<16xi8>
+  %storage = check.generate.fill value(91) : tensor<136xi8>
+  %output = check.tensor.view %storage offset(4) : tensor<136xi8> -> tensor<128xi8>
+  kernel.launch @lookup_packed_nibbles(%input, %table, %output) : (tensor<32xi32>, tensor<16xi8>, tensor<128xi8>)
+  %expected = check.generate.iota offset(-127) step(16) period(16) : tensor<128xi8>
+  check.expect.bitwise actual(%output) expected(%expected) : tensor<128xi8>
+  %prefix = check.tensor.view %storage offset(0) : tensor<136xi8> -> tensor<4xi8>
+  %suffix = check.tensor.view %storage offset(132) : tensor<136xi8> -> tensor<4xi8>
+  %guard = check.generate.fill value(91) : tensor<4xi8>
+  check.expect.bitwise actual(%prefix) expected(%guard) : tensor<4xi8>
+  check.expect.bitwise actual(%suffix) expected(%guard) : tensor<4xi8>
+  check.expect.event<device> {count = 0, type = "asan_report"}
+  check.return
+}

@@ -22,12 +22,12 @@ low.func.def target<amdgpu.cdna4.core>(@gfx950) abi(hal_kernel) @i8_table_lookup
   %17 = slice %grid[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
   %18 = slice %grid[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
   %19 = v_and_b32_lit %codes, 117901063
-  %20 = v_perm_b32 %15, %16, %19
-  %21 = v_perm_b32 %17, %18, %19
+  %20 = v_perm_b32 %16, %15, %19
+  %21 = v_perm_b32 %18, %17, %19
   %22 = v_and_b32_lit %codes, 134744072
   %23 = v_lshrrev_b32_src0_inline %22, 1
   %24 = v_or_b32_lit %23, 50462976
-  %decoded = v_perm_b32 %20, %21, %24
+  %decoded = v_perm_b32 %21, %20, %24
   return %decoded
 }
 
@@ -55,12 +55,12 @@ low.func.def target<amdgpu.rdna4.core>(@gfx1200) abi(hal_kernel) @i8_table_looku
   %17 = slice %grid[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
   %18 = slice %grid[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
   %19 = v_and_b32_lit %codes, 117901063
-  %20 = v_perm_b32 %15, %16, %19
-  %21 = v_perm_b32 %17, %18, %19
+  %20 = v_perm_b32 %16, %15, %19
+  %21 = v_perm_b32 %18, %17, %19
   %22 = v_and_b32_lit %codes, 134744072
   %23 = v_lshrrev_b32_src0_inline %22, 1
   %24 = v_or_b32_lit %23, 50462976
-  %decoded = v_perm_b32 %20, %21, %24
+  %decoded = v_perm_b32 %21, %20, %24
   return %decoded
 }
 
@@ -88,11 +88,11 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@gfx1250) abi(hal_kernel) @i8_tab
   %17 = slice %grid[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
   %18 = slice %grid[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
   %19 = v_and_b32_lit %codes, 117901063
-  %20 = v_perm_b32 %15, %16, %19
-  %21 = v_perm_b32 %17, %18, %19
+  %20 = v_perm_b32 %16, %15, %19
+  %21 = v_perm_b32 %18, %17, %19
   %22 = v_and_b32_lit %codes, 134744072
   %23 = v_lshrrev_b32_src0_inline %22, 1
   %24 = v_or_b32_lit %23, 50462976
-  %decoded = v_perm_b32 %20, %21, %24
+  %decoded = v_perm_b32 %21, %20, %24
   return %decoded
 }
