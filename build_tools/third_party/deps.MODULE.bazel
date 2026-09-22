@@ -12,6 +12,15 @@ bazel_dep(
     dev_dependency = True,
     repo_name = "com_google_benchmark",
 )
+
+# Archive sources must not inherit the enclosing repository's Git version.
+single_version_override(
+    module_name = "google_benchmark",
+    patch_strip = 1,
+    patches = ["//build_tools/third_party/google_benchmark:source_version.patch"],
+    version = "1.9.5",
+)
+
 bazel_dep(
     name = "googletest",
     version = "1.17.0.bcr.2",

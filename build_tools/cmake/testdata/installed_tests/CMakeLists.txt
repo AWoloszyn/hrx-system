@@ -16,6 +16,9 @@ set(IREE_PACKAGE_ROOT_PREFIX fixture)
 include("${IREE_REPO_ROOT}/build_tools/cmake/iree_macros.cmake")
 include("${IREE_REPO_ROOT}/libhrx/build_tools/cmake/hrx_installed_tests.cmake")
 
+# Installed paths may end in CMake's false-value suffix.
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/fixture-NOTFOUND" "fixture data\n")
+
 # Repeated consumers share files, trees, and forward-declared aliases. A source
 # may also be needed in more than one installed package directory.
 foreach(_INDEX RANGE 0 1)
@@ -26,7 +29,7 @@ foreach(_INDEX RANGE 0 1)
   hrx_register_installed_test(
     NAME "deferred/${_INDEX}"
     TARGET first::tool
-    DATA fixture.txt tree
+    DATA fixture.txt tree "${CMAKE_CURRENT_BINARY_DIR}/fixture-NOTFOUND"
     REQUIRED_FILES "${_OTHER_FILE}" "${_OTHER_TREE}/nested.txt"
   )
 endforeach()
