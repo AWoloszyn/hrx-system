@@ -1,13 +1,14 @@
-// RUN: verify
+// RUN: with-checks roundtrip
 // Record results, immutable copies and member projections retain the ordinary
 // flattened call ABI, including mixed scalar widths and zero-component records.
 #include "check_records.cxx"
-// CHECK: %actual_payload_pair_first, %actual_payload_pair_second, %actual_payload_scale, %actual_payload_wide, %actual_valid = func.call
-// CHECK: : (i32, i32) -> (i32, i32, f32, i64, i1)
-// CHECK: func.call @update(%actual_payload_pair_first, %actual_payload_pair_second, %actual_payload_scale, %actual_payload_wide)
-// CHECK: check.expect.equal actual(%actual_payload_pair_first)
-// CHECK: check.expect.equal actual(%actual_payload_wide)
-// CHECK: check.benchmark<@record_observations> @record_observations_benchmark
+// ----
+CHECK: *%actual_payload_pair_first, %actual_payload_pair_second, %actual_payload_scale, %actual_payload_wide, %actual_valid = func.call*
+CHECK: *: (i32, i32) -> (i32, i32, f32, i64, i1)*
+CHECK: *func.call @update(%actual_payload_pair_first, %actual_payload_pair_second, %actual_payload_scale, %actual_payload_wide)*
+CHECK: *check.expect.equal actual(%actual_payload_pair_first)*
+CHECK: *check.expect.equal actual(%actual_payload_wide)*
+CHECK: *check.benchmark<@record_observations> @record_observations_benchmark*
 
 // ====
 // RUN: verify

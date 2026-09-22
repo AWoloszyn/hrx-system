@@ -26,7 +26,7 @@ struct Pointer {
 
 // Source identity determines the operations available on a value independently
 // of its number of High components. A two-scalar record is not a pointer.
-enum class ValueKind { SSA, Pointer, Record, Encoding, View };
+enum class ValueKind { SSA, Pointer, Record, Encoding, View, Tensor };
 
 // Admitted source structure shared by all bindings of that structure. A
 // partition contains no SSA identities or dependent types: each Value supplies
@@ -63,6 +63,7 @@ class Value {
   bool is_record() const { return partition_->kind == ValueKind::Record; }
   bool is_encoding() const { return partition_->kind == ValueKind::Encoding; }
   bool is_view() const { return partition_->kind == ValueKind::View; }
+  bool is_tensor() const { return partition_->kind == ValueKind::Tensor; }
   loom_value_id_t ssa() const {
     IREE_ASSERT(partition_->kind == ValueKind::SSA);
     return storage_.inline_values[0];

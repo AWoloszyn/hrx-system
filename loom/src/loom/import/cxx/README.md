@@ -795,15 +795,15 @@ LOOM_CHECK_CASE(wraps_byte) {
 LOOM_CHECK_BENCHMARK(wraps_byte_benchmark, wraps_byte);
 ```
 
-Save this as `checks.cc`. The existing test and benchmark tools accept it
+Save this as `checks.cxx`. The existing test and benchmark tools accept it
 directly when the C++ importer and VM target are enabled:
 
 ```sh
 iree-bazel-run --config=loom-importer-cxx --//loom/config/target:enable=vm \
-  //loom/src/loom/tools/iree-test-loom -- checks.cc
+  //loom/src/loom/tools/iree-test-loom -- checks.cxx
 
 iree-bazel-run --config=loom-importer-cxx --//loom/config/target:enable=vm \
-  //loom/src/loom/tools/iree-benchmark-loom -- checks.cc \
+  //loom/src/loom/tools/iree-benchmark-loom -- checks.cxx \
   --iterations=10 --warmup-iterations=1 --output-format=jsonl
 ```
 
@@ -853,21 +853,87 @@ LOOM_CHECK_CASE(update_values) {
 }
 ```
 
-Constant expressions are evaluated by the frontend;
-runtime conversions and arithmetic belong inside the ordinary called functions.
-After the first expectation, a case can contain further expectations and an
-optional final bare `return`, but no further invocations or bindings. Mutable
-locals, branches, loops, pointers, and kernel launches in the case body produce
+Native kernel checks can generate inputs, launch the kernel, and compare its
+storage in the same file:
+
+```cpp
+#include <loomcxx/check.h>
+#include <loomcxx/kernel.h>
+
+[[loom::kernel, loom::workgroup_size(1, 1, 1),
+  loom::workgroup_count(1, 1, 1)]]
+void update(unsigned* output, unsigned value) {
+  output[0] = value;
+}
+
+LOOM_CHECK_CASE(update_values) {
+  const auto storage = loom::check::fill<unsigned, 3>(37u);
+  const auto middle = loom::check::slice<1>(storage, 1);
+  loom::check::launch<update>(middle, 13u);
+  loom::check::expect_bitwise(middle, loom::check::fill<unsigned, 1>(13u));
+  loom::check::expect_bitwise(loom::check::slice<1>(storage, 0),
+                            loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_bitwise(loom::check::slice<1>(storage, 2),
+                            loom::check::fill<unsigned, 1>(37u));
+  loom::check::expect_event("device", "type", "asan_report", "count", 0);
+}
+LOOM_CHECK_BENCHMARK(update_benchmark, update_values);
+```
+
+For an AMDGPU-enabled build, run this file with
+`iree-test-loom native_checks.cxx --device=amdgpu`. The benchmark tool accepts
+that same file and device selection. Build-integrated native tests select
+`AMDGPU_HARDWARE_PROFILE` or `AMDGPU_ACCESS_PROFILE` from
+`//loom/target/amdgpu:execution_profiles.bzl`.
+
+`fill<T, Count>(value)` produces a dense rank-one `tensor<T, Count>` using a
+constant payload. Copies of the handle retain the same storage. `const` applies
+to the handle; the kernel can update its contents. `slice<Count>(source, offset)`
+creates an alias at a constant **element** offset and diagnoses a range outside
+its source. Slicing a slice preserves the original storage and accumulated
+origin. Tensor element types are unqualified, non-boolean scalars.
+
+`launch<Kernel>(arguments...)` names a kernel declaration directly. Tensor
+arguments bind its buffer parameters, including each slice's origin; scalar
+arguments match its scalar ABI types. The kernel retains its declared launch
+geometry and configurations. Tensors are test data handles, not C++ pointers
+that can be passed to ordinary functions. `expect_bitwise` compares equal-typed
+tensors exactly, including floating-point payload bits.
+
+These calls produce the same IR as authored Loom checks:
+
+```loom
+%storage = check.generate.fill value(37) : tensor<3xi32>
+%middle = check.tensor.view %storage offset(4) : tensor<3xi32> -> tensor<1xi32>
+%value = check.literal value(13) : i32
+kernel.launch @update(%middle, %value) : (tensor<1xi32>, i32)
+%expected = check.generate.fill value(13) : tensor<1xi32>
+check.expect.bitwise actual(%middle) expected(%expected) : tensor<1xi32>
+```
+
+Provider requirements use literal names followed by name/value pairs, for example
+`loom::check::require("hal.amdgpu.descriptor_set", "descriptor_set",
+"amdgpu.rdna3_5.core")`. Attribute values are literal strings or scalar constant
+expressions. `require` emits `check.requires`; `expect_event` uses the same
+spelling for `check.expect.event`. The existing requirement and event providers
+interpret these attributes, including device selection and sanitizer reports.
+
+Constant expressions are evaluated by the frontend; runtime conversions and
+arithmetic belong inside ordinary called functions. After the first expectation,
+a case can contain further expectations, inline `fill` and `slice` calls, and an
+optional final bare `return`, but no further ordinary calls, launches or bindings.
+Mutable locals, branches, loops and pointer operations in the case body produce
 source diagnostics during import.
 
 These restrictions describe the harness body. The implementation under test
 can use the importer's ordinary control flow, helpers, templates and vector
 operations wherever the selected target supports them. Its definition must be
 available in the translation unit, directly or through an include. The current
-shared testbench materializes case inputs, executes its planned calls through
-the IREE VM function provider, then checks observations. Executing control flow
-inside the harness itself requires a shared executor for complete `check.case`
-bodies; no C++-specific interpreter is involved.
+shared testbench materializes case inputs, executes ordinary calls through the
+IREE VM function provider and native launches through the HAL provider, then
+checks observations. Executing control flow inside the harness itself requires a
+shared executor for complete `check.case` bodies; no C++-specific interpreter is
+involved.
 
 Build-integrated checks use the same source file:
 
@@ -877,7 +943,7 @@ load("//loom/target/vm:execution_profiles.bzl", "VM_REFERENCE_PROFILE")
 
 loom_test(
     name = "checks_test",
-    srcs = ["checks.cc"],
+    srcs = ["checks.cxx"],
     execution_profiles = [VM_REFERENCE_PROFILE],
 )
 ```
@@ -901,7 +967,7 @@ or another supported C standard to select C language semantics.
 Source inputs can also be linked once and executed as bytecode:
 
 ```sh
-loom-link checks.cc --mode=link --include-input-tests \
+loom-link checks.cxx --mode=link --include-input-tests \
   --to=bc --output=checks.loombc
 iree-test-loom checks.loombc
 ```

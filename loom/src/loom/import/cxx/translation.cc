@@ -109,7 +109,8 @@ class Translator {
   Value convert(cxx::ExpressionAST* input_ast, const cxx::Type* output_type,
                 cxx::AST* owner) {
     auto value = expression(input_ast);
-    if (value.is_record() || value.is_encoding() || value.is_view()) {
+    if (value.is_record() || value.is_encoding() || value.is_view() ||
+        value.is_tensor()) {
       if (&types_.partition(output_type, owner) != &value.partition()) {
         fail(owner, "conversion must preserve the source value type");
       }
@@ -182,7 +183,7 @@ class Translator {
       auto pointer = value.pointer();
       name(pointer.root, hint);
       name(pointer.byte_offset, hint + "_byte_offset");
-    } else if (value.is_encoding()) {
+    } else if (value.is_encoding() || value.is_tensor()) {
       name(value.components()[0], hint);
     } else {
       name(value.ssa(), hint);
@@ -640,6 +641,8 @@ class Translator {
       source = static_cast<const EncodingPartition&>(partition).source;
     } else if (partition.kind == ValueKind::View) {
       source = static_cast<const ViewPartition&>(partition).source;
+    } else if (partition.kind == ValueKind::Tensor) {
+      source = static_cast<const TensorPartition&>(partition).source;
     }
     if ((assignment->symbol &&
          (!source ||
@@ -718,14 +721,16 @@ class Translator {
     }
     const auto& partition = types_.partition(type, owner);
     if (partition.kind == ValueKind::Encoding ||
-        partition.kind == ValueKind::View) {
+        partition.kind == ValueKind::View ||
+        partition.kind == ValueKind::Tensor) {
       if (elements && !elements->next &&
           types_.unqualified(elements->value->type) ==
               types_.unqualified(type)) {
         return expression(elements->value);
       }
       fail(owner,
-           "encoding and view values require an operation result or a copy");
+           "encoding, view and tensor values require an operation result or a "
+           "copy");
     }
     if (auto* vector = types_.vector(type)) {
       std::vector<loom_value_id_t> components;
@@ -1150,7 +1155,7 @@ class Translator {
       if (!function) {
         fail(ast, "call must resolve to a function symbol");
       }
-      if (intrinsics_.expectation_type(function) ||
+      if (intrinsics_.check_binding(function, ast) ||
           functions_.is_check_case(function) ||
           annotated(function, "check_benchmark")) {
         fail(ast,
@@ -1719,7 +1724,7 @@ class Translator {
         }
         auto* function =
             id ? cxx::symbol_cast<cxx::FunctionSymbol>(id->symbol) : nullptr;
-        if (function && (intrinsics_.expectation_type(function) ||
+        if (function && (intrinsics_.check_binding(function, ast) ||
                          functions_.is_check_case(function) ||
                          annotated(function, "check_benchmark"))) {
           fail(ast,

@@ -17,6 +17,7 @@
 
 #include "loom/import/cxx/binding/assembly.h"
 #include "loom/import/cxx/binding/atomic.h"
+#include "loom/import/cxx/binding/check.h"
 #include "loom/import/cxx/binding/kernel.h"
 #include "loom/import/cxx/binding/scalar_bindings.h"
 #include "loom/import/cxx/binding/shaped.h"
@@ -56,17 +57,10 @@ class Intrinsics {
       return operation == other.operation && loom_type_equal(type, other.type);
     }
   };
-  struct EqualityBinding {
-    // Shared scalar operand type, established by declaration admission.
-    loom_type_t type;
-    bool equivalent(const EqualityBinding& other) const {
-      return loom_type_equal(type, other.type);
-    }
-  };
   using Binding =
       std::variant<ScalarBinding, ShapedIntrinsic, ViewIntrinsic,
                    AtomicIntrinsic, FenceIntrinsic, SubgroupIntrinsic,
-                   BarrierIntrinsic, AssemblyIntrinsic, EqualityBinding>;
+                   BarrierIntrinsic, AssemblyIntrinsic, CheckIntrinsic>;
 
   Intrinsics(cxx::TranslationUnit& unit, Diagnostics& diagnostics, Types& types)
       : unit_(unit), diagnostics_(diagnostics), types_(types) {}
@@ -77,10 +71,10 @@ class Intrinsics {
                    cxx::List<cxx::AttributeSpecifierAST*>* attributes,
                    cxx::AST* owner);
 
-  // Returns the admitted operand type for a void equality expectation, or no
-  // value for another declaration. Check-body translation owns its emission.
-  std::optional<loom_type_t> expectation_type(
-      cxx::FunctionSymbol* function) const;
+  // Returns an admitted check operation, or null for another declaration.
+  // Check-body translation owns its source constants and emission.
+  const CheckIntrinsic* check_binding(cxx::FunctionSymbol* function,
+                                      cxx::AST* owner);
 
   // Resolves a concrete operation once for call admission. The returned binding
   // remains stable until this invocation ends, including across nested calls.

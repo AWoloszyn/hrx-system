@@ -26,6 +26,7 @@ loom_check_test_suite(
     "bfloat16_invalid.cxx-test"
     "check.cxx-test"
     "check_records.cxx-test"
+    "check_resources.cxx-test"
     "condition_declarations.cxx-test"
     "conditionals.cxx-test"
     "config.cxx-test"
@@ -946,7 +947,6 @@ loom_test_module(
   NAME
     atomics_module
   SRCS
-    "atomic_builtin_kernels.loom"
     "atomic_builtins.cpp"
     "atomic_kernels.loom"
     "atomics.cpp"
