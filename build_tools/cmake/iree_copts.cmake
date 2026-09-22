@@ -121,13 +121,6 @@ iree_select_compiler_opts(IREE_DEFAULT_COPTS
     # https://docs.microsoft.com/en-us/cpp/c-runtime-library/security-features-in-the-crt
     "/D_CRT_SECURE_NO_WARNINGS"
 
-    # With the above said about the "deprecated" functions; this useful flag
-    # will at least try to use them when possible without any change to user
-    # code. Note however because the new versions use templates they won't be
-    # activated in C code; that's fine.
-    # https://docs.microsoft.com/en-us/cpp/c-runtime-library/secure-template-overloads
-    "/D_CRT_SECURE_CPP_OVERLOAD_STANDARD_NAMES"
-
     # Configure RTTI generation.
     # - /GR - Enable generation of RTTI (default)
     # - /GR- - Disables generation of RTTI
