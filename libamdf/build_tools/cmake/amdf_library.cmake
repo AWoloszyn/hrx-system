@@ -112,14 +112,15 @@ function(amdf_library)
     endif()
     list(APPEND _COMPONENT_TARGETS "${_COMPONENT_TARGET}")
 
-    if(TARGET "${_COMPONENT_TARGET}.objects")
+    get_target_property(_OBJECT_TARGET "${_COMPONENT_TARGET}" IREE_CC_OBJECT_TARGET)
+    if(_OBJECT_TARGET)
       # Public declarations opt in to ELF visibility through AMDF_API.
-      set_target_properties("${_COMPONENT_TARGET}.objects" PROPERTIES
+      set_target_properties("${_OBJECT_TARGET}" PROPERTIES
         C_VISIBILITY_PRESET hidden
         CXX_VISIBILITY_PRESET hidden
       )
       list(APPEND _OBJECT_SOURCES
-        "$<TARGET_OBJECTS:${_COMPONENT_TARGET}.objects>")
+        "$<TARGET_OBJECTS:${_OBJECT_TARGET}>")
     endif()
 
     # Folding objects removes their component targets from the final link.

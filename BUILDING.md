@@ -39,6 +39,9 @@ python dev.py cmake build
 python dev.py cmake test
 ```
 
+New CMake build trees default to Ninja. Existing trees retain their configured
+generator; explicit `-G`, `CMAKE_GENERATOR`, and preset selections are honored.
+
 Install Git hooks for the build system you use for commits:
 
 ```bash

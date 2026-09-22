@@ -37,6 +37,11 @@ include("${CMAKE_CURRENT_LIST_DIR}/../sanitizer/iree_sanitizer_suppressions.cmak
 # and alias target iree::${NAME}. The iree:: form should always be used.
 # This is to reduce namespace pollution.
 #
+# Source libraries record IREE_CC_OBJECT_TARGET as the native target that owns
+# compilation and exposes TARGET_OBJECTS. Ordinary libraries own their objects;
+# ALWAYSLINK libraries use a separate object target. Header-only libraries have
+# no object target.
+#
 # iree_cc_library(
 #   NAME
 #     awesome
@@ -85,7 +90,7 @@ function(iree_cc_library)
     iree_package_name(_PACKAGE_NAME)
   endif()
   set(_NAME "${_PACKAGE_NAME}_${_RULE_NAME}")
-  set(_OBJECTS_NAME ${_NAME}.objects)
+  set(_COMPILE_TARGET ${_NAME})
 
   if(_DEBUG_IREE_PACKAGE_NAME)
     message(STATUS "  : iree_cc_library(${_NAME})")
@@ -116,16 +121,9 @@ function(iree_cc_library)
     )
   endif()
 
-  # Check if this is a header-only library.
-  # Note that as of February 2019, many popular OS's (for example, Ubuntu
-  # 16.04 LTS) only come with cmake 3.5 by default.  For this reason, we can't
-  # use list(FILTER...)
+  # Header-only libraries have no native compilation target.
   set(_CC_SRCS "${_RULE_SRC_TARGET_SRCS}")
-  foreach(_SRC_FILE IN LISTS _CC_SRCS)
-    if(${_SRC_FILE} MATCHES ".*\\.(h|inc)")
-      list(REMOVE_ITEM _CC_SRCS "${_SRC_FILE}")
-    endif()
-  endforeach()
+  list(FILTER _CC_SRCS EXCLUDE REGEX ".*\\.(h|inc)")
   if("${_CC_SRCS}" STREQUAL "")
     set(_RULE_IS_INTERFACE 1)
   else()
@@ -162,16 +160,15 @@ function(iree_cc_library)
   endif()
 
   if(NOT _RULE_IS_INTERFACE AND NOT _RULE_ALWAYSLINK)
-    # Normal library: OBJECT for compilation, STATIC (or SHARED) for linking.
-    add_library(${_OBJECTS_NAME} OBJECT)
+    # Ordinary libraries own both compilation and linking.
     if(_RULE_SHARED OR BUILD_SHARED_LIBS)
-      add_library(${_NAME} SHARED "$<TARGET_OBJECTS:${_OBJECTS_NAME}>")
+      add_library(${_NAME} SHARED)
       set(_LINKOPTS_SCOPE PRIVATE)
       if(_RULE_WINDOWS_DEF_FILE AND WIN32)
         target_sources(${_NAME} PRIVATE "${_RULE_WINDOWS_DEF_FILE}")
       endif()
     else()
-      add_library(${_NAME} STATIC "$<TARGET_OBJECTS:${_OBJECTS_NAME}>")
+      add_library(${_NAME} STATIC)
       # An archive has no native link step. Its declared link requirements
       # belong to the executable or shared library that consumes its objects.
       set(_LINKOPTS_SCOPE INTERFACE)
@@ -180,8 +177,16 @@ function(iree_cc_library)
       endif()
     endif()
 
-    # Sources get added to the object library.
-    target_sources(${_OBJECTS_NAME}
+    if(MSVC)
+      # The directory already identifies the target. Repeating its qualified
+      # name in the compiler PDB filename can exceed MSVC's path limit.
+      set_target_properties(${_NAME} PROPERTIES
+        COMPILE_PDB_NAME "compile"
+        COMPILE_PDB_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_NAME}.dir"
+      )
+    endif()
+
+    target_sources(${_NAME}
       PRIVATE
         ${_RULE_SRC_TARGET_SRCS}
         ${_RULE_HDR_TARGET_SRCS}
@@ -189,37 +194,8 @@ function(iree_cc_library)
 
     # Keep track of objects transitively in our special property.
     set_property(TARGET ${_NAME} PROPERTY
-      INTERFACE_IREE_TRANSITIVE_OBJECTS "$<TARGET_OBJECTS:${_OBJECTS_NAME}>")
+      INTERFACE_IREE_TRANSITIVE_OBJECTS "$<TARGET_OBJECTS:${_NAME}>")
     _iree_cc_library_add_object_deps(${_NAME} ${_RULE_DEPS})
-
-    # Usage requirements and caller options live on the regular rule. The object
-    # library needs compiler definition related properties, so we forward them.
-    # We also forward link libraries -- not because the OBJECT libraries do
-    # linking but because they get transitive compile definitions from them.
-    # Yes. This is state of the art.
-    target_include_directories(${_OBJECTS_NAME}
-      PUBLIC
-        $<TARGET_PROPERTY:${_NAME},INTERFACE_INCLUDE_DIRECTORIES>
-    )
-    target_include_directories(${_OBJECTS_NAME} SYSTEM
-      PUBLIC
-        $<TARGET_PROPERTY:${_NAME},INTERFACE_SYSTEM_INCLUDE_DIRECTORIES>
-    )
-    target_compile_options(${_OBJECTS_NAME}
-      PRIVATE
-        ${IREE_DEFAULT_COPTS}
-        $<TARGET_PROPERTY:${_NAME},COMPILE_OPTIONS>
-    )
-    target_compile_definitions(${_OBJECTS_NAME}
-      PUBLIC
-        $<TARGET_PROPERTY:${_NAME},INTERFACE_COMPILE_DEFINITIONS>
-    )
-    # Dependency properties may contain build-only or conditional expressions.
-    # Evaluate them in the owning library's context before forwarding them.
-    target_link_libraries(${_OBJECTS_NAME}
-      PUBLIC
-        $<TARGET_GENEX_EVAL:${_NAME},$<TARGET_PROPERTY:${_NAME},INTERFACE_LINK_LIBRARIES>>
-    )
 
     # Wrap whole lists to preserve conditions spanning multiple directories.
     # This also avoids per-directory expression work in transitive consumers.
@@ -233,6 +209,7 @@ function(iree_cc_library)
     )
     target_compile_options(${_NAME}
       PRIVATE
+        ${IREE_DEFAULT_COPTS}
         ${_RULE_COPTS}
       INTERFACE
         ${IREE_INTERFACE_COPTS}
@@ -263,7 +240,7 @@ function(iree_cc_library)
     # TODO: Switch to the CXX_VISIBILITY_PRESET property and fix the global
     # hidden setting to follow suit.
     if(BUILD_SHARED_LIBS AND IREE_SUPPORTS_VISIBILITY_DEFAULT)
-      target_compile_options(${_OBJECTS_NAME} PRIVATE
+      target_compile_options(${_NAME} PRIVATE
         "-fvisibility=default"
       )
     endif()
@@ -271,18 +248,15 @@ function(iree_cc_library)
     # Add all IREE targets to a folder in the IDE for organization.
     if(_RULE_PUBLIC)
       set_property(TARGET ${_NAME} PROPERTY FOLDER ${IREE_IDE_FOLDER})
-      set_property(TARGET ${_OBJECTS_NAME} PROPERTY FOLDER ${IREE_IDE_FOLDER})
     elseif(_RULE_TESTONLY)
       set_property(TARGET ${_NAME} PROPERTY FOLDER ${IREE_IDE_FOLDER}/test)
-      set_property(TARGET ${_OBJECTS_NAME} PROPERTY FOLDER ${IREE_IDE_FOLDER}/test)
     else()
       set_property(TARGET ${_NAME} PROPERTY FOLDER ${IREE_IDE_FOLDER}/internal)
-      set_property(TARGET ${_OBJECTS_NAME} PROPERTY FOLDER ${IREE_IDE_FOLDER}/internal)
     endif()
 
     # INTERFACE libraries can't have the CXX_STANDARD property set so only
     # set here.
-    iree_set_cxx_options(${_OBJECTS_NAME} "${_RULE_CXX_STANDARD}" ${_RULE_CXX_FEATURES})
+    iree_set_cxx_options(${_NAME} "${_RULE_CXX_STANDARD}" ${_RULE_CXX_FEATURES})
   elseif(NOT _RULE_IS_INTERFACE AND _RULE_ALWAYSLINK)
     # ALWAYSLINK library: OBJECT for compilation, INTERFACE for propagation.
     # The INTERFACE library propagates $<TARGET_OBJECTS:...> directly, ensuring
@@ -290,24 +264,25 @@ function(iree_cc_library)
     # the linker strip unreferenced objects (dropping static init registrations);
     # propagating objects directly bypasses the archive and eliminates that
     # problem. This is the CMake equivalent of Bazel's alwayslink = True.
-    add_library(${_OBJECTS_NAME} OBJECT)
+    set(_COMPILE_TARGET ${_NAME}.objects)
+    add_library(${_COMPILE_TARGET} OBJECT)
     add_library(${_NAME} INTERFACE)
-    add_dependencies(${_NAME} ${_OBJECTS_NAME})
+    add_dependencies(${_NAME} ${_COMPILE_TARGET})
 
-    target_sources(${_OBJECTS_NAME}
+    target_sources(${_COMPILE_TARGET}
       PRIVATE
         ${_RULE_SRC_TARGET_SRCS}
         ${_RULE_HDR_TARGET_SRCS}
     )
 
     set_property(TARGET ${_NAME} PROPERTY
-      INTERFACE_IREE_TRANSITIVE_OBJECTS "$<TARGET_OBJECTS:${_OBJECTS_NAME}>")
+      INTERFACE_IREE_TRANSITIVE_OBJECTS "$<TARGET_OBJECTS:${_COMPILE_TARGET}>")
     _iree_cc_library_add_object_deps(${_NAME} ${_RULE_DEPS})
 
     # INTERFACE library propagates objects and link dependencies to consumers.
     target_link_libraries(${_NAME}
       INTERFACE
-        $<TARGET_OBJECTS:${_OBJECTS_NAME}>
+        $<TARGET_OBJECTS:${_COMPILE_TARGET}>
         ${_RULE_DEPS}
         ${IREE_THREADS_DEPS}
         ${IREE_DEFAULT_LINK_LIBRARIES}
@@ -333,7 +308,7 @@ function(iree_cc_library)
     # OBJECT library needs compile-related properties for building the sources.
     # Compile options go directly on the OBJECT library (INTERFACE libraries
     # cannot have PRIVATE properties).
-    target_compile_options(${_OBJECTS_NAME}
+    target_compile_options(${_COMPILE_TARGET}
       PRIVATE
         ${IREE_DEFAULT_COPTS}
         ${_RULE_COPTS}
@@ -342,23 +317,23 @@ function(iree_cc_library)
     # Forward transitive compile properties from the INTERFACE library's
     # dependency chain to the OBJECT library so sources see all transitive
     # include directories and definitions.
-    target_include_directories(${_OBJECTS_NAME}
+    target_include_directories(${_COMPILE_TARGET}
       PUBLIC
         $<TARGET_PROPERTY:${_NAME},INTERFACE_INCLUDE_DIRECTORIES>
     )
-    target_include_directories(${_OBJECTS_NAME} SYSTEM
+    target_include_directories(${_COMPILE_TARGET} SYSTEM
       PUBLIC
         $<TARGET_PROPERTY:${_NAME},INTERFACE_SYSTEM_INCLUDE_DIRECTORIES>
     )
-    target_compile_definitions(${_OBJECTS_NAME}
+    target_compile_definitions(${_COMPILE_TARGET}
       PUBLIC
         $<TARGET_PROPERTY:${_NAME},INTERFACE_COMPILE_DEFINITIONS>
     )
     # Forward deps to the OBJECT library for transitive compile definitions.
     # We forward deps directly rather than $<TARGET_PROPERTY:INTERFACE_LINK_LIBRARIES>
-    # because the latter contains $<TARGET_OBJECTS:${_OBJECTS_NAME}> which would
+    # because the latter contains $<TARGET_OBJECTS:${_COMPILE_TARGET}> which would
     # create a circular reference.
-    target_link_libraries(${_OBJECTS_NAME}
+    target_link_libraries(${_COMPILE_TARGET}
       PUBLIC
         ${_RULE_DEPS}
     )
@@ -367,20 +342,20 @@ function(iree_cc_library)
       OUT_TARGET_DATA _DATA_TARGETS)
 
     if(BUILD_SHARED_LIBS AND IREE_SUPPORTS_VISIBILITY_DEFAULT)
-      target_compile_options(${_OBJECTS_NAME} PRIVATE
+      target_compile_options(${_COMPILE_TARGET} PRIVATE
         "-fvisibility=default"
       )
     endif()
 
     if(_RULE_PUBLIC)
-      set_property(TARGET ${_OBJECTS_NAME} PROPERTY FOLDER ${IREE_IDE_FOLDER})
+      set_property(TARGET ${_COMPILE_TARGET} PROPERTY FOLDER ${IREE_IDE_FOLDER})
     elseif(_RULE_TESTONLY)
-      set_property(TARGET ${_OBJECTS_NAME} PROPERTY FOLDER ${IREE_IDE_FOLDER}/test)
+      set_property(TARGET ${_COMPILE_TARGET} PROPERTY FOLDER ${IREE_IDE_FOLDER}/test)
     else()
-      set_property(TARGET ${_OBJECTS_NAME} PROPERTY FOLDER ${IREE_IDE_FOLDER}/internal)
+      set_property(TARGET ${_COMPILE_TARGET} PROPERTY FOLDER ${IREE_IDE_FOLDER}/internal)
     endif()
 
-    iree_set_cxx_options(${_OBJECTS_NAME} "${_RULE_CXX_STANDARD}" ${_RULE_CXX_FEATURES})
+    iree_set_cxx_options(${_COMPILE_TARGET} "${_RULE_CXX_STANDARD}" ${_RULE_CXX_FEATURES})
   else()
     # Generating header-only library (no sources, or ALWAYSLINK on header-only
     # which is meaningless since there are no objects).
@@ -417,20 +392,19 @@ function(iree_cc_library)
     )
   endif()
 
+  if(NOT _RULE_IS_INTERFACE)
+    set_property(TARGET ${_NAME} PROPERTY IREE_CC_OBJECT_TARGET ${_COMPILE_TARGET})
+  endif()
+
   # Order compilation after any registered producers of generated sources or
   # headers. Generated files are represented as paths rather than link targets,
   # so the ordinary target dependency graph cannot infer this edge.
-  if(_RULE_IS_INTERFACE)
-    set(_GENERATED_INPUT_CONSUMER ${_NAME})
-  else()
-    set(_GENERATED_INPUT_CONSUMER ${_OBJECTS_NAME})
-  endif()
   foreach(_GENERATED_INPUT IN LISTS
       _RULE_SRC_TARGET_SRCS
       _RULE_HDR_TARGET_SRCS)
     iree_generated_output_add_consumer(
       "${_GENERATED_INPUT}"
-      "${_GENERATED_INPUT_CONSUMER}"
+      "${_COMPILE_TARGET}"
     )
   endforeach()
 
@@ -593,7 +567,7 @@ function(iree_cc_unified_library)
   )
   target_link_libraries(${_NAME}
     PUBLIC
-      $<TARGET_PROPERTY:${_RULE_ROOT},INTERFACE_LINK_LIBRARIES>
+      $<TARGET_GENEX_EVAL:${_RULE_ROOT},$<TARGET_PROPERTY:${_RULE_ROOT},INTERFACE_LINK_LIBRARIES>>
   )
   iree_target_sanitizer_suppressions("${_NAME}" DEPS "${_RULE_ROOT}")
 
@@ -613,22 +587,4 @@ function(iree_cc_unified_library)
   if(${_RULE_NAME} STREQUAL ${_PACKAGE_DIR})
     iree_add_alias_library(${_PACKAGE_NS} ${_NAME})
   endif()
-endfunction()
-
-# iree_cc_library_exclude_from_all(target exclude)
-#
-# For a target previously defined in the same package, set the
-# EXCLUDE_FROM_ALL property.
-#
-# This is necessary because cc_library targets consist of multiple sub-targets
-# and they all must have the property set.
-function(iree_cc_library_exclude_from_all target exclude_from_all)
-  iree_package_ns(_PACKAGE_NS)
-  iree_package_name(_PACKAGE_NAME)
-
-  set(_NAME "${_PACKAGE_NAME}_${target}")
-  set(_OBJECTS_NAME ${_NAME}.objects)
-
-  set_target_properties(${_NAME} ${_OBJECTS_NAME}
-    PROPERTIES EXCLUDE_FROM_ALL ${exclude_from_all})
 endfunction()

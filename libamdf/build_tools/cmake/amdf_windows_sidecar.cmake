@@ -51,7 +51,6 @@ function(amdf_windows_sidecar_library)
   set(_TARGET_NAME "${_PACKAGE_NAME}_${_RULE_NAME}")
   _amdf_windows_sidecar_compile_options(
     ${_TARGET_NAME}
-    ${_TARGET_NAME}.objects
   )
   set_target_properties(${_TARGET_NAME} PROPERTIES
     OUTPUT_NAME "${_RULE_NAME}"

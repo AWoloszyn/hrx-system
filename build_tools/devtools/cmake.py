@@ -411,6 +411,12 @@ def configure_plan(
     fresh_steps, configure_args = _prepare_fresh_configure(
         requested_build_dir, backend_args, command_env
     )
+    # Apply the default after preserving a fresh configure's existing generator.
+    # CMake resolves explicit flags, presets and cached choices ahead of it.
+    command_env = {
+        **command_env,
+        "CMAKE_GENERATOR": command_env.get("CMAKE_GENERATOR") or "Ninja",
+    }
     return CommandPlan(
         [
             *fresh_steps,

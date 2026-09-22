@@ -35,9 +35,9 @@ class CMakeLibraryDependenciesTest(unittest.TestCase):
                 .read_text()
                 .splitlines()
             ]
-            build_project(build, "iree_fixture_library.objects")
+            build_project(build, "iree_fixture_library")
             self.assertFalse(
-                leaf.exists(), "Compiling objects needs no dependent archive"
+                leaf.exists(), "Building an archive needs no dependent archive"
             )
 
             def check(expected):
@@ -45,20 +45,20 @@ class CMakeLibraryDependenciesTest(unittest.TestCase):
                 for program in programs:
                     self.assertEqual(run_command(str(program)), f"{expected}\n")
 
-            check(22)
+            check(40)
             timestamps = [path.stat().st_mtime_ns for path in programs]
-            check(22)
+            check(40)
             self.assertEqual([path.stat().st_mtime_ns for path in programs], timestamps)
             (source / "value.txt").write_text("11\n")
-            check(30)
+            check(48)
             leaf_source = source / "leaf.c"
             leaf_source.write_text(
                 leaf_source.read_text().replace("return 5;", "return 6;")
             )
-            check(31)
+            check(49)
             for name in ("generated.h", "generated.c"):
                 (build / "producer" / name).unlink()
-            check(31)
+            check(49)
 
 
 if __name__ == "__main__":

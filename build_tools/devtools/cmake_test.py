@@ -241,20 +241,42 @@ class CMakeTest(unittest.TestCase):
             self.assertIn("generator=NMake Makefiles", output.getvalue())
             self.assertIn(f"tree={build_dir}", output.getvalue())
 
+    def test_configure_defaults_to_ninja(self):
+        tool_env = ToolEnvironment(ToolMode.SYSTEM, None)
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            for generator in (None, "", "Ninja Multi-Config"):
+                with self.subTest(generator=generator):
+                    env = {} if generator is None else {"CMAKE_GENERATOR": generator}
+                    plan = cmake_dev.configure_plan(
+                        tool_env,
+                        configured_build_dir=Path(temporary_dir) / "build",
+                        backend_args=[],
+                        env=env,
+                    )
+                    command = next(
+                        step
+                        for step in plan.steps
+                        if isinstance(step, cmake_dev.CommandStep)
+                    )
+                    self.assertEqual(
+                        command.env.get("CMAKE_GENERATOR"), generator or "Ninja"
+                    )
+                    self.assertEqual(env.get("CMAKE_GENERATOR"), generator)
+
     def test_fresh_configure_preserves_configured_generator(self):
         tool_env = ToolEnvironment(ToolMode.SYSTEM, None)
         with tempfile.TemporaryDirectory() as temporary_dir:
             build_dir = Path(temporary_dir) / "build"
             build_dir.mkdir()
             (build_dir / "CMakeCache.txt").write_text(
-                "CMAKE_GENERATOR:INTERNAL=Ninja\n"
+                "CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n"
                 f"CMAKE_HOME_DIRECTORY:INTERNAL={REPO_ROOT}\n",
                 encoding="utf-8",
             )
             nested_cache = build_dir / "_deps/googletest-subbuild/CMakeCache.txt"
             nested_cache.parent.mkdir(parents=True)
             nested_cache.write_text(
-                "CMAKE_GENERATOR:INTERNAL=Ninja\n",
+                "CMAKE_GENERATOR:INTERNAL=Unix Makefiles\n",
                 encoding="utf-8",
             )
 
@@ -266,8 +288,13 @@ class CMakeTest(unittest.TestCase):
             )
 
             description = normalized_plan_description(plan)
-            self.assertIn("preserve CMake generator Ninja", description)
-            self.assertIn("-G Ninja --fresh", description)
+            self.assertIn("preserve CMake generator Unix Makefiles", description)
+            command = next(
+                step for step in plan.steps if isinstance(step, cmake_dev.CommandStep)
+            )
+            self.assertEqual(
+                command.argv[command.argv.index("-G") + 1], "Unix Makefiles"
+            )
             self.assertFalse(plan.steps[0].reset_build_tree)
             self.assertEqual(plan.steps[0].run(), 0)
             self.assertTrue(nested_cache.is_file())
