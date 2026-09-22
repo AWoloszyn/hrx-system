@@ -13,10 +13,9 @@ func.def @empty_then_guard(%stop: i1, %input: view<1xi32>, %output: view<1xi32>)
 
 // ----
 func.def @empty_then_guard(%stop: i1, %input: view<1xi32>, %output: view<1xi32>) {
-  %4 = scalar.constant false : i1
-  %5 = scalar.constant true : i1
-  %6 = scf.select %stop, %4, %5 : i1
-  scf.if %6 {
+  %4 = scalar.constant true : i1
+  %5 = scalar.xori %stop, %4 : i1
+  scf.if %5 {
     %value = view.load %input[0] : view<1xi32> -> i32
     view.store %value, %output[0] : i32, view<1xi32>
   }
@@ -54,10 +53,9 @@ func.def @empty_then_loop(%stop: i1, %output: view<1xi32>, %count: index, %value
 
 // ----
 func.def @empty_then_loop(%stop: i1, %output: view<1xi32>, %count: index, %value: i32) {
-  %7 = scalar.constant false : i1
-  %8 = scalar.constant true : i1
-  %9 = scf.select %stop, %7, %8 : i1
-  scf.if %9 {
+  %7 = scalar.constant true : i1
+  %8 = scalar.xori %stop, %7 : i1
+  scf.if %8 {
     %start = index.constant 0 : index
     %step = index.constant 1 : index
     scf.for %iteration = [%start to %count step %step] {
@@ -861,84 +859,6 @@ func.def @if_preserves_different_tail_kinds(%cond: i1, %a: i32, %b: i32) -> (i32
     scf.yield %else : i32
   }
   func.return %result : i32
-}
-
-// ====
-
-// scf.select is a plain value op, so identical arms fold without needing
-// control-flow reasoning.
-func.def @select_identical_arms(%cond: i1, %value: vector<4xf32>) -> (vector<4xf32>) {
-  %result = scf.select %cond, %value, %value : vector<4xf32>
-  func.return %result : vector<4xf32>
-}
-
-// ----
-func.def @select_identical_arms(%cond: i1, %value: vector<4xf32>) -> (vector<4xf32>) {
-  func.return %value : vector<4xf32>
-}
-
-// ====
-
-// Exact condition facts fold scf.select to the chosen arm even for non-scalar
-// aggregate values.
-func.def @select_constant_condition(%value: tile<4xf32>, %other: tile<4xf32>) -> (tile<4xf32>) {
-  %cond = scalar.constant false : i1
-  %result = scf.select %cond, %value, %other : tile<4xf32>
-  func.return %result : tile<4xf32>
-}
-
-// ----
-func.def @select_constant_condition(%value: tile<4xf32>, %other: tile<4xf32>) -> (tile<4xf32>) {
-  func.return %other : tile<4xf32>
-}
-
-// ====
-
-// Exact condition facts fold scalar scf.select values to the selected arm.
-func.def @select_true_scalar() -> (i32) {
-  %cond = scalar.constant true : i1
-  %a = scalar.constant 42 : i32
-  %b = scalar.constant 99 : i32
-  %result = scf.select %cond, %a, %b : i32
-  func.return %result : i32
-}
-
-// ----
-func.def @select_true_scalar() -> (i32) {
-  %result = scalar.constant 42 : i32
-  func.return %result : i32
-}
-
-// ====
-
-func.def @select_false_scalar() -> (i32) {
-  %cond = scalar.constant false : i1
-  %a = scalar.constant 42 : i32
-  %b = scalar.constant 99 : i32
-  %result = scf.select %cond, %a, %b : i32
-  func.return %result : i32
-}
-
-// ----
-func.def @select_false_scalar() -> (i32) {
-  %result = scalar.constant 99 : i32
-  func.return %result : i32
-}
-
-// ====
-
-// Boolean identity select folds without making scf depend on scalar xori for
-// the complement form.
-func.def @select_boolean_identity(%condition: i1) -> (i1) {
-  %true = scalar.constant true : i1
-  %false = scalar.constant false : i1
-  %result = scf.select %condition, %true, %false : i1
-  func.return %result : i1
-}
-
-// ----
-func.def @select_boolean_identity(%condition: i1) -> (i1) {
-  func.return %condition : i1
 }
 
 // ====

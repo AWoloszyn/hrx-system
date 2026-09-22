@@ -1389,12 +1389,10 @@ func.def @scf_select_i1_false_true_constants(%values: vector<2xi32>, %limit: i32
 low.func.def target<amd.xdna.aie2p.core> abi(object_function) @scf_select_i1_false_true_constants(%values: reg<aie2p.vec256 x2>, %limit: reg<aie2p.er>, %true_value: reg<aie2p.er>, %false_value: reg<aie2p.er>) -> (reg<aie2p.er>) asm {
   %lane = vextract.32.imm %values, 0
   %lane_condition = lt %lane, %limit
-  %false = mov.short 0
   %true = mov.short 1
-  %20 = copy %lane_condition : reg<aie2p.er> -> reg<aie2p.mr27_select>
-  %selected_condition = sel.nez %false, %true, %20
-  %22 = copy %selected_condition : reg<aie2p.er> -> reg<aie2p.mr27_select>
-  %result = sel.nez %true_value, %false_value, %22
+  %selected_condition = xor %lane_condition, %true
+  %21 = copy %selected_condition : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %result = sel.nez %true_value, %false_value, %21
   return %result
 }
 

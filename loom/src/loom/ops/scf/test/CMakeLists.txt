@@ -15,6 +15,7 @@ loom_check_test_suite(
   SRCS
     "canonicalize.loom-test"
     "canonicalize_condition_loop.loom-test"
+    "canonicalize_select.loom-test"
     "convergence_facts.loom-test"
     "dependent_types.loom-test"
     "facts.loom-test"

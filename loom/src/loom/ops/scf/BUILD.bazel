@@ -25,6 +25,22 @@ loom_cc_test(
 )
 
 loom_cc_test(
+    name = "canonicalize_test",
+    srcs = ["canonicalize_test.cc"],
+    deps = [
+        ":scf",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/scalar",
+        "//loom/src/loom/ops/test",
+        "//loom/src/loom/rewrite:rewriter",
+        "//loom/src/loom/util:fact_table",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
     name = "forwarding_equivalence_test",
     srcs = ["forwarding_equivalence_test.cc"],
     deps = [
@@ -83,6 +99,7 @@ loom_generated_cc_library(
         "//loom/src/loom/ir",
         "//loom/src/loom/ir:facts",
         "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/scalar",
         "//loom/src/loom/rewrite:remap",
         "//loom/src/loom/rewrite:rewriter",
         "//loom/src/loom/util:fact_table",
