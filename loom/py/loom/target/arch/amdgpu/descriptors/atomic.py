@@ -780,6 +780,7 @@ def _flat_atomic_overlay(
     return_field_value: int,
     cache_fields: tuple[tuple[str, int], ...],
     cache_immediate_field_names: tuple[str, ...],
+    fixed_saddr: AmdgpuFixedEncodingValue | None,
     implicit_flat_scratch: bool,
     implicit_m0: bool,
     allow_accumulator_operands: bool,
@@ -839,6 +840,8 @@ def _flat_atomic_overlay(
         for field_name, _bit_width in cache_fields
         if field_name not in cache_immediate_field_names
     )
+    if fixed_saddr is not None:
+        fixed_encoding_fields += (("SADDR", fixed_saddr),)
     implicit_operands: tuple[AmdgpuImplicitOperandOverlay, ...] = (
         _ignore_generic_atomic_memory(
             data_format_name=data_format_name, width_bits=width_bits, is_input=False
@@ -907,6 +910,7 @@ def _flat_atomic_cmpswap_overlay(
     return_field_value: int,
     cache_fields: tuple[tuple[str, int], ...],
     cache_immediate_field_names: tuple[str, ...],
+    fixed_saddr: AmdgpuFixedEncodingValue | None,
     implicit_flat_scratch: bool,
     implicit_m0: bool,
     allow_accumulator_operands: bool,
@@ -937,6 +941,8 @@ def _flat_atomic_cmpswap_overlay(
         if allow_accumulator_operands
         else _vgpr_operand("value", units=value_units * 2)
     )
+    if fixed_saddr is not None:
+        fixed_encoding_fields += (("SADDR", fixed_saddr),)
     implicit_operands: tuple[AmdgpuImplicitOperandOverlay, ...] = (
         _ignore_generic_atomic_memory(
             data_format_name=data_format_name, width_bits=width_bits, is_input=False
@@ -1005,6 +1011,7 @@ def _flat_atomic_overlays(
     return_field_value: int,
     cache_fields: tuple[tuple[str, int], ...],
     cache_immediate_field_names: tuple[str, ...] = (),
+    fixed_saddr: AmdgpuFixedEncodingValue | None = None,
     implicit_flat_scratch: bool,
     implicit_m0: bool = False,
     allow_accumulator_operands: bool = False,
@@ -1031,6 +1038,7 @@ def _flat_atomic_overlays(
                     return_field_value=return_field_value,
                     cache_fields=cache_fields,
                     cache_immediate_field_names=cache_immediate_field_names,
+                    fixed_saddr=fixed_saddr,
                     implicit_flat_scratch=implicit_flat_scratch,
                     implicit_m0=implicit_m0,
                     allow_accumulator_operands=allow_accumulator_operands,
@@ -1056,6 +1064,7 @@ def _flat_atomic_overlays(
                 return_field_value=return_field_value,
                 cache_fields=cache_fields,
                 cache_immediate_field_names=cache_immediate_field_names,
+                fixed_saddr=fixed_saddr,
                 implicit_flat_scratch=implicit_flat_scratch,
                 implicit_m0=implicit_m0,
                 allow_accumulator_operands=allow_accumulator_operands,
@@ -1080,6 +1089,7 @@ def _flat_atomic_overlays(
             return_field_value=return_field_value,
             cache_fields=cache_fields,
             cache_immediate_field_names=cache_immediate_field_names,
+            fixed_saddr=fixed_saddr,
             implicit_flat_scratch=implicit_flat_scratch,
             implicit_m0=implicit_m0,
             allow_accumulator_operands=allow_accumulator_operands,
@@ -1104,6 +1114,7 @@ def _flat_atomic_overlays(
             return_field_value=return_field_value,
             cache_fields=cache_fields,
             cache_immediate_field_names=cache_immediate_field_names,
+            fixed_saddr=fixed_saddr,
             implicit_flat_scratch=implicit_flat_scratch,
             implicit_m0=implicit_m0,
             allow_accumulator_operands=allow_accumulator_operands,
