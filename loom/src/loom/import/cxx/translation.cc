@@ -837,6 +837,12 @@ class Translator {
       }
       return convert(cast->expression, cast->type, ast);
     }
+    if (auto* cast =
+            cxx::ast_cast<cxx::BuiltinConvertVectorExpressionAST>(ast)) {
+      auto value = expression(cast->expression).ssa();
+      return vectors_.convert_elements(value, cast->expression->type,
+                                       cast->type, ast);
+    }
     if (auto* cast = cxx::ast_cast<cxx::BuiltinBitCastExpressionAST>(ast)) {
       auto input = types_.get(cast->expression->type, ast);
       auto output = types_.get(cast->type, ast);

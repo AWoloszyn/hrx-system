@@ -109,6 +109,52 @@ The optional header contains only aliases, documentation and guards, with no
 transitive includes. Scalar math templates admit these types when used without
 adding per-format declarations to every import.
 
+## Numeric vector conversion
+
+`__builtin_convertvector(value, DestinationType)` converts each lane numerically
+while preserving the number of lanes. It works in C and C++, needs no header,
+and accepts template-dependent destination types and constant expressions.
+
+For example, load packed FP8 values, compute in F32, and round back to FP8:
+
+```cpp
+#include <loomcxx/numeric.h>
+using Float8x4 =
+    loom::type::float8_e4m3fn_t __attribute__((ext_vector_type(4)));
+using Float4 = float __attribute__((ext_vector_type(4)));
+
+Float8x4 scale(Float8x4 value, float factor) {
+  auto wide = __builtin_convertvector(value, Float4);
+  return __builtin_convertvector(wide * factor, Float8x4);
+}
+```
+
+The imported computation retains vector operations throughout:
+
+```loom
+func.def public @scale(%value: vector<4xf8E4M3>, %factor: f32) -> (vector<4xf8E4M3>) {
+  %wide = vector.extf %value : vector<4xf8E4M3> to vector<4xf32>
+  %factors = vector.splat %factor : vector<4xf32>
+  %scaled = vector.mulf %wide, %factors : vector<4xf32>
+  %result = vector.fptrunc %scaled : vector<4xf32> to vector<4xf8E4M3>
+  func.return %result : vector<4xf8E4M3>
+}
+```
+
+Integer conversions retain source signedness: widening `unsigned char` lanes
+uses `vector.extui`, widening `signed char` uses `vector.extsi`, and conversion
+to floating point selects `vector.uitofp` or `vector.sitofp`. Float-to-integer
+conversion truncates toward zero; the input must be finite and its truncated
+value representable in the destination integer type. Constant evaluation
+rejects values outside that domain.
+
+Distinct floating formats with equal storage widths, such as FP16 and BF16 or
+the two FP8 types, convert through an exact F32 vector intermediate. Numeric
+conversion keeps every lane and rounds to the destination format. C-style
+vector casts and `__builtin_bit_cast` continue to reinterpret equal-sized
+objects. The importer leaves vector legalization and instruction selection to
+the target compiler.
+
 ## Compiler tests
 
 When the importer is enabled, `loom-check` accepts `.cxx-test` files through the

@@ -8,6 +8,7 @@
 
 #include <cxx/archive.h>
 #include <cxx/ast.h>
+#include <cxx/ast_visitor.h>
 #include <cxx/control.h>
 #include <cxx/memory_layout.h>
 #include <cxx/preprocessor.h>
@@ -84,6 +85,67 @@ TEST(SourceTest, NarrowFloatIdentitySurvivesSemanticArchive) {
             destination.unit().control()->getFloat8E4M3FNType());
   EXPECT_EQ(type->parameterTypes()[2],
             destination.unit().control()->getFloat8E5M2Type());
+}
+
+TEST(SourceTest, VectorConversionSurvivesSemanticArchiveAndClone) {
+  class Conversions final : public cxx::ASTVisitor {
+   public:
+    void visit(cxx::BuiltinConvertVectorExpressionAST* ast) override {
+      expressions.push_back(ast);
+      cxx::ASTVisitor::visit(ast);
+    }
+
+    // Conversion expressions borrowed from the visited source arena.
+    std::vector<cxx::BuiltinConvertVectorExpressionAST*> expressions;
+  };
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  std::vector<uint8_t> bytes;
+  {
+    Source source(
+        IREE_SV(
+            "using Bytes = unsigned char __attribute__((ext_vector_type(4)));"
+            "using Floats = float __attribute__((ext_vector_type(4)));"
+            "Floats convert(Bytes value) {"
+            "return __builtin_convertvector(value, Floats); }"),
+        IREE_SV("vectors.cpp"), options);
+    cxx::ArchiveWriter writer;
+    cxx::SemanticArchiveRoots roots;
+    roots.globalScope = source.unit().globalScope();
+    roots.ast = source.unit().ast();
+    cxx::SemanticEncoder encoder(&source.unit());
+    ASSERT_TRUE(encoder(roots, writer));
+    bytes = writer();
+  }
+  Source destination(IREE_SV(""), IREE_SV("restored.cpp"), options);
+  cxx::ArchiveReader reader;
+  ASSERT_TRUE(reader(bytes)) << reader.error();
+  cxx::SemanticArchiveRoots roots;
+  cxx::SemanticDecoder decoder(&destination.unit());
+  ASSERT_TRUE(decoder(reader, roots)) << decoder.error();
+  for (auto* ast : {roots.ast, roots.ast->clone(destination.unit().arena())}) {
+    Conversions conversions;
+    conversions.accept(ast);
+    ASSERT_EQ(conversions.expressions.size(), 1u);
+    auto* conversion = conversions.expressions.front();
+    ASSERT_NE(conversion->expression, nullptr);
+    ASSERT_NE(conversion->typeId, nullptr);
+    EXPECT_TRUE(conversion->convertLoc);
+    EXPECT_TRUE(conversion->rparenLoc);
+    EXPECT_EQ(conversion->valueCategory, cxx::ValueCategory::kPrValue);
+    EXPECT_EQ(conversion->typeId->type, conversion->type);
+    auto* input =
+        cxx::unqualified_cast<cxx::VectorType>(conversion->expression->type);
+    auto* output = cxx::unqualified_cast<cxx::VectorType>(conversion->type);
+    ASSERT_NE(input, nullptr);
+    ASSERT_NE(output, nullptr);
+    EXPECT_EQ(input->elementCount(), 4);
+    EXPECT_EQ(output->elementCount(), 4);
+    EXPECT_EQ(input->elementType(),
+              destination.unit().control()->getUnsignedCharType());
+    EXPECT_EQ(output->elementType(),
+              destination.unit().control()->getFloatType());
+  }
 }
 
 TEST(SourceTest, ProviderBytesAreCopiedBeforeTheNextCallback) {

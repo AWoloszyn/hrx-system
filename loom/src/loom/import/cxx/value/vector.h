@@ -33,6 +33,12 @@ class Vectors {
   // here.
   loom_value_id_t convert(loom_value_id_t value, const cxx::Type* input_type,
                           const cxx::Type* output_type, cxx::AST* owner);
+  // Applies an explicit numeric conversion to each lane. Frontend semantics
+  // have established vector operands with the same number of elements.
+  loom_value_id_t convert_elements(loom_value_id_t value,
+                                   const cxx::Type* input_type,
+                                   const cxx::Type* output_type,
+                                   cxx::AST* owner);
   // Operands already have the source operation's common vector type.
   loom_value_id_t binary(cxx::TokenKind token, loom_value_id_t left,
                          loom_value_id_t right, const cxx::Type* input_type,

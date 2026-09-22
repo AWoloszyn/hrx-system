@@ -48,6 +48,55 @@ loom_value_id_t Vectors::convert(loom_value_id_t value,
   return loom_op_results(op)[0];
 }
 
+loom_value_id_t Vectors::convert_elements(loom_value_id_t value,
+                                          const cxx::Type* input_type,
+                                          const cxx::Type* output_type,
+                                          cxx::AST* owner) {
+  auto input = types_.get(input_type, owner);
+  auto output = types_.get(output_type, owner);
+  if (loom_type_equal(input, output)) {
+    return value;
+  }
+  auto* input_vector = types_.vector(input_type);
+  auto* input_element = input_vector->elementType();
+  auto* output_element = types_.vector(output_type)->elementType();
+  bool floating_input = types_.is_float(input_element);
+  bool floating_output = types_.is_float(output_element);
+  auto* layout = unit_.control()->memoryLayout();
+  auto input_size = layout->sizeOf(input_element);
+  auto output_size = layout->sizeOf(output_element);
+  auto location = locations_.get(owner);
+  loom_op_t* op;
+  if (floating_input && floating_output && input_size == output_size) {
+    // F32 represents every value of the supported equal-width narrow formats
+    // exactly. Only the final conversion rounds to the destination format.
+    auto widened = loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+                                       input_vector->elementCount(), 0);
+    check(loom_vector_extf_build(&builder_, value, input, widened, location,
+                                 &op));
+    check(loom_vector_fptrunc_build(&builder_, loom_op_results(op)[0], widened,
+                                    output, location, &op));
+    return loom_op_results(op)[0];
+  }
+  bool narrows = input_size > output_size;
+  bool unsigned_input = types_.is_unsigned(input_element);
+  auto build =
+      floating_output
+          ? (floating_input ? (narrows ? loom_vector_fptrunc_build
+                                       : loom_vector_extf_build)
+                            : (unsigned_input ? loom_vector_uitofp_build
+                                              : loom_vector_sitofp_build))
+          : (floating_input
+                 ? (types_.is_unsigned(output_element)
+                        ? loom_vector_fptoui_build
+                        : loom_vector_fptosi_build)
+                 : (narrows ? loom_vector_trunci_build
+                            : (unsigned_input ? loom_vector_extui_build
+                                              : loom_vector_extsi_build)));
+  check(build(&builder_, value, input, output, location, &op));
+  return loom_op_results(op)[0];
+}
+
 loom_value_id_t Vectors::binary(cxx::TokenKind token, loom_value_id_t left,
                                 loom_value_id_t right,
                                 const cxx::Type* input_type,

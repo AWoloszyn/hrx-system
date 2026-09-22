@@ -33,4 +33,5 @@ exports_files([
     "template_lookahead.patch",
     "unsigned_complement.patch",
     "vector_constants.patch",
+    "vector_conversion.patch",
 ])
