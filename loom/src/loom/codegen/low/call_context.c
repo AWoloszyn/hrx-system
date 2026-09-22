@@ -61,9 +61,8 @@ iree_status_t loom_low_verify_call_context(
   }};
   const loom_diagnostic_param_t params[] = {
       loom_param_string(loom_op_name(module, op)),
-      loom_param_with_field_ref(
-          loom_param_string(IREE_SV("callee")),
-          loom_attr_field_diagnostic_ref(loom_low_func_call_callee_field())),
+      loom_param_with_field_ref(loom_param_string(IREE_SV("callee")),
+                                loom_low_func_call_callee_diagnostic_ref()),
       loom_param_string(
           callee_version != NULL
               ? loom_target_facts_identity_name(

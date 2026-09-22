@@ -121,9 +121,9 @@ iree_status_t loom_aie2p_target_record_verify(
   }
 
   const loom_diagnostic_param_t params[] = {
-      loom_param_with_field_ref(loom_param_string(profile),
-                                loom_attr_field_diagnostic_ref(
-                                    loom_aie2p_target_device_profile_field())),
+      loom_param_with_field_ref(
+          loom_param_string(profile),
+          loom_aie2p_target_device_profile_diagnostic_ref()),
   };
   const loom_diagnostic_emission_t emission = {
       .op = op,

@@ -116,7 +116,6 @@ loom_cc_library(
     deps = [
         ":op_defs",
         "//loom/src/loom/ir",
-        "//loom/src/loom/rewrite:rewriter",
         "//runtime/src/iree/base",
     ],
 )

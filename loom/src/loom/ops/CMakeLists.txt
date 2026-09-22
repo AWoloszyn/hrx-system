@@ -123,7 +123,6 @@ loom_cc_library(
     ::op_defs
     iree::base
     loom::ir
-    loom::rewrite::rewriter
   PUBLIC
 )
 

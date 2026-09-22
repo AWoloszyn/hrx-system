@@ -561,8 +561,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_emit_binding_index_duplicate(
   const loom_diagnostic_related_op_t related[] = {{
       .label = IREE_SV("previous binding"),
       .op = previous_op,
-      .field_ref =
-          loom_attr_field_diagnostic_ref(loom_low_resource_index_field()),
+      .field_ref = loom_low_resource_index_diagnostic_ref(),
   }};
   return loom_amdgpu_hal_kernel_abi_emit(
       emitter, resource_op, LOOM_ERR_AMDGPU_011, params, IREE_ARRAYSIZE(params),
@@ -622,8 +621,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_emit_live_in_duplicate(
   const loom_diagnostic_related_op_t related[] = {{
       .label = IREE_SV("previous live-in"),
       .op = previous_op,
-      .field_ref =
-          loom_attr_field_diagnostic_ref(loom_low_live_in_source_field()),
+      .field_ref = loom_low_live_in_source_diagnostic_ref(),
   }};
   return loom_amdgpu_hal_kernel_abi_emit(
       emitter, live_in_op, LOOM_ERR_AMDGPU_015, params, IREE_ARRAYSIZE(params),
@@ -644,8 +642,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_emit_fixed_live_in_overlap(
   const loom_diagnostic_related_op_t related[] = {{
       .label = IREE_SV("conflicting live-in"),
       .op = conflicting_op,
-      .field_ref =
-          loom_attr_field_diagnostic_ref(loom_low_live_in_source_field()),
+      .field_ref = loom_low_live_in_source_diagnostic_ref(),
   }};
   return loom_amdgpu_hal_kernel_abi_emit(
       emitter, live_in_op, LOOM_ERR_AMDGPU_045, params, IREE_ARRAYSIZE(params),
@@ -664,8 +661,7 @@ static iree_status_t loom_amdgpu_hal_kernel_abi_emit_workitem_live_in_mix(
   const loom_diagnostic_related_op_t related[] = {{
       .label = IREE_SV("conflicting live-in"),
       .op = conflicting_op,
-      .field_ref =
-          loom_attr_field_diagnostic_ref(loom_low_live_in_source_field()),
+      .field_ref = loom_low_live_in_source_diagnostic_ref(),
   }};
   return loom_amdgpu_hal_kernel_abi_emit(
       emitter, live_in_op, LOOM_ERR_AMDGPU_016, params, IREE_ARRAYSIZE(params),

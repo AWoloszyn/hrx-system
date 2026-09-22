@@ -11,7 +11,6 @@
 
 #include "iree/base/api.h"
 #include "loom/ir/ir.h"
-#include "loom/rewrite/rewriter.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -22,17 +21,14 @@ extern "C" {
 // explicit purity contract.
 bool loom_callable_effects_is_pure(loom_func_like_t function);
 
-// Propagates a resolved callee's purity to |op| when the operation has no
-// explicit purity. Unresolved symbols and impure callees leave |op| unchanged.
-iree_status_t loom_callable_effects_propagate_purity(
-    loom_op_t* op, loom_symbol_ref_t callee, loom_attr_field_t purity_field,
-    loom_rewriter_t* rewriter);
+// Returns true when |callee| resolves to a pure callable in |module|.
+// Unresolved symbols and impure callees return false.
+bool loom_callable_effects_callee_is_pure(const loom_module_t* module,
+                                          loom_symbol_ref_t callee);
 
-// Returns the effective traits for a callable application carrying a purity
-// attribute named by |purity_field|. Its callable boundary remains independent
-// of the selected effects.
-loom_trait_flags_t loom_callable_effects_traits(const loom_op_t* op,
-                                                loom_attr_field_t purity_field);
+// Returns the effective traits for a callable application with |purity|.
+// Its callable boundary remains independent of the selected effects.
+loom_trait_flags_t loom_callable_effects_traits(uint8_t purity);
 
 #ifdef __cplusplus
 }  // extern "C"

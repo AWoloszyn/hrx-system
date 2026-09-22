@@ -63,11 +63,10 @@ static iree_status_t loom_vector_emit_attribute_kind_mismatch(
 
 static iree_status_t loom_vector_emit_indexed_attribute_kind_mismatch(
     iree_diagnostic_emitter_t emitter, const loom_op_t* op,
-    iree_string_view_t attr_name, loom_attr_field_t field,
+    iree_string_view_t attr_name, loom_diagnostic_field_ref_t field,
     loom_attr_kind_t actual_kind, loom_attr_kind_t expected_kind) {
   loom_diagnostic_param_t params[] = {
-      loom_param_with_field_ref(loom_param_string(attr_name),
-                                loom_attr_field_diagnostic_ref(field)),
+      loom_param_with_field_ref(loom_param_string(attr_name), field),
       loom_param_u32(actual_kind),
       loom_param_u32(expected_kind),
   };
@@ -1971,14 +1970,14 @@ iree_status_t loom_vector_geluf_verify(const loom_module_t* module,
       return iree_ok_status();
     }
     return loom_vector_emit_indexed_attribute_kind_mismatch(
-        emitter, op, IREE_SV("scale"), loom_vector_geluf_scale_field(),
+        emitter, op, IREE_SV("scale"), loom_vector_geluf_scale_diagnostic_ref(),
         LOOM_ATTR_ABSENT, LOOM_ATTR_F64);
   }
   if (!has_scale) {
     return iree_ok_status();
   }
   return loom_vector_emit_indexed_attribute_kind_mismatch(
-      emitter, op, IREE_SV("scale"), loom_vector_geluf_scale_field(),
+      emitter, op, IREE_SV("scale"), loom_vector_geluf_scale_diagnostic_ref(),
       LOOM_ATTR_F64, LOOM_ATTR_ABSENT);
 }
 
