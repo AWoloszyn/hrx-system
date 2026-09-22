@@ -186,6 +186,52 @@ uses the complete setup-and-execution range to establish its application tile
 state; time-sliced context lifetime alone does not guarantee that state survives
 between submissions.
 
+## Power policy and measurement
+
+Sustained XDNA measurements require an explicitly held-active device throughout
+the measurement interval. Otherwise an idle gap can turn the next submission
+into a hardware/firmware resume measurement even though the caller has retained
+all its prepared resources. A warm-up command alone does not hold power across
+later gaps. Results identify the power policy separately from instruction
+preparation, tile initialization and command completion.
+
+| Measurement | Native power policy | What the result describes |
+| --- | --- | --- |
+| Sustained execution or submission overhead | Hold runtime power active before timing and throughout the run. | Performance with native wake-up excluded. |
+| Deployment-representative latency | Keep the deployment's actual power policy, including autosuspend where enabled. | Request latency with the workload's real idle gaps and wake costs. |
+
+Held-power results are not an approximation of default-policy user latency.
+A deployment that deliberately holds its device awake can use that policy in
+its representative measurements, but reports it explicitly. Cold-wake runs
+observe an actual suspend transition before timing; a fixed sleep does not
+prove suspension when another process is using the device. Neither measurement
+mode changes the requirement to establish application tile state for an
+independent command.
+
+On Linux, the selected accelerator's sysfs `device/power/control` attribute
+accepts `on` to prohibit runtime autosuspend and `auto` to permit it. The
+benchmark operator or machine-policy manager records the previous value, sets
+`on` before the measurement, verifies both `control=on` and
+`runtime_status=active`, and restores the recorded value afterward, including
+when the benchmark fails. Selecting the device uses its native identity, not
+an assumption that every system's intended device is `accel0`.
+
+This is device-wide policy, not a reference owned by a process or open file:
+closing the benchmark or a libamdf device does not restore it. The policy owner
+serializes changes and owns restoration. The setting does not force maximum
+clocks, disable thermal management, reserve tiles or preserve tile state.
+Performance-frequency modes are separate controls and are not evidence of a
+runtime-power hold. These semantics come from the
+[Linux runtime-PM interface](https://docs.kernel.org/power/runtime_pm.html).
+The Linux control is not a Windows API; a Windows held-power measurement needs
+its own qualified native control and readback before receiving that label.
+
+The measurement record includes native power policy, observed power state,
+clock policy, driver/firmware, idle intervals and concurrent CPU/GPU/NPU work.
+A cooperative machine benchmark lease serializes participating benchmarks, not
+all device users. Default correctness tests retain normal power management;
+libamdf issues no keepalive work and changes no machine power policy.
+
 ## Asynchronous host observation
 
 A caller can keep one native event and one persistent event-loop registration
