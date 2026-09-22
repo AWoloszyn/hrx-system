@@ -26,7 +26,11 @@ iree_status_t loom_parse_attr_value_with_type_mode(
 iree_status_t loom_parse_parameterized_attr_parameters(
     loom_parser_t* parser, loom_parameterized_attr_kind_t family_kind,
     loom_attribute_t* out_attr);
+// Parses a symbol reference, admitting definition names before their bodies are
+// constructed. Duplicate definitions retain the first definition's source
+// token.
 iree_status_t loom_parse_symbol_ref_attr(loom_parser_t* parser,
+                                         bool is_definition,
                                          loom_attribute_t* out_attr);
 iree_status_t loom_parse_generic_attr_value(loom_parser_t* parser,
                                             uint16_t nesting_depth,

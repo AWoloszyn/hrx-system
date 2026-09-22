@@ -50,3 +50,34 @@ test.func @available_provider() {
   test.symbol_array_attrs [] using [@external_provider]
   test.yield
 }
+
+// ====
+
+// RUN: verify
+
+kernel.decl @collision() launch()
+// ERROR@+1: SYMBOL/005 "collision"
+check.case public @collision {
+  check.return
+}
+
+// ====
+
+// RUN: verify
+
+check.case @collision {
+  check.return
+}
+// ERROR@+1: SYMBOL/005 "collision"
+kernel.decl @collision() launch()
+
+// ====
+
+// RUN: verify
+
+// A declaration and definition can share a name across modules, not within one.
+func.decl @identity(%value: i32) -> (i32)
+// ERROR@+1: SYMBOL/005 "identity"
+func.def @identity(%value: i32) -> (i32) {
+  func.return %value : i32
+}

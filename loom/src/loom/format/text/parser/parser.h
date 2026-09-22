@@ -46,6 +46,9 @@ typedef struct loom_text_parse_options_t {
 // source. An unresolved symbol is retained when availability metadata names an
 // external source that may provide it; otherwise a missing declaration or
 // definition produces ERR_SYMBOL_002.
+// Each module-local name has one declaration or definition. Repeated definition
+// names produce ERR_SYMBOL_005 with both source tokens before IR is published;
+// declarations and definitions in separate modules may be resolved by linking.
 //
 // Security model: input is untrusted. Every token, integer, and index
 // is validated before use. Failures produce structured diagnostics

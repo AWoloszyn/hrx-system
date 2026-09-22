@@ -2,6 +2,124 @@
   "version": 1,
   "cases": [
     {
+      "name": "rejects duplicate primary definitions before source library linking",
+      "run": {
+        "tool": "iree-test-loom",
+        "args": [
+          "{srcdir}/../../tooling/input/testdata/duplicate_symbols.loom-test",
+          "--library={srcdir}/testdata/library_cases.loom"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stdout": {
+        "empty": true
+      },
+      "stderr": {
+        "contains": {
+          "unordered": [
+            "duplicate_symbols.loom-test:5:19: error [SYMBOL/005]",
+            "symbol '@collision' is already defined",
+            "first definition here",
+            "duplicate_symbols.loom-test:3:13",
+            "kernel.decl @collision() launch()",
+            "check.case public @collision {"
+          ]
+        }
+      }
+    },
+    {
+      "name": "rejects duplicate primary definitions before bytecode library linking",
+      "steps": [
+        {
+          "name": "encode-library",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "{srcdir}/testdata/library_cases.loom",
+              "--mode=merge",
+              "--to=bc",
+              "--output={tmp}/library.loombc"
+            ]
+          }
+        },
+        {
+          "name": "reject-input",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{srcdir}/../../tooling/input/testdata/duplicate_symbols.loom-test",
+              "--library={tmp}/library.loombc"
+            ]
+          },
+          "exit": {
+            "nonzero": true
+          },
+          "stdout": {
+            "empty": true
+          },
+          "stderr": {
+            "contains": {
+              "unordered": [
+                "duplicate_symbols.loom-test:5:19: error [SYMBOL/005]",
+                "symbol '@collision' is already defined",
+                "first definition here",
+                "duplicate_symbols.loom-test:3:13",
+                "kernel.decl @collision() launch()",
+                "check.case public @collision {"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "rejects duplicate library definitions before discovering bytecode input cases",
+      "steps": [
+        {
+          "name": "encode-input",
+          "run": {
+            "tool": "loom-link",
+            "args": [
+              "{srcdir}/testdata/linked_input_cases.loom",
+              "--mode=merge",
+              "--to=bc",
+              "--output={tmp}/input.loombc"
+            ]
+          }
+        },
+        {
+          "name": "reject-library",
+          "run": {
+            "tool": "iree-test-loom",
+            "args": [
+              "{tmp}/input.loombc",
+              "--library={srcdir}/../../tooling/input/testdata/duplicate_symbols.loom-test"
+            ]
+          },
+          "exit": {
+            "nonzero": true
+          },
+          "stdout": {
+            "empty": true
+          },
+          "stderr": {
+            "contains": {
+              "unordered": [
+                "duplicate_symbols.loom-test:5:19: error [SYMBOL/005]",
+                "symbol '@collision' is already defined",
+                "first definition here",
+                "duplicate_symbols.loom-test:3:13",
+                "kernel.decl @collision() launch()",
+                "check.case public @collision {"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
       "name": "prints agent documentation",
       "run": {
         "tool": "iree-test-loom",

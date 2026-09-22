@@ -2,6 +2,35 @@
   "version": 1,
   "cases": [
     {
+      "name": "rejects duplicate definitions before bytecode serialization",
+      "run": {
+        "tool": "loom-format",
+        "args": [
+          "{srcdir}/../../tooling/input/testdata/duplicate_symbols.loom-test",
+          "--to=bc",
+          "--output={tmp}/duplicate.loombc"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stdout": {
+        "empty": true
+      },
+      "stderr": {
+        "contains": {
+          "unordered": [
+            "duplicate_symbols.loom-test:5:19: error [SYMBOL/005]",
+            "symbol '@collision' is already defined",
+            "first definition here",
+            "duplicate_symbols.loom-test:3:13",
+            "kernel.decl @collision() launch()",
+            "check.case public @collision {"
+          ]
+        }
+      }
+    },
+    {
       "name": "prints agent documentation",
       "run": {
         "tool": "loom-format",

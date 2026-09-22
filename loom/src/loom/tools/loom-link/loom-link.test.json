@@ -2,6 +2,63 @@
   "version": 1,
   "cases": [
     {
+      "name": "rejects duplicate definitions before merge projection",
+      "run": {
+        "tool": "loom-link",
+        "args": [
+          "{srcdir}/../../tooling/input/testdata/duplicate_symbols.loom-test",
+          "--mode=merge"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stdout": {
+        "empty": true
+      },
+      "stderr": {
+        "contains": {
+          "unordered": [
+            "duplicate_symbols.loom-test:5:19: error [SYMBOL/005]",
+            "symbol '@collision' is already defined",
+            "first definition here",
+            "duplicate_symbols.loom-test:3:13",
+            "kernel.decl @collision() launch()",
+            "check.case public @collision {"
+          ]
+        }
+      }
+    },
+    {
+      "name": "rejects duplicate definitions in an unselected source library",
+      "run": {
+        "tool": "loom-link",
+        "args": [
+          "{srcdir}/testdata/kernel_exports.loom",
+          "--library={srcdir}/../../tooling/input/testdata/duplicate_symbols.loom-test",
+          "--root=@entry"
+        ]
+      },
+      "exit": {
+        "nonzero": true
+      },
+      "stdout": {
+        "empty": true
+      },
+      "stderr": {
+        "contains": {
+          "unordered": [
+            "duplicate_symbols.loom-test:5:19: error [SYMBOL/005]",
+            "symbol '@collision' is already defined",
+            "first definition here",
+            "duplicate_symbols.loom-test:3:13",
+            "kernel.decl @collision() launch()",
+            "check.case public @collision {"
+          ]
+        }
+      }
+    },
+    {
       "name": "kernel entries retain implicit and renamed exports across source and bytecode libraries",
       "steps": [
         {

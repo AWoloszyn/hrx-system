@@ -318,7 +318,8 @@ static iree_status_t loom_parse_symbol_collection_attr(
       tokens[count] = loom_tokenizer_peek(&parser->tokenizer);
     }
     loom_attribute_t value = loom_attr_absent();
-    IREE_RETURN_IF_ERROR(loom_parse_symbol_ref_attr(parser, &value));
+    IREE_RETURN_IF_ERROR(
+        loom_parse_symbol_ref_attr(parser, /*is_definition=*/false, &value));
     values[count++] = loom_attr_as_symbol(value);
   }
   if (!loom_tokenizer_try_consume(&parser->tokenizer, LOOM_TOKEN_RBRACKET)) {
@@ -750,7 +751,8 @@ static iree_status_t loom_parse_attr_value_at_depth(
       return iree_ok_status();
     }
     case LOOM_ATTR_SYMBOL: {
-      return loom_parse_symbol_ref_attr(parser, out_attr);
+      return loom_parse_symbol_ref_attr(parser, /*is_definition=*/false,
+                                        out_attr);
     }
     case LOOM_ATTR_SYMBOL_ARRAY:
     case LOOM_ATTR_SYMBOL_SET:
@@ -830,6 +832,7 @@ iree_status_t loom_parse_attr_value_with_type_mode(
 }
 
 iree_status_t loom_parse_symbol_ref_attr(loom_parser_t* parser,
+                                         bool is_definition,
                                          loom_attribute_t* out_attr) {
   loom_token_t token = loom_token_none();
   LOOM_PARSE_EXPECT(parser, LOOM_TOKEN_SYMBOL, &token);
@@ -852,8 +855,24 @@ iree_status_t loom_parse_symbol_ref_attr(loom_parser_t* parser,
     }
     origins->entries[origins->count++] = (loom_parser_symbol_origin_t){
         .symbol_id = ref.symbol_id,
+        .has_definition = is_definition,
         .token = token,
     };
+  } else if (is_definition) {
+    // Fragment parsing may start with existing module symbols. Only symbols
+    // created by this parser have origins, in the same contiguous ID order.
+    loom_parser_symbol_origin_t* origin =
+        &parser->symbol_origins
+             .entries[ref.symbol_id -
+                      parser->symbol_origins.entries[0].symbol_id];
+    if (origin->has_definition) {
+      loom_diagnostic_param_t parameter = loom_param_string(token.text);
+      return loom_parser_emit_related(
+          parser, LOOM_ERR_SYMBOL_005, &parameter, 1, token,
+          IREE_SV("first definition here"), origin->token);
+    }
+    origin->has_definition = true;
+    origin->token = token;
   }
   *out_attr = loom_attr_symbol(ref);
   return iree_ok_status();
@@ -1125,7 +1144,8 @@ static iree_status_t loom_parse_generic_attr_value_with_type_mode(
       return iree_ok_status();
     }
     case LOOM_TOKEN_SYMBOL:
-      return loom_parse_symbol_ref_attr(parser, out_attr);
+      return loom_parse_symbol_ref_attr(parser, /*is_definition=*/false,
+                                        out_attr);
     case LOOM_TOKEN_BARE_IDENT: {
       if (loom_parse_next_generic_attr_is_bytes(parser)) {
         return loom_parse_bytes_attr(parser, out_attr);

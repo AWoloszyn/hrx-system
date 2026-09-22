@@ -1111,7 +1111,7 @@ def volatile_memory(arrays):
         case.launch("volatile_vectors", "%input, %output", "tensor<4xi32>, tensor<4xi32>")
         case.lines.append("  check.expect.bitwise actual(%input) expected(%original) : tensor<4xi32>")
         cases.append(case.finish(values))
-    case = Case(arrays, "volatile_shared", "i32", 64)
+    case = Case(arrays, "volatile_shared_values", "i32", 64)
     case.array("input", inputs)
     case.array("original", inputs)
     case.launch("volatile_shared", "%input, %output", "tensor<64xi32>, tensor<64xi32>")

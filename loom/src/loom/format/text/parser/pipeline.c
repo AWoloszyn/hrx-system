@@ -497,7 +497,8 @@ static iree_status_t loom_parse_pipeline_statement(loom_parser_t* parser) {
   if (loom_pipeline_token_is_keyword(start_token, IREE_SV("call"))) {
     loom_tokenizer_next(&parser->tokenizer);
     loom_attribute_t callee_attr = {0};
-    IREE_RETURN_IF_ERROR(loom_parse_symbol_ref_attr(parser, &callee_attr));
+    IREE_RETURN_IF_ERROR(loom_parse_symbol_ref_attr(
+        parser, /*is_definition=*/false, &callee_attr));
     if (parser->error_count > errors_before) {
       return iree_ok_status();
     }

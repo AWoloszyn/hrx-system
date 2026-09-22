@@ -2819,6 +2819,47 @@ TEST_F(ParserTest, SymbolDefinitionRejectsLhsNames) {
   ExpectU32Param(diagnostics[0], 2, 1u);
 }
 
+TEST_F(ParserTest, DuplicateSymbolRetainsFirstDefinitionToken) {
+  const auto& diagnostics = ParseExpectErrors(
+      "test.record @referrer {dependency = @collision}\n"
+      "test.record @collision loc(\"generated.cxx\":80:5)\n"
+      "test.record @collision\n"
+      "test.record @collision\n");
+  ASSERT_EQ(diagnostics.size(), 2u);
+  for (size_t i = 0; i < diagnostics.size(); ++i) {
+    const auto& diagnostic = diagnostics[i];
+    ExpectError(diagnostic, loom_error_def_lookup(LOOM_ERROR_DOMAIN_SYMBOL, 5));
+    EXPECT_EQ(GetStringParam(diagnostic, 0), "collision");
+    EXPECT_EQ(diagnostic.origin_line, i + 3);
+    EXPECT_EQ(diagnostic.origin_column, 13u);
+    EXPECT_EQ(diagnostic.origin_end_column, 23u);
+    ASSERT_EQ(diagnostic.related_locations.size(), 1u);
+    const auto& first = diagnostic.related_locations[0];
+    EXPECT_EQ(first.label, "first definition here");
+    EXPECT_TRUE(first.has_source_range);
+    EXPECT_EQ(first.source_location.provenance,
+              LOOM_SOURCE_PROVENANCE_EXACT_SOURCE);
+    EXPECT_EQ(first.source_location.start_line, 2u);
+    EXPECT_EQ(first.source_location.start_column, 13u);
+    EXPECT_EQ(first.source_location.end_column, 23u);
+  }
+}
+
+TEST_F(ParserTest, DuplicateSymbolInsideUnfinishedDefinition) {
+  const auto& diagnostics = ParseExpectErrors(
+      "test.func @outer() {\n"
+      "  test.record @outer\n"
+      "  test.yield\n"
+      "}\n");
+  ASSERT_EQ(diagnostics.size(), 1u);
+  ExpectError(diagnostics[0],
+              loom_error_def_lookup(LOOM_ERROR_DOMAIN_SYMBOL, 5));
+  EXPECT_EQ(GetStringParam(diagnostics[0], 0), "outer");
+  EXPECT_EQ(diagnostics[0].origin_line, 2u);
+  ASSERT_EQ(diagnostics[0].related_locations.size(), 1u);
+  EXPECT_EQ(diagnostics[0].related_locations[0].source_location.start_line, 1u);
+}
+
 TEST_F(ParserTest, DuplicateBindingListName) {
   const auto& diagnostics = ParseExpectErrors(
       "%tile = test.constant 0 : f32\n"

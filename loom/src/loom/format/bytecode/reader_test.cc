@@ -3533,6 +3533,8 @@ TEST_F(ReaderTest, RejectsDuplicateSymbolIdentity) {
   bytes[second_entry_offset] = bytes[first_entry_offset];
 
   ExpectReadError(bytes, "ERR_BYTECODE_006");
+  ExpectInvalidFieldFailureCode(bytes, "symbol_name_appears_more_than_once");
+  ExpectReadModuleError(bytes, "ERR_BYTECODE_006");
   loom_module_free(module);
 }
 

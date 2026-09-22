@@ -51,17 +51,20 @@ typedef struct loom_parser_pending_successor_refs_t {
   iree_host_size_t capacity;
 } loom_parser_pending_successor_refs_t;
 
-// The first textual occurrence that created a module symbol table entry.
+// Source admission and diagnostic origin for one parser-created module symbol.
 typedef struct loom_parser_symbol_origin_t {
   // Module-local symbol identity created for the occurrence.
   loom_symbol_id_t symbol_id;
-  // Source token used to diagnose a symbol left unresolved after parsing.
+  // Whether |token| names the first definition instead of the first reference.
+  bool has_definition;
+  // First definition token, or first reference while the symbol is unresolved.
   loom_token_t token;
 } loom_parser_symbol_origin_t;
 
-// Growable scratch list of first textual module symbol occurrences.
+// Growable scratch list of parser-created module symbol origins.
 typedef struct loom_parser_symbol_origins_t {
-  // Origins indexed in symbol creation order.
+  // Origins in contiguous symbol creation order, starting at
+  // entries[0].symbol_id.
   loom_parser_symbol_origin_t* entries;
   // Number of populated origins.
   iree_host_size_t count;
