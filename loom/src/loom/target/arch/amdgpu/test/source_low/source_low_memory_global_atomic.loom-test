@@ -376,7 +376,7 @@ low.kernel.def target<amdgpu.gfx11.generic.core> abi_layout({constant_count = 0,
   %13 = v_mov_b32 0
   %14 = v_mov_b32 7
   %16 = concat(%14, %13) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %old = global_atomic_swap_u64_rtn_saddr %13, %16, %view
+  %old = global_atomic_swap_b64_rtn_saddr %13, %16, %view
   return
 }
 

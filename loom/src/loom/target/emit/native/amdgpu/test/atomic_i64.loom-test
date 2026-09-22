@@ -309,3 +309,165 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @wide_gfx1250(%address: 
 0x02100008
 0x00000000
 0xBFB00000
+
+// ====
+
+// Untyped GFX12 buffer instructions ignore FORMAT. These goldens clear it;
+// LLVM sets it to 1 to accommodate external disassemblers.
+// RUN: emit amdgpu-native-words @buffer_gfx1100 strategy=source waits=none fixed=%address:physical_register:2:1 fixed=%value:physical_register:4:2 fixed=%pair:physical_register:8:4 fixed=%resource:physical_register:0:4 fixed=%soffset:physical_register:4:1 fixed=%sub_u64:physical_register:4:2 fixed=%min_i64:physical_register:4:2 fixed=%xor_b64:physical_register:4:2 fixed=%swap_u64:physical_register:4:2 fixed=%cmpswap_b64:physical_register:8:4
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @buffer_gfx1100(%address: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr x2>, %pair: reg<amdgpu.vgpr x4>, %resource: reg<amdgpu.sgpr x4>, %soffset: reg<amdgpu.sgpr>) asm {
+  buffer_atomic_sub_u64 %value, %resource, %address, %soffset {offset = 16}
+  %sub_u64 = buffer_atomic_sub_u64_rtn %value, %resource, %address, %soffset {offset = 16}
+  buffer_atomic_min_i64 %sub_u64, %resource, %address, %soffset {offset = 16}
+  %min_i64 = buffer_atomic_min_i64_rtn %sub_u64, %resource, %address, %soffset {offset = 16}
+  buffer_atomic_xor_b64 %min_i64, %resource, %address, %soffset {offset = 16}
+  %xor_b64 = buffer_atomic_xor_b64_rtn %min_i64, %resource, %address, %soffset {offset = 16}
+  %swap_u64 = buffer_atomic_swap_b64_rtn %xor_b64, %resource, %address, %soffset {offset = 16}
+  %cmpswap_b64 = buffer_atomic_cmpswap_b64_rtn %pair, %resource, %address, %soffset {offset = 16}
+  return
+}
+
+// ----
+0xE1100010
+0x04400402
+0xE1104010
+0x04400402
+0xE1140010
+0x04400402
+0xE1144010
+0x04400402
+0xE12C0010
+0x04400402
+0xE12C4010
+0x04400402
+0xE1044010
+0x04400402
+0xE1084010
+0x04400802
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-native-words @buffer_gfx1151 strategy=source waits=none fixed=%address:physical_register:2:1 fixed=%value:physical_register:4:2 fixed=%pair:physical_register:8:4 fixed=%resource:physical_register:0:4 fixed=%soffset:physical_register:4:1 fixed=%sub_u64:physical_register:4:2 fixed=%min_i64:physical_register:4:2 fixed=%xor_b64:physical_register:4:2 fixed=%swap_u64:physical_register:4:2 fixed=%cmpswap_b64:physical_register:8:4
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @buffer_gfx1151(%address: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr x2>, %pair: reg<amdgpu.vgpr x4>, %resource: reg<amdgpu.sgpr x4>, %soffset: reg<amdgpu.sgpr>) asm {
+  buffer_atomic_sub_u64 %value, %resource, %address, %soffset {offset = 16}
+  %sub_u64 = buffer_atomic_sub_u64_rtn %value, %resource, %address, %soffset {offset = 16}
+  buffer_atomic_min_i64 %sub_u64, %resource, %address, %soffset {offset = 16}
+  %min_i64 = buffer_atomic_min_i64_rtn %sub_u64, %resource, %address, %soffset {offset = 16}
+  buffer_atomic_xor_b64 %min_i64, %resource, %address, %soffset {offset = 16}
+  %xor_b64 = buffer_atomic_xor_b64_rtn %min_i64, %resource, %address, %soffset {offset = 16}
+  %swap_u64 = buffer_atomic_swap_b64_rtn %xor_b64, %resource, %address, %soffset {offset = 16}
+  %cmpswap_b64 = buffer_atomic_cmpswap_b64_rtn %pair, %resource, %address, %soffset {offset = 16}
+  return
+}
+
+// ----
+0xE1100010
+0x04400402
+0xE1104010
+0x04400402
+0xE1140010
+0x04400402
+0xE1144010
+0x04400402
+0xE12C0010
+0x04400402
+0xE12C4010
+0x04400402
+0xE1044010
+0x04400402
+0xE1084010
+0x04400802
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-native-words @buffer_gfx1200 strategy=source waits=none fixed=%address:physical_register:2:1 fixed=%value:physical_register:4:2 fixed=%pair:physical_register:8:4 fixed=%resource:physical_register:0:4 fixed=%soffset:physical_register:4:1 fixed=%sub_u64:physical_register:4:2 fixed=%min_i64:physical_register:4:2 fixed=%xor_b64:physical_register:4:2 fixed=%swap_u64:physical_register:4:2 fixed=%cmpswap_b64:physical_register:8:4
+amdgpu.target<gfx1200> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @buffer_gfx1200(%address: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr x2>, %pair: reg<amdgpu.vgpr x4>, %resource: reg<amdgpu.sgpr x4>, %soffset: reg<amdgpu.sgpr>) asm {
+  buffer_atomic_sub_u64 %value, %resource, %address, %soffset {offset = 16}
+  %sub_u64 = buffer_atomic_sub_u64_rtn %value, %resource, %address, %soffset {offset = 16}
+  buffer_atomic_min_i64 %sub_u64, %resource, %address, %soffset {offset = 16}
+  %min_i64 = buffer_atomic_min_i64_rtn %sub_u64, %resource, %address, %soffset {offset = 16}
+  buffer_atomic_xor_b64 %min_i64, %resource, %address, %soffset {offset = 16}
+  %xor_b64 = buffer_atomic_xor_b64_rtn %min_i64, %resource, %address, %soffset {offset = 16}
+  %swap_u64 = buffer_atomic_swap_b64_rtn %xor_b64, %resource, %address, %soffset {offset = 16}
+  %cmpswap_b64 = buffer_atomic_cmpswap_b64_rtn %pair, %resource, %address, %soffset {offset = 16}
+  return
+}
+
+// ----
+0xC4110004
+0x40000004
+0x00001002
+0xC4110004
+0x40100004
+0x00001002
+0xC4114004
+0x40000004
+0x00001002
+0xC4114004
+0x40100004
+0x00001002
+0xC412C004
+0x40000004
+0x00001002
+0xC412C004
+0x40100004
+0x00001002
+0xC4104004
+0x40100004
+0x00001002
+0xC4108004
+0x40100008
+0x00001002
+0xBFB00000
+
+// ====
+
+// RUN: emit amdgpu-native-words @buffer_gfx1250 strategy=source waits=none fixed=%address:physical_register:2:1 fixed=%value:physical_register:4:2 fixed=%pair:physical_register:8:4 fixed=%resource:physical_register:0:4 fixed=%soffset:physical_register:4:1 fixed=%sub_u64:physical_register:4:2 fixed=%min_i64:physical_register:4:2 fixed=%xor_b64:physical_register:4:2 fixed=%swap_u64:physical_register:4:2 fixed=%cmpswap_b64:physical_register:8:4
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @buffer_gfx1250(%address: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr x2>, %pair: reg<amdgpu.vgpr x4>, %resource: reg<amdgpu.sgpr x4>, %soffset: reg<amdgpu.sgpr>) asm {
+  buffer_atomic_sub_u64 %value, %resource, %address, %soffset {offset = 16}
+  %sub_u64 = buffer_atomic_sub_u64_rtn %value, %resource, %address, %soffset {offset = 16}
+  buffer_atomic_min_i64 %sub_u64, %resource, %address, %soffset {offset = 16}
+  %min_i64 = buffer_atomic_min_i64_rtn %sub_u64, %resource, %address, %soffset {offset = 16}
+  buffer_atomic_xor_b64 %min_i64, %resource, %address, %soffset {offset = 16}
+  %xor_b64 = buffer_atomic_xor_b64_rtn %min_i64, %resource, %address, %soffset {offset = 16}
+  %swap_u64 = buffer_atomic_swap_b64_rtn %xor_b64, %resource, %address, %soffset {offset = 16}
+  %cmpswap_b64 = buffer_atomic_cmpswap_b64_rtn %pair, %resource, %address, %soffset {offset = 16}
+  return
+}
+
+// ----
+0xC4110004
+0x40000004
+0x00001002
+0xC4110004
+0x40100004
+0x00001002
+0xC4114004
+0x40000004
+0x00001002
+0xC4114004
+0x40100004
+0x00001002
+0xC412C004
+0x40000004
+0x00001002
+0xC412C004
+0x40100004
+0x00001002
+0xC4104004
+0x40100004
+0x00001002
+0xC4108004
+0x40100008
+0x00001002
+0xBFB00000

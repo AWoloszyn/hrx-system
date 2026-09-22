@@ -2664,7 +2664,7 @@ def test_feedback_atomic64_descriptors_cover_execution_families() -> None:
         )
         _assert_feedback_atomic64_overlay(
             descriptors["amdgpu.global_atomic_swap_u64_rtn_saddr"],
-            mnemonic=f"global_atomic_swap_{wide_mnemonic_suffix}",
+            mnemonic=f"global_atomic_swap_{'x2' if wide_mnemonic_suffix == 'x2' else 'b64'}",
             semantic_tag="memory.global.atomic.exchange.u64.return",
             memory_space=MemorySpace.GLOBAL,
             payload_field_name="value",
@@ -2681,6 +2681,42 @@ def test_feedback_atomic64_descriptors_cover_execution_families() -> None:
             payload_field_name="value",
             payload_units=4,
         )
+
+
+def test_buffer_atomic64_payloads_preserve_ties_and_memory_width() -> None:
+    for overlays in (
+        _gfx11_core_overlays(),
+        _gfx12_core_overlays(),
+        _gfx125x_core_overlays(),
+    ):
+        for descriptor in overlays:
+            if not descriptor.descriptor_key.startswith("amdgpu.buffer_atomic_"):
+                continue
+            if "64" not in descriptor.semantic_tag:
+                continue
+            compare_exchange = "compare_exchange" in descriptor.semantic_tag
+            returned = descriptor.semantic_tag.endswith(".return")
+            payload_units = 4 if compare_exchange else 2
+            payloads = tuple(
+                operand.descriptor_operand
+                for operand in descriptor.operands
+                if operand.xml_field_name == "VDATA"
+            )
+            assert tuple(operand.unit_count for operand in payloads) == (
+                (payload_units, payload_units) if returned else (payload_units,)
+            )
+            assert tuple(effect.width_bits for effect in descriptor.effects) == (64, 64)
+            assert all(
+                operand.size_bits == 64 for operand in descriptor.implicit_operands
+            )
+            if returned:
+                assert Constraint(ConstraintKind.TIED, 0, 1) in descriptor.constraints
+                assert (
+                    Constraint(ConstraintKind.DESTRUCTIVE, 0, 1)
+                    in descriptor.constraints
+                )
+            else:
+                assert descriptor.constraints == ()
 
 
 def test_feedback_atomic64_descriptors_expand_source_atomic_candidates() -> None:

@@ -275,10 +275,13 @@ static bool loom_amdgpu_atomic_source_is_vector(
 
 static bool loom_amdgpu_atomic_prefers_global_saddr(
     const loom_low_descriptor_set_t* descriptor_set,
-    loom_value_fact_memory_space_t memory_space) {
+    loom_value_fact_memory_space_t memory_space, loom_type_t value_type) {
+  // Wide global atomics avoid a four-SGPR buffer descriptor and preserve their
+  // input payload instead of requiring fresh pairs for destructive returns.
   return memory_space == LOOM_VALUE_FACT_MEMORY_SPACE_GLOBAL &&
-         loom_amdgpu_memory_cache_policy_descriptor_encoding(descriptor_set) ==
-             LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX12_NV_SCOPE_TH;
+         (loom_amdgpu_type_is_i64(value_type) ||
+          loom_amdgpu_memory_cache_policy_descriptor_encoding(descriptor_set) ==
+              LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX12_NV_SCOPE_TH);
 }
 
 static bool loom_amdgpu_atomic_value_kind_matches(
@@ -605,7 +608,7 @@ static bool loom_amdgpu_atomic_select_descriptor(
     loom_amdgpu_atomic_diagnostic_t* diagnostic) {
   selection->descriptor_ref = LOOM_AMDGPU_DESCRIPTOR_REF_NONE;
   const bool prefer_global_saddr = loom_amdgpu_atomic_prefers_global_saddr(
-      descriptor_set, selection->source.memory_space);
+      descriptor_set, selection->source.memory_space, value_type);
   bool found_kind = false;
   bool found_type = false;
   uint32_t memory_space_index = 0;
@@ -1054,13 +1057,18 @@ static iree_status_t loom_amdgpu_copy_atomic_value_to_fresh_vgpr(
     return loom_amdgpu_emit_vgpr_b32_copy(context, source_op, low_value,
                                           out_low_value);
   }
-  loom_type_t vgpr_type = loom_type_none();
-  IREE_RETURN_IF_ERROR(loom_amdgpu_make_vgpr_type(context, &vgpr_type));
+  // Slices retain their source bank; the following moves perform any broadcast
+  // from scalar registers while preserving a fresh payload for tied atomics.
+  const loom_type_t low_type =
+      loom_module_value_type(loom_low_lower_context_module(context), low_value);
+  loom_type_t unit_type = loom_type_none();
+  IREE_RETURN_IF_ERROR(loom_low_lower_make_register_type(
+      context, loom_low_register_type_class_id(low_type), 1, &unit_type));
   loom_value_id_t low_parts[LOOM_AMDGPU_MAX_SCALARIZED_32BIT_LANES] = {0};
   for (uint32_t i = 0; i < register_count; ++i) {
     loom_value_id_t low_part = LOOM_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(loom_amdgpu_extract_low_register_unit(
-        context, source_op, low_value, register_count, i, vgpr_type,
+        context, source_op, low_value, register_count, i, unit_type,
         &low_part));
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_b32_copy(
         context, source_op, low_part, &low_parts[i]));

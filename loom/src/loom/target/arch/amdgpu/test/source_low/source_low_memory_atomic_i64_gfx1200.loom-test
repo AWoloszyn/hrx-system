@@ -95,7 +95,7 @@ CHECK: * = global_atomic_max_u64_rtn*
 CHECK: * = global_atomic_and_b64_rtn*
 CHECK: * = global_atomic_or_b64_rtn*
 CHECK: * = global_atomic_xor_b64_rtn*
-CHECK: * = global_atomic_swap_u64_rtn*
+CHECK: * = global_atomic_swap_b64_rtn*
 CHECK: * = global_atomic_cmpswap_b64_rtn*
 CHECK: * = flat_atomic_add_u64_rtn*
 CHECK: * = flat_atomic_sub_u64_rtn*
@@ -106,7 +106,7 @@ CHECK: * = flat_atomic_max_u64_rtn*
 CHECK: * = flat_atomic_and_b64_rtn*
 CHECK: * = flat_atomic_or_b64_rtn*
 CHECK: * = flat_atomic_xor_b64_rtn*
-CHECK: * = flat_atomic_swap_u64_rtn*
+CHECK: * = flat_atomic_swap_b64_rtn*
 CHECK: * = flat_atomic_cmpswap_b64_rtn*
 CHECK-NOT: *view.atomic.*
 CHECK-NOT: *low.op<*
