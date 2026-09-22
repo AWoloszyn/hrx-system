@@ -79,6 +79,7 @@ loom_cc_library(
     loom::ir::facts
     loom::ops::atomic
     loom::ops::buffer
+    loom::ops::callable_effects
     loom::ops::cfg
     loom::ops::encoding
     loom::ops::func

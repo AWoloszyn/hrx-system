@@ -30,7 +30,9 @@ TEST(LowDescriptorTraitsTest, EffectFreeDescriptorIsPure) {
 TEST(LowDescriptorTraitsTest, PreciseEffectsCompose) {
   loom_low_effect_t effects[4] = {};
   effects[0].kind = LOOM_LOW_EFFECT_KIND_READ;
+  effects[0].memory_space = LOOM_LOW_MEMORY_SPACE_GLOBAL;
   effects[1].kind = LOOM_LOW_EFFECT_KIND_WRITE;
+  effects[1].memory_space = LOOM_LOW_MEMORY_SPACE_GLOBAL;
   effects[2].kind = LOOM_LOW_EFFECT_KIND_CONTROL;
   effects[3].kind = LOOM_LOW_EFFECT_KIND_CONVERGENT;
 
@@ -47,7 +49,7 @@ TEST(LowDescriptorTraitsTest, PreciseEffectsCompose) {
 TEST(LowDescriptorTraitsTest, OpaqueEffectsRemainUnknown) {
   loom_low_effect_t effects[2] = {};
   effects[0].kind = LOOM_LOW_EFFECT_KIND_CALL;
-  effects[1].kind = LOOM_LOW_EFFECT_KIND_COUNTER;
+  effects[1].kind = LOOM_LOW_EFFECT_KIND_UNKNOWN;
 
   const loom_trait_flags_t traits =
       ProjectEffects(effects, IREE_ARRAYSIZE(effects));
@@ -67,11 +69,38 @@ TEST(LowDescriptorTraitsTest, BarrierIsMemoryFence) {
   EXPECT_TRUE(loom_traits_may_write(traits));
   EXPECT_FALSE(iree_any_bit_set(traits, LOOM_TRAIT_UNKNOWN_EFFECTS));
   EXPECT_FALSE(iree_any_bit_set(traits, LOOM_TRAIT_PURE));
+  EXPECT_FALSE(loom_traits_may_access_memory(traits));
+}
+
+TEST(LowDescriptorTraitsTest, CounterOrdersWithoutAccessingMemory) {
+  loom_low_effect_t effect = {};
+  effect.kind = LOOM_LOW_EFFECT_KIND_COUNTER;
+  const loom_trait_flags_t traits = ProjectEffects(&effect, 1);
+  EXPECT_TRUE(loom_traits_order_memory(traits));
+  EXPECT_TRUE(loom_traits_may_read(traits));
+  EXPECT_TRUE(loom_traits_may_write(traits));
+  EXPECT_FALSE(loom_traits_may_access_memory(traits));
+}
+
+TEST(LowDescriptorTraitsTest, ExternalResourcesRemainEffectful) {
+  loom_low_effect_t effect = {};
+  effect.kind = LOOM_LOW_EFFECT_KIND_READ;
+  const loom_trait_flags_t read_traits = ProjectEffects(&effect, 1);
+  EXPECT_TRUE(iree_all_bits_set(read_traits, LOOM_TRAIT_NON_DETERMINISTIC));
+  EXPECT_FALSE(loom_traits_may_access_memory(read_traits));
+  EXPECT_FALSE(iree_any_bit_set(read_traits, LOOM_TRAIT_PURE));
+
+  effect.kind = LOOM_LOW_EFFECT_KIND_WRITE;
+  const loom_trait_flags_t write_traits = ProjectEffects(&effect, 1);
+  EXPECT_TRUE(iree_all_bits_set(write_traits, LOOM_TRAIT_OBSERVABLE_EFFECT));
+  EXPECT_FALSE(loom_traits_may_access_memory(write_traits));
+  EXPECT_FALSE(iree_any_bit_set(write_traits, LOOM_TRAIT_PURE));
 }
 
 TEST(LowDescriptorTraitsTest, BarrierPreservesPreciseMemoryEffects) {
   loom_low_effect_t effects[2] = {};
   effects[0].kind = LOOM_LOW_EFFECT_KIND_READ;
+  effects[0].memory_space = LOOM_LOW_MEMORY_SPACE_GLOBAL;
   effects[1].kind = LOOM_LOW_EFFECT_KIND_BARRIER;
 
   const loom_trait_flags_t traits =
@@ -83,11 +112,13 @@ TEST(LowDescriptorTraitsTest, BarrierPreservesPreciseMemoryEffects) {
 }
 
 TEST(LowDescriptorTraitsTest, OpaqueEffectsSubsumePreciseMemoryTraits) {
-  for (auto kind : {LOOM_LOW_EFFECT_KIND_CALL, LOOM_LOW_EFFECT_KIND_COUNTER}) {
+  for (auto kind : {LOOM_LOW_EFFECT_KIND_CALL, LOOM_LOW_EFFECT_KIND_UNKNOWN}) {
     loom_low_effect_t effects[5] = {};
     effects[0].kind = LOOM_LOW_EFFECT_KIND_READ;
+    effects[0].memory_space = LOOM_LOW_MEMORY_SPACE_GLOBAL;
     effects[1].kind = kind;
     effects[2].kind = LOOM_LOW_EFFECT_KIND_WRITE;
+    effects[2].memory_space = LOOM_LOW_MEMORY_SPACE_GLOBAL;
     effects[3].kind = LOOM_LOW_EFFECT_KIND_CONTROL;
     effects[4].kind = LOOM_LOW_EFFECT_KIND_CONVERGENT;
     const loom_trait_flags_t traits =

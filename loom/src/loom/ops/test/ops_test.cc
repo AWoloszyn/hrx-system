@@ -347,6 +347,19 @@ TEST_F(BuilderTest, IsaCheck) {
 // Effect summary maintenance
 //===----------------------------------------------------------------------===//
 
+TEST_F(BuilderTest, MemoryFenceHasOrderingWithoutMemoryAccess) {
+  loom_value_id_t input = LOOM_VALUE_ID_INVALID;
+  const loom_type_t type = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+  IREE_ASSERT_OK(loom_builder_define_block_arg(
+      &builder_, loom_module_block(module_), type, &input));
+  loom_op_t* fence = nullptr;
+  IREE_ASSERT_OK(loom_test_memory_fence_build(&builder_, input, type,
+                                              LOOM_LOCATION_UNKNOWN, &fence));
+  EXPECT_TRUE(loom_region_has_read_effects(module_->body));
+  EXPECT_TRUE(loom_region_has_write_effects(module_->body));
+  EXPECT_FALSE(loom_region_has_memory_accesses(module_->body));
+}
+
 TEST_F(BuilderTest, DirectWriteEffectSummaryUpdatesOnErase) {
   loom_type_t pool_type = loom_type_pool(loom_dim_pack_static(4096));
   loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
@@ -365,10 +378,12 @@ TEST_F(BuilderTest, DirectWriteEffectSummaryUpdatesOnErase) {
 
   EXPECT_EQ(module_->body->read_effect_count, 0u);
   EXPECT_EQ(module_->body->write_effect_count, 1u);
+  EXPECT_EQ(module_->body->memory_access_count, 1u);
 
   IREE_ASSERT_OK(loom_op_erase(module_, write_op));
   EXPECT_EQ(module_->body->read_effect_count, 0u);
   EXPECT_EQ(module_->body->write_effect_count, 0u);
+  EXPECT_EQ(module_->body->memory_access_count, 0u);
 }
 
 TEST_F(BuilderTest, UnknownOpEffectsAreConservative) {
@@ -383,6 +398,7 @@ TEST_F(BuilderTest, UnknownOpEffectsAreConservative) {
   EXPECT_TRUE(loom_op_may_write(module_, op));
   EXPECT_EQ(module_->body->read_effect_count, 1u);
   EXPECT_EQ(module_->body->write_effect_count, 1u);
+  EXPECT_EQ(module_->body->memory_access_count, 1u);
 }
 
 TEST_F(BuilderTest, NestedWriteEffectSummaryPropagatesToAncestors) {
@@ -414,10 +430,18 @@ TEST_F(BuilderTest, NestedWriteEffectSummaryPropagatesToAncestors) {
 
   EXPECT_EQ(map_body->write_effect_count, 1u);
   EXPECT_EQ(module_->body->write_effect_count, 1u);
+  EXPECT_EQ(map_body->memory_access_count, 1u);
+  EXPECT_EQ(module_->body->memory_access_count, 1u);
+
+  IREE_ASSERT_OK(loom_module_compute_uses(module_));
+  EXPECT_EQ(map_body->memory_access_count, 1u);
+  EXPECT_EQ(module_->body->memory_access_count, 1u);
 
   IREE_ASSERT_OK(loom_op_erase(module_, map_op));
   EXPECT_EQ(map_body->write_effect_count, 0u);
   EXPECT_EQ(module_->body->write_effect_count, 0u);
+  EXPECT_EQ(map_body->memory_access_count, 0u);
+  EXPECT_EQ(module_->body->memory_access_count, 0u);
   EXPECT_EQ(write_op->flags & LOOM_OP_FLAG_SUMMARIES_COUNTED, 0u);
 }
 

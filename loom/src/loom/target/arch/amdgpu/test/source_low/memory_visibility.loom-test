@@ -94,3 +94,74 @@ CHECK: buffer_gl0_inv
 CHECK: buffer_gl1_inv
 CHECK: * = global_load_b64_saddr *
 CHECK-NOT: * {glc = 1, slc = 1}
+
+// ====
+// RUN: with-checks emit source-low output=low
+
+// Completion and clock sampling remain effectful without an opaque memory
+// footprint. The helper must survive while ordinary payload reads use bypass.
+amdgpu.target<gfx1151> @gpu
+
+low.func.def target<amdgpu.rdna3_5.core>(@gpu) @completed_tick() -> (reg<amdgpu.sgpr>) asm {
+  s_waitcnt {vmcnt = 0}
+  s_waitcnt_vscnt {vscnt = 0}
+  %tick = s_sendmsg_rtn_b32 {message = 131}
+  s_waitcnt {lgkmcnt = 0}
+  return %tick
+}
+
+kernel.def target(@gpu) @clocked_acquire() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%payload: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %data = buffer.view %payload[%base] : buffer -> view<1024xi32>
+  %destination = buffer.view %output[%base] : buffer -> view<2xi32>
+  buffer.fence scope(system) ordering(acquire)
+  %value = view.load %data[0] : view<1024xi32> -> i32
+  %clock = low.invoke @completed_tick() : () -> (i32)
+  view.store %value, %destination[0] : i32, view<2xi32>
+  view.store %clock, %destination[1] : i32, view<2xi32>
+  kernel.return
+}
+
+// ----
+CHECK: %value = global_load_* {glc = 1, slc = 1}
+CHECK: %tick = s_sendmsg_rtn_b32 {message = 131}
+CHECK: s_waitcnt {lgkmcnt = 0}
+CHECK: s_waitcnt {vmcnt = 0}
+CHECK: s_waitcnt_vscnt {vscnt = 0}
+CHECK-NOT: buffer_gl*_inv
+
+// ====
+// RUN: with-checks emit source-low output=low
+
+// A Low helper that reads memory has no selected payload access plan. Its
+// cached footprint therefore requires eager visibility at the caller's fence.
+amdgpu.target<gfx1151> @gpu
+
+low.func.def target<amdgpu.rdna3_5.core>(@gpu) @read_native(%address: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.sgpr>) asm {
+  %offset = v_mov_b32 0
+  %word = global_load_b32_saddr %offset, %address
+  s_waitcnt {vmcnt = 0}
+  %result = v_readfirstlane_b32 %word
+  return %result
+}
+
+kernel.def target(@gpu) @opaque_read_after_acquire() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%payload: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %destination = buffer.view %output[%base] : buffer -> view<1xi32>
+  buffer.fence scope(system) ordering(acquire)
+  %value = low.invoke @read_native(%payload) : (buffer) -> (i32)
+  view.store %value, %destination[0] : i32, view<1xi32>
+  kernel.return
+}
+
+// ----
+CHECK: buffer_gl0_inv
+CHECK: buffer_gl1_inv
+CHECK: %word = global_load_b32_saddr *
+CHECK-NOT: * {glc = 1, slc = 1}

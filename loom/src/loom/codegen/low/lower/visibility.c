@@ -10,6 +10,7 @@
 #include "loom/codegen/low/lower/execution.h"
 #include "loom/ops/atomic.h"
 #include "loom/ops/buffer/ops.h"
+#include "loom/ops/callable_effects.h"
 #include "loom/ops/kernel/ops.h"
 #include "loom/ops/op_defs.h"
 
@@ -81,6 +82,19 @@ iree_status_t loom_low_lower_visibility_observe(
                                                loom_kernel_barrier_scope(op));
     }
     return iree_ok_status();
+  }
+  if (iree_any_bit_set(op->traits, LOOM_TRAIT_CALLABLE_BOUNDARY)) {
+    const loom_call_like_t call =
+        loom_call_like_cast(context->module, (loom_op_t*)op);
+    if (loom_call_like_kind(call) == LOOM_CALL_LIKE_KIND_LOW_INVOKE) {
+      const loom_symbol_ref_t callee = loom_call_like_callee(call);
+      builder->requires_eager =
+          callee.module_id != 0 ||
+          loom_callable_effects_may_access_memory(loom_func_like_cast(
+              context->module,
+              context->module->symbols.entries[callee.symbol_id].defining_op));
+      return iree_ok_status();
+    }
   }
   const loom_memory_access_t access =
       loom_memory_access_cast(context->module, op);

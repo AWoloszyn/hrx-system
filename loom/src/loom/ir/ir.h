@@ -824,6 +824,14 @@ static inline bool loom_traits_may_read(loom_trait_flags_t traits) {
          0;
 }
 
+// Returns true when an operation may access storage. Ordering and observations
+// of non-memory state do not themselves have a memory footprint.
+static inline bool loom_traits_may_access_memory(loom_trait_flags_t traits) {
+  return iree_any_bit_set(traits, LOOM_TRAIT_READS_MEMORY |
+                                      LOOM_TRAIT_WRITES_MEMORY |
+                                      LOOM_TRAIT_UNKNOWN_EFFECTS);
+}
+
 // Returns true if the trait flags indicate the op has an execution property
 // that prevents treating exact result facts as a replacement for the op.
 static inline bool loom_traits_has_side_effects(loom_trait_flags_t traits) {
@@ -1978,6 +1986,9 @@ typedef struct loom_region_t {
   // nested in this region. These ops remain live even when their SSA results
   // are unused.
   uint32_t observable_effect_count;
+  // Transitive count of actual or unknown memory accesses. Unlike read/write
+  // effects, this excludes ordering and observations of non-memory state.
+  uint32_t memory_access_count;
   // Direct hint ops plus immediately nested regions with any hints. Only
   // zero/nonzero transitions propagate to the containing region, so building
   // or removing a subtree does not update every ancestor for every hint.
@@ -2057,6 +2068,13 @@ static inline bool loom_region_has_convergent_effects(
 static inline bool loom_region_has_observable_effects(
     const loom_region_t* region) {
   return region && region->observable_effect_count != 0;
+}
+
+// Returns true when any live nested op may access storage, including unknown
+// effects but excluding standalone ordering and external-state observations.
+static inline bool loom_region_has_memory_accesses(
+    const loom_region_t* region) {
+  return region && region->memory_access_count != 0;
 }
 
 // Returns true when any live op nested in |region| is a compiler hint.
