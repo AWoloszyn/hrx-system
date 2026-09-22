@@ -464,8 +464,11 @@ static hrx_memory_type_t iree_hip_vmm_memory_type(
           ? HRX_MEMORY_TYPE_DEVICE_UNCACHED
           : HRX_MEMORY_TYPE_NONE;
   if (properties->location.type == hipMemLocationTypeHost) {
-    return HRX_MEMORY_TYPE_DEVICE_LOCAL | HRX_MEMORY_TYPE_HOST_VISIBLE |
-           HRX_MEMORY_TYPE_HOST_COHERENT | cache_type;
+    // The location selects the physical backing owner, not merely which agent
+    // may access the eventual mapping. Host backing remains device-visible so
+    // access can be granted independently to host and device agents.
+    return HRX_MEMORY_TYPE_HOST_LOCAL | HRX_MEMORY_TYPE_HOST_COHERENT |
+           HRX_MEMORY_TYPE_DEVICE_VISIBLE | cache_type;
   }
   return HRX_MEMORY_TYPE_DEVICE_LOCAL | cache_type;
 }
