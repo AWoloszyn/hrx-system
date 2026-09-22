@@ -111,6 +111,9 @@ def generate_ops_inc(ops: Sequence[Op]) -> str:
             continue
         lines.append(f"// {op.name}.")
         for index, attr in enumerate(attrs):
+            if attr.optional:
+                lines.append(f"#define {prefix}_has_{attr.name}(op) \\")
+                lines.append(f"  (!loom_attr_is_absent(loom_op_const_attrs((op))[{index}]))")
             lines.append(f"#define {prefix}_{attr.name}_attr(op) \\")
             lines.append(f"  (loom_op_const_attrs((op))[{index}])")
             lines.append(f"#define {prefix}_{attr.name}_descriptor(module, op) \\")
@@ -497,10 +500,6 @@ def generate_ops_h(
                 lines.append(f"LOOM_DEFINE_ATTR_ENUM_TYPED({prefix}_{attr_def.name}, {desc_index}, {enum_type})")
             elif macro:
                 lines.append(f"{macro}({prefix}_{attr_def.name}, {desc_index})")
-            if attr_def.optional:
-                presence_name = f"has_{attr_def.name}"
-                lines.append(f"#define {prefix}_{presence_name}(op) \\")
-                lines.append(f"  (!loom_attr_is_absent(loom_op_const_attrs((op))[{desc_index}]))")
 
         for region_def in op.regions:
             desc = layout.fields[region_def.name]

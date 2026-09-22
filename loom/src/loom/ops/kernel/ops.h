@@ -149,20 +149,10 @@ typedef enum loom_kernel_workgroup_scan_direction_e {
 LOOM_DEFINE_ISA(loom_kernel_def_isa, LOOM_OP_KERNEL_DEF)
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_def_callee, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_def_target, 1)
-#define loom_kernel_def_has_target(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_STRING(loom_kernel_def_export_symbol, 2)
-#define loom_kernel_def_has_export_symbol(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_def_export_linkage, 3, loom_target_linkage_t)
-#define loom_kernel_def_has_export_linkage(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_kernel_def_predicates, 4)
-#define loom_kernel_def_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_def_retain, 5, loom_kernel_retain_t)
-#define loom_kernel_def_has_retain(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 LOOM_DEFINE_REGION(loom_kernel_def_config, 0)
 LOOM_DEFINE_REGION(loom_kernel_def_body, 1)
 enum loom_kernel_def_build_flag_bits_e {
@@ -720,11 +710,7 @@ LOOM_DEFINE_OPERAND(loom_kernel_subgroup_reduce_value, 0)
 LOOM_DEFINE_RESULT(loom_kernel_subgroup_reduce_result, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_reduce_kind, 0, loom_combining_kind_t)
 LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_reduce_cluster_size, 1)
-#define loom_kernel_subgroup_reduce_has_cluster_size(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_reduce_cluster_stride, 2)
-#define loom_kernel_subgroup_reduce_has_cluster_stride(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_kernel_subgroup_reduce_build_flag_bits_e {
   LOOM_KERNEL_SUBGROUP_REDUCE_BUILD_FLAG_HAS_CLUSTER_SIZE = 1u << 0,
   LOOM_KERNEL_SUBGROUP_REDUCE_BUILD_FLAG_HAS_CLUSTER_STRIDE = 1u << 1,
@@ -756,11 +742,7 @@ LOOM_DEFINE_OPERAND(loom_kernel_subgroup_scan_value, 0)
 LOOM_DEFINE_RESULT(loom_kernel_subgroup_scan_result, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_kind, 0, loom_combining_kind_t)
 LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_scan_cluster_size, 1)
-#define loom_kernel_subgroup_scan_has_cluster_size(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_I64(loom_kernel_subgroup_scan_cluster_stride, 2)
-#define loom_kernel_subgroup_scan_has_cluster_stride(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_mode, 3, loom_kernel_subgroup_scan_mode_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_subgroup_scan_direction, 4, loom_kernel_subgroup_scan_direction_t)
 enum loom_kernel_subgroup_scan_build_flag_bits_e {
@@ -1007,8 +989,6 @@ iree_status_t loom_kernel_workgroup_vote_count_verify(
 LOOM_DEFINE_ISA(loom_kernel_assert_isa, LOOM_OP_KERNEL_ASSERT)
 LOOM_DEFINE_OPERAND(loom_kernel_assert_condition, 0)
 LOOM_DEFINE_ATTR_STRING(loom_kernel_assert_message, 0)
-#define loom_kernel_assert_has_message(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[0]))
 enum loom_kernel_assert_build_flag_bits_e {
   LOOM_KERNEL_ASSERT_BUILD_FLAG_HAS_MESSAGE = 1u << 0,
 };
@@ -1116,20 +1096,10 @@ LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_decl_workloads, 0)
 LOOM_DEFINE_SEGMENTED_OPERANDS(loom_kernel_decl_args, 1)
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_decl_callee, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_decl_target, 1)
-#define loom_kernel_decl_has_target(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_STRING(loom_kernel_decl_export_symbol, 2)
-#define loom_kernel_decl_has_export_symbol(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_decl_export_linkage, 3, loom_target_linkage_t)
-#define loom_kernel_decl_has_export_linkage(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_kernel_decl_predicates, 4)
-#define loom_kernel_decl_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_decl_retain, 5, loom_kernel_retain_t)
-#define loom_kernel_decl_has_retain(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 enum loom_kernel_decl_build_flag_bits_e {
   LOOM_KERNEL_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 0,
   LOOM_KERNEL_DECL_BUILD_FLAG_HAS_TARGET = 1u << 1,
@@ -1161,11 +1131,7 @@ LOOM_DEFINE_ISA(loom_kernel_entry_decl_isa, LOOM_OP_KERNEL_ENTRY_DECL)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_kernel_entry_decl_args, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_entry_decl_callee, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_kernel_entry_decl_target, 1)
-#define loom_kernel_entry_decl_has_target(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_kernel_entry_decl_retain, 2, loom_kernel_retain_t)
-#define loom_kernel_entry_decl_has_retain(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_kernel_entry_decl_build_flag_bits_e {
   LOOM_KERNEL_ENTRY_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 0,
   LOOM_KERNEL_ENTRY_DECL_BUILD_FLAG_HAS_TARGET = 1u << 1,

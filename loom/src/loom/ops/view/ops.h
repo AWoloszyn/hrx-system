@@ -108,11 +108,7 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_view_load_indices, 1)
 LOOM_DEFINE_RESULT(loom_view_load_result, 0)
 LOOM_DEFINE_INSTANCE_FLAGS(loom_view_load_memory_flags)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_load_cache_scope, 0, loom_cache_scope_t)
-#define loom_view_load_has_cache_scope(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[0]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_load_cache_temporal, 1, loom_cache_temporal_t)
-#define loom_view_load_has_cache_temporal(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_load_static_indices, 2)
 enum loom_view_load_build_flag_bits_e {
   LOOM_VIEW_LOAD_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -151,11 +147,7 @@ LOOM_DEFINE_OPERAND(loom_view_store_view, 1)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_view_store_indices, 2)
 LOOM_DEFINE_INSTANCE_FLAGS(loom_view_store_memory_flags)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_store_cache_scope, 0, loom_cache_scope_t)
-#define loom_view_store_has_cache_scope(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[0]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_store_cache_temporal, 1, loom_cache_temporal_t)
-#define loom_view_store_has_cache_temporal(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_store_static_indices, 2)
 enum loom_view_store_build_flag_bits_e {
   LOOM_VIEW_STORE_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -191,11 +183,7 @@ LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_kind, 0, loom_atomic_kind_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_ordering, 1, loom_atomic_ordering_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_scope, 2, loom_atomic_scope_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_cache_scope, 3, loom_cache_scope_t)
-#define loom_view_atomic_reduce_has_cache_scope(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_reduce_cache_temporal, 4, loom_cache_temporal_t)
-#define loom_view_atomic_reduce_has_cache_temporal(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_atomic_reduce_static_indices, 5)
 enum loom_view_atomic_reduce_build_flag_bits_e {
   LOOM_VIEW_ATOMIC_REDUCE_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -233,11 +221,7 @@ LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_kind, 0, loom_atomic_kind_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_ordering, 1, loom_atomic_ordering_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_scope, 2, loom_atomic_scope_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_cache_scope, 3, loom_cache_scope_t)
-#define loom_view_atomic_rmw_has_cache_scope(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_rmw_cache_temporal, 4, loom_cache_temporal_t)
-#define loom_view_atomic_rmw_has_cache_temporal(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_atomic_rmw_static_indices, 5)
 enum loom_view_atomic_rmw_build_flag_bits_e {
   LOOM_VIEW_ATOMIC_RMW_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
@@ -277,11 +261,7 @@ LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_success_ordering, 0, loom_a
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_failure_ordering, 1, loom_atomic_ordering_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_scope, 2, loom_atomic_scope_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_cache_scope, 3, loom_cache_scope_t)
-#define loom_view_atomic_cmpxchg_has_cache_scope(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_cmpxchg_cache_temporal, 4, loom_cache_temporal_t)
-#define loom_view_atomic_cmpxchg_has_cache_temporal(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_atomic_cmpxchg_static_indices, 5)
 enum loom_view_atomic_cmpxchg_build_flag_bits_e {
   LOOM_VIEW_ATOMIC_CMPXCHG_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,

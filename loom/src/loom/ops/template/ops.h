@@ -69,29 +69,13 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_template_decl_args, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_template_decl_results, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_decl_family, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_visibility, 1, loom_template_visibility_t)
-#define loom_template_decl_has_visibility(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_cc, 2, loom_template_cc_t)
-#define loom_template_decl_has_cc(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_purity, 3, loom_template_purity_t)
-#define loom_template_decl_has_purity(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_temperature, 4, loom_template_temperature_t)
-#define loom_template_decl_has_temperature(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_template_decl_predicates, 5)
-#define loom_template_decl_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_decl_target, 6)
-#define loom_template_decl_has_target(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[6]))
 LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_template_decl_requires, 7)
-#define loom_template_decl_has_requires(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[7]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_decl_retain, 8, loom_template_retain_t)
-#define loom_template_decl_has_retain(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[8]))
 enum loom_template_decl_build_flag_bits_e {
   LOOM_TEMPLATE_DECL_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
   LOOM_TEMPLATE_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 1,
@@ -137,32 +121,14 @@ LOOM_DEFINE_VARIADIC_RESULTS(loom_template_def_results, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_def_family, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_def_implementation, 1)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_visibility, 2, loom_template_visibility_t)
-#define loom_template_def_has_visibility(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_cc, 3, loom_template_cc_t)
-#define loom_template_def_has_cc(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_purity, 4, loom_template_purity_t)
-#define loom_template_def_has_purity(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_temperature, 5, loom_template_temperature_t)
-#define loom_template_def_has_temperature(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_template_def_predicates, 6)
-#define loom_template_def_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[6]))
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_def_target, 7)
-#define loom_template_def_has_target(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[7]))
 LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_template_def_requires, 8)
-#define loom_template_def_has_requires(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[8]))
 LOOM_DEFINE_ATTR_I64(loom_template_def_priority, 9)
-#define loom_template_def_has_priority(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[9]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_def_retain, 10, loom_template_retain_t)
-#define loom_template_def_has_retain(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[10]))
 LOOM_DEFINE_REGION(loom_template_def_body, 0)
 enum loom_template_def_build_flag_bits_e {
   LOOM_TEMPLATE_DEF_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
@@ -211,32 +177,14 @@ LOOM_DEFINE_VARIADIC_RESULTS(loom_template_ukernel_results, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_ukernel_family, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_ukernel_implementation, 1)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_visibility, 2, loom_template_visibility_t)
-#define loom_template_ukernel_has_visibility(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_cc, 3, loom_template_cc_t)
-#define loom_template_ukernel_has_cc(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_purity, 4, loom_template_purity_t)
-#define loom_template_ukernel_has_purity(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_temperature, 5, loom_template_temperature_t)
-#define loom_template_ukernel_has_temperature(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_template_ukernel_predicates, 6)
-#define loom_template_ukernel_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[6]))
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_ukernel_target, 7)
-#define loom_template_ukernel_has_target(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[7]))
 LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_template_ukernel_requires, 8)
-#define loom_template_ukernel_has_requires(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[8]))
 LOOM_DEFINE_ATTR_I64(loom_template_ukernel_priority, 9)
-#define loom_template_ukernel_has_priority(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[9]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_ukernel_retain, 10, loom_template_retain_t)
-#define loom_template_ukernel_has_retain(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[10]))
 enum loom_template_ukernel_build_flag_bits_e {
   LOOM_TEMPLATE_UKERNEL_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
   LOOM_TEMPLATE_UKERNEL_BUILD_FLAG_HAS_RETAIN = 1u << 1,
@@ -283,11 +231,7 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_template_apply_operands, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_template_apply_results, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_apply_family, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_apply_purity, 1, loom_template_purity_t)
-#define loom_template_apply_has_purity(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_apply_temperature, 2, loom_template_temperature_t)
-#define loom_template_apply_has_temperature(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_template_apply_build_flag_bits_e {
   LOOM_TEMPLATE_APPLY_BUILD_FLAG_HAS_PURITY = 1u << 0,
   LOOM_TEMPLATE_APPLY_BUILD_FLAG_HAS_TEMPERATURE = 1u << 1,
@@ -320,11 +264,7 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_template_call_operands, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_template_call_results, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_template_call_callee, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_call_purity, 1, loom_template_purity_t)
-#define loom_template_call_has_purity(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_template_call_temperature, 2, loom_template_temperature_t)
-#define loom_template_call_has_temperature(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_template_call_build_flag_bits_e {
   LOOM_TEMPLATE_CALL_BUILD_FLAG_HAS_PURITY = 1u << 0,
   LOOM_TEMPLATE_CALL_BUILD_FLAG_HAS_TEMPERATURE = 1u << 1,

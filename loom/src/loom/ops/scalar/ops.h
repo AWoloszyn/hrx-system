@@ -1226,8 +1226,6 @@ LOOM_DEFINE_RESULT(loom_scalar_geluf_result, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scalar_geluf_variant, 0, loom_scalar_geluf_variant_t)
 LOOM_DEFINE_INSTANCE_FLAGS(loom_scalar_geluf_fastmath)
 LOOM_DEFINE_ATTR_F64(loom_scalar_geluf_scale, 1)
-#define loom_scalar_geluf_has_scale(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 enum loom_scalar_geluf_build_flag_bits_e {
   LOOM_SCALAR_GELUF_BUILD_FLAG_HAS_SCALE = 1u << 0,
 };

@@ -66,98 +66,36 @@ LOOM_DEFINE_ISA(loom_amdgpu_target_isa, LOOM_OP_AMDGPU_TARGET)
 LOOM_DEFINE_ATTR_SYMBOL(loom_amdgpu_target_symbol, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_kind, 1, loom_amdgpu_target_kind_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_codegen_format, 2, loom_target_codegen_format_t)
-#define loom_amdgpu_target_has_codegen_format(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_artifact_format, 3, loom_target_artifact_format_t)
-#define loom_amdgpu_target_has_artifact_format(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_default_pointer_bitwidth, 4)
-#define loom_amdgpu_target_has_default_pointer_bitwidth(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_index_bitwidth, 5)
-#define loom_amdgpu_target_has_index_bitwidth(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_offset_bitwidth, 6)
-#define loom_amdgpu_target_has_offset_bitwidth(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[6]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_size_x, 7)
-#define loom_amdgpu_target_has_max_workgroup_size_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[7]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_size_y, 8)
-#define loom_amdgpu_target_has_max_workgroup_size_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[8]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_size_z, 9)
-#define loom_amdgpu_target_has_max_workgroup_size_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[9]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_flat_workgroup_size, 10)
-#define loom_amdgpu_target_has_max_flat_workgroup_size(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[10]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_storage_bytes, 11)
-#define loom_amdgpu_target_has_max_workgroup_storage_bytes(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[11]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_subgroup_size, 12)
-#define loom_amdgpu_target_has_subgroup_size(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[12]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_grid_size_x, 13)
-#define loom_amdgpu_target_has_max_grid_size_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[13]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_grid_size_y, 14)
-#define loom_amdgpu_target_has_max_grid_size_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[14]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_grid_size_z, 15)
-#define loom_amdgpu_target_has_max_grid_size_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[15]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_flat_grid_size, 16)
-#define loom_amdgpu_target_has_max_flat_grid_size(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[16]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_count_x, 17)
-#define loom_amdgpu_target_has_max_workgroup_count_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[17]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_count_y, 18)
-#define loom_amdgpu_target_has_max_workgroup_count_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[18]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_max_workgroup_count_z, 19)
-#define loom_amdgpu_target_has_max_workgroup_count_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[19]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_generic, 20)
-#define loom_amdgpu_target_has_memory_space_generic(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[20]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_global, 21)
-#define loom_amdgpu_target_has_memory_space_global(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[21]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_workgroup, 22)
-#define loom_amdgpu_target_has_memory_space_workgroup(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[22]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_constant, 23)
-#define loom_amdgpu_target_has_memory_space_constant(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[23]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_private, 24)
-#define loom_amdgpu_target_has_memory_space_private(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[24]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_host, 25)
-#define loom_amdgpu_target_has_memory_space_host(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[25]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_memory_space_descriptor, 26)
-#define loom_amdgpu_target_has_memory_space_descriptor(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[26]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_abi, 27, loom_target_abi_kind_t)
-#define loom_amdgpu_target_has_abi(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[27]))
 LOOM_DEFINE_ATTR_STRING(loom_amdgpu_target_export_symbol, 28)
-#define loom_amdgpu_target_has_export_symbol(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[28]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_amdgpu_target_linkage, 29, loom_target_linkage_t)
-#define loom_amdgpu_target_has_linkage(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[29]))
 LOOM_DEFINE_ATTR_STRING(loom_amdgpu_target_contract_set_key, 30)
-#define loom_amdgpu_target_has_contract_set_key(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[30]))
 LOOM_DEFINE_ATTR_I64(loom_amdgpu_target_contract_feature_bits, 31)
-#define loom_amdgpu_target_has_contract_feature_bits(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[31]))
 LOOM_DEFINE_ATTR_SIGNED_ENUM_SET(loom_amdgpu_target_features, 32)
-#define loom_amdgpu_target_has_features(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[32]))
 enum loom_amdgpu_target_build_flag_bits_e {
   LOOM_AMDGPU_TARGET_BUILD_FLAG_HAS_CODEGEN_FORMAT = 1u << 0,
   LOOM_AMDGPU_TARGET_BUILD_FLAG_HAS_ARTIFACT_FORMAT = 1u << 1,

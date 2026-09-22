@@ -68,20 +68,10 @@ typedef enum loom_pipeline_def_retain_e {
 LOOM_DEFINE_ISA(loom_pipeline_def_isa, LOOM_OP_PIPELINE_DEF)
 LOOM_DEFINE_ATTR_SYMBOL(loom_pipeline_def_callee, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pipeline_def_scope, 1, loom_pipeline_def_scope_t)
-#define loom_pipeline_def_has_scope(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pipeline_def_visibility, 2, loom_pipeline_def_visibility_t)
-#define loom_pipeline_def_has_visibility(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pipeline_def_retain, 3, loom_pipeline_def_retain_t)
-#define loom_pipeline_def_has_retain(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_SYMBOL(loom_pipeline_def_target, 4)
-#define loom_pipeline_def_has_target(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_pipeline_def_predicates, 5)
-#define loom_pipeline_def_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 LOOM_DEFINE_ATTR_I64(loom_pipeline_def_specialization_count, 6)
 LOOM_DEFINE_REGION(loom_pipeline_def_body, 0)
 enum loom_pipeline_def_build_flag_bits_e {

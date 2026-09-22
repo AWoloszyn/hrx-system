@@ -78,8 +78,6 @@ typedef enum loom_check_expect_close_nan_e {
 LOOM_DEFINE_ISA(loom_check_case_isa, LOOM_OP_CHECK_CASE)
 LOOM_DEFINE_ATTR_SYMBOL(loom_check_case_case_symbol, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_check_case_visibility, 1, loom_check_case_visibility_t)
-#define loom_check_case_has_visibility(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_REGION(loom_check_case_body, 0)
 enum loom_check_case_build_flag_bits_e {
   LOOM_CHECK_CASE_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
@@ -119,8 +117,6 @@ LOOM_DEFINE_ISA(loom_check_skip_if_isa, LOOM_OP_CHECK_SKIP_IF)
 LOOM_DEFINE_ATTR_STRING(loom_check_skip_if_provider, 0)
 LOOM_DEFINE_ATTR_DICT(loom_check_skip_if_attrs, 1)
 LOOM_DEFINE_ATTR_STRING(loom_check_skip_if_reason, 2)
-#define loom_check_skip_if_has_reason(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_check_skip_if_build_flag_bits_e {
   LOOM_CHECK_SKIP_IF_BUILD_FLAG_HAS_REASON = 1u << 0,
 };
@@ -142,11 +138,7 @@ LOOM_DEFINE_ATTR_ENUM_TYPED(loom_check_param_range_policy, 0, loom_check_param_r
 LOOM_DEFINE_ATTR_ANY(loom_check_param_range_lower, 1)
 LOOM_DEFINE_ATTR_ANY(loom_check_param_range_upper, 2)
 LOOM_DEFINE_ATTR_ANY(loom_check_param_range_step, 3)
-#define loom_check_param_range_has_step(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_STRING(loom_check_param_range_param_name, 4)
-#define loom_check_param_range_has_param_name(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 enum loom_check_param_range_build_flag_bits_e {
   LOOM_CHECK_PARAM_RANGE_BUILD_FLAG_HAS_PARAM_NAME = 1u << 0,
 };
@@ -169,8 +161,6 @@ LOOM_DEFINE_ISA(loom_check_param_choice_isa, LOOM_OP_CHECK_PARAM_CHOICE)
 LOOM_DEFINE_RESULT(loom_check_param_choice_result, 0)
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_check_param_choice_values, 0)
 LOOM_DEFINE_ATTR_STRING(loom_check_param_choice_param_name, 1)
-#define loom_check_param_choice_has_param_name(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 enum loom_check_param_choice_build_flag_bits_e {
   LOOM_CHECK_PARAM_CHOICE_BUILD_FLAG_HAS_PARAM_NAME = 1u << 0,
 };
@@ -192,8 +182,6 @@ LOOM_DEFINE_RESULT(loom_check_param_seed_result, 0)
 LOOM_DEFINE_ATTR_I64(loom_check_param_seed_base, 0)
 LOOM_DEFINE_ATTR_I64(loom_check_param_seed_count, 1)
 LOOM_DEFINE_ATTR_STRING(loom_check_param_seed_param_name, 2)
-#define loom_check_param_seed_has_param_name(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_check_param_seed_build_flag_bits_e {
   LOOM_CHECK_PARAM_SEED_BUILD_FLAG_HAS_PARAM_NAME = 1u << 0,
 };
@@ -227,8 +215,6 @@ LOOM_DEFINE_RESULT(loom_check_generate_iota_result, 0)
 LOOM_DEFINE_ATTR_ANY(loom_check_generate_iota_offset, 0)
 LOOM_DEFINE_ATTR_ANY(loom_check_generate_iota_step, 1)
 LOOM_DEFINE_ATTR_I64(loom_check_generate_iota_period, 2)
-#define loom_check_generate_iota_has_period(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_check_generate_iota_build_flag_bits_e {
   LOOM_CHECK_GENERATE_IOTA_BUILD_FLAG_HAS_PERIOD = 1u << 0,
 };
@@ -289,8 +275,6 @@ LOOM_DEFINE_ISA(loom_check_file_write_npy_isa, LOOM_OP_CHECK_FILE_WRITE_NPY)
 LOOM_DEFINE_OPERAND(loom_check_file_write_npy_value, 0)
 LOOM_DEFINE_ATTR_STRING(loom_check_file_write_npy_path, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_check_file_write_npy_mode, 1, loom_check_file_write_npy_mode_t)
-#define loom_check_file_write_npy_has_mode(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 enum loom_check_file_write_npy_build_flag_bits_e {
   LOOM_CHECK_FILE_WRITE_NPY_BUILD_FLAG_HAS_MODE = 1u << 0,
 };
@@ -311,8 +295,6 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_check_oracle_call_inputs, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_check_oracle_call_results, 0)
 LOOM_DEFINE_ATTR_STRING(loom_check_oracle_call_provider, 0)
 LOOM_DEFINE_ATTR_DICT(loom_check_oracle_call_attrs, 1)
-#define loom_check_oracle_call_has_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_SYMBOL(loom_check_oracle_call_callee, 2)
 enum loom_check_oracle_call_build_flag_bits_e {
   LOOM_CHECK_ORACLE_CALL_BUILD_FLAG_HAS_ATTRS = 1u << 0,
@@ -398,8 +380,6 @@ LOOM_DEFINE_OPERAND(loom_check_expect_actual, 0)
 LOOM_DEFINE_OPERAND(loom_check_expect_expected, 1)
 LOOM_DEFINE_ATTR_STRING(loom_check_expect_provider, 0)
 LOOM_DEFINE_ATTR_DICT(loom_check_expect_attrs, 1)
-#define loom_check_expect_has_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 enum loom_check_expect_build_flag_bits_e {
   LOOM_CHECK_EXPECT_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };
@@ -419,8 +399,6 @@ iree_status_t loom_check_expect_build(
 LOOM_DEFINE_ISA(loom_check_expect_event_isa, LOOM_OP_CHECK_EXPECT_EVENT)
 LOOM_DEFINE_ATTR_STRING(loom_check_expect_event_provider, 0)
 LOOM_DEFINE_ATTR_DICT(loom_check_expect_event_attrs, 1)
-#define loom_check_expect_event_has_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 enum loom_check_expect_event_build_flag_bits_e {
   LOOM_CHECK_EXPECT_EVENT_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };
@@ -439,8 +417,6 @@ LOOM_DEFINE_ISA(loom_check_benchmark_isa, LOOM_OP_CHECK_BENCHMARK)
 LOOM_DEFINE_ATTR_SYMBOL(loom_check_benchmark_benchmark, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_check_benchmark_case_ref, 1)
 LOOM_DEFINE_ATTR_DICT(loom_check_benchmark_attrs, 2)
-#define loom_check_benchmark_has_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_check_benchmark_build_flag_bits_e {
   LOOM_CHECK_BENCHMARK_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };

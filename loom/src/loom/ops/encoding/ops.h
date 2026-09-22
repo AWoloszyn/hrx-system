@@ -364,8 +364,6 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_encoding_define_params, 0)
 LOOM_DEFINE_RESULT(loom_encoding_define_result, 0)
 LOOM_DEFINE_ATTR_ENCODING(loom_encoding_define_spec, 0)
 LOOM_DEFINE_ATTR_DICT(loom_encoding_define_param_names, 1)
-#define loom_encoding_define_has_param_names(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 iree_status_t loom_encoding_define_build(
     loom_builder_t* builder,
     uint16_t spec,

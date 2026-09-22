@@ -140,48 +140,20 @@ LOOM_DEFINE_ISA(loom_low_func_def_isa, LOOM_OP_LOW_FUNC_DEF)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_func_def_results, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_def_callee, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_def_target, 1)
-#define loom_low_func_def_has_target(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_STRING(loom_low_func_def_descriptor_set, 2)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_abi, 3, loom_target_abi_kind_t)
-#define loom_low_func_def_has_abi(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_DICT(loom_low_func_def_abi_attrs, 4)
-#define loom_low_func_def_has_abi_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 LOOM_DEFINE_ATTR_DICT(loom_low_func_def_abi_layout, 5)
-#define loom_low_func_def_has_abi_layout(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 LOOM_DEFINE_ATTR_STRING(loom_low_func_def_export_symbol, 6)
-#define loom_low_func_def_has_export_symbol(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[6]))
 LOOM_DEFINE_ATTR_DICT(loom_low_func_def_export_attrs, 7)
-#define loom_low_func_def_has_export_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[7]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_visibility, 8, loom_low_visibility_t)
-#define loom_low_func_def_has_visibility(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[8]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_cc, 9, loom_low_cc_t)
-#define loom_low_func_def_has_cc(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[9]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_purity, 10, loom_low_purity_t)
-#define loom_low_func_def_has_purity(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[10]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_inline_policy, 11, loom_inline_policy_t)
-#define loom_low_func_def_has_inline_policy(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[11]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_allocation, 12, loom_low_allocation_t)
-#define loom_low_func_def_has_allocation(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[12]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_schedule, 13, loom_low_schedule_t)
-#define loom_low_func_def_has_schedule(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[13]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_func_def_predicates, 14)
-#define loom_low_func_def_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[14]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_def_retain, 15, loom_low_retain_t)
-#define loom_low_func_def_has_retain(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[15]))
 LOOM_DEFINE_REGION(loom_low_func_def_body, 0)
 enum loom_low_func_def_build_flag_bits_e {
   LOOM_LOW_FUNC_DEF_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
@@ -239,57 +211,23 @@ iree_status_t loom_low_func_def_verify(
 LOOM_DEFINE_ISA(loom_low_kernel_def_isa, LOOM_OP_LOW_KERNEL_DEF)
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_kernel_def_callee, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_kernel_def_target, 1)
-#define loom_low_kernel_def_has_target(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_STRING(loom_low_kernel_def_descriptor_set, 2)
 LOOM_DEFINE_ATTR_DICT(loom_low_kernel_def_abi_layout, 3)
-#define loom_low_kernel_def_has_abi_layout(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_STRING(loom_low_kernel_def_export_symbol, 4)
-#define loom_low_kernel_def_has_export_symbol(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_export_linkage, 5, loom_target_linkage_t)
-#define loom_low_kernel_def_has_export_linkage(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_size_x, 6)
-#define loom_low_kernel_def_has_workgroup_size_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[6]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_size_y, 7)
-#define loom_low_kernel_def_has_workgroup_size_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[7]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_size_z, 8)
-#define loom_low_kernel_def_has_workgroup_size_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[8]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_count_x, 9)
-#define loom_low_kernel_def_has_workgroup_count_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[9]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_count_y, 10)
-#define loom_low_kernel_def_has_workgroup_count_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[10]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_count_z, 11)
-#define loom_low_kernel_def_has_workgroup_count_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[11]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_cluster_size_x, 12)
-#define loom_low_kernel_def_has_workgroup_cluster_size_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[12]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_cluster_size_y, 13)
-#define loom_low_kernel_def_has_workgroup_cluster_size_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[13]))
 LOOM_DEFINE_ATTR_I64(loom_low_kernel_def_workgroup_cluster_size_z, 14)
-#define loom_low_kernel_def_has_workgroup_cluster_size_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[14]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_allocation, 15, loom_low_allocation_t)
-#define loom_low_kernel_def_has_allocation(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[15]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_schedule, 16, loom_low_schedule_t)
-#define loom_low_kernel_def_has_schedule(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[16]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_kernel_def_predicates, 17)
-#define loom_low_kernel_def_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[17]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_kernel_def_retain, 18, loom_low_retain_t)
-#define loom_low_kernel_def_has_retain(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[18]))
 LOOM_DEFINE_REGION(loom_low_kernel_def_body, 0)
 enum loom_low_kernel_def_build_flag_bits_e {
   LOOM_LOW_KERNEL_DEF_BUILD_FLAG_HAS_RETAIN = 1u << 0,
@@ -349,57 +287,23 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_low_func_decl_args, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_func_decl_results, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_decl_callee, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_decl_target, 1)
-#define loom_low_func_decl_has_target(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_descriptor_set, 2)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_abi, 3, loom_target_abi_kind_t)
-#define loom_low_func_decl_has_abi(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_DICT(loom_low_func_decl_abi_attrs, 4)
-#define loom_low_func_decl_has_abi_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 LOOM_DEFINE_ATTR_DICT(loom_low_func_decl_abi_layout, 5)
-#define loom_low_func_decl_has_abi_layout(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_export_symbol, 6)
-#define loom_low_func_decl_has_export_symbol(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[6]))
 LOOM_DEFINE_ATTR_DICT(loom_low_func_decl_export_attrs, 7)
-#define loom_low_func_decl_has_export_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[7]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_visibility, 8, loom_low_visibility_t)
-#define loom_low_func_decl_has_visibility(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[8]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_cc, 9, loom_low_cc_t)
-#define loom_low_func_decl_has_cc(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[9]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_purity, 10, loom_low_purity_t)
-#define loom_low_func_decl_has_purity(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[10]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_inline_policy, 11, loom_inline_policy_t)
-#define loom_low_func_decl_has_inline_policy(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[11]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_allocation, 12, loom_low_allocation_t)
-#define loom_low_func_decl_has_allocation(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[12]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_schedule, 13, loom_low_schedule_t)
-#define loom_low_func_decl_has_schedule(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[13]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_low_func_decl_predicates, 14)
-#define loom_low_func_decl_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[14]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_retain, 15, loom_low_retain_t)
-#define loom_low_func_decl_has_retain(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[15]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_decl_import_kind, 16, loom_low_func_decl_import_kind_t)
-#define loom_low_func_decl_has_import_kind(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[16]))
 LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_code_symbol, 17)
-#define loom_low_func_decl_has_code_symbol(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[17]))
 LOOM_DEFINE_ATTR_STRING(loom_low_func_decl_import_module, 18)
-#define loom_low_func_decl_has_import_module(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[18]))
 enum loom_low_func_decl_build_flag_bits_e {
   LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
   LOOM_LOW_FUNC_DECL_BUILD_FLAG_HAS_RETAIN = 1u << 1,
@@ -473,11 +377,7 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_low_func_call_operands, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_func_call_results, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_func_call_callee, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_call_purity, 1, loom_low_purity_t)
-#define loom_low_func_call_has_purity(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_func_call_inline_policy, 2, loom_inline_policy_t)
-#define loom_low_func_call_has_inline_policy(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_low_func_call_build_flag_bits_e {
   LOOM_LOW_FUNC_CALL_BUILD_FLAG_HAS_PURITY = 1u << 0,
   LOOM_LOW_FUNC_CALL_BUILD_FLAG_HAS_INLINE_POLICY = 1u << 1,
@@ -510,8 +410,6 @@ LOOM_DEFINE_VARIADIC_RESULTS(loom_low_op_results, 0)
 LOOM_DEFINE_ATTR_SCOPED_ENUM(loom_low_op_descriptor, 0)
 LOOM_DEFINE_INSTANCE_FLAGS(loom_low_op_memory_flags)
 LOOM_DEFINE_ATTR_DICT(loom_low_op_attrs, 1)
-#define loom_low_op_has_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 loom_trait_flags_t loom_low_op_effective_traits(const loom_op_t* op);
 
 // LOOM_OP_LOW_CONST: Descriptor-backed constant or immediate materialization into a register.
@@ -520,8 +418,6 @@ LOOM_DEFINE_ISA(loom_low_const_isa, LOOM_OP_LOW_CONST)
 LOOM_DEFINE_RESULT(loom_low_const_result, 0)
 LOOM_DEFINE_ATTR_SCOPED_ENUM(loom_low_const_descriptor, 0)
 LOOM_DEFINE_ATTR_DICT(loom_low_const_attrs, 1)
-#define loom_low_const_has_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 iree_status_t loom_low_const_facts(
     loom_fact_context_t* context,
     const loom_module_t* module, const loom_op_t* op,
@@ -623,11 +519,7 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_low_invoke_operands, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_invoke_results, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_low_invoke_callee, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_invoke_purity, 1, loom_low_purity_t)
-#define loom_low_invoke_has_purity(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_invoke_inline_policy, 2, loom_inline_policy_t)
-#define loom_low_invoke_has_inline_policy(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_low_invoke_build_flag_bits_e {
   LOOM_LOW_INVOKE_BUILD_FLAG_HAS_PURITY = 1u << 0,
   LOOM_LOW_INVOKE_BUILD_FLAG_HAS_INLINE_POLICY = 1u << 1,
@@ -791,11 +683,7 @@ LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_resource_import_kind, 0, loom_low_resource_
 LOOM_DEFINE_ATTR_I64(loom_low_resource_index, 1)
 LOOM_DEFINE_ATTR_TYPE(loom_low_resource_source_type, 2)
 LOOM_DEFINE_ATTR_I64(loom_low_resource_extent, 3)
-#define loom_low_resource_has_extent(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_I64(loom_low_resource_cache_swizzle_stride, 4)
-#define loom_low_resource_has_cache_swizzle_stride(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 enum loom_low_resource_build_flag_bits_e {
   LOOM_LOW_RESOURCE_BUILD_FLAG_HAS_EXTENT_VALUE = 1u << 0,
   LOOM_LOW_RESOURCE_BUILD_FLAG_HAS_EXTENT = 1u << 1,
@@ -825,8 +713,6 @@ LOOM_DEFINE_RESULT(loom_low_live_in_result, 0)
 LOOM_DEFINE_ATTR_STRING(loom_low_live_in_source, 0)
 LOOM_DEFINE_ATTR_I64(loom_low_live_in_source_id, 1)
 LOOM_DEFINE_ATTR_DICT(loom_low_live_in_attrs, 2)
-#define loom_low_live_in_has_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_low_live_in_build_flag_bits_e {
   LOOM_LOW_LIVE_IN_BUILD_FLAG_HAS_ATTRS = 1u << 0,
 };
@@ -907,8 +793,6 @@ LOOM_DEFINE_SEGMENTED_OPTIONAL_OPERAND(loom_low_scf_for_unroll_factor, 4)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_low_scf_for_results, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_scf_for_signedness, 0, loom_low_scf_for_signedness_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_low_scf_for_unroll_policy, 1, loom_low_scf_for_unroll_policy_t)
-#define loom_low_scf_for_has_unroll_policy(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_REGION(loom_low_scf_for_body, 0)
 enum loom_low_scf_for_build_flag_bits_e {
   LOOM_LOW_SCF_FOR_BUILD_FLAG_HAS_UNROLL_FACTOR = 1u << 0,

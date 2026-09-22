@@ -81,8 +81,6 @@ iree_status_t loom_pass_for_build(
 LOOM_DEFINE_ISA(loom_pass_where_isa, LOOM_OP_PASS_WHERE)
 LOOM_DEFINE_ATTR_STRING(loom_pass_where_predicate, 0)
 LOOM_DEFINE_ATTR_DICT(loom_pass_where_attrs, 1)
-#define loom_pass_where_has_attrs(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_REGION(loom_pass_where_body, 0)
 enum loom_pass_where_build_flag_bits_e {
   LOOM_PASS_WHERE_BUILD_FLAG_HAS_ATTRS = 1u << 0,
@@ -103,11 +101,7 @@ iree_status_t loom_pass_where_build(
 LOOM_DEFINE_ISA(loom_pass_repeat_isa, LOOM_OP_PASS_REPEAT)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_pass_repeat_mode, 0, loom_pass_repeat_mode_t)
 LOOM_DEFINE_ATTR_I64(loom_pass_repeat_count, 1)
-#define loom_pass_repeat_has_count(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_I64(loom_pass_repeat_max_iterations, 2)
-#define loom_pass_repeat_has_max_iterations(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 LOOM_DEFINE_REGION(loom_pass_repeat_body, 0)
 enum loom_pass_repeat_build_flag_bits_e {
   LOOM_PASS_REPEAT_BUILD_FLAG_HAS_COUNT = 1u << 0,
@@ -138,8 +132,6 @@ iree_status_t loom_pass_call_build(
 LOOM_DEFINE_ISA(loom_pass_run_isa, LOOM_OP_PASS_RUN)
 LOOM_DEFINE_ATTR_STRING(loom_pass_run_key, 0)
 LOOM_DEFINE_ATTR_DICT(loom_pass_run_options, 1)
-#define loom_pass_run_has_options(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 enum loom_pass_run_build_flag_bits_e {
   LOOM_PASS_RUN_BUILD_FLAG_HAS_OPTIONS = 1u << 0,
 };

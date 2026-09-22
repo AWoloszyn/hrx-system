@@ -3524,11 +3524,12 @@ def test_optional_attribute_presence_uses_stored_slots_without_function_bodies()
         assert "ATTR_INDEX" not in ops_h
         assert "#define loom_test_presence_optional_field()" not in ops_inc
         assert "loom_test_presence_flags_field" not in ops_inc
-        assert "#define loom_test_presence_has_optional(op)" in ops_h
-        assert f"(!loom_attr_is_absent(loom_op_const_attrs((op))[{index}]))" in ops_h
-        assert "loom_test_presence_has_required" not in ops_h
-        assert "loom_test_presence_has_flags" not in ops_h
-        assert "static inline bool loom_test_presence_has_optional" not in ops_h
+        assert "loom_test_presence_has_" not in ops_h
+        assert "#define loom_test_presence_has_optional(op)" in ops_inc
+        assert f"(!loom_attr_is_absent(loom_op_const_attrs((op))[{index}]))" in ops_inc
+        assert "loom_test_presence_has_required" not in ops_inc
+        assert "loom_test_presence_has_flags" not in ops_inc
+        assert "static inline bool loom_test_presence_has_optional" not in ops_inc
         assert "#define loom_test_presence_rewrite_optional(rewriter, op, attribute)" in ops_inc
         assert f"loom_rewriter_set_attr((rewriter), (op), {index}, (attribute))" in ops_inc
         assert "#define loom_test_presence_rewrite_required(rewriter, op, attribute)" in ops_inc
@@ -3542,6 +3543,8 @@ def test_optional_attribute_presence_rejects_accessor_name_collisions() -> None:
         op = Op("test.presence", group=Dialect("test"), attrs=attrs, format=[AttrDict()])
         with _raises_value_error("presence accessor 'loom_test_presence_has_count' conflicts with field 'has_count'"):
             generate_ops_h("test", 0, [op])
+        with _raises_value_error("presence accessor 'loom_test_presence_has_count' conflicts with field 'has_count'"):
+            generate_ops_inc([op])
 
 
 def test_attribute_rewriting_rejects_accessor_name_collisions() -> None:

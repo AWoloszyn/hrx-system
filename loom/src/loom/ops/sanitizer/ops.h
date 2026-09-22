@@ -63,8 +63,6 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_sanitizer_assert_access_indices, 1)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_assert_access_kind, 0, loom_sanitizer_assert_access_kind_t)
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_sanitizer_assert_access_static_indices, 1)
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_sanitizer_assert_access_static_extents, 2)
-#define loom_sanitizer_assert_access_has_static_extents(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_sanitizer_assert_access_build_flag_bits_e {
   LOOM_SANITIZER_ASSERT_ACCESS_BUILD_FLAG_HAS_STATIC_EXTENTS = 1u << 0,
 };
@@ -161,11 +159,7 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_sanitizer_race_access_indices, 1)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_race_access_kind, 0, loom_sanitizer_race_access_kind_t)
 LOOM_DEFINE_ATTR_BOOL(loom_sanitizer_race_access_atomic, 1)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_race_access_ordering, 2, loom_atomic_ordering_t)
-#define loom_sanitizer_race_access_has_ordering(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_race_access_scope, 3, loom_atomic_scope_t)
-#define loom_sanitizer_race_access_has_scope(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_sanitizer_race_access_static_indices, 4)
 enum loom_sanitizer_race_access_build_flag_bits_e {
   LOOM_SANITIZER_RACE_ACCESS_BUILD_FLAG_HAS_ORDERING = 1u << 0,

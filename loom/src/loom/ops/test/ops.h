@@ -746,14 +746,8 @@ LOOM_DEFINE_ISA(loom_test_func_isa, LOOM_OP_TEST_FUNC)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_test_func_results, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_func_callee, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_func_visibility, 1, loom_test_visibility_t)
-#define loom_test_func_has_visibility(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_func_cc, 2, loom_test_cc_t)
-#define loom_test_func_has_cc(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_test_func_predicates, 3)
-#define loom_test_func_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_REGION(loom_test_func_body, 0)
 enum loom_test_func_build_flag_bits_e {
   LOOM_TEST_FUNC_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
@@ -787,11 +781,7 @@ iree_status_t loom_test_func_build(
 LOOM_DEFINE_ISA(loom_test_split_func_isa, LOOM_OP_TEST_SPLIT_FUNC)
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_split_func_callee, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_split_func_visibility, 1, loom_test_visibility_t)
-#define loom_test_split_func_has_visibility(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_split_func_cc, 2, loom_test_cc_t)
-#define loom_test_split_func_has_cc(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 LOOM_DEFINE_REGION(loom_test_split_func_config, 0)
 LOOM_DEFINE_REGION(loom_test_split_func_body, 1)
 enum loom_test_split_func_build_flag_bits_e {
@@ -817,11 +807,7 @@ LOOM_DEFINE_VARIADIC_OPERANDS(loom_test_decl_args, 0)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_test_decl_results, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_decl_callee, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_decl_visibility, 1, loom_test_visibility_t)
-#define loom_test_decl_has_visibility(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_decl_cc, 2, loom_test_cc_t)
-#define loom_test_decl_has_cc(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_test_decl_build_flag_bits_e {
   LOOM_TEST_DECL_BUILD_FLAG_HAS_VISIBILITY = 1u << 0,
   LOOM_TEST_DECL_BUILD_FLAG_HAS_CC = 1u << 1,
@@ -847,11 +833,7 @@ iree_status_t loom_test_decl_build(
 LOOM_DEFINE_ISA(loom_test_record_isa, LOOM_OP_TEST_RECORD)
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_record_symbol, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_record_kind, 1, loom_test_record_kind_t)
-#define loom_test_record_has_kind(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_DICT(loom_test_record_dict, 2)
-#define loom_test_record_has_dict(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_test_record_build_flag_bits_e {
   LOOM_TEST_RECORD_BUILD_FLAG_HAS_KIND = 1u << 0,
   LOOM_TEST_RECORD_BUILD_FLAG_HAS_DICT = 1u << 1,
@@ -872,8 +854,6 @@ LOOM_DEFINE_ISA(loom_test_attrs_isa, LOOM_OP_TEST_ATTRS)
 LOOM_DEFINE_OPERAND(loom_test_attrs_input, 0)
 LOOM_DEFINE_RESULT(loom_test_attrs_result, 0)
 LOOM_DEFINE_ATTR_DICT(loom_test_attrs_dict, 0)
-#define loom_test_attrs_has_dict(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[0]))
 enum loom_test_attrs_build_flag_bits_e {
   LOOM_TEST_ATTRS_BUILD_FLAG_HAS_DICT = 1u << 0,
 };
@@ -894,8 +874,6 @@ LOOM_DEFINE_OPERAND(loom_test_operand_dict_input, 0)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_test_operand_dict_params, 1)
 LOOM_DEFINE_RESULT(loom_test_operand_dict_result, 0)
 LOOM_DEFINE_ATTR_DICT(loom_test_operand_dict_param_names, 0)
-#define loom_test_operand_dict_has_param_names(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[0]))
 iree_status_t loom_test_operand_dict_build(
     loom_builder_t* builder,
     loom_value_id_t input,
@@ -1900,95 +1878,35 @@ LOOM_DEFINE_ISA(loom_test_target_isa, LOOM_OP_TEST_TARGET)
 LOOM_DEFINE_ATTR_SYMBOL(loom_test_target_symbol, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_target_kind, 1, loom_test_target_kind_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_target_codegen_format, 2, loom_target_codegen_format_t)
-#define loom_test_target_has_codegen_format(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_target_artifact_format, 3, loom_target_artifact_format_t)
-#define loom_test_target_has_artifact_format(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[3]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_default_pointer_bitwidth, 4)
-#define loom_test_target_has_default_pointer_bitwidth(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[4]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_index_bitwidth, 5)
-#define loom_test_target_has_index_bitwidth(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[5]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_offset_bitwidth, 6)
-#define loom_test_target_has_offset_bitwidth(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[6]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_workgroup_size_x, 7)
-#define loom_test_target_has_max_workgroup_size_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[7]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_workgroup_size_y, 8)
-#define loom_test_target_has_max_workgroup_size_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[8]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_workgroup_size_z, 9)
-#define loom_test_target_has_max_workgroup_size_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[9]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_flat_workgroup_size, 10)
-#define loom_test_target_has_max_flat_workgroup_size(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[10]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_workgroup_storage_bytes, 11)
-#define loom_test_target_has_max_workgroup_storage_bytes(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[11]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_subgroup_size, 12)
-#define loom_test_target_has_subgroup_size(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[12]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_grid_size_x, 13)
-#define loom_test_target_has_max_grid_size_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[13]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_grid_size_y, 14)
-#define loom_test_target_has_max_grid_size_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[14]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_grid_size_z, 15)
-#define loom_test_target_has_max_grid_size_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[15]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_flat_grid_size, 16)
-#define loom_test_target_has_max_flat_grid_size(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[16]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_workgroup_count_x, 17)
-#define loom_test_target_has_max_workgroup_count_x(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[17]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_workgroup_count_y, 18)
-#define loom_test_target_has_max_workgroup_count_y(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[18]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_max_workgroup_count_z, 19)
-#define loom_test_target_has_max_workgroup_count_z(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[19]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_memory_space_generic, 20)
-#define loom_test_target_has_memory_space_generic(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[20]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_memory_space_global, 21)
-#define loom_test_target_has_memory_space_global(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[21]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_memory_space_workgroup, 22)
-#define loom_test_target_has_memory_space_workgroup(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[22]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_memory_space_constant, 23)
-#define loom_test_target_has_memory_space_constant(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[23]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_memory_space_private, 24)
-#define loom_test_target_has_memory_space_private(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[24]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_memory_space_host, 25)
-#define loom_test_target_has_memory_space_host(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[25]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_memory_space_descriptor, 26)
-#define loom_test_target_has_memory_space_descriptor(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[26]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_target_abi, 27, loom_target_abi_kind_t)
-#define loom_test_target_has_abi(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[27]))
 LOOM_DEFINE_ATTR_STRING(loom_test_target_export_symbol, 28)
-#define loom_test_target_has_export_symbol(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[28]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_test_target_linkage, 29, loom_target_linkage_t)
-#define loom_test_target_has_linkage(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[29]))
 LOOM_DEFINE_ATTR_STRING(loom_test_target_contract_set_key, 30)
-#define loom_test_target_has_contract_set_key(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[30]))
 LOOM_DEFINE_ATTR_I64(loom_test_target_contract_feature_bits, 31)
-#define loom_test_target_has_contract_feature_bits(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[31]))
 enum loom_test_target_build_flag_bits_e {
   LOOM_TEST_TARGET_BUILD_FLAG_HAS_CODEGEN_FORMAT = 1u << 0,
   LOOM_TEST_TARGET_BUILD_FLAG_HAS_ARTIFACT_FORMAT = 1u << 1,
@@ -2286,11 +2204,7 @@ iree_status_t loom_test_fact_cluster_uniform_facts(
 LOOM_DEFINE_ISA(loom_test_enum_array_attrs_isa, LOOM_OP_TEST_ENUM_ARRAY_ATTRS)
 LOOM_DEFINE_ATTR_ENUM_ARRAY(loom_test_enum_array_attrs_required_values, 0)
 LOOM_DEFINE_ATTR_ENUM_ARRAY(loom_test_enum_array_attrs_optional_values, 1)
-#define loom_test_enum_array_attrs_has_optional_values(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_DICT(loom_test_enum_array_attrs_dict, 2)
-#define loom_test_enum_array_attrs_has_dict(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_test_enum_array_attrs_build_flag_bits_e {
   LOOM_TEST_ENUM_ARRAY_ATTRS_BUILD_FLAG_HAS_OPTIONAL_VALUES = 1u << 0,
   LOOM_TEST_ENUM_ARRAY_ATTRS_BUILD_FLAG_HAS_DICT = 1u << 1,
@@ -2310,11 +2224,7 @@ iree_status_t loom_test_enum_array_attrs_build(
 LOOM_DEFINE_ISA(loom_test_signed_enum_set_attrs_isa, LOOM_OP_TEST_SIGNED_ENUM_SET_ATTRS)
 LOOM_DEFINE_ATTR_SIGNED_ENUM_SET(loom_test_signed_enum_set_attrs_required_features, 0)
 LOOM_DEFINE_ATTR_SIGNED_ENUM_SET(loom_test_signed_enum_set_attrs_optional_features, 1)
-#define loom_test_signed_enum_set_attrs_has_optional_features(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_ATTR_DICT(loom_test_signed_enum_set_attrs_dict, 2)
-#define loom_test_signed_enum_set_attrs_has_dict(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[2]))
 enum loom_test_signed_enum_set_attrs_build_flag_bits_e {
   LOOM_TEST_SIGNED_ENUM_SET_ATTRS_BUILD_FLAG_HAS_OPTIONAL_FEATURES = 1u << 0,
   LOOM_TEST_SIGNED_ENUM_SET_ATTRS_BUILD_FLAG_HAS_DICT = 1u << 1,
@@ -2334,8 +2244,6 @@ iree_status_t loom_test_signed_enum_set_attrs_build(
 LOOM_DEFINE_ISA(loom_test_symbol_array_attrs_isa, LOOM_OP_TEST_SYMBOL_ARRAY_ATTRS)
 LOOM_DEFINE_ATTR_SYMBOL_ARRAY(loom_test_symbol_array_attrs_dependencies, 0)
 LOOM_DEFINE_ATTR_SYMBOL_ARRAY(loom_test_symbol_array_attrs_available, 1)
-#define loom_test_symbol_array_attrs_has_available(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 enum loom_test_symbol_array_attrs_build_flag_bits_e {
   LOOM_TEST_SYMBOL_ARRAY_ATTRS_BUILD_FLAG_HAS_AVAILABLE = 1u << 0,
 };
@@ -2383,8 +2291,6 @@ iree_status_t loom_test_compact_parameterized_attr_build(
 LOOM_DEFINE_ISA(loom_test_parameterized_attr_array_isa, LOOM_OP_TEST_PARAMETERIZED_ATTR_ARRAY)
 LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_test_parameterized_attr_array_values, 0)
 LOOM_DEFINE_ATTR_PARAMETERIZED_ARRAY(loom_test_parameterized_attr_array_tiles, 1)
-#define loom_test_parameterized_attr_array_has_tiles(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 enum loom_test_parameterized_attr_array_build_flag_bits_e {
   LOOM_TEST_PARAMETERIZED_ATTR_ARRAY_BUILD_FLAG_HAS_TILES = 1u << 0,
 };

@@ -64,11 +64,7 @@ LOOM_DEFINE_SEGMENTED_OPTIONAL_OPERAND(loom_scf_for_pipeline_depth, 4)
 LOOM_DEFINE_SEGMENTED_OPTIONAL_OPERAND(loom_scf_for_unroll_factor, 5)
 LOOM_DEFINE_VARIADIC_RESULTS(loom_scf_for_results, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scf_for_unroll_policy, 0, loom_scf_for_unroll_policy_t)
-#define loom_scf_for_has_unroll_policy(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[0]))
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_scf_for_unroll_schedule, 1, loom_scf_for_unroll_schedule_t)
-#define loom_scf_for_has_unroll_schedule(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 LOOM_DEFINE_REGION(loom_scf_for_body, 0)
 enum loom_scf_for_build_flag_bits_e {
   LOOM_SCF_FOR_BUILD_FLAG_HAS_PIPELINE_DEPTH = 1u << 0,

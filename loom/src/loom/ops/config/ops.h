@@ -31,8 +31,6 @@ LOOM_DEFINE_ISA(loom_config_decl_isa, LOOM_OP_CONFIG_DECL)
 LOOM_DEFINE_RESULT(loom_config_decl_type, 0)
 LOOM_DEFINE_ATTR_SYMBOL(loom_config_decl_symbol, 0)
 LOOM_DEFINE_ATTR_PREDICATE_LIST(loom_config_decl_predicates, 1)
-#define loom_config_decl_has_predicates(op) \
-  (!loom_attr_is_absent(loom_op_const_attrs((op))[1]))
 enum loom_config_decl_build_flag_bits_e {
   LOOM_CONFIG_DECL_BUILD_FLAG_HAS_PREDICATES = 1u << 0,
 };
