@@ -22,6 +22,7 @@ exports_files([
     "include/loomcxx/kernel.h",
     "include/loomcxx/low.h",
     "include/loomcxx/math.h",
+    "include/loomcxx/numeric.h",
     "include/loomcxx/scalar.h",
     "include/loomcxx/view.h",
     "include/stdfloat",

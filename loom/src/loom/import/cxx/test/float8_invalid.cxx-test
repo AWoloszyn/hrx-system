@@ -1,0 +1,26 @@
+// RUN: verify
+#include <loomcxx/numeric.h>
+using loom::type::float8_e4m3fn_t;
+using loom::type::float8_e5m2_t;
+float8_e4m3fn_t mixed(float8_e4m3fn_t first, float8_e5m2_t second) {
+  // ERROR@+1: PARSE/036 "invalid operands"
+  return first + second;
+}
+
+// ====
+__float8_e4m3fn narrow(__float8_e5m2 value) {
+  // ERROR@+1: PARSE/036 "narrowing conversion"
+  return {value};
+}
+
+// ====
+__float8_e5m2 narrow(__float8_e4m3fn value) {
+  // ERROR@+1: PARSE/036 "narrowing conversion"
+  return {value};
+}
+
+// ====
+__float8_e4m3fn narrow(float value) {
+  // ERROR@+1: PARSE/036 "narrowing conversion"
+  return {value};
+}

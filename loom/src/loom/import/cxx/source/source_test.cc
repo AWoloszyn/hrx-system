@@ -52,8 +52,9 @@ TEST(SourceTest, NarrowFloatIdentitySurvivesSemanticArchive) {
   loom_cxx_import_options_initialize(&options);
   std::vector<uint8_t> bytes;
   {
-    Source source(IREE_SV("__bf16 convert(_Float16);"), IREE_SV("types.cpp"),
-                  options);
+    Source source(IREE_SV("__bf16 convert(_Float16, __float8_e4m3fn, "
+                          "__float8_e5m2);"),
+                  IREE_SV("types.cpp"), options);
     cxx::ArchiveWriter writer;
     cxx::SemanticArchiveRoots roots;
     roots.globalScope = source.unit().globalScope();
@@ -76,9 +77,13 @@ TEST(SourceTest, NarrowFloatIdentitySurvivesSemanticArchive) {
   ASSERT_NE(type, nullptr);
   EXPECT_EQ(type->returnType(),
             destination.unit().control()->getBFloat16Type());
-  ASSERT_EQ(type->parameterTypes().size(), 1u);
+  ASSERT_EQ(type->parameterTypes().size(), 3u);
   EXPECT_EQ(type->parameterTypes()[0],
             destination.unit().control()->getFloat16Type());
+  EXPECT_EQ(type->parameterTypes()[1],
+            destination.unit().control()->getFloat8E4M3FNType());
+  EXPECT_EQ(type->parameterTypes()[2],
+            destination.unit().control()->getFloat8E5M2Type());
 }
 
 TEST(SourceTest, ProviderBytesAreCopiedBeforeTheNextCallback) {

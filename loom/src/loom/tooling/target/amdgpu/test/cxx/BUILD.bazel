@@ -126,3 +126,13 @@ loom_test(
     execution_profiles = _EXECUTION_PROFILES,
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )
+
+loom_test(
+    name = "float8_test",
+    srcs = [
+        "float8.cpp",
+        "float8.loom",
+    ],
+    execution_profiles = _EXECUTION_PROFILES,
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)
