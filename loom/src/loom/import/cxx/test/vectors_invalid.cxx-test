@@ -5,57 +5,56 @@ typedef bool V __attribute__((ext_vector_type(16)));
 V f(V x) { return x; }
 
 // ====
-// RUN: verify
 // Unsupported vector forms diagnose at source admission.
 typedef float V __attribute__((ext_vector_type(3)));
 // ERROR@+1: LOWERING/059 "vectors require non-boolean scalar lanes without object padding"
 V f(V x) { return x; }
 
 // ====
-// RUN: verify
 // Unsupported vector forms diagnose at source admission.
 typedef int V __attribute__((vector_size(16)));
 // ERROR@+1: LOWERING/059 "vector lane subscripts require a value projection"
 void f(V x) { x[0] = 1; }
 
 // ====
-// RUN: verify
 // Unsupported vector forms diagnose at source admission.
 typedef int V __attribute__((vector_size(16)));
 // ERROR@+1: LOWERING/059 "vector logical operators require lane-wise evaluation"
 V f(V x, V y) { return x && y; }
 
 // ====
-// RUN: verify
 // Unsupported vector forms diagnose at source admission.
 typedef int V __attribute__((vector_size(16)));
 // ERROR@+1: LOWERING/059 "vector conditions require lane-wise selection"
 V f(V x, V y) { return x ? x : y; }
 
 // ====
-// RUN: verify
 // Braced vector construction rejects invalid initializers.
 typedef int V __attribute__((vector_size(16)));
 // ERROR@+1: PARSE/036 "excess elements in vector initializer"
 V f() { return V{1, 2, 3, 4, 5}; }
 
 // ====
-// RUN: verify
 // Braced vector construction rejects invalid initializers.
 typedef unsigned V __attribute__((ext_vector_type(4)));
 // ERROR@+1: PARSE/036 "excess elements in vector initializer"
 V f() { return V{1u, 2u, 3u, 4u, 5u}; }
 
 // ====
-// RUN: verify
 // Braced vector construction rejects invalid initializers.
 typedef unsigned char V __attribute__((vector_size(16)));
 // ERROR@+1: PARSE/036 "narrowing conversion from 'int' to 'unsigned char' in braced-init-list"
 V f() { return V{256}; }
 
 // ====
-// RUN: verify
 // Braced vector construction rejects invalid initializers.
 typedef int V __attribute__((vector_size(16)));
 // ERROR@+1: PARSE/036 "narrowing conversion from 'float' to 'int' in braced-init-list"
 V f(float x) { return V{x, 0, 0, 0}; }
+
+// ====
+// A vector reinterpretation cannot reuse numerical lane constants.
+using Int4 = int __attribute__((vector_size(16)));
+using Float4 = float __attribute__((vector_size(16)));
+// ERROR@+1: PARSE/036 "constexpr variable must be initialized"
+constexpr Int4 bits = (Int4)Float4{1.0f, 2.0f, 3.0f, 4.0f};

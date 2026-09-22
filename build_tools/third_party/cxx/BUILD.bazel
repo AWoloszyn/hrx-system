@@ -32,4 +32,5 @@ exports_files([
     "record_layout_owner.patch",
     "template_lookahead.patch",
     "unsigned_complement.patch",
+    "vector_constants.patch",
 ])

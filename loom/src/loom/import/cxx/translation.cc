@@ -801,6 +801,11 @@ class Translator {
     return std::nullopt;
   }
 
+  Value constant(const cxx::ConstValue& value, cxx::ExpressionAST* ast) {
+    return types_.vector(ast->type) ? vectors_.constant(value, ast->type, ast)
+                                    : scalars_.constant(value, ast->type, ast);
+  }
+
   Value expression(cxx::ExpressionAST* ast) {
     if (!ast) {
       throw std::runtime_error("missing expression");
@@ -813,8 +818,8 @@ class Translator {
       return compound_assignment(assignment);
     }
     auto source = locations_.get(ast);
-    if (auto* constant = cxx::ast_cast<cxx::ConstExpressionAST>(ast)) {
-      return scalars_.constant(*constant->constValue, ast->type, ast);
+    if (auto* expression = cxx::ast_cast<cxx::ConstExpressionAST>(ast)) {
+      return constant(*expression->constValue, ast);
     }
     if (auto* nested = cxx::ast_cast<cxx::NestedExpressionAST>(ast)) {
       return expression(nested->expression);
@@ -938,9 +943,8 @@ class Translator {
             !unit_.typeTraits().is_volatile(variable->type()) &&
             (variable->isConstexpr() ||
              unit_.typeTraits().is_const(variable->type()))) {
-          return name(
-              scalars_.constant(*variable->constValue(), ast->type, ast),
-              cxx::to_string(variable->name()));
+          return name(constant(*variable->constValue(), ast),
+                      cxx::to_string(variable->name()));
         }
       }
       if (cxx::symbol_cast<cxx::FieldSymbol>(id->symbol)) {

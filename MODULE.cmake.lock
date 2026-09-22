@@ -153,6 +153,7 @@ set(IREE_DEP_CXX_PATCHES
   "//build_tools/third_party/cxx:float16_semantics.patch"
   "//build_tools/third_party/cxx:bfloat16_semantics.patch"
   "//build_tools/third_party/cxx:float8_semantics.patch"
+  "//build_tools/third_party/cxx:vector_constants.patch"
 )
 set(IREE_DEP_CXX_PATCH_ARGS
   "-p1"

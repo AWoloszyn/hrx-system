@@ -45,6 +45,9 @@ class Vectors {
   // trailing lanes are zero, as in a C/C++ aggregate initializer.
   loom_value_id_t construct(std::span<const loom_value_id_t> elements,
                             const cxx::Type* source_type, cxx::AST* owner);
+  // Materializes the typed lanes of a frontend vector constant.
+  loom_value_id_t constant(const cxx::ConstValue& value,
+                           const cxx::Type* source_type, cxx::AST* owner);
   // Reads one lane. Source-defined indices are nonnegative and below the lane
   // count; the index carrier does not change that source bounds contract.
   loom_value_id_t extract(loom_value_id_t value, loom_value_id_t index,

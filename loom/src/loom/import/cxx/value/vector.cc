@@ -196,6 +196,18 @@ loom_value_id_t Vectors::construct(std::span<const loom_value_id_t> elements,
   return loom_op_results(op)[0];
 }
 
+loom_value_id_t Vectors::constant(const cxx::ConstValue& value,
+                                  const cxx::Type* source_type,
+                                  cxx::AST* owner) {
+  const auto& list = *std::get<std::shared_ptr<cxx::InitializerList>>(value);
+  std::vector<loom_value_id_t> elements;
+  elements.reserve(list.elements.size());
+  for (const auto& [element, element_type] : list.elements) {
+    elements.push_back(scalars_.constant(element, element_type, owner));
+  }
+  return construct(elements, source_type, owner);
+}
+
 loom_value_id_t Vectors::extract(loom_value_id_t value, loom_value_id_t index,
                                  const cxx::Type* source_type,
                                  const cxx::Type* index_type, cxx::AST* owner) {
