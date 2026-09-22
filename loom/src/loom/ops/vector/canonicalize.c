@@ -2115,6 +2115,9 @@ static iree_status_t loom_vector_canonicalize_binary_identity(
       }
       break;
     case LOOM_OP_VECTOR_SUBI:
+    case LOOM_OP_VECTOR_SHLI:
+    case LOOM_OP_VECTOR_SHRSI:
+    case LOOM_OP_VECTOR_SHRUI:
       if (loom_vector_value_is_all_exact_i64(rewriter, rhs, 0)) {
         replacement = lhs;
       }

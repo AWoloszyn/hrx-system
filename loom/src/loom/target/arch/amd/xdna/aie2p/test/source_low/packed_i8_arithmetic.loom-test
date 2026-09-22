@@ -153,3 +153,304 @@ low.func.def target<amd.xdna.aie2p.core> abi(object_function) @i8x4_cfg_arg_addi
   %result = vadd.8 %selected, %bias
   return %result
 }
+
+// ====
+
+func.def @i8x4_shrui_4(%values: vector<4xi8>) -> (vector<4xi8>) {
+  %amount = vector.constant 4 : vector<4xi8>
+  %result = vector.shrui %values, %amount : vector<4xi8>
+  func.return %result : vector<4xi8>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @i8x4_shrui_4(%values: reg<aie2p.vec256 x2>) -> (reg<aie2p.vec256 x2>) asm {
+  %23 = vextract.8.imm %values, 0
+  %24 = mov.short 4
+  %25 = extend.u8 %23
+  %26 = extend.u8 %24
+  %27 = mov.short 0
+  %28 = sub %27, %26
+  %29 = lshl %25, %28
+  %30 = vextract.8.imm %values, 1
+  %31 = extend.u8 %30
+  %34 = sub %27, %26
+  %35 = lshl %31, %34
+  %36 = vextract.8.imm %values, 2
+  %37 = extend.u8 %36
+  %40 = sub %27, %26
+  %41 = lshl %37, %40
+  %42 = vextract.8.imm %values, 3
+  %43 = extend.u8 %42
+  %46 = sub %27, %26
+  %47 = lshl %43, %46
+  %48 = vbcst.8 %29
+  %49 = mov.short 1
+  %50 = copy %49 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %51 = vinsert.8.reg %48, %50, %35
+  %52 = mov.short 2
+  %53 = copy %52 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %54 = vinsert.8.reg %51, %53, %41
+  %55 = mov.short 3
+  %56 = copy %55 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %result = vinsert.8.reg %54, %56, %47
+  return %result
+}
+
+// ====
+
+func.def @i8x4_shli_3(%values: vector<4xi8>) -> (vector<4xi8>) {
+  %amount = vector.constant 3 : vector<4xi8>
+  %result = vector.shli %values, %amount : vector<4xi8>
+  func.return %result : vector<4xi8>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @i8x4_shli_3(%values: reg<aie2p.vec256 x2>) -> (reg<aie2p.vec256 x2>) asm {
+  %23 = vextract.8.imm %values, 0
+  %24 = mov.short 3
+  %25 = extend.u8 %24
+  %26 = lshl %23, %25
+  %27 = vextract.8.imm %values, 1
+  %29 = lshl %27, %25
+  %30 = vextract.8.imm %values, 2
+  %32 = lshl %30, %25
+  %33 = vextract.8.imm %values, 3
+  %35 = lshl %33, %25
+  %36 = vbcst.8 %26
+  %37 = mov.short 1
+  %38 = copy %37 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %39 = vinsert.8.reg %36, %38, %29
+  %40 = mov.short 2
+  %41 = copy %40 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %42 = vinsert.8.reg %39, %41, %32
+  %44 = copy %24 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %result = vinsert.8.reg %42, %44, %35
+  return %result
+}
+
+// ====
+
+func.def @i8x8_shrui_1(%values: vector<8xi8>) -> (vector<8xi8>) {
+  %amount = vector.constant 1 : vector<8xi8>
+  %result = vector.shrui %values, %amount : vector<8xi8>
+  func.return %result : vector<8xi8>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @i8x8_shrui_1(%values: reg<aie2p.vec256 x2>) -> (reg<aie2p.vec256 x2>) asm {
+  %39 = vextract.8.imm %values, 0
+  %40 = mov.short 1
+  %41 = extend.u8 %39
+  %42 = extend.u8 %40
+  %43 = mov.short 0
+  %44 = sub %43, %42
+  %45 = lshl %41, %44
+  %46 = vextract.8.imm %values, 1
+  %47 = extend.u8 %46
+  %50 = sub %43, %42
+  %51 = lshl %47, %50
+  %52 = vextract.8.imm %values, 2
+  %53 = extend.u8 %52
+  %56 = sub %43, %42
+  %57 = lshl %53, %56
+  %58 = vextract.8.imm %values, 3
+  %59 = extend.u8 %58
+  %62 = sub %43, %42
+  %63 = lshl %59, %62
+  %64 = vextract.8.imm %values, 4
+  %65 = extend.u8 %64
+  %68 = sub %43, %42
+  %69 = lshl %65, %68
+  %70 = vextract.8.imm %values, 5
+  %71 = extend.u8 %70
+  %74 = sub %43, %42
+  %75 = lshl %71, %74
+  %76 = vextract.8.imm %values, 6
+  %77 = extend.u8 %76
+  %80 = sub %43, %42
+  %81 = lshl %77, %80
+  %82 = vextract.8.imm %values, 7
+  %83 = extend.u8 %82
+  %86 = sub %43, %42
+  %87 = lshl %83, %86
+  %88 = vbcst.8 %45
+  %90 = copy %40 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %91 = vinsert.8.reg %88, %90, %51
+  %92 = mov.short 2
+  %93 = copy %92 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %94 = vinsert.8.reg %91, %93, %57
+  %95 = mov.short 3
+  %96 = copy %95 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %97 = vinsert.8.reg %94, %96, %63
+  %98 = mov.short 4
+  %99 = copy %98 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %100 = vinsert.8.reg %97, %99, %69
+  %101 = mov.short 5
+  %102 = copy %101 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %103 = vinsert.8.reg %100, %102, %75
+  %104 = mov.short 6
+  %105 = copy %104 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %106 = vinsert.8.reg %103, %105, %81
+  %107 = mov.short 7
+  %108 = copy %107 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %result = vinsert.8.reg %106, %108, %87
+  return %result
+}
+
+// ====
+
+func.def @i8x5_shli_7(%values: vector<5xi8>) -> (vector<5xi8>) {
+  %amount = vector.constant 7 : vector<5xi8>
+  %result = vector.shli %values, %amount : vector<5xi8>
+  func.return %result : vector<5xi8>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @i8x5_shli_7(%values: reg<aie2p.vec256 x2>) -> (reg<aie2p.vec256 x2>) asm {
+  %27 = vextract.8.imm %values, 0
+  %28 = mov.short 7
+  %29 = extend.u8 %28
+  %30 = lshl %27, %29
+  %31 = vextract.8.imm %values, 1
+  %33 = lshl %31, %29
+  %34 = vextract.8.imm %values, 2
+  %36 = lshl %34, %29
+  %37 = vextract.8.imm %values, 3
+  %39 = lshl %37, %29
+  %40 = vextract.8.imm %values, 4
+  %42 = lshl %40, %29
+  %43 = vbcst.8 %30
+  %44 = mov.short 1
+  %45 = copy %44 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %46 = vinsert.8.reg %43, %45, %33
+  %47 = mov.short 2
+  %48 = copy %47 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %49 = vinsert.8.reg %46, %48, %36
+  %50 = mov.short 3
+  %51 = copy %50 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %52 = vinsert.8.reg %49, %51, %39
+  %53 = mov.short 4
+  %54 = copy %53 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %result = vinsert.8.reg %52, %54, %42
+  return %result
+}
+
+// ====
+
+func.def @i8x3_shrui_7(%values: vector<3xi8>) -> (vector<3xi8>) {
+  %amount = vector.constant 7 : vector<3xi8>
+  %result = vector.shrui %values, %amount : vector<3xi8>
+  func.return %result : vector<3xi8>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @i8x3_shrui_7(%values: reg<aie2p.vec256 x2>) -> (reg<aie2p.vec256 x2>) asm {
+  %19 = vextract.8.imm %values, 0
+  %20 = mov.short 7
+  %21 = extend.u8 %19
+  %22 = extend.u8 %20
+  %23 = mov.short 0
+  %24 = sub %23, %22
+  %25 = lshl %21, %24
+  %26 = vextract.8.imm %values, 1
+  %27 = extend.u8 %26
+  %30 = sub %23, %22
+  %31 = lshl %27, %30
+  %32 = vextract.8.imm %values, 2
+  %33 = extend.u8 %32
+  %36 = sub %23, %22
+  %37 = lshl %33, %36
+  %38 = vbcst.8 %25
+  %39 = mov.short 1
+  %40 = copy %39 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %41 = vinsert.8.reg %38, %40, %31
+  %42 = mov.short 2
+  %43 = copy %42 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %result = vinsert.8.reg %41, %43, %37
+  return %result
+}
+
+// ====
+
+func.def @i8x1_shli_1(%values: vector<1xi8>) -> (vector<1xi8>) {
+  %amount = vector.constant 1 : vector<1xi8>
+  %result = vector.shli %values, %amount : vector<1xi8>
+  func.return %result : vector<1xi8>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @i8x1_shli_1(%values: reg<aie2p.vec256 x2>) -> (reg<aie2p.vec256 x2>) asm {
+  %11 = vextract.8.imm %values, 0
+  %12 = mov.short 1
+  %13 = extend.u8 %12
+  %14 = lshl %11, %13
+  %result = vbcst.8 %14
+  return %result
+}
+
+// ====
+
+func.def @i8x4_shrui_0(%values: vector<4xi8>) -> (vector<4xi8>) {
+  %amount = vector.constant 0 : vector<4xi8>
+  %result = vector.shrui %values, %amount : vector<4xi8>
+  func.return %result : vector<4xi8>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @i8x4_shrui_0(%values: reg<aie2p.vec256 x2>) -> (reg<aie2p.vec256 x2>) asm {
+  return %values
+}
+
+// ====
+
+func.def @i8x4_bounded_varying_shifts(%values: vector<4xi8>, %amounts: vector<4xi8>) -> (vector<4xi8>) {
+  %mask = vector.constant 7 : vector<4xi8>
+  %bounded = vector.andi %amounts, %mask : vector<4xi8>
+  %result = vector.shrui %values, %bounded : vector<4xi8>
+  func.return %result : vector<4xi8>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @i8x4_bounded_varying_shifts(%values: reg<aie2p.vec256 x2>, %amounts: reg<aie2p.vec256 x2>) -> (reg<aie2p.vec256 x2>) asm {
+  %34 = vextract.8.imm %values, 0
+  %35 = vextract.8.imm %amounts, 0
+  %36 = mov.short 7
+  %37 = and %35, %36
+  %38 = extend.u8 %34
+  %39 = extend.u8 %37
+  %40 = mov.short 0
+  %41 = sub %40, %39
+  %42 = lshl %38, %41
+  %43 = vextract.8.imm %values, 1
+  %44 = vextract.8.imm %amounts, 1
+  %45 = and %44, %36
+  %46 = extend.u8 %43
+  %47 = extend.u8 %45
+  %49 = sub %40, %47
+  %50 = lshl %46, %49
+  %51 = vextract.8.imm %values, 2
+  %52 = vextract.8.imm %amounts, 2
+  %53 = and %52, %36
+  %54 = extend.u8 %51
+  %55 = extend.u8 %53
+  %57 = sub %40, %55
+  %58 = lshl %54, %57
+  %59 = vextract.8.imm %values, 3
+  %60 = vextract.8.imm %amounts, 3
+  %61 = and %60, %36
+  %62 = extend.u8 %59
+  %63 = extend.u8 %61
+  %65 = sub %40, %63
+  %66 = lshl %62, %65
+  %67 = vbcst.8 %42
+  %68 = mov.short 1
+  %69 = copy %68 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %70 = vinsert.8.reg %67, %69, %50
+  %71 = mov.short 2
+  %72 = copy %71 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %73 = vinsert.8.reg %70, %72, %58
+  %74 = mov.short 3
+  %75 = copy %74 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %result = vinsert.8.reg %73, %75, %66
+  return %result
+}

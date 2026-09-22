@@ -2115,4 +2115,88 @@ loom_execution_test(
 endif()
 endif()
 
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
+loom_generated_file_family(
+  NAME
+    packed_byte_shifts_checks_gen
+  GENERATOR
+    loom::py::loom::gen::test::cxx_kernel_cases
+  OUTPUTS
+    "packed_byte_shifts_checks.loom"
+    "packed_byte_shifts_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  ARGS
+    "kernel"
+    "--group=packed_byte_shifts"
+  TESTONLY
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
+loom_test_module(
+  NAME
+    packed_byte_shifts_test_module
+  SRCS
+    "packed_byte_shifts.cxx"
+    "${CMAKE_CURRENT_BINARY_DIR}/packed_byte_shifts_checks.loom"
+  DATA
+    "${CMAKE_CURRENT_BINARY_DIR}/packed_byte_shifts_arrays"
+    "${CMAKE_CURRENT_BINARY_DIR}/packed_byte_shifts_checks.loom"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    packed_byte_shifts_test_execute_amdgpu_test
+  MODULE
+    "::packed_byte_shifts_test_module"
+  RUNNER_ARGS
+    "--device=amdgpu"
+  LABELS
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.amdgpu"
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+    "loom-execution-profile=amdgpu"
+    "loom-target-family=amdgpu"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "gpu-device"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    packed_byte_shifts_test_execute_amdgpu_access_test
+  MODULE
+    "::packed_byte_shifts_test_module"
+  RUNNER_ARGS
+    "--device=amdgpu"
+    "--sanitizer=access"
+    "--sanitizer-reporting=report-only"
+  LABELS
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.amdgpu"
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+    "loom-execution-profile=amdgpu_access"
+    "loom-target-family=amdgpu"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "gpu-device"
+)
+endif()
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

@@ -2957,7 +2957,7 @@ vector_shli = _lanewise_binary(
     doc="Lanewise left shift of same-typed integer vector operands.",
     flags=("overflow", IntOverflowFlags),
     facts="loom_vector_shli_facts",
-    canonicalize="loom_vector_uniform_result_canonicalize",
+    canonicalize="loom_vector_binary_identity_canonicalize",
 )
 
 vector_shrsi = _lanewise_binary(
@@ -2966,7 +2966,7 @@ vector_shrsi = _lanewise_binary(
     result_constraint=INTEGER_ELEMENT,
     doc="Lanewise arithmetic right shift of same-typed integer vector operands.",
     facts="loom_vector_shrsi_facts",
-    canonicalize="loom_vector_uniform_result_canonicalize",
+    canonicalize="loom_vector_binary_identity_canonicalize",
 )
 
 vector_shrui = _lanewise_binary(
@@ -2975,7 +2975,7 @@ vector_shrui = _lanewise_binary(
     result_constraint=INTEGER_ELEMENT,
     doc="Lanewise logical right shift of same-typed integer vector operands.",
     facts="loom_vector_shrui_facts",
-    canonicalize="loom_vector_uniform_result_canonicalize",
+    canonicalize="loom_vector_binary_identity_canonicalize",
 )
 
 vector_rotli = _lanewise_binary(
