@@ -43,6 +43,15 @@ typedef struct loom_bytecode_op_entry_t {
   uint32_t string_writer_id;
 } loom_bytecode_op_entry_t;
 
+// Sequential catalog-completion facts retained until ENCODINGS emission.
+// Fixed-size chunks fit the arena pool and are consumed without random lookup.
+typedef struct loom_bytecode_encoding_prefix_chunk_t {
+  // Next chunk in encoding order, or NULL at the end.
+  struct loom_bytecode_encoding_prefix_chunk_t* next;
+  // Completed static type counts before the corresponding encoding entries.
+  uint32_t type_counts[128];
+} loom_bytecode_encoding_prefix_chunk_t;
+
 // First-use-ordered bytecode catalogs derived while streaming one module.
 typedef struct loom_bytecode_numbering_t {
   // Module being serialized.
@@ -101,6 +110,14 @@ typedef struct loom_bytecode_numbering_t {
     // Allocated capacity of |module_indices_by_writer_id|.
     iree_host_size_t capacity;
   } types;
+
+  // Static type completion order established by encoding parameter numbering.
+  struct {
+    // First chunk, consumed in encoding order by the section writer.
+    loom_bytecode_encoding_prefix_chunk_t* first;
+    // Current chunk receiving newly numbered encoding completion facts.
+    loom_bytecode_encoding_prefix_chunk_t* last;
+  } encoding_prefixes;
 
   // Reusable continuations for interleaved type and attribute discovery.
   struct {

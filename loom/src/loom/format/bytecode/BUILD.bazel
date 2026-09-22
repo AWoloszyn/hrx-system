@@ -172,6 +172,7 @@ loom_cc_test(
     name = "reader_test",
     srcs = [
         "function_projection_reader_test.cc",
+        "mixed_tables_test.cc",
         "reader_test.cc",
     ],
     deps = [

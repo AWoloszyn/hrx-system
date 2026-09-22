@@ -32,12 +32,14 @@ iree_py_test(
     "../../tools/pytest_style_runner.py"
   SRCS
     "encoding_test.py"
+    "mixed_tables_test.py"
     "reader_test.py"
     "symbol_references_test.py"
     "writer_test.py"
     "../../tools/pytest_style_runner.py"
   ARGS
     "loom.format.bytecode.encoding_test"
+    "loom.format.bytecode.mixed_tables_test"
     "loom.format.bytecode.reader_test"
     "loom.format.bytecode.symbol_references_test"
     "loom.format.bytecode.writer_test"

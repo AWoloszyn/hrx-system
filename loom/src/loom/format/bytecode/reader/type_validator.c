@@ -682,92 +682,93 @@ static iree_status_t loom_bytecode_type_table_begin(
   return iree_ok_status();
 }
 
-iree_status_t loom_bytecode_type_table_validate(
-    loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
-    loom_bytecode_reader_module_view_t* module_view,
-    iree_const_byte_span_t section_bytes, uint64_t section_absolute_offset) {
-  loom_bytecode_reader_cursor_t cursor;
-  IREE_RETURN_IF_ERROR(loom_bytecode_type_table_begin(
-      decoder, module_view, section_bytes, section_absolute_offset, &cursor));
-  for (loom_type_id_t type_index = 0; type_index < module_view->types.count;
-       ++type_index) {
-    IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_decode_entry(
-        decoder, context, module_view, /*scratch_arena=*/NULL, &cursor,
-        type_index, /*out_plan_entry=*/NULL, /*out_fact=*/NULL));
-  }
-  return loom_bytecode_reader_expect_empty(decoder, &cursor, IREE_SV("TYPES"));
-}
-
-iree_status_t loom_bytecode_type_table_index(
+iree_status_t loom_bytecode_type_validation_begin(
     loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
     loom_bytecode_reader_module_view_t* module_view,
     iree_const_byte_span_t section_bytes, uint64_t section_absolute_offset,
-    iree_arena_allocator_t* retained_arena,
-    loom_bytecode_table_entry_metadata_t** out_entries,
-    iree_host_size_t* out_count) {
-  *out_entries = NULL;
-  *out_count = 0;
-  loom_bytecode_reader_cursor_t cursor;
+    loom_bytecode_type_retention_t retention, iree_arena_allocator_t* arena,
+    loom_bytecode_type_validation_t* out_validation) {
+  *out_validation = (loom_bytecode_type_validation_t){
+      .decoder = decoder,
+      .context = context,
+      .module_view = module_view,
+      .arena = arena,
+      .retention = retention,
+  };
   IREE_RETURN_IF_ERROR(loom_bytecode_type_table_begin(
-      decoder, module_view, section_bytes, section_absolute_offset, &cursor));
-  loom_bytecode_table_entry_metadata_t* entries = NULL;
+      decoder, module_view, section_bytes, section_absolute_offset,
+      &out_validation->cursor));
   if (module_view->types.count > 0) {
-    IREE_RETURN_IF_ERROR(
-        iree_arena_allocate_array(retained_arena, module_view->types.count,
-                                  sizeof(*entries), (void**)&entries));
+    if (retention == LOOM_BYTECODE_TYPE_RETAIN_PLAN) {
+      IREE_RETURN_IF_ERROR(
+          iree_arena_allocate_array(arena, module_view->types.count,
+                                    sizeof(loom_bytecode_type_plan_entry_t),
+                                    (void**)&module_view->types.entries));
+    } else if (retention == LOOM_BYTECODE_TYPE_RETAIN_RANGES) {
+      IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+          arena, module_view->types.count,
+          sizeof(loom_bytecode_table_entry_metadata_t),
+          (void**)&out_validation->entries));
+    }
   }
-  for (loom_type_id_t type_index = 0; type_index < module_view->types.count;
-       ++type_index) {
-    const uint64_t entry_offset =
-        loom_bytecode_reader_cursor_absolute_position(&cursor);
-    IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_decode_entry(
-        decoder, context, module_view, /*scratch_arena=*/NULL, &cursor,
-        type_index, /*out_plan_entry=*/NULL, /*out_fact=*/NULL));
-    entries[type_index] = (loom_bytecode_table_entry_metadata_t){
-        .entry_offset = entry_offset,
-        .entry_length = loom_bytecode_reader_cursor_absolute_position(&cursor) -
-                        entry_offset,
-    };
-  }
-  IREE_RETURN_IF_ERROR(
-      loom_bytecode_reader_expect_empty(decoder, &cursor, IREE_SV("TYPES")));
-  *out_entries = entries;
-  *out_count = module_view->types.count;
   return iree_ok_status();
 }
 
-iree_status_t loom_bytecode_type_plan_build(
-    loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
-    loom_bytecode_reader_module_view_t* module_view,
-    iree_arena_allocator_t* scratch_arena, iree_const_byte_span_t section_bytes,
-    uint64_t section_absolute_offset) {
-  loom_bytecode_reader_cursor_t cursor;
-  IREE_RETURN_IF_ERROR(loom_bytecode_type_table_begin(
-      decoder, module_view, section_bytes, section_absolute_offset, &cursor));
-  const iree_host_size_t count = module_view->types.count;
-  if (count > 0) {
-    IREE_RETURN_IF_ERROR(
-        iree_arena_allocate_array(scratch_arena, (iree_host_size_t)count,
-                                  sizeof(loom_bytecode_type_plan_entry_t),
-                                  (void**)&module_view->types.entries));
+iree_status_t loom_bytecode_type_validation_advance(
+    loom_bytecode_type_validation_t* validation, iree_host_size_t type_count) {
+  // Specialize retention outside the entry loop. Ordinary validation and
+  // indexing never allocate construction payloads or branch on that policy.
+  switch (validation->retention) {
+    case LOOM_BYTECODE_TYPE_RETAIN_NONE:
+      for (loom_type_id_t i = validation->position; i < type_count; ++i) {
+        IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_decode_entry(
+            validation->decoder, validation->context, validation->module_view,
+            /*scratch_arena=*/NULL, &validation->cursor, i,
+            /*out_plan_entry=*/NULL, /*out_fact=*/NULL));
+      }
+      break;
+    case LOOM_BYTECODE_TYPE_RETAIN_RANGES:
+      for (loom_type_id_t i = validation->position; i < type_count; ++i) {
+        const uint64_t offset =
+            loom_bytecode_reader_cursor_absolute_position(&validation->cursor);
+        IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_decode_entry(
+            validation->decoder, validation->context, validation->module_view,
+            /*scratch_arena=*/NULL, &validation->cursor, i,
+            /*out_plan_entry=*/NULL, /*out_fact=*/NULL));
+        validation->entries[i] = (loom_bytecode_table_entry_metadata_t){
+            .entry_offset = offset,
+            .entry_length = loom_bytecode_reader_cursor_absolute_position(
+                                &validation->cursor) -
+                            offset,
+        };
+      }
+      break;
+    case LOOM_BYTECODE_TYPE_RETAIN_PLAN:
+      for (loom_type_id_t i = validation->position; i < type_count; ++i) {
+        loom_bytecode_type_fact_t* fact = NULL;
+        IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_decode_entry(
+            validation->decoder, validation->context, validation->module_view,
+            validation->arena, &validation->cursor, i,
+            &validation->module_view->types.entries[i], &fact));
+        if (fact) {
+          if (validation->last_fact) {
+            validation->last_fact->next = fact;
+          } else {
+            validation->module_view->types.facts = fact;
+          }
+          validation->last_fact = fact;
+        }
+      }
+      break;
   }
-  loom_bytecode_type_fact_t* first_fact = NULL;
-  loom_bytecode_type_fact_t* last_fact = NULL;
-  for (loom_type_id_t type_index = 0; type_index < count; ++type_index) {
-    loom_bytecode_type_fact_t* fact = NULL;
-    IREE_RETURN_IF_ERROR(loom_bytecode_type_plan_decode_entry(
-        decoder, context, module_view, scratch_arena, &cursor, type_index,
-        &module_view->types.entries[type_index], &fact));
-    if (!fact) {
-      continue;
-    }
-    if (last_fact) {
-      last_fact->next = fact;
-    } else {
-      first_fact = fact;
-    }
-    last_fact = fact;
-  }
-  module_view->types.facts = first_fact;
-  return loom_bytecode_reader_expect_empty(decoder, &cursor, IREE_SV("TYPES"));
+  validation->position = (loom_type_id_t)type_count;
+  return iree_ok_status();
+}
+
+iree_status_t loom_bytecode_type_validation_finish(
+    loom_bytecode_type_validation_t* validation) {
+  IREE_RETURN_IF_ERROR(loom_bytecode_type_validation_advance(
+      validation, validation->module_view->types.count));
+  return loom_bytecode_reader_expect_empty(
+      validation->decoder, &validation->cursor, IREE_SV("TYPES"));
 }

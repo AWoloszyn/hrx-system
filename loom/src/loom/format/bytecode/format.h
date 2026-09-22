@@ -474,13 +474,22 @@ typedef enum loom_bytecode_section_kind_e {
 // must reject malformed order/duplicates instead of repairing them; writers
 // emit the in-memory canonical order directly.
 //
+// Each instance records the completed TYPES prefix available to its parameters.
+// Prefix counts are monotonic and bounded by the declared type count. Readers
+// complete those types using only prior encoding instances, then publish this
+// encoding. Remaining types follow the final instance. This forward merge
+// preserves acyclic type/encoding dependencies without reconstructing a graph.
+// Retained encoding entry ranges start after the prefix count: selected loading
+// already has validated dependency order and decodes only reached payloads.
+//
 //   [encoding_family_count: varint]
 //   For each encoding family:
 //     [name_id: varint]       (string table index: "q6_k", "q8_0", etc.)
 //
 //   [instance_count: varint]
 //   For each instance:
-//     [family_index: varint]  (index into the family list above)
+//     [type_prefix_count: varint] (completed TYPES prefix)
+//     [family_index: varint]     (index into the family list above)
 //     [alias_string_id_plus1: varint]
 //                              0 = no alias.
 //                              N > 0: alias string is STRINGS[N - 1].

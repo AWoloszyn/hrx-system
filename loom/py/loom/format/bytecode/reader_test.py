@@ -793,6 +793,7 @@ class TestMalformedEncodingSection:
             _name_id, offset = decode_varint(data, offset)
         instance_count, offset = decode_varint(data, offset)
         assert instance_count == 1
+        _type_prefix_count, offset = decode_varint(data, offset)
         _family_index, offset = decode_varint(data, offset)
 
         data[offset] = 0x7F
@@ -813,7 +814,10 @@ class TestMalformedTypeSection:
         reader = BytecodeReader(b"", type_defs=type_defs)
         reader._encodings = encodings or []
         reader._strings = strings or []
-        reader._read_types_section((0, data))
+        count, offset = decode_varint(data, 0)
+        offset = reader._read_type_prefix(data, offset, count)
+        if offset != len(data):
+            raise BytecodeError("TYPES section has trailing bytes")
         return reader._types
 
     def test_unassigned_kind_is_rejected(self) -> None:

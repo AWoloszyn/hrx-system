@@ -95,10 +95,20 @@ class BytecodeTypeTest : public ::testing::Test {
   }
 
   iree_status_t BuildPlan(const uint8_t* data, iree_host_size_t length) {
-    return loom_bytecode_type_plan_build(
-        &decoder_, &context_, &module_view_, &scratch_arena_,
-        iree_make_const_byte_span(data, length),
-        /*section_absolute_offset=*/0);
+    loom_bytecode_type_validation_t validation;
+    return Validate(data, length, LOOM_BYTECODE_TYPE_RETAIN_PLAN,
+                    &scratch_arena_, &validation);
+  }
+
+  iree_status_t Validate(const uint8_t* data, iree_host_size_t length,
+                         loom_bytecode_type_retention_t retention,
+                         iree_arena_allocator_t* arena,
+                         loom_bytecode_type_validation_t* out_validation) {
+    IREE_RETURN_IF_ERROR(loom_bytecode_type_validation_begin(
+        &decoder_, &context_, &module_view_,
+        iree_make_const_byte_span(data, length), 0, retention, arena,
+        out_validation));
+    return loom_bytecode_type_validation_finish(out_validation);
   }
 
   iree_status_t DecodeEntry(loom_type_id_t type_index, const uint8_t* data,
@@ -120,6 +130,8 @@ class BytecodeTypeTest : public ::testing::Test {
         /*.module_view=*/&module_view_,
         /*.scratch_arena=*/&scratch_arena_,
         /*.output_module=*/module_,
+        /*.position=*/0,
+        /*.next_fact=*/module_view_.types.facts,
     };
   }
 
@@ -145,9 +157,9 @@ class BytecodeTypeTest : public ::testing::Test {
     module_view_.types = {};
     error_count_ = 0;
     diagnostic_ = {};
-    status = loom_bytecode_type_table_validate(
-        &decoder_, &context_, &module_view_,
-        iree_make_const_byte_span(data, length), 0);
+    loom_bytecode_type_validation_t validation;
+    status = Validate(data, length, LOOM_BYTECODE_TYPE_RETAIN_NONE, nullptr,
+                      &validation);
     EXPECT_EQ(iree_status_code(status), expected_status);
     iree_status_ignore(status);
     EXPECT_EQ(module_view_.types.count, expected_count);
@@ -163,12 +175,8 @@ class BytecodeTypeTest : public ::testing::Test {
     diagnostic_ = {};
     iree_arena_allocator_t retained_arena;
     iree_arena_initialize(&block_pool_, &retained_arena);
-    loom_bytecode_table_entry_metadata_t* entries = nullptr;
-    iree_host_size_t count = 0;
-    status =
-        loom_bytecode_type_table_index(&decoder_, &context_, &module_view_,
-                                       iree_make_const_byte_span(data, length),
-                                       0, &retained_arena, &entries, &count);
+    status = Validate(data, length, LOOM_BYTECODE_TYPE_RETAIN_RANGES,
+                      &retained_arena, &validation);
     EXPECT_EQ(iree_status_code(status), expected_status);
     iree_status_ignore(status);
     EXPECT_EQ(module_view_.types.entries, nullptr);
@@ -177,18 +185,16 @@ class BytecodeTypeTest : public ::testing::Test {
     EXPECT_EQ(diagnostic_.start, expected_diagnostic.start);
     EXPECT_EQ(diagnostic_.end, expected_diagnostic.end);
     if (expected_status == IREE_STATUS_OK) {
-      EXPECT_EQ(count, expected_count);
+      EXPECT_EQ(validation.position, expected_count);
       EXPECT_EQ(retained_arena.used_allocation_size,
-                expected_count * sizeof(*entries));
+                expected_count * sizeof(*validation.entries));
       // Index entries remain usable after validation scratch is reset.
       iree_arena_reset(&scratch_arena_);
-      for (iree_host_size_t i = 0; i < count; ++i) {
-        EXPECT_EQ(entries[i].entry_offset, offsets[i]);
-        EXPECT_EQ(entries[i].entry_length, offsets[i + 1] - offsets[i]);
+      for (iree_host_size_t i = 0; i < expected_count; ++i) {
+        EXPECT_EQ(validation.entries[i].entry_offset, offsets[i]);
+        EXPECT_EQ(validation.entries[i].entry_length,
+                  offsets[i + 1] - offsets[i]);
       }
-    } else {
-      EXPECT_EQ(entries, nullptr);
-      EXPECT_EQ(count, 0u);
     }
     iree_arena_deinitialize(&retained_arena);
   }
@@ -235,7 +241,8 @@ TEST_F(BytecodeTypeTest, BuildsAndMaterializesTopologicalPlan) {
 
   loom_bytecode_type_materializer_t materializer =
       MakeMaterializer(data, sizeof(data));
-  IREE_ASSERT_OK(loom_bytecode_type_materialize(&materializer));
+  IREE_ASSERT_OK(loom_bytecode_type_materialize_prefix(
+      &materializer, module_view_.types.count));
   ASSERT_EQ(module_->types.count, 3u);
   for (loom_type_id_t i = 0; i < module_view_.types.count; ++i) {
     EXPECT_EQ(module_view_.types.entries[i].completed_type, i);
@@ -247,6 +254,68 @@ TEST_F(BytecodeTypeTest, BuildsAndMaterializesTopologicalPlan) {
   EXPECT_EQ(loom_type_kind(loom_type_table_get(&module_->types, 2)),
             LOOM_TYPE_FUNCTION);
   EXPECT_EQ(error_count_, 0u);
+}
+
+TEST_F(BytecodeTypeTest, AdvancesSparseFactsAndConstructionAcrossPrefixes) {
+  const uint8_t data[] = {
+      5,
+      LOOM_BYTECODE_TYPE_NONE,
+      LOOM_BYTECODE_TYPE_SCALAR,
+      LOOM_SCALAR_TYPE_I32,
+      LOOM_BYTECODE_TYPE_FUNCTION,
+      1,
+      0,
+      1,
+      LOOM_BYTECODE_TYPE_SCALAR,
+      LOOM_SCALAR_TYPE_F32,
+      LOOM_BYTECODE_TYPE_FUNCTION,
+      1,
+      1,
+      2,
+      3,
+  };
+  loom_bytecode_type_validation_t validation;
+  IREE_ASSERT_OK(loom_bytecode_type_validation_begin(
+      &decoder_, &context_, &module_view_,
+      iree_make_const_byte_span(data, sizeof(data)), 0,
+      LOOM_BYTECODE_TYPE_RETAIN_PLAN, &scratch_arena_, &validation));
+  IREE_ASSERT_OK(loom_bytecode_type_validation_advance(&validation, 0));
+  EXPECT_EQ(validation.position, 0u);
+  EXPECT_EQ(module_view_.types.facts, nullptr);
+  IREE_ASSERT_OK(loom_bytecode_type_validation_advance(&validation, 2));
+  EXPECT_EQ(validation.position, 2u);
+  EXPECT_EQ(module_view_.types.facts, nullptr);
+  IREE_ASSERT_OK(loom_bytecode_type_validation_advance(&validation, 3));
+  ASSERT_NE(module_view_.types.facts, nullptr);
+  EXPECT_EQ(module_view_.types.facts->type_id, 2u);
+  EXPECT_EQ(module_view_.types.facts->next, nullptr);
+  IREE_ASSERT_OK(loom_bytecode_type_validation_advance(&validation, 3));
+  IREE_ASSERT_OK(loom_bytecode_type_validation_finish(&validation));
+  EXPECT_EQ(validation.position, 5u);
+  ASSERT_NE(module_view_.types.facts->next, nullptr);
+  EXPECT_EQ(module_view_.types.facts->next->type_id, 4u);
+  EXPECT_EQ(module_view_.types.facts->next->next, nullptr);
+
+  auto materializer = MakeMaterializer(data, sizeof(data));
+  IREE_ASSERT_OK(loom_bytecode_type_materialize_prefix(&materializer, 2));
+  EXPECT_EQ(materializer.position, 2u);
+  EXPECT_EQ(materializer.next_fact, module_view_.types.facts);
+  IREE_ASSERT_OK(loom_bytecode_type_materialize_prefix(&materializer, 3));
+  EXPECT_EQ(materializer.next_fact, module_view_.types.facts->next);
+  IREE_ASSERT_OK(loom_bytecode_type_materialize_prefix(&materializer, 3));
+  IREE_ASSERT_OK(loom_bytecode_type_materialize_prefix(&materializer, 5));
+  EXPECT_EQ(materializer.position, 5u);
+  EXPECT_EQ(materializer.next_fact, nullptr);
+  ASSERT_EQ(module_->types.count, 5u);
+  const auto* signature =
+      loom_type_func_data(loom_type_table_get(&module_->types, 4));
+  ASSERT_NE(signature, nullptr);
+  EXPECT_EQ(signature->arg_count, 1u);
+  EXPECT_EQ(signature->result_count, 1u);
+  EXPECT_TRUE(loom_type_equal(signature->types[0],
+                              loom_type_table_get(&module_->types, 2)));
+  EXPECT_TRUE(loom_type_equal(signature->types[1],
+                              loom_type_scalar(LOOM_SCALAR_TYPE_F32)));
 }
 
 TEST_F(BytecodeTypeTest, StructuralTypesRetainChildrenBeyondPlanLifetime) {
@@ -473,7 +542,8 @@ TEST_F(BytecodeTypeTest, MaterializesEmptyFunctionPayload) {
   IREE_ASSERT_OK(BuildPlan(data, sizeof(data)));
   loom_bytecode_type_materializer_t materializer =
       MakeMaterializer(data, sizeof(data));
-  IREE_ASSERT_OK(loom_bytecode_type_materialize(&materializer));
+  IREE_ASSERT_OK(loom_bytecode_type_materialize_prefix(
+      &materializer, module_view_.types.count));
   ASSERT_EQ(module_->types.count, 1u);
   const loom_func_type_data_t* payload =
       loom_type_func_data(loom_type_table_get(&module_->types, 0));
@@ -505,7 +575,8 @@ TEST_F(BytecodeTypeTest, MaterializesFullWidthFunctionSignature) {
             2u * UINT16_MAX);
   loom_bytecode_type_materializer_t materializer =
       MakeMaterializer(data.data(), data.size());
-  IREE_ASSERT_OK(loom_bytecode_type_materialize(&materializer));
+  IREE_ASSERT_OK(loom_bytecode_type_materialize_prefix(
+      &materializer, module_view_.types.count));
   ASSERT_EQ(module_->types.count, 3u);
   const loom_func_type_data_t* payload =
       loom_type_func_data(loom_type_table_get(&module_->types, 2));

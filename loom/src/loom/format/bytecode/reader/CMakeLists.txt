@@ -93,6 +93,7 @@ loom_cc_library(
     ::attribute
     ::decoder
     ::module_view
+    ::type_validator
     iree::base
     iree::base::internal::arena
     loom::error::error_defs

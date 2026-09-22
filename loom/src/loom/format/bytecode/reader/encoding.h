@@ -14,6 +14,8 @@
 #include "loom/format/bytecode/index.h"
 #include "loom/format/bytecode/reader/decoder.h"
 #include "loom/format/bytecode/reader/module_view.h"
+#include "loom/format/bytecode/reader/type.h"
+#include "loom/format/bytecode/reader/type_validator.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 
@@ -21,20 +23,24 @@
 extern "C" {
 #endif
 
-// Validates one complete ENCODINGS section without retaining entry ranges.
+// Validates ENCODINGS while advancing |types| through each declared prefix.
+// Entry ranges are not retained. The caller finishes the remaining TYPES tail.
 iree_status_t loom_bytecode_encoding_table_validate(
     loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
     loom_bytecode_reader_module_view_t* module_view,
     iree_arena_allocator_t* scratch_arena,
+    loom_bytecode_type_validation_t* types,
     const loom_bytecode_reader_section_t* section);
 
 // Validates one complete ENCODINGS section and retains the exact byte range of
-// every instance entry. Family facts needed by later table validation remain
-// scratch-owned in |module_view|.
+// every instance payload, excluding its type-prefix word. Family facts needed
+// by later table validation remain scratch-owned in |module_view|. The caller
+// finishes |types| after all encoding prefixes have been consumed.
 iree_status_t loom_bytecode_encoding_table_index(
     loom_bytecode_reader_decoder_t* decoder, loom_context_t* context,
     loom_bytecode_reader_module_view_t* module_view,
     iree_arena_allocator_t* scratch_arena,
+    loom_bytecode_type_validation_t* types,
     const loom_bytecode_reader_section_t* section,
     iree_arena_allocator_t* retained_arena,
     loom_bytecode_encoding_metadata_t** out_entries,
@@ -46,12 +52,14 @@ typedef struct loom_bytecode_encoding_materializer_t {
   loom_bytecode_reader_decoder_t* decoder;
   // Finalized encoding and attribute registry context.
   loom_context_t* context;
-  // Immutable validated module facts referenced by encoding parameters.
+  // Validated module tables whose type slots publish completed canonical IDs.
   const loom_bytecode_reader_module_view_t* module_view;
   // Resettable scratch storage for parameter construction.
   iree_arena_allocator_t* scratch_arena;
   // Module receiving canonical encoding-table entries.
   loom_module_t* output_module;
+  // Forward type construction, advanced before each encoding is published.
+  loom_bytecode_type_materializer_t* types;
 } loom_bytecode_encoding_materializer_t;
 
 // Materializes every instance in one validated ENCODINGS section.

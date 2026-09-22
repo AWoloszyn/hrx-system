@@ -191,6 +191,7 @@ loom_cc_test(
     reader_test
   SRCS
     "function_projection_reader_test.cc"
+    "mixed_tables_test.cc"
     "reader_test.cc"
   DEPS
     ::format

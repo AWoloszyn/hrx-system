@@ -187,11 +187,12 @@ iree_status_t loom_bytecode_type_materialize_structural(
       dependency_ids, plan->dependency_count, out_type_id);
 }
 
-iree_status_t loom_bytecode_type_materialize(
-    loom_bytecode_type_materializer_t* materializer) {
-  loom_bytecode_type_fact_t* fact = materializer->module_view->types.facts;
-  for (iree_host_size_t type_index = 0;
-       type_index < materializer->module_view->types.count; ++type_index) {
+iree_status_t loom_bytecode_type_materialize_prefix(
+    loom_bytecode_type_materializer_t* materializer,
+    iree_host_size_t type_count) {
+  loom_bytecode_type_fact_t* fact = materializer->next_fact;
+  for (iree_host_size_t type_index = materializer->position;
+       type_index < type_count; ++type_index) {
     IREE_ASSERT(!fact || fact->type_id >= type_index);
     loom_type_t type = {0};
     loom_type_id_t type_id = LOOM_TYPE_ID_INVALID;
@@ -239,6 +240,7 @@ iree_status_t loom_bytecode_type_materialize(
     IREE_RETURN_IF_ERROR(status);
     entry->completed_type = type_id;
   }
-  IREE_ASSERT(!fact);
+  materializer->position = (loom_type_id_t)type_count;
+  materializer->next_fact = fact;
   return iree_ok_status();
 }

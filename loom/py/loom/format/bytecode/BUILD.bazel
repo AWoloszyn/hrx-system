@@ -32,6 +32,7 @@ iree_py_test(
     name = "bytecode_test",
     srcs = [
         "encoding_test.py",
+        "mixed_tables_test.py",
         "reader_test.py",
         "symbol_references_test.py",
         "writer_test.py",
@@ -39,6 +40,7 @@ iree_py_test(
     ],
     args = [
         "loom.format.bytecode.encoding_test",
+        "loom.format.bytecode.mixed_tables_test",
         "loom.format.bytecode.reader_test",
         "loom.format.bytecode.symbol_references_test",
         "loom.format.bytecode.writer_test",

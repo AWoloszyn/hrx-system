@@ -6,7 +6,7 @@
 
 """Bytecode symbol dependency projection over shared type and attribute graphs."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -91,10 +91,14 @@ class SymbolReferenceProjectionBuilder:
     def __init__(
         self,
         module: Module,
+        encodings: Sequence[EncodingInstance],
         wire_symbol_indices: dict[str, int],
         op_decls_by_name: Mapping[str, Any],
     ) -> None:
         self._module = module
+        # The writer owns the completed static catalog, including reached entries
+        # that were not explicitly listed on the source module.
+        self._encodings = encodings
         self._wire_symbol_indices = wire_symbol_indices
         self._op_decls_by_name = op_decls_by_name
         self._module_dependencies: list[_SymbolReferenceRecord] = []
@@ -121,7 +125,7 @@ class SymbolReferenceProjectionBuilder:
         module_scope = _SymbolReferenceSourceScope()
         for operation in self._module.body.ops:
             self._visit_operation(module_scope, operation)
-        for encoding in self._module.encodings:
+        for encoding in self._encodings:
             self._visit_attr(module_scope, encoding)
         return (
             tuple(reversed(self._module_dependencies)),

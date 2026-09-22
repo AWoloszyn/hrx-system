@@ -39,6 +39,7 @@ def _projection(builder: IRBuilder):
     verify_module(builder.module, ops=ALL_TEST_OPS).raise_if_errors()
     return SymbolReferenceProjectionBuilder(
         builder.module,
+        builder.module.encodings,
         {symbol.name: index for index, symbol in enumerate(builder.module.symbols)},
         {op.name: op for op in ALL_TEST_OPS},
     ).build()

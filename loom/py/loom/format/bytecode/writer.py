@@ -222,6 +222,16 @@ class NumberingContext:
         self._type_lookup: dict[int, int] = {}
         # Invocation-local structural keys never recursively hash type DAGs.
         self._type_identity = TypeIdentity()
+        # Static encodings are invocation-owned and complete after their types.
+        self.encodings: list[EncodingInstance] = []
+        # Completed type prefix immediately before each encoding was published.
+        self.encoding_type_counts: list[int] = []
+        # Physical encoding identities mapped to their canonical wire ordinals.
+        self.encoding_indices: dict[int, int] = {}
+        # Structural identities shared with the invocation's type catalog.
+        self._encoding_lookup: dict[int, int] = {}
+        # Authored aliases mapped to identities to reject conflicting names.
+        self._encoding_aliases: dict[str, int] = {}
         # Value definitions use string id 0 as "no SSA name". Keep the empty
         # string at bytecode string-table slot 0 so anonymous values do not
         # accidentally pick up the first real symbol name during reading.
@@ -252,6 +262,26 @@ class NumberingContext:
         op_id = len(self.ops)
         self.ops[op_name] = op_id
         return op_id
+
+    def intern_encoding(self, instance: EncodingInstance) -> None:
+        """Publish an encoding after all of its parameter dependencies complete."""
+        identity = self._type_identity.intern(instance)
+        if instance.alias:
+            previous = self._encoding_aliases.setdefault(instance.alias, identity)
+            if previous != identity:
+                raise ValueError(
+                    f"encoding alias {instance.alias!r} already names a "
+                    "different encoding"
+                )
+        index = self._encoding_lookup.get(identity)
+        if index is None:
+            index = len(self.encodings)
+            self._encoding_lookup[identity] = index
+            self.encodings.append(instance)
+            self.encoding_type_counts.append(len(self._type_list))
+        elif instance.alias and not self.encodings[index].alias:
+            self.encodings[index] = instance
+        self.encoding_indices[id(instance)] = index
 
     @property
     def string_list(self) -> list[str]:
@@ -338,6 +368,7 @@ class BytecodeWriter:
             self._symbol_template_demands,
         ) = SymbolReferenceProjectionBuilder(
             self._module,
+            self._ctx.encodings,
             self._wire_symbol_indices,
             self._op_decls_by_name,
         ).build()
@@ -369,6 +400,11 @@ class BytecodeWriter:
         # Sources.
         self._ctx.sources = list(module.sources)
 
+        # Preserve authored catalog order, completing mixed dependencies first.
+        # Reachable encodings absent from that catalog are numbered below.
+        for encoding in module.encodings:
+            self._number_encoding_instance(encoding)
+
         # Walk symbols.
         for symbol in self._wire_symbols:
             self._ctx.intern_string(symbol.name)
@@ -388,11 +424,6 @@ class BytecodeWriter:
                         f"symbol {symbol.name!r} of kind {symbol.kind.name} "
                         "has no supported defining op"
                     )
-
-        # Encodings: recursively number child encoding params before parents so
-        # the ENCODINGS section has no forward references.
-        for enc in module.encodings:
-            self._number_encoding_instance(enc)
 
     def _number_func_op(self, op: Operation) -> None:
         """Number all entities in a func-like op (func.def, func.decl, etc.)."""
@@ -841,14 +872,18 @@ class BytecodeWriter:
                 yield self._number_attr_steps(item)
 
     def _number_encoding_steps(self, value: EncodingInstance) -> Iterator[Any]:
-        """Intern one static encoding and any nested encoding-valued params."""
+        """Complete one encoding's mixed type/attribute dependencies once."""
+        if id(value) in self._ctx.encoding_indices:
+            return
         for param_name, param_value in value.params:
             self._ctx.intern_string(param_name)
             yield self._number_attr_steps(param_value)
+            if self._has_type_bindings(param_value):
+                raise ValueError("static encoding parameters cannot capture SSA values")
         self._ctx.intern_string(value.name)
         if value.alias:
             self._ctx.intern_string(value.alias)
-        self._module.add_encoding(value)
+        self._ctx.intern_encoding(value)
 
     # --- Pass 2: Section writers ---
 
@@ -899,7 +934,7 @@ class BytecodeWriter:
     def _write_encodings(self) -> bytes:
         """Write the ENCODINGS section."""
         buf = ByteBuffer()
-        encodings = self._module.encodings
+        encodings = self._ctx.encodings
 
         # Encoding family registry from unique encoding names.
         family_names: list[str] = []
@@ -915,7 +950,10 @@ class BytecodeWriter:
 
         # Encoding instances.
         buf.write_varint(len(encodings))
-        for enc in encodings:
+        for enc, type_count in zip(
+            encodings, self._ctx.encoding_type_counts, strict=True
+        ):
+            buf.write_varint(type_count)
             buf.write_varint(family_map[enc.name])
             alias_string_id_plus1 = self._ctx.strings[enc.alias] + 1 if enc.alias else 0
             buf.write_varint(alias_string_id_plus1)
@@ -966,18 +1004,10 @@ class BytecodeWriter:
                         )
                     )
                 elif isinstance(ir_type.encoding, EncodingInstance):
-                    # Find the encoding in the module's table.
-                    enc_index = 0
-                    for i, enc in enumerate(self._module.encodings):
-                        if enc == ir_type.encoding:
-                            enc_index = i + 1  # 1-based
-                            break
-                    if enc_index == 0:
-                        raise ValueError(
-                            f"encoding {ir_type.encoding!r} was not numbered"
-                        )
                     buf.write_u8(1)  # static encoding
-                    buf.write_varint(enc_index)
+                    buf.write_varint(
+                        self._ctx.encoding_indices[id(ir_type.encoding)] + 1
+                    )
                 else:
                     buf.write_u8(0)  # no encoding
                     buf.write_varint(0)
@@ -1692,7 +1722,7 @@ class BytecodeWriter:
             )
         elif isinstance(value, EncodingInstance):
             buf.write_u8(ATTR_KIND_ENCODING)
-            buf.write_varint(self._module.add_encoding(value) + 1)
+            buf.write_varint(self._ctx.encoding_indices[id(value)] + 1)
         elif isinstance(value, list | tuple):
             # Check if all ints → i64_array.
             if all(isinstance(v, int) for v in value):

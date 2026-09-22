@@ -226,10 +226,12 @@ class BytecodeReader:
             self._read_strings_section(sections[SECTION_STRINGS])
         if SECTION_SOURCES in sections:
             self._read_sources_section(sections[SECTION_SOURCES])
-        if SECTION_ENCODINGS in sections:
-            self._read_encodings_section(sections[SECTION_ENCODINGS])
-        if SECTION_TYPES in sections:
-            self._read_types_section(sections[SECTION_TYPES])
+        for kind, name in ((SECTION_TYPES, "TYPES"), (SECTION_ENCODINGS, "ENCODINGS")):
+            if kind not in sections:
+                raise BytecodeError(f"missing {name} section")
+        self._read_types_and_encodings(
+            sections[SECTION_TYPES], sections[SECTION_ENCODINGS]
+        )
         if SECTION_OPS in sections:
             self._read_ops_section(sections[SECTION_OPS])
 
@@ -473,8 +475,14 @@ class BytecodeReader:
             offset += length
             self._sources.append(text)
 
-    def _read_encodings_section(self, section: tuple[int, bytes]) -> None:
-        _, data = section
+    def _read_types_and_encodings(
+        self, type_section: tuple[int, bytes], encoding_section: tuple[int, bytes]
+    ) -> None:
+        """Merge static tables using the writer's completed-type prefixes."""
+        _, type_data = type_section
+        type_count, type_offset = decode_varint(type_data, 0)
+        self._types = []
+        _, data = encoding_section
         offset = 0
 
         # Encoding family registry.
@@ -488,6 +496,14 @@ class BytecodeReader:
         instance_count, offset = decode_varint(data, offset)
         self._encodings = []
         for _ in range(instance_count):
+            type_prefix_count, offset = decode_varint(data, offset)
+            if not len(self._types) <= type_prefix_count <= type_count:
+                raise BytecodeError(
+                    "encoding type prefix must advance within the declared type table"
+                )
+            type_offset = self._read_type_prefix(
+                type_data, type_offset, type_prefix_count
+            )
             family_index, offset = decode_varint(data, offset)
             if family_index >= len(self._encoding_families):
                 raise BytecodeError(
@@ -519,6 +535,11 @@ class BytecodeReader:
             self._encodings.append(
                 EncodingInstance(name=name, alias=alias, params=tuple(param_list))
             )
+        if offset != len(data):
+            raise BytecodeError("ENCODINGS section has trailing bytes")
+        type_offset = self._read_type_prefix(type_data, type_offset, type_count)
+        if type_offset != len(type_data):
+            raise BytecodeError("TYPES section has trailing bytes")
 
     def _resolve_prior_type(
         self, type_index: int, field_name: str, values: _ValueMap | None = None
@@ -653,15 +674,12 @@ class BytecodeReader:
         except (TypeError, ValueError) as err:
             raise BytecodeError(str(err)) from err
 
-    def _read_types_section(self, section: tuple[int, bytes]) -> None:
-        _, data = section
-        count, offset = decode_varint(data, 0)
-        self._types = []
-        for _ in range(count):
+    def _read_type_prefix(self, data: bytes, offset: int, count: int) -> int:
+        """Complete each newly available type once before publishing an encoding."""
+        for _ in range(len(self._types), count):
             ir_type, offset = self._read_one_type(data, offset)
             self._types.append(ir_type)
-        if offset != len(data):
-            raise BytecodeError("TYPES section has trailing bytes")
+        return offset
 
     @staticmethod
     def _read_type_field(

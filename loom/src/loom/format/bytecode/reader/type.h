@@ -38,6 +38,10 @@ typedef struct loom_bytecode_type_materializer_t {
   iree_arena_allocator_t* scratch_arena;
   // Module receiving canonical type-table entries.
   loom_module_t* output_module;
+  // Number of ordered plan entries already replaced with canonical IDs.
+  loom_type_id_t position;
+  // Next sparse fact in the unconsumed type-plan suffix.
+  loom_bytecode_type_fact_t* next_fact;
 } loom_bytecode_type_materializer_t;
 
 // Validates a wire kind and maps it to the independent native type kind.
@@ -64,8 +68,11 @@ iree_status_t loom_bytecode_type_materialize_structural(
 
 // Consumes a validated plan in source order, replacing each entry with its
 // canonical output identity. Sparse structural child slots are consumed too.
-iree_status_t loom_bytecode_type_materialize(
-    loom_bytecode_type_materializer_t* materializer);
+// The caller supplies a monotonic prefix after constructing its prior encoding
+// dependencies. Initialize |next_fact| to the plan's first fact before use.
+iree_status_t loom_bytecode_type_materialize_prefix(
+    loom_bytecode_type_materializer_t* materializer,
+    iree_host_size_t type_count);
 
 #ifdef __cplusplus
 }  // extern "C"

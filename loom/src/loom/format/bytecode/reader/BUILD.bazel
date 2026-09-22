@@ -97,6 +97,7 @@ loom_cc_library(
         ":attribute",
         ":decoder",
         ":module_view",
+        ":type_validator",
         "//loom/src/loom/error:error_defs",
         "//loom/src/loom/format/bytecode:index",
         "//loom/src/loom/ir",

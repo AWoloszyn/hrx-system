@@ -1061,5 +1061,22 @@ iree_status_t loom_bytecode_number_encoding(
     IREE_RETURN_IF_ERROR(
         loom_bytecode_number_attr_value(numbering, attr->value, NULL));
   }
+  const iree_host_size_t chunk_index =
+      (encoding_id - 1) %
+      IREE_ARRAYSIZE(numbering->encoding_prefixes.last->type_counts);
+  if (chunk_index == 0) {
+    loom_bytecode_encoding_prefix_chunk_t* chunk = NULL;
+    IREE_RETURN_IF_ERROR(
+        iree_arena_allocate(numbering->arena, sizeof(*chunk), (void**)&chunk));
+    chunk->next = NULL;
+    if (numbering->encoding_prefixes.last) {
+      numbering->encoding_prefixes.last->next = chunk;
+    } else {
+      numbering->encoding_prefixes.first = chunk;
+    }
+    numbering->encoding_prefixes.last = chunk;
+  }
+  numbering->encoding_prefixes.last->type_counts[chunk_index] =
+      (uint32_t)numbering->types.count;
   return iree_ok_status();
 }

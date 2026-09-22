@@ -317,8 +317,17 @@ iree_status_t loom_bytecode_write_encodings_section(
   // Encoding instances.
   IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_uvarint(
       page_writer, module->encodings.count));
+  const loom_bytecode_encoding_prefix_chunk_t* prefixes =
+      numbering->encoding_prefixes.first;
   for (iree_host_size_t i = 0; i < module->encodings.count; ++i) {
     const loom_encoding_t* encoding = &module->encodings.entries[i];
+    const iree_host_size_t prefix_index =
+        i % IREE_ARRAYSIZE(prefixes->type_counts);
+    if (i > 0 && prefix_index == 0) {
+      prefixes = prefixes->next;
+    }
+    IREE_RETURN_IF_ERROR(loom_bytecode_page_writer_write_uvarint(
+        page_writer, prefixes->type_counts[prefix_index]));
 
     // Find the family index for this encoding's name.
     uint32_t family_index = 0;
