@@ -934,6 +934,50 @@ func.def @addi_dynamic_zero_identity(%n: index, %x: vector<[%n]xi32>) -> (vector
 
 // ====
 
+// Zero shift counts preserve every bit in either direction.
+func.def @shift_zero_identities(%values: vector<4xi8>) -> (vector<4xi8>, vector<4xi8>, vector<4xi8>) {
+  %c0 = vector.constant 0 : vector<4xi8>
+  %left = vector.shli %values, %c0 : vector<4xi8>
+  %arithmetic = vector.shrsi %values, %c0 : vector<4xi8>
+  %logical = vector.shrui %values, %c0 : vector<4xi8>
+  func.return %left, %arithmetic, %logical : vector<4xi8>, vector<4xi8>, vector<4xi8>
+}
+// ----
+func.def @shift_zero_identities(%values: vector<4xi8>) -> (vector<4xi8>, vector<4xi8>, vector<4xi8>) {
+  func.return %values, %values, %values : vector<4xi8>, vector<4xi8>, vector<4xi8>
+}
+
+// ====
+
+// The identity also holds for dynamic shapes, wide elements, and explicit NSW.
+func.def @shift_dynamic_zero_identities(%count: index, %values: vector<[%count]xi64>) -> (vector<[%count]xi64>, vector<[%count]xi64>, vector<[%count]xi64>) {
+  %identity_count = scalar.constant 0 : i64
+  %c0 = vector.splat %identity_count : vector<[%count]xi64>
+  %left = vector.shli<nsw> %values, %c0 : vector<[%count]xi64>
+  %arithmetic = vector.shrsi %values, %c0 : vector<[%count]xi64>
+  %logical = vector.shrui %values, %c0 : vector<[%count]xi64>
+  func.return %left, %arithmetic, %logical : vector<[%count]xi64>, vector<[%count]xi64>, vector<[%count]xi64>
+}
+// ----
+func.def @shift_dynamic_zero_identities(%count: index, %values: vector<[%count]xi64>) -> (vector<[%count]xi64>, vector<[%count]xi64>, vector<[%count]xi64>) {
+  func.return %values, %values, %values : vector<[%count]xi64>, vector<[%count]xi64>, vector<[%count]xi64>
+}
+
+// ====
+
+// Zero in only some lanes does not make a whole-vector identity.
+func.def @shift_mixed_counts(%values: vector<4xi8>) -> (vector<4xi8>, vector<4xi8>, vector<4xi8>) {
+  %c0 = scalar.constant 0 : i8
+  %c1 = scalar.constant 1 : i8
+  %counts = vector.from_elements %c0, %c1, %c0, %c1 : vector<4xi8>
+  %left = vector.shli %values, %counts : vector<4xi8>
+  %arithmetic = vector.shrsi %values, %counts : vector<4xi8>
+  %logical = vector.shrui %values, %counts : vector<4xi8>
+  func.return %left, %arithmetic, %logical : vector<4xi8>, vector<4xi8>, vector<4xi8>
+}
+
+// ====
+
 // Floating-point subtraction identities require signed-zero freedom and keep
 // negation explicit instead of relying on target-specific subtract literals.
 func.def @subf_zero_identities(%n: index, %x: vector<[%n]xf32>) -> (vector<[%n]xf32>, vector<[%n]xf32>) {

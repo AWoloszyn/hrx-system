@@ -244,27 +244,21 @@ low.func.def target<amd.xdna.aie2p.core> abi(object_function) @vector_i32x16_uni
   %input_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
   %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
   %input = vlda.512.i32x16 %input_view, 0
-  %16 = mov.shift 0
+  %16 = mov.shift 31
+  %17 = mov.shift 0
   set.saturation 0
   set.ups-mode 1
   set.srs-mode 1
   set.rounding 0
-  %18 = vups.2x.x-to-c.signed %input, %16
-  %identity = vsrs.2x.c-to-x.signed %18, %16
-  %20 = mov.shift 31
+  %18 = vups.2x.x-to-c.unsigned %input, %16
+  %highest = vsrs.2x.c-to-x.unsigned %18, %17
   set.saturation 0
   set.ups-mode 1
   set.srs-mode 1
   set.rounding 0
-  %22 = vups.2x.x-to-c.unsigned %input, %20
-  %highest = vsrs.2x.c-to-x.unsigned %22, %16
-  set.saturation 0
-  set.ups-mode 1
-  set.srs-mode 1
-  set.rounding 0
-  %26 = vups.2x.x-to-c.signed %input, %16
-  %sign = vsrs.2x.c-to-x.signed %26, %20
-  vst.512.i32x16 %identity, %output_view, 0
+  %22 = vups.2x.x-to-c.signed %input, %17
+  %sign = vsrs.2x.c-to-x.signed %22, %16
+  vst.512.i32x16 %input, %output_view, 0
   vst.512.i32x16 %highest, %output_view, 64
   vst.512.i32x16 %sign, %output_view, 128
   return

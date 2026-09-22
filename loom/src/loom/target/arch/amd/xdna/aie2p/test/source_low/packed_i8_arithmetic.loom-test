@@ -398,21 +398,7 @@ func.def @i8x4_shrui_0(%values: vector<4xi8>) -> (vector<4xi8>) {
 
 // ----
 low.func.def target<amd.xdna.aie2p.core> abi(object_function) @i8x4_shrui_0(%values: reg<aie2p.vec256 x2>) -> (reg<aie2p.vec256 x2>) asm {
-  %23 = vextract.8.imm %values, 0
-  %24 = vextract.8.imm %values, 1
-  %25 = vextract.8.imm %values, 2
-  %26 = vextract.8.imm %values, 3
-  %27 = vbcst.8 %23
-  %28 = mov.short 1
-  %29 = copy %28 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
-  %30 = vinsert.8.reg %27, %29, %24
-  %31 = mov.short 2
-  %32 = copy %31 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
-  %33 = vinsert.8.reg %30, %32, %25
-  %34 = mov.short 3
-  %35 = copy %34 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
-  %result = vinsert.8.reg %33, %35, %26
-  return %result
+  return %values
 }
 
 // ====
