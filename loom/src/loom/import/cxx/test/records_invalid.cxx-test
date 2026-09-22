@@ -54,15 +54,15 @@ struct Value { volatile unsigned member; };
 Value entry(Value value) { return value; }
 
 // ====
-// Aggregate object addresses need real object storage.
+// Aggregate object addresses require whole-object initialization in storage.
 struct Value { unsigned member; };
-// ERROR@+1: LOWERING/059 "address-of requires an existing storage-backed element"
+// ERROR@+1: LOWERING/059 "unsupported C++ type: ::Value"
 unsigned entry(Value value) { auto* pointer = &value; return pointer->member; }
 
 // ====
-// A member address cannot be manufactured from an SSA value.
+// A member address requires storage for its owning record.
 struct Value { unsigned member; };
-// ERROR@+1: LOWERING/059 "address-of requires an existing storage-backed element"
+// ERROR@+1: LOWERING/059 "unsupported C++ type: ::Value"
 unsigned entry(Value value) { auto* pointer = &value.member; return *pointer; }
 
 // ====

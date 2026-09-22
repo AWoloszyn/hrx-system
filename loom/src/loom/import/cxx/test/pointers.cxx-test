@@ -201,11 +201,12 @@ bool truth(int* a) { return a; }
 
 // ====
 // RUN: verify
-// Unsupported pointer operations produce source diagnostics.
-int* local() {
-  int x = 1;
-  // ERROR@+1: LOWERING/059 "address-of requires an existing storage-backed element"
-  return &x;
+// A pointer value's buffer and byte origin have no stored object representation.
+int* local(int* input) {
+  // ERROR@+1: LOWERING/059 "stored pointers and references require an object storage representation"
+  int* pointer = input;
+  auto** indirect = &pointer;
+  return *indirect;
 }
 
 // ====

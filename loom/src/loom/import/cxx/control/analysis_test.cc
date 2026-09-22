@@ -81,6 +81,12 @@ TEST(ControlFlowTest, CountedAdmissionRetainsTheNonwrappingIntervalProof) {
       {"unsigned n", "for (unsigned i=0; i<(unsigned)sizeof(++n); ++i) {}", 1,
        4},
       {"unsigned n", "for (unsigned i=0; i<n; ++i) { sizeof(++n); }", 1},
+      {"unsigned n", "for (unsigned i=0; i<n; ++i) { (void)&n; }", 0},
+      {"unsigned n", "for (unsigned i=0; i<n; ++i) { (void)&i; }", 0},
+      {"unsigned n", "for (unsigned i=0; i<n; ++i) { sizeof(&i); }", 1},
+      {"unsigned n",
+       "for (unsigned i=0; i<n; ++i) { if constexpr(false) (void)&n; }", 1},
+      {"unsigned n", "for (unsigned i=0; i<n; ++i) {} (void)&n;", 0},
       {"unsigned n", "for (unsigned i=0; i<4294967295u; i+=4u) {}", 0},
       {"unsigned long n", "for (unsigned i=0; i<n; ++i) {}", 0},
       {"unsigned n", "for (unsigned i=0; i<n; ++i) { --n; }", 0},
@@ -123,10 +129,11 @@ TEST(ControlFlowTest, CountedAdmissionRetainsTheNonwrappingIntervalProof) {
       if (test.upper) {
         EXPECT_EQ(std::get<unsigned>(counted->upper), *test.upper);
       } else {
+        const auto& bound = std::get<CountedLoop::Bound>(counted->upper);
+        EXPECT_EQ(bound.binding, function->symbol->parameters()[0]);
         auto* condition =
             cxx::ast_cast<cxx::BinaryExpressionAST>(loop->condition);
-        EXPECT_EQ(std::get<cxx::ExpressionAST*>(counted->upper),
-                  condition->rightExpression);
+        EXPECT_EQ(bound.expression, condition->rightExpression);
       }
       EXPECT_EQ(analysis.counted(loop), counted);
     }

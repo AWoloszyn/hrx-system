@@ -1152,8 +1152,9 @@ float decode(const IQ4XSBlock* blocks, unsigned block_index, unsigned index,
 The block pointer advances by 136 bytes; `scales_low` and `quants` start at
 offsets 4 and 8. Their elements use byte loads, the base scale uses an FP16
 load, and the codebook uses signed integer-to-float conversion. No record or
-array is copied or allocated. Arrays in by-value records and addresses of
-automatic objects still require a separate value/storage representation.
+array is copied or allocated. Arrays in by-value records, automatic arrays, and
+addresses of automatic records require aggregate object initialization and copy
+projections. Automatic scalar and vector objects use the storage contract below.
 
 Packed fields use the same typed memory operations, with their exact byte
 origins and record strides:
@@ -1479,8 +1480,9 @@ running the importer.
 
 The current translation surface covers scalar and explicit vector arithmetic,
 conversions, typed-pointer indexing and arithmetic, aggregate record values,
-record field storage, local SSA values, conditional regions, short-circuit `&&`
-and `||`, counted and general `for` loops, `while` and `do/while` loops, fixed
+record field storage, local SSA values, automatic scalar and vector storage,
+conditional regions, short-circuit `&&` and `||`, counted and general `for`
+loops, `while` and `do/while` loops, fixed
 workgroup arrays, and direct calls. Unsupported reachable types and statements
 produce source diagnostics. Integral subscripts preserve
 their source width and signedness. Interior pointers carry a buffer root and an
@@ -1491,7 +1493,8 @@ origin before entering the nonnegative offset domain, so an interior pointer
 can move backward within its allocation.
 
 Pointer addition, subtraction by an integer, unary plus, dereference, address-of
-an existing storage element, and prefix/postfix increments are admitted.
+storage elements and automatic scalar/vector objects, and prefix/postfix
+increments are admitted.
 Integer increments update automatic bindings or storage-backed elements and
 return the previous or updated value. Pointer increments update automatic
 bindings; `*output++ = *input++` preserves both pointer origins. Compound
@@ -1511,18 +1514,50 @@ unsigned advance(unsigned char* counts) {
 }
 ```
 
+An automatic object's address identifies the same storage seen by its direct
+reads, writes, and aliases. Ordinary helpers can update local state through
+pointers, including across branches and loops:
+
+```cpp
+[[loom::force_inline]] void increment(unsigned* value) { ++*value; }
+
+unsigned update(unsigned input, bool enabled) {
+  unsigned value = input;
+  if (enabled) increment(&value);
+  return value;
+}
+```
+
+The importer emits `buffer.alloca<private>` at the object's declaration, using
+its source size and alignment, and initializes it with an ordinary store. A
+declaration without an initializer leaves storage uninitialized for an
+output-only helper to write. Addressed by-value parameters receive a private
+copy of their incoming value. Pointers retain the same buffer and byte origin
+through copies and borrowed helper returns. Automatic objects retain their C++
+lifetimes; returning a pointer does not extend the pointee's lifetime. Taking an
+address in an unevaluated operand or a discarded `if constexpr` arm does not
+create storage.
+
+Inlining and private-storage promotion belong to the shared compiler. For the
+example above they replace the allocation, accesses, and helper call with a
+conditional SSA result. Volatile and atomic observations retain memory effects;
+addressing an object does not promise promotion. Scalars that need no storage
+continue to import directly as SSA values. An aliased loop bound or induction
+object uses a general loop so indirect mutations cannot be lost by counted-loop
+lowering.
+
 Conditional expressions and short-circuit operands carry binding updates only
 along the executed path. Incrementing vectors or floating-point values requires
 additional type projections and produces a source diagnostic. Pointer
-differences, comparisons, truth conversions, and addresses of automatic scalar
-locals also produce source diagnostics.
+differences, comparisons, and truth conversions also produce source diagnostics.
 Distinct-root choices import as ordinary buffer values; executing them requires
 the selected Loom target to support buffer transport through those control-flow
-edges. Objects with constructors, exceptions and indirect calls need additional
+edges. Objects with constructors, exceptions, and indirect calls need additional
 storage and control-flow projections before they can be imported.
 
-Volatile scalar and vector accesses through pointers and workgroup arrays
-become `view.load/store<volatile>` and `vector.load/store<volatile>`. The
+Volatile scalar and vector accesses through pointers, automatic objects, and
+workgroup arrays become `view.load/store<volatile>` and
+`vector.load/store<volatile>`. The
 qualifier belongs to the accessed object: a copied pointer or a pointer member
 retains its pointee's observation semantics. Discarded reads, including explicit
 casts to `void`, remain observable, and repeated accesses stay distinct through
@@ -1544,10 +1579,12 @@ preserves its element qualifier through copies, helpers and subviews;
 `loom::view::load` returns an ordinary scalar and `loom::view::store` accepts
 one. A `const volatile` element permits observations but rejects stores.
 Volatile supplies observable accesses, without atomicity, synchronization or a
-cache-coherence guarantee. Automatic scalar objects and automatic record values
-use SSA transport and cannot represent volatile object storage; those
-declarations produce an explicit source diagnostic. Namespace-scope volatile
-objects require global-storage projection and cannot fold to their initializer.
+cache-coherence guarantee. Volatile automatic scalar and vector objects receive
+private storage even when their address is never taken. Stored pointer objects
+need an object representation for their buffer and byte origin, and automatic
+record values need aggregate memory copies; those declarations produce source
+diagnostics. Namespace-scope volatile objects require global-storage projection
+and cannot fold to their initializer.
 
 `continue` skips the remaining body of the innermost `for`, `while`, or
 `do/while`. Updates before the exit survive; a `for` increment and a `do/while`

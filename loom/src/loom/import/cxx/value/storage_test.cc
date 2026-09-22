@@ -47,9 +47,9 @@ TEST_F(StorageTest, MemberProjectionRetainsRootAndNestedSourceOffsets) {
       cxx::symbol_cast<cxx::FieldSymbol>(*inner->find("value").begin());
   ASSERT_NE(value_field, nullptr);
   auto allocation =
-      storage.workgroup(source.unit().control()->getBoundedArrayType(
-                            source.unit().control()->getUnsignedCharType(), 64),
-                        4, owner);
+      storage.allocate(source.unit().control()->getBoundedArrayType(
+                           source.unit().control()->getUnsignedCharType(), 64),
+                       LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP, 4, owner);
   auto parent =
       storage.member(storage.project(allocation.pointer, outer->type(), owner),
                      inner_field, owner);
@@ -82,7 +82,8 @@ TEST_F(StorageTest, RetainsArrayShapeAndExplicitAlignment) {
   auto* control = source_.unit().control();
   auto* owner = source_.unit().ast();
   auto* array_type = control->getBoundedArrayType(control->getFloatType(), 64);
-  auto allocation = storage.workgroup(array_type, 64, owner);
+  auto allocation = storage.allocate(
+      array_type, LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP, 64, owner);
   EXPECT_EQ(
       loom_buffer_alloca_base_alignment(producer(allocation.pointer.root)), 64);
   auto index = scalars.integer(17, LOOM_SCALAR_TYPE_I32);
@@ -107,7 +108,8 @@ TEST_F(StorageTest, ArrayAliasesRetainTheirElementTypeAndInteriorOrigin) {
   auto* owner = source_.unit().ast();
   auto* bytes =
       control->getBoundedArrayType(control->getUnsignedCharType(), 256);
-  auto allocation = storage.workgroup(bytes, 16, owner);
+  auto allocation = storage.allocate(
+      bytes, LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP, 16, owner);
   auto* row = control->getBoundedArrayType(control->getFloatType(), 32);
   auto interior = storage.advance(
       storage.project(allocation.pointer, row, owner),
@@ -138,8 +140,9 @@ TEST_F(StorageTest, InteriorPointersRetainSignedDisplacementsAndRootIdentity) {
                   locations, builder_);
   auto* control = source_.unit().control();
   auto* owner = source_.unit().ast();
-  auto allocation = storage.workgroup(
-      control->getBoundedArrayType(control->getFloatType(), 64), 0, owner);
+  auto allocation = storage.allocate(
+      control->getBoundedArrayType(control->getFloatType(), 64),
+      LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP, 0, owner);
   auto* pointer_type = control->getPointerType(control->getFloatType());
   auto interior = storage.advance(
       storage.project(allocation.pointer, control->getFloatType(), owner),
@@ -198,8 +201,9 @@ TEST_F(StorageTest, UnsignedDisplacementsExtendBeforeScaling) {
                   locations, builder_);
   auto* control = source_.unit().control();
   auto* owner = source_.unit().ast();
-  auto allocation = storage.workgroup(
-      control->getBoundedArrayType(control->getFloatType(), 64), 0, owner);
+  auto allocation = storage.allocate(
+      control->getBoundedArrayType(control->getFloatType(), 64),
+      LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP, 0, owner);
   auto* pointer = control->getPointerType(control->getFloatType());
   auto advanced = storage.advance(
       storage.project(allocation.pointer, control->getFloatType(), owner),
@@ -227,7 +231,8 @@ TEST_F(StorageTest, WideArrayIndicesRetainDeclaredBounds) {
   auto* control = source_.unit().control();
   auto* owner = source_.unit().ast();
   auto* array = control->getBoundedArrayType(control->getIntType(), 64);
-  auto allocation = storage.workgroup(array, 0, owner);
+  auto allocation =
+      storage.allocate(array, LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP, 0, owner);
   auto input = scalars.integer(63, LOOM_SCALAR_TYPE_I64);
   auto access = storage.subscript(
       storage.project(allocation.pointer, array, owner), input, array,
@@ -256,7 +261,8 @@ TEST_F(StorageTest, ResolvedArrayAccessRetainsIndexAndMemoryQualifiers) {
   auto* element = control->getQualType(control->getUnsignedIntType(),
                                        cxx::CvQualifiers::kVolatile);
   auto* array = control->getBoundedArrayType(element, 64);
-  auto allocation = storage.workgroup(array, 0, owner);
+  auto allocation =
+      storage.allocate(array, LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP, 0, owner);
   auto access =
       storage.subscript(storage.project(allocation.pointer, array, owner),
                         scalars.integer(17, LOOM_SCALAR_TYPE_I32), array,
@@ -290,7 +296,8 @@ TEST_F(StorageTest, ResolvedVectorAccessPreservesItsFootprint) {
   auto* owner = source_.unit().ast();
   auto* integer = control->getUnsignedIntType();
   auto allocation =
-      storage.workgroup(control->getBoundedArrayType(integer, 4), 16, owner);
+      storage.allocate(control->getBoundedArrayType(integer, 4),
+                       LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP, 16, owner);
   auto* vector = control->getQualType(
       control->getVectorType(integer, 4, cxx::VectorKind::kGnu),
       cxx::CvQualifiers::kVolatile);

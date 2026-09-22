@@ -167,6 +167,7 @@ loom_cc_library(
     loom::import::cxx::source::error
     loom::import::cxx::source::locations
     loom::ir
+    loom::ir::facts
     loom::ops::buffer
     loom::ops::index
     loom::ops::scalar

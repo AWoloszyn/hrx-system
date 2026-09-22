@@ -12,6 +12,7 @@
 
 #include "loom/import/cxx/value/representation.h"
 #include "loom/import/cxx/value/scalar.h"
+#include "loom/ir/facts.h"
 
 namespace loom::cxx_import {
 
@@ -34,7 +35,7 @@ struct StorageAccess {
 };
 
 struct StorageAllocation {
-  // Pointer to the beginning of the declared workgroup allocation.
+  // Pointer to the beginning of the declared allocation.
   Pointer pointer;
   // Typed view retaining its element type and fixed extent.
   loom_value_id_t view;
@@ -95,11 +96,13 @@ class Storage {
   // Writes to the same resolved location with the source element qualifiers.
   void store(const StorageAccess& access, loom_value_id_t value,
              const cxx::Type* element_type, cxx::AST* owner);
-  // Allocates a fixed workgroup scalar array using its source layout and any
-  // explicit alignment. The driver admits the declaration's storage duration,
-  // initialization and enclosing kernel contract before calling this method.
-  StorageAllocation workgroup(const cxx::BoundedArrayType* array,
-                              int64_t explicit_alignment, cxx::AST* owner);
+  // Allocates a scalar, vector or fixed scalar array using its source layout
+  // and explicit alignment. Each execution creates a fresh root; initialization
+  // is emitted separately. The driver owns storage-duration and scope
+  // admission.
+  StorageAllocation allocate(const cxx::Type* type,
+                             loom_value_fact_memory_space_t memory_space,
+                             int64_t explicit_alignment, cxx::AST* owner);
 
  private:
   // Source memory layout for element sizes and allocation alignment.

@@ -199,36 +199,42 @@ StorageAccess Storage::subscript(StorageProjection base, loom_value_id_t index,
       advanced, pointer ? pointer->elementType() : array->elementType(), owner);
 }
 
-StorageAllocation Storage::workgroup(const cxx::BoundedArrayType* array,
-                                     int64_t explicit_alignment,
-                                     cxx::AST* owner) {
-  types_.get(array, owner);
+StorageAllocation Storage::allocate(const cxx::Type* type,
+                                    loom_value_fact_memory_space_t memory_space,
+                                    int64_t explicit_alignment,
+                                    cxx::AST* owner) {
+  types_.get(type, owner);
+  auto bytes = types_.storage_size(type, owner);
   auto* layout = unit_.control()->memoryLayout();
-  auto bytes = layout->sizeOf(array);
-  auto alignment = layout->alignmentOf(array);
-  if (!bytes || !alignment) {
-    diagnostics_.reject(unit_, owner, "unknown shared array layout");
+  auto alignment = layout->alignmentOf(type);
+  if (!alignment) {
+    diagnostics_.reject(unit_, owner, "unknown object alignment");
   }
   auto length =
-      scalars_.integer(*bytes, LOOM_SCALAR_TYPE_OFFSET, locations_.get(owner));
+      scalars_.integer(bytes, LOOM_SCALAR_TYPE_OFFSET, locations_.get(owner));
   loom_op_t* op;
   check(loom_buffer_alloca_build(
-      &builder_, LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP,
+      &builder_, memory_space,
       std::max<int64_t>(*alignment, explicit_alignment), length,
       loom_type_buffer(), locations_.get(owner), &op));
   auto root = loom_op_results(op)[0];
   auto base =
       scalars_.integer(0, LOOM_SCALAR_TYPE_OFFSET, locations_.get(owner));
-  auto element = types_.get(array->elementType(), owner);
+  auto* array = cxx::type_cast<cxx::BoundedArrayType>(types_.unqualified(type));
+  auto* vector = types_.vector(type);
+  auto element = types_.get(array ? array->elementType() : type, owner);
+  auto count = array ? array->size() : vector ? vector->elementCount() : 1;
   auto view_type = loom_type_shaped_1d(
-      LOOM_TYPE_VIEW, loom_type_element_type(element), array->size(), 0);
+      LOOM_TYPE_VIEW, loom_type_element_type(element), count, 0);
   view_type = loom_type_view_with_alignment(
       view_type, static_cast<uint8_t>(std::min<uint64_t>(
                      *alignment, loom_type_view_natural_alignment(view_type))));
   check(loom_buffer_view_build(&builder_, root, base, view_type,
                                locations_.get(owner), &op));
   auto view = loom_op_results(op)[0];
-  array_views_[root] = {types_.unqualified(array), base, view};
+  if (array) {
+    array_views_[root] = {array, base, view};
+  }
   return {{root, base}, view};
 }
 

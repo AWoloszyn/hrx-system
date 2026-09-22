@@ -8,14 +8,6 @@ unsigned entry() {
 
 // ====
 // Increment rejects unprojected lvalues and source types.
-unsigned entry() {
-  // ERROR@+1: LOWERING/059 "volatile objects require addressable storage"
-  volatile unsigned x = 1;
-  return ++x;
-}
-
-// ====
-// Increment rejects unprojected lvalues and source types.
 // ERROR@+1: LOWERING/059 "increment requires an integer or pointer binding"
 float entry(float value) { return value++; }
 
