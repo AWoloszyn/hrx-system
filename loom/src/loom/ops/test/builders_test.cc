@@ -4,6 +4,9 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+#include <cstdio>
+#include <vector>
+
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -61,6 +64,116 @@ class BuilderStorageTest : public ::testing::Test {
   // Index value used by operand tables and predicate references.
   loom_value_id_t input_ = LOOM_VALUE_ID_INVALID;
 };
+
+TEST_F(BuilderStorageTest,
+       OperandDictionariesKeepNameValuePairsThroughSorting) {
+  const loom_type_t type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  loom_op_t* second_constant = nullptr;
+  IREE_ASSERT_OK(loom_test_constant_build(&builder_, loom_attr_i64(99), type,
+                                          LOOM_LOCATION_UNKNOWN,
+                                          &second_constant));
+  const loom_value_id_t values[] = {input_,
+                                    loom_test_constant_result(second_constant)};
+  for (iree_host_size_t count : {0u, 1u, 64u, 65u, 1024u, UINT16_MAX - 1u}) {
+    SCOPED_TRACE(count);
+    std::vector<loom_named_value_t> parameters(count);
+    std::vector<loom_string_id_t> names(count);
+    for (iree_host_size_t i = 0; i < count; ++i) {
+      const iree_host_size_t ordinal = count - i - 1;
+      char name[32];
+      std::snprintf(name, sizeof(name), "parameter_%05zu", (size_t)ordinal);
+      IREE_ASSERT_OK(loom_builder_intern_string(
+          &builder_, iree_make_cstring_view(name), &names[ordinal]));
+      parameters[i] = {names[ordinal], 0, values[ordinal % 2]};
+    }
+
+    loom_op_t* op = nullptr;
+    IREE_ASSERT_OK(loom_test_operand_dict_build(&builder_, input_,
+                                                parameters.data(), count, type,
+                                                LOOM_LOCATION_UNKNOWN, &op));
+    const auto operands = loom_test_operand_dict_params(op);
+    const auto dictionary = loom_test_operand_dict_param_names(op);
+    ASSERT_EQ(operands.count, count);
+    ASSERT_EQ(dictionary.count, count);
+    for (iree_host_size_t i = 0; i < count; ++i) {
+      EXPECT_EQ(parameters[i].name_id, names[count - i - 1]);
+      EXPECT_EQ(parameters[i].value_id, values[(count - i - 1) % 2]);
+      parameters[i] = {};
+      EXPECT_EQ(operands.values[i], values[i % 2]);
+      EXPECT_EQ(dictionary.entries[i].name_id, names[i]);
+      EXPECT_EQ(dictionary.entries[i].value.i64, (int64_t)i);
+    }
+    EXPECT_EQ(loom_test_operand_dict_has_param_names(op), count != 0);
+  }
+}
+
+TEST_F(BuilderStorageTest, OperandDictionaryRetainsOnlyItsOwnedNameEntries) {
+  constexpr iree_host_size_t kCount = 1024;
+  std::vector<loom_named_value_t> parameters(kCount);
+  std::vector<loom_value_id_t> operands(kCount);
+  for (iree_host_size_t i = 0; i < kCount; ++i) {
+    char name[32];
+    std::snprintf(name, sizeof(name), "parameter_%05zu", (size_t)(kCount - i));
+    IREE_ASSERT_OK(loom_builder_intern_string(
+        &builder_, iree_make_cstring_view(name), &parameters[i].name_id));
+    parameters[i].value_id = input_;
+  }
+  const auto before = module_->arena.used_allocation_size;
+  loom_attribute_t dictionary = {};
+  IREE_ASSERT_OK(loom_builder_set_operand_dict(
+      &builder_, loom_make_named_value_slice(parameters.data(), kCount),
+      operands.data(), &dictionary));
+  EXPECT_EQ(module_->arena.used_allocation_size - before,
+            kCount * sizeof(loom_named_attr_t));
+  IREE_ASSERT_OK(loom_module_verify_canonical_attr_dict(module_, dictionary));
+}
+
+TEST_F(BuilderStorageTest, OperandDictionaryRejectsSeparatedDuplicateKeys) {
+  loom_string_id_t alpha = LOOM_STRING_ID_INVALID;
+  loom_string_id_t beta = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_builder_intern_string(&builder_, IREE_SV("alpha"), &alpha));
+  IREE_ASSERT_OK(loom_builder_intern_string(&builder_, IREE_SV("beta"), &beta));
+  const loom_named_value_t parameters[] = {
+      {beta, 0, input_}, {alpha, 0, input_}, {beta, 0, input_}};
+  loom_value_id_t operands[] = {LOOM_VALUE_ID_INVALID, LOOM_VALUE_ID_INVALID,
+                                LOOM_VALUE_ID_INVALID};
+  loom_attribute_t dictionary = loom_attr_i64(42);
+  IREE_EXPECT_STATUS_IS(
+      IREE_STATUS_INVALID_ARGUMENT,
+      loom_builder_set_operand_dict(&builder_,
+                                    loom_make_named_value_slice(parameters, 3),
+                                    operands, &dictionary));
+  EXPECT_TRUE(loom_attr_is_absent(dictionary));
+  for (auto operand : operands) {
+    EXPECT_EQ(operand, LOOM_VALUE_ID_INVALID);
+  }
+}
+
+TEST_F(BuilderStorageTest,
+       OperandDictionaryValidatesBeforeAllocatingOrWriting) {
+  loom_string_id_t name = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(loom_builder_intern_string(&builder_, IREE_SV("name"), &name));
+  const loom_named_value_t invalid_entries[] = {
+      {name, 1, input_},
+      {LOOM_STRING_ID_INVALID, 0, input_},
+      {(loom_string_id_t)module_->strings.count, 0, input_},
+      {name, 0, LOOM_VALUE_ID_INVALID},
+      {name, 0, (loom_value_id_t)module_->values.count},
+  };
+  for (const auto& entry : invalid_entries) {
+    const auto before = module_->arena.used_allocation_size;
+    loom_value_id_t operand = LOOM_VALUE_ID_INVALID;
+    loom_attribute_t dictionary = loom_attr_i64(42);
+    IREE_EXPECT_STATUS_IS(IREE_STATUS_INVALID_ARGUMENT,
+                          loom_builder_set_operand_dict(
+                              &builder_, loom_make_named_value_slice(&entry, 1),
+                              &operand, &dictionary));
+    EXPECT_TRUE(loom_attr_is_absent(dictionary));
+    EXPECT_EQ(operand, LOOM_VALUE_ID_INVALID);
+    EXPECT_EQ(module_->arena.used_allocation_size, before);
+  }
+}
 
 TEST_F(BuilderStorageTest, IntegerArraysOutliveCallerStorage) {
   for (iree_host_size_t count : {0u, 2u}) {

@@ -12,6 +12,8 @@
 // qsort callback dispatch or temporary arena scratch. Large arrays attempt at
 // most one insertion movement per element before switching to heap sort, so
 // adversarial order adds only linear work to the O(n log n) fallback.
+// The heap fallback stays out of line so the common ordered/insertion path
+// remains small enough to inline at its callers.
 
 #ifndef LOOM_UTIL_ADAPTIVE_SORT_H_
 #define LOOM_UTIL_ADAPTIVE_SORT_H_
@@ -93,7 +95,7 @@
     }                                                                        \
   }                                                                          \
                                                                              \
-  static void function_name##_heap_sort(                                     \
+  static IREE_ATTRIBUTE_NOINLINE void function_name##_heap_sort(             \
       context_type context, storage_type values, iree_host_size_t count) {   \
     iree_host_size_t root = count / 2u;                                      \
     while (root > 0) {                                                       \
