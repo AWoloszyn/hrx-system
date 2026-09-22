@@ -7,8 +7,11 @@
 #include "loom/import/cxx/source/constants.h"
 
 #include <cxx/ast.h>
+#include <cxx/ast_interpreter.h>
 #include <cxx/names.h>
 #include <cxx/symbols.h>
+
+#include <cmath>
 
 #include "iree/testing/gtest.h"
 #include "loom/import/cxx/source/source.h"
@@ -109,6 +112,48 @@ TEST(IntegerConstantTest, ZeroExtendsUnsignedComplementAtSourceWidth) {
     auto* result = returned(source);
     ASSERT_NE(result, nullptr);
     EXPECT_EQ(integer_constant(source.unit(), result), INT64_C(0xffffffff));
+  }
+}
+
+TEST(FloatingConstantTest, Float16RoundsAtSourceConversionBoundaries) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  const struct {
+    // Source expression evaluated through the production frontend.
+    const char* expression;
+    // Independently specified binary16 result, exactly represented in double.
+    double expected;
+  } cases[] = {
+      {"(_Float16)1.00048828125", 1.0},
+      {"(_Float16)1.00146484375", 1.001953125},
+      {"(_Float16)0x1.0020000000001p0", 1.0009765625},
+      {"(_Float16)0x1p-25", 0.0},
+      {"(_Float16)0x1.8p-24", 0x1p-23},
+      {"(_Float16)0x1.ffcp-15", 0x1p-14},
+      {"(_Float16)65519.0", 65504.0},
+      {"(_Float16)-0.0", -0.0},
+      {"1.00048828125f16", 1.0},
+      {"1.00146484375F16", 1.001953125},
+      {"+((_Float16)1.0 + (_Float16)0x1p-11)", 1.0},
+      {"-((_Float16)1.5 * (_Float16)2.0)", -3.0},
+      {"(_Float16)1.0 / (_Float16)3.0", 0.333251953125},
+      {"(float)(_Float16)1.00048828125", 1.0},
+      {"(_Float16)4095u", 4096.0},
+  };
+  for (const auto& test : cases) {
+    SCOPED_TRACE(test.expression);
+    std::string text =
+        "auto entry() { return " + std::string(test.expression) + "; }";
+    Source source(view(text), IREE_SV("float16.cpp"), options);
+    auto* result = returned(source);
+    ASSERT_NE(result, nullptr);
+    auto value = scalar_constant(source.unit(), result);
+    ASSERT_TRUE(value.has_value());
+    cxx::ASTInterpreter interpreter(&source.unit());
+    auto number = interpreter.toDouble(*value);
+    ASSERT_TRUE(number.has_value());
+    EXPECT_EQ(*number, test.expected);
+    EXPECT_EQ(std::signbit(*number), std::signbit(test.expected));
   }
 }
 
