@@ -379,6 +379,28 @@ static iree_status_t loom_view_boundary_copy_attributes(loom_ir_remap_t* remap,
   return iree_ok_status();
 }
 
+// Projects the FuncLike specialization prefix through argument expansion.
+static void loom_view_boundary_update_specialization_count(
+    const loom_view_boundary_function_t* function, loom_op_t* target) {
+  const uint8_t specialization_count_attr_index =
+      function->function.vtable->specialization_count_attr_index;
+  if (specialization_count_attr_index == LOOM_ATTR_INDEX_NONE) {
+    return;
+  }
+
+  const int64_t source_specialization_count =
+      loom_func_like_specialization_count(function->function);
+  IREE_ASSERT_GE(source_specialization_count, 0);
+  IREE_ASSERT_LE(source_specialization_count, function->argument_count);
+  const uint16_t specialization_count = (uint16_t)source_specialization_count;
+  const uint16_t target_specialization_count =
+      specialization_count == function->argument_count
+          ? function->final_argument_count
+          : function->argument_indices[specialization_count];
+  loom_op_attrs(target)[specialization_count_attr_index] =
+      loom_attr_i64(target_specialization_count);
+}
+
 static iree_status_t loom_view_boundary_copy_comments(
     loom_view_boundary_plan_t* plan, const loom_op_t* source,
     const loom_op_t* target) {
@@ -1120,6 +1142,7 @@ static iree_status_t loom_view_boundary_replace_function(
   loom_view_boundary_remap_function_ties(function, target);
   IREE_RETURN_IF_ERROR(
       loom_view_boundary_copy_attributes(&remap, source, target));
+  loom_view_boundary_update_specialization_count(function, target);
 
   loom_block_t* target_entry = NULL;
   loom_region_t* target_body = NULL;

@@ -19,3 +19,212 @@ func.def public @caller(%storage: buffer, %offset: offset) -> (buffer, offset) {
   %result_root, %result_offset = test.invoke @identity(%storage, %offset) : (buffer, offset) -> (buffer, offset)
   func.return %result_root, %result_offset : buffer, offset
 }
+
+// ====
+
+// RUN: pass target=vm:core specialize-target-callgraph,decompose-view-boundaries
+
+pipeline.def public @consume(%input: view<1xi32>) launch() {
+  pipeline.return
+}
+
+// ----
+pipeline.def public @consume(%input_root: buffer, %input_offset: offset) launch() {
+  cfg.br ^_bb1(%input_root: buffer, %input_offset: offset)
+^_bb1(%1: buffer, %0: offset):
+  %input = buffer.view %1[%0] : buffer -> view<1xi32>
+  pipeline.return
+}
+
+// ====
+
+// RUN: pass target=vm:core specialize-target-callgraph,decompose-view-boundaries
+
+func.decl @external_identity(%input: view<1xi32>) -> (view<1xi32>)
+
+func.def public @call_external(%storage: buffer, %offset: offset) -> (view<1xi32>) {
+  %input = buffer.view %storage[%offset] : buffer -> view<1xi32>
+  %result = func.call @external_identity(%input) : (view<1xi32>) -> (view<1xi32>)
+  func.return %result : view<1xi32>
+}
+
+// ----
+func.decl @external_identity(%input_root: buffer, %input_offset: offset) -> (buffer, offset)
+
+func.def public @call_external(%storage: buffer, %offset: offset) -> (buffer, offset) {
+  cfg.br ^_bb1(%storage: buffer, %offset: offset)
+^_bb1(%2: buffer, %3: offset):
+  %input = buffer.view %2[%3] : buffer -> view<1xi32>
+  %result_root, %result_offset = func.call @external_identity(%2, %3) : (buffer, offset) -> (buffer, offset)
+  %result = buffer.view %result_root[%result_offset] : buffer -> view<1xi32>
+  func.return %result_root, %result_offset : buffer, offset
+}
+
+// ====
+
+// RUN: pass target=vm:core specialize-target-callgraph,decompose-view-boundaries
+
+func.def public @choose_nested(%left: view<1xi32>, %middle: view<1xi32>, %right: view<1xi32>, %choose_middle: i1, %choose_right: i1) -> (view<1xi32>) {
+  %left_or_middle = scf.select %choose_middle, %middle, %left : view<1xi32>
+  %selected = scf.select %choose_right, %right, %left_or_middle : view<1xi32>
+  func.return %selected : view<1xi32>
+}
+
+// ----
+func.def public @choose_nested(%left_root: buffer, %left_offset: offset, %middle_root: buffer, %middle_offset: offset, %right_root: buffer, %right_offset: offset, %choose_middle: i1, %choose_right: i1) -> (buffer, offset) {
+  cfg.br ^_bb1(%left_root: buffer, %left_offset: offset, %middle_root: buffer, %middle_offset: offset, %right_root: buffer, %right_offset: offset, %choose_middle: i1, %choose_right: i1)
+^_bb1(%8: buffer, %0: offset, %10: buffer, %1: offset, %12: buffer, %2: offset, %3: i1, %4: i1):
+  %right = buffer.view %12[%2] : buffer -> view<1xi32>
+  %middle = buffer.view %10[%1] : buffer -> view<1xi32>
+  %left = buffer.view %8[%0] : buffer -> view<1xi32>
+  %left_or_middle_root, %left_or_middle_offset = scf.if %3 -> (buffer, offset) {
+    scf.yield %10, %1 : buffer, offset
+  } else {
+    scf.yield %8, %0 : buffer, offset
+  }
+  %left_or_middle = scf.select %3, %middle, %left : view<1xi32>
+  %selected_root, %selected_offset = scf.if %4 -> (buffer, offset) {
+    scf.yield %12, %2 : buffer, offset
+  } else {
+    scf.yield %left_or_middle_root, %left_or_middle_offset : buffer, offset
+  }
+  %selected = scf.select %4, %right, %left_or_middle : view<1xi32>
+  func.return %selected_root, %selected_offset : buffer, offset
+}
+
+// ====
+
+// RUN: pass target=vm:core specialize-target-callgraph,decompose-view-boundaries
+
+func.def public @rotate(%first: buffer, %second: buffer, %first_offset: offset, %second_offset: offset, %count: index) -> (view<1xi32>) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %first_view = buffer.view %first[%first_offset] : buffer -> view<1xi32>
+  %second_view = buffer.view %second[%second_offset] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index, %first_view: view<1xi32>, %second_view: view<1xi32>)
+^header(%iteration: index, %left: view<1xi32>, %right: view<1xi32>):
+  %continue = index.cmp slt, %iteration, %count : index
+  cfg.cond_br %continue, ^body, ^exit
+^body:
+  %next = index.add %iteration, %step : index
+  cfg.br ^header(%next: index, %right: view<1xi32>, %left: view<1xi32>)
+^exit:
+  func.return %left : view<1xi32>
+}
+
+// ----
+func.def public @rotate(%first: buffer, %second: buffer, %first_offset: offset, %second_offset: offset, %count: index) -> (buffer, offset) {
+  cfg.br ^_bb1(%first: buffer, %second: buffer, %first_offset: offset, %second_offset: offset, %count: index)
+^_bb1(%0: buffer, %1: buffer, %2: offset, %3: offset, %4: index):
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %first_view = buffer.view %0[%2] : buffer -> view<1xi32>
+  %second_view = buffer.view %1[%3] : buffer -> view<1xi32>
+  cfg.br ^_bb2(%begin: index, %0: buffer, %2: offset, %1: buffer, %3: offset)
+^_bb2(%iteration: index, %left_root: buffer, %left_offset: offset, %right_root: buffer, %right_offset: offset):
+  %right = buffer.view %right_root[%right_offset] : buffer -> view<1xi32>
+  %left = buffer.view %left_root[%left_offset] : buffer -> view<1xi32>
+  %continue = index.cmp slt, %iteration, %4 : index
+  cfg.cond_br %continue, ^_bb3, ^_bb4
+^_bb3:
+  %next = index.add %iteration, %step : index
+  cfg.br ^_bb2(%next: index, %right_root: buffer, %right_offset: offset, %left_root: buffer, %left_offset: offset)
+^_bb4:
+  func.return %left_root, %left_offset : buffer, offset
+}
+
+// ====
+
+// RUN: pass target=vm:core specialize-target-callgraph,decompose-view-boundaries
+
+func.def noinline @shuffle(%tag: i32, %left: view<1xi32>, %middle: i64, %right: view<1xi32>) -> (view<1xi32>, i32, view<1xi32>, i64) {
+  func.return %right, %tag, %left, %middle : view<1xi32>, i32, view<1xi32>, i64
+}
+
+func.def public @call_shuffle(%left_storage: buffer, %left_offset: offset, %right_storage: buffer, %right_offset: offset, %tag: i32, %middle: i64) -> (view<1xi32>, i32, view<1xi32>, i64) {
+  %left = buffer.view %left_storage[%left_offset] : buffer -> view<1xi32>
+  %right = buffer.view %right_storage[%right_offset] : buffer -> view<1xi32>
+  %first, %tag_result, %second, %middle_result = func.call @shuffle(%tag, %left, %middle, %right) : (i32, view<1xi32>, i64, view<1xi32>) -> (view<1xi32>, i32, view<1xi32>, i64)
+  func.return %first, %tag_result, %second, %middle_result : view<1xi32>, i32, view<1xi32>, i64
+}
+
+// ----
+func.def noinline @shuffle(%tag: i32, %left_root: buffer, %left_offset: offset, %middle: i64, %right_root: buffer, %right_offset: offset) -> (buffer, offset, i32, buffer, offset, i64) {
+  cfg.br ^_bb1(%tag: i32, %left_root: buffer, %left_offset: offset, %middle: i64, %right_root: buffer, %right_offset: offset)
+^_bb1(%0: i32, %30: buffer, %1: offset, %2: i64, %32: buffer, %3: offset):
+  %right = buffer.view %32[%3] : buffer -> view<1xi32>
+  %left = buffer.view %30[%1] : buffer -> view<1xi32>
+  func.return %32, %3, %0, %30, %1, %2 : buffer, offset, i32, buffer, offset, i64
+}
+
+func.def public @call_shuffle(%left_storage: buffer, %left_offset: offset, %right_storage: buffer, %right_offset: offset, %tag: i32, %middle: i64) -> (buffer, offset, i32, buffer, offset, i64) {
+  cfg.br ^_bb1(%left_storage: buffer, %left_offset: offset, %right_storage: buffer, %right_offset: offset, %tag: i32, %middle: i64)
+^_bb1(%8: buffer, %9: offset, %10: buffer, %11: offset, %12: i32, %13: i64):
+  %left = buffer.view %8[%9] : buffer -> view<1xi32>
+  %right = buffer.view %10[%11] : buffer -> view<1xi32>
+  %first_root, %first_offset, %tag_result, %second_root, %second_offset, %middle_result = func.call @shuffle(%12, %8, %9, %13, %10, %11) : (i32, buffer, offset, i64, buffer, offset) -> (buffer, offset, i32, buffer, offset, i64)
+  %second = buffer.view %second_root[%second_offset] : buffer -> view<1xi32>
+  %first = buffer.view %first_root[%first_offset] : buffer -> view<1xi32>
+  func.return %first_root, %first_offset, %tag_result, %second_root, %second_offset, %middle_result : buffer, offset, i32, buffer, offset, i64
+}
+
+// ====
+
+// RUN: pass target=vm:core specialize-target-callgraph,decompose-view-boundaries
+
+func.def noinline @forward_window(%input: view<1xi32>) -> (view<1xi32>) {
+  func.return %input : view<1xi32>
+}
+
+func.def public @call_window(%storage: buffer, %base: offset, %position: index) -> (view<1xi32>) {
+  %whole = buffer.view %storage[%base] : buffer -> view<8xi32>
+  %window = view.subview %whole[%position] : view<8xi32> -> view<1xi32>
+  %result = func.call @forward_window(%window) : (view<1xi32>) -> (view<1xi32>)
+  func.return %result : view<1xi32>
+}
+
+// ----
+func.def noinline @forward_window(%input_root: buffer, %input_offset: offset) -> (buffer, offset) {
+  cfg.br ^_bb1(%input_root: buffer, %input_offset: offset)
+^_bb1(%11: buffer, %0: offset):
+  %input = buffer.view %11[%0] : buffer -> view<1xi32>
+  func.return %11, %0 : buffer, offset
+}
+
+func.def public @call_window(%storage: buffer, %base: offset, %position: index) -> (buffer, offset) {
+  cfg.br ^_bb1(%storage: buffer, %base: offset, %position: index)
+^_bb1(%2: buffer, %3: offset, %4: index):
+  %whole = buffer.view %2[%3] : buffer -> view<8xi32>
+  %window = view.subview %whole[%4] : view<8xi32> -> view<1xi32>
+  %13 = index.cast %3 : offset to i64
+  %14 = index.cast %4 : index to i64
+  %15 = scalar.constant 4 : i64
+  %16 = scalar.muli %14, %15 : i64
+  %17 = scalar.addi %13, %16 : i64
+  %18 = index.cast %17 : i64 to offset
+  %result_root, %result_offset = func.call @forward_window(%2, %18) : (buffer, offset) -> (buffer, offset)
+  %result = buffer.view %result_root[%result_offset] : buffer -> view<1xi32>
+  func.return %result_root, %result_offset : buffer, offset
+}
+
+// ====
+
+// RUN: pass target=vm:core specialize-target-callgraph,decompose-view-boundaries
+
+func.def noinline @tied_identity(%input: view<1xi32>) -> (view<1xi32>) {
+  func.return %input : view<1xi32>
+}
+
+func.def public @call_tied(%storage: buffer, %offset: offset) -> (view<1xi32>) {
+  %input = buffer.view %storage[%offset] : buffer -> view<1xi32>
+  %result = test.invoke @tied_identity(%input) : (view<1xi32>) -> (%input as view<1xi32>)
+  func.return %result : view<1xi32>
+}
+
+// ====
+
+// RUN: pass target=spirv:vulkan1.3+bda specialize-target-callgraph,decompose-view-boundaries
+
+func.def public @spirv_direct(%input: view<1xi32>) -> (view<1xi32>) {
+  func.return %input : view<1xi32>
+}
