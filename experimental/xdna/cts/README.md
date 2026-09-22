@@ -4,6 +4,16 @@
 queue submission, readback and resource retirement through libamdf. They select
 the appropriate image for the available device family.
 
+`assembly_pack_npu2_test` imports C++ functions containing descriptor-backed
+assembly, links them into a streaming pipeline, and executes on Strix Halo.
+Each `vpack.x.signed` packs 128 signed bytes into 64 bytes of INT4. Alternating
+saturation-on and saturation-off fragments consume the same input vectors,
+exercising the compiler's handling of control-register effects. An independent
+integer oracle checks both results for all 256 byte values in each of six
+records, along with per-record guards, binding tails, and unchanged inputs.
+This is an explicit hardware test with the same configuration as the copy
+test below.
+
 `vector_copy_npu2_test` exercises C++ import, bytecode linking, compilation and
 native execution on NPU2 hardware using the Strix Halo profile. It is an explicit
 hardware test (`manual` in Bazel). Its compiler and importer dependencies are

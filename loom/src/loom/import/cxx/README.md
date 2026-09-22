@@ -465,8 +465,36 @@ unsigned vector uses the same physical instructions. Source lowering checks
 both the width and register class of every argument and result against the
 selected target's mapping.
 
+The same interface exposes XDNA's native saturating INT4 pack. This function
+clamps 128 signed bytes to `[-8, 7]` and packs adjacent lanes into the low and
+high nibbles of 64 output bytes:
+
+```cpp
+struct [[loom::representation("amd.xdna.aie2p.core")]] Aie2p {};
+using SignedBytes = signed char __attribute__((ext_vector_type(128)));
+using Packed = unsigned char __attribute__((ext_vector_type(64)));
+
+Packed saturate_s4(SignedBytes values) {
+  return loom::low::assembly<Aie2p, Packed>(R"loom(
+      (%values: reg<aie2p.vec256 x4>) -> (reg<aie2p.vec256 x2>) {
+        set.pack-size 0
+        set.saturation 1
+        %packed = vpack.x.signed %values
+        return %packed
+      }
+  )loom", values);
+}
+```
+
+High `vector.bitpack` packs low bits; this fragment also selects the hardware's
+saturation behavior. Its control-register writes and the pack's state reads
+are descriptor effects visible to optimization and scheduling. The native
+[packing test](../../../../../experimental/xdna/cts/testdata/assembly_pack.cpp)
+alternates saturated and unsaturated fragments on the same inputs, within
+ordinary C++ vector loads, stores, and loops.
+
 `Contract` selects a representation vocabulary independently of the hardware
-profile used for compilation. The example can be imported with the AMDGPU
+profile used for compilation. The first example can be imported with the AMDGPU
 descriptors enabled, then specialized to a compatible profile such as `gfx1151`.
 The `loomc` API uses the context's target environment; the native importer
 accepts an optional `low_asm_environment` in its import options. Ordinary C++
