@@ -76,11 +76,11 @@ class CMakeDataDependenciesTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             for index, (target, reference, output_directory) in enumerate(
                 (
-                    ("data_consumer", "fixture::tool", "build"),
-                    ("data_consumer", "fixture::tool", "source"),
+                    ("data_consumer-NOTFOUND", "fixture::tool", "build"),
+                    ("data_consumer-NOTFOUND", "fixture::tool", "source"),
                     ("later_data_consumer", "fixture::tool", "source"),
                     ("tool_path_consumer", "fixture::tool", "build"),
-                    ("tool_path_consumer", "data_tool", "build"),
+                    ("tool_path_consumer", "data_tool-NOTFOUND", "build"),
                 )
             ):
                 with self.subTest(
@@ -117,7 +117,7 @@ class CMakeDataDependenciesTest(unittest.TestCase):
         for option, message in (
             (
                 "-DIREE_TEST_DECLARE_TOOL=OFF",
-                "data_consumer depends on missing target: fixture::tool",
+                "data_consumer-NOTFOUND depends on missing target: fixture::tool",
             ),
             (
                 "-DIREE_TEST_DUPLICATE_PRODUCER=ON",

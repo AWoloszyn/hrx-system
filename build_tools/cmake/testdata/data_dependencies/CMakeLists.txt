@@ -15,12 +15,13 @@ set(IREE_BINARY_DIR "${CMAKE_BINARY_DIR}")
 set(IREE_IDE_FOLDER IREE)
 include("${IREE_REPO_ROOT}/build_tools/cmake/iree_macros.cmake")
 
-add_custom_target(data_consumer)
+# Target identities may have spellings that CMake treats as false.
+add_custom_target(data_consumer-NOTFOUND)
 set(IREE_TEST_GENERATED_DATA "${CMAKE_BINARY_DIR}/generated.txt"
   CACHE FILEPATH "Generated DATA output")
 iree_add_data_dependencies(
   NAME
-    data_consumer
+    data_consumer-NOTFOUND
   DATA
     fixture.txt
     "${IREE_TEST_GENERATED_DATA}"
@@ -37,10 +38,12 @@ iree_add_data_dependencies(
     "$<TARGET_FILE:${IREE_TEST_TOOL_REFERENCE}>"
 )
 if(IREE_TEST_DECLARE_TOOL)
-  add_executable(data_tool tool.c)
-  add_executable(fixture::tool ALIAS data_tool)
+  add_executable(data_tool-NOTFOUND tool.c)
+  add_executable(fixture::tool ALIAS data_tool-NOTFOUND)
+  iree_package_target_name(_TOOL_TARGET "${IREE_TEST_TOOL_REFERENCE}")
+  set_target_properties("${_TOOL_TARGET}" PROPERTIES OUTPUT_NAME data_tool)
   add_custom_command(
-    TARGET data_tool
+    TARGET "${_TOOL_TARGET}"
     POST_BUILD
     COMMAND "${CMAKE_COMMAND}" -E touch
       "${CMAKE_BINARY_DIR}/tool-built.marker"
