@@ -345,6 +345,9 @@ static iree_status_t loom_target_pipeline_build_source_loop_pipelining(
   (void)user_data;
   IREE_RETURN_IF_ERROR(
       loom_target_pipeline_build_run(builder, IREE_SV("pipeline-scf-for")));
+  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_cleanup_if_changed(builder));
+  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_run(
+      builder, IREE_SV("decompose-scf-layout-transports")));
   return loom_target_pipeline_build_cleanup_if_changed(builder);
 }
 

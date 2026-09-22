@@ -14,5 +14,8 @@ package(
 
 loom_check_test_suite(
     name = "test",
-    srcs = ["layout_transport.loom-test"],
+    srcs = [
+        "layout_transport.loom-test",
+        "scf_layout_transport.loom-test",
+    ],
 )

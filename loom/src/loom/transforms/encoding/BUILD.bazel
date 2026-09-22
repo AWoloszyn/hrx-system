@@ -14,18 +14,23 @@ package(
 
 loom_cc_library(
     name = "layout_transport",
-    srcs = ["layout_transport.c"],
+    srcs = [
+        "layout_transport.c",
+        "scf_layout_transport.c",
+    ],
     hdrs = ["layout_transport.h"],
     deps = [
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/cfg",
         "//loom/src/loom/ops/encoding",
         "//loom/src/loom/ops/index",
+        "//loom/src/loom/ops/scf",
         "//loom/src/loom/pass:types",
         "//loom/src/loom/pass:value_facts",
         "//loom/src/loom/rewrite:rewriter",
         "//loom/src/loom/target:function_version",
         "//loom/src/loom/util:fact_table",
+        "//loom/src/loom/util:walk",
         "//runtime/src/iree/base",
         "//runtime/src/iree/base/internal:arena",
     ],

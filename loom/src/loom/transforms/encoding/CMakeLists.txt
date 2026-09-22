@@ -16,6 +16,7 @@ loom_cc_library(
     "layout_transport.h"
   SRCS
     "layout_transport.c"
+    "scf_layout_transport.c"
   DEPS
     iree::base
     iree::base::internal::arena
@@ -23,11 +24,13 @@ loom_cc_library(
     loom::ops::cfg
     loom::ops::encoding
     loom::ops::index
+    loom::ops::scf
     loom::pass::types
     loom::pass::value_facts
     loom::rewrite::rewriter
     loom::target::function_version
     loom::util::fact_table
+    loom::util::walk
   PUBLIC
 )
 

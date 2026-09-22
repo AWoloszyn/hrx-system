@@ -1,0 +1,237 @@
+// RUN: pass decompose-scf-layout-transports
+
+// A structured diamond carries only the axes that vary across its regions.
+func.def @if_layout(%condition: i1) -> (encoding<layout>) {
+  %layout = scf.if %condition -> (encoding<layout>) {
+    %row = encoding.layout.strided [4, 1] : encoding<layout>
+    scf.yield %row : encoding<layout>
+  } else {
+    %column = encoding.layout.strided [1, 64] : encoding<layout>
+    scf.yield %column : encoding<layout>
+  }
+  func.return %layout : encoding<layout>
+}
+
+// ----
+func.def @if_layout(%condition: i1) -> (encoding<layout>) {
+  %layout_stride_0, %layout_stride_1 = scf.if %condition -> (index, index) {
+    %row = encoding.layout.strided [4, 1] : encoding<layout>
+    %7 = index.constant 4 : index
+    %8 = index.constant 1 : index
+    scf.yield %7, %8 : index, index
+  } else {
+    %column = encoding.layout.strided [1, 64] : encoding<layout>
+    %9 = index.constant 1 : index
+    %10 = index.constant 64 : index
+    scf.yield %9, %10 : index, index
+  }
+  %layout = encoding.layout.strided [%layout_stride_0, %layout_stride_1] : encoding<layout>
+  func.return %layout : encoding<layout>
+}
+
+// ====
+
+// Repacking the result tuple also retargets dependent type references outside
+// the selection to the locally reconstructed semantic layout.
+func.def @if_layout_view(%input: buffer, %condition: i1) -> (f32) {
+  %base = index.constant 0 : offset
+  %layout = scf.if %condition -> (encoding<layout>) {
+    %row = encoding.layout.strided [4, 1] : encoding<layout>
+    scf.yield %row : encoding<layout>
+  } else {
+    %column = encoding.layout.strided [1, 64] : encoding<layout>
+    scf.yield %column : encoding<layout>
+  }
+  %view = buffer.view %input[%base] : buffer -> view<4x4xf32, %layout>
+  %value = view.load %view[0, 1] : view<4x4xf32, %layout> -> f32
+  func.return %value : f32
+}
+
+// ----
+func.def @if_layout_view(%input: buffer, %condition: i1) -> (f32) {
+  %base = index.constant 0 : offset
+  %layout_stride_0, %layout_stride_1 = scf.if %condition -> (index, index) {
+    %row = encoding.layout.strided [4, 1] : encoding<layout>
+    %11 = index.constant 4 : index
+    %12 = index.constant 1 : index
+    scf.yield %11, %12 : index, index
+  } else {
+    %column = encoding.layout.strided [1, 64] : encoding<layout>
+    %13 = index.constant 1 : index
+    %14 = index.constant 64 : index
+    scf.yield %13, %14 : index, index
+  }
+  %layout = encoding.layout.strided [%layout_stride_0, %layout_stride_1] : encoding<layout>
+  %view = buffer.view %input[%base] : buffer -> view<4x4xf32, %layout>
+  %value = view.load %view[0, 1] : view<4x4xf32, %layout> -> f32
+  func.return %value : f32
+}
+
+// ====
+
+// Nested selections forward their already-scalarized descriptor without
+// recovering either inner source.
+func.def @nested_if_layout(%first: i1, %second: i1) -> (encoding<layout>) {
+  %inner = scf.if %first -> (encoding<layout>) {
+    %row = encoding.layout.strided [4, 1] : encoding<layout>
+    scf.yield %row : encoding<layout>
+  } else {
+    %column = encoding.layout.strided [1, 64] : encoding<layout>
+    scf.yield %column : encoding<layout>
+  }
+  %outer = scf.if %second -> (encoding<layout>) {
+    scf.yield %inner : encoding<layout>
+  } else {
+    %wide = encoding.layout.strided [8, 2] : encoding<layout>
+    scf.yield %wide : encoding<layout>
+  }
+  func.return %outer : encoding<layout>
+}
+
+// ----
+func.def @nested_if_layout(%first: i1, %second: i1) -> (encoding<layout>) {
+  %inner_stride_0, %inner_stride_1 = scf.if %first -> (index, index) {
+    %row = encoding.layout.strided [4, 1] : encoding<layout>
+    %10 = index.constant 4 : index
+    %11 = index.constant 1 : index
+    scf.yield %10, %11 : index, index
+  } else {
+    %column = encoding.layout.strided [1, 64] : encoding<layout>
+    %12 = index.constant 1 : index
+    %13 = index.constant 64 : index
+    scf.yield %12, %13 : index, index
+  }
+  %inner = encoding.layout.strided [%inner_stride_0, %inner_stride_1] : encoding<layout>
+  %outer_stride_0, %outer_stride_1 = scf.if %second -> (index, index) {
+    scf.yield %inner_stride_0, %inner_stride_1 : index, index
+  } else {
+    %wide = encoding.layout.strided [8, 2] : encoding<layout>
+    %17 = index.constant 8 : index
+    %18 = index.constant 2 : index
+    scf.yield %17, %18 : index, index
+  }
+  %outer = encoding.layout.strided [%outer_stride_0, %outer_stride_1] : encoding<layout>
+  func.return %outer : encoding<layout>
+}
+
+// ====
+
+// A switch can retain an exact unit axis while selecting a runtime pitch.
+func.def @switch_layout(%selector: index, %left_stride: index, %right_stride: index) -> (encoding<layout>) {
+  %layout = scf.switch %selector -> (encoding<layout>) {
+    case 0 {
+      %left = encoding.layout.strided [%left_stride, 1] : encoding<layout>
+      scf.yield %left : encoding<layout>
+    }
+    default {
+      %right = encoding.layout.strided [%right_stride, 1] : encoding<layout>
+      scf.yield %right : encoding<layout>
+    }
+  }
+  func.return %layout : encoding<layout>
+}
+
+// ----
+func.def @switch_layout(%selector: index, %left_stride: index, %right_stride: index) -> (encoding<layout>) {
+  %layout_stride_0 = scf.switch %selector -> (index) {
+    case 0 {
+      %left = encoding.layout.strided [%left_stride, 1] : encoding<layout>
+      scf.yield %left_stride : index
+    }
+    default {
+      %right = encoding.layout.strided [%right_stride, 1] : encoding<layout>
+      scf.yield %right_stride : index
+    }
+  }
+  %layout = encoding.layout.strided [%layout_stride_0, 1] : encoding<layout>
+  func.return %layout : encoding<layout>
+}
+
+// ====
+
+// Value selections project each varying layout axis independently.
+func.def @select_layout(%condition: i1) -> (encoding<layout>) {
+  %row = encoding.layout.strided [4, 1] : encoding<layout>
+  %column = encoding.layout.strided [1, 64] : encoding<layout>
+  %layout = scf.select %condition, %row, %column : encoding<layout>
+  func.return %layout : encoding<layout>
+}
+
+// ----
+func.def @select_layout(%condition: i1) -> (encoding<layout>) {
+  %row = encoding.layout.strided [4, 1] : encoding<layout>
+  %column = encoding.layout.strided [1, 64] : encoding<layout>
+  %5 = index.constant 4 : index
+  %6 = index.constant 1 : index
+  %7 = index.constant 1 : index
+  %8 = index.constant 64 : index
+  %layout_stride_0 = scf.select %condition, %5, %7 : index
+  %layout_stride_1 = scf.select %condition, %6, %8 : index
+  %layout = encoding.layout.strided [%layout_stride_0, %layout_stride_1] : encoding<layout>
+  func.return %layout : encoding<layout>
+}
+
+// ====
+
+// Lookup rows preserve adjacent ordinary columns while expanding a layout.
+func.def @lookup_layout(%selector: index, %fallback: index) -> (index, encoding<layout>) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %row = encoding.layout.strided [4, 1] : encoding<layout>
+  %column = encoding.layout.strided [1, 64] : encoding<layout>
+  %wide = encoding.layout.strided [8, 2] : encoding<layout>
+  %ordinal, %layout = scf.lookup %selector {
+    0 = (%c0, %row),
+    1 = (%c1, %column)
+  } default(%fallback, %wide) : index, encoding<layout>
+  func.return %ordinal, %layout : index, encoding<layout>
+}
+
+// ----
+func.def @lookup_layout(%selector: index, %fallback: index) -> (index, encoding<layout>) {
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %row = encoding.layout.strided [4, 1] : encoding<layout>
+  %column = encoding.layout.strided [1, 64] : encoding<layout>
+  %wide = encoding.layout.strided [8, 2] : encoding<layout>
+  %11 = index.constant 4 : index
+  %12 = index.constant 1 : index
+  %13 = index.constant 1 : index
+  %14 = index.constant 64 : index
+  %15 = index.constant 8 : index
+  %16 = index.constant 2 : index
+  %ordinal, %layout_stride_0, %layout_stride_1 = scf.lookup %selector {
+    0 = (%c0, %11, %12),
+    1 = (%c1, %13, %14)
+  } default(%fallback, %15, %16) : index, index, index
+  %layout = encoding.layout.strided [%layout_stride_0, %layout_stride_1] : encoding<layout>
+  func.return %ordinal, %layout : index, encoding<layout>
+}
+
+// ====
+// RUN: with-checks pass-report decompose-scf-layout-transports
+
+// Selection planning acquires one fact scope for the whole nested tree. A
+// function without layout-valued selections takes the structural fast path
+// without acquiring value facts.
+func.def @reports_batched_fact_cost(%first: i1, %second: i1) -> (encoding<layout>) {
+  %inner = scf.if %first -> (encoding<layout>) {
+    %row = encoding.layout.strided [4, 1] : encoding<layout>
+    scf.yield %row : encoding<layout>
+  } else {
+    %column = encoding.layout.strided [1, 64] : encoding<layout>
+    scf.yield %column : encoding<layout>
+  }
+  %outer = scf.select %second, %inner, %inner : encoding<layout>
+  func.return %outer : encoding<layout>
+}
+
+func.def @no_layout_selection(%condition: i1, %left: index, %right: index) -> (index) {
+  %selected = scf.select %condition, %left, %right : index
+  func.return %selected : index
+}
+
+// ----
+CHECK: *"changed":true,*
+CHECK: *"layouts-decomposed":2,"stride-values-inserted":4,"selections-rewritten":2}*
+CHECK: *"category":"value-facts","acquisition_count":1,*
