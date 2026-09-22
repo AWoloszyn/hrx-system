@@ -43,12 +43,13 @@ func.def @mixed_aliases(%initial: i32, %position: f32, %enabled: i1) -> (i32, f3
 // ====
 
 // Counted-loop policy and the original carried tuple survive promotion.
-func.def @counted(%initial: i32, %limit: index) -> (i32, index) {
+func.def @counted(%initial: i32) -> (i32, index) {
   %origin = index.constant 0 : offset
   %bytes = index.constant 4 : offset
   %storage = buffer.alloca<private> align(4) %bytes : buffer
   %slot = buffer.view %storage[%origin] : buffer -> view<1xi32>
   view.store %initial, %slot[0] : i32, view<1xi32>
+  %limit = index.constant 4 : index
   %begin = index.constant 0 : index
   %step = index.constant 1 : index
   %increment = scalar.constant 1 : i32
@@ -63,7 +64,8 @@ func.def @counted(%initial: i32, %limit: index) -> (i32, index) {
 }
 
 // ----
-func.def @counted(%initial: i32, %limit: index) -> (i32, index) {
+func.def @counted(%initial: i32) -> (i32, index) {
+  %limit = index.constant 4 : index
   %begin = index.constant 0 : index
   %step = index.constant 1 : index
   %increment = scalar.constant 1 : i32
