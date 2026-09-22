@@ -171,18 +171,10 @@ static iree_status_t loom_target_pipeline_build_canonicalize_body(
   return loom_target_pipeline_build_run(builder, IREE_SV("canonicalize"));
 }
 
-static iree_status_t loom_target_pipeline_build_source_canonicalize_body(
+static iree_status_t loom_target_pipeline_build_combine_body(
     loom_builder_t* builder, void* user_data) {
   (void)user_data;
-  loom_named_attr_t options[2] = {0};
-  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_string_attr(
-      builder, IREE_SV("view-loads"), IREE_SV("coalesce"), &options[0]));
-  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_string_attr(
-      builder, IREE_SV("table-lookups"), IREE_SV("combine"), &options[1]));
-  loom_op_t* run_op = NULL;
-  return loom_pass_ir_build_run(
-      builder, LOOM_PASS_RUN_BUILD_FLAG_HAS_OPTIONS, IREE_SV("canonicalize"),
-      loom_make_named_attr_slice(options, IREE_ARRAYSIZE(options)), &run_op);
+  return loom_target_pipeline_build_run(builder, IREE_SV("combine"));
 }
 
 static iree_status_t
@@ -191,8 +183,7 @@ loom_target_pipeline_build_cleanup_expanded_target_functions(
   (void)user_data;
   loom_op_t* for_op = NULL;
   return loom_target_pipeline_build_for_target_functions(
-      builder, loom_target_pipeline_build_source_canonicalize_body, NULL,
-      &for_op);
+      builder, loom_target_pipeline_build_combine_body, NULL, &for_op);
 }
 
 static iree_status_t loom_target_pipeline_build_source_to_low(
@@ -312,8 +303,7 @@ loom_target_pipeline_build_source_normalization_before_authoring_expansion(
       builder, IREE_SV("normalize-kernel-resources")));
   IREE_RETURN_IF_ERROR(loom_target_pipeline_build_run(
       builder, IREE_SV("promote-private-fragments")));
-  IREE_RETURN_IF_ERROR(
-      loom_target_pipeline_build_source_canonicalize_body(builder, NULL));
+  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_combine_body(builder, NULL));
   return loom_target_pipeline_build_run(builder, IREE_SV("cse"));
 }
 
@@ -439,8 +429,7 @@ static iree_status_t loom_target_pipeline_build_inlined_source_cleanup_body(
     IREE_RETURN_IF_ERROR(
         loom_target_pipeline_build_run(builder, IREE_SV("cfg-simplify")));
   }
-  IREE_RETURN_IF_ERROR(
-      loom_target_pipeline_build_source_canonicalize_body(builder, NULL));
+  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_combine_body(builder, NULL));
   return loom_target_pipeline_build_run(builder, IREE_SV("cse"));
 }
 

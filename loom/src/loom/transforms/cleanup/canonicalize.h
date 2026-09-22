@@ -14,20 +14,31 @@ extern "C" {
 #endif
 
 //===----------------------------------------------------------------------===//
-// Pass wrapper
+// Pass facades
 //===----------------------------------------------------------------------===//
 
 // Returns immutable metadata for the canonicalize pass.
 const loom_pass_info_t* loom_canonicalize_pass_info(void);
 
-// Creates canonicalize pass state from a textual option dictionary.
-iree_status_t loom_canonicalize_create(loom_pass_t* pass,
-                                       iree_string_view_t options);
+// Returns immutable metadata for the pre-legalization combine pass.
+const loom_pass_info_t* loom_combine_pass_info(void);
 
-// Resolves pass-scoped target facts and math policy, then runs the reusable
-// canonicalizer to a fixed point and records its changes and statistics.
+// Creates shared canonicalize/combine state from a textual option dictionary.
+iree_status_t loom_canonicalizer_pass_create(loom_pass_t* pass,
+                                             iree_string_view_t options);
+
+// Applies universal simplifications without recomposing representations chosen
+// by legalization. Safe for source, intermediate, and final cleanup. Resolves
+// pass-scoped facts and math policy and records changes and statistics.
 iree_status_t loom_canonicalize_run(loom_pass_t* pass, loom_module_t* module,
                                     loom_func_like_t function);
+
+// Applies source combines and universal simplifications in one fixed-point
+// session. Combines may introduce representations that require target
+// legalization; this pass belongs before that boundary. Shares the ordinary
+// canonicalizer's worklist, facts, scratch storage, and change accounting.
+iree_status_t loom_combine_run(loom_pass_t* pass, loom_module_t* module,
+                               loom_func_like_t function);
 
 #ifdef __cplusplus
 }

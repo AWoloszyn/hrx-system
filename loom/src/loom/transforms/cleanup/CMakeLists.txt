@@ -40,11 +40,14 @@ loom_cc_library(
     ::canonicalizer
     iree::base
     iree::base::internal::arena
+    loom::ops::vector
+    loom::ops::view
     loom::pass::pipeline
     loom::pass::registry
     loom::pass::types
     loom::target::math_policy
     loom::target::pass_environment
+    loom::transforms::view::load_coalescing
   PUBLIC
 )
 
@@ -69,13 +72,11 @@ loom_cc_library(
     loom::ops::special_values
     loom::ops::type_registry
     loom::ops::vector
-    loom::ops::view
     loom::pass::types
     loom::pass::value_facts
     loom::rewrite::greedy
     loom::rewrite::rewriter
     loom::rewrite::type_propagation
-    loom::transforms::view::load_coalescing
     loom::util::fact_table
   PUBLIC
 )

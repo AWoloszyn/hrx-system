@@ -1,0 +1,27 @@
+// RUN: pass combine,vector-to-scalar,canonicalize,canonicalize
+
+// Source combination exposes a table lookup. Scalar legalization followed by
+// ordinary cleanup must retain the scalar representation and reach a fixed point.
+func.def @table_accesses(%table: vector<16xf32>, %left: index, %right: index) -> (vector<2xf32>) {
+  %a = vector.extract %table[%left] : vector<16xf32> -> f32
+  %b = vector.extract %table[%right] : vector<16xf32> -> f32
+  %result = vector.from_elements %a, %b : vector<2xf32>
+  func.return %result : vector<2xf32>
+}
+
+// ----
+func.def @table_accesses(%table: vector<16xf32>, %left: index, %right: index) -> (vector<2xf32>) {
+  %9 = vector.extract %table[%left] : vector<16xf32> -> f32
+  %10 = vector.extract %table[%right] : vector<16xf32> -> f32
+  %result = vector.from_elements %9, %10 : vector<2xf32>
+  func.return %result : vector<2xf32>
+}
+
+// ====
+
+// The same phase boundary applies to coalesced memory accesses.
+func.def @adjacent_loads(%view: view<2xf16>) -> (f16, f16) {
+  %left = view.load %view[0] : view<2xf16> -> f16
+  %right = view.load %view[1] : view<2xf16> -> f16
+  func.return %left, %right : f16, f16
+}

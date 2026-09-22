@@ -1438,7 +1438,7 @@ and `u8u8` kinds must match the declared byte signedness. Input vectors have
 equal lane counts, with four input lanes per accumulator/result lane.
 
 Ordinary vector subscripting can reach the same register-table operation through
-shared canonicalization. For example, a four-byte code vector can select from a
+the shared `combine` pass. For example, a four-byte code vector can select from a
 16-byte codebook without an operation binding:
 
 ```cpp
@@ -1453,9 +1453,10 @@ Codes4 decode(Codebook16 table, Bytes4 packed) {
 }
 ```
 
-The importer CLI and source-lowering pipeline enable
-`canonicalize{table-lookups=combine}` before target legalization. After that
-cleanup, the body is a byte-vector mask and one
+The importer CLI and source-lowering pipeline run `combine` before target
+legalization. This pass includes ordinary canonicalization and source
+representation combines; later `canonicalize` cleanup preserves the legalized
+representation. After source cleanup, the body is a byte-vector mask and one
 `vector.table.lookup` using that byte vector. On supported AMDGPU targets this
 selects three byte permutes. The rewrite preserves C++ promotions when removing
 them would change the numeric indices, and also applies to directly authored

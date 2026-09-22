@@ -7,6 +7,7 @@
 #ifndef LOOM_TRANSFORMS_CLEANUP_CANONICALIZER_H_
 #define LOOM_TRANSFORMS_CLEANUP_CANONICALIZER_H_
 
+#include "loom/analysis/symbolic_expr.h"
 #include "loom/pass/types.h"
 #include "loom/rewrite/type_propagation.h"
 #include "loom/util/fact_table.h"
@@ -24,24 +25,23 @@ typedef struct loom_canonicalizer_state_t loom_canonicalizer_state_t;
 // Default maximum number of canonicalizer fixed-point iterations.
 #define LOOM_CANONICALIZER_DEFAULT_MAX_ITERATIONS 10
 
-// Optional canonicalization rewrites selected by the owning pipeline phase.
-enum loom_canonicalizer_flag_bits_e {
-  // Combine adjacent view loads into vector loads. Enabled only by cleanup
-  // before target legalization; ordinary cleanup preserves scalar loads.
-  LOOM_CANONICALIZER_FLAG_COALESCE_VIEW_LOADS = 1u << 0,
-  // Reconstruct register table lookups from scalar extracts before target
-  // legalization. Ordinary cleanup preserves the scalarized representation.
-  LOOM_CANONICALIZER_FLAG_COMBINE_TABLE_LOOKUPS = 1u << 1,
-};
-typedef uint32_t loom_canonicalizer_flags_t;
+// Applies a caller-selected pattern set after ordinary op canonicalization.
+// Both contexts are borrowed from the current rewrite session. Patterns mutate
+// through |rewriter|, report whether they changed the op, and retain no context
+// pointers. The driver revisits affected ops and invalidates symbolic state.
+typedef iree_status_t (*loom_canonicalizer_patterns_fn_t)(
+    loom_op_t* op, loom_rewriter_t* rewriter,
+    loom_symbolic_expr_context_t* expression_context, bool* out_changed);
 
 // Canonicalizer driver options. Zero-initialized options use defaults.
 typedef struct loom_canonicalizer_options_t {
   // Maximum number of fixed-point iterations. Zero selects the default.
   uint32_t max_iterations;
 
-  // Optional representation-changing rewrites allowed by the caller's phase.
-  loom_canonicalizer_flags_t flags;
+  // Optional phase-specific patterns sharing the ordinary fixed-point driver.
+  // NULL applies only universal canonicalization rules. The caller's pipeline
+  // owns the phase contract of any additional patterns.
+  loom_canonicalizer_patterns_fn_t additional_patterns;
 
   // Optional immutable target facts used by target-sensitive fact inference.
   const loom_target_facts_t* target_facts;

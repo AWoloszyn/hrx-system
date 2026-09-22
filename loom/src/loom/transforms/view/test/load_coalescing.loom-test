@@ -1,4 +1,4 @@
-// RUN: pass canonicalize{view-loads=coalesce}
+// RUN: pass combine
 
 func.def @adjacent_f16_view_loads_to_vector_load(%input: buffer, %base: index) -> (f16, f16) {
   %byte_base = index.constant 0 : offset

@@ -21,14 +21,11 @@
 #include "loom/ops/special_values.h"
 #include "loom/ops/type_registry.h"
 #include "loom/ops/vector/ops.h"
-#include "loom/ops/vector/table.h"
-#include "loom/ops/view/ops.h"
 #include "loom/pass/value_facts.h"
 #include "loom/rewrite/greedy.h"
 #include "loom/rewrite/rewriter.h"
 #include "loom/rewrite/type_propagation.h"
 #include "loom/transforms/cleanup/branch_facts.h"
-#include "loom/transforms/view/load_coalescing.h"
 
 static iree_status_t loom_canonicalize_replace_single_result_with_value(
     loom_rewriter_t* rewriter, loom_op_t* op, loom_value_id_t replacement) {
@@ -609,8 +606,8 @@ typedef struct loom_canonicalize_rewrite_state_t {
   // Borrowed whole-module owner permitting callable boundary type changes.
   loom_type_propagator_boundary_callback_t refine_boundary;
 
-  // Representation-changing rewrites enabled for this run.
-  loom_canonicalizer_flags_t flags;
+  // Optional phase-specific patterns sharing this rewrite session.
+  loom_canonicalizer_patterns_fn_t additional_patterns;
 
   // True after expression_context has been initialized.
   bool expression_context_initialized;
@@ -759,21 +756,6 @@ static iree_status_t loom_canonicalize_rewrite_op(
     return iree_ok_status();
   }
 
-  if (loom_view_load_isa(op) &&
-      iree_any_bit_set(state->flags,
-                       LOOM_CANONICALIZER_FLAG_COALESCE_VIEW_LOADS)) {
-    bool combined = false;
-    rewriter->flags = 0;
-    IREE_RETURN_IF_ERROR(loom_view_load_coalescing_rewrite(
-        rewriter, &state->expression_context, op, &combined));
-    if (combined) {
-      loom_greedy_rewrite_result_record_change(
-          result, rewriter, LOOM_GREEDY_REWRITE_CHANGE_FLAG_COUNT_MODIFIED_OP);
-      *out_changed = true;
-      return iree_ok_status();
-    }
-  }
-
   // Structural canonicalization patterns.
   if (vtable && vtable->canonicalize) {
     rewriter->flags = 0;
@@ -785,18 +767,13 @@ static iree_status_t loom_canonicalize_rewrite_op(
       return iree_ok_status();
     }
   }
-  if ((loom_vector_from_elements_isa(op) || loom_vector_table_lookup_isa(op)) &&
-      iree_any_bit_set(state->flags,
-                       LOOM_CANONICALIZER_FLAG_COMBINE_TABLE_LOOKUPS)) {
-    bool combined = false;
-    if (loom_vector_from_elements_isa(op)) {
-      IREE_RETURN_IF_ERROR(
-          loom_vector_from_elements_to_table_lookup(op, rewriter, &combined));
-    } else {
-      IREE_RETURN_IF_ERROR(
-          loom_vector_table_lookup_simplify_indices(op, rewriter, &combined));
-    }
-    if (combined) {
+  if (state->additional_patterns) {
+    bool changed = false;
+    loom_greedy_rewrite_result_record_rewriter_flags(result, rewriter);
+    rewriter->flags = 0;
+    IREE_RETURN_IF_ERROR(state->additional_patterns(
+        op, rewriter, &state->expression_context, &changed));
+    if (changed) {
       loom_greedy_rewrite_result_record_change(
           result, rewriter, LOOM_GREEDY_REWRITE_CHANGE_FLAG_COUNT_MODIFIED_OP);
       *out_changed = true;
@@ -831,7 +808,7 @@ static iree_status_t loom_canonicalizer_run_precomputed_region(
     memset(out_result, 0, sizeof(*out_result));
   }
   loom_canonicalize_rewrite_state_t state = {
-      .flags = options ? options->flags : 0,
+      .additional_patterns = options ? options->additional_patterns : NULL,
       .refine_boundary = options
                              ? options->refine_boundary
                              : (loom_type_propagator_boundary_callback_t){0},
