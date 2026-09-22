@@ -110,7 +110,7 @@ class ConditionedValueFactsTest : public ::testing::Test {
                                      &op));
   }
 
-  void Yield() {
+  void YieldBlock() {
     loom_op_t* op = nullptr;
     IREE_ASSERT_OK(loom_test_yield_build(&builder_, nullptr, 0,
                                          LOOM_LOCATION_UNKNOWN, &op));
@@ -169,7 +169,7 @@ TEST_F(ConditionedValueFactsTest,
   Branch(join);
   SetBlock(join);
   const auto joined_count = Count(input_);
-  Yield();
+  YieldBlock();
 
   loom_pass_value_fact_lifecycle_counts_t counts = {};
   owner_.lifecycle_counts = &counts;
@@ -222,7 +222,7 @@ TEST_F(ConditionedValueFactsTest, BackedgeKeepsItsGuardOnTheCurrentIteration) {
   SetBlock(exit);
   const auto exit_count = Count(mask);
   const auto original_count = Count(input_);
-  Yield();
+  YieldBlock();
 
   const auto* table = Acquire(LOOM_PASS_VALUE_FACT_SCOPE_CONDITIONED_FUNCTION);
   ExpectRange(table, live_count, 0, 31);
@@ -237,7 +237,7 @@ TEST_F(ConditionedValueFactsTest, ParallelOutcomesDoNotEstablishAGuard) {
   Guard(input_, Constant(0), join, join);
   SetBlock(join);
   const auto count = Count(input_);
-  Yield();
+  YieldBlock();
   ExpectRange(Acquire(LOOM_PASS_VALUE_FACT_SCOPE_CONDITIONED_FUNCTION), count,
               0, 32);
 }
