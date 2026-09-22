@@ -112,7 +112,8 @@ static inline bool iree_async_poll_has_error(iree_async_poll_events_t events) {
 //     callback.
 //   events: Bitmask of poll events that occurred. Check with
 //     iree_async_poll_has_error() to detect error conditions. For RDMA CQ
-//     channels, IREE_ASYNC_POLL_EVENT_IN indicates completions are available.
+//     channels, IREE_ASYNC_POLL_EVENT_IN indicates channel notifications are
+//     available; the corresponding work completion queue may already be empty.
 typedef void (*iree_async_event_source_callback_fn_t)(
     void* user_data, iree_async_event_source_t* source,
     iree_async_poll_events_t events);
@@ -1311,10 +1312,15 @@ static inline iree_status_t iree_async_proactor_register_slab(
 //   handle: The external handle to monitor. POSIX backends require an fd;
 //     IOCP requires a waitable Win32 HANDLE.
 //   callback: Function to invoke when the handle is signaled. The callback
-//     receives poll events and should drain the handle (e.g., ibv_poll_cq for
-//     RDMA CQ channels) and re-arm if needed (e.g., ibv_req_notify_cq).
-//     For an iree_async_event_t, use iree_async_event_consume() before checking
-//     the state announced by the event; it accounts for native auto-reset.
+//     receives poll events and should consume the native handle's
+//     notifications. For RDMA CQ channels, consume and acknowledge event
+//     records with ibv_get_cq_event/ibv_ack_cq_events. Re-arm CQ notification
+//     before polling work completions with ibv_req_notify_cq followed by
+//     ibv_poll_cq. Polling work completions alone does not drain channel
+//     notifications, and an extra notification with no remaining work
+//     completions is valid. For an iree_async_event_t, use
+//     iree_async_event_consume() before checking the state announced by the
+//     event; it accounts for native auto-reset.
 //   out_event_source: Receives the event source handle for later
 //     unregistration.
 //
