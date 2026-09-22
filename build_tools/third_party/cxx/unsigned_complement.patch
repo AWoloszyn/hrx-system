@@ -6,8 +6,8 @@ diff --git a/src/parser/cxx/ast_interpreter_expressions.cc b/src/parser/cxx/ast_
          if (sz <= 4) {
            if (unit()->typeTraits().is_unsigned(ast->expression->type)) {
 -            return toValue(~toUInt32(expressionResult.value()));
-+            return toValue(static_cast<std::uintmax_t>(
-+                ~toUInt32(expressionResult.value())));
++            const std::uint32_t value = ~toUInt32(expressionResult.value());
++            return toValue(value);
            }
 
            return ExpressionResult(
