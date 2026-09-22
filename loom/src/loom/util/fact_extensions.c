@@ -1284,8 +1284,14 @@ iree_status_t loom_value_fact_table_widen_for_type(
     // positive divisors, so it converges independently of interval widening.
     loom_value_facts_t joined;
     loom_value_facts_meet(&previous, &next, &joined);
+    int64_t range_lo = INT64_MIN;
+    int64_t range_hi = INT64_MAX;
+    if (loom_type_is_scalar(type)) {
+      loom_value_facts_scalar_type_domain(loom_type_element_type(type),
+                                          &range_lo, &range_hi);
+    }
     *out_facts =
-        loom_value_facts_make(INT64_MIN, INT64_MAX, joined.known_divisor);
+        loom_value_facts_make(range_lo, range_hi, joined.known_divisor);
   }
   if (loom_value_facts_is_lane_varying(previous) ||
       loom_value_facts_is_lane_varying(next)) {

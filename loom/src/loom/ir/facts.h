@@ -320,7 +320,8 @@ loom_value_facts_t loom_value_facts_make(int64_t lo, int64_t hi,
 bool loom_value_facts_scalar_type_domain(loom_scalar_type_t scalar_type,
                                          int64_t* out_lo, int64_t* out_hi);
 
-// Clamps facts to an integer domain range. If the current facts are
+// Clamps facts to an integer domain range, preserving independent predicates,
+// divisibility, distribution, and extension facts. If the current facts are
 // incompatible with the domain or describe a float, returns the domain as the
 // conservative fact set for the value.
 loom_value_facts_t loom_value_facts_clamp_domain(loom_value_facts_t facts,

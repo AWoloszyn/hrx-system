@@ -180,7 +180,8 @@ func.def @fptoui_preserves_high_destination_bit() -> (i8, i64) {
 // ====
 
 // Invalid exact conversions remain non-exact instead of manufacturing a
-// host-dependent integer fact.
+// host-dependent integer fact. Their results still inhabit the scalar type's
+// domain.
 func.def @fptosi_nan_is_unknown() -> (i64, i64) {
   %negative = scalar.constant -1.0 : f32
   %nan = scalar.sqrtf %negative : f32
@@ -191,7 +192,7 @@ func.def @fptosi_nan_is_unknown() -> (i64, i64) {
 }
 // ----
 func.def @fptosi_nan_is_unknown() -> (i64, i64) {
-  %lo = scalar.constant -9223372036854775808 : i64
-  %hi = scalar.constant 9223372036854775807 : i64
+  %lo = scalar.constant -128 : i64
+  %hi = scalar.constant 127 : i64
   func.return %lo, %hi : i64, i64
 }

@@ -1238,7 +1238,8 @@ func.def @dot4f8_uniform_dynamic_extract(%n: index) -> (f32) {
 // ====
 
 // Oversized explicit vectors deliberately degrade to unknown facts instead of
-// allocating unbounded per-lane analysis payloads.
+// allocating unbounded per-lane analysis payloads. Scalar results still retain
+// their type domain.
 func.def @oversized_from_elements_degrades_to_unknown() -> (i64) {
   %c0 = scalar.constant 0 : i32
   %c1 = scalar.constant 1 : i32
@@ -1249,7 +1250,7 @@ func.def @oversized_from_elements_degrades_to_unknown() -> (i64) {
 }
 // ----
 func.def @oversized_from_elements_degrades_to_unknown() -> (i64) {
-  %lo = scalar.constant -9223372036854775808 : i64
+  %lo = scalar.constant -2147483648 : i64
   func.return %lo : i64
 }
 
@@ -1643,8 +1644,8 @@ func.def @loop_widens_changing_small_static_lane_facts(%n: index) -> (i64, i64) 
 
 // ----
 func.def @loop_widens_changing_small_static_lane_facts(%n: index) -> (i64, i64) {
-  %lo = scalar.constant -9223372036854775808 : i64
-  %hi = scalar.constant 9223372036854775807 : i64
+  %lo = scalar.constant -2147483648 : i64
+  %hi = scalar.constant 2147483647 : i64
   func.return %lo, %hi : i64, i64
 }
 

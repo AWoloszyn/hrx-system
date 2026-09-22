@@ -464,6 +464,35 @@ TEST(FactsMake, InvalidRange) {
   EXPECT_TRUE(loom_value_facts_is_unknown(f));
 }
 
+TEST(FactsClampDomain, PreservesIndependentNonzeroPredicate) {
+  for (int64_t bound : {127, 1024}) {
+    loom_value_facts_t facts = loom_value_facts_make(-bound, bound, 4);
+    facts.flags |= LOOM_VALUE_FACT_NON_ZERO;
+    loom_value_facts_mark_lane_varying(&facts);
+    facts.extension_id = 7;
+
+    loom_value_facts_t clamped =
+        loom_value_facts_clamp_domain(facts, -128, 127);
+    EXPECT_EQ(clamped.range_lo, bound == 127 ? -127 : -128);
+    EXPECT_EQ(clamped.range_hi, 127);
+    EXPECT_EQ(clamped.known_divisor, 4);
+    EXPECT_TRUE(loom_value_facts_is_non_zero(clamped));
+    EXPECT_TRUE(loom_value_facts_is_lane_varying(clamped));
+    EXPECT_EQ(clamped.extension_id, 7u);
+  }
+}
+
+TEST(FactsClampDomain, RetainsTopologyOnlyForUnchangedDomain) {
+  loom_value_facts_t facts = loom_value_facts_make(0, 63, 1);
+  facts.flags |= LOOM_VALUE_FACT_TOPOLOGY_SUBGROUP_LANE;
+  EXPECT_NE(loom_value_facts_topology_domain(
+                loom_value_facts_clamp_domain(facts, -128, 127)),
+            nullptr);
+  EXPECT_EQ(loom_value_facts_topology_domain(
+                loom_value_facts_clamp_domain(facts, 0, 31)),
+            nullptr);
+}
+
 //===----------------------------------------------------------------------===//
 // Bit-width fit predicates
 //===----------------------------------------------------------------------===//

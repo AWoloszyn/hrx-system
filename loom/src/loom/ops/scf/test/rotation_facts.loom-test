@@ -149,7 +149,8 @@ func.def @independent_cycles(%count: index) -> (i64) {
 
 // RUN: with-checks pass canonicalize
 
-// An arithmetic update breaks the forwarding cycle and still requires widening.
+// An arithmetic update breaks the forwarding cycle and still requires widening
+// to the nonnegative offset domain.
 func.def @changing_offsets(%count: index) -> (i64) {
   %begin = index.constant 0 : index
   %step = index.constant 1 : index
@@ -170,7 +171,7 @@ func.def @changing_offsets(%count: index) -> (i64) {
 }
 
 // ----
-CHECK: %check0_lower = scalar.constant -9223372036854775808 : i64
+CHECK: %check0_lower = scalar.constant 0 : i64
 CHECK: %check0_upper = scalar.constant 9223372036854775807 : i64
 CHECK: %check0_divisor = scalar.constant 128 : i64
 CHECK: %result = scalar.constant 9223372036854775807 : i64

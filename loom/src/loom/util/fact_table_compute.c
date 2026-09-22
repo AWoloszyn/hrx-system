@@ -1007,8 +1007,11 @@ iree_status_t loom_value_fact_table_define_results(
     loom_value_facts_t facts =
         i < result_count ? result_facts[i] : loom_value_facts_unknown();
     if (loom_value_fact_table_has_extent_domain(module, result)) {
-      facts = loom_value_fact_table_clamp_extent_domain(module, result, facts);
+      facts = loom_value_facts_non_negative_extent(facts);
     }
+    // Inference may be less precise than the verified scalar result type.
+    facts =
+        loom_value_fact_table_clamp_scalar_type_domain(module, result, facts);
     loom_type_t type = loom_module_value_type(module, result);
     if (out_changed &&
         (!loom_value_fact_table_has_entry(table, result) ||

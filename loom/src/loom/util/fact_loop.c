@@ -213,10 +213,18 @@ static iree_status_t loom_value_fact_table_initialize_loop_state(
 // Lack of change in one slot is not convergence: a long carried queue can
 // delay another slot's change past the solve budget. Unknown state bounds all
 // iterations and lets the final body evaluation publish sound derived facts.
-static void loom_value_fact_loop_forget_state(uint16_t count,
+static void loom_value_fact_loop_forget_state(const loom_type_t* types,
+                                              uint16_t count,
                                               loom_value_facts_t* facts) {
   for (uint16_t i = 0; i < count; ++i) {
     facts[i] = loom_value_facts_unknown();
+    int64_t range_lo = 0;
+    int64_t range_hi = 0;
+    if (loom_type_is_scalar(types[i]) &&
+        loom_value_facts_scalar_type_domain(loom_type_element_type(types[i]),
+                                            &range_lo, &range_hi)) {
+      facts[i] = loom_value_facts_make(range_lo, range_hi, 1);
+    }
   }
 }
 
@@ -459,7 +467,7 @@ static iree_status_t loom_value_fact_table_compute_counted_loop_summary(
     }
   }
   if (!converged) {
-    loom_value_fact_loop_forget_state(count, current_facts);
+    loom_value_fact_loop_forget_state(types, count, current_facts);
     IREE_RETURN_IF_ERROR(loom_value_fact_table_define_loop_entry_args(
         table, module, body, carried_arg_offset, current_facts, count));
     IREE_RETURN_IF_ERROR(loom_value_fact_table_compute_region_tree(
@@ -638,7 +646,7 @@ static iree_status_t loom_value_fact_table_compute_condition_loop_summary(
     }
   }
   if (!converged) {
-    loom_value_fact_loop_forget_state(count, current_facts);
+    loom_value_fact_loop_forget_state(types, count, current_facts);
     if (forwarding.counter.index != UINT16_MAX) {
       current_facts[forwarding.counter.index] = recurrence.values;
     }
