@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-// Table-driven NPU2 configuration-register field selection and encoding.
+// Table-driven NPU2 register-field selection and encoding.
 
 #ifndef LOOM_TARGET_ARCH_AMD_XDNA_ARRAY_REGISTERS_H_
 #define LOOM_TARGET_ARCH_AMD_XDNA_ARRAY_REGISTERS_H_
@@ -28,17 +28,20 @@ enum {
 #undef LOOM_XDNA_REGISTER_FIELD
 };
 
-// Software-visible access contract of a configuration register.
+// Software-visible access contract of one register field. Fields in the same
+// register may differ, such as a write-only reset strobe beside an event
+// selector.
 typedef enum loom_xdna_register_access_e {
   LOOM_XDNA_REGISTER_ACCESS_READ_WRITE = 1,
   LOOM_XDNA_REGISTER_ACCESS_WRITE_ONLY = 2,
+  LOOM_XDNA_REGISTER_ACCESS_READ_ONLY = 3,
 } loom_xdna_register_access_t;
 
 // Public semantic facts for one register field.
 typedef struct loom_xdna_register_field_info_t {
   // Stable target-relative field key.
   iree_string_view_t key;
-  // Configuration-register module containing the field.
+  // Register module containing the field.
   loom_xdna_register_module_t module;
   // Software-visible register access contract.
   loom_xdna_register_access_t access;
@@ -81,6 +84,8 @@ iree_status_t loom_xdna_register_field_dimension(
 //
 // Signed fields accept exactly their two's-complement domain. Unsigned fields
 // reject negative values and values wider than the declared field.
+// This packs bits without performing IO or enforcing read/write access. Encoded
+// values can also describe comparisons against read-only status fields.
 iree_status_t loom_xdna_register_field_encode(
     loom_xdna_register_field_id_t field_id, int64_t value,
     uint32_t* out_register_bits);

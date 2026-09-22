@@ -22,7 +22,7 @@ def test_hardware_table_family_is_emitted_from_one_materialized_source() -> None
 
     assert "kLoomXdnaNpu2ArrayFamily" in array_contents
     assert "kLoomXdnaRegisterPatterns" in register_contents
-    assert "kLoomXdnaRegisterFieldCount = 173" in register_contents
+    assert "kLoomXdnaRegisterFieldCount = 410" in register_contents
     assert "loom_xdna_device_profiles" in profile_contents
     assert "0x535848414c4f0001" in profile_contents
     assert "kLoomAie2pTargetProfiles" in aie2p_profile_contents

@@ -7,30 +7,43 @@
 #include "loom/target/arch/amd/xdna/array/registers.h"
 
 typedef struct loom_xdna_register_dimension_t {
+  // Dimension name in the shared string table.
   uint16_t name_offset;
+  // Exclusive upper bound of the dimension index.
   uint16_t count;
+  // Byte stride between consecutive indices.
   uint32_t stride;
 } loom_xdna_register_dimension_t;
 
 typedef struct loom_xdna_register_pattern_t {
+  // Tile-relative address of the first register in the pattern.
   uint32_t base_offset;
+  // Independent sources supporting this register pattern.
   loom_xdna_provenance_bits_t provenance_bits;
+  // Address dimensions in declaration order.
   loom_xdna_register_dimension_t dimensions[2];
+  // Register module owning this pattern.
   uint8_t module;
-  uint8_t access;
+  // Number of populated address dimensions.
   uint8_t dimension_count;
 } loom_xdna_register_pattern_t;
 
 typedef enum loom_xdna_register_field_flag_bits_e {
-  LOOM_XDNA_REGISTER_FIELD_FLAG_SIGNED = 1u << 0,
+  LOOM_XDNA_REGISTER_FIELD_ACCESS_MASK = 0x3u,
+  LOOM_XDNA_REGISTER_FIELD_FLAG_SIGNED = 1u << 7,
 } loom_xdna_register_field_flag_bits_t;
 
 typedef struct loom_xdna_register_field_t {
+  // Stable field key in the shared string table.
   uint16_t name_offset;
+  // Index of the owning register pattern.
   uint8_t pattern_id;
+  // Least-significant field bit in the 32-bit register.
   uint8_t least_significant_bit;
+  // Encoded field width.
   uint8_t bit_width;
-  uint8_t flags;
+  // Access enum in the low two bits and signedness in the high bit.
+  uint8_t access_and_flags;
 } loom_xdna_register_field_t;
 
 #include "loom/target/arch/amd/xdna/array/register_tables.inl"
@@ -66,10 +79,13 @@ iree_status_t loom_xdna_register_field_info(
       .key =
           iree_make_cstring_view(kLoomXdnaRegisterStrings + field->name_offset),
       .module = (loom_xdna_register_module_t)pattern->module,
-      .access = (loom_xdna_register_access_t)pattern->access,
+      .access =
+          (loom_xdna_register_access_t)(field->access_and_flags &
+                                        LOOM_XDNA_REGISTER_FIELD_ACCESS_MASK),
       .least_significant_bit = field->least_significant_bit,
       .bit_width = field->bit_width,
-      .is_signed = (field->flags & LOOM_XDNA_REGISTER_FIELD_FLAG_SIGNED) != 0,
+      .is_signed =
+          (field->access_and_flags & LOOM_XDNA_REGISTER_FIELD_FLAG_SIGNED) != 0,
       .dimension_count = pattern->dimension_count,
       .provenance_bits = pattern->provenance_bits,
   };
@@ -114,7 +130,7 @@ iree_status_t loom_xdna_register_field_encode(
       loom_xdna_register_field_resolve(field_id, &field, &pattern));
   (void)pattern;
   const bool is_signed =
-      (field->flags & LOOM_XDNA_REGISTER_FIELD_FLAG_SIGNED) != 0;
+      (field->access_and_flags & LOOM_XDNA_REGISTER_FIELD_FLAG_SIGNED) != 0;
   int64_t minimum = 0;
   int64_t maximum = 0;
   if (is_signed) {

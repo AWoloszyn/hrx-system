@@ -12,6 +12,7 @@ import pytest
 
 from loom.target.arch.amd.xdna.array.model import (
     Provenance,
+    RegisterAccess,
     RegisterModule,
     StreamDirection,
     StreamPort,
@@ -161,8 +162,8 @@ def test_validator_rejects_loopback_pairs_outside_dma_channels(
 def test_register_patterns_cover_complete_seed_resource_families() -> None:
     family = NPU2_ARRAY_FAMILY
 
-    assert len(family.registers) == 49
-    assert register_field_count(family) == 173
+    assert len(family.registers) == 163
+    assert register_field_count(family) == 410
     assert all(
         pattern.provenance & (Provenance.AIE_RT | Provenance.REGISTER_DATABASE)
         == (Provenance.AIE_RT | Provenance.REGISTER_DATABASE)
@@ -180,6 +181,50 @@ def test_register_patterns_cover_complete_seed_resource_families() -> None:
         (dimension.name, dimension.count, dimension.stride)
         for dimension in patterns["memory_tile.stream.slave_slot"].dimensions
     ) == (("slave_port", 18, 0x10), ("slot", 4, 4))
+
+
+@pytest.mark.parametrize(
+    ("key", "event_mask", "switch_count"),
+    [
+        ("core", 0x7F, 1),
+        ("compute_memory", 0x7F, 1),
+        ("memory_tile", 0xFF, 2),
+        ("shim_pl", 0x7F, 2),
+    ],
+)
+def test_trace_and_timer_modules_preserve_hardware_differences(
+    key: str,
+    event_mask: int,
+    switch_count: int,
+) -> None:
+    # XAIE2PGBL_*_MODULE definitions and AM025 agree on the event domains,
+    # mixed timer access, and one versus two broadcast switches.
+    patterns = {pattern.key: pattern for pattern in NPU2_ARRAY_FAMILY.registers}
+    control = patterns[f"{key}.trace_control0"]
+    expected_masks = {"stop_event": event_mask << 24, "start_event": event_mask << 16}
+    if key == "core":
+        expected_masks["mode"] = 0x3
+    assert {field.name: field.mask for field in control.fields} == expected_masks
+    assert {
+        field.name: (field.mask, field.access)
+        for field in patterns[f"{key}.timer_control"].fields
+    } == {
+        "reset": (0x80000000, RegisterAccess.WRITE_ONLY),
+        "reset_event": (event_mask << 8, RegisterAccess.READ_WRITE),
+    }
+    assert {
+        field.name: (field.mask, field.access)
+        for field in patterns[f"{key}.trace_status"].fields
+    } == {
+        "state": (0x300, RegisterAccess.READ_ONLY),
+        "mode": (0x7, RegisterAccess.READ_ONLY),
+    }
+    for direction in ("south", "west", "north", "east"):
+        pattern = patterns[f"{key}.event_broadcast.{direction}.value"]
+        assert [
+            (dimension.count, dimension.stride) for dimension in pattern.dimensions
+        ] == [(switch_count, 0x40)]
+        assert pattern.fields[0].access is RegisterAccess.READ_ONLY
 
 
 def test_npu2_source_revisions_are_explicit_oracle_identities() -> None:
