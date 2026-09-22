@@ -377,9 +377,14 @@ static iree_status_t loom_verify_region(
         !loom_verify_at_error_limit(state)) {
       const bool is_cfg =
           iree_any_bit_set(region->flags, LOOM_REGION_INSTANCE_FLAG_CFG);
-      if (!terminator_op && !is_cfg) {
+      // A branch marks its containing region as CFG, but cannot relax the
+      // declared terminator of a single-block structured region.
+      const bool requires_declared_terminator =
+          !is_cfg || iree_any_bit_set(contract->descriptor->flags,
+                                      LOOM_REGION_SINGLE_BLOCK);
+      if (!terminator_op && requires_declared_terminator) {
         status = loom_verify_emit_missing_terminator(state, contract);
-      } else if (terminator_op && !is_cfg &&
+      } else if (terminator_op && requires_declared_terminator &&
                  contract->descriptor->terminator != LOOM_OP_KIND_UNKNOWN &&
                  terminator_op->kind != contract->descriptor->terminator) {
         status =

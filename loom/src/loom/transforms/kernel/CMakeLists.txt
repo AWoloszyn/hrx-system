@@ -260,21 +260,31 @@ loom_cc_library(
   NAME
     promote_private_fragments
   HDRS
+    "private_storage.h"
     "promote_private_fragments.h"
   SRCS
+    "private_storage.c"
     "promote_private_fragments.c"
   DEPS
     iree::base
+    iree::base::internal::arena
+    loom::analysis::scc
+    loom::analysis::symbolic_expr
+    loom::analysis::view_regions
     loom::ir
     loom::ops::buffer
+    loom::ops::cfg
     loom::ops::index
     loom::ops::op_defs
     loom::ops::scf
     loom::ops::vector
     loom::ops::view
     loom::pass::types
+    loom::pass::value_facts
     loom::rewrite::rewriter
+    loom::util::cfg_graph
     loom::util::dominance
+    loom::util::fact_table
     loom::util::walk
   PUBLIC
 )

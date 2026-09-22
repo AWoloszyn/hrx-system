@@ -435,3 +435,15 @@ func.def @switch_wrong_case_terminator(%variant: index, %a: index) -> (index) {
   }
   func.return %r : index
 }
+
+// ====
+
+// A CFG edge cannot replace the terminator of a structured single-block region.
+func.def @if_cfg_terminator(%condition: i1) {
+  // ERROR@+1: STRUCTURE/018 "scf.if" "0" "scf.yield" "cfg.br"
+  scf.if %condition {
+  ^cycle:
+    cfg.br ^cycle
+  }
+  func.return
+}

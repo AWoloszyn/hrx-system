@@ -1,0 +1,387 @@
+// RUN: pass promote-private-fragments,dce
+
+// Same-field aliases share state, while disjoint typed fields stay independent.
+func.def @mixed_aliases(%initial: i32, %position: f32, %enabled: i1) -> (i32, f32) {
+  %origin = index.constant 0 : offset
+  %field = index.constant 4 : offset
+  %bytes = index.constant 8 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %count = buffer.view %storage[%origin] : buffer -> view<1xi32>
+  %alias = buffer.view %storage[%origin] : buffer -> view<2xi32>
+  %coordinate = buffer.view %storage[%field] : buffer -> view<1xf32>
+  view.store %initial, %count[0] : i32, view<1xi32>
+  view.store %position, %coordinate[0] : f32, view<1xf32>
+  %increment = scalar.constant 1 : i32
+  %displacement = scalar.constant 0.5 : f32
+  scf.if %enabled {
+    %old = view.load %alias[0] : view<2xi32> -> i32
+    %next = scalar.addi %old, %increment : i32
+    view.store %next, %count[0] : i32, view<1xi32>
+    %old_coordinate = view.load %coordinate[0] : view<1xf32> -> f32
+    %advanced = scalar.addf %old_coordinate, %displacement : f32
+    view.store %advanced, %coordinate[0] : f32, view<1xf32>
+  }
+  %result = view.load %alias[0] : view<2xi32> -> i32
+  %result_coordinate = view.load %coordinate[0] : view<1xf32> -> f32
+  func.return %result, %result_coordinate : i32, f32
+}
+
+// ----
+func.def @mixed_aliases(%initial: i32, %position: f32, %enabled: i1) -> (i32, f32) {
+  %increment = scalar.constant 1 : i32
+  %displacement = scalar.constant 0.5 : f32
+  %20, %21 = scf.if %enabled -> (i32, f32) {
+    %next = scalar.addi %initial, %increment : i32
+    %advanced = scalar.addf %position, %displacement : f32
+    scf.yield %next, %advanced : i32, f32
+  } else {
+    scf.yield %initial, %position : i32, f32
+  }
+  func.return %20, %21 : i32, f32
+}
+
+// ====
+
+// Counted-loop policy and the original carried tuple survive promotion.
+func.def @counted(%initial: i32) -> (i32, index) {
+  %origin = index.constant 0 : offset
+  %bytes = index.constant 4 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %slot = buffer.view %storage[%origin] : buffer -> view<1xi32>
+  view.store %initial, %slot[0] : i32, view<1xi32>
+  %limit = index.constant 4 : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %increment = scalar.constant 1 : i32
+  %last = scf.for %i = [%begin to %limit step %step](%old = %begin : index) -> (index) unroll {
+    %value = view.load %slot[0] : view<1xi32> -> i32
+    %next = scalar.addi %value, %increment : i32
+    view.store %next, %slot[0] : i32, view<1xi32>
+    scf.yield %i : index
+  }
+  %result = view.load %slot[0] : view<1xi32> -> i32
+  func.return %result, %last : i32, index
+}
+
+// ----
+func.def @counted(%initial: i32) -> (i32, index) {
+  %limit = index.constant 4 : index
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %increment = scalar.constant 1 : i32
+  %last, %18 = scf.for %i = [%begin to %limit step %step](%old = %begin : index, %17 = %initial : i32) -> (index, i32) unroll {
+    %next = scalar.addi %17, %increment : i32
+    scf.yield %i, %next : index, i32
+  }
+  func.return %18, %last : i32, index
+}
+
+// ====
+
+// The condition region mutates state even on the final false iteration.
+func.def @conditional_loop(%initial: i32, %limit: i32) -> (i32) {
+  %origin = index.constant 0 : offset
+  %bytes = index.constant 4 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %slot = buffer.view %storage[%origin] : buffer -> view<1xi32>
+  view.store %initial, %slot[0] : i32, view<1xi32>
+  %increment = scalar.constant 1 : i32
+  scf.while {
+    %value = view.load %slot[0] : view<1xi32> -> i32
+    %next = scalar.addi %value, %increment : i32
+    view.store %next, %slot[0] : i32, view<1xi32>
+    %condition = scalar.cmpi slt, %next, %limit : i32
+    scf.condition %condition : i1
+  } do {
+    %body = view.load %slot[0] : view<1xi32> -> i32
+    %advanced = scalar.addi %body, %increment : i32
+    view.store %advanced, %slot[0] : i32, view<1xi32>
+    scf.yield
+  }
+  %result = view.load %slot[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+func.def @conditional_loop(%initial: i32, %limit: i32) -> (i32) {
+  %increment = scalar.constant 1 : i32
+  %16 = scf.while(%14 = %initial : i32) -> (i32) {
+    %next = scalar.addi %14, %increment : i32
+    %condition = scalar.cmpi slt, %next, %limit : i32
+    scf.condition %condition, %next : i1, i32
+  } do(%15: i32) {
+    %advanced = scalar.addi %15, %increment : i32
+    scf.yield %advanced : i32
+  }
+  func.return %16 : i32
+}
+
+// ====
+
+// The recurrence crosses a CFG backedge and conditional edges need payloads.
+func.def @cfg_loop(%initial: i32, %limit: i32) -> (i32) {
+  %origin = index.constant 0 : offset
+  %bytes = index.constant 4 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %slot = buffer.view %storage[%origin] : buffer -> view<1xi32>
+  view.store %initial, %slot[0] : i32, view<1xi32>
+  %increment = scalar.constant 1 : i32
+  cfg.br ^condition
+^condition:
+  %value = view.load %slot[0] : view<1xi32> -> i32
+  %condition = scalar.cmpi slt, %value, %limit : i32
+  cfg.cond_br %condition, ^body, ^exit
+^exit:
+  %result = view.load %slot[0] : view<1xi32> -> i32
+  func.return %result : i32
+^body:
+  %body_value = view.load %slot[0] : view<1xi32> -> i32
+  %advanced = scalar.addi %body_value, %increment : i32
+  view.store %advanced, %slot[0] : i32, view<1xi32>
+  cfg.br ^condition
+}
+
+// ----
+func.def @cfg_loop(%initial: i32, %limit: i32) -> (i32) {
+  %increment = scalar.constant 1 : i32
+  cfg.br ^condition(%initial: i32)
+^condition(%13: i32):
+  %condition = scalar.cmpi slt, %13, %limit : i32
+  cfg.cond_br %condition, ^_bb5, ^_bb4
+^_bb4:
+  cfg.br ^exit(%13: i32)
+^exit(%14: i32):
+  func.return %14 : i32
+^_bb5:
+  cfg.br ^body(%13: i32)
+^body(%15: i32):
+  %advanced = scalar.addi %15, %increment : i32
+  cfg.br ^condition(%advanced: i32)
+}
+
+// ====
+
+// A complete branch initialization needs no value before the decision.
+func.def @branch_initialization(%first: i32, %second: i32, %condition: i1) -> (i32) {
+  %origin = index.constant 0 : offset
+  %bytes = index.constant 4 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %slot = buffer.view %storage[%origin] : buffer -> view<1xi32>
+  scf.if %condition {
+    view.store %first, %slot[0] : i32, view<1xi32>
+  } else {
+    view.store %second, %slot[0] : i32, view<1xi32>
+  }
+  %result = view.load %slot[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+func.def @branch_initialization(%first: i32, %second: i32, %condition: i1) -> (i32) {
+  %9 = scf.if %condition -> (i32) {
+    scf.yield %first : i32
+  } else {
+    scf.yield %second : i32
+  }
+  func.return %9 : i32
+}
+
+// ====
+
+// An absent initialization path must not acquire a fabricated SSA value.
+func.def @keeps_partial_initialization(%initial: i32, %condition: i1) -> (i32) {
+  %origin = index.constant 0 : offset
+  %bytes = index.constant 4 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %slot = buffer.view %storage[%origin] : buffer -> view<1xi32>
+  scf.if %condition {
+    view.store %initial, %slot[0] : i32, view<1xi32>
+  }
+  %result = view.load %slot[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ====
+
+// Atomic observation of one field preserves the whole allocation's storage.
+func.def @keeps_atomic_observer(%initial: i32, %position: f32) -> (i32, f32) {
+  %origin = index.constant 0 : offset
+  %field = index.constant 4 : offset
+  %bytes = index.constant 8 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %count = buffer.view %storage[%origin] : buffer -> view<1xi32>
+  %coordinate = buffer.view %storage[%field] : buffer -> view<1xf32>
+  view.store %initial, %count[0] : i32, view<1xi32>
+  view.store %position, %coordinate[0] : f32, view<1xf32>
+  %observed = view.atomic.load %count[0] {ordering = relaxed, scope = thread} : view<1xi32> -> i32
+  %result = view.load %coordinate[0] : view<1xf32> -> f32
+  func.return %observed, %result : i32, f32
+}
+
+// ====
+
+// Escaping an allocation retains all stores, including the disjoint field.
+func.def @keeps_escaping_allocation(%initial: i32, %position: f32) -> (buffer) {
+  %origin = index.constant 0 : offset
+  %field = index.constant 4 : offset
+  %bytes = index.constant 8 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %count = buffer.view %storage[%origin] : buffer -> view<1xi32>
+  %coordinate = buffer.view %storage[%field] : buffer -> view<1xf32>
+  view.store %initial, %count[0] : i32, view<1xi32>
+  view.store %position, %coordinate[0] : f32, view<1xf32>
+  func.return %storage : buffer
+}
+
+// ====
+
+// A block-local allocation is recreated on each loop iteration. It must not
+// inherit a carried value or force a nonexistent pre-loop initialization.
+func.def @iteration_lifetime(%initial: i32, %limit: index, %enabled: i1) -> (i32) {
+  %origin = index.constant 0 : offset
+  %bytes = index.constant 4 : offset
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %increment = scalar.constant 1 : i32
+  %result = scf.for %i = [%begin to %limit step %step](%previous = %initial : i32) -> (i32) {
+    %storage = buffer.alloca<private> align(4) %bytes : buffer
+    %slot = buffer.view %storage[%origin] : buffer -> view<1xi32>
+    view.store %previous, %slot[0] : i32, view<1xi32>
+    scf.if %enabled {
+      %loaded = view.load %slot[0] : view<1xi32> -> i32
+      %advanced = scalar.addi %loaded, %increment : i32
+      view.store %advanced, %slot[0] : i32, view<1xi32>
+    }
+    %next = view.load %slot[0] : view<1xi32> -> i32
+    scf.yield %next : i32
+  }
+  func.return %result : i32
+}
+
+// ----
+func.def @iteration_lifetime(%initial: i32, %limit: index, %enabled: i1) -> (i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %increment = scalar.constant 1 : i32
+  %result = scf.for %i = [%begin to %limit step %step](%previous = %initial : i32) -> (i32) {
+    %17 = scf.if %enabled -> (i32) {
+      %advanced = scalar.addi %previous, %increment : i32
+      scf.yield %advanced : i32
+    } else {
+      scf.yield %previous : i32
+    }
+    scf.yield %17 : i32
+  }
+  func.return %result : i32
+}
+
+// ====
+
+// Appending storage state must remap dependent types in the original tuple.
+func.def @dependent_tuple(%input: buffer, %rows: index, %limit: index, %initial: i32) -> (i32) {
+  %origin = index.constant 0 : offset
+  %bytes = index.constant 4 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %slot = buffer.view %storage[%origin] : buffer -> view<1xi32>
+  view.store %initial, %slot[0] : i32, view<1xi32>
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %layout = encoding.layout.dense : encoding<layout>
+  %initial_view = buffer.view %input[%origin] : buffer -> view<[%rows]x4xi32, %layout>
+  %remaining, %view = scf.for %i = [%begin to %limit step %step](%body_rows = %rows : index, %body_view = %initial_view : view<[%rows]x4xi32, %layout>) -> (index, view<[%remaining]x4xi32, %layout>) {
+    %next_rows = index.sub %body_rows, %step : index
+    %next_view = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+    %loaded = view.load %slot[0] : view<1xi32> -> i32
+    %element = view.load %body_view[0, 0] : view<[%body_rows]x4xi32, %layout> -> i32
+    %next = scalar.addi %loaded, %element : i32
+    view.store %next, %slot[0] : i32, view<1xi32>
+    scf.yield %next_rows, %next_view : index, view<[%next_rows]x4xi32, %layout>
+  }
+  test.use %view : view<[%remaining]x4xi32, %layout>
+  %result = view.load %slot[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+func.def @dependent_tuple(%input: buffer, %rows: index, %limit: index, %initial: i32) -> (i32) {
+  %origin = index.constant 0 : offset
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %layout = encoding.layout.dense : encoding<layout>
+  %initial_view = buffer.view %input[%origin] : buffer -> view<[%rows]x4xi32, %layout>
+  %remaining, %view, %25 = scf.for %i = [%begin to %limit step %step](%body_rows = %rows : index, %body_view = %initial_view : view<[%rows]x4xi32, %layout>, %24 = %initial : i32) -> (index, view<[%remaining]x4xi32, %layout>, i32) {
+    %next_rows = index.sub %body_rows, %step : index
+    %next_view = view.subview %body_view[1, 0] : view<[%body_rows]x4xi32, %layout> -> view<[%next_rows]x4xi32, %layout>
+    %element = view.load %body_view[0, 0] : view<[%body_rows]x4xi32, %layout> -> i32
+    %next = scalar.addi %24, %element : i32
+    scf.yield %next_rows, %next_view, %next : index, view<[%next_rows]x4xi32, %layout>, i32
+  }
+  test.use %view : view<[%remaining]x4xi32, %layout>
+  func.return %25 : i32
+}
+
+// ====
+
+// Switch alternatives retain their selector keys and the default fallthrough.
+func.def @switch_store(%initial: i32, %selector: index) -> (i32) {
+  %origin = index.constant 0 : offset
+  %bytes = index.constant 4 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %slot = buffer.view %storage[%origin] : buffer -> view<1xi32>
+  view.store %initial, %slot[0] : i32, view<1xi32>
+  scf.switch %selector {
+    case 3 {
+      %increment = scalar.constant 1 : i32
+      view.store %increment, %slot[0] : i32, view<1xi32>
+    }
+    case 7 {
+      %alternate = scalar.constant 2 : i32
+      view.store %alternate, %slot[0] : i32, view<1xi32>
+    }
+    default {
+    }
+  }
+  %result = view.load %slot[0] : view<1xi32> -> i32
+  func.return %result : i32
+}
+
+// ----
+func.def @switch_store(%initial: i32, %selector: index) -> (i32) {
+  %10 = scf.switch %selector -> (i32) {
+    case 3 {
+      %increment = scalar.constant 1 : i32
+      scf.yield %increment : i32
+    }
+    case 7 {
+      %alternate = scalar.constant 2 : i32
+      scf.yield %alternate : i32
+    }
+    default {
+      scf.yield %initial : i32
+    }
+  }
+  func.return %10 : i32
+}
+
+// ====
+
+// Blocks without CFG edges have independent incoming storage state.
+func.def @unconnected_blocks(%initial: i32) -> (i32) {
+  %origin = index.constant 0 : offset
+  %bytes = index.constant 4 : offset
+  %storage = buffer.alloca<private> align(4) %bytes : buffer
+  %slot = buffer.view %storage[%origin] : buffer -> view<1xi32>
+  %alias = buffer.view %storage[%origin] : buffer -> view<1xi32>
+  view.store %initial, %slot[0] : i32, view<1xi32>
+  %result = view.load %alias[0] : view<1xi32> -> i32
+  func.return %result : i32
+^unconnected:
+  func.return %initial : i32
+}
+
+// ----
+func.def @unconnected_blocks(%initial: i32) -> (i32) {
+  func.return %initial : i32
+^unconnected:
+  func.return %initial : i32
+}
