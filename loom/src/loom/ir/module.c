@@ -2313,9 +2313,9 @@ static bool loom_module_attr_dict_key_less(const loom_module_t* module,
              loom_string_table_get(&module->strings, rhs->name_id)) < 0;
 }
 
-LOOM_DEFINE_ADAPTIVE_SORT_WITH_CONTEXT(loom_module_sort_attr_dict_entries_impl,
-                                       loom_named_attr_t, const loom_module_t*,
-                                       loom_module_attr_dict_key_less)
+LOOM_DEFINE_ADAPTIVE_SORT_WITH_CONTEXT_OUTLINED_HEAP(
+    loom_module_sort_attr_dict_entries_impl, loom_named_attr_t,
+    const loom_module_t*, loom_module_attr_dict_key_less)
 
 void loom_module_sort_attr_dict_entries(const loom_module_t* module,
                                         loom_named_attr_t* entries,
@@ -2946,10 +2946,9 @@ static bool loom_module_attr_dict_update_less(
          0;
 }
 
-LOOM_DEFINE_ADAPTIVE_SORT_WITH_CONTEXT(loom_module_sort_attr_dict_updates,
-                                       loom_attr_dict_update_step_t,
-                                       const loom_attr_dict_update_order_t*,
-                                       loom_module_attr_dict_update_less)
+LOOM_DEFINE_ADAPTIVE_SORT_WITH_CONTEXT_OUTLINED_HEAP(
+    loom_module_sort_attr_dict_updates, loom_attr_dict_update_step_t,
+    const loom_attr_dict_update_order_t*, loom_module_attr_dict_update_less)
 
 static iree_status_t loom_module_merge_attr_dict_updates(
     loom_module_t* module, loom_named_attr_slice_t base_entries,

@@ -12,8 +12,6 @@
 // qsort callback dispatch or temporary arena scratch. Large arrays attempt at
 // most one insertion movement per element before switching to heap sort, so
 // adversarial order adds only linear work to the O(n log n) fallback.
-// The heap fallback stays out of line so the common ordered/insertion path
-// remains small enough to inline at its callers.
 
 #ifndef LOOM_UTIL_ADAPTIVE_SORT_H_
 #define LOOM_UTIL_ADAPTIVE_SORT_H_
@@ -40,6 +38,13 @@
 // allocating a flat projection. Access and comparison are statically bound.
 #define LOOM_DEFINE_ADAPTIVE_SORT_WITH_ACCESSOR(                             \
     function_name, element_type, storage_type, at_fn, context_type, less_fn) \
+  LOOM_DEFINE_ADAPTIVE_SORT_WITH_ACCESSOR_IMPL(function_name, element_type,  \
+                                               storage_type, at_fn,          \
+                                               context_type, less_fn, )
+
+#define LOOM_DEFINE_ADAPTIVE_SORT_WITH_ACCESSOR_IMPL(                        \
+    function_name, element_type, storage_type, at_fn, context_type, less_fn, \
+    heap_attributes)                                                         \
   static void function_name##_swap(element_type* lhs, element_type* rhs) {   \
     element_type temporary = *lhs;                                           \
     *lhs = *rhs;                                                             \
@@ -95,7 +100,7 @@
     }                                                                        \
   }                                                                          \
                                                                              \
-  static IREE_ATTRIBUTE_NOINLINE void function_name##_heap_sort(             \
+  static heap_attributes void function_name##_heap_sort(                     \
       context_type context, storage_type values, iree_host_size_t count) {   \
     iree_host_size_t root = count / 2u;                                      \
     while (root > 0) {                                                       \
@@ -144,14 +149,28 @@
 //                      iree_host_size_t count)
 #define LOOM_DEFINE_ADAPTIVE_SORT_WITH_CONTEXT(function_name, element_type, \
                                                context_type, less_fn)       \
+  LOOM_DEFINE_ADAPTIVE_SORT_WITH_CONTEXT_IMPL(function_name, element_type,  \
+                                              context_type, less_fn, )
+
+// The same algorithm with the heap fallback kept out of line. This keeps the
+// ordered/insertion path small enough to inline into shared sorting helpers;
+// callers select it when measurements justify that code-layout tradeoff.
+#define LOOM_DEFINE_ADAPTIVE_SORT_WITH_CONTEXT_OUTLINED_HEAP(              \
+    function_name, element_type, context_type, less_fn)                    \
+  LOOM_DEFINE_ADAPTIVE_SORT_WITH_CONTEXT_IMPL(function_name, element_type, \
+                                              context_type, less_fn,       \
+                                              IREE_ATTRIBUTE_NOINLINE)
+
+#define LOOM_DEFINE_ADAPTIVE_SORT_WITH_CONTEXT_IMPL(                        \
+    function_name, element_type, context_type, less_fn, heap_attributes)    \
   typedef element_type function_name##_element_t;                           \
   static function_name##_element_t* function_name##_at(                     \
       function_name##_element_t* values, iree_host_size_t index) {          \
     return &values[index];                                                  \
   }                                                                         \
-  LOOM_DEFINE_ADAPTIVE_SORT_WITH_ACCESSOR(                                  \
+  LOOM_DEFINE_ADAPTIVE_SORT_WITH_ACCESSOR_IMPL(                             \
       function_name, function_name##_element_t, function_name##_element_t*, \
-      function_name##_at, context_type, less_fn)
+      function_name##_at, context_type, less_fn, heap_attributes)
 
 // Context-free form for comparisons using only the array elements. Both forms
 // inline the comparator into the same sorting algorithm without dynamic calls.
