@@ -63,7 +63,9 @@ iree_status_t iree_hal_amd_xdna_executable_load(
 // Validates external binding ranges and patches their declared address fields
 // in loaded backing. Prior users of mutable backing must have drained. The
 // caller publishes mapped writes through the native cache API before
-// submission.
+// submission. Independent storage ranges can bind the same or different images
+// to different addresses while other ranges remain pending. Binding modifies
+// only the supplied storage; it establishes no queue-global argument state.
 iree_status_t iree_hal_amd_xdna_executable_bind(
     const iree_hal_amd_xdna_image_t* image, uint32_t entry_ordinal,
     iree_host_size_t storage_count,

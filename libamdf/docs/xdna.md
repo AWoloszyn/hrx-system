@@ -186,6 +186,70 @@ uses the complete setup-and-execution range to establish its application tile
 state; time-sliced context lifetime alone does not guarantee that state survives
 between submissions.
 
+## Program sets and run-local bindings
+
+A native queue has no mutable "current program" or "current arguments" binding.
+Each accepted command names its own immutable instruction range. The HAL can
+prepare program set A with one work-queue address and program set B with another,
+then publish both without waiting for A on the CPU. Multiple prepared ranges can
+share one context-private allocation; a pending run does not require a separate
+instruction allocation, context, or native queue.
+
+For example, a HAL preparing two pipeline runs owns these distinct ranges:
+
+| Resource | Run A | Run B |
+| --- | --- | --- |
+| Native instructions | Prepared range A in context-private storage. | Prepared range B in the same allocation. |
+| Work input | DMA address of queue A. | DMA address of queue B. |
+| Run arguments | Ordinary memory containing A's parameters. | Ordinary memory containing B's parameters. |
+| Shared state | Reads or produces state through its declared protocol. | Can consume A's published output directly. |
+
+The HAL obtains each binding's address with `memory_query_address` in the domain
+the consuming program requires. A queue's head, tail, entries, generations, and
+argument record layout belong to the compiler/runtime ABI. To libamdf these are
+ordinary memory, with the same access, visibility, and lifetime contracts as
+tensor data. libamdf neither recognizes queue records nor infers dependencies
+from their contents. Placement, worker count, and occupancy policy likewise
+remain above the native surface.
+
+The in-tree ELF materializer's `iree_hal_amd_xdna_executable_load` and
+`iree_hal_amd_xdna_executable_bind` prepare each range before publication. Its
+external binding relocations encode declared shim-DMA addresses, including the
+base of a queue or argument buffer. This is not a generic scalar-immediate
+argument API: a program can DMA its argument record just as it reads any other
+bound data. Other argument conventions belong to the compiler and its image
+loader; the native submission interface still takes only an instruction range.
+
+Binding B writes B's prepared storage, not a queue-global table or A's accepted
+instructions. Those ranges may be loaded from the same executable or different
+executables. After publication, each remains immutable until checked native
+retirement. A prepared range can then be reused unchanged with the same binding
+addresses, while producers publish new records through the bound protocol.
+Changing an embedded address requires either a different prepared range or
+retirement of all users of the range being rebound. Queue and argument backing
+remains live through its actual last device use, including downstream consumers.
+
+The [execution CTS](../../experimental/xdna/cts/execution_test.cc) prepares a
+multiplication program and an addition program with different binding addresses
+in one instruction allocation. Both are submitted before the completion wait;
+addition consumes multiplication's output without a host copy. Each full
+invocation waits for its output DMA, and repeated pairs exercise rotation back
+to multiplication and queue-slot reuse. This native sequence does not imply
+FIFO ordering at the HAL API: the HAL still establishes application dependency
+edges before choosing where and when to publish native work.
+
+Program replacement *within* a resident invocation has a different boundary.
+The running program can consume addresses of replacement code from its own
+records and arrange device-side transfer and handoff without another libamdf
+submission. Replacement source bytes need a usable DMA address; a firmware-only
+address from context-private instruction storage is not interchangeable with
+one. The caller queries the required address domain when allocating the source
+catalog. The program owns instruction-fetch exclusion, transfer completion,
+descriptor reuse, and any state carried into the replacement. That ownership
+remains inside the native invocation; it does not establish tile-state retention
+after native retirement. Independent runs A and B still establish their own
+required tile state.
+
 ## Resident work and early admission
 
 A resident service can process many logical operations inside one native
