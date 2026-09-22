@@ -6,10 +6,15 @@
 
 #include "loom/import/cxx/source/source.h"
 
+#include <cxx/archive.h>
 #include <cxx/ast.h>
 #include <cxx/control.h>
 #include <cxx/memory_layout.h>
 #include <cxx/preprocessor.h>
+#include <cxx/private/semantic_codec.h>
+#include <cxx/symbols.h>
+#include <cxx/types.h>
+#include <cxx/views/symbols.h>
 
 #include <cstdint>
 #include <filesystem>
@@ -17,6 +22,7 @@
 #include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -39,6 +45,40 @@ TEST(SourceTest, LayoutAndMutableSemanticStateBelongToEachSource) {
   EXPECT_EQ(third.unit().control()->memoryLayout()->sizeOfLongLong(), 8);
   EXPECT_NE(first.unit().ast(), second.unit().ast());
   EXPECT_NE(first.unit().globalScope(), second.unit().globalScope());
+}
+
+TEST(SourceTest, NarrowFloatIdentitySurvivesSemanticArchive) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  std::vector<uint8_t> bytes;
+  {
+    Source source(IREE_SV("__bf16 convert(_Float16);"), IREE_SV("types.cpp"),
+                  options);
+    cxx::ArchiveWriter writer;
+    cxx::SemanticArchiveRoots roots;
+    roots.globalScope = source.unit().globalScope();
+    roots.ast = source.unit().ast();
+    cxx::SemanticEncoder encoder(&source.unit());
+    ASSERT_TRUE(encoder(roots, writer));
+    bytes = writer();
+  }
+  Source destination(IREE_SV(""), IREE_SV("restored.cpp"), options);
+  cxx::ArchiveReader reader;
+  ASSERT_TRUE(reader(bytes)) << reader.error();
+  cxx::SemanticArchiveRoots roots;
+  cxx::SemanticDecoder decoder(&destination.unit());
+  ASSERT_TRUE(decoder(reader, roots)) << decoder.error();
+  auto symbols = roots.globalScope->find("convert");
+  ASSERT_NE(symbols.begin(), symbols.end());
+  auto functions = cxx::views::each_function(*symbols.begin());
+  ASSERT_EQ(std::ranges::distance(functions), 1);
+  auto* type = cxx::type_cast<cxx::FunctionType>((*functions.begin())->type());
+  ASSERT_NE(type, nullptr);
+  EXPECT_EQ(type->returnType(),
+            destination.unit().control()->getBFloat16Type());
+  ASSERT_EQ(type->parameterTypes().size(), 1u);
+  EXPECT_EQ(type->parameterTypes()[0],
+            destination.unit().control()->getFloat16Type());
 }
 
 TEST(SourceTest, ProviderBytesAreCopiedBeforeTheNextCallback) {

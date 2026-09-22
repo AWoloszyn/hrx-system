@@ -7,8 +7,14 @@
 #include "loom/import/cxx/source/constants.h"
 
 #include <cxx/ast.h>
+#include <cxx/ast_interpreter.h>
+#include <cxx/control.h>
 #include <cxx/names.h>
 #include <cxx/symbols.h>
+#include <cxx/types.h>
+
+#include <cmath>
+#include <limits>
 
 #include "iree/testing/gtest.h"
 #include "loom/import/cxx/source/source.h"
@@ -109,6 +115,92 @@ TEST(IntegerConstantTest, ZeroExtendsUnsignedComplementAtSourceWidth) {
     auto* result = returned(source);
     ASSERT_NE(result, nullptr);
     EXPECT_EQ(integer_constant(source.unit(), result), INT64_C(0xffffffff));
+  }
+}
+
+TEST(FloatingConstantTest, NarrowFormatsRoundAtSourceConversionBoundaries) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  const struct {
+    // Source expression evaluated through the production frontend.
+    const char* expression;
+    // Independently specified narrow result, exactly represented in double.
+    double expected;
+  } cases[] = {
+      {"(_Float16)1.00048828125", 1.0},
+      {"(_Float16)1.00146484375", 1.001953125},
+      {"(_Float16)0x1.0020000000001p0", 1.0009765625},
+      {"(_Float16)0x1p-25", 0.0},
+      {"(_Float16)0x1.8p-24", 0x1p-23},
+      {"(_Float16)0x1.ffcp-15", 0x1p-14},
+      {"(_Float16)65519.0", 65504.0},
+      {"(_Float16)-0.0", -0.0},
+      {"1.00048828125f16", 1.0},
+      {"1.00146484375F16", 1.001953125},
+      {"+((_Float16)1.0 + (_Float16)0x1p-11)", 1.0},
+      {"-((_Float16)1.5 * (_Float16)2.0)", -3.0},
+      {"(_Float16)1.0 / (_Float16)3.0", 0.333251953125},
+      {"(float)(_Float16)1.00048828125", 1.0},
+      {"(_Float16)4095u", 4096.0},
+      {"(__bf16)1.00390625", 1.0},
+      {"(__bf16)1.01171875", 1.015625},
+      {"(__bf16)0x1.0100000000001p0", 1.0078125},
+      {"(__bf16)0x1p-134", 0.0},
+      {"(__bf16)0x1.8p-133", 0x1p-132},
+      {"(__bf16)0x1.fep-127", 0x1p-126},
+      {"(__bf16)0x1.fep127", 0x1.fep127},
+      {"(__bf16)-0.0", -0.0},
+      {"1.00390625bf16", 1.0},
+      {"1.01171875BF16", 1.015625},
+      {"+((__bf16)1.0 + (__bf16)0x1p-8)", 1.0},
+      {"-((__bf16)1.5 * (__bf16)2.0)", -3.0},
+      {"(__bf16)1.0 / (__bf16)3.0", 0.333984375},
+      {"(float)(__bf16)1.00390625", 1.0},
+      {"(__bf16)511u", 512.0},
+      {"(__bf16)0xffffffffffffffffULL", 0x1p64},
+      {"(_Float16)(__bf16)1.00390625", 1.0},
+      {"(__bf16)(_Float16)1.0048828125", 1.0078125},
+      {"(_Float16)65520.0", std::numeric_limits<double>::infinity()},
+      {"(__bf16)0x1.ffp127", std::numeric_limits<double>::infinity()},
+  };
+  for (const auto& test : cases) {
+    SCOPED_TRACE(test.expression);
+    std::string text =
+        "auto entry() { return " + std::string(test.expression) + "; }";
+    Source source(view(text), IREE_SV("narrow_float.cpp"), options);
+    auto* result = returned(source);
+    ASSERT_NE(result, nullptr);
+    auto value = scalar_constant(source.unit(), result);
+    ASSERT_TRUE(value.has_value());
+    cxx::ASTInterpreter interpreter(&source.unit());
+    auto number = interpreter.toDouble(*value);
+    ASSERT_TRUE(number.has_value());
+    EXPECT_EQ(*number, test.expected);
+    EXPECT_EQ(std::signbit(*number), std::signbit(test.expected));
+  }
+}
+
+TEST(FloatingConstantTest, NarrowFormatsRetainInfinityAndNaN) {
+  loom_cxx_import_options_t options;
+  loom_cxx_import_options_initialize(&options);
+  Source source(IREE_SV(""), IREE_SV("special.cpp"), options);
+  cxx::ASTInterpreter interpreter(&source.unit());
+  const cxx::Type* types[] = {source.unit().control()->getFloat16Type(),
+                              source.unit().control()->getBFloat16Type()};
+  for (auto* type : types) {
+    for (double input : {std::numeric_limits<double>::infinity(),
+                         -std::numeric_limits<double>::infinity(),
+                         std::numeric_limits<double>::quiet_NaN()}) {
+      auto value = interpreter.toArithmeticType(cxx::ConstValue{input}, type);
+      ASSERT_TRUE(value.has_value());
+      auto result = interpreter.toDouble(*value);
+      ASSERT_TRUE(result.has_value());
+      if (std::isnan(input)) {
+        EXPECT_TRUE(std::isnan(*result));
+      } else {
+        EXPECT_EQ(*result, input);
+      }
+    }
   }
 }
 

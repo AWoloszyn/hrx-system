@@ -106,3 +106,23 @@ loom_check_test(
         "assembly_invalid",
     ]
 ]
+
+loom_test(
+    name = "float16_test",
+    srcs = [
+        "float16.cpp",
+        "float16.loom",
+    ],
+    execution_profiles = _EXECUTION_PROFILES,
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)
+
+loom_test(
+    name = "bfloat16_test",
+    srcs = [
+        "bfloat16.cpp",
+        "bfloat16.loom",
+    ],
+    execution_profiles = _EXECUTION_PROFILES,
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)

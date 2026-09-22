@@ -8,6 +8,7 @@
 
 exports_files([
     "aligned_records.patch",
+    "bfloat16_semantics.patch",
     "bitfield_attributes.patch",
     "braced_vector_initialization.patch",
     "builtin_macro_locations.patch",
@@ -17,6 +18,7 @@ exports_files([
     "constexpr_branches.patch",
     "cxx.BUILD.bazel",
     "enum_semantics.patch",
+    "float16_semantics.patch",
     "include_continuation.patch",
     "include_paths.patch",
     "initializer_dependencies.patch",

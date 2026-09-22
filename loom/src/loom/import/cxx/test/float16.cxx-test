@@ -1,0 +1,51 @@
+// RUN: roundtrip
+using Half4 = _Float16 __attribute__((ext_vector_type(4)));
+static_assert(__is_floating_point(_Float16));
+static_assert(__is_arithmetic(_Float16));
+static_assert(__is_same(decltype(1.0f16), _Float16));
+static_assert(__is_same(decltype(1.0F16 + 2), _Float16));
+static_assert(__is_same(decltype(1.0f16 + 2.0f), float));
+static_assert(sizeof(Half4) == 8);
+static_assert(alignof(Half4) == 8);
+static_assert((_Float16)1.00048828125 == (_Float16)1.0);
+constexpr _Float16 rounded = 1.00146484375;
+static_assert(rounded == 1.001953125);
+
+Half4 scale(Half4 value, _Float16 factor) { return value * factor; }
+_Float16 constant() { return rounded; }
+float extend(_Float16 value) { return value; }
+_Float16 truncate(float value) { return value; }
+bool truth(_Float16 value) { return value; }
+_Float16 literal() { return 1.00146484375f16; }
+// ----
+func.def public @scale(%value: vector<4xf16>, %factor: f16) -> (vector<4xf16>) {
+  %3 = vector.splat %factor : vector<4xf16>
+  %4 = vector.mulf %value, %3 : vector<4xf16>
+  func.return %4 : vector<4xf16>
+}
+
+func.def public @constant() -> (f16) {
+  %rounded = scalar.constant 1.001953125 : f16
+  func.return %rounded : f16
+}
+
+func.def public @extend(%value: f16) -> (f32) {
+  %9 = scalar.extf %value : f16 to f32
+  func.return %9 : f32
+}
+
+func.def public @truncate(%value: f32) -> (f16) {
+  %12 = scalar.fptrunc %value : f32 to f16
+  func.return %12 : f16
+}
+
+func.def public @truth(%value: f16) -> (i1) {
+  %15 = scalar.constant 0.0 : f16
+  %16 = scalar.cmpf une, %value, %15 : f16
+  func.return %16 : i1
+}
+
+func.def public @literal() -> (f16) {
+  %18 = scalar.constant 1.001953125 : f16
+  func.return %18 : f16
+}

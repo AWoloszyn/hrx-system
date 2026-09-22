@@ -9,6 +9,7 @@
 #if LOOM_CXX_EMBED_INCLUDES
 #include "loom/import/cxx/source/embedded_hip_headers.h"
 #include "loom/import/cxx/source/embedded_loomcxx_headers.h"
+#include "loom/import/cxx/source/embedded_standard_headers.h"
 #endif
 
 namespace loom::cxx_import {
@@ -23,7 +24,7 @@ std::string_view builtin_include_root() {
 
 std::optional<std::string_view> builtin_include(std::string_view path) {
 #if LOOM_CXX_EMBED_INCLUDES
-  const iree_file_toc_t* entries = nullptr;
+  const iree_file_toc_t* entries = loom_cxx_embedded_standard_headers_create();
   if (path.substr(0, 8) == "loomcxx/") {
     path.remove_prefix(8);
     entries = loom_cxx_embedded_loomcxx_headers_create();
@@ -31,11 +32,9 @@ std::optional<std::string_view> builtin_include(std::string_view path) {
     path.remove_prefix(4);
     entries = loom_cxx_embedded_hip_headers_create();
   }
-  if (entries) {
-    for (auto* entry = entries; entry->name; ++entry) {
-      if (path == entry->name) {
-        return std::string_view(entry->data, entry->size);
-      }
+  for (auto* entry = entries; entry->name; ++entry) {
+    if (path == entry->name) {
+      return std::string_view(entry->data, entry->size);
     }
   }
 #else

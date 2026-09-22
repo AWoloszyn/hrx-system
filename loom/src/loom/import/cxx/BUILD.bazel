@@ -24,6 +24,7 @@ exports_files([
     "include/loomcxx/math.h",
     "include/loomcxx/scalar.h",
     "include/loomcxx/view.h",
+    "include/stdfloat",
 ])
 
 loom_cc_test(

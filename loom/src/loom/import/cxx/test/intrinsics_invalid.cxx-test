@@ -5,56 +5,53 @@
 float entry(double value) { return custom(value); }
 
 // ====
-// RUN: verify
 // Generated intrinsic signatures are checked.
 // ERROR@+1: LOWERING/059 "operation bindings accept only string arguments"
 [[loom::op("scalar.expf", 42)]] float broken(float);
 float entry(float x) { return broken(x); }
 
 // ====
-// RUN: verify
 // Generated intrinsic signatures are checked.
 // ERROR@+1: LOWERING/059 "an intrinsic requires one operation binding and no function body"
 [[loom::op("scalar.expf"), loom::op("scalar.logf")]] float broken(float);
 float entry(float x) { return broken(x); }
 
 // ====
-// RUN: verify
 // Generated intrinsic signatures are checked.
 // ERROR@+1: LOWERING/059 "an intrinsic requires one operation binding and no function body"
 [[loom::op("scalar.expf")]] float broken(float x) { return x; }
 
 // ====
-// RUN: verify
 // Generated intrinsic signatures are checked.
 // ERROR@+1: LOWERING/059 "intrinsic operands must have the result's floating-point type"
 [[loom::op("scalar.expf")]] float broken(int);
 float entry(int x) { return broken(x); }
 
 // ====
-// RUN: verify
 // Generated intrinsic signatures are checked.
-// ERROR@+1: LOWERING/059 "scalar intrinsic result must be _Float16, float, or double"
+// ERROR@+1: LOWERING/059 "scalar intrinsic result must be _Float16, __bf16, float, or double"
 [[loom::op("scalar.expf")]] int broken(int);
 int entry(int x) { return broken(x); }
 
 // ====
-// RUN: verify
 // Generated intrinsic signatures are checked.
 // ERROR@+1: LOWERING/059 "intrinsic declaration has the wrong operand count"
 [[loom::op("scalar.expf")]] float broken(float, float);
 float entry(float x) { return broken(x, x); }
 
 // ====
-// RUN: verify
 // Generated intrinsic signatures are checked.
 // ERROR@+1: LOWERING/059 "intrinsic has an unsupported fast-math flag"
 [[loom::op("scalar.expf", "surprise")]] float broken(float);
 float entry(float x) { return broken(x); }
 
 // ====
-// RUN: verify
 // Generated intrinsic signatures are checked.
 // ERROR@+1: LOWERING/059 "operation has no C++ projection"
 [[loom::op("scf.for")]] float broken(float);
 float entry(float x) { return broken(x); }
+
+// ====
+[[loom::op("scalar.expf", "afn")]] float approximate(float);
+// ERROR@+1: LOWERING/059 "conflicting intrinsic redeclarations"
+[[loom::op("scalar.expf")]] float approximate(float);

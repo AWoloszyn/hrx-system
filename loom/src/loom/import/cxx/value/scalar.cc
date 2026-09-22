@@ -54,6 +54,18 @@ loom_value_id_t Scalars::convert(loom_value_id_t value,
   bool unsigned_input = types_.is_unsigned(input_type) ||
                         loom_type_element_type(input) == LOOM_SCALAR_TYPE_I1;
   auto* layout = unit_.control()->memoryLayout();
+  if (types_.is_float(input_type) && types_.is_float(output_type) &&
+      layout->sizeOf(input_type) == layout->sizeOf(output_type)) {
+    // FP16 and BF16 have different value sets despite their equal storage
+    // widths. F32 represents both exactly, so only the final cast rounds.
+    auto widened = loom_type_scalar(LOOM_SCALAR_TYPE_F32);
+    check(loom_scalar_extf_build(&builder_, value, input, widened,
+                                 locations_.get(owner), &op));
+    value = loom_op_results(op)[0];
+    check(loom_scalar_fptrunc_build(&builder_, value, widened, output,
+                                    locations_.get(owner), &op));
+    return loom_op_results(op)[0];
+  }
   bool narrows = layout->sizeOf(input_type) > layout->sizeOf(output_type);
   auto build =
       types_.is_float(output_type)

@@ -1,0 +1,39 @@
+// RUN: verify
+template <class Float>
+// ERROR@+1: LOWERING/059 "intrinsic has an unsupported fast-math flag"
+[[loom::op("scalar.expf", "surprise")]] Float unused(Float);
+
+// ====
+template <class Float>
+[[loom::op("scalar.expf", "afn")]] Float approximate(Float);
+template <class Float>
+// ERROR@+1: LOWERING/059 "conflicting intrinsic template redeclarations"
+[[loom::op("scalar.expf")]] Float approximate(Float);
+
+// ====
+template <class Float>
+[[loom::op("scalar.addf")]] Float different(Float, float);
+
+double entry(double value) {
+  // ERROR@+1: LOWERING/059 "intrinsic operands must have the result's floating-point type"
+  return different(value, 2.0f);
+}
+
+// ====
+#include <loomcxx/scalar.h>
+template <class Value>
+concept HasAbsolute = requires(Value value) { loom::scalar::absf(value); };
+static_assert(HasAbsolute<_Float16>);
+static_assert(HasAbsolute<__bf16>);
+static_assert(HasAbsolute<float>);
+static_assert(HasAbsolute<double>);
+static_assert(!HasAbsolute<int>);
+
+template <class Left, class Right>
+concept HasMultiply = requires(Left lhs, Right rhs) {
+  loom::scalar::mulf(lhs, rhs);
+};
+static_assert(HasMultiply<__bf16, __bf16>);
+static_assert(HasMultiply<float, float>);
+static_assert(!HasMultiply<float, double>);
+static_assert(!HasMultiply<_Float16, __bf16>);

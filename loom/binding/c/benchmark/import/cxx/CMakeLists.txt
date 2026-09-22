@@ -47,4 +47,20 @@ loom_cc_benchmark(
 )
 endif()
 
+if(LOOM_IMPORT_CXX AND LOOM_IMPORT_CXX_EMBED_INCLUDES)
+loom_cc_benchmark(
+  NAME
+    source_to_module_benchmark
+  SRCS
+    "source_to_module_benchmark.cc"
+  DEPS
+    iree::base
+    iree::testing::benchmark_main
+    loom::binding::c::benchmark::compile_throughput_benchmark_harness
+    loom::binding::c::import::cxx
+    loom::binding::c::loomc
+  TESTONLY
+)
+endif()
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

@@ -378,6 +378,8 @@ loom_type_t Types::get(const cxx::Type* input, cxx::AST* ast) {
       return loom_type_scalar(LOOM_SCALAR_TYPE_F64);
     case cxx::TypeKind::kFloat16:
       return loom_type_scalar(LOOM_SCALAR_TYPE_F16);
+    case cxx::TypeKind::kBFloat16:
+      return loom_type_scalar(LOOM_SCALAR_TYPE_BF16);
     case cxx::TypeKind::kEnum:
     case cxx::TypeKind::kScopedEnum: {
       auto* underlying = unit_.typeTraits().underlying_type(input);
@@ -590,7 +592,7 @@ void Types::append_bound(const cxx::Type* input, cxx::AST* owner,
 bool Types::is_float(const cxx::Type* input) {
   auto kind = unqualified(input)->kind();
   return kind == cxx::TypeKind::kFloat || kind == cxx::TypeKind::kFloat16 ||
-         kind == cxx::TypeKind::kDouble;
+         kind == cxx::TypeKind::kBFloat16 || kind == cxx::TypeKind::kDouble;
 }
 
 }  // namespace loom::cxx_import

@@ -21,6 +21,50 @@ subexpression elimination and dead-code elimination, and prints Loom text.
 `--cleanup=false` exposes the direct import. `--to=bc --output=module.loombc`
 produces normal Loom bytecode for the existing compilation and linking tools.
 
+## Explicit 16-bit floating-point types
+
+`<stdfloat>` provides `std::float16_t` (IEEE FP16) and `std::bfloat16_t` (BF16).
+These are numeric types: initializers, arithmetic, helper arguments, record
+fields, vector elements, and pointed-to storage retain the selected format.
+
+```cpp
+#include <stdfloat>
+using std::bfloat16_t;
+
+bfloat16_t scale(bfloat16_t value) {
+  bfloat16_t factor = 5.0f;
+  return value * factor;
+}
+
+void convert(const float* input, bfloat16_t* output) {
+  output[0] = input[0];
+}
+```
+
+The multiplication imports as `scalar.mulf ... : bf16`; the assignment from
+`float` imports as `scalar.fptrunc ... : f32 to bf16`. The same types can be
+elements of explicit vectors or `loom::type::view` values. Target compilation
+selects native instructions or legalization appropriate to that format.
+
+The underlying spellings `_Float16` and `__bf16` also work directly in C and
+C++. Both occupy two bytes with two-byte scalar alignment. Literal suffixes
+`f16`/`F16` and `bf16`/`BF16` select the corresponding type. The C++ feature
+macros `__STDCPP_FLOAT16_T__` and `__STDCPP_BFLOAT16_T__` are defined.
+Narrow constant conversions and arithmetic round to nearest with ties to even,
+including subnormal values. Floating-point operation flags and the selected
+target's math policy still govern compiled arithmetic.
+
+FP16 and BF16 have different ranges and precision. Mixed arithmetic requires
+an explicit cast; conversion preserves the numeric value subject to destination
+rounding. For example, `static_cast<std::float16_t>(value)` on a BF16 value
+imports an exact extension to F32 followed by truncation to FP16. Bit
+reinterpretation remains an explicit `__builtin_bit_cast` operation.
+
+The header contains only the two aliases and include guards, with no transitive
+includes. Embedded lookup and explicit include directories expose the same
+header. Mathematical operations remain in the separately included
+`<loomcxx/scalar.h>`.
+
 ## Compiler tests
 
 When the importer is enabled, `loom-check` accepts `.cxx-test` files through the
@@ -1000,8 +1044,8 @@ immutable caller-owned headers, including a shared source cache. Each invocation
 owns its mutable preprocessing and semantic state. Header hits and misses are
 reused within an invocation. Diagnostic sinks copy any bytes they retain.
 
-The importer embeds `loomcxx/` and `hip/` source headers by default. User and
-system include paths take precedence over the embedded system root. The HIP
+The importer embeds `<stdfloat>`, `loomcxx/` and `hip/` source headers by default.
+User and system include paths take precedence over the embedded system root. The HIP
 facade maps topology, synchronization, scalar half conversions and math onto
 the Loom vocabulary; it does not load the HIP runtime or a host SDK.
 
@@ -1010,14 +1054,22 @@ headers. Building with `--//loom/config/import/cxx:embed_includes=false`, or
 `-DLOOM_IMPORT_CXX_EMBED_INCLUDES=OFF` in CMake, also removes those header
 contents from the library and its rebuild dependencies.
 
-Canonical Python op declarations generate the typed `_Float16`, `float` and
-`double` overloads in `loomcxx/scalar.h`, their documentation, and native
-binding entries. For example, `loom::scalar::expf(x)` imports `scalar.expf`;
+Canonical Python op declarations generate constrained function templates in
+`loomcxx/scalar.h`, their documentation, and native binding entries. The header
+declares each operation once; concrete signatures are admitted only when used,
+so supporting another numeric format does not add eagerly parsed overloads.
+For example, `loom::scalar::expf(x)` imports `scalar.expf`;
 `loom::scalar::approximate::expf(x)` explicitly grants AFN. The HIP spelling
 `__expf(x)` is an ordinary inline wrapper around that declaration. An explicit
 `[[loom::op("scalar.expf", "afn")]] float custom_exp(float);` declaration uses
 the same checked binding. Incorrect arity, types, flags, or attribute arguments
 produce source diagnostics.
+
+Deduced scalar calls accept `_Float16`, `__bf16`, `float`, or `double`, with
+matching operand types. An explicit template argument requests conversion:
+`loom::scalar::mulf<__bf16>(value, 5.0f)` converts the second operand to BF16
+before emitting a BF16 multiply. Custom operation templates retain their
+declared math permissions across every concrete specialization.
 
 Register lookup and mixed-width integer dots use the same declaration binding,
 with independently typed operands and explicit dot signedness:
