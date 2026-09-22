@@ -74,6 +74,16 @@ test_suite(
     tests = [":" + module + "_test" for module in _MODULES],
 )
 
+loom_test(
+    name = "assembly_test",
+    srcs = [
+        "assembly.cpp",
+        "assembly.loom",
+    ],
+    execution_profiles = _EXECUTION_PROFILES,
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)
+
 loom_check_test(
     name = "storage_division",
     src = "storage_division.cxx-test",
@@ -83,3 +93,19 @@ loom_check_test(
         "//loom/config/target/arch:amdgpu",
     ]),
 )
+
+[
+    loom_check_test(
+        name = name,
+        src = name + ".cxx-test",
+        runner = "//loom/src/loom/tools/loom-check",
+        target_compatible_with = loom_config_compatible_with([
+            "//loom/config/import:cxx",
+            "//loom/config/target/arch:amdgpu",
+        ]),
+    )
+    for name in [
+        "assembly_lowering",
+        "assembly_invalid",
+    ]
+]

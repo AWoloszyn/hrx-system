@@ -33,6 +33,8 @@ typedef struct loom_parser_t {
   // Parser-lifetime state and reusable frames; never rewound during parsing.
   iree_arena_allocator_t parser_arena;
   loom_builder_t builder;
+  // Fragment parsing maintains use/def state without a module-wide rebuild.
+  bool finalize_operations;
   loom_parser_scope_t* scope;
 
   // Parser-owned reusable child lexical scope frames. The root module scope is

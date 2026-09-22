@@ -239,6 +239,16 @@ iree_status_t loom_verify_function(const loom_module_t* module,
                                    const loom_verify_options_t* options,
                                    loom_verify_result_t* out_result);
 
+// Verifies selected functions with one shared module-fact setup. The functions
+// and module remain immutable for the call; results and the error limit span
+// the entire batch. This has the same scope as loom_verify_function and avoids
+// repeating module-wide symbol/encoding preparation for each function.
+iree_status_t loom_verify_functions(const loom_module_t* module,
+                                    const loom_func_like_t* functions,
+                                    iree_host_size_t function_count,
+                                    const loom_verify_options_t* options,
+                                    loom_verify_result_t* out_result);
+
 #ifdef __cplusplus
 }
 #endif

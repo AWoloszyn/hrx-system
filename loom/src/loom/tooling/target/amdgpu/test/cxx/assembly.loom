@@ -1,0 +1,37 @@
+kernel.decl @pack_words() launch(%input: buffer, %output: buffer)
+
+kernel.decl @pack_floats() launch(%input: buffer, %output: buffer)
+
+check.case public @unsigned_words {
+  %input = check.generate.iota offset(0) step(1) : tensor<66xi32>
+  %output = check.generate.fill value(-37) : tensor<34xi32>
+  kernel.launch @pack_words(%input, %output) : (tensor<66xi32>, tensor<34xi32>)
+  %actual = check.tensor.view %output offset(4) : tensor<34xi32> -> tensor<32xi32>
+  %expected = check.generate.iota offset(131073) step(131074) : tensor<32xi32>
+  check.expect.equal actual(%actual) expected(%expected) : tensor<32xi32>
+  %prefix = check.tensor.view %output offset(0) : tensor<34xi32> -> tensor<1xi32>
+  %suffix = check.tensor.view %output offset(132) : tensor<34xi32> -> tensor<1xi32>
+  %guard = check.generate.fill value(-37) : tensor<1xi32>
+  check.expect.equal actual(%prefix) expected(%guard) : tensor<1xi32>
+  check.expect.equal actual(%suffix) expected(%guard) : tensor<1xi32>
+  %unchanged = check.generate.iota offset(0) step(1) : tensor<66xi32>
+  check.expect.equal actual(%input) expected(%unchanged) : tensor<66xi32>
+  check.return
+}
+
+check.case public @floating_point_bits {
+  %input = check.generate.iota offset(0) step(1) : tensor<66xi32>
+  %output = check.generate.fill value(-37) : tensor<34xi32>
+  kernel.launch @pack_floats(%input, %output) : (tensor<66xi32>, tensor<34xi32>)
+  %actual = check.tensor.view %output offset(4) : tensor<34xi32> -> tensor<32xi32>
+  %expected = check.generate.iota offset(131073) step(131074) : tensor<32xi32>
+  check.expect.equal actual(%actual) expected(%expected) : tensor<32xi32>
+  %prefix = check.tensor.view %output offset(0) : tensor<34xi32> -> tensor<1xi32>
+  %suffix = check.tensor.view %output offset(132) : tensor<34xi32> -> tensor<1xi32>
+  %guard = check.generate.fill value(-37) : tensor<1xi32>
+  check.expect.equal actual(%prefix) expected(%guard) : tensor<1xi32>
+  check.expect.equal actual(%suffix) expected(%guard) : tensor<1xi32>
+  %unchanged = check.generate.iota offset(0) step(1) : tensor<66xi32>
+  check.expect.equal actual(%input) expected(%unchanged) : tensor<66xi32>
+  check.return
+}

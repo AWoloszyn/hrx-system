@@ -24,6 +24,8 @@ exports_files([
 loom_check_test_suite(
     name = "compiler_test",
     srcs = [
+        "assembly.cxx-test",
+        "assembly_invalid.cxx-test",
         "assumptions.cxx-test",
         "assumptions_invalid.cxx-test",
         "atomics.cxx-test",

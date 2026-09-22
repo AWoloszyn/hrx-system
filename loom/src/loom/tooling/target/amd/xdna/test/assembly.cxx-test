@@ -1,0 +1,26 @@
+// RUN: emit source-low @saturate_s4 target=amd.xdna.aie2p:core
+#include <loomcxx/low.h>
+struct [[loom::representation("amd.xdna.aie2p.core")]] Aie2p {};
+using SignedBytes = signed char __attribute__((ext_vector_type(128)));
+using Packed = unsigned char __attribute__((ext_vector_type(64)));
+
+Packed saturate_s4(SignedBytes values) {
+  return loom::low::assembly<Aie2p, Packed>(R"loom(
+      (%values: reg<aie2p.vec256 x4>) -> (reg<aie2p.vec256 x2>) {
+        set.pack-size 0
+        set.saturation 1
+        %packed = vpack.x.signed %values
+        return %packed
+      }
+  )loom", values);
+}
+
+// ----
+low.func.def public target<amd.xdna.aie2p.core>(@__loom_target_context_0_0) abi(object_function) @saturate_s4(%values: reg<aie2p.vec256 x4>) -> (reg<aie2p.vec256 x2>) asm {
+  set.pack-size 0
+  set.saturation 1
+  %packed = vpack.x.signed %values
+  return %packed
+}
+
+aie2p.target<core> @__loom_target_context_0_0

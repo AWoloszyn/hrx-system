@@ -829,10 +829,18 @@ iree_status_t loom_verify_function(const loom_module_t* module,
                                    loom_func_like_t function,
                                    const loom_verify_options_t* options,
                                    loom_verify_result_t* out_result) {
-  if (!module || !loom_func_like_isa(function) || !out_result) {
+  return loom_verify_functions(module, &function, 1, options, out_result);
+}
+
+iree_status_t loom_verify_functions(const loom_module_t* module,
+                                    const loom_func_like_t* functions,
+                                    iree_host_size_t function_count,
+                                    const loom_verify_options_t* options,
+                                    loom_verify_result_t* out_result) {
+  if (!module || (!functions && function_count) || !out_result) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
-        "module, function, and out_result must be non-NULL");
+        "module, functions, and out_result must be non-NULL");
   }
   if (!module->context) {
     return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
@@ -854,14 +862,21 @@ iree_status_t loom_verify_function(const loom_module_t* module,
     return verify_status;
   }
 
-  const loom_op_vtable_t* vtable =
-      loom_verify_lookup_vtable(&state, function.op->kind);
-  verify_status = loom_verify_op(&state, function.op, vtable);
-  if (!iree_status_is_ok(verify_status)) {
-    loom_verify_state_deinitialize(&state);
-    return verify_status;
+  for (iree_host_size_t i = 0;
+       i < function_count && iree_status_is_ok(verify_status) &&
+       !loom_verify_at_error_limit(&state);
+       ++i) {
+    if (!loom_func_like_isa(functions[i])) {
+      verify_status = iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                                       "expected a function handle");
+    } else {
+      const loom_op_t* op = functions[i].op;
+      const loom_op_vtable_t* vtable =
+          loom_verify_lookup_vtable(&state, op->kind);
+      verify_status = loom_verify_op(&state, op, vtable);
+    }
   }
 
   loom_verify_state_deinitialize(&state);
-  return iree_ok_status();
+  return verify_status;
 }

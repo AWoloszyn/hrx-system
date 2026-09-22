@@ -260,6 +260,99 @@ TEST_F(LowAsmParserTest, ResolvesPacketIdentityPerFunctionContract) {
   loom_module_free(module);
 }
 
+TEST_F(LowAsmParserTest, EmbeddedAssemblyOwnsIrAndPreservesModule) {
+  loom_module_t* module = ParseOk(
+      "low.func.def target<test.low.core> @existing() asm { return }\n");
+  ASSERT_NE(module, nullptr);
+  auto* existing = loom_block_op(loom_module_block(module), 0);
+  std::string source =
+      "// C++ wrapper\nR\"(\n"
+      "(%value: reg<test.i32>) -> (reg<test.i32>) {\n"
+      "  %sum = test.add.i32 %value, %value\n"
+      "  return %sum\n"
+      "}\n)\"; trailing C++";
+  loom_string_id_t name;
+  IREE_ASSERT_OK(loom_module_intern_string(module, IREE_SV("embedded"), &name));
+  loom_symbol_id_t symbol;
+  IREE_ASSERT_OK(loom_module_add_symbol(module, name, &symbol));
+  loom_text_parse_options_t options = {};
+  options.diagnostic_sink = capture_.sink();
+  loom_low_descriptor_text_asm_environment_initialize(
+      &low_descriptor_registry_, &options.low_asm_environment);
+  loom_source_range_t range = {};
+  range.filename = IREE_SV("caller.cpp");
+  range.source = iree_make_string_view(source.data(), source.size());
+  range.start = source.find('(') + 1;
+  range.end = source.rfind(")\"");
+  range.start_line = 2;
+  range.start_column = 4;
+  loom_op_t* function = nullptr;
+  IREE_ASSERT_OK(loom_text_parse_low_assembly(
+      range, IREE_SV("test.low.core"), symbol, module, &options, &function));
+  ASSERT_NE(function, nullptr);
+  EXPECT_TRUE(capture_.diagnostics.empty());
+  // Destroy the borrowed source before inspecting persistent IR.
+  source.assign(source.size(), 'x');
+  source.clear();
+  source.shrink_to_fit();
+  EXPECT_EQ(loom_block_op(loom_module_block(module), 0), existing);
+  EXPECT_EQ(loom_block_op(loom_module_block(module), 1), function);
+  auto* body = loom_low_func_def_body(function);
+  EXPECT_TRUE(body->source_flags & LOOM_REGION_SOURCE_FLAG_EXPLICIT_LOW_ASM);
+  auto* entry = loom_region_entry_block(body);
+  ASSERT_EQ(entry->arg_count, 1);
+  auto* add = loom_block_op(entry, 0);
+  EXPECT_EQ(loom_op_operands(add)[0], loom_block_arg_id(entry, 0));
+  EXPECT_EQ(loom_op_operands(add)[1], loom_block_arg_id(entry, 0));
+  EXPECT_EQ(loom_module_value(module, loom_block_arg_id(entry, 0))->use_count,
+            2u);
+  auto* sum = loom_module_value(module, loom_op_results(add)[0]);
+  EXPECT_EQ(loom_value_def_op(sum), add);
+  ASSERT_EQ(sum->use_count, 1u);
+  EXPECT_EQ(loom_use_user_op(loom_value_uses(sum)[0]), loom_block_op(entry, 1));
+  EXPECT_EQ(StringFromId(module, loom_func_like_repr_contract(
+                                     loom_func_like_cast(module, function))),
+            "test.low.core");
+  IREE_ASSERT_OK(loom_op_erase(module, function));
+  EXPECT_EQ(loom_module_block(module)->op_count, 1u);
+  EXPECT_EQ(loom_block_op(loom_module_block(module), 0), existing);
+  loom_module_free(module);
+}
+
+TEST_F(LowAsmParserTest, EmbeddedAssemblyEofIsInsideOriginalSource) {
+  loom_module_t* module = ParseOk("");
+  ASSERT_NE(module, nullptr);
+  std::string source = "// C++ wrapper\nR\"(\n() {)\"; trailing C++";
+  loom_string_id_t name;
+  IREE_ASSERT_OK(loom_module_intern_string(module, IREE_SV("embedded"), &name));
+  loom_symbol_id_t symbol;
+  IREE_ASSERT_OK(loom_module_add_symbol(module, name, &symbol));
+  loom_text_parse_options_t options = {};
+  options.diagnostic_sink = capture_.sink();
+  loom_low_descriptor_text_asm_environment_initialize(
+      &low_descriptor_registry_, &options.low_asm_environment);
+  loom_source_range_t range = {};
+  range.filename = IREE_SV("caller.cpp");
+  range.source = iree_make_string_view(source.data(), source.size());
+  range.start = source.find('(') + 1;
+  range.end = source.rfind(")\"");
+  range.start_line = 2;
+  range.start_column = 4;
+  loom_op_t* function = nullptr;
+  IREE_ASSERT_OK(loom_text_parse_low_assembly(
+      range, IREE_SV("test.low.core"), symbol, module, &options, &function));
+  EXPECT_EQ(function, nullptr);
+  ASSERT_FALSE(capture_.diagnostics.empty());
+  const auto& diagnostic = capture_.diagnostics.front();
+  EXPECT_EQ(diagnostic.filename, "caller.cpp");
+  EXPECT_EQ(diagnostic.source_text, source);
+  EXPECT_EQ(diagnostic.origin.start, range.end);
+  EXPECT_EQ(diagnostic.origin.end, range.end);
+  EXPECT_EQ(diagnostic.origin_line, 3);
+  EXPECT_EQ(diagnostic.origin_column, 5);
+  loom_module_free(module);
+}
+
 TEST_F(LowAsmParserTest, RecordsExplicitAsmSourceSyntax) {
   loom_module_t* module = ParseOk(
       "low.func.def target<test.low.core> @assembly("

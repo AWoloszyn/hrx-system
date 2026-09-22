@@ -104,7 +104,8 @@ void Intrinsics::declaration(cxx::FunctionSymbol* function,
   if (function->isTemplatePattern()) {
     if (selected->arguments.size() != 1 ||
         (!ViewIntrinsic::supports(selected->arguments[0]->name()) &&
-         !AtomicIntrinsic::supports(selected->arguments[0]->name()))) {
+         !AtomicIntrinsic::supports(selected->arguments[0]->name()) &&
+         !AssemblyIntrinsic::supports(selected->arguments[0]->name()))) {
       diagnostics_.reject(unit_, owner,
                           "function template operation has no C++ projection");
     }
@@ -162,6 +163,10 @@ Intrinsics::Binding Intrinsics::resolve(cxx::FunctionSymbol* function,
   if (auto shaped = ShapedIntrinsic::resolve(unit_, diagnostics_, types_,
                                              signature, attribute, owner)) {
     return *shaped;
+  }
+  if (auto assembly = AssemblyIntrinsic::resolve(unit_, diagnostics_, types_,
+                                                 function, attribute, owner)) {
+    return *assembly;
   }
   if (auto atomic = AtomicIntrinsic::resolve(unit_, diagnostics_, types_,
                                              function, attribute, owner)) {
@@ -263,18 +268,18 @@ Intrinsics::Binding* Intrinsics::concrete_binding(cxx::FunctionSymbol* function,
   return &inserted.first->second;
 }
 
-bool Intrinsics::owns(cxx::FunctionSymbol* function, cxx::AST* owner) {
-  return concrete_binding(function, owner) != nullptr;
+Intrinsics::Binding* Intrinsics::lookup(cxx::FunctionSymbol* function,
+                                        cxx::AST* owner) {
+  return concrete_binding(function, owner);
 }
 
-IntrinsicCallResult Intrinsics::call(cxx::FunctionSymbol* function,
+IntrinsicCallResult Intrinsics::call(const Binding& admitted,
                                      std::span<const Value> arguments,
                                      ValueArena& arena, Storage& storage,
                                      cxx::AST* owner, uint8_t math_flags,
                                      loom_builder_t* builder,
                                      loom_location_id_t location) {
-  auto* binding = concrete_binding(function, owner);
-  IREE_ASSERT(binding);
+  const auto* binding = &admitted;
   if (auto* view = std::get_if<ViewIntrinsic>(binding)) {
     return {view->call(arguments, types_, arena, owner, builder, location)};
   }
@@ -290,10 +295,8 @@ IntrinsicCallResult Intrinsics::call(cxx::FunctionSymbol* function,
                                 flattened.data(), scalar->type, location, &op));
     return {Value(loom_op_results(op)[0])};
   }
-  if (auto* shaped = std::get_if<ShapedIntrinsic>(binding)) {
-    return {Value(shaped->call(flattened, builder, location))};
-  }
-  return {};
+  const auto& shaped = std::get<ShapedIntrinsic>(admitted);
+  return {Value(shaped.call(flattened, builder, location))};
 }
 
 }  // namespace loom::cxx_import

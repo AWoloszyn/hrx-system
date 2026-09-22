@@ -19,11 +19,14 @@ loom_cc_binary(
     iree::base
     iree::base::tooling::flags
     iree::io::stream
+    loom::codegen::low::text_asm
     loom::format::bytecode::writer
     loom::format::text::printer
     loom::import::cxx
     loom::pass::builtin_registry
     loom::pass::tooling
+    loom::target::configured::provider_set
+    loom::target::provider
     loom::tooling::cli::help
     loom::tooling::context
     loom::tooling::io::file

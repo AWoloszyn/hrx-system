@@ -97,6 +97,32 @@ iree_status_t loom_text_parse_with_symbol_references(
     loom_symbol_reference_table_t* out_symbol_references,
     loom_module_t** out_module);
 
+// Parses a self-contained Low assembly signature and body into |module|.
+//
+// The source range names the literal contents within a borrowed source file.
+// Its spelling is `(%input: reg<...>, ...) -> (reg<...>, ...) { ... }`;
+// results and a `where` predicate list are optional. Inputs are the only
+// captured values. Module-symbol references are not available in this scope.
+// |representation_contract| selects the descriptor/register vocabulary.
+// |symbol| is a newly reserved module symbol naming the private function.
+//
+// The result is a normal low.func.def inserted at module scope. All persistent
+// IR and source identities belong to |module|; source bytes and the descriptor
+// environment need only remain valid during this call. Existing function
+// bodies in the module are neither traversed nor rebuilt. Parsed operations
+// maintain use/def state at construction. The caller performs semantic
+// verification before passing the module to compiler transforms; several
+// parsed functions may be verified in one batch.
+//
+// Parse errors are delivered through the diagnostic sink and return OK with
+// |*out_function| NULL. Infrastructure failures return a non-OK status. On
+// either failure, the destination module may contain partial construction and
+// must be discarded.
+iree_status_t loom_text_parse_low_assembly(
+    loom_source_range_t source, iree_string_view_t representation_contract,
+    loom_symbol_id_t symbol, loom_module_t* module,
+    const loom_text_parse_options_t* options, loom_op_t** out_function);
+
 #ifdef __cplusplus
 }
 #endif

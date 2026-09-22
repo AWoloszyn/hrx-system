@@ -23,6 +23,7 @@ _LOW_OPS_VISIBILITY = [
     "//loom/src/loom/codegen/low/transforms:__subpackages__",
     "//loom/src/loom/format/text/parser:__pkg__",
     "//loom/src/loom/format/text/printer:__pkg__",
+    "//loom/src/loom/import/cxx/binding:__pkg__",
     "//loom/src/loom/ops:__pkg__",
     "//loom/src/loom/target:__pkg__",
     "//loom/src/loom/target/arch:__subpackages__",

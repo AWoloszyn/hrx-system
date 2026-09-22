@@ -1,0 +1,34 @@
+// RUN: emit source-low @entry target=amdgpu:gfx1151 output=none
+#include <loomcxx/low.h>
+struct [[loom::representation("amdgpu.gfx11.generic.core")]] Contract {};
+// A semantic scalar is uniform. A VGPR is not interchangeable with its SGPR.
+unsigned entry(unsigned value) {
+  // ERROR@+1: TARGET/074 "mapped operand type reg<amdgpu.sgpr> does not match low helper '@__loom_assembly$' register type reg<amdgpu.vgpr>"
+  return loom::low::assembly<Contract, unsigned>(R"(
+      (%value: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) { return %value }
+  )", value);
+}
+
+// ====
+#include <loomcxx/low.h>
+struct [[loom::representation("amdgpu.gfx11.generic.core")]] Contract {};
+using Word = unsigned long long __attribute__((ext_vector_type(1)));
+// Width is checked independently of register class.
+Word entry(Word value) {
+  // ERROR@+1: TARGET/074 "mapped operand type reg<amdgpu.vgpr x2> does not match low helper '@__loom_assembly$' register type reg<amdgpu.vgpr>"
+  return loom::low::assembly<Contract, Word>(R"(
+      (%value: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) { return %value }
+  )", value);
+}
+
+// ====
+#include <loomcxx/low.h>
+struct [[loom::representation("amdgpu.gfx11.generic.core")]] Contract {};
+using Word = unsigned __attribute__((ext_vector_type(1)));
+// Result carriers are checked even when the inputs match.
+unsigned entry(Word value) {
+  // ERROR@+1: TARGET/074 "mapped result type reg<amdgpu.sgpr> does not match low helper '@__loom_assembly$' register type reg<amdgpu.vgpr>"
+  return loom::low::assembly<Contract, unsigned>(R"(
+      (%value: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) { return %value }
+  )", value);
+}

@@ -10,11 +10,14 @@
 #include "iree/base/api.h"
 #include "iree/base/tooling/flags.h"
 #include "iree/io/vec_stream.h"
+#include "loom/codegen/low/text_asm.h"
 #include "loom/format/bytecode/writer.h"
 #include "loom/format/text/printer.h"
 #include "loom/import/cxx/import.h"
 #include "loom/pass/builtin_registry.h"
 #include "loom/pass/tooling.h"
+#include "loom/target/configured/provider_set.h"
+#include "loom/target/provider.h"
 #include "loom/tooling/cli/help.h"
 #include "loom/tooling/context/context.h"
 #include "loom/tooling/io/file.h"
@@ -49,16 +52,21 @@ static iree_status_t loom_cxx_cli_write_block(void* user_data,
       iree_make_string_view((const char*)block.data, block.data_length));
 }
 
-static iree_status_t loom_cxx_cli_write_module(loom_module_t* module,
-                                               iree_arena_block_pool_t* pool,
-                                               iree_allocator_t allocator) {
+static iree_status_t loom_cxx_cli_write_module(
+    loom_module_t* module,
+    const loom_text_low_asm_environment_t* low_asm_environment,
+    iree_arena_block_pool_t* pool, iree_allocator_t allocator) {
   loom_tooling_output_stream_t output = {0};
   IREE_RETURN_IF_ERROR(loom_tooling_output_stream_open(
       iree_make_cstring_view(FLAG_output), allocator, &output));
   iree_status_t status = iree_ok_status();
   if (strcmp(FLAG_to, "text") == 0) {
+    const loom_text_print_options_t options = {
+        .flags = LOOM_TEXT_PRINT_DEFAULT | LOOM_TEXT_PRINT_PREFER_LOW_ASM,
+        .low_asm_environment = *low_asm_environment,
+    };
     status =
-        loom_text_print_module(module, &output.stream, LOOM_TEXT_PRINT_DEFAULT);
+        loom_text_print_module_with_options(module, &output.stream, &options);
   } else {
     iree_io_stream_t* stream = NULL;
     status = iree_io_vec_stream_create(
@@ -68,6 +76,7 @@ static iree_status_t loom_cxx_cli_write_module(loom_module_t* module,
     if (iree_status_is_ok(status)) {
       loom_bytecode_write_options_t options = {
           .producer = IREE_SV("loom-import-cxx"),
+          .low_repr_environment = low_asm_environment->low_repr,
       };
       status = loom_bytecode_write_module(module, stream, &options, pool);
     }
@@ -83,15 +92,16 @@ static iree_status_t loom_cxx_cli_write_module(loom_module_t* module,
 // Sets *out_succeeded only after importing and writing the module. Diagnosed
 // source rejection returns OK with *out_succeeded=false; infrastructure and
 // option failures return a non-OK status for main to report.
-static iree_status_t loom_cxx_cli_import(iree_string_view_t filename,
-                                         loom_context_t* context,
-                                         iree_arena_block_pool_t* pool,
-                                         iree_allocator_t allocator,
-                                         bool* out_succeeded) {
+static iree_status_t loom_cxx_cli_import(
+    iree_string_view_t filename, loom_context_t* context,
+    const loom_text_low_asm_environment_t* low_asm_environment,
+    iree_arena_block_pool_t* pool, iree_allocator_t allocator,
+    bool* out_succeeded) {
   *out_succeeded = false;
   loom_cxx_import_options_t options;
   loom_cxx_import_options_initialize(&options);
   options.diagnostic_sink.fn = loom_diagnostic_stderr_sink;
+  options.low_asm_environment = *low_asm_environment;
   options.standard = iree_make_cstring_view(FLAG_std);
   options.triple = iree_make_cstring_view(FLAG_triple);
   if (strcmp(FLAG_data_model, "lp64") == 0) {
@@ -173,7 +183,8 @@ static iree_status_t loom_cxx_cli_import(iree_string_view_t filename,
     }
   }
   if (iree_status_is_ok(status) && module) {
-    status = loom_cxx_cli_write_module(module, pool, allocator);
+    status =
+        loom_cxx_cli_write_module(module, low_asm_environment, pool, allocator);
   }
   *out_succeeded = iree_status_is_ok(status) && module != NULL;
   loom_module_free(module);
@@ -200,16 +211,38 @@ int main(int argc, char** argv) {
   iree_arena_block_pool_initialize(64 * 1024, allocator, &pool);
   loom_context_t context;
   loom_context_initialize(allocator, &context);
-  iree_status_t status = loom_tooling_context_register_tool_dialects(&context);
+  loom_target_environment_t target_environment = {0};
+  iree_status_t status = loom_target_environment_initialize(
+      loom_configured_target_provider_set(), &target_environment);
+  bool target_environment_initialized = iree_status_is_ok(status);
+  loom_target_low_descriptor_registry_t low_registry = {0};
+  loom_text_low_asm_environment_t low_asm_environment = {0};
+  if (iree_status_is_ok(status)) {
+    status =
+        loom_tooling_context_register_tool_dialects_with_target_environment(
+            &target_environment, &context);
+  }
+  if (iree_status_is_ok(status)) {
+    status = loom_target_environment_initialize_low_descriptor_registry(
+        &target_environment, &low_registry);
+  }
+  if (iree_status_is_ok(status)) {
+    loom_low_descriptor_text_asm_environment_initialize(&low_registry.registry,
+                                                        &low_asm_environment);
+  }
   if (iree_status_is_ok(status)) {
     status = loom_context_finalize(&context);
   }
   bool import_succeeded = false;
   if (iree_status_is_ok(status)) {
     status = loom_cxx_cli_import(iree_make_cstring_view(argv[1]), &context,
-                                 &pool, allocator, &import_succeeded);
+                                 &low_asm_environment, &pool, allocator,
+                                 &import_succeeded);
   }
   loom_context_deinitialize(&context);
+  if (target_environment_initialized) {
+    loom_target_environment_deinitialize(&target_environment);
+  }
   iree_arena_block_pool_deinitialize(&pool);
   if (!iree_status_is_ok(status)) {
     iree_status_fprint(stderr, status);

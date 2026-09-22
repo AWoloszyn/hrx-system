@@ -743,7 +743,7 @@ static iree_status_t loom_parse_format_check_operand_type_annotation(
 // Format walker
 //===----------------------------------------------------------------------===//
 
-static iree_status_t loom_parse_format_project_func_args(
+iree_status_t loom_parse_format_project_func_args(
     loom_parser_t* parser, uint16_t pending_func_arg_start, bool clone_values) {
   if (!clone_values) {
     for (uint16_t i = pending_func_arg_start;

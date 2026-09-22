@@ -14,16 +14,21 @@
 // Diagnostic emission
 //===----------------------------------------------------------------------===//
 
-static loom_source_range_t loom_parser_token_origin(iree_string_view_t filename,
-                                                    iree_string_view_t source,
+static loom_source_range_t loom_parser_token_origin(const loom_parser_t* parser,
                                                     loom_token_t token) {
+  const iree_string_view_t filename = parser->filename;
+  const iree_string_view_t source = parser->source;
   if (token.kind == LOOM_TOKEN_NONE || token.kind == LOOM_TOKEN_EOF) {
+    iree_host_size_t end = parser->tokenizer.source.size;
+    if (parser->tokenizer.source.data) {
+      end += (iree_host_size_t)(parser->tokenizer.source.data - source.data);
+    }
     return (loom_source_range_t){
         .provenance = LOOM_SOURCE_PROVENANCE_EXACT_SOURCE,
         .filename = filename,
         .source = source,
-        .start = source.size,
-        .end = source.size,
+        .start = end,
+        .end = end,
         .start_line = token.line,
         .start_column = token.column,
         .end_line = token.line,
@@ -132,8 +137,7 @@ static iree_status_t loom_parser_emit_diagnostic(
   if (loom_error_def_severity(error) == LOOM_DIAGNOSTIC_ERROR) {
     ++parser->error_count;
   }
-  loom_source_range_t origin =
-      loom_parser_token_origin(parser->filename, parser->source, token);
+  loom_source_range_t origin = loom_parser_token_origin(parser, token);
   loom_diagnostic_t diagnostic = {
       .severity = loom_error_def_severity(error),
       .error = error,
@@ -191,8 +195,7 @@ iree_status_t loom_parser_emit_related(loom_parser_t* parser,
                                        loom_token_t related_token) {
   loom_diagnostic_related_location_t related_location = {
       .label = related_label,
-      .source_location = loom_parser_token_origin(
-          parser->filename, parser->source, related_token),
+      .source_location = loom_parser_token_origin(parser, related_token),
   };
   return loom_parser_emit_diagnostic(parser, error, params, param_count, token,
                                      &related_location, 1);

@@ -16,6 +16,7 @@
 #include <unordered_map>
 #include <variant>
 
+#include "loom/import/cxx/binding/assembly.h"
 #include "loom/import/cxx/binding/atomic.h"
 #include "loom/import/cxx/binding/scalar_bindings.h"
 #include "loom/import/cxx/binding/shaped.h"
@@ -37,32 +38,6 @@ struct IntrinsicCallResult {
 // consume the resulting trusted signature.
 class Intrinsics {
  public:
-  Intrinsics(cxx::TranslationUnit& unit, Diagnostics& diagnostics, Types& types)
-      : unit_(unit), diagnostics_(diagnostics), types_(types) {}
-
-  // Admits raw attribute arguments before the frontend's string-only semantic
-  // attribute map can erase unsupported arguments or duplicate bindings.
-  void declaration(cxx::FunctionSymbol* function,
-                   cxx::List<cxx::AttributeSpecifierAST*>* attributes,
-                   cxx::AST* owner);
-
-  // Returns the admitted operand type for a void equality expectation, or no
-  // value for another declaration. Check-body translation owns its emission.
-  std::optional<loom_type_t> expectation_type(
-      cxx::FunctionSymbol* function) const;
-
-  // Returns whether this service owns the concrete function. Reached function
-  // template specializations resolve lazily from an admitted primary pattern.
-  bool owns(cxx::FunctionSymbol* function, cxx::AST* owner);
-
-  // Emits an owned concrete operation using source-preserving argument values.
-  IntrinsicCallResult call(cxx::FunctionSymbol* function,
-                           std::span<const Value> arguments, ValueArena& arena,
-                           Storage& storage, cxx::AST* owner,
-                           uint8_t math_flags, loom_builder_t* builder,
-                           loom_location_id_t location);
-
- private:
   struct ScalarBinding {
     // Immutable generated binding for this source declaration.
     const loom_cxx_scalar_binding_t* scalar;
@@ -83,9 +58,39 @@ class Intrinsics {
       return loom_type_equal(type, other.type);
     }
   };
-  using Binding = std::variant<ScalarBinding, ShapedIntrinsic, ViewIntrinsic,
-                               AtomicIntrinsic, EqualityBinding>;
+  using Binding =
+      std::variant<ScalarBinding, ShapedIntrinsic, ViewIntrinsic,
+                   AtomicIntrinsic, AssemblyIntrinsic, EqualityBinding>;
 
+  Intrinsics(cxx::TranslationUnit& unit, Diagnostics& diagnostics, Types& types)
+      : unit_(unit), diagnostics_(diagnostics), types_(types) {}
+
+  // Admits raw attribute arguments before the frontend's string-only semantic
+  // attribute map can erase unsupported arguments or duplicate bindings.
+  void declaration(cxx::FunctionSymbol* function,
+                   cxx::List<cxx::AttributeSpecifierAST*>* attributes,
+                   cxx::AST* owner);
+
+  // Returns the admitted operand type for a void equality expectation, or no
+  // value for another declaration. Check-body translation owns its emission.
+  std::optional<loom_type_t> expectation_type(
+      cxx::FunctionSymbol* function) const;
+
+  // Resolves a concrete operation once for call admission. The returned binding
+  // remains stable until this invocation ends, including across nested calls.
+  // NULL means an ordinary source function rather than an owned operation.
+  Binding* lookup(cxx::FunctionSymbol* function, cxx::AST* owner);
+
+  // Emits an ordinary concrete operation using source-preserving values.
+  // Assembly literals and check expectations are handled by their source
+  // owners.
+  IntrinsicCallResult call(const Binding& binding,
+                           std::span<const Value> arguments, ValueArena& arena,
+                           Storage& storage, cxx::AST* owner,
+                           uint8_t math_flags, loom_builder_t* builder,
+                           loom_location_id_t location);
+
+ private:
   Binding resolve(cxx::FunctionSymbol* function,
                   const cxx::Attribute& attribute, cxx::AST* owner);
   ScalarBinding resolve_scalar(const loom_cxx_scalar_binding_t* scalar,

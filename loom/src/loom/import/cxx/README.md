@@ -435,6 +435,92 @@ current AMDGPU provider does not yet admit. Atomic load/store and standalone
 fence bindings likewise require their shared High contracts; an RMW or barrier
 does not substitute for them.
 
+## Embedded Low assembly
+
+`loom::low::assembly` embeds a typed descriptor-backed instruction fragment in
+an ordinary C++ function. A single template exposes the selected descriptor
+vocabulary; instructions need no corresponding C++ intrinsic declaration.
+Include `<loomcxx/low.h>` and name the representation contract on a tag type:
+
+```cpp
+struct [[loom::representation("amdgpu.gfx11.generic.core")]] Contract {};
+using Word = float __attribute__((ext_vector_type(1)));
+
+Word pack(Word even, Word odd) {
+  return loom::low::assembly<Contract, Word>(R"loom(
+      (%even: reg<amdgpu.vgpr>, %odd: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) {
+        %selector = s_mov_b32 0x05040100
+        %packed = v_perm_b32 %odd, %even, %selector
+        return %packed
+      }
+  )loom", even, odd);
+}
+```
+
+The selector takes the low two bytes from each input word. The C++ inputs and
+result retain their `vector<1xf32>` semantic types, while the literal describes
+physical registers. The byte permutation does not convert floating-point
+values to integers: it operates on their bits. Changing `Word` to a one-element
+unsigned vector uses the same physical instructions. Source lowering checks
+both the width and register class of every argument and result against the
+selected target's mapping.
+
+The same interface exposes XDNA's native saturating INT4 pack. This function
+clamps 128 signed bytes to `[-8, 7]` and packs adjacent lanes into the low and
+high nibbles of 64 output bytes:
+
+```cpp
+struct [[loom::representation("amd.xdna.aie2p.core")]] Aie2p {};
+using SignedBytes = signed char __attribute__((ext_vector_type(128)));
+using Packed = unsigned char __attribute__((ext_vector_type(64)));
+
+Packed saturate_s4(SignedBytes values) {
+  return loom::low::assembly<Aie2p, Packed>(R"loom(
+      (%values: reg<aie2p.vec256 x4>) -> (reg<aie2p.vec256 x2>) {
+        set.pack-size 0
+        set.saturation 1
+        %packed = vpack.x.signed %values
+        return %packed
+      }
+  )loom", values);
+}
+```
+
+High `vector.bitpack` packs low bits; this fragment also selects the hardware's
+saturation behavior. Its control-register writes and the pack's state reads
+are descriptor effects visible to optimization and scheduling. The native
+[packing test](../../../../../experimental/xdna/cts/testdata/assembly_pack.cpp)
+alternates saturated and unsaturated fragments on the same inputs, within
+ordinary C++ vector loads, stores, and loops.
+
+`Contract` selects a representation vocabulary independently of the hardware
+profile used for compilation. The first example can be imported with the AMDGPU
+descriptors enabled, then specialized to a compatible profile such as `gfx1151`.
+The `loomc` API uses the context's target environment; the native importer
+accepts an optional `low_asm_environment` in its import options. Ordinary C++
+import does not require that environment.
+
+The imported module contains a private `low.func.def ... asm` with the readable
+body and a source-typed `low.invoke inline` at the C++ callsite. Existing
+inlining, scheduling, register allocation, verification, and emission handle
+the fragment. For this function, source-to-Low produces just `s_mov_b32`,
+`v_perm_b32`, and the return. Both text and bytecode preserve the descriptor
+contract and can be reused after the C++ frontend and source invocation end.
+
+The source argument is a narrow raw string literal. Its formal parameters bind
+positionally to the remaining C++ arguments, which are evaluated once. Result
+and argument types are SSA scalars or vectors; `void` permits no result.
+The literal contains an argument list, optional result list, optional `where`
+predicates, and a braced body using the normal Low assembly grammar. It can use
+local SSA values and blocks. Surrounding C++ names and module symbols are not
+implicit captures. Pointer/view/record arguments require an explicit Low ABI
+binding beyond this scalar/vector surface. Scheduling is free; the literal
+does not impose a locked instruction order.
+
+Malformed mnemonics and types diagnose inside the original C++ literal.
+Physical signature mismatches diagnose at the callsite during target lowering.
+The body is verified at import, before it becomes trusted compiler IR.
+
 ## Executable checks and benchmarks
 
 Include `<loomcxx/check.h>` to author a correctness case beside its implementation:

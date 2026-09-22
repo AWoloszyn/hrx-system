@@ -1,0 +1,96 @@
+// RUN: roundtrip
+#include <loomcxx/low.h>
+struct [[loom::representation("test.low.core")]] Contract {};
+
+// Each literal has its own physical body even when C++ shares a specialization.
+int add(int lhs, int rhs) {
+  return loom::low::assembly<Contract, int>(R"(
+      (%lhs: reg<test.i32>, %rhs: reg<test.i32>) -> (reg<test.i32>) {
+        %sum = test.add.i32 %lhs, %rhs
+        return %sum
+      }
+  )", lhs, rhs);
+}
+int identity(int value, int unused) {
+  return loom::low::assembly<Contract, int>(R"(
+      (%value: reg<test.i32>, %unused: reg<test.i32>) -> (reg<test.i32>) {
+        return %value
+      }
+  )", value, unused);
+}
+void empty() {
+  loom::low::assembly<Contract, void>(R"(() { return })");
+}
+// Source reservations share the generated helper's naming domain.
+[[loom::symbol("__loom_assembly$")]] int reserved(int value) { return value; }
+
+// ----
+func.def public @add(%lhs: i32, %rhs: i32) -> (i32) {
+  %7 = low.invoke inline @__loom_assembly$_1(%lhs, %rhs) : (i32, i32) -> (i32)
+  func.return %7 : i32
+}
+
+low.func.def target<test.low.core> @__loom_assembly$_1(%lhs: reg<test.i32>, %rhs: reg<test.i32>) -> (reg<test.i32>) asm {
+  %sum = test.add.i32 %lhs, %rhs
+  return %sum
+}
+
+func.def public @identity(%value: i32, %unused: i32) -> (i32) {
+  %14 = low.invoke inline @__loom_assembly$_2(%value, %unused) : (i32, i32) -> (i32)
+  func.return %14 : i32
+}
+
+low.func.def target<test.low.core> @__loom_assembly$_2(%value: reg<test.i32>, %unused: reg<test.i32>) -> (reg<test.i32>) asm {
+  return %value
+}
+
+func.def public @empty() {
+  low.invoke inline @__loom_assembly$_3() : ()
+  func.return
+}
+
+low.func.def target<test.low.core> @__loom_assembly$_3() asm {
+  return
+}
+
+func.def public @__loom_assembly$(%value: i32) -> (i32) {
+  func.return %value : i32
+}
+
+// ====
+#include <loomcxx/low.h>
+struct [[loom::representation("test.low.core")]] Contract {};
+// A helper called twice shares one physical body and evaluates operands through
+// ordinary C++ value flow, including side effects.
+static int twice(int value) {
+  return loom::low::assembly<Contract, int>(R"(
+      (%value: reg<test.i32>) -> (reg<test.i32>) {
+        %sum = test.add.i32 %value, %value
+        return %sum
+      }
+  )", value);
+}
+int entry(int value) {
+  int first = twice(value++);
+  return first + twice(value);
+}
+
+// ----
+func.def public @entry(%value$0: i32) -> (i32) {
+  %2 = scalar.constant 1 : i32
+  %value$3 = scalar.addi %value$0, %2 : i32
+  %first = func.call @twice(%value$0) : (i32) -> (i32)
+  %5 = func.call @twice(%value$3) : (i32) -> (i32)
+  %6 = scalar.addi %first, %5 : i32
+  func.return %6 : i32
+}
+
+func.def @twice(%value: i32) -> (i32) {
+  %12 = low.invoke inline @__loom_assembly$(%value) : (i32) -> (i32)
+  func.return %12 : i32
+}
+
+low.func.def target<test.low.core> @__loom_assembly$(%value: reg<test.i32>) -> (reg<test.i32>) asm {
+  %sum = test.add.i32 %value, %value
+  return %sum
+}
