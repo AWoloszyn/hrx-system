@@ -91,77 +91,84 @@ low.func.def target<vm.core> abi(vm_function) @reverse_view_bytes(%index: reg<vm
 
 // ====
 
-func.def @view_payloads(%input_i8: i8, %input_i16: i16, %input_i32: i32, %input_i64: i64, %input_f8E4M3: f8E4M3, %input_f8E5M2: f8E5M2, %input_f16: f16, %input_bf16: bf16, %input_f32: f32, %input_f64: f64) -> (i8, i16, i32, i64, f8E4M3, f8E5M2, f16, bf16, f32, f64) {
-  %length = index.constant 64 : offset
+// Copying between caller-owned buffers keeps each typed memory access observable.
+func.def @view_payloads(%source: buffer, %destination: buffer) -> (i8, i16, i32, i64, f8E4M3, f8E5M2, f16, bf16, f32, f64) {
   %origin = index.constant 0 : offset
-  %storage = buffer.alloca<private> align(8) %length : buffer
-  %view_i8 = buffer.view %storage[%origin] : buffer -> view<64xi8>
-  view.store %input_i8, %view_i8[0] : i8, view<64xi8>
-  %view_i16 = buffer.view %storage[%origin] : buffer -> view<32xi16>
-  view.store %input_i16, %view_i16[1] : i16, view<32xi16>
-  %view_i32 = buffer.view %storage[%origin] : buffer -> view<16xi32>
-  view.store %input_i32, %view_i32[1] : i32, view<16xi32>
-  %view_i64 = buffer.view %storage[%origin] : buffer -> view<8xi64>
-  view.store %input_i64, %view_i64[1] : i64, view<8xi64>
-  %view_f8E4M3 = buffer.view %storage[%origin] : buffer -> view<64xf8E4M3>
-  view.store %input_f8E4M3, %view_f8E4M3[16] : f8E4M3, view<64xf8E4M3>
-  %view_f8E5M2 = buffer.view %storage[%origin] : buffer -> view<64xf8E5M2>
-  view.store %input_f8E5M2, %view_f8E5M2[17] : f8E5M2, view<64xf8E5M2>
-  %view_f16 = buffer.view %storage[%origin] : buffer -> view<32xf16>
-  view.store %input_f16, %view_f16[9] : f16, view<32xf16>
-  %view_bf16 = buffer.view %storage[%origin] : buffer -> view<32xbf16>
-  view.store %input_bf16, %view_bf16[10] : bf16, view<32xbf16>
-  %view_f32 = buffer.view %storage[%origin] : buffer -> view<16xf32>
-  view.store %input_f32, %view_f32[6] : f32, view<16xf32>
-  %view_f64 = buffer.view %storage[%origin] : buffer -> view<8xf64>
-  view.store %input_f64, %view_f64[4] : f64, view<8xf64>
-  %loaded_i8 = view.load %view_i8[0] : view<64xi8> -> i8
-  %loaded_i16 = view.load %view_i16[1] : view<32xi16> -> i16
-  %loaded_i32 = view.load %view_i32[1] : view<16xi32> -> i32
-  %loaded_i64 = view.load %view_i64[1] : view<8xi64> -> i64
-  %loaded_f8E4M3 = view.load %view_f8E4M3[16] : view<64xf8E4M3> -> f8E4M3
-  %loaded_f8E5M2 = view.load %view_f8E5M2[17] : view<64xf8E5M2> -> f8E5M2
-  %loaded_f16 = view.load %view_f16[9] : view<32xf16> -> f16
-  %loaded_bf16 = view.load %view_bf16[10] : view<32xbf16> -> bf16
-  %loaded_f32 = view.load %view_f32[6] : view<16xf32> -> f32
-  %loaded_f64 = view.load %view_f64[4] : view<8xf64> -> f64
+  %source_i8 = buffer.view %source[%origin] : buffer -> view<64xi8>
+  %source_i16 = buffer.view %source[%origin] : buffer -> view<32xi16>
+  %source_i32 = buffer.view %source[%origin] : buffer -> view<16xi32>
+  %source_i64 = buffer.view %source[%origin] : buffer -> view<8xi64>
+  %source_f8E4M3 = buffer.view %source[%origin] : buffer -> view<64xf8E4M3>
+  %source_f8E5M2 = buffer.view %source[%origin] : buffer -> view<64xf8E5M2>
+  %source_f16 = buffer.view %source[%origin] : buffer -> view<32xf16>
+  %source_bf16 = buffer.view %source[%origin] : buffer -> view<32xbf16>
+  %source_f32 = buffer.view %source[%origin] : buffer -> view<16xf32>
+  %source_f64 = buffer.view %source[%origin] : buffer -> view<8xf64>
+  %loaded_i8 = view.load %source_i8[0] : view<64xi8> -> i8
+  %loaded_i16 = view.load %source_i16[1] : view<32xi16> -> i16
+  %loaded_i32 = view.load %source_i32[1] : view<16xi32> -> i32
+  %loaded_i64 = view.load %source_i64[1] : view<8xi64> -> i64
+  %loaded_f8E4M3 = view.load %source_f8E4M3[16] : view<64xf8E4M3> -> f8E4M3
+  %loaded_f8E5M2 = view.load %source_f8E5M2[17] : view<64xf8E5M2> -> f8E5M2
+  %loaded_f16 = view.load %source_f16[9] : view<32xf16> -> f16
+  %loaded_bf16 = view.load %source_bf16[10] : view<32xbf16> -> bf16
+  %loaded_f32 = view.load %source_f32[6] : view<16xf32> -> f32
+  %loaded_f64 = view.load %source_f64[4] : view<8xf64> -> f64
+  %destination_i8 = buffer.view %destination[%origin] : buffer -> view<64xi8>
+  %destination_i16 = buffer.view %destination[%origin] : buffer -> view<32xi16>
+  %destination_i32 = buffer.view %destination[%origin] : buffer -> view<16xi32>
+  %destination_i64 = buffer.view %destination[%origin] : buffer -> view<8xi64>
+  %destination_f8E4M3 = buffer.view %destination[%origin] : buffer -> view<64xf8E4M3>
+  %destination_f8E5M2 = buffer.view %destination[%origin] : buffer -> view<64xf8E5M2>
+  %destination_f16 = buffer.view %destination[%origin] : buffer -> view<32xf16>
+  %destination_bf16 = buffer.view %destination[%origin] : buffer -> view<32xbf16>
+  %destination_f32 = buffer.view %destination[%origin] : buffer -> view<16xf32>
+  %destination_f64 = buffer.view %destination[%origin] : buffer -> view<8xf64>
+  view.store %loaded_i8, %destination_i8[0] : i8, view<64xi8>
+  view.store %loaded_i16, %destination_i16[1] : i16, view<32xi16>
+  view.store %loaded_i32, %destination_i32[1] : i32, view<16xi32>
+  view.store %loaded_i64, %destination_i64[1] : i64, view<8xi64>
+  view.store %loaded_f8E4M3, %destination_f8E4M3[16] : f8E4M3, view<64xf8E4M3>
+  view.store %loaded_f8E5M2, %destination_f8E5M2[17] : f8E5M2, view<64xf8E5M2>
+  view.store %loaded_f16, %destination_f16[9] : f16, view<32xf16>
+  view.store %loaded_bf16, %destination_bf16[10] : bf16, view<32xbf16>
+  view.store %loaded_f32, %destination_f32[6] : f32, view<16xf32>
+  view.store %loaded_f64, %destination_f64[4] : f64, view<8xf64>
   func.return %loaded_i8, %loaded_i16, %loaded_i32, %loaded_i64, %loaded_f8E4M3, %loaded_f8E5M2, %loaded_f16, %loaded_bf16, %loaded_f32, %loaded_f64 : i8, i16, i32, i64, f8E4M3, f8E5M2, f16, bf16, f32, f64
 }
 
 // ----
-low.func.def target<vm.core> abi(vm_function) @view_payloads(%input_i8: reg<vm.value : i8>, %input_i16: reg<vm.value : i16>, %input_i32: reg<vm.value : i32>, %input_i64: reg<vm.value : i64>, %input_f8E4M3: reg<vm.value : f8E4M3>, %input_f8E5M2: reg<vm.value : f8E5M2>, %input_f16: reg<vm.value : f16>, %input_bf16: reg<vm.value : bf16>, %input_f32: reg<vm.value : f32>, %input_f64: reg<vm.value : f64>) -> (reg<vm.value : i8>, reg<vm.value : i16>, reg<vm.value : i32>, reg<vm.value : i64>, reg<vm.value : f8E4M3>, reg<vm.value : f8E5M2>, reg<vm.value : f16>, reg<vm.value : bf16>, reg<vm.value : f32>, reg<vm.value : f64>) asm {
-  %length = constant.i64 64
-  %view_f64 = buffer.allocate %length, 3 : reg<vm.ref : buffer>
-  %65 = constant.i64 0
-  buffer.store %view_f64, %65, %65, %input_i8, 0, "i8.x1"
-  %66 = constant.i64 2
-  buffer.store %view_f64, %66, %66, %input_i16, 0, "i16.x1"
-  %67 = constant.i64 4
-  buffer.store %view_f64, %67, %67, %input_i32, 0, "i32.x1"
-  %68 = constant.i64 8
-  buffer.store %view_f64, %68, %68, %input_i64, 0, "i64.x1"
-  %69 = constant.i64 16
-  buffer.store %view_f64, %69, %69, %input_f8E4M3, 0, "i8.x1"
-  %70 = constant.i64 17
-  buffer.store %view_f64, %70, %70, %input_f8E5M2, 0, "i8.x1"
-  %71 = constant.i64 18
-  buffer.store %view_f64, %71, %71, %input_f16, 0, "i16.x1"
-  %72 = constant.i64 20
-  buffer.store %view_f64, %72, %72, %input_bf16, 0, "i16.x1"
-  %73 = constant.i64 24
-  buffer.store %view_f64, %73, %73, %input_f32, 0, "i32.x1"
-  %74 = constant.i64 32
-  buffer.store %view_f64, %74, %74, %input_f64, 0, "i64.x1"
-  %loaded_i8 = buffer.load %view_f64, %65, %65, 0, "i8.x1" : reg<vm.value : i8>
-  %loaded_i16 = buffer.load %view_f64, %66, %66, 0, "i16.x1" : reg<vm.value : i16>
-  %loaded_i32 = buffer.load %view_f64, %67, %67, 0, "i32.x1" : reg<vm.value : i32>
-  %loaded_i64 = buffer.load %view_f64, %68, %68, 0, "i64.x1"
-  %loaded_f8E4M3 = buffer.load %view_f64, %69, %69, 0, "i8.x1" : reg<vm.value : f8E4M3>
-  %loaded_f8E5M2 = buffer.load %view_f64, %70, %70, 0, "i8.x1" : reg<vm.value : f8E5M2>
-  %loaded_f16 = buffer.load %view_f64, %71, %71, 0, "i16.x1" : reg<vm.value : f16>
-  %loaded_bf16 = buffer.load %view_f64, %72, %72, 0, "i16.x1" : reg<vm.value : bf16>
-  %loaded_f32 = buffer.load %view_f64, %73, %73, 0, "i32.x1" : reg<vm.value : f32>
-  %loaded_f64 = buffer.load %view_f64, %74, %74, 0, "i64.x1" : reg<vm.value : f64>
+low.func.def target<vm.core> abi(vm_function) @view_payloads(%source_f64: reg<vm.ref : buffer>, %destination_f64: reg<vm.ref : buffer>) -> (reg<vm.value : i8>, reg<vm.value : i16>, reg<vm.value : i32>, reg<vm.value : i64>, reg<vm.value : f8E4M3>, reg<vm.value : f8E5M2>, reg<vm.value : f16>, reg<vm.value : bf16>, reg<vm.value : f32>, reg<vm.value : f64>) asm {
+  %55 = constant.i64 0
+  %loaded_i8 = buffer.load %source_f64, %55, %55, 0, "i8.x1" : reg<vm.value : i8>
+  %57 = constant.i64 2
+  %loaded_i16 = buffer.load %source_f64, %57, %57, 0, "i16.x1" : reg<vm.value : i16>
+  %59 = constant.i64 4
+  %loaded_i32 = buffer.load %source_f64, %59, %59, 0, "i32.x1" : reg<vm.value : i32>
+  %61 = constant.i64 8
+  %loaded_i64 = buffer.load %source_f64, %61, %61, 0, "i64.x1"
+  %63 = constant.i64 16
+  %loaded_f8E4M3 = buffer.load %source_f64, %63, %63, 0, "i8.x1" : reg<vm.value : f8E4M3>
+  %65 = constant.i64 17
+  %loaded_f8E5M2 = buffer.load %source_f64, %65, %65, 0, "i8.x1" : reg<vm.value : f8E5M2>
+  %67 = constant.i64 18
+  %loaded_f16 = buffer.load %source_f64, %67, %67, 0, "i16.x1" : reg<vm.value : f16>
+  %69 = constant.i64 20
+  %loaded_bf16 = buffer.load %source_f64, %69, %69, 0, "i16.x1" : reg<vm.value : bf16>
+  %71 = constant.i64 24
+  %loaded_f32 = buffer.load %source_f64, %71, %71, 0, "i32.x1" : reg<vm.value : f32>
+  %73 = constant.i64 32
+  %loaded_f64 = buffer.load %source_f64, %73, %73, 0, "i64.x1" : reg<vm.value : f64>
+  buffer.store %destination_f64, %55, %55, %loaded_i8, 0, "i8.x1"
+  buffer.store %destination_f64, %57, %57, %loaded_i16, 0, "i16.x1"
+  buffer.store %destination_f64, %59, %59, %loaded_i32, 0, "i32.x1"
+  buffer.store %destination_f64, %61, %61, %loaded_i64, 0, "i64.x1"
+  buffer.store %destination_f64, %63, %63, %loaded_f8E4M3, 0, "i8.x1"
+  buffer.store %destination_f64, %65, %65, %loaded_f8E5M2, 0, "i8.x1"
+  buffer.store %destination_f64, %67, %67, %loaded_f16, 0, "i16.x1"
+  buffer.store %destination_f64, %69, %69, %loaded_bf16, 0, "i16.x1"
+  buffer.store %destination_f64, %71, %71, %loaded_f32, 0, "i32.x1"
+  buffer.store %destination_f64, %73, %73, %loaded_f64, 0, "i64.x1"
   return %loaded_i8, %loaded_i16, %loaded_i32, %loaded_i64, %loaded_f8E4M3, %loaded_f8E5M2, %loaded_f16, %loaded_bf16, %loaded_f32, %loaded_f64
 }
 
