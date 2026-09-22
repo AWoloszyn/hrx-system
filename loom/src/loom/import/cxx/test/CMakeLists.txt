@@ -58,6 +58,7 @@ loom_check_test_suite(
     "offsetof_roundtrip.cxx-test"
     "packed_memory.cxx-test"
     "pointers.cxx-test"
+    "record_arrays.cxx-test"
     "record_memory.cxx-test"
     "record_memory_invalid.cxx-test"
     "records.cxx-test"

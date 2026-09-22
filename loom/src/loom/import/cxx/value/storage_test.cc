@@ -92,6 +92,39 @@ TEST_F(StorageTest, RetainsArrayShapeAndExplicitAlignment) {
       loom_type_shaped_1d(LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_F32, 64, 0)));
 }
 
+TEST_F(StorageTest, ArrayAliasesRetainTheirElementTypeAndInteriorOrigin) {
+  Locations locations(source_.unit(), source_.diagnostics(), module_);
+  Scalars scalars(source_.unit(), source_.diagnostics(), types_, locations,
+                  builder_);
+  Storage storage(source_.unit(), source_.diagnostics(), types_, scalars,
+                  locations, builder_);
+  auto* control = source_.unit().control();
+  auto* owner = source_.unit().ast();
+  auto* bytes =
+      control->getBoundedArrayType(control->getUnsignedCharType(), 256);
+  auto allocation = storage.workgroup(bytes, 16, owner);
+  auto* row = control->getBoundedArrayType(control->getFloatType(), 32);
+  auto interior = storage.advance(
+      allocation.pointer, scalars.integer(1, LOOM_SCALAR_TYPE_I32),
+      control->getPointerType(row), control->getIntType(),
+      cxx::TokenKind::T_PLUS, owner);
+  auto access =
+      storage.subscript(interior, scalars.integer(17, LOOM_SCALAR_TYPE_I32),
+                        row, control->getIntType(), owner);
+  EXPECT_FALSE(access.index.has_value());
+  auto* view = producer(access.view);
+  ASSERT_TRUE(loom_buffer_view_isa(view));
+  EXPECT_EQ(loom_buffer_view_buffer(view), allocation.pointer.root);
+  EXPECT_TRUE(loom_type_equal(
+      loom_module_value_type(module_, access.view),
+      loom_type_shaped_1d(LOOM_TYPE_VIEW, LOOM_SCALAR_TYPE_F32, 1, 0)));
+  auto* origin = producer(loom_buffer_view_byte_offset(view));
+  auto* assumed = producer(loom_index_cast_input(origin));
+  auto* sum = producer(loom_op_operands(assumed)[0]);
+  EXPECT_EQ(loom_index_cast_input(producer(loom_op_operands(sum)[0])),
+            interior.byte_offset);
+}
+
 TEST_F(StorageTest, InteriorPointersRetainSignedDisplacementsAndRootIdentity) {
   Locations locations(source_.unit(), source_.diagnostics(), module_);
   Scalars scalars(source_.unit(), source_.diagnostics(), types_, locations,

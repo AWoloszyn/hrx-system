@@ -953,14 +953,54 @@ come from the frontend's completed object layout; field stores leave padding
 and neighboring fields untouched. `&particles[index].flags` can pass through an
 ordinary helper as a typed pointer.
 
-Memory records admit non-boolean scalar, enum, vector and nested named fields.
+Memory records admit non-boolean scalar, enum, vector and nested named fields,
+including fixed arrays of those types and multidimensional arrays. Array
+members decay to borrowed pointers, so ordinary helpers can consume them.
+Indexing and pointer-to-array arithmetic preserve each source extent's stride.
 The admitted object must be a complete aggregate with trivial copying and
 destruction, without bases, unions, bitfields or `no_unique_address`. Stored
-pointers, references, arrays and Loom view/encoding objects require additional
+pointers, references and Loom view/encoding objects require additional
 memory representations and receive source diagnostics. Whole-record loads and
 stores also diagnose: the by-value SSA partition is not an object-copy operation.
 Volatile record pointers and volatile fields retain observable accesses through
-nested members.
+nested members and array elements.
+
+This allows a kernel to consume a block-quantized format directly from its
+existing storage. For example, an IQ4_XS block holds 256 nonlinear four-bit
+codes, one FP16 base scale, and eight six-bit group scales in 136 bytes:
+
+```cpp
+struct IQ4XSBlock {
+  // Base multiplier shared by all eight groups.
+  _Float16 scale;
+  // Two high bits of each group scale code.
+  unsigned short scales_high;
+  // Two low four-bit scale codes per byte.
+  unsigned char scales_low[4];
+  // Sixteen packed bytes per 32-value group.
+  unsigned char quants[128];
+};
+static_assert(sizeof(IQ4XSBlock) == 136);
+
+float decode(const IQ4XSBlock* blocks, unsigned block_index, unsigned index,
+             const signed char* codebook) {
+  auto* block = &blocks[block_index];
+  unsigned group = index / 32;
+  unsigned lane = index % 32;
+  unsigned low = (block->scales_low[group / 2] >> (4 * (group % 2))) & 15;
+  unsigned high = (block->scales_high >> (2 * group)) & 3;
+  float scale = float(block->scale) * (int(low | (high << 4)) - 32);
+  unsigned packed = block->quants[group * 16 + lane % 16];
+  unsigned code = (packed >> (4 * (lane / 16))) & 15;
+  return scale * codebook[code];
+}
+```
+
+The block pointer advances by 136 bytes; `scales_low` and `quants` start at
+offsets 4 and 8. Their elements use byte loads, the base scale uses an FP16
+load, and the codebook uses signed integer-to-float conversion. No record or
+array is copied or allocated. Arrays in by-value records and addresses of
+automatic objects still require a separate value/storage representation.
 
 Packed fields use the same typed memory operations, with their exact byte
 origins and record strides:
