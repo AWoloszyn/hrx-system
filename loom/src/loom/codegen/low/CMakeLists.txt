@@ -710,6 +710,7 @@ loom_cc_library(
     ::allocation
     ::descriptors
     iree::base
+    iree::base::internal
     loom::codegen::low::schedule
     loom::ir
     loom::ops::low

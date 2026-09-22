@@ -73,11 +73,6 @@ typedef struct loom_amdgpu_encode_inputs_t {
   const loom_amdgpu_encoding_table_t* encoding_table;
   // Fixed-segment layout shared by low.storage.address packets.
   const loom_amdgpu_storage_layout_t* storage_layout;
-  // Module string IDs for descriptor immediate rows, indexed by descriptor-set
-  // immediate ordinal.
-  const loom_string_id_t* immediate_name_ids;
-  // Number of entries in immediate_name_ids.
-  iree_host_size_t immediate_name_id_count;
   // Optional encoding products requested by the caller.
   loom_amdgpu_encode_instruction_stream_flags_t flags;
   // Cached descriptor rows needed by native encoding helper packets.
@@ -231,32 +226,6 @@ static void loom_amdgpu_vgpr_msb_insert_requirement(
   const uint8_t slot_value = (uint8_t)(bank << shift);
   *mask |= slot_mask;
   *value = (uint8_t)((*value & ~slot_mask) | slot_value);
-}
-
-static loom_named_attr_slice_t loom_amdgpu_packet_attrs(
-    const loom_low_packet_view_t* packet) {
-  const loom_op_t* op = packet->node->op;
-  if (loom_low_op_isa(op)) {
-    return loom_low_op_attrs(op);
-  }
-  if (loom_low_const_isa(op)) {
-    return loom_low_const_attrs(op);
-  }
-  return loom_make_named_attr_slice(NULL, 0);
-}
-
-static const loom_named_attr_t* loom_amdgpu_find_packet_attr_by_name_id(
-    loom_named_attr_slice_t attrs, loom_string_id_t name_id) {
-  if (name_id == LOOM_STRING_ID_INVALID) {
-    return NULL;
-  }
-  for (iree_host_size_t i = 0; i < attrs.count; ++i) {
-    const loom_named_attr_t* attr = &attrs.entries[i];
-    if (attr->name_id == name_id) {
-      return attr;
-    }
-  }
-  return NULL;
 }
 
 static iree_status_t loom_amdgpu_verify_scc_assignment(
@@ -527,13 +496,6 @@ static const loom_low_immediate_t* loom_amdgpu_descriptor_immediate(
       descriptor_set, descriptor, descriptor_immediate_index)];
 }
 
-static loom_string_id_t loom_amdgpu_descriptor_immediate_name_id(
-    const loom_amdgpu_encode_state_t* state, uint32_t immediate_row) {
-  IREE_ASSERT(state->inputs.immediate_name_ids != NULL);
-  IREE_ASSERT_LT(immediate_row, state->inputs.immediate_name_id_count);
-  return state->inputs.immediate_name_ids[immediate_row];
-}
-
 static iree_status_t loom_amdgpu_read_immediate_field_value(
     const loom_amdgpu_encode_state_t* state,
     const loom_low_packet_view_t* packet, uint16_t descriptor_immediate_index,
@@ -545,18 +507,16 @@ static iree_status_t loom_amdgpu_read_immediate_field_value(
       descriptor_set, packet->descriptor, descriptor_immediate_index);
   const loom_low_immediate_t* immediate =
       &descriptor_set->immediates[immediate_row];
-  const loom_string_id_t field_name_id =
-      loom_amdgpu_descriptor_immediate_name_id(state, immediate_row);
-  const loom_named_attr_t* attr = loom_amdgpu_find_packet_attr_by_name_id(
-      loom_amdgpu_packet_attrs(packet), field_name_id);
-  if (attr != NULL && attr->value.kind == LOOM_ATTR_I64) {
-    *out_value = attr->value.i64;
+  const loom_attribute_t attr =
+      loom_low_packet_immediate_attr(packet, immediate);
+  if (attr.kind == LOOM_ATTR_I64) {
+    *out_value = attr.i64;
     return iree_ok_status();
   }
 
   const iree_string_view_t field_name = loom_amdgpu_descriptor_string(
       descriptor_set, immediate->field_name_string_offset);
-  if (attr == NULL) {
+  if (attr.kind == LOOM_ATTR_ABSENT) {
     if (iree_any_bit_set(immediate->flags,
                          LOOM_LOW_IMMEDIATE_FLAG_DEFAULT_VALUE)) {
       *out_value = immediate->default_value;
@@ -637,22 +597,22 @@ static bool loom_amdgpu_descriptor_semantic_tag_is(
 }
 
 static iree_status_t loom_amdgpu_symbol_name_from_attr(
-    const loom_amdgpu_encode_state_t* state, const loom_named_attr_t* attr,
+    const loom_amdgpu_encode_state_t* state, loom_attribute_t attr,
     iree_string_view_t field_name, iree_string_view_t* out_symbol_name) {
   *out_symbol_name = iree_string_view_empty();
-  if (attr == NULL) {
+  if (attr.kind == LOOM_ATTR_ABSENT) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "AMDGPU native encoding immediate '%.*s' is "
                             "required",
                             (int)field_name.size, field_name.data);
   }
-  if (attr->value.kind != LOOM_ATTR_SYMBOL) {
+  if (attr.kind != LOOM_ATTR_SYMBOL) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "AMDGPU native encoding immediate '%.*s' must be "
                             "a symbol reference",
                             (int)field_name.size, field_name.data);
   }
-  const loom_symbol_ref_t symbol_ref = attr->value.symbol;
+  const loom_symbol_ref_t symbol_ref = attr.symbol;
   if (!loom_symbol_ref_is_valid(symbol_ref) || symbol_ref.module_id != 0 ||
       symbol_ref.symbol_id >= state->inputs.schedule->module->symbols.count) {
     return iree_make_status(
@@ -686,10 +646,8 @@ static iree_status_t loom_amdgpu_read_immediate_symbol(
       &descriptor_set->immediates[immediate_row];
   const iree_string_view_t field_name = loom_amdgpu_descriptor_string(
       descriptor_set, immediate->field_name_string_offset);
-  const loom_string_id_t field_name_id =
-      loom_amdgpu_descriptor_immediate_name_id(state, immediate_row);
-  const loom_named_attr_t* attr = loom_amdgpu_find_packet_attr_by_name_id(
-      loom_amdgpu_packet_attrs(packet), field_name_id);
+  const loom_attribute_t attr =
+      loom_low_packet_immediate_attr(packet, immediate);
   return loom_amdgpu_symbol_name_from_attr(state, attr, field_name,
                                            out_symbol_name);
 }
@@ -2021,35 +1979,6 @@ static iree_status_t loom_amdgpu_resolve_encoding_target(
   return iree_ok_status();
 }
 
-static iree_status_t loom_amdgpu_resolve_immediate_name_ids(
-    const loom_low_schedule_table_t* schedule,
-    const loom_string_id_t** out_immediate_name_ids,
-    iree_host_size_t* out_immediate_name_id_count,
-    iree_arena_allocator_t* arena) {
-  *out_immediate_name_ids = NULL;
-  *out_immediate_name_id_count = 0;
-  const loom_low_descriptor_set_t* descriptor_set =
-      schedule->target.descriptor_set;
-  if (descriptor_set->immediate_count == 0) {
-    return iree_ok_status();
-  }
-
-  loom_string_id_t* immediate_name_ids = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, descriptor_set->immediate_count, sizeof(*immediate_name_ids),
-      (void**)&immediate_name_ids));
-  for (iree_host_size_t i = 0; i < descriptor_set->immediate_count; ++i) {
-    const loom_low_immediate_t* immediate = &descriptor_set->immediates[i];
-    const iree_string_view_t field_name = loom_amdgpu_descriptor_string(
-        descriptor_set, immediate->field_name_string_offset);
-    immediate_name_ids[i] =
-        loom_module_lookup_string(schedule->module, field_name);
-  }
-  *out_immediate_name_ids = immediate_name_ids;
-  *out_immediate_name_id_count = descriptor_set->immediate_count;
-  return iree_ok_status();
-}
-
 typedef struct loom_amdgpu_branch_measurement_requirements_t {
   // Exact number of emitted non-fallthrough SOPP edges.
   iree_host_size_t edge_count;
@@ -2255,10 +2184,6 @@ static iree_status_t loom_amdgpu_encode_instruction_stream_internal(
   IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_encoding_target(schedule, &target));
   const loom_amdgpu_encoding_table_t* encoding_table =
       loom_amdgpu_encoding_table_for_descriptor_set_ordinal(target->ordinal);
-  const loom_string_id_t* immediate_name_ids = NULL;
-  iree_host_size_t immediate_name_id_count = 0;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_immediate_name_ids(
-      schedule, &immediate_name_ids, &immediate_name_id_count, arena));
   loom_amdgpu_storage_layout_t derived_storage_layout;
   const loom_amdgpu_storage_layout_t* storage_layout =
       options ? options->storage_layout : NULL;
@@ -2302,8 +2227,6 @@ static iree_status_t loom_amdgpu_encode_instruction_stream_internal(
       .target = target,
       .encoding_table = encoding_table,
       .storage_layout = storage_layout,
-      .immediate_name_ids = immediate_name_ids,
-      .immediate_name_id_count = immediate_name_id_count,
       .flags = flags,
       .descriptors = descriptors,
   };

@@ -628,6 +628,7 @@ def emit_source_for_views(
                 f".encoding_slice_count = {len(immediate.encoding_slices)},",
                 ".enum_domain_id = " + ("LOOM_LOW_ENUM_DOMAIN_NONE" if compiled.immediate_enum_domain_ids[i] is None else str(compiled.immediate_enum_domain_ids[i])) + ",",
                 f".encoding_id = {immediate.encoding_id},",
+                f".attribute_mask = {compiled.immediate_attribute_masks[i]}u,",
                 f".signed_min = {c_spelling.i64_literal(immediate.signed_min)},",
                 f".unsigned_max = {c_spelling.u64_literal(immediate.unsigned_max)},",
                 f".default_value = {c_spelling.i64_literal(immediate.default_value)},",

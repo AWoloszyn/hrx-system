@@ -108,6 +108,49 @@ TEST_F(LowImmediatesTest, ResolvesSemanticValuesWithoutMutatingSharedInput) {
   }
 }
 
+TEST_F(LowImmediatesTest, BindsEverySparseDictionaryShape) {
+  static const uint8_t strings[] =
+      LOOM_BSTRING_LITERAL(1, "z") LOOM_BSTRING_LITERAL(1, "a")
+          LOOM_BSTRING_LITERAL(1, "m") LOOM_BSTRING_LITERAL(1, "b");
+  loom_low_immediate_t fields[4] = {};
+  const uint32_t masks[] = {8, 1, 4, 2};
+  const char* names[] = {"z", "a", "m", "b"};
+  for (uint32_t i = 0; i < IREE_ARRAYSIZE(fields); ++i) {
+    fields[i].field_name_string_offset = i * 2;
+    fields[i].attribute_mask = masks[i];
+    fields[i].kind = LOOM_LOW_IMMEDIATE_KIND_UNSIGNED;
+    fields[i].flags = LOOM_LOW_IMMEDIATE_FLAG_DEFAULT_VALUE;
+    fields[i].value_step = 1;
+    fields[i].unsigned_max = UINT32_MAX;
+  }
+  descriptor_set_.string_table = {strings, sizeof(strings)};
+  descriptor_set_.immediates = fields;
+  descriptor_set_.immediate_count = IREE_ARRAYSIZE(fields);
+  descriptor_.immediate_count = IREE_ARRAYSIZE(fields);
+  descriptor_.flags = 0;
+
+  // Declaration order, canonical key order, and sparse entry positions differ.
+  for (uint32_t subset = 0; subset < 16; ++subset) {
+    loom_named_attr_t entries[4] = {};
+    iree_host_size_t count = 0;
+    for (uint32_t i = 0; i < IREE_ARRAYSIZE(fields); ++i) {
+      if (subset & masks[i]) {
+        entries[count++] = {Intern(iree_make_cstring_view(names[i])), 0,
+                            loom_attr_i64(i)};
+      }
+    }
+    loom_attribute_t attrs = {};
+    IREE_ASSERT_OK(loom_module_make_canonical_attr_dict(
+        module_, loom_make_named_attr_slice(entries, count), &attrs));
+    const loom_named_attr_t* original_entries = attrs.dict_entries;
+    EXPECT_EQ(
+        loom_low_bind_immediate_presence(
+            module_, &descriptor_set_, &descriptor_, loom_attr_as_dict(attrs)),
+        subset);
+    EXPECT_EQ(attrs.dict_entries, original_entries);
+  }
+}
+
 TEST_F(LowImmediatesTest, PreservesNumericAndUnrecognizedInputForVerification) {
   const loom_attribute_t values[] = {
       loom_attr_i64(7), loom_attr_i64(99),

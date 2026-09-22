@@ -109,6 +109,36 @@ void InitializePacketTestState(PacketTestState* state) {
   state->allocation.target.descriptor_set = &state->descriptor_set;
 }
 
+TEST(LowPacketTest, ReadsSparseImmediateValuesAndPreservesOmission) {
+  loom_named_attr_t entries[] = {
+      {1, 0, loom_attr_i64(17)},
+      {2, 0, loom_attr_symbol(loom_symbol_ref_t{0, 3})},
+  };
+  PacketAttrTestOp storage;
+  storage.op.kind = LOOM_OP_LOW_OP;
+  storage.op.attribute_count = IREE_ARRAYSIZE(storage.attrs);
+  loom_low_op_initialize_attrs(
+      &storage.op,
+      loom_make_canonical_attr_dict(entries, IREE_ARRAYSIZE(entries)));
+  loom_low_schedule_node_t node = {};
+  node.op = &storage.op;
+  node.immediate_presence = (1u << 1) | (1u << 31);
+  loom_low_packet_view_t packet = {};
+  packet.node = &node;
+  loom_low_immediate_t field = {};
+  field.attribute_mask = 1u << 1;
+  EXPECT_EQ(loom_low_packet_immediate_attr(&packet, &field).i64, 17);
+  field.attribute_mask = 1u << 31;
+  const loom_attribute_t symbol =
+      loom_low_packet_immediate_attr(&packet, &field);
+  EXPECT_EQ(symbol.kind, LOOM_ATTR_SYMBOL);
+  EXPECT_EQ(symbol.symbol.symbol_id, 3u);
+  field.attribute_mask = 1u << 3;
+  field.default_value = 42;
+  EXPECT_EQ(loom_low_packet_immediate_attr(&packet, &field).kind,
+            LOOM_ATTR_ABSENT);
+}
+
 TEST(LowPacketTest, GetsDescriptorPacketOpAttrs) {
   loom_named_attr_t named_attrs[1] = {};
   named_attrs[0].name_id = 7;

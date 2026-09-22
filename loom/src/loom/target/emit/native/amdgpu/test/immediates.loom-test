@@ -1,0 +1,31 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// Empty, sparse and fully spelled dictionaries retain the same field identity.
+// The last two stores encode identically; omitted fields use descriptor defaults.
+// RUN: emit amdgpu-native-words @sparse_store_fields strategy=source waits=none fixed=%addr:physical_register:0:1 fixed=%value:physical_register:1:1 fixed=%base:physical_register:0:2
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @sparse_store_fields(%addr: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>) asm {
+  global_store_b32_saddr %addr, %value, %base
+  global_store_b32_saddr %addr, %value, %base {offset = 12}
+  global_store_b32_saddr %addr, %value, %base {slc = 1}
+  global_store_b32_saddr %addr, %value, %base {offset = 12, slc = 1}
+  global_store_b32_saddr %addr, %value, %base {offset = 12, slc = 1}
+  return
+}
+// ----
+0xDC6A0000
+0x00000100
+0xDC6A000C
+0x00000100
+0xDC6A8000
+0x00000100
+0xDC6A800C
+0x00000100
+0xDC6A800C
+0x00000100
+0xBFB00000
