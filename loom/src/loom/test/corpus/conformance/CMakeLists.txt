@@ -15,6 +15,7 @@ loom_module(
     conformance_cases
   SRCS
     "${_GLOB_X_LOOM}"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_atomic_i64.loom"
   MODE
     "merge"
   OUTPUT

@@ -2113,6 +2113,7 @@ def _rdna4_core_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
             offset_bit_width=24,
             offset_signed=True,
             implicit_flat_scratch=False,
+            fixed_saddr=_predefined("NULL", "OPR_SREG"),
             cache_fields=_GFX12_VECTOR_CACHE_FIELDS,
         ),
         *_flat_atomic_overlays(
@@ -2129,6 +2130,7 @@ def _rdna4_core_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
             cache_fields=_GFX12_VECTOR_CACHE_FIELDS,
             cache_immediate_field_names=_GFX12_ATOMIC_CACHE_IMMEDIATE_FIELDS,
             implicit_flat_scratch=False,
+            fixed_saddr=_predefined("NULL", "OPR_SREG"),
         ),
         *_ds_memory_overlays(
             encoding_name="ENC_VDS",

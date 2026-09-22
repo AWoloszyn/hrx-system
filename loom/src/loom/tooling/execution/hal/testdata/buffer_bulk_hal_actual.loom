@@ -118,3 +118,39 @@ check.case @buffer_zero_length_ranges_case {
   check.expect.equal actual(%result) expected(%expected_result) : tensor<1xi32>
   check.return
 }
+
+kernel.def @overlapping_buffer_update() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%first: buffer, %second: buffer) {
+  %origin = index.constant 0 : offset
+  %increment = scalar.constant 1 : i32
+  %first_aligned = buffer.assume.alignment %first {minimum_alignment = 4} : buffer
+  %second_aligned = buffer.assume.alignment %second {minimum_alignment = 4} : buffer
+  %first_view = buffer.view %first_aligned[%origin] : buffer -> view<4xi32>
+  %second_view = buffer.view %second_aligned[%origin] : buffer -> view<4xi32>
+  %old = view.load %second_view[0] : view<4xi32> -> i32
+  %next = scalar.addi %old, %increment : i32
+  view.store %next, %first_view[1] : i32, view<4xi32>
+  %updated = view.load %second_view[0] : view<4xi32> -> i32
+  view.store %updated, %second_view[1] : i32, view<4xi32>
+  kernel.return
+}
+
+check.case @overlapping_buffer_sequence_case {
+  %storage = check.generate.fill value(11) : tensor<8xi32>
+  %first = check.tensor.view %storage offset(4) : tensor<8xi32> -> tensor<4xi32>
+  %second = check.tensor.view %storage offset(8) : tensor<8xi32> -> tensor<4xi32>
+  kernel.launch @overlapping_buffer_update(%first, %second) : (tensor<4xi32>, tensor<4xi32>)
+  kernel.launch @overlapping_buffer_update(%first, %second) : (tensor<4xi32>, tensor<4xi32>)
+  %before = check.tensor.view %storage offset(0) : tensor<8xi32> -> tensor<2xi32>
+  %updated = check.tensor.view %storage offset(8) : tensor<8xi32> -> tensor<2xi32>
+  %after = check.tensor.view %storage offset(16) : tensor<8xi32> -> tensor<4xi32>
+  %expected_before = check.generate.fill value(11) : tensor<2xi32>
+  %expected_updated = check.generate.fill value(13) : tensor<2xi32>
+  %expected_after = check.generate.fill value(11) : tensor<4xi32>
+  check.expect.bitwise actual(%before) expected(%expected_before) : tensor<2xi32>
+  check.expect.bitwise actual(%updated) expected(%expected_updated) : tensor<2xi32>
+  check.expect.bitwise actual(%after) expected(%expected_after) : tensor<4xi32>
+  check.return
+}

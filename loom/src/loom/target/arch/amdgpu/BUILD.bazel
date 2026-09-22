@@ -564,6 +564,7 @@ loom_check_test_suite(
         "//loom/src/loom/test/corpus/source_low:math_contraction.loom-test",
         "//loom/src/loom/test/corpus/source_low:memory_access_flags.loom-test",
         "//loom/src/loom/test/corpus/source_low:memory_address_realizations.loom-test",
+        "//loom/src/loom/test/corpus/source_low:memory_atomic_i64.loom",
         "//loom/src/loom/test/corpus/source_low:memory_cache_policy_non_temporal.loom-test",
         "//loom/src/loom/test/corpus/source_low:memory_cache_policy_scopes.loom-test",
         "//loom/src/loom/test/corpus/source_low:memory_generic_atomic.loom-test",

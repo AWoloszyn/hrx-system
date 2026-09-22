@@ -20,7 +20,7 @@ exports_files(_CASES)
 
 loom_module(
     name = "conformance_cases",
-    srcs = _CASES,
+    srcs = _CASES + ["//loom/src/loom/test/corpus/source_low:memory_atomic_i64.loom"],
     output_format = "bc",
 )
 

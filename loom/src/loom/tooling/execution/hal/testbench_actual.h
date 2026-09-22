@@ -86,7 +86,9 @@ iree_status_t loom_run_hal_testbench_context_validate_explicit_device(
 iree_status_t loom_run_hal_testbench_context_ensure_runtime(
     loom_run_hal_testbench_context_t* context);
 
-// Returns host-visible buffer parameters suitable for correctness execution.
+// Returns host-visible fixture parameters for CPU generation and observations.
+// HAL execution stages fixtures into device-local memory around kernel
+// launches.
 iree_hal_buffer_params_t loom_run_hal_testbench_host_visible_buffer_params(
     void);
 
