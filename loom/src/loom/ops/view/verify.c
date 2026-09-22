@@ -180,6 +180,49 @@ iree_status_t loom_view_store_verify(const loom_module_t* module,
                                   emitter);
 }
 
+loom_trait_flags_t loom_view_atomic_load_effective_traits(const loom_op_t* op) {
+  const loom_trait_flags_t traits = op->traits & ~LOOM_TRAIT_MEMORY_FENCE;
+  return loom_view_atomic_load_ordering(op) == LOOM_ATOMIC_ORDERING_RELAXED
+             ? traits
+             : traits | LOOM_TRAIT_MEMORY_FENCE;
+}
+
+loom_trait_flags_t loom_view_atomic_store_effective_traits(
+    const loom_op_t* op) {
+  const loom_trait_flags_t traits = op->traits & ~LOOM_TRAIT_MEMORY_FENCE;
+  return loom_view_atomic_store_ordering(op) == LOOM_ATOMIC_ORDERING_RELAXED
+             ? traits
+             : traits | LOOM_TRAIT_MEMORY_FENCE;
+}
+
+iree_status_t loom_view_atomic_load_verify(const loom_module_t* module,
+                                           const loom_op_t* op,
+                                           iree_diagnostic_emitter_t emitter) {
+  IREE_RETURN_IF_ERROR(loom_view_verify_element_access(
+      module, op, emitter, IREE_SV("view"),
+      loom_module_value_type(module, loom_view_atomic_load_view(op)),
+      loom_view_atomic_load_static_indices(op),
+      loom_view_atomic_load_indices(op).count));
+  return loom_view_verify_optional_cache_policy(
+      emitter, op, loom_view_atomic_load_cache_scope_ATTR_INDEX,
+      loom_view_atomic_load_cache_temporal_ATTR_INDEX,
+      LOOM_CACHE_POLICY_ACCESS_LOAD);
+}
+
+iree_status_t loom_view_atomic_store_verify(const loom_module_t* module,
+                                            const loom_op_t* op,
+                                            iree_diagnostic_emitter_t emitter) {
+  IREE_RETURN_IF_ERROR(loom_view_verify_element_access(
+      module, op, emitter, IREE_SV("view"),
+      loom_module_value_type(module, loom_view_atomic_store_view(op)),
+      loom_view_atomic_store_static_indices(op),
+      loom_view_atomic_store_indices(op).count));
+  return loom_view_verify_optional_cache_policy(
+      emitter, op, loom_view_atomic_store_cache_scope_ATTR_INDEX,
+      loom_view_atomic_store_cache_temporal_ATTR_INDEX,
+      LOOM_CACHE_POLICY_ACCESS_STORE);
+}
+
 iree_status_t loom_view_atomic_reduce_verify(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter) {

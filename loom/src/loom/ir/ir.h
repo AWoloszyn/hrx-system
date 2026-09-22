@@ -1370,7 +1370,9 @@ typedef enum loom_memory_access_operation_kind_e {
   LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_REDUCE = 3,
   LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_RMW = 4,
   LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_CMPXCHG = 5,
-  LOOM_MEMORY_ACCESS_OPERATION_COUNT_ = 6,
+  LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD = 6,
+  LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_STORE = 7,
+  LOOM_MEMORY_ACCESS_OPERATION_COUNT_ = 8,
 } loom_memory_access_operation_kind_t;
 
 // Returns true when the operation family carries written value operands such as
@@ -1378,15 +1380,18 @@ typedef enum loom_memory_access_operation_kind_e {
 static inline bool loom_memory_access_operation_kind_has_payload_operands(
     loom_memory_access_operation_kind_t kind) {
   return kind == LOOM_MEMORY_ACCESS_OPERATION_STORE ||
+         kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_STORE ||
          kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_REDUCE ||
          kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_RMW ||
          kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_CMPXCHG;
 }
 
-// Returns true when the operation family performs an atomic memory update.
+// Returns true when the operation family performs an atomic memory access.
 static inline bool loom_memory_access_operation_kind_is_atomic(
     loom_memory_access_operation_kind_t kind) {
   return kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_REDUCE ||
+         kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD ||
+         kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_STORE ||
          kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_RMW ||
          kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_CMPXCHG;
 }

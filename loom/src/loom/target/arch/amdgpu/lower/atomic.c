@@ -69,12 +69,6 @@ typedef struct loom_amdgpu_atomic_source_t {
   loom_amdgpu_atomic_operation_kind_t operation_kind;
   // Source atomic update kind, or LOOM_AMDGPU_ATOMIC_KIND_NONE for cmpxchg.
   uint8_t atomic_kind;
-  // Source success or single-operation memory ordering.
-  uint8_t ordering;
-  // Source failure memory ordering for cmpxchg, or ordering otherwise.
-  uint8_t failure_ordering;
-  // Source atomic synchronization scope.
-  uint8_t scope;
   // Source update/contribution value, if the operation has one.
   loom_value_id_t value;
   // Source compare-exchange expected value, if present.
@@ -374,11 +368,6 @@ static void loom_amdgpu_atomic_source_describe_update(
   out_source->operation_kind = operation_kind;
   out_source->atomic_kind =
       loom_amdgpu_atomic_u8_attr(loom_memory_access_atomic_kind(access));
-  out_source->ordering =
-      loom_amdgpu_atomic_u8_attr(loom_memory_access_atomic_ordering(access));
-  out_source->failure_ordering = out_source->ordering;
-  out_source->scope =
-      loom_amdgpu_atomic_u8_attr(loom_memory_access_atomic_scope(access));
   out_source->value = loom_memory_access_value(access);
   out_source->result = result;
 }
@@ -413,12 +402,6 @@ static bool loom_amdgpu_atomic_source_describe(
     if (result == LOOM_VALUE_ID_INVALID) {
       return false;
     }
-    out_source->ordering = loom_amdgpu_atomic_u8_attr(
-        loom_memory_access_atomic_success_ordering(access));
-    out_source->failure_ordering = loom_amdgpu_atomic_u8_attr(
-        loom_memory_access_atomic_failure_ordering(access));
-    out_source->scope =
-        loom_amdgpu_atomic_u8_attr(loom_memory_access_atomic_scope(access));
     out_source->expected = loom_memory_access_expected(access);
     out_source->replacement = loom_memory_access_replacement(access);
     out_source->result = result;
@@ -472,14 +455,15 @@ static bool loom_amdgpu_atomic_ordering_has_release(uint8_t ordering) {
 }
 
 static bool loom_amdgpu_atomic_source_has_acquire_ordering(
-    const loom_amdgpu_atomic_source_t* source) {
-  return loom_amdgpu_atomic_ordering_has_acquire(source->ordering) ||
-         loom_amdgpu_atomic_ordering_has_acquire(source->failure_ordering);
+    const loom_low_source_memory_access_plan_t* source) {
+  return loom_amdgpu_atomic_ordering_has_acquire(source->atomic.ordering) ||
+         loom_amdgpu_atomic_ordering_has_acquire(
+             source->atomic.failure_ordering);
 }
 
 static bool loom_amdgpu_atomic_source_has_release_ordering(
-    const loom_amdgpu_atomic_source_t* source) {
-  return loom_amdgpu_atomic_ordering_has_release(source->ordering);
+    const loom_low_source_memory_access_plan_t* source) {
+  return loom_amdgpu_atomic_ordering_has_release(source->atomic.ordering);
 }
 
 static bool loom_amdgpu_atomic_global_ordering_supported(
@@ -522,12 +506,12 @@ static bool loom_amdgpu_atomic_ordering_supported(
 
 static bool loom_amdgpu_atomic_orderings_supported(
     const loom_low_descriptor_set_t* descriptor_set,
-    loom_value_fact_memory_space_t memory_space,
-    const loom_amdgpu_atomic_source_t* source) {
-  return loom_amdgpu_atomic_ordering_supported(descriptor_set, memory_space,
-                                               source->ordering) &&
-         loom_amdgpu_atomic_ordering_supported(descriptor_set, memory_space,
-                                               source->failure_ordering);
+    const loom_low_source_memory_access_plan_t* source) {
+  return loom_amdgpu_atomic_ordering_supported(
+             descriptor_set, source->memory_space, source->atomic.ordering) &&
+         loom_amdgpu_atomic_ordering_supported(descriptor_set,
+                                               source->memory_space,
+                                               source->atomic.failure_ordering);
 }
 
 static bool loom_amdgpu_atomic_value_kind_matches(
@@ -1199,7 +1183,6 @@ static bool loom_amdgpu_atomic_select_global_acquire_cache_controls(
 static bool loom_amdgpu_atomic_select_global_ordering(
     const loom_low_descriptor_set_t* descriptor_set,
     loom_amdgpu_atomic_selection_t* selection,
-    const loom_amdgpu_atomic_source_t* atomic_source,
     loom_amdgpu_atomic_diagnostic_t* diagnostic) {
   selection->ordering = (loom_amdgpu_atomic_ordering_selection_t){0};
   const loom_amdgpu_vector_memory_cache_policy_encoding_t encoding =
@@ -1208,15 +1191,15 @@ static bool loom_amdgpu_atomic_select_global_ordering(
       loom_amdgpu_atomic_global_ordering_rule_lookup(encoding);
   if (!loom_amdgpu_atomic_memory_space_is_device_visible(
           selection->source.memory_space) ||
-      (!loom_amdgpu_atomic_source_has_release_ordering(atomic_source) &&
-       !loom_amdgpu_atomic_source_has_acquire_ordering(atomic_source))) {
+      (!loom_amdgpu_atomic_source_has_release_ordering(&selection->source) &&
+       !loom_amdgpu_atomic_source_has_acquire_ordering(&selection->source))) {
     return true;
   }
   if (rule == NULL) {
     return false;
   }
 
-  if (loom_amdgpu_atomic_source_has_release_ordering(atomic_source)) {
+  if (loom_amdgpu_atomic_source_has_release_ordering(&selection->source)) {
     if (!loom_amdgpu_atomic_select_global_release_waits(descriptor_set, rule,
                                                         &selection->ordering)) {
       diagnostic->rejection_bits |=
@@ -1224,7 +1207,7 @@ static bool loom_amdgpu_atomic_select_global_ordering(
       return false;
     }
   }
-  if (loom_amdgpu_atomic_source_has_acquire_ordering(atomic_source)) {
+  if (loom_amdgpu_atomic_source_has_acquire_ordering(&selection->source)) {
     if (!loom_amdgpu_atomic_select_global_acquire_waits(
             descriptor_set, rule, &selection->ordering,
             selection->operation_kind)) {
@@ -1339,8 +1322,8 @@ static bool loom_amdgpu_atomic_select(
     diagnostic->rejection_bits |= LOOM_AMDGPU_ATOMIC_REJECTION_CACHE_POLICY;
     return false;
   }
-  if (!loom_amdgpu_atomic_orderings_supported(
-          descriptor_set, out_selection->source.memory_space, atomic_source)) {
+  if (!loom_amdgpu_atomic_orderings_supported(descriptor_set,
+                                              &out_selection->source)) {
     diagnostic->rejection_bits |= LOOM_AMDGPU_ATOMIC_REJECTION_ORDERING;
     return false;
   }
@@ -1348,7 +1331,7 @@ static bool loom_amdgpu_atomic_select(
                                          LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP
                                      ? LOOM_ATOMIC_SCOPE_WORKGROUP
                                      : LOOM_ATOMIC_SCOPE_DEVICE;
-  if (atomic_source->scope != expected_scope) {
+  if (out_selection->source.atomic.scope != expected_scope) {
     diagnostic->rejection_bits |= LOOM_AMDGPU_ATOMIC_REJECTION_SCOPE;
     return false;
   }
@@ -1380,7 +1363,7 @@ static bool loom_amdgpu_atomic_select(
   }
   loom_amdgpu_atomic_select_packet_attrs(descriptor_set, out_selection);
   if (!loom_amdgpu_atomic_select_global_ordering(descriptor_set, out_selection,
-                                                 atomic_source, diagnostic)) {
+                                                 diagnostic)) {
     return false;
   }
   if (!loom_amdgpu_atomic_select_offset(descriptor_set,

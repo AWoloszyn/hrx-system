@@ -5695,6 +5695,8 @@ class MemoryAccessOperationKind(Enum):
     ATOMIC_REDUCE = "atomic_reduce"
     ATOMIC_RMW = "atomic_rmw"
     ATOMIC_CMPXCHG = "atomic_cmpxchg"
+    ATOMIC_LOAD = "atomic_load"
+    ATOMIC_STORE = "atomic_store"
 
 
 @dataclass(frozen=True, slots=True, init=False)

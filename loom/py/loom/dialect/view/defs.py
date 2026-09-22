@@ -18,7 +18,7 @@ from loom.assembly import (
     TemplateParam,
     TypeOf,
 )
-from loom.dialect.atomic import AtomicKind, AtomicOrdering, AtomicScope
+from loom.dialect.atomic import AtomicKind, AtomicLoadOrdering, AtomicOrdering, AtomicScope, AtomicStoreOrdering
 from loom.dialect.cache import CacheScope, CacheTemporal
 from loom.dialect.memory import MemoryAccessFlags
 from loom.dsl import (
@@ -28,6 +28,7 @@ from loom.dsl import (
     FACT_IDENTITY,
     HINT,
     INDEX,
+    OBSERVABLE_EFFECT,
     PURE,
     REFINABLE_RESULT_TYPE_REFS,
     SCALAR,
@@ -538,6 +539,75 @@ view_prefetch = Op(
 )
 
 # ============================================================================
+# view.atomic.load/view.atomic.store — scalar observation and publication
+# ============================================================================
+
+
+def _atomic_load_store_attrs(ordering: EnumDef) -> list[AttrDef]:
+    return [
+        AttrDef("ordering", ATTR_TYPE_ENUM, enum_def=ordering, doc="Required atomic memory ordering."),
+        AttrDef("scope", ATTR_TYPE_ENUM, enum_def=AtomicScope, doc="Required atomic synchronization scope."),
+        *_indexed_memory_attrs(),
+    ]
+
+
+view_atomic_load = Op(
+    name="view.atomic.load",
+    group=view_ops,
+    doc=(
+        "Atomically read one scalar view element at a full-rank logical index. "
+        "Each execution is a distinct observation. Ordering is relaxed, acquire, "
+        "or sequentially consistent. Target lowering must preserve the element "
+        "width and atomicity at the requested scope without a read-modify-write."
+    ),
+    operands=[
+        Operand("view", VIEW, doc="Typed source view."),
+        Operand("indices", INDEX, doc="Dynamic logical element indices.", variadic=True),
+    ],
+    results=[Result("result", SCALAR, doc="Scalar value observed by the atomic load.")],
+    attrs=_atomic_load_store_attrs(AtomicLoadOrdering),
+    constraints=[SameElementType("view", "result")],
+    traits=[OBSERVABLE_EFFECT],
+    effects=[Reads("view")],
+    contracts=[ContractFamily.MEMORY_ATOMIC],
+    interfaces=[_memory_access_interface(atomic_ordering="ordering", atomic_scope="scope")],
+    effective_traits="loom_view_atomic_load_effective_traits",
+    verify="loom_view_atomic_load_verify",
+    format=[Ref("view"), IndexList("indices", "static_indices"), AttrDict(), COLON, TypeOf("view"), ARROW, ResultType("result")],
+    examples=[
+        "%generation = view.atomic.load %progress[0] {ordering = acquire, scope = system} : view<1xi32> -> i32",
+    ],
+)
+
+view_atomic_store = Op(
+    name="view.atomic.store",
+    group=view_ops,
+    doc=(
+        "Atomically write one scalar view element at a full-rank logical index. "
+        "Each execution is a distinct publication. Ordering is relaxed, release, "
+        "or sequentially consistent. Target lowering must preserve the element "
+        "width and atomicity at the requested scope without an exchange."
+    ),
+    operands=[
+        Operand("value", SCALAR, doc="Scalar value to publish."),
+        Operand("view", VIEW, doc="Typed destination view."),
+        Operand("indices", INDEX, doc="Dynamic logical element indices.", variadic=True),
+    ],
+    attrs=_atomic_load_store_attrs(AtomicStoreOrdering),
+    constraints=[SameElementType("value", "view")],
+    traits=[OBSERVABLE_EFFECT],
+    effects=[Writes("view")],
+    contracts=[ContractFamily.MEMORY_ATOMIC],
+    interfaces=[_memory_access_interface(value="value", atomic_ordering="ordering", atomic_scope="scope")],
+    effective_traits="loom_view_atomic_store_effective_traits",
+    verify="loom_view_atomic_store_verify",
+    format=[Ref("value"), COMMA, Ref("view"), IndexList("indices", "static_indices"), AttrDict(), COLON, TypeOf("value"), COMMA, TypeOf("view")],
+    examples=[
+        "view.atomic.store %generation, %progress[0] {ordering = release, scope = system} : i32, view<1xi32>",
+    ],
+)
+
+# ============================================================================
 # Registry
 # ============================================================================
 
@@ -550,4 +620,6 @@ ALL_VIEW_OPS: tuple[Op, ...] = (
     view_atomic_rmw,
     view_atomic_cmpxchg,
     view_prefetch,
+    view_atomic_load,
+    view_atomic_store,
 )

@@ -1,0 +1,36 @@
+// RUN: with-checks emit source-low target=amdgpu:gfx1151 output=low
+
+// Atomic observations are lane values even when every lane polls the same
+// address. Acquisition happens after polling; publication releases the payload.
+kernel.def @poll_then_publish() {
+  %c1 = index.constant 1 : index
+  %width = index.constant 32 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%width, %c1, %c1) : index
+} launch(%input: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %base = index.constant 0 : offset
+  %words = buffer.view %aligned[%base] : buffer -> view<3xi32>
+  %c0 = scalar.constant 0 : i32
+  %c1 = scalar.constant 1 : i32
+  scf.while {
+    %seen = view.atomic.load %words[0] {ordering = relaxed, scope = system} : view<3xi32> -> i32
+    %pending = scalar.cmpi eq, %seen, %c0 : i32
+    scf.condition %pending : i1
+  } do {
+    scf.yield
+  }
+  buffer.fence scope(system) ordering(acquire)
+  view.store %c1, %words[1] : i32, view<3xi32>
+  view.atomic.store %c1, %words[2] {ordering = release, scope = system} : i32, view<3xi32>
+  kernel.return
+}
+
+// ----
+CHECK: %seen = global_load_b32_saddr<volatile> * {glc = 1, dlc = 1}
+CHECK: %pending = v_cmp_eq_i32* %seen*
+CHECK: global_store_b32_saddr<volatile> * {offset = 8}
+CHECK: buffer_gl0_inv
+CHECK: buffer_gl1_inv
+CHECK-NOT: s_barrier*
+CHECK-NOT: *atomic*add*
+CHECK-NOT: *atomic*swap*

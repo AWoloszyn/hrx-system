@@ -1,0 +1,27 @@
+// RUN: emit source-low target=amdgpu:gfx1151 output=none
+
+// Splitting an unaligned observation into byte loads cannot preserve atomicity.
+kernel.def @unaligned_observation() {
+  %c1 = index.constant 1 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index
+} launch(%input: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
+  %base = index.constant 1 : offset
+  %word = buffer.view %aligned[%base] : buffer -> view<1xi32>
+  // ERROR@+1: AMDGPU/023 {constraint_key="atomic.alignment"}
+  %value = view.atomic.load %word[0] {ordering = relaxed, scope = device} : view<1xi32> -> i32
+  kernel.return
+}
+
+// ====
+
+// A thread fence has no collective execution semantics. Unsupported domains
+// must not silently become a kernel barrier with a different contract.
+kernel.def @unsupported_fence_scope() {
+  %c1 = index.constant 1 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index
+} launch() {
+  // ERROR@+1: AMDGPU/023 {constraint_key="memory_fence.scope"}
+  buffer.fence scope(workgroup) ordering(acquire)
+  kernel.return
+}

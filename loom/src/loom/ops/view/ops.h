@@ -29,7 +29,9 @@ enum {
   LOOM_OP_VIEW_ATOMIC_RMW = LOOM_OP_KIND(LOOM_DIALECT_VIEW, 5),
   LOOM_OP_VIEW_ATOMIC_CMPXCHG = LOOM_OP_KIND(LOOM_DIALECT_VIEW, 6),
   LOOM_OP_VIEW_PREFETCH = LOOM_OP_KIND(LOOM_DIALECT_VIEW, 7),
-  LOOM_OP_VIEW_COUNT_ = 8,
+  LOOM_OP_VIEW_ATOMIC_LOAD = LOOM_OP_KIND(LOOM_DIALECT_VIEW, 8),
+  LOOM_OP_VIEW_ATOMIC_STORE = LOOM_OP_KIND(LOOM_DIALECT_VIEW, 9),
+  LOOM_OP_VIEW_COUNT_ = 10,
 };
 
 // Execution-semantics modifiers shared by scalar and vector memory accesses.
@@ -310,6 +312,78 @@ iree_status_t loom_view_prefetch_build(
     loom_location_id_t location,
     loom_op_t** out_op);
 iree_status_t loom_view_prefetch_verify(
+    const loom_module_t* module, const loom_op_t* op,
+    iree_diagnostic_emitter_t emitter);
+
+// LOOM_OP_VIEW_ATOMIC_LOAD: Atomically read one scalar view element at a full-rank logical index. Each execution is a distinct observation. Ordering is relaxed, acquire, or sequentially consistent. Target lowering must preserve the element width and atomicity at the requested scope without a read-modify-write.
+// %generation = view.atomic.load %progress[0] {ordering = acquire, scope = system} : view<1xi32> -> i32
+LOOM_DEFINE_ISA(loom_view_atomic_load_isa, LOOM_OP_VIEW_ATOMIC_LOAD)
+LOOM_DEFINE_OPERAND(loom_view_atomic_load_view, 0)
+LOOM_DEFINE_VARIADIC_OPERANDS(loom_view_atomic_load_indices, 1)
+LOOM_DEFINE_RESULT(loom_view_atomic_load_result, 0)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_load_ordering, 0, loom_atomic_ordering_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_load_scope, 1, loom_atomic_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_load_cache_scope, 2, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_load_cache_temporal, 3, loom_cache_temporal_t)
+LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_atomic_load_static_indices, 4)
+enum loom_view_atomic_load_build_flag_bits_e {
+  LOOM_VIEW_ATOMIC_LOAD_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
+  LOOM_VIEW_ATOMIC_LOAD_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
+};
+typedef uint32_t loom_view_atomic_load_build_flags_t;
+iree_status_t loom_view_atomic_load_build(
+    loom_builder_t* builder,
+    loom_view_atomic_load_build_flags_t build_flags,
+    loom_may_consume loom_value_id_t view,
+    const loom_value_id_t* indices,
+    iree_host_size_t indices_count,
+    const int64_t* static_indices,
+    iree_host_size_t static_indices_count,
+    loom_atomic_ordering_t ordering,
+    loom_atomic_scope_t scope,
+    loom_optional uint8_t cache_scope,
+    loom_optional uint8_t cache_temporal,
+    loom_type_t result_type,
+    loom_location_id_t location,
+    loom_op_t** out_op);
+loom_trait_flags_t loom_view_atomic_load_effective_traits(const loom_op_t* op);
+iree_status_t loom_view_atomic_load_verify(
+    const loom_module_t* module, const loom_op_t* op,
+    iree_diagnostic_emitter_t emitter);
+
+// LOOM_OP_VIEW_ATOMIC_STORE: Atomically write one scalar view element at a full-rank logical index. Each execution is a distinct publication. Ordering is relaxed, release, or sequentially consistent. Target lowering must preserve the element width and atomicity at the requested scope without an exchange.
+// view.atomic.store %generation, %progress[0] {ordering = release, scope = system} : i32, view<1xi32>
+LOOM_DEFINE_ISA(loom_view_atomic_store_isa, LOOM_OP_VIEW_ATOMIC_STORE)
+LOOM_DEFINE_OPERAND(loom_view_atomic_store_value, 0)
+LOOM_DEFINE_OPERAND(loom_view_atomic_store_view, 1)
+LOOM_DEFINE_VARIADIC_OPERANDS(loom_view_atomic_store_indices, 2)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_store_ordering, 0, loom_atomic_ordering_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_store_scope, 1, loom_atomic_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_store_cache_scope, 2, loom_cache_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_view_atomic_store_cache_temporal, 3, loom_cache_temporal_t)
+LOOM_DEFINE_ATTR_I64_ARRAY(loom_view_atomic_store_static_indices, 4)
+enum loom_view_atomic_store_build_flag_bits_e {
+  LOOM_VIEW_ATOMIC_STORE_BUILD_FLAG_HAS_CACHE_SCOPE = 1u << 0,
+  LOOM_VIEW_ATOMIC_STORE_BUILD_FLAG_HAS_CACHE_TEMPORAL = 1u << 1,
+};
+typedef uint32_t loom_view_atomic_store_build_flags_t;
+iree_status_t loom_view_atomic_store_build(
+    loom_builder_t* builder,
+    loom_view_atomic_store_build_flags_t build_flags,
+    loom_value_id_t value,
+    loom_value_id_t view,
+    const loom_value_id_t* indices,
+    iree_host_size_t indices_count,
+    const int64_t* static_indices,
+    iree_host_size_t static_indices_count,
+    loom_atomic_ordering_t ordering,
+    loom_atomic_scope_t scope,
+    loom_optional uint8_t cache_scope,
+    loom_optional uint8_t cache_temporal,
+    loom_location_id_t location,
+    loom_op_t** out_op);
+loom_trait_flags_t loom_view_atomic_store_effective_traits(const loom_op_t* op);
+iree_status_t loom_view_atomic_store_verify(
     const loom_module_t* module, const loom_op_t* op,
     iree_diagnostic_emitter_t emitter);
 

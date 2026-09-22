@@ -262,6 +262,8 @@ static const loom_amdgpu_source_producer_flags_t
             LOOM_AMDGPU_SOURCE_PRODUCER_ALWAYS_VGPR,
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_VIEW_ATOMIC_CMPXCHG)] =
             LOOM_AMDGPU_SOURCE_PRODUCER_ALWAYS_VGPR,
+        [LOOM_AMDGPU_OP_INDEX(LOOM_OP_VIEW_ATOMIC_LOAD)] =
+            LOOM_AMDGPU_SOURCE_PRODUCER_ALWAYS_VGPR,
 };
 static_assert(IREE_ARRAYSIZE(kAmdgpuViewSourceProducerFlags) ==
                   LOOM_OP_VIEW_COUNT_,

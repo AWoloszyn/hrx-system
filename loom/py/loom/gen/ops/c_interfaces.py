@@ -42,6 +42,8 @@ _MEMORY_ACCESS_OPERATION_KIND_MAP: dict[MemoryAccessOperationKind, str] = {
     MemoryAccessOperationKind.ATOMIC_REDUCE: "LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_REDUCE",
     MemoryAccessOperationKind.ATOMIC_RMW: "LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_RMW",
     MemoryAccessOperationKind.ATOMIC_CMPXCHG: "LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_CMPXCHG",
+    MemoryAccessOperationKind.ATOMIC_LOAD: "LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD",
+    MemoryAccessOperationKind.ATOMIC_STORE: "LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_STORE",
 }
 
 # Interfaces declared in the Python DSL are emitted as per-op metadata on the C
@@ -435,9 +437,14 @@ def _memory_access_operation_kind(op: Op, iface: MemoryAccessInterface, interfac
             raise ValueError(f"{interface_name} on {op.name!r}: compare-exchange requires read/write effects and atomic attrs")
         inferred_kind = MemoryAccessOperationKind.ATOMIC_CMPXCHG
     elif has_atomic_attrs:
-        if not reads or not writes or value_index is None:
+        if reads and not writes and value_index is None and len(op.results) == 1:
+            inferred_kind = MemoryAccessOperationKind.ATOMIC_LOAD
+        elif writes and not reads and value_index is not None and not op.results:
+            inferred_kind = MemoryAccessOperationKind.ATOMIC_STORE
+        elif reads and writes and value_index is not None:
+            inferred_kind = MemoryAccessOperationKind.ATOMIC_REDUCE if not op.results else MemoryAccessOperationKind.ATOMIC_RMW
+        else:
             raise ValueError(f"{interface_name} on {op.name!r}: atomic update requires read/write effects and a value operand")
-        inferred_kind = MemoryAccessOperationKind.ATOMIC_REDUCE if not op.results else MemoryAccessOperationKind.ATOMIC_RMW
     elif reads and not writes:
         inferred_kind = MemoryAccessOperationKind.LOAD
     elif writes and not reads:

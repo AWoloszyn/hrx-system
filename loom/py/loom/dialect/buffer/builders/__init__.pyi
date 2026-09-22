@@ -147,3 +147,10 @@ class BufferBuilder(DialectBuilder):
         result_names: Sequence[str] | None = ...,
         location_id: int | None = ...,
     ) -> ValueRef: ...
+    def fence(
+        self,
+        *,
+        scope: str,
+        ordering: str,
+        location_id: int | None = ...,
+    ) -> None: ...

@@ -29,6 +29,7 @@ from loom.assembly import (
     TypesOf,
     kw,
 )
+from loom.dialect.atomic import AtomicFenceOrdering, AtomicScope
 from loom.dialect.memory import MemorySpace
 from loom.dsl import (
     ATTR_TYPE_ENUM,
@@ -38,6 +39,7 @@ from loom.dsl import (
     BYTE_PATTERN_SCALAR,
     FACT_IDENTITY,
     I32,
+    MEMORY_FENCE,
     OFFSET,
     PURE,
     REFINABLE_RESULT_TYPE_REFS,
@@ -590,6 +592,35 @@ buffer_compare = Op(
 )
 
 # ============================================================================
+# buffer.fence — thread memory ordering across storage roots
+# ============================================================================
+
+buffer_fence = Op(
+    name="buffer.fence",
+    group=buffer_ops,
+    doc=(
+        "Order the executing thread's memory accesses across storage roots "
+        "using an explicit atomic ordering and synchronization scope. This "
+        "applies to ordinary functions and kernels, including accesses through "
+        "typed views and vectors. Acquire and release fences participate in "
+        "synchronization through matching atomic observations and publications; "
+        "they do not rendezvous with other invocations or complete independent "
+        "asynchronous transfers. The backing memory and target must support "
+        "the requested synchronization domain."
+    ),
+    attrs=[
+        AttrDef("scope", ATTR_TYPE_ENUM, enum_def=AtomicScope, doc="Synchronization domain of the ordered memory effects."),
+        AttrDef("ordering", ATTR_TYPE_ENUM, enum_def=AtomicFenceOrdering, doc="Acquire, release, acquire-release, or sequentially consistent ordering."),
+    ],
+    traits=[MEMORY_FENCE],
+    format=[Clause("scope", Attr("scope")), Clause("ordering", Attr("ordering"))],
+    examples=[
+        "buffer.fence scope(system) ordering(acquire)",
+        "buffer.fence scope(device) ordering(release)",
+    ],
+)
+
+# ============================================================================
 # Registry
 # ============================================================================
 
@@ -607,4 +638,5 @@ ALL_BUFFER_OPS: tuple[Op, ...] = (
     buffer_copy,
     buffer_fill,
     buffer_compare,
+    buffer_fence,
 )

@@ -47,6 +47,10 @@ typedef loom_memory_access_operation_kind_t
   LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_RMW
 #define LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_CMPXCHG \
   LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_CMPXCHG
+#define LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_LOAD \
+  LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD
+#define LOOM_LOW_SOURCE_MEMORY_OPERATION_ATOMIC_STORE \
+  LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_STORE
 #define LOOM_LOW_SOURCE_MEMORY_OPERATION_COUNT_ \
   LOOM_MEMORY_ACCESS_OPERATION_COUNT_
 
@@ -252,6 +256,16 @@ typedef struct loom_low_source_memory_access_plan_t {
   // Execution semantics copied from the source memory access and preserved by
   // every physical memory packet selected for that access.
   loom_memory_access_flags_t access_flags;
+  // Atomic semantics retained from the MemoryAccess interface. Only atomic
+  // operation kinds consume these fields; ordinary accesses leave them zero.
+  struct {
+    // Single-operation or compare-exchange success ordering.
+    uint8_t ordering;
+    // Compare-exchange failure ordering, or the single-operation ordering.
+    uint8_t failure_ordering;
+    // Participating synchronization domain.
+    uint8_t scope;
+  } atomic;
   // Whether canonicalization moved a nonzero byte contribution from a source
   // dynamic index into |static_byte_offset|. Original source index operands
   // cannot be combined with the canonical static offset when this is true.

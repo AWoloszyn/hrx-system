@@ -434,8 +434,10 @@ static bool loom_canonicalize_memory_access_has_empty_footprint(
 
   switch (loom_memory_access_operation_kind(access)) {
     case LOOM_MEMORY_ACCESS_OPERATION_LOAD:
+    case LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD:
       return loom_canonicalize_memory_access_results_are_empty(module, op);
     case LOOM_MEMORY_ACCESS_OPERATION_STORE:
+    case LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_STORE:
     case LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_REDUCE:
       return loom_canonicalize_required_empty_value(
           module, loom_memory_access_value(access));

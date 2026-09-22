@@ -57,6 +57,7 @@
 #include "loom/target/arch/amdgpu/lower/matrix_fragment_repack.h"
 #include "loom/target/arch/amdgpu/lower/matrix_representation.h"
 #include "loom/target/arch/amdgpu/lower/memory.h"
+#include "loom/target/arch/amdgpu/lower/memory_ordering.h"
 #include "loom/target/arch/amdgpu/lower/preamble.h"
 #include "loom/target/arch/amdgpu/lower/sanitizer.h"
 #include "loom/target/arch/amdgpu/lower/sanitizer_race.h"
@@ -410,6 +411,18 @@ static iree_status_t loom_amdgpu_select_kernel_barrier_dispatch(
   (void)row;
   return loom_amdgpu_select_kernel_barrier_plan(context, source_op, out_plan);
 }
+
+static iree_status_t loom_amdgpu_select_memory_fence_dispatch(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    const loom_amdgpu_lower_dispatch_row_t* row,
+    loom_low_lower_plan_t* out_plan) {
+  (void)row;
+  return loom_amdgpu_select_memory_fence_plan(context, source_op, out_plan);
+}
+
+LOOM_AMDGPU_DEFINE_DATA_EMIT(loom_amdgpu_emit_memory_fence_dispatch,
+                             loom_amdgpu_memory_fence_plan_t,
+                             loom_amdgpu_lower_memory_fence)
 
 static iree_status_t loom_amdgpu_emit_kernel_barrier_dispatch(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
@@ -930,6 +943,8 @@ LOOM_AMDGPU_DEFINE_DATA_EMIT(loom_amdgpu_emit_sanitizer_race_sync_dispatch,
 
 #define LOOM_AMDGPU_STRUCTURAL_DIRECT_STORAGE_ROW \
   LOOM_AMDGPU_INTERNAL_DIRECT_STORAGE_ROW
+#define LOOM_AMDGPU_STRUCTURAL_DATA_STORAGE_ROW \
+  LOOM_AMDGPU_INTERNAL_DATA_STORAGE_ROW
 #define LOOM_AMDGPU_STRUCTURAL_DATA_STORAGE_REPORT_KEY_ROW \
   LOOM_AMDGPU_INTERNAL_DATA_STORAGE_REPORT_KEY_ROW
 #define LOOM_AMDGPU_VALUE_STRUCTURAL_DIRECT_STORAGE_ROW \

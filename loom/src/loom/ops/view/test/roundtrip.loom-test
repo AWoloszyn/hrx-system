@@ -1,5 +1,17 @@
 // RUN: roundtrip
 
+func.def @atomic_observation_and_publication(%view: view<1xi32>, %value: i32) -> (i32, i32, i32) {
+  %relaxed = view.atomic.load %view[0] {ordering = relaxed, scope = system} : view<1xi32> -> i32
+  %acquired = view.atomic.load %view[0] {ordering = acquire, scope = device} : view<1xi32> -> i32
+  %sequential = view.atomic.load %view[0] {ordering = seq_cst, scope = system} : view<1xi32> -> i32
+  view.atomic.store %value, %view[0] {ordering = relaxed, scope = system} : i32, view<1xi32>
+  view.atomic.store %value, %view[0] {ordering = release, scope = device} : i32, view<1xi32>
+  view.atomic.store %value, %view[0] {ordering = seq_cst, scope = system} : i32, view<1xi32>
+  func.return %relaxed, %acquired, %sequential : i32, i32, i32
+}
+
+// ====
+
 // Dense view over an opaque buffer root with a dynamic logical extent.
 func.def @dense_view(%buffer: buffer, %offset: offset, %m: index) {
   %layout = encoding.layout.dense : encoding<layout>

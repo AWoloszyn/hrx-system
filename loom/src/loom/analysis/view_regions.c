@@ -923,18 +923,6 @@ static void loom_view_region_analyze_interference(
   if (iree_any_bit_set(traits, LOOM_TRAIT_UNKNOWN_EFFECTS)) {
     table->interference_memory_spaces = UINT32_MAX;
   }
-  if (iree_any_bit_set(traits, LOOM_TRAIT_MEMORY_FENCE)) {
-    if (loom_kernel_barrier_isa(op)) {
-      if (loom_view_region_ordering_acquires(
-              loom_attr_enum(loom_kernel_barrier_ordering(op)))) {
-        table->interference_memory_spaces |=
-            loom_view_region_overlapping_memory_spaces(
-                loom_kernel_barrier_memory_space(op));
-      }
-    } else {
-      table->interference_memory_spaces = UINT32_MAX;
-    }
-  }
   if (vtable->memory_access && loom_memory_access_operation_kind_is_atomic(
                                    vtable->memory_access->operation_kind)) {
     const loom_memory_access_t access = {.op = op, .op_vtable = vtable};
@@ -950,6 +938,24 @@ static void loom_view_region_analyze_interference(
       // address space holding the synchronization token.
       table->interference_memory_spaces |=
           UINT32_MAX & ~(1u << LOOM_VALUE_FACT_MEMORY_SPACE_PRIVATE);
+    }
+  } else if (iree_any_bit_set(traits, LOOM_TRAIT_MEMORY_FENCE)) {
+    if (loom_buffer_fence_isa(op)) {
+      if (loom_buffer_fence_scope(op) != LOOM_ATOMIC_SCOPE_THREAD &&
+          loom_view_region_ordering_acquires(
+              loom_attr_enum(loom_buffer_fence_ordering(op)))) {
+        table->interference_memory_spaces |=
+            UINT32_MAX & ~(1u << LOOM_VALUE_FACT_MEMORY_SPACE_PRIVATE);
+      }
+    } else if (loom_kernel_barrier_isa(op)) {
+      if (loom_view_region_ordering_acquires(
+              loom_attr_enum(loom_kernel_barrier_ordering(op)))) {
+        table->interference_memory_spaces |=
+            loom_view_region_overlapping_memory_spaces(
+                loom_kernel_barrier_memory_space(op));
+      }
+    } else {
+      table->interference_memory_spaces = UINT32_MAX;
     }
   }
 }

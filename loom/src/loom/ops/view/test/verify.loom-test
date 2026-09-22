@@ -1,5 +1,21 @@
 // RUN: verify
 
+func.def @atomic_load_rejects_release(%view: view<1xi32>) {
+  // ERROR@+1: PARSE/017 "ordering"
+  %value = view.atomic.load %view[0] {ordering = release, scope = system} : view<1xi32> -> i32
+  func.return
+}
+
+// ====
+
+func.def @atomic_store_rejects_acquire(%view: view<1xi32>, %value: i32) {
+  // ERROR@+1: PARSE/017 "ordering"
+  view.atomic.store %value, %view[0] {ordering = acquire, scope = system} : i32, view<1xi32>
+  func.return
+}
+
+// ====
+
 func.def @buffer_alloca_rejects_index_size(%size: index) {
   // ERROR@+1: TYPE/003 "byte_length" "index" "offset"
   %scratch = buffer.alloca<workgroup> align(64) %size : buffer

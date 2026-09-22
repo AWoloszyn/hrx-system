@@ -229,6 +229,13 @@ static const loom_amdgpu_lower_dispatch_row_t
 
 static const loom_amdgpu_lower_dispatch_row_t
     kAmdgpuBufferDispatchRows[LOOM_OP_BUFFER_COUNT_] = {
+        [LOOM_AMDGPU_OP_INDEX(LOOM_OP_BUFFER_FENCE)] =
+            LOOM_AMDGPU_STRUCTURAL_DATA_STORAGE_ROW(
+                LOOM_OP_BUFFER_FENCE, loom_amdgpu_memory_fence_plan_t,
+                loom_amdgpu_select_memory_fence_dispatch,
+                loom_amdgpu_emit_memory_fence_dispatch,
+                loom_amdgpu_low_legality_verify_memory_fence,
+                LOOM_AMDGPU_STORAGE_NONE),
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_BUFFER_ALLOCA)] =
             LOOM_AMDGPU_STRUCTURAL_DIRECT_STORAGE_ROW(
                 LOOM_OP_BUFFER_ALLOCA, loom_amdgpu_select_buffer_dispatch,
@@ -287,6 +294,20 @@ static const loom_amdgpu_lower_dispatch_row_t
 
 static const loom_amdgpu_lower_dispatch_row_t
     kAmdgpuViewDispatchRows[LOOM_OP_VIEW_COUNT_] = {
+        [LOOM_AMDGPU_OP_INDEX(LOOM_OP_VIEW_ATOMIC_LOAD)] =
+            LOOM_AMDGPU_MEMORY_DATA_STORAGE_ROW(
+                LOOM_OP_VIEW_ATOMIC_LOAD, loom_amdgpu_memory_access_plan_t,
+                loom_amdgpu_select_memory_load_dispatch,
+                loom_amdgpu_emit_memory_load_dispatch,
+                loom_amdgpu_low_legality_verify_memory,
+                LOOM_AMDGPU_STORAGE_MEMORY_PLAN),
+        [LOOM_AMDGPU_OP_INDEX(LOOM_OP_VIEW_ATOMIC_STORE)] =
+            LOOM_AMDGPU_MEMORY_DATA_STORAGE_ROW(
+                LOOM_OP_VIEW_ATOMIC_STORE, loom_amdgpu_memory_access_plan_t,
+                loom_amdgpu_select_memory_store_dispatch,
+                loom_amdgpu_emit_memory_store_dispatch,
+                loom_amdgpu_low_legality_verify_memory,
+                LOOM_AMDGPU_STORAGE_MEMORY_PLAN),
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_VIEW_LOAD)] =
             LOOM_AMDGPU_MEMORY_DATA_STORAGE_ROW(
                 LOOM_OP_VIEW_LOAD, loom_amdgpu_memory_access_plan_t,

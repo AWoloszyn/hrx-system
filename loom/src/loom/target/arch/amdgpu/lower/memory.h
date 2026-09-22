@@ -87,6 +87,8 @@ typedef uint32_t loom_amdgpu_memory_access_rejection_flags_t;
 #define LOOM_AMDGPU_MEMORY_ACCESS_REJECTION_PRIVATE_ROOT ((uint32_t)1u << 23)
 
 typedef struct loom_amdgpu_memory_access_diagnostic_t {
+  // Atomic semantic constraint rejected before physical packet selection.
+  iree_string_view_t atomic_constraint;
   // Rejection bits explaining why an access is not legal for this target.
   loom_amdgpu_memory_access_rejection_flags_t rejection_bits;
   // Source vector type involved in vector-width diagnostics.

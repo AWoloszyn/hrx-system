@@ -21,6 +21,8 @@
 #include "loom/target/arch/amdgpu/lower/emit.h"
 #include "loom/target/arch/amdgpu/lower/memory.h"
 #include "loom/target/arch/amdgpu/lower/memory_bank_service.h"
+#include "loom/target/arch/amdgpu/lower/memory_ordering.h"
+#include "loom/target/arch/amdgpu/lower/system_memory.h"
 #include "loom/target/arch/amdgpu/lower/types.h"
 #include "loom/target/arch/amdgpu/lower/value/integer64.h"
 #include "loom/target/arch/amdgpu/refs/target_refs.h"
@@ -854,6 +856,13 @@ static iree_status_t loom_amdgpu_append_memory_cache_attrs(
     loom_low_lower_context_t* context,
     const loom_amdgpu_memory_access_t* access, loom_named_attr_t* attrs,
     iree_host_size_t attr_capacity, iree_host_size_t* inout_attr_count) {
+  if (access->source.operation_kind ==
+      LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD) {
+    IREE_RETURN_IF_ERROR(loom_amdgpu_system_memory_append_load_attrs(
+        loom_low_lower_context_builder(context),
+        loom_low_lower_context_descriptor_set(context), attrs, attr_capacity,
+        inout_attr_count));
+  }
   const loom_vector_memory_cache_policy_t* policy =
       &access->source.cache_policy;
   if (!loom_amdgpu_memory_cache_policy_is_present(policy)) {
@@ -1420,10 +1429,14 @@ iree_status_t loom_amdgpu_lower_memory_load(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     const loom_amdgpu_memory_access_plan_t* plan) {
   IREE_ASSERT_GT(plan->packet_count, 0);
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_ordering_prefix(
+      context, source_op, &plan->packets[0].access.source));
   if (plan->packet_count == 1) {
     loom_value_id_t low_result = LOOM_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(loom_amdgpu_lower_memory_packet_load(
         context, source_op, &plan->packets[0], &low_result));
+    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_ordering_suffix(
+        context, source_op, &plan->packets[0].access.source));
     return loom_amdgpu_bind_memory_load_result(context, source_op, low_result);
   }
 
@@ -1455,6 +1468,8 @@ iree_status_t loom_amdgpu_lower_memory_store(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     const loom_amdgpu_memory_access_plan_t* plan) {
   IREE_ASSERT_GT(plan->packet_count, 0);
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_ordering_prefix(
+      context, source_op, &plan->packets[0].access.source));
   const loom_value_id_t source_value = loom_amdgpu_memory_store_value(
       loom_low_lower_context_module(context), source_op);
   loom_value_id_t low_value = LOOM_VALUE_ID_INVALID;

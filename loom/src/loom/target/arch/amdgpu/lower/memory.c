@@ -19,6 +19,7 @@
 #include "loom/target/arch/amdgpu/lower/constants.h"
 #include "loom/target/arch/amdgpu/lower/emit.h"
 #include "loom/target/arch/amdgpu/lower/memory.h"
+#include "loom/target/arch/amdgpu/lower/memory_ordering.h"
 #include "loom/target/arch/amdgpu/lower/source_value_analysis.h"
 #include "loom/target/arch/amdgpu/lower/topology.h"
 #include "loom/target/arch/amdgpu/lower/types.h"
@@ -2744,8 +2745,19 @@ bool loom_amdgpu_memory_access_plan_select(
     return false;
   }
 
-  const loom_low_source_memory_operation_kind_t kind =
-      out_source->operation_kind;
+  loom_low_source_memory_operation_kind_t kind = out_source->operation_kind;
+  const bool is_atomic = kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD ||
+                         kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_STORE;
+  if (is_atomic) {
+    out_diagnostic->atomic_constraint =
+        loom_amdgpu_atomic_memory_rejection_key(descriptor_set, out_source);
+    if (!iree_string_view_is_empty(out_diagnostic->atomic_constraint)) {
+      return false;
+    }
+    kind = kind == LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD
+               ? LOOM_MEMORY_ACCESS_OPERATION_LOAD
+               : LOOM_MEMORY_ACCESS_OPERATION_STORE;
+  }
   loom_amdgpu_memory_dynamic_term_materialization_plan_t materialization_plan;
   if (!loom_amdgpu_memory_dynamic_term_materialization_plan_build(
           module, fact_table, view_regions, analysis, out_source,
@@ -2766,6 +2778,11 @@ bool loom_amdgpu_memory_access_plan_select(
   loom_amdgpu_memory_access_t access = {
       .source = *out_source,
   };
+  if (is_atomic) {
+    // The selected naturally aligned packet supplies atomicity. Observable
+    // execution prevents Low cleanup from merging or deleting observations.
+    access.source.access_flags |= LOOM_MEMORY_ACCESS_FLAG_VOLATILE;
+  }
   const loom_type_t vector_type =
       loom_amdgpu_memory_access_source_vector_type(module, source_op);
   loom_amdgpu_memory_access_try_record_vector_width_diagnostic(
@@ -2817,7 +2834,7 @@ bool loom_amdgpu_memory_access_plan_select(
   if (access.payload_register_count <= LOOM_AMDGPU_MAX_MEMORY_32BIT_LANES &&
       (whole_register_payload || access.payload_register_count == 1)) {
     const bool allow_global_smem =
-        loom_amdgpu_type_is_32bit_memory_payload(vector_type);
+        !is_atomic && loom_amdgpu_type_is_32bit_memory_payload(vector_type);
     return loom_amdgpu_memory_access_plan_push_packet(
         &selection_context, kind, allow_global_smem, 0, &access, out_selection,
         out_diagnostic);

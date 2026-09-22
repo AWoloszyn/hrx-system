@@ -62,6 +62,9 @@ _ROW_MACRO_SIGNATURES = {
     "STRUCTURAL_DIRECT_STORAGE_ROW": _RowMacroSignature(
         argument_count=5, storage_policy_argument=4
     ),
+    "STRUCTURAL_DATA_STORAGE_ROW": _RowMacroSignature(
+        argument_count=6, storage_policy_argument=5
+    ),
     "STRUCTURAL_DATA_STORAGE_REPORT_KEY_ROW": _RowMacroSignature(
         argument_count=7, storage_policy_argument=5, report_key_argument=6
     ),

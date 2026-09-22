@@ -83,7 +83,9 @@ iree_status_t loom_amdgpu_low_legality_verify_memory(
     return iree_ok_status();
   }
   if (operation_kind != LOOM_MEMORY_ACCESS_OPERATION_LOAD &&
-      operation_kind != LOOM_MEMORY_ACCESS_OPERATION_STORE) {
+      operation_kind != LOOM_MEMORY_ACCESS_OPERATION_STORE &&
+      operation_kind != LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD &&
+      operation_kind != LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_STORE) {
     *out_handled = false;
     return iree_ok_status();
   }
@@ -112,6 +114,10 @@ iree_status_t loom_amdgpu_low_legality_verify_memory(
           bundle, target_facts->properties.instruction_constraints,
           alloca_layout, op, &source, &selection, &source_diagnostic,
           &diagnostic)) {
+    if (!iree_string_view_is_empty(diagnostic.atomic_constraint)) {
+      return loom_amdgpu_low_legality_reject(context, op,
+                                             diagnostic.atomic_constraint);
+    }
     bool handled = false;
     if (diagnostic.rejection_bits != 0) {
       IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_access_rejection_diagnostic(

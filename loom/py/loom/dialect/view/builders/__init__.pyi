@@ -114,3 +114,30 @@ class ViewBuilder(DialectBuilder):
         locality: str,
         location_id: int | None = ...,
     ) -> None: ...
+    def atomic_load(
+        self,
+        *,
+        view: ValueRef,
+        indices: list[int | ValueRef],
+        ordering: str,
+        scope: str,
+        cache_scope: str | None = ...,
+        cache_temporal: str | None = ...,
+        results: list[Type | TiedResultSpec],
+        name: str | None = ...,
+        names: Sequence[str] | None = ...,
+        result_names: Sequence[str] | None = ...,
+        location_id: int | None = ...,
+    ) -> ValueRef: ...
+    def atomic_store(
+        self,
+        *,
+        value: ValueRef,
+        view: ValueRef,
+        indices: list[int | ValueRef],
+        ordering: str,
+        scope: str,
+        cache_scope: str | None = ...,
+        cache_temporal: str | None = ...,
+        location_id: int | None = ...,
+    ) -> None: ...

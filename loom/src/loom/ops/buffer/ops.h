@@ -14,6 +14,7 @@
 
 #include "loom/ops/op_defs.h"
 #include "loom/ir/facts.h"
+#include "loom/ops/atomic.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -33,7 +34,8 @@ enum {
   LOOM_OP_BUFFER_COPY = LOOM_OP_KIND(LOOM_DIALECT_BUFFER, 10),
   LOOM_OP_BUFFER_FILL = LOOM_OP_KIND(LOOM_DIALECT_BUFFER, 11),
   LOOM_OP_BUFFER_COMPARE = LOOM_OP_KIND(LOOM_DIALECT_BUFFER, 12),
-  LOOM_OP_BUFFER_COUNT_ = 13,
+  LOOM_OP_BUFFER_FENCE = LOOM_OP_KIND(LOOM_DIALECT_BUFFER, 13),
+  LOOM_OP_BUFFER_COUNT_ = 14,
 };
 
 // LOOM_OP_BUFFER_ALLOCA: Create a fixed-frame scratch buffer root in an allocatable memory space. Each execution produces a distinct storage identity; identical allocas must not be commoned. The byte length is the requested physical byte count for the execution. Targets requiring a static frame reserve its proven finite non-negative maximum. base_alignment is the minimum byte alignment of the root storage base. Target lowering determines which allocatable spaces are legal for the containing program kind.
@@ -299,6 +301,18 @@ iree_status_t loom_buffer_compare_facts(
     const loom_module_t* module, const loom_op_t* op,
     const loom_value_facts_t* operand_facts,
     loom_value_facts_t* result_facts);
+
+// LOOM_OP_BUFFER_FENCE: Order the executing thread's memory accesses across storage roots using an explicit atomic ordering and synchronization scope. This applies to ordinary functions and kernels, including accesses through typed views and vectors. Acquire and release fences participate in synchronization through matching atomic observations and publications; they do not rendezvous with other invocations or complete independent asynchronous transfers. The backing memory and target must support the requested synchronization domain.
+// buffer.fence scope(system) ordering(acquire)
+LOOM_DEFINE_ISA(loom_buffer_fence_isa, LOOM_OP_BUFFER_FENCE)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_buffer_fence_scope, 0, loom_atomic_scope_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_buffer_fence_ordering, 1, loom_atomic_ordering_t)
+iree_status_t loom_buffer_fence_build(
+    loom_builder_t* builder,
+    loom_atomic_scope_t scope,
+    loom_atomic_ordering_t ordering,
+    loom_location_id_t location,
+    loom_op_t** out_op);
 
 // Returns the vtable array for the buffer dialect.
 const loom_op_vtable_t* const* loom_buffer_dialect_vtables(
