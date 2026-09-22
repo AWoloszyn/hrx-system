@@ -8,6 +8,7 @@
 
 exports_files([
     "aligned_records.patch",
+    "auto_deduction.patch",
     "bfloat16_semantics.patch",
     "bitfield_attributes.patch",
     "braced_vector_initialization.patch",

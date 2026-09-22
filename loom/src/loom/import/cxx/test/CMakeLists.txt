@@ -21,6 +21,7 @@ loom_check_test_suite(
     "atomic_builtins.cxx-test"
     "atomics.cxx-test"
     "atomics_invalid.cxx-test"
+    "auto_deduction.cxx-test"
     "bfloat16.cxx-test"
     "bfloat16_invalid.cxx-test"
     "check.cxx-test"
