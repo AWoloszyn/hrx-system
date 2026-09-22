@@ -89,6 +89,14 @@ origin changes. [Rotating views over reusable storage](functions-and-control.md#
 shows how to reuse two slots, preserve a live exit view, and handle empty or
 partially unrolled loops.
 
+When the choice changes the address mapping, construct the candidate
+`encoding.layout.strided` values and select or carry the layout as ordinary SSA
+state. The resulting view type names that layout, preserving runtime element
+strides without flattening logical indices into source-level pointer
+arithmetic. [Selecting and carrying address
+layouts](functions-and-control.md#select-and-carry-address-layouts) shows the
+complete relationship and a checked target-execution example.
+
 ## State storage facts at the boundary that knows them
 
 External buffer parameters do not become independent merely because their SSA
