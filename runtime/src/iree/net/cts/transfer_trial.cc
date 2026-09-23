@@ -618,14 +618,8 @@ struct TrialSide {
   }
 
   void Poll() {
-    iree_status_t status = iree_async_proactor_poll(
-        proactor, iree_infinite_timeout(), /*out_completed_count=*/nullptr);
-    if (iree_status_is_deadline_exceeded(status)) {
-      // A poll may service internal progress without an application completion.
-      iree_status_free(status);
-    } else {
-      control.Fail(status);
-    }
+    control.Fail(iree_async_proactor_poll(proactor, iree_infinite_timeout(),
+                                          /*out_completed_count=*/nullptr));
   }
 
   bool Done(uint64_t target) const {
