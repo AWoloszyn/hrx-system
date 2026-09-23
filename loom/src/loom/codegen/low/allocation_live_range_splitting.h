@@ -86,9 +86,9 @@ iree_status_t loom_low_allocation_split_fixed_value_spill_plan(
 // Only |pair_uses| and allocation tables are inspected; this does not walk the
 // function IR. Candidate replicas are inserted as one transaction. Callers
 // rebuild scheduling and allocation, evaluate actual packet savings and
-// resource use, and retain or roll back the edits. Inserting replicas
-// invalidates the old schedule and allocation; retaining edits never makes
-// those old tables current.
+// resource use, and retain or roll back the edits. While replicas are present,
+// the original schedule and allocation are only a comparison baseline.
+// Rolling back restores their validity when no other IR edits intervened.
 iree_status_t loom_low_allocation_replicate_pair_sources(
     loom_module_t* module, const loom_low_allocation_table_t* table,
     loom_low_placement_pair_use_list_t pair_uses, iree_arena_allocator_t* arena,
@@ -100,6 +100,9 @@ iree_status_t loom_low_allocation_satisfied_pair_packet_savings(
     loom_low_placement_pair_use_list_t pair_uses, uint64_t* out_packet_savings);
 
 // Restores all operands rewritten by |result| and erases its detached copies.
+// Preserves every original operation and its order, allowing the caller to
+// retain the pre-replication schedule and allocation instead of rebuilding
+// them.
 iree_status_t loom_low_allocation_rollback_pair_replication(
     loom_module_t* module,
     const loom_low_allocation_pair_replication_result_t* result,
