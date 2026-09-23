@@ -64,7 +64,9 @@ iree_string_view_t loom_amdgpu_atomic_memory_rejection_key(
   if (source->memory_space != LOOM_VALUE_FACT_MEMORY_SPACE_GLOBAL) {
     return IREE_SV("atomic.memory_space");
   }
-  if (source->vector_lane_count != 1 || source->element_byte_count != 4) {
+  // Each observation uses one naturally aligned 32- or 64-bit VMEM packet.
+  if (source->vector_lane_count != 1 ||
+      (source->element_byte_count != 4 && source->element_byte_count != 8)) {
     return IREE_SV("atomic.value_type");
   }
   if (source->minimum_alignment < source->element_byte_count) {
