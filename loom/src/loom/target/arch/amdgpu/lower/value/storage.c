@@ -21,6 +21,7 @@ void loom_amdgpu_mark_value_plan_storage_demands(
           (const loom_amdgpu_index_cast_plan_t*)plan.target_data;
       switch (index_cast_plan->kind) {
         case LOOM_AMDGPU_INDEX_CAST_KIND_PRESERVING_LOW_BITS:
+        case LOOM_AMDGPU_INDEX_CAST_KIND_PRESERVING_LOW_BITS_TO_VGPR:
         case LOOM_AMDGPU_INDEX_CAST_KIND_ZERO_EXTENDING_LOW_32:
         case LOOM_AMDGPU_INDEX_CAST_KIND_SIGN_EXTENDING_LOW_32:
         case LOOM_AMDGPU_INDEX_CAST_KIND_ZERO_EXTENDING_NARROW:
