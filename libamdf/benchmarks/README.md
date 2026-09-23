@@ -9,7 +9,7 @@ active for the measurement, with the previous policy restored afterward.
 Deployment-representative runs instead preserve the deployment's normal power
 policy and include its idle/wake behavior. These are separate result classes;
 held-power numbers do not approximate default-policy user latency. The
-[XDNA power and measurement contract](../docs/xdna.md#power-policy-and-measurement)
+[XDNA power and measurement contract](../docs/xdna/execution.md#power-policy-and-measurement)
 describes Linux control, verification, ownership and the required record.
 
 ## Memory

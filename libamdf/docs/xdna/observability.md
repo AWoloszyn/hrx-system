@@ -1,0 +1,314 @@
+# XDNA timing, counters, and trace
+
+XDNA has several observation mechanisms, each measuring a different part of
+execution:
+
+| Mechanism | Observation | Result transport |
+| --- | --- | --- |
+| Core cycle counter | Time between instructions in a tile program. | The program stores counter samples with its other output. |
+| Event counters | Selected core, memory, stream, or DMA activity. | Reads of the module's performance-counter registers. |
+| Event trace | Changes in selected events, with cycle timing. | Packet streams routed through the array to a DMA destination. |
+| Firmware timer records | Markers encountered by the native instruction interpreter. | A firmware result buffer associated with the context. |
+| Firmware diagnostic trace | Driver/firmware activity outside the tile program. | A separate device-wide diagnostic channel. |
+
+Application stores and trace DMA use libamdf's existing memory and execution
+APIs on Linux and Windows. libamdf currently exposes neither native clock
+queries nor firmware result-buffer attachment or diagnostic trace access. The
+native-interface sections below describe those driver mechanisms separately
+from the public API.
+
+## Timing a tile program
+
+An AIE2P program reads the tile's 64-bit cycle counter with `mov` from `cntr`
+into a register pair. The C++ intrinsic is `get_cycles()`. Samples around a
+code region measure elapsed tile-clock cycles, including stalls encountered
+between the samples. They do not include host submission or completion
+notification. [Cycle-counter intrinsic][cycle-counter]
+
+```asm
+mov r9:r8, cntr
+// Instructions being measured.
+mov r13:r12, cntr
+```
+
+The program can store those samples alongside its normal output. Reading the
+counter does not require a host call, an OS profiling session, or a trace DMA
+channel. The compiler controls instruction placement around each sample; the
+measurement includes any instrumentation instructions between them.
+
+For a constant tile frequency `frequency_hz`, elapsed seconds are
+`(end_ticks - begin_ticks) / frequency_hz`. Saving only the low 32 bits shortens
+the unambiguous interval: at 1.8 GHz it wraps in about 2.386 seconds. A pair of
+64-bit samples avoids that short wrap interval, but still belongs to one timer
+epoch. Timer reset, placement reuse, and clock gating are distinct from counter
+wrap. The [native execution lifetime](execution.md#native-entry-and-placement-ownership)
+does not preserve application timer state between independent submissions.
+
+Host time around `kernel_queue_submit` measures publication cost. Host time
+through `kernel_queue_wait` additionally includes native admission, scheduling,
+execution, and completion observation. Neither interval is interchangeable
+with a pair of in-program counter reads. For a resident worker, markers inside
+the program distinguish its individual operations from the enclosing native
+submission.
+
+### Timer registers and alignment
+
+Each event module has timer control, low/high timer values, and a programmable
+timer-event threshold. `Timer_Control` can reset the timer directly or select
+an event that resets it. A broadcast route can distribute one reset event to
+the participating modules. `XAie_SyncTimer` implements this by configuring the
+broadcast network and reset selectors for ungated tiles, generating the event,
+and clearing that temporary configuration. [Timer implementation][aie-timers]
+
+This aligns the timers to a program event, not to a CPU clock. Event propagation
+also takes time along the route. Cross-tile differences therefore include any
+reset-arrival skew. A trace decoder needs the timer epoch as well as the source
+tile and module to place samples on a shared timeline.
+
+The register interface and the core instruction are different read paths.
+`XAie_ReadTimer` performs separate low-word and high-word register reads;
+the core `cntr` instruction returns a register pair. Neither the register
+address nor `XAie_ReadTimer` is a host mapping supplied by libamdf. Register
+operations reach the array through the admitted executable's controller path.
+
+## Event counters
+
+Performance counters are local to an event module. The AIE2IPU and AIE2P device
+tables define the following resources. The counts describe hardware counters,
+not a reservation of them for a profiling tool. [AIE2IPU definitions][aie2ipu-registers],
+[AIE2P definitions][aie2p-registers]
+
+| Module | Counters | Value width | Trace event slots |
+| --- | --- | --- | --- |
+| Compute-tile core | 4 | 32 bits | 8 |
+| Compute-tile memory | 2 | 32 bits | 8 |
+| Memory tile | 4 | 32 bits | 8 |
+| Shim interface | 2 | 32 bits | 8 |
+
+Counter control selects start, stop, and reset events. A separate value register
+programs the threshold that generates the counter's own event. Counter results
+are individual 32-bit register reads. Reset/configuration, counting, and readback
+are separate operations. [Counter operations][aie-counters]
+
+Event identity determines the meaning of a count. Core activity, lock stalls,
+stream stalls, vector instructions, and completed DMA tasks describe different
+quantities. Stream-port events additionally use a selector identifying which
+port is being observed; an event named `PORT_RUNNING_0` refers to a monitor
+slot, not necessarily physical stream port zero. The Windows XDP profiler
+programs those selectors and uses matching start/stop events to count selected
+activity. [Event definitions][aie2p-events], [counter configuration][xdp-profile]
+
+Event numbers are module- and architecture-specific. For example, AIE2P core
+instruction events 0 and 1 have event numbers 33 and 34; core user events 0
+through 3 have numbers 124 through 127. An event emitted by an instruction and
+one generated through `Event_Generate` are different event sources.
+[AIE2P event definitions][aie2p-events]
+
+## Event trace
+
+The trace unit watches eight configured event slots. Core trace supports
+event-time, event-PC, and execution-trace modes. Memory and interface trace
+units support event-time mode. In event-time mode, changes in the watched
+events produce compressed trace frames. Event-PC records the program counter
+and event state; execution trace records control-flow information for
+reconstruction using the executable. [Hardware trace modes][trace-architecture]
+
+The configuration has four parts:
+
+| Register group | Meaning |
+| --- | --- |
+| `Trace_Event0/1` | Maps the eight trace slots to hardware event numbers. |
+| `Trace_Control0` | Selects the start event, stop event, and core trace mode. |
+| `Trace_Control1` | Sets packet identity and type. |
+| `Trace_Status` | Reports trace-unit state and mode, independently of DMA state. |
+
+These are ordinary array register operations. The executable also configures
+the packet-switched route from the trace port to its destination. Trace shares
+stream-switch, DMA, and memory resources with application data. Several trace
+sources can share an egress route and destination when packet routing preserves
+their identity; a source does not inherently require its own shim DMA channel.
+[Trace configuration][aie-trace], [trace routing][trace-architecture]
+
+### Packets and timestamps
+
+The AIE-ML trace transport uses eight 32-bit words per packet: a routing header
+and seven payload words. Payload words contain compressed trace frames, not one
+event per word. Event-time frames refer to the configured trace slots, so the
+decoder also needs the slot-to-event mapping. Filler occupies unused framing
+space. [Trace packet layout][trace-architecture]
+
+The MLIR-AIE event-time decoder separates packet headers from payload before
+decoding events. Its start frame carries a seven-byte timer value; subsequent
+frames advance the local timeline using cycle deltas. Its default `zero=True`
+mode discards the starting timer value. That produces a relative per-stream
+timeline, not an absolute cross-tile timeline. [Frame decoder][trace-decoder]
+
+Long gaps have an additional encoding: the decoder's `Event_Sync` handling
+advances the timer by `2^18` cycles without changing event state. Treating that
+frame as padding loses time from the reconstructed interval.
+[Event-time reconstruction][trace-reconstruction]
+
+### Stop, flush, and DMA completion
+
+A configured stop event ends collection at the trace source and flushes its
+remaining partial packet. XDP's Windows `flushTraceModules` generates those
+events for each traced module. It submits register operations, not a request to
+complete the destination DMA. [Trace flush implementation][xdp-trace]
+
+The destination has its own programmed transfer length. Stopping a source after
+it produces a short trace does not change that length or complete an otherwise
+unfinished transfer. A source's packet boundary is also not the end of the
+whole capture: a capture contains many packets.
+
+The distinction is visible in the reference collectors. Windows XDP allocates
+and zeros a destination, programs a shim S2MM descriptor for its capacity, then
+syncs and searches the storage for the boundary between written data and zeros.
+MLIR-AIE inserts a stop-event broadcast at the end of its runtime sequence;
+that insertion does not add a wait for the trace DMA to consume its remaining
+capacity. These are collection strategies, not a hardware-reported valid-byte
+count or a DMA-retirement signal. [XDP offload][xdp-offload],
+[MLIR-AIE trace insertion][trace-insertion]
+
+Within libamdf's execution contract, the controller program completes only
+after the application's array work and transfers are quiescent. A trace
+destination remains live while a DMA can write it. A streaming program can
+publish completed regions to a reader while continuing to produce into other
+regions; each region's publication and reuse follow that program's protocol.
+
+## Result memory through libamdf
+
+A trace destination is ordinary device-writable memory. The caller selects a
+scope and memory profile with the intended NPU and host or GPU consumers, then
+obtains backing with `memory_create`, registration, or `memory_import`.
+
+`memory_query_address(memory, access_ordinal, AMDF_MEMORY_ADDRESS_XDNA_DMA,
+&address)` returns the address interpretation used by shim DMA. An offset into
+the allocation is added to that address. The firmware address interpretation
+is separate; the caller does not translate it using a fixed platform constant.
+
+The prepared trace configuration lives with the other controller instructions
+in context-private EXECUTE memory. `kernel_queue_submit` publishes that range
+without parsing or modifying it. It does not start a collector or inspect the
+trace destination.
+
+After the program's completion edge, the reader applies the visibility recipe
+from `memory_query_pair_info`. A host acquire requiring cache invalidation uses
+`host_mapping_cache_control` on the relevant range. Cache control establishes
+visibility; it does not wait for a still-running writer. A GPU reader can
+consume the same backing under its own ordering and lifetime contract. The
+[memory reference](../memory.md) describes those operations in detail.
+
+## Firmware instrumentation
+
+Firmware-generated results use a different path from application stores or
+trace DMA. Two transaction operations use a destination associated with the
+context:
+
+| Operation | Input | Result |
+| --- | --- | --- |
+| `READ_REGS` | A list of array register addresses. | Register values copied into the firmware result buffer. |
+| `RECORD_TIMER` | A caller-selected 32-bit marker ID. | A marker and timer record appended to the firmware result buffer. |
+
+The transaction definitions assign these opcodes `0x82` and `0x83`. The XDP
+timeline reader consumes each timer record as three 32-bit words: ID, timer
+high word, timer low word. This is a firmware record layout, not a libamdf
+trace format. The operation marks the interpreter's progress; tile-work
+completion depends on the preceding controller synchronization. The command
+and result carry no tile identity or clock-domain identifier; this record is
+not a paired sample of the tile's `cntr` and a host clock.
+[Transaction definitions][transaction-ops], [timeline result reader][xdp-timeline]
+
+### Linux context attachment
+
+The AIE2 native path uses `DRM_AMDXDNA_HWCTX_ASSIGN_DBG_BUF` to associate an
+`AMDXDNA_BO_DEV` buffer with a context, and `REMOVE_DBG_BUF` to detach it.
+Attachment and detachment submit a native command and wait for its response.
+The attachment argument names a BO, not a byte range. The driver supplies that
+BO's heap-relative offset and full length to firmware through
+`MSG_OP_CONFIG_DEBUG_BO`. Readback also uses a `SYNC_DEBUG_BO` command; an
+ordinary host cache invalidate alone does not perform that synchronization.
+[Context operations][linux-context],
+[firmware messages][linux-messages], [shim buffer implementation][linux-buffer]
+
+The AIE4 native interface uses the same configuration names with a different
+payload: a metadata BO describes the result BO, buffer type, per-controller
+slices, and a correlation tag. It is not the AIE2 BO-handle argument layout.
+[Native configuration structures][linux-uapi]
+
+### Windows client behavior
+
+XDP creates a context-qualified `use_type::debug` buffer. Its counter profiler
+submits `READ_REGS`, waits for the transaction, then synchronizes the result
+buffer before reading it. Its timeline plugin retains a debug buffer across
+execution, reads the accumulated timer records, and releases the buffer before
+the counter/debug plugins install their result destinations. The public XRT
+client sources describe this lifecycle; they do not define the private MCDM
+allocation/attachment ABI. [Counter readback][xdp-profile],
+[timeline buffer lifetime][xdp-timeline]
+
+Neither attachment path is exposed by the current libamdf memory API. A normal
+trace DMA allocation does not acquire this firmware result-buffer role.
+
+## Native clock information
+
+Linux `DRM_AMDXDNA_QUERY_CLOCK_METADATA` returns two named integer-MHz values.
+The AIE2 driver labels them `MP-NPU Clock` and `H Clock`; the AIE4 driver labels
+the corresponding fields `NPU H Clock` and `AIE Clock`. The query returns
+operating-clock information, not a counter sample. The surrounding native
+query resumes the device and holds a runtime-power reference, so polling it
+can affect idle behavior. [AIE2 clock query][linux-aie2],
+[AIE4 clock query][linux-aie4]
+
+In the NPU4 register backend, the H-clock field is populated from the sensor's
+NPU-clock reading; the MP-NPU field comes from the separate MP-NPU reading.
+The field names therefore matter when interpreting the result. An operating
+frequency sample does not record intervening frequency changes.
+[Sensor-to-clock mapping][linux-npu4-clocks]
+
+The firmware `CALIBRATE_CLOCK` command has a different purpose: the driver
+sends `ktime_get_real_ns()` as a firmware time base and receives status. It
+returns no paired tile/host sample. Firmware trace uses its own timestamp
+mode: `FW_CHRONO` in the AIE2 path and `NS_OFFSET` in AIE4.
+[AIE2 messages][linux-messages], [AIE4 messages][linux-aie4-messages]
+
+## Firmware diagnostic trace
+
+The Linux firmware diagnostic channel is device-wide, separate from the trace
+streams routed by an application. `SET_FW_TRACE_STATE` enables or configures
+it through the root-only `SET_STATE` ioctl. Configuration queries are
+unprivileged; payload reads require `CAP_SYS_ADMIN`. Multiple readers share
+the channel's state. [IOCTL access][linux-ioctls], [channel implementation][linux-dpt]
+
+Payload reads carry a cursor and can block waiting for new data. `ESTALE`
+reports that a disable/enable cycle invalidated the cursor and returns the new
+cursor with zero payload. `ESHUTDOWN` reports a disabled channel and ends the
+watch. A blocking read holds native power resources while waiting. These
+notifications describe the diagnostic stream, not application queue completion.
+[Payload protocol][linux-uapi], [native query lifetime][linux-aie2]
+
+[cycle-counter]: https://download.amd.com/docnav/aiengine/xilinx2026_1/aiengine_ml_v2_intrinsics/intrinsics/group__intr__counter.html
+[aie-timers]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/timer/xaie_timer.c
+[aie2ipu-registers]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/global/xaie2ipugbl_reginit.c
+[aie2p-registers]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/global/xaie2pgbl_reginit.c
+[aie-counters]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/perfcnt/xaie_perfcnt.c
+[aie2p-events]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/events/xaie_events_aie2p.h
+[aie-trace]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/trace/xaie_trace.c
+[trace-architecture]: https://docs.amd.com/r/en-US/am020-versal-aie-ml/Trace
+[trace-decoder]: https://github.com/Xilinx/mlir-aie/blob/c69fb4c8f2fb853d5ca62d19f829796d3ae4ba34/python/utils/trace/utils.py
+[trace-reconstruction]: https://github.com/Xilinx/mlir-aie/blob/c69fb4c8f2fb853d5ca62d19f829796d3ae4ba34/python/utils/trace/parse.py
+[trace-insertion]: https://github.com/Xilinx/mlir-aie/blob/c69fb4c8f2fb853d5ca62d19f829796d3ae4ba34/lib/Dialect/AIE/Transforms/AIEInsertTraceFlows.cpp
+[xdp-trace]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/plugin/aie_trace/client/aie_trace.cpp
+[xdp-offload]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/device/aie_trace/client/aie_trace_offload_client.cpp
+[xdp-profile]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/plugin/aie_profile/client/aie_profile.cpp
+[xdp-timeline]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/plugin/ml_timeline/clientDev/ml_timeline.cpp
+[transaction-ops]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/common/xaie_txn.h
+[linux-context]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/aie2_ctx.c
+[linux-messages]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/aie2_message.c
+[linux-buffer]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/src/shim/buffer.cpp
+[linux-uapi]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/include/uapi/drm/amdxdna_accel.h
+[linux-aie2]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/aie2_pci.c
+[linux-aie4]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/aie4_pci.c
+[linux-npu4-clocks]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/npu4_regs.c
+[linux-aie4-messages]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/aie4_message.c
+[linux-ioctls]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/amdxdna_drm.c
+[linux-dpt]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/amdxdna_dpt.c

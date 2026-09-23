@@ -135,10 +135,12 @@ Focused design documents describe the contracts:
   queue families and native driver ownership.
 - [Memory fabric](docs/memory.md): scopes, shared backing, addresses, visibility
   and caller-owned lifetimes.
-- [XDNA execution](docs/xdna.md): instruction storage, submission and the native
+- [XDNA execution](docs/xdna/execution.md): instruction storage, submission and the native
   Linux and Windows requirements.
 - [Performance contracts](docs/performance.md): method-level preparation,
   allocation, locking, native-call and steady-state cost guarantees.
+- [XDNA timing, counters, and trace](docs/xdna/observability.md): tile timers,
+  event selection, trace transport, and native firmware instrumentation.
 
 ## Native drivers
 
@@ -146,7 +148,7 @@ libamdf requires the native interfaces used by its providers and accepts
 compatible newer drivers without a release allowlist. Hardware capabilities and
 native interface support determine which operations are available; driver
 package versions do not select implementation paths. The
-[XDNA native requirements](docs/xdna.md#native-requirements) describe the NPU
+[XDNA native requirements](docs/xdna/execution.md#native-requirements) describe the NPU
 interface floor, including Windows discovery of direct and metadata partition
 admission. The baseline Windows metadata interface supports drivers that do not
 populate the private adapter query. Drivers that lack required execution

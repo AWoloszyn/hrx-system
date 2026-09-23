@@ -3,8 +3,8 @@
 Loom compiles tile programs and their array transport into a native `.xdna`
 executable. The product contains AIE2P instructions, initialized data, array
 configuration, explicit storage and binding requirements, and native invocation
-ranges. It executes through [libamdf](../../../../../../../libamdf/docs/xdna.md); compilation
-does not invoke the AIE SDK, LLVM, Python, or an external linker.
+ranges. It executes through [libamdf](../../../../../../../libamdf/docs/xdna/execution.md);
+compilation does not invoke the AIE SDK, LLVM, Python, or an external linker.
 
 This directory owns device facts and AIE2P target mechanics. The shared Loom
 compiler owns IR analysis, canonicalization, scheduling, register allocation,
