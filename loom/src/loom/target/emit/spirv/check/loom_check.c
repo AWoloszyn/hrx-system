@@ -369,7 +369,7 @@ static iree_status_t loom_spirv_loom_check_emit_provider_execute(
 
   loom_spirv_toolchain_t toolchain;
   loom_spirv_toolchain_initialize_from_environment(&toolchain);
-  if (iree_status_is_ok(status) &&
+  if (iree_status_is_ok(status) && request->diagnostic_collector->count == 0 &&
       iree_any_bit_set(emit_request.flags,
                        LOOM_SPIRV_LOOM_CHECK_EMIT_FLAG_VALIDATE)) {
     status = loom_spirv_tool_validate_binary(
@@ -378,7 +378,7 @@ static iree_status_t loom_spirv_loom_check_emit_provider_execute(
   }
 
   loom_tool_output_t disassembly = {0};
-  if (iree_status_is_ok(status)) {
+  if (iree_status_is_ok(status) && request->diagnostic_collector->count == 0) {
     status = loom_spirv_tool_disassemble_binary(
         &toolchain, loom_spirv_module_binary_byte_span(&module),
         request->host_allocator, &disassembly);

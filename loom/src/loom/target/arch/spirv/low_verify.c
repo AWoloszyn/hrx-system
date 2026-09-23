@@ -64,8 +64,8 @@ typedef struct loom_spirv_low_verify_state_t {
   iree_string_view_t function_name;
   // Exact SPIR-V value types indexed by compact hash table.
   loom_spirv_low_value_type_table_t value_types;
-  // True when the resolved function target uses HAL raw-BDA resources.
-  bool raw_bda_hal_kernel;
+  // Resolved or authored function ABI, or UNKNOWN before one is selected.
+  loom_target_abi_kind_t abi_kind;
   // True after a function-level diagnostic makes body-local checks unreliable.
   bool skip_body_checks;
 } loom_spirv_low_verify_state_t;
@@ -462,7 +462,7 @@ static iree_status_t loom_spirv_low_emit_shader_result_value(
 
 static iree_status_t loom_spirv_low_verify_abi_shape(
     loom_low_verify_context_t* context, loom_spirv_low_verify_state_t* state) {
-  if (state->raw_bda_hal_kernel) {
+  if (state->abi_kind == LOOM_TARGET_ABI_HAL_KERNEL) {
     if (state->function_op->result_count != 0) {
       IREE_RETURN_IF_ERROR(loom_spirv_low_emit_raw_bda_returns(context, state));
     }
@@ -499,6 +499,9 @@ static iree_status_t loom_spirv_low_verify_abi_shape(
     return iree_ok_status();
   }
 
+  if (state->abi_kind != LOOM_TARGET_ABI_SHADER_ENTRY_POINT) {
+    return iree_ok_status();
+  }
   if (state->entry_block != NULL) {
     for (uint16_t i = 0; i < state->entry_block->arg_count; ++i) {
       const loom_value_id_t value_id = loom_block_arg_id(state->entry_block, i);
@@ -601,7 +604,8 @@ static iree_status_t loom_spirv_low_emit_resource_result_type(
 static iree_status_t loom_spirv_low_verify_resource(
     loom_low_verify_context_t* context, loom_spirv_low_verify_state_t* state,
     const loom_op_t* op) {
-  if (!state->raw_bda_hal_kernel) {
+  if (state->abi_kind != LOOM_TARGET_ABI_UNKNOWN &&
+      state->abi_kind != LOOM_TARGET_ABI_HAL_KERNEL) {
     return loom_spirv_low_emit_resource_abi(context, state, op);
   }
   if (loom_low_resource_import_kind(op) !=
@@ -1299,24 +1303,35 @@ static iree_status_t loom_spirv_low_begin_function(
 
   loom_spirv_low_verify_state_t* state = NULL;
   iree_arena_allocator_t* arena = loom_low_verify_context_arena(context);
+  const loom_module_t* module = loom_low_verify_context_module(context);
+  const loom_op_t* function_op = loom_low_verify_context_function_op(context);
+  const loom_target_bundle_t* bundle = loom_low_resolved_target_bundle(target);
+  loom_target_abi_kind_t abi_kind;
+  if (bundle != NULL) {
+    abi_kind = bundle->export_plan->abi_kind;
+  } else {
+    const loom_func_like_t function =
+        loom_func_like_const_cast(module, function_op);
+    abi_kind = loom_func_like_is_kernel(function)
+                   ? LOOM_TARGET_ABI_HAL_KERNEL
+                   : (loom_target_abi_kind_t)loom_func_like_abi(function);
+  }
   IREE_RETURN_IF_ERROR(
       iree_arena_allocate(arena, sizeof(*state), (void**)&state));
   *state = (loom_spirv_low_verify_state_t){
-      .module = loom_low_verify_context_module(context),
-      .function_op = loom_low_verify_context_function_op(context),
+      .module = module,
+      .function_op = function_op,
       .body = loom_low_verify_context_function_body(context),
       .target = target,
       .arena = arena,
-      .function_name = loom_low_diagnostic_function_name(
-          loom_low_verify_context_module(context),
-          loom_low_verify_context_function_op(context)),
-      .raw_bda_hal_kernel =
-          loom_low_resolved_target_bundle(target)->export_plan->abi_kind ==
-          LOOM_TARGET_ABI_HAL_KERNEL,
+      .function_name = loom_low_diagnostic_function_name(module, function_op),
+      .abi_kind = abi_kind,
   };
   *out_provider_state = state;
 
-  IREE_RETURN_IF_ERROR(loom_spirv_low_verify_module_contract(context, state));
+  if (bundle != NULL) {
+    IREE_RETURN_IF_ERROR(loom_spirv_low_verify_module_contract(context, state));
+  }
   if (loom_low_verify_context_should_stop(context)) {
     return iree_ok_status();
   }
