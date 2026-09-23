@@ -38,6 +38,7 @@ iree_status_t loom_boundary_projection_run(
     loom_pass_t* pass, loom_module_t* module,
     const loom_function_version_list_t* version_list,
     loom_boundary_projection_rule_list_t rules,
+    const loom_boundary_projection_plan_sink_t* plan_sink,
     loom_boundary_projection_statistics_t* out_statistics) {
   *out_statistics = (loom_boundary_projection_statistics_t){0};
   loom_boundary_projection_plan_t plan = {
@@ -47,6 +48,9 @@ iree_status_t loom_boundary_projection_run(
   };
   IREE_RETURN_IF_ERROR(
       loom_boundary_projection_plan_prepare(&plan, version_list, rules));
+  if (plan_sink && plan_sink->fn) {
+    IREE_RETURN_IF_ERROR(plan_sink->fn(plan_sink->user_data, &plan));
+  }
 
   bool has_changes = false;
   for (iree_host_size_t i = 0; i < plan.function_count; ++i) {
