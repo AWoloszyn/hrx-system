@@ -270,6 +270,12 @@ def aie2p_core_cases() -> Sequence[ContractCase]:
             core_rules._I32_MAX,
         ),
         core_rules._float_constant_rule(
+            core_rules._F8E4M3, ValueProject.float_bits("result")
+        ),
+        core_rules._float_constant_rule(
+            core_rules._F8E5M2, ValueProject.float_bits("result")
+        ),
+        core_rules._float_constant_rule(
             core_rules._F16, ValueProject.float_bits("result")
         ),
         core_rules._float_constant_rule(
@@ -313,6 +319,16 @@ def aie2p_core_cases() -> Sequence[ContractCase]:
             "amd.xdna.aie2p.splat.i32x16",
             core_rules._I32_MIN,
             core_rules._I32_MAX,
+        ),
+        core_rules._float_vector_constant_rule(
+            core_rules._F8E4M3_VECTOR,
+            "amd.xdna.aie2p.splat.i8x64",
+            ValueProject.float_bits("result"),
+        ),
+        core_rules._float_vector_constant_rule(
+            core_rules._F8E5M2_VECTOR,
+            "amd.xdna.aie2p.splat.i8x64",
+            ValueProject.float_bits("result"),
         ),
         core_rules._float_vector_constant_rule(
             core_rules._F16_VECTOR,

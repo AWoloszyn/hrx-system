@@ -1,0 +1,141 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_float8_constants.loom-test
+// RUN: emit source-low target=amd.xdna.aie2p:core output=low
+
+func.def @float8_finite_constants() -> (f8E4M3, f8E5M2, f8E4M3, f8E5M2, f8E4M3, f8E5M2) {
+  %e4_negative = scalar.constant -1.5 : f8E4M3
+  %e5_fraction = scalar.constant 1.25 : f8E5M2
+  %e4_smallest = scalar.constant 0.001953125 : f8E4M3
+  %e5_smallest = scalar.constant 1.52587890625e-05 : f8E5M2
+  %e4_largest = scalar.constant 448.0 : f8E4M3
+  %e5_largest = scalar.constant 57344.0 : f8E5M2
+  func.return %e4_negative, %e5_fraction, %e4_smallest, %e5_smallest, %e4_largest, %e5_largest : f8E4M3, f8E5M2, f8E4M3, f8E5M2, f8E4M3, f8E5M2
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @float8_finite_constants() -> (reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>) asm {
+  %e4_negative = mov.i32 188
+  %e5_fraction = mov.i32 61
+  %e4_smallest = mov.i32 1
+  %e4_largest = mov.i32 126
+  %e5_largest = mov.i32 123
+  return %e4_negative, %e5_fraction, %e4_smallest, %e4_smallest, %e4_largest, %e5_largest
+}
+
+// ====
+
+func.def @float8_rounding_constants() -> (f8E4M3, f8E4M3, f8E5M2, f8E5M2, f8E4M3, f8E5M2) {
+  %e4_even_lower = scalar.constant 1.0625 : f8E4M3
+  %e4_even_upper = scalar.constant 1.1875 : f8E4M3
+  %e5_even_lower = scalar.constant 1.125 : f8E5M2
+  %e5_even_upper = scalar.constant 1.375 : f8E5M2
+  %e4_saturated = scalar.constant 61440.0 : f8E4M3
+  %e5_overflow = scalar.constant 61440.0 : f8E5M2
+  func.return %e4_even_lower, %e4_even_upper, %e5_even_lower, %e5_even_upper, %e4_saturated, %e5_overflow : f8E4M3, f8E4M3, f8E5M2, f8E5M2, f8E4M3, f8E5M2
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @float8_rounding_constants() -> (reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>) asm {
+  %e4_even_lower = mov.i32 56
+  %e4_even_upper = mov.i32 58
+  %e5_even_lower = mov.i32 60
+  %e5_even_upper = mov.i32 62
+  %e4_saturated = mov.i32 126
+  %e5_overflow = mov.i32 124
+  return %e4_even_lower, %e4_even_upper, %e5_even_lower, %e5_even_upper, %e4_saturated, %e5_overflow
+}
+
+// ====
+
+func.def @float8_signed_zeros() -> (f8E4M3, f8E5M2, f8E4M3, f8E5M2) {
+  %e4_positive = scalar.constant 0.0 : f8E4M3
+  %e5_positive = scalar.constant 0.0 : f8E5M2
+  %e4_negative = scalar.constant -0.0 : f8E4M3
+  %e5_negative = scalar.constant -0.0 : f8E5M2
+  func.return %e4_positive, %e5_positive, %e4_negative, %e5_negative : f8E4M3, f8E5M2, f8E4M3, f8E5M2
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @float8_signed_zeros() -> (reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>) asm {
+  %e4_positive = mov.i32 0
+  %e4_negative = mov.i32 128
+  return %e4_positive, %e4_positive, %e4_negative, %e4_negative
+}
+
+// ====
+
+func.def @float8_special_constants() -> (f8E4M3, f8E4M3, f8E5M2, f8E5M2, f8E4M3, f8E5M2) {
+  %e4_positive = scalar.constant inf : f8E4M3
+  %e4_negative = scalar.constant -inf : f8E4M3
+  %e5_positive = scalar.constant inf : f8E5M2
+  %e5_negative = scalar.constant -inf : f8E5M2
+  %e4_nan = scalar.constant nan : f8E4M3
+  %e5_nan = scalar.constant nan : f8E5M2
+  func.return %e4_positive, %e4_negative, %e5_positive, %e5_negative, %e4_nan, %e5_nan : f8E4M3, f8E4M3, f8E5M2, f8E5M2, f8E4M3, f8E5M2
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @float8_special_constants() -> (reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>) asm {
+  %e4_positive = mov.i32 126
+  %e4_negative = mov.i32 254
+  %e5_positive = mov.i32 124
+  %e5_negative = mov.i32 252
+  %e4_nan = mov.i32 127
+  return %e4_positive, %e4_negative, %e5_positive, %e5_negative, %e4_nan, %e4_nan
+}
+
+// ====
+
+func.def @float8_midpoint_neighbors() -> (f8E4M3, f8E4M3, f8E5M2, f8E5M2) {
+  %e4_above_even = scalar.constant 1.0625000000000002 : f8E4M3
+  %e4_below_odd = scalar.constant 1.1874999999999998 : f8E4M3
+  %e5_above_even = scalar.constant 1.1250000000000002 : f8E5M2
+  %e5_below_odd = scalar.constant 1.3749999999999998 : f8E5M2
+  func.return %e4_above_even, %e4_below_odd, %e5_above_even, %e5_below_odd : f8E4M3, f8E4M3, f8E5M2, f8E5M2
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @float8_midpoint_neighbors() -> (reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>) asm {
+  %e4_above_even = mov.i32 57
+  %e5_above_even = mov.i32 61
+  return %e4_above_even, %e4_above_even, %e5_above_even, %e5_above_even
+}
+
+// ====
+
+func.def @float8_vector_midpoints() -> (vector<4xf8E4M3>, vector<8xf8E5M2>) {
+  %e4_above_even = vector.constant 1.0625000000000002 : vector<4xf8E4M3>
+  %e5_below_odd = vector.constant 1.3749999999999998 : vector<8xf8E5M2>
+  func.return %e4_above_even, %e5_below_odd : vector<4xf8E4M3>, vector<8xf8E5M2>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @float8_vector_midpoints() -> (reg<aie2p.vec256 x2>, reg<aie2p.vec256 x2>) asm {
+  %6 = mov.i32 57
+  %e4_above_even = vbcst.8 %6
+  %8 = mov.i32 61
+  %e5_below_odd = vbcst.8 %8
+  return %e4_above_even, %e5_below_odd
+}
+
+// ====
+
+func.def @float8_vector_specials() -> (vector<1xf8E4M3>, vector<5xf8E4M3>, vector<4xf8E5M2>, vector<8xf8E5M2>) {
+  %e4_negative_zero = vector.constant -0.0 : vector<1xf8E4M3>
+  %e4_saturated = vector.constant inf : vector<5xf8E4M3>
+  %e5_negative_infinity = vector.constant -inf : vector<4xf8E5M2>
+  %e5_nan = vector.constant nan : vector<8xf8E5M2>
+  func.return %e4_negative_zero, %e4_saturated, %e5_negative_infinity, %e5_nan : vector<1xf8E4M3>, vector<5xf8E4M3>, vector<4xf8E5M2>, vector<8xf8E5M2>
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @float8_vector_specials() -> (reg<aie2p.vec256 x2>, reg<aie2p.vec256 x2>, reg<aie2p.vec256 x2>, reg<aie2p.vec256 x2>) asm {
+  %12 = mov.i32 128
+  %e4_negative_zero = vbcst.8 %12
+  %14 = mov.i32 126
+  %e4_saturated = vbcst.8 %14
+  %16 = mov.i32 252
+  %e5_negative_infinity = vbcst.8 %16
+  %18 = mov.i32 127
+  %e5_nan = vbcst.8 %18
+  return %e4_negative_zero, %e4_saturated, %e5_negative_infinity, %e5_nan
+}
