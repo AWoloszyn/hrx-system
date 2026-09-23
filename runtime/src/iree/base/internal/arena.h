@@ -233,6 +233,15 @@ void iree_arena_deinitialize(iree_arena_allocator_t* arena);
 // Resets the entire arena and returns allocated blocks to the parent pool.
 void iree_arena_reset(iree_arena_allocator_t* arena);
 
+// Transfers ownership of all |source| allocations to |target| without moving
+// their contents. The distinct arenas must share a block pool. |source| is left
+// empty and reusable; its checkpoints are invalidated. Existing |target|
+// checkpoints remain valid and release transferred allocations when restored.
+// Fixed-size blocks are linked in constant time; oversized allocations require
+// walking the source allocation list. No allocations or frees are performed.
+void iree_arena_transfer(iree_arena_allocator_t* source,
+                         iree_arena_allocator_t* target);
+
 // Saves the current allocation state of |arena| for a later restore.
 iree_arena_checkpoint_t iree_arena_checkpoint_save(
     iree_arena_allocator_t* arena);

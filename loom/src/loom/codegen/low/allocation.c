@@ -121,14 +121,13 @@ loom_low_allocation_make_interval_assignment_context(
   };
 }
 
-// Probes the fragmentation-repair coloring in isolated mutable state. The
-// caller commits a successful spill-free assignment or a partial repair with
-// lower predicted spill traffic than a successful first-fit assignment.
-static iree_status_t loom_low_allocation_probe_fragmentation_repair(
+// Selects between first-fit and an isolated fragmentation-repair coloring.
+// A winning repair retains its owned arrays and recycles the first-fit state.
+static iree_status_t loom_low_allocation_repair_fragmentation(
     loom_low_allocation_build_state_t* state,
     const loom_low_function_model_t* model,
-    const loom_local_value_domain_t* value_domain, bool* out_use_repair) {
-  *out_use_repair = false;
+    const loom_local_value_domain_t* value_domain,
+    const iree_arena_checkpoint_t* assignment_checkpoint) {
   iree_arena_allocator_t scratch_arena;
   iree_arena_initialize(state->arena->block_pool, &scratch_arena);
 
@@ -179,11 +178,22 @@ static iree_status_t loom_low_allocation_probe_fragmentation_repair(
                                                            &scratch_result);
   }
   if (iree_status_is_ok(status)) {
-    *out_use_repair = scratch_target_constraints.error_count == 0 &&
-                      (scratch_result.spill_count == 0 ||
-                       (state->target_constraints.error_count == 0 &&
-                        scratch_result.spill_traffic_bytes <
-                            state->interval_assignment.spill_traffic_bytes));
+    const bool use_repair =
+        scratch_target_constraints.error_count == 0 &&
+        (scratch_result.spill_count == 0 ||
+         (state->target_constraints.error_count == 0 &&
+          scratch_result.spill_traffic_bytes <
+              state->interval_assignment.spill_traffic_bytes));
+    if (use_repair) {
+      iree_arena_checkpoint_restore(assignment_checkpoint);
+      iree_arena_transfer(&scratch_arena, state->arena);
+      state->target_constraints.error_count = 0;
+      state->target_constraints.failure = (loom_low_allocation_failure_t){0};
+      state->target_constraints.max_assigned_location_end_by_reg_class =
+          scratch_target_constraints.max_assigned_location_end_by_reg_class;
+      state->storage_leases = scratch_storage_leases;
+      state->interval_assignment = scratch_result;
+    }
   }
 
   iree_arena_deinitialize(&scratch_arena);
@@ -333,35 +343,8 @@ iree_status_t loom_low_allocate_function(
         state.interval_assignment.spill_count != 0) ||
        loom_low_allocation_failure_is_present(
            &state.target_constraints.failure))) {
-    bool use_fragmentation_repair = false;
-    status = loom_low_allocation_probe_fragmentation_repair(
-        &state, model, value_domain, &use_fragmentation_repair);
-    if (iree_status_is_ok(status) && use_fragmentation_repair) {
-      iree_arena_checkpoint_restore(&interval_assignment_checkpoint);
-      state.target_constraints.error_count = 0;
-      state.target_constraints.failure = (loom_low_allocation_failure_t){0};
-      loom_low_allocation_target_constraints_rebuild_assignment_location_ends(
-          &state.target_constraints, /*assignments=*/NULL,
-          /*assignment_count=*/0);
-      state.storage_leases = (loom_low_allocation_storage_lease_state_t){0};
-      state.interval_assignment =
-          (loom_low_allocation_interval_assignment_result_t){0};
-      status = loom_low_allocation_storage_lease_state_initialize(
-          &options->storage_leases, model->module, model->function_op,
-          value_domain, &state.liveness,
-          state.unit_liveness.storage_segments.entries, arena,
-          &state.storage_leases);
-      if (iree_status_is_ok(status)) {
-        const loom_low_allocation_interval_assignment_context_t
-            interval_assignment_context =
-                loom_low_allocation_make_interval_assignment_context(
-                    &state, model,
-                    LOOM_LOW_ALLOCATION_SEARCH_STRATEGY_FRAGMENTATION_REPAIR,
-                    arena, &state.target_constraints, &state.storage_leases);
-        status = loom_low_allocation_interval_assignment_build(
-            &interval_assignment_context, &state.interval_assignment);
-      }
-    }
+    status = loom_low_allocation_repair_fragmentation(
+        &state, model, value_domain, &interval_assignment_checkpoint);
   }
   // Backedge placement belongs to the final physical assignment. Spill repair
   // rewrites the IR and rebuilds the frame, so relocating a provisional spill

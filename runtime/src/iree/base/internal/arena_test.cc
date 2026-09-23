@@ -286,6 +286,99 @@ TEST(Arena, Reset) {
   iree_arena_block_pool_deinitialize(&pool);
 }
 
+TEST(Arena, TransferPreservesStorageAndDestinationCheckpoint) {
+  iree_arena_block_pool_t pool;
+  iree_arena_block_pool_initialize(kBlockSize, iree_allocator_system(), &pool);
+  iree_arena_allocator_t source;
+  iree_arena_initialize(&pool, &source);
+  iree_arena_allocator_t target;
+  iree_arena_initialize(&pool, &target);
+
+  uint8_t* retained = nullptr;
+  IREE_ASSERT_OK(iree_arena_allocate(&target, 128, (void**)&retained));
+  memset(retained, 0xAB, 128);
+  void* target_oversized = nullptr;
+  IREE_ASSERT_OK(
+      iree_arena_allocate(&target, kBlockSize * 2, &target_oversized));
+  const iree_arena_checkpoint_t checkpoint =
+      iree_arena_checkpoint_save(&target);
+
+  uint8_t* transferred[4] = {};
+  for (int i = 0; i < 4; ++i) {
+    const iree_host_size_t size = i < 2 ? kBlockSize / 2 : kBlockSize * 2;
+    IREE_ASSERT_OK(iree_arena_allocate(&source, size, (void**)&transferred[i]));
+    memset(transferred[i], i + 1, size);
+  }
+  const iree_host_size_t source_used = source.used_allocation_size;
+  const iree_host_size_t source_owned = source.total_allocation_size;
+  iree_arena_transfer(&source, &target);
+  EXPECT_EQ(target.used_allocation_size,
+            checkpoint.used_allocation_size + source_used);
+  EXPECT_EQ(target.total_allocation_size,
+            checkpoint.total_allocation_size + source_owned);
+  EXPECT_EQ(source.used_allocation_size, 0u);
+  EXPECT_EQ(source.total_allocation_size, 0u);
+  EXPECT_EQ(source.block_head, nullptr);
+  EXPECT_EQ(source.allocation_head, nullptr);
+
+  // Resetting and reusing the donor cannot reclaim transferred storage.
+  iree_arena_reset(&source);
+  void* reused = nullptr;
+  IREE_ASSERT_OK(iree_arena_allocate(&source, kBlockSize / 2, &reused));
+  memset(reused, 0xCD, kBlockSize / 2);
+  iree_arena_deinitialize(&source);
+  for (int i = 0; i < 4; ++i) {
+    const iree_host_size_t size = i < 2 ? kBlockSize / 2 : kBlockSize * 2;
+    EXPECT_EQ(transferred[i][0], i + 1);
+    EXPECT_EQ(transferred[i][size - 1], i + 1);
+  }
+
+  iree_arena_checkpoint_restore(&checkpoint);
+  EXPECT_EQ(target.used_allocation_size, checkpoint.used_allocation_size);
+  EXPECT_EQ(target.total_allocation_size, checkpoint.total_allocation_size);
+  EXPECT_EQ(target.block_head, checkpoint.block_head);
+  EXPECT_EQ(target.block_tail, checkpoint.block_tail);
+  EXPECT_EQ(target.allocation_head, checkpoint.allocation_head);
+  EXPECT_EQ(target.block_bytes_remaining, checkpoint.block_bytes_remaining);
+  EXPECT_EQ(retained[0], 0xAB);
+  EXPECT_EQ(retained[127], 0xAB);
+  iree_arena_deinitialize(&target);
+  iree_arena_block_pool_deinitialize(&pool);
+}
+
+TEST(Arena, TransferEmptyAndOversizedOnlyArenas) {
+  iree_arena_block_pool_t pool;
+  iree_arena_block_pool_initialize(kBlockSize, iree_allocator_system(), &pool);
+  iree_arena_allocator_t source;
+  iree_arena_initialize(&pool, &source);
+  iree_arena_allocator_t target;
+  iree_arena_initialize(&pool, &target);
+  iree_arena_transfer(&source, &target);
+
+  uint8_t* oversized = nullptr;
+  IREE_ASSERT_OK(
+      iree_arena_allocate(&source, kBlockSize * 2, (void**)&oversized));
+  oversized[0] = 0xAB;
+  iree_arena_transfer(&source, &target);
+  EXPECT_EQ(target.block_head, nullptr);
+  EXPECT_NE(target.allocation_head, nullptr);
+  EXPECT_EQ(oversized[0], 0xAB);
+
+  uint8_t* regular = nullptr;
+  IREE_ASSERT_OK(iree_arena_allocate(&source, 128, (void**)&regular));
+  regular[0] = 0xCD;
+  iree_arena_transfer(&source, &target);
+  EXPECT_NE(target.block_head, nullptr);
+  EXPECT_EQ(target.block_head, target.block_tail);
+  EXPECT_EQ(regular[0], 0xCD);
+  iree_arena_transfer(&source, &target);
+  EXPECT_EQ(oversized[0], 0xAB);
+  EXPECT_EQ(regular[0], 0xCD);
+  iree_arena_deinitialize(&source);
+  iree_arena_deinitialize(&target);
+  iree_arena_block_pool_deinitialize(&pool);
+}
+
 TEST(Arena, StatisticsTrackSystemAllocationAcrossRestoreAndReuse) {
   iree_arena_block_pool_t pool;
   iree_arena_block_pool_initialize(kBlockSize, iree_allocator_system(), &pool);
