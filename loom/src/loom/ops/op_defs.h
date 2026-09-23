@@ -891,6 +891,19 @@ static inline bool loom_call_like_isa(loom_call_like_t call) {
 loom_call_like_t loom_call_like_cast(const loom_module_t* module,
                                      loom_op_t* op);
 
+// Casts const |op| to loom_call_like_t if it implements the CallLike
+// interface. The returned interface view does not encode transitive constness;
+// callers must preserve the access discipline of the input operation.
+static inline loom_call_like_t loom_call_like_const_cast(
+    const loom_module_t* module, const loom_op_t* op) {
+  return loom_call_like_cast(module, (loom_op_t*)op);
+}
+
+// Returns true when |call| is an ordinary semantic call whose callable
+// operands and results occupy the complete flat operation boundary. Such calls
+// can be lowered without dialect-specific prefix or region semantics.
+bool loom_call_like_is_direct_semantic(loom_call_like_t call);
+
 // Returns the direct callee symbol ref, or {0, 0} if |call| is not valid.
 loom_symbol_ref_t loom_call_like_callee(loom_call_like_t call);
 
@@ -959,6 +972,17 @@ static inline loom_func_like_t loom_func_like_const_cast(
 // Returns the body region of a func-like op, or NULL for bodyless ops
 // (func.decl, template.ukernel) or if |func| is not valid.
 loom_region_t* loom_func_like_body(loom_func_like_t func);
+
+// Returns the structural descriptor for the body region, or NULL for bodyless
+// ops or invalid func-like references.
+const loom_region_descriptor_t* loom_func_like_body_region_descriptor(
+    const loom_module_t* module, loom_func_like_t func);
+
+// Returns true when |op| is the declared terminator kind in a block directly
+// owned by |func|'s body. A same-kind terminator in a nested region is not a
+// callable exit.
+bool loom_func_like_op_is_body_exit(const loom_module_t* module,
+                                    loom_func_like_t func, const loom_op_t* op);
 
 // Returns the body region index, or LOOM_REGION_INDEX_NONE for bodyless ops or
 // invalid func-like references.

@@ -8,8 +8,6 @@
 
 #include "iree/base/internal/math.h"
 #include "loom/analysis/contract_vector.h"
-#include "loom/ops/func/ops.h"
-#include "loom/ops/kernel/ops.h"
 #include "loom/ops/vector/fragment.h"
 #include "loom/ops/vector/ops.h"
 #include "loom/target/arch/amdgpu/lower/fragment_memory/plan.h"
@@ -25,11 +23,10 @@ static_assert(LOOM_AMDGPU_ADDRESS_REPRESENTATION_NARROW >
               "AMDGPU representation namespaces must not overlap");
 
 typedef enum loom_amdgpu_matrix_representation_action_e {
-  LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_FUNCTION_BOUNDARY = 0,
-  LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_PIN_VALUE = 1,
-  LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_STORE = 2,
-  LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_MMA = 3,
-  LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_FRAGMENT = 4,
+  LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_PIN_VALUE = 0,
+  LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_STORE = 1,
+  LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_MMA = 2,
+  LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_FRAGMENT = 3,
 } loom_amdgpu_matrix_representation_action_t;
 
 IREE_ATTRIBUTE_NOINLINE static bool
@@ -431,16 +428,6 @@ static void loom_amdgpu_matrix_representation_observe_boundary(
     loom_low_lower_representation_recorder_t* recorder) {
   (void)user_data;
   switch ((loom_amdgpu_matrix_representation_action_t)action) {
-    case LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_FUNCTION_BOUNDARY: {
-      loom_func_like_t function = loom_func_like_const_cast(
-          loom_low_lower_context_module(context), source_op);
-      uint16_t argument_count = 0;
-      const loom_value_id_t* argument_ids =
-          loom_func_like_arg_ids(function, &argument_count);
-      loom_amdgpu_matrix_representation_pin_values(context, argument_ids,
-                                                   argument_count, recorder);
-      return;
-    }
     case LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_PIN_VALUE:
       if (iree_any_bit_set(
               flags, LOOM_LOW_LOWER_REPRESENTATION_BOUNDARY_FLAG_OPERANDS)) {
@@ -471,17 +458,46 @@ static void loom_amdgpu_matrix_representation_observe_boundary(
   IREE_ASSERT_UNREACHABLE("unknown AMDGPU matrix representation action");
 }
 
+static void loom_amdgpu_source_representation_observe_callable_boundary(
+    void* user_data,
+    loom_low_lower_representation_callable_boundary_kind_t kind,
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    loom_low_lower_representation_recorder_t* recorder) {
+  (void)user_data;
+  const loom_module_t* module = loom_low_lower_context_module(context);
+  switch (kind) {
+    case LOOM_LOW_LOWER_REPRESENTATION_CALLABLE_DEFINITION: {
+      const loom_func_like_t function =
+          loom_func_like_const_cast(module, source_op);
+      uint16_t argument_count = 0;
+      const loom_value_id_t* argument_ids =
+          loom_func_like_arg_ids(function, &argument_count);
+      loom_amdgpu_matrix_representation_pin_values(context, argument_ids,
+                                                   argument_count, recorder);
+      return;
+    }
+    case LOOM_LOW_LOWER_REPRESENTATION_CALLABLE_CALL: {
+      const loom_call_like_t call =
+          loom_call_like_const_cast(module, source_op);
+      const loom_value_slice_t operands = loom_call_like_operands(call);
+      const loom_value_slice_t results = loom_call_like_results(call);
+      loom_amdgpu_matrix_representation_pin_values(context, operands.values,
+                                                   operands.count, recorder);
+      loom_amdgpu_matrix_representation_pin_values(context, results.values,
+                                                   results.count, recorder);
+      return;
+    }
+    case LOOM_LOW_LOWER_REPRESENTATION_CALLABLE_EXIT:
+      loom_amdgpu_matrix_representation_pin_values(
+          context, loom_op_const_operands(source_op), source_op->operand_count,
+          recorder);
+      return;
+  }
+  IREE_ASSERT_UNREACHABLE("unknown callable representation boundary kind");
+}
+
 static const loom_low_lower_representation_boundary_t
     kAmdgpuMatrixRepresentationBoundaries[] = {
-        {LOOM_OP_FUNC_DEF,
-         LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_FUNCTION_BOUNDARY,
-         LOOM_LOW_LOWER_REPRESENTATION_BOUNDARY_FLAG_NONE},
-        {LOOM_OP_FUNC_CALL, LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_PIN_VALUE,
-         LOOM_LOW_LOWER_REPRESENTATION_BOUNDARY_FLAG_OPERANDS |
-             LOOM_LOW_LOWER_REPRESENTATION_BOUNDARY_FLAG_RESULTS},
-        {LOOM_OP_FUNC_RETURN,
-         LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_PIN_VALUE,
-         LOOM_LOW_LOWER_REPRESENTATION_BOUNDARY_FLAG_OPERANDS},
         {LOOM_OP_VECTOR_FRAGMENT_LOAD,
          LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_PIN_VALUE,
          LOOM_LOW_LOWER_REPRESENTATION_BOUNDARY_FLAG_RESULTS},
@@ -497,17 +513,8 @@ static const loom_low_lower_representation_boundary_t
          LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_PIN_VALUE,
          LOOM_LOW_LOWER_REPRESENTATION_BOUNDARY_FLAG_OPERANDS |
              LOOM_LOW_LOWER_REPRESENTATION_BOUNDARY_FLAG_RESULTS},
-        {LOOM_OP_KERNEL_DEF,
-         LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_FUNCTION_BOUNDARY,
-         LOOM_LOW_LOWER_REPRESENTATION_BOUNDARY_FLAG_NONE},
 };
-static_assert((loom_op_kind_t)LOOM_OP_FUNC_DEF <
-                      (loom_op_kind_t)LOOM_OP_FUNC_CALL &&
-                  (loom_op_kind_t)LOOM_OP_FUNC_CALL <
-                      (loom_op_kind_t)LOOM_OP_FUNC_RETURN &&
-                  (loom_op_kind_t)LOOM_OP_FUNC_RETURN <
-                      (loom_op_kind_t)LOOM_OP_VECTOR_FRAGMENT_LOAD &&
-                  (loom_op_kind_t)LOOM_OP_VECTOR_FRAGMENT_LOAD <
+static_assert((loom_op_kind_t)LOOM_OP_VECTOR_FRAGMENT_LOAD <
                       (loom_op_kind_t)LOOM_OP_VECTOR_FRAGMENT_STORE &&
                   (loom_op_kind_t)LOOM_OP_VECTOR_FRAGMENT_STORE <
                       (loom_op_kind_t)LOOM_OP_VECTOR_MMA &&
@@ -523,6 +530,8 @@ static const loom_low_lower_representation_provider_t
     kAmdgpuSourceRepresentationProvider = {
         .relation = loom_amdgpu_source_representation_relation,
         .observe_boundary = loom_amdgpu_matrix_representation_observe_boundary,
+        .observe_callable_boundary =
+            loom_amdgpu_source_representation_observe_callable_boundary,
         .boundaries = kAmdgpuMatrixRepresentationBoundaries,
         .boundary_count = IREE_ARRAYSIZE(kAmdgpuMatrixRepresentationBoundaries),
         .relation_mask = LOOM_VALUE_RELATION_MASK_ALL,

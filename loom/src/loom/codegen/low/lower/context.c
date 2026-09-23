@@ -672,6 +672,17 @@ iree_status_t loom_low_lower_lookup_successor_dest(
       context, source_successors[successor_index], out_low_dest);
 }
 
+bool loom_low_lower_source_op_is_callable_exit(
+    const loom_low_lower_context_t* context, const loom_op_t* source_op) {
+  if (source_op == NULL ||
+      source_op->kind != context->lowering.source_callable_exit_kind ||
+      source_op->parent_block == NULL) {
+    return false;
+  }
+  return source_op->parent_block->parent_region ==
+         loom_func_like_body(context->source_function);
+}
+
 iree_status_t loom_low_lower_materialize_structural_operand(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     iree_host_size_t operand_index, loom_value_id_t source_value_id,

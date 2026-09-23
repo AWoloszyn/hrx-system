@@ -37,6 +37,15 @@ enum loom_low_lower_representation_boundary_flag_bits_e {
 };
 typedef uint8_t loom_low_lower_representation_boundary_flags_t;
 
+typedef enum loom_low_lower_representation_callable_boundary_kind_e {
+  // Active source FuncLike operation.
+  LOOM_LOW_LOWER_REPRESENTATION_CALLABLE_DEFINITION = 0,
+  // Direct semantic CallLike operation.
+  LOOM_LOW_LOWER_REPRESENTATION_CALLABLE_CALL = 1,
+  // Direct terminator of the active source FuncLike body.
+  LOOM_LOW_LOWER_REPRESENTATION_CALLABLE_EXIT = 2,
+} loom_low_lower_representation_callable_boundary_kind_t;
+
 // One target boundary observed for an exact source operation kind. The source
 // function op is observed during begin; body ops are observed during the
 // compiler-owned source-plan traversal. Tables must be strictly increasing by
@@ -67,6 +76,12 @@ typedef void (*loom_low_lower_representation_boundary_fn_t)(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     loom_low_lower_representation_recorder_t* recorder);
 
+typedef void (*loom_low_lower_representation_callable_boundary_fn_t)(
+    void* user_data,
+    loom_low_lower_representation_callable_boundary_kind_t kind,
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    loom_low_lower_representation_recorder_t* recorder);
+
 // Target policy for one function-local physical-representation plan.
 typedef struct loom_low_lower_representation_provider_t {
   // Returns true when a common relation on |source_op| requires the two source
@@ -78,6 +93,11 @@ typedef struct loom_low_lower_representation_provider_t {
   // the source operation ports relevant to the target action. Failures and
   // exact alternatives are recorded through |recorder|.
   loom_low_lower_representation_boundary_fn_t observe_boundary;
+  // Observes generic FuncLike definitions and exits and direct semantic
+  // CallLike operations. This keeps target policy independent of concrete
+  // callable dialects.
+  loom_low_lower_representation_callable_boundary_fn_t
+      observe_callable_boundary;
   // Strictly increasing source operation boundary table.
   const loom_low_lower_representation_boundary_t* boundaries;
   // Number of rows in |boundaries|.

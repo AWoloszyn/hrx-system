@@ -15,7 +15,6 @@
 #include "loom/codegen/low/lower/source_plan.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
-#include "loom/ops/func/ops.h"
 #include "loom/util/fact_cfg.h"
 
 enum {

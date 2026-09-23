@@ -5,7 +5,6 @@
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 #include "loom/ir/module.h"
-#include "loom/ops/func/ops.h"
 #include "loom/ops/vector/fragment.h"
 #include "loom/target/arch/spirv/contracts/logical_core.h"
 #include "loom/target/arch/spirv/contracts/logical_core_lower_rules.h"
@@ -211,7 +210,7 @@ static iree_status_t loom_spirv_map_value(void* user_data,
     }
   }
   if (loom_type_is_vector(source_type)) {
-    if (loom_func_return_isa(source_op)) {
+    if (loom_low_lower_source_op_is_callable_exit(context, source_op)) {
       return iree_ok_status();
     }
     loom_vector_fragment_fact_t fragment = {0};

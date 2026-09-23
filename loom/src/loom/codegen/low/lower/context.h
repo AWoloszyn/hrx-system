@@ -81,6 +81,9 @@ typedef struct loom_low_lowering_frame_t {
   loom_condition_query_t condition_query;
   // Stable function analyses advanced monotonically on demand.
   loom_low_lower_function_analysis_t function_analysis;
+  // Declared terminator kind for direct exits from the source callable body,
+  // or unknown while querying a bodyless callable.
+  loom_op_kind_t source_callable_exit_kind;
   // Retained source lowering decisions and value materialization demands.
   loom_low_lower_source_plan_t source_plan;
   // Source local value ordinal to emitted low value ID map.

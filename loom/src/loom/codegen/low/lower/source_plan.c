@@ -17,6 +17,7 @@
 #include "loom/codegen/low/lower/rule_match.h"
 #include "loom/codegen/low/lower/rule_source_memory.h"
 #include "loom/codegen/low/lower/rule_value.h"
+#include "loom/codegen/low/lower/source_call.h"
 #include "loom/codegen/low/lower/source_query.h"
 #include "loom/codegen/low/source_memory_plan.h"
 #include "loom/error/error_catalog.h"
@@ -26,8 +27,6 @@
 #include "loom/ops/buffer/ops.h"
 #include "loom/ops/cfg/ops.h"
 #include "loom/ops/encoding/ops.h"
-#include "loom/ops/func/ops.h"
-#include "loom/ops/kernel/ops.h"
 #include "loom/ops/low/ops.h"
 #include "loom/ops/op_defs.h"
 #include "loom/ops/scf/ops.h"
@@ -55,19 +54,21 @@ static bool loom_low_lower_supported_structured_source_op(
   }
 }
 
-static bool loom_low_lower_op_is_structural(const loom_op_t* op,
-                                            loom_trait_flags_t traits) {
+static bool loom_low_lower_op_is_structural(
+    const loom_low_lower_context_t* context, const loom_op_t* op,
+    loom_trait_flags_t traits, bool is_callable_exit) {
   if (loom_traits_are_fact_identity(traits) ||
-      loom_traits_are_value_alias(traits)) {
+      loom_traits_are_value_alias(traits) || is_callable_exit) {
+    return true;
+  }
+  if (iree_any_bit_set(traits, LOOM_TRAIT_CALLABLE_BOUNDARY) &&
+      loom_low_lower_source_call_is_structural(context->module, op)) {
     return true;
   }
   switch (op->kind) {
     case LOOM_OP_BUFFER_ASSUME_SAME_ROOT:
     case LOOM_OP_CFG_BR:
     case LOOM_OP_CFG_COND_BR:
-    case LOOM_OP_FUNC_CALL:
-    case LOOM_OP_FUNC_RETURN:
-    case LOOM_OP_KERNEL_RETURN:
     case LOOM_OP_LOW_INVOKE:
     case LOOM_OP_SCF_FOR:
     case LOOM_OP_SCF_IF:
@@ -591,13 +592,16 @@ static iree_status_t loom_low_lower_visit_region_plan_ops(
           loom_op_effective_traits(context->module, op);
       IREE_RETURN_IF_ERROR(
           loom_low_lower_visibility_observe(context, visibility, op));
-      const bool is_structural = loom_low_lower_op_is_structural(op, traits);
+      const bool is_callable_exit =
+          loom_low_lower_source_op_is_callable_exit(context, op);
+      const bool is_structural = loom_low_lower_op_is_structural(
+          context, op, traits, is_callable_exit);
       if (is_structural) {
         loom_low_lower_mark_structural_storage_demands(context, op, traits);
       }
-      if (loom_func_return_isa(op)) {
+      if (is_callable_exit) {
         IREE_RETURN_IF_ERROR(
-            loom_low_lower_function_boundary_observe_return(context, op));
+            loom_low_lower_function_boundary_observe_exit(context, op));
       }
       if (observer != NULL) {
         observer->observe(observer_state, context, op);
@@ -1101,7 +1105,8 @@ static iree_status_t loom_low_lower_plan_op_from_contract_index(
 }
 
 static iree_status_t loom_low_lower_plan_op(loom_low_lower_context_t* context,
-                                            const loom_op_t* source_op) {
+                                            const loom_op_t* source_op,
+                                            bool is_callable_exit) {
   if (source_op->region_count != 0) {
     if (loom_low_lower_supported_structured_source_op(context, source_op)) {
       return iree_ok_status();
@@ -1115,7 +1120,8 @@ static iree_status_t loom_low_lower_plan_op(loom_low_lower_context_t* context,
   }
   const loom_trait_flags_t traits =
       loom_op_effective_traits(context->module, source_op);
-  if (loom_low_lower_op_is_structural(source_op, traits)) {
+  if (loom_low_lower_op_is_structural(context, source_op, traits,
+                                      is_callable_exit)) {
     return iree_ok_status();
   }
   if (loom_low_lower_source_plan_op_is_metadata(source_op->kind)) {
@@ -1200,17 +1206,20 @@ static iree_status_t loom_low_lower_plan_region(
     }
     loom_op_t* op = NULL;
     loom_block_for_each_op(block, op) {
+      const bool is_callable_exit =
+          loom_low_lower_source_op_is_callable_exit(context, op);
       loom_low_lower_planning_scope_begin(context);
-      iree_status_t status = loom_low_lower_plan_op(context, op);
+      iree_status_t status =
+          loom_low_lower_plan_op(context, op, is_callable_exit);
       loom_low_lower_planning_scope_end(context);
       IREE_RETURN_IF_ERROR(status);
       if (loom_low_lower_context_should_stop(context)) {
         return iree_ok_status();
       }
       if (context->lowering.source_plan.representation_plan != NULL &&
-          loom_func_return_isa(op)) {
+          is_callable_exit) {
         IREE_RETURN_IF_ERROR(
-            loom_low_lower_function_boundary_observe_return(context, op));
+            loom_low_lower_function_boundary_observe_exit(context, op));
       }
       if (!loom_low_lower_supported_structured_source_op(context, op)) {
         continue;
@@ -1235,6 +1244,8 @@ static iree_status_t loom_low_lower_plan_region(
 iree_status_t loom_low_lower_source_plan_build(
     loom_low_lower_context_t* context, loom_region_t* source_body) {
   loom_low_lower_source_plan_t* source_plan = &context->lowering.source_plan;
+  IREE_ASSERT(context->lowering.source_callable_exit_kind !=
+              LOOM_OP_KIND_UNKNOWN);
   *source_plan = (loom_low_lower_source_plan_t){0};
   if (source_body->block_count > 1) {
     const loom_value_fact_cfg_region_t* cfg =

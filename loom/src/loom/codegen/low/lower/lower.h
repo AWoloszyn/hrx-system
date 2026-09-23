@@ -1002,7 +1002,9 @@ typedef struct loom_low_lower_resolved_descriptor_t {
   const loom_low_descriptor_t* descriptor;
 } loom_low_lower_resolved_descriptor_t;
 
-// Lowers one func.def-like source function into a target-low function in place.
+// Lowers one body-backed FuncLike source callable into a target-low function in
+// place. Kernel definitions retain their target-low kernel ABI; other FuncLike
+// operations lower to low.func.def.
 //
 // User IR failures are emitted through |options->emitter| and counted in
 // |out_result|. The function returns OK in that case and does not emit a low
@@ -1272,6 +1274,22 @@ iree_status_t loom_low_lower_remap_successor_args(
     uint8_t successor_index, loom_block_t* low_dest,
     const loom_value_id_t* source_args, uint16_t source_arg_count,
     loom_value_id_t** out_low_args);
+
+// Resolves source values to their Low mappings and materializes each value for
+// a structural operation boundary. |required_types| may be NULL to retain each
+// mapped value's current Low type.
+iree_status_t loom_low_lower_remap_values(loom_low_lower_context_t* context,
+                                          const loom_op_t* source_op,
+                                          const loom_value_id_t* source_values,
+                                          iree_host_size_t value_count,
+                                          const loom_type_t* required_types,
+                                          loom_value_id_t** out_low_values);
+
+// Returns true when |source_op| is a direct exit from the active source
+// callable body. Nested-region terminators are never callable exits, even when
+// they have the same operation kind.
+bool loom_low_lower_source_op_is_callable_exit(
+    const loom_low_lower_context_t* context, const loom_op_t* source_op);
 
 // Materializes a low structural operand through the active target policy. The
 // incoming value must already have the required low type; the policy may return

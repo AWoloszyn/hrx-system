@@ -11,7 +11,6 @@
 #include "loom/analysis/condition_facts.h"
 #include "loom/ir/module.h"
 #include "loom/ops/cfg/ops.h"
-#include "loom/ops/func/ops.h"
 #include "loom/target/arch/amdgpu/lower/constants.h"
 #include "loom/target/arch/amdgpu/lower/emit.h"
 #include "loom/target/arch/amdgpu/lower/topology.h"
@@ -439,7 +438,7 @@ iree_status_t loom_amdgpu_materialize_structural_operand(
   (void)user_data;
   (void)operand_index;
   *out_low_value_id = low_value_id;
-  if (loom_func_return_isa(source_op) &&
+  if (loom_low_lower_source_op_is_callable_exit(context, source_op) &&
       !loom_type_equal(
           loom_module_value_type(loom_low_lower_context_module(context),
                                  low_value_id),

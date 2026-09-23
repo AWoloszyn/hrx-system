@@ -12,7 +12,6 @@
 #include "loom/codegen/low/lower/contract_query.h"
 #include "loom/codegen/low/lower/rule_match.h"
 #include "loom/ir/module.h"
-#include "loom/ops/func/ops.h"
 #include "loom/target/low_descriptor_registry.h"
 #include "loom/target/registers.h"
 
@@ -218,6 +217,12 @@ iree_status_t loom_low_lower_source_query_scope_create(
       .result = &scope->result,
   };
   scope->context.lowering.fact_table = options->fact_table;
+  const loom_region_descriptor_t* source_body_descriptor =
+      loom_func_like_body_region_descriptor(module, source_function);
+  if (source_body_descriptor != NULL) {
+    scope->context.lowering.source_callable_exit_kind =
+        source_body_descriptor->terminator;
+  }
   iree_arena_initialize(module->arena.block_pool,
                         &scope->context.function_arena);
 

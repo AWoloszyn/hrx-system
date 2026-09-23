@@ -12,7 +12,6 @@
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ir/types.h"
-#include "loom/ops/func/ops.h"
 #include "loom/ops/kernel/ops.h"
 #include "loom/ops/low/ops.h"
 #include "loom/rewrite/remap.h"
@@ -186,13 +185,13 @@ iree_status_t loom_low_lower_function_boundary_validate(
   return iree_ok_status();
 }
 
-iree_status_t loom_low_lower_function_boundary_observe_return(
-    loom_low_lower_context_t* context, const loom_op_t* return_op) {
-  const loom_value_id_t* operands = loom_op_const_operands(return_op);
-  for (uint16_t i = 0; i < return_op->operand_count; ++i) {
+iree_status_t loom_low_lower_function_boundary_observe_exit(
+    loom_low_lower_context_t* context, const loom_op_t* exit_op) {
+  const loom_value_id_t* operands = loom_op_const_operands(exit_op);
+  for (uint16_t i = 0; i < exit_op->operand_count; ++i) {
     loom_type_t incoming_type = loom_type_none();
-    IREE_RETURN_IF_ERROR(loom_low_lower_map_value(context, return_op,
-                                                  operands[i], &incoming_type));
+    IREE_RETURN_IF_ERROR(loom_low_lower_map_value(context, exit_op, operands[i],
+                                                  &incoming_type));
     if (loom_low_lower_type_is_none(incoming_type)) {
       continue;
     }
@@ -221,7 +220,7 @@ iree_status_t loom_low_lower_function_boundary_observe_return(
           loom_param_type(incoming_type),
       };
       IREE_RETURN_IF_ERROR(loom_low_lower_emit_target_context_error(
-          context, return_op, LOOM_ERR_TARGET_091, params,
+          context, exit_op, LOOM_ERR_TARGET_091, params,
           IREE_ARRAYSIZE(params)));
     } else {
       *result_type = joined_type;

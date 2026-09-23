@@ -449,6 +449,14 @@ loom_call_like_t loom_call_like_cast(const loom_module_t* module,
   return (loom_call_like_t){.op = op, .vtable = vtable->call_like};
 }
 
+bool loom_call_like_is_direct_semantic(loom_call_like_t call) {
+  return loom_call_like_isa(call) &&
+         loom_call_like_kind(call) == LOOM_CALL_LIKE_KIND_SEMANTIC &&
+         loom_call_like_operand_offset(call) == 0 &&
+         loom_call_like_result_offset(call) == 0 &&
+         call.op->region_count == 0 && call.op->successor_count == 0;
+}
+
 loom_symbol_ref_t loom_call_like_callee(loom_call_like_t call) {
   if (!call.vtable) {
     return loom_symbol_ref_null();
@@ -584,6 +592,29 @@ loom_func_like_t loom_func_like_cast(const loom_module_t* module,
 
 loom_region_t* loom_func_like_body(loom_func_like_t func) {
   return loom_func_like_region(func, loom_func_like_body_region_index(func));
+}
+
+const loom_region_descriptor_t* loom_func_like_body_region_descriptor(
+    const loom_module_t* module, loom_func_like_t func) {
+  const uint8_t body_region_index = loom_func_like_body_region_index(func);
+  if (!loom_func_like_isa(func) || body_region_index >= func.op->region_count) {
+    return NULL;
+  }
+  return loom_op_vtable_region_descriptor(loom_op_vtable(module, func.op),
+                                          body_region_index);
+}
+
+bool loom_func_like_op_is_body_exit(const loom_module_t* module,
+                                    loom_func_like_t func,
+                                    const loom_op_t* op) {
+  if (op == NULL || op->parent_block == NULL ||
+      op->parent_block->parent_region != loom_func_like_body(func)) {
+    return false;
+  }
+  const loom_region_descriptor_t* descriptor =
+      loom_func_like_body_region_descriptor(module, func);
+  return descriptor != NULL && descriptor->terminator != LOOM_OP_KIND_UNKNOWN &&
+         op->kind == descriptor->terminator;
 }
 
 uint8_t loom_func_like_body_region_index(loom_func_like_t func) {

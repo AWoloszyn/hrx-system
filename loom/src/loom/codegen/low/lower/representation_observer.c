@@ -237,6 +237,31 @@ void loom_low_lower_representation_observer_observe(
     return;
   }
 
+  if (state->provider->observe_callable_boundary != NULL) {
+    loom_low_lower_representation_callable_boundary_kind_t callable_kind;
+    bool is_callable_boundary = true;
+    if (source_op == loom_low_lower_context_source_function(context).op) {
+      callable_kind = LOOM_LOW_LOWER_REPRESENTATION_CALLABLE_DEFINITION;
+    } else if (loom_low_lower_source_op_is_callable_exit(context, source_op)) {
+      callable_kind = LOOM_LOW_LOWER_REPRESENTATION_CALLABLE_EXIT;
+    } else if (iree_any_bit_set(source_op->traits,
+                                LOOM_TRAIT_CALLABLE_BOUNDARY) &&
+               loom_call_like_is_direct_semantic(loom_call_like_const_cast(
+                   loom_low_lower_context_module(context), source_op))) {
+      callable_kind = LOOM_LOW_LOWER_REPRESENTATION_CALLABLE_CALL;
+    } else {
+      is_callable_boundary = false;
+    }
+    if (is_callable_boundary) {
+      state->provider->observe_callable_boundary(state->provider->user_data,
+                                                 callable_kind, context,
+                                                 source_op, &recorder);
+    }
+  }
+  if (!iree_status_is_ok(state->terminal_status)) {
+    return;
+  }
+
   const loom_low_lower_representation_boundary_t* boundary =
       loom_low_lower_representation_find_boundary(state->provider,
                                                   source_op->kind);
