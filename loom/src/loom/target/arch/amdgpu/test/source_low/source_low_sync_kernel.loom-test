@@ -231,12 +231,11 @@ kernel.def target(@target) @global_acq_rel_barrier_gfx12() {
 
 // ----
 low.kernel.def target<amdgpu.gfx12.generic.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @global_acq_rel_barrier_gfx12() asm {
-  global_wb {scope = 2}
+  s_wait_loadcnt {loadcnt = 0}
   s_wait_storecnt {storecnt = 0}
   s_barrier_signal_all
   s_barrier_wait_all
   s_wait_loadcnt {loadcnt = 0}
-  global_inv {scope = 2}
   return
 }
 
@@ -351,10 +350,10 @@ kernel.def target(@target) @global_acq_rel_barrier_gfx9_4() {
 
 // ----
 low.kernel.def target<amdgpu.gfx9_4.generic.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @global_acq_rel_barrier_gfx9_4() asm {
-  buffer_wbl2 {sc0 = 1, sc1 = 1}
+  buffer_wbl2 {sc1 = 1}
+  s_waitcnt {vmcnt = 0}
   s_barrier
   s_waitcnt {vmcnt = 0}
-  buffer_inv {sc0 = 1, sc1 = 1}
   return
 }
 
@@ -392,10 +391,10 @@ kernel.def target(@target) @global_acq_rel_barrier_gfx950() {
 
 // ----
 low.kernel.def target<amdgpu.cdna4.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @global_acq_rel_barrier_gfx950() asm {
-  buffer_wbl2 {sc0 = 1, sc1 = 1}
+  buffer_wbl2 {sc1 = 1}
+  s_waitcnt {vmcnt = 0}
   s_barrier
   s_waitcnt {vmcnt = 0}
-  buffer_inv {sc0 = 1, sc1 = 1}
   return
 }
 
@@ -471,5 +470,28 @@ low.kernel.def target<amdgpu.gfx11.generic.core>(@target) workgroup_size(64, 1, 
   s_waitcnt {vmcnt = 0}
   low.br ^_bb2
 ^_bb2:
+  return
+}
+
+// ====
+
+amdgpu.target<gfx12-5-generic> @target
+
+kernel.def target(@target) @global_acq_rel_barrier_gfx12_5() {
+  %unit = index.constant 1 : index
+  %threads = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%threads, %unit, %unit) : index
+} launch() {
+  kernel.barrier<global> scope(workgroup) ordering(acq_rel)
+  kernel.return
+}
+
+// ----
+low.kernel.def target<amdgpu.gfx12_5.generic.core>(@target) workgroup_size(64, 1, 1) workgroup_count(1, 1, 1) @global_acq_rel_barrier_gfx12_5() asm {
+  global_wb {scope = 2}
+  s_wait_storecnt {storecnt = 0}
+  s_barrier_signal_all
+  s_barrier_wait_all
+  s_wait_loadcnt {loadcnt = 0}
   return
 }

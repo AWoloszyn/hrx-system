@@ -904,7 +904,8 @@ TEST_F(AmdgpuFeedbackTest, IncrementsDroppedPacketCountOnCdna) {
       atomic_ops[0], channel_values.address,
       LOOM_AMDGPU_FEEDBACK_CHANNEL_DROPPED_PACKET_COUNT_OFFSET);
   ASSERT_EQ(loom_low_op_operands(atomic_ops[0]).count, 3u);
-  ASSERT_EQ(loom_low_op_attrs(atomic_ops[0]).count, 0u);
+  ASSERT_EQ(loom_low_op_attrs(atomic_ops[0]).count, 1u);
+  ExpectAttrI64(loom_low_op_attrs(atomic_ops[0]), IREE_SV("sc1"), 1);
 }
 
 TEST_F(AmdgpuFeedbackTest, IncrementsDroppedPacketCountWithGfx12SystemScope) {
@@ -1179,7 +1180,8 @@ TEST_F(AmdgpuFeedbackTest, CompareExchangesReservationHeadWithCdnaOrdering) {
       atomic_ops[0], channel_values.address,
       LOOM_AMDGPU_FEEDBACK_CHANNEL_RESERVATION_HEAD_OFFSET, old_head);
   ASSERT_EQ(loom_low_op_operands(atomic_ops[0]).count, 3u);
-  ASSERT_EQ(loom_low_op_attrs(atomic_ops[0]).count, 0u);
+  ASSERT_EQ(loom_low_op_attrs(atomic_ops[0]).count, 1u);
+  ExpectAttrI64(loom_low_op_attrs(atomic_ops[0]), IREE_SV("sc1"), 1);
 
   std::vector<loom_op_t*> writeback_ops =
       OpsForDescriptorRef(LOOM_AMDGPU_DESCRIPTOR_REF_BUFFER_WBL2);
@@ -1188,7 +1190,10 @@ TEST_F(AmdgpuFeedbackTest, CompareExchangesReservationHeadWithCdnaOrdering) {
   ExpectAttrI64(loom_low_op_attrs(writeback_ops[0]), IREE_SV("sc1"), 1);
   std::vector<loom_op_t*> waitcnt_ops =
       OpsForDescriptorRef(LOOM_AMDGPU_DESCRIPTOR_REF_S_WAITCNT);
-  ASSERT_EQ(waitcnt_ops.size(), 1u);
+  ASSERT_EQ(waitcnt_ops.size(), 2u);
+  for (const loom_op_t* wait : waitcnt_ops) {
+    ExpectAttrI64(loom_low_op_attrs(wait), IREE_SV("vmcnt"), 0);
+  }
   std::vector<loom_op_t*> invalidate_ops =
       OpsForDescriptorRef(LOOM_AMDGPU_DESCRIPTOR_REF_BUFFER_INV);
   ASSERT_EQ(invalidate_ops.size(), 1u);

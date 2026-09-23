@@ -1059,11 +1059,8 @@ iree_status_t loom_amdgpu_build_feedback_dropped_packet_count_increment(
 
   loom_named_attr_t attrs[2] = {0};
   iree_host_size_t attr_count = 0;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_system_memory_append_no_return_atomic_attrs(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_system_memory_append_atomic_attrs(
       builder, descriptor_set, attrs, IREE_ARRAYSIZE(attrs), &attr_count));
-  loom_amdgpu_filter_descriptor_optional_attrs(builder, descriptor_set,
-                                               descriptor, /*required_count=*/0,
-                                               attrs, &attr_count);
 
   const loom_value_id_t operands[] = {zero_vaddr, one64, counter_address};
   loom_op_t* op = NULL;
@@ -1136,11 +1133,8 @@ loom_amdgpu_build_feedback_reservation_head_compare_exchange_acq_rel(
 
   loom_named_attr_t attrs[2] = {0};
   iree_host_size_t attr_count = 0;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_system_memory_append_return_atomic_attrs(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_system_memory_append_atomic_attrs(
       builder, descriptor_set, attrs, IREE_ARRAYSIZE(attrs), &attr_count));
-  loom_amdgpu_filter_descriptor_optional_attrs(builder, descriptor_set,
-                                               descriptor, /*required_count=*/0,
-                                               attrs, &attr_count);
 
   IREE_RETURN_IF_ERROR(loom_amdgpu_system_memory_build_release_ordering(
       builder, descriptor_set, location));

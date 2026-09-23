@@ -30,8 +30,6 @@ void wide_publication(unsigned long long* storage, unsigned long long* output) {
 }
 
 LOOM_CHECK_CASE(interior_wide_atomic_observations) {
-  loom::check::require("hal.amdgpu.descriptor_set", "descriptor_set",
-                       "amdgpu.rdna3_5.core");
   const auto storage =
       loom::check::fill<unsigned long long, 3>(0xfedcba9876543210ull);
   const auto output = loom::check::fill<unsigned long long, 2>(0ull);

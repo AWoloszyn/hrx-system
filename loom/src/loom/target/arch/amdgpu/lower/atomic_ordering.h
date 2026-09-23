@@ -11,6 +11,7 @@
 #ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_ATOMIC_ORDERING_H_
 #define LOOM_TARGET_ARCH_AMDGPU_LOWER_ATOMIC_ORDERING_H_
 
+#include "loom/target/arch/amdgpu/lower/memory_coherence.h"
 #include "loom/target/arch/amdgpu/lower/plan.h"
 
 #ifdef __cplusplus
@@ -59,11 +60,11 @@ bool loom_amdgpu_atomic_orderings_supported(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_low_source_memory_access_plan_t* source);
 
-// Selects the atomic packet's coherence attributes from the source scope.
-void loom_amdgpu_atomic_select_packet_attrs(
+// Selects the atomic packet's single coherence field from the source scope.
+// An empty name indicates that the descriptor needs no coherence attribute.
+loom_amdgpu_memory_coherence_attr_t loom_amdgpu_atomic_select_packet_attr(
     const loom_low_descriptor_set_t* descriptor_set,
-    const loom_low_source_memory_access_plan_t* source,
-    loom_amdgpu_atomic_packet_attrs_t* packet_attrs);
+    const loom_low_source_memory_access_plan_t* source);
 
 // Retains every completion and visibility packet required by an update.
 // Returns false when a required instruction is unavailable on the target.

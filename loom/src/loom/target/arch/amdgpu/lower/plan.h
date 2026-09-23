@@ -1844,19 +1844,6 @@ typedef struct loom_amdgpu_fragment_repack_plan_t {
 #define LOOM_AMDGPU_ATOMIC_WAIT_CAPACITY 2
 #define LOOM_AMDGPU_ATOMIC_VISIBILITY_CAPACITY 2
 
-typedef uint32_t loom_amdgpu_atomic_packet_attr_flags_t;
-
-#define LOOM_AMDGPU_ATOMIC_PACKET_ATTR_SCOPE ((uint32_t)1u << 0)
-
-typedef struct loom_amdgpu_atomic_packet_attrs_t {
-  // Attribute bits populated for the selected atomic packet.
-  loom_amdgpu_atomic_packet_attr_flags_t flags;
-  // Module string ID for the scope attribute when present.
-  loom_string_id_t scope_attr_name_id;
-  // VGLOBAL SCOPE immediate value encoded on GFX12 atomic packets.
-  int64_t scope;
-} loom_amdgpu_atomic_packet_attrs_t;
-
 typedef struct loom_amdgpu_atomic_ordering_plan_t {
   // Completion and writeback packets emitted before the atomic packet.
   loom_amdgpu_explicit_packet_plan_t
@@ -1893,8 +1880,13 @@ typedef struct loom_amdgpu_atomic_plan_t {
   uint8_t vaddr_realization_mask;
   // Descriptor row selected for the active descriptor set.
   loom_low_lower_resolved_descriptor_t descriptor;
-  // Descriptor attrs emitted directly on the selected atomic packet.
-  loom_amdgpu_atomic_packet_attrs_t packet_attrs;
+  // Scope encoding emitted on the atomic; return control is descriptor-owned.
+  struct {
+    // Interned SC1 or SCOPE name, or invalid when no coherence field is needed.
+    loom_string_id_t name_id;
+    // Immediate value for the selected coherence field.
+    uint32_t value;
+  } coherence_attr;
   // Explicit packets required to implement source atomic ordering.
   loom_amdgpu_atomic_ordering_plan_t ordering;
 } loom_amdgpu_atomic_plan_t;

@@ -485,6 +485,8 @@ typedef enum loom_amdgpu_memory_ordering_model_e {
   LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX12 = 2,
   // Scoped writeback and explicit invalidation completion.
   LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX125 = 3,
+  // CDNA3/4 scoped cache controls with unified vector completion.
+  LOOM_AMDGPU_MEMORY_ORDERING_MODEL_CDNA = 4,
 } loom_amdgpu_memory_ordering_model_t;
 
 typedef struct loom_amdgpu_descriptor_set_sopp_opcodes_t {

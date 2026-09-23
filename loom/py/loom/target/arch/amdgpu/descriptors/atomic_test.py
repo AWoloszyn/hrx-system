@@ -93,6 +93,38 @@ def test_cdna_global_integer_atomics_preserve_return_and_native_spelling() -> No
                 )
 
 
+def test_cdna_atomic_scope_is_independent_of_return_control() -> None:
+    for overlays in (
+        _gfx940_core_overlays(),
+        _gfx950_core_overlays(),
+        _gfx9_4_generic_core_overlays(),
+    ):
+        descriptors = tuple(
+            row
+            for row in overlays
+            if row.descriptor_key.startswith(
+                ("amdgpu.global_atomic_", "amdgpu.flat_atomic_")
+            )
+        )
+        assert descriptors
+        for descriptor in descriptors:
+            fixed = dict(descriptor.fixed_encoding_fields)
+            returns_old_value = any(
+                operand.descriptor_operand.role is OperandRole.RESULT
+                for operand in descriptor.operands
+            )
+            assert fixed["SC0"] == int(returns_old_value)
+            assert "SC1" not in fixed
+            immediates = {row.field_name: row for row in descriptor.immediates}
+            assert "sc0" not in immediates
+            scope = immediates["sc1"]
+            assert (scope.bit_width, scope.unsigned_max, scope.default_value) == (
+                1,
+                1,
+                0,
+            )
+
+
 def test_flat_atomics_complete_both_domains_without_duplicate_accesses() -> None:
     for base, overlays, enable_xcnt in (
         (_AMDGPU_CDNA3_CORE_DESCRIPTOR_SET_BASE, _gfx940_core_overlays(), False),
