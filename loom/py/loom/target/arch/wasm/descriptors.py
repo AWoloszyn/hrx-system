@@ -431,10 +431,10 @@ def _scalar_memory_descriptors(
     )
 
 
-def _scalar_select_descriptor(
+def _select_descriptor(
     type_name: str, register_class: str, schedule: str
 ) -> Descriptor:
-    category = "float" if type_name.startswith("f") else "integer"
+    category = {"i": "integer", "f": "float", "v": "vector"}[type_name[0]]
     return Descriptor(
         key=f"wasm.{type_name}.select",
         mnemonic=f"{type_name}.select",
@@ -648,12 +648,13 @@ WASM_CORE_SIMD128_DESCRIPTOR_SET = DescriptorSet(
     ),
     descriptors=(
         *(
-            _scalar_select_descriptor(type_name, register_class, schedule)
+            _select_descriptor(type_name, register_class, schedule)
             for type_name, register_class, schedule in (
                 ("i32", _REG_I32, _SCHEDULE_SCALAR_I32),
                 ("i64", _REG_I64, _SCHEDULE_SCALAR_I64),
                 ("f32", _REG_F32, _SCHEDULE_SCALAR_F32),
                 ("f64", _REG_F64, _SCHEDULE_SCALAR_F64),
+                ("v128", _REG_V128, _SCHEDULE_SIMD_I32X4),
             )
         ),
         _float_const_descriptor("f32", _f32_result(), 32, _OP_F32_CONST),

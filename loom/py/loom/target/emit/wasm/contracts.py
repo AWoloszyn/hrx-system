@@ -417,7 +417,11 @@ def _select_rule(value_type: TypePattern) -> DescriptorRule:
     )
 
 
-def _scalar_select_rule(value_type: TypePattern, descriptor_key: str) -> DescriptorRule:
+def _whole_value_select_rule(
+    value_type: TypePattern, descriptor_key: str
+) -> DescriptorRule:
+    # A scalar condition chooses the entire value, including a SIMD register.
+    # Per-lane predicates use vector.select and v128.bitselect instead.
     descriptor = _descriptor(descriptor_key)
     return DescriptorRule(
         source_op=scf.scf_select,
@@ -864,7 +868,7 @@ WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
         _const_float_rule(_F32, "wasm.f32.const"),
         _const_float_rule(_F64, "wasm.f64.const"),
         *(
-            _scalar_select_rule(value_type, f"wasm.{type_name}.select")
+            _whole_value_select_rule(value_type, f"wasm.{type_name}.select")
             for value_type, type_name in (
                 (_I1, "i32"),
                 (_I32, "i32"),
@@ -873,6 +877,11 @@ WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
                 (_F64, "f64"),
                 (_INDEX, "i32"),
                 (_OFFSET, "i32"),
+                (_V4I1, "v128"),
+                (_V4I32, "v128"),
+                (_V4F32, "v128"),
+                (_V2I64, "v128"),
+                (_V2F64, "v128"),
             )
         ),
         _splat_rule(_I32, _V4I32, "wasm.i32x4.splat"),
