@@ -1552,6 +1552,15 @@ static float loom_vector_dot4f8_decode_field(loom_vector_dot4f8_format_t format,
   return NAN;
 }
 
+static int32_t loom_vector_dot_wrapping_mul_add_i32(int32_t accumulator,
+                                                    int32_t lhs, int32_t rhs) {
+  const uint32_t raw_result =
+      (uint32_t)accumulator + (uint32_t)((int64_t)lhs * rhs);
+  int32_t result = 0;
+  memcpy(&result, &raw_result, sizeof(result));
+  return result;
+}
+
 static bool loom_vector_dot4i_apply(uint8_t kind, int64_t lhs_raw,
                                     int64_t rhs_raw, int32_t* accumulator) {
   if (kind >= LOOM_VECTOR_DOT4I_KIND_COUNT_) {
@@ -1561,11 +1570,7 @@ static bool loom_vector_dot4i_apply(uint8_t kind, int64_t lhs_raw,
       lhs_raw, 8, loom_vector_dot4i_lhs_is_signed(kind));
   int32_t rhs = loom_vector_extend_integer_field_i32(
       rhs_raw, 8, loom_vector_dot4i_rhs_is_signed(kind));
-  int32_t next = 0;
-  if (!iree_checked_mul_add_i32(*accumulator, lhs, rhs, &next)) {
-    return false;
-  }
-  *accumulator = next;
+  *accumulator = loom_vector_dot_wrapping_mul_add_i32(*accumulator, lhs, rhs);
   return true;
 }
 
@@ -1582,11 +1587,7 @@ static bool loom_vector_dot8i4_apply(uint8_t kind, uint32_t lhs_raw,
                                                        lhs_is_signed);
     int32_t rhs = loom_vector_extend_integer_field_i32(rhs_raw >> shift, 4,
                                                        rhs_is_signed);
-    int32_t next = 0;
-    if (!iree_checked_mul_add_i32(*accumulator, lhs, rhs, &next)) {
-      return false;
-    }
-    *accumulator = next;
+    *accumulator = loom_vector_dot_wrapping_mul_add_i32(*accumulator, lhs, rhs);
   }
   return true;
 }
