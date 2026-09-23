@@ -42,6 +42,118 @@ func.def public target(@carrier_target) @dependent_layout_and_view(%first: buffe
 }
 
 // ====
+
+// Multiple independent dependent pairs share each predecessor edge. The
+// ordinary tag remains in place while both layouts and both views expand in one
+// block plan and each edge is rebuilt once.
+// RUN: pass specialize-target-callgraph,project-boundary-representations
+
+test.target<low_core> @carrier_target
+
+func.def public target(@carrier_target) @multiple_dependent_pairs(%first: buffer, %second: buffer, %third: buffer, %fourth: buffer, %first_base: offset, %second_base: offset, %third_base: offset, %fourth_base: offset, %left_first_stride_input: index, %right_first_stride_input: index, %left_second_stride_input: index, %right_second_stride_input: index, %tag: i32, %condition: i1) -> (i32, i32, i32) {
+  %left_first_stride = index.assume %left_first_stride_input [range(%left_first_stride_input, 4, 1024)] : index
+  %right_first_stride = index.assume %right_first_stride_input [range(%right_first_stride_input, 4, 1024)] : index
+  %left_second_stride = index.assume %left_second_stride_input [range(%left_second_stride_input, 4, 1024)] : index
+  %right_second_stride = index.assume %right_second_stride_input [range(%right_second_stride_input, 4, 1024)] : index
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %left_first_layout = encoding.layout.strided [%left_first_stride, 1] : encoding<layout>
+  %left_first_view = buffer.view %first[%first_base] : buffer -> view<2x4xi32, %left_first_layout>
+  %left_second_layout = encoding.layout.strided [%left_second_stride, 1] : encoding<layout>
+  %left_second_view = buffer.view %third[%third_base] : buffer -> view<2x4xi32, %left_second_layout>
+  cfg.br ^join(%left_first_layout: encoding<layout>, %left_first_view: view<2x4xi32, %left_first_layout>, %tag: i32, %left_second_layout: encoding<layout>, %left_second_view: view<2x4xi32, %left_second_layout>)
+^right:
+  %right_first_layout = encoding.layout.strided [%right_first_stride, 1] : encoding<layout>
+  %right_first_view = buffer.view %second[%second_base] : buffer -> view<2x4xi32, %right_first_layout>
+  %right_second_layout = encoding.layout.strided [%right_second_stride, 1] : encoding<layout>
+  %right_second_view = buffer.view %fourth[%fourth_base] : buffer -> view<2x4xi32, %right_second_layout>
+  cfg.br ^join(%right_first_layout: encoding<layout>, %right_first_view: view<2x4xi32, %right_first_layout>, %tag: i32, %right_second_layout: encoding<layout>, %right_second_view: view<2x4xi32, %right_second_layout>)
+^join(%first_layout: encoding<layout>, %first_selected: view<2x4xi32, %first_layout>, %retained_tag: i32, %second_layout: encoding<layout>, %second_selected: view<2x4xi32, %second_layout>):
+  %first_value = view.load %first_selected[1, 0] : view<2x4xi32, %first_layout> -> i32
+  %second_value = view.load %second_selected[1, 0] : view<2x4xi32, %second_layout> -> i32
+  func.return %first_value, %retained_tag, %second_value : i32, i32, i32
+}
+
+// ----
+test.target<low_core> @carrier_target
+
+func.def public target(@carrier_target) @multiple_dependent_pairs(%first: buffer, %second: buffer, %third: buffer, %fourth: buffer, %first_base: offset, %second_base: offset, %third_base: offset, %fourth_base: offset, %left_first_stride_input: index, %right_first_stride_input: index, %left_second_stride_input: index, %right_second_stride_input: index, %tag: i32, %condition: i1) -> (i32, i32, i32) {
+  %left_first_stride = index.assume %left_first_stride_input [range(%left_first_stride_input, 4, 1024)] : index
+  %right_first_stride = index.assume %right_first_stride_input [range(%right_first_stride_input, 4, 1024)] : index
+  %left_second_stride = index.assume %left_second_stride_input [range(%left_second_stride_input, 4, 1024)] : index
+  %right_second_stride = index.assume %right_second_stride_input [range(%right_second_stride_input, 4, 1024)] : index
+  cfg.cond_br %condition, ^left, ^right
+^left:
+  %left_first_layout = encoding.layout.strided [%left_first_stride, 1] : encoding<layout>
+  %left_first_view = buffer.view %first[%first_base] : buffer -> view<2x4xi32, %left_first_layout>
+  %left_second_layout = encoding.layout.strided [%left_second_stride, 1] : encoding<layout>
+  %left_second_view = buffer.view %third[%third_base] : buffer -> view<2x4xi32, %left_second_layout>
+  cfg.br ^join(%left_first_stride: index, %first: buffer, %first_base: offset, %tag: i32, %left_second_stride: index, %third: buffer, %third_base: offset)
+^right:
+  %right_first_layout = encoding.layout.strided [%right_first_stride, 1] : encoding<layout>
+  %right_first_view = buffer.view %second[%second_base] : buffer -> view<2x4xi32, %right_first_layout>
+  %right_second_layout = encoding.layout.strided [%right_second_stride, 1] : encoding<layout>
+  %right_second_view = buffer.view %fourth[%fourth_base] : buffer -> view<2x4xi32, %right_second_layout>
+  cfg.br ^join(%right_first_stride: index, %second: buffer, %second_base: offset, %tag: i32, %right_second_stride: index, %fourth: buffer, %fourth_base: offset)
+^join(%first_layout_stride_0: index, %first_selected_root: buffer, %first_selected_offset: offset, %retained_tag: i32, %second_layout_stride_0: index, %second_selected_root: buffer, %second_selected_offset: offset):
+  %first_layout = encoding.layout.strided [%first_layout_stride_0, 1] : encoding<layout>
+  %second_layout = encoding.layout.strided [%second_layout_stride_0, 1] : encoding<layout>
+  %first_selected = buffer.view %first_selected_root[%first_selected_offset] : buffer -> view<2x4xi32, %first_layout>
+  %second_selected = buffer.view %second_selected_root[%second_selected_offset] : buffer -> view<2x4xi32, %second_layout>
+  %first_value = view.load %first_selected[1, 0] : view<2x4xi32, %first_layout> -> i32
+  %second_value = view.load %second_selected[1, 0] : view<2x4xi32, %second_layout> -> i32
+  func.return %first_value, %retained_tag, %second_value : i32, i32, i32
+}
+
+// ====
+
+// A layout and the view whose type names it rotate through a cyclic header.
+// Component IDs must be allocated before either the entry or backedge payload
+// is materialized, and destination realization must restore the layout first.
+// RUN: pass specialize-target-callgraph,project-boundary-representations
+
+test.target<low_core> @carrier_target
+
+func.def public target(@carrier_target) @dependent_pair_cycle(%first: buffer, %second: buffer, %first_base: offset, %second_base: offset, %initial_stride_input: index, %next_stride_input: index, %iterate: i1) -> (i32) {
+  %initial_stride = index.assume %initial_stride_input [range(%initial_stride_input, 4, 1024)] : index
+  %next_stride = index.assume %next_stride_input [range(%next_stride_input, 4, 1024)] : index
+  %initial_layout = encoding.layout.strided [%initial_stride, 1] : encoding<layout>
+  %initial_view = buffer.view %first[%first_base] : buffer -> view<2x4xi32, %initial_layout>
+  cfg.br ^header(%initial_layout: encoding<layout>, %initial_view: view<2x4xi32, %initial_layout>)
+^header(%layout: encoding<layout>, %selected: view<2x4xi32, %layout>):
+  cfg.cond_br %iterate, ^body, ^exit
+^body:
+  %next_layout = encoding.layout.strided [%next_stride, 1] : encoding<layout>
+  %next_view = buffer.view %second[%second_base] : buffer -> view<2x4xi32, %next_layout>
+  cfg.br ^header(%next_layout: encoding<layout>, %next_view: view<2x4xi32, %next_layout>)
+^exit:
+  %value = view.load %selected[1, 0] : view<2x4xi32, %layout> -> i32
+  func.return %value : i32
+}
+
+// ----
+test.target<low_core> @carrier_target
+
+func.def public target(@carrier_target) @dependent_pair_cycle(%first: buffer, %second: buffer, %first_base: offset, %second_base: offset, %initial_stride_input: index, %next_stride_input: index, %iterate: i1) -> (i32) {
+  %initial_stride = index.assume %initial_stride_input [range(%initial_stride_input, 4, 1024)] : index
+  %next_stride = index.assume %next_stride_input [range(%next_stride_input, 4, 1024)] : index
+  %initial_layout = encoding.layout.strided [%initial_stride, 1] : encoding<layout>
+  %initial_view = buffer.view %first[%first_base] : buffer -> view<2x4xi32, %initial_layout>
+  cfg.br ^header(%initial_stride: index, %first: buffer, %first_base: offset)
+^header(%layout_stride_0: index, %selected_root: buffer, %selected_offset: offset):
+  %layout = encoding.layout.strided [%layout_stride_0, 1] : encoding<layout>
+  %selected = buffer.view %selected_root[%selected_offset] : buffer -> view<2x4xi32, %layout>
+  cfg.cond_br %iterate, ^body, ^exit
+^body:
+  %next_layout = encoding.layout.strided [%next_stride, 1] : encoding<layout>
+  %next_view = buffer.view %second[%second_base] : buffer -> view<2x4xi32, %next_layout>
+  cfg.br ^header(%next_stride: index, %second: buffer, %second_base: offset)
+^exit:
+  %value = view.load %selected[1, 0] : view<2x4xi32, %layout> -> i32
+  func.return %value : i32
+}
+
+// ====
 // RUN: with-checks pass-report specialize-target-callgraph,project-boundary-representations
 
 test.target<low_core> @carrier_target

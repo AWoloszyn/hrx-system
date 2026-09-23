@@ -33,6 +33,15 @@ typedef enum loom_boundary_projection_slot_role_e {
   LOOM_BOUNDARY_PROJECTION_SLOT_CALL_RESULT = 3,
 } loom_boundary_projection_slot_role_t;
 
+// How physical components realize the destination logical definition.
+typedef enum loom_boundary_projection_destination_mode_e {
+  // Reconstructs one logical value consumed by the original body uses.
+  LOOM_BOUNDARY_PROJECTION_DESTINATION_RECONSTRUCT = 0,
+  // Rewrites admitted body uses to consume components directly and removes the
+  // original logical definition. Currently supported for CFG block arguments.
+  LOOM_BOUNDARY_PROJECTION_DESTINATION_ELIMINATE = 1,
+} loom_boundary_projection_destination_mode_t;
+
 // Cheap candidate domain for a projection rule. Bit i corresponds to
 // loom_type_kind_t value i.
 typedef uint32_t loom_boundary_projection_type_kind_bits_t;
@@ -70,6 +79,16 @@ typedef bool (*loom_boundary_projection_function_applies_fn_t)(
     const loom_boundary_projection_rule_t* rule,
     const loom_boundary_projection_plan_t* plan,
     const loom_boundary_projection_function_t* function);
+
+// Returns whether |rule| may claim one slot after the type-kind filter. This is
+// a bounded structural/type query used to avoid preparing analyses for
+// irrelevant functions; it must not walk IR or require prepared rule state.
+typedef bool (*loom_boundary_projection_slot_matches_fn_t)(
+    const loom_boundary_projection_rule_t* rule,
+    const loom_boundary_projection_plan_t* plan,
+    const loom_boundary_projection_function_t* function,
+    loom_boundary_projection_slot_role_t role, loom_value_id_t value_id,
+    loom_block_t* block);
 
 // Selects the final physical schema for one logical boundary slot. A false
 // result leaves the original slot unchanged. Exactly one active rule may claim
@@ -112,14 +131,26 @@ typedef iree_status_t (*loom_boundary_projection_reconstruct_fn_t)(
     loom_boundary_projection_slot_t* slot, loom_type_t logical_type,
     loom_location_id_t location, loom_value_id_t* out_logical_value);
 
-// Coherent transport behavior for a compiler-owned representation rule.
+// Rewrites the rule-owned uses of one logical destination to consume its
+// physical components directly. The callback must remove every remaining use
+// of the logical value; the engine then removes its boundary definition.
+typedef iree_status_t (*loom_boundary_projection_eliminate_fn_t)(
+    const loom_boundary_projection_rule_t* rule,
+    loom_boundary_projection_plan_t* plan,
+    loom_boundary_projection_function_t* function,
+    loom_boundary_projection_slot_t* slot, loom_type_t logical_type,
+    loom_location_id_t location);
+
+// Coherent source and destination behavior for a compiler-owned rule.
 typedef struct loom_boundary_projection_transport_vtable_t {
   // Plans one outgoing payload for a claimed destination schema.
   loom_boundary_projection_plan_source_fn_t plan_source;
   // Materializes one planned outgoing payload.
   loom_boundary_projection_materialize_source_fn_t materialize_source;
-  // Reconstructs the semantic value at its destination definition.
+  // Reconstructs the semantic value for RECONSTRUCT schemas.
   loom_boundary_projection_reconstruct_fn_t reconstruct;
+  // Rewrites semantic uses for ELIMINATE schemas.
+  loom_boundary_projection_eliminate_fn_t eliminate;
 } loom_boundary_projection_transport_vtable_t;
 
 // Compiler-owned semantic projection rule.
@@ -130,13 +161,15 @@ struct loom_boundary_projection_rule_t {
   loom_boundary_projection_type_kind_bits_t type_kind_bits;
   // Optional cheap function applicability query. NULL means all functions.
   loom_boundary_projection_function_applies_fn_t function_applies;
+  // Optional cheap slot filter after type-kind dispatch. NULL admits the kind.
+  loom_boundary_projection_slot_matches_fn_t slot_matches;
   // Optional invocation-wide initialization before any slots are queried.
   loom_boundary_projection_initialize_fn_t initialize;
   // Optional function-local semantic analysis after candidate discovery.
   loom_boundary_projection_prepare_function_fn_t prepare_function;
   // Bounded semantic query and schema planner.
   loom_boundary_projection_plan_slot_fn_t plan_slot;
-  // Complete transport behavior. All callbacks are required for a claim.
+  // Source transport plus the destination callbacks selected by each schema.
   loom_boundary_projection_transport_vtable_t transport;
 };
 
@@ -154,6 +187,8 @@ typedef struct loom_boundary_projection_rule_statistics_t {
   int64_t projections;
   // Physical components materialized for projected semantic values.
   int64_t components;
+  // Rule-owned destination uses rewritten to consume components directly.
+  int64_t destination_uses_rewritten;
 } loom_boundary_projection_rule_statistics_t;
 
 // Final physical component schema selected by one rule for one logical slot.
@@ -166,9 +201,11 @@ struct loom_boundary_projection_schema_t {
   const loom_type_t* component_types;
   // Optional derived-name suffixes parallel to component_types.
   const iree_string_view_t* component_name_suffixes;
-  // Number of physical components when rule is non-NULL. Zero is a valid
-  // projection when reconstruct can synthesize the logical value.
+  // Number of physical components when rule is non-NULL. Zero is valid when
+  // reconstruction synthesizes the logical value or elimination removes it.
   uint16_t component_count;
+  // How the destination consumes the physical components.
+  loom_boundary_projection_destination_mode_t destination_mode;
   // Arena-owned semantic recipe retained by the claiming rule.
   void* rule_plan;
 };

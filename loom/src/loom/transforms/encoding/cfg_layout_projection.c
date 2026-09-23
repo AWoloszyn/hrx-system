@@ -256,7 +256,7 @@ static iree_status_t loom_cfg_layout_projection_plan_source(
     source_plan->components[component] = projected_component;
     IREE_RETURN_IF_ERROR(loom_boundary_projection_add_dependency(
         plan, function, source_index, destination_index,
-        /*orders_reconstruction=*/false));
+        /*orders_realization=*/false));
   }
 
   *out_source = (loom_boundary_projection_source_t){

@@ -491,7 +491,7 @@ static iree_status_t loom_view_boundary_add_coordinate_dependencies(
   if (coordinate->dependency != IREE_HOST_SIZE_MAX) {
     IREE_RETURN_IF_ERROR(loom_boundary_projection_add_dependency(
         plan, function, coordinate->dependency, destination_index,
-        /*orders_reconstruction=*/false));
+        /*orders_realization=*/false));
   }
   if (coordinate->selection == IREE_HOST_SIZE_MAX) {
     return iree_ok_status();

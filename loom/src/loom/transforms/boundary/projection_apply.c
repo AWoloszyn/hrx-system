@@ -28,6 +28,8 @@ static iree_status_t loom_boundary_projection_preallocate_candidates(
     loom_boundary_projection_slot_t* candidate = &function->candidates[i];
     if (candidate->selected &&
         candidate->role == LOOM_BOUNDARY_PROJECTION_SLOT_BLOCK_ARGUMENT &&
+        candidate->schema.destination_mode ==
+            LOOM_BOUNDARY_PROJECTION_DESTINATION_RECONSTRUCT &&
         candidate->schema.component_count != 0) {
       candidate->component_value_ids[candidate->schema.component_count - 1] =
           candidate->value_id;
@@ -76,28 +78,39 @@ static iree_status_t loom_boundary_projection_preallocate_candidates(
   return iree_ok_status();
 }
 
+static iree_status_t loom_boundary_projection_insert_block_components(
+    loom_boundary_projection_plan_t* plan,
+    loom_boundary_projection_slot_t* candidate, uint16_t component_count) {
+  const uint16_t original_index = loom_value_def_index(
+      loom_module_value(plan->module, candidate->value_id));
+  for (uint16_t component = 0; component < component_count; ++component) {
+    IREE_RETURN_IF_ERROR(loom_module_define_value(
+        plan->module, candidate->schema.component_types[component],
+        &candidate->component_value_ids[component]));
+    IREE_RETURN_IF_ERROR(loom_block_insert_arg(
+        plan->module, candidate->block, (uint16_t)(original_index + component),
+        candidate->component_value_ids[component]));
+  }
+  return iree_ok_status();
+}
+
 static iree_status_t loom_boundary_projection_reconstruct_block_candidate(
     loom_boundary_projection_plan_t* plan,
     loom_boundary_projection_function_t* function,
     loom_boundary_projection_slot_t* candidate, loom_type_t logical_type) {
   IREE_ASSERT(candidate->role == LOOM_BOUNDARY_PROJECTION_SLOT_BLOCK_ARGUMENT);
   loom_block_t* block = candidate->block;
-  const uint16_t original_index = loom_value_def_index(
-      loom_module_value(plan->module, candidate->value_id));
   const loom_boundary_projection_schema_t* schema = &candidate->schema;
-  for (uint16_t component = 0; component + 1 < schema->component_count;
-       ++component) {
-    IREE_RETURN_IF_ERROR(loom_module_define_value(
-        plan->module, schema->component_types[component],
-        &candidate->component_value_ids[component]));
-    IREE_RETURN_IF_ERROR(loom_block_insert_arg(
-        plan->module, block, (uint16_t)(original_index + component),
-        candidate->component_value_ids[component]));
-  }
+  IREE_ASSERT(schema->destination_mode ==
+              LOOM_BOUNDARY_PROJECTION_DESTINATION_RECONSTRUCT);
+  const uint16_t inserted_component_count =
+      schema->component_count == 0 ? 0 : schema->component_count - 1;
+  IREE_RETURN_IF_ERROR(loom_boundary_projection_insert_block_components(
+      plan, candidate, inserted_component_count));
 
   loom_builder_t* builder = &plan->rewriter.builder;
-  IREE_ASSERT(candidate->reconstruction_anchor != NULL);
-  loom_builder_set_before(builder, candidate->reconstruction_anchor);
+  IREE_ASSERT(candidate->realization_anchor != NULL);
+  loom_builder_set_before(builder, candidate->realization_anchor);
   IREE_RETURN_IF_ERROR(loom_builder_reserve_results(
       builder, 1, &candidate->replacement_value_id));
   IREE_RETURN_IF_ERROR(loom_module_set_value_type(
@@ -121,14 +134,46 @@ static iree_status_t loom_boundary_projection_reconstruct_block_candidate(
         candidate->component_value_ids[schema->component_count - 1],
         schema->component_types[schema->component_count - 1]));
   } else {
+    const uint16_t current_index = loom_value_def_index(
+        loom_module_value(plan->module, candidate->value_id));
     IREE_RETURN_IF_ERROR(
-        loom_block_remove_arg(plan->module, block, original_index));
+        loom_block_remove_arg(plan->module, block, current_index));
   }
   IREE_RETURN_IF_ERROR(schema->rule->transport.reconstruct(
       schema->rule, plan, function, candidate, logical_type,
-      candidate->reconstruction_anchor->location,
+      candidate->realization_anchor->location,
       &candidate->replacement_value_id));
   return iree_ok_status();
+}
+
+static iree_status_t loom_boundary_projection_eliminate_block_candidate(
+    loom_boundary_projection_plan_t* plan,
+    loom_boundary_projection_function_t* function,
+    loom_boundary_projection_slot_t* candidate, loom_type_t logical_type) {
+  IREE_ASSERT(candidate->role == LOOM_BOUNDARY_PROJECTION_SLOT_BLOCK_ARGUMENT);
+  const loom_boundary_projection_schema_t* schema = &candidate->schema;
+  IREE_ASSERT(schema->destination_mode ==
+              LOOM_BOUNDARY_PROJECTION_DESTINATION_ELIMINATE);
+  IREE_RETURN_IF_ERROR(loom_boundary_projection_insert_block_components(
+      plan, candidate, schema->component_count));
+  for (uint16_t component = 0; component < schema->component_count;
+       ++component) {
+    if (schema->component_name_suffixes) {
+      IREE_RETURN_IF_ERROR(loom_rewriter_try_set_derived_value_name(
+          &plan->rewriter, candidate->value_id,
+          candidate->component_value_ids[component],
+          schema->component_name_suffixes[component]));
+    }
+  }
+
+  IREE_ASSERT(candidate->realization_anchor != NULL);
+  IREE_RETURN_IF_ERROR(schema->rule->transport.eliminate(
+      schema->rule, plan, function, candidate, logical_type,
+      candidate->realization_anchor->location));
+  IREE_ASSERT(!loom_module_value_has_uses(plan->module, candidate->value_id));
+  const uint16_t current_index = loom_value_def_index(
+      loom_module_value(plan->module, candidate->value_id));
+  return loom_block_remove_arg(plan->module, candidate->block, current_index);
 }
 
 static iree_status_t loom_boundary_projection_initialize_remap(
@@ -142,21 +187,27 @@ static iree_status_t loom_boundary_projection_initialize_remap(
       out_remap);
 }
 
-static iree_status_t loom_boundary_projection_reconstruct_block_candidates(
+static iree_status_t loom_boundary_projection_realize_block_candidates(
     loom_boundary_projection_plan_t* plan,
     loom_boundary_projection_function_t* function) {
   loom_ir_remap_t remap = {0};
   IREE_RETURN_IF_ERROR(loom_boundary_projection_initialize_remap(plan, &remap));
-  for (iree_host_size_t i = 0; i < function->reconstruction_count; ++i) {
+  for (iree_host_size_t i = 0; i < function->realization_count; ++i) {
     loom_boundary_projection_slot_t* candidate =
-        &function->candidates[function->reconstruction_order[i]];
+        &function->candidates[function->realization_order[i]];
     loom_type_t logical_type = loom_type_none();
     IREE_RETURN_IF_ERROR(
         loom_ir_remap_type(&remap, candidate->logical_type, &logical_type));
-    IREE_RETURN_IF_ERROR(loom_boundary_projection_reconstruct_block_candidate(
-        plan, function, candidate, logical_type));
-    IREE_RETURN_IF_ERROR(loom_ir_remap_map_value(
-        &remap, candidate->value_id, candidate->replacement_value_id));
+    if (candidate->schema.destination_mode ==
+        LOOM_BOUNDARY_PROJECTION_DESTINATION_RECONSTRUCT) {
+      IREE_RETURN_IF_ERROR(loom_boundary_projection_reconstruct_block_candidate(
+          plan, function, candidate, logical_type));
+      IREE_RETURN_IF_ERROR(loom_ir_remap_map_value(
+          &remap, candidate->value_id, candidate->replacement_value_id));
+    } else {
+      IREE_RETURN_IF_ERROR(loom_boundary_projection_eliminate_block_candidate(
+          plan, function, candidate, logical_type));
+    }
   }
   return iree_ok_status();
 }
@@ -1082,7 +1133,7 @@ iree_status_t loom_boundary_projection_apply(
     if (!plan->functions[i].selected) {
       continue;
     }
-    IREE_RETURN_IF_ERROR(loom_boundary_projection_reconstruct_block_candidates(
+    IREE_RETURN_IF_ERROR(loom_boundary_projection_realize_block_candidates(
         plan, &plan->functions[i]));
   }
   for (iree_host_size_t i = 0; i < plan->function_count; ++i) {
