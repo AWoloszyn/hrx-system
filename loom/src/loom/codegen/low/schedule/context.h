@@ -16,6 +16,7 @@
 #include "loom/codegen/low/memory_access.h"
 #include "loom/codegen/low/schedule/dependency_index.h"
 #include "loom/codegen/low/schedule/resource_calendar.h"
+#include "loom/codegen/low/schedule/storage_lifetime.h"
 #include "loom/codegen/low/schedule/storage_relation_index.h"
 #include "loom/codegen/low/schedule/types.h"
 #include "loom/codegen/low/target_binding.h"
@@ -247,6 +248,8 @@ typedef struct loom_low_schedule_build_state_t {
   loom_low_schedule_dependency_graph_t dependencies;
   // Compact verified storage relations grouped by owning schedule node.
   loom_low_schedule_storage_relation_index_t storage_relations;
+  // Retained copy/tied header lifetimes and producer-owned edge handoffs.
+  loom_low_schedule_storage_lifetimes_t storage_lifetimes;
   // Total storage relations counted while populating schedule nodes.
   iree_host_size_t storage_relation_count;
   // Compact producer/consumer groups used by list scheduling.

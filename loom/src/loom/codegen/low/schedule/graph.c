@@ -642,7 +642,7 @@ static void loom_low_schedule_touch_storage_read_value(
   }
 }
 
-static iree_status_t loom_low_schedule_add_storage_read(
+static iree_status_t loom_low_schedule_record_storage_read(
     loom_low_schedule_build_state_t* state, uint32_t node_index,
     loom_value_ordinal_t value_ordinal, uint32_t unit_offset,
     uint32_t unit_count, loom_low_register_part_mask_t read_mask,
@@ -690,6 +690,25 @@ static iree_status_t loom_low_schedule_add_storage_read(
       };
   state->storage_reads.heads[value_ordinal] =
       (uint32_t)state->storage_reads.record_count++;
+  return iree_ok_status();
+}
+
+static iree_status_t loom_low_schedule_add_storage_read(
+    loom_low_schedule_build_state_t* state, uint32_t node_index,
+    loom_value_ordinal_t value_ordinal, uint32_t unit_offset,
+    uint32_t unit_count, loom_low_register_part_mask_t read_mask,
+    uint16_t descriptor_operand_index, uint16_t timing_event_id) {
+  // Keep the original read for hard destructive-write ordering. The projected
+  // read additionally preserves the header's optional coalescing lifetime.
+  IREE_RETURN_IF_ERROR(loom_low_schedule_record_storage_read(
+      state, node_index, value_ordinal, unit_offset, unit_count, read_mask,
+      descriptor_operand_index, timing_event_id));
+  const loom_value_ordinal_t* roots = state->storage_lifetimes.roots;
+  if (roots != NULL && roots[value_ordinal] != value_ordinal) {
+    IREE_RETURN_IF_ERROR(loom_low_schedule_record_storage_read(
+        state, node_index, roots[value_ordinal], unit_offset, unit_count,
+        read_mask, descriptor_operand_index, timing_event_id));
+  }
   return iree_ok_status();
 }
 
@@ -1663,6 +1682,25 @@ iree_status_t loom_low_schedule_build_dependencies(
           state, node_index, descriptor));
       IREE_RETURN_IF_ERROR(
           loom_low_schedule_note_structural_state_reads(state, node_index));
+    }
+    // A later block can forward a value produced here onto a loop backedge.
+    // Apply its placement lifetime while this producer's reads are still live.
+    const loom_low_schedule_storage_lifetimes_t* lifetimes =
+        &state->storage_lifetimes;
+    if (lifetimes->block_handoffs != NULL) {
+      uint32_t index = lifetimes->block_handoffs[block_index];
+      while (index != UINT32_MAX) {
+        const loom_low_schedule_storage_handoff_t* handoff =
+            &lifetimes->handoffs[index];
+        const loom_low_schedule_storage_relation_t* relation =
+            loom_low_schedule_storage_relation_index_at(
+                &state->storage_relations, handoff->relation_index);
+        const uint32_t producer =
+            state->values[relation->source_ordinal].producer_node;
+        IREE_RETURN_IF_ERROR(loom_low_schedule_note_edge_source_writes(
+            state, &state->nodes[producer], relation));
+        index = handoff->next_handoff;
+      }
     }
     loom_low_schedule_reset_storage_reads(state);
     if (liveness->block_count != 0) {

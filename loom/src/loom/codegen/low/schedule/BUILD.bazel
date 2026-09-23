@@ -121,6 +121,8 @@ loom_cc_library(
         "run.c",
         "scopes.c",
         "scopes.h",
+        "storage_lifetime.c",
+        "storage_lifetime.h",
         "storage_relation_index.c",
         "storage_relation_index.h",
         "target_pressure.c",
