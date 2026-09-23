@@ -1,0 +1,221 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/packed_memory_values.loom-test
+// TEMPLATE-EXCLUDE: @uniform_table Narrow indexed extraction requires i8 selection and index conversion contracts.
+// TEMPLATE-EXCLUDE: @uniform_i8 Scalarized byte arithmetic requires an i32-to-i8 truncation contract.
+// TEMPLATE-EXCLUDE: @uniform_i16 Scalarized halfword arithmetic requires an i32-to-i16 truncation contract.
+// TEMPLATE-EXCLUDE: @uniform_f16 The target math policy does not admit FP16 vector addition.
+// TEMPLATE-EXCLUDE: @uniform_bf16 The target lacks the BF16 load-to-FP32 conversion contract.
+// TEMPLATE-EXCLUDE: @uniform_f8E4M3 The target lacks the E4M3 load-to-FP32 conversion contract.
+// TEMPLATE-EXCLUDE: @uniform_f8E5M2 The target lacks the E5M2 load-to-FP32 conversion contract.
+// TEMPLATE-EXCLUDE: @uniform_f16_extf The target lacks the FP16 vector load-to-FP32 conversion contract.
+// RUN: emit source-low target=wasm:simd128 output=low
+
+// An aligned buffer root retains the byte offset of the actual access.
+func.def @unaligned_bytes(%input: buffer, %output: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %source, %destination = buffer.assume.noalias %aligned, %output : buffer, buffer
+  %start = index.constant 1 : offset
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %source[%start] : buffer -> view<16xi8>
+  %value = vector.load %source_view[0] : view<16xi8> -> vector<16xi8>
+  %output_view = buffer.view %destination[%c0] : buffer -> view<16xi8>
+  vector.store %value, %output_view[0] : vector<16xi8>, view<16xi8>
+  func.return
+}
+
+// ----
+low.func.def target<wasm.core.simd128> abi(wasm_function) @unaligned_bytes(%source_view: reg<wasm.i32>, %output_view: reg<wasm.i32>) asm {
+  %61 = i32.load8_u %source_view {offset = 1}
+  %62 = i32.load8_u %source_view {offset = 2}
+  %63 = i32.load8_u %source_view {offset = 3}
+  %64 = i32.load8_u %source_view {offset = 4}
+  %65 = i32.load8_u %source_view {offset = 5}
+  %66 = i32.load8_u %source_view {offset = 6}
+  %67 = i32.load8_u %source_view {offset = 7}
+  %68 = i32.load8_u %source_view {offset = 8}
+  %69 = i32.load8_u %source_view {offset = 9}
+  %70 = i32.load8_u %source_view {offset = 10}
+  %71 = i32.load8_u %source_view {offset = 11}
+  %72 = i32.load8_u %source_view {offset = 12}
+  %73 = i32.load8_u %source_view {offset = 13}
+  %74 = i32.load8_u %source_view {offset = 14}
+  %75 = i32.load8_u %source_view {offset = 15}
+  %76 = i32.load8_u %source_view {offset = 16}
+  i32.store8 %output_view, %61
+  i32.store8 %output_view, %62 {offset = 1}
+  i32.store8 %output_view, %63 {offset = 2}
+  i32.store8 %output_view, %64 {offset = 3}
+  i32.store8 %output_view, %65 {offset = 4}
+  i32.store8 %output_view, %66 {offset = 5}
+  i32.store8 %output_view, %67 {offset = 6}
+  i32.store8 %output_view, %68 {offset = 7}
+  i32.store8 %output_view, %69 {offset = 8}
+  i32.store8 %output_view, %70 {offset = 9}
+  i32.store8 %output_view, %71 {offset = 10}
+  i32.store8 %output_view, %72 {offset = 11}
+  i32.store8 %output_view, %73 {offset = 12}
+  i32.store8 %output_view, %74 {offset = 13}
+  i32.store8 %output_view, %75 {offset = 14}
+  i32.store8 %output_view, %76 {offset = 15}
+  return
+}
+
+// ====
+
+// A partial word must not read bytes beyond the requested payload.
+func.def @partial_bytes(%input: buffer, %output: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %source, %destination = buffer.assume.noalias %aligned, %output : buffer, buffer
+  %start = index.constant 0 : offset
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %source[%start] : buffer -> view<2xi8>
+  %value = vector.load %source_view[0] : view<2xi8> -> vector<2xi8>
+  %output_view = buffer.view %destination[%c0] : buffer -> view<2xi8>
+  vector.store %value, %output_view[0] : vector<2xi8>, view<2xi8>
+  func.return
+}
+
+// ----
+low.func.def target<wasm.core.simd128> abi(wasm_function) @partial_bytes(%source_view: reg<wasm.i32>, %output_view: reg<wasm.i32>) asm {
+  %19 = i32.load8_u %source_view
+  %20 = i32.load8_u %source_view {offset = 1}
+  i32.store8 %output_view, %19
+  i32.store8 %output_view, %20 {offset = 1}
+  return
+}
+
+// ====
+
+// Potentially aliasing writes prevent treating the input as stable.
+func.def @mutable_bytes(%input: buffer, %output: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %start = index.constant 0 : offset
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %aligned[%start] : buffer -> view<16xi8>
+  %value = vector.load %source_view[0] : view<16xi8> -> vector<16xi8>
+  %output_view = buffer.view %output[%c0] : buffer -> view<16xi8>
+  vector.store %value, %output_view[0] : vector<16xi8>, view<16xi8>
+  func.return
+}
+
+// ----
+low.func.def target<wasm.core.simd128> abi(wasm_function) @mutable_bytes(%source_view: reg<wasm.i32>, %output_view: reg<wasm.i32>) asm {
+  %59 = i32.load8_u %source_view
+  %60 = i32.load8_u %source_view {offset = 1}
+  %61 = i32.load8_u %source_view {offset = 2}
+  %62 = i32.load8_u %source_view {offset = 3}
+  %63 = i32.load8_u %source_view {offset = 4}
+  %64 = i32.load8_u %source_view {offset = 5}
+  %65 = i32.load8_u %source_view {offset = 6}
+  %66 = i32.load8_u %source_view {offset = 7}
+  %67 = i32.load8_u %source_view {offset = 8}
+  %68 = i32.load8_u %source_view {offset = 9}
+  %69 = i32.load8_u %source_view {offset = 10}
+  %70 = i32.load8_u %source_view {offset = 11}
+  %71 = i32.load8_u %source_view {offset = 12}
+  %72 = i32.load8_u %source_view {offset = 13}
+  %73 = i32.load8_u %source_view {offset = 14}
+  %74 = i32.load8_u %source_view {offset = 15}
+  i32.store8 %output_view, %59
+  i32.store8 %output_view, %60 {offset = 1}
+  i32.store8 %output_view, %61 {offset = 2}
+  i32.store8 %output_view, %62 {offset = 3}
+  i32.store8 %output_view, %63 {offset = 4}
+  i32.store8 %output_view, %64 {offset = 5}
+  i32.store8 %output_view, %65 {offset = 6}
+  i32.store8 %output_view, %66 {offset = 7}
+  i32.store8 %output_view, %67 {offset = 8}
+  i32.store8 %output_view, %68 {offset = 9}
+  i32.store8 %output_view, %69 {offset = 10}
+  i32.store8 %output_view, %70 {offset = 11}
+  i32.store8 %output_view, %71 {offset = 12}
+  i32.store8 %output_view, %72 {offset = 13}
+  i32.store8 %output_view, %73 {offset = 14}
+  i32.store8 %output_view, %74 {offset = 15}
+  return
+}
+
+// ====
+
+// Volatile retains both reads without requesting an acquire or cache policy.
+func.def @volatile_bytes(%input: buffer, %output: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %source, %destination = buffer.assume.noalias %aligned, %output : buffer, buffer
+  %start = index.constant 0 : offset
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %source[%start] : buffer -> view<16xi8>
+  %first = vector.load<volatile> %source_view[0] : view<16xi8> -> vector<16xi8>
+  %second = vector.load<volatile> %source_view[0] : view<16xi8> -> vector<16xi8>
+  %output_view = buffer.view %destination[%c0] : buffer -> view<32xi8>
+  vector.store %first, %output_view[0] : vector<16xi8>, view<32xi8>
+  vector.store %second, %output_view[16] : vector<16xi8>, view<32xi8>
+  func.return
+}
+
+// ----
+low.func.def target<wasm.core.simd128> abi(wasm_function) @volatile_bytes(%source_view: reg<wasm.i32>, %output_view: reg<wasm.i32>) asm {
+  %111 = i32.load8_u<volatile> %source_view
+  %112 = i32.load8_u<volatile> %source_view {offset = 1}
+  %113 = i32.load8_u<volatile> %source_view {offset = 2}
+  %114 = i32.load8_u<volatile> %source_view {offset = 3}
+  %115 = i32.load8_u<volatile> %source_view {offset = 4}
+  %116 = i32.load8_u<volatile> %source_view {offset = 5}
+  %117 = i32.load8_u<volatile> %source_view {offset = 6}
+  %118 = i32.load8_u<volatile> %source_view {offset = 7}
+  %119 = i32.load8_u<volatile> %source_view {offset = 8}
+  %120 = i32.load8_u<volatile> %source_view {offset = 9}
+  %121 = i32.load8_u<volatile> %source_view {offset = 10}
+  %122 = i32.load8_u<volatile> %source_view {offset = 11}
+  %123 = i32.load8_u<volatile> %source_view {offset = 12}
+  %124 = i32.load8_u<volatile> %source_view {offset = 13}
+  %125 = i32.load8_u<volatile> %source_view {offset = 14}
+  %126 = i32.load8_u<volatile> %source_view {offset = 15}
+  %127 = i32.load8_u<volatile> %source_view
+  %128 = i32.load8_u<volatile> %source_view {offset = 1}
+  %129 = i32.load8_u<volatile> %source_view {offset = 2}
+  %130 = i32.load8_u<volatile> %source_view {offset = 3}
+  %131 = i32.load8_u<volatile> %source_view {offset = 4}
+  %132 = i32.load8_u<volatile> %source_view {offset = 5}
+  %133 = i32.load8_u<volatile> %source_view {offset = 6}
+  %134 = i32.load8_u<volatile> %source_view {offset = 7}
+  %135 = i32.load8_u<volatile> %source_view {offset = 8}
+  %136 = i32.load8_u<volatile> %source_view {offset = 9}
+  %137 = i32.load8_u<volatile> %source_view {offset = 10}
+  %138 = i32.load8_u<volatile> %source_view {offset = 11}
+  %139 = i32.load8_u<volatile> %source_view {offset = 12}
+  %140 = i32.load8_u<volatile> %source_view {offset = 13}
+  %141 = i32.load8_u<volatile> %source_view {offset = 14}
+  %142 = i32.load8_u<volatile> %source_view {offset = 15}
+  i32.store8 %output_view, %111
+  i32.store8 %output_view, %112 {offset = 1}
+  i32.store8 %output_view, %113 {offset = 2}
+  i32.store8 %output_view, %114 {offset = 3}
+  i32.store8 %output_view, %115 {offset = 4}
+  i32.store8 %output_view, %116 {offset = 5}
+  i32.store8 %output_view, %117 {offset = 6}
+  i32.store8 %output_view, %118 {offset = 7}
+  i32.store8 %output_view, %119 {offset = 8}
+  i32.store8 %output_view, %120 {offset = 9}
+  i32.store8 %output_view, %121 {offset = 10}
+  i32.store8 %output_view, %122 {offset = 11}
+  i32.store8 %output_view, %123 {offset = 12}
+  i32.store8 %output_view, %124 {offset = 13}
+  i32.store8 %output_view, %125 {offset = 14}
+  i32.store8 %output_view, %126 {offset = 15}
+  i32.store8 %output_view, %127 {offset = 16}
+  i32.store8 %output_view, %128 {offset = 17}
+  i32.store8 %output_view, %129 {offset = 18}
+  i32.store8 %output_view, %130 {offset = 19}
+  i32.store8 %output_view, %131 {offset = 20}
+  i32.store8 %output_view, %132 {offset = 21}
+  i32.store8 %output_view, %133 {offset = 22}
+  i32.store8 %output_view, %134 {offset = 23}
+  i32.store8 %output_view, %135 {offset = 24}
+  i32.store8 %output_view, %136 {offset = 25}
+  i32.store8 %output_view, %137 {offset = 26}
+  i32.store8 %output_view, %138 {offset = 27}
+  i32.store8 %output_view, %139 {offset = 28}
+  i32.store8 %output_view, %140 {offset = 29}
+  i32.store8 %output_view, %141 {offset = 30}
+  i32.store8 %output_view, %142 {offset = 31}
+  return
+}

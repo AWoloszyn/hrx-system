@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-load("//loom/build_tools/bazel:build_defs.bzl", "loom_generated_file_family")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with", "loom_generated_file_family")
 load("//loom/build_tools/bazel:defs.bzl", "loom_module", "loom_test", "loom_test_module")
 load("//loom/target:execution_profiles.bzl", "GPU_HARDWARE_PROFILES")
 load("//loom/target/amdgpu:execution_profiles.bzl", "AMDGPU_ACCESS_PROFILE", "AMDGPU_HARDWARE_PROFILE")
@@ -17,7 +17,7 @@ package(
 
 _CASES = glob(["*.loom"])
 
-exports_files(_CASES)
+exports_files(_CASES + glob(["*.cxx"]))
 
 loom_test(
     name = "predicate_extract_test",
@@ -348,4 +348,34 @@ loom_test(
         "//loom/target/spirv:vulkan1.3+bda",
     ],
     execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+)
+
+loom_test(
+    name = "packed_memory_alignment_test",
+    srcs = ["packed_memory_alignment.loom"],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+)
+
+loom_test(
+    name = "cxx_vector_lookup_test",
+    srcs = ["vector_lookup.cxx"],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)
+
+loom_test(
+    name = "cxx_packed_byte_arithmetic_test",
+    srcs = ["packed_byte_arithmetic.cxx"],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+)
+
+loom_test(
+    name = "cxx_packed_float_conversion_test",
+    srcs = ["packed_float_conversion.cxx"],
+    execution_profiles = [
+        AMDGPU_HARDWARE_PROFILE,
+        AMDGPU_ACCESS_PROFILE,
+    ],
+    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )
