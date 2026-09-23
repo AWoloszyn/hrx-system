@@ -541,6 +541,40 @@ def _extract_rule(
     descriptor_key: str,
 ) -> DescriptorRule:
     descriptor = _descriptor(descriptor_key)
+    extracted = (
+        ValueRef.temporary("predicate_bits")
+        if result_type == _I1
+        else ValueRef.result("result")
+    )
+    emits = [
+        EmitDescriptorOp(
+            descriptor=descriptor,
+            operands={"source": ValueRef.operand("source")},
+            results={"dst": extracted},
+            result_types={"dst": _I32} if result_type == _I1 else None,
+            immediates={
+                "lane": AttrProject.i64_array_element("static_indices", element=0)
+            },
+        ),
+    ]
+    if result_type == _I1:
+        # SIMD comparisons use all-one lanes; scalar i1 values are zero or one.
+        emits.extend(
+            (
+                EmitDescriptorOp(
+                    descriptor=_descriptor("wasm.i32.const"),
+                    results={"dst": ValueRef.temporary("mask")},
+                    result_types={"dst": _I32},
+                    immediates={"i32_value": 1},
+                    form=DescriptorEmitForm.CONST,
+                ),
+                EmitDescriptorOp(
+                    descriptor=_descriptor("wasm.i32.and"),
+                    operands={"lhs": extracted, "rhs": ValueRef.temporary("mask")},
+                    results={"dst": ValueRef.result("result")},
+                ),
+            )
+        )
     return DescriptorRule(
         source_op=vector.vector_extract,
         descriptor=descriptor,
@@ -553,19 +587,7 @@ def _extract_rule(
                 "static_indices", 0, 0, source_type.lanes - 1
             ),
         ),
-        emit=(
-            EmitDescriptorOp(
-                descriptor=descriptor,
-                operands={"source": ValueRef.operand("source")},
-                results={"dst": ValueRef.result("result")},
-                immediates={
-                    "lane": AttrProject.i64_array_element(
-                        "static_indices",
-                        element=0,
-                    )
-                },
-            ),
-        ),
+        emit=tuple(emits),
     )
 
 
@@ -1028,6 +1050,7 @@ WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
                 for field in ("lhs", "rhs")
             ),
         ),
+        _extract_rule(_V4I1, _I1, "wasm.i32x4.extract_lane"),
         _extract_rule(_V4I32, _I32, "wasm.i32x4.extract_lane"),
         _extract_rule(_V4F32, _F32, "wasm.f32x4.extract_lane"),
         _extract_rule(_V2I64, _I64, "wasm.i64x2.extract_lane"),
