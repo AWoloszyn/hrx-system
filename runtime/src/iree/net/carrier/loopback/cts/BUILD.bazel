@@ -15,13 +15,19 @@ package(
 
 iree_runtime_cc_test(
     name = "transfer_trial_tests",
-    srcs = ["backend.cc"],
+    srcs = [
+        "backend.cc",
+        "transfer_trial_test.cc",
+    ],
     deps = [
         "//runtime/src/iree/async/cts/util:platform_backends",
+        "//runtime/src/iree/async/cts/util:registry",
         "//runtime/src/iree/async/cts/util:test_main",
         "//runtime/src/iree/net/carrier/loopback:factory",
+        "//runtime/src/iree/net/cts:transfer_trial",
         "//runtime/src/iree/net/cts:transfer_trial_tests",
         "//runtime/src/iree/net/cts:transport_backend",
+        "//runtime/src/iree/testing:gtest",
     ],
 )
 

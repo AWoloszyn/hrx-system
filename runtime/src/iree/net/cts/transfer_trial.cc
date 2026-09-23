@@ -546,6 +546,8 @@ struct TrialSide {
   std::vector<std::unique_ptr<TransferPeer>> peers;
   // Next consumer slot assigned by an accept callback.
   size_t accepted_count = 0;
+  // Unadopted accepted connections awaiting their deactivation callbacks.
+  size_t pending_rejection_count = 0;
 
   TrialSide(const TransferTrialOptions& options, TrialControl& control,
             PeerRole role)
@@ -613,8 +615,28 @@ struct TrialSide {
                                     iree_allocator_system(), &peer.session);
       }
     }
-    iree_net_connection_release(connection);
+    const bool needs_deactivation = connection && !iree_status_is_ok(status);
     side.control.Fail(status);
+    if (needs_deactivation) {
+      struct Rejection {
+        // Poll owner retained until this connection's deactivation joins.
+        TrialSide* side;
+        // Accepted connection reference transferred to this cleanup callback.
+        iree_net_connection_t* connection;
+      };
+      auto* rejection = new Rejection{&side, connection};
+      ++side.pending_rejection_count;
+      iree_net_connection_deactivate(
+          connection, {+[](void* user_data) {
+                         auto* rejection = static_cast<Rejection*>(user_data);
+                         iree_net_connection_release(rejection->connection);
+                         --rejection->side->pending_rejection_count;
+                         delete rejection;
+                       },
+                       rejection});
+    } else {
+      iree_net_connection_release(connection);
+    }
   }
 
   void Poll() {
@@ -688,9 +710,10 @@ struct TrialSide {
         iree_net_session_deactivate(peer->session);
       }
     }
-    while (!std::all_of(peers.begin(), peers.end(), [](const auto& peer) {
-      return !peer->session || peer->deactivated;
-    })) {
+    while (pending_rejection_count ||
+           !std::all_of(peers.begin(), peers.end(), [](const auto& peer) {
+             return !peer->session || peer->deactivated;
+           })) {
       Poll();
     }
     peers.clear();

@@ -14,12 +14,16 @@ iree_cc_test(
     transfer_trial_tests
   SRCS
     "backend.cc"
+    "transfer_trial_test.cc"
   DEPS
     iree::async::cts::util::platform_backends
+    iree::async::cts::util::registry
     iree::async::cts::util::test_main
     iree::net::carrier::loopback::factory
+    iree::net::cts::transfer_trial
     iree::net::cts::transfer_trial_tests
     iree::net::cts::transport_backend
+    iree::testing::gtest
 )
 
 iree_cc_test(
