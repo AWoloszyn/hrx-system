@@ -844,201 +844,67 @@ static iree_status_t loom_compile_materialize_module(
 }
 
 static void loom_compile_print_agents_markdown(FILE* stream) {
-  fprintf(
-      stream,
-      "## loom-compile\n"
-      "\n"
-      "`loom-compile` specializes Loom text or bytecode and emits an offline\n"
-      "artifact. Selected roots infer the product, the target selects the "
-      "machine or API contract, and the format names the output encoding.\n"
-      "\n"
-      "### Select the product\n"
-      "\n"
-      "```shell\n"
-      "loom-compile program.loom --output=manifest.json \\\n"
-      "  --emit-command-artifacts=commands/ \\\n"
-      "  --emit-kernel-requests=kernel-requests/\n"
-      "loom-compile kernel.loom \\\n"
-      "  --target=amdgpu:gfx11-generic --output=kernel.hsaco\n"
-      "loom-compile catalog.loombc --root=@entry \\\n"
-      "  --target=amdgpu:gfx1151 --output=entry.hsaco\n"
-      "loom-compile kernel.loom --format=spirv-binary --output=kernel.spv\n"
+  static const char* const kLines[] = {
+      "## loom-compile",
+      "",
+      "`loom-compile` specializes Loom text or bytecode and emits an offline "
+      "artifact.",
+      "Run `loom-compile --help` for the complete command-line reference.",
+      "",
+      "### Common commands",
+      "",
+      "```shell",
+      "# Compile a targetless kernel for a portable GFX11 profile.",
+      "loom-compile kernel.loom \\",
+      "  --target=amdgpu:gfx11-generic --output=kernel.hsaco",
+      "",
+      "# Select one catalog root, exact target, and compile-time value.",
+      "loom-compile catalog.loombc --root=@entry \\",
+      "  --target=amdgpu:gfx1151 --config=model.hidden_size=4096 \\",
+      "  --output=entry.hsaco",
+      "",
+      "# Emit a portable command program and its kernel requests.",
+      "loom-compile program.loom --product=command \\",
+      "  --output=commands.json --emit-command-artifacts=commands/ \\",
+      "  --emit-kernel-requests=kernel-requests/",
+      "",
+      "# Emit SPIR-V or WebAssembly from source that declares its target.",
+      "loom-compile kernel.loom --format=spirv-binary --output=kernel.spv",
       "loom-compile functions.loom --format=wasm-binary "
-      "--output=functions.wasm\n"
-      "```\n"
-      "\n"
-      "Command roots select `--format=loom-command` by default and emit "
-      "portable command programs and their shared\n"
-      "entry-requirement manifest. `--emit-kernel-requests` additionally "
-      "emits\n"
-      "one ordinary Loom bytecode request per reachable semantic kernel "
-      "class.\n"
-      "Kernel roots select the canonical format for their target. "
-      "`--format` can request an exact alternate or diagnostic format. "
-      "With no explicit roots, `--product` selects that product's canonical "
-      "roots. "
-      "`--root=@symbol`\n"
-      "selects entries from a catalog; without it, the tool compiles every\n"
-      "relevant exported entry and its dependency closure.\n"
-      "\n"
-      "A generic target such as `gfx11-generic` preserves family portability.\n"
-      "An exact target such as `gfx1151` permits device specialization. "
-      "Authored\n"
-      "target requirements remain constraints and incompatible specialization "
-      "fails.\n"
-      "`--config=key=value` and `--config-file=file.jsonc` bind\n"
-      "`config.decl` values and override `config.def` defaults before "
-      "compilation.\n"
-      "\n"
-      "### Author loop schedules\n"
-      "\n"
-      "`scf.for` supports `unroll`, `unroll(%%factor)`, and "
-      "`pipeline(%%depth)`.\n"
-      "Combine them as `pipeline(%%depth) unroll(%%factor)`; pipelining runs\n"
-      "first and depth counts original iterations. Both controls are "
-      "independent\n"
-      "and leave unannotated loops alone. Reusable motifs receive the values\n"
-      "as template arguments or derive them from target properties with index\n"
-      "arithmetic. Each instantiation owns its schedule. Global depth/unroll\n"
-      "config keys couple all instances; use them in experiment drivers for\n"
-      "iterative sweeps.\n"
-      "Ordinary read-ahead supports loads and pure computation with nested\n"
-      "`scf.if` and `scf.for`. Nested units normally stay intact in their "
-      "stage.\n"
-      "Read-containing units require all captures, guards, inner bounds and\n"
-      "initial state to be independent of the outer recurrence. Pure inner\n"
-      "loops may remain consumers. With exact loop bounds, global loads can\n"
-      "advance across ordered workgroup stores, reads and workgroup barriers.\n"
-      "A requested full linear inner unroll can expose mixed global-load and\n"
-      "workgroup-store units; read-only reductions keep their queued result.\n"
-      "Global or unknown writes, global barriers, source-order fences,\n"
-      "`scf.while`, and explicit async groups are diagnosed at depth >1. The\n"
-      "loop-tuning walkthrough includes checked nested and shared-memory "
-      "motifs.\n"
-      "\n"
-      "To inspect a config-driven experiment:\n"
-      "\n"
-      "```shell\n"
-      "loom-compile read-ahead.loom --target=amdgpu:gfx11-generic "
-      "\\\n"
-      "  --config=read_ahead.depth=3 --config=read_ahead.unroll=2 "
-      "\\\n"
-      "  --output=sum-rows.hsaco --compile-report=details "
-      "\\\n"
-      "  --compile-report-output=sum-rows.report.json\n"
-      "loom-compile-report show sum-rows.report.json\n"
-      "loom-compile-report suggest sum-rows.report.json\n"
-      "```\n"
-      "\n"
-      "Compare depth one with the same unroll factor and checked workload. "
-      "Reports\n"
-      "retain the applied schedule and final resources; measured comparisons\n"
-      "establish register, spill, occupancy, code-size, compile-time, and "
-      "runtime\n"
-      "tradeoffs. Complete row-sum and packed-dot examples: "
-      "[Tune loop schedules](https://rocm.github.io/hrx-system/loom/"
-      "workflows/tune-loop-schedules/).\n"
-      "For independent motif policies, [Search per-instance loop schedules]"
-      "(https://rocm.github.io/hrx-system/loom/workflows/"
-      "search-loop-schedules/) supplies a checked compile-first grid, actual\n"
-      "`suggest` output, resource cliffs, and controlled measurements.\n"
-      "\n"
-      "### Keep vector banks structured\n"
-      "\n"
-      "A loop may carry a logical vector bank while fixed `vector.extract`\n"
-      "and `vector.insert` accesses update homogeneous components. Keep the\n"
-      "aggregate source shape instead of manually expanding scalar SSA; the\n"
-      "compiler can project a `vector<4x4xf32>` recurrence to four row "
-      "vectors\n"
-      "or sixteen scalars when every endpoint uses one static component "
-      "shape.\n"
-      "Whole-value native fragments remain intact. Dynamic component indices,\n"
-      "mixed component shapes, and incompatible whole-bank consumers are\n"
-      "reported rather than silently guessed.\n"
-      "\n"
-      "Request `--compile-report=details` and inspect **Source boundary\n"
-      "projections** with `loom-compile-report show`. `suggest` proposes\n"
-      "controlled source variants for actionable rejections; selection still\n"
-      "requires a matched resource and runtime comparison. See [vector banks]\n"
-      "(https://rocm.github.io/hrx-system/loom/guide/"
-      "vectors-and-structured-compute/"
-      "#carry-logical-vector-banks-through-loops).\n"
-      "\n"
-      "### Compose native instruction phases\n"
-      "\n"
-      "Give a Low helper `schedule(phased)` and place `low.schedule.phase`\n"
-      "separators between its instruction phases. The first phase is "
-      "implicit;\n"
-      "SSA values remain visible across separators. Callers use `low.invoke`,\n"
-      "and inlining and unrolling preserve each invocation's independent\n"
-      "schedule. Phases impose instruction order without memory completion.\n"
-      "Native AMDGPU and x86 enforce them; intermediate representations "
-      "reject\n"
-      "the native-order requirement. Reports expose `schedule.scope_count`\n"
-      "alongside register use and waits. Compare those costs when changing\n"
-      "phase boundaries. See [independent scheduling scopes]"
-      "(https://rocm.github.io/hrx-system/loom/guide/functions-and-control/"
-      "#compose-independently-scheduled-helpers).\n"
-      "\n"
-      "### Pipeline contract\n"
-      "\n"
-      "The default pipeline is the maintained source-to-artifact path. Use it "
-      "for\n"
-      "normal source, correctness acceptance, and production artifacts.\n"
-      "\n"
-      "```shell\n"
-      "loom-compile prepared-low.loom --format=amdgpu-hsaco \\\n"
-      "  --pipeline=none --output=oracle.hsaco\n"
-      "```\n"
-      "\n"
-      "`--pipeline=none` disables all compiler transformations. The input is\n"
-      "passed directly to the selected emitter and must already satisfy its "
-      "complete\n"
-      "input contract. This is a supported assembly path for prepared Low and "
-      "other\n"
-      "already lowered forms; success does not show that source survives the "
-      "default\n"
-      "pipeline. Named pipelines and explicit pass lists replace the default "
-      "pipeline\n"
-      "with the deliberately selected transformation sequence.\n"
-      "\n"
-      "### Describe the artifact and compilation\n"
-      "\n"
-      "```shell\n"
-      "loom-compile kernel.loom --format=amdgpu-hsaco \\\n"
-      "  --target=amdgpu:gfx11-generic --output=kernel.hsaco \\\n"
-      "  --artifact-manifest=summary --emit-artifact-manifest=manifest.json "
-      "\\\n"
-      "  --compile-report=summary --compile-report-output=report.json\n"
-      "loom-compile-report show report.json\n"
-      "loom-compile-report diff baseline.json report.json\n"
-      "loom-compile-report suggest report.json\n"
-      "jq '.functions[] | {name, target, workgroup_size}' manifest.json\n"
-      "jq '{function,lowered,target_export,"
-      "code_bytes:.emission.code_byte_count,"
-      "spills:.allocation.materialized_spill_storage_count}' report.json\n"
-      "jq '.entries.rows[]? | {function,source_function,target_export_symbol,"
-      "code_byte_count,allocation_spill_count}' report.json\n"
-      "```\n"
-      "\n"
-      "The artifact manifest describes what was emitted. The compile report "
-      "describes\n"
-      "how the compiler produced it. Start with summary mode and\n"
-      "`loom-compile-report show`; request details or raw fields only after "
-      "that\n"
-      "view identifies a concrete scheduling, allocation, memory, or "
-      "legalization\n"
-      "question. Version-zero reports are same-checkout diagnostics rather "
-      "than a\n"
-      "compatibility format.\n"
-      "\n"
-      "Detailed compilation and report workflows live in\n"
-      "`loom/docs/src/workflows/compile-artifacts.md` and\n"
-      "`loom/docs/src/workflows/compile-reports.md`. Scenario-indexed raw\n"
-      "queries live in\n"
-      "`loom/docs/src/workflows/compile-report-queries.md`. Native-to-Loom\n"
-      "reconstruction lives in\n"
-      "`loom/docs/src/workflows/oracles/native-schedule.md`.\n");
+      "--output=functions.wasm",
+      "```",
+      "",
+      "### Inspect a compilation",
+      "",
+      "```shell",
+      "loom-compile kernel.loom \\",
+      "  --target=amdgpu:gfx11-generic --output=kernel.hsaco \\",
+      "  --artifact-manifest=summary \\",
+      "  --emit-artifact-manifest=manifest.json \\",
+      "  --compile-report=summary --compile-report-output=report.json",
+      "loom-compile-report show report.json",
+      "loom-compile-report diff baseline.json report.json",
+      "loom-compile-report suggest report.json",
+      "```",
+      "",
+      "### Documentation",
+      "",
+      "- [From source to artifacts](https://rocm.github.io/hrx-system/loom/"
+      "getting-started/source-to-artifacts/)",
+      "- [Compile artifacts](https://rocm.github.io/hrx-system/loom/workflows/"
+      "compile-artifacts/)",
+      "- [Read compile reports](https://rocm.github.io/hrx-system/loom/"
+      "workflows/compile-reports/)",
+      "- [Tune loop schedules](https://rocm.github.io/hrx-system/loom/"
+      "workflows/tune-loop-schedules/)",
+      "- [Workflow index](https://rocm.github.io/hrx-system/loom/workflows/)",
+      "- [Language guide](https://rocm.github.io/hrx-system/loom/guide/)",
+  };
+  _Static_assert(IREE_ARRAYSIZE(kLines) <= 100,
+                 "--agents_md must remain at most 100 lines");
+  for (iree_host_size_t i = 0; i < IREE_ARRAYSIZE(kLines); ++i) {
+    fprintf(stream, "%s\n", kLines[i]);
+  }
 }
 
 int main(int argc, char** argv) {
@@ -1060,8 +926,8 @@ int main(int argc, char** argv) {
       "object such as {\"model36\":{\"model\":{\"hidden_size\":4096}}}. "
       "Files and direct bindings share one config set and duplicate keys are "
       "rejected.\n"
-      "Use --agents_md to print agent-facing workflow "
-      "guidance.\n" LOOM_TOOLING_PASS_TRACE_USAGE);
+      "Use --agents_md to print common commands and documentation "
+      "links.\n" LOOM_TOOLING_PASS_TRACE_USAGE);
   for (int i = 1; i < argc; ++i) {
     if (loom_tooling_cli_is_agents_markdown_arg(argv[i])) {
       loom_compile_print_agents_markdown(stdout);
