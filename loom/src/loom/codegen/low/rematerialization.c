@@ -8,7 +8,6 @@
 
 #include <string.h>
 
-#include "loom/analysis/availability.h"
 #include "loom/codegen/low/allocation/live_range.h"
 #include "loom/codegen/low/allocation/storage.h"
 #include "loom/codegen/low/descriptor_traits.h"
@@ -210,19 +209,10 @@ iree_status_t loom_low_rematerialize_value_uses(
   if (!shortens_live_range) {
     return iree_ok_status();
   }
-  loom_availability_analysis_t availability = {0};
-  IREE_RETURN_IF_ERROR(
-      loom_availability_analysis_initialize(module, arena, &availability));
-  for (uint32_t i = 0; i < use_count; ++i) {
-    bool available = false;
-    IREE_RETURN_IF_ERROR(loom_availability_op_captures_are_available_before_op(
-        &availability, defining_op, loom_use_user_op(uses[i]), defining_op,
-        &available));
-    if (!available) {
-      return iree_ok_status();
-    }
-  }
 
+  // Verified SSA makes the packet's inputs and external type/attribute captures
+  // available at its definition, which dominates each existing operand use.
+  // Cloning immediately before those users preserves availability transitively.
   // Each eligible packet has one result and no regions. Reserve membership for
   // its per-user clones before any mutation changes the module value count.
   IREE_RETURN_IF_ERROR(loom_low_rematerialization_reserve_per_user_values(

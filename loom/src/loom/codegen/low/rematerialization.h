@@ -73,6 +73,9 @@ void loom_low_rematerialization_invalidate_placement(
 
 // Rematerializes a descriptor-backed SSA value once near each distinct user.
 // Multiple operands of that user share one rematerialized value.
+// Consumes verified IR: the definition dominates its existing operand uses, so
+// its inputs and external type/attribute captures remain available at each
+// clone.
 //
 // Returns OK with a zero result when |value_id| is not a safe rematerialization
 // candidate. When rewritten, callers must discard analyses of the old IR and
