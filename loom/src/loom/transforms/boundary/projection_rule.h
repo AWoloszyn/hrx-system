@@ -165,7 +165,9 @@ struct loom_boundary_projection_rule_t {
   loom_boundary_projection_slot_matches_fn_t slot_matches;
   // Optional invocation-wide initialization before any slots are queried.
   loom_boundary_projection_initialize_fn_t initialize;
-  // Optional function-local semantic analysis after candidate discovery.
+  // Optional function-local semantic analysis after candidate discovery. The
+  // function local-value domain is acquired only while this callback and later
+  // planning callbacks run.
   loom_boundary_projection_prepare_function_fn_t prepare_function;
   // Bounded semantic query and schema planner.
   loom_boundary_projection_plan_slot_fn_t plan_slot;

@@ -210,6 +210,8 @@ struct loom_boundary_projection_plan_t {
   iree_host_size_t* function_indices;
   // Number of entries in function_indices.
   iree_host_size_t function_index_count;
+  // Whether any selected function may replace its callable signature.
+  bool may_change_signatures;
   // Function signatures replaced by the application phase.
   int64_t functions_rewritten;
   // Semantic calls replaced by the application phase.

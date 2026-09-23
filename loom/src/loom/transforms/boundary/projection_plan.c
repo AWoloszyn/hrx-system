@@ -440,6 +440,8 @@ static iree_status_t loom_boundary_projection_plan_functions(
     IREE_RETURN_IF_ERROR(loom_boundary_projection_plan_function_signature(
         plan, loom_func_like_cast(plan->module, symbol->defining_op), version,
         &plan->functions[index]));
+    plan->may_change_signatures |= plan->functions[index].selected &&
+                                   plan->functions[index].signature_changes;
   }
   IREE_ASSERT_EQ(plan->function_count, function_count);
   return iree_ok_status();
@@ -643,18 +645,18 @@ static iree_status_t loom_boundary_projection_collect_function(
   if (!body) {
     return iree_ok_status();
   }
-  IREE_RETURN_IF_ERROR(loom_local_value_domain_acquire_for_region_tree(
-      plan->module, body, plan->arena, &function->domain));
 
-  loom_boundary_projection_collect_t collect = {
-      .plan = plan,
-      .function = function,
-  };
-  loom_walk_result_t walk_result = LOOM_WALK_CONTINUE;
-  IREE_RETURN_IF_ERROR(loom_walk_function(
-      plan->module, function->function, LOOM_WALK_PRE_ORDER,
-      (loom_walk_callback_t){loom_boundary_projection_collect_op, &collect},
-      plan->arena, &walk_result));
+  if (plan->may_change_signatures) {
+    loom_boundary_projection_collect_t collect = {
+        .plan = plan,
+        .function = function,
+    };
+    loom_walk_result_t walk_result = LOOM_WALK_CONTINUE;
+    IREE_RETURN_IF_ERROR(loom_walk_function(
+        plan->module, function->function, LOOM_WALK_PRE_ORDER,
+        (loom_walk_callback_t){loom_boundary_projection_collect_op, &collect},
+        plan->arena, &walk_result));
+  }
 
   bool may_have_block_slot = false;
   loom_block_t* block = NULL;
@@ -1319,6 +1321,23 @@ iree_status_t loom_boundary_projection_plan_prepare(
     loom_boundary_projection_function_t* function = &plan->functions[i];
     iree_status_t status =
         loom_boundary_projection_collect_function(plan, function);
+    bool needs_local_domain = false;
+    if (iree_status_is_ok(status)) {
+      for (iree_host_size_t rule_index = 0; rule_index < rules.count;
+           ++rule_index) {
+        const loom_boundary_projection_rule_t* rule = rules.values[rule_index];
+        needs_local_domain |=
+            rule->prepare_function && function->selected &&
+            loom_boundary_projection_rule_applies(rule, plan, function);
+      }
+      if (needs_local_domain) {
+        loom_region_t* body = loom_func_like_body(function->function);
+        if (body) {
+          status = loom_local_value_domain_acquire_for_region_tree(
+              plan->module, body, plan->arena, &function->domain);
+        }
+      }
+    }
     if (iree_status_is_ok(status)) {
       for (iree_host_size_t rule_index = 0;
            rule_index < rules.count && iree_status_is_ok(status);
