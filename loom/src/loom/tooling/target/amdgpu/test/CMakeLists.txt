@@ -361,7 +361,9 @@ loom_test_module(
     atomic_observations_test_module
   SRCS
     "atomic_observations.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_atomic_float64.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_atomic_observations.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_float64.loom"
 )
 endif()
 

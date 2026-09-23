@@ -162,7 +162,9 @@ loom_test(
     name = "atomic_observations_test",
     srcs = [
         "atomic_observations.loom",
+        "//loom/src/loom/test/corpus/source_low:memory_atomic_float64.loom",
         "//loom/src/loom/test/corpus/source_low:memory_atomic_observations.loom",
+        "//loom/src/loom/test/corpus/source_low:memory_float64.loom",
     ],
     compile_targets = [
         "//loom/target/amdgpu:gfx1100",
