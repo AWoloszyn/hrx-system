@@ -13,6 +13,7 @@ from loom.dsl import (
     DISTRIBUTION_TRANSFER,
     INTEGER,
     PURE,
+    SAFE_TO_SPECULATE,
     AttrDef,
     BitRangeWithinElementWidth,
     ElementWidthAtLeastAttr,
@@ -39,7 +40,7 @@ scalar_andi = binary_op(
     doc="Bitwise AND.",
     commutative=True,
     facts="loom_scalar_andi_facts",
-    traits=[DISTRIBUTION_TRANSFER],
+    traits=[DISTRIBUTION_TRANSFER, SAFE_TO_SPECULATE],
     canonicalize="loom_scalar_andi_canonicalize",
     examples=["%result = scalar.andi %lhs, %rhs : i32"],
 )
@@ -51,7 +52,7 @@ scalar_ori = binary_op(
     doc="Bitwise OR.",
     commutative=True,
     facts="loom_scalar_ori_facts",
-    traits=[DISTRIBUTION_TRANSFER],
+    traits=[DISTRIBUTION_TRANSFER, SAFE_TO_SPECULATE],
     canonicalize="loom_scalar_ori_canonicalize",
     examples=["%result = scalar.ori %lhs, %rhs : i32"],
 )
@@ -63,7 +64,7 @@ scalar_xori = binary_op(
     doc="Bitwise XOR.",
     commutative=True,
     facts="loom_scalar_xori_facts",
-    traits=[DISTRIBUTION_TRANSFER],
+    traits=[DISTRIBUTION_TRANSFER, SAFE_TO_SPECULATE],
     canonicalize="loom_scalar_xori_canonicalize",
     examples=["%result = scalar.xori %lhs, %rhs : i32"],
 )
@@ -201,7 +202,7 @@ scalar_bitfield_extractu = Op(
         ElementWidthAtLeastAttr("result", "width"),
     ],
     facts="loom_scalar_bitfield_extractu_facts",
-    traits=[PURE, DISTRIBUTION_TRANSFER],
+    traits=[PURE, DISTRIBUTION_TRANSFER, SAFE_TO_SPECULATE],
     format=[
         Ref("source"),
         AttrDict(),
@@ -229,7 +230,7 @@ scalar_bitfield_extracts = Op(
         ElementWidthAtLeastAttr("result", "width"),
     ],
     facts="loom_scalar_bitfield_extracts_facts",
-    traits=[PURE, DISTRIBUTION_TRANSFER],
+    traits=[PURE, DISTRIBUTION_TRANSFER, SAFE_TO_SPECULATE],
     format=[
         Ref("source"),
         AttrDict(),
