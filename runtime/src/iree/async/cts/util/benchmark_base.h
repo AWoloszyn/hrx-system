@@ -9,21 +9,14 @@
 // Provides shared infrastructure for all proactor benchmarks, parallel to
 // test_base.h for tests. Key components:
 //
-//   - ProactorCreateFn: Factory function type for creating proactors.
+//   - CreateBenchmarkProactor: Backend admission and result reporting.
 //   - NumaTopology: NUMA node discovery and current-thread placement.
 //   - BenchmarkContext: Proactor lifetime and completion handling.
 //   - Benchmark context helpers: Create/destroy, capability checking.
 //   - Polling helpers: SpinPollUntilComplete for latency-sensitive benchmarks.
 //
-// Usage in benchmark files (e.g., cts/futex/futex_benchmark.cc):
-//   #include "iree/async/cts/util/benchmark_base.h"
-//   void RegisterFutexBenchmarks(const char* prefix, ProactorCreateFn fn);
-//
-// Usage in platform files (e.g., platform/io_uring/cts/futex_benchmark.cc):
-//   #include "iree/async/cts/futex/futex_benchmark.h"
-//   #include "iree/async/platform/io_uring/api.h"
-//   RegisterFutexBenchmarks("io_uring", iree_async_proactor_create_io_uring);
-//   BENCHMARK_MAIN();
+// Suites receive a ProactorFactory from the CTS registry. Standard and custom
+// benchmark contexts share backend admission through CreateBenchmarkProactor.
 
 #ifndef IREE_ASYNC_CTS_UTIL_BENCHMARK_BASE_H_
 #define IREE_ASYNC_CTS_UTIL_BENCHMARK_BASE_H_
@@ -37,16 +30,6 @@
 #include "iree/base/threading/numa.h"
 
 namespace iree::async::cts {
-
-//===----------------------------------------------------------------------===//
-// Proactor factory type
-//===----------------------------------------------------------------------===//
-
-// Factory function that creates a proactor backend.
-// Matches the signature of iree_async_proactor_create_* functions.
-typedef iree_status_t (*ProactorCreateFn)(iree_async_proactor_options_t options,
-                                          iree_allocator_t allocator,
-                                          iree_async_proactor_t** out_proactor);
 
 //===----------------------------------------------------------------------===//
 // NUMA topology
@@ -190,14 +173,11 @@ inline bool PollOneProgressEvent(iree_async_proactor_t* proactor) {
   return true;
 }
 
-// Creates a benchmark context with a proactor from the given factory.
-// Returns nullptr and reports unavailable backends as skips, other failures as
-// errors.
-// This is the preferred overload for link-time composed benchmarks.
-inline BenchmarkContext* CreateBenchmarkContext(const ProactorFactory& factory,
-                                                ::benchmark::State& state) {
-  auto* context = new BenchmarkContext();
-
+// Creates a proactor and transfers its reference to the caller. Returns nullptr
+// and reports unavailable backends as skips, all other creation failures as
+// errors. Once creation succeeds, operation failures remain benchmark errors.
+inline iree_async_proactor_t* CreateBenchmarkProactor(
+    const ProactorFactory& factory, ::benchmark::State& state) {
   auto result = factory(iree_async_proactor_options_default());
   if (!result.ok()) {
     if (result.status().code() == iree::StatusCode::kUnavailable) {
@@ -205,34 +185,19 @@ inline BenchmarkContext* CreateBenchmarkContext(const ProactorFactory& factory,
     } else {
       state.SkipWithError(result.status().ToString());
     }
-    delete context;
     return nullptr;
   }
-  context->proactor = result.value();
-
-  context->capabilities =
-      iree_async_proactor_query_capabilities(context->proactor);
-  context->numa = NumaTopology::Discover();
-
-  return context;
+  return result.value();
 }
 
-// Legacy overload for backwards compatibility with ProactorCreateFn.
-// Prefer using the ProactorFactory overload for new code.
-inline BenchmarkContext* CreateBenchmarkContext(ProactorCreateFn create_fn,
+// Creates a benchmark context with a proactor from the given factory.
+// Returns nullptr after reporting the backend admission result on failure.
+inline BenchmarkContext* CreateBenchmarkContext(const ProactorFactory& factory,
                                                 ::benchmark::State& state) {
   auto* context = new BenchmarkContext();
 
-  iree_async_proactor_options_t options = iree_async_proactor_options_default();
-  iree_status_t status =
-      create_fn(options, iree_allocator_system(), &context->proactor);
-  if (!iree_status_is_ok(status)) {
-    if (iree_status_is_unavailable(status)) {
-      state.SkipWithMessage(iree::Status::ToString(status));
-    } else {
-      state.SkipWithError(iree::Status::ToString(status));
-    }
-    iree_status_free(status);
+  context->proactor = CreateBenchmarkProactor(factory, state);
+  if (!context->proactor) {
     delete context;
     return nullptr;
   }

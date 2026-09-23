@@ -36,13 +36,11 @@ static EventPoolContext* CreateEventPoolContext(
     ::benchmark::State& state) {
   auto* ctx = new EventPoolContext();
 
-  auto result = factory(iree_async_proactor_options_default());
-  if (!result.ok()) {
-    state.SkipWithError("Proactor creation failed");
+  ctx->proactor = CreateBenchmarkProactor(factory, state);
+  if (!ctx->proactor) {
     delete ctx;
     return nullptr;
   }
-  ctx->proactor = result.value();
 
   iree_status_t status = iree_async_event_pool_initialize(
       ctx->proactor, iree_allocator_system(), initial_capacity, &ctx->pool);
@@ -117,12 +115,10 @@ static void BM_AcquireGrow(::benchmark::State& state,
                            const ProactorFactory& factory) {
   for (auto _ : state) {
     // Create a fresh pool with no capacity each iteration.
-    auto result = factory(iree_async_proactor_options_default());
-    if (!result.ok()) {
-      state.SkipWithError("Proactor creation failed");
+    iree_async_proactor_t* proactor = CreateBenchmarkProactor(factory, state);
+    if (!proactor) {
       return;
     }
-    iree_async_proactor_t* proactor = result.value();
 
     iree_async_event_pool_t pool;
     iree_status_t status =

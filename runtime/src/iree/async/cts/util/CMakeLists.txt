@@ -119,4 +119,32 @@ iree_cc_library(
   PUBLIC
 )
 
+iree_cc_binary(
+  NAME
+    benchmark_setup_fixture
+  SRCS
+    "benchmark_setup_fixture.cc"
+  DEPS
+    ::benchmark_main
+    ::registry
+    iree::async
+    iree::async::cts::buffer::all_benchmarks
+    iree::async::cts::core::all_benchmarks
+    iree::async::cts::event::all_benchmarks
+    iree::async::cts::futex::all_benchmarks
+    iree::async::cts::socket::all_benchmarks
+    iree::async::cts::sync::all_benchmarks
+    iree::base
+  TESTONLY
+)
+
+iree_execution_test_suite(
+  NAME
+    benchmark_setup_test
+  MANIFESTS
+    "benchmark_setup.test.json"
+  TOOLS
+    "benchmark=::benchmark_setup_fixture"
+)
+
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

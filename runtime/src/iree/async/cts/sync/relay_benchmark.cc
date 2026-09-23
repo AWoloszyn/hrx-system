@@ -58,13 +58,11 @@ static RelayContext* CreateRelayContext(const ProactorFactory& factory,
   auto* ctx = new RelayContext();
 
   // Create proactor.
-  auto result = factory(iree_async_proactor_options_default());
-  if (!result.ok()) {
-    state.SkipWithError("Proactor creation failed");
+  ctx->proactor = CreateBenchmarkProactor(factory, state);
+  if (!ctx->proactor) {
     delete ctx;
     return nullptr;
   }
-  ctx->proactor = result.value();
 
   // Create source and sink notifications.
   iree_status_t status = iree_async_notification_create(
@@ -273,13 +271,11 @@ static ScalabilityContext* CreateScalabilityContext(
   auto* ctx = new ScalabilityContext();
 
   // Create proactor.
-  auto result = factory(iree_async_proactor_options_default());
-  if (!result.ok()) {
-    state.SkipWithError("Proactor creation failed");
+  ctx->proactor = CreateBenchmarkProactor(factory, state);
+  if (!ctx->proactor) {
     delete ctx;
     return nullptr;
   }
-  ctx->proactor = result.value();
 
   // Create channels.
   ctx->channels.reserve(channel_count);

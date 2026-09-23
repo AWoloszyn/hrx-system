@@ -89,17 +89,11 @@ static IdleHandlerContext* CreateIdleHandlerContext(
     ::benchmark::State& state) {
   auto* ctx = new IdleHandlerContext();
 
-  auto result = factory(iree_async_proactor_options_default());
-  if (!result.ok()) {
-    if (result.status().code() == iree::StatusCode::kUnavailable) {
-      state.SkipWithMessage(result.status().ToString());
-    } else {
-      state.SkipWithError(result.status().ToString());
-    }
+  ctx->proactor = CreateBenchmarkProactor(factory, state);
+  if (!ctx->proactor) {
     delete ctx;
     return nullptr;
   }
-  ctx->proactor = result.value();
 
 #if defined(IREE_PLATFORM_WINDOWS)
   if (!iree_all_bits_set(
@@ -255,17 +249,11 @@ static RelayScalabilityContext* CreateRelayScalabilityContext(
     ::benchmark::State& state) {
   auto* ctx = new RelayScalabilityContext();
 
-  auto result = factory(iree_async_proactor_options_default());
-  if (!result.ok()) {
-    if (result.status().code() == iree::StatusCode::kUnavailable) {
-      state.SkipWithMessage(result.status().ToString());
-    } else {
-      state.SkipWithError(result.status().ToString());
-    }
+  ctx->proactor = CreateBenchmarkProactor(factory, state);
+  if (!ctx->proactor) {
     delete ctx;
     return nullptr;
   }
-  ctx->proactor = result.value();
 
   // Create shared sink notification.
   iree_status_t status = iree_async_notification_create(
@@ -390,17 +378,11 @@ static FanOutContext* CreateFanOutContext(const ProactorFactory& factory,
                                           ::benchmark::State& state) {
   auto* ctx = new FanOutContext();
 
-  auto result = factory(iree_async_proactor_options_default());
-  if (!result.ok()) {
-    if (result.status().code() == iree::StatusCode::kUnavailable) {
-      state.SkipWithMessage(result.status().ToString());
-    } else {
-      state.SkipWithError(result.status().ToString());
-    }
+  ctx->proactor = CreateBenchmarkProactor(factory, state);
+  if (!ctx->proactor) {
     delete ctx;
     return nullptr;
   }
-  ctx->proactor = result.value();
 
   // Create source notification.
   iree_status_t status = iree_async_notification_create(
