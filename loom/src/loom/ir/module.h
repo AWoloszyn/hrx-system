@@ -524,6 +524,13 @@ loom_module_encoding_family_descriptor(const loom_module_t* module,
 iree_status_t loom_module_intern_type(loom_module_t* module, loom_type_t type,
                                       loom_type_t* out_interned_type);
 
+// Looks up a structurally identical type without modifying the module.
+// Returns LOOM_TYPE_ID_INVALID when |type| is not already canonical in
+// |module|. Pointer-backed payload may be temporary or foreign-owned for the
+// duration of the call.
+loom_type_id_t loom_module_lookup_type_id(const loom_module_t* module,
+                                          loom_type_t type);
+
 // Interns a type and returns its canonical type-table ID.
 iree_status_t loom_module_intern_type_id(loom_module_t* module,
                                          loom_type_t type,
@@ -550,6 +557,15 @@ iree_status_t loom_module_intern_topological_type_id(
     loom_module_t* module, loom_type_t type,
     const loom_type_id_t* structural_dependency_ids,
     iree_host_size_t structural_dependency_count, loom_type_id_t* out_type_id);
+
+// Looks up one type assembled over existing canonical immediate dependencies
+// without modifying the module. The representation and dependency ordering
+// follow loom_module_intern_topological_type_id. Returns
+// LOOM_TYPE_ID_INVALID when the assembled type is absent.
+loom_type_id_t loom_module_lookup_topological_type_id(
+    const loom_module_t* module, loom_type_t type,
+    const loom_type_id_t* structural_dependency_ids,
+    iree_host_size_t structural_dependency_count);
 
 // Interns a function type directly from argument and result type arrays. If a
 // structurally identical function type already exists, returns the canonical
