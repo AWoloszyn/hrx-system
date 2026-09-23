@@ -5,7 +5,7 @@ reader owns the immutable source and compact indexed metadata. Loading copies
 explicit ranges straight into caller-owned backing; binding patches declared
 address fields without interpreting native commands. libamdf owns device
 admission, scoped memory and range submission. See
-[XDNA native execution](../../libamdf/docs/xdna.md) for that boundary, the
+[XDNA native execution](../../libamdf/docs/xdna/execution.md) for that boundary, the
 [compiler target map](../../loom/src/loom/target/arch/amd/xdna/README.md)
 for production of these programs, and the
 [image format specification](../../runtime/src/iree/hal/drivers/amd/xdna/image/README.md)

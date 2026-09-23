@@ -20,7 +20,7 @@ before accepting work. This native power-management cost is distinct from
 libamdf's prohibited lazy initialization. First use after native suspension
 and warm publication are separate measurement scenarios; a warm result says
 nothing about wake-up latency. Sustained XDNA results use an explicit
-[held-power measurement policy](xdna.md#power-policy-and-measurement), while
+[held-power measurement policy](xdna/execution.md#power-policy-and-measurement), while
 deployment-representative measurements retain the deployment's actual policy.
 
 ## Preparation and steady-state use

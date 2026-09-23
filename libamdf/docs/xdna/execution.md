@@ -5,6 +5,9 @@ submission. A HAL supplies instruction bytes, ELF loading and relocation, tile
 programs, and scheduling. ARRAY and CONTROL are image-layer concepts; neither
 appears in the driver API.
 
+[XDNA timing, counters, and trace](observability.md) describes tile timer
+reads, event counters, trace routing, and native firmware instrumentation.
+
 ## One caller flow
 
 The caller passively discovers an endpoint and its target identity, then
@@ -230,7 +233,7 @@ failure. A successful refresh may report no new progress, including when another
 host caller is consuming results. Native observation failure leaves the output
 unchanged and does not cancel accepted work.
 
-The [canonical ELF consumer](../../experimental/xdna/cts/execution_test.cc)
+The [canonical ELF consumer](../../../experimental/xdna/cts/execution_test.cc)
 shows the complete flow, including target selection, image loading, relocation,
 cold host preparation, independent execution, numerical checks and teardown. The
 ELF decoder and materializer live in the runtime image layer; libamdf receives
@@ -283,7 +286,7 @@ Changing an embedded address requires either a different prepared range or
 retirement of all users of the range being rebound. Queue and argument backing
 remains live through its actual last device use, including downstream consumers.
 
-The [execution CTS](../../experimental/xdna/cts/execution_test.cc) prepares a
+The [execution CTS](../../../experimental/xdna/cts/execution_test.cc) prepares a
 multiplication program and an addition program with different binding addresses
 in one instruction allocation. Both are submitted before the completion wait;
 addition consumes multiplication's output without a host copy. Each full
@@ -493,5 +496,5 @@ PCI and target identity while the numerical consumer shares the compatible
 Strix image profile. Image ABI, instruction format, context bounds and required
 capabilities remain checked.
 
-The [memory fabric](memory.md) describes the shared scope, address, visibility,
+The [memory fabric](../memory.md) describes the shared scope, address, visibility,
 and lifetime contracts used by GPU and XDNA callers.
