@@ -374,45 +374,76 @@ static void loom_low_allocation_search_find_location_for_release_policy(
     loom_low_allocation_storage_release_policy_t release_policy,
     loom_low_allocation_search_location_choice_t* out_choice) {
   *out_choice = (loom_low_allocation_search_location_choice_t){0};
-  for (uint32_t base = 0; base <= last_base;) {
+  const uint64_t candidate_count = (uint64_t)last_base / alignment + 1;
+  const uint64_t packing_count =
+      ((uint64_t)scalar_packing_frontier + alignment - 1) / alignment;
+
+  // Pressure release compares the lowest feasible ordinal independently of
+  // the preferred packing location. Find that bound once before visiting
+  // scalar candidates in packing order. The bounded scalar range excludes
+  // UINT32_MAX, which marks a search with no feasible location.
+  const bool needs_first_candidate =
+      packing_count != 0 &&
+      loom_low_allocation_search_has_pressure_release_records(context);
+  uint32_t first_candidate_ordinal = UINT32_MAX;
+  if (needs_first_candidate) {
+    for (uint64_t i = 0; i < candidate_count; ++i) {
+      loom_low_allocation_assignment_t candidate = *candidate_template;
+      candidate.location_base = (uint32_t)(i * alignment);
+      if (!loom_low_allocation_search_assignment_conflicts(
+              context, &candidate,
+              /*ignored_value_ids=*/NULL, /*ignored_value_count=*/0,
+              /*ignored_storage_lease_value_ids=*/NULL,
+              /*ignored_storage_lease_value_count=*/0, release_policy)) {
+        first_candidate_ordinal = candidate.location_base;
+        break;
+      }
+    }
+    if (first_candidate_ordinal == UINT32_MAX) {
+      return;
+    }
+  }
+
+  // Pack from high to low below the frontier, then low to high above it.
+  // This is the tie-break order for equal penalties, so the first legal
+  // zero-penalty candidate is final and later equal penalties cannot improve
+  // it.
+  for (uint64_t i = 0; i < candidate_count; ++i) {
+    const uint64_t ordinal = i < packing_count ? packing_count - i - 1 : i;
+    const uint32_t base = (uint32_t)(ordinal * alignment);
+    if (needs_first_candidate && base < first_candidate_ordinal) {
+      continue;
+    }
     loom_low_allocation_assignment_t candidate = *candidate_template;
     candidate.location_base = base;
-    if (!loom_low_allocation_search_assignment_conflicts(
+    if (!(needs_first_candidate && base == first_candidate_ordinal) &&
+        loom_low_allocation_search_assignment_conflicts(
             context, &candidate,
             /*ignored_value_ids=*/NULL, /*ignored_value_count=*/0,
             /*ignored_storage_lease_value_ids=*/NULL,
             /*ignored_storage_lease_value_count=*/0, release_policy)) {
-      const uint32_t preference_penalty =
-          loom_low_allocation_search_location_preference_penalty(
-              context, preference, &candidate);
-      const uint32_t first_candidate_ordinal =
-          out_choice->found ? out_choice->first_candidate_ordinal : base;
-      const bool candidate_is_below_frontier =
-          scalar_packing_frontier != 0 && base < scalar_packing_frontier;
-      const bool choice_is_below_frontier =
-          out_choice->found && scalar_packing_frontier != 0 &&
-          out_choice->base < scalar_packing_frontier;
-      if (!out_choice->found ||
-          preference_penalty < out_choice->preference_penalty ||
-          (preference_penalty == out_choice->preference_penalty &&
-           candidate_is_below_frontier &&
-           (!choice_is_below_frontier || base > out_choice->base))) {
-        *out_choice = (loom_low_allocation_search_location_choice_t){
-            .base = base,
-            .candidate_ordinal = base,
-            .first_candidate_ordinal = first_candidate_ordinal,
-            .preference_penalty = preference_penalty,
-            .found = true,
-        };
-        if (preference_penalty == 0 && scalar_packing_frontier == 0) {
-          return;
-        }
-      }
+      continue;
     }
-    if (base > UINT32_MAX - alignment) {
-      break;
+    const uint32_t preference_penalty =
+        loom_low_allocation_search_location_preference_penalty(
+            context, preference, &candidate);
+    if (out_choice->found &&
+        preference_penalty >= out_choice->preference_penalty) {
+      continue;
     }
-    base += alignment;
+    if (first_candidate_ordinal == UINT32_MAX) {
+      first_candidate_ordinal = base;
+    }
+    *out_choice = (loom_low_allocation_search_location_choice_t){
+        .base = base,
+        .candidate_ordinal = base,
+        .first_candidate_ordinal = first_candidate_ordinal,
+        .preference_penalty = preference_penalty,
+        .found = true,
+    };
+    if (preference_penalty == 0) {
+      return;
+    }
   }
 }
 
@@ -667,7 +698,8 @@ bool loom_low_allocation_search_find_free_location(
       alignment, scalar_packing_frontier,
       LOOM_LOW_ALLOCATION_STORAGE_RELEASE_FORBIDDEN, &release_free);
   loom_low_allocation_search_location_choice_t pressure_release = {0};
-  if (loom_low_allocation_search_has_pressure_release_records(context)) {
+  if (loom_low_allocation_search_has_pressure_release_records(context) &&
+      (!release_free.found || release_free.first_candidate_ordinal != 0)) {
     loom_low_allocation_search_find_for_release_policy(
         context, &candidate_template, &preference,
         uses_explicit_physical_registers, explicit_candidate_count, last_base,
