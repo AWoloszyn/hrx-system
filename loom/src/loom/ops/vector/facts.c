@@ -4093,15 +4093,19 @@ static iree_status_t loom_vector_bitunpack_facts(
   }
 
   iree_host_size_t result_lane_count = 0;
-  if (!loom_vector_type_static_lane_count(result_type, &result_lane_count) ||
-      result_lane_count > LOOM_VALUE_FACT_SMALL_STATIC_LANE_LIMIT) {
+  if (!loom_vector_type_static_lane_count(result_type, &result_lane_count)) {
     return loom_vector_make_unknown_facts(result_facts);
   }
 
-  loom_value_facts_t lanes[LOOM_VALUE_FACT_SMALL_STATIC_LANE_LIMIT] = {{0}};
   const loom_value_facts_t dynamic_lane_facts =
       signed_unpack ? loom_value_facts_make_signed_bit_count_range(width)
                     : loom_value_facts_make_unsigned_bit_count_range(width);
+  if (result_lane_count > LOOM_VALUE_FACT_SMALL_STATIC_LANE_LIMIT) {
+    return loom_value_facts_make_uniform_element(context, dynamic_lane_facts,
+                                                 &result_facts[0]);
+  }
+
+  loom_value_facts_t lanes[LOOM_VALUE_FACT_SMALL_STATIC_LANE_LIMIT] = {{0}};
   for (iree_host_size_t lane = 0; lane < result_lane_count; ++lane) {
     uint64_t bit_position = 0;
     if ((uint64_t)lane > UINT64_MAX / (uint64_t)width) {

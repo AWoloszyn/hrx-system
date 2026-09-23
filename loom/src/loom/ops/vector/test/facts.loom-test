@@ -690,6 +690,30 @@ func.def @bitpack_bitunpack_q4_round_trip() -> (i8, i8, i8) {
 
 // ====
 
+// Large bitstream results retain their source-independent lane bounds without
+// materializing per-lane facts beyond the small-static representation limit.
+func.def @bitunpack_large_uniform_bounds(%packed: vector<32xi8>) -> (i64, i64, i64, i64) {
+  %unsigned = vector.bitunpacku<4> %packed : vector<32xi8> -> vector<64xi8>
+  %signed = vector.bitunpacks<4> %packed : vector<32xi8> -> vector<64xi8>
+  %unsigned_lane = vector.extract %unsigned[63] : vector<64xi8> -> i8
+  %signed_lane = vector.extract %signed[31] : vector<64xi8> -> i8
+  %unsigned_lo = test.fact_range_lo %unsigned_lane : i8 -> i64
+  %unsigned_hi = test.fact_range_hi %unsigned_lane : i8 -> i64
+  %signed_lo = test.fact_range_lo %signed_lane : i8 -> i64
+  %signed_hi = test.fact_range_hi %signed_lane : i8 -> i64
+  func.return %unsigned_lo, %unsigned_hi, %signed_lo, %signed_hi : i64, i64, i64, i64
+}
+// ----
+func.def @bitunpack_large_uniform_bounds(%packed: vector<32xi8>) -> (i64, i64, i64, i64) {
+  %unsigned_lo = scalar.constant 0 : i64
+  %unsigned_hi = scalar.constant 15 : i64
+  %signed_lo = scalar.constant -8 : i64
+  %signed_hi = scalar.constant 7 : i64
+  func.return %unsigned_lo, %unsigned_hi, %signed_lo, %signed_hi : i64, i64, i64, i64
+}
+
+// ====
+
 // Table lookup facts compose exact code lanes with explicit register tables.
 func.def @table_lookup_small_lanes() -> (f16, f16) {
   %g0 = scalar.constant -1.0 : f16
