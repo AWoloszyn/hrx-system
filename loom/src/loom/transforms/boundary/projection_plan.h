@@ -198,6 +198,8 @@ struct loom_boundary_projection_plan_t {
   loom_target_function_version_snapshot_t versions;
   // Compiler-owned semantic rules composed by this invocation.
   loom_boundary_projection_rule_list_t rules;
+  // Union of boundary slot roles supported by rules.
+  loom_boundary_projection_slot_role_bits_t slot_role_bits;
   // Rule-owned invocation state parallel to rules.
   void** rule_states;
   // Generic application statistics parallel to rules.

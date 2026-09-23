@@ -45,6 +45,23 @@ static bool loom_boundary_projection_any_function_selected(
   return false;
 }
 
+static bool loom_boundary_projection_supports_role(
+    const loom_boundary_projection_plan_t* plan,
+    loom_boundary_projection_slot_role_t role) {
+  return iree_any_bit_set(plan->slot_role_bits,
+                          LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(role));
+}
+
+static bool loom_boundary_projection_supports_callable_slots(
+    const loom_boundary_projection_plan_t* plan) {
+  return loom_boundary_projection_supports_role(
+             plan, LOOM_BOUNDARY_PROJECTION_SLOT_FUNCTION_ARGUMENT) ||
+         loom_boundary_projection_supports_role(
+             plan, LOOM_BOUNDARY_PROJECTION_SLOT_FUNCTION_RESULT) ||
+         loom_boundary_projection_supports_role(
+             plan, LOOM_BOUNDARY_PROJECTION_SLOT_CALL_RESULT);
+}
+
 static iree_host_size_t loom_boundary_projection_rule_index(
     const loom_boundary_projection_plan_t* plan,
     const loom_boundary_projection_rule_t* rule) {
@@ -125,7 +142,9 @@ static iree_status_t loom_boundary_projection_plan_slot_schema(
       LOOM_BOUNDARY_PROJECTION_TYPE_KIND_BIT(kind);
   for (iree_host_size_t i = 0; i < plan->rules.count; ++i) {
     const loom_boundary_projection_rule_t* rule = plan->rules.values[i];
-    if (!iree_any_bit_set(rule->type_kind_bits, kind_bit) ||
+    if (!iree_any_bit_set(rule->slot_role_bits,
+                          LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(role)) ||
+        !iree_any_bit_set(rule->type_kind_bits, kind_bit) ||
         !loom_boundary_projection_rule_applies(rule, plan, function) ||
         (rule->slot_matches &&
          !rule->slot_matches(rule, plan, function, role, value_id, block))) {
@@ -170,7 +189,9 @@ static bool loom_boundary_projection_may_claim_slot(
       LOOM_BOUNDARY_PROJECTION_TYPE_KIND_BIT(kind);
   for (iree_host_size_t i = 0; i < plan->rules.count; ++i) {
     const loom_boundary_projection_rule_t* rule = plan->rules.values[i];
-    if (iree_any_bit_set(rule->type_kind_bits, kind_bit) &&
+    if (iree_any_bit_set(rule->slot_role_bits,
+                         LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(role)) &&
+        iree_any_bit_set(rule->type_kind_bits, kind_bit) &&
         loom_boundary_projection_rule_applies(rule, plan, function) &&
         (!rule->slot_matches ||
          rule->slot_matches(rule, plan, function, role, value_id, block))) {
@@ -258,6 +279,12 @@ static iree_status_t loom_boundary_projection_plan_function_signature(
         (void**)&out_function->rule_states));
     memset(out_function->rule_states, 0,
            plan->rules.count * sizeof(*out_function->rule_states));
+  }
+  if (!loom_boundary_projection_supports_callable_slots(plan)) {
+    if (!loom_func_like_body(function)) {
+      out_function->selected = false;
+    }
+    return iree_ok_status();
   }
   const loom_value_id_t* arguments =
       loom_func_like_arg_ids(function, &out_function->argument_count);
@@ -419,15 +446,18 @@ static iree_status_t loom_boundary_projection_plan_function_signature(
 static iree_status_t loom_boundary_projection_plan_functions(
     loom_boundary_projection_plan_t* plan,
     const loom_function_version_list_t* version_list) {
-  plan->function_index_count = plan->module->symbols.count;
-  if (plan->function_index_count == 0) {
+  const iree_host_size_t symbol_count = plan->module->symbols.count;
+  if (symbol_count == 0) {
     return iree_ok_status();
   }
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      plan->arena, plan->function_index_count, sizeof(*plan->function_indices),
-      (void**)&plan->function_indices));
-  for (iree_host_size_t i = 0; i < plan->function_index_count; ++i) {
-    plan->function_indices[i] = IREE_HOST_SIZE_MAX;
+  if (loom_boundary_projection_supports_callable_slots(plan)) {
+    plan->function_index_count = symbol_count;
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        plan->arena, plan->function_index_count,
+        sizeof(*plan->function_indices), (void**)&plan->function_indices));
+    for (iree_host_size_t i = 0; i < plan->function_index_count; ++i) {
+      plan->function_indices[i] = IREE_HOST_SIZE_MAX;
+    }
   }
   IREE_RETURN_IF_ERROR(loom_target_function_version_snapshot_build(
       plan->module, version_list, plan->arena, &plan->versions));
@@ -461,7 +491,9 @@ static iree_status_t loom_boundary_projection_plan_functions(
       continue;
     }
     const iree_host_size_t index = plan->function_count++;
-    plan->function_indices[symbol_id] = index;
+    if (plan->function_indices) {
+      plan->function_indices[symbol_id] = index;
+    }
     IREE_RETURN_IF_ERROR(loom_boundary_projection_plan_function_signature(
         plan, loom_func_like_cast(plan->module, symbol->defining_op), version,
         &plan->functions[index]));
@@ -1320,6 +1352,7 @@ iree_status_t loom_boundary_projection_plan_prepare(
     IREE_ASSERT(rule != NULL);
     IREE_ASSERT(!iree_string_view_is_empty(rule->name));
     IREE_ASSERT_NE(rule->type_kind_bits, 0);
+    IREE_ASSERT_NE(rule->slot_role_bits, 0);
     IREE_ASSERT(rule->plan_slot != NULL);
     IREE_ASSERT(rule->transport.plan_source != NULL);
     IREE_ASSERT(rule->transport.materialize_source != NULL);
@@ -1330,6 +1363,9 @@ iree_status_t loom_boundary_projection_plan_prepare(
     }
   }
   plan->rules = rules;
+  for (iree_host_size_t i = 0; i < rules.count; ++i) {
+    plan->slot_role_bits |= rules.values[i]->slot_role_bits;
+  }
   if (rules.count != 0) {
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(plan->arena, rules.count,
                                                    sizeof(*plan->rule_states),

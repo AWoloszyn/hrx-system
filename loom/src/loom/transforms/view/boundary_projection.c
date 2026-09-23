@@ -830,6 +830,14 @@ static iree_status_t loom_view_boundary_reconstruct(
 static const loom_boundary_projection_rule_t kViewBoundaryRule = {
     .name = IREE_SVL("view-buffer-offset"),
     .type_kind_bits = LOOM_BOUNDARY_PROJECTION_TYPE_KIND_BIT(LOOM_TYPE_VIEW),
+    .slot_role_bits = LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(
+                          LOOM_BOUNDARY_PROJECTION_SLOT_FUNCTION_ARGUMENT) |
+                      LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(
+                          LOOM_BOUNDARY_PROJECTION_SLOT_FUNCTION_RESULT) |
+                      LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(
+                          LOOM_BOUNDARY_PROJECTION_SLOT_BLOCK_ARGUMENT) |
+                      LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(
+                          LOOM_BOUNDARY_PROJECTION_SLOT_CALL_RESULT),
     .function_applies = loom_view_boundary_function_applies,
     .initialize = loom_view_boundary_initialize_schema,
     .prepare_function = loom_view_boundary_prepare_function,

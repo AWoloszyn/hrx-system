@@ -33,6 +33,13 @@ typedef enum loom_boundary_projection_slot_role_e {
   LOOM_BOUNDARY_PROJECTION_SLOT_CALL_RESULT = 3,
 } loom_boundary_projection_slot_role_t;
 
+// Boundary slot roles that a projection rule may claim. Bit i corresponds to
+// loom_boundary_projection_slot_role_t value i.
+typedef uint8_t loom_boundary_projection_slot_role_bits_t;
+
+#define LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(role) \
+  ((loom_boundary_projection_slot_role_bits_t)1u << (role))
+
 // How physical components realize the destination logical definition.
 typedef enum loom_boundary_projection_destination_mode_e {
   // Reconstructs one logical value consumed by the original body uses.
@@ -160,6 +167,8 @@ struct loom_boundary_projection_rule_t {
   iree_string_view_t name;
   // Built-in type kinds that may be claimed by this rule.
   loom_boundary_projection_type_kind_bits_t type_kind_bits;
+  // Boundary slot roles that may be claimed by this rule.
+  loom_boundary_projection_slot_role_bits_t slot_role_bits;
   // Optional cheap function applicability query. NULL means all functions.
   loom_boundary_projection_function_applies_fn_t function_applies;
   // Optional cheap slot filter after type-kind dispatch. NULL admits the kind.

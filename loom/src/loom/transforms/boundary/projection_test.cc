@@ -106,6 +106,9 @@ static const loom_boundary_projection_rule_t kZeroComponentRule = {
     /*.name=*/IREE_SVL("test-zero-component"),
     /*.type_kind_bits=*/
     LOOM_BOUNDARY_PROJECTION_TYPE_KIND_BIT(LOOM_TYPE_SCALAR),
+    /*.slot_role_bits=*/
+    LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(
+        LOOM_BOUNDARY_PROJECTION_SLOT_BLOCK_ARGUMENT),
     /*.function_applies=*/nullptr,
     /*.slot_matches=*/nullptr,
     /*.initialize=*/nullptr,
@@ -238,6 +241,9 @@ static const loom_boundary_projection_rule_t kRejectableIdentityRule = {
     /*.name=*/IREE_SVL("test-rejectable-identity"),
     /*.type_kind_bits=*/
     LOOM_BOUNDARY_PROJECTION_TYPE_KIND_BIT(LOOM_TYPE_SCALAR),
+    /*.slot_role_bits=*/
+    LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(
+        LOOM_BOUNDARY_PROJECTION_SLOT_BLOCK_ARGUMENT),
     /*.function_applies=*/nullptr,
     /*.slot_matches=*/nullptr,
     /*.initialize=*/nullptr,

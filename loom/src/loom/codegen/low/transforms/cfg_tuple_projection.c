@@ -354,6 +354,8 @@ static const loom_boundary_projection_rule_t kLowCfgTupleProjectionRule = {
     .name = IREE_SVL("low-register-tuple"),
     .type_kind_bits =
         LOOM_BOUNDARY_PROJECTION_TYPE_KIND_BIT(LOOM_TYPE_REGISTER),
+    .slot_role_bits = LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(
+        LOOM_BOUNDARY_PROJECTION_SLOT_BLOCK_ARGUMENT),
     .function_applies = loom_low_cfg_tuple_function_applies,
     .slot_matches = loom_low_cfg_tuple_slot_matches,
     .plan_slot = loom_low_cfg_tuple_plan_slot,

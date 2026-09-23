@@ -343,6 +343,8 @@ static const loom_boundary_projection_rule_t kCfgLayoutProjectionRule = {
     .name = IREE_SVL("cfg-dynamic-strided-layout"),
     .type_kind_bits =
         LOOM_BOUNDARY_PROJECTION_TYPE_KIND_BIT(LOOM_TYPE_ENCODING),
+    .slot_role_bits = LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(
+        LOOM_BOUNDARY_PROJECTION_SLOT_BLOCK_ARGUMENT),
     .plan_slot = loom_cfg_layout_projection_plan_slot,
     .transport =
         {
