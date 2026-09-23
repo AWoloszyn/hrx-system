@@ -1650,6 +1650,22 @@ static iree_status_t loom_amdgpu_wait_plan_finish_node_classification(
     }
     const loom_amdgpu_descriptor_traits_t descriptor_traits =
         loom_amdgpu_descriptor_traits(descriptor_set, node->descriptor);
+    if (supports_xcnt &&
+        iree_any_bit_set(descriptor_traits,
+                         LOOM_AMDGPU_DESCRIPTOR_TRAIT_VECTOR_MEMORY)) {
+      const loom_low_descriptor_view_t* descriptor_view =
+          loom_low_descriptor_set_descriptor_view(descriptor_set,
+                                                  node->descriptor);
+      if (iree_any_bit_set(descriptor_view->instruction_class_flags,
+                           LOOM_LOW_INSTRUCTION_CLASS_FLAG_ATOMIC) ||
+          iree_any_bit_set(node->op->instance_flags,
+                           LOOM_MEMORY_ACCESS_FLAG_VOLATILE)) {
+        // These accesses cannot be repeated after a Gfx125x page-fault replay.
+        // Ordinary dependency waits may already drain translations; the barrier
+        // consumes their progress before deciding whether XCNT needs a wait.
+        node_state->barrier_counter_mask |= LOOM_AMDGPU_WAIT_COUNTER_MASK_X;
+      }
+    }
     if (loom_amdgpu_wait_plan_descriptor_has_xcnt_source_lease(
             descriptor_set, node->descriptor)) {
       node_state->source_counter_mask |= LOOM_AMDGPU_WAIT_COUNTER_MASK_X;
@@ -2828,12 +2844,17 @@ static iree_status_t loom_amdgpu_wait_plan_handle_storage_release_action(
   if (action->release_class_id == LOOM_AMDGPU_WAIT_COUNTER_X &&
       loom_amdgpu_wait_plan_node_xcnt_group(
           &builder->node_states[action->insertion_node_index]) ==
-          LOOM_AMDGPU_WAIT_XCNT_GROUP_VMEM) {
+          LOOM_AMDGPU_WAIT_XCNT_GROUP_VMEM &&
+      !iree_any_bit_set(builder->node_states[action->insertion_node_index]
+                            .barrier_counter_mask,
+                        LOOM_AMDGPU_WAIT_COUNTER_MASK_X)) {
     // VMEM translations are ordered. A VMEM packet that overwrites an older
     // VMEM source makes the hardware internally progress XCNT just far enough
     // to release that source. No wait instruction is required. Cross-block
     // counts are deliberately not reconstructed; the per-block marker records
     // the specific producer proven retired on this path.
+    // A replay barrier needs completion before the memory effect itself, so
+    // that packet's later result write cannot satisfy the barrier.
     if (producer_block == action->block_index) {
       target_count = loom_amdgpu_wait_plan_normalize_target_count(
           builder, LOOM_AMDGPU_WAIT_COUNTER_X, target_count);
@@ -3462,6 +3483,14 @@ static iree_status_t loom_amdgpu_wait_plan_handle_barrier(
   uint32_t outstanding_counter_mask =
       loom_amdgpu_wait_plan_outstanding_counter_mask(
           builder->outstanding_counts, node_state->barrier_counter_mask);
+  if (iree_any_bit_set(node_state->barrier_counter_mask,
+                       LOOM_AMDGPU_WAIT_COUNTER_MASK_X) &&
+      loom_amdgpu_wait_frontier_active_xcnt_groups(&builder->frontier) != 0) {
+    // Translation leases may enter through a fallthrough block without a
+    // hardware branch to drain them. Memory completion frontiers do not carry
+    // this independently tracked source lifetime.
+    outstanding_counter_mask |= LOOM_AMDGPU_WAIT_COUNTER_MASK_X;
+  }
   outstanding_counter_mask |=
       loom_amdgpu_wait_frontier_memory_query(
           &builder->frontier, generic_space,

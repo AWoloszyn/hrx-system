@@ -98,16 +98,22 @@ uint32_t loom_amdgpu_wait_packet_decode_bounds(
     if (value == immediate->no_wait_value) {
       continue;
     }
+    // Full waits also complete the generated architecture-coupled counters.
+    // Partial bounds retain only their directly encoded counter guarantees.
+    const uint32_t bound_counter_mask =
+        value == 0 ? target->selections[immediate->counter_mask]
+                         .full_drain_counter_mask
+                   : immediate->counter_mask;
     for (uint32_t slot = 0; slot < LOOM_AMDGPU_WAIT_COUNTER_SLOT_COUNT;
          ++slot) {
-      if (iree_any_bit_set(immediate->counter_mask,
+      if (iree_any_bit_set(bound_counter_mask,
                            loom_amdgpu_wait_counter_mask_from_slot(slot))) {
         out_bounds->target_counts[slot] =
             iree_min(out_bounds->target_counts[slot], value);
       }
     }
     if (value == 0) {
-      counter_mask |= immediate->counter_mask;
+      counter_mask |= bound_counter_mask;
     }
   }
   return counter_mask;

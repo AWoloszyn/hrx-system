@@ -1,0 +1,320 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// RUN: emit amdgpu-assembly @private_store_before_global_atomic strategy=source
+
+// An unrelated private store can still fault and replay a later global atomic.
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @private_store_before_global_atomic(%offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %signal: reg<amdgpu.sgpr x2>) asm {
+  scratch_store_b32_vaddr %offset, %value
+  %old = global_atomic_add_u32_rtn_saddr %offset, %value, %signal {scope = 2}
+  %sum = v_add_u32 %old, %value
+  return
+}
+
+// ----
+  scratch_store_b32 v0, v1, off offset:0 nv:0 scope:0 th:0
+  s_wait_xcnt xcnt(0)
+  global_atomic_add_u32_rtn_saddr v2, v0, v1, s[0:1] offset:0 scope:2 th:1
+  s_wait_loadcnt loadcnt(0)
+  v_add_u32 v2, v2, v1
+  s_wait_storecnt storecnt(0)
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @private_load_before_global_reduce strategy=source
+
+// No-return updates require the same translation boundary.
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @private_load_before_global_reduce(%offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %signal: reg<amdgpu.sgpr x2>) asm {
+  %loaded = scratch_load_b32_vaddr %offset
+  global_atomic_add_u32_saddr %offset, %value, %signal {scope = 2}
+  %sum = v_add_u32 %loaded, %value
+  return
+}
+
+// ----
+  scratch_load_b32 v2, v0, off offset:0 nv:0 scope:0 th:0
+  s_wait_xcnt xcnt(0)
+  global_atomic_add_u32_saddr v0, v1, s[0:1] offset:0 scope:2 th:0
+  s_wait_loadcnt loadcnt(0)
+  v_add_u32 v2, v2, v1
+  s_wait_storecnt storecnt(0)
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @private_store_before_buffer_atomic strategy=source
+
+// Buffer atomics also cannot be replayed after another VMEM faults.
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @private_store_before_buffer_atomic(%offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %signal: reg<amdgpu.sgpr x2>, %resource: reg<amdgpu.sgpr x4>, %scalar_offset: reg<amdgpu.sgpr>) asm {
+  scratch_store_b32_vaddr %offset, %value
+  %old = buffer_atomic_add_u32_rtn %value, %resource, %offset, %scalar_offset {scope = 2}
+  %sum = v_add_u32 %old, %offset
+  return
+}
+
+// ----
+  scratch_store_b32 v1, v0, off offset:0 nv:0 scope:0 th:0
+  s_wait_xcnt xcnt(0)
+  buffer_atomic_add_u32 v0, v1, s[0:3], s4 offen offset:0 scope:2 th:1
+  s_wait_loadcnt loadcnt(0)
+  v_add_u32 v2, v0, v1
+  s_wait_storecnt storecnt(0)
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @completed_private_store_before_atomic strategy=source
+
+// A full memory wait also drains XCNT; no second wait is needed.
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @completed_private_store_before_atomic(%offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %signal: reg<amdgpu.sgpr x2>) asm {
+  scratch_store_b32_vaddr %offset, %value
+  s_wait_storecnt {storecnt = 0}
+  %old = global_atomic_add_u32_rtn_saddr %offset, %value, %signal {scope = 2}
+  %sum = v_add_u32 %old, %value
+  return
+}
+
+// ----
+  scratch_store_b32 v0, v1, off offset:0 nv:0 scope:0 th:0
+  s_wait_storecnt storecnt(0)
+  global_atomic_add_u32_rtn_saddr v2, v0, v1, s[0:1] offset:0 scope:2 th:1
+  s_wait_loadcnt loadcnt(0)
+  v_add_u32 v2, v2, v1
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @partial_private_store_before_atomic strategy=source
+
+// A partial completion bound still permits the outstanding translation.
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @partial_private_store_before_atomic(%offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %signal: reg<amdgpu.sgpr x2>) asm {
+  scratch_store_b32_vaddr %offset, %value
+  s_wait_storecnt {storecnt = 1}
+  %old = global_atomic_add_u32_rtn_saddr %offset, %value, %signal {scope = 2}
+  %sum = v_add_u32 %old, %value
+  return
+}
+
+// ----
+  scratch_store_b32 v0, v1, off offset:0 nv:0 scope:0 th:0
+  s_wait_storecnt storecnt(1)
+  s_wait_xcnt xcnt(0)
+  global_atomic_add_u32_rtn_saddr v2, v0, v1, s[0:1] offset:0 scope:2 th:1
+  s_wait_loadcnt loadcnt(0)
+  v_add_u32 v2, v2, v1
+  s_wait_storecnt storecnt(0)
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @fallthrough_private_store_before_atomic strategy=source
+
+// A fallthrough edge emits no branch and retains outstanding translations.
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @fallthrough_private_store_before_atomic(%offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %signal: reg<amdgpu.sgpr x2>) asm {
+  scratch_store_b32_vaddr %offset, %value
+  low.br ^update
+^update:
+  %old = global_atomic_add_u32_rtn_saddr %offset, %value, %signal {scope = 2}
+  %sum = v_add_u32 %old, %value
+  return
+}
+
+// ----
+  scratch_store_b32 v0, v1, off offset:0 nv:0 scope:0 th:0
+.Lbb1:
+  s_wait_xcnt xcnt(0)
+  global_atomic_add_u32_rtn_saddr v2, v0, v1, s[0:1] offset:0 scope:2 th:1
+  s_wait_loadcnt loadcnt(0)
+  v_add_u32 v2, v2, v1
+  s_wait_storecnt storecnt(0)
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @branched_private_store_before_atomic strategy=source
+
+// A hardware branch drains XCNT before either successor executes.
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @branched_private_store_before_atomic(%offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %signal: reg<amdgpu.sgpr x2>, %condition: reg<amdgpu.scc>) asm {
+  scratch_store_b32_vaddr %offset, %value
+  low.cond_br %condition, ^skip, ^update : reg<amdgpu.scc>
+^skip:
+  return
+^update:
+  %old = global_atomic_add_u32_rtn_saddr %offset, %value, %signal {scope = 2}
+  %sum = v_add_u32 %old, %value
+  return
+}
+
+// ----
+  scratch_store_b32 v0, v1, off offset:0 nv:0 scope:0 th:0
+  s_cbranch_scc0 .Lbb2
+.Lbb1:
+  s_wait_storecnt storecnt(0)
+  s_endpgm
+.Lbb2:
+  global_atomic_add_u32_rtn_saddr v2, v0, v1, s[0:1] offset:0 scope:2 th:1
+  s_wait_loadcnt loadcnt(0)
+  v_add_u32 v2, v2, v1
+  s_wait_storecnt storecnt(0)
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @smem_before_global_atomic strategy=source
+
+// Scalar-memory completion satisfies the replay boundary.
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @smem_before_global_atomic(%offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %signal: reg<amdgpu.sgpr x2>) asm {
+  %loaded = s_load_dword_offset_only %signal
+  %old = global_atomic_add_u32_rtn_saddr %offset, %value, %signal {scope = 2}
+  %sum = v_add_u32 %old, %value
+  %sum_scalar = s_add_u32 %loaded, %loaded
+  return
+}
+
+// ----
+  s_load_dword s2, s[0:1] offset:0
+  s_wait_kmcnt kmcnt(0)
+  global_atomic_add_u32_rtn_saddr v2, v0, v1, s[0:1] offset:0 scope:2 th:1
+  s_wait_loadcnt loadcnt(0)
+  v_add_u32 v2, v2, v1
+  s_add_u32 s2, s2, s2
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @private_store_before_ordinary_load strategy=source
+
+// Ordinary memory accesses do not require a replay boundary.
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @private_store_before_ordinary_load(%offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %signal: reg<amdgpu.sgpr x2>) asm {
+  scratch_store_b32_vaddr %offset, %value
+  %loaded = global_load_b32_saddr %offset, %signal
+  %sum = v_add_u32 %loaded, %value
+  return
+}
+
+// ----
+  scratch_store_b32 v0, v1, off offset:0 nv:0 scope:0 th:0
+  global_load_b32 v2, v0, s[0:1] offset:0
+  s_wait_loadcnt loadcnt(0)
+  v_add_u32 v2, v2, v1
+  s_wait_storecnt storecnt(0)
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @private_store_before_volatile_load strategy=source
+
+// Volatile memory ordering already completes prior accesses and translations.
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @private_store_before_volatile_load(%offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %signal: reg<amdgpu.sgpr x2>) asm {
+  scratch_store_b32_vaddr %offset, %value
+  %loaded = global_load_b32_saddr<volatile> %offset, %signal
+  %sum = v_add_u32 %loaded, %value
+  return
+}
+
+// ----
+  scratch_store_b32 v0, v1, off offset:0 nv:0 scope:0 th:0
+  s_wait_storecnt storecnt(0)
+  global_load_b32 v2, v0, s[0:1] offset:0
+  s_wait_loadcnt loadcnt(0)
+  v_add_u32 v2, v2, v1
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @gfx1200_private_store_before_global_atomic strategy=source
+
+// Gfx120x uses the same atomic encoding without the replay counter requirement.
+amdgpu.target<gfx1200> @target
+
+low.func.def target<amdgpu.rdna4.core>(@target) @gfx1200_private_store_before_global_atomic(%offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %signal: reg<amdgpu.sgpr x2>) asm {
+  scratch_store_b32_vaddr %offset, %value
+  %old = global_atomic_add_u32_rtn_saddr %offset, %value, %signal {scope = 2}
+  %sum = v_add_u32 %old, %value
+  return
+}
+
+// ----
+  scratch_store_b32 v0, v1, off offset:0 nv:0 scope:0 th:0
+  global_atomic_add_u32_rtn_saddr v0, v0, v1, s[0:1] offset:0 scope:2 th:1
+  s_wait_loadcnt loadcnt(0)
+  v_add_u32 v0, v0, v1
+  s_wait_storecnt storecnt(0)
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @global_store_before_tied_atomic strategy=source
+
+// Source-reuse and memory-completion requirements share one full store wait.
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @global_store_before_tied_atomic(%offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %resource: reg<amdgpu.sgpr x4>, %scalar_offset: reg<amdgpu.sgpr>) asm {
+  global_store_b32_saddr %offset, %value, %base
+  %old = buffer_atomic_add_u32_rtn %value, %resource, %offset, %scalar_offset {scope = 2}
+  %sum = v_add_u32 %old, %offset
+  return
+}
+
+// ----
+  global_store_b32 v1, v0, s[0:1] offset:0
+  s_wait_storecnt storecnt(0)
+  buffer_atomic_add_u32 v0, v1, s[4:7], s2 offen offset:0 scope:2 th:1
+  s_wait_loadcnt loadcnt(0)
+  v_add_u32 v2, v0, v1
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @private_store_before_flat_atomic strategy=source
+
+// The generic atomic completes prior private stores before its memory effect.
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @private_store_before_flat_atomic(%offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %address: reg<amdgpu.vgpr x2>) asm {
+  scratch_store_b32_vaddr %offset, %value
+  flat_atomic_add_u32 %address, %value {scope = 2}
+  return
+}
+
+// ----
+  scratch_store_b32 v0, v1, off offset:0 nv:0 scope:0 th:0
+  s_wait_storecnt storecnt(0)
+  flat_atomic_add_u32 v[2:3], v1 offset:0 scope:2 th:0
+  s_wait_storecnt storecnt(0)
+  s_endpgm
+
+// ====
+// RUN: emit amdgpu-assembly @empty_store_wait_drains_load_translation strategy=source
+
+// STORE_CNT is already empty, but its wait still completes the load translation.
+amdgpu.target<gfx1250> @target
+
+low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @empty_store_wait_drains_load_translation(%offset: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>, %signal: reg<amdgpu.sgpr x2>) asm {
+  %loaded = scratch_load_b32_vaddr %offset
+  s_wait_storecnt {storecnt = 0}
+  global_atomic_add_u32_saddr %offset, %value, %signal {scope = 2}
+  %sum = v_add_u32 %loaded, %value
+  return
+}
+
+// ----
+  scratch_load_b32 v2, v0, off offset:0 nv:0 scope:0 th:0
+  s_wait_storecnt storecnt(0)
+  global_atomic_add_u32_saddr v0, v1, s[0:1] offset:0 scope:2 th:0
+  s_wait_loadcnt loadcnt(0)
+  v_add_u32 v2, v2, v1
+  s_wait_storecnt storecnt(0)
+  s_endpgm

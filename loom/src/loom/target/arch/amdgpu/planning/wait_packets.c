@@ -232,6 +232,17 @@ static void loom_amdgpu_wait_packet_materialize_group(
     const loom_amdgpu_wait_packet_group_t* group) {
   IREE_ASSERT_EQ(group->counter_mask & ~LOOM_AMDGPU_WAIT_COUNTER_MASK_ALL, 0u);
   uint32_t remaining_counter_mask = group->counter_mask;
+  // A full wait can imply another requested bound, including Gfx125x XCNT.
+  // Keep the owning counter so at least one packet still realizes the bound.
+  for (uint32_t slot = 0; slot < LOOM_AMDGPU_WAIT_COUNTER_SLOT_COUNT; ++slot) {
+    const uint32_t counter_mask = loom_amdgpu_wait_counter_mask_from_slot(slot);
+    if (iree_any_bit_set(remaining_counter_mask, counter_mask) &&
+        group->target_counts[slot] == 0) {
+      remaining_counter_mask &=
+          ~(builder->target.selections[counter_mask].full_drain_counter_mask &
+            ~counter_mask);
+    }
+  }
   while (remaining_counter_mask != 0) {
     uint32_t covered_counter_mask = 0;
     const loom_amdgpu_wait_packet_descriptor_template_t* descriptor =

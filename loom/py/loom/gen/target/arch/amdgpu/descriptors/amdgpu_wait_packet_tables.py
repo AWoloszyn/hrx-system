@@ -393,6 +393,12 @@ def _full_drain_counter_mask(
         if not coupled_mask:
             raise ValueError(f"wait counter {counter_id} has no immediate encoding")
         full_drain_mask |= coupled_mask
+    # Gfx125x memory completion waits also wait for address translation. ALU
+    # dependency controls are not memory-counter waits and do not drain XCNT.
+    xcnt_mask = _counter_mask(_COUNTER_X)
+    memory_mask = sum(_counter_mask(counter_id) for counter_id in (_COUNTER_VMEM_LOAD, _COUNTER_VMEM_STORE, _COUNTER_LDS, _COUNTER_SMEM, _COUNTER_TENSOR, _COUNTER_ASYNC))
+    if full_drain_mask & memory_mask and any(immediate.counter_mask & xcnt_mask for immediate in immediate_rows):
+        full_drain_mask |= xcnt_mask
     return full_drain_mask
 
 

@@ -39,6 +39,7 @@ from loom.target.arch.amdgpu.target_info import (
     AMDGPU_MATRIX_FEATURE_PROFILE_WMMA_GFX12_5_GENERIC,
     AMDGPU_MATRIX_FEATURE_PROFILE_WMMA_GFX1250,
     AMDGPU_MATRIX_FEATURES_BY_PROFILE,
+    AMDGPU_MEMORY_ORDERING_MODEL_GFX12,
     AMDGPU_PROCESSOR_INFOS,
     AMDGPU_PROCESSOR_SCHEDULING_DELAY_ALU,
     AMDGPU_TARGET_ID_FEATURE_SUPPORT_NONE,
@@ -392,6 +393,22 @@ def test_generic_contracts_are_portable_member_intersections() -> None:
     validate_amdgpu_generic_contracts(
         AMDGPU_PROCESSOR_INFOS, AMDGPU_DESCRIPTOR_SET_INFOS
     )
+
+
+def test_generic_contracts_reject_different_ordering_with_same_cache_encoding() -> None:
+    descriptor_sets = tuple(
+        replace(
+            info,
+            vector_memory=replace(
+                info.vector_memory, ordering_model=AMDGPU_MEMORY_ORDERING_MODEL_GFX12
+            ),
+        )
+        if info.generator_target == "rdna4_gfx125x"
+        else info
+        for info in AMDGPU_DESCRIPTOR_SET_INFOS
+    )
+    with _raises_value_error("memory-ordering model does not match every member"):
+        validate_amdgpu_generic_contracts(AMDGPU_PROCESSOR_INFOS, descriptor_sets)
 
 
 def test_occupancy_capacity_change_points_cover_every_positive_demand() -> None:

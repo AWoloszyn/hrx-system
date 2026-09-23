@@ -473,6 +473,20 @@ typedef enum loom_amdgpu_vector_memory_cache_policy_encoding_e {
   LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX950_NT_SC0_SC1 = 3,
 } loom_amdgpu_vector_memory_cache_policy_encoding_t;
 
+// Memory ordering is independent of the packet's cache-field encoding. In
+// particular, GFX12 and GFX125 share SCOPE but have different cache completion
+// and device-release writeback requirements.
+typedef enum loom_amdgpu_memory_ordering_model_e {
+  // No global atomic ordering recipe is available.
+  LOOM_AMDGPU_MEMORY_ORDERING_MODEL_NONE = 0,
+  // Separate vector load/store counters and GL0/GL1 invalidation.
+  LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX11 = 1,
+  // Scoped vector caches with device-coherent write completion.
+  LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX12 = 2,
+  // Scoped writeback and explicit invalidation completion.
+  LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX125 = 3,
+} loom_amdgpu_memory_ordering_model_t;
+
 typedef struct loom_amdgpu_descriptor_set_sopp_opcodes_t {
   // Opcode for S_NOP.
   uint16_t nop;
@@ -498,6 +512,8 @@ typedef struct loom_amdgpu_descriptor_set_buffer_resource_info_t {
 typedef struct loom_amdgpu_descriptor_set_vector_memory_info_t {
   // Vector memory packet cache-policy immediate encoding shape.
   loom_amdgpu_vector_memory_cache_policy_encoding_t cache_policy_encoding;
+  // Completion and coherence contract for global atomic memory operations.
+  loom_amdgpu_memory_ordering_model_t ordering_model;
 } loom_amdgpu_descriptor_set_vector_memory_info_t;
 
 typedef struct loom_amdgpu_descriptor_set_info_t {
