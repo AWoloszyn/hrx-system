@@ -406,6 +406,19 @@ loom_cc_test(
 )
 
 loom_cc_test(
+    name = "matrix_fragment_memory_packet_test",
+    srcs = ["matrix_fragment_memory_packet_test.cc"],
+    deps = [
+        ":lower",
+        "//loom/src/loom/target/arch/amdgpu:target_info",
+        "//loom/src/loom/target/arch/amdgpu/descriptors:low_registry",
+        "//loom/src/loom/target/arch/amdgpu/matrix:contract",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+loom_cc_test(
     name = "sanitizer_access_test",
     srcs = ["sanitizer_access_test.cc"],
     deps = [

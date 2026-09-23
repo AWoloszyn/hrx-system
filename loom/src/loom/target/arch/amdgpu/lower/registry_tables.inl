@@ -283,6 +283,14 @@ static const loom_amdgpu_lower_dispatch_row_t
                 loom_amdgpu_select_sanitizer_race_access_dispatch,
                 loom_amdgpu_emit_sanitizer_race_access_dispatch,
                 loom_amdgpu_low_legality_verify_sanitizer_race_access),
+        [LOOM_AMDGPU_OP_INDEX(LOOM_OP_SANITIZER_RACE_FRAGMENT_ACCESS)] =
+            LOOM_AMDGPU_RECIPE_DATA_STORAGE_ROW(
+                LOOM_OP_SANITIZER_RACE_FRAGMENT_ACCESS,
+                loom_amdgpu_sanitizer_race_fragment_access_plan_t,
+                loom_amdgpu_select_sanitizer_race_fragment_access_dispatch,
+                loom_amdgpu_emit_sanitizer_race_fragment_access_dispatch,
+                loom_amdgpu_low_legality_verify_sanitizer_race_fragment_access,
+                LOOM_AMDGPU_STORAGE_FRAGMENT_MEMORY),
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_SANITIZER_RACE_SYNC)] =
             LOOM_AMDGPU_RECIPE_DATA_ROW(
                 LOOM_OP_SANITIZER_RACE_SYNC,
@@ -462,7 +470,7 @@ static const loom_amdgpu_lower_dispatch_row_t
                 loom_amdgpu_fragment_memory_plan_t,
                 loom_amdgpu_select_vector_fragment_load_dispatch,
                 loom_amdgpu_emit_vector_fragment_load_dispatch,
-                loom_amdgpu_low_legality_verify_vector_fragment_memory,
+                loom_amdgpu_low_legality_verify_fragment_memory,
                 LOOM_AMDGPU_STORAGE_FRAGMENT_MEMORY,
                 LOOM_AMDGPU_REPORT_KEY_FRAGMENT_MEMORY_STRATEGY),
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_VECTOR_FRAGMENT_STORE)] =
@@ -471,7 +479,7 @@ static const loom_amdgpu_lower_dispatch_row_t
                 loom_amdgpu_fragment_memory_plan_t,
                 loom_amdgpu_select_vector_fragment_store_dispatch,
                 loom_amdgpu_emit_vector_fragment_store_dispatch,
-                loom_amdgpu_low_legality_verify_vector_fragment_memory,
+                loom_amdgpu_low_legality_verify_fragment_memory,
                 LOOM_AMDGPU_STORAGE_FRAGMENT_MEMORY,
                 LOOM_AMDGPU_REPORT_KEY_FRAGMENT_MEMORY_STRATEGY),
         [LOOM_AMDGPU_OP_INDEX(LOOM_OP_VECTOR_FRAGMENT_REPACK)] =

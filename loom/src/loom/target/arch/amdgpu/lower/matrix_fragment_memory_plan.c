@@ -22,6 +22,7 @@
 #include "loom/ops/encoding/storage.h"
 #include "loom/ops/kernel/ops.h"
 #include "loom/ops/low/ops.h"
+#include "loom/ops/sanitizer/ops.h"
 #include "loom/ops/vector/fragment.h"
 #include "loom/ops/vector/memory.h"
 #include "loom/ops/vector/ops.h"
@@ -1201,27 +1202,43 @@ static void loom_amdgpu_fragment_memory_source_from_op(
       .cache_temporal = loom_cache_policy_temporal(cache_policy),
   };
   if (operation_kind == LOOM_LOW_SOURCE_MEMORY_OPERATION_LOAD) {
-    out_source->vector_role = loom_vector_fragment_load_role(source_op);
-    out_source->view = loom_vector_fragment_load_view(source_op);
-    out_source->payload = loom_vector_fragment_load_result(source_op);
-    out_source->blocks = loom_vector_fragment_load_blocks(source_op);
-    out_source->rows = loom_vector_fragment_load_rows(source_op);
-    out_source->columns = loom_vector_fragment_load_columns(source_op);
+    if (loom_vector_fragment_load_isa(source_op)) {
+      out_source->vector_role = loom_vector_fragment_load_role(source_op);
+      out_source->view = loom_vector_fragment_load_view(source_op);
+      out_source->payload = loom_vector_fragment_load_result(source_op);
+      out_source->blocks = loom_vector_fragment_load_blocks(source_op);
+      out_source->rows = loom_vector_fragment_load_rows(source_op);
+      out_source->columns = loom_vector_fragment_load_columns(source_op);
+      out_source->static_indices =
+          loom_vector_fragment_load_static_indices(source_op);
+      out_source->dynamic_indices =
+          loom_vector_fragment_load_indices(source_op);
+      return;
+    }
+  } else if (loom_vector_fragment_store_isa(source_op)) {
+    out_source->vector_role = loom_vector_fragment_store_role(source_op);
+    out_source->view = loom_vector_fragment_store_view(source_op);
+    out_source->payload = loom_vector_fragment_store_value(source_op);
+    out_source->blocks = loom_vector_fragment_store_blocks(source_op);
+    out_source->rows = loom_vector_fragment_store_rows(source_op);
+    out_source->columns = loom_vector_fragment_store_columns(source_op);
     out_source->static_indices =
-        loom_vector_fragment_load_static_indices(source_op);
-    out_source->dynamic_indices = loom_vector_fragment_load_indices(source_op);
+        loom_vector_fragment_store_static_indices(source_op);
+    out_source->dynamic_indices = loom_vector_fragment_store_indices(source_op);
     return;
   }
 
-  out_source->vector_role = loom_vector_fragment_store_role(source_op);
-  out_source->view = loom_vector_fragment_store_view(source_op);
-  out_source->payload = loom_vector_fragment_store_value(source_op);
-  out_source->blocks = loom_vector_fragment_store_blocks(source_op);
-  out_source->rows = loom_vector_fragment_store_rows(source_op);
-  out_source->columns = loom_vector_fragment_store_columns(source_op);
+  IREE_ASSERT_TRUE(loom_sanitizer_race_fragment_access_isa(source_op));
+  out_source->vector_role = loom_sanitizer_race_fragment_access_role(source_op);
+  out_source->view = loom_sanitizer_race_fragment_access_view(source_op);
+  out_source->payload = loom_sanitizer_race_fragment_access_fragment(source_op);
+  out_source->blocks = loom_sanitizer_race_fragment_access_blocks(source_op);
+  out_source->rows = loom_sanitizer_race_fragment_access_rows(source_op);
+  out_source->columns = loom_sanitizer_race_fragment_access_columns(source_op);
   out_source->static_indices =
-      loom_vector_fragment_store_static_indices(source_op);
-  out_source->dynamic_indices = loom_vector_fragment_store_indices(source_op);
+      loom_sanitizer_race_fragment_access_static_indices(source_op);
+  out_source->dynamic_indices =
+      loom_sanitizer_race_fragment_access_indices(source_op);
 }
 
 static bool loom_amdgpu_fragment_memory_fp8_load_scale_source(
@@ -1634,7 +1651,7 @@ static bool loom_amdgpu_analyze_vector_fragment_memory_plan_impl(
     return false;
   }
   return loom_amdgpu_fragment_memory_select_fp8_load_decode_plan(
-      fact_table, descriptor_set, source_op, out_plan);
+      fact_table, descriptor_set, source.payload, out_plan);
 }
 
 iree_status_t loom_amdgpu_query_accumulator_fragment_store_representations(
@@ -1720,13 +1737,15 @@ static iree_status_t loom_amdgpu_fragment_memory_select(
       context, &alloca_layout));
   loom_amdgpu_matrix_result_representation_id_t required_representation =
       LOOM_AMDGPU_MATRIX_RESULT_REPRESENTATION_NONE;
+  loom_amdgpu_fragment_memory_source_t source = {0};
+  loom_amdgpu_fragment_memory_source_from_op(module, source_op, operation_kind,
+                                             &source);
   if (operation_kind == LOOM_LOW_SOURCE_MEMORY_OPERATION_STORE &&
-      loom_vector_fragment_store_role(source_op) == LOOM_VECTOR_ROLE_RESULT) {
+      source.vector_role == LOOM_VECTOR_ROLE_RESULT) {
     loom_low_representation_id_t selected_representation =
         LOOM_LOW_REPRESENTATION_ID_NONE;
     IREE_RETURN_IF_ERROR(loom_low_lower_representation_lookup(
-        context, loom_vector_fragment_store_value(source_op),
-        &selected_representation));
+        context, source.payload, &selected_representation));
     if (selected_representation != LOOM_LOW_REPRESENTATION_ID_NONE) {
       IREE_ASSERT_LE(selected_representation,
                      LOOM_AMDGPU_MATRIX_RESULT_REPRESENTATION_MAX_ID);
@@ -1772,7 +1791,23 @@ iree_status_t loom_amdgpu_select_vector_fragment_store_plan(
       out_selected);
 }
 
-iree_status_t loom_amdgpu_low_legality_verify_vector_fragment_memory(
+iree_status_t loom_amdgpu_select_sanitizer_race_fragment_memory_plan(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    loom_amdgpu_fragment_memory_plan_t* out_plan, bool* out_selected) {
+  IREE_ASSERT_TRUE(loom_sanitizer_race_fragment_access_isa(source_op));
+  const loom_sanitizer_race_access_kind_t kind =
+      loom_sanitizer_race_fragment_access_kind(source_op);
+  IREE_ASSERT_TRUE(kind == LOOM_SANITIZER_RACE_ACCESS_KIND_READ ||
+                   kind == LOOM_SANITIZER_RACE_ACCESS_KIND_WRITE);
+  const loom_low_source_memory_operation_kind_t operation_kind =
+      kind == LOOM_SANITIZER_RACE_ACCESS_KIND_READ
+          ? LOOM_LOW_SOURCE_MEMORY_OPERATION_LOAD
+          : LOOM_LOW_SOURCE_MEMORY_OPERATION_STORE;
+  return loom_amdgpu_fragment_memory_select(context, source_op, operation_kind,
+                                            out_plan, out_selected);
+}
+
+iree_status_t loom_amdgpu_low_legality_verify_fragment_memory(
     const loom_target_low_legality_provider_t* provider,
     loom_target_low_legality_context_t* context, const loom_op_t* op,
     bool* out_handled) {
@@ -1787,6 +1822,11 @@ iree_status_t loom_amdgpu_low_legality_verify_vector_fragment_memory(
       LOOM_LOW_SOURCE_MEMORY_OPERATION_LOAD;
   if (op->kind == LOOM_OP_VECTOR_FRAGMENT_STORE) {
     operation_kind = LOOM_LOW_SOURCE_MEMORY_OPERATION_STORE;
+  } else if (op->kind == LOOM_OP_SANITIZER_RACE_FRAGMENT_ACCESS) {
+    operation_kind = loom_sanitizer_race_fragment_access_kind(op) ==
+                             LOOM_SANITIZER_RACE_ACCESS_KIND_READ
+                         ? LOOM_LOW_SOURCE_MEMORY_OPERATION_LOAD
+                         : LOOM_LOW_SOURCE_MEMORY_OPERATION_STORE;
   } else if (op->kind != LOOM_OP_VECTOR_FRAGMENT_LOAD) {
     *out_handled = false;
     return iree_ok_status();
@@ -1822,6 +1862,12 @@ iree_status_t loom_amdgpu_low_legality_verify_vector_fragment_memory(
           &environment, &source, operation_kind, &prepared,
           LOOM_AMDGPU_MATRIX_RESULT_REPRESENTATION_NONE, &plan,
           /*out_publication_choice=*/NULL, &diagnostic)) {
+    if (loom_sanitizer_race_fragment_access_isa(op) &&
+        plan.source.memory_space != LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP) {
+      return loom_amdgpu_low_legality_reject(
+          context, op,
+          IREE_SV("target_contract.sanitizer_race.workgroup_memory_required"));
+    }
     return iree_ok_status();
   }
   iree_string_view_t constraint_key = diagnostic.constraint_key;

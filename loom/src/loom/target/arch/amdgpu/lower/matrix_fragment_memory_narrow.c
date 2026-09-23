@@ -11,6 +11,7 @@
 #include "loom/ops/low/ops.h"
 #include "loom/target/arch/amdgpu/lower/emit.h"
 #include "loom/target/arch/amdgpu/lower/encoding/fp8.h"
+#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_packet.h"
 #include "loom/target/arch/amdgpu/lower/types.h"
 
 IREE_ATTRIBUTE_NOINLINE static iree_status_t
@@ -749,21 +750,25 @@ iree_status_t loom_amdgpu_emit_fragment_memory_fp8_to_packed_16bit_load_packet(
                          LOOM_AMDGPU_FP8_NATIVE_DESCRIPTOR_FLAG_HAS_PAIR));
   }
 
+  loom_amdgpu_fragment_memory_issued_access_t issued_accesses
+      [LOOM_AMDGPU_FRAGMENT_MEMORY_MAX_ISSUED_ACCESSES_PER_PACKET];
+  const uint16_t issued_access_count =
+      loom_amdgpu_fragment_memory_query_issued_accesses(plan, packet,
+                                                        issued_accesses);
+  IREE_ASSERT_EQ(issued_access_count, 1u);
+  const loom_amdgpu_fragment_memory_issued_access_t* access =
+      &issued_accesses[0];
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_fragment_memory_vaddr(
-      context, source_op, plan, packet->register_index,
-      /*element_index=*/0, packet->descriptor_ref, address_state, vgpr_type,
-      &address));
+      context, source_op, plan, access->register_index, access->element_index,
+      access->descriptor_ref, address_state, vgpr_type, &address));
 
   loom_type_t packet_type = vgpr_type;
   IREE_RETURN_IF_ERROR(loom_amdgpu_fragment_memory_packet_type(
       context, packet->packet_register_count, vgpr_type, &packet_type));
   loom_value_id_t low_source_packet = LOOM_VALUE_ID_INVALID;
-  const uint32_t vector_lane_count =
-      (uint32_t)packet->result_register_count *
-      LOOM_AMDGPU_FRAGMENT_PACKED_B16_ELEMENT_COUNT;
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_fragment_load_packet(
-      context, source_op, layout, plan, packet, /*element_index=*/0,
-      vector_lane_count, packet_type, &address, low_packet_resource,
+      context, source_op, layout, plan, packet, access->element_index,
+      access->element_count, packet_type, &address, low_packet_resource,
       low_soffset, &low_source_packet));
   if (packet->result_register_count == 1) {
     IREE_RETURN_IF_ERROR(

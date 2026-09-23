@@ -411,6 +411,24 @@ endif()
 if(LOOM_TARGET_ARCH_AMDGPU)
 loom_cc_test(
   NAME
+    matrix_fragment_memory_packet_test
+  SRCS
+    "matrix_fragment_memory_packet_test.cc"
+  DEPS
+    ::lower
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::target::arch::amdgpu::descriptors::low_registry
+    loom::target::arch::amdgpu::matrix::contract
+    loom::target::arch::amdgpu::target_info
+  LABELS
+    "iree-build-requirement=loom.target.arch.amdgpu"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU)
+loom_cc_test(
+  NAME
     sanitizer_access_test
   SRCS
     "sanitizer_access_test.cc"

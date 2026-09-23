@@ -822,6 +822,16 @@ LOOM_AMDGPU_DEFINE_DATA_EMIT(loom_amdgpu_emit_sanitizer_race_access_dispatch,
                              loom_amdgpu_sanitizer_race_access_plan_t,
                              loom_amdgpu_lower_sanitizer_race_access)
 
+LOOM_AMDGPU_DEFINE_DATA_SELECT(
+    loom_amdgpu_select_sanitizer_race_fragment_access_dispatch,
+    loom_amdgpu_sanitizer_race_fragment_access_plan_t,
+    loom_amdgpu_select_sanitizer_race_fragment_access_plan)
+
+LOOM_AMDGPU_DEFINE_DATA_EMIT(
+    loom_amdgpu_emit_sanitizer_race_fragment_access_dispatch,
+    loom_amdgpu_sanitizer_race_fragment_access_plan_t,
+    loom_amdgpu_lower_sanitizer_race_fragment_access)
+
 LOOM_AMDGPU_DEFINE_DATA_SELECT(loom_amdgpu_select_sanitizer_race_sync_dispatch,
                                loom_amdgpu_sanitizer_race_sync_plan_t,
                                loom_amdgpu_select_sanitizer_race_sync_plan)
@@ -1364,9 +1374,18 @@ static void loom_amdgpu_mark_plan_storage_demands(
           (const loom_amdgpu_prefetch_plan_t*)plan.target_data);
       return;
     case LOOM_AMDGPU_STORAGE_FRAGMENT_MEMORY:
-      loom_amdgpu_mark_fragment_memory_plan_storage_demands(
-          context, source_op,
-          (const loom_amdgpu_fragment_memory_plan_t*)plan.target_data);
+      if (plan.id == LOOM_OP_SANITIZER_RACE_FRAGMENT_ACCESS) {
+        const loom_amdgpu_sanitizer_race_fragment_access_plan_t*
+            fragment_access_plan =
+                (const loom_amdgpu_sanitizer_race_fragment_access_plan_t*)
+                    plan.target_data;
+        loom_amdgpu_mark_fragment_memory_address_storage_demands(
+            context, &fragment_access_plan->fragment_memory);
+      } else {
+        loom_amdgpu_mark_fragment_memory_plan_storage_demands(
+            context, source_op,
+            (const loom_amdgpu_fragment_memory_plan_t*)plan.target_data);
+      }
       return;
     case LOOM_AMDGPU_STORAGE_SUBGROUP_BROADCAST:
       loom_amdgpu_mark_subgroup_broadcast_plan_storage_demands(

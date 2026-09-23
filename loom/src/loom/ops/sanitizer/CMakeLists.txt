@@ -29,6 +29,7 @@ loom_generated_cc_library(
     "tables.c"
   HDRS
     "ops.h"
+    "race_access.h"
   ARGS
     "--dialect=sanitizer"
   EXTRA_OUTPUT_FLAGS
@@ -43,6 +44,7 @@ loom_generated_cc_library(
     loom::ir::facts
     loom::ops::atomic
     loom::ops::op_defs
+    loom::ops::vector
     loom::ops::view
     loom::rewrite::rewriter
     loom::rewrite::type_propagation

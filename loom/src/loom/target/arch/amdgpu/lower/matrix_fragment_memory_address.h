@@ -93,6 +93,15 @@ iree_status_t loom_amdgpu_emit_fragment_memory_vaddr(
     loom_amdgpu_fragment_memory_address_state_t* address_state,
     loom_type_t vgpr_type, loom_amdgpu_fragment_memory_address_t* out_address);
 
+// Emits one physical fragment access's complete memory-space-relative byte
+// offset, including bytes represented by a descriptor immediate.
+iree_status_t loom_amdgpu_emit_fragment_memory_byte_offset(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    const loom_amdgpu_fragment_memory_plan_t* plan, uint16_t register_index,
+    uint16_t element_index, loom_amdgpu_descriptor_ref_t descriptor_ref,
+    loom_amdgpu_fragment_memory_address_state_t* address_state,
+    loom_type_t vgpr_type, loom_value_id_t* out_low_byte_offset);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

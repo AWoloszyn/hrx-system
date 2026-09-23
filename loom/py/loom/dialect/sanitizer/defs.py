@@ -9,10 +9,17 @@
 from loom.assembly import (
     ARROW,
     COLON,
+    COMMA,
+    GLUE,
+    LBRACKET,
+    LPAREN,
+    RBRACKET,
+    RPAREN,
     Attr,
     AttrDict,
     Clause,
     IndexList,
+    OptionalGroup,
     PredicateList,
     Ref,
     Refs,
@@ -20,9 +27,11 @@ from loom.assembly import (
     TemplateParam,
     TypeOf,
     TypesOf,
+    kw,
 )
 from loom.dialect.atomic import AtomicOrdering, AtomicScope
 from loom.dialect.memory import MemorySpace
+from loom.dialect.vector.defs import VectorFragmentRole
 from loom.dsl import (
     ANY,
     ATTR_TYPE_BOOL,
@@ -34,6 +43,7 @@ from loom.dsl import (
     INDEX,
     REFINABLE_RESULT_TYPE_REFS,
     UNKNOWN_EFFECTS,
+    VECTOR,
     VIEW,
     AttrDef,
     ContractFamily,
@@ -59,6 +69,7 @@ __all__ = [
     "sanitizer_assert_op",
     "sanitizer_assert_value",
     "sanitizer_race_access",
+    "sanitizer_race_fragment_access",
     "sanitizer_race_sync",
     "sanitizer_ops",
 ]
@@ -117,6 +128,9 @@ SanitizerRaceAccessKind = EnumDef(
         ),
     ],
     doc="Logical memory access kind covered by a sanitizer race observation.",
+    c_type="loom_sanitizer_race_access_kind_t",
+    c_const_prefix="LOOM_SANITIZER_RACE_ACCESS_KIND",
+    c_include="loom/ops/sanitizer/race_access.h",
 )
 
 
@@ -461,6 +475,88 @@ sanitizer_race_access = Op(
 
 
 # ============================================================================
+# sanitizer.race.fragment_access
+# ============================================================================
+
+sanitizer_race_fragment_access = Op(
+    "sanitizer.race.fragment_access",
+    group=sanitizer_ops,
+    doc=(
+        "Observe the target-selected physical memory activity of a matrix "
+        "fragment load or store. The fragment payload, logical origin, matrix "
+        "shape, and role preserve the source contract until target lowering "
+        "selects the same lane participation and addresses as the corresponding "
+        "fragment memory operation."
+    ),
+    operands=[
+        Operand("fragment", VECTOR, doc="Physical matrix fragment payload."),
+        Operand("view", VIEW, doc="Typed view being accessed."),
+        Operand(
+            "indices",
+            INDEX,
+            variadic=True,
+            doc="Dynamic logical origin indices.",
+        ),
+        Operand(
+            "blocks",
+            INDEX,
+            optional=True,
+            doc="Optional independent matrix block count.",
+        ),
+        Operand("rows", INDEX, doc="Logical matrix row count."),
+        Operand("columns", INDEX, doc="Logical matrix column count."),
+    ],
+    attrs=[
+        AttrDef(
+            "kind",
+            ATTR_TYPE_ENUM,
+            enum_def=SanitizerRaceAccessKind,
+            doc="Logical access kind being observed.",
+        ),
+        AttrDef(
+            "role",
+            ATTR_TYPE_ENUM,
+            enum_def=VectorFragmentRole,
+            doc="Matrix fragment role being observed.",
+        ),
+        AttrDef(
+            "static_indices",
+            ATTR_TYPE_I64_ARRAY,
+            doc="Static logical origin indices with INT64_MIN sentinels for dynamics.",
+        ),
+    ],
+    traits=[UNKNOWN_EFFECTS],
+    contracts=[ContractFamily.SANITIZER_RACE],
+    verify="loom_sanitizer_race_fragment_access_verify",
+    format=[
+        TemplateParam("kind"),
+        Ref("fragment"),
+        COMMA,
+        Ref("view"),
+        IndexList("indices", "static_indices"),
+        kw("shape"),
+        LBRACKET,
+        OptionalGroup(
+            [kw("blocks"), GLUE, LPAREN, Ref("blocks"), RPAREN, COMMA],
+            anchor="blocks",
+        ),
+        Ref("rows"),
+        COMMA,
+        Ref("columns"),
+        RBRACKET,
+        AttrDict(),
+        COLON,
+        TypeOf("fragment"),
+        COMMA,
+        TypeOf("view"),
+    ],
+    examples=[
+        "sanitizer.race.fragment_access<write> %acc, %view[%row, %col] shape [%m, %n] {role = result} : vector<8xf32>, view<128x128xbf16>",
+    ],
+)
+
+
+# ============================================================================
 # sanitizer.race.sync
 # ============================================================================
 
@@ -514,4 +610,5 @@ ALL_SANITIZER_OPS: tuple[Op, ...] = (
     sanitizer_race_access,
     sanitizer_race_sync,
     sanitizer_assert_accesses,
+    sanitizer_race_fragment_access,
 )

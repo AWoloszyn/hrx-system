@@ -16,6 +16,7 @@
 #include "loom/ops/atomic.h"
 #include "loom/ops/cache.h"
 #include "loom/ops/combining.h"
+#include "loom/ops/vector/role.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -195,14 +196,6 @@ enum {
 
 // Matrix multiply-accumulate semantic flags.
 #define LOOM_VECTOR_MMAFLAGS_SATURATE ((uint8_t)1)
-
-typedef enum loom_vector_role_e {
-  LOOM_VECTOR_ROLE_LHS = 0,
-  LOOM_VECTOR_ROLE_RHS = 1,
-  LOOM_VECTOR_ROLE_INIT = 2,
-  LOOM_VECTOR_ROLE_RESULT = 3,
-  LOOM_VECTOR_ROLE_COUNT_ = 4,
-} loom_vector_role_t;
 
 // NaN handling policy for table-based scalar quantization.
 typedef enum loom_vector_table_quantize_nan_e {
