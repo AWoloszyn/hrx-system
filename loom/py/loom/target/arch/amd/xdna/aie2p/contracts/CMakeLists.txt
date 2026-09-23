@@ -98,6 +98,7 @@ iree_py_test(
     "../../../../../../tools/pytest_style_runner.py"
   SRCS
     "core_test.py"
+    "floating_test.py"
     "i64_test.py"
     "integer_division_test.py"
     "nonlinear_test.py"
@@ -105,6 +106,7 @@ iree_py_test(
     "../../../../../../tools/pytest_style_runner.py"
   ARGS
     "loom.target.arch.amd.xdna.aie2p.contracts.core_test"
+    "loom.target.arch.amd.xdna.aie2p.contracts.floating_test"
     "loom.target.arch.amd.xdna.aie2p.contracts.i64_test"
     "loom.target.arch.amd.xdna.aie2p.contracts.integer_division_test"
     "loom.target.arch.amd.xdna.aie2p.contracts.nonlinear_test"

@@ -47,7 +47,9 @@ from loom.target.low_descriptors import Descriptor
 
 _F32 = Scalar("f32")
 _F16 = Scalar("f16")
+_BF16 = Scalar("bf16")
 _BF16X8_VECTOR = Vector("bf16", lanes=8)
+_BF16X16_VECTOR = Vector("bf16", lanes=16)
 _BF16_DOT2_VECTOR = Vector(
     "bf16", minimum_static_elements=2, maximum_static_elements=32
 )
@@ -158,6 +160,86 @@ def _scalar_multiply_f16_rule() -> DescriptorRule:
             *narrow_program.emits,
         ),
         report_key="exact_binary16",
+    )
+
+
+def _bf16_maximum_guards(type_pattern: TypePattern) -> tuple[Guard, ...]:
+    # VMAX_LT preserves its first operand on unordered inputs and orders the
+    # signed zeros. Both source maximum operations agree with it when NaNs and
+    # zero signs are explicitly outside the source contract.
+    return (
+        *_typed_guards(("lhs", "rhs", "result"), type_pattern),
+        Guard.instance_flags_has_all("fastmath", "nnan"),
+        Guard.instance_flags_has_all("fastmath", "nsz"),
+    )
+
+
+def _vector_maximum_bf16_rule(
+    source_op: Op, type_pattern: TypePattern
+) -> DescriptorRule:
+    maximum = _descriptor("amd.xdna.aie2p.max.lt.bf16x32.native")
+    return DescriptorRule(
+        source_op=source_op,
+        descriptor=maximum,
+        guards=_bf16_maximum_guards(type_pattern),
+        emit=(
+            _op_emit(
+                maximum,
+                operands={"s1": ValueRef.operand("lhs"), "s2": ValueRef.operand("rhs")},
+                results={
+                    "d": ValueRef.result("result"),
+                    "cmp": ValueRef.temporary("comparison"),
+                },
+                result_types={
+                    "d": DescriptorResultType(),
+                    "cmp": DescriptorResultType(),
+                },
+            ),
+        ),
+    )
+
+
+def _scalar_maximum_bf16_rule(source_op: Op) -> DescriptorRule:
+    broadcast = _descriptor("amd.xdna.aie2p.splat.i16x32")
+    maximum = _descriptor("amd.xdna.aie2p.max.lt.bf16x32.native")
+    extract = _descriptor("amd.xdna.aie2p.extract.i16.immediate")
+    return DescriptorRule(
+        source_op=source_op,
+        descriptor=maximum,
+        guards=_bf16_maximum_guards(_BF16),
+        emit=(
+            *(
+                _op_emit(
+                    broadcast,
+                    operands={"src": ValueRef.operand(operand)},
+                    results={"dst": ValueRef.temporary(f"{operand}_vector")},
+                    result_types={"dst": DescriptorResultType()},
+                )
+                for operand in ("lhs", "rhs")
+            ),
+            _op_emit(
+                maximum,
+                operands={
+                    "s1": ValueRef.temporary("lhs_vector"),
+                    "s2": ValueRef.temporary("rhs_vector"),
+                },
+                results={
+                    "d": ValueRef.temporary("maximum_vector"),
+                    "cmp": ValueRef.temporary("comparison"),
+                },
+                result_types={
+                    "d": DescriptorResultType(),
+                    "cmp": DescriptorResultType(),
+                },
+            ),
+            EmitDescriptorOp(
+                descriptor=extract,
+                operands={"s1": ValueRef.temporary("maximum_vector")},
+                results={"dst": ValueRef.result("result")},
+                immediates={"idx": 0},
+                form=DescriptorEmitForm.OP,
+            ),
+        ),
     )
 
 
@@ -665,6 +747,18 @@ AIE2P_BF16_MATRIX_RULES = (_matrix_multiply_bf16bf16_m8n8k1_rule(),)
 
 AIE2P_FLOATING_RULES = (
     _scalar_multiply_f16_rule(),
+    *(
+        _vector_maximum_bf16_rule(source_op, type_pattern)
+        for source_op in (vector.vector_maxnumf, vector.vector_maximumf)
+        for type_pattern in (_BF16X16_VECTOR, _BF16X32_VECTOR)
+    ),
+    *(
+        _scalar_maximum_bf16_rule(source_op)
+        for source_op in (
+            scalar_arithmetic.scalar_maxnumf,
+            scalar_arithmetic.scalar_maximumf,
+        )
+    ),
     _float_matrix_accumulator_zero_rule(),
     _float_matrix_accumulator_add_rule(),
     *(
