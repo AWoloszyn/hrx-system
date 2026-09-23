@@ -159,11 +159,16 @@ TEST(LaunchParamsTest, ParseLaunchAttributesRejectsInvalidLists) {
             iree_hip_parse_launch_attributes(&attribute, 1, &cooperative));
 }
 
-TEST(LaunchParamsTest, ParseLaunchAttributesRejectsUnavailablePrefetch) {
+TEST(LaunchParamsTest, ParseLaunchAttributesValidatesPrefetchPayload) {
   hipLaunchAttribute attribute = {};
   attribute.id = hipLaunchAttributeExtDynDataPrefetch;
 
   bool cooperative = false;
+  EXPECT_EQ(hipErrorInvalidValue,
+            iree_hip_parse_launch_attributes(&attribute, 1, &cooperative));
+
+  attribute.val.dynDataPrefetch =
+      reinterpret_cast<const hipExtDynDataPrefetchConfig*>(uintptr_t{1});
   EXPECT_EQ(hipErrorNotSupported,
             iree_hip_parse_launch_attributes(&attribute, 1, &cooperative));
 }

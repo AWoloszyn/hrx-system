@@ -47,6 +47,13 @@ using HipModuleLaunchKernelFn = hipError_t (*)(
     unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
     unsigned int block_dim_z, unsigned int shared_memory_bytes,
     hipStream_t stream, void** arguments, void** extra);
+using HipModuleLaunchCooperativeKernelFn = hipError_t (*)(
+    hipFunction_t function, unsigned int grid_dim_x, unsigned int grid_dim_y,
+    unsigned int grid_dim_z, unsigned int block_dim_x, unsigned int block_dim_y,
+    unsigned int block_dim_z, unsigned int shared_memory_bytes,
+    hipStream_t stream, void** arguments);
+using HipExtLaunchMultiKernelMultiDeviceFn = hipError_t (*)(
+    hipLaunchParams* launch_parameters, int device_count, unsigned int flags);
 using HipLaunchKernelExCFn = hipError_t (*)(const hipLaunchConfig_t* config,
                                             const void* function,
                                             void** arguments);
@@ -61,6 +68,17 @@ using HipFuncSetAttributeFn = hipError_t (*)(hipFunction_t function,
                                              int value);
 using HipGraphCreateFn = hipError_t (*)(hipGraph_t* graph, unsigned int flags);
 using HipGraphDestroyFn = hipError_t (*)(hipGraph_t graph);
+using HipGraphAddEmptyNodeFn =
+    hipError_t (*)(hipGraphNode_t* node, hipGraph_t graph,
+                   const hipGraphNode_t* dependencies, size_t dependency_count);
+using HipGraphInstantiateFn = hipError_t (*)(hipGraphExec_t* executable,
+                                             hipGraph_t graph,
+                                             hipGraphNode_t* error_node,
+                                             char* log_buffer,
+                                             size_t buffer_size);
+using HipGraphLaunchFn = hipError_t (*)(hipGraphExec_t executable,
+                                        hipStream_t stream);
+using HipGraphExecDestroyFn = hipError_t (*)(hipGraphExec_t executable);
 using HipGraphAddKernelNodeFn = hipError_t (*)(
     hipGraphNode_t* node, hipGraph_t graph, const hipGraphNode_t* dependencies,
     size_t dependency_count, const void* params);
@@ -106,6 +124,10 @@ struct HipRuntimeApi {
   HipExtLaunchKernelFn ext_launch_kernel = nullptr;
   // Launches a module kernel with prepacked or pointer-array arguments.
   HipModuleLaunchKernelFn module_launch_kernel = nullptr;
+  // Launches a module kernel cooperatively.
+  HipModuleLaunchCooperativeKernelFn module_launch_cooperative_kernel = nullptr;
+  // Launches one matching kernel on each explicit device stream.
+  HipExtLaunchMultiKernelMultiDeviceFn launch_multi_device = nullptr;
   // Launches a runtime kernel from an extensible configuration.
   HipLaunchKernelExCFn launch_kernel_ex = nullptr;
   // Launches a module kernel from an extensible configuration.
@@ -118,6 +140,14 @@ struct HipRuntimeApi {
   HipGraphCreateFn graph_create = nullptr;
   // Destroys a graph template.
   HipGraphDestroyFn graph_destroy = nullptr;
+  // Adds a dependency-only node to a graph template.
+  HipGraphAddEmptyNodeFn graph_add_empty_node = nullptr;
+  // Instantiates a graph template.
+  HipGraphInstantiateFn graph_instantiate = nullptr;
+  // Launches a graph executable.
+  HipGraphLaunchFn graph_launch = nullptr;
+  // Destroys a graph executable.
+  HipGraphExecDestroyFn graph_exec_destroy = nullptr;
   // Adds a kernel node to a graph template.
   HipGraphAddKernelNodeFn graph_add_kernel_node = nullptr;
   // Reads the parameters retained by a graph kernel node.
@@ -156,6 +186,12 @@ class HipLaunchValidationApiTest : public testing::Test {
           dso_.Resolve<HipExtLaunchKernelFn>("hipExtLaunchKernel");
       api_.module_launch_kernel =
           dso_.Resolve<HipModuleLaunchKernelFn>("hipModuleLaunchKernel");
+      api_.module_launch_cooperative_kernel =
+          dso_.Resolve<HipModuleLaunchCooperativeKernelFn>(
+              "hipModuleLaunchCooperativeKernel");
+      api_.launch_multi_device =
+          dso_.Resolve<HipExtLaunchMultiKernelMultiDeviceFn>(
+              "hipExtLaunchMultiKernelMultiDevice");
       api_.launch_kernel_ex =
           dso_.Resolve<HipLaunchKernelExCFn>("hipLaunchKernelExC");
       api_.driver_launch_kernel_ex =
@@ -166,6 +202,13 @@ class HipLaunchValidationApiTest : public testing::Test {
           dso_.Resolve<HipFuncSetAttributeFn>("hipFuncSetAttribute");
       api_.graph_create = dso_.Resolve<HipGraphCreateFn>("hipGraphCreate");
       api_.graph_destroy = dso_.Resolve<HipGraphDestroyFn>("hipGraphDestroy");
+      api_.graph_add_empty_node =
+          dso_.Resolve<HipGraphAddEmptyNodeFn>("hipGraphAddEmptyNode");
+      api_.graph_instantiate =
+          dso_.Resolve<HipGraphInstantiateFn>("hipGraphInstantiate");
+      api_.graph_launch = dso_.Resolve<HipGraphLaunchFn>("hipGraphLaunch");
+      api_.graph_exec_destroy =
+          dso_.Resolve<HipGraphExecDestroyFn>("hipGraphExecDestroy");
       api_.graph_add_kernel_node =
           dso_.Resolve<HipGraphAddKernelNodeFn>("hipGraphAddKernelNode");
       api_.graph_kernel_node_get_params =
@@ -196,12 +239,18 @@ class HipLaunchValidationApiTest : public testing::Test {
     ASSERT_NE(nullptr, api_.launch_kernel);
     ASSERT_NE(nullptr, api_.ext_launch_kernel);
     ASSERT_NE(nullptr, api_.module_launch_kernel);
+    ASSERT_NE(nullptr, api_.module_launch_cooperative_kernel);
+    ASSERT_NE(nullptr, api_.launch_multi_device);
     ASSERT_NE(nullptr, api_.launch_kernel_ex);
     ASSERT_NE(nullptr, api_.driver_launch_kernel_ex);
     ASSERT_NE(nullptr, api_.function_get_attribute);
     ASSERT_NE(nullptr, api_.function_set_attribute);
     ASSERT_NE(nullptr, api_.graph_create);
     ASSERT_NE(nullptr, api_.graph_destroy);
+    ASSERT_NE(nullptr, api_.graph_add_empty_node);
+    ASSERT_NE(nullptr, api_.graph_instantiate);
+    ASSERT_NE(nullptr, api_.graph_launch);
+    ASSERT_NE(nullptr, api_.graph_exec_destroy);
     ASSERT_NE(nullptr, api_.graph_add_kernel_node);
     ASSERT_NE(nullptr, api_.graph_kernel_node_get_params);
     ASSERT_NE(nullptr, api_.graph_kernel_node_set_params);
@@ -429,6 +478,28 @@ TEST_F(HipLaunchValidationApiTest,
             api_.driver_launch_kernel_ex(&driver_config, empty_function_,
                                          /*arguments=*/nullptr,
                                          /*extra=*/nullptr));
+
+  hipLaunchAttribute prefetch_attribute = {};
+  prefetch_attribute.id = hipLaunchAttributeExtDynDataPrefetch;
+  runtime_config.attrs = &prefetch_attribute;
+  driver_config.attrs = &prefetch_attribute;
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.launch_kernel_ex(&runtime_config, empty_function_,
+                                  /*arguments=*/nullptr));
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.driver_launch_kernel_ex(&driver_config, empty_function_,
+                                         /*arguments=*/nullptr,
+                                         /*extra=*/nullptr));
+
+  prefetch_attribute.val.dynDataPrefetch =
+      reinterpret_cast<const hipExtDynDataPrefetchConfig*>(uintptr_t{1});
+  EXPECT_EQ(hipErrorNotSupported,
+            api_.launch_kernel_ex(&runtime_config, empty_function_,
+                                  /*arguments=*/nullptr));
+  EXPECT_EQ(hipErrorNotSupported,
+            api_.driver_launch_kernel_ex(&driver_config, empty_function_,
+                                         /*arguments=*/nullptr,
+                                         /*extra=*/nullptr));
 }
 
 TEST_F(HipLaunchValidationApiTest,
@@ -531,6 +602,19 @@ TEST_F(HipLaunchValidationApiTest, ZeroAccessPolicyWindowRemainsSupported) {
 TEST_F(HipLaunchValidationApiTest, LaunchEntryPointsRejectDestroyedStreams) {
   const void* function = empty_function_;
   const dim3 valid_dimension = {1, 1, 1};
+
+  hipGraph_t graph = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_create(&graph, /*flags=*/0));
+  hipGraphNode_t empty_node = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_add_empty_node(&empty_node, graph,
+                                                  /*dependencies=*/nullptr,
+                                                  /*dependency_count=*/0));
+  hipGraphExec_t graph_exec = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_instantiate(&graph_exec, graph,
+                                               /*error_node=*/nullptr,
+                                               /*log_buffer=*/nullptr,
+                                               /*buffer_size=*/0));
+
   hipStream_t stale_stream = stream_;
   ASSERT_EQ(hipSuccess, api_.stream_destroy(stream_));
   stream_ = nullptr;
@@ -550,6 +634,67 @@ TEST_F(HipLaunchValidationApiTest, LaunchEntryPointsRejectDestroyedStreams) {
                 /*grid_dim_z=*/1, /*block_dim_x=*/1, /*block_dim_y=*/1,
                 /*block_dim_z=*/1, /*shared_memory_bytes=*/0, stale_stream,
                 /*arguments=*/nullptr, /*extra=*/nullptr));
+  EXPECT_EQ(hipErrorContextIsDestroyed,
+            api_.module_launch_cooperative_kernel(
+                (hipFunction_t)function, /*grid_dim_x=*/1, /*grid_dim_y=*/1,
+                /*grid_dim_z=*/1, /*block_dim_x=*/1, /*block_dim_y=*/1,
+                /*block_dim_z=*/1, /*shared_memory_bytes=*/0, stale_stream,
+                /*arguments=*/nullptr));
+
+  hipLaunchParams multi_device_launch = {
+      /*.func=*/reinterpret_cast<void*>(uintptr_t{1}),
+      /*.gridDim=*/valid_dimension,
+      /*.blockDim=*/valid_dimension,
+      /*.args=*/nullptr,
+      /*.sharedMem=*/0,
+      /*.stream=*/stale_stream,
+  };
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.launch_multi_device(&multi_device_launch,
+                                     /*device_count=*/1, /*flags=*/0));
+
+  hipLaunchConfig_t runtime_config = {};
+  runtime_config.gridDim = valid_dimension;
+  runtime_config.blockDim = valid_dimension;
+  runtime_config.stream = stale_stream;
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.launch_kernel_ex(&runtime_config, function,
+                                  /*arguments=*/nullptr));
+
+  HIP_LAUNCH_CONFIG driver_config = {};
+  driver_config.gridDimX = 1;
+  driver_config.gridDimY = 1;
+  driver_config.gridDimZ = 1;
+  driver_config.blockDimX = 1;
+  driver_config.blockDimY = 1;
+  driver_config.blockDimZ = 1;
+  driver_config.hStream = stale_stream;
+  EXPECT_EQ(
+      hipErrorContextIsDestroyed,
+      api_.driver_launch_kernel_ex(&driver_config, (hipFunction_t)function,
+                                   /*arguments=*/nullptr,
+                                   /*extra=*/nullptr));
+
+  hipLaunchAttribute cooperative_attribute = {};
+  cooperative_attribute.id = hipLaunchAttributeCooperative;
+  cooperative_attribute.val.cooperative = 1;
+  runtime_config.attrs = &cooperative_attribute;
+  runtime_config.numAttrs = 1;
+  driver_config.attrs = &cooperative_attribute;
+  driver_config.numAttrs = 1;
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.launch_kernel_ex(&runtime_config, function,
+                                  /*arguments=*/nullptr));
+  EXPECT_EQ(
+      hipErrorContextIsDestroyed,
+      api_.driver_launch_kernel_ex(&driver_config, (hipFunction_t)function,
+                                   /*arguments=*/nullptr,
+                                   /*extra=*/nullptr));
+  EXPECT_EQ(hipErrorContextIsDestroyed,
+            api_.graph_launch(graph_exec, stale_stream));
+
+  EXPECT_EQ(hipSuccess, api_.graph_exec_destroy(graph_exec));
+  EXPECT_EQ(hipSuccess, api_.graph_destroy(graph));
 }
 
 TEST_F(HipLaunchValidationApiTest,

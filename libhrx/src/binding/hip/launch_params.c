@@ -72,6 +72,9 @@ hipError_t iree_hip_parse_launch_attributes(
         *out_cooperative |= attributes[i].val.cooperative != 0;
         break;
       case hipLaunchAttributeExtDynDataPrefetch:
+        if (!attributes[i].val.dynDataPrefetch) {
+          return hipErrorInvalidValue;
+        }
         // HRX advertises no dynamic-prefetch regions, so this recognized
         // feature is unavailable rather than malformed.
         return hipErrorNotSupported;
