@@ -15,10 +15,10 @@ from loom.assembly import (
     IndexList,
     Ref,
     ResultType,
-    TemplateParam,
+    TemplateParamFlags,
     TypeOf,
 )
-from loom.dialect.atomic import AtomicKind, AtomicLoadOrdering, AtomicOrdering, AtomicScope, AtomicStoreOrdering
+from loom.dialect.atomic import AtomicKind, AtomicLoadOrdering, AtomicMemoryFlags, AtomicOrdering, AtomicScope, AtomicStoreOrdering
 from loom.dialect.cache import CacheScope, CacheTemporal
 from loom.dialect.memory import MemoryAccessFlags
 from loom.dsl import (
@@ -320,6 +320,7 @@ view_store = Op(
 def _atomic_memory_attrs() -> list[AttrDef]:
     return [
         AttrDef("kind", ATTR_TYPE_ENUM, enum_def=AtomicKind),
+        AttrDef("memory_flags", ATTR_TYPE_FLAGS, optional=True, enum_def=AtomicMemoryFlags),
         AttrDef(
             "ordering",
             ATTR_TYPE_ENUM,
@@ -391,7 +392,7 @@ view_atomic_reduce = Op(
     interfaces=[CachePolicyInterface(), _atomic_memory_access_interface(value="value")],
     verify="loom_view_atomic_reduce_verify",
     format=[
-        TemplateParam("kind"),
+        TemplateParamFlags("kind", "memory_flags"),
         Ref("value"),
         COMMA,
         Ref("view"),
@@ -427,7 +428,7 @@ view_atomic_rmw = Op(
     interfaces=[CachePolicyInterface(), _atomic_memory_access_interface(value="value")],
     verify="loom_view_atomic_rmw_verify",
     format=[
-        TemplateParam("kind"),
+        TemplateParamFlags("kind", "memory_flags"),
         Ref("value"),
         COMMA,
         Ref("view"),

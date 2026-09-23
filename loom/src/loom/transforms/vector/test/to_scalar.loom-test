@@ -1667,3 +1667,21 @@ func.def @oversized_static_vector_store_rejected(%output: buffer, %value: vector
   vector.store %value, %output_view[0] : vector<65536xf32>, view<65536xf32>
   func.return
 }
+
+// ====
+// RUN: with-checks pass vector-to-scalar,canonicalize
+
+func.def @atomic_subnormal_flags_survive_scalarization(%view: view<2xf32>, %value: vector<2xf32>, %offsets: vector<2xindex>, %mask: vector<2xi1>) -> (vector<2xf32>) {
+  vector.atomic.reduce<addf, noftz> %value, %view[0][%offsets] {ordering = relaxed, scope = workgroup} : vector<2xf32>, view<2xf32>, vector<2xindex>
+  vector.atomic.reduce.mask<addf, noftz> %value, %view[0][%offsets], %mask {ordering = relaxed, scope = workgroup} : vector<2xf32>, view<2xf32>, vector<2xindex>, vector<2xi1>
+  %old = vector.atomic.rmw<addf, noftz> %value, %view[0][%offsets] {ordering = relaxed, scope = workgroup} : vector<2xf32>, view<2xf32>, vector<2xindex>
+  %masked = vector.atomic.rmw.mask<addf, noftz> %value, %view[0][%offsets], %mask, %old {ordering = relaxed, scope = workgroup} : vector<2xf32>, view<2xf32>, vector<2xindex>, vector<2xi1>, vector<2xf32>
+  func.return %masked : vector<2xf32>
+}
+
+// ----
+CHECK: *view.atomic.reduce<addf, noftz>*
+CHECK: *view.atomic.rmw<addf, noftz>*
+CHECK-NOT: *vector.atomic.*
+CHECK-NOT: *view.atomic.reduce<addf>*
+CHECK-NOT: *view.atomic.rmw<addf>*

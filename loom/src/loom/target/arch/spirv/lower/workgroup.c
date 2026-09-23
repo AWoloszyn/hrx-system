@@ -195,6 +195,11 @@ static bool loom_spirv_workgroup_view_requires_integer_carrier(
       continue;
     }
 
+    if (iree_any_bit_set(user_op->instance_flags,
+                         LOOM_MEMORY_ACCESS_FLAG_NOFTZ)) {
+      return true;
+    }
+
     const loom_spirv_feature_bits_t native_feature =
         loom_spirv_workgroup_native_float_atomic_feature(scalar_type,
                                                          atomic_kind);

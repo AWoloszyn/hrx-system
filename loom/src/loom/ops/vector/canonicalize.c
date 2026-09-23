@@ -2416,6 +2416,7 @@ static iree_status_t loom_vector_canonicalize_all_true_masked_memory(
       IREE_RETURN_IF_ERROR(loom_vector_atomic_rmw_build(
           &rewriter->builder, cache_policy.build_flags,
           loom_vector_atomic_rmw_mask_kind(op),
+          loom_vector_atomic_rmw_mask_memory_flags(op),
           loom_vector_atomic_rmw_mask_value(op),
           loom_vector_atomic_rmw_mask_view(op), indices.values, indices.count,
           static_indices.i64_array, static_indices.count,
@@ -2475,6 +2476,7 @@ static iree_status_t loom_vector_canonicalize_all_true_masked_memory(
       IREE_RETURN_IF_ERROR(loom_vector_atomic_reduce_build(
           &rewriter->builder, cache_policy.build_flags,
           loom_vector_atomic_reduce_mask_kind(op),
+          loom_vector_atomic_reduce_mask_memory_flags(op),
           loom_vector_atomic_reduce_mask_value(op),
           loom_vector_atomic_reduce_mask_view(op), indices.values,
           indices.count, static_indices.i64_array, static_indices.count,

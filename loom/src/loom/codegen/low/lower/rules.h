@@ -706,6 +706,8 @@ typedef enum loom_low_lower_guard_kind_e {
   LOOM_LOW_LOWER_GUARD_VALUE_STATIC_ELEMENT_COUNT_EQ = 31,
   // Source buffer/view reference facts must name a space present in u64.
   LOOM_LOW_LOWER_GUARD_VALUE_MEMORY_SPACE = 32,
+  // Source op instance flags must contain no bits in u64.
+  LOOM_LOW_LOWER_GUARD_INSTANCE_FLAGS_HAS_NONE = 33,
   // Maximum guard kind value plus one.
   LOOM_LOW_LOWER_GUARD_COUNT_,
 } loom_low_lower_guard_kind_t;

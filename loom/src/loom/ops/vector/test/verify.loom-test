@@ -1741,3 +1741,11 @@ func.def @mulf_rejects_integer_overflow_flag(%a: vector<4xf32>, %b: vector<4xf32
   %r = vector.mulf<nuw> %a, %b : vector<4xf32>
   func.return
 }
+
+// ====
+
+func.def @preservation_requires_floating_add(%view: view<1xf32>, %value: vector<2xf32>, %offsets: vector<2xindex>, %mask: vector<2xi1>) {
+  // ERROR@+1: STRUCTURE/014 "noftz requires floating-point atomic addition"
+  %old = vector.atomic.rmw.mask<xchgf, noftz> %value, %view[0][%offsets], %mask, %value {ordering = relaxed, scope = workgroup} : vector<2xf32>, view<1xf32>, vector<2xindex>, vector<2xi1>, vector<2xf32>
+  func.return
+}

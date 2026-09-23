@@ -30,6 +30,7 @@ from loom.target.arch.spirv.atomic import (
     atomic_feature_bits,
     cmpxchg_failure_orderings,
     float_atomic_cas_feature_bits,
+    float_atomic_cas_strategies,
     float_atomic_descriptor_key,
     float_atomic_native_feature_bits,
 )
@@ -42,6 +43,7 @@ from loom.target.arch.spirv.cooperative_matrix import (
     CooperativeMatrixCase,
     cooperative_matrix_descriptor_key,
 )
+from loom.target.arch.spirv.features import feature_bit_value
 from loom.target.arch.spirv.ordinary_vector import (
     ORDINARY_VECTOR_INSTRUCTIONS,
     OrdinaryVectorComponentKind,
@@ -926,10 +928,12 @@ def _float_atomic_descriptor(
             if operation.source_kind != "xchgf":
                 raise ValueError("only floating exchange has a direct bitcast form")
             mnemonic = "OpAtomicExchange.bitcast"
-        elif strategy == "cas":
+        elif strategy in ("cas", "cas_preserve"):
             if operation.source_kind == "xchgf":
                 raise ValueError("floating exchange uses the direct bitcast form")
             mnemonic = f"OpAtomicCompareExchange.loop.{operation.suffix}"
+            if strategy == "cas_preserve":
+                mnemonic += ".noftz"
         else:
             raise ValueError(f"unknown floating atomic strategy '{strategy}'")
         operands = (
@@ -946,6 +950,8 @@ def _float_atomic_descriptor(
         if strategy == "native" and operation is not None
         else float_atomic_cas_feature_bits(scalar, storage_class, scope)
     )
+    if strategy == "cas_preserve":
+        feature_bits |= feature_bit_value("float32_denorm_preserve")
     return Descriptor(
         key=key,
         mnemonic=(
@@ -1012,25 +1018,18 @@ def _float_atomic_descriptors() -> tuple[Descriptor, ...]:
                             )
                         )
                         continue
-                    if operation.supports_reduce:
-                        descriptors.append(
-                            _float_atomic_descriptor(
-                                "reduce",
-                                "cas",
-                                scalar,
-                                storage_class,
-                                scope,
-                                operation=operation,
-                            )
-                        )
-                    descriptors.append(
+                    descriptors.extend(
                         _float_atomic_descriptor(
-                            "rmw",
-                            "cas",
+                            form,
+                            strategy,
                             scalar,
                             storage_class,
                             scope,
                             operation=operation,
+                        )
+                        for strategy in float_atomic_cas_strategies(scalar, operation)
+                        for form in (
+                            ("reduce", "rmw") if operation.supports_reduce else ("rmw",)
                         )
                     )
                 if scalar.integer_scalar_enum is None:

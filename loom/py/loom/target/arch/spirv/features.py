@@ -384,6 +384,16 @@ FEATURE_ATOMS = (
         minimum_spirv_version=SPIRV_VERSION_1_3,
         capabilities=("LOOM_SPIRV_CAPABILITY_GROUP_NON_UNIFORM",),
     ),
+    FeatureAtom(
+        key="float32_denorm_preserve",
+        c_suffix="FLOAT32_DENORM_PRESERVE",
+        name="spirv.float32_denorm_preserve",
+        doc="F32 DenormPreserve independent of other floating-point widths.",
+        required=("vulkan_shader",),
+        minimum_spirv_version=SPIRV_VERSION_1_3,
+        extensions=("SPV_KHR_float_controls",),
+        capabilities=("LOOM_SPIRV_CAPABILITY_DENORM_PRESERVE",),
+    ),
 )
 
 FEATURE_PROFILES = (

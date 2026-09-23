@@ -345,3 +345,11 @@ func.def @atomic_rmw_index_count_mismatch(%buffer: buffer, %offset: offset, %row
   %old = view.atomic.rmw<addi> %value, %view[%row] {ordering = relaxed, scope = workgroup} : i32, view<4x4xi32, %layout> -> i32
   func.return
 }
+
+// ====
+
+func.def @preservation_requires_floating_add(%view: view<1xi32>, %value: i32) {
+  // ERROR@+1: STRUCTURE/014 "noftz requires floating-point atomic addition"
+  view.atomic.reduce<addi, noftz> %value, %view[0] {ordering = relaxed, scope = workgroup} : i32, view<1xi32>
+  func.return
+}

@@ -7,8 +7,10 @@
 #include "loom/target/emit/spirv/module_emitter.h"
 
 #include "loom/analysis/symbol_facts.h"
+#include "loom/codegen/low/diagnostics.h"
 #include "loom/codegen/low/function.h"
 #include "loom/codegen/low/target_binding.h"
+#include "loom/error/error_catalog.h"
 #include "loom/ir/module.h"
 #include "loom/target/arch/spirv/descriptors/descriptors.h"
 #include "loom/target/arch/spirv/module_contract.h"
@@ -20,6 +22,7 @@
 typedef enum loom_spirv_emit_module_state_flag_bits_e {
   LOOM_SPIRV_EMIT_MODULE_STATE_FLAG_NONE = 0u,
   LOOM_SPIRV_EMIT_MODULE_STATE_FLAG_BUILDER_INITIALIZED = 1u << 0,
+  LOOM_SPIRV_EMIT_MODULE_STATE_FLAG_INVALID_ENTRY = 1u << 1,
 } loom_spirv_emit_module_state_flag_bits_t;
 typedef uint32_t loom_spirv_emit_module_state_flags_t;
 
@@ -119,14 +122,29 @@ static iree_status_t loom_spirv_emit_low_function_into_module(
       state->module, &state->symbol_facts, low_function_op,
       function_version ? function_version->function_target_facts : NULL,
       state->descriptor_registry, state->diagnostic_emitter, &target));
-  // Concrete targets select their artifact backend; targetless assembly is
-  // selected by its representation contract below.
+  // A concrete target owned by another code generator stays in the source
+  // module for its emitter.
   const loom_target_bundle_t* bundle = loom_low_resolved_target_bundle(&target);
   if (bundle &&
       bundle->snapshot->codegen_format != LOOM_TARGET_CODEGEN_FORMAT_SPIRV) {
     return iree_ok_status();
   }
   IREE_RETURN_IF_ERROR(loom_spirv_emit_validate_target(&target));
+  if (bundle == NULL) {
+    state->flags |= LOOM_SPIRV_EMIT_MODULE_STATE_FLAG_INVALID_ENTRY;
+    const loom_diagnostic_param_t params[] = {
+        loom_param_string(IREE_SV("SPIR-V")),
+        loom_param_string(
+            loom_low_diagnostic_function_name(state->module, low_function_op)),
+    };
+    const loom_diagnostic_emission_t emission = {
+        .op = low_function_op,
+        .error = LOOM_ERR_TARGET_009,
+        .params = params,
+        .param_count = IREE_ARRAYSIZE(params),
+    };
+    return iree_diagnostic_emit(state->diagnostic_emitter, &emission);
+  }
   IREE_RETURN_IF_ERROR(
       loom_spirv_emit_module_prepare_contract(state, &target, allocator));
 
@@ -272,11 +290,15 @@ iree_status_t loom_spirv_emit_low_module(
     }
     status = loom_spirv_emit_low_function_into_module(
         &state, symbol->defining_op, allocator);
-    if (!iree_status_is_ok(status)) {
+    if (!iree_status_is_ok(status) ||
+        iree_any_bit_set(state.flags,
+                         LOOM_SPIRV_EMIT_MODULE_STATE_FLAG_INVALID_ENTRY)) {
       break;
     }
   }
-  if (iree_status_is_ok(status)) {
+  if (iree_status_is_ok(status) &&
+      !iree_any_bit_set(state.flags,
+                        LOOM_SPIRV_EMIT_MODULE_STATE_FLAG_INVALID_ENTRY)) {
     status = loom_spirv_emit_module_state_finalize(&state, out_module);
   }
   loom_spirv_emit_module_state_deinitialize(&state);

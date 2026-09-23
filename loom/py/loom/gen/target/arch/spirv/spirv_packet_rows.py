@@ -39,6 +39,7 @@ from loom.target.arch.spirv.atomic import (  # noqa: E402
     AtomicScope,
     AtomicStorageClass,
     atomic_descriptor_key,
+    float_atomic_cas_strategies,
     float_atomic_descriptor_key,
 )
 from loom.target.arch.spirv.builtins import (  # noqa: E402
@@ -500,7 +501,7 @@ def _float_atomic_rows_for_scope(
             _PacketRow(
                 float_atomic_descriptor_key(
                     form,
-                    "cas",
+                    strategy,
                     scalar,
                     storage_class,
                     scope,
@@ -515,6 +516,7 @@ def _float_atomic_rows_for_scope(
                 atomic_float_operation=operation.cas_operation,
                 **integer_common,
             )
+            for strategy in float_atomic_cas_strategies(scalar, operation)
             for form in (("reduce", "rmw") if operation.supports_reduce else ("rmw",))
         )
     if scalar.integer_scalar_enum is not None:

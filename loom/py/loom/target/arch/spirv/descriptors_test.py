@@ -13,6 +13,7 @@ from loom.target.arch.spirv.atomic import (
     ATOMIC_SCOPES,
     ATOMIC_STORAGE_CLASSES,
     atomic_descriptor_key,
+    float_atomic_cas_strategies,
     float_atomic_descriptor_key,
 )
 from loom.target.arch.spirv.builtins import (
@@ -131,18 +132,23 @@ def _atomic_result_recipes() -> dict[str, AsmResultValueType]:
                         )
                     if scalar.integer_scalar_enum is None:
                         continue
-                    strategy = "bitcast" if operation.source_kind == "xchgf" else "cas"
-                    add(
-                        float_atomic_descriptor_key(
-                            "rmw",
-                            strategy,
-                            scalar,
-                            storage_class,
-                            scope,
-                            operation=operation,
-                        ),
-                        scalar.source_type,
+                    strategies = (
+                        ("bitcast",)
+                        if operation.source_kind == "xchgf"
+                        else float_atomic_cas_strategies(scalar, operation)
                     )
+                    for strategy in strategies:
+                        add(
+                            float_atomic_descriptor_key(
+                                "rmw",
+                                strategy,
+                                scalar,
+                                storage_class,
+                                scope,
+                                operation=operation,
+                            ),
+                            scalar.source_type,
+                        )
                 if scalar.integer_scalar_enum is None:
                     continue
                 for success_ordering in scope.orderings:

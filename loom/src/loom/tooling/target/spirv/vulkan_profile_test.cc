@@ -75,7 +75,8 @@ static iree_hal_vulkan_features_t AtomicVulkanFeatures() {
 }
 
 static iree_status_t CreateDeviceSpec(
-    iree_hal_vulkan_features_t enabled_features, bool include_target,
+    iree_hal_vulkan_features_t enabled_features,
+    iree_hal_vulkan_device_spec_flags_t flags, bool include_target,
     iree_host_size_t cooperative_matrix_property_count,
     const iree_hal_vulkan_cooperative_matrix_property_t*
         cooperative_matrix_properties,
@@ -112,7 +113,7 @@ static iree_status_t CreateDeviceSpec(
       /*.driver_version=*/1,
       /*.physical_device_type=*/2,
       /*.enabled_features=*/enabled_features,
-      /*.flags=*/IREE_HAL_VULKAN_DEVICE_SPEC_FLAG_NONE,
+      /*.flags=*/flags,
   };
   iree_host_size_t vulkan_payload_size = 0;
   IREE_RETURN_IF_ERROR(iree_hal_vulkan_device_spec_calculate_payload_size(
@@ -250,11 +251,11 @@ static iree_hal_vulkan_cooperative_matrix_property_t U8DeviceMatrixRow() {
 
 TEST(VulkanProfileTest, QueryReadsHalDeviceFacts) {
   iree_hal_device_spec_t* device_spec = NULL;
-  IREE_ASSERT_OK(CreateDeviceSpec(BaselineVulkanFeatures(),
-                                  /*include_target=*/true,
-                                  /*cooperative_matrix_property_count=*/0,
-                                  /*cooperative_matrix_properties=*/nullptr,
-                                  &device_spec));
+  IREE_ASSERT_OK(CreateDeviceSpec(
+      BaselineVulkanFeatures(), IREE_HAL_VULKAN_DEVICE_SPEC_FLAG_NONE,
+      /*include_target=*/true,
+      /*cooperative_matrix_property_count=*/0,
+      /*cooperative_matrix_properties=*/nullptr, &device_spec));
   fake_hal_device_t device = {};
   InitializeFakeHalDevice(device_spec, &device);
 
@@ -316,11 +317,11 @@ TEST(VulkanProfileTest, QueryReadsHalDeviceFacts) {
 
 TEST(VulkanProfileTest, QueryKeepsExecutableTargetSupportSeparate) {
   iree_hal_device_spec_t* device_spec = NULL;
-  IREE_ASSERT_OK(CreateDeviceSpec(BaselineVulkanFeatures(),
-                                  /*include_target=*/false,
-                                  /*cooperative_matrix_property_count=*/0,
-                                  /*cooperative_matrix_properties=*/nullptr,
-                                  &device_spec));
+  IREE_ASSERT_OK(CreateDeviceSpec(
+      BaselineVulkanFeatures(), IREE_HAL_VULKAN_DEVICE_SPEC_FLAG_NONE,
+      /*include_target=*/false,
+      /*cooperative_matrix_property_count=*/0,
+      /*cooperative_matrix_properties=*/nullptr, &device_spec));
   fake_hal_device_t device = {};
   InitializeFakeHalDevice(device_spec, &device);
 
@@ -337,11 +338,11 @@ TEST(VulkanProfileTest, QueryKeepsExecutableTargetSupportSeparate) {
 
 TEST(VulkanProfileTest, QueryProjectsAtomicFeatures) {
   iree_hal_device_spec_t* device_spec = NULL;
-  IREE_ASSERT_OK(CreateDeviceSpec(AtomicVulkanFeatures(),
-                                  /*include_target=*/true,
-                                  /*cooperative_matrix_property_count=*/0,
-                                  /*cooperative_matrix_properties=*/nullptr,
-                                  &device_spec));
+  IREE_ASSERT_OK(CreateDeviceSpec(
+      AtomicVulkanFeatures(), IREE_HAL_VULKAN_DEVICE_SPEC_FLAG_NONE,
+      /*include_target=*/true,
+      /*cooperative_matrix_property_count=*/0,
+      /*cooperative_matrix_properties=*/nullptr, &device_spec));
   fake_hal_device_t device = {};
   InitializeFakeHalDevice(device_spec, &device);
 
@@ -369,14 +370,39 @@ TEST(VulkanProfileTest, QueryProjectsAtomicFeatures) {
   iree_hal_device_spec_release(device_spec);
 }
 
+TEST(VulkanProfileTest, ProjectsIndependentFloat32Preservation) {
+  for (auto flags :
+       {IREE_HAL_VULKAN_DEVICE_SPEC_FLAG_NONE,
+        IREE_HAL_VULKAN_DEVICE_SPEC_FLAG_FLOAT32_DENORM_PRESERVE}) {
+    iree_hal_device_spec_t* device_spec = nullptr;
+    IREE_ASSERT_OK(CreateDeviceSpec(BaselineVulkanFeatures(), flags,
+                                    /*include_target=*/true,
+                                    /*cooperative_matrix_property_count=*/0,
+                                    /*cooperative_matrix_properties=*/nullptr,
+                                    &device_spec));
+    fake_hal_device_t device = {};
+    InitializeFakeHalDevice(device_spec, &device);
+    loom_spirv_vulkan_hal_profile_facts_t facts = {};
+    IREE_ASSERT_OK(loom_spirv_vulkan_hal_profile_query(
+        (iree_hal_device_t*)&device, &facts));
+    loom_target_bundle_storage_t storage = {};
+    IREE_ASSERT_OK(loom_spirv_vulkan_hal_profile_initialize_target_bundle(
+        &facts, &storage));
+    EXPECT_EQ(iree_any_bit_set(storage.config.contract_feature_bits,
+                               LOOM_SPIRV_FEATURE_FLOAT32_DENORM_PRESERVE),
+              flags != IREE_HAL_VULKAN_DEVICE_SPEC_FLAG_NONE);
+    iree_hal_device_spec_release(device_spec);
+  }
+}
+
 TEST(VulkanProfileTest, CopiesCooperativeMatrixRowsFromDeviceSpec) {
   const iree_hal_vulkan_cooperative_matrix_property_t source_row =
       F16DeviceMatrixRow();
   iree_hal_device_spec_t* device_spec = NULL;
-  IREE_ASSERT_OK(CreateDeviceSpec(BaselineVulkanFeatures(),
-                                  /*include_target=*/true,
-                                  /*cooperative_matrix_property_count=*/1,
-                                  &source_row, &device_spec));
+  IREE_ASSERT_OK(CreateDeviceSpec(
+      BaselineVulkanFeatures(), IREE_HAL_VULKAN_DEVICE_SPEC_FLAG_NONE,
+      /*include_target=*/true,
+      /*cooperative_matrix_property_count=*/1, &source_row, &device_spec));
   fake_hal_device_t device = {};
   InitializeFakeHalDevice(device_spec, &device);
 

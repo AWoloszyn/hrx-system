@@ -187,9 +187,11 @@ loom_cc_library(
     iree::base
     iree::base::internal::arena
     loom::analysis::symbol_facts
+    loom::codegen::low::diagnostics
     loom::codegen::low::function
     loom::codegen::low::target_binding
     loom::error::emitter
+    loom::error::error_defs
     loom::ir
     loom::ops::low
     loom::target::arch::spirv::descriptors::descriptors_ids

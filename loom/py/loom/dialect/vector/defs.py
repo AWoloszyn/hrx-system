@@ -38,7 +38,7 @@ from loom.assembly import (
     TypesOf,
     kw,
 )
-from loom.dialect.atomic import AtomicKind, AtomicOrdering, AtomicScope
+from loom.dialect.atomic import AtomicKind, AtomicMemoryFlags, AtomicOrdering, AtomicScope
 from loom.dialect.cache import CacheScope, CacheTemporal
 from loom.dialect.combining import CombiningKind
 from loom.dialect.memory import MemoryAccessFlags
@@ -2094,6 +2094,7 @@ vector_scatter_mask = Op(
 def _atomic_memory_attrs() -> list[AttrDef]:
     return [
         AttrDef("kind", ATTR_TYPE_ENUM, enum_def=AtomicKind),
+        AttrDef("memory_flags", ATTR_TYPE_FLAGS, optional=True, enum_def=AtomicMemoryFlags),
         AttrDef(
             "ordering",
             ATTR_TYPE_ENUM,
@@ -2169,7 +2170,7 @@ vector_atomic_reduce = Op(
     interfaces=[CachePolicyInterface(), _atomic_memory_access_interface(value="value")],
     verify="loom_vector_atomic_reduce_verify",
     format=[
-        TemplateParam("kind"),
+        TemplateParamFlags("kind", "memory_flags"),
         Ref("value"),
         COMMA,
         Ref("view"),
@@ -2214,7 +2215,7 @@ vector_atomic_reduce_mask = Op(
     verify="loom_vector_atomic_reduce_mask_verify",
     canonicalize="loom_vector_masked_memory_canonicalize",
     format=[
-        TemplateParam("kind"),
+        TemplateParamFlags("kind", "memory_flags"),
         Ref("value"),
         COMMA,
         Ref("view"),
@@ -2267,7 +2268,7 @@ vector_atomic_rmw = Op(
     interfaces=[CachePolicyInterface(), _atomic_memory_access_interface(value="value")],
     verify="loom_vector_atomic_rmw_verify",
     format=[
-        TemplateParam("kind"),
+        TemplateParamFlags("kind", "memory_flags"),
         Ref("value"),
         COMMA,
         Ref("view"),
@@ -2315,7 +2316,7 @@ vector_atomic_rmw_mask = Op(
     verify="loom_vector_atomic_rmw_mask_verify",
     canonicalize="loom_vector_masked_memory_canonicalize",
     format=[
-        TemplateParam("kind"),
+        TemplateParamFlags("kind", "memory_flags"),
         Ref("value"),
         COMMA,
         Ref("view"),

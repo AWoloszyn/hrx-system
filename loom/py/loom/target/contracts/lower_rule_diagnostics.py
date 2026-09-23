@@ -277,8 +277,10 @@ def _value_no_uses_diagnostic(field: str) -> DiagnosticRef:
     return _named_constraint_diagnostic("value", field, "no_ordinary_uses")
 
 
-def _instance_flags_diagnostic(field: str, enum_keyword: str) -> DiagnosticRef:
-    return _named_constraint_diagnostic("flags", field, f"has_all.{enum_keyword}")
+def _instance_flags_diagnostic(
+    field: str, enum_keyword: str, predicate: str
+) -> DiagnosticRef:
+    return _named_constraint_diagnostic("flags", field, f"{predicate}.{enum_keyword}")
 
 
 def _source_memory_diagnostic(

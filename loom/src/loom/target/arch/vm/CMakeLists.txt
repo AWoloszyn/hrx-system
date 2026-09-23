@@ -131,6 +131,7 @@ loom_check_test_suite(
     loom_check_file_test
   SRCS
     "test/assembly.loom-test"
+    "test/atomic_policy.loom-test"
     "test/buffer_packets.loom-test"
     "test/call_overflow.loom-test"
     "test/calls.loom-test"
@@ -211,6 +212,7 @@ loom_check_compile_tests(
     "test/emission.loom-test"
   REGISTERED_SRCS
     "test/assembly.loom-test"
+    "test/atomic_policy.loom-test"
     "test/buffer_packets.loom-test"
     "test/call_overflow.loom-test"
     "test/calls.loom-test"

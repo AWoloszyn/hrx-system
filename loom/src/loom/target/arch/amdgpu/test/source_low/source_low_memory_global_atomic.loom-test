@@ -166,6 +166,80 @@ low.kernel.def target<amdgpu.gfx11.generic.core> abi_layout({constant_count = 0,
 
 // ====
 
+kernel.def @global_atomic_add_f32_noftz() {
+  %c1 = index.constant 1 : index
+  kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index
+} launch(%input: buffer) {
+  %tid = kernel.workitem.id<x> : index
+  %buffer_base = index.constant 0 : offset
+  %global = buffer.assume.memory_space<global> %input : buffer
+  %view = buffer.view %global[%buffer_base] : buffer -> view<64xf32>
+  %increment = scalar.constant 1.0 : f32
+  view.atomic.reduce<addf, noftz> %increment, %view[%tid] {ordering = relaxed, scope = device} : f32, view<64xf32>
+  %old = view.atomic.rmw<addf, noftz> %increment, %view[%tid] {ordering = relaxed, scope = device} : f32, view<64xf32> -> f32
+  kernel.return
+}
+
+// ----
+low.kernel.def target<amdgpu.gfx11.generic.core> abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @global_atomic_add_f32_noftz() asm {
+  %view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %36 = v_mov_b32 0
+  %47 = s_mov_b64_exec_read
+  low.br ^_bb1(%36: reg<amdgpu.vgpr>)
+^_bb1(%31: reg<amdgpu.vgpr>):
+  %37 = v_add_f32_src0_inline %31, "f32_1_0"
+  %39 = s_mov_b32 0
+  %63 = slice %view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %64 = slice %view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %65 = s_mov_b32 65535
+  %66 = s_and_b32 %64, %65
+  %67 = concat(%63, %66) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %68 = s_mov_b32 256
+  %69 = s_mov_b32 822173696
+  %70 = concat(%67, %68, %69) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
+  %41 = v_mov_b32_copy %31
+  %42 = v_mov_b32_copy %37
+  %43 = concat(%42, %41) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %44 = buffer_atomic_cmpswap_b32_rtn %43, %70, %36, %39
+  %45 = slice %44[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %46 = v_cmp_ne_i32 %45, %31
+  %48, %49 = s_and_saveexec_b64 %46
+  low.cond_br %49, ^_bb2, ^_bb5 : reg<amdgpu.scc>
+^_bb2:
+  low.br ^_bb1(%45: reg<amdgpu.vgpr>)
+^_bb5:
+  s_mov_b64_exec %47
+  %60 = s_mov_b64_exec_read
+  low.br ^_bb3(%36: reg<amdgpu.vgpr>)
+^_bb3(%32: reg<amdgpu.vgpr>):
+  %50 = v_add_f32_src0_inline %32, "f32_1_0"
+  %51 = v_mov_b32 0
+  %52 = s_mov_b32 0
+  %71 = slice %view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %72 = slice %view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %73 = s_mov_b32 65535
+  %74 = s_and_b32 %72, %73
+  %75 = concat(%71, %74) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %76 = s_mov_b32 256
+  %77 = s_mov_b32 822173696
+  %78 = concat(%75, %76, %77) : (reg<amdgpu.sgpr x2>, reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x4>
+  %54 = v_mov_b32_copy %32
+  %55 = v_mov_b32_copy %50
+  %56 = concat(%55, %54) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %57 = buffer_atomic_cmpswap_b32_rtn %56, %78, %51, %52
+  %58 = slice %57[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %59 = v_cmp_ne_i32 %58, %32
+  %61, %62 = s_and_saveexec_b64 %59
+  low.cond_br %62, ^_bb4, ^_bb6 : reg<amdgpu.scc>
+^_bb4:
+  low.br ^_bb3(%58: reg<amdgpu.vgpr>)
+^_bb6:
+  s_mov_b64_exec %60
+  return
+}
+
+// ====
+
 kernel.def @global_atomic_minnum_maxnum_f32() {
   %c1 = index.constant 1 : index
   kernel.launch.config workgroups(%c1, %c1, %c1) workgroup_size(%c1, %c1, %c1) : index

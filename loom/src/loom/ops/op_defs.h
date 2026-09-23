@@ -1242,6 +1242,10 @@ enum loom_memory_access_flag_bits_e {
   // This does not provide atomicity, synchronization, or a cache-coherence
   // guarantee.
   LOOM_MEMORY_ACCESS_FLAG_VOLATILE = 1u << 0,
+  // Requires floating-point atomic addition to preserve subnormal inputs and
+  // results. Without this flag the target may flush subnormals. Selection
+  // consumes this numerical requirement; it is not a physical Low access flag.
+  LOOM_MEMORY_ACCESS_FLAG_NOFTZ = 1u << 1,
 };
 typedef uint8_t loom_memory_access_flags_t;
 

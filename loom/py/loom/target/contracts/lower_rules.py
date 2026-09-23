@@ -815,7 +815,10 @@ class _LowerRuleSetCompiler:
             )
             return
 
-        if guard.kind == GuardKind.INSTANCE_FLAGS_HAS_ALL:
+        if guard.kind in (
+            GuardKind.INSTANCE_FLAGS_HAS_ALL,
+            GuardKind.INSTANCE_FLAGS_HAS_NONE,
+        ):
             attr = source_op.attr(guard.field)
             enum_keyword = guard.enum_keyword
             if attr is None or attr.enum_def is None or enum_keyword is None:
@@ -834,7 +837,11 @@ class _LowerRuleSetCompiler:
                         source_op,
                         _guard_diagnostic(
                             guard,
-                            _instance_flags_diagnostic(guard.field, enum_keyword),
+                            _instance_flags_diagnostic(
+                                guard.field,
+                                enum_keyword,
+                                guard.kind.value.removeprefix("instance_flags_"),
+                            ),
                         ),
                     ),
                     u64=enum_value,

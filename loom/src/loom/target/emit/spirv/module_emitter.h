@@ -46,10 +46,10 @@ void loom_spirv_emit_low_module_options_initialize(
 
 // Emits target-low function bodies in |module| as one SPIR-V module.
 //
-// SPIR-V modules may contain multiple entry points. Concrete targets select
-// SPIR-V code generation; targetless assembly must select the SPIR-V
-// representation contract. Other codegen targets remain in the shared module
-// for their respective emitters. Callers may provide |options| to select one or
+// SPIR-V modules may contain multiple entry points. Every emitted entry must
+// bind a concrete SPIR-V target through its authored witness or compiler-owned
+// function version. Other codegen targets remain in the shared module for
+// their respective emitters. Callers may provide |options| to select one or
 // more entries when an artifact container describes a narrower dispatch set
 // than the whole source module.
 //
@@ -58,6 +58,8 @@ void loom_spirv_emit_low_module_options_initialize(
 // current raw SPIR-V executable format exposes BDA metadata at module scope.
 // The output module owns allocator-backed word storage and must be
 // deinitialized by the caller.
+// A missing concrete target emits a structured diagnostic and leaves
+// |out_module| empty. Infrastructure and output failures return a status.
 iree_status_t loom_spirv_emit_low_module(
     loom_module_t* module,
     const loom_low_descriptor_registry_t* descriptor_registry,

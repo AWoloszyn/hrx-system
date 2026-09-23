@@ -41,7 +41,7 @@ typedef struct loom_spirv_module_contract_t {
   uint64_t contract_feature_bits;
 } loom_spirv_module_contract_t;
 
-// Captures the SPIR-V module contract implied by |target|.
+// Captures the SPIR-V module contract implied by a concretely bound |target|.
 loom_spirv_module_contract_t loom_spirv_module_contract_from_target(
     const loom_low_resolved_target_t* target);
 

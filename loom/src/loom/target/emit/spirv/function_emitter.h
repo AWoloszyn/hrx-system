@@ -78,6 +78,8 @@ typedef struct loom_spirv_emit_state_t {
   loom_spirv_type_context_t* type_context;
   // SPIR-V ID assigned to the function.
   uint32_t function_id;
+  // Descriptor feature requirements accumulated while emitting this entry.
+  loom_spirv_feature_bits_t required_feature_bits;
   // SPIR-V label ID of the currently open function-section block.
   uint32_t current_label_id;
   // Selected ABI plan for entry materialization.

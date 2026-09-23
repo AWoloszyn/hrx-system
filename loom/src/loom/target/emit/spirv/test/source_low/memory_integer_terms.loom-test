@@ -309,7 +309,6 @@ func.def @workgroup_signed_byte_term(%input: i8, %value: i32) -> (i32) {
                OpDecorate %9 Binding 1
                OpDecorate %13 DescriptorSet 0
                OpDecorate %13 Binding 2
-               OpDecorate %_arr_int_uint_256 ArrayStride 4
         %int = OpTypeInt 32 1
       %int_0 = OpConstant %int 0
        %char = OpTypeInt 8 1
@@ -406,7 +405,6 @@ func.def @workgroup_signed_halfword_term(%input: i16, %value: i32) -> (i32) {
                OpDecorate %9 Binding 1
                OpDecorate %13 DescriptorSet 0
                OpDecorate %13 Binding 2
-               OpDecorate %_arr_int_uint_256 ArrayStride 4
         %int = OpTypeInt 32 1
       %int_0 = OpConstant %int 0
       %short = OpTypeInt 16 1
@@ -500,7 +498,6 @@ func.def @workgroup_predicate_term(%input: i1, %value: i32) -> (i32) {
                OpDecorate %9 Binding 1
                OpDecorate %10 DescriptorSet 0
                OpDecorate %10 Binding 2
-               OpDecorate %_arr_int_uint_3 ArrayStride 4
         %int = OpTypeInt 32 1
       %int_0 = OpConstant %int 0
        %bool = OpTypeBool
@@ -686,7 +683,6 @@ func.def @workgroup_negative_static_bias(%input: i32, %value: i32) -> (i32) {
                OpDecorate %8 Binding 1
                OpDecorate %9 DescriptorSet 0
                OpDecorate %9 Binding 2
-               OpDecorate %_arr_int_uint_128 ArrayStride 4
         %int = OpTypeInt 32 1
       %int_0 = OpConstant %int 0
   %_struct_5 = OpTypeStruct %int
@@ -778,7 +774,6 @@ func.def @workgroup_wide_cancellation(%input: i64, %value: i32) -> (i32) {
                OpDecorate %9 Binding 1
                OpDecorate %13 DescriptorSet 0
                OpDecorate %13 Binding 2
-               OpDecorate %_arr_int_uint_128 ArrayStride 4
         %int = OpTypeInt 32 1
       %int_0 = OpConstant %int 0
        %long = OpTypeInt 64 1

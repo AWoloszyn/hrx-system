@@ -234,7 +234,7 @@ static iree_status_t loom_amdgpu_legalize_atomic_float(
       loom_attr_as_enum(loom_memory_access_atomic_scope(access));
   if (loom_amdgpu_atomic_has_native_candidate(
           context->descriptor_set, view_reference.memory_space, operation_kind,
-          atomic_kind, scope, value_type)) {
+          atomic_kind, scope, loom_memory_access_flags(access), value_type)) {
     *out_result = (loom_target_legalizer_result_t){
         .action = LOOM_TARGET_LEGALIZER_ACTION_DEFER,
     };
@@ -243,7 +243,7 @@ static iree_status_t loom_amdgpu_legalize_atomic_float(
   if (!loom_amdgpu_atomic_has_native_candidate(
           context->descriptor_set, view_reference.memory_space,
           LOOM_AMDGPU_ATOMIC_OPERATION_CMPXCHG, atomic_kind, scope,
-          value_type)) {
+          /*access_flags=*/0, value_type)) {
     return iree_ok_status();
   }
   return loom_view_target_legalize_atomic_float_reference(context, op,

@@ -1710,6 +1710,10 @@ static iree_status_t loom_low_verify_descriptor_features(
     iree_string_view_t descriptor_key, uint16_t descriptor_attr_index,
     const loom_low_descriptor_t* descriptor) {
   const loom_low_resolved_target_t* target = function_state->target;
+  // Representation-only Low has no device feature facts to compare yet.
+  if (target->target_facts == NULL) {
+    return iree_ok_status();
+  }
   const loom_low_descriptor_set_t* descriptor_set = target->descriptor_set;
   for (uint16_t i = 0; i < descriptor->feature_mask_word_count; ++i) {
     const uint32_t feature_mask_row = descriptor->feature_mask_word_start + i;

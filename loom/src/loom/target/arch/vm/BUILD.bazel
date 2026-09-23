@@ -124,6 +124,7 @@ loom_check_test_suite(
     name = "loom_check_file_test",
     srcs = [
         "test/assembly.loom-test",
+        "test/atomic_policy.loom-test",
         "test/buffer_packets.loom-test",
         "test/call_overflow.loom-test",
         "test/calls.loom-test",

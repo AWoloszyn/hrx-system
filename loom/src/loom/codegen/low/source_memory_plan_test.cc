@@ -578,14 +578,14 @@ TEST_F(SourceMemoryPlanTest, ViewMemoryOperationKindUsesInterfaceShape) {
       IREE_ARRAYSIZE(static_indices), 0, 0, LOOM_LOCATION_UNKNOWN, &store_op));
   loom_op_t* atomic_reduce_op = nullptr;
   IREE_ASSERT_OK(loom_view_atomic_reduce_build(
-      &builder_, 0, LOOM_ATOMIC_KIND_ADDI, value,
+      &builder_, 0, LOOM_ATOMIC_KIND_ADDI, /*instance_flags=*/0, value,
       loom_buffer_view_result(view_op), nullptr, 0, static_indices,
       IREE_ARRAYSIZE(static_indices), LOOM_ATOMIC_ORDERING_RELAXED,
       LOOM_ATOMIC_SCOPE_WORKGROUP, 0, 0, LOOM_LOCATION_UNKNOWN,
       &atomic_reduce_op));
   loom_op_t* atomic_rmw_op = nullptr;
   IREE_ASSERT_OK(loom_view_atomic_rmw_build(
-      &builder_, 0, LOOM_ATOMIC_KIND_ADDI, value,
+      &builder_, 0, LOOM_ATOMIC_KIND_ADDI, /*instance_flags=*/0, value,
       loom_buffer_view_result(view_op), nullptr, 0, static_indices,
       IREE_ARRAYSIZE(static_indices), LOOM_ATOMIC_ORDERING_RELAXED,
       LOOM_ATOMIC_SCOPE_WORKGROUP, 0, 0, loom_type_scalar(LOOM_SCALAR_TYPE_I32),
@@ -645,7 +645,7 @@ TEST_F(SourceMemoryPlanTest, VectorAtomicReduceTracksIdentityIotaOffsets) {
   int64_t static_indices[] = {0};
   loom_op_t* atomic_op = nullptr;
   IREE_ASSERT_OK(loom_vector_atomic_reduce_build(
-      &builder_, 0, LOOM_ATOMIC_KIND_ADDF, value,
+      &builder_, 0, LOOM_ATOMIC_KIND_ADDF, /*instance_flags=*/0, value,
       loom_buffer_view_result(view_op), nullptr, 0, static_indices,
       IREE_ARRAYSIZE(static_indices), offsets, LOOM_ATOMIC_ORDERING_RELAXED,
       LOOM_ATOMIC_SCOPE_WORKGROUP, 0, 0, LOOM_LOCATION_UNKNOWN, &atomic_op));
@@ -689,7 +689,7 @@ TEST_F(SourceMemoryPlanTest,
   int64_t static_indices[] = {0};
   loom_op_t* atomic_op = nullptr;
   IREE_ASSERT_OK(loom_vector_atomic_reduce_build(
-      &builder_, 0, LOOM_ATOMIC_KIND_ADDF, value,
+      &builder_, 0, LOOM_ATOMIC_KIND_ADDF, /*instance_flags=*/0, value,
       loom_buffer_view_result(view_op), nullptr, 0, static_indices,
       IREE_ARRAYSIZE(static_indices), offsets, LOOM_ATOMIC_ORDERING_RELAXED,
       LOOM_ATOMIC_SCOPE_WORKGROUP, 0, 0, LOOM_LOCATION_UNKNOWN, &atomic_op));
@@ -731,7 +731,7 @@ TEST_F(SourceMemoryPlanTest, VectorAtomicRmwClassifiesNonIdentityOffsets) {
   int64_t static_indices[] = {0};
   loom_op_t* atomic_op = nullptr;
   IREE_ASSERT_OK(loom_vector_atomic_rmw_build(
-      &builder_, 0, LOOM_ATOMIC_KIND_ADDF, value,
+      &builder_, 0, LOOM_ATOMIC_KIND_ADDF, /*instance_flags=*/0, value,
       loom_buffer_view_result(view_op), nullptr, 0, static_indices,
       IREE_ARRAYSIZE(static_indices), offsets, LOOM_ATOMIC_ORDERING_RELAXED,
       LOOM_ATOMIC_SCOPE_WORKGROUP, 0, 0, VectorType1D(LOOM_SCALAR_TYPE_F16, 2),
