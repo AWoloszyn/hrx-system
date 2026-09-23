@@ -855,22 +855,22 @@ void loom_value_facts_apply_predicate(loom_value_facts_t* facts,
       break;
 
     case LOOM_PREDICATE_NOT_NAN:
-      facts->flags |= LOOM_VALUE_FACT_NOT_NAN;
+      facts->flags |= LOOM_VALUE_FACT_FLOAT | LOOM_VALUE_FACT_NOT_NAN;
       if (loom_value_facts_is_not_inf(*facts)) {
         facts->flags |= LOOM_VALUE_FACT_FINITE;
       }
       return;
 
     case LOOM_PREDICATE_NOT_INF:
-      facts->flags |= LOOM_VALUE_FACT_NOT_INF;
+      facts->flags |= LOOM_VALUE_FACT_FLOAT | LOOM_VALUE_FACT_NOT_INF;
       if (loom_value_facts_is_not_nan(*facts)) {
         facts->flags |= LOOM_VALUE_FACT_FINITE;
       }
       return;
 
     case LOOM_PREDICATE_FINITE:
-      facts->flags |= LOOM_VALUE_FACT_NOT_NAN | LOOM_VALUE_FACT_NOT_INF |
-                      LOOM_VALUE_FACT_FINITE;
+      facts->flags |= LOOM_VALUE_FACT_FLOAT | LOOM_VALUE_FACT_NOT_NAN |
+                      LOOM_VALUE_FACT_NOT_INF | LOOM_VALUE_FACT_FINITE;
       return;
 
     case LOOM_PREDICATE_RANGE: {

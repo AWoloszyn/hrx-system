@@ -620,12 +620,6 @@ static iree_status_t loom_refine_boundaries_join_facts(
       loom_refine_boundaries_scalar_fact(existing_facts);
   loom_value_facts_t incoming_scalar =
       loom_refine_boundaries_scalar_fact(incoming_facts);
-  if (loom_value_facts_is_float(existing_scalar) ||
-      loom_value_facts_is_float(incoming_scalar)) {
-    *out_joined_facts = loom_value_facts_unknown();
-    return iree_ok_status();
-  }
-
   loom_value_facts_meet(&existing_scalar, &incoming_scalar, out_joined_facts);
   if (loom_value_fact_table_extensions_equal(existing_table, existing_facts,
                                              incoming_table, incoming_facts)) {

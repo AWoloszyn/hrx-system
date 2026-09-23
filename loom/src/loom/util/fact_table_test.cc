@@ -8,6 +8,7 @@
 
 #include <cstdint>
 #include <cstring>
+#include <limits>
 
 #include "iree/base/internal/arena.h"
 #include "iree/testing/gtest.h"
@@ -1274,6 +1275,83 @@ TEST_F(FactTableTest, TypedMeetPreservesStableExtension) {
   EXPECT_TRUE(
       loom_value_facts_query_uniform_element(&table.context, joined, &uniform));
   EXPECT_EQ(uniform.element.range_lo, 7);
+}
+
+TEST_F(FactTableTest, TypedMeetPreservesFloatingClassesAcrossTables) {
+  loom_value_fact_table_t source = {0};
+  loom_value_fact_table_t target = {0};
+  IREE_ASSERT_OK(loom_value_fact_table_initialize(&source, &arena_, 0));
+  IREE_ASSERT_OK(loom_value_fact_table_initialize(&target, &arena_, 0));
+  const double infinity = std::numeric_limits<double>::infinity();
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  for (loom_scalar_type_t scalar_type :
+       {LOOM_SCALAR_TYPE_F8E5M2, LOOM_SCALAR_TYPE_F16, LOOM_SCALAR_TYPE_BF16,
+        LOOM_SCALAR_TYPE_F32, LOOM_SCALAR_TYPE_F64}) {
+    const double subnormal = scalar_type == LOOM_SCALAR_TYPE_F8E5M2 ? 0x1p-16
+                             : scalar_type == LOOM_SCALAR_TYPE_F16  ? 0x1p-24
+                             : scalar_type == LOOM_SCALAR_TYPE_BF16 ? 0x1p-133
+                             : scalar_type == LOOM_SCALAR_TYPE_F32  ? 0x1p-149
+                                                                    : 0x1p-1074;
+    const double values[] = {0.0,       -0.0,     1.0,       2.0,
+                             subnormal, infinity, -infinity, nan};
+    const loom_type_t type = loom_type_scalar(scalar_type);
+    for (size_t i = 0; i < IREE_ARRAYSIZE(values); ++i) {
+      for (size_t j = 0; j < IREE_ARRAYSIZE(values); ++j) {
+        SCOPED_TRACE(::testing::Message()
+                     << "type=" << scalar_type << " lhs=" << i << " rhs=" << j);
+        const auto lhs = loom_value_facts_exact_float(scalar_type, values[i]);
+        const auto rhs = loom_value_facts_exact_float(scalar_type, values[j]);
+        loom_value_facts_t joined;
+        IREE_ASSERT_OK(loom_value_fact_table_meet_for_type(
+            &target, nullptr, type, &source, lhs, &target, rhs, &joined));
+        EXPECT_TRUE(loom_value_facts_is_float(joined));
+        EXPECT_EQ(loom_value_facts_is_finite(joined), i < 5 && j < 5);
+        EXPECT_EQ(loom_value_facts_is_nan(joined), i == 7 && j == 7);
+        EXPECT_EQ(loom_value_facts_is_inf(joined),
+                  (i == 5 || i == 6) && (j == 5 || j == 6));
+        EXPECT_EQ(loom_value_facts_is_not_nan(joined), i != 7 && j != 7);
+        EXPECT_EQ(loom_value_facts_is_not_inf(joined),
+                  i != 5 && i != 6 && j != 5 && j != 6);
+        EXPECT_EQ(loom_value_facts_is_exact(joined), i == j);
+        EXPECT_EQ(loom_value_facts_is_not_subnormal(joined),
+                  scalar_type == LOOM_SCALAR_TYPE_F64 && i != 4 && j != 4);
+        EXPECT_TRUE(loom_value_facts_is_cluster_uniform(joined));
+      }
+    }
+  }
+}
+
+TEST_F(FactTableTest, TypedMeetPreservesFloatDistributionWithoutExactness) {
+  loom_value_fact_table_t table = {0};
+  IREE_ASSERT_OK(loom_value_fact_table_initialize(&table, &arena_, 0));
+  const auto type = loom_type_scalar(LOOM_SCALAR_TYPE_F32);
+  auto finite = loom_value_facts_unknown();
+  finite.flags = LOOM_VALUE_FACT_FLOAT | LOOM_VALUE_FACT_FINITE |
+                 LOOM_VALUE_FACT_NOT_NAN | LOOM_VALUE_FACT_NOT_INF;
+  loom_value_facts_mark_workgroup_uniform(&finite);
+  const auto exact = loom_value_facts_exact_float(LOOM_SCALAR_TYPE_F32, 1.0);
+  loom_value_facts_t joined;
+  IREE_ASSERT_OK(loom_value_fact_table_meet_for_type(
+      &table, nullptr, type, &table, finite, &table, exact, &joined));
+  EXPECT_TRUE(loom_value_facts_is_finite(joined));
+  EXPECT_FALSE(loom_value_facts_is_exact(joined));
+  EXPECT_EQ(loom_value_facts_uniform_scope(joined),
+            LOOM_VALUE_FACT_UNIFORM_SCOPE_WORKGROUP);
+
+  loom_value_facts_mark_lane_varying(&finite);
+  IREE_ASSERT_OK(loom_value_fact_table_meet_for_type(
+      &table, nullptr, type, &table, finite, &table, exact, &joined));
+  EXPECT_TRUE(loom_value_facts_is_finite(joined));
+  EXPECT_TRUE(loom_value_facts_is_lane_varying(joined));
+  EXPECT_FALSE(loom_value_facts_is_subgroup_uniform(joined));
+
+  IREE_ASSERT_OK(loom_value_fact_table_meet_for_type(
+      &table, nullptr, type, &table, finite, &table, loom_value_facts_unknown(),
+      &joined));
+  EXPECT_FALSE(loom_value_facts_is_finite(joined));
+  EXPECT_FALSE(loom_value_facts_is_not_nan(joined));
+  EXPECT_FALSE(loom_value_facts_is_not_inf(joined));
+  EXPECT_TRUE(loom_value_facts_is_lane_varying(joined));
 }
 
 TEST_F(FactTableTest, TypedWidenJoinsDivisibilityIndependentlyOfRange) {

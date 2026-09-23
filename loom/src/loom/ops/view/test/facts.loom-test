@@ -669,3 +669,25 @@ func.def @bare_fp8_view_load_content_is_unknown(%buffer: buffer) -> (i1) {
   %finite = scalar.isfinitef %value : f8E4M3
   func.return %finite : i1
 }
+
+// ====
+
+// Storage content facts and a finite fallback retain their shared class.
+func.def @finite_storage_or_zero(%condition: i1, %buffer: buffer) -> (i1) {
+  %offset = index.constant 0 : offset
+  %layout = encoding.layout.dense : encoding<layout>
+  %schema = encoding.define #encoding.f8e5m2<rounding=finite_only> : encoding<schema>
+  %storage = encoding.define #encoding.storage {layout = %layout : encoding<layout>, schema = %schema : encoding<schema>} : encoding<storage>
+  %view = buffer.view %buffer[%offset] : buffer -> view<4xf8E5M2, %storage>
+  %loaded = view.load %view[0] : view<4xf8E5M2, %storage> -> f8E5M2
+  %c0 = scalar.constant 0.0 : f8E5M2
+  %value = scf.select %condition, %loaded, %c0 : f8E5M2
+  %finite = scalar.isfinitef %value : f8E5M2
+  func.return %finite : i1
+}
+
+// ----
+func.def @finite_storage_or_zero(%condition: i1, %buffer: buffer) -> (i1) {
+  %finite = scalar.constant true : i1
+  func.return %finite : i1
+}
