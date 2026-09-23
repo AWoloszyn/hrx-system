@@ -900,6 +900,10 @@ void loom_value_facts_shrsi(const loom_value_facts_t* lhs,
 void loom_value_facts_andi(const loom_value_facts_t* lhs,
                            const loom_value_facts_t* rhs,
                            loom_value_facts_t* out);
+
+// Retains the maximum operand lower bound and a finite bit-width upper bound
+// when both operands are nonnegative. Either operand's nonzero proof survives,
+// including predicate-derived proofs whose ranges span zero.
 void loom_value_facts_ori(const loom_value_facts_t* lhs,
                           const loom_value_facts_t* rhs,
                           loom_value_facts_t* out);

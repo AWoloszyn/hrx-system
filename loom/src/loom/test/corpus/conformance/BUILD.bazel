@@ -47,6 +47,17 @@ loom_module(
 )
 
 loom_test(
+    name = "bitwise_table_index_test",
+    srcs = ["bitwise_table_index.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/spirv:vulkan1.3+bda+extended-types",
+    ],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+)
+
+loom_test(
     name = "condition_loops_test",
     srcs = ["condition_loops.loom"],
     compile_targets = [
