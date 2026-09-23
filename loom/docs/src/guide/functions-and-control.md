@@ -602,7 +602,7 @@ Depth one retains serial iteration and any separate unroll policy, providing a
 useful control. The depth must specialize to a positive exact value; the unroll
 factor must also specialize before its policy runs.
 
-Nested `scf.if` and `scf.for` remain intact within their assigned stage.
+Nested `scf.if` and `scf.for` normally remain intact within their assigned stage.
 A guarded load retains its guard, and a read-only inner reduction can produce
 one queued result for each outer iteration. A pure inner loop can consume
 queued values and the outer accumulator. Inner loops may also carry their own
@@ -611,18 +611,37 @@ before the outer one, then unrolling processes the reconstructed program.
 The [guarded-row example](../workflows/tune-loop-schedules.md#keep-guards-and-inner-loops-in-the-source)
 checks these combinations through native execution.
 
-The read-ahead contract supports ordinary loads and memory-pure consumers with a
-positive exact step. Read prerequisites may depend on the induction variable
-and values outside the loop. For a nested unit containing reads, this includes
+The read-ahead contract supports ordinary loads and memory-pure consumers, and
+global loads ahead of workgroup-memory consumers, with a positive exact step.
+Read prerequisites may depend on the induction variable and values outside the
+loop. For a nested unit containing reads, this includes
 all captured values, guards, bounds, and initial inner state: the whole unit
 must be independent of outer loop-carried state. A violation is diagnosed.
-Cross-stage value types must be invariant across iterations. Writes, ordered
-or volatile effects, explicit asynchronous groups, other nested control such
-as `scf.while`, and consuming result-storage ties on the requested loop require
+Cross-stage value types must be invariant across iterations. Global or unknown
+memory writes, global barriers, volatile effects, explicit asynchronous groups,
+source-order fences, other nested control such as `scf.while`, and consuming
+result-storage ties on the requested loop require
 a different scheduling/ownership contract and are diagnosed when
 requested at depth greater than one. The depth is bounded by 65,535 and by the
 representable carried-state tuple; unsupported requests fail at the source
 policy instead of silently running serially.
+
+When the requested loop has compile-time exact bounds, global input loads can
+advance while workgroup loads, stores, and workgroup-memory barriers remain in
+the consumer. Publication, consumption, and the barrier before reusing shared
+storage keep their original order. Different views of the same workgroup
+allocation stay in that consumer. The compiler must establish the global and
+workgroup spaces; a `noalias` promise does not substitute for this separation.
+A workgroup read cannot supply a future global load's address or guard.
+
+A small inner loop that mixes global loads with workgroup stores can request
+full linear `unroll`. The compiler expands that explicit request before forming
+the enclosing read-ahead cut, exposing the loads separately from the stores.
+Partial or interleaved inner schedules remain intact and cannot expose a mixed
+unit. Read-only inner reductions keep their single queued result, and the
+enclosing loop's own unroll policy still runs after pipelining. The
+[workgroup-staging walkthrough](../workflows/tune-loop-schedules.md#read-ahead-across-workgroup-staging)
+links a checked example with empty, short, and combined-policy callers.
 
 Subgroup and workgroup reductions can remain in the ordered consumer when the
 requested loop's lower and upper bounds are compile-time exact. This keeps

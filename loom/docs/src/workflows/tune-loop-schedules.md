@@ -34,11 +34,14 @@ owns the complete policy contract, including full unrolling and scheduling
 choices.
 
 Ordinary read-ahead fits loads and pure computation, including nested `scf.if`
-and `scf.for`. Each nested operation stays intact within its assigned stage.
+and `scf.for`. Each nested operation normally stays intact within its assigned
+stage.
 Read addresses, guards, inner bounds, and other producer prerequisites may
 depend on the induction variable and outer values, but cannot depend on the
-previous accumulator. Stores, explicit async groups, `scf.while`, and ordered
-effects receive diagnostics at depth greater than one. These
+previous accumulator. Global or unknown writes, global barriers, explicit async
+groups, `scf.while`, and source-order fences receive diagnostics at depth greater
+than one. Workgroup stores and barriers can stay in the ordered consumer of a
+fixed-bound loop, as described [below](#read-ahead-across-workgroup-staging). These
 policies are explicit; an unannotated loop receives no read-ahead transform.
 
 Cooperative reductions can also consume read-ahead values. A requested loop
@@ -47,6 +50,35 @@ runtime tail guards can remain inside that fixed tile. Separate guarded reads
 from the collective consumer so each can retain its own stage. The
 [collective participation contract](../guide/functions-and-control.md#pipeline-reads-ahead-of-ordered-computation)
 explains this shape and its diagnostics.
+
+## Read ahead across workgroup staging
+
+A tiled kernel can issue future global loads while the current tile publishes
+values to shared memory, synchronizes, and consumes them. Keep the workgroup
+stores, publication barrier, shared reads or matrix operations, and overwrite
+barrier in their original order inside a fixed-bound `scf.for pipeline(%depth)`.
+The compiler advances only global loads and their independent prerequisites;
+the same shared allocation serves each consumer iteration.
+
+The [checked workgroup-staging example](https://github.com/ROCm/hrx-system/blob/main/loom/src/loom/test/corpus/conformance/ordered_read_ahead.loom)
+uses 128 work-items to publish two stripes, read another work-item's values, and
+reuse one shared allocation. Its inner `unroll` exposes each global load
+separately from its workgroup store. The template receives depth and unroll
+factor per caller. Independent integer expectations cover empty loops, loops
+shorter than the depth, startup/drain boundaries, and combined outer policies.
+
+Use a full linear inner unroll only where the source already calls for that
+finite expansion. A partial or interleaved inner schedule remains an intact
+unit and cannot split mixed global/workgroup accesses between stages. A
+read-only inner reduction can remain intact and queue its result instead of
+each individual load. The [read-ahead contract](../guide/functions-and-control.md#pipeline-reads-ahead-of-ordered-computation)
+defines the memory and participation requirements.
+
+Compare depth one and larger depths with identical arithmetic and shared-memory
+capacity. Check the final code for useful pending global loads across consumer
+work, alongside registers, spills, and device time. A source queue alone does
+not establish hardware overlap: reusing the registers that hold a pending
+load's address can force an early completion wait.
 
 ## Give each motif its own schedule
 
