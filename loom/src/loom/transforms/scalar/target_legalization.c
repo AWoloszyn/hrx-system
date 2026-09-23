@@ -391,7 +391,7 @@ static iree_status_t loom_scalar_legalize_extf(
   return iree_ok_status();
 }
 
-static iree_status_t loom_scalar_legalize_extui(
+static iree_status_t loom_scalar_legalize_boolean_extension(
     const loom_target_legalizer_entry_t* entry,
     loom_target_legalization_context_t* context, loom_op_t* op,
     loom_target_legalizer_result_t* out_result) {
@@ -400,16 +400,9 @@ static iree_status_t loom_scalar_legalize_extui(
       .action = LOOM_TARGET_LEGALIZER_ACTION_NO_COMMENT,
   };
 
-  const loom_type_t input_type =
-      loom_module_value_type(context->module, loom_scalar_extui_input(op));
+  const loom_value_id_t input = loom_op_operands(op)[0];
   const loom_type_t result_type =
-      loom_module_value_type(context->module, loom_scalar_extui_result(op));
-  if (!loom_type_equal(input_type, loom_type_scalar(LOOM_SCALAR_TYPE_I1)) ||
-      !loom_type_is_scalar(result_type) ||
-      !loom_scalar_type_is_integer(loom_type_element_type(result_type)) ||
-      loom_scalar_type_bitwidth(loom_type_element_type(result_type)) <= 1) {
-    return iree_ok_status();
-  }
+      loom_module_value_type(context->module, loom_op_results(op)[0]);
 
   loom_rewriter_t* rewriter = context->rewriter;
   loom_builder_set_before(&rewriter->builder, op);
@@ -417,14 +410,15 @@ static iree_status_t loom_scalar_legalize_extui(
       loom_rewriter_value_checkpoint(rewriter);
   loom_value_id_t true_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_scalar_legalize_build_scalar_constant(
-      &rewriter->builder, op->location, result_type, 1, &true_value));
+      &rewriter->builder, op->location, result_type,
+      loom_scalar_extsi_isa(op) ? -1 : 1, &true_value));
   loom_value_id_t false_value = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_scalar_legalize_build_scalar_constant(
       &rewriter->builder, op->location, result_type, 0, &false_value));
   loom_value_id_t replacement = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_scalar_legalize_build_select(
-      &rewriter->builder, op->location, result_type,
-      loom_scalar_extui_input(op), true_value, false_value, &replacement));
+      &rewriter->builder, op->location, result_type, input, true_value,
+      false_value, &replacement));
   IREE_RETURN_IF_ERROR(loom_rewriter_preserve_result_names_on_new_values(
       rewriter, op, &replacement, 1, value_checkpoint));
   IREE_RETURN_IF_ERROR(
@@ -896,8 +890,14 @@ static const loom_target_legalizer_rule_t kScalarLegalizerRules[] = {
         .legalize = loom_scalar_legalize_extf,
     },
     {
+        .root_kind = LOOM_OP_SCALAR_EXTSI,
+        .first_operand_element_types = LOOM_SCALAR_TYPE_SET_I1,
+        .legalize = loom_scalar_legalize_boolean_extension,
+    },
+    {
         .root_kind = LOOM_OP_SCALAR_EXTUI,
-        .legalize = loom_scalar_legalize_extui,
+        .first_operand_element_types = LOOM_SCALAR_TYPE_SET_I1,
+        .legalize = loom_scalar_legalize_boolean_extension,
     },
     {
         .root_kind = LOOM_OP_SCALAR_FMAI,
