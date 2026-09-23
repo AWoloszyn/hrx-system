@@ -1,0 +1,95 @@
+// RUN: with-checks emit source-low target=amd.xdna.aie2p:core output=low
+
+// A full byte table stays in one vector carrier and selects all result lanes
+// through packed index-bit predicates.
+func.def @i8_full_table(%table: vector<64xi8>, %indices: vector<64xi8>) -> (vector<64xi8>) {
+  %result = vector.table.lookup %table[%indices] : vector<64xi8>, vector<64xi8> -> vector<64xi8>
+  func.return %result : vector<64xi8>
+}
+
+// ----
+CHECK: * = vband %indices, *
+CHECK: * = vlt.u8x64 *, *
+CHECK: * = vextbcst.8 %table, 0
+CHECK: * = vextbcst.8 %table, 63
+CHECK: %result = vsel.8 *
+CHECK-NOT: * = vextract.*
+CHECK-NOT: * = vinsert.*
+CHECK-NOT: * = vextbcst.8 %table, 64
+
+// ====
+
+// A partial final subtree uses only defined BF16 table lanes while preserving
+// the logical rank of the result.
+func.def @bf16_partial_table(%table: vector<5xbf16>, %indices: vector<2x16xi16>) -> (vector<2x16xbf16>) {
+  %result = vector.table.lookup %table[%indices] : vector<5xbf16>, vector<2x16xi16> -> vector<2x16xbf16>
+  func.return %result : vector<2x16xbf16>
+}
+
+// ----
+CHECK: * = vextbcst.16 %table, 0
+CHECK: * = vextbcst.16 %table, 4
+CHECK: %result = vsel.16*
+CHECK-NOT: * = vextract.*
+CHECK-NOT: * = vinsert.*
+CHECK-NOT: * = vextbcst.16 %table, 5
+
+// ====
+
+// Word payloads and indices use their native packed compare and select forms.
+func.def @f32_full_table(%table: vector<16xf32>, %indices: vector<16xi32>) -> (vector<16xf32>) {
+  %result = vector.table.lookup %table[%indices] : vector<16xf32>, vector<16xi32> -> vector<16xf32>
+  func.return %result : vector<16xf32>
+}
+
+// ----
+CHECK: * = vlt.u32x16* *, *
+CHECK: * = vextbcst.32 %table, 0
+CHECK: * = vextbcst.32 %table, 15
+CHECK: %result = vsel.32*
+CHECK-NOT: * = vextract.*
+CHECK-NOT: * = vinsert.*
+
+// ====
+
+// A uniform double-word lookup is one native indexed broadcast.
+func.def @i64_uniform_table(%table: vector<8xi64>) -> (vector<8xi64>) {
+  %indices = vector.constant 7 : vector<8xi8>
+  %result = vector.table.lookup %table[%indices] : vector<8xi64>, vector<8xi8> -> vector<8xi64>
+  func.return %result : vector<8xi64>
+}
+
+// ----
+CHECK: %result = vextbcst.64 %table, 7
+CHECK-NOT: * = vextract.*
+CHECK-NOT: * = vinsert.*
+
+// ====
+
+// Narrow indices make the packed tree cheaper at this boundary because scalar
+// extraction must extend every index lane.
+func.def @i16_narrow_index_boundary(%table: vector<9xi16>, %indices: vector<8xi16>) -> (vector<8xi16>) {
+  %result = vector.table.lookup %table[%indices] : vector<9xi16>, vector<8xi16> -> vector<8xi16>
+  func.return %result : vector<8xi16>
+}
+
+// ----
+CHECK: * = vextbcst.16 %table, 0
+CHECK: %result = vsel.16*
+CHECK-NOT: * = vextract.*
+CHECK-NOT: * = vinsert.*
+
+// ====
+
+// Word indices need predicate completion but no scalar extension, making the
+// scalar realization one instruction cheaper at the adjacent boundary.
+func.def @i16_word_index_boundary(%table: vector<9xi16>, %indices: vector<8xi32>) -> (vector<8xi16>) {
+  %result = vector.table.lookup %table[%indices] : vector<9xi16>, vector<8xi32> -> vector<8xi16>
+  func.return %result : vector<8xi16>
+}
+
+// ----
+CHECK: * = vextract.32.imm %indices, 0
+CHECK: * = vextract.16.reg %table, *
+CHECK: %result = vinsert.16.reg *
+CHECK-NOT: * = vextbcst.*

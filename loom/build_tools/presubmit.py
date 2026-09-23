@@ -10,8 +10,11 @@
 from __future__ import annotations
 
 import argparse
+import re
 import subprocess
 import sys
+import tempfile
+from collections import defaultdict, deque
 from pathlib import Path, PurePosixPath
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -34,6 +37,7 @@ GLOBAL_TEST_TRIGGERS = (
     "requirements",
 )
 RESOURCE_TEST_TAG_FILTERS = (
+    "-manual",
     "-iree-run-requirement=runtime.resource.amd_gpu",
     "-iree-run-requirement=vulkan.resource.device",
     "-iree-run-requirement=runtime.resource.webgpu_device",
@@ -54,7 +58,14 @@ BAZEL_SOURCE_TOOL_ARGS = (
     "--config=locked",
     f"--//loom/config/target:enable={CI_LOOM_TARGETS}",
 )
+BAZEL_TEST_CONFIGURATION_ARGS = (
+    "--config=presubmit",
+    f"--//loom/config/target:enable={CI_LOOM_TARGETS}",
+    "--//loom/config/import:enable=cxx",
+)
 BAZEL_FULL_TEST_TARGET = "//loom/..."
+BAZEL_ALL_TESTS_QUERY = f"tests({BAZEL_FULL_TEST_TARGET})"
+BAZEL_GRAPH_EDGE_PATTERN = re.compile(r'^  "([^"]+)" -> "([^"]+)"$')
 LOOM_FORMAT_BAZEL_TARGET = "//loom/src/loom/tools/loom-format:loom-format"
 LOOM_FORMAT_CMAKE_TARGET = "loom::tools::loom-format"
 LOOM_CHECK_BAZEL_TARGET = "//loom/src/loom/tools/loom-check:loom-check-test"
@@ -435,19 +446,21 @@ def run_source_lint(*, lane: str, files_from: str | None) -> bool:
     return public_lint_ok and repository_lint_ok
 
 
-def bazel_test_command(targets: list[str] | None = None) -> list[str]:
-    return [
+def bazel_test_command(target_pattern_file: Path | None = None) -> list[str]:
+    command = [
         "bazel",
         "test",
-        "--config=presubmit",
-        f"--//loom/config/target:enable={CI_LOOM_TARGETS}",
-        "--//loom/config/import:enable=cxx",
+        *BAZEL_TEST_CONFIGURATION_ARGS,
         "--test_tag_filters=" + ",".join(RESOURCE_TEST_TAG_FILTERS),
-        *(targets or [BAZEL_FULL_TEST_TARGET]),
     ]
+    if target_pattern_file is None:
+        command.append(BAZEL_FULL_TEST_TARGET)
+    else:
+        command.append(f"--target_pattern_file={target_pattern_file}")
+    return command
 
 
-def bazel_package_test_target(path: str) -> str | None:
+def bazel_source_label(path: str) -> str | None:
     source_path = PurePosixPath(path)
     if (
         "\\" in path
@@ -461,74 +474,180 @@ def bazel_package_test_target(path: str) -> str | None:
     while directory != REPO_ROOT:
         if (directory / "BUILD.bazel").is_file() or (directory / "BUILD").is_file():
             package_path = directory.relative_to(REPO_ROOT).as_posix()
-            return f"//{package_path}/..."
+            source_name = (REPO_ROOT / source_path).relative_to(directory).as_posix()
+            return f"//{package_path}:{source_name}"
         directory = directory.parent
     return None
 
 
+def bazel_node_label(node: str) -> str:
+    separator = node.rfind(" (")
+    if separator < 0 or not node.endswith(")"):
+        raise ValueError(f"malformed configured Bazel node: {node}")
+    return node[:separator]
+
+
+def affected_bazel_test_targets(
+    test_targets: set[str], source_labels: set[str], dependency_graph: Path
+) -> list[str]:
+    """Finds tests that transitively depend on any changed source label."""
+    reverse_dependencies: dict[str, set[str]] = defaultdict(set)
+    source_nodes: set[str] = set()
+    with open(dependency_graph, encoding="utf-8") as graph_file:
+        for line_number, raw_line in enumerate(graph_file, start=1):
+            line = raw_line.rstrip("\n")
+            match = BAZEL_GRAPH_EDGE_PATTERN.fullmatch(line)
+            if match is None:
+                if " -> " in line:
+                    raise ValueError(
+                        f"malformed Bazel dependency edge at line {line_number}"
+                    )
+                continue
+            dependent, dependency = match.groups()
+            reverse_dependencies[dependency].add(dependent)
+            if bazel_node_label(dependent) in source_labels:
+                source_nodes.add(dependent)
+            if bazel_node_label(dependency) in source_labels:
+                source_nodes.add(dependency)
+
+    worklist = deque(source_nodes)
+    reachable = set(worklist)
+    while worklist:
+        node = worklist.popleft()
+        for dependent in reverse_dependencies.get(node, ()):
+            if dependent in reachable:
+                continue
+            reachable.add(dependent)
+            worklist.append(dependent)
+
+    return sorted(
+        {
+            label
+            for node in reachable
+            if (label := bazel_node_label(node)) in test_targets
+        }
+    )
+
+
+class BazelDependencyQueryError(RuntimeError):
+    pass
+
+
+def query_affected_bazel_test_targets(source_labels: set[str]) -> list[str]:
+    with tempfile.TemporaryDirectory(prefix="loom-bazel-affected-") as temp_dir:
+        temp_path = Path(temp_dir)
+        # Enumerating concrete test rules first keeps cquery from analyzing
+        # non-test support targets under //loom/... that are intentionally
+        # invalid outside their analysis tests. The configured graph then
+        # preserves select() decisions made by the presubmit configuration.
+        test_targets_path = temp_path / "test_targets.txt"
+        if not run_command(
+            [
+                "bazel",
+                "query",
+                "--output=label",
+                f"--output_file={test_targets_path}",
+                BAZEL_ALL_TESTS_QUERY,
+            ],
+            "Discover Bazel test targets",
+        ):
+            raise BazelDependencyQueryError("failed to discover Bazel test targets")
+        test_targets = {
+            line.strip()
+            for line in test_targets_path.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        }
+        if not test_targets:
+            raise BazelDependencyQueryError("Bazel reported no Loom test targets")
+
+        query_path = temp_path / "test_dependencies.query"
+        query_path.write_text(
+            "deps(set(\n  " + "\n  ".join(sorted(test_targets)) + "\n))\n",
+            encoding="utf-8",
+        )
+        dependency_graph_path = temp_path / "test_dependencies.dot"
+        if not run_command(
+            [
+                "bazel",
+                "cquery",
+                *BAZEL_TEST_CONFIGURATION_ARGS,
+                "--output=graph",
+                "--nograph:factored",
+                f"--query_file={query_path}",
+                f"--output_file={dependency_graph_path}",
+            ],
+            "Resolve Bazel test dependencies",
+        ):
+            raise BazelDependencyQueryError(
+                "failed to resolve configured Bazel test dependencies"
+            )
+        try:
+            targets = affected_bazel_test_targets(
+                test_targets, source_labels, dependency_graph_path
+            )
+        except (OSError, ValueError) as exc:
+            raise BazelDependencyQueryError(
+                f"failed to read configured Bazel test dependencies: {exc}"
+            ) from exc
+        print(
+            "loom presubmit: Bazel dependency graph selected "
+            f"{len(targets)} of {len(test_targets)} tests"
+        )
+        return targets
+
+
 def selected_bazel_test_targets(paths: list[str]) -> list[str] | None:
-    # Enabled target providers are linked through shared Loom registries, which
-    # makes nearly every test a graph-level reverse dependency of a leaf target
-    # package. The owning package subtree is the useful local proof boundary:
-    # emitter libraries commonly keep tests in a nested test/ package. Selecting
-    # only :all misses those tests and may select no tests at all. Repository-wide
-    # validation remains the CI and explicit --all contract.
-    # Starlark load edges are not ordinary target dependencies, so package-local
-    # selection cannot represent their impact. The same is true of repository
-    # configuration and presubmit machinery covered by is_global_trigger.
-    # Shared corpus packages own source libraries; their tests live in target
-    # consumers. Those edits need cross-target coverage rather than a test
-    # invocation on a library-only package.
-    # Python authoring libraries likewise have generator and import consumers
-    # across packages. Their proof boundary is the Python test suite.
+    # Build and Starlark edits change the dependency graph itself, so no source
+    # label in the configured graph can bound their effects.
     if any(
         is_global_trigger(path)
+        or PurePosixPath(path).name in ("BUILD", "BUILD.bazel")
         or path.endswith(".bzl")
-        or path.startswith("loom/src/loom/test/corpus/")
         for path in paths
     ):
         return None
-    targets = set()
+    source_labels = set()
     for path in paths:
         if not path.startswith(PROJECT_ROOT):
             continue
-        target = bazel_package_test_target(path)
-        if target is None:
-            # A Loom path outside a Bazel package has no safe local ownership
-            # boundary. Retain the full-suite proof instead of skipping it.
-            return None
-        targets.add("//loom/py/..." if path.startswith("loom/py/") else target)
-    return sorted(targets)
+        source_label = bazel_source_label(path)
+        if source_label is not None:
+            source_labels.add(source_label)
+    if not source_labels:
+        return []
+    return query_affected_bazel_test_targets(source_labels)
+
+
+def run_affected_bazel_tests(targets: list[str]) -> bool:
+    with tempfile.TemporaryDirectory(prefix="loom-bazel-test-targets-") as temp_dir:
+        target_file_path = Path(temp_dir) / "targets.txt"
+        target_file_path.write_text(
+            "".join(f"{target}\n" for target in targets), encoding="utf-8"
+        )
+        return run_command(
+            bazel_test_command(target_file_path),
+            "Bazel tests",
+            success_exit_codes=(0, 4),
+        )
 
 
 def run_bazel_tests(files_from: str | None = None) -> bool:
     if files_from is None:
-        targets = [BAZEL_FULL_TEST_TARGET]
-    else:
-        selected_targets = selected_bazel_test_targets(selected_files(files_from))
-        if selected_targets is None:
-            targets = [BAZEL_FULL_TEST_TARGET]
-        elif not selected_targets:
-            print("loom presubmit: no Bazel packages affected")
-            return True
-        else:
-            targets = selected_targets
+        return run_command(bazel_test_command(), "Bazel tests")
 
-    command = bazel_test_command(targets)
-    if command_line_utf16_units(command) > MAX_PORTABLE_COMMAND_LINE_UTF16_UNITS:
-        print(
-            "loom presubmit: affected test command exceeds the portable "
-            "command-line limit; running the full Loom suite"
-        )
-        command = bazel_test_command()
-    # Bazel reports exit 4 when a valid selection has no tests after filtering.
-    # A hardware-only leaf package has no CPU presubmit tests; the full Loom
-    # suite must always contain tests admitted by these filters.
-    return run_command(
-        command,
-        "Bazel tests",
-        success_exit_codes=(0,) if BAZEL_FULL_TEST_TARGET in command else (0, 4),
-    )
+    try:
+        selected_targets = selected_bazel_test_targets(selected_files(files_from))
+    except BazelDependencyQueryError as exc:
+        print(f"loom presubmit: {exc}", file=sys.stderr)
+        return False
+    if selected_targets is None:
+        return run_command(bazel_test_command(), "Bazel tests")
+    if not selected_targets:
+        print("loom presubmit: no Bazel tests depend on the selected files")
+        return True
+    # Bazel reports exit 4 when every selected test is excluded by the resource
+    # and manual tag filters.
+    return run_affected_bazel_tests(selected_targets)
 
 
 def run_cmake_tests() -> bool:

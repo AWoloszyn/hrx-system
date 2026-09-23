@@ -39,6 +39,7 @@ from loom.target.arch.amd.xdna.aie2p.contracts.structural import (
     _I8_DEINTERLEAVE_CONTROLS,
     AIE2P_STRUCTURAL_RULES,
 )
+from loom.target.arch.amd.xdna.aie2p.contracts.table import AIE2P_TABLE_RULES
 from loom.target.contracts import (
     DescriptorResultType,
     DescriptorRule,
@@ -295,6 +296,20 @@ def test_core_contract_closes_scalar_and_integer_vector_families() -> None:
         "amd.xdna.aie2p.broadcast.i16x32.from-vector",
         "amd.xdna.aie2p.broadcast.i32x16.from-vector",
     ]
+
+    table_lookup_rules = [
+        rule for rule in rules if rule.source_op is vector.vector_table_lookup
+    ]
+    assert table_lookup_rules == list(AIE2P_TABLE_RULES)
+    assert [rule.descriptor.key for rule in table_lookup_rules] == [
+        "amd.xdna.aie2p.broadcast.i8x64.from-vector",
+        "amd.xdna.aie2p.broadcast.i16x32.from-vector",
+        "amd.xdna.aie2p.broadcast.i32x16.from-vector",
+        "amd.xdna.aie2p.broadcast.i64x8.from-vector",
+    ]
+    assert [rule.emit[0].immediates["idx"].kind for rule in table_lookup_rules] == [
+        ValueProjectKind.EXACT_I64,
+    ] * 4
 
     vector_extract_rules = [
         rule
