@@ -377,6 +377,7 @@ low.func.def target<amd.xdna.aie2p.core> abi(object_function) @f16x4_insert_stat
 
 // ====
 
+// RUN: with-checks emit source-low target=amd.xdna.aie2p:core output=low
 func.def @bf16x8_insert_static_constant(%values: vector<8xbf16>) -> (vector<8xbf16>) {
   %replacement = scalar.constant 0.0 : bf16
   %updated = vector.insert %replacement into %values[5] : bf16, vector<8xbf16>
@@ -384,13 +385,11 @@ func.def @bf16x8_insert_static_constant(%values: vector<8xbf16>) -> (vector<8xbf
 }
 
 // ----
-low.func.def target<amd.xdna.aie2p.core> abi(object_function) @bf16x8_insert_static_constant(%values: reg<aie2p.ewl>) -> (reg<aie2p.ewl>) asm {
-  %replacement = mov.i32 0
-  %7 = mov.short 5
-  %8 = copy %7 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
-  %updated = vinsert.16.ewl.reg %values, %8, %replacement
-  return %updated
-}
+CHECK: %replacement = mov.i32 0
+CHECK: * = mov.short 5
+CHECK: %updated = vinsert.16.reg %values, *, %replacement
+CHECK: return %updated
+CHECK-NOT: *reg<aie2p.ewl>*
 
 // ====
 
