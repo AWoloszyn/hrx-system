@@ -6,10 +6,10 @@
 
 // AMDGPU low emission for selected vector fragment memory plans.
 
-#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_EMIT_H_
-#define LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_EMIT_H_
+#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_EMIT_H_
+#define LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_EMIT_H_
 
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_plan.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/plan.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -50,4 +50,4 @@ void loom_amdgpu_mark_fragment_memory_address_storage_demands(
 }  // extern "C"
 #endif
 
-#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_EMIT_H_
+#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_EMIT_H_

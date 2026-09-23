@@ -6,10 +6,10 @@
 
 // AMDGPU exact matrix-fragment publication recipe costs.
 
-#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_PUBLICATION_COST_H_
-#define LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_PUBLICATION_COST_H_
+#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PUBLICATION_COST_H_
+#define LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PUBLICATION_COST_H_
 
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_packet.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/packet.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -35,4 +35,4 @@ bool loom_amdgpu_fragment_publication_cost_crosslane(
 }  // extern "C"
 #endif
 
-#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_PUBLICATION_COST_H_
+#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PUBLICATION_COST_H_

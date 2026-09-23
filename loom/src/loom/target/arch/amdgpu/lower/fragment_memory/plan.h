@@ -6,8 +6,8 @@
 
 // AMDGPU planning and legality for vector fragment memory operations.
 
-#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_PLAN_H_
-#define LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_PLAN_H_
+#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PLAN_H_
+#define LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PLAN_H_
 
 #include "loom/codegen/low/representation_plan.h"
 #include "loom/target/arch/amdgpu/lower/matrix_fragment_state.h"
@@ -51,4 +51,4 @@ iree_status_t loom_amdgpu_low_legality_verify_fragment_memory(
 }  // extern "C"
 #endif
 
-#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_PLAN_H_
+#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PLAN_H_

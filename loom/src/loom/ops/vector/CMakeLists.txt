@@ -78,7 +78,6 @@ loom_generated_cc_library(
     "fragment.h"
     "memory.h"
     "ops.h"
-    "role.h"
     "scalarization.h"
     "storage.h"
     "table.h"

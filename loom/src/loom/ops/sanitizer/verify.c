@@ -463,14 +463,7 @@ iree_status_t loom_sanitizer_race_fragment_access_verify(
                            : IREE_SV("rank >= 2 view"));
   }
 
-  const loom_sanitizer_race_access_kind_t kind =
-      loom_sanitizer_race_fragment_access_kind(op);
-  if (kind == LOOM_SANITIZER_RACE_ACCESS_KIND_READ ||
-      kind == LOOM_SANITIZER_RACE_ACCESS_KIND_WRITE) {
-    return iree_ok_status();
-  }
-  return loom_sanitizer_emit_attribute_value_constraint(
-      emitter, op, IREE_SV("kind"), kind, IREE_SV("read or write"));
+  return iree_ok_status();
 }
 
 iree_status_t loom_sanitizer_race_sync_verify(

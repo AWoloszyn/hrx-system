@@ -15,7 +15,7 @@
 #include "loom/codegen/low/lower/lower.h"
 #include "loom/sanitizer/site_collection.h"
 #include "loom/target/arch/amdgpu/abi/tsan.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_plan.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/plan.h"
 #include "loom/target/arch/amdgpu/lower/memory.h"
 #include "loom/target/arch/amdgpu/lower/plan.h"
 #include "loom/target/low_legality.h"

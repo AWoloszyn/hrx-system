@@ -15,8 +15,6 @@
 #include "loom/ops/op_defs.h"
 #include "loom/ir/facts.h"
 #include "loom/ops/atomic.h"
-#include "loom/ops/sanitizer/race_access.h"
-#include "loom/ops/vector/role.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -42,6 +40,14 @@ typedef enum loom_sanitizer_assert_access_kind_e {
   LOOM_SANITIZER_ASSERT_ACCESS_KIND_COUNT_ = 3,
 } loom_sanitizer_assert_access_kind_t;
 
+// Logical memory access kind covered by a sanitizer race observation.
+typedef enum loom_sanitizer_race_access_kind_e {
+  LOOM_SANITIZER_RACE_ACCESS_KIND_READ = 0,
+  LOOM_SANITIZER_RACE_ACCESS_KIND_WRITE = 1,
+  LOOM_SANITIZER_RACE_ACCESS_KIND_READ_WRITE = 2,
+  LOOM_SANITIZER_RACE_ACCESS_KIND_COUNT_ = 3,
+} loom_sanitizer_race_access_kind_t;
+
 // Logical memory access kind covered by a repeated sanitizer access assertion.
 typedef enum loom_sanitizer_assert_accesses_kind_e {
   LOOM_SANITIZER_ASSERT_ACCESSES_KIND_READ = 0,
@@ -49,6 +55,22 @@ typedef enum loom_sanitizer_assert_accesses_kind_e {
   LOOM_SANITIZER_ASSERT_ACCESSES_KIND_READ_WRITE = 2,
   LOOM_SANITIZER_ASSERT_ACCESSES_KIND_COUNT_ = 3,
 } loom_sanitizer_assert_accesses_kind_t;
+
+// Memory effect observed for a matrix-fragment race access.
+typedef enum loom_sanitizer_race_fragment_access_kind_e {
+  LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_KIND_READ = 0,
+  LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_KIND_WRITE = 1,
+  LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_KIND_COUNT_ = 2,
+} loom_sanitizer_race_fragment_access_kind_t;
+
+// Matrix address-mapping role of a fragment race access.
+typedef enum loom_sanitizer_race_fragment_access_role_e {
+  LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_ROLE_LHS = 0,
+  LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_ROLE_RHS = 1,
+  LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_ROLE_INIT = 2,
+  LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_ROLE_RESULT = 3,
+  LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_ROLE_COUNT_ = 4,
+} loom_sanitizer_race_fragment_access_role_t;
 
 // LOOM_OP_SANITIZER_ASSERT_ACCESS: Assert that a logical indexed view access is valid. The assertion has the same index-list shape as ordinary view memory operations so source-level memory contracts remain typed until target lowering materializes address checks.
 // sanitizer.assert.access<read> %view[%row, %col] : view<[%M]x[%N]xf32, %layout>
@@ -234,8 +256,8 @@ LOOM_DEFINE_SEGMENTED_OPERANDS(loom_sanitizer_race_fragment_access_indices, 2)
 LOOM_DEFINE_SEGMENTED_OPTIONAL_OPERAND(loom_sanitizer_race_fragment_access_blocks, 3)
 LOOM_DEFINE_SEGMENTED_OPERAND(loom_sanitizer_race_fragment_access_rows, 4)
 LOOM_DEFINE_SEGMENTED_OPERAND(loom_sanitizer_race_fragment_access_columns, 5)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_race_fragment_access_kind, 0, loom_sanitizer_race_access_kind_t)
-LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_race_fragment_access_role, 1, loom_vector_role_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_race_fragment_access_kind, 0, loom_sanitizer_race_fragment_access_kind_t)
+LOOM_DEFINE_ATTR_ENUM_TYPED(loom_sanitizer_race_fragment_access_role, 1, loom_sanitizer_race_fragment_access_role_t)
 LOOM_DEFINE_ATTR_I64_ARRAY(loom_sanitizer_race_fragment_access_static_indices, 2)
 enum loom_sanitizer_race_fragment_access_build_flag_bits_e {
   LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_BUILD_FLAG_HAS_BLOCKS = 1u << 0,
@@ -244,7 +266,7 @@ typedef uint32_t loom_sanitizer_race_fragment_access_build_flags_t;
 iree_status_t loom_sanitizer_race_fragment_access_build(
     loom_builder_t* builder,
     loom_sanitizer_race_fragment_access_build_flags_t build_flags,
-    loom_sanitizer_race_access_kind_t kind,
+    loom_sanitizer_race_fragment_access_kind_t kind,
     loom_value_id_t fragment,
     loom_value_id_t view,
     const loom_value_id_t* indices,
@@ -254,7 +276,7 @@ iree_status_t loom_sanitizer_race_fragment_access_build(
     loom_optional loom_value_id_t blocks,
     loom_value_id_t rows,
     loom_value_id_t columns,
-    loom_vector_role_t role,
+    loom_sanitizer_race_fragment_access_role_t role,
     loom_location_id_t location,
     loom_op_t** out_op);
 iree_status_t loom_sanitizer_race_fragment_access_verify(

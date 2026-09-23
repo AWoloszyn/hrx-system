@@ -6,8 +6,8 @@
 
 // AMDGPU matrix-fragment memory address planning and emission.
 
-#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_ADDRESS_H_
-#define LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_ADDRESS_H_
+#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_ADDRESS_H_
+#define LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_ADDRESS_H_
 
 #include "loom/target/arch/amdgpu/lower/matrix_fragment_state.h"
 
@@ -106,4 +106,4 @@ iree_status_t loom_amdgpu_emit_fragment_memory_byte_offset(
 }  // extern "C"
 #endif
 
-#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_ADDRESS_H_
+#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_ADDRESS_H_

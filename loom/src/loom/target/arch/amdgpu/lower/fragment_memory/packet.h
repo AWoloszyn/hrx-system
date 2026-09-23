@@ -6,11 +6,11 @@
 
 // AMDGPU packet selection and report classification for fragment memory.
 
-#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_PACKET_H_
-#define LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_PACKET_H_
+#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PACKET_H_
+#define LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PACKET_H_
 
 #include "loom/codegen/low/representation_plan.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_plan.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/plan.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -240,4 +240,4 @@ void loom_amdgpu_fragment_memory_query_packet_report(
 }  // extern "C"
 #endif
 
-#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_PACKET_H_
+#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PACKET_H_

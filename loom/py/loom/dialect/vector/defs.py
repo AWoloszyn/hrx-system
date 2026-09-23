@@ -223,9 +223,6 @@ VectorFragmentRole = EnumDef(
         EnumCase("init", 2, doc="Initial accumulator matrix fragment."),
         EnumCase("result", 3, doc="Result accumulator matrix fragment."),
     ],
-    c_type="loom_vector_role_t",
-    c_const_prefix="LOOM_VECTOR_ROLE",
-    c_include="loom/ops/vector/role.h",
 )
 
 MmaFlags = EnumDef(

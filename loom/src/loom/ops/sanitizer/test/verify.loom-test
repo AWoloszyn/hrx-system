@@ -129,7 +129,7 @@ func.def @race_fragment_access_requires_matrix_rank(%fragment: vector<8xf32>, %v
 // ====
 
 func.def @race_fragment_access_rejects_read_write(%fragment: vector<8xf32>, %view: view<16x16xf32>, %rows: index, %columns: index) {
-  // ERROR@+1: STRUCTURE/014 "kind" "2" "read or write"
+  // ERROR@+1: PARSE/017 "kind" "read_write"
   sanitizer.race.fragment_access<read_write> %fragment, %view[0, 0] shape [%rows, %columns] {role = result} : vector<8xf32>, view<16x16xf32>
   func.return
 }

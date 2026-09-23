@@ -4,13 +4,13 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_packet.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/packet.h"
 
 #include <stdint.h>
 
 #include "iree/testing/gtest.h"
 #include "loom/target/arch/amdgpu/descriptors/low_registry.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_layout.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/layout.h"
 #include "loom/target/arch/amdgpu/matrix/contract.h"
 #include "loom/target/arch/amdgpu/target_info.h"
 

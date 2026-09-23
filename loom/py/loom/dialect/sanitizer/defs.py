@@ -31,7 +31,6 @@ from loom.assembly import (
 )
 from loom.dialect.atomic import AtomicOrdering, AtomicScope
 from loom.dialect.memory import MemorySpace
-from loom.dialect.vector.defs import VectorFragmentRole
 from loom.dsl import (
     ANY,
     ATTR_TYPE_BOOL,
@@ -63,6 +62,8 @@ __all__ = [
     "SanitizerAccessKind",
     "SanitizerAccessesKind",
     "SanitizerRaceAccessKind",
+    "SanitizerRaceFragmentAccessKind",
+    "SanitizerRaceFragmentAccessRole",
     "sanitizer_assert_access",
     "sanitizer_assert_accesses",
     "sanitizer_assert_layout",
@@ -128,9 +129,28 @@ SanitizerRaceAccessKind = EnumDef(
         ),
     ],
     doc="Logical memory access kind covered by a sanitizer race observation.",
-    c_type="loom_sanitizer_race_access_kind_t",
-    c_const_prefix="LOOM_SANITIZER_RACE_ACCESS_KIND",
-    c_include="loom/ops/sanitizer/race_access.h",
+)
+
+
+SanitizerRaceFragmentAccessKind = EnumDef(
+    "SanitizerRaceFragmentAccessKind",
+    [
+        EnumCase("read", 0, doc="Race observation covers a fragment read."),
+        EnumCase("write", 1, doc="Race observation covers a fragment write."),
+    ],
+    doc="Memory effect observed for a matrix-fragment race access.",
+)
+
+
+SanitizerRaceFragmentAccessRole = EnumDef(
+    "SanitizerRaceFragmentAccessRole",
+    [
+        EnumCase("lhs", 0, doc="Left-hand matrix operand address mapping."),
+        EnumCase("rhs", 1, doc="Right-hand matrix operand address mapping."),
+        EnumCase("init", 2, doc="Initial accumulator address mapping."),
+        EnumCase("result", 3, doc="Result accumulator address mapping."),
+    ],
+    doc="Matrix address-mapping role of a fragment race access.",
 )
 
 
@@ -510,14 +530,14 @@ sanitizer_race_fragment_access = Op(
         AttrDef(
             "kind",
             ATTR_TYPE_ENUM,
-            enum_def=SanitizerRaceAccessKind,
-            doc="Logical access kind being observed.",
+            enum_def=SanitizerRaceFragmentAccessKind,
+            doc="Fragment memory effect being observed.",
         ),
         AttrDef(
             "role",
             ATTR_TYPE_ENUM,
-            enum_def=VectorFragmentRole,
-            doc="Matrix fragment role being observed.",
+            enum_def=SanitizerRaceFragmentAccessRole,
+            doc="Matrix address-mapping role being observed.",
         ),
         AttrDef(
             "static_indices",

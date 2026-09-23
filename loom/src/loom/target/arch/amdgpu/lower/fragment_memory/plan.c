@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_plan.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/plan.h"
 
 #include <stdint.h>
 #include <string.h>
@@ -33,10 +33,10 @@
 #include "loom/target/arch/amdgpu/lower/emit.h"
 #include "loom/target/arch/amdgpu/lower/encoding/float16.h"
 #include "loom/target/arch/amdgpu/lower/encoding/fp8.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/address.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/layout.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/packet.h"
 #include "loom/target/arch/amdgpu/lower/legality.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_address.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_layout.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_packet.h"
 #include "loom/target/arch/amdgpu/lower/memory.h"
 #include "loom/target/arch/amdgpu/lower/subgroup.h"
 #include "loom/target/arch/amdgpu/lower/topology.h"
@@ -50,16 +50,6 @@ enum {
   LOOM_AMDGPU_FRAGMENT_PACKED_B8_ELEMENT_BIT_COUNT = 8,
 };
 
-static const loom_contract_operand_role_t kFragmentMemoryContractRoles[] = {
-    [LOOM_VECTOR_ROLE_LHS] = LOOM_CONTRACT_OPERAND_ROLE_LHS,
-    [LOOM_VECTOR_ROLE_RHS] = LOOM_CONTRACT_OPERAND_ROLE_RHS,
-    [LOOM_VECTOR_ROLE_INIT] = LOOM_CONTRACT_OPERAND_ROLE_ACCUMULATOR,
-    [LOOM_VECTOR_ROLE_RESULT] = LOOM_CONTRACT_OPERAND_ROLE_RESULT,
-};
-
-static_assert(IREE_ARRAYSIZE(kFragmentMemoryContractRoles) ==
-                  LOOM_VECTOR_ROLE_COUNT_,
-              "fragment memory contract roles cover vector roles");
 typedef struct loom_amdgpu_fragment_memory_environment_t {
   // Source module being checked or lowered.
   const loom_module_t* module;
@@ -82,8 +72,8 @@ typedef struct loom_amdgpu_fragment_memory_environment_t {
 } loom_amdgpu_fragment_memory_environment_t;
 
 typedef struct loom_amdgpu_fragment_memory_source_t {
-  // Source vector fragment role.
-  loom_vector_role_t vector_role;
+  // Matrix operand role selected by the source dialect adapter.
+  loom_contract_operand_role_t role;
   // View value read or written by the fragment movement op.
   loom_value_id_t view;
   // Vector payload result for loads or stored payload for stores.
@@ -168,16 +158,39 @@ IREE_ATTRIBUTE_NOINLINE static bool loom_amdgpu_fragment_memory_reject(
   return false;
 }
 
-static bool loom_amdgpu_fragment_memory_role_from_vector_role(
-    loom_vector_role_t role, loom_contract_operand_role_t* out_role) {
-  *out_role = LOOM_CONTRACT_OPERAND_ROLE_UNKNOWN;
-  if (role >= IREE_ARRAYSIZE(kFragmentMemoryContractRoles) ||
-      kFragmentMemoryContractRoles[role] ==
-          LOOM_CONTRACT_OPERAND_ROLE_UNKNOWN) {
-    return false;
+static loom_contract_operand_role_t
+loom_amdgpu_fragment_memory_role_from_vector(loom_vector_role_t role) {
+  switch (role) {
+    case LOOM_VECTOR_ROLE_LHS:
+      return LOOM_CONTRACT_OPERAND_ROLE_LHS;
+    case LOOM_VECTOR_ROLE_RHS:
+      return LOOM_CONTRACT_OPERAND_ROLE_RHS;
+    case LOOM_VECTOR_ROLE_INIT:
+      return LOOM_CONTRACT_OPERAND_ROLE_ACCUMULATOR;
+    case LOOM_VECTOR_ROLE_RESULT:
+      return LOOM_CONTRACT_OPERAND_ROLE_RESULT;
+    default:
+      IREE_ASSERT_UNREACHABLE("verified vector fragment role");
+      return LOOM_CONTRACT_OPERAND_ROLE_UNKNOWN;
   }
-  *out_role = kFragmentMemoryContractRoles[role];
-  return true;
+}
+
+static loom_contract_operand_role_t
+loom_amdgpu_fragment_memory_role_from_sanitizer(
+    loom_sanitizer_race_fragment_access_role_t role) {
+  switch (role) {
+    case LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_ROLE_LHS:
+      return LOOM_CONTRACT_OPERAND_ROLE_LHS;
+    case LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_ROLE_RHS:
+      return LOOM_CONTRACT_OPERAND_ROLE_RHS;
+    case LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_ROLE_INIT:
+      return LOOM_CONTRACT_OPERAND_ROLE_ACCUMULATOR;
+    case LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_ROLE_RESULT:
+      return LOOM_CONTRACT_OPERAND_ROLE_RESULT;
+    default:
+      IREE_ASSERT_UNREACHABLE("verified sanitizer fragment access role");
+      return LOOM_CONTRACT_OPERAND_ROLE_UNKNOWN;
+  }
 }
 
 static bool loom_amdgpu_fragment_memory_can_narrow_result_store(
@@ -1190,7 +1203,7 @@ static void loom_amdgpu_fragment_memory_source_from_op(
   const loom_cache_policy_t cache_policy =
       loom_cache_policy_cast(module, source_op);
   *out_source = (loom_amdgpu_fragment_memory_source_t){
-      .vector_role = LOOM_VECTOR_ROLE_COUNT_,
+      .role = LOOM_CONTRACT_OPERAND_ROLE_UNKNOWN,
       .view = LOOM_VALUE_ID_INVALID,
       .payload = LOOM_VALUE_ID_INVALID,
       .blocks = LOOM_VALUE_ID_INVALID,
@@ -1203,7 +1216,8 @@ static void loom_amdgpu_fragment_memory_source_from_op(
   };
   if (operation_kind == LOOM_LOW_SOURCE_MEMORY_OPERATION_LOAD) {
     if (loom_vector_fragment_load_isa(source_op)) {
-      out_source->vector_role = loom_vector_fragment_load_role(source_op);
+      out_source->role = loom_amdgpu_fragment_memory_role_from_vector(
+          loom_vector_fragment_load_role(source_op));
       out_source->view = loom_vector_fragment_load_view(source_op);
       out_source->payload = loom_vector_fragment_load_result(source_op);
       out_source->blocks = loom_vector_fragment_load_blocks(source_op);
@@ -1216,7 +1230,8 @@ static void loom_amdgpu_fragment_memory_source_from_op(
       return;
     }
   } else if (loom_vector_fragment_store_isa(source_op)) {
-    out_source->vector_role = loom_vector_fragment_store_role(source_op);
+    out_source->role = loom_amdgpu_fragment_memory_role_from_vector(
+        loom_vector_fragment_store_role(source_op));
     out_source->view = loom_vector_fragment_store_view(source_op);
     out_source->payload = loom_vector_fragment_store_value(source_op);
     out_source->blocks = loom_vector_fragment_store_blocks(source_op);
@@ -1229,7 +1244,8 @@ static void loom_amdgpu_fragment_memory_source_from_op(
   }
 
   IREE_ASSERT_TRUE(loom_sanitizer_race_fragment_access_isa(source_op));
-  out_source->vector_role = loom_sanitizer_race_fragment_access_role(source_op);
+  out_source->role = loom_amdgpu_fragment_memory_role_from_sanitizer(
+      loom_sanitizer_race_fragment_access_role(source_op));
   out_source->view = loom_sanitizer_race_fragment_access_view(source_op);
   out_source->payload = loom_sanitizer_race_fragment_access_fragment(source_op);
   out_source->blocks = loom_sanitizer_race_fragment_access_blocks(source_op);
@@ -1315,11 +1331,7 @@ static bool loom_amdgpu_fragment_memory_prepare(
     return loom_amdgpu_fragment_memory_reject(
         diagnostic, IREE_SV("fragment_memory.cache_policy"));
   }
-  if (!loom_amdgpu_fragment_memory_role_from_vector_role(source->vector_role,
-                                                         &out_prepared->role)) {
-    return loom_amdgpu_fragment_memory_reject(diagnostic,
-                                              IREE_SV("fragment_memory.role"));
-  }
+  out_prepared->role = source->role;
 
   out_prepared->payload_type =
       loom_module_value_type(environment->module, source->payload);
@@ -1741,7 +1753,7 @@ static iree_status_t loom_amdgpu_fragment_memory_select(
   loom_amdgpu_fragment_memory_source_from_op(module, source_op, operation_kind,
                                              &source);
   if (operation_kind == LOOM_LOW_SOURCE_MEMORY_OPERATION_STORE &&
-      source.vector_role == LOOM_VECTOR_ROLE_RESULT) {
+      source.role == LOOM_CONTRACT_OPERAND_ROLE_RESULT) {
     loom_low_representation_id_t selected_representation =
         LOOM_LOW_REPRESENTATION_ID_NONE;
     IREE_RETURN_IF_ERROR(loom_low_lower_representation_lookup(
@@ -1795,12 +1807,10 @@ iree_status_t loom_amdgpu_select_sanitizer_race_fragment_memory_plan(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     loom_amdgpu_fragment_memory_plan_t* out_plan, bool* out_selected) {
   IREE_ASSERT_TRUE(loom_sanitizer_race_fragment_access_isa(source_op));
-  const loom_sanitizer_race_access_kind_t kind =
+  const loom_sanitizer_race_fragment_access_kind_t kind =
       loom_sanitizer_race_fragment_access_kind(source_op);
-  IREE_ASSERT_TRUE(kind == LOOM_SANITIZER_RACE_ACCESS_KIND_READ ||
-                   kind == LOOM_SANITIZER_RACE_ACCESS_KIND_WRITE);
   const loom_low_source_memory_operation_kind_t operation_kind =
-      kind == LOOM_SANITIZER_RACE_ACCESS_KIND_READ
+      kind == LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_KIND_READ
           ? LOOM_LOW_SOURCE_MEMORY_OPERATION_LOAD
           : LOOM_LOW_SOURCE_MEMORY_OPERATION_STORE;
   return loom_amdgpu_fragment_memory_select(context, source_op, operation_kind,
@@ -1824,7 +1834,7 @@ iree_status_t loom_amdgpu_low_legality_verify_fragment_memory(
     operation_kind = LOOM_LOW_SOURCE_MEMORY_OPERATION_STORE;
   } else if (op->kind == LOOM_OP_SANITIZER_RACE_FRAGMENT_ACCESS) {
     operation_kind = loom_sanitizer_race_fragment_access_kind(op) ==
-                             LOOM_SANITIZER_RACE_ACCESS_KIND_READ
+                             LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_KIND_READ
                          ? LOOM_LOW_SOURCE_MEMORY_OPERATION_LOAD
                          : LOOM_LOW_SOURCE_MEMORY_OPERATION_STORE;
   } else if (op->kind != LOOM_OP_VECTOR_FRAGMENT_LOAD) {

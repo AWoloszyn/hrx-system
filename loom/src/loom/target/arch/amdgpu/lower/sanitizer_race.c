@@ -17,10 +17,10 @@
 #include "loom/target/arch/amdgpu/lower/descriptor_ref.h"
 #include "loom/target/arch/amdgpu/lower/emit.h"
 #include "loom/target/arch/amdgpu/lower/feedback.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/address.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/emit.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/packet.h"
 #include "loom/target/arch/amdgpu/lower/legality.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_address.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_emit.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_packet.h"
 #include "loom/target/arch/amdgpu/lower/memory.h"
 #include "loom/target/arch/amdgpu/lower/preamble.h"
 #include "loom/target/arch/amdgpu/lower/sanitizer.h"
@@ -1446,6 +1446,27 @@ static bool loom_amdgpu_sanitizer_race_access_report_kind(
   }
 }
 
+static void loom_amdgpu_sanitizer_race_fragment_access_report_kind(
+    loom_sanitizer_race_fragment_access_kind_t kind,
+    loom_amdgpu_tsan_access_kind_t* out_report_kind,
+    loom_amdgpu_tsan_shadow_access_kind_t* out_shadow_kind) {
+  switch (kind) {
+    case LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_KIND_READ:
+      *out_report_kind = LOOM_AMDGPU_TSAN_ACCESS_KIND_READ;
+      *out_shadow_kind = LOOM_AMDGPU_TSAN_SHADOW_ACCESS_KIND_READ;
+      return;
+    case LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_KIND_WRITE:
+      *out_report_kind = LOOM_AMDGPU_TSAN_ACCESS_KIND_WRITE;
+      *out_shadow_kind = LOOM_AMDGPU_TSAN_SHADOW_ACCESS_KIND_WRITE;
+      return;
+    default:
+      IREE_ASSERT_UNREACHABLE("verified sanitizer fragment access kind");
+      *out_report_kind = LOOM_AMDGPU_TSAN_ACCESS_KIND_UNKNOWN;
+      *out_shadow_kind = LOOM_AMDGPU_TSAN_SHADOW_ACCESS_KIND_EMPTY;
+      return;
+  }
+}
+
 static bool loom_amdgpu_sanitizer_race_access_payload_type(
     const loom_module_t* module, loom_value_id_t view_value_id,
     loom_type_t* out_vector_type) {
@@ -1680,11 +1701,9 @@ iree_status_t loom_amdgpu_select_sanitizer_race_fragment_access_plan(
       LOOM_AMDGPU_TSAN_ACCESS_KIND_UNKNOWN;
   loom_amdgpu_tsan_shadow_access_kind_t shadow_kind =
       LOOM_AMDGPU_TSAN_SHADOW_ACCESS_KIND_EMPTY;
-  if (!loom_amdgpu_sanitizer_race_access_report_kind(
-          loom_sanitizer_race_fragment_access_kind(source_op),
-          /*atomic=*/false, &report_kind, &shadow_kind)) {
-    return iree_ok_status();
-  }
+  loom_amdgpu_sanitizer_race_fragment_access_report_kind(
+      loom_sanitizer_race_fragment_access_kind(source_op), &report_kind,
+      &shadow_kind);
   out_plan->observation = (loom_amdgpu_sanitizer_race_observation_plan_t){
       .report_access_kind = report_kind,
       .shadow_access_kind = shadow_kind,

@@ -4,14 +4,14 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_narrow.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/narrow.h"
 
 #include <stdint.h>
 
 #include "loom/ops/low/ops.h"
 #include "loom/target/arch/amdgpu/lower/emit.h"
 #include "loom/target/arch/amdgpu/lower/encoding/fp8.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_packet.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/packet.h"
 #include "loom/target/arch/amdgpu/lower/types.h"
 
 IREE_ATTRIBUTE_NOINLINE static iree_status_t

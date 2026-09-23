@@ -187,10 +187,11 @@ static bool loom_sanitizer_preceded_by_matching_race_access(
 }
 
 static bool loom_sanitizer_matching_fragment_race_access(
-    const loom_op_t* candidate, loom_sanitizer_race_access_kind_t kind,
+    const loom_op_t* candidate, loom_sanitizer_race_fragment_access_kind_t kind,
     loom_value_id_t fragment, loom_value_id_t view, loom_value_slice_t indices,
     loom_attribute_t static_indices, loom_value_id_t blocks,
-    loom_value_id_t rows, loom_value_id_t columns, loom_vector_role_t role) {
+    loom_value_id_t rows, loom_value_id_t columns,
+    loom_sanitizer_race_fragment_access_role_t role) {
   return candidate && loom_sanitizer_race_fragment_access_isa(candidate) &&
          loom_sanitizer_race_fragment_access_kind(candidate) == kind &&
          loom_sanitizer_race_fragment_access_fragment(candidate) == fragment &&
@@ -263,10 +264,11 @@ static iree_status_t loom_sanitizer_build_race_access(
 
 static iree_status_t loom_sanitizer_build_fragment_race_access(
     loom_module_t* module, loom_rewriter_t* rewriter,
-    loom_sanitizer_race_access_kind_t kind, loom_value_id_t fragment,
+    loom_sanitizer_race_fragment_access_kind_t kind, loom_value_id_t fragment,
     loom_value_id_t view, loom_value_slice_t indices,
     loom_attribute_t static_indices, loom_value_id_t blocks,
-    loom_value_id_t rows, loom_value_id_t columns, loom_vector_role_t role,
+    loom_value_id_t rows, loom_value_id_t columns,
+    loom_sanitizer_race_fragment_access_role_t role,
     loom_location_id_t source_location, loom_op_t** out_op) {
   const loom_sanitizer_site_payload_t payload = {
       .site_kind = LOOM_SANITIZER_SITE_KIND_RACE,
@@ -290,11 +292,28 @@ static iree_status_t loom_sanitizer_build_fragment_race_access(
       rows, columns, role, site_location, out_op);
 }
 
+static loom_sanitizer_race_fragment_access_role_t
+loom_sanitizer_race_fragment_access_role_from_vector(loom_vector_role_t role) {
+  switch (role) {
+    case LOOM_VECTOR_ROLE_LHS:
+      return LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_ROLE_LHS;
+    case LOOM_VECTOR_ROLE_RHS:
+      return LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_ROLE_RHS;
+    case LOOM_VECTOR_ROLE_INIT:
+      return LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_ROLE_INIT;
+    case LOOM_VECTOR_ROLE_RESULT:
+      return LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_ROLE_RESULT;
+    default:
+      IREE_ASSERT_UNREACHABLE("verified vector fragment role");
+      return LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_ROLE_LHS;
+  }
+}
+
 static iree_status_t loom_sanitizer_try_instrument_fragment_race_access_op(
     loom_pass_t* pass, loom_module_t* module, loom_rewriter_t* rewriter,
     loom_op_t* op, bool* out_handled) {
   *out_handled = false;
-  loom_sanitizer_race_access_kind_t kind = 0;
+  loom_sanitizer_race_fragment_access_kind_t kind = 0;
   loom_value_id_t fragment = LOOM_VALUE_ID_INVALID;
   loom_value_id_t view = LOOM_VALUE_ID_INVALID;
   loom_value_slice_t indices = {0};
@@ -302,11 +321,11 @@ static iree_status_t loom_sanitizer_try_instrument_fragment_race_access_op(
   loom_value_id_t blocks = LOOM_VALUE_ID_INVALID;
   loom_value_id_t rows = LOOM_VALUE_ID_INVALID;
   loom_value_id_t columns = LOOM_VALUE_ID_INVALID;
-  loom_vector_role_t role = 0;
+  loom_sanitizer_race_fragment_access_role_t role = 0;
   const loom_op_t* existing_observation = NULL;
   bool insert_after = false;
   if (loom_vector_fragment_load_isa(op)) {
-    kind = LOOM_SANITIZER_RACE_ACCESS_KIND_READ;
+    kind = LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_KIND_READ;
     fragment = loom_vector_fragment_load_result(op);
     view = loom_vector_fragment_load_view(op);
     indices = loom_vector_fragment_load_indices(op);
@@ -314,11 +333,12 @@ static iree_status_t loom_sanitizer_try_instrument_fragment_race_access_op(
     blocks = loom_vector_fragment_load_blocks(op);
     rows = loom_vector_fragment_load_rows(op);
     columns = loom_vector_fragment_load_columns(op);
-    role = loom_vector_fragment_load_role(op);
+    role = loom_sanitizer_race_fragment_access_role_from_vector(
+        loom_vector_fragment_load_role(op));
     existing_observation = op->next_op;
     insert_after = true;
   } else if (loom_vector_fragment_store_isa(op)) {
-    kind = LOOM_SANITIZER_RACE_ACCESS_KIND_WRITE;
+    kind = LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_KIND_WRITE;
     fragment = loom_vector_fragment_store_value(op);
     view = loom_vector_fragment_store_view(op);
     indices = loom_vector_fragment_store_indices(op);
@@ -326,7 +346,8 @@ static iree_status_t loom_sanitizer_try_instrument_fragment_race_access_op(
     blocks = loom_vector_fragment_store_blocks(op);
     rows = loom_vector_fragment_store_rows(op);
     columns = loom_vector_fragment_store_columns(op);
-    role = loom_vector_fragment_store_role(op);
+    role = loom_sanitizer_race_fragment_access_role_from_vector(
+        loom_vector_fragment_store_role(op));
     existing_observation = op->prev_op;
   } else {
     return iree_ok_status();

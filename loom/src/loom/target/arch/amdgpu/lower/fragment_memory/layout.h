@@ -6,8 +6,8 @@
 
 // AMDGPU matrix-fragment physical memory layout planning.
 
-#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_LAYOUT_H_
-#define LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_LAYOUT_H_
+#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_LAYOUT_H_
+#define LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_LAYOUT_H_
 
 #include "loom/target/arch/amdgpu/lower/plan.h"
 
@@ -58,4 +58,4 @@ bool loom_amdgpu_fragment_memory_address_range_fits_u32(
 }  // extern "C"
 #endif
 
-#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_LAYOUT_H_
+#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_LAYOUT_H_

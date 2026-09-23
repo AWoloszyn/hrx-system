@@ -6,11 +6,11 @@
 
 // AMDGPU physical packet emission for selected fragment memory plans.
 
-#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_ACCESS_H_
-#define LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_ACCESS_H_
+#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_ACCESS_H_
+#define LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_ACCESS_H_
 
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_address.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_packet.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/address.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/packet.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -70,4 +70,4 @@ iree_status_t loom_amdgpu_emit_fragment_store_packet(
 }  // extern "C"
 #endif
 
-#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_ACCESS_H_
+#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_ACCESS_H_

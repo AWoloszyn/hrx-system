@@ -18,7 +18,6 @@ iree_py_library(
   DEPS
     loom::py::loom::core
     loom::py::loom::dialect::shared
-    loom::py::loom::dialect::vector::vector
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###
