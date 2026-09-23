@@ -291,8 +291,14 @@ Read-containing units require every capture, guard, inner bound, and initial
 value to be independent of the outer carried state. Pure inner loops may stay
 in the consumer and use that state. The
 [checked guarded-row motif](tune-loop-schedules.md#keep-guards-and-inner-loops-in-the-source)
-demonstrates independent inner and outer policies. Stores, ordered effects,
-`scf.while`, and explicit async groups have different scheduling requirements.
+demonstrates independent inner and outer policies. Fixed-bound tiles can also
+read global inputs ahead of ordered workgroup stores, shared reads, and
+workgroup-memory barriers. A requested full linear inner unroll can expose
+mixed load/store units; read-only reductions and independent schedules retain
+their existing shape. The [workgroup-staging example](tune-loop-schedules.md#read-ahead-across-workgroup-staging)
+covers publication and reuse of one shared allocation. Global or unknown
+writes, global barriers, source-order fences, `scf.while`, and explicit async
+groups have different scheduling requirements.
 Fixed-bound tiles can pipeline reads into a subgroup or workgroup reduction;
 the collective stays in a memory-pure consumer, separate from guarded loads.
 See the [participation contract](../guide/functions-and-control.md#pipeline-reads-ahead-of-ordered-computation)

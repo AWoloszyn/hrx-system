@@ -51,7 +51,7 @@ typedef enum loom_scf_for_unroll_schedule_e {
 //
 // The result list defines the recurring type scheme for loop-carried state. A dependent result type may refer to sibling loop results; the initial operands, body arguments, and yielded values instantiate that scheme with their corresponding SSA identities. This permits a loop to carry a view whose extent or layout changes each iteration while every use still names the extent and layout in its own scope.
 //
-// The optional `pipeline(%depth)` and `unroll(%factor)` policies accept independent SSA values, including template arguments and arithmetic on specialized target properties. Pipelining runs before unrolling. Compile reports retain applied schedules and final resource costs; `loom-compile-report suggest` proposes evidence-backed comparisons. The [per-instance schedule search](../../../../workflows/search-loop-schedules.md) shows checked candidates, resource cliffs, and controlled measurements.
+// The optional `pipeline(%depth)` and `unroll(%factor)` policies accept independent SSA values, including template arguments and arithmetic on specialized target properties. Pipelining runs before unrolling the requested loop. Full linear unrolling of explicitly annotated mixed descendants can expose their global loads before the enclosing cut. Compile reports retain applied schedules and final resource costs; `loom-compile-report suggest` proposes evidence-backed comparisons. The [per-instance schedule search](../../../../workflows/search-loop-schedules.md) shows checked candidates, resource cliffs, and controlled measurements.
 // scf.for %iv = [%c0 to %n step %c1] {
 //   scf.yield
 // }

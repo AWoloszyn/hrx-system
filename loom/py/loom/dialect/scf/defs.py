@@ -316,7 +316,9 @@ scf_for = Op(
         "while every use still names the extent and layout in its own scope.\n\n"
         "The optional `pipeline(%depth)` and `unroll(%factor)` policies accept "
         "independent SSA values, including template arguments and arithmetic on "
-        "specialized target properties. Pipelining runs before unrolling. "
+        "specialized target properties. Pipelining runs before unrolling the "
+        "requested loop. Full linear unrolling of explicitly annotated mixed "
+        "descendants can expose their global loads before the enclosing cut. "
         "Compile reports retain applied schedules and final resource costs; "
         "`loom-compile-report suggest` proposes evidence-backed comparisons. "
         "The [per-instance schedule search]"
@@ -351,7 +353,7 @@ scf_for = Op(
             "pipeline_depth",
             INDEX,
             optional=True,
-            doc="Optional SSA read-ahead depth consumed by pipeline-scf-for before unrolling. A positive exact depth counts original iterations independently of the unroll factor; depth one leaves the serial loop. Ordinary reads and their prerequisites run ahead of ordered consumers, with guarded startup and drain preserving the finite domain. Memory-pure convergent consumers, such as subgroup reductions, require compile-time exact loop bounds so all participants retain the same phase split. Convergent operations cannot be read prerequisites or share a nested scheduling unit with reads. The reconstructed loops retain their unroll policy.",
+            doc="Optional SSA read-ahead depth consumed by pipeline-scf-for before unrolling the requested loop. A positive exact depth counts original iterations independently of the unroll factor; depth one leaves the serial loop. Ordinary reads and their prerequisites run ahead of ordered consumers, with guarded startup and drain preserving the finite domain. With compile-time exact loop bounds, proven global loads can advance across ordered workgroup loads, stores and workgroup-memory barriers. Global or unknown writes and global barriers are rejected. Memory-pure convergent consumers, such as subgroup reductions, also require exact bounds so all participants retain the same phase split. Ordered or convergent consumers cannot supply read prerequisites. Nested units remain intact unless an explicitly requested full linear unroll exposes mixed descendants. Read-only reductions keep their queued result. The reconstructed loops retain their own unroll policy.",
         ),
         Operand(
             "unroll_factor",
