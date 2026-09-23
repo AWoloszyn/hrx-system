@@ -2970,6 +2970,17 @@ static iree_status_t loom_vector_float_ternary_summary_facts(
         name##_element);                                                       \
   }
 
+#define LOOM_VECTOR_WIDTH_BINARY_FACTS(name, transfer_fn)              \
+  iree_status_t name(loom_fact_context_t* context,                     \
+                     const loom_module_t* module, const loom_op_t* op, \
+                     const loom_value_facts_t* operand_facts,          \
+                     loom_value_facts_t* result_facts) {               \
+    const int32_t bit_count = loom_scalar_type_bitwidth(               \
+        loom_vector_result_element_type(module, op));                  \
+    return loom_vector_integer_binary_summary_facts(                   \
+        context, bit_count, operand_facts, result_facts, transfer_fn); \
+  }
+
 #define LOOM_VECTOR_FLOAT_BINARY_FACTS(name, f32_fn, f64_fn)                 \
   iree_status_t name(loom_fact_context_t* context,                           \
                      const loom_module_t* module, const loom_op_t* op,       \
@@ -3218,10 +3229,8 @@ LOOM_VECTOR_INTEGER_BINARY_FACTS(loom_vector_remui_facts,
                                  loom_value_facts_remui)
 LOOM_VECTOR_UNARY_FACTS(loom_vector_negi_facts, loom_value_facts_negi)
 LOOM_VECTOR_UNARY_FACTS(loom_vector_absi_facts, loom_value_facts_absi)
-LOOM_VECTOR_INTEGER_BINARY_FACTS(loom_vector_minsi_facts,
-                                 loom_value_facts_minsi)
-LOOM_VECTOR_INTEGER_BINARY_FACTS(loom_vector_maxsi_facts,
-                                 loom_value_facts_maxsi)
+LOOM_VECTOR_WIDTH_BINARY_FACTS(loom_vector_minsi_facts, loom_value_facts_minsi)
+LOOM_VECTOR_WIDTH_BINARY_FACTS(loom_vector_maxsi_facts, loom_value_facts_maxsi)
 LOOM_VECTOR_INTEGER_BINARY_FACTS(loom_vector_minui_facts,
                                  loom_value_facts_minui)
 LOOM_VECTOR_INTEGER_BINARY_FACTS(loom_vector_maxui_facts,
@@ -4312,7 +4321,8 @@ iree_status_t loom_vector_table_quantize_facts(
 
 static bool loom_vector_reduce_apply_integer(
     loom_combining_kind_t kind, const loom_value_facts_t* accumulator,
-    const loom_value_facts_t* element, loom_value_facts_t* out) {
+    const loom_value_facts_t* element, int32_t bit_count,
+    loom_value_facts_t* out) {
   switch (kind) {
     case LOOM_COMBINING_KIND_ADDI:
       loom_value_facts_addi(accumulator, element, out);
@@ -4321,10 +4331,10 @@ static bool loom_vector_reduce_apply_integer(
       loom_value_facts_muli(accumulator, element, out);
       return true;
     case LOOM_COMBINING_KIND_MINSI:
-      loom_value_facts_minsi(accumulator, element, out);
+      loom_value_facts_minsi(accumulator, element, bit_count, out);
       return true;
     case LOOM_COMBINING_KIND_MAXSI:
-      loom_value_facts_maxsi(accumulator, element, out);
+      loom_value_facts_maxsi(accumulator, element, bit_count, out);
       return true;
     case LOOM_COMBINING_KIND_MINUI:
       loom_value_facts_minui(accumulator, element, out);
@@ -4428,7 +4438,9 @@ static bool loom_vector_reduce_apply_facts(loom_scalar_type_t scalar_type,
     return loom_vector_reduce_apply_float(scalar_type, kind, &accumulator,
                                           &element, out);
   }
-  return loom_vector_reduce_apply_integer(kind, &accumulator, &element, out);
+  return loom_vector_reduce_apply_integer(
+      kind, &accumulator, &element, loom_scalar_type_bitwidth(scalar_type),
+      out);
 }
 
 static bool loom_vector_reduce_static_uniform(loom_combining_kind_t kind,
