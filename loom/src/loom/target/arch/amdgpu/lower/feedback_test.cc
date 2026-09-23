@@ -1188,7 +1188,10 @@ TEST_F(AmdgpuFeedbackTest, CompareExchangesReservationHeadWithCdnaOrdering) {
   ExpectAttrI64(loom_low_op_attrs(writeback_ops[0]), IREE_SV("sc1"), 1);
   std::vector<loom_op_t*> waitcnt_ops =
       OpsForDescriptorRef(LOOM_AMDGPU_DESCRIPTOR_REF_S_WAITCNT);
-  ASSERT_EQ(waitcnt_ops.size(), 1u);
+  ASSERT_EQ(waitcnt_ops.size(), 2u);
+  for (const loom_op_t* wait : waitcnt_ops) {
+    ExpectAttrI64(loom_low_op_attrs(wait), IREE_SV("vmcnt"), 0);
+  }
   std::vector<loom_op_t*> invalidate_ops =
       OpsForDescriptorRef(LOOM_AMDGPU_DESCRIPTOR_REF_BUFFER_INV);
   ASSERT_EQ(invalidate_ops.size(), 1u);

@@ -231,11 +231,13 @@ AMDGPU_MEMORY_ORDERING_MODEL_NONE = "none"
 AMDGPU_MEMORY_ORDERING_MODEL_GFX11 = "gfx11"
 AMDGPU_MEMORY_ORDERING_MODEL_GFX12 = "gfx12"
 AMDGPU_MEMORY_ORDERING_MODEL_GFX125 = "gfx125"
+AMDGPU_MEMORY_ORDERING_MODEL_CDNA = "cdna"
 AMDGPU_MEMORY_ORDERING_MODELS = (
     AMDGPU_MEMORY_ORDERING_MODEL_NONE,
     AMDGPU_MEMORY_ORDERING_MODEL_GFX11,
     AMDGPU_MEMORY_ORDERING_MODEL_GFX12,
     AMDGPU_MEMORY_ORDERING_MODEL_GFX125,
+    AMDGPU_MEMORY_ORDERING_MODEL_CDNA,
 )
 
 AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ATTR_SCOPE = "scope"
@@ -1268,6 +1270,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE48_LEGACY,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
             cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX950_NT_SC0_SC1,
+            ordering_model=AMDGPU_MEMORY_ORDERING_MODEL_CDNA,
         ),
     ),
     AmdgpuDescriptorSetInfo(
@@ -1360,6 +1363,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         ),
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
             cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX950_NT_SC0_SC1,
+            ordering_model=AMDGPU_MEMORY_ORDERING_MODEL_CDNA,
         ),
     ),
     AmdgpuDescriptorSetInfo(
@@ -1375,6 +1379,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE48_LEGACY,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
             cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX950_NT_SC0_SC1,
+            ordering_model=AMDGPU_MEMORY_ORDERING_MODEL_CDNA,
         ),
     ),
     AmdgpuDescriptorSetInfo(

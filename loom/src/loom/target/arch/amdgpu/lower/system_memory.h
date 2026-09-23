@@ -7,9 +7,8 @@
 // Target-low helpers for AMDGPU global memory operations.
 //
 // Runtime producer paths such as feedback packets, host signals, sanitizer
-// state, host calls, and future device-side queue producers all need the same
-// target-specific memory policy. This file owns those cache attrs and explicit
-// ordering packets.
+// state, and host calls share the coherence recipes in memory_coherence.h.
+// These builders materialize their cache attributes and ordering packets.
 
 #ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_SYSTEM_MEMORY_H_
 #define LOOM_TARGET_ARCH_AMDGPU_LOWER_SYSTEM_MEMORY_H_

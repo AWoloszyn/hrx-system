@@ -236,7 +236,8 @@ class AmdgpuSystemMemoryTest : public ::testing::Test {
 
   void ExpectAppendedAttrs(iree_string_view_t descriptor_set_key,
                            SystemMemoryAttrKind attr_kind,
-                           std::initializer_list<ExpectedAttr> expected_attrs) {
+                           std::initializer_list<ExpectedAttr> expected_attrs,
+                           loom_cache_scope_t scope = LOOM_CACHE_SCOPE_SYSTEM) {
     const loom_low_descriptor_set_t* descriptor_set =
         LookupDescriptorSet(descriptor_set_key);
     ASSERT_NE(descriptor_set, nullptr)
@@ -247,23 +248,23 @@ class AmdgpuSystemMemoryTest : public ::testing::Test {
     iree_status_t status = iree_ok_status();
     switch (attr_kind) {
       case SystemMemoryAttrKind::kLoad:
-        status = loom_amdgpu_system_memory_append_load_attrs(
-            &builder_, descriptor_set, attrs, IREE_ARRAYSIZE(attrs),
+        status = loom_amdgpu_system_memory_append_load_attrs_scoped(
+            &builder_, descriptor_set, scope, attrs, IREE_ARRAYSIZE(attrs),
             &attr_count);
         break;
       case SystemMemoryAttrKind::kReleaseStore:
-        status = loom_amdgpu_system_memory_append_release_store_attrs(
-            &builder_, descriptor_set, attrs, IREE_ARRAYSIZE(attrs),
+        status = loom_amdgpu_system_memory_append_release_store_attrs_scoped(
+            &builder_, descriptor_set, scope, attrs, IREE_ARRAYSIZE(attrs),
             &attr_count);
         break;
       case SystemMemoryAttrKind::kNoReturnAtomic:
-        status = loom_amdgpu_system_memory_append_no_return_atomic_attrs(
-            &builder_, descriptor_set, attrs, IREE_ARRAYSIZE(attrs),
+        status = loom_amdgpu_system_memory_append_no_return_atomic_attrs_scoped(
+            &builder_, descriptor_set, scope, attrs, IREE_ARRAYSIZE(attrs),
             &attr_count);
         break;
       case SystemMemoryAttrKind::kReturnAtomic:
-        status = loom_amdgpu_system_memory_append_return_atomic_attrs(
-            &builder_, descriptor_set, attrs, IREE_ARRAYSIZE(attrs),
+        status = loom_amdgpu_system_memory_append_return_atomic_attrs_scoped(
+            &builder_, descriptor_set, scope, attrs, IREE_ARRAYSIZE(attrs),
             &attr_count);
         break;
     }
@@ -575,9 +576,11 @@ TEST_F(AmdgpuSystemMemoryTest, EmitsCdnaReleaseOrdering) {
       &builder_, descriptor_set_, LOOM_LOCATION_UNKNOWN));
 
   std::vector<loom_op_t*> ops = Ops();
-  ASSERT_EQ(ops.size(), 1u);
+  ASSERT_EQ(ops.size(), 2u);
   ExpectLowOpDescriptorRef(ops[0], LOOM_AMDGPU_DESCRIPTOR_REF_BUFFER_WBL2);
   ExpectOpAttrs(ops[0], {{IREE_SV("sc0"), 1}, {IREE_SV("sc1"), 1}});
+  ExpectLowOpDescriptorRef(ops[1], LOOM_AMDGPU_DESCRIPTOR_REF_S_WAITCNT);
+  ExpectOpAttrs(ops[1], {{IREE_SV("vmcnt"), 0}, {IREE_SV("lgkmcnt"), 15}});
 }
 
 TEST_F(AmdgpuSystemMemoryTest, EmitsGfx12ReleaseOrdering) {
@@ -637,6 +640,66 @@ TEST_F(AmdgpuSystemMemoryTest, EmitsGfx12AcquireOrdering) {
   ExpectOpAttrs(ops[0], {{IREE_SV("loadcnt"), 0}});
   ExpectLowOpDescriptorRef(ops[1], LOOM_AMDGPU_DESCRIPTOR_REF_GLOBAL_INV);
   ExpectOpAttrs(ops[1], {{IREE_SV("scope"), kSystemCacheScope}});
+}
+
+TEST_F(AmdgpuSystemMemoryTest,
+       CdnaDeviceScopeSeparatesCoherenceAndReturnControl) {
+  for (iree_string_view_t key :
+       {IREE_SV("amdgpu.cdna3.core"), IREE_SV("amdgpu.cdna4.core")}) {
+    ExpectAppendedAttrs(key, SystemMemoryAttrKind::kLoad, {{IREE_SV("sc1"), 1}},
+                        LOOM_CACHE_SCOPE_DEVICE);
+    ExpectAppendedAttrs(key, SystemMemoryAttrKind::kReleaseStore,
+                        {{IREE_SV("sc1"), 1}}, LOOM_CACHE_SCOPE_DEVICE);
+    ExpectAppendedAttrs(key, SystemMemoryAttrKind::kNoReturnAtomic, {},
+                        LOOM_CACHE_SCOPE_DEVICE);
+    ExpectAppendedAttrs(key, SystemMemoryAttrKind::kReturnAtomic,
+                        {{IREE_SV("sc0"), 1}}, LOOM_CACHE_SCOPE_DEVICE);
+  }
+}
+
+TEST_F(AmdgpuSystemMemoryTest, Gfx12DeviceReleaseRequiresCompletionOnly) {
+  ASSERT_TRUE(ResetModuleForDescriptorSet(IREE_SV("amdgpu.rdna4.core")));
+  IREE_ASSERT_OK(loom_amdgpu_system_memory_build_release_ordering_scoped(
+      &builder_, descriptor_set_, LOOM_CACHE_SCOPE_DEVICE,
+      LOOM_LOCATION_UNKNOWN));
+  std::vector<loom_op_t*> ops = Ops();
+  ASSERT_EQ(ops.size(), 2u);
+  ExpectLowOpDescriptorRef(ops[0], LOOM_AMDGPU_DESCRIPTOR_REF_S_WAIT_LOADCNT);
+  ExpectOpAttrs(ops[0], {{IREE_SV("loadcnt"), 0}});
+  ExpectLowOpDescriptorRef(ops[1], LOOM_AMDGPU_DESCRIPTOR_REF_S_WAIT_STORECNT);
+  ExpectOpAttrs(ops[1], {{IREE_SV("storecnt"), 0}});
+}
+
+TEST_F(AmdgpuSystemMemoryTest, Gfx125ScopedAcquireCompletesInvalidation) {
+  for (loom_cache_scope_t scope :
+       {LOOM_CACHE_SCOPE_DEVICE, LOOM_CACHE_SCOPE_SYSTEM}) {
+    ASSERT_TRUE(
+        ResetModuleForDescriptorSet(IREE_SV("amdgpu.rdna4.gfx125x.core")));
+    IREE_ASSERT_OK(loom_amdgpu_system_memory_build_acquire_ordering_scoped(
+        &builder_, descriptor_set_, scope, LOOM_LOCATION_UNKNOWN));
+    std::vector<loom_op_t*> ops = Ops();
+    ASSERT_EQ(ops.size(), 3u);
+    ExpectLowOpDescriptorRef(ops[0], LOOM_AMDGPU_DESCRIPTOR_REF_S_WAIT_LOADCNT);
+    ExpectOpAttrs(ops[0], {{IREE_SV("loadcnt"), 0}});
+    ExpectLowOpDescriptorRef(ops[1], LOOM_AMDGPU_DESCRIPTOR_REF_GLOBAL_INV);
+    ExpectOpAttrs(ops[1], {{IREE_SV("scope"), scope}});
+    ExpectLowOpDescriptorRef(ops[2], LOOM_AMDGPU_DESCRIPTOR_REF_S_WAIT_LOADCNT);
+    ExpectOpAttrs(ops[2], {{IREE_SV("loadcnt"), 0}});
+  }
+}
+
+TEST_F(AmdgpuSystemMemoryTest, Gfx125DeviceReleaseCompletesWriteback) {
+  ASSERT_TRUE(
+      ResetModuleForDescriptorSet(IREE_SV("amdgpu.rdna4.gfx125x.core")));
+  IREE_ASSERT_OK(loom_amdgpu_system_memory_build_release_ordering_scoped(
+      &builder_, descriptor_set_, LOOM_CACHE_SCOPE_DEVICE,
+      LOOM_LOCATION_UNKNOWN));
+  std::vector<loom_op_t*> ops = Ops();
+  ASSERT_EQ(ops.size(), 2u);
+  ExpectLowOpDescriptorRef(ops[0], LOOM_AMDGPU_DESCRIPTOR_REF_GLOBAL_WB);
+  ExpectOpAttrs(ops[0], {{IREE_SV("scope"), LOOM_CACHE_SCOPE_DEVICE}});
+  ExpectLowOpDescriptorRef(ops[1], LOOM_AMDGPU_DESCRIPTOR_REF_S_WAIT_STORECNT);
+  ExpectOpAttrs(ops[1], {{IREE_SV("storecnt"), 0}});
 }
 
 }  // namespace
