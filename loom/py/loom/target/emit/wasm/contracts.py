@@ -295,6 +295,34 @@ def _binary_rule(
     )
 
 
+def _index_scale_rule() -> DescriptorRule:
+    descriptor = _descriptor("wasm.i32.mul")
+    return DescriptorRule(
+        source_op=index.index_scale,
+        descriptor=descriptor,
+        guards=(
+            _value_type("index", _INDEX),
+            _value_type("stride", _OFFSET),
+            _value_type("result", _OFFSET),
+            Guard.value_unsigned_bit_count(
+                "result",
+                32,
+                diagnostic=_WASM32_ADDRESS_DIAGNOSTIC,
+            ),
+        ),
+        emit=(
+            EmitDescriptorOp(
+                descriptor=descriptor,
+                operands={
+                    "lhs": ValueRef.operand("index"),
+                    "rhs": ValueRef.operand("stride"),
+                },
+                results={"dst": ValueRef.result("result")},
+            ),
+        ),
+    )
+
+
 def _conversion_rule(
     source_op: Op,
     source_type: TypePattern,
@@ -979,6 +1007,7 @@ WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
         _binary_rule(index.index_sub, _INDEX, "wasm.i32.sub"),
         _binary_rule(index.index_sub, _OFFSET, "wasm.i32.sub"),
         _binary_rule(index.index_mul, _INDEX, "wasm.i32.mul"),
+        _index_scale_rule(),
         *(
             _binary_rule(source_op, _INDEX, f"wasm.i32.{operation}")
             for source_op, operation in (
