@@ -24,6 +24,7 @@
 #include "loom/target/arch/amdgpu/lower/topology.h"
 #include "loom/target/arch/amdgpu/lower/types.h"
 #include "loom/target/arch/amdgpu/refs/target_refs.h"
+#include "loom/target/arch/amdgpu/target_info_defs.h"
 
 typedef uint32_t loom_amdgpu_atomic_rejection_flags_t;
 
@@ -40,6 +41,7 @@ typedef uint32_t loom_amdgpu_atomic_rejection_flags_t;
 #define LOOM_AMDGPU_ATOMIC_REJECTION_DESCRIPTOR_MISSING ((uint32_t)1u << 11)
 #define LOOM_AMDGPU_ATOMIC_REJECTION_OFFSET_IMMEDIATE ((uint32_t)1u << 12)
 #define LOOM_AMDGPU_ATOMIC_REJECTION_OFFSET_RANGE ((uint32_t)1u << 13)
+#define LOOM_AMDGPU_ATOMIC_REJECTION_NATIVE_SEMANTICS ((uint32_t)1u << 14)
 
 typedef struct loom_amdgpu_atomic_diagnostic_t {
   // Rejection bits explaining why a source atomic is not legal.
@@ -113,6 +115,10 @@ typedef struct loom_amdgpu_atomic_selection_t {
 } loom_amdgpu_atomic_selection_t;
 
 static const loom_amdgpu_atomic_rejection_key_t kAmdgpuAtomicRejectionKeys[] = {
+    {
+        .rejection_bit = LOOM_AMDGPU_ATOMIC_REJECTION_NATIVE_SEMANTICS,
+        .constraint_key = IREE_SVL("atomic.native_semantics"),
+    },
     {
         .rejection_bit = LOOM_AMDGPU_ATOMIC_REJECTION_SOURCE_OP,
         .constraint_key = IREE_SVL("atomic.source_op"),
@@ -551,11 +557,53 @@ loom_amdgpu_atomic_descriptor_candidate_range(
   return &kLoomAmdgpuAtomicDescriptorCandidateRanges[range_index];
 }
 
-bool loom_amdgpu_atomic_has_descriptor_candidate(
+// Source global space does not establish residency or memory granularity.
+// Native floating updates must work for every allocation the source permits;
+// bitwise exchange/CAS have no floating arithmetic or denormal restrictions.
+static bool loom_amdgpu_atomic_native_semantics_supported(
     const loom_low_descriptor_set_t* descriptor_set,
     loom_value_fact_memory_space_t memory_space,
     loom_amdgpu_atomic_operation_kind_t operation_kind, uint8_t atomic_kind,
-    loom_type_t value_type) {
+    uint8_t scope, loom_type_t value_type) {
+  if (operation_kind == LOOM_AMDGPU_ATOMIC_OPERATION_CMPXCHG ||
+      atomic_kind == LOOM_ATOMIC_KIND_XCHGF ||
+      loom_type_element_type(value_type) != LOOM_SCALAR_TYPE_F32) {
+    return true;
+  }
+  if (atomic_kind == LOOM_ATOMIC_KIND_MINIMUMF ||
+      atomic_kind == LOOM_ATOMIC_KIND_MAXIMUMF) {
+    return false;
+  }
+  const loom_amdgpu_descriptor_set_info_t* info =
+      loom_amdgpu_target_info_descriptor_set_at(
+          descriptor_set->descriptor_set_ordinal);
+  loom_amdgpu_descriptor_set_info_flags_t required = 0;
+  if (atomic_kind == LOOM_ATOMIC_KIND_MINNUMF ||
+      atomic_kind == LOOM_ATOMIC_KIND_MAXNUMF) {
+    required |= LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_F32_NUMBER_EXTREMA;
+  }
+  if (memory_space != LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP) {
+    required |=
+        scope == LOOM_ATOMIC_SCOPE_SYSTEM
+            ? LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_FLOAT_SYSTEM_MEMORY
+            : LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_FLOAT_AGENT_MEMORY;
+    if (atomic_kind == LOOM_ATOMIC_KIND_ADDF) {
+      required |= LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_F32_ADD_DENORMALS;
+    }
+  }
+  return iree_all_bits_set(info->flags, required);
+}
+
+bool loom_amdgpu_atomic_has_native_candidate(
+    const loom_low_descriptor_set_t* descriptor_set,
+    loom_value_fact_memory_space_t memory_space,
+    loom_amdgpu_atomic_operation_kind_t operation_kind, uint8_t atomic_kind,
+    uint8_t scope, loom_type_t value_type) {
+  if (!loom_amdgpu_atomic_native_semantics_supported(
+          descriptor_set, memory_space, operation_kind, atomic_kind, scope,
+          value_type)) {
+    return false;
+  }
   uint32_t memory_space_index = 0;
   uint32_t atomic_kind_index = 0;
   if (!loom_amdgpu_atomic_memory_space_candidate_index(memory_space,
@@ -605,6 +653,13 @@ static bool loom_amdgpu_atomic_select_descriptor(
     loom_amdgpu_atomic_selection_t* selection, loom_type_t value_type,
     loom_amdgpu_atomic_diagnostic_t* diagnostic) {
   selection->descriptor_ref = LOOM_AMDGPU_DESCRIPTOR_REF_NONE;
+  if (!loom_amdgpu_atomic_native_semantics_supported(
+          descriptor_set, selection->source.memory_space,
+          selection->operation_kind, atomic_source->atomic_kind,
+          selection->source.atomic.scope, value_type)) {
+    diagnostic->rejection_bits |= LOOM_AMDGPU_ATOMIC_REJECTION_NATIVE_SEMANTICS;
+    return false;
+  }
   const bool prefer_global_saddr = loom_amdgpu_atomic_prefers_global_saddr(
       descriptor_set, selection->source.memory_space, value_type);
   bool found_kind = false;

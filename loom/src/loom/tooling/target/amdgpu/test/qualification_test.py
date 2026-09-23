@@ -27,6 +27,8 @@ class QualificationTest(unittest.TestCase):
         source = "// TEMPLATE: corpus.loom-test\n" + source.split("\n", 1)[1]
         # Keep the copied fixture in its canonical LF form.
         self.fixture.write_text(source, newline="\n")
+        self.rejected = self.root / "rejected.loom-test"
+        self.rejected.write_bytes(Path(_ARGS.rejected).read_bytes())
 
     def check(self, source, *arguments):
         return subprocess.run(
@@ -41,7 +43,7 @@ class QualificationTest(unittest.TestCase):
             text=True,
         )
 
-    def test_native_diagnostics_are_independent_of_low_goldens(self):
+    def test_native_compilation_is_independent_of_low_goldens(self):
         result = self.check(self.fixture)
         self.assertEqual(result.returncode, 0, result.stderr)
         report = json.loads(result.stdout)
@@ -50,23 +52,40 @@ class QualificationTest(unittest.TestCase):
         )
         self.assertTrue(all(case["mode"] == "compile" for case in report["cases"]))
 
+    def test_expected_target_diagnostic_passes(self):
+        result = self.check(self.rejected)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        report = json.loads(result.stdout)
+        self.assertEqual(
+            report["summary"], {"total": 1, "passed": 1, "failed": 0, "skipped": 0}
+        )
+
     def test_wrong_diagnostic_identity_fails(self):
-        self.fixture.write_text(
-            self.fixture.read_text().replace("AMDGPU/023", "AMDGPU/022"),
+        self.rejected.write_text(
+            self.rejected.read_text().replace("AMDGPU/026", "AMDGPU/025"),
             newline="\n",
         )
-        result = self.check(self.fixture)
+        result = self.check(self.rejected)
         self.assertNotEqual(result.returncode, 0)
         report = json.loads(result.stdout)
-        self.assertEqual(report["summary"]["failed"], 2)
+        self.assertEqual(report["summary"]["failed"], 1)
         self.assertEqual(report["summary"]["skipped"], 0)
 
     def test_unannotated_unsupported_source_fails(self):
-        result = self.check(self.corpus)
+        self.rejected.write_text(
+            "\n".join(
+                line
+                for line in self.rejected.read_text().splitlines()
+                if not line.startswith("// ERROR")
+            )
+            + "\n",
+            newline="\n",
+        )
+        result = self.check(self.rejected)
         self.assertNotEqual(result.returncode, 0)
         report = json.loads(result.stdout)
-        self.assertEqual(report["summary"]["passed"], 11)
-        self.assertEqual(report["summary"]["failed"], 2)
+        self.assertEqual(report["summary"]["passed"], 0)
+        self.assertEqual(report["summary"]["failed"], 1)
 
     def test_compilation_uses_concrete_cases_without_template_synchronization(self):
         self.fixture.write_text(
@@ -163,9 +182,9 @@ class QualificationTest(unittest.TestCase):
                 result = subprocess.run(
                     [
                         _ARGS.compiler,
-                        str(self.corpus),
+                        str(self.rejected),
                         "--target=amdgpu:gfx942",
-                        "--root=@global_atomic_minnum_maxnum_f32",
+                        "--root=@unsupported_wave_size",
                         f"--output={output}",
                         f"--emit-target-artifact={native_output}",
                     ],
@@ -173,8 +192,7 @@ class QualificationTest(unittest.TestCase):
                     text=True,
                 )
                 self.assertNotEqual(result.returncode, 0)
-                self.assertIn("AMDGPU/023", result.stderr)
-                self.assertIn("atomic.descriptor_missing", result.stderr)
+                self.assertIn("AMDGPU/026", result.stderr)
                 self.assertEqual(result.stdout, "")
                 for artifact in (output, native_output):
                     if contents is None:
@@ -190,5 +208,6 @@ if __name__ == "__main__":
     parser.add_argument("fixture")
     parser.add_argument("compiler")
     parser.add_argument("realizations")
+    parser.add_argument("rejected")
     _ARGS = parser.parse_args()
     unittest.main(argv=[sys.argv[0]])

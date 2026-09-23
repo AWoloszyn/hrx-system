@@ -150,13 +150,66 @@ kernel.def @lds_atomic_minnum_maxnum_f32() {
 
 // ----
 low.kernel.def target<amdgpu.gfx11.generic.core> workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @lds_atomic_minnum_maxnum_f32() asm {
-  %10 = storage {byte_alignment = 4, byte_length = 256} : low.storage<workgroup>
-  %scratch_view = storage_address %10 : low.storage<workgroup> -> reg<amdgpu.vgpr>
+  %62 = storage {byte_alignment = 4, byte_length = 256} : low.storage<workgroup>
+  %scratch_view = storage_address %62 : low.storage<workgroup> -> reg<amdgpu.vgpr>
   %limit = v_mov_b32 1065353216
-  ds_min_f32 %scratch_view, %limit
-  ds_max_f32 %scratch_view, %limit
-  %old_min = ds_min_rtn_f32 %scratch_view, %limit
-  %old_max = ds_max_rtn_f32 %scratch_view, %limit
+  %65 = v_mov_b32 0
+  %71 = s_mov_b64_exec_read
+  low.br ^_bb1(%65: reg<amdgpu.vgpr>)
+^_bb1(%54: reg<amdgpu.vgpr>):
+  %66 = v_max_f32 %54, %54
+  %67 = v_max_f32 %limit, %limit
+  %68 = v_min_f32 %66, %67
+  %69 = ds_cmpst_rtn_b32 %scratch_view, %54, %68
+  %70 = v_cmp_ne_i32 %69, %54
+  %72, %73 = s_and_saveexec_b64 %70
+  low.cond_br %73, ^_bb2, ^_bb9 : reg<amdgpu.scc>
+^_bb2:
+  low.br ^_bb1(%69: reg<amdgpu.vgpr>)
+^_bb9:
+  s_mov_b64_exec %71
+  %79 = s_mov_b64_exec_read
+  low.br ^_bb3(%65: reg<amdgpu.vgpr>)
+^_bb3(%55: reg<amdgpu.vgpr>):
+  %74 = v_max_f32 %55, %55
+  %75 = v_max_f32 %limit, %limit
+  %76 = v_max_f32 %74, %75
+  %77 = ds_cmpst_rtn_b32 %scratch_view, %55, %76
+  %78 = v_cmp_ne_i32 %77, %55
+  %80, %81 = s_and_saveexec_b64 %78
+  low.cond_br %81, ^_bb4, ^_bb10 : reg<amdgpu.scc>
+^_bb4:
+  low.br ^_bb3(%77: reg<amdgpu.vgpr>)
+^_bb10:
+  s_mov_b64_exec %79
+  %87 = s_mov_b64_exec_read
+  low.br ^_bb5(%65: reg<amdgpu.vgpr>)
+^_bb5(%56: reg<amdgpu.vgpr>):
+  %82 = v_max_f32 %56, %56
+  %83 = v_max_f32 %limit, %limit
+  %84 = v_min_f32 %82, %83
+  %85 = ds_cmpst_rtn_b32 %scratch_view, %56, %84
+  %86 = v_cmp_ne_i32 %85, %56
+  %88, %89 = s_and_saveexec_b64 %86
+  low.cond_br %89, ^_bb6, ^_bb11 : reg<amdgpu.scc>
+^_bb6:
+  low.br ^_bb5(%85: reg<amdgpu.vgpr>)
+^_bb11:
+  s_mov_b64_exec %87
+  %95 = s_mov_b64_exec_read
+  low.br ^_bb7(%65: reg<amdgpu.vgpr>)
+^_bb7(%57: reg<amdgpu.vgpr>):
+  %90 = v_max_f32 %57, %57
+  %91 = v_max_f32 %limit, %limit
+  %92 = v_max_f32 %90, %91
+  %93 = ds_cmpst_rtn_b32 %scratch_view, %57, %92
+  %94 = v_cmp_ne_i32 %93, %57
+  %96, %97 = s_and_saveexec_b64 %94
+  low.cond_br %97, ^_bb8, ^_bb12 : reg<amdgpu.scc>
+^_bb8:
+  low.br ^_bb7(%93: reg<amdgpu.vgpr>)
+^_bb12:
+  s_mov_b64_exec %95
   return
 }
 

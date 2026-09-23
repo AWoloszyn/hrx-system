@@ -398,6 +398,18 @@ typedef enum loom_amdgpu_descriptor_set_info_flag_bits_e {
   // A dual v_mov_b32 pair routes the Y source through the SRC2 cache.
   LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_VOPD_DUAL_MOV_SRC2_CACHE = UINT64_C(1)
                                                                   << 9,
+  // F32 memory min/max prefer a number over either quiet or signaling NaNs.
+  LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_F32_NUMBER_EXTREMA = UINT64_C(1)
+                                                                   << 10,
+  // Floating atomics work on fine-grained host and peer memory at device scope.
+  LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_FLOAT_AGENT_MEMORY = UINT64_C(1)
+                                                                   << 11,
+  // Floating system atomics use hardware CAS when the fabric lacks the opcode.
+  LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_FLOAT_SYSTEM_MEMORY = UINT64_C(1)
+                                                                    << 12,
+  // Global/flat/buffer F32 atomic add preserves input and output subnormals.
+  LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_F32_ADD_DENORMALS = UINT64_C(1)
+                                                                  << 13,
   // Descriptor-set info flags known by the AMDGPU target package.
   LOOM_AMDGPU_DESCRIPTOR_SET_INFO_KNOWN_FLAGS =
       LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_DESCRIPTOR_PACKET_ENCODING |
@@ -409,7 +421,11 @@ typedef enum loom_amdgpu_descriptor_set_info_flag_bits_e {
       LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_NATIVE_SCALAR_FLOAT_ARITHMETIC |
       LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_NATIVE_SCALAR_FLOAT_CONVERSION |
       LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_NATIVE_SCALAR_FLOAT_COMPARE |
-      LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_VOPD_DUAL_MOV_SRC2_CACHE,
+      LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_VOPD_DUAL_MOV_SRC2_CACHE |
+      LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_F32_NUMBER_EXTREMA |
+      LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_FLOAT_AGENT_MEMORY |
+      LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_FLOAT_SYSTEM_MEMORY |
+      LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_F32_ADD_DENORMALS,
 } loom_amdgpu_descriptor_set_info_flag_bits_t;
 
 // Bitset of loom_amdgpu_descriptor_set_info_flag_bits_t values.

@@ -53,6 +53,40 @@ loom_test(
     ],
 )
 
+loom_test(
+    name = "atomic_float_extrema_test",
+    srcs = ["atomic_float_extrema.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx950",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/amdgpu:gfx1170",
+        "//loom/target/amdgpu:gfx1200",
+        "//loom/target/amdgpu:gfx1250",
+    ],
+    execution_profiles = [
+        AMDGPU_HARDWARE_PROFILE,
+        AMDGPU_ACCESS_PROFILE,
+    ],
+)
+
+loom_test(
+    name = "global_atomic_add_f32_test",
+    srcs = ["global_atomic_add_f32.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx950",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/amdgpu:gfx1170",
+        "//loom/target/amdgpu:gfx1200",
+        "//loom/target/amdgpu:gfx1250",
+    ],
+    execution_profiles = [
+        AMDGPU_HARDWARE_PROFILE,
+        AMDGPU_ACCESS_PROFILE,
+    ],
+)
+
 loom_generated_file_family(
     name = "packed_vector_select_gen",
     testonly = True,
