@@ -61,3 +61,15 @@ retained high words. The 37,888 results include edge bit patterns and seeded
 random inputs; binding tails and unchanged inputs are checked as well. This test
 uses the same native execution path and resource lease without requiring the
 C++ importer.
+
+`temporal_fold_npu2_test` covers first-copy bits independently from subsequent
+addition: a one-record 1024-element F32 fold preserves negative zero, while
+three-record 1024- and 80-element folds check ordered cancellation, exactly
+representable finite sums, and full and partial fragments. Eight outputs wrap
+capacity-two input and output rings repeatedly. Two runtime control-flow paths
+overwrite and reload the output, then return through distinct exits; only the
+final contribution may enter the fold. An independent scalar F32 oracle checks
+every output byte, both binding guards and unchanged input bytes. Each case uses
+three complete establishing invocations through the public runner's image and
+buffers. This is fold storage and ordering coverage, not general native floating
+point conformance.

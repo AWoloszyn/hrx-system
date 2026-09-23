@@ -1668,6 +1668,91 @@ ERR_TARGET_091 = ErrorDef(
     fix_hint="Convert returning values to a representation supported on every path.",
 )
 
+# ERR_TARGET_093: AIE2P array pipeline requires kernel materialization scope.
+ERR_TARGET_093 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=93,
+    severity=Severity.ERROR,
+    summary="AIE2P array pipeline requires kernel materialization scope.",
+    message=(
+        "AIE2P array pipeline requires kernel materialization scope; got '{scope}'"
+    ),
+    params=(ErrorParam("scope", ParamKind.STRING),),
+    fix_hint="Declare pipeline.def<kernel> for one resident array executable.",
+)
+
+# ERR_TARGET_094: AIE2P pipeline exceeds resident compute capacity.
+ERR_TARGET_094 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=94,
+    severity=Severity.ERROR,
+    summary="AIE2P pipeline exceeds resident compute capacity.",
+    message=(
+        "AIE2P pipeline requires {instance_count} resident instances "
+        "but has {compute_tile_count} compute tiles"
+    ),
+    params=(
+        ErrorParam("instance_count", ParamKind.U32),
+        ErrorParam("compute_tile_count", ParamKind.U32),
+    ),
+    fix_hint="Reduce the total resident group lane count.",
+)
+
+# ERR_TARGET_095: AIE2P composite stages have different core targets.
+ERR_TARGET_095 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=95,
+    severity=Severity.ERROR,
+    summary="AIE2P composite stages have different core targets.",
+    message=(
+        "AIE2P pipeline group {group} stage '@{entry}' uses target "
+        "'@{actual_target}', but its other stages use '@{expected_target}'"
+    ),
+    params=(
+        ErrorParam("group", ParamKind.U32),
+        ErrorParam("entry", ParamKind.STRING),
+        ErrorParam("actual_target", ParamKind.STRING),
+        ErrorParam("expected_target", ParamKind.STRING),
+    ),
+    fix_hint="Use one exact core target for all stages in a resident group.",
+)
+
+# ERR_TARGET_096: AIE2P composite flow has no representable private record.
+ERR_TARGET_096 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=96,
+    severity=Severity.ERROR,
+    summary="AIE2P composite flow has no representable private record.",
+    message=(
+        "AIE2P pipeline group {group} internal flow {flow} requires a "
+        "whole-byte tile whose bit count fits in 64 bits; got {tile_type}"
+    ),
+    params=(
+        ErrorParam("group", ParamKind.U32),
+        ErrorParam("flow", ParamKind.U32),
+        ErrorParam("tile_type", ParamKind.TYPE),
+    ),
+    fix_hint="Use byte-complete internal records with a representable total size.",
+)
+
+# ERR_TARGET_097: AIE2P composite worker exceeds callable ABI capacity.
+ERR_TARGET_097 = ErrorDef(
+    domain=ErrorDomain.TARGET,
+    code=97,
+    severity=Severity.ERROR,
+    summary="AIE2P composite worker exceeds callable ABI capacity.",
+    message=(
+        "AIE2P pipeline group {group} requires {port_count} composite buffer "
+        "arguments; the callable ABI supports at most {maximum}"
+    ),
+    params=(
+        ErrorParam("group", ParamKind.U32),
+        ErrorParam("port_count", ParamKind.U32),
+        ErrorParam("maximum", ParamKind.U32),
+    ),
+    fix_hint="Split the stages across groups or reduce distinct boundary flows.",
+)
+
 ALL_TARGET_ERRORS = (
     ERR_TARGET_001,
     ERR_TARGET_002,
@@ -1750,4 +1835,9 @@ ALL_TARGET_ERRORS = (
     ERR_TARGET_089,
     ERR_TARGET_090,
     ERR_TARGET_091,
+    ERR_TARGET_093,
+    ERR_TARGET_094,
+    ERR_TARGET_095,
+    ERR_TARGET_096,
+    ERR_TARGET_097,
 )

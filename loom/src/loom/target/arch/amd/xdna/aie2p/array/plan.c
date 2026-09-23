@@ -1221,6 +1221,131 @@ static iree_status_t loom_aie2p_array_plan_workers(
   return iree_ok_status();
 }
 
+// Indexed output extents retained while private fold allocations are formed.
+typedef struct loom_aie2p_array_fold_geometry_t {
+  // Byte lengths in the worker's contiguous folded-output port order.
+  uint32_t* output_byte_lengths;
+  // At least one output exceeds one register-backed accumulator tile.
+  bool needs_private_state;
+} loom_aie2p_array_fold_geometry_t;
+
+// Classifies all canonical output channels in one pass, then reserves private
+// state before channel rings consume memory. Narrow folds keep their registers.
+static iree_status_t loom_aie2p_array_plan_fold_states(
+    loom_aie2p_array_plan_builder_t* builder) {
+  const uint32_t fragment_byte_length = 64 * sizeof(float);
+  iree_host_size_t output_count = 0;
+  for (uint32_t i = 0; i < builder->plan->worker_count; ++i) {
+    output_count += builder->workers[i].fold_output_count;
+  }
+  if (output_count == 0) {
+    return iree_ok_status();
+  }
+  loom_aie2p_array_fold_geometry_t* geometries = NULL;
+  IREE_RETURN_IF_ERROR(loom_aie2p_array_allocate_array(
+      builder->arena, builder->plan->worker_count, sizeof(*geometries),
+      (void**)&geometries));
+  uint32_t* output_byte_lengths = NULL;
+  IREE_RETURN_IF_ERROR(loom_aie2p_array_allocate_array(
+      builder->arena, output_count, sizeof(*output_byte_lengths),
+      (void**)&output_byte_lengths));
+  iree_host_size_t first_output = 0;
+  for (uint32_t i = 0; i < builder->plan->worker_count; ++i) {
+    geometries[i] = (loom_aie2p_array_fold_geometry_t){
+        .output_byte_lengths = output_byte_lengths + first_output,
+    };
+    first_output += builder->workers[i].fold_output_count;
+  }
+  for (uint32_t i = 0; i < builder->plan->channel_count; ++i) {
+    const loom_aie2p_array_channel_t* channel = &builder->channels[i];
+    const loom_aie2p_array_endpoint_t* sender =
+        &builder->endpoints[channel->sender_endpoint_index];
+    if (channel->source_channel_index != i ||
+        sender->owner_kind != LOOM_AIE2P_ARRAY_ENDPOINT_OWNER_WORKER) {
+      continue;
+    }
+    const loom_aie2p_array_worker_t* worker =
+        &builder->workers[sender->owner_index];
+    if (worker->fold_record_count == 0) {
+      continue;
+    }
+    loom_aie2p_array_fold_geometry_t* geometry =
+        &geometries[sender->owner_index];
+    geometry->output_byte_lengths[sender->port - worker->fold_output_port] =
+        channel->record_byte_length;
+    geometry->needs_private_state |=
+        channel->record_byte_length > fragment_byte_length;
+  }
+  for (uint32_t worker_index = 0; worker_index < builder->plan->worker_count;
+       ++worker_index) {
+    const loom_aie2p_array_fold_geometry_t* geometry =
+        &geometries[worker_index];
+    if (!geometry->needs_private_state) {
+      continue;
+    }
+    const loom_aie2p_array_worker_t* worker = &builder->workers[worker_index];
+    const uint32_t* lengths = geometry->output_byte_lengths;
+
+    uint64_t byte_length = 0;
+    uint32_t span_count = 0;
+    for (uint32_t i = 0; i < worker->fold_output_count; ++i) {
+      byte_length =
+          iree_align_uint64(byte_length, LOOM_AIE2P_ARRAY_CHANNEL_ALIGNMENT);
+      byte_length += lengths[i];
+      span_count += (lengths[i] >= fragment_byte_length) +
+                    (lengths[i] % fragment_byte_length != 0);
+    }
+    if (byte_length > UINT32_MAX) {
+      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                              "AIE2P worker fold state is not representable");
+    }
+    loom_aie2p_array_fold_state_plan_t* state =
+        &builder->worker_plans[worker_index].fold_state;
+    state->byte_length = (uint32_t)byte_length;
+    state->span_count = span_count;
+    IREE_RETURN_IF_ERROR(loom_aie2p_array_allocate_worker_storage(
+        loom_aie2p_array_tile_state(builder, worker->coordinate),
+        state->byte_length, LOOM_AIE2P_ARRAY_CHANNEL_ALIGNMENT,
+        &state->owner_offset));
+    IREE_RETURN_IF_ERROR(loom_xdna_array_form_load_address(
+        builder->family, worker->coordinate, LOOM_XDNA_MEMORY_SPACE_DATA,
+        worker->coordinate, state->owner_offset, state->byte_length,
+        &state->load_address));
+    loom_aie2p_array_fold_span_t* spans = NULL;
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        builder->arena, state->span_count, sizeof(*spans), (void**)&spans));
+    state->spans = spans;
+    uint32_t state_byte_offset = 0;
+    uint32_t span_index = 0;
+    for (uint32_t i = 0; i < worker->fold_output_count; ++i) {
+      state_byte_offset = (uint32_t)iree_align_uint64(
+          state_byte_offset, LOOM_AIE2P_ARRAY_CHANNEL_ALIGNMENT);
+      const uint32_t repeat_count = lengths[i] / fragment_byte_length;
+      const uint32_t repeated_byte_length = repeat_count * fragment_byte_length;
+      if (repeat_count != 0) {
+        spans[span_index++] = (loom_aie2p_array_fold_span_t){
+            .output_index = i,
+            .output_byte_offset = 0,
+            .state_byte_offset = state_byte_offset,
+            .byte_length = fragment_byte_length,
+            .repeat_count = repeat_count,
+        };
+      }
+      if (repeated_byte_length != lengths[i]) {
+        spans[span_index++] = (loom_aie2p_array_fold_span_t){
+            .output_index = i,
+            .output_byte_offset = repeated_byte_length,
+            .state_byte_offset = state_byte_offset + repeated_byte_length,
+            .byte_length = lengths[i] - repeated_byte_length,
+            .repeat_count = 1,
+        };
+      }
+      state_byte_offset += lengths[i];
+    }
+  }
+  return iree_ok_status();
+}
+
 static void loom_aie2p_array_bind_worker_port(
     loom_aie2p_array_plan_builder_t* builder,
     const loom_aie2p_array_endpoint_t* endpoint, uint32_t channel_index,
@@ -1883,6 +2008,7 @@ iree_status_t loom_aie2p_array_plan_build(
       &builder.facts, diagnostic_emitter, arena, out_plan, builder.channels));
   IREE_RETURN_IF_ERROR(loom_aie2p_array_allocate_physical_plan(&builder));
   IREE_RETURN_IF_ERROR(loom_aie2p_array_plan_workers(&builder));
+  IREE_RETURN_IF_ERROR(loom_aie2p_array_plan_fold_states(&builder));
   IREE_RETURN_IF_ERROR(loom_aie2p_array_plan_channels(&builder));
   return loom_aie2p_array_finalize_physical_counts(&builder);
 }

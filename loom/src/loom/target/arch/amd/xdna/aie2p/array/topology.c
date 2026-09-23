@@ -238,15 +238,14 @@ static iree_status_t loom_aie2p_array_topology_validate_worker_rates(
       const bool supported_f32_shape =
           record_byte_length == sizeof(float) ||
           (record_byte_length >= accumulator_lane_byte_length &&
-           record_byte_length <= 4 * accumulator_lane_byte_length &&
            record_byte_length % accumulator_lane_byte_length == 0);
       if (loom_type_element_type(endpoint->message_type) !=
               LOOM_SCALAR_TYPE_F32 ||
           !supported_f32_shape) {
         return iree_make_status(
             IREE_STATUS_UNIMPLEMENTED,
-            "AIE2P temporal fold requires one F32 element or a native "
-            "16/32/48/64-element F32 accumulator tile");
+            "AIE2P temporal fold requires one F32 element or a multiple of "
+            "16 F32 elements");
       }
     }
     if (worker->fold_record_count != 0) {

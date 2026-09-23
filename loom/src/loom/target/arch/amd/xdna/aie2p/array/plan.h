@@ -176,6 +176,35 @@ typedef struct loom_aie2p_array_leaf_t {
   loom_low_function_requirements_t requirements;
 } loom_aie2p_array_leaf_t;
 
+// Contiguous equal-width transfers between an output and private fold state.
+typedef struct loom_aie2p_array_fold_span_t {
+  // Output ordinal relative to the worker's contiguous folded output range.
+  uint32_t output_index;
+  // Byte offset from the current output ring record.
+  uint32_t output_byte_offset;
+  // Byte offset from the worker's private fold allocation.
+  uint32_t state_byte_offset;
+  // One scalar F32 or up to four complete 64-byte accumulator lanes.
+  uint32_t byte_length;
+  // Positive number of adjacent fragments of byte_length bytes.
+  uint32_t repeat_count;
+} loom_aie2p_array_fold_span_t;
+
+// Private local state for folds wider than the register-backed realization.
+// Source resource imports keep pointing at their ordinary channel rings.
+typedef struct loom_aie2p_array_fold_state_plan_t {
+  // Byte offset in the worker tile's local data memory.
+  uint32_t owner_offset;
+  // Worker-visible address of the private allocation.
+  uint32_t load_address;
+  // Allocation extent, or zero when the worker uses register-backed folding.
+  uint32_t byte_length;
+  // Output-ordered contiguous transfer spans retained by physical planning.
+  const loom_aie2p_array_fold_span_t* spans;
+  // Number of fixed-width runs and trailing fragments in the allocation.
+  uint32_t span_count;
+} loom_aie2p_array_fold_state_plan_t;
+
 // Final placement of one resident worker before native compilation.
 typedef struct loom_aie2p_array_worker_plan_t {
   // Index of the logical worker represented by this placement.
@@ -188,6 +217,8 @@ typedef struct loom_aie2p_array_worker_plan_t {
   uint32_t first_port;
   // Number of contiguous ports, ordered by their first channel binding.
   uint32_t port_count;
+  // Private ordered-fold state reserved before channel rings are placed.
+  loom_aie2p_array_fold_state_plan_t fold_state;
 } loom_aie2p_array_worker_plan_t;
 
 // Final local-data placement for one compiled worker storage domain.

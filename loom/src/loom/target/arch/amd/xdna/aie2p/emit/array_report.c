@@ -132,6 +132,16 @@ static void loom_aie2p_array_report_query_tile_usage(
     high_water =
         iree_max(high_water, storage->owner_offset + storage->byte_length);
   }
+  for (iree_host_size_t i = 0; i < plan->worker_plan_count; ++i) {
+    const loom_aie2p_array_worker_plan_t* worker = &plan->worker_plans[i];
+    if (!loom_aie2p_array_report_coordinate_equal(worker->coordinate,
+                                                  coordinate)) {
+      continue;
+    }
+    out_usage->worker_storage_byte_count += worker->fold_state.byte_length;
+    high_water = iree_max(high_water, worker->fold_state.owner_offset +
+                                          worker->fold_state.byte_length);
+  }
   for (iree_host_size_t i = 0; i < plan->channel_slot_count; ++i) {
     loom_aie2p_array_report_accumulate_channel_storage(
         plan, i, coordinate, /*range_offset=*/0,
@@ -155,6 +165,16 @@ static void loom_aie2p_array_report_query_tile_usage(
       occupied_byte_count += loom_aie2p_array_report_overlap_byte_count(
           storage->owner_offset, storage->byte_length, bank_offset,
           bank_byte_count);
+    }
+    for (iree_host_size_t i = 0; i < plan->worker_plan_count; ++i) {
+      const loom_aie2p_array_worker_plan_t* worker = &plan->worker_plans[i];
+      if (!loom_aie2p_array_report_coordinate_equal(worker->coordinate,
+                                                    coordinate)) {
+        continue;
+      }
+      occupied_byte_count += loom_aie2p_array_report_overlap_byte_count(
+          worker->fold_state.owner_offset, worker->fold_state.byte_length,
+          bank_offset, bank_byte_count);
     }
     for (iree_host_size_t i = 0; i < plan->channel_slot_count; ++i) {
       loom_aie2p_array_report_accumulate_channel_storage(
@@ -396,6 +416,10 @@ iree_status_t loom_aie2p_array_report_record(
   };
   for (iree_host_size_t i = 0; i < plan->worker_storage_count; ++i) {
     summary.worker_storage_byte_count += plan->worker_storage[i].byte_length;
+  }
+  for (iree_host_size_t i = 0; i < plan->worker_plan_count; ++i) {
+    summary.worker_storage_byte_count +=
+        plan->worker_plans[i].fold_state.byte_length;
   }
   for (iree_host_size_t i = 0; i < plan->channel_count; ++i) {
     summary.channel_storage_byte_count +=

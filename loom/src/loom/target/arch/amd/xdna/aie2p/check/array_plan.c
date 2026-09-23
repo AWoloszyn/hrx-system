@@ -292,6 +292,29 @@ static iree_status_t loom_aie2p_array_plan_check_format(
         storage->worker_index, storage->storage_space, storage->owner_offset,
         storage->load_address, storage->byte_length));
   }
+  for (iree_host_size_t i = 0; i < plan->worker_plan_count; ++i) {
+    const loom_aie2p_array_fold_state_plan_t* state =
+        &plan->worker_plans[i].fold_state;
+    if (state->byte_length == 0) {
+      continue;
+    }
+    IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+        builder,
+        "worker-fold-state worker=%" PRIhsz " offset=0x%05" PRIx32
+        " load-address=0x%05" PRIx32 " bytes=%" PRIu32 " spans=%" PRIu32 "\n",
+        i, state->owner_offset, state->load_address, state->byte_length,
+        state->span_count));
+    for (uint32_t j = 0; j < state->span_count; ++j) {
+      const loom_aie2p_array_fold_span_t* span = &state->spans[j];
+      IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+          builder,
+          "fold-span worker=%" PRIhsz " index=%" PRIu32 " output=%" PRIu32
+          " output-offset=%" PRIu32 " state-offset=%" PRIu32 " bytes=%" PRIu32
+          " repeat=%" PRIu32 "\n",
+          i, j, span->output_index, span->output_byte_offset,
+          span->state_byte_offset, span->byte_length, span->repeat_count));
+    }
+  }
   for (iree_host_size_t i = 0; i < plan->worker_port_count; ++i) {
     const loom_aie2p_array_worker_port_plan_t* port = &plan->worker_ports[i];
     IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
