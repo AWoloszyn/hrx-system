@@ -1755,6 +1755,20 @@ class _LowerRuleSetCompiler:
                 source_element_index=project.element,
                 literal_i64=project.literal_i64,
             )
+        if project.kind == AttrProjectKind.I64_ARRAY_LANE_BYTE_OFFSET:
+            if project.element is None or project.bytes_per_lane is None:
+                raise ValueError(
+                    f"{source_op.name}: lane-byte offset projection needs an "
+                    "element and bytes_per_lane"
+                )
+            return LowerAttrCopy(
+                kind=LowerAttrCopyKind.I64_ARRAY_LANE_BYTE,
+                target_name=target_name,
+                source_attr_index=source_attr_index,
+                source_element_index=project.element,
+                source_element_count=project.bytes_per_lane,
+                literal_i64=project.literal_i64,
+            )
         if project.kind == AttrProjectKind.I64_ARRAY_PACK_ELEMENTS:
             if (
                 project.element is None

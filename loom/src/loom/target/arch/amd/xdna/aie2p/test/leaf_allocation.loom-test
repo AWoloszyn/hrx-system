@@ -108,70 +108,6 @@ CHECK: copies: coalesced=0 materialized=1
 
 // ====
 
-// Nine loop-invariant offsets exceed the eight address-index registers. The
-// native emitter recreates pure index moves near their loads instead of
-// retaining every index through the loop or requiring spill storage.
-// RUN: emit aie2p-leaf @indexed_loop report=emission
-
-low.func.def target<amd.xdna.aie2p.core> @indexed_loop(%input: reg<aie2p.ep>, %output: reg<aie2p.ep>, %count: reg<aie2p.er>) asm {
-  %zero = mov.short 0
-  %one = mov.short 1
-  %offset0 = mov.static-byte-offset 64
-  %index0 = mov.address-index %offset0
-  %offset1 = mov.static-byte-offset 128
-  %index1 = mov.address-index %offset1
-  %offset2 = mov.static-byte-offset 192
-  %index2 = mov.address-index %offset2
-  %offset3 = mov.static-byte-offset 256
-  %index3 = mov.address-index %offset3
-  %offset4 = mov.static-byte-offset 320
-  %index4 = mov.address-index %offset4
-  %offset5 = mov.static-byte-offset 384
-  %index5 = mov.address-index %offset5
-  %offset6 = mov.static-byte-offset 448
-  %index6 = mov.address-index %offset6
-  %offset7 = mov.static-byte-offset 512
-  %index7 = mov.address-index %offset7
-  %offset8 = mov.static-byte-offset 576
-  %index8 = mov.address-index %offset8
-  low.br ^loop(%count: reg<aie2p.er>)
-^loop(%remaining: reg<aie2p.er>):
-  %value0 = lda.i32.index %input, %index0
-  %sum0 = add.rr %zero, %value0
-  %value1 = lda.i32.index %input, %index1
-  %sum1 = add.rr %sum0, %value1
-  %value2 = lda.i32.index %input, %index2
-  %sum2 = add.rr %sum1, %value2
-  %value3 = lda.i32.index %input, %index3
-  %sum3 = add.rr %sum2, %value3
-  %value4 = lda.i32.index %input, %index4
-  %sum4 = add.rr %sum3, %value4
-  %value5 = lda.i32.index %input, %index5
-  %sum5 = add.rr %sum4, %value5
-  %value6 = lda.i32.index %input, %index6
-  %sum6 = add.rr %sum5, %value6
-  %value7 = lda.i32.index %input, %index7
-  %sum7 = add.rr %sum6, %value7
-  %value8 = lda.i32.index %input, %index8
-  %sum8 = add.rr %sum7, %value8
-  st %sum8, %output, 0
-  %next = sub %remaining, %one
-  %more = nez %next
-  low.cond_br %more, ^again, ^done : reg<aie2p.er>
-^again:
-  low.br ^loop(%next: reg<aie2p.er>)
-^done:
-  return
-}
-
-// ----
-issue cycles: 65
-code bytes: 254
-coissued bundles: 10
-coissued components: 20
-
-// ====
-
 // Static byte-offset literals share scalar registers with the loop's arithmetic.
 // Their pure materializers can be recreated near use when 24 loop-invariant offsets
 // leave too few registers for the loop arithmetic and memory pipeline.
@@ -359,3 +295,114 @@ low.func.def target<amd.xdna.aie2p.core> @selection_tree(%input: reg<aie2p.ep>, 
 
 // ----
 CHECK: code bytes: 224
+
+// ====
+
+// Seven live address indexes leave one physical register free for three local
+// address moves. Work for the earlier inserts must run before setup for the
+// final singleton insert index, even when that address work crosses capacity.
+// RUN: emit aie2p-leaf @index_repair_ordering report=emission
+
+low.func.def target<amd.xdna.aie2p.core> @index_repair_ordering(%source: reg<aie2p.ep>, %destination: reg<aie2p.ep>, %address0: reg<aie2p.edj>, %address1: reg<aie2p.edj>, %address2: reg<aie2p.edj>, %address3: reg<aie2p.edj>, %address4: reg<aie2p.edj>, %address5: reg<aie2p.edj>, %address6: reg<aie2p.edj>, %position1: reg<aie2p.er>, %position2: reg<aie2p.er>, %position3: reg<aie2p.er>, %position4: reg<aie2p.er>, %position5: reg<aie2p.er>, %position6: reg<aie2p.er>, %position7: reg<aie2p.er>, %position8: reg<aie2p.er>, %position9: reg<aie2p.er>) -> (reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>, reg<aie2p.er>) asm {
+  %offset7 = mov.static-byte-offset 119
+  %address7 = mov.address-index %offset7
+  %offset8 = mov.static-byte-offset 120
+  %address8 = mov.address-index %offset8
+  %offset9 = mov.static-byte-offset 121
+  %address9 = mov.address-index %offset9
+  %first_lane0 = lda.i8.index %source, %address0
+  %first_lane1 = lda.i8.index %source, %address1
+  %first_lane2 = lda.i8.index %source, %address2
+  %first_lane3 = lda.i8.index %source, %address3
+  %first_lane4 = lda.i8.index %source, %address4
+  %first_lane5 = lda.i8.index %source, %address5
+  %first_lane6 = lda.i8.index %source, %address6
+  %first_lane7 = lda.i8.index %source, %address7
+  %first_lane8 = lda.i8.index %source, %address8
+  %first_lane9 = lda.i8.index %source, %address9
+  %first = vbcst.8 %first_lane0
+  %first_index1 = copy %position1 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %first2 = vinsert.8.reg %first, %first_index1, %first_lane1
+  %first_index2 = copy %position2 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %first3 = vinsert.8.reg %first2, %first_index2, %first_lane2
+  %first_index3 = copy %position3 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %first4 = vinsert.8.reg %first3, %first_index3, %first_lane3
+  %first_index4 = copy %position4 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %first5 = vinsert.8.reg %first4, %first_index4, %first_lane4
+  %first_index5 = copy %position5 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %first6 = vinsert.8.reg %first5, %first_index5, %first_lane5
+  %first_index6 = copy %position6 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %first7 = vinsert.8.reg %first6, %first_index6, %first_lane6
+  %first_index7 = copy %position7 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %first8 = vinsert.8.reg %first7, %first_index7, %first_lane7
+  %first_index8 = copy %position8 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %first9 = vinsert.8.reg %first8, %first_index8, %first_lane8
+  %first_index9 = copy %position9 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %first10 = vinsert.8.reg %first9, %first_index9, %first_lane9
+  vst.512.i8x64 %first10, %destination, 0
+  %second_lane0 = lda.i8.index %source, %address0
+  %second_lane1 = lda.i8.index %source, %address1
+  %second_lane2 = lda.i8.index %source, %address2
+  %second_lane3 = lda.i8.index %source, %address3
+  %second_lane4 = lda.i8.index %source, %address4
+  %second_lane5 = lda.i8.index %source, %address5
+  %second_lane6 = lda.i8.index %source, %address6
+  %second_lane7 = lda.i8.index %source, %address7
+  %second_lane8 = lda.i8.index %source, %address8
+  %second = vbcst.8 %second_lane0
+  %second_index8 = copy %position8 : reg<aie2p.er> -> reg<aie2p.mr29_insert>
+  %second2 = vinsert.8.reg %second, %second_index8, %second_lane8
+  vst.512.i8x64 %second2, %destination, 64
+  return %second_lane1, %second_lane2, %second_lane3, %second_lane4, %second_lane5, %second_lane6, %second_lane7
+}
+
+// ----
+issue cycles: 96
+code bytes: 304
+coissued bundles: 12
+coissued components: 24
+
+// ====
+
+// Nine loop-invariant address moves need repair while seven entry indexes stay
+// live. Repair convergence is bounded by the function's value population, not
+// an arbitrary attempt count below the amount of useful progress available.
+// RUN: emit aie2p-leaf @index_repair_population report=emission
+
+low.func.def target<amd.xdna.aie2p.core> @index_repair_population(%output: reg<aie2p.ep>, %count: reg<aie2p.er>, %block0: reg<aie2p.edj>, %block1: reg<aie2p.edj>, %block2: reg<aie2p.edj>, %block3: reg<aie2p.edj>, %block4: reg<aie2p.edj>, %block5: reg<aie2p.edj>, %block6: reg<aie2p.edj>) -> (reg<aie2p.edj>, reg<aie2p.edj>, reg<aie2p.edj>, reg<aie2p.edj>, reg<aie2p.edj>, reg<aie2p.edj>, reg<aie2p.edj>) asm {
+  %value = mov.short 1
+  %offset = mov.static-byte-offset 0
+  %index0 = mov.address-index %offset
+  %index1 = mov.address-index %offset
+  %index2 = mov.address-index %offset
+  %index3 = mov.address-index %offset
+  %index4 = mov.address-index %offset
+  %index5 = mov.address-index %offset
+  %index6 = mov.address-index %offset
+  %index7 = mov.address-index %offset
+  %index8 = mov.address-index %offset
+  low.br ^loop(%count: reg<aie2p.er>)
+^loop(%remaining: reg<aie2p.er>):
+  st.i32.index %value, %output, %index0
+  st.i32.index %value, %output, %index1
+  st.i32.index %value, %output, %index2
+  st.i32.index %value, %output, %index3
+  st.i32.index %value, %output, %index4
+  st.i32.index %value, %output, %index5
+  st.i32.index %value, %output, %index6
+  st.i32.index %value, %output, %index7
+  st.i32.index %value, %output, %index8
+  %next = sub %remaining, %value
+  %more = nez %next
+  low.cond_br %more, ^again, ^done : reg<aie2p.er>
+^again:
+  low.br ^loop(%next: reg<aie2p.er>)
+^done:
+  return %block0, %block1, %block2, %block3, %block4, %block5, %block6
+}
+
+// ----
+issue cycles: 43
+code bytes: 142
+coissued bundles: 2
+coissued components: 4

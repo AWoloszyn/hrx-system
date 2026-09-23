@@ -1496,6 +1496,7 @@ void loom_low_schedule_pressure_score_candidate(
   uint32_t killed_live_value_count = 0;
   uint64_t produced_live_units = 0;
   uint32_t produced_live_value_count = 0;
+  bool is_per_user_rematerialization = false;
   bool rematerializable_leaf =
       node->descriptor != NULL && node->operand_count == 0 &&
       !iree_any_bit_set(node->traits, LOOM_TRAIT_OBSERVABLE_EFFECT);
@@ -1539,6 +1540,8 @@ void loom_low_schedule_pressure_score_candidate(
   }
   const loom_value_ordinal_t* result_ordinals =
       loom_low_schedule_node_const_result_ordinals(node);
+  const iree_bitmap_t per_user_rematerialized_values =
+      state->options->per_user_rematerialized_values;
   for (uint16_t result_index = 0; result_index < node->result_count;
        ++result_index) {
     const loom_low_schedule_value_record_t* value =
@@ -1555,6 +1558,13 @@ void loom_low_schedule_pressure_score_candidate(
     const uint32_t unit_count = value->unit_count - alias_units;
     produced_live_units += unit_count;
     if (unit_count != 0) {
+      // Hoisting operand-free leaves creates only their result and remains
+      // governed by the packing policy. Operand-capturing clones transfer live
+      // storage between classes and must retain their use-local placement.
+      is_per_user_rematerialization |=
+          node->operand_count != 0 &&
+          value->value_id < per_user_rematerialized_values.bit_count &&
+          iree_bitmap_test(per_user_rematerialized_values, value->value_id);
       ++produced_live_value_count;
       rematerializable_leaf =
           rematerializable_leaf &&
@@ -1642,16 +1652,16 @@ void loom_low_schedule_pressure_score_candidate(
       .active_unspillable_completion_capacity = UINT32_MAX,
       .active_register_packing_completion_capacity = UINT32_MAX,
       .source_ordinal = node->source_ordinal,
-      .flags =
-          (uint16_t)pressure_demand.candidate_flags |
-          (uint16_t)((node->flags &
-                      LOOM_LOW_SCHEDULE_NODE_FLAG_PAIR_TRANSPARENT)
-                     << 1u) |
-          (is_storage_setup ? LOOM_LOW_SCHEDULE_CANDIDATE_FLAG_STORAGE_SETUP
-                            : 0) |
-          (rematerializable_leaf && produced_live_value_count != 0
-               ? LOOM_LOW_SCHEDULE_CANDIDATE_FLAG_REMATERIALIZABLE_LEAF
-               : 0),
+      .flags = (uint16_t)pressure_demand.candidate_flags |
+               (uint16_t)((node->flags &
+                           LOOM_LOW_SCHEDULE_NODE_FLAG_PAIR_TRANSPARENT)
+                          << 1u) |
+               ((is_storage_setup || is_per_user_rematerialization)
+                    ? LOOM_LOW_SCHEDULE_CANDIDATE_FLAG_STORAGE_SETUP
+                    : 0) |
+               (rematerializable_leaf && produced_live_value_count != 0
+                    ? LOOM_LOW_SCHEDULE_CANDIDATE_FLAG_REMATERIALIZABLE_LEAF
+                    : 0),
   };
   loom_low_schedule_target_pressure_score_candidate(state, pressure_state,
                                                     node_index, out_score);

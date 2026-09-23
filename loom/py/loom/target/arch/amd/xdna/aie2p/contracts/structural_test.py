@@ -8,10 +8,9 @@
 
 from loom.dialect.vector import defs as vector
 from loom.target.arch.amd.xdna.aie2p.contracts.structural import (
-    _HALF_CARRIER_SLICE_SPECS,
     _I16_INTERLEAVE_CONTROL,
     _I32_F32_TRANSPOSE_4X4_CONTROL,
-    _I32_SLICE_HIGH_BYTE_OFFSET,
+    _VECTOR_CARRIER_SPECS,
     _WIDE_VECTOR_EXTRACT_SPECS,
     AIE2P_STRUCTURAL_RULES,
 )
@@ -23,6 +22,7 @@ from loom.target.contracts import (
     EmitRegisterSlice,
     Guard,
     ValueAliasRule,
+    Vector,
 )
 
 
@@ -123,40 +123,115 @@ def test_wide_pair_extract_selects_each_scalar_word() -> None:
     )
 
 
-def test_half_carrier_slices_alias_low_and_shift_high() -> None:
-    for source_type, result_type, half_lane_count in _HALF_CARRIER_SLICE_SPECS:
-        common_guards = (
-            Guard.value_type("source", source_type),
-            Guard.value_type("result", result_type),
-            Guard.operand_segment_count("offsets", 0),
-            Guard.i64_array_count("static_offsets", 1),
+def _slice_rule(
+    source_type,
+    result_type,
+    offset_minimum: int,
+    offset_maximum: int,
+):
+    return next(
+        rule
+        for rule in AIE2P_STRUCTURAL_RULES
+        if rule.source_op is vector.vector_slice
+        and Guard.value_type("source", source_type) in rule.guards
+        and Guard.value_type("result", result_type) in rule.guards
+        and Guard.i64_array_element_range(
+            "static_offsets", 0, offset_minimum, offset_maximum
         )
-        low_rule = next(
-            rule
-            for rule in AIE2P_STRUCTURAL_RULES
-            if isinstance(rule, ValueAliasRule)
-            and all(guard in rule.guards for guard in common_guards)
-            and Guard.i64_array_element_range("static_offsets", 0, 0, 0) in rule.guards
+        in rule.guards
+    )
+
+
+def test_static_slices_project_logical_lanes_into_physical_carriers() -> None:
+    slice_rules = [
+        rule for rule in AIE2P_STRUCTURAL_RULES if rule.source_op is vector.vector_slice
+    ]
+    assert len(slice_rules) == 8 * len(_VECTOR_CARRIER_SPECS)
+
+    for element_types, element_byte_count, wide_lane_maximum in _VECTOR_CARRIER_SPECS:
+        carrier_lane_count = 64 // element_byte_count
+        narrow_type = Vector(
+            element_types,
+            minimum_lanes=1,
+            maximum_lanes=carrier_lane_count,
         )
-        high_rule = next(
-            rule
-            for rule in AIE2P_STRUCTURAL_RULES
-            if isinstance(rule, DescriptorRule)
-            and rule.source_op is vector.vector_slice
-            and all(guard in rule.guards for guard in common_guards)
-            and Guard.i64_array_element_range(
-                "static_offsets", 0, half_lane_count, half_lane_count
-            )
-            in rule.guards
+        wide_type = Vector(
+            element_types,
+            minimum_lanes=carrier_lane_count + 1,
+            maximum_lanes=wide_lane_maximum,
         )
 
-        assert low_rule.source.field == "source"
-        assert low_rule.result.field == "result"
-        assert [emit.descriptor.key for emit in high_rule.emit] == [
-            "amd.xdna.aie2p.constant.i32.mova",
-            "amd.xdna.aie2p.shift.bytes.x.configured",
+        narrow_low = _slice_rule(narrow_type, narrow_type, 0, 0)
+        assert isinstance(narrow_low, ValueAliasRule)
+        narrow_shift = _slice_rule(
+            narrow_type,
+            narrow_type,
+            1,
+            carrier_lane_count - 1,
+        )
+        assert narrow_shift.emit[0].immediates == {
+            "i": AttrProject.i64_array_lane_byte_offset(
+                "static_offsets",
+                element=0,
+                bytes_per_lane=element_byte_count,
+            )
+        }
+
+        wide_low = _slice_rule(wide_type, narrow_type, 0, 0)
+        assert isinstance(wide_low.emit[0], EmitRegisterSlice)
+        assert wide_low.emit[0].unit_offset == 0
+        wide_crossing = _slice_rule(
+            wide_type,
+            narrow_type,
+            1,
+            carrier_lane_count - 1,
+        )
+        assert [emit.unit_offset for emit in wide_crossing.emit[:2]] == [0, 2]
+        wide_high = _slice_rule(
+            wide_type,
+            narrow_type,
+            carrier_lane_count,
+            carrier_lane_count,
+        )
+        assert wide_high.emit[0].unit_offset == 2
+        high_shift = _slice_rule(
+            wide_type,
+            narrow_type,
+            carrier_lane_count + 1,
+            wide_lane_maximum - 1,
+        )
+        assert high_shift.emit[1].immediates == {
+            "i": AttrProject.i64_array_lane_byte_offset(
+                "static_offsets",
+                element=0,
+                bytes_per_lane=element_byte_count,
+                base_byte_offset=-64,
+            )
+        }
+
+        wide_alias = _slice_rule(wide_type, wide_type, 0, 0)
+        assert isinstance(wide_alias, ValueAliasRule)
+        wide_shift = _slice_rule(
+            wide_type,
+            wide_type,
+            1,
+            carrier_lane_count - 1,
+        )
+        assert [type(emit) for emit in wide_shift.emit] == [
+            EmitRegisterSlice,
+            EmitRegisterSlice,
+            EmitDescriptorOp,
+            EmitDescriptorOp,
+            EmitDescriptorOp,
+            EmitRegisterConcat,
         ]
-        assert high_rule.emit[0].immediates == {"i": _I32_SLICE_HIGH_BYTE_OFFSET}
+        assert wide_shift.emit[2].immediates == {
+            "i": AttrProject.i64_array_lane_byte_offset(
+                "static_offsets",
+                element=0,
+                bytes_per_lane=element_byte_count,
+            )
+        }
 
 
 def test_i32_f32_4x4_transpose_uses_native_shuffle_mode() -> None:

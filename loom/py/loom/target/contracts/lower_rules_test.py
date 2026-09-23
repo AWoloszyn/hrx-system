@@ -2060,6 +2060,48 @@ def test_compile_lower_rule_set_compiles_i64_array_element_offset_projection() -
     )
 
 
+def test_compile_lower_rule_set_compiles_lane_byte_offset_projection() -> None:
+    table = ContractFragment(
+        name="test.lane-byte-offset",
+        descriptor_set=TEST_LOW_CORE_DESCRIPTOR_SET,
+        cases=(
+            DescriptorRule(
+                source_op=vector.vector_extract,
+                descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                guards=(
+                    Guard.value_type("source", Vector("i32", lanes=32)),
+                    Guard.value_type("result", Scalar("i32")),
+                    Guard.i64_array_element_range("static_indices", 0, 16, 31),
+                ),
+                emit=(
+                    EmitDescriptorOp(
+                        descriptor=TEST_LOW_CONST_I32_DESCRIPTOR,
+                        results={"dst": ValueRef.result("result")},
+                        immediates={
+                            "i32_value": AttrProject.i64_array_lane_byte_offset(
+                                "static_indices",
+                                element=0,
+                                bytes_per_lane=4,
+                                base_byte_offset=-64,
+                            )
+                        },
+                        form=DescriptorEmitForm.CONST,
+                    ),
+                ),
+            ),
+        ),
+    )
+
+    compiled = compile_lower_rule_set(table, dialect_ops={"vector": ALL_VECTOR_OPS})
+
+    attr_copy = compiled.attr_copies[0]
+    assert attr_copy.kind == LowerAttrCopyKind.I64_ARRAY_LANE_BYTE
+    assert attr_copy.source_attr_index == 0
+    assert attr_copy.source_element_index == 0
+    assert attr_copy.source_element_count == 4
+    assert attr_copy.literal_i64 == -64
+
+
 def test_compile_lower_rule_set_validates_enum_immediate_literal() -> None:
     immediate = Immediate(
         "mode",

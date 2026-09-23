@@ -535,6 +535,8 @@ def test_vector_memory_rules_cover_every_native_width_and_address_form() -> None
             ("bf16", "bf16", 2),
             ("i32", "i32", 4),
             ("f32", "f32", 4),
+            ("i64", "i64", 8),
+            ("f64", "f64", 8),
         )
         for operation in (
             SourceMemoryOperation.LOAD,
@@ -573,7 +575,7 @@ def test_vector_memory_rules_cover_every_native_width_and_address_form() -> None
         assert [rule.descriptor.key for rule in rules] == expected_descriptor_keys
         for family_index, (
             width_bits,
-            _element_type,
+            element_type,
             descriptor_element_type,
             element_byte_count,
             vector_lane_count,
@@ -596,6 +598,8 @@ def test_vector_memory_rules_cover_every_native_width_and_address_form() -> None
                 immediate_maximum=width_bits - width_bits // 8,
             )
             for rule in operation_rules:
+                assert rule.guards[-1].type_pattern.elements == (element_type,)
+                assert rule.guards[-1].type_pattern.lanes == vector_lane_count
                 expands_logical_carrier = width_bits < 512
                 slices = [
                     emit for emit in rule.emit if isinstance(emit, EmitRegisterSlice)
@@ -635,6 +639,7 @@ def test_256bit_vector_loads_split_at_16_byte_alignment() -> None:
         (("i8", "f8E4M3", "f8E5M2"), 1, 32),
         (("i16", "f16", "bf16"), 2, 16),
         (("i32", "f32"), 4, 8),
+        (("i64", "f64"), 8, 4),
     )
     expected_static_ranges = (
         (-128, 96, 0, 0, False),

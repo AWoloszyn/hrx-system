@@ -554,6 +554,8 @@ low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @reduce_p
 
 // ====
 
+// RUN: with-checks emit source-low output=low
+
 aie2p.target<core> @target
 
 func.def target(@target) @load_i8x32_aligned16(%source: buffer) -> (vector<32xi8>) {
@@ -565,21 +567,14 @@ func.def target(@target) @load_i8x32_aligned16(%source: buffer) -> (vector<32xi8
 }
 
 // ----
-low.func.def target<amd.xdna.aie2p.core>(@target) abi(object_function) @load_i8x32_aligned16() -> (reg<aie2p.vec256 x2>) asm {
-  %source_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
-  %8 = mov.short 0
-  %9 = vbcst.8 %8
-  %10 = slice %9[1] : reg<aie2p.vec256 x2> -> reg<aie2p.vec256>
-  %11 = vlda.128.i8x16 %source_view, 0
-  %12 = concat(%11, %10) : (reg<aie2p.vec256>, reg<aie2p.vec256>) -> reg<aie2p.vec256 x2>
-  %13 = vlda.128.i8x16 %source_view, 16
-  %14 = concat(%13, %10) : (reg<aie2p.vec256>, reg<aie2p.vec256>) -> reg<aie2p.vec256 x2>
-  %15 = mova.i32 48
-  %16 = vshift %9, %14, %15
-  %17 = mov.select 15
-  %value = vsel.32 %16, %12, %17
-  return %value
-}
+CHECK: * = vlda.128.i8x16 %source_view, 0
+CHECK: * = vlda.128.i8x16 %source_view, 16
+CHECK: * = vshift *
+CHECK: %value = vsel.32 *
+CHECK: return %value
+CHECK-NOT: *vlda.256*
+CHECK-NOT: *vextract*
+CHECK-NOT: *vinsert*
 
 // ====
 

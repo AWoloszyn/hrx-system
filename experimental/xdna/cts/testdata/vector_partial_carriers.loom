@@ -1,0 +1,50 @@
+// A loop-carried vector remains a snapshot after its backing tile is poisoned.
+// Crossing and wide slices exercise both carrier boundaries and partial tails.
+aie2p.target<array> @array_target
+aie2p.target<core> @core_target
+
+pipeline.def<kernel> public retain target(@array_target) @partial_carriers() launch(%input: buffer, %output: buffer) {
+  %count = index.constant 1 : index
+  %origin = index.constant 0 : offset
+  %workers = group.create %count : index -> group
+  %input_view = buffer.view %input[%origin] : buffer -> view<1x16x256xi8>
+  %output_view = buffer.view %output[%origin] : buffer -> view<1x16x512xi8>
+  %packets = pipeline.scatter %input_view across %workers : view<1x16x256xi8>, group -> pipeline.flow<tile<256xi8>>
+  %results = pipeline.stage @slice_snapshot on %workers(%packets) : (group, pipeline.flow<tile<256xi8>>) -> (pipeline.flow<tile<512xi8>>)
+  pipeline.write %results to %output_view : pipeline.flow<tile<512xi8>>, view<1x16x512xi8>
+  pipeline.return
+}
+
+func.def target(@core_target) @slice_snapshot(%input: buffer, %output: buffer) {
+  %source, %destination = buffer.assume.alignment %input, %output {minimum_alignment = 64} : buffer, buffer
+  %origin = index.constant 0 : offset
+  %payload_origin = index.constant 64 : offset
+  %count_view = buffer.view %source[%origin] : buffer -> view<64xi32>
+  %source_view = buffer.view %source[%payload_origin] : buffer -> view<128xi8>
+  %destination_view = buffer.view %destination[%origin] : buffer -> view<512xi8>
+  %count_i32 = view.load %count_view[0] : view<64xi32> -> i32
+  %count = index.cast %count_i32 : i32 to index
+  %snapshot = vector.load %source_view[0] : view<128xi8> -> vector<128xi8>
+  %sentinel = vector.constant -91 : vector<64xi8>
+  vector.store<volatile> %sentinel, %source_view[0] : vector<64xi8>, view<128xi8>
+  vector.store<volatile> %sentinel, %source_view[64] : vector<64xi8>, view<128xi8>
+  vector.store %sentinel, %destination_view[0] : vector<64xi8>, view<512xi8>
+  vector.store %sentinel, %destination_view[64] : vector<64xi8>, view<512xi8>
+  vector.store %sentinel, %destination_view[128] : vector<64xi8>, view<512xi8>
+  vector.store %sentinel, %destination_view[192] : vector<64xi8>, view<512xi8>
+  vector.store %sentinel, %destination_view[256] : vector<64xi8>, view<512xi8>
+  vector.store %sentinel, %destination_view[320] : vector<64xi8>, view<512xi8>
+  vector.store %sentinel, %destination_view[384] : vector<64xi8>, view<512xi8>
+  vector.store %sentinel, %destination_view[448] : vector<64xi8>, view<512xi8>
+  %zero = index.constant 0 : index
+  %one = index.constant 1 : index
+  %captured = scf.for %iteration = [%zero to %count step %one](%carried = %snapshot : vector<128xi8>) -> (vector<128xi8>) {
+    vector.store %carried, %destination_view[0] : vector<128xi8>, view<512xi8>
+    %crossing = vector.slice %carried[63] : vector<128xi8> -> vector<64xi8>
+    vector.store %crossing, %destination_view[160] : vector<64xi8>, view<512xi8>
+    %wide = vector.slice %carried[1] : vector<128xi8> -> vector<96xi8>
+    vector.store %wide, %destination_view[256] : vector<96xi8>, view<512xi8>
+    scf.yield %carried : vector<128xi8>
+  }
+  func.return
+}
