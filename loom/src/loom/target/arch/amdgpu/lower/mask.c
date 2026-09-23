@@ -24,8 +24,8 @@
 
 static bool loom_amdgpu_select_vector_storage(
     loom_type_t result_type, loom_amdgpu_vector_storage_t* out_storage,
-    bool* out_allows_vector_mask, bool* out_allows_lane_immediates) {
-  *out_allows_vector_mask = false;
+    bool* out_full_width_storage, bool* out_allows_lane_immediates) {
+  *out_full_width_storage = false;
   *out_allows_lane_immediates = false;
   if (!loom_amdgpu_type_vector_storage(result_type, out_storage)) {
     return false;
@@ -44,7 +44,7 @@ static bool loom_amdgpu_select_vector_storage(
   if (!full_width_storage && !packed_payload_storage) {
     return false;
   }
-  *out_allows_vector_mask = full_width_storage;
+  *out_full_width_storage = full_width_storage;
   *out_allows_lane_immediates =
       full_width_storage && out_storage->element_register_count == 1;
   return true;
@@ -80,10 +80,10 @@ iree_status_t loom_amdgpu_select_vector_select_plan(
   const loom_value_id_t result = loom_vector_select_result(source_op);
   const loom_type_t result_type = loom_module_value_type(module, result);
   loom_amdgpu_vector_storage_t storage = {0};
-  bool allows_vector_mask = false;
+  bool full_width_storage = false;
   bool allows_lane_immediates = false;
   if (!loom_amdgpu_select_vector_storage(result_type, &storage,
-                                         &allows_vector_mask,
+                                         &full_width_storage,
                                          &allows_lane_immediates)) {
     return iree_ok_status();
   }
@@ -105,23 +105,29 @@ iree_status_t loom_amdgpu_select_vector_select_plan(
   uint32_t registers_per_condition_lane = 1;
   const uint32_t condition_lane_count = loom_amdgpu_vector_i1_lane_count(
       loom_module_value_type(module, condition));
-  if (allows_vector_mask && condition_lane_count == storage.element_count) {
+  if (full_width_storage && condition_lane_count == storage.element_count) {
     condition_kind = LOOM_AMDGPU_SELECT_CONDITION_KIND_VECTOR_MASK;
     registers_per_condition_lane = storage.element_register_count;
   } else if (loom_amdgpu_select_scalar_splat_condition(
                  module, fact_table, condition, storage.element_count,
                  &selected_condition)) {
     condition_kind = LOOM_AMDGPU_SELECT_CONDITION_KIND_SCALAR_MASK;
+  } else if (condition_lane_count == storage.element_count) {
+    condition_kind = LOOM_AMDGPU_SELECT_CONDITION_KIND_VECTOR_MASK;
+    selected_condition = condition;
   } else {
     return iree_ok_status();
   }
 
+  const bool packed_mask =
+      !full_width_storage &&
+      condition_kind == LOOM_AMDGPU_SELECT_CONDITION_KIND_VECTOR_MASK;
   loom_amdgpu_cndmask_b32_descriptors_t cndmask_descriptors = {0};
   bool descriptors_present = false;
   IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_cndmask_b32_descriptors(
       context, LOOM_AMDGPU_CNDMASK_B32_DESCRIPTOR_REGISTER,
-      LOOM_AMDGPU_CNDMASK_B32_DESCRIPTOR_ALL, &cndmask_descriptors,
-      &descriptors_present));
+      packed_mask ? 0 : LOOM_AMDGPU_CNDMASK_B32_DESCRIPTOR_ALL,
+      &cndmask_descriptors, &descriptors_present));
   if (!descriptors_present) {
     return iree_ok_status();
   }
@@ -138,6 +144,32 @@ iree_status_t loom_amdgpu_select_vector_select_plan(
       .registers_per_condition_lane = registers_per_condition_lane,
       .allow_lane_immediates = allows_lane_immediates,
   };
+  if (packed_mask) {
+    out_plan->payload_kind = LOOM_AMDGPU_SELECT_PAYLOAD_KIND_PACKED_DATA;
+    out_plan->payload.packed.element_count = storage.element_count;
+    out_plan->payload.packed.element_bit_count = storage.element_bit_count;
+    bool literal_present = false;
+    IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_descriptor_ref_if_present(
+        context, LOOM_AMDGPU_DESCRIPTOR_REF_V_BFI_B32_SRC0_LIT,
+        &out_plan->payload.packed.merge_descriptor, &literal_present));
+    if (!literal_present) {
+      const loom_amdgpu_descriptor_resolution_t resolutions[] = {
+          {LOOM_AMDGPU_DESCRIPTOR_REF_V_BFI_B32,
+           &out_plan->payload.packed.merge_descriptor},
+          {LOOM_AMDGPU_DESCRIPTOR_REF_S_MOV_B32,
+           &out_plan->payload.packed.mask_constant_descriptor},
+      };
+      bool present = false;
+      IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_descriptor_refs_if_present(
+          context, resolutions, IREE_ARRAYSIZE(resolutions), &present));
+      if (!present) {
+        return iree_ok_status();
+      }
+      IREE_RETURN_IF_ERROR(
+          loom_amdgpu_intern(context, IREE_SV("imm32"),
+                             &out_plan->payload.packed.imm32_attr_name_id));
+    }
+  }
   *out_selected = true;
   return iree_ok_status();
 }
@@ -158,10 +190,10 @@ iree_status_t loom_amdgpu_low_legality_verify_vector_select(
   const loom_value_id_t result = loom_vector_select_result(op);
   const loom_type_t result_type = loom_module_value_type(module, result);
   loom_amdgpu_vector_storage_t storage = {0};
-  bool allows_vector_mask = false;
+  bool full_width_storage = false;
   bool allows_lane_immediates = false;
   if (!loom_amdgpu_select_vector_storage(result_type, &storage,
-                                         &allows_vector_mask,
+                                         &full_width_storage,
                                          &allows_lane_immediates)) {
     return iree_ok_status();
   }
@@ -181,24 +213,11 @@ iree_status_t loom_amdgpu_low_legality_verify_vector_select(
   const loom_value_id_t condition = loom_vector_select_condition(op);
   const uint32_t condition_lane_count = loom_amdgpu_vector_i1_lane_count(
       loom_module_value_type(module, condition));
-  loom_value_id_t unused_scalar_condition = LOOM_VALUE_ID_INVALID;
-  const loom_value_fact_table_t* fact_table =
-      loom_target_low_legality_fact_table(context);
-  const bool scalar_splat_condition = loom_amdgpu_select_scalar_splat_condition(
-      module, fact_table, condition, storage.element_count,
-      &unused_scalar_condition);
-  if (scalar_splat_condition) {
-    return iree_ok_status();
-  }
   if (condition_lane_count != storage.element_count) {
     return loom_amdgpu_low_legality_reject(context, op,
                                            IREE_SV("select.mask_shape"));
   }
-  if (allows_vector_mask) {
-    return iree_ok_status();
-  }
-  return loom_amdgpu_low_legality_reject(context, op,
-                                         IREE_SV("select.packed_mask_uniform"));
+  return iree_ok_status();
 }
 
 static bool loom_amdgpu_select_scalar_storage(
@@ -233,9 +252,9 @@ static bool loom_amdgpu_select_payload_storage(
     return true;
   }
   loom_amdgpu_vector_storage_t storage = {0};
-  bool unused_allows_vector_mask = false;
+  bool unused_full_width_storage = false;
   if (!loom_amdgpu_select_vector_storage(type, &storage,
-                                         &unused_allows_vector_mask,
+                                         &unused_full_width_storage,
                                          out_allows_lane_immediates)) {
     return false;
   }
@@ -263,7 +282,7 @@ static iree_status_t loom_amdgpu_resolve_i1_mask_select_descriptors(
   bool exec_read_present = false;
   IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_descriptor_ref_if_present(
       context, LOOM_AMDGPU_DESCRIPTOR_REF_S_MOV_B64_EXEC_READ,
-      &plan->mask_exec_read_descriptor, &exec_read_present));
+      &plan->payload.mask.exec_read_descriptor, &exec_read_present));
   all_present = all_present && exec_read_present;
   if (!all_present ||
       plan->condition_kind == LOOM_AMDGPU_SELECT_CONDITION_KIND_SCC ||
@@ -293,7 +312,7 @@ static iree_status_t loom_amdgpu_resolve_i1_mask_select_descriptors(
       bool xor_present = false;
       IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_descriptor_ref_if_present(
           context, LOOM_AMDGPU_DESCRIPTOR_REF_S_XOR_B64,
-          &plan->mask_xor_descriptor, &xor_present));
+          &plan->payload.mask.xor_descriptor, &xor_present));
       *out_present = xor_present;
       return iree_ok_status();
     }
@@ -303,16 +322,16 @@ static iree_status_t loom_amdgpu_resolve_i1_mask_select_descriptors(
       (true_is_constant && true_constant)) {
     bool or_present = false;
     IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_descriptor_ref_if_present(
-        context, LOOM_AMDGPU_DESCRIPTOR_REF_S_OR_B64, &plan->mask_or_descriptor,
-        &or_present));
+        context, LOOM_AMDGPU_DESCRIPTOR_REF_S_OR_B64,
+        &plan->payload.mask.or_descriptor, &or_present));
     *out_present = or_present;
     return iree_ok_status();
   }
 
   bool and_present = false;
   IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_descriptor_ref_if_present(
-      context, LOOM_AMDGPU_DESCRIPTOR_REF_S_AND_B64, &plan->mask_and_descriptor,
-      &and_present));
+      context, LOOM_AMDGPU_DESCRIPTOR_REF_S_AND_B64,
+      &plan->payload.mask.and_descriptor, &and_present));
   all_present = all_present && and_present;
   if (!all_present || plan->false_value == plan->condition ||
       (false_is_constant && !false_constant)) {
@@ -324,7 +343,7 @@ static iree_status_t loom_amdgpu_resolve_i1_mask_select_descriptors(
     bool xor_present = false;
     IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_descriptor_ref_if_present(
         context, LOOM_AMDGPU_DESCRIPTOR_REF_S_XOR_B64,
-        &plan->mask_xor_descriptor, &xor_present));
+        &plan->payload.mask.xor_descriptor, &xor_present));
     *out_present = xor_present;
     return iree_ok_status();
   }
@@ -333,25 +352,25 @@ static iree_status_t loom_amdgpu_resolve_i1_mask_select_descriptors(
     bool xor_present = false;
     IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_descriptor_ref_if_present(
         context, LOOM_AMDGPU_DESCRIPTOR_REF_S_XOR_B64,
-        &plan->mask_xor_descriptor, &xor_present));
+        &plan->payload.mask.xor_descriptor, &xor_present));
     all_present = all_present && xor_present;
     bool or_present = false;
     IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_descriptor_ref_if_present(
-        context, LOOM_AMDGPU_DESCRIPTOR_REF_S_OR_B64, &plan->mask_or_descriptor,
-        &or_present));
+        context, LOOM_AMDGPU_DESCRIPTOR_REF_S_OR_B64,
+        &plan->payload.mask.or_descriptor, &or_present));
     *out_present = all_present && or_present;
     return iree_ok_status();
   }
 
   bool xor_present = false;
   IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_descriptor_ref_if_present(
-      context, LOOM_AMDGPU_DESCRIPTOR_REF_S_XOR_B64, &plan->mask_xor_descriptor,
-      &xor_present));
+      context, LOOM_AMDGPU_DESCRIPTOR_REF_S_XOR_B64,
+      &plan->payload.mask.xor_descriptor, &xor_present));
   all_present = all_present && xor_present;
   bool or_present = false;
   IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_descriptor_ref_if_present(
-      context, LOOM_AMDGPU_DESCRIPTOR_REF_S_OR_B64, &plan->mask_or_descriptor,
-      &or_present));
+      context, LOOM_AMDGPU_DESCRIPTOR_REF_S_OR_B64,
+      &plan->payload.mask.or_descriptor, &or_present));
   all_present = all_present && or_present;
   *out_present = all_present;
   return iree_ok_status();
@@ -969,7 +988,7 @@ static iree_status_t loom_amdgpu_emit_i1_mask_exec_read(
   *out_mask = LOOM_VALUE_ID_INVALID;
   loom_op_t* exec_read_op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_lower_emit_resolved_descriptor_op(
-      context, &plan->mask_exec_read_descriptor,
+      context, &plan->payload.mask.exec_read_descriptor,
       /*operands=*/NULL, /*operand_count=*/0, loom_named_attr_slice_empty(),
       &mask_type, 1, /*tied_results=*/NULL, /*tied_result_count=*/0,
       source_op->location, &exec_read_op));
@@ -1006,8 +1025,8 @@ static iree_status_t loom_amdgpu_emit_i1_mask_invert(
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_i1_mask_exec_read(
       context, source_op, plan, mask_type, &exec_mask));
   return loom_amdgpu_emit_i1_mask_binary(
-      context, source_op, &plan->mask_xor_descriptor, low_mask, exec_mask,
-      mask_type, out_inverse_mask);
+      context, source_op, &plan->payload.mask.xor_descriptor, low_mask,
+      exec_mask, mask_type, out_inverse_mask);
 }
 
 static iree_status_t loom_amdgpu_lower_i1_mask_select(
@@ -1109,7 +1128,7 @@ static iree_status_t loom_amdgpu_lower_i1_mask_select(
         context, source_op, plan->false_value, &low_false_value));
     loom_value_id_t result_mask = LOOM_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_i1_mask_binary(
-        context, source_op, &plan->mask_or_descriptor, low_condition,
+        context, source_op, &plan->payload.mask.or_descriptor, low_condition,
         low_false_value, mask_type, &result_mask));
     return loom_low_lower_bind_value(context, plan->result, result_mask);
   }
@@ -1127,8 +1146,8 @@ static iree_status_t loom_amdgpu_lower_i1_mask_select(
     }
     loom_value_id_t result_mask = LOOM_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_i1_mask_binary(
-        context, source_op, &plan->mask_and_descriptor, inverse_condition,
-        low_false_value, mask_type, &result_mask));
+        context, source_op, &plan->payload.mask.and_descriptor,
+        inverse_condition, low_false_value, mask_type, &result_mask));
     return loom_low_lower_bind_value(context, plan->result, result_mask);
   }
 
@@ -1141,7 +1160,7 @@ static iree_status_t loom_amdgpu_lower_i1_mask_select(
                                         mask_type, &inverse_condition));
     loom_value_id_t result_mask = LOOM_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(loom_amdgpu_emit_i1_mask_binary(
-        context, source_op, &plan->mask_or_descriptor, low_true_value,
+        context, source_op, &plan->payload.mask.or_descriptor, low_true_value,
         inverse_condition, mask_type, &result_mask));
     return loom_low_lower_bind_value(context, plan->result, result_mask);
   }
@@ -1150,7 +1169,7 @@ static iree_status_t loom_amdgpu_lower_i1_mask_select(
       context, source_op, plan->true_value, &low_true_value));
   loom_value_id_t true_mask = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_i1_mask_binary(
-      context, source_op, &plan->mask_and_descriptor, low_condition,
+      context, source_op, &plan->payload.mask.and_descriptor, low_condition,
       low_true_value, mask_type, &true_mask));
   if (plan->false_value == plan->condition ||
       (false_is_constant && !false_constant)) {
@@ -1164,12 +1183,12 @@ static iree_status_t loom_amdgpu_lower_i1_mask_select(
       context, source_op, plan, low_condition, mask_type, &inverse_condition));
   loom_value_id_t false_mask = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_i1_mask_binary(
-      context, source_op, &plan->mask_and_descriptor, inverse_condition,
+      context, source_op, &plan->payload.mask.and_descriptor, inverse_condition,
       low_false_value, mask_type, &false_mask));
   loom_value_id_t result_mask = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_amdgpu_emit_i1_mask_binary(
-      context, source_op, &plan->mask_or_descriptor, true_mask, false_mask,
-      mask_type, &result_mask));
+      context, source_op, &plan->payload.mask.or_descriptor, true_mask,
+      false_mask, mask_type, &result_mask));
   return loom_low_lower_bind_value(context, plan->result, result_mask);
 }
 
@@ -1198,11 +1217,101 @@ static iree_status_t loom_amdgpu_resize_select_address_operand(
                                           out_low_value);
 }
 
+// Each predicate chooses the original packed word. Only that predicate's
+// element bits enter the result, so payload extraction and repacking are
+// unnecessary. The first element seeds the word; unused tail bits are padding.
+static iree_status_t loom_amdgpu_lower_packed_select(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    const loom_amdgpu_vector_select_plan_t* plan) {
+  loom_value_id_t condition = LOOM_VALUE_ID_INVALID;
+  IREE_RETURN_IF_ERROR(
+      loom_low_lower_lookup_value(context, plan->condition, &condition));
+  loom_value_id_t true_value = LOOM_VALUE_ID_INVALID;
+  IREE_RETURN_IF_ERROR(
+      loom_low_lower_lookup_value(context, plan->true_value, &true_value));
+  loom_value_id_t false_value = LOOM_VALUE_ID_INVALID;
+  IREE_RETURN_IF_ERROR(
+      loom_low_lower_lookup_value(context, plan->false_value, &false_value));
+  loom_type_t word_type = loom_type_none();
+  IREE_RETURN_IF_ERROR(loom_amdgpu_make_vgpr_type(context, &word_type));
+  loom_type_t condition_type = loom_type_none();
+  IREE_RETURN_IF_ERROR(
+      loom_amdgpu_make_sgpr_range_type(context, 2, &condition_type));
+  loom_type_t mask_type = loom_type_none();
+  if (plan->payload.packed.mask_constant_descriptor.descriptor) {
+    IREE_RETURN_IF_ERROR(loom_amdgpu_make_sgpr_type(context, &mask_type));
+  }
+
+  const uint32_t element_bit_count = plan->payload.packed.element_bit_count;
+  const uint32_t elements_per_word = 32u / element_bit_count;
+  const uint32_t element_mask = (1u << element_bit_count) - 1u;
+  loom_value_id_t words[LOOM_AMDGPU_MAX_SCALARIZED_32BIT_LANES];
+  for (uint32_t word = 0; word < plan->lane_count; ++word) {
+    loom_value_id_t true_word = LOOM_VALUE_ID_INVALID;
+    IREE_RETURN_IF_ERROR(loom_amdgpu_slice_source_lane_if_needed(
+        context, source_op, true_value, plan->lane_count, word, word_type,
+        &true_word));
+    IREE_RETURN_IF_ERROR(loom_amdgpu_materialize_low_vgpr_b32(
+        context, source_op, true_word, &true_word));
+    loom_value_id_t false_word = LOOM_VALUE_ID_INVALID;
+    IREE_RETURN_IF_ERROR(loom_amdgpu_slice_source_lane_if_needed(
+        context, source_op, false_value, plan->lane_count, word, word_type,
+        &false_word));
+    IREE_RETURN_IF_ERROR(loom_amdgpu_materialize_low_vgpr_b32(
+        context, source_op, false_word, &false_word));
+
+    const uint32_t first_element = word * elements_per_word;
+    const uint32_t element_count = iree_min(
+        elements_per_word, plan->payload.packed.element_count - first_element);
+    loom_value_id_t merged = LOOM_VALUE_ID_INVALID;
+    for (uint32_t element = 0; element < element_count; ++element) {
+      loom_value_id_t element_condition = LOOM_VALUE_ID_INVALID;
+      IREE_RETURN_IF_ERROR(loom_amdgpu_slice_lane_if_needed(
+          context, source_op, condition, plan->payload.packed.element_count,
+          (first_element + element) * 2u, condition_type, &element_condition));
+      const loom_value_id_t operands[] = {
+          false_word,
+          true_word,
+          element_condition,
+      };
+      loom_value_id_t selected = LOOM_VALUE_ID_INVALID;
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_select_lane_op(
+          context, source_op, &plan->cndmask_descriptors.register_descriptor,
+          operands, IREE_ARRAYSIZE(operands), NULL, 0, word_type, &selected));
+      if (element == 0) {
+        merged = selected;
+        continue;
+      }
+      const uint32_t mask_bits = element_mask << (element * element_bit_count);
+      if (plan->payload.packed.mask_constant_descriptor.descriptor) {
+        loom_value_id_t mask = LOOM_VALUE_ID_INVALID;
+        IREE_RETURN_IF_ERROR(loom_amdgpu_emit_resolved_const_u32(
+            context, source_op, &plan->payload.packed.mask_constant_descriptor,
+            plan->payload.packed.imm32_attr_name_id, mask_bits, mask_type,
+            &mask));
+        IREE_RETURN_IF_ERROR(loom_amdgpu_emit_resolved_vgpr_ternary(
+            context, source_op, &plan->payload.packed.merge_descriptor, mask,
+            selected, merged, word_type, &merged));
+      } else {
+        IREE_RETURN_IF_ERROR(loom_amdgpu_emit_resolved_vgpr_binary_immediate(
+            context, source_op, &plan->payload.packed.merge_descriptor,
+            selected, merged, mask_bits, word_type, &merged));
+      }
+    }
+    words[word] = merged;
+  }
+  return loom_amdgpu_bind_low_register_range(context, source_op, plan->result,
+                                             words, plan->lane_count);
+}
+
 iree_status_t loom_amdgpu_lower_select(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     const loom_amdgpu_vector_select_plan_t* plan) {
   if (plan->payload_kind == LOOM_AMDGPU_SELECT_PAYLOAD_KIND_I1_MASK) {
     return loom_amdgpu_lower_i1_mask_select(context, source_op, plan);
+  }
+  if (plan->payload_kind == LOOM_AMDGPU_SELECT_PAYLOAD_KIND_PACKED_DATA) {
+    return loom_amdgpu_lower_packed_select(context, source_op, plan);
   }
 
   const uint32_t lane_count = plan->lane_count;

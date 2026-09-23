@@ -4,7 +4,8 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-load("//loom/build_tools/bazel:defs.bzl", "loom_module", "loom_test")
+load("//loom/build_tools/bazel:build_defs.bzl", "loom_generated_file_family")
+load("//loom/build_tools/bazel:defs.bzl", "loom_module", "loom_test", "loom_test_module")
 load("//loom/target:execution_profiles.bzl", "GPU_HARDWARE_PROFILES")
 load("//loom/target/amdgpu:execution_profiles.bzl", "AMDGPU_ACCESS_PROFILE")
 
@@ -17,6 +18,27 @@ package(
 _CASES = glob(["*.loom"])
 
 exports_files(_CASES)
+
+loom_generated_file_family(
+    name = "packed_vector_select_gen",
+    testonly = True,
+    generator = "//loom/py/loom/gen/test:packed_vector_select",
+    output_directories = ["packed_vector_select_arrays"],
+    output_flags = [
+        "--output",
+        "--arrays",
+    ],
+    outputs = [
+        "packed_vector_select.loom",
+        "packed_vector_select_arrays",
+    ],
+)
+
+loom_test_module(
+    name = "packed_vector_select_module",
+    srcs = [":packed_vector_select.loom"],
+    data = [":packed_vector_select_gen"],
+)
 
 loom_module(
     name = "conformance_cases",

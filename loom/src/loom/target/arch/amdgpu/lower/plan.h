@@ -883,6 +883,7 @@ typedef enum loom_amdgpu_select_payload_kind_e {
   LOOM_AMDGPU_SELECT_PAYLOAD_KIND_NONE = 0,
   LOOM_AMDGPU_SELECT_PAYLOAD_KIND_DATA = 1,
   LOOM_AMDGPU_SELECT_PAYLOAD_KIND_I1_MASK = 2,
+  LOOM_AMDGPU_SELECT_PAYLOAD_KIND_PACKED_DATA = 3,
 } loom_amdgpu_select_payload_kind_t;
 
 typedef struct loom_amdgpu_vector_select_plan_t {
@@ -902,14 +903,34 @@ typedef struct loom_amdgpu_vector_select_plan_t {
   loom_low_lower_resolved_descriptor_t sgpr_bool_compare_descriptor;
   // Descriptor rows selected for scalar-mask v_cndmask_b32 lane selects.
   loom_amdgpu_cndmask_b32_descriptors_t cndmask_descriptors;
-  // Descriptor row selected to read EXEC for i1 mask selection.
-  loom_low_lower_resolved_descriptor_t mask_exec_read_descriptor;
-  // Descriptor row selected to AND i1 mask payloads.
-  loom_low_lower_resolved_descriptor_t mask_and_descriptor;
-  // Descriptor row selected to OR i1 mask payloads.
-  loom_low_lower_resolved_descriptor_t mask_or_descriptor;
-  // Descriptor row selected to XOR i1 mask payloads.
-  loom_low_lower_resolved_descriptor_t mask_xor_descriptor;
+  // Additional emission state selected by payload_kind.
+  union {
+    // Boolean payloads combine native per-workitem masks.
+    struct {
+      // Descriptor row selected to read EXEC for i1 mask selection.
+      loom_low_lower_resolved_descriptor_t exec_read_descriptor;
+      // Descriptor row selected to AND i1 mask payloads.
+      loom_low_lower_resolved_descriptor_t and_descriptor;
+      // Descriptor row selected to OR i1 mask payloads.
+      loom_low_lower_resolved_descriptor_t or_descriptor;
+      // Descriptor row selected to XOR i1 mask payloads.
+      loom_low_lower_resolved_descriptor_t xor_descriptor;
+    } mask;
+    // Independent element choices are merged into their packed payload words.
+    struct {
+      // Bitfield insertion with a literal mask when the target supports it.
+      loom_low_lower_resolved_descriptor_t merge_descriptor;
+      // Materializes an SGPR mask for a register-form merge; empty for
+      // literals.
+      loom_low_lower_resolved_descriptor_t mask_constant_descriptor;
+      // Interned immediate name used by mask constants.
+      loom_string_id_t imm32_attr_name_id;
+      // Number of logical payload elements, excluding physical tail padding.
+      uint32_t element_count;
+      // Number of bits selected by each independent predicate.
+      uint32_t element_bit_count;
+    } packed;
+  } payload;
   // Result vector value.
   loom_value_id_t result;
   // Static number of selected 32-bit register units.

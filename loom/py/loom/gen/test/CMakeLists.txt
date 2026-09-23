@@ -16,6 +16,28 @@ iree_py_library(
     "cxx_kernel_cases.py"
   SRCS
     "cxx_kernel_cases.py"
+  DEPS
+    loom::py::loom::gen::test::kernel_fixture
+)
+
+iree_py_library(
+  NAME
+    kernel_fixture
+  SRCS
+    "kernel_fixture.py"
+  DEPS
+    loom::py::loom::gen::package
+)
+
+iree_py_library(
+  NAME
+    packed_vector_select
+  MAIN
+    "packed_vector_select.py"
+  SRCS
+    "packed_vector_select.py"
+  DEPS
+    loom::py::loom::gen::test::kernel_fixture
 )
 
 iree_py_library(
