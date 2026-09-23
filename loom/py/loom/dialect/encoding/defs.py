@@ -910,7 +910,7 @@ encoding_layout_strided = Op(
     name="encoding.layout.strided",
     group=encoding_ops,
     phase=OpPhase.EXECUTABLE,
-    doc=("Construct an address layout from per-dimension element strides. Static and dynamic stride values are interleaved in one bracket list."),
+    doc=("Construct an address layout from per-dimension element strides. Static and dynamic stride values are interleaved in one bracket list. Rank is in [0, 15], matching shaped types."),
     operands=[Operand("strides", INDEX, doc="Dynamic element strides.", variadic=True)],
     results=[Result("result", ENCODING_LAYOUT, doc="Strided address-layout value.")],
     attrs=[
@@ -964,7 +964,7 @@ encoding_layout_assume_strided = Op(
     phase=OpPhase.EXECUTABLE,
     doc=(
         "Refine an existing address-layout encoding value with the fact that "
-        "it is strided and has the given rank. Per-axis stride values remain "
+        "it is strided and has the given rank in [0, 15], matching shaped types. Per-axis stride values remain "
         "unknown unless a concrete encoding.layout.strided value is available."
     ),
     operands=[Operand("layout", ENCODING_LAYOUT, doc="Address-layout value to refine.")],
