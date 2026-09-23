@@ -913,6 +913,17 @@ def _conversion_rows() -> list[_PacketRow]:
                 result_count=1,
             )
         )
+        if scalar_pair.bit_width < 64:
+            rows.append(
+                _PacketRow(
+                    f"spirv.op_s_convert.{scalar_pair.signed.suffix}.offset64",
+                    opcode="LOOM_SPIRV_OP_S_CONVERT",
+                    form="LOOM_SPIRV_PACKET_FORM_UNARY_TYPED",
+                    result_type=_offset64_value(),
+                    operand_types=(_alu_scalar_value(scalar_pair.signed),),
+                    result_count=1,
+                )
+            )
         rows.append(
             _PacketRow(
                 f"spirv.op_{descriptor_opcode}.offset64.{suffix}",

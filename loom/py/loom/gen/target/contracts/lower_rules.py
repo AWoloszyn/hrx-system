@@ -358,6 +358,11 @@ def _generate_source(
                     descriptor_refs,
                     row,
                     immediate_string_ref=string_pool.ref(_source_memory_address_string_label(index)),
+                    conversion_immediate_string_refs={
+                        conversion.source_type: string_pool.ref(_source_memory_address_string_label(index) + "_" + conversion.source_type)
+                        for conversion in row.integer_conversions
+                        if conversion.immediate is not None
+                    },
                 )
                 for index, row in enumerate(source_memory_address_materializers)
             ],
@@ -635,6 +640,12 @@ def _build_string_pool(
             _source_memory_address_string_label(index),
             row.const_coordinate_immediate,
         )
+        for conversion in row.integer_conversions:
+            if conversion.immediate is not None:
+                pool.intern(
+                    _source_memory_address_string_label(index) + "_" + conversion.source_type,
+                    conversion.immediate[0],
+                )
     diagnostic_param_index = 0
     for diagnostic in table.diagnostics:
         for param in lower_rule_rows.diagnostic_stored_params(diagnostic):

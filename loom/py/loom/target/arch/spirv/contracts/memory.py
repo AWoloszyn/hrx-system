@@ -23,6 +23,7 @@ from loom.target.contracts import (
     SourceMemoryAddressMaterializer,
     SourceMemoryConstraint,
     SourceMemoryDynamicIndexSource,
+    SourceMemoryIntegerConversion,
     SourceMemoryOperation,
     SourceMemoryRootKind,
     i64_param,
@@ -52,11 +53,11 @@ def _storage_buffer_address_diagnostic() -> GuardDiagnostic:
     return GuardDiagnostic(
         ref=target_diagnostic(
             ERR_SPIRV_028,
-            i64_param("required_range_lo", 0),
+            i64_param("required_range_lo", -(2**31)),
             i64_param("required_range_hi", (2**31) - 1),
             string_param(
                 "constraint_key",
-                "source_memory.address_index_non_negative_s32",
+                "source_memory.address_numeric_carriers",
             ),
         )
     )
@@ -65,13 +66,25 @@ def _storage_buffer_address_diagnostic() -> GuardDiagnostic:
 def storage_buffer_address_materializer(
     scalar: StorageBufferScalar,
 ) -> SourceMemoryAddressMaterializer:
+    # Native-width byte arithmetic preserves the complete coordinate even
+    # when conservative range analysis cannot bound a loop-carried base.
+    # Narrow workgroup coordinates override the complete-address bounds.
     return SourceMemoryAddressMaterializer(
         const_coordinate=logical_core_descriptor("spirv.op_constant.offset64"),
         add_coordinate=logical_core_descriptor("spirv.op_iadd.offset64"),
         mul_coordinate=logical_core_descriptor("spirv.op_imul.offset64"),
         shl_coordinate=None,
-        index_to_coordinate_input=logical_core_descriptor("spirv.op_bitcast.i32.u32"),
-        index_to_coordinate=logical_core_descriptor("spirv.op_uconvert.u32.offset64"),
+        index_to_coordinate=logical_core_descriptor("spirv.op_s_convert.i32.offset64"),
+        integer_conversions=tuple(
+            SourceMemoryIntegerConversion(source_type, logical_core_descriptor(key))
+            for source_type, key in (
+                ("i1", "spirv.op_select.offset64"),
+                ("i8", "spirv.op_s_convert.i8.offset64"),
+                ("i16", "spirv.op_s_convert.i16.offset64"),
+                ("i32", "spirv.op_s_convert.i32.offset64"),
+                ("i64", "spirv.op_bitcast.i64.offset64"),
+            )
+        ),
         address=logical_core_descriptor(
             f"spirv.op_ptr_access_chain.storage_buffer.{scalar.suffix}.byte_offset"
         ),
@@ -90,7 +103,6 @@ def source_memory_address_feature_guards(
         materializer.add_coordinate,
         materializer.mul_coordinate,
         materializer.shl_coordinate,
-        materializer.index_to_coordinate_input,
         materializer.index_to_coordinate,
         materializer.address,
     )
@@ -181,6 +193,16 @@ def workgroup_address_materializer(
         add_coordinate=logical_core_descriptor("spirv.op_iadd.i32"),
         mul_coordinate=logical_core_descriptor("spirv.op_imul.i32"),
         shl_coordinate=logical_core_descriptor("spirv.op_shift_left_logical.i32"),
+        integer_conversions=tuple(
+            SourceMemoryIntegerConversion(source_type, logical_core_descriptor(key))
+            for source_type, key in (
+                ("i1", "spirv.op_select.i32"),
+                ("i8", "spirv.op_s_convert.i8.i32"),
+                ("i16", "spirv.op_s_convert.i16.i32"),
+                ("i32", "spirv.op_copy_object.i32"),
+                ("i64", "spirv.op_s_convert.i64.i32"),
+            )
+        ),
         address=logical_core_descriptor(
             f"spirv.op_access_chain.workgroup.{scalar.suffix}.element_index"
         ),

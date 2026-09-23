@@ -655,6 +655,18 @@ def _address_conversion_descriptors() -> tuple[Descriptor, ...]:
                 feature_bits=feature_bits,
             )
         )
+        if scalar_pair.bit_width < 64:
+            signed_suffix = scalar_pair.signed.suffix
+            descriptors.append(
+                _unary_typed_descriptor(
+                    key=f"spirv.op_s_convert.{signed_suffix}.offset64",
+                    mnemonic=f"OpSConvert.{signed_suffix}.offset64",
+                    semantic_tag=f"spirv.op_s_convert.{signed_suffix}.offset64",
+                    operands=(_offset64_result(), _id_operand("input")),
+                    result_value_type=None,
+                    feature_bits=feature_bits,
+                )
+            )
 
         if scalar_pair.bit_width == 64:
             from_offset_opcode = "bitcast"

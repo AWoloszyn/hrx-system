@@ -37,6 +37,7 @@ from loom.target.contracts.source_memory import (
     SourceMemoryAddressMaterializer,
     SourceMemoryByteOffsetMaterializer,
     SourceMemoryConstraint,
+    SourceMemoryIntegerConversion,
 )
 from loom.target.low_descriptors import (
     Descriptor,
@@ -521,13 +522,16 @@ class EmitDescriptorOp:
                 materializer.add_coordinate,
                 materializer.mul_coordinate,
                 materializer.shl_coordinate,
-                materializer.index_to_coordinate_input,
                 materializer.index_to_coordinate,
                 materializer.address,
+                *(
+                    conversion.descriptor
+                    for conversion in materializer.integer_conversions
+                ),
             ):
                 if descriptor is not None:
                     _require_descriptor(descriptor_set, descriptor)
-            _validate_address_materializer(source_op, materializer)
+            _validate_address_materializer(source_op, descriptor_set, materializer)
         for descriptor_field, value_ref in operand_bindings.items():
             if value_ref.kind != SourceValueKind.SOURCE_MEMORY_ROOT:
                 continue
@@ -984,20 +988,33 @@ def _validate_byte_offset_materializer(
                 input_carriers=(carrier, carrier),
                 result_carrier=carrier,
             )
+    _validate_integer_conversions(
+        source_op, descriptor_set, materializer.integer_conversions, carrier
+    )
+
+
+def _validate_integer_conversions(
+    source_op: Op,
+    descriptor_set: DescriptorSet,
+    conversions: tuple[SourceMemoryIntegerConversion, ...],
+    carrier: _MaterializerCarrier,
+) -> None:
     source_types: set[str] = set()
-    for conversion in materializer.integer_conversions:
+    for conversion in conversions:
         if conversion.source_type not in ("i1", "i8", "i16", "i32", "i64"):
-            raise ValueError("byte-offset conversion requires a fixed-width integer")
+            raise ValueError("address conversion requires a fixed-width integer")
         if conversion.source_type in source_types:
             raise ValueError(
-                f"duplicate byte-offset conversion for {conversion.source_type}"
+                f"duplicate address conversion for {conversion.source_type}"
             )
         source_types.add(conversion.source_type)
+        if any(conversion.descriptor.feature_mask_words[1:]):
+            raise ValueError("address conversion features must fit in one u64")
         bound_immediates = ()
         if conversion.immediate is not None:
             name, value = conversion.immediate
             immediate = _require_immediate(
-                conversion.descriptor, name, "byte-offset conversion"
+                conversion.descriptor, name, "address conversion"
             )
             if immediate.kind not in (
                 ImmediateKind.SIGNED,
@@ -1005,22 +1022,24 @@ def _validate_byte_offset_materializer(
                 ImmediateKind.ENUM,
             ):
                 raise ValueError(
-                    "byte-offset conversion selector must be an integer or enum"
+                    "address conversion selector must be an integer or enum"
                 )
             _validate_immediate_literal(
                 source_op, descriptor_set, conversion.descriptor, immediate, value
             )
             if not -(2**63) <= value < 2**63:
-                raise ValueError(
-                    "byte-offset conversion immediate must fit in signed i64"
-                )
+                raise ValueError("address conversion immediate must fit in signed i64")
             bound_immediates = (name,)
         _validate_materializer_descriptor(
             source_op,
             conversion.descriptor,
-            subject="source-memory byte-offset conversion",
+            subject="source-memory integer conversion",
             op_kind=DescriptorOpKind.OP,
-            input_carriers=(None,),
+            input_carriers=(
+                (None, carrier, carrier)
+                if conversion.source_type == "i1" and conversion.input_count == 3
+                else (None,)
+            ),
             result_carrier=carrier,
             bound_immediates=bound_immediates,
         )
@@ -1028,6 +1047,7 @@ def _validate_byte_offset_materializer(
 
 def _validate_address_materializer(
     source_op: Op,
+    descriptor_set: DescriptorSet,
     materializer: SourceMemoryAddressMaterializer,
 ) -> None:
     carrier = _validate_materializer_descriptor(
@@ -1056,29 +1076,18 @@ def _validate_address_materializer(
                 result_carrier=carrier,
             )
 
-    index_input_carrier = None
-    if materializer.index_to_coordinate_input is not None:
-        index_input_carrier = _validate_materializer_descriptor(
-            source_op,
-            materializer.index_to_coordinate_input,
-            subject="source-memory address-coordinate index-input conversion",
-            op_kind=DescriptorOpKind.OP,
-            input_carriers=(None,),
-        )
     if materializer.index_to_coordinate is not None:
         _validate_materializer_descriptor(
             source_op,
             materializer.index_to_coordinate,
             subject="source-memory address-coordinate index conversion",
             op_kind=DescriptorOpKind.OP,
-            input_carriers=(index_input_carrier,),
+            input_carriers=(None,),
             result_carrier=carrier,
         )
-    elif index_input_carrier is not None:
-        raise ValueError(
-            f"{source_op.name}: source-memory address-coordinate input "
-            "conversion needs a final index conversion descriptor"
-        )
+    _validate_integer_conversions(
+        source_op, descriptor_set, materializer.integer_conversions, carrier
+    )
     _validate_materializer_descriptor(
         source_op,
         materializer.address,

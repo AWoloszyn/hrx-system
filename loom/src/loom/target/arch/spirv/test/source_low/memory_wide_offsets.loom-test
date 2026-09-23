@@ -84,21 +84,20 @@ low.kernel.def target<spirv.logical.core> workgroup_size(64, 1, 1) workgroup_cou
   %output = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<spirv.ptr.storage_buffer>
   %offsets = resource<hal_binding> {index = 2, source_type = hal.buffer} : reg<spirv.ptr.storage_buffer>
   %lane = OpLoadBuiltin.local_invocation_id.x
-  %22 = OpBitcast.i32.u32 %lane
-  %23 = OpUConvert.u32.offset64 %22
-  %24 = OpConstant.offset64 8
-  %25 = OpIMul.offset64 %23, %24
-  %26 = OpPtrAccessChain.storage_buffer.i64.byte_offset %offsets, %25
-  %raw_bits = OpLoad.storage_buffer.i64 %26
+  %22 = OpSConvert.i32.offset64 %lane
+  %23 = OpConstant.offset64 8
+  %24 = OpIMul.offset64 %22, %23
+  %25 = OpPtrAccessChain.storage_buffer.i64.byte_offset %offsets, %24
+  %raw_bits = OpLoad.storage_buffer.i64 %25
   %offset_mask = OpConstant.i64 9223372036854775804
   %raw = OpBitwiseAnd.i64 %raw_bits, %offset_mask
   %byte_offset = OpBitcast.i64.offset64 %raw
-  %31 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %byte_offset
-  %loaded = OpLoad.storage_buffer.i32 %31
-  %35 = OpConstant.offset64 4
-  %36 = OpIMul.offset64 %23, %35
-  %37 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %36
-  OpStore.storage_buffer.i32 %37, %loaded
+  %30 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %byte_offset
+  %loaded = OpLoad.storage_buffer.i32 %30
+  %33 = OpConstant.offset64 4
+  %34 = OpIMul.offset64 %22, %33
+  %35 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %34
+  OpStore.storage_buffer.i32 %35, %loaded
   return
 }
 
@@ -125,16 +124,15 @@ low.kernel.def target<spirv.logical.core> workgroup_size(2, 1, 1) workgroup_coun
   %input = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<spirv.ptr.storage_buffer>
   %output = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<spirv.ptr.storage_buffer>
   %lane = OpLoadBuiltin.local_invocation_id.x
-  %18 = OpBitcast.i32.u32 %lane
-  %19 = OpUConvert.u32.offset64 %18
-  %20 = OpConstant.offset64 4294967300
-  %21 = OpIMul.offset64 %19, %20
-  %22 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %21
-  %loaded = OpLoad.storage_buffer.i32 %22
-  %26 = OpConstant.offset64 4
-  %27 = OpIMul.offset64 %19, %26
-  %28 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %27
-  OpStore.storage_buffer.i32 %28, %loaded
+  %18 = OpSConvert.i32.offset64 %lane
+  %19 = OpConstant.offset64 4294967300
+  %20 = OpIMul.offset64 %18, %19
+  %21 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %20
+  %loaded = OpLoad.storage_buffer.i32 %21
+  %24 = OpConstant.offset64 4
+  %25 = OpIMul.offset64 %18, %24
+  %26 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %25
+  OpStore.storage_buffer.i32 %26, %loaded
   return
 }
 
@@ -162,18 +160,16 @@ low.kernel.def target<spirv.logical.core> workgroup_size(64, 1, 1) workgroup_cou
   %input = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<spirv.ptr.storage_buffer>
   %output = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<spirv.ptr.storage_buffer>
   %lane = OpLoadBuiltin.local_invocation_id.x
-  %17 = OpBitcast.i32.u32 %lane
-  %18 = OpUConvert.u32.offset64 %17
-  %19 = OpBitcast.i32.u32 %columns
-  %20 = OpUConvert.u32.offset64 %19
-  %21 = OpIMul.offset64 %18, %20
-  %22 = OpConstant.offset64 4
-  %23 = OpIMul.offset64 %21, %22
-  %24 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %23
-  %loaded = OpLoad.storage_buffer.i32 %24
-  %29 = OpIMul.offset64 %18, %22
-  %30 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %29
-  OpStore.storage_buffer.i32 %30, %loaded
+  %17 = OpSConvert.i32.offset64 %lane
+  %18 = OpSConvert.i32.offset64 %columns
+  %19 = OpIMul.offset64 %17, %18
+  %20 = OpConstant.offset64 4
+  %21 = OpIMul.offset64 %19, %20
+  %22 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %21
+  %loaded = OpLoad.storage_buffer.i32 %22
+  %26 = OpIMul.offset64 %17, %20
+  %27 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %26
+  OpStore.storage_buffer.i32 %27, %loaded
   return
 }
 
@@ -202,21 +198,18 @@ low.kernel.def target<spirv.logical.core> workgroup_size(64, 1, 1) workgroup_cou
   %input = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<spirv.ptr.storage_buffer>
   %output = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<spirv.ptr.storage_buffer>
   %lane = OpLoadBuiltin.local_invocation_id.x
-  %20 = OpBitcast.i32.u32 %lane
-  %21 = OpUConvert.u32.offset64 %20
-  %22 = OpBitcast.i32.u32 %rows
-  %23 = OpUConvert.u32.offset64 %22
-  %24 = OpIMul.offset64 %21, %23
-  %25 = OpBitcast.i32.u32 %columns
-  %26 = OpUConvert.u32.offset64 %25
-  %27 = OpIMul.offset64 %24, %26
-  %28 = OpConstant.offset64 4
-  %29 = OpIMul.offset64 %27, %28
-  %30 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %29
-  %loaded = OpLoad.storage_buffer.i32 %30
-  %35 = OpIMul.offset64 %21, %28
-  %36 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %35
-  OpStore.storage_buffer.i32 %36, %loaded
+  %20 = OpSConvert.i32.offset64 %lane
+  %21 = OpSConvert.i32.offset64 %rows
+  %22 = OpIMul.offset64 %20, %21
+  %23 = OpSConvert.i32.offset64 %columns
+  %24 = OpIMul.offset64 %22, %23
+  %25 = OpConstant.offset64 4
+  %26 = OpIMul.offset64 %24, %25
+  %27 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %26
+  %loaded = OpLoad.storage_buffer.i32 %27
+  %31 = OpIMul.offset64 %20, %25
+  %32 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %31
+  OpStore.storage_buffer.i32 %32, %loaded
   return
 }
 
@@ -249,23 +242,20 @@ low.kernel.def target<spirv.logical.core> workgroup_size(64, 1, 1) workgroup_cou
   %group = OpLoadBuiltin.workgroup_id.x
   %lane = OpLoadBuiltin.local_invocation_id.x
   %columns = OpIAdd %columns_base, %lane : reg<spirv.id : index>
-  %25 = OpBitcast.i32.u32 %group
-  %26 = OpUConvert.u32.offset64 %25
-  %27 = OpBitcast.i32.u32 %columns
-  %28 = OpUConvert.u32.offset64 %27
-  %29 = OpIMul.offset64 %26, %28
-  %30 = OpConstant.offset64 4
-  %31 = OpIMul.offset64 %29, %30
-  %32 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %31
-  %loaded = OpLoad.storage_buffer.i32 %32
-  %36 = OpConstant.offset64 256
-  %37 = OpIMul.offset64 %26, %36
-  %38 = OpBitcast.i32.u32 %lane
-  %39 = OpUConvert.u32.offset64 %38
-  %41 = OpIMul.offset64 %39, %30
-  %42 = OpIAdd.offset64 %37, %41
-  %43 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %42
-  OpStore.storage_buffer.i32 %43, %loaded
+  %25 = OpSConvert.i32.offset64 %group
+  %26 = OpSConvert.i32.offset64 %columns
+  %27 = OpIMul.offset64 %25, %26
+  %28 = OpConstant.offset64 4
+  %29 = OpIMul.offset64 %27, %28
+  %30 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %29
+  %loaded = OpLoad.storage_buffer.i32 %30
+  %33 = OpConstant.offset64 256
+  %34 = OpIMul.offset64 %25, %33
+  %35 = OpSConvert.i32.offset64 %lane
+  %37 = OpIMul.offset64 %35, %28
+  %38 = OpIAdd.offset64 %34, %37
+  %39 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %38
+  OpStore.storage_buffer.i32 %39, %loaded
   return
 }
 
@@ -300,10 +290,11 @@ low.kernel.def target<spirv.logical.core> workgroup_size(2, 1, 1) workgroup_coun
   %byte_offset = OpIMul.offset64 %18, %stride
   %20 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %byte_offset
   %loaded = OpLoad.storage_buffer.i32 %20
-  %24 = OpConstant.offset64 4
-  %25 = OpIMul.offset64 %18, %24
-  %26 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %25
-  OpStore.storage_buffer.i32 %26, %loaded
+  %22 = OpSConvert.i32.offset64 %lane
+  %23 = OpConstant.offset64 4
+  %24 = OpIMul.offset64 %22, %23
+  %25 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %24
+  OpStore.storage_buffer.i32 %25, %loaded
   return
 }
 
@@ -333,22 +324,20 @@ low.kernel.def target<spirv.logical.core> workgroup_size(64, 1, 1) workgroup_cou
   %output = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<spirv.ptr.storage_buffer>
   %row = OpLoadBuiltin.workgroup_id.x
   %lane = OpLoadBuiltin.local_invocation_id.x
-  %24 = OpBitcast.i32.u32 %row
-  %25 = OpUConvert.u32.offset64 %24
-  %26 = OpConstant.offset64 4294967300
-  %27 = OpIMul.offset64 %25, %26
-  %28 = OpBitcast.i32.u32 %lane
-  %29 = OpUConvert.u32.offset64 %28
-  %30 = OpConstant.offset64 4
-  %31 = OpIMul.offset64 %29, %30
-  %32 = OpIAdd.offset64 %27, %31
-  %33 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %32
-  %loaded = OpLoad.storage_buffer.i32 %33
-  %37 = OpConstant.offset64 256
-  %38 = OpIMul.offset64 %25, %37
-  %43 = OpIAdd.offset64 %38, %31
-  %44 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %43
-  OpStore.storage_buffer.i32 %44, %loaded
+  %24 = OpSConvert.i32.offset64 %row
+  %25 = OpConstant.offset64 4294967300
+  %26 = OpIMul.offset64 %24, %25
+  %27 = OpSConvert.i32.offset64 %lane
+  %28 = OpConstant.offset64 4
+  %29 = OpIMul.offset64 %27, %28
+  %30 = OpIAdd.offset64 %26, %29
+  %31 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %30
+  %loaded = OpLoad.storage_buffer.i32 %31
+  %34 = OpConstant.offset64 256
+  %35 = OpIMul.offset64 %24, %34
+  %39 = OpIAdd.offset64 %35, %29
+  %40 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %39
+  OpStore.storage_buffer.i32 %40, %loaded
   return
 }
 
@@ -382,10 +371,11 @@ low.kernel.def target<spirv.logical.core> workgroup_size(64, 1, 1) workgroup_cou
   %byte_offset = OpIMul.offset64 %19, %stride
   %21 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %byte_offset
   %loaded = OpLoad.storage_buffer.i32 %21
-  %25 = OpConstant.offset64 4
-  %26 = OpIMul.offset64 %19, %25
-  %27 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %26
-  OpStore.storage_buffer.i32 %27, %loaded
+  %23 = OpSConvert.i32.offset64 %lane
+  %24 = OpConstant.offset64 4
+  %25 = OpIMul.offset64 %23, %24
+  %26 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %25
+  OpStore.storage_buffer.i32 %26, %loaded
   return
 }
 
@@ -416,24 +406,21 @@ low.kernel.def target<spirv.logical.core> workgroup_size(64, 1, 1) workgroup_cou
   %output = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<spirv.ptr.storage_buffer>
   %row = OpLoadBuiltin.workgroup_id.x
   %lane = OpLoadBuiltin.local_invocation_id.x
-  %23 = OpBitcast.i32.u32 %row
-  %24 = OpUConvert.u32.offset64 %23
-  %25 = OpBitcast.i32.u32 %columns
-  %26 = OpUConvert.u32.offset64 %25
-  %27 = OpIMul.offset64 %24, %26
-  %28 = OpConstant.offset64 4
-  %29 = OpIMul.offset64 %27, %28
-  %30 = OpBitcast.i32.u32 %lane
-  %31 = OpUConvert.u32.offset64 %30
-  %33 = OpIMul.offset64 %31, %28
-  %34 = OpIAdd.offset64 %29, %33
-  %35 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %34
-  %loaded = OpLoad.storage_buffer.i32 %35
-  %39 = OpConstant.offset64 256
-  %40 = OpIMul.offset64 %24, %39
-  %45 = OpIAdd.offset64 %40, %33
-  %46 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %45
-  OpStore.storage_buffer.i32 %46, %loaded
+  %23 = OpSConvert.i32.offset64 %row
+  %24 = OpSConvert.i32.offset64 %columns
+  %25 = OpIMul.offset64 %23, %24
+  %26 = OpConstant.offset64 4
+  %27 = OpIMul.offset64 %25, %26
+  %28 = OpSConvert.i32.offset64 %lane
+  %30 = OpIMul.offset64 %28, %26
+  %31 = OpIAdd.offset64 %27, %30
+  %32 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %31
+  %loaded = OpLoad.storage_buffer.i32 %32
+  %35 = OpConstant.offset64 256
+  %36 = OpIMul.offset64 %23, %35
+  %40 = OpIAdd.offset64 %36, %30
+  %41 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %40
+  OpStore.storage_buffer.i32 %41, %loaded
   return
 }
 
@@ -470,9 +457,10 @@ low.kernel.def target<spirv.logical.core> workgroup_size(64, 1, 1) workgroup_cou
   %byte_offset = OpIAdd.offset64 %base, %lane_offset
   %26 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %byte_offset
   %loaded = OpLoad.storage_buffer.i32 %26
-  %30 = OpConstant.offset64 4
-  %31 = OpIMul.offset64 %23, %30
-  %32 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %31
-  OpStore.storage_buffer.i32 %32, %loaded
+  %28 = OpSConvert.i32.offset64 %lane
+  %29 = OpConstant.offset64 4
+  %30 = OpIMul.offset64 %28, %29
+  %31 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %30
+  OpStore.storage_buffer.i32 %31, %loaded
   return
 }

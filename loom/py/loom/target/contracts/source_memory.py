@@ -15,7 +15,7 @@ from enum import Enum, unique
 from loom.dsl import MemoryAccessInterface, Op
 from loom.target.contracts.guards import GuardDiagnostic
 from loom.target.contracts.memory_spaces import MEMORY_SPACE_NAMES
-from loom.target.low_descriptors import Descriptor
+from loom.target.low_descriptors import Descriptor, OperandRole
 
 _I64_MIN = -(2**63)
 _I64_MAX = 2**63 - 1
@@ -81,16 +81,26 @@ class SourceMemoryAddressCoordinateType(Enum):
 
 @dataclass(frozen=True, slots=True)
 class SourceMemoryIntegerConversion:
-    """Converts a canonical integer term to the byte arithmetic carrier.
+    """Converts a canonical integer term to the address arithmetic carrier.
 
     Canonical terms preserve numeric values: i1 is zero/one and the other
     fixed-width integers are signed. Narrowing preserves the low carrier bits;
     source-memory matching proves representability of the complete address.
+    A unary descriptor performs numeric conversion. An i1 descriptor with three
+    inputs selects between carrier constants one and zero using the predicate.
     """
 
     source_type: str
     descriptor: Descriptor
     immediate: tuple[str, int] | None = None
+
+    @property
+    def input_count(self) -> int:
+        return sum(
+            operand.role
+            in (OperandRole.OPERAND, OperandRole.PREDICATE, OperandRole.RESOURCE)
+            for operand in self.descriptor.operands
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -121,8 +131,8 @@ class SourceMemoryAddressMaterializer:
     coordinate_minimum: int = _I64_MIN
     coordinate_maximum: int = _I64_MAX
     shl_coordinate: Descriptor | None = None
-    index_to_coordinate_input: Descriptor | None = None
     index_to_coordinate: Descriptor | None = None
+    integer_conversions: tuple[SourceMemoryIntegerConversion, ...] = ()
     const_coordinate_immediate: str = "value"
     diagnostic: GuardDiagnostic | None = None
 
@@ -155,9 +165,9 @@ class SourceMemoryAddressMaterializer:
             and self.coordinate_unit_byte_count != 1
         ):
             raise ValueError("offset-coordinate source-memory addresses use byte units")
-        if self.coordinate_type == SourceMemoryAddressCoordinateType.INDEX and (
-            self.index_to_coordinate_input is not None
-            or self.index_to_coordinate is not None
+        if (
+            self.coordinate_type == SourceMemoryAddressCoordinateType.INDEX
+            and self.index_to_coordinate is not None
         ):
             raise ValueError(
                 "index-coordinate source-memory addresses use the mapped index "

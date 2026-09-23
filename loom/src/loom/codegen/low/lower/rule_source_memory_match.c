@@ -184,29 +184,29 @@ static bool loom_low_lower_rule_source_memory_address_input_matches(
     loom_value_id_t source_value_id) {
   const loom_type_t source_type =
       loom_module_value_type(match_context->module, source_value_id);
+  const loom_scalar_type_t scalar_type = loom_type_element_type(source_type);
+  if (loom_scalar_type_is_integer(scalar_type)) {
+    const loom_low_lower_source_memory_integer_conversion_t* conversion =
+        &address_materializer
+             ->integer_conversions[scalar_type - LOOM_SCALAR_TYPE_I1];
+    return conversion->descriptor_ref != LOOM_LOW_LOWER_DESCRIPTOR_REF_NONE &&
+           (conversion->required_features & ~match_context->feature_bits) == 0;
+  }
+  if (scalar_type == LOOM_SCALAR_TYPE_INDEX) {
+    // Unlike fixed integers, index has a target-selected source width. Its
+    // mapped input must represent the value before coordinate arithmetic.
+    return loom_value_facts_fit_signed_bit_count(
+        loom_value_fact_table_lookup(match_context->fact_table,
+                                     source_value_id),
+        (uint8_t)match_context->bundle->snapshot->index_bitwidth);
+  }
   if (address_materializer->coordinate_type ==
       LOOM_LOW_LOWER_SOURCE_MEMORY_ADDRESS_COORDINATE_INDEX) {
-    if (!loom_type_equal(source_type,
-                         loom_type_scalar(LOOM_SCALAR_TYPE_INDEX))) {
-      return false;
-    }
-    const loom_value_facts_t facts = loom_value_fact_table_lookup(
-        match_context->fact_table, source_value_id);
-    return !loom_value_facts_is_float(facts) &&
-           facts.range_lo >= address_materializer->coordinate_minimum &&
-           facts.range_hi <= address_materializer->coordinate_maximum;
+    return false;
   }
   IREE_ASSERT_EQ(address_materializer->coordinate_type,
                  LOOM_LOW_LOWER_SOURCE_MEMORY_ADDRESS_COORDINATE_OFFSET);
-  if (loom_type_equal(source_type, loom_type_scalar(LOOM_SCALAR_TYPE_OFFSET))) {
-    return true;
-  }
-  if (!loom_type_equal(source_type, loom_type_scalar(LOOM_SCALAR_TYPE_INDEX))) {
-    return false;
-  }
-  return loom_value_facts_fit_unsigned_bit_count(
-      loom_value_fact_table_lookup(match_context->fact_table, source_value_id),
-      31);
+  return scalar_type == LOOM_SCALAR_TYPE_OFFSET;
 }
 
 static bool loom_low_lower_rule_source_memory_address_facts_fit_byte_range(
@@ -266,9 +266,7 @@ static bool loom_low_lower_rule_source_memory_address_matches(
                             coordinate_unit_byte_count, &minimum_byte_offset) ||
       !iree_checked_mul_i64(address_materializer->coordinate_maximum,
                             coordinate_unit_byte_count, &maximum_byte_offset) ||
-      access->static_byte_offset % coordinate_unit_byte_count != 0 ||
-      access->static_byte_offset < minimum_byte_offset ||
-      access->static_byte_offset > maximum_byte_offset) {
+      access->static_byte_offset % coordinate_unit_byte_count != 0) {
     return loom_low_lower_rule_source_memory_reject(
         diagnostics->address_diagnostic_index, out_diagnostic_index);
   }
@@ -309,9 +307,9 @@ static bool loom_low_lower_rule_source_memory_address_matches(
        term_ordinal < access->dynamic_term_count; ++term_ordinal) {
     const loom_low_source_memory_dynamic_term_t* term =
         &access->dynamic_terms[term_ordinal];
+    // Components may be negative or wrap the arithmetic carrier. A narrower
+    // coordinate range constrains the complete address, not each summand.
     if (term->byte_stride % coordinate_unit_byte_count != 0 ||
-        !loom_low_lower_rule_source_memory_address_facts_fit_byte_range(
-            term->byte_facts, minimum_byte_offset, maximum_byte_offset) ||
         !loom_low_lower_rule_source_memory_address_input_matches(
             match_context, address_materializer, term->index)) {
       return loom_low_lower_rule_source_memory_reject(

@@ -96,14 +96,13 @@ func.def @scalar_dynamic_index_i32(%input: buffer, %output: buffer, %element: in
 
 // ----
 low.func.def target<spirv.logical.core> abi(shader_entry_point) @scalar_dynamic_index_i32(%input_aligned: reg<spirv.ptr.storage_buffer>, %output_aligned: reg<spirv.ptr.storage_buffer>, %element_bounded: reg<spirv.id : index>) -> (reg<spirv.id : i32>) asm {
-  %15 = OpBitcast.i32.u32 %element_bounded
-  %16 = OpUConvert.u32.offset64 %15
-  %17 = OpConstant.offset64 4
-  %18 = OpIMul.offset64 %16, %17
-  %19 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input_aligned, %18
-  %loaded = OpLoad.storage_buffer.i32 %19
-  %25 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output_aligned, %18
-  OpStore.storage_buffer.i32 %25, %loaded
+  %15 = OpSConvert.i32.offset64 %element_bounded
+  %16 = OpConstant.offset64 4
+  %17 = OpIMul.offset64 %15, %16
+  %18 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input_aligned, %17
+  %loaded = OpLoad.storage_buffer.i32 %18
+  %23 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output_aligned, %17
+  OpStore.storage_buffer.i32 %23, %loaded
   return %loaded
 }
 
@@ -124,20 +123,18 @@ func.def @scalar_mixed_rank2_i32(%input: buffer, %output: buffer, %base: offset,
 
 // ----
 low.func.def target<spirv.logical.core> abi(shader_entry_point) @scalar_mixed_rank2_i32(%input_aligned: reg<spirv.ptr.storage_buffer>, %output_aligned: reg<spirv.ptr.storage_buffer>, %base_aligned: reg<spirv.offset64>, %row_bounded: reg<spirv.id : index>, %column_bounded: reg<spirv.id : index>) -> (reg<spirv.id : i32>) asm {
-  %27 = OpBitcast.i32.u32 %row_bounded
-  %28 = OpUConvert.u32.offset64 %27
-  %29 = OpConstant.offset64 32
-  %30 = OpIMul.offset64 %28, %29
-  %31 = OpIAdd.offset64 %base_aligned, %30
-  %32 = OpBitcast.i32.u32 %column_bounded
-  %33 = OpUConvert.u32.offset64 %32
-  %34 = OpConstant.offset64 4
-  %35 = OpIMul.offset64 %33, %34
-  %36 = OpIAdd.offset64 %31, %35
-  %37 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input_aligned, %36
-  %loaded = OpLoad.storage_buffer.i32 %37
-  %49 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output_aligned, %36
-  OpStore.storage_buffer.i32 %49, %loaded
+  %27 = OpSConvert.i32.offset64 %row_bounded
+  %28 = OpConstant.offset64 32
+  %29 = OpIMul.offset64 %27, %28
+  %30 = OpIAdd.offset64 %base_aligned, %29
+  %31 = OpSConvert.i32.offset64 %column_bounded
+  %32 = OpConstant.offset64 4
+  %33 = OpIMul.offset64 %31, %32
+  %34 = OpIAdd.offset64 %30, %33
+  %35 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input_aligned, %34
+  %loaded = OpLoad.storage_buffer.i32 %35
+  %45 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output_aligned, %34
+  OpStore.storage_buffer.i32 %45, %loaded
   return %loaded
 }
 
@@ -159,21 +156,18 @@ func.def @scalar_dynamic_stride_i32(%input: buffer, %output: buffer, %columns: i
 
 // ----
 low.func.def target<spirv.logical.core> abi(shader_entry_point) @scalar_dynamic_stride_i32(%input_aligned: reg<spirv.ptr.storage_buffer>, %output_aligned: reg<spirv.ptr.storage_buffer>, %columns_bounded: reg<spirv.id : index>, %row_bounded: reg<spirv.id : index>, %column_bounded: reg<spirv.id : index>) -> (reg<spirv.id : i32>) asm {
-  %21 = OpBitcast.i32.u32 %row_bounded
-  %22 = OpUConvert.u32.offset64 %21
-  %23 = OpBitcast.i32.u32 %columns_bounded
-  %24 = OpUConvert.u32.offset64 %23
-  %25 = OpIMul.offset64 %22, %24
-  %26 = OpConstant.offset64 4
-  %27 = OpIMul.offset64 %25, %26
-  %28 = OpBitcast.i32.u32 %column_bounded
-  %29 = OpUConvert.u32.offset64 %28
-  %31 = OpIMul.offset64 %29, %26
-  %32 = OpIAdd.offset64 %27, %31
-  %33 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input_aligned, %32
-  %loaded = OpLoad.storage_buffer.i32 %33
-  %47 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output_aligned, %32
-  OpStore.storage_buffer.i32 %47, %loaded
+  %21 = OpSConvert.i32.offset64 %row_bounded
+  %22 = OpSConvert.i32.offset64 %columns_bounded
+  %23 = OpIMul.offset64 %21, %22
+  %24 = OpConstant.offset64 4
+  %25 = OpIMul.offset64 %23, %24
+  %26 = OpSConvert.i32.offset64 %column_bounded
+  %28 = OpIMul.offset64 %26, %24
+  %29 = OpIAdd.offset64 %25, %28
+  %30 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input_aligned, %29
+  %loaded = OpLoad.storage_buffer.i32 %30
+  %41 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output_aligned, %29
+  OpStore.storage_buffer.i32 %41, %loaded
   return %loaded
 }
 
@@ -197,16 +191,15 @@ func.def @scalar_subview_dynamic_index_i32(%input: buffer, %output: buffer, %bas
 
 // ----
 low.func.def target<spirv.logical.core> abi(shader_entry_point) @scalar_subview_dynamic_index_i32(%input_aligned: reg<spirv.ptr.storage_buffer>, %output_aligned: reg<spirv.ptr.storage_buffer>, %base_aligned: reg<spirv.offset64>, %element_bounded: reg<spirv.id : index>) -> (reg<spirv.id : i32>) asm {
-  %21 = OpBitcast.i32.u32 %element_bounded
-  %22 = OpUConvert.u32.offset64 %21
-  %23 = OpConstant.offset64 4
-  %24 = OpIMul.offset64 %22, %23
-  %25 = OpIAdd.offset64 %base_aligned, %24
-  %27 = OpIAdd.offset64 %25, %23
-  %28 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input_aligned, %27
-  %loaded = OpLoad.storage_buffer.i32 %28
-  %37 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output_aligned, %27
-  OpStore.storage_buffer.i32 %37, %loaded
+  %21 = OpSConvert.i32.offset64 %element_bounded
+  %22 = OpConstant.offset64 4
+  %23 = OpIMul.offset64 %21, %22
+  %24 = OpIAdd.offset64 %base_aligned, %23
+  %26 = OpIAdd.offset64 %24, %22
+  %27 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input_aligned, %26
+  %loaded = OpLoad.storage_buffer.i32 %27
+  %35 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output_aligned, %26
+  OpStore.storage_buffer.i32 %35, %loaded
   return %loaded
 }
 

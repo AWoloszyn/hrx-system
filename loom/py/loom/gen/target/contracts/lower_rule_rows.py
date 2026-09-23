@@ -37,6 +37,7 @@ from loom.target.contracts import (
     LowerValueRef,
     SourceMemoryAddressMaterializer,
     SourceMemoryByteOffsetMaterializer,
+    SourceMemoryIntegerConversion,
     SourceNodeRelation,
     TypePattern,
 )
@@ -383,6 +384,28 @@ def source_memory_diagnostics_row(
     ]
 
 
+def _source_memory_integer_conversion_rows(
+    descriptor_refs: Mapping[str, int],
+    conversions: tuple[SourceMemoryIntegerConversion, ...],
+    conversion_immediate_string_refs: Mapping[str, str],
+) -> str:
+    conversions_by_type = {conversion.source_type: conversion for conversion in conversions}
+    conversion_rows = []
+    for source_type in ("i1", "i8", "i16", "i32", "i64"):
+        conversion = conversions_by_type.get(source_type)
+        descriptor = conversion.descriptor if conversion is not None else None
+        immediate = conversion.immediate if conversion is not None else None
+        features = descriptor.feature_mask_words[0] if descriptor is not None and descriptor.feature_mask_words else 0
+        conversion_rows.append(
+            "{" + f".required_features = UINT64_C({features}), "
+            f".immediate_value = {_c_i64_literal(immediate[1] if immediate is not None else 0)}, "
+            f".immediate_string_ref = {conversion_immediate_string_refs.get(source_type, 'LOOM_STRING_REF_NONE')}, "
+            f".descriptor_ref = {_descriptor_ref_index(descriptor_refs, descriptor)}, "
+            f".input_count = {conversion.input_count if conversion is not None else 0}" + "}"
+        )
+    return ".integer_conversions = {" + ", ".join(conversion_rows) + "}"
+
+
 def source_memory_byte_offset_materializer_row(
     descriptor_refs: Mapping[str, int],
     row: SourceMemoryByteOffsetMaterializer,
@@ -390,19 +413,8 @@ def source_memory_byte_offset_materializer_row(
     immediate_string_ref: str,
     conversion_immediate_string_refs: Mapping[str, str],
 ) -> list[str]:
-    conversions = {conversion.source_type: conversion for conversion in row.integer_conversions}
-    conversion_rows = []
-    for source_type in ("i1", "i8", "i16", "i32", "i64"):
-        conversion = conversions.get(source_type)
-        descriptor = conversion.descriptor if conversion is not None else None
-        immediate = conversion.immediate if conversion is not None else None
-        conversion_rows.append(
-            "{" + f".immediate_value = {_c_i64_literal(immediate[1] if immediate is not None else 0)}, "
-            f".immediate_string_ref = {conversion_immediate_string_refs.get(source_type, 'LOOM_STRING_REF_NONE')}, "
-            f".descriptor_ref = {_descriptor_ref_index(descriptor_refs, descriptor)}" + "}"
-        )
     return [
-        ".integer_conversions = {" + ", ".join(conversion_rows) + "}",
+        _source_memory_integer_conversion_rows(descriptor_refs, row.integer_conversions, conversion_immediate_string_refs),
         f".constant_immediate_string_ref = {immediate_string_ref}",
         f".constant_descriptor_ref = {_descriptor_ref_index(descriptor_refs, row.constant)}",
         f".add_descriptor_ref = {_descriptor_ref_index(descriptor_refs, row.add)}",
@@ -416,8 +428,10 @@ def source_memory_address_materializer_row(
     row: SourceMemoryAddressMaterializer,
     *,
     immediate_string_ref: str,
+    conversion_immediate_string_refs: Mapping[str, str],
 ) -> list[str]:
     return [
+        _source_memory_integer_conversion_rows(descriptor_refs, row.integer_conversions, conversion_immediate_string_refs),
         f".coordinate_minimum = {_c_i64_literal(row.coordinate_minimum)}",
         f".coordinate_maximum = {_c_i64_literal(row.coordinate_maximum)}",
         f".coordinate_unit_byte_count = {row.coordinate_unit_byte_count}",
@@ -426,7 +440,6 @@ def source_memory_address_materializer_row(
         f".add_coordinate_descriptor_ref = {_descriptor_ref_index(descriptor_refs, row.add_coordinate)}",
         f".mul_coordinate_descriptor_ref = {_descriptor_ref_index(descriptor_refs, row.mul_coordinate)}",
         f".shl_coordinate_descriptor_ref = {_descriptor_ref_index(descriptor_refs, row.shl_coordinate)}",
-        f".index_to_coordinate_input_descriptor_ref = {_descriptor_ref_index(descriptor_refs, row.index_to_coordinate_input)}",
         f".index_to_coordinate_descriptor_ref = {_descriptor_ref_index(descriptor_refs, row.index_to_coordinate)}",
         f".address_descriptor_ref = {_descriptor_ref_index(descriptor_refs, row.address)}",
         f".base_kind = {lower_rule_spelling.SOURCE_MEMORY_ADDRESS_BASE_C_NAMES[row.base]}",
@@ -460,9 +473,9 @@ def descriptor_ref_keys(table: CompiledLowerRuleSet, source_contract: ContractFr
                     materializer.add_coordinate,
                     materializer.mul_coordinate,
                     materializer.shl_coordinate,
-                    materializer.index_to_coordinate_input,
                     materializer.index_to_coordinate,
                     materializer.address,
+                    *(conversion.descriptor for conversion in materializer.integer_conversions),
                 )
                 if descriptor is not None
             )

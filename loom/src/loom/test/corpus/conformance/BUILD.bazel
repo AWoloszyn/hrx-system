@@ -5,8 +5,9 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//loom/build_tools/bazel:defs.bzl", "loom_module", "loom_test")
+load("//loom/src/loom/tooling/target/spirv:execution_profiles.bzl", "SPIRV_VULKAN_HARDWARE_PROFILE")
 load("//loom/target:execution_profiles.bzl", "GPU_HARDWARE_PROFILES")
-load("//loom/target/amdgpu:execution_profiles.bzl", "AMDGPU_ACCESS_PROFILE", "AMDGPU_HARDWARE_PROFILE")
+load("//loom/target/amdgpu:execution_profiles.bzl", "AMDGPU_ACCESS_PROFILE")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -47,6 +48,13 @@ loom_test(
 )
 
 loom_test(
+    name = "memory_integer_terms_test",
+    srcs = ["memory_integer_terms.loom"],
+    compile_targets = ["//loom/target/spirv:vulkan1.3+bda+extended-types"],
+    execution_profiles = [SPIRV_VULKAN_HARDWARE_PROFILE],
+)
+
+loom_test(
     name = "natural_alignment_test",
     srcs = ["natural_alignment.loom"],
     compile_targets = [
@@ -81,11 +89,9 @@ loom_test(
     compile_targets = [
         "//loom/target/amdgpu:gfx942",
         "//loom/target/amdgpu:gfx1151",
+        "//loom/target/spirv:vulkan1.3+bda+extended-types",
     ],
-    execution_profiles = [
-        AMDGPU_HARDWARE_PROFILE,
-        AMDGPU_ACCESS_PROFILE,
-    ],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
 )
 
 loom_test(

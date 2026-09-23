@@ -262,6 +262,8 @@ def test_result_asm_recipes_cover_every_spirv_descriptor_family() -> None:
         )
         opcode = "bitcast" if scalar_pair.bit_width == 64 else "uconvert"
         add_carrier_only(f"spirv.op_{opcode}.{scalar.suffix}.offset64")
+        if scalar_pair.bit_width < 64:
+            add_carrier_only(f"spirv.op_s_convert.{scalar_pair.signed.suffix}.offset64")
         from_offset_key = f"spirv.op_{opcode}.offset64.{scalar.suffix}"
         if scalar in unsigned_scalars:
             add_carrier_only(from_offset_key)
