@@ -222,7 +222,7 @@ TEST_F(StorageTest, UnsignedDisplacementsExtendBeforeScaling) {
                SourceRejected);
 }
 
-TEST_F(StorageTest, WideArrayIndicesRetainDeclaredBounds) {
+TEST_F(StorageTest, ArrayIndicesRetainDeclaredBounds) {
   Locations locations(source_.unit(), source_.diagnostics(), module_);
   Scalars scalars(source_.unit(), source_.diagnostics(), types_, locations,
                   builder_);
@@ -233,21 +233,29 @@ TEST_F(StorageTest, WideArrayIndicesRetainDeclaredBounds) {
   auto* array = control->getBoundedArrayType(control->getIntType(), 64);
   auto allocation =
       storage.allocate(array, LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP, 0, owner);
-  auto input = scalars.integer(63, LOOM_SCALAR_TYPE_I64);
-  auto access = storage.subscript(
-      storage.project(allocation.pointer, array, owner), input, array,
-      control->getUnsignedLongLongIntType(), owner);
-  ASSERT_TRUE(access.index.has_value());
-  auto* offset = producer(loom_index_cast_input(producer(*access.index)));
-  ASSERT_TRUE(loom_index_cast_isa(offset));
-  auto* assumed_index = producer(loom_index_cast_input(offset));
-  ASSERT_TRUE(loom_scalar_assume_isa(assumed_index));
-  auto predicates = loom_scalar_assume_predicates(assumed_index);
-  ASSERT_EQ(predicates.count, 1u);
-  EXPECT_EQ(predicates.predicate_list[0].kind, LOOM_PREDICATE_RANGE);
-  EXPECT_EQ(predicates.predicate_list[0].args[0], input);
-  EXPECT_EQ(predicates.predicate_list[0].args[1], 0);
-  EXPECT_EQ(predicates.predicate_list[0].args[2], 63);
+  const cxx::Type* index_types[] = {control->getIntType(),
+                                    control->getUnsignedIntType(),
+                                    control->getUnsignedLongLongIntType()};
+  for (auto* type : index_types) {
+    auto input =
+        scalars.integer(63, loom_type_element_type(types_.get(type, owner)));
+    auto access =
+        storage.subscript(storage.project(allocation.pointer, array, owner),
+                          input, array, type, owner);
+    ASSERT_TRUE(access.index.has_value());
+    auto* assumed_index =
+        producer(loom_index_cast_input(producer(*access.index)));
+    ASSERT_TRUE(loom_scalar_assume_isa(assumed_index));
+    auto wide_input = loom_op_operands(assumed_index)[0];
+    EXPECT_TRUE(loom_type_equal(loom_module_value_type(module_, wide_input),
+                                loom_type_scalar(LOOM_SCALAR_TYPE_I64)));
+    auto predicates = loom_scalar_assume_predicates(assumed_index);
+    ASSERT_EQ(predicates.count, 1u);
+    EXPECT_EQ(predicates.predicate_list[0].kind, LOOM_PREDICATE_RANGE);
+    EXPECT_EQ(predicates.predicate_list[0].args[0], wide_input);
+    EXPECT_EQ(predicates.predicate_list[0].args[1], 0);
+    EXPECT_EQ(predicates.predicate_list[0].args[2], 63);
+  }
 }
 
 TEST_F(StorageTest, ResolvedArrayAccessRetainsIndexAndMemoryQualifiers) {

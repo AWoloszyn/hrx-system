@@ -137,12 +137,12 @@ kernel.def @shared_observations() {
   %table = buffer.alloca<workgroup> align(4) %9 : buffer
   %table_byte_offset = index.constant 0 : offset
   %table_view = buffer.view %table[%table_byte_offset] : buffer -> view<4xi32>
-  %33 = index.constant 2 : index
-  view.store<volatile> %value, %table_view[%33] : i32, view<4xi32>
-  %17 = view.load<volatile> %table_view[%33] : view<4xi32> -> i32
-  %20 = view.load<volatile> %table_view[%33] : view<4xi32> -> i32
-  %29 = buffer.view %output[%table_byte_offset] : buffer -> view<1xi32>
-  view.store %20, %29[0] : i32, view<1xi32>
+  %39 = index.constant 2 : index
+  view.store<volatile> %value, %table_view[%39] : i32, view<4xi32>
+  %21 = view.load<volatile> %table_view[%39] : view<4xi32> -> i32
+  %26 = view.load<volatile> %table_view[%39] : view<4xi32> -> i32
+  %35 = buffer.view %output[%table_byte_offset] : buffer -> view<1xi32>
+  view.store %26, %35[0] : i32, view<1xi32>
   kernel.return
 }
 

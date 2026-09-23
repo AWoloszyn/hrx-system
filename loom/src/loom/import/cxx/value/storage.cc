@@ -162,31 +162,22 @@ StorageAccess Storage::subscript(StorageProjection base, loom_value_id_t index,
       array ? array_views_.find(base.pointer.root) : array_views_.end();
   if (declared != array_views_.end() && declared->second.type == array &&
       declared->second.byte_offset == base.pointer.byte_offset) {
-    auto input_type = types_.get(subscript_type, owner);
+    // Widen before expressing the source's in-bounds precondition in the
+    // signed range domain. Narrow unsigned indices retain their high bit.
+    index = scalars_.convert(index, subscript_type,
+                             unit_.control()->getLongLongIntType(), owner);
+    auto wide_type = loom_type_scalar(LOOM_SCALAR_TYPE_I64);
+    loom_predicate_t range = {
+        .kind = LOOM_PREDICATE_RANGE,
+        .arg_count = 3,
+        .arg_tags = {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_CONST,
+                     LOOM_PRED_ARG_CONST},
+        .args = {index, 0, static_cast<int64_t>(array->size() - 1)},
+    };
     loom_op_t* cast;
-    if (types_.is_unsigned(subscript_type)) {
-      if (loom_type_element_type(input_type) == LOOM_SCALAR_TYPE_I64) {
-        // A defined fixed-array access is within the declared extent. Publish
-        // that source precondition before entering the offset domain.
-        loom_predicate_t range = {
-            .kind = LOOM_PREDICATE_RANGE,
-            .arg_count = 3,
-            .arg_tags = {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_CONST,
-                         LOOM_PRED_ARG_CONST},
-            .args = {index, 0, static_cast<int64_t>(array->size() - 1)},
-        };
-        check(loom_scalar_assume_build(&builder_, &index, 1, &range, 1,
-                                       &input_type, 1, locations_.get(owner),
-                                       &cast));
-        index = loom_op_results(cast)[0];
-      }
-      auto offset_type = loom_type_scalar(LOOM_SCALAR_TYPE_OFFSET);
-      check(loom_index_cast_build(&builder_, index, input_type, offset_type,
-                                  locations_.get(owner), &cast));
-      index = loom_op_results(cast)[0];
-      input_type = offset_type;
-    }
-    check(loom_index_cast_build(&builder_, index, input_type,
+    check(loom_scalar_assume_build(&builder_, &index, 1, &range, 1, &wide_type,
+                                   1, locations_.get(owner), &cast));
+    check(loom_index_cast_build(&builder_, loom_op_results(cast)[0], wide_type,
                                 loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
                                 locations_.get(owner), &cast));
     return {declared->second.view, loom_op_results(cast)[0]};
