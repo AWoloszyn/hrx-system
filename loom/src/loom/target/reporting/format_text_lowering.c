@@ -809,8 +809,13 @@ loom_target_compile_report_append_source_boundary_projection_type(
   IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
       builder, "%.*s<", (int)type_kind.size, type_kind.data));
   for (uint8_t axis = first_axis; axis < row->source_rank; ++axis) {
-    IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
-        builder, "%" PRId64 "x", row->source_dimensions[axis]));
+    if (row->source_dimensions[axis] ==
+        LOOM_TARGET_COMPILE_REPORT_DIMENSION_DYNAMIC) {
+      IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(builder, "?x"));
+    } else {
+      IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+          builder, "%" PRId64 "x", row->source_dimensions[axis]));
+    }
   }
   return iree_string_builder_append_format(
       builder, "%.*s>", (int)element_type.size, element_type.data);

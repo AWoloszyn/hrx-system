@@ -1232,6 +1232,9 @@ typedef struct loom_target_compile_report_source_low_transform_row_t {
   uint32_t inserted_barrier_op_count;
 } loom_target_compile_report_source_low_transform_row_t;
 
+// Sentinel stored in source_dimensions for a dynamic logical dimension.
+#define LOOM_TARGET_COMPILE_REPORT_DIMENSION_DYNAMIC INT64_C(-1)
+
 // One source boundary-representation decision copied into a compile report.
 typedef struct loom_target_compile_report_source_boundary_projection_row_t {
   // Source function symbol containing the projected boundary.
@@ -1262,7 +1265,8 @@ typedef struct loom_target_compile_report_source_boundary_projection_row_t {
   uint8_t projected_prefix_rank;
   // Number of homogeneous physical components, or zero when no schema exists.
   uint16_t component_count;
-  // Original static logical dimensions in source order.
+  // Original logical dimensions in source order. Dynamic dimensions use
+  // LOOM_TARGET_COMPILE_REPORT_DIMENSION_DYNAMIC.
   int64_t source_dimensions[LOOM_TYPE_MAX_RANK];
 } loom_target_compile_report_source_boundary_projection_row_t;
 

@@ -350,7 +350,7 @@ TEST(CompileReportFormatTest, FormatsAndMergesSourceBoundaryProjectionRows) {
   preserved.source_rank = 1;
   preserved.projected_prefix_rank = 0;
   preserved.component_count = 0;
-  preserved.source_dimensions[0] = 8;
+  preserved.source_dimensions[0] = LOOM_TARGET_COMPILE_REPORT_DIMENSION_DYNAMIC;
   preserved.source_dimensions[1] = 0;
   IREE_ASSERT_OK(
       loom_target_compile_report_record_source_boundary_projection_row(
@@ -445,6 +445,11 @@ TEST(CompileReportFormatTest, FormatsAndMergesSourceBoundaryProjectionRows) {
                           IREE_SV("preserved"));
   ExpectObjectValueEquals(preserved_json, IREE_SV("reason"),
                           IREE_SV("whole_value_use"));
+  const iree_string_view_t preserved_source_shape =
+      LookupObject(preserved_json, IREE_SV("source_shape"));
+  ExpectArrayLength(preserved_source_shape, 1);
+  EXPECT_TRUE(iree_string_view_equal(
+      LookupArrayElement(preserved_source_shape, 0), IREE_SV("-1")));
   EXPECT_TRUE(iree_string_view_is_empty(
       TryLookupObject(preserved_json, IREE_SV("component_shape"))));
 
@@ -481,6 +486,15 @@ TEST(CompileReportFormatTest, FormatsAndMergesSourceBoundaryProjectionRows) {
                   "component_type=f32 components=16"),
           0),
       IREE_STRING_VIEW_NPOS);
+  EXPECT_NE(iree_string_view_find(
+                text,
+                IREE_SV("source_boundary_projection[1] function=attention "
+                        "source_op=scf.for projection=loop-vector-bank "
+                        "boundary=loop_state outcome=preserved "
+                        "reason=whole_value_use operation=0 source_value=2 "
+                        "source_type=vector<?xf32>"),
+                0),
+            IREE_STRING_VIEW_NPOS);
   iree_string_builder_deinitialize(&builder);
 
   loom_target_compile_report_deinitialize(&report);

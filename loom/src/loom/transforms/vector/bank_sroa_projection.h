@@ -20,6 +20,15 @@ extern "C" {
 const loom_boundary_projection_rule_t*
 loom_vector_bank_sroa_boundary_projection_rule(void);
 
+typedef struct loom_target_compile_report_t loom_target_compile_report_t;
+
+// Records the finalized source decisions retained by the vector-bank rule.
+// The generic projection engine has completed connected rejection propagation
+// when this is called, and the source IR has not yet been mutated.
+iree_status_t loom_vector_bank_sroa_record_projection_plan(
+    const loom_boundary_projection_plan_t* plan,
+    loom_target_compile_report_t* report);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif

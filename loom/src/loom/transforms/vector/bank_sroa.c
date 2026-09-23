@@ -6,7 +6,9 @@
 
 #include "loom/transforms/vector/bank_sroa.h"
 
+#include "loom/codegen/low/pipeline/pass_environment.h"
 #include "loom/target/pass_environment.h"
+#include "loom/target/reporting/report.h"
 #include "loom/transforms/boundary/projection_driver.h"
 #include "loom/transforms/vector/bank_sroa_projection.h"
 
@@ -40,6 +42,12 @@ const loom_pass_info_t* loom_vector_bank_sroa_pass_info(void) {
   return &kPassInfo;
 }
 
+static iree_status_t loom_vector_bank_sroa_record_plan(
+    void* user_data, const loom_boundary_projection_plan_t* plan) {
+  return loom_vector_bank_sroa_record_projection_plan(
+      plan, (loom_target_compile_report_t*)user_data);
+}
+
 iree_status_t loom_vector_bank_sroa_run(loom_pass_t* pass,
                                         loom_module_t* module) {
   const loom_target_pass_capability_t* capability =
@@ -50,6 +58,19 @@ iree_status_t loom_vector_bank_sroa_run(loom_pass_t* pass,
   const loom_boundary_projection_rule_t* rules[] = {
       loom_vector_bank_sroa_boundary_projection_rule(),
   };
+  const loom_low_pass_capability_t* low_capability =
+      loom_low_pass_capability_from_pass(pass);
+  loom_target_compile_report_t* compile_report =
+      loom_low_pass_capability_compile_report(low_capability);
+  const loom_boundary_projection_plan_sink_t report_sink = {
+      .fn = loom_vector_bank_sroa_record_plan,
+      .user_data = compile_report,
+  };
+  const loom_boundary_projection_plan_sink_t* plan_sink =
+      loom_target_compile_report_wants_details(
+          compile_report, LOOM_TARGET_COMPILE_REPORT_DETAIL_SOURCE_LOW_ROWS)
+          ? &report_sink
+          : NULL;
   loom_boundary_projection_statistics_t projection_statistics;
   iree_status_t status =
       loom_boundary_projection_run(pass, module, version_list,
@@ -57,7 +78,7 @@ iree_status_t loom_vector_bank_sroa_run(loom_pass_t* pass,
                                        .values = rules,
                                        .count = IREE_ARRAYSIZE(rules),
                                    },
-                                   /*plan_sink=*/NULL, &projection_statistics);
+                                   plan_sink, &projection_statistics);
   if (iree_status_is_ok(status)) {
     IREE_ASSERT_EQ(projection_statistics.rule_count, IREE_ARRAYSIZE(rules));
     const loom_boundary_projection_rule_statistics_t* rule_statistics =
