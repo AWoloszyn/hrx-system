@@ -271,11 +271,11 @@ plain store does not become atomic because several invocations may reach it,
 and a barrier does not resolve conflicting writes.
 
 Floating-point atomic addition uses the target's native subnormal behavior by
-default; inputs or results may flush to zero. Request preservation when those
-values matter:
+default; inputs or results may flush to zero. Request `noftz` (no flush to zero)
+when those values must survive:
 
 ```loom
-%old = view.atomic.rmw<addf, preserve_subnormals> %increment, %view[0] {ordering = relaxed, scope = device} : f32, view<1xf32> -> f32
+%old = view.atomic.rmw<addf, noftz> %increment, %view[0] {ordering = relaxed, scope = device} : f32, view<1xf32> -> f32
 ```
 
 The same flag applies to atomic reductions and vector atomics, including masked

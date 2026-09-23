@@ -566,10 +566,9 @@ static bool loom_amdgpu_atomic_native_semantics_supported(
     loom_amdgpu_atomic_operation_kind_t operation_kind, uint8_t atomic_kind,
     uint8_t scope, loom_memory_access_flags_t access_flags,
     loom_type_t value_type) {
-  const bool preserve_subnormals = iree_any_bit_set(
-      access_flags, LOOM_MEMORY_ACCESS_FLAG_PRESERVE_SUBNORMALS);
-  if (preserve_subnormals &&
-      loom_type_element_type(value_type) != LOOM_SCALAR_TYPE_F32) {
+  const bool noftz =
+      iree_any_bit_set(access_flags, LOOM_MEMORY_ACCESS_FLAG_NOFTZ);
+  if (noftz && loom_type_element_type(value_type) != LOOM_SCALAR_TYPE_F32) {
     return false;
   }
   if (operation_kind == LOOM_AMDGPU_ATOMIC_OPERATION_CMPXCHG ||
@@ -594,7 +593,7 @@ static bool loom_amdgpu_atomic_native_semantics_supported(
         scope == LOOM_ATOMIC_SCOPE_SYSTEM
             ? LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_FLOAT_SYSTEM_MEMORY
             : LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_FLOAT_AGENT_MEMORY;
-    if (atomic_kind == LOOM_ATOMIC_KIND_ADDF && preserve_subnormals) {
+    if (atomic_kind == LOOM_ATOMIC_KIND_ADDF && noftz) {
       required |= LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_F32_ADD_DENORMALS;
     }
   }

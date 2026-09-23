@@ -8,7 +8,7 @@ low.func.def target<spirv.logical.core> abi(shader_entry_point) @unbound_workgro
   %index = OpConstant.i32 0
   %value = OpConstant.f32 1
   %ptr = OpAccessChain.workgroup.i32.element_index %base, %index
-  %old = OpAtomicCompareExchange.loop.fadd.preserve_subnormals.rmw.workgroup.f32.workgroup %ptr, %value, "relaxed"
+  %old = OpAtomicCompareExchange.loop.fadd.noftz.rmw.workgroup.f32.workgroup %ptr, %value, "relaxed"
   return
 }
 
@@ -55,6 +55,6 @@ low.func.def target<spirv.logical.core>(@baseline_target) abi(shader_entry_point
   %value = OpConstant.f32 1
   %ptr = OpAccessChain.workgroup.i32.element_index %base, %index
   // ERROR@+1: TARGET/046
-  %old = OpAtomicCompareExchange.loop.fadd.preserve_subnormals.rmw.workgroup.f32.workgroup %ptr, %value, "relaxed"
+  %old = OpAtomicCompareExchange.loop.fadd.noftz.rmw.workgroup.f32.workgroup %ptr, %value, "relaxed"
   return
 }

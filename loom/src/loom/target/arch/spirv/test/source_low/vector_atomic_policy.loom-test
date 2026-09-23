@@ -17,6 +17,6 @@ func.def @preservation_requires_device_support(%value: f32) {
   %scratch = buffer.alloca<workgroup> align(4) %bytes : buffer
   %view = buffer.view %scratch[%base] : buffer -> view<1xf32>
   // ERROR@+1: TARGET/003 {constraint_key="descriptor_available", subject_name="spirv.atomic.reduce.fadd.cas_preserve.workgroup.f32.workgroup"}
-  view.atomic.reduce<addf, preserve_subnormals> %value, %view[0] {ordering = relaxed, scope = workgroup} : f32, view<1xf32>
+  view.atomic.reduce<addf, noftz> %value, %view[0] {ordering = relaxed, scope = workgroup} : f32, view<1xf32>
   func.return
 }

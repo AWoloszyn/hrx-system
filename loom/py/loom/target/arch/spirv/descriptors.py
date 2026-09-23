@@ -933,7 +933,7 @@ def _float_atomic_descriptor(
                 raise ValueError("floating exchange uses the direct bitcast form")
             mnemonic = f"OpAtomicCompareExchange.loop.{operation.suffix}"
             if strategy == "cas_preserve":
-                mnemonic += ".preserve_subnormals"
+                mnemonic += ".noftz"
         else:
             raise ValueError(f"unknown floating atomic strategy '{strategy}'")
         operands = (

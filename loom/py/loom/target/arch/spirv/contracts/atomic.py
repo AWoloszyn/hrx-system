@@ -326,11 +326,9 @@ def _float_atomic_rule(
             Guard.enum_attr_equals("kind", operation.source_kind),
             *(
                 (
-                    Guard.instance_flags_has_all("memory_flags", "preserve_subnormals")
+                    Guard.instance_flags_has_all("memory_flags", "noftz")
                     if strategy == "cas_preserve"
-                    else Guard.instance_flags_has_none(
-                        "memory_flags", "preserve_subnormals"
-                    ),
+                    else Guard.instance_flags_has_none("memory_flags", "noftz"),
                 )
                 if operation.source_kind == "addf"
                 else ()

@@ -196,7 +196,7 @@ static bool loom_spirv_workgroup_view_requires_integer_carrier(
     }
 
     if (iree_any_bit_set(user_op->instance_flags,
-                         LOOM_MEMORY_ACCESS_FLAG_PRESERVE_SUBNORMALS)) {
+                         LOOM_MEMORY_ACCESS_FLAG_NOFTZ)) {
       return true;
     }
 

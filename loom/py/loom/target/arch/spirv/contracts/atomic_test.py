@@ -204,7 +204,7 @@ def test_float_add_rules_require_the_selected_subnormal_contract() -> None:
         )
         assert len(flag_guards) == 1
         assert flag_guards[0].field == "memory_flags"
-        assert flag_guards[0].enum_keyword == "preserve_subnormals"
+        assert flag_guards[0].enum_keyword == "noftz"
         assert flag_guards[0].kind == (
             GuardKind.INSTANCE_FLAGS_HAS_ALL
             if ".cas_preserve." in rule.descriptor.key

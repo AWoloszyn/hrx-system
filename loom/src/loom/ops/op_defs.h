@@ -1245,7 +1245,7 @@ enum loom_memory_access_flag_bits_e {
   // Requires floating-point atomic addition to preserve subnormal inputs and
   // results. Without this flag the target may flush subnormals. Selection
   // consumes this numerical requirement; it is not a physical Low access flag.
-  LOOM_MEMORY_ACCESS_FLAG_PRESERVE_SUBNORMALS = 1u << 1,
+  LOOM_MEMORY_ACCESS_FLAG_NOFTZ = 1u << 1,
 };
 typedef uint8_t loom_memory_access_flags_t;
 

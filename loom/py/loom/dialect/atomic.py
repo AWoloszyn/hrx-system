@@ -40,7 +40,7 @@ AtomicMemoryFlags = EnumDef(
     "AtomicMemoryFlags",
     [
         EnumCase(
-            "preserve_subnormals",
+            "noftz",
             2,
             doc=(
                 "Preserve subnormal inputs and results of floating-point atomic "

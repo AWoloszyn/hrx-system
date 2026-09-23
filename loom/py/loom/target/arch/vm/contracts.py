@@ -1050,11 +1050,7 @@ def _view_cases():
                     guards=(
                         Guard.value_type(value_field, Scalar(types)),
                         *(
-                            (
-                                Guard.instance_flags_has_none(
-                                    "memory_flags", "preserve_subnormals"
-                                ),
-                            )
+                            (Guard.instance_flags_has_none("memory_flags", "noftz"),)
                             if instruction in (BUFFER_ATOMIC_REDUCE, BUFFER_ATOMIC_RMW)
                             else ()
                         ),

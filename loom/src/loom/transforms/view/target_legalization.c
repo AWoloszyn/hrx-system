@@ -200,8 +200,7 @@ static iree_status_t loom_view_legalize_atomic_float(
   // The generic decomposition inherits the target's scalar arithmetic mode.
   // A target provider may use the reference implementation after establishing
   // that its execution environment preserves subnormals.
-  if (iree_any_bit_set(op->instance_flags,
-                       LOOM_MEMORY_ACCESS_FLAG_PRESERVE_SUBNORMALS)) {
+  if (iree_any_bit_set(op->instance_flags, LOOM_MEMORY_ACCESS_FLAG_NOFTZ)) {
     *out_result = (loom_target_legalizer_result_t){
         .action = LOOM_TARGET_LEGALIZER_ACTION_NO_COMMENT,
     };
