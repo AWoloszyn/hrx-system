@@ -20,12 +20,14 @@ loom_cc_library(
     "bank_sroa_projection.c"
   DEPS
     iree::base
+    loom::codegen::low::pipeline::pass_environment
     loom::ir
     loom::ops::op_defs
     loom::ops::vector
     loom::pass::types
     loom::rewrite::rewriter
     loom::target::pass_environment
+    loom::target::reporting::report
     loom::transforms::boundary::projection_core
   PUBLIC
 )

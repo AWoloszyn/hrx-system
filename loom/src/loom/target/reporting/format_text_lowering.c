@@ -794,6 +794,117 @@ loom_target_compile_report_format_source_low_transform_rows(
   return iree_ok_status();
 }
 
+static iree_status_t
+loom_target_compile_report_append_source_boundary_projection_type(
+    iree_string_builder_t* builder,
+    const loom_target_compile_report_source_boundary_projection_row_t* row,
+    uint8_t first_axis) {
+  const iree_string_view_t element_type =
+      loom_target_compile_report_scalar_type_name(row->source_element_type);
+  if (first_axis == row->source_rank) {
+    return iree_string_builder_append_string(builder, element_type);
+  }
+  const iree_string_view_t type_kind =
+      loom_target_compile_report_type_kind_name(row->source_type_kind);
+  IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+      builder, "%.*s<", (int)type_kind.size, type_kind.data));
+  for (uint8_t axis = first_axis; axis < row->source_rank; ++axis) {
+    if (row->source_dimensions[axis] ==
+        LOOM_TARGET_COMPILE_REPORT_DIMENSION_DYNAMIC) {
+      IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(builder, "?x"));
+    } else {
+      IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+          builder, "%" PRId64 "x", row->source_dimensions[axis]));
+    }
+  }
+  return iree_string_builder_append_format(
+      builder, "%.*s>", (int)element_type.size, element_type.data);
+}
+
+static iree_status_t
+loom_target_compile_report_format_source_boundary_projection_rows(
+    const loom_target_compile_report_t* report,
+    iree_string_builder_t* builder) {
+  if (report->source_boundary_projection_rows.count == 0) {
+    return iree_ok_status();
+  }
+  iree_host_size_t selected_count = 0;
+  iree_host_size_t preserved_count = 0;
+  iree_host_size_t rejected_count = 0;
+  for (const loom_target_compile_report_vec_t* vec =
+           report->source_boundary_projection_rows.head;
+       vec != NULL; vec = vec->next) {
+    const loom_target_compile_report_source_boundary_projection_row_t* rows =
+        (const loom_target_compile_report_source_boundary_projection_row_t*)
+            loom_target_compile_report_vec_const_rows(vec);
+    for (iree_host_size_t i = 0; i < vec->count; ++i) {
+      selected_count +=
+          iree_string_view_equal(rows[i].outcome, IREE_SV("selected"));
+      preserved_count +=
+          iree_string_view_equal(rows[i].outcome, IREE_SV("preserved"));
+      rejected_count +=
+          iree_string_view_equal(rows[i].outcome, IREE_SV("rejected"));
+    }
+  }
+  IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+      builder,
+      "COMPILE-REPORT: source_boundary_projections rows=%" PRIhsz
+      " selected=%" PRIhsz " preserved=%" PRIhsz " rejected=%" PRIhsz "\n",
+      report->source_boundary_projection_rows.count, selected_count,
+      preserved_count, rejected_count));
+
+  iree_host_size_t row_index = 0;
+  for (const loom_target_compile_report_vec_t* vec =
+           report->source_boundary_projection_rows.head;
+       vec != NULL; vec = vec->next) {
+    const loom_target_compile_report_source_boundary_projection_row_t* rows =
+        (const loom_target_compile_report_source_boundary_projection_row_t*)
+            loom_target_compile_report_vec_const_rows(vec);
+    for (iree_host_size_t i = 0; i < vec->count; ++i, ++row_index) {
+      const loom_target_compile_report_source_boundary_projection_row_t* row =
+          &rows[i];
+      const iree_string_view_t function_name =
+          loom_target_compile_report_text_non_empty(row->function_name);
+      const iree_string_view_t source_op_name =
+          loom_target_compile_report_text_non_empty(row->source_op_name);
+      const iree_string_view_t projection_key =
+          loom_target_compile_report_text_non_empty(row->projection_key);
+      const iree_string_view_t boundary_key =
+          loom_target_compile_report_text_non_empty(row->boundary_key);
+      const iree_string_view_t outcome =
+          loom_target_compile_report_text_non_empty(row->outcome);
+      const iree_string_view_t reason =
+          loom_target_compile_report_text_non_empty(row->reason);
+      IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+          builder,
+          "COMPILE-REPORT: source_boundary_projection[%" PRIhsz
+          "] function=%.*s source_op=%.*s projection=%.*s boundary=%.*s "
+          "outcome=%.*s reason=%.*s operation=%u source_value=%u "
+          "source_type=",
+          row_index, (int)function_name.size, function_name.data,
+          (int)source_op_name.size, source_op_name.data,
+          (int)projection_key.size, projection_key.data, (int)boundary_key.size,
+          boundary_key.data, (int)outcome.size, outcome.data, (int)reason.size,
+          reason.data, row->operation_ordinal, row->source_value_ordinal));
+      IREE_RETURN_IF_ERROR(
+          loom_target_compile_report_append_source_boundary_projection_type(
+              builder, row, 0));
+      if (row->component_count != 0) {
+        IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+            builder,
+            " prefix_rank=%u component_type=", row->projected_prefix_rank));
+        IREE_RETURN_IF_ERROR(
+            loom_target_compile_report_append_source_boundary_projection_type(
+                builder, row, row->projected_prefix_rank));
+        IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+            builder, " components=%u", row->component_count));
+      }
+      IREE_RETURN_IF_ERROR(iree_string_builder_append_cstring(builder, "\n"));
+    }
+  }
+  return iree_ok_status();
+}
+
 static iree_status_t loom_target_compile_report_format_source_low_memory_rows(
     const loom_target_compile_report_t* report,
     iree_string_builder_t* builder) {
@@ -1353,6 +1464,9 @@ iree_status_t loom_target_compile_report_format_text_lowering_details(
   IREE_RETURN_IF_ERROR(
       loom_target_compile_report_format_source_low_transform_rows(report,
                                                                   builder));
+  IREE_RETURN_IF_ERROR(
+      loom_target_compile_report_format_source_boundary_projection_rows(
+          report, builder));
   IREE_RETURN_IF_ERROR(loom_target_compile_report_format_source_low_memory_rows(
       report, builder));
   IREE_RETURN_IF_ERROR(

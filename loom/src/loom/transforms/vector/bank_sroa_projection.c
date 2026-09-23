@@ -13,12 +13,24 @@
 #include "loom/ir/module.h"
 #include "loom/ops/vector/ops.h"
 #include "loom/rewrite/rewriter.h"
+#include "loom/target/reporting/report.h"
 #include "loom/transforms/boundary/projection_loop.h"
 
 typedef struct loom_vector_bank_sroa_bank_plan_t
     loom_vector_bank_sroa_bank_plan_t;
 typedef struct loom_vector_bank_sroa_endpoint_plan_t
     loom_vector_bank_sroa_endpoint_plan_t;
+
+// Why a vector recurrence could not use one homogeneous component schema.
+// The numeric order is the diagnostic priority when several blockers are
+// discovered on the same recurrence.
+typedef enum loom_vector_bank_sroa_blocker_e {
+  LOOM_VECTOR_BANK_SROA_BLOCKER_NONE = 0,
+  LOOM_VECTOR_BANK_SROA_BLOCKER_VALUE_METADATA_USE = 1,
+  LOOM_VECTOR_BANK_SROA_BLOCKER_INCONSISTENT_COMPONENT_ACCESS = 2,
+  LOOM_VECTOR_BANK_SROA_BLOCKER_NON_STATIC_COMPONENT_ACCESS = 3,
+  LOOM_VECTOR_BANK_SROA_BLOCKER_COMPONENT_COUNT_LIMIT = 4,
+} loom_vector_bank_sroa_blocker_t;
 
 typedef struct loom_vector_bank_sroa_state_node_t {
   // Bank whose aggregate state this value represents.
@@ -109,6 +121,8 @@ struct loom_vector_bank_sroa_bank_plan_t {
   uint16_t component_count;
   // Recurrence column ordinal in the source loop.
   uint16_t state_ordinal;
+  // Highest-priority semantic blocker retained by the existing use-def scan.
+  loom_vector_bank_sroa_blocker_t blocker;
   // Whether an admitted condition/body access selected this bank.
   bool active;
 };
@@ -173,6 +187,18 @@ loom_vector_bank_sroa_function_state(
 static loom_op_t* loom_vector_bank_sroa_loop_op(
     const loom_vector_bank_sroa_bank_plan_t* bank) {
   return bank->loop->loop->loop.op;
+}
+
+static void loom_vector_bank_sroa_record_blocker(
+    const loom_boundary_projection_plan_t* plan,
+    loom_vector_bank_sroa_bank_plan_t* bank,
+    loom_vector_bank_sroa_blocker_t blocker) {
+  if (!plan->observation_requested) {
+    return;
+  }
+  if (blocker > bank->blocker) {
+    bank->blocker = blocker;
+  }
 }
 
 static loom_vector_bank_sroa_state_node_t* loom_vector_bank_sroa_lookup_node(
@@ -314,6 +340,8 @@ static iree_status_t loom_vector_bank_sroa_prepare_access(
       static_indices.kind != LOOM_ATTR_I64_ARRAY || static_indices.count == 0 ||
       static_indices.count > bank_rank || !static_indices.i64_array ||
       dynamic_indices.count != 0) {
+    loom_vector_bank_sroa_record_blocker(
+        plan, bank, LOOM_VECTOR_BANK_SROA_BLOCKER_NON_STATIC_COMPONENT_ACCESS);
     return iree_ok_status();
   }
   for (uint16_t axis = 0; axis < static_indices.count; ++axis) {
@@ -321,6 +349,9 @@ static iree_status_t loom_vector_bank_sroa_prepare_access(
     const int64_t extent =
         loom_type_dim_static_size_at(bank->bank_type, (uint8_t)axis);
     if (index < 0 || index == INT64_MIN || index >= extent) {
+      loom_vector_bank_sroa_record_blocker(
+          plan, bank,
+          LOOM_VECTOR_BANK_SROA_BLOCKER_INCONSISTENT_COMPONENT_ACCESS);
       return iree_ok_status();
     }
   }
@@ -338,6 +369,8 @@ static iree_status_t loom_vector_bank_sroa_prepare_access(
           loom_type_dim_static_size_at(bank->bank_type, axis);
       if (extent <= 0 ||
           (uint64_t)component_count * (uint64_t)extent > UINT16_MAX) {
+        loom_vector_bank_sroa_record_blocker(
+            plan, bank, LOOM_VECTOR_BANK_SROA_BLOCKER_COMPONENT_COUNT_LIMIT);
         return iree_ok_status();
       }
       component_count *= (uint32_t)extent;
@@ -348,6 +381,11 @@ static iree_status_t loom_vector_bank_sroa_prepare_access(
 
   *out_supported = loom_vector_bank_sroa_static_access_component(
       bank, static_indices, dynamic_indices, payload_type, out_component);
+  if (!*out_supported) {
+    loom_vector_bank_sroa_record_blocker(
+        plan, bank,
+        LOOM_VECTOR_BANK_SROA_BLOCKER_INCONSISTENT_COMPONENT_ACCESS);
+  }
   return iree_ok_status();
 }
 
@@ -395,6 +433,8 @@ static iree_status_t loom_vector_bank_sroa_scan_endpoint(
     if (loom_value_has_attribute_uses(value) ||
         loom_module_value_has_type_uses(plan->module, node->value_id)) {
       endpoint->uses_supported = false;
+      loom_vector_bank_sroa_record_blocker(
+          plan, bank, LOOM_VECTOR_BANK_SROA_BLOCKER_VALUE_METADATA_USE);
     }
     const loom_use_t* use = NULL;
     loom_value_for_each_use(value, use) {
@@ -905,6 +945,162 @@ static iree_status_t loom_vector_bank_sroa_eliminate(
   if (endpoint == &bank->endpoints[0]) {
     loom_boundary_projection_record(plan, rule, 1,
                                     slot->schema.component_count);
+  }
+  return iree_ok_status();
+}
+
+static iree_string_view_t loom_vector_bank_sroa_function_name(
+    const loom_boundary_projection_plan_t* plan,
+    const loom_boundary_projection_function_t* function) {
+  const loom_symbol_ref_t symbol_ref =
+      loom_func_like_callee(function->function);
+  if (!loom_symbol_ref_is_valid(symbol_ref) || symbol_ref.module_id != 0 ||
+      symbol_ref.symbol_id >= plan->module->symbols.count) {
+    return IREE_SV("<unnamed>");
+  }
+  const loom_symbol_t* symbol =
+      &plan->module->symbols.entries[symbol_ref.symbol_id];
+  return symbol->name_id < plan->module->strings.count
+             ? loom_string_table_get(&plan->module->strings, symbol->name_id)
+             : IREE_SV("<unnamed>");
+}
+
+static iree_string_view_t loom_vector_bank_sroa_blocker_name(
+    loom_vector_bank_sroa_blocker_t blocker) {
+  switch (blocker) {
+    case LOOM_VECTOR_BANK_SROA_BLOCKER_NONE:
+      return IREE_SV("none");
+    case LOOM_VECTOR_BANK_SROA_BLOCKER_VALUE_METADATA_USE:
+      return IREE_SV("value_metadata_use");
+    case LOOM_VECTOR_BANK_SROA_BLOCKER_INCONSISTENT_COMPONENT_ACCESS:
+      return IREE_SV("inconsistent_component_access");
+    case LOOM_VECTOR_BANK_SROA_BLOCKER_NON_STATIC_COMPONENT_ACCESS:
+      return IREE_SV("non_static_component_access");
+    case LOOM_VECTOR_BANK_SROA_BLOCKER_COMPONENT_COUNT_LIMIT:
+      return IREE_SV("component_count_limit");
+  }
+  return IREE_SV("none");
+}
+
+static bool loom_vector_bank_sroa_blocker_is_component_access(
+    loom_vector_bank_sroa_blocker_t blocker) {
+  return blocker ==
+             LOOM_VECTOR_BANK_SROA_BLOCKER_INCONSISTENT_COMPONENT_ACCESS ||
+         blocker == LOOM_VECTOR_BANK_SROA_BLOCKER_NON_STATIC_COMPONENT_ACCESS ||
+         blocker == LOOM_VECTOR_BANK_SROA_BLOCKER_COMPONENT_COUNT_LIMIT;
+}
+
+static bool loom_vector_bank_sroa_bank_uses_supported(
+    const loom_vector_bank_sroa_bank_plan_t* bank) {
+  for (uint8_t i = 0; i < bank->endpoint_count; ++i) {
+    if (!bank->endpoints[i].uses_supported) {
+      return false;
+    }
+  }
+  return true;
+}
+
+static void loom_vector_bank_sroa_report_decision(
+    const loom_boundary_projection_function_t* function,
+    const loom_vector_bank_sroa_bank_plan_t* bank,
+    iree_string_view_t* out_outcome, iree_string_view_t* out_reason) {
+  const loom_boundary_projection_slot_t* candidate =
+      &function->candidates[bank->endpoints[0].candidate];
+  const bool uses_supported = loom_vector_bank_sroa_bank_uses_supported(bank);
+  if (function->selected && candidate->selected) {
+    *out_outcome = IREE_SV("selected");
+    *out_reason = IREE_SV("static_component_accesses");
+    return;
+  }
+
+  if (bank->active) {
+    *out_outcome = IREE_SV("rejected");
+    if (bank->blocker != LOOM_VECTOR_BANK_SROA_BLOCKER_NONE) {
+      *out_reason = loom_vector_bank_sroa_blocker_name(bank->blocker);
+    } else if (!uses_supported) {
+      *out_reason = IREE_SV("unsupported_value_use");
+    } else if (!bank->loop->eligible) {
+      *out_reason = IREE_SV("peer_bank_rejected");
+    } else {
+      *out_reason = IREE_SV("boundary_projection_rejected");
+    }
+    return;
+  }
+
+  if (loom_vector_bank_sroa_blocker_is_component_access(bank->blocker)) {
+    *out_outcome = IREE_SV("rejected");
+    *out_reason = loom_vector_bank_sroa_blocker_name(bank->blocker);
+  } else {
+    *out_outcome = IREE_SV("preserved");
+    *out_reason =
+        bank->blocker == LOOM_VECTOR_BANK_SROA_BLOCKER_VALUE_METADATA_USE
+            ? IREE_SV("value_metadata_use")
+        : !uses_supported ? IREE_SV("whole_value_use")
+                          : IREE_SV("no_component_access");
+  }
+}
+
+iree_status_t loom_vector_bank_sroa_record_projection_plan(
+    const loom_boundary_projection_plan_t* plan,
+    loom_target_compile_report_t* report) {
+  const loom_boundary_projection_rule_t* rule =
+      loom_vector_bank_sroa_boundary_projection_rule();
+  for (iree_host_size_t function_index = 0;
+       function_index < plan->function_count; ++function_index) {
+    const loom_boundary_projection_function_t* function =
+        &plan->functions[function_index];
+    if (!function->rule_states) {
+      continue;
+    }
+    const loom_vector_bank_sroa_function_state_t* state =
+        loom_vector_bank_sroa_function_state(rule, plan, function);
+    if (!state) {
+      continue;
+    }
+    const iree_string_view_t function_name =
+        loom_vector_bank_sroa_function_name(plan, function);
+    for (iree_host_size_t loop_index = 0; loop_index < state->loop_count;
+         ++loop_index) {
+      const loom_vector_bank_sroa_loop_plan_t* loop = &state->loops[loop_index];
+      const loom_op_t* loop_op = loop->loop->loop.op;
+      for (uint16_t state_ordinal = 0; state_ordinal < loop->loop->state_count;
+           ++state_ordinal) {
+        const loom_vector_bank_sroa_bank_plan_t* bank =
+            &loop->banks[state_ordinal];
+        if (bank->endpoint_count == 0) {
+          continue;
+        }
+        iree_string_view_t outcome = iree_string_view_empty();
+        iree_string_view_t reason = iree_string_view_empty();
+        loom_vector_bank_sroa_report_decision(function, bank, &outcome,
+                                              &reason);
+        loom_target_compile_report_source_boundary_projection_row_t row = {
+            .function_name = function_name,
+            .source_op_name = loom_op_name(plan->module, loop_op),
+            .source_op_kind = loop_op->kind,
+            .projection_key = rule->name,
+            .boundary_key = IREE_SV("loop_state"),
+            .outcome = outcome,
+            .reason = reason,
+            .operation_ordinal = (uint32_t)loop_index,
+            .source_value_ordinal = bank->state_ordinal,
+            .source_type_kind = loom_type_kind(bank->bank_type),
+            .source_element_type = loom_type_element_type(bank->bank_type),
+            .source_rank = loom_type_rank(bank->bank_type),
+            .projected_prefix_rank = bank->active ? bank->prefix_rank : 0,
+            .component_count = bank->active ? bank->component_count : 0,
+        };
+        for (uint8_t axis = 0; axis < row.source_rank; ++axis) {
+          row.source_dimensions[axis] =
+              loom_type_dim_is_dynamic_at(bank->bank_type, axis)
+                  ? LOOM_TARGET_COMPILE_REPORT_DIMENSION_DYNAMIC
+                  : loom_type_dim_static_size_at(bank->bank_type, axis);
+        }
+        IREE_RETURN_IF_ERROR(
+            loom_target_compile_report_record_source_boundary_projection_row(
+                report, &row));
+      }
+    }
   }
   return iree_ok_status();
 }

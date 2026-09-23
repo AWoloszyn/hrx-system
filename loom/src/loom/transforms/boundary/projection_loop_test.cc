@@ -523,7 +523,8 @@ class LoopBoundaryProjectionTest : public ::testing::Test {
     const loom_boundary_projection_rule_t* rules[] = {rule};
     IREE_ASSERT_OK(loom_boundary_projection_run(
         &pass_, module_, /*version_list=*/nullptr,
-        {/*.values=*/rules, /*.count=*/IREE_ARRAYSIZE(rules)}, out_statistics));
+        {/*.values=*/rules, /*.count=*/IREE_ARRAYSIZE(rules)},
+        /*plan_sink=*/nullptr, out_statistics));
   }
 
   void Verify() {

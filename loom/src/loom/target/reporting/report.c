@@ -64,6 +64,8 @@ void loom_target_compile_report_deinitialize(
       allocator, &report->source_low_target_rows);
   loom_target_compile_report_row_list_deinitialize(
       allocator, &report->source_low_transform_rows);
+  loom_target_compile_report_row_list_deinitialize(
+      allocator, &report->source_boundary_projection_rows);
   loom_target_compile_report_row_list_deinitialize(allocator,
                                                    &report->loop_pipeline_rows);
   loom_target_compile_report_row_list_deinitialize(
@@ -112,6 +114,7 @@ static bool loom_target_compile_report_has_rows(
          report->entry_rows.count != 0 || report->source_low_rows.count != 0 ||
          report->source_low_target_rows.count != 0 ||
          report->source_low_transform_rows.count != 0 ||
+         report->source_boundary_projection_rows.count != 0 ||
          report->loop_pipeline_rows.count != 0 ||
          report->loop_pipeline_stage_rows.count != 0 ||
          report->source_low_selection_summaries.count != 0 ||
@@ -1315,6 +1318,11 @@ iree_status_t loom_target_compile_report_record_entry_report(
         sizeof(loom_target_compile_report_source_low_transform_row_t),
         report->allocator));
     IREE_RETURN_IF_ERROR(loom_target_compile_report_row_list_append_all(
+        &report->source_boundary_projection_rows,
+        &entry_report->source_boundary_projection_rows,
+        sizeof(loom_target_compile_report_source_boundary_projection_row_t),
+        report->allocator));
+    IREE_RETURN_IF_ERROR(loom_target_compile_report_row_list_append_all(
         &report->loop_pipeline_rows, &entry_report->loop_pipeline_rows,
         sizeof(loom_target_compile_report_loop_pipeline_row_t),
         report->allocator));
@@ -1501,6 +1509,15 @@ iree_status_t loom_target_compile_report_record_source_low_transform_row(
   report->detail_flags |= LOOM_TARGET_COMPILE_REPORT_DETAIL_SOURCE_LOW_ROWS;
   return loom_target_compile_report_row_list_append(
       &report->source_low_transform_rows, sizeof(*row), report->allocator, row);
+}
+
+iree_status_t loom_target_compile_report_record_source_boundary_projection_row(
+    loom_target_compile_report_t* report,
+    const loom_target_compile_report_source_boundary_projection_row_t* row) {
+  report->detail_flags |= LOOM_TARGET_COMPILE_REPORT_DETAIL_SOURCE_LOW_ROWS;
+  return loom_target_compile_report_row_list_append(
+      &report->source_boundary_projection_rows, sizeof(*row), report->allocator,
+      row);
 }
 
 static void loom_target_compile_report_count_math_action(

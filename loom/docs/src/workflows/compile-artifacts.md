@@ -224,6 +224,24 @@ byte offset must fit within 32 bits. Modules using memory define one private
 64 KiB linear memory; buffer parameters are byte addresses into it, and exported
 functions provide the host's access to that memory.
 
+## Select a compile pipeline
+
+The selected format's default pipeline is the maintained path from ordinary
+source to its emitter input. Use that pipeline for production artifacts and
+correctness acceptance.
+
+`--pipeline=none` disables all compiler transformations and passes the input
+directly to the selected emitter. The input must already satisfy the emitter's
+complete contract. This is useful when assembling prepared Low as an executable
+oracle; success establishes that prepared program, not that ordinary source
+survives the default pipeline. The [native schedule reconstruction
+workflow](oracles/native-schedule.md#establish-an-executable-low-oracle) owns
+that use case and its evidence boundary.
+
+`--pipeline=@symbol` selects a module-local `pass.pipeline`; a comma-separated
+pass list selects those passes directly. Both forms replace the default
+pipeline with the requested transformation sequence.
+
 ## Emit a target-native sidecar
 
 A loadable kernel format may have both a loader-ready representation and a
