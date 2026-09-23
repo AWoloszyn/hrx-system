@@ -20,31 +20,33 @@ func.def @online_softmax_update(%old_max: f32, %old_sum: f32, %old_acc: vector<4
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @online_softmax_update(%old_max: reg<amdgpu.vgpr>, %old_sum: reg<amdgpu.vgpr>, %old_acc: reg<amdgpu.vgpr x4>, %score: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr x4>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr x4>) asm {
-  %new_max = v_max_f32 %old_max, %score
+  %32 = v_max_f32 %old_max, %old_max
+  %33 = v_max_f32 %score, %score
+  %new_max = v_max_f32 %32, %33
   %old_delta = v_sub_f32 %old_max, %new_max
   %score_delta = v_sub_f32 %score, %new_max
-  %35 = v_mul_f32_lit %old_delta, 1069066811
-  %old_scale = v_exp_f32 %35
-  %37 = v_mul_f32_lit %score_delta, 1069066811
-  %score_weight = v_exp_f32 %37
+  %37 = v_mul_f32_lit %old_delta, 1069066811
+  %old_scale = v_exp_f32 %37
+  %39 = v_mul_f32_lit %score_delta, 1069066811
+  %score_weight = v_exp_f32 %39
   %new_sum = v_fma_f32 %old_sum, %old_scale, %score_weight
-  %42 = slice %value[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %44 = v_mul_f32 %42, %score_weight
-  %45 = slice %value[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %47 = v_mul_f32 %45, %score_weight
-  %48 = slice %value[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %50 = v_mul_f32 %48, %score_weight
-  %51 = slice %value[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %53 = v_mul_f32 %51, %score_weight
-  %55 = slice %old_acc[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %58 = v_fma_f32 %55, %old_scale, %44
-  %59 = slice %old_acc[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %62 = v_fma_f32 %59, %old_scale, %47
-  %63 = slice %old_acc[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %66 = v_fma_f32 %63, %old_scale, %50
-  %67 = slice %old_acc[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %70 = v_fma_f32 %67, %old_scale, %53
-  %new_acc = concat(%58, %62, %66, %70) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x4>
+  %44 = slice %value[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %46 = v_mul_f32 %44, %score_weight
+  %47 = slice %value[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %49 = v_mul_f32 %47, %score_weight
+  %50 = slice %value[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %52 = v_mul_f32 %50, %score_weight
+  %53 = slice %value[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %55 = v_mul_f32 %53, %score_weight
+  %57 = slice %old_acc[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %60 = v_fma_f32 %57, %old_scale, %46
+  %61 = slice %old_acc[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %64 = v_fma_f32 %61, %old_scale, %49
+  %65 = slice %old_acc[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %68 = v_fma_f32 %65, %old_scale, %52
+  %69 = slice %old_acc[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %72 = v_fma_f32 %69, %old_scale, %55
+  %new_acc = concat(%60, %64, %68, %72) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x4>
   return %new_max, %new_sum, %new_acc
 }
 

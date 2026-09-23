@@ -81,11 +81,14 @@ bool loom_amdgpu_atomic_scope_supported(
   }
   if (source->atomic.scope != LOOM_ATOMIC_SCOPE_SYSTEM ||
       (!loom_amdgpu_type_is_i32(value_type) &&
-       !loom_amdgpu_type_is_i64(value_type))) {
+       !loom_amdgpu_type_is_i64(value_type) &&
+       !loom_amdgpu_type_is_f32(value_type))) {
     return false;
   }
-  // System integer updates require both a coherence recipe and backing that
-  // admits the operation; mapping admission belongs to the runtime.
+  // System updates require a coherence recipe and backing that admits the
+  // operation; mapping admission belongs to the runtime. Native floating
+  // arithmetic also passes the numerical and memory-domain capability gate;
+  // other F32 updates use bitwise compare-exchange.
   return loom_amdgpu_memory_coherence_rule(descriptor_set) != NULL;
 }
 

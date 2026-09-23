@@ -380,12 +380,16 @@ def _ds_atomic_overlay(
 
 def _ds_atomic_cmpstore_overlay(
     *,
+    expected_field: str,
+    replacement_field: str,
     encoding_name: str = "ENC_DS",
     fixed_encoding_fields: tuple[tuple[str, AmdgpuFixedEncodingValue], ...] = (
         ("OFFSET1", 0),
         ("GDS", 0),
     ),
 ) -> AmdgpuDescriptorOverlay:
+    # CDNA compares DATA0 and stores DATA1; RDNA compares DATA1 and stores DATA0.
+    # Keep the logical expected/replacement order independent of those fields.
     return AmdgpuDescriptorOverlay(
         descriptor_key="amdgpu.ds_cmpst_rtn_b32",
         instruction_name="DS_CMPST_RTN_B32",
@@ -396,8 +400,8 @@ def _ds_atomic_cmpstore_overlay(
         operands=(
             AmdgpuOperandOverlay("VDST", _vgpr_result()),
             AmdgpuOperandOverlay("ADDR", _vgpr_operand("addr")),
-            AmdgpuOperandOverlay("DATA0", _vgpr_operand("expected")),
-            AmdgpuOperandOverlay("DATA1", _vgpr_operand("replacement")),
+            AmdgpuOperandOverlay(expected_field, _vgpr_operand("expected")),
+            AmdgpuOperandOverlay(replacement_field, _vgpr_operand("replacement")),
         ),
         implicit_operands=(
             _ignore_workgroup_memory(
@@ -419,6 +423,8 @@ def _ds_atomic_cmpstore_overlay(
 
 def _ds_atomic_overlays(
     *,
+    cmpxchg_expected_field: str,
+    cmpxchg_replacement_field: str,
     encoding_name: str = "ENC_DS",
     fixed_encoding_fields: tuple[tuple[str, AmdgpuFixedEncodingValue], ...] = (
         ("OFFSET1", 0),
@@ -525,6 +531,8 @@ def _ds_atomic_overlays(
     ]
     overlays.append(
         _ds_atomic_cmpstore_overlay(
+            expected_field=cmpxchg_expected_field,
+            replacement_field=cmpxchg_replacement_field,
             encoding_name=encoding_name,
             fixed_encoding_fields=fixed_encoding_fields,
         )
@@ -847,6 +855,8 @@ def _gfx950_ds_transpose_read_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
 
 def _ds_memory_overlays(
     *,
+    cmpxchg_expected_field: str,
+    cmpxchg_replacement_field: str,
     encoding_name: str = "ENC_DS",
     fixed_encoding_fields: tuple[tuple[str, AmdgpuFixedEncodingValue], ...] = (
         ("OFFSET1", 0),
@@ -896,6 +906,8 @@ def _ds_memory_overlays(
             for width_bits, units in widths
         ),
         *_ds_atomic_overlays(
+            cmpxchg_expected_field=cmpxchg_expected_field,
+            cmpxchg_replacement_field=cmpxchg_replacement_field,
             encoding_name=encoding_name,
             fixed_encoding_fields=fixed_encoding_fields,
             include_packed_half_add=include_packed_half_atomic_add,

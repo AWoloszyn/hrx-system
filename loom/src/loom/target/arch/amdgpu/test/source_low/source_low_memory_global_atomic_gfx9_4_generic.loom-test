@@ -117,18 +117,83 @@ kernel.def @global_atomic_minnum_maxnum_f32() {
   %global = buffer.assume.memory_space<global> %input : buffer
   %view = buffer.view %global[%buffer_base] : buffer -> view<64xf32>
   %limit = scalar.constant 1.0 : f32
-  // ERROR@+1: AMDGPU/023 {constraint_key="atomic.descriptor_missing"}
   view.atomic.reduce<minnumf> %limit, %view[%tid] {ordering = relaxed, scope = device} : f32, view<64xf32>
-  // ERROR@+1: AMDGPU/023 {constraint_key="atomic.descriptor_missing"}
   view.atomic.reduce<maxnumf> %limit, %view[%tid] {ordering = relaxed, scope = device} : f32, view<64xf32>
-  // ERROR@+1: AMDGPU/023 {constraint_key="atomic.descriptor_missing"}
   %old_min = view.atomic.rmw<minnumf> %limit, %view[%tid] {ordering = relaxed, scope = device} : f32, view<64xf32> -> f32
-  // ERROR@+1: AMDGPU/023 {constraint_key="atomic.descriptor_missing"}
   %old_max = view.atomic.rmw<maxnumf> %limit, %view[%tid] {ordering = relaxed, scope = device} : f32, view<64xf32> -> f32
   kernel.return
 }
 
 // ----
+low.kernel.def target<amdgpu.gfx9_4.generic.core> abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 1, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @global_atomic_minnum_maxnum_f32() asm {
+  %view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %limit = v_mov_b32 1065353216
+  %64 = v_mov_b32 0
+  %72 = s_mov_b64_exec_read
+  low.br ^_bb1(%64: reg<amdgpu.vgpr>)
+^_bb1(%54: reg<amdgpu.vgpr>):
+  %65 = v_max_f32 %54, %54
+  %66 = v_max_f32 %limit, %limit
+  %67 = v_min_f32 %65, %66
+  %69 = concat(%67, %54) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %70 = global_atomic_cmpswap_b32_rtn_saddr %64, %69, %view
+  %71 = v_cmp_ne_i32 %70, %54
+  %73, %74 = s_and_saveexec_b64 %71
+  low.cond_br %74, ^_bb2, ^_bb9 : reg<amdgpu.scc>
+^_bb2:
+  low.br ^_bb1(%70: reg<amdgpu.vgpr>)
+^_bb9:
+  s_mov_b64_exec %72
+  %82 = s_mov_b64_exec_read
+  low.br ^_bb3(%64: reg<amdgpu.vgpr>)
+^_bb3(%55: reg<amdgpu.vgpr>):
+  %75 = v_max_f32 %55, %55
+  %76 = v_max_f32 %limit, %limit
+  %77 = v_max_f32 %75, %76
+  %78 = v_mov_b32 0
+  %79 = concat(%77, %55) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %80 = global_atomic_cmpswap_b32_rtn_saddr %78, %79, %view
+  %81 = v_cmp_ne_i32 %80, %55
+  %83, %84 = s_and_saveexec_b64 %81
+  low.cond_br %84, ^_bb4, ^_bb10 : reg<amdgpu.scc>
+^_bb4:
+  low.br ^_bb3(%80: reg<amdgpu.vgpr>)
+^_bb10:
+  s_mov_b64_exec %82
+  %92 = s_mov_b64_exec_read
+  low.br ^_bb5(%64: reg<amdgpu.vgpr>)
+^_bb5(%56: reg<amdgpu.vgpr>):
+  %85 = v_max_f32 %56, %56
+  %86 = v_max_f32 %limit, %limit
+  %87 = v_min_f32 %85, %86
+  %88 = v_mov_b32 0
+  %89 = concat(%87, %56) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %90 = global_atomic_cmpswap_b32_rtn_saddr %88, %89, %view
+  %91 = v_cmp_ne_i32 %90, %56
+  %93, %94 = s_and_saveexec_b64 %91
+  low.cond_br %94, ^_bb6, ^_bb11 : reg<amdgpu.scc>
+^_bb6:
+  low.br ^_bb5(%90: reg<amdgpu.vgpr>)
+^_bb11:
+  s_mov_b64_exec %92
+  %102 = s_mov_b64_exec_read
+  low.br ^_bb7(%64: reg<amdgpu.vgpr>)
+^_bb7(%57: reg<amdgpu.vgpr>):
+  %95 = v_max_f32 %57, %57
+  %96 = v_max_f32 %limit, %limit
+  %97 = v_max_f32 %95, %96
+  %98 = v_mov_b32 0
+  %99 = concat(%97, %57) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %100 = global_atomic_cmpswap_b32_rtn_saddr %98, %99, %view
+  %101 = v_cmp_ne_i32 %100, %57
+  %103, %104 = s_and_saveexec_b64 %101
+  low.cond_br %104, ^_bb8, ^_bb12 : reg<amdgpu.scc>
+^_bb8:
+  low.br ^_bb7(%100: reg<amdgpu.vgpr>)
+^_bb12:
+  s_mov_b64_exec %102
+  return
+}
 
 // ====
 
@@ -140,14 +205,50 @@ kernel.def @global_atomic_dynamic_minnum_f32() {
   %buffer_base = index.constant 0 : offset
   %global = buffer.assume.memory_space<global> %input : buffer
   %view = buffer.view %global[%buffer_base] : buffer -> view<64xf32>
-  // ERROR@+1: AMDGPU/023 {constraint_key="atomic.descriptor_missing"}
   %old_min = view.atomic.rmw<minnumf> %value, %view[%tid] {ordering = relaxed, scope = device} : f32, view<64xf32> -> f32
-  // ERROR@+1: AMDGPU/023 {constraint_key="atomic.descriptor_missing"}
   %old_max = view.atomic.rmw<maxnumf> %value, %view[%tid] {ordering = relaxed, scope = device} : f32, view<64xf32> -> f32
   kernel.return
 }
 
 // ----
+low.kernel.def target<amdgpu.gfx9_4.generic.core> abi_layout({constant_count = 1, direct_arg_count = 1, direct_arg_names = {arg0 = "value"}, direct_arg_offsets = [8], direct_arg_parameter_indices = [1], direct_arg_sizes = [4], parameter_count = 2, resource_count = 1, resource_offsets = [0], resource_parameter_indices = [0], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @global_atomic_dynamic_minnum_f32(%value: reg<amdgpu.sgpr>) asm {
+  %view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %38 = v_mov_b32 0
+  %48 = s_mov_b64_exec_read
+  low.br ^_bb1(%38: reg<amdgpu.vgpr>)
+^_bb1(%33: reg<amdgpu.vgpr>):
+  %39 = v_max_f32 %33, %33
+  %40 = v_mov_b32_copy %value
+  %42 = v_max_f32 %40, %40
+  %43 = v_min_f32 %39, %42
+  %45 = concat(%43, %33) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %46 = global_atomic_cmpswap_b32_rtn_saddr %38, %45, %view
+  %47 = v_cmp_ne_i32 %46, %33
+  %49, %50 = s_and_saveexec_b64 %47
+  low.cond_br %50, ^_bb2, ^_bb5 : reg<amdgpu.scc>
+^_bb2:
+  low.br ^_bb1(%46: reg<amdgpu.vgpr>)
+^_bb5:
+  s_mov_b64_exec %48
+  %60 = s_mov_b64_exec_read
+  low.br ^_bb3(%38: reg<amdgpu.vgpr>)
+^_bb3(%34: reg<amdgpu.vgpr>):
+  %51 = v_max_f32 %34, %34
+  %52 = v_mov_b32_copy %value
+  %54 = v_max_f32 %52, %52
+  %55 = v_max_f32 %51, %54
+  %56 = v_mov_b32 0
+  %57 = concat(%55, %34) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %58 = global_atomic_cmpswap_b32_rtn_saddr %56, %57, %view
+  %59 = v_cmp_ne_i32 %58, %34
+  %61, %62 = s_and_saveexec_b64 %59
+  low.cond_br %62, ^_bb4, ^_bb6 : reg<amdgpu.scc>
+^_bb4:
+  low.br ^_bb3(%58: reg<amdgpu.vgpr>)
+^_bb6:
+  s_mov_b64_exec %60
+  return
+}
 
 // ====
 

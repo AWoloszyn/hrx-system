@@ -881,7 +881,11 @@ def _cdna_core_overlays(
             xml_has_m0=True,
             allow_accumulator_operands=True,
         ),
-        *_ds_memory_overlays(include_packed_half_atomic_add=True),
+        *_ds_memory_overlays(
+            cmpxchg_expected_field="DATA0",
+            cmpxchg_replacement_field="DATA1",
+            include_packed_half_atomic_add=True,
+        ),
         *_ds_crosslane_overlays(),
         _v_dot2_f32_f16_overlay(),
         *((_v_dot2_f32_bf16_overlay(),) if include_v_dot2_f32_bf16 else ()),
@@ -1390,7 +1394,11 @@ def _gfx11_core_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
             implicit_flat_scratch=True,
             fixed_saddr=_predefined("NULL", "OPR_SREG"),
         ),
-        *_ds_memory_overlays(include_u16_d16_loads=True),
+        *_ds_memory_overlays(
+            cmpxchg_expected_field="DATA1",
+            cmpxchg_replacement_field="DATA0",
+            include_u16_d16_loads=True,
+        ),
         *_ds_crosslane_overlays(),
         _v_dot2_f32_f16_overlay(),
         _v_dot2_f32_bf16_overlay(),
@@ -1802,6 +1810,16 @@ def _rdna4m_core_overlay_descriptors(
 @cache
 def _rdna4_core_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
     return (
+        *(
+            _v_commutative_binary_vop3_float_overlay(
+                descriptor_key=f"amdgpu.v_{operation}_f32",
+                instruction_name=f"V_{operation.upper()}_F32",
+                mnemonic=f"v_{operation}_f32",
+                semantic_tag=f"float.{operation}.f32",
+                element_bit_width=32,
+            )
+            for operation in ("minimum", "maximum")
+        ),
         _s_add_u32_overlay(),
         _s_add_co_u32_overlay(),
         _s_add_co_u32_rhs_inline_overlay(),
@@ -2135,6 +2153,8 @@ def _rdna4_core_overlays() -> tuple[AmdgpuDescriptorOverlay, ...]:
             fixed_saddr=_predefined("NULL", "OPR_SREG"),
         ),
         *_ds_memory_overlays(
+            cmpxchg_expected_field="DATA1",
+            cmpxchg_replacement_field="DATA0",
             encoding_name="ENC_VDS",
             fixed_encoding_fields=(("OFFSET1", 0),),
             include_packed_half_atomic_add=True,

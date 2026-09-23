@@ -19,6 +19,7 @@
 #define LOOM_AMDGPU_COMPUTE_PGM_RSRC1_VGPR_COUNT_WIDTH 6u
 #define LOOM_AMDGPU_COMPUTE_PGM_RSRC1_SGPR_COUNT_SHIFT 6u
 #define LOOM_AMDGPU_COMPUTE_PGM_RSRC1_SGPR_COUNT_WIDTH 4u
+#define LOOM_AMDGPU_COMPUTE_PGM_RSRC1_DENORM_32_SHIFT 16u
 #define LOOM_AMDGPU_COMPUTE_PGM_RSRC1_DENORM_16_64_SHIFT 18u
 #define LOOM_AMDGPU_COMPUTE_PGM_RSRC1_DX10_CLAMP_SHIFT 21u
 #define LOOM_AMDGPU_COMPUTE_PGM_RSRC1_IEEE_MODE_SHIFT 23u
@@ -543,6 +544,8 @@ iree_status_t loom_amdgpu_kernel_descriptor_write(
   loom_amdgpu_kernel_descriptor_set_bits_u32(
       &compute_pgm_rsrc1, LOOM_AMDGPU_COMPUTE_PGM_RSRC1_SGPR_COUNT_SHIFT,
       LOOM_AMDGPU_COMPUTE_PGM_RSRC1_SGPR_COUNT_WIDTH, sgpr_block_count);
+  loom_amdgpu_kernel_descriptor_set_bits_u32(
+      &compute_pgm_rsrc1, LOOM_AMDGPU_COMPUTE_PGM_RSRC1_DENORM_32_SHIFT, 2, 3);
   loom_amdgpu_kernel_descriptor_set_bits_u32(
       &compute_pgm_rsrc1, LOOM_AMDGPU_COMPUTE_PGM_RSRC1_DENORM_16_64_SHIFT, 2,
       3);

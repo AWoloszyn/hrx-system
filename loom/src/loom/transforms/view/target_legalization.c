@@ -30,6 +30,22 @@ static_assert(IREE_ARRAYSIZE(kAtomicRmwFailureOrderings) ==
                   LOOM_ATOMIC_ORDERING_COUNT_,
               "all atomic RMW orderings must map to a failure ordering");
 
+// Floating combines share the generated binary-builder signature. A missing
+// entry leaves other atomic kinds to their native or reference providers.
+typedef iree_status_t (*loom_view_atomic_float_combine_fn_t)(
+    loom_builder_t* builder, uint8_t instance_flags, loom_value_id_t lhs,
+    loom_value_id_t rhs, loom_type_t result_type, loom_location_id_t location,
+    loom_op_t** out_op);
+
+static const loom_view_atomic_float_combine_fn_t
+    kAtomicFloatCombines[LOOM_ATOMIC_KIND_COUNT_] = {
+        [LOOM_ATOMIC_KIND_ADDF] = loom_scalar_addf_build,
+        [LOOM_ATOMIC_KIND_MINIMUMF] = loom_scalar_minimumf_build,
+        [LOOM_ATOMIC_KIND_MAXIMUMF] = loom_scalar_maximumf_build,
+        [LOOM_ATOMIC_KIND_MINNUMF] = loom_scalar_minnumf_build,
+        [LOOM_ATOMIC_KIND_MAXNUMF] = loom_scalar_maxnumf_build,
+};
+
 static loom_view_atomic_cmpxchg_build_flags_t
 loom_view_legalize_atomic_cmpxchg_cache_policy(loom_cache_policy_t policy,
                                                uint8_t* out_cache_scope,
@@ -48,16 +64,16 @@ loom_view_legalize_atomic_cmpxchg_cache_policy(loom_cache_policy_t policy,
   return build_flags;
 }
 
-static iree_status_t loom_view_legalize_build_atomic_addf_before_region(
+static iree_status_t loom_view_legalize_build_atomic_float_before_region(
     loom_builder_t* builder, loom_op_t* loop, loom_memory_access_t access,
     loom_type_t float_type, loom_type_t integer_type,
-    loom_location_id_t location) {
+    loom_view_atomic_float_combine_fn_t combine, loom_location_id_t location) {
   const loom_value_id_t expected =
       loom_region_entry_arg_id(loom_scf_while_before(loop), 0);
-  loom_op_t* add_op = NULL;
-  IREE_RETURN_IF_ERROR(loom_scalar_addf_build(
-      builder, /*instance_flags=*/0, expected, loom_memory_access_value(access),
-      float_type, location, &add_op));
+  loom_op_t* combine_op = NULL;
+  IREE_RETURN_IF_ERROR(combine(builder, /*instance_flags=*/0, expected,
+                               loom_memory_access_value(access), float_type,
+                               location, &combine_op));
 
   uint8_t cache_scope = 0;
   uint8_t cache_temporal = 0;
@@ -73,7 +89,7 @@ static iree_status_t loom_view_legalize_build_atomic_addf_before_region(
           loom_memory_access_atomic_ordering(access));
   loom_op_t* cmpxchg_op = NULL;
   IREE_RETURN_IF_ERROR(loom_view_atomic_cmpxchg_build(
-      builder, build_flags, expected, loom_scalar_addf_result(add_op),
+      builder, build_flags, expected, loom_op_results(combine_op)[0],
       loom_memory_access_view(access), indices.values, indices.count,
       static_indices.i64_array, static_indices.count, success_ordering,
       kAtomicRmwFailureOrderings[success_ordering],
@@ -101,7 +117,7 @@ static iree_status_t loom_view_legalize_build_atomic_addf_before_region(
                                   &observed, 1, location, &condition_op);
 }
 
-static iree_status_t loom_view_legalize_build_atomic_addf_after_region(
+static iree_status_t loom_view_legalize_build_atomic_float_after_region(
     loom_builder_t* builder, loom_op_t* loop, loom_location_id_t location) {
   const loom_value_id_t observed =
       loom_region_entry_arg_id(loom_scf_while_after(loop), 0);
@@ -109,7 +125,7 @@ static iree_status_t loom_view_legalize_build_atomic_addf_after_region(
   return loom_scf_yield_build(builder, &observed, 1, location, &yield_op);
 }
 
-iree_status_t loom_view_target_legalize_atomic_addf_reference(
+iree_status_t loom_view_target_legalize_atomic_float_reference(
     loom_target_legalization_context_t* context, loom_op_t* op,
     loom_target_legalizer_result_t* out_result) {
   *out_result = (loom_target_legalizer_result_t){
@@ -117,8 +133,10 @@ iree_status_t loom_view_target_legalize_atomic_addf_reference(
   };
   const loom_memory_access_t access =
       loom_memory_access_cast(context->module, op);
-  if (loom_attr_as_enum(loom_memory_access_atomic_kind(access)) !=
-      LOOM_ATOMIC_KIND_ADDF) {
+  const loom_view_atomic_float_combine_fn_t combine =
+      kAtomicFloatCombines[loom_attr_as_enum(
+          loom_memory_access_atomic_kind(access))];
+  if (!combine) {
     return iree_ok_status();
   }
 
@@ -146,14 +164,15 @@ iree_status_t loom_view_target_legalize_atomic_addf_reference(
 
   loom_builder_ip_t saved_ip = loom_builder_enter_region(
       &rewriter->builder, loop, loom_scf_while_before(loop));
-  iree_status_t status = loom_view_legalize_build_atomic_addf_before_region(
-      &rewriter->builder, loop, access, float_type, integer_type, op->location);
+  iree_status_t status = loom_view_legalize_build_atomic_float_before_region(
+      &rewriter->builder, loop, access, float_type, integer_type, combine,
+      op->location);
   loom_builder_restore(&rewriter->builder, saved_ip);
   IREE_RETURN_IF_ERROR(status);
 
   saved_ip = loom_builder_enter_region(&rewriter->builder, loop,
                                        loom_scf_while_after(loop));
-  status = loom_view_legalize_build_atomic_addf_after_region(
+  status = loom_view_legalize_build_atomic_float_after_region(
       &rewriter->builder, loop, op->location);
   loom_builder_restore(&rewriter->builder, saved_ip);
   IREE_RETURN_IF_ERROR(status);
@@ -173,30 +192,25 @@ iree_status_t loom_view_target_legalize_atomic_addf_reference(
   return iree_ok_status();
 }
 
-static iree_status_t loom_view_legalize_atomic_addf(
+static iree_status_t loom_view_legalize_atomic_float(
     const loom_target_legalizer_entry_t* entry,
     loom_target_legalization_context_t* context, loom_op_t* op,
     loom_target_legalizer_result_t* out_result) {
   (void)entry;
-  *out_result = (loom_target_legalizer_result_t){
-      .action = LOOM_TARGET_LEGALIZER_ACTION_NO_COMMENT,
-  };
-  if (context->contract_query_result->outcome !=
-      LOOM_TARGET_CONTRACT_QUERY_UNSUPPORTED) {
-    return iree_ok_status();
-  }
-  return loom_view_target_legalize_atomic_addf_reference(context, op,
-                                                         out_result);
+  return loom_view_target_legalize_atomic_float_reference(context, op,
+                                                          out_result);
 }
 
 static const loom_target_legalizer_rule_t kViewLegalizerRules[] = {
     {
         .root_kind = LOOM_OP_VIEW_ATOMIC_REDUCE,
-        .legalize = loom_view_legalize_atomic_addf,
+        .legalize = loom_view_legalize_atomic_float,
+        .flags = LOOM_TARGET_LEGALIZER_ENTRY_FLAG_REQUIRE_CONTRACT_REJECTION,
     },
     {
         .root_kind = LOOM_OP_VIEW_ATOMIC_RMW,
-        .legalize = loom_view_legalize_atomic_addf,
+        .legalize = loom_view_legalize_atomic_float,
+        .flags = LOOM_TARGET_LEGALIZER_ENTRY_FLAG_REQUIRE_CONTRACT_REJECTION,
     },
 };
 

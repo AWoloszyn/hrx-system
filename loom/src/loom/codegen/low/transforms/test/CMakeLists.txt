@@ -29,6 +29,7 @@ loom_check_test_suite(
     "source_to_low_source_graph.loom-test"
     "source_to_low_structured_control.loom-test"
     "target_legalize.loom-test"
+    "target_legalize_atomic_float.loom-test"
     "target_legalize_buffer.loom-test"
     "target_legalize_comparison.loom-test"
     "target_legalize_diagnostics.loom-test"

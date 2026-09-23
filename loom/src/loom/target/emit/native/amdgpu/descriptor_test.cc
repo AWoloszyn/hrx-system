@@ -70,6 +70,8 @@ constexpr uint32_t kComputePgmRsrc1VgprCountShift = 0;
 constexpr uint32_t kComputePgmRsrc1VgprCountWidth = 6;
 constexpr uint32_t kComputePgmRsrc1SgprCountShift = 6;
 constexpr uint32_t kComputePgmRsrc1SgprCountWidth = 4;
+constexpr uint32_t kComputePgmRsrc1Denorm32Shift = 16;
+constexpr uint32_t kComputePgmRsrc1Denorm32Width = 2;
 constexpr uint32_t kComputePgmRsrc1Denorm16_64Shift = 18;
 constexpr uint32_t kComputePgmRsrc1Denorm16_64Width = 2;
 constexpr uint32_t kComputePgmRsrc1Dx10ClampShift = 21;
@@ -134,7 +136,7 @@ TEST(AmdgpuDescriptorTest, WritesNoArgGfx1100Descriptor) {
   EXPECT_EQ(LoadLeI64(bytes, 16), -64);
   ExpectZeroRange(bytes, 24, 44);
   EXPECT_EQ(LoadLeU32(bytes, 44), 0u);
-  EXPECT_EQ(LoadLeU32(bytes, 48), 0xe0ac0000u);
+  EXPECT_EQ(LoadLeU32(bytes, 48), 0xe0af0000u);
   EXPECT_EQ(LoadLeU32(bytes, 52), 0u);
   EXPECT_EQ(LoadLeU16(bytes, 56), 0x0400u);
   EXPECT_EQ(LoadLeU16(bytes, 58), 0u);
@@ -186,6 +188,9 @@ TEST(AmdgpuDescriptorTest, EncodesNamedComputePgmRsrc1TargetFeatures) {
                     kComputePgmRsrc1SgprCountWidth),
               c.expected_sgpr_blocks)
         << c.processor;
+    EXPECT_EQ(Field(compute_pgm_rsrc1, kComputePgmRsrc1Denorm32Shift,
+                    kComputePgmRsrc1Denorm32Width),
+              3u);
     EXPECT_EQ(Field(compute_pgm_rsrc1, kComputePgmRsrc1Denorm16_64Shift,
                     kComputePgmRsrc1Denorm16_64Width),
               3u)
@@ -265,6 +270,9 @@ TEST(AmdgpuDescriptorTest, EncodesComputePgmFieldsForEveryDescriptorProfile) {
                     kComputePgmRsrc1SgprCountWidth),
               expected_sgpr_blocks)
         << processor->name.data;
+    EXPECT_EQ(Field(compute_pgm_rsrc1, kComputePgmRsrc1Denorm32Shift,
+                    kComputePgmRsrc1Denorm32Width),
+              3u);
     EXPECT_EQ(Field(compute_pgm_rsrc1, kComputePgmRsrc1Denorm16_64Shift,
                     kComputePgmRsrc1Denorm16_64Width),
               3u)
@@ -439,7 +447,7 @@ TEST(AmdgpuDescriptorTest, EncodesResourceAndAbiFields) {
   EXPECT_EQ(LoadLeU32(bytes, 4), 16u);
   EXPECT_EQ(LoadLeU32(bytes, 8), 24u);
   EXPECT_EQ(LoadLeI64(bytes, 16), 256);
-  EXPECT_EQ(LoadLeU32(bytes, 48), 0xe0ac0001u);
+  EXPECT_EQ(LoadLeU32(bytes, 48), 0xe0af0001u);
   EXPECT_EQ(LoadLeU32(bytes, 52), 0x00001085u);
   EXPECT_EQ(LoadLeU16(bytes, 56), 0x0c08u);
 }
@@ -475,7 +483,7 @@ TEST(AmdgpuDescriptorTest, EncodesGfx942ResourceAndAbiFields) {
   EXPECT_EQ(LoadLeU32(bytes, 8), 24u);
   EXPECT_EQ(LoadLeI64(bytes, 16), 256);
   EXPECT_EQ(LoadLeU32(bytes, 44), 0x00000002u);
-  EXPECT_EQ(LoadLeU32(bytes, 48), 0x00ac00c1u);
+  EXPECT_EQ(LoadLeU32(bytes, 48), 0x00af00c1u);
   EXPECT_EQ(LoadLeU32(bytes, 52), 0x00001085u);
   EXPECT_EQ(LoadLeU16(bytes, 56), 0x0808u);
 }
@@ -500,7 +508,7 @@ TEST(AmdgpuDescriptorTest, EncodesGfx942SmallWorkgroupIdBoundary) {
       &descriptor, iree_make_byte_span(bytes.data(), bytes.size())));
 
   EXPECT_EQ(LoadLeU32(bytes, 44), 0x00000000u);
-  EXPECT_EQ(LoadLeU32(bytes, 48), 0x00ac0080u);
+  EXPECT_EQ(LoadLeU32(bytes, 48), 0x00af0080u);
   EXPECT_EQ(LoadLeU32(bytes, 52), 0x00000084u);
   EXPECT_EQ(LoadLeU16(bytes, 56), 0x0008u);
 }
@@ -525,7 +533,7 @@ TEST(AmdgpuDescriptorTest, EncodesGfx950ResourceAndAbiFields) {
       &descriptor, iree_make_byte_span(bytes.data(), bytes.size())));
 
   EXPECT_EQ(LoadLeU32(bytes, 44), 0x00000002u);
-  EXPECT_EQ(LoadLeU32(bytes, 48), 0x00ac00c1u);
+  EXPECT_EQ(LoadLeU32(bytes, 48), 0x00af00c1u);
   EXPECT_EQ(LoadLeU32(bytes, 52), 0x00000084u);
   EXPECT_EQ(LoadLeU16(bytes, 56), 0x0008u);
 }
@@ -549,7 +557,7 @@ TEST(AmdgpuDescriptorTest, EncodesGfx1200ResourceAndAbiFields) {
       &descriptor, iree_make_byte_span(bytes.data(), bytes.size())));
 
   EXPECT_EQ(LoadLeU32(bytes, 44), 0x00000000u);
-  EXPECT_EQ(LoadLeU32(bytes, 48), 0xe00c0001u);
+  EXPECT_EQ(LoadLeU32(bytes, 48), 0xe00f0001u);
   EXPECT_EQ(LoadLeU32(bytes, 52), 0x00000084u);
   EXPECT_EQ(LoadLeU16(bytes, 56), 0x0408u);
 }
@@ -573,7 +581,7 @@ TEST(AmdgpuDescriptorTest, EncodesGfx1250ResourceAndAbiFields) {
       &descriptor, iree_make_byte_span(bytes.data(), bytes.size())));
 
   EXPECT_EQ(LoadLeU32(bytes, 44), 0x00000000u);
-  EXPECT_EQ(LoadLeU32(bytes, 48), 0xc00c0000u);
+  EXPECT_EQ(LoadLeU32(bytes, 48), 0xc00f0000u);
   EXPECT_EQ(LoadLeU32(bytes, 52), 0x00000084u);
   EXPECT_EQ(LoadLeU16(bytes, 56), 0x0408u);
 }
