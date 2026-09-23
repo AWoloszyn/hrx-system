@@ -64,6 +64,24 @@ iree_status_t iree_hal_streaming_memory_allocate_host_staging(
     iree_hal_streaming_context_t* context, iree_host_size_t size,
     iree_hal_streaming_buffer_t** out_buffer);
 
+// Enqueues a strided fill as one command-buffer transaction. |row_pitch| and
+// |slice_pitch| are byte strides, and only |width| bytes in each row are
+// modified.
+// Synchronization: stream-ordered.
+iree_status_t iree_hal_streaming_memory_memset_3d(
+    iree_hal_streaming_context_t* context, iree_hal_streaming_deviceptr_t dst,
+    iree_device_size_t row_pitch, iree_device_size_t slice_pitch,
+    iree_device_size_t width, iree_host_size_t height, iree_host_size_t depth,
+    const void* pattern, iree_host_size_t pattern_length,
+    iree_hal_streaming_stream_t* stream);
+
+// Applies the host-completion rule for synchronous HIP memset operations.
+// Base device allocations remain asynchronous to the host; host-visible,
+// managed, and interior destinations complete before return.
+iree_status_t iree_hal_streaming_memory_complete_synchronous_memset(
+    iree_hal_streaming_context_t* context, iree_hal_streaming_deviceptr_t dst,
+    iree_device_size_t length, iree_hal_streaming_stream_t* stream);
+
 // Enqueues a pitched H2D copy as one command-buffer transaction.
 // Synchronization: stream-ordered.
 iree_status_t iree_hal_streaming_memcpy_host_to_device_2d(

@@ -380,6 +380,68 @@ static iree_status_t iree_hal_streaming_graph_record_memcpy_node(
   return iree_ok_status();
 }
 
+static iree_status_t iree_hal_streaming_graph_record_memset_node(
+    iree_hal_command_buffer_t* command_buffer,
+    const iree_hal_streaming_graph_memset_node_attrs_t* attrs) {
+  iree_device_size_t fill_length = 0;
+  if (IREE_UNLIKELY(!iree_device_size_checked_mul(
+          attrs->pattern_size, attrs->count, &fill_length))) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "memset node size overflows device size");
+  }
+
+  if (attrs->hip_height <= 1) {
+    return iree_hal_command_buffer_fill_buffer(
+        command_buffer,
+        iree_hal_streaming_convert_range_buffer_ref(attrs->dst_ref,
+                                                    fill_length),
+        &attrs->pattern, attrs->pattern_size, attrs->flags);
+  }
+
+  iree_device_size_t row_length = 0;
+  if (IREE_UNLIKELY(!iree_device_size_checked_mul(
+          attrs->pattern_size, attrs->hip_width, &row_length))) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "memset node row size overflows device size");
+  }
+  const iree_device_size_t row_pitch =
+      attrs->hip_pitch ? attrs->hip_pitch : row_length;
+  if (row_length > row_pitch) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "memset node width exceeds row pitch");
+  }
+  iree_device_size_t final_row_offset = 0;
+  iree_device_size_t pitched_fill_length = 0;
+  if (IREE_UNLIKELY(!iree_device_size_checked_mul(
+                        attrs->hip_height - 1, row_pitch, &final_row_offset) ||
+                    !iree_device_size_checked_add(final_row_offset, row_length,
+                                                  &pitched_fill_length))) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "memset node pitched range overflows");
+  }
+  if (pitched_fill_length > fill_length) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "memset node pitched range exceeds destination");
+  }
+
+  for (iree_device_size_t y = 0; y < attrs->hip_height; ++y) {
+    iree_device_size_t row_offset = 0;
+    if (IREE_UNLIKELY(
+            !iree_device_size_checked_mul(y, row_pitch, &row_offset) ||
+            !iree_device_size_checked_add(attrs->dst_ref.offset, row_offset,
+                                          &row_offset))) {
+      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                              "memset node row offset overflows");
+    }
+    IREE_RETURN_IF_ERROR(iree_hal_command_buffer_fill_buffer(
+        command_buffer,
+        iree_hal_make_buffer_ref(attrs->dst_ref.buffer->buffer, row_offset,
+                                 row_length),
+        &attrs->pattern, attrs->pattern_size, attrs->flags));
+  }
+  return iree_ok_status();
+}
+
 static inline void iree_hal_streaming_graph_block_get_ptrs(
     iree_hal_streaming_graph_block_t* block,
     iree_hal_streaming_graph_block_ptrs_t* out_ptrs);
@@ -1747,18 +1809,8 @@ static iree_status_t iree_hal_streaming_graph_record_partition(
       case IREE_HAL_STREAMING_GRAPH_NODE_TYPE_MEMSET: {
         const iree_hal_streaming_graph_memset_node_attrs_t* attrs =
             &node->attrs.memset;
-        iree_device_size_t fill_length = 0;
-        if (IREE_UNLIKELY(!iree_device_size_checked_mul(
-                attrs->pattern_size, attrs->count, &fill_length))) {
-          status = iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                                    "memset node size overflows device size");
-          break;
-        }
-        status = iree_hal_command_buffer_fill_buffer(
-            command_buffer,
-            iree_hal_streaming_convert_range_buffer_ref(attrs->dst_ref,
-                                                        fill_length),
-            &attrs->pattern, attrs->pattern_size, attrs->flags);
+        status =
+            iree_hal_streaming_graph_record_memset_node(command_buffer, attrs);
         break;
       }
       case IREE_HAL_STREAMING_GRAPH_NODE_TYPE_BATCH_MEM_OP: {

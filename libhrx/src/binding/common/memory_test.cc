@@ -541,6 +541,38 @@ TEST_F(CpuStreamingMemoryTest,
   iree_hal_semaphore_release(gate);
 }
 
+TEST_F(CpuStreamingMemoryTest, StridedMemsetPreservesRowAndSlicePadding) {
+  constexpr iree_device_size_t kAllocationSize = 24;
+  constexpr iree_device_size_t kRowPitch = 5;
+  constexpr iree_device_size_t kSlicePitch = 12;
+  constexpr iree_device_size_t kWidth = 3;
+  constexpr iree_host_size_t kHeight = 2;
+  constexpr iree_host_size_t kDepth = 2;
+  IREE_ASSERT_OK(iree_hal_streaming_memory_allocate_device(
+      context_, kAllocationSize, IREE_HAL_STREAMING_MEMORY_FLAG_NONE,
+      &buffer_));
+  device_pointer_ = iree_hal_streaming_buffer_device_pointer(buffer_);
+  ASSERT_NE(nullptr, buffer_->host_ptr);
+  std::memset(buffer_->host_ptr, 0x3C, kAllocationSize);
+
+  const uint8_t pattern = 0xA5;
+  IREE_ASSERT_OK(iree_hal_streaming_memory_memset_3d(
+      context_, device_pointer_, kRowPitch, kSlicePitch, kWidth, kHeight,
+      kDepth, &pattern, sizeof(pattern), stream_));
+  IREE_ASSERT_OK(iree_hal_streaming_stream_synchronize(stream_));
+
+  std::array<uint8_t, kAllocationSize> expected;
+  expected.fill(0x3C);
+  for (iree_host_size_t z = 0; z < kDepth; ++z) {
+    for (iree_host_size_t y = 0; y < kHeight; ++y) {
+      std::memset(expected.data() + z * kSlicePitch + y * kRowPitch, pattern,
+                  kWidth);
+    }
+  }
+  EXPECT_EQ(0,
+            std::memcmp(buffer_->host_ptr, expected.data(), expected.size()));
+}
+
 #if defined(IREE_PLATFORM_LINUX)
 TEST_F(CpuStreamingMemoryTest,
        ScalarD2HBarrierFailureDrainsRecordedCopyBeforeFreeingStaging) {

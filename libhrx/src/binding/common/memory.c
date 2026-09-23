@@ -75,6 +75,17 @@ typedef struct iree_hal_streaming_capture_fill_t {
   iree_host_size_t pattern_length;
 } iree_hal_streaming_capture_fill_t;
 
+typedef struct iree_hal_streaming_capture_strided_fill_t {
+  iree_hal_streaming_deviceptr_t dst;
+  iree_device_size_t row_pitch;
+  iree_device_size_t slice_pitch;
+  iree_device_size_t width;
+  iree_host_size_t height;
+  iree_host_size_t depth;
+  const void* pattern;
+  iree_host_size_t pattern_length;
+} iree_hal_streaming_capture_strided_fill_t;
+
 static iree_status_t iree_hal_streaming_capture_record_fill(
     iree_hal_streaming_graph_t* graph,
     iree_hal_streaming_graph_node_t** dependencies,
@@ -94,6 +105,64 @@ static iree_status_t iree_hal_streaming_capture_record_fill(
       graph, dependencies, dependency_count, capture->dst, pattern_value,
       capture->pattern_length, capture->length / capture->pattern_length,
       out_terminal_node);
+}
+
+static iree_status_t iree_hal_streaming_capture_record_strided_fill(
+    iree_hal_streaming_graph_t* graph,
+    iree_hal_streaming_graph_node_t** dependencies,
+    iree_host_size_t dependency_count, void* user_data,
+    iree_hal_streaming_graph_node_t** out_terminal_node) {
+  iree_hal_streaming_capture_strided_fill_t* capture =
+      (iree_hal_streaming_capture_strided_fill_t*)user_data;
+  if (capture->pattern_length != 1 && capture->pattern_length != 2 &&
+      capture->pattern_length != 4) {
+    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                            "unsupported pattern length %zu",
+                            capture->pattern_length);
+  }
+  uint32_t pattern_value = 0;
+  memcpy(&pattern_value, capture->pattern, capture->pattern_length);
+
+  iree_status_t status = iree_ok_status();
+  iree_hal_streaming_graph_node_t* previous_node = NULL;
+  for (iree_host_size_t z = 0; z < capture->depth && iree_status_is_ok(status);
+       ++z) {
+    iree_device_size_t slice_offset = 0;
+    if (IREE_UNLIKELY(!iree_device_size_checked_mul(z, capture->slice_pitch,
+                                                    &slice_offset))) {
+      status = iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                                "strided fill slice offset overflows");
+      break;
+    }
+    for (iree_host_size_t y = 0;
+         y < capture->height && iree_status_is_ok(status); ++y) {
+      iree_device_size_t row_offset = 0;
+      iree_hal_streaming_deviceptr_t row_dst = 0;
+      if (IREE_UNLIKELY(!iree_device_size_checked_mul(y, capture->row_pitch,
+                                                      &row_offset) ||
+                        !iree_device_size_checked_add(slice_offset, row_offset,
+                                                      &row_offset) ||
+                        !iree_device_size_checked_add(capture->dst, row_offset,
+                                                      &row_dst))) {
+        status = iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                                  "strided fill row address overflows");
+        break;
+      }
+      iree_hal_streaming_graph_node_t* row_dependency = previous_node;
+      iree_hal_streaming_graph_node_t** row_dependencies =
+          previous_node ? &row_dependency : dependencies;
+      const iree_host_size_t row_dependency_count =
+          previous_node ? 1 : dependency_count;
+      status = iree_hal_streaming_graph_add_fill_ptr_node(
+          graph, row_dependencies, row_dependency_count, row_dst, pattern_value,
+          capture->pattern_length, capture->width / capture->pattern_length,
+          &previous_node);
+    }
+  }
+  if (iree_status_is_ok(status)) {
+    *out_terminal_node = previous_node;
+  }
+  return status;
 }
 
 typedef struct iree_hal_streaming_capture_copy_t {
@@ -956,15 +1025,26 @@ iree_status_t iree_hal_streaming_memory_lookup_range_retain_for_context(
   IREE_ASSERT_ARGUMENT(execution_context);
   IREE_ASSERT_ARGUMENT(out_ref);
   memset(out_ref, 0, sizeof(*out_ref));
+
+  // Most stream operations target allocations owned by their execution
+  // context. Keep that path allocation-free and only snapshot the process-wide
+  // context list when the local allocation table does not contain the range.
+  iree_status_t status = iree_hal_streaming_memory_lookup_range_retain(
+      execution_context, device_ptr, size, out_ref);
+  if (iree_status_is_ok(status) ||
+      iree_status_code(status) != IREE_STATUS_NOT_FOUND) {
+    return status;
+  }
+  iree_status_ignore(status);
+
   const iree_hal_streaming_memory_range_request_t request = {
       .address = device_ptr,
       .length = size,
   };
   iree_hal_streaming_memory_range_match_t match;
   iree_host_size_t ref_count = 0;
-  iree_status_t status =
-      iree_hal_streaming_memory_lookup_ranges_retain_for_context(
-          execution_context, 1, &request, 1, out_ref, &ref_count, &match);
+  status = iree_hal_streaming_memory_lookup_ranges_retain_for_context(
+      execution_context, 1, &request, 1, out_ref, &ref_count, &match);
   if (iree_status_is_ok(status)) {
     out_ref->offset = match.offset;
   }
@@ -1628,8 +1708,8 @@ iree_status_t iree_hal_streaming_memory_allocate_device_pitched(
   *out_buffer = NULL;
   IREE_TRACE_ZONE_BEGIN(z0);
 
-  // Match HIP's observed pitched allocation granularity.
-  const iree_device_size_t alignment = 512;
+  const iree_device_size_t alignment =
+      IREE_HAL_STREAMING_PITCHED_ALLOCATION_ALIGNMENT;
   iree_device_size_t pitch = 0;
   if (IREE_UNLIKELY(!iree_device_size_checked_mul_add(width_bytes, 1,
                                                       alignment - 1, &pitch))) {
@@ -2608,21 +2688,6 @@ iree_status_t iree_hal_streaming_memory_allocate_managed(
   return iree_ok_status();
 }
 
-static void iree_hal_streaming_repeat_pattern(void* dst,
-                                              iree_device_size_t length,
-                                              const void* pattern,
-                                              iree_host_size_t pattern_length) {
-  if (pattern_length == 1) {
-    memset(dst, *(const uint8_t*)pattern, length);
-    return;
-  }
-  uint8_t* dest = (uint8_t*)dst;
-  for (iree_device_size_t i = 0; i < length; i += pattern_length) {
-    iree_device_size_t copy_size = iree_min(pattern_length, length - i);
-    memcpy(dest + i, pattern, copy_size);
-  }
-}
-
 static iree_status_t iree_hal_streaming_context_ensure_pageable_h2d_staging(
     iree_hal_streaming_context_t* context, iree_device_size_t size,
     iree_hal_streaming_buffer_t** out_staging) {
@@ -2864,6 +2929,7 @@ iree_status_t iree_hal_streaming_memory_memset(
     iree_hal_streaming_context_t* context, iree_hal_streaming_deviceptr_t dst,
     iree_device_size_t length, const void* pattern,
     iree_host_size_t pattern_length, iree_hal_streaming_stream_t* stream) {
+  IREE_ASSERT_ARGUMENT(context);
   IREE_ASSERT_ARGUMENT(dst);
   IREE_ASSERT_ARGUMENT(pattern);
   IREE_ASSERT_ARGUMENT(stream);
@@ -2885,79 +2951,167 @@ iree_status_t iree_hal_streaming_memory_memset(
     return iree_ok_status();
   }
 
-  // Look up the entire destination range. Managed allocations are process-wide
-  // HIP pointers, so a device switch after allocation must still resolve them.
-  iree_hal_streaming_buffer_ref_t dst_ref;
-  iree_hal_streaming_context_t* owner_context = NULL;
-  iree_status_t lookup_status =
-      iree_hal_streaming_memory_lookup_range(context, dst, length, &dst_ref);
-  if (!iree_status_is_ok(lookup_status) &&
-      iree_status_code(lookup_status) == IREE_STATUS_NOT_FOUND) {
-    iree_status_ignore(lookup_status);
-    lookup_status = iree_hal_streaming_memory_lookup_range_across_contexts(
-        dst, length, &owner_context, &dst_ref);
-    if (iree_status_is_ok(lookup_status)) {
-      if (!dst_ref.buffer->is_managed) {
-        iree_hal_streaming_context_release(owner_context);
-        owner_context = NULL;
-        lookup_status = iree_status_from_code(IREE_STATUS_NOT_FOUND);
-      }
-    }
-  }
-  if (!iree_status_is_ok(lookup_status)) {
-    iree_hal_streaming_context_release(owner_context);
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, lookup_status, "resolving `dst` buffer ref %p", (void*)dst);
-  }
-
-  if (dst_ref.buffer->is_managed && dst_ref.buffer->host_ptr) {
-    iree_status_t sync_status = iree_hal_streaming_stream_synchronize(stream);
-    if (!iree_status_is_ok(sync_status)) {
-      iree_hal_streaming_context_release(owner_context);
-      IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, sync_status);
-    }
-    uint8_t* dest = (uint8_t*)dst_ref.buffer->host_ptr + dst_ref.offset;
-    iree_hal_streaming_repeat_pattern(dest, length, pattern, pattern_length);
-    iree_hal_streaming_context_release(owner_context);
-    IREE_TRACE_ZONE_END(z0);
-    return iree_ok_status();
-  }
-
-  // Fallback for imported host memory that could not be represented as a HAL
-  // buffer.
-  if (!dst_ref.buffer->buffer) {
-    if (dst_ref.buffer->host_ptr) {
-      uint8_t* dest = (uint8_t*)dst_ref.buffer->host_ptr + dst_ref.offset;
-      iree_hal_streaming_repeat_pattern(dest, length, pattern, pattern_length);
-      iree_hal_streaming_context_release(owner_context);
-      IREE_TRACE_ZONE_END(z0);
-      return iree_ok_status();
-    }
-    iree_hal_streaming_context_release(owner_context);
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                             "no buffer available for memset"));
-  }
+  iree_hal_streaming_retained_buffer_ref_t dst_ref;
+  iree_status_t status =
+      iree_hal_streaming_memory_lookup_range_retain_for_context(
+          context, dst, length, &dst_ref);
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, status, "resolving `dst` buffer ref %p",
+                                    (void*)dst);
 
   iree_slim_mutex_lock(&stream->mutex);
-  iree_status_t status = iree_hal_streaming_stream_begin_locked(stream);
+  status = iree_hal_streaming_stream_begin_locked(stream);
 
-  iree_hal_buffer_ref_t target_ref =
-      iree_hal_streaming_convert_range_buffer_ref(dst_ref, length);
+  const iree_hal_buffer_ref_t target_ref =
+      iree_hal_make_buffer_ref(dst_ref.buffer, dst_ref.offset, length);
+  bool recorded_work = false;
   if (iree_status_is_ok(status)) {
     status = iree_hal_command_buffer_fill_buffer(
         stream->command_buffer, target_ref, pattern, pattern_length,
         IREE_HAL_FILL_FLAG_NONE);
+    recorded_work = iree_status_is_ok(status);
   }
   if (iree_status_is_ok(status)) {
     status = iree_hal_streaming_command_buffer_barrier(stream->command_buffer);
   }
   iree_slim_mutex_unlock(&stream->mutex);
-  iree_hal_streaming_context_release(owner_context);
-  IREE_RETURN_AND_END_ZONE_IF_ERROR(z0, status);
+
+  if (!iree_status_is_ok(status) && recorded_work) {
+    status =
+        iree_status_join(status, iree_hal_streaming_stream_synchronize(stream));
+  }
+  iree_hal_streaming_retained_buffer_ref_deinitialize(&dst_ref);
 
   IREE_TRACE_ZONE_END(z0);
-  return iree_ok_status();
+  return status;
+}
+
+iree_status_t iree_hal_streaming_memory_memset_3d(
+    iree_hal_streaming_context_t* context, iree_hal_streaming_deviceptr_t dst,
+    iree_device_size_t row_pitch, iree_device_size_t slice_pitch,
+    iree_device_size_t width, iree_host_size_t height, iree_host_size_t depth,
+    const void* pattern, iree_host_size_t pattern_length,
+    iree_hal_streaming_stream_t* stream) {
+  IREE_ASSERT_ARGUMENT(context);
+  IREE_ASSERT_ARGUMENT(dst);
+  IREE_ASSERT_ARGUMENT(pattern);
+  IREE_ASSERT_ARGUMENT(stream);
+  IREE_TRACE_ZONE_BEGIN(z0);
+
+  iree_device_size_t minimum_slice_pitch = 0;
+  if (IREE_UNLIKELY(
+          width == 0 || height == 0 || depth == 0 || width > row_pitch ||
+          pattern_length == 0 ||
+          (pattern_length != 1 && pattern_length != 2 && pattern_length != 4) ||
+          width % pattern_length != 0 ||
+          !iree_device_size_checked_mul(row_pitch, height,
+                                        &minimum_slice_pitch) ||
+          slice_pitch < minimum_slice_pitch)) {
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
+                             "invalid strided memset dimensions"));
+  }
+
+  iree_device_size_t last_slice_offset = 0;
+  iree_device_size_t last_row_offset = 0;
+  iree_device_size_t byte_span = 0;
+  if (IREE_UNLIKELY(
+          !iree_device_size_checked_mul(depth - 1, slice_pitch,
+                                        &last_slice_offset) ||
+          !iree_device_size_checked_mul(height - 1, row_pitch,
+                                        &last_row_offset) ||
+          !iree_device_size_checked_add(last_slice_offset, last_row_offset,
+                                        &byte_span) ||
+          !iree_device_size_checked_add(byte_span, width, &byte_span))) {
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                             "strided memset range overflows"));
+  }
+
+  // Graph fill nodes are one-dimensional. Capturing each row preserves the
+  // untouched pitch padding; immediate execution batches the same rows below.
+  iree_hal_streaming_capture_strided_fill_t capture = {
+      .dst = dst,
+      .row_pitch = row_pitch,
+      .slice_pitch = slice_pitch,
+      .width = width,
+      .height = height,
+      .depth = depth,
+      .pattern = pattern,
+      .pattern_length = pattern_length,
+  };
+  bool was_capturing = false;
+  IREE_RETURN_AND_END_ZONE_IF_ERROR(
+      z0, iree_hal_streaming_capture_try_record_node(
+              stream, iree_hal_streaming_capture_record_strided_fill, &capture,
+              &was_capturing));
+  if (was_capturing) {
+    IREE_TRACE_ZONE_END(z0);
+    return iree_ok_status();
+  }
+
+  iree_hal_streaming_retained_buffer_ref_t dst_ref;
+  iree_status_t status =
+      iree_hal_streaming_memory_lookup_range_retain_for_context(
+          context, dst, byte_span, &dst_ref);
+  if (!iree_status_is_ok(status)) {
+    IREE_RETURN_AND_END_ZONE_IF_ERROR(
+        z0, status, "resolving `dst` buffer ref %p", (void*)dst);
+  }
+
+  bool recorded_work = false;
+  iree_slim_mutex_lock(&stream->mutex);
+  status = iree_hal_streaming_stream_begin_locked(stream);
+  for (iree_host_size_t z = 0; z < depth && iree_status_is_ok(status); ++z) {
+    const iree_device_size_t slice_offset = z * slice_pitch;
+    for (iree_host_size_t y = 0; y < height && iree_status_is_ok(status); ++y) {
+      const iree_hal_buffer_ref_t target_ref = iree_hal_make_buffer_ref(
+          dst_ref.buffer,
+          dst_ref.offset + slice_offset + (iree_device_size_t)y * row_pitch,
+          width);
+      status = iree_hal_command_buffer_fill_buffer(
+          stream->command_buffer, target_ref, pattern, pattern_length,
+          IREE_HAL_FILL_FLAG_NONE);
+      recorded_work |= iree_status_is_ok(status);
+    }
+  }
+  if (iree_status_is_ok(status)) {
+    status = iree_hal_streaming_command_buffer_barrier(stream->command_buffer);
+  }
+  iree_slim_mutex_unlock(&stream->mutex);
+
+  if (!iree_status_is_ok(status) && recorded_work) {
+    status =
+        iree_status_join(status, iree_hal_streaming_stream_synchronize(stream));
+  }
+  iree_hal_streaming_retained_buffer_ref_deinitialize(&dst_ref);
+  IREE_TRACE_ZONE_END(z0);
+  return status;
+}
+
+iree_status_t iree_hal_streaming_memory_complete_synchronous_memset(
+    iree_hal_streaming_context_t* context, iree_hal_streaming_deviceptr_t dst,
+    iree_device_size_t length, iree_hal_streaming_stream_t* stream) {
+  IREE_ASSERT_ARGUMENT(context);
+  IREE_ASSERT_ARGUMENT(dst);
+  IREE_ASSERT_ARGUMENT(stream);
+
+  iree_hal_streaming_retained_buffer_ref_t dst_ref;
+  iree_status_t status =
+      iree_hal_streaming_memory_lookup_range_retain_for_context(
+          context, dst, length, &dst_ref);
+  if (iree_status_is_ok(status)) {
+    const bool requires_completion =
+        dst_ref.owner_wrapper->is_managed || dst_ref.offset != 0 ||
+        iree_any_bit_set(dst_ref.memory_type, IREE_HAL_MEMORY_TYPE_HOST_LOCAL);
+    if (requires_completion) {
+      status =
+          stream == context->default_stream
+              ? iree_hal_streaming_context_synchronize_legacy_default(context)
+              : iree_hal_streaming_stream_synchronize(stream);
+    }
+    iree_hal_streaming_retained_buffer_ref_deinitialize(&dst_ref);
+  }
+  return status;
 }
 
 iree_status_t iree_hal_streaming_memory_memcpy(
