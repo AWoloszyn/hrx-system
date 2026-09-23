@@ -1143,10 +1143,17 @@ static bool loom_low_target_legalize_should_accept_legal_contract(
 
 static bool loom_low_target_legalize_should_skip_entry(
     const loom_low_target_legalize_function_state_t* state,
-    const loom_target_legalizer_entry_t* entry) {
-  return state->legalization_context.policy ==
-             LOOM_TARGET_LEGALIZATION_POLICY_REFERENCE_ONLY &&
-         entry->provider_strategy == LOOM_TARGET_LEGALIZER_STRATEGY_TARGET;
+    const loom_target_legalizer_entry_t* entry,
+    const loom_target_contract_query_result_t* query_result) {
+  if (state->legalization_context.policy ==
+      LOOM_TARGET_LEGALIZATION_POLICY_REFERENCE_ONLY) {
+    return entry->provider_strategy == LOOM_TARGET_LEGALIZER_STRATEGY_TARGET;
+  }
+  // An opted-in legal rewrite may decline an op for another target. That does
+  // not make ordinary fallback entries eligible to rewrite an accepted op.
+  return query_result->outcome == LOOM_TARGET_CONTRACT_QUERY_LEGAL &&
+         !iree_any_bit_set(entry->flags,
+                           LOOM_TARGET_LEGALIZER_ENTRY_FLAG_REWRITE_LEGAL);
 }
 
 static bool loom_low_target_legalize_should_reject_reference_entry(
@@ -1478,7 +1485,8 @@ static iree_status_t loom_low_target_legalize_rewrite_op(
     if (i != 0 && !loom_low_target_legalize_entry_matches(state, entry, op)) {
       continue;
     }
-    if (loom_low_target_legalize_should_skip_entry(state, entry)) {
+    if (loom_low_target_legalize_should_skip_entry(state, entry,
+                                                   &query_result)) {
       continue;
     }
     if (iree_any_bit_set(

@@ -124,6 +124,7 @@ loom_check_test_suite(
     "test/source_low/source_low_wasm32_address_boundary.loom-test"
     "test/source_low/structured_allocation.loom-test"
     "test/source_low/structured_control.loom-test"
+    "test/source_low/target_legalize_native_store.loom-test"
     "test/source_low/uniform_predicate_control.loom-test"
     "test/source_low/vector_large_insert.loom-test"
   TEST_NAME_PREFIX_TO_STRIP

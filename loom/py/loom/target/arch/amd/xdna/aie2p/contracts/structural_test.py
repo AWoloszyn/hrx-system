@@ -8,7 +8,10 @@
 
 from loom.dialect.vector import defs as vector
 from loom.target.arch.amd.xdna.aie2p.contracts.structural import (
+    _I16_F16_BF16_8X8_VECTOR,
     _I16_INTERLEAVE_CONTROL,
+    _I16_TRANSPOSE_8X8_CONTROLS,
+    _I32_F32_4X4_VECTOR,
     _I32_F32_TRANSPOSE_4X4_CONTROL,
     _PACKED_VECTOR_ELEMENT_TYPES,
     _VECTOR_CARRIER_SPECS,
@@ -445,6 +448,7 @@ def test_i32_f32_4x4_transpose_uses_native_shuffle_mode() -> None:
         for rule in AIE2P_STRUCTURAL_RULES
         if isinstance(rule, DescriptorRule)
         and rule.source_op is vector.vector_transpose
+        and Guard.value_type("source", _I32_F32_4X4_VECTOR) in rule.guards
     )
 
     assert [
@@ -454,6 +458,75 @@ def test_i32_f32_4x4_transpose_uses_native_shuffle_mode() -> None:
         "amd.xdna.aie2p.shuffle.x.configured",
     ]
     assert rule.emit[0].immediates == {"i": _I32_F32_TRANSPOSE_4X4_CONTROL}
+
+
+def test_16bit_8x8_transpose_preserves_both_full_carrier_halves() -> None:
+    assert _I16_F16_BF16_8X8_VECTOR == Vector(("i16", "f16", "bf16"), dims=(8, 8))
+    rule = next(
+        rule
+        for rule in AIE2P_STRUCTURAL_RULES
+        if isinstance(rule, DescriptorRule)
+        and rule.source_op is vector.vector_transpose
+        and Guard.value_type("source", _I16_F16_BF16_8X8_VECTOR) in rule.guards
+    )
+    assert rule.guards == (
+        Guard.value_type("source", _I16_F16_BF16_8X8_VECTOR),
+        Guard.value_type("result", _I16_F16_BF16_8X8_VECTOR),
+        Guard.i64_array_count("permutation", 2),
+        Guard.i64_array_element_range("permutation", 0, 1, 1),
+        Guard.i64_array_element_range("permutation", 1, 0, 0),
+    )
+    assert len(rule.emit) == 7
+    low, high = rule.emit[:2]
+    assert isinstance(low, EmitRegisterSlice)
+    assert isinstance(high, EmitRegisterSlice)
+    assert low.source.field == high.source.field == "source"
+    assert (low.unit_offset, low.unit_count) == (0, 2)
+    assert (high.unit_offset, high.unit_count) == (2, 2)
+    assert _I16_TRANSPOSE_8X8_CONTROLS == (52, 53)
+    assert [
+        (operand.field_name, operand.unit_count) for operand in rule.descriptor.operands
+    ] == [("dst", 2), ("s1", 2), ("s2", 2), ("mod", 1)]
+    for index, mode in enumerate(_I16_TRANSPOSE_8X8_CONTROLS):
+        constant, shuffle = rule.emit[2 + 2 * index : 4 + 2 * index]
+        assert constant.descriptor.key == "amd.xdna.aie2p.constant.i32.mova"
+        assert constant.immediates == {"i": mode}
+        assert shuffle.descriptor.key == "amd.xdna.aie2p.shuffle.x.configured"
+        assert shuffle.operands["s1"] == low.result
+        assert shuffle.operands["s2"] == high.result
+        assert shuffle.operands["mod"] == constant.results["dst"]
+    joined = rule.emit[-1]
+    assert isinstance(joined, EmitRegisterConcat)
+    assert tuple(joined.sources) == (
+        rule.emit[3].results["dst"],
+        rule.emit[5].results["dst"],
+    )
+    assert joined.result.field == "result"
+
+
+def test_16bit_8x8_shape_aliases_preserve_element_type_and_payload() -> None:
+    rules = tuple(
+        rule
+        for rule in AIE2P_STRUCTURAL_RULES
+        if isinstance(rule, ValueAliasRule) and rule.source_op is vector.vector_bitcast
+    )
+    assert len(rules) == 6
+    for element_type in ("i16", "f16", "bf16"):
+        for source_type, result_type in (
+            (Vector(element_type, lanes=64), Vector(element_type, dims=(8, 8))),
+            (Vector(element_type, dims=(8, 8)), Vector(element_type, lanes=64)),
+        ):
+            rule = next(
+                rule
+                for rule in rules
+                if rule.guards
+                == (
+                    Guard.value_type("input", source_type),
+                    Guard.value_type("result", result_type),
+                )
+            )
+            assert rule.source.field == "input"
+            assert rule.result.field == "result"
 
 
 def test_16bit_interleave_uses_alternating_native_shuffle() -> None:

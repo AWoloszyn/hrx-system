@@ -442,10 +442,29 @@ static iree_status_t loom_aie2p_legalize_vector_store(
     return iree_ok_status();
   }
 
+  const bool has_native_store = context->contract_query_result->outcome ==
+                                LOOM_TARGET_CONTRACT_QUERY_LEGAL;
+  if (has_native_store) {
+    // Keep an accepted store for target lowering if its producer is opaque to
+    // packetization instead of continuing into semantic reference rewrites.
+    out_result->action = LOOM_TARGET_LEGALIZER_ACTION_DEFER;
+    // Accepted memory rules have static rank-one payloads. The ordinary
+    // four-W carrier still permits packetization of decomposable producers;
+    // native-width and accumulator stores retain their selected realization.
+    const loom_type_t value_type =
+        loom_module_value_type(context->module, loom_vector_store_value(op));
+    const uint64_t payload_bit_count =
+        (uint64_t)loom_type_dim_static_size_at(value_type, 0) *
+        loom_scalar_type_bitwidth(loom_type_element_type(value_type));
+    if (payload_bit_count != 1024) {
+      return iree_ok_status();
+    }
+  }
+
   bool rewritten = false;
   IREE_RETURN_IF_ERROR(loom_vector_packet_legalize_store(
       context, op, &kAie2pVectorPacketPolicy, &rewritten));
-  if (!rewritten) {
+  if (!rewritten && !has_native_store) {
     IREE_RETURN_IF_ERROR(loom_vector_store_to_scalar_rewrite_op(
         context->pass, context->rewriter, op, &rewritten));
   }
@@ -579,6 +598,7 @@ static const loom_target_legalizer_rule_t kAie2pLegalizerRules[] = {
         .legalize = loom_aie2p_legalize_vector_load,
     },
     {
+        .flags = LOOM_TARGET_LEGALIZER_ENTRY_FLAG_REWRITE_LEGAL,
         .root_kind = LOOM_OP_VECTOR_STORE,
         .legalize = loom_aie2p_legalize_vector_store,
     },
