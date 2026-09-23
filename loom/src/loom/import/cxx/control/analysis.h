@@ -36,10 +36,16 @@ struct Destination {
 // Retained proof that a source loop has a stable, nonwrapping unsigned
 // interval.
 struct CountedLoop {
+  struct Bound {
+    // Resolved identifier supplying the loop-invariant bound.
+    cxx::Symbol* binding;
+    // Evaluated source expression, including its integer promotions.
+    cxx::ExpressionAST* expression;
+  };
   // Source binding replaced by the structured loop's induction argument.
   cxx::Symbol* induction;
   // Proven constant or stable runtime bound evaluated once by translation.
-  std::variant<unsigned, cxx::ExpressionAST*> upper;
+  std::variant<unsigned, Bound> upper;
   // Positive constant step in the source's unsigned-int width.
   unsigned step;
 };
@@ -67,6 +73,9 @@ class ControlFlow final : private cxx::ASTVisitor {
   // Unique bindings mutated under a structured statement or conditional value
   // expression, in encounter order. Includes mutations in conditions.
   std::span<cxx::Symbol* const> written(cxx::AST* owner) const;
+  // Whether an evaluated address expression requires this binding's object
+  // identity. The complete function is classified before translation begins.
+  bool addressed(cxx::Symbol* binding) const;
   // Retained automatic-object destination, or no value for a memory access or
   // unsupported lvalue. Whole identifiers need no indexed projection record.
   std::optional<Destination> destination(cxx::ExpressionAST* expression) const;
@@ -114,6 +123,8 @@ class ControlFlow final : private cxx::ASTVisitor {
   std::vector<cxx::AST*> owners_;
   // Stable encounter order determines region argument/result order.
   std::unordered_map<cxx::AST*, std::vector<cxx::Symbol*>> writes_;
+  // Automatic bindings whose addresses occur in evaluated source expressions.
+  std::unordered_set<cxx::Symbol*> addressed_;
   // Nested lvalue ownership and transitive component offsets computed once.
   std::unordered_map<cxx::ExpressionAST*, Destination> destinations_;
   // Memory record objects and member projections, including nested fields.

@@ -240,6 +240,7 @@ class Translator {
     control_.emplace(unit_, types_, body);
     auto saved = loom_builder_enter_region(&builder_, op, region);
     values_.clear();
+    locals_.clear();
     value_arena_.reset();
     size_t argument_index = 0;
     for (auto* parameter : parameters) {
@@ -251,7 +252,13 @@ class Translator {
       if (partition.kind == ValueKind::Pointer && kernel) {
         value = storage_.root(value.ssa(), defined.source);
       }
-      values_[parameter] = name(value, cxx::to_string(parameter->name()));
+      value = name(value, cxx::to_string(parameter->name()));
+      if (control_->addressed(parameter)) {
+        auto access = allocate_local(parameter, 0, defined.source);
+        storage_.store(access, value.ssa(), parameter->type(), defined.source);
+      } else {
+        values_[parameter] = value;
+      }
     }
     auto returned = return_sequence({body->statementList, nullptr});
     loom_op_t* terminator;
@@ -288,14 +295,44 @@ class Translator {
     }
   }
 
+  StorageAccess allocate_local(cxx::Symbol* symbol, int64_t alignment,
+                               cxx::AST* owner) {
+    auto allocation = storage_.allocate(
+        symbol->type(), LOOM_VALUE_FACT_MEMORY_SPACE_PRIVATE, alignment, owner);
+    auto spelling = cxx::to_string(symbol->name());
+    name(Value(allocation.pointer), spelling + "_storage");
+    name(allocation.view, spelling + "_view");
+    locals_[symbol] = allocation;
+    return {allocation.view, std::nullopt};
+  }
+
+  Value binding(cxx::Symbol* symbol, cxx::AST* owner) {
+    auto found = locals_.find(symbol);
+    return found == locals_.end()
+               ? values_.at(symbol)
+               : name(storage_.load({found->second.view, std::nullopt},
+                                    symbol->type(), owner),
+                      cxx::to_string(symbol->name()));
+  }
+
   void initialize_variable(cxx::VariableSymbol* variable,
                            cxx::ExpressionAST* initializer, cxx::AST* owner) {
-    if (!initializer) {
-      fail(owner, "locals require initializers");
-    }
     if (cxx::type_cast<cxx::BoundedArrayType>(
             types_.unqualified(variable->type()))) {
       fail(owner, "local arrays require __shared__ in this slice");
+    }
+    if (control_->addressed(variable) ||
+        unit_.typeTraits().is_volatile(variable->type())) {
+      auto access =
+          allocate_local(variable, variable->explicitAlignment(), owner);
+      if (initializer) {
+        storage_.store(access, expression(initializer).ssa(), variable->type(),
+                       owner);
+      }
+      return;
+    }
+    if (!initializer) {
+      fail(owner, "locals require initializers");
     }
     types_.partition(variable->type(), owner);
     types_.admit_copy(variable->constructor(), variable->type(), owner);
@@ -487,6 +524,12 @@ class Translator {
     if (auto* nested = cxx::ast_cast<cxx::NestedExpressionAST>(ast)) {
       return address(nested->expression);
     }
+    if (auto* id = cxx::ast_cast<cxx::IdExpressionAST>(ast)) {
+      auto found = locals_.find(id->symbol);
+      if (found != locals_.end()) {
+        return {found->second.view, std::nullopt};
+      }
+    }
     if (auto* subscript = cxx::ast_cast<cxx::SubscriptExpressionAST>(ast)) {
       auto operands = subscript_operands(subscript);
       return storage_.subscript(operands.base, operands.index,
@@ -500,9 +543,13 @@ class Translator {
     if (auto* nested = cxx::ast_cast<cxx::NestedExpressionAST>(ast)) {
       return object_address(nested->expression);
     }
-    if (auto* id = cxx::ast_cast<cxx::IdExpressionAST>(ast);
-        id && unit_.typeTraits().is_array(id->type)) {
-      return storage_.project(expression(id).pointer(), id->type, id);
+    if (auto* id = cxx::ast_cast<cxx::IdExpressionAST>(ast)) {
+      if (auto found = locals_.find(id->symbol); found != locals_.end()) {
+        return storage_.project(found->second.pointer, id->type, id);
+      }
+      if (unit_.typeTraits().is_array(id->type)) {
+        return storage_.project(expression(id).pointer(), id->type, id);
+      }
     }
     if (auto* member = cxx::ast_cast<cxx::MemberExpressionAST>(ast)) {
       auto* field = cxx::symbol_cast<cxx::FieldSymbol>(member->symbol);
@@ -550,6 +597,9 @@ class Translator {
   Lvalue destination(cxx::ExpressionAST* expression, cxx::AST* owner) {
     types_.require_mutable(expression->type, expression);
     if (auto destination = control_->destination(expression)) {
+      if (locals_.contains(destination->binding)) {
+        return {expression->type, address(expression)};
+      }
       if (!values_.contains(destination->binding)) {
         fail(owner, "mutation requires an owned automatic source binding");
       }
@@ -929,11 +979,14 @@ class Translator {
     }
 
     if (auto* decision = cxx::ast_cast<cxx::ConditionExpressionAST>(ast)) {
-      return values_.at(decision->symbol);
+      return binding(decision->symbol, ast);
     }
     if (auto* id = cxx::ast_cast<cxx::IdExpressionAST>(ast)) {
       if (auto found = values_.find(id->symbol); found != values_.end()) {
         return found->second;
+      }
+      if (locals_.contains(id->symbol)) {
+        return binding(id->symbol, ast);
       }
       if (auto* enumerator =
               cxx::symbol_cast<cxx::EnumeratorSymbol>(id->symbol)) {
@@ -1436,8 +1489,9 @@ class Translator {
                  "shared storage must be an uninitialized fixed scalar array "
                  "in the kernel");
           }
-          auto allocation = storage_.workgroup(
-              array, source_variable->explicitAlignment(), variable);
+          auto allocation =
+              storage_.allocate(array, LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP,
+                                source_variable->explicitAlignment(), variable);
           auto spelling = cxx::to_string(variable->symbol->name());
           values_[variable->symbol] = name(Value(allocation.pointer), spelling);
           name(allocation.view, spelling + "_view");
@@ -1547,7 +1601,7 @@ class Translator {
                         LoopTest test, cxx::VariableSymbol* decision) {
     initialize_condition(decision);
     auto written = live_mutations(ast);
-    if (decision) {
+    if (decision && values_.contains(decision)) {
       std::erase(written, decision);
       written.push_back(decision);
     }
@@ -1583,8 +1637,13 @@ class Translator {
     // A decision object is recreated after the body and for-loop increment.
     // The preheader supplied its first value, so every check sees a real value.
     if (decision) {
-      values_[decision] = name(expression(decision->initializer()),
-                               cxx::to_string(decision->name()));
+      auto value = expression(decision->initializer());
+      if (auto found = locals_.find(decision); found != locals_.end()) {
+        storage_.store({found->second.view, std::nullopt}, value.ssa(),
+                       decision->type(), ast);
+      } else {
+        values_[decision] = name(value, cxx::to_string(decision->name()));
+      }
     }
     auto yielded = current(written);
     check(loom_scf_yield_build(&builder_, yielded.data(), yielded.size(),
@@ -1594,6 +1653,7 @@ class Translator {
     bind_values(written, loom_op_results(op));
     if (decision) {
       values_.erase(decision);
+      locals_.erase(decision);
     }
   }
 
@@ -1616,7 +1676,8 @@ class Translator {
         constant_upper
             ? scalars_.integer(static_cast<int32_t>(*constant_upper),
                                LOOM_SCALAR_TYPE_I32, source)
-            : expression(std::get<cxx::ExpressionAST*>(counted.upper)).ssa();
+            : expression(std::get<CountedLoop::Bound>(counted.upper).expression)
+                  .ssa();
     auto upper = unsigned_offset(bound, source);
     auto step = scalars_.integer(counted.step, LOOM_SCALAR_TYPE_OFFSET, source);
     auto depth = schedule.pipeline_depth()
@@ -1862,6 +1923,9 @@ class Translator {
   ValueArena value_arena_;
   // Bound symbols, never identifier spellings, key source-to-SSA mappings.
   std::unordered_map<cxx::Symbol*, Value> values_;
+  // Addressed automatic objects retain one allocation across direct and aliased
+  // accesses. They are not transported as mutable SSA bindings at region edges.
+  std::unordered_map<cxx::Symbol*, StorageAllocation> locals_;
   // Immutable control facts for the function currently being translated.
   std::optional<ControlFlow> control_;
 };

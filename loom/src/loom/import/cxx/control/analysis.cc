@@ -51,13 +51,23 @@ std::span<cxx::Symbol* const> ControlFlow::written(cxx::AST* owner) const {
                                 : found->second;
 }
 
+bool ControlFlow::addressed(cxx::Symbol* binding) const {
+  return addressed_.contains(binding);
+}
+
 bool ControlFlow::storage_backed(cxx::MemberExpressionAST* expression) const {
   return storage_expressions_.contains(expression);
 }
 
 const CountedLoop* ControlFlow::counted(cxx::ForStatementAST* loop) const {
   auto found = counted_.find(loop);
-  return found == counted_.end() ? nullptr : &found->second;
+  if (found == counted_.end() || addressed(found->second.induction)) {
+    return nullptr;
+  }
+  // An aliased bound can change through a helper without a syntactic write in
+  // the loop. Consult complete address demand, including later source uses.
+  auto* bound = std::get_if<CountedLoop::Bound>(&found->second.upper);
+  return bound && addressed(bound->binding) ? nullptr : &found->second;
 }
 
 cxx::ConditionExpressionAST* ControlFlow::condition_declaration(
@@ -191,6 +201,11 @@ void ControlFlow::visit(cxx::PostIncrExpressionAST* ast) {
 }
 
 void ControlFlow::visit(cxx::UnaryExpressionAST* ast) {
+  if (!ast->symbol && ast->op == cxx::TokenKind::T_AMP) {
+    if (auto target = classify_destination(ast->expression)) {
+      addressed_.insert(target->binding);
+    }
+  }
   if (ast->op == cxx::TokenKind::T_PLUS_PLUS ||
       ast->op == cxx::TokenKind::T_MINUS_MINUS) {
     record(ast->expression);
@@ -358,7 +373,9 @@ std::optional<CountedLoop> ControlFlow::classify(cxx::ForStatementAST* loop) {
       std::ranges::find(loop_writes, bound->symbol) != loop_writes.end()) {
     return std::nullopt;
   }
-  return CountedLoop{induction, condition->rightExpression, step_value};
+  return CountedLoop{
+      induction, CountedLoop::Bound{bound->symbol, condition->rightExpression},
+      step_value};
 }
 
 }  // namespace loom::cxx_import
