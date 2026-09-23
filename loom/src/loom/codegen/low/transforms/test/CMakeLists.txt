@@ -37,6 +37,7 @@ loom_check_test_suite(
     "target_legalize_report.loom-test"
     "target_legalize_report_revisits.loom-test"
     "target_legalize_structure.loom-test"
+    "target_legalize_vector_atomic.loom-test"
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

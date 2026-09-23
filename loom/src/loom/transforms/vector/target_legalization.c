@@ -107,6 +107,23 @@ static iree_status_t loom_vector_legalize_descriptor(
   return iree_ok_status();
 }
 
+static iree_status_t loom_vector_legalize_atomic(
+    const loom_target_legalizer_entry_t* entry,
+    loom_target_legalization_context_t* context, loom_op_t* op,
+    loom_target_legalizer_result_t* out_result) {
+  (void)entry;
+  *out_result = (loom_target_legalizer_result_t){
+      .action = LOOM_TARGET_LEGALIZER_ACTION_NO_COMMENT,
+  };
+  bool rewritten = false;
+  IREE_RETURN_IF_ERROR(loom_vector_atomic_to_scalar_rewrite_op(
+      context->pass, context->rewriter, op, &rewritten));
+  if (rewritten) {
+    out_result->action = LOOM_TARGET_LEGALIZER_ACTION_REWRITTEN;
+  }
+  return iree_ok_status();
+}
+
 iree_status_t loom_vector_from_elements_linearize_rewrite_op(
     loom_rewriter_t* rewriter, loom_op_t* op, bool* out_rewritten) {
   *out_rewritten = false;
@@ -425,6 +442,26 @@ static iree_status_t loom_vector_legalize_predicate_extension(
 }
 
 static const loom_target_legalizer_rule_t kVectorLegalizerRules[] = {
+    {
+        .root_kind = LOOM_OP_VECTOR_ATOMIC_REDUCE,
+        .legalize = loom_vector_legalize_atomic,
+    },
+    {
+        .root_kind = LOOM_OP_VECTOR_ATOMIC_REDUCE_MASK,
+        .legalize = loom_vector_legalize_atomic,
+    },
+    {
+        .root_kind = LOOM_OP_VECTOR_ATOMIC_RMW,
+        .legalize = loom_vector_legalize_atomic,
+    },
+    {
+        .root_kind = LOOM_OP_VECTOR_ATOMIC_RMW_MASK,
+        .legalize = loom_vector_legalize_atomic,
+    },
+    {
+        .root_kind = LOOM_OP_VECTOR_ATOMIC_CMPXCHG,
+        .legalize = loom_vector_legalize_atomic,
+    },
     {
         .root_kind = LOOM_OP_VECTOR_EXTSI,
         .first_operand_element_types = LOOM_SCALAR_TYPE_SET_I1,
