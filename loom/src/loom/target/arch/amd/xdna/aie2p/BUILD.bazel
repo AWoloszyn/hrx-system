@@ -131,15 +131,23 @@ loom_cc_library(
 
 loom_cc_library(
     name = "legalization",
-    srcs = ["legalization.c"],
-    hdrs = ["legalization.h"],
+    srcs = [
+        "legalization.c",
+        "legalization_table.c",
+    ],
+    hdrs = [
+        "legalization.h",
+        "legalization_table.h",
+    ],
     deps = [
         ":core_descriptors",
+        "//loom/src/loom/ir",
         "//loom/src/loom/ops/vector",
         "//loom/src/loom/target:legalization",
         "//loom/src/loom/transforms/vector:packet_legalization",
         "//loom/src/loom/transforms/vector:target_legalization",
         "//loom/src/loom/transforms/vector:to_scalar",
+        "//loom/src/loom/util:fact_table",
         "//runtime/src/iree/base",
     ],
 )
@@ -485,6 +493,7 @@ loom_check_test_suite(
         "test/source_low/fused_packet_memory.loom-test",
         "test/source_low/index_conversion.loom-test",
         "test/source_low/lookup_table.loom-test",
+        "test/source_low/lookup_table_vector.loom-test",
         "test/source_low/loop_counter_offset.loom-test",
         "test/source_low/matrix_bfp.loom-test",
         "test/source_low/matrix_multiply.loom-test",
