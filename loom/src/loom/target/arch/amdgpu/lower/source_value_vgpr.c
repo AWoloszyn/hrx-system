@@ -77,6 +77,7 @@ static bool loom_amdgpu_source_memory_access_prefers_vgpr(
     return true;
   }
   if (plan.operation_kind != LOOM_LOW_SOURCE_MEMORY_OPERATION_LOAD ||
+      plan.minimum_alignment < 4 ||
       (plan.memory_space != LOOM_VALUE_FACT_MEMORY_SPACE_GLOBAL &&
        plan.memory_space != LOOM_VALUE_FACT_MEMORY_SPACE_CONSTANT) ||
       iree_any_bit_set(

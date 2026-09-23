@@ -1927,7 +1927,10 @@ static bool loom_amdgpu_memory_access_try_select_global_smem(
     loom_low_source_memory_operation_kind_t kind,
     loom_amdgpu_memory_access_t* access) {
   loom_amdgpu_memory_access_t candidate = *access;
+  // Scalar memory discards the address's two low bits. Packed element types
+  // may require less alignment than the register-sized packets carrying them.
   if (kind != LOOM_LOW_SOURCE_MEMORY_OPERATION_LOAD ||
+      candidate.source.minimum_alignment < 4 ||
       (candidate.source.memory_space != LOOM_VALUE_FACT_MEMORY_SPACE_GLOBAL &&
        candidate.source.memory_space !=
            LOOM_VALUE_FACT_MEMORY_SPACE_CONSTANT) ||
