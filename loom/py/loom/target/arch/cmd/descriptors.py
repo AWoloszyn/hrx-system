@@ -48,6 +48,8 @@ _REG_B8 = "cmd.b8"
 _REG_B16 = "cmd.b16"
 _REG_B32 = "cmd.b32"
 _REG_B64 = "cmd.b64"
+_REG_INDEX = "cmd.index"
+_REG_OFFSET = "cmd.offset"
 _REG_BUFFER = "cmd.buffer"
 _REG_BINDING = "cmd.binding"
 _REG_BUFFER_REF = "cmd.buffer_ref"
@@ -90,6 +92,8 @@ _ALT_BY_CLASS = {
         _REG_B16,
         _REG_B32,
         _REG_B64,
+        _REG_INDEX,
+        _REG_OFFSET,
         _REG_BUFFER,
         _REG_BINDING,
         _REG_BUFFER_REF,
@@ -159,6 +163,8 @@ _CONSTANT_DESCRIPTORS = (
     _constant_descriptor(_REG_B16, "b16", 16),
     _constant_descriptor(_REG_B32, "b32", 32),
     _constant_descriptor(_REG_B64, "b64", 64),
+    _constant_descriptor(_REG_INDEX, "index", 64),
+    _constant_descriptor(_REG_OFFSET, "offset", 64),
 )
 
 _VALUE_DESCRIPTORS = (
@@ -226,6 +232,8 @@ def _dispatch_descriptor(*, indirect_mode: str | None, barrier: bool) -> Descrip
                     _REG_B16,
                     _REG_B32,
                     _REG_B64,
+                    _REG_INDEX,
+                    _REG_OFFSET,
                     _REG_BUFFER,
                     _REG_BINDING,
                     _REG_U64,
@@ -379,6 +387,8 @@ CMD_CORE_DESCRIPTOR_SET = DescriptorSet(
         _scalar_reg_class(_REG_B16, 16),
         _scalar_reg_class(_REG_B32, 32),
         _scalar_reg_class(_REG_B64, 64),
+        _scalar_reg_class(_REG_INDEX, 64),
+        _scalar_reg_class(_REG_OFFSET, 64),
         _reference_reg_class(_REG_BUFFER),
         _scalar_reg_class(_REG_BINDING, 32),
         _reference_reg_class(_REG_BUFFER_REF),

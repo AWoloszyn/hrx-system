@@ -31,6 +31,10 @@ typedef enum loom_cmd_lower_dispatch_argument_kind_e {
   LOOM_CMD_LOWER_DISPATCH_ARGUMENT_KIND_B32 = 3,
   // Exact scalar payload occupying 64 bits.
   LOOM_CMD_LOWER_DISPATCH_ARGUMENT_KIND_B64 = 4,
+  // Signed logical index value in its canonical 64-bit representation.
+  LOOM_CMD_LOWER_DISPATCH_ARGUMENT_KIND_INDEX = 5,
+  // Unsigned logical byte offset in its canonical 64-bit representation.
+  LOOM_CMD_LOWER_DISPATCH_ARGUMENT_KIND_OFFSET = 6,
 } loom_cmd_lower_dispatch_argument_kind_t;
 
 // One classified device-ABI argument consumed by closed command lowering.
@@ -39,7 +43,7 @@ typedef struct loom_cmd_lower_dispatch_argument_t {
   loom_cmd_lower_dispatch_argument_kind_t kind;
   // Source value used to reuse its prepared low representation.
   loom_value_id_t source_value;
-  // Exact tagless scalar bit pattern; ignored for buffer arguments.
+  // Exact logical scalar bit pattern; ignored for buffer arguments.
   uint64_t scalar_bits;
 } loom_cmd_lower_dispatch_argument_t;
 
@@ -91,7 +95,8 @@ typedef struct loom_cmd_lower_plan_t {
 // Exact tuples become direct dispatches. Stable source views remain static
 // indirect, while transient source views become dynamic indirect after a
 // preceding execution barrier. Buffer and view arguments become
-// resolved ranges; exact scalar arguments preserve their tagless ABI bits.
+// resolved ranges; exact scalar arguments preserve their logical kind and
+// bits. Address scalars remain target-width-independent until materialization.
 // Unsupported kernel-argument forms fail without changing the source program.
 // On success the replacement keeps the source symbol identity and is returned
 // in |out_low_function|.

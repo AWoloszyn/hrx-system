@@ -238,6 +238,7 @@ loom_cc_test(
         "//loom/src/loom/testing:module_ptr",
         "//loom/src/loom/verify",
         "//runtime/src/iree/base",
+        "//runtime/src/iree/base:core_headers",
         "//runtime/src/iree/base/internal:arena",
         "//runtime/src/iree/io:stream",
         "//runtime/src/iree/testing:gtest",

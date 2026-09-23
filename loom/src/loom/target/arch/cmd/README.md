@@ -249,10 +249,14 @@ application to supply Loom-produced or external executables through the same
 table ABI.
 
 Dispatch arguments form a logical typed payload. Buffer arguments are encoded
-as fixed or rebindable root ranges; scalar arguments use exact `b8`, `b16`,
-`b32`, or `b64` bits. The artifact does not choose native argument offsets,
-padding, or calling convention. A materializer combines each logical entry
-schema with executable reflection for its command system.
+as fixed or rebindable root ranges. Fixed-width scalar arguments use exact
+`b8`, `b16`, `b32`, or `b64` bits, while logical `index` and `offset` arguments
+retain their distinct carrier semantics and exact canonical 64-bit values. The
+artifact does not choose a target carrier width, native argument offset,
+padding, or calling convention. A materializer must combine each logical entry
+schema with executable reflection, validate representability, and repack
+address scalars to the reflected width. A fixed-width scalar requires an exact
+reflected width match.
 
 ## Artifact Boundary
 
@@ -270,7 +274,7 @@ The artifact records:
 
 - fixed buffers, rebindable bindings, executables, and entry requirements;
 - operational buffer ranges and logical entry argument schemas;
-- tagless dispatch argument bytes and ordered command records;
+- exact dispatch argument bytes and ordered command records;
 - parameter roots, keys, and concrete placements;
 - transient slab and optional launch-count storage requirements.
 
