@@ -46,6 +46,7 @@ loom_check_test_suite(
     "frontend.cxx-test"
     "functions.cxx-test"
     "initializer_dependencies.cxx-test"
+    "integer_intrinsics.cxx-test"
     "intrinsics_invalid.cxx-test"
     "kernel_intrinsics.cxx-test"
     "kernel_intrinsics_invalid.cxx-test"
@@ -163,6 +164,32 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_test_module(
   NAME
+    integer_intrinsics_test_module
+  SRCS
+    "integer_intrinsics.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    integer_intrinsics_test_execute_vm_reference_test
+  MODULE
+    "::integer_intrinsics_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test_module(
+  NAME
     local_addresses_test_module
   SRCS
     "local_addresses.cxx"
@@ -202,6 +229,32 @@ loom_execution_test(
     local_arrays_test_execute_vm_reference_test
   MODULE
     "::local_arrays_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test_module(
+  NAME
+    local_names_test_module
+  SRCS
+    "local_names.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    local_names_test_execute_vm_reference_test
+  MODULE
+    "::local_names_test_module"
   LABELS
     "iree-build-requirement=loom.target.arch.vm"
     "loom-execution-profile=vm_reference"

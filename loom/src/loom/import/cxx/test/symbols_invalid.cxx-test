@@ -173,3 +173,31 @@ struct [[loom::symbol("record")]] Record {};
 // ====
 // ERROR@+1: LOWERING/059 "intrinsic bindings do not define Loom symbols"
 [[loom::assume, loom::symbol("assume")]] void assume(bool);
+
+// ====
+unsigned entry(unsigned input) {
+  // ERROR@+1: LOWERING/059 "with a leading attribute"
+  using Word [[loom::symbol("word")]] = unsigned;
+  return input;
+}
+
+// ====
+unsigned entry(unsigned input) {
+  // ERROR@+1: LOWERING/059 "with a leading attribute"
+  using Pointer = unsigned* [[loom::symbol("pointer")]];
+  return input;
+}
+
+// ====
+namespace values { constexpr unsigned offset = 7; }
+unsigned entry(unsigned input) {
+  // ERROR@+1: LOWERING/059 "with a leading attribute"
+  [[loom::symbol("values")]] using namespace values;
+  return input + offset;
+}
+
+// ====
+namespace values { constexpr unsigned offset = 7; }
+// ERROR@+1: LOWERING/059 "with a leading attribute"
+[[loom::symbol("values")]] using namespace values;
+unsigned entry(unsigned input) { return input + offset; }

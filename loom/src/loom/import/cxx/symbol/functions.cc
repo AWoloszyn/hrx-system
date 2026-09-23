@@ -164,6 +164,10 @@ void Functions::collect(cxx::DeclarationAST* declaration,
                                      alias->typeId->attributeList);
     reject_global_binding_declarator(unit_, diagnostics_,
                                      alias->typeId->declarator);
+  } else if (auto* directive =
+                 cxx::ast_cast<cxx::UsingDirectiveAST>(declaration)) {
+    reject_global_binding_attributes(unit_, diagnostics_,
+                                     directive->attributeList);
   } else if (auto* attribute =
                  cxx::ast_cast<cxx::AttributeDeclarationAST>(declaration)) {
     admit_declaration(nullptr, attribute->attributeList, attribute, scope);

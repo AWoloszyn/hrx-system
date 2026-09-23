@@ -15,7 +15,7 @@ template <class Float>
 [[loom::op("scalar.addf")]] Float different(Float, float);
 
 double entry(double value) {
-  // ERROR@+1: LOWERING/059 "intrinsic operands must have the result's floating-point type"
+  // ERROR@+1: LOWERING/059 "intrinsic operands must have the result's type"
   return different(value, 2.0f);
 }
 

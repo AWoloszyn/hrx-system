@@ -508,6 +508,26 @@ float read_view(View source) {
 specialization deduces its own return type. The generic reader accepts either
 type, and Loom retains the shape and layout facts through the helper calls.
 
+## Integer bit counts
+
+`<loomcxx/scalar.h>` exposes `ctlzi`, `cttzi`, and `ctpopi` for non-boolean
+integer types. These count leading zeros, trailing zeros, and set bits in the
+source type's representation. The result keeps the input type; narrow operands
+are not implicitly widened before counting. For zero input, the zero counts
+return the type's bit width, and the population count returns zero.
+
+```cpp
+#include <loomcxx/scalar.h>
+
+unsigned first_ready_lane(unsigned mask) {
+  return loom::scalar::cttzi(mask);
+}
+```
+
+This imports as `scalar.cttzi ... : i32`, using the same shared target lowering
+as authored High. Signed values count representation bits. Floating-point math
+permissions do not apply to these integer operations.
+
 ## Integer atomics
 
 `<loomcxx/atomic.h>` exposes scalar atomic observations and updates through typed

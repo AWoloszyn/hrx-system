@@ -1,6 +1,6 @@
 // RUN: verify
 // Matching floating-point categories do not permit changing operand precision.
-// ERROR@+1: LOWERING/059 "intrinsic operands must have the result's floating-point type"
+// ERROR@+1: LOWERING/059 "intrinsic operands must have the result's type"
 [[loom::op("scalar.expf")]] float custom(double);
 float entry(double value) { return custom(value); }
 
@@ -23,7 +23,7 @@ float entry(float x) { return broken(x); }
 
 // ====
 // Generated intrinsic signatures are checked.
-// ERROR@+1: LOWERING/059 "intrinsic operands must have the result's floating-point type"
+// ERROR@+1: LOWERING/059 "intrinsic operands must have the result's type"
 [[loom::op("scalar.expf")]] float broken(int);
 float entry(int x) { return broken(x); }
 

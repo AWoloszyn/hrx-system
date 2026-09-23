@@ -14,7 +14,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from loom.dialect.scalar import FastMathFlags
-from loom.dsl import ATTR_TYPE_FLAGS, FLOAT, Op
+from loom.dsl import ATTR_TYPE_FLAGS, FLOAT, INTEGER, Op
 from loom.gen import bootstrap
 from loom.gen.ops.model import load_dialect_generation
 from loom.gen.support.files import write_text_file
@@ -24,15 +24,19 @@ _GENERATOR = "loom.gen.cxx.intrinsics"
 DESCRIPTION = "Loom C++ scalar declarations"
 REGENERATE_COMMAND = "python3 loom/py/loom/gen/run.py cxx_intrinsics --in-place"
 
+# Integer bit counts preserve the input width and have no source permissions.
+_INTEGER_PROJECTIONS = frozenset(("scalar.ctlzi", "scalar.cttzi", "scalar.ctpopi"))
+
 
 def validate_scalar_projection(op: Op) -> None:
     """Checks the complete contract represented by the homogeneous projection."""
     if op.regions or op.successors or len(op.results) != 1 or not op.operands:
         raise ValueError(f"{op.name}: requires fixed operands and one scalar result")
     fields = (*op.operands, *op.results)
-    if any(field.variadic or field.type_constraint != FLOAT for field in fields) or any(operand.optional for operand in op.operands):
-        raise ValueError(f"{op.name}: requires fixed floating-point values")
-    if any(attr.name != "fastmath" or attr.attr_type != ATTR_TYPE_FLAGS or attr.enum_def != FastMathFlags for attr in op.attrs):
+    category = op.results[0].type_constraint
+    if category not in (FLOAT, INTEGER) or any(field.variadic or field.type_constraint != category for field in fields) or any(operand.optional for operand in op.operands):
+        raise ValueError(f"{op.name}: requires fixed values in one scalar category")
+    if (category == INTEGER and op.attrs) or any(attr.name != "fastmath" or attr.attr_type != ATTR_TYPE_FLAGS or attr.enum_def != FastMathFlags for attr in op.attrs):
         raise ValueError(f"{op.name}: requires an explicit attribute projection")
     if not any(trait.name == "Pure" for trait in op.traits):
         raise ValueError(f"{op.name}: requires a pure scalar operation")
@@ -42,11 +46,15 @@ def validate_scalar_projection(op: Op) -> None:
 
 
 def scalar_projections() -> tuple[Op, ...]:
-    """Selects fixed homogeneous floating operations, without inventing wrappers
-    for regions, shaped types, optional operands, or semantic attributes.
+    """Selects homogeneous floating operations and integer bit counts, without
+    inventing wrappers for regions, shaped types, or semantic attributes.
     """
     selected = []
     for op in load_dialect_generation("scalar").ops:
+        if op.name in _INTEGER_PROJECTIONS:
+            validate_scalar_projection(op)
+            selected.append(op)
+            continue
         if len(op.results) != 1 or not op.operands:
             continue
         if any(field.type_constraint != FLOAT for field in (*op.operands, *op.results)):
@@ -88,9 +96,15 @@ def generate_header(ops: Sequence[Op]) -> str:
             flags = ', "afn"' if namespace else ""
             lines.append("")
             lines.extend("// " + line for line in textwrap.wrap(op.doc, 76))
-            arguments = ", ".join(f"Float {operand.name}" for operand in op.operands)
-            lines.append("template <class Float> requires (__is_floating_point(Float))")
-            lines.append(f'[[loom::op("{op.name}"{flags})]] Float {name}({arguments});')
+            if op.results[0].type_constraint == INTEGER:
+                parameter = "Integer"
+                constraint = "__is_integral(Integer) && !__is_same(Integer, bool)"
+            else:
+                parameter = "Float"
+                constraint = "__is_floating_point(Float)"
+            arguments = ", ".join(f"{parameter} {operand.name}" for operand in op.operands)
+            lines.append(f"template <class {parameter}> requires ({constraint})")
+            lines.append(f'[[loom::op("{op.name}"{flags})]] {parameter} {name}({arguments});')
         if namespace:
             lines.extend(["", f"}}  // namespace {namespace}"])
     lines.extend(["", "}  // namespace loom::scalar", "", "#endif  // LOOMCXX_SCALAR_H_", ""])
@@ -125,7 +139,9 @@ def generate_source(ops: Sequence[Op]) -> str:
             ]
         )
     lines.append("static const loom_cxx_scalar_binding_t bindings[] = {")
-    lines.extend(f'    {{"{op.name}", {len(op.operands)}, {str(bool(op.attrs)).lower()}, {op.name.replace(".", "_")}}},' for op in ops)
+    for op in ops:
+        category = "INTEGER" if op.results[0].type_constraint == INTEGER else "FLOAT"
+        lines.append(f'    {{"{op.name}", LOOM_CXX_SCALAR_CATEGORY_{category}, {len(op.operands)}, {str(bool(op.attrs)).lower()}, {op.name.replace(".", "_")}}},')
     lines.extend(
         [
             "};",

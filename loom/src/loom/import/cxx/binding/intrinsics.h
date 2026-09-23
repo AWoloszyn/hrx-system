@@ -50,7 +50,7 @@ class Intrinsics {
   struct ScalarBinding {
     // Operation and permissions admitted independently of the concrete type.
     ScalarOperation operation;
-    // Source-selected floating-point scalar representation.
+    // Source-selected scalar representation within the admitted category.
     loom_type_t type;
 
     bool equivalent(const ScalarBinding& other) const {
