@@ -29,6 +29,7 @@ from loom.target.arch.amd.xdna.aie2p.core_descriptors import (
 )
 from loom.target.contracts import (
     AttrProject,
+    Buffer,
     DescriptorEmitForm,
     DescriptorResultType,
     DescriptorRule,
@@ -355,6 +356,53 @@ def _scalar_select_rule(type_pattern: TypePattern) -> DescriptorRule:
                 },
                 results={"d0": ValueRef.result("result")},
                 copy_operands=("s2",),
+            ),
+        ),
+    )
+
+
+def _buffer_select_rule() -> DescriptorRule:
+    address_to_scalar = _descriptor("amd.xdna.aie2p.move.local-address-to-scalar")
+    scalar_to_address = _descriptor("amd.xdna.aie2p.move.scalar-to-local-address")
+    select = _descriptor("amd.xdna.aie2p.select.nonzero.i32")
+    true_address = ValueRef.temporary("true_address")
+    false_address = ValueRef.temporary("false_address")
+    selected_address = ValueRef.temporary("selected_address")
+    return DescriptorRule(
+        source_op=scf.scf_select,
+        descriptor=select,
+        guards=(
+            Guard.value_type("condition", _I1),
+            *_typed_guards(("true_value", "false_value", "result"), Buffer()),
+        ),
+        emit=(
+            _op_emit(
+                address_to_scalar,
+                operands={"src": ValueRef.operand("true_value")},
+                results={"dst": true_address},
+                result_types={"dst": DescriptorResultType()},
+            ),
+            _op_emit(
+                address_to_scalar,
+                operands={"src": ValueRef.operand("false_value")},
+                results={"dst": false_address},
+                result_types={"dst": DescriptorResultType()},
+            ),
+            _op_emit(
+                select,
+                operands={
+                    "s0": true_address,
+                    "s1": false_address,
+                    "s2": ValueRef.operand("condition"),
+                },
+                results={"d0": selected_address},
+                result_types={"d0": DescriptorResultType()},
+                copy_operands=("s2",),
+            ),
+            _op_emit(
+                scalar_to_address,
+                operands={"src": selected_address},
+                results={"dst": ValueRef.result("result")},
             ),
         ),
     )

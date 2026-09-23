@@ -34,6 +34,10 @@ static iree_status_t loom_aie2p_map_type(void* user_data,
                                          loom_type_t source_type,
                                          loom_type_t* out_low_type) {
   (void)user_data;
+  if (loom_type_is_buffer(source_type)) {
+    return loom_low_lower_make_register_type(
+        context, AIE2P_CORE_REG_CLASS_ID_AIE2P_EP, 1, out_low_type);
+  }
   if (loom_type_is_scalar(source_type)) {
     switch (loom_type_element_type(source_type)) {
       case LOOM_SCALAR_TYPE_INDEX:

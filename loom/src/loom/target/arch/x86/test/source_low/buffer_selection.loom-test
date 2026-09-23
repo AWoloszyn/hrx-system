@@ -17,7 +17,8 @@ low.func.def target<x86.scalar.core> abi(object_function) @choose_buffer(%first:
 // ====
 
 // A selected reference remains a buffer for both reads and writes.
-func.def @exchange_selected_byte(%first: buffer, %second: buffer, %choose_first: i1, %position: offset, %replacement: i32) -> (i32) {
+func.def @exchange_selected_byte(%first: buffer, %second: buffer, %choose_first: i1, %position_input: offset, %replacement: i32) -> (i32) {
+  %position = index.assume %position_input [range(%position_input, 0, 1024)] : offset
   %selected = scf.select %choose_first, %first, %second : buffer
   %previous = buffer.load.i8.u %selected[%position]
   buffer.store.i8 %replacement, %selected[%position]
@@ -26,8 +27,8 @@ func.def @exchange_selected_byte(%first: buffer, %second: buffer, %choose_first:
 
 // ----
 low.func.def target<x86.scalar.core> abi(object_function) @exchange_selected_byte(%first: reg<x86.gpr64>, %second: reg<x86.gpr64>, %choose_first: reg<x86.gpr32>, %position: reg<x86.gpr64>, %replacement: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
-  %14 = copy %second : reg<x86.gpr64> -> reg<x86.gpr64>
-  %selected = select.gpr64 %choose_first, %first, %14
+  %15 = copy %second : reg<x86.gpr64> -> reg<x86.gpr64>
+  %selected = select.gpr64 %choose_first, %first, %15
   %previous = movzx.load.indexed.u8.gpr32 %selected, %position {disp32 = 0, scale = 1}
   mov.store.indexed.u8.gpr32 %replacement, %selected, %position {disp32 = 0, scale = 1}
   return %previous
@@ -37,7 +38,9 @@ low.func.def target<x86.scalar.core> abi(object_function) @exchange_selected_byt
 
 // Canonicalization may select the components independently, but both selections
 // retain the same condition and therefore the same complete coordinate.
-func.def @selected_buffer_coordinate(%first: buffer, %second: buffer, %first_origin: offset, %second_origin: offset, %choose_first: i1) -> (i32) {
+func.def @selected_buffer_coordinate(%first: buffer, %second: buffer, %first_origin_input: offset, %second_origin_input: offset, %choose_first: i1) -> (i32) {
+  %first_origin = index.assume %first_origin_input [range(%first_origin_input, 0, 1024)] : offset
+  %second_origin = index.assume %second_origin_input [range(%second_origin_input, 0, 1024)] : offset
   %selected, %origin = scf.if %choose_first -> (buffer, offset) {
     scf.yield %first, %first_origin : buffer, offset
   } else {
@@ -49,10 +52,10 @@ func.def @selected_buffer_coordinate(%first: buffer, %second: buffer, %first_ori
 
 // ----
 low.func.def target<x86.scalar.core> abi(object_function) @selected_buffer_coordinate(%first: reg<x86.gpr64>, %second: reg<x86.gpr64>, %first_origin: reg<x86.gpr64>, %second_origin: reg<x86.gpr64>, %choose_first: reg<x86.gpr32>) -> (reg<x86.gpr32>) asm {
-  %17 = copy %second : reg<x86.gpr64> -> reg<x86.gpr64>
-  %selected = select.gpr64 %choose_first, %first, %17
-  %19 = copy %second_origin : reg<x86.gpr64> -> reg<x86.gpr64>
-  %origin = select.gpr64 %choose_first, %first_origin, %19
+  %19 = copy %second : reg<x86.gpr64> -> reg<x86.gpr64>
+  %selected = select.gpr64 %choose_first, %first, %19
+  %21 = copy %second_origin : reg<x86.gpr64> -> reg<x86.gpr64>
+  %origin = select.gpr64 %choose_first, %first_origin, %21
   %value = movzx.load.indexed.u8.gpr32 %selected, %origin {disp32 = 0, scale = 1}
   return %value
 }
@@ -60,7 +63,9 @@ low.func.def target<x86.scalar.core> abi(object_function) @selected_buffer_coord
 // ====
 
 // Rotating a reference and its origin carries both values over the same edge.
-func.def @rotate_buffer_coordinates(%first: buffer, %second: buffer, %first_origin: offset, %second_origin: offset, %count: index) -> (i32) {
+func.def @rotate_buffer_coordinates(%first: buffer, %second: buffer, %first_origin_input: offset, %second_origin_input: offset, %count: index) -> (i32) {
+  %first_origin = index.assume %first_origin_input [range(%first_origin_input, 0, 1024)] : offset
+  %second_origin = index.assume %second_origin_input [range(%second_origin_input, 0, 1024)] : offset
   %begin = index.constant 0 : index
   %step = index.constant 1 : index
   %selected, %origin, %unused_buffer, %unused_origin = scf.for %i = [%begin to %count step %step](%current = %first : buffer, %current_origin = %first_origin : offset, %other = %second : buffer, %other_origin = %second_origin : offset) -> (buffer, offset, buffer, offset) {
@@ -75,11 +80,11 @@ low.func.def target<x86.scalar.core> abi(object_function) @rotate_buffer_coordin
   %begin = mov.imm64 0
   low.br ^_bb1(%begin: reg<x86.gpr64>, %first: reg<x86.gpr64>, %first_origin: reg<x86.gpr64>, %second: reg<x86.gpr64>, %second_origin: reg<x86.gpr64>)
 ^_bb1(%i: reg<x86.gpr64>, %current: reg<x86.gpr64>, %current_origin: reg<x86.gpr64>, %other: reg<x86.gpr64>, %other_origin: reg<x86.gpr64>):
-  %42 = cmp.slt.gpr64 %i, %count
-  low.cond_br %42, ^_bb2, ^_bb3 : reg<x86.gpr32>
+  %44 = cmp.slt.gpr64 %i, %count
+  low.cond_br %44, ^_bb2, ^_bb3 : reg<x86.gpr32>
 ^_bb2:
-  %43 = lea.disp %i {disp32 = 1}
-  low.br ^_bb1(%43: reg<x86.gpr64>, %other: reg<x86.gpr64>, %other_origin: reg<x86.gpr64>, %current: reg<x86.gpr64>, %current_origin: reg<x86.gpr64>)
+  %45 = lea.disp %i {disp32 = 1}
+  low.br ^_bb1(%45: reg<x86.gpr64>, %other: reg<x86.gpr64>, %other_origin: reg<x86.gpr64>, %current: reg<x86.gpr64>, %current_origin: reg<x86.gpr64>)
 ^_bb3:
   %value = movzx.load.indexed.u8.gpr32 %current, %current_origin {disp32 = 0, scale = 1}
   return %value

@@ -29,12 +29,8 @@ _I32_MAX = (2**31) - 1
 
 _MEMORY_ROOTS = (
     (
-        SourceMemoryRootKind.BLOCK_ARGUMENT,
-        ("unknown", "generic", "workgroup"),
-    ),
-    (
-        SourceMemoryRootKind.ALLOCA,
-        ("private", "workgroup"),
+        SourceMemoryRootKind.ANY,
+        ("unknown", "generic", "private", "workgroup"),
     ),
 )
 
