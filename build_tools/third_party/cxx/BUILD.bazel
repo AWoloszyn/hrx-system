@@ -33,6 +33,7 @@ exports_files([
     "record_layout_owner.patch",
     "template_lookahead.patch",
     "unsigned_complement.patch",
+    "using_directive_attributes.patch",
     "vector_constants.patch",
     "vector_conversion.patch",
     "vector_list_conversion.patch",

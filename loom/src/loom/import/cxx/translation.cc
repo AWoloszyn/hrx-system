@@ -1495,6 +1495,25 @@ class Translator {
       if (cxx::ast_cast<cxx::EmptyDeclarationAST>(declaration->declaration)) {
         return;
       }
+      if (auto* alias = cxx::ast_cast<cxx::AliasDeclarationAST>(
+              declaration->declaration)) {
+        reject_global_binding_attributes(unit_, diagnostics_,
+                                         alias->attributeList);
+        reject_global_binding_attributes(unit_, diagnostics_,
+                                         alias->typeId->attributeList);
+        reject_global_binding_declarator(unit_, diagnostics_,
+                                         alias->typeId->declarator);
+        return;
+      }
+      if (auto* directive =
+              cxx::ast_cast<cxx::UsingDirectiveAST>(declaration->declaration)) {
+        reject_global_binding_attributes(unit_, diagnostics_,
+                                         directive->attributeList);
+        return;
+      }
+      if (cxx::ast_cast<cxx::UsingDeclarationAST>(declaration->declaration)) {
+        return;
+      }
       auto* simple =
           cxx::ast_cast<cxx::SimpleDeclarationAST>(declaration->declaration);
       if (!simple) {
@@ -1505,6 +1524,9 @@ class Translator {
       for (auto* variable : cxx::ListView{simple->initDeclaratorList}) {
         reject_global_binding_declarator(unit_, diagnostics_,
                                          variable->declarator);
+        if (cxx::symbol_cast<cxx::TypeAliasSymbol>(variable->symbol)) {
+          continue;
+        }
         auto* source_variable =
             cxx::symbol_cast<cxx::VariableSymbol>(variable->symbol);
         if (!source_variable || source_variable->isStatic() ||
