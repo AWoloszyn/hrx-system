@@ -39,8 +39,9 @@ uint32_t loom_low_allocation_live_range_interval_storage_end_point(
 uint32_t loom_low_allocation_live_range_interval_initial_unit_end_point(
     const loom_liveness_interval_t* interval);
 
-// Returns the preferred base-location alignment for |interval|.
+// Returns the base-location alignment for |interval|'s target register class.
 uint32_t loom_low_allocation_live_range_interval_alignment(
+    const loom_low_descriptor_set_t* descriptor_set,
     const loom_liveness_interval_t* interval);
 
 // Returns the one-past-last live program point for one assigned unit. Unit

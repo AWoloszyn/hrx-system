@@ -485,3 +485,75 @@ CHECK: *"name":"low","type":"reg<amdgpu.vgpr>"},"class":*,"start_point":5,"end_p
 CHECK: *"name":"high","type":"reg<amdgpu.vgpr>"},"class":*,"start_point":6,"end_point":15,"unit_count":1,"location":{"kind":"physical_register","base":0,"count":1}}*
 CHECK: *"name":"state","type":"reg<amdgpu.vgpr x8>"},"class":*,"start_point":2,"end_point":17,"unit_count":8,"location":{"kind":"physical_register","base":16,"count":8}}*
 CHECK: *"name":"next","type":"reg<amdgpu.vgpr x8>"},"class":*,"start_point":14,"end_point":15,"unit_count":8,"location":{"kind":"physical_register","base":16,"count":8}}*
+
+// ====
+
+// RUN: with-checks emit low-allocation-json @gfx942_odd_vgpr_tuple fixed=%blocker:physical_register:0:1
+
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @gfx942_odd_vgpr_tuple(%blocker: reg<amdgpu.vgpr>, %payload: reg<amdgpu.vgpr x3>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr x3>) asm {
+  return %blocker, %payload
+}
+
+// ----
+CHECK: *"spill_count":0,*
+CHECK: *"name":"payload","type":"reg<amdgpu.vgpr x3>"},"class":*,"start_point":0,"end_point":1,"unit_count":3,"location":{"kind":"physical_register","base":2,"count":3}}*
+
+// ====
+
+// RUN: with-checks emit low-allocation-json @gfx950_odd_vgpr_tuple fixed=%blocker:physical_register:0:1
+
+amdgpu.target<gfx950> @target
+
+low.func.def target<amdgpu.cdna4.core>(@target) @gfx950_odd_vgpr_tuple(%blocker: reg<amdgpu.vgpr>, %payload: reg<amdgpu.vgpr x3>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr x3>) asm {
+  return %blocker, %payload
+}
+
+// ----
+CHECK: *"spill_count":0,*
+CHECK: *"name":"payload","type":"reg<amdgpu.vgpr x3>"},"class":*,"start_point":0,"end_point":1,"unit_count":3,"location":{"kind":"physical_register","base":2,"count":3}}*
+
+// ====
+
+// RUN: with-checks emit low-allocation-json @gfx1100_odd_vgpr_tuple fixed=%blocker:physical_register:0:1
+
+amdgpu.target<gfx1100> @target
+
+low.func.def target<amdgpu.rdna3.core>(@target) @gfx1100_odd_vgpr_tuple(%blocker: reg<amdgpu.vgpr>, %payload: reg<amdgpu.vgpr x3>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr x3>) asm {
+  return %blocker, %payload
+}
+
+// ----
+CHECK: *"spill_count":0,*
+CHECK: *"name":"payload","type":"reg<amdgpu.vgpr x3>"},"class":*,"start_point":0,"end_point":1,"unit_count":3,"location":{"kind":"physical_register","base":1,"count":3}}*
+
+// ====
+
+// RUN: with-checks emit low-allocation-json @cdna_odd_accumulator_tuple fixed=%blocker:physical_register:0:1
+
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @cdna_odd_accumulator_tuple(%blocker: reg<amdgpu.agpr>, %payload: reg<amdgpu.agpr x3>) -> (reg<amdgpu.agpr>, reg<amdgpu.agpr x3>) asm {
+  return %blocker, %payload
+}
+
+// ----
+CHECK: *"spill_count":0,*
+CHECK: *"name":"payload","type":"reg<amdgpu.agpr x3>"},"class":*,"start_point":0,"end_point":1,"unit_count":3,"location":{"kind":"physical_register","base":2,"count":3}}*
+
+// ====
+
+// RUN: with-checks emit low-allocation-json @cdna_odd_slice_relocation fixed=%packet:physical_register:0:4
+
+amdgpu.target<gfx942> @target
+
+low.func.def target<amdgpu.cdna3.core>(@target) @cdna_odd_slice_relocation(%packet: reg<amdgpu.vgpr x4>) -> (reg<amdgpu.vgpr x3>) asm {
+  %payload = slice %packet[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr x3>
+  return %payload
+}
+
+// ----
+// The slice cannot alias the odd subrange of its source packet.
+CHECK: *"spill_count":0,*
+CHECK: *"name":"payload","type":"reg<amdgpu.vgpr x3>"},"class":*,"start_point":1,"end_point":2,"unit_count":3,"location":{"kind":"physical_register","base":0,"count":3}}*

@@ -790,8 +790,8 @@ static iree_status_t loom_low_allocation_coalescing_append_interval_at_location(
           location_base, unit_count)) {
     return iree_ok_status();
   }
-  const uint32_t alignment =
-      loom_low_allocation_live_range_interval_alignment(interval);
+  const uint32_t alignment = loom_low_allocation_live_range_interval_alignment(
+      context->search_context->descriptor_set, interval);
   const loom_low_reg_class_t* reg_class =
       &context->search_context->descriptor_set
            ->reg_classes[capacity.descriptor_reg_class_id];

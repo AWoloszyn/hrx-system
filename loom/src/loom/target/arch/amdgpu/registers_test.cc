@@ -215,6 +215,14 @@ TEST_F(AmdgpuRegistersTest,
     ExpectRegisterClass(descriptor_set, IREE_SV("amdgpu.vgpr"), 32,
                         c.vgpr_allocatable_count,
                         LOOM_LOW_REG_CLASS_FLAG_PHYSICAL);
+    const auto* sgpr =
+        &descriptor_set->reg_classes[LOOM_AMDGPU_REG_CLASS_ID_SGPR];
+    const auto* vgpr =
+        &descriptor_set->reg_classes[LOOM_AMDGPU_REG_CLASS_ID_VGPR];
+    EXPECT_EQ(loom_low_reg_class_unit_alignment(sgpr, 3), 1u);
+    EXPECT_EQ(loom_low_reg_class_unit_alignment(vgpr, 1), 1u);
+    EXPECT_EQ(loom_low_reg_class_unit_alignment(vgpr, 3), c.has_agpr ? 2u : 1u);
+    EXPECT_EQ(loom_low_reg_class_unit_alignment(vgpr, 6), c.has_agpr ? 2u : 1u);
     ExpectRegisterClass(
         descriptor_set, IREE_SV("amdgpu.scc"), 1, 1,
         LOOM_LOW_REG_CLASS_FLAG_PHYSICAL | LOOM_LOW_REG_CLASS_FLAG_UNSPILLABLE);
@@ -229,7 +237,8 @@ TEST_F(AmdgpuRegistersTest,
       ExpectRegisterClassMissing(descriptor_set, IREE_SV("amdgpu.agpr"));
     } else {
       ExpectRegisterClass(descriptor_set, IREE_SV("amdgpu.agpr"), 32, 256,
-                          LOOM_LOW_REG_CLASS_FLAG_PHYSICAL);
+                          LOOM_LOW_REG_CLASS_FLAG_PHYSICAL |
+                              LOOM_LOW_REG_CLASS_FLAG_EVEN_ALIGNED_TUPLES);
     }
 
     if (!c.has_mode) {

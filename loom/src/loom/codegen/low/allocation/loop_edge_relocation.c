@@ -247,7 +247,8 @@ static iree_status_t loom_low_allocation_loop_edge_relocation_group_supported(
             context->descriptor_set, &capacity, proposed.location_kind,
             proposed.location_base, proposed.location_count) ||
         proposed.location_base %
-                loom_low_allocation_live_range_interval_alignment(interval) !=
+                loom_low_allocation_live_range_interval_alignment(
+                    context->descriptor_set, interval) !=
             0) {
       return iree_ok_status();
     }
@@ -585,9 +586,9 @@ static bool loom_low_allocation_loop_edge_relocation_eviction_location_is_legal(
     return false;
   }
   const uint32_t required_alignment =
-      loom_low_allocation_live_range_interval_alignment(eviction->interval);
-  if (required_alignment == 0 ||
-      assignment.location_base % required_alignment != 0) {
+      loom_low_allocation_live_range_interval_alignment(context->descriptor_set,
+                                                        eviction->interval);
+  if (assignment.location_base % required_alignment != 0) {
     return false;
   }
   for (iree_host_size_t i = 0; i < candidate_count; ++i) {

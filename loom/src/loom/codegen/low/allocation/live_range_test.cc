@@ -131,21 +131,25 @@ TEST(LowAllocationLiveRangeTest, ComputesIntervalStorageEndPoints) {
 }
 
 TEST(LowAllocationLiveRangeTest, ComputesIntervalAlignment) {
-  loom_liveness_interval_t scalar_interval = {};
-  scalar_interval.unit_count = 1;
-
-  loom_liveness_interval_t vector_interval = {};
-  vector_interval.unit_count = 4;
-
-  loom_liveness_interval_t odd_interval = {};
-  odd_interval.unit_count = 3;
-
-  EXPECT_EQ(loom_low_allocation_live_range_interval_alignment(&scalar_interval),
-            1u);
-  EXPECT_EQ(loom_low_allocation_live_range_interval_alignment(&vector_interval),
-            4u);
-  EXPECT_EQ(loom_low_allocation_live_range_interval_alignment(&odd_interval),
-            1u);
+  loom_low_reg_class_t reg_classes[2] = {};
+  reg_classes[1].flags = LOOM_LOW_REG_CLASS_FLAG_EVEN_ALIGNED_TUPLES;
+  loom_low_descriptor_set_t descriptor_set = {};
+  descriptor_set.reg_classes = reg_classes;
+  descriptor_set.reg_class_count = IREE_ARRAYSIZE(reg_classes);
+  const uint32_t unit_counts[] = {1, 2, 3, 4, 5, 6, 7, 8, 12};
+  const uint32_t unaligned[] = {1, 2, 1, 4, 1, 1, 1, 8, 1};
+  const uint32_t aligned[] = {1, 2, 2, 4, 2, 2, 2, 8, 2};
+  for (size_t i = 0; i < IREE_ARRAYSIZE(unit_counts); ++i) {
+    loom_liveness_interval_t interval = {};
+    interval.unit_count = unit_counts[i];
+    EXPECT_EQ(loom_low_allocation_live_range_interval_alignment(&descriptor_set,
+                                                                &interval),
+              unaligned[i]);
+    interval.value_class.register_class_id = 1;
+    EXPECT_EQ(loom_low_allocation_live_range_interval_alignment(&descriptor_set,
+                                                                &interval),
+              aligned[i]);
+  }
 }
 
 TEST(LowAllocationLiveRangeTest, ChecksBlockObservableOverlap) {

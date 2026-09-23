@@ -237,8 +237,8 @@ static iree_status_t loom_low_allocation_interval_assignment_record_failure(
     return iree_ok_status();
   }
 
-  const uint32_t alignment = iree_max(
-      (uint32_t)1, loom_low_allocation_live_range_interval_alignment(interval));
+  const uint32_t alignment = loom_low_allocation_live_range_interval_alignment(
+      state->context->target->descriptor_set, interval);
   const loom_low_reg_class_t* reg_class =
       &state->context->target->descriptor_set
            ->reg_classes[capacity->descriptor_reg_class_id];
