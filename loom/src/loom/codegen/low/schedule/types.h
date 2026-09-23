@@ -18,6 +18,7 @@
 #define LOOM_CODEGEN_LOW_SCHEDULE_TYPES_H_
 
 #include "iree/base/api.h"
+#include "iree/base/bitmap.h"
 #include "iree/base/internal/arena.h"
 #include "loom/analysis/liveness.h"
 #include "loom/codegen/low/descriptors.h"
@@ -695,6 +696,11 @@ typedef struct loom_low_schedule_options_t {
   loom_low_schedule_pair_affinity_list_t pair_affinities;
   // Optional concrete pair groups preferred when rescheduling rewritten IR.
   loom_low_placement_pair_use_list_t preferred_pair_uses;
+  // Borrowed module-value membership retained by allocation repair. Marked
+  // results were cloned next to individual users to shorten their lifetimes;
+  // operand-capturing materializations remain deferred while those users are
+  // blocked. Empty outside repair; spill insertion invalidates this fact.
+  iree_bitmap_t per_user_rematerialized_values;
   // Optional target-provided implicit state reads for structural low
   // materializations that emit target packets without descriptor rows.
   loom_low_schedule_structural_state_read_list_t structural_state_reads;
