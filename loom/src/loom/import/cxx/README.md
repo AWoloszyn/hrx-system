@@ -155,6 +155,36 @@ vector casts and `__builtin_bit_cast` continue to reinterpret equal-sized
 objects. The importer leaves vector legalization and instruction selection to
 the target compiler.
 
+## Packed scalar and vector bit casts
+
+`__builtin_bit_cast(DestinationType, value)` reinterprets equal-width scalar
+and vector payloads. A packed word can become byte, FP8, or FP16 lanes for
+vector computation, then return to a scalar word for storage:
+
+```cpp
+using Bytes4 = unsigned char __attribute__((ext_vector_type(4)));
+
+unsigned increment_bytes(unsigned word) {
+  auto bytes = __builtin_bit_cast(Bytes4, word);
+  return __builtin_bit_cast(unsigned, bytes + Bytes4{1, 2, 3, 4});
+}
+```
+
+Lane zero occupies the least-significant bits. Each byte addition wraps in its
+own lane. The imported value stays in SSA: a scalar endpoint uses a one-lane
+`vector.from_elements` or `vector.extract` around `vector.bitcast`. The target
+compiler can realize those representation changes as register aliases. Floating
+bit casts preserve the payload, including signed zero and NaN encodings; use
+`__builtin_convertvector` for numeric conversion.
+
+The same operation supports scalar-to-scalar and vector-to-vector values.
+Pointers, aggregates, padded vectors, and casts between `bool` and byte-sized
+values are rejected at import. Loom represents `bool` as an `i1` predicate,
+not its C++ object byte. Ordinary constant operands participate in Loom's
+folding passes. The C++ frontend does not yet evaluate `__builtin_bit_cast`
+in a required constant expression, so it cannot initialize a `constexpr`
+variable or supply a `static_assert` condition.
+
 ## Compiler tests
 
 When the importer is enabled, `loom-check` accepts `.cxx-test` files through the

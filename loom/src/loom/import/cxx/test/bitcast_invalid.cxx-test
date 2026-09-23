@@ -1,0 +1,32 @@
+// RUN: verify
+// Object size equality does not imply equal High value representations.
+// ERROR@+1: LOWERING/059 "bit_cast requires equal value bit widths; bool has a one-bit value representation"
+unsigned char entry(bool value) { return __builtin_bit_cast(unsigned char, value); }
+
+// ====
+// ERROR@+1: LOWERING/059 "bit_cast requires equal value bit widths; bool has a one-bit value representation"
+bool entry(unsigned char value) { return __builtin_bit_cast(bool, value); }
+
+// ====
+using Byte1 = unsigned char __attribute__((ext_vector_type(1)));
+// ERROR@+1: LOWERING/059 "bit_cast requires equal value bit widths; bool has a one-bit value representation"
+Byte1 entry(bool value) { return __builtin_bit_cast(Byte1, value); }
+
+// ====
+using Byte1 = unsigned char __attribute__((ext_vector_type(1)));
+// ERROR@+1: LOWERING/059 "bit_cast requires equal value bit widths; bool has a one-bit value representation"
+bool entry(Byte1 value) { return __builtin_bit_cast(bool, value); }
+
+// ====
+using Bytes4 = unsigned char __attribute__((ext_vector_type(4)));
+// ERROR@+1: PARSE/036 "__builtin_bit_cast requires source and destination to have the same size"
+unsigned short entry(Bytes4 value) { return __builtin_bit_cast(unsigned short, value); }
+
+// ====
+// Pointer values retain storage identity, not raw address bits.
+// ERROR@+1: LOWERING/059 "bit_cast requires scalar or vector values"
+unsigned long long entry(const unsigned* value) { return __builtin_bit_cast(unsigned long long, value); }
+
+// ====
+// ERROR@+1: LOWERING/059 "bit_cast requires scalar or vector values"
+const unsigned* entry(unsigned long long value) { return __builtin_bit_cast(const unsigned*, value); }

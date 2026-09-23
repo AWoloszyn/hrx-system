@@ -1,0 +1,67 @@
+// RUN: emit source-low target=amdgpu:gfx1151 output=low
+
+func.def @f64_to_words(%value: vector<1xf64>) -> (vector<2xi32>) {
+  %bits = vector.bitcast %value : vector<1xf64> to vector<2xi32>
+  func.return %bits : vector<2xi32>
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @f64_to_words(%bits: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
+  return %bits
+}
+
+// ====
+
+func.def @words_to_f64(%bits: vector<4xi32>) -> (vector<2xf64>) {
+  %value = vector.bitcast %bits : vector<4xi32> to vector<2xf64>
+  func.return %value : vector<2xf64>
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @words_to_f64(%value: reg<amdgpu.vgpr x4>) -> (reg<amdgpu.vgpr x4>) asm {
+  return %value
+}
+
+// ====
+
+func.def @copy_scalar_f64(%source: buffer, %destination: buffer) {
+  %base = index.constant 0 : offset
+  %input = buffer.view %source[%base] : buffer -> view<1xf64>
+  %output = buffer.view %destination[%base] : buffer -> view<1xf64>
+  %value = view.load %input[0] : view<1xf64> -> f64
+  view.store %value, %output[0] : f64, view<1xf64>
+  func.return
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @copy_scalar_f64() asm {
+  %input = resource<hal_binding> {extent = 8, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output = resource<hal_binding> {extent = 8, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %8 = v_mov_b32 0
+  %value = global_load_b64_saddr %8, %input
+  global_store_b64_saddr %8, %value, %output
+  return
+}
+
+// ====
+
+func.def @copy_vector_f64(%source: buffer, %destination: buffer) {
+  %base = index.constant 0 : offset
+  %input = buffer.view %source[%base] : buffer -> view<4xf64>
+  %output = buffer.view %destination[%base] : buffer -> view<4xf64>
+  %value = vector.load %input[0] : view<4xf64> -> vector<4xf64>
+  vector.store %value, %output[0] : vector<4xf64>, view<4xf64>
+  func.return
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @copy_vector_f64() asm {
+  %input = resource<hal_binding> {extent = 32, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %output = resource<hal_binding> {extent = 32, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %8 = v_mov_b32 0
+  %9 = global_load_b128_saddr %8, %input
+  %11 = global_load_b128_saddr %8, %input {offset = 16}
+  global_store_b128_saddr %8, %9, %output
+  global_store_b128_saddr %8, %11, %output {offset = 16}
+  return
+}
