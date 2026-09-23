@@ -166,6 +166,33 @@ xdna_execution_test_suite(
 )
 
 iree_py_binary(
+    name = "vector_partial_carriers_cases",
+    testonly = True,
+    srcs = ["vector_partial_carriers_cases.py"],
+    main = "vector_partial_carriers_cases.py",
+)
+
+xdna_execution_test_suite(
+    name = "vector_partial_carriers_npu2_test",
+    data = ["testdata/vector_partial_carriers.loom"],
+    manifests = ["vector_partial_carriers_npu2.test.json"],
+    tags = ["manual"],
+    target_compatible_with = select({
+        "//loom/config/target:xdna_artifacts": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }) + select({
+        "@platforms//os:linux": [],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    tools = {
+        "generate-cases": ":vector_partial_carriers_cases",
+        "iree-xdna-run": "//experimental/xdna:iree-xdna-run",
+        "loom-compile": "//loom/src/loom/tools/loom-compile",
+    },
+)
+
+iree_py_binary(
     name = "packed_memory_cases",
     testonly = True,
     srcs = ["packed_memory_cases.py"],

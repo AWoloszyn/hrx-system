@@ -35,31 +35,15 @@ _I32_F32_4X4_VECTOR = Vector(("i32", "f32"), dims=(4, 4))
 _I32 = Scalar("i32")
 _INDEX = Scalar("index")
 
-# Every ordinary 512-bit source vector and its 256-bit low/high halves share
-# the same physical X-register carrier. The low half is therefore an alias;
-# the high half is moved down by one W-register with VSHIFT. Keeping this as
-# one representation table prevents element-type-specific scalar fallbacks.
-_HALF_CARRIER_SLICE_SPECS = (
-    (
-        Vector(("i8", "f8E4M3", "f8E5M2"), lanes=64),
-        Vector(("i8", "f8E4M3", "f8E5M2"), lanes=32),
-        32,
-    ),
-    (
-        Vector(("i16", "f16", "bf16"), lanes=32),
-        Vector(("i16", "f16", "bf16"), lanes=16),
-        16,
-    ),
-    (
-        Vector(("i32", "f32"), lanes=16),
-        Vector(("i32", "f32"), lanes=8),
-        8,
-    ),
-    (
-        Vector(("i64", "f64"), lanes=8),
-        Vector(("i64", "f64"), lanes=4),
-        4,
-    ),
+# Ordinary vectors retain one or two full X carriers independently of their
+# logical extent. F32 excludes vector<32xf32>, whose accumulator contract uses
+# a distinct physical representation.
+_VECTOR_CARRIER_SPECS = (
+    (("i8", "f8E4M3", "f8E5M2"), 1, 128),
+    (("i16", "f16", "bf16"), 2, 64),
+    (("i32",), 4, 32),
+    (("f32",), 4, 31),
+    (("i64", "f64"), 8, 16),
 )
 
 # Ordinary source vectors wider than one 512-bit X register are carried as two
@@ -149,11 +133,6 @@ _I16_INTERLEAVE_CONTROL = 18
 # AIE2P's T32_4x4 VSHUFFLE mode transposes the sixteen 32-bit lanes carried
 # by one X register.
 _I32_F32_TRANSPOSE_4X4_CONTROL = 34
-
-# Moving the upper eight i32 lanes into the low half of AIE2P's 512-bit X
-# carrier is a 32-byte VSHIFT. The upper half of the result lies outside the
-# logical vector<8xi32> value domain.
-_I32_SLICE_HIGH_BYTE_OFFSET = 32
 
 # Two native X-register carriers concatenate into one ordinary 1024-bit
 # vector. These are the value shapes reachable from packetized wide loads;
@@ -494,10 +473,11 @@ def _vector_transpose_i32_f32_4x4_rule() -> DescriptorRule:
     )
 
 
-def _half_carrier_slice_guards(
+def _vector_slice_guards(
     source_type: TypePattern,
     result_type: TypePattern,
-    offset: int,
+    offset_minimum: int,
+    offset_maximum: int,
 ) -> tuple[Guard, ...]:
     return (
         Guard.value_type("source", source_type),
@@ -505,56 +485,257 @@ def _half_carrier_slice_guards(
         Guard.operand_segment_count("offsets", 0),
         Guard.i64_array_count("static_offsets", 1),
         Guard.i64_array_element_range(
-            "static_offsets", element=0, minimum=offset, maximum=offset
+            "static_offsets",
+            element=0,
+            minimum=offset_minimum,
+            maximum=offset_maximum,
         ),
     )
 
 
-def _vector_slice_half_low_rule(
+def _vector_slice_alias_rule(
     source_type: TypePattern,
     result_type: TypePattern,
 ) -> ValueAliasRule:
-    # A narrow ordinary vector retains the same 512-bit X carrier as its
-    # source, so the low aligned half is a value alias.
     return ValueAliasRule(
         source_op=vector.vector_slice,
         source=ValueRef.operand("source"),
         result=ValueRef.result("result"),
-        guards=_half_carrier_slice_guards(source_type, result_type, 0),
+        guards=_vector_slice_guards(source_type, result_type, 0, 0),
     )
 
 
-def _vector_slice_half_high_rule(
+def _vector_slice_shift_rule(
     source_type: TypePattern,
     result_type: TypePattern,
-    half_lane_count: int,
+    element_byte_count: int,
+    offset_minimum: int,
+    offset_maximum: int,
+    *,
+    base_byte_offset: int,
+    source_unit_offset: int = 0,
+    crossing_carriers: bool = False,
 ) -> DescriptorRule:
     constant = _descriptor("amd.xdna.aie2p.constant.i32.mova")
     shift = _descriptor("amd.xdna.aie2p.shift.bytes.x.configured")
-    return DescriptorRule(
-        source_op=vector.vector_slice,
-        descriptor=shift,
-        guards=_half_carrier_slice_guards(source_type, result_type, half_lane_count),
-        emit=(
+    source = ValueRef.operand("source")
+    low = source
+    high = source
+    emits: list[ContractEmit] = []
+    if source_unit_offset or crossing_carriers:
+        low = ValueRef.temporary("low")
+        emits.append(
+            EmitRegisterSlice(
+                source=source,
+                result=low,
+                unit_offset=source_unit_offset,
+                unit_count=2,
+            )
+        )
+        high = low
+    if crossing_carriers:
+        high = ValueRef.temporary("high")
+        emits.append(
+            EmitRegisterSlice(
+                source=source,
+                result=high,
+                unit_offset=2,
+                unit_count=2,
+            )
+        )
+    byte_offset = ValueRef.temporary("byte_offset")
+    emits.extend(
+        (
             EmitDescriptorOp(
                 descriptor=constant,
-                results={"dst": ValueRef.temporary("byte_offset")},
+                results={"dst": byte_offset},
                 result_types={"dst": DescriptorResultType()},
-                immediates={"i": _I32_SLICE_HIGH_BYTE_OFFSET},
+                immediates={
+                    "i": AttrProject.i64_array_lane_byte_offset(
+                        "static_offsets",
+                        element=0,
+                        bytes_per_lane=element_byte_count,
+                        base_byte_offset=base_byte_offset,
+                    )
+                },
                 form=DescriptorEmitForm.CONST,
             ),
             EmitDescriptorOp(
                 descriptor=shift,
-                operands={
-                    "s1": ValueRef.operand("source"),
-                    "s2": ValueRef.operand("source"),
-                    "shift": ValueRef.temporary("byte_offset"),
-                },
+                operands={"s1": low, "s2": high, "shift": byte_offset},
                 results={"d": ValueRef.result("result")},
                 form=DescriptorEmitForm.OP,
             ),
+        )
+    )
+    return DescriptorRule(
+        source_op=vector.vector_slice,
+        descriptor=shift,
+        guards=_vector_slice_guards(
+            source_type,
+            result_type,
+            offset_minimum,
+            offset_maximum,
+        ),
+        emit=tuple(emits),
+    )
+
+
+def _vector_slice_carrier_rule(
+    source_type: TypePattern,
+    result_type: TypePattern,
+    offset: int,
+    *,
+    source_unit_offset: int,
+) -> DescriptorRule:
+    return DescriptorRule(
+        source_op=vector.vector_slice,
+        guards=_vector_slice_guards(source_type, result_type, offset, offset),
+        emit=(
+            EmitRegisterSlice(
+                source=ValueRef.operand("source"),
+                result=ValueRef.result("result"),
+                unit_offset=source_unit_offset,
+            ),
         ),
     )
+
+
+def _vector_slice_wide_shift_rule(
+    source_type: TypePattern,
+    result_type: TypePattern,
+    element_byte_count: int,
+    carrier_lane_count: int,
+) -> DescriptorRule:
+    constant = _descriptor("amd.xdna.aie2p.constant.i32.mova")
+    shift = _descriptor("amd.xdna.aie2p.shift.bytes.x.configured")
+    source = ValueRef.operand("source")
+    low = ValueRef.temporary("low")
+    high = ValueRef.temporary("high")
+    byte_offset = ValueRef.temporary("byte_offset")
+    result_low = ValueRef.temporary("result_low")
+    result_high = ValueRef.temporary("result_high")
+    return DescriptorRule(
+        source_op=vector.vector_slice,
+        descriptor=shift,
+        guards=_vector_slice_guards(
+            source_type,
+            result_type,
+            1,
+            carrier_lane_count - 1,
+        ),
+        emit=(
+            EmitRegisterSlice(source=source, result=low, unit_count=2),
+            EmitRegisterSlice(
+                source=source,
+                result=high,
+                unit_offset=2,
+                unit_count=2,
+            ),
+            EmitDescriptorOp(
+                descriptor=constant,
+                results={"dst": byte_offset},
+                result_types={"dst": DescriptorResultType()},
+                immediates={
+                    "i": AttrProject.i64_array_lane_byte_offset(
+                        "static_offsets",
+                        element=0,
+                        bytes_per_lane=element_byte_count,
+                    )
+                },
+                form=DescriptorEmitForm.CONST,
+            ),
+            EmitDescriptorOp(
+                descriptor=shift,
+                operands={"s1": low, "s2": high, "shift": byte_offset},
+                results={"d": result_low},
+                result_types={"d": DescriptorResultType()},
+                form=DescriptorEmitForm.OP,
+            ),
+            EmitDescriptorOp(
+                descriptor=shift,
+                operands={"s1": high, "s2": high, "shift": byte_offset},
+                results={"d": result_high},
+                result_types={"d": DescriptorResultType()},
+                form=DescriptorEmitForm.OP,
+            ),
+            EmitRegisterConcat(
+                sources=(result_low, result_high),
+                result=ValueRef.result("result"),
+            ),
+        ),
+    )
+
+
+def _vector_slice_rules(
+    element_types: tuple[str, ...],
+    element_byte_count: int,
+    wide_lane_maximum: int,
+) -> tuple[ValueAliasRule | DescriptorRule, ...]:
+    carrier_lane_count = 64 // element_byte_count
+    narrow_type = Vector(
+        element_types,
+        minimum_lanes=1,
+        maximum_lanes=carrier_lane_count,
+    )
+    wide_type = Vector(
+        element_types,
+        minimum_lanes=carrier_lane_count + 1,
+        maximum_lanes=wide_lane_maximum,
+    )
+    rules: list[ValueAliasRule | DescriptorRule] = [
+        _vector_slice_alias_rule(narrow_type, narrow_type),
+        _vector_slice_shift_rule(
+            narrow_type,
+            narrow_type,
+            element_byte_count,
+            1,
+            carrier_lane_count - 1,
+            base_byte_offset=0,
+        ),
+        _vector_slice_carrier_rule(
+            wide_type,
+            narrow_type,
+            0,
+            source_unit_offset=0,
+        ),
+        _vector_slice_shift_rule(
+            wide_type,
+            narrow_type,
+            element_byte_count,
+            1,
+            carrier_lane_count - 1,
+            base_byte_offset=0,
+            crossing_carriers=True,
+        ),
+        _vector_slice_carrier_rule(
+            wide_type,
+            narrow_type,
+            carrier_lane_count,
+            source_unit_offset=2,
+        ),
+        _vector_slice_alias_rule(wide_type, wide_type),
+        _vector_slice_wide_shift_rule(
+            wide_type,
+            wide_type,
+            element_byte_count,
+            carrier_lane_count,
+        ),
+    ]
+    if wide_lane_maximum > carrier_lane_count + 1:
+        rules.insert(
+            5,
+            _vector_slice_shift_rule(
+                wide_type,
+                narrow_type,
+                element_byte_count,
+                carrier_lane_count + 1,
+                wide_lane_maximum - 1,
+                base_byte_offset=-64,
+                source_unit_offset=2,
+            ),
+        )
+    return tuple(rules)
 
 
 def _vector_concat_i8x32_pair_rule() -> DescriptorRule:
@@ -651,10 +832,13 @@ AIE2P_STRUCTURAL_RULES = (
     ),
     *(
         rule
-        for source_type, result_type, half_lane_count in _HALF_CARRIER_SLICE_SPECS
-        for rule in (
-            _vector_slice_half_low_rule(source_type, result_type),
-            _vector_slice_half_high_rule(source_type, result_type, half_lane_count),
+        for element_types, element_byte_count, wide_lane_maximum in (
+            _VECTOR_CARRIER_SPECS
+        )
+        for rule in _vector_slice_rules(
+            element_types,
+            element_byte_count,
+            wide_lane_maximum,
         )
     ),
     _vector_concat_i8x32_pair_rule(),

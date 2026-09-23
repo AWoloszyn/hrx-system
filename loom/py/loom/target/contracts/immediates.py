@@ -31,6 +31,7 @@ class AttrProjectKind(Enum):
     I64_LOG2 = "i64_log2"
     I64_ARRAY_ELEMENT = "i64_array_element"
     I64_ARRAY_ELEMENT_PLUS_LITERAL = "i64_array_element_plus_literal"
+    I64_ARRAY_LANE_BYTE_OFFSET = "i64_array_lane_byte_offset"
     I64_ARRAY_PACK_ELEMENTS = "i64_array_pack_elements"
     ATTRS_PACK_CONSECUTIVE = "attrs_pack_consecutive"
     I64_LOW_BIT_MASK = "i64_low_bit_mask"
@@ -147,6 +148,24 @@ class AttrProject:
             source_attr=source_attr,
             element=element,
             literal_i64=literal,
+        )
+
+    @classmethod
+    def i64_array_lane_byte_offset(
+        cls,
+        source_attr: str,
+        *,
+        element: int,
+        bytes_per_lane: int,
+        base_byte_offset: int = 0,
+    ) -> Self:
+        """Projects a lane ordinal into a byte offset from a fixed base."""
+        return cls(
+            kind=AttrProjectKind.I64_ARRAY_LANE_BYTE_OFFSET,
+            source_attr=source_attr,
+            element=element,
+            bytes_per_lane=bytes_per_lane,
+            literal_i64=base_byte_offset,
         )
 
     @classmethod
@@ -280,6 +299,7 @@ class AttrProject:
             )
         literal_kinds = (
             AttrProjectKind.I64_ARRAY_ELEMENT_PLUS_LITERAL,
+            AttrProjectKind.I64_ARRAY_LANE_BYTE_OFFSET,
             AttrProjectKind.I64_LITERAL_MINUS_ATTR,
             AttrProjectKind.I64_LITERAL_MINUS_ATTRS,
             AttrProjectKind.I64_ATTR_MINUS_LITERAL,
@@ -426,6 +446,7 @@ class AttrProject:
         if self.kind in (
             AttrProjectKind.I64_ARRAY_ELEMENT,
             AttrProjectKind.I64_ARRAY_ELEMENT_PLUS_LITERAL,
+            AttrProjectKind.I64_ARRAY_LANE_BYTE_OFFSET,
         ):
             if bound_immediate_name is None:
                 raise ValueError(
@@ -434,6 +455,11 @@ class AttrProject:
             _require_immediate(descriptor, bound_immediate_name, subject)
             if self.element is None:
                 raise ValueError(f"{source_op.name}: {subject} needs an element")
+            if (
+                self.kind == AttrProjectKind.I64_ARRAY_LANE_BYTE_OFFSET
+                and self.bytes_per_lane is None
+            ):
+                raise ValueError(f"{source_op.name}: {subject} needs bytes_per_lane")
             return
         if self.kind == AttrProjectKind.I64_ARRAY_PACK_ELEMENTS:
             if bound_immediate_name is None:

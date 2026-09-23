@@ -616,6 +616,7 @@ loom_check_test_suite(
     "test/source_low/vector_large_insert.loom-test"
     "test/source_low/vector_mask_select.loom-test"
     "test/source_low/vector_memory.loom-test"
+    "test/source_low/vector_partial_carriers.loom-test"
     "test/source_low/vector_predicate.loom-test"
     "test/source_low/vector_slice.loom-test"
     "test/source_low/vector_structural.loom-test"
