@@ -1,0 +1,56 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+// Scalar loads observe vector publication only after scalar invalidation has
+// completed. The first load primes the cache and supplies the value to publish.
+amdgpu.target<gfx11-generic> @cache_completion_target
+
+low.func.def schedule(locked) target<amdgpu.gfx11.generic.core>(@cache_completion_target) @cache_completion_reload(%base: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) asm {
+  %offset = s_mov_b32 4
+  %increment = s_mov_b32 1
+  %initial = s_load_dword %base, %offset
+  %next = s_add_u32 %initial, %increment
+  %value = v_mov_b32_copy %next
+  %address = v_mov_b32 4
+  global_store_b32_saddr %address, %value, %base {glc = 1}
+  low.br ^read
+^read:
+  s_dcache_inv
+  s_waitcnt {lgkmcnt = 1}
+  %observed = s_load_dword %base, %offset
+  return %initial, %observed
+}
+
+kernel.def target(@cache_completion_target) @cache_completion_kernel() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%storage: buffer, %output: buffer) {
+  %initial, %observed = low.invoke @cache_completion_reload(%storage) : (buffer) -> (i32, i32)
+  %base = index.constant 0 : offset
+  %initial_index = index.constant 0 : index
+  %observed_index = index.constant 1 : index
+  %view = buffer.view %output[%base] : buffer -> view<2xi32>
+  view.store %initial, %view[%initial_index] : i32, view<2xi32>
+  view.store %observed, %view[%observed_index] : i32, view<2xi32>
+  kernel.return
+}
+
+check.case public @cache_completion_scalar_reload {
+  %storage = check.generate.fill value(41) : tensor<3xi32>
+  %output = check.generate.fill value(-1) : tensor<2xi32>
+  kernel.launch @cache_completion_kernel(%storage, %output) : (tensor<3xi32>, tensor<2xi32>)
+  %expected = check.generate.iota offset(41) step(1) : tensor<2xi32>
+  check.expect.equal actual(%output) expected(%expected) : tensor<2xi32>
+  %written = check.tensor.view %storage offset(4) : tensor<3xi32> -> tensor<1xi32>
+  %next = check.generate.fill value(42) : tensor<1xi32>
+  check.expect.equal actual(%written) expected(%next) : tensor<1xi32>
+  %prefix = check.tensor.view %storage offset(0) : tensor<3xi32> -> tensor<1xi32>
+  %suffix = check.tensor.view %storage offset(8) : tensor<3xi32> -> tensor<1xi32>
+  %guard = check.generate.fill value(41) : tensor<1xi32>
+  check.expect.equal actual(%prefix) expected(%guard) : tensor<1xi32>
+  check.expect.equal actual(%suffix) expected(%guard) : tensor<1xi32>
+  check.return
+}

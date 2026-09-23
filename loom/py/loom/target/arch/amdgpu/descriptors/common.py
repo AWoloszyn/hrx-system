@@ -210,6 +210,9 @@ _SCHEDULE_SWMMAC = "amdgpu.swmmac"
 _SCHEDULE_TENSOR_LOAD_LDS = "amdgpu.tensor.load.lds"
 _SCHEDULE_CLUSTER_LOAD_LDS = "amdgpu.cluster.load.lds"
 _SCHEDULE_CACHE_CONTROL = "amdgpu.cache.control"
+_SCHEDULE_SMEM_CACHE_CONTROL = "amdgpu.smem.cache.control"
+_SCHEDULE_VMEM_CACHE_INVALIDATE = "amdgpu.vmem.cache.invalidate"
+_SCHEDULE_VMEM_CACHE_WRITEBACK = "amdgpu.vmem.cache.writeback"
 _SCHEDULE_MODE_CONTROL = "amdgpu.mode.control"
 _SCHEDULE_MESSAGE = "amdgpu.message"
 _SCHEDULE_WAIT_MEMORY = "amdgpu.wait.memory"
@@ -1156,6 +1159,33 @@ def _common_scalar_vector_memory_schedule_classes(
             latency_cycles=1,
             issue_uses=(IssueUse(_RESOURCE_CONTROL, cycles=1, units=1),),
             flags=(ScheduleClassFlag.CONTROL,),
+            model_quality=ModelQuality.FALLBACK,
+        ),
+        ScheduleClass(
+            _SCHEDULE_SMEM_CACHE_CONTROL,
+            latency_kind=LatencyKind.VARIABLE,
+            latency_cycles=1,
+            issue_uses=(IssueUse(_RESOURCE_SMEM, cycles=1, units=1),),
+            hazards=_SMEM_WAIT_HAZARDS,
+            flags=(ScheduleClassFlag.CONTROL, ScheduleClassFlag.MAY_STORE),
+            model_quality=ModelQuality.FALLBACK,
+        ),
+        ScheduleClass(
+            _SCHEDULE_VMEM_CACHE_INVALIDATE,
+            latency_kind=LatencyKind.VARIABLE,
+            latency_cycles=1,
+            issue_uses=(IssueUse(_RESOURCE_VMEM_LOAD, cycles=1, units=1),),
+            hazards=_VMEM_LOAD_WAIT_HAZARDS,
+            flags=(ScheduleClassFlag.CONTROL, ScheduleClassFlag.MAY_LOAD),
+            model_quality=ModelQuality.FALLBACK,
+        ),
+        ScheduleClass(
+            _SCHEDULE_VMEM_CACHE_WRITEBACK,
+            latency_kind=LatencyKind.VARIABLE,
+            latency_cycles=1,
+            issue_uses=(IssueUse(_RESOURCE_VMEM_STORE, cycles=1, units=1),),
+            hazards=_VMEM_STORE_WAIT_HAZARDS,
+            flags=(ScheduleClassFlag.CONTROL, ScheduleClassFlag.MAY_STORE),
             model_quality=ModelQuality.FALLBACK,
         ),
         ScheduleClass(
@@ -3500,6 +3530,7 @@ __all__ = (
     "_SCHEDULE_PACKED_DOT",
     "_SCHEDULE_SALU",
     "_SCHEDULE_SALU_COMPARE",
+    "_SCHEDULE_SMEM_CACHE_CONTROL",
     "_SCHEDULE_SMEM_LOAD",
     "_SCHEDULE_SMEM_STORE",
     "_SCHEDULE_SWMMAC",
@@ -3512,6 +3543,8 @@ __all__ = (
     "_SCHEDULE_FLAT_ATOMIC_NO_RETURN",
     "_SCHEDULE_VMEM_ATOMIC_NO_RETURN",
     "_SCHEDULE_VMEM_ATOMIC_RETURN",
+    "_SCHEDULE_VMEM_CACHE_INVALIDATE",
+    "_SCHEDULE_VMEM_CACHE_WRITEBACK",
     "_SCHEDULE_VMEM_LOAD",
     "_SCHEDULE_VMEM_LOAD_LDS",
     "_SCHEDULE_VMEM_STORE",

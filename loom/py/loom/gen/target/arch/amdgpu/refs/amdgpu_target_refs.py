@@ -36,6 +36,9 @@ from loom.target.arch.amdgpu.descriptors import (  # noqa: E402
     amdgpu_immediate_encoding_id_items,
     build_amdgpu_core_descriptor_sets_from_specs,
 )
+from loom.target.arch.amdgpu.descriptors.common import (  # noqa: E402
+    _SCHEDULE_VMEM_CACHE_INVALIDATE,
+)
 from loom.target.arch.amdgpu.descriptors.memory import (  # noqa: E402
     _FLAT_LOAD_DESCRIPTOR_KEYS,
     _FLAT_STORE_DESCRIPTOR_KEYS,
@@ -542,6 +545,10 @@ def _descriptor_trait_names(
 
 
 def _descriptor_vmem_result_order_class_name(descriptor: Descriptor) -> str:
+    # Invalidation contributes to the ordered VMEM load counter without writing
+    # a register. It must not make later ordinary loads appear out of order.
+    if descriptor.schedule_class == _SCHEDULE_VMEM_CACHE_INVALIDATE:
+        return "LOOM_AMDGPU_VMEM_RESULT_ORDER_NOSAMPLER"
     has_result = any(operand.role in (OperandRole.RESULT, OperandRole.OPERAND_RESULT) for operand in descriptor.operands)
     if not has_result:
         return "LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE"

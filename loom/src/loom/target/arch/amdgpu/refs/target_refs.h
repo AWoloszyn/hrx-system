@@ -53,15 +53,15 @@ typedef enum loom_amdgpu_descriptor_trait_bit_e {
 } loom_amdgpu_descriptor_trait_bit_t;
 typedef uint32_t loom_amdgpu_descriptor_traits_t;
 
-// Relative completion order of VMEM instructions that write vector-register
-// results. Distinct classes may complete out of order even when they share a
-// native wait counter.
+// Relative completion order of VMEM loads and cache invalidations. Distinct
+// classes may complete out of order even when they share a native wait counter.
 typedef enum loom_amdgpu_vmem_result_order_class_e {
-  // Descriptor does not write an asynchronous VMEM result.
+  // Descriptor does not participate in VMEM load-result ordering.
   LOOM_AMDGPU_VMEM_RESULT_ORDER_NONE = 0,
   // Descriptor writes a VMEM result whose completion class is not known.
   LOOM_AMDGPU_VMEM_RESULT_ORDER_UNKNOWN = 1,
-  // Buffer, flat, global, or scratch VMEM result.
+  // Buffer, flat, global, or scratch VMEM result, or ordered cache
+  // invalidation.
   LOOM_AMDGPU_VMEM_RESULT_ORDER_NOSAMPLER = 2,
   // Image sampling VMEM result.
   LOOM_AMDGPU_VMEM_RESULT_ORDER_SAMPLER = 3,
