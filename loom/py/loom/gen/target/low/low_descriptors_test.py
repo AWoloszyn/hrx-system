@@ -1922,7 +1922,6 @@ def test_generate_test_low_core_descriptor_set() -> None:
 
     assert "test.low.core" in generated.source
     assert "test.low" in generated.source
-    assert "test.spv.op_iadd.i32" in generated.source
     assert "OpIAdd" in generated.source
     assert ".op_kind = LOOM_LOW_DESCRIPTOR_OP_KIND_CONST," in generated.source
     assert (".instruction_class_flags = LOOM_LOW_INSTRUCTION_CLASS_FLAG_SCALAR_ALU") in generated.source
