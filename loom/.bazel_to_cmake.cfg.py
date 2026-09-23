@@ -111,6 +111,11 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
                 "LOOM_AMDGPU_DESCRIPTOR_SET_CAPABILITIES_BY_STORAGE_GENERATOR_TARGET"
             ]
         )
+        self._loom_amdgpu_target_capabilities_by_representation_capability = (
+            _LOOM_AMDGPU_TARGET_CONFIG[
+                "LOOM_AMDGPU_TARGET_CAPABILITIES_BY_REPRESENTATION_CAPABILITY"
+            ]
+        )
         self._loom_requirement_policy = bazel_to_cmake_requirements.load_project_policy(
             self._repo_root,
             "loom",
@@ -584,16 +589,42 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
     def loom_amdgpu_target_config_settings(self, **kwargs):
         return None
 
-    def _loom_amdgpu_descriptor_set_config_label(self, capability):
+    def _loom_amdgpu_descriptor_set_config_label(self, capability, prefix=""):
         if capability not in self._loom_amdgpu_descriptor_set_capabilities:
             raise ValueError(
                 f"Unknown Loom AMDGPU descriptor-set capability: {capability}"
             )
+        if prefix:
+            capability = prefix + "_" + capability
         return "//loom/config/target/amdgpu:" + capability
+
+    def _loom_amdgpu_descriptor_set_capabilities_compatible_with(
+        self, capabilities, prefix=""
+    ):
+        compatibility = {
+            self._loom_amdgpu_descriptor_set_config_label(capability, prefix): []
+            for capability in capabilities
+        }
+        compatibility["//conditions:default"] = ["@platforms//:incompatible"]
+        return self.select(compatibility)
 
     def loom_amdgpu_descriptor_set_compatible_with(self, capability):
         return self.loom_config_compatible_with(
             [self._loom_amdgpu_descriptor_set_config_label(capability)]
+        )
+
+    def loom_amdgpu_iree_hal_representation_compatible_with(self, capability):
+        target_capabilities = (
+            self._loom_amdgpu_target_capabilities_by_representation_capability.get(
+                capability
+            )
+        )
+        if not target_capabilities:
+            raise ValueError(
+                f"Unknown Loom AMDGPU representation capability: {capability}"
+            )
+        return self._loom_amdgpu_descriptor_set_capabilities_compatible_with(
+            target_capabilities, prefix="iree_hal"
         )
 
     def loom_amdgpu_descriptor_table_compatible_with(self, storage_generator_target):
@@ -604,12 +635,9 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
             raise ValueError(
                 f"Unknown AMDGPU descriptor storage target: {storage_generator_target}"
             )
-        compatibility = {
-            self._loom_amdgpu_descriptor_set_config_label(capability): []
-            for capability in capabilities
-        }
-        compatibility["//conditions:default"] = ["@platforms//:incompatible"]
-        return self.select(compatibility)
+        return self._loom_amdgpu_descriptor_set_capabilities_compatible_with(
+            capabilities
+        )
 
     def loom_amdgpu_selected_descriptor_set_defines(self):
         defines = []

@@ -342,6 +342,30 @@ low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @index_c
 
 // ====
 
+// RUN: with-checks pass target=amdgpu:gfx11-generic source-to-low
+
+func.def @uniform_offset_cast_in_divergent_merge(%values: vector<2xi32>, %byte_offset: offset, %fallback: i32) -> (i32) {
+  %lane = vector.extract %values[0] : vector<2xi32> -> i32
+  %threshold = scalar.constant 0 : i32
+  %condition = scalar.cmpi sgt, %lane, %threshold : i32
+  %bounded = index.assume %byte_offset [range(%byte_offset, 0, 4294967295)] : offset
+  %converted = index.cast %bounded : offset to i32
+  cfg.cond_br %condition, ^then, ^else
+^then:
+  cfg.br ^join(%converted: i32)
+^else:
+  cfg.br ^join(%fallback: i32)
+^join(%selected: i32):
+  func.return %selected : i32
+}
+
+// ----
+CHECK: %converted = v_mov_b32_copy *
+CHECK: low.br *(%converted: reg<amdgpu.vgpr>)
+CHECK: ^join(*: reg<amdgpu.vgpr>):
+
+// ====
+
 amdgpu.target<gfx11-generic> @target
 
 func.def target(@target) @index_divergent_i1_bitwise_select(%values: vector<2xi32>, %lower: i32, %upper: i32, %true_value: f32, %false_value: f32) -> (f32) {

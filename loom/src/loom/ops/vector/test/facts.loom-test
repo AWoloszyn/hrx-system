@@ -1166,6 +1166,34 @@ func.def @dot8i4_small_static_lanes() -> (i32) {
 
 // ====
 
+// Integer dot facts retain exact results when accumulation wraps modulo i32.
+func.def @integer_dot_facts_wrap_i32() -> (i32, i32) {
+  %c255_i8 = scalar.constant -1 : i8
+  %c1_i8 = scalar.constant 1 : i8
+  %c0_i8 = scalar.constant 0 : i8
+  %lhs4 = vector.from_elements %c255_i8, %c0_i8, %c0_i8, %c0_i8 : vector<4xi8>
+  %rhs4 = vector.from_elements %c1_i8, %c0_i8, %c0_i8, %c0_i8 : vector<4xi8>
+  %max = scalar.constant 2147483647 : i32
+  %acc = vector.from_elements %max : vector<1xi32>
+  %dot4 = vector.dot4i<u8s8> %lhs4, %rhs4, %acc : vector<4xi8>, vector<4xi8>, vector<1xi32>
+  %result4 = vector.extract %dot4[0] : vector<1xi32> -> i32
+
+  %packed_one = scalar.constant 1 : i32
+  %lhs8 = vector.from_elements %packed_one : vector<1xi32>
+  %rhs8 = vector.from_elements %packed_one : vector<1xi32>
+  %dot8 = vector.dot8i4<u4u4> %lhs8, %rhs8, %acc : vector<1xi32>
+  %result8 = vector.extract %dot8[0] : vector<1xi32> -> i32
+  func.return %result4, %result8 : i32, i32
+}
+// ----
+func.def @integer_dot_facts_wrap_i32() -> (i32, i32) {
+  %result4 = scalar.constant -2147483394 : i32
+  %result8 = scalar.constant -2147483648 : i32
+  func.return %result4, %result8 : i32, i32
+}
+
+// ====
+
 // Uniform packed-dot facts remain useful for dynamic vectors when a later
 // consumer can exploit a shape-independent identity.
 func.def @dot8i4_uniform_dynamic_identity(%n: index) -> (i32) {

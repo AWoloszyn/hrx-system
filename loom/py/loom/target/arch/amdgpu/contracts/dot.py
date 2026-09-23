@@ -15,6 +15,7 @@ from loom.target.arch.amdgpu.descriptors import build_amdgpu_contract_descriptor
 from loom.target.contracts import (
     ContractFragment,
     DescriptorEmitForm,
+    DescriptorResultType,
     DescriptorRule,
     EmitDescriptorOp,
     Guard,
@@ -29,9 +30,12 @@ from loom.target.low_descriptors import Descriptor
 
 _DESCRIPTOR_KEYS = (
     "amdgpu.v_and_b32.lit",
+    "amdgpu.v_add_u32",
     "amdgpu.v_fma_f32",
     "amdgpu.v_lshlrev_b32.lit",
+    "amdgpu.v_mov_b32",
     "amdgpu.v_mul_f32",
+    "amdgpu.v_xor_b32.lit",
     "amdgpu.v_dot2_f32_f16",
     "amdgpu.v_dot2_f32_bf16",
     "amdgpu.v_dot4_i32_i8",
@@ -82,6 +86,9 @@ _VEC_BF16_PACKED = Vector(
 
 _VGPR = "amdgpu.vgpr"
 _BF16_HIGH_MASK = 0xFFFF0000
+_DOT4I_UNSIGNED_BIAS = 0x80808080
+_DOT4I_ONE_BYTES = 0x01010101
+_DOT4I_SIGN_CORRECTION_SHIFT = 7
 
 _KIND_DIAGNOSTIC = GuardDiagnostic(
     subject_role="kind",
@@ -97,6 +104,11 @@ _DOT4I_MIXED_DESCRIPTOR_DIAGNOSTIC = GuardDiagnostic(
     subject_role="descriptor",
     subject_name="amdgpu.v_dot4_i32_iu8",
     constraint_key="amdgpu.dot4i.mixed_descriptor",
+)
+_DOT4I_MIXED_FALLBACK_DESCRIPTOR_DIAGNOSTIC = GuardDiagnostic(
+    subject_role="descriptor",
+    subject_name="amdgpu.mixed_dot4i_fallback",
+    constraint_key="amdgpu.dot4i.mixed_fallback_descriptors",
 )
 _DOT8I4_MIXED_DESCRIPTOR_DIAGNOSTIC = GuardDiagnostic(
     subject_role="descriptor",
@@ -506,6 +518,33 @@ def _dot2f_bf16_fallback_rule() -> DescriptorRule:
     )
 
 
+def _dot4i_guards(kind: str) -> tuple[Guard, ...]:
+    return (
+        Guard.enum_attr_equals("kind", kind, diagnostic=_KIND_DIAGNOSTIC),
+        _value_type("lhs", _VEC_I8, _DOT4I_LHS_DIAGNOSTIC),
+        Guard.value_static_dim0_multiple(
+            "lhs",
+            4,
+            diagnostic=_DOT4I_LHS_DIAGNOSTIC,
+        ),
+        _value_type("rhs", _VEC_I8, _DOT4I_RHS_DIAGNOSTIC),
+        Guard.value_static_dim0_multiple(
+            "rhs",
+            4,
+            diagnostic=_DOT4I_RHS_DIAGNOSTIC,
+        ),
+        _unit_count_eq("lhs", "rhs", _DOT4I_RHS_DIAGNOSTIC),
+        _value_type("acc", _VEC_I32_PACKED, _PACKED_I32_ACC_DIAGNOSTIC),
+        _unit_count_eq("lhs", "acc", _PACKED_I32_ACC_DIAGNOSTIC),
+        _value_type("result", _VEC_I32_PACKED, _PACKED_I32_RESULT_DIAGNOSTIC),
+        _unit_count_eq("lhs", "result", _PACKED_I32_RESULT_DIAGNOSTIC),
+        _vgpr("lhs", _LHS_VGPR_DIAGNOSTIC),
+        _vgpr("rhs", _RHS_VGPR_DIAGNOSTIC),
+        _vgpr("acc", _PACKED_ACC_VGPR_DIAGNOSTIC),
+        _vgpr("result", _PACKED_RESULT_VGPR_DIAGNOSTIC),
+    )
+
+
 def _dot4i_rule(
     kind: str,
     descriptor_key: str,
@@ -515,31 +554,104 @@ def _dot4i_rule(
     return _packed_dot_rule(
         source_op=vector.vector_dot4i,
         descriptor_key=descriptor_key,
-        guards=(
-            Guard.enum_attr_equals("kind", kind, diagnostic=_KIND_DIAGNOSTIC),
-            _value_type("lhs", _VEC_I8, _DOT4I_LHS_DIAGNOSTIC),
-            Guard.value_static_dim0_multiple(
-                "lhs",
-                4,
-                diagnostic=_DOT4I_LHS_DIAGNOSTIC,
-            ),
-            _value_type("rhs", _VEC_I8, _DOT4I_RHS_DIAGNOSTIC),
-            Guard.value_static_dim0_multiple(
-                "rhs",
-                4,
-                diagnostic=_DOT4I_RHS_DIAGNOSTIC,
-            ),
-            _unit_count_eq("lhs", "rhs", _DOT4I_RHS_DIAGNOSTIC),
-            _value_type("acc", _VEC_I32_PACKED, _PACKED_I32_ACC_DIAGNOSTIC),
-            _unit_count_eq("lhs", "acc", _PACKED_I32_ACC_DIAGNOSTIC),
-            _value_type("result", _VEC_I32_PACKED, _PACKED_I32_RESULT_DIAGNOSTIC),
-            _unit_count_eq("lhs", "result", _PACKED_I32_RESULT_DIAGNOSTIC),
-            _vgpr("lhs", _LHS_VGPR_DIAGNOSTIC),
-            _vgpr("rhs", _RHS_VGPR_DIAGNOSTIC),
-            _vgpr("acc", _PACKED_ACC_VGPR_DIAGNOSTIC),
-            _vgpr("result", _PACKED_RESULT_VGPR_DIAGNOSTIC),
-        ),
+        guards=_dot4i_guards(kind),
         descriptor_diagnostic=descriptor_diagnostic,
+    )
+
+
+def _dot4i_mixed_fallback_rule(kind: str) -> DescriptorRule:
+    unsigned_field, signed_field = {
+        "u8s8": ("lhs", "rhs"),
+        "s8u8": ("rhs", "lhs"),
+    }[kind]
+    move = _descriptor("amdgpu.v_mov_b32")
+    xor = _descriptor("amdgpu.v_xor_b32.lit")
+    dot = _descriptor("amdgpu.v_dot4_i32_i8")
+    shift = _descriptor("amdgpu.v_lshlrev_b32.lit")
+    add = _descriptor("amdgpu.v_add_u32")
+    descriptor_guard = _DOT4I_MIXED_FALLBACK_DESCRIPTOR_DIAGNOSTIC
+    return DescriptorRule(
+        source_op=vector.vector_dot4i,
+        descriptor=dot,
+        guards=(
+            *_dot4i_guards(kind),
+            Guard.descriptor_available(move, diagnostic=descriptor_guard),
+            Guard.descriptor_available(xor, diagnostic=descriptor_guard),
+            Guard.descriptor_available(dot, diagnostic=descriptor_guard),
+            Guard.descriptor_available(shift, diagnostic=descriptor_guard),
+            Guard.descriptor_available(add, diagnostic=descriptor_guard),
+        ),
+        emit=(
+            EmitDescriptorOp(
+                descriptor=move,
+                results={"dst": ValueRef.temporary("one_bytes")},
+                result_types={"dst": DescriptorResultType()},
+                immediates={"imm32": _DOT4I_ONE_BYTES},
+                form=DescriptorEmitForm.CONST,
+            ),
+            EmitDescriptorOp(
+                descriptor=move,
+                results={"dst": ValueRef.temporary("zero")},
+                result_types={"dst": DescriptorResultType()},
+                immediates={"imm32": 0},
+                form=DescriptorEmitForm.CONST,
+            ),
+            EmitDescriptorOp(
+                descriptor=xor,
+                operands={"rhs": ValueRef.operand(unsigned_field)},
+                results={"dst": ValueRef.temporary("biased_unsigned")},
+                result_types={"dst": ValueRef.result("result")},
+                immediates={"imm32": _DOT4I_UNSIGNED_BIAS},
+                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
+            ),
+            EmitDescriptorOp(
+                descriptor=dot,
+                operands={
+                    "lhs": ValueRef.temporary("one_bytes"),
+                    "rhs": ValueRef.operand(signed_field),
+                    "acc": ValueRef.temporary("zero"),
+                },
+                results={"dst": ValueRef.temporary("signed_sum")},
+                result_types={"dst": ValueRef.result("result")},
+                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
+            ),
+            EmitDescriptorOp(
+                descriptor=shift,
+                operands={"value": ValueRef.temporary("signed_sum")},
+                results={"dst": ValueRef.temporary("correction")},
+                result_types={"dst": ValueRef.result("result")},
+                immediates={"imm32": _DOT4I_SIGN_CORRECTION_SHIFT},
+                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
+            ),
+            EmitDescriptorOp(
+                descriptor=add,
+                operands={
+                    "lhs": ValueRef.operand("acc"),
+                    "rhs": ValueRef.temporary("correction"),
+                },
+                results={"dst": ValueRef.temporary("corrected_acc")},
+                result_types={"dst": ValueRef.result("result")},
+                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
+            ),
+            EmitDescriptorOp(
+                descriptor=dot,
+                operands={
+                    "lhs": (
+                        ValueRef.temporary("biased_unsigned")
+                        if unsigned_field == "lhs"
+                        else ValueRef.operand("lhs")
+                    ),
+                    "rhs": (
+                        ValueRef.temporary("biased_unsigned")
+                        if unsigned_field == "rhs"
+                        else ValueRef.operand("rhs")
+                    ),
+                    "acc": ValueRef.temporary("corrected_acc"),
+                },
+                results={"dst": ValueRef.result("result")},
+                form=DescriptorEmitForm.PER_LANE_SEQUENCE,
+            ),
+        ),
     )
 
 
@@ -664,6 +776,8 @@ AMDGPU_DOT_CONTRACT_FRAGMENT = ContractFragment(
             "amdgpu.v_dot4_i32_iu8.s8u8",
             descriptor_diagnostic=_DOT4I_MIXED_DESCRIPTOR_DIAGNOSTIC,
         ),
+        _dot4i_mixed_fallback_rule("u8s8"),
+        _dot4i_mixed_fallback_rule("s8u8"),
         _dot8i4_rule("s4s4", "amdgpu.v_dot8_i32_i4"),
         _dot8i4_rule(
             "s4u4",

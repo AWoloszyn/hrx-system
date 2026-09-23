@@ -886,26 +886,38 @@ iree_status_t loom_amdgpu_select_index_cast_plan(
     *out_selected = true;
     return iree_ok_status();
   }
-  if (loom_type_equal(source_low_type, result_low_type)) {
-    *out_plan = (loom_amdgpu_index_cast_plan_t){
-        .kind = LOOM_AMDGPU_INDEX_CAST_KIND_PRESERVING_LOW_BITS,
-        .source = source,
-        .result = result,
-        .result_unit_count = loom_low_register_type_unit_count(result_low_type),
-    };
-    *out_selected = true;
-    return iree_ok_status();
-  }
-
   const uint32_t source_unit_count =
       loom_low_register_type_unit_count(source_low_type);
   const uint32_t result_unit_count =
       loom_low_register_type_unit_count(result_low_type);
   const uint16_t source_register_class =
       loom_low_register_type_class_id(source_low_type);
+  const uint16_t result_register_class =
+      loom_low_register_type_class_id(result_low_type);
+  if (loom_type_equal(source_low_type, result_low_type)) {
+    *out_plan = (loom_amdgpu_index_cast_plan_t){
+        .kind = LOOM_AMDGPU_INDEX_CAST_KIND_PRESERVING_LOW_BITS,
+        .source = source,
+        .result = result,
+        .result_unit_count = result_unit_count,
+    };
+    *out_selected = true;
+    return iree_ok_status();
+  }
+  if (source_unit_count == result_unit_count &&
+      source_register_class == LOOM_AMDGPU_REG_CLASS_ID_SGPR &&
+      result_register_class == LOOM_AMDGPU_REG_CLASS_ID_VGPR) {
+    *out_plan = (loom_amdgpu_index_cast_plan_t){
+        .kind = LOOM_AMDGPU_INDEX_CAST_KIND_PRESERVING_LOW_BITS_TO_VGPR,
+        .source = source,
+        .result = result,
+        .result_unit_count = result_unit_count,
+    };
+    *out_selected = true;
+    return iree_ok_status();
+  }
   if (source_register_class > LOOM_AMDGPU_REG_CLASS_ID_VGPR ||
-      source_register_class !=
-          loom_low_register_type_class_id(result_low_type)) {
+      source_register_class != result_register_class) {
     return iree_ok_status();
   }
 

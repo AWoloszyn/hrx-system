@@ -60,39 +60,45 @@ iree_status_t loom_amdgpu_lower_index_cast(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     const loom_amdgpu_index_cast_plan_t* plan) {
   switch (plan->kind) {
+    case LOOM_AMDGPU_INDEX_CAST_KIND_PRESERVING_LOW_BITS_TO_VGPR:
     case LOOM_AMDGPU_INDEX_CAST_KIND_PRESERVING_LOW_BITS: {
+      const bool materialize_vgpr =
+          plan->kind == LOOM_AMDGPU_INDEX_CAST_KIND_PRESERVING_LOW_BITS_TO_VGPR;
       loom_value_id_t low_source = LOOM_VALUE_ID_INVALID;
       IREE_RETURN_IF_ERROR(
           loom_low_lower_lookup_value(context, plan->source, &low_source));
       const loom_module_t* module = loom_low_lower_context_module(context);
       const loom_type_t source_type =
           loom_module_value_type(module, low_source);
+      loom_value_id_t low_result = low_source;
       // Range refinements can retain wider storage through a value alias.
       // The cast publishes the result width selected from those refined facts.
-      if (loom_low_register_type_unit_count(source_type) ==
+      if (loom_low_register_type_unit_count(source_type) !=
           plan->result_unit_count) {
-        return loom_low_lower_bind_value(context, plan->result, low_source);
-      }
-      loom_value_id_t low_result = LOOM_VALUE_ID_INVALID;
-      // A nonnegative index refinement can require a wider result than the
-      // original signed index carrier. Its upper word is zero.
-      if (plan->result_unit_count == 2) {
-        if (loom_low_register_type_class_id(source_type) ==
-            LOOM_AMDGPU_REG_CLASS_ID_VGPR) {
-          IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr64_from_u32(
-              context, source_op, low_source, &low_result));
+        // A nonnegative index refinement can require a wider result than the
+        // original signed index carrier. Its upper word is zero.
+        if (plan->result_unit_count == 2) {
+          if (loom_low_register_type_class_id(source_type) ==
+              LOOM_AMDGPU_REG_CLASS_ID_VGPR) {
+            IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr64_from_u32(
+                context, source_op, low_source, &low_result));
+          } else {
+            IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr64_from_u32(
+                context, source_op, low_source, &low_result));
+          }
         } else {
-          IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr64_from_u32(
-              context, source_op, low_source, &low_result));
+          const loom_type_t result_type =
+              loom_low_register_carrier_type_with_unit_count(
+                  source_type, plan->result_unit_count);
+          IREE_RETURN_IF_ERROR(loom_amdgpu_emit_low_slice(
+              context, source_op, low_source, /*lane_offset=*/0, result_type,
+              &low_result));
         }
-        return loom_low_lower_bind_value(context, plan->result, low_result);
       }
-      const loom_type_t result_type =
-          loom_low_register_carrier_type_with_unit_count(
-              source_type, plan->result_unit_count);
-      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_low_slice(
-          context, source_op, low_source, /*lane_offset=*/0, result_type,
-          &low_result));
+      if (materialize_vgpr) {
+        IREE_RETURN_IF_ERROR(loom_amdgpu_materialize_low_vgpr_b32_registers(
+            context, source_op, low_result, &low_result));
+      }
       return loom_low_lower_bind_value(context, plan->result, low_result);
     }
     case LOOM_AMDGPU_INDEX_CAST_KIND_ZERO_EXTENDING_LOW_32:
