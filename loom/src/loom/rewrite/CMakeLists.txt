@@ -114,6 +114,39 @@ loom_cc_library(
   PUBLIC
 )
 
+loom_cc_library(
+  NAME
+    loop_like
+  HDRS
+    "loop_like.h"
+  SRCS
+    "loop_like.c"
+  DEPS
+    ::remap
+    iree::base
+    iree::base::internal::arena
+    loom::ir
+    loom::ops::op_defs
+  PUBLIC
+)
+
+loom_cc_test(
+  NAME
+    loop_like_test
+  SRCS
+    "loop_like_test.cc"
+  DEPS
+    ::loop_like
+    ::rewriter
+    iree::base::internal::arena
+    iree::testing::gtest
+    iree::testing::gtest_main
+    loom::ir
+    loom::ops::scf
+    loom::ops::test
+    loom::verify
+)
+
 loom_cc_test(
   NAME
     materialize_test

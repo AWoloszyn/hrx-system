@@ -518,6 +518,11 @@ def _validate_loop_like_interface(op: Op, iface: LoopLikeInterface, interface_na
     if has_counted_range == has_condition_region:
         raise ValueError(f"{interface_name} on {op.name!r}: requires exactly one of a counted range or condition region")
 
+    expected_region_count = 1 if has_counted_range else 2
+    if len(op.regions) != expected_region_count:
+        control = "counted" if has_counted_range else "condition-controlled"
+        raise ValueError(f"{interface_name} on {op.name!r}: {control} loops require exactly {expected_region_count} region(s), got {len(op.regions)}")
+
     if has_counted_range:
         if iface.iv is None:
             raise ValueError(f"{interface_name} on {op.name!r}: counted loops require an induction variable")
@@ -533,6 +538,8 @@ def _validate_loop_like_interface(op: Op, iface: LoopLikeInterface, interface_na
         if iface.iv is not None:
             raise ValueError(f"{interface_name} on {op.name!r}: condition loops cannot declare an induction variable")
         condition_index = c_queries.resolve_region_index(op, iface.condition_region, interface_name)
+        if condition_index == body_index:
+            raise ValueError(f"{interface_name} on {op.name!r}: condition and body must be distinct regions")
         condition = op.regions[condition_index]
         if condition.variadic or condition.optional or not condition.single_block or condition.terminator is None:
             raise ValueError(f"{interface_name} on {op.name!r}: condition region {iface.condition_region!r} must be a required single-block region with a terminator")
