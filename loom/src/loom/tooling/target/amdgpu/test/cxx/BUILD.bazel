@@ -55,6 +55,8 @@ _MODULES = [
     "increment_values",
     "integer_increment",
     "llama_rms_norm",
+    "packed_byte_arithmetic",
+    "packed_float_conversion",
     "packed_memory",
     "pointer_walk",
     "record_memory",
@@ -68,6 +70,7 @@ _MODULES = [
     "typed_views",
     "vector_depth",
     "vector_initializers",
+    "vector_lookup",
     "vector_values",
     "volatile_memory",
 ]

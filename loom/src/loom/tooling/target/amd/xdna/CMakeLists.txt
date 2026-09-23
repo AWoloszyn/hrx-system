@@ -33,7 +33,7 @@ iree_native_test(
   SRC
     loom::tools::loom-check
   DATA
-    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/conformance/vector_lookup.cxx"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/vector_lookup.cxx"
   LABELS
     "loom-check"
 )
