@@ -2,6 +2,47 @@
 
 amdgpu.target<gfx11-generic> @target
 
+// One durable predicate may feed many selections without changing its scalar
+// placement.
+func.def target(@target) @shared_uniform_condition_select_chain(%condition: i1, %lhs: i32, %rhs: i32) -> (i32) {
+  %selected0 = scf.select %condition, %lhs, %rhs : i32
+  %selected1 = scf.select %condition, %selected0, %rhs : i32
+  %selected2 = scf.select %condition, %selected1, %rhs : i32
+  %selected3 = scf.select %condition, %selected2, %rhs : i32
+  %selected4 = scf.select %condition, %selected3, %rhs : i32
+  %selected5 = scf.select %condition, %selected4, %rhs : i32
+  %selected6 = scf.select %condition, %selected5, %rhs : i32
+  %selected7 = scf.select %condition, %selected6, %rhs : i32
+  func.return %selected7 : i32
+}
+
+// ----
+amdgpu.target<gfx11-generic> @target
+
+low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @shared_uniform_condition_select_chain(%condition: reg<amdgpu.sgpr>, %lhs: reg<amdgpu.sgpr>, %rhs: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>) asm {
+  %16 = s_cmp_lg_i32_src1_inline %condition {rhs = 0}
+  %selected0 = s_cselect_b32 %lhs, %rhs, %16
+  %18 = s_cmp_lg_i32_src1_inline %condition {rhs = 0}
+  %selected1 = s_cselect_b32 %selected0, %rhs, %18
+  %20 = s_cmp_lg_i32_src1_inline %condition {rhs = 0}
+  %selected2 = s_cselect_b32 %selected1, %rhs, %20
+  %22 = s_cmp_lg_i32_src1_inline %condition {rhs = 0}
+  %selected3 = s_cselect_b32 %selected2, %rhs, %22
+  %24 = s_cmp_lg_i32_src1_inline %condition {rhs = 0}
+  %selected4 = s_cselect_b32 %selected3, %rhs, %24
+  %26 = s_cmp_lg_i32_src1_inline %condition {rhs = 0}
+  %selected5 = s_cselect_b32 %selected4, %rhs, %26
+  %28 = s_cmp_lg_i32_src1_inline %condition {rhs = 0}
+  %selected6 = s_cselect_b32 %selected5, %rhs, %28
+  %30 = s_cmp_lg_i32_src1_inline %condition {rhs = 0}
+  %selected7 = s_cselect_b32 %selected6, %rhs, %30
+  return %selected7
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
 // Several predicates survive the loop comparison and rotate independently.
 func.def target(@target) @rotating_predicates(%lhs: i32, %rhs: i32, %limit: i32) -> (i32) {
   %begin = scalar.constant 0 : i32
