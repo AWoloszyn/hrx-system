@@ -16,6 +16,7 @@ exports_files([
     "compound_offsetof.patch",
     "condition_declarations.patch",
     "constant_arithmetic.patch",
+    "constant_archive.patch",
     "constexpr_branches.patch",
     "cxx.BUILD.bazel",
     "enum_semantics.patch",
