@@ -200,6 +200,9 @@ struct loom_boundary_projection_plan_t {
   loom_module_t* module;
   // Pass scratch arena owning the plan.
   iree_arena_allocator_t* arena;
+  // Whether a caller will observe finalized semantic rule decisions. Rules may
+  // skip provenance retained only for that observation when this is false.
+  bool observation_requested;
   // Shared rewriter for atomic mutation.
   loom_rewriter_t rewriter;
   // Concrete function-version snapshot by symbol ID.

@@ -41,14 +41,16 @@ iree_status_t loom_boundary_projection_run(
     const loom_boundary_projection_plan_sink_t* plan_sink,
     loom_boundary_projection_statistics_t* out_statistics) {
   *out_statistics = (loom_boundary_projection_statistics_t){0};
+  const bool observation_requested = plan_sink && plan_sink->fn;
   loom_boundary_projection_plan_t plan = {
       .pass = pass,
       .module = module,
       .arena = pass->arena,
+      .observation_requested = observation_requested,
   };
   IREE_RETURN_IF_ERROR(
       loom_boundary_projection_plan_prepare(&plan, version_list, rules));
-  if (plan_sink && plan_sink->fn) {
+  if (observation_requested) {
     IREE_RETURN_IF_ERROR(plan_sink->fn(plan_sink->user_data, &plan));
   }
 

@@ -191,8 +191,12 @@ static loom_op_t* loom_vector_bank_sroa_loop_op(
 }
 
 static void loom_vector_bank_sroa_record_blocker(
+    const loom_boundary_projection_plan_t* plan,
     loom_vector_bank_sroa_bank_plan_t* bank,
     loom_vector_bank_sroa_blocker_t blocker) {
+  if (!plan->observation_requested) {
+    return;
+  }
   if (blocker > bank->blocker) {
     bank->blocker = blocker;
   }
@@ -338,7 +342,7 @@ static iree_status_t loom_vector_bank_sroa_prepare_access(
       static_indices.count > bank_rank || !static_indices.i64_array ||
       dynamic_indices.count != 0) {
     loom_vector_bank_sroa_record_blocker(
-        bank, LOOM_VECTOR_BANK_SROA_BLOCKER_NON_STATIC_COMPONENT_ACCESS);
+        plan, bank, LOOM_VECTOR_BANK_SROA_BLOCKER_NON_STATIC_COMPONENT_ACCESS);
     return iree_ok_status();
   }
   for (uint16_t axis = 0; axis < static_indices.count; ++axis) {
@@ -347,7 +351,8 @@ static iree_status_t loom_vector_bank_sroa_prepare_access(
         loom_type_dim_static_size_at(bank->bank_type, (uint8_t)axis);
     if (index < 0 || index == INT64_MIN || index >= extent) {
       loom_vector_bank_sroa_record_blocker(
-          bank, LOOM_VECTOR_BANK_SROA_BLOCKER_INCONSISTENT_COMPONENT_ACCESS);
+          plan, bank,
+          LOOM_VECTOR_BANK_SROA_BLOCKER_INCONSISTENT_COMPONENT_ACCESS);
       return iree_ok_status();
     }
   }
@@ -366,7 +371,7 @@ static iree_status_t loom_vector_bank_sroa_prepare_access(
       if (extent <= 0 ||
           (uint64_t)component_count * (uint64_t)extent > UINT16_MAX) {
         loom_vector_bank_sroa_record_blocker(
-            bank, LOOM_VECTOR_BANK_SROA_BLOCKER_COMPONENT_COUNT_LIMIT);
+            plan, bank, LOOM_VECTOR_BANK_SROA_BLOCKER_COMPONENT_COUNT_LIMIT);
         return iree_ok_status();
       }
       component_count *= (uint32_t)extent;
@@ -379,7 +384,8 @@ static iree_status_t loom_vector_bank_sroa_prepare_access(
       bank, static_indices, dynamic_indices, payload_type, out_component);
   if (!*out_supported) {
     loom_vector_bank_sroa_record_blocker(
-        bank, LOOM_VECTOR_BANK_SROA_BLOCKER_INCONSISTENT_COMPONENT_ACCESS);
+        plan, bank,
+        LOOM_VECTOR_BANK_SROA_BLOCKER_INCONSISTENT_COMPONENT_ACCESS);
   }
   return iree_ok_status();
 }
@@ -429,7 +435,7 @@ static iree_status_t loom_vector_bank_sroa_scan_endpoint(
         loom_module_value_has_type_uses(plan->module, node->value_id)) {
       endpoint->uses_supported = false;
       loom_vector_bank_sroa_record_blocker(
-          bank, LOOM_VECTOR_BANK_SROA_BLOCKER_VALUE_METADATA_USE);
+          plan, bank, LOOM_VECTOR_BANK_SROA_BLOCKER_VALUE_METADATA_USE);
     }
     const loom_use_t* use = NULL;
     loom_value_for_each_use(value, use) {
@@ -495,7 +501,7 @@ static iree_status_t loom_vector_bank_sroa_scan_endpoint(
 
       endpoint->uses_supported = false;
       loom_vector_bank_sroa_record_blocker(
-          bank, LOOM_VECTOR_BANK_SROA_BLOCKER_UNSUPPORTED_VALUE_USE);
+          plan, bank, LOOM_VECTOR_BANK_SROA_BLOCKER_UNSUPPORTED_VALUE_USE);
     }
   }
   return iree_ok_status();

@@ -269,12 +269,15 @@ typedef struct FinalPlanObservation {
   bool source_signature_intact;
   // Whether the finalized candidate remained selected.
   bool candidate_selected;
+  // Whether the plan exposed that its decisions would be observed.
+  bool observation_requested;
 } FinalPlanObservation;
 
 static iree_status_t ObserveFinalPlan(
     void* user_data, const loom_boundary_projection_plan_t* plan) {
   auto* observation = static_cast<FinalPlanObservation*>(user_data);
   observation->invoked = true;
+  observation->observation_requested = plan->observation_requested;
   observation->source_signature_intact =
       observation->block->arg_count == 1 &&
       observation->block->arg_ids[0] == observation->value_id;
@@ -517,6 +520,7 @@ TEST_F(BoundaryProjectionTest, ObservesFinalPlanBeforeMutation) {
   Project(&kZeroComponentRule, &statistics, &plan_sink);
 
   EXPECT_TRUE(observation.invoked);
+  EXPECT_TRUE(observation.observation_requested);
   EXPECT_TRUE(observation.source_signature_intact);
   EXPECT_TRUE(observation.candidate_selected);
   EXPECT_EQ(diamond.projected_block->arg_count, 0);
