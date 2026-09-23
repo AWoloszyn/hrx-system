@@ -219,6 +219,11 @@ _VEC_I32 = Vector(
     minimum_lanes=1,
     maximum_lanes="LOOM_AMDGPU_MAX_SCALARIZED_32BIT_LANES",
 )
+_VEC_I32_ANY_STATIC_LANES = Vector(
+    "i32",
+    minimum_lanes=1,
+    maximum_lanes="LOOM_DIM_MAX_STATIC_SIZE",
+)
 _VEC_F32 = Vector(
     "f32",
     minimum_lanes=1,
@@ -284,6 +289,11 @@ _VEC_I16_PACKED = Vector(
     "i16",
     minimum_lanes=2,
     maximum_lanes="LOOM_AMDGPU_MAX_PACKED_I16_LANES",
+)
+_VEC_I8_ANY_STATIC_LANES = Vector(
+    "i8",
+    minimum_lanes=1,
+    maximum_lanes="LOOM_DIM_MAX_STATIC_SIZE",
 )
 _VEC_F8E4M3_PACKED = Vector(
     "f8E4M3",
@@ -519,7 +529,7 @@ def _descriptor(key: str) -> Descriptor:
 
 
 def _type_diagnostic(type_pattern: TypePattern) -> GuardDiagnostic:
-    if type_pattern in (_VEC_I32, _VEC_I32_STATIC):
+    if type_pattern in (_VEC_I32, _VEC_I32_ANY_STATIC_LANES, _VEC_I32_STATIC):
         return _VEC_I32_DIAGNOSTIC
     if type_pattern in (_VEC_F32, _VEC_F32_STATIC):
         return _VEC_F32_DIAGNOSTIC
@@ -541,7 +551,7 @@ def _type_diagnostic(type_pattern: TypePattern) -> GuardDiagnostic:
         return _VEC_BF16_PACKED_DIAGNOSTIC
     if type_pattern in (_VEC_I16_PACKED, _VEC_I16_PACKED_STORAGE):
         return _VEC_I16_PACKED_DIAGNOSTIC
-    if type_pattern == _VEC_I8_PACKED:
+    if type_pattern in (_VEC_I8_ANY_STATIC_LANES, _VEC_I8_PACKED):
         return _VEC_I8_PACKED_DIAGNOSTIC
     if type_pattern in (_VEC_F8E4M3_PACKED, _VEC_F8E5M2_PACKED):
         return _VEC_F8_PACKED_DIAGNOSTIC
@@ -872,18 +882,26 @@ def _vector_bitunpack_recipe_rule(
     result_type: TypePattern,
     *,
     maximum_width: int,
+    maximum_lane_count: int,
 ) -> RecipeRule:
+    if result_type == _VEC_I32:
+        result_family_type = _VEC_I32_ANY_STATIC_LANES
+    elif result_type == _VEC_I8_PACKED:
+        result_family_type = _VEC_I8_ANY_STATIC_LANES
+    else:
+        raise ValueError(f"unsupported bitunpack result type: {result_type!r}")
     return RecipeRule(
         source_op=source_op,
         guards=(
             _packed_integer_width_guard(maximum_width),
+            _value_type("result", result_family_type),
             Guard.value_packed_integer_lanes_from_payload(
                 "source",
                 "result",
                 "width",
                 storage_unit_bit_count=32,
                 maximum_storage_unit_count=16,
-                maximum_lane_count=32,
+                maximum_lane_count=maximum_lane_count,
                 diagnostic=_PACKED_INTEGER_LANES_FROM_PAYLOAD_DIAGNOSTIC,
             ),
             _value_type("result", result_type),
@@ -898,21 +916,25 @@ def _vector_packed_integer_recipe_rules() -> tuple[RecipeRule, ...]:
             vector.vector_bitunpacku,
             _VEC_I32,
             maximum_width=32,
+            maximum_lane_count=32,
         ),
         _vector_bitunpack_recipe_rule(
             vector.vector_bitunpacku,
             _VEC_I8_PACKED,
             maximum_width=8,
+            maximum_lane_count=64,
         ),
         _vector_bitunpack_recipe_rule(
             vector.vector_bitunpacks,
             _VEC_I32,
             maximum_width=32,
+            maximum_lane_count=32,
         ),
         _vector_bitunpack_recipe_rule(
             vector.vector_bitunpacks,
             _VEC_I8_PACKED,
             maximum_width=8,
+            maximum_lane_count=64,
         ),
     )
 
