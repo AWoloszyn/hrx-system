@@ -1,0 +1,988 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/packed_memory_values.loom-test
+// TEMPLATE-EXCLUDE: @uniform_f16 The target math policy does not admit FP16 vector addition.
+// RUN: emit source-low target=amd.xdna.aie2p:core output=low
+
+// Indexed vector elements preserve byte codes through integer promotion.
+func.def @uniform_table(%input: buffer, %codebook: buffer, %output: buffer, %position: index) {
+  %aligned = buffer.assume.alignment %codebook {minimum_alignment = 64} : buffer
+  %source, %table_source, %destination = buffer.assume.noalias %input, %aligned, %output : buffer, buffer, buffer
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %source[%c0] : buffer -> view<32x4xi8>
+  %input_values = vector.load %source_view[%position, 0] : view<32x4xi8> -> vector<4xi8>
+  %mask = vector.constant 15 : vector<4xi8>
+  %indices = vector.andi %input_values, %mask : vector<4xi8>
+  %table_view = buffer.view %table_source[%c0] : buffer -> view<16xi8>
+  %table = vector.load %table_view[0] : view<16xi8> -> vector<16xi8>
+  %values = vector.table.lookup %table[%indices] : vector<16xi8>, vector<4xi8> -> vector<4xi8>
+  %output_view = buffer.view %destination[%c0] : buffer -> view<32x4xi8>
+  vector.store %values, %output_view[%position, 0] : vector<4xi8>, view<32x4xi8>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @uniform_table(%position_bounded: reg<aie2p.er>) asm {
+  %source_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %table_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %output_view = resource<native_pointer> {index = 2, source_type = buffer} : reg<aie2p.ep>
+  %116 = mov.i32 2
+  %117 = lshl %position_bounded, %116
+  %118 = mov.address-index %117
+  %119 = lda.i8.index %source_view, %118
+  %122 = add %117, 1
+  %123 = mov.address-index %122
+  %124 = lda.i8.index %source_view, %123
+  %127 = add %117, 2
+  %128 = mov.address-index %127
+  %129 = lda.i8.index %source_view, %128
+  %132 = add %117, 3
+  %133 = mov.address-index %132
+  %134 = lda.i8.index %source_view, %133
+  %135 = mov.short 0
+  %136 = vbcst.8 %135
+  %137 = slice %136[1] : reg<aie2p.vec256 x2> -> reg<aie2p.vec256>
+  %138 = vlda.128.i8x16 %table_view, 0
+  %table = concat(%138, %137) : (reg<aie2p.vec256>, reg<aie2p.vec256>) -> reg<aie2p.vec256 x2>
+  %140 = mov.short 15
+  %141 = and %119, %140
+  %142 = extend.s8 %141
+  %143 = vextract.8.reg %table, %142
+  %144 = and %124, %140
+  %145 = extend.s8 %144
+  %146 = vextract.8.reg %table, %145
+  %147 = and %129, %140
+  %148 = extend.s8 %147
+  %149 = vextract.8.reg %table, %148
+  %150 = and %134, %140
+  %151 = extend.s8 %150
+  %152 = vextract.8.reg %table, %151
+  st.i8.index %143, %output_view, %118
+  %158 = add %117, 1
+  %159 = mov.address-index %158
+  st.i8.index %146, %output_view, %159
+  %162 = add %117, 2
+  %163 = mov.address-index %162
+  st.i8.index %149, %output_view, %163
+  %166 = add %117, 3
+  %167 = mov.address-index %166
+  st.i8.index %152, %output_view, %167
+  return
+}
+
+// ====
+
+func.def @uniform_i8(%input: buffer, %output: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %source, %destination = buffer.assume.noalias %aligned, %output : buffer, buffer
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %source[%c0] : buffer -> view<8xi8>
+  %value = vector.load %source_view[0] : view<8xi8> -> vector<8xi8>
+  %result = vector.addi %value, %value : vector<8xi8>
+  %output_view = buffer.view %destination[%c0] : buffer -> view<8xi8>
+  vector.store %result, %output_view[0] : vector<8xi8>, view<8xi8>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @uniform_i8() asm {
+  %source_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %109 = lda.u8 %source_view, 0
+  %110 = lda.u8 %source_view, 1
+  %111 = lda.u8 %source_view, 2
+  %112 = lda.u8 %source_view, 3
+  %113 = lda.u8 %source_view, 4
+  %114 = lda.u8 %source_view, 5
+  %115 = lda.u8 %source_view, 6
+  %116 = lda.u8 %source_view, 7
+  %117 = add.rr %109, %109
+  %118 = add.rr %110, %110
+  %119 = add.rr %111, %111
+  %120 = add.rr %112, %112
+  %121 = add.rr %113, %113
+  %122 = add.rr %114, %114
+  %123 = add.rr %115, %115
+  %124 = add.rr %116, %116
+  st.s8 %117, %output_view, 0
+  st.s8 %118, %output_view, 1
+  st.s8 %119, %output_view, 2
+  st.s8 %120, %output_view, 3
+  st.s8 %121, %output_view, 4
+  st.s8 %122, %output_view, 5
+  st.s8 %123, %output_view, 6
+  st.s8 %124, %output_view, 7
+  return
+}
+
+// ====
+
+func.def @uniform_i16(%input: buffer, %output: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %source, %destination = buffer.assume.noalias %aligned, %output : buffer, buffer
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %source[%c0] : buffer -> view<4xi16>
+  %value = vector.load %source_view[0] : view<4xi16> -> vector<4xi16>
+  %result = vector.addi %value, %value : vector<4xi16>
+  %output_view = buffer.view %destination[%c0] : buffer -> view<4xi16>
+  vector.store %result, %output_view[0] : vector<4xi16>, view<4xi16>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @uniform_i16() asm {
+  %source_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %45 = lda.u16 %source_view, 0
+  %46 = lda.u16 %source_view, 2
+  %47 = lda.u16 %source_view, 4
+  %48 = lda.u16 %source_view, 6
+  %49 = add.rr %45, %45
+  %50 = add.rr %46, %46
+  %51 = add.rr %47, %47
+  %52 = add.rr %48, %48
+  st.s16 %49, %output_view, 0
+  st.s16 %50, %output_view, 2
+  st.s16 %51, %output_view, 4
+  st.s16 %52, %output_view, 6
+  return
+}
+
+// ====
+
+func.def @uniform_bf16(%input: buffer, %output: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %source, %destination = buffer.assume.noalias %aligned, %output : buffer, buffer
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %source[%c0] : buffer -> view<4xbf16>
+  %value = vector.load %source_view[0] : view<4xbf16> -> vector<4xbf16>
+  %result = vector.extf %value : vector<4xbf16> to vector<4xf32>
+  %output_view = buffer.view %destination[%c0] : buffer -> view<4xf32>
+  vector.store %result, %output_view[0] : vector<4xf32>, view<4xf32>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @uniform_bf16() asm {
+  %source_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %35 = lda.u16 %source_view, 0
+  %36 = lda.u16 %source_view, 2
+  %37 = lda.u16 %source_view, 4
+  %38 = lda.u16 %source_view, 6
+  %39 = mov.short 16
+  %40 = lshl %35, %39
+  %42 = lshl %36, %39
+  %44 = lshl %37, %39
+  %46 = lshl %38, %39
+  st %40, %output_view, 0
+  st %42, %output_view, 4
+  st %44, %output_view, 8
+  st %46, %output_view, 12
+  return
+}
+
+// ====
+
+func.def @uniform_f8E4M3(%input: buffer, %output: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %source, %destination = buffer.assume.noalias %aligned, %output : buffer, buffer
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %source[%c0] : buffer -> view<8xf8E4M3>
+  %value = vector.load %source_view[0] : view<8xf8E4M3> -> vector<8xf8E4M3>
+  %result = vector.extf %value : vector<8xf8E4M3> to vector<8xf32>
+  %output_view = buffer.view %destination[%c0] : buffer -> view<8xf32>
+  vector.store %result, %output_view[0] : vector<8xf32>, view<8xf32>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @uniform_f8E4M3() asm {
+  %source_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %58 = mov.short 0
+  %59 = mov.short 8
+  %60 = mov.short 4
+  low.br ^_bb1(%58: reg<aie2p.er>)
+^_bb1(%55: reg<aie2p.er>):
+  %61 = lt %55, %59
+  low.cond_br %61, ^_bb2, ^_bb3 : reg<aie2p.er>
+^_bb2:
+  %62 = mov.address-index %55
+  %63 = lda.i8.index %source_view, %62
+  %64 = add %55, 1
+  %65 = mov.address-index %64
+  %66 = lda.i8.index %source_view, %65
+  %67 = add %55, 2
+  %68 = mov.address-index %67
+  %69 = lda.i8.index %source_view, %68
+  %70 = add %55, 3
+  %71 = mov.address-index %70
+  %72 = lda.i8.index %source_view, %71
+  %73 = mov.short 128
+  %74 = mov.short 127
+  %75 = mov.short 7
+  %76 = mov.short 120
+  %77 = mov.short -3
+  %78 = mov.short 24
+  %79 = mov.short 20
+  %80 = mov.short 23
+  %81 = mov.short 255
+  %82 = and %63, %81
+  %83 = and %82, %73
+  %84 = lshl %83, %78
+  %85 = and %82, %74
+  %86 = and %82, %76
+  %87 = lshl %86, %77
+  %88 = and %82, %75
+  %90 = add.rr %87, %76
+  %91 = lshl %90, %80
+  %92 = lshl %88, %79
+  %93 = or %91, %92
+  %94 = or %84, %93
+  %95 = clz %88
+  %96 = mov.short -28
+  %97 = add.rr %95, %96
+  %98 = lshl %88, %97
+  %99 = and %98, %75
+  %100 = lshl %99, %79
+  %101 = mov.short 121
+  %102 = sub %101, %97
+  %103 = lshl %102, %80
+  %104 = or %103, %100
+  %105 = or %84, %104
+  %106 = copy %88 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %107 = sel.nez %105, %84, %106
+  %108 = eqz %87
+  %109 = copy %108 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %110 = sel.nez %107, %94, %109
+  %111 = mov.i32 2143289344
+  %113 = eq %85, %74
+  %114 = copy %113 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %115 = sel.nez %111, %110, %114
+  %125 = and %66, %81
+  %126 = and %125, %73
+  %127 = lshl %126, %78
+  %128 = and %125, %74
+  %129 = and %125, %76
+  %130 = lshl %129, %77
+  %131 = and %125, %75
+  %133 = add.rr %130, %76
+  %134 = lshl %133, %80
+  %135 = lshl %131, %79
+  %136 = or %134, %135
+  %137 = or %127, %136
+  %138 = clz %131
+  %140 = add.rr %138, %96
+  %141 = lshl %131, %140
+  %142 = and %141, %75
+  %143 = lshl %142, %79
+  %145 = sub %101, %140
+  %146 = lshl %145, %80
+  %147 = or %146, %143
+  %148 = or %127, %147
+  %149 = copy %131 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %150 = sel.nez %148, %127, %149
+  %151 = eqz %130
+  %152 = copy %151 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %153 = sel.nez %150, %137, %152
+  %156 = eq %128, %74
+  %157 = copy %156 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %158 = sel.nez %111, %153, %157
+  %168 = and %69, %81
+  %169 = and %168, %73
+  %170 = lshl %169, %78
+  %171 = and %168, %74
+  %172 = and %168, %76
+  %173 = lshl %172, %77
+  %174 = and %168, %75
+  %176 = add.rr %173, %76
+  %177 = lshl %176, %80
+  %178 = lshl %174, %79
+  %179 = or %177, %178
+  %180 = or %170, %179
+  %181 = clz %174
+  %183 = add.rr %181, %96
+  %184 = lshl %174, %183
+  %185 = and %184, %75
+  %186 = lshl %185, %79
+  %188 = sub %101, %183
+  %189 = lshl %188, %80
+  %190 = or %189, %186
+  %191 = or %170, %190
+  %192 = copy %174 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %193 = sel.nez %191, %170, %192
+  %194 = eqz %173
+  %195 = copy %194 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %196 = sel.nez %193, %180, %195
+  %199 = eq %171, %74
+  %200 = copy %199 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %201 = sel.nez %111, %196, %200
+  %211 = and %72, %81
+  %212 = and %211, %73
+  %213 = lshl %212, %78
+  %214 = and %211, %74
+  %215 = and %211, %76
+  %216 = lshl %215, %77
+  %217 = and %211, %75
+  %219 = add.rr %216, %76
+  %220 = lshl %219, %80
+  %221 = lshl %217, %79
+  %222 = or %220, %221
+  %223 = or %213, %222
+  %224 = clz %217
+  %226 = add.rr %224, %96
+  %227 = lshl %217, %226
+  %228 = and %227, %75
+  %229 = lshl %228, %79
+  %231 = sub %101, %226
+  %232 = lshl %231, %80
+  %233 = or %232, %229
+  %234 = or %213, %233
+  %235 = copy %217 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %236 = sel.nez %234, %213, %235
+  %237 = eqz %216
+  %238 = copy %237 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %239 = sel.nez %236, %223, %238
+  %242 = eq %214, %74
+  %243 = copy %242 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %244 = sel.nez %111, %239, %243
+  %245 = mov.i32 2
+  %246 = lshl %55, %245
+  %247 = mov.address-index %246
+  st.i32.index %115, %output_view, %247
+  %250 = add %246, 4
+  %251 = mov.address-index %250
+  st.i32.index %158, %output_view, %251
+  %254 = add %246, 8
+  %255 = mov.address-index %254
+  st.i32.index %201, %output_view, %255
+  %258 = add %246, 12
+  %259 = mov.address-index %258
+  st.i32.index %244, %output_view, %259
+  %260 = add.rr %55, %60
+  low.br ^_bb1(%260: reg<aie2p.er>)
+^_bb3:
+  return
+}
+
+// ====
+
+func.def @uniform_f8E5M2(%input: buffer, %output: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %source, %destination = buffer.assume.noalias %aligned, %output : buffer, buffer
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %source[%c0] : buffer -> view<8xf8E5M2>
+  %value = vector.load %source_view[0] : view<8xf8E5M2> -> vector<8xf8E5M2>
+  %result = vector.extf %value : vector<8xf8E5M2> to vector<8xf32>
+  %output_view = buffer.view %destination[%c0] : buffer -> view<8xf32>
+  vector.store %result, %output_view[0] : vector<8xf32>, view<8xf32>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @uniform_f8E5M2() asm {
+  %source_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %58 = mov.short 0
+  %59 = mov.short 8
+  %60 = mov.short 4
+  low.br ^_bb1(%58: reg<aie2p.er>)
+^_bb1(%55: reg<aie2p.er>):
+  %61 = lt %55, %59
+  low.cond_br %61, ^_bb2, ^_bb3 : reg<aie2p.er>
+^_bb2:
+  %62 = mov.address-index %55
+  %63 = lda.i8.index %source_view, %62
+  %64 = add %55, 1
+  %65 = mov.address-index %64
+  %66 = lda.i8.index %source_view, %65
+  %67 = add %55, 2
+  %68 = mov.address-index %67
+  %69 = lda.i8.index %source_view, %68
+  %70 = add %55, 3
+  %71 = mov.address-index %70
+  %72 = lda.i8.index %source_view, %71
+  %73 = mov.short 128
+  %75 = mov.short 3
+  %76 = mov.short 124
+  %77 = mov.short -2
+  %78 = mov.short 24
+  %79 = mov.short 21
+  %80 = mov.short 23
+  %81 = mov.short 255
+  %82 = and %63, %81
+  %83 = and %82, %73
+  %84 = lshl %83, %78
+  %86 = and %82, %76
+  %87 = lshl %86, %77
+  %88 = and %82, %75
+  %89 = mov.short 112
+  %90 = add.rr %87, %89
+  %91 = lshl %90, %80
+  %92 = lshl %88, %79
+  %93 = or %91, %92
+  %94 = or %84, %93
+  %95 = clz %88
+  %96 = mov.short -29
+  %97 = add.rr %95, %96
+  %98 = lshl %88, %97
+  %99 = and %98, %75
+  %100 = lshl %99, %79
+  %101 = mov.short 113
+  %102 = sub %101, %97
+  %103 = lshl %102, %80
+  %104 = or %103, %100
+  %105 = or %84, %104
+  %106 = copy %88 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %107 = sel.nez %105, %84, %106
+  %108 = eqz %87
+  %109 = copy %108 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %110 = sel.nez %107, %94, %109
+  %111 = mov.i32 2143289344
+  %112 = mov.short 31
+  %113 = eq %87, %112
+  %114 = mov.i32 2139095040
+  %115 = or %84, %114
+  %116 = copy %88 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %117 = sel.nez %111, %115, %116
+  %118 = copy %113 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %119 = sel.nez %117, %110, %118
+  %129 = and %66, %81
+  %130 = and %129, %73
+  %131 = lshl %130, %78
+  %133 = and %129, %76
+  %134 = lshl %133, %77
+  %135 = and %129, %75
+  %137 = add.rr %134, %89
+  %138 = lshl %137, %80
+  %139 = lshl %135, %79
+  %140 = or %138, %139
+  %141 = or %131, %140
+  %142 = clz %135
+  %144 = add.rr %142, %96
+  %145 = lshl %135, %144
+  %146 = and %145, %75
+  %147 = lshl %146, %79
+  %149 = sub %101, %144
+  %150 = lshl %149, %80
+  %151 = or %150, %147
+  %152 = or %131, %151
+  %153 = copy %135 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %154 = sel.nez %152, %131, %153
+  %155 = eqz %134
+  %156 = copy %155 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %157 = sel.nez %154, %141, %156
+  %160 = eq %134, %112
+  %162 = or %131, %114
+  %163 = copy %135 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %164 = sel.nez %111, %162, %163
+  %165 = copy %160 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %166 = sel.nez %164, %157, %165
+  %176 = and %69, %81
+  %177 = and %176, %73
+  %178 = lshl %177, %78
+  %180 = and %176, %76
+  %181 = lshl %180, %77
+  %182 = and %176, %75
+  %184 = add.rr %181, %89
+  %185 = lshl %184, %80
+  %186 = lshl %182, %79
+  %187 = or %185, %186
+  %188 = or %178, %187
+  %189 = clz %182
+  %191 = add.rr %189, %96
+  %192 = lshl %182, %191
+  %193 = and %192, %75
+  %194 = lshl %193, %79
+  %196 = sub %101, %191
+  %197 = lshl %196, %80
+  %198 = or %197, %194
+  %199 = or %178, %198
+  %200 = copy %182 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %201 = sel.nez %199, %178, %200
+  %202 = eqz %181
+  %203 = copy %202 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %204 = sel.nez %201, %188, %203
+  %207 = eq %181, %112
+  %209 = or %178, %114
+  %210 = copy %182 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %211 = sel.nez %111, %209, %210
+  %212 = copy %207 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %213 = sel.nez %211, %204, %212
+  %223 = and %72, %81
+  %224 = and %223, %73
+  %225 = lshl %224, %78
+  %227 = and %223, %76
+  %228 = lshl %227, %77
+  %229 = and %223, %75
+  %231 = add.rr %228, %89
+  %232 = lshl %231, %80
+  %233 = lshl %229, %79
+  %234 = or %232, %233
+  %235 = or %225, %234
+  %236 = clz %229
+  %238 = add.rr %236, %96
+  %239 = lshl %229, %238
+  %240 = and %239, %75
+  %241 = lshl %240, %79
+  %243 = sub %101, %238
+  %244 = lshl %243, %80
+  %245 = or %244, %241
+  %246 = or %225, %245
+  %247 = copy %229 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %248 = sel.nez %246, %225, %247
+  %249 = eqz %228
+  %250 = copy %249 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %251 = sel.nez %248, %235, %250
+  %254 = eq %228, %112
+  %256 = or %225, %114
+  %257 = copy %229 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %258 = sel.nez %111, %256, %257
+  %259 = copy %254 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %260 = sel.nez %258, %251, %259
+  %261 = mov.i32 2
+  %262 = lshl %55, %261
+  %263 = mov.address-index %262
+  st.i32.index %119, %output_view, %263
+  %266 = add %262, 4
+  %267 = mov.address-index %266
+  st.i32.index %166, %output_view, %267
+  %270 = add %262, 8
+  %271 = mov.address-index %270
+  st.i32.index %213, %output_view, %271
+  %274 = add %262, 12
+  %275 = mov.address-index %274
+  st.i32.index %260, %output_view, %275
+  %276 = add.rr %55, %60
+  low.br ^_bb1(%276: reg<aie2p.er>)
+^_bb3:
+  return
+}
+
+// ====
+
+func.def @uniform_f16_extf(%input: buffer, %output: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %source, %destination = buffer.assume.noalias %aligned, %output : buffer, buffer
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %source[%c0] : buffer -> view<4xf16>
+  %value = vector.load %source_view[0] : view<4xf16> -> vector<4xf16>
+  %result = vector.extf %value : vector<4xf16> to vector<4xf32>
+  %output_view = buffer.view %destination[%c0] : buffer -> view<4xf32>
+  vector.store %result, %output_view[0] : vector<4xf32>, view<4xf32>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @uniform_f16_extf() asm {
+  %source_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %35 = lda.u16 %source_view, 0
+  %36 = lda.u16 %source_view, 2
+  %37 = lda.u16 %source_view, 4
+  %38 = lda.u16 %source_view, 6
+  %39 = mov.i32 32768
+  %40 = mov.i32 32767
+  %41 = mov.short 16
+  %42 = and %35, %39
+  %43 = lshl %42, %41
+  %44 = and %35, %40
+  %45 = clz %44
+  %46 = add %45, -21
+  %47 = mov.short 0
+  %48 = lt %46, %47
+  %49 = copy %48 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %50 = sel.nez %47, %46, %49
+  %51 = lshl %44, %50
+  %52 = mov.short 13
+  %53 = lshl %51, %52
+  %54 = mov.i32 31744
+  %55 = geu %44, %54
+  %56 = mov.short 112
+  %57 = mov.short 224
+  %58 = copy %55 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %59 = sel.nez %57, %56, %58
+  %60 = sub %59, %50
+  %61 = mov.short 23
+  %62 = lshl %60, %61
+  %63 = add.rr %53, %62
+  %64 = copy %44 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %65 = sel.nez %63, %47, %64
+  %66 = or %43, %65
+  %70 = and %36, %39
+  %71 = lshl %70, %41
+  %72 = and %36, %40
+  %73 = clz %72
+  %74 = add %73, -21
+  %76 = lt %74, %47
+  %77 = copy %76 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %78 = sel.nez %47, %74, %77
+  %79 = lshl %72, %78
+  %81 = lshl %79, %52
+  %83 = geu %72, %54
+  %86 = copy %83 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %87 = sel.nez %57, %56, %86
+  %88 = sub %87, %78
+  %90 = lshl %88, %61
+  %91 = add.rr %81, %90
+  %92 = copy %72 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %93 = sel.nez %91, %47, %92
+  %94 = or %71, %93
+  %98 = and %37, %39
+  %99 = lshl %98, %41
+  %100 = and %37, %40
+  %101 = clz %100
+  %102 = add %101, -21
+  %104 = lt %102, %47
+  %105 = copy %104 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %106 = sel.nez %47, %102, %105
+  %107 = lshl %100, %106
+  %109 = lshl %107, %52
+  %111 = geu %100, %54
+  %114 = copy %111 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %115 = sel.nez %57, %56, %114
+  %116 = sub %115, %106
+  %118 = lshl %116, %61
+  %119 = add.rr %109, %118
+  %120 = copy %100 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %121 = sel.nez %119, %47, %120
+  %122 = or %99, %121
+  %126 = and %38, %39
+  %127 = lshl %126, %41
+  %128 = and %38, %40
+  %129 = clz %128
+  %130 = add %129, -21
+  %132 = lt %130, %47
+  %133 = copy %132 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %134 = sel.nez %47, %130, %133
+  %135 = lshl %128, %134
+  %137 = lshl %135, %52
+  %139 = geu %128, %54
+  %142 = copy %139 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %143 = sel.nez %57, %56, %142
+  %144 = sub %143, %134
+  %146 = lshl %144, %61
+  %147 = add.rr %137, %146
+  %148 = copy %128 : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %149 = sel.nez %147, %47, %148
+  %150 = or %127, %149
+  st %66, %output_view, 0
+  st %94, %output_view, 4
+  st %122, %output_view, 8
+  st %150, %output_view, 12
+  return
+}
+
+// ====
+
+// An aligned buffer root retains the byte offset of the actual access.
+func.def @unaligned_bytes(%input: buffer, %output: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %source, %destination = buffer.assume.noalias %aligned, %output : buffer, buffer
+  %start = index.constant 1 : offset
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %source[%start] : buffer -> view<16xi8>
+  %value = vector.load %source_view[0] : view<16xi8> -> vector<16xi8>
+  %output_view = buffer.view %destination[%c0] : buffer -> view<16xi8>
+  vector.store %value, %output_view[0] : vector<16xi8>, view<16xi8>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @unaligned_bytes() asm {
+  %source_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %181 = lda.u8 %source_view, 1
+  %182 = lda.u8 %source_view, 2
+  %183 = lda.u8 %source_view, 3
+  %184 = lda.u8 %source_view, 4
+  %185 = lda.u8 %source_view, 5
+  %186 = lda.u8 %source_view, 6
+  %187 = lda.u8 %source_view, 7
+  %188 = mov.static-byte-offset 8
+  %189 = mov.address-index %188
+  %190 = lda.i8.index %source_view, %189
+  %191 = mov.static-byte-offset 9
+  %192 = mov.address-index %191
+  %193 = lda.i8.index %source_view, %192
+  %194 = mov.static-byte-offset 10
+  %195 = mov.address-index %194
+  %196 = lda.i8.index %source_view, %195
+  %197 = mov.static-byte-offset 11
+  %198 = mov.address-index %197
+  %199 = lda.i8.index %source_view, %198
+  %200 = mov.static-byte-offset 12
+  %201 = mov.address-index %200
+  %202 = lda.i8.index %source_view, %201
+  %203 = mov.static-byte-offset 13
+  %204 = mov.address-index %203
+  %205 = lda.i8.index %source_view, %204
+  %206 = mov.static-byte-offset 14
+  %207 = mov.address-index %206
+  %208 = lda.i8.index %source_view, %207
+  %209 = mov.static-byte-offset 15
+  %210 = mov.address-index %209
+  %211 = lda.i8.index %source_view, %210
+  %212 = mov.static-byte-offset 16
+  %213 = mov.address-index %212
+  %214 = lda.i8.index %source_view, %213
+  st.s8 %181, %output_view, 0
+  st.s8 %182, %output_view, 1
+  st.s8 %183, %output_view, 2
+  st.s8 %184, %output_view, 3
+  st.s8 %185, %output_view, 4
+  st.s8 %186, %output_view, 5
+  st.s8 %187, %output_view, 6
+  st.s8 %190, %output_view, 7
+  st.i8.index %193, %output_view, %189
+  st.i8.index %196, %output_view, %192
+  st.i8.index %199, %output_view, %195
+  st.i8.index %202, %output_view, %198
+  st.i8.index %205, %output_view, %201
+  st.i8.index %208, %output_view, %204
+  st.i8.index %211, %output_view, %207
+  st.i8.index %214, %output_view, %210
+  return
+}
+
+// ====
+
+// A partial word must not read bytes beyond the requested payload.
+func.def @partial_bytes(%input: buffer, %output: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %source, %destination = buffer.assume.noalias %aligned, %output : buffer, buffer
+  %start = index.constant 0 : offset
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %source[%start] : buffer -> view<2xi8>
+  %value = vector.load %source_view[0] : view<2xi8> -> vector<2xi8>
+  %output_view = buffer.view %destination[%c0] : buffer -> view<2xi8>
+  vector.store %value, %output_view[0] : vector<2xi8>, view<2xi8>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @partial_bytes() asm {
+  %source_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %20 = lda.u8 %source_view, 0
+  %21 = lda.u8 %source_view, 1
+  st.s8 %20, %output_view, 0
+  st.s8 %21, %output_view, 1
+  return
+}
+
+// ====
+
+// Potentially aliasing writes prevent treating the input as stable.
+func.def @mutable_bytes(%input: buffer, %output: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %start = index.constant 0 : offset
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %aligned[%start] : buffer -> view<16xi8>
+  %value = vector.load %source_view[0] : view<16xi8> -> vector<16xi8>
+  %output_view = buffer.view %output[%c0] : buffer -> view<16xi8>
+  vector.store %value, %output_view[0] : vector<16xi8>, view<16xi8>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @mutable_bytes() asm {
+  %source_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %26 = mov.short 0
+  %27 = vbcst.8 %26
+  %28 = slice %27[1] : reg<aie2p.vec256 x2> -> reg<aie2p.vec256>
+  %29 = vlda.128.i8x16 %source_view, 0
+  %value = concat(%29, %28) : (reg<aie2p.vec256>, reg<aie2p.vec256>) -> reg<aie2p.vec256 x2>
+  %31 = vextract.8.imm %value, 0
+  %32 = vextract.8.imm %value, 1
+  %33 = vextract.8.imm %value, 2
+  %34 = vextract.8.imm %value, 3
+  %35 = vextract.8.imm %value, 4
+  %36 = vextract.8.imm %value, 5
+  %37 = vextract.8.imm %value, 6
+  %38 = vextract.8.imm %value, 7
+  %39 = vextract.8.imm %value, 8
+  %40 = vextract.8.imm %value, 9
+  %41 = vextract.8.imm %value, 10
+  %42 = vextract.8.imm %value, 11
+  %43 = vextract.8.imm %value, 12
+  %44 = vextract.8.imm %value, 13
+  %45 = vextract.8.imm %value, 14
+  %46 = vextract.8.imm %value, 15
+  st.s8 %31, %output_view, 0
+  st.s8 %32, %output_view, 1
+  st.s8 %33, %output_view, 2
+  st.s8 %34, %output_view, 3
+  st.s8 %35, %output_view, 4
+  st.s8 %36, %output_view, 5
+  st.s8 %37, %output_view, 6
+  st.s8 %38, %output_view, 7
+  %47 = mov.static-byte-offset 8
+  %48 = mov.address-index %47
+  st.i8.index %39, %output_view, %48
+  %49 = mov.static-byte-offset 9
+  %50 = mov.address-index %49
+  st.i8.index %40, %output_view, %50
+  %51 = mov.static-byte-offset 10
+  %52 = mov.address-index %51
+  st.i8.index %41, %output_view, %52
+  %53 = mov.static-byte-offset 11
+  %54 = mov.address-index %53
+  st.i8.index %42, %output_view, %54
+  %55 = mov.static-byte-offset 12
+  %56 = mov.address-index %55
+  st.i8.index %43, %output_view, %56
+  %57 = mov.static-byte-offset 13
+  %58 = mov.address-index %57
+  st.i8.index %44, %output_view, %58
+  %59 = mov.static-byte-offset 14
+  %60 = mov.address-index %59
+  st.i8.index %45, %output_view, %60
+  %61 = mov.static-byte-offset 15
+  %62 = mov.address-index %61
+  st.i8.index %46, %output_view, %62
+  return
+}
+
+// ====
+
+// Volatile retains both reads without requesting an acquire or cache policy.
+func.def @volatile_bytes(%input: buffer, %output: buffer) {
+  %aligned = buffer.assume.alignment %input {minimum_alignment = 64} : buffer
+  %source, %destination = buffer.assume.noalias %aligned, %output : buffer, buffer
+  %start = index.constant 0 : offset
+  %c0 = index.constant 0 : offset
+  %source_view = buffer.view %source[%start] : buffer -> view<16xi8>
+  %first = vector.load<volatile> %source_view[0] : view<16xi8> -> vector<16xi8>
+  %second = vector.load<volatile> %source_view[0] : view<16xi8> -> vector<16xi8>
+  %output_view = buffer.view %destination[%c0] : buffer -> view<32xi8>
+  vector.store %first, %output_view[0] : vector<16xi8>, view<32xi8>
+  vector.store %second, %output_view[16] : vector<16xi8>, view<32xi8>
+  func.return
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @volatile_bytes() asm {
+  %source_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
+  %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %45 = mov.short 0
+  %46 = vbcst.8 %45
+  %47 = slice %46[1] : reg<aie2p.vec256 x2> -> reg<aie2p.vec256>
+  %48 = vlda.128.i8x16.volatile<volatile> %source_view, 0
+  %first = concat(%48, %47) : (reg<aie2p.vec256>, reg<aie2p.vec256>) -> reg<aie2p.vec256 x2>
+  %53 = vlda.128.i8x16.volatile<volatile> %source_view, 0
+  %second = concat(%53, %47) : (reg<aie2p.vec256>, reg<aie2p.vec256>) -> reg<aie2p.vec256 x2>
+  %55 = vextract.8.imm %first, 0
+  %56 = vextract.8.imm %first, 1
+  %57 = vextract.8.imm %first, 2
+  %58 = vextract.8.imm %first, 3
+  %59 = vextract.8.imm %first, 4
+  %60 = vextract.8.imm %first, 5
+  %61 = vextract.8.imm %first, 6
+  %62 = vextract.8.imm %first, 7
+  %63 = vextract.8.imm %first, 8
+  %64 = vextract.8.imm %first, 9
+  %65 = vextract.8.imm %first, 10
+  %66 = vextract.8.imm %first, 11
+  %67 = vextract.8.imm %first, 12
+  %68 = vextract.8.imm %first, 13
+  %69 = vextract.8.imm %first, 14
+  %70 = vextract.8.imm %first, 15
+  st.s8 %55, %output_view, 0
+  st.s8 %56, %output_view, 1
+  st.s8 %57, %output_view, 2
+  st.s8 %58, %output_view, 3
+  st.s8 %59, %output_view, 4
+  st.s8 %60, %output_view, 5
+  st.s8 %61, %output_view, 6
+  st.s8 %62, %output_view, 7
+  %71 = mov.static-byte-offset 8
+  %72 = mov.address-index %71
+  st.i8.index %63, %output_view, %72
+  %73 = mov.static-byte-offset 9
+  %74 = mov.address-index %73
+  st.i8.index %64, %output_view, %74
+  %75 = mov.static-byte-offset 10
+  %76 = mov.address-index %75
+  st.i8.index %65, %output_view, %76
+  %77 = mov.static-byte-offset 11
+  %78 = mov.address-index %77
+  st.i8.index %66, %output_view, %78
+  %79 = mov.static-byte-offset 12
+  %80 = mov.address-index %79
+  st.i8.index %67, %output_view, %80
+  %81 = mov.static-byte-offset 13
+  %82 = mov.address-index %81
+  st.i8.index %68, %output_view, %82
+  %83 = mov.static-byte-offset 14
+  %84 = mov.address-index %83
+  st.i8.index %69, %output_view, %84
+  %85 = mov.static-byte-offset 15
+  %86 = mov.address-index %85
+  st.i8.index %70, %output_view, %86
+  %87 = vextract.8.imm %second, 0
+  %88 = vextract.8.imm %second, 1
+  %89 = vextract.8.imm %second, 2
+  %90 = vextract.8.imm %second, 3
+  %91 = vextract.8.imm %second, 4
+  %92 = vextract.8.imm %second, 5
+  %93 = vextract.8.imm %second, 6
+  %94 = vextract.8.imm %second, 7
+  %95 = vextract.8.imm %second, 8
+  %96 = vextract.8.imm %second, 9
+  %97 = vextract.8.imm %second, 10
+  %98 = vextract.8.imm %second, 11
+  %99 = vextract.8.imm %second, 12
+  %100 = vextract.8.imm %second, 13
+  %101 = vextract.8.imm %second, 14
+  %102 = vextract.8.imm %second, 15
+  %103 = mov.static-byte-offset 16
+  %104 = mov.address-index %103
+  st.i8.index %87, %output_view, %104
+  %105 = mov.static-byte-offset 17
+  %106 = mov.address-index %105
+  st.i8.index %88, %output_view, %106
+  %107 = mov.static-byte-offset 18
+  %108 = mov.address-index %107
+  st.i8.index %89, %output_view, %108
+  %109 = mov.static-byte-offset 19
+  %110 = mov.address-index %109
+  st.i8.index %90, %output_view, %110
+  %111 = mov.static-byte-offset 20
+  %112 = mov.address-index %111
+  st.i8.index %91, %output_view, %112
+  %113 = mov.static-byte-offset 21
+  %114 = mov.address-index %113
+  st.i8.index %92, %output_view, %114
+  %115 = mov.static-byte-offset 22
+  %116 = mov.address-index %115
+  st.i8.index %93, %output_view, %116
+  %117 = mov.static-byte-offset 23
+  %118 = mov.address-index %117
+  st.i8.index %94, %output_view, %118
+  %119 = mov.static-byte-offset 24
+  %120 = mov.address-index %119
+  st.i8.index %95, %output_view, %120
+  %121 = mov.static-byte-offset 25
+  %122 = mov.address-index %121
+  st.i8.index %96, %output_view, %122
+  %123 = mov.static-byte-offset 26
+  %124 = mov.address-index %123
+  st.i8.index %97, %output_view, %124
+  %125 = mov.static-byte-offset 27
+  %126 = mov.address-index %125
+  st.i8.index %98, %output_view, %126
+  %127 = mov.static-byte-offset 28
+  %128 = mov.address-index %127
+  st.i8.index %99, %output_view, %128
+  %129 = mov.static-byte-offset 29
+  %130 = mov.address-index %129
+  st.i8.index %100, %output_view, %130
+  %131 = mov.static-byte-offset 30
+  %132 = mov.address-index %131
+  st.i8.index %101, %output_view, %132
+  %133 = mov.static-byte-offset 31
+  %134 = mov.address-index %133
+  st.i8.index %102, %output_view, %134
+  return
+}

@@ -20,6 +20,7 @@ exports_files([
     "flash_attention.cxx",
     "llama_rms_norm.cxx",
     "packed_memory.cxx",
+    "vector_lookup.cxx",
 ])
 
 loom_check_test_suite(
@@ -356,6 +357,20 @@ loom_test_module(
     ],
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )
+
+# Inline C++ check cases travel with the implementation as one optional module.
+[
+    loom_test_module(
+        name = source + "_module",
+        srcs = [source + ".cxx"],
+        target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+    )
+    for source in [
+        "packed_byte_arithmetic",
+        "packed_float_conversion",
+        "vector_lookup",
+    ]
+]
 
 # A source file and its independent reference cases form one test module.
 # Kernel names, launch configuration, and schedule variants belong to those files.

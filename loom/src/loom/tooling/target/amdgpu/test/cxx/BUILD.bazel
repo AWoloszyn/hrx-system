@@ -55,6 +55,8 @@ _MODULES = [
     "increment_values",
     "integer_increment",
     "llama_rms_norm",
+    "packed_byte_arithmetic",
+    "packed_float_conversion",
     "packed_memory",
     "pointer_walk",
     "record_memory",
@@ -68,6 +70,7 @@ _MODULES = [
     "typed_views",
     "vector_depth",
     "vector_initializers",
+    "vector_lookup",
     "vector_values",
     "volatile_memory",
 ]
@@ -179,13 +182,6 @@ loom_test(
 )
 
 loom_test(
-    name = "uniform_packed_memory_test",
-    srcs = ["uniform_packed_memory.cxx"],
-    execution_profiles = _EXECUTION_PROFILES,
-    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
-)
-
-loom_test(
     name = "parameter_alignment_test",
     srcs = [
         "parameter_alignment.cxx",
@@ -248,13 +244,6 @@ loom_test(
 loom_test(
     name = "vector_list_assignment_test",
     srcs = ["vector_list_assignment.cxx"],
-    execution_profiles = _EXECUTION_PROFILES,
-    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
-)
-
-loom_test(
-    name = "vector_lookup_test",
-    srcs = ["vector_lookup.cxx"],
     execution_profiles = _EXECUTION_PROFILES,
     target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
 )

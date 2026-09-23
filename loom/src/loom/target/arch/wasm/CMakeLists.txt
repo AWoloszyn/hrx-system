@@ -116,6 +116,8 @@ loom_check_test_suite(
     "test/source_low/numeric_scalar_i64_subtract.loom-test"
     "test/source_low/numeric_unsigned_constant_division.loom-test"
     "test/source_low/numeric_unsigned_remainder.loom-test"
+    "test/source_low/packed_memory_alignment.loom-test"
+    "test/source_low/packed_memory_values.loom-test"
     "test/source_low/predicate_extension.loom-test"
     "test/source_low/predicate_extract.loom-test"
     "test/source_low/selected_payload_transport.loom-test"

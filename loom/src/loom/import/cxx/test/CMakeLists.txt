@@ -1108,6 +1108,33 @@ loom_test_module(
 endif()
 
 if(LOOM_IMPORT_CXX)
+loom_test_module(
+  NAME
+    packed_byte_arithmetic_module
+  SRCS
+    "packed_byte_arithmetic.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_test_module(
+  NAME
+    packed_float_conversion_module
+  SRCS
+    "packed_float_conversion.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_test_module(
+  NAME
+    vector_lookup_module
+  SRCS
+    "vector_lookup.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
 loom_generated_file_family(
   NAME
     aiter_swiglu_f16_checks_gen

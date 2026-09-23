@@ -220,6 +220,19 @@ loom_test(
     execution_profiles = [SPIRV_VULKAN_EXPLICIT_TARGET_HARDWARE_PROFILE],
 )
 
+[
+    loom_test(
+        name = "cxx_" + module + "_test",
+        execution_profiles = [SPIRV_VULKAN_HARDWARE_PROFILE],
+        module = "//loom/src/loom/import/cxx/test:" + module + "_module",
+        target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
+    )
+    for module in [
+        "packed_byte_arithmetic",
+        "vector_lookup",
+    ]
+]
+
 loom_test(
     name = "buffer_selection_test",
     srcs = ["//loom/src/loom/test/corpus/source_low:buffer_selection.loom"],

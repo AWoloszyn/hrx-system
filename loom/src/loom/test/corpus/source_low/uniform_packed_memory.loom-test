@@ -1,6 +1,3 @@
-// TEMPLATE: loom/src/loom/test/corpus/source_low/uniform_packed_memory.loom-test
-// RUN: with-checks emit source-low target=amdgpu:gfx1151 output=low
-
 // Every workitem reads the same codebook with independently selected indices.
 kernel.def @uniform_table() {
   %c1 = index.constant 1 : index
@@ -23,12 +20,6 @@ kernel.def @uniform_table() {
   kernel.return
 }
 
-// ----
-CHECK: %table = s_load_dwordx4 *, *
-CHECK: * = slice %table[0] : reg<amdgpu.sgpr x4> -> reg<amdgpu.sgpr>
-CHECK: * = v_perm_b32 *, *, *
-CHECK-NOT: * = v_mov_b32_copy *
-
 // ====
 
 kernel.def @uniform_i8() {
@@ -45,10 +36,6 @@ kernel.def @uniform_i8() {
   vector.store %result, %output_view[0] : vector<8xi8>, view<8xi8>
   kernel.return
 }
-
-// ----
-CHECK: %value = s_load_dwordx2 *, *
-CHECK-NOT: * = global_load_*
 
 // ====
 
@@ -67,10 +54,6 @@ kernel.def @uniform_i16() {
   kernel.return
 }
 
-// ----
-CHECK: %value = s_load_dwordx2 *, *
-CHECK-NOT: * = global_load_*
-
 // ====
 
 kernel.def @uniform_f16() {
@@ -87,10 +70,6 @@ kernel.def @uniform_f16() {
   vector.store %result, %output_view[0] : vector<4xf16>, view<4xf16>
   kernel.return
 }
-
-// ----
-CHECK: %value = s_load_dwordx2 *, *
-CHECK-NOT: * = global_load_*
 
 // ====
 
@@ -109,10 +88,6 @@ kernel.def @uniform_bf16() {
   kernel.return
 }
 
-// ----
-CHECK: %value = s_load_dwordx2 *, *
-CHECK-NOT: * = global_load_*
-
 // ====
 
 kernel.def @uniform_f8E4M3() {
@@ -129,10 +104,6 @@ kernel.def @uniform_f8E4M3() {
   vector.store %result, %output_view[0] : vector<8xf32>, view<8xf32>
   kernel.return
 }
-
-// ----
-CHECK: %value = s_load_dwordx2 *, *
-CHECK-NOT: * = global_load_*
 
 // ====
 
@@ -151,10 +122,6 @@ kernel.def @uniform_f8E5M2() {
   kernel.return
 }
 
-// ----
-CHECK: %value = s_load_dwordx2 *, *
-CHECK-NOT: * = global_load_*
-
 // ====
 
 kernel.def @uniform_f16_extf() {
@@ -171,10 +138,6 @@ kernel.def @uniform_f16_extf() {
   vector.store %result, %output_view[0] : vector<4xf32>, view<4xf32>
   kernel.return
 }
-
-// ----
-CHECK: %value = s_load_dwordx2 *, *
-CHECK-NOT: * = global_load_*
 
 // ====
 
@@ -194,10 +157,6 @@ kernel.def @unaligned_bytes() {
   kernel.return
 }
 
-// ----
-CHECK: %value = global_load_*
-CHECK-NOT: * = s_load_dword*
-
 // ====
 
 // A partial word must not read bytes beyond the requested payload.
@@ -216,10 +175,6 @@ kernel.def @partial_bytes() {
   kernel.return
 }
 
-// ----
-CHECK: %value = global_load_*
-CHECK-NOT: * = s_load_dword*
-
 // ====
 
 // Potentially aliasing writes prevent treating the input as stable.
@@ -236,10 +191,6 @@ kernel.def @mutable_bytes() {
   vector.store %value, %output_view[0] : vector<16xi8>, view<16xi8>
   kernel.return
 }
-
-// ----
-CHECK: %value = global_load_*
-CHECK-NOT: * = s_load_dword*
 
 // ====
 
@@ -260,7 +211,3 @@ kernel.def @volatile_bytes() {
   vector.store %second, %output_view[16] : vector<16xi8>, view<32xi8>
   kernel.return
 }
-
-// ----
-CHECK: %first = s_load_dwordx4<volatile> *, *
-CHECK: %second = s_load_dwordx4<volatile> *, *

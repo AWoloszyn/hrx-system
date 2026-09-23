@@ -349,3 +349,9 @@ loom_test(
     ],
     execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
 )
+
+loom_test(
+    name = "packed_memory_alignment_test",
+    srcs = ["packed_memory_alignment.loom"],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+)
