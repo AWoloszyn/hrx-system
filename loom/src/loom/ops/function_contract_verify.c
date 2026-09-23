@@ -9,6 +9,7 @@
 #include "loom/error/error_catalog.h"
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
+#include "loom/ir/value_replacement.h"
 #include "loom/ops/op_defs.h"
 #include "loom/target/condition.h"
 #include "loom/target/projection.h"
@@ -292,6 +293,92 @@ static iree_status_t loom_function_contract_emit_type_mismatch(
       params, IREE_ARRAYSIZE(params));
 }
 
+// Recursive containers can revisit shared canonical children through many
+// roots. Bounded leaf representations remain cheaper to compare directly.
+static bool loom_function_contract_type_requires_remap_lookup(
+    loom_type_t type) {
+  const loom_type_kind_t kind = loom_type_kind(type);
+  const uint64_t recursive_kind_mask = (UINT64_C(1) << LOOM_TYPE_FUNCTION) |
+                                       (UINT64_C(1) << LOOM_TYPE_DIALECT) |
+                                       (UINT64_C(1) << LOOM_TYPE_REGISTER) |
+                                       (UINT64_C(1) << LOOM_TYPE_PARAMETERIZED);
+  // Masking makes the shift defined for an unverified tag. Only a high tag
+  // that aliases one of the four set bits reaches the range rejection.
+  if ((recursive_kind_mask & (UINT64_C(1) << (kind & 63u))) == 0) {
+    return false;
+  }
+  if (kind >= 64) {
+    return false;
+  }
+  return kind != LOOM_TYPE_REGISTER || loom_type_register_has_value_type(type);
+}
+
+static iree_status_t loom_function_contract_types_equal_after_remap(
+    const loom_module_t* module, loom_type_remap_lookup_t* lookup,
+    const loom_type_value_remap_t* remap, loom_type_t expected_type,
+    loom_type_t actual_type, bool* out_equal) {
+  if (!loom_function_contract_type_requires_remap_lookup(expected_type)) {
+    *out_equal = loom_type_equal_after_value_remap(module, expected_type,
+                                                   actual_type, remap);
+    return iree_ok_status();
+  }
+  return loom_type_remap_lookup_equal(lookup, expected_type, actual_type,
+                                      out_equal);
+}
+
+// Continues a boundary comparison after encountering the first recursive type.
+// Keeping traversal state on this frame leaves the common bounded-leaf path
+// allocation-free and free of fallible loop bookkeeping.
+IREE_ATTRIBUTE_NOINLINE static iree_status_t
+loom_function_contract_verify_boundary_types_with_lookup(
+    const loom_module_t* module,
+    const loom_function_contract_signature_t* signature,
+    const loom_function_contract_boundary_t* boundary,
+    const loom_type_value_remap_t* remap, uint16_t argument_start,
+    uint16_t argument_count, uint16_t result_start, uint16_t result_count,
+    iree_diagnostic_emitter_t emitter) {
+  loom_type_remap_lookup_t type_lookup;
+  loom_type_remap_lookup_initialize(module, remap, &type_lookup);
+  iree_status_t status = iree_ok_status();
+  for (uint16_t i = argument_start;
+       i < argument_count && iree_status_is_ok(status); ++i) {
+    const loom_type_t actual_type =
+        loom_module_value_type(module, boundary->argument_ids[i]);
+    const loom_type_t expected_type =
+        loom_module_value_type(module, signature->argument_ids[i]);
+    bool equal = false;
+    status = loom_function_contract_types_equal_after_remap(
+        module, &type_lookup, remap, expected_type, actual_type, &equal);
+    if (!iree_status_is_ok(status) || equal) {
+      continue;
+    }
+    status = loom_function_contract_emit_type_mismatch(
+        boundary, signature, emitter, boundary->argument_field_kind,
+        boundary->argument_prefix, "contract argument", i, actual_type,
+        expected_type);
+  }
+
+  for (uint16_t i = result_start; i < result_count && iree_status_is_ok(status);
+       ++i) {
+    const loom_type_t actual_type =
+        loom_module_value_type(module, boundary->result_ids[i]);
+    const loom_type_t expected_type =
+        loom_module_value_type(module, signature->result_ids[i]);
+    bool equal = false;
+    status = loom_function_contract_types_equal_after_remap(
+        module, &type_lookup, remap, expected_type, actual_type, &equal);
+    if (!iree_status_is_ok(status) || equal) {
+      continue;
+    }
+    status = loom_function_contract_emit_type_mismatch(
+        boundary, signature, emitter, boundary->result_field_kind,
+        boundary->result_prefix, "contract result", i, actual_type,
+        expected_type);
+  }
+  loom_type_remap_lookup_deinitialize(&type_lookup);
+  return status;
+}
+
 static iree_status_t loom_function_contract_verify_boundary(
     const loom_module_t* module,
     const loom_function_contract_signature_t* signature,
@@ -338,6 +425,11 @@ static iree_status_t loom_function_contract_verify_boundary(
         loom_module_value_type(module, boundary->argument_ids[i]);
     const loom_type_t expected_type =
         loom_module_value_type(module, signature->argument_ids[i]);
+    if (loom_function_contract_type_requires_remap_lookup(expected_type)) {
+      return loom_function_contract_verify_boundary_types_with_lookup(
+          module, signature, boundary, &signature_remap, i, argument_count,
+          /*result_start=*/0, result_count, emitter);
+    }
     if (loom_type_equal_after_value_remap(module, expected_type, actual_type,
                                           &signature_remap)) {
       continue;
@@ -353,6 +445,11 @@ static iree_status_t loom_function_contract_verify_boundary(
         loom_module_value_type(module, boundary->result_ids[i]);
     const loom_type_t expected_type =
         loom_module_value_type(module, signature->result_ids[i]);
+    if (loom_function_contract_type_requires_remap_lookup(expected_type)) {
+      return loom_function_contract_verify_boundary_types_with_lookup(
+          module, signature, boundary, &signature_remap, argument_count,
+          argument_count, i, result_count, emitter);
+    }
     if (loom_type_equal_after_value_remap(module, expected_type, actual_type,
                                           &signature_remap)) {
       continue;

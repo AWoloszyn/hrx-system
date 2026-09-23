@@ -144,6 +144,79 @@ TEST_F(FunctionContractVerifyTest,
   EXPECT_EQ(module_->arena.used_allocation_size, retained_bytes);
 }
 
+TEST_F(FunctionContractVerifyTest,
+       SharedCanonicalTypeGraphIsComparedOncePerNode) {
+  loom_op_t* declaration = nullptr;
+  AddIndexDeclaration(IREE_SV("shared_graph"), &declaration);
+  ASSERT_NE(declaration, nullptr);
+  const loom_value_slice_t declaration_arguments =
+      loom_func_decl_args(declaration);
+  const loom_value_slice_t declaration_results =
+      loom_func_decl_results(declaration);
+
+  loom_value_id_t call_operands[5] = {};
+  for (loom_value_id_t& operand : call_operands) {
+    IREE_ASSERT_OK(loom_module_define_value(
+        module_, loom_type_scalar(LOOM_SCALAR_TYPE_INDEX), &operand));
+    IREE_ASSERT_OK(
+        loom_block_add_arg(module_, loom_module_block(module_), operand));
+  }
+  const loom_type_t call_result_types[] = {
+      loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+      loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+      loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+      loom_type_scalar(LOOM_SCALAR_TYPE_INDEX),
+  };
+  loom_op_t* call = nullptr;
+  IREE_ASSERT_OK(loom_func_call_build(
+      &builder_, /*build_flags=*/0, /*purity=*/0, /*temperature=*/0,
+      /*inline_policy=*/0, loom_func_decl_callee(declaration), call_operands,
+      IREE_ARRAYSIZE(call_operands), call_result_types,
+      IREE_ARRAYSIZE(call_result_types), /*tied_results=*/nullptr,
+      /*tied_result_count=*/0, LOOM_LOCATION_UNKNOWN, &call));
+  ASSERT_NE(call, nullptr);
+  const loom_value_slice_t call_results = loom_func_call_results(call);
+
+  loom_type_t source_type = loom_type_shaped_1d(
+      LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+      loom_dim_pack_dynamic(declaration_arguments.values[0]), 0);
+  loom_type_t target_type =
+      loom_type_shaped_1d(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32,
+                          loom_dim_pack_dynamic(call_operands[0]), 0);
+  for (int i = 0; i < 64; ++i) {
+    const loom_type_t source_children[] = {source_type, source_type};
+    const loom_type_t target_children[] = {target_type, target_type};
+    IREE_ASSERT_OK(loom_module_intern_function_type(
+        module_, source_children, IREE_ARRAYSIZE(source_children), nullptr, 0,
+        &source_type));
+    IREE_ASSERT_OK(loom_module_intern_function_type(
+        module_, target_children, IREE_ARRAYSIZE(target_children), nullptr, 0,
+        &target_type));
+  }
+  for (uint16_t i = 0; i < declaration_arguments.count; ++i) {
+    IREE_ASSERT_OK(loom_module_set_value_type(
+        module_, declaration_arguments.values[i], source_type));
+    IREE_ASSERT_OK(
+        loom_module_set_value_type(module_, call_operands[i], target_type));
+  }
+  for (uint16_t i = 0; i < declaration_results.count; ++i) {
+    IREE_ASSERT_OK(loom_module_set_value_type(
+        module_, declaration_results.values[i], source_type));
+    IREE_ASSERT_OK(loom_module_set_value_type(module_, call_results.values[i],
+                                              target_type));
+  }
+
+  const iree_host_size_t type_count = module_->types.count;
+  const iree_host_size_t retained_bytes = module_->arena.used_allocation_size;
+  DiagnosticEmissionCapture capture;
+  IREE_EXPECT_OK(loom_function_call_contract_verify(
+      module_, call, loom_func_call_callee(call), loom_func_call_operands(call),
+      call_results, capture.emitter()));
+  EXPECT_TRUE(capture.emissions.empty());
+  EXPECT_EQ(module_->types.count, type_count);
+  EXPECT_EQ(module_->arena.used_allocation_size, retained_bytes);
+}
+
 TEST_F(FunctionContractVerifyTest, RejectsPredicateValueOutsideSignature) {
   const loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   loom_value_id_t foreign_value = LOOM_VALUE_ID_INVALID;
