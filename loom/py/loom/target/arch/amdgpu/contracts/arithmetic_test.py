@@ -365,6 +365,56 @@ def test_vector_packed_float_conversion_rules_publish_contract_only_shape_rows()
             assert GuardKind.VALUE_STATIC_ELEMENT_COUNT_EQ in guard_kinds
 
 
+def test_vector_integer_conversion_contracts_preserve_storage_and_lane_counts() -> None:
+    compiled = _compiled_arithmetic_rules()
+    widening = {("i8", "i16"), ("i8", "i32"), ("i16", "i32")}
+    narrowing = {
+        ("i16", "i8"),
+        ("i32", "i8"),
+        ("i32", "i16"),
+        ("i64", "i8"),
+        ("i64", "i16"),
+        ("i64", "i32"),
+    }
+    to_float = {("i8", "f32"), ("i16", "f32"), ("i32", "f32")}
+    from_float = {(result, source) for source, result in to_float}
+    for source_op, expected_pairs in (
+        (vector.vector_extsi, widening),
+        (vector.vector_extui, widening),
+        (vector.vector_trunci, narrowing),
+        (vector.vector_sitofp, to_float),
+        (vector.vector_uitofp, to_float),
+        (vector.vector_fptosi, from_float),
+        (vector.vector_fptoui, from_float),
+    ):
+        pairs = set()
+        for rule in _rules_for_source_op(compiled, source_op):
+            if not rule.flags & LOWER_RULE_FLAG_CONTRACT_ONLY:
+                continue
+            assert rule.emit_count == 0
+            guards = compiled.guards[
+                rule.guard_start : rule.guard_start + rule.guard_count
+            ]
+            assert any(
+                guard.kind == GuardKind.VALUE_STATIC_ELEMENT_COUNT_EQ
+                for guard in guards
+            )
+            types = tuple(
+                compiled.type_patterns[guard.type_pattern_index].type_pattern
+                for guard in guards
+                if guard.kind == GuardKind.VALUE_TYPE
+            )
+            assert len(types) == 2
+            for type_pattern in types:
+                assert type_pattern.kind == "vector"
+                assert (
+                    type_pattern.minimum_lanes == 1
+                    or type_pattern.minimum_static_elements == 1
+                )
+            pairs.add(tuple(type_pattern.element for type_pattern in types))
+        assert pairs == expected_pairs
+
+
 def test_bitunpack_contract_preserves_packed_result_capacity() -> None:
     compiled = _compiled_arithmetic_rules()
 

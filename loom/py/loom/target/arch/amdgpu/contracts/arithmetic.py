@@ -521,6 +521,11 @@ _VECTOR_16BIT_FLOAT_CONVERSION_SHAPE_DIAGNOSTIC = GuardDiagnostic(
     subject_name="vector.packed_float_conversion",
     constraint_key="amdgpu.arithmetic.vector_16bit_float_conversion_shape",
 )
+_VECTOR_INTEGER_CONVERSION_SHAPE_DIAGNOSTIC = GuardDiagnostic(
+    subject_role="shape",
+    subject_name="vector.integer_conversion",
+    constraint_key="amdgpu.arithmetic.vector_integer_conversion_shape",
+)
 
 
 def _descriptor(key: str) -> Descriptor:
@@ -1083,6 +1088,57 @@ def _vector_insert_recipe_rules() -> tuple[RecipeRule, ...]:
         )
         for scalar_type, vector_type in supported_type_pairs
     )
+
+
+def _vector_integer_conversion_recipe_rules() -> tuple[RecipeRule, ...]:
+    widening_pairs = (
+        (_VEC_I8_PACKED, _VEC_I16_PACKED_STORAGE),
+        (_VEC_I8_PACKED, _VEC_I32_STATIC),
+        (_VEC_I16_PACKED_STORAGE, _VEC_I32_STATIC),
+    )
+    narrowing_pairs = (
+        (_VEC_I16_PACKED_STORAGE, _VEC_I8_PACKED),
+        (_VEC_I32_STATIC, _VEC_I8_PACKED),
+        (_VEC_I32_STATIC, _VEC_I16_PACKED_STORAGE),
+        (_VEC_I64_STATIC, _VEC_I8_PACKED),
+        (_VEC_I64_STATIC, _VEC_I16_PACKED_STORAGE),
+        (_VEC_I64_STATIC, _VEC_I32_STATIC),
+    )
+    integer_to_float_pairs = tuple(
+        (integer_type, _VEC_F32_STATIC)
+        for integer_type in (_VEC_I8_PACKED, _VEC_I16_PACKED_STORAGE, _VEC_I32_STATIC)
+    )
+    float_to_integer_pairs = tuple(
+        (float_type, integer_type)
+        for integer_type, float_type in integer_to_float_pairs
+    )
+    rules: list[RecipeRule] = []
+    for source_op, descriptor_key, pairs in (
+        (vector.vector_extsi, None, widening_pairs),
+        (vector.vector_extui, None, widening_pairs),
+        (vector.vector_trunci, None, narrowing_pairs),
+        (vector.vector_sitofp, "amdgpu.v_cvt_f32_i32", integer_to_float_pairs),
+        (vector.vector_uitofp, "amdgpu.v_cvt_f32_u32", integer_to_float_pairs),
+        (vector.vector_fptosi, "amdgpu.v_cvt_i32_f32", float_to_integer_pairs),
+        (vector.vector_fptoui, "amdgpu.v_cvt_u32_f32", float_to_integer_pairs),
+    ):
+        for input_type, result_type in pairs:
+            guards = (
+                _value_type("input", input_type),
+                _value_type("result", result_type),
+                Guard.value_static_element_count_eq(
+                    "input",
+                    "result",
+                    diagnostic=_VECTOR_INTEGER_CONVERSION_SHAPE_DIAGNOSTIC,
+                ),
+            )
+            if descriptor_key is not None:
+                guards = (
+                    *guards,
+                    Guard.descriptor_available(_descriptor(descriptor_key)),
+                )
+            rules.append(RecipeRule(source_op=source_op, guards=guards))
+    return tuple(rules)
 
 
 def _vector_16bit_float_conversion_recipe_rule(
@@ -3784,6 +3840,7 @@ def _rules() -> tuple[ContractCase, ...]:
             _packed_bf16_vector_fma_rule(),
             *_packed_i16_vector_fmai_rules(),
             *_vector_extract_recipe_rules(),
+            *_vector_integer_conversion_recipe_rules(),
             *_vector_16bit_float_conversion_recipe_rules(),
             _vector_transform_recipe_rule(),
             *_f32_fma_rules(vector.vector_fmaf, _VEC_F32),
