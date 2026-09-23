@@ -155,13 +155,51 @@ remaining partial packet. XDP's Windows `flushTraceModules` generates those
 events for each traced module. It submits register operations, not a request to
 complete the destination DMA. [Trace flush implementation][xdp-trace]
 
-The destination has its own programmed transfer length. Stopping a source after
-it produces a short trace does not change that length or complete an otherwise
-unfinished transfer. A source's packet boundary is also not the end of the
-whole capture: a capture contains many packets.
+With length-based S2MM completion, the destination has its own programmed
+transfer length. Stopping a source after it produces a short trace does not
+change that length or complete an otherwise unfinished transfer.
 
-The distinction is visible in the reference collectors. Windows XDP allocates
-and zeros a destination, programs a shim S2MM descriptor for its capacity, then
+AIE2IPU and AIE2P also support S2MM **finish on TLAST**. In that mode a
+descriptor can complete when the incoming packet ends, before reaching its
+configured buffer length. The channel selects how completed-transfer counts
+are reported:
+
+| Mode | Completion and count reporting |
+| --- | --- |
+| `DMA_FoT_DISABLED` | Length-based completion. |
+| `DMA_FoT_NO_COUNTS` | Finish at TLAST, without queuing a word count. |
+| `DMA_FoT_COUNTS_WITH_TASK_TOKENS` | Finish at TLAST, with counts accompanying task tokens. |
+| `DMA_FoT_COUNTS_FROM_MM_REG` | Finish at TLAST, with counts read through the count FIFO register. |
+
+`XAie_DmaChannelSetFoTMode` sets the channel description and
+`XAie_DmaWriteChannel` programs it. These are array configuration operations,
+not libamdf memory-allocation or submission options.
+[DMA configuration][aie-dma], [AIE2IPU fields][aie2ipu-registers],
+[AIE2P fields][aie2p-registers]
+
+For example, a program can produce one trace packet into a descriptor with
+64 bytes of capacity, finish after the packet's 32 bytes, and issue a task
+completion token. A controller wait for that token covers the trace transfer
+before native command completion. Retaining the packet header makes its source
+identity and framing available in the destination. This uses ordinary trace
+routing and DMA, without firmware result-buffer attachment.
+
+TLAST is a packet boundary, not an end-of-capture marker: every eight-word
+trace packet has one. In finish-on-TLAST mode a collector accounts for those
+individual completions rather than treating the first token as completion of
+the whole capture. Count-reporting modes add a FIFO that must be consumed;
+a full count FIFO can stall the channel. The counts are
+32-bit **words per transfer**, not bytes or a cumulative capture length. The
+current-write-count register observes an in-progress transfer and is not a
+retirement fence. [Shim DMA register descriptions][aie-register-database]
+
+The mode belongs to the DMA channel, not its buffer descriptors. A program
+using length-based completion sets the mode to disabled when configuring that
+channel; replacing a descriptor does not change the channel's completion rule.
+
+The separation between source flush and DMA completion is visible in the
+reference collectors. Windows XDP allocates and zeros a destination, programs
+a shim S2MM descriptor for its capacity, then
 syncs and searches the storage for the boundary between written data and zeros.
 MLIR-AIE inserts a stop-event broadcast at the end of its runtime sequence;
 that insertion does not add a wait for the trace DMA to consume its remaining
@@ -290,6 +328,8 @@ notifications describe the diagnostic stream, not application queue completion.
 [aie-timers]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/timer/xaie_timer.c
 [aie2ipu-registers]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/global/xaie2ipugbl_reginit.c
 [aie2p-registers]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/global/xaie2pgbl_reginit.c
+[aie-dma]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/dma/xaie_dma.c
+[aie-register-database]: https://github.com/Xilinx/mlir-aie/blob/c69fb4c8f2fb853d5ca62d19f829796d3ae4ba34/lib/Dialect/AIE/Util/aie_registers_aie2.json
 [aie-counters]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/perfcnt/xaie_perfcnt.c
 [aie2p-events]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/events/xaie_events_aie2p.h
 [aie-trace]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/trace/xaie_trace.c
