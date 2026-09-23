@@ -9,6 +9,51 @@
 #include "loom/ir/module.h"
 #include "loom/ops/scalar/ops.h"
 #include "loom/ops/vector/ops.h"
+#include "loom/util/fact_table.h"
+
+iree_status_t loom_vector_fold_constant_lanes(loom_op_t* op,
+                                              loom_rewriter_t* rewriter,
+                                              bool* out_changed) {
+  *out_changed = false;
+  const loom_value_id_t result = loom_op_const_results(op)[0];
+  const loom_value_facts_t facts = loom_rewriter_value_facts(rewriter, result);
+  loom_value_fact_small_static_lanes_t lanes = {0};
+  if (!loom_value_facts_query_small_static_lanes(&rewriter->fact_table->context,
+                                                 facts, &lanes)) {
+    return iree_ok_status();
+  }
+  for (iree_host_size_t lane = 0; lane < lanes.count; ++lane) {
+    if (!loom_value_facts_is_exact(lanes.lanes[lane])) {
+      return iree_ok_status();
+    }
+  }
+
+  const loom_type_t result_type =
+      loom_module_value_type(rewriter->module, result);
+  const loom_type_t element_type =
+      loom_type_scalar(loom_type_element_type(result_type));
+  loom_builder_set_before(&rewriter->builder, op);
+  const loom_value_id_t value_checkpoint =
+      loom_rewriter_value_checkpoint(rewriter);
+  loom_value_id_t elements[LOOM_VALUE_FACT_SMALL_STATIC_LANE_LIMIT];
+  for (iree_host_size_t lane = 0; lane < lanes.count; ++lane) {
+    IREE_RETURN_IF_ERROR(
+        loom_rewriter_build_constant(rewriter, lanes.lanes[lane], element_type,
+                                     op->location, &elements[lane]));
+  }
+  loom_op_t* replacement_op = NULL;
+  IREE_RETURN_IF_ERROR(loom_vector_from_elements_build(
+      &rewriter->builder, elements, lanes.count, result_type, op->location,
+      &replacement_op));
+  const loom_value_id_t replacement =
+      loom_vector_from_elements_result(replacement_op);
+  IREE_RETURN_IF_ERROR(loom_rewriter_preserve_result_names_on_new_values(
+      rewriter, op, &replacement, 1, value_checkpoint));
+  IREE_RETURN_IF_ERROR(
+      loom_rewriter_replace_all_uses_and_erase(rewriter, op, &replacement, 1));
+  *out_changed = true;
+  return iree_ok_status();
+}
 
 static bool loom_vector_value_def_op(const loom_rewriter_t* rewriter,
                                      loom_value_id_t value_id,

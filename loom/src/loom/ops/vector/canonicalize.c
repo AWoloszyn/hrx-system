@@ -2472,7 +2472,11 @@ static iree_status_t loom_vector_canonicalize_contiguous_gather_scatter(
 static iree_status_t loom_vector_canonicalize_extf(loom_op_t* op,
                                                    loom_rewriter_t* rewriter,
                                                    bool* out_changed) {
-  *out_changed = false;
+  IREE_RETURN_IF_ERROR(
+      loom_vector_fold_constant_lanes(op, rewriter, out_changed));
+  if (*out_changed) {
+    return iree_ok_status();
+  }
   loom_value_id_t input = loom_vector_extf_input(op);
   loom_type_t input_type = loom_module_value_type(rewriter->module, input);
   loom_type_t result_type = {0};
@@ -2507,7 +2511,11 @@ static iree_status_t loom_vector_canonicalize_extf(loom_op_t* op,
 static iree_status_t loom_vector_canonicalize_fptrunc(loom_op_t* op,
                                                       loom_rewriter_t* rewriter,
                                                       bool* out_changed) {
-  *out_changed = false;
+  IREE_RETURN_IF_ERROR(
+      loom_vector_fold_constant_lanes(op, rewriter, out_changed));
+  if (*out_changed) {
+    return iree_ok_status();
+  }
   loom_value_id_t input = loom_vector_fptrunc_input(op);
   loom_type_t input_type = loom_module_value_type(rewriter->module, input);
   loom_type_t result_type = {0};

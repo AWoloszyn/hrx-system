@@ -13,6 +13,14 @@
 extern "C" {
 #endif
 
+// Folds a pure single-vector-result operation to vector.from_elements when
+// retained small-static-lane facts provide an exact constant for every lane.
+// The caller selects operations whose constant construction is canonical;
+// unknown lanes and NaN facts without retained payloads remain unchanged.
+iree_status_t loom_vector_fold_constant_lanes(loom_op_t* op,
+                                              loom_rewriter_t* rewriter,
+                                              bool* out_changed);
+
 // Folds a vector.from_elements of every unmodified source lane, in order, to
 // that source. This identity introduces no operation and is valid at any phase.
 // Nonmatching constructions remain unchanged and allocate no scratch storage.
