@@ -9,7 +9,13 @@ CHECK: select-templates(mode = "final", rewrite = "inline")
 CHECK: specialize-target-callgraph
 CHECK: target-legalize(mode = "complete")
 CHECK: source-to-low(control-flow = "structured-low")
+CHECK: inline-callables(policy = "target")
 CHECK: low-decompose-cfg-tuples
+CHECK: for func {
+CHECK: where target {
+CHECK: canonicalize
+CHECK: low-cse
+CHECK: low-dce
 CHECK-NOT: scf-to-cfg
 CHECK-NOT: cfg-simplify
 
