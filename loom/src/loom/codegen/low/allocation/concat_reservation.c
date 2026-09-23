@@ -151,23 +151,13 @@ loom_low_allocation_concat_reservation_default_source_assembles_result(
     const loom_liveness_interval_t* source_interval,
     const loom_low_placement_relation_t* relation,
     const loom_liveness_interval_t* result_interval,
+    loom_low_allocation_class_capacity_t source_capacity,
     loom_low_allocation_class_capacity_t result_capacity,
+    uint32_t source_location_base,
     const loom_low_placement_relation_range_t* result_range,
     bool* out_assembles_result) {
   *out_assembles_result = false;
-  if (loom_low_reg_class_uses_explicit_physical_registers(
-          &context->descriptor_set
-               ->reg_classes[result_capacity.descriptor_reg_class_id])) {
-    return iree_ok_status();
-  }
-
-  loom_low_allocation_class_capacity_t source_capacity = {0};
-  IREE_RETURN_IF_ERROR(loom_low_allocation_target_constraints_interval_capacity(
-      context->target_constraints, source_interval, &source_capacity));
-  uint32_t source_location_base = 0;
-  if (!loom_low_allocation_search_find_free_location(
-          context, source_interval, source_capacity, &source_location_base) ||
-      source_location_base > UINT32_MAX - relation->source_unit_offset) {
+  if (source_location_base > UINT32_MAX - relation->source_unit_offset) {
     return iree_ok_status();
   }
   const uint32_t source_unit_location =
@@ -238,7 +228,7 @@ loom_low_allocation_concat_reservation_default_source_assembles_result(
             /*ignored_value_count=*/0,
             /*ignored_storage_lease_value_ids=*/NULL,
             /*ignored_storage_lease_value_count=*/0,
-            LOOM_LOW_ALLOCATION_STORAGE_RELEASE_ALLOWED)) {
+            LOOM_LOW_ALLOCATION_STORAGE_RELEASE_FOR_PRESSURE)) {
       return iree_ok_status();
     }
   }
@@ -350,7 +340,7 @@ static bool loom_low_allocation_concat_reservation_find_location_for_source(
     if (!loom_low_allocation_search_assignment_conflicts(
             context, &reservation, ignored_value_ids, ignored_value_count,
             ignored_value_ids, ignored_value_count,
-            LOOM_LOW_ALLOCATION_STORAGE_RELEASE_ALLOWED)) {
+            LOOM_LOW_ALLOCATION_STORAGE_RELEASE_FOR_PRESSURE)) {
       bool source_location_ok = false;
       uint32_t source_location_base = 0;
       if (is_explicit) {
@@ -399,7 +389,7 @@ static bool loom_low_allocation_concat_reservation_find_location_for_source(
               /*ignored_value_count=*/0,
               /*ignored_storage_lease_value_ids=*/NULL,
               /*ignored_storage_lease_value_count=*/0,
-              LOOM_LOW_ALLOCATION_STORAGE_RELEASE_ALLOWED)) {
+              LOOM_LOW_ALLOCATION_STORAGE_RELEASE_FOR_PRESSURE)) {
         *out_result_location_base = base;
         return true;
       }
@@ -428,6 +418,16 @@ iree_status_t loom_low_allocation_concat_reservation_find(
     return iree_ok_status();
   }
 
+  // Reuse the ordinary source choice if both assembly prediction and residency
+  // comparison need it. No assignment is published between these decisions.
+  enum {
+    SOURCE_LOCATION_UNQUERIED,
+    SOURCE_LOCATION_UNAVAILABLE,
+    SOURCE_LOCATION_AVAILABLE,
+  } source_location_state = SOURCE_LOCATION_UNQUERIED;
+  uint32_t source_location_base = 0;
+  loom_low_allocation_class_capacity_t source_capacity = {0};
+
   const bool sources_form_compact_assembly =
       loom_low_allocation_concat_reservation_sources_form_compact_assembly(
           context, result_interval, result_range);
@@ -438,27 +438,41 @@ iree_status_t loom_low_allocation_concat_reservation_find(
   const bool has_fragmented_tied_source_assembly =
       loom_low_allocation_concat_reservation_has_fragmented_tied_source_assembly(
           context, result_range, result_unit_start_points);
-  bool favor_result_reservation = true;
   // Scalar sources can cheaply reserve a future aggregate, and packet-local
   // or tied in-place sources must reserve before independently allocated
   // temporaries fragment their required span.
   if (source_interval->unit_count != 1 && result_lifetime != 1) {
-    favor_result_reservation =
+    const bool favor_result_reservation =
         sources_form_compact_assembly || has_fragmented_tied_source_assembly;
     if (loom_low_allocation_concat_reservation_has_assigned_source(
             context, result_range)) {
       return iree_ok_status();
     }
-    if (favor_result_reservation) {
-      bool default_source_assembles_result = false;
+    if (favor_result_reservation &&
+        !loom_low_reg_class_uses_explicit_physical_registers(
+            &context->descriptor_set
+                 ->reg_classes[capacity.descriptor_reg_class_id])) {
       IREE_RETURN_IF_ERROR(
-          loom_low_allocation_concat_reservation_default_source_assembles_result(
-              context, source_interval, relation, result_interval, capacity,
-              result_range, &default_source_assembles_result));
+          loom_low_allocation_target_constraints_interval_capacity(
+              context->target_constraints, source_interval, &source_capacity));
+      source_location_state =
+          loom_low_allocation_search_find_free_location(
+              context, source_interval, source_capacity, &source_location_base)
+              ? SOURCE_LOCATION_AVAILABLE
+              : SOURCE_LOCATION_UNAVAILABLE;
+      bool default_source_assembles_result = false;
+      if (source_location_state == SOURCE_LOCATION_AVAILABLE) {
+        IREE_RETURN_IF_ERROR(
+            loom_low_allocation_concat_reservation_default_source_assembles_result(
+                context, source_interval, relation, result_interval,
+                source_capacity, capacity, source_location_base, result_range,
+                &default_source_assembles_result));
+      }
       if (default_source_assembles_result) {
         return iree_ok_status();
       }
-    } else if (loom_target_residency_model_is_empty(context->residency_model)) {
+    } else if (!favor_result_reservation &&
+               loom_target_residency_model_is_empty(context->residency_model)) {
       return iree_ok_status();
     }
   }
@@ -482,47 +496,63 @@ iree_status_t loom_low_allocation_concat_reservation_find(
     return iree_ok_status();
   }
 
-  if (!favor_result_reservation) {
-    uint32_t source_location_base = 0;
-    if (loom_low_allocation_search_find_free_location(
-            context, source_interval, capacity, &source_location_base)) {
-      const uint16_t reg_class_id = capacity.descriptor_reg_class_id;
-      const uint32_t current_location_end =
-          context->target_constraints
-              ->max_assigned_location_end_by_reg_class[reg_class_id];
+  // Even compact assemblies can cross a residency cliff when preserving a
+  // source lease. Compare ordinary placement only when the reservation lowers
+  // residency; within the current tier, a second location search has no value.
+  const loom_target_residency_model_t* residency_model =
+      context->residency_model;
+  const uint16_t reg_class_id = capacity.descriptor_reg_class_id;
+  const uint32_t* current_units_by_reg_class =
+      context->target_constraints->max_assigned_location_end_by_reg_class;
+  const uint32_t current_location_end =
+      current_units_by_reg_class[reg_class_id];
+  const loom_low_allocation_assignment_t result_assignment = {
+      .descriptor_reg_class_id = reg_class_id,
+      .location_kind = capacity.location_kind,
+      .location_base = result_location_base,
+      .location_count = result_interval->unit_count,
+  };
+  const uint32_t result_location_end =
+      loom_low_allocation_storage_assignment_pressure_extent(
+          context->descriptor_set, &result_assignment);
+  if (result_location_end > current_location_end &&
+      !loom_target_residency_model_is_empty(residency_model)) {
+    const uint32_t current_tier =
+        loom_target_residency_evaluate_tier_with_direct_resource_override(
+            residency_model, current_units_by_reg_class, reg_class_id,
+            current_location_end);
+    const uint32_t result_tier =
+        loom_target_residency_evaluate_tier_with_direct_resource_override(
+            residency_model, current_units_by_reg_class, reg_class_id,
+            result_location_end);
+    if (result_tier < current_tier &&
+        source_location_state == SOURCE_LOCATION_UNQUERIED) {
+      IREE_RETURN_IF_ERROR(
+          loom_low_allocation_target_constraints_interval_capacity(
+              context->target_constraints, source_interval, &source_capacity));
+      source_location_state =
+          loom_low_allocation_search_find_free_location(
+              context, source_interval, source_capacity, &source_location_base)
+              ? SOURCE_LOCATION_AVAILABLE
+              : SOURCE_LOCATION_UNAVAILABLE;
+    }
+    if (result_tier < current_tier &&
+        source_location_state == SOURCE_LOCATION_AVAILABLE) {
       const loom_low_allocation_assignment_t source_assignment = {
           .descriptor_reg_class_id = reg_class_id,
           .location_kind = capacity.location_kind,
           .location_base = source_location_base,
           .location_count = source_interval->unit_count,
       };
-      const loom_low_allocation_assignment_t result_assignment = {
-          .descriptor_reg_class_id = reg_class_id,
-          .location_kind = capacity.location_kind,
-          .location_base = result_location_base,
-          .location_count = result_interval->unit_count,
-      };
       const uint32_t source_location_end =
           iree_max(current_location_end,
                    loom_low_allocation_storage_assignment_pressure_extent(
                        context->descriptor_set, &source_assignment));
-      const uint32_t result_location_end =
-          iree_max(current_location_end,
-                   loom_low_allocation_storage_assignment_pressure_extent(
-                       context->descriptor_set, &result_assignment));
       if (result_location_end > source_location_end) {
-        const loom_target_residency_model_t* residency_model =
-            context->residency_model;
-        const uint32_t* current_units_by_reg_class =
-            context->target_constraints->max_assigned_location_end_by_reg_class;
         const uint32_t source_tier =
             loom_target_residency_evaluate_tier_with_direct_resource_override(
                 residency_model, current_units_by_reg_class, reg_class_id,
                 source_location_end);
-        const uint32_t result_tier =
-            loom_target_residency_evaluate_tier_with_direct_resource_override(
-                residency_model, current_units_by_reg_class, reg_class_id,
-                result_location_end);
         if (result_tier < source_tier) {
           *out_assignment = source_assignment;
           out_assignment->value_id = source_interval->value_id;
