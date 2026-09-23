@@ -368,13 +368,12 @@ typedef struct loom_amdgpu_memory_packet_selection_context_t {
   bool root_prefers_vgpr;
 } loom_amdgpu_memory_packet_selection_context_t;
 
-static bool loom_amdgpu_memory_dynamic_term_materialization_plan_build(
+static void loom_amdgpu_memory_dynamic_term_materialization_plan_build(
     const loom_module_t* module, const loom_value_fact_table_t* fact_table,
     const loom_view_region_table_t* view_regions,
     loom_amdgpu_source_value_analysis_t* analysis,
     const loom_low_source_memory_access_plan_t* source,
-    loom_amdgpu_memory_dynamic_term_materialization_plan_t* out_plan,
-    loom_amdgpu_memory_access_diagnostic_t* diagnostic) {
+    loom_amdgpu_memory_dynamic_term_materialization_plan_t* out_plan) {
   *out_plan = (loom_amdgpu_memory_dynamic_term_materialization_plan_t){
       .dynamic_view_base_can_materialize_soffset =
           loom_amdgpu_memory_access_dynamic_view_base_can_materialize_soffset(
@@ -384,11 +383,6 @@ static bool loom_amdgpu_memory_dynamic_term_materialization_plan_build(
        ++term_index) {
     const loom_low_source_memory_dynamic_term_t* term =
         &source->dynamic_terms[term_index];
-    if (term->byte_stride < 0) {
-      diagnostic->rejection_bits |=
-          LOOM_AMDGPU_MEMORY_ACCESS_REJECTION_DYNAMIC_STRIDE;
-      return false;
-    }
     out_plan->terms[term_index] =
         (loom_amdgpu_memory_dynamic_term_materialization_t){
             .needs_scaled_materialization =
@@ -402,7 +396,6 @@ static bool loom_amdgpu_memory_dynamic_term_materialization_plan_build(
                                                                       term),
         };
   }
-  return true;
 }
 
 static bool loom_amdgpu_memory_dynamic_term_select_value_kind(
@@ -596,11 +589,9 @@ bool loom_amdgpu_memory_access_select_dynamic_term_kinds(
     loom_amdgpu_memory_access_t* access,
     loom_amdgpu_memory_access_diagnostic_t* diagnostic) {
   loom_amdgpu_memory_dynamic_term_materialization_plan_t materialization_plan;
-  if (!loom_amdgpu_memory_dynamic_term_materialization_plan_build(
-          module, fact_table, view_regions, analysis, &access->source,
-          &materialization_plan, diagnostic)) {
-    return false;
-  }
+  loom_amdgpu_memory_dynamic_term_materialization_plan_build(
+      module, fact_table, view_regions, analysis, &access->source,
+      &materialization_plan);
   return loom_amdgpu_memory_access_select_dynamic_term_kinds_from_plan(
       &materialization_plan, access, diagnostic);
 }
@@ -611,11 +602,6 @@ bool loom_amdgpu_memory_access_select_vaddr_dynamic_terms(
   for (uint8_t i = 0; i < access->source.dynamic_term_count; ++i) {
     const loom_low_source_memory_dynamic_term_t* term =
         &access->source.dynamic_terms[i];
-    if (term->byte_stride < 0) {
-      diagnostic->rejection_bits |=
-          LOOM_AMDGPU_MEMORY_ACCESS_REJECTION_DYNAMIC_STRIDE;
-      return false;
-    }
     if (!loom_amdgpu_memory_dynamic_term_can_materialize_vaddr(module, term)) {
       diagnostic->rejection_bits |=
           LOOM_AMDGPU_MEMORY_ACCESS_REJECTION_DYNAMIC_INDEX_SOURCE;
@@ -2019,7 +2005,7 @@ static bool loom_amdgpu_memory_access_try_select_global_saddr(
 static bool loom_amdgpu_memory_dynamic_term_can_flat_address(
     const loom_module_t* module,
     const loom_low_source_memory_dynamic_term_t* term) {
-  return term->byte_stride > 0 &&
+  return term->byte_stride != 0 &&
          loom_amdgpu_memory_dynamic_term_can_materialize_vaddr(module, term);
 }
 
@@ -2759,11 +2745,9 @@ bool loom_amdgpu_memory_access_plan_select(
                : LOOM_MEMORY_ACCESS_OPERATION_STORE;
   }
   loom_amdgpu_memory_dynamic_term_materialization_plan_t materialization_plan;
-  if (!loom_amdgpu_memory_dynamic_term_materialization_plan_build(
-          module, fact_table, view_regions, analysis, out_source,
-          &materialization_plan, out_diagnostic)) {
-    return false;
-  }
+  loom_amdgpu_memory_dynamic_term_materialization_plan_build(
+      module, fact_table, view_regions, analysis, out_source,
+      &materialization_plan);
   const loom_amdgpu_memory_packet_selection_context_t selection_context = {
       .module = module,
       .fact_table = fact_table,
