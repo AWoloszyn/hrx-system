@@ -1570,7 +1570,7 @@ def projects_for_paths(paths: list[str]) -> list[Project]:
 
 
 def is_global_trigger(path: str) -> bool:
-    if "build_tools" in Path(path).parts:
+    if path.startswith("build_tools/"):
         return True
     if path.startswith("requirements") and path.endswith(".txt"):
         return True

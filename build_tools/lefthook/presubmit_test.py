@@ -239,6 +239,24 @@ class PresubmitTest(unittest.TestCase):
                 presubmit.run_build_filename_check(["runtime/deleted/BUILD"])
             )
 
+    def test_project_build_tools_route_only_their_owning_project(self):
+        cases = (
+            ("runtime/build_tools/presubmit.py", {"runtime"}),
+            ("libamdf/build_tools/presubmit.py", {"libamdf"}),
+            ("libhrx/build_tools/presubmit.py", {"libhrx"}),
+            ("loom/build_tools/presubmit.py", {"loom"}),
+            (
+                "build_tools/devtools/project_presubmit.py",
+                {"runtime", "libamdf", "libhrx", "loom"},
+            ),
+        )
+        for path, expected_projects in cases:
+            with self.subTest(path=path):
+                self.assertEqual(
+                    {project.name for project in presubmit.projects_for_paths([path])},
+                    expected_projects,
+                )
+
     def test_semgrep_candidates_require_configured_prefix_and_extension(self):
         with (
             mock.patch.object(presubmit, "SEMGREP_PATH_PREFIXES", ("project/src/",)),
