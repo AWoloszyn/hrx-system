@@ -898,3 +898,282 @@ func.def @offset_with_static_displacement(%base: offset, %table: buffer) -> (i32
                OpStore %27 %value Aligned 4
                OpReturn
                OpFunctionEnd
+
+// ====
+
+func.def @varying_predicate_term(%input: buffer, %table: buffer) -> (i32) {
+  %base = index.constant 0 : offset
+  %source = buffer.view %input[%base] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %sign_boundary = scalar.constant 0 : i32
+  %negative = scalar.cmpi slt, %raw, %sign_boundary : i32
+  %coordinate = index.cast %negative : i1 to index
+  %bias = index.constant 1 : index
+  %position = index.add %coordinate, %bias : index
+  %view = buffer.view %table[%base] : buffer -> view<3xi32>
+  %value = view.load %view[%position] : view<3xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+               OpCapability Shader
+               OpCapability VulkanMemoryModel
+               OpCapability PhysicalStorageBufferAddresses
+               OpCapability Int64
+               OpCapability Float16
+               OpCapability Float64
+               OpCapability Int8
+               OpCapability Int16
+               OpCapability StorageBuffer8BitAccess
+               OpCapability StorageBuffer16BitAccess
+               OpCapability BFloat16TypeKHR
+               OpExtension "SPV_KHR_vulkan_memory_model"
+               OpExtension "SPV_KHR_physical_storage_buffer"
+               OpExtension "SPV_KHR_8bit_storage"
+               OpExtension "SPV_KHR_16bit_storage"
+               OpExtension "SPV_KHR_bfloat16"
+               OpMemoryModel PhysicalStorageBuffer64 Vulkan
+               OpEntryPoint GLCompute %varying_predicate_term "varying_predicate_term"
+               OpExecutionMode %varying_predicate_term LocalSize 1 1 1
+               OpName %varying_predicate_term "varying_predicate_term"
+               OpName %input "input"
+               OpName %table "table"
+               OpName %raw "raw"
+               OpName %sign_boundary "sign_boundary"
+               OpName %negative "negative"
+               OpName %value "value"
+               OpMemberDecorate %_struct_6 0 Offset 0
+               OpDecorate %_struct_6 Block
+               OpDecorate %4 DescriptorSet 0
+               OpDecorate %4 Binding 0
+               OpDecorate %9 DescriptorSet 0
+               OpDecorate %9 Binding 1
+               OpMemberDecorate %_struct_11 0 Offset 0
+               OpDecorate %_struct_11 Block
+               OpDecorate %10 DescriptorSet 0
+               OpDecorate %10 Binding 2
+               OpDecorate %_ptr_PhysicalStorageBuffer_int ArrayStride 4
+        %int = OpTypeInt 32 1
+      %int_0 = OpConstant %int 0
+      %ulong = OpTypeInt 64 0
+  %_struct_6 = OpTypeStruct %ulong
+%_ptr_StorageBuffer__struct_6 = OpTypePointer StorageBuffer %_struct_6
+%_ptr_StorageBuffer_ulong = OpTypePointer StorageBuffer %ulong
+          %4 = OpVariable %_ptr_StorageBuffer__struct_6 StorageBuffer
+          %9 = OpVariable %_ptr_StorageBuffer__struct_6 StorageBuffer
+ %_struct_11 = OpTypeStruct %int
+%_ptr_StorageBuffer__struct_11 = OpTypePointer StorageBuffer %_struct_11
+%_ptr_StorageBuffer_int = OpTypePointer StorageBuffer %int
+         %10 = OpVariable %_ptr_StorageBuffer__struct_11 StorageBuffer
+       %void = OpTypeVoid
+         %15 = OpTypeFunction %void
+    %ulong_0 = OpConstant %ulong 0
+%_ptr_PhysicalStorageBuffer_int = OpTypePointer PhysicalStorageBuffer %int
+%sign_boundary = OpConstant %int 0
+       %bool = OpTypeBool
+    %ulong_1 = OpConstant %ulong 1
+    %ulong_4 = OpConstant %ulong 4
+%varying_predicate_term = OpFunction %void None %15
+         %16 = OpLabel
+         %17 = OpAccessChain %_ptr_StorageBuffer_ulong %4 %int_0
+      %input = OpLoad %ulong %17 Aligned 8
+         %19 = OpAccessChain %_ptr_StorageBuffer_ulong %9 %int_0
+      %table = OpLoad %ulong %19 Aligned 8
+         %22 = OpIAdd %ulong %input %ulong_0
+         %24 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %22
+        %raw = OpLoad %int %24 Aligned 4
+   %negative = OpSLessThan %bool %raw %sign_boundary
+         %30 = OpSelect %ulong %negative %ulong_1 %ulong_0
+         %32 = OpIMul %ulong %30 %ulong_4
+         %33 = OpIAdd %ulong %32 %ulong_4
+         %34 = OpIAdd %ulong %table %33
+         %35 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %34
+      %value = OpLoad %int %35 Aligned 4
+         %37 = OpAccessChain %_ptr_StorageBuffer_int %10 %int_0
+               OpStore %37 %value Aligned 4
+               OpReturn
+               OpFunctionEnd
+
+// ====
+
+func.def @uniform_comparison_term(%input: i32, %table: buffer) -> (i32) {
+  %sign_boundary = scalar.constant 0 : i32
+  %negative = scalar.cmpi slt, %input, %sign_boundary : i32
+  %coordinate = index.cast %negative : i1 to index
+  %bias = index.constant 1 : index
+  %position = index.add %coordinate, %bias : index
+  %base = index.constant 0 : offset
+  %view = buffer.view %table[%base] : buffer -> view<3xi32>
+  %value = view.load %view[%position] : view<3xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+               OpCapability Shader
+               OpCapability VulkanMemoryModel
+               OpCapability PhysicalStorageBufferAddresses
+               OpCapability Int64
+               OpCapability Float16
+               OpCapability Float64
+               OpCapability Int8
+               OpCapability Int16
+               OpCapability StorageBuffer8BitAccess
+               OpCapability StorageBuffer16BitAccess
+               OpCapability BFloat16TypeKHR
+               OpExtension "SPV_KHR_vulkan_memory_model"
+               OpExtension "SPV_KHR_physical_storage_buffer"
+               OpExtension "SPV_KHR_8bit_storage"
+               OpExtension "SPV_KHR_16bit_storage"
+               OpExtension "SPV_KHR_bfloat16"
+               OpMemoryModel PhysicalStorageBuffer64 Vulkan
+               OpEntryPoint GLCompute %uniform_comparison_term "uniform_comparison_term"
+               OpExecutionMode %uniform_comparison_term LocalSize 1 1 1
+               OpName %uniform_comparison_term "uniform_comparison_term"
+               OpName %input "input"
+               OpName %table "table"
+               OpName %sign_boundary "sign_boundary"
+               OpName %negative "negative"
+               OpName %value "value"
+               OpMemberDecorate %_struct_5 0 Offset 0
+               OpDecorate %_struct_5 Block
+               OpDecorate %4 DescriptorSet 0
+               OpDecorate %4 Binding 0
+               OpMemberDecorate %_struct_10 0 Offset 0
+               OpDecorate %_struct_10 Block
+               OpDecorate %8 DescriptorSet 0
+               OpDecorate %8 Binding 1
+               OpDecorate %13 DescriptorSet 0
+               OpDecorate %13 Binding 2
+               OpDecorate %_ptr_PhysicalStorageBuffer_int ArrayStride 4
+        %int = OpTypeInt 32 1
+      %int_0 = OpConstant %int 0
+  %_struct_5 = OpTypeStruct %int
+%_ptr_StorageBuffer__struct_5 = OpTypePointer StorageBuffer %_struct_5
+%_ptr_StorageBuffer_int = OpTypePointer StorageBuffer %int
+          %4 = OpVariable %_ptr_StorageBuffer__struct_5 StorageBuffer
+      %ulong = OpTypeInt 64 0
+ %_struct_10 = OpTypeStruct %ulong
+%_ptr_StorageBuffer__struct_10 = OpTypePointer StorageBuffer %_struct_10
+%_ptr_StorageBuffer_ulong = OpTypePointer StorageBuffer %ulong
+          %8 = OpVariable %_ptr_StorageBuffer__struct_10 StorageBuffer
+         %13 = OpVariable %_ptr_StorageBuffer__struct_5 StorageBuffer
+       %void = OpTypeVoid
+         %15 = OpTypeFunction %void
+%sign_boundary = OpConstant %int 0
+       %bool = OpTypeBool
+    %ulong_1 = OpConstant %ulong 1
+    %ulong_0 = OpConstant %ulong 0
+    %ulong_4 = OpConstant %ulong 4
+%_ptr_PhysicalStorageBuffer_int = OpTypePointer PhysicalStorageBuffer %int
+%uniform_comparison_term = OpFunction %void None %15
+         %16 = OpLabel
+         %17 = OpAccessChain %_ptr_StorageBuffer_int %4 %int_0
+      %input = OpLoad %int %17 Aligned 4
+         %19 = OpAccessChain %_ptr_StorageBuffer_ulong %8 %int_0
+      %table = OpLoad %ulong %19 Aligned 8
+   %negative = OpSLessThan %bool %input %sign_boundary
+         %26 = OpSelect %ulong %negative %ulong_1 %ulong_0
+         %28 = OpIMul %ulong %26 %ulong_4
+         %29 = OpIAdd %ulong %28 %ulong_4
+         %30 = OpIAdd %ulong %table %29
+         %32 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %30
+      %value = OpLoad %int %32 Aligned 4
+         %34 = OpAccessChain %_ptr_StorageBuffer_int %13 %int_0
+               OpStore %34 %value Aligned 4
+               OpReturn
+               OpFunctionEnd
+
+// ====
+
+func.def @wide_varying_predicate_term(%input: buffer, %table: buffer) -> (i32) {
+  %base = index.constant 0 : offset
+  %source = buffer.view %input[%base] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %sign_boundary = scalar.constant 0 : i32
+  %negative = scalar.cmpi slt, %raw, %sign_boundary : i32
+  %coordinate = index.cast %negative : i1 to index
+  %bias = index.constant 1 : index
+  %position = index.add %coordinate, %bias : index
+  %view = buffer.view %table[%base] : buffer -> view<3x1073741824xi32>
+  %value = view.load %view[%position, 0] : view<3x1073741824xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+               OpCapability Shader
+               OpCapability VulkanMemoryModel
+               OpCapability PhysicalStorageBufferAddresses
+               OpCapability Int64
+               OpCapability Float16
+               OpCapability Float64
+               OpCapability Int8
+               OpCapability Int16
+               OpCapability StorageBuffer8BitAccess
+               OpCapability StorageBuffer16BitAccess
+               OpCapability BFloat16TypeKHR
+               OpExtension "SPV_KHR_vulkan_memory_model"
+               OpExtension "SPV_KHR_physical_storage_buffer"
+               OpExtension "SPV_KHR_8bit_storage"
+               OpExtension "SPV_KHR_16bit_storage"
+               OpExtension "SPV_KHR_bfloat16"
+               OpMemoryModel PhysicalStorageBuffer64 Vulkan
+               OpEntryPoint GLCompute %wide_varying_predicate_term "wide_varying_predicate_term"
+               OpExecutionMode %wide_varying_predicate_term LocalSize 1 1 1
+               OpName %wide_varying_predicate_term "wide_varying_predicate_term"
+               OpName %input "input"
+               OpName %table "table"
+               OpName %raw "raw"
+               OpName %sign_boundary "sign_boundary"
+               OpName %negative "negative"
+               OpName %value "value"
+               OpMemberDecorate %_struct_6 0 Offset 0
+               OpDecorate %_struct_6 Block
+               OpDecorate %4 DescriptorSet 0
+               OpDecorate %4 Binding 0
+               OpDecorate %9 DescriptorSet 0
+               OpDecorate %9 Binding 1
+               OpMemberDecorate %_struct_11 0 Offset 0
+               OpDecorate %_struct_11 Block
+               OpDecorate %10 DescriptorSet 0
+               OpDecorate %10 Binding 2
+               OpDecorate %_ptr_PhysicalStorageBuffer_int ArrayStride 4
+        %int = OpTypeInt 32 1
+      %int_0 = OpConstant %int 0
+      %ulong = OpTypeInt 64 0
+  %_struct_6 = OpTypeStruct %ulong
+%_ptr_StorageBuffer__struct_6 = OpTypePointer StorageBuffer %_struct_6
+%_ptr_StorageBuffer_ulong = OpTypePointer StorageBuffer %ulong
+          %4 = OpVariable %_ptr_StorageBuffer__struct_6 StorageBuffer
+          %9 = OpVariable %_ptr_StorageBuffer__struct_6 StorageBuffer
+ %_struct_11 = OpTypeStruct %int
+%_ptr_StorageBuffer__struct_11 = OpTypePointer StorageBuffer %_struct_11
+%_ptr_StorageBuffer_int = OpTypePointer StorageBuffer %int
+         %10 = OpVariable %_ptr_StorageBuffer__struct_11 StorageBuffer
+       %void = OpTypeVoid
+         %15 = OpTypeFunction %void
+    %ulong_0 = OpConstant %ulong 0
+%_ptr_PhysicalStorageBuffer_int = OpTypePointer PhysicalStorageBuffer %int
+%sign_boundary = OpConstant %int 0
+       %bool = OpTypeBool
+    %ulong_1 = OpConstant %ulong 1
+%ulong_4294967296 = OpConstant %ulong 4294967296
+%wide_varying_predicate_term = OpFunction %void None %15
+         %16 = OpLabel
+         %17 = OpAccessChain %_ptr_StorageBuffer_ulong %4 %int_0
+      %input = OpLoad %ulong %17 Aligned 8
+         %19 = OpAccessChain %_ptr_StorageBuffer_ulong %9 %int_0
+      %table = OpLoad %ulong %19 Aligned 8
+         %22 = OpIAdd %ulong %input %ulong_0
+         %24 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %22
+        %raw = OpLoad %int %24 Aligned 4
+   %negative = OpSLessThan %bool %raw %sign_boundary
+         %30 = OpSelect %ulong %negative %ulong_1 %ulong_0
+         %32 = OpIMul %ulong %30 %ulong_4294967296
+         %33 = OpIAdd %ulong %32 %ulong_4294967296
+         %34 = OpIAdd %ulong %table %33
+         %35 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %34
+      %value = OpLoad %int %35 Aligned 4
+         %37 = OpAccessChain %_ptr_StorageBuffer_int %10 %int_0
+               OpStore %37 %value Aligned 4
+               OpReturn
+               OpFunctionEnd

@@ -139,3 +139,49 @@ func.def @offset_with_static_displacement(%base: offset, %table: buffer) -> (i32
   %value = view.load %view[1] : view<2xi32> -> i32
   func.return %value : i32
 }
+
+// ====
+
+func.def @varying_predicate_term(%input: buffer, %table: buffer) -> (i32) {
+  %base = index.constant 0 : offset
+  %source = buffer.view %input[%base] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %sign_boundary = scalar.constant 0 : i32
+  %negative = scalar.cmpi slt, %raw, %sign_boundary : i32
+  %coordinate = index.cast %negative : i1 to index
+  %bias = index.constant 1 : index
+  %position = index.add %coordinate, %bias : index
+  %view = buffer.view %table[%base] : buffer -> view<3xi32>
+  %value = view.load %view[%position] : view<3xi32> -> i32
+  func.return %value : i32
+}
+
+// ====
+
+func.def @uniform_comparison_term(%input: i32, %table: buffer) -> (i32) {
+  %sign_boundary = scalar.constant 0 : i32
+  %negative = scalar.cmpi slt, %input, %sign_boundary : i32
+  %coordinate = index.cast %negative : i1 to index
+  %bias = index.constant 1 : index
+  %position = index.add %coordinate, %bias : index
+  %base = index.constant 0 : offset
+  %view = buffer.view %table[%base] : buffer -> view<3xi32>
+  %value = view.load %view[%position] : view<3xi32> -> i32
+  func.return %value : i32
+}
+
+// ====
+
+func.def @wide_varying_predicate_term(%input: buffer, %table: buffer) -> (i32) {
+  %base = index.constant 0 : offset
+  %source = buffer.view %input[%base] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %sign_boundary = scalar.constant 0 : i32
+  %negative = scalar.cmpi slt, %raw, %sign_boundary : i32
+  %coordinate = index.cast %negative : i1 to index
+  %bias = index.constant 1 : index
+  %position = index.add %coordinate, %bias : index
+  %view = buffer.view %table[%base] : buffer -> view<3x1073741824xi32>
+  %value = view.load %view[%position, 0] : view<3x1073741824xi32> -> i32
+  func.return %value : i32
+}

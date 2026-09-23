@@ -830,6 +830,62 @@ iree_status_t loom_amdgpu_select_index_cast_plan(
   loom_type_t result_low_type = loom_type_none();
   IREE_RETURN_IF_ERROR(loom_amdgpu_low_result_type(context, source_op, result,
                                                    &result_low_type));
+  const loom_module_t* module = loom_low_lower_context_module(context);
+  const loom_type_t source_type = loom_module_value_type(module, source);
+  const loom_type_t result_type = loom_module_value_type(module, result);
+  const loom_scalar_type_t source_scalar_type =
+      loom_type_element_type(source_type);
+  const loom_scalar_type_t result_scalar_type =
+      loom_type_element_type(result_type);
+  if (source_scalar_type == LOOM_SCALAR_TYPE_I1 &&
+      loom_amdgpu_type_is_address_scalar(result_type)) {
+    *out_plan = (loom_amdgpu_index_cast_plan_t){
+        .kind = LOOM_AMDGPU_INDEX_CAST_KIND_PREDICATE_TO_INTEGER,
+        .source = source,
+        .result = result,
+    };
+    *out_selected = true;
+    return iree_ok_status();
+  }
+  if ((source_scalar_type == LOOM_SCALAR_TYPE_I8 ||
+       source_scalar_type == LOOM_SCALAR_TYPE_I16) &&
+      result_scalar_type == LOOM_SCALAR_TYPE_OFFSET) {
+    const loom_amdgpu_descriptor_ref_t descriptor_ref =
+        loom_low_register_type_class_id(result_low_type) ==
+                LOOM_AMDGPU_REG_CLASS_ID_VGPR
+            ? LOOM_AMDGPU_DESCRIPTOR_REF_V_AND_B32_LIT
+            : LOOM_AMDGPU_DESCRIPTOR_REF_S_AND_B32;
+    if (!loom_amdgpu_descriptor_set_has_ref(
+            loom_low_lower_context_descriptor_set(context), descriptor_ref)) {
+      return iree_ok_status();
+    }
+    *out_plan = (loom_amdgpu_index_cast_plan_t){
+        .kind = LOOM_AMDGPU_INDEX_CAST_KIND_ZERO_EXTENDING_NARROW,
+        .source = source,
+        .result = result,
+        .conversion_descriptor_ref = descriptor_ref,
+        .payload_bit_count =
+            (uint8_t)loom_scalar_type_bitwidth(source_scalar_type),
+    };
+    *out_selected = true;
+    return iree_ok_status();
+  }
+  if (loom_amdgpu_type_is_address_scalar(source_type) &&
+      (result_scalar_type == LOOM_SCALAR_TYPE_I1 ||
+       result_scalar_type == LOOM_SCALAR_TYPE_I8 ||
+       result_scalar_type == LOOM_SCALAR_TYPE_I16)) {
+    *out_plan = (loom_amdgpu_index_cast_plan_t){
+        .kind = result_scalar_type == LOOM_SCALAR_TYPE_I1
+                    ? LOOM_AMDGPU_INDEX_CAST_KIND_INTEGER_TO_PREDICATE
+                    : LOOM_AMDGPU_INDEX_CAST_KIND_NARROWING_INTEGER,
+        .source = source,
+        .result = result,
+        .payload_bit_count =
+            (uint8_t)loom_scalar_type_bitwidth(result_scalar_type),
+    };
+    *out_selected = true;
+    return iree_ok_status();
+  }
   if (loom_type_equal(source_low_type, result_low_type)) {
     *out_plan = (loom_amdgpu_index_cast_plan_t){
         .kind = LOOM_AMDGPU_INDEX_CAST_KIND_PRESERVING_LOW_BITS,
@@ -841,13 +897,6 @@ iree_status_t loom_amdgpu_select_index_cast_plan(
     return iree_ok_status();
   }
 
-  const loom_module_t* module = loom_low_lower_context_module(context);
-  const loom_type_t source_type = loom_module_value_type(module, source);
-  const loom_type_t result_type = loom_module_value_type(module, result);
-  const loom_scalar_type_t source_scalar_type =
-      loom_type_element_type(source_type);
-  const loom_scalar_type_t result_scalar_type =
-      loom_type_element_type(result_type);
   const uint32_t source_unit_count =
       loom_low_register_type_unit_count(source_low_type);
   const uint32_t result_unit_count =
@@ -936,8 +985,8 @@ iree_status_t loom_amdgpu_select_index_cast_plan(
                           : LOOM_AMDGPU_INDEX_CAST_KIND_ZERO_EXTENDING_LOW_32,
       .source = source,
       .result = result,
-      .zero_descriptor_ref = sign_extend ? LOOM_AMDGPU_DESCRIPTOR_REF_NONE
-                                         : extension_descriptor_ref,
+      .conversion_descriptor_ref = sign_extend ? LOOM_AMDGPU_DESCRIPTOR_REF_NONE
+                                               : extension_descriptor_ref,
       .result_unit_count = result_unit_count,
   };
   *out_selected = true;

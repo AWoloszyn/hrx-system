@@ -134,3 +134,92 @@ check.case public @wide_terms_cancel_before_index_conversion {
   check.expect.equal actual(%output) expected(%expected) : tensor<128xi32>
   check.return
 }
+
+// The write uses a signed narrow coordinate while the read uses the independent
+// lane ordinal, so a shared address error cannot cancel between them.
+kernel.def @workgroup_narrow_coordinates() {
+  %unit = index.constant 1 : index
+  %width = index.constant 256 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%input: buffer, %byte_output: buffer, %halfword_output: buffer) {
+  %lane = kernel.workitem.id<x> : index
+  %base = index.constant 0 : offset
+  %source = buffer.view %input[%base] : buffer -> view<256xi32>
+  %byte_destination = buffer.view %byte_output[%base] : buffer -> view<256xi32>
+  %halfword_destination = buffer.view %halfword_output[%base] : buffer -> view<256xi32>
+  %length = index.constant 1024 : offset
+  %byte_scratch = buffer.alloca<workgroup> align(4) %length : buffer
+  %halfword_scratch = buffer.alloca<workgroup> align(4) %length : buffer
+  %byte_view = buffer.view %byte_scratch[%base] : buffer -> view<256xi32>
+  %halfword_view = buffer.view %halfword_scratch[%base] : buffer -> view<256xi32>
+  %raw = view.load %source[%lane] : view<256xi32> -> i32
+  %byte = scalar.trunci %raw : i32 to i8
+  %halfword = scalar.extsi %byte : i8 to i16
+  %byte_coordinate = index.cast %byte : i8 to index
+  %halfword_coordinate = index.cast %halfword : i16 to index
+  %bias = index.constant 128 : index
+  %byte_position = index.add %byte_coordinate, %bias : index
+  %halfword_position = index.add %halfword_coordinate, %bias : index
+  view.store %raw, %byte_view[%byte_position] : i32, view<256xi32>
+  view.store %raw, %halfword_view[%halfword_position] : i32, view<256xi32>
+  kernel.barrier<workgroup> scope(workgroup) ordering(acq_rel)
+  %byte_value = view.load %byte_view[%lane] : view<256xi32> -> i32
+  %halfword_value = view.load %halfword_view[%lane] : view<256xi32> -> i32
+  view.store %byte_value, %byte_destination[%lane] : i32, view<256xi32>
+  view.store %halfword_value, %halfword_destination[%lane] : i32, view<256xi32>
+  kernel.return
+}
+
+check.case public @workgroup_narrow_domains {
+  %input = check.generate.iota offset(-128) step(1) : tensor<256xi32>
+  %byte_output = check.generate.fill value(999) : tensor<256xi32>
+  %halfword_output = check.generate.fill value(999) : tensor<256xi32>
+  kernel.launch @workgroup_narrow_coordinates(%input, %byte_output, %halfword_output) : (tensor<256xi32>, tensor<256xi32>, tensor<256xi32>)
+  check.expect.equal actual(%byte_output) expected(%input) : tensor<256xi32>
+  check.expect.equal actual(%halfword_output) expected(%input) : tensor<256xi32>
+  check.return
+}
+
+kernel.def @uniform_narrow_coordinates() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%byte: i8, %halfword: i16, %table: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %lookup = buffer.view %table[%base] : buffer -> view<65536xi32>
+  %destination = buffer.view %output[%base] : buffer -> view<4xi32>
+  %byte_coordinate = index.cast %byte : i8 to index
+  %halfword_coordinate = index.cast %halfword : i16 to index
+  %byte_bias = index.constant 128 : index
+  %halfword_bias = index.constant 32768 : index
+  %byte_position = index.add %byte_coordinate, %byte_bias : index
+  %halfword_position = index.add %halfword_coordinate, %halfword_bias : index
+  %byte_value = view.load %lookup[%byte_position] : view<65536xi32> -> i32
+  %halfword_value = view.load %lookup[%halfword_position] : view<65536xi32> -> i32
+  %byte_offset = index.cast %byte : i8 to offset
+  %halfword_offset = index.cast %halfword : i16 to offset
+  %unsigned_byte = index.cast %byte_offset : offset to i32
+  %unsigned_halfword = index.cast %halfword_offset : offset to i32
+  view.store %byte_value, %destination[0] : i32, view<4xi32>
+  view.store %halfword_value, %destination[1] : i32, view<4xi32>
+  view.store %unsigned_byte, %destination[2] : i32, view<4xi32>
+  view.store %unsigned_halfword, %destination[3] : i32, view<4xi32>
+  kernel.return
+}
+
+check.case public @uniform_narrow_abi {
+  %byte = check.literal value(-128) : i8
+  %halfword = check.literal value(-32768) : i16
+  %table = check.generate.iota offset(11) step(7) : tensor<65536xi32>
+  %output = check.generate.fill value(-1) : tensor<4xi32>
+  kernel.launch @uniform_narrow_coordinates(%byte, %halfword, %table, %output) : (i8, i16, tensor<65536xi32>, tensor<4xi32>)
+  %lookups = check.tensor.view %output offset(0) : tensor<4xi32> -> tensor<2xi32>
+  %unsigned_byte = check.tensor.view %output offset(8) : tensor<4xi32> -> tensor<1xi32>
+  %unsigned_halfword = check.tensor.view %output offset(12) : tensor<4xi32> -> tensor<1xi32>
+  %expected_lookups = check.generate.fill value(11) : tensor<2xi32>
+  %expected_unsigned_byte = check.generate.fill value(128) : tensor<1xi32>
+  %expected_unsigned_halfword = check.generate.fill value(32768) : tensor<1xi32>
+  check.expect.equal actual(%lookups) expected(%expected_lookups) : tensor<2xi32>
+  check.expect.equal actual(%unsigned_byte) expected(%expected_unsigned_byte) : tensor<1xi32>
+  check.expect.equal actual(%unsigned_halfword) expected(%expected_unsigned_halfword) : tensor<1xi32>
+  check.return
+}

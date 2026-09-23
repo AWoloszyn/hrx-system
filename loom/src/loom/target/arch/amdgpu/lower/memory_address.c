@@ -748,10 +748,13 @@ static iree_status_t loom_amdgpu_emit_memory_flat_wide_dynamic_term(
   *out_emitted = false;
   const loom_module_t* module = loom_low_lower_context_module(context);
   const loom_type_t low_index_type = loom_module_value_type(module, low_index);
+  const bool predicate_index =
+      loom_amdgpu_type_is_i1(loom_module_value_type(module, term->index));
   const bool wide_product =
       term->stride_value_count != 0 &&
       !loom_low_source_memory_dynamic_term_fits_unsigned_bit_count(term, 32);
-  if (loom_low_register_type_unit_count(low_index_type) == 1 &&
+  if ((loom_low_register_type_unit_count(low_index_type) == 1 ||
+       predicate_index) &&
       term->byte_stride <= UINT32_MAX && !wide_product) {
     return iree_ok_status();
   }
@@ -979,6 +982,10 @@ static iree_status_t loom_amdgpu_emit_memory_flat_scalar_dynamic_term(
     return iree_ok_status();
   }
   const loom_module_t* module = loom_low_lower_context_module(context);
+  if (index_is_sgpr_b64 &&
+      loom_amdgpu_type_is_i1(loom_module_value_type(module, term->index))) {
+    return iree_ok_status();
+  }
   for (uint8_t i = 0; i < term->stride_value_count; ++i) {
     loom_value_id_t low_stride = LOOM_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(loom_low_lower_lookup_value(

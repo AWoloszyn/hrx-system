@@ -23,6 +23,10 @@ void loom_amdgpu_mark_value_plan_storage_demands(
         case LOOM_AMDGPU_INDEX_CAST_KIND_PRESERVING_LOW_BITS:
         case LOOM_AMDGPU_INDEX_CAST_KIND_ZERO_EXTENDING_LOW_32:
         case LOOM_AMDGPU_INDEX_CAST_KIND_SIGN_EXTENDING_LOW_32:
+        case LOOM_AMDGPU_INDEX_CAST_KIND_ZERO_EXTENDING_NARROW:
+        case LOOM_AMDGPU_INDEX_CAST_KIND_PREDICATE_TO_INTEGER:
+        case LOOM_AMDGPU_INDEX_CAST_KIND_NARROWING_INTEGER:
+        case LOOM_AMDGPU_INDEX_CAST_KIND_INTEGER_TO_PREDICATE:
           loom_low_lower_require_source_value_storage(context,
                                                       index_cast_plan->source);
           return;

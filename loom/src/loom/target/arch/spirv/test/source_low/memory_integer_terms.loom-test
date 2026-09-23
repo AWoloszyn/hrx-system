@@ -292,3 +292,98 @@ low.func.def target<spirv.logical.core> abi(shader_entry_point) @offset_with_sta
   %value = OpLoad.storage_buffer.i32 %10
   return %value
 }
+
+// ====
+
+func.def @varying_predicate_term(%input: buffer, %table: buffer) -> (i32) {
+  %base = index.constant 0 : offset
+  %source = buffer.view %input[%base] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %sign_boundary = scalar.constant 0 : i32
+  %negative = scalar.cmpi slt, %raw, %sign_boundary : i32
+  %coordinate = index.cast %negative : i1 to index
+  %bias = index.constant 1 : index
+  %position = index.add %coordinate, %bias : index
+  %view = buffer.view %table[%base] : buffer -> view<3xi32>
+  %value = view.load %view[%position] : view<3xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<spirv.logical.core> abi(shader_entry_point) @varying_predicate_term(%input: reg<spirv.ptr.storage_buffer>, %table: reg<spirv.ptr.storage_buffer>) -> (reg<spirv.id : i32>) asm {
+  %16 = OpConstant.offset64 0
+  %17 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %16
+  %raw = OpLoad.storage_buffer.i32 %17
+  %sign_boundary = OpConstant.i32 0
+  %negative = OpSLessThan %raw, %sign_boundary
+  %21 = OpConstant.offset64 1
+  %23 = OpSelect.offset64 %negative, %21, %16
+  %24 = OpConstant.offset64 4
+  %25 = OpIMul.offset64 %23, %24
+  %27 = OpIAdd.offset64 %25, %24
+  %28 = OpPtrAccessChain.storage_buffer.i32.byte_offset %table, %27
+  %value = OpLoad.storage_buffer.i32 %28
+  return %value
+}
+
+// ====
+
+func.def @uniform_comparison_term(%input: i32, %table: buffer) -> (i32) {
+  %sign_boundary = scalar.constant 0 : i32
+  %negative = scalar.cmpi slt, %input, %sign_boundary : i32
+  %coordinate = index.cast %negative : i1 to index
+  %bias = index.constant 1 : index
+  %position = index.add %coordinate, %bias : index
+  %base = index.constant 0 : offset
+  %view = buffer.view %table[%base] : buffer -> view<3xi32>
+  %value = view.load %view[%position] : view<3xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<spirv.logical.core> abi(shader_entry_point) @uniform_comparison_term(%input: reg<spirv.id : i32>, %table: reg<spirv.ptr.storage_buffer>) -> (reg<spirv.id : i32>) asm {
+  %sign_boundary = OpConstant.i32 0
+  %negative = OpSLessThan %input, %sign_boundary
+  %16 = OpConstant.offset64 1
+  %17 = OpConstant.offset64 0
+  %18 = OpSelect.offset64 %negative, %16, %17
+  %19 = OpConstant.offset64 4
+  %20 = OpIMul.offset64 %18, %19
+  %22 = OpIAdd.offset64 %20, %19
+  %23 = OpPtrAccessChain.storage_buffer.i32.byte_offset %table, %22
+  %value = OpLoad.storage_buffer.i32 %23
+  return %value
+}
+
+// ====
+
+func.def @wide_varying_predicate_term(%input: buffer, %table: buffer) -> (i32) {
+  %base = index.constant 0 : offset
+  %source = buffer.view %input[%base] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %sign_boundary = scalar.constant 0 : i32
+  %negative = scalar.cmpi slt, %raw, %sign_boundary : i32
+  %coordinate = index.cast %negative : i1 to index
+  %bias = index.constant 1 : index
+  %position = index.add %coordinate, %bias : index
+  %view = buffer.view %table[%base] : buffer -> view<3x1073741824xi32>
+  %value = view.load %view[%position, 0] : view<3x1073741824xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<spirv.logical.core> abi(shader_entry_point) @wide_varying_predicate_term(%input: reg<spirv.ptr.storage_buffer>, %table: reg<spirv.ptr.storage_buffer>) -> (reg<spirv.id : i32>) asm {
+  %22 = OpConstant.offset64 0
+  %23 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %22
+  %raw = OpLoad.storage_buffer.i32 %23
+  %sign_boundary = OpConstant.i32 0
+  %negative = OpSLessThan %raw, %sign_boundary
+  %27 = OpConstant.offset64 1
+  %29 = OpSelect.offset64 %negative, %27, %22
+  %30 = OpConstant.offset64 4294967296
+  %31 = OpIMul.offset64 %29, %30
+  %33 = OpIAdd.offset64 %31, %30
+  %34 = OpPtrAccessChain.storage_buffer.i32.byte_offset %table, %33
+  %value = OpLoad.storage_buffer.i32 %34
+  return %value
+}

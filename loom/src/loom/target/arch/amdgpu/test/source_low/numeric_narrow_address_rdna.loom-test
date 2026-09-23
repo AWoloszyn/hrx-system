@@ -1,0 +1,116 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_narrow_address.loom-test
+// RUN: emit source-low target=amdgpu:gfx1151 output=low
+
+func.def @signed_narrow_coordinates(%byte: i8, %halfword: i16) -> (index, index) {
+  %byte_coordinate = index.cast %byte : i8 to index
+  %halfword_coordinate = index.cast %halfword : i16 to index
+  func.return %byte_coordinate, %halfword_coordinate : index, index
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @signed_narrow_coordinates(%byte_coordinate: reg<amdgpu.vgpr>, %halfword_coordinate: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  return %byte_coordinate, %halfword_coordinate
+}
+
+// ====
+
+func.def @unsigned_narrow_offsets(%byte: i8, %halfword: i16) -> (offset, offset) {
+  %byte_offset = index.cast %byte : i8 to offset
+  %halfword_offset = index.cast %halfword : i16 to offset
+  func.return %byte_offset, %halfword_offset : offset, offset
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @unsigned_narrow_offsets(%byte: reg<amdgpu.vgpr>, %halfword: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) asm {
+  %byte_offset = v_and_b32_lit %byte, 255
+  %halfword_offset = v_and_b32_lit %halfword, 65535
+  return %byte_offset, %halfword_offset
+}
+
+// ====
+
+func.def @narrow_coordinate_payloads(%coordinate: index) -> (i8, i16, i1) {
+  %byte = index.cast %coordinate : index to i8
+  %halfword = index.cast %coordinate : index to i16
+  %low_bit = index.cast %coordinate : index to i1
+  func.return %byte, %halfword, %low_bit : i8, i16, i1
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @narrow_coordinate_payloads(%coordinate: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.scc>) asm {
+  %12 = v_mov_b32_copy %coordinate
+  %byte = v_bfe_i32_offset_width_inline %12 {offset = 0, width = 8}
+  %halfword = v_bfe_i32_offset_width_inline %12 {offset = 0, width = 16}
+  %17 = s_and_b32_rhs_inline %coordinate, 1
+  %18 = s_mov_b32 1
+  %low_bit = s_cmp_eq_i32 %17, %18
+  return %byte, %halfword, %low_bit
+}
+
+// ====
+
+func.def @narrow_offset_payloads(%byte_offset: offset) -> (i8, i16, i1) {
+  %byte = index.cast %byte_offset : offset to i8
+  %halfword = index.cast %byte_offset : offset to i16
+  %low_bit = index.cast %byte_offset : offset to i1
+  func.return %byte, %halfword, %low_bit : i8, i16, i1
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @narrow_offset_payloads(%byte_offset: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.scc>) asm {
+  %11 = slice %byte_offset[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %12 = v_mov_b32_copy %11
+  %byte = v_bfe_i32_offset_width_inline %12 {offset = 0, width = 8}
+  %halfword = v_bfe_i32_offset_width_inline %12 {offset = 0, width = 16}
+  %18 = s_and_b32_rhs_inline %11, 1
+  %19 = s_mov_b32 1
+  %low_bit = s_cmp_eq_i32 %18, %19
+  return %byte, %halfword, %low_bit
+}
+
+// ====
+
+func.def @uniform_predicate_casts(%input: i32) -> (index, offset) {
+  %sign_boundary = scalar.constant 0 : i32
+  %negative = scalar.cmpi slt, %input, %sign_boundary : i32
+  %coordinate = index.cast %negative : i1 to index
+  %byte_offset = index.cast %negative : i1 to offset
+  func.return %coordinate, %byte_offset : index, offset
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @uniform_predicate_casts(%input: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) asm {
+  %sign_boundary = s_mov_b32 0
+  %negative = s_cmp_lt_i32 %input, %sign_boundary
+  %13 = s_mov_b32 1
+  %coordinate = s_cselect_b32 %13, %sign_boundary, %negative
+  return %coordinate, %coordinate
+}
+
+// ====
+
+func.def @varying_predicate_casts(%input: buffer) -> (index, offset, i1) {
+  %base = index.constant 0 : offset
+  %source = buffer.view %input[%base] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %sign_boundary = scalar.constant 0 : i32
+  %negative = scalar.cmpi slt, %raw, %sign_boundary : i32
+  %coordinate = index.cast %negative : i1 to index
+  %byte_offset = index.cast %negative : i1 to offset
+  %raw_coordinate = index.cast %raw : i32 to index
+  %low_bit = index.cast %raw_coordinate : index to i1
+  func.return %coordinate, %byte_offset, %low_bit : index, offset, i1
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @varying_predicate_casts() -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>, reg<amdgpu.sgpr x2>) asm {
+  %source = resource<hal_binding> {extent = 4, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %17 = v_mov_b32 0
+  %raw_coordinate = global_load_b32_saddr %17, %source
+  %negative = v_cmp_lt_i32_src1_inline %raw_coordinate {rhs = 0}
+  %21 = v_mov_b32 1
+  %coordinate = v_cndmask_b32 %17, %21, %negative
+  %27 = v_and_b32_src0_inline %raw_coordinate, 1
+  %low_bit = v_cmp_eq_i32 %27, %21
+  return %coordinate, %coordinate, %low_bit
+}
