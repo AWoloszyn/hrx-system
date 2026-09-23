@@ -497,6 +497,20 @@ static iree_status_t loom_amdgpu_legalize_kernel_subgroup_match_all(
 }
 
 static const loom_target_legalizer_rule_t kAmdgpuLegalizerRules[] = {
+    // Half-precision atomics require packed instructions. Preserve the vector
+    // footprint for native selection and its alignment/scope diagnostics.
+    {
+        .root_kind = LOOM_OP_VECTOR_ATOMIC_REDUCE,
+        .first_operand_element_types =
+            LOOM_SCALAR_TYPE_SET_F16 | LOOM_SCALAR_TYPE_SET_BF16,
+        .legalize = loom_amdgpu_retain_native_vector_op,
+    },
+    {
+        .root_kind = LOOM_OP_VECTOR_ATOMIC_RMW,
+        .first_operand_element_types =
+            LOOM_SCALAR_TYPE_SET_F16 | LOOM_SCALAR_TYPE_SET_BF16,
+        .legalize = loom_amdgpu_retain_native_vector_op,
+    },
     {
         .root_kind = LOOM_OP_VIEW_ATOMIC_REDUCE,
         .legalize = loom_amdgpu_legalize_atomic_float,
