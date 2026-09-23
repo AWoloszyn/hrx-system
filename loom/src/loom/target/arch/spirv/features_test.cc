@@ -150,6 +150,19 @@ TEST(SpirvFeaturesTest, PreparesVulkanBdaProfile) {
       ContainsDecoration(feature_set, LOOM_SPIRV_DECORATION_ALIASED_POINTER));
 }
 
+TEST(SpirvFeaturesTest, PreparesAllFeaturesIncludingDenormPreservation) {
+  loom_spirv_feature_set_t feature_set;
+  IREE_ASSERT_OK(loom_spirv_feature_set_prepare(IREE_SV("test.all_features"),
+                                                LOOM_SPIRV_FEATURE_KNOWN_BITS,
+                                                &feature_set));
+  EXPECT_TRUE(loom_spirv_feature_set_has_atom(
+      &feature_set, LOOM_SPIRV_FEATURE_ATOM_FLOAT32_DENORM_PRESERVE));
+  EXPECT_TRUE(
+      ContainsExtension(feature_set, IREE_SV("SPV_KHR_float_controls")));
+  EXPECT_TRUE(
+      ContainsCapability(feature_set, LOOM_SPIRV_CAPABILITY_DENORM_PRESERVE));
+}
+
 TEST(SpirvFeaturesTest, PreparesCooperativeFeatureAtomsWithoutBda) {
   loom_spirv_feature_set_t feature_set;
   IREE_ASSERT_OK(loom_spirv_feature_set_prepare(

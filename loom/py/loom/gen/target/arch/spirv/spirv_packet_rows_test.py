@@ -781,7 +781,7 @@ def test_generation_emits_complete_address_conversion_rows() -> None:
 
 def test_generation_emits_atomic_packet_forms_and_immediates() -> None:
     atomic_rows = tuple(row for row in _packet_rows() if row.descriptor_key.startswith("spirv.atomic."))
-    assert len(atomic_rows) == 656
+    assert len(atomic_rows) == 672
 
     i64 = _atomic_model_row(ATOMIC_INTEGER_SCALARS, "source_type", "i64")
     integer_subtract = _atomic_model_row(ATOMIC_INTEGER_OPERATIONS, "source_kind", "subi")
@@ -838,6 +838,11 @@ def test_generation_emits_atomic_packet_forms_and_immediates() -> None:
     assert native_float_add.atomic_scope == "LOOM_SPIRV_SCOPE_DEVICE"
     assert native_float_add.atomic_storage_semantics == "LOOM_SPIRV_MEMORY_SEMANTICS_UNIFORM_MEMORY_MASK"
     assert "LOOM_SPIRV_SCALAR_TYPE_F32" in native_float_add.operand_types[0]
+
+    preserving_add = _packet_row(float_atomic_descriptor_key("rmw", "cas_preserve", f32, storage_buffer, device, operation=float_add))
+    assert preserving_add.form == "LOOM_SPIRV_PACKET_FORM_ATOMIC_FLOAT_CAS"
+    assert preserving_add.atomic_float_operation == float_add.cas_operation
+    assert preserving_add.atomic_integer_scalar == "LOOM_SPIRV_SCALAR_TYPE_S32"
 
     float_minimum = _atomic_model_row(ATOMIC_FLOAT_OPERATIONS, "source_kind", "minimumf")
     float_cas = _packet_row(

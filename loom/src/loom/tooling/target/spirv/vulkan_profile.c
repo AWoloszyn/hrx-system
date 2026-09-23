@@ -290,6 +290,12 @@ iree_status_t loom_spirv_vulkan_hal_profile_query(
       iree_hal_vulkan_device_spec_decode_facet(vulkan_facet, &vulkan_spec));
 
   out_facts->api_version = vulkan_spec.api_version;
+  if (iree_any_bit_set(
+          vulkan_spec.flags,
+          IREE_HAL_VULKAN_DEVICE_SPEC_FLAG_FLOAT32_DENORM_PRESERVE)) {
+    out_facts->flags |=
+        LOOM_SPIRV_VULKAN_HAL_PROFILE_FLAG_FLOAT32_DENORM_PRESERVE;
+  }
   out_facts->subgroup_size = dispatch->subgroup.default_size;
   out_facts->max_compute_workgroup_invocations =
       dispatch->launch.maximum_workgroup_invocations;
@@ -382,6 +388,11 @@ static loom_spirv_feature_bits_t loom_spirv_vulkan_hal_profile_feature_bits(
         iree_all_bits_set(facts->flags, row->required_flags)) {
       feature_bits |= row->feature_bits;
     }
+  }
+  if (iree_any_bit_set(
+          facts->flags,
+          LOOM_SPIRV_VULKAN_HAL_PROFILE_FLAG_FLOAT32_DENORM_PRESERVE)) {
+    feature_bits |= LOOM_SPIRV_FEATURE_FLOAT32_DENORM_PRESERVE;
   }
   return feature_bits;
 }

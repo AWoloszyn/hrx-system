@@ -1103,6 +1103,10 @@ static iree_status_t loom_low_lower_rule_guard_matches(
       *out_matches =
           iree_all_bits_set(source_op->instance_flags, guard->payload.u64);
       return iree_ok_status();
+    case LOOM_LOW_LOWER_GUARD_INSTANCE_FLAGS_HAS_NONE:
+      *out_matches =
+          !iree_any_bit_set(source_op->instance_flags, guard->payload.u64);
+      return iree_ok_status();
     default:
       IREE_ASSERT_UNREACHABLE("unknown generated lower guard kind");
       IREE_BUILTIN_UNREACHABLE();

@@ -176,9 +176,6 @@ enum {
   LOOM_OP_VECTOR_COUNT_ = 151,
 };
 
-// Execution-semantics modifiers shared by scalar and vector memory accesses.
-#define LOOM_VECTOR_MEMORYACCESSFLAGS_VOLATILE ((uint8_t)1)
-
 // IEEE 754 fast-math relaxation flags for float operations.
 #define LOOM_VECTOR_FASTMATHFLAGS_REASSOC ((uint8_t)1)
 #define LOOM_VECTOR_FASTMATHFLAGS_NNAN ((uint8_t)2)
@@ -1157,6 +1154,7 @@ LOOM_DEFINE_OPERAND(loom_vector_atomic_reduce_view, 1)
 LOOM_DEFINE_OPERAND(loom_vector_atomic_reduce_offsets, 2)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_vector_atomic_reduce_indices, 3)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_kind, 0, loom_atomic_kind_t)
+LOOM_DEFINE_INSTANCE_FLAGS(loom_vector_atomic_reduce_memory_flags)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_ordering, 1, loom_atomic_ordering_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_scope, 2, loom_atomic_scope_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_cache_scope, 3, loom_cache_scope_t)
@@ -1171,6 +1169,7 @@ iree_status_t loom_vector_atomic_reduce_build(
     loom_builder_t* builder,
     loom_vector_atomic_reduce_build_flags_t build_flags,
     loom_atomic_kind_t kind,
+    uint8_t instance_flags,
     loom_value_id_t value,
     loom_value_id_t view,
     const loom_value_id_t* indices,
@@ -1197,6 +1196,7 @@ LOOM_DEFINE_OPERAND(loom_vector_atomic_reduce_mask_offsets, 2)
 LOOM_DEFINE_OPERAND(loom_vector_atomic_reduce_mask_mask, 3)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_vector_atomic_reduce_mask_indices, 4)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_mask_kind, 0, loom_atomic_kind_t)
+LOOM_DEFINE_INSTANCE_FLAGS(loom_vector_atomic_reduce_mask_memory_flags)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_mask_ordering, 1, loom_atomic_ordering_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_mask_scope, 2, loom_atomic_scope_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_reduce_mask_cache_scope, 3, loom_cache_scope_t)
@@ -1211,6 +1211,7 @@ iree_status_t loom_vector_atomic_reduce_mask_build(
     loom_builder_t* builder,
     loom_vector_atomic_reduce_mask_build_flags_t build_flags,
     loom_atomic_kind_t kind,
+    uint8_t instance_flags,
     loom_value_id_t value,
     loom_value_id_t view,
     const loom_value_id_t* indices,
@@ -1238,6 +1239,7 @@ LOOM_DEFINE_OPERAND(loom_vector_atomic_rmw_offsets, 2)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_vector_atomic_rmw_indices, 3)
 LOOM_DEFINE_RESULT(loom_vector_atomic_rmw_result, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_kind, 0, loom_atomic_kind_t)
+LOOM_DEFINE_INSTANCE_FLAGS(loom_vector_atomic_rmw_memory_flags)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_ordering, 1, loom_atomic_ordering_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_scope, 2, loom_atomic_scope_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_cache_scope, 3, loom_cache_scope_t)
@@ -1252,6 +1254,7 @@ iree_status_t loom_vector_atomic_rmw_build(
     loom_builder_t* builder,
     loom_vector_atomic_rmw_build_flags_t build_flags,
     loom_atomic_kind_t kind,
+    uint8_t instance_flags,
     loom_may_consume loom_value_id_t value,
     loom_may_consume loom_value_id_t view,
     const loom_value_id_t* indices,
@@ -1281,6 +1284,7 @@ LOOM_DEFINE_OPERAND(loom_vector_atomic_rmw_mask_passthrough, 4)
 LOOM_DEFINE_VARIADIC_OPERANDS(loom_vector_atomic_rmw_mask_indices, 5)
 LOOM_DEFINE_RESULT(loom_vector_atomic_rmw_mask_result, 0)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_mask_kind, 0, loom_atomic_kind_t)
+LOOM_DEFINE_INSTANCE_FLAGS(loom_vector_atomic_rmw_mask_memory_flags)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_mask_ordering, 1, loom_atomic_ordering_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_mask_scope, 2, loom_atomic_scope_t)
 LOOM_DEFINE_ATTR_ENUM_TYPED(loom_vector_atomic_rmw_mask_cache_scope, 3, loom_cache_scope_t)
@@ -1295,6 +1299,7 @@ iree_status_t loom_vector_atomic_rmw_mask_build(
     loom_builder_t* builder,
     loom_vector_atomic_rmw_mask_build_flags_t build_flags,
     loom_atomic_kind_t kind,
+    uint8_t instance_flags,
     loom_may_consume loom_value_id_t value,
     loom_may_consume loom_value_id_t view,
     const loom_value_id_t* indices,

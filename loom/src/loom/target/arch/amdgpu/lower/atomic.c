@@ -564,7 +564,14 @@ static bool loom_amdgpu_atomic_native_semantics_supported(
     const loom_low_descriptor_set_t* descriptor_set,
     loom_value_fact_memory_space_t memory_space,
     loom_amdgpu_atomic_operation_kind_t operation_kind, uint8_t atomic_kind,
-    uint8_t scope, loom_type_t value_type) {
+    uint8_t scope, loom_memory_access_flags_t access_flags,
+    loom_type_t value_type) {
+  const bool preserve_subnormals = iree_any_bit_set(
+      access_flags, LOOM_MEMORY_ACCESS_FLAG_PRESERVE_SUBNORMALS);
+  if (preserve_subnormals &&
+      loom_type_element_type(value_type) != LOOM_SCALAR_TYPE_F32) {
+    return false;
+  }
   if (operation_kind == LOOM_AMDGPU_ATOMIC_OPERATION_CMPXCHG ||
       atomic_kind == LOOM_ATOMIC_KIND_XCHGF ||
       loom_type_element_type(value_type) != LOOM_SCALAR_TYPE_F32) {
@@ -587,7 +594,7 @@ static bool loom_amdgpu_atomic_native_semantics_supported(
         scope == LOOM_ATOMIC_SCOPE_SYSTEM
             ? LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_FLOAT_SYSTEM_MEMORY
             : LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_FLOAT_AGENT_MEMORY;
-    if (atomic_kind == LOOM_ATOMIC_KIND_ADDF) {
+    if (atomic_kind == LOOM_ATOMIC_KIND_ADDF && preserve_subnormals) {
       required |= LOOM_AMDGPU_DESCRIPTOR_SET_INFO_FLAG_ATOMIC_F32_ADD_DENORMALS;
     }
   }
@@ -598,10 +605,11 @@ bool loom_amdgpu_atomic_has_native_candidate(
     const loom_low_descriptor_set_t* descriptor_set,
     loom_value_fact_memory_space_t memory_space,
     loom_amdgpu_atomic_operation_kind_t operation_kind, uint8_t atomic_kind,
-    uint8_t scope, loom_type_t value_type) {
+    uint8_t scope, loom_memory_access_flags_t access_flags,
+    loom_type_t value_type) {
   if (!loom_amdgpu_atomic_native_semantics_supported(
           descriptor_set, memory_space, operation_kind, atomic_kind, scope,
-          value_type)) {
+          access_flags, value_type)) {
     return false;
   }
   uint32_t memory_space_index = 0;
@@ -656,7 +664,8 @@ static bool loom_amdgpu_atomic_select_descriptor(
   if (!loom_amdgpu_atomic_native_semantics_supported(
           descriptor_set, selection->source.memory_space,
           selection->operation_kind, atomic_source->atomic_kind,
-          selection->source.atomic.scope, value_type)) {
+          selection->source.atomic.scope, selection->source.access_flags,
+          value_type)) {
     diagnostic->rejection_bits |= LOOM_AMDGPU_ATOMIC_REJECTION_NATIVE_SEMANTICS;
     return false;
   }

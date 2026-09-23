@@ -393,6 +393,9 @@ static loom_memory_access_flags_t loom_low_lower_resolve_emit_access_flags(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_low_descriptor_t* descriptor, const loom_low_lower_emit_t* emit,
     loom_memory_access_flags_t access_flags) {
+  // Numerical requirements are consumed by descriptor selection. Only physical
+  // access semantics remain on the selected Low memory instruction.
+  access_flags &= LOOM_MEMORY_ACCESS_FLAG_VOLATILE;
   if (access_flags == 0 || emit->source_memory_ordinal == 0) {
     return 0;
   }

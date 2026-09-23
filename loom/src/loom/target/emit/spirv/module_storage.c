@@ -114,8 +114,10 @@ static iree_status_t loom_spirv_module_workgroup_storage_emit_type(
   uint32_t length_id = 0;
   IREE_RETURN_IF_ERROR(loom_spirv_emit_u32_constant(
       type_context, (uint32_t)element_count, &length_id));
+  // Ordinary Workgroup arrays use implicit layout. ArrayStride is only valid
+  // for explicitly laid-out storage, which requires a Block and its capability.
   IREE_RETURN_IF_ERROR(loom_spirv_emit_type_array(type_context, element_type_id,
-                                                  length_id, element_byte_count,
+                                                  length_id, /*array_stride=*/0,
                                                   out_array_type_id));
   return loom_spirv_emit_type_pointer(
       type_context, LOOM_SPIRV_STORAGE_CLASS_WORKGROUP, *out_array_type_id,

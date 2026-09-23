@@ -41,6 +41,7 @@ from loom.target.arch.spirv.features import (  # noqa: E402
     FEATURE_PROFILES,
     feature_atom_enum,
     feature_bits_expression,
+    feature_row_capacity,
     validate_feature_catalog,
 )
 
@@ -95,6 +96,16 @@ def _emit_tables() -> str:
         "// clang-format off",
         "",
     ]
+    for field, capacity in (
+        ("extensions", "EXTENSION"),
+        ("capabilities", "CAPABILITY"),
+        ("opcodes", "OPCODE"),
+        ("storage_classes", "STORAGE_CLASS"),
+        ("decorations", "DECORATION"),
+    ):
+        count = feature_row_capacity(field)
+        lines.append(f'static_assert(LOOM_SPIRV_FEATURE_MAX_{capacity}_COUNT >= {count}, "feature catalog exceeds {field} capacity");')
+    lines.append("")
     for atom in FEATURE_ATOMS:
         suffix = _c_identifier_suffix(atom.key)
         _emit_row_array(

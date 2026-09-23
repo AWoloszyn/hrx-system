@@ -570,6 +570,14 @@ static iree_status_t iree_hal_vulkan_device_spec_populate_facet(
       .enabled_features = params->device_plan->enabled_features,
       .flags = IREE_HAL_VULKAN_DEVICE_SPEC_FLAG_NONE,
   };
+  const VkPhysicalDeviceFloatControlsProperties* float_controls =
+      &params->physical_device->float_controls_properties;
+  if (float_controls->shaderDenormPreserveFloat32 &&
+      float_controls->denormBehaviorIndependence !=
+          VK_SHADER_FLOAT_CONTROLS_INDEPENDENCE_NONE) {
+    vulkan_spec.flags |=
+        IREE_HAL_VULKAN_DEVICE_SPEC_FLAG_FLOAT32_DENORM_PRESERVE;
+  }
 
   iree_host_size_t property_count = 0;
   const VkCooperativeMatrixPropertiesKHR* source_properties = NULL;

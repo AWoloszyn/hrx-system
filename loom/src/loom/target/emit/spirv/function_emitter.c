@@ -886,6 +886,7 @@ static iree_status_t loom_spirv_emit_descriptor_packet(
     const uint64_t feature_bits =
         state->target->descriptor_set->feature_mask_words[feature_mask_row];
     IREE_ASSERT(i == 0 || feature_bits == 0);
+    state->required_feature_bits |= (loom_spirv_feature_bits_t)feature_bits;
     loom_spirv_module_builder_require_feature_bits(
         state->builder, (loom_spirv_feature_bits_t)feature_bits);
   }
@@ -1069,10 +1070,24 @@ static iree_status_t loom_spirv_emit_entry_point(
       workgroup_size_x,   workgroup_size_y,
       workgroup_size_z,
   };
-  return loom_spirv_binary_write_instruction(
+  IREE_RETURN_IF_ERROR(loom_spirv_binary_write_instruction(
       loom_spirv_emit_section(state, LOOM_SPIRV_MODULE_SECTION_EXECUTION_MODE),
       LOOM_SPIRV_OP_EXECUTION_MODE, execution_mode_operands,
-      IREE_ARRAYSIZE(execution_mode_operands));
+      IREE_ARRAYSIZE(execution_mode_operands)));
+  if (iree_any_bit_set(state->required_feature_bits,
+                       LOOM_SPIRV_FEATURE_FLOAT32_DENORM_PRESERVE)) {
+    const uint32_t denorm_mode_operands[] = {
+        state->function_id,
+        LOOM_SPIRV_EXECUTION_MODE_DENORM_PRESERVE,
+        32,
+    };
+    IREE_RETURN_IF_ERROR(loom_spirv_binary_write_instruction(
+        loom_spirv_emit_section(state,
+                                LOOM_SPIRV_MODULE_SECTION_EXECUTION_MODE),
+        LOOM_SPIRV_OP_EXECUTION_MODE, denorm_mode_operands,
+        IREE_ARRAYSIZE(denorm_mode_operands)));
+  }
+  return iree_ok_status();
 }
 
 static iree_status_t loom_spirv_emit_function_signature(

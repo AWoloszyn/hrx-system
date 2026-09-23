@@ -270,6 +270,21 @@ Atomic view operations similarly require an explicit scope and ordering. A
 plain store does not become atomic because several invocations may reach it,
 and a barrier does not resolve conflicting writes.
 
+Floating-point atomic addition uses the target's native subnormal behavior by
+default; inputs or results may flush to zero. Request preservation when those
+values matter:
+
+```loom
+%old = view.atomic.rmw<addf, preserve_subnormals> %increment, %view[0] {ordering = relaxed, scope = device} : f32, view<1xf32> -> f32
+```
+
+The same flag applies to atomic reductions and vector atomics, including masked
+forms. Returned old values retain their bits regardless of this flag. Explicit
+preservation may require a compare-exchange loop and rejects targets that cannot
+provide it for the requested element width. Vulkan supports preserving `f32`
+addition on devices with independent `f32` denormal control; a native floating
+atomic instruction alone does not establish that guarantee.
+
 ## Preserve the strongest useful representation
 
 Common representation mistakes all erase information too early:

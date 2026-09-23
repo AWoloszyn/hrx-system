@@ -74,6 +74,7 @@ class GuardKind(Enum):
     VALUE_PACKED_INTEGER_LANES_FROM_PAYLOAD = "value_packed_integer_lanes_from_payload"
     VALUE_NO_USES = "value_no_uses"
     INSTANCE_FLAGS_HAS_ALL = "instance_flags_has_all"
+    INSTANCE_FLAGS_HAS_NONE = "instance_flags_has_none"
     VECTOR_EXTRACT_SHAPE = "vector_extract_shape"
     VALUE_STATIC_ELEMENT_COUNT_EQ = "value_static_element_count_eq"
     VALUE_MEMORY_SPACE = "value_memory_space"
@@ -617,6 +618,22 @@ class Guard:
             diagnostic=diagnostic,
         )
 
+    @classmethod
+    def instance_flags_has_none(
+        cls,
+        field: str,
+        enum_case: str | EnumCase,
+        *,
+        diagnostic: GuardDiagnostic | None = None,
+    ) -> Self:
+        keyword = enum_case.keyword if isinstance(enum_case, EnumCase) else enum_case
+        return cls(
+            kind=GuardKind.INSTANCE_FLAGS_HAS_NONE,
+            field=field,
+            enum_keyword=keyword,
+            diagnostic=diagnostic,
+        )
+
     def __post_init__(self) -> None:
         if not -(2**63) <= self.addend < 2**63:
             raise ValueError("power-of-two addend must fit in i64")
@@ -783,7 +800,10 @@ class Guard:
                     f"{source_op.name}: {subject} is only valid for vector.extract"
                 )
             return
-        if self.kind == GuardKind.INSTANCE_FLAGS_HAS_ALL:
+        if self.kind in (
+            GuardKind.INSTANCE_FLAGS_HAS_ALL,
+            GuardKind.INSTANCE_FLAGS_HAS_NONE,
+        ):
             attr = _require_attr(source_op, self.field, subject)
             if attr.attr_type != ATTR_TYPE_FLAGS:
                 raise ValueError(

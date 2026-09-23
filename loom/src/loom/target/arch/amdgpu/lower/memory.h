@@ -424,7 +424,8 @@ bool loom_amdgpu_atomic_has_native_candidate(
     const loom_low_descriptor_set_t* descriptor_set,
     loom_value_fact_memory_space_t memory_space,
     loom_amdgpu_atomic_operation_kind_t operation_kind, uint8_t atomic_kind,
-    uint8_t scope, loom_type_t value_type);
+    uint8_t scope, loom_memory_access_flags_t access_flags,
+    loom_type_t value_type);
 
 // Selects an AMDGPU atomic packet plan.
 iree_status_t loom_amdgpu_select_atomic_plan(

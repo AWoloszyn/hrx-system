@@ -395,6 +395,7 @@ loom_test_module(
   NAME
     global_atomic_add_f32_test_module
   SRCS
+    "atomic_add_f32_subnormals.loom"
     "global_atomic_add_f32.loom"
 )
 
