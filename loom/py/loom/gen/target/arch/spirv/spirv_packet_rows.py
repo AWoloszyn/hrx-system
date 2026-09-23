@@ -1098,6 +1098,7 @@ def _integer_compare_rows() -> list[_PacketRow]:
 
 def _select_rows() -> list[_PacketRow]:
     offset64_value = _offset64_value()
+    buffer_address = _storage_buffer_address_value()
     bool_value = _bool_value()
     rows = [
         _PacketRow(
@@ -1145,6 +1146,16 @@ def _select_rows() -> list[_PacketRow]:
             form="LOOM_SPIRV_PACKET_FORM_SELECT",
             result_type=offset64_value,
             operand_types=(bool_value, offset64_value, offset64_value),
+            result_count=1,
+        )
+    )
+    rows.append(
+        _PacketRow(
+            "spirv.op_select.storage_buffer",
+            opcode="LOOM_SPIRV_OP_SELECT",
+            form="LOOM_SPIRV_PACKET_FORM_SELECT",
+            result_type=buffer_address,
+            operand_types=(bool_value, buffer_address, buffer_address),
             result_count=1,
         )
     )
