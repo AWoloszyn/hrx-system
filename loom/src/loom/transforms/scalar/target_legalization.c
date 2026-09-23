@@ -617,9 +617,13 @@ static iree_status_t loom_scalar_legalize_narrow_binary(
   const loom_type_t result_type =
       loom_module_value_type(context->module, loom_op_results(op)[0]);
 
-  const bool signed_operands = op->kind == LOOM_OP_SCALAR_DIVSI ||
-                               op->kind == LOOM_OP_SCALAR_REMSI ||
-                               op->kind == LOOM_OP_SCALAR_SHRSI;
+  // A left shift may sign-extend its narrow operands: every defined shift
+  // amount is nonnegative and truncation preserves the low result bits. Unlike
+  // zero extension, this form remains stable when generic canonicalization
+  // moves a proven shift before an extension.
+  const bool sign_extend_operands =
+      op->kind == LOOM_OP_SCALAR_DIVSI || op->kind == LOOM_OP_SCALAR_REMSI ||
+      op->kind == LOOM_OP_SCALAR_SHLI || op->kind == LOOM_OP_SCALAR_SHRSI;
   const loom_type_t working_type = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
   loom_rewriter_t* rewriter = context->rewriter;
   loom_builder_t* builder = &rewriter->builder;
@@ -627,7 +631,7 @@ static iree_status_t loom_scalar_legalize_narrow_binary(
   const loom_value_id_t checkpoint = loom_rewriter_value_checkpoint(rewriter);
   loom_value_id_t operands[2];
   IREE_RETURN_IF_ERROR(loom_scalar_legalize_widen_integer_operands(
-      builder, op, signed_operands, operands));
+      builder, op, sign_extend_operands, operands));
 
   // The registered binary families have no attributes. Narrow no-wrap flags
   // do not describe the widened intermediate, so its flags remain empty.
