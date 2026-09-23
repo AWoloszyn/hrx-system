@@ -1,0 +1,29 @@
+// Copyright 2026 The IREE Authors
+//
+// Licensed under the Apache License v2.0 with LLVM Exceptions.
+// See https://llvm.org/LICENSE.txt for license information.
+// SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+
+aie2p.target<array> @array_target
+aie2p.target<core> @core_target
+
+pipeline.def<kernel> public retain target(@array_target) @bitcast_packets() launch(%input: buffer, %output: buffer) {
+  %count = index.constant 2 : index
+  %origin = index.constant 0 : offset
+  %workers = group.create %count : index -> group
+  %input_view = buffer.view %input[%origin] : buffer -> view<2x3x256xi32>
+  %output_view = buffer.view %output[%origin] : buffer -> view<2x3x2048xi32>
+  %packets = pipeline.scatter %input_view across %workers : view<2x3x256xi32>, group -> pipeline.flow<tile<256xi32>>
+  %results = pipeline.stage @bitcast_entry on %workers(%packets) : (group, pipeline.flow<tile<256xi32>>) -> (pipeline.flow<tile<2048xi32>>)
+  pipeline.write %results to %output_view : pipeline.flow<tile<2048xi32>>, view<2x3x2048xi32>
+  pipeline.return
+}
+
+func.def target(@core_target) @bitcast_entry(%input: buffer, %output: buffer) {
+  %source, %destination = buffer.assume.alignment %input, %output {minimum_alignment = 64} : buffer, buffer
+  %origin = index.constant 0 : offset
+  func.call @bitcast_blocks(%source, %origin, %destination, %origin) : (buffer, offset, buffer, offset)
+  func.return
+}
+
+func.decl @bitcast_blocks(%input: buffer, %input_origin: offset, %output: buffer, %output_origin: offset)

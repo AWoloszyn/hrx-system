@@ -4,6 +4,13 @@
 queue submission, readback and resource retirement through libamdf. They select
 the appropriate image for the available device family.
 
+`bitcast_npu2_test` imports scalar/vector C++ bit casts and executes a streamed
+pipeline on Strix Halo. An independent byte oracle checks wrapping byte
+arithmetic, FP8/FP16/BF16 lane permutations and 64-bit payload transport through
+F64. Each of six packets covers every byte pattern in every lane. Per-word and
+binding guards, unchanged input bytes and three independent submissions verify
+native execution. It uses the explicit hardware configuration below.
+
 `assembly_pack_npu2_test` imports C++ functions containing descriptor-backed
 assembly, links them into a streaming pipeline, and executes on Strix Halo.
 Each `vpack.x.signed` packs 128 signed bytes into 64 bytes of INT4. Alternating
