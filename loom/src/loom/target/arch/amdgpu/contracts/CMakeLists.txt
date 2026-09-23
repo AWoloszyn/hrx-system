@@ -97,6 +97,8 @@ loom_target_contract_cc_libraries(
     loom::codegen::low::lower
     loom::ops::index
     loom::ops::scalar
+    loom::ops::vector
+    loom::target::arch::amdgpu::lower::kinds
     loom::target::arch::amdgpu::lower::materializers
 )
 endif()

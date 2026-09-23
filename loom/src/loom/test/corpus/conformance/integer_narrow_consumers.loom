@@ -11,6 +11,8 @@ kernel.def @narrow_integer_consumers() {
   %varying = scalar.addi %input, %lane_value : i32
   %c0 = scalar.constant 0 : i32
   %c1 = scalar.constant 1 : i32
+  %byte_sign_boundary = scalar.constant 0 : i8
+  %halfword_sign_boundary = scalar.constant 0 : i16
   %base = index.constant 64 : offset
   %view = buffer.view %output[%base] : buffer -> view<12x32xi32>
   %input_i8 = scalar.trunci %input : i32 to i8
@@ -18,7 +20,7 @@ kernel.def @narrow_integer_consumers() {
   %input_i8_signed = scalar.extsi %input_i8 : i8 to i32
   %input_i8_unsigned_sum = scalar.addi %input_i8_unsigned, %c1 : i32
   %input_i8_signed_sum = scalar.addi %input_i8_signed, %c1 : i32
-  %input_i8_negative = scalar.cmpi slt, %input_i8_signed, %c0 : i32
+  %input_i8_negative = scalar.cmpi slt, %input_i8, %byte_sign_boundary : i8
   %input_i8_comparison = scf.select %input_i8_negative, %c1, %c0 : i32
   view.store %input_i8_unsigned_sum, %view[0, %lane] : i32, view<12x32xi32>
   view.store %input_i8_signed_sum, %view[1, %lane] : i32, view<12x32xi32>
@@ -28,7 +30,7 @@ kernel.def @narrow_integer_consumers() {
   %input_i16_signed = scalar.extsi %input_i16 : i16 to i32
   %input_i16_unsigned_sum = scalar.addi %input_i16_unsigned, %c1 : i32
   %input_i16_signed_sum = scalar.addi %input_i16_signed, %c1 : i32
-  %input_i16_negative = scalar.cmpi slt, %input_i16_signed, %c0 : i32
+  %input_i16_negative = scalar.cmpi slt, %input_i16, %halfword_sign_boundary : i16
   %input_i16_comparison = scf.select %input_i16_negative, %c1, %c0 : i32
   view.store %input_i16_unsigned_sum, %view[2, %lane] : i32, view<12x32xi32>
   view.store %input_i16_signed_sum, %view[3, %lane] : i32, view<12x32xi32>
@@ -38,7 +40,7 @@ kernel.def @narrow_integer_consumers() {
   %varying_i8_signed = scalar.extsi %varying_i8 : i8 to i32
   %varying_i8_unsigned_sum = scalar.addi %varying_i8_unsigned, %c1 : i32
   %varying_i8_signed_sum = scalar.addi %varying_i8_signed, %c1 : i32
-  %varying_i8_negative = scalar.cmpi slt, %varying_i8_signed, %c0 : i32
+  %varying_i8_negative = scalar.cmpi slt, %varying_i8, %byte_sign_boundary : i8
   %varying_i8_comparison = scf.select %varying_i8_negative, %c1, %c0 : i32
   view.store %varying_i8_unsigned_sum, %view[4, %lane] : i32, view<12x32xi32>
   view.store %varying_i8_signed_sum, %view[5, %lane] : i32, view<12x32xi32>
@@ -48,7 +50,7 @@ kernel.def @narrow_integer_consumers() {
   %varying_i16_signed = scalar.extsi %varying_i16 : i16 to i32
   %varying_i16_unsigned_sum = scalar.addi %varying_i16_unsigned, %c1 : i32
   %varying_i16_signed_sum = scalar.addi %varying_i16_signed, %c1 : i32
-  %varying_i16_negative = scalar.cmpi slt, %varying_i16_signed, %c0 : i32
+  %varying_i16_negative = scalar.cmpi slt, %varying_i16, %halfword_sign_boundary : i16
   %varying_i16_comparison = scf.select %varying_i16_negative, %c1, %c0 : i32
   view.store %varying_i16_unsigned_sum, %view[6, %lane] : i32, view<12x32xi32>
   view.store %varying_i16_signed_sum, %view[7, %lane] : i32, view<12x32xi32>

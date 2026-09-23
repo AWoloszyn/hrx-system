@@ -628,6 +628,7 @@ loom_check_test_suite(
         "//loom/src/loom/test/corpus/source_low:sync_barrier.loom-test",
         "//loom/src/loom/test/corpus/source_low:uniform_predicate_control.loom-test",
         "//loom/src/loom/test/corpus/source_low:vector_bitcast.loom-test",
+        "//loom/src/loom/test/corpus/source_low:vector_comparison.loom-test",
         "//loom/src/loom/test/corpus/source_low:vector_dot.loom-test",
         "//loom/src/loom/test/corpus/source_low:vector_large_insert.loom-test",
         "//loom/src/loom/test/corpus/source_low:vector_mask_select.loom-test",

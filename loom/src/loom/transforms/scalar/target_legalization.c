@@ -578,6 +578,28 @@ static iree_status_t loom_scalar_legalize_fmai(
   return iree_ok_status();
 }
 
+static iree_status_t loom_scalar_legalize_widen_integer_operands(
+    loom_builder_t* builder, loom_op_t* op, bool signed_operands,
+    loom_value_id_t operands[2]) {
+  const loom_type_t source_type =
+      loom_module_value_type(builder->module, loom_op_operands(op)[0]);
+  const loom_type_t working_type = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+  for (int i = 0; i < 2; ++i) {
+    loom_op_t* extension = NULL;
+    if (signed_operands) {
+      IREE_RETURN_IF_ERROR(
+          loom_scalar_extsi_build(builder, loom_op_operands(op)[i], source_type,
+                                  working_type, op->location, &extension));
+    } else {
+      IREE_RETURN_IF_ERROR(
+          loom_scalar_extui_build(builder, loom_op_operands(op)[i], source_type,
+                                  working_type, op->location, &extension));
+    }
+    operands[i] = loom_op_results(extension)[0];
+  }
+  return iree_ok_status();
+}
+
 // Targets with 32-bit arithmetic can implement byte and halfword operations by
 // widening their inputs and truncating each result. Keeping that truncation at
 // the original operation boundary preserves wrapping before a later shift,
@@ -602,19 +624,8 @@ static iree_status_t loom_scalar_legalize_narrow_binary(
   loom_builder_set_before(builder, op);
   const loom_value_id_t checkpoint = loom_rewriter_value_checkpoint(rewriter);
   loom_value_id_t operands[2];
-  for (int i = 0; i < 2; ++i) {
-    loom_op_t* extension = NULL;
-    if (signed_operands) {
-      IREE_RETURN_IF_ERROR(
-          loom_scalar_extsi_build(builder, loom_op_operands(op)[i], result_type,
-                                  working_type, op->location, &extension));
-    } else {
-      IREE_RETURN_IF_ERROR(
-          loom_scalar_extui_build(builder, loom_op_operands(op)[i], result_type,
-                                  working_type, op->location, &extension));
-    }
-    operands[i] = loom_op_results(extension)[0];
-  }
+  IREE_RETURN_IF_ERROR(loom_scalar_legalize_widen_integer_operands(
+      builder, op, signed_operands, operands));
 
   // The registered binary families have no attributes. Narrow no-wrap flags
   // do not describe the widened intermediate, so its flags remain empty.
@@ -639,7 +650,44 @@ static iree_status_t loom_scalar_legalize_narrow_binary(
   return iree_ok_status();
 }
 
+static iree_status_t loom_scalar_legalize_narrow_cmpi(
+    const loom_target_legalizer_entry_t* entry,
+    loom_target_legalization_context_t* context, loom_op_t* op,
+    loom_target_legalizer_result_t* out_result) {
+  (void)entry;
+  const loom_scalar_cmpi_predicate_t predicate = loom_scalar_cmpi_predicate(op);
+  const bool signed_operands = predicate == LOOM_SCALAR_CMPI_PREDICATE_SLT ||
+                               predicate == LOOM_SCALAR_CMPI_PREDICATE_SLE ||
+                               predicate == LOOM_SCALAR_CMPI_PREDICATE_SGT ||
+                               predicate == LOOM_SCALAR_CMPI_PREDICATE_SGE;
+  loom_rewriter_t* rewriter = context->rewriter;
+  loom_builder_t* builder = &rewriter->builder;
+  loom_builder_set_before(builder, op);
+  const loom_value_id_t checkpoint = loom_rewriter_value_checkpoint(rewriter);
+  loom_value_id_t operands[2];
+  IREE_RETURN_IF_ERROR(loom_scalar_legalize_widen_integer_operands(
+      builder, op, signed_operands, operands));
+  loom_op_t* comparison = NULL;
+  IREE_RETURN_IF_ERROR(loom_scalar_cmpi_build(
+      builder, predicate, operands[0], operands[1], op->location, &comparison));
+  loom_value_id_t replacement = loom_scalar_cmpi_result(comparison);
+  IREE_RETURN_IF_ERROR(loom_rewriter_preserve_result_names_on_new_values(
+      rewriter, op, &replacement, 1, checkpoint));
+  IREE_RETURN_IF_ERROR(
+      loom_rewriter_replace_all_uses_and_erase(rewriter, op, &replacement, 1));
+  *out_result = (loom_target_legalizer_result_t){
+      .action = LOOM_TARGET_LEGALIZER_ACTION_REWRITTEN,
+  };
+  return iree_ok_status();
+}
+
 static const loom_target_legalizer_rule_t kScalarLegalizerRules[] = {
+    {
+        .root_kind = LOOM_OP_SCALAR_CMPI,
+        .first_operand_element_types =
+            LOOM_SCALAR_TYPE_SET_I8 | LOOM_SCALAR_TYPE_SET_I16,
+        .legalize = loom_scalar_legalize_narrow_cmpi,
+    },
     {
         .root_kind = LOOM_OP_SCALAR_ADDI,
         .first_operand_element_types =

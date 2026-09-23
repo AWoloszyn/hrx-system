@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-"""AMDGPU scalar integer and index comparison source-to-low contracts."""
+"""AMDGPU scalar and vector comparison source-to-low contracts."""
 
 from __future__ import annotations
 
@@ -12,6 +12,8 @@ from loom.dialect.index import ALL_INDEX_OPS
 from loom.dialect.index import defs as index
 from loom.dialect.scalar import ALL_SCALAR_OPS
 from loom.dialect.scalar import comparison as scalar
+from loom.dialect.vector import ALL_VECTOR_OPS
+from loom.dialect.vector import defs as vector
 from loom.dsl import Op
 from loom.target.arch.amdgpu.contracts.materializers import (
     ADDRESS_VGPR_MATERIALIZER,
@@ -28,10 +30,12 @@ from loom.target.contracts import (
     EmitDescriptorOp,
     Guard,
     GuardDiagnostic,
+    RecipeRule,
     Scalar,
     TypePattern,
     ValueProject,
     ValueRef,
+    Vector,
     descriptor_by_key,
 )
 from loom.target.low_descriptors import Descriptor
@@ -595,8 +599,48 @@ def _typed_rules(
     return scalar_rules + sgpr_bool_rules + inline_rules + mask_rules
 
 
-def _rules() -> tuple[DescriptorRule, ...]:
+def _vector_rules() -> tuple[RecipeRule, ...]:
+    # The C emitter keeps vector operands intact until Low emission. Publishing
+    # its contract prevents reference legalization from unpacking native inputs.
+    families = (
+        (
+            vector.vector_cmpi,
+            "i32",
+            tuple((predicate, key) for predicate, _, key in _CMP_I32_CASES),
+        ),
+        (
+            vector.vector_cmpf,
+            "f32",
+            tuple(
+                (predicate, f"amdgpu.v_cmp_{predicate}_f32")
+                for predicate in _CMP_FLOAT_SCALAR_PREDICATES
+            ),
+        ),
+    )
+    return tuple(
+        RecipeRule(
+            source_op=source_op,
+            guards=(
+                Guard.value_type(
+                    "lhs",
+                    Vector(
+                        element,
+                        minimum_lanes=1,
+                        maximum_lanes="LOOM_AMDGPU_MAX_SCALARIZED_32BIT_LANES",
+                    ),
+                ),
+                Guard.enum_attr_equals("predicate", predicate),
+                Guard.descriptor_available(_descriptor(descriptor_key)),
+            ),
+        )
+        for source_op, element, predicates in families
+        for predicate, descriptor_key in predicates
+    )
+
+
+def _rules() -> tuple[DescriptorRule | RecipeRule, ...]:
     return (
+        *_vector_rules(),
         *_float_scalar_rules(scalar.scalar_cmpf, _F16, 16),
         *_float_scalar_rules(scalar.scalar_cmpf, _F32, 32),
         *_float_mask_rules(),
@@ -628,6 +672,7 @@ def _rules() -> tuple[DescriptorRule, ...]:
 AMDGPU_COMPARE_CONTRACT_DIALECT_OPS = {
     "index": ALL_INDEX_OPS,
     "scalar": ALL_SCALAR_OPS,
+    "vector": ALL_VECTOR_OPS,
 }
 
 AMDGPU_COMPARE_CONTRACT_FRAGMENT = ContractFragment(
