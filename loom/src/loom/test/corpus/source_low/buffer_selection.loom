@@ -95,3 +95,36 @@ check.case public @rotating_buffer_coordinates_case {
   check.expect.equal actual(%output) expected(%expected) : tensor<64xi32>
   check.return
 }
+
+// A large common origin exercises address arithmetic on the selected base.
+kernel.def @selected_buffer_static_origin() {
+  %unit = index.constant 1 : index
+  %width = index.constant 64 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%width, %unit, %unit) : index
+} launch(%first: buffer, %second: buffer, %output: buffer) {
+  %lane = kernel.workitem.id<x> : index
+  %c0 = index.constant 0 : index
+  %c1 = index.constant 1 : index
+  %parity = index.andi %lane, %c1 : index
+  %choose_first = index.cmp eq, %parity, %c0 : index
+  %selected = scf.select %choose_first, %first, %second : buffer
+  %origin = index.constant 16384 : offset
+  %selected_view = buffer.view %selected[%origin] : buffer -> view<64xi32>
+  %base = index.constant 0 : offset
+  %output_view = buffer.view %output[%base] : buffer -> view<64xi32>
+  %value = view.load %selected_view[%lane] : view<64xi32> -> i32
+  %lane_value = index.cast %lane : index to i32
+  %observed_origin = scalar.subi %value, %lane_value : i32
+  view.store %observed_origin, %output_view[%lane] : i32, view<64xi32>
+  kernel.return
+}
+
+check.case public @selected_buffer_static_origin_case {
+  %first = check.generate.iota offset(0) step(1) : tensor<4160xi32>
+  %second = check.generate.iota offset(1024) step(1) : tensor<4160xi32>
+  %output = check.generate.fill value(-1) : tensor<64xi32>
+  %expected = check.generate.iota offset(4096) step(1024) period(2) : tensor<64xi32>
+  kernel.launch @selected_buffer_static_origin(%first, %second, %output) : (tensor<4160xi32>, tensor<4160xi32>, tensor<64xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<64xi32>
+  check.return
+}

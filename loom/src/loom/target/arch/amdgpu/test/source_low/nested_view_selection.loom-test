@@ -2,8 +2,6 @@
 // RUN: emit source-low target=amdgpu:gfx11-generic output=low
 
 // A derived selection retains both the selected buffer and its byte base.
-// ERROR@+2: TARGET/033 {op_name="func.def", field_name="source", actual_type="buffer"}
-// ERROR@+1: TARGET/033 {op_name="func.def", field_name="source", actual_type="buffer"}
 func.def @derived_selection(%first: buffer, %second: buffer, %third: buffer, %position_input: index, %select_first: i1, %select_pair: i1) -> (i32) {
   %position = index.assume %position_input [range(%position_input, 1, 2)] : index
   %base0 = index.constant 4 : offset
@@ -23,11 +21,51 @@ func.def @derived_selection(%first: buffer, %second: buffer, %third: buffer, %po
   func.return %value : i32
 }
 
+// ----
+low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @derived_selection(%position: reg<amdgpu.sgpr>, %select_first: reg<amdgpu.sgpr>, %select_pair: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %first_aligned = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %second_aligned = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %third_aligned = resource<hal_binding> {index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %base0 = s_mov_b32 4
+  %base1 = s_mov_b32 8
+  %base2 = s_mov_b32 12
+  %54 = s_mov_b32 0
+  %55 = s_cmp_lg_i32 %select_first, %54
+  low.cond_br %55, ^_bb1, ^_bb2 : reg<amdgpu.scc>
+^_bb1:
+  %95 = slice %first_aligned[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %96 = slice %first_aligned[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  low.br ^_bb3(%95: reg<amdgpu.sgpr>, %96: reg<amdgpu.sgpr>, %base0: reg<amdgpu.sgpr>)
+^_bb2:
+  %97 = slice %second_aligned[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %98 = slice %second_aligned[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  low.br ^_bb3(%97: reg<amdgpu.sgpr>, %98: reg<amdgpu.sgpr>, %base1: reg<amdgpu.sgpr>)
+^_bb3(%93: reg<amdgpu.sgpr>, %94: reg<amdgpu.sgpr>, %pair_offset: reg<amdgpu.sgpr>):
+  %59 = concat(%position, %54) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %60 = s_mov_b32 2
+  %64 = s_lshl_b64 %59, %60
+  %67 = slice %64[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %69, %70 = s_add_co_u32 %pair_offset, %67
+  %76 = s_cmp_lg_i32 %select_pair, %54
+  low.cond_br %76, ^_bb4, ^_bb5 : reg<amdgpu.scc>
+^_bb4:
+  low.br ^_bb6(%93: reg<amdgpu.sgpr>, %94: reg<amdgpu.sgpr>, %69: reg<amdgpu.sgpr>)
+^_bb5:
+  %91 = slice %third_aligned[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %92 = slice %third_aligned[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  low.br ^_bb6(%91: reg<amdgpu.sgpr>, %92: reg<amdgpu.sgpr>, %base2: reg<amdgpu.sgpr>)
+^_bb6(%87: reg<amdgpu.sgpr>, %88: reg<amdgpu.sgpr>, %selected_offset: reg<amdgpu.sgpr>):
+  %77 = v_mov_b32 0
+  %81, %82 = s_add_co_u32 %87, %selected_offset
+  %83, %84 = s_addc_u32 %88, %54, %82
+  %85 = concat(%81, %83) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %value = global_load_b32_saddr %77, %85
+  return %value
+}
+
 // ====
 
 // Nested selections compose with structured side effects and explicit CFG.
-// ERROR@+2: TARGET/033 {op_name="func.def", field_name="source", actual_type="buffer"}
-// ERROR@+1: TARGET/033 {op_name="func.def", field_name="source", actual_type="buffer"}
 func.def @selection_with_side_effects(%first: buffer, %second: buffer, %third: buffer, %select_first: i1, %select_pair: i1, %enter: i1, %side: i1, %initial: i32) -> (i32) {
   %base = index.constant 0 : offset
   %first_aligned = buffer.assume.alignment %first {minimum_alignment = 4} : buffer
@@ -50,4 +88,43 @@ func.def @selection_with_side_effects(%first: buffer, %second: buffer, %third: b
   func.return %result : i32
 ^exit:
   func.return %initial : i32
+}
+
+// ----
+low.func.def target<amdgpu.gfx11.generic.core> abi(hal_kernel) @selection_with_side_effects(%select_first: reg<amdgpu.sgpr>, %select_pair: reg<amdgpu.sgpr>, %enter: reg<amdgpu.sgpr>, %side: reg<amdgpu.sgpr>, %initial: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %first_view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %second_aligned = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %third_view = resource<hal_binding> {index = 2, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %40 = s_mov_b32 0
+  %41 = s_cmp_lg_i32 %enter, %40
+  low.cond_br %41, ^producer, ^exit : reg<amdgpu.scc>
+^producer:
+  %42 = v_mov_b32_copy %initial
+  %43 = v_mov_b32 0
+  global_store_b32_saddr %43, %42, %third_view
+  %45 = s_cmp_lg_i32 %side, %40
+  low.cond_br %45, ^_bb2, ^_bb3 : reg<amdgpu.scc>
+^_bb2:
+  global_store_b32_saddr %43, %42, %first_view
+  low.br ^_bb3
+^_bb3:
+  %49 = s_cmp_lg_i32 %select_first, %40
+  low.cond_br %49, ^_bb4, ^_bb5 : reg<amdgpu.scc>
+^_bb4:
+  low.br ^_bb6(%first_view: reg<amdgpu.sgpr x2>)
+^_bb5:
+  low.br ^_bb6(%second_aligned: reg<amdgpu.sgpr x2>)
+^_bb6(%pair_root: reg<amdgpu.sgpr x2>):
+  %51 = s_cmp_lg_i32 %select_pair, %40
+  low.cond_br %51, ^_bb7, ^_bb8 : reg<amdgpu.scc>
+^_bb7:
+  low.br ^_bb9(%pair_root: reg<amdgpu.sgpr x2>)
+^_bb8:
+  low.br ^_bb9(%third_view: reg<amdgpu.sgpr x2>)
+^_bb9(%selected: reg<amdgpu.sgpr x2>):
+  %result = global_load_b32_saddr %43, %selected
+  return %result
+^exit:
+  %54 = v_mov_b32_copy %initial
+  return %54
 }

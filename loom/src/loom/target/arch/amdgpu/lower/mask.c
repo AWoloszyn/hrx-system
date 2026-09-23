@@ -475,9 +475,11 @@ iree_status_t loom_amdgpu_select_scf_select_plan(
   IREE_RETURN_IF_ERROR(loom_low_lower_map_value(context, source_op, condition,
                                                 &condition_low_type));
   loom_type_t result_low_type = loom_type_none();
-  IREE_RETURN_IF_ERROR(loom_amdgpu_low_result_type(context, source_op, result,
-                                                   &result_low_type));
-
+  IREE_RETURN_IF_ERROR(
+      loom_low_lower_map_value(context, source_op, result, &result_low_type));
+  if (!loom_low_type_is_register(result_low_type)) {
+    return iree_ok_status();
+  }
   if (loom_amdgpu_type_is_address_scalar(result_type)) {
     register_count = loom_low_register_type_unit_count(result_low_type);
     allows_lane_immediates = register_count == 1;
