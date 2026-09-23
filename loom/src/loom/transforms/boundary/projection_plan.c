@@ -35,6 +35,16 @@ static bool loom_boundary_projection_any_rule_applies(
   return false;
 }
 
+static bool loom_boundary_projection_any_function_selected(
+    const loom_boundary_projection_plan_t* plan) {
+  for (iree_host_size_t i = 0; i < plan->function_count; ++i) {
+    if (plan->functions[i].selected) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static iree_host_size_t loom_boundary_projection_rule_index(
     const loom_boundary_projection_plan_t* plan,
     const loom_boundary_projection_rule_t* rule) {
@@ -1242,7 +1252,10 @@ static iree_host_size_t loom_boundary_projection_component_root(
 
 static iree_status_t loom_boundary_projection_propagate_rejections(
     loom_boundary_projection_plan_t* plan) {
-  if (plan->function_count == 0) {
+  // Block-only projections have no cross-function availability component.
+  // Functions can retain their independently selected slots directly.
+  if (!plan->may_change_signatures || plan->function_count == 0 ||
+      !loom_boundary_projection_any_function_selected(plan)) {
     return iree_ok_status();
   }
   iree_host_size_t* parents = NULL;
@@ -1335,6 +1348,9 @@ iree_status_t loom_boundary_projection_plan_prepare(
   }
   IREE_RETURN_IF_ERROR(
       loom_boundary_projection_plan_functions(plan, version_list));
+  if (!loom_boundary_projection_any_function_selected(plan)) {
+    return iree_ok_status();
+  }
   for (iree_host_size_t i = 0; i < plan->function_count; ++i) {
     loom_boundary_projection_function_t* function = &plan->functions[i];
     iree_status_t status =
