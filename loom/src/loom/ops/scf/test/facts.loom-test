@@ -758,3 +758,154 @@ func.def @for_iv_ranged_lower_constant_trip_count(%lane0: index) -> (i64, i64, i
   }
   func.return %iv_lo, %iv_hi, %iv_div : i64, i64, i64
 }
+
+// ====
+
+// Different exact values still share their floating classification.
+func.def @select_finite_constants(%condition: i1) -> (i1, i1, i1) {
+  %c1 = scalar.constant 1.0 : f32
+  %c2 = scalar.constant 2.0 : f32
+  %value = scf.select %condition, %c1, %c2 : f32
+  %finite = scalar.isfinitef %value : f32
+  %nan = scalar.isnanf %value : f32
+  %infinity = scalar.isinff %value : f32
+  func.return %finite, %nan, %infinity : i1, i1, i1
+}
+
+// ----
+func.def @select_finite_constants(%condition: i1) -> (i1, i1, i1) {
+  %finite = scalar.constant true : i1
+  %nan = scalar.constant false : i1
+  %infinity = scalar.constant false : i1
+  func.return %finite, %nan, %infinity : i1, i1, i1
+}
+
+// ====
+
+// The selected value stays dynamic even when its class is known.
+func.def @select_opposite_infinities(%condition: i1) -> (i32, i1, i1, i1) {
+  %positive_bits = scalar.constant 2139095040 : i32
+  %negative_bits = scalar.constant -8388608 : i32
+  %positive = scalar.bitcast %positive_bits : i32 to f32
+  %negative = scalar.bitcast %negative_bits : i32 to f32
+  %value = scf.select %condition, %positive, %negative : f32
+  %bits = scalar.bitcast %value : f32 to i32
+  %finite = scalar.isfinitef %value : f32
+  %nan = scalar.isnanf %value : f32
+  %infinity = scalar.isinff %value : f32
+  func.return %bits, %finite, %nan, %infinity : i32, i1, i1, i1
+}
+
+// ----
+func.def @select_opposite_infinities(%condition: i1) -> (i32, i1, i1, i1) {
+  %positive = scalar.constant inf : f32
+  %negative = scalar.constant -inf : f32
+  %value = scf.select %condition, %positive, %negative : f32
+  %bits = scalar.bitcast %value : f32 to i32
+  %finite = scalar.constant false : i1
+  %nan = scalar.constant false : i1
+  %infinity = scalar.constant true : i1
+  func.return %bits, %finite, %nan, %infinity : i32, i1, i1, i1
+}
+
+// ====
+
+// Joining a NaN and a finite number proves neither class unconditionally.
+func.def @select_finite_or_nan(%condition: i1) -> (i32, i1, i1, i1) {
+  %c1 = scalar.constant 1.0 : f32
+  %nan_bits = scalar.constant 2143289345 : i32
+  %nan_value = scalar.bitcast %nan_bits : i32 to f32
+  %value = scf.select %condition, %c1, %nan_value : f32
+  %bits = scalar.bitcast %value : f32 to i32
+  %finite = scalar.isfinitef %value : f32
+  %nan = scalar.isnanf %value : f32
+  %infinity = scalar.isinff %value : f32
+  func.return %bits, %finite, %nan, %infinity : i32, i1, i1, i1
+}
+
+// ----
+func.def @select_finite_or_nan(%condition: i1) -> (i32, i1, i1, i1) {
+  %c1 = scalar.constant 1.0 : f32
+  %nan_bits = scalar.constant 2143289345 : i32
+  %nan_value = scalar.bitcast %nan_bits : i32 to f32
+  %value = scf.select %condition, %c1, %nan_value : f32
+  %bits = scalar.bitcast %value : f32 to i32
+  %finite = scalar.isfinitef %value : f32
+  %nan = scalar.isnanf %value : f32
+  %infinity = scalar.constant false : i1
+  func.return %bits, %finite, %nan, %infinity : i32, i1, i1, i1
+}
+
+// ====
+
+// Signed zeros have the same class but distinct observable bit patterns.
+func.def @select_signed_zeros(%condition: i1) -> (i32, i1) {
+  %positive = scalar.constant 0.0 : f32
+  %negative = scalar.constant -0.0 : f32
+  %value = scf.select %condition, %positive, %negative : f32
+  %bits = scalar.bitcast %value : f32 to i32
+  %finite = scalar.isfinitef %value : f32
+  func.return %bits, %finite : i32, i1
+}
+
+// ----
+func.def @select_signed_zeros(%condition: i1) -> (i32, i1) {
+  %positive = scalar.constant 0.0 : f32
+  %negative = scalar.constant -0.0 : f32
+  %value = scf.select %condition, %positive, %negative : f32
+  %bits = scalar.bitcast %value : f32 to i32
+  %finite = scalar.constant true : i1
+  func.return %bits, %finite : i32, i1
+}
+
+// ====
+
+// The branch meet intersects an explicit input contract with an exact fallback.
+func.def @branch_finite_or_zero(%condition: i1, %input: f32) -> (i1) {
+  %value = scf.if %condition -> (f32) {
+    %finite_input = scalar.assume %input [finite(%input)] : f32
+    scf.yield %finite_input : f32
+  } else {
+    %c0 = scalar.constant 0.0 : f32
+    scf.yield %c0 : f32
+  }
+  %finite = scalar.isfinitef %value : f32
+  func.return %finite : i1
+}
+
+// ----
+func.def @branch_finite_or_zero(%condition: i1, %input: f32) -> (i1) {
+  %finite = scalar.constant true : i1
+  func.return %finite : i1
+}
+
+// ====
+
+// A finite arm cannot constrain an unknown alternative.
+func.def @select_finite_or_unknown(%condition: i1, %input: f32) -> (i1) {
+  %c1 = scalar.constant 1.0 : f32
+  %value = scf.select %condition, %c1, %input : f32
+  %finite = scalar.isfinitef %value : f32
+  func.return %finite : i1
+}
+
+// ====
+
+// Lookup joins include the default row, including its floating class.
+func.def @lookup_finite(%selector: index) -> (i1) {
+  %c1 = scalar.constant 1.0 : f32
+  %c2 = scalar.constant 2.0 : f32
+  %c3 = scalar.constant 3.0 : f32
+  %value = scf.lookup %selector {
+    0 = (%c1),
+    1 = (%c2)
+  } default(%c3) : f32
+  %finite = scalar.isfinitef %value : f32
+  func.return %finite : i1
+}
+
+// ----
+func.def @lookup_finite(%selector: index) -> (i1) {
+  %finite = scalar.constant true : i1
+  func.return %finite : i1
+}

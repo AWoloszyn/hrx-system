@@ -1070,7 +1070,17 @@ TEST(FactsApplyPredicate, NotNan) {
   loom_value_facts_t f = loom_value_facts_unknown();
   loom_predicate_t pred = make_predicate_not_nan();
   loom_value_facts_apply_predicate(&f, &pred);
+  EXPECT_TRUE(loom_value_facts_is_float(f));
   EXPECT_TRUE(loom_value_facts_is_not_nan(f));
+  EXPECT_FALSE(loom_value_facts_is_finite(f));
+}
+
+TEST(FactsApplyPredicate, NotInf) {
+  loom_value_facts_t f = loom_value_facts_unknown();
+  loom_predicate_t pred = make_predicate_not_inf();
+  loom_value_facts_apply_predicate(&f, &pred);
+  EXPECT_TRUE(loom_value_facts_is_float(f));
+  EXPECT_TRUE(loom_value_facts_is_not_inf(f));
   EXPECT_FALSE(loom_value_facts_is_finite(f));
 }
 
@@ -1078,7 +1088,9 @@ TEST(FactsApplyPredicate, Finite) {
   loom_value_facts_t f = loom_value_facts_unknown();
   loom_predicate_t pred = make_predicate_finite();
   loom_value_facts_apply_predicate(&f, &pred);
+  EXPECT_TRUE(loom_value_facts_is_float(f));
   EXPECT_TRUE(loom_value_facts_is_not_nan(f));
+  EXPECT_TRUE(loom_value_facts_is_not_inf(f));
   EXPECT_TRUE(loom_value_facts_is_finite(f));
 }
 

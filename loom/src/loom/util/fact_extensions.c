@@ -1213,21 +1213,7 @@ iree_status_t loom_value_fact_table_meet_for_type(
   lhs_scalar.extension_id = LOOM_VALUE_FACT_EXTENSION_ID_NONE;
   loom_value_facts_t rhs_scalar = rhs;
   rhs_scalar.extension_id = LOOM_VALUE_FACT_EXTENSION_ID_NONE;
-  if (loom_value_facts_is_float(lhs_scalar) ||
-      loom_value_facts_is_float(rhs_scalar)) {
-    *out_facts = loom_value_facts_unknown();
-    if (loom_value_facts_is_lane_varying(lhs_scalar) ||
-        loom_value_facts_is_lane_varying(rhs_scalar)) {
-      loom_value_facts_mark_lane_distribution_for_type(type, out_facts);
-    } else {
-      const loom_value_fact_uniform_scope_t uniform_scope =
-          iree_min(loom_value_facts_uniform_scope(lhs_scalar),
-                   loom_value_facts_uniform_scope(rhs_scalar));
-      loom_value_facts_mark_uniform_at_scope(out_facts, uniform_scope);
-    }
-  } else {
-    loom_value_facts_meet(&lhs_scalar, &rhs_scalar, out_facts);
-  }
+  loom_value_facts_meet(&lhs_scalar, &rhs_scalar, out_facts);
 
   const loom_value_fact_domain_t* domain =
       loom_value_fact_domain_for_type(target, module, type);
@@ -1263,30 +1249,29 @@ iree_status_t loom_value_fact_table_widen_for_type(
                                                next_table, next, out_facts);
   }
 
-  *out_facts = loom_value_facts_unknown();
+  // Floating classifications have finite height and need no interval widening.
+  loom_value_facts_meet(&previous, &next, out_facts);
   if (!loom_value_facts_is_float(previous) &&
       !loom_value_facts_is_float(next)) {
     // Range growth does not invalidate divisibility. Its join descends through
     // positive divisors, so it converges independently of interval widening.
-    loom_value_facts_t joined;
-    loom_value_facts_meet(&previous, &next, &joined);
+    const int64_t known_divisor = out_facts->known_divisor;
     int64_t range_lo = INT64_MIN;
     int64_t range_hi = INT64_MAX;
     if (loom_type_is_scalar(type)) {
       loom_value_facts_scalar_type_domain(loom_type_element_type(type),
                                           &range_lo, &range_hi);
     }
-    *out_facts =
-        loom_value_facts_make(range_lo, range_hi, joined.known_divisor);
-  }
-  if (loom_value_facts_is_lane_varying(previous) ||
-      loom_value_facts_is_lane_varying(next)) {
-    loom_value_facts_mark_lane_distribution_for_type(type, out_facts);
-  } else {
-    const loom_value_fact_uniform_scope_t uniform_scope =
-        iree_min(loom_value_facts_uniform_scope(previous),
-                 loom_value_facts_uniform_scope(next));
-    loom_value_facts_mark_uniform_at_scope(out_facts, uniform_scope);
+    *out_facts = loom_value_facts_make(range_lo, range_hi, known_divisor);
+    if (loom_value_facts_is_lane_varying(previous) ||
+        loom_value_facts_is_lane_varying(next)) {
+      loom_value_facts_mark_lane_distribution_for_type(type, out_facts);
+    } else {
+      const loom_value_fact_uniform_scope_t uniform_scope =
+          iree_min(loom_value_facts_uniform_scope(previous),
+                   loom_value_facts_uniform_scope(next));
+      loom_value_facts_mark_uniform_at_scope(out_facts, uniform_scope);
+    }
   }
   const loom_value_fact_domain_t* domain =
       loom_value_fact_domain_for_type(target, module, type);
