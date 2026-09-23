@@ -129,6 +129,15 @@ sources can share an egress route and destination when packet routing preserves
 their identity; a source does not inherently require its own shim DMA channel.
 [Trace configuration][aie-trace], [trace routing][trace-architecture]
 
+Start and stop selectors control collection independently of the eight event
+slots. For example, a program can select `INSTR_EVENT_0` to start collection,
+`INSTR_EVENT_1` to stop it, and `INSTR_STORE` in slot zero to observe stores.
+The worker issues `event 0`, performs the operations being observed, and issues
+`event 1`. Compiler scheduling places those operations strictly between the
+markers. The resulting event frames name slot zero; their meaning comes from
+its `INSTR_STORE` configuration, not from the start/stop event numbers.
+[AIE2P event definitions][aie2p-events]
+
 ### Packets and timestamps
 
 The AIE-ML trace transport uses eight 32-bit words per packet: a routing header
@@ -158,6 +167,14 @@ complete the destination DMA. [Trace flush implementation][xdp-trace]
 With length-based S2MM completion, the destination has its own programmed
 transfer length. Stopping a source after it produces a short trace does not
 change that length or complete an otherwise unfinished transfer.
+
+An exact packet count allows one length-based transfer to collect several
+packets and issue one task-completion token for the whole destination. For
+example, two short, explicitly stopped windows that each produce one packet
+fill a single 64-byte transfer, including their headers. No separate allocation
+or descriptor is needed for each packet. The transfer length follows the
+emitted packet count, not the number of selected events or the allocation's
+maximum capacity: frames are compressed and packed together.
 
 AIE2IPU and AIE2P also support S2MM **finish on TLAST**. In that mode a
 descriptor can complete when the incoming packet ends, before reaching its
