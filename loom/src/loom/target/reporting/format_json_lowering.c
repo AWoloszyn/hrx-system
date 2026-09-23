@@ -485,6 +485,140 @@ loom_target_compile_report_format_source_low_transforms_json(
   return loom_json_object_end(&object);
 }
 
+static iree_status_t
+loom_target_compile_report_format_source_boundary_projection_shape_json(
+    loom_json_object_writer_t* object, iree_string_view_t field_name,
+    const loom_target_compile_report_source_boundary_projection_row_t* row,
+    uint8_t first_axis) {
+  IREE_RETURN_IF_ERROR(loom_json_object_begin_field(object, field_name));
+  loom_json_array_writer_t array;
+  IREE_RETURN_IF_ERROR(loom_json_array_begin(object->stream, &array));
+  for (uint8_t axis = first_axis; axis < row->source_rank; ++axis) {
+    IREE_RETURN_IF_ERROR(loom_json_array_write_int64_element(
+        &array, row->source_dimensions[axis]));
+  }
+  return loom_json_array_end(&array);
+}
+
+static iree_status_t
+loom_target_compile_report_format_source_boundary_projection_row_json(
+    const loom_target_compile_report_source_boundary_projection_row_t* row,
+    iree_host_size_t row_index, loom_output_stream_t* stream) {
+  loom_json_object_writer_t object;
+  IREE_RETURN_IF_ERROR(loom_json_object_begin(stream, &object));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_host_size_field(
+      &object, IREE_SV("index"), row_index));
+  IREE_RETURN_IF_ERROR(
+      loom_target_compile_report_json_write_optional_string_field(
+          &object, IREE_SV("function"), row->function_name));
+  IREE_RETURN_IF_ERROR(
+      loom_target_compile_report_json_write_optional_string_field(
+          &object, IREE_SV("source_op"), row->source_op_name));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
+      &object, IREE_SV("source_op_kind"), row->source_op_kind));
+  IREE_RETURN_IF_ERROR(
+      loom_target_compile_report_json_write_optional_string_field(
+          &object, IREE_SV("projection"), row->projection_key));
+  IREE_RETURN_IF_ERROR(
+      loom_target_compile_report_json_write_optional_string_field(
+          &object, IREE_SV("boundary"), row->boundary_key));
+  IREE_RETURN_IF_ERROR(
+      loom_target_compile_report_json_write_optional_string_field(
+          &object, IREE_SV("outcome"), row->outcome));
+  IREE_RETURN_IF_ERROR(
+      loom_target_compile_report_json_write_optional_string_field(
+          &object, IREE_SV("reason"), row->reason));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
+      &object, IREE_SV("operation"), row->operation_ordinal));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
+      &object, IREE_SV("source_value"), row->source_value_ordinal));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
+      &object, IREE_SV("source_type_kind"), row->source_type_kind));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_string_field(
+      &object, IREE_SV("source_type"),
+      loom_target_compile_report_type_kind_name(row->source_type_kind)));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
+      &object, IREE_SV("source_element_type"), row->source_element_type));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_string_field(
+      &object, IREE_SV("source_element"),
+      loom_target_compile_report_scalar_type_name(row->source_element_type)));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
+      &object, IREE_SV("source_rank"), row->source_rank));
+  IREE_RETURN_IF_ERROR(
+      loom_target_compile_report_format_source_boundary_projection_shape_json(
+          &object, IREE_SV("source_shape"), row, 0));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
+      &object, IREE_SV("projected_prefix_rank"), row->projected_prefix_rank));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_uint32_field(
+      &object, IREE_SV("component_count"), row->component_count));
+  if (row->component_count != 0) {
+    IREE_RETURN_IF_ERROR(
+        loom_target_compile_report_format_source_boundary_projection_shape_json(
+            &object, IREE_SV("component_shape"), row,
+            row->projected_prefix_rank));
+  }
+  return loom_json_object_end(&object);
+}
+
+static iree_status_t
+loom_target_compile_report_format_source_boundary_projections_json(
+    const loom_target_compile_report_t* report,
+    loom_target_compile_report_format_mode_t mode,
+    loom_output_stream_t* stream) {
+  iree_host_size_t selected_count = 0;
+  iree_host_size_t preserved_count = 0;
+  iree_host_size_t rejected_count = 0;
+  for (const loom_target_compile_report_vec_t* vec =
+           report->source_boundary_projection_rows.head;
+       vec != NULL; vec = vec->next) {
+    const loom_target_compile_report_source_boundary_projection_row_t* rows =
+        (const loom_target_compile_report_source_boundary_projection_row_t*)
+            loom_target_compile_report_vec_const_rows(vec);
+    for (iree_host_size_t i = 0; i < vec->count; ++i) {
+      selected_count +=
+          iree_string_view_equal(rows[i].outcome, IREE_SV("selected"));
+      preserved_count +=
+          iree_string_view_equal(rows[i].outcome, IREE_SV("preserved"));
+      rejected_count +=
+          iree_string_view_equal(rows[i].outcome, IREE_SV("rejected"));
+    }
+  }
+
+  loom_json_object_writer_t object;
+  IREE_RETURN_IF_ERROR(loom_json_object_begin(stream, &object));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_host_size_field(
+      &object, IREE_SV("count"),
+      report->source_boundary_projection_rows.count));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_host_size_field(
+      &object, IREE_SV("selected_count"), selected_count));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_host_size_field(
+      &object, IREE_SV("preserved_count"), preserved_count));
+  IREE_RETURN_IF_ERROR(loom_json_object_write_host_size_field(
+      &object, IREE_SV("rejected_count"), rejected_count));
+  if (mode != LOOM_TARGET_COMPILE_REPORT_FORMAT_MODE_DETAILS) {
+    return loom_json_object_end(&object);
+  }
+  IREE_RETURN_IF_ERROR(loom_json_object_begin_field(&object, IREE_SV("rows")));
+  loom_json_array_writer_t array;
+  IREE_RETURN_IF_ERROR(loom_json_array_begin(stream, &array));
+  iree_host_size_t row_index = 0;
+  for (const loom_target_compile_report_vec_t* vec =
+           report->source_boundary_projection_rows.head;
+       vec != NULL; vec = vec->next) {
+    const loom_target_compile_report_source_boundary_projection_row_t* rows =
+        (const loom_target_compile_report_source_boundary_projection_row_t*)
+            loom_target_compile_report_vec_const_rows(vec);
+    for (iree_host_size_t i = 0; i < vec->count; ++i, ++row_index) {
+      IREE_RETURN_IF_ERROR(loom_json_array_begin_element(&array));
+      IREE_RETURN_IF_ERROR(
+          loom_target_compile_report_format_source_boundary_projection_row_json(
+              &rows[i], row_index, stream));
+    }
+  }
+  IREE_RETURN_IF_ERROR(loom_json_array_end(&array));
+  return loom_json_object_end(&object);
+}
+
 static iree_status_t loom_target_compile_report_format_memory_interval_json(
     const loom_target_compile_report_memory_interval_t* interval,
     loom_json_object_writer_t* object) {
@@ -1764,6 +1898,13 @@ static iree_status_t loom_target_compile_report_format_source_low_json(
         loom_json_object_begin_field(&object, IREE_SV("transforms")));
     IREE_RETURN_IF_ERROR(
         loom_target_compile_report_format_source_low_transforms_json(
+            report, mode, stream));
+  }
+  if (report->source_boundary_projection_rows.count != 0) {
+    IREE_RETURN_IF_ERROR(
+        loom_json_object_begin_field(&object, IREE_SV("boundary_projections")));
+    IREE_RETURN_IF_ERROR(
+        loom_target_compile_report_format_source_boundary_projections_json(
             report, mode, stream));
   }
   if (report->loop_pipeline_rows.count != 0) {

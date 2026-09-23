@@ -13,6 +13,7 @@
 #include "loom/analysis/native_layout.h"
 #include "loom/codegen/low/planning_statistics.h"
 #include "loom/ir/scalar_type.h"
+#include "loom/ir/types.h"
 #include "loom/target/reporting/loop_pipeline.h"
 #include "loom/target/reporting/pipeline_plan.h"
 #include "loom/target/reporting/residency.h"
@@ -1231,6 +1232,40 @@ typedef struct loom_target_compile_report_source_low_transform_row_t {
   uint32_t inserted_barrier_op_count;
 } loom_target_compile_report_source_low_transform_row_t;
 
+// One source boundary-representation decision copied into a compile report.
+typedef struct loom_target_compile_report_source_boundary_projection_row_t {
+  // Source function symbol containing the projected boundary.
+  iree_string_view_t function_name;
+  // Source operation mnemonic anchoring the boundary.
+  iree_string_view_t source_op_name;
+  // Numeric source operation kind anchoring the boundary.
+  uint32_t source_op_kind;
+  // Stable semantic projection-rule key.
+  iree_string_view_t projection_key;
+  // Stable boundary-role key such as "loop_state".
+  iree_string_view_t boundary_key;
+  // Stable decision outcome: selected, preserved, or rejected.
+  iree_string_view_t outcome;
+  // Stable semantic reason for the decision.
+  iree_string_view_t reason;
+  // Function-local source operation ordinal assigned by the projection pass.
+  uint32_t operation_ordinal;
+  // Source value ordinal within the boundary operation.
+  uint32_t source_value_ordinal;
+  // Original logical Loom type kind.
+  uint32_t source_type_kind;
+  // Original logical element scalar type.
+  uint32_t source_element_type;
+  // Number of populated entries in |source_dimensions|.
+  uint8_t source_rank;
+  // Leading logical dimensions selecting one homogeneous component.
+  uint8_t projected_prefix_rank;
+  // Number of homogeneous physical components, or zero when no schema exists.
+  uint16_t component_count;
+  // Original static logical dimensions in source order.
+  int64_t source_dimensions[LOOM_TYPE_MAX_RANK];
+} loom_target_compile_report_source_boundary_projection_row_t;
+
 // One invocation config binding materialized into the compiled module.
 typedef struct loom_target_compile_report_config_binding_row_t {
   // Config symbol name without the textual '@' sigil.
@@ -2047,6 +2082,8 @@ typedef struct loom_target_compile_report_t {
   loom_target_compile_report_row_list_t source_low_target_rows;
   // Owned source transform decision rows.
   loom_target_compile_report_row_list_t source_low_transform_rows;
+  // Owned source boundary-representation decision rows.
+  loom_target_compile_report_row_list_t source_boundary_projection_rows;
   // Owned applied source loop pipeline policies.
   loom_target_compile_report_row_list_t loop_pipeline_rows;
   // Owned operation schedules produced by source loop pipelining.
@@ -2281,6 +2318,11 @@ iree_status_t loom_target_compile_report_record_source_low_target_row(
 iree_status_t loom_target_compile_report_record_source_low_transform_row(
     loom_target_compile_report_t* report,
     const loom_target_compile_report_source_low_transform_row_t* row);
+
+// Records one source boundary-representation decision row.
+iree_status_t loom_target_compile_report_record_source_boundary_projection_row(
+    loom_target_compile_report_t* report,
+    const loom_target_compile_report_source_boundary_projection_row_t* row);
 
 // Records one emitted source-memory packet row.
 iree_status_t loom_target_compile_report_record_source_low_memory_row(
