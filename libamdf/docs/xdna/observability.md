@@ -262,6 +262,43 @@ destination remains live while a DMA can write it. A streaming program can
 publish completed regions to a reader while continuing to produce into other
 regions; each region's publication and reuse follow that program's protocol.
 
+### Consuming completed-transfer counts
+
+In `DMA_FoT_COUNTS_FROM_MM_REG` mode, each shim S2MM channel has a
+completed-count FIFO. The AIE2P FIFO-pop registers are at local offsets
+`0x1d238` and `0x1d23c` for channels 0 and 1. A report describes one completed
+transfer:
+
+| Field | Bits | Meaning |
+| --- | --- | --- |
+| `Valid` | 31 | This read returned a report. |
+| `Last_in_Task` | 30 | This was the task's final transfer. |
+| `BD_ID` | 29:24 | Descriptor used for the transfer. |
+| `Write_Count` | 17:0 | Number of 32-bit words written to memory. |
+
+With this mode selected, `Valid=0` means the FIFO is empty; the remaining bits
+are unspecified, not necessarily zero. The same zero Valid bit is returned
+when the channel is not in this mode. [FIFO register fields][aie-register-database]
+
+A control-packet consumer requests one 32-bit word at the selected FIFO-pop
+register's exact address. Its reply is a packet header followed by that word.
+Reading the surrounding aligned four-word block is not an equivalent
+consuming operation. Consumption belongs to one reader: a diagnostic read
+cannot also be treated as a passive copy for another consumer.
+
+For a finite packet, the controller can wait for its DMA task-completion token
+and then release a worker to read the completed count. The worker receives the
+reply through its core stream and returns the report alongside numerical
+output over a length-based, non-counting DMA channel. Returning it through the
+count-producing channel would generate another transfer to account for. Shim
+reply routing preserves the native task-completion route on the same
+`TileControl` source. The controller waits for the output transfer before
+completing the native command; the host then acquires the result through the
+ordinary memory visibility recipe.
+
+The report accounts for a completed transfer. It does not finish an unused
+armed descriptor or identify the final packet of an entire trace capture.
+
 ## Result memory through libamdf
 
 A counter-reply or trace destination is ordinary device-writable memory. The
