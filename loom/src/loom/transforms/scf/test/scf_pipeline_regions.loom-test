@@ -194,24 +194,16 @@ func.def @nested_loop_consumer(%input: view<8xi32>, %initial: i32, %enabled: i1)
     %value = view.load %input[%22] : view<8xi32> -> i32
     %limit = index.cast %24 : i32 to index
     %next = scf.for %j = [%begin to %limit step %step](%inner_sum = %23 : i32) -> (i32) {
-      %selected = scf.if %enabled -> (i32) {
-        %added = scalar.addi %inner_sum, %24 : i32
-        scf.yield %added : i32
-      } else {
-        scf.yield %inner_sum : i32
-      }
+      %added = scalar.addi %inner_sum, %24 : i32
+      %selected = scf.select %enabled, %added, %inner_sum : i32
       scf.yield %selected : i32
     }
     scf.yield %next, %value : i32, i32
   }
   %limit = index.cast %26 : i32 to index
   %next = scf.for %j = [%begin to %limit step %step](%inner_sum = %25 : i32) -> (i32) {
-    %selected = scf.if %enabled -> (i32) {
-      %added = scalar.addi %inner_sum, %26 : i32
-      scf.yield %added : i32
-    } else {
-      scf.yield %inner_sum : i32
-    }
+    %added = scalar.addi %inner_sum, %26 : i32
+    %selected = scf.select %enabled, %added, %inner_sum : i32
     scf.yield %selected : i32
   }
   func.return %next : i32

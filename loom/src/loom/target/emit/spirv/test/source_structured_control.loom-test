@@ -3,14 +3,15 @@
 
 spirv.target<vulkan1_3> @target
 
-func.def target(@target) @source_if(%lhs: i32, %rhs: i32, %a: i32, %b: i32) -> (i32) {
-  %less = scalar.cmpi slt, %lhs, %rhs : i32
-  %result = scf.if %less -> (i32) {
-    %sum = scalar.addi %a, %b : i32
-    scf.yield %sum : i32
+// Division must remain guarded when the denominator can be zero.
+func.def target(@target) @source_if(%numerator: i32, %denominator: i32, %fallback: i32) -> (i32) {
+  %c0 = scalar.constant 0 : i32
+  %nonzero = scalar.cmpi ne, %denominator, %c0 : i32
+  %result = scf.if %nonzero -> (i32) {
+    %quotient = scalar.divui %numerator, %denominator : i32
+    scf.yield %quotient : i32
   } else {
-    %difference = scalar.subi %a, %b : i32
-    scf.yield %difference : i32
+    scf.yield %fallback : i32
   }
   func.return %result : i32
 }
@@ -26,13 +27,12 @@ func.def target(@target) @source_if(%lhs: i32, %rhs: i32, %a: i32, %b: i32) -> (
                OpEntryPoint GLCompute %source_if "source_if"
                OpExecutionMode %source_if LocalSize 1 1 1
                OpName %source_if "source_if"
-               OpName %lhs "lhs"
-               OpName %rhs "rhs"
-               OpName %a "a"
-               OpName %b "b"
-               OpName %less "less"
-               OpName %sum "sum"
-               OpName %difference "difference"
+               OpName %numerator "numerator"
+               OpName %denominator "denominator"
+               OpName %fallback "fallback"
+               OpName %c0 "c0"
+               OpName %nonzero "nonzero"
+               OpName %quotient "quotient"
                OpName %result "result"
                OpMemberDecorate %_struct_5 0 Offset 0
                OpDecorate %_struct_5 Block
@@ -44,8 +44,6 @@ func.def target(@target) @source_if(%lhs: i32, %rhs: i32, %a: i32, %b: i32) -> (
                OpDecorate %9 Binding 2
                OpDecorate %10 DescriptorSet 0
                OpDecorate %10 Binding 3
-               OpDecorate %11 DescriptorSet 0
-               OpDecorate %11 Binding 4
         %int = OpTypeInt 32 1
       %int_0 = OpConstant %int 0
   %_struct_5 = OpTypeStruct %int
@@ -55,33 +53,34 @@ func.def target(@target) @source_if(%lhs: i32, %rhs: i32, %a: i32, %b: i32) -> (
           %8 = OpVariable %_ptr_StorageBuffer__struct_5 StorageBuffer
           %9 = OpVariable %_ptr_StorageBuffer__struct_5 StorageBuffer
          %10 = OpVariable %_ptr_StorageBuffer__struct_5 StorageBuffer
-         %11 = OpVariable %_ptr_StorageBuffer__struct_5 StorageBuffer
        %void = OpTypeVoid
-         %13 = OpTypeFunction %void
+         %12 = OpTypeFunction %void
+         %c0 = OpConstant %int 0
        %bool = OpTypeBool
-  %source_if = OpFunction %void None %13
-         %14 = OpLabel
-         %15 = OpAccessChain %_ptr_StorageBuffer_int %4 %int_0
-        %lhs = OpLoad %int %15 Aligned 4
-         %17 = OpAccessChain %_ptr_StorageBuffer_int %8 %int_0
-        %rhs = OpLoad %int %17 Aligned 4
-         %19 = OpAccessChain %_ptr_StorageBuffer_int %9 %int_0
-          %a = OpLoad %int %19 Aligned 4
-         %21 = OpAccessChain %_ptr_StorageBuffer_int %10 %int_0
-          %b = OpLoad %int %21 Aligned 4
-       %less = OpSLessThan %bool %lhs %rhs
-               OpSelectionMerge %26 None
-               OpBranchConditional %less %25 %27
+       %uint = OpTypeInt 32 0
+  %source_if = OpFunction %void None %12
+         %13 = OpLabel
+         %14 = OpAccessChain %_ptr_StorageBuffer_int %4 %int_0
+  %numerator = OpLoad %int %14 Aligned 4
+         %16 = OpAccessChain %_ptr_StorageBuffer_int %8 %int_0
+%denominator = OpLoad %int %16 Aligned 4
+         %18 = OpAccessChain %_ptr_StorageBuffer_int %9 %int_0
+   %fallback = OpLoad %int %18 Aligned 4
+    %nonzero = OpINotEqual %bool %denominator %c0
+               OpSelectionMerge %24 None
+               OpBranchConditional %nonzero %23 %25
+         %23 = OpLabel
+         %27 = OpBitcast %uint %numerator
+         %28 = OpBitcast %uint %denominator
+         %29 = OpUDiv %uint %27 %28
+   %quotient = OpBitcast %int %29
+               OpBranch %24
          %25 = OpLabel
-        %sum = OpIAdd %int %a %b
-               OpBranch %26
-         %27 = OpLabel
- %difference = OpISub %int %a %b
-               OpBranch %26
-         %26 = OpLabel
-     %result = OpPhi %int %sum %25 %difference %27
-         %31 = OpAccessChain %_ptr_StorageBuffer_int %11 %int_0
-               OpStore %31 %result Aligned 4
+               OpBranch %24
+         %24 = OpLabel
+     %result = OpPhi %int %quotient %23 %fallback %25
+         %32 = OpAccessChain %_ptr_StorageBuffer_int %10 %int_0
+               OpStore %32 %result Aligned 4
                OpReturn
                OpFunctionEnd
 
