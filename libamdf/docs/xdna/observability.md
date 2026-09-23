@@ -6,16 +6,16 @@ execution:
 | Mechanism | Observation | Result transport |
 | --- | --- | --- |
 | Core cycle counter | Time between instructions in a tile program. | The program stores counter samples with its other output. |
-| Event counters | Selected core, memory, stream, or DMA activity. | Reads of the module's performance-counter registers. |
+| Event counters | Selected core, memory, stream, or DMA activity. | Array control-packet replies or firmware register-read results. |
 | Event trace | Changes in selected events, with cycle timing. | Packet streams routed through the array to a DMA destination. |
 | Firmware timer records | Markers encountered by the native instruction interpreter. | A firmware result buffer associated with the context. |
 | Firmware diagnostic trace | Driver/firmware activity outside the tile program. | A separate device-wide diagnostic channel. |
 
-Application stores and trace DMA use libamdf's existing memory and execution
-APIs on Linux and Windows. libamdf currently exposes neither native clock
-queries nor firmware result-buffer attachment or diagnostic trace access. The
-native-interface sections below describe those driver mechanisms separately
-from the public API.
+Application stores, counter-reply DMA, and trace DMA use libamdf's existing
+memory and execution APIs on Linux and Windows. libamdf currently exposes
+neither native clock queries nor firmware result-buffer attachment or
+diagnostic trace access. The native-interface sections below describe those
+driver mechanisms separately from the public API.
 
 ## Timing a tile program
 
@@ -69,7 +69,8 @@ The register interface and the core instruction are different read paths.
 `XAie_ReadTimer` performs separate low-word and high-word register reads;
 the core `cntr` instruction returns a register pair. Neither the register
 address nor `XAie_ReadTimer` is a host mapping supplied by libamdf. Register
-operations reach the array through the admitted executable's controller path.
+operations reach the array through the admitted executable's controller
+instructions or control-packet routes.
 
 ## Event counters
 
@@ -103,6 +104,37 @@ instruction events 0 and 1 have event numbers 33 and 34; core user events 0
 through 3 have numbers 124 through 127. An event emitted by an instruction and
 one generated through `Event_Generate` are different event sources.
 [AIE2P event definitions][aie2p-events]
+
+### Returning counters through array streams
+
+An AIE2P program can read its placement's counter registers through the array
+control-packet protocol. A request contains a routing header and a control word
+with the local register address, read operation, return packet ID, and requested
+word count. The outgoing read request ends at the control word; the requested
+words belong to the reply, not to the request payload. A read returns a packet
+header followed by one to four 32-bit values. [Stream control packets][stream-control]
+
+The executable routes the request to the target's `TileControl` endpoint and
+routes its reply to an ordinary shim S2MM destination. Reply routes preserve
+the packet header and remain distinct from native DMA task-completion routes.
+For example, reading the four core counter registers produces a 20-byte
+packet. A 64-byte-capacity destination using finish-on-TLAST completes after
+that packet; the controller waits for its task-completion token before
+completing the command. Destination capacity is not the returned byte count.
+
+For a program-defined work counter, matching `INSTR_EVENT_0` start/stop
+selectors count the worker's `event 0` instructions. Initializing the counter,
+emitting one event per work item, and reading after the last event produces a
+count independent of host sampling intervals. Resetting the counter in each
+command gives separate counts while reusing the same executable and destination.
+A multi-word reply does not define a simultaneous snapshot of running counters;
+the program quiesces their event sources when it needs stable values.
+
+This path uses the application's stream-switch and DMA resources, memory
+visibility recipe, and execution-completion edge. It does not use the firmware
+`READ_REGS` operation or require a context-associated debug buffer. Packet
+construction and counter selection belong to the instrumented executable;
+libamdf submits it through the ordinary queue API.
 
 ## Event trace
 
@@ -232,19 +264,20 @@ regions; each region's publication and reuse follow that program's protocol.
 
 ## Result memory through libamdf
 
-A trace destination is ordinary device-writable memory. The caller selects a
-scope and memory profile with the intended NPU and host or GPU consumers, then
-obtains backing with `memory_create`, registration, or `memory_import`.
+A counter-reply or trace destination is ordinary device-writable memory. The
+caller selects a scope and memory profile with the intended NPU and host or
+GPU consumers, then obtains backing with `memory_create`, registration, or
+`memory_import`.
 
 `memory_query_address(memory, access_ordinal, AMDF_MEMORY_ADDRESS_XDNA_DMA,
 &address)` returns the address interpretation used by shim DMA. An offset into
 the allocation is added to that address. The firmware address interpretation
 is separate; the caller does not translate it using a fixed platform constant.
 
-The prepared trace configuration lives with the other controller instructions
-in context-private EXECUTE memory. `kernel_queue_submit` publishes that range
-without parsing or modifying it. It does not start a collector or inspect the
-trace destination.
+The prepared observation configuration lives with the other controller
+instructions in context-private EXECUTE memory. `kernel_queue_submit`
+publishes that range without parsing or modifying it. It does not start a
+collector or inspect the observation destination.
 
 After the program's completion edge, the reader applies the visibility recipe
 from `memory_query_pair_info`. A host acquire requiring cache invalidation uses
@@ -349,6 +382,7 @@ notifications describe the diagnostic stream, not application queue completion.
 [aie-register-database]: https://github.com/Xilinx/mlir-aie/blob/c69fb4c8f2fb853d5ca62d19f829796d3ae4ba34/lib/Dialect/AIE/Util/aie_registers_aie2.json
 [aie-counters]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/perfcnt/xaie_perfcnt.c
 [aie2p-events]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/events/xaie_events_aie2p.h
+[stream-control]: https://download.amd.com/docnav/aiengine/xilinx2025_1/aiengine_ml_v2_intrinsics/intrinsics/group__intr__streams__ms.html
 [aie-trace]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/trace/xaie_trace.c
 [trace-architecture]: https://docs.amd.com/r/en-US/am020-versal-aie-ml/Trace
 [trace-decoder]: https://github.com/Xilinx/mlir-aie/blob/c69fb4c8f2fb853d5ca62d19f829796d3ae4ba34/python/utils/trace/utils.py
