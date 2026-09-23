@@ -83,3 +83,17 @@ iree-bazel-test --compilation_mode=opt \
 iree-bazel-test --compilation_mode=opt \
     //runtime/src/iree/async/platform/posix/cts:core_benchmarks_test
 ```
+
+The core scalability benchmarks create up to 4,096 concurrent event sources
+or notification relays. POSIX runs need enough open file descriptors for those
+objects and the proactor itself. Pipe-backed events on macOS and BSD use two
+descriptors each; a soft limit of 16,384 accommodates the full suite:
+
+```bash
+ulimit -Sn 16384
+```
+
+The shell's hard limit must permit that value. Descriptor exhaustion remains
+a benchmark error, not an unsupported configuration. Backends without a
+required capability report an explicit skip: for example, `iocp_legacy_wait`
+skips the persistent-event-source rows but still runs notification-relay rows.

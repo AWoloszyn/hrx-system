@@ -91,11 +91,26 @@ static IdleHandlerContext* CreateIdleHandlerContext(
 
   auto result = factory(iree_async_proactor_options_default());
   if (!result.ok()) {
-    state.SkipWithError("Proactor creation failed");
+    if (result.status().code() == iree::StatusCode::kUnavailable) {
+      state.SkipWithMessage(result.status().ToString());
+    } else {
+      state.SkipWithError(result.status().ToString());
+    }
     delete ctx;
     return nullptr;
   }
   ctx->proactor = result.value();
+
+#if defined(IREE_PLATFORM_WINDOWS)
+  if (!iree_all_bits_set(
+          iree_async_proactor_query_capabilities(ctx->proactor),
+          IREE_ASYNC_PROACTOR_CAPABILITY_WAIT_COMPLETION_PACKET)) {
+    state.SkipWithMessage(
+        "Persistent event sources require wait completion packet support");
+    DestroyIdleHandlerContext(ctx);
+    return nullptr;
+  }
+#endif  // IREE_PLATFORM_WINDOWS
 
   // Create N idle event sources. Each event creates a pollable fd (eventfd on
   // Linux, pipe on macOS). The fd is registered in the proactor's fd_map as an
@@ -107,8 +122,8 @@ static IdleHandlerContext* CreateIdleHandlerContext(
     iree_status_t status =
         iree_async_event_create(ctx->proactor, &ctx->idle_events[i]);
     if (!iree_status_is_ok(status)) {
-      state.SkipWithError("Event creation failed");
-      iree_status_ignore(status);
+      state.SkipWithError(iree::Status::ToString(status));
+      iree_status_free(status);
       DestroyIdleHandlerContext(ctx);
       return nullptr;
     }
@@ -120,8 +135,8 @@ static IdleHandlerContext* CreateIdleHandlerContext(
         ctx->proactor, ctx->idle_events[i]->native.wait_primitive, callback,
         &ctx->idle_sources[i]);
     if (!iree_status_is_ok(status)) {
-      state.SkipWithError("Event source registration failed");
-      iree_status_ignore(status);
+      state.SkipWithError(iree::Status::ToString(status));
+      iree_status_free(status);
       DestroyIdleHandlerContext(ctx);
       return nullptr;
     }
@@ -131,8 +146,8 @@ static IdleHandlerContext* CreateIdleHandlerContext(
   iree_status_t status = iree_async_notification_create(
       ctx->proactor, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &ctx->active_source);
   if (!iree_status_is_ok(status)) {
-    state.SkipWithError("Active source notification creation failed");
-    iree_status_ignore(status);
+    state.SkipWithError(iree::Status::ToString(status));
+    iree_status_free(status);
     DestroyIdleHandlerContext(ctx);
     return nullptr;
   }
@@ -140,8 +155,8 @@ static IdleHandlerContext* CreateIdleHandlerContext(
   status = iree_async_notification_create(
       ctx->proactor, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &ctx->active_sink);
   if (!iree_status_is_ok(status)) {
-    state.SkipWithError("Active sink notification creation failed");
-    iree_status_ignore(status);
+    state.SkipWithError(iree::Status::ToString(status));
+    iree_status_free(status);
     DestroyIdleHandlerContext(ctx);
     return nullptr;
   }
@@ -154,8 +169,8 @@ static IdleHandlerContext* CreateIdleHandlerContext(
       ctx->proactor, source_desc, sink_desc, IREE_ASYNC_RELAY_FLAG_PERSISTENT,
       iree_async_relay_error_callback_none(), &ctx->active_relay);
   if (!iree_status_is_ok(status)) {
-    state.SkipWithError("Active relay registration failed");
-    iree_status_ignore(status);
+    state.SkipWithError(iree::Status::ToString(status));
+    iree_status_free(status);
     DestroyIdleHandlerContext(ctx);
     return nullptr;
   }
@@ -242,7 +257,11 @@ static RelayScalabilityContext* CreateRelayScalabilityContext(
 
   auto result = factory(iree_async_proactor_options_default());
   if (!result.ok()) {
-    state.SkipWithError("Proactor creation failed");
+    if (result.status().code() == iree::StatusCode::kUnavailable) {
+      state.SkipWithMessage(result.status().ToString());
+    } else {
+      state.SkipWithError(result.status().ToString());
+    }
     delete ctx;
     return nullptr;
   }
@@ -252,8 +271,8 @@ static RelayScalabilityContext* CreateRelayScalabilityContext(
   iree_status_t status = iree_async_notification_create(
       ctx->proactor, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &ctx->sink);
   if (!iree_status_is_ok(status)) {
-    state.SkipWithError("Sink notification creation failed");
-    iree_status_ignore(status);
+    state.SkipWithError(iree::Status::ToString(status));
+    iree_status_free(status);
     iree_async_proactor_release(ctx->proactor);
     ctx->proactor = nullptr;
     delete ctx;
@@ -267,8 +286,8 @@ static RelayScalabilityContext* CreateRelayScalabilityContext(
     status = iree_async_notification_create(
         ctx->proactor, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &ctx->sources[i]);
     if (!iree_status_is_ok(status)) {
-      state.SkipWithError("Source notification creation failed");
-      iree_status_ignore(status);
+      state.SkipWithError(iree::Status::ToString(status));
+      iree_status_free(status);
       DestroyRelayScalabilityContext(ctx);
       return nullptr;
     }
@@ -281,8 +300,8 @@ static RelayScalabilityContext* CreateRelayScalabilityContext(
         ctx->proactor, source_desc, sink_desc, IREE_ASYNC_RELAY_FLAG_PERSISTENT,
         iree_async_relay_error_callback_none(), &ctx->relays[i]);
     if (!iree_status_is_ok(status)) {
-      state.SkipWithError("Relay registration failed");
-      iree_status_ignore(status);
+      state.SkipWithError(iree::Status::ToString(status));
+      iree_status_free(status);
       DestroyRelayScalabilityContext(ctx);
       return nullptr;
     }
@@ -373,7 +392,11 @@ static FanOutContext* CreateFanOutContext(const ProactorFactory& factory,
 
   auto result = factory(iree_async_proactor_options_default());
   if (!result.ok()) {
-    state.SkipWithError("Proactor creation failed");
+    if (result.status().code() == iree::StatusCode::kUnavailable) {
+      state.SkipWithMessage(result.status().ToString());
+    } else {
+      state.SkipWithError(result.status().ToString());
+    }
     delete ctx;
     return nullptr;
   }
@@ -383,8 +406,8 @@ static FanOutContext* CreateFanOutContext(const ProactorFactory& factory,
   iree_status_t status = iree_async_notification_create(
       ctx->proactor, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &ctx->source);
   if (!iree_status_is_ok(status)) {
-    state.SkipWithError("Source notification creation failed");
-    iree_status_ignore(status);
+    state.SkipWithError(iree::Status::ToString(status));
+    iree_status_free(status);
     iree_async_proactor_release(ctx->proactor);
     ctx->proactor = nullptr;
     delete ctx;
@@ -398,8 +421,8 @@ static FanOutContext* CreateFanOutContext(const ProactorFactory& factory,
     status = iree_async_notification_create(
         ctx->proactor, IREE_ASYNC_NOTIFICATION_FLAG_NONE, &ctx->sinks[i]);
     if (!iree_status_is_ok(status)) {
-      state.SkipWithError("Sink notification creation failed");
-      iree_status_ignore(status);
+      state.SkipWithError(iree::Status::ToString(status));
+      iree_status_free(status);
       DestroyFanOutContext(ctx);
       return nullptr;
     }
@@ -412,8 +435,8 @@ static FanOutContext* CreateFanOutContext(const ProactorFactory& factory,
         ctx->proactor, source_desc, sink_desc, IREE_ASYNC_RELAY_FLAG_PERSISTENT,
         iree_async_relay_error_callback_none(), &ctx->relays[i]);
     if (!iree_status_is_ok(status)) {
-      state.SkipWithError("Relay registration failed");
-      iree_status_ignore(status);
+      state.SkipWithError(iree::Status::ToString(status));
+      iree_status_free(status);
       DestroyFanOutContext(ctx);
       return nullptr;
     }
