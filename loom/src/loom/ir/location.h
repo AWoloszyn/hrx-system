@@ -91,6 +91,9 @@ typedef struct loom_source_table_t {
   iree_host_size_t capacity;
   // Module-arena-owned source identifier entries.
   iree_string_view_t* entries;
+  // Lazy arena-owned name index. Its count identifies the indexed prefix of
+  // entries; trusted unique appends are incorporated by the next registration.
+  struct loom_intern_table_t* name_index;
 } loom_source_table_t;
 
 // Location kind.

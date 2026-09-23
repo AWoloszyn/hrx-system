@@ -22,6 +22,7 @@
 #include "iree/base/api.h"
 #include "iree/base/internal/arena.h"
 #include "loom/ir/ir.h"
+#include "loom/ir/module_source.h"
 #include "loom/ir/parameterized_attr.h"
 #include "loom/ir/type_dependencies.h"
 #include "loom/ir/value_refs.h"
@@ -247,22 +248,6 @@ static inline loom_value_ordinal_t loom_module_value_ordinal_scratch_lookup(
   }
   return loom_value_u32_scratch_load(scratch, value_id);
 }
-
-// Registers a source identifier (filename, system tag, etc.) in |module| and
-// returns its module-local ID. The name is copied into module-owned arena
-// storage. If the same name is already registered, returns the existing ID
-// without allocating.
-iree_status_t loom_module_register_source(loom_module_t* module,
-                                          iree_string_view_t name,
-                                          loom_source_id_t* out_source_id);
-
-// Appends a source identifier known to be absent from |module| and returns its
-// module-local ID. The name is copied into module-owned arena storage. Callers
-// establish uniqueness at their input boundary; use
-// loom_module_register_source when the name may already be present.
-iree_status_t loom_module_append_source(loom_module_t* module,
-                                        iree_string_view_t name,
-                                        loom_source_id_t* out_source_id);
 
 // Attaches the file header to |module|. Each line omits the leading // and its
 // conventional single separating space; additional indentation remains part
