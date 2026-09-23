@@ -42,24 +42,30 @@ typedef struct loom_scf_pipeline_rejection_t {
 } loom_scf_pipeline_rejection_t;
 
 // Builds the two-stage read-ahead schedule of a verified loop body.
-// Ordinary reads and their transitive payload prerequisites form the producer;
-// other operations and the carried recurrence form the ordered consumer.
-// Nested scf.if/scf.for operations remain intact within their assigned stage.
-// Memory-pure convergent units stay in the consumer when |has_static_bounds|
-// proves exact lower and upper bounds. Along with the caller's exact positive
-// step, this preserves participants across the serial/main/drain split.
-// The plan owns the complete cut, including values referenced only by types
-// or attributes. Materializers and reports consume this cut directly.
+// Ordinary reads and their transitive payload prerequisites form the producer.
+// When the body has ordered memory effects, only proven global loads move;
+// workgroup accesses and workgroup barriers stay in the ordered consumer with
+// the carried recurrence. |spaces| retains the owning analysis's
+// classifications across nested reconstruction without borrowing its
+// invalidated fact table. Nested scf.if/scf.for operations remain intact within
+// their assigned stage. Convergent units and workgroup memory effects stay in
+// the consumer when |has_static_bounds| proves exact lower and upper bounds.
+// Along with the caller's exact positive step, this preserves participants
+// across the serial/main/drain split. The plan owns the complete cut, including
+// values referenced only by types or attributes. Materializers and reports
+// consume this cut directly.
 //
-// The admission contract excludes other nested control, ordered effects,
-// writes, producers depending on carried state, and cross-stage values whose
-// types vary with the iteration. Convergence in a read unit or prerequisite
-// cannot move into the producer. Rejections identify the source requirement;
+// The admission contract excludes other nested control, global/unknown writes,
+// global fences, source-order constraints, mixed producer/consumer units,
+// producers depending on carried state, and cross-stage values whose types vary
+// with the iteration. Convergence in a read unit or prerequisite cannot move
+// into the producer. Rejections identify the source requirement;
 // status failures identify allocation or representation limits. Plan storage
 // belongs to |arena| and borrows the source IR until reconstruction completes.
 iree_status_t loom_scf_pipeline_plan_build(
     loom_module_t* module, const loom_block_t* block, bool has_static_bounds,
-    iree_arena_allocator_t* arena, loom_scf_pipeline_plan_t* out_plan,
+    const loom_scf_memory_t* spaces, iree_arena_allocator_t* arena,
+    loom_scf_pipeline_plan_t* out_plan,
     loom_scf_pipeline_rejection_t* out_rejection);
 
 #ifdef __cplusplus

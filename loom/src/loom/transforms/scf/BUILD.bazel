@@ -13,12 +13,25 @@ package(
 )
 
 loom_cc_library(
+    name = "scf_memory",
+    srcs = ["scf_memory.c"],
+    hdrs = ["scf_memory.h"],
+    deps = [
+        "//loom/src/loom/rewrite:remap",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
     name = "scf_body",
     srcs = ["scf_body.c"],
     hdrs = ["scf_body.h"],
     deps = [
+        ":scf_memory",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops:op_defs",
+        "//loom/src/loom/ops/kernel",
         "//loom/src/loom/ops/scf",
         "//loom/src/loom/util:walk",
         "//runtime/src/iree/base",
@@ -43,7 +56,9 @@ loom_cc_library(
     srcs = ["scf_pipeline.c"],
     hdrs = ["scf_pipeline.h"],
     deps = [
+        ":scf_memory",
         ":scf_pipeline_plan",
+        ":scf_unroll",
         "//loom/src/loom/error:emitter",
         "//loom/src/loom/error:error_defs",
         "//loom/src/loom/ir",

@@ -16,9 +16,53 @@ static iree_status_t loom_scf_pipeline_plan_partition(
     loom_scf_pipeline_rejection_t* rejection) {
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, plan->body.count, sizeof(*plan->stages), (void**)&plan->stages));
+  bool ordered_memory = false;
+  for (uint32_t i = 0; i < plan->body.count; ++i) {
+    const loom_scf_body_operation_t* operation = &plan->body.operations[i];
+    if (!iree_any_bit_set(
+            operation->effects,
+            LOOM_SCF_BODY_EFFECT_WRITE | LOOM_SCF_BODY_EFFECT_ORDERED)) {
+      continue;
+    }
+    ordered_memory = true;
+    if (plan->body.accesses.units[i].effects !=
+        LOOM_SCF_BODY_MEMORY_WORKGROUP) {
+      *rejection = (loom_scf_pipeline_rejection_t){
+          .op = operation->op,
+          .constraint = IREE_SV("workgroup-only stores and barriers in the "
+                                "ordered consumer"),
+      };
+      return iree_ok_status();
+    }
+    if (!has_static_bounds) {
+      *rejection = (loom_scf_pipeline_rejection_t){
+          .op = operation->op,
+          .constraint = IREE_SV("compile-time exact loop bounds to preserve "
+                                "ordered consumer participation"),
+      };
+      return iree_ok_status();
+    }
+  }
   for (uint32_t i = 0; i < plan->body.count; ++i) {
     const loom_scf_body_operation_t* operation = &plan->body.operations[i];
     plan->stages[i] = LOOM_SCF_PIPELINE_STAGE_CONSUMER;
+    if (ordered_memory && plan->body.accesses.units[i].effects) {
+      if (plan->body.accesses.units[i].effects ==
+          LOOM_SCF_BODY_MEMORY_WORKGROUP) {
+        continue;
+      }
+      if (plan->body.accesses.units[i].effects ==
+              LOOM_SCF_BODY_MEMORY_GLOBAL_LOAD &&
+          operation->effects == LOOM_SCF_BODY_EFFECT_READ) {
+        plan->stages[i] = LOOM_SCF_PIPELINE_STAGE_PRODUCER;
+        plan->read_count += operation->load_count;
+        continue;
+      }
+      *rejection = (loom_scf_pipeline_rejection_t){
+          operation->op,
+          IREE_SV("separate global load and workgroup consumer units")};
+      return iree_ok_status();
+    }
     if (operation->effects == 0) {
       continue;
     }
@@ -107,12 +151,12 @@ static iree_status_t loom_scf_pipeline_plan_partition(
         };
         return iree_ok_status();
       }
-      if (iree_any_bit_set(plan->body.operations[producer].effects,
-                           LOOM_SCF_BODY_EFFECT_CONVERGENT)) {
+      if (plan->body.operations[producer].effects != 0 &&
+          plan->stages[producer] != LOOM_SCF_PIPELINE_STAGE_PRODUCER) {
         *rejection = (loom_scf_pipeline_rejection_t){
             .op = plan->body.operations[producer].op,
-            .constraint = IREE_SV("read-ahead prerequisites without "
-                                  "convergent operations"),
+            .constraint = IREE_SV("read-ahead prerequisites independent of "
+                                  "ordered or convergent consumers"),
         };
         return iree_ok_status();
       }
@@ -194,12 +238,14 @@ static iree_status_t loom_scf_pipeline_plan_partition(
 
 iree_status_t loom_scf_pipeline_plan_build(
     loom_module_t* module, const loom_block_t* block, bool has_static_bounds,
-    iree_arena_allocator_t* arena, loom_scf_pipeline_plan_t* out_plan,
+    const loom_scf_memory_t* spaces, iree_arena_allocator_t* arena,
+    loom_scf_pipeline_plan_t* out_plan,
     loom_scf_pipeline_rejection_t* out_rejection) {
   *out_plan = (loom_scf_pipeline_plan_t){0};
   *out_rejection = (loom_scf_pipeline_rejection_t){0};
   const loom_op_t* unstructured_op = NULL;
-  IREE_RETURN_IF_ERROR(loom_scf_body_build(module, block, arena,
+  IREE_RETURN_IF_ERROR(loom_scf_body_build(module, block, spaces,
+                                           LOOM_SCF_BODY_MODE_SCHEDULE, arena,
                                            &out_plan->body, &unstructured_op));
   if (unstructured_op) {
     *out_rejection = (loom_scf_pipeline_rejection_t){
