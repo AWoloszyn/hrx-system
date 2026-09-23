@@ -672,11 +672,13 @@ static iree_status_t loom_amdgpu_table_lookup_emit_u4_register(
 
   // Selector bytes 0..3 read SRC1 and 4..7 read SRC0. Each pair places
   // its earlier logical table quarter in SRC1.
-  const loom_value_id_t low_lookup_operands[3] = {
+  loom_value_id_t low_lookup_operands[3] = {
       table_registers[1],
       table_registers[0],
       low_selector,
   };
+  IREE_RETURN_IF_ERROR(loom_amdgpu_legalize_vop3_scalar_sources(
+      context, source_op, low_lookup_operands));
   loom_op_t* low_lookup_op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_lower_emit_resolved_descriptor_op(
       context, &plan->permute_descriptor, low_lookup_operands,
@@ -684,11 +686,13 @@ static iree_status_t loom_amdgpu_table_lookup_emit_u4_register(
       &lane_type, 1, /*tied_results=*/NULL, /*tied_result_count=*/0,
       source_op->location, &low_lookup_op));
 
-  const loom_value_id_t high_lookup_operands[3] = {
+  loom_value_id_t high_lookup_operands[3] = {
       table_registers[3],
       table_registers[2],
       low_selector,
   };
+  IREE_RETURN_IF_ERROR(loom_amdgpu_legalize_vop3_scalar_sources(
+      context, source_op, high_lookup_operands));
   loom_op_t* high_lookup_op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_lower_emit_resolved_descriptor_op(
       context, &plan->permute_descriptor, high_lookup_operands,
@@ -731,11 +735,16 @@ static iree_status_t loom_amdgpu_lower_vector_table_lookup_packed_i8(
     loom_value_id_t low_indices) {
   loom_type_t lane_type = loom_type_none();
   IREE_RETURN_IF_ERROR(loom_amdgpu_make_vgpr_type(context, &lane_type));
+  const loom_module_t* module = loom_low_lower_context_module(context);
+  const loom_type_t table_lane_type =
+      loom_amdgpu_low_register_lane_type(module, low_table);
+  const loom_type_t index_lane_type =
+      loom_amdgpu_low_register_lane_type(module, low_indices);
   loom_value_id_t table_registers[4];
   for (uint32_t i = 0; i < plan->table_register_count; ++i) {
     IREE_RETURN_IF_ERROR(loom_amdgpu_extract_low_register_unit(
-        context, source_op, low_table, plan->table_register_count, i, lane_type,
-        &table_registers[i]));
+        context, source_op, low_table, plan->table_register_count, i,
+        table_lane_type, &table_registers[i]));
   }
 
   // Matching byte index and result shapes occupy the same register count.
@@ -746,10 +755,12 @@ static iree_status_t loom_amdgpu_lower_vector_table_lookup_packed_i8(
     loom_value_id_t index_register = LOOM_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(loom_amdgpu_extract_low_register_unit(
         context, source_op, low_indices, plan->index_register_count, i,
-        lane_type, &index_register));
+        index_lane_type, &index_register));
     if (plan->strategy == LOOM_AMDGPU_TABLE_LOOKUP_STRATEGY_PACKED_I8_PERMUTE) {
-      const loom_value_id_t operands[3] = {table_registers[0],
-                                           table_registers[0], index_register};
+      loom_value_id_t operands[3] = {table_registers[0], table_registers[0],
+                                     index_register};
+      IREE_RETURN_IF_ERROR(loom_amdgpu_legalize_vop3_scalar_sources(
+          context, source_op, operands));
       loom_op_t* permute_op = NULL;
       IREE_RETURN_IF_ERROR(loom_low_lower_emit_resolved_descriptor_op(
           context, &plan->permute_descriptor, operands,

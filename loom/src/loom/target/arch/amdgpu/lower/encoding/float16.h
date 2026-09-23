@@ -150,7 +150,8 @@ iree_status_t loom_amdgpu_extract_bf16_range_lane_as_f32_bits(
 iree_status_t loom_amdgpu_extract_f16_lane_as_low_bits(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     loom_value_id_t low_source, uint32_t source_register_count,
-    uint32_t lane_index, loom_type_t lane_type, loom_value_id_t* out_lane);
+    uint32_t lane_index, loom_type_t source_lane_type,
+    loom_value_id_t* out_lane);
 
 // Converts one F32 lane to F16 and packs it into one half of |inout_packed|.
 iree_status_t loom_amdgpu_pack_f32_lane_to_f16_register(

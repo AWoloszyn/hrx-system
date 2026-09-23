@@ -1927,7 +1927,10 @@ static bool loom_amdgpu_memory_access_try_select_global_smem(
     loom_low_source_memory_operation_kind_t kind,
     loom_amdgpu_memory_access_t* access) {
   loom_amdgpu_memory_access_t candidate = *access;
+  // Scalar memory discards the address's two low bits. Packed element types
+  // may require less alignment than the register-sized packets carrying them.
   if (kind != LOOM_LOW_SOURCE_MEMORY_OPERATION_LOAD ||
+      candidate.source.minimum_alignment < 4 ||
       (candidate.source.memory_space != LOOM_VALUE_FACT_MEMORY_SPACE_GLOBAL &&
        candidate.source.memory_space !=
            LOOM_VALUE_FACT_MEMORY_SPACE_CONSTANT) ||
@@ -2820,8 +2823,7 @@ bool loom_amdgpu_memory_access_plan_select(
       access.packet_byte_count == whole_register_byte_count;
   if (access.payload_register_count <= LOOM_AMDGPU_MAX_MEMORY_32BIT_LANES &&
       (whole_register_payload || access.payload_register_count == 1)) {
-    const bool allow_global_smem =
-        !is_atomic && loom_amdgpu_type_is_32bit_memory_payload(vector_type);
+    const bool allow_global_smem = !is_atomic && whole_register_payload;
     return loom_amdgpu_memory_access_plan_push_packet(
         &selection_context, kind, allow_global_smem, 0, &access, out_selection,
         out_diagnostic);

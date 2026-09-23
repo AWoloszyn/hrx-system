@@ -323,12 +323,6 @@ static bool loom_amdgpu_source_vector_value_register_shape(
         vector_storage.register_count);
     return true;
   }
-  if (iree_any_bit_set(storage_flags,
-                       LOOM_AMDGPU_VECTOR_STORAGE_KIND_FLAG_PACKED_PAYLOAD)) {
-    *out_shape = loom_amdgpu_register_shape(LOOM_AMDGPU_REG_CLASS_ID_VGPR,
-                                            vector_storage.register_count);
-    return true;
-  }
   return false;
 }
 

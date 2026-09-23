@@ -67,7 +67,7 @@ static bool loom_amdgpu_source_memory_access_prefers_vgpr(
   if (fact_table == NULL || view_regions == NULL) {
     return true;
   }
-  if (!loom_amdgpu_type_is_32bit_memory_payload(source_type)) {
+  if (!loom_amdgpu_type_is_word_memory_payload(source_type)) {
     return true;
   }
   loom_low_source_memory_access_plan_t plan = {0};
@@ -77,6 +77,7 @@ static bool loom_amdgpu_source_memory_access_prefers_vgpr(
     return true;
   }
   if (plan.operation_kind != LOOM_LOW_SOURCE_MEMORY_OPERATION_LOAD ||
+      plan.minimum_alignment < 4 ||
       (plan.memory_space != LOOM_VALUE_FACT_MEMORY_SPACE_GLOBAL &&
        plan.memory_space != LOOM_VALUE_FACT_MEMORY_SPACE_CONSTANT) ||
       iree_any_bit_set(
@@ -1074,7 +1075,9 @@ static bool loom_amdgpu_source_value_prefers_vgpr_impl(
   if (loom_amdgpu_source_producer_result_requires_vgpr(module, source_value_id,
                                                        producer_flags) ||
       loom_amdgpu_scalar_type_fallback_result_prefers_vgpr(source_type) ||
-      loom_amdgpu_vector_32bit_register_count(source_type) != 0) {
+      (loom_type_is_vector(source_type) &&
+       loom_amdgpu_source_value_naturally_prefers_vgpr(module,
+                                                       source_value_id))) {
     return true;
   }
   loom_value_id_t operand = LOOM_VALUE_ID_INVALID;
