@@ -11,7 +11,6 @@
 #include "loom/target/arch/amdgpu/target_info.h"
 
 static const loom_amdgpu_memory_coherence_rule_t kMemoryCoherenceRules[] = {
-    [LOOM_AMDGPU_MEMORY_ORDERING_MODEL_NONE] = {0},
     [LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX11] =
         {
             // GLC bypasses GL0/GL1 on loads. Stores are write-through; atomic
