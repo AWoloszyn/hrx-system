@@ -108,6 +108,8 @@ typedef struct loom_boundary_projection_block_t {
   iree_host_size_t edge_count;
 } loom_boundary_projection_block_t;
 
+typedef struct loom_boundary_projection_loop_t loom_boundary_projection_loop_t;
+
 struct loom_boundary_projection_function_t {
   // Original function-like operation.
   loom_func_like_t function;
@@ -177,6 +179,12 @@ struct loom_boundary_projection_function_t {
   loom_boundary_projection_block_t* blocks;
   // Number of rewritten blocks.
   iree_host_size_t block_count;
+  // LoopLike recurrence plans in operation postorder.
+  loom_boundary_projection_loop_t* loops;
+  // Number of populated loop plans.
+  iree_host_size_t loop_count;
+  // Allocated loop plan capacity.
+  iree_host_size_t loop_capacity;
   // Whether this function participates in the rewrite batch.
   bool selected;
   // Whether at least one signature slot is projected.
@@ -222,6 +230,8 @@ struct loom_boundary_projection_plan_t {
   int64_t returns_rewritten;
   // Direct CFG edges replaced by the application phase.
   int64_t cfg_edges_rewritten;
+  // LoopLike operations replaced by the application phase.
+  int64_t loops_rewritten;
 };
 
 // Builds a complete, non-mutating boundary projection plan.
@@ -241,6 +251,35 @@ iree_status_t loom_boundary_projection_add_dependency(
     loom_boundary_projection_plan_t* plan,
     loom_boundary_projection_function_t* function, iree_host_size_t source,
     iree_host_size_t target, bool orders_realization);
+
+// Returns whether any active rule may claim |value_id| for |role| without
+// running semantic planning.
+bool loom_boundary_projection_may_claim_slot(
+    const loom_boundary_projection_plan_t* plan,
+    const loom_boundary_projection_function_t* function,
+    loom_boundary_projection_slot_role_t role, loom_value_id_t value_id,
+    loom_block_t* block);
+
+// Selects the unique semantic schema for one logical boundary slot.
+iree_status_t loom_boundary_projection_plan_slot_schema(
+    loom_boundary_projection_plan_t* plan,
+    loom_boundary_projection_function_t* function,
+    loom_boundary_projection_slot_role_t role, loom_value_id_t value_id,
+    loom_block_t* block, loom_boundary_projection_schema_t* out_schema,
+    bool* out_claimed);
+
+// Adds a structurally discovered slot whose schema will be assigned after
+// function-local rule preparation.
+iree_status_t loom_boundary_projection_add_provisional_slot(
+    loom_boundary_projection_plan_t* plan,
+    loom_boundary_projection_function_t* function, loom_value_id_t value_id,
+    loom_boundary_projection_slot_role_t role, loom_block_t* block);
+
+// Assigns the final schema and component storage to a provisional slot.
+iree_status_t loom_boundary_projection_finalize_provisional_slot(
+    loom_boundary_projection_plan_t* plan,
+    loom_boundary_projection_function_t* function, iree_host_size_t slot_index,
+    const loom_boundary_projection_schema_t* schema);
 
 // Returns invocation-wide state owned by |rule|, or NULL when unset.
 void* loom_boundary_projection_rule_state(

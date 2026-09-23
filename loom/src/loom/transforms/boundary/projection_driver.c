@@ -17,6 +17,7 @@ static void loom_boundary_projection_capture_statistics(
       .calls_rewritten = plan->calls_rewritten,
       .returns_rewritten = plan->returns_rewritten,
       .cfg_edges_rewritten = plan->cfg_edges_rewritten,
+      .loops_rewritten = plan->loops_rewritten,
       .rules = plan->rule_statistics,
       .rule_count = plan->rules.count,
   };

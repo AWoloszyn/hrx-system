@@ -12,6 +12,7 @@
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/target/pass_environment.h"
+#include "loom/transforms/boundary/projection_loop.h"
 #include "loom/util/fact_cfg.h"
 #include "loom/util/walk.h"
 
@@ -60,6 +61,12 @@ static bool loom_boundary_projection_supports_callable_slots(
              plan, LOOM_BOUNDARY_PROJECTION_SLOT_FUNCTION_RESULT) ||
          loom_boundary_projection_supports_role(
              plan, LOOM_BOUNDARY_PROJECTION_SLOT_CALL_RESULT);
+}
+
+static bool loom_boundary_projection_supports_loop_slots(
+    const loom_boundary_projection_plan_t* plan) {
+  return loom_boundary_projection_supports_role(
+      plan, LOOM_BOUNDARY_PROJECTION_SLOT_LOOP_STATE);
 }
 
 static iree_host_size_t loom_boundary_projection_rule_index(
@@ -128,7 +135,7 @@ void loom_boundary_projection_record_destination_uses(
   plan->rule_statistics[index].destination_uses_rewritten += count;
 }
 
-static iree_status_t loom_boundary_projection_plan_slot_schema(
+iree_status_t loom_boundary_projection_plan_slot_schema(
     loom_boundary_projection_plan_t* plan,
     loom_boundary_projection_function_t* function,
     loom_boundary_projection_slot_role_t role, loom_value_id_t value_id,
@@ -169,7 +176,8 @@ static iree_status_t loom_boundary_projection_plan_slot_schema(
         LOOM_BOUNDARY_PROJECTION_DESTINATION_RECONSTRUCT) {
       IREE_ASSERT(rule->transport.reconstruct != NULL);
     } else {
-      IREE_ASSERT(role == LOOM_BOUNDARY_PROJECTION_SLOT_BLOCK_ARGUMENT);
+      IREE_ASSERT(role == LOOM_BOUNDARY_PROJECTION_SLOT_BLOCK_ARGUMENT ||
+                  role == LOOM_BOUNDARY_PROJECTION_SLOT_LOOP_STATE);
       IREE_ASSERT(rule->transport.eliminate != NULL);
     }
     *out_schema = schema;
@@ -178,7 +186,7 @@ static iree_status_t loom_boundary_projection_plan_slot_schema(
   return iree_ok_status();
 }
 
-static bool loom_boundary_projection_may_claim_slot(
+bool loom_boundary_projection_may_claim_slot(
     const loom_boundary_projection_plan_t* plan,
     const loom_boundary_projection_function_t* function,
     loom_boundary_projection_slot_role_t role, loom_value_id_t value_id,
@@ -512,6 +520,65 @@ static iree_host_size_t loom_boundary_projection_function_index(
              : IREE_HOST_SIZE_MAX;
 }
 
+static iree_status_t loom_boundary_projection_append_slot(
+    loom_boundary_projection_plan_t* plan,
+    loom_boundary_projection_function_t* function, loom_value_id_t value_id,
+    loom_boundary_projection_slot_role_t role, loom_block_t* block,
+    loom_op_t* call_op) {
+  if (function->candidate_count == function->candidate_capacity) {
+    IREE_RETURN_IF_ERROR(iree_arena_grow_array(
+        plan->arena, function->candidate_count, function->candidate_count + 1,
+        sizeof(*function->candidates), &function->candidate_capacity,
+        (void**)&function->candidates));
+  }
+  const loom_boundary_projection_slot_t candidate = {
+      .value_id = value_id,
+      .logical_type = loom_module_value_type(plan->module, value_id),
+      .block = block,
+      .realization_anchor = block ? block->first_op : NULL,
+      .call_op = call_op,
+      .replacement_value_id = LOOM_VALUE_ID_INVALID,
+      .role = role,
+      .first_dependent = IREE_HOST_SIZE_MAX,
+  };
+  function->candidates[function->candidate_count++] = candidate;
+  return iree_ok_status();
+}
+
+iree_status_t loom_boundary_projection_add_provisional_slot(
+    loom_boundary_projection_plan_t* plan,
+    loom_boundary_projection_function_t* function, loom_value_id_t value_id,
+    loom_boundary_projection_slot_role_t role, loom_block_t* block) {
+  IREE_ASSERT_EQ(role, LOOM_BOUNDARY_PROJECTION_SLOT_LOOP_STATE);
+  return loom_boundary_projection_append_slot(plan, function, value_id, role,
+                                              block, /*call_op=*/NULL);
+}
+
+iree_status_t loom_boundary_projection_finalize_provisional_slot(
+    loom_boundary_projection_plan_t* plan,
+    loom_boundary_projection_function_t* function, iree_host_size_t slot_index,
+    const loom_boundary_projection_schema_t* schema) {
+  IREE_ASSERT_LT(slot_index, function->candidate_count);
+  IREE_ASSERT(schema != NULL && schema->rule != NULL);
+  loom_boundary_projection_slot_t* slot = &function->candidates[slot_index];
+  IREE_ASSERT(slot->schema.rule == NULL);
+  slot->schema = *schema;
+  if (schema->component_count != 0) {
+    IREE_RETURN_IF_ERROR(
+        iree_arena_allocate_array(plan->arena, schema->component_count,
+                                  sizeof(*slot->component_value_ids),
+                                  (void**)&slot->component_value_ids));
+    for (uint16_t i = 0; i < schema->component_count; ++i) {
+      slot->component_value_ids[i] = LOOM_VALUE_ID_INVALID;
+    }
+  }
+  slot->selected = schema->destination_mode !=
+                       LOOM_BOUNDARY_PROJECTION_DESTINATION_ELIMINATE ||
+                   !loom_boundary_projection_value_has_nonoperand_uses(
+                       plan->module, slot->value_id);
+  return iree_ok_status();
+}
+
 static iree_status_t loom_boundary_projection_add_slot(
     loom_boundary_projection_plan_t* plan,
     loom_boundary_projection_function_t* function, loom_value_id_t value_id,
@@ -529,39 +596,11 @@ static iree_status_t loom_boundary_projection_add_slot(
   if (!claimed) {
     return iree_ok_status();
   }
-  if (function->candidate_count == function->candidate_capacity) {
-    IREE_RETURN_IF_ERROR(iree_arena_grow_array(
-        plan->arena, function->candidate_count, function->candidate_count + 1,
-        sizeof(*function->candidates), &function->candidate_capacity,
-        (void**)&function->candidates));
-  }
-  loom_value_id_t* component_value_ids = NULL;
-  if (schema.component_count != 0) {
-    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-        plan->arena, schema.component_count, sizeof(*component_value_ids),
-        (void**)&component_value_ids));
-  }
-  for (uint16_t i = 0; i < schema.component_count; ++i) {
-    component_value_ids[i] = LOOM_VALUE_ID_INVALID;
-  }
-  const loom_boundary_projection_slot_t candidate = {
-      .value_id = value_id,
-      .logical_type = loom_module_value_type(plan->module, value_id),
-      .schema = schema,
-      .block = block,
-      .realization_anchor = block ? block->first_op : NULL,
-      .call_op = call_op,
-      .component_value_ids = component_value_ids,
-      .replacement_value_id = LOOM_VALUE_ID_INVALID,
-      .role = role,
-      .first_dependent = IREE_HOST_SIZE_MAX,
-      .selected = schema.destination_mode !=
-                      LOOM_BOUNDARY_PROJECTION_DESTINATION_ELIMINATE ||
-                  !loom_boundary_projection_value_has_nonoperand_uses(
-                      plan->module, value_id),
-  };
-  function->candidates[function->candidate_count++] = candidate;
-  return iree_ok_status();
+  const iree_host_size_t slot_index = function->candidate_count;
+  IREE_RETURN_IF_ERROR(loom_boundary_projection_append_slot(
+      plan, function, value_id, role, block, call_op));
+  return loom_boundary_projection_finalize_provisional_slot(
+      plan, function, slot_index, &schema);
 }
 
 static iree_status_t loom_boundary_projection_add_call(
@@ -624,6 +663,13 @@ static iree_status_t loom_boundary_projection_collect_op(
       op->parent_op == collect->function->function.op) {
     return loom_boundary_projection_add_return(collect->plan, collect->function,
                                                op);
+  }
+
+  const loom_loop_like_t loop = loom_loop_like_cast(collect->plan->module, op);
+  if (loom_loop_like_isa(loop) &&
+      loom_boundary_projection_supports_loop_slots(collect->plan)) {
+    return loom_boundary_projection_collect_loop(collect->plan,
+                                                 collect->function, loop);
   }
 
   const loom_call_like_t call = loom_call_like_cast(collect->plan->module, op);
@@ -706,14 +752,15 @@ static iree_status_t loom_boundary_projection_collect_function(
     return iree_ok_status();
   }
 
-  if (plan->may_change_signatures) {
+  if (plan->may_change_signatures ||
+      loom_boundary_projection_supports_loop_slots(plan)) {
     loom_boundary_projection_collect_t collect = {
         .plan = plan,
         .function = function,
     };
     loom_walk_result_t walk_result = LOOM_WALK_CONTINUE;
     IREE_RETURN_IF_ERROR(loom_walk_function(
-        plan->module, function->function, LOOM_WALK_PRE_ORDER,
+        plan->module, function->function, LOOM_WALK_POST_ORDER,
         (loom_walk_callback_t){loom_boundary_projection_collect_op, &collect},
         plan->arena, &walk_result));
   }
@@ -769,6 +816,7 @@ static iree_status_t loom_boundary_projection_collect_function(
       }
     }
   }
+  loom_boundary_projection_index_loops(function);
   return iree_ok_status();
 }
 
@@ -1421,6 +1469,10 @@ iree_status_t loom_boundary_projection_plan_prepare(
     }
     if (iree_status_is_ok(status) && function->selected &&
         loom_func_like_body(function->function)) {
+      status = loom_boundary_projection_plan_loops(plan, function);
+    }
+    if (iree_status_is_ok(status) && function->selected &&
+        loom_func_like_body(function->function)) {
       status = loom_boundary_projection_plan_call_coordinates(plan, function);
     }
     if (iree_status_is_ok(status) && function->selected &&
@@ -1445,6 +1497,16 @@ iree_status_t loom_boundary_projection_plan_prepare(
       loom_boundary_projection_preflight_block_arities(function);
       status =
           loom_boundary_projection_propagate_slot_rejections(plan, function);
+    }
+    if (iree_status_is_ok(status) && function->selected &&
+        loom_func_like_body(function->function)) {
+      loom_boundary_projection_preflight_loops(plan, function);
+      status =
+          loom_boundary_projection_propagate_slot_rejections(plan, function);
+    }
+    if (iree_status_is_ok(status) && function->selected &&
+        loom_func_like_body(function->function)) {
+      status = loom_boundary_projection_finalize_loops(plan, function);
     }
     if (iree_status_is_ok(status) && function->selected &&
         loom_func_like_body(function->function)) {

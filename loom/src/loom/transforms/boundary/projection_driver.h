@@ -26,6 +26,8 @@ typedef struct loom_boundary_projection_statistics_t {
   int64_t returns_rewritten;
   // Direct CFG successor payloads rewritten by the topology adapter.
   int64_t cfg_edges_rewritten;
+  // LoopLike operations rewritten by the topology adapter.
+  int64_t loops_rewritten;
   // Per-rule statistics parallel to the supplied rule list. The data is owned
   // by pass scratch storage and remains valid for the pass invocation.
   const loom_boundary_projection_rule_statistics_t* rules;
