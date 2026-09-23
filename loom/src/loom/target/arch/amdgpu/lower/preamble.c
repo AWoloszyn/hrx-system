@@ -1260,7 +1260,12 @@ iree_status_t loom_amdgpu_emit_preamble(void* user_data,
             context, source_op, LOOM_VALUE_ID_INVALID, first_workitem_id_ops);
         break;
       }
-      case LOOM_OP_SANITIZER_RACE_ACCESS: {
+      case LOOM_OP_SANITIZER_RACE_ACCESS:
+      case LOOM_OP_SANITIZER_RACE_FRAGMENT_ACCESS: {
+        if (plan.id == LOOM_OP_SANITIZER_RACE_FRAGMENT_ACCESS) {
+          loom_amdgpu_mark_lane_query_workitem_id_live_ins(
+              context, source_op, LOOM_VALUE_ID_INVALID, first_workitem_id_ops);
+        }
         if (first_dispatch_ptr_op == NULL) {
           first_dispatch_ptr_op = source_op;
         }

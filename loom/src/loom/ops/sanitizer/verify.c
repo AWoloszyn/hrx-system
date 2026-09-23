@@ -42,6 +42,19 @@ static iree_status_t loom_sanitizer_emit_attribute_value_constraint(
                              IREE_ARRAYSIZE(params));
 }
 
+static iree_status_t loom_sanitizer_emit_operand_constraint(
+    iree_diagnostic_emitter_t emitter, const loom_op_t* op,
+    iree_string_view_t operand_name, loom_type_t actual_type,
+    iree_string_view_t expected_constraint) {
+  loom_diagnostic_param_t params[] = {
+      loom_param_string(operand_name),
+      loom_param_type(actual_type),
+      loom_param_string(expected_constraint),
+  };
+  return loom_sanitizer_emit(emitter, op, LOOM_ERR_TYPE_003, params,
+                             IREE_ARRAYSIZE(params));
+}
+
 static iree_status_t loom_sanitizer_emit_static_access_out_of_bounds(
     iree_diagnostic_emitter_t emitter, const loom_op_t* op, uint16_t axis,
     int64_t offset, int64_t size, int64_t bound) {
@@ -427,6 +440,29 @@ iree_status_t loom_sanitizer_race_access_verify(
         emitter, op, IREE_SV("scope"), loom_sanitizer_race_access_scope(op),
         IREE_SV("absent when atomic is false"));
   }
+  return iree_ok_status();
+}
+
+iree_status_t loom_sanitizer_race_fragment_access_verify(
+    const loom_module_t* module, const loom_op_t* op,
+    iree_diagnostic_emitter_t emitter) {
+  const loom_type_t view_type = loom_module_value_type(
+      module, loom_sanitizer_race_fragment_access_view(op));
+  IREE_RETURN_IF_ERROR(loom_view_verify_element_access(
+      module, op, emitter, IREE_SV("view"), view_type,
+      loom_sanitizer_race_fragment_access_static_indices(op),
+      loom_sanitizer_race_fragment_access_indices(op).count));
+
+  const uint8_t fragment_rank =
+      loom_sanitizer_race_fragment_access_blocks_is_present(op) ? 3 : 2;
+  if (loom_type_is_view(view_type) &&
+      loom_type_rank(view_type) < fragment_rank) {
+    return loom_sanitizer_emit_operand_constraint(
+        emitter, op, IREE_SV("view"), view_type,
+        fragment_rank == 3 ? IREE_SV("rank >= 3 view")
+                           : IREE_SV("rank >= 2 view"));
+  }
+
   return iree_ok_status();
 }
 

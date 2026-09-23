@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_publication_cost.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/publication_cost.h"
 
 #include <stdint.h>
 

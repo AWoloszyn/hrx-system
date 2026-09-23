@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_address.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/address.h"
 
 #include <string.h>
 
@@ -1048,4 +1048,36 @@ iree_status_t loom_amdgpu_emit_fragment_memory_vaddr(
   }
   return loom_amdgpu_materialize_low_vgpr_b32(
       context, source_op, accumulator.value, &out_address->low_vaddr);
+}
+
+iree_status_t loom_amdgpu_emit_fragment_memory_byte_offset(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    const loom_amdgpu_fragment_memory_plan_t* plan, uint16_t register_index,
+    uint16_t element_index, loom_amdgpu_descriptor_ref_t descriptor_ref,
+    loom_amdgpu_fragment_memory_address_state_t* address_state,
+    loom_type_t vgpr_type, loom_value_id_t* out_low_byte_offset) {
+  loom_amdgpu_fragment_memory_address_t address;
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_fragment_memory_vaddr(
+      context, source_op, plan, register_index, element_index, descriptor_ref,
+      address_state, vgpr_type, &address));
+  *out_low_byte_offset = address.low_vaddr;
+  if (address.immediate_offset == 0) {
+    return iree_ok_status();
+  }
+
+  loom_amdgpu_descriptor_offset_immediate_info_t offset_info = {0};
+  const bool has_offset_info =
+      loom_amdgpu_fragment_memory_descriptor_offset_info(
+          context, descriptor_ref, &offset_info);
+  IREE_ASSERT_TRUE(has_offset_info);
+  IREE_ASSERT_GT(offset_info.unit_byte_count, 0u);
+  IREE_ASSERT_GE(address.immediate_offset, 0);
+  IREE_ASSERT_LE((uint64_t)address.immediate_offset,
+                 UINT32_MAX / offset_info.unit_byte_count);
+  const uint64_t immediate_byte_offset =
+      (uint64_t)address.immediate_offset * offset_info.unit_byte_count;
+  return loom_amdgpu_emit_vgpr_binary_immediate(
+      context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32_LIT,
+      address.low_vaddr, (uint32_t)immediate_byte_offset, vgpr_type,
+      out_low_byte_offset);
 }

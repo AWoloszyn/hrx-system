@@ -120,6 +120,22 @@ func.def @race_access_nonatomic_rejects_ordering(%layout: encoding<layout>, %vie
 
 // ====
 
+func.def @race_fragment_access_requires_matrix_rank(%fragment: vector<8xf32>, %view: view<16xf32>, %rows: index, %columns: index) {
+  // ERROR@+1: TYPE/003 "view" "view<16xf32>" "rank >= 2 view"
+  sanitizer.race.fragment_access<read> %fragment, %view[0] shape [%rows, %columns] {role = init} : vector<8xf32>, view<16xf32>
+  func.return
+}
+
+// ====
+
+func.def @race_fragment_access_rejects_read_write(%fragment: vector<8xf32>, %view: view<16x16xf32>, %rows: index, %columns: index) {
+  // ERROR@+1: PARSE/017 "kind" "read_write"
+  sanitizer.race.fragment_access<read_write> %fragment, %view[0, 0] shape [%rows, %columns] {role = result} : vector<8xf32>, view<16x16xf32>
+  func.return
+}
+
+// ====
+
 func.def @race_sync_rejects_relaxed_ordering() {
   // ERROR@+1: STRUCTURE/014 "ordering" "0" "acquire, release, acq_rel, or seq_cst ordering"
   sanitizer.race.sync<workgroup> scope(workgroup) ordering(relaxed)

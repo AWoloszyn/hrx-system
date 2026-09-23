@@ -49,12 +49,12 @@
 #include "loom/target/arch/amdgpu/lower/dot.h"
 #include "loom/target/arch/amdgpu/lower/emit.h"
 #include "loom/target/arch/amdgpu/lower/encoding/vector_conversion.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/emit.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/packet.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/plan.h"
 #include "loom/target/arch/amdgpu/lower/legality.h"
 #include "loom/target/arch/amdgpu/lower/mask.h"
 #include "loom/target/arch/amdgpu/lower/matrix.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_emit.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_packet.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_plan.h"
 #include "loom/target/arch/amdgpu/lower/matrix_fragment_repack.h"
 #include "loom/target/arch/amdgpu/lower/matrix_representation.h"
 #include "loom/target/arch/amdgpu/lower/memory.h"
@@ -822,6 +822,16 @@ LOOM_AMDGPU_DEFINE_DATA_EMIT(loom_amdgpu_emit_sanitizer_race_access_dispatch,
                              loom_amdgpu_sanitizer_race_access_plan_t,
                              loom_amdgpu_lower_sanitizer_race_access)
 
+LOOM_AMDGPU_DEFINE_DATA_SELECT(
+    loom_amdgpu_select_sanitizer_race_fragment_access_dispatch,
+    loom_amdgpu_sanitizer_race_fragment_access_plan_t,
+    loom_amdgpu_select_sanitizer_race_fragment_access_plan)
+
+LOOM_AMDGPU_DEFINE_DATA_EMIT(
+    loom_amdgpu_emit_sanitizer_race_fragment_access_dispatch,
+    loom_amdgpu_sanitizer_race_fragment_access_plan_t,
+    loom_amdgpu_lower_sanitizer_race_fragment_access)
+
 LOOM_AMDGPU_DEFINE_DATA_SELECT(loom_amdgpu_select_sanitizer_race_sync_dispatch,
                                loom_amdgpu_sanitizer_race_sync_plan_t,
                                loom_amdgpu_select_sanitizer_race_sync_plan)
@@ -1364,9 +1374,18 @@ static void loom_amdgpu_mark_plan_storage_demands(
           (const loom_amdgpu_prefetch_plan_t*)plan.target_data);
       return;
     case LOOM_AMDGPU_STORAGE_FRAGMENT_MEMORY:
-      loom_amdgpu_mark_fragment_memory_plan_storage_demands(
-          context, source_op,
-          (const loom_amdgpu_fragment_memory_plan_t*)plan.target_data);
+      if (plan.id == LOOM_OP_SANITIZER_RACE_FRAGMENT_ACCESS) {
+        const loom_amdgpu_sanitizer_race_fragment_access_plan_t*
+            fragment_access_plan =
+                (const loom_amdgpu_sanitizer_race_fragment_access_plan_t*)
+                    plan.target_data;
+        loom_amdgpu_mark_fragment_memory_address_storage_demands(
+            context, &fragment_access_plan->fragment_memory);
+      } else {
+        loom_amdgpu_mark_fragment_memory_plan_storage_demands(
+            context, source_op,
+            (const loom_amdgpu_fragment_memory_plan_t*)plan.target_data);
+      }
       return;
     case LOOM_AMDGPU_STORAGE_SUBGROUP_BROADCAST:
       loom_amdgpu_mark_subgroup_broadcast_plan_storage_demands(

@@ -17,12 +17,16 @@
 #include "loom/target/arch/amdgpu/lower/descriptor_ref.h"
 #include "loom/target/arch/amdgpu/lower/emit.h"
 #include "loom/target/arch/amdgpu/lower/feedback.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/address.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/emit.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/packet.h"
 #include "loom/target/arch/amdgpu/lower/legality.h"
 #include "loom/target/arch/amdgpu/lower/memory.h"
 #include "loom/target/arch/amdgpu/lower/preamble.h"
 #include "loom/target/arch/amdgpu/lower/sanitizer.h"
 #include "loom/target/arch/amdgpu/lower/sanitizer_race_report.h"
 #include "loom/target/arch/amdgpu/lower/sanitizer_report.h"
+#include "loom/target/arch/amdgpu/lower/subgroup.h"
 #include "loom/target/arch/amdgpu/lower/sync.h"
 #include "loom/target/arch/amdgpu/lower/system_memory.h"
 #include "loom/target/arch/amdgpu/lower/topology.h"
@@ -927,7 +931,7 @@ static iree_status_t loom_amdgpu_sanitizer_race_zero_vgpr_u32(
 iree_status_t loom_amdgpu_sanitizer_race_emit_entry_setup(
     loom_low_lower_context_t* context) {
   const loom_op_t* first_race_op = NULL;
-  const loom_op_t* first_race_access_op = NULL;
+  const loom_op_t* first_race_observation_op = NULL;
   const iree_host_size_t plan_count =
       loom_low_lower_context_selected_plan_count(context);
   for (iree_host_size_t i = 0; i < plan_count; ++i) {
@@ -936,9 +940,10 @@ iree_status_t loom_amdgpu_sanitizer_race_emit_entry_setup(
     if (selected_plan.elided) {
       continue;
     }
-    if (selected_plan.plan.id == LOOM_OP_SANITIZER_RACE_ACCESS) {
-      if (first_race_access_op == NULL) {
-        first_race_access_op = selected_plan.source_op;
+    if (selected_plan.plan.id == LOOM_OP_SANITIZER_RACE_ACCESS ||
+        selected_plan.plan.id == LOOM_OP_SANITIZER_RACE_FRAGMENT_ACCESS) {
+      if (first_race_observation_op == NULL) {
+        first_race_observation_op = selected_plan.source_op;
       }
       if (first_race_op == NULL) {
         first_race_op = selected_plan.source_op;
@@ -990,7 +995,7 @@ iree_status_t loom_amdgpu_sanitizer_race_emit_entry_setup(
   state->has_topology_values = true;
   state->has_dispatch_values = true;
 
-  const bool has_race_access = first_race_access_op != NULL;
+  const bool has_race_observation = first_race_observation_op != NULL;
   loom_type_t vgpr_x2_type = loom_type_none();
   IREE_RETURN_IF_ERROR(
       loom_amdgpu_make_vgpr_range_type(context, 2, &vgpr_x2_type));
@@ -1001,7 +1006,7 @@ iree_status_t loom_amdgpu_sanitizer_race_emit_entry_setup(
       loom_type_none(),
   };
   uint16_t entry_state_arg_count = 2;
-  if (has_race_access) {
+  if (has_race_observation) {
     entry_state_arg_types[entry_state_arg_count++] = vgpr_type;
     entry_state_arg_types[entry_state_arg_count++] = vgpr_type;
   }
@@ -1013,7 +1018,7 @@ iree_status_t loom_amdgpu_sanitizer_race_emit_entry_setup(
   state->workgroup_shadow_record_offset = entry.target_args[1];
   state->has_instrumentation_flags = true;
   state->has_workgroup_shadow_record_offset = true;
-  if (has_race_access) {
+  if (has_race_observation) {
     state->shadow_entry_base = (loom_amdgpu_sanitizer_race_shadow_entry_base_t){
         .low = entry.target_args[2],
         .high = entry.target_args[3],
@@ -1038,14 +1043,14 @@ iree_status_t loom_amdgpu_sanitizer_race_emit_entry_setup(
       loom_amdgpu_sanitizer_race_build_workgroup_shadow_record_offset(
           context, first_race_op, &state->config_values, state->shadow_slot,
           &enabled_args[1]));
-  if (has_race_access) {
+  if (has_race_observation) {
     IREE_RETURN_IF_ERROR(
         loom_amdgpu_sanitizer_race_emit_dispatch_generation_low(
-            context, first_race_access_op, state->dispatch_id,
+            context, first_race_observation_op, state->dispatch_id,
             &generation_low));
     loom_amdgpu_sanitizer_race_shadow_entry_base_t enabled_base = {0};
     IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_shadow_entry_base(
-        context, first_race_access_op, state->workitem_linear_id,
+        context, first_race_observation_op, state->workitem_linear_id,
         generation_low, &enabled_base));
     enabled_args[2] = enabled_base.low;
     enabled_args[3] = enabled_base.high;
@@ -1068,7 +1073,7 @@ iree_status_t loom_amdgpu_sanitizer_race_emit_entry_setup(
       LOOM_VALUE_ID_INVALID,
       LOOM_VALUE_ID_INVALID,
   };
-  if (has_race_access) {
+  if (has_race_observation) {
     loom_value_id_t zero_vgpr = LOOM_VALUE_ID_INVALID;
     IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_zero_vgpr_u32(
         context, first_race_op, &zero_vgpr));
@@ -1188,11 +1193,12 @@ static iree_status_t loom_amdgpu_sanitizer_race_build_dispatch_values(
   return iree_ok_status();
 }
 
-static iree_status_t loom_amdgpu_sanitizer_race_build_shadow_entry_address(
+static iree_status_t
+loom_amdgpu_sanitizer_race_build_shadow_entry_address_from_byte_offset(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     const loom_amdgpu_sanitizer_race_config_values_t* config,
     const loom_amdgpu_sanitizer_race_dispatch_values_t* dispatch,
-    const loom_amdgpu_memory_access_t* access,
+    loom_value_id_t local_byte_offset,
     loom_amdgpu_sanitizer_race_shadow_address_t* out_address) {
   *out_address = (loom_amdgpu_sanitizer_race_shadow_address_t){0};
   loom_type_t vgpr_type = loom_type_none();
@@ -1200,13 +1206,6 @@ static iree_status_t loom_amdgpu_sanitizer_race_build_shadow_entry_address(
 
   loom_amdgpu_sanitizer_race_shadow_address_t address = {0};
   address.workgroup_offset = dispatch->workgroup_shadow_record_offset;
-
-  loom_amdgpu_memory_dynamic_term_sequence_t sequence = {0};
-  loom_amdgpu_memory_access_resolve_dynamic_terms(context, access, &sequence);
-  loom_value_id_t local_byte_offset = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(
-      loom_amdgpu_emit_memory_vaddr(context, source_op, access, &sequence,
-                                    LOOM_VALUE_ID_INVALID, &local_byte_offset));
   address.memory_byte_offset = local_byte_offset;
   loom_value_id_t granule_shift = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_amdgpu_materialize_low_vgpr_b32(
@@ -1233,6 +1232,22 @@ static iree_status_t loom_amdgpu_sanitizer_race_build_shadow_entry_address(
       &address.entry_offset));
   *out_address = address;
   return iree_ok_status();
+}
+
+static iree_status_t loom_amdgpu_sanitizer_race_build_shadow_entry_address(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    const loom_amdgpu_sanitizer_race_config_values_t* config,
+    const loom_amdgpu_sanitizer_race_dispatch_values_t* dispatch,
+    const loom_amdgpu_memory_access_t* access,
+    loom_amdgpu_sanitizer_race_shadow_address_t* out_address) {
+  loom_amdgpu_memory_dynamic_term_sequence_t sequence = {0};
+  loom_amdgpu_memory_access_resolve_dynamic_terms(context, access, &sequence);
+  loom_value_id_t local_byte_offset = LOOM_VALUE_ID_INVALID;
+  IREE_RETURN_IF_ERROR(
+      loom_amdgpu_emit_memory_vaddr(context, source_op, access, &sequence,
+                                    LOOM_VALUE_ID_INVALID, &local_byte_offset));
+  return loom_amdgpu_sanitizer_race_build_shadow_entry_address_from_byte_offset(
+      context, source_op, config, dispatch, local_byte_offset, out_address);
 }
 
 static iree_status_t loom_amdgpu_sanitizer_race_build_shadow_report_address(
@@ -1431,6 +1446,27 @@ static bool loom_amdgpu_sanitizer_race_access_report_kind(
   }
 }
 
+static void loom_amdgpu_sanitizer_race_fragment_access_report_kind(
+    loom_sanitizer_race_fragment_access_kind_t kind,
+    loom_amdgpu_tsan_access_kind_t* out_report_kind,
+    loom_amdgpu_tsan_shadow_access_kind_t* out_shadow_kind) {
+  switch (kind) {
+    case LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_KIND_READ:
+      *out_report_kind = LOOM_AMDGPU_TSAN_ACCESS_KIND_READ;
+      *out_shadow_kind = LOOM_AMDGPU_TSAN_SHADOW_ACCESS_KIND_READ;
+      return;
+    case LOOM_SANITIZER_RACE_FRAGMENT_ACCESS_KIND_WRITE:
+      *out_report_kind = LOOM_AMDGPU_TSAN_ACCESS_KIND_WRITE;
+      *out_shadow_kind = LOOM_AMDGPU_TSAN_SHADOW_ACCESS_KIND_WRITE;
+      return;
+    default:
+      IREE_ASSERT_UNREACHABLE("verified sanitizer fragment access kind");
+      *out_report_kind = LOOM_AMDGPU_TSAN_ACCESS_KIND_UNKNOWN;
+      *out_shadow_kind = LOOM_AMDGPU_TSAN_SHADOW_ACCESS_KIND_EMPTY;
+      return;
+  }
+}
+
 static bool loom_amdgpu_sanitizer_race_access_payload_type(
     const loom_module_t* module, loom_value_id_t view_value_id,
     loom_type_t* out_vector_type) {
@@ -1525,11 +1561,15 @@ static bool loom_amdgpu_sanitizer_race_access_plan_build(
   }
 
   *out_plan = (loom_amdgpu_sanitizer_race_access_plan_t){
+      .observation =
+          {
+              .report_access_kind = report_kind,
+              .shadow_access_kind = shadow_kind,
+              .access_size =
+                  source.element_byte_count * source.vector_lane_count,
+              .atomic = loom_sanitizer_race_access_atomic(op),
+          },
       .address = access,
-      .report_access_kind = report_kind,
-      .shadow_access_kind = shadow_kind,
-      .access_size = source.element_byte_count * source.vector_lane_count,
-      .atomic = loom_sanitizer_race_access_atomic(op),
   };
   return true;
 }
@@ -1621,8 +1661,58 @@ iree_status_t loom_amdgpu_select_sanitizer_race_access_plan(
     return iree_ok_status();
   }
   IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_site_id_for_op(
-      context, source_op, &out_plan->site_id));
-  if (out_plan->site_id == LOOM_SANITIZER_SITE_ID_INVALID) {
+      context, source_op, &out_plan->observation.site_id));
+  if (out_plan->observation.site_id == LOOM_SANITIZER_SITE_ID_INVALID) {
+    return iree_ok_status();
+  }
+  *out_selected = true;
+  return iree_ok_status();
+}
+
+iree_status_t loom_amdgpu_select_sanitizer_race_fragment_access_plan(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    loom_amdgpu_sanitizer_race_fragment_access_plan_t* out_plan,
+    bool* out_selected) {
+  *out_plan = (loom_amdgpu_sanitizer_race_fragment_access_plan_t){0};
+  *out_selected = false;
+  if (!loom_sanitizer_race_fragment_access_isa(source_op)) {
+    return iree_ok_status();
+  }
+  if (!loom_amdgpu_sanitizer_race_required_descriptors_present(
+          loom_low_lower_context_descriptor_set(context)) ||
+      !loom_amdgpu_sanitizer_race_workgroup_size_supported(
+          loom_low_lower_context_module(context),
+          loom_low_lower_context_source_function(context),
+          loom_low_lower_context_bundle(context))) {
+    return iree_ok_status();
+  }
+
+  bool fragment_memory_selected = false;
+  IREE_RETURN_IF_ERROR(loom_amdgpu_select_sanitizer_race_fragment_memory_plan(
+      context, source_op, &out_plan->fragment_memory,
+      &fragment_memory_selected));
+  if (!fragment_memory_selected ||
+      out_plan->fragment_memory.source.memory_space !=
+          LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP) {
+    return iree_ok_status();
+  }
+
+  loom_amdgpu_tsan_access_kind_t report_kind =
+      LOOM_AMDGPU_TSAN_ACCESS_KIND_UNKNOWN;
+  loom_amdgpu_tsan_shadow_access_kind_t shadow_kind =
+      LOOM_AMDGPU_TSAN_SHADOW_ACCESS_KIND_EMPTY;
+  loom_amdgpu_sanitizer_race_fragment_access_report_kind(
+      loom_sanitizer_race_fragment_access_kind(source_op), &report_kind,
+      &shadow_kind);
+  out_plan->observation = (loom_amdgpu_sanitizer_race_observation_plan_t){
+      .report_access_kind = report_kind,
+      .shadow_access_kind = shadow_kind,
+      .access_size = out_plan->fragment_memory.element_byte_count,
+      .atomic = false,
+  };
+  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_site_id_for_op(
+      context, source_op, &out_plan->observation.site_id));
+  if (out_plan->observation.site_id == LOOM_SANITIZER_SITE_ID_INVALID) {
     return iree_ok_status();
   }
   *out_selected = true;
@@ -1650,15 +1740,14 @@ static iree_status_t loom_amdgpu_sanitizer_race_build_config_guard(
 static iree_status_t loom_amdgpu_sanitizer_race_build_current_epoch(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     const loom_amdgpu_sanitizer_race_config_values_t* config,
-    const loom_amdgpu_sanitizer_race_shadow_address_t* shadow_address,
-    loom_value_id_t* out_epoch) {
+    loom_value_id_t workgroup_shadow_offset, loom_value_id_t* out_epoch) {
   *out_epoch = LOOM_VALUE_ID_INVALID;
   loom_type_t vgpr_type = loom_type_none();
   IREE_RETURN_IF_ERROR(loom_amdgpu_make_vgpr_type(context, &vgpr_type));
   loom_value_id_t epoch_offset = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_low_slice(
-      context, source_op, shadow_address->workgroup_offset, /*lane_offset=*/0,
-      vgpr_type, &epoch_offset));
+  IREE_RETURN_IF_ERROR(
+      loom_amdgpu_emit_low_slice(context, source_op, workgroup_shadow_offset,
+                                 /*lane_offset=*/0, vgpr_type, &epoch_offset));
   return loom_amdgpu_sanitizer_race_build_global_load_b32(
       loom_low_lower_context_builder(context),
       loom_low_lower_context_descriptor_set(context), config->shadow_base,
@@ -1680,7 +1769,7 @@ static iree_status_t loom_amdgpu_sanitizer_race_build_shadow_entry_offset(
 
 static iree_status_t loom_amdgpu_sanitizer_race_build_failure_mask(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
-    const loom_amdgpu_sanitizer_race_access_plan_t* plan,
+    const loom_amdgpu_sanitizer_race_observation_plan_t* plan,
     const loom_amdgpu_sanitizer_race_shadow_entry_t* current_entry,
     const loom_amdgpu_sanitizer_race_shadow_entry_t* observed_entry,
     loom_value_id_t prior_access_kind, loom_value_id_t* out_failure_mask) {
@@ -1785,7 +1874,7 @@ static iree_status_t loom_amdgpu_sanitizer_race_build_failure_mask(
 
 static iree_status_t loom_amdgpu_sanitizer_race_build_report(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
-    const loom_amdgpu_sanitizer_race_access_plan_t* plan,
+    const loom_amdgpu_sanitizer_race_observation_plan_t* plan,
     const loom_amdgpu_sanitizer_race_config_values_t* config,
     const loom_amdgpu_sanitizer_race_dispatch_values_t* dispatch,
     const loom_amdgpu_sanitizer_race_shadow_address_t* shadow_address,
@@ -1881,12 +1970,86 @@ static iree_status_t loom_amdgpu_sanitizer_race_build_report(
   return iree_ok_status();
 }
 
+static iree_status_t loom_amdgpu_sanitizer_race_emit_observation(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    const loom_amdgpu_sanitizer_race_observation_plan_t* plan,
+    const loom_amdgpu_sanitizer_race_config_values_t* config,
+    const loom_amdgpu_sanitizer_race_dispatch_values_t* dispatch,
+    const loom_amdgpu_sanitizer_race_shadow_address_t* shadow_address,
+    const loom_amdgpu_sanitizer_race_shadow_entry_t* current_entry,
+    loom_value_id_t workitem_linear_id) {
+  loom_builder_t* builder = loom_low_lower_context_builder(context);
+  const loom_low_descriptor_set_t* descriptor_set =
+      loom_low_lower_context_descriptor_set(context);
+
+  loom_value_id_t shadow_entry_offset = LOOM_VALUE_ID_INVALID;
+  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_shadow_entry_offset(
+      context, source_op, shadow_address, &shadow_entry_offset));
+  loom_value_id_t observed_entry_value = LOOM_VALUE_ID_INVALID;
+  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_global_swap_u64_acq_rel(
+      builder, descriptor_set, config->shadow_base, shadow_entry_offset,
+      current_entry->value, source_op->location, &observed_entry_value));
+
+  loom_amdgpu_sanitizer_race_shadow_entry_t observed_entry = {0};
+  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_unpack_shadow_entry(
+      context, source_op, observed_entry_value, &observed_entry));
+  loom_value_id_t prior_access_kind = LOOM_VALUE_ID_INVALID;
+  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_decode_shadow_access_kind(
+      context, source_op, &observed_entry, &prior_access_kind));
+
+  loom_value_id_t failure_mask = LOOM_VALUE_ID_INVALID;
+  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_failure_mask(
+      context, source_op, plan, current_entry, &observed_entry,
+      prior_access_kind, &failure_mask));
+
+  const loom_sanitizer_reporting_mode_t reporting_mode =
+      loom_low_lower_context_sanitizer_reporting_mode(context);
+  switch (reporting_mode) {
+    case LOOM_SANITIZER_REPORTING_MODE_TRAP: {
+      loom_amdgpu_sanitizer_access_report_failure_branch_t branch = {0};
+      const loom_amdgpu_sanitizer_trap_island_t* island = NULL;
+      IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_get_trap_island(
+          context, source_op->location, &island));
+      return loom_amdgpu_build_sanitizer_trap_failure_mask_branch_to_island(
+          builder, descriptor_set, island, failure_mask, source_op->location,
+          &branch);
+    }
+    case LOOM_SANITIZER_REPORTING_MODE_DEFAULT:
+    case LOOM_SANITIZER_REPORTING_MODE_REPORT_ONLY: {
+      loom_amdgpu_sanitizer_race_report_failure_branch_t branch = {0};
+      IREE_RETURN_IF_ERROR(
+          loom_amdgpu_build_sanitizer_race_report_failure_mask_split(
+              builder, descriptor_set, failure_mask, source_op->location,
+              &branch));
+
+      loom_amdgpu_feedback_packet_source_t source = {0};
+      loom_amdgpu_sanitizer_race_report_t report = {0};
+      loom_value_id_t report_workitem_linear_id = LOOM_VALUE_ID_INVALID;
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_b32_copy(
+          context, source_op, workitem_linear_id, &report_workitem_linear_id));
+      IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_report(
+          context, source_op, plan, config, dispatch, shadow_address,
+          report_workitem_linear_id, &observed_entry, prior_access_kind,
+          &source, &report));
+      const loom_amdgpu_sanitizer_race_report_island_t* island = NULL;
+      IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_get_report_island(
+          context, source_op->location, &island));
+      IREE_RETURN_IF_ERROR(loom_amdgpu_build_sanitizer_race_report_branch(
+          builder, descriptor_set, island, &source, &report,
+          source_op->location));
+      loom_builder_set_block(builder, branch.continuation_block);
+      return iree_ok_status();
+    }
+    default:
+      IREE_ASSERT_UNREACHABLE("unsupported AMDGPU sanitizer reporting mode");
+      IREE_BUILTIN_UNREACHABLE();
+  }
+}
+
 iree_status_t loom_amdgpu_lower_sanitizer_race_access(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     const loom_amdgpu_sanitizer_race_access_plan_t* plan) {
   loom_builder_t* builder = loom_low_lower_context_builder(context);
-  const loom_low_descriptor_set_t* descriptor_set =
-      loom_low_lower_context_descriptor_set(context);
 
   loom_amdgpu_sanitizer_race_config_values_t config = {0};
   loom_block_t* continuation_block = NULL;
@@ -1903,7 +2066,8 @@ iree_status_t loom_amdgpu_lower_sanitizer_race_access(
 
   loom_value_id_t epoch = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_current_epoch(
-      context, source_op, &config, &shadow_address, &epoch));
+      context, source_op, &config, dispatch.workgroup_shadow_record_offset,
+      &epoch));
 
   loom_value_id_t workitem_linear_id = LOOM_VALUE_ID_INVALID;
   IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_get_workitem_linear_id(
@@ -1915,73 +2079,12 @@ iree_status_t loom_amdgpu_lower_sanitizer_race_access(
       context, &shadow_entry_base));
   loom_amdgpu_sanitizer_race_shadow_entry_t current_entry = {0};
   IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_shadow_entry(
-      context, source_op, plan->shadow_access_kind, shadow_entry_base, epoch,
-      plan->site_id, &current_entry));
+      context, source_op, plan->observation.shadow_access_kind,
+      shadow_entry_base, epoch, plan->observation.site_id, &current_entry));
 
-  loom_value_id_t shadow_entry_offset = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_shadow_entry_offset(
-      context, source_op, &shadow_address, &shadow_entry_offset));
-  loom_value_id_t observed_entry_value = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_global_swap_u64_acq_rel(
-      builder, descriptor_set, config.shadow_base, shadow_entry_offset,
-      current_entry.value, source_op->location, &observed_entry_value));
-
-  loom_amdgpu_sanitizer_race_shadow_entry_t observed_entry = {0};
-  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_unpack_shadow_entry(
-      context, source_op, observed_entry_value, &observed_entry));
-  loom_value_id_t prior_access_kind = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_decode_shadow_access_kind(
-      context, source_op, &observed_entry, &prior_access_kind));
-
-  loom_value_id_t failure_mask = LOOM_VALUE_ID_INVALID;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_failure_mask(
-      context, source_op, plan, &current_entry, &observed_entry,
-      prior_access_kind, &failure_mask));
-
-  const loom_sanitizer_reporting_mode_t reporting_mode =
-      loom_low_lower_context_sanitizer_reporting_mode(context);
-  switch (reporting_mode) {
-    case LOOM_SANITIZER_REPORTING_MODE_TRAP: {
-      loom_amdgpu_sanitizer_access_report_failure_branch_t branch = {0};
-      const loom_amdgpu_sanitizer_trap_island_t* island = NULL;
-      IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_get_trap_island(
-          context, source_op->location, &island));
-      IREE_RETURN_IF_ERROR(
-          loom_amdgpu_build_sanitizer_trap_failure_mask_branch_to_island(
-              builder, descriptor_set, island, failure_mask,
-              source_op->location, &branch));
-      break;
-    }
-    case LOOM_SANITIZER_REPORTING_MODE_DEFAULT:
-    case LOOM_SANITIZER_REPORTING_MODE_REPORT_ONLY: {
-      loom_amdgpu_sanitizer_race_report_failure_branch_t branch = {0};
-      IREE_RETURN_IF_ERROR(
-          loom_amdgpu_build_sanitizer_race_report_failure_mask_split(
-              builder, descriptor_set, failure_mask, source_op->location,
-              &branch));
-
-      loom_amdgpu_feedback_packet_source_t source = {0};
-      loom_amdgpu_sanitizer_race_report_t report = {0};
-      loom_value_id_t report_workitem_linear_id = LOOM_VALUE_ID_INVALID;
-      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_vgpr_b32_copy(
-          context, source_op, workitem_linear_id, &report_workitem_linear_id));
-      IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_report(
-          context, source_op, plan, &config, &dispatch, &shadow_address,
-          report_workitem_linear_id, &observed_entry, prior_access_kind,
-          &source, &report));
-      const loom_amdgpu_sanitizer_race_report_island_t* island = NULL;
-      IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_get_report_island(
-          context, source_op->location, &island));
-      IREE_RETURN_IF_ERROR(loom_amdgpu_build_sanitizer_race_report_branch(
-          builder, descriptor_set, island, &source, &report,
-          source_op->location));
-      loom_builder_set_block(builder, branch.continuation_block);
-      break;
-    }
-    default:
-      IREE_ASSERT_UNREACHABLE("unsupported AMDGPU sanitizer reporting mode");
-      IREE_BUILTIN_UNREACHABLE();
-  }
+  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_emit_observation(
+      context, source_op, &plan->observation, &config, &dispatch,
+      &shadow_address, &current_entry, workitem_linear_id));
 
   return loom_amdgpu_sanitizer_race_branch_to_continuation(
       builder, continuation_block, source_op->location);
@@ -2055,6 +2158,132 @@ static iree_status_t loom_amdgpu_sanitizer_race_build_exec_restore(
       builder, descriptor_set, LOOM_AMDGPU_DESCRIPTOR_REF_S_MOV_B64_EXEC,
       &saved_exec, /*operand_count=*/1, loom_named_attr_slice_empty(),
       /*result_types=*/NULL, /*result_count=*/0, location, &op);
+}
+
+static iree_status_t loom_amdgpu_sanitizer_race_build_element_byte_offset(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    loom_value_id_t base_byte_offset, uint32_t relative_byte_offset,
+    loom_type_t vgpr_type, loom_value_id_t* out_byte_offset) {
+  if (relative_byte_offset == 0) {
+    *out_byte_offset = base_byte_offset;
+    return iree_ok_status();
+  }
+  return loom_amdgpu_emit_vgpr_binary_immediate(
+      context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_V_ADD_U32_LIT,
+      base_byte_offset, relative_byte_offset, vgpr_type, out_byte_offset);
+}
+
+iree_status_t loom_amdgpu_lower_sanitizer_race_fragment_access(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    const loom_amdgpu_sanitizer_race_fragment_access_plan_t* plan) {
+  loom_builder_t* builder = loom_low_lower_context_builder(context);
+  const loom_low_descriptor_set_t* descriptor_set =
+      loom_low_lower_context_descriptor_set(context);
+  const loom_amdgpu_fragment_memory_plan_t* fragment_plan =
+      &plan->fragment_memory;
+
+  loom_amdgpu_sanitizer_race_config_values_t config = {0};
+  loom_block_t* continuation_block = NULL;
+  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_config_guard(
+      context, source_op, &config, &continuation_block));
+
+  loom_amdgpu_sanitizer_race_dispatch_values_t dispatch = {0};
+  IREE_RETURN_IF_ERROR(
+      loom_amdgpu_sanitizer_race_build_dispatch_values(context, &dispatch));
+  loom_value_id_t epoch = LOOM_VALUE_ID_INVALID;
+  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_current_epoch(
+      context, source_op, &config, dispatch.workgroup_shadow_record_offset,
+      &epoch));
+  loom_value_id_t workitem_linear_id = LOOM_VALUE_ID_INVALID;
+  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_get_workitem_linear_id(
+      context, &workitem_linear_id));
+
+  const loom_amdgpu_sanitizer_race_shadow_entry_base_t* shadow_entry_base =
+      NULL;
+  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_get_shadow_entry_base(
+      context, &shadow_entry_base));
+  loom_amdgpu_sanitizer_race_shadow_entry_t current_entry = {0};
+  IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_shadow_entry(
+      context, source_op, plan->observation.shadow_access_kind,
+      shadow_entry_base, epoch, plan->observation.site_id, &current_entry));
+
+  loom_type_t vgpr_type = loom_type_none();
+  IREE_RETURN_IF_ERROR(loom_amdgpu_make_vgpr_type(context, &vgpr_type));
+  loom_amdgpu_matrix_fragment_lane_ids_t lane_ids;
+  IREE_RETURN_IF_ERROR(loom_amdgpu_emit_matrix_fragment_lane_ids(
+      context, source_op, fragment_plan->address_layout.primary_lane_divisor,
+      vgpr_type, &lane_ids));
+  loom_amdgpu_fragment_memory_address_state_t address_state;
+  IREE_RETURN_IF_ERROR(loom_amdgpu_initialize_fragment_memory_address_state(
+      context, source_op, fragment_plan, &lane_ids, vgpr_type, &address_state));
+
+  loom_value_id_t publishing_lane_mask = LOOM_VALUE_ID_INVALID;
+  for (uint16_t packet_index = 0; packet_index < fragment_plan->packet_count;
+       ++packet_index) {
+    const loom_amdgpu_fragment_memory_packet_plan_t* packet =
+        &fragment_plan->packets[packet_index];
+    loom_amdgpu_fragment_memory_issued_access_t issued_accesses
+        [LOOM_AMDGPU_FRAGMENT_MEMORY_MAX_ISSUED_ACCESSES_PER_PACKET];
+    const uint16_t issued_access_count =
+        loom_amdgpu_fragment_memory_query_issued_accesses(fragment_plan, packet,
+                                                          issued_accesses);
+    for (uint16_t access_index = 0; access_index < issued_access_count;
+         ++access_index) {
+      const loom_amdgpu_fragment_memory_issued_access_t* access =
+          &issued_accesses[access_index];
+      loom_value_id_t base_byte_offset = LOOM_VALUE_ID_INVALID;
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_fragment_memory_byte_offset(
+          context, source_op, fragment_plan, access->register_index,
+          access->element_index, access->descriptor_ref, &address_state,
+          vgpr_type, &base_byte_offset));
+
+      loom_value_id_t saved_exec = LOOM_VALUE_ID_INVALID;
+      if (iree_any_bit_set(
+              access->flags,
+              LOOM_AMDGPU_FRAGMENT_MEMORY_ISSUED_ACCESS_FLAG_PUBLISHERS_ONLY)) {
+        if (publishing_lane_mask == LOOM_VALUE_ID_INVALID) {
+          loom_type_t mask_type = loom_type_none();
+          IREE_RETURN_IF_ERROR(
+              loom_amdgpu_make_sgpr_range_type(context, 2, &mask_type));
+          IREE_RETURN_IF_ERROR(
+              loom_amdgpu_emit_fragment_memory_publishing_lane_mask(
+                  context, source_op, fragment_plan, &lane_ids, vgpr_type,
+                  mask_type, &publishing_lane_mask));
+        }
+        IREE_RETURN_IF_ERROR(
+            loom_amdgpu_sanitizer_race_build_exec_narrow_and_save(
+                builder, descriptor_set, publishing_lane_mask,
+                source_op->location, &saved_exec));
+      }
+
+      for (uint16_t element_ordinal = 0;
+           element_ordinal < access->element_count; ++element_ordinal) {
+        const uint32_t relative_byte_offset =
+            (uint32_t)element_ordinal * fragment_plan->element_byte_count;
+        loom_value_id_t element_byte_offset = LOOM_VALUE_ID_INVALID;
+        IREE_RETURN_IF_ERROR(
+            loom_amdgpu_sanitizer_race_build_element_byte_offset(
+                context, source_op, base_byte_offset, relative_byte_offset,
+                vgpr_type, &element_byte_offset));
+        loom_amdgpu_sanitizer_race_shadow_address_t shadow_address = {0};
+        IREE_RETURN_IF_ERROR(
+            loom_amdgpu_sanitizer_race_build_shadow_entry_address_from_byte_offset(
+                context, source_op, &config, &dispatch, element_byte_offset,
+                &shadow_address));
+        IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_emit_observation(
+            context, source_op, &plan->observation, &config, &dispatch,
+            &shadow_address, &current_entry, workitem_linear_id));
+      }
+
+      if (saved_exec != LOOM_VALUE_ID_INVALID) {
+        IREE_RETURN_IF_ERROR(loom_amdgpu_sanitizer_race_build_exec_restore(
+            builder, descriptor_set, saved_exec, source_op->location));
+      }
+    }
+  }
+
+  return loom_amdgpu_sanitizer_race_branch_to_continuation(
+      builder, continuation_block, source_op->location);
 }
 
 iree_status_t loom_amdgpu_lower_sanitizer_race_sync(
@@ -2136,6 +2365,32 @@ iree_status_t loom_amdgpu_low_legality_verify_sanitizer_race_access(
   }
   *out_handled = true;
   return loom_amdgpu_sanitizer_race_verify_access_address(context, op);
+}
+
+iree_status_t loom_amdgpu_low_legality_verify_sanitizer_race_fragment_access(
+    const loom_target_low_legality_provider_t* provider,
+    loom_target_low_legality_context_t* context, const loom_op_t* op,
+    bool* out_handled) {
+  *out_handled = false;
+  if (!loom_sanitizer_race_fragment_access_isa(op)) {
+    return iree_ok_status();
+  }
+
+  bool fragment_memory_handled = false;
+  IREE_RETURN_IF_ERROR(loom_amdgpu_low_legality_verify_fragment_memory(
+      provider, context, op, &fragment_memory_handled));
+  IREE_ASSERT_TRUE(fragment_memory_handled);
+  *out_handled = true;
+  if (!loom_amdgpu_sanitizer_race_workgroup_size_supported(
+          loom_target_low_legality_module(context),
+          loom_target_low_legality_function(context),
+          loom_target_low_legality_bundle(context))) {
+    return loom_amdgpu_low_legality_reject(
+        context, op,
+        IREE_SV("target_contract.sanitizer_race.fixed_power_of_two_workgroup_"
+                "required"));
+  }
+  return iree_ok_status();
 }
 
 iree_status_t loom_amdgpu_low_legality_verify_sanitizer_race_sync(

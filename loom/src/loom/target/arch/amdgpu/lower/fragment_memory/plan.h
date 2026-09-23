@@ -6,8 +6,8 @@
 
 // AMDGPU planning and legality for vector fragment memory operations.
 
-#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_PLAN_H_
-#define LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_PLAN_H_
+#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PLAN_H_
+#define LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PLAN_H_
 
 #include "loom/codegen/low/representation_plan.h"
 #include "loom/target/arch/amdgpu/lower/matrix_fragment_state.h"
@@ -35,9 +35,14 @@ iree_status_t loom_amdgpu_select_vector_fragment_store_plan(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     loom_amdgpu_fragment_memory_plan_t* out_plan, bool* out_selected);
 
-// Verifies source vector.fragment.load/store legality for AMDGPU target-low
-// selection.
-iree_status_t loom_amdgpu_low_legality_verify_vector_fragment_memory(
+// Selects the same AMDGPU fragment-memory plan for a semantic sanitizer race
+// observation as for its corresponding fragment load or store.
+iree_status_t loom_amdgpu_select_sanitizer_race_fragment_memory_plan(
+    loom_low_lower_context_t* context, const loom_op_t* source_op,
+    loom_amdgpu_fragment_memory_plan_t* out_plan, bool* out_selected);
+
+// Verifies fragment-memory legality for AMDGPU target-low selection.
+iree_status_t loom_amdgpu_low_legality_verify_fragment_memory(
     const loom_target_low_legality_provider_t* provider,
     loom_target_low_legality_context_t* context, const loom_op_t* op,
     bool* out_handled);
@@ -46,4 +51,4 @@ iree_status_t loom_amdgpu_low_legality_verify_vector_fragment_memory(
 }  // extern "C"
 #endif
 
-#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_PLAN_H_
+#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PLAN_H_

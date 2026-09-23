@@ -12,9 +12,9 @@
 #include "loom/ops/kernel/ops.h"
 #include "loom/ops/vector/fragment.h"
 #include "loom/ops/vector/ops.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/plan.h"
 #include "loom/target/arch/amdgpu/lower/matrix.h"
 #include "loom/target/arch/amdgpu/lower/matrix_fragment.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_plan.h"
 #include "loom/target/arch/amdgpu/lower/matrix_fragment_state.h"
 #include "loom/target/arch/amdgpu/matrix/contract.h"
 

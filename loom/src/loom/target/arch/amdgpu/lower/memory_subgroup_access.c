@@ -8,7 +8,7 @@
 
 #include "loom/analysis/control_uniformity.h"
 #include "loom/target/arch/amdgpu/facts.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_address.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/address.h"
 #include "loom/target/arch/amdgpu/lower/topology.h"
 
 #define LOOM_AMDGPU_MEMORY_MAX_SUBGROUP_SIZE 64

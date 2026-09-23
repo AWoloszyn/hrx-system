@@ -6,11 +6,11 @@
 
 // AMDGPU packet selection and report classification for fragment memory.
 
-#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_PACKET_H_
-#define LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_PACKET_H_
+#ifndef LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PACKET_H_
+#define LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PACKET_H_
 
 #include "loom/codegen/low/representation_plan.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_plan.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/plan.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -24,6 +24,9 @@ enum {
   // Mask selecting a publication packet's result-register count.
   LOOM_AMDGPU_FRAGMENT_MEMORY_PUBLICATION_PACKET_COUNT_MASK =
       (1u << LOOM_AMDGPU_FRAGMENT_MEMORY_PUBLICATION_PACKET_COUNT_BITS) - 1u,
+  // Maximum separately addressed issues represented by one fragment packet.
+  LOOM_AMDGPU_FRAGMENT_MEMORY_MAX_ISSUED_ACCESSES_PER_PACKET =
+      LOOM_AMDGPU_FRAGMENT_MEMORY_MAX_PACKET_REGISTERS,
 };
 static_assert(2u * LOOM_AMDGPU_FRAGMENT_MEMORY_MAX_PACKET_REGISTERS <=
                   LOOM_AMDGPU_FRAGMENT_MEMORY_PUBLICATION_PACKET_COUNT_MASK,
@@ -174,7 +177,7 @@ bool loom_amdgpu_fragment_memory_plan_packets(
 // emit any valid strategy for an FP8 payload accepted by earlier analysis.
 bool loom_amdgpu_fragment_memory_select_fp8_load_decode_plan(
     const loom_value_fact_table_t* fact_table,
-    const loom_low_descriptor_set_t* descriptor_set, const loom_op_t* source_op,
+    const loom_low_descriptor_set_t* descriptor_set, loom_value_id_t payload,
     loom_amdgpu_fragment_memory_plan_t* plan);
 
 // Returns true when |strategy| exchanges values across lanes before packing.
@@ -184,6 +187,37 @@ bool loom_amdgpu_fragment_memory_epilogue_strategy_is_crosslane_packed_b16(
 // Returns true when |strategy| exchanges values with DPP instructions.
 bool loom_amdgpu_fragment_memory_epilogue_strategy_uses_dpp(
     loom_amdgpu_fragment_memory_epilogue_strategy_t strategy);
+
+typedef enum loom_amdgpu_fragment_memory_issued_access_flag_bits_e {
+  LOOM_AMDGPU_FRAGMENT_MEMORY_ISSUED_ACCESS_FLAG_NONE = 0u,
+  // Only the selected cross-lane publication participants issue this access.
+  LOOM_AMDGPU_FRAGMENT_MEMORY_ISSUED_ACCESS_FLAG_PUBLISHERS_ONLY = 1u << 0,
+} loom_amdgpu_fragment_memory_issued_access_flag_bits_t;
+typedef uint8_t loom_amdgpu_fragment_memory_issued_access_flags_t;
+
+// One separately addressed contiguous physical memory access issued for a
+// selected fragment packet.
+typedef struct loom_amdgpu_fragment_memory_issued_access_t {
+  // Descriptor row selected for this physical access.
+  loom_amdgpu_descriptor_ref_t descriptor_ref;
+  // First target fragment coordinate register addressed by the access.
+  uint16_t register_index;
+  // Separately addressed element within register_index.
+  uint16_t element_index;
+  // Number of contiguous physical view elements accessed from this address.
+  uint16_t element_count;
+  // Participant policy for this physical access.
+  loom_amdgpu_fragment_memory_issued_access_flags_t flags;
+} loom_amdgpu_fragment_memory_issued_access_t;
+
+// Enumerates the exact physical memory accesses issued for one selected
+// fragment packet. |out_accesses| has
+// LOOM_AMDGPU_FRAGMENT_MEMORY_MAX_ISSUED_ACCESSES_PER_PACKET entries. The
+// returned count is nonzero for every packet in a selected plan.
+uint16_t loom_amdgpu_fragment_memory_query_issued_accesses(
+    const loom_amdgpu_fragment_memory_plan_t* plan,
+    const loom_amdgpu_fragment_memory_packet_plan_t* packet,
+    loom_amdgpu_fragment_memory_issued_access_t* out_accesses);
 
 // Returns the compile-report plan key for a selected fragment memory plan.
 iree_string_view_t loom_amdgpu_fragment_memory_plan_key(
@@ -206,4 +240,4 @@ void loom_amdgpu_fragment_memory_query_packet_report(
 }  // extern "C"
 #endif
 
-#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_MATRIX_FRAGMENT_MEMORY_PACKET_H_
+#endif  // LOOM_TARGET_ARCH_AMDGPU_LOWER_FRAGMENT_MEMORY_PACKET_H_

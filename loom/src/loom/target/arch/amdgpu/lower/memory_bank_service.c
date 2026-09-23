@@ -9,7 +9,7 @@
 #include "iree/base/internal/math.h"
 #include "loom/target/arch/amdgpu/analysis/lds_bank_service.h"
 #include "loom/target/arch/amdgpu/facts.h"
-#include "loom/target/arch/amdgpu/lower/matrix_fragment_memory_address.h"
+#include "loom/target/arch/amdgpu/lower/fragment_memory/address.h"
 #include "loom/target/arch/amdgpu/lower/memory_subgroup_access.h"
 #include "loom/target/arch/amdgpu/refs/target_refs.h"
 
