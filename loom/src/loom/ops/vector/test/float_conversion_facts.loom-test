@@ -99,3 +99,106 @@ func.def @f64_above_bf16_midpoint() -> (vector<4xbf16>) {
   %narrow = vector.fptrunc %input : vector<4xf64> to vector<4xbf16>
   func.return %narrow : vector<4xbf16>
 }
+
+// ====
+
+// Distinct constant lanes materialize before a runtime vector consumer.
+func.def @fp8_scale_constants(%input: vector<4xf32>) -> (vector<4xf32>) {
+  %half_scale = scalar.constant 0.5 : f8E4M3
+  %unit_scale = scalar.constant 1.0 : f8E4M3
+  %intermediate_scale = scalar.constant 1.5 : f8E4M3
+  %double_scale = scalar.constant 2.0 : f8E4M3
+  %scales = vector.from_elements %half_scale, %unit_scale, %intermediate_scale, %double_scale : vector<4xf8E4M3>
+  %wide = vector.extf %scales : vector<4xf8E4M3> to vector<4xf32>
+  %scaled = vector.mulf %input, %wide : vector<4xf32>
+  func.return %scaled : vector<4xf32>
+}
+
+// ----
+func.def @fp8_scale_constants(%input: vector<4xf32>) -> (vector<4xf32>) {
+  %9 = scalar.constant 0.5 : f32
+  %10 = scalar.constant 1.0 : f32
+  %11 = scalar.constant 1.5 : f32
+  %12 = scalar.constant 2.0 : f32
+  %wide = vector.from_elements %9, %10, %11, %12 : vector<4xf32>
+  %scaled = vector.mulf %input, %wide : vector<4xf32>
+  func.return %scaled : vector<4xf32>
+}
+
+// ====
+
+// Nonuniform narrowing retains ties-to-even and the sign of zero.
+func.def @bf16_constant_vector() -> (vector<4xbf16>) {
+  %even = scalar.constant 1.00390625 : f32
+  %odd = scalar.constant 1.01171875 : f32
+  %signed_zero = scalar.constant -0.0 : f32
+  %negative = scalar.constant -1.0 : f32
+  %input = vector.from_elements %even, %odd, %signed_zero, %negative : vector<4xf32>
+  %narrow = vector.fptrunc %input : vector<4xf32> to vector<4xbf16>
+  func.return %narrow : vector<4xbf16>
+}
+
+// ----
+func.def @bf16_constant_vector() -> (vector<4xbf16>) {
+  %7 = scalar.constant 1.0 : bf16
+  %8 = scalar.constant 1.015625 : bf16
+  %9 = scalar.constant -0.0 : bf16
+  %10 = scalar.constant -1.0 : bf16
+  %narrow = vector.from_elements %7, %8, %9, %10 : vector<4xbf16>
+  func.return %narrow : vector<4xbf16>
+}
+
+// ====
+
+func.def @fp8_constant_vector() -> (vector<4xf8E5M2>) {
+  %even = scalar.constant 1.125 : f32
+  %odd = scalar.constant 1.375 : f32
+  %overflow = scalar.constant 65536.0 : f32
+  %signed_zero = scalar.constant -0.0 : f32
+  %input = vector.from_elements %even, %odd, %overflow, %signed_zero : vector<4xf32>
+  %narrow = vector.fptrunc %input : vector<4xf32> to vector<4xf8E5M2>
+  func.return %narrow : vector<4xf8E5M2>
+}
+
+// ----
+func.def @fp8_constant_vector() -> (vector<4xf8E5M2>) {
+  %7 = scalar.constant 1.0 : f8E5M2
+  %8 = scalar.constant 1.5 : f8E5M2
+  %9 = scalar.constant inf : f8E5M2
+  %10 = scalar.constant -0.0 : f8E5M2
+  %narrow = vector.from_elements %7, %8, %9, %10 : vector<4xf8E5M2>
+  func.return %narrow : vector<4xf8E5M2>
+}
+
+// ====
+
+// A partly constant conversion remains one vector operation.
+func.def @runtime_lane(%dynamic: f16) -> (vector<2xf32>) {
+  %exact_lane = scalar.constant 1.0 : f16
+  %input = vector.from_elements %exact_lane, %dynamic : vector<2xf16>
+  %wide = vector.extf %input : vector<2xf16> to vector<2xf32>
+  func.return %wide : vector<2xf32>
+}
+
+// ====
+
+// Known-NaN facts cannot materialize an exact floating payload.
+func.def @raw_nan_lane() -> (vector<2xf32>) {
+  %bits = scalar.constant 125 : i8
+  %nan = scalar.bitcast %bits : i8 to f8E5M2
+  %signed_zero = scalar.constant -0.0 : f8E5M2
+  %input = vector.from_elements %nan, %signed_zero : vector<2xf8E5M2>
+  %wide = vector.extf %input : vector<2xf8E5M2> to vector<2xf32>
+  func.return %wide : vector<2xf32>
+}
+
+// ====
+
+// Per-lane materialization also respects the F64 double-rounding boundary.
+func.def @f64_midpoint_lane() -> (vector<2xbf16>) {
+  %midpoint = scalar.constant 1.0039062500000002 : f64
+  %exact_lane = scalar.constant 1.0 : f64
+  %input = vector.from_elements %midpoint, %exact_lane : vector<2xf64>
+  %narrow = vector.fptrunc %input : vector<2xf64> to vector<2xbf16>
+  func.return %narrow : vector<2xbf16>
+}

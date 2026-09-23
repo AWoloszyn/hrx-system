@@ -149,6 +149,50 @@ endif()
 if(LOOM_IMPORT_CXX)
 loom_cc_test(
   NAME
+    constant_archive_test
+  SRCS
+    "constant_archive_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
+  DEPS
+    ::options
+    ::source
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::third_party::cxx_parser
+  LABELS
+    "iree-build-requirement=loom.import.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_test(
+  NAME
+    constant_bits_test
+  SRCS
+    "constant_bits_test.cc"
+  CXX_STANDARD
+    23
+  CXX_FEATURES
+    "exceptions"
+    "rtti"
+  DEPS
+    ::options
+    ::source
+    iree::testing::gtest
+    iree::testing::gtest_main
+    iree::third_party::cxx_parser
+  LABELS
+    "iree-build-requirement=loom.import.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX)
+loom_cc_test(
+  NAME
     constexpr_test
   SRCS
     "constexpr_test.cc"

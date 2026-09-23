@@ -42,6 +42,9 @@ using Words2 = unsigned __attribute__((ext_vector_type(2)));
     Words2 words = __builtin_bit_cast(Words2, payload);
     output[index * 8 + 5] = words[0];
     output[index * 8 + 6] = words[1];
-    output[index * 8 + 7] = 0x6badcafeu;
+    // Mix constexpr signaling-NaN and signed-zero payloads with runtime lanes.
+    constexpr auto constants = __builtin_bit_cast(Float8E5, 0x00817d80u);
+    Float8E5 mixed{constants[1], e5m2[1], constants[0], e5m2[3]};
+    output[index * 8 + 7] = __builtin_bit_cast(unsigned, mixed);
   }
 }

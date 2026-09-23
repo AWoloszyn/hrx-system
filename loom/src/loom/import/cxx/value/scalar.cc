@@ -18,6 +18,19 @@
 #include "loom/ops/scalar/ops.h"
 
 namespace loom::cxx_import {
+namespace {
+
+loom_attribute_t integer_attribute(uint64_t bits, unsigned bytes) {
+  // IR integer attributes use signed storage at their scalar type's width.
+  int64_t stored =
+      bytes == 1   ? std::bit_cast<int8_t>(static_cast<uint8_t>(bits))
+      : bytes == 2 ? std::bit_cast<int16_t>(static_cast<uint16_t>(bits))
+      : bytes == 4 ? std::bit_cast<int32_t>(static_cast<uint32_t>(bits))
+                   : std::bit_cast<int64_t>(bits);
+  return loom_attr_i64(stored);
+}
+
+}  // namespace
 
 loom_value_id_t Scalars::convert(loom_value_id_t value,
                                  const cxx::Type* input_type,
@@ -192,6 +205,13 @@ loom_attribute_t Scalars::constant_attribute(const cxx::ConstValue& value,
   }
   loom_attribute_t attribute;
   if (types_.is_float(source_type)) {
+    if (auto* floating = std::get_if<cxx::ConstFloat>(&value);
+        floating && floating->isNaN()) {
+      diagnostics_.reject(
+          unit_, ast,
+          "numeric metadata cannot preserve NaN representation bits; "
+          "use an integer encoding and bit-cast it in the function body");
+    }
     auto number = interpreter.toDouble(value);
     if (!number) {
       diagnostics_.reject(unit_, ast, "invalid floating literal");
@@ -205,12 +225,7 @@ loom_attribute_t Scalars::constant_attribute(const cxx::ConstValue& value,
     // Literals are represented in the signed storage width of their IR
     // scalar type; signedness remains a source fact at each operation.
     auto bytes = *unit_.control()->memoryLayout()->sizeOf(source_type);
-    int64_t stored =
-        bytes == 1   ? std::bit_cast<int8_t>(static_cast<uint8_t>(*number))
-        : bytes == 2 ? std::bit_cast<int16_t>(static_cast<uint16_t>(*number))
-        : bytes == 4 ? std::bit_cast<int32_t>(static_cast<uint32_t>(*number))
-                     : *number;
-    attribute = loom_attr_i64(stored);
+    attribute = integer_attribute(std::bit_cast<uint64_t>(*number), bytes);
   }
   return attribute;
 }
@@ -218,6 +233,21 @@ loom_attribute_t Scalars::constant_attribute(const cxx::ConstValue& value,
 loom_value_id_t Scalars::constant(const cxx::ConstValue& value,
                                   const cxx::Type* source_type, cxx::AST* ast) {
   loom_op_t* op;
+  if (auto* floating = std::get_if<cxx::ConstFloat>(&value);
+      floating && floating->isNaN()) {
+    auto bits = floating->bits();
+    auto bytes = floating->bitWidth() / 8;
+    auto storage = loom_type_scalar(bytes == 1   ? LOOM_SCALAR_TYPE_I8
+                                    : bytes == 2 ? LOOM_SCALAR_TYPE_I16
+                                    : bytes == 4 ? LOOM_SCALAR_TYPE_I32
+                                                 : LOOM_SCALAR_TYPE_I64);
+    check(loom_scalar_constant_build(&builder_, integer_attribute(bits, bytes),
+                                     storage, locations_.get(ast), &op));
+    check(loom_scalar_bitcast_build(&builder_, loom_op_results(op)[0], storage,
+                                    types_.get(source_type, ast),
+                                    locations_.get(ast), &op));
+    return loom_op_results(op)[0];
+  }
   check(loom_scalar_constant_build(
       &builder_, constant_attribute(value, source_type, ast),
       types_.get(source_type, ast), locations_.get(ast), &op));

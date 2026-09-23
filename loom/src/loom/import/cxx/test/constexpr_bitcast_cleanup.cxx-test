@@ -1,0 +1,66 @@
+// RUN: pass canonicalize,cse,dce
+using Fp8x4 = __float8_e4m3fn __attribute__((ext_vector_type(4)));
+using Float4 = float __attribute__((ext_vector_type(4)));
+constexpr Fp8x4 kScale = __builtin_bit_cast(Fp8x4, 0x403c3830u);
+void apply_scale(const Float4* input, Float4* output) {
+  *output = *input * __builtin_convertvector(kScale, Float4);
+}
+
+// ----
+func.def public @apply_scale(%input: buffer, %input_byte_offset: offset, %output: buffer, %output_byte_offset: offset) {
+  %4 = buffer.view %input[%input_byte_offset] : buffer -> view<4xf32>
+  %5 = vector.load %4[0] : view<4xf32> -> vector<4xf32>
+  %14 = scalar.constant 0.5 : f32
+  %15 = scalar.constant 1.0 : f32
+  %16 = scalar.constant 1.5 : f32
+  %17 = scalar.constant 2.0 : f32
+  %18 = vector.from_elements %14, %15, %16, %17 : vector<4xf32>
+  %12 = vector.mulf %5, %18 : vector<4xf32>
+  %13 = buffer.view %output[%output_byte_offset] : buffer -> view<4xf32>
+  vector.store %12, %13[0] : vector<4xf32>, view<4xf32>
+  func.return
+}
+
+// ====
+constexpr float kNaN = __builtin_bit_cast(float, 0x7f812345u);
+float payload() { return kNaN; }
+
+// ----
+func.def public @payload() -> (f32) {
+  %1 = scalar.constant 2139169605 : i32
+  %kNaN = scalar.bitcast %1 : i32 to f32
+  func.return %kNaN : f32
+}
+
+// ====
+using Words4 = unsigned __attribute__((ext_vector_type(4)));
+using Fp8x16 = __float8_e4m3fn __attribute__((ext_vector_type(16)));
+constexpr Fp8x16 kCodebook = __builtin_bit_cast(
+    Fp8x16, Words4{0xb8b0a800u, 0xbebdbbbau, 0x302800bfu, 0x3e3d3b38u});
+float decode(unsigned code) { return kCodebook[code & 15u]; }
+
+// ----
+func.def public @decode(%code: i32) -> (f32) {
+  %2 = scalar.constant 0.0 : f8E4M3
+  %3 = scalar.constant -0.25 : f8E4M3
+  %4 = scalar.constant -0.5 : f8E4M3
+  %5 = scalar.constant -1.0 : f8E4M3
+  %6 = scalar.constant -1.25 : f8E4M3
+  %7 = scalar.constant -1.375 : f8E4M3
+  %8 = scalar.constant -1.625 : f8E4M3
+  %9 = scalar.constant -1.75 : f8E4M3
+  %10 = scalar.constant -1.875 : f8E4M3
+  %12 = scalar.constant 0.25 : f8E4M3
+  %13 = scalar.constant 0.5 : f8E4M3
+  %14 = scalar.constant 1.0 : f8E4M3
+  %15 = scalar.constant 1.375 : f8E4M3
+  %16 = scalar.constant 1.625 : f8E4M3
+  %17 = scalar.constant 1.75 : f8E4M3
+  %kCodebook = vector.from_elements %2, %3, %4, %5, %6, %7, %8, %9, %10, %2, %12, %13, %14, %15, %16, %17 : vector<16xf8E4M3>
+  %19 = scalar.constant 15 : i32
+  %20 = scalar.andi %code, %19 : i32
+  %21 = index.cast %20 : i32 to index
+  %22 = vector.extract %kCodebook[%21] : vector<16xf8E4M3> -> f8E4M3
+  %23 = scalar.extf %22 : f8E4M3 to f32
+  func.return %23 : f32
+}

@@ -185,6 +185,8 @@ def test_core_contract_closes_scalar_and_integer_vector_families() -> None:
             "i16",
             "i32",
             "i64",
+            "f8E4M3",
+            "f8E5M2",
             "f16",
             "bf16",
             "f32",
@@ -206,6 +208,8 @@ def test_core_contract_closes_scalar_and_integer_vector_families() -> None:
             "amd.xdna.aie2p.constant.i32",
         ],
         "i64": ["amd.xdna.aie2p.constant.i32"],
+        "f8E4M3": ["amd.xdna.aie2p.constant.i32"],
+        "f8E5M2": ["amd.xdna.aie2p.constant.i32"],
         "f16": ["amd.xdna.aie2p.constant.i32"],
         "bf16": ["amd.xdna.aie2p.constant.i32"],
         "f32": ["amd.xdna.aie2p.constant.i32"],
@@ -232,9 +236,12 @@ def test_core_contract_closes_scalar_and_integer_vector_families() -> None:
         1,
     ]
     float_constant_rules = [
-        constant_rules_by_type[element][0] for element in ("f16", "bf16", "f32")
+        constant_rules_by_type[element][0]
+        for element in ("f8E4M3", "f8E5M2", "f16", "bf16", "f32")
     ]
     assert [rule.emit[0].immediates["i"].kind for rule in float_constant_rules] == [
+        ValueProjectKind.FLOAT_BITS,
+        ValueProjectKind.FLOAT_BITS,
         ValueProjectKind.FLOAT_BITS,
         ValueProjectKind.FLOAT_BITS,
         ValueProjectKind.FLOAT_AS_F32_I32,
@@ -249,6 +256,8 @@ def test_core_contract_closes_scalar_and_integer_vector_families() -> None:
         "amd.xdna.aie2p.splat.i16x32",
         "amd.xdna.aie2p.splat.i32x16",
         "amd.xdna.aie2p.splat.i32x16",
+        "amd.xdna.aie2p.splat.i8x64",
+        "amd.xdna.aie2p.splat.i8x64",
         "amd.xdna.aie2p.splat.i16x32",
         "amd.xdna.aie2p.splat.i16x32",
         "amd.xdna.aie2p.splat.i32x16",
@@ -264,12 +273,16 @@ def test_core_contract_closes_scalar_and_integer_vector_families() -> None:
         2,
         2,
         2,
+        2,
+        2,
         1,
         1,
     ]
     assert [
-        rule.emit[0].immediates["i"].kind for rule in vector_constant_rules[5:8]
+        rule.emit[0].immediates["i"].kind for rule in vector_constant_rules[5:10]
     ] == [
+        ValueProjectKind.FLOAT_BITS,
+        ValueProjectKind.FLOAT_BITS,
         ValueProjectKind.FLOAT_BITS,
         ValueProjectKind.FLOAT_BITS,
         ValueProjectKind.FLOAT_AS_F32_I32,

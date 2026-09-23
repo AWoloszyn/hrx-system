@@ -178,12 +178,56 @@ bit casts preserve the payload, including signed zero and NaN encodings; use
 `__builtin_convertvector` for numeric conversion.
 
 The same operation supports scalar-to-scalar and vector-to-vector values.
-Pointers, aggregates, padded vectors, and casts between `bool` and byte-sized
-values are rejected at import. Loom represents `bool` as an `i1` predicate,
-not its C++ object byte. Ordinary constant operands participate in Loom's
-folding passes. The C++ frontend does not yet evaluate `__builtin_bit_cast`
-in a required constant expression, so it cannot initialize a `constexpr`
-variable or supply a `static_assert` condition.
+Pointers, aggregates and padded vectors produce source diagnostics. Runtime
+casts between `bool` and byte-sized values are also rejected: Loom represents
+`bool` as an `i1` predicate rather than its C++ object byte.
+
+### Constant bit casts
+
+Bit casts also work in `constexpr` initializers and `static_assert`. Packed
+weights, scales and codebooks can retain their published object encodings in
+source while supplying typed values to ordinary arithmetic:
+
+```cpp
+using Fp8x4 = __float8_e4m3fn __attribute__((ext_vector_type(4)));
+using Float4 = float __attribute__((ext_vector_type(4)));
+constexpr Fp8x4 kScale = __builtin_bit_cast(Fp8x4, 0x403c3830u);
+static_assert(kScale[0] == 0.5f && kScale[3] == 2.0f);
+
+void apply_scale(const Float4* input, Float4* output) {
+  *output = *input * __builtin_convertvector(kScale, Float4);
+}
+```
+
+The direct import retains typed FP8 constants, a vector extension and a vector
+multiply. Ordinary cleanup folds the extension to F32 constants; there is no
+runtime decoding of the packed word. Fixed unpadded vectors can also regroup
+larger constant vectors, such as four integer words into a sixteen-element FP8
+table.
+
+Constant evaluation retains object bits for FP16, BF16, both FP8 formats, F32
+and F64. Copies, same-type conversions, unary sign changes and template
+arguments preserve signed zero and NaN payloads. Numeric arithmetic and
+conversion apply the destination format's rounding rules.
+
+```cpp
+constexpr float kPayload = __builtin_bit_cast(float, 0x7f812345u);
+static_assert(__builtin_bit_cast(unsigned, +kPayload) == 0x7f812345u);
+static_assert(__builtin_bit_cast(unsigned, -kPayload) == 0xff812345u);
+float payload() { return kPayload; }
+```
+
+Finite values import as ordinary numeric constants. Exact NaN values import as
+integer constants followed by `scalar.bitcast`, retaining their representation
+through Loom transformations. Numeric-only config and check metadata cannot
+carry NaN payloads and diagnose such values; an integer configuration value
+can carry the encoding for a bit cast in the function body.
+
+The constant evaluator admits integral and enum scalars up to 64 bits and
+unpadded vectors of those integers or supported floats. Scalar `bool` object
+bytes must encode zero or one. Pointer, aggregate, long-double, padded-vector
+and packed-Boolean-vector representations are rejected during constant
+evaluation because their object layout is outside this encoding contract.
 
 ## Compiler tests
 
