@@ -583,6 +583,7 @@ loom_check_test_suite(
     "test/source_low/numeric_index.loom-test"
     "test/source_low/numeric_index_conversion.loom-test"
     "test/source_low/numeric_index_operands.loom-test"
+    "test/source_low/numeric_integer_extrema.loom-test"
     "test/source_low/numeric_minmax.loom-test"
     "test/source_low/numeric_nonlinear.loom-test"
     "test/source_low/numeric_offset_wide.loom-test"

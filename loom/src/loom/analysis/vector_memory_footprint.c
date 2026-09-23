@@ -857,7 +857,7 @@ static iree_status_t loom_vector_memory_footprint_check_direct_axis(
         &has_tail_end));
     if (has_tail_end) {
       end = tail_end;
-      loom_value_facts_minsi(&full_end.facts, &tail_end.facts, &end_facts);
+      loom_value_facts_minsi(&full_end.facts, &tail_end.facts, 64, &end_facts);
     }
   }
 

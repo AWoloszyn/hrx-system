@@ -4,7 +4,9 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+load("//loom/build_tools/bazel:defs.bzl", "loom_test")
 load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
+load("//loom/target/vm:execution_profiles.bzl", "VM_REFERENCE_PROFILE")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -19,6 +21,7 @@ loom_check_test_suite(
         "canonicalize_condition_loop.loom-test",
         "canonicalize_select.loom-test",
         "canonicalize_speculation.loom-test",
+        "combine_extrema.loom-test",
         "convergence_facts.loom-test",
         "dependent_types.loom-test",
         "facts.loom-test",
@@ -30,4 +33,10 @@ loom_check_test_suite(
         "selection_facts.loom-test",
         "verify.loom-test",
     ],
+)
+
+loom_test(
+    name = "extrema_values_test",
+    srcs = ["extrema_values.loom"],
+    execution_profiles = [VM_REFERENCE_PROFILE],
 )

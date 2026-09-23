@@ -6,6 +6,8 @@
 
 #include "loom/transforms/cleanup/canonicalize.h"
 
+#include "loom/ops/scf/canonicalize.h"
+#include "loom/ops/scf/ops.h"
 #include "loom/ops/vector/construction.h"
 #include "loom/ops/vector/ops.h"
 #include "loom/ops/vector/table.h"
@@ -123,6 +125,9 @@ static iree_status_t loom_combine_patterns(
     loom_op_t* op, loom_rewriter_t* rewriter,
     loom_symbolic_expr_context_t* expression_context, bool* out_changed) {
   *out_changed = false;
+  if (loom_scf_select_isa(op)) {
+    return loom_scf_select_combine_integer_extremum(op, rewriter, out_changed);
+  }
   if (loom_view_load_isa(op)) {
     return loom_view_load_coalescing_rewrite(rewriter, expression_context, op,
                                              out_changed);

@@ -23,6 +23,7 @@ loom_check_test_suite(
         "construction_combine.loom-test",
         "facts.loom-test",
         "float_conversion_facts.loom-test",
+        "integer_extrema_facts.loom-test",
         "integer_partial_facts.loom-test",
         "load_extract.loom-test",
         "roundtrip.loom-test",

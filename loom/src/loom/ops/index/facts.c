@@ -308,6 +308,7 @@ iree_status_t loom_index_rem_facts(loom_fact_context_t* context,
 
 typedef void (*loom_index_minmax_transfer_fn_t)(const loom_value_facts_t* lhs,
                                                 const loom_value_facts_t* rhs,
+                                                int32_t bit_count,
                                                 loom_value_facts_t* out_facts);
 
 static iree_status_t loom_index_minmax_facts(
@@ -318,7 +319,7 @@ static iree_status_t loom_index_minmax_facts(
           context, LOOM_SCALAR_TYPE_INDEX, operand_facts[0]) &&
       loom_index_value_facts_fit_signed_target_carrier(
           context, LOOM_SCALAR_TYPE_INDEX, operand_facts[1])) {
-    transfer_fn(&operand_facts[0], &operand_facts[1], &result_facts[0]);
+    transfer_fn(&operand_facts[0], &operand_facts[1], 64, &result_facts[0]);
     return iree_ok_status();
   }
 

@@ -683,6 +683,44 @@ static iree_status_t loom_scalar_legalize_narrow_cmpi(
   return iree_ok_status();
 }
 
+// Native extrema contracts take precedence over this comparison/selection
+// decomposition. Ordinary cleanup preserves it because extrema formation is
+// restricted to the pre-legalization combine phase.
+static iree_status_t loom_scalar_legalize_integer_extrema(
+    const loom_target_legalizer_entry_t* entry,
+    loom_target_legalization_context_t* context, loom_op_t* op,
+    loom_target_legalizer_result_t* out_result) {
+  (void)entry;
+  const bool is_signed = loom_scalar_minsi_isa(op) || loom_scalar_maxsi_isa(op);
+  const bool is_minimum =
+      loom_scalar_minsi_isa(op) || loom_scalar_minui_isa(op);
+  const loom_scalar_cmpi_predicate_t predicate =
+      is_signed ? (is_minimum ? LOOM_SCALAR_CMPI_PREDICATE_SLT
+                              : LOOM_SCALAR_CMPI_PREDICATE_SGT)
+                : (is_minimum ? LOOM_SCALAR_CMPI_PREDICATE_ULT
+                              : LOOM_SCALAR_CMPI_PREDICATE_UGT);
+  loom_rewriter_t* rewriter = context->rewriter;
+  loom_builder_t* builder = &rewriter->builder;
+  loom_builder_set_before(builder, op);
+  const loom_value_id_t checkpoint = loom_rewriter_value_checkpoint(rewriter);
+  const loom_value_id_t lhs = loom_op_operands(op)[0];
+  const loom_value_id_t rhs = loom_op_operands(op)[1];
+  const loom_type_t type = loom_module_value_type(context->module, lhs);
+  loom_op_t* comparison = NULL;
+  IREE_RETURN_IF_ERROR(loom_scalar_cmpi_build(builder, predicate, lhs, rhs,
+                                              op->location, &comparison));
+  loom_value_id_t replacement = LOOM_VALUE_ID_INVALID;
+  IREE_RETURN_IF_ERROR(loom_scalar_legalize_build_select(
+      builder, op->location, type, loom_scalar_cmpi_result(comparison), lhs,
+      rhs, &replacement));
+  IREE_RETURN_IF_ERROR(loom_rewriter_preserve_result_names_on_new_values(
+      rewriter, op, &replacement, 1, checkpoint));
+  IREE_RETURN_IF_ERROR(
+      loom_rewriter_replace_all_uses_and_erase(rewriter, op, &replacement, 1));
+  out_result->action = LOOM_TARGET_LEGALIZER_ACTION_REWRITTEN;
+  return iree_ok_status();
+}
+
 // Number-preferring extrema already implement signed-zero ordering. An
 // unordered comparison adds the IEEE NaN policy without changing numeric
 // operands or exposing a NaN payload guarantee.
@@ -729,6 +767,22 @@ static iree_status_t loom_scalar_legalize_ieee_extrema(
 }
 
 static const loom_target_legalizer_rule_t kScalarLegalizerRules[] = {
+    {
+        .root_kind = LOOM_OP_SCALAR_MINSI,
+        .legalize = loom_scalar_legalize_integer_extrema,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_MAXSI,
+        .legalize = loom_scalar_legalize_integer_extrema,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_MINUI,
+        .legalize = loom_scalar_legalize_integer_extrema,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_MAXUI,
+        .legalize = loom_scalar_legalize_integer_extrema,
+    },
     {
         .root_kind = LOOM_OP_SCALAR_MINIMUMF,
         .first_operand_element_types = LOOM_SCALAR_TYPE_SET_F32,

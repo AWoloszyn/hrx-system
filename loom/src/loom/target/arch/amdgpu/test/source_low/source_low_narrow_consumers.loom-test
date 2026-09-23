@@ -208,11 +208,10 @@ func.def target(@target) @narrow_comparison(%input: i32, %other: i32) -> (i32) {
 
 // ----
 low.func.def target<amdgpu.gfx11.generic.core>(@target) abi(hal_kernel) @narrow_comparison(%input: reg<amdgpu.sgpr>, %other: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %10 = v_mov_b32_copy %input
-  %wide = v_bfe_i32_offset_width_inline %10 {offset = 0, width = 16}
-  %12 = v_mov_b32_copy %other
-  %condition = v_cmp_lt_i32 %wide, %12
-  %result = v_cndmask_b32 %12, %wide, %condition
+  %11 = v_mov_b32_copy %input
+  %wide = v_bfe_i32_offset_width_inline %11 {offset = 0, width = 16}
+  %13 = v_mov_b32_copy %other
+  %result = v_min_i32 %wide, %13
   return %result
 }
 

@@ -40,6 +40,7 @@ loom_cc_library(
     ::canonicalizer
     iree::base
     iree::base::internal::arena
+    loom::ops::scf
     loom::ops::vector
     loom::ops::view
     loom::pass::pipeline

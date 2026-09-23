@@ -48,6 +48,18 @@ static void loom_scalar_wrap_result_facts(const loom_module_t* module,
     return iree_ok_status();                                             \
   }
 
+#define WIDTH_BINARY_FACTS(name, transfer_fn)                          \
+  iree_status_t name(loom_fact_context_t* context,                     \
+                     const loom_module_t* module, const loom_op_t* op, \
+                     const loom_value_facts_t* operand_facts,          \
+                     loom_value_facts_t* result_facts) {               \
+    const int32_t bit_count = loom_scalar_type_bitwidth(               \
+        loom_scalar_result_element_type(module, op));                  \
+    transfer_fn(&operand_facts[0], &operand_facts[1], bit_count,       \
+                &result_facts[0]);                                     \
+    return iree_ok_status();                                           \
+  }
+
 #define WRAPPING_BINARY_FACTS(name, transfer_fn) \
   BINARY_FACTS(name, transfer_fn,                \
                loom_scalar_wrap_result_facts(module, op, &result_facts[0]);)
@@ -168,8 +180,8 @@ BINARY_FACTS(loom_scalar_remsi_facts, loom_value_facts_remsi)
 BINARY_FACTS(loom_scalar_remui_facts, loom_value_facts_remui)
 WRAPPING_UNARY_FACTS(loom_scalar_negi_facts, loom_value_facts_negi)
 WRAPPING_UNARY_FACTS(loom_scalar_absi_facts, loom_value_facts_absi)
-BINARY_FACTS(loom_scalar_minsi_facts, loom_value_facts_minsi)
-BINARY_FACTS(loom_scalar_maxsi_facts, loom_value_facts_maxsi)
+WIDTH_BINARY_FACTS(loom_scalar_minsi_facts, loom_value_facts_minsi)
+WIDTH_BINARY_FACTS(loom_scalar_maxsi_facts, loom_value_facts_maxsi)
 BINARY_FACTS(loom_scalar_minui_facts, loom_value_facts_minui)
 BINARY_FACTS(loom_scalar_maxui_facts, loom_value_facts_maxui)
 
