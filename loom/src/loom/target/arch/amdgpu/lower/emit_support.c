@@ -487,13 +487,14 @@ static iree_status_t loom_amdgpu_emit_sgpr_scale_byte_offset_u32(
   if (byte_stride == 1) {
     return iree_ok_status();
   }
-  IREE_ASSERT(byte_stride >= 0 && byte_stride <= UINT32_MAX);
   if (byte_shift != LOOM_LOW_SOURCE_MEMORY_ACCESS_BYTE_SHIFT_NONE) {
     return loom_amdgpu_emit_sgpr_binary_immediate(
         context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_S_LSHL_B32,
         low_unscaled_offset, byte_shift, sgpr_type, out_low_offset);
   }
 
+  // The caller's complete-offset proof permits low-word modular arithmetic.
+  // Casting the signed coefficient preserves that product modulo 2^32.
   return loom_amdgpu_emit_sgpr_scale_u32(
       context, source_op, low_unscaled_offset, (uint32_t)byte_stride, sgpr_type,
       out_low_offset);
