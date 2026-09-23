@@ -39,23 +39,4 @@ TEST(AmdgpuAtomicOrderingTest, SystemAdmissionRequiresIntegerCoherenceRecipe) {
       descriptor_set, &source, loom_type_scalar(LOOM_SCALAR_TYPE_I32)));
 }
 
-TEST(AmdgpuAtomicOrderingTest, DeviceRecipeDoesNotImplySystemAdmission) {
-  loom_target_low_descriptor_registry_t registry;
-  loom_amdgpu_low_descriptor_registry_initialize(&registry);
-  const auto* descriptor_set = loom_low_descriptor_registry_lookup(
-      &registry.registry, IREE_SV("amdgpu.rdna4.core"));
-  if (!descriptor_set) {
-    GTEST_SKIP() << "RDNA 4 descriptors are not linked.";
-  }
-
-  loom_low_source_memory_access_plan_t source = {};
-  source.memory_space = LOOM_VALUE_FACT_MEMORY_SPACE_GLOBAL;
-  source.atomic.scope = LOOM_ATOMIC_SCOPE_DEVICE;
-  EXPECT_TRUE(loom_amdgpu_atomic_scope_supported(
-      descriptor_set, &source, loom_type_scalar(LOOM_SCALAR_TYPE_I32)));
-  source.atomic.scope = LOOM_ATOMIC_SCOPE_SYSTEM;
-  EXPECT_FALSE(loom_amdgpu_atomic_scope_supported(
-      descriptor_set, &source, loom_type_scalar(LOOM_SCALAR_TYPE_I32)));
-}
-
 }  // namespace

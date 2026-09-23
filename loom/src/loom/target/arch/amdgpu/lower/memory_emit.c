@@ -21,6 +21,7 @@
 #include "loom/target/arch/amdgpu/lower/emit.h"
 #include "loom/target/arch/amdgpu/lower/memory.h"
 #include "loom/target/arch/amdgpu/lower/memory_bank_service.h"
+#include "loom/target/arch/amdgpu/lower/memory_coherence.h"
 #include "loom/target/arch/amdgpu/lower/memory_ordering.h"
 #include "loom/target/arch/amdgpu/lower/system_memory.h"
 #include "loom/target/arch/amdgpu/lower/types.h"
@@ -836,21 +837,27 @@ static iree_status_t loom_amdgpu_append_memory_cache_attrs(
     loom_low_lower_context_t* context,
     const loom_amdgpu_memory_access_t* access, loom_named_attr_t* attrs,
     iree_host_size_t attr_capacity, iree_host_size_t* inout_attr_count) {
-  if (access->source.read_visibility_scope != LOOM_ATOMIC_SCOPE_THREAD) {
-    // The common plan retained the acquire completion and requires these
-    // reads to reach the coherent backing. Advisory cache preferences cannot
-    // replace or suppress the selected visibility obligation.
-    return loom_amdgpu_system_memory_append_load_attrs(
+  if (access->source.operation_kind ==
+      LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_STORE) {
+    return loom_amdgpu_system_memory_append_release_store_attrs_scoped(
         loom_low_lower_context_builder(context),
-        loom_low_lower_context_descriptor_set(context), attrs, attr_capacity,
-        inout_attr_count);
+        loom_low_lower_context_descriptor_set(context),
+        loom_amdgpu_memory_coherence_scope(access->source.atomic.scope), attrs,
+        attr_capacity, inout_attr_count);
   }
+  uint8_t read_scope = access->source.read_visibility_scope;
   if (access->source.operation_kind ==
       LOOM_MEMORY_ACCESS_OPERATION_ATOMIC_LOAD) {
-    IREE_RETURN_IF_ERROR(loom_amdgpu_system_memory_append_load_attrs(
+    read_scope = iree_max(read_scope, access->source.atomic.scope);
+  }
+  if (read_scope != LOOM_ATOMIC_SCOPE_THREAD) {
+    // The retained visibility obligation and atomic observation scope both
+    // constrain these reads. Advisory cache preferences cannot weaken them.
+    return loom_amdgpu_system_memory_append_load_attrs_scoped(
         loom_low_lower_context_builder(context),
-        loom_low_lower_context_descriptor_set(context), attrs, attr_capacity,
-        inout_attr_count));
+        loom_low_lower_context_descriptor_set(context),
+        loom_amdgpu_memory_coherence_scope(read_scope), attrs, attr_capacity,
+        inout_attr_count);
   }
   const loom_vector_memory_cache_policy_t* policy =
       &access->source.cache_policy;

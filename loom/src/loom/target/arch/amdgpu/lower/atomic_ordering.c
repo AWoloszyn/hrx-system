@@ -93,8 +93,8 @@ bool loom_amdgpu_atomic_scope_supported(
        !loom_amdgpu_type_is_i64(value_type))) {
     return false;
   }
-  // GFX11 integer atomics reach the mapping's coherence point without a scope
-  // immediate. Other cache hierarchies require their own system recipe.
+  // System integer updates require both a coherence recipe and backing that
+  // admits the operation; mapping admission belongs to the runtime.
   const loom_amdgpu_memory_coherence_rule_t* rule =
       loom_amdgpu_atomic_global_ordering_rule_lookup(descriptor_set);
   return rule && iree_any_bit_set(rule->update_scopes,

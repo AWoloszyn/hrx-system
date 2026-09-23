@@ -579,6 +579,36 @@ endif()
 if(LOOM_TARGET_ARCH_AMDGPU)
 loom_check_compile_tests(
   NAME
+    "source_low_memory_atomic_observations_gfx1200"
+  SRC
+    "test/source_low/source_low_memory_atomic_observations_gfx1200.loom-test"
+  REGISTERED_SRCS
+    "${_GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_49E0437B}"
+  TARGETS
+    loom::target::amdgpu::gfx12-generic
+    loom::target::amdgpu::gfx1200
+    loom::target::amdgpu::gfx1201
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU)
+loom_check_compile_tests(
+  NAME
+    "source_low_memory_atomic_observations_gfx1250"
+  SRC
+    "test/source_low/source_low_memory_atomic_observations_gfx1250.loom-test"
+  REGISTERED_SRCS
+    "${_GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_49E0437B}"
+  TARGETS
+    loom::target::amdgpu::gfx12-5-generic
+    loom::target::amdgpu::gfx1250
+    loom::target::amdgpu::gfx1251
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU)
+loom_check_compile_tests(
+  NAME
     "source_low_memory_atomic_publication_gfx1200"
   SRC
     "test/source_low/source_low_memory_atomic_publication_gfx1200.loom-test"
@@ -597,6 +627,36 @@ loom_check_compile_tests(
     "source_low_memory_atomic_publication_gfx1250"
   SRC
     "test/source_low/source_low_memory_atomic_publication_gfx1250.loom-test"
+  REGISTERED_SRCS
+    "${_GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_49E0437B}"
+  TARGETS
+    loom::target::amdgpu::gfx12-5-generic
+    loom::target::amdgpu::gfx1250
+    loom::target::amdgpu::gfx1251
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU)
+loom_check_compile_tests(
+  NAME
+    "source_low_memory_atomic_scopes_gfx1200"
+  SRC
+    "test/source_low/source_low_memory_atomic_scopes_gfx1200.loom-test"
+  REGISTERED_SRCS
+    "${_GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_49E0437B}"
+  TARGETS
+    loom::target::amdgpu::gfx12-generic
+    loom::target::amdgpu::gfx1200
+    loom::target::amdgpu::gfx1201
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU)
+loom_check_compile_tests(
+  NAME
+    "source_low_memory_atomic_scopes_gfx1250"
+  SRC
+    "test/source_low/source_low_memory_atomic_scopes_gfx1250.loom-test"
   REGISTERED_SRCS
     "${_GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_49E0437B}"
   TARGETS

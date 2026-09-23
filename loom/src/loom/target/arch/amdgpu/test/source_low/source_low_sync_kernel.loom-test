@@ -236,7 +236,6 @@ low.kernel.def target<amdgpu.gfx12.generic.core>(@target) workgroup_size(64, 1, 
   s_barrier_signal_all
   s_barrier_wait_all
   s_wait_loadcnt {loadcnt = 0}
-  global_inv {scope = 2}
   return
 }
 
@@ -495,8 +494,6 @@ low.kernel.def target<amdgpu.gfx12_5.generic.core>(@target) workgroup_size(64, 1
   s_wait_storecnt {storecnt = 0}
   s_barrier_signal_all
   s_barrier_wait_all
-  s_wait_loadcnt {loadcnt = 0}
-  global_inv {scope = 2}
   s_wait_loadcnt {loadcnt = 0}
   return
 }

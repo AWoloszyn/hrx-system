@@ -33,7 +33,8 @@ static const loom_amdgpu_memory_coherence_rule_t kMemoryCoherenceRules[] = {
         },
     [LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX12] =
         {
-            .update_scopes = LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_DEVICE,
+            .update_scopes = LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_DEVICE |
+                             LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_SYSTEM,
             .load_attrs = {LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SCOPE,
                            LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SCOPE},
             .store_attrs = {LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SCOPE,
@@ -53,7 +54,8 @@ static const loom_amdgpu_memory_coherence_rule_t kMemoryCoherenceRules[] = {
         },
     [LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX125] =
         {
-            .update_scopes = LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_DEVICE,
+            .update_scopes = LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_DEVICE |
+                             LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_SYSTEM,
             .load_attrs = {LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SCOPE,
                            LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SCOPE},
             .store_attrs = {LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SCOPE,
