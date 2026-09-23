@@ -30,21 +30,21 @@ typedef struct loom_amdgpu_atomic_explicit_packet_selection_t {
 
 // Completion and visibility around one RMW, reduction, or compare-exchange.
 typedef struct loom_amdgpu_atomic_ordering_selection_t {
-  // Explicit waits emitted before the atomic packet.
+  // Completion and writeback packets emitted before the atomic packet.
   loom_amdgpu_atomic_explicit_packet_selection_t
-      pre_atomic_waits[LOOM_AMDGPU_ATOMIC_WAIT_CAPACITY];
-  // Number of populated pre-atomic wait packets.
-  iree_host_size_t pre_atomic_wait_count;
+      pre_atomic_packets[LOOM_AMDGPU_ATOMIC_PREFIX_CAPACITY];
+  // Number of populated pre-atomic packets.
+  iree_host_size_t pre_atomic_packet_count;
   // Explicit waits emitted after the atomic packet.
   loom_amdgpu_atomic_explicit_packet_selection_t
       post_atomic_waits[LOOM_AMDGPU_ATOMIC_WAIT_CAPACITY];
   // Number of populated post-atomic wait packets.
   iree_host_size_t post_atomic_wait_count;
-  // Explicit cache controls emitted after the atomic packet.
+  // Cache invalidation and its completion after the atomic packet.
   loom_amdgpu_atomic_explicit_packet_selection_t
-      post_atomic_cache_controls[LOOM_AMDGPU_ATOMIC_CACHE_CONTROL_CAPACITY];
-  // Number of populated post-atomic cache-control packets.
-  iree_host_size_t post_atomic_cache_control_descriptor_count;
+      post_atomic_visibility_packets[LOOM_AMDGPU_ATOMIC_VISIBILITY_CAPACITY];
+  // Number of populated post-atomic visibility packets.
+  iree_host_size_t post_atomic_visibility_packet_count;
 } loom_amdgpu_atomic_ordering_selection_t;
 
 // Queries coherence-domain support independently of the arithmetic opcode.

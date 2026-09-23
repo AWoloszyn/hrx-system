@@ -551,6 +551,16 @@ loom_check_test_suite(
         ],
     ),
     compile_targets = {
+        "test/source_low/source_low_memory_atomic_publication_gfx1200.loom-test": [
+            "//loom/target/amdgpu:gfx1200",
+            "//loom/target/amdgpu:gfx1201",
+            "//loom/target/amdgpu:gfx12-generic",
+        ],
+        "test/source_low/source_low_memory_atomic_publication_gfx1250.loom-test": [
+            "//loom/target/amdgpu:gfx1250",
+            "//loom/target/amdgpu:gfx1251",
+            "//loom/target/amdgpu:gfx12-5-generic",
+        ],
         "test/source_low/source_low_memory_global_atomic_gfx9_4_generic.loom-test": [
             "//loom/target/amdgpu:gfx9-4-generic",
             "//loom/target/amdgpu:gfx942",
@@ -571,6 +581,7 @@ loom_check_test_suite(
         "//loom/src/loom/test/corpus/source_low:memory_atomic_float64.loom",
         "//loom/src/loom/test/corpus/source_low:memory_atomic_i64.loom",
         "//loom/src/loom/test/corpus/source_low:memory_atomic_observations.loom",
+        "//loom/src/loom/test/corpus/source_low:memory_atomic_publication.loom-test",
         "//loom/src/loom/test/corpus/source_low:memory_cache_policy_non_temporal.loom-test",
         "//loom/src/loom/test/corpus/source_low:memory_cache_policy_scopes.loom-test",
         "//loom/src/loom/test/corpus/source_low:memory_generic_atomic.loom-test",

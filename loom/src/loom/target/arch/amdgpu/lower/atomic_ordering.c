@@ -12,15 +12,16 @@
 #include "loom/target/arch/amdgpu/lower/types.h"
 #include "loom/target/arch/amdgpu/planning/wait_packets.h"
 #include "loom/target/arch/amdgpu/refs/target_refs.h"
+#include "loom/target/arch/amdgpu/target_info.h"
 
 typedef uint8_t loom_amdgpu_atomic_global_ordering_flags_t;
 
-// The cache-policy encoding has a global atomic ordering rule.
+// The target memory model has a global atomic ordering rule.
 #define LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_SUPPORTED ((uint8_t)1u << 0)
-// Atomic packets using this encoding require an explicit device scope attr.
+// Atomic packets using this model require an explicit device scope attr.
 #define LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_PACKET_SCOPE_DEVICE \
   ((uint8_t)1u << 1)
-// Integer system updates share this encoding's device ordering recipe.
+// Integer system updates share this model's device ordering recipe.
 #define LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_SYSTEM_INTEGER ((uint8_t)1u << 2)
 
 typedef struct loom_amdgpu_atomic_global_ordering_rule_t {
@@ -30,15 +31,21 @@ typedef struct loom_amdgpu_atomic_global_ordering_rule_t {
   uint32_t release_wait_masks[LOOM_AMDGPU_ATOMIC_WAIT_CAPACITY];
   // Number of populated release wait-counter masks.
   uint8_t release_wait_count;
+  // Scoped cache writeback emitted after the release waits, or zero.
+  loom_amdgpu_descriptor_ref_t release_writeback;
+  // Completion counter for the scoped writeback, or zero.
+  uint32_t release_writeback_wait_mask;
   // Wait-counter masks emitted after acquire atomics by operation kind.
   uint32_t acquire_wait_masks[LOOM_AMDGPU_ATOMIC_OPERATION_COUNT_];
   // Additional completion domain for a flat atomic that may resolve to LDS.
   uint32_t flat_acquire_wait_mask;
   // Cache-control packets emitted after acquire atomics.
   loom_amdgpu_atomic_explicit_packet_selection_t
-      acquire_cache_controls[LOOM_AMDGPU_ATOMIC_CACHE_CONTROL_CAPACITY];
+      acquire_cache_controls[LOOM_AMDGPU_ATOMIC_VISIBILITY_CAPACITY];
   // Number of populated acquire cache-control packets.
   uint8_t acquire_cache_control_count;
+  // Completion required after cache invalidation, or zero.
+  uint32_t acquire_cache_control_wait_mask;
   // Packet scope immediate/attribute value when required by |flags|.
   uint8_t packet_scope;
 } loom_amdgpu_atomic_global_ordering_rule_t;
@@ -47,91 +54,135 @@ typedef struct loom_amdgpu_atomic_global_ordering_rule_t {
 #define LOOM_AMDGPU_GLOBAL_SCOPE_DEVICE 2
 
 static const loom_amdgpu_atomic_global_ordering_rule_t
-    kAmdgpuAtomicGlobalOrderingRules
-        [LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX950_NT_SC0_SC1 +
-         1] = {
-            [LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC] =
-                {
-                    .flags = LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_SUPPORTED |
-                             LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_SYSTEM_INTEGER,
-                    .release_wait_masks =
-                        {
-                            // A release orders preceding accesses through all
-                            // address spaces, including workgroup storage.
-                            LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD |
-                                LOOM_AMDGPU_WAIT_COUNTER_MASK_LDS |
-                                LOOM_AMDGPU_WAIT_COUNTER_MASK_SMEM,
+    kAmdgpuAtomicGlobalOrderingRules[LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX125 +
+                                     1] = {
+        [LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX11] =
+            {
+                .flags = LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_SUPPORTED |
+                         LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_SYSTEM_INTEGER,
+                .release_wait_masks =
+                    {
+                        // A release orders preceding accesses through all
+                        // address spaces, including workgroup storage.
+                        LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD |
+                            LOOM_AMDGPU_WAIT_COUNTER_MASK_LDS |
+                            LOOM_AMDGPU_WAIT_COUNTER_MASK_SMEM,
+                        LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_STORE,
+                    },
+                .release_wait_count = 2,
+                .acquire_wait_masks =
+                    {
+                        [LOOM_AMDGPU_ATOMIC_OPERATION_REDUCE] =
                             LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_STORE,
-                        },
-                    .release_wait_count = 2,
-                    .acquire_wait_masks =
+                        [LOOM_AMDGPU_ATOMIC_OPERATION_RMW] =
+                            LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD,
+                        [LOOM_AMDGPU_ATOMIC_OPERATION_CMPXCHG] =
+                            LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD,
+                    },
+                .flat_acquire_wait_mask = LOOM_AMDGPU_WAIT_COUNTER_MASK_LDS |
+                                          LOOM_AMDGPU_WAIT_COUNTER_MASK_SMEM,
+                .acquire_cache_controls =
+                    {
                         {
-                            [LOOM_AMDGPU_ATOMIC_OPERATION_REDUCE] =
-                                LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_STORE,
-                            [LOOM_AMDGPU_ATOMIC_OPERATION_RMW] =
-                                LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD,
-                            [LOOM_AMDGPU_ATOMIC_OPERATION_CMPXCHG] =
-                                LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD,
+                            .descriptor_ref =
+                                LOOM_AMDGPU_DESCRIPTOR_REF_BUFFER_GL1_INV,
                         },
-                    .flat_acquire_wait_mask =
-                        LOOM_AMDGPU_WAIT_COUNTER_MASK_LDS |
-                        LOOM_AMDGPU_WAIT_COUNTER_MASK_SMEM,
-                    .acquire_cache_controls =
                         {
-                            {
-                                .descriptor_ref =
-                                    LOOM_AMDGPU_DESCRIPTOR_REF_BUFFER_GL1_INV,
-                            },
-                            {
-                                .descriptor_ref =
-                                    LOOM_AMDGPU_DESCRIPTOR_REF_BUFFER_GL0_INV,
-                            },
+                            .descriptor_ref =
+                                LOOM_AMDGPU_DESCRIPTOR_REF_BUFFER_GL0_INV,
                         },
-                    .acquire_cache_control_count = 2,
-                },
-            [LOOM_AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX12_NV_SCOPE_TH] =
-                {
-                    .flags =
-                        LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_SUPPORTED |
-                        LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_PACKET_SCOPE_DEVICE,
-                    .acquire_wait_masks =
+                    },
+                .acquire_cache_control_count = 2,
+            },
+        [LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX12] =
+            {
+                .flags = LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_SUPPORTED |
+                         LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_PACKET_SCOPE_DEVICE,
+                // The shared memory frontier orders preceding global accesses.
+                // A global publication also releases the separate LDS domain.
+                .release_wait_masks = {LOOM_AMDGPU_WAIT_COUNTER_MASK_LDS},
+                .release_wait_count = 1,
+                .flat_acquire_wait_mask = LOOM_AMDGPU_WAIT_COUNTER_MASK_LDS,
+                .acquire_wait_masks =
+                    {
+                        [LOOM_AMDGPU_ATOMIC_OPERATION_REDUCE] =
+                            LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_STORE,
+                        [LOOM_AMDGPU_ATOMIC_OPERATION_RMW] =
+                            LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD,
+                        [LOOM_AMDGPU_ATOMIC_OPERATION_CMPXCHG] =
+                            LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD,
+                    },
+                .acquire_cache_controls =
+                    {
                         {
-                            [LOOM_AMDGPU_ATOMIC_OPERATION_REDUCE] =
-                                LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_STORE,
-                            [LOOM_AMDGPU_ATOMIC_OPERATION_RMW] =
-                                LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD,
-                            [LOOM_AMDGPU_ATOMIC_OPERATION_CMPXCHG] =
-                                LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD,
-                        },
-                    .acquire_cache_controls =
-                        {
-                            {
-                                .descriptor_ref =
-                                    LOOM_AMDGPU_DESCRIPTOR_REF_GLOBAL_INV,
-                                .immediates =
+                            .descriptor_ref =
+                                LOOM_AMDGPU_DESCRIPTOR_REF_GLOBAL_INV,
+                            .immediates =
+                                {
                                     {
-                                        {
-                                            .name = IREE_SVL("scope"),
-                                            .value =
-                                                LOOM_AMDGPU_GLOBAL_SCOPE_DEVICE,
-                                        },
+                                        .name = IREE_SVL("scope"),
+                                        .value =
+                                            LOOM_AMDGPU_GLOBAL_SCOPE_DEVICE,
                                     },
-                                .immediate_count = 1,
-                            },
+                                },
+                            .immediate_count = 1,
                         },
-                    .acquire_cache_control_count = 1,
-                    .packet_scope = LOOM_AMDGPU_GLOBAL_SCOPE_DEVICE,
-                },
+                    },
+                .acquire_cache_control_count = 1,
+                .packet_scope = LOOM_AMDGPU_GLOBAL_SCOPE_DEVICE,
+            },
+        [LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX125] =
+            {
+                .flags = LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_SUPPORTED |
+                         LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_PACKET_SCOPE_DEVICE,
+                // The shared memory frontier orders preceding global accesses.
+                // A global publication also releases the separate LDS domain.
+                .release_wait_masks = {LOOM_AMDGPU_WAIT_COUNTER_MASK_LDS},
+                .release_wait_count = 1,
+                .release_writeback = LOOM_AMDGPU_DESCRIPTOR_REF_GLOBAL_WB,
+                .release_writeback_wait_mask =
+                    LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_STORE,
+                .acquire_cache_control_wait_mask =
+                    LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD,
+                .flat_acquire_wait_mask = LOOM_AMDGPU_WAIT_COUNTER_MASK_LDS,
+                .acquire_wait_masks =
+                    {
+                        [LOOM_AMDGPU_ATOMIC_OPERATION_REDUCE] =
+                            LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_STORE,
+                        [LOOM_AMDGPU_ATOMIC_OPERATION_RMW] =
+                            LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD,
+                        [LOOM_AMDGPU_ATOMIC_OPERATION_CMPXCHG] =
+                            LOOM_AMDGPU_WAIT_COUNTER_MASK_VMEM_LOAD,
+                    },
+                .acquire_cache_controls =
+                    {
+                        {
+                            .descriptor_ref =
+                                LOOM_AMDGPU_DESCRIPTOR_REF_GLOBAL_INV,
+                            .immediates =
+                                {
+                                    {
+                                        .name = IREE_SVL("scope"),
+                                        .value =
+                                            LOOM_AMDGPU_GLOBAL_SCOPE_DEVICE,
+                                    },
+                                },
+                            .immediate_count = 1,
+                        },
+                    },
+                .acquire_cache_control_count = 1,
+                .packet_scope = LOOM_AMDGPU_GLOBAL_SCOPE_DEVICE,
+            },
 };
 
 static const loom_amdgpu_atomic_global_ordering_rule_t*
 loom_amdgpu_atomic_global_ordering_rule_lookup(
-    loom_amdgpu_vector_memory_cache_policy_encoding_t encoding) {
-  if ((uint32_t)encoding >= IREE_ARRAYSIZE(kAmdgpuAtomicGlobalOrderingRules)) {
-    return NULL;
-  }
+    const loom_low_descriptor_set_t* descriptor_set) {
+  const loom_amdgpu_descriptor_set_info_t* info =
+      loom_amdgpu_target_info_descriptor_set_at(
+          descriptor_set->descriptor_set_ordinal);
   const loom_amdgpu_atomic_global_ordering_rule_t* rule =
-      &kAmdgpuAtomicGlobalOrderingRules[encoding];
+      &kAmdgpuAtomicGlobalOrderingRules[info->vector_memory.ordering_model];
   return iree_any_bit_set(rule->flags,
                           LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_SUPPORTED)
              ? rule
@@ -180,9 +231,7 @@ static bool loom_amdgpu_atomic_global_ordering_supported(
       ordering != LOOM_ATOMIC_ORDERING_SEQ_CST) {
     return false;
   }
-  const loom_amdgpu_vector_memory_cache_policy_encoding_t encoding =
-      loom_amdgpu_memory_cache_policy_descriptor_encoding(descriptor_set);
-  return loom_amdgpu_atomic_global_ordering_rule_lookup(encoding) != NULL;
+  return loom_amdgpu_atomic_global_ordering_rule_lookup(descriptor_set) != NULL;
 }
 
 static bool loom_amdgpu_atomic_memory_space_is_device_visible(
@@ -213,8 +262,7 @@ bool loom_amdgpu_atomic_scope_supported(
   // GFX11 integer atomics reach the mapping's coherence point without a scope
   // immediate. Other cache hierarchies require their own system recipe.
   const loom_amdgpu_atomic_global_ordering_rule_t* rule =
-      loom_amdgpu_atomic_global_ordering_rule_lookup(
-          loom_amdgpu_memory_cache_policy_descriptor_encoding(descriptor_set));
+      loom_amdgpu_atomic_global_ordering_rule_lookup(descriptor_set);
   return rule &&
          iree_any_bit_set(rule->flags,
                           LOOM_AMDGPU_ATOMIC_GLOBAL_ORDERING_SYSTEM_INTEGER);
@@ -276,18 +324,32 @@ static bool loom_amdgpu_atomic_append_wait_counter_mask(
   return true;
 }
 
-static bool loom_amdgpu_atomic_select_global_release_waits(
+static bool loom_amdgpu_atomic_select_global_release_packets(
     const loom_low_descriptor_set_t* descriptor_set,
     const loom_amdgpu_atomic_global_ordering_rule_t* rule,
     loom_amdgpu_atomic_ordering_selection_t* ordering) {
   for (iree_host_size_t i = 0; i < rule->release_wait_count; ++i) {
     if (!loom_amdgpu_atomic_append_wait_counter_mask(
             descriptor_set, rule->release_wait_masks[i],
-            ordering->pre_atomic_waits,
-            IREE_ARRAYSIZE(ordering->pre_atomic_waits),
-            &ordering->pre_atomic_wait_count)) {
+            ordering->pre_atomic_packets,
+            IREE_ARRAYSIZE(ordering->pre_atomic_packets),
+            &ordering->pre_atomic_packet_count)) {
       return false;
     }
+  }
+  if (rule->release_writeback != 0) {
+    ordering->pre_atomic_packets[ordering->pre_atomic_packet_count++] =
+        (loom_amdgpu_atomic_explicit_packet_selection_t){
+            .descriptor_ref = rule->release_writeback,
+            .immediates = {{.name = IREE_SVL("scope"),
+                            .value = rule->packet_scope}},
+            .immediate_count = 1,
+        };
+    return loom_amdgpu_atomic_append_wait_counter_mask(
+        descriptor_set, rule->release_writeback_wait_mask,
+        ordering->pre_atomic_packets,
+        IREE_ARRAYSIZE(ordering->pre_atomic_packets),
+        &ordering->pre_atomic_packet_count);
   }
   return true;
 }
@@ -315,10 +377,17 @@ static bool loom_amdgpu_atomic_select_global_acquire_cache_controls(
                                             packet->descriptor_ref)) {
       return false;
     }
-    ordering->post_atomic_cache_controls[i] = *packet;
+    ordering->post_atomic_visibility_packets[i] = *packet;
   }
-  ordering->post_atomic_cache_control_descriptor_count =
+  ordering->post_atomic_visibility_packet_count =
       rule->acquire_cache_control_count;
+  if (rule->acquire_cache_control_wait_mask != 0) {
+    return loom_amdgpu_atomic_append_wait_counter_mask(
+        descriptor_set, rule->acquire_cache_control_wait_mask,
+        ordering->post_atomic_visibility_packets,
+        IREE_ARRAYSIZE(ordering->post_atomic_visibility_packets),
+        &ordering->post_atomic_visibility_packet_count);
+  }
   return true;
 }
 
@@ -328,10 +397,8 @@ bool loom_amdgpu_atomic_select_ordering(
     loom_amdgpu_atomic_operation_kind_t operation_kind,
     loom_amdgpu_atomic_ordering_selection_t* ordering) {
   *ordering = (loom_amdgpu_atomic_ordering_selection_t){0};
-  const loom_amdgpu_vector_memory_cache_policy_encoding_t encoding =
-      loom_amdgpu_memory_cache_policy_descriptor_encoding(descriptor_set);
   const loom_amdgpu_atomic_global_ordering_rule_t* rule =
-      loom_amdgpu_atomic_global_ordering_rule_lookup(encoding);
+      loom_amdgpu_atomic_global_ordering_rule_lookup(descriptor_set);
   if (!loom_amdgpu_atomic_memory_space_is_device_visible(
           source->memory_space) ||
       (!loom_amdgpu_atomic_source_has_release_ordering(source) &&
@@ -343,8 +410,8 @@ bool loom_amdgpu_atomic_select_ordering(
   }
 
   if (loom_amdgpu_atomic_source_has_release_ordering(source)) {
-    if (!loom_amdgpu_atomic_select_global_release_waits(descriptor_set, rule,
-                                                        ordering)) {
+    if (!loom_amdgpu_atomic_select_global_release_packets(descriptor_set, rule,
+                                                          ordering)) {
       return false;
     }
   }
@@ -380,10 +447,8 @@ void loom_amdgpu_atomic_select_packet_attrs(
           source->memory_space)) {
     return;
   }
-  const loom_amdgpu_vector_memory_cache_policy_encoding_t encoding =
-      loom_amdgpu_memory_cache_policy_descriptor_encoding(descriptor_set);
   const loom_amdgpu_atomic_global_ordering_rule_t* rule =
-      loom_amdgpu_atomic_global_ordering_rule_lookup(encoding);
+      loom_amdgpu_atomic_global_ordering_rule_lookup(descriptor_set);
   if (rule == NULL ||
       !iree_any_bit_set(
           rule->flags,
@@ -415,11 +480,11 @@ iree_status_t loom_amdgpu_atomic_resolve_ordering_selection(
     const loom_amdgpu_atomic_ordering_selection_t* selection,
     loom_amdgpu_atomic_ordering_plan_t* out_plan) {
   *out_plan = (loom_amdgpu_atomic_ordering_plan_t){0};
-  out_plan->pre_atomic_wait_count = selection->pre_atomic_wait_count;
-  for (iree_host_size_t i = 0; i < selection->pre_atomic_wait_count; ++i) {
+  out_plan->pre_atomic_packet_count = selection->pre_atomic_packet_count;
+  for (iree_host_size_t i = 0; i < selection->pre_atomic_packet_count; ++i) {
     IREE_RETURN_IF_ERROR(loom_amdgpu_atomic_resolve_explicit_packet_selection(
-        context, &selection->pre_atomic_waits[i],
-        &out_plan->pre_atomic_waits[i]));
+        context, &selection->pre_atomic_packets[i],
+        &out_plan->pre_atomic_packets[i]));
   }
   out_plan->post_atomic_wait_count = selection->post_atomic_wait_count;
   for (iree_host_size_t i = 0; i < selection->post_atomic_wait_count; ++i) {
@@ -427,13 +492,13 @@ iree_status_t loom_amdgpu_atomic_resolve_ordering_selection(
         context, &selection->post_atomic_waits[i],
         &out_plan->post_atomic_waits[i]));
   }
-  out_plan->post_atomic_cache_control_descriptor_count =
-      selection->post_atomic_cache_control_descriptor_count;
+  out_plan->post_atomic_visibility_packet_count =
+      selection->post_atomic_visibility_packet_count;
   for (iree_host_size_t i = 0;
-       i < selection->post_atomic_cache_control_descriptor_count; ++i) {
+       i < selection->post_atomic_visibility_packet_count; ++i) {
     IREE_RETURN_IF_ERROR(loom_amdgpu_atomic_resolve_explicit_packet_selection(
-        context, &selection->post_atomic_cache_controls[i],
-        &out_plan->post_atomic_cache_controls[i]));
+        context, &selection->post_atomic_visibility_packets[i],
+        &out_plan->post_atomic_visibility_packets[i]));
   }
   return iree_ok_status();
 }
@@ -453,8 +518,8 @@ iree_status_t loom_amdgpu_emit_atomic_pre_ordering(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     const loom_amdgpu_atomic_ordering_plan_t* ordering) {
   return loom_amdgpu_emit_atomic_ordering_packets(
-      context, source_op, ordering->pre_atomic_waits,
-      ordering->pre_atomic_wait_count);
+      context, source_op, ordering->pre_atomic_packets,
+      ordering->pre_atomic_packet_count);
 }
 
 iree_status_t loom_amdgpu_emit_atomic_post_ordering(
@@ -464,6 +529,6 @@ iree_status_t loom_amdgpu_emit_atomic_post_ordering(
       context, source_op, ordering->post_atomic_waits,
       ordering->post_atomic_wait_count));
   return loom_amdgpu_emit_atomic_ordering_packets(
-      context, source_op, ordering->post_atomic_cache_controls,
-      ordering->post_atomic_cache_control_descriptor_count);
+      context, source_op, ordering->post_atomic_visibility_packets,
+      ordering->post_atomic_visibility_packet_count);
 }

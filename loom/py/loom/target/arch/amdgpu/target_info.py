@@ -227,6 +227,17 @@ AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODINGS = (
     AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX950_NT_SC0_SC1,
 )
 
+AMDGPU_MEMORY_ORDERING_MODEL_NONE = "none"
+AMDGPU_MEMORY_ORDERING_MODEL_GFX11 = "gfx11"
+AMDGPU_MEMORY_ORDERING_MODEL_GFX12 = "gfx12"
+AMDGPU_MEMORY_ORDERING_MODEL_GFX125 = "gfx125"
+AMDGPU_MEMORY_ORDERING_MODELS = (
+    AMDGPU_MEMORY_ORDERING_MODEL_NONE,
+    AMDGPU_MEMORY_ORDERING_MODEL_GFX11,
+    AMDGPU_MEMORY_ORDERING_MODEL_GFX12,
+    AMDGPU_MEMORY_ORDERING_MODEL_GFX125,
+)
+
 AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ATTR_SCOPE = "scope"
 AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ATTR_TH = "th"
 AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ATTR_NT = "nt"
@@ -394,6 +405,7 @@ AMDGPU_BUFFER_RESOURCE_INFO_BASE57 = AmdgpuDescriptorSetBufferResourceInfo(
 @dataclass(frozen=True, slots=True)
 class AmdgpuDescriptorSetVectorMemoryInfo:
     cache_policy_encoding: str = AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_NONE
+    ordering_model: str = AMDGPU_MEMORY_ORDERING_MODEL_NONE
 
 
 @dataclass(frozen=True, slots=True)
@@ -1267,6 +1279,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE57,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
             cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX12_NV_SCOPE_TH,
+            ordering_model=AMDGPU_MEMORY_ORDERING_MODEL_GFX125,
         ),
     ),
     AmdgpuDescriptorSetInfo(
@@ -1277,6 +1290,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE57,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
             cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX12_NV_SCOPE_TH,
+            ordering_model=AMDGPU_MEMORY_ORDERING_MODEL_GFX125,
         ),
     ),
     AmdgpuDescriptorSetInfo(
@@ -1288,6 +1302,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE57,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
             cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX12_NV_SCOPE_TH,
+            ordering_model=AMDGPU_MEMORY_ORDERING_MODEL_GFX125,
         ),
     ),
     AmdgpuDescriptorSetInfo(
@@ -1298,6 +1313,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE48_UNIFIED,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
             cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC,
+            ordering_model=AMDGPU_MEMORY_ORDERING_MODEL_GFX11,
         ),
     ),
     AmdgpuDescriptorSetInfo(
@@ -1308,6 +1324,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE48_UNIFIED,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
             cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC,
+            ordering_model=AMDGPU_MEMORY_ORDERING_MODEL_GFX11,
         ),
     ),
     AmdgpuDescriptorSetInfo(
@@ -1318,6 +1335,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE48_UNIFIED,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
             cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC,
+            ordering_model=AMDGPU_MEMORY_ORDERING_MODEL_GFX11,
         ),
     ),
     AmdgpuDescriptorSetInfo(
@@ -1328,6 +1346,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE48_UNIFIED,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
             cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX12_NV_SCOPE_TH,
+            ordering_model=AMDGPU_MEMORY_ORDERING_MODEL_GFX12,
         ),
     ),
     AmdgpuDescriptorSetInfo(
@@ -1371,6 +1390,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE48_UNIFIED,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
             cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX11_GLC_SLC_DLC,
+            ordering_model=AMDGPU_MEMORY_ORDERING_MODEL_GFX11,
         ),
     ),
     AmdgpuDescriptorSetInfo(
@@ -1383,6 +1403,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE48_UNIFIED,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
             cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX12_NV_SCOPE_TH,
+            ordering_model=AMDGPU_MEMORY_ORDERING_MODEL_GFX12,
         ),
     ),
     AmdgpuDescriptorSetInfo(
@@ -1395,6 +1416,7 @@ AMDGPU_DESCRIPTOR_SET_INFOS: tuple[AmdgpuDescriptorSetInfo, ...] = (
         buffer_resource=AMDGPU_BUFFER_RESOURCE_INFO_BASE57,
         vector_memory=AmdgpuDescriptorSetVectorMemoryInfo(
             cache_policy_encoding=AMDGPU_VECTOR_MEMORY_CACHE_POLICY_ENCODING_GFX12_NV_SCOPE_TH,
+            ordering_model=AMDGPU_MEMORY_ORDERING_MODEL_GFX125,
         ),
     ),
 )
@@ -2476,6 +2498,16 @@ def _validate_amdgpu_generic_descriptor_contract(
         raise ValueError(
             f"AMDGPU generic descriptor set {descriptor_set.key} "
             "vector-memory cache-policy encoding does not match every member"
+        )
+
+    if any(
+        member.vector_memory.ordering_model
+        != descriptor_set.vector_memory.ordering_model
+        for member in exact_member_descriptor_sets
+    ):
+        raise ValueError(
+            f"AMDGPU generic descriptor set {descriptor_set.key} "
+            "memory-ordering model does not match every member"
         )
 
     member_record_encodings = {
