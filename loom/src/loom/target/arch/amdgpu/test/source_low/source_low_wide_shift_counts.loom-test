@@ -10,11 +10,9 @@ func.def @wide_shift_constant(%values: vector<2xi64>) -> (i64) {
 
 // ----
 low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @wide_shift_constant(%values: reg<amdgpu.vgpr x4>) -> (reg<amdgpu.vgpr x2>) asm {
-  %7 = slice %values[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %8 = slice %values[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %value = concat(%7, %8) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %10 = s_mov_b32 31
-  %shifted = v_lshlrev_b64 %10, %value
+  %value = slice %values[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr x2>
+  %8 = s_mov_b32 31
+  %shifted = v_lshlrev_b64 %8, %value
   return %shifted
 }
 
@@ -28,11 +26,9 @@ func.def @wide_shift_uniform(%values: vector<2xi64>, %count: i64) -> (i64) {
 
 // ----
 low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @wide_shift_uniform(%values: reg<amdgpu.vgpr x4>, %count: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
-  %8 = slice %values[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %9 = slice %values[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %value = concat(%8, %9) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %11 = slice %count[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %shifted = v_lshlrev_b64 %11, %value
+  %value = slice %values[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr x2>
+  %9 = slice %count[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %shifted = v_lshlrev_b64 %9, %value
   return %shifted
 }
 
@@ -47,11 +43,9 @@ func.def @wide_shift_varying(%values: vector<2xi64>, %counts: vector<2xi64>) -> 
 
 // ----
 low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @wide_shift_varying(%values: reg<amdgpu.vgpr x4>, %counts: reg<amdgpu.vgpr x4>) -> (reg<amdgpu.vgpr x2>) asm {
-  %9 = slice %values[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %10 = slice %values[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %value = concat(%9, %10) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %12 = slice %counts[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %shifted = v_lshlrev_b64 %12, %value
+  %value = slice %values[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr x2>
+  %13 = slice %counts[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %shifted = v_lshlrev_b64 %13, %value
   return %shifted
 }
 
@@ -82,12 +76,10 @@ func.def @wide_right_shift_uniform_count(%values: vector<2xi64>, %count: i64) ->
 
 // ----
 low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @wide_right_shift_uniform_count(%values: reg<amdgpu.vgpr x4>, %count: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>) asm {
-  %11 = slice %values[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %12 = slice %values[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %value = concat(%11, %12) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %14 = slice %count[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %logical = v_lshrrev_b64 %14, %value
-  %signed = v_ashrrev_i64 %14, %value
+  %value = slice %values[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr x2>
+  %12 = slice %count[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %logical = v_lshrrev_b64 %12, %value
+  %signed = v_ashrrev_i64 %12, %value
   return %logical, %signed
 }
 
@@ -103,12 +95,10 @@ func.def @wide_right_shift_varying_count(%values: vector<2xi64>, %counts: vector
 
 // ----
 low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @wide_right_shift_varying_count(%values: reg<amdgpu.vgpr x4>, %counts: reg<amdgpu.vgpr x4>) -> (reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>) asm {
-  %12 = slice %values[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %13 = slice %values[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %value = concat(%12, %13) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %15 = slice %counts[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %logical = v_lshrrev_b64 %15, %value
-  %signed = v_ashrrev_i64 %15, %value
+  %value = slice %values[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr x2>
+  %19 = slice %counts[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %logical = v_lshrrev_b64 %19, %value
+  %signed = v_ashrrev_i64 %19, %value
   return %logical, %signed
 }
 
@@ -124,16 +114,16 @@ func.def @wide_right_shift_constant(%values: vector<2xi64>) -> (i64, i64) {
 
 // ----
 low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @wide_right_shift_constant(%values: reg<amdgpu.vgpr x4>) -> (reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>) asm {
-  %10 = slice %values[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %11 = slice %values[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %value = concat(%10, %11) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %13 = s_mov_b32 31
-  %18 = v_lshrrev_b32_src0_inline %10, 31
-  %19 = v_lshlrev_b32_src0_inline %11, 1
-  %20 = v_or_b32 %18, %19
-  %21 = v_lshrrev_b32_src0_inline %11, 31
-  %logical = concat(%20, %21) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %signed = v_ashrrev_i64 %13, %value
+  %value = slice %values[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr x2>
+  %11 = s_mov_b32 31
+  %24 = slice %values[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %23 = slice %values[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %16 = v_lshrrev_b32_src0_inline %24, 31
+  %17 = v_lshlrev_b32_src0_inline %23, 1
+  %18 = v_or_b32 %16, %17
+  %19 = v_lshrrev_b32_src0_inline %23, 31
+  %logical = concat(%18, %19) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %signed = v_ashrrev_i64 %11, %value
   return %logical, %signed
 }
 

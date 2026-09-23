@@ -44,7 +44,8 @@ void loom_amdgpu_mark_value_plan_storage_demands(
           (const loom_amdgpu_vector_extract_plan_t*)plan.target_data;
       loom_low_lower_require_source_value_storage(context,
                                                   extract_plan->source);
-      if (extract_plan->is_dynamic) {
+      if (iree_any_bit_set(extract_plan->flags,
+                           LOOM_AMDGPU_VECTOR_EXTRACT_FLAG_DYNAMIC)) {
         loom_low_lower_require_source_value_storage(
             context, extract_plan->dynamic_index);
       }

@@ -44,3 +44,34 @@ func.def @merged_predicate(%input: vector<4xi1>, %choose_first: i1, %lhs: i32, %
   %selected = scf.select %condition, %lhs, %rhs : i32
   func.return %selected : i32
 }
+
+// ====
+
+func.def @extracted_predicate_integer(%mask: vector<4xi1>) -> (i32, i32) {
+  %condition = vector.extract %mask[1] : vector<4xi1> -> i1
+  %unsigned = scalar.extui %condition : i1 to i32
+  %signed = scalar.extsi %condition : i1 to i32
+  func.return %unsigned, %signed : i32, i32
+}
+
+// ====
+
+func.def @dynamic_predicate_element(%mask: vector<4xi1>, %position: index) -> (i1) {
+  %lane = index.assume %position [range(%position, 0, 3)] : index
+  %selected = vector.extract %mask[%lane] : vector<4xi1> -> i1
+  func.return %selected : i1
+}
+
+// ====
+
+func.def @predicate_tail_slice(%mask: vector<2x2xi1>) -> (vector<2xi1>) {
+  %tail = vector.extract %mask[1] : vector<2x2xi1> -> vector<2xi1>
+  func.return %tail : vector<2xi1>
+}
+
+// ====
+
+func.def @multidimensional_predicate_element(%mask: vector<2x2xi1>) -> (i1) {
+  %selected = vector.extract %mask[1, 0] : vector<2x2xi1> -> i1
+  func.return %selected : i1
+}

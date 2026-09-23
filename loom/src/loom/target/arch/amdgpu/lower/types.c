@@ -158,8 +158,7 @@ static const loom_amdgpu_vector_storage_rule_t
     kAmdgpuVectorStorageRules[LOOM_SCALAR_TYPE_COUNT_] = {
         [LOOM_SCALAR_TYPE_I1] = LOOM_AMDGPU_VECTOR_STORAGE_RULE_LANE_MULTIPLE(
             LOOM_AMDGPU_VECTOR_STORAGE_KIND_I1_MASK,
-            LOOM_AMDGPU_MAX_SCALARIZED_32BIT_LANES, 1, 2,
-            LOOM_AMDGPU_VECTOR_STORAGE_RULE_FLAG_RANK1_ONLY),
+            LOOM_AMDGPU_MAX_SCALARIZED_32BIT_LANES, 1, 2, 0),
         [LOOM_SCALAR_TYPE_I8] = LOOM_AMDGPU_VECTOR_STORAGE_RULE_PACKED_32BIT(
             LOOM_AMDGPU_VECTOR_STORAGE_KIND_PACKED_INTEGER,
             LOOM_AMDGPU_MAX_PACKED_I8_LANES, 8,
@@ -402,7 +401,7 @@ uint32_t loom_amdgpu_vector_f32_register_count(loom_type_t type) {
 }
 
 uint32_t loom_amdgpu_vector_i1_lane_count(loom_type_t type) {
-  return loom_amdgpu_static_vector_lane_count(
+  return loom_amdgpu_static_vector_register_count(
       type, LOOM_SCALAR_TYPE_I1, LOOM_AMDGPU_MAX_SCALARIZED_32BIT_LANES);
 }
 

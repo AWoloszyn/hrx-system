@@ -964,10 +964,12 @@ def _vector_extract_recipe_rule(
 
 def _vector_extract_recipe_rules() -> tuple[RecipeRule, ...]:
     full_width_pairs = (
+        (_VEC_I1_STATIC, _I1),
         (_VEC_I32_STATIC, _I32),
         (_VEC_F32_STATIC, _F32),
         (_VEC_I64_STATIC, _I64),
         (_VEC_F64_STATIC, _F64),
+        (_VEC_I1_STATIC, _VEC_I1_STATIC),
         (_VEC_I32_STATIC, _VEC_I32_STATIC),
         (_VEC_F32_STATIC, _VEC_F32_STATIC),
         (_VEC_I64_STATIC, _VEC_I64_STATIC),
@@ -981,26 +983,9 @@ def _vector_extract_recipe_rules() -> tuple[RecipeRule, ...]:
         (_VEC_F8E4M3_PACKED, _F8E4M3),
         (_VEC_F8E5M2_PACKED, _F8E5M2),
     )
-    return (
-        RecipeRule(
-            source_op=vector.vector_extract,
-            guards=(
-                _value_type("source", _VEC_I1_STATIC),
-                _value_type("result", _I1),
-                Guard.i64_array_count("static_indices", 1),
-                Guard.operand_segment_count("indices", 0),
-                Guard.vector_extract_shape(
-                    "source",
-                    "result",
-                    "static_indices",
-                    diagnostic=_VECTOR_EXTRACT_SHAPE_DIAGNOSTIC,
-                ),
-            ),
-        ),
-        *(
-            _vector_extract_recipe_rule(source_type, result_type)
-            for source_type, result_type in (*full_width_pairs, *packed_scalar_pairs)
-        ),
+    return tuple(
+        _vector_extract_recipe_rule(source_type, result_type)
+        for source_type, result_type in (*full_width_pairs, *packed_scalar_pairs)
     )
 
 

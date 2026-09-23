@@ -2388,7 +2388,7 @@ iree_status_t loom_amdgpu_lower_vector_fp8_conversion(
               .result_register_count = 1,
               .element_register_count = 1,
               .lane_bit_count = 8,
-              .sign_extend_packed_lane = false,
+              .flags = LOOM_AMDGPU_VECTOR_EXTRACT_FLAG_PACKED,
           },
       .low_f32_scale = LOOM_VALUE_ID_INVALID,
       .sgpr_type = loom_type_none(),

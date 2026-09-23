@@ -1,4 +1,6 @@
 // TEMPLATE: loom/src/loom/test/corpus/source_low/layout_predicate_extract.loom-test
+// TEMPLATE-EXCLUDE: @predicate_tail_slice XDNA predicate extraction requires a scalar result.
+// TEMPLATE-EXCLUDE: @multidimensional_predicate_element XDNA predicate extraction requires a rank-one source.
 // RUN: emit source-low target=amd.xdna.aie2p:core output=low
 
 // A singleton predicate vector and its only element share the same mask.
@@ -113,5 +115,48 @@ low.func.def target<amd.xdna.aie2p.core> abi(object_function) @merged_predicate(
 ^merge(%condition: reg<aie2p.er>):
   %25 = copy %condition : reg<aie2p.er> -> reg<aie2p.mr27_select>
   %selected = sel.nez %lhs, %rhs, %25
+  return %selected
+}
+
+// ====
+
+func.def @extracted_predicate_integer(%mask: vector<4xi1>) -> (i32, i32) {
+  %condition = vector.extract %mask[1] : vector<4xi1> -> i1
+  %unsigned = scalar.extui %condition : i1 to i32
+  %signed = scalar.extsi %condition : i1 to i32
+  func.return %unsigned, %signed : i32, i32
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @extracted_predicate_integer(%mask: reg<aie2p.elpredicate>) -> (reg<aie2p.er>, reg<aie2p.er>) asm {
+  %15 = mov.short 1
+  %16 = vbcst.8 %15
+  %17 = vsub.8 %16, %16
+  %18 = vsel.8 %17, %16, %mask
+  %condition = vextract.8.imm %18, 1
+  %21 = mov.short 0
+  %22 = copy %condition : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %unsigned = sel.nez %15, %21, %22
+  %24 = mov.short -1
+  %25 = copy %condition : reg<aie2p.er> -> reg<aie2p.mr27_select>
+  %signed = sel.nez %24, %21, %25
+  return %unsigned, %signed
+}
+
+// ====
+
+func.def @dynamic_predicate_element(%mask: vector<4xi1>, %position: index) -> (i1) {
+  %lane = index.assume %position [range(%position, 0, 3)] : index
+  %selected = vector.extract %mask[%lane] : vector<4xi1> -> i1
+  func.return %selected : i1
+}
+
+// ----
+low.func.def target<amd.xdna.aie2p.core> abi(object_function) @dynamic_predicate_element(%mask: reg<aie2p.elpredicate>, %lane: reg<aie2p.er>) -> (reg<aie2p.er>) asm {
+  %8 = mov.short 1
+  %9 = vbcst.8 %8
+  %10 = vsub.8 %9, %9
+  %11 = vsel.8 %10, %9, %mask
+  %selected = vextract.8.reg %11, %lane
   return %selected
 }

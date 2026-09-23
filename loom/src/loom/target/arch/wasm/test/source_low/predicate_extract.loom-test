@@ -1,4 +1,7 @@
 // TEMPLATE: loom/src/loom/test/corpus/source_low/layout_predicate_extract.loom-test
+// TEMPLATE-EXCLUDE: @dynamic_predicate_element Wasm SIMD extraction requires a static element index.
+// TEMPLATE-EXCLUDE: @predicate_tail_slice Wasm SIMD predicate storage has four 32-bit lanes.
+// TEMPLATE-EXCLUDE: @multidimensional_predicate_element Wasm SIMD predicate storage has four 32-bit lanes.
 // TEMPLATE-EXCLUDE: @single_predicate Wasm SIMD predicate storage has four 32-bit lanes.
 // TEMPLATE-EXCLUDE: @merged_predicate Wasm requires structured control flow.
 // RUN: emit source-low target=wasm:simd128 output=low control-flow=structured-low
@@ -52,4 +55,24 @@ low.func.def target<wasm.core.simd128> abi(wasm_function) @select_lane(%input: r
   %last = i32.and %10, %11
   %selected = i32.select %lhs, %rhs, %last
   return %selected
+}
+
+// ====
+
+func.def @extracted_predicate_integer(%mask: vector<4xi1>) -> (i32, i32) {
+  %condition = vector.extract %mask[1] : vector<4xi1> -> i1
+  %unsigned = scalar.extui %condition : i1 to i32
+  %signed = scalar.extsi %condition : i1 to i32
+  func.return %unsigned, %signed : i32, i32
+}
+
+// ----
+low.func.def target<wasm.core.simd128> abi(wasm_function) @extracted_predicate_integer(%mask: reg<wasm.v128>) -> (reg<wasm.i32>, reg<wasm.i32>) asm {
+  %12 = i32x4.extract_lane %mask, 1
+  %13 = i32.const 1
+  %unsigned = i32.and %12, %13
+  %15 = i32.const -1
+  %16 = i32.const 0
+  %signed = i32.select %15, %16, %unsigned
+  return %unsigned, %signed
 }

@@ -733,6 +733,18 @@ typedef struct loom_amdgpu_vector_interleave_plan_t {
   loom_low_lower_resolved_descriptor_t packed_permute_descriptor;
 } loom_amdgpu_vector_interleave_plan_t;
 
+enum loom_amdgpu_vector_extract_flag_bits_e {
+  // Logical elements occupy sub-32-bit fields in ordinary payload registers.
+  LOOM_AMDGPU_VECTOR_EXTRACT_FLAG_PACKED = 1u << 0,
+  // Packed integer extraction produces a sign-extended scalar payload.
+  LOOM_AMDGPU_VECTOR_EXTRACT_FLAG_SIGN_EXTEND = 1u << 1,
+  // Each logical element occupies one native SGPR wave-mask pair.
+  LOOM_AMDGPU_VECTOR_EXTRACT_FLAG_MASK = 1u << 2,
+  // Extraction uses the dynamic index instead of a static lane offset.
+  LOOM_AMDGPU_VECTOR_EXTRACT_FLAG_DYNAMIC = 1u << 3,
+};
+typedef uint8_t loom_amdgpu_vector_extract_flags_t;
+
 typedef struct loom_amdgpu_vector_extract_plan_t {
   // Source vector value containing the extracted payload.
   loom_value_id_t source;
@@ -752,10 +764,8 @@ typedef struct loom_amdgpu_vector_extract_plan_t {
   uint32_t element_register_count;
   // Number of payload bits occupied by each logical source lane.
   uint32_t lane_bit_count;
-  // True when packed integer extraction must produce scalar sign-extension.
-  bool sign_extend_packed_lane;
-  // True when extraction uses |dynamic_index| instead of |lane_offset|.
-  bool is_dynamic;
+  // Physical element storage and index selection behavior.
+  loom_amdgpu_vector_extract_flags_t flags;
 } loom_amdgpu_vector_extract_plan_t;
 
 typedef struct loom_amdgpu_vector_transform_plan_t {
