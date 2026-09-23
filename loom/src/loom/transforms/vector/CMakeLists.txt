@@ -153,6 +153,7 @@ loom_cc_library(
     "packet_legalization.c"
   DEPS
     iree::base
+    loom::analysis::motion
     loom::analysis::view_regions
     loom::ir
     loom::ops::buffer
