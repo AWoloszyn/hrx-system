@@ -161,6 +161,29 @@ func.def public target(@target) @copy_vector(%input: buffer, %output: buffer, %p
   func.return
 }
 
+// Whole-value selection preserves SIMD arithmetic across a loop backedge.
+func.def public target(@target) @conditional_vector_sum(%input: buffer, %output: buffer, %condition: i1, %count: index) {
+  %base = index.constant 0 : offset
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %source = buffer.view %input[%base] : buffer -> view<8xi32>
+  %destination = buffer.view %output[%base] : buffer -> view<4xi32>
+  %seed = vector.load %source[0] : view<8xi32> -> vector<4xi32>
+  %bias = vector.load %source[4] : view<8xi32> -> vector<4xi32>
+  %result = scf.for %i = [%begin to %count step %step](%acc = %seed : vector<4xi32>) -> (vector<4xi32>) {
+    %next = scf.if %condition -> (vector<4xi32>) {
+      %added = vector.addi %acc, %bias : vector<4xi32>
+      scf.yield %added : vector<4xi32>
+    } else {
+      %subtracted = vector.subi %acc, %bias : vector<4xi32>
+      scf.yield %subtracted : vector<4xi32>
+    }
+    scf.yield %next : vector<4xi32>
+  }
+  vector.store %result, %destination[0] : vector<4xi32>, view<4xi32>
+  func.return
+}
+
 func.def public target(@target) @load_static(%input: buffer) -> (i32) {
   %aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
   %base = index.constant 16 : offset

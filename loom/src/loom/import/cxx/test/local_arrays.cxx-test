@@ -10,7 +10,7 @@ unsigned guarded(unsigned input, unsigned enabled) {
   return values[0] + values[1] + values[2];
 }
 // ----
-CHECK: *scf.if* -> (i32)*
+CHECK: *scf.select* : i32
 CHECK: *scalar.addi* : i32
 CHECK-NOT: *buffer.alloca*
 CHECK-NOT: *view.load*

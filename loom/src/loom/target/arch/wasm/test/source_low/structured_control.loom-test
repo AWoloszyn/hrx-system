@@ -42,13 +42,9 @@ func.def target(@target) @if_with_results(%control: i32, %limit: i32, %lhs: vect
 // ----
 low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @if_with_results(%control: reg<wasm.i32>, %limit: reg<wasm.i32>, %lhs: reg<wasm.v128>, %rhs: reg<wasm.v128>, %fallback: reg<wasm.v128>) -> (reg<wasm.v128>) asm {
   %cond = i32.lt_u %control, %limit
-  %result = low.scf.if %cond -> (reg<wasm.v128>) {
-    %then = i32x4.add %lhs, %rhs
-    low.scf.yield %then : reg<wasm.v128>
-  } else {
-    %else = i32x4.sub %fallback, %rhs
-    low.scf.yield %else : reg<wasm.v128>
-  }
+  %then = i32x4.add %lhs, %rhs
+  %else = i32x4.sub %fallback, %rhs
+  %result = v128.select %then, %else, %cond
   return %result
 }
 
@@ -118,12 +114,8 @@ func.def target(@target) @nested_if_inside_for(%lo: index, %hi: index, %step: in
 low.func.def target<wasm.core.simd128>(@target) abi(wasm_function) @nested_if_inside_for(%lo: reg<wasm.i32>, %hi: reg<wasm.i32>, %step: reg<wasm.i32>, %seed: reg<wasm.v128>, %bias: reg<wasm.v128>) -> (reg<wasm.v128>) asm {
   %cond = i32.lt_u %lo, %hi
   %result = low.scf.for signed [%lo to %hi step %step] iter_args(%seed: reg<wasm.v128>) -> (reg<wasm.v128>) do(%iv: reg<wasm.i32>, %acc: reg<wasm.v128>) {
-    %next = low.scf.if %cond -> (reg<wasm.v128>) {
-      %then = i32x4.add %acc, %bias
-      low.scf.yield %then : reg<wasm.v128>
-    } else {
-      low.scf.yield %acc : reg<wasm.v128>
-    }
+    %then = i32x4.add %acc, %bias
+    %next = v128.select %then, %acc, %cond
     low.scf.yield %next : reg<wasm.v128>
   }
   return %result

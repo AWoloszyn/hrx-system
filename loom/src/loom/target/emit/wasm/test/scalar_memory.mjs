@@ -97,6 +97,29 @@ for (let position = 0; position <= 4; ++position) {
   assert.deepEqual(read(128, destination.length), destination);
 }
 
+// Both paths select all lanes together, including wrapping arithmetic and a
+// zero-trip loop. Guard bytes make the final vector store observable as well.
+const seed = [0x7FFFFFFF, 0x80000000, 0xFFFFFFFF, 0x12345678];
+const bias = [1, 0xFFFFFFFF, 0x80000000, 0x03456789];
+for (const condition of [0, 1]) {
+  for (const count of [0, 1, 7]) {
+    const source = new Uint8Array(32);
+    const sourceView = new DataView(source.buffer);
+    [...seed, ...bias].forEach((value, i) => sourceView.setUint32(i * 4, value, true));
+    const destination = new Uint8Array(32).fill(0xA7);
+    write(0, source);
+    write(128, destination);
+    exports.conditional_vector_sum(0, 136, condition, count);
+    const expected = new DataView(destination.buffer);
+    for (let lane = 0; lane < 4; ++lane) {
+      const value = seed[lane] + (condition ? count : -count) * bias[lane];
+      expected.setUint32(8 + lane * 4, value >>> 0, true);
+    }
+    assert.deepEqual(read(128, destination.length), destination);
+    assert.deepEqual(read(0, source.length), source);
+  }
+}
+
 // A memarg offset adds without wrapping. Test both the memory limit and 2^32.
 exports.store_static(65516, 123456);
 assert.equal(exports.load_static(65516), 123456);

@@ -1,0 +1,139 @@
+// RUN: with-checks pass canonicalize
+
+// Total integer expressions can execute on either edge. The selection must
+// still choose the original false value, including when the addition wraps.
+func.def @conditional_color(%condition: i1, %color: i32, %alpha: i32, %increment: i32, %fallback: i32) -> (i32) {
+  %selected = scf.if %condition -> (i32) {
+    %opaque = scalar.ori %color, %alpha : i32
+    %adjusted = scalar.addi %opaque, %increment : i32
+    scf.yield %adjusted : i32
+  } else {
+    scf.yield %fallback : i32
+  }
+  func.return %selected : i32
+}
+// ----
+CHECK: %opaque = scalar.ori %color, %alpha : i32
+CHECK: %adjusted = scalar.addi %opaque, %increment : i32
+CHECK: %selected = scf.select %condition, %adjusted, %fallback : i32
+CHECK-NOT: *scf.if*
+
+// ====
+
+// The same safety contract applies to every vector lane.
+func.def @conditional_vector(%condition: i1, %left: vector<4xi32>, %right: vector<4xi32>, %mask: vector<4xi32>, %fallback: vector<4xi32>) -> (vector<4xi32>) {
+  %selected = scf.if %condition -> (vector<4xi32>) {
+    %difference = vector.subi %left, %right : vector<4xi32>
+    %product = vector.muli %difference, %right : vector<4xi32>
+    %masked = vector.andi %product, %mask : vector<4xi32>
+    scf.yield %masked : vector<4xi32>
+  } else {
+    scf.yield %fallback : vector<4xi32>
+  }
+  func.return %selected : vector<4xi32>
+}
+// ----
+CHECK: %selected = scf.select %condition, %masked, %fallback : vector<4xi32>
+CHECK: %masked = vector.andi %product, %mask : vector<4xi32>
+CHECK-NOT: *scf.if*
+
+// ====
+
+// Fixed bitfields and integer width conversions impose no runtime preconditions.
+func.def @conditional_bitfield(%condition: i1, %word: i32, %fallback: i32) -> (i32) {
+  %selected = scf.if %condition -> (i32) {
+    %byte = scalar.bitfield.extractu %word {offset = 8, width = 8} : i32 -> i8
+    %extended = scalar.extui %byte : i8 to i32
+    scf.yield %extended : i32
+  } else {
+    scf.yield %fallback : i32
+  }
+  func.return %selected : i32
+}
+// ----
+CHECK: %byte = scalar.bitfield.extractu %word {offset = 8, width = 8} : i32 -> i8
+CHECK: %selected = scf.select %condition, %extended, %fallback : i32
+CHECK-NOT: *scf.if*
+
+// ====
+
+func.def @conditional_vector_cast(%condition: i1, %bytes: vector<4xi8>, %limit: vector<4xi32>, %fallback: vector<4xi32>) -> (vector<4xi32>) {
+  %selected = scf.if %condition -> (vector<4xi32>) {
+    %extended = vector.extsi %bytes : vector<4xi8> to vector<4xi32>
+    %clamped = vector.minsi %extended, %limit : vector<4xi32>
+    scf.yield %clamped : vector<4xi32>
+  } else {
+    scf.yield %fallback : vector<4xi32>
+  }
+  func.return %selected : vector<4xi32>
+}
+// ----
+CHECK: %selected = scf.select %condition, %clamped, %fallback : vector<4xi32>
+CHECK-NOT: *scf.if*
+
+// ====
+
+// NSW and NUW are path-dependent promises, unlike wrapping arithmetic.
+func.def @guarded_signed_add(%condition: i1, %left: i32, %right: i32, %fallback: i32) -> (i32) {
+  %selected = scf.if %condition -> (i32) {
+    %sum = scalar.addi<nsw> %left, %right : i32
+    scf.yield %sum : i32
+  } else {
+    scf.yield %fallback : i32
+  }
+  func.return %selected : i32
+}
+// ----
+CHECK: %selected = scf.if %condition -> (i32) {
+CHECK: %sum = scalar.addi<nsw> %left, %right : i32
+CHECK-NOT: *scf.select*
+
+// ====
+
+func.def @guarded_unsigned_vector_add(%condition: i1, %left: vector<4xi32>, %right: vector<4xi32>, %fallback: vector<4xi32>) -> (vector<4xi32>) {
+  %selected = scf.if %condition -> (vector<4xi32>) {
+    %sum = vector.addi<nuw> %left, %right : vector<4xi32>
+    scf.yield %sum : vector<4xi32>
+  } else {
+    scf.yield %fallback : vector<4xi32>
+  }
+  func.return %selected : vector<4xi32>
+}
+// ----
+CHECK: %selected = scf.if %condition -> (vector<4xi32>) {
+CHECK: %sum = vector.addi<nuw> %left, %right : vector<4xi32>
+CHECK-NOT: *scf.select*
+
+// ====
+
+// PURE does not imply total: neither the divisor nor the shift count is
+// constrained outside its guard.
+func.def @guarded_division(%condition: i1, %numerator: i32, %denominator: i32, %fallback: i32) -> (i32) {
+  %selected = scf.if %condition -> (i32) {
+    %quotient = scalar.divsi %numerator, %denominator : i32
+    scf.yield %quotient : i32
+  } else {
+    scf.yield %fallback : i32
+  }
+  func.return %selected : i32
+}
+// ----
+CHECK: %selected = scf.if %condition -> (i32) {
+CHECK: %quotient = scalar.divsi %numerator, %denominator : i32
+CHECK-NOT: *scf.select*
+
+// ====
+
+func.def @guarded_shift(%condition: i1, %value: vector<4xi32>, %count: vector<4xi32>, %fallback: vector<4xi32>) -> (vector<4xi32>) {
+  %selected = scf.if %condition -> (vector<4xi32>) {
+    %shifted = vector.shli %value, %count : vector<4xi32>
+    scf.yield %shifted : vector<4xi32>
+  } else {
+    scf.yield %fallback : vector<4xi32>
+  }
+  func.return %selected : vector<4xi32>
+}
+// ----
+CHECK: %selected = scf.if %condition -> (vector<4xi32>) {
+CHECK: %shifted = vector.shli %value, %count : vector<4xi32>
+CHECK-NOT: *scf.select*

@@ -58,6 +58,7 @@ scalar_addi = binary_op(
     flags=("overflow", IntOverflowFlags),
     facts="loom_scalar_addi_facts",
     traits=[DISTRIBUTION_TRANSFER],
+    effective_traits="loom_scalar_integer_arithmetic_effective_traits",
     canonicalize="loom_scalar_addi_canonicalize",
     examples=[
         "%result = scalar.addi %lhs, %rhs : i32",
@@ -74,6 +75,7 @@ scalar_subi = binary_op(
     flags=("overflow", IntOverflowFlags),
     facts="loom_scalar_subi_facts",
     traits=[DISTRIBUTION_TRANSFER],
+    effective_traits="loom_scalar_integer_arithmetic_effective_traits",
     canonicalize="loom_scalar_subi_canonicalize",
     examples=["%result = scalar.subi %lhs, %rhs : i32"],
 )
@@ -88,6 +90,7 @@ scalar_muli = binary_op(
     flags=("overflow", IntOverflowFlags),
     facts="loom_scalar_muli_facts",
     traits=[DISTRIBUTION_TRANSFER],
+    effective_traits="loom_scalar_integer_arithmetic_effective_traits",
     canonicalize="loom_scalar_muli_canonicalize",
     examples=["%result = scalar.muli %lhs, %rhs : i32"],
 )
@@ -176,7 +179,7 @@ scalar_negi = unary_op(
     phase=OpPhase.EXECUTABLE,
     type_constraint=INTEGER,
     doc="Integer negation.",
-    traits=[INVOLUTION, DISTRIBUTION_TRANSFER],
+    traits=[INVOLUTION, DISTRIBUTION_TRANSFER, SAFE_TO_SPECULATE],
     facts="loom_scalar_negi_facts",
     canonicalize="loom_scalar_negi_canonicalize",
     examples=["%result = scalar.negi %input : i32"],
@@ -188,7 +191,7 @@ scalar_absi = unary_op(
     phase=OpPhase.EXECUTABLE,
     type_constraint=INTEGER,
     doc="Integer absolute value.",
-    traits=[IDEMPOTENT, DISTRIBUTION_TRANSFER],
+    traits=[IDEMPOTENT, DISTRIBUTION_TRANSFER, SAFE_TO_SPECULATE],
     facts="loom_scalar_absi_facts",
     canonicalize="loom_scalar_absi_canonicalize",
     examples=["%result = scalar.absi %input : i32"],
@@ -202,7 +205,7 @@ scalar_minsi = binary_op(
     doc="Signed integer minimum.",
     commutative=True,
     facts="loom_scalar_minsi_facts",
-    traits=[DISTRIBUTION_TRANSFER],
+    traits=[DISTRIBUTION_TRANSFER, SAFE_TO_SPECULATE],
     canonicalize="loom_scalar_minsi_canonicalize",
     examples=["%result = scalar.minsi %lhs, %rhs : i32"],
 )
@@ -215,7 +218,7 @@ scalar_maxsi = binary_op(
     doc="Signed integer maximum.",
     commutative=True,
     facts="loom_scalar_maxsi_facts",
-    traits=[DISTRIBUTION_TRANSFER],
+    traits=[DISTRIBUTION_TRANSFER, SAFE_TO_SPECULATE],
     canonicalize="loom_scalar_maxsi_canonicalize",
     examples=["%result = scalar.maxsi %lhs, %rhs : i32"],
 )
@@ -228,7 +231,7 @@ scalar_minui = binary_op(
     doc="Unsigned integer minimum.",
     commutative=True,
     facts="loom_scalar_minui_facts",
-    traits=[DISTRIBUTION_TRANSFER],
+    traits=[DISTRIBUTION_TRANSFER, SAFE_TO_SPECULATE],
     canonicalize="loom_scalar_minui_canonicalize",
     examples=["%result = scalar.minui %lhs, %rhs : i32"],
 )
@@ -241,7 +244,7 @@ scalar_maxui = binary_op(
     doc="Unsigned integer maximum.",
     commutative=True,
     facts="loom_scalar_maxui_facts",
-    traits=[DISTRIBUTION_TRANSFER],
+    traits=[DISTRIBUTION_TRANSFER, SAFE_TO_SPECULATE],
     canonicalize="loom_scalar_maxui_canonicalize",
     examples=["%result = scalar.maxui %lhs, %rhs : i32"],
 )
@@ -264,6 +267,7 @@ scalar_fmai = Op(
     attrs=[AttrDef("overflow", ATTR_TYPE_FLAGS, optional=True, enum_def=IntOverflowFlags)],
     constraints=[SameType("a", "b", "c", "result")],
     traits=[PURE, DISTRIBUTION_TRANSFER],
+    effective_traits="loom_scalar_integer_arithmetic_effective_traits",
     format=[
         Flags("overflow"),
         Ref("a"),

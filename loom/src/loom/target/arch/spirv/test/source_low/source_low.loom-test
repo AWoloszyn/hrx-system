@@ -46,27 +46,31 @@ low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @spirv_
 
 spirv.target<vulkan1_3> @target
 
-func.def target(@target) @spirv_i32_if_else(%lhs: i32, %rhs: i32, %a: i32, %b: i32) -> (i32) {
-  %less = scalar.cmpi slt, %lhs, %rhs : i32
-  %result = scf.if %less -> (i32) {
-    %sum = scalar.addi %a, %b : i32
-    scf.yield %sum : i32
+// Division must remain guarded when the denominator can be zero.
+func.def target(@target) @spirv_i32_if_else(%numerator: i32, %denominator: i32, %fallback: i32) -> (i32) {
+  %c0 = scalar.constant 0 : i32
+  %nonzero = scalar.cmpi ne, %denominator, %c0 : i32
+  %result = scf.if %nonzero -> (i32) {
+    %quotient = scalar.divui %numerator, %denominator : i32
+    scf.yield %quotient : i32
   } else {
-    %difference = scalar.subi %a, %b : i32
-    scf.yield %difference : i32
+    scf.yield %fallback : i32
   }
   func.return %result : i32
 }
 
 // ----
-low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @spirv_i32_if_else(%lhs: reg<spirv.id : i32>, %rhs: reg<spirv.id : i32>, %a: reg<spirv.id : i32>, %b: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) asm {
-  %less = OpSLessThan %lhs, %rhs
-  %result = low.scf.if %less -> (reg<spirv.id : i32>) {
-    %sum = OpIAdd %a, %b
-    low.scf.yield %sum : reg<spirv.id : i32>
+low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @spirv_i32_if_else(%numerator: reg<spirv.id : i32>, %denominator: reg<spirv.id : i32>, %fallback: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) asm {
+  %c0 = OpConstant.i32 0
+  %nonzero = OpINotEqual %denominator, %c0
+  %result = low.scf.if %nonzero -> (reg<spirv.id : i32>) {
+    %16 = OpBitcast.i32.u32 %numerator
+    %17 = OpBitcast.i32.u32 %denominator
+    %18 = OpUDiv.u32 %16, %17
+    %quotient = OpBitcast.u32.i32 %18
+    low.scf.yield %quotient : reg<spirv.id : i32>
   } else {
-    %difference = OpISub %a, %b
-    low.scf.yield %difference : reg<spirv.id : i32>
+    low.scf.yield %fallback : reg<spirv.id : i32>
   }
   return %result
 }

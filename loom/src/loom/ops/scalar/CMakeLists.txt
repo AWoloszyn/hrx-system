@@ -20,6 +20,7 @@ loom_generated_cc_library(
     "combining.c"
     "compare.c"
     "facts.c"
+    "traits.c"
     "verify.c"
   TEXTUAL_HDRS
     "ops.inc"

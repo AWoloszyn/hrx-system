@@ -21,6 +21,7 @@ from loom.dsl import (
     PAYLOAD_SCALAR,
     POISON,
     PURE,
+    SAFE_TO_SPECULATE,
     SCALAR,
     AttrDef,
     AttrMatchesElementType,
@@ -131,7 +132,7 @@ scalar_extsi = cast_op(
     constraints=[ElementWidthGreaterThan("result", "input")],
     canonicalize="loom_scalar_extsi_canonicalize",
     facts="loom_scalar_extsi_facts",
-    traits=[DISTRIBUTION_TRANSFER],
+    traits=[DISTRIBUTION_TRANSFER, SAFE_TO_SPECULATE],
     examples=["%result = scalar.extsi %input : i8 to i32"],
 )
 scalar_extui = cast_op(
@@ -144,7 +145,7 @@ scalar_extui = cast_op(
     constraints=[ElementWidthGreaterThan("result", "input")],
     canonicalize="loom_scalar_extui_canonicalize",
     facts="loom_scalar_extui_facts",
-    traits=[DISTRIBUTION_TRANSFER],
+    traits=[DISTRIBUTION_TRANSFER, SAFE_TO_SPECULATE],
     examples=["%result = scalar.extui %input : i8 to i32"],
 )
 scalar_trunci = cast_op(
@@ -157,7 +158,7 @@ scalar_trunci = cast_op(
     constraints=[ElementWidthLessThan("result", "input")],
     canonicalize="loom_scalar_trunci_canonicalize",
     facts="loom_scalar_trunci_facts",
-    traits=[DISTRIBUTION_TRANSFER],
+    traits=[DISTRIBUTION_TRANSFER, SAFE_TO_SPECULATE],
     examples=["%result = scalar.trunci %input : i32 to i8"],
 )
 
@@ -175,6 +176,7 @@ scalar_bitcast = cast_op(
     constraints=[TotalBitCountEqual("input", "result")],
     canonicalize="loom_scalar_bitcast_canonicalize",
     facts="loom_scalar_bitcast_facts",
+    traits=[SAFE_TO_SPECULATE],
     examples=["%result = scalar.bitcast %input : f32 to i32"],
 )
 
