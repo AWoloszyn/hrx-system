@@ -1868,15 +1868,9 @@ typedef struct loom_amdgpu_atomic_ordering_plan_t {
   iree_host_size_t post_atomic_cache_control_descriptor_count;
 } loom_amdgpu_atomic_ordering_plan_t;
 
-typedef uint32_t loom_amdgpu_atomic_plan_flags_t;
-
-#define LOOM_AMDGPU_ATOMIC_PLAN_REQUIRES_M0 ((uint32_t)1u << 0)
-
 typedef struct loom_amdgpu_atomic_plan_t {
   // Target-independent source memory access plan being wrapped.
   loom_low_source_memory_access_plan_t source;
-  // Target-specific lowering flags derived from the selected descriptor.
-  loom_amdgpu_atomic_plan_flags_t flags;
   // Source atomic operation form being lowered.
   loom_amdgpu_atomic_operation_kind_t operation_kind;
   // Selected target addressing form for the atomic packet.
