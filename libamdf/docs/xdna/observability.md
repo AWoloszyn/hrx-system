@@ -196,6 +196,20 @@ markers. The resulting event frames name slot zero; their meaning comes from
 its `INSTR_STORE` configuration, not from the start/stop event numbers.
 [AIE2P event definitions][aie2p-events]
 
+A finite capture uses an edge event for its start. `TRUE` is a level-sensitive
+start condition: after a stop event makes the trace unit idle, the asserted
+condition starts it again. It is suitable for continuous tracing, but not for
+a one-shot interval. An explicit start instruction before the observed work
+and a stop instruction after it define one interval without rearming.
+
+The trace itself can carry the capture's terminal condition. For example, a
+caller enables tracing with `INSTR_EVENT_0`, calls the observed function while
+one trace slot watches `INSTR_RETURN`, and emits `INSTR_EVENT_1` after that
+function returns. The return frame precedes the stop and partial-packet flush
+in the same source stream. A consumer that parses through that slot therefore
+knows it has received the end of the selected work; it does not infer the end
+from an idle source register or an unwritten destination word.
+
 ### Packets and timestamps
 
 The AIE-ML trace transport uses eight 32-bit words per packet: a routing header
@@ -289,6 +303,40 @@ capacity. These are collection strategies, not a hardware-reported valid-byte
 count or a DMA-retirement signal. [XDP offload][xdp-offload],
 [MLIR-AIE trace insertion][trace-insertion]
 
+### Fixed retirement for variable-length trace
+
+A fixed-size in-array collector turns a variable packet count into ordinary
+native work. It consumes complete eight-word packets, including each packet's
+header and TLAST, until it parses the ordered terminal event. It copies packets
+up to the destination's declared capacity, continues draining excess packets
+while recording overflow, fills unused packet slots, and appends an
+application-defined trailer. A maximum drain count bounds a missing terminal
+while packets continue to arrive. The collector emits the trailer only after
+the terminal packet or that packet-count bound. A source that stops producing
+without its required terminal violates the executable's protocol; the collector
+cannot infer completion from silence.
+
+On an AIE2P compute tile, a trace source can drive the local stream-switch
+FIFO, the south link, or DMA channel zero; it cannot directly drive a core or
+the other cardinal links. A `TRACE -> FIFO` connection followed by a normal
+circuit route lets a nearby collector core consume the packets without a
+memory staging transfer. The FIFO changes only the legal switch connection;
+the trace packet header and TLAST remain in the stream. [AIE2P stream-switch
+connections][aie2p-stream-switch]
+
+The collector's fixed output uses a length-based shim S2MM transfer. The
+controller waits for that DMA task's ordinary completion token before native
+command completion, so destination visibility and reuse follow the same
+contract as any other execution output. There is no per-packet host action,
+unused armed descriptor, destination scan, or second retirement mechanism.
+The trailer layout, capacity, terminal-slot assignment, parser, and overflow
+policy belong to the executable and its tooling rather than to libamdf.
+
+Ordering is per trace source. Captures from several sources either retain a
+terminal for each source or route through an explicit in-array join. A marker
+from one tile cannot prove that another tile's final packet has already
+entered the fabric.
+
 XRT's PLIO collector has a different sink: a programmable-logic trace
 datamover with written-word counters. Its version-2 final read resets the
 datamover before reading those counters. That datamover is not the XDNA array's
@@ -372,7 +420,7 @@ context:
 | Operation | Input | Result |
 | --- | --- | --- |
 | `READ_REGS` | A list of array register addresses. | Register values copied into the firmware result buffer. |
-| `RECORD_TIMER` | A caller-selected 32-bit marker ID. | A marker and timer record appended to the firmware result buffer. |
+| `RECORD_TIMER` | A caller-selected marker; the NPU4/NPU5 optimized encoding retains its low 24 bits. | A marker and timer record appended to the firmware result buffer. |
 
 The transaction definitions assign these opcodes `0x82` and `0x83`. The XDP
 timeline reader consumes each timer record as three 32-bit words: ID, timer
@@ -382,6 +430,22 @@ completion depends on the preceding controller synchronization. The command
 and result carry no tile identity or clock-domain identifier; this record is
 not a paired sample of the tile's `cntr` and a host clock.
 [Transaction definitions][transaction-ops], [timeline result reader][xdp-timeline]
+
+On NPU4 and NPU5, the optimized `RECORD_TIMER` handler takes the low 24 bits
+of its opcode-16 instruction as the marker ID and samples the partition-base
+shim timer. It reads `Timer_High` at local offset `0x340fc` followed by
+`Timer_Low` at `0x340f8`, then writes marker, high word, and low word to the
+result buffer. The two reads have no rollover retry. A low-word wrap between
+them can therefore produce a sample from the preceding high-word epoch and
+must be handled when adjacent records are differenced. [AIE2P timer
+registers][aie2p-registers], [optimized transaction interpreter][dynamic-dispatch]
+
+This is an array clock-domain timer. Records within one continuously active
+timer epoch can describe interpreter progress, but the counter does not supply
+a continuously advancing epoch across array idle, power gating, reset, or
+independent native lifetimes. A frequency written into a trace-file header is
+format metadata, not a device contract. Host correlation still requires
+explicit host bracketing and, for tile work, program-owned `cntr` samples.
 
 ### Linux context attachment
 
@@ -459,6 +523,7 @@ notifications describe the diagnostic stream, not application queue completion.
 [aie-register-database]: https://github.com/Xilinx/mlir-aie/blob/c69fb4c8f2fb853d5ca62d19f829796d3ae4ba34/lib/Dialect/AIE/Util/aie_registers_aie2.json
 [aie-counters]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/perfcnt/xaie_perfcnt.c
 [aie2p-events]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/events/xaie_events_aie2p.h
+[aie2p-stream-switch]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/stream_switch/xaie_ss_aieml.c
 [stream-control]: https://download.amd.com/docnav/aiengine/xilinx2025_1/aiengine_ml_v2_intrinsics/intrinsics/group__intr__streams__ms.html
 [aie-trace]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/trace/xaie_trace.c
 [trace-architecture]: https://docs.amd.com/r/en-US/am020-versal-aie-ml/Trace
@@ -473,6 +538,7 @@ notifications describe the diagnostic stream, not application queue completion.
 [xdp-timeline]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/plugin/ml_timeline/clientDev/ml_timeline.cpp
 [xdp-edge-timers]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/plugin/aie_trace/edge/aie_trace.cpp
 [transaction-ops]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/common/xaie_txn.h
+[dynamic-dispatch]: https://github.com/amd/DynamicDispatch/blob/b3051f03e20aab237cda3bbe4cd2081f76b72b06/src/txn/txn_utils.cpp
 [linux-context]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/aie2_ctx.c
 [linux-messages]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/aie2_message.c
 [linux-buffer]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/src/shim/buffer.cpp
