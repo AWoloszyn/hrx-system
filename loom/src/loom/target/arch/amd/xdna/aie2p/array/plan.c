@@ -46,8 +46,11 @@ enum loom_aie2p_array_tile_state_flag_bits_e {
 };
 
 typedef struct loom_aie2p_array_entity_t {
+  // Locally defined topology result admitted by array Low verification.
   loom_value_id_t value_id;
+  // Logical topology table containing the indexed row.
   loom_aie2p_array_entity_kind_t kind;
+  // Row in the table selected by kind.
   uint32_t index;
 } loom_aie2p_array_entity_t;
 
@@ -90,6 +93,8 @@ typedef struct loom_aie2p_array_plan_builder_t {
   iree_host_size_t leaf_count;
   // Caller-owned sink for structured failures in authored array topology.
   iree_diagnostic_emitter_t diagnostic_emitter;
+  // Whether private construction still satisfies authored target admission.
+  bool valid;
   iree_arena_allocator_t* arena;
   loom_value_fact_table_t facts;
   loom_aie2p_array_plan_t* plan;
@@ -165,23 +170,18 @@ static iree_status_t loom_aie2p_array_exact_u32(
   return iree_ok_status();
 }
 
-static iree_status_t loom_aie2p_array_exact_u64(
-    const loom_aie2p_array_plan_builder_t* builder, loom_value_id_t value_id,
-    const char* purpose, uint64_t* out_value) {
-  loom_value_facts_t element_facts = loom_value_facts_unknown();
-  int64_t value = 0;
-  if (!loom_value_facts_query_all_equal_element(
-          &builder->facts.context,
-          loom_value_fact_table_lookup(&builder->facts, value_id),
-          &element_facts) ||
-      !loom_value_facts_as_exact_i64(element_facts, &value) || value < 0) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "AIE2P array %s must resolve to one exact non-negative i64 fact",
-        purpose);
-  }
-  *out_value = (uint64_t)value;
-  return iree_ok_status();
+static uint64_t loom_aie2p_array_constant(
+    const loom_aie2p_array_plan_builder_t* builder, loom_value_id_t value_id) {
+  // Closed array vocabulary admits only constant.u32/u64 as scalar producers.
+  // Their generated immediate domains and shared fact callback establish the
+  // exact nonnegative value before topology extraction.
+  loom_value_fact_uniform_element_t uniform = {0};
+  const bool found = loom_value_facts_query_uniform_element(
+      &builder->facts.context,
+      loom_value_fact_table_lookup(&builder->facts, value_id), &uniform);
+  IREE_ASSERT(found, "admitted array constants carry uniform integer facts");
+  (void)found;
+  return (uint64_t)uniform.element.range_lo;
 }
 
 static iree_status_t loom_aie2p_array_dimension_value(
@@ -204,10 +204,6 @@ static iree_status_t loom_aie2p_array_dimension_value(
 static iree_status_t loom_aie2p_array_element_count(
     const loom_aie2p_array_plan_builder_t* builder, loom_type_t type,
     uint64_t* out_count) {
-  if (!loom_type_is_tile(type)) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "AIE2P channels must transport tile values");
-  }
   uint64_t count = 1;
   for (iree_host_size_t i = 0; i < loom_type_rank(type); ++i) {
     uint32_t dimension = 0;
@@ -233,8 +229,7 @@ static iree_status_t loom_aie2p_array_record_byte_length(
   const int32_t element_bit_width =
       loom_scalar_type_bitwidth(loom_type_element_type(type));
   uint64_t bit_length = 0;
-  if (element_bit_width <= 0 ||
-      !iree_checked_mul_u64(element_count, (uint64_t)element_bit_width,
+  if (!iree_checked_mul_u64(element_count, (uint64_t)element_bit_width,
                             &bit_length) ||
       (bit_length & 7u) != 0 || bit_length / 8u > UINT32_MAX) {
     return iree_make_status(
@@ -245,15 +240,11 @@ static iree_status_t loom_aie2p_array_record_byte_length(
   return iree_ok_status();
 }
 
-static const loom_type_t* loom_aie2p_array_result_value_type(
+static loom_type_t loom_aie2p_array_result_value_type(
     const loom_module_t* module, const loom_op_t* op) {
-  IREE_ASSERT_EQ(op->result_count, 1u);
   const loom_type_t register_type =
       loom_module_value_type(module, loom_op_results(op)[0]);
-  const loom_type_t* value_type = loom_type_register_value_type(register_type);
-  IREE_ASSERT(value_type != NULL,
-              "verified array descriptors must produce typed registers");
-  return value_type;
+  return *loom_type_register_value_type(register_type);
 }
 
 // Fibonacci hashing mixes the otherwise nearly sequential SSA value IDs for
@@ -264,7 +255,6 @@ static uint32_t loom_aie2p_array_hash_value_id(loom_value_id_t value_id) {
 
 static iree_host_size_t loom_aie2p_array_entity_slot(
     const loom_aie2p_array_plan_builder_t* builder, loom_value_id_t value_id) {
-  IREE_ASSERT(iree_host_size_is_power_of_two(builder->entity_capacity));
   iree_host_size_t slot =
       loom_aie2p_array_hash_value_id(value_id) & (builder->entity_capacity - 1);
   while (builder->entities[slot].value_id != LOOM_VALUE_ID_INVALID &&
@@ -274,23 +264,18 @@ static iree_host_size_t loom_aie2p_array_entity_slot(
   return slot;
 }
 
-static const loom_aie2p_array_entity_t* loom_aie2p_array_find_entity(
+static const loom_aie2p_array_entity_t* loom_aie2p_array_lookup_entity(
     const loom_aie2p_array_plan_builder_t* builder, loom_value_id_t value_id) {
-  if (value_id == LOOM_VALUE_ID_INVALID || builder->entity_capacity == 0) {
-    return NULL;
-  }
-  const loom_aie2p_array_entity_t* entity =
-      &builder->entities[loom_aie2p_array_entity_slot(builder, value_id)];
-  return entity->value_id == value_id ? entity : NULL;
+  // Empty signatures, isolated single-block bodies, and descriptor operand
+  // classes prove every topology reference has an earlier local producer.
+  return &builder->entities[loom_aie2p_array_entity_slot(builder, value_id)];
 }
 
 static void loom_aie2p_array_define_entity(
     loom_aie2p_array_plan_builder_t* builder, loom_value_id_t value_id,
     loom_aie2p_array_entity_kind_t kind, uint32_t index) {
-  IREE_ASSERT_NE(value_id, LOOM_VALUE_ID_INVALID);
   loom_aie2p_array_entity_t* entity =
       &builder->entities[loom_aie2p_array_entity_slot(builder, value_id)];
-  IREE_ASSERT_EQ(entity->value_id, LOOM_VALUE_ID_INVALID);
   *entity = (loom_aie2p_array_entity_t){
       .value_id = value_id,
       .kind = kind,
@@ -298,33 +283,13 @@ static void loom_aie2p_array_define_entity(
   };
 }
 
-static iree_status_t loom_aie2p_array_lookup_entity(
-    const loom_aie2p_array_plan_builder_t* builder, loom_value_id_t value_id,
-    loom_aie2p_array_entity_kind_t expected_kind, const char* purpose,
-    uint32_t* out_index) {
-  const loom_aie2p_array_entity_t* entity =
-      loom_aie2p_array_find_entity(builder, value_id);
-  if (entity == NULL || entity->kind != expected_kind) {
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "AIE2P array %s references an invalid entity",
-                            purpose);
-  }
-  *out_index = entity->index;
-  return iree_ok_status();
-}
-
-static iree_status_t loom_aie2p_array_count_topology(
+static void loom_aie2p_array_count_topology(
     loom_aie2p_array_plan_builder_t* builder, const loom_block_t* block) {
   loom_op_t* op = NULL;
   loom_block_for_each_op(block, op) {
     loom_low_descriptor_packet_t packet = {0};
     loom_low_descriptor_packet_initialize(builder->descriptor_set, op, &packet);
     if (packet.kind == LOOM_LOW_DESCRIPTOR_PACKET_NONE) {
-      if (!loom_low_return_isa(op)) {
-        return iree_make_status(
-            IREE_STATUS_INVALID_ARGUMENT,
-            "AIE2P array function contains a non-topology operation");
-      }
       continue;
     }
     switch (packet.descriptor_ordinal) {
@@ -358,7 +323,6 @@ static iree_status_t loom_aie2p_array_count_topology(
         break;
     }
   }
-  return iree_ok_status();
 }
 
 static iree_status_t loom_aie2p_array_allocate_topology(
@@ -411,17 +375,15 @@ static iree_status_t loom_aie2p_array_allocate_topology(
   return iree_ok_status();
 }
 
-static iree_status_t loom_aie2p_array_extract_group(
+static void loom_aie2p_array_extract_group(
     loom_aie2p_array_plan_builder_t* builder, const loom_op_t* op) {
   loom_aie2p_array_group_t* group = &builder->groups[builder->group_cursor];
   group->value_id = loom_op_results(op)[0];
-  IREE_RETURN_IF_ERROR(
-      loom_aie2p_array_exact_u32(builder, loom_op_operands(op)[0],
-                                 "group lane count", &group->lane_count));
+  group->lane_count =
+      (uint32_t)loom_aie2p_array_constant(builder, loom_op_operands(op)[0]);
   loom_aie2p_array_define_entity(builder, group->value_id,
                                  LOOM_AIE2P_ARRAY_ENTITY_GROUP,
                                  (uint32_t)builder->group_cursor++);
-  return iree_ok_status();
 }
 
 static void loom_aie2p_array_extract_binding(
@@ -446,25 +408,64 @@ static iree_status_t loom_aie2p_array_extract_worker(
     loom_aie2p_array_worker_rate_t rate) {
   loom_aie2p_array_worker_t* worker = &builder->workers[builder->worker_cursor];
   worker->value_id = loom_op_results(op)[0];
-  IREE_RETURN_IF_ERROR(loom_aie2p_array_lookup_entity(
-      builder, loom_op_operands(op)[0], LOOM_AIE2P_ARRAY_ENTITY_GROUP,
-      "worker group", &worker->group_index));
-  IREE_RETURN_IF_ERROR(loom_aie2p_array_exact_u32(
-      builder, loom_op_operands(op)[1], "worker lane", &worker->lane));
+  worker->group_index =
+      loom_aie2p_array_lookup_entity(builder, loom_op_operands(op)[0])->index;
+  worker->lane =
+      (uint32_t)loom_aie2p_array_constant(builder, loom_op_operands(op)[1]);
   const loom_named_attr_slice_t attrs = loom_low_op_attrs(op);
   worker->entry = (rate == LOOM_AIE2P_ARRAY_WORKER_RATE_FOLDED
                        ? loom_aie2p_array_array_worker_fold_entry(attrs)
                        : loom_aie2p_array_array_worker_entry(attrs))
                       .symbol;
+  // Array IR can retain declarations until linking. Materialization consumes
+  // a local Low body whose resource imports are the resident worker's ABI.
+  const loom_symbol_t* entry_symbol =
+      &builder->module->symbols.entries[worker->entry.symbol_id];
+  const iree_string_view_t entry_name =
+      loom_string_table_get(&builder->module->strings, entry_symbol->name_id);
+  const loom_op_t* entry_op = entry_symbol->defining_op;
+  if (!loom_low_func_def_isa(entry_op)) {
+    const loom_diagnostic_param_t params[] = {loom_param_string(entry_name)};
+    const loom_diagnostic_emission_t emission = {
+        .op = op,
+        .error = LOOM_ERR_TARGET_125,
+        .params = params,
+        .param_count = IREE_ARRAYSIZE(params),
+    };
+    builder->valid = false;
+    return iree_diagnostic_emit(builder->diagnostic_emitter, &emission);
+  }
+  const loom_func_like_t entry =
+      loom_func_like_const_cast(builder->module, entry_op);
+  uint16_t argument_count = 0;
+  loom_func_like_arg_ids(entry, &argument_count);
+  if (argument_count != 0 || entry_op->result_count != 0) {
+    const loom_diagnostic_param_t params[] = {
+        loom_param_string(entry_name),
+        loom_param_string(IREE_SV("aie2p-resident")),
+        loom_param_string(argument_count != 0 ? IREE_SV("register argument")
+                                              : IREE_SV("register result")),
+        loom_param_u32(argument_count != 0 ? argument_count
+                                           : entry_op->result_count),
+        loom_param_u32(0),
+    };
+    const loom_diagnostic_emission_t emission = {
+        .op = entry_op,
+        .error = LOOM_ERR_TARGET_054,
+        .params = params,
+        .param_count = IREE_ARRAYSIZE(params),
+    };
+    builder->valid = false;
+    return iree_diagnostic_emit(builder->diagnostic_emitter, &emission);
+  }
   worker->fold_record_count = 0;
   worker->fold_output_port = 0;
   worker->fold_output_count = 0;
   worker->fold_kind = LOOM_COMBINING_KIND_ADDI;
   worker->fold_fast_math_flags = 0;
   if (rate == LOOM_AIE2P_ARRAY_WORKER_RATE_FOLDED) {
-    IREE_RETURN_IF_ERROR(loom_aie2p_array_exact_u32(
-        builder, loom_op_operands(op)[2], "worker fold record count",
-        &worker->fold_record_count));
+    worker->fold_record_count =
+        (uint32_t)loom_aie2p_array_constant(builder, loom_op_operands(op)[2]);
     if (worker->fold_record_count == 0) {
       const loom_diagnostic_param_t params[] = {
           loom_param_with_field_ref(
@@ -477,9 +478,8 @@ static iree_status_t loom_aie2p_array_extract_worker(
           .params = params,
           .param_count = IREE_ARRAYSIZE(params),
       };
-      IREE_RETURN_IF_ERROR(
-          iree_diagnostic_emit(builder->diagnostic_emitter, &emission));
-      return iree_status_from_code(IREE_STATUS_INVALID_ARGUMENT);
+      builder->valid = false;
+      return iree_diagnostic_emit(builder->diagnostic_emitter, &emission);
     }
     worker->fold_output_port =
         (uint32_t)loom_aie2p_array_array_worker_fold_output_port(attrs).i64;
@@ -501,7 +501,7 @@ static iree_status_t loom_aie2p_array_extract_worker(
   return iree_ok_status();
 }
 
-static iree_status_t loom_aie2p_array_extract_endpoint(
+static void loom_aie2p_array_extract_endpoint(
     loom_aie2p_array_plan_builder_t* builder, const loom_op_t* op,
     loom_aie2p_array_endpoint_direction_t direction) {
   loom_aie2p_array_endpoint_t* endpoint =
@@ -515,7 +515,7 @@ static iree_status_t loom_aie2p_array_extract_endpoint(
                      : loom_aie2p_array_array_receiver_port(attrs))
           .i64;
   endpoint->message_type =
-      *loom_aie2p_array_result_value_type(builder->module, op);
+      loom_aie2p_array_result_value_type(builder->module, op);
   endpoint->binding_view_source_endpoint_index = UINT32_MAX;
   endpoint->binding_byte_offset = 0;
   endpoint->binding_view_partitioned = false;
@@ -524,32 +524,24 @@ static iree_status_t loom_aie2p_array_extract_endpoint(
 
   const loom_value_id_t owner_value = loom_op_operands(op)[0];
   const loom_aie2p_array_entity_t* owner =
-      loom_aie2p_array_find_entity(builder, owner_value);
-  if (owner != NULL && owner->kind == LOOM_AIE2P_ARRAY_ENTITY_BINDING) {
-    endpoint->owner_kind = LOOM_AIE2P_ARRAY_ENDPOINT_OWNER_BINDING;
-  } else if (owner != NULL && owner->kind == LOOM_AIE2P_ARRAY_ENTITY_WORKER) {
-    endpoint->owner_kind = LOOM_AIE2P_ARRAY_ENDPOINT_OWNER_WORKER;
-  } else {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "AIE2P array endpoint must be owned by a binding or worker");
-  }
+      loom_aie2p_array_lookup_entity(builder, owner_value);
+  endpoint->owner_kind = owner->kind == LOOM_AIE2P_ARRAY_ENTITY_BINDING
+                             ? LOOM_AIE2P_ARRAY_ENDPOINT_OWNER_BINDING
+                             : LOOM_AIE2P_ARRAY_ENDPOINT_OWNER_WORKER;
   endpoint->owner_index = owner->index;
   loom_aie2p_array_define_entity(builder, endpoint->value_id,
                                  LOOM_AIE2P_ARRAY_ENTITY_ENDPOINT,
                                  (uint32_t)builder->endpoint_cursor++);
-  return iree_ok_status();
 }
 
-static iree_status_t loom_aie2p_array_extract_binding_view(
+static void loom_aie2p_array_extract_binding_view(
     loom_aie2p_array_plan_builder_t* builder, const loom_op_t* op,
     bool partitioned) {
   loom_aie2p_array_endpoint_t* endpoint =
       &builder->endpoints[builder->endpoint_cursor];
   endpoint->value_id = loom_op_results(op)[0];
-  IREE_RETURN_IF_ERROR(loom_aie2p_array_lookup_entity(
-      builder, loom_op_operands(op)[0], LOOM_AIE2P_ARRAY_ENTITY_ENDPOINT,
-      "binding view source", &endpoint->binding_view_source_endpoint_index));
+  endpoint->binding_view_source_endpoint_index =
+      loom_aie2p_array_lookup_entity(builder, loom_op_operands(op)[0])->index;
   const loom_aie2p_array_endpoint_t* source =
       &builder->endpoints[endpoint->binding_view_source_endpoint_index];
   endpoint->direction = source->direction;
@@ -557,25 +549,21 @@ static iree_status_t loom_aie2p_array_extract_binding_view(
   endpoint->owner_index = source->owner_index;
   endpoint->port = source->port;
   endpoint->message_type =
-      *loom_aie2p_array_result_value_type(builder->module, op);
-  IREE_RETURN_IF_ERROR(loom_aie2p_array_exact_u64(
-      builder, loom_op_operands(op)[1], "binding view byte offset",
-      &endpoint->binding_byte_offset));
+      loom_aie2p_array_result_value_type(builder->module, op);
+  endpoint->binding_byte_offset =
+      loom_aie2p_array_constant(builder, loom_op_operands(op)[1]);
   endpoint->binding_view_partitioned = partitioned;
   endpoint->partition_lane = 0;
   endpoint->partition_lane_count = 1;
   if (partitioned) {
-    IREE_RETURN_IF_ERROR(loom_aie2p_array_exact_u32(
-        builder, loom_op_operands(op)[2], "partition lane",
-        &endpoint->partition_lane));
-    IREE_RETURN_IF_ERROR(loom_aie2p_array_exact_u32(
-        builder, loom_op_operands(op)[3], "partition lane count",
-        &endpoint->partition_lane_count));
+    endpoint->partition_lane =
+        (uint32_t)loom_aie2p_array_constant(builder, loom_op_operands(op)[2]);
+    endpoint->partition_lane_count =
+        (uint32_t)loom_aie2p_array_constant(builder, loom_op_operands(op)[3]);
   }
   loom_aie2p_array_define_entity(builder, endpoint->value_id,
                                  LOOM_AIE2P_ARRAY_ENTITY_ENDPOINT,
                                  (uint32_t)builder->endpoint_cursor++);
-  return iree_ok_status();
 }
 
 static iree_status_t loom_aie2p_array_extract_channel(
@@ -586,20 +574,16 @@ static iree_status_t loom_aie2p_array_extract_channel(
   channel->source_channel_index = channel_index;
   channel->first_channel_slot = UINT32_MAX;
   channel->sender_dma_index = UINT32_MAX;
-  IREE_RETURN_IF_ERROR(loom_aie2p_array_lookup_entity(
-      builder, loom_op_operands(op)[0], LOOM_AIE2P_ARRAY_ENTITY_ENDPOINT,
-      "channel sender", &channel->sender_endpoint_index));
-  IREE_RETURN_IF_ERROR(loom_aie2p_array_lookup_entity(
-      builder, loom_op_operands(op)[1], LOOM_AIE2P_ARRAY_ENTITY_ENDPOINT,
-      "channel receiver", &channel->receiver_endpoint_index));
-  IREE_RETURN_IF_ERROR(
-      loom_aie2p_array_exact_u32(builder, loom_op_operands(op)[2],
-                                 "channel capacity", &channel->capacity));
-  IREE_RETURN_IF_ERROR(loom_aie2p_array_exact_u32(
-      builder, loom_op_operands(op)[3], "channel record count",
-      &channel->record_count));
+  channel->sender_endpoint_index =
+      loom_aie2p_array_lookup_entity(builder, loom_op_operands(op)[0])->index;
+  channel->receiver_endpoint_index =
+      loom_aie2p_array_lookup_entity(builder, loom_op_operands(op)[1])->index;
+  channel->capacity =
+      (uint32_t)loom_aie2p_array_constant(builder, loom_op_operands(op)[2]);
+  channel->record_count =
+      (uint32_t)loom_aie2p_array_constant(builder, loom_op_operands(op)[3]);
   const loom_type_t message_type =
-      *loom_aie2p_array_result_value_type(builder->module, op);
+      loom_aie2p_array_result_value_type(builder->module, op);
   IREE_RETURN_IF_ERROR(loom_aie2p_array_record_byte_length(
       builder, message_type, &channel->record_byte_length));
   ++builder->channel_cursor;
@@ -608,24 +592,33 @@ static iree_status_t loom_aie2p_array_extract_channel(
 
 static iree_status_t loom_aie2p_array_extract_location(
     loom_aie2p_array_plan_builder_t* builder, const loom_op_t* op) {
-  uint32_t worker_index = 0;
-  IREE_RETURN_IF_ERROR(loom_aie2p_array_lookup_entity(
-      builder, loom_op_operands(op)[0], LOOM_AIE2P_ARRAY_ENTITY_WORKER,
-      "location worker", &worker_index));
+  const uint32_t worker_index =
+      loom_aie2p_array_lookup_entity(builder, loom_op_operands(op)[0])->index;
   loom_aie2p_array_worker_t* worker = &builder->workers[worker_index];
   if (worker->coordinate.column != UINT16_MAX) {
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "AIE2P worker has multiple locations");
   }
-  uint32_t column = 0;
-  uint32_t row = 0;
-  IREE_RETURN_IF_ERROR(loom_aie2p_array_exact_u32(
-      builder, loom_op_operands(op)[1], "worker column", &column));
-  IREE_RETURN_IF_ERROR(loom_aie2p_array_exact_u32(
-      builder, loom_op_operands(op)[2], "worker row", &row));
-  if (column > UINT16_MAX || row > UINT16_MAX) {
-    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "AIE2P worker location is out of range");
+  const uint32_t column =
+      (uint32_t)loom_aie2p_array_constant(builder, loom_op_operands(op)[1]);
+  const uint32_t row =
+      (uint32_t)loom_aie2p_array_constant(builder, loom_op_operands(op)[2]);
+  if (column >= builder->family->column_count ||
+      row >= builder->family->row_count) {
+    builder->valid = false;
+    const loom_diagnostic_param_t params[] = {
+        loom_param_u32(column),
+        loom_param_u32(row),
+        loom_param_u32(builder->family->column_count),
+        loom_param_u32(builder->family->row_count),
+    };
+    const loom_diagnostic_emission_t emission = {
+        .op = op,
+        .error = LOOM_ERR_TARGET_120,
+        .params = params,
+        .param_count = IREE_ARRAYSIZE(params),
+    };
+    return iree_diagnostic_emit(builder->diagnostic_emitter, &emission);
   }
   worker->coordinate = (loom_xdna_tile_coordinate_t){
       .column = (uint16_t)column,
@@ -638,6 +631,9 @@ static iree_status_t loom_aie2p_array_extract_topology(
     loom_aie2p_array_plan_builder_t* builder, const loom_block_t* block) {
   loom_op_t* op = NULL;
   loom_block_for_each_op(block, op) {
+    if (!builder->valid) {
+      break;
+    }
     loom_low_descriptor_packet_t packet = {0};
     loom_low_descriptor_packet_initialize(builder->descriptor_set, op, &packet);
     if (packet.kind == LOOM_LOW_DESCRIPTOR_PACKET_NONE) {
@@ -648,7 +644,7 @@ static iree_status_t loom_aie2p_array_extract_topology(
       case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_CONSTANT_U64:
         break;
       case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_GROUP: {
-        IREE_RETURN_IF_ERROR(loom_aie2p_array_extract_group(builder, op));
+        loom_aie2p_array_extract_group(builder, op);
         break;
       }
       case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_BINDING: {
@@ -666,25 +662,23 @@ static iree_status_t loom_aie2p_array_extract_topology(
         break;
       }
       case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_SENDER: {
-        IREE_RETURN_IF_ERROR(loom_aie2p_array_extract_endpoint(
-            builder, op, LOOM_AIE2P_ARRAY_ENDPOINT_DIRECTION_SEND));
+        loom_aie2p_array_extract_endpoint(
+            builder, op, LOOM_AIE2P_ARRAY_ENDPOINT_DIRECTION_SEND);
         break;
       }
       case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_RECEIVER: {
-        IREE_RETURN_IF_ERROR(loom_aie2p_array_extract_endpoint(
-            builder, op, LOOM_AIE2P_ARRAY_ENDPOINT_DIRECTION_RECEIVE));
+        loom_aie2p_array_extract_endpoint(
+            builder, op, LOOM_AIE2P_ARRAY_ENDPOINT_DIRECTION_RECEIVE);
         break;
       }
       case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_VIEW_SENDER:
       case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_VIEW_RECEIVER: {
-        IREE_RETURN_IF_ERROR(
-            loom_aie2p_array_extract_binding_view(builder, op, false));
+        loom_aie2p_array_extract_binding_view(builder, op, false);
         break;
       }
       case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_PARTITION_SENDER:
       case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_PARTITION_RECEIVER: {
-        IREE_RETURN_IF_ERROR(
-            loom_aie2p_array_extract_binding_view(builder, op, true));
+        loom_aie2p_array_extract_binding_view(builder, op, true);
         break;
       }
       case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_CHANNEL: {
@@ -1045,9 +1039,8 @@ static iree_status_t loom_aie2p_array_select_compute_dma(
       .params = params,
       .param_count = IREE_ARRAYSIZE(params),
   };
-  IREE_RETURN_IF_ERROR(
-      iree_diagnostic_emit(builder->diagnostic_emitter, &emission));
-  return iree_status_from_code(IREE_STATUS_INVALID_ARGUMENT);
+  builder->valid = false;
+  return iree_diagnostic_emit(builder->diagnostic_emitter, &emission);
 }
 
 static iree_status_t loom_aie2p_array_select_shim_dma(
@@ -1088,31 +1081,6 @@ static iree_status_t loom_aie2p_array_bind_worker_leaf(
     const loom_aie2p_array_plan_builder_t* builder, uint32_t worker_index,
     const loom_low_function_requirements_t* requirements,
     uint32_t* out_port_count) {
-  if (requirements == NULL) {
-    return iree_make_status(IREE_STATUS_NOT_FOUND,
-                            "AIE2P worker has no core function requirements");
-  }
-  const loom_aie2p_array_worker_t* worker = &builder->workers[worker_index];
-  IREE_ASSERT_EQ(worker->entry.module_id, 0u);
-  IREE_ASSERT_LT(worker->entry.symbol_id, builder->module->symbols.count);
-  const loom_symbol_t* worker_symbol =
-      &builder->module->symbols.entries[worker->entry.symbol_id];
-  if (worker_symbol->defining_op == NULL ||
-      !loom_low_func_def_isa(worker_symbol->defining_op)) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "AIE2P worker entry must name one core Low function definition");
-  }
-  const loom_func_like_t worker_function =
-      loom_func_like_const_cast(builder->module, worker_symbol->defining_op);
-  uint16_t argument_count = 0;
-  loom_func_like_arg_ids(worker_function, &argument_count);
-  if (argument_count != 0 ||
-      loom_low_func_def_results(worker_symbol->defining_op).count != 0) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "AIE2P worker entry must have no register arguments or results");
-  }
   if (requirements->return_count == 0) {
     return iree_make_status(
         IREE_STATUS_INVALID_ARGUMENT,
@@ -1216,6 +1184,131 @@ static iree_status_t loom_aie2p_array_plan_workers(
               .load_address = load_address,
               .byte_length = (uint32_t)requirement.byte_length,
           };
+    }
+  }
+  return iree_ok_status();
+}
+
+// Indexed output extents retained while private fold allocations are formed.
+typedef struct loom_aie2p_array_fold_geometry_t {
+  // Byte lengths in the worker's contiguous folded-output port order.
+  uint32_t* output_byte_lengths;
+  // At least one output exceeds one register-backed accumulator tile.
+  bool needs_private_state;
+} loom_aie2p_array_fold_geometry_t;
+
+// Classifies all canonical output channels in one pass, then reserves private
+// state before channel rings consume memory. Narrow folds keep their registers.
+static iree_status_t loom_aie2p_array_plan_fold_states(
+    loom_aie2p_array_plan_builder_t* builder) {
+  const uint32_t fragment_byte_length = 64 * sizeof(float);
+  iree_host_size_t output_count = 0;
+  for (uint32_t i = 0; i < builder->plan->worker_count; ++i) {
+    output_count += builder->workers[i].fold_output_count;
+  }
+  if (output_count == 0) {
+    return iree_ok_status();
+  }
+  loom_aie2p_array_fold_geometry_t* geometries = NULL;
+  IREE_RETURN_IF_ERROR(loom_aie2p_array_allocate_array(
+      builder->arena, builder->plan->worker_count, sizeof(*geometries),
+      (void**)&geometries));
+  uint32_t* output_byte_lengths = NULL;
+  IREE_RETURN_IF_ERROR(loom_aie2p_array_allocate_array(
+      builder->arena, output_count, sizeof(*output_byte_lengths),
+      (void**)&output_byte_lengths));
+  iree_host_size_t first_output = 0;
+  for (uint32_t i = 0; i < builder->plan->worker_count; ++i) {
+    geometries[i] = (loom_aie2p_array_fold_geometry_t){
+        .output_byte_lengths = output_byte_lengths + first_output,
+    };
+    first_output += builder->workers[i].fold_output_count;
+  }
+  for (uint32_t i = 0; i < builder->plan->channel_count; ++i) {
+    const loom_aie2p_array_channel_t* channel = &builder->channels[i];
+    const loom_aie2p_array_endpoint_t* sender =
+        &builder->endpoints[channel->sender_endpoint_index];
+    if (channel->source_channel_index != i ||
+        sender->owner_kind != LOOM_AIE2P_ARRAY_ENDPOINT_OWNER_WORKER) {
+      continue;
+    }
+    const loom_aie2p_array_worker_t* worker =
+        &builder->workers[sender->owner_index];
+    if (worker->fold_record_count == 0) {
+      continue;
+    }
+    loom_aie2p_array_fold_geometry_t* geometry =
+        &geometries[sender->owner_index];
+    geometry->output_byte_lengths[sender->port - worker->fold_output_port] =
+        channel->record_byte_length;
+    geometry->needs_private_state |=
+        channel->record_byte_length > fragment_byte_length;
+  }
+  for (uint32_t worker_index = 0; worker_index < builder->plan->worker_count;
+       ++worker_index) {
+    const loom_aie2p_array_fold_geometry_t* geometry =
+        &geometries[worker_index];
+    if (!geometry->needs_private_state) {
+      continue;
+    }
+    const loom_aie2p_array_worker_t* worker = &builder->workers[worker_index];
+    const uint32_t* lengths = geometry->output_byte_lengths;
+
+    uint64_t byte_length = 0;
+    uint32_t span_count = 0;
+    for (uint32_t i = 0; i < worker->fold_output_count; ++i) {
+      byte_length =
+          iree_align_uint64(byte_length, LOOM_AIE2P_ARRAY_CHANNEL_ALIGNMENT);
+      byte_length += lengths[i];
+      span_count += (lengths[i] >= fragment_byte_length) +
+                    (lengths[i] % fragment_byte_length != 0);
+    }
+    if (byte_length > UINT32_MAX) {
+      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                              "AIE2P worker fold state is not representable");
+    }
+    loom_aie2p_array_fold_state_plan_t* state =
+        &builder->worker_plans[worker_index].fold_state;
+    state->byte_length = (uint32_t)byte_length;
+    state->span_count = span_count;
+    IREE_RETURN_IF_ERROR(loom_aie2p_array_allocate_worker_storage(
+        loom_aie2p_array_tile_state(builder, worker->coordinate),
+        state->byte_length, LOOM_AIE2P_ARRAY_CHANNEL_ALIGNMENT,
+        &state->owner_offset));
+    IREE_RETURN_IF_ERROR(loom_xdna_array_form_load_address(
+        builder->family, worker->coordinate, LOOM_XDNA_MEMORY_SPACE_DATA,
+        worker->coordinate, state->owner_offset, state->byte_length,
+        &state->load_address));
+    loom_aie2p_array_fold_span_t* spans = NULL;
+    IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
+        builder->arena, state->span_count, sizeof(*spans), (void**)&spans));
+    state->spans = spans;
+    uint32_t state_byte_offset = 0;
+    uint32_t span_index = 0;
+    for (uint32_t i = 0; i < worker->fold_output_count; ++i) {
+      state_byte_offset = (uint32_t)iree_align_uint64(
+          state_byte_offset, LOOM_AIE2P_ARRAY_CHANNEL_ALIGNMENT);
+      const uint32_t repeat_count = lengths[i] / fragment_byte_length;
+      const uint32_t repeated_byte_length = repeat_count * fragment_byte_length;
+      if (repeat_count != 0) {
+        spans[span_index++] = (loom_aie2p_array_fold_span_t){
+            .output_index = i,
+            .output_byte_offset = 0,
+            .state_byte_offset = state_byte_offset,
+            .byte_length = fragment_byte_length,
+            .repeat_count = repeat_count,
+        };
+      }
+      if (repeated_byte_length != lengths[i]) {
+        spans[span_index++] = (loom_aie2p_array_fold_span_t){
+            .output_index = i,
+            .output_byte_offset = repeated_byte_length,
+            .state_byte_offset = state_byte_offset + repeated_byte_length,
+            .byte_length = lengths[i] - repeated_byte_length,
+            .repeat_count = 1,
+        };
+      }
+      state_byte_offset += lengths[i];
     }
   }
   return iree_ok_status();
@@ -1351,16 +1444,14 @@ static uint32_t loom_aie2p_array_plan_completion_route(
     return state->allocation.completion_route_index;
   }
 
-  const loom_xdna_stream_port_range_t* source = NULL;
-  const loom_xdna_stream_port_range_t* destination = NULL;
-  IREE_CHECK_OK(loom_xdna_array_stream_port_range(
-      builder->family, LOOM_XDNA_TILE_KIND_SHIM_NOC,
-      LOOM_XDNA_STREAM_DIRECTION_SLAVE, LOOM_XDNA_STREAM_PORT_TILE_CONTROL,
-      &source));
-  IREE_CHECK_OK(loom_xdna_array_stream_port_range(
-      builder->family, LOOM_XDNA_TILE_KIND_SHIM_NOC,
-      LOOM_XDNA_STREAM_DIRECTION_MASTER, LOOM_XDNA_STREAM_PORT_SOUTH,
-      &destination));
+  const loom_xdna_stream_port_range_t* source =
+      loom_xdna_array_stream_port_range(
+          builder->family, LOOM_XDNA_TILE_KIND_SHIM_NOC,
+          LOOM_XDNA_STREAM_DIRECTION_SLAVE, LOOM_XDNA_STREAM_PORT_TILE_CONTROL);
+  const loom_xdna_stream_port_range_t* destination =
+      loom_xdna_array_stream_port_range(
+          builder->family, LOOM_XDNA_TILE_KIND_SHIM_NOC,
+          LOOM_XDNA_STREAM_DIRECTION_MASTER, LOOM_XDNA_STREAM_PORT_SOUTH);
 
   // TileControl0 -> South0 is the native completion endpoint. It is the only
   // packet demand on this shim; circuit DMA routes occupy different ports.
@@ -1378,6 +1469,20 @@ static uint32_t loom_aie2p_array_plan_completion_route(
   };
   state->allocation.completion_route_index = index;
   return index;
+}
+
+static iree_status_t loom_aie2p_array_diagnose_route_capacity(
+    loom_aie2p_array_plan_builder_t* builder, uint32_t channel_index) {
+  builder->valid = false;
+  const loom_diagnostic_param_t params[] = {loom_param_u32(channel_index)};
+  const loom_diagnostic_emission_t emission = {
+      .op = loom_value_def_op(loom_value_table_const_value(
+          &builder->module->values, builder->channels[channel_index].value_id)),
+      .error = LOOM_ERR_TARGET_092,
+      .params = params,
+      .param_count = IREE_ARRAYSIZE(params),
+  };
+  return iree_diagnostic_emit(builder->diagnostic_emitter, &emission);
 }
 
 static iree_status_t loom_aie2p_array_plan_external_channel(
@@ -1413,6 +1518,9 @@ static iree_status_t loom_aie2p_array_plan_external_channel(
         builder, channel_index, worker->coordinate, compute_direction,
         channel->capacity, channel->record_byte_length,
         /*source_endpoint=*/NULL, &compute_dma_index));
+    if (!builder->valid) {
+      return iree_ok_status();
+    }
   } else {
     compute_dma_index = source_channel->sender_dma_index;
   }
@@ -1454,15 +1562,19 @@ static iree_status_t loom_aie2p_array_plan_external_channel(
     compute_dma->credit_lock_index = credit_lock_index;
   }
 
-  if (ingress) {
-    IREE_RETURN_IF_ERROR(loom_aie2p_array_route_ingress(
-        &builder->route_builder, channel_index, shim_dma->coordinate,
-        shim_dma->dma_channel, compute_dma->coordinate,
-        compute_dma->dma_channel));
-  } else {
-    IREE_RETURN_IF_ERROR(loom_aie2p_array_route_egress(
-        &builder->route_builder, channel_index, compute_dma->coordinate,
-        compute_dma->dma_channel, shim_dma->coordinate, shim_dma->dma_channel));
+  const bool routed =
+      ingress ? loom_aie2p_array_route_ingress(
+                    &builder->route_builder, channel_index,
+                    channel->source_channel_index, shim_dma->coordinate,
+                    shim_dma->dma_channel, compute_dma->coordinate,
+                    compute_dma->dma_channel)
+              : loom_aie2p_array_route_egress(
+                    &builder->route_builder, channel_index,
+                    channel->source_channel_index, compute_dma->coordinate,
+                    compute_dma->dma_channel, shim_dma->coordinate,
+                    shim_dma->dma_channel);
+  if (!routed) {
+    return loom_aie2p_array_diagnose_route_capacity(builder, channel_index);
   }
 
   if (owns_shim_dma) {
@@ -1477,9 +1589,8 @@ static iree_status_t loom_aie2p_array_plan_external_channel(
                                       : loom_aie2p_array_plan_completion_route(
                                             builder, shim_dma->coordinate),
     };
-    const loom_xdna_tile_facts_t* shim_tile = NULL;
-    IREE_RETURN_IF_ERROR(loom_xdna_array_tile_facts(
-        builder->family, shim_dma->coordinate, &shim_tile));
+    const loom_xdna_tile_facts_t* shim_tile =
+        loom_xdna_array_tile_facts(builder->family, shim_dma->coordinate);
     IREE_RETURN_IF_ERROR(loom_aie2p_array_plan_binding_transfer(
         builder->module, &builder->facts, builder->family,
         base_binding_endpoint->message_type, binding_endpoint->message_type,
@@ -1540,6 +1651,9 @@ static iree_status_t loom_aie2p_array_plan_routed_channel(
         LOOM_AIE2P_ARRAY_DMA_DIRECTION_MEMORY_TO_STREAM, channel->capacity,
         channel->record_byte_length, /*source_endpoint=*/NULL,
         &sender_dma_index));
+    if (!builder->valid) {
+      return iree_ok_status();
+    }
   } else {
     sender_dma_index = source_channel->sender_dma_index;
   }
@@ -1559,6 +1673,9 @@ static iree_status_t loom_aie2p_array_plan_routed_channel(
       builder, channel_index, receiver_worker->coordinate,
       LOOM_AIE2P_ARRAY_DMA_DIRECTION_STREAM_TO_MEMORY, channel->capacity,
       channel->record_byte_length, &source_endpoint, &receiver_dma_index));
+  if (!builder->valid) {
+    return iree_ok_status();
+  }
   loom_aie2p_array_dma_plan_t* receiver_dma =
       &builder->dma_channels[receiver_dma_index];
   IREE_RETURN_IF_ERROR(loom_aie2p_array_plan_channel_slots(
@@ -1583,10 +1700,12 @@ static iree_status_t loom_aie2p_array_plan_routed_channel(
       LOOM_AIE2P_ARRAY_ENDPOINT_DIRECTION_RECEIVE, (int8_t)channel->capacity,
       &receiver_credit_lock_index));
   receiver_dma->credit_lock_index = receiver_credit_lock_index;
-  IREE_RETURN_IF_ERROR(loom_aie2p_array_route_workers(
-      &builder->route_builder, channel_index, sender_dma->coordinate,
-      sender_dma->dma_channel, receiver_dma->coordinate,
-      receiver_dma->dma_channel));
+  if (!loom_aie2p_array_route_workers(
+          &builder->route_builder, channel_index, channel->source_channel_index,
+          sender_dma->coordinate, sender_dma->dma_channel,
+          receiver_dma->coordinate, receiver_dma->dma_channel)) {
+    return loom_aie2p_array_diagnose_route_capacity(builder, channel_index);
+  }
   if (owns_sender_dma) {
     loom_aie2p_array_bind_worker_port(builder, sender, channel_index,
                                       sender_credit_lock_index);
@@ -1598,7 +1717,8 @@ static iree_status_t loom_aie2p_array_plan_routed_channel(
 
 static iree_status_t loom_aie2p_array_plan_channels(
     loom_aie2p_array_plan_builder_t* builder) {
-  for (iree_host_size_t i = 0; i < builder->plan->channel_count; ++i) {
+  for (iree_host_size_t i = 0;
+       builder->valid && i < builder->plan->channel_count; ++i) {
     loom_aie2p_array_channel_t* channel = &builder->channels[i];
     const loom_aie2p_array_endpoint_t* sender =
         &builder->endpoints[channel->sender_endpoint_index];
@@ -1644,9 +1764,8 @@ static iree_status_t loom_aie2p_array_initialize_tile_states(
          ++column) {
       loom_aie2p_array_tile_state_t* state = loom_aie2p_array_tile_state(
           builder, (loom_xdna_tile_coordinate_t){column, row});
-      IREE_RETURN_IF_ERROR(loom_xdna_array_tile_facts(
-          builder->family, (loom_xdna_tile_coordinate_t){column, row},
-          &state->facts));
+      state->facts = loom_xdna_array_tile_facts(
+          builder->family, (loom_xdna_tile_coordinate_t){column, row});
       bank_cursor_count += state->facts->memory.bank_count;
     }
   }
@@ -1669,18 +1788,6 @@ static iree_status_t loom_aie2p_array_initialize_tile_states(
     }
   }
 
-  uint8_t* next_channels = NULL;
-  const iree_host_size_t next_channel_count = tile_count * 4u;
-  IREE_RETURN_IF_ERROR(loom_aie2p_array_allocate_array(
-      builder->arena, next_channel_count, sizeof(*next_channels),
-      (void**)&next_channels));
-  memset(next_channels, 0, next_channel_count * sizeof(*next_channels));
-  builder->route_builder.link_channels.northbound = next_channels;
-  builder->route_builder.link_channels.southbound = next_channels + tile_count;
-  builder->route_builder.link_channels.westbound =
-      next_channels + tile_count * 2u;
-  builder->route_builder.link_channels.eastbound =
-      next_channels + tile_count * 3u;
   return iree_ok_status();
 }
 
@@ -1717,9 +1824,6 @@ static iree_status_t loom_aie2p_array_allocate_physical_plan(
   for (iree_host_size_t i = 0; i < builder->plan->worker_count; ++i) {
     const loom_low_function_requirements_t* requirements =
         loom_aie2p_array_find_leaf(builder, builder->workers[i].entry);
-    if (requirements == NULL) {
-      continue;
-    }
     for (uint32_t space = 0; space < LOOM_STORAGE_SPACE_COUNT_; ++space) {
       worker_storage_count +=
           loom_low_storage_layout_requirement(&requirements->storage_layout,
@@ -1783,10 +1887,9 @@ static iree_status_t loom_aie2p_array_allocate_physical_plan(
   IREE_RETURN_IF_ERROR(loom_aie2p_array_allocate_array(
       builder->arena, builder->plan->dma_channel_count,
       sizeof(*builder->dma_channels), (void**)&builder->dma_channels));
-  IREE_RETURN_IF_ERROR(loom_aie2p_array_allocate_array(
-      builder->arena, builder->plan->route_count,
-      sizeof(*builder->route_builder.routes),
-      (void**)&builder->route_builder.routes));
+  IREE_RETURN_IF_ERROR(loom_aie2p_array_route_builder_initialize(
+      builder->family, builder->plan->channel_count, builder->plan->route_count,
+      builder->arena, &builder->route_builder));
   IREE_RETURN_IF_ERROR(loom_aie2p_array_allocate_array(
       builder->arena, builder->plan->binding_plan_count,
       sizeof(*builder->binding_plans) + sizeof(*builder->completion_routes),
@@ -1813,7 +1916,7 @@ static iree_status_t loom_aie2p_array_allocate_physical_plan(
   return loom_aie2p_array_initialize_tile_states(builder);
 }
 
-static iree_status_t loom_aie2p_array_finalize_physical_counts(
+static void loom_aie2p_array_finalize_physical_counts(
     loom_aie2p_array_plan_builder_t* builder) {
   builder->plan->worker_storage_count = builder->worker_storage_cursor;
   builder->plan->worker_port_count = builder->worker_port_cursor;
@@ -1822,39 +1925,23 @@ static iree_status_t loom_aie2p_array_finalize_physical_counts(
   builder->plan->dma_channel_count = builder->dma_channel_cursor;
   builder->plan->route_count = builder->route_builder.route_count;
   builder->plan->binding_plan_count = builder->binding_plan_cursor;
-  return iree_ok_status();
 }
 
 iree_status_t loom_aie2p_array_plan_build(
     const loom_module_t* module, const loom_op_t* function_op,
     const loom_aie2p_array_leaf_t* leaves, iree_host_size_t leaf_count,
     iree_diagnostic_emitter_t diagnostic_emitter, iree_arena_allocator_t* arena,
-    loom_aie2p_array_plan_t* out_plan) {
+    loom_aie2p_array_plan_t* out_plan, bool* out_valid) {
   *out_plan = (loom_aie2p_array_plan_t){0};
-  if (!module || !function_op || !arena ||
-      !loom_low_func_def_isa(function_op)) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "AIE2P array planning requires one target-low function definition");
-  }
+  *out_valid = false;
   const loom_func_like_t function =
       loom_func_like_const_cast(module, function_op);
   loom_region_t* body = loom_func_like_body(function);
-  if (!body || body->block_count != 1) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "AIE2P array planning requires one structured entry block");
-  }
-  const loom_string_id_t contract_id = loom_func_like_repr_contract(function);
-  if (contract_id >= module->strings.count ||
-      !iree_string_view_equal(
-          loom_string_table_get(&module->strings, contract_id),
-          IREE_SV("amd.xdna.aie2p.array"))) {
-    return iree_make_status(
-        IREE_STATUS_INVALID_ARGUMENT,
-        "AIE2P array planning requires amd.xdna.aie2p.array Low IR");
-  }
 
+  loom_aie2p_array_plan_t plan = {
+      .function_op = function_op,
+      .family = loom_xdna_npu2_array_family(),
+  };
   loom_aie2p_array_plan_builder_t builder = {
       .module = module,
       .function_op = function_op,
@@ -1863,26 +1950,35 @@ iree_status_t loom_aie2p_array_plan_build(
       .leaves = leaves,
       .leaf_count = leaf_count,
       .diagnostic_emitter = diagnostic_emitter,
+      .valid = true,
       .arena = arena,
-      .plan = out_plan,
-  };
-  builder.route_builder.family = builder.family;
-  *out_plan = (loom_aie2p_array_plan_t){
-      .function_op = function_op,
-      .family = builder.family,
+      .plan = &plan,
   };
   IREE_RETURN_IF_ERROR(loom_value_fact_table_initialize(&builder.facts, arena,
                                                         module->values.count));
   IREE_RETURN_IF_ERROR(
       loom_value_fact_table_compute(&builder.facts, module, function));
   const loom_block_t* block = loom_region_entry_block(body);
-  IREE_RETURN_IF_ERROR(loom_aie2p_array_count_topology(&builder, block));
+  loom_aie2p_array_count_topology(&builder, block);
   IREE_RETURN_IF_ERROR(loom_aie2p_array_allocate_topology(&builder));
   IREE_RETURN_IF_ERROR(loom_aie2p_array_extract_topology(&builder, block));
+  if (!builder.valid) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_aie2p_array_topology_validate(
-      &builder.facts, diagnostic_emitter, arena, out_plan, builder.channels));
+      &builder.facts, diagnostic_emitter, arena, &plan, builder.channels,
+      &builder.valid));
+  if (!builder.valid) {
+    return iree_ok_status();
+  }
   IREE_RETURN_IF_ERROR(loom_aie2p_array_allocate_physical_plan(&builder));
   IREE_RETURN_IF_ERROR(loom_aie2p_array_plan_workers(&builder));
+  IREE_RETURN_IF_ERROR(loom_aie2p_array_plan_fold_states(&builder));
   IREE_RETURN_IF_ERROR(loom_aie2p_array_plan_channels(&builder));
-  return loom_aie2p_array_finalize_physical_counts(&builder);
+  if (builder.valid) {
+    loom_aie2p_array_finalize_physical_counts(&builder);
+    *out_plan = plan;
+    *out_valid = true;
+  }
+  return iree_ok_status();
 }

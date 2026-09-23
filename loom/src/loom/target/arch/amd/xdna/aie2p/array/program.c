@@ -382,9 +382,8 @@ static iree_status_t loom_aie2p_program_append_compute_dma_reset(
     loom_aie2p_array_program_builder_t* builder,
     loom_xdna_tile_coordinate_t coordinate,
     loom_aie2p_compute_dma_reset_state_t reset_state) {
-  const loom_xdna_tile_facts_t* tile = NULL;
-  IREE_RETURN_IF_ERROR(
-      loom_xdna_array_tile_facts(builder->plan->family, coordinate, &tile));
+  const loom_xdna_tile_facts_t* tile =
+      loom_xdna_array_tile_facts(builder->plan->family, coordinate);
   for (iree_host_size_t i = 0;
        i < IREE_ARRAYSIZE(loom_aie2p_compute_dma_reset_fields); ++i) {
     for (uint16_t channel = 0; channel < tile->dma.channel_count_per_direction;
@@ -417,9 +416,9 @@ static iree_status_t loom_aie2p_program_stream_ordinal(
     const loom_aie2p_array_plan_t* plan, loom_xdna_tile_kind_t tile_kind,
     loom_xdna_stream_direction_t direction, loom_xdna_stream_port_t port,
     uint8_t channel, uint16_t* out_ordinal) {
-  const loom_xdna_stream_port_range_t* range = NULL;
-  IREE_RETURN_IF_ERROR(loom_xdna_array_stream_port_range(
-      plan->family, tile_kind, direction, port, &range));
+  const loom_xdna_stream_port_range_t* range =
+      loom_xdna_array_stream_port_range(plan->family, tile_kind, direction,
+                                        port);
   if (channel >= range->count) {
     return iree_make_status(
         IREE_STATUS_OUT_OF_RANGE,
@@ -433,9 +432,8 @@ static iree_status_t loom_aie2p_program_stream_ordinal(
 static iree_status_t loom_aie2p_program_accumulate_stream_route(
     loom_aie2p_array_program_builder_t* builder,
     const loom_aie2p_array_route_plan_t* route) {
-  const loom_xdna_tile_facts_t* tile = NULL;
-  IREE_RETURN_IF_ERROR(loom_xdna_array_tile_facts(builder->plan->family,
-                                                  route->coordinate, &tile));
+  const loom_xdna_tile_facts_t* tile =
+      loom_xdna_array_tile_facts(builder->plan->family, route->coordinate);
   uint16_t source_ordinal = 0;
   uint16_t destination_ordinal = 0;
   IREE_RETURN_IF_ERROR(loom_aie2p_program_stream_ordinal(
@@ -721,9 +719,8 @@ static iree_status_t loom_aie2p_program_build_compute_dma_descriptor(
   IREE_ASSERT_EQ(storage->owner.column, dma->coordinate.column);
   IREE_ASSERT_EQ(storage->owner.row, dma->coordinate.row);
   const uint32_t local_address = storage->owner_offset;
-  const loom_xdna_tile_facts_t* tile = NULL;
-  IREE_RETURN_IF_ERROR(
-      loom_xdna_array_tile_facts(plan->family, dma->coordinate, &tile));
+  const loom_xdna_tile_facts_t* tile =
+      loom_xdna_array_tile_facts(plan->family, dma->coordinate);
   if (local_address % tile->dma.address_alignment != 0 ||
       channel->record_byte_length % tile->dma.transfer_length_granularity !=
           0 ||
@@ -840,9 +837,8 @@ static iree_status_t loom_aie2p_program_build_shim_dma_descriptor(
     loom_aie2p_array_program_builder_t* builder,
     const loom_aie2p_array_binding_plan_t* binding_plan,
     const loom_aie2p_array_dma_plan_t* dma) {
-  const loom_xdna_tile_facts_t* tile = NULL;
-  IREE_RETURN_IF_ERROR(loom_xdna_array_tile_facts(builder->plan->family,
-                                                  dma->coordinate, &tile));
+  const loom_xdna_tile_facts_t* tile =
+      loom_xdna_array_tile_facts(builder->plan->family, dma->coordinate);
   uint32_t descriptor_address = 0;
   IREE_RETURN_IF_ERROR(loom_aie2p_program_shim_dma_buffer_descriptor_address(
       builder->plan, dma->coordinate, dma->buffer_descriptor_start,
@@ -1022,9 +1018,8 @@ static iree_status_t loom_aie2p_program_count_storage(
                            LOOM_AIE2P_ARRAY_DMA_FLAG_SERVICE_TILE_LIFECYCLE)) {
         IREE_RETURN_IF_ERROR(
             loom_aie2p_program_add_capacity(1, &dma_service_tile_count));
-        const loom_xdna_tile_facts_t* tile = NULL;
-        IREE_RETURN_IF_ERROR(
-            loom_xdna_array_tile_facts(plan->family, dma->coordinate, &tile));
+        const loom_xdna_tile_facts_t* tile =
+            loom_xdna_array_tile_facts(plan->family, dma->coordinate);
         IREE_RETURN_IF_ERROR(loom_aie2p_program_add_scaled_capacity(
             tile->dma.channel_count_per_direction,
             2 * IREE_ARRAYSIZE(loom_aie2p_compute_dma_reset_fields),
@@ -1033,9 +1028,8 @@ static iree_status_t loom_aie2p_program_count_storage(
     }
   }
   for (iree_host_size_t i = 0; i < plan->worker_plan_count; ++i) {
-    const loom_xdna_tile_facts_t* tile = NULL;
-    IREE_RETURN_IF_ERROR(loom_xdna_array_tile_facts(
-        plan->family, plan->worker_plans[i].coordinate, &tile));
+    const loom_xdna_tile_facts_t* tile = loom_xdna_array_tile_facts(
+        plan->family, plan->worker_plans[i].coordinate);
     // Each reset field is emitted once to assert and once to release reset.
     IREE_RETURN_IF_ERROR(loom_aie2p_program_add_scaled_capacity(
         tile->dma.channel_count_per_direction,

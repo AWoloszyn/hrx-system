@@ -58,7 +58,8 @@ static iree_status_t loom_aie2p_array_worker_graph_visit(
 }
 
 static iree_status_t loom_aie2p_array_topology_validate_worker_dependencies(
-    const loom_aie2p_array_topology_t* topology) {
+    const loom_aie2p_array_topology_t* topology, bool* out_valid) {
+  *out_valid = false;
   const loom_aie2p_array_plan_t* plan = topology->plan;
   loom_aie2p_array_worker_graph_t graph = {.plan = plan};
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
@@ -106,11 +107,10 @@ static iree_status_t loom_aie2p_array_topology_validate_worker_dependencies(
           .params = params,
           .param_count = IREE_ARRAYSIZE(params),
       };
-      IREE_RETURN_IF_ERROR(
-          iree_diagnostic_emit(topology->diagnostic_emitter, &emission));
-      return iree_status_from_code(IREE_STATUS_INVALID_ARGUMENT);
+      return iree_diagnostic_emit(topology->diagnostic_emitter, &emission);
     }
   }
+  *out_valid = true;
   return iree_ok_status();
 }
 
@@ -238,15 +238,14 @@ static iree_status_t loom_aie2p_array_topology_validate_worker_rates(
       const bool supported_f32_shape =
           record_byte_length == sizeof(float) ||
           (record_byte_length >= accumulator_lane_byte_length &&
-           record_byte_length <= 4 * accumulator_lane_byte_length &&
            record_byte_length % accumulator_lane_byte_length == 0);
       if (loom_type_element_type(endpoint->message_type) !=
               LOOM_SCALAR_TYPE_F32 ||
           !supported_f32_shape) {
         return iree_make_status(
             IREE_STATUS_UNIMPLEMENTED,
-            "AIE2P temporal fold requires one F32 element or a native "
-            "16/32/48/64-element F32 accumulator tile");
+            "AIE2P temporal fold requires one F32 element or a multiple of "
+            "16 F32 elements");
       }
     }
     if (worker->fold_record_count != 0) {
@@ -346,8 +345,9 @@ static iree_status_t loom_aie2p_array_topology_validate_binding_view(
 iree_status_t loom_aie2p_array_topology_validate(
     const loom_value_fact_table_t* facts,
     iree_diagnostic_emitter_t diagnostic_emitter, iree_arena_allocator_t* arena,
-    loom_aie2p_array_plan_t* plan,
-    loom_aie2p_array_channel_t* mutable_channels) {
+    loom_aie2p_array_plan_t* plan, loom_aie2p_array_channel_t* mutable_channels,
+    bool* out_valid) {
+  *out_valid = false;
   const loom_aie2p_array_topology_t topology_storage = {
       .facts = facts,
       .diagnostic_emitter = diagnostic_emitter,
@@ -401,9 +401,8 @@ iree_status_t loom_aie2p_array_topology_validate(
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "AIE2P worker is incompletely instantiated");
     }
-    const loom_xdna_tile_facts_t* tile_facts = NULL;
-    IREE_RETURN_IF_ERROR(loom_xdna_array_tile_facts(
-        plan->family, worker->coordinate, &tile_facts));
+    const loom_xdna_tile_facts_t* tile_facts =
+        loom_xdna_array_tile_facts(plan->family, worker->coordinate);
     if (tile_facts->kind != LOOM_XDNA_TILE_KIND_COMPUTE) {
       return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                               "AIE2P worker must occupy a compute tile");
@@ -667,5 +666,6 @@ iree_status_t loom_aie2p_array_topology_validate(
   }
   IREE_RETURN_IF_ERROR(
       loom_aie2p_array_topology_validate_worker_rates(topology));
-  return loom_aie2p_array_topology_validate_worker_dependencies(topology);
+  return loom_aie2p_array_topology_validate_worker_dependencies(topology,
+                                                                out_valid);
 }

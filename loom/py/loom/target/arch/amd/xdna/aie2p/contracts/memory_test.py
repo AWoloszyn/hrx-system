@@ -58,6 +58,7 @@ def _rules_for(
     volatile: bool = False,
     scalarized_vector_load: bool | None = None,
     split_vector_load: bool | None = None,
+    wide_vector: bool | None = None,
     pair_scalar: bool | None = None,
 ):
     return [
@@ -91,6 +92,16 @@ def _rules_for(
                 and _primary_descriptor_emit_count(rule) == 2
             )
             is split_vector_load
+        )
+        and (
+            wide_vector is None
+            or (
+                rule.source_op in (vector.vector_load, vector.vector_store)
+                and _source_memory_emit(rule).source_memory.element_byte_count
+                * _source_memory_emit(rule).source_memory.vector_lane_count
+                == 128
+            )
+            is wide_vector
         )
         and (
             pair_scalar is None
@@ -550,6 +561,7 @@ def test_vector_memory_rules_cover_every_native_width_and_address_form() -> None
             vector.vector_store,
             scalarized_vector_load=False,
             split_vector_load=False,
+            wide_vector=False,
         )
         expected_descriptor_keys = []
         for (
@@ -655,6 +667,7 @@ def test_256bit_vector_loads_split_at_16_byte_alignment() -> None:
             vector.vector_load,
             scalarized_vector_load=False,
             split_vector_load=True,
+            wide_vector=False,
         )
         assert len(rules) == len(expected_shapes) * 5
         for shape_index, (
@@ -733,6 +746,140 @@ def test_256bit_vector_loads_split_at_16_byte_alignment() -> None:
                 0,
                 16,
             )
+
+
+def test_wide_vector_memory_rules_preserve_two_native_chunks() -> None:
+    expected_shapes = (
+        ("i8", "i8", 1, 128),
+        ("f8E4M3", "i8", 1, 128),
+        ("f8E5M2", "i8", 1, 128),
+        ("i16", "i16", 2, 64),
+        ("f16", "i16", 2, 64),
+        ("bf16", "bf16", 2, 64),
+        ("i32", "i32", 4, 32),
+        ("i64", "i64", 8, 16),
+        ("f64", "f64", 8, 16),
+    )
+    expected_static_ranges = (
+        (-512, 384, 0, 0, False),
+        (_I32_MIN, _I32_MAX - 64, 0, 0, False),
+        (0, 0, None, 1, True),
+        (-64, 63, None, 1, True),
+        (_I32_MIN, _I32_MAX - 64, None, 1, True),
+    )
+    for root_kind, memory_spaces in _MEMORY_ROOTS:
+        rules = _rules_for(
+            root_kind, vector.vector_load, vector.vector_store, wide_vector=True
+        )
+        assert len(rules) == len(expected_shapes) * 2 * 5
+        for shape_index, (
+            element_type,
+            descriptor_type,
+            element_byte_count,
+            vector_lane_count,
+        ) in enumerate(expected_shapes):
+            for operation_index, operation in enumerate(
+                (SourceMemoryOperation.LOAD, SourceMemoryOperation.STORE)
+            ):
+                start = (shape_index * 2 + operation_index) * 5
+                operation_rules = rules[start : start + 5]
+                descriptor_family = (
+                    "load.a" if operation is SourceMemoryOperation.LOAD else "store"
+                )
+                prefix = (
+                    f"amd.xdna.aie2p.{descriptor_family}."
+                    f"{descriptor_type}x{vector_lane_count // 2}.indexed"
+                )
+                assert [rule.descriptor.key for rule in operation_rules] == [
+                    f"{prefix}.immediate",
+                    *(f"{prefix}.register",) * 4,
+                ]
+                for address_index, rule in enumerate(operation_rules):
+                    assert rule.guards[-1].type_pattern.elements == (element_type,)
+                    assert rule.guards[-1].type_pattern.lanes == vector_lane_count
+                    constraint = _source_memory_emit(rule).source_memory
+                    assert constraint.operation is operation
+                    assert constraint.root_kind is root_kind
+                    assert constraint.address_layout is SourceMemoryAddressLayout.ANY
+                    assert constraint.memory_spaces == memory_spaces
+                    assert constraint.element_byte_count == element_byte_count
+                    assert constraint.vector_lane_count == vector_lane_count
+                    assert constraint.vector_lane_byte_stride == element_byte_count
+                    assert constraint.minimum_alignment == 64
+                    assert constraint.cache_policy_build_flags is None
+                    assert (
+                        constraint.static_byte_offset_minimum,
+                        constraint.static_byte_offset_maximum,
+                        constraint.dynamic_term_count,
+                        constraint.dynamic_term_count_minimum,
+                        constraint.allow_dynamic_stride_values,
+                    ) == expected_static_ranges[address_index]
+                    memory_emits = [
+                        emit
+                        for emit in rule.emit
+                        if isinstance(emit, EmitDescriptorOp)
+                        and emit.descriptor == rule.descriptor
+                    ]
+                    assert len(memory_emits) == 2
+                    assert all(
+                        emit.source_memory == constraint for emit in memory_emits
+                    )
+                    assert all(not emit.copy_operands for emit in memory_emits)
+                    assert all("storage" not in emit.operands for emit in memory_emits)
+                    slices = [
+                        emit
+                        for emit in rule.emit
+                        if isinstance(emit, EmitRegisterSlice)
+                    ]
+                    concats = [
+                        emit
+                        for emit in rule.emit
+                        if isinstance(emit, EmitRegisterConcat)
+                    ]
+                    if operation is SourceMemoryOperation.LOAD:
+                        assert not slices
+                        assert len(concats) == 1
+                        assert [source.field for source in concats[0].sources] == [
+                            "chunk_0",
+                            "chunk_1",
+                        ]
+                        assert concats[0].result.field == "result"
+                    else:
+                        assert not concats
+                        assert [emit.unit_offset for emit in slices] == [0, 2]
+                        assert [emit.unit_count for emit in slices] == [2, 2]
+                        assert all(emit.result_type is None for emit in slices)
+
+                immediate_projects = [
+                    emit.immediates["imm"]
+                    for emit in operation_rules[0].emit
+                    if isinstance(emit, EmitDescriptorOp)
+                ]
+                assert tuple(project.kind for project in immediate_projects) == (
+                    SourceMemoryProjectKind.STATIC_BYTE_OFFSET,
+                    SourceMemoryProjectKind.STATIC_BYTE_OFFSET_PLUS_LITERAL,
+                )
+                assert tuple(project.literal_i64 for project in immediate_projects) == (
+                    0,
+                    64,
+                )
+                for address_index, expected_offsets in (
+                    (1, (0, 64)),
+                    (2, (64,)),
+                    (3, (0, 64)),
+                    (4, (0, 64)),
+                ):
+                    static_projects = [
+                        project
+                        for emit in operation_rules[address_index].emit
+                        if isinstance(emit, EmitDescriptorOp)
+                        if isinstance(emit.immediates, dict)
+                        for project in emit.immediates.values()
+                        if isinstance(project, SourceMemoryProject)
+                    ]
+                    assert tuple(
+                        project.literal_i64 for project in static_projects
+                    ) == (expected_offsets)
 
 
 def test_accumulator_memory_rules_decompose_raw_payloads_into_native_chunks() -> None:

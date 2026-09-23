@@ -54,7 +54,7 @@ low.func.def target<amd.xdna.aie2p.core>(@multicast_core_target) abi(object_func
 }
 
 // ----
-array @multicast_array family=amd.xdna.npu2 groups=1 workers=2 bindings=1 channels=4 slots=5 locks=8 dma=6 routes=18
+array @multicast_array family=amd.xdna.npu2 groups=1 workers=2 bindings=1 channels=4 slots=5 locks=8 dma=6 routes=16
 binding index=0 ordinal=0 access=read
 worker index=0 group=0 lane=0 entry=@consume_two tile=(0,2) resources=2 storage-domains=0
 worker index=1 group=0 lane=1 entry=@consume_two tile=(1,2) resources=2 storage-domains=0
@@ -93,12 +93,10 @@ route channel=1 tile=(0,0) kind=shim-mux source=dma[1] destination=north[7]
 route channel=1 tile=(0,0) kind=switch source=south[7] destination=north[1]
 route channel=1 tile=(0,1) kind=switch source=south[1] destination=north[1]
 route channel=1 tile=(0,2) kind=switch source=south[1] destination=dma[1]
-route channel=2 tile=(0,0) kind=shim-mux source=dma[0] destination=north[3]
 route channel=2 tile=(0,0) kind=switch source=south[3] destination=east[0]
 route channel=2 tile=(1,0) kind=switch source=west[0] destination=north[0]
 route channel=2 tile=(1,1) kind=switch source=south[0] destination=north[0]
 route channel=2 tile=(1,2) kind=switch source=south[0] destination=dma[0]
-route channel=3 tile=(0,0) kind=shim-mux source=dma[1] destination=north[7]
 route channel=3 tile=(0,0) kind=switch source=south[7] destination=east[1]
 route channel=3 tile=(1,0) kind=switch source=west[1] destination=north[1]
 route channel=3 tile=(1,1) kind=switch source=south[1] destination=north[1]

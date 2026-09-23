@@ -24,6 +24,13 @@ typedef enum loom_aie2p_block_terminator_e {
   LOOM_AIE2P_BLOCK_TERMINATOR_RETURN = 3,
 } loom_aie2p_block_terminator_t;
 
+typedef struct loom_aie2p_block_branch_t {
+  // Native branch descriptor selected for the block terminator.
+  uint32_t descriptor_ordinal;
+  // Source-order destination block used by the final branch fixup.
+  uint32_t target_block_index;
+} loom_aie2p_block_branch_t;
+
 typedef struct loom_aie2p_block_analysis_t {
   // Structural terminator packet ending this block.
   uint32_t terminator_packet_index;
@@ -33,6 +40,15 @@ typedef struct loom_aie2p_block_analysis_t {
   uint32_t maximum_issue_cycle;
   // Structural control kind selected for this block.
   loom_aie2p_block_terminator_t terminator;
+  // Selected physical branches, shared by destination alignment and emission.
+  struct {
+    // Native branches in emission order; fallthrough contributes no entry.
+    loom_aie2p_block_branch_t values[2];
+    // Number of selected native branches, from zero through two.
+    uint8_t count;
+  } branches;
+  // Entry or an actual native branch destination requiring 16-byte alignment.
+  bool requires_alignment;
 } loom_aie2p_block_analysis_t;
 
 typedef struct loom_aie2p_bundle_plan_analysis_t {
@@ -260,12 +276,19 @@ static iree_status_t loom_aie2p_bundle_plan_analyze(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "AIE2P Low leaf has no blocks");
   }
+  if (frame->schedule.block_count > UINT32_MAX) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "AIE2P block count exceeds target index range");
+  }
 
   loom_aie2p_block_analysis_t* blocks = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, frame->schedule.block_count, sizeof(*blocks), (void**)&blocks));
   memset(blocks, 0,
          frame->schedule.block_count * sizeof(loom_aie2p_block_analysis_t));
+  blocks[0].requires_alignment = true;
+  // Destination marks may be set before a block's own analysis. Each iteration
+  // preserves those marks in the once-initialized table.
   for (iree_host_size_t block_index = 0;
        block_index < frame->schedule.block_count; ++block_index) {
     const loom_low_schedule_block_t* block =
@@ -361,13 +384,34 @@ static iree_status_t loom_aie2p_bundle_plan_analyze(
       return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                               "AIE2P logical cycle count exceeds host size");
     }
+    const loom_low_packet_view_t terminator_packet = loom_low_packet_at(
+        &frame->schedule, block_analysis->terminator_packet_index);
+    const uint32_t next_block_index =
+        block_index + 1u < frame->schedule.block_count
+            ? (uint32_t)(block_index + 1u)
+            : LOOM_LOW_PACKET_INDEX_NONE;
     iree_host_size_t control_bundle_count = 0;
     switch (block_analysis->terminator) {
-      case LOOM_AIE2P_BLOCK_TERMINATOR_BRANCH:
+      case LOOM_AIE2P_BLOCK_TERMINATOR_BRANCH: {
         control_bundle_count = loom_aie2p_bundle_plan_control_bundle_count(
             descriptor_set, AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT);
+        const uint32_t target_block_index = loom_low_packet_block_index(
+            &frame->schedule, loom_low_br_dest(terminator_packet.node->op));
+        if (target_block_index == LOOM_LOW_PACKET_INDEX_NONE) {
+          return iree_make_status(
+              IREE_STATUS_FAILED_PRECONDITION,
+              "AIE2P branch target is outside its function");
+        }
+        if (target_block_index != next_block_index) {
+          block_analysis->branches.values[block_analysis->branches.count++] =
+              (loom_aie2p_block_branch_t){
+                  .descriptor_ordinal = AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT,
+                  .target_block_index = target_block_index,
+              };
+        }
         break;
-      case LOOM_AIE2P_BLOCK_TERMINATOR_CONDITIONAL_BRANCH:
+      }
+      case LOOM_AIE2P_BLOCK_TERMINATOR_CONDITIONAL_BRANCH: {
         control_bundle_count = loom_aie2p_bundle_plan_control_bundle_count(
             descriptor_set, AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT);
         control_bundle_count += iree_max(
@@ -375,7 +419,55 @@ static iree_status_t loom_aie2p_bundle_plan_analyze(
                 descriptor_set, AIE2P_CORE_DESCRIPTOR_REF_BRANCH_NONZERO),
             loom_aie2p_bundle_plan_control_bundle_count(
                 descriptor_set, AIE2P_CORE_DESCRIPTOR_REF_BRANCH_ZERO));
+        const uint32_t true_block_index = loom_low_packet_block_index(
+            &frame->schedule,
+            loom_low_cond_br_true_dest(terminator_packet.node->op));
+        const uint32_t false_block_index = loom_low_packet_block_index(
+            &frame->schedule,
+            loom_low_cond_br_false_dest(terminator_packet.node->op));
+        if (true_block_index == LOOM_LOW_PACKET_INDEX_NONE ||
+            false_block_index == LOOM_LOW_PACKET_INDEX_NONE) {
+          return iree_make_status(
+              IREE_STATUS_FAILED_PRECONDITION,
+              "AIE2P conditional branch target is outside its function");
+        }
+        if (true_block_index == false_block_index) {
+          if (true_block_index != next_block_index) {
+            block_analysis->branches.values[block_analysis->branches.count++] =
+                (loom_aie2p_block_branch_t){
+                    .descriptor_ordinal =
+                        AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT,
+                    .target_block_index = true_block_index,
+                };
+          }
+        } else if (false_block_index == next_block_index) {
+          block_analysis->branches.values[block_analysis->branches.count++] =
+              (loom_aie2p_block_branch_t){
+                  .descriptor_ordinal =
+                      AIE2P_CORE_DESCRIPTOR_REF_BRANCH_NONZERO,
+                  .target_block_index = true_block_index,
+              };
+        } else if (true_block_index == next_block_index) {
+          block_analysis->branches.values[block_analysis->branches.count++] =
+              (loom_aie2p_block_branch_t){
+                  .descriptor_ordinal = AIE2P_CORE_DESCRIPTOR_REF_BRANCH_ZERO,
+                  .target_block_index = false_block_index,
+              };
+        } else {
+          block_analysis->branches.values[block_analysis->branches.count++] =
+              (loom_aie2p_block_branch_t){
+                  .descriptor_ordinal =
+                      AIE2P_CORE_DESCRIPTOR_REF_BRANCH_NONZERO,
+                  .target_block_index = true_block_index,
+              };
+          block_analysis->branches.values[block_analysis->branches.count++] =
+              (loom_aie2p_block_branch_t){
+                  .descriptor_ordinal = AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT,
+                  .target_block_index = false_block_index,
+              };
+        }
         break;
+      }
       case LOOM_AIE2P_BLOCK_TERMINATOR_RETURN:
         control_bundle_count = loom_aie2p_bundle_plan_control_bundle_count(
             descriptor_set, AIE2P_CORE_DESCRIPTOR_REF_RETURN_);
@@ -390,9 +482,11 @@ static iree_status_t loom_aie2p_bundle_plan_analyze(
       return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                               "AIE2P control capacity exceeds host size");
     }
+    for (uint8_t i = 0; i < block_analysis->branches.count; ++i) {
+      blocks[block_analysis->branches.values[i].target_block_index]
+          .requires_alignment = true;
+    }
     if (block_analysis->terminator == LOOM_AIE2P_BLOCK_TERMINATOR_BRANCH) {
-      const loom_low_packet_view_t terminator_packet = loom_low_packet_at(
-          &frame->schedule, block_analysis->terminator_packet_index);
       const loom_low_allocation_edge_copy_group_t* edge_copy_group =
           loom_low_allocation_find_edge_copy_group_by_source_ordinal(
               &frame->allocation, terminator_packet.node->source_ordinal);
@@ -800,6 +894,17 @@ static void loom_aie2p_bundle_plan_record_writes(
   }
 }
 
+static uint64_t loom_aie2p_bundle_plan_quiescent_cycle(
+    const loom_aie2p_bundle_plan_builder_t* builder,
+    uint32_t terminator_packet_index) {
+  // Structural control completes after its architectural delay window. Its
+  // source deadline constrains retirement, while native condition and LR
+  // reads retain their concrete register-event issue admission.
+  return iree_max(loom_low_physical_issue_quiescent_cycle(&builder->issue),
+                  (uint64_t)loom_low_physical_issue_source_ready_cycle(
+                      &builder->issue, terminator_packet_index));
+}
+
 // Commits the partition's selected format and already resolved bindings.
 static iree_status_t loom_aie2p_bundle_plan_commit_bundle(
     loom_aie2p_bundle_plan_builder_t* builder, uint32_t logical_issue_cycle,
@@ -818,11 +923,16 @@ static iree_status_t loom_aie2p_bundle_plan_commit_bundle(
     const uint32_t packet_index =
         builder->slots[slot_start + i].scheduled_packet_index;
     if (packet_index != LOOM_AIE2P_BUNDLE_PLAN_PACKET_NONE) {
-      proposed_cycle = iree_max(
-          proposed_cycle, builder->block_issue_cycle + logical_issue_cycle);
-      proposed_cycle =
-          iree_max(proposed_cycle, loom_low_physical_issue_source_ready_cycle(
-                                       &builder->issue, packet_index));
+      // Controls follow publication of all nonterminal source packets. Their
+      // source deadline is enforced at retirement rather than at native issue.
+      if (!iree_any_bit_set(builder->slots[slot_start + i].flags,
+                            LOOM_AIE2P_PLANNED_SLOT_FLAG_STRUCTURAL_CONTROL)) {
+        proposed_cycle = iree_max(
+            proposed_cycle, builder->block_issue_cycle + logical_issue_cycle);
+        proposed_cycle =
+            iree_max(proposed_cycle, loom_low_physical_issue_source_ready_cycle(
+                                         &builder->issue, packet_index));
+      }
       source_packet_end = iree_max(source_packet_end, packet_index + 1);
     }
   }
@@ -1004,25 +1114,32 @@ static iree_status_t loom_aie2p_bundle_plan_append_nop_bundle(
 }
 
 static iree_status_t loom_aie2p_bundle_plan_try_place_return(
-    loom_aie2p_bundle_plan_builder_t* builder, uint32_t return_packet_index,
+    loom_aie2p_bundle_plan_builder_t* builder,
+    const loom_aie2p_block_analysis_t* block_analysis, uint32_t candidate_cycle,
     iree_host_size_t candidate_bundle_index, bool* out_placed) {
   *out_placed = false;
   loom_aie2p_planned_bundle_t* candidate_bundle =
-      &builder->bundles[candidate_bundle_index];
+      candidate_bundle_index < builder->bundle_count
+          ? &builder->bundles[candidate_bundle_index]
+          : NULL;
+  const bool inserts_bundle = candidate_bundle == NULL ||
+                              candidate_bundle->issue_cycle != candidate_cycle;
   loom_aie2p_planned_slot_t return_slot = {
       .encoded_slot = loom_aie2p_bundle_plan_encode_structural_descriptor(
           builder->descriptor_set, AIE2P_CORE_DESCRIPTOR_REF_RETURN_),
-      .scheduled_packet_index = return_packet_index,
+      .scheduled_packet_index = block_analysis->terminator_packet_index,
       .flags = LOOM_AIE2P_PLANNED_SLOT_FLAG_STRUCTURAL_CONTROL,
   };
   loom_aie2p_slot_t physical_slots[LOOM_AIE2P_ENCODING_MAX_BUNDLE_SLOT_COUNT];
-  const iree_host_size_t candidate_slot_start = candidate_bundle->slot_start;
+  const iree_host_size_t candidate_slot_start =
+      candidate_bundle != NULL ? candidate_bundle->slot_start
+                               : builder->slot_count;
   const bool replaces_nop =
-      candidate_bundle->slot_count == 1 &&
+      !inserts_bundle && candidate_bundle->slot_count == 1 &&
       iree_any_bit_set(builder->slots[candidate_slot_start].flags,
                        LOOM_AIE2P_PLANNED_SLOT_FLAG_SYNTHETIC_NOP);
   const iree_host_size_t retained_slot_count =
-      replaces_nop ? 0 : candidate_bundle->slot_count;
+      inserts_bundle || replaces_nop ? 0 : candidate_bundle->slot_count;
   if (retained_slot_count == LOOM_AIE2P_ENCODING_MAX_BUNDLE_SLOT_COUNT) {
     return iree_ok_status();
   }
@@ -1051,7 +1168,7 @@ static iree_status_t loom_aie2p_bundle_plan_try_place_return(
                                           (uint16_t)candidate_slot_count) ||
       loom_low_physical_issue_register_ready_cycle(
           &builder->issue, &builder->instructions[retained_slot_count], 1) >
-          candidate_bundle->issue_cycle) {
+          candidate_cycle) {
     return iree_ok_status();
   }
   // RET's resources are issue-stage-only and shared only with issue-stage
@@ -1059,8 +1176,12 @@ static iree_status_t loom_aie2p_bundle_plan_try_place_return(
   // LR. Thus the group check and retained LR frontier also prove retrospective
   // placement among already-timed tail bundles without replaying the block.
 
-  const uint8_t old_byte_length = loom_aie2p_bundle_plan_format_byte_length(
-      candidate_bundle->format, candidate_bundle->slot_count);
+  const uint8_t old_byte_length =
+      inserts_bundle
+          ? loom_aie2p_bundle_plan_single_slot_byte_length(
+                builder->descriptor_set, AIE2P_CORE_DESCRIPTOR_REF_NOP)
+          : loom_aie2p_bundle_plan_format_byte_length(
+                candidate_bundle->format, candidate_bundle->slot_count);
   const uint8_t new_byte_length =
       loom_aie2p_bundle_plan_format_byte_length(format, candidate_slot_count);
   if (new_byte_length > old_byte_length &&
@@ -1070,17 +1191,43 @@ static iree_status_t loom_aie2p_bundle_plan_try_place_return(
         IREE_STATUS_RESOURCE_EXHAUSTED,
         "AIE2P encoded leaf exceeds 16 KiB of core program memory");
   }
+  if (!replaces_nop && builder->slot_count >= builder->slot_capacity) {
+    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                            "AIE2P bundle-plan slot capacity exhausted");
+  }
+  if (inserts_bundle) {
+    // The next row, or the stream endpoint, owns the end of this implicit NOP
+    // run. Only the selected cycle becomes a row; the control reservation
+    // already covers this RET and its remaining delay bundles.
+    const uint32_t next_cycle = candidate_bundle != NULL
+                                    ? candidate_bundle->issue_cycle
+                                    : builder->next_issue_cycle;
+    const uint32_t next_byte_offset =
+        candidate_bundle != NULL ? candidate_bundle->byte_offset
+                                 : (uint32_t)builder->encoded_byte_length;
+    const uint32_t byte_offset =
+        next_byte_offset - (next_cycle - candidate_cycle) * old_byte_length;
+    memmove(&builder->bundles[candidate_bundle_index + 1],
+            &builder->bundles[candidate_bundle_index],
+            (builder->bundle_count - candidate_bundle_index) *
+                sizeof(*builder->bundles));
+    ++builder->bundle_count;
+    candidate_bundle = &builder->bundles[candidate_bundle_index];
+    *candidate_bundle = (loom_aie2p_planned_bundle_t){
+        .issue_cycle = candidate_cycle,
+        .block_index = builder->current_block_index,
+        .logical_issue_cycle = block_analysis->terminator_issue_cycle,
+        .byte_offset = byte_offset,
+        .slot_start = (uint32_t)candidate_slot_start,
+    };
+  }
   if (replaces_nop) {
     builder->slots[candidate_slot_start] = return_slot;
     builder->slot_realizations[candidate_slot_start].descriptor_ordinal =
         AIE2P_CORE_DESCRIPTOR_REF_RETURN_;
   } else {
-    if (builder->slot_count >= builder->slot_capacity) {
-      return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
-                              "AIE2P bundle-plan slot capacity exhausted");
-    }
     const iree_host_size_t insert_index =
-        candidate_slot_start + candidate_bundle->slot_count;
+        candidate_slot_start + retained_slot_count;
     memmove(&builder->slots[insert_index + 1], &builder->slots[insert_index],
             (builder->slot_count - insert_index) * sizeof(*builder->slots));
     builder->slots[insert_index] = return_slot;
@@ -1091,22 +1238,17 @@ static iree_status_t loom_aie2p_bundle_plan_try_place_return(
     builder->slot_realizations[insert_index].descriptor_ordinal =
         AIE2P_CORE_DESCRIPTOR_REF_RETURN_;
     ++builder->slot_count;
-    for (iree_host_size_t i = candidate_bundle_index + 1;
-         i < builder->bundle_count; ++i) {
-      ++builder->bundles[i].slot_start;
-    }
   }
-  if (new_byte_length != old_byte_length) {
-    const int32_t byte_delta =
-        (int32_t)new_byte_length - (int32_t)old_byte_length;
-    for (iree_host_size_t i = candidate_bundle_index + 1;
-         i < builder->bundle_count; ++i) {
-      builder->bundles[i].byte_offset =
-          (uint32_t)((int32_t)builder->bundles[i].byte_offset + byte_delta);
-    }
-    builder->encoded_byte_length =
-        builder->encoded_byte_length - old_byte_length + new_byte_length;
+  const int32_t byte_delta =
+      (int32_t)new_byte_length - (int32_t)old_byte_length;
+  for (iree_host_size_t i = candidate_bundle_index + 1;
+       i < builder->bundle_count; ++i) {
+    builder->bundles[i].slot_start += replaces_nop ? 0 : 1;
+    builder->bundles[i].byte_offset =
+        (uint32_t)((int32_t)builder->bundles[i].byte_offset + byte_delta);
   }
+  builder->encoded_byte_length =
+      builder->encoded_byte_length - old_byte_length + new_byte_length;
   candidate_bundle->format = format;
   candidate_bundle->slot_count = (uint8_t)candidate_slot_count;
   *out_placed = true;
@@ -1235,7 +1377,7 @@ static iree_status_t loom_aie2p_bundle_plan_append_branch(
       loom_aie2p_bundle_plan_instruction_info(descriptor->encoding_id)
           .delay_slot_count;
   const uint64_t quiescent_cycle =
-      loom_low_physical_issue_quiescent_cycle(&builder->issue);
+      loom_aie2p_bundle_plan_quiescent_cycle(builder, scheduled_packet_index);
   const uint32_t control_cycles = (uint32_t)delay_slot_count + 1;
   IREE_RETURN_IF_ERROR(loom_aie2p_bundle_plan_advance(
       builder,
@@ -1271,30 +1413,37 @@ static iree_status_t loom_aie2p_bundle_plan_append_return(
   const uint32_t control_cycles = (uint32_t)delay_slot_count + 1;
   const uint64_t retire_cycle =
       iree_max((uint64_t)builder->next_issue_cycle,
-               loom_low_physical_issue_quiescent_cycle(&builder->issue));
-  const uint64_t earliest_return_cycle = iree_max(
-      loom_low_physical_issue_source_ready_cycle(
-          &builder->issue, block_analysis->terminator_packet_index),
-      retire_cycle > control_cycles ? retire_cycle - control_cycles : 0);
-  // At most one hardware delay window is inspected. Gaps remain part of
-  // physical time; counting stored bundles would shorten the return window.
+               loom_aie2p_bundle_plan_quiescent_cycle(
+                   builder, block_analysis->terminator_packet_index));
+  const uint64_t earliest_return_cycle =
+      retire_cycle > control_cycles ? retire_cycle - control_cycles : 0;
+  // At most one hardware delay window is inspected, including implicit NOP
+  // positions without stored rows. The block origin excludes predecessor gaps.
+  uint64_t candidate_cycle =
+      iree_max(earliest_return_cycle, (uint64_t)builder->block_issue_cycle);
   iree_host_size_t candidate = builder->bundle_count;
   while (candidate > block_bundle_start &&
-         builder->bundles[candidate - 1].issue_cycle >= earliest_return_cycle) {
+         builder->bundles[candidate - 1].issue_cycle >= candidate_cycle) {
     --candidate;
   }
   bool return_placed = false;
-  for (; candidate < builder->bundle_count && !return_placed; ++candidate) {
+  for (; candidate_cycle < builder->next_issue_cycle; ++candidate_cycle) {
     IREE_RETURN_IF_ERROR(loom_aie2p_bundle_plan_try_place_return(
-        builder, block_analysis->terminator_packet_index, candidate,
+        builder, block_analysis, (uint32_t)candidate_cycle, candidate,
         &return_placed));
+    if (return_placed) {
+      break;
+    }
+    if (candidate < builder->bundle_count &&
+        builder->bundles[candidate].issue_cycle == candidate_cycle) {
+      ++candidate;
+    }
   }
   if (return_placed) {
     loom_low_physical_issue_commit_source(
         &builder->issue, block_analysis->terminator_packet_index,
-        builder->bundles[candidate - 1].issue_cycle);
-    const uint32_t required_cycle =
-        builder->bundles[candidate - 1].issue_cycle + control_cycles;
+        (uint32_t)candidate_cycle);
+    const uint64_t required_cycle = candidate_cycle + control_cycles;
     while (builder->next_issue_cycle < required_cycle) {
       IREE_RETURN_IF_ERROR(loom_aie2p_bundle_plan_append_nop_bundle(
           builder, block_analysis->terminator_issue_cycle));
@@ -1343,84 +1492,32 @@ static iree_status_t loom_aie2p_bundle_plan_append_terminator(
     loom_aie2p_bundle_plan_builder_t* builder,
     const loom_aie2p_block_analysis_t* block_analysis,
     iree_host_size_t block_bundle_start) {
-  const loom_low_packet_view_t packet = loom_low_packet_at(
-      &builder->frame->schedule, block_analysis->terminator_packet_index);
-  const uint32_t block_index = builder->current_block_index;
-  const uint32_t next_block_index = block_index + 1u < builder->block_count
-                                        ? block_index + 1u
-                                        : LOOM_LOW_PACKET_INDEX_NONE;
-  switch (block_analysis->terminator) {
-    case LOOM_AIE2P_BLOCK_TERMINATOR_BRANCH: {
-      IREE_RETURN_IF_ERROR(
-          loom_aie2p_bundle_plan_append_edge_moves(builder, &packet));
-      const uint32_t target_block_index = loom_low_packet_block_index(
-          &builder->frame->schedule, loom_low_br_dest(packet.node->op));
-      if (target_block_index == LOOM_LOW_PACKET_INDEX_NONE) {
-        return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                                "AIE2P branch target is outside its function");
-      }
-      if (target_block_index == next_block_index) {
-        return loom_aie2p_bundle_plan_advance(
-            builder, loom_low_physical_issue_quiescent_cycle(&builder->issue));
-      }
-      return loom_aie2p_bundle_plan_append_branch(
-          builder, (uint32_t)packet.packet_index,
-          AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT, target_block_index,
-          block_analysis->terminator_issue_cycle);
-    }
-    case LOOM_AIE2P_BLOCK_TERMINATOR_CONDITIONAL_BRANCH: {
-      const uint32_t true_block_index = loom_low_packet_block_index(
-          &builder->frame->schedule,
-          loom_low_cond_br_true_dest(packet.node->op));
-      const uint32_t false_block_index = loom_low_packet_block_index(
-          &builder->frame->schedule,
-          loom_low_cond_br_false_dest(packet.node->op));
-      if (true_block_index == LOOM_LOW_PACKET_INDEX_NONE ||
-          false_block_index == LOOM_LOW_PACKET_INDEX_NONE) {
-        return iree_make_status(
-            IREE_STATUS_FAILED_PRECONDITION,
-            "AIE2P conditional branch target is outside its function");
-      }
-      if (true_block_index == false_block_index) {
-        if (true_block_index == next_block_index) {
-          return loom_aie2p_bundle_plan_advance(
-              builder,
-              loom_low_physical_issue_quiescent_cycle(&builder->issue));
-        }
-        return loom_aie2p_bundle_plan_append_branch(
-            builder, (uint32_t)packet.packet_index,
-            AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT, true_block_index,
-            block_analysis->terminator_issue_cycle);
-      }
-      if (false_block_index == next_block_index) {
-        return loom_aie2p_bundle_plan_append_branch(
-            builder, (uint32_t)packet.packet_index,
-            AIE2P_CORE_DESCRIPTOR_REF_BRANCH_NONZERO, true_block_index,
-            block_analysis->terminator_issue_cycle);
-      }
-      if (true_block_index == next_block_index) {
-        return loom_aie2p_bundle_plan_append_branch(
-            builder, (uint32_t)packet.packet_index,
-            AIE2P_CORE_DESCRIPTOR_REF_BRANCH_ZERO, false_block_index,
-            block_analysis->terminator_issue_cycle);
-      }
-      IREE_RETURN_IF_ERROR(loom_aie2p_bundle_plan_append_branch(
-          builder, (uint32_t)packet.packet_index,
-          AIE2P_CORE_DESCRIPTOR_REF_BRANCH_NONZERO, true_block_index,
-          block_analysis->terminator_issue_cycle));
-      return loom_aie2p_bundle_plan_append_branch(
-          builder, (uint32_t)packet.packet_index,
-          AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT, false_block_index,
-          block_analysis->terminator_issue_cycle);
-    }
-    case LOOM_AIE2P_BLOCK_TERMINATOR_RETURN:
-      return loom_aie2p_bundle_plan_append_return(builder, block_analysis,
-                                                  block_bundle_start);
-    case LOOM_AIE2P_BLOCK_TERMINATOR_NONE:
-      break;
+  if (block_analysis->terminator == LOOM_AIE2P_BLOCK_TERMINATOR_RETURN) {
+    return loom_aie2p_bundle_plan_append_return(builder, block_analysis,
+                                                block_bundle_start);
   }
-  return iree_make_status(IREE_STATUS_INTERNAL,
-                          "AIE2P block terminator analysis is invalid");
+  if (block_analysis->terminator == LOOM_AIE2P_BLOCK_TERMINATOR_BRANCH) {
+    const loom_low_packet_view_t packet = loom_low_packet_at(
+        &builder->frame->schedule, block_analysis->terminator_packet_index);
+    IREE_RETURN_IF_ERROR(
+        loom_aie2p_bundle_plan_append_edge_moves(builder, &packet));
+  }
+  if (block_analysis->branches.count == 0) {
+    return loom_aie2p_bundle_plan_advance(
+        builder, loom_aie2p_bundle_plan_quiescent_cycle(
+                     builder, block_analysis->terminator_packet_index));
+  }
+  iree_status_t status = iree_ok_status();
+  for (uint8_t i = 0;
+       i < block_analysis->branches.count && iree_status_is_ok(status); ++i) {
+    const loom_aie2p_block_branch_t* branch =
+        &block_analysis->branches.values[i];
+    status = loom_aie2p_bundle_plan_append_branch(
+        builder, block_analysis->terminator_packet_index,
+        branch->descriptor_ordinal, branch->target_block_index,
+        block_analysis->terminator_issue_cycle);
+  }
+  return status;
 }
 
 static iree_status_t loom_aie2p_bundle_plan_build_impl(
@@ -1436,10 +1533,6 @@ static iree_status_t loom_aie2p_bundle_plan_build_impl(
       loom_aie2p_bundle_plan_analyze(frame, scratch_arena, &analysis));
   const loom_low_descriptor_set_t* descriptor_set =
       frame->target.descriptor_set;
-  if (frame->schedule.block_count > UINT32_MAX) {
-    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "AIE2P block count exceeds target index range");
-  }
   iree_host_size_t alignment_bundle_capacity = 0;
   if (frame->schedule.block_count > 1) {
     const iree_host_size_t boundary_count = frame->schedule.block_count - 1u;
@@ -1531,7 +1624,9 @@ static iree_status_t loom_aie2p_bundle_plan_build_impl(
       (void**)&builder.block_byte_offsets));
   for (uint32_t block_index = 0;
        block_index < (uint32_t)frame->schedule.block_count; ++block_index) {
-    if (block_index != 0) {
+    const loom_aie2p_block_analysis_t* block_analysis =
+        &analysis.blocks[block_index];
+    if (block_index != 0 && block_analysis->requires_alignment) {
       IREE_RETURN_IF_ERROR(loom_aie2p_bundle_plan_align_next_block(
           &builder, analysis.blocks[block_index - 1u].terminator_issue_cycle));
     }
@@ -1542,8 +1637,6 @@ static iree_status_t loom_aie2p_bundle_plan_build_impl(
     const iree_host_size_t block_bundle_start = builder.bundle_count;
     const loom_low_schedule_block_t* block =
         &frame->schedule.blocks[block_index];
-    const loom_aie2p_block_analysis_t* block_analysis =
-        &analysis.blocks[block_index];
     uint32_t issue_group_index = 0;
     for (uint32_t issue_cycle = 0;
          issue_cycle <= block_analysis->maximum_issue_cycle; ++issue_cycle) {

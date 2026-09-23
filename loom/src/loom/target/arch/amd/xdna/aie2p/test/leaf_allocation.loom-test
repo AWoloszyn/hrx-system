@@ -351,10 +351,10 @@ low.func.def target<amd.xdna.aie2p.core> @index_repair_ordering(%source: reg<aie
 }
 
 // ----
-issue cycles: 96
-code bytes: 304
-coissued bundles: 11
-coissued components: 22
+issue cycles: 92
+code bytes: 296
+coissued bundles: 12
+coissued components: 24
 
 // ====
 

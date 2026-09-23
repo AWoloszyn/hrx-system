@@ -61,3 +61,34 @@ retained high words. The 37,888 results include edge bit patterns and seeded
 random inputs; binding tails and unchanged inputs are checked as well. This test
 uses the same native execution path and resource lease without requiring the
 C++ importer.
+
+`transpose_npu2_test` checks ordinary High BF16 8x8 transposition as raw bit
+transport. Its 1,056 packets include every 16-bit pattern and signed zeros,
+subnormals, infinities and NaN payloads rotated through every lane. Independent
+scalar coordinate indexing checks all output bytes, both binding guards and
+unchanged inputs. Original, changed and original inputs each run through three
+complete invocations in fresh processes; capacity-two rings wrap repeatedly.
+The test asserts no floating-point arithmetic or timing property.
+
+`multicast_npu2_test` distributes eight A streams to two consumers each and two
+distinct B streams to eight consumers each. Sixteen workers span eight columns
+and two rows, retaining separate capacity-two or capacity-three receiver rings.
+Each consumes 33 records, repeatedly wrapping both input rings and its
+capacity-two output ring. An input-dependent modulo-2^32 recurrence varies the
+work across consumers and records; its final state contributes to every output
+word. The independent integer oracle checks all 8,448 output words, unchanged
+inputs and head/tail guards through three establishing invocations. This is
+finite multicast/backpressure coverage, not a timing or changed-image lifecycle
+test.
+
+`temporal_fold_npu2_test` covers first-copy bits independently from subsequent
+addition: a one-record 1024-element F32 fold preserves negative zero, while
+three-record 1024- and 80-element folds check ordered cancellation, exactly
+representable finite sums, and full and partial fragments. Eight outputs wrap
+capacity-two input and output rings repeatedly. Two runtime control-flow paths
+overwrite and reload the output, then return through distinct exits; only the
+final contribution may enter the fold. An independent scalar F32 oracle checks
+every output byte, both binding guards and unchanged input bytes. Each case uses
+three complete establishing invocations through the public runner's image and
+buffers. This is fold storage and ordering coverage, not general native floating
+point conformance.

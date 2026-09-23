@@ -12,6 +12,7 @@
 #include "loom/codegen/low/function_requirements.h"
 #include "loom/codegen/low/storage_layout.h"
 #include "loom/codegen/low/text_asm.h"
+#include "loom/error/error_catalog.h"
 #include "loom/format/text/printer.h"
 #include "loom/ir/module.h"
 #include "loom/ops/low/ops.h"
@@ -78,11 +79,6 @@ static iree_status_t loom_aie2p_array_plan_check_collect_leaves(
       ++leaf_count;
     }
   }
-  if (leaf_count == 0) {
-    return iree_make_status(IREE_STATUS_NOT_FOUND,
-                            "AIE2P array module contains no core leaves");
-  }
-
   loom_aie2p_array_leaf_t* leaves = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       request->case_arena, leaf_count, sizeof(*leaves), (void**)&leaves));
@@ -291,6 +287,29 @@ static iree_status_t loom_aie2p_array_plan_check_format(
         " load-address=0x%05" PRIx32 " bytes=%" PRIu32 "\n",
         storage->worker_index, storage->storage_space, storage->owner_offset,
         storage->load_address, storage->byte_length));
+  }
+  for (iree_host_size_t i = 0; i < plan->worker_plan_count; ++i) {
+    const loom_aie2p_array_fold_state_plan_t* state =
+        &plan->worker_plans[i].fold_state;
+    if (state->byte_length == 0) {
+      continue;
+    }
+    IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+        builder,
+        "worker-fold-state worker=%" PRIhsz " offset=0x%05" PRIx32
+        " load-address=0x%05" PRIx32 " bytes=%" PRIu32 " spans=%" PRIu32 "\n",
+        i, state->owner_offset, state->load_address, state->byte_length,
+        state->span_count));
+    for (uint32_t j = 0; j < state->span_count; ++j) {
+      const loom_aie2p_array_fold_span_t* span = &state->spans[j];
+      IREE_RETURN_IF_ERROR(iree_string_builder_append_format(
+          builder,
+          "fold-span worker=%" PRIhsz " index=%" PRIu32 " output=%" PRIu32
+          " output-offset=%" PRIu32 " state-offset=%" PRIu32 " bytes=%" PRIu32
+          " repeat=%" PRIu32 "\n",
+          i, j, span->output_index, span->output_byte_offset,
+          span->state_byte_offset, span->byte_length, span->repeat_count));
+    }
   }
   for (iree_host_size_t i = 0; i < plan->worker_port_count; ++i) {
     const loom_aie2p_array_worker_port_plan_t* port = &plan->worker_ports[i];
@@ -702,6 +721,25 @@ static iree_status_t loom_aie2p_array_plan_check_execute(
   if (array_function == NULL) {
     return iree_ok_status();
   }
+  const loom_func_like_t function =
+      loom_func_like_cast(request->module, array_function);
+  const iree_string_view_t contract = loom_string_table_get(
+      &request->module->strings, loom_func_like_repr_contract(function));
+  if (!iree_string_view_equal(contract, IREE_SV("amd.xdna.aie2p.array"))) {
+    const loom_diagnostic_param_t params[] = {
+        loom_param_string(function_symbol_name),
+        loom_param_string(contract),
+        loom_param_string(IREE_SV("aie2p-array-plan")),
+        loom_param_string(IREE_SV("amd.xdna.aie2p.array")),
+    };
+    const loom_diagnostic_emission_t emission = {
+        .op = array_function,
+        .error = LOOM_ERR_TARGET_055,
+        .params = params,
+        .param_count = IREE_ARRAYSIZE(params),
+    };
+    return iree_diagnostic_emit(diagnostic_emitter, &emission);
+  }
 
   loom_aie2p_array_leaf_t* leaves = NULL;
   iree_host_size_t leaf_count = 0;
@@ -712,16 +750,13 @@ static iree_status_t loom_aie2p_array_plan_check_execute(
   }
 
   loom_aie2p_array_plan_t plan = {0};
-  status = loom_aie2p_array_plan_build(request->module, array_function, leaves,
-                                       leaf_count, diagnostic_emitter,
-                                       request->case_arena, &plan);
-  if (iree_status_is_invalid_argument(status) &&
-      request->diagnostic_collector->count != 0) {
-    // The structured diagnostic is the result checked by the caller.
-    iree_status_free(status);
+  bool valid = false;
+  IREE_RETURN_IF_ERROR(loom_aie2p_array_plan_build(
+      request->module, array_function, leaves, leaf_count, diagnostic_emitter,
+      request->case_arena, &plan, &valid));
+  if (!valid) {
     return iree_ok_status();
   }
-  IREE_RETURN_IF_ERROR(status);
   IREE_RETURN_IF_ERROR(loom_aie2p_array_plan_check_format(
       request->module, &plan, &request->result->actual_output));
   loom_aie2p_array_program_t array_program = {0};

@@ -33,6 +33,7 @@ from loom.target.low_descriptors import Descriptor
 _I8X32_VECTOR = Vector("i8", lanes=32)
 _I8X64_VECTOR = Vector("i8", lanes=64)
 _I32_F32_4X4_VECTOR = Vector(("i32", "f32"), dims=(4, 4))
+_I16_F16_BF16_8X8_VECTOR = Vector(("i16", "f16", "bf16"), dims=(8, 8))
 _I32 = Scalar("i32")
 _INDEX = Scalar("index")
 
@@ -134,6 +135,10 @@ _I16_INTERLEAVE_CONTROL = 18
 # AIE2P's T32_4x4 VSHUFFLE mode transposes the sixteen 32-bit lanes carried
 # by one X register.
 _I32_F32_TRANSPOSE_4X4_CONTROL = 34
+
+# T16_8x8_lo and T16_8x8_hi return the low and high 512-bit halves of
+# the transposed 1024-bit value. Both read the same ordered pair of X registers.
+_I16_TRANSPOSE_8X8_CONTROLS = (52, 53)
 
 # Ordinary payloads share byte-addressable X carriers regardless of element
 # interpretation. A partial packet occupies the low bytes of its carrier.
@@ -488,6 +493,87 @@ def _vector_transpose_i32_f32_4x4_rule() -> DescriptorRule:
                 form=DescriptorEmitForm.OP,
             ),
         ),
+    )
+
+
+def _vector_transpose_16bit_8x8_rule() -> DescriptorRule:
+    constant = _descriptor("amd.xdna.aie2p.constant.i32.mova")
+    shuffle = _descriptor("amd.xdna.aie2p.shuffle.x.configured")
+    low = ValueRef.temporary("low")
+    high = ValueRef.temporary("high")
+    emits: list[ContractEmit] = [
+        EmitRegisterSlice(
+            source=ValueRef.operand("source"),
+            result=low,
+            unit_count=2,
+        ),
+        EmitRegisterSlice(
+            source=ValueRef.operand("source"),
+            result=high,
+            unit_offset=2,
+            unit_count=2,
+        ),
+    ]
+    halves = []
+    for name, mode in zip(("low", "high"), _I16_TRANSPOSE_8X8_CONTROLS, strict=True):
+        control = ValueRef.temporary(f"{name}_control")
+        result = ValueRef.temporary(f"{name}_transposed")
+        emits.extend(
+            (
+                EmitDescriptorOp(
+                    descriptor=constant,
+                    results={"dst": control},
+                    result_types={"dst": DescriptorResultType()},
+                    immediates={"i": mode},
+                    form=DescriptorEmitForm.CONST,
+                ),
+                EmitDescriptorOp(
+                    descriptor=shuffle,
+                    operands={"s1": low, "s2": high, "mod": control},
+                    results={"dst": result},
+                    result_types={"dst": DescriptorResultType()},
+                    form=DescriptorEmitForm.OP,
+                ),
+            )
+        )
+        halves.append(result)
+    emits.append(EmitRegisterConcat(sources=halves, result=ValueRef.result("result")))
+    return DescriptorRule(
+        source_op=vector.vector_transpose,
+        descriptor=shuffle,
+        guards=(
+            Guard.value_type("source", _I16_F16_BF16_8X8_VECTOR),
+            Guard.value_type("result", _I16_F16_BF16_8X8_VECTOR),
+            Guard.i64_array_count("permutation", 2),
+            Guard.i64_array_element_range(
+                "permutation", element=0, minimum=1, maximum=1
+            ),
+            Guard.i64_array_element_range(
+                "permutation", element=1, minimum=0, maximum=0
+            ),
+        ),
+        emit=tuple(emits),
+    )
+
+
+def _vector_16bit_8x8_shape_alias_rules() -> tuple[ValueAliasRule, ...]:
+    # A flat packet and its row-major matrix view retain the same four W units.
+    # The bitcast changes only logical shape, before or after transposition.
+    return tuple(
+        ValueAliasRule(
+            source_op=vector.vector_bitcast,
+            source=ValueRef.operand("input"),
+            result=ValueRef.result("result"),
+            guards=(
+                Guard.value_type("input", source_type),
+                Guard.value_type("result", result_type),
+            ),
+        )
+        for element_type in ("i16", "f16", "bf16")
+        for source_type, result_type in (
+            (Vector(element_type, lanes=64), Vector(element_type, dims=(8, 8))),
+            (Vector(element_type, dims=(8, 8)), Vector(element_type, lanes=64)),
+        )
     )
 
 
@@ -1216,4 +1302,6 @@ AIE2P_STRUCTURAL_RULES = (
     _vector_deinterleave_i8x64_rule(),
     _vector_interleave_16bit_rule(),
     _vector_transpose_i32_f32_4x4_rule(),
+    _vector_transpose_16bit_8x8_rule(),
+    *_vector_16bit_8x8_shape_alias_rules(),
 )

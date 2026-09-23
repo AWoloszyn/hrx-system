@@ -9,7 +9,9 @@
 #include "loom/codegen/low/diagnostics.h"
 #include "loom/codegen/low/packet.h"
 #include "loom/error/error_catalog.h"
+#include "loom/ir/context.h"
 #include "loom/ir/module.h"
+#include "loom/ops/low/ops.h"
 #include "loom/ops/op_defs.h"
 #include "loom/target/arch/amd/xdna/aie2p/descriptors/array_descriptors.h"
 #include "loom/target/projection.h"
@@ -22,6 +24,29 @@ typedef struct loom_aie2p_low_verify_state_t {
   // Borrowed array-program function name used in diagnostics.
   iree_string_view_t function_name;
 } loom_aie2p_low_verify_state_t;
+
+static iree_status_t loom_aie2p_low_verify_empty_signature(
+    loom_low_verify_context_t* context, const loom_module_t* module,
+    const loom_op_t* function_op, iree_string_view_t emitter_key) {
+  const loom_func_like_t function =
+      loom_func_like_const_cast(module, function_op);
+  uint16_t argument_count = 0;
+  loom_func_like_arg_ids(function, &argument_count);
+  const uint16_t result_count = function_op->result_count;
+  if (argument_count == 0 && result_count == 0) {
+    return iree_ok_status();
+  }
+  const loom_diagnostic_param_t params[] = {
+      loom_param_string(loom_low_diagnostic_function_name(module, function_op)),
+      loom_param_string(emitter_key),
+      loom_param_string(argument_count != 0 ? IREE_SV("register argument")
+                                            : IREE_SV("register result")),
+      loom_param_u32(argument_count != 0 ? argument_count : result_count),
+      loom_param_u32(0),
+  };
+  return loom_low_verify_context_emit(context, function_op, LOOM_ERR_TARGET_054,
+                                      params, IREE_ARRAYSIZE(params));
+}
 
 static iree_status_t loom_aie2p_low_verify_begin_function(
     const loom_low_verify_provider_t* provider,
@@ -46,7 +71,9 @@ static iree_status_t loom_aie2p_low_verify_begin_function(
           loom_low_verify_context_function_op(context)),
   };
   *out_provider_state = state;
-  return iree_ok_status();
+  return loom_aie2p_low_verify_empty_signature(
+      context, state->module, loom_low_verify_context_function_op(context),
+      IREE_SV("aie2p-array-plan"));
 }
 
 static const loom_named_attr_t* loom_aie2p_low_find_packet_attr(
@@ -189,9 +216,56 @@ static iree_status_t loom_aie2p_low_verify_op(
   (void)provider;
   const loom_aie2p_low_verify_state_t* state =
       (const loom_aie2p_low_verify_state_t*)provider_state;
-  if (state == NULL || packet->kind == LOOM_LOW_DESCRIPTOR_PACKET_NONE ||
-      loom_low_verify_context_should_stop(context)) {
+  if (state == NULL || loom_low_verify_context_should_stop(context)) {
     return iree_ok_status();
+  }
+  if (packet->kind == LOOM_LOW_DESCRIPTOR_PACKET_NONE) {
+    if (loom_low_return_isa(packet->op)) {
+      return iree_ok_status();
+    }
+    const loom_diagnostic_param_t params[] = {
+        loom_param_string(loom_op_name(state->module, packet->op)),
+    };
+    return loom_low_verify_context_emit(context, packet->op,
+                                        LOOM_ERR_TARGET_123, params,
+                                        IREE_ARRAYSIZE(params));
+  }
+  switch (packet->descriptor_ordinal) {
+    case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_SENDER:
+    case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_RECEIVER:
+    case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_VIEW_SENDER:
+    case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_VIEW_RECEIVER:
+    case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_PARTITION_SENDER:
+    case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_PARTITION_RECEIVER:
+    case AIE2P_ARRAY_DESCRIPTOR_REF_ARRAY_CHANNEL: {
+      // Shared verification reports malformed result counts and non-register
+      // types. Providers also run after those diagnostics to collect errors.
+      if (packet->op->result_count != 1) {
+        break;
+      }
+      const loom_type_t result_type =
+          loom_module_value_type(state->module, loom_op_results(packet->op)[0]);
+      if (!loom_type_is_register(result_type)) {
+        break;
+      }
+      const loom_type_t* value_type =
+          loom_type_register_value_type(result_type);
+      if (value_type != NULL && loom_type_is_tile(*value_type)) {
+        break;
+      }
+      const loom_diagnostic_param_t params[] = {
+          loom_param_string(loom_low_descriptor_packet_diagnostic_key(
+              state->target->descriptor_set, packet)),
+          loom_param_with_field_ref(
+              loom_param_type(result_type),
+              loom_diagnostic_field_ref(LOOM_DIAGNOSTIC_FIELD_RESULT, 0)),
+      };
+      return loom_low_verify_context_emit(context, packet->op,
+                                          LOOM_ERR_TARGET_124, params,
+                                          IREE_ARRAYSIZE(params));
+    }
+    default:
+      break;
   }
   return loom_aie2p_low_verify_worker(context, state, packet);
 }

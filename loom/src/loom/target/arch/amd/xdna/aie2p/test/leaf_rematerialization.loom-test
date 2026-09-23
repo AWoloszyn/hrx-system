@@ -51,8 +51,8 @@ low.func.def target<amd.xdna.aie2p.core> @broadcast_pressure(%input: reg<aie2p.e
 }
 
 // ----
-issue cycles: 51
-code bytes: 212
+issue cycles: 50
+code bytes: 210
 coissued bundles: 2
 coissued components: 4
 
@@ -179,8 +179,8 @@ low.func.def target<amd.xdna.aie2p.core> @dependent_cross_block(%input: reg<aie2
 }
 
 // ----
-issue cycles: 113
-code bytes: 484
+issue cycles: 112
+code bytes: 482
 coissued bundles: 2
 coissued components: 4
 
@@ -321,8 +321,8 @@ low.func.def target<amd.xdna.aie2p.core> @bounded_padding(%input: reg<aie2p.ep>,
 }
 
 // ----
-issue cycles: 248
-code bytes: 860
+issue cycles: 242
+code bytes: 848
 coissued bundles: 6
 coissued components: 13
 
@@ -431,7 +431,7 @@ low.func.def target<amd.xdna.aie2p.core> @retained_scalar_stream(%record_input: 
 }
 
 // ----
-issue cycles: 138
-code bytes: 496
+issue cycles: 129
+code bytes: 478
 coissued bundles: 13
 coissued components: 29

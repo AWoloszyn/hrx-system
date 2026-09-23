@@ -1330,6 +1330,13 @@ def test_core_contract_closes_scalar_and_integer_vector_families() -> None:
         for rule in vector_bitcast_rules
     ] == [
         (source_type, result_type)
+        for element_type in ("i16", "f16", "bf16")
+        for source_type, result_type in (
+            (Vector(element_type, lanes=64), Vector(element_type, dims=(8, 8))),
+            (Vector(element_type, dims=(8, 8)), Vector(element_type, lanes=64)),
+        )
+    ] + [
+        (source_type, result_type)
         for source_type in bitcast_types
         for result_type in bitcast_types
     ]

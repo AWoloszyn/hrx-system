@@ -94,9 +94,10 @@ static iree_status_t loom_aie2p_map_type(void* user_data,
           context, AIE2P_CORE_REG_CLASS_ID_AIE2P_ELPREDICATE, 1, out_low_type);
     }
     const int32_t element_bits = loom_scalar_type_bitwidth(element_type);
-    if (is_rank_one && element_bits > 0 &&
-        element_count > 512 / (uint32_t)element_bits &&
+    if (element_bits > 0 && element_count > 512 / (uint32_t)element_bits &&
         element_count <= 1024 / (uint32_t)element_bits) {
+      // Ordinary wide vectors retain the same ordered W-register payload
+      // across logical shape changes, just like single-X values below.
       return loom_low_lower_make_register_type(
           context, AIE2P_CORE_REG_CLASS_ID_AIE2P_VEC256, 4, out_low_type);
     }

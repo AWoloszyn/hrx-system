@@ -2034,7 +2034,29 @@ static iree_status_t loom_low_verify_walk_op(void* user_data, loom_op_t* op,
       *out_result = LOOM_WALK_ABORT;
       return iree_ok_status();
     }
-    if (loom_low_func_call_isa(op)) {
+    if (loom_low_resource_isa(op)) {
+      IREE_RETURN_IF_ERROR(loom_low_verify_resource(function_state, op));
+    }
+    IREE_RETURN_IF_ERROR(
+        loom_low_verify_reference_source_preserving_ops(function_state, op));
+    IREE_RETURN_IF_ERROR(
+        loom_low_verify_structural_register_parts(function_state, op));
+    if (loom_traits_are_compile_time_only(op->traits) &&
+        loom_low_schedule_control_kind(op) != LOOM_LOW_SCHEDULE_CONTROL_NONE &&
+        !iree_any_bit_set(function_state->target->descriptor_set->flags,
+                          LOOM_LOW_DESCRIPTOR_SET_FLAG_NATIVE_SCHEDULING)) {
+      return loom_low_verify_emit_native_schedule_error(function_state, op);
+    }
+    const uint32_t provider_start_error_count =
+        function_state->state->result->error_count;
+    IREE_RETURN_IF_ERROR(
+        loom_low_verify_run_op_providers(function_state, &packet));
+    // Callee context only matters when the target admits calls. A target's
+    // unsupported-call diagnostic explains the required structural change;
+    // a callee-target mismatch would suggest a change that cannot fix it.
+    if (loom_low_func_call_isa(op) &&
+        function_state->state->result->error_count ==
+            provider_start_error_count) {
       IREE_RETURN_IF_ERROR(loom_low_verify_call_context(
           module, function_state->function_op, function_state->version,
           &function_state->state->function_version_snapshot, op,
@@ -2043,24 +2065,6 @@ static iree_status_t loom_low_verify_walk_op(void* user_data, loom_op_t* op,
               .user_data = function_state->state,
           }));
     }
-    if (loom_low_resource_isa(op)) {
-      IREE_RETURN_IF_ERROR(loom_low_verify_resource(function_state, op));
-    }
-    IREE_RETURN_IF_ERROR(
-        loom_low_verify_reference_source_preserving_ops(function_state, op));
-    IREE_RETURN_IF_ERROR(
-        loom_low_verify_structural_register_parts(function_state, op));
-    if (loom_traits_are_compile_time_only(op->traits)) {
-      if (loom_low_schedule_control_kind(op) !=
-              LOOM_LOW_SCHEDULE_CONTROL_NONE &&
-          !iree_any_bit_set(function_state->target->descriptor_set->flags,
-                            LOOM_LOW_DESCRIPTOR_SET_FLAG_NATIVE_SCHEDULING)) {
-        return loom_low_verify_emit_native_schedule_error(function_state, op);
-      }
-      return iree_ok_status();
-    }
-    IREE_RETURN_IF_ERROR(
-        loom_low_verify_run_op_providers(function_state, &packet));
     if (loom_low_verify_should_stop(function_state->state)) {
       *out_result = LOOM_WALK_ABORT;
     }

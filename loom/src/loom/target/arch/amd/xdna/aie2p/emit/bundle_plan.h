@@ -119,12 +119,15 @@ typedef struct loom_aie2p_bundle_plan_t {
 
 // Plans physical bundles for one successful, spill-free AIE2P Low frame.
 //
-// Blocks retain source order and begin at 16-byte program addresses. Structural
-// branches select fallthrough, J, JZ, or JNZ from the following block and emit
-// explicit architectural delay bundles. Their contribution-relative targets
-// remain fixups until final code placement. Structural low.return is
-// materialized as RET and hoisted over useful work in the same block when the
-// physical bundle table permits it.
+// Blocks retain source order. Entry and selected native branch destinations
+// begin at 16-byte program addresses; fallthrough-only labels need no padding.
+// Block analysis selects fallthrough, J, JZ, or JNZ from the following block,
+// and emission consumes that retained choice with explicit architectural delay
+// bundles. Contribution-relative targets remain fixups until final code
+// placement. Structural low.return is materialized as RET and hoisted over
+// useful work in the same block when physical timing and resources permit it.
+// Return placement considers the architectural tail window, including implicit
+// NOP gaps, and materializes only the selected return position.
 // Descriptor runs use the minimum contiguous partition of exact physical
 // bundle formats because AIE2P's format domain is not downward closed.
 // Allocation-planned structural moves split a logical schedule cycle into
@@ -137,9 +140,11 @@ typedef struct loom_aie2p_bundle_plan_t {
 // of physical admission. Gaps occupy code bytes without allocating per-cycle
 // bundle or slot records. The frame retains its grouped dependency index.
 // Every control-flow edge reaches a quiescent event/resource boundary before
-// successor entry, including fallthrough and backedges. Native branch-delay
-// cycles contribute to this boundary. Prebound live-ins and resource imports
-// anchor physical assignments without occupying an instruction slot. Empty
+// successor entry, including fallthrough and backedges. Structural control's
+// source deadline constrains retirement; native condition and LR reads retain
+// concrete register-event issue admission. Native branch-delay cycles
+// contribute to this boundary. Prebound live-ins and resource imports anchor
+// physical assignments without occupying an instruction slot. Empty
 // non-terminator logical cycles not already covered by native expansion are
 // materialized as NOP bundles. The returned plan borrows |frame| and owns its
 // tables in |arena|.

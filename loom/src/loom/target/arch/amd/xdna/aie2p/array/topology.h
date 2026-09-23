@@ -22,13 +22,14 @@ const loom_aie2p_array_endpoint_t* loom_aie2p_array_topology_base_endpoint(
     const loom_aie2p_array_endpoint_t* endpoint);
 
 // Validates the complete logical topology and classifies channel transports.
-// Unsupported worker dependencies emit a diagnostic and return
-// INVALID_ARGUMENT.
+// Sets |out_valid| only after successful validation. Unsupported worker
+// dependencies emit a diagnostic and leave |out_valid| false; their status
+// reports diagnostic-sink failures, not the semantic rejection.
 iree_status_t loom_aie2p_array_topology_validate(
     const loom_value_fact_table_t* facts,
     iree_diagnostic_emitter_t diagnostic_emitter, iree_arena_allocator_t* arena,
-    loom_aie2p_array_plan_t* plan,
-    loom_aie2p_array_channel_t* mutable_channels);
+    loom_aie2p_array_plan_t* plan, loom_aie2p_array_channel_t* mutable_channels,
+    bool* out_valid);
 
 #ifdef __cplusplus
 }  // extern "C"

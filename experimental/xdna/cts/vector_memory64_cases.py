@@ -37,11 +37,14 @@ def main():
             for lane in range(64)
         ]
         data = b"".join(word.to_bytes(8, "little") for word in words)
-        result = bytearray([0xA5] * 1024)
+        result = bytearray([0xA5] * 1536)
         for slot, size in enumerate(sizes):
             source = slot * 64 + (16 if slot >= 6 else 0)
             destination = slot * 128
             result[destination : destination + size] = data[source : source + size]
+        # Two-X transfers retain 128 guard bytes after each complete payload.
+        result[1024:1152] = data[0:128]
+        result[1280:1408] = data[256:384]
         inputs += data
         expected += result
     guard = bytes([0xA5]) * 64

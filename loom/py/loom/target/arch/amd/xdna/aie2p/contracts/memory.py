@@ -476,7 +476,7 @@ def _memory_rule(
     )
 
 
-def _accumulator_memory_rule(
+def _chunked_vector_memory_rule(
     operation: SourceMemoryOperation,
     address_form: _MemoryAddressForm,
     *,
@@ -486,17 +486,17 @@ def _accumulator_memory_rule(
     element_byte_count: int,
     vector_lane_count: int,
     value_type: TypePattern,
+    descriptor_prefix: str,
+    chunk_byte_offsets: tuple[int, ...],
+    chunk_unit_count: int,
     volatile: bool,
     guards: tuple[Guard, ...] = (),
     address_layout: SourceMemoryAddressLayout = SourceMemoryAddressLayout.ANY,
 ) -> DescriptorRule:
     is_load = operation is SourceMemoryOperation.LOAD
     immediate_memory = address_form is _MemoryAddressForm.IMMEDIATE
-    descriptor_family = "load" if is_load else "store"
     address_family = "immediate" if immediate_memory else "register"
-    descriptor_key = (
-        f"amd.xdna.aie2p.{descriptor_family}.accumulator.indexed.{address_family}"
-    )
+    descriptor_key = f"{descriptor_prefix}.{address_family}"
     if volatile:
         descriptor_key = f"{descriptor_key}.volatile"
     memory_descriptor = _descriptor(descriptor_key)
@@ -510,13 +510,13 @@ def _accumulator_memory_rule(
         minimum_alignment=64,
         immediate_offset_minimum=-512,
         immediate_offset_maximum=448,
-        maximum_additional_static_byte_offset=(_ACCUMULATOR_CHUNK_BYTE_OFFSETS[-1]),
+        maximum_additional_static_byte_offset=chunk_byte_offsets[-1],
         address_layout=address_layout,
     )
 
     emits: list[ContractEmit] = []
     loaded_chunks: list[ValueRef] = []
-    for chunk_index, chunk_byte_offset in enumerate(_ACCUMULATOR_CHUNK_BYTE_OFFSETS):
+    for chunk_index, chunk_byte_offset in enumerate(chunk_byte_offsets):
         chunk = ValueRef.temporary(f"chunk_{chunk_index}")
         if is_load:
             loaded_chunks.append(chunk)
@@ -525,8 +525,8 @@ def _accumulator_memory_rule(
                 EmitRegisterSlice(
                     source=ValueRef.operand("value"),
                     result=chunk,
-                    unit_offset=chunk_index,
-                    unit_count=1,
+                    unit_offset=chunk_index * chunk_unit_count,
+                    unit_count=chunk_unit_count,
                 )
             )
 
@@ -1413,7 +1413,7 @@ def _split_256bit_vector_load_rules(*, volatile: bool) -> tuple[DescriptorRule, 
 
 def _accumulator_memory_rules(*, volatile: bool) -> tuple[DescriptorRule, ...]:
     return tuple(
-        _accumulator_memory_rule(
+        _chunked_vector_memory_rule(
             operation,
             address_form,
             source_op=(
@@ -1426,6 +1426,11 @@ def _accumulator_memory_rules(*, volatile: bool) -> tuple[DescriptorRule, ...]:
             element_byte_count=element_byte_count,
             vector_lane_count=vector_lane_count,
             value_type=value_type,
+            descriptor_prefix=(
+                f"amd.xdna.aie2p.{operation.name.lower()}.accumulator.indexed"
+            ),
+            chunk_byte_offsets=_ACCUMULATOR_CHUNK_BYTE_OFFSETS,
+            chunk_unit_count=1,
             volatile=volatile,
         )
         for root_kind, memory_spaces in _MEMORY_ROOTS
@@ -1437,11 +1442,50 @@ def _accumulator_memory_rules(*, volatile: bool) -> tuple[DescriptorRule, ...]:
     )
 
 
+def _wide_vector_memory_rules(*, volatile: bool) -> tuple[DescriptorRule, ...]:
+    # Ordinary 1024-bit values occupy four W units. Each memory instruction
+    # transfers two W units without changing the value's native producer.
+    # Flat F32x32 uses an accumulator carrier, not this ordinary vector class.
+    return tuple(
+        _chunked_vector_memory_rule(
+            operation,
+            address_form,
+            source_op=(
+                vector.vector_load
+                if operation is SourceMemoryOperation.LOAD
+                else vector.vector_store
+            ),
+            root_kind=root_kind,
+            memory_spaces=memory_spaces,
+            element_byte_count=element_bits // 8,
+            vector_lane_count=1024 // element_bits,
+            value_type=Vector(element_type, lanes=1024 // element_bits),
+            descriptor_prefix=(
+                f"amd.xdna.aie2p.{descriptor_family}."
+                f"{descriptor_element_type}x{512 // element_bits}.indexed"
+            ),
+            chunk_byte_offsets=(0, 64),
+            chunk_unit_count=2,
+            volatile=volatile,
+        )
+        for root_kind, memory_spaces in _MEMORY_ROOTS
+        for element_type, descriptor_element_type, element_bits in (
+            _VECTOR_MEMORY_ELEMENT_TYPES
+        )
+        if element_type != "f32"
+        for operation in (SourceMemoryOperation.LOAD, SourceMemoryOperation.STORE)
+        for descriptor_family in (
+            "load.a" if operation is SourceMemoryOperation.LOAD else "store",
+        )
+        for address_form in _MemoryAddressForm
+    )
+
+
 def _matrix_fragment_store_rules() -> tuple[DescriptorRule, ...]:
     # This native result layout is exactly four contiguous accumulator chunks.
     # Its address uses the same retained source-memory plan as vector stores.
     return tuple(
-        _accumulator_memory_rule(
+        _chunked_vector_memory_rule(
             SourceMemoryOperation.STORE,
             address_form,
             source_op=vector.vector_fragment_store,
@@ -1451,6 +1495,9 @@ def _matrix_fragment_store_rules() -> tuple[DescriptorRule, ...]:
             element_byte_count=4,
             vector_lane_count=64,
             value_type=Vector(element_type, lanes=64),
+            descriptor_prefix="amd.xdna.aie2p.store.accumulator.indexed",
+            chunk_byte_offsets=_ACCUMULATOR_CHUNK_BYTE_OFFSETS,
+            chunk_unit_count=1,
             volatile=False,
             guards=(
                 Guard.enum_attr_equals("role", "result"),
@@ -1478,6 +1525,7 @@ AIE2P_MEMORY_RULES: tuple[DescriptorRule, ...] = (
     *_vector_memory_rules(volatile=True),
     *_split_256bit_vector_load_rules(volatile=True),
     *_accumulator_memory_rules(volatile=True),
+    *_wide_vector_memory_rules(volatile=True),
     *_scalar_memory_rules(volatile=False),
     *_pair_scalar_memory_rules(volatile=False),
     *_bytewise_scalar_memory_rules(volatile=False),
@@ -1485,4 +1533,5 @@ AIE2P_MEMORY_RULES: tuple[DescriptorRule, ...] = (
     *_vector_memory_rules(volatile=False),
     *_split_256bit_vector_load_rules(volatile=False),
     *_accumulator_memory_rules(volatile=False),
+    *_wide_vector_memory_rules(volatile=False),
 )

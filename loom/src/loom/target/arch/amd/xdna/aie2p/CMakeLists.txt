@@ -214,6 +214,7 @@ loom_cc_library(
     loom::codegen::low::verify
     loom::error::error_defs
     loom::ir
+    loom::ops::low
     loom::ops::op_defs
     loom::target::projection
   PUBLIC
@@ -474,6 +475,7 @@ loom_cc_library(
     loom::codegen::low::function_requirements
     loom::codegen::low::storage_layout
     loom::codegen::low::text_asm
+    loom::error::error_defs
     loom::format::text::printer
     loom::ir
     loom::ops::low
@@ -510,16 +512,21 @@ loom_check_test_suite(
     "test/array_plan/dma_loopback.loom-test"
     "test/array_plan/dma_service.loom-test"
     "test/array_plan/endpoint_storage.loom-test"
+    "test/array_plan/entry_admission.loom-test"
     "test/array_plan/mixed_transport_fan_in.loom-test"
     "test/array_plan/multicast.loom-test"
+    "test/array_plan/multicast_ownership.loom-test"
+    "test/array_plan/multicast_prefix.loom-test"
     "test/array_plan/packed_record.loom-test"
     "test/array_plan/pipeline_record_shapes.loom-test"
     "test/array_plan/pipeline_views.loom-test"
     "test/array_plan/record_contracts.loom-test"
     "test/array_plan/ring_wrap.loom-test"
+    "test/array_plan/route_capacity.loom-test"
     "test/array_plan/strided_transfer.loom-test"
     "test/array_plan/temporal_fold.loom-test"
     "test/array_plan/unused_worker_inputs.loom-test"
+    "test/array_plan/wide_fold.loom-test"
     "test/array_plan/worker_cycles.loom-test"
     "test/descriptors/bf16_comparison.loom-test"
     "test/descriptors/bfp_move.loom-test"
@@ -541,6 +548,7 @@ loom_check_test_suite(
     "test/descriptors/scalar_immediates.loom-test"
     "test/descriptors/scalar_nonlinear.loom-test"
     "test/descriptors/scalar_stream.loom-test"
+    "test/leaf_alignment.loom-test"
     "test/leaf_allocation.loom-test"
     "test/leaf_expansion_timing.loom-test"
     "test/leaf_immediates.loom-test"
@@ -571,6 +579,7 @@ loom_check_test_suite(
     "test/source_low/matrix_multiply.loom-test"
     "test/source_low/matrix_store.loom-test"
     "test/source_low/memory_access_flags.loom-test"
+    "test/source_low/memory_chunked_vector.loom-test"
     "test/source_low/memory_scalar_addressing.loom-test"
     "test/source_low/memory_scalar_narrow.loom-test"
     "test/source_low/memory_signed_terms.loom-test"
@@ -580,6 +589,7 @@ loom_check_test_suite(
     "test/source_low/memory_wide_offsets.loom-test"
     "test/source_low/nested_view_selection.loom-test"
     "test/source_low/numeric_address_widening.loom-test"
+    "test/source_low/numeric_bf16_maximum.loom-test"
     "test/source_low/numeric_bitwise_constants.loom-test"
     "test/source_low/numeric_boolean_comparison.loom-test"
     "test/source_low/numeric_boolean_reduce.loom-test"

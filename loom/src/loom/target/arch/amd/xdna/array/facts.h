@@ -278,17 +278,18 @@ typedef struct loom_xdna_memory_placement_t {
 // Returns the complete immutable NPU2 physical-array family.
 const loom_xdna_array_family_t* loom_xdna_npu2_array_family(void);
 
-// Resolves the tile facts at one physical coordinate.
-iree_status_t loom_xdna_array_tile_facts(
+// Returns the tile facts at an admitted physical coordinate. Generated family
+// rows cover every physical row exactly once.
+const loom_xdna_tile_facts_t* loom_xdna_array_tile_facts(
     const loom_xdna_array_family_t* family,
-    loom_xdna_tile_coordinate_t coordinate,
-    const loom_xdna_tile_facts_t** out_facts);
+    loom_xdna_tile_coordinate_t coordinate);
 
-// Resolves one architectural stream port to its programmable ordinal range.
-iree_status_t loom_xdna_array_stream_port_range(
+// Returns the programmable ordinal range for an architectural stream port
+// present in the generated family. Routing and register emission use only
+// generated port kinds for the selected tile and direction.
+const loom_xdna_stream_port_range_t* loom_xdna_array_stream_port_range(
     const loom_xdna_array_family_t* family, loom_xdna_tile_kind_t tile_kind,
-    loom_xdna_stream_direction_t direction, loom_xdna_stream_port_t port,
-    const loom_xdna_stream_port_range_t** out_range);
+    loom_xdna_stream_direction_t direction, loom_xdna_stream_port_t port);
 
 // Forms one absolute tile register address after validating the module.
 iree_status_t loom_xdna_array_register_address(

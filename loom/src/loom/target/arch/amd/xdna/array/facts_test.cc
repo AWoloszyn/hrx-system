@@ -20,8 +20,8 @@ TEST(XdnaArrayFactsTest, ExposesCompleteNpu2Topology) {
   EXPECT_EQ(family->column_shift, 25u);
   EXPECT_EQ(family->row_shift, 20u);
 
-  const loom_xdna_tile_facts_t* tile = nullptr;
-  IREE_ASSERT_OK(loom_xdna_array_tile_facts(family, {0, 0}, &tile));
+  const loom_xdna_tile_facts_t* tile =
+      loom_xdna_array_tile_facts(family, {0, 0});
   EXPECT_EQ(tile->kind, LOOM_XDNA_TILE_KIND_SHIM_NOC);
   EXPECT_EQ(tile->dma.buffer_descriptor_count, 16u);
   EXPECT_EQ(tile->dma.maximum_task_repeat_count, 256u);
@@ -32,11 +32,11 @@ TEST(XdnaArrayFactsTest, ExposesCompleteNpu2Topology) {
   EXPECT_EQ(tile->dma.memory_to_stream_port_stride, 4u);
   EXPECT_EQ(tile->dma.stream_to_memory_port_base, 2u);
   EXPECT_EQ(tile->dma.stream_to_memory_port_stride, 1u);
-  IREE_ASSERT_OK(loom_xdna_array_tile_facts(family, {7, 1}, &tile));
+  tile = loom_xdna_array_tile_facts(family, {7, 1});
   EXPECT_EQ(tile->kind, LOOM_XDNA_TILE_KIND_MEMORY);
   EXPECT_EQ(tile->memory.local_capacity, 512u * 1024u);
   EXPECT_EQ(tile->dma.buffer_descriptor_count, 48u);
-  IREE_ASSERT_OK(loom_xdna_array_tile_facts(family, {3, 5}, &tile));
+  tile = loom_xdna_array_tile_facts(family, {3, 5});
   EXPECT_EQ(tile->kind, LOOM_XDNA_TILE_KIND_COMPUTE);
   EXPECT_EQ(tile->memory.local_capacity, 64u * 1024u);
   EXPECT_EQ(tile->memory.program_capacity, 16u * 1024u);
