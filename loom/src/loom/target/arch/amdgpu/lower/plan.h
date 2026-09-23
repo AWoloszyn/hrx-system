@@ -1342,9 +1342,18 @@ typedef struct loom_amdgpu_subgroup_active_mask_plan_t {
   uint32_t wavefront_size;
 } loom_amdgpu_subgroup_active_mask_plan_t;
 
+typedef struct loom_amdgpu_subgroup_predicate_mask_descriptors_t {
+  // Descriptor row selected to read the active EXEC lane mask.
+  loom_low_lower_resolved_descriptor_t exec_read;
+  // Descriptor row selected to intersect predicate and active masks.
+  loom_low_lower_resolved_descriptor_t intersect;
+} loom_amdgpu_subgroup_predicate_mask_descriptors_t;
+
 typedef struct loom_amdgpu_subgroup_ballot_plan_t {
   // Source predicate already materialized as a native EXEC-width mask.
   loom_value_id_t predicate;
+  // Descriptors that restrict the predicate to lanes active at this use.
+  loom_amdgpu_subgroup_predicate_mask_descriptors_t active;
   // Source mask result receiving predicate bits for active lanes.
   loom_value_id_t mask;
   // Static bit width of the source integer mask result.
@@ -1356,6 +1365,8 @@ typedef struct loom_amdgpu_subgroup_ballot_plan_t {
 typedef struct loom_amdgpu_subgroup_vote_any_plan_t {
   // Source predicate already materialized as a native EXEC-width mask.
   loom_value_id_t predicate;
+  // Descriptors that restrict the predicate to lanes active at this use.
+  loom_amdgpu_subgroup_predicate_mask_descriptors_t active;
   // Descriptor row selected to compare the predicate mask against zero.
   loom_low_lower_resolved_descriptor_t compare_descriptor;
   // Descriptor row selected to materialize each half of the zero mask.
@@ -1371,8 +1382,8 @@ typedef struct loom_amdgpu_subgroup_vote_all_plan_t {
   loom_value_id_t predicate;
   // Descriptor row selected to compare predicate and active EXEC masks.
   loom_low_lower_resolved_descriptor_t compare_descriptor;
-  // Descriptor row selected to read the native EXEC lane mask.
-  loom_low_lower_resolved_descriptor_t exec_read_descriptor;
+  // Descriptors that restrict the predicate to lanes active at this use.
+  loom_amdgpu_subgroup_predicate_mask_descriptors_t active;
   // Subgroup-uniform i1 source result receiving SCC.
   loom_value_id_t result;
   // Exact subgroup width selected by the active target bundle.
