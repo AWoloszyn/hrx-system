@@ -538,7 +538,9 @@ if(LOOM_TARGET_ARCH_AMDGPU)
 iree_native_test(
   NAME
     "memory_stability"
+  WORKING_DIRECTORY "${IREE_ROOT_DIR}"
   ARGS
+    "--template-root=."
     "{{${CMAKE_CURRENT_SOURCE_DIR}/test/source_low/memory_stability.loom-test}}"
   SRC
     loom::tools::loom-check::loom-check-test
@@ -559,15 +561,17 @@ loom_check_compile_tests(
 )
 endif()
 
-file(GLOB _GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_BE73FC6D LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS test/source_low/*.loom-test)
-file(GLOB _GLOB_TEST/SOURCE_LOW/MEMORY_STABILITY_LOOM-TEST_BE73FC6D LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS test/source_low/memory_stability.loom-test)
-list(REMOVE_ITEM _GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_BE73FC6D ${_GLOB_TEST/SOURCE_LOW/MEMORY_STABILITY_LOOM-TEST_BE73FC6D})
+file(GLOB _GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_49E0437B LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS test/source_low/*.loom-test)
+file(GLOB _GLOB_TEST/SOURCE_LOW/MEMORY_STABILITY_LOOM-TEST_49E0437B LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS test/source_low/memory_stability.loom-test)
+list(REMOVE_ITEM _GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_49E0437B ${_GLOB_TEST/SOURCE_LOW/MEMORY_STABILITY_LOOM-TEST_49E0437B})
+file(GLOB _GLOB_TEST/SOURCE_LOW/SOURCE_LOW_MEMORY_FLOAT64_LOOM-TEST_49E0437B LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS test/source_low/source_low_memory_float64.loom-test)
+list(REMOVE_ITEM _GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_49E0437B ${_GLOB_TEST/SOURCE_LOW/SOURCE_LOW_MEMORY_FLOAT64_LOOM-TEST_49E0437B})
 if(LOOM_TARGET_ARCH_AMDGPU)
 loom_check_test_suite(
   NAME
     loom_check_file_test
   SRCS
-    "${_GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_BE73FC6D}"
+    "${_GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_49E0437B}"
   DATA
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/async_empty.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/async_gather.loom-test"
@@ -579,7 +583,9 @@ loom_check_test_suite(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/math_contraction.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_access_flags.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_address_realizations.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_atomic_float64.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_atomic_i64.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_atomic_observations.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_cache_policy_non_temporal.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_cache_policy_scopes.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_generic_atomic.loom-test"
@@ -656,7 +662,7 @@ loom_check_compile_tests(
   SRC
     "test/source_low/source_low_memory_global_atomic_gfx9_4_generic.loom-test"
   REGISTERED_SRCS
-    "${_GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_BE73FC6D}"
+    "${_GLOB_TEST_SOURCE_LOW_X_LOOM_TEST_49E0437B}"
   TARGETS
     loom::target::amdgpu::gfx9-4-generic
     loom::target::amdgpu::gfx942
@@ -672,7 +678,9 @@ loom_check_compile_tests(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/math_contraction.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_access_flags.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_address_realizations.loom-test"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_atomic_float64.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_atomic_i64.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_atomic_observations.loom"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_cache_policy_non_temporal.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_cache_policy_scopes.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_generic_atomic.loom-test"
@@ -737,6 +745,59 @@ loom_check_compile_tests(
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/view_transport.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/workgroup_reduce_publication.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/workgroup_reduce_tree.loom-test"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU)
+iree_native_test(
+  NAME
+    "source_low_memory_float64"
+  WORKING_DIRECTORY "${IREE_ROOT_DIR}"
+  ARGS
+    "--template-root=."
+    "{{${CMAKE_CURRENT_SOURCE_DIR}/test/source_low/source_low_memory_float64.loom-test}}"
+  SRC
+    loom::tools::loom-check::loom-check-test
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_float64.loom"
+  LABELS
+    "loom-check"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU)
+loom_check_compile_tests(
+  NAME
+    "source_low_memory_float64"
+  SRC
+    "test/source_low/source_low_memory_float64.loom-test"
+  TARGETS
+    loom::target::amdgpu::gfx11-generic
+    loom::target::amdgpu::gfx1100
+    loom::target::amdgpu::gfx1101
+    loom::target::amdgpu::gfx1102
+    loom::target::amdgpu::gfx1103
+    loom::target::amdgpu::gfx1150
+    loom::target::amdgpu::gfx1151
+    loom::target::amdgpu::gfx1152
+    loom::target::amdgpu::gfx1153
+    loom::target::amdgpu::gfx1170
+    loom::target::amdgpu::gfx1171
+    loom::target::amdgpu::gfx1172
+    loom::target::amdgpu::gfx12-5-generic
+    loom::target::amdgpu::gfx12-generic
+    loom::target::amdgpu::gfx1200
+    loom::target::amdgpu::gfx1201
+    loom::target::amdgpu::gfx1250
+    loom::target::amdgpu::gfx1250-a0
+    loom::target::amdgpu::gfx1251
+    loom::target::amdgpu::gfx9-4-generic
+    loom::target::amdgpu::gfx940
+    loom::target::amdgpu::gfx941
+    loom::target::amdgpu::gfx942
+    loom::target::amdgpu::gfx950
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_float64.loom"
 )
 endif()
 

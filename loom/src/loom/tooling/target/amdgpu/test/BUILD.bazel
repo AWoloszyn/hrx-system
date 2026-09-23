@@ -159,6 +159,26 @@ loom_test(
 )
 
 loom_test(
+    name = "atomic_observations_test",
+    srcs = [
+        "atomic_observations.loom",
+        "//loom/src/loom/test/corpus/source_low:memory_atomic_float64.loom",
+        "//loom/src/loom/test/corpus/source_low:memory_atomic_observations.loom",
+        "//loom/src/loom/test/corpus/source_low:memory_float64.loom",
+    ],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx1100",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/amdgpu:gfx1170",
+        "//loom/target/amdgpu:gfx11-generic",
+    ],
+    execution_profiles = [
+        AMDGPU_HARDWARE_PROFILE,
+        AMDGPU_ACCESS_PROFILE,
+    ],
+)
+
+loom_test(
     name = "address_carrier_test",
     srcs = [
         "//loom/src/loom/test/corpus/conformance:address_carrier_casts.loom",

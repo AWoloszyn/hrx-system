@@ -1551,7 +1551,9 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         name_block = self._convert_string_arg_block("NAME", name)
         test_binary_block = self._convert_single_target_block("SRC", runner)
         args_block = self._convert_string_list_block(
-            "ARGS", ["{{${CMAKE_CURRENT_SOURCE_DIR}/%s}}" % src]
+            "ARGS",
+            ["--template-root=.", "{{${CMAKE_CURRENT_SOURCE_DIR}/%s}}" % src],
+            sort=False,
         )
         data_block = self._convert_data_list_block(data)
         env_block = self._convert_string_list_block(
@@ -1562,6 +1564,7 @@ class LoomBuildFileFunctions(bazel_to_cmake_converter.BuildFileFunctions):
         self._converter.body += (
             f"iree_native_test(\n"
             f"{name_block}"
+            f'  WORKING_DIRECTORY "${{IREE_ROOT_DIR}}"\n'
             f"{args_block}"
             f"{test_binary_block}"
             f"{data_block}"

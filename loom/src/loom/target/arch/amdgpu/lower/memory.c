@@ -115,35 +115,29 @@ static bool loom_amdgpu_memory_access_register_footprint(
     return true;
   }
 
-  uint32_t payload_bit_count = 0;
-  bool packed_16bit_float = false;
-  bool packed_8bit_float = false;
-  if (!loom_amdgpu_type_packed_integer_storage(vector_type, &payload_bit_count,
-                                               &register_count)) {
-    if (!loom_amdgpu_type_packed_8bit_float_storage(
-            vector_type, &payload_bit_count, &register_count)) {
-      packed_16bit_float = loom_amdgpu_type_packed_16bit_float_storage(
-          vector_type, &payload_bit_count, &register_count);
-    } else {
-      packed_8bit_float = true;
-    }
-  }
-  if (payload_bit_count == 0) {
+  loom_amdgpu_vector_storage_t storage = {0};
+  if (loom_type_rank(vector_type) != 1 ||
+      !loom_amdgpu_type_vector_storage(vector_type, &storage)) {
     diagnostic->rejection_bits |=
         LOOM_AMDGPU_MEMORY_ACCESS_REJECTION_VECTOR_TYPE;
     return false;
   }
+  const uint32_t payload_bit_count =
+      storage.element_count * storage.element_bit_count;
+  register_count = storage.register_count;
+  const bool packed_16bit_float =
+      storage.kind == LOOM_AMDGPU_VECTOR_STORAGE_KIND_PACKED_16BIT_FLOAT;
+  const bool packed_8bit_float =
+      storage.kind == LOOM_AMDGPU_VECTOR_STORAGE_KIND_PACKED_8BIT_FLOAT;
   const uint32_t register_bit_count = register_count * 32u;
   const bool packed_i8_pair = payload_bit_count == 16u &&
                               register_count == 1u &&
-                              loom_amdgpu_static_vector_lane_count(
-                                  vector_type, LOOM_SCALAR_TYPE_I8, 2) == 2;
+                              storage.element_type == LOOM_SCALAR_TYPE_I8;
   const bool packed_f8_pair =
       packed_8bit_float && payload_bit_count == 16u && register_count == 1u;
   const bool packed_i16_scalar = payload_bit_count == 16u &&
                                  register_count == 1u &&
-                                 loom_amdgpu_static_vector_lane_count(
-                                     vector_type, LOOM_SCALAR_TYPE_I16, 1) == 1;
+                                 storage.element_type == LOOM_SCALAR_TYPE_I16;
   if (payload_bit_count != register_bit_count && !packed_16bit_float &&
       !packed_i8_pair && !packed_f8_pair && !packed_i16_scalar) {
     diagnostic->rejection_bits |=

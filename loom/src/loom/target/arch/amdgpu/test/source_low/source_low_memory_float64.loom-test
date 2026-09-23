@@ -1,0 +1,39 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/memory_float64.loom
+// RUN: emit source-low target=amdgpu:gfx1151 output=low
+
+// Full-width carriers retain all payload bits across native packet splitting.
+kernel.def @float64_memory_copy() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %source = buffer.view %input[%base] : buffer -> view<18xf64>
+  %destination = buffer.view %output[%base] : buffer -> view<18xf64>
+  %payload = vector.load %source[1] : view<18xf64> -> vector<16xf64>
+  vector.store %payload, %destination[1] : vector<16xf64>, view<18xf64>
+  kernel.return
+}
+
+// ----
+low.kernel.def target<amdgpu.rdna3_5.core> abi_layout({constant_count = 0, direct_arg_count = 0, direct_arg_names = {}, direct_arg_offsets = [], direct_arg_parameter_indices = [], direct_arg_sizes = [], parameter_count = 2, resource_count = 2, resource_offsets = [0, 8], resource_parameter_indices = [0, 1], uses_kernarg_segment_ptr = true}) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @float64_memory_copy() asm {
+  %source = resource<hal_binding> {extent = 144, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %destination = resource<hal_binding> {extent = 144, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %9 = v_mov_b32 0
+  %10 = global_load_b128_saddr %9, %source {offset = 8}
+  %12 = global_load_b128_saddr %9, %source {offset = 24}
+  %14 = global_load_b128_saddr %9, %source {offset = 40}
+  %16 = global_load_b128_saddr %9, %source {offset = 56}
+  %18 = global_load_b128_saddr %9, %source {offset = 72}
+  %20 = global_load_b128_saddr %9, %source {offset = 88}
+  %22 = global_load_b128_saddr %9, %source {offset = 104}
+  %24 = global_load_b128_saddr %9, %source {offset = 120}
+  global_store_b128_saddr %9, %10, %destination {offset = 8}
+  global_store_b128_saddr %9, %12, %destination {offset = 24}
+  global_store_b128_saddr %9, %14, %destination {offset = 40}
+  global_store_b128_saddr %9, %16, %destination {offset = 56}
+  global_store_b128_saddr %9, %18, %destination {offset = 72}
+  global_store_b128_saddr %9, %20, %destination {offset = 88}
+  global_store_b128_saddr %9, %22, %destination {offset = 104}
+  global_store_b128_saddr %9, %24, %destination {offset = 120}
+  return
+}

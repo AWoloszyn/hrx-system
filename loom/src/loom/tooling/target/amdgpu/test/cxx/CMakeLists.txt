@@ -1612,7 +1612,9 @@ if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 iree_native_test(
   NAME
     "storage_division"
+  WORKING_DIRECTORY "${IREE_ROOT_DIR}"
   ARGS
+    "--template-root=."
     "{{${CMAKE_CURRENT_SOURCE_DIR}/storage_division.cxx-test}}"
   SRC
     loom::tools::loom-check
@@ -1625,7 +1627,9 @@ if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 iree_native_test(
   NAME
     "assembly_lowering"
+  WORKING_DIRECTORY "${IREE_ROOT_DIR}"
   ARGS
+    "--template-root=."
     "{{${CMAKE_CURRENT_SOURCE_DIR}/assembly_lowering.cxx-test}}"
   SRC
     loom::tools::loom-check
@@ -1638,7 +1642,9 @@ if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 iree_native_test(
   NAME
     "assembly_invalid"
+  WORKING_DIRECTORY "${IREE_ROOT_DIR}"
   ARGS
+    "--template-root=."
     "{{${CMAKE_CURRENT_SOURCE_DIR}/assembly_invalid.cxx-test}}"
   SRC
     loom::tools::loom-check
@@ -1651,7 +1657,9 @@ if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU)
 iree_native_test(
   NAME
     "vector_lookup"
+  WORKING_DIRECTORY "${IREE_ROOT_DIR}"
   ARGS
+    "--template-root=."
     "{{${CMAKE_CURRENT_SOURCE_DIR}/vector_lookup.cxx-test}}"
   SRC
     loom::tools::loom-check
