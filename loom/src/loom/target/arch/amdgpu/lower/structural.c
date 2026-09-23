@@ -29,10 +29,12 @@ static bool loom_amdgpu_vector_bitcast_storage_shape(
   *out_payload_bit_count = 0;
   *out_register_count = 0;
 
-  const uint32_t register_count = loom_amdgpu_vector_32bit_register_count(type);
-  if (register_count != 0) {
-    *out_payload_bit_count = 32u * register_count;
-    *out_register_count = register_count;
+  loom_amdgpu_vector_storage_t storage;
+  if (loom_amdgpu_type_vector_storage(type, &storage) &&
+      (storage.kind == LOOM_AMDGPU_VECTOR_STORAGE_KIND_FULL_32BIT ||
+       storage.kind == LOOM_AMDGPU_VECTOR_STORAGE_KIND_FULL_64BIT)) {
+    *out_payload_bit_count = storage.element_count * storage.element_bit_count;
+    *out_register_count = storage.register_count;
     return true;
   }
 
