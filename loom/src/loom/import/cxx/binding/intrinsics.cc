@@ -217,10 +217,17 @@ Intrinsics::ScalarBinding Intrinsics::resolve_scalar(
     cxx::AST* owner) {
   const auto& traits = unit_.typeTraits();
   const auto* return_type = traits.remove_cv(signature->returnType());
-  if (!types_.is_float(return_type)) {
-    diagnostics_.reject(
-        unit_, owner,
-        "scalar intrinsic result must be _Float16, __bf16, float, or double");
+  if (operation.scalar->category == LOOM_CXX_SCALAR_CATEGORY_INTEGER) {
+    if (!traits.is_integral(return_type) ||
+        return_type->kind() == cxx::TypeKind::kBool) {
+      diagnostics_.reject(
+          unit_, owner,
+          "scalar intrinsic result must be a non-boolean integer");
+    }
+  } else if (!types_.is_float(return_type)) {
+    diagnostics_.reject(unit_, owner,
+                        "scalar intrinsic result must be _Float16, __bf16, "
+                        "float, or double");
   }
   if (signature->isVariadic() ||
       signature->parameterTypes().size() != operation.scalar->operand_count) {
@@ -229,9 +236,8 @@ Intrinsics::ScalarBinding Intrinsics::resolve_scalar(
   }
   for (const auto* parameter : signature->parameterTypes()) {
     if (traits.remove_cv(parameter) != return_type) {
-      diagnostics_.reject(
-          unit_, owner,
-          "intrinsic operands must have the result's floating-point type");
+      diagnostics_.reject(unit_, owner,
+                          "intrinsic operands must have the result's type");
     }
   }
   return {operation, types_.get(return_type, owner)};

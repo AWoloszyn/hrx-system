@@ -76,6 +76,18 @@ template <class Float> requires (__is_floating_point(Float))
 template <class Float> requires (__is_floating_point(Float))
 [[loom::op("scalar.costurnsf")]] Float costurnsf(Float input);
 
+// Count leading zeros.
+template <class Integer> requires (__is_integral(Integer) && !__is_same(Integer, bool))
+[[loom::op("scalar.ctlzi")]] Integer ctlzi(Integer input);
+
+// Population count (number of set bits).
+template <class Integer> requires (__is_integral(Integer) && !__is_same(Integer, bool))
+[[loom::op("scalar.ctpopi")]] Integer ctpopi(Integer input);
+
+// Count trailing zeros.
+template <class Integer> requires (__is_integral(Integer) && !__is_same(Integer, bool))
+[[loom::op("scalar.cttzi")]] Integer cttzi(Integer input);
+
 // Floating-point division.
 template <class Float> requires (__is_floating_point(Float))
 [[loom::op("scalar.divf")]] Float divf(Float lhs, Float rhs);

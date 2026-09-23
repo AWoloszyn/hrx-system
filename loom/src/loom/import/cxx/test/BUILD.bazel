@@ -57,6 +57,7 @@ loom_check_test_suite(
         "frontend.cxx-test",
         "functions.cxx-test",
         "initializer_dependencies.cxx-test",
+        "integer_intrinsics.cxx-test",
         "intrinsics_invalid.cxx-test",
         "kernel_intrinsics.cxx-test",
         "kernel_intrinsics_invalid.cxx-test",
@@ -153,6 +154,13 @@ loom_test(
 loom_test(
     name = "condition_values_test",
     srcs = ["condition_values.cxx"],
+    execution_profiles = [VM_REFERENCE_PROFILE],
+    target_compatible_with = _HOST_COMPATIBILITY,
+)
+
+loom_test(
+    name = "integer_intrinsics_test",
+    srcs = ["integer_intrinsics.cxx"],
     execution_profiles = [VM_REFERENCE_PROFILE],
     target_compatible_with = _HOST_COMPATIBILITY,
 )

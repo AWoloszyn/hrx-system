@@ -13,12 +13,19 @@
 extern "C" {
 #endif
 
-// One generated homogeneous floating-point projection. All operands and the
-// result share a supported C++ floating-point type, checked at source
-// admission.
+// Source scalar category admitted by a homogeneous operation binding.
+typedef enum loom_cxx_scalar_category_e {
+  LOOM_CXX_SCALAR_CATEGORY_FLOAT,
+  LOOM_CXX_SCALAR_CATEGORY_INTEGER,
+} loom_cxx_scalar_category_t;
+
+// One generated homogeneous scalar projection. All operands and the result
+// share a supported C++ type in the declared category, checked at admission.
 typedef struct loom_cxx_scalar_binding_t {
   // Canonical dialect-qualified operation name.
   const char* name;
+  // Source category of the operation's operands and result.
+  loom_cxx_scalar_category_t category;
   // Fixed number of scalar operands.
   uint8_t operand_count;
   // Whether the operation carries canonical scalar fast-math flags.
