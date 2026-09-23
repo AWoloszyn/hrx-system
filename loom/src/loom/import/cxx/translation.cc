@@ -308,18 +308,49 @@ class Translator {
 
   Value binding(cxx::Symbol* symbol, cxx::AST* owner) {
     auto found = locals_.find(symbol);
-    return found == locals_.end()
-               ? values_.at(symbol)
-               : name(storage_.load({found->second.view, std::nullopt},
-                                    symbol->type(), owner),
-                      cxx::to_string(symbol->name()));
+    if (found == locals_.end()) {
+      return values_.at(symbol);
+    }
+    if (unit_.typeTraits().is_array(symbol->type())) {
+      return found->second.pointer;
+    }
+    return name(storage_.load({found->second.view, std::nullopt},
+                              symbol->type(), owner),
+                cxx::to_string(symbol->name()));
   }
 
   void initialize_variable(cxx::VariableSymbol* variable,
                            cxx::ExpressionAST* initializer, cxx::AST* owner) {
-    if (cxx::type_cast<cxx::BoundedArrayType>(
+    if (auto* array = cxx::type_cast<cxx::BoundedArrayType>(
             types_.unqualified(variable->type()))) {
-      fail(owner, "local arrays require __shared__ in this slice");
+      auto access =
+          allocate_local(variable, variable->explicitAlignment(), owner);
+      if (!initializer) {
+        return;
+      }
+      auto* elements = cxx::Initializer(initializer).expressionListSlot();
+      if (!elements) {
+        fail(owner, "automatic arrays require element-wise initialization");
+      }
+      auto* element_type =
+          unit_.typeTraits().get_element_type(variable->type());
+      auto* next = *elements;
+      // The source frontend supplies conversions and explicit element order.
+      // Each store precedes the next clause, which may read this same array.
+      // Omitted trivial elements are value-initialized, unlike a declaration
+      // without an initializer.
+      for (size_t index = 0; index < array->size(); ++index) {
+        auto value =
+            next ? expression(next->value).ssa()
+                 : initialize(array->elementType(), nullptr, owner).ssa();
+        access.index = scalars_.integer(index, LOOM_SCALAR_TYPE_INDEX,
+                                        locations_.get(owner));
+        storage_.store(access, value, element_type, owner);
+        if (next) {
+          next = next->next;
+        }
+      }
+      return;
     }
     if (control_->addressed(variable) ||
         unit_.typeTraits().is_volatile(variable->type())) {
@@ -1923,8 +1954,8 @@ class Translator {
   ValueArena value_arena_;
   // Bound symbols, never identifier spellings, key source-to-SSA mappings.
   std::unordered_map<cxx::Symbol*, Value> values_;
-  // Addressed automatic objects retain one allocation across direct and aliased
-  // accesses. They are not transported as mutable SSA bindings at region edges.
+  // Storage-backed automatic objects retain one allocation across direct and
+  // aliased accesses. They are not mutable SSA bindings at region edges.
   std::unordered_map<cxx::Symbol*, StorageAllocation> locals_;
   // Immutable control facts for the function currently being translated.
   std::optional<ControlFlow> control_;

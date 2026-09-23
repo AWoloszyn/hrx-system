@@ -49,20 +49,24 @@ kernel.def @aligned_array() {
   %values_view = buffer.view %values[%values_byte_offset] : buffer -> view<4xi32>
   %12 = scalar.constant 7 : i32
   %13 = scalar.constant 0 : i32
-  %14 = index.cast %13 : i32 to index
-  view.store %12, %values_view[%14] : i32, view<4xi32>
-  %15 = scalar.constant 0 : i32
-  %16 = index.cast %15 : i32 to index
-  %17 = view.load %values_view[%16] : view<4xi32> -> i32
-  %18 = scalar.constant 0 : i32
-  %19 = scalar.extsi %18 : i32 to i64
-  %20 = scalar.constant 4 : i64
-  %21 = scalar.muli %19, %20 : i64
-  %22 = index.cast %output_byte_offset : offset to i64
-  %23 = scalar.addi %22, %21 : i64
-  %24 = scalar.assume %23 [range(%23, 0, 9223372036854775807)] : i64
-  %25 = index.cast %24 : i64 to offset
-  %26 = buffer.view %output[%25] : buffer -> view<1xi32>
-  view.store %17, %26[0] : i32, view<1xi32>
+  %14 = scalar.extsi %13 : i32 to i64
+  %15 = scalar.assume %14 [range(%14, 0, 3)] : i64
+  %16 = index.cast %15 : i64 to index
+  view.store %12, %values_view[%16] : i32, view<4xi32>
+  %17 = scalar.constant 0 : i32
+  %18 = scalar.extsi %17 : i32 to i64
+  %19 = scalar.assume %18 [range(%18, 0, 3)] : i64
+  %20 = index.cast %19 : i64 to index
+  %21 = view.load %values_view[%20] : view<4xi32> -> i32
+  %22 = scalar.constant 0 : i32
+  %23 = scalar.extsi %22 : i32 to i64
+  %24 = scalar.constant 4 : i64
+  %25 = scalar.muli %23, %24 : i64
+  %26 = index.cast %output_byte_offset : offset to i64
+  %27 = scalar.addi %26, %25 : i64
+  %28 = scalar.assume %27 [range(%27, 0, 9223372036854775807)] : i64
+  %29 = index.cast %28 : i64 to offset
+  %30 = buffer.view %output[%29] : buffer -> view<1xi32>
+  view.store %21, %30[0] : i32, view<1xi32>
   kernel.return
 }

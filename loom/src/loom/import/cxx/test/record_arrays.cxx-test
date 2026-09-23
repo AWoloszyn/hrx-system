@@ -249,23 +249,24 @@ kernel.def @shared_rows() {
   %workitem_id_x = kernel.workitem.id<x> : index
   %index = index.cast %workitem_id_x : index to i32
   %25 = scalar.extui %index : i32 to i64
-  %50 = scalar.constant 2 : i64
-  %51 = scalar.shli %25, %50 : i64
-  %49 = scalar.constant 128 : i64
-  %48 = scalar.addi %51, %49 : i64
-  %30 = scalar.assume %48 [range(%48, 0, 9223372036854775807)] : i64
+  %51 = scalar.constant 2 : i64
+  %52 = scalar.shli %25, %51 : i64
+  %50 = scalar.constant 128 : i64
+  %49 = scalar.addi %52, %50 : i64
+  %30 = scalar.assume %49 [range(%49, 0, 9223372036854775807)] : i64
   %31 = index.cast %30 : i64 to offset
   %32 = buffer.view %words[%31] : buffer -> view<1xi32>
   view.store %index, %32[0] : i32, view<1xi32>
   %33 = scalar.constant 32 : i32
   %34 = scalar.addi %index, %33 : i32
-  %35 = index.cast %34 : i32 to offset
-  %36 = index.cast %35 : offset to index
-  %37 = view.load %words_view[%36] : view<64xi32> -> i32
-  %43 = scalar.assume %51 [range(%51, 0, 9223372036854775807)] : i64
-  %44 = index.cast %43 : i64 to offset
-  %45 = buffer.view %output[%44] : buffer -> view<1xi32>
-  view.store %37, %45[0] : i32, view<1xi32>
+  %35 = scalar.extui %34 : i32 to i64
+  %36 = scalar.assume %35 [range(%35, 0, 63)] : i64
+  %37 = index.cast %36 : i64 to index
+  %38 = view.load %words_view[%37] : view<64xi32> -> i32
+  %44 = scalar.assume %52 [range(%52, 0, 9223372036854775807)] : i64
+  %45 = index.cast %44 : i64 to offset
+  %46 = buffer.view %output[%45] : buffer -> view<1xi32>
+  view.store %38, %46[0] : i32, view<1xi32>
   kernel.return
 }
 

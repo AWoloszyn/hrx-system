@@ -54,6 +54,7 @@ loom_check_test_suite(
     "layout_attributes.cxx-test"
     "layout_attributes_roundtrip.cxx-test"
     "local_addresses.cxx-test"
+    "local_arrays.cxx-test"
     "locations.cxx-test"
     "loops.cxx-test"
     "macro_operators.cxx-test"
@@ -188,6 +189,32 @@ endif()
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_test_module(
   NAME
+    local_arrays_test_module
+  SRCS
+    "local_arrays.cxx"
+)
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+if(LOOM_TARGET_ARCH_VM)
+loom_execution_test(
+  NAME
+    local_arrays_test_execute_vm_reference_test
+  MODULE
+    "::local_arrays_test_module"
+  LABELS
+    "iree-build-requirement=loom.target.arch.vm"
+    "loom-execution-profile=vm_reference"
+    "loom-target-family=vm"
+    "loom-target-class=cpu"
+    "loom-executor=reference"
+)
+endif()
+endif()
+
+if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
+loom_test_module(
+  NAME
     constexpr_values_test_module
   SRCS
     "constexpr_values.cxx"
@@ -211,28 +238,17 @@ loom_execution_test(
 endif()
 endif()
 
-if(LOOM_IMPORT_CXX)
-loom_module(
-  NAME
-    atomic_implementations
-  SRCS
-    "atomic_builtins.cxx"
-    "atomics.cxx"
-  MODE merge
-  OUTPUT_FORMAT bc
-  STRICT_DEPS
-)
-endif()
-
 if(LOOM_IMPORT_CXX AND LOOM_TARGET_ARCH_VM)
 loom_test_module(
   NAME
     atomic_values_test_module
   SRCS
-    "atomic_builtin_values.loom"
-    "atomic_values.loom"
-  LIBRARIES
-    "::atomic_implementations"
+    "atomic_values.cxx"
+  DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/atomic_builtins.cxx"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/test/atomics.cxx"
+  INPUTOPTS
+    "cxx:root=sequence_i32 root=sequence_u32 root=sequence_i64 root=sequence_u64 root=builtin_compare_semantics root=builtin_wide_semantics"
 )
 endif()
 

@@ -1152,9 +1152,10 @@ float decode(const IQ4XSBlock* blocks, unsigned block_index, unsigned index,
 The block pointer advances by 136 bytes; `scales_low` and `quants` start at
 offsets 4 and 8. Their elements use byte loads, the base scale uses an FP16
 load, and the codebook uses signed integer-to-float conversion. No record or
-array is copied or allocated. Arrays in by-value records, automatic arrays, and
-addresses of automatic records require aggregate object initialization and copy
-projections. Automatic scalar and vector objects use the storage contract below.
+array is copied or allocated. Arrays in by-value records and addresses of
+automatic records require aggregate object initialization and copy projections.
+Automatic scalars, vectors, and fixed scalar arrays use the storage contract
+below.
 
 Packed fields use the same typed memory operations, with their exact byte
 origins and record strides:
@@ -1480,7 +1481,7 @@ running the importer.
 
 The current translation surface covers scalar and explicit vector arithmetic,
 conversions, typed-pointer indexing and arithmetic, aggregate record values,
-record field storage, local SSA values, automatic scalar and vector storage,
+record field storage, local SSA values, automatic scalar, vector, and array storage,
 conditional regions, short-circuit `&&` and `||`, counted and general `for`
 loops, `while` and `do/while` loops, fixed workgroup arrays, and direct calls.
 Unsupported reachable types and statements produce source diagnostics. Integral
@@ -1493,13 +1494,13 @@ origin before entering the nonnegative offset domain, so an interior pointer
 can move backward within its allocation.
 
 Pointer addition, subtraction by an integer, unary plus, dereference, address-of
-storage elements and automatic scalar/vector objects, and prefix/postfix
+storage elements and automatic scalar/vector/array objects, and prefix/postfix
 increments are admitted.
 Integer increments update automatic bindings or storage-backed elements and
 return the previous or updated value. Pointer increments update automatic
 bindings; `*output++ = *input++` preserves both pointer origins. Compound
-assignment supports scalar and vector storage through pointers, record fields
-and workgroup arrays. The right operand executes before the destination is
+assignment supports scalar and vector storage through pointers, record fields,
+and array elements. The right operand executes before the destination is
 resolved, and one resolved address supplies both the load and store. Arithmetic
 uses the source promotions and converts back to the element type before storing
 or returning:
@@ -1547,6 +1548,27 @@ addressing an object does not promise promotion. Scalars that need no storage
 continue to import directly as SSA values. An aliased loop bound or induction
 object uses a general loop so indirect mutations cannot be lost by counted-loop
 lowering.
+
+Fixed one-dimensional arrays of non-boolean scalars use the same private storage
+contract. Braced and parenthesized element initializers execute in order, with
+each element stored before evaluating the next clause. Omitted elements are
+value-initialized; a declaration without an initializer emits no stores.
+Array bounds can be deduced from the initializer. Decay, element addresses, and
+whole-array addresses preserve the same allocation:
+
+```cpp
+unsigned guarded_update(unsigned input, bool enabled) {
+  unsigned values[3] = {37, input, 41};
+  if (enabled) increment(&values[1]);
+  return values[0] + values[1] + values[2];
+}
+```
+
+After inlining, shared promotion can carry these three scalar cells through the
+branch without temporary memory. Dynamic indexing and atomic or volatile
+observations retain storage where needed. Direct indexing into a declared array
+publishes the C++ in-bounds precondition using its fixed extent. This is a source
+precondition, not a runtime bounds check.
 
 Conditional expressions and short-circuit operands carry binding updates only
 along the executed path. Incrementing vectors or floating-point values requires

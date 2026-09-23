@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
 load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with", "loom_generated_file", "loom_generated_file_family")
-load("//loom/build_tools/bazel:defs.bzl", "loom_library", "loom_test", "loom_test_module")
+load("//loom/build_tools/bazel:defs.bzl", "loom_test", "loom_test_module")
 load("//loom/build_tools/bazel:loom_check.bzl", "loom_check_test_suite")
 load("//loom/target/vm:execution_profiles.bzl", "VM_REFERENCE_PROFILE")
 
@@ -65,6 +65,7 @@ loom_check_test_suite(
         "layout_attributes.cxx-test",
         "layout_attributes_roundtrip.cxx-test",
         "local_addresses.cxx-test",
+        "local_arrays.cxx-test",
         "locations.cxx-test",
         "loops.cxx-test",
         "macro_operators.cxx-test",
@@ -164,32 +165,33 @@ loom_test(
 )
 
 loom_test(
+    name = "local_arrays_test",
+    srcs = ["local_arrays.cxx"],
+    execution_profiles = [VM_REFERENCE_PROFILE],
+    target_compatible_with = _HOST_COMPATIBILITY,
+)
+
+loom_test(
     name = "constexpr_values_test",
     srcs = ["constexpr_values.cxx"],
     execution_profiles = [VM_REFERENCE_PROFILE],
     target_compatible_with = _HOST_COMPATIBILITY,
 )
 
-# Callable checks own the VM roots; the library supplies their implementations
-# without selecting the native kernel checks authored in the same C++ files.
-loom_library(
-    name = "atomic_implementations",
-    srcs = [
+loom_test(
+    name = "atomic_values_test",
+    srcs = ["atomic_values.cxx"],
+    data = [
         "atomic_builtins.cxx",
         "atomics.cxx",
     ],
-    target_compatible_with = loom_config_compatible_with(["//loom/config/import:cxx"]),
-)
-
-loom_test(
-    name = "atomic_values_test",
-    srcs = [
-        "atomic_builtin_values.loom",
-        "atomic_values.loom",
-    ],
     execution_profiles = [VM_REFERENCE_PROFILE],
+    inputopts = [
+        "cxx:root=sequence_i32 root=sequence_u32 " +
+        "root=sequence_i64 root=sequence_u64 " +
+        "root=builtin_compare_semantics root=builtin_wide_semantics",
+    ],
     target_compatible_with = _HOST_COMPATIBILITY,
-    deps = [":atomic_implementations"],
 )
 
 loom_test(
