@@ -455,7 +455,10 @@ typedef uint16_t loom_low_descriptor_flags_t;
 #define LOOM_LOW_DESCRIPTOR_FLAG_DEAD_REMOVABLE ((uint16_t)1u << 2)
 // Descriptor is a Loom pseudo packet that requires target lowering.
 #define LOOM_LOW_DESCRIPTOR_FLAG_PSEUDO ((uint16_t)1u << 3)
-// Descriptor carries a barrier effect and fences source-order scheduling.
+// Descriptor fences source-order scheduling in addition to its barrier effect.
+// Barrier effects alone order memory and protocol dependencies; this flag also
+// prevents independent instructions from crossing the descriptor in source
+// order.
 #define LOOM_LOW_DESCRIPTOR_FLAG_BARRIER ((uint16_t)1u << 4)
 // Descriptor has at least one result whose storage begins in the packet Pre
 // phase before untied input reads end.

@@ -294,7 +294,7 @@ def _s_sendmsg_overlay() -> AmdgpuDescriptorOverlay:
             _CACHE_CONTROL_EFFECT,
             Effect(EffectKind.WRITE, counter_id=_COUNTER_SMEM),
         ),
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
+        flags=(DescriptorFlag.SIDE_EFFECTING, DescriptorFlag.BARRIER),
         asm_forms=_asm(
             mnemonic="s_sendmsg",
             operands=("m0",),
@@ -321,7 +321,7 @@ def _s_sendmsg_rtn_b32_overlay() -> AmdgpuDescriptorOverlay:
             _CACHE_CONTROL_EFFECT,
             Effect(EffectKind.READ, counter_id=_COUNTER_SMEM),
         ),
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
+        flags=(DescriptorFlag.SIDE_EFFECTING, DescriptorFlag.BARRIER),
     )
 
 
@@ -337,7 +337,7 @@ def _s_sethalt_overlay() -> AmdgpuDescriptorOverlay:
         immediate_fields=("SIMM16",),
         immediates=(_u32_immediate("reason"),),
         effects=(_CACHE_CONTROL_EFFECT,),
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
+        flags=(DescriptorFlag.SIDE_EFFECTING, DescriptorFlag.BARRIER),
     )
 
 
@@ -353,7 +353,7 @@ def _s_trap_overlay() -> AmdgpuDescriptorOverlay:
         immediate_fields=("SIMM16",),
         immediates=(_u32_immediate("trapid"),),
         effects=(_CACHE_CONTROL_EFFECT,),
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
+        flags=(DescriptorFlag.SIDE_EFFECTING, DescriptorFlag.BARRIER),
     )
 
 
@@ -390,7 +390,7 @@ def _s_barrier_overlay() -> AmdgpuDescriptorOverlay:
         schedule_class=_SCHEDULE_BARRIER,
         operands=(),
         effects=(_WORKGROUP_BARRIER_EFFECT, _CONVERGENT_EFFECT),
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
+        flags=(DescriptorFlag.SIDE_EFFECTING, DescriptorFlag.BARRIER),
     )
 
 
@@ -406,7 +406,7 @@ def _s_barrier_signal_all_overlay() -> AmdgpuDescriptorOverlay:
         operands=(),
         fixed_encoding_fields=(("SSRC0", _predefined("-1", "OPR_SSRC_BARRIER_ID")),),
         effects=(_WORKGROUP_BARRIER_EFFECT, _CONVERGENT_EFFECT),
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
+        flags=(DescriptorFlag.SIDE_EFFECTING, DescriptorFlag.BARRIER),
         asm_forms=_asm(
             mnemonic="s_barrier_signal_all",
             native_assembly_mnemonic="s_barrier_signal",
@@ -426,7 +426,7 @@ def _s_barrier_wait_all_overlay() -> AmdgpuDescriptorOverlay:
         operands=(),
         fixed_encoding_fields=(("SIMM16", AmdgpuEncodingFieldAllOnes()),),
         effects=(_WORKGROUP_BARRIER_EFFECT, _CONVERGENT_EFFECT),
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
+        flags=(DescriptorFlag.SIDE_EFFECTING, DescriptorFlag.BARRIER),
         asm_forms=_asm(
             mnemonic="s_barrier_wait_all",
             native_assembly_mnemonic="s_barrier_wait",
@@ -459,7 +459,7 @@ def _cache_control_overlay(
         immediates=_cache_immediates(cache_fields),
         fixed_encoding_fields=fixed_encoding_fields,
         effects=_cache_control_effects(completion_counter),
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
+        flags=(DescriptorFlag.SIDE_EFFECTING, DescriptorFlag.BARRIER),
     )
 
 
@@ -475,7 +475,7 @@ def _s_set_inst_prefetch_distance_overlay() -> AmdgpuDescriptorOverlay:
         immediate_fields=("SIMM16",),
         immediates=(_PREFETCH_DISTANCE_IMMEDIATE,),
         effects=(_CACHE_CONTROL_EFFECT,),
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
+        flags=(DescriptorFlag.SIDE_EFFECTING, DescriptorFlag.BARRIER),
     )
 
 
@@ -498,7 +498,7 @@ def _s_dcache_discard_overlay(
             AmdgpuOperandOverlay("SOFFSET", _sgpr_operand("soffset")),
         ),
         effects=_cache_control_effects(_COUNTER_SMEM),
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
+        flags=(DescriptorFlag.SIDE_EFFECTING, DescriptorFlag.BARRIER),
     )
 
 

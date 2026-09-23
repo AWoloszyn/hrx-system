@@ -39,6 +39,7 @@ from loom.target.arch.amd.xdna.aie2p.core_stream_descriptors import (
     _scalar_stream_descriptor_specs,
 )
 from loom.target.low_descriptors import (
+    DescriptorFlag,
     DescriptorOpKind,
     Effect,
     EffectKind,
@@ -810,6 +811,7 @@ _BASE_DESCRIPTOR_SPECS = (
         "II_ACQ_mLockId_imm",
         asm_mnemonic="acq",
         effects=(_LOCK_EFFECT,),
+        flags=(DescriptorFlag.BARRIER,),
     ),
     _DescriptorSpec(
         "ACQ_mLockId_reg",
@@ -818,6 +820,7 @@ _BASE_DESCRIPTOR_SPECS = (
         "II_ACQ_mLockId_reg",
         asm_mnemonic="acq.reg",
         effects=(_LOCK_EFFECT,),
+        flags=(DescriptorFlag.BARRIER,),
     ),
     _DescriptorSpec(
         "ACQ_COND_mLockId_imm",
@@ -826,6 +829,7 @@ _BASE_DESCRIPTOR_SPECS = (
         "II_ACQ_COND_mLockId_imm",
         asm_mnemonic="acq.cond",
         effects=(_LOCK_EFFECT,),
+        flags=(DescriptorFlag.BARRIER,),
     ),
     _DescriptorSpec(
         "ACQ_COND_mLockId_reg",
@@ -834,7 +838,10 @@ _BASE_DESCRIPTOR_SPECS = (
         "II_ACQ_COND_mLockId_reg",
         asm_mnemonic="acq.cond.reg",
         effects=(_LOCK_EFFECT,),
+        flags=(DescriptorFlag.BARRIER,),
     ),
+    # Releases retain memory and lock ordering without fencing independent
+    # register work. Acquires above retain their full source-order fences.
     _DescriptorSpec(
         "REL_mLockId_imm",
         f"{_TARGET_KEY}.lock.release.immediate",
@@ -1883,5 +1890,6 @@ _DESCRIPTOR_SPECS = (
         # Each observation is distinct and ordered with memory/protocol
         # effects. This does not impose a hardware completion fence.
         effects=(Effect(EffectKind.BARRIER),),
+        flags=(DescriptorFlag.BARRIER,),
     ),
 )

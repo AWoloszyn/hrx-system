@@ -1225,7 +1225,7 @@ def _control_barrier_descriptor(execution_scope: str) -> Descriptor:
         ),
         asm_forms=_asm(),
         schedule_class=_SCHEDULE_VARIABLE,
-        flags=(DescriptorFlag.SIDE_EFFECTING,),
+        flags=(DescriptorFlag.SIDE_EFFECTING, DescriptorFlag.BARRIER),
     )
 
 
