@@ -1,0 +1,277 @@
+// Packed indices cover both signed-byte halves and distinct lanes in every word.
+
+kernel.def @packed_word_lookup() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%input: buffer, %table: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input[%base] : buffer -> view<4xi32>
+  %table_view = buffer.view %table[%base] : buffer -> view<256xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<16xi32>
+  %packed = vector.load %input_view[0] : view<4xi32> -> vector<4xi32>
+  %bytes = vector.bitcast %packed : vector<4xi32> to vector<16xi8>
+  %indices = vector.extui %bytes : vector<16xi8> to vector<16xi32>
+  %values = vector.gather %table_view[0][%indices] : view<256xi32>, vector<16xi32> -> vector<16xi32>
+  vector.store %values, %output_view[0] : vector<16xi32>, view<16xi32>
+  kernel.return
+}
+
+kernel.def @packed_byte_lookup() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%input: buffer, %table: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input[%base] : buffer -> view<16xi8>
+  %table_view = buffer.view %table[%base] : buffer -> view<256xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<16xi32>
+  %packed = vector.load %input_view[0] : view<16xi8> -> vector<16xi8>
+  %indices = vector.extui %packed : vector<16xi8> to vector<16xi32>
+  %values = vector.gather %table_view[0][%indices] : view<256xi32>, vector<16xi32> -> vector<16xi32>
+  vector.store %values, %output_view[0] : vector<16xi32>, view<16xi32>
+  kernel.return
+}
+
+kernel.def @packed_halfword_lookup() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%input: buffer, %table: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input[%base] : buffer -> view<8xi16>
+  %table_view = buffer.view %table[%base] : buffer -> view<256xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<8xi32>
+  %packed = vector.load %input_view[0] : view<8xi16> -> vector<8xi16>
+  %wide = vector.extui %packed : vector<8xi16> to vector<8xi32>
+  %mask = vector.constant 255 : vector<8xi32>
+  %indices = vector.andi %wide, %mask : vector<8xi32>
+  %values = vector.gather %table_view[0][%indices] : view<256xi32>, vector<8xi32> -> vector<8xi32>
+  vector.store %values, %output_view[0] : vector<8xi32>, view<8xi32>
+  kernel.return
+}
+
+kernel.def @packed_signed_byte_lookup() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%input: buffer, %table: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input[%base] : buffer -> view<16xi8>
+  %table_view = buffer.view %table[%base] : buffer -> view<256xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<16xi32>
+  %packed = vector.load %input_view[0] : view<16xi8> -> vector<16xi8>
+  %signed = vector.extsi %packed : vector<16xi8> to vector<16xi32>
+  %bias = vector.constant 128 : vector<16xi32>
+  %indices = vector.addi %signed, %bias : vector<16xi32>
+  %values = vector.gather %table_view[0][%indices] : view<256xi32>, vector<16xi32> -> vector<16xi32>
+  vector.store %values, %output_view[0] : vector<16xi32>, view<16xi32>
+  kernel.return
+}
+
+check.case public @packed_word_lookup_nonuniform {
+  %input = check.generate.iota offset(-128) step(17) : tensor<16xi8>
+  %table = check.generate.iota offset(7) step(3) : tensor<256xi32>
+  %output = check.generate.fill value(-99) : tensor<16xi32>
+  kernel.launch @packed_word_lookup(%input, %table, %output) : (tensor<16xi8>, tensor<256xi32>, tensor<16xi32>)
+  %expected_low = check.generate.iota offset(391) step(51) : tensor<8xi32>
+  %expected_high = check.generate.iota offset(31) step(51) : tensor<8xi32>
+  %low = check.tensor.view %output offset(0) : tensor<16xi32> -> tensor<8xi32>
+  %high = check.tensor.view %output offset(32) : tensor<16xi32> -> tensor<8xi32>
+  check.expect.equal actual(%low) expected(%expected_low) : tensor<8xi32>
+  check.expect.equal actual(%high) expected(%expected_high) : tensor<8xi32>
+  check.return
+}
+
+check.case public @packed_byte_lookup_nonuniform {
+  %input = check.generate.iota offset(-128) step(17) : tensor<16xi8>
+  %table = check.generate.iota offset(7) step(3) : tensor<256xi32>
+  %output = check.generate.fill value(-99) : tensor<16xi32>
+  kernel.launch @packed_byte_lookup(%input, %table, %output) : (tensor<16xi8>, tensor<256xi32>, tensor<16xi32>)
+  %expected_low = check.generate.iota offset(391) step(51) : tensor<8xi32>
+  %expected_high = check.generate.iota offset(31) step(51) : tensor<8xi32>
+  %low = check.tensor.view %output offset(0) : tensor<16xi32> -> tensor<8xi32>
+  %high = check.tensor.view %output offset(32) : tensor<16xi32> -> tensor<8xi32>
+  check.expect.equal actual(%low) expected(%expected_low) : tensor<8xi32>
+  check.expect.equal actual(%high) expected(%expected_high) : tensor<8xi32>
+  check.return
+}
+
+check.case public @packed_halfword_lookup_nonuniform {
+  %input = check.generate.iota offset(256) step(17) : tensor<8xi16>
+  %table = check.generate.iota offset(7) step(3) : tensor<256xi32>
+  %output = check.generate.fill value(-99) : tensor<8xi32>
+  kernel.launch @packed_halfword_lookup(%input, %table, %output) : (tensor<8xi16>, tensor<256xi32>, tensor<8xi32>)
+  %expected = check.generate.iota offset(7) step(51) : tensor<8xi32>
+  check.expect.equal actual(%output) expected(%expected) : tensor<8xi32>
+  check.return
+}
+
+check.case public @packed_signed_byte_lookup_nonuniform {
+  %input = check.generate.iota offset(-128) step(17) : tensor<16xi8>
+  %table = check.generate.iota offset(7) step(3) : tensor<256xi32>
+  %output = check.generate.fill value(-99) : tensor<16xi32>
+  kernel.launch @packed_signed_byte_lookup(%input, %table, %output) : (tensor<16xi8>, tensor<256xi32>, tensor<16xi32>)
+  %expected = check.generate.iota offset(7) step(51) : tensor<16xi32>
+  check.expect.equal actual(%output) expected(%expected) : tensor<16xi32>
+  check.return
+}
+
+kernel.def @packed_short_lookup() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%input: buffer, %table: buffer, %output: buffer) {
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input[%base] : buffer -> view<8xi8>
+  %table_view = buffer.view %table[%base] : buffer -> view<256xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<8xi32>
+  %packed = vector.load %input_view[0] : view<8xi8> -> vector<8xi8>
+  %indices = vector.extui %packed : vector<8xi8> to vector<8xi32>
+  %values = vector.gather %table_view[0][%indices] : view<256xi32>, vector<8xi32> -> vector<8xi32>
+  vector.store %values, %output_view[0] : vector<8xi32>, view<8xi32>
+  kernel.return
+}
+
+// Both consumers observe the same captured bytes despite the intervening write.
+kernel.def @packed_snapshot_consumers() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%input: buffer, %table: buffer, %unsigned_output: buffer, %signed_output: buffer) {
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input[%base] : buffer -> view<16xi8>
+  %table_view = buffer.view %table[%base] : buffer -> view<256xi32>
+  %unsigned_view = buffer.view %unsigned_output[%base] : buffer -> view<16xi32>
+  %signed_view = buffer.view %signed_output[%base] : buffer -> view<16xi32>
+  %packed = vector.load %input_view[0] : view<16xi8> -> vector<16xi8>
+  %unsigned = vector.extui %packed : vector<16xi8> to vector<16xi32>
+  %unsigned_values = vector.gather %table_view[0][%unsigned] : view<256xi32>, vector<16xi32> -> vector<16xi32>
+  %replacement = vector.constant 0 : vector<16xi8>
+  vector.store %replacement, %input_view[0] : vector<16xi8>, view<16xi8>
+  %signed = vector.extsi %packed : vector<16xi8> to vector<16xi32>
+  %bias = vector.constant 128 : vector<16xi32>
+  %signed_indices = vector.addi %signed, %bias : vector<16xi32>
+  %signed_values = vector.gather %table_view[0][%signed_indices] : view<256xi32>, vector<16xi32> -> vector<16xi32>
+  vector.store %unsigned_values, %unsigned_view[0] : vector<16xi32>, view<16xi32>
+  vector.store %signed_values, %signed_view[0] : vector<16xi32>, view<16xi32>
+  kernel.return
+}
+
+kernel.def @packed_masked_consumer() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%input: buffer, %table: buffer, %output: buffer, %count: index) {
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input[%base] : buffer -> view<16xi8>
+  %table_view = buffer.view %table[%base] : buffer -> view<256xi32>
+  %output_view = buffer.view %output[%base] : buffer -> view<16xi32>
+  %packed = vector.load %input_view[0] : view<16xi8> -> vector<16xi8>
+  %indices = vector.extui %packed : vector<16xi8> to vector<16xi32>
+  %start = index.constant 0 : index
+  %step = index.constant 1 : index
+  %mask = vector.mask.range [%start to %count step %step] : index -> vector<16xi1>
+  %passthrough = vector.constant -17 : vector<16xi32>
+  %values = vector.gather.mask %table_view[0][%indices], %mask, %passthrough : view<256xi32>, vector<16xi32>, vector<16xi1>, vector<16xi32>
+  vector.store.mask %values, %output_view[0], %mask : vector<16xi32>, view<16xi32>, vector<16xi1>
+  kernel.return
+}
+
+kernel.def @packed_scatter_alias() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%storage: buffer) {
+  %base = index.constant 0 : offset
+  %view = buffer.view %storage[%base] : buffer -> view<16xi8>
+  %packed = vector.load %view[0] : view<16xi8> -> vector<16xi8>
+  %last = scalar.constant 15 : i32
+  %step = scalar.constant -1 : i32
+  %reverse = vector.iota %last step %step : vector<16xi32>
+  vector.scatter %packed, %view[0][%reverse] : vector<16xi8>, view<16xi8>, vector<16xi32>
+  kernel.return
+}
+
+// The fourth lane has no source element and must retain its passthrough byte.
+kernel.def @masked_byte_tail() {
+  %unit = index.constant 1 : index
+  kernel.launch.config workgroups(%unit, %unit, %unit) workgroup_size(%unit, %unit, %unit) : index
+} launch(%input: buffer, %output: buffer, %active: i1) {
+  %base = index.constant 0 : offset
+  %input_view = buffer.view %input[%base] : buffer -> view<3xi8>
+  %output_view = buffer.view %output[%base] : buffer -> view<4xi8>
+  %inactive = scalar.constant false : i1
+  %mask = vector.from_elements %active, %active, %active, %inactive : vector<4xi1>
+  %passthrough = vector.constant 99 : vector<4xi8>
+  %loaded = vector.load.mask %input_view[0], %mask, %passthrough : view<3xi8>, vector<4xi1>, vector<4xi8>
+  vector.store %loaded, %output_view[0] : vector<4xi8>, view<4xi8>
+  kernel.return
+}
+
+check.case public @packed_short_lookup_nonuniform {
+  %input = check.generate.iota offset(-128) step(17) : tensor<8xi8>
+  %table = check.generate.iota offset(7) step(3) : tensor<256xi32>
+  %output = check.generate.fill value(-99) : tensor<8xi32>
+  %expected = check.generate.iota offset(391) step(51) : tensor<8xi32>
+  kernel.launch @packed_short_lookup(%input, %table, %output) : (tensor<8xi8>, tensor<256xi32>, tensor<8xi32>)
+  check.expect.equal actual(%output) expected(%expected) : tensor<8xi32>
+  check.return
+}
+
+check.case public @packed_multiple_consumers_keep_snapshot {
+  %input = check.generate.iota offset(-128) step(17) : tensor<16xi8>
+  %table = check.generate.iota offset(7) step(3) : tensor<256xi32>
+  %unsigned_output = check.generate.fill value(-99) : tensor<16xi32>
+  %signed_output = check.generate.fill value(-99) : tensor<16xi32>
+  kernel.launch @packed_snapshot_consumers(%input, %table, %unsigned_output, %signed_output) : (tensor<16xi8>, tensor<256xi32>, tensor<16xi32>, tensor<16xi32>)
+  %expected_low = check.generate.iota offset(391) step(51) : tensor<8xi32>
+  %expected_high = check.generate.iota offset(31) step(51) : tensor<8xi32>
+  %low = check.tensor.view %unsigned_output offset(0) : tensor<16xi32> -> tensor<8xi32>
+  %high = check.tensor.view %unsigned_output offset(32) : tensor<16xi32> -> tensor<8xi32>
+  %expected_signed = check.generate.iota offset(7) step(51) : tensor<16xi32>
+  %expected_overwritten = check.generate.fill value(0) : tensor<16xi8>
+  check.expect.equal actual(%low) expected(%expected_low) : tensor<8xi32>
+  check.expect.equal actual(%high) expected(%expected_high) : tensor<8xi32>
+  check.expect.equal actual(%signed_output) expected(%expected_signed) : tensor<16xi32>
+  check.expect.equal actual(%input) expected(%expected_overwritten) : tensor<16xi8>
+  check.return
+}
+
+check.case public @packed_masked_lookup_preserves_inactive_output {
+  %input = check.generate.iota offset(0) step(7) : tensor<16xi8>
+  %table = check.generate.iota offset(7) step(3) : tensor<256xi32>
+  %output = check.generate.fill value(-99) : tensor<16xi32>
+  %count = check.literal value(7) : index
+  kernel.launch @packed_masked_consumer(%input, %table, %output, %count) : (tensor<16xi8>, tensor<256xi32>, tensor<16xi32>, index)
+  %active = check.tensor.view %output offset(0) : tensor<16xi32> -> tensor<7xi32>
+  %inactive = check.tensor.view %output offset(28) : tensor<16xi32> -> tensor<9xi32>
+  %expected_active = check.generate.iota offset(7) step(21) : tensor<7xi32>
+  %expected_inactive = check.generate.fill value(-99) : tensor<9xi32>
+  check.expect.equal actual(%active) expected(%expected_active) : tensor<7xi32>
+  check.expect.equal actual(%inactive) expected(%expected_inactive) : tensor<9xi32>
+  check.return
+}
+
+check.case public @packed_scatter_preserves_aliased_input {
+  %storage = check.generate.iota offset(-128) step(17) : tensor<16xi8>
+  %expected = check.generate.iota offset(127) step(-17) : tensor<16xi8>
+  kernel.launch @packed_scatter_alias(%storage) : (tensor<16xi8>)
+  check.expect.equal actual(%storage) expected(%expected) : tensor<16xi8>
+  check.return
+}
+
+check.case public @masked_tail_never_overreads {
+  %input = check.generate.iota offset(51) step(9) : tensor<3xi8>
+  %output = check.generate.fill value(-99) : tensor<4xi8>
+  %active = check.literal value(true) : i1
+  kernel.launch @masked_byte_tail(%input, %output, %active) : (tensor<3xi8>, tensor<4xi8>, i1)
+  %loaded = check.tensor.view %output offset(0) : tensor<4xi8> -> tensor<3xi8>
+  %tail = check.tensor.view %output offset(3) : tensor<4xi8> -> tensor<1xi8>
+  %expected_tail = check.generate.fill value(99) : tensor<1xi8>
+  check.expect.equal actual(%loaded) expected(%input) : tensor<3xi8>
+  check.expect.equal actual(%tail) expected(%expected_tail) : tensor<1xi8>
+  check.return
+}
+
+check.case public @masked_tail_all_inactive {
+  %input = check.generate.iota offset(51) step(9) : tensor<3xi8>
+  %output = check.generate.fill value(-99) : tensor<4xi8>
+  %active = check.literal value(false) : i1
+  %expected = check.generate.fill value(99) : tensor<4xi8>
+  kernel.launch @masked_byte_tail(%input, %output, %active) : (tensor<3xi8>, tensor<4xi8>, i1)
+  check.expect.equal actual(%output) expected(%expected) : tensor<4xi8>
+  check.return
+}

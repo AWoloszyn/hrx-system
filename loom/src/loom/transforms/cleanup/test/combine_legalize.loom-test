@@ -26,6 +26,13 @@ func.def @adjacent_loads(%view: view<2xf16>) -> (f16, f16) {
   func.return %left, %right : f16, f16
 }
 
+// ----
+func.def @adjacent_loads(%view: view<2xf16>) -> (f16, f16) {
+  %8 = view.load %view[0] : view<2xf16> -> f16
+  %right = view.load %view[1] : view<2xf16> -> f16
+  func.return %8, %right : f16, f16
+}
+
 // ====
 
 // Cleanup must not reconstruct vector conversions from their scalar lowering.

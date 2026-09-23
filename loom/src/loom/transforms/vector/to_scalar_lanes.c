@@ -877,7 +877,11 @@ static iree_status_t loom_vector_to_scalar_can_rematerialize_def_at_use(
     *out_can_rematerialize = true;
     return iree_ok_status();
   }
-  if (!loom_motion_op_is_ordinary_load(state->rewriter->module, def_op)) {
+  // Dense loads own their aggregate memory footprint independently of their
+  // consumers. Extract from the captured SSA value so target selection retains
+  // the contiguous access; only rewriting the load itself may scalarize it.
+  if (loom_vector_load_isa(def_op) ||
+      !loom_motion_op_is_ordinary_load(state->rewriter->module, def_op)) {
     return iree_ok_status();
   }
 
