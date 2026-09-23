@@ -24,6 +24,7 @@ loom_check_test_suite(
     "allocation_preferences.loom-test"
     "allocation_reachability.loom-test"
     "allocation_structured_liveness.loom-test"
+    "guarded_motion.loom-test"
     "hazard_plan.loom-test"
     "packet.loom-test"
     "register_parts.loom-test"

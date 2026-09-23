@@ -1689,7 +1689,10 @@ def _with_execution_mask_state_read(descriptor: Descriptor) -> Descriptor:
         return descriptor
     if any(_is_exec_state_read(operand) for operand in descriptor.operands):
         return descriptor
-    return replace(descriptor, operands=(*descriptor.operands, _exec_state_read()))
+    operand = _exec_state_read()
+    if DescriptorFlag.SAFE_TO_SPECULATE in descriptor.flags:
+        operand = replace(operand, flags=(*operand.flags, OperandFlag.EXECUTION_MASK))
+    return replace(descriptor, operands=(*descriptor.operands, operand))
 
 
 def _with_execution_mask_state_reads(

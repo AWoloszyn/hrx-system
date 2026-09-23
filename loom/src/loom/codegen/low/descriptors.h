@@ -26,7 +26,7 @@ extern "C" {
 #endif
 
 // ABI version for descriptor sets consumed by this header.
-#define LOOM_LOW_DESCRIPTOR_SET_ABI_VERSION 43u
+#define LOOM_LOW_DESCRIPTOR_SET_ABI_VERSION 44u
 
 // Sentinel for absent target-family or descriptor-set stable IDs.
 #define LOOM_LOW_STABLE_ID_NONE UINT64_C(0)
@@ -146,6 +146,15 @@ typedef uint16_t loom_low_operand_flags_t;
 // Operand row describes zero or more trailing packet operands. Variadic rows
 // are explicit packet operands and must terminate the descriptor operand list.
 #define LOOM_LOW_OPERAND_FLAG_VARIADIC ((uint16_t)1u << 9)
+// State only masks independent lane execution. Widening the mask preserves
+// results in previously active lanes; added lanes cannot influence those
+// results. Unlike SCHEDULE_ONLY_STATE, this excludes rounding modes and
+// cross-lane value dependencies.
+#define LOOM_LOW_OPERAND_FLAG_EXECUTION_MASK ((uint16_t)1u << 10)
+// State write only removes lanes from its incoming execution mask. The same
+// descriptor also reads that mask. This licenses widening lane-local work
+// across this write, not across arbitrary mask replacement or restoration.
+#define LOOM_LOW_OPERAND_FLAG_NARROWS_EXECUTION_MASK ((uint16_t)1u << 11)
 
 // Bitset of register-class alternative flags.
 typedef uint16_t loom_low_reg_class_alt_flags_t;
@@ -474,6 +483,11 @@ typedef uint16_t loom_low_descriptor_flags_t;
 #define LOOM_LOW_DESCRIPTOR_FLAG_UNIQUE_IDENTITY ((uint16_t)1u << 8)
 // Descriptor has enum immediates whose named input values require resolution.
 #define LOOM_LOW_DESCRIPTOR_FLAG_ENUM_IMMEDIATES ((uint16_t)1u << 9)
+// Total, effect-free execution for every bit pattern of the explicit inputs.
+// No traps, memory accesses, architectural state writes, or collective lane
+// behavior are permitted. Implicit execution-mask reads still constrain where
+// this operation can move; this flag alone does not authorize state crossings.
+#define LOOM_LOW_DESCRIPTOR_FLAG_SAFE_TO_SPECULATE ((uint16_t)1u << 10)
 
 // Target-neutral semantic classes attached to generated low descriptors.
 // Multiple classes may be present when a packet contributes to several

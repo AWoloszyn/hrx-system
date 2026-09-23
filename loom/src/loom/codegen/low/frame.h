@@ -11,8 +11,10 @@
 // the arena-owned frame that packet emitters consume. Its nested tables are
 // compiler-owned state from that single construction. It assumes ordinary pass
 // pipelines have already prepared the low IR. This layer does not run
-// optimization passes, emit bytes, text, JSON, or target artifacts; each target
-// emitter owns those artifact decisions.
+// source optimization passes, emit bytes, text, JSON, or target artifacts.
+// Native placement trials use the scheduler and allocator's retained costs
+// and restore the accepted frame when a proposed movement is unprofitable.
+// Each target emitter owns artifact decisions.
 
 #ifndef LOOM_CODEGEN_LOW_FRAME_H_
 #define LOOM_CODEGEN_LOW_FRAME_H_

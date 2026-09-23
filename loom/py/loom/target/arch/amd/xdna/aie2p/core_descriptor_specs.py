@@ -1569,6 +1569,7 @@ _BASE_DESCRIPTOR_SPECS = (
         "II_MOVXM_eR",
         (("dst", "eR"),),
         DescriptorOpKind.CONST,
+        flags=(DescriptorFlag.SAFE_TO_SPECULATE,),
     ),
     _DescriptorSpec(
         "MOVXM",
@@ -1578,6 +1579,7 @@ _BASE_DESCRIPTOR_SPECS = (
         (("dst", "eR"),),
         asm_mnemonic="mov.static-byte-offset",
         rematerializable=True,
+        flags=(DescriptorFlag.SAFE_TO_SPECULATE,),
     ),
     _DescriptorSpec(
         "MOVXM",
@@ -1586,6 +1588,7 @@ _BASE_DESCRIPTOR_SPECS = (
         "II_MOVXM_eP",
         (("dst", "eP"),),
         asm_mnemonic="mov.local-address",
+        flags=(DescriptorFlag.SAFE_TO_SPECULATE,),
     ),
     _DescriptorSpec(
         "MOV_alu_mv_mv_mv_scl",
@@ -1594,6 +1597,7 @@ _BASE_DESCRIPTOR_SPECS = (
         "II_MOV_alu_mv_mv_mv_scl_eR_eR",
         (("dst", "eR"), ("src", "eR")),
         allocation_move=True,
+        flags=(DescriptorFlag.SAFE_TO_SPECULATE,),
     ),
     _DescriptorSpec(
         "MOVS",
@@ -1602,6 +1606,7 @@ _BASE_DESCRIPTOR_SPECS = (
         "II_MOVS_eP_eP",
         (("dst", "eP"), ("src", "eP")),
         allocation_move=True,
+        flags=(DescriptorFlag.SAFE_TO_SPECULATE,),
     ),
     _DescriptorSpec(
         "MOV_alu_mv_mv_mv_scl",
@@ -1610,6 +1615,7 @@ _BASE_DESCRIPTOR_SPECS = (
         "II_MOV_alu_mv_mv_mv_scl_eR_eP",
         (("dst", "eR"), ("src", "eP")),
         asm_mnemonic="mov.address-to-scalar",
+        flags=(DescriptorFlag.SAFE_TO_SPECULATE,),
     ),
     _DescriptorSpec(
         "MOV_alu_mv_mv_mv_scl",
@@ -1618,6 +1624,7 @@ _BASE_DESCRIPTOR_SPECS = (
         "II_MOV_alu_mv_mv_mv_scl_eP_eR",
         (("dst", "eP"), ("src", "eR")),
         asm_mnemonic="mov.scalar-to-address",
+        flags=(DescriptorFlag.SAFE_TO_SPECULATE,),
     ),
     _DescriptorSpec(
         "MOV_alu_mv_mv_mv_scl",

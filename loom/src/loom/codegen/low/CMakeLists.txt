@@ -853,6 +853,26 @@ loom_cc_library(
 
 loom_cc_library(
   NAME
+    guarded_motion
+  HDRS
+    "guarded_motion.h"
+  SRCS
+    "guarded_motion.c"
+  DEPS
+    ::descriptors
+    ::function
+    iree::base
+    iree::base::internal::arena
+    loom::codegen::low::schedule
+    loom::ir
+    loom::ops::low
+    loom::rewrite::rewriter
+    loom::util::cfg_graph
+  PUBLIC
+)
+
+loom_cc_library(
+  NAME
     frame
   HDRS
     "frame.h"
@@ -866,6 +886,7 @@ loom_cc_library(
     ::diagnostics
     ::function
     ::function_model
+    ::guarded_motion
     ::memory_access
     ::packet
     ::planning_statistics
@@ -879,6 +900,7 @@ loom_cc_library(
     loom::error::error_defs
     loom::ir
     loom::ops::low
+    loom::rewrite::rewriter
     loom::target::facts
     loom::target::residency
   PUBLIC

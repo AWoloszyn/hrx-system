@@ -1,0 +1,141 @@
+// Independent address work fills VALU issue gaps before EXEC narrows.
+// The store itself stays in the guarded block.
+// RUN: with-checks emit low-packet-json @masked_store strategy=resource-stall
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @masked_store(%base: reg<amdgpu.sgpr x2>, %origin: reg<amdgpu.vgpr>, %pixel: reg<amdgpu.vgpr>, %color: reg<amdgpu.vgpr>, %limit: reg<amdgpu.vgpr>) asm {
+  %color0 = v_mul_lo_u32 %color, %color
+  %color1 = v_mul_lo_u32 %color0, %color0
+  %color2 = v_mul_lo_u32 %color1, %color1
+  %color3 = v_mul_lo_u32 %color2, %color2
+  %within = v_cmp_lt_u32 %pixel, %limit
+  %saved, %active = s_and_saveexec_b64 %within
+  low.cond_br %active, ^store, ^done : reg<amdgpu.scc>
+^store:
+  %word = v_add_u32 %origin, %pixel
+  %byte = v_lshlrev_b32_src0_inline %word, 2
+  global_store_b32_saddr %byte, %color3, %base
+  low.br ^done
+^done:
+  s_mov_b64_exec %saved
+  return
+}
+
+// ----
+CHECK: *"block":0,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"amdgpu.v_add_u32"*
+CHECK: *"block":0,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"amdgpu.v_lshlrev_b32.src0_inline"*
+CHECK: *"block":1,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"amdgpu.global_store_b32_saddr"*
+
+// ====
+
+// A short predecessor cannot hide the extra address work.
+// RUN: with-checks emit low-packet-json @short_guard strategy=resource-stall
+amdgpu.target<gfx1151> @target
+
+low.func.def target<amdgpu.rdna3_5.core>(@target) @short_guard(%base: reg<amdgpu.sgpr x2>, %origin: reg<amdgpu.vgpr>, %pixel: reg<amdgpu.vgpr>, %color: reg<amdgpu.vgpr>, %limit: reg<amdgpu.vgpr>) asm {
+  %within = v_cmp_lt_u32 %pixel, %limit
+  %saved, %active = s_and_saveexec_b64 %within
+  low.cond_br %active, ^store, ^done : reg<amdgpu.scc>
+^store:
+  %word = v_add_u32 %origin, %pixel
+  %byte = v_lshlrev_b32_src0_inline %word, 2
+  global_store_b32_saddr %byte, %color, %base
+  low.br ^done
+^done:
+  s_mov_b64_exec %saved
+  return
+}
+
+// ----
+CHECK: *"block":1,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"amdgpu.v_add_u32"*
+CHECK: *"block":1,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"amdgpu.v_lshlrev_b32.src0_inline"*
+CHECK: *"block":1,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"amdgpu.global_store_b32_saddr"*
+
+// ====
+
+// An authored locked schedule keeps its original placement.
+// RUN: with-checks emit low-packet-json @locked_guard strategy=resource-stall
+amdgpu.target<gfx1151> @target
+
+low.func.def schedule(locked) target<amdgpu.rdna3_5.core>(@target) @locked_guard(%base: reg<amdgpu.sgpr x2>, %origin: reg<amdgpu.vgpr>, %pixel: reg<amdgpu.vgpr>, %color: reg<amdgpu.vgpr>, %limit: reg<amdgpu.vgpr>) asm {
+  %color0 = v_mul_lo_u32 %color, %color
+  %color1 = v_mul_lo_u32 %color0, %color0
+  %color2 = v_mul_lo_u32 %color1, %color1
+  %color3 = v_mul_lo_u32 %color2, %color2
+  %within = v_cmp_lt_u32 %pixel, %limit
+  %saved, %active = s_and_saveexec_b64 %within
+  low.cond_br %active, ^store, ^done : reg<amdgpu.scc>
+^store:
+  %word = v_add_u32 %origin, %pixel
+  %byte = v_lshlrev_b32_src0_inline %word, 2
+  global_store_b32_saddr %byte, %color3, %base
+  low.br ^done
+^done:
+  s_mov_b64_exec %saved
+  return
+}
+
+// ----
+CHECK: *"block":1,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"amdgpu.v_add_u32"*
+CHECK: *"block":1,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"amdgpu.v_lshlrev_b32.src0_inline"*
+CHECK: *"block":1,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"amdgpu.global_store_b32_saddr"*
+
+// ====
+
+// A flag-preserving LEA can overlap the load producing the condition.
+// RUN: with-checks emit low-packet-json @scalar_address strategy=resource-stall
+x86.target<scalar> @target
+
+low.func.def target<x86.scalar.core>(@target) @scalar_address(%source: reg<x86.gpr64>, %base: reg<x86.gpr64>, %index: reg<x86.gpr64>) asm {
+  %value = mov.load.gpr32 %source {disp32 = 0}
+  low.cond_br %value, ^store, ^done : reg<x86.gpr32>
+^store:
+  %address = lea %base, %index
+  mov.store.gpr32 %value, %address {disp32 = 0}
+  low.br ^done
+^done:
+  return
+}
+
+// ----
+CHECK: *"block":0,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"x86.scalar.lea.add.gpr64"*
+CHECK: *"block":1,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"x86.scalar.mov.store.gpr32"*
+
+// ====
+
+// The store address generator can run while the load port is occupied.
+// RUN: with-checks emit low-packet-json @independent_address_port strategy=resource-stall
+low.func.def target<amd.xdna.aie2p.core> @independent_address_port(%source: reg<aie2p.ep>, %base: reg<aie2p.ep>) asm {
+  %value = lda %source, 0
+  low.cond_br %value, ^store, ^done : reg<aie2p.er>
+^store:
+  %address = padds %base, 64
+  st %value, %address, 0
+  low.br ^done
+^done:
+  return
+}
+
+// ----
+CHECK: *"block":0,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"amd.xdna.aie2p.address.add.s.immediate"*
+CHECK: *"block":1,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"amd.xdna.aie2p.store.scalar.i32.indexed.immediate"*
+
+// ====
+
+// Moving the address update onto the occupied load port delays the guard
+// by one cycle. The trial is rejected, preserving both original blocks.
+// RUN: with-checks emit low-packet-json @contended_address_port strategy=resource-stall
+low.func.def target<amd.xdna.aie2p.core> @contended_address_port(%source: reg<aie2p.ep>, %base: reg<aie2p.ep>) asm {
+  %value = lda %source, 0
+  low.cond_br %value, ^store, ^done : reg<aie2p.er>
+^store:
+  %address = padda %base, 64
+  st %value, %address, 0
+  low.br ^done
+^done:
+  return
+}
+
+// ----
+CHECK: *"block":1,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"amd.xdna.aie2p.address.add.a.immediate"*
+CHECK: *"block":1,"source_ordinal":?,"scheduled_ordinal":?,"kind":"descriptor","op":"low.op","descriptor":"amd.xdna.aie2p.store.scalar.i32.indexed.immediate"*
