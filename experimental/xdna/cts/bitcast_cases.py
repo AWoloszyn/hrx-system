@@ -6,7 +6,6 @@
 
 """Independent byte oracles for scalar/vector bit casts on native XDNA."""
 
-import struct
 import sys
 from pathlib import Path
 
@@ -40,7 +39,9 @@ def main():
             # The wide byte reversal crosses both scalar words and passes
             # through an F64 payload before the two output words are stored.
             expected.extend((lanes + words[(index + 1) & 255])[::-1])
-            expected.extend(struct.pack("<I", 0x6BADCAFE))
+            # Constexpr E5M2 signaling NaN and negative zero retain their bytes
+            # when assembled with runtime floating lanes.
+            expected.extend((0x7D, lanes[1], 0x80, lanes[3]))
     guard = bytes([0xA5]) * 64
     (directory / "input.bin").write_bytes(inputs + guard)
     (directory / "output.bin").write_bytes(bytes([0xCC]) * len(expected) + guard)

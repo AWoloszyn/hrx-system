@@ -30,6 +30,10 @@ static_assert(kBytes[2] == 1 && kBytes[3] == 0x7c);
 static_assert(__builtin_bit_cast(unsigned, kHalves) == 0x7c018000u);
 static_assert(__builtin_bit_cast(signed char, (unsigned char)255) == -1);
 static_assert(__builtin_bit_cast(bool, (unsigned char)1));
+static_assert(__builtin_bit_cast(unsigned char, false) == 0);
+static_assert(__builtin_bit_cast(unsigned char, true) == 1);
+constexpr bool kTrue = __builtin_bit_cast(bool, (unsigned char)1);
+static_assert(__builtin_bit_cast(unsigned char, kTrue) == 1);
 
 // ====
 template <float Value> struct ValueTag {};
