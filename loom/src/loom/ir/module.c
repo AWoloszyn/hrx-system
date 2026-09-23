@@ -3924,6 +3924,55 @@ static loom_type_t loom_module_canonicalize_shaped_type_attachment(
   return type;
 }
 
+loom_type_id_t loom_module_lookup_type_id(const loom_module_t* module,
+                                          loom_type_t type) {
+  if (loom_type_has_static_encoding(type)) {
+    const loom_encoding_t* encoding =
+        loom_module_encoding(module, type.encoding_id);
+    if (!encoding) {
+      return LOOM_TYPE_ID_INVALID;
+    }
+    type = loom_module_canonicalize_shaped_type_attachment(type, encoding);
+  }
+  loom_type_id_t type_id = loom_module_find_recent_exact_type(module, type);
+  if (type_id == LOOM_TYPE_ID_INVALID) {
+    type_id = loom_type_identity_find(module, type);
+  }
+  if (type_id != LOOM_TYPE_ID_INVALID) {
+    return type_id;
+  }
+  const loom_type_equal_context_t context = {module, type};
+  const loom_intern_probe_t probe = loom_intern_table_probe(
+      &module->type_intern, loom_type_hash(type), loom_type_equal_fn, &context);
+  return probe.index == UINT32_MAX ? LOOM_TYPE_ID_INVALID
+                                   : (loom_type_id_t)probe.index;
+}
+
+loom_type_id_t loom_module_lookup_topological_type_id(
+    const loom_module_t* module, loom_type_t type,
+    const loom_type_id_t* structural_dependency_ids,
+    iree_host_size_t structural_dependency_count) {
+  if (loom_type_has_static_encoding(type)) {
+    const loom_encoding_t* encoding =
+        loom_module_encoding(module, type.encoding_id);
+    if (!encoding) {
+      return LOOM_TYPE_ID_INVALID;
+    }
+    type = loom_module_canonicalize_shaped_type_attachment(type, encoding);
+  }
+  const loom_topological_type_context_t context = {
+      .module = module,
+      .type = type,
+      .dependency_ids = structural_dependency_ids,
+      .dependency_count = structural_dependency_count,
+  };
+  const loom_intern_probe_t probe = loom_intern_table_probe(
+      &module->type_intern, loom_topological_type_hash(&context),
+      loom_topological_type_equal_fn, &context);
+  return probe.index == UINT32_MAX ? LOOM_TYPE_ID_INVALID
+                                   : (loom_type_id_t)probe.index;
+}
+
 // Retains each shaped scalar dependency once without repeating hash-table
 // queries as distinct shaped types reuse the same element kind.
 static iree_status_t loom_module_intern_shaped_element_type(

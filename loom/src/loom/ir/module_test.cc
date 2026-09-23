@@ -3379,6 +3379,15 @@ TEST_F(ModuleTest, InternTypesRetainPriorStaticEncodingDependencies) {
                                                           0, &topological_id));
     IREE_ASSERT_OK(loom_module_intern_type_id(module, type, &general_id));
     EXPECT_EQ(general_id, topological_id);
+    const iree_host_size_t type_count = module->types.count;
+    const iree_host_size_t retained_bytes = module->arena.used_allocation_size;
+    EXPECT_EQ(loom_module_lookup_type_id(module, type), general_id);
+    EXPECT_EQ(loom_module_lookup_topological_type_id(
+                  module, type, /*structural_dependency_ids=*/nullptr,
+                  /*structural_dependency_count=*/0),
+              general_id);
+    EXPECT_EQ(module->types.count, type_count);
+    EXPECT_EQ(module->arena.used_allocation_size, retained_bytes);
     EXPECT_EQ(
         loom_module_encoding(module, encoding_id)->attributes[0].value.type_id,
         dependency_id);
@@ -3547,6 +3556,69 @@ TEST_F(ModuleTest, InternFunctionTypeDirectAndPackedFormsDedup) {
 
   iree_allocator_free(iree_allocator_system(),
                       (void*)loom_type_func_data(packed_source));
+  loom_module_free(module);
+}
+
+TEST_F(ModuleTest, LookupTypeFindsCanonicalCandidatesWithoutPublishing) {
+  loom_module_t* module = nullptr;
+  IREE_ASSERT_OK(loom_module_allocate(&context_, IREE_SV("test"), &block_pool_,
+                                      nullptr, iree_allocator_system(),
+                                      &module));
+  const loom_type_t f32 = loom_type_scalar(LOOM_SCALAR_TYPE_F32);
+  const loom_type_t i32 = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+  loom_type_id_t f32_id = LOOM_TYPE_ID_INVALID;
+  loom_type_id_t i32_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_type_id(module, f32, &f32_id));
+  IREE_ASSERT_OK(loom_module_intern_type_id(module, i32, &i32_id));
+
+  struct FunctionTypeStorage {
+    // Number of argument types.
+    uint16_t argument_count;
+    // Number of result types.
+    uint16_t result_count;
+    // Alignment padding matching loom_func_type_data_t.
+    uint32_t reserved;
+    // Immediate dependency payload.
+    loom_type_t types[1];
+  } candidate = {};
+  static_assert(sizeof(FunctionTypeStorage) ==
+                sizeof(loom_func_type_data_t) + sizeof(loom_type_t));
+  candidate.argument_count = 1;
+  candidate.types[0] = f32;
+  const loom_type_t function_type = loom_type_function(
+      reinterpret_cast<const loom_func_type_data_t*>(&candidate));
+  loom_type_id_t function_type_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_type_id(module, function_type, &function_type_id));
+
+  const iree_host_size_t type_count = module->types.count;
+  const iree_host_size_t interner_count = module->type_intern.count;
+  const iree_host_size_t retained_bytes = module->arena.used_allocation_size;
+  const uint32_t recent_type_ids[] = {
+      module->recent_exact_type_ordinals[0],
+      module->recent_exact_type_ordinals[1],
+  };
+  EXPECT_EQ(loom_module_lookup_type_id(module, function_type),
+            function_type_id);
+  EXPECT_EQ(
+      loom_module_lookup_topological_type_id(module, function_type, &f32_id,
+                                             /*structural_dependency_count=*/1),
+      function_type_id);
+
+  candidate.types[0] = i32;
+  const loom_type_t missing_function_type = loom_type_function(
+      reinterpret_cast<const loom_func_type_data_t*>(&candidate));
+  EXPECT_EQ(loom_module_lookup_type_id(module, missing_function_type),
+            LOOM_TYPE_ID_INVALID);
+  EXPECT_EQ(loom_module_lookup_topological_type_id(
+                module, missing_function_type, &i32_id,
+                /*structural_dependency_count=*/1),
+            LOOM_TYPE_ID_INVALID);
+  EXPECT_EQ(module->types.count, type_count);
+  EXPECT_EQ(module->type_intern.count, interner_count);
+  EXPECT_EQ(module->arena.used_allocation_size, retained_bytes);
+  EXPECT_EQ(module->recent_exact_type_ordinals[0], recent_type_ids[0]);
+  EXPECT_EQ(module->recent_exact_type_ordinals[1], recent_type_ids[1]);
   loom_module_free(module);
 }
 

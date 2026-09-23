@@ -709,6 +709,13 @@ typedef struct loom_type_value_remap_t {
 static_assert(sizeof(loom_type_value_remap_t) == 32,
               "value remap spans must remain compact");
 
+// Resolves one SSA value through |remap|. Values absent from the map preserve
+// their identity. Source-definition slices use definition ordinals for bounded
+// lookup; unflagged spans retain their declared first-match ordering.
+loom_value_id_t loom_type_remap_value(const loom_module_t* module,
+                                      const loom_type_value_remap_t* remap,
+                                      loom_value_id_t value_id);
+
 // Returns true if two types have the same element type.
 // Meaningful for scalar and shaped types. For non-element-bearing types
 // (group, function, encoding, pool), compares the raw header byte.
@@ -750,7 +757,9 @@ bool loom_type_equal(loom_type_t a, loom_type_t b);
 // This is used for region forwarding checks where a parent result type may
 // reference a sibling result (`view<4xf32, %layout>`) while each region yields
 // an equivalent branch-local value (`view<4xf32, %branch_layout>`). The helper
-// is allocation-free and does not intern remapped types.
+// is allocation-free and does not intern remapped types. The module and remap
+// spans are trusted compiler-owned state and must be valid for the duration of
+// the query.
 bool loom_type_equal_after_value_remap(const loom_module_t* module,
                                        loom_type_t source_type,
                                        loom_type_t target_type,
