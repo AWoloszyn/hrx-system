@@ -87,7 +87,7 @@ typedef enum loom_amdgpu_vector_storage_kind_flag_bits_e {
   LOOM_AMDGPU_VECTOR_STORAGE_KIND_FLAG_SGPR_MASK = 1u << 0,
   // Values need use-sensitive SGPR/VGPR bank analysis before type mapping.
   LOOM_AMDGPU_VECTOR_STORAGE_KIND_FLAG_ANALYZE_REGISTER_BANK = 1u << 1,
-  // Values pack sub-32-bit lanes into VGPR payload registers.
+  // Values pack sub-32-bit lanes into 32-bit payload registers.
   LOOM_AMDGPU_VECTOR_STORAGE_KIND_FLAG_PACKED_PAYLOAD = 1u << 2,
 } loom_amdgpu_vector_storage_kind_flag_bits_t;
 typedef uint8_t loom_amdgpu_vector_storage_kind_flags_t;
@@ -149,9 +149,9 @@ uint32_t loom_amdgpu_vector_i32_lane_count(loom_type_t type);
 // payload, or zero when the source type is not representable as that payload.
 uint32_t loom_amdgpu_vector_i32_register_count(loom_type_t type);
 
-// Returns true when the source type can be loaded through scalar memory as a
-// bitwise 32-bit payload.
-bool loom_amdgpu_type_is_32bit_memory_payload(loom_type_t type);
+// Returns true when the source type occupies complete 32-bit register words
+// within one memory packet. Packed element types preserve their exact bit span.
+bool loom_amdgpu_type_is_word_memory_payload(loom_type_t type);
 
 // Returns the rank-1 f32 lane count for a supported AMDGPU 32-bit vector
 // payload, or zero when the source type is not representable as that payload.

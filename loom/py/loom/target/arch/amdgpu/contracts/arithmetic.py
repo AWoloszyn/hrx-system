@@ -31,9 +31,9 @@ from loom.target.arch.amdgpu.contracts.packed_i8 import (
     PACKED_I8_TYPE_DIAGNOSTIC as _VEC_I8_PACKED_DIAGNOSTIC,
 )
 from loom.target.arch.amdgpu.contracts.packed_i8 import (
-    packed_i8_add_rule,
+    packed_i8_add_rules,
     packed_i8_logical_shift_rules,
-    packed_i8_sub_rule,
+    packed_i8_sub_rules,
 )
 from loom.target.arch.amdgpu.descriptors import (
     AMDGPU_SOURCE_INLINE_F32_VALUES,
@@ -89,6 +89,7 @@ _DESCRIPTOR_KEYS = (
     "amdgpu.s_cvt_f32_f16",
     "amdgpu.s_cvt_hi_f32_f16",
     "amdgpu.s_cvt_pk_rtz_f16_f32",
+    "amdgpu.v_mov_b32_copy",
     "amdgpu.v_add_f32",
     "amdgpu.v_add_f32.lit",
     "amdgpu.v_add_f32.src0_inline",
@@ -3875,7 +3876,7 @@ def _rules() -> tuple[ContractCase, ...]:
                 _VEC_I16_PACKED_STORAGE,
                 "amdgpu.v_pk_add_u16",
             ),
-            packed_i8_add_rule(_DESCRIPTOR_SET),
+            *packed_i8_add_rules(_DESCRIPTOR_SET),
             _constant_binary_rule(
                 vector.vector_addi,
                 "amdgpu.v_add_u32.lit",
@@ -3893,7 +3894,7 @@ def _rules() -> tuple[ContractCase, ...]:
     )
     rules.extend(
         (
-            packed_i8_sub_rule(_DESCRIPTOR_SET),
+            *packed_i8_sub_rules(_DESCRIPTOR_SET),
             _binary_rule(
                 vector.vector_subi,
                 _VEC_I16_PACKED_STORAGE,

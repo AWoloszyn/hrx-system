@@ -2823,8 +2823,7 @@ bool loom_amdgpu_memory_access_plan_select(
       access.packet_byte_count == whole_register_byte_count;
   if (access.payload_register_count <= LOOM_AMDGPU_MAX_MEMORY_32BIT_LANES &&
       (whole_register_payload || access.payload_register_count == 1)) {
-    const bool allow_global_smem =
-        !is_atomic && loom_amdgpu_type_is_32bit_memory_payload(vector_type);
+    const bool allow_global_smem = !is_atomic && whole_register_payload;
     return loom_amdgpu_memory_access_plan_push_packet(
         &selection_context, kind, allow_global_smem, 0, &access, out_selection,
         out_diagnostic);

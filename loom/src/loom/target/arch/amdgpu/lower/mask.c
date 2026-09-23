@@ -36,14 +36,9 @@ static bool loom_amdgpu_select_vector_storage(
                        LOOM_AMDGPU_VECTOR_STORAGE_KIND_FLAG_SGPR_MASK)) {
     return false;
   }
-  const bool full_width_storage = iree_any_bit_set(
-      storage_flags,
-      LOOM_AMDGPU_VECTOR_STORAGE_KIND_FLAG_ANALYZE_REGISTER_BANK);
   const bool packed_payload_storage = iree_any_bit_set(
       storage_flags, LOOM_AMDGPU_VECTOR_STORAGE_KIND_FLAG_PACKED_PAYLOAD);
-  if (!full_width_storage && !packed_payload_storage) {
-    return false;
-  }
+  const bool full_width_storage = !packed_payload_storage;
   *out_full_width_storage = full_width_storage;
   *out_allows_lane_immediates =
       full_width_storage && out_storage->element_register_count == 1;
