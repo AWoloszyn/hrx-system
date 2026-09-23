@@ -69,19 +69,6 @@ static iree_status_t loom_low_emission_frame_reserve_value_bitmap(
   return iree_ok_status();
 }
 
-static iree_status_t loom_low_emission_frame_record_value_span(
-    iree_host_size_t first_value_id, iree_host_size_t end_value_id,
-    iree_arena_allocator_t* arena, iree_bitmap_t* inout_values) {
-  if (first_value_id == end_value_id) {
-    return iree_ok_status();
-  }
-  IREE_RETURN_IF_ERROR(loom_low_emission_frame_reserve_value_bitmap(
-      end_value_id, arena, inout_values));
-  iree_bitmap_set_span(*inout_values, first_value_id,
-                       end_value_id - first_value_id);
-  return iree_ok_status();
-}
-
 static iree_status_t loom_low_emission_frame_record_value_list(
     const loom_value_id_t* value_ids, iree_host_size_t value_count,
     iree_arena_allocator_t* arena, iree_bitmap_t* inout_values) {
@@ -96,26 +83,6 @@ static iree_status_t loom_low_emission_frame_record_value_list(
     iree_bitmap_set(*inout_values, value_ids[i]);
   }
   return iree_ok_status();
-}
-
-static bool loom_low_emission_frame_value_requires_register(
-    iree_bitmap_t required_register_values, loom_value_id_t value_id) {
-  return value_id < required_register_values.bit_count &&
-         iree_bitmap_test(required_register_values, value_id);
-}
-
-static iree_status_t
-loom_low_emission_frame_record_derived_register_requirement(
-    loom_value_id_t source_value_id, iree_host_size_t first_derived_value_id,
-    iree_host_size_t end_derived_value_id, iree_arena_allocator_t* repair_arena,
-    iree_bitmap_t* inout_required_register_values) {
-  if (!loom_low_emission_frame_value_requires_register(
-          *inout_required_register_values, source_value_id)) {
-    return iree_ok_status();
-  }
-  return loom_low_emission_frame_record_value_span(
-      first_derived_value_id, end_derived_value_id, repair_arena,
-      inout_required_register_values);
 }
 
 static void loom_low_emission_frame_record_arena_high_water(
@@ -684,7 +651,13 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
   iree_bitmap_t required_register_values = {0};
   loom_low_rematerialization_state_t rematerialization = {
       .arena = repair_arena,
+      .required_register_values = &required_register_values,
   };
+  const iree_diagnostic_emitter_t rematerialization_emitter =
+      iree_any_bit_set(frame_options->allocation_diagnostic_flags,
+                       LOOM_LOW_ALLOCATION_DIAGNOSTIC_PREDICTED_SPILLS)
+          ? frame_options->emitter
+          : (iree_diagnostic_emitter_t){0};
   loom_low_emission_frame_lower_spill_traffic_result_t spill_lowering_result = {
       0};
   IREE_RETURN_IF_ERROR(loom_low_emission_frame_lower_spill_traffic(
@@ -718,27 +691,20 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
         loom_low_placement_pair_use_list_empty(), required_register_values,
         rematerialization.per_user_values, arena, statistics, &frame));
     if (value_repair_iteration_limit == 0) {
-      // Each repair rewrites one value, and per-user clones cannot be repaired
-      // again until spill traffic invalidates their placement. Allow the
-      // original function-local value population to make that progress.
+      // Use the initial function-local value population as the convergence
+      // budget. Allocation repair can retire a complete batch in one pass;
+      // individual state and spill repairs consume the same budget.
       value_repair_iteration_limit = frame.schedule.value_count;
     }
     if (frame.schedule.error_count != 0) {
       if (value_repair_iteration_count < value_repair_iteration_limit &&
           frame.schedule.failure.state_value_id != LOOM_VALUE_ID_INVALID) {
         loom_low_value_rematerialization_result_t result = {0};
-        const iree_host_size_t first_rematerialized_value_id =
-            module->values.count;
         IREE_RETURN_IF_ERROR(loom_low_rematerialize_value_uses(
             module, &frame.schedule.target,
             frame.schedule.failure.state_value_id, &rematerialization,
             scratch_arena, &result));
         if (result.rewritten_operand_count != 0) {
-          IREE_RETURN_IF_ERROR(
-              loom_low_emission_frame_record_derived_register_requirement(
-                  frame.schedule.failure.state_value_id,
-                  first_rematerialized_value_id, module->values.count,
-                  repair_arena, &required_register_values));
           if (statistics != NULL) {
             statistics->repair.rematerialized_operand_count +=
                 result.rewritten_operand_count;
@@ -756,27 +722,15 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
     }
     if (frame.allocation.error_count != 0) {
       if (value_repair_iteration_count < value_repair_iteration_limit) {
-        loom_low_allocation_rematerialization_result_t result = {0};
-        const iree_host_size_t first_rematerialized_value_id =
-            module->values.count;
+        loom_low_rematerialization_batch_result_t result = {0};
         IREE_RETURN_IF_ERROR(loom_low_allocation_rematerialize_failure(
-            module, &frame.allocation, &rematerialization, scratch_arena,
-            &result));
-        if (result.value.rewritten_operand_count != 0) {
-          IREE_RETURN_IF_ERROR(
-              loom_low_emission_frame_record_derived_register_requirement(
-                  result.value.value_id, first_rematerialized_value_id,
-                  module->values.count, repair_arena,
-                  &required_register_values));
+            module, &frame.allocation, &rematerialization,
+            rematerialization_emitter, scratch_arena, &result));
+        if (result.rewritten_operand_count != 0) {
           if (statistics != NULL) {
             statistics->repair.rematerialized_operand_count +=
-                result.value.rewritten_operand_count;
+                result.rewritten_operand_count;
           }
-          IREE_RETURN_IF_ERROR(
-              loom_low_emission_frame_emit_rematerialization_decision(
-                  frame_options, &frame.allocation,
-                  LOOM_LOW_ALLOCATION_REMATERIALIZATION_TRIGGER_ALLOCATION_FAILURE,
-                  &result));
           ++value_repair_iteration_count;
           loom_low_emission_frame_advance_repair_iteration(statistics);
           restore_frame_before_build = true;
@@ -821,17 +775,10 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
         frame.allocation.spill_plan_count < last_repaired_spill_plan_count) {
       loom_low_allocation_rematerialization_result_t rematerialization_result =
           {0};
-      const iree_host_size_t first_rematerialized_value_id =
-          module->values.count;
       IREE_RETURN_IF_ERROR(loom_low_allocation_rematerialize_spill_plan(
           module, &frame.allocation, &rematerialization, scratch_arena,
           &rematerialization_result));
       if (rematerialization_result.value.rewritten_operand_count != 0) {
-        IREE_RETURN_IF_ERROR(
-            loom_low_emission_frame_record_derived_register_requirement(
-                rematerialization_result.value.value_id,
-                first_rematerialized_value_id, module->values.count,
-                repair_arena, &required_register_values));
         if (statistics != NULL) {
           statistics->repair.rematerialized_operand_count +=
               rematerialization_result.value.rewritten_operand_count;

@@ -697,9 +697,10 @@ typedef struct loom_low_schedule_options_t {
   // Optional concrete pair groups preferred when rescheduling rewritten IR.
   loom_low_placement_pair_use_list_t preferred_pair_uses;
   // Borrowed module-value membership retained by allocation repair. Marked
-  // results were cloned next to individual users to shorten their lifetimes;
-  // operand-capturing materializations remain deferred while those users are
-  // blocked. Empty outside repair; spill insertion invalidates this fact.
+  // results were cloned next to individual users to shorten their lifetimes.
+  // Nonempty membership enables static setup ordering and defers blocked
+  // operand-capturing materializations. Consumer cloning and spill insertion
+  // invalidate placement at the rematerialization owner. Empty outside repair.
   iree_bitmap_t per_user_rematerialized_values;
   // Optional target-provided implicit state reads for structural low
   // materializations that emit target packets without descriptor rows.

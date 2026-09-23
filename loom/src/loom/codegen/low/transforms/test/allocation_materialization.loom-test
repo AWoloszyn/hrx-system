@@ -704,3 +704,54 @@ low.func.def target<test.low.core>(@test_target) @rematerialize_interleaved_oper
   %result = test.add.i32 %partial, %tail
   return %result
 }
+
+// ====
+
+// Five cross-block constants exceed the four physical registers. Repair all
+// original sources in one snapshot and keep each clone at its actual user.
+// RUN: pass low-materialize-allocation
+
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @cross_block_constants() -> (reg<test.i32>) asm {
+  %first = test.const.explicit32 1
+  %second = test.const.explicit32 2
+  %third = test.const.explicit32 3
+  %fourth = test.const.explicit32 4
+  %fifth = test.const.explicit32 5
+  low.br ^consume
+^consume:
+  %a = copy %first : reg<test.explicit32> -> reg<test.i32>
+  %b = copy %second : reg<test.explicit32> -> reg<test.i32>
+  %c = copy %third : reg<test.explicit32> -> reg<test.i32>
+  %d = copy %fourth : reg<test.explicit32> -> reg<test.i32>
+  %e = copy %fifth : reg<test.explicit32> -> reg<test.i32>
+  %ab = test.add.i32 %a, %b
+  %cd = test.add.i32 %c, %d
+  %abcd = test.add.i32 %ab, %cd
+  %result = test.add.i32 %abcd, %e
+  return %result
+}
+
+// ----
+test.target<low_core> @target
+
+low.func.def target<test.low.core>(@target) @cross_block_constants() -> (reg<test.i32>) asm {
+  low.br ^consume
+^consume:
+  %first_remat = test.const.explicit32 1
+  %a = copy %first_remat : reg<test.explicit32> -> reg<test.i32>
+  %second_remat = test.const.explicit32 2
+  %b = copy %second_remat : reg<test.explicit32> -> reg<test.i32>
+  %third_remat = test.const.explicit32 3
+  %c = copy %third_remat : reg<test.explicit32> -> reg<test.i32>
+  %fourth_remat = test.const.explicit32 4
+  %d = copy %fourth_remat : reg<test.explicit32> -> reg<test.i32>
+  %fifth_remat = test.const.explicit32 5
+  %e = copy %fifth_remat : reg<test.explicit32> -> reg<test.i32>
+  %ab = test.add.i32 %a, %b
+  %cd = test.add.i32 %c, %d
+  %abcd = test.add.i32 %ab, %cd
+  %result = test.add.i32 %abcd, %e
+  return %result
+}

@@ -1772,10 +1772,20 @@ static iree_status_t loom_low_schedule_build(
         liveness_arena, &liveness);
   }
   if (iree_status_is_ok(status)) {
+    if (node_count != 0 &&
+        iree_bitmap_any_set(options->per_user_rematerialized_values)) {
+      status = loom_low_schedule_setup_order_initialize(
+          (uint32_t)node_count, scratch_arena, &state.setup_order);
+    }
+  }
+  if (iree_status_is_ok(status)) {
     status = loom_low_schedule_build_dependencies(&state, &liveness);
   }
   if (iree_status_is_ok(status) && state.error_count == 0) {
     status = loom_low_schedule_build_scope_dependencies(&state);
+  }
+  if (iree_status_is_ok(status) && state.error_count == 0) {
+    status = loom_low_schedule_setup_order_finish(&state);
   }
   if (iree_status_is_ok(status) && state.error_count == 0) {
     status = loom_low_schedule_run_list_scheduler(&state, node_count);

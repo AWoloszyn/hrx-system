@@ -993,6 +993,16 @@ def test_descriptor_encoding_ids_and_adapters_are_materialized() -> None:
     assert static_offset.operands[0].reg_alts[0].reg_class == "aie2p.er"
     assert Constraint(ConstraintKind.REMATERIALIZABLE, 0) in static_offset.constraints
 
+    for name in (
+        "splat.i16x32",
+        "splat.i32x16",
+        "accumulator.clear.i32x64",
+        "accumulator.clear.f32x64",
+        "move.vector512.to.accumulator512",
+    ):
+        descriptor = descriptors[f"amd.xdna.aie2p.{name}"]
+        assert Constraint(ConstraintKind.REMATERIALIZABLE, 0) in descriptor.constraints
+
     local_address = descriptors["amd.xdna.aie2p.materialize.local-address.i32"]
     assert local_address.semantic_tag == "memory.materialize.local-address.i32"
     assert local_address.asm_forms[0].mnemonic == "mov.local-address"

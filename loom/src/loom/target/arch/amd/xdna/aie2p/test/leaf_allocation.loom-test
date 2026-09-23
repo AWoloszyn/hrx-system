@@ -225,10 +225,10 @@ low.func.def target<amd.xdna.aie2p.core> @static_offset_loop(%input: reg<aie2p.e
 }
 
 // ----
-issue cycles: 82
+issue cycles: 78
 code bytes: 462
-coissued bundles: 26
-coissued components: 71
+coissued bundles: 28
+coissued components: 76
 
 // ====
 
@@ -359,8 +359,8 @@ low.func.def target<amd.xdna.aie2p.core> @index_repair_ordering(%source: reg<aie
 // ----
 issue cycles: 96
 code bytes: 304
-coissued bundles: 12
-coissued components: 24
+coissued bundles: 11
+coissued components: 22
 
 // ====
 
