@@ -252,6 +252,19 @@ static const loom_boundary_projection_rule_t kRejectableIdentityRule = {
     },
 };
 
+static iree_host_size_t selected_function_preparation_count = 0;
+
+static iree_status_t CountSelectedFunctionPreparation(
+    const loom_boundary_projection_rule_t* rule,
+    loom_boundary_projection_plan_t* plan,
+    loom_boundary_projection_function_t* function) {
+  (void)rule;
+  (void)plan;
+  EXPECT_TRUE(function->selected);
+  ++selected_function_preparation_count;
+  return iree_ok_status();
+}
+
 static const loom_pass_info_t kProjectionPassInfo = {
     /*.name=*/IREE_SVL("test-boundary-projection"),
     /*.description=*/IREE_SVL("Test boundary projection."),
@@ -522,6 +535,43 @@ TEST_F(BoundaryProjectionTest, RejectsCfgProjectionAtomically) {
   EXPECT_EQ(statistics.rules[0].projections, 0);
   EXPECT_EQ(statistics.rules[0].components, 0);
   EXPECT_EQ(statistics.rules[0].destination_uses_rewritten, 0);
+  Verify(module_);
+}
+
+TEST_F(BoundaryProjectionTest, PreparesOnlySelectedFunctions) {
+  IndexDiamond diamond;
+  BuildIndexDiamond(IREE_SV("selected_candidate"), &diamond);
+
+  const loom_type_t index_type = loom_type_scalar(LOOM_SCALAR_TYPE_INDEX);
+  loom_op_t* identity_op = nullptr;
+  IREE_ASSERT_OK(loom_test_func_build(
+      &module_builder_, /*build_flags=*/0, /*visibility=*/0, /*cc=*/0,
+      MakeSymbol(IREE_SV("rejected_candidate")), &index_type,
+      /*arg_types_count=*/1, &index_type, /*result_count=*/1,
+      /*tied_results=*/nullptr, /*tied_result_count=*/0,
+      /*predicates=*/nullptr, /*predicates_count=*/0, LOOM_LOCATION_UNKNOWN,
+      &identity_op));
+  const loom_func_like_t identity = loom_func_like_cast(module_, identity_op);
+  ASSERT_TRUE(loom_func_like_isa(identity));
+  uint16_t argument_count = 0;
+  const loom_value_id_t* arguments =
+      loom_func_like_arg_ids(identity, &argument_count);
+  ASSERT_EQ(argument_count, 1);
+  loom_builder_t identity_builder = BlockBuilder(
+      identity_op, loom_region_entry_block(loom_func_like_body(identity)));
+  loom_op_t* return_op = nullptr;
+  IREE_ASSERT_OK(loom_test_yield_build(&identity_builder, arguments,
+                                       argument_count, LOOM_LOCATION_UNKNOWN,
+                                       &return_op));
+  Verify(module_);
+
+  loom_boundary_projection_rule_t rule = kRejectableIdentityRule;
+  rule.prepare_function = CountSelectedFunctionPreparation;
+  selected_function_preparation_count = 0;
+  loom_boundary_projection_statistics_t statistics = {};
+  Project(&rule, &statistics);
+
+  EXPECT_EQ(selected_function_preparation_count, 1u);
   Verify(module_);
 }
 

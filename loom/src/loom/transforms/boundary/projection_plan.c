@@ -1340,12 +1340,12 @@ iree_status_t loom_boundary_projection_plan_prepare(
     iree_status_t status =
         loom_boundary_projection_collect_function(plan, function);
     bool needs_local_domain = false;
-    if (iree_status_is_ok(status)) {
+    if (iree_status_is_ok(status) && function->selected) {
       for (iree_host_size_t rule_index = 0; rule_index < rules.count;
            ++rule_index) {
         const loom_boundary_projection_rule_t* rule = rules.values[rule_index];
         needs_local_domain |=
-            rule->prepare_function && function->selected &&
+            rule->prepare_function &&
             loom_boundary_projection_rule_applies(rule, plan, function);
       }
       if (needs_local_domain) {
@@ -1356,7 +1356,7 @@ iree_status_t loom_boundary_projection_plan_prepare(
         }
       }
     }
-    if (iree_status_is_ok(status)) {
+    if (iree_status_is_ok(status) && function->selected) {
       for (iree_host_size_t rule_index = 0;
            rule_index < rules.count && iree_status_is_ok(status);
            ++rule_index) {

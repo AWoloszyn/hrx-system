@@ -64,10 +64,10 @@ typedef iree_status_t (*loom_boundary_projection_initialize_fn_t)(
     const loom_boundary_projection_rule_t* rule,
     loom_boundary_projection_plan_t* plan);
 
-// Prepares function-local semantic analysis after all candidate slots have
-// been discovered and indexed. The callback must retain every recipe needed by
-// source planning and application; later callbacks must not walk the IR to
-// rediscover it.
+// Prepares function-local semantic analysis for a selected function after all
+// candidate slots have been discovered and indexed. The callback must retain
+// every recipe needed by source planning and application; later callbacks must
+// not walk the IR to rediscover it.
 typedef iree_status_t (*loom_boundary_projection_prepare_function_fn_t)(
     const loom_boundary_projection_rule_t* rule,
     loom_boundary_projection_plan_t* plan,
