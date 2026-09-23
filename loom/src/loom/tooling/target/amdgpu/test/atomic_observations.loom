@@ -3,7 +3,6 @@ kernel.decl @atomic_observation_bits() launch(%storage: buffer, %output: buffer,
 // The two patterns carry distinct low and high words. Both loaded and stored
 // representations must survive without widening into neighboring guards.
 check.case public @atomic_observation_wide_bits {
-  check.requires<hal.amdgpu.descriptor_set> {descriptor_set = "amdgpu.rdna3_5.core"}
   %storage = check.generate.fill value(9221120238168475493) : tensor<10xi64>
   %output = check.generate.fill value(37) : tensor<10xi64>
   %value = check.literal value(-4294967297) : i64
@@ -29,7 +28,6 @@ check.case public @atomic_observation_wide_bits {
 }
 
 check.case public @atomic_observation_high_bit {
-  check.requires<hal.amdgpu.descriptor_set> {descriptor_set = "amdgpu.rdna3_5.core"}
   %storage = check.generate.fill value(-9223372036854775808) : tensor<10xi64>
   %output = check.generate.fill value(37) : tensor<10xi64>
   %value = check.literal value(0) : i64
@@ -49,7 +47,6 @@ kernel.decl @atomic_float_observation_bits() launch(%storage: buffer, %output: b
 // The observed and published patterns carry distinct NaN payloads when read
 // as f64. Equality is checked on their integer bits, never as floating values.
 check.case public @atomic_float_observation_nan_bits {
-  check.requires<hal.amdgpu.descriptor_set> {descriptor_set = "amdgpu.rdna3_5.core"}
   %storage = check.generate.fill value(9221120238168475493) : tensor<10xi64>
   %output = check.generate.fill value(37) : tensor<12xi64>
   %value = check.literal value(-4294967297) : i64
@@ -76,7 +73,6 @@ check.case public @atomic_float_observation_nan_bits {
 }
 
 check.case public @atomic_float_observation_signed_zero {
-  check.requires<hal.amdgpu.descriptor_set> {descriptor_set = "amdgpu.rdna3_5.core"}
   %storage = check.generate.fill value(-9223372036854775808) : tensor<10xi64>
   %output = check.generate.fill value(37) : tensor<12xi64>
   %value = check.literal value(0) : i64

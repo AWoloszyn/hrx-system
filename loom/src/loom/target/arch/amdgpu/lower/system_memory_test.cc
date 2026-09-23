@@ -36,8 +36,7 @@ std::string ToString(iree_string_view_t value) {
 enum class SystemMemoryAttrKind {
   kLoad,
   kReleaseStore,
-  kNoReturnAtomic,
-  kReturnAtomic,
+  kAtomic,
 };
 
 struct ExpectedAttr {
@@ -257,13 +256,8 @@ class AmdgpuSystemMemoryTest : public ::testing::Test {
             &builder_, descriptor_set, scope, attrs, IREE_ARRAYSIZE(attrs),
             &attr_count);
         break;
-      case SystemMemoryAttrKind::kNoReturnAtomic:
-        status = loom_amdgpu_system_memory_append_no_return_atomic_attrs_scoped(
-            &builder_, descriptor_set, scope, attrs, IREE_ARRAYSIZE(attrs),
-            &attr_count);
-        break;
-      case SystemMemoryAttrKind::kReturnAtomic:
-        status = loom_amdgpu_system_memory_append_return_atomic_attrs_scoped(
+      case SystemMemoryAttrKind::kAtomic:
+        status = loom_amdgpu_system_memory_append_atomic_attrs_scoped(
             &builder_, descriptor_set, scope, attrs, IREE_ARRAYSIZE(attrs),
             &attr_count);
         break;
@@ -444,25 +438,13 @@ TEST_F(AmdgpuSystemMemoryTest, AppendsReleaseStoreAttrsByArchitecture) {
                       {{IREE_SV("scope"), kSystemCacheScope}});
 }
 
-TEST_F(AmdgpuSystemMemoryTest, AppendsNoReturnAtomicAttrsByArchitecture) {
+TEST_F(AmdgpuSystemMemoryTest, AppendsAtomicCoherenceAttrsByArchitecture) {
   ExpectAppendedAttrs(IREE_SV("amdgpu.rdna3.core"),
-                      SystemMemoryAttrKind::kNoReturnAtomic, {});
+                      SystemMemoryAttrKind::kAtomic, {});
   ExpectAppendedAttrs(IREE_SV("amdgpu.cdna3.core"),
-                      SystemMemoryAttrKind::kNoReturnAtomic,
-                      {{IREE_SV("sc1"), 1}});
+                      SystemMemoryAttrKind::kAtomic, {{IREE_SV("sc1"), 1}});
   ExpectAppendedAttrs(IREE_SV("amdgpu.rdna4.core"),
-                      SystemMemoryAttrKind::kNoReturnAtomic,
-                      {{IREE_SV("scope"), kSystemCacheScope}});
-}
-
-TEST_F(AmdgpuSystemMemoryTest, AppendsReturnAtomicAttrsByArchitecture) {
-  ExpectAppendedAttrs(IREE_SV("amdgpu.rdna3.core"),
-                      SystemMemoryAttrKind::kReturnAtomic, {});
-  ExpectAppendedAttrs(IREE_SV("amdgpu.cdna3.core"),
-                      SystemMemoryAttrKind::kReturnAtomic,
-                      {{IREE_SV("sc0"), 1}, {IREE_SV("sc1"), 1}});
-  ExpectAppendedAttrs(IREE_SV("amdgpu.rdna4.core"),
-                      SystemMemoryAttrKind::kReturnAtomic,
+                      SystemMemoryAttrKind::kAtomic,
                       {{IREE_SV("scope"), kSystemCacheScope}});
 }
 
@@ -650,10 +632,8 @@ TEST_F(AmdgpuSystemMemoryTest,
                         LOOM_CACHE_SCOPE_DEVICE);
     ExpectAppendedAttrs(key, SystemMemoryAttrKind::kReleaseStore,
                         {{IREE_SV("sc1"), 1}}, LOOM_CACHE_SCOPE_DEVICE);
-    ExpectAppendedAttrs(key, SystemMemoryAttrKind::kNoReturnAtomic, {},
+    ExpectAppendedAttrs(key, SystemMemoryAttrKind::kAtomic, {},
                         LOOM_CACHE_SCOPE_DEVICE);
-    ExpectAppendedAttrs(key, SystemMemoryAttrKind::kReturnAtomic,
-                        {{IREE_SV("sc0"), 1}}, LOOM_CACHE_SCOPE_DEVICE);
   }
 }
 

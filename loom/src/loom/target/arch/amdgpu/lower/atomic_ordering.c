@@ -13,15 +13,6 @@
 #include "loom/target/arch/amdgpu/lower/types.h"
 #include "loom/target/arch/amdgpu/planning/wait_packets.h"
 #include "loom/target/arch/amdgpu/refs/target_refs.h"
-#include "loom/target/arch/amdgpu/target_info.h"
-
-static const loom_amdgpu_memory_coherence_rule_t*
-loom_amdgpu_atomic_global_ordering_rule_lookup(
-    const loom_low_descriptor_set_t* descriptor_set) {
-  const loom_amdgpu_memory_coherence_rule_t* rule =
-      loom_amdgpu_memory_coherence_rule(descriptor_set);
-  return rule && rule->update_scopes ? rule : NULL;
-}
 
 static bool loom_amdgpu_atomic_ordering_has_acquire(uint8_t ordering) {
   switch (ordering) {
@@ -65,7 +56,7 @@ static bool loom_amdgpu_atomic_global_ordering_supported(
       ordering != LOOM_ATOMIC_ORDERING_SEQ_CST) {
     return false;
   }
-  return loom_amdgpu_atomic_global_ordering_rule_lookup(descriptor_set) != NULL;
+  return loom_amdgpu_memory_coherence_rule(descriptor_set) != NULL;
 }
 
 static bool loom_amdgpu_atomic_memory_space_is_device_visible(
@@ -95,10 +86,7 @@ bool loom_amdgpu_atomic_scope_supported(
   }
   // System integer updates require both a coherence recipe and backing that
   // admits the operation; mapping admission belongs to the runtime.
-  const loom_amdgpu_memory_coherence_rule_t* rule =
-      loom_amdgpu_atomic_global_ordering_rule_lookup(descriptor_set);
-  return rule && iree_any_bit_set(rule->update_scopes,
-                                  LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_SYSTEM);
+  return loom_amdgpu_memory_coherence_rule(descriptor_set) != NULL;
 }
 
 static bool loom_amdgpu_atomic_ordering_supported(
@@ -246,7 +234,7 @@ bool loom_amdgpu_atomic_select_ordering(
     loom_amdgpu_atomic_ordering_selection_t* ordering) {
   *ordering = (loom_amdgpu_atomic_ordering_selection_t){0};
   const loom_amdgpu_memory_coherence_rule_t* rule =
-      loom_amdgpu_atomic_global_ordering_rule_lookup(descriptor_set);
+      loom_amdgpu_memory_coherence_rule(descriptor_set);
   if (!loom_amdgpu_atomic_memory_space_is_device_visible(
           source->memory_space) ||
       (!loom_amdgpu_atomic_source_has_release_ordering(source) &&
@@ -288,27 +276,23 @@ bool loom_amdgpu_atomic_select_ordering(
   return true;
 }
 
-void loom_amdgpu_atomic_select_packet_attrs(
+loom_amdgpu_memory_coherence_attr_t loom_amdgpu_atomic_select_packet_attr(
     const loom_low_descriptor_set_t* descriptor_set,
-    const loom_low_source_memory_access_plan_t* source,
-    loom_amdgpu_atomic_packet_attrs_t* packet_attrs) {
-  *packet_attrs = (loom_amdgpu_atomic_packet_attrs_t){0};
-  packet_attrs->scope_attr_name_id = LOOM_STRING_ID_INVALID;
-  if (!loom_amdgpu_atomic_memory_space_is_device_visible(
-          source->memory_space)) {
-    return;
-  }
+    const loom_low_source_memory_access_plan_t* source) {
   const loom_amdgpu_memory_coherence_rule_t* rule =
-      loom_amdgpu_atomic_global_ordering_rule_lookup(descriptor_set);
-  if (rule == NULL ||
-      !iree_any_bit_set(
-          rule->atomic_attrs[source->atomic.scope == LOOM_ATOMIC_SCOPE_SYSTEM],
-          LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SCOPE)) {
-    return;
+      loom_amdgpu_memory_coherence_rule(descriptor_set);
+  if (!rule || !loom_amdgpu_atomic_memory_space_is_device_visible(
+                   source->memory_space)) {
+    return (loom_amdgpu_memory_coherence_attr_t){0};
   }
-  packet_attrs->flags |= LOOM_AMDGPU_ATOMIC_PACKET_ATTR_SCOPE;
-  packet_attrs->scope =
-      loom_amdgpu_memory_coherence_scope(source->atomic.scope);
+  loom_amdgpu_memory_coherence_attr_t
+      attrs[LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_CAPACITY];
+  const uint8_t count = loom_amdgpu_memory_coherence_select_attrs(
+      rule->atomic_attrs[source->atomic.scope == LOOM_ATOMIC_SCOPE_SYSTEM],
+      loom_amdgpu_memory_coherence_scope(source->atomic.scope), attrs);
+  // Atomic plans retain one scope field; return control stays in descriptors.
+  IREE_ASSERT_LE(count, 1);
+  return count ? attrs[0] : (loom_amdgpu_memory_coherence_attr_t){0};
 }
 
 static iree_status_t loom_amdgpu_atomic_resolve_explicit_packet_selection(

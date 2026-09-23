@@ -273,15 +273,6 @@ static iree_status_t loom_amdgpu_signal_build_global_store_b64(
       location, &store_op);
 }
 
-static iree_status_t loom_amdgpu_signal_build_atomic_attrs(
-    loom_builder_t* builder, const loom_low_descriptor_set_t* descriptor_set,
-    loom_named_attr_t* attrs, iree_host_size_t attr_capacity,
-    iree_host_size_t* out_attr_count) {
-  *out_attr_count = 0;
-  return loom_amdgpu_system_memory_append_no_return_atomic_attrs(
-      builder, descriptor_set, attrs, attr_capacity, out_attr_count);
-}
-
 static iree_status_t loom_amdgpu_signal_build_m0_from_sgpr(
     loom_builder_t* builder, const loom_low_descriptor_set_t* descriptor_set,
     loom_value_id_t source, loom_location_id_t location,
@@ -355,11 +346,8 @@ iree_status_t loom_amdgpu_build_signal_add_one_release(
 
   loom_named_attr_t attrs[2] = {0};
   iree_host_size_t attr_count = 0;
-  IREE_RETURN_IF_ERROR(loom_amdgpu_signal_build_atomic_attrs(
+  IREE_RETURN_IF_ERROR(loom_amdgpu_system_memory_append_atomic_attrs(
       builder, descriptor_set, attrs, IREE_ARRAYSIZE(attrs), &attr_count));
-  loom_amdgpu_filter_descriptor_optional_attrs(builder, descriptor_set,
-                                               descriptor, /*required_count=*/0,
-                                               attrs, &attr_count);
   const loom_value_id_t operands[] = {zero_vaddr, one64, value_address};
   loom_op_t* op = NULL;
   return loom_low_build_resolved_descriptor_op(

@@ -14,8 +14,6 @@ static const loom_amdgpu_memory_coherence_rule_t kMemoryCoherenceRules[] = {
     [LOOM_AMDGPU_MEMORY_ORDERING_MODEL_NONE] = {0},
     [LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX11] =
         {
-            .update_scopes = LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_DEVICE |
-                             LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_SYSTEM,
             // GLC bypasses GL0/GL1 on loads. Stores are write-through; atomic
             // descriptors use GLC as return control rather than coherence.
             .load_attrs = {LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_GLC,
@@ -33,8 +31,6 @@ static const loom_amdgpu_memory_coherence_rule_t kMemoryCoherenceRules[] = {
         },
     [LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX12] =
         {
-            .update_scopes = LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_DEVICE |
-                             LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_SYSTEM,
             .load_attrs = {LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SCOPE,
                            LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SCOPE},
             .store_attrs = {LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SCOPE,
@@ -54,8 +50,6 @@ static const loom_amdgpu_memory_coherence_rule_t kMemoryCoherenceRules[] = {
         },
     [LOOM_AMDGPU_MEMORY_ORDERING_MODEL_GFX125] =
         {
-            .update_scopes = LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_DEVICE |
-                             LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_SYSTEM,
             .load_attrs = {LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SCOPE,
                            LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SCOPE},
             .store_attrs = {LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SCOPE,
@@ -86,7 +80,6 @@ static const loom_amdgpu_memory_coherence_rule_t kMemoryCoherenceRules[] = {
                             LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SC0 |
                                 LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SC1},
             .atomic_attrs = {0, LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SC1},
-            .return_atomic_attrs = LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SC0,
             .cache_attrs = {LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SC1,
                             LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SC0 |
                                 LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SC1},

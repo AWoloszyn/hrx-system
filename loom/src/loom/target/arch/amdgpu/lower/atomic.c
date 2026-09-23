@@ -106,8 +106,8 @@ typedef struct loom_amdgpu_atomic_selection_t {
   loom_amdgpu_descriptor_ref_t descriptor_ref;
   // Mixed-bank realizations that fit u32 VADDR and eliminate dynamic SOFFSET.
   uint8_t vaddr_realization_mask;
-  // Descriptor attrs emitted directly on the selected atomic packet.
-  loom_amdgpu_atomic_packet_attrs_t packet_attrs;
+  // Selected coherence field before module-local name interning.
+  loom_amdgpu_memory_coherence_attr_t coherence_attr;
   // Explicit packets required to implement source atomic ordering.
   loom_amdgpu_atomic_ordering_selection_t ordering;
 } loom_amdgpu_atomic_selection_t;
@@ -922,8 +922,8 @@ static bool loom_amdgpu_atomic_select(
                                             value_type, diagnostic)) {
     return false;
   }
-  loom_amdgpu_atomic_select_packet_attrs(descriptor_set, &out_selection->source,
-                                         &out_selection->packet_attrs);
+  out_selection->coherence_attr = loom_amdgpu_atomic_select_packet_attr(
+      descriptor_set, &out_selection->source);
   if (!loom_amdgpu_atomic_select_ordering(
           descriptor_set, &out_selection->source, out_selection->operation_kind,
           &out_selection->ordering)) {
@@ -954,7 +954,11 @@ static iree_status_t loom_amdgpu_atomic_resolve_selection(
       .immediate_offset = selection->immediate_offset,
       .scalar_byte_offset = selection->scalar_byte_offset,
       .vaddr_realization_mask = selection->vaddr_realization_mask,
-      .packet_attrs = selection->packet_attrs,
+      .coherence_attr =
+          {
+              .name_id = LOOM_STRING_ID_INVALID,
+              .value = selection->coherence_attr.value,
+          },
   };
   for (iree_host_size_t i = 0; i < LOOM_LOW_SOURCE_MEMORY_DYNAMIC_TERM_CAPACITY;
        ++i) {
@@ -962,10 +966,10 @@ static iree_status_t loom_amdgpu_atomic_resolve_selection(
   }
   IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_descriptor_ref(
       context, selection->descriptor_ref, &out_plan->descriptor));
-  if (iree_any_bit_set(out_plan->packet_attrs.flags,
-                       LOOM_AMDGPU_ATOMIC_PACKET_ATTR_SCOPE)) {
-    IREE_RETURN_IF_ERROR(loom_amdgpu_intern(
-        context, IREE_SV("scope"), &out_plan->packet_attrs.scope_attr_name_id));
+  if (!iree_string_view_is_empty(selection->coherence_attr.name)) {
+    IREE_RETURN_IF_ERROR(loom_amdgpu_intern(context,
+                                            selection->coherence_attr.name,
+                                            &out_plan->coherence_attr.name_id));
   }
   return loom_amdgpu_atomic_resolve_ordering_selection(
       context, &selection->ordering, &out_plan->ordering);
@@ -1213,22 +1217,6 @@ static iree_status_t loom_amdgpu_emit_atomic_cmpxchg_pair(
   return iree_ok_status();
 }
 
-static void loom_amdgpu_append_atomic_packet_attrs(
-    const loom_amdgpu_atomic_packet_attrs_t* packet_attrs,
-    loom_named_attr_t* attrs, iree_host_size_t attr_capacity,
-    iree_host_size_t* inout_attr_count) {
-  if (iree_any_bit_set(packet_attrs->flags,
-                       LOOM_AMDGPU_ATOMIC_PACKET_ATTR_SCOPE)) {
-    IREE_ASSERT(packet_attrs->scope_attr_name_id != LOOM_STRING_ID_INVALID);
-    IREE_ASSERT_LT(*inout_attr_count, attr_capacity);
-    attrs[*inout_attr_count] = (loom_named_attr_t){
-        .name_id = packet_attrs->scope_attr_name_id,
-        .value = loom_attr_i64(packet_attrs->scope),
-    };
-    *inout_attr_count += 1;
-  }
-}
-
 iree_status_t loom_amdgpu_lower_atomic(loom_low_lower_context_t* context,
                                        const loom_op_t* source_op,
                                        const loom_amdgpu_atomic_plan_t* plan) {
@@ -1279,8 +1267,12 @@ iree_status_t loom_amdgpu_lower_atomic(loom_low_lower_context_t* context,
   iree_host_size_t attr_count = 0;
   IREE_RETURN_IF_ERROR(loom_amdgpu_make_memory_attrs(
       context, &access, attrs, IREE_ARRAYSIZE(attrs), &attr_count));
-  loom_amdgpu_append_atomic_packet_attrs(&plan->packet_attrs, attrs,
-                                         IREE_ARRAYSIZE(attrs), &attr_count);
+  if (plan->coherence_attr.name_id != LOOM_STRING_ID_INVALID) {
+    attrs[attr_count++] = (loom_named_attr_t){
+        .name_id = plan->coherence_attr.name_id,
+        .value = loom_attr_i64(plan->coherence_attr.value),
+    };
+  }
   const loom_named_attr_slice_t packet_attrs =
       loom_make_named_attr_slice(attrs, attr_count);
 

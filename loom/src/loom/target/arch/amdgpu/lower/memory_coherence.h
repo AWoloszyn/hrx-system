@@ -26,22 +26,13 @@ enum loom_amdgpu_memory_coherence_attr_bits_e {
   LOOM_AMDGPU_MEMORY_COHERENCE_ATTR_SCOPE = 1u << 3,
 };
 
-enum loom_amdgpu_memory_coherence_scope_bits_e {
-  LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_DEVICE = 1u << 0,
-  LOOM_AMDGPU_MEMORY_COHERENCE_SCOPE_SYSTEM = 1u << 1,
-};
-
 typedef struct loom_amdgpu_memory_coherence_rule_t {
-  // Source update scopes implemented by the target's native atomic lowering.
-  uint8_t update_scopes;
   // Load attributes indexed by device (0) or system (1) scope.
   loom_amdgpu_memory_coherence_attrs_t load_attrs[2];
   // Store attributes indexed by device (0) or system (1) scope.
   loom_amdgpu_memory_coherence_attrs_t store_attrs[2];
   // Update coherence attributes; the descriptor owns return-value control.
   loom_amdgpu_memory_coherence_attrs_t atomic_attrs[2];
-  // Additional attrs needed by compiler-generated returning update packets.
-  loom_amdgpu_memory_coherence_attrs_t return_atomic_attrs;
   // Cache-control attributes indexed by device (0) or system (1) scope.
   loom_amdgpu_memory_coherence_attrs_t cache_attrs[2];
   // Explicit completion before source release updates, in addition to the

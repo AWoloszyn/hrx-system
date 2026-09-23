@@ -354,7 +354,6 @@ low.kernel.def target<amdgpu.gfx9_4.generic.core>(@target) workgroup_size(64, 1,
   s_waitcnt {vmcnt = 0}
   s_barrier
   s_waitcnt {vmcnt = 0}
-  buffer_inv {sc1 = 1}
   return
 }
 
@@ -396,7 +395,6 @@ low.kernel.def target<amdgpu.cdna4.core>(@target) workgroup_size(64, 1, 1) workg
   s_waitcnt {vmcnt = 0}
   s_barrier
   s_waitcnt {vmcnt = 0}
-  buffer_inv {sc1 = 1}
   return
 }
 

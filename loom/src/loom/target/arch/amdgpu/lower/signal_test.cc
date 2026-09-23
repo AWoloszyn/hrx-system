@@ -481,7 +481,8 @@ TEST_F(AmdgpuSignalTest, AddsOneWithCdnaWriteback) {
   ASSERT_EQ(atomic_ops.size(), 1u);
   ExpectSignalAddAtomic(atomic_ops[0], signal_address);
   EXPECT_EQ(loom_low_op_operands(atomic_ops[0]).count, 3u);
-  EXPECT_EQ(loom_low_op_attrs(atomic_ops[0]).count, 0u);
+  EXPECT_EQ(loom_low_op_attrs(atomic_ops[0]).count, 1u);
+  ExpectAttrI64(loom_low_op_attrs(atomic_ops[0]), IREE_SV("sc1"), 1);
 }
 
 TEST_F(AmdgpuSignalTest, AddsOneWithGfx12SystemScope) {

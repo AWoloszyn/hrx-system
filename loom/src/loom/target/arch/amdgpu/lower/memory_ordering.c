@@ -20,7 +20,7 @@ static bool loom_amdgpu_memory_ordering_available(
     const loom_low_descriptor_set_t* descriptor_set) {
   const loom_amdgpu_memory_coherence_rule_t* rule =
       loom_amdgpu_memory_coherence_rule(descriptor_set);
-  if (!rule || !rule->update_scopes) {
+  if (!rule) {
     return false;
   }
   loom_amdgpu_wait_packet_selection_t selection = {0};

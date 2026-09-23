@@ -352,16 +352,16 @@ iree_status_t loom_amdgpu_system_memory_append_release_store_attrs_scoped(
       attrs, attr_capacity, inout_attr_count);
 }
 
-iree_status_t loom_amdgpu_system_memory_append_no_return_atomic_attrs(
+iree_status_t loom_amdgpu_system_memory_append_atomic_attrs(
     loom_builder_t* builder, const loom_low_descriptor_set_t* descriptor_set,
     loom_named_attr_t* attrs, iree_host_size_t attr_capacity,
     iree_host_size_t* inout_attr_count) {
-  return loom_amdgpu_system_memory_append_no_return_atomic_attrs_scoped(
+  return loom_amdgpu_system_memory_append_atomic_attrs_scoped(
       builder, descriptor_set, LOOM_CACHE_SCOPE_SYSTEM, attrs, attr_capacity,
       inout_attr_count);
 }
 
-iree_status_t loom_amdgpu_system_memory_append_no_return_atomic_attrs_scoped(
+iree_status_t loom_amdgpu_system_memory_append_atomic_attrs_scoped(
     loom_builder_t* builder, const loom_low_descriptor_set_t* descriptor_set,
     loom_cache_scope_t scope, loom_named_attr_t* attrs,
     iree_host_size_t attr_capacity, iree_host_size_t* inout_attr_count) {
@@ -370,28 +370,6 @@ iree_status_t loom_amdgpu_system_memory_append_no_return_atomic_attrs_scoped(
   return loom_amdgpu_system_memory_append_attrs(
       builder, rule->atomic_attrs[scope == LOOM_CACHE_SCOPE_SYSTEM], scope,
       attrs, attr_capacity, inout_attr_count);
-}
-
-iree_status_t loom_amdgpu_system_memory_append_return_atomic_attrs(
-    loom_builder_t* builder, const loom_low_descriptor_set_t* descriptor_set,
-    loom_named_attr_t* attrs, iree_host_size_t attr_capacity,
-    iree_host_size_t* inout_attr_count) {
-  return loom_amdgpu_system_memory_append_return_atomic_attrs_scoped(
-      builder, descriptor_set, LOOM_CACHE_SCOPE_SYSTEM, attrs, attr_capacity,
-      inout_attr_count);
-}
-
-iree_status_t loom_amdgpu_system_memory_append_return_atomic_attrs_scoped(
-    loom_builder_t* builder, const loom_low_descriptor_set_t* descriptor_set,
-    loom_cache_scope_t scope, loom_named_attr_t* attrs,
-    iree_host_size_t attr_capacity, iree_host_size_t* inout_attr_count) {
-  const loom_amdgpu_memory_coherence_rule_t* rule =
-      loom_amdgpu_memory_coherence_rule(descriptor_set);
-  return loom_amdgpu_system_memory_append_attrs(
-      builder,
-      rule->atomic_attrs[scope == LOOM_CACHE_SCOPE_SYSTEM] |
-          rule->return_atomic_attrs,
-      scope, attrs, attr_capacity, inout_attr_count);
 }
 
 static iree_status_t loom_amdgpu_system_memory_build_resolved_packet(

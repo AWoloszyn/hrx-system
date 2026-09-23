@@ -90,26 +90,15 @@ iree_status_t loom_amdgpu_system_memory_append_release_store_attrs_scoped(
     loom_cache_scope_t scope, loom_named_attr_t* attrs,
     iree_host_size_t attr_capacity, iree_host_size_t* inout_attr_count);
 
-// Appends attrs for a system-scope no-return atomic update.
-iree_status_t loom_amdgpu_system_memory_append_no_return_atomic_attrs(
+// Appends coherence attrs for a system-scope atomic update. The descriptor
+// owns whether the packet returns the old value.
+iree_status_t loom_amdgpu_system_memory_append_atomic_attrs(
     loom_builder_t* builder, const loom_low_descriptor_set_t* descriptor_set,
     loom_named_attr_t* attrs, iree_host_size_t attr_capacity,
     iree_host_size_t* inout_attr_count);
 
-// Appends attrs for a no-return atomic update at |scope|.
-iree_status_t loom_amdgpu_system_memory_append_no_return_atomic_attrs_scoped(
-    loom_builder_t* builder, const loom_low_descriptor_set_t* descriptor_set,
-    loom_cache_scope_t scope, loom_named_attr_t* attrs,
-    iree_host_size_t attr_capacity, iree_host_size_t* inout_attr_count);
-
-// Appends attrs for a system-scope returning atomic update.
-iree_status_t loom_amdgpu_system_memory_append_return_atomic_attrs(
-    loom_builder_t* builder, const loom_low_descriptor_set_t* descriptor_set,
-    loom_named_attr_t* attrs, iree_host_size_t attr_capacity,
-    iree_host_size_t* inout_attr_count);
-
-// Appends attrs for a returning atomic update at |scope|.
-iree_status_t loom_amdgpu_system_memory_append_return_atomic_attrs_scoped(
+// Appends coherence attrs for an atomic update at |scope|.
+iree_status_t loom_amdgpu_system_memory_append_atomic_attrs_scoped(
     loom_builder_t* builder, const loom_low_descriptor_set_t* descriptor_set,
     loom_cache_scope_t scope, loom_named_attr_t* attrs,
     iree_host_size_t attr_capacity, iree_host_size_t* inout_attr_count);
