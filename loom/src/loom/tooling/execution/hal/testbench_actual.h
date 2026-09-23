@@ -327,9 +327,12 @@ loom_run_hal_testbench_actual_sequence_provider(
 //
 // When |input_parameters| is provided, scalar widths and HAL table offsets are
 // taken from the loaded executable's reflected ABI. A NULL parameter list uses
-// the source-type defaults required by backends without parameter reflection.
+// address carrier widths from |target_snapshot| for backends without parameter
+// reflection. |target_snapshot| may be NULL only when no input is an address
+// scalar.
 iree_status_t loom_run_hal_testbench_invocation_inputs_from_values(
     const loom_testbench_value_t* inputs, const loom_type_t* input_types,
+    const loom_target_snapshot_t* target_snapshot,
     const iree_hal_executable_function_parameter_t* input_parameters,
     iree_host_size_t input_count, loom_run_hal_invocation_options_t* options,
     iree_allocator_t allocator, loom_run_hal_binding_list_t* out_bindings);

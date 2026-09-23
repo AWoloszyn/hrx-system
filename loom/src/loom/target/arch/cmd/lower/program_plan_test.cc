@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <vector>
 
+#include "iree/base/alignment.h"
 #include "iree/io/vec_stream.h"
 #include "iree/testing/gtest.h"
 #include "iree/testing/status_matchers.h"
@@ -740,16 +741,19 @@ command.program.def public @parameterized() launch(%parameters: buffer, %target:
 
 TEST_F(CmdProgramPlanTest, OwnsBodylessEntryRequirementsAndArtifact) {
   ModulePtr source_module = ParseAndVerify(R"(
-kernel.entry.decl @configured_a(%scale: i8, %output: buffer)
+kernel.entry.decl @configured_a(%element_index: index, %byte_offset: offset, %raw_bits: i64, %scale: i8, %output: buffer)
 kernel.entry.decl @configured_b(%output: buffer)
 
 command.program.def public @bodyless() launch(%output: buffer) {
   %count_x = index.constant 7 : index
   %count_y = index.constant 5 : index
+  %element_index = index.constant 64 : index
+  %byte_offset = index.constant 4294967296 : offset
+  %raw_bits = scalar.constant 4886718345 : i64
   %scale = scalar.constant -1 : i8
   command.concurrent {
-    kernel.dispatch @configured_a[%count_x](%scale, %output) : [index](i8, buffer)
-    kernel.dispatch @configured_a[%count_x](%scale, %output) : [index](i8, buffer)
+    kernel.dispatch @configured_a[%count_x](%element_index, %byte_offset, %raw_bits, %scale, %output) : [index](index, offset, i64, i8, buffer)
+    kernel.dispatch @configured_a[%count_x](%element_index, %byte_offset, %raw_bits, %scale, %output) : [index](index, offset, i64, i8, buffer)
   }
   kernel.dispatch @configured_b[%count_x, %count_y](%output) : [index, index](buffer)
   command.return
@@ -798,6 +802,7 @@ command.program.def public @bodyless() launch(%output: buffer) {
       iree_make_const_byte_span(data.data, data.data_length), &program));
   EXPECT_EQ(program.requirements.executable_count, 2u);
   EXPECT_EQ(program.requirements.entry_count, 2u);
+  ASSERT_EQ(program.entry_schemas.count, 2u);
   ASSERT_EQ(program.commands.count, 3u);
   const loom_cmd_program_command_t first =
       loom_cmd_program_command_at(&program, 0);
@@ -813,6 +818,30 @@ command.program.def public @bodyless() launch(%output: buffer) {
   EXPECT_EQ(first.payload.dispatch_direct.workgroup_count_x, 7u);
   EXPECT_EQ(first.payload.dispatch_direct.workgroup_count_y, 1u);
   EXPECT_EQ(first.payload.dispatch_direct.workgroup_count_z, 1u);
+  const loom_cmd_program_entry_schema_t first_schema =
+      loom_cmd_program_entry_schema_at(&program, first.argument_schema_index);
+  EXPECT_EQ(first_schema.entry_index, 0u);
+  ASSERT_EQ(first_schema.argument_count, 5u);
+  EXPECT_EQ(first_schema.argument_byte_length, 49u);
+  EXPECT_EQ(loom_cmd_program_entry_schema_kind_at(&program, &first_schema, 0),
+            LOOM_CMD_PROGRAM_ARGUMENT_KIND_INDEX);
+  EXPECT_EQ(loom_cmd_program_entry_schema_kind_at(&program, &first_schema, 1),
+            LOOM_CMD_PROGRAM_ARGUMENT_KIND_OFFSET);
+  EXPECT_EQ(loom_cmd_program_entry_schema_kind_at(&program, &first_schema, 2),
+            LOOM_CMD_PROGRAM_ARGUMENT_KIND_B64);
+  EXPECT_EQ(loom_cmd_program_entry_schema_kind_at(&program, &first_schema, 3),
+            LOOM_CMD_PROGRAM_ARGUMENT_KIND_B8);
+  EXPECT_EQ(loom_cmd_program_entry_schema_kind_at(&program, &first_schema, 4),
+            LOOM_CMD_PROGRAM_ARGUMENT_KIND_BUFFER);
+  const iree_const_byte_span_t first_argument_data =
+      loom_cmd_program_command_argument_data(&program, &first);
+  ASSERT_EQ(first_argument_data.data_length, 49u);
+  EXPECT_EQ(iree_unaligned_load_le_u64(first_argument_data.data), 64u);
+  EXPECT_EQ(iree_unaligned_load_le_u64(first_argument_data.data + 8),
+            UINT64_C(4294967296));
+  EXPECT_EQ(iree_unaligned_load_le_u64(first_argument_data.data + 16),
+            UINT64_C(4886718345));
+  EXPECT_EQ(first_argument_data.data[24], 255u);
   EXPECT_EQ(third.payload.dispatch_direct.executable_index, 1u);
   EXPECT_EQ(third.payload.dispatch_direct.entry_index, 1u);
   EXPECT_EQ(third.payload.dispatch_direct.workgroup_count_x, 7u);

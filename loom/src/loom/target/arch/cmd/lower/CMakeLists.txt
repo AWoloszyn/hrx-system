@@ -232,6 +232,7 @@ loom_cc_test(
     ::program_plan_index
     ::serialize
     iree::base
+    iree::base::core_headers
     iree::base::internal::arena
     iree::io::stream
     iree::testing::gtest

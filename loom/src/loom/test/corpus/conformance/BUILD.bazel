@@ -115,6 +115,17 @@ loom_module(
 )
 
 loom_test(
+    name = "bitwise_table_index_test",
+    srcs = ["bitwise_table_index.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/spirv:vulkan1.3+bda+extended-types",
+    ],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+)
+
+loom_test(
     name = "condition_loops_test",
     srcs = ["condition_loops.loom"],
     compile_targets = [
@@ -172,6 +183,17 @@ loom_test(
 loom_test(
     name = "loop_termination_test",
     srcs = ["loop_termination.loom"],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+)
+
+loom_test(
+    name = "packed_lookup_widths_test",
+    srcs = ["packed_lookup_widths.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/spirv:vulkan1.3+bda+extended-types",
+    ],
     execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
 )
 

@@ -363,3 +363,20 @@ def test_vector_packed_float_conversion_rules_publish_contract_only_shape_rows()
                 )
             )
             assert GuardKind.VALUE_STATIC_ELEMENT_COUNT_EQ in guard_kinds
+
+
+def test_bitunpack_contract_preserves_packed_result_capacity() -> None:
+    compiled = _compiled_arithmetic_rules()
+
+    for source_op in (vector.vector_bitunpacku, vector.vector_bitunpacks):
+        maximum_lane_counts: list[int] = []
+        for rule in _rules_for_source_op(compiled, source_op):
+            guards = compiled.guards[
+                rule.guard_start : rule.guard_start + rule.guard_count
+            ]
+            maximum_lane_counts.extend(
+                guard.maximum_i64
+                for guard in guards
+                if guard.kind == GuardKind.VALUE_PACKED_INTEGER_LANES_FROM_PAYLOAD
+            )
+        assert sorted(maximum_lane_counts) == [32, 64]

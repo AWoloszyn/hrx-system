@@ -30,6 +30,7 @@ loom_cc_test(
   NAME
     facts_test
   SRCS
+    "facts_bitwise_test.cc"
     "facts_test.cc"
     "float_facts_test.cc"
   DEPS

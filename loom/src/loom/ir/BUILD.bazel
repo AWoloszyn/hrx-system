@@ -33,6 +33,7 @@ loom_cc_library(
 loom_cc_test(
     name = "facts_test",
     srcs = [
+        "facts_bitwise_test.cc",
         "facts_test.cc",
         "float_facts_test.cc",
     ],

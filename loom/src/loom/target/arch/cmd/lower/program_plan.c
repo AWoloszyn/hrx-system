@@ -284,7 +284,11 @@ static bool loom_cmd_program_plan_exact_scalar_bits(
     return false;
   }
 
-  if (bit_count <= 8) {
+  if (scalar_type == LOOM_SCALAR_TYPE_INDEX) {
+    *out_kind = LOOM_CMD_LOWER_DISPATCH_ARGUMENT_KIND_INDEX;
+  } else if (scalar_type == LOOM_SCALAR_TYPE_OFFSET) {
+    *out_kind = LOOM_CMD_LOWER_DISPATCH_ARGUMENT_KIND_OFFSET;
+  } else if (bit_count <= 8) {
     *out_kind = LOOM_CMD_LOWER_DISPATCH_ARGUMENT_KIND_B8;
   } else if (bit_count <= 16) {
     *out_kind = LOOM_CMD_LOWER_DISPATCH_ARGUMENT_KIND_B16;

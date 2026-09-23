@@ -1367,6 +1367,10 @@ void loom_value_facts_shrsi(const loom_value_facts_t* lhs,
 // Transfer functions: bitwise
 //===----------------------------------------------------------------------===//
 
+// OR and XOR cannot introduce bits above either nonnegative operand's highest
+// possible set bit. Filling the lower bits is necessary: combining just the
+// endpoints would miss results such as 7 | 8 from two [0, 8] ranges. The signed
+// nonnegative domain limits bit_count to 63, including an INT64_MAX endpoint.
 static int64_t loom_value_facts_non_negative_bitwise_upper_bound(
     int64_t lhs_hi, int64_t rhs_hi) {
   uint64_t maximum_operand = (uint64_t)iree_max(lhs_hi, rhs_hi);
@@ -1447,29 +1451,19 @@ void loom_value_facts_ori(const loom_value_facts_t* lhs,
     return;
   }
 
-  // OR with a known non-zero exact value always produces non-zero.
-  // Use range [1, MAX] when either operand is exact and non-zero
-  // and the other is non-negative.
-  bool either_exact_nonzero =
-      (lhs_lo == lhs_hi && lhs_lo != 0) || (rhs_lo == rhs_hi && rhs_lo != 0);
-
-  // Both non-negative: result is non-negative.
+  // OR retains each nonnegative operand's set bits without introducing bits
+  // above the wider operand's bound.
   if (lhs_lo >= 0 && rhs_lo >= 0) {
-    int64_t lo = iree_max(lhs_lo, rhs_lo);
-    if (either_exact_nonzero && lo == 0) {
-      lo = 1;
-    }
-    *out = loom_value_facts_make(lo, INT64_MAX, 1);
-    loom_value_facts_propagate_bitwise_flags(&lhs_facts, &rhs_facts, out);
-    return;
-  }
-  // General case: if either operand is exact non-zero, the result
-  // is guaranteed non-zero (OR preserves set bits).
-  if (either_exact_nonzero) {
-    *out = loom_value_facts_make(INT64_MIN, INT64_MAX, 1);
-    out->flags |= LOOM_VALUE_FACT_NON_ZERO;
+    *out = loom_value_facts_make(
+        iree_max(lhs_lo, rhs_lo),
+        loom_value_facts_non_negative_bitwise_upper_bound(lhs_hi, rhs_hi), 1);
   } else {
     *out = loom_value_facts_unknown();
+  }
+  // A set bit survives OR regardless of sign or how nonzero was established.
+  if (loom_value_facts_is_non_zero(lhs_facts) ||
+      loom_value_facts_is_non_zero(rhs_facts)) {
+    out->flags |= LOOM_VALUE_FACT_NON_ZERO;
   }
   loom_value_facts_propagate_bitwise_flags(&lhs_facts, &rhs_facts, out);
 }

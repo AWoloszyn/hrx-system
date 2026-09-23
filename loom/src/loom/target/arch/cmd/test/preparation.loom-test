@@ -522,7 +522,7 @@ low.func.def public retain target<cmd.core> abi(command_program) abi_layout({ent
 
 // RUN: emit command-program @bodyless_dispatch
 
-kernel.entry.decl @configured_a(%scale: i8, %fp8e4: f8E4M3, %fp8e5: f8E5M2, %gain: f16, %offset: bf16, %bias: f32, %threshold: f64, %slice: view<4xi32>, %output: buffer)
+kernel.entry.decl @configured_a(%element_index: index, %byte_offset: offset, %scale: i8, %fp8e4: f8E4M3, %fp8e5: f8E5M2, %gain: f16, %offset: bf16, %bias: f32, %threshold: f64, %slice: view<4xi32>, %output: buffer)
 
 kernel.entry.decl @configured_b(%output: buffer)
 
@@ -530,6 +530,8 @@ command.program.def public @bodyless_dispatch() launch(%output: buffer) {
   %count_x = index.constant 7 : index
   %count_y = index.constant 3 : index
   %c0 = index.constant 0 : offset
+  %element_index = index.constant 64 : index
+  %byte_offset = index.constant 4294967296 : offset
   %scale = scalar.constant -1 : i8
   %fp8e4 = scalar.constant 1.0 : f8E4M3
   %fp8e5 = scalar.constant 1.0 : f8E5M2
@@ -539,8 +541,8 @@ command.program.def public @bodyless_dispatch() launch(%output: buffer) {
   %threshold = scalar.constant 1.0000000000000002 : f64
   %slice = buffer.view %output[%c0] : buffer -> view<4xi32>
   command.concurrent {
-    kernel.dispatch @configured_a[%count_x, %count_y](%scale, %fp8e4, %fp8e5, %gain, %offset, %bias, %threshold, %slice, %output) : [index, index](i8, f8E4M3, f8E5M2, f16, bf16, f32, f64, view<4xi32>, buffer)
-    kernel.dispatch @configured_a[%count_x, %count_y](%scale, %fp8e4, %fp8e5, %gain, %offset, %bias, %threshold, %slice, %output) : [index, index](i8, f8E4M3, f8E5M2, f16, bf16, f32, f64, view<4xi32>, buffer)
+    kernel.dispatch @configured_a[%count_x, %count_y](%element_index, %byte_offset, %scale, %fp8e4, %fp8e5, %gain, %offset, %bias, %threshold, %slice, %output) : [index, index](index, offset, i8, f8E4M3, f8E5M2, f16, bf16, f32, f64, view<4xi32>, buffer)
+    kernel.dispatch @configured_a[%count_x, %count_y](%element_index, %byte_offset, %scale, %fp8e4, %fp8e5, %gain, %offset, %bias, %threshold, %slice, %output) : [index, index](index, offset, i8, f8E4M3, f8E5M2, f16, bf16, f32, f64, view<4xi32>, buffer)
   }
   kernel.dispatch @configured_b[%count_x](%output) : [index](buffer)
   command.return
@@ -548,27 +550,29 @@ command.program.def public @bodyless_dispatch() launch(%output: buffer) {
 
 // ----
 low.func.def public retain target<cmd.core> abi(command_program) abi_layout({entry_count = 2, executable_count = 2, fixed_buffer_count = 0, rebindable_binding_count = 1}) @bodyless_dispatch() asm {
-  %22 = resource<command_input> {index = 0, source_type = buffer} : reg<cmd.binding>
-  %23 = resource<command_input> {index = 0, source_type = index} : reg<cmd.executable>
-  %24 = resource<command_input> {index = 1, source_type = index} : reg<cmd.executable>
-  %25 = resource<command_input> {index = 0, source_type = index} : reg<cmd.entry>
-  %26 = resource<command_input> {index = 1, source_type = index} : reg<cmd.entry>
-  %27 = cmd.constant.u64 0
-  %28 = cmd.constant.u64 -1
-  %29 = cmd.constant.u64 16
-  %30 = cmd.constant.u32 7
-  %31 = cmd.constant.u32 3
-  %32 = cmd.constant.u32 1
-  %33 = cmd.constant.b8 255
-  %34 = cmd.constant.b8 56
-  %35 = cmd.constant.b8 60
-  %36 = cmd.constant.b16 49152
-  %37 = cmd.constant.b16 16256
-  %38 = cmd.constant.b32 1069547520
-  %39 = cmd.constant.b64 4607182418800017409
-  cmd.dispatch.direct<%23, %25>[%30, %31, %32](%33, %34, %35, %36, %37, %38, %39, %22, %27, %29, %22, %27, %28)
-  cmd.dispatch.direct<%23, %25>[%30, %31, %32](%33, %34, %35, %36, %37, %38, %39, %22, %27, %29, %22, %27, %28)
-  cmd.dispatch.direct.barrier<%24, %26>[%30, %32, %32](%22, %27, %28)
+  %26 = resource<command_input> {index = 0, source_type = buffer} : reg<cmd.binding>
+  %27 = resource<command_input> {index = 0, source_type = index} : reg<cmd.executable>
+  %28 = resource<command_input> {index = 1, source_type = index} : reg<cmd.executable>
+  %29 = resource<command_input> {index = 0, source_type = index} : reg<cmd.entry>
+  %30 = resource<command_input> {index = 1, source_type = index} : reg<cmd.entry>
+  %31 = cmd.constant.u64 0
+  %32 = cmd.constant.u64 -1
+  %33 = cmd.constant.u64 16
+  %34 = cmd.constant.u32 7
+  %35 = cmd.constant.u32 3
+  %36 = cmd.constant.u32 1
+  %37 = cmd.constant.index 64
+  %38 = cmd.constant.offset 4294967296
+  %39 = cmd.constant.b8 255
+  %40 = cmd.constant.b8 56
+  %41 = cmd.constant.b8 60
+  %42 = cmd.constant.b16 49152
+  %43 = cmd.constant.b16 16256
+  %44 = cmd.constant.b32 1069547520
+  %45 = cmd.constant.b64 4607182418800017409
+  cmd.dispatch.direct<%27, %29>[%34, %35, %36](%37, %38, %39, %40, %41, %42, %43, %44, %45, %26, %31, %33, %26, %31, %32)
+  cmd.dispatch.direct<%27, %29>[%34, %35, %36](%37, %38, %39, %40, %41, %42, %43, %44, %45, %26, %31, %33, %26, %31, %32)
+  cmd.dispatch.direct.barrier<%28, %30>[%34, %36, %36](%26, %31, %32)
   return
 }
 

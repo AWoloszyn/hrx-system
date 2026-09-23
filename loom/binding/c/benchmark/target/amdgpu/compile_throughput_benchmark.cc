@@ -21,6 +21,7 @@
 #include "loom/binding/c/benchmark/kernels/ffn_gate_up_smoke.h"
 #include "loom/binding/c/benchmark/kernels/ffn_routed_gate_up_smoke.h"
 #include "loom/binding/c/benchmark/kernels/synthetic_i32_chain_smoke.h"
+#include "loom/binding/c/benchmark/kernels/synthetic_packed_table_lookup_smoke.h"
 #include "loom/binding/c/benchmark/kernels/synthetic_paired_matrix_smoke.h"
 #include "loom/binding/c/benchmark/kernels/synthetic_pipeline_smoke.h"
 #include "loom/binding/c/benchmark/kernels/synthetic_unroll_smoke.h"
@@ -321,6 +322,18 @@ const EmbeddedSource kI32MemoryChainSource = FindEmbeddedSource(
           /*.input_size_config_symbol=*/"benchmark.unroll_count",
       },
       {8, 16, 32, 64, 128, 256, 512, 1024}, {8, 32, 128, 512, 1024});
+  RegisterInputScalingCompileBenchmarks(
+      kAmdgpuWorkloadTarget, "PackedTableLookupU4",
+      {
+          /*.source=*/FindEmbeddedSource(
+              loomc_benchmark_synthetic_packed_table_lookup_smoke_create(),
+              loomc_benchmark_synthetic_packed_table_lookup_smoke_size(),
+              "packed_table_lookup_u4.loom"),
+          /*.function_symbol=*/"packed_table_lookup_u4",
+          /*.artifact_identifier=*/"packed_table_lookup_u4.hsaco",
+          /*.input_size_config_symbol=*/"benchmark.lookup_lane_count",
+      },
+      {4, 8, 16, 32, 64}, {4, 8, 16, 32, 64});
   RegisterInputScalingCompileBenchmarks(
       kAmdgpuWorkloadTarget, "PairedMatrixHelpers",
       {

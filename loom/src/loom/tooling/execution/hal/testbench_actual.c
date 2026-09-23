@@ -760,6 +760,7 @@ iree_status_t loom_run_hal_testbench_actual_provider_compile(
 
 static iree_status_t loom_run_hal_testbench_invocation_options_push_constant(
     const loom_testbench_value_t* value, loom_type_t source_type,
+    const loom_target_snapshot_t* target_snapshot,
     const iree_hal_executable_function_parameter_t* parameter,
     loom_run_hal_invocation_options_t* options) {
   if (!loom_testbench_value_is_scalar(value)) {
@@ -805,7 +806,24 @@ static iree_status_t loom_run_hal_testbench_invocation_options_push_constant(
     int64_t integer_value = 0;
     IREE_RETURN_IF_ERROR(loom_testbench_value_as_i64(value, &integer_value));
     if (abi_word_count == 0) {
-      abi_word_count = source_scalar_type == LOOM_SCALAR_TYPE_INDEX ? 1 : 2;
+      if (target_snapshot == NULL) {
+        return iree_make_status(
+            IREE_STATUS_FAILED_PRECONDITION,
+            "HAL dispatch %s constant requires a selected target carrier",
+            loom_scalar_type_name(source_scalar_type));
+      }
+      const uint32_t target_bitwidth =
+          source_scalar_type == LOOM_SCALAR_TYPE_INDEX
+              ? target_snapshot->index_bitwidth
+              : target_snapshot->offset_bitwidth;
+      if (target_bitwidth != 32 && target_bitwidth != 64) {
+        return iree_make_status(
+            IREE_STATUS_FAILED_PRECONDITION,
+            "HAL dispatch %s constant has unsupported target carrier width %u",
+            loom_scalar_type_name(source_scalar_type),
+            (unsigned)target_bitwidth);
+      }
+      abi_word_count = target_bitwidth / 32;
     }
     if (abi_word_count != 1 && abi_word_count != 2) {
       return iree_make_status(
@@ -813,11 +831,20 @@ static iree_status_t loom_run_hal_testbench_invocation_options_push_constant(
           "HAL dispatch %s constant has unsupported ABI word count %" PRIhsz,
           loom_scalar_type_name(source_scalar_type), abi_word_count);
     }
-    if (abi_word_count == 1 &&
-        (integer_value < INT32_MIN || integer_value > UINT32_MAX)) {
+    if (source_scalar_type == LOOM_SCALAR_TYPE_OFFSET && integer_value < 0) {
+      return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                              "HAL dispatch offset constant value %" PRId64
+                              " is negative",
+                              integer_value);
+    }
+    const bool fits_32_bit_carrier =
+        source_scalar_type == LOOM_SCALAR_TYPE_INDEX
+            ? integer_value >= INT32_MIN && integer_value <= INT32_MAX
+            : (uint64_t)integer_value <= UINT32_MAX;
+    if (abi_word_count == 1 && !fits_32_bit_carrier) {
       return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                               "HAL dispatch %s constant value %" PRId64
-                              " does not fit the 32-bit direct-constant ABI",
+                              " does not fit its 32-bit target carrier",
                               loom_scalar_type_name(source_scalar_type),
                               integer_value);
     }
@@ -909,7 +936,7 @@ static iree_status_t loom_run_hal_testbench_append_buffer_binding(
 
 static iree_status_t loom_run_hal_testbench_input_append(
     loom_run_hal_binding_list_t* bindings, const loom_testbench_value_t* input,
-    loom_type_t input_type,
+    loom_type_t input_type, const loom_target_snapshot_t* target_snapshot,
     const iree_hal_executable_function_parameter_t* parameter,
     loom_run_hal_invocation_options_t* options) {
   if (loom_testbench_value_is_buffer(input)) {
@@ -918,7 +945,7 @@ static iree_status_t loom_run_hal_testbench_input_append(
   }
   if (loom_testbench_value_is_scalar(input)) {
     return loom_run_hal_testbench_invocation_options_push_constant(
-        input, input_type, parameter, options);
+        input, input_type, target_snapshot, parameter, options);
   }
   return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                           "HAL invocation input must be a buffer binding or "
@@ -927,6 +954,7 @@ static iree_status_t loom_run_hal_testbench_input_append(
 
 iree_status_t loom_run_hal_testbench_invocation_inputs_from_values(
     const loom_testbench_value_t* inputs, const loom_type_t* input_types,
+    const loom_target_snapshot_t* target_snapshot,
     const iree_hal_executable_function_parameter_t* input_parameters,
     iree_host_size_t input_count, loom_run_hal_invocation_options_t* options,
     iree_allocator_t allocator, loom_run_hal_binding_list_t* out_bindings) {
@@ -944,7 +972,8 @@ iree_status_t loom_run_hal_testbench_invocation_inputs_from_values(
     const iree_hal_executable_function_parameter_t* parameter =
         input_parameters != NULL ? &input_parameters[i] : NULL;
     status = loom_run_hal_testbench_input_append(
-        out_bindings, &inputs[i], input_types[i], parameter, options);
+        out_bindings, &inputs[i], input_types[i], target_snapshot, parameter,
+        options);
   }
   if (!iree_status_is_ok(status)) {
     loom_run_hal_binding_list_deinitialize(out_bindings);
@@ -1039,7 +1068,9 @@ iree_status_t loom_run_hal_testbench_actual_invoke(
             ? &provider->function_parameters[i]
             : NULL;
     status = loom_run_hal_testbench_input_append(
-        &bindings, &inputs[i], input_type, parameter, &invocation_options);
+        &bindings, &inputs[i], input_type,
+        &provider->launch_config_target_facts->storage.snapshot, parameter,
+        &invocation_options);
     if (!iree_status_is_ok(status)) {
       status = iree_status_annotate_f(
           status, "preparing HAL actual input %" PRIhsz " for value ID %u", i,
@@ -1482,7 +1513,9 @@ static iree_status_t loom_run_hal_testbench_actual_sequence_prepare_sample(
       } else {
         IREE_RETURN_IF_ERROR(
             loom_run_hal_testbench_invocation_options_push_constant(
-                input, input_type, parameter, &step->options));
+                input, input_type,
+                &provider->launch_config_target_facts->storage.snapshot,
+                parameter, &step->options));
       }
     }
   }
@@ -1746,7 +1779,9 @@ iree_status_t loom_run_hal_testbench_materialize_invocation_from_table(
               ? &provider->function_parameters[i]
               : NULL;
       status = loom_run_hal_testbench_input_append(
-          out_bindings, &value, input_type, parameter, out_options);
+          out_bindings, &value, input_type,
+          &provider->launch_config_target_facts->storage.snapshot, parameter,
+          out_options);
     }
     loom_testbench_value_deinitialize(&value);
   }
