@@ -757,6 +757,8 @@ def test_wide_vector_memory_rules_preserve_two_native_chunks() -> None:
         ("f16", "i16", 2, 64),
         ("bf16", "bf16", 2, 64),
         ("i32", "i32", 4, 32),
+        ("i64", "i64", 8, 16),
+        ("f64", "f64", 8, 16),
     )
     expected_static_ranges = (
         (-512, 384, 0, 0, False),

@@ -2,7 +2,7 @@
   "version": 1,
   "cases": [
     {
-      "name": "64-bit vector memory preserves payloads, split loads, and exact extents on NPU2",
+      "name": "64-bit vector memory preserves native and wide payloads, split loads, and exact extents on NPU2",
       "steps": [
         {
           "name": "fixtures",
@@ -32,10 +32,10 @@
               "contains": {
                 "unordered": [
                   {
-                    "regex": "COMPILE-REPORT: pipeline\\.worker\\[0\\] .* code_bytes=524 code_capacity_bytes=16384 .* max_bank_storage_bytes=1024 bank_capacity_bytes=16384\\n"
+                    "regex": "COMPILE-REPORT: pipeline\\.worker\\[0\\] .* code_bytes=696 code_capacity_bytes=16384 .* max_bank_storage_bytes=1536 bank_capacity_bytes=16384\\n"
                   },
                   {
-                    "regex": "COMPILE-REPORT: static_instruction_mix .* memory_read_bytes=288 memory_write_bytes=1312 "
+                    "regex": "COMPILE-REPORT: static_instruction_mix .* memory_read_bytes=544 memory_write_bytes=2080 "
                   }
                 ]
               }
