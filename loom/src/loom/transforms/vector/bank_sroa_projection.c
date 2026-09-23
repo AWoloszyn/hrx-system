@@ -26,11 +26,10 @@ typedef struct loom_vector_bank_sroa_endpoint_plan_t
 // discovered on the same recurrence.
 typedef enum loom_vector_bank_sroa_blocker_e {
   LOOM_VECTOR_BANK_SROA_BLOCKER_NONE = 0,
-  LOOM_VECTOR_BANK_SROA_BLOCKER_UNSUPPORTED_VALUE_USE = 1,
-  LOOM_VECTOR_BANK_SROA_BLOCKER_VALUE_METADATA_USE = 2,
-  LOOM_VECTOR_BANK_SROA_BLOCKER_INCONSISTENT_COMPONENT_ACCESS = 3,
-  LOOM_VECTOR_BANK_SROA_BLOCKER_NON_STATIC_COMPONENT_ACCESS = 4,
-  LOOM_VECTOR_BANK_SROA_BLOCKER_COMPONENT_COUNT_LIMIT = 5,
+  LOOM_VECTOR_BANK_SROA_BLOCKER_VALUE_METADATA_USE = 1,
+  LOOM_VECTOR_BANK_SROA_BLOCKER_INCONSISTENT_COMPONENT_ACCESS = 2,
+  LOOM_VECTOR_BANK_SROA_BLOCKER_NON_STATIC_COMPONENT_ACCESS = 3,
+  LOOM_VECTOR_BANK_SROA_BLOCKER_COMPONENT_COUNT_LIMIT = 4,
 } loom_vector_bank_sroa_blocker_t;
 
 typedef struct loom_vector_bank_sroa_state_node_t {
@@ -500,8 +499,6 @@ static iree_status_t loom_vector_bank_sroa_scan_endpoint(
       }
 
       endpoint->uses_supported = false;
-      loom_vector_bank_sroa_record_blocker(
-          plan, bank, LOOM_VECTOR_BANK_SROA_BLOCKER_UNSUPPORTED_VALUE_USE);
     }
   }
   return iree_ok_status();
@@ -973,8 +970,6 @@ static iree_string_view_t loom_vector_bank_sroa_blocker_name(
   switch (blocker) {
     case LOOM_VECTOR_BANK_SROA_BLOCKER_NONE:
       return IREE_SV("none");
-    case LOOM_VECTOR_BANK_SROA_BLOCKER_UNSUPPORTED_VALUE_USE:
-      return IREE_SV("unsupported_value_use");
     case LOOM_VECTOR_BANK_SROA_BLOCKER_VALUE_METADATA_USE:
       return IREE_SV("value_metadata_use");
     case LOOM_VECTOR_BANK_SROA_BLOCKER_INCONSISTENT_COMPONENT_ACCESS:
@@ -995,12 +990,23 @@ static bool loom_vector_bank_sroa_blocker_is_component_access(
          blocker == LOOM_VECTOR_BANK_SROA_BLOCKER_COMPONENT_COUNT_LIMIT;
 }
 
+static bool loom_vector_bank_sroa_bank_uses_supported(
+    const loom_vector_bank_sroa_bank_plan_t* bank) {
+  for (uint8_t i = 0; i < bank->endpoint_count; ++i) {
+    if (!bank->endpoints[i].uses_supported) {
+      return false;
+    }
+  }
+  return true;
+}
+
 static void loom_vector_bank_sroa_report_decision(
     const loom_boundary_projection_function_t* function,
     const loom_vector_bank_sroa_bank_plan_t* bank,
     iree_string_view_t* out_outcome, iree_string_view_t* out_reason) {
   const loom_boundary_projection_slot_t* candidate =
       &function->candidates[bank->endpoints[0].candidate];
+  const bool uses_supported = loom_vector_bank_sroa_bank_uses_supported(bank);
   if (function->selected && candidate->selected) {
     *out_outcome = IREE_SV("selected");
     *out_reason = IREE_SV("static_component_accesses");
@@ -1011,6 +1017,8 @@ static void loom_vector_bank_sroa_report_decision(
     *out_outcome = IREE_SV("rejected");
     if (bank->blocker != LOOM_VECTOR_BANK_SROA_BLOCKER_NONE) {
       *out_reason = loom_vector_bank_sroa_blocker_name(bank->blocker);
+    } else if (!uses_supported) {
+      *out_reason = IREE_SV("unsupported_value_use");
     } else if (!bank->loop->eligible) {
       *out_reason = IREE_SV("peer_bank_rejected");
     } else {
@@ -1027,9 +1035,8 @@ static void loom_vector_bank_sroa_report_decision(
     *out_reason =
         bank->blocker == LOOM_VECTOR_BANK_SROA_BLOCKER_VALUE_METADATA_USE
             ? IREE_SV("value_metadata_use")
-        : bank->blocker == LOOM_VECTOR_BANK_SROA_BLOCKER_UNSUPPORTED_VALUE_USE
-            ? IREE_SV("whole_value_use")
-            : IREE_SV("no_component_access");
+        : !uses_supported ? IREE_SV("whole_value_use")
+                          : IREE_SV("no_component_access");
   }
 }
 
