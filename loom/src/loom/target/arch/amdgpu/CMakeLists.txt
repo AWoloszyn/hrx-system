@@ -538,7 +538,9 @@ if(LOOM_TARGET_ARCH_AMDGPU)
 iree_native_test(
   NAME
     "memory_stability"
+  WORKING_DIRECTORY "${IREE_ROOT_DIR}"
   ARGS
+    "--template-root=."
     "{{${CMAKE_CURRENT_SOURCE_DIR}/test/source_low/memory_stability.loom-test}}"
   SRC
     loom::tools::loom-check::loom-check-test
@@ -750,7 +752,9 @@ if(LOOM_TARGET_ARCH_AMDGPU)
 iree_native_test(
   NAME
     "source_low_memory_float64"
+  WORKING_DIRECTORY "${IREE_ROOT_DIR}"
   ARGS
+    "--template-root=."
     "{{${CMAKE_CURRENT_SOURCE_DIR}/test/source_low/source_low_memory_float64.loom-test}}"
   SRC
     loom::tools::loom-check::loom-check-test

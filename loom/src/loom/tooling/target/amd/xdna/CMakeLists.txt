@@ -13,7 +13,9 @@ if(LOOM_BUILD AND LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA AND LOOM_IMPORT_CXX)
 iree_native_test(
   NAME
     "assembly_lowering"
+  WORKING_DIRECTORY "${IREE_ROOT_DIR}"
   ARGS
+    "--template-root=."
     "{{${CMAKE_CURRENT_SOURCE_DIR}/test/assembly.cxx-test}}"
   SRC
     loom::tools::loom-check
