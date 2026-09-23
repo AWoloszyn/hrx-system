@@ -38,6 +38,7 @@
 #include "loom/import/cxx/source/locations.h"
 #include "loom/import/cxx/source/source.h"
 #include "loom/import/cxx/symbol/functions.h"
+#include "loom/import/cxx/value/bitcast.h"
 #include "loom/import/cxx/value/representation.h"
 #include "loom/import/cxx/value/scalar.h"
 #include "loom/import/cxx/value/signature.h"
@@ -927,22 +928,10 @@ class Translator {
                                        cast->type, ast);
     }
     if (auto* cast = cxx::ast_cast<cxx::BuiltinBitCastExpressionAST>(ast)) {
-      auto input = types_.get(cast->expression->type, ast);
-      auto output = types_.get(cast->type, ast);
-      if (loom_type_kind(input) != loom_type_kind(output) ||
-          (loom_type_kind(input) != LOOM_TYPE_SCALAR &&
-           loom_type_kind(input) != LOOM_TYPE_VECTOR) ||
-          unit_.control()->memoryLayout()->sizeOf(cast->expression->type) !=
-              unit_.control()->memoryLayout()->sizeOf(cast->type)) {
-        fail(ast,
-             "bit_cast requires equal-width scalars or equal-width vectors");
-      }
+      BitCast conversion(unit_, diagnostics_, types_, cast->expression->type,
+                         cast->type, ast);
       auto value = expression(cast->expression).ssa();
-      loom_op_t* op;
-      auto build = types_.vector(cast->type) ? loom_vector_bitcast_build
-                                             : loom_scalar_bitcast_build;
-      check(build(&builder_, value, input, output, source, &op));
-      return result(op);
+      return conversion.build(builder_, value, source);
     }
     if (auto* cast = cxx::ast_cast<cxx::CastExpressionAST>(ast)) {
       auto input = loom_type_kind(types_.get(cast->expression->type, ast));

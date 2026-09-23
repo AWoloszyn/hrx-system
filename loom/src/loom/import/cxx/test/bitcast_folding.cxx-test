@@ -1,0 +1,59 @@
+// RUN: pass vector-to-scalar,canonicalize,cse,dce
+using Bytes4 = unsigned char __attribute__((ext_vector_type(4)));
+unsigned entry() { return __builtin_bit_cast(unsigned, Bytes4{0x12, 0x34, 0x56, 0x78}); }
+
+// ----
+func.def public @entry() -> (i32) {
+  %25 = scalar.constant 2018915346 : i32
+  func.return %25 : i32
+}
+
+// ====
+using Bytes4 = unsigned char __attribute__((ext_vector_type(4)));
+unsigned entry() { return __builtin_bit_cast(Bytes4, 0x78563412u)[2]; }
+
+// ----
+func.def public @entry() -> (i32) {
+  %13 = scalar.constant 86 : i32
+  func.return %13 : i32
+}
+
+// ====
+using Bytes4 = unsigned char __attribute__((ext_vector_type(4)));
+unsigned entry() {
+  auto value = __builtin_bit_cast(float, Bytes4{0, 0, 0, 0x80});
+  auto bytes = __builtin_bit_cast(Bytes4, value);
+  return __builtin_bit_cast(unsigned, bytes);
+}
+
+// ----
+func.def public @entry() -> (i32) {
+  %65 = scalar.constant -2147483648 : i32
+  func.return %65 : i32
+}
+
+// ====
+using Bytes4 = unsigned char __attribute__((ext_vector_type(4)));
+unsigned entry() {
+  auto value = __builtin_bit_cast(float, Bytes4{0x45, 0x23, 0x81, 0x7F});
+  auto bytes = __builtin_bit_cast(Bytes4, value);
+  return __builtin_bit_cast(unsigned, bytes);
+}
+
+// ----
+func.def public @entry() -> (i32) {
+  %84 = scalar.constant 2139169605 : i32
+  func.return %84 : i32
+}
+
+// ====
+using Halves2 = _Float16 __attribute__((ext_vector_type(2)));
+unsigned entry() {
+  return __builtin_bit_cast(unsigned, Halves2{(_Float16)1.0f, (_Float16)-0.0f});
+}
+
+// ----
+func.def public @entry() -> (i32) {
+  %16 = scalar.constant -2147468288 : i32
+  func.return %16 : i32
+}
