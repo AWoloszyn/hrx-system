@@ -1069,6 +1069,90 @@ TEST_F(FactTableTest, ClonedPayloadOutlivesSourceArena) {
   EXPECT_EQ(result.lanes[1].known_divisor, 16);
 }
 
+TEST_F(FactTableTest, CrossTableClonesReuseOwnedArrayAndRawPayloads) {
+  loom_value_fact_table_t target = {0};
+  IREE_ASSERT_OK(loom_value_fact_table_initialize(&target, &arena_, 0));
+  // Destination IDs differ from source IDs, even for identical payloads.
+  loom_value_facts_t padding;
+  IREE_ASSERT_OK(loom_value_facts_make_uniform_element(
+      &target.context, loom_value_facts_exact_i64(99), &padding));
+  loom_value_facts_t copied[3];
+  uint8_t payload[LOOM_VALUE_FACT_RAW_PAYLOAD_LENGTH_LIMIT];
+  for (size_t i = 0; i < IREE_ARRAYSIZE(payload); ++i) {
+    payload[i] = static_cast<uint8_t>(i);
+  }
+  {
+    iree_arena_allocator_t source_arena;
+    iree_arena_initialize(&block_pool_, &source_arena);
+    loom_value_fact_table_t source = {0};
+    IREE_ASSERT_OK(loom_value_fact_table_initialize(&source, &source_arena, 0));
+    loom_value_facts_t elements[LOOM_VALUE_FACT_SMALL_STATIC_LANE_LIMIT];
+    for (size_t i = 0; i < IREE_ARRAYSIZE(elements); ++i) {
+      elements[i] = loom_value_facts_make(i, i + 16, 1);
+    }
+    loom_value_facts_t original[3];
+    IREE_ASSERT_OK(loom_value_facts_make_extension_payload(
+        &source.context, kTestRawPayloadTag, payload, sizeof(payload),
+        &original[2]));
+    // Type-owned lane extensions must be imported before interning the array.
+    elements[0].extension_id = original[2].extension_id;
+    IREE_ASSERT_OK(loom_value_facts_make_small_static_lanes(
+        &source.context, {elements, IREE_ARRAYSIZE(elements)}, &original[0]));
+    elements[0].extension_id = LOOM_VALUE_FACT_EXTENSION_ID_NONE;
+    loom_value_fact_encoding_summary_t summary = {};
+    summary.role = LOOM_ENCODING_ROLE_ADDRESS_LAYOUT;
+    summary.address_layout = {LOOM_VALUE_FACT_ADDRESS_LAYOUT_STRIDED,
+                              LOOM_TYPE_MAX_RANK, elements};
+    IREE_ASSERT_OK(loom_value_facts_make_encoding_summary(
+        &source.context, summary, &original[1]));
+    for (size_t i = 0; i < IREE_ARRAYSIZE(original); ++i) {
+      IREE_ASSERT_OK(loom_value_fact_table_clone_fact(&target, &source,
+                                                      original[i], &copied[i]));
+      EXPECT_NE(copied[i].extension_id, original[i].extension_id);
+      EXPECT_TRUE(loom_value_fact_table_facts_equal(&source, original[i],
+                                                    &target, copied[i]));
+    }
+    const auto used_bytes = arena_.used_allocation_size;
+    const auto extension_count = target.extensions.count;
+    for (int iteration = 0; iteration < 16; ++iteration) {
+      for (size_t i = 0; i < IREE_ARRAYSIZE(original); ++i) {
+        loom_value_facts_t repeated;
+        IREE_ASSERT_OK(loom_value_fact_table_clone_fact(
+            &target, &source, original[i], &repeated));
+        EXPECT_TRUE(loom_value_facts_equal(repeated, copied[i]));
+        EXPECT_EQ(arena_.used_allocation_size, used_bytes);
+        EXPECT_EQ(target.extensions.count, extension_count);
+      }
+    }
+    iree_arena_deinitialize(&source_arena);
+    iree_arena_block_pool_trim(&block_pool_);
+  }
+  loom_value_fact_small_static_lanes_t lanes;
+  ASSERT_TRUE(loom_value_facts_query_small_static_lanes(&target.context,
+                                                        copied[0], &lanes));
+  ASSERT_EQ(lanes.count, LOOM_VALUE_FACT_SMALL_STATIC_LANE_LIMIT);
+  for (size_t i = 0; i < lanes.count; ++i) {
+    EXPECT_EQ(lanes.lanes[i].range_lo, i);
+    EXPECT_EQ(lanes.lanes[i].range_hi, i + 16);
+  }
+  EXPECT_EQ(lanes.lanes[0].extension_id, copied[2].extension_id);
+  loom_value_fact_encoding_summary_t summary;
+  ASSERT_TRUE(loom_value_facts_query_encoding_summary(&target.context,
+                                                      copied[1], &summary));
+  ASSERT_EQ(summary.address_layout.rank, LOOM_TYPE_MAX_RANK);
+  for (size_t i = 0; i < summary.address_layout.rank; ++i) {
+    EXPECT_EQ(summary.address_layout.strides[i].range_lo, i);
+    EXPECT_EQ(summary.address_layout.strides[i].range_hi, i + 16);
+  }
+  const void* copied_payload = nullptr;
+  iree_host_size_t copied_length = 0;
+  ASSERT_TRUE(loom_value_facts_query_extension_payload(
+      &target.context, copied[2], kTestRawPayloadTag, &copied_payload,
+      &copied_length));
+  ASSERT_EQ(copied_length, sizeof(payload));
+  EXPECT_EQ(std::memcmp(copied_payload, payload, sizeof(payload)), 0);
+}
+
 TEST_F(FactTableTest, TypeOwnedRawPayloadClonesAndMeetsThroughDomain) {
   loom_value_fact_table_t source = {0};
   IREE_ASSERT_OK(loom_value_fact_table_initialize(&source, &arena_, 0));

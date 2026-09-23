@@ -113,8 +113,8 @@ typedef struct loom_value_fact_address_layout_t {
   // Known address-layout category.
   loom_value_fact_address_layout_kind_t kind;
 
-  // Number of stride facts in strides for strided layouts. Dense layouts leave
-  // this zero because rank comes from the consuming shaped type.
+  // Number of stride facts in strides, at most LOOM_TYPE_MAX_RANK. Dense
+  // layouts leave this zero because rank comes from the consuming shaped type.
   uint8_t rank;
 
   // Borrowed per-axis element-stride facts for strided layouts. Query results
