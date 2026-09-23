@@ -37,6 +37,7 @@ loom_cc_library(
     visibility = ["//loom/src/loom/pass:__pkg__"],
     deps = [
         ":canonicalizer",
+        "//loom/src/loom/ops/scf",
         "//loom/src/loom/ops/vector",
         "//loom/src/loom/ops/view",
         "//loom/src/loom/pass:pipeline",

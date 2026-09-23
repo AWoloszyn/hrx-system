@@ -138,6 +138,7 @@ loom_check_test(
     for name in [
         "assembly_lowering",
         "assembly_invalid",
+        "integer_extrema",
         "parameter_alignment",
         "vector_lookup",
     ]

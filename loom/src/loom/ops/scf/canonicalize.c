@@ -15,6 +15,7 @@
 #include "loom/ir/module.h"
 #include "loom/ir/types.h"
 #include "loom/ops/op_defs.h"
+#include "loom/ops/scalar/compare.h"
 #include "loom/ops/scalar/ops.h"
 #include "loom/ops/scf/ops.h"
 #include "loom/rewrite/rewriter.h"
@@ -227,6 +228,78 @@ static bool loom_scf_lookup_reachable_column_is_uniform(
 //===----------------------------------------------------------------------===//
 // scf.select
 //===----------------------------------------------------------------------===//
+
+iree_status_t loom_scf_select_combine_integer_extremum(
+    loom_op_t* op, loom_rewriter_t* rewriter, bool* out_changed) {
+  *out_changed = false;
+  const loom_value_t* condition =
+      loom_module_value(rewriter->module, loom_scf_select_condition(op));
+  if (loom_value_is_block_arg(condition)) {
+    return iree_ok_status();
+  }
+  loom_op_t* comparison = loom_value_def_op(condition);
+  if (!comparison || !loom_scalar_cmpi_isa(comparison)) {
+    return iree_ok_status();
+  }
+
+  loom_value_id_t lhs = loom_scalar_cmpi_lhs(comparison);
+  loom_value_id_t rhs = loom_scalar_cmpi_rhs(comparison);
+  loom_value_id_t true_value = loom_scf_select_true_value(op);
+  loom_value_id_t false_value = loom_scf_select_false_value(op);
+  uint8_t predicate = loom_scalar_cmpi_predicate(comparison);
+  if (true_value == rhs && false_value == lhs) {
+    predicate = loom_scalar_cmpi_swapped_predicate(predicate);
+  } else if (true_value != lhs || false_value != rhs) {
+    return iree_ok_status();
+  }
+
+  // The comparison already observes both inputs. Strict and inclusive order
+  // choose the same integer bits when they are equal, so neither changes the
+  // extrema's definedness or requires a range proof.
+  loom_builder_set_before(&rewriter->builder, op);
+  loom_value_id_t checkpoint = loom_rewriter_value_checkpoint(rewriter);
+  loom_type_t type = loom_module_value_type(rewriter->module, true_value);
+  loom_op_t* extremum = NULL;
+  switch ((loom_scalar_cmpi_predicate_t)predicate) {
+    case LOOM_SCALAR_CMPI_PREDICATE_SLT:
+    case LOOM_SCALAR_CMPI_PREDICATE_SLE: {
+      IREE_RETURN_IF_ERROR(
+          loom_scalar_minsi_build(&rewriter->builder, true_value, false_value,
+                                  type, op->location, &extremum));
+      break;
+    }
+    case LOOM_SCALAR_CMPI_PREDICATE_SGT:
+    case LOOM_SCALAR_CMPI_PREDICATE_SGE: {
+      IREE_RETURN_IF_ERROR(
+          loom_scalar_maxsi_build(&rewriter->builder, true_value, false_value,
+                                  type, op->location, &extremum));
+      break;
+    }
+    case LOOM_SCALAR_CMPI_PREDICATE_ULT:
+    case LOOM_SCALAR_CMPI_PREDICATE_ULE: {
+      IREE_RETURN_IF_ERROR(
+          loom_scalar_minui_build(&rewriter->builder, true_value, false_value,
+                                  type, op->location, &extremum));
+      break;
+    }
+    case LOOM_SCALAR_CMPI_PREDICATE_UGT:
+    case LOOM_SCALAR_CMPI_PREDICATE_UGE: {
+      IREE_RETURN_IF_ERROR(
+          loom_scalar_maxui_build(&rewriter->builder, true_value, false_value,
+                                  type, op->location, &extremum));
+      break;
+    }
+    default:
+      return iree_ok_status();
+  }
+  loom_value_id_t replacement = loom_op_results(extremum)[0];
+  IREE_RETURN_IF_ERROR(loom_rewriter_preserve_result_names_on_new_values(
+      rewriter, op, &replacement, 1, checkpoint));
+  IREE_RETURN_IF_ERROR(
+      loom_scf_replace_results_and_erase(op, rewriter, &replacement, 1));
+  *out_changed = true;
+  return iree_ok_status();
+}
 
 iree_status_t loom_scf_select_canonicalize(loom_op_t* op,
                                            loom_rewriter_t* rewriter) {

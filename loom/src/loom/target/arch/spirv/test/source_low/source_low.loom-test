@@ -37,8 +37,8 @@ func.def target(@target) @spirv_i32_compare_select(%lhs: i32, %rhs: i32) -> (i32
 
 // ----
 low.func.def target<spirv.logical.core>(@target) abi(shader_entry_point) @spirv_i32_compare_select(%lhs: reg<spirv.id : i32>, %rhs: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) asm {
-  %less = OpSLessThan %lhs, %rhs
-  %selected = OpSelect %less, %lhs, %rhs
+  %11 = OpSLessThan %lhs, %rhs
+  %selected = OpSelect %11, %lhs, %rhs
   return %selected
 }
 
@@ -509,13 +509,13 @@ kernel.def target(@hal_target) @spirv_hal_resource_storage_buffer_i64() {
 low.kernel.def target<spirv.logical.core>(@hal_target) workgroup_size(1, 1, 1) workgroup_count(1, 1, 1) @spirv_hal_resource_storage_buffer_i64(%byte_offset_aligned: reg<spirv.offset64>) asm {
   %input_aligned = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<spirv.ptr.storage_buffer>
   %output_aligned = resource<hal_binding> {index = 1, source_type = hal.buffer} : reg<spirv.ptr.storage_buffer>
-  %16 = OpPtrAccessChain.storage_buffer.i64.byte_offset %input_aligned, %byte_offset_aligned
-  %loaded = OpLoad.storage_buffer.i64 %16
+  %19 = OpPtrAccessChain.storage_buffer.i64.byte_offset %input_aligned, %byte_offset_aligned
+  %loaded = OpLoad.storage_buffer.i64 %19
   %sum = OpIAdd.i64 %loaded, %loaded
-  %larger = OpSGreaterThan.i64 %sum, %loaded
-  %selected = OpSelect.i64 %larger, %sum, %loaded
-  %21 = OpPtrAccessChain.storage_buffer.i64.byte_offset %output_aligned, %byte_offset_aligned
-  OpStore.storage_buffer.i64 %21, %selected
+  %22 = OpSGreaterThan.i64 %sum, %loaded
+  %selected = OpSelect.i64 %22, %sum, %loaded
+  %24 = OpPtrAccessChain.storage_buffer.i64.byte_offset %output_aligned, %byte_offset_aligned
+  OpStore.storage_buffer.i64 %24, %selected
   return
 }
 
