@@ -118,6 +118,7 @@ from loom.target.arch.spirv.scalar_memory import (
 )
 from loom.target.contracts import (
     AttrProject,
+    Buffer,
     ContractCase,
     ContractFragment,
     DescriptorEmitForm,
@@ -1419,6 +1420,7 @@ def _select_rules() -> tuple[DescriptorRule, ...]:
     ]
     rules.append(_select_rule(Scalar("bf16"), "spirv.op_select.bf16"))
     rules.append(_select_rule(_I1, "spirv.op_select.bool"))
+    rules.append(_select_rule(Buffer(), "spirv.op_select.storage_buffer"))
     return tuple(rules)
 
 

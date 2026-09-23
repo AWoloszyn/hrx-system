@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from enum import Enum, unique
 
+from loom.dialect.buffer import defs as buffer
 from loom.dialect.vector import defs as vector
 from loom.dialect.view import defs as view
 from loom.dsl import Op
@@ -127,12 +128,8 @@ _I32_MAX = (2**31) - 1
 
 _MEMORY_ROOTS = (
     (
-        SourceMemoryRootKind.BLOCK_ARGUMENT,
-        ("unknown", "generic", "workgroup"),
-    ),
-    (
-        SourceMemoryRootKind.ALLOCA,
-        ("private", "workgroup"),
+        SourceMemoryRootKind.ANY,
+        ("unknown", "generic", "private", "workgroup"),
     ),
 )
 
@@ -359,6 +356,7 @@ def _memory_rule(
     immediate_offset_minimum: int,
     immediate_offset_maximum: int,
     volatile: bool,
+    reference_field: str = "view",
     expand_to_x_carrier: bool = False,
 ) -> DescriptorRule:
     is_load = operation is SourceMemoryOperation.LOAD
@@ -388,11 +386,11 @@ def _memory_rule(
         else (result_value if is_load else source_value)
     )
     memory_operands = (
-        {"ptr": ValueRef.operand("view")}
+        {"ptr": ValueRef.operand(reference_field)}
         if is_load
         else {
             "src": descriptor_value,
-            "ptr": ValueRef.operand("view"),
+            "ptr": ValueRef.operand(reference_field),
         }
     )
     memory_results = {"dst": descriptor_value} if is_load else {}
@@ -722,6 +720,38 @@ def _pair_scalar_memory_rules(*, volatile: bool) -> tuple[DescriptorRule, ...]:
         )
         for root_kind, memory_spaces in _MEMORY_ROOTS
         for operation in (SourceMemoryOperation.LOAD, SourceMemoryOperation.STORE)
+        for address_form in _MemoryAddressForm
+    )
+
+
+def _raw_buffer_memory_rules() -> tuple[DescriptorRule, ...]:
+    return tuple(
+        _memory_rule(
+            operation,
+            address_form,
+            root_kind=root_kind,
+            memory_spaces=memory_spaces,
+            source_op=source_op,
+            value_type=_I32,
+            reference_field=reference_field,
+            immediate_descriptor_key=(
+                f"amd.xdna.aie2p.{descriptor_family}.scalar.i8.indexed.immediate"
+            ),
+            register_descriptor_key=(
+                f"amd.xdna.aie2p.{descriptor_family}.scalar.i8.indexed.register"
+            ),
+            element_byte_count=1,
+            vector_lane_count=1,
+            minimum_alignment=1,
+            immediate_offset_minimum=-8,
+            immediate_offset_maximum=7,
+            volatile=False,
+        )
+        for root_kind, memory_spaces in _MEMORY_ROOTS
+        for operation, source_op, reference_field, descriptor_family in (
+            (SourceMemoryOperation.LOAD, buffer.buffer_load_i8_u, "source", "load"),
+            (SourceMemoryOperation.STORE, buffer.buffer_store_i8, "target", "store"),
+        )
         for address_form in _MemoryAddressForm
     )
 
@@ -1437,6 +1467,7 @@ def _matrix_fragment_store_rules() -> tuple[DescriptorRule, ...]:
 
 
 AIE2P_MEMORY_RULES: tuple[DescriptorRule, ...] = (
+    *_raw_buffer_memory_rules(),
     *_matrix_fragment_store_rules(),
     *_scalar_memory_rules(volatile=True),
     *_pair_scalar_memory_rules(volatile=True),

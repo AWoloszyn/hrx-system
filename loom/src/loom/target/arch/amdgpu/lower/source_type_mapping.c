@@ -333,28 +333,39 @@ static bool loom_amdgpu_source_vector_value_register_shape(
 }
 
 static bool loom_amdgpu_source_buffer_value_register_shape(
-    const loom_value_fact_table_t* fact_table, loom_value_id_t source_value_id,
-    loom_type_t source_type, loom_amdgpu_register_shape_t* out_shape) {
+    const loom_module_t* module, const loom_value_fact_table_t* fact_table,
+    const loom_view_region_table_t* view_regions,
+    loom_amdgpu_source_value_analysis_t* analysis,
+    loom_value_id_t source_value_id, loom_type_t source_type,
+    loom_amdgpu_register_shape_t* out_shape) {
   if (!loom_type_is_buffer(source_type) || fact_table == NULL) {
     return false;
   }
   const loom_value_facts_t facts =
       loom_value_fact_table_lookup(fact_table, source_value_id);
-  if (loom_value_facts_is_lane_varying(facts)) {
-    return false;
-  }
   loom_value_fact_buffer_reference_t reference = {0};
   if (!loom_value_facts_query_buffer_reference(&fact_table->context, facts,
                                                &reference)) {
     return false;
   }
+  // Unqualified entry buffers use the raw address ABI. A join with local
+  // storage loses that entry origin and requires a generic pointer contract.
+  if (reference.memory_space == LOOM_VALUE_FACT_MEMORY_SPACE_UNKNOWN &&
+      reference.origin.kind != LOOM_VALUE_FACT_REFERENCE_ORIGIN_ENTRY) {
+    return false;
+  }
   switch (reference.memory_space) {
+    case LOOM_VALUE_FACT_MEMORY_SPACE_UNKNOWN:
     case LOOM_VALUE_FACT_MEMORY_SPACE_GLOBAL:
     case LOOM_VALUE_FACT_MEMORY_SPACE_CONSTANT:
     case LOOM_VALUE_FACT_MEMORY_SPACE_DESCRIPTOR:
-      *out_shape = loom_amdgpu_register_shape(LOOM_AMDGPU_REG_CLASS_ID_SGPR, 2);
+      *out_shape = loom_amdgpu_register_shape(
+          loom_amdgpu_analyzed_source_value_prefers_vgpr(
+              module, fact_table, view_regions, analysis, source_value_id)
+              ? LOOM_AMDGPU_REG_CLASS_ID_VGPR
+              : LOOM_AMDGPU_REG_CLASS_ID_SGPR,
+          2);
       return true;
-    case LOOM_VALUE_FACT_MEMORY_SPACE_UNKNOWN:
     case LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP:
     case LOOM_VALUE_FACT_MEMORY_SPACE_PRIVATE:
     case LOOM_VALUE_FACT_MEMORY_SPACE_HOST:
@@ -366,6 +377,9 @@ static bool loom_amdgpu_source_buffer_value_register_shape(
 
 static bool loom_amdgpu_source_value_register_shape_needs_analysis(
     loom_type_t source_type) {
+  if (loom_type_is_buffer(source_type)) {
+    return true;
+  }
   if (loom_type_is_scalar(source_type)) {
     return loom_amdgpu_scalar_type_has_register_flag(
         source_type, LOOM_AMDGPU_SCALAR_VALUE_REGISTER_FLAG_REQUIRES_ANALYSIS);
@@ -387,7 +401,8 @@ static bool loom_amdgpu_source_value_register_shape(
     loom_value_id_t source_value_id, loom_type_t source_type,
     loom_amdgpu_register_shape_t* out_shape) {
   return loom_amdgpu_source_buffer_value_register_shape(
-             fact_table, source_value_id, source_type, out_shape) ||
+             module, fact_table, view_regions, analysis, source_value_id,
+             source_type, out_shape) ||
          loom_amdgpu_source_scalar_value_register_shape(
              module, fact_table, view_regions, analysis, source_value_id,
              source_type, out_shape) ||

@@ -1640,6 +1640,19 @@ def _select_descriptors() -> tuple[Descriptor, ...]:
             result_value_type=None,
         )
     )
+    descriptors.append(
+        _select_descriptor(
+            key="spirv.op_select.storage_buffer",
+            mnemonic="OpSelect.storage_buffer",
+            operands=(
+                _ptr_storage_buffer_result("dst"),
+                _id_operand("condition"),
+                _ptr_storage_buffer_operand("true_value"),
+                _ptr_storage_buffer_operand("false_value"),
+            ),
+            result_value_type=None,
+        )
+    )
     return tuple(descriptors)
 
 

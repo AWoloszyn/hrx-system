@@ -819,6 +819,7 @@ def aie2p_core_cases() -> Sequence[ContractCase]:
                 core_rules._OFFSET,
             )
         ),
+        core_rules._buffer_select_rule(),
         *(
             core_rules._whole_vector_select_rule(result_type)
             for result_type in core_rules._BITCAST_VECTOR_TYPES

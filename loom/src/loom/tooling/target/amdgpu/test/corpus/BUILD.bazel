@@ -7,7 +7,8 @@
 load("//build_tools/bazel:executable.bzl", "iree_executable_test")
 load("//build_tools/bazel:test_resources.bzl", "GPU_DEVICE_RESOURCE_GROUP")
 load("//loom/build_tools/bazel:build_defs.bzl", "loom_config_compatible_with")
-load("//loom/build_tools/bazel:defs.bzl", "loom_module")
+load("//loom/build_tools/bazel:defs.bzl", "loom_module", "loom_test")
+load("//loom/target/amdgpu:execution_profiles.bzl", "AMDGPU_ACCESS_PROFILE", "AMDGPU_HARDWARE_PROFILE")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -43,6 +44,23 @@ _CDNA3_COMPATIBLE_WITH = loom_config_compatible_with([
     "//loom/config/execute:amdgpu_hal",
     "//loom/config/target/amdgpu:iree_hal_descriptor_set_cdna3_core",
 ])
+
+loom_test(
+    name = "buffer_selection_test",
+    srcs = ["//loom/src/loom/test/corpus/source_low:buffer_selection.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx950",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/amdgpu:gfx1170",
+        "//loom/target/amdgpu:gfx1200",
+        "//loom/target/amdgpu:gfx1250",
+    ],
+    execution_profiles = [
+        AMDGPU_HARDWARE_PROFILE,
+        AMDGPU_ACCESS_PROFILE,
+    ],
+)
 
 loom_module(
     name = "generic_test_module",

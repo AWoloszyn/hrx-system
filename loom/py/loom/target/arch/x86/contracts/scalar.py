@@ -34,6 +34,7 @@ from loom.target.arch.x86.contracts.memory import (
 from loom.target.arch.x86.descriptors import X86_SCALAR_DESCRIPTOR_SET
 from loom.target.contracts import (
     AttrProject,
+    Buffer,
     ContractCase,
     ContractFragment,
     DescriptorEmitForm,
@@ -948,7 +949,7 @@ def _cases() -> Sequence[ContractCase]:
         _select_rule(_I32, "x86.scalar.select.gpr32", descriptor_lookup),
         *(
             _select_rule(type_pattern, "x86.scalar.select.gpr64", descriptor_lookup)
-            for type_pattern in (_I64, _INDEX, _OFFSET)
+            for type_pattern in (_I64, _INDEX, _OFFSET, Buffer())
         ),
         *(
             rule

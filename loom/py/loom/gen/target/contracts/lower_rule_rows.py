@@ -1110,15 +1110,15 @@ def diagnostic_param_row(
 
 
 def type_pattern_row(type_pattern: TypePattern) -> list[str]:
-    flags = [
-        "LOOM_LOW_LOWER_TYPE_PATTERN_FLAG_KIND",
-        "LOOM_LOW_LOWER_TYPE_PATTERN_FLAG_ELEMENT",
-    ]
+    flags = ["LOOM_LOW_LOWER_TYPE_PATTERN_FLAG_KIND"]
+    if type_pattern.elements:
+        flags.append("LOOM_LOW_LOWER_TYPE_PATTERN_FLAG_ELEMENT")
     row = [
         ".flags = " + " | ".join(flags),
         f".type_kind = {lower_rule_spelling.type_kind_c_name(type_pattern)}",
-        f".element_type_mask = {lower_rule_spelling.scalar_type_mask_c_expr(type_pattern.elements)}",
     ]
+    if type_pattern.elements:
+        row.append(f".element_type_mask = {lower_rule_spelling.scalar_type_mask_c_expr(type_pattern.elements)}")
     if type_pattern.dims:
         row[0] += " | LOOM_LOW_LOWER_TYPE_PATTERN_FLAG_RANK"
         row.extend(

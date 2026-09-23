@@ -186,6 +186,43 @@ iree_execution_test_suite(
 )
 endif()
 
+iree_py_library(
+  NAME
+    buffer_selection_cases
+  MAIN
+    "buffer_selection_cases.py"
+  SRCS
+    "buffer_selection_cases.py"
+)
+
+if(AMDF_BUILD AND AMDF_FAMILY_XDNA AND LOOM_IMPORT_CXX AND LOOM_BUILD AND LOOM_TARGET_ARCH_XDNA AND LOOM_EMIT_XDNA AND (CMAKE_SYSTEM_NAME STREQUAL "Linux" OR CMAKE_SYSTEM_NAME STREQUAL "Windows"))
+iree_execution_test_suite(
+  NAME
+    buffer_selection_npu2_test
+  MANIFESTS
+    "buffer_selection_npu2.test.json"
+  TOOLS
+    "generate-cases=::buffer_selection_cases"
+    "iree-xdna-run=iree::experimental::xdna::iree-xdna-run"
+    "loom-compile=loom::tools::loom-compile"
+    "loom-import-cxx=loom::tools::loom-import-cxx"
+    "loom-link=loom::tools::loom-link"
+  DATA
+    "${PROJECT_SOURCE_DIR}/experimental/xdna/cts/testdata/buffer_selection.cxx"
+    "${PROJECT_SOURCE_DIR}/experimental/xdna/cts/testdata/buffer_selection.loom"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/atomic.h"
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/import/cxx/include/loomcxx/kernel.h"
+  LABELS
+    "manual"
+    "iree-build-requirement=libamdf"
+    "iree-build-requirement=libamdf.xdna"
+    "iree-run-requirement=libamdf.resource.xdna"
+    "runtime-resource=amd-xdna"
+  RESOURCE_GROUP
+    gpu-device
+)
+endif()
+
 if(AMDF_BUILD AND AMDF_FAMILY_XDNA)
 iree_cc_library(
   NAME

@@ -302,6 +302,7 @@ def test_result_asm_recipes_cover_every_spirv_descriptor_family() -> None:
     add_scalar_recipe("spirv.op_select.bf16", BFLOAT16_CONSTANT_TYPE.source_type)
     add_scalar_recipe("spirv.op_select.bool", "i1")
     add_carrier_only("spirv.op_select.offset64")
+    add_carrier_only("spirv.op_select.storage_buffer")
 
     for scalar in STORAGE_BUFFER_SCALARS:
         add_carrier_only(

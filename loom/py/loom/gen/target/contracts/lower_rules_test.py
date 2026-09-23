@@ -29,6 +29,7 @@ from loom.gen.target.contracts.lower_rule_rows import (
     source_memory_diagnostics_row,
     source_memory_row,
     source_node_row,
+    type_pattern_row,
     value_ref_row,
 )
 from loom.gen.target.contracts.lower_rules import (
@@ -41,6 +42,7 @@ from loom.gen.target.contracts.lower_rules import (
 from loom.target.contracts import (
     LOWER_EMIT_FLAG_BIND_RESULTS_TO_REFS,
     LOWER_EMIT_FLAG_RESULT_TYPE_PATTERN,
+    Buffer,
     CompiledLowerRuleSet,
     ContractFragment,
     DescriptorAccumulatorSeed,
@@ -105,6 +107,13 @@ def _expect_value_error(callable_obj: Callable[[], object], message: str) -> Non
         error = exc
     assert error is not None
     assert message in str(error)
+
+
+def test_buffer_type_guard_matches_kind_without_scalar_element_bits() -> None:
+    assert type_pattern_row(Buffer()) == [
+        ".flags = LOOM_LOW_LOWER_TYPE_PATTERN_FLAG_KIND",
+        ".type_kind = LOOM_TYPE_BUFFER",
+    ]
 
 
 def test_intern_optional_rows_returns_one_based_refs() -> None:

@@ -187,6 +187,45 @@ xdna_execution_test_suite(
     },
 )
 
+iree_py_binary(
+    name = "buffer_selection_cases",
+    testonly = True,
+    srcs = ["buffer_selection_cases.py"],
+    main = "buffer_selection_cases.py",
+)
+
+# This packet corpus selects the NPU2 profile and runs explicitly on matching
+# hardware; the consumer CTS below select images from the device family.
+xdna_execution_test_suite(
+    name = "buffer_selection_npu2_test",
+    data = [
+        "testdata/buffer_selection.cxx",
+        "testdata/buffer_selection.loom",
+        "//loom/src/loom/import/cxx:include/loomcxx/atomic.h",
+        "//loom/src/loom/import/cxx:include/loomcxx/kernel.h",
+    ],
+    manifests = ["buffer_selection_npu2.test.json"],
+    tags = ["manual"],
+    target_compatible_with = select({
+        "//loom/config/import:cxx": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }) + select({
+        "//loom/config/target:xdna_artifacts": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }) + select({
+        "@platforms//os:linux": [],
+        "@platforms//os:windows": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
+    tools = {
+        "generate-cases": ":buffer_selection_cases",
+        "iree-xdna-run": "//experimental/xdna:iree-xdna-run",
+        "loom-compile": "//loom/src/loom/tools/loom-compile",
+        "loom-import-cxx": "//loom/src/loom/tools/loom-import-cxx",
+        "loom-link": "//loom/src/loom/tools/loom-link",
+    },
+)
+
 xdna_cc_library(
     name = "execution_fixture",
     testonly = True,

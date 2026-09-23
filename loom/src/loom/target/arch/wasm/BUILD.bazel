@@ -93,6 +93,7 @@ loom_check_test_suite(
     srcs = [
         "test/source_low/buffer_bulk.loom-test",
         "test/source_low/buffer_raw.loom-test",
+        "test/source_low/buffer_selection.loom-test",
         "test/source_low/callable_policy.loom-test",
         "test/source_low/callable_values.loom-test",
         "test/source_low/carried_counter_store.loom-test",

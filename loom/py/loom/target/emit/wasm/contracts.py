@@ -36,6 +36,7 @@ from loom.error.wasm import (
 from loom.target.arch.wasm.descriptors import WASM_CORE_SIMD128_DESCRIPTOR_SET
 from loom.target.contracts import (
     AttrProject,
+    Buffer,
     ContractFragment,
     DescriptorEmitForm,
     DescriptorRule,
@@ -118,6 +119,8 @@ def _descriptor(key: str) -> Descriptor:
 
 
 def _type_text(type_pattern: TypePattern) -> str:
+    if type_pattern.kind == "buffer":
+        return "buffer"
     if type_pattern == _I1:
         return "i1 scalar"
     if type_pattern == _I8:
@@ -882,6 +885,7 @@ WASM_CORE_SIMD128_CONTRACT_FRAGMENT = ContractFragment(
                 (_V4F32, "v128"),
                 (_V2I64, "v128"),
                 (_V2F64, "v128"),
+                (Buffer(), "i32"),
             )
         ),
         _splat_rule(_I32, _V4I32, "wasm.i32x4.splat"),

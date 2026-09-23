@@ -1307,6 +1307,7 @@ def test_core_contract_closes_scalar_and_integer_vector_families() -> None:
         rule
         for rule in whole_select_rules
         if rule.descriptor.key == "amd.xdna.aie2p.select.nonzero.i32"
+        and rule.guards[1].type_pattern.kind == "scalar"
         and len(rule.emit) != 1
     ]
     assert [

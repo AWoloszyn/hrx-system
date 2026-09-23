@@ -364,6 +364,8 @@ typedef struct loom_amdgpu_memory_packet_selection_context_t {
   // Cached dynamic-term materialization facts for the source access.
   const loom_amdgpu_memory_dynamic_term_materialization_plan_t*
       materialization_plan;
+  // The retained storage root has a per-lane vector address.
+  bool root_prefers_vgpr;
 } loom_amdgpu_memory_packet_selection_context_t;
 
 static bool loom_amdgpu_memory_dynamic_term_materialization_plan_build(
@@ -2271,6 +2273,9 @@ loom_amdgpu_memory_address_attempt_apply(
                  ? LOOM_AMDGPU_MEMORY_ADDRESS_ATTEMPT_SELECTED
                  : LOOM_AMDGPU_MEMORY_ADDRESS_ATTEMPT_REJECTED;
     case LOOM_AMDGPU_MEMORY_ADDRESS_ATTEMPT_BUFFER_RESOURCE:
+      if (selection_context->root_prefers_vgpr) {
+        return LOOM_AMDGPU_MEMORY_ADDRESS_ATTEMPT_NOT_APPLICABLE;
+      }
       if (!loom_amdgpu_memory_access_has_contiguous_vector_lanes(access)) {
         diagnostic->rejection_bits |=
             LOOM_AMDGPU_MEMORY_ACCESS_REJECTION_VECTOR_AXIS_STRIDE;
@@ -2281,7 +2286,7 @@ loom_amdgpu_memory_address_attempt_apply(
                  ? LOOM_AMDGPU_MEMORY_ADDRESS_ATTEMPT_SELECTED
                  : LOOM_AMDGPU_MEMORY_ADDRESS_ATTEMPT_NOT_APPLICABLE;
     case LOOM_AMDGPU_MEMORY_ADDRESS_ATTEMPT_GLOBAL_SMEM:
-      if (!allow_global_smem) {
+      if (!allow_global_smem || selection_context->root_prefers_vgpr) {
         return LOOM_AMDGPU_MEMORY_ADDRESS_ATTEMPT_NOT_APPLICABLE;
       }
       if (!loom_amdgpu_memory_access_has_contiguous_vector_lanes(access)) {
@@ -2292,6 +2297,9 @@ loom_amdgpu_memory_address_attempt_apply(
                  ? LOOM_AMDGPU_MEMORY_ADDRESS_ATTEMPT_SELECTED
                  : LOOM_AMDGPU_MEMORY_ADDRESS_ATTEMPT_NOT_APPLICABLE;
     case LOOM_AMDGPU_MEMORY_ADDRESS_ATTEMPT_GLOBAL_SADDR:
+      if (selection_context->root_prefers_vgpr) {
+        return LOOM_AMDGPU_MEMORY_ADDRESS_ATTEMPT_NOT_APPLICABLE;
+      }
       if (!loom_amdgpu_memory_access_has_contiguous_vector_lanes(access)) {
         diagnostic->rejection_bits |=
             LOOM_AMDGPU_MEMORY_ACCESS_REJECTION_VECTOR_AXIS_STRIDE;
@@ -2765,6 +2773,9 @@ bool loom_amdgpu_memory_access_plan_select(
       .bundle = bundle,
       .instruction_constraints = instruction_constraints,
       .materialization_plan = &materialization_plan,
+      .root_prefers_vgpr = loom_amdgpu_analyzed_source_value_prefers_vgpr(
+          module, fact_table, view_regions, analysis,
+          out_source->root_value_id),
   };
 
   loom_amdgpu_memory_access_t access = {

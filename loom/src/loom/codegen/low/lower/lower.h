@@ -284,8 +284,9 @@ typedef iree_status_t (*loom_low_lower_materialize_structural_operand_fn_t)(
 
 typedef struct loom_low_lower_materialize_structural_operand_callback_t {
   // Optional callback invoked for low structural op operands after source value
-  // lookup. Targets use this to materialize target-defined storage contracts
-  // that are not represented in the low type, such as register parts.
+  // lookup. Required types come from the receiving boundary when one exists,
+  // such as the callable result signature. Targets materialize representation
+  // conversions and storage contracts such as defined register parts.
   loom_low_lower_materialize_structural_operand_fn_t fn;
   // Caller-owned payload passed to |fn|.
   void* user_data;

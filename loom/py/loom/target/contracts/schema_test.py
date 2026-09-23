@@ -16,6 +16,7 @@ from loom.dialect.vector import defs as vector
 from loom.error.target import ERR_TARGET_003
 from loom.target.contracts import (
     AttrProject,
+    Buffer,
     ContractFragment,
     DescriptorRule,
     EmitDescriptorOp,
@@ -226,6 +227,26 @@ def test_vector_static_element_range_requires_ordered_bounds() -> None:
         match="vector static element range minimum exceeds maximum",
     ):
         Vector("i32", minimum_static_elements=8, maximum_static_elements=4)
+
+
+def test_buffer_type_pattern_has_no_scalar_or_shape_constraint() -> None:
+    pattern = Buffer()
+    assert pattern.kind == "buffer"
+    assert pattern.elements == ()
+    for invalid in (
+        {"element": "i32"},
+        {"elements": ("i32",)},
+        {"lanes": 1},
+        {"dims": (1,)},
+        {"minimum_lanes": 1},
+        {"maximum_lanes": 1},
+        {"minimum_static_elements": 1},
+        {"maximum_static_elements": 1},
+    ):
+        with pytest.raises(
+            ValueError, match="buffer type patterns cannot constrain elements or shape"
+        ):
+            replace(pattern, **invalid)
 
 
 def test_view_type_pattern_accepts_exact_dimensions() -> None:

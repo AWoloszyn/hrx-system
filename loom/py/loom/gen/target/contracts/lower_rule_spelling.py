@@ -266,6 +266,8 @@ def error_ref_c_expr(error: ErrorDef) -> str:
 
 
 def type_kind_c_name(type_pattern: TypePattern) -> str:
+    if type_pattern.kind == "buffer":
+        return "LOOM_TYPE_BUFFER"
     if type_pattern.kind == "scalar":
         return "LOOM_TYPE_SCALAR"
     if type_pattern.kind == "vector":

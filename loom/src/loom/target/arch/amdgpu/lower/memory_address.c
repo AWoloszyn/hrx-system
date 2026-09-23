@@ -1013,18 +1013,6 @@ iree_status_t loom_amdgpu_emit_memory_flat_vaddr(
   loom_type_t sgpr_type = loom_type_none();
   IREE_RETURN_IF_ERROR(loom_amdgpu_make_sgpr_type(context, &sgpr_type));
 
-  loom_value_id_t low_scalar_base = low_resource;
-  if (access->vaddr_static_byte_offset != 0) {
-    loom_value_id_t low_static_offset = LOOM_VALUE_ID_INVALID;
-    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr64_constant_u64(
-        context, source_op, access->vaddr_static_byte_offset,
-        &low_static_offset));
-    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr64_binary_carry(
-        context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_S_ADD_CO_U32,
-        LOOM_AMDGPU_DESCRIPTOR_REF_S_ADDC_U32, low_scalar_base,
-        low_static_offset, &low_scalar_base));
-  }
-
   loom_type_t vgpr_type = loom_type_none();
   IREE_RETURN_IF_ERROR(loom_amdgpu_make_vgpr_type(context, &vgpr_type));
   loom_type_t vgpr_x2_type = loom_type_none();
@@ -1036,6 +1024,40 @@ iree_status_t loom_amdgpu_emit_memory_flat_vaddr(
 
   loom_value_id_t low_vaddr_lo = LOOM_VALUE_ID_INVALID;
   loom_value_id_t low_vaddr_hi = LOOM_VALUE_ID_INVALID;
+  loom_value_id_t low_scalar_base = low_resource;
+  if (loom_amdgpu_low_value_is_register_class_count(
+          context, low_resource, LOOM_AMDGPU_REG_CLASS_ID_VGPR, 2)) {
+    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_low_slice(context, source_op,
+                                                    low_resource, /*offset=*/0,
+                                                    vgpr_type, &low_vaddr_lo));
+    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_low_slice(context, source_op,
+                                                    low_resource, /*offset=*/1,
+                                                    vgpr_type, &low_vaddr_hi));
+  }
+  if (access->vaddr_static_byte_offset != 0) {
+    loom_value_id_t low_static_offset = LOOM_VALUE_ID_INVALID;
+    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr64_constant_u64(
+        context, source_op, access->vaddr_static_byte_offset,
+        &low_static_offset));
+    if (low_vaddr_lo == LOOM_VALUE_ID_INVALID) {
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr64_binary_carry(
+          context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_S_ADD_CO_U32,
+          LOOM_AMDGPU_DESCRIPTOR_REF_S_ADDC_U32, low_scalar_base,
+          low_static_offset, &low_scalar_base));
+    } else {
+      loom_value_id_t low_offset_lo = LOOM_VALUE_ID_INVALID;
+      loom_value_id_t low_offset_hi = LOOM_VALUE_ID_INVALID;
+      IREE_RETURN_IF_ERROR(
+          loom_amdgpu_emit_low_slice(context, source_op, low_static_offset,
+                                     /*offset=*/0, sgpr_type, &low_offset_lo));
+      IREE_RETURN_IF_ERROR(
+          loom_amdgpu_emit_low_slice(context, source_op, low_static_offset,
+                                     /*offset=*/1, sgpr_type, &low_offset_hi));
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_flat_add_term(
+          context, source_op, low_offset_lo, low_offset_hi, vgpr_type,
+          sgpr_x2_type, &low_vaddr_lo, &low_vaddr_hi));
+    }
+  }
   for (uint8_t i = 0; i < sequence->count; ++i) {
     if (sequence->kinds[i] != LOOM_AMDGPU_MEMORY_DYNAMIC_INDEX_VADDR) {
       continue;
@@ -1043,9 +1065,11 @@ iree_status_t loom_amdgpu_emit_memory_flat_vaddr(
     const loom_low_source_memory_dynamic_term_t* term = sequence->terms[i];
     loom_value_id_t low_scalar_term = LOOM_VALUE_ID_INVALID;
     bool scalar_term_emitted = false;
-    IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_flat_scalar_dynamic_term(
-        context, source_op, term, &low_scalar_term, &scalar_term_emitted));
-    if (scalar_term_emitted && low_vaddr_lo == LOOM_VALUE_ID_INVALID) {
+    if (low_vaddr_lo == LOOM_VALUE_ID_INVALID) {
+      IREE_RETURN_IF_ERROR(loom_amdgpu_emit_memory_flat_scalar_dynamic_term(
+          context, source_op, term, &low_scalar_term, &scalar_term_emitted));
+    }
+    if (scalar_term_emitted) {
       IREE_RETURN_IF_ERROR(loom_amdgpu_emit_sgpr64_binary_carry(
           context, source_op, LOOM_AMDGPU_DESCRIPTOR_REF_S_ADD_CO_U32,
           LOOM_AMDGPU_DESCRIPTOR_REF_S_ADDC_U32, low_scalar_base,
