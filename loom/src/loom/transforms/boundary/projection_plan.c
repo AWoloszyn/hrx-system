@@ -23,6 +23,18 @@ static bool loom_boundary_projection_rule_applies(
          rule->function_applies(rule, plan, function);
 }
 
+static bool loom_boundary_projection_any_rule_applies(
+    const loom_boundary_projection_plan_t* plan,
+    const loom_boundary_projection_function_t* function) {
+  for (iree_host_size_t i = 0; i < plan->rules.count; ++i) {
+    if (loom_boundary_projection_rule_applies(plan->rules.values[i], plan,
+                                              function)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static iree_host_size_t loom_boundary_projection_rule_index(
     const loom_boundary_projection_plan_t* plan,
     const loom_boundary_projection_rule_t* rule) {
@@ -225,6 +237,11 @@ static iree_status_t loom_boundary_projection_plan_function_signature(
   out_function->function = function;
   out_function->version = version;
   out_function->argument_operand_offset = UINT16_MAX;
+  out_function->selected = true;
+  if (!loom_boundary_projection_any_rule_applies(plan, out_function)) {
+    out_function->selected = false;
+    return iree_ok_status();
+  }
   if (plan->rules.count != 0) {
     IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
         plan->arena, plan->rules.count, sizeof(*out_function->rule_states),
@@ -253,8 +270,6 @@ static iree_status_t loom_boundary_projection_plan_function_signature(
            out_function->result_count * sizeof(*result_copy));
     out_function->results = result_copy;
   }
-  out_function->selected = true;
-
   if (!loom_func_like_isa(function) || function.op->successor_count != 0) {
     out_function->selected = false;
     return iree_ok_status();
@@ -641,6 +656,9 @@ static iree_status_t loom_boundary_projection_collect_op(
 static iree_status_t loom_boundary_projection_collect_function(
     loom_boundary_projection_plan_t* plan,
     loom_boundary_projection_function_t* function) {
+  if (!function->selected && !plan->may_change_signatures) {
+    return iree_ok_status();
+  }
   loom_region_t* body = loom_func_like_body(function->function);
   if (!body) {
     return iree_ok_status();

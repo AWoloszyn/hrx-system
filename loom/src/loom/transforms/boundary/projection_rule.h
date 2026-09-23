@@ -73,8 +73,9 @@ typedef iree_status_t (*loom_boundary_projection_prepare_function_fn_t)(
     loom_boundary_projection_plan_t* plan,
     loom_boundary_projection_function_t* function);
 
-// Returns whether |rule| participates in |function|. This is a bounded policy
-// query over the supplied function version; it must not walk IR.
+// Returns whether |rule| participates in |function| before signature discovery.
+// Only the function and version fields are populated. This is a bounded policy
+// query over that header; it must not inspect later plan fields or walk IR.
 typedef bool (*loom_boundary_projection_function_applies_fn_t)(
     const loom_boundary_projection_rule_t* rule,
     const loom_boundary_projection_plan_t* plan,
