@@ -6,7 +6,7 @@
 
 load("//loom/build_tools/bazel:defs.bzl", "loom_module", "loom_test")
 load("//loom/target:execution_profiles.bzl", "GPU_HARDWARE_PROFILES")
-load("//loom/target/amdgpu:execution_profiles.bzl", "AMDGPU_ACCESS_PROFILE")
+load("//loom/target/amdgpu:execution_profiles.bzl", "AMDGPU_ACCESS_PROFILE", "AMDGPU_HARDWARE_PROFILE")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -73,6 +73,19 @@ loom_test(
         "//loom/target/spirv:vulkan1.3+bda",
     ],
     execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+)
+
+loom_test(
+    name = "signed_address_terms_test",
+    srcs = ["signed_address_terms.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx1151",
+    ],
+    execution_profiles = [
+        AMDGPU_HARDWARE_PROFILE,
+        AMDGPU_ACCESS_PROFILE,
+    ],
 )
 
 loom_test(

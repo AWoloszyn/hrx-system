@@ -1294,6 +1294,7 @@ def test_pure_integer_valu_results_are_rematerializable() -> None:
         "amdgpu.v_sub_u32",
         "amdgpu.v_mul_lo_u32",
         "amdgpu.v_mul_hi_u32",
+        "amdgpu.v_mul_hi_i32",
         "amdgpu.v_mul_u32_u24",
         "amdgpu.v_mul_u32_u24.src0_inline",
         "amdgpu.v_mul_u32_u24.lit",
@@ -1411,6 +1412,7 @@ def test_integer_binary_src0_accepts_scalar_or_vector_registers() -> None:
     descriptor_keys = (
         "amdgpu.v_mul_lo_u32",
         "amdgpu.v_mul_hi_u32",
+        "amdgpu.v_mul_hi_i32",
         "amdgpu.v_mul_u32_u24",
         "amdgpu.v_min_i32",
         "amdgpu.v_max_i32",

@@ -158,6 +158,20 @@ iree_status_t loom_amdgpu_lookup_or_materialize_address_i64_operand(
   }
   const uint32_t unit_count = loom_low_register_type_unit_count(low_type);
 
+  // Symbolic address terms can be signed even when their complete coordinate
+  // is nonnegative. The physical register width does not change that domain.
+  if (unit_count == 1 &&
+      loom_value_fact_table_lookup(loom_low_lower_context_fact_table(context),
+                                   source_value)
+              .range_lo < 0) {
+    if (register_class_id == LOOM_AMDGPU_REG_CLASS_ID_VGPR) {
+      IREE_RETURN_IF_ERROR(loom_amdgpu_materialize_low_vgpr_b32_registers(
+          context, source_op, low_value, &low_value));
+    }
+    return loom_amdgpu_emit_i64_from_i32(context, source_op, low_value,
+                                         out_low_value);
+  }
+
   if (register_class_id == LOOM_AMDGPU_REG_CLASS_ID_VGPR) {
     const bool is_vgpr = loom_amdgpu_low_type_is_register_class(
         context, low_type, LOOM_AMDGPU_REG_CLASS_ID_VGPR);

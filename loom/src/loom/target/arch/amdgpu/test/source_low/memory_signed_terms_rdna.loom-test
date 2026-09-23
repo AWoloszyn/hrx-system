@@ -1,0 +1,337 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/memory_signed_terms.loom-test
+// RUN: emit source-low target=amdgpu:gfx1151 output=low
+
+func.def @signed_uniform_word(%input: i32, %table: buffer) -> (i32) {
+  %signed = scalar.assume %input [range(%input, -128, 127)] : i32
+  %bias = scalar.constant 128 : i32
+  %ordinal = scalar.addi %signed, %bias : i32
+  %position = index.cast %ordinal : i32 to index
+  %base = index.constant 0 : offset
+  %view = buffer.view %table[%base] : buffer -> view<256xi32>
+  %value = view.load %view[%position] : view<256xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @signed_uniform_word(%signed: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %view = resource<hal_binding> {extent = 1024, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %13 = v_mov_b32 0
+  %14 = s_ashr_i32_rhs_inline %signed, 31
+  %15 = concat(%signed, %14) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %16 = s_mov_b32 2
+  %17 = s_lshl_b64 %15, %16
+  %18 = slice %view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %19 = slice %view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %20 = slice %17[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %21 = slice %17[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %22, %23 = s_add_co_u32 %18, %20
+  %24, %25 = s_addc_u32 %19, %21, %23
+  %26 = concat(%22, %24) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %value = global_load_b32_saddr %13, %26 {offset = 512}
+  return %value
+}
+
+// ====
+
+func.def @signed_varying_word(%input: vector<2xi32>, %table: buffer) -> (i32) {
+  %raw = vector.extract %input[0] : vector<2xi32> -> i32
+  %signed = scalar.assume %raw [range(%raw, -128, 127)] : i32
+  %bias = scalar.constant 128 : i32
+  %ordinal = scalar.addi %signed, %bias : i32
+  %position = index.cast %ordinal : i32 to index
+  %base = index.constant 0 : offset
+  %view = buffer.view %table[%base] : buffer -> view<256xi32>
+  %value = view.load %view[%position] : view<256xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @signed_varying_word(%input: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr>) asm {
+  %view = resource<hal_binding> {extent = 1024, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %signed = slice %input[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %15 = v_lshlrev_b32_src0_inline %signed, 2
+  %16 = v_ashrrev_i32_src0_inline %signed, 30
+  %17 = slice %view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %18 = slice %view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %19, %20 = v_add_co_u32 %17, %15
+  %21 = v_mov_b32_copy %18
+  %22, %23 = v_add_co_ci_u32 %21, %16, %20
+  %24 = concat(%19, %22) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %value = global_load_b32_vaddr %24 {offset = 512}
+  return %value
+}
+
+// ====
+
+func.def @signed_varying_byte(%input: vector<2xi32>, %table: buffer) -> (i8) {
+  %raw = vector.extract %input[0] : vector<2xi32> -> i32
+  %signed = scalar.assume %raw [range(%raw, -128, 127)] : i32
+  %position = index.cast %signed : i32 to index
+  %base = index.constant 128 : offset
+  %view = buffer.view %table[%base] : buffer -> view<256xi8>
+  %bias = index.constant 128 : index
+  %ordinal = index.add %position, %bias : index
+  %value = view.load %view[%ordinal] : view<256xi8> -> i8
+  func.return %value : i8
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @signed_varying_byte(%input: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr>) asm {
+  %view = resource<hal_binding> {extent = 384, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %signed = slice %input[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %15 = v_ashrrev_i32_src0_inline %signed, 31
+  %16 = slice %view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %17 = slice %view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %18, %19 = v_add_co_u32 %16, %signed
+  %20 = v_mov_b32_copy %17
+  %21, %22 = v_add_co_ci_u32 %20, %15, %19
+  %23 = concat(%18, %21) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %value = global_load_i8_vaddr %23 {offset = 256}
+  return %value
+}
+
+// ====
+
+func.def @signed_irregular_stride(%input: vector<2xi32>, %table: buffer) -> (i32) {
+  %raw = vector.extract %input[0] : vector<2xi32> -> i32
+  %signed = scalar.assume %raw [range(%raw, -128, 127)] : i32
+  %position = index.cast %signed : i32 to index
+  %bias = index.constant 128 : index
+  %ordinal = index.add %position, %bias : index
+  %base = index.constant 0 : offset
+  %layout = encoding.layout.strided [3] : encoding<layout>
+  %view = buffer.view %table[%base] : buffer -> view<256xi32, %layout>
+  %value = view.load %view[%ordinal] : view<256xi32, %layout> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @signed_irregular_stride(%input: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr>) asm {
+  %view = resource<hal_binding> {extent = 3064, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %signed = slice %input[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %16 = v_mov_b32 12
+  %17 = v_mul_lo_u32 %signed, %16
+  %18 = v_mul_hi_i32 %signed, %16
+  %19 = slice %view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %20 = slice %view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %21, %22 = v_add_co_u32 %19, %17
+  %23 = v_mov_b32_copy %20
+  %24, %25 = v_add_co_ci_u32 %23, %18, %22
+  %26 = concat(%21, %24) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %value = global_load_b32_vaddr %26 {offset = 1536}
+  return %value
+}
+
+// ====
+
+func.def @signed_high_bit_stride(%input: vector<2xi32>, %table: buffer) -> (i8) {
+  %raw = vector.extract %input[0] : vector<2xi32> -> i32
+  %signed = scalar.assume %raw [range(%raw, -1, 1)] : i32
+  %coordinate = index.cast %signed : i32 to index
+  %bias = index.constant 1 : index
+  %position = index.add %coordinate, %bias : index
+  %base = index.constant 0 : offset
+  %layout = encoding.layout.strided [2147483649] : encoding<layout>
+  %view = buffer.view %table[%base] : buffer -> view<3xi8, %layout>
+  %value = view.load %view[%position] : view<3xi8, %layout> -> i8
+  func.return %value : i8
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @signed_high_bit_stride(%input: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr>) asm {
+  %view = resource<hal_binding> {extent = 4294967299, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %signed = slice %input[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %16 = s_mov_b32 2147483649
+  %17 = s_mov_b32 0
+  %19 = slice %view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %20 = slice %view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %23, %24 = s_add_co_u32 %19, %16
+  %25, %26 = s_addc_u32 %20, %17, %24
+  %28 = v_mov_b32 2147483649
+  %29 = v_mul_lo_u32 %signed, %28
+  %30 = v_mul_hi_i32 %signed, %28
+  %31 = v_add_u32 %30, %signed
+  %34, %35 = v_add_co_u32 %23, %29
+  %36 = v_mov_b32_copy %25
+  %37, %38 = v_add_co_ci_u32 %36, %31, %35
+  %39 = concat(%34, %37) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %value = global_load_i8_vaddr %39
+  return %value
+}
+
+// ====
+
+func.def @signed_wide_stride(%input: vector<2xi32>, %table: buffer) -> (i32) {
+  %raw = vector.extract %input[0] : vector<2xi32> -> i32
+  %signed = scalar.assume %raw [range(%raw, -1, 1)] : i32
+  %coordinate = index.cast %signed : i32 to index
+  %bias = index.constant 1 : index
+  %position = index.add %coordinate, %bias : index
+  %base = index.constant 0 : offset
+  %layout = encoding.layout.strided [1073741825] : encoding<layout>
+  %view = buffer.view %table[%base] : buffer -> view<3xi32, %layout>
+  %value = view.load %view[%position] : view<3xi32, %layout> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @signed_wide_stride(%input: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr>) asm {
+  %view = resource<hal_binding> {extent = 8589934604, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %signed = slice %input[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %16 = s_mov_b32 4
+  %17 = s_mov_b32 1
+  %19 = slice %view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %20 = slice %view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %23, %24 = s_add_co_u32 %19, %16
+  %25, %26 = s_addc_u32 %20, %17, %24
+  %28 = v_ashrrev_i32_src0_inline %signed, 31
+  %34 = v_mov_b32_copy %16
+  %36 = v_mov_b32_copy %17
+  %42 = v_mul_lo_u32 %signed, %34
+  %43 = v_mul_hi_u32 %signed, %34
+  %44 = v_mul_lo_u32 %signed, %36
+  %45 = v_mul_lo_u32 %28, %34
+  %46 = v_add_u32 %43, %44
+  %47 = v_add_u32 %46, %45
+  %53, %54 = v_add_co_u32 %23, %42
+  %55 = v_mov_b32_copy %25
+  %56, %57 = v_add_co_ci_u32 %55, %47, %54
+  %58 = concat(%53, %56) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %value = global_load_b32_vaddr %58
+  return %value
+}
+
+// ====
+
+func.def @signed_dynamic_stride(%input: vector<2xi32>, %bias0: index, %stride0: index, %table: buffer) -> (i32) {
+  %raw = vector.extract %input[0] : vector<2xi32> -> i32
+  %signed = scalar.assume %raw [range(%raw, -128, 127)] : i32
+  %coordinate = index.cast %signed : i32 to index
+  %bias = index.assume %bias0 [range(%bias0, 128, 256)] : index
+  %stride = index.assume %stride0 [range(%stride0, 1, 16)] : index
+  %position = index.add %coordinate, %bias : index
+  %base = index.constant 0 : offset
+  %layout = encoding.layout.strided [%stride] : encoding<layout>
+  %view = buffer.view %table[%base] : buffer -> view<512xi32, %layout>
+  %value = view.load %view[%position] : view<512xi32, %layout> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @signed_dynamic_stride(%input: reg<amdgpu.vgpr x2>, %bias: reg<amdgpu.sgpr>, %stride: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %signed = slice %input[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %21 = v_mov_b32_copy %bias
+  %22 = v_mov_b32_copy %stride
+  %23 = v_mul_lo_u32 %21, %22
+  %24 = v_lshlrev_b32_src0_inline %23, 2
+  %26 = v_mul_lo_u32 %signed, %22
+  %27 = v_lshlrev_b32_src0_inline %26, 2
+  %28 = v_add_u32 %24, %27
+  %value = global_load_b32_saddr %28, %view
+  return %value
+}
+
+// ====
+
+func.def @unsigned_high_bit_offset(%input: vector<2xi32>, %table: buffer) -> (i8) {
+  %raw = vector.extract %input[0] : vector<2xi32> -> i32
+  %origin = index.cast %raw : i32 to offset
+  %view = buffer.view %table[%origin] : buffer -> view<1xi8>
+  %value = view.load %view[0] : view<1xi8> -> i8
+  func.return %value : i8
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @unsigned_high_bit_offset(%input: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr>) asm {
+  %view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %origin = slice %input[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %value = global_load_i8_saddr %origin, %view
+  return %value
+}
+
+// ====
+
+func.def @signed_dynamic_wide_stride(%input: vector<2xi32>, %bias0: index, %stride0: index, %table: buffer) -> (i32) {
+  %raw = vector.extract %input[0] : vector<2xi32> -> i32
+  %signed = scalar.assume %raw [range(%raw, -128, 127)] : i32
+  %coordinate = index.cast %signed : i32 to index
+  %bias = index.assume %bias0 [range(%bias0, 128, 256)] : index
+  %stride = index.assume %stride0 [range(%stride0, 1073741824, 2147483647)] : index
+  %position = index.add %coordinate, %bias : index
+  %base = index.constant 0 : offset
+  %layout = encoding.layout.strided [%stride] : encoding<layout>
+  %view = buffer.view %table[%base] : buffer -> view<512xi32, %layout>
+  %value = view.load %view[%position] : view<512xi32, %layout> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @signed_dynamic_wide_stride(%input: reg<amdgpu.vgpr x2>, %bias: reg<amdgpu.sgpr>, %stride: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %view = resource<hal_binding> {index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %signed = slice %input[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %21 = s_mov_b32 0
+  %25 = s_mul_i32 %bias, %stride
+  %26 = s_mul_hi_u32 %bias, %stride
+  %27 = s_mul_i32 %21, %stride
+  %28 = s_add_u32 %26, %27
+  %29 = concat(%25, %28) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %30 = s_mov_b32 2
+  %31 = s_lshl_b64 %29, %30
+  %32 = slice %view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %33 = slice %view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %34 = slice %31[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %35 = slice %31[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %36, %37 = s_add_co_u32 %32, %34
+  %38, %39 = s_addc_u32 %33, %35, %37
+  %41 = v_ashrrev_i32_src0_inline %signed, 31
+  %43 = v_mov_b32_copy %stride
+  %44 = v_mov_b32 0
+  %50 = v_mul_lo_u32 %signed, %43
+  %51 = v_mul_hi_u32 %signed, %43
+  %52 = v_mul_lo_u32 %signed, %44
+  %53 = v_mul_lo_u32 %41, %43
+  %54 = v_add_u32 %51, %52
+  %55 = v_add_u32 %54, %53
+  %56 = concat(%50, %55) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %57 = v_mov_b32 2
+  %58 = v_lshlrev_b64 %57, %56
+  %59 = slice %58[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %60 = slice %58[1] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
+  %63, %64 = v_add_co_u32 %36, %59
+  %65 = v_mov_b32_copy %38
+  %66, %67 = v_add_co_ci_u32 %65, %60, %64
+  %68 = concat(%63, %66) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %value = global_load_b32_vaddr %68
+  return %value
+}
+
+// ====
+
+func.def @signed_wide_source(%input: i64, %table: buffer) -> (i32) {
+  %signed = scalar.assume %input [range(%input, -128, 127)] : i64
+  %bias = scalar.constant 128 : i64
+  %ordinal = scalar.addi %signed, %bias : i64
+  %position = index.cast %ordinal : i64 to index
+  %base = index.constant 0 : offset
+  %view = buffer.view %table[%base] : buffer -> view<256xi32>
+  %value = view.load %view[%position] : view<256xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @signed_wide_source(%signed: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr>) asm {
+  %view = resource<hal_binding> {extent = 1024, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %13 = v_mov_b32 0
+  %14 = s_mov_b32 2
+  %15 = s_lshl_b64 %signed, %14
+  %16 = slice %view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %17 = slice %view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %18 = slice %15[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %19 = slice %15[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %20, %21 = s_add_co_u32 %16, %18
+  %22, %23 = s_addc_u32 %17, %19, %21
+  %24 = concat(%20, %22) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %value = global_load_b32_saddr %13, %24 {offset = 512}
+  return %value
+}

@@ -62,7 +62,7 @@ _AMDGPU_CONTRACT_DESCRIPTOR_OVERLAY_BUILDERS: dict[
     "amdgpu.v_sub_u32.lhs_tied": lambda: _v_sub_u32_lhs_tied_overlay(
         "V_SUB_NC_U32", "v_sub_nc_u32"
     ),
-    **_contract_overlay_builders_from_overlays(_v_mul_u32_overlays()),
+    **_contract_overlay_builders_from_overlays(_v_mul_integer_overlays()),
     "amdgpu.v_mul_u32_u24": _v_mul_u32_u24_overlay,
     "amdgpu.v_mul_u32_u24.src0_inline": _v_mul_u32_u24_src0_inline_overlay,
     "amdgpu.v_mul_u32_u24.lit": _v_mul_u32_u24_literal_overlay,
