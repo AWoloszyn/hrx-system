@@ -47,11 +47,10 @@ low.func.def target<amdgpu.rdna3_5.core>(@target) @guarded_suffix_gfx1151(%addre
 amdgpu.target<gfx942> @target
 
 low.func.def target<amdgpu.cdna3.core>(@target) @guarded_suffix_gfx942(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %condition: reg<amdgpu.scc>) -> (reg<amdgpu.vgpr>) asm {
-  %m0 = s_mov_b32_m0_imm 0
-  %old = global_load_dword_saddr %address, %base, %m0
+  %old = global_load_dword_saddr %address, %base
   low.cond_br %condition, ^issue, ^skip : reg<amdgpu.scc>
 ^issue:
-  %younger = global_load_dword_saddr %address, %base, %m0 {offset = 4}
+  %younger = global_load_dword_saddr %address, %base {offset = 4}
   %used = v_add_u32 %old, %address
   %result = v_add_u32 %used, %younger
   return %result
@@ -231,11 +230,10 @@ CHECK-NOT: s_waitcnt *lgkmcnt(1)
 amdgpu.target<gfx942> @target
 
 low.func.def target<amdgpu.cdna3.core>(@target) @legacy_flat_suffix_is_not_ordered(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %flat_address: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr x2>) asm {
-  %m0 = s_mov_b32_m0_imm 0
-  %old = global_load_dword_saddr %address, %base, %m0
+  %old = global_load_dword_saddr %address, %base
   low.br ^consume
 ^consume:
-  %younger = flat_load_dwordx2 %flat_address, %m0 : reg<amdgpu.vgpr x2>
+  %younger = flat_load_dwordx2 %flat_address : reg<amdgpu.vgpr x2>
   %result = v_add_u32 %old, %address
   return %result, %younger
 }
@@ -330,11 +328,10 @@ low.func.def target<amdgpu.rdna3_5.core>(@target) @incoming_edge_copy(%address: 
 amdgpu.target<gfx942> @target
 
 low.func.def target<amdgpu.cdna3.core>(@target) @incoming_flat_result_is_not_ordered(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %flat_address: reg<amdgpu.vgpr x2>) -> (reg<amdgpu.vgpr>, reg<amdgpu.vgpr x2>) asm {
-  %m0 = s_mov_b32_m0_imm 0
-  %old = flat_load_dwordx2 %flat_address, %m0 : reg<amdgpu.vgpr x2>
+  %old = flat_load_dwordx2 %flat_address : reg<amdgpu.vgpr x2>
   low.br ^consume
 ^consume:
-  %younger = global_load_dword_saddr %address, %base, %m0
+  %younger = global_load_dword_saddr %address, %base
   %first = slice %old[0] : reg<amdgpu.vgpr x2> -> reg<amdgpu.vgpr>
   %result = v_add_u32 %first, %address
   return %result, %old

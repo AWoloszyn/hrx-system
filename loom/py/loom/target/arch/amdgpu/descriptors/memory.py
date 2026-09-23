@@ -2822,7 +2822,7 @@ def _global_load_overlay(
     width_bits: int,
     units: int,
     address_units: int,
-    implicit_m0: bool = False,
+    xml_has_m0: bool = False,
     global_read_memory: AmdgpuImplicitOperandOverlay | None = None,
     semantic_tag: str | None = None,
     cache_fields: tuple[tuple[str, int], ...] = (),
@@ -2830,8 +2830,8 @@ def _global_load_overlay(
     implicit_operands: tuple[AmdgpuImplicitOperandOverlay, ...] = (
         global_read_memory or _ignore_global_read_memory(width_bits),
     )
-    if implicit_m0:
-        implicit_operands += (_implicit_m0_input(),)
+    if xml_has_m0:
+        implicit_operands += (_IGNORE_REGISTER_MEMORY_M0,)
     operands: tuple[AmdgpuOperandOverlay, ...] = (
         AmdgpuOperandOverlay(data_field_name, _vgpr_result(units=units)),
         _global_addr_operand(
@@ -2864,7 +2864,6 @@ def _global_load_overlay(
             mnemonic=mnemonic,
             results=("dst",),
             operands=("addr", "saddr"),
-            implicit_m0=implicit_m0,
             immediates=_memory_asm_immediate_names(cache_fields),
         )
         if saddr_off is None
@@ -2887,14 +2886,14 @@ def _global_load_b16_d16_overlay(
     offset_bit_width: int,
     saddr_off: AmdgpuFixedEncodingValue | None,
     address_units: int,
-    implicit_m0: bool = False,
+    xml_has_m0: bool = False,
     cache_fields: tuple[tuple[str, int], ...] = (),
 ) -> AmdgpuDescriptorOverlay:
     implicit_operands: tuple[AmdgpuImplicitOperandOverlay, ...] = (
         _ignore_global_read_memory(16),
     )
-    if implicit_m0:
-        implicit_operands += (_implicit_m0_input(),)
+    if xml_has_m0:
+        implicit_operands += (_IGNORE_REGISTER_MEMORY_M0,)
     operands: tuple[AmdgpuOperandOverlay, ...] = (
         AmdgpuOperandOverlay(
             data_field_name,
@@ -2931,7 +2930,6 @@ def _global_load_b16_d16_overlay(
             mnemonic="global_load_d16_b16",
             results=("dst",),
             operands=("addr", "saddr"),
-            implicit_m0=implicit_m0,
             immediates=_memory_asm_immediate_names(cache_fields),
         )
         if saddr_off is None
@@ -2954,14 +2952,14 @@ def _global_load_b16_d16_hi_overlay(
     offset_bit_width: int,
     saddr_off: AmdgpuFixedEncodingValue | None,
     address_units: int,
-    implicit_m0: bool = False,
+    xml_has_m0: bool = False,
     cache_fields: tuple[tuple[str, int], ...] = (),
 ) -> AmdgpuDescriptorOverlay:
     implicit_operands: tuple[AmdgpuImplicitOperandOverlay, ...] = (
         _ignore_global_read_memory(16),
     )
-    if implicit_m0:
-        implicit_operands += (_implicit_m0_input(),)
+    if xml_has_m0:
+        implicit_operands += (_IGNORE_REGISTER_MEMORY_M0,)
     operands: tuple[AmdgpuOperandOverlay, ...] = (
         AmdgpuOperandOverlay(
             data_field_name,
@@ -3001,8 +2999,6 @@ def _global_load_b16_d16_hi_overlay(
         if saddr_off is None
         else (_native_result("dst"), _native_operand("addr"))
     )
-    if implicit_m0:
-        asm_operands += ("m0",)
     return AmdgpuDescriptorOverlay(
         descriptor_key=descriptor_key,
         instruction_name="GLOBAL_LOAD_SHORT_D16_HI",
@@ -3049,7 +3045,7 @@ def _global_load_narrow_overlays(
     saddr_off: AmdgpuFixedEncodingValue | None,
     address_units: int,
     descriptor_key_suffix: str = "",
-    implicit_m0: bool = False,
+    xml_has_m0: bool = False,
     cache_fields: tuple[tuple[str, int], ...] = (),
 ) -> tuple[AmdgpuDescriptorOverlay, ...]:
     return tuple(
@@ -3068,7 +3064,7 @@ def _global_load_narrow_overlays(
             width_bits=width_bits,
             units=1,
             address_units=address_units,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
             global_read_memory=implicit_memory,
             semantic_tag=semantic_tag,
             cache_fields=cache_fields,
@@ -3099,7 +3095,7 @@ def _flat_load_overlay(
     semantic_tag: str,
     data_format_name: str,
     implicit_flat_scratch: bool,
-    implicit_m0: bool,
+    xml_has_m0: bool,
     allow_accumulator_results: bool,
     fixed_saddr: AmdgpuFixedEncodingValue | None = None,
     cache_fields: tuple[tuple[str, int], ...] = (),
@@ -3118,8 +3114,8 @@ def _flat_load_overlay(
     )
     if implicit_flat_scratch:
         implicit_operands += (_IGNORE_FLAT_SCRATCH_INPUT,)
-    if implicit_m0:
-        implicit_operands += (_implicit_m0_input(),)
+    if xml_has_m0:
+        implicit_operands += (_IGNORE_REGISTER_MEMORY_M0,)
     fixed_encoding_fields: tuple[tuple[str, AmdgpuFixedEncodingValue], ...] = (
         (("SADDR", fixed_saddr),) if fixed_saddr is not None else ()
     )
@@ -3128,7 +3124,7 @@ def _flat_load_overlay(
         if offset_signed
         else _offset_immediate(offset_bit_width)
     )
-    asm_operands = ("addr", "m0") if implicit_m0 else ("addr",)
+    asm_operands = ("addr",)
     return AmdgpuDescriptorOverlay(
         descriptor_key=descriptor_key,
         instruction_name=instruction_name,
@@ -3257,7 +3253,7 @@ def _flat_store_overlay(
     units: int,
     data_format_name: str,
     implicit_flat_scratch: bool,
-    implicit_m0: bool,
+    xml_has_m0: bool,
     allow_accumulator_operands: bool,
     fixed_saddr: AmdgpuFixedEncodingValue | None = None,
     cache_fields: tuple[tuple[str, int], ...] = (),
@@ -3276,8 +3272,8 @@ def _flat_store_overlay(
     )
     if implicit_flat_scratch:
         implicit_operands += (_IGNORE_FLAT_SCRATCH_INPUT,)
-    if implicit_m0:
-        implicit_operands += (_implicit_m0_input(),)
+    if xml_has_m0:
+        implicit_operands += (_IGNORE_REGISTER_MEMORY_M0,)
     fixed_encoding_fields: tuple[tuple[str, AmdgpuFixedEncodingValue], ...] = (
         (("SADDR", fixed_saddr),) if fixed_saddr is not None else ()
     )
@@ -3286,7 +3282,7 @@ def _flat_store_overlay(
         if offset_signed
         else _offset_immediate(offset_bit_width)
     )
-    asm_operands = ("addr", "value", "m0") if implicit_m0 else ("addr", "value")
+    asm_operands = ("addr", "value")
     return AmdgpuDescriptorOverlay(
         descriptor_key=descriptor_key,
         instruction_name=instruction_name,
@@ -3325,7 +3321,7 @@ def _flat_memory_overlays(
     offset_bit_width: int,
     offset_signed: bool,
     implicit_flat_scratch: bool,
-    implicit_m0: bool = False,
+    xml_has_m0: bool = False,
     allow_accumulator_results: bool = False,
     allow_accumulator_operands: bool = False,
     fixed_saddr: AmdgpuFixedEncodingValue | None = None,
@@ -3348,7 +3344,7 @@ def _flat_memory_overlays(
                 semantic_tag=semantic_tag,
                 data_format_name=data_format_name,
                 implicit_flat_scratch=implicit_flat_scratch,
-                implicit_m0=implicit_m0,
+                xml_has_m0=xml_has_m0,
                 allow_accumulator_results=allow_accumulator_results,
                 fixed_saddr=fixed_saddr,
                 cache_fields=cache_fields,
@@ -3381,7 +3377,7 @@ def _flat_memory_overlays(
                 units=units,
                 data_format_name=data_format_name,
                 implicit_flat_scratch=implicit_flat_scratch,
-                implicit_m0=implicit_m0,
+                xml_has_m0=xml_has_m0,
                 allow_accumulator_operands=allow_accumulator_operands,
                 fixed_saddr=fixed_saddr,
                 cache_fields=cache_fields,
@@ -3419,7 +3415,7 @@ def _scratch_load_overlay(
     fixed_vaddr: AmdgpuFixedEncodingValue | None,
     fixed_saddr: AmdgpuFixedEncodingValue | None,
     implicit_flat_scratch: bool,
-    implicit_m0: bool,
+    xml_has_m0: bool,
     cache_fields: tuple[tuple[str, int], ...] = (),
 ) -> AmdgpuDescriptorOverlay:
     operands: tuple[AmdgpuOperandOverlay, ...] = (
@@ -3430,8 +3426,8 @@ def _scratch_load_overlay(
     )
     if implicit_flat_scratch:
         implicit_operands = (*implicit_operands, _IGNORE_FLAT_SCRATCH_INPUT)
-    if implicit_m0:
-        implicit_operands = (*implicit_operands, _implicit_m0_input())
+    if xml_has_m0:
+        implicit_operands = (*implicit_operands, _IGNORE_REGISTER_MEMORY_M0)
     fixed_encoding_fields: tuple[tuple[str, AmdgpuFixedEncodingValue], ...] = (
         ("SVE", 1 if fixed_vaddr is None else 0),
     )
@@ -3505,7 +3501,7 @@ def _scratch_store_overlay(
     fixed_vaddr: AmdgpuFixedEncodingValue | None,
     fixed_saddr: AmdgpuFixedEncodingValue | None,
     implicit_flat_scratch: bool,
-    implicit_m0: bool,
+    xml_has_m0: bool,
     cache_fields: tuple[tuple[str, int], ...] = (),
 ) -> AmdgpuDescriptorOverlay:
     operands: tuple[AmdgpuOperandOverlay, ...] = ()
@@ -3514,8 +3510,8 @@ def _scratch_store_overlay(
     )
     if implicit_flat_scratch:
         implicit_operands = (*implicit_operands, _IGNORE_FLAT_SCRATCH_INPUT)
-    if implicit_m0:
-        implicit_operands = (*implicit_operands, _implicit_m0_input())
+    if xml_has_m0:
+        implicit_operands = (*implicit_operands, _IGNORE_REGISTER_MEMORY_M0)
     fixed_encoding_fields: tuple[tuple[str, AmdgpuFixedEncodingValue], ...] = (
         ("SVE", 1 if fixed_vaddr is None else 0),
     )
@@ -3590,7 +3586,7 @@ def _scratch_load_narrow_overlays(
     fixed_vaddr: AmdgpuFixedEncodingValue | None,
     fixed_saddr: AmdgpuFixedEncodingValue | None,
     implicit_flat_scratch: bool,
-    implicit_m0: bool,
+    xml_has_m0: bool,
     descriptor_key_suffix: str = "",
     cache_fields: tuple[tuple[str, int], ...] = (),
 ) -> tuple[AmdgpuDescriptorOverlay, ...]:
@@ -3618,7 +3614,7 @@ def _scratch_load_narrow_overlays(
             fixed_vaddr=fixed_vaddr,
             fixed_saddr=fixed_saddr,
             implicit_flat_scratch=implicit_flat_scratch,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
             cache_fields=cache_fields,
         )
         for (
@@ -3644,7 +3640,7 @@ def _scratch_store_narrow_overlays(
     fixed_vaddr: AmdgpuFixedEncodingValue | None,
     fixed_saddr: AmdgpuFixedEncodingValue | None,
     implicit_flat_scratch: bool,
-    implicit_m0: bool,
+    xml_has_m0: bool,
     descriptor_key_suffix: str = "",
     cache_fields: tuple[tuple[str, int], ...] = (),
 ) -> tuple[AmdgpuDescriptorOverlay, ...]:
@@ -3670,7 +3666,7 @@ def _scratch_store_narrow_overlays(
             fixed_vaddr=fixed_vaddr,
             fixed_saddr=fixed_saddr,
             implicit_flat_scratch=implicit_flat_scratch,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
             cache_fields=cache_fields,
         )
         for (
@@ -3695,7 +3691,7 @@ def _scratch_memory_overlays(
     fixed_vaddr: AmdgpuFixedEncodingValue | None,
     fixed_saddr: AmdgpuFixedEncodingValue | None,
     implicit_flat_scratch: bool = False,
-    implicit_m0: bool = False,
+    xml_has_m0: bool = False,
     descriptor_key_suffix: str = "",
     narrow_byte_load_mnemonic_suffixes: tuple[str, str] = ("u8", "i8"),
     narrow_b16_load_mnemonic_suffixes: tuple[str, str] = ("u16", "i16"),
@@ -3715,7 +3711,7 @@ def _scratch_memory_overlays(
             fixed_vaddr=fixed_vaddr,
             fixed_saddr=fixed_saddr,
             implicit_flat_scratch=implicit_flat_scratch,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
             descriptor_key_suffix=descriptor_key_suffix,
             cache_fields=cache_fields,
         ),
@@ -3731,7 +3727,7 @@ def _scratch_memory_overlays(
             fixed_vaddr=fixed_vaddr,
             fixed_saddr=fixed_saddr,
             implicit_flat_scratch=implicit_flat_scratch,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
             descriptor_key_suffix=descriptor_key_suffix,
             cache_fields=cache_fields,
         ),
@@ -3747,7 +3743,7 @@ def _scratch_memory_overlays(
             fixed_vaddr=fixed_vaddr,
             fixed_saddr=fixed_saddr,
             implicit_flat_scratch=implicit_flat_scratch,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
             descriptor_key_suffix=descriptor_key_suffix,
             cache_fields=cache_fields,
         ),
@@ -3769,7 +3765,7 @@ def _scratch_memory_overlays(
                 fixed_vaddr=fixed_vaddr,
                 fixed_saddr=fixed_saddr,
                 implicit_flat_scratch=implicit_flat_scratch,
-                implicit_m0=implicit_m0,
+                xml_has_m0=xml_has_m0,
                 cache_fields=cache_fields,
             )
             for (width_bits, units), instruction_suffix, mnemonic_suffix in zip(
@@ -3797,7 +3793,7 @@ def _scratch_memory_overlays(
                 fixed_vaddr=fixed_vaddr,
                 fixed_saddr=fixed_saddr,
                 implicit_flat_scratch=implicit_flat_scratch,
-                implicit_m0=implicit_m0,
+                xml_has_m0=xml_has_m0,
                 cache_fields=cache_fields,
             )
             for (width_bits, units), instruction_suffix, mnemonic_suffix in zip(
@@ -3824,14 +3820,14 @@ def _global_store_overlay(
     width_bits: int,
     units: int,
     address_units: int,
-    implicit_m0: bool = False,
+    xml_has_m0: bool = False,
     cache_fields: tuple[tuple[str, int], ...] = (),
 ) -> AmdgpuDescriptorOverlay:
     implicit_operands: tuple[AmdgpuImplicitOperandOverlay, ...] = (
         _ignore_global_write_memory(width_bits),
     )
-    if implicit_m0:
-        implicit_operands += (_implicit_m0_input(),)
+    if xml_has_m0:
+        implicit_operands += (_IGNORE_REGISTER_MEMORY_M0,)
     operands: tuple[AmdgpuOperandOverlay, ...] = (
         _global_addr_operand(
             address_field_name, units=address_units, has_saddr=saddr_off is None
@@ -3863,7 +3859,6 @@ def _global_store_overlay(
         asm_forms=_global_saddr_asm(
             mnemonic=mnemonic,
             operands=("addr", "value", "saddr"),
-            implicit_m0=implicit_m0,
             immediates=_memory_asm_immediate_names(cache_fields),
         )
         if saddr_off is None
@@ -3885,14 +3880,14 @@ def _global_store_b16_overlay(
     offset_bit_width: int,
     saddr_off: AmdgpuFixedEncodingValue | None,
     address_units: int,
-    implicit_m0: bool = False,
+    xml_has_m0: bool = False,
     cache_fields: tuple[tuple[str, int], ...] = (),
 ) -> AmdgpuDescriptorOverlay:
     implicit_operands: tuple[AmdgpuImplicitOperandOverlay, ...] = (
         _ignore_global_write_memory(16),
     )
-    if implicit_m0:
-        implicit_operands += (_implicit_m0_input(),)
+    if xml_has_m0:
+        implicit_operands += (_IGNORE_REGISTER_MEMORY_M0,)
     operands: tuple[AmdgpuOperandOverlay, ...] = (
         _global_addr_operand(
             address_field_name, units=address_units, has_saddr=saddr_off is None
@@ -3928,7 +3923,6 @@ def _global_store_b16_overlay(
         asm_forms=_global_saddr_asm(
             mnemonic="global_store_short",
             operands=("addr", "value", "saddr"),
-            implicit_m0=implicit_m0,
             immediates=_memory_asm_immediate_names(cache_fields),
         )
         if saddr_off is None
@@ -4092,7 +4086,7 @@ def _global_b16_memory_overlays(
     address_units: int,
     descriptor_key_suffix: str = "",
     load_mnemonic_suffixes: tuple[str, str] = ("u16", "i16"),
-    implicit_m0: bool = False,
+    xml_has_m0: bool = False,
     cache_fields: tuple[tuple[str, int], ...] = (),
     include_d16_hi_loads: bool = False,
 ) -> tuple[AmdgpuDescriptorOverlay, ...]:
@@ -4108,7 +4102,7 @@ def _global_b16_memory_overlays(
             saddr_off=saddr_off,
             address_units=address_units,
             descriptor_key_suffix=descriptor_key_suffix,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
             cache_fields=cache_fields,
         ),
         _global_load_b16_d16_overlay(
@@ -4120,7 +4114,7 @@ def _global_b16_memory_overlays(
             offset_bit_width=offset_bit_width,
             saddr_off=saddr_off,
             address_units=address_units,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
             cache_fields=cache_fields,
         ),
         *(
@@ -4136,7 +4130,7 @@ def _global_b16_memory_overlays(
                     offset_bit_width=offset_bit_width,
                     saddr_off=saddr_off,
                     address_units=address_units,
-                    implicit_m0=implicit_m0,
+                    xml_has_m0=xml_has_m0,
                     cache_fields=cache_fields,
                 ),
             )
@@ -4152,7 +4146,7 @@ def _global_b16_memory_overlays(
             offset_bit_width=offset_bit_width,
             saddr_off=saddr_off,
             address_units=address_units,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
             cache_fields=cache_fields,
         ),
     )
@@ -4170,7 +4164,7 @@ def _global_byte_memory_overlays(
     address_units: int,
     descriptor_key_suffix: str = "",
     load_mnemonic_suffixes: tuple[str, str] = ("u8", "i8"),
-    implicit_m0: bool = False,
+    xml_has_m0: bool = False,
     cache_fields: tuple[tuple[str, int], ...] = (),
 ) -> tuple[AmdgpuDescriptorOverlay, ...]:
     return (
@@ -4185,7 +4179,7 @@ def _global_byte_memory_overlays(
             saddr_off=saddr_off,
             address_units=address_units,
             descriptor_key_suffix=descriptor_key_suffix,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
             cache_fields=cache_fields,
         ),
         _global_store_overlay(
@@ -4201,7 +4195,7 @@ def _global_byte_memory_overlays(
             width_bits=8,
             units=1,
             address_units=address_units,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
             cache_fields=cache_fields,
         ),
     )
@@ -4220,7 +4214,7 @@ def _global_memory_overlays(
     saddr_off: AmdgpuFixedEncodingValue | None,
     address_units: int,
     descriptor_key_suffix: str = "",
-    implicit_m0: bool = False,
+    xml_has_m0: bool = False,
     cache_fields: tuple[tuple[str, int], ...] = (),
 ) -> tuple[AmdgpuDescriptorOverlay, ...]:
     return (
@@ -4240,7 +4234,7 @@ def _global_memory_overlays(
                 width_bits=width_bits,
                 units=units,
                 address_units=address_units,
-                implicit_m0=implicit_m0,
+                xml_has_m0=xml_has_m0,
                 cache_fields=cache_fields,
             )
             for (width_bits, units), instruction_suffix, mnemonic_suffix in zip(
@@ -4266,7 +4260,7 @@ def _global_memory_overlays(
                 width_bits=width_bits,
                 units=units,
                 address_units=address_units,
-                implicit_m0=implicit_m0,
+                xml_has_m0=xml_has_m0,
                 cache_fields=cache_fields,
             )
             for (width_bits, units), instruction_suffix, mnemonic_suffix in zip(

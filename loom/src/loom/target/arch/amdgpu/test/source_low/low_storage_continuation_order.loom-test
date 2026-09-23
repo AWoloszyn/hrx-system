@@ -97,8 +97,7 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @gfx1250_vmem_to_lds_con
 amdgpu.target<gfx942> @target
 
 low.func.def target<amdgpu.cdna3.core>(@target) @gfx942_vmem_to_valu_continuation(%address: reg<amdgpu.vgpr>, %input: reg<amdgpu.sgpr x2>, %a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %m0 = s_mov_b32_m0_imm 0
-  %loaded = global_load_dword_saddr %address, %input, %m0
+  %loaded = global_load_dword_saddr %address, %input
   %continued = v_cvt_pk_fp8_f32_high %loaded, %a, %b
   %result = v_add_u32 %continued, %address
   return %result
@@ -107,7 +106,6 @@ low.func.def target<amdgpu.cdna3.core>(@target) @gfx942_vmem_to_valu_continuatio
 // VALU completion says nothing about the preserved half's pending load.
 // The partial conversion must release that load before writing the same VGPR.
 // ----
-  s_mov_b32 m0, 0
   global_load_dword v3, v2, s[0:1] offset:0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   v_cvt_pk_fp8_f32 v3, v0, v1, op_sel:[0,0,1]
@@ -121,8 +119,7 @@ low.func.def target<amdgpu.cdna3.core>(@target) @gfx942_vmem_to_valu_continuatio
 amdgpu.target<gfx950> @target
 
 low.func.def target<amdgpu.cdna4.core>(@target) @gfx950_vmem_to_valu_continuation(%address: reg<amdgpu.vgpr>, %input: reg<amdgpu.sgpr x2>, %a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %m0 = s_mov_b32_m0_imm 0
-  %loaded = global_load_dword_saddr %address, %input, %m0
+  %loaded = global_load_dword_saddr %address, %input
   %continued = v_cvt_pk_fp8_f32_high %loaded, %a, %b
   %result = v_add_u32 %continued, %address
   return %result
@@ -131,7 +128,6 @@ low.func.def target<amdgpu.cdna4.core>(@target) @gfx950_vmem_to_valu_continuatio
 // VALU completion says nothing about the preserved half's pending load.
 // The partial conversion must release that load before writing the same VGPR.
 // ----
-  s_mov_b32 m0, 0
   global_load_dword v3, v2, s[0:1] offset:0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   v_cvt_pk_fp8_f32 v3, v0, v1, op_sel:[0,0,1]

@@ -9,16 +9,14 @@
 amdgpu.target<gfx942> @target
 
 low.func.def target<amdgpu.cdna3.core>(@target) @flat_loads_gfx942(%address: reg<amdgpu.vgpr x2>, %addend: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %m0 = s_mov_b32_m0_imm 0
-  %older = flat_load_dword %address, %m0 : reg<amdgpu.vgpr>
-  %younger = flat_load_dword %address, %m0 {offset = 4} : reg<amdgpu.vgpr>
+  %older = flat_load_dword %address : reg<amdgpu.vgpr>
+  %younger = flat_load_dword %address {offset = 4} : reg<amdgpu.vgpr>
   %used = v_add_u32 %older, %addend
   %result = v_add_u32 %used, %younger
   return %result
 }
 
 // ----
-  s_mov_b32 m0, 0
   flat_load_dword v3, v[0:1], off offset:0
   flat_load_dword v0, v[0:1], off offset:4
   s_waitcnt vmcnt(0) lgkmcnt(0)
@@ -33,14 +31,12 @@ low.func.def target<amdgpu.cdna3.core>(@target) @flat_loads_gfx942(%address: reg
 amdgpu.target<gfx942> @target
 
 low.func.def target<amdgpu.cdna3.core>(@target) @flat_store_then_local_load_gfx942(%address: reg<amdgpu.vgpr x2>, %local: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %m0 = s_mov_b32_m0_imm 0
-  flat_store_dword %address, %value, %m0
+  flat_store_dword %address, %value
   %loaded = ds_read_b32 %local
   return %loaded
 }
 
 // ----
-  s_mov_b32 m0, 0
   flat_store_dword v[0:1], v2, off offset:0
   s_waitcnt vmcnt(0) lgkmcnt(0)
   ds_read_b32 v0, v3 offset:0
@@ -54,8 +50,7 @@ low.func.def target<amdgpu.cdna3.core>(@target) @flat_store_then_local_load_gfx9
 amdgpu.target<gfx942> @target
 
 low.func.def target<amdgpu.cdna3.core>(@target) @incoming_flat_gfx942(%address: reg<amdgpu.vgpr x2>, %addend: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %m0 = s_mov_b32_m0_imm 0
-  %loaded = flat_load_dword %address, %m0 : reg<amdgpu.vgpr>
+  %loaded = flat_load_dword %address : reg<amdgpu.vgpr>
   low.br ^consume
 ^consume:
   %result = v_add_u32 %loaded, %addend
@@ -63,7 +58,6 @@ low.func.def target<amdgpu.cdna3.core>(@target) @incoming_flat_gfx942(%address: 
 }
 
 // ----
-  s_mov_b32 m0, 0
   flat_load_dword v0, v[0:1], off offset:0
 .Lbb1:
   s_waitcnt vmcnt(0) lgkmcnt(0)
@@ -211,14 +205,12 @@ low.func.def target<amdgpu.rdna4.gfx125x.core>(@target) @incoming_flat_gfx1250(%
 amdgpu.target<gfx942> @target
 
 low.func.def target<amdgpu.cdna3.core>(@target) @flat_atomic_no_return_gfx942(%address: reg<amdgpu.vgpr x2>, %local: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %m0 = s_mov_b32_m0_imm 0
-  flat_atomic_add %address, %value, %m0
+  flat_atomic_add %address, %value
   %loaded = ds_read_b32 %local
   return %loaded
 }
 
 // ----
-  s_mov_b32 m0, 0
   flat_atomic_add v[0:1], v2 offset:0
   s_waitcnt vmcnt(0) lgkmcnt(0)
   ds_read_b32 v0, v3 offset:0
@@ -233,14 +225,12 @@ low.func.def target<amdgpu.cdna3.core>(@target) @flat_atomic_no_return_gfx942(%a
 amdgpu.target<gfx942> @target
 
 low.func.def target<amdgpu.cdna3.core>(@target) @flat_atomic_return_gfx942(%address: reg<amdgpu.vgpr x2>, %local: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %m0 = s_mov_b32_m0_imm 0
-  %old = flat_atomic_add_rtn %address, %value, %m0 : reg<amdgpu.vgpr>
+  %old = flat_atomic_add_rtn %address, %value : reg<amdgpu.vgpr>
   %loaded = ds_read_b32 %local
   return %loaded
 }
 
 // ----
-  s_mov_b32 m0, 0
   flat_atomic_add v0, v[0:1], v2 offset:0
   s_waitcnt vmcnt(0) lgkmcnt(0)
   ds_read_b32 v0, v3 offset:0
@@ -420,9 +410,8 @@ low.func.def target<amdgpu.rdna3_5.core>(@target) @flat_result_reuse_across_edge
 amdgpu.target<gfx942> @target
 
 low.func.def target<amdgpu.cdna3.core>(@target) @explicit_partial_flat_lds(%address: reg<amdgpu.vgpr x2>, %local: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %m0 = s_mov_b32_m0_imm 0
   %older = ds_read_b32 %local
-  %younger = flat_load_dword %address, %m0 : reg<amdgpu.vgpr>
+  %younger = flat_load_dword %address : reg<amdgpu.vgpr>
   s_waitcnt {lgkmcnt = 1}
   %used = v_add_u32 %older, %value
   %result = v_add_u32 %used, %younger
@@ -430,7 +419,6 @@ low.func.def target<amdgpu.cdna3.core>(@target) @explicit_partial_flat_lds(%addr
 }
 
 // ----
-  s_mov_b32 m0, 0
   ds_read_b32 v0, v0 offset:0
   flat_load_dword v2, v[2:3], off offset:0
   s_waitcnt vmcnt(63) lgkmcnt(1)
@@ -448,9 +436,8 @@ low.func.def target<amdgpu.cdna3.core>(@target) @explicit_partial_flat_lds(%addr
 amdgpu.target<gfx942> @target
 
 low.func.def target<amdgpu.cdna3.core>(@target) @explicit_partial_flat_vmem(%address: reg<amdgpu.vgpr x2>, %base: reg<amdgpu.sgpr x2>, %offset: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %m0 = s_mov_b32_m0_imm 0
-  %older = global_load_dword_saddr %offset, %base, %m0
-  %younger = flat_load_dword %address, %m0 : reg<amdgpu.vgpr>
+  %older = global_load_dword_saddr %offset, %base
+  %younger = flat_load_dword %address : reg<amdgpu.vgpr>
   s_waitcnt {vmcnt = 1}
   %used = v_add_u32 %older, %offset
   %result = v_add_u32 %used, %younger
@@ -458,7 +445,6 @@ low.func.def target<amdgpu.cdna3.core>(@target) @explicit_partial_flat_vmem(%add
 }
 
 // ----
-  s_mov_b32 m0, 0
   global_load_dword v3, v2, s[0:1] offset:0
   flat_load_dword v0, v[0:1], off offset:0
   s_waitcnt vmcnt(1) lgkmcnt(15)
@@ -476,8 +462,7 @@ low.func.def target<amdgpu.cdna3.core>(@target) @explicit_partial_flat_vmem(%add
 amdgpu.target<gfx942> @target
 
 low.func.def target<amdgpu.cdna3.core>(@target) @flat_full_drain_restores_lds_order(%address: reg<amdgpu.vgpr x2>, %local: reg<amdgpu.vgpr>, %value: reg<amdgpu.vgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %m0 = s_mov_b32_m0_imm 0
-  %flat = flat_load_dword %address, %m0 : reg<amdgpu.vgpr>
+  %flat = flat_load_dword %address : reg<amdgpu.vgpr>
   s_waitcnt {vmcnt = 0, lgkmcnt = 0}
   %older = ds_read_b32 %local
   %younger = ds_read_b32 %local {offset = 4}
@@ -487,7 +472,6 @@ low.func.def target<amdgpu.cdna3.core>(@target) @flat_full_drain_restores_lds_or
 }
 
 // ----
-  s_mov_b32 m0, 0
   flat_load_dword v0, v[0:1], off offset:0
   s_waitcnt vmcnt(0) lgkmcnt(0)
   ds_read_b32 v1, v2 offset:0
@@ -559,15 +543,14 @@ low.func.def target<amdgpu.rdna3_5.core>(@target) @cyclic_flat_gfx1151(%address:
 amdgpu.target<gfx942> @target
 
 low.func.def target<amdgpu.cdna3.core>(@target) @cyclic_flat_gfx942(%address: reg<amdgpu.vgpr x2>, %seed0: reg<amdgpu.vgpr>, %seed1: reg<amdgpu.vgpr>, %initial: reg<amdgpu.vgpr>, %again: reg<amdgpu.scc>) -> (reg<amdgpu.vgpr>) asm {
-  %m0 = s_mov_b32_m0_imm 0
   low.br ^loop(%seed0: reg<amdgpu.vgpr>, %seed1: reg<amdgpu.vgpr>, %initial: reg<amdgpu.vgpr>)
 ^loop(%carried0: reg<amdgpu.vgpr>, %carried1: reg<amdgpu.vgpr>, %acc: reg<amdgpu.vgpr>):
-  %first = flat_load_dword %address, %m0 : reg<amdgpu.vgpr>
-  %second = flat_load_dword %address, %m0 {offset = 4} : reg<amdgpu.vgpr>
+  %first = flat_load_dword %address : reg<amdgpu.vgpr>
+  %second = flat_load_dword %address {offset = 4} : reg<amdgpu.vgpr>
   %used0 = v_add_u32 %acc, %carried0
-  %third = flat_load_dword %address, %m0 {offset = 8} : reg<amdgpu.vgpr>
+  %third = flat_load_dword %address {offset = 8} : reg<amdgpu.vgpr>
   %used1 = v_add_u32 %used0, %carried1
-  %fourth = flat_load_dword %address, %m0 {offset = 12} : reg<amdgpu.vgpr>
+  %fourth = flat_load_dword %address {offset = 12} : reg<amdgpu.vgpr>
   %used2 = v_add_u32 %used1, %first
   %used3 = v_add_u32 %used2, %second
   low.cond_br %again, ^backedge, ^exit : reg<amdgpu.scc>
@@ -580,7 +563,6 @@ low.func.def target<amdgpu.cdna3.core>(@target) @cyclic_flat_gfx942(%address: re
 }
 
 // ----
-  s_mov_b32 m0, 0
 .Lbb1:
   flat_load_dword v6, v[2:3], off offset:0
   flat_load_dword v7, v[2:3], off offset:4

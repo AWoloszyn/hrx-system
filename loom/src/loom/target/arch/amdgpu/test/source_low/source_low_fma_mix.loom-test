@@ -181,8 +181,7 @@ low.kernel.def target<amdgpu.gfx9_4.generic.core>(@gfx9_4_target) abi_layout({co
   %53 = v_pk_fma_f32 %50, %51, %52
   %result = concat(%49, %53) : (reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>) -> reg<amdgpu.vgpr x4>
   %55 = v_mov_b32 0
-  %56 = s_mov_b32_m0_imm 0
-  global_store_dwordx4_saddr %55, %result, %result_view, %56
+  global_store_dwordx4_saddr %55, %result, %result_view
   return
 }
 

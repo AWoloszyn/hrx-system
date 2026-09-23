@@ -879,7 +879,7 @@ TEST_F(AmdgpuFeedbackTest, IncrementsDroppedPacketCount) {
   ASSERT_EQ(loom_low_op_attrs(atomic_ops[0]).count, 0u);
 }
 
-TEST_F(AmdgpuFeedbackTest, IncrementsDroppedPacketCountWithCdnaM0) {
+TEST_F(AmdgpuFeedbackTest, IncrementsDroppedPacketCountOnCdna) {
   if (!ResetModuleForDescriptorSet(IREE_SV("amdgpu.cdna3.core"))) {
     GTEST_SKIP() << "CDNA3 descriptor set is not linked.";
   }
@@ -903,7 +903,7 @@ TEST_F(AmdgpuFeedbackTest, IncrementsDroppedPacketCountWithCdnaM0) {
   ExpectGlobalAtomicAddU64(
       atomic_ops[0], channel_values.address,
       LOOM_AMDGPU_FEEDBACK_CHANNEL_DROPPED_PACKET_COUNT_OFFSET);
-  ASSERT_EQ(loom_low_op_operands(atomic_ops[0]).count, 4u);
+  ASSERT_EQ(loom_low_op_operands(atomic_ops[0]).count, 3u);
   ASSERT_EQ(loom_low_op_attrs(atomic_ops[0]).count, 0u);
 }
 
@@ -962,7 +962,7 @@ TEST_F(AmdgpuFeedbackTest, LoadsReservationHead) {
   ExpectAttrI64(loom_low_op_attrs(load_op), IREE_SV("glc"), 1);
 }
 
-TEST_F(AmdgpuFeedbackTest, LoadsReservationHeadWithCdnaM0) {
+TEST_F(AmdgpuFeedbackTest, LoadsReservationHeadWithCdnaSystemScope) {
   if (!ResetModuleForDescriptorSet(IREE_SV("amdgpu.cdna3.core"))) {
     GTEST_SKIP() << "CDNA3 descriptor set is not linked.";
   }
@@ -988,7 +988,7 @@ TEST_F(AmdgpuFeedbackTest, LoadsReservationHeadWithCdnaM0) {
   ExpectGlobalLoadB64(load_op, channel_values.address,
                       LOOM_AMDGPU_FEEDBACK_CHANNEL_RESERVATION_HEAD_OFFSET,
                       reservation_head);
-  ASSERT_EQ(loom_low_op_operands(load_op).count, 3u);
+  ASSERT_EQ(loom_low_op_operands(load_op).count, 2u);
   ASSERT_EQ(loom_low_op_attrs(load_op).count, 3u);
   ExpectAttrI64(loom_low_op_attrs(load_op), IREE_SV("sc0"), 1);
   ExpectAttrI64(loom_low_op_attrs(load_op), IREE_SV("sc1"), 1);
@@ -1075,7 +1075,7 @@ TEST_F(AmdgpuFeedbackTest, LoadsReadTailWithCdnaAcquireOrdering) {
   ASSERT_NE(load_op, nullptr);
   ExpectGlobalLoadB64(load_op, channel_values.address,
                       LOOM_AMDGPU_FEEDBACK_CHANNEL_READ_TAIL_OFFSET, read_tail);
-  ASSERT_EQ(loom_low_op_operands(load_op).count, 3u);
+  ASSERT_EQ(loom_low_op_operands(load_op).count, 2u);
   ASSERT_EQ(loom_low_op_attrs(load_op).count, 3u);
   ExpectAttrI64(loom_low_op_attrs(load_op), IREE_SV("sc0"), 1);
   ExpectAttrI64(loom_low_op_attrs(load_op), IREE_SV("sc1"), 1);
@@ -1178,7 +1178,7 @@ TEST_F(AmdgpuFeedbackTest, CompareExchangesReservationHeadWithCdnaOrdering) {
   ExpectGlobalAtomicCompareExchangeU64(
       atomic_ops[0], channel_values.address,
       LOOM_AMDGPU_FEEDBACK_CHANNEL_RESERVATION_HEAD_OFFSET, old_head);
-  ASSERT_EQ(loom_low_op_operands(atomic_ops[0]).count, 4u);
+  ASSERT_EQ(loom_low_op_operands(atomic_ops[0]).count, 3u);
   ASSERT_EQ(loom_low_op_attrs(atomic_ops[0]).count, 0u);
 
   std::vector<loom_op_t*> writeback_ops =

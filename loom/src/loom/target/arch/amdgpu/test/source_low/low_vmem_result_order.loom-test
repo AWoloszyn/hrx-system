@@ -161,11 +161,10 @@ low.func.def target<amdgpu.rdna4.core>(@target) @gfx1200_explicit_wait_clears_ba
 amdgpu.target<gfx942> @target {subgroup_size = 64}
 
 low.func.def target<amdgpu.cdna3.core>(@target) @gfx942_same_class_vmem_waw_backedge(%address: reg<amdgpu.vgpr>, %input: reg<amdgpu.sgpr x2>, %limit: reg<amdgpu.sgpr>) asm {
-  %m0 = s_mov_b32_m0_imm 0
   %zero = s_mov_b32 0
   low.br ^loop(%zero: reg<amdgpu.sgpr>)
 ^loop(%iteration: reg<amdgpu.sgpr>):
-  %unused = global_load_dword_saddr %address, %input, %m0
+  %unused = global_load_dword_saddr %address, %input
   %one = s_mov_b32 1
   %next = s_add_u32 %iteration, %one
   %again = s_cmp_lt_i32 %next, %limit
@@ -178,7 +177,6 @@ low.func.def target<amdgpu.cdna3.core>(@target) @gfx942_same_class_vmem_waw_back
 
 // CDNA3 has the same no-sampler VMEM result-ordering contract as GFX11.
 // ----
-  s_mov_b32 m0, 0
   s_mov_b32 s3, 0
 .Lbb1:
   global_load_dword v1, v0, s[0:1] offset:0

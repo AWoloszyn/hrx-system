@@ -305,9 +305,8 @@ low.func.def target<amdgpu.rdna3.core>(@gfx11_target) @global_vaddr_named_offset
 
 amdgpu.target<gfx942> @gfx942_target
 
-low.func.def target<amdgpu.cdna3.core>(@gfx942_target) @cdna_flat_load_u8_spells_m0(%addr: reg<amdgpu.vgpr x2>) asm {
-  %m0 = s_mov_b32_m0_imm 0
-  %loaded = flat_load_ubyte %addr, %m0 {sc0 = 1, sc1 = 1} : reg<amdgpu.vgpr>
+low.func.def target<amdgpu.cdna3.core>(@gfx942_target) @cdna_flat_load_u8_spells_memory_scope(%addr: reg<amdgpu.vgpr x2>) asm {
+  %loaded = flat_load_ubyte %addr {sc0 = 1, sc1 = 1} : reg<amdgpu.vgpr>
   return
 }
 

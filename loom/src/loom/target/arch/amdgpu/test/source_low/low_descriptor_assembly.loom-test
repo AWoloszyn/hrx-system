@@ -41,14 +41,12 @@ amdgpu.target<gfx942> @cdna3_target
 
 low.func.def target<amdgpu.cdna3.core>(@cdna3_target) @cdna3_med3_numeric(%a: reg<amdgpu.vgpr>, %b: reg<amdgpu.vgpr>, %c: reg<amdgpu.vgpr>, %addr: reg<amdgpu.vgpr>, %output: reg<amdgpu.sgpr x2>) asm {
   %result = v_med3_f32 %a, %b, %c
-  %m0 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %addr, %result, %output, %m0
+  global_store_dword_saddr %addr, %result, %output
   return
 }
 
 // ----
   v_med3_f32 v3, v0, v1, v2
-  s_mov_b32 m0, 0
   global_store_dword v4, v3, s[0:1] offset:0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   s_endpgm

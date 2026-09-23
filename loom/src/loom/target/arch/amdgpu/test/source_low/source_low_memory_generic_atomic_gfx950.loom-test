@@ -19,12 +19,10 @@ low.func.def target<amdgpu.cdna4.core> abi(hal_kernel) @generic_atomic_i32_stati
   %10 = v_mov_b32_copy %8
   %11 = v_mov_b32_copy %9
   %12 = concat(%10, %11) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %13 = s_mov_b32_m0_imm 0
-  %14 = v_mov_b32 1
-  flat_atomic_add %12, %14, %13
-  %19 = concat(%10, %11) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %20 = s_mov_b32_m0_imm 0
-  %old_add = flat_atomic_add_rtn %19, %14, %20 : reg<amdgpu.vgpr>
+  %13 = v_mov_b32 1
+  flat_atomic_add %12, %13
+  %18 = concat(%10, %11) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %old_add = flat_atomic_add_rtn %18, %13 : reg<amdgpu.vgpr>
   return
 }
 
@@ -48,10 +46,9 @@ low.func.def target<amdgpu.cdna4.core> abi(hal_kernel) @generic_atomic_cmpxchg_i
   %12 = v_mov_b32_copy %10
   %13 = v_mov_b32_copy %11
   %14 = concat(%12, %13) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %15 = s_mov_b32_m0_imm 0
-  %16 = v_mov_b32 7
-  %17 = v_mov_b32 9
-  %18 = concat(%17, %16) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %old_cmpxchg = flat_atomic_cmpswap_b32_rtn %14, %18, %15 : reg<amdgpu.vgpr>
+  %15 = v_mov_b32 7
+  %16 = v_mov_b32 9
+  %17 = concat(%16, %15) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %old_cmpxchg = flat_atomic_cmpswap_b32_rtn %14, %17 : reg<amdgpu.vgpr>
   return
 }

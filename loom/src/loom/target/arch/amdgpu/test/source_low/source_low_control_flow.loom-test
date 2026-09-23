@@ -2222,8 +2222,7 @@ low.func.def target<amdgpu.cdna3.core>(@target) abi(hal_kernel) @divergent_loop_
   low.cond_br %65, ^_bb7, ^_bb8 : reg<amdgpu.scc>
 ^_bb7:
   %66 = v_mov_b32 0
-  %67 = s_mov_b32_m0_imm 0
-  global_store_dwordx2_saddr %66, %iter, %output_view, %67
+  global_store_dwordx2_saddr %66, %iter, %output_view
   low.br ^_bb8
 ^_bb8:
   s_mov_b64_exec %64

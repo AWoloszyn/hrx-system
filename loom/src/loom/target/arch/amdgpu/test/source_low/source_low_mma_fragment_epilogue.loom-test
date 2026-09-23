@@ -813,17 +813,13 @@ low.kernel.def target<amdgpu.cdna3.core>(@target) abi_layout({constant_count = 8
   %87 = v_lshlrev_b32_src0_inline %56, 8
   %88 = v_add_u32 %86, %87
   %89 = slice %second[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %90 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %88, %89, %output_view, %90
-  %91 = slice %second[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %92 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %88, %91, %output_view, %92 {offset = 64}
-  %93 = slice %second[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %94 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %88, %93, %output_view, %94 {offset = 128}
-  %95 = slice %second[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %96 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %88, %95, %output_view, %96 {offset = 192}
+  global_store_dword_saddr %88, %89, %output_view
+  %90 = slice %second[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  global_store_dword_saddr %88, %90, %output_view {offset = 64}
+  %91 = slice %second[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  global_store_dword_saddr %88, %91, %output_view {offset = 128}
+  %92 = slice %second[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  global_store_dword_saddr %88, %92, %output_view {offset = 192}
   return
 }
 
@@ -1079,17 +1075,13 @@ low.kernel.def target<amdgpu.cdna4.core>(@target) abi_layout({constant_count = 8
   %67 = v_lshlrev_b32_src0_inline %36, 8
   %68 = v_add_u32 %66, %67
   %69 = slice %second[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %70 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %68, %69, %output_view, %70
-  %71 = slice %second[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %72 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %68, %71, %output_view, %72 {offset = 64}
-  %73 = slice %second[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %74 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %68, %73, %output_view, %74 {offset = 128}
-  %75 = slice %second[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %76 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %68, %75, %output_view, %76 {offset = 192}
+  global_store_dword_saddr %68, %69, %output_view
+  %70 = slice %second[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  global_store_dword_saddr %68, %70, %output_view {offset = 64}
+  %71 = slice %second[2] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  global_store_dword_saddr %68, %71, %output_view {offset = 128}
+  %72 = slice %second[3] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  global_store_dword_saddr %68, %72, %output_view {offset = 192}
   return
 }
 

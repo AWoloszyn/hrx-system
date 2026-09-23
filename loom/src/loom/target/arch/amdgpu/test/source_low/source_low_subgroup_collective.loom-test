@@ -2803,24 +2803,22 @@ low.kernel.def target<amdgpu.cdna4.core>(@target) abi_layout({constant_count = 0
   %input_view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %output_view = resource<hal_binding> {extent = 512, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %24 = v_lshlrev_b32_src0_inline %tid, 2
-  %25 = s_mov_b32_m0_imm 0
-  %value = global_load_dword_saddr %24, %input_view, %25
-  %27 = v_readfirstlane_b32 %value
-  %28 = v_mov_b32_copy %27
-  %29 = v_cmp_eq_i32 %value, %28
-  %30 = s_mov_b64_exec_read
-  %all = s_cmp_eq_u64 %29, %30
-  %33 = s_mov_b32 0
-  %36 = slice %30[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %38 = s_cselect_b32 %36, %33, %all
-  %39 = slice %30[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %41 = s_cselect_b32 %39, %33, %all
-  %44 = v_mov_b32_copy %38
-  %46 = v_mov_b32_copy %41
-  %result = concat(%44, %46) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %48 = v_lshlrev_b32_src0_inline %tid, 3
-  %49 = s_mov_b32_m0_imm 0
-  global_store_dwordx2_saddr %48, %result, %output_view, %49
+  %value = global_load_dword_saddr %24, %input_view
+  %26 = v_readfirstlane_b32 %value
+  %27 = v_mov_b32_copy %26
+  %28 = v_cmp_eq_i32 %value, %27
+  %29 = s_mov_b64_exec_read
+  %all = s_cmp_eq_u64 %28, %29
+  %32 = s_mov_b32 0
+  %35 = slice %29[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %37 = s_cselect_b32 %35, %32, %all
+  %38 = slice %29[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %40 = s_cselect_b32 %38, %32, %all
+  %43 = v_mov_b32_copy %37
+  %45 = v_mov_b32_copy %40
+  %result = concat(%43, %45) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %47 = v_lshlrev_b32_src0_inline %tid, 3
+  global_store_dwordx2_saddr %47, %result, %output_view
   return
 }
 
@@ -3589,8 +3587,7 @@ low.kernel.def target<amdgpu.cdna4.core>(@target) abi_layout({constant_count = 0
   %31 = v_cndmask_b32 %25, %28, %predicate
   %result = concat(%26, %31) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
   %33 = v_lshlrev_b32_src0_inline %lane_i32, 3
-  %34 = s_mov_b32_m0_imm 0
-  global_store_dwordx2_saddr %33, %result, %output_view, %34
+  global_store_dwordx2_saddr %33, %result, %output_view
   return
 }
 
@@ -3647,13 +3644,11 @@ low.kernel.def target<amdgpu.cdna4.core>(@target) abi_layout({constant_count = 0
   %input_view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %output_view = resource<hal_binding> {extent = 256, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %18 = v_lshlrev_b32_src0_inline %tid, 2
-  %19 = s_mov_b32_m0_imm 0
-  %value = global_load_dword_saddr %18, %input_view, %19
+  %value = global_load_dword_saddr %18, %input_view
   %broadcast = v_readlane_b32_src1_inline %value, 63
   %result = v_mov_b32_copy %broadcast
-  %23 = v_lshlrev_b32_src0_inline %tid, 2
-  %24 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %23, %result, %output_view, %24
+  %22 = v_lshlrev_b32_src0_inline %tid, 2
+  global_store_dword_saddr %22, %result, %output_view
   return
 }
 
@@ -3684,35 +3679,33 @@ low.kernel.def target<amdgpu.cdna4.core>(@target) abi_layout({constant_count = 0
   %input_view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %output_view = resource<hal_binding> {extent = 256, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %17 = v_lshlrev_b32_src0_inline %tid, 2
-  %18 = s_mov_b32_m0_imm 0
-  %value = global_load_dword_saddr %17, %input_view, %18
-  %20 = v_xor_b32_src0_inline %tid, 32
-  %21 = v_lshlrev_b32_src0_inline %20, 2
-  %22 = ds_bpermute_b32 %21, %value
-  %23 = v_add_f32 %value, %22
-  %24 = v_xor_b32_src0_inline %tid, 16
-  %25 = v_lshlrev_b32_src0_inline %24, 2
-  %26 = ds_bpermute_b32 %25, %23
-  %27 = v_add_f32 %23, %26
-  %28 = v_xor_b32_src0_inline %tid, 8
-  %29 = v_lshlrev_b32_src0_inline %28, 2
-  %30 = ds_bpermute_b32 %29, %27
-  %31 = v_add_f32 %27, %30
-  %32 = v_xor_b32_src0_inline %tid, 4
-  %33 = v_lshlrev_b32_src0_inline %32, 2
-  %34 = ds_bpermute_b32 %33, %31
-  %35 = v_add_f32 %31, %34
-  %36 = v_xor_b32_src0_inline %tid, 2
-  %37 = v_lshlrev_b32_src0_inline %36, 2
-  %38 = ds_bpermute_b32 %37, %35
-  %39 = v_add_f32 %35, %38
-  %40 = v_xor_b32_src0_inline %tid, 1
-  %41 = v_lshlrev_b32_src0_inline %40, 2
-  %42 = ds_bpermute_b32 %41, %39
-  %result = v_add_f32 %39, %42
-  %44 = v_lshlrev_b32_src0_inline %tid, 2
-  %45 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %44, %result, %output_view, %45
+  %value = global_load_dword_saddr %17, %input_view
+  %19 = v_xor_b32_src0_inline %tid, 32
+  %20 = v_lshlrev_b32_src0_inline %19, 2
+  %21 = ds_bpermute_b32 %20, %value
+  %22 = v_add_f32 %value, %21
+  %23 = v_xor_b32_src0_inline %tid, 16
+  %24 = v_lshlrev_b32_src0_inline %23, 2
+  %25 = ds_bpermute_b32 %24, %22
+  %26 = v_add_f32 %22, %25
+  %27 = v_xor_b32_src0_inline %tid, 8
+  %28 = v_lshlrev_b32_src0_inline %27, 2
+  %29 = ds_bpermute_b32 %28, %26
+  %30 = v_add_f32 %26, %29
+  %31 = v_xor_b32_src0_inline %tid, 4
+  %32 = v_lshlrev_b32_src0_inline %31, 2
+  %33 = ds_bpermute_b32 %32, %30
+  %34 = v_add_f32 %30, %33
+  %35 = v_xor_b32_src0_inline %tid, 2
+  %36 = v_lshlrev_b32_src0_inline %35, 2
+  %37 = ds_bpermute_b32 %36, %34
+  %38 = v_add_f32 %34, %37
+  %39 = v_xor_b32_src0_inline %tid, 1
+  %40 = v_lshlrev_b32_src0_inline %39, 2
+  %41 = ds_bpermute_b32 %40, %38
+  %result = v_add_f32 %38, %41
+  %43 = v_lshlrev_b32_src0_inline %tid, 2
+  global_store_dword_saddr %43, %result, %output_view
   return
 }
 
@@ -3745,14 +3738,12 @@ low.kernel.def target<amdgpu.cdna4.core>(@target) abi_layout({constant_count = 0
   %input_view = resource<hal_binding> {extent = 256, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %output_view = resource<hal_binding> {extent = 256, index = 1, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
   %20 = v_lshlrev_b32_src0_inline %tid, 2
-  %21 = s_mov_b32_m0_imm 0
-  %value = global_load_dword_saddr %20, %input_view, %21
-  %23 = v_xor_b32_src0_inline %tid, 32
-  %26 = v_lshlrev_b32_src0_inline %23, 2
-  %result = ds_bpermute_b32 %26, %value
-  %28 = v_lshlrev_b32_src0_inline %tid, 2
-  %29 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %28, %result, %output_view, %29
+  %value = global_load_dword_saddr %20, %input_view
+  %22 = v_xor_b32_src0_inline %tid, 32
+  %25 = v_lshlrev_b32_src0_inline %22, 2
+  %result = ds_bpermute_b32 %25, %value
+  %27 = v_lshlrev_b32_src0_inline %tid, 2
+  global_store_dword_saddr %27, %result, %output_view
   return
 }
 
