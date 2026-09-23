@@ -34,7 +34,7 @@ class LoomPresubmitTest(unittest.TestCase):
     def setUpClass(cls):
         cls.presubmit = load_presubmit_module()
 
-    def test_bazel_tests_exclude_runtime_resource_requirements(self):
+    def test_bazel_tests_exclude_unrunnable_tests(self):
         command = self.presubmit.bazel_test_command()
 
         self.assertEqual(command[:3], ["bazel", "test", "--config=presubmit"])
@@ -48,49 +48,18 @@ class LoomPresubmitTest(unittest.TestCase):
         tag_filter = next(
             arg for arg in command if arg.startswith("--test_tag_filters=")
         )
+        self.assertIn("-manual", tag_filter)
         self.assertIn("-iree-run-requirement=runtime.resource.amd_gpu", tag_filter)
         self.assertIn("-iree-run-requirement=vulkan.resource.device", tag_filter)
         self.assertNotIn("loom.resource", tag_filter)
 
-    def test_bazel_test_command_accepts_affected_targets(self):
-        command = self.presubmit.bazel_test_command(
-            ["//loom/a:a_test", "//loom/b:b_test"]
-        )
+    def test_bazel_test_command_reads_affected_targets_from_file(self):
+        target_pattern_file = Path("/tmp/loom-affected-tests")
+        command = self.presubmit.bazel_test_command(target_pattern_file)
 
-        self.assertEqual(command[-2:], ["//loom/a:a_test", "//loom/b:b_test"])
+        self.assertEqual(command[-1], f"--target_pattern_file={target_pattern_file}")
         self.assertNotIn("//loom/...", command)
         self.assertIn("--//loom/config/import:enable=cxx", command)
-
-    def test_package_tests_distinguish_empty_selection_from_failure(self):
-        with tempfile.TemporaryDirectory() as temporary_dir:
-            root = Path(temporary_dir)
-            package = root / "loom/src/loom/example"
-            package.mkdir(parents=True)
-            (package / "BUILD.bazel").touch()
-            files_from = root / "changed.txt"
-            files_from.write_text("loom/src/loom/example/CMakeLists.txt\n")
-            for exit_code in (0, 1, 2, 3, 4, 7, 8, 37):
-                with (
-                    self.subTest(exit_code=exit_code),
-                    mock.patch.object(self.presubmit, "REPO_ROOT", root),
-                    mock.patch.object(
-                        self.presubmit.subprocess,
-                        "run",
-                        return_value=subprocess.CompletedProcess([], exit_code),
-                    ) as run,
-                    contextlib.redirect_stdout(io.StringIO()) as output,
-                ):
-                    self.assertEqual(
-                        self.presubmit.run_bazel_tests(str(files_from)),
-                        exit_code in (0, 4),
-                    )
-                    self.assertEqual(
-                        run.call_args.args[0][-1], "//loom/src/loom/example/..."
-                    )
-                    self.assertEqual(
-                        "failed with exit code" in output.getvalue(),
-                        exit_code not in (0, 4),
-                    )
 
     def test_full_suite_requires_tests(self):
         for exit_code in (0, 1, 3, 4):
@@ -106,7 +75,7 @@ class LoomPresubmitTest(unittest.TestCase):
                 self.assertEqual(self.presubmit.run_bazel_tests(), exit_code == 0)
                 self.assertEqual(run.call_args.args[0][-1], "//loom/...")
 
-    def test_bazel_package_target_uses_nearest_build_package(self):
+    def test_bazel_source_label_uses_nearest_build_package(self):
         with tempfile.TemporaryDirectory() as temporary_dir:
             repository_root = Path(temporary_dir)
             package_root = repository_root / "loom/src/loom/example"
@@ -117,111 +86,222 @@ class LoomPresubmitTest(unittest.TestCase):
             nested_source.touch()
             with mock.patch.object(self.presubmit, "REPO_ROOT", repository_root):
                 self.assertEqual(
-                    self.presubmit.bazel_package_test_target(
+                    self.presubmit.bazel_source_label(
                         "loom/src/loom/example/test/example.loom-test"
                     ),
-                    "//loom/src/loom/example/...",
+                    "//loom/src/loom/example:test/example.loom-test",
                 )
 
-    def test_library_change_includes_nested_test_packages(self):
+    def test_affected_tests_follow_configured_reverse_dependencies(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            graph_path = Path(temporary_dir) / "dependencies.dot"
+            graph_path.write_text(
+                """digraph mygraph {
+  "//loom/src/loom/ops/vector:vector (cfg)" -> "//loom/src/loom/ops/vector:canonicalize.c (null)"
+  "//loom/src/loom/ops/vector/test:canonicalize (cfg)" -> "//loom/src/loom/ops/vector:vector (cfg)"
+  "//loom/src/loom/target/arch:source_low_runner (cfg)" -> "//loom/src/loom/ops/vector:vector (cfg)"
+  "//loom/src/loom/target/arch/amdgpu:source_low_memory_global (cfg)" -> "//loom/src/loom/target/arch:source_low_runner (cfg)"
+  "//loom/src/loom/unrelated:unrelated_test (cfg)" -> "//loom/src/loom/unrelated:unrelated.c (null)"
+}
+""",
+                encoding="utf-8",
+            )
+
+            self.assertEqual(
+                self.presubmit.affected_bazel_test_targets(
+                    {
+                        "//loom/src/loom/ops/vector/test:canonicalize",
+                        "//loom/src/loom/target/arch/amdgpu:source_low_memory_global",
+                        "//loom/src/loom/unrelated:unrelated_test",
+                    },
+                    {"//loom/src/loom/ops/vector:canonicalize.c"},
+                    graph_path,
+                ),
+                [
+                    "//loom/src/loom/ops/vector/test:canonicalize",
+                    "//loom/src/loom/target/arch/amdgpu:source_low_memory_global",
+                ],
+            )
+
+    def test_affected_tests_reject_malformed_dependency_edges(self):
+        with tempfile.TemporaryDirectory() as temporary_dir:
+            graph_path = Path(temporary_dir) / "dependencies.dot"
+            graph_path.write_text('  "//loom:a (cfg)" -> malformed\n', encoding="utf-8")
+
+            with self.assertRaisesRegex(ValueError, "dependency edge at line 1"):
+                self.presubmit.affected_bazel_test_targets(
+                    {"//loom:a_test"}, {"//loom:a.c"}, graph_path
+                )
+
+    def test_selected_files_are_mapped_to_source_labels(self):
         with tempfile.TemporaryDirectory() as temporary_dir:
             repository_root = Path(temporary_dir)
             package_root = repository_root / "loom/src/loom/example"
-            test_root = package_root / "test"
-            test_root.mkdir(parents=True)
+            package_root.mkdir(parents=True)
             (package_root / "BUILD.bazel").touch()
-            (package_root / "library.c").touch()
-            (test_root / "BUILD.bazel").touch()
-            (test_root / "library_test.cc").touch()
-            with mock.patch.object(self.presubmit, "REPO_ROOT", repository_root):
-                targets = self.presubmit.selected_bazel_test_targets(
-                    ["loom/src/loom/example/library.c"]
-                )
-                self.assertEqual(targets, ["//loom/src/loom/example/..."])
+            with (
+                mock.patch.object(self.presubmit, "REPO_ROOT", repository_root),
+                mock.patch.object(
+                    self.presubmit,
+                    "query_affected_bazel_test_targets",
+                    return_value=["//loom:affected_test"],
+                ) as query_affected_tests,
+            ):
                 self.assertEqual(
-                    self.presubmit.bazel_test_command(targets)[-1],
-                    "//loom/src/loom/example/...",
+                    self.presubmit.selected_bazel_test_targets(
+                        [
+                            "loom/src/loom/example/library.c",
+                            "loom/src/loom/example/test/case.loom-test",
+                            "runtime/src/iree/base/api.c",
+                        ]
+                    ),
+                    ["//loom:affected_test"],
                 )
+
+        query_affected_tests.assert_called_once_with(
+            {
+                "//loom/src/loom/example:library.c",
+                "//loom/src/loom/example:test/case.loom-test",
+            }
+        )
 
     def test_global_trigger_selects_full_bazel_suite(self):
-        self.assertIsNone(
-            self.presubmit.selected_bazel_test_targets(
-                ["loom/build_tools/presubmit.py"]
-            )
-        )
-
-    def test_starlark_change_selects_full_bazel_suite(self):
-        self.assertIsNone(
-            self.presubmit.selected_bazel_test_targets(
-                ["loom/src/loom/example/rules.bzl"]
-            )
-        )
-
-    def test_shared_corpus_changes_select_cross_target_suite(self):
         for path in (
-            "loom/src/loom/test/corpus/conformance/loop_termination.loom",
-            "loom/src/loom/test/corpus/source_low/numeric_i32_memory.loom-test",
-            "loom/src/loom/test/corpus/text/operations.loom",
+            "loom/build_tools/presubmit.py",
+            "loom/src/loom/example/BUILD",
+            "loom/src/loom/example/BUILD.bazel",
+            "loom/src/loom/example/rules.bzl",
         ):
             with self.subTest(path=path):
                 self.assertIsNone(self.presubmit.selected_bazel_test_targets([path]))
 
-    def test_leaf_changes_select_each_owning_package_once(self):
-        with mock.patch.object(
-            self.presubmit,
-            "bazel_package_test_target",
-            side_effect=[
-                "//loom/src/loom/a/...",
-                "//loom/src/loom/a/...",
-                "//loom/src/loom/b/...",
-            ],
-        ):
-            self.assertEqual(
-                self.presubmit.selected_bazel_test_targets(
-                    [
-                        "loom/src/loom/a/a.c",
-                        "loom/src/loom/a/a_test.cc",
-                        "loom/src/loom/b/b.c",
-                    ]
-                ),
-                ["//loom/src/loom/a/...", "//loom/src/loom/b/..."],
-            )
+    def test_query_affected_tests_uses_the_presubmit_configuration(self):
+        observed_query = None
 
-    def test_python_library_changes_select_authoring_consumers(self):
-        with tempfile.TemporaryDirectory() as temporary_dir:
-            repository_root = Path(temporary_dir)
-            library_path = "loom/py/loom/example"
-            library_root = repository_root / library_path
-            library_root.mkdir(parents=True)
-            (library_root / "BUILD.bazel").touch()
-            with mock.patch.object(self.presubmit, "REPO_ROOT", repository_root):
-                self.assertEqual(
-                    self.presubmit.selected_bazel_test_targets(
-                        [f"{library_path}/BUILD.bazel", f"{library_path}/rules.py"]
-                    ),
-                    ["//loom/py/..."],
+        def run_query(command, description, **_kwargs):
+            nonlocal observed_query
+            output_path = Path(
+                next(arg for arg in command if arg.startswith("--output_file=")).split(
+                    "=", 1
+                )[1]
+            )
+            if description == "Discover Bazel test targets":
+                output_path.write_text(
+                    "//loom/src/loom/ops/vector/test:canonicalize\n"
+                    "//loom/src/loom/target/arch/amdgpu:source_low_memory_global\n",
+                    encoding="utf-8",
                 )
+            elif description == "Resolve Bazel test dependencies":
+                query_path = Path(
+                    next(
+                        arg for arg in command if arg.startswith("--query_file=")
+                    ).split("=", 1)[1]
+                )
+                observed_query = query_path.read_text(encoding="utf-8")
+                output_path.write_text(
+                    """digraph mygraph {
+  "//loom/src/loom/ops/vector:vector (cfg)" -> "//loom/src/loom/ops/vector:canonicalize.c (null)"
+  "//loom/src/loom/ops/vector/test:canonicalize (cfg)" -> "//loom/src/loom/ops/vector:vector (cfg)"
+  "//loom/src/loom/target/arch/amdgpu:source_low_memory_global (cfg)" -> "//loom/src/loom/ops/vector:vector (cfg)"
+}
+""",
+                    encoding="utf-8",
+                )
+            else:
+                self.fail(f"unexpected command: {description}")
+            return True
 
-    def test_python_and_native_changes_keep_native_package_coverage(self):
         with mock.patch.object(
-            self.presubmit,
-            "bazel_package_test_target",
-            side_effect=[
-                "//loom/py/loom/example/...",
-                "//loom/py/loom/gen/example/...",
-                "//loom/src/loom/example/...",
-            ],
-        ):
+            self.presubmit, "run_command", side_effect=run_query
+        ) as run_command:
             self.assertEqual(
-                self.presubmit.selected_bazel_test_targets(
-                    [
-                        "loom/py/loom/example/rules.py",
-                        "loom/py/loom/gen/example/rules_test.py",
-                        "loom/src/loom/example/rules.c",
-                    ]
+                self.presubmit.query_affected_bazel_test_targets(
+                    {"//loom/src/loom/ops/vector:canonicalize.c"}
                 ),
-                ["//loom/py/...", "//loom/src/loom/example/..."],
+                [
+                    "//loom/src/loom/ops/vector/test:canonicalize",
+                    "//loom/src/loom/target/arch/amdgpu:source_low_memory_global",
+                ],
             )
+
+        self.assertEqual(run_command.call_count, 2)
+        discover_command = run_command.call_args_list[0].args[0]
+        self.assertEqual(discover_command[:3], ["bazel", "query", "--output=label"])
+        self.assertEqual(discover_command[-1], "tests(//loom/...)")
+        dependency_command = run_command.call_args_list[1].args[0]
+        self.assertEqual(dependency_command[:2], ["bazel", "cquery"])
+        self.assertIn("--config=presubmit", dependency_command)
+        self.assertIn(
+            "--//loom/config/target:enable=amdgpu,spirv,vm,wasm,xdna,x86",
+            dependency_command,
+        )
+        self.assertIn("--//loom/config/import:enable=cxx", dependency_command)
+        self.assertIn("--nograph:factored", dependency_command)
+        self.assertIn(
+            "//loom/src/loom/target/arch/amdgpu:source_low_memory_global",
+            observed_query,
+        )
+
+    def test_dependency_query_failure_does_not_run_a_fallback_suite(self):
+        with (
+            mock.patch.object(
+                self.presubmit, "selected_files", return_value=["loom/a.c"]
+            ),
+            mock.patch.object(
+                self.presubmit,
+                "selected_bazel_test_targets",
+                side_effect=self.presubmit.BazelDependencyQueryError("query failed"),
+            ),
+            mock.patch.object(self.presubmit, "run_command") as run_command,
+            contextlib.redirect_stderr(io.StringIO()) as error_output,
+        ):
+            self.assertFalse(self.presubmit.run_bazel_tests("changed-files.txt"))
+
+        run_command.assert_not_called()
+        self.assertIn("query failed", error_output.getvalue())
+
+    def test_affected_tests_use_a_target_pattern_file(self):
+        observed_targets = None
+        target_pattern_path = None
+
+        def run_tests(command, description, *, success_exit_codes):
+            nonlocal observed_targets, target_pattern_path
+            target_pattern_path = Path(
+                next(
+                    arg for arg in command if arg.startswith("--target_pattern_file=")
+                ).split("=", 1)[1]
+            )
+            observed_targets = target_pattern_path.read_text(encoding="utf-8")
+            self.assertEqual(description, "Bazel tests")
+            self.assertEqual(success_exit_codes, (0, 4))
+            return True
+
+        with mock.patch.object(self.presubmit, "run_command", side_effect=run_tests):
+            self.assertTrue(
+                self.presubmit.run_affected_bazel_tests(
+                    ["//loom/a:a_test", "//loom/b:b_test"]
+                )
+            )
+
+        self.assertEqual(observed_targets, "//loom/a:a_test\n//loom/b:b_test\n")
+        self.assertIsNotNone(target_pattern_path)
+        self.assertFalse(target_pattern_path.exists())
+
+    def test_no_affected_tests_skips_bazel_test(self):
+        with (
+            mock.patch.object(
+                self.presubmit, "selected_files", return_value=["loom/a.c"]
+            ),
+            mock.patch.object(
+                self.presubmit, "selected_bazel_test_targets", return_value=[]
+            ),
+            mock.patch.object(self.presubmit, "run_command") as run_command,
+            contextlib.redirect_stdout(io.StringIO()) as output,
+        ):
+            self.assertTrue(self.presubmit.run_bazel_tests("changed-files.txt"))
+
+        run_command.assert_not_called()
+        self.assertIn("no Bazel tests depend", output.getvalue())
 
     def test_cmake_tests_exclude_runtime_resource_labels(self):
         self.assertEqual(
