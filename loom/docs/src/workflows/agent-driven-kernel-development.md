@@ -391,6 +391,8 @@ loom-compile-report diff baseline.report.json candidate.report.json
 The report answers whether the candidate changed the intended mechanism:
 
 - which provider and source-to-Low plan were selected;
+- which loop-carried aggregates were decomposed, deliberately preserved, or
+  rejected at their source boundary;
 - which packed, vector, matrix, memory, and synchronization families remain;
 - scheduled pressure and final register allocation;
 - LDS, private memory, spills, and materialized reloads;
@@ -406,6 +408,15 @@ modeled tier earns a benchmark experiment rather than proving a performance win.
 An empty suggestion list means only that registered target diagnostics found
 no issue. It does not prove that the schedule matches an external oracle or
 that the hardware will prefer it.
+
+For a loop carrying a logical vector bank, inspect **Source boundary
+projections** before manually expanding the state. A selected row proves that
+the compiler already split fixed components; a preserved whole-value row may be
+the intended native fragment representation; and a rejected row names the
+access or transport condition that blocked decomposition. Source suggestions
+for dynamic, mixed-shape, and incompatible whole-bank uses are experiment
+proposals. Recompile and compare their final resource and runtime evidence
+before retaining the rewritten form.
 
 When the expected delta is absent, the candidate returns to source or becomes
 a standalone compiler reproducer. Repeated physical timing cannot make a

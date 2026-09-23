@@ -55,6 +55,14 @@ detailed reports include the producer/consumer operation schedule. `suggest`
 combines source policy evidence with the selected target provider's experiments.
 Pipeline depth advice keeps unrolling fixed and cites available final resources;
 a single report does not establish that pipelining increased register use.
+
+Detailed reports also show whether loop-carried vector banks were split into
+fixed components, deliberately preserved as whole values, or rejected with a
+stable reason. Source advice proposes controlled rewrites only for dynamic
+component selection, inconsistent component shapes, and incompatible
+whole-bank uses. A selected projection enables an experiment; compare final
+resources and measured runtime before retaining the source change.
+
 On AMDGPU, `amdgpu.pipeline_copy_waits` identifies full load waits at actual
 branch-payload copies in an entry with read-ahead. Inspect the cited blocks for
 steady backedges, then compare explicit unroll factors and recurrence schedules

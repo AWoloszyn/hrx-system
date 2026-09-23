@@ -32,6 +32,7 @@ trace:
 | `allocation_high_water_rows.rows[]` and `spill_rows.rows[]` | Which placements and spill actions followed from that pressure? |
 | `source_low.rows[]`, `source_low.memory_rows[]`, and `source_low.selection_summaries.rows[]` | Which source operations selected each Low representation and memory route? |
 | `source_low.loop_pipelines.rows[]` and `source_low.loop_pipelines.stages[]` | Which loop policies ran, and which operations run ahead of the consumer? |
+| `source_low.boundary_projections.rows[]` | Which loop-carried aggregates were decomposed, deliberately preserved, or rejected? |
 | `schedule_band_summary_rows.rows[]` | Which semantic instruction families occupy each schedule band? |
 | `wait_reason_summary_rows.rows[]` and `wait_action_rows.rows[]` | Why was each wait family required, and where was it placed? |
 | `math_legalization.rows[]` and `target_legalization.rows[]` | Which source operations required representation or target repair? |
@@ -281,6 +282,60 @@ final physical register counts shown in the entry report.
 The source schedule survives lowering and separate compile/emit calls. It
 describes the applied source transformation; the target's schedule bands and
 wait rows below show how the resulting operations are emitted.
+
+## Inspect loop-carried boundary representations
+
+Summary reports count selected, preserved, and rejected aggregate decisions.
+Detail mode adds the exact source value and representation shape:
+
+```shell
+jq '.source_low.boundary_projections |
+    {count,
+     selected_count,
+     preserved_count,
+     rejected_count,
+     decisions: [.rows[]? |
+       {function,
+        source_op,
+        operation,
+        source_value,
+        projection,
+        boundary,
+        outcome,
+        reason,
+        source_type,
+        source_element,
+        source_shape,
+        projected_prefix_rank,
+        component_count,
+        component_shape}]}' kernel.details.json
+```
+
+`source_shape` is the authored logical shape; `-1` is a dynamic dimension.
+When `component_count` is nonzero, `projected_prefix_rank` leading dimensions
+select the physical components and `component_shape` is the retained suffix. A
+`vector<4x4xf32>` row with prefix rank two therefore reports sixteen scalar
+components, while prefix rank one reports four `vector<4xf32>` components.
+
+Find only banks whose decomposition attempt was rejected:
+
+```shell
+jq '[.source_low.boundary_projections.rows[]? |
+     select(.outcome == "rejected") |
+     {function,
+      loop: .operation,
+      state: .source_value,
+      source_shape,
+      projected_prefix_rank,
+      component_count,
+      reason}]' kernel.details.json
+```
+
+`whole_value_use` and `no_component_access` normally appear as preserved
+decisions. A rejection reason records why an active candidate could not cross
+the loop boundary, or why no component schema could be formed; it is not a
+performance claim. Use `suggest` for the subset with a concrete source
+experiment, then compare final artifact and runtime evidence.
 
 ## Inspect authored scheduling scopes
 
