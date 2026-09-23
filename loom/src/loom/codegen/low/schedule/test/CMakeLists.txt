@@ -18,6 +18,7 @@ loom_check_test_suite(
     "schedule.loom-test"
     "schedule_locked.loom-test"
     "schedule_scopes.loom-test"
+    "storage_lifetime.loom-test"
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

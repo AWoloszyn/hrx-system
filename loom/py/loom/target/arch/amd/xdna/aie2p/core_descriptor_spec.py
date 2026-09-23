@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from loom.target.low_descriptors import DescriptorOpKind, Effect
+from loom.target.low_descriptors import DescriptorFlag, DescriptorOpKind, Effect
 
 
 @dataclass(frozen=True, slots=True)
@@ -52,6 +52,8 @@ class _DescriptorSpec:
     ordered_memory: bool = False
     # Additional effects beyond the machine form's memory and control effects.
     effects: tuple[Effect, ...] = ()
+    # Descriptor policies beyond those derived from the physical machine form.
+    flags: tuple[DescriptorFlag, ...] = ()
     # Whether allocation may use the descriptor for physical register copies.
     allocation_move: bool = False
     # Whether the pure result can be recreated near uses under register pressure.

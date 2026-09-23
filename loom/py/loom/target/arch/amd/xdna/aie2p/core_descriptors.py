@@ -1228,6 +1228,7 @@ def _descriptor_flags(
         result.append(DescriptorFlag.DEAD_REMOVABLE)
     if spec.allocation_move:
         result.append(DescriptorFlag.ALLOCATION_MOVE)
+    result.extend(spec.flags)
     return tuple(result)
 
 

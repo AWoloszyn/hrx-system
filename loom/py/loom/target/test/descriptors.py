@@ -1706,6 +1706,17 @@ TEST_LOW_BARRIER_DESCRIPTOR = Descriptor(
     asm_forms=_asm(),
     effects=(_BARRIER_EFFECT,),
     schedule_class=_SCHEDULE_CONTROL,
+    flags=(DescriptorFlag.SIDE_EFFECTING, DescriptorFlag.BARRIER),
+)
+
+TEST_LOW_MEMORY_BARRIER_DESCRIPTOR = Descriptor(
+    key="test.memory.barrier",
+    mnemonic="test.memory.barrier",
+    semantic_tag="memory.barrier",
+    operands=(),
+    asm_forms=_asm(),
+    effects=(_BARRIER_EFFECT,),
+    schedule_class=_SCHEDULE_CONTROL,
     flags=(DescriptorFlag.SIDE_EFFECTING,),
 )
 
@@ -2313,6 +2324,7 @@ TEST_LOW_CORE_DESCRIPTOR_SET = DescriptorSet(
         TEST_LOW_STORE_INDEX_V4F32_DESCRIPTOR,
         TEST_LOW_CALL_I32_DESCRIPTOR,
         TEST_LOW_BARRIER_DESCRIPTOR,
+        TEST_LOW_MEMORY_BARRIER_DESCRIPTOR,
         TEST_LOW_BR_DESCRIPTOR,
         TEST_LOW_COND_BR_I32_DESCRIPTOR,
         TEST_LOW_RETURN_I32_DESCRIPTOR,

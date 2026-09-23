@@ -440,6 +440,7 @@ def test_lock_forms_retain_counting_semaphore_contracts() -> None:
         assert descriptor.effects == (_LOCK_EFFECT,)
         assert DescriptorFlag.SIDE_EFFECTING in descriptor.flags
         assert DescriptorFlag.DEAD_REMOVABLE not in descriptor.flags
+        assert (DescriptorFlag.BARRIER in descriptor.flags) == (".acquire." in key)
         if immediate_count:
             lock_id = descriptor.immediates[0]
             assert lock_id.field_name == "id"

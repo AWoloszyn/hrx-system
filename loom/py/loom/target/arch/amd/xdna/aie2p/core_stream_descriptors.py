@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import replace
 
 from loom.target.arch.amd.xdna.aie2p.core_descriptor_spec import _DescriptorSpec
-from loom.target.low_descriptors import Effect, EffectKind
+from loom.target.low_descriptors import DescriptorFlag, Effect, EffectKind
 
 _TARGET_KEY = "amd.xdna.aie2p"
 
@@ -36,6 +36,7 @@ def _scalar_stream_descriptor_specs() -> tuple[_DescriptorSpec, ...]:
                 f"II_MOV_{form_infix}lda",
                 asm_mnemonic=f"mov.ss{mnemonic_suffix}",
                 effects=effects,
+                flags=(DescriptorFlag.BARRIER,),
             )
         )
         for form_suffix, last_key, last_mnemonic in (
@@ -60,6 +61,7 @@ def _scalar_stream_descriptor_specs() -> tuple[_DescriptorSpec, ...]:
                         storage_overrides=(("src", register_class),),
                         asm_mnemonic=f"mov.ms{mnemonic_suffix}{last_mnemonic}{storage_mnemonic}",
                         effects=effects,
+                        flags=(DescriptorFlag.BARRIER,),
                     )
                 )
             for header, operation in (("PH", "packet"), ("CPH", "control-packet")):
@@ -73,6 +75,7 @@ def _scalar_stream_descriptor_specs() -> tuple[_DescriptorSpec, ...]:
                         f"II_{form}",
                         asm_mnemonic=f"mov.{header.lower()}{mnemonic_suffix}{last_mnemonic}",
                         effects=effects,
+                        flags=(DescriptorFlag.BARRIER,),
                     )
                 )
     for direction, port, register_class in (
@@ -133,6 +136,7 @@ def _cascade_descriptor_specs() -> tuple[_DescriptorSpec, ...]:
                     # Each transfer consumes or produces a distinct stream
                     # value, even when its payload has no SSA consumer.
                     effects=(Effect(EffectKind.BARRIER),),
+                    flags=(DescriptorFlag.BARRIER,),
                 )
             )
     # Expansion produces a fresh accumulator with the incoming value in one
@@ -159,6 +163,7 @@ def _cascade_descriptor_specs() -> tuple[_DescriptorSpec, ...]:
                 storage_overrides=(("dst", "mBMs"),),
                 asm_mnemonic=f"vmov.scd.expand.{suffix}",
                 effects=(Effect(EffectKind.BARRIER),),
+                flags=(DescriptorFlag.BARRIER,),
             )
         )
     for operation in ("add", "sub"):
@@ -178,6 +183,7 @@ def _cascade_descriptor_specs() -> tuple[_DescriptorSpec, ...]:
                         storage_overrides=(("dst", "mBMs"), ("acc1", "mBMs")),
                         asm_mnemonic=f"v{operation}.acc.{payload}.scd{suffix}",
                         effects=(Effect(EffectKind.BARRIER),),
+                        flags=(DescriptorFlag.BARRIER,),
                     )
                 )
     return tuple(result)
@@ -209,6 +215,7 @@ def _cascade_matrix_descriptor_specs(
                     ),
                     asm_mnemonic=f"{spec.asm_mnemonic}.scd{suffix}",
                     effects=(*spec.effects, Effect(EffectKind.BARRIER)),
+                    flags=(*spec.flags, DescriptorFlag.BARRIER),
                 )
             )
     return tuple(result)

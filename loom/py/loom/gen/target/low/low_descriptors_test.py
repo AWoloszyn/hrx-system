@@ -870,15 +870,21 @@ def test_compiler_emits_ordered_multiunit_explicit_register_view() -> None:
     assert "kTestLowCorePhysicalRegisterViewUnitCandidateOrdinals" in generated.source
 
 
-def test_compiler_derives_barrier_descriptor_flag() -> None:
+@pytest.mark.parametrize("source_fence", [False, True])
+def test_compiler_preserves_barrier_source_fence_policy(source_fence: bool) -> None:
+    flags = (DescriptorFlag.SIDE_EFFECTING,)
+    if source_fence:
+        flags += (DescriptorFlag.BARRIER,)
+    descriptor = replace(TEST_LOW_BARRIER_DESCRIPTOR, flags=flags)
     descriptor_set = replace(
         TEST_LOW_CORE_DESCRIPTOR_SET,
-        descriptors=(TEST_LOW_BARRIER_DESCRIPTOR,),
+        descriptors=(descriptor,),
     )
 
     compiled = compiler.compile_descriptor_set(descriptor_set)
 
-    assert DescriptorFlag.BARRIER in compiled.descriptors[0].flags
+    assert (DescriptorFlag.BARRIER in compiled.descriptors[0].flags) == source_fence
+    assert compiled.descriptors[0].effects == descriptor.effects
 
 
 def test_compiler_rejects_barrier_flag_without_effect() -> None:
