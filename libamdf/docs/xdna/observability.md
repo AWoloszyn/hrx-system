@@ -67,10 +67,31 @@ tile and module to place samples on a shared timeline.
 
 The register interface and the core instruction are different read paths.
 `XAie_ReadTimer` performs separate low-word and high-word register reads;
-the core `cntr` instruction returns a register pair. Neither the register
-address nor `XAie_ReadTimer` is a host mapping supplied by libamdf. Register
-operations reach the array through the admitted executable's controller
-instructions or control-packet routes.
+it does not retry across rollover. The core `cntr` instruction returns a
+register pair. Neither the register address nor `XAie_ReadTimer` is a host
+mapping supplied by libamdf. Register operations reach the array through the
+admitted executable's controller instructions or control-packet routes.
+
+### Relating a sample to host time
+
+An application can associate an in-program sample with a host interval. It
+reads a monotonic host clock before `kernel_queue_submit`, executes a program
+that reads `cntr` and stores the sample, then reads the same host clock after
+successful `kernel_queue_wait` and output acquisition. The sample occurred
+between those host observations. The program's completion covers the sample
+store and its transfer to the result destination.
+
+That interval includes admission, execution, and completion observation. Its
+midpoint is an estimate, not an exact host timestamp; half the interval width
+is the corresponding uncertainty before accounting for clock resolution.
+Using the sample to place other tile events on the host timeline also requires
+their timer epoch and frequency history. A bracket for one tile does not align
+the other tiles' timers.
+
+XDP's edge collector uses this bracketing shape around `XAie_ReadTimer` and
+records both host observations, tile coordinates, and the timer value. This
+is a register-read collection path, separate from firmware `RECORD_TIMER`
+records and from timer-reset broadcasts. [Edge timer sampling][xdp-edge-timers]
 
 ## Event counters
 
@@ -450,6 +471,7 @@ notifications describe the diagnostic stream, not application queue completion.
 [xdp-pl-datamover]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/device/aieTraceS2MM.cpp
 [xdp-profile]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/plugin/aie_profile/client/aie_profile.cpp
 [xdp-timeline]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/plugin/ml_timeline/clientDev/ml_timeline.cpp
+[xdp-edge-timers]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/plugin/aie_trace/edge/aie_trace.cpp
 [transaction-ops]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/common/xaie_txn.h
 [linux-context]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/aie2_ctx.c
 [linux-messages]: https://github.com/amd/xdna-driver/blob/8dfda66f67a84aecf26cf68336efc9e4cc1756c3/drivers/accel/amdxdna/aie2_message.c
