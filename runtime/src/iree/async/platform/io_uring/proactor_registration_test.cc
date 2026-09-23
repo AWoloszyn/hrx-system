@@ -6,11 +6,14 @@
 
 #include <sys/mman.h>
 #include <sys/resource.h>
+#include <sys/socket.h>
 #include <unistd.h>
 
 #include <cerrno>
 #include <cstring>
 
+#include "iree/async/buffer_pool.h"
+#include "iree/async/operations/net.h"
 #include "iree/async/platform/io_uring/api.h"
 #include "iree/async/slab.h"
 #include "iree/testing/gtest.h"
@@ -145,6 +148,94 @@ TEST_F(SlabRegistrationTest, PinLimitReleasesPartialRegistration) {
   limit_changed_ = false;
   ASSERT_NO_FATAL_FAILURE(CreateSlab(page_size_, 4));
   ASSERT_NO_FATAL_FAILURE(RegisterAtFirstSlot());
+}
+
+class ReceiveSlabRegistrationTest : public SlabRegistrationTest {
+ protected:
+  void TearDown() override {
+    iree_async_socket_release(socket_);
+    for (int fd : socket_fds_) {
+      if (fd >= 0) {
+        EXPECT_EQ(close(fd), 0);
+      }
+    }
+    iree_async_buffer_pool_release(pool_);
+    SlabRegistrationTest::TearDown();
+  }
+
+  // Owned descriptors not yet transferred to the proactor.
+  int socket_fds_[2] = {-1, -1};
+  // Receive socket owned until all one-shot receives complete.
+  iree_async_socket_t* socket_ = nullptr;
+  // Pool retaining the receive region through every returned lease.
+  iree_async_buffer_pool_t* pool_ = nullptr;
+};
+
+TEST_F(ReceiveSlabRegistrationTest, OneShotPoolSurvivesDisabledMultishot) {
+  if (!iree_any_bit_set(iree_async_proactor_query_capabilities(proactor_),
+                        IREE_ASYNC_PROACTOR_CAPABILITY_MULTISHOT)) {
+    GTEST_SKIP() << "kernel predates provided-buffer rings";
+  }
+  iree_async_proactor_release(proactor_);
+  proactor_ = nullptr;
+  auto options = iree_async_proactor_options_default();
+  options.allowed_capabilities &= ~IREE_ASYNC_PROACTOR_CAPABILITY_MULTISHOT;
+  IREE_ASSERT_OK(iree_async_proactor_create_io_uring(
+      options, iree_allocator_system(), &proactor_));
+  EXPECT_FALSE(
+      iree_any_bit_set(iree_async_proactor_query_capabilities(proactor_),
+                       IREE_ASYNC_PROACTOR_CAPABILITY_MULTISHOT));
+  ASSERT_NO_FATAL_FAILURE(CreateSlab(page_size_, 2));
+  IREE_ASSERT_OK(iree_async_proactor_register_slab(
+      proactor_, slab_, IREE_ASYNC_BUFFER_ACCESS_FLAG_WRITE, &region_));
+  IREE_ASSERT_OK(
+      iree_async_buffer_pool_create(region_, iree_allocator_system(), &pool_));
+  ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0,
+                       socket_fds_),
+            0);
+  IREE_ASSERT_OK(iree_async_socket_import(
+      proactor_, iree_async_primitive_from_fd(socket_fds_[0]),
+      IREE_ASYNC_SOCKET_TYPE_UNIX_STREAM, IREE_ASYNC_SOCKET_FLAG_NONE,
+      &socket_));
+  socket_fds_[0] = -1;
+
+  // More receives than pool slots require returned leases to replenish the
+  // kernel ring. Multishot stays disabled throughout these real byte transfers.
+  for (uint8_t expected = 1; expected <= 9; ++expected) {
+    ASSERT_EQ(send(socket_fds_[1], &expected, sizeof(expected), MSG_NOSIGNAL),
+              1);
+    struct Completion {
+      // Set by the poll-owner callback when operation storage is reusable.
+      bool done = false;
+      // Terminal receive result consumed after the callback.
+      iree::Status status;
+    } completion;
+    iree_async_socket_recv_pool_operation_t operation = {};
+    iree_async_operation_initialize(
+        &operation.base, IREE_ASYNC_OPERATION_TYPE_SOCKET_RECV_POOL,
+        IREE_ASYNC_OPERATION_FLAG_NONE,
+        +[](void* user_data, iree_async_operation_t*, iree_status_t status,
+            iree_async_completion_flags_t flags) {
+          auto& completion = *static_cast<Completion*>(user_data);
+          EXPECT_EQ(flags & IREE_ASYNC_COMPLETION_FLAG_MORE, 0u);
+          completion.status = std::move(status);
+          completion.done = true;
+        },
+        &completion);
+    operation.socket = socket_;
+    operation.pool = pool_;
+    IREE_ASSERT_OK(iree_async_proactor_submit_one(proactor_, &operation.base));
+    while (!completion.done) {
+      IREE_EXPECT_OK(iree_async_proactor_poll(
+          proactor_, iree_infinite_timeout(), /*out_completed_count=*/nullptr));
+    }
+    IREE_EXPECT_OK(completion.status.release());
+    EXPECT_EQ(operation.bytes_received, sizeof(expected));
+    if (operation.bytes_received == sizeof(expected)) {
+      EXPECT_EQ(*iree_async_span_ptr(operation.lease.span), expected);
+    }
+    iree_async_buffer_lease_release(&operation.lease);
+  }
 }
 
 }  // namespace

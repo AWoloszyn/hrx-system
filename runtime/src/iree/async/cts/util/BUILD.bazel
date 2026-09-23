@@ -10,7 +10,9 @@
 # Suite (CTS). Test logic lives in separate category directories (socket/,
 # core/, etc.) while this directory provides the foundation.
 
-load("//runtime/build_tools/bazel:cc.bzl", "iree_runtime_cc_library")
+load("//build_tools/bazel:select.bzl", "iree_select")
+load("//build_tools/testing:build_defs.bzl", "iree_execution_test_suite")
+load("//runtime/build_tools/bazel:cc.bzl", "iree_runtime_cc_binary", "iree_runtime_cc_library")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -21,8 +23,46 @@ package(
 # Main entry points for CTS binaries.
 exports_files([
     "test_main.cc",
-    "benchmark_main.cc",
 ])
+
+# Proper package dependencies for composed CTS binaries.
+iree_runtime_cc_library(
+    name = "test_main",
+    testonly = True,
+    srcs = ["test_main.cc"],
+    deps = [
+        ":registry",
+        "//runtime/src/iree/testing:gtest",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "benchmark_main",
+    testonly = True,
+    srcs = ["benchmark_main.cc"],
+    deps = [
+        ":registry",
+        "//runtime/src/iree/testing:benchmark",
+        "//third_party:google_benchmark",
+    ],
+)
+
+iree_runtime_cc_library(
+    name = "platform_backends",
+    testonly = True,
+    deps = iree_select({
+        "@platforms//os:linux": [
+            "//runtime/src/iree/async/platform/io_uring/cts:backends",
+            "//runtime/src/iree/async/platform/posix/cts:backends",
+        ],
+        "@platforms//os:windows": [
+            "//runtime/src/iree/async/platform/iocp/cts:backends",
+        ],
+        "//conditions:default": [
+            "//runtime/src/iree/async/platform/posix/cts:backends",
+        ],
+    }),
+)
 
 #===------------------------------------------------------------------------===#
 # Registry system
@@ -100,4 +140,28 @@ iree_runtime_cc_library(
         "//runtime/src/iree/base/threading",
         "//third_party:google_benchmark",
     ],
+)
+
+iree_runtime_cc_binary(
+    name = "benchmark_setup_fixture",
+    testonly = True,
+    srcs = ["benchmark_setup_fixture.cc"],
+    deps = [
+        ":benchmark_main",
+        ":registry",
+        "//runtime/src/iree/async",
+        "//runtime/src/iree/async/cts/buffer:all_benchmarks",
+        "//runtime/src/iree/async/cts/core:all_benchmarks",
+        "//runtime/src/iree/async/cts/event:all_benchmarks",
+        "//runtime/src/iree/async/cts/futex:all_benchmarks",
+        "//runtime/src/iree/async/cts/socket:all_benchmarks",
+        "//runtime/src/iree/async/cts/sync:all_benchmarks",
+        "//runtime/src/iree/base",
+    ],
+)
+
+iree_execution_test_suite(
+    name = "benchmark_setup_test",
+    manifests = ["benchmark_setup.test.json"],
+    tools = {"benchmark": ":benchmark_setup_fixture"},
 )

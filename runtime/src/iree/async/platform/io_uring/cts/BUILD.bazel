@@ -190,66 +190,60 @@ iree_runtime_cc_test(
 
 iree_runtime_cc_benchmark(
     name = "buffer_benchmarks",
-    srcs = ["//runtime/src/iree/async/cts/util:benchmark_main.cc"],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":backends",
         "//runtime/src/iree/async/cts/buffer:all_benchmarks",
-        "//runtime/src/iree/async/cts/util:registry",
+        "//runtime/src/iree/async/cts/util:benchmark_main",
     ],
 )
 
 iree_runtime_cc_benchmark(
     name = "core_benchmarks",
-    srcs = ["//runtime/src/iree/async/cts/util:benchmark_main.cc"],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":backends",
         "//runtime/src/iree/async/cts/core:all_benchmarks",
-        "//runtime/src/iree/async/cts/util:registry",
+        "//runtime/src/iree/async/cts/util:benchmark_main",
     ],
 )
 
 iree_runtime_cc_benchmark(
     name = "event_benchmarks",
-    srcs = ["//runtime/src/iree/async/cts/util:benchmark_main.cc"],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":backends",
         "//runtime/src/iree/async/cts/event:all_benchmarks",
-        "//runtime/src/iree/async/cts/util:registry",
+        "//runtime/src/iree/async/cts/util:benchmark_main",
     ],
 )
 
 iree_runtime_cc_benchmark(
     name = "futex_benchmarks",
-    srcs = ["//runtime/src/iree/async/cts/util:benchmark_main.cc"],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":backends",
         "//runtime/src/iree/async/cts/futex:all_benchmarks",
-        "//runtime/src/iree/async/cts/util:registry",
+        "//runtime/src/iree/async/cts/util:benchmark_main",
     ],
 )
 
 iree_runtime_cc_benchmark(
     name = "socket_benchmarks",
-    srcs = ["//runtime/src/iree/async/cts/util:benchmark_main.cc"],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":backends",
         "//runtime/src/iree/async/cts/socket:all_benchmarks",
-        "//runtime/src/iree/async/cts/util:registry",
+        "//runtime/src/iree/async/cts/util:benchmark_main",
     ],
 )
 
 iree_runtime_cc_benchmark(
     name = "sync_benchmarks",
-    srcs = ["//runtime/src/iree/async/cts/util:benchmark_main.cc"],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         ":backends",
         "//runtime/src/iree/async/cts/sync:all_benchmarks",
-        "//runtime/src/iree/async/cts/util:registry",
+        "//runtime/src/iree/async/cts/util:benchmark_main",
     ],
 )

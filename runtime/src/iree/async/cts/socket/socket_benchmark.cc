@@ -176,7 +176,7 @@ struct LoopbackContext {
 };
 
 // Creates a loopback context with connected client/server sockets.
-// Returns nullptr on failure (and sets state error).
+// Returns nullptr after reporting unavailable backends or setup failures.
 // |client_options| are applied to the client socket at creation. Use
 // IREE_ASYNC_SOCKET_OPTION_ZERO_COPY to enable zero-copy sends.
 static LoopbackContext* CreateLoopbackContext(
@@ -186,13 +186,11 @@ static LoopbackContext* CreateLoopbackContext(
   auto* ctx = new LoopbackContext();
 
   // Create proactor.
-  auto result = factory(iree_async_proactor_options_default());
-  if (!result.ok()) {
-    state.SkipWithError("Proactor creation failed");
+  ctx->proactor = CreateBenchmarkProactor(factory, state);
+  if (!ctx->proactor) {
     delete ctx;
     return nullptr;
   }
-  ctx->proactor = result.value();
 
   // Create listener.
   iree_status_t status = iree_async_socket_create(
@@ -448,12 +446,10 @@ static void BM_Throughput(::benchmark::State& state,
 static void BM_AcceptRate(::benchmark::State& state,
                           const ProactorFactory& factory) {
   // Create proactor and listener only.
-  auto result = factory(iree_async_proactor_options_default());
-  if (!result.ok()) {
-    state.SkipWithError("Proactor creation failed");
+  iree_async_proactor_t* proactor = CreateBenchmarkProactor(factory, state);
+  if (!proactor) {
     return;
   }
-  iree_async_proactor_t* proactor = result.value();
 
   iree_async_socket_t* listener = nullptr;
   iree_status_t status =

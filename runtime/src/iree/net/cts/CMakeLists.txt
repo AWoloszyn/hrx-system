@@ -23,6 +23,55 @@ iree_cc_library(
 
 iree_cc_library(
   NAME
+    transfer_trial
+  HDRS
+    "transfer_trial.h"
+  SRCS
+    "transfer_trial.cc"
+  DEPS
+    ::transport_backend
+    iree::async
+    iree::async::cts::util::registry
+    iree::base
+    iree::net::channel::queue::queue_channel
+    iree::net::session
+    iree::net::transport_factory
+  TESTONLY
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
+    transfer_trial_tests
+  SRCS
+    "transfer_trial_test.cc"
+  DEPS
+    ::transfer_trial
+    ::transport_backend
+    iree::async::cts::util::registry
+    iree::testing::gtest
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
+    transfer_benchmarks
+  SRCS
+    "transfer_benchmark.cc"
+  DEPS
+    ::transfer_trial
+    ::transport_backend
+    iree::async::cts::util::registry
+    iree::third_party::google_benchmark
+  TESTONLY
+  ALWAYSLINK
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     transport_tests
   SRCS
     "session_test.cc"

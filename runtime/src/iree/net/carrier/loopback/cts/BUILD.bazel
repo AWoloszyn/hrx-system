@@ -4,12 +4,31 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
+load("//runtime/build_tools/bazel:cc_benchmark.bzl", "iree_runtime_cc_benchmark")
 load("//runtime/build_tools/bazel:cc_test.bzl", "iree_runtime_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
     features = ["layering_check"],
     licenses = ["notice"],  # Apache 2.0
+)
+
+iree_runtime_cc_test(
+    name = "transfer_trial_tests",
+    srcs = [
+        "backend.cc",
+        "transfer_trial_test.cc",
+    ],
+    deps = [
+        "//runtime/src/iree/async/cts/util:platform_backends",
+        "//runtime/src/iree/async/cts/util:registry",
+        "//runtime/src/iree/async/cts/util:test_main",
+        "//runtime/src/iree/net/carrier/loopback:factory",
+        "//runtime/src/iree/net/cts:transfer_trial",
+        "//runtime/src/iree/net/cts:transfer_trial_tests",
+        "//runtime/src/iree/net/cts:transport_backend",
+        "//runtime/src/iree/testing:gtest",
+    ],
 )
 
 iree_runtime_cc_test(
@@ -20,5 +39,17 @@ iree_runtime_cc_test(
         "//runtime/src/iree/net/cts:transport_backend",
         "//runtime/src/iree/net/cts:transport_tests",
         "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
+iree_runtime_cc_benchmark(
+    name = "transfer_benchmarks",
+    srcs = ["backend.cc"],
+    deps = [
+        "//runtime/src/iree/async/cts/util:benchmark_main",
+        "//runtime/src/iree/async/cts/util:platform_backends",
+        "//runtime/src/iree/net/carrier/loopback:factory",
+        "//runtime/src/iree/net/cts:transfer_benchmarks",
+        "//runtime/src/iree/net/cts:transport_backend",
     ],
 )

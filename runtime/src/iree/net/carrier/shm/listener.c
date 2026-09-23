@@ -537,7 +537,15 @@ iree_status_t iree_net_shm_listener_create(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "SHM listener requires a proactor and address");
   }
-#if !defined(IREE_PLATFORM_WINDOWS)
+#if defined(IREE_PLATFORM_WINDOWS)
+  if (!iree_all_bits_set(
+          iree_async_proactor_query_capabilities(proactor),
+          IREE_ASYNC_PROACTOR_CAPABILITY_WAIT_COMPLETION_PACKET)) {
+    return iree_make_status(
+        IREE_STATUS_UNAVAILABLE,
+        "SHM pipe monitoring requires wait completion packet support");
+  }
+#else
   iree_async_address_t native_address;
   IREE_RETURN_IF_ERROR(iree_async_address_from_unix(address, &native_address));
 #endif

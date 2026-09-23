@@ -312,19 +312,41 @@ TEST_P(ProgressTest, IdleRegisteredWorkPreventsBlocking) {
   // No timer or native completion can release a backend that wrongly blocks.
   // The outer test harness catches the hang; no local deadline masks it.
   iree_host_size_t completed = 99;
-  iree_status_t status =
-      iree_async_proactor_poll(proactor_, iree_infinite_timeout(), &completed);
-  if (iree_status_is_deadline_exceeded(status)) {
-    iree_status_free(status);
-  } else {
-    IREE_EXPECT_OK(status);
-  }
+  IREE_EXPECT_OK(
+      iree_async_proactor_poll(proactor_, iree_infinite_timeout(), &completed));
   EXPECT_EQ(completed, 0u);
   EXPECT_EQ(calls, 1);
   IREE_EXPECT_OK(
       iree_async_proactor_poll(proactor_, iree_infinite_timeout(), &completed));
   EXPECT_EQ(completed, 1u);
   EXPECT_EQ(calls, 2);
+  EXPECT_EQ(proactor_->progress_list, nullptr);
+}
+
+TEST_P(ProgressTest, PendingWorkPreservesCallerDeadline) {
+  ProgressWork work;
+  int calls = 0;
+  work.callback = [&](iree_host_size_t*) {
+    ++calls;
+    return iree_ok_status();
+  };
+  Register(work);
+
+  // A bounded owner turn may yield without completing an operation. An
+  // internally nonblocking native wait must not expire the caller's deadline.
+  iree_host_size_t completed = 99;
+  IREE_EXPECT_OK(iree_async_proactor_poll(
+      proactor_, iree_make_timeout_ms(60000), &completed));
+  EXPECT_EQ(completed, 0u);
+  EXPECT_EQ(calls, 1);
+
+  IREE_EXPECT_STATUS_IS(IREE_STATUS_DEADLINE_EXCEEDED,
+                        iree_async_proactor_poll(
+                            proactor_, iree_immediate_timeout(), &completed));
+  EXPECT_EQ(completed, 0u);
+  EXPECT_EQ(calls, 2);
+
+  iree_async_proactor_unregister_progress(proactor_, &work.entry);
   EXPECT_EQ(proactor_->progress_list, nullptr);
 }
 

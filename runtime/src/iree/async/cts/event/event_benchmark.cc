@@ -53,22 +53,16 @@ class EventBenchmarkContext {
     iree_async_proactor_release(proactor_);
   }
 
-  // Factory method - returns nullptr and sets error on failure.
+  // Returns nullptr after reporting unavailable backends or setup failures.
   static std::unique_ptr<EventBenchmarkContext> Create(
       const ProactorFactory& factory, size_t pool_capacity,
       ::benchmark::State& state) {
     std::unique_ptr<EventBenchmarkContext> ctx(new EventBenchmarkContext());
 
-    auto result = factory(iree_async_proactor_options_default());
-    if (!result.ok()) {
-      if (result.status().code() == iree::StatusCode::kUnavailable) {
-        state.SkipWithError("Backend unavailable on this system");
-      } else {
-        state.SkipWithError("Proactor creation failed");
-      }
+    ctx->proactor_ = CreateBenchmarkProactor(factory, state);
+    if (!ctx->proactor_) {
       return nullptr;
     }
-    ctx->proactor_ = result.value();
 
     iree_status_t status = iree_async_event_pool_initialize(
         ctx->proactor_, iree_allocator_system(), pool_capacity, &ctx->pool_);

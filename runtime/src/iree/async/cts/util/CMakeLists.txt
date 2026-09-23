@@ -11,6 +11,49 @@ iree_add_all_subdirs()
 
 iree_cc_library(
   NAME
+    test_main
+  SRCS
+    "test_main.cc"
+  DEPS
+    ::registry
+    iree::testing::gtest
+  TESTONLY
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
+    benchmark_main
+  SRCS
+    "benchmark_main.cc"
+  DEPS
+    ::registry
+    iree::testing::benchmark
+    iree::third_party::google_benchmark
+  TESTONLY
+  PUBLIC
+)
+
+set(_platform_backends_platform_deps "")
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  list(APPEND _platform_backends_platform_deps iree::async::platform::io_uring::cts::backends)
+  list(APPEND _platform_backends_platform_deps iree::async::platform::posix::cts::backends)
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+  list(APPEND _platform_backends_platform_deps iree::async::platform::iocp::cts::backends)
+else()
+  list(APPEND _platform_backends_platform_deps iree::async::platform::posix::cts::backends)
+endif()
+iree_cc_library(
+  NAME
+    platform_backends
+  DEPS
+    ${_platform_backends_platform_deps}
+  TESTONLY
+  PUBLIC
+)
+
+iree_cc_library(
+  NAME
     registry
   HDRS
     "registry.h"
@@ -74,6 +117,34 @@ iree_cc_library(
     iree::third_party::google_benchmark
   TESTONLY
   PUBLIC
+)
+
+iree_cc_binary(
+  NAME
+    benchmark_setup_fixture
+  SRCS
+    "benchmark_setup_fixture.cc"
+  DEPS
+    ::benchmark_main
+    ::registry
+    iree::async
+    iree::async::cts::buffer::all_benchmarks
+    iree::async::cts::core::all_benchmarks
+    iree::async::cts::event::all_benchmarks
+    iree::async::cts::futex::all_benchmarks
+    iree::async::cts::socket::all_benchmarks
+    iree::async::cts::sync::all_benchmarks
+    iree::base
+  TESTONLY
+)
+
+iree_execution_test_suite(
+  NAME
+    benchmark_setup_test
+  MANIFESTS
+    "benchmark_setup.test.json"
+  TOOLS
+    "benchmark=::benchmark_setup_fixture"
 )
 
 ### BAZEL_TO_CMAKE_PRESERVES_ALL_CONTENT_BELOW_THIS_LINE ###

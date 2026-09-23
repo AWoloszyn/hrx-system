@@ -81,7 +81,11 @@ typedef struct iree_async_proactor_io_uring_t {
     iree_atomic_int32_t dispatch_tid;
   } polling;
 
-  // Cached capabilities from ring probing.
+  // Detected kernel capabilities before applying caller policy. Internal
+  // registration mechanisms remain usable when optional behavior is disabled.
+  iree_async_proactor_capabilities_t kernel_capabilities;
+
+  // Enabled capabilities after applying the caller's allowed mask.
   iree_async_proactor_capabilities_t capabilities;
 
   // Preferred PBUF group ID for the next slab registration. The kernel is the

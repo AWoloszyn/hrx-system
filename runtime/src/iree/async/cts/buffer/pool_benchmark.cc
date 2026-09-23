@@ -41,13 +41,11 @@ static BufferPoolContext* CreateBufferPoolContext(
   auto* ctx = new BufferPoolContext();
   ctx->buffer_count = buffer_count;
 
-  auto result = factory(iree_async_proactor_options_default());
-  if (!result.ok()) {
-    state.SkipWithError("Proactor creation failed");
+  ctx->proactor = CreateBenchmarkProactor(factory, state);
+  if (!ctx->proactor) {
     delete ctx;
     return nullptr;
   }
-  ctx->proactor = result.value();
 
   // Create slab with NUMA-aware allocation.
   iree_async_slab_options_t slab_options = {0};

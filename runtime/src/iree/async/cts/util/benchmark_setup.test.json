@@ -1,0 +1,50 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "name": "unavailable backends skip every benchmark family",
+      "run": {
+        "tool": "benchmark",
+        "args": ["--benchmark_filter=^unavailable/", "--benchmark_min_time=1x"]
+      },
+      "stdout": {
+        "contains": {"unordered": [
+          "unavailable/BufferPoolAcquireRelease",
+          "unavailable/DispatchAmongIdleHandlers",
+          "unavailable/SequenceLinkNops",
+          "unavailable/EventPoolAcquireGrow",
+          "unavailable/EventSignalWait",
+          "unavailable/FutexWakeNoWaiters",
+          "unavailable/SocketRoundtrip",
+          "unavailable/RelayThroughput",
+          "SKIPPED:",
+          "UNAVAILABLE; benchmark backend unavailable"
+        ]},
+        "not_contains": ["ERROR OCCURRED"]
+      }
+    },
+    {
+      "name": "backend failures remain errors with their diagnostics",
+      "run": {
+        "tool": "benchmark",
+        "args": ["--benchmark_filter=^failed/", "--benchmark_min_time=1x"]
+      },
+      "exit": 1,
+      "stdout": {
+        "contains": {"unordered": [
+          "failed/BufferPoolAcquireRelease",
+          "failed/DispatchAmongIdleHandlers",
+          "failed/SequenceLinkNops",
+          "failed/EventPoolAcquireGrow",
+          "failed/EventSignalWait",
+          "failed/FutexWakeNoWaiters",
+          "failed/SocketRoundtrip",
+          "failed/RelayThroughput",
+          "ERROR OCCURRED:",
+          "RESOURCE_EXHAUSTED; benchmark backend allocation failed"
+        ]},
+        "not_contains": ["Proactor creation failed"]
+      }
+    }
+  ]
+}

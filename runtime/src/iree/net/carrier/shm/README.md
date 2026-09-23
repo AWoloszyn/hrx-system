@@ -36,6 +36,11 @@ Pass this factory to `iree_net_transport_factory_create_listener` and
 creating a factory does not bind an address or start a thread. An application
 using the optional transport registry can register the factory under `shm`.
 
+On Windows, the supplied proactor must enable `WAIT_COMPLETION_PACKET` for
+persistent control-pipe monitoring. Listener creation and outbound connect
+admission return `UNAVAILABLE` before acquiring resources when that capability
+is absent. One-shot legacy wait support alone is insufficient.
+
 Native address syntax is:
 
 | Platform | Address | Ownership And Access |

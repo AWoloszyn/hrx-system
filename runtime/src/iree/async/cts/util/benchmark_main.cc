@@ -11,18 +11,19 @@
 // register benchmarks with Google Benchmark.
 //
 // Usage:
-//   cc_binary_benchmark(
+//   iree_runtime_cc_benchmark(
 //       name = "buffer_benchmarks",
-//       srcs = ["//runtime/src/iree/async/cts:benchmark_main.cc"],
 //       deps = [
 //           ":backends",
 //           "//runtime/src/iree/async/cts/buffer:all_benchmarks",
+//           "//runtime/src/iree/async/cts/util:benchmark_main",
 //           ...
 //       ],
 //   )
 
 #include "benchmark/benchmark.h"
 #include "iree/async/cts/util/registry.h"
+#include "iree/testing/benchmark.h"
 
 int main(int argc, char** argv) {
   IREE_TRACE_APP_ENTER();
@@ -32,13 +33,13 @@ int main(int argc, char** argv) {
   // are registered before the framework parses command-line filters.
   ::iree::async::cts::CtsRegistry::InstantiateAll();
 
-  ::benchmark::Initialize(&argc, argv);
+  iree_benchmark_initialize(&argc, argv);
   if (::benchmark::ReportUnrecognizedArguments(argc, argv)) {
     IREE_TRACE_APP_EXIT(1);
     return 1;
   }
-  ::benchmark::RunSpecifiedBenchmarks();
+  const int exit_code = iree_benchmark_run_specified() ? 0 : 1;
   ::benchmark::Shutdown();
-  IREE_TRACE_APP_EXIT(0);
-  return 0;
+  IREE_TRACE_APP_EXIT(exit_code);
+  return exit_code;
 }
