@@ -60,17 +60,17 @@ func.def @mixed_subtract(%uniform: i64, %values: vector<2xi64>) -> (i64, i64) {
 
 // ----
 low.func.def target<amdgpu.cdna3.core> abi(hal_kernel) @mixed_subtract(%uniform: reg<amdgpu.sgpr x2>, %values: reg<amdgpu.vgpr x4>) -> (reg<amdgpu.vgpr x2>, reg<amdgpu.vgpr x2>) asm {
-  %11 = slice %values[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %12 = slice %values[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
-  %14 = slice %uniform[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %12 = slice %uniform[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %13 = v_mov_b32_copy %12
+  %14 = slice %uniform[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %15 = v_mov_b32_copy %14
-  %16 = slice %uniform[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %17 = v_mov_b32_copy %16
-  %23, %24 = v_sub_co_u32 %15, %11
-  %25, %26 = v_subb_co_u32 %17, %12, %24
-  %uniform_left = concat(%23, %25) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %37, %38 = v_sub_co_u32 %11, %15
-  %39, %40 = v_subb_co_u32 %12, %17, %38
-  %uniform_right = concat(%37, %39) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %43 = slice %values[0] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %42 = slice %values[1] : reg<amdgpu.vgpr x4> -> reg<amdgpu.vgpr>
+  %21, %22 = v_sub_co_u32 %13, %43
+  %23, %24 = v_subb_co_u32 %15, %42, %22
+  %uniform_left = concat(%21, %23) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  %35, %36 = v_sub_co_u32 %43, %13
+  %37, %38 = v_subb_co_u32 %42, %15, %36
+  %uniform_right = concat(%35, %37) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
   return %uniform_left, %uniform_right
 }

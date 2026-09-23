@@ -520,6 +520,7 @@ loom_check_test_suite(
     "test/source_low/numeric_unsigned_remainder.loom-test"
     "test/source_low/ordinary_vector_float.loom-test"
     "test/source_low/ordinary_vector_structure.loom-test"
+    "test/source_low/predicate_extension.loom-test"
     "test/source_low/source_low.loom-test"
     "test/source_low/source_low_diagnostics.loom-test"
     "test/source_low/structural_value_types_bytecode.loom-test"

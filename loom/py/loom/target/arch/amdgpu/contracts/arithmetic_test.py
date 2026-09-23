@@ -295,7 +295,7 @@ def test_vector_extract_rules_publish_contract_only_shape_rows() -> None:
         rule for rule in rules if rule.flags & LOWER_RULE_FLAG_CONTRACT_ONLY
     )
 
-    assert len(contract_rules) == 15
+    assert len(contract_rules) == 16
     for rule in contract_rules:
         assert rule.emit_count == 0
         guard_kinds = tuple(

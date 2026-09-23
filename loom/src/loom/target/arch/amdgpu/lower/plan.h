@@ -733,6 +733,18 @@ typedef struct loom_amdgpu_vector_interleave_plan_t {
   loom_low_lower_resolved_descriptor_t packed_permute_descriptor;
 } loom_amdgpu_vector_interleave_plan_t;
 
+enum loom_amdgpu_vector_extract_flag_bits_e {
+  // Logical elements occupy sub-32-bit fields in ordinary payload registers.
+  LOOM_AMDGPU_VECTOR_EXTRACT_FLAG_PACKED = 1u << 0,
+  // Packed integer extraction produces a sign-extended scalar payload.
+  LOOM_AMDGPU_VECTOR_EXTRACT_FLAG_SIGN_EXTEND = 1u << 1,
+  // Each logical element occupies one native SGPR wave-mask pair.
+  LOOM_AMDGPU_VECTOR_EXTRACT_FLAG_MASK = 1u << 2,
+  // Extraction uses the dynamic index instead of a static lane offset.
+  LOOM_AMDGPU_VECTOR_EXTRACT_FLAG_DYNAMIC = 1u << 3,
+};
+typedef uint8_t loom_amdgpu_vector_extract_flags_t;
+
 typedef struct loom_amdgpu_vector_extract_plan_t {
   // Source vector value containing the extracted payload.
   loom_value_id_t source;
@@ -752,10 +764,8 @@ typedef struct loom_amdgpu_vector_extract_plan_t {
   uint32_t element_register_count;
   // Number of payload bits occupied by each logical source lane.
   uint32_t lane_bit_count;
-  // True when packed integer extraction must produce scalar sign-extension.
-  bool sign_extend_packed_lane;
-  // True when extraction uses |dynamic_index| instead of |lane_offset|.
-  bool is_dynamic;
+  // Physical element storage and index selection behavior.
+  loom_amdgpu_vector_extract_flags_t flags;
 } loom_amdgpu_vector_extract_plan_t;
 
 typedef struct loom_amdgpu_vector_transform_plan_t {
@@ -1342,9 +1352,18 @@ typedef struct loom_amdgpu_subgroup_active_mask_plan_t {
   uint32_t wavefront_size;
 } loom_amdgpu_subgroup_active_mask_plan_t;
 
+typedef struct loom_amdgpu_subgroup_predicate_mask_descriptors_t {
+  // Descriptor row selected to read the active EXEC lane mask.
+  loom_low_lower_resolved_descriptor_t exec_read;
+  // Descriptor row selected to intersect predicate and active masks.
+  loom_low_lower_resolved_descriptor_t intersect;
+} loom_amdgpu_subgroup_predicate_mask_descriptors_t;
+
 typedef struct loom_amdgpu_subgroup_ballot_plan_t {
   // Source predicate already materialized as a native EXEC-width mask.
   loom_value_id_t predicate;
+  // Descriptors that restrict the predicate to lanes active at this use.
+  loom_amdgpu_subgroup_predicate_mask_descriptors_t active;
   // Source mask result receiving predicate bits for active lanes.
   loom_value_id_t mask;
   // Static bit width of the source integer mask result.
@@ -1356,6 +1375,8 @@ typedef struct loom_amdgpu_subgroup_ballot_plan_t {
 typedef struct loom_amdgpu_subgroup_vote_any_plan_t {
   // Source predicate already materialized as a native EXEC-width mask.
   loom_value_id_t predicate;
+  // Descriptors that restrict the predicate to lanes active at this use.
+  loom_amdgpu_subgroup_predicate_mask_descriptors_t active;
   // Descriptor row selected to compare the predicate mask against zero.
   loom_low_lower_resolved_descriptor_t compare_descriptor;
   // Descriptor row selected to materialize each half of the zero mask.
@@ -1371,8 +1392,8 @@ typedef struct loom_amdgpu_subgroup_vote_all_plan_t {
   loom_value_id_t predicate;
   // Descriptor row selected to compare predicate and active EXEC masks.
   loom_low_lower_resolved_descriptor_t compare_descriptor;
-  // Descriptor row selected to read the native EXEC lane mask.
-  loom_low_lower_resolved_descriptor_t exec_read_descriptor;
+  // Descriptors that restrict the predicate to lanes active at this use.
+  loom_amdgpu_subgroup_predicate_mask_descriptors_t active;
   // Subgroup-uniform i1 source result receiving SCC.
   loom_value_id_t result;
   // Exact subgroup width selected by the active target bundle.
