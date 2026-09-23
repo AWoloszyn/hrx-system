@@ -649,6 +649,7 @@ loom_cc_library(
     loom::rewrite::materialize
     loom::rewrite::remap
     loom::rewrite::rewriter
+    loom::util::adaptive_sort
   PUBLIC
 )
 

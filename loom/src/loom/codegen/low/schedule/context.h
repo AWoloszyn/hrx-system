@@ -16,6 +16,7 @@
 #include "loom/codegen/low/memory_access.h"
 #include "loom/codegen/low/schedule/dependency_index.h"
 #include "loom/codegen/low/schedule/resource_calendar.h"
+#include "loom/codegen/low/schedule/setup_order.h"
 #include "loom/codegen/low/schedule/storage_lifetime.h"
 #include "loom/codegen/low/schedule/storage_relation_index.h"
 #include "loom/codegen/low/schedule/types.h"
@@ -246,6 +247,8 @@ typedef struct loom_low_schedule_build_state_t {
   loom_low_schedule_scopes_t scopes;
   // Stable dependency graph accumulated while building the schedule DAG.
   loom_low_schedule_dependency_graph_t dependencies;
+  // Producer-retained setup fan-out and static placement for allocation repair.
+  loom_low_schedule_setup_order_t setup_order;
   // Compact verified storage relations grouped by owning schedule node.
   loom_low_schedule_storage_relation_index_t storage_relations;
   // Retained copy/tied header lifetimes and producer-owned edge handoffs.

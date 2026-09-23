@@ -454,19 +454,17 @@ iree_status_t loom_low_materialize_allocation_run(loom_pass_t* pass,
         return loom_low_allocation_diagnostics_emit(&table, /*flags=*/0,
                                                     pass->diagnostic_emitter);
       }
-      loom_low_allocation_rematerialization_result_t result = {0};
+      loom_low_rematerialization_batch_result_t result = {0};
+      const iree_diagnostic_emitter_t emitter =
+          state && state->emit_spill_diagnostics
+              ? pass->diagnostic_emitter
+              : (iree_diagnostic_emitter_t){0};
       IREE_RETURN_IF_ERROR(loom_low_allocation_rematerialize_failure(
-          module, &table, &rematerialization, pass->arena, &result));
-      if (result.value.rewritten_operand_count != 0) {
-        IREE_RETURN_IF_ERROR(
-            loom_low_materialize_allocation_emit_rematerialization(
-                pass, state, &table,
-                LOOM_LOW_ALLOCATION_REMATERIALIZATION_TRIGGER_ALLOCATION_FAILURE,
-                &result));
+          module, &table, &rematerialization, emitter, pass->arena, &result));
+      if (result.rewritten_operand_count != 0) {
         loom_low_materialize_allocation_statistics_t* statistics =
             loom_low_materialize_allocation_statistics(pass);
-        statistics->rematerializations +=
-            (int64_t)result.value.cloned_packet_count;
+        statistics->rematerializations += (int64_t)result.cloned_packet_count;
         loom_pass_mark_changed(pass);
         ++rematerialization_iteration_count;
         continue;

@@ -1002,6 +1002,7 @@ _BASE_DESCRIPTOR_SPECS = (
         "II_VMOV_alu_mv_mv_x",
         storage_overrides=(("dst", "mBMs"), ("src", "VEC256")),
         asm_mnemonic="vmov.vector512.to.accumulator512",
+        rematerializable=True,
         encoding_adapter_overrides=(
             ("dst", "LOOM_mBMs_OP_mMvBMXDst"),
             ("src", "LOOM_mXm_OP_mMvBMXSrc"),
@@ -1157,6 +1158,7 @@ _BASE_DESCRIPTOR_SPECS = (
         "II_VCLR",
         storage_overrides=(("dst", "mBMs"),),
         asm_mnemonic="acc.clear.i32x64",
+        rematerializable=True,
     ),
     _DescriptorSpec(
         "VCLR",
@@ -1165,6 +1167,7 @@ _BASE_DESCRIPTOR_SPECS = (
         "II_VCLR",
         storage_overrides=(("dst", "mBMs"),),
         asm_mnemonic="acc.clear.f32x64",
+        rematerializable=True,
     ),
     *_integer_matrix_descriptor_specs(),
     *_DENSE_MATRIX_DESCRIPTOR_SPECS,
@@ -1267,12 +1270,14 @@ _BASE_DESCRIPTOR_SPECS = (
         f"{_TARGET_KEY}.splat.i16x32",
         "integer.splat.i16x32",
         "II_VBCST_16",
+        rematerializable=True,
     ),
     _DescriptorSpec(
         "VBCST_32",
         f"{_TARGET_KEY}.splat.i32x16",
         "integer.splat.i32x16",
         "II_VBCST_32",
+        rematerializable=True,
     ),
     _DescriptorSpec(
         "VBCST_64",

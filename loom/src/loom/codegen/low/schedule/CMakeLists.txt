@@ -143,6 +143,8 @@ loom_cc_library(
     "run.c"
     "scopes.c"
     "scopes.h"
+    "setup_order.c"
+    "setup_order.h"
     "storage_lifetime.c"
     "storage_lifetime.h"
     "storage_relation_index.c"
