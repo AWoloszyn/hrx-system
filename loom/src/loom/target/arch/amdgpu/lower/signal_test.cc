@@ -220,10 +220,6 @@ class AmdgpuSignalTest : public ::testing::Test {
     EXPECT_EQ(loom_attr_as_i64(attrs.entries[0].value), expected_value);
   }
 
-  void ExpectM0ConstOperand(loom_value_id_t value) const {
-    ExpectLowConstU32(value, LOOM_AMDGPU_DESCRIPTOR_REF_S_MOV_B32_M0_IMM, 0);
-  }
-
   void ExpectRegisterType(loom_value_id_t value, uint16_t reg_class_id,
                           uint32_t unit_count) const {
     loom_type_t expected_type = loom_low_register_type(
@@ -383,9 +379,6 @@ class AmdgpuSignalTest : public ::testing::Test {
     EXPECT_EQ(operands.values[2], expected_address);
     ExpectRegisterType(operands.values[0], LOOM_AMDGPU_REG_CLASS_ID_VGPR, 1);
     ExpectRegisterType(operands.values[1], LOOM_AMDGPU_REG_CLASS_ID_VGPR, 2);
-    if (operands.count == 4) {
-      ExpectM0ConstOperand(operands.values[3]);
-    }
     ASSERT_EQ(loom_low_op_results(op).count, 0u);
     ExpectAttrI64(loom_low_op_attrs(op), IREE_SV("offset"), 0);
   }
@@ -402,9 +395,6 @@ class AmdgpuSignalTest : public ::testing::Test {
     ExpectRegisterType(operands.values[1], LOOM_AMDGPU_REG_CLASS_ID_VGPR, 2);
     ExpectSgprByteOffsetAddress(operands.values[2], expected_signal_address,
                                 LOOM_AMDGPU_SIGNAL_VALUE_OFFSET);
-    if (operands.count == 4) {
-      ExpectM0ConstOperand(operands.values[3]);
-    }
     ASSERT_EQ(loom_low_op_results(op).count, 0u);
   }
 
@@ -471,7 +461,7 @@ TEST_F(AmdgpuSignalTest, AddsOneWithRdnaReleaseOrdering) {
   EXPECT_EQ(loom_low_op_attrs(atomic_ops[0]).count, 0u);
 }
 
-TEST_F(AmdgpuSignalTest, AddsOneWithCdnaM0AndWriteback) {
+TEST_F(AmdgpuSignalTest, AddsOneWithCdnaWriteback) {
   if (!ResetModuleForDescriptorSet(IREE_SV("amdgpu.cdna3.core"))) {
     GTEST_SKIP() << "CDNA3 descriptor set is not linked.";
   }
@@ -490,7 +480,7 @@ TEST_F(AmdgpuSignalTest, AddsOneWithCdnaM0AndWriteback) {
       LOOM_AMDGPU_DESCRIPTOR_REF_GLOBAL_ATOMIC_ADD_U64_SADDR);
   ASSERT_EQ(atomic_ops.size(), 1u);
   ExpectSignalAddAtomic(atomic_ops[0], signal_address);
-  EXPECT_EQ(loom_low_op_operands(atomic_ops[0]).count, 4u);
+  EXPECT_EQ(loom_low_op_operands(atomic_ops[0]).count, 3u);
   EXPECT_EQ(loom_low_op_attrs(atomic_ops[0]).count, 0u);
 }
 
@@ -580,7 +570,7 @@ TEST_F(AmdgpuSignalTest, PokesMailboxWithRdnaReleaseStoreAndSendMessage) {
             loom_value_slice_get(loom_low_op_results(m0_moves[0]), 0));
 }
 
-TEST_F(AmdgpuSignalTest, PokesMailboxWithCdnaM0Store) {
+TEST_F(AmdgpuSignalTest, PokesMailboxWithCdnaReleaseStoreAndSendMessage) {
   if (!ResetModuleForDescriptorSet(IREE_SV("amdgpu.cdna3.core"))) {
     GTEST_SKIP() << "CDNA3 descriptor set is not linked.";
   }
@@ -603,9 +593,21 @@ TEST_F(AmdgpuSignalTest, PokesMailboxWithCdnaM0Store) {
       OpsForDescriptorRef(LOOM_AMDGPU_DESCRIPTOR_REF_GLOBAL_STORE_B64_SADDR);
   ASSERT_EQ(store_ops.size(), 1u);
   ExpectGlobalStoreB64(store_ops[0], values.event_mailbox_ptr);
-  EXPECT_EQ(loom_low_op_operands(store_ops[0]).count, 4u);
+  EXPECT_EQ(loom_low_op_operands(store_ops[0]).count, 3u);
   ExpectAttrI64(loom_low_op_attrs(store_ops[0]), IREE_SV("sc0"), 1);
   ExpectAttrI64(loom_low_op_attrs(store_ops[0]), IREE_SV("sc1"), 1);
+
+  std::vector<loom_op_t*> m0_moves =
+      OpsForDescriptorRef(LOOM_AMDGPU_DESCRIPTOR_REF_S_MOV_B32_M0);
+  ASSERT_EQ(m0_moves.size(), 1u);
+  std::vector<loom_op_t*> sendmsg_ops =
+      OpsForDescriptorRef(LOOM_AMDGPU_DESCRIPTOR_REF_S_SENDMSG);
+  ASSERT_EQ(sendmsg_ops.size(), 1u);
+  ExpectAttrI64(loom_low_op_attrs(sendmsg_ops[0]), IREE_SV("message"),
+                LOOM_AMDGPU_SIGNAL_INTERRUPT_SENDMSG);
+  ASSERT_EQ(loom_low_op_operands(sendmsg_ops[0]).count, 1u);
+  EXPECT_EQ(loom_low_op_operands(sendmsg_ops[0]).values[0],
+            loom_value_slice_get(loom_low_op_results(m0_moves[0]), 0));
 }
 
 TEST_F(AmdgpuSignalTest, PokesMailboxWithGfx12SystemScope) {

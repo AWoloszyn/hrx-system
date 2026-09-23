@@ -20,12 +20,9 @@ def _flat_atomic_asm(
     *,
     mnemonic: str,
     returns_old_value: bool,
-    implicit_m0: bool,
     cache_fields: tuple[tuple[str, int], ...],
 ) -> tuple[AsmForm, ...]:
     operands: tuple[str, ...] = ("addr", "value")
-    if implicit_m0:
-        operands = (*operands, "m0")
     return _asm(
         mnemonic=f"{mnemonic}_rtn" if returns_old_value else mnemonic,
         native_assembly_mnemonic=mnemonic if returns_old_value else None,
@@ -153,7 +150,7 @@ def _global_atomic_overlay(
     address_units: int,
     value_units: int,
     width_bits: int,
-    implicit_m0: bool,
+    xml_has_m0: bool,
 ) -> AmdgpuDescriptorOverlay:
     schedule_class = (
         _SCHEDULE_VMEM_ATOMIC_RETURN
@@ -219,8 +216,8 @@ def _global_atomic_overlay(
             data_format_name=data_format_name, width_bits=width_bits, is_input=True
         ),
     )
-    if implicit_m0:
-        implicit_operands += (_implicit_m0_input(),)
+    if xml_has_m0:
+        implicit_operands += (_IGNORE_REGISTER_MEMORY_M0,)
     return AmdgpuDescriptorOverlay(
         descriptor_key=descriptor_key,
         instruction_name=instruction_name,
@@ -248,7 +245,6 @@ def _global_atomic_overlay(
             mnemonic=f"{mnemonic}_rtn" if returns_old_value else mnemonic,
             results=("dst",) if returns_old_value else (),
             operands=("addr", "value", "saddr"),
-            implicit_m0=implicit_m0,
             immediates=_memory_asm_immediate_names(cache_immediate_fields),
         )
         if saddr_off is None
@@ -282,7 +278,7 @@ def _global_atomic_cmpswap_overlay(
     value_units: int,
     width_bits: int,
     descriptor_key_suffix: str,
-    implicit_m0: bool,
+    xml_has_m0: bool,
 ) -> AmdgpuDescriptorOverlay:
     cache_immediate_fields = tuple(
         (field_name, bit_width)
@@ -319,8 +315,8 @@ def _global_atomic_cmpswap_overlay(
             data_format_name=data_format_name, width_bits=width_bits, is_input=True
         ),
     )
-    if implicit_m0:
-        implicit_operands += (_implicit_m0_input(),)
+    if xml_has_m0:
+        implicit_operands += (_IGNORE_REGISTER_MEMORY_M0,)
     return AmdgpuDescriptorOverlay(
         descriptor_key=(
             f"amdgpu.global_atomic_cmpswap_{descriptor_suffix}_rtn"
@@ -350,7 +346,6 @@ def _global_atomic_cmpswap_overlay(
             mnemonic=f"{mnemonic}_rtn",
             results=("dst",),
             operands=("addr", "value", "saddr"),
-            implicit_m0=implicit_m0,
             immediates=_memory_asm_immediate_names(cache_immediate_fields),
         )
         if saddr_off is None
@@ -503,7 +498,7 @@ def _global_atomic_overlays(
     saddr_off: AmdgpuFixedEncodingValue | None,
     address_units: int,
     descriptor_key_suffix: str = "",
-    implicit_m0: bool = False,
+    xml_has_m0: bool = False,
     cmpswap_mnemonic_suffix: str = "b64",
 ) -> tuple[AmdgpuDescriptorOverlay, ...]:
     overlays: list[AmdgpuDescriptorOverlay] = []
@@ -533,7 +528,7 @@ def _global_atomic_overlays(
                     address_units=address_units,
                     value_units=row.value_units,
                     width_bits=row.width_bits,
-                    implicit_m0=implicit_m0,
+                    xml_has_m0=xml_has_m0,
                 )
             )
         overlays.append(
@@ -560,7 +555,7 @@ def _global_atomic_overlays(
                 address_units=address_units,
                 value_units=row.value_units,
                 width_bits=row.width_bits,
-                implicit_m0=implicit_m0,
+                xml_has_m0=xml_has_m0,
             )
         )
     overlays.append(
@@ -584,7 +579,7 @@ def _global_atomic_overlays(
             value_units=1,
             width_bits=32,
             descriptor_key_suffix=descriptor_key_suffix,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
         )
     )
     overlays.append(
@@ -608,7 +603,7 @@ def _global_atomic_overlays(
             value_units=2,
             width_bits=64,
             descriptor_key_suffix=descriptor_key_suffix,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
         )
     )
     return tuple(overlays)
@@ -773,7 +768,7 @@ def _flat_atomic_overlay(
     cache_immediate_field_names: tuple[str, ...],
     fixed_saddr: AmdgpuFixedEncodingValue | None,
     implicit_flat_scratch: bool,
-    implicit_m0: bool,
+    xml_has_m0: bool,
     allow_accumulator_operands: bool,
     value_units: int,
     width_bits: int,
@@ -845,8 +840,8 @@ def _flat_atomic_overlay(
             data_format_name=data_format_name, width_bits=width_bits, is_input=True
         ),
     )
-    if implicit_m0:
-        implicit_operands += (_implicit_m0_input(),)
+    if xml_has_m0:
+        implicit_operands += (_IGNORE_REGISTER_MEMORY_M0,)
     offset_immediate = (
         _signed_offset_immediate(offset_bit_width)
         if offset_signed
@@ -878,7 +873,6 @@ def _flat_atomic_overlay(
         asm_forms=_flat_atomic_asm(
             mnemonic=mnemonic,
             returns_old_value=returns_old_value,
-            implicit_m0=implicit_m0,
             cache_fields=cache_immediate_fields,
         ),
     )
@@ -903,7 +897,7 @@ def _flat_atomic_cmpswap_overlay(
     cache_immediate_field_names: tuple[str, ...],
     fixed_saddr: AmdgpuFixedEncodingValue | None,
     implicit_flat_scratch: bool,
-    implicit_m0: bool,
+    xml_has_m0: bool,
     allow_accumulator_operands: bool,
     value_units: int,
     width_bits: int,
@@ -946,8 +940,8 @@ def _flat_atomic_cmpswap_overlay(
             data_format_name=data_format_name, width_bits=width_bits, is_input=True
         ),
     )
-    if implicit_m0:
-        implicit_operands += (_implicit_m0_input(),)
+    if xml_has_m0:
+        implicit_operands += (_IGNORE_REGISTER_MEMORY_M0,)
     offset_immediate = (
         _signed_offset_immediate(offset_bit_width)
         if offset_signed
@@ -982,7 +976,6 @@ def _flat_atomic_cmpswap_overlay(
         asm_forms=_flat_atomic_asm(
             mnemonic=mnemonic,
             returns_old_value=True,
-            implicit_m0=implicit_m0,
             cache_fields=cache_immediate_fields,
         ),
     )
@@ -1004,7 +997,7 @@ def _flat_atomic_overlays(
     cache_immediate_field_names: tuple[str, ...] = (),
     fixed_saddr: AmdgpuFixedEncodingValue | None = None,
     implicit_flat_scratch: bool,
-    implicit_m0: bool = False,
+    xml_has_m0: bool = False,
     allow_accumulator_operands: bool = False,
     cmpswap_mnemonic_suffix: str = "b64",
 ) -> tuple[AmdgpuDescriptorOverlay, ...]:
@@ -1031,7 +1024,7 @@ def _flat_atomic_overlays(
                     cache_immediate_field_names=cache_immediate_field_names,
                     fixed_saddr=fixed_saddr,
                     implicit_flat_scratch=implicit_flat_scratch,
-                    implicit_m0=implicit_m0,
+                    xml_has_m0=xml_has_m0,
                     allow_accumulator_operands=allow_accumulator_operands,
                     value_units=row.value_units,
                     width_bits=row.width_bits,
@@ -1057,7 +1050,7 @@ def _flat_atomic_overlays(
                 cache_immediate_field_names=cache_immediate_field_names,
                 fixed_saddr=fixed_saddr,
                 implicit_flat_scratch=implicit_flat_scratch,
-                implicit_m0=implicit_m0,
+                xml_has_m0=xml_has_m0,
                 allow_accumulator_operands=allow_accumulator_operands,
                 value_units=row.value_units,
                 width_bits=row.width_bits,
@@ -1082,7 +1075,7 @@ def _flat_atomic_overlays(
             cache_immediate_field_names=cache_immediate_field_names,
             fixed_saddr=fixed_saddr,
             implicit_flat_scratch=implicit_flat_scratch,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
             allow_accumulator_operands=allow_accumulator_operands,
             value_units=1,
             width_bits=32,
@@ -1107,7 +1100,7 @@ def _flat_atomic_overlays(
             cache_immediate_field_names=cache_immediate_field_names,
             fixed_saddr=fixed_saddr,
             implicit_flat_scratch=implicit_flat_scratch,
-            implicit_m0=implicit_m0,
+            xml_has_m0=xml_has_m0,
             allow_accumulator_operands=allow_accumulator_operands,
             value_units=2,
             width_bits=64,

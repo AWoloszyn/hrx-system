@@ -548,8 +548,7 @@ low.func.def target<amdgpu.gfx9_4.generic.core>(@target) @reload_wide_address(%u
   %base_high = v_mov_b32_copy %uniform_high
   %address_high, %carry_out = v_addc_co_u32 %base_high, %varying_high, %carry
   %address = concat(%address_low, %address_high) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %memory_control = s_mov_b32_m0_imm 0
-  %value = global_load_dword_vaddr %address, %memory_control
+  %value = global_load_dword_vaddr %address
   return %value
 }
 
@@ -557,32 +556,26 @@ low.func.def target<amdgpu.gfx9_4.generic.core>(@target) @reload_wide_address(%u
   s_mov_b64_exec_read s[2:3]
   s_mov_b64 exec, -1
   v_mov_b32_copy v2, s0
-  s_mov_b32 m0, 0
   scratch_store_b32 off, v2, off offset:0 nt:0 sc0:0 sc1:0
   v_mov_b32_copy v2, s1
-  s_mov_b32 m0, 0
   scratch_store_b32 off, v2, off offset:4 nt:0 sc0:0 sc1:0
   s_mov_b64 exec, s[2:3]
   s_mov_b64_exec_read s[0:1]
   s_mov_b64 exec, -1
-  s_mov_b32 m0, 0
   scratch_store_b64 off, v[0:1], off offset:8 nt:0 sc0:0 sc1:0
   s_mov_b64 exec, s[0:1]
   s_mov_b64_exec_read s[0:1]
   s_mov_b64 exec, -1
-  s_mov_b32 m0, 0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   scratch_load_b32 v0, off, off offset:0 nt:0 sc0:0 sc1:0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   v_readfirstlane_b32 s2, v0
-  s_mov_b32 m0, 0
   scratch_load_b32 v0, off, off offset:4 nt:0 sc0:0 sc1:0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   v_readfirstlane_b32 s3, v0
   s_mov_b64 exec, s[0:1]
   s_mov_b64_exec_read s[0:1]
   s_mov_b64 exec, -1
-  s_mov_b32 m0, 0
   scratch_load_b64 v[0:1], off, off offset:8 nt:0 sc0:0 sc1:0
   s_mov_b64 exec, s[0:1]
   s_waitcnt vmcnt(0) lgkmcnt(15)
@@ -590,7 +583,6 @@ low.func.def target<amdgpu.gfx9_4.generic.core>(@target) @reload_wide_address(%u
   v_mov_b32_copy v2, s3
   s_nop 0
   v_addc_co_u32 v1, s[0:1], v2, v1, s[0:1]
-  s_mov_b32 m0, 0
   global_load_dword v0, v[0:1], off offset:0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   s_endpgm
@@ -613,8 +605,7 @@ low.func.def target<amdgpu.cdna4.core>(@target) @reload_wide_address(%uniform: r
   %base_high = v_mov_b32_copy %uniform_high
   %address_high, %carry_out = v_addc_co_u32 %base_high, %varying_high, %carry
   %address = concat(%address_low, %address_high) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %memory_control = s_mov_b32_m0_imm 0
-  %value = global_load_dword_vaddr %address, %memory_control
+  %value = global_load_dword_vaddr %address
   return %value
 }
 
@@ -622,32 +613,26 @@ low.func.def target<amdgpu.cdna4.core>(@target) @reload_wide_address(%uniform: r
   s_mov_b64_exec_read s[2:3]
   s_mov_b64 exec, -1
   v_mov_b32_copy v2, s0
-  s_mov_b32 m0, 0
   scratch_store_b32 off, v2, off offset:0 nt:0 sc0:0 sc1:0
   v_mov_b32_copy v2, s1
-  s_mov_b32 m0, 0
   scratch_store_b32 off, v2, off offset:4 nt:0 sc0:0 sc1:0
   s_mov_b64 exec, s[2:3]
   s_mov_b64_exec_read s[0:1]
   s_mov_b64 exec, -1
-  s_mov_b32 m0, 0
   scratch_store_b64 off, v[0:1], off offset:8 nt:0 sc0:0 sc1:0
   s_mov_b64 exec, s[0:1]
   s_mov_b64_exec_read s[0:1]
   s_mov_b64 exec, -1
-  s_mov_b32 m0, 0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   scratch_load_b32 v0, off, off offset:0 nt:0 sc0:0 sc1:0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   v_readfirstlane_b32 s2, v0
-  s_mov_b32 m0, 0
   scratch_load_b32 v0, off, off offset:4 nt:0 sc0:0 sc1:0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   v_readfirstlane_b32 s3, v0
   s_mov_b64 exec, s[0:1]
   s_mov_b64_exec_read s[0:1]
   s_mov_b64 exec, -1
-  s_mov_b32 m0, 0
   scratch_load_b64 v[0:1], off, off offset:8 nt:0 sc0:0 sc1:0
   s_mov_b64 exec, s[0:1]
   s_waitcnt vmcnt(0) lgkmcnt(15)
@@ -655,7 +640,6 @@ low.func.def target<amdgpu.cdna4.core>(@target) @reload_wide_address(%uniform: r
   v_mov_b32_copy v2, s3
   s_nop 0
   v_addc_co_u32 v1, s[0:1], v2, v1, s[0:1]
-  s_mov_b32 m0, 0
   global_load_dword v0, v[0:1], off offset:0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   s_endpgm
@@ -678,8 +662,7 @@ low.func.def target<amdgpu.cdna3.core>(@target) @reload_wide_address(%uniform: r
   %base_high = v_mov_b32_copy %uniform_high
   %address_high, %carry_out = v_addc_co_u32 %base_high, %varying_high, %carry
   %address = concat(%address_low, %address_high) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %memory_control = s_mov_b32_m0_imm 0
-  %value = global_load_dword_vaddr %address, %memory_control
+  %value = global_load_dword_vaddr %address
   return %value
 }
 
@@ -687,32 +670,26 @@ low.func.def target<amdgpu.cdna3.core>(@target) @reload_wide_address(%uniform: r
   s_mov_b64_exec_read s[2:3]
   s_mov_b64 exec, -1
   v_mov_b32_copy v2, s0
-  s_mov_b32 m0, 0
   scratch_store_b32 off, v2, off offset:0 nt:0 sc0:0 sc1:0
   v_mov_b32_copy v2, s1
-  s_mov_b32 m0, 0
   scratch_store_b32 off, v2, off offset:4 nt:0 sc0:0 sc1:0
   s_mov_b64 exec, s[2:3]
   s_mov_b64_exec_read s[0:1]
   s_mov_b64 exec, -1
-  s_mov_b32 m0, 0
   scratch_store_b64 off, v[0:1], off offset:8 nt:0 sc0:0 sc1:0
   s_mov_b64 exec, s[0:1]
   s_mov_b64_exec_read s[0:1]
   s_mov_b64 exec, -1
-  s_mov_b32 m0, 0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   scratch_load_b32 v0, off, off offset:0 nt:0 sc0:0 sc1:0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   v_readfirstlane_b32 s2, v0
-  s_mov_b32 m0, 0
   scratch_load_b32 v0, off, off offset:4 nt:0 sc0:0 sc1:0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   v_readfirstlane_b32 s3, v0
   s_mov_b64 exec, s[0:1]
   s_mov_b64_exec_read s[0:1]
   s_mov_b64 exec, -1
-  s_mov_b32 m0, 0
   scratch_load_b64 v[0:1], off, off offset:8 nt:0 sc0:0 sc1:0
   s_mov_b64 exec, s[0:1]
   s_waitcnt vmcnt(0) lgkmcnt(15)
@@ -720,7 +697,6 @@ low.func.def target<amdgpu.cdna3.core>(@target) @reload_wide_address(%uniform: r
   v_mov_b32_copy v2, s3
   s_nop 0
   v_addc_co_u32 v1, s[0:1], v2, v1, s[0:1]
-  s_mov_b32 m0, 0
   global_load_dword v0, v[0:1], off offset:0
   s_waitcnt vmcnt(0) lgkmcnt(15)
   s_endpgm

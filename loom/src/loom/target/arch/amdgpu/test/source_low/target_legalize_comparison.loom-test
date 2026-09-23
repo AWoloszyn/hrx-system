@@ -1,0 +1,17 @@
+// RUN: pass target-legalize{mode=final,policy=require-native}
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @native_integer_comparison(%lhs: vector<4xi32>, %rhs: vector<4xi32>) -> (vector<4xi1>) {
+  %mask = vector.cmpi slt, %lhs, %rhs : vector<4xi32> -> vector<4xi1>
+  func.return %mask : vector<4xi1>
+}
+
+// ====
+
+amdgpu.target<gfx11-generic> @target
+
+func.def target(@target) @native_floating_comparison(%lhs: vector<4xf32>, %rhs: vector<4xf32>) -> (vector<4xi1>) {
+  %mask = vector.cmpf<nnan|ninf> one, %lhs, %rhs : vector<4xf32> -> vector<4xi1>
+  func.return %mask : vector<4xi1>
+}

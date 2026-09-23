@@ -178,7 +178,8 @@ loom_low_allocation_concat_reservation_default_source_assembles_result(
   const uint32_t result_location_base =
       source_unit_location - relation->result_unit_offset;
   const uint32_t result_alignment =
-      loom_low_allocation_live_range_interval_alignment(result_interval);
+      loom_low_allocation_live_range_interval_alignment(context->descriptor_set,
+                                                        result_interval);
   if (result_location_base % result_alignment != 0 ||
       !loom_low_allocation_storage_reg_classes_share(
           context->descriptor_set, source_capacity.descriptor_reg_class_id,
@@ -219,7 +220,8 @@ loom_low_allocation_concat_reservation_default_source_assembles_result(
         loom_low_allocation_target_constraints_interval_capacity(
             context->target_constraints, sibling_interval, &sibling_capacity));
     const uint32_t sibling_alignment =
-        loom_low_allocation_live_range_interval_alignment(sibling_interval);
+        loom_low_allocation_live_range_interval_alignment(
+            context->descriptor_set, sibling_interval);
     if (!loom_low_allocation_storage_reg_classes_share(
             context->descriptor_set, source_capacity.descriptor_reg_class_id,
             sibling_capacity.descriptor_reg_class_id) ||
@@ -283,9 +285,11 @@ static bool loom_low_allocation_concat_reservation_find_location_for_source(
   }
 
   const uint32_t result_alignment =
-      loom_low_allocation_live_range_interval_alignment(result_interval);
+      loom_low_allocation_live_range_interval_alignment(context->descriptor_set,
+                                                        result_interval);
   const uint32_t source_alignment =
-      loom_low_allocation_live_range_interval_alignment(source_interval);
+      loom_low_allocation_live_range_interval_alignment(context->descriptor_set,
+                                                        source_interval);
   const uint32_t assigned_limit =
       loom_low_allocation_target_constraints_assigned_location_search_limit(
           context->target_constraints, capacity.descriptor_reg_class_id,

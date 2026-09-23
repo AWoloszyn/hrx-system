@@ -10,6 +10,30 @@
 iree_add_all_subdirs()
 
 file(GLOB _GLOB_X_LOOM LIST_DIRECTORIES false RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} CONFIGURE_DEPENDS *.loom)
+loom_generated_file_family(
+  NAME
+    packed_vector_select_gen
+  GENERATOR
+    loom::py::loom::gen::test::packed_vector_select
+  OUTPUTS
+    "packed_vector_select.loom"
+    "packed_vector_select_arrays"
+  OUTPUT_FLAGS
+    "--output"
+    "--arrays"
+  TESTONLY
+)
+
+loom_test_module(
+  NAME
+    packed_vector_select_module
+  SRCS
+    "${CMAKE_CURRENT_BINARY_DIR}/packed_vector_select.loom"
+  DATA
+    "${CMAKE_CURRENT_BINARY_DIR}/packed_vector_select.loom"
+    "${CMAKE_CURRENT_BINARY_DIR}/packed_vector_select_arrays"
+)
+
 loom_module(
   NAME
     conformance_cases

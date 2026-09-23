@@ -7,6 +7,7 @@
 #include <loomcxx/kernel.h>
 
 using Bytes8 = unsigned char __attribute__((ext_vector_type(8)));
+using SignedBytes8 = signed char __attribute__((ext_vector_type(8)));
 
 // Distinct neighboring bytes exercise both physical words at every shift count.
 [[loom::kernel, loom::workgroup_size(32, 1, 1), loom::workgroup_count(8, 1, 1)]]
@@ -25,10 +26,6 @@ void packed_byte_shifts(const Bytes8* input, Bytes8* output) {
   // The left shift can set the sign bit; its facts must preserve this
   // comparison.
   Bytes8 sign_bits = (values & 1) << 7;
-  auto* bytes = reinterpret_cast<unsigned char*>(output);
-  [[loom::unroll(8)]]
-  for (unsigned lane = 0; lane < 8; ++lane) {
-    bytes[(index * 19 + 18) * 8 + lane] =
-        static_cast<signed char>(sign_bits[lane]) < 0 ? 255 : 0;
-  }
+  output[index * 19 + 18] = __builtin_convertvector(
+      __builtin_convertvector(sign_bits, SignedBytes8) < 0, Bytes8);
 }

@@ -1,0 +1,148 @@
+// RUN: pass target-legalize{mode=final,policy=reference-only},dce
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @narrow_signed_comparisons(%lhs: i8, %rhs: i8) -> (i1, i1, i1, i1) {
+  %less = scalar.cmpi slt, %lhs, %rhs : i8
+  %less_equal = scalar.cmpi sle, %lhs, %rhs : i8
+  %greater = scalar.cmpi sgt, %lhs, %rhs : i8
+  %greater_equal = scalar.cmpi sge, %lhs, %rhs : i8
+  func.return %less, %less_equal, %greater, %greater_equal : i1, i1, i1, i1
+}
+
+// ----
+test.target<low_core> @test_target
+
+func.def target(@test_target) @narrow_signed_comparisons(%lhs: i8, %rhs: i8) -> (i1, i1, i1, i1) {
+  %19 = scalar.extsi %lhs : i8 to i32
+  %20 = scalar.extsi %rhs : i8 to i32
+  %less = scalar.cmpi slt, %19, %20 : i32
+  %16 = scalar.extsi %lhs : i8 to i32
+  %17 = scalar.extsi %rhs : i8 to i32
+  %less_equal = scalar.cmpi sle, %16, %17 : i32
+  %13 = scalar.extsi %lhs : i8 to i32
+  %14 = scalar.extsi %rhs : i8 to i32
+  %greater = scalar.cmpi sgt, %13, %14 : i32
+  %10 = scalar.extsi %lhs : i8 to i32
+  %11 = scalar.extsi %rhs : i8 to i32
+  %greater_equal = scalar.cmpi sge, %10, %11 : i32
+  func.return %less, %less_equal, %greater, %greater_equal : i1, i1, i1, i1
+}
+
+// ====
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @narrow_unsigned_and_equality(%lhs: i16, %rhs: i16) -> (i1, i1, i1, i1, i1, i1) {
+  %less = scalar.cmpi ult, %lhs, %rhs : i16
+  %less_equal = scalar.cmpi ule, %lhs, %rhs : i16
+  %greater = scalar.cmpi ugt, %lhs, %rhs : i16
+  %greater_equal = scalar.cmpi uge, %lhs, %rhs : i16
+  %equal = scalar.cmpi eq, %lhs, %rhs : i16
+  %unequal = scalar.cmpi ne, %lhs, %rhs : i16
+  func.return %less, %less_equal, %greater, %greater_equal, %equal, %unequal : i1, i1, i1, i1, i1, i1
+}
+
+// ----
+test.target<low_core> @test_target
+
+func.def target(@test_target) @narrow_unsigned_and_equality(%lhs: i16, %rhs: i16) -> (i1, i1, i1, i1, i1, i1) {
+  %29 = scalar.extui %lhs : i16 to i32
+  %30 = scalar.extui %rhs : i16 to i32
+  %less = scalar.cmpi ult, %29, %30 : i32
+  %26 = scalar.extui %lhs : i16 to i32
+  %27 = scalar.extui %rhs : i16 to i32
+  %less_equal = scalar.cmpi ule, %26, %27 : i32
+  %23 = scalar.extui %lhs : i16 to i32
+  %24 = scalar.extui %rhs : i16 to i32
+  %greater = scalar.cmpi ugt, %23, %24 : i32
+  %20 = scalar.extui %lhs : i16 to i32
+  %21 = scalar.extui %rhs : i16 to i32
+  %greater_equal = scalar.cmpi uge, %20, %21 : i32
+  %17 = scalar.extui %lhs : i16 to i32
+  %18 = scalar.extui %rhs : i16 to i32
+  %equal = scalar.cmpi eq, %17, %18 : i32
+  %14 = scalar.extui %lhs : i16 to i32
+  %15 = scalar.extui %rhs : i16 to i32
+  %unequal = scalar.cmpi ne, %14, %15 : i32
+  func.return %less, %less_equal, %greater, %greater_equal, %equal, %unequal : i1, i1, i1, i1, i1, i1
+}
+
+// ====
+// RUN: pass target-legalize{mode=eager,policy=reference-only},dce
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @narrow_vector_comparison(%lhs: vector<2xi8>, %rhs: vector<2xi8>) -> (vector<2xi1>) {
+  %mask = vector.cmpi slt, %lhs, %rhs : vector<2xi8> -> vector<2xi1>
+  func.return %mask : vector<2xi1>
+}
+
+// ----
+test.target<low_core> @test_target
+
+func.def target(@test_target) @narrow_vector_comparison(%lhs: vector<2xi8>, %rhs: vector<2xi8>) -> (vector<2xi1>) {
+  %4 = vector.extract %lhs[0] : vector<2xi8> -> i8
+  %5 = vector.extract %rhs[0] : vector<2xi8> -> i8
+  %16 = scalar.extsi %4 : i8 to i32
+  %17 = scalar.extsi %5 : i8 to i32
+  %18 = scalar.cmpi slt, %16, %17 : i32
+  %7 = vector.extract %lhs[1] : vector<2xi8> -> i8
+  %8 = vector.extract %rhs[1] : vector<2xi8> -> i8
+  %13 = scalar.extsi %7 : i8 to i32
+  %14 = scalar.extsi %8 : i8 to i32
+  %15 = scalar.cmpi slt, %13, %14 : i32
+  %11 = vector.splat %18 : vector<2xi1>
+  %mask = vector.insert %15 into %11[1] : i1, vector<2xi1>
+  func.return %mask : vector<2xi1>
+}
+
+// ====
+// RUN: pass target-legalize{mode=eager,policy=reference-only},dce
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @wide_vector_comparison(%lhs: vector<2xi64>, %rhs: vector<2xi64>) -> (vector<2xi1>) {
+  %mask = vector.cmpi ugt, %lhs, %rhs : vector<2xi64> -> vector<2xi1>
+  func.return %mask : vector<2xi1>
+}
+
+// ----
+test.target<low_core> @test_target
+
+func.def target(@test_target) @wide_vector_comparison(%lhs: vector<2xi64>, %rhs: vector<2xi64>) -> (vector<2xi1>) {
+  %4 = vector.extract %lhs[0] : vector<2xi64> -> i64
+  %5 = vector.extract %rhs[0] : vector<2xi64> -> i64
+  %6 = scalar.cmpi ugt, %4, %5 : i64
+  %7 = vector.extract %lhs[1] : vector<2xi64> -> i64
+  %8 = vector.extract %rhs[1] : vector<2xi64> -> i64
+  %9 = scalar.cmpi ugt, %7, %8 : i64
+  %11 = vector.splat %6 : vector<2xi1>
+  %mask = vector.insert %9 into %11[1] : i1, vector<2xi1>
+  func.return %mask : vector<2xi1>
+}
+
+// ====
+// RUN: pass target-legalize{mode=eager,policy=reference-only},dce
+
+test.target<low_core> @test_target
+
+func.def target(@test_target) @floating_vector_comparison_flags(%lhs: vector<2xf32>, %rhs: vector<2xf32>) -> (vector<2xi1>) {
+  %mask = vector.cmpf<nnan|ninf> olt, %lhs, %rhs : vector<2xf32> -> vector<2xi1>
+  func.return %mask : vector<2xi1>
+}
+
+// ----
+test.target<low_core> @test_target
+
+func.def target(@test_target) @floating_vector_comparison_flags(%lhs: vector<2xf32>, %rhs: vector<2xf32>) -> (vector<2xi1>) {
+  %4 = vector.extract %lhs[0] : vector<2xf32> -> f32
+  %5 = vector.extract %rhs[0] : vector<2xf32> -> f32
+  %6 = scalar.cmpf<nnan|ninf> olt, %4, %5 : f32
+  %7 = vector.extract %lhs[1] : vector<2xf32> -> f32
+  %8 = vector.extract %rhs[1] : vector<2xf32> -> f32
+  %9 = scalar.cmpf<nnan|ninf> olt, %7, %8 : f32
+  %11 = vector.splat %6 : vector<2xi1>
+  %mask = vector.insert %9 into %11[1] : i1, vector<2xi1>
+  func.return %mask : vector<2xi1>
+}

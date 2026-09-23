@@ -240,15 +240,8 @@ static iree_status_t loom_amdgpu_emit_fragment_load_packet_with_descriptor(
   loom_low_lower_resolved_descriptor_t descriptor = {0};
   IREE_RETURN_IF_ERROR(
       loom_amdgpu_resolve_descriptor_ref(context, descriptor_ref, &descriptor));
-  loom_value_id_t low_m0 = LOOM_VALUE_ID_INVALID;
-  if (loom_low_descriptor_implicit_resource_operand(
-          loom_low_lower_context_descriptor_set(context),
-          descriptor.descriptor) != NULL) {
-    IREE_RETURN_IF_ERROR(
-        loom_amdgpu_emit_m0_u32(context, source_op, &descriptor, 0, &low_m0));
-  }
 
-  loom_value_id_t operands[5] = {0};
+  loom_value_id_t operands[4] = {0};
   iree_host_size_t operand_count = 0;
   if (low_tied_source != LOOM_VALUE_ID_INVALID) {
     operands[operand_count++] = low_tied_source;
@@ -262,9 +255,6 @@ static iree_status_t loom_amdgpu_emit_fragment_load_packet_with_descriptor(
     if (plan->source.memory_space != LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP) {
       operands[operand_count++] = low_resource;
     }
-  }
-  if (low_m0 != LOOM_VALUE_ID_INVALID) {
-    operands[operand_count++] = low_m0;
   }
   loom_op_t* low_op = NULL;
   const loom_tied_result_t tied_result = {
@@ -355,15 +345,8 @@ iree_status_t loom_amdgpu_emit_fragment_store_packet(
   loom_low_lower_resolved_descriptor_t descriptor = {0};
   IREE_RETURN_IF_ERROR(loom_amdgpu_resolve_descriptor_ref(
       context, packet->descriptor_ref, &descriptor));
-  loom_value_id_t low_m0 = LOOM_VALUE_ID_INVALID;
-  if (loom_low_descriptor_implicit_resource_operand(
-          loom_low_lower_context_descriptor_set(context),
-          descriptor.descriptor) != NULL) {
-    IREE_RETURN_IF_ERROR(
-        loom_amdgpu_emit_m0_u32(context, source_op, &descriptor, 0, &low_m0));
-  }
 
-  loom_value_id_t operands[5] = {0};
+  loom_value_id_t operands[4] = {0};
   iree_host_size_t operand_count = 0;
   if (loom_amdgpu_fragment_memory_uses_buffer_descriptor(plan)) {
     operands[operand_count++] = low_payload_register;
@@ -376,9 +359,6 @@ iree_status_t loom_amdgpu_emit_fragment_store_packet(
     if (plan->source.memory_space != LOOM_VALUE_FACT_MEMORY_SPACE_WORKGROUP) {
       operands[operand_count++] = low_resource;
     }
-  }
-  if (low_m0 != LOOM_VALUE_ID_INVALID) {
-    operands[operand_count++] = low_m0;
   }
   loom_op_t* low_op = NULL;
   IREE_RETURN_IF_ERROR(loom_low_lower_emit_resolved_descriptor_op(

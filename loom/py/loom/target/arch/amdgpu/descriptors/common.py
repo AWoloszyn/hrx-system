@@ -3207,6 +3207,19 @@ def _global_to_lds_effects(
     )
 
 
+# CDNA XML lists M0 for the whole flat/global/scratch instruction family. Only
+# transfers into LDS consume it; ordinary register loads, stores and atomics do
+# not. Keep the XML operand accounted for without adding a machine dependency.
+_IGNORE_REGISTER_MEMORY_M0 = AmdgpuImplicitOperandOverlay(
+    operand_type="OPR_SDST_M0",
+    data_format_name="FMT_NUM_B32",
+    size_bits=32,
+    is_input=True,
+    is_output=False,
+    ignore_reason="register-memory-access-does-not-use-lds-offset",
+)
+
+
 def _implicit_m0_input(
     *, xml_operand_required: bool = True
 ) -> AmdgpuImplicitOperandOverlay:
@@ -3455,6 +3468,7 @@ __all__ = (
     "_IGNORE_GLOBAL_WRITE_MEMORY_B8",
     "_IGNORE_GLOBAL_WRITE_MEMORY_B64",
     "_IGNORE_GLOBAL_WRITE_MEMORY_B96",
+    "_IGNORE_REGISTER_MEMORY_M0",
     "_INSTRUCTION_PREFETCH_EFFECT",
     "_KMCNT_IMMEDIATE",
     "_LDS_COUNTER_HAZARD",

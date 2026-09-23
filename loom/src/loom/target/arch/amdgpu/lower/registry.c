@@ -43,6 +43,7 @@
 #include "loom/target/arch/amdgpu/lower/async.h"
 #include "loom/target/arch/amdgpu/lower/bitpack.h"
 #include "loom/target/arch/amdgpu/lower/buffer.h"
+#include "loom/target/arch/amdgpu/lower/compare.h"
 #include "loom/target/arch/amdgpu/lower/constants.h"
 #include "loom/target/arch/amdgpu/lower/control.h"
 #include "loom/target/arch/amdgpu/lower/dot.h"

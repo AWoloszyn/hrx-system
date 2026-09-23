@@ -45,9 +45,11 @@ uint32_t loom_low_allocation_live_range_interval_initial_unit_end_point(
 }
 
 uint32_t loom_low_allocation_live_range_interval_alignment(
+    const loom_low_descriptor_set_t* descriptor_set,
     const loom_liveness_interval_t* interval) {
-  IREE_ASSERT_ARGUMENT(interval);
-  return loom_low_register_unit_alignment(interval->unit_count);
+  return loom_low_reg_class_unit_alignment(
+      &descriptor_set->reg_classes[interval->value_class.register_class_id],
+      interval->unit_count);
 }
 
 uint32_t loom_low_allocation_live_range_assignment_unit_end_point(

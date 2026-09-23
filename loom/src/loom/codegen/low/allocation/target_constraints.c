@@ -1222,7 +1222,8 @@ iree_status_t loom_low_allocation_target_constraints_resolve_fixed_values(
         loom_low_allocation_target_constraints_resolve_reg_class(
             constraints, interval->value_class, &reg_class_id, &reg_class));
     const uint32_t alignment =
-        loom_low_allocation_live_range_interval_alignment(interval);
+        loom_low_allocation_live_range_interval_alignment(
+            constraints->target->descriptor_set, interval);
     // Explicit physical IDs name declared register views, not linear storage
     // offsets. The capacity check below validates the view's unit layout.
     if (!loom_low_reg_class_uses_explicit_physical_registers(reg_class) &&

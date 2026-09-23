@@ -10,15 +10,13 @@ low.func.def target<amdgpu.cdna3.core>(@target) @gfx942_legacy_dpp_controls(%off
   %row_bcast15 = v_mov_b32_dpp %wave_ror {dpp_ctrl = 322}
   %row_bcast31 = v_mov_b32_dpp %row_bcast15 {dpp_ctrl = 323}
   %masked = v_mov_b32_dpp_masked %row_bcast31, %value {dpp_ctrl = 177, bank_mask = 10}
-  %m0 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %offset, %masked, %output, %m0
+  global_store_dword_saddr %offset, %masked, %output
   return
 }
 
 // ----
   v_mov_b32_dpp v2, v0, wave_shl:1, row_mask:0xf, bank_mask:0xf, bound_ctrl:1
-  s_mov_b32 m0, 0
-  s_nop 0
+  s_nop 1
   v_mov_b32_dpp v2, v2, wave_rol:1, row_mask:0xf, bank_mask:0xf, bound_ctrl:1
   s_nop 1
   v_mov_b32_dpp v2, v2, wave_shr:1, row_mask:0xf, bank_mask:0xf, bound_ctrl:1

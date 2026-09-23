@@ -177,6 +177,8 @@ typedef uint32_t loom_low_register_part_mask_t;
 // explicit candidate slice. Each physical register owns an arbitrary set of
 // atomic storage units used for overlap checks.
 #define LOOM_LOW_REG_CLASS_FLAG_EXPLICIT_PHYSICAL_REGISTERS ((uint16_t)1u << 4)
+// Values spanning multiple units require an even base register ordinal.
+#define LOOM_LOW_REG_CLASS_FLAG_EVEN_ALIGNED_TUPLES ((uint16_t)1u << 5)
 
 typedef enum loom_low_spill_slot_space_e {
   // Unknown or uninitialized spill storage space.
@@ -580,6 +582,23 @@ typedef struct loom_low_reg_class_t {
   // whose locations each occupy one unit in their storage namespace.
   uint16_t physical_atomic_unit_count;
 } loom_low_reg_class_t;
+
+// Returns the allocation base alignment in register units. Power-of-two spans
+// retain the packet-width placement preference; other multi-unit spans obey
+// the class's tuple alignment. Single registers remain independently usable.
+static inline uint32_t loom_low_reg_class_unit_alignment(
+    const loom_low_reg_class_t* reg_class, uint32_t unit_count) {
+  if (unit_count <= 1) {
+    return 1u;
+  }
+  if ((unit_count & (unit_count - 1u)) == 0) {
+    return unit_count;
+  }
+  return iree_any_bit_set(reg_class->flags,
+                          LOOM_LOW_REG_CLASS_FLAG_EVEN_ALIGNED_TUPLES)
+             ? 2u
+             : 1u;
+}
 
 // One named physical register and the atomic storage units it occupies.
 // Physical-register IDs are dense descriptor-set-local row ordinals.

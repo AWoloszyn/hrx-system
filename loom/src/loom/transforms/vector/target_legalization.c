@@ -445,6 +445,16 @@ static const loom_target_legalizer_rule_t kVectorLegalizerRules[] = {
         .legalize = loom_vector_legalize_from_elements,
     },
     {
+        .root_kind = LOOM_OP_VECTOR_CMPI,
+        .flags = LOOM_TARGET_LEGALIZER_ENTRY_FLAG_REQUIRE_CONTRACT_REJECTION,
+        .legalize = loom_vector_legalize_descriptor,
+    },
+    {
+        .root_kind = LOOM_OP_VECTOR_CMPF,
+        .flags = LOOM_TARGET_LEGALIZER_ENTRY_FLAG_REQUIRE_CONTRACT_REJECTION,
+        .legalize = loom_vector_legalize_descriptor,
+    },
+    {
         .root_kind = LOOM_OP_VECTOR_REDUCE,
         .legalize = loom_vector_legalize_reduce,
     },

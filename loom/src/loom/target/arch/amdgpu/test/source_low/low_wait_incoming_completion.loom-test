@@ -58,7 +58,6 @@ low.func.def target<amdgpu.rdna3_5.core>(@target) @completed_result_gfx1151(%add
 amdgpu.target<gfx942> @target
 
 low.func.def target<amdgpu.cdna3.core>(@target) @completed_result_gfx942(%address: reg<amdgpu.vgpr>, %base: reg<amdgpu.sgpr x2>, %count: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
-  %m0 = s_mov_b32_m0_imm 0
   %zero = v_mov_b32 0
   %begin = s_mov_b32 0
   %step = s_mov_b32 1
@@ -68,7 +67,7 @@ low.func.def target<amdgpu.cdna3.core>(@target) @completed_result_gfx942(%addres
   low.cond_br %more, ^load, ^exit : reg<amdgpu.scc>
 ^load:
   %offset = v_add_u32 %address, %address
-  %value = global_load_dword_saddr %offset, %base, %m0
+  %value = global_load_dword_saddr %offset, %base
   low.br ^consume
 ^consume:
   %next = v_add_f32 %accumulator, %value
@@ -79,7 +78,6 @@ low.func.def target<amdgpu.cdna3.core>(@target) @completed_result_gfx942(%addres
 }
 
 // ----
-  s_mov_b32 m0, 0
   v_mov_b32 v1, 0
   s_mov_b32 s3, 0
   s_mov_b32 s4, 1

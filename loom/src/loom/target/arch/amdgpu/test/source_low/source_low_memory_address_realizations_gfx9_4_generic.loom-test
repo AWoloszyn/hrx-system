@@ -53,14 +53,10 @@ low.kernel.def target<amdgpu.gfx9_4.generic.core> abi_layout({constant_count = 2
 ^_bb1:
   %46 = v_lshl_add_u32_shift_imm %row, %column, 6
   %47 = v_lshlrev_b32_src0_inline %46, 2
-  %48 = s_mov_b32_m0_imm 0
-  %first = global_load_dword_saddr %47, %input_view, %48
-  %52 = s_mov_b32_m0_imm 0
-  %second = global_load_dword_saddr %47, %input_view, %52 {offset = 128}
-  %56 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %47, %first, %output_view, %56
-  %59 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %47, %second, %output_view, %59 {offset = 128}
+  %first = global_load_dword_saddr %47, %input_view
+  %second = global_load_dword_saddr %47, %input_view {offset = 128}
+  global_store_dword_saddr %47, %first, %output_view
+  global_store_dword_saddr %47, %second, %output_view {offset = 128}
   low.br ^_bb2
 ^_bb2:
   s_mov_b64_exec %44
@@ -120,28 +116,24 @@ low.kernel.def target<amdgpu.gfx9_4.generic.core> abi_layout({constant_count = 1
   %55, %56 = s_add_co_u32 %52, %51
   %57, %58 = s_addc_u32 %53, %54, %56
   %59 = concat(%55, %57) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %60 = s_mov_b32_m0_imm 0
-  %first = global_load_dword_saddr %50, %59, %60
-  %64 = s_lshl_b32_rhs_inline %group, 9
-  %68, %69 = s_add_co_u32 %52, %64
-  %70, %71 = s_addc_u32 %53, %54, %69
-  %72 = concat(%68, %70) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %73 = s_mov_b32_m0_imm 0
-  %second = global_load_dword_saddr %50, %72, %73 {offset = 128}
-  %77 = s_lshl_b32_rhs_inline %group, 9
-  %78 = slice %output_view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %79 = slice %output_view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %81, %82 = s_add_co_u32 %78, %77
-  %83, %84 = s_addc_u32 %79, %54, %82
-  %85 = concat(%81, %83) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %86 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %50, %first, %85, %86
-  %89 = s_lshl_b32_rhs_inline %group, 9
-  %93, %94 = s_add_co_u32 %78, %89
-  %95, %96 = s_addc_u32 %79, %54, %94
-  %97 = concat(%93, %95) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %98 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %50, %second, %97, %98 {offset = 128}
+  %first = global_load_dword_saddr %50, %59
+  %63 = s_lshl_b32_rhs_inline %group, 9
+  %67, %68 = s_add_co_u32 %52, %63
+  %69, %70 = s_addc_u32 %53, %54, %68
+  %71 = concat(%67, %69) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  %second = global_load_dword_saddr %50, %71 {offset = 128}
+  %75 = s_lshl_b32_rhs_inline %group, 9
+  %76 = slice %output_view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %77 = slice %output_view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %79, %80 = s_add_co_u32 %76, %75
+  %81, %82 = s_addc_u32 %77, %54, %80
+  %83 = concat(%79, %81) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  global_store_dword_saddr %50, %first, %83
+  %86 = s_lshl_b32_rhs_inline %group, 9
+  %90, %91 = s_add_co_u32 %76, %86
+  %92, %93 = s_addc_u32 %77, %54, %91
+  %94 = concat(%90, %92) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  global_store_dword_saddr %50, %second, %94 {offset = 128}
   low.br ^_bb2
 ^_bb2:
   s_mov_b64_exec %47
@@ -182,16 +174,14 @@ low.kernel.def target<amdgpu.gfx9_4.generic.core> abi_layout({constant_count = 0
   %22, %23 = s_add_co_u32 %19, %18
   %24, %25 = s_addc_u32 %20, %21, %23
   %26 = concat(%22, %24) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %27 = s_mov_b32_m0_imm 0
-  %value = global_load_dword_saddr %17, %26, %27
-  %30 = s_lshl_b32_rhs_inline %group, 8
-  %31 = slice %output_view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %32 = slice %output_view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %34, %35 = s_add_co_u32 %31, %30
-  %36, %37 = s_addc_u32 %32, %21, %35
-  %38 = concat(%34, %36) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %39 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %17, %value, %38, %39
+  %value = global_load_dword_saddr %17, %26
+  %29 = s_lshl_b32_rhs_inline %group, 8
+  %30 = slice %output_view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %31 = slice %output_view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %33, %34 = s_add_co_u32 %30, %29
+  %35, %36 = s_addc_u32 %31, %21, %34
+  %37 = concat(%33, %35) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  global_store_dword_saddr %17, %value, %37
   return
 }
 
@@ -247,11 +237,9 @@ low.kernel.def target<amdgpu.gfx9_4.generic.core> abi_layout({constant_count = 3
   %46, %47 = s_add_co_u32 %42, %37
   %48, %49 = s_addc_u32 %43, %39, %47
   %50 = concat(%46, %48) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %51 = s_mov_b32_m0_imm 0
-  %value = global_load_dword_saddr %28, %50, %51
-  %53 = v_lshlrev_b32_src0_inline %linear, 2
-  %54 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %53, %value, %output_view, %54
+  %value = global_load_dword_saddr %28, %50
+  %52 = v_lshlrev_b32_src0_inline %linear, 2
+  global_store_dword_saddr %52, %value, %output_view
   low.br ^_bb2
 ^_bb2:
   s_mov_b64_exec %26
@@ -319,18 +307,16 @@ low.kernel.def target<amdgpu.gfx9_4.generic.core> abi_layout({constant_count = 2
   %49, %50 = s_add_co_u32 %46, %45
   %51, %52 = s_addc_u32 %47, %48, %50
   %53 = concat(%49, %51) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %54 = s_mov_b32_m0_imm 0
-  %value = global_load_dword_saddr %42, %53, %54
-  %58 = s_lshl_b32_rhs_inline %group, 9
-  %59 = s_lshl_b32_rhs_inline %group, 6
-  %60 = s_add_u32 %58, %59
-  %61 = slice %output_view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %62 = slice %output_view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
-  %64, %65 = s_add_co_u32 %61, %60
-  %66, %67 = s_addc_u32 %62, %48, %65
-  %68 = concat(%64, %66) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
-  %69 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %42, %value, %68, %69
+  %value = global_load_dword_saddr %42, %53
+  %57 = s_lshl_b32_rhs_inline %group, 9
+  %58 = s_lshl_b32_rhs_inline %group, 6
+  %59 = s_add_u32 %57, %58
+  %60 = slice %output_view[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %61 = slice %output_view[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %63, %64 = s_add_co_u32 %60, %59
+  %65, %66 = s_addc_u32 %61, %48, %64
+  %67 = concat(%63, %65) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
+  global_store_dword_saddr %42, %value, %67
   low.br ^_bb2
 ^_bb2:
   s_mov_b64_exec %39
@@ -405,13 +391,10 @@ low.kernel.def target<amdgpu.gfx9_4.generic.core> abi_layout({constant_count = 3
   %56 = v_mul_lo_u32 %row, %55
   %57 = v_add_u32 %column, %56
   %58 = v_lshlrev_b32_src0_inline %57, 2
-  %59 = s_mov_b32_m0_imm 0
-  %first = global_load_dword_saddr %58, %input_view, %59
-  %65 = s_mov_b32_m0_imm 0
-  %second = global_load_dword_saddr %58, %other_view, %65 {offset = 64}
+  %first = global_load_dword_saddr %58, %input_view
+  %second = global_load_dword_saddr %58, %other_view {offset = 64}
   %sum = v_add_u32 %first, %second
-  %72 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %58, %sum, %output_view, %72
+  global_store_dword_saddr %58, %sum, %output_view
   low.br ^_bb4
 ^_bb3:
   s_mov_b64_exec %49
@@ -478,10 +461,8 @@ low.kernel.def target<amdgpu.gfx9_4.generic.core> abi_layout({constant_count = 2
   %63 = v_mov_b32_copy %54
   %64, %65 = v_addc_co_u32 %63, %58, %62
   %66 = concat(%61, %64) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
-  %67 = s_mov_b32_m0_imm 0
-  %value = global_load_dword_vaddr %66, %67
-  %70 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %57, %value, %output_view, %70
+  %value = global_load_dword_vaddr %66
+  global_store_dword_saddr %57, %value, %output_view
   low.br ^_bb2
 ^_bb2:
   s_mov_b64_exec %46
@@ -525,10 +506,8 @@ low.kernel.def target<amdgpu.gfx9_4.generic.core> abi_layout({constant_count = 1
   low.cond_br %25, ^_bb1, ^_bb2 : reg<amdgpu.scc>
 ^_bb1:
   %26 = v_lshlrev_b32_src0_inline %linear, 2
-  %27 = s_mov_b32_m0_imm 0
-  %old = global_atomic_add_rtn_saddr %26, %increment, %input_view, %27
-  %30 = s_mov_b32_m0_imm 0
-  global_store_dword_saddr %26, %old, %output_view, %30
+  %old = global_atomic_add_rtn_saddr %26, %increment, %input_view
+  global_store_dword_saddr %26, %old, %output_view
   low.br ^_bb2
 ^_bb2:
   s_mov_b64_exec %24

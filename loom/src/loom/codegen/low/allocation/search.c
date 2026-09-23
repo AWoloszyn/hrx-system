@@ -623,8 +623,8 @@ bool loom_low_allocation_search_find_free_location(
     return false;
   }
 
-  const uint32_t alignment =
-      loom_low_allocation_live_range_interval_alignment(interval);
+  const uint32_t alignment = loom_low_allocation_live_range_interval_alignment(
+      context->descriptor_set, interval);
   uint32_t last_base = 0;
   if (!uses_explicit_physical_registers && capacity.is_bounded) {
     last_base = capacity.max_units - interval->unit_count;
@@ -960,8 +960,8 @@ iree_status_t loom_low_allocation_search_find_active_spill_victim_set(
   }
 
   uint32_t last_base = 0;
-  const uint32_t alignment =
-      loom_low_allocation_live_range_interval_alignment(interval);
+  const uint32_t alignment = loom_low_allocation_live_range_interval_alignment(
+      context->descriptor_set, interval);
   if (!uses_explicit_physical_registers && capacity->is_bounded) {
     last_base = capacity->max_units - interval->unit_count;
   } else if (!uses_explicit_physical_registers) {

@@ -4,7 +4,7 @@
 # See https://llvm.org/LICENSE.txt for license information.
 # SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-load("//build_tools/bazel:python.bzl", "iree_py_binary", "iree_py_test")
+load("//build_tools/bazel:python.bzl", "iree_py_binary", "iree_py_library", "iree_py_test")
 
 package(
     default_visibility = ["//loom/py/loom/gen:__subpackages__"],
@@ -20,6 +20,23 @@ iree_py_binary(
         "//loom/src/loom/import/cxx/test:__pkg__",
         "//loom/src/loom/tooling/target/amdgpu/test/cxx:__pkg__",
     ],
+    deps = [":kernel_fixture"],
+)
+
+iree_py_library(
+    name = "kernel_fixture",
+    testonly = True,
+    srcs = ["kernel_fixture.py"],
+    deps = ["//loom/py/loom/gen:package"],
+)
+
+iree_py_binary(
+    name = "packed_vector_select",
+    testonly = True,
+    srcs = ["packed_vector_select.py"],
+    main = "packed_vector_select.py",
+    visibility = ["//loom/src/loom/test/corpus/conformance:__pkg__"],
+    deps = [":kernel_fixture"],
 )
 
 iree_py_binary(
