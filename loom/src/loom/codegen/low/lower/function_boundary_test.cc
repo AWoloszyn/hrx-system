@@ -404,6 +404,7 @@ TEST_P(LowLowerResultMappingTest, DefinitionConsumesPreparedResultTypes) {
       &result_query_count,
   };
   IREE_ASSERT_OK(loom_low_lower_function_boundary_validate(&mapping_context_));
+  EXPECT_EQ(result_query_count, 0u);
   IREE_ASSERT_OK(loom_low_lower_function_boundary_observe_return(
       &mapping_context_, return_op));
   IREE_ASSERT_OK(loom_low_lower_function_boundary_finalize(&mapping_context_));

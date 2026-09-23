@@ -1207,6 +1207,11 @@ static iree_status_t loom_low_lower_plan_region(
       if (loom_low_lower_context_should_stop(context)) {
         return iree_ok_status();
       }
+      if (context->lowering.source_plan.representation_plan != NULL &&
+          loom_func_return_isa(op)) {
+        IREE_RETURN_IF_ERROR(
+            loom_low_lower_function_boundary_observe_return(context, op));
+      }
       if (!loom_low_lower_supported_structured_source_op(context, op)) {
         continue;
       }

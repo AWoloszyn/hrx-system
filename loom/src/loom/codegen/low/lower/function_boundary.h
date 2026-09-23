@@ -7,12 +7,15 @@
 // Source-to-Low callable boundary lowering.
 //
 // A source function boundary is mapped once and then consumed throughout
-// lowering. Validation establishes argument mappings before source planning;
-// the source-plan traversal joins return carriers into retained result types.
-// Definition creation materializes the target-Low callable,
-// entry binding connects direct arguments, resource emission materializes
-// arguments omitted from the direct ABI, and predicate remapping translates
-// source value references after those bindings exist.
+// lowering. Validation establishes argument mappings before source planning.
+// Source-plan discovery joins the target-neutral return mappings, and targets
+// with physical representation planning refine those joins after their plan is
+// solved so returned values and the callable signature consume one retained
+// decision.
+// Definition creation materializes the target-Low callable, entry binding
+// connects direct arguments, resource emission materializes arguments omitted
+// from the direct ABI, and predicate remapping translates source value
+// references after those bindings exist.
 //
 // Function declarations use the same type and metadata mapping without a body.
 // They are lowered independently by the module source-to-Low pass before
@@ -45,7 +48,8 @@ iree_status_t loom_low_lower_function_boundary_validate(
     loom_low_lower_context_t* context);
 
 // Joins one return's native value carriers into the retained callable result
-// types. Called once per return by the existing source-plan traversal.
+// types. Source-plan discovery calls this for every return; a retained physical
+// representation plan may join the finalized carriers again during selection.
 iree_status_t loom_low_lower_function_boundary_observe_return(
     loom_low_lower_context_t* context, const loom_op_t* return_op);
 

@@ -110,9 +110,11 @@ class LowLowerRepresentationObserverTest : public ::testing::Test {
            loom_type_dim_static_size_at(type, 0) == 4;
   }
 
-  static bool RelatesValues(void* user_data, loom_low_lower_context_t* context,
-                            const loom_op_t* source_op,
-                            const loom_value_relation_t* relation) {
+  static bool RelatesValues(
+      void* user_data, loom_low_lower_context_t* context,
+      const loom_op_t* source_op, const loom_value_relation_t* relation,
+      loom_low_lower_representation_recorder_t* recorder) {
+    (void)recorder;
     auto* test = static_cast<LowLowerRepresentationObserverTest*>(user_data);
     EXPECT_NE(source_op, nullptr);
     ++test->relation_counts_[relation->kind];
@@ -201,8 +203,8 @@ class LowLowerRepresentationObserverTest : public ::testing::Test {
         &query_environment));
     for (iree_host_size_t i = 0; i < test->captured_value_count_; ++i) {
       CapturedValue* captured = &test->captured_values_[i];
-      IREE_RETURN_IF_ERROR(loom_low_lower_representation_lookup(
-          context, captured->source_value_id, &captured->representation));
+      loom_low_lower_representation_lookup(context, captured->source_value_id,
+                                           &captured->representation);
       loom_low_representation_id_t query_representation =
           LOOM_LOW_REPRESENTATION_ID_NONE;
       IREE_RETURN_IF_ERROR(loom_low_lower_representation_query_lookup(

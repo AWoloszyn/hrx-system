@@ -4,7 +4,7 @@
 // See https://llvm.org/LICENSE.txt for license information.
 // SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
 
-#include "loom/target/arch/amdgpu/lower/matrix_representation.h"
+#include "loom/target/arch/amdgpu/lower/source_representation.h"
 
 #include "iree/base/internal/math.h"
 #include "loom/analysis/contract_vector.h"
@@ -16,7 +16,13 @@
 #include "loom/target/arch/amdgpu/lower/matrix.h"
 #include "loom/target/arch/amdgpu/lower/matrix_fragment.h"
 #include "loom/target/arch/amdgpu/lower/matrix_fragment_state.h"
+#include "loom/target/arch/amdgpu/lower/source_value_analysis.h"
+#include "loom/target/arch/amdgpu/lower/types.h"
 #include "loom/target/arch/amdgpu/matrix/contract.h"
+
+static_assert(LOOM_AMDGPU_ADDRESS_REPRESENTATION_NARROW >
+                  LOOM_AMDGPU_MATRIX_RESULT_REPRESENTATION_MAX_ID,
+              "AMDGPU representation namespaces must not overlap");
 
 typedef enum loom_amdgpu_matrix_representation_action_e {
   LOOM_AMDGPU_MATRIX_REPRESENTATION_ACTION_FUNCTION_BOUNDARY = 0,
@@ -139,6 +145,87 @@ static void loom_amdgpu_matrix_representation_pin_value(
   }
 }
 
+static bool loom_amdgpu_address_representation_requires_wide_vgpr(
+    loom_low_lower_context_t* context, loom_value_id_t value_id) {
+  const loom_module_t* module = loom_low_lower_context_module(context);
+  if (loom_amdgpu_source_value_facts_prefer_vgpr(
+          module, loom_low_lower_context_fact_table(context), value_id)) {
+    return true;
+  }
+  const loom_value_t* value = loom_module_value(module, value_id);
+  if (loom_value_is_block_arg(value)) {
+    return false;
+  }
+  const loom_op_t* defining_op = loom_value_def_op(value);
+  return defining_op != NULL &&
+         iree_any_bit_set(loom_amdgpu_source_producer_flags(defining_op->kind),
+                          LOOM_AMDGPU_SOURCE_PRODUCER_ADDRESS_64BIT);
+}
+
+static void loom_amdgpu_address_representation_constrain_value(
+    loom_low_lower_context_t* context, loom_value_id_t value_id,
+    loom_low_lower_representation_recorder_t* recorder) {
+  const loom_module_t* module = loom_low_lower_context_module(context);
+  const loom_type_t type = loom_module_value_type(module, value_id);
+  if (!loom_amdgpu_type_is_address_scalar(type) ||
+      loom_low_lower_representation_component_is_constrained(recorder,
+                                                             value_id)) {
+    return;
+  }
+
+  const bool needs_wide = loom_amdgpu_source_address_value_needs_64bit(
+      module, loom_low_lower_context_fact_table(context), value_id, type);
+  const bool wide_requires_vgpr =
+      loom_amdgpu_address_representation_requires_wide_vgpr(context, value_id);
+  loom_low_representation_candidate_t candidates[3];
+  iree_host_size_t candidate_count = 0;
+  if (!needs_wide) {
+    candidates[candidate_count++] = (loom_low_representation_candidate_t){
+        .representation = LOOM_AMDGPU_ADDRESS_REPRESENTATION_NARROW,
+    };
+  }
+  if (!wide_requires_vgpr) {
+    candidates[candidate_count++] = (loom_low_representation_candidate_t){
+        .representation = LOOM_AMDGPU_ADDRESS_REPRESENTATION_WIDE_SGPR,
+        .cost = {.runtime = needs_wide ? 0u : 1u},
+    };
+  }
+  candidates[candidate_count++] = (loom_low_representation_candidate_t){
+      .representation = LOOM_AMDGPU_ADDRESS_REPRESENTATION_WIDE_VGPR,
+      .cost = {.runtime = wide_requires_vgpr ? 0u : (needs_wide ? 1u : 2u)},
+  };
+  loom_low_lower_representation_record_candidates(recorder, value_id,
+                                                  candidates, candidate_count);
+}
+
+static bool loom_amdgpu_address_representation_relation_is_exact(
+    loom_value_relation_kind_t kind) {
+  switch (kind) {
+    case LOOM_VALUE_RELATION_TIED_RESULT:
+    case LOOM_VALUE_RELATION_VALUE_ALIAS:
+    case LOOM_VALUE_RELATION_CFG_ARGUMENT:
+    case LOOM_VALUE_RELATION_LOOP_CARRIED:
+    case LOOM_VALUE_RELATION_LOOP_BYPASS:
+    case LOOM_VALUE_RELATION_REGION_RESULT:
+      return true;
+    case LOOM_VALUE_RELATION_UNKNOWN:
+      return false;
+    case LOOM_VALUE_RELATION_FACT_IDENTITY:
+      // Fact identity is a refinement boundary, not physical transport.
+      // index.assume may intentionally narrow its result while retaining a
+      // wide source value for other uses.
+      return false;
+    case LOOM_VALUE_RELATION_SELECT_PAYLOAD:
+      // Select lowering materializes each payload into the result carrier.
+      // A shared payload may therefore feed independently placed selects.
+      return false;
+    case LOOM_VALUE_RELATION_ELEMENTWISE:
+    case LOOM_VALUE_RELATION_COUNT_:
+      return false;
+  }
+  return false;
+}
+
 IREE_ATTRIBUTE_NOINLINE static void
 loom_amdgpu_matrix_representation_pin_values(
     loom_low_lower_context_t* context, const loom_value_id_t* value_ids,
@@ -150,9 +237,10 @@ loom_amdgpu_matrix_representation_pin_values(
   }
 }
 
-static bool loom_amdgpu_matrix_representation_relation(
+static bool loom_amdgpu_source_representation_relation(
     void* user_data, loom_low_lower_context_t* context,
-    const loom_op_t* source_op, const loom_value_relation_t* relation) {
+    const loom_op_t* source_op, const loom_value_relation_t* relation,
+    loom_low_lower_representation_recorder_t* recorder) {
   (void)user_data;
   // Matrix instructions define their result representation together with the
   // selected descriptor. Their tied accumulator/result relation is only exact
@@ -165,10 +253,20 @@ static bool loom_amdgpu_matrix_representation_relation(
     return false;
   }
   const loom_module_t* module = loom_low_lower_context_module(context);
+  const loom_type_t source_type =
+      loom_module_value_type(module, relation->source_value_id);
   if (!loom_type_equal(
-          loom_module_value_type(module, relation->source_value_id),
+          source_type,
           loom_module_value_type(module, relation->destination_value_id))) {
     return false;
+  }
+  if (loom_amdgpu_type_is_address_scalar(source_type) &&
+      loom_amdgpu_address_representation_relation_is_exact(relation->kind)) {
+    loom_amdgpu_address_representation_constrain_value(
+        context, relation->source_value_id, recorder);
+    loom_amdgpu_address_representation_constrain_value(
+        context, relation->destination_value_id, recorder);
+    return true;
   }
   switch ((loom_value_relation_kind_t)relation->kind) {
     case LOOM_VALUE_RELATION_CFG_ARGUMENT:
@@ -422,8 +520,8 @@ static_assert((loom_op_kind_t)LOOM_OP_FUNC_DEF <
               "matrix representation boundaries must remain ordered");
 
 static const loom_low_lower_representation_provider_t
-    kAmdgpuMatrixRepresentationProvider = {
-        .relation = loom_amdgpu_matrix_representation_relation,
+    kAmdgpuSourceRepresentationProvider = {
+        .relation = loom_amdgpu_source_representation_relation,
         .observe_boundary = loom_amdgpu_matrix_representation_observe_boundary,
         .boundaries = kAmdgpuMatrixRepresentationBoundaries,
         .boundary_count = IREE_ARRAYSIZE(kAmdgpuMatrixRepresentationBoundaries),
@@ -431,9 +529,9 @@ static const loom_low_lower_representation_provider_t
 };
 
 const loom_low_lower_source_plan_observer_t
-    loom_amdgpu_matrix_representation_observer = {
+    loom_amdgpu_source_representation_observer = {
         .begin = loom_low_lower_representation_observer_begin,
         .observe = loom_low_lower_representation_observer_observe,
         .end = loom_low_lower_representation_observer_end,
-        .user_data = (void*)&kAmdgpuMatrixRepresentationProvider,
+        .user_data = (void*)&kAmdgpuSourceRepresentationProvider,
 };

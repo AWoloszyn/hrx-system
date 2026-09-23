@@ -58,7 +58,8 @@ typedef struct loom_low_lower_representation_recorder_t
 
 typedef bool (*loom_low_lower_representation_relation_fn_t)(
     void* user_data, loom_low_lower_context_t* context,
-    const loom_op_t* source_op, const loom_value_relation_t* relation);
+    const loom_op_t* source_op, const loom_value_relation_t* relation,
+    loom_low_lower_representation_recorder_t* recorder);
 
 typedef void (*loom_low_lower_representation_boundary_fn_t)(
     void* user_data, uint8_t action,
@@ -69,8 +70,9 @@ typedef void (*loom_low_lower_representation_boundary_fn_t)(
 // Target policy for one function-local physical-representation plan.
 typedef struct loom_low_lower_representation_provider_t {
   // Returns true when a common relation on |source_op| requires the two source
-  // values to use one target representation. This callback is infallible and
-  // must not walk source IR.
+  // values to use one target representation. The callback may also record
+  // exact candidate domains for either value through |recorder|. It is
+  // infallible and must not walk source IR.
   loom_low_lower_representation_relation_fn_t relation;
   // Observes operation boundaries selected by |boundaries|. |flags| identifies
   // the source operation ports relevant to the target action. Failures and
@@ -128,7 +130,15 @@ iree_status_t loom_low_lower_representation_observer_end(
 // Returns the selected representation for |source_value_id|, or NONE when its
 // component remained unconstrained. The representation observer must have
 // completed successfully before this query.
-iree_status_t loom_low_lower_representation_lookup(
+void loom_low_lower_representation_lookup(
+    loom_low_lower_context_t* context, loom_value_id_t source_value_id,
+    loom_low_representation_id_t* out_representation);
+
+// Returns the selected representation when observation has completed, or NONE
+// before the function-local plan is ready. This permits value mapping shared by
+// boundary validation and planned lowering to consume the same policy without
+// making the earlier validation phase depend on observer ordering.
+void loom_low_lower_representation_lookup_if_ready(
     loom_low_lower_context_t* context, loom_value_id_t source_value_id,
     loom_low_representation_id_t* out_representation);
 
