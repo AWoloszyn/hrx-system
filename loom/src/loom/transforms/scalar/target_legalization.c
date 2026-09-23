@@ -6,6 +6,8 @@
 
 #include "loom/transforms/scalar/target_legalization.h"
 
+#include <math.h>
+
 #include "loom/ir/module.h"
 #include "loom/ops/scalar/ops.h"
 #include "loom/ops/scf/ops.h"
@@ -681,7 +683,64 @@ static iree_status_t loom_scalar_legalize_narrow_cmpi(
   return iree_ok_status();
 }
 
+// Number-preferring extrema already implement signed-zero ordering. An
+// unordered comparison adds the IEEE NaN policy without changing numeric
+// operands or exposing a NaN payload guarantee.
+static iree_status_t loom_scalar_legalize_ieee_extrema(
+    const loom_target_legalizer_entry_t* entry,
+    loom_target_legalization_context_t* context, loom_op_t* op,
+    loom_target_legalizer_result_t* out_result) {
+  (void)entry;
+  loom_rewriter_t* rewriter = context->rewriter;
+  loom_builder_t* builder = &rewriter->builder;
+  loom_builder_set_before(builder, op);
+  const loom_value_id_t checkpoint = loom_rewriter_value_checkpoint(rewriter);
+  const loom_value_id_t lhs = loom_op_operands(op)[0];
+  const loom_value_id_t rhs = loom_op_operands(op)[1];
+  const loom_type_t type = loom_module_value_type(context->module, lhs);
+
+  loom_op_t* number = NULL;
+  if (loom_scalar_minimumf_isa(op)) {
+    IREE_RETURN_IF_ERROR(loom_scalar_minnumf_build(
+        builder, op->instance_flags, lhs, rhs, type, op->location, &number));
+  } else {
+    IREE_RETURN_IF_ERROR(loom_scalar_maxnumf_build(
+        builder, op->instance_flags, lhs, rhs, type, op->location, &number));
+  }
+  loom_op_t* unordered = NULL;
+  IREE_RETURN_IF_ERROR(loom_scalar_cmpf_build(
+      builder, op->instance_flags, LOOM_SCALAR_CMPF_PREDICATE_UNO, lhs, rhs,
+      op->location, &unordered));
+  loom_op_t* nan = NULL;
+  IREE_RETURN_IF_ERROR(loom_scalar_constant_build(builder, loom_attr_f64(NAN),
+                                                  type, op->location, &nan));
+  loom_op_t* select = NULL;
+  IREE_RETURN_IF_ERROR(loom_scf_select_build(
+      builder, loom_scalar_cmpf_result(unordered),
+      loom_scalar_constant_result(nan), loom_op_results(number)[0], type,
+      op->location, &select));
+  const loom_value_id_t replacement = loom_scf_select_result(select);
+  IREE_RETURN_IF_ERROR(loom_rewriter_preserve_result_names_on_new_values(
+      rewriter, op, &replacement, 1, checkpoint));
+  IREE_RETURN_IF_ERROR(
+      loom_rewriter_replace_all_uses_and_erase(rewriter, op, &replacement, 1));
+  out_result->action = LOOM_TARGET_LEGALIZER_ACTION_REWRITTEN;
+  return iree_ok_status();
+}
+
 static const loom_target_legalizer_rule_t kScalarLegalizerRules[] = {
+    {
+        .root_kind = LOOM_OP_SCALAR_MINIMUMF,
+        .first_operand_element_types = LOOM_SCALAR_TYPE_SET_F32,
+        .flags = LOOM_TARGET_LEGALIZER_ENTRY_FLAG_REQUIRE_CONTRACT_REJECTION,
+        .legalize = loom_scalar_legalize_ieee_extrema,
+    },
+    {
+        .root_kind = LOOM_OP_SCALAR_MAXIMUMF,
+        .first_operand_element_types = LOOM_SCALAR_TYPE_SET_F32,
+        .flags = LOOM_TARGET_LEGALIZER_ENTRY_FLAG_REQUIRE_CONTRACT_REJECTION,
+        .legalize = loom_scalar_legalize_ieee_extrema,
+    },
     {
         .root_kind = LOOM_OP_SCALAR_CMPI,
         .first_operand_element_types =
