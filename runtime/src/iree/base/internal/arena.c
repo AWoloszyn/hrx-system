@@ -256,6 +256,31 @@ void iree_arena_reset(iree_arena_allocator_t* arena) {
   IREE_TRACE_ZONE_END(z0);
 }
 
+void iree_arena_transfer(iree_arena_allocator_t* source,
+                         iree_arena_allocator_t* target) {
+  IREE_ASSERT(source != target && source->block_pool == target->block_pool,
+              "arena transfer requires distinct arenas sharing a block pool");
+  if (source->allocation_head != NULL) {
+    iree_arena_oversized_allocation_t* tail = source->allocation_head;
+    while (tail->next != NULL) {
+      tail = tail->next;
+    }
+    tail->next = target->allocation_head;
+    target->allocation_head = source->allocation_head;
+  }
+  if (source->block_head != NULL) {
+    source->block_tail->next = target->block_head;
+    if (target->block_tail == NULL) {
+      target->block_tail = source->block_tail;
+    }
+    target->block_head = source->block_head;
+    target->block_bytes_remaining = source->block_bytes_remaining;
+  }
+  target->total_allocation_size += source->total_allocation_size;
+  target->used_allocation_size += source->used_allocation_size;
+  iree_arena_initialize(source->block_pool, source);
+}
+
 iree_arena_checkpoint_t iree_arena_checkpoint_save(
     iree_arena_allocator_t* arena) {
   IREE_ASSERT_ARGUMENT(arena);

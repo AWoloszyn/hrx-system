@@ -657,6 +657,20 @@ TEST_F(LowAllocationSearchTest,
       &context, &intervals[0], Capacity(/*max_units=*/8), &location_base));
   EXPECT_EQ(location_base, 5u);
 
+  // A hole at the preferred frontier leaves the next lower scalar location
+  // preferable to any free location above the frontier.
+  reserved_range.location_base = 4;
+  reserved_range.location_count = 1;
+  EXPECT_TRUE(loom_low_allocation_search_find_free_location(
+      &context, &intervals[0], Capacity(/*max_units=*/8), &location_base));
+  EXPECT_EQ(location_base, 3u);
+
+  // Exhausting both portions of the search cannot manufacture a candidate.
+  reserved_range.location_base = 0;
+  reserved_range.location_count = 8;
+  EXPECT_FALSE(loom_low_allocation_search_find_free_location(
+      &context, &intervals[0], Capacity(/*max_units=*/8), &location_base));
+
   loom_module_value_ordinal_scratch_clear(module, scalar_value);
   loom_module_value_ordinal_scratch_clear(module, wide_value);
   loom_module_value_ordinal_scratch_clear(module, unrelated_scalar_value);

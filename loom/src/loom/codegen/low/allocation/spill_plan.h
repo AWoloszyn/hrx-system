@@ -63,14 +63,15 @@ iree_status_t loom_low_allocation_spill_plan_traffic(
     uint16_t alloc_unit_bits,
     loom_low_allocation_spill_plan_traffic_t* out_traffic);
 
-// Appends the spill materialization plan for |assignment|.
+// Appends the spill materialization plan for |assignment| and accumulates its
+// predicted store and reload bytes in |inout_traffic_bytes|.
 iree_status_t loom_low_allocation_spill_plan_record(
     const loom_module_t* module, const loom_cfg_graph_t* cfg_graph,
     const loom_low_allocation_assignment_t* assignment,
     uint32_t assignment_index, uint16_t alloc_unit_bits,
     loom_low_spill_slot_space_t spill_slot_space,
     loom_low_allocation_spill_plan_t* spill_plans,
-    iree_host_size_t* inout_spill_plan_count);
+    iree_host_size_t* inout_spill_plan_count, uint64_t* inout_traffic_bytes);
 
 // Appends a spill remark for |assignment_index|.
 void loom_low_allocation_spill_remark_record(

@@ -910,8 +910,6 @@ low.func.def target<test.low.core>(@test_target) @physical_alias_classes_share_s
 
 test.target<low_core> @test_target
 
-// WARNING@+3: BACKEND/008 {function_name="multi_victim_spill", value_name="row", value_class="test.i32", spill_cause="register-budget-conflict"}
-// WARNING@+2: BACKEND/008 {function_name="multi_victim_spill", value_name="carry", value_class="test.i32", spill_cause="register-budget-conflict"}
 // WARNING@+1: BACKEND/008 {function_name="multi_victim_spill", value_name="extra", value_class="test.i32", spill_cause="register-budget-conflict"}
 low.func.def target<test.low.core>(@test_target) @multi_victim_spill(%row: reg<test.i32>, %carry: reg<test.i32>, %extra: reg<test.i32>) -> (reg<test.i32>) asm {
   low.br ^late

@@ -897,7 +897,8 @@ static iree_status_t loom_low_allocation_interval_assignment_finalize_spills(
         state->context->module, state->context->function_cfg_graph, assignment,
         decision->assignment_index, reg_class->alloc_unit_bits,
         (loom_low_spill_slot_space_t)reg_class->spill_slot_space,
-        result->spill_plans, &result->spill_plan_count));
+        result->spill_plans, &result->spill_plan_count,
+        &result->spill_traffic_bytes));
     loom_low_allocation_spill_remark_record(
         result->remarks, &result->remark_count, decision->assignment_index,
         decision->budget_units, assignment->unit_count);

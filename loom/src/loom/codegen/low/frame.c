@@ -198,9 +198,7 @@ static void loom_low_emission_frame_record_system_allocation_delta(
 #endif  // IREE_STATISTICS_ENABLE
 
 static void loom_low_emission_frame_advance_repair_iteration(
-    iree_host_size_t* iteration_count,
     loom_low_planning_statistics_t* statistics) {
-  ++*iteration_count;
   if (statistics != NULL) {
     ++statistics->repair.iteration_count;
   }
@@ -385,21 +383,6 @@ static iree_status_t loom_low_emission_frame_append_materialized_spill_records(
   return iree_ok_status();
 }
 
-static iree_status_t loom_low_emission_frame_copy_pair_uses(
-    loom_low_placement_pair_use_list_t source, iree_arena_allocator_t* arena,
-    loom_low_placement_pair_use_list_t* out_copy) {
-  *out_copy = source;
-  if (source.count == 0) {
-    return iree_ok_status();
-  }
-  loom_low_placement_pair_use_t* values = NULL;
-  IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-      arena, source.count, sizeof(*values), (void**)&values));
-  memcpy(values, source.values, source.count * sizeof(*values));
-  out_copy->values = values;
-  return iree_ok_status();
-}
-
 static void loom_low_emission_frame_accumulate_materialization(
     const loom_low_allocation_materialization_result_t* result,
     loom_low_emission_frame_materialization_summary_t* summary) {
@@ -522,6 +505,75 @@ static bool loom_low_emission_frame_crosses_new_pressure_cliff(
   return false;
 }
 
+// Retains the accepted frame while measuring a pair-replication trial. Rollback
+// restores its original operations and operands, so rejection needs no rebuild.
+static iree_status_t loom_low_emission_frame_try_pair_replication(
+    loom_module_t* module, loom_op_t* low_func_op,
+    const loom_low_emission_frame_options_t* frame_options,
+    iree_bitmap_t required_register_values,
+    const iree_arena_checkpoint_t* frame_checkpoint,
+    iree_arena_allocator_t* repair_arena, iree_arena_allocator_t* scratch_arena,
+    loom_low_planning_statistics_t* statistics,
+    loom_low_emission_frame_t* frame) {
+  if (statistics != NULL) {
+    ++statistics->repair.pair_replication_attempt_count;
+  }
+  loom_low_allocation_pair_replication_result_t replication = {0};
+  IREE_RETURN_IF_ERROR(loom_low_allocation_replicate_pair_sources(
+      module, &frame->allocation, frame->schedule.placement_pair_uses,
+      repair_arena, &replication));
+  if (replication.edit_count == 0) {
+    return iree_ok_status();
+  }
+  if (statistics != NULL) {
+    statistics->repair.pair_replication_edit_count += replication.edit_count;
+  }
+  loom_low_emission_frame_advance_repair_iteration(statistics);
+  loom_low_emission_frame_t trial = {0};
+  IREE_RETURN_IF_ERROR(loom_low_emission_frame_build_impl(
+      module, low_func_op, frame_options, frame->schedule.placement_pair_uses,
+      required_register_values, scratch_arena, statistics, &trial));
+  bool rejected = trial.schedule.error_count != 0 ||
+                  trial.allocation.error_count != 0 ||
+                  trial.allocation.spill_plan_count != 0 ||
+                  trial.allocation.spill_count != 0 ||
+                  loom_low_emission_frame_crosses_new_pressure_cliff(
+                      frame_options->residency_model,
+                      frame->allocation.physical_extents.ends_by_reg_class,
+                      &trial.allocation);
+  if (!rejected) {
+    uint64_t satisfied_packet_savings = 0;
+    IREE_RETURN_IF_ERROR(loom_low_allocation_satisfied_pair_packet_savings(
+        &trial.allocation, trial.schedule.placement_pair_uses,
+        &satisfied_packet_savings));
+    // Cross-add to compare net savings without signed arithmetic:
+    // new_savings - new_moves > baseline_savings - baseline_moves.
+    const uint64_t baseline_net_side =
+        replication.baseline_satisfied_packet_savings +
+        trial.allocation.packet_move_count;
+    const uint64_t replicated_net_side =
+        satisfied_packet_savings + frame->allocation.packet_move_count;
+    rejected = replicated_net_side <= baseline_net_side;
+  }
+  loom_low_emission_frame_record_memory_high_water(
+      frame_checkpoint, repair_arena, scratch_arena, statistics);
+  if (rejected) {
+    if (statistics != NULL) {
+      ++statistics->repair.pair_replication_rejection_count;
+    }
+    IREE_RETURN_IF_ERROR(loom_low_allocation_rollback_pair_replication(
+        module, &replication, scratch_arena));
+    loom_low_emission_frame_record_memory_high_water(
+        frame_checkpoint, repair_arena, scratch_arena, statistics);
+    iree_arena_reset(scratch_arena);
+  } else {
+    iree_arena_checkpoint_restore(frame_checkpoint);
+    iree_arena_transfer(scratch_arena, frame_checkpoint->arena);
+    *frame = trial;
+  }
+  return iree_ok_status();
+}
+
 static iree_status_t loom_low_emission_frame_emit_rematerialization_decision(
     const loom_low_emission_frame_options_t* frame_options,
     const loom_low_allocation_table_t* allocation,
@@ -625,9 +677,6 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
         "spill-free low emission frame construction requires spill-free "
         "options");
   }
-  const loom_target_residency_model_t* residency_model =
-      frame_options->residency_model;
-
   IREE_RETURN_IF_ERROR(loom_low_storage_layout_hoist_reservations(
       module, loom_low_function_body(low_func_op), scratch_arena));
 
@@ -649,17 +698,10 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
       spill_lowering_result.required_register_value_ids,
       spill_lowering_result.required_register_value_count, repair_arena,
       &required_register_values));
-  iree_host_size_t repair_iteration_count = 0;
   iree_host_size_t value_repair_iteration_count = 0;
   iree_host_size_t spill_materialization_iteration_count = 0;
   iree_host_size_t last_repaired_spill_plan_count = IREE_HOST_SIZE_MAX;
   bool restore_frame_before_build = false;
-  bool pair_replication_attempted = false;
-  loom_low_placement_pair_use_list_t pair_replication_preferred_pairs =
-      loom_low_placement_pair_use_list_empty();
-  iree_host_size_t pair_replication_baseline_packet_move_count = 0;
-  uint32_t* pair_replication_baseline_units_by_reg_class = NULL;
-  loom_low_allocation_pair_replication_result_t pair_replication = {0};
   loom_low_emission_frame_materialization_summary_t materialization_summary = {
       0};
   for (;;) {
@@ -673,47 +715,8 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
     loom_low_emission_frame_t frame = {0};
     IREE_RETURN_IF_ERROR(loom_low_emission_frame_build_impl(
         module, low_func_op, frame_options,
-        pair_replication.edit_count != 0
-            ? pair_replication_preferred_pairs
-            : loom_low_placement_pair_use_list_empty(),
-        required_register_values, arena, statistics, &frame));
-    if (pair_replication.edit_count != 0) {
-      bool rejected =
-          frame.schedule.error_count != 0 ||
-          frame.allocation.error_count != 0 ||
-          frame.allocation.spill_plan_count != 0 ||
-          frame.allocation.spill_count != 0 ||
-          loom_low_emission_frame_crosses_new_pressure_cliff(
-              residency_model, pair_replication_baseline_units_by_reg_class,
-              &frame.allocation);
-      if (!rejected) {
-        uint64_t satisfied_packet_savings = 0;
-        IREE_RETURN_IF_ERROR(loom_low_allocation_satisfied_pair_packet_savings(
-            &frame.allocation, frame.schedule.placement_pair_uses,
-            &satisfied_packet_savings));
-        // Cross-add to compare net savings without signed arithmetic:
-        // new_savings - new_moves > baseline_savings - baseline_moves.
-        const uint64_t baseline_net_side =
-            pair_replication.baseline_satisfied_packet_savings +
-            frame.allocation.packet_move_count;
-        const uint64_t replicated_net_side =
-            satisfied_packet_savings +
-            pair_replication_baseline_packet_move_count;
-        rejected = replicated_net_side <= baseline_net_side;
-      }
-      if (rejected) {
-        if (statistics != NULL) {
-          ++statistics->repair.pair_replication_rejection_count;
-        }
-        IREE_RETURN_IF_ERROR(loom_low_allocation_rollback_pair_replication(
-            module, &pair_replication, scratch_arena));
-        pair_replication = (loom_low_allocation_pair_replication_result_t){0};
-        loom_low_emission_frame_advance_repair_iteration(
-            &repair_iteration_count, statistics);
-        restore_frame_before_build = true;
-        continue;
-      }
-    }
+        loom_low_placement_pair_use_list_empty(), required_register_values,
+        arena, statistics, &frame));
     if (frame.schedule.error_count != 0) {
       if (value_repair_iteration_count <
               LOOM_LOW_EMISSION_FRAME_MAX_VALUE_REPAIR_ITERATIONS &&
@@ -736,8 +739,7 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
                 result.rewritten_operand_count;
           }
           ++value_repair_iteration_count;
-          loom_low_emission_frame_advance_repair_iteration(
-              &repair_iteration_count, statistics);
+          loom_low_emission_frame_advance_repair_iteration(statistics);
           restore_frame_before_build = true;
           continue;
         }
@@ -772,8 +774,7 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
                   LOOM_LOW_ALLOCATION_REMATERIALIZATION_TRIGGER_ALLOCATION_FAILURE,
                   &result));
           ++value_repair_iteration_count;
-          loom_low_emission_frame_advance_repair_iteration(
-              &repair_iteration_count, statistics);
+          loom_low_emission_frame_advance_repair_iteration(statistics);
           restore_frame_before_build = true;
           continue;
         }
@@ -786,40 +787,9 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
 
     if (frame.allocation.spill_plan_count == 0 &&
         frame.allocation.spill_count == 0) {
-      if (!pair_replication_attempted) {
-        pair_replication_attempted = true;
-        if (statistics != NULL) {
-          ++statistics->repair.pair_replication_attempt_count;
-        }
-        IREE_RETURN_IF_ERROR(loom_low_allocation_replicate_pair_sources(
-            module, &frame.allocation, frame.schedule.placement_pair_uses,
-            repair_arena, &pair_replication));
-        if (statistics != NULL) {
-          statistics->repair.pair_replication_edit_count +=
-              pair_replication.edit_count;
-        }
-        if (pair_replication.edit_count != 0) {
-          IREE_RETURN_IF_ERROR(loom_low_emission_frame_copy_pair_uses(
-              frame.schedule.placement_pair_uses, repair_arena,
-              &pair_replication_preferred_pairs));
-          if (!loom_target_residency_model_is_empty(residency_model)) {
-            IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
-                repair_arena, frame.allocation.physical_extents.count,
-                sizeof(*pair_replication_baseline_units_by_reg_class),
-                (void**)&pair_replication_baseline_units_by_reg_class));
-            memcpy(pair_replication_baseline_units_by_reg_class,
-                   frame.allocation.physical_extents.ends_by_reg_class,
-                   frame.allocation.physical_extents.count *
-                       sizeof(*pair_replication_baseline_units_by_reg_class));
-          }
-          pair_replication_baseline_packet_move_count =
-              frame.allocation.packet_move_count;
-          loom_low_emission_frame_advance_repair_iteration(
-              &repair_iteration_count, statistics);
-          restore_frame_before_build = true;
-          continue;
-        }
-      }
+      IREE_RETURN_IF_ERROR(loom_low_emission_frame_try_pair_replication(
+          module, low_func_op, frame_options, required_register_values,
+          frame_checkpoint, repair_arena, scratch_arena, statistics, &frame));
       bool accepted = false;
       IREE_RETURN_IF_ERROR(loom_low_emission_frame_validate_final(
           frame_options, spill_free_options, &frame, scratch_arena, &accepted));
@@ -869,8 +839,7 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
                 &rematerialization_result));
         last_repaired_spill_plan_count = frame.allocation.spill_plan_count;
         ++value_repair_iteration_count;
-        loom_low_emission_frame_advance_repair_iteration(
-            &repair_iteration_count, statistics);
+        loom_low_emission_frame_advance_repair_iteration(statistics);
         restore_frame_before_build = true;
         continue;
       }
@@ -889,8 +858,7 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
                 &split_result));
         last_repaired_spill_plan_count = frame.allocation.spill_plan_count;
         ++value_repair_iteration_count;
-        loom_low_emission_frame_advance_repair_iteration(
-            &repair_iteration_count, statistics);
+        loom_low_emission_frame_advance_repair_iteration(statistics);
         restore_frame_before_build = true;
         continue;
       }
@@ -954,8 +922,7 @@ static iree_status_t loom_low_emission_frame_build_spill_free_impl(
         spill_lowering_result.required_register_value_count, repair_arena,
         &required_register_values));
     ++spill_materialization_iteration_count;
-    loom_low_emission_frame_advance_repair_iteration(&repair_iteration_count,
-                                                     statistics);
+    loom_low_emission_frame_advance_repair_iteration(statistics);
     restore_frame_before_build = true;
   }
 }
