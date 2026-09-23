@@ -24,6 +24,13 @@ typedef enum loom_aie2p_block_terminator_e {
   LOOM_AIE2P_BLOCK_TERMINATOR_RETURN = 3,
 } loom_aie2p_block_terminator_t;
 
+typedef struct loom_aie2p_block_branch_t {
+  // Native branch descriptor selected for the block terminator.
+  uint32_t descriptor_ordinal;
+  // Source-order destination block used by the final branch fixup.
+  uint32_t target_block_index;
+} loom_aie2p_block_branch_t;
+
 typedef struct loom_aie2p_block_analysis_t {
   // Structural terminator packet ending this block.
   uint32_t terminator_packet_index;
@@ -33,6 +40,15 @@ typedef struct loom_aie2p_block_analysis_t {
   uint32_t maximum_issue_cycle;
   // Structural control kind selected for this block.
   loom_aie2p_block_terminator_t terminator;
+  // Selected physical branches, shared by destination alignment and emission.
+  struct {
+    // Native branches in emission order; fallthrough contributes no entry.
+    loom_aie2p_block_branch_t values[2];
+    // Number of selected native branches, from zero through two.
+    uint8_t count;
+  } branches;
+  // Entry or an actual native branch destination requiring 16-byte alignment.
+  bool requires_alignment;
 } loom_aie2p_block_analysis_t;
 
 typedef struct loom_aie2p_bundle_plan_analysis_t {
@@ -260,12 +276,19 @@ static iree_status_t loom_aie2p_bundle_plan_analyze(
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
                             "AIE2P Low leaf has no blocks");
   }
+  if (frame->schedule.block_count > UINT32_MAX) {
+    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
+                            "AIE2P block count exceeds target index range");
+  }
 
   loom_aie2p_block_analysis_t* blocks = NULL;
   IREE_RETURN_IF_ERROR(iree_arena_allocate_array(
       arena, frame->schedule.block_count, sizeof(*blocks), (void**)&blocks));
   memset(blocks, 0,
          frame->schedule.block_count * sizeof(loom_aie2p_block_analysis_t));
+  blocks[0].requires_alignment = true;
+  // Destination marks may be set before a block's own analysis. Each iteration
+  // preserves those marks in the once-initialized table.
   for (iree_host_size_t block_index = 0;
        block_index < frame->schedule.block_count; ++block_index) {
     const loom_low_schedule_block_t* block =
@@ -361,13 +384,34 @@ static iree_status_t loom_aie2p_bundle_plan_analyze(
       return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                               "AIE2P logical cycle count exceeds host size");
     }
+    const loom_low_packet_view_t terminator_packet = loom_low_packet_at(
+        &frame->schedule, block_analysis->terminator_packet_index);
+    const uint32_t next_block_index =
+        block_index + 1u < frame->schedule.block_count
+            ? (uint32_t)(block_index + 1u)
+            : LOOM_LOW_PACKET_INDEX_NONE;
     iree_host_size_t control_bundle_count = 0;
     switch (block_analysis->terminator) {
-      case LOOM_AIE2P_BLOCK_TERMINATOR_BRANCH:
+      case LOOM_AIE2P_BLOCK_TERMINATOR_BRANCH: {
         control_bundle_count = loom_aie2p_bundle_plan_control_bundle_count(
             descriptor_set, AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT);
+        const uint32_t target_block_index = loom_low_packet_block_index(
+            &frame->schedule, loom_low_br_dest(terminator_packet.node->op));
+        if (target_block_index == LOOM_LOW_PACKET_INDEX_NONE) {
+          return iree_make_status(
+              IREE_STATUS_FAILED_PRECONDITION,
+              "AIE2P branch target is outside its function");
+        }
+        if (target_block_index != next_block_index) {
+          block_analysis->branches.values[block_analysis->branches.count++] =
+              (loom_aie2p_block_branch_t){
+                  .descriptor_ordinal = AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT,
+                  .target_block_index = target_block_index,
+              };
+        }
         break;
-      case LOOM_AIE2P_BLOCK_TERMINATOR_CONDITIONAL_BRANCH:
+      }
+      case LOOM_AIE2P_BLOCK_TERMINATOR_CONDITIONAL_BRANCH: {
         control_bundle_count = loom_aie2p_bundle_plan_control_bundle_count(
             descriptor_set, AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT);
         control_bundle_count += iree_max(
@@ -375,7 +419,55 @@ static iree_status_t loom_aie2p_bundle_plan_analyze(
                 descriptor_set, AIE2P_CORE_DESCRIPTOR_REF_BRANCH_NONZERO),
             loom_aie2p_bundle_plan_control_bundle_count(
                 descriptor_set, AIE2P_CORE_DESCRIPTOR_REF_BRANCH_ZERO));
+        const uint32_t true_block_index = loom_low_packet_block_index(
+            &frame->schedule,
+            loom_low_cond_br_true_dest(terminator_packet.node->op));
+        const uint32_t false_block_index = loom_low_packet_block_index(
+            &frame->schedule,
+            loom_low_cond_br_false_dest(terminator_packet.node->op));
+        if (true_block_index == LOOM_LOW_PACKET_INDEX_NONE ||
+            false_block_index == LOOM_LOW_PACKET_INDEX_NONE) {
+          return iree_make_status(
+              IREE_STATUS_FAILED_PRECONDITION,
+              "AIE2P conditional branch target is outside its function");
+        }
+        if (true_block_index == false_block_index) {
+          if (true_block_index != next_block_index) {
+            block_analysis->branches.values[block_analysis->branches.count++] =
+                (loom_aie2p_block_branch_t){
+                    .descriptor_ordinal =
+                        AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT,
+                    .target_block_index = true_block_index,
+                };
+          }
+        } else if (false_block_index == next_block_index) {
+          block_analysis->branches.values[block_analysis->branches.count++] =
+              (loom_aie2p_block_branch_t){
+                  .descriptor_ordinal =
+                      AIE2P_CORE_DESCRIPTOR_REF_BRANCH_NONZERO,
+                  .target_block_index = true_block_index,
+              };
+        } else if (true_block_index == next_block_index) {
+          block_analysis->branches.values[block_analysis->branches.count++] =
+              (loom_aie2p_block_branch_t){
+                  .descriptor_ordinal = AIE2P_CORE_DESCRIPTOR_REF_BRANCH_ZERO,
+                  .target_block_index = false_block_index,
+              };
+        } else {
+          block_analysis->branches.values[block_analysis->branches.count++] =
+              (loom_aie2p_block_branch_t){
+                  .descriptor_ordinal =
+                      AIE2P_CORE_DESCRIPTOR_REF_BRANCH_NONZERO,
+                  .target_block_index = true_block_index,
+              };
+          block_analysis->branches.values[block_analysis->branches.count++] =
+              (loom_aie2p_block_branch_t){
+                  .descriptor_ordinal = AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT,
+                  .target_block_index = false_block_index,
+              };
+        }
         break;
+      }
       case LOOM_AIE2P_BLOCK_TERMINATOR_RETURN:
         control_bundle_count = loom_aie2p_bundle_plan_control_bundle_count(
             descriptor_set, AIE2P_CORE_DESCRIPTOR_REF_RETURN_);
@@ -390,9 +482,11 @@ static iree_status_t loom_aie2p_bundle_plan_analyze(
       return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
                               "AIE2P control capacity exceeds host size");
     }
+    for (uint8_t i = 0; i < block_analysis->branches.count; ++i) {
+      blocks[block_analysis->branches.values[i].target_block_index]
+          .requires_alignment = true;
+    }
     if (block_analysis->terminator == LOOM_AIE2P_BLOCK_TERMINATOR_BRANCH) {
-      const loom_low_packet_view_t terminator_packet = loom_low_packet_at(
-          &frame->schedule, block_analysis->terminator_packet_index);
       const loom_low_allocation_edge_copy_group_t* edge_copy_group =
           loom_low_allocation_find_edge_copy_group_by_source_ordinal(
               &frame->allocation, terminator_packet.node->source_ordinal);
@@ -1343,84 +1437,31 @@ static iree_status_t loom_aie2p_bundle_plan_append_terminator(
     loom_aie2p_bundle_plan_builder_t* builder,
     const loom_aie2p_block_analysis_t* block_analysis,
     iree_host_size_t block_bundle_start) {
-  const loom_low_packet_view_t packet = loom_low_packet_at(
-      &builder->frame->schedule, block_analysis->terminator_packet_index);
-  const uint32_t block_index = builder->current_block_index;
-  const uint32_t next_block_index = block_index + 1u < builder->block_count
-                                        ? block_index + 1u
-                                        : LOOM_LOW_PACKET_INDEX_NONE;
-  switch (block_analysis->terminator) {
-    case LOOM_AIE2P_BLOCK_TERMINATOR_BRANCH: {
-      IREE_RETURN_IF_ERROR(
-          loom_aie2p_bundle_plan_append_edge_moves(builder, &packet));
-      const uint32_t target_block_index = loom_low_packet_block_index(
-          &builder->frame->schedule, loom_low_br_dest(packet.node->op));
-      if (target_block_index == LOOM_LOW_PACKET_INDEX_NONE) {
-        return iree_make_status(IREE_STATUS_FAILED_PRECONDITION,
-                                "AIE2P branch target is outside its function");
-      }
-      if (target_block_index == next_block_index) {
-        return loom_aie2p_bundle_plan_advance(
-            builder, loom_low_physical_issue_quiescent_cycle(&builder->issue));
-      }
-      return loom_aie2p_bundle_plan_append_branch(
-          builder, (uint32_t)packet.packet_index,
-          AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT, target_block_index,
-          block_analysis->terminator_issue_cycle);
-    }
-    case LOOM_AIE2P_BLOCK_TERMINATOR_CONDITIONAL_BRANCH: {
-      const uint32_t true_block_index = loom_low_packet_block_index(
-          &builder->frame->schedule,
-          loom_low_cond_br_true_dest(packet.node->op));
-      const uint32_t false_block_index = loom_low_packet_block_index(
-          &builder->frame->schedule,
-          loom_low_cond_br_false_dest(packet.node->op));
-      if (true_block_index == LOOM_LOW_PACKET_INDEX_NONE ||
-          false_block_index == LOOM_LOW_PACKET_INDEX_NONE) {
-        return iree_make_status(
-            IREE_STATUS_FAILED_PRECONDITION,
-            "AIE2P conditional branch target is outside its function");
-      }
-      if (true_block_index == false_block_index) {
-        if (true_block_index == next_block_index) {
-          return loom_aie2p_bundle_plan_advance(
-              builder,
-              loom_low_physical_issue_quiescent_cycle(&builder->issue));
-        }
-        return loom_aie2p_bundle_plan_append_branch(
-            builder, (uint32_t)packet.packet_index,
-            AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT, true_block_index,
-            block_analysis->terminator_issue_cycle);
-      }
-      if (false_block_index == next_block_index) {
-        return loom_aie2p_bundle_plan_append_branch(
-            builder, (uint32_t)packet.packet_index,
-            AIE2P_CORE_DESCRIPTOR_REF_BRANCH_NONZERO, true_block_index,
-            block_analysis->terminator_issue_cycle);
-      }
-      if (true_block_index == next_block_index) {
-        return loom_aie2p_bundle_plan_append_branch(
-            builder, (uint32_t)packet.packet_index,
-            AIE2P_CORE_DESCRIPTOR_REF_BRANCH_ZERO, false_block_index,
-            block_analysis->terminator_issue_cycle);
-      }
-      IREE_RETURN_IF_ERROR(loom_aie2p_bundle_plan_append_branch(
-          builder, (uint32_t)packet.packet_index,
-          AIE2P_CORE_DESCRIPTOR_REF_BRANCH_NONZERO, true_block_index,
-          block_analysis->terminator_issue_cycle));
-      return loom_aie2p_bundle_plan_append_branch(
-          builder, (uint32_t)packet.packet_index,
-          AIE2P_CORE_DESCRIPTOR_REF_BRANCH_DIRECT, false_block_index,
-          block_analysis->terminator_issue_cycle);
-    }
-    case LOOM_AIE2P_BLOCK_TERMINATOR_RETURN:
-      return loom_aie2p_bundle_plan_append_return(builder, block_analysis,
-                                                  block_bundle_start);
-    case LOOM_AIE2P_BLOCK_TERMINATOR_NONE:
-      break;
+  if (block_analysis->terminator == LOOM_AIE2P_BLOCK_TERMINATOR_RETURN) {
+    return loom_aie2p_bundle_plan_append_return(builder, block_analysis,
+                                                block_bundle_start);
   }
-  return iree_make_status(IREE_STATUS_INTERNAL,
-                          "AIE2P block terminator analysis is invalid");
+  if (block_analysis->terminator == LOOM_AIE2P_BLOCK_TERMINATOR_BRANCH) {
+    const loom_low_packet_view_t packet = loom_low_packet_at(
+        &builder->frame->schedule, block_analysis->terminator_packet_index);
+    IREE_RETURN_IF_ERROR(
+        loom_aie2p_bundle_plan_append_edge_moves(builder, &packet));
+  }
+  if (block_analysis->branches.count == 0) {
+    return loom_aie2p_bundle_plan_advance(
+        builder, loom_low_physical_issue_quiescent_cycle(&builder->issue));
+  }
+  iree_status_t status = iree_ok_status();
+  for (uint8_t i = 0;
+       i < block_analysis->branches.count && iree_status_is_ok(status); ++i) {
+    const loom_aie2p_block_branch_t* branch =
+        &block_analysis->branches.values[i];
+    status = loom_aie2p_bundle_plan_append_branch(
+        builder, block_analysis->terminator_packet_index,
+        branch->descriptor_ordinal, branch->target_block_index,
+        block_analysis->terminator_issue_cycle);
+  }
+  return status;
 }
 
 static iree_status_t loom_aie2p_bundle_plan_build_impl(
@@ -1436,10 +1477,6 @@ static iree_status_t loom_aie2p_bundle_plan_build_impl(
       loom_aie2p_bundle_plan_analyze(frame, scratch_arena, &analysis));
   const loom_low_descriptor_set_t* descriptor_set =
       frame->target.descriptor_set;
-  if (frame->schedule.block_count > UINT32_MAX) {
-    return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "AIE2P block count exceeds target index range");
-  }
   iree_host_size_t alignment_bundle_capacity = 0;
   if (frame->schedule.block_count > 1) {
     const iree_host_size_t boundary_count = frame->schedule.block_count - 1u;
@@ -1531,7 +1568,9 @@ static iree_status_t loom_aie2p_bundle_plan_build_impl(
       (void**)&builder.block_byte_offsets));
   for (uint32_t block_index = 0;
        block_index < (uint32_t)frame->schedule.block_count; ++block_index) {
-    if (block_index != 0) {
+    const loom_aie2p_block_analysis_t* block_analysis =
+        &analysis.blocks[block_index];
+    if (block_index != 0 && block_analysis->requires_alignment) {
       IREE_RETURN_IF_ERROR(loom_aie2p_bundle_plan_align_next_block(
           &builder, analysis.blocks[block_index - 1u].terminator_issue_cycle));
     }
@@ -1542,8 +1581,6 @@ static iree_status_t loom_aie2p_bundle_plan_build_impl(
     const iree_host_size_t block_bundle_start = builder.bundle_count;
     const loom_low_schedule_block_t* block =
         &frame->schedule.blocks[block_index];
-    const loom_aie2p_block_analysis_t* block_analysis =
-        &analysis.blocks[block_index];
     uint32_t issue_group_index = 0;
     for (uint32_t issue_cycle = 0;
          issue_cycle <= block_analysis->maximum_issue_cycle; ++issue_cycle) {
