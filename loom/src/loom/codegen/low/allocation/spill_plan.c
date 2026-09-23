@@ -244,7 +244,7 @@ iree_status_t loom_low_allocation_spill_plan_record(
     uint32_t assignment_index, uint16_t alloc_unit_bits,
     loom_low_spill_slot_space_t spill_slot_space,
     loom_low_allocation_spill_plan_t* spill_plans,
-    iree_host_size_t* inout_spill_plan_count) {
+    iree_host_size_t* inout_spill_plan_count, uint64_t* inout_traffic_bytes) {
   uint32_t byte_size = 0;
   uint32_t byte_alignment = 0;
   IREE_RETURN_IF_ERROR(loom_low_allocation_spill_plan_layout(
@@ -263,6 +263,9 @@ iree_status_t loom_low_allocation_spill_plan_record(
       .store_count = traffic.store_count,
       .reload_count = traffic.reload_count,
   };
+  *inout_traffic_bytes = iree_math_saturating_add_u64(
+      *inout_traffic_bytes,
+      iree_math_saturating_add_u64(traffic.store_bytes, traffic.reload_bytes));
   return iree_ok_status();
 }
 

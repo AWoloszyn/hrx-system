@@ -90,6 +90,8 @@ typedef struct loom_low_allocation_interval_assignment_result_t {
   loom_low_allocation_spill_plan_t* spill_plans;
   // Number of initialized spill materialization plan records.
   iree_host_size_t spill_plan_count;
+  // Predicted store and reload bytes across the spill materialization plans.
+  uint64_t spill_traffic_bytes;
   // Allocation remark records in spill-decision order. Null when no assignment
   // spills; otherwise sized to |spill_count|.
   loom_low_allocation_remark_t* remarks;
