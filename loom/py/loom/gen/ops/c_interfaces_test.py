@@ -6,6 +6,8 @@
 
 """Declaration contracts required by generated interface consumers."""
 
+from dataclasses import replace
+
 import pytest
 
 from loom.assembly import AttrDict, Flags, FuncArgs, Ref
@@ -213,6 +215,20 @@ def test_generate_tables_rejects_counted_loop_iv_type_mismatch() -> None:
         _generate_counted_loop_tables(op)
 
 
+def test_generate_tables_rejects_counted_loop_with_hidden_region() -> None:
+    op = _make_counted_loop_op()
+    op = replace(
+        op,
+        regions=(*op.regions, RegionDef("hidden", single_block=True, terminator="test.yield")),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"LoopLikeInterface on 'test\.for': counted loops require exactly 1 region\(s\), got 2",
+    ):
+        _generate_counted_loop_tables(op)
+
+
 def _make_condition_loop_op(*, constraints: list[Constraint]) -> Op:
     return Op(
         "test.while",
@@ -281,6 +297,41 @@ def test_generate_tables_rejects_incomplete_condition_loop_contract() -> None:
         ValueError,
         match=r"LoopLikeInterface on 'test\.while': requires "
         r"ConditionForwardedCountMatchesBlockArgs",
+    ):
+        _generate_condition_loop_tables(op)
+
+
+def test_generate_tables_rejects_condition_loop_with_hidden_region() -> None:
+    op = _make_condition_loop_op(constraints=_condition_loop_constraints())
+    op = replace(
+        op,
+        regions=(*op.regions, RegionDef("hidden", single_block=True, terminator="test.yield")),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"LoopLikeInterface on 'test\.while': condition-controlled loops "
+        r"require exactly 2 region\(s\), got 3",
+    ):
+        _generate_condition_loop_tables(op)
+
+
+def test_generate_tables_rejects_condition_loop_using_body_as_condition() -> None:
+    op = _make_condition_loop_op(constraints=_condition_loop_constraints())
+    op = replace(
+        op,
+        interfaces=(
+            LoopLikeInterface(
+                body="after",
+                condition_region="after",
+                iter_args="iter_args",
+            ),
+        ),
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=r"LoopLikeInterface on 'test\.while': condition and body must be distinct regions",
     ):
         _generate_condition_loop_tables(op)
 

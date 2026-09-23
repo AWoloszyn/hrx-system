@@ -364,16 +364,18 @@ loom_target_pipeline_build_view_root_selection_decomposition(
       builder, loom_target_pipeline_build_dce_body, NULL, &if_changed_op);
 }
 
-static iree_status_t
-loom_target_pipeline_build_cfg_source_finalization_after_legalize(
+static iree_status_t loom_target_pipeline_build_source_unroll_before_bank_sroa(
     loom_builder_t* builder, void* user_data) {
   (void)user_data;
   IREE_RETURN_IF_ERROR(
       loom_target_pipeline_build_run(builder, IREE_SV("unroll-scf-for")));
-  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_cleanup_if_changed(builder));
-  IREE_RETURN_IF_ERROR(
-      loom_target_pipeline_build_run(builder, IREE_SV("sroa-vector-banks")));
-  IREE_RETURN_IF_ERROR(loom_target_pipeline_build_cleanup_if_changed(builder));
+  return loom_target_pipeline_build_cleanup_if_changed(builder);
+}
+
+static iree_status_t
+loom_target_pipeline_build_cfg_source_finalization_after_bank_sroa(
+    loom_builder_t* builder, void* user_data) {
+  (void)user_data;
   IREE_RETURN_IF_ERROR(loom_target_pipeline_build_run(
       builder, IREE_SV("sink-single-use-reads")));
   IREE_RETURN_IF_ERROR(loom_target_pipeline_build_cleanup_if_changed(builder));
@@ -598,8 +600,17 @@ static iree_status_t loom_target_pipeline_build_source_low_body(
       &for_op));
   if (control_flow_lowering == LOOM_TARGET_CONTROL_FLOW_LOWERING_CFG) {
     IREE_RETURN_IF_ERROR(loom_target_pipeline_build_for_target_functions(
+        builder, loom_target_pipeline_build_source_unroll_before_bank_sroa,
+        user_data, &for_op));
+    IREE_RETURN_IF_ERROR(
+        loom_target_pipeline_build_run(builder, IREE_SV("sroa-vector-banks")));
+    loom_op_t* bank_sroa_changed_op = NULL;
+    IREE_RETURN_IF_ERROR(loom_pass_ir_build_if_changed(
+        builder, loom_target_pipeline_build_cleanup_target_functions, NULL,
+        &bank_sroa_changed_op));
+    IREE_RETURN_IF_ERROR(loom_target_pipeline_build_for_target_functions(
         builder,
-        loom_target_pipeline_build_cfg_source_finalization_after_legalize,
+        loom_target_pipeline_build_cfg_source_finalization_after_bank_sroa,
         user_data, &for_op));
   }
   if (loom_target_pipeline_sanitizer_has_checks(

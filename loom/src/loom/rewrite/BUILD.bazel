@@ -103,6 +103,35 @@ loom_cc_library(
     ],
 )
 
+loom_cc_library(
+    name = "loop_like",
+    srcs = ["loop_like.c"],
+    hdrs = ["loop_like.h"],
+    deps = [
+        ":remap",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops:op_defs",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_test(
+    name = "loop_like_test",
+    srcs = ["loop_like_test.cc"],
+    deps = [
+        ":loop_like",
+        ":rewriter",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/scf",
+        "//loom/src/loom/ops/test",
+        "//loom/src/loom/verify",
+        "//runtime/src/iree/base/internal:arena",
+        "//runtime/src/iree/testing:gtest",
+        "//runtime/src/iree/testing:gtest_main",
+    ],
+)
+
 loom_cc_test(
     name = "materialize_test",
     srcs = ["materialize_test.cc"],

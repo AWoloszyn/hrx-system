@@ -177,4 +177,4 @@ func.def public target(@carrier_target) @reports_composed_rules(%first: buffer, 
 
 // ----
 CHECK: *"changed":true,*
-CHECK: *"cfg-edges-rewritten":2,"layout-projections":1,"layout-components":1,"view-projections":1,"view-components":2}*
+CHECK: *"cfg-edges-rewritten":2,"loops-rewritten":0,"layout-projections":1,"layout-components":1,"view-projections":1,"view-components":2}*

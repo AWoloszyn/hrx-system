@@ -590,7 +590,7 @@ static const loom_pass_descriptor_t kBuiltinPassDescriptors[] = {
     {
         .key = IREE_SVL("sroa-vector-banks"),
         .info = loom_vector_bank_sroa_pass_info,
-        .function_run = loom_vector_bank_sroa_run,
+        .module_run = loom_vector_bank_sroa_run,
     },
     {
         .key = IREE_SVL("stage-loop-carried-fragments"),

@@ -20,6 +20,8 @@
     "Number of returns rewritten.")                              \
   V(statistics_type, cfg_edges_rewritten, "cfg-edges-rewritten", \
     "Number of CFG successor payloads rewritten.")               \
+  V(statistics_type, loops_rewritten, "loops-rewritten",         \
+    "Number of LoopLike operations rewritten.")                  \
   V(statistics_type, layout_projections, "layout-projections",   \
     "Number of dynamic layouts projected to scalar components.") \
   V(statistics_type, layout_components, "layout-components",     \
@@ -78,6 +80,7 @@ iree_status_t loom_project_boundary_representations_run(loom_pass_t* pass,
     statistics->returns_rewritten += projection_statistics.returns_rewritten;
     statistics->cfg_edges_rewritten +=
         projection_statistics.cfg_edges_rewritten;
+    statistics->loops_rewritten += projection_statistics.loops_rewritten;
     statistics->layout_projections +=
         projection_statistics.rules[0].projections;
     statistics->layout_components += projection_statistics.rules[0].components;
