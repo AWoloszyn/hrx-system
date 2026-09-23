@@ -212,6 +212,99 @@ loom_check_compile_tests(
 
 loom_test_module(
   NAME
+    memory_integer_terms_test_module
+  SRCS
+    "memory_integer_terms.loom"
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    memory_integer_terms_test_execute_amdgpu_hardware_test
+  MODULE
+    "::memory_integer_terms_test_module"
+  RUNNER_ARGS
+    "--device=amdgpu"
+  LABELS
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.amdgpu"
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+    "loom-execution-profile=amdgpu_hardware"
+    "loom-target-family=amdgpu"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "gpu-device"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
+loom_execution_test(
+  NAME
+    memory_integer_terms_test_execute_spirv_vulkan_hardware_test
+  MODULE
+    "::memory_integer_terms_test_module"
+  RUNNER_ARGS
+    "--device=vulkan"
+    "--vulkan_validation_layers=false"
+  LABELS
+    "iree-build-requirement=loom.target.arch.spirv"
+    "iree-build-requirement=loom.emit.spirv"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.vulkan"
+    "iree-run-requirement=vulkan.resource.device"
+    "runtime-resource=vulkan-device"
+    "loom-execution-profile=spirv_vulkan_hardware"
+    "loom-target-family=spirv"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "gpu-device"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    memory_integer_terms_test_execute_amdgpu_access_test
+  MODULE
+    "::memory_integer_terms_test_module"
+  RUNNER_ARGS
+    "--device=amdgpu"
+    "--sanitizer=access"
+  LABELS
+    "notsan"
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.amdgpu"
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+    "loom-execution-profile=amdgpu_access"
+    "loom-target-family=amdgpu"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "gpu-device"
+)
+endif()
+
+loom_check_compile_tests(
+  NAME
+    "memory_integer_terms_test"
+  SRC
+    "::memory_integer_terms_test_module"
+  TARGETS
+    loom::target::amdgpu::gfx1151
+    loom::target::amdgpu::gfx942
+    loom::target::spirv::vulkan1.3+bda+extended-types
+)
+
+loom_test_module(
+  NAME
     natural_alignment_test_module
   SRCS
     "natural_alignment.loom"
@@ -305,6 +398,99 @@ loom_check_compile_tests(
 
 loom_test_module(
   NAME
+    numeric_narrow_address_test_module
+  SRCS
+    "numeric_narrow_address.loom"
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    numeric_narrow_address_test_execute_amdgpu_hardware_test
+  MODULE
+    "::numeric_narrow_address_test_module"
+  RUNNER_ARGS
+    "--device=amdgpu"
+  LABELS
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.amdgpu"
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+    "loom-execution-profile=amdgpu_hardware"
+    "loom-target-family=amdgpu"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "gpu-device"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
+loom_execution_test(
+  NAME
+    numeric_narrow_address_test_execute_spirv_vulkan_hardware_test
+  MODULE
+    "::numeric_narrow_address_test_module"
+  RUNNER_ARGS
+    "--device=vulkan"
+    "--vulkan_validation_layers=false"
+  LABELS
+    "iree-build-requirement=loom.target.arch.spirv"
+    "iree-build-requirement=loom.emit.spirv"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.vulkan"
+    "iree-run-requirement=vulkan.resource.device"
+    "runtime-resource=vulkan-device"
+    "loom-execution-profile=spirv_vulkan_hardware"
+    "loom-target-family=spirv"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "gpu-device"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    numeric_narrow_address_test_execute_amdgpu_access_test
+  MODULE
+    "::numeric_narrow_address_test_module"
+  RUNNER_ARGS
+    "--device=amdgpu"
+    "--sanitizer=access"
+  LABELS
+    "notsan"
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.amdgpu"
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+    "loom-execution-profile=amdgpu_access"
+    "loom-target-family=amdgpu"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "gpu-device"
+)
+endif()
+
+loom_check_compile_tests(
+  NAME
+    "numeric_narrow_address_test"
+  SRC
+    "::numeric_narrow_address_test_module"
+  TARGETS
+    loom::target::amdgpu::gfx1151
+    loom::target::amdgpu::gfx942
+    loom::target::spirv::vulkan1.3+bda+extended-types
+)
+
+loom_test_module(
+  NAME
     loop_termination_test_module
   SRCS
     "loop_termination.loom"
@@ -384,6 +570,99 @@ loom_execution_test(
     "gpu-device"
 )
 endif()
+
+loom_test_module(
+  NAME
+    packed_memory_consumers_test_module
+  SRCS
+    "packed_memory_consumers.loom"
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    packed_memory_consumers_test_execute_amdgpu_hardware_test
+  MODULE
+    "::packed_memory_consumers_test_module"
+  RUNNER_ARGS
+    "--device=amdgpu"
+  LABELS
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.amdgpu"
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+    "loom-execution-profile=amdgpu_hardware"
+    "loom-target-family=amdgpu"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "gpu-device"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
+loom_execution_test(
+  NAME
+    packed_memory_consumers_test_execute_spirv_vulkan_hardware_test
+  MODULE
+    "::packed_memory_consumers_test_module"
+  RUNNER_ARGS
+    "--device=vulkan"
+    "--vulkan_validation_layers=false"
+  LABELS
+    "iree-build-requirement=loom.target.arch.spirv"
+    "iree-build-requirement=loom.emit.spirv"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.vulkan"
+    "iree-run-requirement=vulkan.resource.device"
+    "runtime-resource=vulkan-device"
+    "loom-execution-profile=spirv_vulkan_hardware"
+    "loom-target-family=spirv"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "gpu-device"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    packed_memory_consumers_test_execute_amdgpu_access_test
+  MODULE
+    "::packed_memory_consumers_test_module"
+  RUNNER_ARGS
+    "--device=amdgpu"
+    "--sanitizer=access"
+  LABELS
+    "notsan"
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.amdgpu"
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+    "loom-execution-profile=amdgpu_access"
+    "loom-target-family=amdgpu"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "gpu-device"
+)
+endif()
+
+loom_check_compile_tests(
+  NAME
+    "packed_memory_consumers_test"
+  SRC
+    "::packed_memory_consumers_test_module"
+  TARGETS
+    loom::target::amdgpu::gfx1151
+    loom::target::amdgpu::gfx942
+    loom::target::spirv::vulkan1.3+bda+extended-types
+)
 
 loom_test_module(
   NAME
@@ -477,6 +756,99 @@ loom_check_compile_tests(
     loom::target::amdgpu::gfx1250
     loom::target::amdgpu::gfx942
     loom::target::spirv::vulkan1.3+bda
+)
+
+loom_test_module(
+  NAME
+    signed_address_terms_test_module
+  SRCS
+    "signed_address_terms.loom"
+)
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    signed_address_terms_test_execute_amdgpu_hardware_test
+  MODULE
+    "::signed_address_terms_test_module"
+  RUNNER_ARGS
+    "--device=amdgpu"
+  LABELS
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.amdgpu"
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+    "loom-execution-profile=amdgpu_hardware"
+    "loom-target-family=amdgpu"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "gpu-device"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_SPIRV AND LOOM_EMIT_SPIRV AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_VULKAN)
+loom_execution_test(
+  NAME
+    signed_address_terms_test_execute_spirv_vulkan_hardware_test
+  MODULE
+    "::signed_address_terms_test_module"
+  RUNNER_ARGS
+    "--device=vulkan"
+    "--vulkan_validation_layers=false"
+  LABELS
+    "iree-build-requirement=loom.target.arch.spirv"
+    "iree-build-requirement=loom.emit.spirv"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.vulkan"
+    "iree-run-requirement=vulkan.resource.device"
+    "runtime-resource=vulkan-device"
+    "loom-execution-profile=spirv_vulkan_hardware"
+    "loom-target-family=spirv"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "gpu-device"
+)
+endif()
+
+if(LOOM_TARGET_ARCH_AMDGPU AND LOOM_EMIT_AMDGPU AND LOOM_EXECUTE_IREE_HAL AND IREE_HAL_DRIVER_AMDGPU)
+loom_execution_test(
+  NAME
+    signed_address_terms_test_execute_amdgpu_access_test
+  MODULE
+    "::signed_address_terms_test_module"
+  RUNNER_ARGS
+    "--device=amdgpu"
+    "--sanitizer=access"
+  LABELS
+    "notsan"
+    "iree-build-requirement=loom.target.arch.amdgpu"
+    "iree-build-requirement=loom.emit.amdgpu"
+    "iree-build-requirement=loom.execute.iree_hal"
+    "iree-build-requirement=runtime.hal.amdgpu"
+    "iree-run-requirement=runtime.resource.amd_gpu"
+    "runtime-resource=amd-gpu"
+    "loom-execution-profile=amdgpu_access"
+    "loom-target-family=amdgpu"
+    "loom-target-class=gpu"
+    "loom-executor=hardware"
+  RESOURCE_GROUP
+    "gpu-device"
+)
+endif()
+
+loom_check_compile_tests(
+  NAME
+    "signed_address_terms_test"
+  SRC
+    "::signed_address_terms_test_module"
+  TARGETS
+    loom::target::amdgpu::gfx1151
+    loom::target::amdgpu::gfx942
+    loom::target::spirv::vulkan1.3+bda+extended-types
 )
 
 loom_test_module(

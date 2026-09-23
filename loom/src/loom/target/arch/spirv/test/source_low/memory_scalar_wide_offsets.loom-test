@@ -89,17 +89,15 @@ func.def @scalar_wide_dynamic_dimensions(%input_storage: buffer, %output_storage
 
 // ----
 low.func.def target<spirv.logical.core> abi(shader_entry_point) @scalar_wide_dynamic_dimensions(%input: reg<spirv.ptr.storage_buffer>, %output: reg<spirv.ptr.storage_buffer>, %row: reg<spirv.id : index>, %columns: reg<spirv.id : index>) -> (reg<spirv.id : i32>) asm {
-  %18 = OpBitcast.i32.u32 %row
-  %19 = OpUConvert.u32.offset64 %18
-  %20 = OpBitcast.i32.u32 %columns
-  %21 = OpUConvert.u32.offset64 %20
-  %22 = OpIMul.offset64 %19, %21
-  %23 = OpConstant.offset64 4
-  %24 = OpIMul.offset64 %22, %23
-  %25 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %24
-  %loaded = OpLoad.storage_buffer.i32 %25
-  %34 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %24
-  OpStore.storage_buffer.i32 %34, %loaded
+  %18 = OpSConvert.i32.offset64 %row
+  %19 = OpSConvert.i32.offset64 %columns
+  %20 = OpIMul.offset64 %18, %19
+  %21 = OpConstant.offset64 4
+  %22 = OpIMul.offset64 %20, %21
+  %23 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %22
+  %loaded = OpLoad.storage_buffer.i32 %23
+  %30 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %22
+  OpStore.storage_buffer.i32 %30, %loaded
   return %loaded
 }
 
@@ -184,33 +182,31 @@ func.def @vector_wide_dynamic_dimensions(%input_storage: buffer, %output_storage
 
 // ----
 low.func.def target<spirv.logical.core> abi(shader_entry_point) @vector_wide_dynamic_dimensions(%input: reg<spirv.ptr.storage_buffer>, %output: reg<spirv.ptr.storage_buffer>, %row: reg<spirv.id : index>, %columns: reg<spirv.id : index>) asm {
-  %29 = OpBitcast.i32.u32 %row
-  %30 = OpUConvert.u32.offset64 %29
-  %31 = OpBitcast.i32.u32 %columns
-  %32 = OpUConvert.u32.offset64 %31
-  %33 = OpIMul.offset64 %30, %32
-  %34 = OpConstant.offset64 4
-  %35 = OpIMul.offset64 %33, %34
-  %36 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %35
-  %37 = OpLoad.storage_buffer.i32 %36
-  %46 = OpIAdd.offset64 %35, %34
-  %47 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %46
-  %48 = OpLoad.storage_buffer.i32 %47
-  %56 = OpConstant.offset64 8
-  %57 = OpIAdd.offset64 %35, %56
-  %58 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %57
-  %59 = OpLoad.storage_buffer.i32 %58
-  %67 = OpConstant.offset64 12
-  %68 = OpIAdd.offset64 %35, %67
-  %69 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %68
-  %70 = OpLoad.storage_buffer.i32 %69
-  %78 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %35
-  OpStore.storage_buffer.i32 %78, %37
-  %88 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %46
-  OpStore.storage_buffer.i32 %88, %48
-  %98 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %57
-  OpStore.storage_buffer.i32 %98, %59
-  %108 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %68
-  OpStore.storage_buffer.i32 %108, %70
+  %29 = OpSConvert.i32.offset64 %row
+  %30 = OpSConvert.i32.offset64 %columns
+  %31 = OpIMul.offset64 %29, %30
+  %32 = OpConstant.offset64 4
+  %33 = OpIMul.offset64 %31, %32
+  %34 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %33
+  %35 = OpLoad.storage_buffer.i32 %34
+  %42 = OpIAdd.offset64 %33, %32
+  %43 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %42
+  %44 = OpLoad.storage_buffer.i32 %43
+  %50 = OpConstant.offset64 8
+  %51 = OpIAdd.offset64 %33, %50
+  %52 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %51
+  %53 = OpLoad.storage_buffer.i32 %52
+  %59 = OpConstant.offset64 12
+  %60 = OpIAdd.offset64 %33, %59
+  %61 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %60
+  %62 = OpLoad.storage_buffer.i32 %61
+  %68 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %33
+  OpStore.storage_buffer.i32 %68, %35
+  %76 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %42
+  OpStore.storage_buffer.i32 %76, %44
+  %84 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %51
+  OpStore.storage_buffer.i32 %84, %53
+  %92 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output, %60
+  OpStore.storage_buffer.i32 %92, %62
   return
 }

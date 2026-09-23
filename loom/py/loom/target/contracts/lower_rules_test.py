@@ -524,7 +524,6 @@ def _i32_source_memory_address_materializer() -> SourceMemoryAddressMaterializer
         const_coordinate=TEST_LOW_CONST_I32_DESCRIPTOR,
         add_coordinate=TEST_LOW_ADD_I32_DESCRIPTOR,
         mul_coordinate=TEST_LOW_MUL_I32_DESCRIPTOR,
-        index_to_coordinate_input=TEST_LOW_REMATERIALIZE_I32_DESCRIPTOR,
         index_to_coordinate=TEST_LOW_REMATERIALIZE_I32_DESCRIPTOR,
         address=TEST_LOW_ADD_I32_DESCRIPTOR,
         const_coordinate_immediate="i32_value",
@@ -1409,7 +1408,6 @@ def test_complete_address_compiles_element_coordinate_policy() -> None:
         coordinate_unit_byte_count=4,
         coordinate_minimum=0,
         coordinate_maximum=(2**31) - 1,
-        index_to_coordinate_input=None,
         index_to_coordinate=None,
     )
 
@@ -1450,14 +1448,12 @@ def test_complete_address_rejects_invalid_coordinate_policy() -> None:
         lambda: replace(
             materializer,
             coordinate_type=SourceMemoryAddressCoordinateType.INDEX,
-            index_to_coordinate=None,
         ),
         "index-coordinate source-memory addresses use the mapped index carrier",
     )
     _expect_value_error(
         lambda: replace(
             materializer,
-            index_to_coordinate_input=None,
             index_to_coordinate=None,
         ),
         "offset-coordinate source-memory addresses need an index conversion",

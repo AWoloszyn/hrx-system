@@ -102,22 +102,22 @@ func.def @subview_vector_aligned(%input: buffer, %output: buffer) {
 
 // ----
 low.func.def target<wasm.core.simd128> abi(wasm_function) @subview_vector_aligned(%source_crop: reg<wasm.i32>, %destination_crop: reg<wasm.i32>) asm {
-  %30 = i32.load %source_crop {offset = 256}
-  %31 = i32.load %source_crop {offset = 260}
-  %32 = i32.load %source_crop {offset = 264}
-  %33 = i32.load %source_crop {offset = 268}
-  %34 = i32.load %source_crop {offset = 272}
-  %35 = i32.load %source_crop {offset = 276}
-  %36 = i32.load %source_crop {offset = 280}
-  %37 = i32.load %source_crop {offset = 284}
-  i32.store %destination_crop, %30 {offset = 192}
-  i32.store %destination_crop, %31 {offset = 196}
-  i32.store %destination_crop, %32 {offset = 200}
-  i32.store %destination_crop, %33 {offset = 204}
-  i32.store %destination_crop, %34 {offset = 208}
-  i32.store %destination_crop, %35 {offset = 212}
-  i32.store %destination_crop, %36 {offset = 216}
-  i32.store %destination_crop, %37 {offset = 220}
+  %39 = i32.load %source_crop {offset = 256}
+  %40 = i32.load %source_crop {offset = 260}
+  %41 = i32.load %source_crop {offset = 264}
+  %42 = i32.load %source_crop {offset = 268}
+  %43 = i32.load %source_crop {offset = 272}
+  %44 = i32.load %source_crop {offset = 276}
+  %45 = i32.load %source_crop {offset = 280}
+  %46 = i32.load %source_crop {offset = 284}
+  i32.store %destination_crop, %39 {offset = 192}
+  i32.store %destination_crop, %40 {offset = 196}
+  i32.store %destination_crop, %41 {offset = 200}
+  i32.store %destination_crop, %42 {offset = 204}
+  i32.store %destination_crop, %43 {offset = 208}
+  i32.store %destination_crop, %44 {offset = 212}
+  i32.store %destination_crop, %45 {offset = 216}
+  i32.store %destination_crop, %46 {offset = 220}
   return
 }
 

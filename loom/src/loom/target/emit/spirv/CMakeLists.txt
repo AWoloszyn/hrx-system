@@ -306,6 +306,7 @@ loom_check_test_suite(
     "test/scalar_operations.loom-test"
     "test/schedule_scopes.loom-test"
     "test/source_low/index_numeric.loom-test"
+    "test/source_low/memory_integer_terms.loom-test"
     "test/source_low/memory_scalar_addressing.loom-test"
     "test/source_low/memory_workgroup_scalar_addressing.loom-test"
     "test/source_low/source_ordinary_vector_structure.loom-test"
@@ -315,6 +316,7 @@ loom_check_test_suite(
     "test/workgroup_byte_offsets.loom-test"
     "test/workgroup_storage.loom-test"
   DATA
+    "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_integer_terms.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_scalar_addressing.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/memory_workgroup_scalar_addressing.loom-test"
     "${PROJECT_SOURCE_DIR}/loom/src/loom/test/corpus/source_low/numeric_index.loom-test"

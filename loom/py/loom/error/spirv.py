@@ -382,17 +382,17 @@ ERR_SPIRV_027 = ErrorDef(
     ),
 )
 
-# ERR_SPIRV_028: SPIR-V source-memory address index range is not proven.
+# ERR_SPIRV_028: SPIR-V source-memory address cannot be represented.
 ERR_SPIRV_028 = ErrorDef(
     domain=ErrorDomain.SPIRV,
     code=28,
     severity=Severity.ERROR,
-    summary="SPIR-V source-memory address index range is not proven.",
+    summary="SPIR-V source-memory address cannot be represented.",
     message=(
         "SPIR-V target '{target_key}' export '{export_name}' config "
-        "'{config_key}' rejected '{op_name}' in '@{function_name}': every "
-        "index contributing to the source-memory address must be proven in "
-        "[{required_range_lo}, {required_range_hi}]; constraint "
+        "'{config_key}' rejected '{op_name}' in '@{function_name}': index "
+        "inputs must be proven in [{required_range_lo}, {required_range_hi}] "
+        "and integer terms must have supported numeric carrier conversions; constraint "
         "'{constraint_key}' is not satisfied"
     ),
     params=(
@@ -402,8 +402,8 @@ ERR_SPIRV_028 = ErrorDef(
         ErrorParam("constraint_key", ParamKind.STRING),
     ),
     fix_hint=(
-        "Establish the index range at its producer or with an assumption "
-        "after the corresponding runtime guard"
+        "Establish bounds on target index inputs and enable the integer "
+        "capabilities required by the address terms"
     ),
 )
 

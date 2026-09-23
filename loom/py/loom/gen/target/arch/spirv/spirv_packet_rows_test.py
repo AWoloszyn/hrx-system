@@ -586,6 +586,15 @@ def test_generation_emits_scalar_conversion_rows() -> None:
     assert "LOOM_SPIRV_PACKET_FORM_UNARY_TYPED" in tables
 
 
+def test_signed_address_conversions_preserve_source_width_and_signedness() -> None:
+    for suffix, scalar in (("i8", "S8"), ("i16", "S16"), ("i32", "S32")):
+        row = _packet_row(f"spirv.op_s_convert.{suffix}.offset64")
+        assert row.opcode == "LOOM_SPIRV_OP_S_CONVERT"
+        assert row.form == "LOOM_SPIRV_PACKET_FORM_UNARY_TYPED"
+        assert "LOOM_SPIRV_VALUE_CLASS_OFFSET64" in row.result_type
+        assert f"LOOM_SPIRV_SCALAR_TYPE_{scalar}" in row.operand_types[0]
+
+
 def test_generation_emits_complete_ordinary_vector_structural_matrix() -> None:
     tables = generate_tables()
     packet_rows_by_key = {row.descriptor_key: row for row in _packet_rows() if row.descriptor_key in {instruction.key for instruction in ORDINARY_VECTOR_INSTRUCTIONS}}

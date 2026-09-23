@@ -296,7 +296,6 @@ func.def @scalar_dynamic_index_i32(%input: buffer, %output: buffer, %element: in
          %14 = OpVariable %_ptr_StorageBuffer__struct_11 StorageBuffer
        %void = OpTypeVoid
          %16 = OpTypeFunction %void
-       %uint = OpTypeInt 32 0
     %ulong_4 = OpConstant %ulong 4
 %_ptr_PhysicalStorageBuffer_int = OpTypePointer PhysicalStorageBuffer %int
 %scalar_dynamic_index_i32 = OpFunction %void None %16
@@ -307,17 +306,16 @@ func.def @scalar_dynamic_index_i32(%input: buffer, %output: buffer, %element: in
 %output_aligned = OpLoad %ulong %20 Aligned 8
          %22 = OpAccessChain %_ptr_StorageBuffer_int %10 %int_0
 %element_bounded = OpLoad %int %22 Aligned 4
-         %25 = OpBitcast %uint %element_bounded
-         %26 = OpUConvert %ulong %25
-         %28 = OpIMul %ulong %26 %ulong_4
-         %29 = OpIAdd %ulong %input_aligned %28
-         %31 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %29
-     %loaded = OpLoad %int %31 Aligned 4
-         %33 = OpIAdd %ulong %output_aligned %28
-         %34 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %33
-               OpStore %34 %loaded Aligned 4
-         %35 = OpAccessChain %_ptr_StorageBuffer_int %14 %int_0
-               OpStore %35 %loaded Aligned 4
+         %24 = OpSConvert %ulong %element_bounded
+         %26 = OpIMul %ulong %24 %ulong_4
+         %27 = OpIAdd %ulong %input_aligned %26
+         %29 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %27
+     %loaded = OpLoad %int %29 Aligned 4
+         %31 = OpIAdd %ulong %output_aligned %26
+         %32 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %31
+               OpStore %32 %loaded Aligned 4
+         %33 = OpAccessChain %_ptr_StorageBuffer_int %14 %int_0
+               OpStore %33 %loaded Aligned 4
                OpReturn
                OpFunctionEnd
 
@@ -387,7 +385,6 @@ func.def @scalar_mixed_rank2_i32(%input: buffer, %output: buffer, %base: offset,
          %16 = OpVariable %_ptr_StorageBuffer__struct_12 StorageBuffer
        %void = OpTypeVoid
          %18 = OpTypeFunction %void
-       %uint = OpTypeInt 32 0
    %ulong_32 = OpConstant %ulong 32
     %ulong_4 = OpConstant %ulong 4
 %_ptr_PhysicalStorageBuffer_int = OpTypePointer PhysicalStorageBuffer %int
@@ -403,22 +400,20 @@ func.def @scalar_mixed_rank2_i32(%input: buffer, %output: buffer, %base: offset,
 %row_bounded = OpLoad %int %26 Aligned 4
          %28 = OpAccessChain %_ptr_StorageBuffer_int %15 %int_0
 %column_bounded = OpLoad %int %28 Aligned 4
-         %31 = OpBitcast %uint %row_bounded
-         %32 = OpUConvert %ulong %31
-         %34 = OpIMul %ulong %32 %ulong_32
-         %35 = OpIAdd %ulong %base_aligned %34
-         %36 = OpBitcast %uint %column_bounded
-         %37 = OpUConvert %ulong %36
-         %39 = OpIMul %ulong %37 %ulong_4
-         %40 = OpIAdd %ulong %35 %39
-         %41 = OpIAdd %ulong %input_aligned %40
-         %43 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %41
-     %loaded = OpLoad %int %43 Aligned 4
-         %45 = OpIAdd %ulong %output_aligned %40
-         %46 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %45
-               OpStore %46 %loaded Aligned 4
-         %47 = OpAccessChain %_ptr_StorageBuffer_int %16 %int_0
-               OpStore %47 %loaded Aligned 4
+         %30 = OpSConvert %ulong %row_bounded
+         %32 = OpIMul %ulong %30 %ulong_32
+         %33 = OpIAdd %ulong %base_aligned %32
+         %34 = OpSConvert %ulong %column_bounded
+         %36 = OpIMul %ulong %34 %ulong_4
+         %37 = OpIAdd %ulong %33 %36
+         %38 = OpIAdd %ulong %input_aligned %37
+         %40 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %38
+     %loaded = OpLoad %int %40 Aligned 4
+         %42 = OpIAdd %ulong %output_aligned %37
+         %43 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %42
+               OpStore %43 %loaded Aligned 4
+         %44 = OpAccessChain %_ptr_StorageBuffer_int %16 %int_0
+               OpStore %44 %loaded Aligned 4
                OpReturn
                OpFunctionEnd
 
@@ -489,7 +484,6 @@ func.def @scalar_dynamic_stride_i32(%input: buffer, %output: buffer, %columns: i
          %16 = OpVariable %_ptr_StorageBuffer__struct_11 StorageBuffer
        %void = OpTypeVoid
          %18 = OpTypeFunction %void
-       %uint = OpTypeInt 32 0
     %ulong_4 = OpConstant %ulong 4
 %_ptr_PhysicalStorageBuffer_int = OpTypePointer PhysicalStorageBuffer %int
 %scalar_dynamic_stride_i32 = OpFunction %void None %18
@@ -504,24 +498,21 @@ func.def @scalar_dynamic_stride_i32(%input: buffer, %output: buffer, %columns: i
 %row_bounded = OpLoad %int %26 Aligned 4
          %28 = OpAccessChain %_ptr_StorageBuffer_int %15 %int_0
 %column_bounded = OpLoad %int %28 Aligned 4
-         %31 = OpBitcast %uint %row_bounded
-         %32 = OpUConvert %ulong %31
-         %33 = OpBitcast %uint %columns_bounded
-         %34 = OpUConvert %ulong %33
-         %35 = OpIMul %ulong %32 %34
-         %37 = OpIMul %ulong %35 %ulong_4
-         %38 = OpBitcast %uint %column_bounded
-         %39 = OpUConvert %ulong %38
-         %40 = OpIMul %ulong %39 %ulong_4
-         %41 = OpIAdd %ulong %37 %40
-         %42 = OpIAdd %ulong %input_aligned %41
-         %44 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %42
-     %loaded = OpLoad %int %44 Aligned 4
-         %46 = OpIAdd %ulong %output_aligned %41
-         %47 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %46
-               OpStore %47 %loaded Aligned 4
-         %48 = OpAccessChain %_ptr_StorageBuffer_int %16 %int_0
-               OpStore %48 %loaded Aligned 4
+         %30 = OpSConvert %ulong %row_bounded
+         %31 = OpSConvert %ulong %columns_bounded
+         %32 = OpIMul %ulong %30 %31
+         %34 = OpIMul %ulong %32 %ulong_4
+         %35 = OpSConvert %ulong %column_bounded
+         %36 = OpIMul %ulong %35 %ulong_4
+         %37 = OpIAdd %ulong %34 %36
+         %38 = OpIAdd %ulong %input_aligned %37
+         %40 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %38
+     %loaded = OpLoad %int %40 Aligned 4
+         %42 = OpIAdd %ulong %output_aligned %37
+         %43 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %42
+               OpStore %43 %loaded Aligned 4
+         %44 = OpAccessChain %_ptr_StorageBuffer_int %16 %int_0
+               OpStore %44 %loaded Aligned 4
                OpReturn
                OpFunctionEnd
 
@@ -590,7 +581,6 @@ func.def @scalar_subview_dynamic_index_i32(%input: buffer, %output: buffer, %bas
          %15 = OpVariable %_ptr_StorageBuffer__struct_12 StorageBuffer
        %void = OpTypeVoid
          %17 = OpTypeFunction %void
-       %uint = OpTypeInt 32 0
     %ulong_4 = OpConstant %ulong 4
 %_ptr_PhysicalStorageBuffer_int = OpTypePointer PhysicalStorageBuffer %int
 %scalar_subview_dynamic_index_i32 = OpFunction %void None %17
@@ -603,19 +593,18 @@ func.def @scalar_subview_dynamic_index_i32(%input: buffer, %output: buffer, %bas
 %base_aligned = OpLoad %ulong %23 Aligned 8
          %25 = OpAccessChain %_ptr_StorageBuffer_int %11 %int_0
 %element_bounded = OpLoad %int %25 Aligned 4
-         %28 = OpBitcast %uint %element_bounded
-         %29 = OpUConvert %ulong %28
-         %31 = OpIMul %ulong %29 %ulong_4
-         %32 = OpIAdd %ulong %base_aligned %31
-         %33 = OpIAdd %ulong %32 %ulong_4
-         %34 = OpIAdd %ulong %input_aligned %33
-         %36 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %34
-     %loaded = OpLoad %int %36 Aligned 4
-         %38 = OpIAdd %ulong %output_aligned %33
-         %39 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %38
-               OpStore %39 %loaded Aligned 4
-         %40 = OpAccessChain %_ptr_StorageBuffer_int %15 %int_0
-               OpStore %40 %loaded Aligned 4
+         %27 = OpSConvert %ulong %element_bounded
+         %29 = OpIMul %ulong %27 %ulong_4
+         %30 = OpIAdd %ulong %base_aligned %29
+         %31 = OpIAdd %ulong %30 %ulong_4
+         %32 = OpIAdd %ulong %input_aligned %31
+         %34 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %32
+     %loaded = OpLoad %int %34 Aligned 4
+         %36 = OpIAdd %ulong %output_aligned %31
+         %37 = OpConvertUToPtr %_ptr_PhysicalStorageBuffer_int %36
+               OpStore %37 %loaded Aligned 4
+         %38 = OpAccessChain %_ptr_StorageBuffer_int %15 %int_0
+               OpStore %38 %loaded Aligned 4
                OpReturn
                OpFunctionEnd
 

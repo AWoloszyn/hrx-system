@@ -50,24 +50,22 @@ func.def @subview_nested_dynamic(%input: buffer, %output: buffer, %base: offset,
 
 // ----
 low.func.def target<spirv.logical.core> abi(shader_entry_point) @subview_nested_dynamic(%input_aligned: reg<spirv.ptr.storage_buffer>, %output_aligned: reg<spirv.ptr.storage_buffer>, %origin: reg<spirv.offset64>, %row_bounded: reg<spirv.id : index>, %column_bounded: reg<spirv.id : index>) -> (reg<spirv.id : i32>) asm {
-  %26 = OpBitcast.i32.u32 %row_bounded
-  %27 = OpUConvert.u32.offset64 %26
-  %28 = OpConstant.offset64 32
-  %29 = OpIMul.offset64 %27, %28
-  %30 = OpIAdd.offset64 %origin, %29
-  %31 = OpBitcast.i32.u32 %column_bounded
-  %32 = OpUConvert.u32.offset64 %31
-  %33 = OpConstant.offset64 4
-  %34 = OpIMul.offset64 %32, %33
-  %35 = OpIAdd.offset64 %30, %34
-  %36 = OpConstant.offset64 76
-  %37 = OpIAdd.offset64 %35, %36
-  %38 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input_aligned, %37
-  %value = OpLoad.storage_buffer.i32 %38
-  %50 = OpConstant.offset64 68
-  %51 = OpIAdd.offset64 %35, %50
-  %52 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output_aligned, %51
-  OpStore.storage_buffer.i32 %52, %value
+  %26 = OpSConvert.i32.offset64 %row_bounded
+  %27 = OpConstant.offset64 32
+  %28 = OpIMul.offset64 %26, %27
+  %29 = OpIAdd.offset64 %origin, %28
+  %30 = OpSConvert.i32.offset64 %column_bounded
+  %31 = OpConstant.offset64 4
+  %32 = OpIMul.offset64 %30, %31
+  %33 = OpIAdd.offset64 %29, %32
+  %34 = OpConstant.offset64 76
+  %35 = OpIAdd.offset64 %33, %34
+  %36 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input_aligned, %35
+  %value = OpLoad.storage_buffer.i32 %36
+  %46 = OpConstant.offset64 68
+  %47 = OpIAdd.offset64 %33, %46
+  %48 = OpPtrAccessChain.storage_buffer.i32.byte_offset %output_aligned, %47
+  OpStore.storage_buffer.i32 %48, %value
   return %value
 }
 
@@ -281,17 +279,16 @@ func.def public @subview_composed_helpers(%input: buffer, %output: buffer, %widt
 
 // ----
 low.func.def public target<spirv.logical.core> abi(shader_entry_point) @subview_composed_helpers(%input_aligned: reg<spirv.ptr.storage_buffer>, %output_aligned: reg<spirv.ptr.storage_buffer>, %columns: reg<spirv.id : index>) asm {
-  %29 = OpBitcast.i32.u32 %columns
-  %30 = OpUConvert.u32.offset64 %29
-  %31 = OpConstant.offset64 4
-  %32 = OpIMul.offset64 %30, %31
-  %37 = OpIAdd.offset64 %32, %32
-  %38 = OpConstant.offset64 20
-  %39 = OpIAdd.offset64 %37, %38
-  %40 = OpPtrAccessChain.storage_buffer.f32.byte_offset %input_aligned, %39
-  %value = OpLoad.storage_buffer.f32 %40
-  %43 = OpPtrAccessChain.storage_buffer.f32.byte_offset %output_aligned, %31
-  OpStore.storage_buffer.f32 %43, %value
+  %29 = OpSConvert.i32.offset64 %columns
+  %30 = OpConstant.offset64 4
+  %31 = OpIMul.offset64 %29, %30
+  %35 = OpIAdd.offset64 %31, %31
+  %36 = OpConstant.offset64 20
+  %37 = OpIAdd.offset64 %35, %36
+  %38 = OpPtrAccessChain.storage_buffer.f32.byte_offset %input_aligned, %37
+  %value = OpLoad.storage_buffer.f32 %38
+  %41 = OpPtrAccessChain.storage_buffer.f32.byte_offset %output_aligned, %30
+  OpStore.storage_buffer.f32 %41, %value
   return
 }
 
@@ -319,22 +316,20 @@ func.def public @subview_composed_refined_nested(%input: buffer, %output: buffer
 
 // ----
 low.func.def public target<spirv.logical.core> abi(shader_entry_point) @subview_composed_refined_nested(%input_aligned: reg<spirv.ptr.storage_buffer>, %output_aligned: reg<spirv.ptr.storage_buffer>, %origin: reg<spirv.offset64>, %row_stride: reg<spirv.id : index>, %column_stride: reg<spirv.id : index>) asm {
-  %25 = OpBitcast.i32.u32 %row_stride
-  %26 = OpUConvert.u32.offset64 %25
-  %27 = OpConstant.offset64 8
-  %28 = OpIMul.offset64 %26, %27
-  %29 = OpIAdd.offset64 %origin, %28
-  %30 = OpBitcast.i32.u32 %column_stride
-  %31 = OpUConvert.u32.offset64 %30
-  %33 = OpIMul.offset64 %31, %27
-  %34 = OpIAdd.offset64 %29, %33
-  %37 = OpConstant.offset64 4
-  %38 = OpIMul.offset64 %26, %37
-  %39 = OpIAdd.offset64 %34, %38
-  %40 = OpPtrAccessChain.storage_buffer.f32.byte_offset %input_aligned, %39
-  %value = OpLoad.storage_buffer.f32 %40
-  %43 = OpPtrAccessChain.storage_buffer.f32.byte_offset %output_aligned, %37
-  OpStore.storage_buffer.f32 %43, %value
+  %25 = OpSConvert.i32.offset64 %row_stride
+  %26 = OpConstant.offset64 8
+  %27 = OpIMul.offset64 %25, %26
+  %28 = OpIAdd.offset64 %origin, %27
+  %29 = OpSConvert.i32.offset64 %column_stride
+  %31 = OpIMul.offset64 %29, %26
+  %32 = OpIAdd.offset64 %28, %31
+  %34 = OpConstant.offset64 4
+  %35 = OpIMul.offset64 %25, %34
+  %36 = OpIAdd.offset64 %32, %35
+  %37 = OpPtrAccessChain.storage_buffer.f32.byte_offset %input_aligned, %36
+  %value = OpLoad.storage_buffer.f32 %37
+  %40 = OpPtrAccessChain.storage_buffer.f32.byte_offset %output_aligned, %34
+  OpStore.storage_buffer.f32 %40, %value
   return
 }
 
@@ -373,24 +368,22 @@ func.def public @subview_composed_distinct_bindings(%input: buffer, %output: buf
 
 // ----
 low.func.def public target<spirv.logical.core> abi(shader_entry_point) @subview_composed_distinct_bindings(%input_aligned: reg<spirv.ptr.storage_buffer>, %output_aligned: reg<spirv.ptr.storage_buffer>, %first_columns: reg<spirv.id : index>, %second_columns: reg<spirv.id : index>) asm {
-  %43 = OpBitcast.i32.u32 %first_columns
-  %44 = OpUConvert.u32.offset64 %43
-  %45 = OpConstant.offset64 4
-  %46 = OpIMul.offset64 %44, %45
-  %51 = OpIAdd.offset64 %46, %46
-  %52 = OpConstant.offset64 20
-  %53 = OpIAdd.offset64 %51, %52
-  %54 = OpPtrAccessChain.storage_buffer.f32.byte_offset %input_aligned, %53
-  %value$55 = OpLoad.storage_buffer.f32 %54
-  %56 = OpBitcast.i32.u32 %second_columns
-  %57 = OpUConvert.u32.offset64 %56
-  %59 = OpIMul.offset64 %57, %45
-  %64 = OpIAdd.offset64 %59, %59
-  %66 = OpIAdd.offset64 %64, %52
-  %67 = OpPtrAccessChain.storage_buffer.f32.byte_offset %input_aligned, %66
-  %value$68 = OpLoad.storage_buffer.f32 %67
-  %value$69 = OpFSub.f32 %value$55, %value$68
-  %71 = OpPtrAccessChain.storage_buffer.f32.byte_offset %output_aligned, %45
-  OpStore.storage_buffer.f32 %71, %value$69
+  %43 = OpSConvert.i32.offset64 %first_columns
+  %44 = OpConstant.offset64 4
+  %45 = OpIMul.offset64 %43, %44
+  %49 = OpIAdd.offset64 %45, %45
+  %50 = OpConstant.offset64 20
+  %51 = OpIAdd.offset64 %49, %50
+  %52 = OpPtrAccessChain.storage_buffer.f32.byte_offset %input_aligned, %51
+  %value$53 = OpLoad.storage_buffer.f32 %52
+  %54 = OpSConvert.i32.offset64 %second_columns
+  %56 = OpIMul.offset64 %54, %44
+  %60 = OpIAdd.offset64 %56, %56
+  %62 = OpIAdd.offset64 %60, %50
+  %63 = OpPtrAccessChain.storage_buffer.f32.byte_offset %input_aligned, %62
+  %value$64 = OpLoad.storage_buffer.f32 %63
+  %value$65 = OpFSub.f32 %value$53, %value$64
+  %67 = OpPtrAccessChain.storage_buffer.f32.byte_offset %output_aligned, %44
+  OpStore.storage_buffer.f32 %67, %value$65
   return
 }

@@ -23,8 +23,10 @@ loom_check_test_suite(
         "memory_footprint_conditions.loom-test",
         "memory_footprint_induction.loom-test",
         "memory_to_scalar.loom-test",
+        "packed_memory_consumers.loom-test",
         "reduce_axes_to_scalar.loom-test",
         "sink_single_use_reads.loom-test",
         "to_scalar.loom-test",
     ],
+    data = ["//loom/src/loom/test/corpus/source_low:packed_memory_consumers.loom-test"],
 )

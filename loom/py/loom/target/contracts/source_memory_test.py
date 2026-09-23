@@ -11,6 +11,7 @@ import pytest
 from loom.dialect.vector import defs as vector
 from loom.target.contracts import (
     EmitDescriptorOp,
+    SourceMemoryAddressMaterializer,
     SourceMemoryByteOffsetMaterializer,
     SourceMemoryConstraint,
     SourceMemoryIntegerConversion,
@@ -23,8 +24,10 @@ from loom.target.test.descriptors import (
     TEST_LOW_CONST_I32_DESCRIPTOR,
     TEST_LOW_CORE_DESCRIPTOR_SET,
     TEST_LOW_LOAD_INDEX_V4I32_DESCRIPTOR,
+    TEST_LOW_LOAD_V4I32_DESCRIPTOR,
     TEST_LOW_MUL_I32_DESCRIPTOR,
     TEST_LOW_REMATERIALIZE_I32_DESCRIPTOR,
+    TEST_LOW_SELECT_I32_DESCRIPTOR,
 )
 
 
@@ -63,7 +66,7 @@ def test_integer_conversion_domains_are_unique_fixed_width_integers():
         "i8", TEST_LOW_REMATERIALIZE_I32_DESCRIPTOR
     )
     _validate((conversion,))
-    with pytest.raises(ValueError, match="duplicate byte-offset conversion"):
+    with pytest.raises(ValueError, match="duplicate address conversion"):
         _validate((conversion, conversion))
     for source_type in ("index", "offset", "f32", "i128"):
         with pytest.raises(ValueError, match="requires a fixed-width integer"):
@@ -120,3 +123,85 @@ def test_integer_conversion_selector_is_bound_and_range_checked():
                 (replace(conversion, immediate=("selector", value)),),
                 descriptors=descriptors,
             )
+
+
+def test_integer_conversion_features_fit_the_runtime_feature_word():
+    descriptor = replace(
+        TEST_LOW_REMATERIALIZE_I32_DESCRIPTOR,
+        key="test.convert.wide_features",
+        feature_mask_words=(0, 1),
+    )
+    descriptors = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        descriptors=(*TEST_LOW_CORE_DESCRIPTOR_SET.descriptors, descriptor),
+    )
+    with pytest.raises(ValueError, match="features must fit in one u64"):
+        _validate(
+            (SourceMemoryIntegerConversion("i8", descriptor),), descriptors=descriptors
+        )
+
+
+def test_predicate_conversion_selects_numeric_carrier_values():
+    conversion = SourceMemoryIntegerConversion("i1", TEST_LOW_SELECT_I32_DESCRIPTOR)
+    assert conversion.input_count == 3
+    _validate((conversion,))
+    with pytest.raises(ValueError, match="exactly 1 packet inputs"):
+        _validate((replace(conversion, source_type="i8"),))
+    descriptor = replace(
+        TEST_LOW_SELECT_I32_DESCRIPTOR,
+        key="test.select.wide_true",
+        operands=(
+            *TEST_LOW_SELECT_I32_DESCRIPTOR.operands[:2],
+            replace(TEST_LOW_SELECT_I32_DESCRIPTOR.operands[2], unit_count=2),
+            TEST_LOW_SELECT_I32_DESCRIPTOR.operands[3],
+        ),
+    )
+    descriptors = replace(
+        TEST_LOW_CORE_DESCRIPTOR_SET,
+        descriptors=(*TEST_LOW_CORE_DESCRIPTOR_SET.descriptors, descriptor),
+    )
+    with pytest.raises(ValueError, match="does not accept the materializer carrier"):
+        _validate(
+            (replace(conversion, descriptor=descriptor),), descriptors=descriptors
+        )
+
+
+def test_complete_address_validates_its_canonical_integer_conversions():
+    conversion = SourceMemoryIntegerConversion("i1", TEST_LOW_SELECT_I32_DESCRIPTOR)
+    materializer = SourceMemoryAddressMaterializer(
+        const_coordinate=TEST_LOW_CONST_I32_DESCRIPTOR,
+        add_coordinate=TEST_LOW_ADD_I32_DESCRIPTOR,
+        mul_coordinate=TEST_LOW_MUL_I32_DESCRIPTOR,
+        address=TEST_LOW_ADD_I32_DESCRIPTOR,
+        index_to_coordinate=TEST_LOW_REMATERIALIZE_I32_DESCRIPTOR,
+        const_coordinate_immediate="i32_value",
+        integer_conversions=(conversion,),
+    )
+    emit = EmitDescriptorOp(
+        descriptor=TEST_LOW_LOAD_V4I32_DESCRIPTOR,
+        operands={"address": ValueRef.source_memory_address()},
+        results={"dst": ValueRef.result("result")},
+        source_memory=SourceMemoryConstraint(
+            operation=SourceMemoryOperation.LOAD,
+            memory_spaces=("global",),
+            element_byte_count=4,
+            vector_lane_count=4,
+            vector_lane_byte_stride=4,
+            static_byte_offset=0,
+            dynamic_term_count=None,
+        ),
+        source_memory_address_materializer=materializer,
+    )
+    emit.validate(vector.vector_load, TEST_LOW_CORE_DESCRIPTOR_SET, set())
+    for conversions, message in (
+        ((conversion, conversion), "duplicate address conversion"),
+        ((replace(conversion, source_type="offset"),), "fixed-width integer"),
+        ((replace(conversion, source_type="i32"),), "exactly 1 packet inputs"),
+    ):
+        with pytest.raises(ValueError, match=message):
+            replace(
+                emit,
+                source_memory_address_materializer=replace(
+                    materializer, integer_conversions=conversions
+                ),
+            ).validate(vector.vector_load, TEST_LOW_CORE_DESCRIPTOR_SET, set())

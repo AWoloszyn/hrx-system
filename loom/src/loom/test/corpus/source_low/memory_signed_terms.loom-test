@@ -1,0 +1,154 @@
+func.def @signed_uniform_word(%input: i32, %table: buffer) -> (i32) {
+  %signed = scalar.assume %input [range(%input, -128, 127)] : i32
+  %bias = scalar.constant 128 : i32
+  %ordinal = scalar.addi %signed, %bias : i32
+  %position = index.cast %ordinal : i32 to index
+  %base = index.constant 0 : offset
+  %view = buffer.view %table[%base] : buffer -> view<256xi32>
+  %value = view.load %view[%position] : view<256xi32> -> i32
+  func.return %value : i32
+}
+
+// ====
+
+func.def @signed_varying_word(%input: buffer, %table: buffer) -> (i32) {
+  %source_origin = index.constant 0 : offset
+  %source = buffer.view %input[%source_origin] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %signed = scalar.assume %raw [range(%raw, -128, 127)] : i32
+  %bias = scalar.constant 128 : i32
+  %ordinal = scalar.addi %signed, %bias : i32
+  %position = index.cast %ordinal : i32 to index
+  %base = index.constant 0 : offset
+  %view = buffer.view %table[%base] : buffer -> view<256xi32>
+  %value = view.load %view[%position] : view<256xi32> -> i32
+  func.return %value : i32
+}
+
+// ====
+
+func.def @signed_varying_byte(%input: buffer, %table: buffer) -> (i8) {
+  %source_origin = index.constant 0 : offset
+  %source = buffer.view %input[%source_origin] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %signed = scalar.assume %raw [range(%raw, -128, 127)] : i32
+  %position = index.cast %signed : i32 to index
+  %base = index.constant 128 : offset
+  %view = buffer.view %table[%base] : buffer -> view<256xi8>
+  %bias = index.constant 128 : index
+  %ordinal = index.add %position, %bias : index
+  %value = view.load %view[%ordinal] : view<256xi8> -> i8
+  func.return %value : i8
+}
+
+// ====
+
+func.def @signed_irregular_stride(%input: buffer, %table: buffer) -> (i32) {
+  %source_origin = index.constant 0 : offset
+  %source = buffer.view %input[%source_origin] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %signed = scalar.assume %raw [range(%raw, -128, 127)] : i32
+  %position = index.cast %signed : i32 to index
+  %bias = index.constant 128 : index
+  %ordinal = index.add %position, %bias : index
+  %base = index.constant 0 : offset
+  %layout = encoding.layout.strided [3] : encoding<layout>
+  %view = buffer.view %table[%base] : buffer -> view<256xi32, %layout>
+  %value = view.load %view[%ordinal] : view<256xi32, %layout> -> i32
+  func.return %value : i32
+}
+
+// ====
+
+func.def @signed_high_bit_stride(%input: buffer, %table: buffer) -> (i8) {
+  %source_origin = index.constant 0 : offset
+  %source = buffer.view %input[%source_origin] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %signed = scalar.assume %raw [range(%raw, -1, 1)] : i32
+  %coordinate = index.cast %signed : i32 to index
+  %bias = index.constant 1 : index
+  %position = index.add %coordinate, %bias : index
+  %base = index.constant 0 : offset
+  %layout = encoding.layout.strided [2147483649] : encoding<layout>
+  %view = buffer.view %table[%base] : buffer -> view<3xi8, %layout>
+  %value = view.load %view[%position] : view<3xi8, %layout> -> i8
+  func.return %value : i8
+}
+
+// ====
+
+func.def @signed_wide_stride(%input: buffer, %table: buffer) -> (i32) {
+  %source_origin = index.constant 0 : offset
+  %source = buffer.view %input[%source_origin] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %signed = scalar.assume %raw [range(%raw, -1, 1)] : i32
+  %coordinate = index.cast %signed : i32 to index
+  %bias = index.constant 1 : index
+  %position = index.add %coordinate, %bias : index
+  %base = index.constant 0 : offset
+  %layout = encoding.layout.strided [1073741825] : encoding<layout>
+  %view = buffer.view %table[%base] : buffer -> view<3xi32, %layout>
+  %value = view.load %view[%position] : view<3xi32, %layout> -> i32
+  func.return %value : i32
+}
+
+// ====
+
+func.def @signed_dynamic_stride(%input: buffer, %bias0: index, %stride0: index, %table: buffer) -> (i32) {
+  %source_origin = index.constant 0 : offset
+  %source = buffer.view %input[%source_origin] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %signed = scalar.assume %raw [range(%raw, -128, 127)] : i32
+  %coordinate = index.cast %signed : i32 to index
+  %bias = index.assume %bias0 [range(%bias0, 128, 256)] : index
+  %stride = index.assume %stride0 [range(%stride0, 1, 16)] : index
+  %position = index.add %coordinate, %bias : index
+  %base = index.constant 0 : offset
+  %layout = encoding.layout.strided [%stride] : encoding<layout>
+  %view = buffer.view %table[%base] : buffer -> view<512xi32, %layout>
+  %value = view.load %view[%position] : view<512xi32, %layout> -> i32
+  func.return %value : i32
+}
+
+// ====
+
+func.def @unsigned_high_bit_offset(%input: buffer, %table: buffer) -> (i8) {
+  %source_origin = index.constant 0 : offset
+  %source = buffer.view %input[%source_origin] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %origin = index.cast %raw : i32 to offset
+  %view = buffer.view %table[%origin] : buffer -> view<1xi8>
+  %value = view.load %view[0] : view<1xi8> -> i8
+  func.return %value : i8
+}
+
+// ====
+
+func.def @signed_dynamic_wide_stride(%input: buffer, %bias0: index, %stride0: index, %table: buffer) -> (i32) {
+  %source_origin = index.constant 0 : offset
+  %source = buffer.view %input[%source_origin] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %signed = scalar.assume %raw [range(%raw, -128, 127)] : i32
+  %coordinate = index.cast %signed : i32 to index
+  %bias = index.assume %bias0 [range(%bias0, 128, 256)] : index
+  %stride = index.assume %stride0 [range(%stride0, 1073741824, 2147483647)] : index
+  %position = index.add %coordinate, %bias : index
+  %base = index.constant 0 : offset
+  %layout = encoding.layout.strided [%stride] : encoding<layout>
+  %view = buffer.view %table[%base] : buffer -> view<512xi32, %layout>
+  %value = view.load %view[%position] : view<512xi32, %layout> -> i32
+  func.return %value : i32
+}
+
+// ====
+
+func.def @signed_wide_source(%input: i64, %table: buffer) -> (i32) {
+  %signed = scalar.assume %input [range(%input, -128, 127)] : i64
+  %bias = scalar.constant 128 : i64
+  %ordinal = scalar.addi %signed, %bias : i64
+  %position = index.cast %ordinal : i64 to index
+  %base = index.constant 0 : offset
+  %view = buffer.view %table[%base] : buffer -> view<256xi32>
+  %value = view.load %view[%position] : view<256xi32> -> i32
+  func.return %value : i32
+}

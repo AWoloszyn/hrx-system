@@ -1,0 +1,132 @@
+// TEMPLATE: loom/src/loom/test/corpus/source_low/numeric_narrow_address.loom-test
+// RUN: emit source-low target=spirv:vulkan1.3+bda+extended-types output=low control-flow=structured-low
+
+func.def @signed_narrow_coordinates(%byte: i8, %halfword: i16) -> (index, index) {
+  %byte_coordinate = index.cast %byte : i8 to index
+  %halfword_coordinate = index.cast %halfword : i16 to index
+  func.return %byte_coordinate, %halfword_coordinate : index, index
+}
+
+// ----
+low.func.def target<spirv.logical.core> abi(shader_entry_point) @signed_narrow_coordinates(%byte: reg<spirv.id : i8>, %halfword: reg<spirv.id : i16>) -> (reg<spirv.id : index>, reg<spirv.id : index>) asm {
+  %byte_coordinate = OpSConvert.i8.i32 %byte : reg<spirv.id : index>
+  %halfword_coordinate = OpSConvert.i16.i32 %halfword : reg<spirv.id : index>
+  return %byte_coordinate, %halfword_coordinate
+}
+
+// ====
+
+func.def @unsigned_narrow_offsets(%byte: i8, %halfword: i16) -> (offset, offset) {
+  %byte_offset = index.cast %byte : i8 to offset
+  %halfword_offset = index.cast %halfword : i16 to offset
+  func.return %byte_offset, %halfword_offset : offset, offset
+}
+
+// ----
+low.func.def target<spirv.logical.core> abi(shader_entry_point) @unsigned_narrow_offsets(%byte: reg<spirv.id : i8>, %halfword: reg<spirv.id : i16>) -> (reg<spirv.offset64>, reg<spirv.offset64>) asm {
+  %10 = OpBitcast.i8.u8 %byte
+  %byte_offset = OpUConvert.u8.offset64 %10
+  %12 = OpBitcast.i16.u16 %halfword
+  %halfword_offset = OpUConvert.u16.offset64 %12
+  return %byte_offset, %halfword_offset
+}
+
+// ====
+
+func.def @narrow_coordinate_payloads(%coordinate: index) -> (i8, i16, i1) {
+  %byte = index.cast %coordinate : index to i8
+  %halfword = index.cast %coordinate : index to i16
+  %low_bit = index.cast %coordinate : index to i1
+  func.return %byte, %halfword, %low_bit : i8, i16, i1
+}
+
+// ----
+low.func.def target<spirv.logical.core> abi(shader_entry_point) @narrow_coordinate_payloads(%coordinate: reg<spirv.id : index>) -> (reg<spirv.id : i8>, reg<spirv.id : i16>, reg<spirv.id : i1>) asm {
+  %byte = OpSConvert.i32.i8 %coordinate
+  %halfword = OpSConvert.i32.i16 %coordinate
+  %13 = OpConstant.i32 1 : reg<spirv.id : index>
+  %14 = OpBitwiseAnd %coordinate, %13
+  %15 = OpConstant.i32 0 : reg<spirv.id : index>
+  %low_bit = OpINotEqual %14, %15
+  return %byte, %halfword, %low_bit
+}
+
+// ====
+
+func.def @narrow_offset_payloads(%byte_offset: offset) -> (i8, i16, i1) {
+  %byte = index.cast %byte_offset : offset to i8
+  %halfword = index.cast %byte_offset : offset to i16
+  %low_bit = index.cast %byte_offset : offset to i1
+  func.return %byte, %halfword, %low_bit : i8, i16, i1
+}
+
+// ----
+low.func.def target<spirv.logical.core> abi(shader_entry_point) @narrow_offset_payloads(%byte_offset: reg<spirv.offset64>) -> (reg<spirv.id : i8>, reg<spirv.id : i16>, reg<spirv.id : i1>) asm {
+  %11 = OpUConvert.offset64.u8 %byte_offset
+  %byte = OpBitcast.u8.i8 %11
+  %13 = OpUConvert.offset64.u16 %byte_offset
+  %halfword = OpBitcast.u16.i16 %13
+  %15 = OpUConvert.offset64.u32 %byte_offset
+  %16 = OpBitcast.u32.i32 %15
+  %17 = OpConstant.i32 1 : reg<spirv.id : index>
+  %18 = OpBitwiseAnd %16, %17
+  %19 = OpConstant.i32 0 : reg<spirv.id : index>
+  %low_bit = OpINotEqual %18, %19
+  return %byte, %halfword, %low_bit
+}
+
+// ====
+
+func.def @uniform_predicate_casts(%input: i32) -> (index, offset) {
+  %sign_boundary = scalar.constant 0 : i32
+  %negative = scalar.cmpi slt, %input, %sign_boundary : i32
+  %coordinate = index.cast %negative : i1 to index
+  %byte_offset = index.cast %negative : i1 to offset
+  func.return %coordinate, %byte_offset : index, offset
+}
+
+// ----
+low.func.def target<spirv.logical.core> abi(shader_entry_point) @uniform_predicate_casts(%input: reg<spirv.id : i32>) -> (reg<spirv.id : index>, reg<spirv.offset64>) asm {
+  %sign_boundary = OpConstant.i32 0
+  %negative = OpSLessThan %input, %sign_boundary
+  %12 = OpConstant.i32 1 : reg<spirv.id : index>
+  %13 = OpConstant.i32 0 : reg<spirv.id : index>
+  %coordinate = OpSelect %negative, %12, %13 : reg<spirv.id : index>
+  %15 = OpConstant.offset64 1
+  %16 = OpConstant.offset64 0
+  %byte_offset = OpSelect.offset64 %negative, %15, %16
+  return %coordinate, %byte_offset
+}
+
+// ====
+
+func.def @varying_predicate_casts(%input: buffer) -> (index, offset, i1) {
+  %base = index.constant 0 : offset
+  %source = buffer.view %input[%base] : buffer -> view<1xi32>
+  %raw = view.load %source[0] : view<1xi32> -> i32
+  %sign_boundary = scalar.constant 0 : i32
+  %negative = scalar.cmpi slt, %raw, %sign_boundary : i32
+  %coordinate = index.cast %negative : i1 to index
+  %byte_offset = index.cast %negative : i1 to offset
+  %raw_coordinate = index.cast %raw : i32 to index
+  %low_bit = index.cast %raw_coordinate : index to i1
+  func.return %coordinate, %byte_offset, %low_bit : index, offset, i1
+}
+
+// ----
+low.func.def target<spirv.logical.core> abi(shader_entry_point) @varying_predicate_casts(%input: reg<spirv.ptr.storage_buffer>) -> (reg<spirv.id : index>, reg<spirv.offset64>, reg<spirv.id : i1>) asm {
+  %17 = OpConstant.offset64 0
+  %18 = OpPtrAccessChain.storage_buffer.i32.byte_offset %input, %17
+  %raw = OpLoad.storage_buffer.i32 %18
+  %sign_boundary = OpConstant.i32 0
+  %negative = OpSLessThan %raw, %sign_boundary
+  %22 = OpConstant.i32 1 : reg<spirv.id : index>
+  %23 = OpConstant.i32 0 : reg<spirv.id : index>
+  %coordinate = OpSelect %negative, %22, %23 : reg<spirv.id : index>
+  %25 = OpConstant.offset64 1
+  %byte_offset = OpSelect.offset64 %negative, %25, %17
+  %raw_coordinate = OpCopyObject.i32 %raw : reg<spirv.id : index>
+  %30 = OpBitwiseAnd %raw_coordinate, %22
+  %low_bit = OpINotEqual %30, %23
+  return %coordinate, %byte_offset, %low_bit
+}

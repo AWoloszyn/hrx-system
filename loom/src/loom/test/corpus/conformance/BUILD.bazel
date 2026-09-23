@@ -47,6 +47,17 @@ loom_test(
 )
 
 loom_test(
+    name = "memory_integer_terms_test",
+    srcs = ["memory_integer_terms.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/spirv:vulkan1.3+bda+extended-types",
+    ],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+)
+
+loom_test(
     name = "natural_alignment_test",
     srcs = ["natural_alignment.loom"],
     compile_targets = [
@@ -58,8 +69,30 @@ loom_test(
 )
 
 loom_test(
+    name = "numeric_narrow_address_test",
+    srcs = ["numeric_narrow_address.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/spirv:vulkan1.3+bda+extended-types",
+    ],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+)
+
+loom_test(
     name = "loop_termination_test",
     srcs = ["loop_termination.loom"],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+)
+
+loom_test(
+    name = "packed_memory_consumers_test",
+    srcs = ["packed_memory_consumers.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/spirv:vulkan1.3+bda+extended-types",
+    ],
     execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
 )
 
@@ -71,6 +104,17 @@ loom_test(
         "//loom/target/amdgpu:gfx1151",
         "//loom/target/amdgpu:gfx1250",
         "//loom/target/spirv:vulkan1.3+bda",
+    ],
+    execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
+)
+
+loom_test(
+    name = "signed_address_terms_test",
+    srcs = ["signed_address_terms.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx1151",
+        "//loom/target/spirv:vulkan1.3+bda+extended-types",
     ],
     execution_profiles = GPU_HARDWARE_PROFILES + [AMDGPU_ACCESS_PROFILE],
 )

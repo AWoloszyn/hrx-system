@@ -226,8 +226,8 @@ static bool loom_amdgpu_memory_access_has_contiguous_vector_lanes(
 }
 
 // Canonical address expressions can retain integer payloads after a
-// value-preserving address cast. Both payload widths are materializable;
-// the selected address form owns any narrowing proof.
+// value-preserving address cast. Narrow payloads already use signed words;
+// predicates project to zero/one. The address form owns any narrowing proof.
 static bool loom_amdgpu_memory_dynamic_index_can_materialize_vaddr(
     const loom_module_t* module, loom_value_id_t value_id) {
   if (value_id >= module->values.count) {
@@ -235,19 +235,20 @@ static bool loom_amdgpu_memory_dynamic_index_can_materialize_vaddr(
   }
   const loom_type_t type = loom_module_value_type(module, value_id);
   return loom_amdgpu_type_is_address_scalar(type) ||
-         loom_amdgpu_type_is_i32(type) || loom_amdgpu_type_is_i64(type);
+         (loom_type_is_scalar(type) &&
+          loom_scalar_type_is_integer(loom_type_element_type(type)));
 }
 
 static bool loom_amdgpu_memory_dynamic_index_can_materialize_soffset(
     const loom_module_t* module, const loom_value_fact_table_t* fact_table,
     const loom_view_region_table_t* view_regions,
     loom_amdgpu_source_value_analysis_t* analysis, loom_value_id_t value_id) {
-  if (value_id >= module->values.count) {
+  if (!loom_amdgpu_memory_dynamic_index_can_materialize_vaddr(module,
+                                                              value_id)) {
     return false;
   }
-  const loom_type_t type = loom_module_value_type(module, value_id);
-  return (loom_amdgpu_type_is_address_scalar(type) ||
-          loom_amdgpu_type_is_i32(type) || loom_amdgpu_type_is_i64(type)) &&
+  return !loom_amdgpu_analyzed_source_value_is_native_i1_mask(
+             module, fact_table, view_regions, analysis, value_id) &&
          !loom_amdgpu_analyzed_source_value_prefers_vgpr(
              module, fact_table, view_regions, analysis, value_id);
 }
@@ -283,17 +284,9 @@ static bool loom_amdgpu_memory_dynamic_term_can_materialize_soffset(
     const loom_view_region_table_t* view_regions,
     loom_amdgpu_source_value_analysis_t* analysis,
     const loom_low_source_memory_dynamic_term_t* term) {
-  if (term->index >= module->values.count) {
-    return false;
-  }
-  const loom_type_t type = loom_module_value_type(module, term->index);
-  if (!loom_amdgpu_type_is_address_scalar(type) &&
-      !loom_amdgpu_type_is_i32(type) && !loom_amdgpu_type_is_i64(type)) {
-    return false;
-  }
   if (term->source !=
           LOOM_LOW_SOURCE_MEMORY_DYNAMIC_INDEX_SOURCE_WORKGROUP_ID &&
-      loom_amdgpu_analyzed_source_value_prefers_vgpr(
+      !loom_amdgpu_memory_dynamic_index_can_materialize_soffset(
           module, fact_table, view_regions, analysis, term->index)) {
     return false;
   }

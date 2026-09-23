@@ -10,10 +10,11 @@ func.def @offset_scale_unbounded(%element: index) -> (offset) {
 // ----
 low.func.def target<amdgpu.cdna4.core> abi(hal_kernel) @offset_scale_unbounded(%element: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr x2>) asm {
   %stride = s_mov_b32 4
-  %7 = s_mov_b32 0
+  %7 = s_ashr_i32_rhs_inline %element, 31
+  %9 = s_mov_b32 0
   %15 = s_mul_i32 %element, %stride
   %16 = s_mul_hi_u32 %element, %stride
-  %17 = s_mul_i32 %element, %7
+  %17 = s_mul_i32 %element, %9
   %18 = s_mul_i32 %7, %stride
   %19 = s_add_u32 %16, %17
   %20 = s_add_u32 %19, %18
@@ -59,10 +60,11 @@ func.def @offset_scale_large_stride(%element: index) -> (offset) {
 low.func.def target<amdgpu.cdna4.core> abi(hal_kernel) @offset_scale_large_stride(%element: reg<amdgpu.sgpr>) -> (reg<amdgpu.sgpr x2>) asm {
   %6 = s_mov_b32 0
   %7 = s_mov_b32 1
+  %9 = s_ashr_i32_rhs_inline %element, 31
   %15 = s_mul_i32 %element, %6
   %16 = s_mul_hi_u32 %element, %6
   %17 = s_mul_i32 %element, %7
-  %18 = s_mul_i32 %6, %6
+  %18 = s_mul_i32 %9, %6
   %19 = s_add_u32 %16, %17
   %20 = s_add_u32 %19, %18
   %bytes = concat(%15, %20) : (reg<amdgpu.sgpr>, reg<amdgpu.sgpr>) -> reg<amdgpu.sgpr x2>
@@ -78,7 +80,7 @@ func.def @offset_scale_dynamic_stride(%element: index, %stride: offset) -> (offs
 
 // ----
 low.func.def target<amdgpu.cdna4.core> abi(hal_kernel) @offset_scale_dynamic_stride(%element: reg<amdgpu.sgpr>, %stride: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.sgpr x2>) asm {
-  %7 = s_mov_b32 0
+  %7 = s_ashr_i32_rhs_inline %element, 31
   %11 = slice %stride[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %12 = slice %stride[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
   %13 = s_mul_i32 %element, %11

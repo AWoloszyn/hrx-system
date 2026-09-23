@@ -328,12 +328,12 @@ func.def @overlapping_vector_copy(%buffer: buffer) -> (vector<3xf16>) {
   %base = index.constant 0 : offset
   %aligned = buffer.assume.alignment %buffer {minimum_alignment = 2} : buffer
   %view = buffer.view %aligned[%base] : buffer -> view<4xf16>
-  %12 = view.load %view[0] : view<4xf16> -> f16
-  %13 = view.load %view[1] : view<4xf16> -> f16
-  %14 = view.load %view[2] : view<4xf16> -> f16
-  %value = vector.from_elements %12, %13, %14 : vector<3xf16>
-  view.store %12, %view[1] : f16, view<4xf16>
-  view.store %13, %view[2] : f16, view<4xf16>
-  view.store %14, %view[3] : f16, view<4xf16>
+  %9 = view.load %view[0] : view<4xf16> -> f16
+  %10 = view.load %view[1] : view<4xf16> -> f16
+  %11 = view.load %view[2] : view<4xf16> -> f16
+  %value = vector.from_elements %9, %10, %11 : vector<3xf16>
+  view.store %9, %view[1] : f16, view<4xf16>
+  view.store %10, %view[2] : f16, view<4xf16>
+  view.store %11, %view[3] : f16, view<4xf16>
   func.return %value : vector<3xf16>
 }

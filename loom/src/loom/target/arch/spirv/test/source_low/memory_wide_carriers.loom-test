@@ -184,14 +184,13 @@ low.func.def target<spirv.logical.core> abi(shader_entry_point) @exchange_wide_o
   %base = OpBitcast.i64.offset64 %wide_base
   %prefix = OpConstant.offset64 16
   %origin = OpIAdd.offset64 %base, %prefix
-  %21 = OpBitcast.i32.u32 %position
-  %22 = OpUConvert.u32.offset64 %21
-  %23 = OpConstant.offset64 4
-  %24 = OpIMul.offset64 %22, %23
-  %25 = OpIAdd.offset64 %origin, %24
-  %26 = OpPtrAccessChain.storage_buffer.i32.byte_offset %aligned_buffer, %25
-  %previous = OpLoad.storage_buffer.i32 %26
-  OpStore.storage_buffer.i32 %26, %value
+  %21 = OpSConvert.i32.offset64 %position
+  %22 = OpConstant.offset64 4
+  %23 = OpIMul.offset64 %21, %22
+  %24 = OpIAdd.offset64 %origin, %23
+  %25 = OpPtrAccessChain.storage_buffer.i32.byte_offset %aligned_buffer, %24
+  %previous = OpLoad.storage_buffer.i32 %25
+  OpStore.storage_buffer.i32 %25, %value
   return %previous
 }
 
@@ -207,9 +206,23 @@ func.def @exchange_signed_coordinate(%buffer: buffer, %base_input: offset, %posi
   %prefix = index.constant 16 : offset
   %origin = index.add %base, %prefix : offset
   %view = buffer.view %aligned_buffer[%origin] : buffer -> view<8xi32>
-  // ERROR@+1: SPIRV/028 {constraint_key="source_memory.address_index_non_negative_s32"}
   %previous = view.load %view[%position] : view<8xi32> -> i32
-  // ERROR@+1: SPIRV/028 {constraint_key="source_memory.address_index_non_negative_s32"}
   view.store %value, %view[%position] : i32, view<8xi32>
   func.return %previous : i32
+}
+
+// ----
+low.func.def target<spirv.logical.core> abi(shader_entry_point) @exchange_signed_coordinate(%aligned_buffer: reg<spirv.ptr.storage_buffer>, %base: reg<spirv.offset64>, %signed_position: reg<spirv.id : i32>, %value: reg<spirv.id : i32>) -> (reg<spirv.id : i32>) asm {
+  %prefix = OpConstant.offset64 16
+  %origin = OpIAdd.offset64 %base, %prefix
+  %22 = OpSConvert.i32.offset64 %signed_position
+  %23 = OpConstant.offset64 4
+  %24 = OpIMul.offset64 %22, %23
+  %25 = OpIAdd.offset64 %origin, %24
+  %26 = OpConstant.offset64 32
+  %27 = OpIAdd.offset64 %25, %26
+  %28 = OpPtrAccessChain.storage_buffer.i32.byte_offset %aligned_buffer, %27
+  %previous = OpLoad.storage_buffer.i32 %28
+  OpStore.storage_buffer.i32 %28, %value
+  return %previous
 }

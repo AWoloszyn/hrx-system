@@ -18,8 +18,10 @@ extern "C" {
 #endif
 
 // Materializes an address operand in a two-unit carrier of |register_class_id|
-// (SGPR or VGPR). One-unit inputs are zero-extended; two-unit inputs retain
-// both words. Scalar materialization requires a uniform source operand.
+// (SGPR or VGPR), preserving the source numeric value. A one-unit signed
+// source is sign-extended unless retained facts prove it nonnegative; offsets
+// are unsigned. Two-unit inputs retain both words. Scalar materialization
+// requires a uniform source operand.
 iree_status_t loom_amdgpu_lookup_or_materialize_address_i64_operand(
     loom_low_lower_context_t* context, const loom_op_t* source_op,
     loom_value_id_t source_value, uint32_t register_class_id,

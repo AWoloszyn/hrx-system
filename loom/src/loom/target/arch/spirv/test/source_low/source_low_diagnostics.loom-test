@@ -255,7 +255,7 @@ func.def target(@target) @storage_buffer_i32_rejects_wide_index(%input: buffer, 
   %element = index.assume %element0 [range(%element0, 0, 2147483648)] : index
   %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
   %input_view = buffer.view %input_aligned[%input_base] : buffer -> view<2147483649xi32>
-  // ERROR@+1: SPIRV/028 {required_range_lo="0", required_range_hi="2147483647", constraint_key="source_memory.address_index_non_negative_s32"}
+  // ERROR@+1: SPIRV/028 {required_range_lo="-2147483648", required_range_hi="2147483647", constraint_key="source_memory.address_numeric_carriers"}
   %loaded = view.load %input_view[%element] : view<2147483649xi32> -> i32
   func.return %loaded : i32
 }
@@ -270,7 +270,7 @@ func.def target(@target) @storage_buffer_i32_rejects_wide_dynamic_stride(%input:
   %row = index.assume %row0 [range(%row0, 0, 3)] : index
   %input_aligned = buffer.assume.alignment %input {minimum_alignment = 4} : buffer
   %input_view = buffer.view %input_aligned[%input_base] : buffer -> view<4x[%columns]xi32>
-  // ERROR@+1: SPIRV/028 {required_range_lo="0", required_range_hi="2147483647", constraint_key="source_memory.address_index_non_negative_s32"}
+  // ERROR@+1: SPIRV/028 {required_range_lo="-2147483648", required_range_hi="2147483647", constraint_key="source_memory.address_numeric_carriers"}
   %loaded = view.load %input_view[%row, 0] : view<4x[%columns]xi32> -> i32
   func.return %loaded : i32
 }
@@ -335,6 +335,22 @@ func.def target(@target) @int8_operation_requires_target_feature(%lhs: i8, %rhs:
   // ERROR@+1: TARGET/003 {subject_role="descriptor", subject_name="spirv.op_s_convert.i32.i8", constraint_key="descriptor_available"}
   %result = scalar.andi %lhs, %rhs : i8
   func.return %result : i8
+}
+
+// ====
+
+spirv.target<vulkan1_3> @target
+
+func.def target(@target) @int8_address_term_requires_target_feature(%input: i8, %table: buffer) -> (i32) {
+  // ERROR@+1: TARGET/003 {subject_role="descriptor", subject_name="spirv.op_s_convert.i8.i32", constraint_key="descriptor_available"}
+  %coordinate = index.cast %input : i8 to index
+  %bias = index.constant 128 : index
+  %position = index.add %coordinate, %bias : index
+  %base = index.constant 0 : offset
+  %view = buffer.view %table[%base] : buffer -> view<256xi32>
+  // ERROR@+1: SPIRV/028 {constraint_key="source_memory.address_numeric_carriers"}
+  %loaded = view.load %view[%position] : view<256xi32> -> i32
+  func.return %loaded : i32
 }
 
 // ====

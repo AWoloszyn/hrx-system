@@ -475,20 +475,25 @@ typedef uint16_t loom_low_lower_source_memory_flags_t;
 // Accept any advisory source cache policy.
 #define LOOM_LOW_LOWER_SOURCE_MEMORY_FLAG_CACHE_POLICY_ANY ((uint16_t)1u << 3)
 
-// Converts a fixed-width canonical integer term to the byte arithmetic carrier.
+// Converts a fixed-width canonical integer term to the address carrier.
 // Symbolic analysis preserves signed numeric values (zero/one for i1), even
 // when the term originated in an unsigned offset cast. Narrowing is modular;
 // source-memory matching owns the complete-address representability proof.
 typedef struct loom_low_lower_source_memory_integer_conversion_t {
+  // Target features required when this source domain is materialized.
+  uint64_t required_features;
   // Literal selector for a descriptor with an explicit conversion immediate.
   int64_t immediate_value;
   // Selector name, or LOOM_STRING_REF_NONE for no selector.
   loom_string_ref_t immediate_string_ref;
-  // Unary conversion, or NONE for compatible carriers with low-unit projection.
+  // Numeric conversion, or NONE for compatible carriers with low-unit
+  // projection.
   loom_low_lower_descriptor_ref_t descriptor_ref;
+  // One for unary conversion; three for i1 select(predicate, one, zero).
+  uint8_t input_count;
 } loom_low_lower_source_memory_integer_conversion_t;
-static_assert(sizeof(loom_low_lower_source_memory_integer_conversion_t) == 16,
-              "source-memory integer conversion must be 16 bytes");
+static_assert(sizeof(loom_low_lower_source_memory_integer_conversion_t) == 24,
+              "source-memory integer conversion must be 24 bytes");
 
 // Materializes canonical byte-offset arithmetic in the constant descriptor's
 // integer carrier. All arithmetic descriptors use that same carrier; source
@@ -513,8 +518,8 @@ typedef struct loom_low_lower_source_memory_byte_offset_materializer_t {
       integer_conversions[LOOM_SCALAR_TYPE_I64 - LOOM_SCALAR_TYPE_I1 + 1];
 } loom_low_lower_source_memory_byte_offset_materializer_t;
 static_assert(sizeof(loom_low_lower_source_memory_byte_offset_materializer_t) ==
-                  96,
-              "source-memory byte-offset materializer must be 96 bytes");
+                  136,
+              "source-memory byte-offset materializer must be 136 bytes");
 
 typedef struct loom_low_lower_source_memory_address_materializer_t {
   // Minimum accepted complete address coordinate.
@@ -533,9 +538,7 @@ typedef struct loom_low_lower_source_memory_address_materializer_t {
   loom_low_lower_descriptor_ref_t mul_coordinate_descriptor_ref;
   // Descriptor ref used to shift complete address coordinate values.
   loom_low_lower_descriptor_ref_t shl_coordinate_descriptor_ref;
-  // Descriptor ref used to normalize an index before converting its carrier.
-  loom_low_lower_descriptor_ref_t index_to_coordinate_input_descriptor_ref;
-  // Descriptor ref used to convert a semantic index to the coordinate carrier.
+  // Numeric signed-index conversion to the coordinate carrier.
   loom_low_lower_descriptor_ref_t index_to_coordinate_descriptor_ref;
   // Descriptor ref used to materialize the final target address.
   loom_low_lower_descriptor_ref_t address_descriptor_ref;
@@ -543,9 +546,14 @@ typedef struct loom_low_lower_source_memory_address_materializer_t {
   uint8_t base_kind;
   // Semantic source type carried by materialized address coordinates.
   uint8_t coordinate_type;
+  // Required fixed-integer conversions, indexed by kind minus I1. Unlike byte
+  // offsets, complete addresses reject domains without a declared conversion.
+  loom_low_lower_source_memory_integer_conversion_t
+      integer_conversions[LOOM_SCALAR_TYPE_I64 - LOOM_SCALAR_TYPE_I1 + 1];
 } loom_low_lower_source_memory_address_materializer_t;
-static_assert(sizeof(loom_low_lower_source_memory_address_materializer_t) == 40,
-              "source-memory address materializer must be 40 bytes");
+static_assert(sizeof(loom_low_lower_source_memory_address_materializer_t) ==
+                  160,
+              "source-memory address materializer must be 160 bytes");
 
 #define LOOM_LOW_LOWER_SOURCE_MEMORY_MATERIALIZER_NONE ((uint8_t)0)
 

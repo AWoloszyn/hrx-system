@@ -60,54 +60,54 @@ func.def @f32_reduce_add(%input: buffer, %output: buffer) {
 low.func.def target<amd.xdna.aie2p.core> abi(object_function) @f32_reduce_add() asm {
   %input_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
   %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
+  %35 = lda %input_view, 0
+  %36 = lda %input_view, 4
+  %37 = lda %input_view, 8
+  %38 = lda %input_view, 12
   %init = mov.i32 0
-  %21 = lda %input_view, 0
-  %22 = vbcst.32 %init
-  %23 = vbcst.32 %21
-  %24 = acc.clear.f32x64
-  %25 = slice %24[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
-  %26 = vmov.vector512.to.accumulator512 %22
-  %27 = concat(%26, %25, %25, %25) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %28 = vmov.vector512.to.accumulator512 %23
-  %29 = concat(%28, %25, %25, %25) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %30 = mova.i32 60
-  %31 = vadd.f32x64 %27, %29, %30
-  %32 = slice %31[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
-  %33 = vmov.accumulator512.to.vector512 %32
-  %34 = vextract.32.imm %33, 0
-  %35 = lda %input_view, 4
-  %36 = vbcst.32 %34
-  %37 = vbcst.32 %35
-  %40 = vmov.vector512.to.accumulator512 %36
-  %41 = concat(%40, %25, %25, %25) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %42 = vmov.vector512.to.accumulator512 %37
-  %43 = concat(%42, %25, %25, %25) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %45 = vadd.f32x64 %41, %43, %30
-  %46 = slice %45[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
-  %47 = vmov.accumulator512.to.vector512 %46
-  %48 = vextract.32.imm %47, 0
-  %49 = lda %input_view, 8
-  %50 = vbcst.32 %48
-  %51 = vbcst.32 %49
-  %54 = vmov.vector512.to.accumulator512 %50
-  %55 = concat(%54, %25, %25, %25) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %56 = vmov.vector512.to.accumulator512 %51
-  %57 = concat(%56, %25, %25, %25) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %59 = vadd.f32x64 %55, %57, %30
-  %60 = slice %59[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
-  %61 = vmov.accumulator512.to.vector512 %60
-  %62 = vextract.32.imm %61, 0
-  %63 = lda %input_view, 12
-  %64 = vbcst.32 %62
-  %65 = vbcst.32 %63
-  %68 = vmov.vector512.to.accumulator512 %64
-  %69 = concat(%68, %25, %25, %25) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %70 = vmov.vector512.to.accumulator512 %65
-  %71 = concat(%70, %25, %25, %25) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %73 = vadd.f32x64 %69, %71, %30
-  %74 = slice %73[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
-  %75 = vmov.accumulator512.to.vector512 %74
-  %sum = vextract.32.imm %75, 0
+  %40 = vbcst.32 %init
+  %41 = vbcst.32 %35
+  %42 = acc.clear.f32x64
+  %43 = slice %42[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %44 = vmov.vector512.to.accumulator512 %40
+  %45 = concat(%44, %43, %43, %43) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %46 = vmov.vector512.to.accumulator512 %41
+  %47 = concat(%46, %43, %43, %43) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %48 = mova.i32 60
+  %49 = vadd.f32x64 %45, %47, %48
+  %50 = slice %49[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %51 = vmov.accumulator512.to.vector512 %50
+  %52 = vextract.32.imm %51, 0
+  %53 = vbcst.32 %52
+  %54 = vbcst.32 %36
+  %57 = vmov.vector512.to.accumulator512 %53
+  %58 = concat(%57, %43, %43, %43) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %59 = vmov.vector512.to.accumulator512 %54
+  %60 = concat(%59, %43, %43, %43) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %62 = vadd.f32x64 %58, %60, %48
+  %63 = slice %62[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %64 = vmov.accumulator512.to.vector512 %63
+  %65 = vextract.32.imm %64, 0
+  %66 = vbcst.32 %65
+  %67 = vbcst.32 %37
+  %70 = vmov.vector512.to.accumulator512 %66
+  %71 = concat(%70, %43, %43, %43) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %72 = vmov.vector512.to.accumulator512 %67
+  %73 = concat(%72, %43, %43, %43) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %75 = vadd.f32x64 %71, %73, %48
+  %76 = slice %75[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %77 = vmov.accumulator512.to.vector512 %76
+  %78 = vextract.32.imm %77, 0
+  %79 = vbcst.32 %78
+  %80 = vbcst.32 %38
+  %83 = vmov.vector512.to.accumulator512 %79
+  %84 = concat(%83, %43, %43, %43) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %85 = vmov.vector512.to.accumulator512 %80
+  %86 = concat(%85, %43, %43, %43) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %88 = vadd.f32x64 %84, %86, %48
+  %89 = slice %88[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %90 = vmov.accumulator512.to.vector512 %89
+  %sum = vextract.32.imm %90, 0
   st %sum, %output_view, 0
   return
 }
@@ -130,44 +130,44 @@ func.def @f32_reduce_add_fastmath(%input: buffer, %output: buffer) {
 low.func.def target<amd.xdna.aie2p.core> abi(object_function) @f32_reduce_add_fastmath() asm {
   %input_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
   %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
-  %20 = lda %input_view, 0
-  %21 = lda %input_view, 4
-  %22 = vbcst.32 %20
-  %23 = vbcst.32 %21
-  %24 = acc.clear.f32x64
-  %25 = slice %24[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
-  %26 = vmov.vector512.to.accumulator512 %22
-  %27 = concat(%26, %25, %25, %25) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %28 = vmov.vector512.to.accumulator512 %23
-  %29 = concat(%28, %25, %25, %25) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %30 = mova.i32 60
-  %31 = vadd.f32x64 %27, %29, %30
-  %32 = slice %31[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
-  %33 = vmov.accumulator512.to.vector512 %32
-  %34 = vextract.32.imm %33, 0
-  %35 = lda %input_view, 8
-  %36 = lda %input_view, 12
-  %37 = vbcst.32 %35
-  %38 = vbcst.32 %36
-  %41 = vmov.vector512.to.accumulator512 %37
-  %42 = concat(%41, %25, %25, %25) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %43 = vmov.vector512.to.accumulator512 %38
-  %44 = concat(%43, %25, %25, %25) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %46 = vadd.f32x64 %42, %44, %30
-  %47 = slice %46[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
-  %48 = vmov.accumulator512.to.vector512 %47
-  %49 = vextract.32.imm %48, 0
-  %50 = vbcst.32 %34
-  %51 = vbcst.32 %49
-  %54 = vmov.vector512.to.accumulator512 %50
-  %55 = concat(%54, %25, %25, %25) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %56 = vmov.vector512.to.accumulator512 %51
-  %57 = concat(%56, %25, %25, %25) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %59 = vadd.f32x64 %55, %57, %30
-  %60 = slice %59[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
-  %61 = vmov.accumulator512.to.vector512 %60
-  %62 = vextract.32.imm %61, 0
-  st %62, %output_view, 0
+  %35 = lda %input_view, 0
+  %36 = lda %input_view, 4
+  %37 = lda %input_view, 8
+  %38 = lda %input_view, 12
+  %39 = vbcst.32 %35
+  %40 = vbcst.32 %36
+  %41 = acc.clear.f32x64
+  %42 = slice %41[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %43 = vmov.vector512.to.accumulator512 %39
+  %44 = concat(%43, %42, %42, %42) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %45 = vmov.vector512.to.accumulator512 %40
+  %46 = concat(%45, %42, %42, %42) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %47 = mova.i32 60
+  %48 = vadd.f32x64 %44, %46, %47
+  %49 = slice %48[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %50 = vmov.accumulator512.to.vector512 %49
+  %51 = vextract.32.imm %50, 0
+  %52 = vbcst.32 %37
+  %53 = vbcst.32 %38
+  %56 = vmov.vector512.to.accumulator512 %52
+  %57 = concat(%56, %42, %42, %42) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %58 = vmov.vector512.to.accumulator512 %53
+  %59 = concat(%58, %42, %42, %42) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %61 = vadd.f32x64 %57, %59, %47
+  %62 = slice %61[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %63 = vmov.accumulator512.to.vector512 %62
+  %64 = vextract.32.imm %63, 0
+  %65 = vbcst.32 %51
+  %66 = vbcst.32 %64
+  %69 = vmov.vector512.to.accumulator512 %65
+  %70 = concat(%69, %42, %42, %42) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %71 = vmov.vector512.to.accumulator512 %66
+  %72 = concat(%71, %42, %42, %42) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %74 = vadd.f32x64 %70, %72, %47
+  %75 = slice %74[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %76 = vmov.accumulator512.to.vector512 %75
+  %77 = vextract.32.imm %76, 0
+  st %77, %output_view, 0
   return
 }
 
@@ -190,102 +190,102 @@ low.func.def target<amd.xdna.aie2p.core> abi(object_function) @f32x64_reduce_add
   %input_view = resource<native_pointer> {index = 0, source_type = buffer} : reg<aie2p.ep>
   %output_view = resource<native_pointer> {index = 1, source_type = buffer} : reg<aie2p.ep>
   %init = mov.i32 0
-  %77 = mov.short 0
-  %78 = mov.short 64
-  %79 = mov.short 16
-  low.br ^_bb1(%77: reg<aie2p.er>, %init: reg<aie2p.er>)
-^_bb1(%68: reg<aie2p.er>, %69: reg<aie2p.er>):
-  %80 = lt %68, %78
-  low.cond_br %80, ^_bb2, ^_bb9 : reg<aie2p.er>
+  %92 = mov.short 0
+  %93 = mov.short 64
+  %94 = mov.short 16
+  low.br ^_bb1(%92: reg<aie2p.er>, %init: reg<aie2p.er>)
+^_bb1(%83: reg<aie2p.er>, %84: reg<aie2p.er>):
+  %95 = lt %83, %93
+  low.cond_br %95, ^_bb2, ^_bb9 : reg<aie2p.er>
 ^_bb2:
-  %81 = mov.short 8
-  low.br ^_bb3(%77: reg<aie2p.er>, %69: reg<aie2p.er>)
-^_bb3(%70: reg<aie2p.er>, %71: reg<aie2p.er>):
-  %82 = lt %70, %79
-  low.cond_br %82, ^_bb4, ^_bb8 : reg<aie2p.er>
+  %96 = mov.short 8
+  low.br ^_bb3(%92: reg<aie2p.er>, %84: reg<aie2p.er>)
+^_bb3(%85: reg<aie2p.er>, %86: reg<aie2p.er>):
+  %97 = lt %85, %94
+  low.cond_br %97, ^_bb4, ^_bb8 : reg<aie2p.er>
 ^_bb4:
-  %83 = mov.short 4
-  low.br ^_bb5(%77: reg<aie2p.er>, %71: reg<aie2p.er>)
-^_bb5(%72: reg<aie2p.er>, %73: reg<aie2p.er>):
-  %84 = lt %72, %81
-  low.cond_br %84, ^_bb6, ^_bb7 : reg<aie2p.er>
+  %98 = mov.short 4
+  low.br ^_bb5(%92: reg<aie2p.er>, %86: reg<aie2p.er>)
+^_bb5(%87: reg<aie2p.er>, %88: reg<aie2p.er>):
+  %99 = lt %87, %96
+  low.cond_br %99, ^_bb6, ^_bb7 : reg<aie2p.er>
 ^_bb6:
-  %85 = mov.i32 2
-  %86 = lshl %68, %85
-  %88 = lshl %70, %85
-  %89 = add.rr %86, %88
-  %91 = lshl %72, %85
-  %92 = add.rr %89, %91
-  %93 = mov.address-index %92
-  %94 = lda.i32.index %input_view, %93
-  %99 = add.rr %86, %88
-  %102 = add.rr %99, %91
-  %103 = add %102, 4
-  %104 = mov.address-index %103
-  %105 = lda.i32.index %input_view, %104
-  %106 = vbcst.32 %94
-  %107 = vbcst.32 %105
-  %108 = acc.clear.f32x64
-  %109 = slice %108[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
-  %110 = vmov.vector512.to.accumulator512 %106
-  %111 = concat(%110, %109, %109, %109) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %112 = vmov.vector512.to.accumulator512 %107
-  %113 = concat(%112, %109, %109, %109) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %114 = mova.i32 60
-  %115 = vadd.f32x64 %111, %113, %114
-  %116 = slice %115[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
-  %117 = vmov.accumulator512.to.vector512 %116
-  %118 = vextract.32.imm %117, 0
-  %123 = add.rr %86, %88
-  %126 = add.rr %123, %91
-  %127 = add %126, 8
-  %128 = mov.address-index %127
-  %129 = lda.i32.index %input_view, %128
-  %134 = add.rr %86, %88
-  %137 = add.rr %134, %91
-  %138 = add %137, 12
-  %139 = mov.address-index %138
-  %140 = lda.i32.index %input_view, %139
-  %141 = vbcst.32 %129
-  %142 = vbcst.32 %140
-  %145 = vmov.vector512.to.accumulator512 %141
-  %146 = concat(%145, %109, %109, %109) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %147 = vmov.vector512.to.accumulator512 %142
-  %148 = concat(%147, %109, %109, %109) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %150 = vadd.f32x64 %146, %148, %114
-  %151 = slice %150[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
-  %152 = vmov.accumulator512.to.vector512 %151
-  %153 = vextract.32.imm %152, 0
-  %154 = vbcst.32 %118
-  %155 = vbcst.32 %153
-  %158 = vmov.vector512.to.accumulator512 %154
-  %159 = concat(%158, %109, %109, %109) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %160 = vmov.vector512.to.accumulator512 %155
-  %161 = concat(%160, %109, %109, %109) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %163 = vadd.f32x64 %159, %161, %114
-  %164 = slice %163[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
-  %165 = vmov.accumulator512.to.vector512 %164
-  %166 = vextract.32.imm %165, 0
-  %167 = vbcst.32 %73
-  %168 = vbcst.32 %166
-  %171 = vmov.vector512.to.accumulator512 %167
-  %172 = concat(%171, %109, %109, %109) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %173 = vmov.vector512.to.accumulator512 %168
-  %174 = concat(%173, %109, %109, %109) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
-  %176 = vadd.f32x64 %172, %174, %114
-  %177 = slice %176[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
-  %178 = vmov.accumulator512.to.vector512 %177
-  %179 = vextract.32.imm %178, 0
-  %180 = add.rr %72, %83
-  low.br ^_bb5(%180: reg<aie2p.er>, %179: reg<aie2p.er>)
+  %100 = mov.i32 2
+  %101 = lshl %83, %100
+  %103 = lshl %85, %100
+  %104 = add.rr %101, %103
+  %106 = lshl %87, %100
+  %107 = add.rr %104, %106
+  %108 = mov.address-index %107
+  %109 = lda.i32.index %input_view, %108
+  %114 = add.rr %101, %103
+  %117 = add.rr %114, %106
+  %118 = add %117, 4
+  %119 = mov.address-index %118
+  %120 = lda.i32.index %input_view, %119
+  %125 = add.rr %101, %103
+  %128 = add.rr %125, %106
+  %129 = add %128, 8
+  %130 = mov.address-index %129
+  %131 = lda.i32.index %input_view, %130
+  %136 = add.rr %101, %103
+  %139 = add.rr %136, %106
+  %140 = add %139, 12
+  %141 = mov.address-index %140
+  %142 = lda.i32.index %input_view, %141
+  %143 = vbcst.32 %109
+  %144 = vbcst.32 %120
+  %145 = acc.clear.f32x64
+  %146 = slice %145[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %147 = vmov.vector512.to.accumulator512 %143
+  %148 = concat(%147, %146, %146, %146) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %149 = vmov.vector512.to.accumulator512 %144
+  %150 = concat(%149, %146, %146, %146) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %151 = mova.i32 60
+  %152 = vadd.f32x64 %148, %150, %151
+  %153 = slice %152[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %154 = vmov.accumulator512.to.vector512 %153
+  %155 = vextract.32.imm %154, 0
+  %156 = vbcst.32 %131
+  %157 = vbcst.32 %142
+  %160 = vmov.vector512.to.accumulator512 %156
+  %161 = concat(%160, %146, %146, %146) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %162 = vmov.vector512.to.accumulator512 %157
+  %163 = concat(%162, %146, %146, %146) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %165 = vadd.f32x64 %161, %163, %151
+  %166 = slice %165[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %167 = vmov.accumulator512.to.vector512 %166
+  %168 = vextract.32.imm %167, 0
+  %169 = vbcst.32 %155
+  %170 = vbcst.32 %168
+  %173 = vmov.vector512.to.accumulator512 %169
+  %174 = concat(%173, %146, %146, %146) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %175 = vmov.vector512.to.accumulator512 %170
+  %176 = concat(%175, %146, %146, %146) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %178 = vadd.f32x64 %174, %176, %151
+  %179 = slice %178[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %180 = vmov.accumulator512.to.vector512 %179
+  %181 = vextract.32.imm %180, 0
+  %182 = vbcst.32 %88
+  %183 = vbcst.32 %181
+  %186 = vmov.vector512.to.accumulator512 %182
+  %187 = concat(%186, %146, %146, %146) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %188 = vmov.vector512.to.accumulator512 %183
+  %189 = concat(%188, %146, %146, %146) : (reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>, reg<aie2p.mbms>) -> reg<aie2p.mbms x4>
+  %191 = vadd.f32x64 %187, %189, %151
+  %192 = slice %191[0] : reg<aie2p.mbms x4> -> reg<aie2p.mbms>
+  %193 = vmov.accumulator512.to.vector512 %192
+  %194 = vextract.32.imm %193, 0
+  %195 = add.rr %87, %98
+  low.br ^_bb5(%195: reg<aie2p.er>, %194: reg<aie2p.er>)
 ^_bb7:
-  %181 = add.rr %70, %81
-  low.br ^_bb3(%181: reg<aie2p.er>, %73: reg<aie2p.er>)
+  %196 = add.rr %85, %96
+  low.br ^_bb3(%196: reg<aie2p.er>, %88: reg<aie2p.er>)
 ^_bb8:
-  %182 = add.rr %68, %79
-  low.br ^_bb1(%182: reg<aie2p.er>, %71: reg<aie2p.er>)
+  %197 = add.rr %83, %94
+  low.br ^_bb1(%197: reg<aie2p.er>, %86: reg<aie2p.er>)
 ^_bb9:
-  st %69, %output_view, 0
+  st %84, %output_view, 0
   return
 }
 

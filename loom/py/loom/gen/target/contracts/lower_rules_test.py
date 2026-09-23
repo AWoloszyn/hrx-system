@@ -1833,6 +1833,7 @@ def test_source_memory_rows_split_complete_address_materializer() -> None:
         descriptor_refs,
         materializer,
         immediate_string_ref="TEST_STRING_I32_VALUE",
+        conversion_immediate_string_refs={},
     )
 
     assert ".diagnostics_index = 0" in fields
@@ -1848,7 +1849,6 @@ def test_source_memory_rows_split_complete_address_materializer() -> None:
     assert (".const_coordinate_immediate_string_ref = TEST_STRING_I32_VALUE") in materializer_fields
     assert ".add_coordinate_descriptor_ref = 1" in materializer_fields
     assert ".shl_coordinate_descriptor_ref = 65535" in materializer_fields
-    assert ".index_to_coordinate_input_descriptor_ref = 65535" in materializer_fields
     assert ".index_to_coordinate_descriptor_ref = 65535" in materializer_fields
     assert ".address_descriptor_ref = 1" in materializer_fields
 
@@ -1890,6 +1890,7 @@ def test_source_memory_conversion_rows_keep_source_kind_and_selector() -> None:
         TEST_LOW_REMATERIALIZE_I32_DESCRIPTOR,
         key="test.convert.selected",
         immediates=(Immediate("selector", ImmediateKind.UNSIGNED, bit_width=8, unsigned_max=255),),
+        feature_mask_words=(16,),
     )
     materializer = SourceMemoryByteOffsetMaterializer(
         constant=TEST_LOW_CONST_I32_DESCRIPTOR,
@@ -1921,7 +1922,25 @@ def test_source_memory_conversion_rows_keep_source_kind_and_selector() -> None:
     assert ".descriptor_ref = 3" in conversions[1]
     assert ".immediate_value = INT64_C(18)" in conversions[1]
     assert ".immediate_string_ref = SELECTOR" in conversions[1]
+    assert ".required_features = UINT64_C(16)" in conversions[1]
+    assert ".input_count = 1" in conversions[1]
     assert all(".descriptor_ref = 65535" in conversions[index] for index in (0, 2, 3, 4))
+    address_materializer = SourceMemoryAddressMaterializer(
+        const_coordinate=TEST_LOW_CONST_I32_DESCRIPTOR,
+        add_coordinate=TEST_LOW_ADD_I32_DESCRIPTOR,
+        mul_coordinate=TEST_LOW_MUL_I32_DESCRIPTOR,
+        address=TEST_LOW_ADD_I32_DESCRIPTOR,
+        index_to_coordinate=TEST_LOW_REMATERIALIZE_I32_DESCRIPTOR,
+        const_coordinate_immediate="i32_value",
+        integer_conversions=materializer.integer_conversions,
+    )
+    address_fields = source_memory_address_materializer_row(
+        {**references, TEST_LOW_REMATERIALIZE_I32_DESCRIPTOR.key: 4},
+        address_materializer,
+        immediate_string_ref="VALUE",
+        conversion_immediate_string_refs={"i8": "SELECTOR"},
+    )
+    assert address_fields[0] == fields[0]
     row = LowerSourceMemory(
         constraint=SourceMemoryConstraint(
             operation=SourceMemoryOperation.LOAD,

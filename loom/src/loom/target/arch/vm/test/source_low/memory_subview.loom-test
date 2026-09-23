@@ -82,22 +82,22 @@ func.def @subview_vector_strided(%input: buffer, %output: buffer) {
 
 // ----
 low.func.def target<vm.core> abi(vm_function) @subview_vector_strided(%source_crop: reg<vm.ref : buffer>, %destination_crop: reg<vm.ref : buffer>) asm {
-  %22 = constant.i64 124
-  %23 = buffer.load %source_crop, %22, %22, 0, "i32.x1" : reg<vm.value : i32>
-  %24 = constant.i64 128
-  %25 = buffer.load %source_crop, %24, %24, 0, "i32.x1" : reg<vm.value : i32>
-  %26 = constant.i64 132
-  %27 = buffer.load %source_crop, %26, %26, 0, "i32.x1" : reg<vm.value : i32>
-  %28 = constant.i64 136
-  %29 = buffer.load %source_crop, %28, %28, 0, "i32.x1" : reg<vm.value : i32>
-  %30 = constant.i64 88
-  buffer.store %destination_crop, %30, %30, %23, 0, "i32.x1"
-  %31 = constant.i64 92
-  buffer.store %destination_crop, %31, %31, %25, 0, "i32.x1"
-  %32 = constant.i64 96
-  buffer.store %destination_crop, %32, %32, %27, 0, "i32.x1"
-  %33 = constant.i64 100
-  buffer.store %destination_crop, %33, %33, %29, 0, "i32.x1"
+  %27 = constant.i64 124
+  %28 = buffer.load %source_crop, %27, %27, 0, "i32.x1" : reg<vm.value : i32>
+  %29 = constant.i64 128
+  %30 = buffer.load %source_crop, %29, %29, 0, "i32.x1" : reg<vm.value : i32>
+  %31 = constant.i64 132
+  %32 = buffer.load %source_crop, %31, %31, 0, "i32.x1" : reg<vm.value : i32>
+  %33 = constant.i64 136
+  %34 = buffer.load %source_crop, %33, %33, 0, "i32.x1" : reg<vm.value : i32>
+  %35 = constant.i64 88
+  buffer.store %destination_crop, %35, %35, %28, 0, "i32.x1"
+  %36 = constant.i64 92
+  buffer.store %destination_crop, %36, %36, %30, 0, "i32.x1"
+  %37 = constant.i64 96
+  buffer.store %destination_crop, %37, %37, %32, 0, "i32.x1"
+  %38 = constant.i64 100
+  buffer.store %destination_crop, %38, %38, %34, 0, "i32.x1"
   return
 }
 
@@ -120,38 +120,38 @@ func.def @subview_vector_aligned(%input: buffer, %output: buffer) {
 
 // ----
 low.func.def target<vm.core> abi(vm_function) @subview_vector_aligned(%source_crop: reg<vm.ref : buffer>, %destination_crop: reg<vm.ref : buffer>) asm {
-  %30 = constant.i64 256
-  %31 = buffer.load %source_crop, %30, %30, 0, "i32.x1" : reg<vm.value : i32>
-  %32 = constant.i64 260
-  %33 = buffer.load %source_crop, %32, %32, 0, "i32.x1" : reg<vm.value : i32>
-  %34 = constant.i64 264
-  %35 = buffer.load %source_crop, %34, %34, 0, "i32.x1" : reg<vm.value : i32>
-  %36 = constant.i64 268
-  %37 = buffer.load %source_crop, %36, %36, 0, "i32.x1" : reg<vm.value : i32>
-  %38 = constant.i64 272
-  %39 = buffer.load %source_crop, %38, %38, 0, "i32.x1" : reg<vm.value : i32>
-  %40 = constant.i64 276
-  %41 = buffer.load %source_crop, %40, %40, 0, "i32.x1" : reg<vm.value : i32>
-  %42 = constant.i64 280
-  %43 = buffer.load %source_crop, %42, %42, 0, "i32.x1" : reg<vm.value : i32>
-  %44 = constant.i64 284
-  %45 = buffer.load %source_crop, %44, %44, 0, "i32.x1" : reg<vm.value : i32>
-  %46 = constant.i64 192
-  buffer.store %destination_crop, %46, %46, %31, 0, "i32.x1"
-  %47 = constant.i64 196
-  buffer.store %destination_crop, %47, %47, %33, 0, "i32.x1"
-  %48 = constant.i64 200
-  buffer.store %destination_crop, %48, %48, %35, 0, "i32.x1"
-  %49 = constant.i64 204
-  buffer.store %destination_crop, %49, %49, %37, 0, "i32.x1"
-  %50 = constant.i64 208
-  buffer.store %destination_crop, %50, %50, %39, 0, "i32.x1"
-  %51 = constant.i64 212
-  buffer.store %destination_crop, %51, %51, %41, 0, "i32.x1"
-  %52 = constant.i64 216
-  buffer.store %destination_crop, %52, %52, %43, 0, "i32.x1"
-  %53 = constant.i64 220
-  buffer.store %destination_crop, %53, %53, %45, 0, "i32.x1"
+  %39 = constant.i64 256
+  %40 = buffer.load %source_crop, %39, %39, 0, "i32.x1" : reg<vm.value : i32>
+  %41 = constant.i64 260
+  %42 = buffer.load %source_crop, %41, %41, 0, "i32.x1" : reg<vm.value : i32>
+  %43 = constant.i64 264
+  %44 = buffer.load %source_crop, %43, %43, 0, "i32.x1" : reg<vm.value : i32>
+  %45 = constant.i64 268
+  %46 = buffer.load %source_crop, %45, %45, 0, "i32.x1" : reg<vm.value : i32>
+  %47 = constant.i64 272
+  %48 = buffer.load %source_crop, %47, %47, 0, "i32.x1" : reg<vm.value : i32>
+  %49 = constant.i64 276
+  %50 = buffer.load %source_crop, %49, %49, 0, "i32.x1" : reg<vm.value : i32>
+  %51 = constant.i64 280
+  %52 = buffer.load %source_crop, %51, %51, 0, "i32.x1" : reg<vm.value : i32>
+  %53 = constant.i64 284
+  %54 = buffer.load %source_crop, %53, %53, 0, "i32.x1" : reg<vm.value : i32>
+  %55 = constant.i64 192
+  buffer.store %destination_crop, %55, %55, %40, 0, "i32.x1"
+  %56 = constant.i64 196
+  buffer.store %destination_crop, %56, %56, %42, 0, "i32.x1"
+  %57 = constant.i64 200
+  buffer.store %destination_crop, %57, %57, %44, 0, "i32.x1"
+  %58 = constant.i64 204
+  buffer.store %destination_crop, %58, %58, %46, 0, "i32.x1"
+  %59 = constant.i64 208
+  buffer.store %destination_crop, %59, %59, %48, 0, "i32.x1"
+  %60 = constant.i64 212
+  buffer.store %destination_crop, %60, %60, %50, 0, "i32.x1"
+  %61 = constant.i64 216
+  buffer.store %destination_crop, %61, %61, %52, 0, "i32.x1"
+  %62 = constant.i64 220
+  buffer.store %destination_crop, %62, %62, %54, 0, "i32.x1"
   return
 }
 
