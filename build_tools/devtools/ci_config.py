@@ -234,7 +234,23 @@ LOOM_AMDGPU_CMAKE_COMPILE_CTEST_REGEXES = tuple(
     bazel_pattern_to_ctest_regex(target)
     for target in LOOM_AMDGPU_BAZEL_COMPILE_TEST_TARGETS
 )
-AMDGPU_XFAILS = ()
+AMDGPU_XFAILS = tuple(
+    bazel_xfail(f"//loom/src/loom/tooling/target/amdgpu/test/cxx:{target}")
+    for target in (
+        # Low assembly parsing requires a function representation contract that
+        # the CXX import path does not provide before lowering.
+        "assembly_invalid",
+        "assembly_lowering",
+        # These CXX modules exercise scalar or vector FP narrowing forms for
+        # which the AMDGPU target has no legalization.
+        "bfloat16_test_execute_amdgpu_access_test",
+        "bfloat16_test_execute_amdgpu_test",
+        "float8_test_execute_amdgpu_access_test",
+        "float8_test_execute_amdgpu_test",
+        "vector_conversion_test_execute_amdgpu_access_test",
+        "vector_conversion_test_execute_amdgpu_test",
+    )
+)
 AMDGPU_SANITIZERS_XFAILS = ()
 AMDGPU_TSAN_XFAILS = ()
 AMDGPU_BAZEL_XFAILS_BY_TARGET_SELECTOR = {

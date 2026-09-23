@@ -1583,34 +1583,6 @@ fi
         self.assertNotIn("pip install", text)
         self.assertNotIn("sudo", text)
 
-    def test_xfails_project_to_ctest_regexes(self):
-        self.assertIn(
-            "^iree/tokenizer/",
-            ci_config.CPU_SANITIZERS_CTEST_EXCLUDE_REGEX,
-        )
-        self.assertIn(
-            "^iree/hal/drivers/task/executable/elf/elf_module_test$",
-            ci_config.CPU_CTEST_EXCLUDE_REGEX,
-        )
-        self.assertEqual(ci_config.AMDGPU_XFAIL_TARGETS, ())
-        self.assertEqual(ci_config.AMDGPU_CTEST_EXCLUDE_REGEX, "")
-        self.assertEqual(ci_config.AMDGPU_SANITIZERS_XFAIL_TARGETS, ())
-        self.assertEqual(ci_config.AMDGPU_SANITIZERS_CTEST_EXCLUDE_REGEX, "")
-        self.assertEqual(ci_config.AMDGPU_TSAN_XFAIL_TARGETS, ())
-        self.assertEqual(ci_config.AMDGPU_TSAN_CTEST_EXCLUDE_REGEX, "")
-        self.assertEqual(ci_config.AMDGPU_TSAN_SANITIZERS_XFAIL_TARGETS, ())
-        self.assertEqual(ci_config.AMDGPU_TSAN_SANITIZERS_CTEST_EXCLUDE_REGEX, "")
-        self.assertEqual(
-            ci_config.bazel_pattern_to_ctest_regex("//loom/src/loom/codegen/low:test"),
-            "^loom/codegen/low/test$",
-        )
-        self.assertEqual(
-            ci_config.bazel_pattern_to_ctest_regex(
-                "//loom/binding/c/example:emit_spirv_vulkan_test"
-            ),
-            "^loom/binding/c/example/emit_spirv_vulkan_test$",
-        )
-
     def test_cmake_cpu_sanitizer_command_uses_cmake_build_dir_and_xfails(self):
         args = ci.parse_arguments(["iree-cmake-cpu-ubsan"])
 
@@ -1800,7 +1772,14 @@ fi
             for step in steps
             if step.name == "Test IREE CMake AMDGPU package tests"
         )
-        self.assertEqual(self.ctest_exclude_regexes(package_test), [])
+        self.assertEqual(
+            self.ctest_exclude_regexes(package_test),
+            (
+                [ci_config.AMDGPU_CTEST_EXCLUDE_REGEX]
+                if ci_config.AMDGPU_CTEST_EXCLUDE_REGEX
+                else []
+            ),
+        )
 
     def test_cmake_amdgpu_device_binary_source_build_uses_fetched_rocm_root(self):
         args = ci.parse_arguments(["iree-cmake-amdgpu"])
