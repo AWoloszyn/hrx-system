@@ -1,0 +1,200 @@
+func.def noinline @read_view(%input: view<1xi32>) -> (i32) {
+  %value = view.load %input[0] : view<1xi32> -> i32
+  func.return %value : i32
+}
+
+func.def noinline @choose_view(%left: view<1xi32>, %right: view<1xi32>, %choose_right: i1) -> (view<1xi32>) {
+  %selected = scf.select %choose_right, %right, %left : view<1xi32>
+  func.return %selected : view<1xi32>
+}
+
+func.def noinline @choose_nested_view(%left: view<1xi32>, %middle: view<1xi32>, %right: view<1xi32>, %choose_middle: i1, %choose_right: i1) -> (view<1xi32>) {
+  %left_or_middle = scf.select %choose_middle, %middle, %left : view<1xi32>
+  %selected = scf.select %choose_right, %right, %left_or_middle : view<1xi32>
+  func.return %selected : view<1xi32>
+}
+
+func.def @call_view_argument(%seed: i32) -> (i32) {
+  %byte_length = index.constant 4 : offset
+  %byte_offset = index.constant 0 : offset
+  %storage = buffer.alloca<private> align(4) %byte_length : buffer
+  %view = buffer.view %storage[%byte_offset] : buffer -> view<1xi32>
+  view.store %seed, %view[0] : i32, view<1xi32>
+  %value = func.call @read_view(%view) : (view<1xi32>) -> (i32)
+  func.return %value : i32
+}
+
+func.def @call_view_result(%left_value: i32, %right_value: i32, %choose_right: i1) -> (i32) {
+  %byte_length = index.constant 8 : offset
+  %left_offset = index.constant 0 : offset
+  %right_offset = index.constant 4 : offset
+  %left_storage = buffer.alloca<private> align(4) %byte_length : buffer
+  %right_storage = buffer.alloca<private> align(4) %byte_length : buffer
+  %left = buffer.view %left_storage[%left_offset] : buffer -> view<1xi32>
+  %right = buffer.view %right_storage[%right_offset] : buffer -> view<1xi32>
+  view.store %left_value, %left[0] : i32, view<1xi32>
+  view.store %right_value, %right[0] : i32, view<1xi32>
+  %selected = func.call @choose_view(%left, %right, %choose_right) : (view<1xi32>, view<1xi32>, i1) -> (view<1xi32>)
+  %value = view.load %selected[0] : view<1xi32> -> i32
+  func.return %value : i32
+}
+
+func.def @call_nested_view_result(%left_value: i32, %middle_value: i32, %right_value: i32, %choose_middle: i1, %choose_right: i1) -> (i32) {
+  %byte_length = index.constant 12 : offset
+  %left_offset = index.constant 0 : offset
+  %middle_offset = index.constant 4 : offset
+  %right_offset = index.constant 8 : offset
+  %left_storage = buffer.alloca<private> align(4) %byte_length : buffer
+  %middle_storage = buffer.alloca<private> align(4) %byte_length : buffer
+  %right_storage = buffer.alloca<private> align(4) %byte_length : buffer
+  %left = buffer.view %left_storage[%left_offset] : buffer -> view<1xi32>
+  %middle = buffer.view %middle_storage[%middle_offset] : buffer -> view<1xi32>
+  %right = buffer.view %right_storage[%right_offset] : buffer -> view<1xi32>
+  view.store %left_value, %left[0] : i32, view<1xi32>
+  view.store %middle_value, %middle[0] : i32, view<1xi32>
+  view.store %right_value, %right[0] : i32, view<1xi32>
+  %selected = func.call @choose_nested_view(%left, %middle, %right, %choose_middle, %choose_right) : (view<1xi32>, view<1xi32>, view<1xi32>, i1, i1) -> (view<1xi32>)
+  %value = view.load %selected[0] : view<1xi32> -> i32
+  func.return %value : i32
+}
+
+func.def @carry_distinct_view(%count: index) -> (i32) {
+  %byte_length = index.constant 4 : offset
+  %byte_offset = index.constant 0 : offset
+  %first_storage = buffer.alloca<private> align(4) %byte_length : buffer
+  %second_storage = buffer.alloca<private> align(4) %byte_length : buffer
+  %first = buffer.view %first_storage[%byte_offset] : buffer -> view<1xi32>
+  %second = buffer.view %second_storage[%byte_offset] : buffer -> view<1xi32>
+  %first_value = scalar.constant 11 : i32
+  %second_value = scalar.constant 29 : i32
+  view.store %first_value, %first[0] : i32, view<1xi32>
+  view.store %second_value, %second[0] : i32, view<1xi32>
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %last = scf.for %i = [%begin to %count step %step](%current = %first : view<1xi32>) -> (view<1xi32>) {
+    scf.yield %second : view<1xi32>
+  }
+  %value = view.load %last[0] : view<1xi32> -> i32
+  func.return %value : i32
+}
+
+func.def @rotate_distinct_views(%count: index) -> (i32) {
+  %byte_length = index.constant 4 : offset
+  %byte_offset = index.constant 0 : offset
+  %left_storage = buffer.alloca<private> align(4) %byte_length : buffer
+  %right_storage = buffer.alloca<private> align(4) %byte_length : buffer
+  %left = buffer.view %left_storage[%byte_offset] : buffer -> view<1xi32>
+  %right = buffer.view %right_storage[%byte_offset] : buffer -> view<1xi32>
+  %left_value = scalar.constant 11 : i32
+  %right_value = scalar.constant 29 : i32
+  view.store %left_value, %left[0] : i32, view<1xi32>
+  view.store %right_value, %right[0] : i32, view<1xi32>
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %last_left, %last_right = scf.for %i = [%begin to %count step %step](%current_left = %left : view<1xi32>, %current_right = %right : view<1xi32>) -> (view<1xi32>, view<1xi32>) {
+    scf.yield %current_right, %current_left : view<1xi32>, view<1xi32>
+  }
+  %final_left = view.load %last_left[0] : view<1xi32> -> i32
+  %final_right = view.load %last_right[0] : view<1xi32> -> i32
+  %scale = scalar.constant 100 : i32
+  %scaled_left = scalar.muli %final_left, %scale : i32
+  %result = scalar.addi %scaled_left, %final_right : i32
+  func.return %result : i32
+}
+
+check.case @call_view_argument_case {
+  %seed = check.literal value(47) : i32
+  %actual = func.call @call_view_argument(%seed) : (i32) -> (i32)
+  check.expect.equal actual(%actual) expected(%seed) : i32
+  check.return
+}
+
+check.case @call_view_result_left_case {
+  %left = check.literal value(13) : i32
+  %right = check.literal value(31) : i32
+  %choose_right = check.literal value(false) : i1
+  %actual = func.call @call_view_result(%left, %right, %choose_right) : (i32, i32, i1) -> (i32)
+  check.expect.equal actual(%actual) expected(%left) : i32
+  check.return
+}
+
+check.case @call_view_result_right_case {
+  %left = check.literal value(13) : i32
+  %right = check.literal value(31) : i32
+  %choose_right = check.literal value(true) : i1
+  %actual = func.call @call_view_result(%left, %right, %choose_right) : (i32, i32, i1) -> (i32)
+  check.expect.equal actual(%actual) expected(%right) : i32
+  check.return
+}
+
+check.case @call_nested_view_result_left_case {
+  %left = check.literal value(13) : i32
+  %middle = check.literal value(23) : i32
+  %right = check.literal value(31) : i32
+  %false = check.literal value(false) : i1
+  %actual = func.call @call_nested_view_result(%left, %middle, %right, %false, %false) : (i32, i32, i32, i1, i1) -> (i32)
+  check.expect.equal actual(%actual) expected(%left) : i32
+  check.return
+}
+
+check.case @call_nested_view_result_middle_case {
+  %left = check.literal value(13) : i32
+  %middle = check.literal value(23) : i32
+  %right = check.literal value(31) : i32
+  %false = check.literal value(false) : i1
+  %true = check.literal value(true) : i1
+  %actual = func.call @call_nested_view_result(%left, %middle, %right, %true, %false) : (i32, i32, i32, i1, i1) -> (i32)
+  check.expect.equal actual(%actual) expected(%middle) : i32
+  check.return
+}
+
+check.case @call_nested_view_result_right_case {
+  %left = check.literal value(13) : i32
+  %middle = check.literal value(23) : i32
+  %right = check.literal value(31) : i32
+  %false = check.literal value(false) : i1
+  %true = check.literal value(true) : i1
+  %actual = func.call @call_nested_view_result(%left, %middle, %right, %false, %true) : (i32, i32, i32, i1, i1) -> (i32)
+  check.expect.equal actual(%actual) expected(%right) : i32
+  check.return
+}
+
+check.case @carry_distinct_view_zero_case {
+  %count = check.literal value(0) : index
+  %actual = func.call @carry_distinct_view(%count) : (index) -> (i32)
+  %expected = check.literal value(11) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @carry_distinct_view_positive_case {
+  %count = check.literal value(3) : index
+  %actual = func.call @carry_distinct_view(%count) : (index) -> (i32)
+  %expected = check.literal value(29) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @rotate_distinct_views_zero_case {
+  %count = check.literal value(0) : index
+  %actual = func.call @rotate_distinct_views(%count) : (index) -> (i32)
+  %expected = check.literal value(1129) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @rotate_distinct_views_odd_case {
+  %count = check.literal value(3) : index
+  %actual = func.call @rotate_distinct_views(%count) : (index) -> (i32)
+  %expected = check.literal value(2911) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}
+
+check.case @rotate_distinct_views_even_case {
+  %count = check.literal value(4) : index
+  %actual = func.call @rotate_distinct_views(%count) : (index) -> (i32)
+  %expected = check.literal value(1129) : i32
+  check.expect.equal actual(%actual) expected(%expected) : i32
+  check.return
+}

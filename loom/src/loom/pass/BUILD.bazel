@@ -308,6 +308,7 @@ loom_cc_library(
         "//loom/src/loom/transforms/vector:memory_footprint",
         "//loom/src/loom/transforms/vector:sink_single_use_reads",
         "//loom/src/loom/transforms/vector:to_scalar",
+        "//loom/src/loom/transforms/view:boundary_transport",
         "//loom/src/loom/transforms/view:linearize_view_accesses",
         "//loom/src/loom/transforms/view:transport",
     ],

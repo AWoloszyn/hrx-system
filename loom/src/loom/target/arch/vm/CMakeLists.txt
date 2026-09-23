@@ -192,6 +192,7 @@ loom_check_test_suite(
     "test/source_low/vector_large_insert.loom-test"
     "test/source_low/vector_selection.loom-test"
     "test/source_low/view_access.loom-test"
+    "test/source_low/view_boundaries.loom-test"
     "test/source_low/view_root_selection.loom-test"
     "test/storage.loom-test"
   DATA
@@ -319,6 +320,7 @@ loom_check_compile_tests(
     "test/source_low/vector_large_insert.loom-test"
     "test/source_low/vector_selection.loom-test"
     "test/source_low/view_access.loom-test"
+    "test/source_low/view_boundaries.loom-test"
     "test/source_low/view_root_selection.loom-test"
     "test/storage.loom-test"
   TARGETS

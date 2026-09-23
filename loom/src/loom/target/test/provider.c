@@ -17,5 +17,6 @@ const loom_target_provider_t loom_test_target_provider = {
     .initialize_low_lower_policy_registry =
         loom_test_low_lower_policy_registry_initialize,
     .pass_registry = &loom_test_pass_registry_storage,
+    .view_boundary_carrier = LOOM_TARGET_VIEW_BOUNDARY_CARRIER_BUFFER_OFFSET,
     .target_fact_type = &loom_test_target_fact_type,
 };

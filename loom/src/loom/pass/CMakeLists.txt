@@ -338,6 +338,7 @@ loom_cc_library(
     loom::transforms::vector::memory_footprint
     loom::transforms::vector::sink_single_use_reads
     loom::transforms::vector::to_scalar
+    loom::transforms::view::boundary_transport
     loom::transforms::view::linearize_view_accesses
     loom::transforms::view::transport
   PUBLIC

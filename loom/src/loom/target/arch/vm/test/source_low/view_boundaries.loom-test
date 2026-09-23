@@ -1,0 +1,94 @@
+// RUN: emit source-low target=vm:core output=low
+
+func.decl @identity_view(%input: view<1xi32>) -> (view<1xi32>)
+
+func.def public @call_identity_view(%storage: buffer, %byte_offset: offset) -> (i32) {
+  %input = buffer.view %storage[%byte_offset] : buffer -> view<1xi32>
+  %result = func.call @identity_view(%input) : (view<1xi32>) -> (view<1xi32>)
+  %value = view.load %result[0] : view<1xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.decl target<vm.core> @identity_view(%input_root: reg<vm.ref : buffer>, %input_offset: reg<vm.value : i64>) -> (reg<vm.ref : buffer>, reg<vm.value : i64>)
+
+low.func.def public target<vm.core> abi(vm_function) @call_identity_view(%storage: reg<vm.ref : buffer>, %byte_offset: reg<vm.value : i64>) -> (reg<vm.value : i32>) asm {
+  %result, %result_offset = low.func.call @identity_view(%storage, %byte_offset) : (reg<vm.ref : buffer>, reg<vm.value : i64>) -> (reg<vm.ref : buffer>, reg<vm.value : i64>)
+  %value = buffer.load %result, %result_offset, %result_offset, 0, "i32.x1" : reg<vm.value : i32>
+  return %value
+}
+
+// ====
+
+// RUN: emit source-low target=vm:core output=low
+
+func.def noinline @choose_view(%left: view<1xi32>, %right: view<1xi32>, %choose_right: i1) -> (view<1xi32>) {
+  %selected = scf.select %choose_right, %right, %left : view<1xi32>
+  func.return %selected : view<1xi32>
+}
+
+func.def public @call_view_result(%left_storage: buffer, %right_storage: buffer, %left_offset: offset, %right_offset: offset, %choose_right: i1) -> (i32) {
+  %left = buffer.view %left_storage[%left_offset] : buffer -> view<1xi32>
+  %right = buffer.view %right_storage[%right_offset] : buffer -> view<1xi32>
+  %selected = func.call @choose_view(%left, %right, %choose_right) : (view<1xi32>, view<1xi32>, i1) -> (view<1xi32>)
+  %value = view.load %selected[0] : view<1xi32> -> i32
+  func.return %value : i32
+}
+
+// ----
+low.func.def noinline target<vm.core> @choose_view(%left_root: reg<vm.ref : buffer>, %left_offset: reg<vm.value : i64>, %right_root: reg<vm.ref : buffer>, %right_offset: reg<vm.value : i64>, %choose_right: reg<vm.value : i1>) -> (reg<vm.ref : buffer>, reg<vm.value : i64>) asm {
+  low.cond_br %choose_right, ^_bb1, ^_bb2 : reg<vm.value : i1>
+^_bb1:
+  low.br ^_bb3(%right_root: reg<vm.ref : buffer>, %right_offset: reg<vm.value : i64>)
+^_bb2:
+  low.br ^_bb3(%left_root: reg<vm.ref : buffer>, %left_offset: reg<vm.value : i64>)
+^_bb3(%selected_root: reg<vm.ref : buffer>, %selected_offset: reg<vm.value : i64>):
+  return %selected_root, %selected_offset
+}
+
+low.func.def public target<vm.core> abi(vm_function) @call_view_result(%left_storage: reg<vm.ref : buffer>, %right_storage: reg<vm.ref : buffer>, %left_offset: reg<vm.value : i64>, %right_offset: reg<vm.value : i64>, %choose_right: reg<vm.value : i1>) -> (reg<vm.value : i32>) asm {
+  %selected, %selected_offset = low.func.call pure @choose_view(%left_storage, %left_offset, %right_storage, %right_offset, %choose_right) : (reg<vm.ref : buffer>, reg<vm.value : i64>, reg<vm.ref : buffer>, reg<vm.value : i64>, reg<vm.value : i1>) -> (reg<vm.ref : buffer>, reg<vm.value : i64>)
+  %value = buffer.load %selected, %selected_offset, %selected_offset, 0, "i32.x1" : reg<vm.value : i32>
+  return %value
+}
+
+// ====
+
+// RUN: emit source-low target=vm:core output=low
+
+func.def public @rotate_distinct_roots(%first: buffer, %second: buffer, %first_offset: offset, %second_offset: offset, %count: index) -> (i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %first_view = buffer.view %first[%first_offset] : buffer -> view<1xi32>
+  %second_view = buffer.view %second[%second_offset] : buffer -> view<1xi32>
+  cfg.br ^header(%begin: index, %first_view: view<1xi32>, %second_view: view<1xi32>)
+^header(%iteration: index, %left: view<1xi32>, %right: view<1xi32>):
+  %continue = index.cmp slt, %iteration, %count : index
+  cfg.cond_br %continue, ^body, ^exit
+^body:
+  %next = index.add %iteration, %step : index
+  cfg.br ^header(%next: index, %right: view<1xi32>, %left: view<1xi32>)
+^exit:
+  %left_value = view.load %left[0] : view<1xi32> -> i32
+  %right_value = view.load %right[0] : view<1xi32> -> i32
+  %sum = scalar.addi %left_value, %right_value : i32
+  func.return %sum : i32
+}
+
+// ----
+low.func.def public target<vm.core> abi(vm_function) @rotate_distinct_roots(%first: reg<vm.ref : buffer>, %second: reg<vm.ref : buffer>, %first_offset: reg<vm.value : i64>, %second_offset: reg<vm.value : i64>, %count: reg<vm.value : i64>) -> (reg<vm.value : i32>) asm {
+  %begin = constant.i64 0
+  %step = constant.i64 1
+  low.br ^header(%begin: reg<vm.value : i64>, %first: reg<vm.ref : buffer>, %first_offset: reg<vm.value : i64>, %second: reg<vm.ref : buffer>, %second_offset: reg<vm.value : i64>)
+^header(%iteration: reg<vm.value : i64>, %left: reg<vm.ref : buffer>, %left_offset: reg<vm.value : i64>, %right: reg<vm.ref : buffer>, %right_offset: reg<vm.value : i64>):
+  %continue = integer.compare.i64 %iteration, %count, "slt"
+  low.cond_br %continue, ^body, ^exit : reg<vm.value : i1>
+^body:
+  %next = integer.add.i64 %iteration, %step
+  low.br ^header(%next: reg<vm.value : i64>, %right: reg<vm.ref : buffer>, %right_offset: reg<vm.value : i64>, %left: reg<vm.ref : buffer>, %left_offset: reg<vm.value : i64>)
+^exit:
+  %left_value = buffer.load %left, %left_offset, %left_offset, 0, "i32.x1" : reg<vm.value : i32>
+  %right_value = buffer.load %right, %right_offset, %right_offset, 0, "i32.x1" : reg<vm.value : i32>
+  %sum = integer.add.i32 %left_value, %right_value
+  return %sum
+}

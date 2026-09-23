@@ -82,6 +82,7 @@ const loom_target_provider_t loom_vm_target_provider = {
                      .count = IREE_ARRAYSIZE(loom_vm_emitters)},
     .canonical_module_emitter = &loom_vm_emitter,
     .select_low_call_policy = loom_target_select_low_call_policy_direct,
+    .view_boundary_carrier = LOOM_TARGET_VIEW_BOUNDARY_CARRIER_BUFFER_OFFSET,
     .register_context = loom_vm_ops_register_dialect,
     .initialize_math_policy_registry = loom_vm_math_policy_registry_initialize,
     .initialize_low_descriptor_registry =
