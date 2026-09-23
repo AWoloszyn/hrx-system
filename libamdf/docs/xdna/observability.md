@@ -161,6 +161,11 @@ sources can share an egress route and destination when packet routing preserves
 their identity; a source does not inherently require its own shim DMA channel.
 [Trace configuration][aie-trace], [trace routing][trace-architecture]
 
+The core `Trace_Status` register's State field is bits 9:8: zero means idle,
+one means running, and three means overrun. Its Mode field is bits 2:0. These
+are source-state observations; the register does not report downstream DMA
+completion or an empty stream route. [Trace status fields][trace-status]
+
 Start and stop selectors control collection independently of the eight event
 slots. For example, a program can select `INSTR_EVENT_0` to start collection,
 `INSTR_EVENT_1` to stop it, and `INSTR_STORE` in slot zero to observe stores.
@@ -207,6 +212,13 @@ fill a single 64-byte transfer, including their headers. No separate allocation
 or descriptor is needed for each packet. The transfer length follows the
 emitted packet count, not the number of selected events or the allocation's
 maximum capacity: frames are compressed and packed together.
+
+A shim DMA's channel status distinguishes an active transfer from tasks still
+in its queue. `Channel_Running` covers both: zero means the datapath is idle
+and the task queue is empty. Checking only `Task_Queue_Size` misses the active
+transfer. Pause controls stop stream traffic or new memory requests; they are
+not completion reports for a partially filled destination.
+[Shim DMA status and control fields][aie-register-database]
 
 AIE2IPU and AIE2P also support S2MM **finish on TLAST**. In that mode a
 descriptor can complete when the incoming packet ends, before reaching its
@@ -255,6 +267,13 @@ that insertion does not add a wait for the trace DMA to consume its remaining
 capacity. These are collection strategies, not a hardware-reported valid-byte
 count or a DMA-retirement signal. [XDP offload][xdp-offload],
 [MLIR-AIE trace insertion][trace-insertion]
+
+XRT's PLIO collector has a different sink: a programmable-logic trace
+datamover with written-word counters. Its version-2 final read resets the
+datamover before reading those counters. That datamover is not the XDNA array's
+shim DMA. Its flush and circular-buffer operations do not describe the NPU's
+stream-to-memory completion contract.
+[PL trace datamover][xdp-pl-datamover]
 
 Within libamdf's execution contract, the controller program completes only
 after the application's array work and transfers are quiescent. A trace
@@ -422,11 +441,13 @@ notifications describe the diagnostic stream, not application queue completion.
 [stream-control]: https://download.amd.com/docnav/aiengine/xilinx2025_1/aiengine_ml_v2_intrinsics/intrinsics/group__intr__streams__ms.html
 [aie-trace]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/trace/xaie_trace.c
 [trace-architecture]: https://docs.amd.com/r/en-US/am020-versal-aie-ml/Trace
+[trace-status]: https://docs.amd.com/r/en-US/am025-versal-aie-ml-register-reference/Trace_Status-CORE_MODULE-Register?contentId=UVUMfHRQyoy4Sw9hZBAJSw
 [trace-decoder]: https://github.com/Xilinx/mlir-aie/blob/c69fb4c8f2fb853d5ca62d19f829796d3ae4ba34/python/utils/trace/utils.py
 [trace-reconstruction]: https://github.com/Xilinx/mlir-aie/blob/c69fb4c8f2fb853d5ca62d19f829796d3ae4ba34/python/utils/trace/parse.py
 [trace-insertion]: https://github.com/Xilinx/mlir-aie/blob/c69fb4c8f2fb853d5ca62d19f829796d3ae4ba34/lib/Dialect/AIE/Transforms/AIEInsertTraceFlows.cpp
 [xdp-trace]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/plugin/aie_trace/client/aie_trace.cpp
 [xdp-offload]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/device/aie_trace/client/aie_trace_offload_client.cpp
+[xdp-pl-datamover]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/device/aieTraceS2MM.cpp
 [xdp-profile]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/plugin/aie_profile/client/aie_profile.cpp
 [xdp-timeline]: https://github.com/Xilinx/XDP/blob/03ba80bf6c4942f51eebc71f7d154d9254426396/profile/plugin/ml_timeline/clientDev/ml_timeline.cpp
 [transaction-ops]: https://github.com/Xilinx/aie-codegen/blob/2855a032366e3d19dab893e7c263b14bb920cd64/src/common/xaie_txn.h
