@@ -12,7 +12,9 @@
 #include "loom/ir/context.h"
 #include "loom/ir/module.h"
 #include "loom/ops/func/ops.h"
+#include "loom/ops/low/ops.h"
 #include "loom/ops/scalar/ops.h"
+#include "loom/ops/test/ops.h"
 #include "loom/target/test/low_registry.h"
 #include "loom/target/test/lower.h"
 #include "loom/target/test/target_records.h"
@@ -261,6 +263,94 @@ TEST_F(LowLowerSourcePlanTest, PropagatesObserverEndFailureBeforeSelection) {
   EXPECT_FALSE(observer_.source_plan.invalid_lifecycle);
   EXPECT_FALSE(observer_.source_plan.selection_started);
   EXPECT_EQ(observer_.plan_count, 0u);
+}
+
+TEST_F(LowLowerSourcePlanTest,
+       LowersNonFuncDialectCallableBoundaryThroughInterfaces) {
+  policy_.source_plan_observer = nullptr;
+  policy_.emit_preamble = {};
+
+  loom_builder_t module_builder;
+  loom_builder_initialize(module_, &module_->arena, loom_module_block(module_),
+                          &module_builder);
+  const loom_type_t i32_type = loom_type_scalar(LOOM_SCALAR_TYPE_I32);
+
+  loom_string_id_t callee_name_id = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(loom_builder_intern_string(
+      &module_builder, IREE_SV("test_callee"), &callee_name_id));
+  uint16_t callee_symbol_id = LOOM_SYMBOL_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_add_symbol(module_, callee_name_id, &callee_symbol_id));
+  const loom_symbol_ref_t callee_ref = {
+      /*.module_id=*/0,
+      /*.symbol_id=*/callee_symbol_id,
+  };
+  const loom_tied_result_t tied_result = {
+      /*.result_index=*/0,
+      /*.operand_index=*/0,
+      /*.has_type_change=*/false,
+  };
+  loom_op_t* declaration_op = nullptr;
+  IREE_ASSERT_OK(loom_test_decl_build(
+      &module_builder, /*build_flags=*/0, /*visibility=*/0, /*cc=*/0,
+      callee_ref, &i32_type, 1, &i32_type, 1, &tied_result, 1,
+      LOOM_LOCATION_UNKNOWN, &declaration_op));
+
+  loom_string_id_t caller_name_id = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(loom_builder_intern_string(
+      &module_builder, IREE_SV("test_caller"), &caller_name_id));
+  uint16_t caller_symbol_id = LOOM_SYMBOL_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_add_symbol(module_, caller_name_id, &caller_symbol_id));
+  const loom_symbol_ref_t caller_ref = {
+      /*.module_id=*/0,
+      /*.symbol_id=*/caller_symbol_id,
+  };
+  loom_op_t* caller_op = nullptr;
+  IREE_ASSERT_OK(loom_test_func_build(
+      &module_builder, /*build_flags=*/0, /*visibility=*/0, /*cc=*/0,
+      caller_ref, &i32_type, 1, &i32_type, 1, /*tied_results=*/nullptr,
+      /*tied_result_count=*/0, /*predicates=*/nullptr,
+      /*predicates_count=*/0, LOOM_LOCATION_UNKNOWN, &caller_op));
+  function_ = loom_func_like_cast(module_, caller_op);
+  loom_region_t* caller_body = loom_func_like_body(function_);
+  loom_block_t* caller_entry = loom_region_entry_block(caller_body);
+  loom_builder_t body_builder;
+  loom_builder_initialize(module_, &module_->arena, caller_entry,
+                          &body_builder);
+  body_builder.ip.parent_op = caller_op;
+  const loom_value_id_t argument = loom_block_arg_id(caller_entry, 0);
+  loom_op_t* invoke_op = nullptr;
+  IREE_ASSERT_OK(loom_test_invoke_build(&body_builder, callee_ref, &argument, 1,
+                                        &i32_type, 1, &tied_result, 1,
+                                        LOOM_LOCATION_UNKNOWN, &invoke_op));
+  const loom_value_id_t invoke_result = loom_op_const_results(invoke_op)[0];
+  loom_op_t* exit_op = nullptr;
+  IREE_ASSERT_OK(loom_test_yield_build(&body_builder, &invoke_result, 1,
+                                       LOOM_LOCATION_UNKNOWN, &exit_op));
+
+  IREE_ASSERT_OK(loom_value_fact_table_initialize(
+      &fact_table_, &analysis_arena_, module_->values.count));
+  fact_table_.context.target_facts = &target_facts_;
+  IREE_ASSERT_OK(
+      loom_value_fact_table_compute(&fact_table_, module_, function_));
+  options_.fact_table = &fact_table_;
+
+  IREE_ASSERT_OK(
+      loom_low_lower_function(module_, function_, &options_, &result_));
+  ASSERT_EQ(result_.error_count, 0u);
+  ASSERT_NE(result_.low_func_op, nullptr);
+  loom_region_t* low_body =
+      loom_func_like_body(loom_func_like_cast(module_, result_.low_func_op));
+  ASSERT_NE(low_body, nullptr);
+  loom_block_t* low_entry = loom_region_entry_block(low_body);
+  ASSERT_EQ(low_entry->op_count, 2u);
+  const loom_op_t* low_call = loom_block_const_op(low_entry, 0);
+  EXPECT_TRUE(loom_low_func_call_isa(low_call));
+  ASSERT_EQ(low_call->tied_result_count, 1u);
+  EXPECT_EQ(loom_op_tied_results(low_call)[0].result_index, 0u);
+  EXPECT_EQ(loom_op_tied_results(low_call)[0].operand_index, 0u);
+  EXPECT_TRUE(loom_low_return_isa(loom_block_const_op(low_entry, 1)));
 }
 
 }  // namespace

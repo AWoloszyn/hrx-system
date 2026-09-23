@@ -118,6 +118,19 @@ loom_test(
 )
 
 loom_test(
+    name = "wide_index_recurrence_test",
+    srcs = ["wide_index_recurrence.loom"],
+    compile_targets = [
+        "//loom/target/amdgpu:gfx942",
+        "//loom/target/amdgpu:gfx1151",
+    ],
+    execution_profiles = [
+        AMDGPU_HARDWARE_PROFILE,
+        AMDGPU_ACCESS_PROFILE,
+    ],
+)
+
+loom_test(
     name = "float_extrema_test",
     srcs = ["float_extrema.loom"],
     compile_targets = [

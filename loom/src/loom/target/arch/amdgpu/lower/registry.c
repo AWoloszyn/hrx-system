@@ -56,12 +56,12 @@
 #include "loom/target/arch/amdgpu/lower/mask.h"
 #include "loom/target/arch/amdgpu/lower/matrix.h"
 #include "loom/target/arch/amdgpu/lower/matrix_fragment_repack.h"
-#include "loom/target/arch/amdgpu/lower/matrix_representation.h"
 #include "loom/target/arch/amdgpu/lower/memory.h"
 #include "loom/target/arch/amdgpu/lower/memory_ordering.h"
 #include "loom/target/arch/amdgpu/lower/preamble.h"
 #include "loom/target/arch/amdgpu/lower/sanitizer.h"
 #include "loom/target/arch/amdgpu/lower/sanitizer_race.h"
+#include "loom/target/arch/amdgpu/lower/source_representation.h"
 #include "loom/target/arch/amdgpu/lower/structural.h"
 #include "loom/target/arch/amdgpu/lower/subgroup.h"
 #include "loom/target/arch/amdgpu/lower/sync.h"
@@ -1746,7 +1746,7 @@ static const loom_low_lower_policy_t kAmdgpuLowLowerPolicy = {
             .attrs = loom_amdgpu_descriptor_matrix_attrs,
             .user_data = NULL,
         },
-    .source_plan_observer = &loom_amdgpu_matrix_representation_observer,
+    .source_plan_observer = &loom_amdgpu_source_representation_observer,
     .visibility_model = loom_amdgpu_memory_visibility_model,
     .preselect_op = {.fn = loom_amdgpu_preselect_op, .user_data = NULL},
     .select_op = {.fn = loom_amdgpu_select_op, .user_data = NULL},

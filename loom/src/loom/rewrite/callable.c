@@ -151,10 +151,8 @@ static iree_status_t loom_callable_validate_single_block_body(
   }
   loom_op_t* terminator_op =
       loom_block_op(entry_block, entry_block->op_count - 1);
-  const uint8_t body_region_index = loom_func_like_body_region_index(callee);
-  const loom_op_vtable_t* callee_vtable = loom_op_vtable(module, callee.op);
   const loom_region_descriptor_t* body_descriptor =
-      loom_op_vtable_region_descriptor(callee_vtable, body_region_index);
+      loom_func_like_body_region_descriptor(module, callee);
   if (!body_descriptor ||
       !loom_op_has_trait(module, terminator_op, LOOM_TRAIT_TERMINATOR) ||
       (body_descriptor->terminator != LOOM_OP_KIND_UNKNOWN &&
@@ -182,10 +180,8 @@ bool loom_callable_body_is_linear(const loom_module_t* module,
     return false;
   }
   const loom_op_t* terminator = loom_block_const_last_op(entry_block);
-  const loom_op_vtable_t* callee_vtable = loom_op_vtable(module, callee.op);
   const loom_region_descriptor_t* body_descriptor =
-      loom_op_vtable_region_descriptor(
-          callee_vtable, loom_func_like_body_region_index(callee));
+      loom_func_like_body_region_descriptor(module, callee);
   return body_descriptor != NULL &&
          body_descriptor->terminator != LOOM_OP_KIND_UNKNOWN &&
          terminator->kind == body_descriptor->terminator;
@@ -246,10 +242,8 @@ static iree_status_t loom_callable_validate_cfg_body(
                             "cannot inline a call from inside its callee body");
   }
 
-  const uint8_t body_region_index = loom_func_like_body_region_index(callee);
-  const loom_op_vtable_t* callee_vtable = loom_op_vtable(module, callee.op);
   const loom_region_descriptor_t* body_descriptor =
-      loom_op_vtable_region_descriptor(callee_vtable, body_region_index);
+      loom_func_like_body_region_descriptor(module, callee);
   if (!body_descriptor || body_descriptor->terminator == LOOM_OP_KIND_UNKNOWN) {
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,

@@ -1756,8 +1756,8 @@ static iree_status_t loom_amdgpu_fragment_memory_select(
       source.role == LOOM_CONTRACT_OPERAND_ROLE_RESULT) {
     loom_low_representation_id_t selected_representation =
         LOOM_LOW_REPRESENTATION_ID_NONE;
-    IREE_RETURN_IF_ERROR(loom_low_lower_representation_lookup(
-        context, source.payload, &selected_representation));
+    loom_low_lower_representation_lookup(context, source.payload,
+                                         &selected_representation);
     if (selected_representation != LOOM_LOW_REPRESENTATION_ID_NONE) {
       IREE_ASSERT_LE(selected_representation,
                      LOOM_AMDGPU_MATRIX_RESULT_REPRESENTATION_MAX_ID);

@@ -329,12 +329,10 @@ static iree_status_t loom_boundary_projection_plan_function_signature(
   }
   loom_region_t* body = loom_func_like_body(function);
   if (body) {
+    const loom_region_descriptor_t* body_descriptor =
+        loom_func_like_body_region_descriptor(plan->module, function);
     const uint8_t body_region_index =
         loom_func_like_body_region_index(function);
-    const loom_op_vtable_t* op_vtable =
-        loom_op_vtable(plan->module, function.op);
-    const loom_region_descriptor_t* body_descriptor =
-        loom_op_vtable_region_descriptor(op_vtable, body_region_index);
     if (!body_descriptor ||
         body_descriptor->terminator == LOOM_OP_KIND_UNKNOWN ||
         function.op->region_count != 1 || body_region_index != 0) {

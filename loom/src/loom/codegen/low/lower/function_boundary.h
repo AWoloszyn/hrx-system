@@ -6,13 +6,16 @@
 
 // Source-to-Low callable boundary lowering.
 //
-// A source function boundary is mapped once and then consumed throughout
-// lowering. Validation establishes argument mappings before source planning;
-// the source-plan traversal joins return carriers into retained result types.
-// Definition creation materializes the target-Low callable,
-// entry binding connects direct arguments, resource emission materializes
-// arguments omitted from the direct ABI, and predicate remapping translates
-// source value references after those bindings exist.
+// A source callable boundary is mapped once and then consumed throughout
+// lowering. Validation establishes argument mappings before source planning.
+// Source-plan discovery joins the target-neutral exit mappings, and targets
+// with physical representation planning refine those joins after their plan is
+// solved so exit values and the callable signature consume one retained
+// decision.
+// Definition creation materializes the target-Low callable, entry binding
+// connects direct arguments, resource emission materializes arguments omitted
+// from the direct ABI, and predicate remapping translates source value
+// references after those bindings exist.
 //
 // Function declarations use the same type and metadata mapping without a body.
 // They are lowered independently by the module source-to-Low pass before
@@ -44,13 +47,15 @@ iree_status_t loom_low_lower_query_argument(
 iree_status_t loom_low_lower_function_boundary_validate(
     loom_low_lower_context_t* context);
 
-// Joins one return's native value carriers into the retained callable result
-// types. Called once per return by the existing source-plan traversal.
-iree_status_t loom_low_lower_function_boundary_observe_return(
-    loom_low_lower_context_t* context, const loom_op_t* return_op);
+// Joins one callable-body exit's native value carriers into the retained
+// callable result types. Source-plan discovery calls this for every exit; a
+// retained physical representation plan may join the finalized carriers again
+// during selection.
+iree_status_t loom_low_lower_function_boundary_observe_exit(
+    loom_low_lower_context_t* context, const loom_op_t* exit_op);
 
-// Completes result mappings after all returns have been observed. A callable
-// without returning paths retains the target mapping of its declared types.
+// Completes result mappings after all exits have been observed. A callable
+// without exiting paths retains the target mapping of its declared types.
 iree_status_t loom_low_lower_function_boundary_finalize(
     loom_low_lower_context_t* context);
 

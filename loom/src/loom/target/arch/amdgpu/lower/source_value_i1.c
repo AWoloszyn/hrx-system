@@ -1128,6 +1128,23 @@ bool loom_amdgpu_source_value_is_divergent_subgroup_lane_mask(
          loom_value_facts_is_lane_varying(facts);
 }
 
+static bool loom_amdgpu_source_value_dependency_is_native_i1_mask(
+    const loom_module_t* module, const loom_value_fact_table_t* fact_table,
+    const loom_view_region_table_t* view_regions,
+    loom_amdgpu_source_value_analysis_t* analysis,
+    loom_value_id_t source_value_id, loom_value_id_t excluded_value_id) {
+  if (analysis != NULL) {
+    // Share the condition result across placement queries. Recursive
+    // condition/result answers remain provisional until the query root is
+    // complete, so no cycle-breaking answer escapes into later placement.
+    return loom_amdgpu_analyzed_source_value_is_native_i1_mask(
+        module, fact_table, view_regions, analysis, source_value_id);
+  }
+  return loom_amdgpu_source_value_is_native_i1_mask_excluding(
+      module, fact_table, view_regions, analysis, source_value_id,
+      excluded_value_id);
+}
+
 static bool loom_amdgpu_source_value_memory_payload_use_requires_vgpr(
     const loom_module_t* module, loom_value_id_t source_value_id,
     const loom_op_t* user_op, uint16_t operand_index) {
@@ -1157,7 +1174,7 @@ static bool loom_amdgpu_source_value_select_payload_use_requires_vgpr(
           module, user_op, LOOM_OPERAND_ROLE_SELECT_CONDITION, &condition)) {
     return false;
   }
-  return loom_amdgpu_source_value_is_native_i1_mask_excluding(
+  return loom_amdgpu_source_value_dependency_is_native_i1_mask(
       module, fact_table, view_regions, analysis, condition, source_value_id);
 }
 
@@ -1175,7 +1192,7 @@ bool loom_amdgpu_select_result_requires_vgpr(
                                        &condition)) {
     return false;
   }
-  return loom_amdgpu_source_value_is_native_i1_mask_excluding(
+  return loom_amdgpu_source_value_dependency_is_native_i1_mask(
       module, fact_table, view_regions, analysis, condition, source_value_id);
 }
 

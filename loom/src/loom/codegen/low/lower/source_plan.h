@@ -23,6 +23,7 @@ extern "C" {
 #endif
 
 typedef struct loom_low_lower_resolved_emit_t loom_low_lower_resolved_emit_t;
+typedef struct loom_low_representation_plan_t loom_low_representation_plan_t;
 
 enum loom_low_lower_value_storage_flag_bits_e {
   // The source value must be materialized as a target-Low SSA value.
@@ -109,6 +110,9 @@ typedef struct loom_low_lower_source_plan_t {
   // dominance when all blocks are reachable. Unreachable blocks follow in
   // storage order. NULL preserves the single-block structured path.
   const uint16_t* block_order;
+  // Function-local physical-representation plan, or NULL when the target has
+  // no representation observer or before that observer begins.
+  loom_low_representation_plan_t* representation_plan;
   // Per-source-value storage demand flags indexed by source value ordinal.
   loom_low_lower_value_storage_flags_t* value_storage_flags;
   // Selected plans in source traversal order.
@@ -125,7 +129,9 @@ typedef struct loom_low_lower_source_plan_t {
 //
 // The caller must have initialized the function value domain, selected a
 // descriptor set, composed the target contract index, and validated the source
-// function boundary. The function owns its planning scratch arena lifetime and
+// function arguments. Discovery establishes target-neutral result mappings;
+// targets with a physical representation plan refine those mappings after the
+// plan is solved. The function owns its planning scratch arena lifetime and
 // retains plan data in the lowering context's function arena.
 iree_status_t loom_low_lower_source_plan_build(
     loom_low_lower_context_t* context, loom_region_t* source_body);

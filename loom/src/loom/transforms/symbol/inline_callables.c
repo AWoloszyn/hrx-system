@@ -872,12 +872,8 @@ static loom_inline_blocker_t loom_inline_validate_inline_body(
     return LOOM_INLINE_BLOCKER_RECURSIVE_BODY;
   }
 
-  const uint8_t body_region_index =
-      loom_func_like_body_region_index(entry->callee);
-  const loom_op_vtable_t* callee_vtable =
-      loom_op_vtable(module, entry->callee.op);
   const loom_region_descriptor_t* body_descriptor =
-      loom_op_vtable_region_descriptor(callee_vtable, body_region_index);
+      loom_func_like_body_region_descriptor(module, entry->callee);
   if (!body_descriptor || body_descriptor->terminator == LOOM_OP_KIND_UNKNOWN) {
     return LOOM_INLINE_BLOCKER_CALLEE_BODY_INVALID_TERMINATOR;
   }

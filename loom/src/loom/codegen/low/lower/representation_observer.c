@@ -6,6 +6,7 @@
 
 #include "loom/codegen/low/lower/representation_observer.h"
 
+#include "loom/codegen/low/lower/context.h"
 #include "loom/ir/context.h"
 #include "loom/ir/local_value_domain.h"
 #include "loom/ops/op_defs.h"
@@ -117,7 +118,8 @@ static void loom_low_lower_representation_try_relation(
   }
   const loom_low_lower_representation_provider_t* provider =
       recorder->state->provider;
-  if (provider->relation(provider->user_data, context, source_op, relation)) {
+  if (provider->relation(provider->user_data, context, source_op, relation,
+                         recorder)) {
     loom_low_lower_representation_record_union(
         recorder, relation->source_value_id, relation->destination_value_id);
   }
@@ -192,6 +194,9 @@ iree_status_t loom_low_lower_representation_observer_begin(
   loom_low_representation_plan_initialize(
       value_domain->value_count, loom_low_lower_context_function_arena(context),
       &state->plan);
+  IREE_ASSERT(context->lowering.source_plan.representation_plan == NULL,
+              "source representation plan must begin exactly once");
+  context->lowering.source_plan.representation_plan = &state->plan;
   *out_observer_state = state;
   loom_low_lower_representation_observer_observe(
       state, context, loom_low_lower_context_source_function(context).op);
@@ -226,6 +231,31 @@ void loom_low_lower_representation_observer_observe(
     while (loom_value_relation_iterator_next(&relation_iterator, &relation)) {
       loom_low_lower_representation_try_relation(&recorder, context, source_op,
                                                  &relation);
+    }
+  }
+  if (!iree_status_is_ok(state->terminal_status)) {
+    return;
+  }
+
+  if (state->provider->observe_callable_boundary != NULL) {
+    loom_low_lower_representation_callable_boundary_kind_t callable_kind;
+    bool is_callable_boundary = true;
+    if (source_op == loom_low_lower_context_source_function(context).op) {
+      callable_kind = LOOM_LOW_LOWER_REPRESENTATION_CALLABLE_DEFINITION;
+    } else if (loom_low_lower_source_op_is_callable_exit(context, source_op)) {
+      callable_kind = LOOM_LOW_LOWER_REPRESENTATION_CALLABLE_EXIT;
+    } else if (iree_any_bit_set(source_op->traits,
+                                LOOM_TRAIT_CALLABLE_BOUNDARY) &&
+               loom_call_like_is_direct_semantic(loom_call_like_const_cast(
+                   loom_low_lower_context_module(context), source_op))) {
+      callable_kind = LOOM_LOW_LOWER_REPRESENTATION_CALLABLE_CALL;
+    } else {
+      is_callable_boundary = false;
+    }
+    if (is_callable_boundary) {
+      state->provider->observe_callable_boundary(state->provider->user_data,
+                                                 callable_kind, context,
+                                                 source_op, &recorder);
     }
   }
   if (!iree_status_is_ok(state->terminal_status)) {
@@ -269,33 +299,45 @@ iree_status_t loom_low_lower_representation_observer_end(
       (unsigned)state->value_domain->value_ids[plan_conflict.value_ordinal]);
 }
 
-IREE_ATTRIBUTE_NOINLINE static void loom_low_lower_representation_state_lookup(
-    loom_low_lower_representation_observer_state_t* state,
+static void loom_low_lower_representation_plan_lookup(
+    loom_low_representation_plan_t* plan,
+    const loom_local_value_domain_t* value_domain,
     loom_value_id_t source_value_id,
     loom_low_representation_id_t* out_representation) {
-  IREE_ASSERT(state->provider != NULL && state->plan.solved,
+  IREE_ASSERT(plan != NULL && plan->solved,
               "source representation lookup requires a solved plan");
   const loom_value_ordinal_t value_ordinal =
-      loom_local_value_domain_try_ordinal(state->value_domain, source_value_id);
+      loom_local_value_domain_try_ordinal(value_domain, source_value_id);
   IREE_ASSERT_NE(value_ordinal, LOOM_VALUE_ORDINAL_INVALID,
                  "representation query values must belong to the active "
                  "function domain");
-  loom_low_representation_plan_lookup(&state->plan, value_ordinal,
-                                      out_representation);
+  loom_low_representation_plan_lookup(plan, value_ordinal, out_representation);
 }
 
-iree_status_t loom_low_lower_representation_lookup(
+void loom_low_lower_representation_lookup(
     loom_low_lower_context_t* context, loom_value_id_t source_value_id,
     loom_low_representation_id_t* out_representation) {
   IREE_ASSERT_ARGUMENT(out_representation);
   *out_representation = LOOM_LOW_REPRESENTATION_ID_NONE;
-  loom_low_lower_representation_observer_state_t* state = NULL;
-  IREE_RETURN_IF_ERROR(loom_low_lower_get_or_allocate_target_state(
-      context, &kLoomLowLowerRepresentationStateKey, sizeof(*state),
-      (void**)&state));
-  loom_low_lower_representation_state_lookup(state, source_value_id,
-                                             out_representation);
-  return iree_ok_status();
+  loom_low_lower_representation_plan_lookup(
+      context->lowering.source_plan.representation_plan,
+      loom_low_lower_context_value_domain(context), source_value_id,
+      out_representation);
+}
+
+void loom_low_lower_representation_lookup_if_ready(
+    loom_low_lower_context_t* context, loom_value_id_t source_value_id,
+    loom_low_representation_id_t* out_representation) {
+  IREE_ASSERT_ARGUMENT(out_representation);
+  *out_representation = LOOM_LOW_REPRESENTATION_ID_NONE;
+  loom_low_representation_plan_t* plan =
+      context->lowering.source_plan.representation_plan;
+  if (plan == NULL || !plan->solved) {
+    return;
+  }
+  loom_low_lower_representation_plan_lookup(
+      plan, loom_low_lower_context_value_domain(context), source_value_id,
+      out_representation);
 }
 
 iree_status_t loom_low_lower_representation_query_lookup(
@@ -312,7 +354,7 @@ iree_status_t loom_low_lower_representation_query_lookup(
   if (state == NULL || state->provider == NULL) {
     return iree_ok_status();
   }
-  loom_low_lower_representation_state_lookup(state, source_value_id,
-                                             out_representation);
+  loom_low_lower_representation_plan_lookup(
+      &state->plan, state->value_domain, source_value_id, out_representation);
   return iree_ok_status();
 }
