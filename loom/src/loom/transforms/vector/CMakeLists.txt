@@ -14,20 +14,19 @@ loom_cc_library(
     bank_sroa
   HDRS
     "bank_sroa.h"
+    "bank_sroa_projection.h"
   SRCS
     "bank_sroa.c"
+    "bank_sroa_projection.c"
   DEPS
     iree::base
-    iree::base::internal::arena
     loom::ir
     loom::ops::op_defs
-    loom::ops::scf
     loom::ops::vector
     loom::pass::types
-    loom::rewrite::materialize
-    loom::rewrite::remap
     loom::rewrite::rewriter
-    loom::util::walk
+    loom::target::pass_environment
+    loom::transforms::boundary::projection_core
   PUBLIC
 )
 

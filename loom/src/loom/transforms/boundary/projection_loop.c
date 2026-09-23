@@ -60,6 +60,7 @@ static iree_status_t loom_boundary_projection_add_loop_endpoint(
 iree_status_t loom_boundary_projection_collect_loop(
     loom_boundary_projection_plan_t* plan,
     loom_boundary_projection_function_t* function, loom_loop_like_t loop) {
+  ++plan->loops_checked;
   const loom_value_slice_t initial_values = loom_loop_like_iter_args(loop);
   if (initial_values.count == 0) {
     return iree_ok_status();
@@ -924,15 +925,15 @@ static iree_status_t loom_boundary_projection_realize_loop_results(
 
 static iree_status_t loom_boundary_projection_move_loop_region(
     loom_boundary_projection_plan_t* plan, loom_block_t* source_block,
-    loom_op_t* source_terminator, loom_op_t* target_terminator) {
+    loom_op_t* target_terminator) {
   loom_op_t* op = source_block->first_op;
-  while (op && op != source_terminator) {
+  while (op) {
     loom_op_t* next = op->next_op;
     IREE_RETURN_IF_ERROR(
         loom_rewriter_move_before(&plan->rewriter, op, target_terminator));
     op = next;
   }
-  return loom_rewriter_erase(&plan->rewriter, source_terminator);
+  return iree_ok_status();
 }
 
 static iree_status_t loom_boundary_projection_apply_loop(
@@ -988,6 +989,17 @@ static iree_status_t loom_boundary_projection_apply_loop(
       plan, function, loop, &replacement, &condition_terminator,
       &body_terminator));
 
+  // Outgoing source recipes have already been materialized into the new
+  // terminators. Retire the old terminators before destination elimination so
+  // eliminative rules can remove complete source chains without a temporary
+  // aggregate use keeping their final operation alive.
+  if (loop->condition_terminator) {
+    IREE_RETURN_IF_ERROR(
+        loom_rewriter_erase(&plan->rewriter, loop->condition_terminator));
+  }
+  IREE_RETURN_IF_ERROR(
+      loom_rewriter_erase(&plan->rewriter, loop->body_terminator));
+
   if (replacement.condition_entry) {
     IREE_RETURN_IF_ERROR(loom_boundary_projection_realize_loop_endpoint(
         plan, function, loop, replacement.condition_state.values,
@@ -1009,13 +1021,12 @@ static iree_status_t loom_boundary_projection_apply_loop(
     loom_block_t* source_condition =
         loom_region_entry_block(loom_loop_like_condition_region(loop->loop));
     IREE_RETURN_IF_ERROR(loom_boundary_projection_move_loop_region(
-        plan, source_condition, loop->condition_terminator,
-        condition_terminator));
+        plan, source_condition, condition_terminator));
   }
   loom_block_t* source_body =
       loom_region_entry_block(loom_loop_like_body(loop->loop));
   IREE_RETURN_IF_ERROR(loom_boundary_projection_move_loop_region(
-      plan, source_body, loop->body_terminator, body_terminator));
+      plan, source_body, body_terminator));
   IREE_RETURN_IF_ERROR(loom_boundary_projection_realize_loop_results(
       plan, function, loop, &replacement));
   IREE_RETURN_IF_ERROR(loom_rewriter_erase(&plan->rewriter, loop->loop.op));

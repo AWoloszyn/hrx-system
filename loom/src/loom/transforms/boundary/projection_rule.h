@@ -209,6 +209,9 @@ typedef struct loom_boundary_projection_rule_statistics_t {
   int64_t components;
   // Rule-owned destination uses rewritten to consume components directly.
   int64_t destination_uses_rewritten;
+  // Rule-owned source operations removed after their physical values were
+  // forwarded directly.
+  int64_t source_operations_eliminated;
 } loom_boundary_projection_rule_statistics_t;
 
 // Final physical component schema selected by one rule for one logical slot.

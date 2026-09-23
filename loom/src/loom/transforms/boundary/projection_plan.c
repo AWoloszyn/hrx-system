@@ -135,6 +135,14 @@ void loom_boundary_projection_record_destination_uses(
   plan->rule_statistics[index].destination_uses_rewritten += count;
 }
 
+void loom_boundary_projection_record_source_operations(
+    loom_boundary_projection_plan_t* plan,
+    const loom_boundary_projection_rule_t* rule, int64_t count) {
+  const iree_host_size_t index =
+      loom_boundary_projection_rule_index(plan, rule);
+  plan->rule_statistics[index].source_operations_eliminated += count;
+}
+
 iree_status_t loom_boundary_projection_plan_slot_schema(
     loom_boundary_projection_plan_t* plan,
     loom_boundary_projection_function_t* function,

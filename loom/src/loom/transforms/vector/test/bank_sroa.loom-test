@@ -137,11 +137,11 @@ func.def @nested_configured_bank_updates(%initial: vector<2x2x4xf32>, %increment
   %initial_slot_2 = vector.extract %initial[1, 0] : vector<2x2x4xf32> -> vector<4xf32>
   %initial_slot_3 = vector.extract %initial[1, 1] : vector<2x2x4xf32> -> vector<4xf32>
   %result_slot_0, %result_slot_1, %result_slot_2, %result_slot_3 = scf.for %stage = [%loop_begin to %stage_count step %loop_step](%bank_slot_0 = %initial_slot_0 : vector<4xf32>, %bank_slot_1 = %initial_slot_1 : vector<4xf32>, %bank_slot_2 = %initial_slot_2 : vector<4xf32>, %bank_slot_3 = %initial_slot_3 : vector<4xf32>) -> (vector<4xf32>, vector<4xf32>, vector<4xf32>, vector<4xf32>) {
-    %next$83 = vector.addf %bank_slot_0, %increment : vector<4xf32>
-    %next_1$84 = vector.addf %bank_slot_1, %increment : vector<4xf32>
-    %next$85 = vector.addf %bank_slot_2, %increment : vector<4xf32>
-    %next_1$86 = vector.addf %bank_slot_3, %increment : vector<4xf32>
-    scf.yield %next$83, %next_1$84, %next$85, %next_1$86 : vector<4xf32>, vector<4xf32>, vector<4xf32>, vector<4xf32>
+    %next$42 = vector.addf %bank_slot_0, %increment : vector<4xf32>
+    %next_1$46 = vector.addf %bank_slot_1, %increment : vector<4xf32>
+    %next$50 = vector.addf %bank_slot_2, %increment : vector<4xf32>
+    %next_1$54 = vector.addf %bank_slot_3, %increment : vector<4xf32>
+    scf.yield %next$42, %next_1$46, %next$50, %next_1$54 : vector<4xf32>, vector<4xf32>, vector<4xf32>, vector<4xf32>
   }
   func.return %result_slot_0, %result_slot_1, %result_slot_2, %result_slot_3 : vector<4xf32>, vector<4xf32>, vector<4xf32>, vector<4xf32>
 }
@@ -451,3 +451,115 @@ CHECK: %rows, %view, *, * = scf.for *(%* = %initial_rows : index, %* = %initial_
 CHECK: test.use * : view<[*]x4xi32, %layout>
 CHECK: scf.yield %next_rows, %next_view, *, %next : index, view<[%next_rows]x4xi32, %layout>, vector<4xf32>, vector<4xf32>
 CHECK: test.use %view, * : view<[%rows]x4xi32, %layout>, vector<4xf32>
+
+// ====
+// RUN: pass sroa-vector-banks
+
+// Condition-controlled loops project the before, after, and result endpoints
+// through one shared bank schema. Inserts in either region forward unchanged
+// slots directly and replace only the addressed payload.
+func.def @condition_bank(%initial: vector<2xi32>, %keep_going: i1) -> (i32, i32) {
+  %result = scf.while(%before_bank = %initial : vector<2xi32>) -> (vector<2xi32>) {
+    %head = vector.extract %before_bank[0] : vector<2xi32> -> i32
+    test.use %head : i32
+    %condition_bank = vector.insert %head into %before_bank[1] : i32, vector<2xi32>
+    scf.condition %keep_going, %condition_bank : i1, vector<2xi32>
+  } do(%body_bank: vector<2xi32>) {
+    %left = vector.extract %body_bank[0] : vector<2xi32> -> i32
+    %right = vector.extract %body_bank[1] : vector<2xi32> -> i32
+    %sum = scalar.addi %left, %right : i32
+    %next_bank = vector.insert %sum into %body_bank[0] : i32, vector<2xi32>
+    scf.yield %next_bank : vector<2xi32>
+  }
+  %first = vector.extract %result[0] : vector<2xi32> -> i32
+  %second = vector.extract %result[1] : vector<2xi32> -> i32
+  func.return %first, %second : i32, i32
+}
+
+// ----
+func.def @condition_bank(%initial: vector<2xi32>, %keep_going: i1) -> (i32, i32) {
+  %initial_slot_0 = vector.extract %initial[0] : vector<2xi32> -> i32
+  %initial_slot_1 = vector.extract %initial[1] : vector<2xi32> -> i32
+  %result_slot_0, %result_slot_1 = scf.while(%before_bank_slot_0 = %initial_slot_0 : i32, %before_bank_slot_1 = %initial_slot_1 : i32) -> (i32, i32) {
+    test.use %before_bank_slot_0 : i32
+    scf.condition %keep_going, %before_bank_slot_0, %before_bank_slot_0 : i1, i32, i32
+  } do(%body_bank_slot_0: i32, %body_bank_slot_1: i32) {
+    %sum = scalar.addi %body_bank_slot_0, %body_bank_slot_1 : i32
+    scf.yield %sum, %body_bank_slot_1 : i32, i32
+  }
+  func.return %result_slot_0, %result_slot_1 : i32, i32
+}
+
+// ====
+// RUN: with-checks pass-report sroa-vector-banks
+
+// The report retains the established SROA accounting while the shared boundary
+// engine owns loop discovery and reconstruction.
+func.def @reports_condition_bank(%initial: vector<2xi32>, %keep_going: i1) -> (i32) {
+  %result = scf.while(%before_bank = %initial : vector<2xi32>) -> (vector<2xi32>) {
+    %head = vector.extract %before_bank[0] : vector<2xi32> -> i32
+    %condition_bank = vector.insert %head into %before_bank[1] : i32, vector<2xi32>
+    scf.condition %keep_going, %condition_bank : i1, vector<2xi32>
+  } do(%body_bank: vector<2xi32>) {
+    %tail = vector.extract %body_bank[1] : vector<2xi32> -> i32
+    %next_bank = vector.insert %tail into %body_bank[0] : i32, vector<2xi32>
+    scf.yield %next_bank : vector<2xi32>
+  }
+  %first = vector.extract %result[0] : vector<2xi32> -> i32
+  func.return %first : i32
+}
+
+// ----
+CHECK: *"changed":true,*
+CHECK: *"statistics":{"loops-checked":1,"loops-scalarized":1,"banks-scalarized":1,"slots-materialized":2,"extracts-eliminated":3,"inserts-eliminated":2}*
+
+// ====
+// RUN: pass sroa-vector-banks
+
+// A dynamic condition-region access rejects the complete recurrence column;
+// no endpoint is projected in isolation.
+func.def @dynamic_condition_access_is_unchanged(%initial: vector<2xi32>, %index: index, %keep_going: i1) -> (i32) {
+  %result = scf.while(%before_bank = %initial : vector<2xi32>) -> (vector<2xi32>) {
+    %selected = vector.extract %before_bank[%index] : vector<2xi32> -> i32
+    test.use %selected : i32
+    scf.condition %keep_going, %before_bank : i1, vector<2xi32>
+  } do(%body_bank: vector<2xi32>) {
+    %tail = vector.extract %body_bank[1] : vector<2xi32> -> i32
+    %next_bank = vector.insert %tail into %body_bank[0] : i32, vector<2xi32>
+    scf.yield %next_bank : vector<2xi32>
+  }
+  %first = vector.extract %result[0] : vector<2xi32> -> i32
+  func.return %first : i32
+}
+
+// ====
+// RUN: pass sroa-vector-banks
+
+// A storage tie on the logical bank expands to one tie for each physical
+// component instead of disabling scalar replacement.
+func.def @tied_bank(%initial: vector<2xi32>, %increment: i32, %end: index) -> (i32, i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %result = scf.for %i = [%begin to %end step %step](%bank = %initial : vector<2xi32>) -> (%initial as vector<2xi32>) {
+    %old = vector.extract %bank[1] : vector<2xi32> -> i32
+    %next = scalar.addi %old, %increment : i32
+    %updated = vector.insert %next into %bank[1] : i32, vector<2xi32>
+    scf.yield %updated : vector<2xi32>
+  }
+  %first = vector.extract %result[0] : vector<2xi32> -> i32
+  %second = vector.extract %result[1] : vector<2xi32> -> i32
+  func.return %first, %second : i32, i32
+}
+
+// ----
+func.def @tied_bank(%initial: vector<2xi32>, %increment: i32, %end: index) -> (i32, i32) {
+  %begin = index.constant 0 : index
+  %step = index.constant 1 : index
+  %initial_slot_0 = vector.extract %initial[0] : vector<2xi32> -> i32
+  %initial_slot_1 = vector.extract %initial[1] : vector<2xi32> -> i32
+  %result_slot_0, %result_slot_1 = scf.for %i = [%begin to %end step %step](%bank_slot_0 = %initial_slot_0 : i32, %bank_slot_1 = %initial_slot_1 : i32) -> (%initial_slot_0 as i32, %initial_slot_1 as i32) {
+    %next = scalar.addi %bank_slot_1, %increment : i32
+    scf.yield %bank_slot_0, %next : i32, i32
+  }
+  func.return %result_slot_0, %result_slot_1 : i32, i32
+}

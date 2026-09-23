@@ -232,6 +232,8 @@ struct loom_boundary_projection_plan_t {
   int64_t cfg_edges_rewritten;
   // LoopLike operations replaced by the application phase.
   int64_t loops_rewritten;
+  // LoopLike operations inspected while discovering recurrence slots.
+  int64_t loops_checked;
 };
 
 // Builds a complete, non-mutating boundary projection plan.
@@ -311,6 +313,11 @@ void loom_boundary_projection_record(
 
 // Records rule-owned destination uses rewritten during elimination.
 void loom_boundary_projection_record_destination_uses(
+    loom_boundary_projection_plan_t* plan,
+    const loom_boundary_projection_rule_t* rule, int64_t count);
+
+// Records rule-owned source operations removed during elimination.
+void loom_boundary_projection_record_source_operations(
     loom_boundary_projection_plan_t* plan,
     const loom_boundary_projection_rule_t* rule, int64_t count);
 

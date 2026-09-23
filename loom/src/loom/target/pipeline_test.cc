@@ -41,6 +41,22 @@ typedef struct PipelineRunCounts {
   int last_source_combination_ordinal = 0;
   // First target legalization pass that selects physical representations.
   int first_target_legalization_ordinal = 0;
+  // Number of source-loop unrolling pass runs.
+  int source_loop_unrolling = 0;
+  // Lexical pass-run ordinal of source-loop unrolling.
+  int source_loop_unrolling_ordinal = 0;
+  // Number of vector-bank scalar replacement pass runs.
+  int vector_bank_sroa = 0;
+  // Lexical pass-run ordinal of vector-bank scalar replacement.
+  int vector_bank_sroa_ordinal = 0;
+  // Number of single-use read sinking pass runs.
+  int sink_single_use_reads = 0;
+  // Lexical pass-run ordinal of single-use read sinking.
+  int sink_single_use_reads_ordinal = 0;
+  // Number of structured-to-CFG lowering pass runs.
+  int scf_to_cfg = 0;
+  // Lexical pass-run ordinal of the first structured-to-CFG lowering.
+  int first_scf_to_cfg_ordinal = 0;
   // Number of composed boundary projection pass runs.
   int boundary_projection = 0;
   // Lexical pass-run ordinal of composed boundary projection.
@@ -147,6 +163,20 @@ iree_status_t InspectPipelineRun(void* user_data, loom_op_t* op,
     if (counts->first_target_legalization_ordinal == 0) {
       counts->first_target_legalization_ordinal =
           count_context->current_run_ordinal;
+    }
+  } else if (iree_string_view_equal(key, IREE_SV("unroll-scf-for"))) {
+    ++counts->source_loop_unrolling;
+    counts->source_loop_unrolling_ordinal = count_context->current_run_ordinal;
+  } else if (iree_string_view_equal(key, IREE_SV("sroa-vector-banks"))) {
+    ++counts->vector_bank_sroa;
+    counts->vector_bank_sroa_ordinal = count_context->current_run_ordinal;
+  } else if (iree_string_view_equal(key, IREE_SV("sink-single-use-reads"))) {
+    ++counts->sink_single_use_reads;
+    counts->sink_single_use_reads_ordinal = count_context->current_run_ordinal;
+  } else if (iree_string_view_equal(key, IREE_SV("scf-to-cfg"))) {
+    ++counts->scf_to_cfg;
+    if (counts->first_scf_to_cfg_ordinal == 0) {
+      counts->first_scf_to_cfg_ordinal = count_context->current_run_ordinal;
     }
   } else if (iree_string_view_equal(
                  key, IREE_SV("project-boundary-representations"))) {
@@ -264,6 +294,16 @@ TEST_F(TargetPipelineTest, ZeroChecksBuildsNoSanitizerPassSlots) {
             counts.last_source_combination_ordinal);
   EXPECT_LT(counts.last_source_combination_ordinal,
             counts.first_target_legalization_ordinal);
+  EXPECT_EQ(counts.source_loop_unrolling, 1);
+  EXPECT_EQ(counts.vector_bank_sroa, 1);
+  EXPECT_EQ(counts.sink_single_use_reads, 1);
+  EXPECT_GT(counts.scf_to_cfg, 0);
+  EXPECT_LT(counts.source_loop_unrolling_ordinal,
+            counts.vector_bank_sroa_ordinal);
+  EXPECT_LT(counts.vector_bank_sroa_ordinal,
+            counts.sink_single_use_reads_ordinal);
+  EXPECT_LT(counts.sink_single_use_reads_ordinal,
+            counts.first_scf_to_cfg_ordinal);
   EXPECT_LT(counts.first_target_legalization_ordinal,
             counts.boundary_projection_ordinal);
   EXPECT_LT(counts.boundary_projection_ordinal, counts.source_to_low_ordinal);
