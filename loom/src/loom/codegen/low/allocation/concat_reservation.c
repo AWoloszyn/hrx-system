@@ -499,6 +499,7 @@ iree_status_t loom_low_allocation_concat_reservation_find(
   // Even compact assemblies can cross a residency cliff when preserving a
   // source lease. Compare ordinary placement only when the reservation lowers
   // residency; within the current tier, a second location search has no value.
+  // Resources with no direct cliffs or derived consumers cannot lower a tier.
   const loom_target_residency_model_t* residency_model =
       context->residency_model;
   const uint16_t reg_class_id = capacity.descriptor_reg_class_id;
@@ -516,7 +517,12 @@ iree_status_t loom_low_allocation_concat_reservation_find(
       loom_low_allocation_storage_assignment_pressure_extent(
           context->descriptor_set, &result_assignment);
   if (result_location_end > current_location_end &&
-      !loom_target_residency_model_is_empty(residency_model)) {
+      !loom_target_residency_model_is_empty(residency_model) &&
+      (loom_target_residency_direct_resource_cliff_range(
+           &residency_model->direct_resources, reg_class_id)
+               .count != 0 ||
+       !loom_target_residency_derived_resource_table_is_empty(
+           &residency_model->derived_resources))) {
     const uint32_t current_tier =
         loom_target_residency_evaluate_tier_with_direct_resource_override(
             residency_model, current_units_by_reg_class, reg_class_id,
