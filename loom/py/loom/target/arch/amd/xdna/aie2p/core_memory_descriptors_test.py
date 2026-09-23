@@ -493,6 +493,8 @@ def test_vector_memory_descriptors_cover_each_native_width_and_value_shape() -> 
             ("bf16", 16),
             ("i32", 32),
             ("f32", 32),
+            ("i64", 64),
+            ("f64", 64),
         ):
             shape = f"{element_type}x{width_bits // element_bits}"
             for load_pipe in ("a", "b"):
@@ -546,6 +548,7 @@ def test_float_vector_memory_descriptors_reuse_bit_exact_physical_forms() -> Non
         for value_type, storage_type, element_bits in (
             ("bf16", "i16", 16),
             ("f32", "i32", 32),
+            ("f64", "i64", 64),
         ):
             value_shape = f"{value_type}x{width_bits // element_bits}"
             storage_shape = f"{storage_type}x{width_bits // element_bits}"
