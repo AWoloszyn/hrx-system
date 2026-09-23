@@ -43,6 +43,60 @@ additional device cache transition. The caller publishes inputs before use and
 acquires outputs after the program finishes the relevant DMA and its ordering
 edge completes. The query itself neither flushes caches nor orders execution.
 
+## Native entry and placement ownership
+
+The native driver and firmware control which context may use a placement.
+Time-sharing transfers that authority between contexts; it does not authorize
+unrelated contexts to operate the same physical resources concurrently. libamdf
+depends on native context isolation, just as it depends on native address-space
+isolation. Applications neither drain another context's work nor coordinate an
+exclusion lock with other device users. Context creation and host submission
+acceptance are not the point at which the application starts using the array:
+its setup executes only when the native provider schedules its command.
+
+The program owns a different obligation: its controller instructions cover the
+work using that placement. Before they finish, it quiesces its tile workers and
+drains transfers that could interfere with subsequent reconfiguration. Closing
+an input includes satisfying already-admitted reads; publishing a stop flag is
+insufficient for a worker blocked on another event. A parked worker is quiescent
+only when its protocol prevents further interfering work. Native command
+completion reports the end of the submitted controller program; it does not
+discover or join arbitrary subordinate work on the program's behalf.
+
+| Transition | Native provider responsibility | Program responsibility |
+| --- | --- | --- |
+| Complete A, then B on one native queue | Execute the accepted controller programs in order. Another context may use the placement between them. | A closes its services before ending; B establishes its complete required state. Both may be submitted before the CPU waits. |
+| A different context uses the placement | Isolate the incoming execution from the previous context's activity. This is a native handoff obligation, not a cross-process application protocol. | Initialize required registers, routes, locks and local data without assuming either retained values or a zeroed starting state. |
+| An admitted command is rescheduled | Maintain the supported native execution semantics, or report execution failure. | Keep its instructions and reachable memory valid; continue the existing computation rather than applying independent-entry initialization to partially completed work. |
+
+Native isolation is not a promise that every register or FIFO is zero at every
+command boundary. Same-context commands can leave state behind, and successful
+completion alone does not make an incompletely drained program safe to
+reconfigure. Conversely, correct applications are not responsible for repairing
+a provider that permits a foreign context's activity to interfere after handing
+over the placement. libamdf supplies no application reset sequence, hidden drain,
+placement registry or per-dispatch state snapshot.
+
+On Linux, AMD assigns partition setup and context management to firmware and
+documents firmware enforcement of context-to-column binding in its
+[NPU architecture](https://www.kernel.org/doc/html/latest/accel/amdxdna/amdnpu.html).
+On Windows, the native context and hardware queue operate under the
+[MCDM execution and scheduling contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/mcdm-architecture).
+These are the provider dependencies, not a claim that both implementations use
+the same reset sequence. The current submission envelopes supply no separate
+caller-authored save/restore programs; they do not establish an arbitrary
+live-tile checkpoint facility. Cooperative checkpoints require their own native
+payload contract and are distinct from complete-command handoff.
+
+Replacing a role or program inside one still-running invocation does not take
+this native-entry boundary. Its services remain owned by that invocation. A GPU
+consumer can also continue using shared output after NPU retirement, under its
+own execution and memory-lifetime protocol; that does not keep the NPU placement
+owned. The execution CTS covers complete setup after full-width context
+switches, independent context teardown with shared data retained, and prequeued
+program/binding rotation. Those tests exercise ordinary native handoff, not
+arbitrary recovery of an incorrectly terminated program.
+
 ## Native requirements
 
 | Boundary | Linux modern DRM | Windows MCDM |
@@ -284,7 +338,9 @@ array against other contexts. Each independent invocation still establishes
 its required application state. Ordering between queues, devices, and logical
 operations remains the caller's responsibility. The epoch's final completion
 protocol covers its relevant tile and DMA users before their storage is reused;
-a GPU consumer or independently scheduled descendant can have a later last use.
+a GPU consumer or work admitted to a separate native execution can have a later
+last use. NPU workers using this epoch's placement remain covered by this
+epoch's native command until they are quiescent.
 
 Native watchdog and preemption policy is separate from logical service progress.
 Advancing application records does not necessarily produce driver-visible
