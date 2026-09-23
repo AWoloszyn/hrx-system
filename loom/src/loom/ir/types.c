@@ -192,9 +192,9 @@ bool loom_type_equal(loom_type_t a, loom_type_t b) {
   return true;
 }
 
-static loom_value_id_t loom_type_remap_value(
-    const loom_module_t* module, const loom_type_value_remap_t* remap,
-    loom_value_id_t value_id) {
+loom_value_id_t loom_type_remap_value(const loom_module_t* module,
+                                      const loom_type_value_remap_t* remap,
+                                      loom_value_id_t value_id) {
   for (const loom_type_value_remap_t* span = remap; span; span = span->next) {
     if (iree_any_bit_set(span->flags,
                          LOOM_TYPE_VALUE_REMAP_FLAG_SOURCE_DEFINITION_SLICE)) {
@@ -451,15 +451,6 @@ bool loom_type_equal_after_value_remap(const loom_module_t* module,
                                        loom_type_t source_type,
                                        loom_type_t target_type,
                                        const loom_type_value_remap_t* remap) {
-  if (!module) {
-    return false;
-  }
-  for (const loom_type_value_remap_t* span = remap; span; span = span->next) {
-    if (span->count > 0 && (!span->source_values || !span->target_values)) {
-      return false;
-    }
-  }
-
   loom_type_kind_t source_kind = loom_type_kind(source_type);
   if (source_kind != loom_type_kind(target_type)) {
     return false;

@@ -21,6 +21,19 @@
 namespace loom {
 namespace {
 
+static const loom_attr_descriptor_t kLookupParameters[] = {{
+    /*.name=*/LOOM_BSTRING_REF(8, "metadata"),
+    /*.attr_kind=*/LOOM_ATTR_DICT,
+}};
+
+static const loom_parameterized_type_descriptor_t kLookupDescriptor = {
+    /*.name=*/LOOM_BSTRING_REF(11, "test.lookup"),
+    /*.parameter_descriptors=*/kLookupParameters,
+    /*.ir_kind=*/LOOM_TYPE_PARAMETERIZED,
+    /*.type_flags=*/0,
+    /*.parameter_count=*/IREE_ARRAYSIZE(kLookupParameters),
+};
+
 class ScopedReplacement {
  public:
   ScopedReplacement(loom_module_t* module, loom_value_id_t old_id,
@@ -33,6 +46,20 @@ class ScopedReplacement {
 
   // Stack-owned production context, released even after a fatal test assertion.
   loom_value_replacement_t value;
+};
+
+class ScopedLookup {
+ public:
+  ScopedLookup(const loom_module_t* module,
+               const loom_type_value_remap_t* remap) {
+    loom_type_remap_lookup_initialize(module, remap, &value);
+  }
+  ~ScopedLookup() { loom_type_remap_lookup_deinitialize(&value); }
+  ScopedLookup(const ScopedLookup&) = delete;
+  ScopedLookup& operator=(const ScopedLookup&) = delete;
+
+  // Stack-owned production context, released even after a fatal assertion.
+  loom_type_remap_lookup_t value;
 };
 
 class ValueReplacementTest : public ::testing::Test {
@@ -218,6 +245,230 @@ TEST_F(ValueReplacementTest, MixedAttributeTypeGraphUsesAnExplicitStack) {
   ExpectDependencies(carrier, {new_id_});
 }
 
+TEST_F(ValueReplacementTest,
+       LookupNormalizesCanonicalGraphsWithoutPublishingTypes) {
+  const loom_value_id_t other_id = Constant(3);
+  const loom_value_id_t absent_target_id = Constant(4);
+  const loom_value_id_t other_target_id = Constant(5);
+  const loom_overflow_dim_t source_dimensions[] = {
+      loom_dim_pack_dynamic(old_id_), loom_dim_pack_static(7),
+      loom_dim_pack_dynamic(other_id), loom_dim_pack_dynamic(old_id_)};
+  const loom_overflow_dim_t target_dimensions[] = {
+      loom_dim_pack_dynamic(new_id_), loom_dim_pack_static(7),
+      loom_dim_pack_dynamic(other_target_id), loom_dim_pack_dynamic(new_id_)};
+  loom_type_t source_leaf = {};
+  source_leaf.header =
+      loom_type_make_header(LOOM_TYPE_VECTOR, LOOM_SCALAR_TYPE_F32, 4, 0);
+  source_leaf.dims[0] = reinterpret_cast<uintptr_t>(source_dimensions);
+  loom_type_t target_leaf = source_leaf;
+  target_leaf.dims[0] = reinterpret_cast<uintptr_t>(target_dimensions);
+  const loom_type_id_t source_leaf_id = Intern(source_leaf);
+  const loom_type_id_t target_leaf_id = Intern(target_leaf);
+
+  loom_string_id_t element_name = LOOM_STRING_ID_INVALID;
+  loom_string_id_t predicate_name = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(
+      loom_module_intern_string(module_, IREE_SV("element"), &element_name));
+  IREE_ASSERT_OK(loom_module_intern_string(module_, IREE_SV("predicate"),
+                                           &predicate_name));
+  loom_predicate_t source_predicate = {
+      LOOM_PREDICATE_EQ,   2, {LOOM_PRED_ARG_VALUE, LOOM_PRED_ARG_VALUE}, {},
+      {old_id_, other_id},
+  };
+  loom_predicate_t target_predicate = source_predicate;
+  target_predicate.args[0] = new_id_;
+  target_predicate.args[1] = other_target_id;
+  const loom_named_attr_t source_entries[] = {
+      {element_name, {}, loom_attr_type(source_leaf_id)},
+      {predicate_name, {}, loom_attr_predicate_list(&source_predicate, 1)},
+  };
+  const loom_named_attr_t target_entries[] = {
+      {element_name, {}, loom_attr_type(target_leaf_id)},
+      {predicate_name, {}, loom_attr_predicate_list(&target_predicate, 1)},
+  };
+  loom_attribute_t source_metadata;
+  loom_attribute_t target_metadata;
+  IREE_ASSERT_OK(loom_module_make_canonical_attr_dict(
+      module_,
+      loom_make_named_attr_slice(source_entries,
+                                 IREE_ARRAYSIZE(source_entries)),
+      &source_metadata));
+  IREE_ASSERT_OK(loom_module_make_canonical_attr_dict(
+      module_,
+      loom_make_named_attr_slice(target_entries,
+                                 IREE_ARRAYSIZE(target_entries)),
+      &target_metadata));
+  const loom_attribute_t source_parameters[] = {source_metadata};
+  const loom_attribute_t target_parameters[] = {target_metadata};
+  loom_type_t source_parameterized;
+  loom_type_t target_parameterized;
+  loom_type_id_t source_parameterized_id = LOOM_TYPE_ID_INVALID;
+  loom_type_id_t target_parameterized_id = LOOM_TYPE_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_make_parameterized_type(
+      module_, &kLookupDescriptor, source_parameters,
+      IREE_ARRAYSIZE(source_parameters), &source_parameterized,
+      &source_parameterized_id));
+  IREE_ASSERT_OK(loom_module_make_parameterized_type(
+      module_, &kLookupDescriptor, target_parameters,
+      IREE_ARRAYSIZE(target_parameters), &target_parameterized,
+      &target_parameterized_id));
+
+  loom_string_id_t dialect_name = LOOM_STRING_ID_INVALID;
+  IREE_ASSERT_OK(loom_module_intern_string(module_, IREE_SV("test.lookup_box"),
+                                           &dialect_name));
+  loom_type_t source_dialect;
+  loom_type_t target_dialect;
+  IREE_ASSERT_OK(loom_module_intern_type(
+      module_, loom_type_dialect(dialect_name, 1, &source_parameterized),
+      &source_dialect));
+  IREE_ASSERT_OK(loom_module_intern_type(
+      module_, loom_type_dialect(dialect_name, 1, &target_parameterized),
+      &target_dialect));
+  loom_type_t source_register;
+  loom_type_t target_register;
+  IREE_ASSERT_OK(loom_module_intern_register_type(
+      module_, 17, 29, source_dialect, &source_register));
+  IREE_ASSERT_OK(loom_module_intern_register_type(
+      module_, 17, 29, target_dialect, &target_register));
+  const loom_type_t source = Pair(source_register, source_register);
+  const loom_type_t target = Pair(target_register, target_register);
+  const loom_type_value_remap_t other_remap = {
+      /*.source_values=*/&other_id,
+      /*.target_values=*/&other_target_id,
+      /*.count=*/1,
+  };
+  const loom_type_value_remap_t remap = {
+      /*.source_values=*/&old_id_,
+      /*.target_values=*/&new_id_,
+      /*.count=*/1,
+      /*.flags=*/0,
+      /*.next=*/&other_remap,
+  };
+  ASSERT_TRUE(
+      loom_type_equal_after_value_remap(module_, source, target, &remap));
+
+  const iree_host_size_t type_count = module_->types.count;
+  const iree_host_size_t retained_bytes = module_->arena.used_allocation_size;
+  const iree_host_size_t interner_count = module_->type_intern.count;
+  const std::array<uint32_t, 2> recent_types = {
+      module_->recent_exact_type_ordinals[0],
+      module_->recent_exact_type_ordinals[1],
+  };
+  {
+    ScopedLookup lookup(module_, &remap);
+    bool equal = false;
+    IREE_ASSERT_OK(
+        loom_type_remap_lookup_equal(&lookup.value, source, target, &equal));
+    EXPECT_TRUE(equal);
+    const iree_host_size_t scratch_bytes =
+        lookup.value.state.scratch.used_allocation_size;
+    EXPECT_GT(scratch_bytes, 0u);
+    IREE_ASSERT_OK(
+        loom_type_remap_lookup_equal(&lookup.value, source, target, &equal));
+    EXPECT_TRUE(equal);
+    EXPECT_EQ(lookup.value.state.scratch.used_allocation_size, scratch_bytes);
+  }
+
+  const loom_type_value_remap_t absent_remap = {
+      /*.source_values=*/&old_id_,
+      /*.target_values=*/&absent_target_id,
+      /*.count=*/1,
+      /*.flags=*/0,
+      /*.next=*/&other_remap,
+  };
+  {
+    ScopedLookup lookup(module_, &absent_remap);
+    bool equal = true;
+    IREE_ASSERT_OK(
+        loom_type_remap_lookup_equal(&lookup.value, source, target, &equal));
+    EXPECT_FALSE(equal);
+    const iree_host_size_t scratch_bytes =
+        lookup.value.state.scratch.used_allocation_size;
+    IREE_ASSERT_OK(
+        loom_type_remap_lookup_equal(&lookup.value, source, target, &equal));
+    EXPECT_FALSE(equal);
+    EXPECT_EQ(lookup.value.state.scratch.used_allocation_size, scratch_bytes);
+  }
+
+  EXPECT_EQ(module_->types.count, type_count);
+  EXPECT_EQ(module_->arena.used_allocation_size, retained_bytes);
+  EXPECT_EQ(module_->type_intern.count, interner_count);
+  EXPECT_EQ(module_->recent_exact_type_ordinals[0], recent_types[0]);
+  EXPECT_EQ(module_->recent_exact_type_ordinals[1], recent_types[1]);
+}
+
+TEST_F(ValueReplacementTest, LookupLeavesNeedNoTraversalState) {
+  const loom_type_id_t source_id = Intern(Vector(old_id_));
+  const loom_type_id_t target_id = Intern(Vector(new_id_));
+  const loom_type_t source = loom_type_table_get(&module_->types, source_id);
+  const loom_type_t target = loom_type_table_get(&module_->types, target_id);
+  const loom_type_value_remap_t remap = {
+      /*.source_values=*/&old_id_,
+      /*.target_values=*/&new_id_,
+      /*.count=*/1,
+  };
+  const iree_host_size_t type_count = module_->types.count;
+  const iree_host_size_t retained_bytes = module_->arena.used_allocation_size;
+  const size_t allocation_count = allocation_count_;
+  ScopedLookup lookup(module_, &remap);
+  EXPECT_FALSE(lookup.value.state_initialized);
+  bool equal = false;
+  IREE_ASSERT_OK(
+      loom_type_remap_lookup_equal(&lookup.value, source, target, &equal));
+  EXPECT_TRUE(equal);
+  EXPECT_FALSE(lookup.value.state_initialized);
+  EXPECT_EQ(allocation_count_, allocation_count);
+  EXPECT_EQ(module_->types.count, type_count);
+  EXPECT_EQ(module_->arena.used_allocation_size, retained_bytes);
+}
+
+TEST_F(ValueReplacementTest,
+       LookupAllocationFailuresLeaveCanonicalStateUnchanged) {
+  loom_type_t source = Vector(old_id_);
+  loom_type_t target = Vector(new_id_);
+  for (int i = 0; i < 32; ++i) {
+    source = Pair(source, source);
+    target = Pair(target, target);
+  }
+  const loom_type_value_remap_t remap = {
+      /*.source_values=*/&old_id_,
+      /*.target_values=*/&new_id_,
+      /*.count=*/1,
+  };
+  const iree_host_size_t type_count = module_->types.count;
+  const iree_host_size_t interner_count = module_->type_intern.count;
+  const iree_host_size_t retained_bytes = module_->arena.used_allocation_size;
+  for (size_t failure = 0;; ++failure) {
+    SCOPED_TRACE(failure);
+    iree_arena_block_pool_trim(&pool_);
+    failure_index_ = failure;
+    allocation_count_ = 0;
+    bool equal = false;
+    iree_status_t status = iree_ok_status();
+    {
+      ScopedLookup lookup(module_, &remap);
+      status =
+          loom_type_remap_lookup_equal(&lookup.value, source, target, &equal);
+    }
+    failure_index_ = SIZE_MAX;
+    const bool succeeded = iree_status_is_ok(status);
+    if (succeeded) {
+      EXPECT_TRUE(equal);
+    } else {
+      IREE_EXPECT_STATUS_IS(IREE_STATUS_RESOURCE_EXHAUSTED, status);
+      EXPECT_FALSE(equal);
+      EXPECT_EQ(allocation_count_, failure + 1);
+    }
+    EXPECT_EQ(module_->types.count, type_count);
+    EXPECT_EQ(module_->type_intern.count, interner_count);
+    EXPECT_EQ(module_->arena.used_allocation_size, retained_bytes);
+    if (succeeded) {
+      EXPECT_LE(allocation_count_, failure);
+      break;
+    }
+  }
+}
+
 TEST_F(ValueReplacementTest, ReusesOneMemoAcrossTypesAndAttributes) {
   auto original = Vector(old_id_);
   for (int i = 0; i < 64; ++i) {
@@ -229,7 +480,7 @@ TEST_F(ValueReplacementTest, ReusesOneMemoAcrossTypesAndAttributes) {
   IREE_ASSERT_OK(loom_value_replacement_type(&replacement.value, original,
                                              &result, &changed));
   ASSERT_TRUE(changed);
-  const auto used = replacement.value.scratch.used_allocation_size;
+  const auto used = replacement.value.state.scratch.used_allocation_size;
   const auto type_count = module_->types.count;
   const auto result_id = Intern(result);
   loom_attribute_t attribute;
@@ -238,7 +489,7 @@ TEST_F(ValueReplacementTest, ReusesOneMemoAcrossTypesAndAttributes) {
       &changed));
   EXPECT_TRUE(changed);
   EXPECT_EQ(attribute.type_id, result_id);
-  EXPECT_EQ(replacement.value.scratch.used_allocation_size, used);
+  EXPECT_EQ(replacement.value.state.scratch.used_allocation_size, used);
   EXPECT_EQ(module_->types.count, type_count);
 
   const auto parent = Pair(original, Vector(new_id_));
@@ -263,7 +514,7 @@ TEST_F(ValueReplacementTest, UnaffectedNonemptyGraphAllocatesNoScratch) {
                                              &result, &changed));
   EXPECT_FALSE(changed);
   ExpectSame(result, original);
-  EXPECT_EQ(replacement.value.scratch.used_allocation_size, 0u);
+  EXPECT_EQ(replacement.value.state.scratch.used_allocation_size, 0u);
   EXPECT_EQ(module_->arena.used_allocation_size, used);
   EXPECT_EQ(module_->types.count, type_count);
 
@@ -420,6 +671,18 @@ TEST_F(ValueReplacementTest, EncodingOverflowDoesNotChangeTheCarrier) {
       loom_module_replace_value_type_uses(module_, old_encoding, new_encoding));
   ExpectSame(loom_module_value_type(module_, carrier), original);
   ExpectDependencies(carrier, {old_encoding});
+
+  const loom_type_value_remap_t remap = {
+      /*.source_values=*/&old_encoding,
+      /*.target_values=*/&new_encoding,
+      /*.count=*/1,
+  };
+  ScopedLookup lookup(module_, &remap);
+  bool equal = true;
+  IREE_ASSERT_OK(
+      loom_type_remap_lookup_equal(&lookup.value, original, original, &equal));
+  EXPECT_FALSE(equal);
+  EXPECT_FALSE(lookup.value.state_initialized);
 }
 
 TEST_F(ValueReplacementTest, MembershipUsesFullSparseProviderIdentities) {

@@ -28,6 +28,20 @@ typedef struct loom_value_replacement_memo_t {
   uint32_t bit;
 } loom_value_replacement_memo_t;
 
+// Shared scratch for bottom-up canonical type remapping. Completed entries
+// memoize source type IDs, while continuations and reconstructed payloads live
+// only until deinitialization.
+typedef struct loom_type_remap_state_t {
+  // Invocation-local memo, continuations and reconstruction arrays.
+  iree_arena_allocator_t scratch;
+  // Tagged root of the completed canonical-ID map.
+  uintptr_t memo;
+  // Inline first completed result; single-node remaps need no memo arena.
+  loom_value_replacement_memo_t first_result;
+  // Reusable arena-owned continuations, independent of completed memo entries.
+  struct loom_value_replacement_frame_t* free_frames;
+} loom_type_remap_state_t;
+
 // One fixed substitution, shared across all carriers and attribute owners.
 // Canonical types are immutable, so completed results remain valid while the
 // context lives even as new types are interned or active owners are retargeted.
@@ -41,16 +55,24 @@ typedef struct loom_value_replacement_t {
   loom_value_id_t old_id;
   // Distinct defined SSA identity substituted for old_id.
   loom_value_id_t new_id;
-  // Invocation-local memo, continuations and reconstruction arrays.
-  iree_arena_allocator_t scratch;
-  // Tagged root of the completed canonical-ID map.
-  uintptr_t memo;
-  // Inline first completed result; single-node substitutions need no memo
-  // arena.
-  loom_value_replacement_memo_t first_result;
-  // Reusable arena-owned continuations, independent of completed memo entries.
-  struct loom_value_replacement_frame_t* free_frames;
+  // Shared bottom-up traversal state.
+  loom_type_remap_state_t state;
 } loom_value_replacement_t;
+
+// Read-only normalization of canonical source types through one immutable SSA
+// value map. A transformed type is represented by its existing canonical ID;
+// absence from the module interner proves inequality with every canonical
+// target. The module and remap spans outlive the lookup context.
+typedef struct loom_type_remap_lookup_t {
+  // Borrowed module owning source and target canonical types.
+  const loom_module_t* module;
+  // Borrowed immutable mapping applied to source-side SSA references.
+  const loom_type_value_remap_t* remap;
+  // True after the first recursive type initializes pooled scratch.
+  bool state_initialized;
+  // Shared bottom-up traversal state.
+  loom_type_remap_state_t state;
+} loom_type_remap_lookup_t;
 
 // Begins substitution between two distinct, defined module values. Initializing
 // an empty context does not allocate or inspect the module's type table.
@@ -78,6 +100,27 @@ iree_status_t loom_value_replacement_type(loom_value_replacement_t* replacement,
 iree_status_t loom_value_replacement_attribute(
     loom_value_replacement_t* replacement, loom_attribute_t attribute,
     loom_attribute_t* out_attribute, bool* out_changed);
+
+// Begins a read-only mapped-type lookup. The map contains at most two spans;
+// each span is either a source-definition slice or has at most two entries.
+// This bounded shape covers argument/result and tuple forwarding without
+// turning each embedded reference lookup into a values-times-map scan.
+// Initialization allocates no storage.
+void loom_type_remap_lookup_initialize(const loom_module_t* module,
+                                       const loom_type_value_remap_t* remap,
+                                       loom_type_remap_lookup_t* out_lookup);
+
+// Returns temporary blocks to the module's shared pool.
+void loom_type_remap_lookup_deinitialize(loom_type_remap_lookup_t* lookup);
+
+// Tests whether two canonical module types are equal after applying the
+// lookup's value map to |source_type|. Reuses completed source results across
+// calls. The module's types, payloads, dependencies, and intern table remain
+// unchanged. Allocation failure is the only fallible operation.
+iree_status_t loom_type_remap_lookup_equal(loom_type_remap_lookup_t* lookup,
+                                           loom_type_t source_type,
+                                           loom_type_t target_type,
+                                           bool* out_equal);
 
 // Standalone substitutions with value-ID precondition checking. These create a
 // context for one input; callers replacing several owners of the same fixed
