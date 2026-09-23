@@ -1,0 +1,61 @@
+// RUN: emit source-low target=amdgpu:gfx1151 output=low
+
+// Every return uses the callable result representation, including a path that
+// forwards an entry argument instead of returning the result of a vector load.
+func.def @return_loaded_or_argument(%input: buffer, %load: i1, %fallback: i32) -> (i32) {
+  %origin = index.constant 0 : offset
+  %view = buffer.view %input[%origin] : buffer -> view<1xi32>
+  cfg.cond_br %load, ^loaded, ^argument
+^loaded:
+  %value = view.load %view[0] : view<1xi32> -> i32
+  func.return %value : i32
+^argument:
+  func.return %fallback : i32
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @return_loaded_or_argument(%load: reg<amdgpu.sgpr>, %fallback: reg<amdgpu.sgpr>) -> (reg<amdgpu.vgpr>) asm {
+  %view = resource<hal_binding> {extent = 4, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %11 = s_mov_b32 0
+  %12 = s_cmp_lg_i32 %load, %11
+  low.cond_br %12, ^loaded, ^argument : reg<amdgpu.scc>
+^loaded:
+  %13 = v_mov_b32 0
+  %value = global_load_b32_saddr %13, %view
+  return %value
+^argument:
+  %15 = v_mov_b32_copy %fallback
+  return %15
+}
+
+// ====
+
+func.def @return_wide_loaded_or_argument(%input: buffer, %load: i1, %fallback: i64) -> (i64) {
+  %origin = index.constant 0 : offset
+  %view = buffer.view %input[%origin] : buffer -> view<1xi64>
+  cfg.cond_br %load, ^loaded, ^argument
+^loaded:
+  %value = view.load %view[0] : view<1xi64> -> i64
+  func.return %value : i64
+^argument:
+  func.return %fallback : i64
+}
+
+// ----
+low.func.def target<amdgpu.rdna3_5.core> abi(hal_kernel) @return_wide_loaded_or_argument(%load: reg<amdgpu.sgpr>, %fallback: reg<amdgpu.sgpr x2>) -> (reg<amdgpu.vgpr x2>) asm {
+  %view = resource<hal_binding> {extent = 8, index = 0, source_type = hal.buffer} : reg<amdgpu.sgpr x2>
+  %11 = s_mov_b32 0
+  %12 = s_cmp_lg_i32 %load, %11
+  low.cond_br %12, ^loaded, ^argument : reg<amdgpu.scc>
+^loaded:
+  %13 = v_mov_b32 0
+  %value = global_load_b64_saddr %13, %view
+  return %value
+^argument:
+  %15 = slice %fallback[0] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %16 = v_mov_b32_copy %15
+  %17 = slice %fallback[1] : reg<amdgpu.sgpr x2> -> reg<amdgpu.sgpr>
+  %18 = v_mov_b32_copy %17
+  %19 = concat(%16, %18) : (reg<amdgpu.vgpr>, reg<amdgpu.vgpr>) -> reg<amdgpu.vgpr x2>
+  return %19
+}
