@@ -1337,6 +1337,15 @@ def validate_descriptor_operands(descriptor: Descriptor) -> DescriptorOperandLay
                 raise ValueError(f"descriptor '{descriptor.key}' state operand '{operand.field_name}' must name exactly one register-class alternative")
             if operand.reg_alts[0].reg_class is None:
                 raise ValueError(f"descriptor '{descriptor.key}' state operand '{operand.field_name}' must name a concrete register class")
+        if OperandFlag.EXECUTION_MASK in operand.flags:
+            required = {OperandFlag.IMPLICIT, OperandFlag.STATE_READ, OperandFlag.SCHEDULE_ONLY_STATE}
+            if not required.issubset(operand.flags) or OperandFlag.STATE_WRITE in operand.flags:
+                raise ValueError(f"descriptor '{descriptor.key}' execution mask '{operand.field_name}' must be an implicit schedule-only state read")
+        if OperandFlag.NARROWS_EXECUTION_MASK in operand.flags:
+            if not {OperandFlag.IMPLICIT, OperandFlag.STATE_WRITE}.issubset(operand.flags):
+                raise ValueError(f"descriptor '{descriptor.key}' narrowing mask '{operand.field_name}' must write implicit state")
+            if not any(OperandFlag.EXECUTION_MASK in other.flags and other.reg_alts == operand.reg_alts for other in descriptor.operands):
+                raise ValueError(f"descriptor '{descriptor.key}' narrowing mask '{operand.field_name}' must read the same execution mask")
     if variadic_operand_index is not None:
         if descriptor.constraints:
             raise ValueError(f"descriptor '{descriptor.key}' with variadic operands cannot declare descriptor constraints")
@@ -1349,6 +1358,20 @@ def validate_descriptor_operands(descriptor: Descriptor) -> DescriptorOperandLay
         minimum_packet_operand_count=minimum_packet_operand_count,
         has_variadic_operands=variadic_operand_index is not None,
     )
+
+
+def validate_descriptor_speculation(descriptor: Descriptor) -> None:
+    """Checks the structural obligations of an explicit totality guarantee."""
+    if DescriptorFlag.SAFE_TO_SPECULATE not in descriptor.flags:
+        return
+    forbidden = {DescriptorFlag.SIDE_EFFECTING, DescriptorFlag.TERMINATOR, DescriptorFlag.BARRIER, DescriptorFlag.UNIQUE_IDENTITY, DescriptorFlag.VARIADIC_OPERANDS}
+    if forbidden.intersection(descriptor.flags) or descriptor.effects or descriptor.storage_leases:
+        raise ValueError(f"descriptor '{descriptor.key}' speculation requires effect-free execution")
+    if DescriptorFlag.DEAD_REMOVABLE not in descriptor.flags:
+        raise ValueError(f"descriptor '{descriptor.key}' speculation requires dead-removable results")
+    for operand in descriptor.operands:
+        if OperandFlag.STATE_WRITE in operand.flags:
+            raise ValueError(f"descriptor '{descriptor.key}' speculation cannot write architectural state")
 
 
 def validate_register_part(part: RegisterPart) -> None:

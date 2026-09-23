@@ -747,7 +747,7 @@ def _v_add_u32_overlay(instruction_name: str) -> AmdgpuDescriptorOverlay:
             ),
         ),
         constraints=_REMATERIALIZABLE_COMMUTABLE_BINARY_CONSTRAINTS,
-        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+        flags=(DescriptorFlag.DEAD_REMOVABLE, DescriptorFlag.SAFE_TO_SPECULATE),
     )
 
 
@@ -850,7 +850,7 @@ def _v_binary_src0_inline_overlay(
         immediate_fields=("SRC0",),
         immediates=(_SOURCE_INLINE_U32_IMMEDIATE,),
         constraints=constraints,
-        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+        flags=(DescriptorFlag.DEAD_REMOVABLE, DescriptorFlag.SAFE_TO_SPECULATE),
     )
 
 
@@ -1630,7 +1630,14 @@ def _s_and_saveexec_b64_overlay(
         implicit_operands=(
             AmdgpuImplicitOperandOverlay(
                 "OPR_SDST_EXEC",
-                descriptor_operand=_exec_clobber("exec_out"),
+                descriptor_operand=replace(
+                    _exec_clobber("exec_out"),
+                    flags=(
+                        OperandFlag.IMPLICIT,
+                        OperandFlag.STATE_WRITE,
+                        OperandFlag.NARROWS_EXECUTION_MASK,
+                    ),
+                ),
                 data_format_name="FMT_NUM_M64",
                 size_bits=64,
                 is_input=False,
@@ -1638,7 +1645,15 @@ def _s_and_saveexec_b64_overlay(
             ),
             AmdgpuImplicitOperandOverlay(
                 "OPR_SDST_EXEC",
-                descriptor_operand=_exec_state_read(),
+                descriptor_operand=replace(
+                    _exec_state_read(),
+                    flags=(
+                        OperandFlag.IMPLICIT,
+                        OperandFlag.STATE_READ,
+                        OperandFlag.SCHEDULE_ONLY_STATE,
+                        OperandFlag.EXECUTION_MASK,
+                    ),
+                ),
                 data_format_name="FMT_NUM_M64",
                 size_bits=64,
                 is_input=True,
@@ -6622,7 +6637,7 @@ def _v_mov_b32_copy_overlay() -> AmdgpuDescriptorOverlay:
             AmdgpuOperandOverlay("SRC0", _sgpr_vgpr_operand("src")),
         ),
         asm_forms=_asm(mnemonic="v_mov_b32_copy", results=("dst",), operands=("src",)),
-        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+        flags=(DescriptorFlag.DEAD_REMOVABLE, DescriptorFlag.SAFE_TO_SPECULATE),
     )
 
 

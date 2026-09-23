@@ -784,6 +784,23 @@ loom_cc_library(
 )
 
 loom_cc_library(
+    name = "guarded_motion",
+    srcs = ["guarded_motion.c"],
+    hdrs = ["guarded_motion.h"],
+    deps = [
+        ":descriptors",
+        ":function",
+        "//loom/src/loom/codegen/low/schedule",
+        "//loom/src/loom/ir",
+        "//loom/src/loom/ops/low",
+        "//loom/src/loom/rewrite:rewriter",
+        "//loom/src/loom/util:cfg_graph",
+        "//runtime/src/iree/base",
+        "//runtime/src/iree/base/internal:arena",
+    ],
+)
+
+loom_cc_library(
     name = "frame",
     srcs = ["frame.c"],
     hdrs = ["frame.h"],
@@ -795,6 +812,7 @@ loom_cc_library(
         ":diagnostics",
         ":function",
         ":function_model",
+        ":guarded_motion",
         ":memory_access",
         ":packet",
         ":planning_statistics",
@@ -806,6 +824,7 @@ loom_cc_library(
         "//loom/src/loom/error:error_defs",
         "//loom/src/loom/ir",
         "//loom/src/loom/ops/low",
+        "//loom/src/loom/rewrite:rewriter",
         "//loom/src/loom/target:facts",
         "//loom/src/loom/target:residency",
         "//runtime/src/iree/base",

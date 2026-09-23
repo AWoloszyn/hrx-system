@@ -1059,6 +1059,7 @@ def compile_descriptor_set(
     projected_descriptors_by_key: dict[str, Descriptor] = {}
     for descriptor in spec.descriptors:
         operand_layout = validation.validate_descriptor_operands(descriptor)
+        validation.validate_descriptor_speculation(descriptor)
         operand_layouts_by_descriptor[descriptor.key] = operand_layout
         result_count = operand_layout.result_count
         source_value_indices_by_descriptor[descriptor.key] = validation.descriptor_operand_source_value_indices(

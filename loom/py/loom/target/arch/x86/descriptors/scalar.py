@@ -711,7 +711,7 @@ X86_SCALAR_SUFFIX_DESCRIPTORS = (
         ),
         asm_forms=_asm(results=("dst",), operands=("lhs", "rhs")),
         schedule_class=_SCHEDULE_ADDRESS,
-        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+        flags=(DescriptorFlag.DEAD_REMOVABLE, DescriptorFlag.SAFE_TO_SPECULATE),
     ),
     Descriptor(
         key="x86.scalar.lea.disp.gpr64",
@@ -730,7 +730,7 @@ X86_SCALAR_SUFFIX_DESCRIPTORS = (
             named_immediates=True,
         ),
         schedule_class=_SCHEDULE_ADDRESS,
-        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+        flags=(DescriptorFlag.DEAD_REMOVABLE, DescriptorFlag.SAFE_TO_SPECULATE),
     ),
     Descriptor(
         key="x86.scalar.lea.scale.gpr64",
@@ -749,7 +749,7 @@ X86_SCALAR_SUFFIX_DESCRIPTORS = (
             named_immediates=True,
         ),
         schedule_class=_SCHEDULE_ADDRESS,
-        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+        flags=(DescriptorFlag.DEAD_REMOVABLE, DescriptorFlag.SAFE_TO_SPECULATE),
     ),
     Descriptor(
         key="x86.scalar.lea.add_scale.gpr64",
@@ -769,7 +769,7 @@ X86_SCALAR_SUFFIX_DESCRIPTORS = (
             named_immediates=True,
         ),
         schedule_class=_SCHEDULE_ADDRESS,
-        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+        flags=(DescriptorFlag.DEAD_REMOVABLE, DescriptorFlag.SAFE_TO_SPECULATE),
     ),
     Descriptor(
         key="x86.scalar.lea.add_scale.gpr32",
@@ -789,7 +789,7 @@ X86_SCALAR_SUFFIX_DESCRIPTORS = (
             named_immediates=True,
         ),
         schedule_class=_SCHEDULE_ADDRESS,
-        flags=(DescriptorFlag.DEAD_REMOVABLE,),
+        flags=(DescriptorFlag.DEAD_REMOVABLE, DescriptorFlag.SAFE_TO_SPECULATE),
     ),
     Descriptor(
         key="x86.scalar.jmp",
