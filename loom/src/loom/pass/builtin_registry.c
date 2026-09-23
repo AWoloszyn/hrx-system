@@ -463,7 +463,7 @@ static const loom_pass_descriptor_t kBuiltinPassDescriptors[] = {
     {
         .key = IREE_SVL("low-decompose-cfg-tuples"),
         .info = loom_low_decompose_cfg_tuples_pass_info,
-        .function_run = loom_low_decompose_cfg_tuples_run,
+        .module_run = loom_low_decompose_cfg_tuples_run,
     },
     {
         .key = IREE_SVL("low-materialize-allocation"),

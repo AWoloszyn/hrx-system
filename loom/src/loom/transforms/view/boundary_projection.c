@@ -491,7 +491,7 @@ static iree_status_t loom_view_boundary_add_coordinate_dependencies(
   if (coordinate->dependency != IREE_HOST_SIZE_MAX) {
     IREE_RETURN_IF_ERROR(loom_boundary_projection_add_dependency(
         plan, function, coordinate->dependency, destination_index,
-        /*orders_reconstruction=*/false));
+        /*orders_realization=*/false));
   }
   if (coordinate->selection == IREE_HOST_SIZE_MAX) {
     return iree_ok_status();
@@ -830,6 +830,14 @@ static iree_status_t loom_view_boundary_reconstruct(
 static const loom_boundary_projection_rule_t kViewBoundaryRule = {
     .name = IREE_SVL("view-buffer-offset"),
     .type_kind_bits = LOOM_BOUNDARY_PROJECTION_TYPE_KIND_BIT(LOOM_TYPE_VIEW),
+    .slot_role_bits = LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(
+                          LOOM_BOUNDARY_PROJECTION_SLOT_FUNCTION_ARGUMENT) |
+                      LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(
+                          LOOM_BOUNDARY_PROJECTION_SLOT_FUNCTION_RESULT) |
+                      LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(
+                          LOOM_BOUNDARY_PROJECTION_SLOT_BLOCK_ARGUMENT) |
+                      LOOM_BOUNDARY_PROJECTION_SLOT_ROLE_BIT(
+                          LOOM_BOUNDARY_PROJECTION_SLOT_CALL_RESULT),
     .function_applies = loom_view_boundary_function_applies,
     .initialize = loom_view_boundary_initialize_schema,
     .prepare_function = loom_view_boundary_prepare_function,

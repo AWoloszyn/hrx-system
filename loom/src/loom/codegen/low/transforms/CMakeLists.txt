@@ -42,19 +42,19 @@ loom_cc_library(
     cfg_tuple_decomposition
   HDRS
     "cfg_tuple_decomposition.h"
+    "cfg_tuple_projection.h"
   SRCS
     "cfg_tuple_decomposition.c"
+    "cfg_tuple_projection.c"
   DEPS
     iree::base
-    iree::base::internal::arena
     loom::codegen::low::function
     loom::ir
     loom::ops::low
-    loom::ops::op_defs
     loom::pass::types
-    loom::pass::value_facts
     loom::rewrite::rewriter
     loom::target::registers
+    loom::transforms::boundary::projection_core
   PUBLIC
 )
 

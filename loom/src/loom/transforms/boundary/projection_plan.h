@@ -33,14 +33,14 @@ extern "C" {
 struct loom_boundary_projection_slot_t {
   // Semantic value replaced by this physical representation.
   loom_value_id_t value_id;
-  // Original logical type reconstructed at the definition boundary.
+  // Original logical type replaced at the definition boundary.
   loom_type_t logical_type;
   // Final component schema selected for this logical definition.
   loom_boundary_projection_schema_t schema;
   // Block owning a block-argument definition, otherwise NULL.
   loom_block_t* block;
-  // Original first operation anchoring reconstruction in the owning block.
-  loom_op_t* reconstruction_anchor;
+  // Original first operation anchoring realization in the owning block.
+  loom_op_t* realization_anchor;
   // Call owning a result definition, otherwise NULL.
   loom_op_t* call_op;
   // Physical component identities in schema order.
@@ -64,8 +64,8 @@ typedef struct loom_boundary_projection_dependency_t {
   iree_host_size_t target;
   // Next dependent of the same source slot.
   iree_host_size_t next;
-  // Whether reconstruction of target must follow reconstruction of source.
-  bool orders_reconstruction;
+  // Whether realization of target must follow realization of source.
+  bool orders_realization;
 } loom_boundary_projection_dependency_t;
 
 typedef struct loom_boundary_projection_call_t {
@@ -151,16 +151,16 @@ struct loom_boundary_projection_function_t {
   iree_host_size_t candidate_count;
   // Allocated candidate capacity.
   iree_host_size_t candidate_capacity;
-  // Availability and reconstruction dependencies between original slots.
+  // Availability and realization dependencies between original slots.
   loom_boundary_projection_dependency_t* dependencies;
   // Number of populated dependencies.
   iree_host_size_t dependency_count;
   // Allocated dependency capacity.
   iree_host_size_t dependency_capacity;
-  // Selected block-slot indices in reconstruction order.
-  iree_host_size_t* reconstruction_order;
-  // Number of entries in reconstruction_order.
-  iree_host_size_t reconstruction_count;
+  // Selected block-slot indices in destination realization order.
+  iree_host_size_t* realization_order;
+  // Number of entries in realization_order.
+  iree_host_size_t realization_count;
   // Calls to expanded callees.
   loom_boundary_projection_call_t* calls;
   // Number of calls.
@@ -198,6 +198,8 @@ struct loom_boundary_projection_plan_t {
   loom_target_function_version_snapshot_t versions;
   // Compiler-owned semantic rules composed by this invocation.
   loom_boundary_projection_rule_list_t rules;
+  // Union of boundary slot roles supported by rules.
+  loom_boundary_projection_slot_role_bits_t slot_role_bits;
   // Rule-owned invocation state parallel to rules.
   void** rule_states;
   // Generic application statistics parallel to rules.
@@ -210,6 +212,8 @@ struct loom_boundary_projection_plan_t {
   iree_host_size_t* function_indices;
   // Number of entries in function_indices.
   iree_host_size_t function_index_count;
+  // Whether any selected function may replace its callable signature.
+  bool may_change_signatures;
   // Function signatures replaced by the application phase.
   int64_t functions_rewritten;
   // Semantic calls replaced by the application phase.
@@ -232,11 +236,11 @@ iree_host_size_t loom_boundary_projection_slot_index(
     loom_value_id_t value_id);
 
 // Adds one retained slot dependency. Rejection propagates from |source| to
-// |target|; ordered dependencies additionally constrain reconstruction.
+// |target|; ordered dependencies additionally constrain realization.
 iree_status_t loom_boundary_projection_add_dependency(
     loom_boundary_projection_plan_t* plan,
     loom_boundary_projection_function_t* function, iree_host_size_t source,
-    iree_host_size_t target, bool orders_reconstruction);
+    iree_host_size_t target, bool orders_realization);
 
 // Returns invocation-wide state owned by |rule|, or NULL when unset.
 void* loom_boundary_projection_rule_state(
@@ -265,6 +269,11 @@ void loom_boundary_projection_record(
     loom_boundary_projection_plan_t* plan,
     const loom_boundary_projection_rule_t* rule, int64_t projections,
     int64_t components);
+
+// Records rule-owned destination uses rewritten during elimination.
+void loom_boundary_projection_record_destination_uses(
+    loom_boundary_projection_plan_t* plan,
+    const loom_boundary_projection_rule_t* rule, int64_t count);
 
 #ifdef __cplusplus
 }

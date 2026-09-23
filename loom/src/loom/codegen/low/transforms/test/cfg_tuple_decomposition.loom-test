@@ -112,3 +112,236 @@ low.func.def target<test.low.core>(@test_target) @decomposes_loop_carried_lane_t
 ^exit(%result: reg<test.i32>):
   return %result
 }
+
+// ====
+
+// A backedge concat may directly consume slices that elimination rewrites.
+// Retained source recipes follow the concat operands after that rewrite instead
+// of preserving the erased slice result identities.
+// RUN: pass low-decompose-cfg-tuples,low-dce
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @decomposes_permuted_tuple_cycle(%cond: reg<test.i32>, %init: reg<test.i32 x2>) -> (reg<test.i32>) asm {
+  low.br ^loop(%init: reg<test.i32 x2>)
+^loop(%state: reg<test.i32 x2>):
+  %low = slice %state[0] : reg<test.i32 x2> -> reg<test.i32>
+  %high = slice %state[1] : reg<test.i32 x2> -> reg<test.i32>
+  %next = concat(%high, %low) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32 x2>
+  low.cond_br %cond, ^backedge, ^exit_edge : reg<test.i32>
+^backedge:
+  low.br ^loop(%next: reg<test.i32 x2>)
+^exit_edge:
+  low.br ^exit(%low: reg<test.i32>)
+^exit(%result: reg<test.i32>):
+  return %result
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @decomposes_permuted_tuple_cycle(%cond: reg<test.i32>, %init: reg<test.i32 x2>) -> (reg<test.i32>) asm {
+  %10 = slice %init[0] : reg<test.i32 x2> -> reg<test.i32>
+  %11 = slice %init[1] : reg<test.i32 x2> -> reg<test.i32>
+  low.br ^loop(%10: reg<test.i32>, %11: reg<test.i32>)
+^loop(%8: reg<test.i32>, %9: reg<test.i32>):
+  low.cond_br %cond, ^backedge, ^exit_edge : reg<test.i32>
+^backedge:
+  low.br ^loop(%9: reg<test.i32>, %8: reg<test.i32>)
+^exit_edge:
+  low.br ^exit(%8: reg<test.i32>)
+^exit(%result: reg<test.i32>):
+  return %result
+}
+
+// ====
+
+// Several independent tuple slots on the same CFG edges are planned together.
+// A neighboring tuple with a whole-value use remains intact. Concat sources
+// forward unit lanes directly and slice only multi-unit source fragments.
+// RUN: pass low-decompose-cfg-tuples,low-dce
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @decomposes_multiple_tuple_slots(%cond: reg<test.i32>, %first_init: reg<test.i32 x2>, %second_init: reg<test.i32 x3>, %preserved_init: reg<test.i32 x2>, %a0: reg<test.i32>, %a1: reg<test.i32>, %b01: reg<test.i32 x2>, %b2: reg<test.i32>) -> (reg<test.i32>, reg<test.i32 x2>) asm {
+  low.cond_br %cond, ^direct, ^composed : reg<test.i32>
+^direct:
+  low.br ^join(%first_init: reg<test.i32 x2>, %second_init: reg<test.i32 x3>, %preserved_init: reg<test.i32 x2>)
+^composed:
+  %first_next = concat(%a0, %a1) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32 x2>
+  %second_next = concat(%b01, %b2) : (reg<test.i32 x2>, reg<test.i32>) -> reg<test.i32 x3>
+  low.br ^join(%first_next: reg<test.i32 x2>, %second_next: reg<test.i32 x3>, %preserved_init: reg<test.i32 x2>)
+^join(%first: reg<test.i32 x2>, %second: reg<test.i32 x3>, %preserved: reg<test.i32 x2>):
+  %first_high = slice %first[1] : reg<test.i32 x2> -> reg<test.i32>
+  %first_low = slice %first[0] : reg<test.i32 x2> -> reg<test.i32>
+  %first_high_again = slice %first[1] : reg<test.i32 x2> -> reg<test.i32>
+  %second_high = slice %second[2] : reg<test.i32 x3> -> reg<test.i32>
+  %second_low = slice %second[0] : reg<test.i32 x3> -> reg<test.i32>
+  %preserved_low = slice %preserved[0] : reg<test.i32 x2> -> reg<test.i32>
+  %preserved_copy = copy %preserved : reg<test.i32 x2> -> reg<test.i32 x2>
+  %sum0 = test.add.i32 %first_high, %first_low
+  %sum1 = test.add.i32 %sum0, %first_high_again
+  %sum2 = test.add.i32 %sum1, %second_high
+  %sum3 = test.add.i32 %sum2, %second_low
+  %sum4 = test.add.i32 %sum3, %preserved_low
+  return %sum4, %preserved_copy
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @decomposes_multiple_tuple_slots(%cond: reg<test.i32>, %first_init: reg<test.i32 x2>, %second_init: reg<test.i32 x3>, %preserved_init: reg<test.i32 x2>, %a0: reg<test.i32>, %a1: reg<test.i32>, %b01: reg<test.i32 x2>, %b2: reg<test.i32>) -> (reg<test.i32>, reg<test.i32 x2>) asm {
+  low.cond_br %cond, ^direct, ^composed : reg<test.i32>
+^direct:
+  %32 = slice %first_init[0] : reg<test.i32 x2> -> reg<test.i32>
+  %33 = slice %first_init[1] : reg<test.i32 x2> -> reg<test.i32>
+  %34 = slice %second_init[0] : reg<test.i32 x3> -> reg<test.i32>
+  %35 = slice %second_init[1] : reg<test.i32 x3> -> reg<test.i32>
+  %36 = slice %second_init[2] : reg<test.i32 x3> -> reg<test.i32>
+  low.br ^join(%32: reg<test.i32>, %33: reg<test.i32>, %34: reg<test.i32>, %35: reg<test.i32>, %36: reg<test.i32>, %preserved_init: reg<test.i32 x2>)
+^composed:
+  %37 = slice %b01[0] : reg<test.i32 x2> -> reg<test.i32>
+  %38 = slice %b01[1] : reg<test.i32 x2> -> reg<test.i32>
+  low.br ^join(%a0: reg<test.i32>, %a1: reg<test.i32>, %37: reg<test.i32>, %38: reg<test.i32>, %b2: reg<test.i32>, %preserved_init: reg<test.i32 x2>)
+^join(%27: reg<test.i32>, %28: reg<test.i32>, %29: reg<test.i32>, %30: reg<test.i32>, %31: reg<test.i32>, %preserved: reg<test.i32 x2>):
+  %preserved_low = slice %preserved[0] : reg<test.i32 x2> -> reg<test.i32>
+  %preserved_copy = copy %preserved : reg<test.i32 x2> -> reg<test.i32 x2>
+  %sum0 = test.add.i32 %28, %27
+  %sum1 = test.add.i32 %sum0, %28
+  %sum2 = test.add.i32 %sum1, %31
+  %sum3 = test.add.i32 %sum2, %29
+  %sum4 = test.add.i32 %sum3, %preserved_low
+  return %sum4, %preserved_copy
+}
+
+// ====
+
+// Two tuple recurrences share the same entry and cyclic backedges. All
+// component identities must exist before the backedge is rebuilt once.
+// RUN: pass low-decompose-cfg-tuples,low-dce
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @decomposes_parallel_tuple_cycles(%cond: reg<test.i32>, %first_init: reg<test.i32 x2>, %second_init: reg<test.i32 x3>, %step: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^loop(%first_init: reg<test.i32 x2>, %second_init: reg<test.i32 x3>)
+^loop(%first: reg<test.i32 x2>, %second: reg<test.i32 x3>):
+  %first0 = slice %first[0] : reg<test.i32 x2> -> reg<test.i32>
+  %first1 = slice %first[1] : reg<test.i32 x2> -> reg<test.i32>
+  %second0 = slice %second[0] : reg<test.i32 x3> -> reg<test.i32>
+  %second1 = slice %second[1] : reg<test.i32 x3> -> reg<test.i32>
+  %second2 = slice %second[2] : reg<test.i32 x3> -> reg<test.i32>
+  %next_first0 = test.add.i32 %first0, %step
+  %next_first1 = test.add.i32 %first1, %step
+  %next_second0 = test.add.i32 %second0, %step
+  %next_second1 = test.add.i32 %second1, %step
+  %next_second2 = test.add.i32 %second2, %step
+  %next_first = concat(%next_first0, %next_first1) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32 x2>
+  %next_second = concat(%next_second0, %next_second1, %next_second2) : (reg<test.i32>, reg<test.i32>, reg<test.i32>) -> reg<test.i32 x3>
+  low.cond_br %cond, ^backedge, ^exit_edge : reg<test.i32>
+^backedge:
+  low.br ^loop(%next_first: reg<test.i32 x2>, %next_second: reg<test.i32 x3>)
+^exit_edge:
+  low.br ^exit(%first0: reg<test.i32>, %second2: reg<test.i32>)
+^exit(%left: reg<test.i32>, %right: reg<test.i32>):
+  %result = test.add.i32 %left, %right
+  return %result
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @decomposes_parallel_tuple_cycles(%cond: reg<test.i32>, %first_init: reg<test.i32 x2>, %second_init: reg<test.i32 x3>, %step: reg<test.i32>) -> (reg<test.i32>) asm {
+  %27 = slice %first_init[0] : reg<test.i32 x2> -> reg<test.i32>
+  %28 = slice %first_init[1] : reg<test.i32 x2> -> reg<test.i32>
+  %29 = slice %second_init[0] : reg<test.i32 x3> -> reg<test.i32>
+  %30 = slice %second_init[1] : reg<test.i32 x3> -> reg<test.i32>
+  %31 = slice %second_init[2] : reg<test.i32 x3> -> reg<test.i32>
+  low.br ^loop(%27: reg<test.i32>, %28: reg<test.i32>, %29: reg<test.i32>, %30: reg<test.i32>, %31: reg<test.i32>)
+^loop(%22: reg<test.i32>, %23: reg<test.i32>, %24: reg<test.i32>, %25: reg<test.i32>, %26: reg<test.i32>):
+  %next_first0 = test.add.i32 %22, %step
+  %next_first1 = test.add.i32 %23, %step
+  %next_second0 = test.add.i32 %24, %step
+  %next_second1 = test.add.i32 %25, %step
+  %next_second2 = test.add.i32 %26, %step
+  low.cond_br %cond, ^backedge, ^exit_edge : reg<test.i32>
+^backedge:
+  low.br ^loop(%next_first0: reg<test.i32>, %next_first1: reg<test.i32>, %next_second0: reg<test.i32>, %next_second1: reg<test.i32>, %next_second2: reg<test.i32>)
+^exit_edge:
+  low.br ^exit(%22: reg<test.i32>, %26: reg<test.i32>)
+^exit(%left: reg<test.i32>, %right: reg<test.i32>):
+  %result = test.add.i32 %left, %right
+  return %result
+}
+
+// ====
+
+// Two tuple recurrences may source their next lanes from one another. Retained
+// concat recipes must observe both sets of rewritten slice operands before the
+// shared cyclic backedge is rebuilt.
+// RUN: pass low-decompose-cfg-tuples,low-dce
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @decomposes_cross_coupled_tuple_cycles(%cond: reg<test.i32>, %left_init: reg<test.i32 x2>, %right_init: reg<test.i32 x2>) -> (reg<test.i32>) asm {
+  low.br ^loop(%left_init: reg<test.i32 x2>, %right_init: reg<test.i32 x2>)
+^loop(%left: reg<test.i32 x2>, %right: reg<test.i32 x2>):
+  %left0 = slice %left[0] : reg<test.i32 x2> -> reg<test.i32>
+  %left1 = slice %left[1] : reg<test.i32 x2> -> reg<test.i32>
+  %right0 = slice %right[0] : reg<test.i32 x2> -> reg<test.i32>
+  %right1 = slice %right[1] : reg<test.i32 x2> -> reg<test.i32>
+  %next_left = concat(%right1, %left0) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32 x2>
+  %next_right = concat(%left1, %right0) : (reg<test.i32>, reg<test.i32>) -> reg<test.i32 x2>
+  low.cond_br %cond, ^backedge, ^exit_edge : reg<test.i32>
+^backedge:
+  low.br ^loop(%next_left: reg<test.i32 x2>, %next_right: reg<test.i32 x2>)
+^exit_edge:
+  low.br ^exit(%left0: reg<test.i32>, %right1: reg<test.i32>)
+^exit(%left_result: reg<test.i32>, %right_result: reg<test.i32>):
+  %result = test.add.i32 %left_result, %right_result
+  return %result
+}
+
+// ----
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @decomposes_cross_coupled_tuple_cycles(%cond: reg<test.i32>, %left_init: reg<test.i32 x2>, %right_init: reg<test.i32 x2>) -> (reg<test.i32>) asm {
+  %19 = slice %left_init[0] : reg<test.i32 x2> -> reg<test.i32>
+  %20 = slice %left_init[1] : reg<test.i32 x2> -> reg<test.i32>
+  %21 = slice %right_init[0] : reg<test.i32 x2> -> reg<test.i32>
+  %22 = slice %right_init[1] : reg<test.i32 x2> -> reg<test.i32>
+  low.br ^loop(%19: reg<test.i32>, %20: reg<test.i32>, %21: reg<test.i32>, %22: reg<test.i32>)
+^loop(%15: reg<test.i32>, %16: reg<test.i32>, %17: reg<test.i32>, %18: reg<test.i32>):
+  low.cond_br %cond, ^backedge, ^exit_edge : reg<test.i32>
+^backedge:
+  low.br ^loop(%18: reg<test.i32>, %15: reg<test.i32>, %16: reg<test.i32>, %17: reg<test.i32>)
+^exit_edge:
+  low.br ^exit(%15: reg<test.i32>, %18: reg<test.i32>)
+^exit(%left_result: reg<test.i32>, %right_result: reg<test.i32>):
+  %result = test.add.i32 %left_result, %right_result
+  return %result
+}
+
+// ====
+// RUN: with-checks pass-report low-decompose-cfg-tuples
+
+test.target<low_core> @test_target
+
+low.func.def target<test.low.core>(@test_target) @reports_shared_edge_rebuild(%first_init: reg<test.i32 x2>, %second_init: reg<test.i32 x3>) -> (reg<test.i32>) asm {
+  low.br ^join(%first_init: reg<test.i32 x2>, %second_init: reg<test.i32 x3>)
+^join(%first: reg<test.i32 x2>, %second: reg<test.i32 x3>):
+  %first_lane = slice %first[1] : reg<test.i32 x2> -> reg<test.i32>
+  %second_lane = slice %second[2] : reg<test.i32 x3> -> reg<test.i32>
+  %result = test.add.i32 %first_lane, %second_lane
+  return %result
+}
+
+low.func.def target<test.low.core>(@test_target) @scalar_control(%input: reg<test.i32>) -> (reg<test.i32>) asm {
+  low.br ^join(%input: reg<test.i32>)
+^join(%value: reg<test.i32>):
+  return %value
+}
+
+// ----
+CHECK: *"changed":true,*
+CHECK: *"block-args-decomposed":2,"lane-block-args-inserted":5,"branch-edges-decomposed":1,"slices-removed":2}*
+CHECK: *"category":"value-facts","acquisition_count":1,*"recomputation_count":1,*
