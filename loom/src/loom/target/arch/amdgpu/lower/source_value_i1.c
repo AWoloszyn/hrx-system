@@ -805,9 +805,10 @@ static bool loom_amdgpu_source_value_is_native_i1_mask_excluding(
     return false;
   }
 
-  // Boolean selects use the native mask selection contract, including when
-  // their result is forwarded through CFG arguments before its first use.
-  if (loom_scf_select_isa(defining_op)) {
+  // Boolean selects and extracted vector predicates retain native masks,
+  // including when forwarded through CFG arguments before their first use.
+  if (loom_scf_select_isa(defining_op) ||
+      loom_vector_extract_isa(defining_op)) {
     return true;
   }
 

@@ -47,6 +47,7 @@ static void loom_amdgpu_vector_extract_plan_from_accepted_op(
     switch (source_storage.kind) {
       case LOOM_AMDGPU_VECTOR_STORAGE_KIND_FULL_32BIT:
       case LOOM_AMDGPU_VECTOR_STORAGE_KIND_FULL_64BIT:
+      case LOOM_AMDGPU_VECTOR_STORAGE_KIND_I1_MASK:
       case LOOM_AMDGPU_VECTOR_STORAGE_KIND_PACKED_16BIT_FLOAT:
       case LOOM_AMDGPU_VECTOR_STORAGE_KIND_PACKED_8BIT_FLOAT:
         result_register_count = source_storage.element_register_count;
@@ -56,7 +57,6 @@ static void loom_amdgpu_vector_extract_plan_from_accepted_op(
         sign_extend_packed_lane = true;
         break;
       case LOOM_AMDGPU_VECTOR_STORAGE_KIND_NONE:
-      case LOOM_AMDGPU_VECTOR_STORAGE_KIND_I1_MASK:
       default:
         IREE_ASSERT_UNREACHABLE(
             "accepted AMDGPU vector.extract has unsupported source storage");
@@ -131,7 +131,11 @@ static void loom_amdgpu_vector_extract_plan_from_accepted_op(
       .register_count = source_storage.register_count,
       .result_register_count = result_register_count,
       .element_register_count = source_storage.element_register_count,
-      .lane_bit_count = source_storage.element_bit_count,
+      // A predicate element stores one complete subgroup mask.
+      .lane_bit_count =
+          source_storage.kind == LOOM_AMDGPU_VECTOR_STORAGE_KIND_I1_MASK
+              ? 32u * source_storage.element_register_count
+              : source_storage.element_bit_count,
       .sign_extend_packed_lane = sign_extend_packed_lane,
       .is_dynamic = is_dynamic,
   };
