@@ -1,0 +1,23 @@
+// RUN: verify
+// A bool has only two valid object representations.
+// ERROR@+1: PARSE/036 "constexpr variable must be initialized"
+constexpr bool invalid = __builtin_bit_cast(bool, (unsigned char)2);
+
+// ====
+// Constant evaluation cannot turn pointer representations into integers.
+constexpr int value = 5;
+// ERROR@+1: PARSE/036 "constexpr variable must be initialized"
+constexpr auto invalid = __builtin_bit_cast(unsigned long long, &value);
+
+// ====
+// The third lane leaves padding in a 16-byte vector object.
+using Float3 = float __attribute__((ext_vector_type(3)));
+using Words4 = unsigned __attribute__((ext_vector_type(4)));
+// ERROR@+1: PARSE/036 "constexpr variable must be initialized"
+constexpr Float3 invalid = __builtin_bit_cast(Float3, Words4{0, 0, 0, 0});
+
+// ====
+// Numeric config attributes cannot carry a NaN's object representation.
+// ERROR@+1: LOWERING/059 "numeric metadata cannot preserve NaN representation bits; use an integer encoding and bit-cast it in the function body"
+[[loom::config("payload")]] const float payload = __builtin_bit_cast(float, 0x7f812345u);
+float entry() { return payload; }

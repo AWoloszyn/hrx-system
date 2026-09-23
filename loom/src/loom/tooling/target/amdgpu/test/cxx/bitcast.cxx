@@ -172,3 +172,64 @@ LOOM_CHECK_CASE(wide_nan_payload) {
   loom::check::expect_bitwise(scalar, loom::check::slice<1>(input, 0));
   loom::check::expect_event("device", "type", "asan_report", "count", 0);
 }
+
+constexpr Float8x4 kPackedScale = __builtin_bit_cast(Float8x4, 0x403c3830u);
+static_assert(kPackedScale[0] == 0.5f && kPackedScale[3] == 2.0f);
+
+[[loom::kernel, loom::workgroup_size(1, 1, 1), loom::workgroup_count(1, 1, 1)]]
+void constexpr_scale(const Floats4* input, Floats4* output) {
+  *output = *input * __builtin_convertvector(kPackedScale, Floats4);
+}
+
+[[loom::kernel, loom::workgroup_size(1, 1, 1), loom::workgroup_count(1, 1, 1)]]
+void constexpr_payloads(Float8x4* fp8, BFloat8x4* bf8, Halves2* half,
+                        BFloats2* bfloat, float* scalar, double* wide) {
+  constexpr auto fp8_value = __builtin_bit_cast(Float8x4, 0x7E7F0080u);
+  constexpr auto bf8_value = __builtin_bit_cast(BFloat8x4, 0x7D7E0080u);
+  constexpr auto half_value = __builtin_bit_cast(Halves2, 0x7C018000u);
+  constexpr auto bfloat_value = __builtin_bit_cast(BFloats2, 0x7F818000u);
+  constexpr auto scalar_value = __builtin_bit_cast(float, 0x7F812345u);
+  constexpr auto wide_value = __builtin_bit_cast(double, 0x7FF0000012345678ULL);
+  *fp8 = fp8_value;
+  *bf8 = bf8_value;
+  *half = half_value;
+  *bfloat = bfloat_value;
+  *scalar = scalar_value;
+  *wide = wide_value;
+}
+
+LOOM_CHECK_CASE(constexpr_packed_scales) {
+  const auto input = loom::check::fill<float, 4>(2.0f);
+  const auto output = loom::check::fill<float, 4>(0.0f);
+  const auto first = loom::check::slice<1>(output, 0);
+  const auto second = loom::check::slice<1>(output, 1);
+  const auto third = loom::check::slice<1>(output, 2);
+  const auto fourth = loom::check::slice<1>(output, 3);
+  loom::check::launch<constexpr_scale>(input, output);
+  loom::check::expect_bitwise(first, loom::check::fill<float, 1>(1.0f));
+  loom::check::expect_bitwise(second, loom::check::fill<float, 1>(2.0f));
+  loom::check::expect_bitwise(third, loom::check::fill<float, 1>(3.0f));
+  loom::check::expect_bitwise(fourth, loom::check::fill<float, 1>(4.0f));
+  loom::check::expect_event("device", "type", "asan_report", "count", 0);
+}
+
+LOOM_CHECK_CASE(constexpr_raw_payloads) {
+  const auto fp8 = loom::check::fill<unsigned, 1>(0u);
+  const auto bf8 = loom::check::fill<unsigned, 1>(0u);
+  const auto half = loom::check::fill<unsigned, 1>(0u);
+  const auto bfloat = loom::check::fill<unsigned, 1>(0u);
+  const auto scalar = loom::check::fill<unsigned, 1>(0u);
+  const auto wide = loom::check::fill<unsigned long long, 1>(0ULL);
+  loom::check::launch<constexpr_payloads>(fp8, bf8, half, bfloat, scalar, wide);
+  loom::check::expect_bitwise(fp8, loom::check::fill<unsigned, 1>(0x7E7F0080u));
+  loom::check::expect_bitwise(bf8, loom::check::fill<unsigned, 1>(0x7D7E0080u));
+  loom::check::expect_bitwise(half,
+                              loom::check::fill<unsigned, 1>(0x7C018000u));
+  loom::check::expect_bitwise(bfloat,
+                              loom::check::fill<unsigned, 1>(0x7F818000u));
+  loom::check::expect_bitwise(scalar,
+                              loom::check::fill<unsigned, 1>(0x7F812345u));
+  loom::check::expect_bitwise(
+      wide, loom::check::fill<unsigned long long, 1>(0x7FF0000012345678ULL));
+  loom::check::expect_event("device", "type", "asan_report", "count", 0);
+}

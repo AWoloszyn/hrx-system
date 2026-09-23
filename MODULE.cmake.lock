@@ -163,6 +163,7 @@ set(IREE_DEP_CXX_PATCHES
   "//build_tools/third_party/cxx:vector_list_conversion.patch"
   "//build_tools/third_party/cxx:using_directive_attributes.patch"
   "//build_tools/third_party/cxx:constant_archive.patch"
+  "//build_tools/third_party/cxx:constexpr_bitcast.patch"
 )
 set(IREE_DEP_CXX_PATCH_ARGS
   "-p1"
