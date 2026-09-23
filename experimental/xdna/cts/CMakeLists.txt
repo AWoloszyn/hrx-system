@@ -199,6 +199,8 @@ iree_cc_library(
     iree::experimental::xdna::executable
     iree::hal
     iree::hal::drivers::amd::xdna::image::aie2p::npu2
+    iree::hal::drivers::amd::xdna::image::testdata::add_i32
+    iree::hal::drivers::amd::xdna::image::testdata::add_i32_npu4
     iree::hal::drivers::amd::xdna::image::testdata::mul_i32
     iree::hal::drivers::amd::xdna::image::testdata::mul_i32_npu4
     iree::hal::drivers::amd::xdna::image::testing::image_fixture

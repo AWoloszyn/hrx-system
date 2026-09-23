@@ -4,6 +4,14 @@ Memory lifecycle and warm command publication measure different boundaries.
 The library benchmarks measure backing and access; the XDNA runtime consumer
 measures execution of an already prepared image through libamdf.
 
+Sustained XDNA results require the selected device's runtime power to be held
+active for the measurement, with the previous policy restored afterward.
+Deployment-representative runs instead preserve the deployment's normal power
+policy and include its idle/wake behavior. These are separate result classes;
+held-power numbers do not approximate default-policy user latency. The
+[XDNA power and measurement contract](../docs/xdna.md#power-policy-and-measurement)
+describes Linux control, verification, ownership and the required record.
+
 ## Memory
 
 The GPU and XDNA memory benchmarks exercise the same public shared-library API

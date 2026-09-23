@@ -13,6 +13,16 @@ The bounds describe libamdf-owned work. Calls explicitly entering a driver
 remain subject to native implementation cost and OS scheduling; the API does
 not promise a wall-clock deadline for kernel submission.
 
+Eager queue creation does not pin the device awake. An idle XDNA device can
+runtime-suspend while its public context, queue and memory remain live. A later
+native submission can synchronously resume hardware, firmware and contexts
+before accepting work. This native power-management cost is distinct from
+libamdf's prohibited lazy initialization. First use after native suspension
+and warm publication are separate measurement scenarios; a warm result says
+nothing about wake-up latency. Sustained XDNA results use an explicit
+[held-power measurement policy](xdna.md#power-policy-and-measurement), while
+deployment-representative measurements retain the deployment's actual policy.
+
 ## Preparation and steady-state use
 
 | Path | Work that belongs there | Excluded from that path |

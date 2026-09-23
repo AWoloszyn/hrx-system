@@ -43,6 +43,60 @@ additional device cache transition. The caller publishes inputs before use and
 acquires outputs after the program finishes the relevant DMA and its ordering
 edge completes. The query itself neither flushes caches nor orders execution.
 
+## Native entry and placement ownership
+
+The native driver and firmware control which context may use a placement.
+Time-sharing transfers that authority between contexts; it does not authorize
+unrelated contexts to operate the same physical resources concurrently. libamdf
+depends on native context isolation, just as it depends on native address-space
+isolation. Applications neither drain another context's work nor coordinate an
+exclusion lock with other device users. Context creation and host submission
+acceptance are not the point at which the application starts using the array:
+its setup executes only when the native provider schedules its command.
+
+The program owns a different obligation: its controller instructions cover the
+work using that placement. Before they finish, it quiesces its tile workers and
+drains transfers that could interfere with subsequent reconfiguration. Closing
+an input includes satisfying already-admitted reads; publishing a stop flag is
+insufficient for a worker blocked on another event. A parked worker is quiescent
+only when its protocol prevents further interfering work. Native command
+completion reports the end of the submitted controller program; it does not
+discover or join arbitrary subordinate work on the program's behalf.
+
+| Transition | Native provider responsibility | Program responsibility |
+| --- | --- | --- |
+| Complete A, then B on one native queue | Execute the accepted controller programs in order. Another context may use the placement between them. | A closes its services before ending; B establishes its complete required state. Both may be submitted before the CPU waits. |
+| A different context uses the placement | Isolate the incoming execution from the previous context's activity. This is a native handoff obligation, not a cross-process application protocol. | Initialize required registers, routes, locks and local data without assuming either retained values or a zeroed starting state. |
+| An admitted command is rescheduled | Maintain the supported native execution semantics, or report execution failure. | Keep its instructions and reachable memory valid; continue the existing computation rather than applying independent-entry initialization to partially completed work. |
+
+Native isolation is not a promise that every register or FIFO is zero at every
+command boundary. Same-context commands can leave state behind, and successful
+completion alone does not make an incompletely drained program safe to
+reconfigure. Conversely, correct applications are not responsible for repairing
+a provider that permits a foreign context's activity to interfere after handing
+over the placement. libamdf supplies no application reset sequence, hidden drain,
+placement registry or per-dispatch state snapshot.
+
+On Linux, AMD assigns partition setup and context management to firmware and
+documents firmware enforcement of context-to-column binding in its
+[NPU architecture](https://www.kernel.org/doc/html/latest/accel/amdxdna/amdnpu.html).
+On Windows, the native context and hardware queue operate under the
+[MCDM execution and scheduling contract](https://learn.microsoft.com/en-us/windows-hardware/drivers/display/mcdm-architecture).
+These are the provider dependencies, not a claim that both implementations use
+the same reset sequence. The current submission envelopes supply no separate
+caller-authored save/restore programs; they do not establish an arbitrary
+live-tile checkpoint facility. Cooperative checkpoints require their own native
+payload contract and are distinct from complete-command handoff.
+
+Replacing a role or program inside one still-running invocation does not take
+this native-entry boundary. Its services remain owned by that invocation. A GPU
+consumer can also continue using shared output after NPU retirement, under its
+own execution and memory-lifetime protocol; that does not keep the NPU placement
+owned. The execution CTS covers complete setup after full-width context
+switches, independent context teardown with shared data retained, and prequeued
+program/binding rotation. Those tests exercise ordinary native handoff, not
+arbitrary recovery of an incorrectly terminated program.
+
 ## Native requirements
 
 | Boundary | Linux modern DRM | Windows MCDM |
@@ -147,6 +201,15 @@ publication is therefore not a nonblocking OS contract. Multiple contexts can
 independently own instruction backing and queues. Those backing lifetimes are
 distinct from residency of application state in the physical tiles.
 
+Keeping these public owners alive does not keep an idle device powered. Native
+runtime suspension can discard physical tile state while retaining the public
+context and its backing. The next submission can synchronously wake the device
+and restore native contexts before accepting the command. The caller still
+supplies instructions that establish the application state needed for that
+independent submission; libamdf does not detect lost tile state, replay program
+setup or issue keepalive work. Eager queue preparation therefore does not imply
+bounded wake-up latency or preservation of state between submissions.
+
 The returned increasing, opaque submission number identifies accepted work.
 Several commands can be published before waiting for the last accepted point;
 that wait covers the queue's accepted prefix. The caller performs checked
@@ -176,6 +239,169 @@ loading or require an indirect data-buffer list. Each independent submission
 uses the complete setup-and-execution range to establish its application tile
 state; time-sliced context lifetime alone does not guarantee that state survives
 between submissions.
+
+## Program sets and run-local bindings
+
+A native queue has no mutable "current program" or "current arguments" binding.
+Each accepted command names its own immutable instruction range. The HAL can
+prepare program set A with one work-queue address and program set B with another,
+then publish both without waiting for A on the CPU. Multiple prepared ranges can
+share one context-private allocation; a pending run does not require a separate
+instruction allocation, context, or native queue.
+
+For example, a HAL preparing two pipeline runs owns these distinct ranges:
+
+| Resource | Run A | Run B |
+| --- | --- | --- |
+| Native instructions | Prepared range A in context-private storage. | Prepared range B in the same allocation. |
+| Work input | DMA address of queue A. | DMA address of queue B. |
+| Run arguments | Ordinary memory containing A's parameters. | Ordinary memory containing B's parameters. |
+| Shared state | Reads or produces state through its declared protocol. | Can consume A's published output directly. |
+
+The HAL obtains each binding's address with `memory_query_address` in the domain
+the consuming program requires. A queue's head, tail, entries, generations, and
+argument record layout belong to the compiler/runtime ABI. To libamdf these are
+ordinary memory, with the same access, visibility, and lifetime contracts as
+tensor data. libamdf neither recognizes queue records nor infers dependencies
+from their contents. Placement, worker count, and occupancy policy likewise
+remain above the native surface.
+
+The in-tree ELF materializer's `iree_hal_amd_xdna_executable_load` and
+`iree_hal_amd_xdna_executable_bind` prepare each range before publication. Its
+external binding relocations encode declared shim-DMA addresses, including the
+base of a queue or argument buffer. This is not a generic scalar-immediate
+argument API: a program can DMA its argument record just as it reads any other
+bound data. Other argument conventions belong to the compiler and its image
+loader; the native submission interface still takes only an instruction range.
+
+Binding B writes B's prepared storage, not a queue-global table or A's accepted
+instructions. Those ranges may be loaded from the same executable or different
+executables. After publication, each remains immutable until checked native
+retirement. A prepared range can then be reused unchanged with the same binding
+addresses, while producers publish new records through the bound protocol.
+Changing an embedded address requires either a different prepared range or
+retirement of all users of the range being rebound. Queue and argument backing
+remains live through its actual last device use, including downstream consumers.
+
+The [execution CTS](../../experimental/xdna/cts/execution_test.cc) prepares a
+multiplication program and an addition program with different binding addresses
+in one instruction allocation. Both are submitted before the completion wait;
+addition consumes multiplication's output without a host copy. Each full
+invocation waits for its output DMA, and repeated pairs exercise rotation back
+to multiplication and queue-slot reuse. This native sequence does not imply
+FIFO ordering at the HAL API: the HAL still establishes application dependency
+edges before choosing where and when to publish native work.
+
+Program replacement *within* a resident invocation has a different boundary.
+The running program can consume addresses of replacement code from its own
+records and arrange device-side transfer and handoff without another libamdf
+submission. Replacement source bytes need a usable DMA address; a firmware-only
+address from context-private instruction storage is not interchangeable with
+one. The caller queries the required address domain when allocating the source
+catalog. The program owns instruction-fetch exclusion, transfer completion,
+descriptor reuse, and any state carried into the replacement. That ownership
+remains inside the native invocation; it does not establish tile-state retention
+after native retirement. Independent runs A and B still establish their own
+required tile state.
+
+## Resident work and early admission
+
+A resident service can process many logical operations inside one native
+invocation. CPU and GPU producers publish application records to shared memory;
+tile programs consume them and publish results through their device-visible
+protocol. Those records do not require additional libamdf submissions, native
+packet slots, or host notification requests. The compiler and HAL own this
+protocol, including readiness, backpressure, stop, and drain.
+
+For a frame or pipeline batch, the caller can submit prepared native work before
+the CPU has finished constructing its input. The device program waits for an
+explicit publication edge before reading each payload. This overlaps native
+admission and tile setup with CPU production. Accepted submission is not worker
+readiness; a program that needs that distinction publishes its own ready state.
+An unused reservation still owns accepted work: the producer closes it through
+the program's protocol and lets it drain before releasing its backing. A worker
+blocked on a stream read needs that stream's wake mechanism to observe a stop;
+changing a separate memory word does not itself unblock the read.
+
+A long-lived service can span several bounded native invocations, or epochs.
+Each epoch performs many logical operations and finishes at an application
+boundary. Its successor establishes its tile execution from explicit state in
+ordinary shared memory. A cursor, accumulator, or queue position can be part of
+the predecessor's normal output; the successor can consume it directly without
+a CPU copy. Immutable data and state already in shared memory need no checkpoint
+copy. The compiler determines the live state, not libamdf or a generic hardware
+snapshot. Retaining the public context alone does not preserve tile-local state.
+
+Prepared successors can be queued before an epoch finishes. This permits native
+handoff without an intervening CPU completion wait; it does not reserve the
+array against other contexts. Each independent invocation still establishes
+its required application state. Ordering between queues, devices, and logical
+operations remains the caller's responsibility. The epoch's final completion
+protocol covers its relevant tile and DMA users before their storage is reused;
+a GPU consumer or work admitted to a separate native execution can have a later
+last use. NPU workers using this epoch's placement remain covered by this
+epoch's native command until they are quiescent.
+
+Native watchdog and preemption policy is separate from logical service progress.
+Advancing application records does not necessarily produce driver-visible
+progress. Epoch duration includes waiting for producers and downstream credits,
+not just arithmetic. The caller chooses work and drain bounds appropriate to
+its native execution contract. A fixed operation count does not bound a program
+that can wait indefinitely for input. Keeping one invocation alive indefinitely
+is not implied by context creation or successful short execution.
+
+`AMDF_TIMEOUT_INFINITE` removes the calling thread's wait deadline; it neither
+disables a native watchdog nor extends an execution budget. A timeout does not
+cancel accepted work. A native execution failure is not success merely because
+some logical outputs arrived. The caller reconciles checked retirement and its
+own output protocol before releasing storage or deciding whether an operation
+can be repeated; libamdf cannot safely replay opaque application work.
+
+## Power policy and measurement
+
+Sustained XDNA measurements require an explicitly held-active device throughout
+the measurement interval. Otherwise an idle gap can turn the next submission
+into a hardware/firmware resume measurement even though the caller has retained
+all its prepared resources. A warm-up command alone does not hold power across
+later gaps. Results identify the power policy separately from instruction
+preparation, tile initialization and command completion.
+
+| Measurement | Native power policy | What the result describes |
+| --- | --- | --- |
+| Sustained execution or submission overhead | Hold runtime power active before timing and throughout the run. | Performance with native wake-up excluded. |
+| Deployment-representative latency | Keep the deployment's actual power policy, including autosuspend where enabled. | Request latency with the workload's real idle gaps and wake costs. |
+
+Held-power results are not an approximation of default-policy user latency.
+A deployment that deliberately holds its device awake can use that policy in
+its representative measurements, but reports it explicitly. Cold-wake runs
+observe an actual suspend transition before timing; a fixed sleep does not
+prove suspension when another process is using the device. Neither measurement
+mode changes the requirement to establish application tile state for an
+independent command.
+
+On Linux, the selected accelerator's sysfs `device/power/control` attribute
+accepts `on` to prohibit runtime autosuspend and `auto` to permit it. The
+benchmark operator or machine-policy manager records the previous value, sets
+`on` before the measurement, verifies both `control=on` and
+`runtime_status=active`, and restores the recorded value afterward, including
+when the benchmark fails. Selecting the device uses its native identity, not
+an assumption that every system's intended device is `accel0`.
+
+This is device-wide policy, not a reference owned by a process or open file:
+closing the benchmark or a libamdf device does not restore it. The policy owner
+serializes changes and owns restoration. The setting does not force maximum
+clocks, disable thermal management, reserve tiles or preserve tile state.
+Performance-frequency modes are separate controls and are not evidence of a
+runtime-power hold. These semantics come from the
+[Linux runtime-PM interface](https://docs.kernel.org/power/runtime_pm.html).
+The Linux control is not a Windows API; a Windows held-power measurement needs
+its own qualified native control and readback before receiving that label.
+
+The measurement record includes native power policy, observed power state,
+clock policy, driver/firmware, idle intervals and concurrent CPU/GPU/NPU work.
+A cooperative machine benchmark lease serializes participating benchmarks, not
+all device users. Default correctness tests retain normal power management;
+libamdf issues no keepalive work and changes no machine power policy.
 
 ## Asynchronous host observation
 

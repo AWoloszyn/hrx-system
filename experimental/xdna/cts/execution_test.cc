@@ -18,17 +18,36 @@
 
 namespace iree::experimental::xdna::testing {
 
-class XdnaConcurrentQueuesTest : public XdnaExecutionFixture {};
+class XdnaConcurrentQueuesTest : public XdnaExecutionFixture {
+ protected:
+  void TearDown() override {
+    iree_hal_amd_xdna_image_destroy(consumer_.image);
+    XdnaExecutionFixture::TearDown();
+  }
 
-TEST_F(XdnaConcurrentQueuesTest, PipelinesDistinctCommandsAndReusesSlots) {
+  // Independently decoded program used for a prequeued successor.
+  struct {
+    // Owned compiler image; native backing belongs to first_.
+    iree_hal_amd_xdna_image_t* image = nullptr;
+    // Indexed addition entry in image.
+    uint32_t entry_ordinal = 0;
+  } consumer_;
+};
+
+TEST_F(XdnaConcurrentQueuesTest, RotatesProgramsAndBindingsAcrossPendingRuns) {
   ASSERT_NO_FATAL_FAILURE(CreateBindings(AMDF_MEMORY_PROFILE_ROLE_CREATE));
   if (IsSkipped()) {
     return;
   }
   ASSERT_NO_FATAL_FAILURE(PrepareExecution(resolved_bindings_, &first_, 1, 2));
+  ASSERT_NO_FATAL_FAILURE(
+      LoadProgram(Program::kAdd, &consumer_.image, &consumer_.entry_ordinal));
 
-  // A: (lhs, rhs) -> intermediate; B: (intermediate, rhs) -> lhs. Both
-  // immutable commands share one context and instruction allocation.
+  // A multiplies (lhs, rhs) -> intermediate; B adds (intermediate, rhs) -> lhs.
+  // Distinct programs and bindings share one context and instruction
+  // allocation. Both are prepared before either is published, with no mutation
+  // or host wait between submissions. Each iteration also rotates from B back
+  // to A.
   const ResolvedBindings consumer_bindings = {
       resolved_bindings_[2], resolved_bindings_[1], resolved_bindings_[0]};
   iree_hal_amd_xdna_executable_storage_t storage = {};
@@ -42,14 +61,15 @@ TEST_F(XdnaConcurrentQueuesTest, PipelinesDistinctCommandsAndReusesSlots) {
                                        &storage.device_address),
             AMDF_STATUS_OK);
   storage.device_address += storage.memory_byte_offset;
-  IREE_ASSERT_OK(iree_hal_amd_xdna_executable_load(executable_, entry_ordinal_,
-                                                   1, &storage));
+  IREE_ASSERT_OK(iree_hal_amd_xdna_executable_load(
+      consumer_.image, consumer_.entry_ordinal, 1, &storage));
   IREE_ASSERT_OK(iree_hal_amd_xdna_executable_bind(
-      executable_, entry_ordinal_, 1, &storage, consumer_bindings.size(),
-      consumer_bindings.data()));
+      consumer_.image, consumer_.entry_ordinal, 1, &storage,
+      consumer_bindings.size(), consumer_bindings.data()));
   amdf_xdna_kernel_command_t consumer_command = {};
   IREE_ASSERT_OK(iree_hal_amd_xdna_executable_query_invocation(
-      executable_, entry_ordinal_, 1, &storage, &consumer_command));
+      consumer_.image, consumer_.entry_ordinal, 1, &storage,
+      &consumer_command));
   first_.original_instructions.assign(
       first_.instructions.pointer,
       first_.instructions.pointer + first_.byte_length);
@@ -93,7 +113,7 @@ TEST_F(XdnaConcurrentQueuesTest, PipelinesDistinctCommandsAndReusesSlots) {
     ASSERT_EQ(status.retired_submission, last_submission);
     ASSERT_EQ(status.terminal_status, AMDF_STATUS_OK);
     for (size_t i = 0; i < kElementCount; ++i) {
-      expected[0][i] = expected[2][i] * expected[1][i];
+      expected[0][i] = expected[2][i] + expected[1][i];
     }
     ASSERT_NO_FATAL_FAILURE(VerifyBindings(expected));
     ASSERT_NO_FATAL_FAILURE(VerifyInstructions(first_));

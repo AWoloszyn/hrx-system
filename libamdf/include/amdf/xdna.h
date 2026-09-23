@@ -82,9 +82,11 @@ enum amdf_xdna_scheduling_mode_bits_e {
   AMDF_XDNA_SCHEDULING_MODE_EXCLUSIVE = 1u << 0,
   /// Contexts can execute concurrently on disjoint spatial placements.
   AMDF_XDNA_SCHEDULING_MODE_SPATIAL = 1u << 1,
-  /// Contexts can time-share one physical placement. Context lifetime does not
-  /// reserve tile state between submissions: another context may use the array
-  /// and native scheduling may reset its registers, locks, or local memories.
+  /// Contexts can time-share one physical placement. The native provider owns
+  /// isolation between contexts using that placement; admission is not an
+  /// execution or residency guarantee. Context lifetime does not reserve tile
+  /// state between submissions: another context may use the array and native
+  /// scheduling may reset its registers, locks, or local memories.
   /// Each independent submission establishes the application state it needs.
   /// Host instruction backing remains valid for its explicit memory lifetime.
   AMDF_XDNA_SCHEDULING_MODE_TIME_SLICED = 1u << 2,
@@ -402,7 +404,8 @@ typedef struct amdf_xdna_api_t {
   /// provider-owned firmware bootstrap work. Failure leaves `out_queue`
   /// unchanged; any unfinished bootstrap ownership remains with the context.
   /// Native packet storage, completion resources and required bootstrap are
-  /// ready before success. Their costs never move to first submission or wait.
+  /// ready before success; libamdf does not defer preparation to submission or
+  /// wait. A live queue does not prevent native idle suspension.
   amdf_status_t(AMDF_CALL* kernel_queue_create)(
       amdf_xdna_context_t* context,
       const amdf_xdna_kernel_queue_create_info_t* create_info,
@@ -421,7 +424,20 @@ typedef struct amdf_xdna_api_t {
   /// Native rejection leaves `out_submission` unchanged.
   /// The caller also keeps memory reachable through opaque device addresses
   /// live; native command retirement does not prove that user-mode work
-  /// scheduled by those commands has stopped accessing that memory.
+  /// scheduled elsewhere, such as a GPU consumer, has stopped accessing it.
+  ///
+  /// A complete command covers the lifetime of the work using its XDNA
+  /// placement. Before its controller instructions finish, the program must
+  /// quiesce its tile workers and drain transfers that could interfere with
+  /// subsequent reconfiguration. Native completion does not insert that drain.
+  /// An autonomous worker cannot continue using the placement after the command
+  /// ends merely because its context and memory remain live. Resident role
+  /// changes can preserve services inside the same outstanding command.
+  /// Each independent command establishes the application state it needs;
+  /// neither zeroed entry state nor retention from an earlier command is
+  /// implied. Cross-context handoff belongs to the native provider, not a
+  /// caller-managed exclusion protocol. libamdf does not replay setup or work
+  /// when an admitted command is rescheduled or fails.
   ///
   /// This hot path takes no library lock and performs no lazy initialization,
   /// mapping, pinning or indirect-buffer scan. It is thread-safe with other
@@ -435,7 +451,9 @@ typedef struct amdf_xdna_api_t {
   /// starting value or dense-numbering guarantee. Waiting for one point covers
   /// earlier accepted commands, not independently scheduled descendants.
   /// This is not a wait-free guarantee. Native publication can block acquiring
-  /// driver admission credits even when library packet capacity remains. It
+  /// driver admission credits or synchronously resuming an idle device, even
+  /// when library packet capacity remains. Native resume may restore firmware
+  /// and contexts without restoring application tile state. The native call
   /// may publish queue-owned packet cache lines, not caller instruction/data
   /// bytes. Preserving the first native completion identity can require a
   /// one-time fence transfer after acceptance and before later publication;
