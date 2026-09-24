@@ -543,6 +543,9 @@ TEST_F(GraphExecTest, RebuiltHostCallRetainsExecutableUntilCompletion) {
   // |exec|. Host-call resources must name |exec| rather than that candidate so
   // queued work can keep the executable alive after this function returns.
   IREE_ASSERT_OK(iree_hal_streaming_graph_exec_rebuild_from_template(exec));
+  auto* exec_resource = reinterpret_cast<iree_hal_resource_t*>(exec);
+  EXPECT_EQ(1, iree_atomic_ref_count_load(&exec_resource->ref_count))
+      << "rebuilt callback state retained its owning executable";
   IREE_ASSERT_OK(iree_hal_streaming_graph_exec_launch(exec, stream_));
   IREE_ASSERT_OK(iree_hal_streaming_graph_exec_destroy_handle(exec));
   exec = nullptr;

@@ -1349,7 +1349,8 @@ static iree_status_t iree_hal_streaming_graph_create_copy_block(
 }
 
 static iree_status_t iree_hal_streaming_graph_create_host_call_block(
-    iree_hal_streaming_graph_exec_t* exec, uint32_t node_start_index,
+    iree_hal_streaming_graph_exec_t* exec,
+    iree_hal_streaming_graph_exec_t* resource_owner, uint32_t node_start_index,
     uint32_t node_count, uint16_t wait_semaphore_count,
     uint16_t signal_semaphore_count, iree_hal_host_call_t call,
     const uint64_t args[4], const iree_hal_streaming_graph_node_t* source_node,
@@ -1383,10 +1384,11 @@ static iree_status_t iree_hal_streaming_graph_create_host_call_block(
     attrs->args[1] = (uint64_t)copied_data;
   }
   attrs->flags = flags;
-  // Queue retention, rather than the compiled resource set, owns an
-  // executable-backed callback while it is in flight. Inserting |exec| into
-  // its own resource set would form a permanent reference cycle.
-  if (call.resource && call.resource != &exec->resource) {
+  // The queue retains executable-backed callback storage while it is in flight.
+  // The compiled resource set must not retain its persistent |resource_owner|:
+  // rebuilds compile into |exec| as a temporary container and then move that
+  // resource set into |resource_owner|, where the reference would form a cycle.
+  if (call.resource && call.resource != &resource_owner->resource) {
     void* resources[1] = {call.resource};
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0, iree_hal_resource_set_insert(exec->resource_set, 1, resources));
@@ -2063,13 +2065,14 @@ iree_status_t iree_hal_streaming_graph_exec_instantiate_from_template(
         const uint64_t args[4] = {(uint64_t)node->attrs.host.fn,
                                   (uint64_t)node->attrs.host.user_data, 0, 0};
         IREE_RETURN_AND_END_ZONE_IF_ERROR(
-            z0, iree_hal_streaming_graph_create_host_call_block(
-                    exec, partition->start_index, partition->count,
-                    wait_semaphore_count, signal_semaphore_count,
-                    iree_hal_make_host_call_with_resource(
-                        iree_hal_streaming_graph_host_callback, NULL,
-                        &resource_owner->resource),
-                    args, node, IREE_HAL_HOST_CALL_FLAG_NONE, &block, &ptrs));
+            z0,
+            iree_hal_streaming_graph_create_host_call_block(
+                exec, resource_owner, partition->start_index, partition->count,
+                wait_semaphore_count, signal_semaphore_count,
+                iree_hal_make_host_call_with_resource(
+                    iree_hal_streaming_graph_host_callback, NULL,
+                    &resource_owner->resource),
+                args, node, IREE_HAL_HOST_CALL_FLAG_NONE, &block, &ptrs));
       } else if (partition->type ==
                  IREE_HAL_STREAMING_GRAPH_PARTITION_TYPE_DISPATCH) {
         iree_hal_streaming_graph_node_t* node =
@@ -2143,8 +2146,9 @@ iree_status_t iree_hal_streaming_graph_exec_instantiate_from_template(
           IREE_RETURN_AND_END_ZONE_IF_ERROR(
               z0,
               iree_hal_streaming_graph_create_host_call_block(
-                  exec, partition->start_index, partition->count,
-                  wait_semaphore_count, signal_semaphore_count,
+                  exec, resource_owner, partition->start_index,
+                  partition->count, wait_semaphore_count,
+                  signal_semaphore_count,
                   is_allocation
                       ? iree_hal_streaming_graph_memory_allocation_map_call(
                             allocation)

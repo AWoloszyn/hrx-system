@@ -252,9 +252,10 @@ iree_status_t iree_hal_streaming_graph_exec_create(
     iree_allocator_t host_allocator,
     iree_hal_streaming_graph_exec_t** out_exec);
 
-// Compiles |exec|'s template into its compiled-state fields. Host calls retain
-// |resource_owner| because rebuilds compile into a temporary state container
-// whose fields are subsequently moved into the persistent executable.
+// Compiles |exec|'s template into its compiled-state fields. Host-call records
+// name |resource_owner| so queue submissions retain the persistent executable;
+// rebuilds compile into a temporary container whose fields are subsequently
+// moved into that executable.
 iree_status_t iree_hal_streaming_graph_exec_instantiate_from_template(
     iree_hal_streaming_graph_exec_t* exec,
     iree_hal_streaming_graph_exec_t* resource_owner);
