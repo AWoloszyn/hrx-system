@@ -209,6 +209,10 @@ class GraphExecTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    // Graph-exec destruction is nonblocking. Drain its stream-ordered
+    // retirement calls before releasing the fixture-owned device entry and
+    // the arena block pool embedded in it.
+    IREE_EXPECT_OK(iree_hal_streaming_context_synchronize(context_));
     iree_hal_streaming_stream_release(stream_);
     iree_hal_streaming_context_release(context_);
     iree_arena_block_pool_deinitialize(&device_entry_.block_pool);

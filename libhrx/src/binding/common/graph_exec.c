@@ -255,8 +255,35 @@ typedef struct iree_hal_streaming_graph_exec_t {
   iree_slim_mutex_t mutex;
 } iree_hal_streaming_graph_exec_t;
 
+// Retains an executable until a stream-ordered retirement call either runs or
+// is cancelled. A separate resource is required because the normal callback
+// releases the executable before its signal semaphore advances.
+typedef struct iree_hal_streaming_graph_exec_retirement_t {
+  // Resource retained by the queued host call through invocation or
+  // cancellation.
+  iree_hal_resource_t resource;
+  // Allocator that owns this retirement record.
+  iree_allocator_t host_allocator;
+  // Executable reference transferred to the host callback when it runs.
+  iree_hal_streaming_graph_exec_t* exec;
+} iree_hal_streaming_graph_exec_retirement_t;
+
 static void iree_hal_streaming_graph_exec_destroy(
     iree_hal_streaming_graph_exec_t* exec);
+
+static void iree_hal_streaming_graph_exec_retirement_destroy(
+    iree_hal_resource_t* resource) {
+  iree_hal_streaming_graph_exec_retirement_t* retirement =
+      (iree_hal_streaming_graph_exec_retirement_t*)resource;
+  iree_hal_streaming_graph_exec_release(retirement->exec);
+  retirement->exec = NULL;
+  iree_allocator_free(retirement->host_allocator, retirement);
+}
+
+static const iree_hal_resource_vtable_t
+    iree_hal_streaming_graph_exec_retirement_vtable = {
+        .destroy = iree_hal_streaming_graph_exec_retirement_destroy,
+};
 
 static void iree_hal_streaming_graph_exec_resource_destroy(
     iree_hal_resource_t* resource) {
@@ -795,28 +822,56 @@ bool iree_hal_streaming_graph_exec_try_retain_live(
 static iree_status_t iree_hal_streaming_graph_exec_retire_host_call(
     void* user_data, const uint64_t args[4],
     iree_hal_host_call_context_t* context) {
-  (void)user_data;
   (void)args;
   (void)context;
+  iree_hal_streaming_graph_exec_retirement_t* retirement =
+      (iree_hal_streaming_graph_exec_retirement_t*)user_data;
+
+  // Returning OK advances the stream timeline. Release first so observing the
+  // retirement point also proves executable-owned arenas and graph references
+  // are no longer being torn down by the queue worker.
+  iree_hal_streaming_graph_exec_t* exec = retirement->exec;
+  retirement->exec = NULL;
+  iree_hal_streaming_graph_exec_release(exec);
   return iree_ok_status();
 }
 
 static void iree_hal_streaming_graph_exec_retire_launch_point(
     iree_hal_streaming_graph_exec_t* exec,
     iree_hal_streaming_graph_launch_point_t* point) {
+  iree_hal_streaming_graph_exec_retirement_t* retirement = NULL;
+  iree_status_t status = iree_allocator_malloc(
+      exec->host_allocator, sizeof(*retirement), (void**)&retirement);
+  if (!iree_status_is_ok(status)) {
+    iree_status_ignore(status);
+    // Fall back to synchronous retirement when no callback record can be
+    // allocated. The destroy routine still owns the public-handle reference
+    // while this waits and drops it after every launch point is terminal.
+    iree_status_ignore(iree_hal_semaphore_wait(
+        point->stream->timeline_semaphore, point->value,
+        iree_infinite_timeout(), IREE_ASYNC_WAIT_FLAG_NONE));
+    return;
+  }
+
+  iree_hal_resource_initialize(&iree_hal_streaming_graph_exec_retirement_vtable,
+                               &retirement->resource);
+  retirement->host_allocator = exec->host_allocator;
+  retirement->exec = exec;
+  iree_hal_streaming_graph_exec_retain(exec);
+
   const uint64_t args[4] = {0};
   const iree_hal_host_call_t retire_call =
       iree_hal_make_host_call_with_resource(
-          iree_hal_streaming_graph_exec_retire_host_call, NULL,
-          &exec->resource);
+          iree_hal_streaming_graph_exec_retire_host_call, retirement,
+          &retirement->resource);
 
   // Queueing through the stream gives the retirement callback a completion
   // point of its own. It may wait on work submitted after this executable's
   // last launch, but destruction is cold and the stronger ordering avoids a
   // callback with no completion signal while keeping the public call
   // nonblocking.
-  iree_status_t status = iree_hal_streaming_queue_host_call(
-      point->stream, retire_call, args, IREE_HAL_HOST_CALL_FLAG_NONE);
+  status = iree_hal_streaming_queue_host_call(point->stream, retire_call, args,
+                                              IREE_HAL_HOST_CALL_FLAG_NONE);
   if (!iree_status_is_ok(status)) {
     iree_status_ignore(status);
     // Queue rejection transferred no resource reference. Waiting for the
@@ -826,6 +881,7 @@ static void iree_hal_streaming_graph_exec_retire_launch_point(
         point->stream->timeline_semaphore, point->value,
         iree_infinite_timeout(), IREE_ASYNC_WAIT_FLAG_NONE));
   }
+  iree_hal_resource_release(&retirement->resource);
 }
 
 iree_status_t iree_hal_streaming_graph_exec_destroy_handle(
