@@ -161,6 +161,11 @@ typedef struct iree_hal_streaming_graph_t {
 bool iree_hal_streaming_graph_is_capture_active(
     const iree_hal_streaming_graph_t* graph);
 
+// Returns true when |node| names a HIP-visible node in an active capture
+// graph. Candidate identity is established before the node is dereferenced.
+bool iree_hal_streaming_capture_graph_contains_node(
+    const iree_hal_streaming_graph_node_t* node);
+
 // Attempts to record one logical operation into |stream|'s active capture.
 // Returns |*out_was_capturing| false without invoking |record_fn| when the
 // stream is not capturing. Status validation, graph mutation, and frontier
@@ -252,13 +257,9 @@ iree_status_t iree_hal_streaming_graph_exec_create(
     iree_allocator_t host_allocator,
     iree_hal_streaming_graph_exec_t** out_exec);
 
-// Compiles |exec|'s template into its compiled-state fields. Host-call records
-// name |resource_owner| so queue submissions retain the persistent executable;
-// rebuilds compile into a temporary container whose fields are subsequently
-// moved into that executable.
+// Compiles |exec|'s template into its compiled-state fields.
 iree_status_t iree_hal_streaming_graph_exec_instantiate_from_template(
-    iree_hal_streaming_graph_exec_t* exec,
-    iree_hal_streaming_graph_exec_t* resource_owner);
+    iree_hal_streaming_graph_exec_t* exec);
 
 iree_status_t iree_hal_streaming_graph_exec_rebuild_from_template(
     iree_hal_streaming_graph_exec_t* exec);
@@ -345,13 +346,31 @@ iree_status_t iree_hal_streaming_graph_schedule_nodes(
 
 // Checks whether |child_graph| may be the child graph of a node in
 // |parent_graph|: the two must be distinct, must belong to the same context,
-// and |child_graph| must not reach |parent_graph| through its own child graph
-// nodes. Instantiating a node's child graph instantiates that graph's own child
-// graph nodes in turn, so containment that leads back to |parent_graph| would
-// recurse until the stack ran out.
+// |child_graph| must not reach |parent_graph| through its own child graph
+// nodes, and neither |child_graph| nor any nested child may contain graph
+// memory nodes. Instantiating a node's child graph instantiates that graph's
+// own child graph nodes in turn, so containment that leads back to
+// |parent_graph| would recurse until the stack ran out. HIP's legacy child
+// graph API has no graph-memory ownership-transfer mechanism, so graph-memory
+// children are unsupported.
 iree_status_t iree_hal_streaming_graph_validate_child_graph(
     iree_hal_streaming_graph_t* parent_graph,
     iree_hal_streaming_graph_t* child_graph);
+
+// Revalidates all child graph nodes reachable from |graph|. Graph-memory nodes
+// directly in |graph| are allowed; graph-memory nodes below any child node are
+// rejected. This closes the mutation window where a graph is inserted while
+// empty and graph-memory nodes are added to it before the parent is
+// instantiated or supplied as an executable update source.
+iree_status_t iree_hal_streaming_graph_validate_child_graph_memory_topology(
+    iree_hal_streaming_graph_t* graph);
+
+// Validates that two graphs and their nested child graphs have the same node
+// types and effective dependency topology at each insertion index. Node
+// parameters, graph identity, and dependency storage may differ.
+iree_status_t iree_hal_streaming_graph_validate_compatible_topology(
+    const iree_hal_streaming_graph_t* old_graph,
+    const iree_hal_streaming_graph_t* new_graph);
 
 // Adds dependencies between nodes in the graph.
 // For each index i in [0, count), adds an edge from from_nodes[i] to

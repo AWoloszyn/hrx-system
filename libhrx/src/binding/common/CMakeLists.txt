@@ -314,6 +314,18 @@ iree_cc_test(
 set(_memory_test_platform_linkopts "")
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
   list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=iree_hal_command_buffer_execution_barrier")
+  list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=iree_hal_allocator_supports_virtual_memory")
+  list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=iree_hal_allocator_virtual_memory_query_granularity")
+  list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=iree_hal_allocator_virtual_memory_reserve")
+  list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=iree_hal_allocator_virtual_memory_release")
+  list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=iree_hal_allocator_physical_memory_allocate")
+  list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=iree_hal_allocator_physical_memory_free")
+  list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=iree_hal_allocator_virtual_memory_map")
+  list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=iree_hal_allocator_virtual_memory_unmap")
+  list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=iree_hal_allocator_virtual_memory_protect")
+  list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=iree_hal_streaming_allocation_preparation_await_idle")
+  list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=iree_hal_streaming_graph_memory_allocation_prepare_pointer_for_launch")
+  list(APPEND _memory_test_platform_linkopts "-Wl,--wrap=iree_hal_streaming_graph_memory_allocation_restore_pointer_reference")
 endif()
 iree_cc_test(
   NAME

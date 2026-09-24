@@ -12,6 +12,10 @@
 #include "iree/base/api.h"
 #include "iree/hal/device.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 typedef struct iree_hal_streaming_buffer_t iree_hal_streaming_buffer_t;
 typedef struct iree_hal_streaming_context_t iree_hal_streaming_context_t;
 typedef struct iree_hal_streaming_device_t iree_hal_streaming_device_t;
@@ -52,14 +56,28 @@ void iree_hal_streaming_graph_memory_allocation_complete_pointer_reference(
 void iree_hal_streaming_graph_memory_allocation_restore_pointer_reference(
     iree_hal_streaming_graph_memory_allocation_t* allocation);
 
-// Claims a returned-pointer reference only if its allocation node has never
-// executed. Graph destruction uses this to retire an address that was created
-// during graph construction but was never made usable by a launch.
-bool iree_hal_streaming_graph_memory_allocation_claim_unexecuted_pointer_reference(
+// Retires and releases the returned-pointer reference only if its allocation
+// node has never executed. The pointer is first unpublished and every admitted
+// lookup is drained, so no lookup can retain the allocation after its final
+// reference reaches zero. A no-op when the allocation executed or another free
+// operation already owns the pointer reference.
+iree_status_t
+iree_hal_streaming_graph_memory_allocation_release_unexecuted_pointer_reference(
     iree_hal_streaming_graph_memory_allocation_t* allocation);
 
-// Claims the single graph free-node slot for an allocation. The claim remains
-// until that node is destroyed with its graph, even after the node executes.
+// Returns whether the allocation reference state permits a graph free-node
+// claim. Callers snapshot all three values under the allocation mutex.
+static inline bool
+iree_hal_streaming_graph_memory_reference_can_claim_free_node(
+    bool has_pointer_reference, bool is_pointer_reference_claimed,
+    bool has_free_node_reference) {
+  return has_pointer_reference && !is_pointer_reference_claimed &&
+         !has_free_node_reference;
+}
+
+// Claims the single graph free-node slot for an allocation while its returned
+// pointer reference is live and unclaimed. The claim remains until that node is
+// destroyed with its graph, even after the node executes.
 bool iree_hal_streaming_graph_memory_allocation_try_claim_free_node_reference(
     iree_hal_streaming_graph_memory_allocation_t* allocation);
 void iree_hal_streaming_graph_memory_allocation_release_free_node_reference(
@@ -80,19 +98,25 @@ iree_hal_streaming_graph_memory_allocation_context(
 bool iree_hal_streaming_graph_memory_allocation_is_mapped(
     iree_hal_streaming_graph_memory_allocation_t* allocation);
 
+// Returns true when an unmatched allocation remains mapped by a completed
+// launch. A mapping left by a synchronously rejected launch is retry residue,
+// not a completed live allocation, and is consumed by the next map callback.
+bool iree_hal_streaming_graph_memory_allocation_has_live_unfreed_mapping(
+    iree_hal_streaming_graph_memory_allocation_t* allocation);
+
+// Converts this launch attempt's fully successful map into retry residue after
+// a later graph block is synchronously rejected. A prior residue is preserved
+// when this attempt's map callback did not run.
+void iree_hal_streaming_graph_memory_allocation_mark_failed_launch_retry(
+    iree_hal_streaming_graph_memory_allocation_t* allocation);
+
 // Ensures a graph launch owns and publishes the stable returned-pointer
-// reference. |out_did_publish| is true only when this call restored a pointer
-// retired by an earlier external or graph-ordered free.
+// reference. Publications persist across launch submission failures so an
+// accepted mapping prefix and its returned pointer remain one retryable state.
+// Resets only this attempt's successful-map evidence; retry residue from an
+// earlier rejected attempt remains available to the map callback.
 iree_status_t
 iree_hal_streaming_graph_memory_allocation_prepare_pointer_for_launch(
-    iree_hal_streaming_graph_memory_allocation_t* allocation,
-    bool* out_did_publish);
-
-// Rolls back a pointer publication performed while preparing a launch that was
-// not submitted. A map accepted before a later submission failure is undone
-// before the pointer reference is retired.
-iree_status_t
-iree_hal_streaming_graph_memory_allocation_rollback_launch_pointer(
     iree_hal_streaming_graph_memory_allocation_t* allocation);
 
 // Resolves a base graph allocation pointer to a retained allocation record.
@@ -135,5 +159,9 @@ void iree_hal_streaming_graph_memory_reset_reserved_high(
     iree_hal_streaming_device_t* device);
 iree_status_t iree_hal_streaming_graph_memory_trim(
     iree_hal_streaming_device_t* device);
+
+#ifdef __cplusplus
+}  // extern "C"
+#endif
 
 #endif  // LIBHRX_SRC_BINDING_COMMON_GRAPH_MEMORY_H_

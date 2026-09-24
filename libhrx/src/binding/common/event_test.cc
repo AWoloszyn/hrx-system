@@ -352,6 +352,8 @@ class CpuStreamingContextTest : public ::testing::Test {
     device_entry_.hal_device = hrx_device_hal(hrx_device);
     iree_slim_mutex_initialize(&device_entry_.primary_context_mutex);
     iree_slim_mutex_initialize(&device_entry_.graph_memory_mutex);
+    iree_slim_mutex_initialize(&device_entry_.terminal_resource_mutex);
+    iree_notification_initialize(&device_entry_.terminal_resource_notification);
     iree_arena_block_pool_initialize(/*block_size=*/64 * 1024,
                                      iree_allocator_system(),
                                      &device_entry_.block_pool);
@@ -374,10 +376,15 @@ class CpuStreamingContextTest : public ::testing::Test {
     for (iree_host_size_t i = 0; i < gate_count_; ++i) {
       iree_hal_semaphore_release(gates_[i].semaphore);
     }
+    iree_hal_streaming_device_terminal_resource_await_idle(&device_entry_);
+    EXPECT_EQ(0, device_entry_.pending_terminal_resource_count);
+    IREE_EXPECT_OK(HRX_CALL(hrx_cpu_shutdown()));
+    iree_notification_deinitialize(
+        &device_entry_.terminal_resource_notification);
+    iree_slim_mutex_deinitialize(&device_entry_.terminal_resource_mutex);
     iree_arena_block_pool_deinitialize(&device_entry_.block_pool);
     iree_slim_mutex_deinitialize(&device_entry_.graph_memory_mutex);
     iree_slim_mutex_deinitialize(&device_entry_.primary_context_mutex);
-    IREE_EXPECT_OK(HRX_CALL(hrx_cpu_shutdown()));
   }
 
   iree_status_t CreateGate(uint64_t release_value,
