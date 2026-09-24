@@ -44,18 +44,27 @@ struct iree_hal_streaming_graph_memory_allocation_t {
   // True while |physical_block| is mapped and has read-write access.
   bool is_mapped;
 
-  // True after an allocation node has successfully mapped physical backing.
+  // True after an allocation node has successfully mapped physical backing for
+  // the current returned-pointer generation.
   bool has_executed;
 
   // True while the returned device address owns a reference to this record.
   bool has_pointer_reference;
 
-  // True while a free operation owns, but has not retired, the returned-pointer
-  // reference.
+  // True while publication or a free operation exclusively owns a transition
+  // of the returned-pointer reference.
   bool is_pointer_reference_claimed;
 
   // True while one graph owns a free node for this allocation.
   bool has_free_node_reference;
+
+  // True only after this launch attempt completed a fully usable map. Prepare
+  // resets it and failed-launch finalization converts it to retry residue.
+  bool map_succeeded_for_launch;
+
+  // True when a synchronously rejected launch left a fully usable mapping.
+  // The next allocation-map callback consumes it as an established mapping.
+  bool failed_launch_retry_mapping;
 };
 
 static void iree_hal_streaming_graph_memory_allocation_resource_destroy(
@@ -193,11 +202,22 @@ static iree_status_t iree_hal_streaming_graph_memory_allocation_map(
   iree_hal_streaming_device_t* device = context->device_entry;
   iree_slim_mutex_lock(&allocation->mutex);
   if (allocation->is_mapped) {
+    if (allocation->failed_launch_retry_mapping) {
+      allocation->failed_launch_retry_mapping = false;
+      allocation->map_succeeded_for_launch = true;
+      allocation->has_executed = true;
+      iree_slim_mutex_unlock(&allocation->mutex);
+      return iree_ok_status();
+    }
     iree_slim_mutex_unlock(&allocation->mutex);
     return iree_make_status(
         IREE_STATUS_FAILED_PRECONDITION,
         "graph allocation virtual address is already mapped");
   }
+  // Only a completely successful fresh map below may provide evidence for
+  // this attempt. In particular, a mapping preserved after protection and
+  // cleanup both fail is not safe retry residue.
+  allocation->map_succeeded_for_launch = false;
 
   iree_slim_mutex_lock(&device->graph_memory_mutex);
   iree_hal_streaming_graph_memory_physical_block_t* cached_block =
@@ -244,6 +264,7 @@ static iree_status_t iree_hal_streaming_graph_memory_allocation_map(
     allocation->physical_block = physical_block;
     allocation->is_mapped = true;
     allocation->has_executed = true;
+    allocation->map_succeeded_for_launch = true;
     if (!allocation->has_pointer_reference) {
       iree_hal_resource_retain(&allocation->resource);
       allocation->has_pointer_reference = true;
@@ -307,6 +328,8 @@ static iree_status_t iree_hal_streaming_graph_memory_allocation_unmap_impl(
   if (iree_status_is_ok(status)) {
     allocation->physical_block = NULL;
     allocation->is_mapped = false;
+    allocation->map_succeeded_for_launch = false;
+    allocation->failed_launch_retry_mapping = false;
     iree_slim_mutex_lock(&device->graph_memory_mutex);
     iree_hal_streaming_graph_memory_record_unmap_locked(
         device, allocation->reservation_size);
@@ -435,6 +458,11 @@ static void iree_hal_streaming_graph_memory_allocation_destroy(
   const bool trim_cache = --device->graph_memory_allocation_count == 0;
   iree_slim_mutex_unlock(&device->graph_memory_mutex);
 
+  // A retained pointer-table lookup carries a wrapper lease while it reads and
+  // retains |graph_memory_allocation|. Close and drain those leases before
+  // clearing that borrowed pointer or releasing either object.
+  iree_hal_streaming_memory_prepare_wrapped_buffer_release(
+      allocation->virtual_buffer);
   allocation->virtual_buffer->graph_memory_allocation = NULL;
   iree_hal_streaming_memory_prepare_virtual_reservation_release(
       allocation->virtual_buffer);
@@ -516,6 +544,10 @@ void iree_hal_streaming_graph_memory_allocation_complete_pointer_reference(
   IREE_ASSERT(allocation->is_pointer_reference_claimed);
   allocation->has_pointer_reference = false;
   allocation->is_pointer_reference_claimed = false;
+  // A later launch may create a new returned-pointer generation before its map
+  // is accepted. Graph destruction must recognize that generation as
+  // unexecuted and retire it if submission fails before mapping.
+  allocation->has_executed = false;
   iree_slim_mutex_unlock(&allocation->mutex);
 }
 
@@ -529,20 +561,36 @@ void iree_hal_streaming_graph_memory_allocation_restore_pointer_reference(
   iree_slim_mutex_unlock(&allocation->mutex);
 }
 
-bool iree_hal_streaming_graph_memory_allocation_claim_unexecuted_pointer_reference(
+iree_status_t
+iree_hal_streaming_graph_memory_allocation_release_unexecuted_pointer_reference(
     iree_hal_streaming_graph_memory_allocation_t* allocation) {
   if (!allocation) {
-    return false;
+    return iree_ok_status();
   }
   iree_slim_mutex_lock(&allocation->mutex);
-  const bool was_claimed = !allocation->has_executed &&
-                           allocation->has_pointer_reference &&
-                           !allocation->is_pointer_reference_claimed;
-  if (was_claimed) {
-    allocation->has_pointer_reference = false;
+  const bool should_release = !allocation->has_executed &&
+                              allocation->has_pointer_reference &&
+                              !allocation->is_pointer_reference_claimed;
+  if (should_release) {
+    allocation->is_pointer_reference_claimed = true;
   }
   iree_slim_mutex_unlock(&allocation->mutex);
-  return was_claimed;
+  if (!should_release) {
+    return iree_ok_status();
+  }
+
+  iree_status_t status = iree_hal_streaming_memory_unpublish_wrapped_buffer(
+      allocation->virtual_buffer);
+  iree_slim_mutex_lock(&allocation->mutex);
+  if (iree_status_is_ok(status)) {
+    allocation->has_pointer_reference = false;
+  }
+  allocation->is_pointer_reference_claimed = false;
+  iree_slim_mutex_unlock(&allocation->mutex);
+  if (iree_status_is_ok(status)) {
+    iree_hal_streaming_graph_memory_allocation_release(allocation);
+  }
+  return status;
 }
 
 bool iree_hal_streaming_graph_memory_allocation_try_claim_free_node_reference(
@@ -551,7 +599,11 @@ bool iree_hal_streaming_graph_memory_allocation_try_claim_free_node_reference(
     return false;
   }
   iree_slim_mutex_lock(&allocation->mutex);
-  const bool was_claimed = !allocation->has_free_node_reference;
+  const bool was_claimed =
+      iree_hal_streaming_graph_memory_reference_can_claim_free_node(
+          allocation->has_pointer_reference,
+          allocation->is_pointer_reference_claimed,
+          allocation->has_free_node_reference);
   if (was_claimed) {
     allocation->has_free_node_reference = true;
   }
@@ -590,19 +642,44 @@ bool iree_hal_streaming_graph_memory_allocation_is_mapped(
   return is_mapped;
 }
 
+bool iree_hal_streaming_graph_memory_allocation_has_live_unfreed_mapping(
+    iree_hal_streaming_graph_memory_allocation_t* allocation) {
+  if (!allocation) {
+    return false;
+  }
+  iree_slim_mutex_lock(&allocation->mutex);
+  const bool has_live_mapping =
+      allocation->is_mapped && !allocation->failed_launch_retry_mapping;
+  iree_slim_mutex_unlock(&allocation->mutex);
+  return has_live_mapping;
+}
+
+void iree_hal_streaming_graph_memory_allocation_mark_failed_launch_retry(
+    iree_hal_streaming_graph_memory_allocation_t* allocation) {
+  IREE_ASSERT_ARGUMENT(allocation);
+  iree_slim_mutex_lock(&allocation->mutex);
+  if (allocation->map_succeeded_for_launch) {
+    if (allocation->is_mapped) {
+      allocation->failed_launch_retry_mapping = true;
+    }
+    allocation->map_succeeded_for_launch = false;
+  }
+  iree_slim_mutex_unlock(&allocation->mutex);
+}
+
 iree_status_t
 iree_hal_streaming_graph_memory_allocation_prepare_pointer_for_launch(
-    iree_hal_streaming_graph_memory_allocation_t* allocation,
-    bool* out_did_publish) {
+    iree_hal_streaming_graph_memory_allocation_t* allocation) {
   IREE_ASSERT_ARGUMENT(allocation);
-  IREE_ASSERT_ARGUMENT(out_did_publish);
-  *out_did_publish = false;
 
   iree_slim_mutex_lock(&allocation->mutex);
-  if (allocation->has_pointer_reference) {
-    const bool is_claimed = allocation->is_pointer_reference_claimed;
+  allocation->map_succeeded_for_launch = false;
+  if (allocation->has_pointer_reference ||
+      allocation->is_pointer_reference_claimed) {
+    const bool is_available = allocation->has_pointer_reference &&
+                              !allocation->is_pointer_reference_claimed;
     iree_slim_mutex_unlock(&allocation->mutex);
-    if (is_claimed) {
+    if (!is_available) {
       return iree_make_status(
           IREE_STATUS_FAILED_PRECONDITION,
           "graph allocation pointer has a pending free operation");
@@ -610,47 +687,23 @@ iree_hal_streaming_graph_memory_allocation_prepare_pointer_for_launch(
     return iree_ok_status();
   }
 
+  // Reserve the pointer state before publishing without holding the allocation
+  // mutex across the buffer-table operation. Buffer-table removal callbacks
+  // acquire the allocation mutex, so table -> allocation is the only nested
+  // lock order. This retain becomes the returned-pointer reference on success.
   iree_hal_resource_retain(&allocation->resource);
-  allocation->has_pointer_reference = true;
+  allocation->is_pointer_reference_claimed = true;
+  iree_slim_mutex_unlock(&allocation->mutex);
+
   iree_status_t status = iree_hal_streaming_memory_publish_wrapped_buffer(
       allocation->virtual_buffer);
-  if (!iree_status_is_ok(status)) {
-    allocation->has_pointer_reference = false;
-  } else {
-    *out_did_publish = true;
-  }
-  iree_slim_mutex_unlock(&allocation->mutex);
-  if (!iree_status_is_ok(status)) {
-    iree_hal_streaming_graph_memory_allocation_release(allocation);
-  }
-  return status;
-}
-
-iree_status_t
-iree_hal_streaming_graph_memory_allocation_rollback_launch_pointer(
-    iree_hal_streaming_graph_memory_allocation_t* allocation) {
-  IREE_ASSERT_ARGUMENT(allocation);
-  IREE_RETURN_IF_ERROR(
-      iree_hal_streaming_graph_memory_allocation_unmap_if_mapped(allocation));
-
   iree_slim_mutex_lock(&allocation->mutex);
-  if (!allocation->has_pointer_reference) {
-    iree_slim_mutex_unlock(&allocation->mutex);
-    return iree_ok_status();
-  }
-  if (allocation->is_pointer_reference_claimed) {
-    iree_slim_mutex_unlock(&allocation->mutex);
-    return iree_make_status(
-        IREE_STATUS_FAILED_PRECONDITION,
-        "graph allocation pointer was claimed while rolling back launch");
-  }
-  iree_status_t status = iree_hal_streaming_memory_unpublish_wrapped_buffer(
-      allocation->virtual_buffer);
   if (iree_status_is_ok(status)) {
-    allocation->has_pointer_reference = false;
+    allocation->has_pointer_reference = true;
   }
+  allocation->is_pointer_reference_claimed = false;
   iree_slim_mutex_unlock(&allocation->mutex);
-  if (iree_status_is_ok(status)) {
+  if (!iree_status_is_ok(status)) {
     iree_hal_streaming_graph_memory_allocation_release(allocation);
   }
   return status;
@@ -662,27 +715,22 @@ iree_status_t iree_hal_streaming_graph_memory_allocation_lookup(
   IREE_ASSERT_ARGUMENT(context);
   IREE_ASSERT_ARGUMENT(out_allocation);
   *out_allocation = NULL;
-  iree_hal_streaming_buffer_ref_t ref;
-  iree_status_t status = iree_hal_streaming_memory_lookup(context, ptr, &ref);
-  iree_hal_streaming_context_t* owner_context = NULL;
-  if (!iree_status_is_ok(status) &&
-      iree_status_code(status) == IREE_STATUS_NOT_FOUND) {
-    iree_status_ignore(status);
-    status = iree_hal_streaming_memory_lookup_range_across_contexts(
-        ptr, /*size=*/1, &owner_context, &ref);
-  }
+  iree_hal_streaming_retained_buffer_ref_t ref;
+  iree_status_t status =
+      iree_hal_streaming_memory_lookup_range_retain_across_contexts(
+          context, ptr, /*size=*/1, &ref);
   if (!iree_status_is_ok(status)) {
     return status;
   }
-  if (ref.offset != 0 || !ref.buffer->graph_memory_allocation) {
-    iree_hal_streaming_context_release(owner_context);
+  if (ref.offset != 0 || !ref.owner_wrapper->graph_memory_allocation) {
+    iree_hal_streaming_retained_buffer_ref_deinitialize(&ref);
     return iree_make_status(IREE_STATUS_NOT_FOUND,
                             "pointer is not a graph allocation base address");
   }
   iree_hal_streaming_graph_memory_allocation_t* allocation =
-      ref.buffer->graph_memory_allocation;
+      ref.owner_wrapper->graph_memory_allocation;
   iree_hal_streaming_graph_memory_allocation_retain(allocation);
-  iree_hal_streaming_context_release(owner_context);
+  iree_hal_streaming_retained_buffer_ref_deinitialize(&ref);
   *out_allocation = allocation;
   return iree_ok_status();
 }

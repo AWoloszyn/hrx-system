@@ -40,6 +40,21 @@ typedef enum iree_hal_streaming_graph_block_type_e {
 
 typedef void (*iree_hal_streaming_host_callback_t)(void* user_data);
 
+// Immutable callback snapshot retained directly by queued host-call
+// operations. Keeping this state independent from the graph executable lets a
+// backend release its operation resources after publishing completion without
+// extending the executable's lifetime past its retirement point.
+typedef struct iree_hal_streaming_graph_host_callback_state_t {
+  // Resource header retained by compiled state and each queued invocation.
+  iree_hal_resource_t resource;
+  // Allocator used for this state and any trailing copied callback data.
+  iree_allocator_t host_allocator;
+  // User callback captured when the executable was compiled.
+  iree_hal_streaming_host_callback_t fn;
+  // Callback argument, either borrowed or trailing copied data.
+  void* user_data;
+} iree_hal_streaming_graph_host_callback_state_t;
+
 static iree_status_t iree_hal_streaming_graph_host_callback(
     void* user_data, const uint64_t args[4],
     iree_hal_host_call_context_t* context);
@@ -114,8 +129,29 @@ typedef struct iree_hal_streaming_graph_launch_point_t {
   uint64_t value;
 } iree_hal_streaming_graph_launch_point_t;
 
+// Cancellation-safe ownership carried by one queued retirement callback.
+typedef struct iree_hal_streaming_graph_exec_retirement_t {
+  // Resource retained by the queue until callback completion or cancellation.
+  iree_hal_resource_t resource;
+  // Executable released by the callback before signaling, or by cancellation.
+  iree_hal_streaming_graph_exec_t* exec;
+  // Allocator copied from the executable before its lifetime is detached.
+  iree_allocator_t host_allocator;
+  // Context kept live until the queue has published the call's terminal state.
+  iree_hal_streaming_context_t* context;
+  // Launch stream kept live until terminal queue resource cleanup. This keeps
+  // final stream destruction out of a callback running on that same stream.
+  iree_hal_streaming_stream_t* stream;
+  // Device whose teardown drain protects this token and its allocator.
+  iree_hal_streaming_device_t* device;
+} iree_hal_streaming_graph_exec_retirement_t;
+
 // IREE_HAL_STREAMING_GRAPH_BLOCK_TYPE_CHILD_GRAPH
 typedef struct iree_hal_streaming_graph_child_graph_block_attrs_t {
+  // Private template node that produced this block. A successful rebuild
+  // replaces its mutable source-child reference with the exact instantiated
+  // child snapshot.
+  iree_hal_streaming_graph_node_t* node;
   iree_hal_streaming_graph_exec_t* exec;
 } iree_hal_streaming_graph_child_graph_block_attrs_t;
 
@@ -255,35 +291,8 @@ typedef struct iree_hal_streaming_graph_exec_t {
   iree_slim_mutex_t mutex;
 } iree_hal_streaming_graph_exec_t;
 
-// Retains an executable until a stream-ordered retirement call either runs or
-// is cancelled. A separate resource is required because the normal callback
-// releases the executable before its signal semaphore advances.
-typedef struct iree_hal_streaming_graph_exec_retirement_t {
-  // Resource retained by the queued host call through invocation or
-  // cancellation.
-  iree_hal_resource_t resource;
-  // Allocator that owns this retirement record.
-  iree_allocator_t host_allocator;
-  // Executable reference transferred to the host callback when it runs.
-  iree_hal_streaming_graph_exec_t* exec;
-} iree_hal_streaming_graph_exec_retirement_t;
-
 static void iree_hal_streaming_graph_exec_destroy(
     iree_hal_streaming_graph_exec_t* exec);
-
-static void iree_hal_streaming_graph_exec_retirement_destroy(
-    iree_hal_resource_t* resource) {
-  iree_hal_streaming_graph_exec_retirement_t* retirement =
-      (iree_hal_streaming_graph_exec_retirement_t*)resource;
-  iree_hal_streaming_graph_exec_release(retirement->exec);
-  retirement->exec = NULL;
-  iree_allocator_free(retirement->host_allocator, retirement);
-}
-
-static const iree_hal_resource_vtable_t
-    iree_hal_streaming_graph_exec_retirement_vtable = {
-        .destroy = iree_hal_streaming_graph_exec_retirement_destroy,
-};
 
 static void iree_hal_streaming_graph_exec_resource_destroy(
     iree_hal_resource_t* resource) {
@@ -467,7 +476,7 @@ static bool iree_hal_streaming_graph_memory_has_live_unfreed_allocations(
       iree_hal_streaming_graph_node_t* node = block->nodes[i];
       if (node->type == IREE_HAL_STREAMING_GRAPH_NODE_TYPE_MEM_ALLOC &&
           !node->attrs.mem_alloc.has_in_graph_free_node &&
-          iree_hal_streaming_graph_memory_allocation_is_mapped(
+          iree_hal_streaming_graph_memory_allocation_has_live_unfreed_mapping(
               node->attrs.mem_alloc.allocation)) {
         return true;
       }
@@ -476,15 +485,20 @@ static bool iree_hal_streaming_graph_memory_has_live_unfreed_allocations(
   return false;
 }
 
+typedef struct iree_hal_streaming_graph_memory_launch_allocation_t {
+  // Allocation prepared before any graph block was submitted.
+  iree_hal_streaming_graph_memory_allocation_t* allocation;
+} iree_hal_streaming_graph_memory_launch_allocation_t;
+
 static iree_status_t iree_hal_streaming_graph_memory_prepare_launch_pointers(
     iree_hal_streaming_graph_exec_t* exec,
-    iree_hal_streaming_graph_memory_allocation_t*** out_publications,
-    iree_host_size_t* out_publication_count) {
+    iree_hal_streaming_graph_memory_launch_allocation_t** out_allocations,
+    iree_host_size_t* out_allocation_count) {
   IREE_ASSERT_ARGUMENT(exec);
-  IREE_ASSERT_ARGUMENT(out_publications);
-  IREE_ASSERT_ARGUMENT(out_publication_count);
-  *out_publications = NULL;
-  *out_publication_count = 0;
+  IREE_ASSERT_ARGUMENT(out_allocations);
+  IREE_ASSERT_ARGUMENT(out_allocation_count);
+  *out_allocations = NULL;
+  *out_allocation_count = 0;
 
   iree_host_size_t allocation_count = 0;
   for (iree_hal_streaming_node_block_t* block =
@@ -499,18 +513,18 @@ static iree_status_t iree_hal_streaming_graph_memory_prepare_launch_pointers(
     return iree_ok_status();
   }
 
-  iree_host_size_t publication_size = 0;
+  iree_host_size_t allocation_size = 0;
   if (IREE_UNLIKELY(!iree_host_size_checked_mul(
-          allocation_count, sizeof(**out_publications), &publication_size))) {
+          allocation_count, sizeof(**out_allocations), &allocation_size))) {
     return iree_make_status(IREE_STATUS_OUT_OF_RANGE,
-                            "graph allocation publication list overflows");
+                            "graph launch allocation list overflows");
   }
-  iree_hal_streaming_graph_memory_allocation_t** publications = NULL;
+  iree_hal_streaming_graph_memory_launch_allocation_t* allocations = NULL;
   IREE_RETURN_IF_ERROR(iree_allocator_malloc(
-      exec->host_allocator, publication_size, (void**)&publications));
+      exec->host_allocator, allocation_size, (void**)&allocations));
 
   iree_status_t status = iree_ok_status();
-  iree_host_size_t publication_count = 0;
+  iree_host_size_t prepared_allocation_count = 0;
   for (iree_hal_streaming_node_block_t* block =
            exec->template_graph->node_blocks;
        block && iree_status_is_ok(status); block = block->next) {
@@ -520,43 +534,37 @@ static iree_status_t iree_hal_streaming_graph_memory_prepare_launch_pointers(
       if (node->type != IREE_HAL_STREAMING_GRAPH_NODE_TYPE_MEM_ALLOC) {
         continue;
       }
-      bool did_publish = false;
       status =
           iree_hal_streaming_graph_memory_allocation_prepare_pointer_for_launch(
-              node->attrs.mem_alloc.allocation, &did_publish);
-      if (did_publish) {
-        publications[publication_count++] = node->attrs.mem_alloc.allocation;
+              node->attrs.mem_alloc.allocation);
+      if (iree_status_is_ok(status)) {
+        allocations[prepared_allocation_count++] =
+            (iree_hal_streaming_graph_memory_launch_allocation_t){
+                .allocation = node->attrs.mem_alloc.allocation,
+            };
       }
     }
   }
 
-  if (!iree_status_is_ok(status)) {
-    while (publication_count > 0) {
-      status = iree_status_join(
-          status,
-          iree_hal_streaming_graph_memory_allocation_rollback_launch_pointer(
-              publications[--publication_count]));
-    }
-    iree_allocator_free(exec->host_allocator, publications);
-    return status;
-  }
-
-  *out_publications = publications;
-  *out_publication_count = publication_count;
-  return iree_ok_status();
+  *out_allocations = allocations;
+  *out_allocation_count = prepared_allocation_count;
+  return status;
 }
 
-static iree_status_t iree_hal_streaming_graph_memory_rollback_launch_pointers(
-    iree_host_size_t publication_count,
-    iree_hal_streaming_graph_memory_allocation_t** publications) {
-  iree_status_t status = iree_ok_status();
-  while (publication_count > 0) {
-    status = iree_status_join(
-        status,
-        iree_hal_streaming_graph_memory_allocation_rollback_launch_pointer(
-            publications[--publication_count]));
+// Records only fully successful allocation maps from an accepted submission
+// prefix. Their mappings and returned-pointer publications remain live; the
+// next map callback consumes this residue without remapping. An accepted free
+// clears the evidence and residue when it unmaps, while a failed/partial map
+// never sets the evidence in the first place.
+static void iree_hal_streaming_graph_memory_mark_failed_launch_retries(
+    iree_host_size_t allocation_count,
+    iree_hal_streaming_graph_memory_launch_allocation_t* allocations) {
+  while (allocation_count > 0) {
+    iree_hal_streaming_graph_memory_launch_allocation_t* launch_allocation =
+        &allocations[--allocation_count];
+    iree_hal_streaming_graph_memory_allocation_mark_failed_launch_retry(
+        launch_allocation->allocation);
   }
-  return status;
 }
 
 static bool iree_hal_streaming_graph_memory_exec_try_claim(
@@ -819,6 +827,27 @@ bool iree_hal_streaming_graph_exec_try_retain_live(
   return is_live;
 }
 
+static void iree_hal_streaming_graph_exec_retirement_destroy(
+    iree_hal_resource_t* resource) {
+  iree_hal_streaming_graph_exec_retirement_t* retirement =
+      (iree_hal_streaming_graph_exec_retirement_t*)resource;
+  iree_hal_streaming_graph_exec_t* exec = retirement->exec;
+  const iree_allocator_t host_allocator = retirement->host_allocator;
+  iree_hal_streaming_context_t* context = retirement->context;
+  iree_hal_streaming_stream_t* stream = retirement->stream;
+  iree_hal_streaming_device_t* device = retirement->device;
+  iree_allocator_free(host_allocator, retirement);
+  iree_hal_streaming_graph_exec_release(exec);
+  iree_hal_streaming_stream_release(stream);
+  iree_hal_streaming_context_release(context);
+  iree_hal_streaming_device_terminal_resource_release(device);
+}
+
+static const iree_hal_resource_vtable_t
+    iree_hal_streaming_graph_exec_retirement_vtable = {
+        .destroy = iree_hal_streaming_graph_exec_retirement_destroy,
+};
+
 static iree_status_t iree_hal_streaming_graph_exec_retire_host_call(
     void* user_data, const uint64_t args[4],
     iree_hal_host_call_context_t* context) {
@@ -836,52 +865,40 @@ static iree_status_t iree_hal_streaming_graph_exec_retire_host_call(
   return iree_ok_status();
 }
 
-static void iree_hal_streaming_graph_exec_retire_launch_point(
+static iree_status_t iree_hal_streaming_graph_exec_retire_launch_point(
     iree_hal_streaming_graph_exec_t* exec,
     iree_hal_streaming_graph_launch_point_t* point) {
+  const uint64_t args[4] = {0};
+
   iree_hal_streaming_graph_exec_retirement_t* retirement = NULL;
   iree_status_t status = iree_allocator_malloc(
       exec->host_allocator, sizeof(*retirement), (void**)&retirement);
-  if (!iree_status_is_ok(status)) {
-    iree_status_ignore(status);
-    // Fall back to synchronous retirement when no callback record can be
-    // allocated. The destroy routine still owns the public-handle reference
-    // while this waits and drops it after every launch point is terminal.
-    iree_status_ignore(iree_hal_semaphore_wait(
-        point->stream->timeline_semaphore, point->value,
-        iree_infinite_timeout(), IREE_ASYNC_WAIT_FLAG_NONE));
-    return;
+  if (iree_status_is_ok(status)) {
+    iree_hal_resource_initialize(
+        &iree_hal_streaming_graph_exec_retirement_vtable,
+        &retirement->resource);
+    iree_hal_streaming_graph_exec_retain(exec);
+    retirement->exec = exec;
+    retirement->host_allocator = exec->host_allocator;
+    retirement->context = exec->context;
+    iree_hal_streaming_context_retain(retirement->context);
+    retirement->stream = point->stream;
+    iree_hal_streaming_stream_retain(retirement->stream);
+    retirement->device = exec->context->device_entry;
+    iree_hal_streaming_device_terminal_resource_acquire(retirement->device);
+    const iree_hal_host_call_t retire_call =
+        iree_hal_make_host_call_with_resource(
+            iree_hal_streaming_graph_exec_retire_host_call, retirement,
+            &retirement->resource);
+
+    // Queueing through the stream gives final executable release a completion
+    // point of its own. The callback drops the executable before returning, so
+    // the stream signal is also a resource-retirement barrier.
+    status = iree_hal_streaming_queue_host_call(
+        point->stream, retire_call, args, IREE_HAL_HOST_CALL_FLAG_NONE);
   }
-
-  iree_hal_resource_initialize(&iree_hal_streaming_graph_exec_retirement_vtable,
-                               &retirement->resource);
-  retirement->host_allocator = exec->host_allocator;
-  retirement->exec = exec;
-  iree_hal_streaming_graph_exec_retain(exec);
-
-  const uint64_t args[4] = {0};
-  const iree_hal_host_call_t retire_call =
-      iree_hal_make_host_call_with_resource(
-          iree_hal_streaming_graph_exec_retire_host_call, retirement,
-          &retirement->resource);
-
-  // Queueing through the stream gives the retirement callback a completion
-  // point of its own. It may wait on work submitted after this executable's
-  // last launch, but destruction is cold and the stronger ordering avoids a
-  // callback with no completion signal while keeping the public call
-  // nonblocking.
-  status = iree_hal_streaming_queue_host_call(point->stream, retire_call, args,
-                                              IREE_HAL_HOST_CALL_FLAG_NONE);
-  if (!iree_status_is_ok(status)) {
-    iree_status_ignore(status);
-    // Queue rejection transferred no resource reference. Waiting for the
-    // recorded point is the allocation-free fallback that still proves every
-    // operation which can reference executable-owned storage is terminal.
-    iree_status_ignore(iree_hal_semaphore_wait(
-        point->stream->timeline_semaphore, point->value,
-        iree_infinite_timeout(), IREE_ASYNC_WAIT_FLAG_NONE));
-  }
-  iree_hal_resource_release(&retirement->resource);
+  iree_hal_resource_release(retirement ? &retirement->resource : NULL);
+  return status;
 }
 
 iree_status_t iree_hal_streaming_graph_exec_destroy_handle(
@@ -903,7 +920,18 @@ iree_status_t iree_hal_streaming_graph_exec_destroy_handle(
   while (launch_points) {
     iree_hal_streaming_graph_launch_point_t* point = launch_points;
     launch_points = point->next;
-    iree_hal_streaming_graph_exec_retire_launch_point(exec, point);
+    iree_status_t status =
+        iree_hal_streaming_graph_exec_retire_launch_point(exec, point);
+    if (!iree_status_is_ok(status)) {
+      point->next = launch_points;
+      iree_slim_mutex_lock(&exec->mutex);
+      IREE_ASSERT(!exec->launch_points,
+                  "destroyed executable acquired a new launch point");
+      exec->launch_points = point;
+      exec->is_destroyed = false;
+      iree_slim_mutex_unlock(&exec->mutex);
+      return status;
+    }
     iree_hal_streaming_stream_release(point->stream);
     point->stream = NULL;
     point->value = 0;
@@ -1110,8 +1138,8 @@ static iree_status_t iree_hal_streaming_graph_exec_rebuild_from_template_locked(
     iree_hal_streaming_graph_exec_scan_nodes(&candidate);
   }
   if (iree_status_is_ok(status)) {
-    status = iree_hal_streaming_graph_exec_instantiate_from_template(&candidate,
-                                                                     exec);
+    status =
+        iree_hal_streaming_graph_exec_instantiate_from_template(&candidate);
   }
   if (iree_status_is_ok(status)) {
     iree_hal_streaming_graph_exec_deinitialize_compiled_state(exec);
@@ -1348,13 +1376,59 @@ static iree_status_t iree_hal_streaming_graph_create_copy_block(
   return iree_ok_status();
 }
 
-static iree_status_t iree_hal_streaming_graph_create_host_call_block(
+static void iree_hal_streaming_graph_host_callback_state_destroy(
+    iree_hal_resource_t* resource) {
+  iree_hal_streaming_graph_host_callback_state_t* state =
+      (iree_hal_streaming_graph_host_callback_state_t*)resource;
+  const iree_allocator_t host_allocator = state->host_allocator;
+  iree_allocator_free(host_allocator, state);
+}
+
+static const iree_hal_resource_vtable_t
+    iree_hal_streaming_graph_host_callback_state_vtable = {
+        .destroy = iree_hal_streaming_graph_host_callback_state_destroy,
+};
+
+static iree_status_t iree_hal_streaming_graph_host_callback_state_create(
     iree_hal_streaming_graph_exec_t* exec,
-    iree_hal_streaming_graph_exec_t* resource_owner, uint32_t node_start_index,
+    const iree_hal_streaming_graph_node_t* source_node,
+    iree_hal_streaming_graph_host_callback_state_t** out_state) {
+  *out_state = NULL;
+  const iree_hal_streaming_graph_host_call_node_attrs_t* attrs =
+      &source_node->attrs.host;
+  const iree_host_size_t copied_data_size =
+      attrs->user_data ? attrs->user_data_size : 0;
+  const iree_host_size_t copied_data_offset =
+      iree_sizeof_struct(iree_hal_streaming_graph_host_callback_state_t);
+  iree_host_size_t allocation_size = 0;
+  if (IREE_UNLIKELY(!iree_host_size_checked_add(
+          copied_data_offset, copied_data_size, &allocation_size))) {
+    return iree_make_status(IREE_STATUS_RESOURCE_EXHAUSTED,
+                            "graph host callback state size overflow");
+  }
+
+  iree_hal_streaming_graph_host_callback_state_t* state = NULL;
+  IREE_RETURN_IF_ERROR(iree_allocator_malloc(exec->host_allocator,
+                                             allocation_size, (void**)&state));
+  iree_hal_resource_initialize(
+      &iree_hal_streaming_graph_host_callback_state_vtable, &state->resource);
+  state->host_allocator = exec->host_allocator;
+  state->fn = attrs->fn;
+  state->user_data = attrs->user_data;
+  if (copied_data_size > 0) {
+    state->user_data = (uint8_t*)state + copied_data_offset;
+    memcpy(state->user_data, attrs->user_data, copied_data_size);
+  }
+
+  *out_state = state;
+  return iree_ok_status();
+}
+
+static iree_status_t iree_hal_streaming_graph_create_host_call_block(
+    iree_hal_streaming_graph_exec_t* exec, uint32_t node_start_index,
     uint32_t node_count, uint16_t wait_semaphore_count,
     uint16_t signal_semaphore_count, iree_hal_host_call_t call,
-    const uint64_t args[4], const iree_hal_streaming_graph_node_t* source_node,
-    iree_hal_host_call_flags_t flags,
+    const uint64_t args[4], iree_hal_host_call_flags_t flags,
     iree_hal_streaming_graph_block_t** out_block,
     iree_hal_streaming_graph_block_ptrs_t* out_ptrs) {
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -1373,22 +1447,10 @@ static iree_status_t iree_hal_streaming_graph_create_host_call_block(
       &out_ptrs->attrs->host_call;
   attrs->call = call;
   memcpy(attrs->args, args, sizeof(attrs->args));
-  if (source_node && source_node->attrs.host.user_data_size > 0 && args[1]) {
-    void* copied_data = NULL;
-    IREE_RETURN_AND_END_ZONE_IF_ERROR(
-        z0, iree_arena_allocate(&exec->arena_allocator,
-                                source_node->attrs.host.user_data_size,
-                                (void**)&copied_data));
-    memcpy(copied_data, (const void*)args[1],
-           source_node->attrs.host.user_data_size);
-    attrs->args[1] = (uint64_t)copied_data;
-  }
   attrs->flags = flags;
-  // The queue retains executable-backed callback storage while it is in flight.
-  // The compiled resource set must not retain its persistent |resource_owner|:
-  // rebuilds compile into |exec| as a temporary container and then move that
-  // resource set into |resource_owner|, where the reference would form a cycle.
-  if (call.resource && call.resource != &resource_owner->resource) {
+  IREE_ASSERT(call.resource != &exec->resource,
+              "a queued host call must not retain its graph executable");
+  if (call.resource) {
     void* resources[1] = {call.resource};
     IREE_RETURN_AND_END_ZONE_IF_ERROR(
         z0, iree_hal_resource_set_insert(exec->resource_set, 1, resources));
@@ -1397,6 +1459,27 @@ static iree_status_t iree_hal_streaming_graph_create_host_call_block(
   *out_block = block;
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
+}
+
+static iree_status_t iree_hal_streaming_graph_create_callback_block(
+    iree_hal_streaming_graph_exec_t* exec, uint32_t node_start_index,
+    uint32_t node_count, uint16_t wait_semaphore_count,
+    uint16_t signal_semaphore_count,
+    const iree_hal_streaming_graph_node_t* source_node,
+    iree_hal_streaming_graph_block_t** out_block,
+    iree_hal_streaming_graph_block_ptrs_t* out_ptrs) {
+  iree_hal_streaming_graph_host_callback_state_t* state = NULL;
+  IREE_RETURN_IF_ERROR(iree_hal_streaming_graph_host_callback_state_create(
+      exec, source_node, &state));
+  const iree_hal_host_call_t call = iree_hal_make_host_call_with_resource(
+      iree_hal_streaming_graph_host_callback, state, &state->resource);
+  const uint64_t args[4] = {0};
+  iree_status_t status = iree_hal_streaming_graph_create_host_call_block(
+      exec, node_start_index, node_count, wait_semaphore_count,
+      signal_semaphore_count, call, args, IREE_HAL_HOST_CALL_FLAG_NONE,
+      out_block, out_ptrs);
+  iree_hal_resource_release(&state->resource);
+  return status;
 }
 
 static iree_status_t iree_hal_streaming_graph_create_event_block(
@@ -1561,7 +1644,8 @@ static iree_status_t iree_hal_streaming_graph_create_execute_block(
 static iree_status_t iree_hal_streaming_graph_create_child_graph_block(
     iree_hal_streaming_graph_exec_t* exec, uint32_t node_start_index,
     uint32_t node_count, uint16_t wait_semaphore_count,
-    uint16_t signal_semaphore_count, iree_hal_streaming_graph_t* child_graph,
+    uint16_t signal_semaphore_count,
+    iree_hal_streaming_graph_node_t* child_node,
     iree_hal_streaming_graph_block_t** out_block,
     iree_hal_streaming_graph_block_ptrs_t* out_ptrs) {
   IREE_TRACE_ZONE_BEGIN(z0);
@@ -1569,7 +1653,7 @@ static iree_status_t iree_hal_streaming_graph_create_child_graph_block(
   iree_hal_streaming_graph_exec_t* child_exec = NULL;
   IREE_RETURN_AND_END_ZONE_IF_ERROR(
       z0, iree_hal_streaming_graph_instantiate(
-              child_graph,
+              child_node->attrs.child_graph.graph,
               (iree_hal_streaming_graph_instantiate_flags_t)exec->flags,
               &child_exec));
 
@@ -1579,6 +1663,7 @@ static iree_status_t iree_hal_streaming_graph_create_child_graph_block(
       node_start_index, node_count, wait_semaphore_count,
       signal_semaphore_count, &block, out_ptrs);
   if (iree_status_is_ok(status)) {
+    out_ptrs->attrs->child_graph.node = child_node;
     out_ptrs->attrs->child_graph.exec = child_exec;
     // A launch of |exec| walks the child's blocks too, so the records they hold
     // are records of this launch. The child instantiated above already carries
@@ -1857,17 +1942,15 @@ static iree_status_t iree_hal_streaming_graph_record_partition(
 }
 
 iree_status_t iree_hal_streaming_graph_exec_instantiate_from_template(
-    iree_hal_streaming_graph_exec_t* exec,
-    iree_hal_streaming_graph_exec_t* resource_owner) {
+    iree_hal_streaming_graph_exec_t* exec) {
   IREE_ASSERT_ARGUMENT(exec);
-  IREE_ASSERT_ARGUMENT(resource_owner);
   IREE_TRACE_ZONE_BEGIN(z0);
   iree_hal_streaming_node_block_t* node_blocks =
       exec->template_graph->node_blocks;
   const iree_host_size_t node_count = exec->template_graph->node_count;
   exec->instantiated_node_count = node_count;
   exec->instantiated_visible_node_count =
-      iree_hal_streaming_graph_visible_node_count(exec->graph);
+      iree_hal_streaming_graph_visible_node_count(exec->template_graph);
 
   // Use the new scheduler to analyze and partition the graph.
   iree_hal_streaming_graph_schedule_t schedule;
@@ -2062,17 +2145,11 @@ iree_status_t iree_hal_streaming_graph_exec_instantiate_from_template(
         // Host call gets its own block.
         iree_hal_streaming_graph_node_t* node =
             schedule.sorted_nodes[partition->start_index].node;
-        const uint64_t args[4] = {(uint64_t)node->attrs.host.fn,
-                                  (uint64_t)node->attrs.host.user_data, 0, 0};
         IREE_RETURN_AND_END_ZONE_IF_ERROR(
-            z0,
-            iree_hal_streaming_graph_create_host_call_block(
-                exec, resource_owner, partition->start_index, partition->count,
-                wait_semaphore_count, signal_semaphore_count,
-                iree_hal_make_host_call_with_resource(
-                    iree_hal_streaming_graph_host_callback, NULL,
-                    &resource_owner->resource),
-                args, node, IREE_HAL_HOST_CALL_FLAG_NONE, &block, &ptrs));
+            z0, iree_hal_streaming_graph_create_callback_block(
+                    exec, partition->start_index, partition->count,
+                    wait_semaphore_count, signal_semaphore_count, node, &block,
+                    &ptrs));
       } else if (partition->type ==
                  IREE_HAL_STREAMING_GRAPH_PARTITION_TYPE_DISPATCH) {
         iree_hal_streaming_graph_node_t* node =
@@ -2124,8 +2201,8 @@ iree_status_t iree_hal_streaming_graph_exec_instantiate_from_template(
         IREE_RETURN_AND_END_ZONE_IF_ERROR(
             z0, iree_hal_streaming_graph_create_child_graph_block(
                     exec, partition->start_index, partition->count,
-                    wait_semaphore_count, signal_semaphore_count,
-                    node->attrs.child_graph.graph, &block, &ptrs));
+                    wait_semaphore_count, signal_semaphore_count, node, &block,
+                    &ptrs));
       } else {
         iree_hal_streaming_graph_node_t* node =
             schedule.sorted_nodes[partition->start_index].node;
@@ -2146,16 +2223,14 @@ iree_status_t iree_hal_streaming_graph_exec_instantiate_from_template(
           IREE_RETURN_AND_END_ZONE_IF_ERROR(
               z0,
               iree_hal_streaming_graph_create_host_call_block(
-                  exec, resource_owner, partition->start_index,
-                  partition->count, wait_semaphore_count,
-                  signal_semaphore_count,
+                  exec, partition->start_index, partition->count,
+                  wait_semaphore_count, signal_semaphore_count,
                   is_allocation
                       ? iree_hal_streaming_graph_memory_allocation_map_call(
                             allocation)
                       : iree_hal_streaming_graph_memory_allocation_unmap_call(
                             allocation),
-                  args, /*source_node=*/NULL, IREE_HAL_HOST_CALL_FLAG_NONE,
-                  &block, &ptrs));
+                  args, IREE_HAL_HOST_CALL_FLAG_NONE, &block, &ptrs));
         } else if (node->type ==
                        IREE_HAL_STREAMING_GRAPH_NODE_TYPE_EVENT_RECORD ||
                    node->type ==
@@ -2207,6 +2282,32 @@ iree_status_t iree_hal_streaming_graph_exec_instantiate_from_template(
     }
   }
   exec->block_count = block_index;
+
+  // Each child executable owns a private template capturing exactly what was
+  // instantiated, including snapshots held by its nested child blocks. Only
+  // after every block has compiled successfully replace the parent template's
+  // mutable public-child references with those immutable snapshots. Rebuild
+  // failure returns before here and leaves the caller's template transaction
+  // untouched.
+  for (uint32_t i = 0; i < exec->block_count; ++i) {
+    iree_hal_streaming_graph_block_t* block = exec->blocks[i];
+    if (!block ||
+        block->type != IREE_HAL_STREAMING_GRAPH_BLOCK_TYPE_CHILD_GRAPH) {
+      continue;
+    }
+    iree_hal_streaming_graph_block_ptrs_t ptrs;
+    iree_hal_streaming_graph_block_get_ptrs(block, &ptrs);
+    iree_hal_streaming_graph_node_t* node = ptrs.attrs->child_graph.node;
+    iree_hal_streaming_graph_exec_t* child_exec = ptrs.attrs->child_graph.exec;
+    if (!node || !child_exec || !child_exec->template_graph ||
+        node->attrs.child_graph.graph == child_exec->template_graph) {
+      continue;
+    }
+    iree_hal_streaming_graph_t* old_child_graph = node->attrs.child_graph.graph;
+    iree_hal_streaming_graph_retain(child_exec->template_graph);
+    node->attrs.child_graph.graph = child_exec->template_graph;
+    iree_hal_streaming_graph_release(old_child_graph);
+  }
 
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
@@ -2402,13 +2503,14 @@ static iree_status_t iree_hal_streaming_graph_exec_submit_blocks_locked(
 static iree_status_t iree_hal_streaming_graph_host_callback(
     void* user_data, const uint64_t args[4],
     iree_hal_host_call_context_t* context) {
+  (void)args;
+  (void)context;
   IREE_TRACE_ZONE_BEGIN(z0);
-  iree_hal_streaming_host_callback_t call_fn =
-      (iree_hal_streaming_host_callback_t)args[0];
-  void* call_user_data = (void*)args[1];
-  IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, args[0]);
-  IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, args[1]);
-  call_fn(call_user_data);
+  iree_hal_streaming_graph_host_callback_state_t* state =
+      (iree_hal_streaming_graph_host_callback_state_t*)user_data;
+  IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, (uint64_t)(uintptr_t)state->fn);
+  IREE_TRACE_ZONE_APPEND_VALUE_I64(z0, (uint64_t)(uintptr_t)state->user_data);
+  state->fn(state->user_data);
   IREE_TRACE_ZONE_END(z0);
   return iree_ok_status();
 }
@@ -2915,13 +3017,31 @@ iree_status_t iree_hal_streaming_graph_exec_launch(
     }
   }
 
-  iree_hal_streaming_graph_memory_allocation_t** graph_memory_publications =
-      NULL;
-  iree_host_size_t graph_memory_publication_count = 0;
+  // A synchronously rejected prior launch may have left a fully usable retry
+  // mapping. It is not a live allocation from a completed launch: when it is
+  // the only mapping, preflight deliberately leaves it for the next map call
+  // to consume. If another ordinary live allocation triggers AUTO_FREE, the
+  // existing all-allocation pass also unmaps and clears any retry residue.
+
+  iree_hal_streaming_graph_memory_launch_allocation_t*
+      graph_memory_allocations = NULL;
+  iree_host_size_t graph_memory_allocation_count = 0;
+
+  // Pointer publication and same-stream enqueue form one transaction. A
+  // concurrent freeAsync may claim and remove a pointer while this lock is
+  // held, but it cannot enqueue its callback ahead of the allocation node's
+  // accepted map blocks. If the free enqueues first, pointer preparation sees
+  // its claim and rejects the launch. Cross-stream use/free still requires an
+  // explicit HIP stream dependency.
+  iree_slim_mutex_lock(&stream->mutex);
   iree_status_t status =
       iree_hal_streaming_graph_memory_prepare_launch_pointers(
-          exec, &graph_memory_publications, &graph_memory_publication_count);
+          exec, &graph_memory_allocations, &graph_memory_allocation_count);
   if (!iree_status_is_ok(status)) {
+    iree_slim_mutex_unlock(&stream->mutex);
+    // Pointer publications are stable graph-allocation state and persist even
+    // when preparation or submission fails before any block is accepted.
+    iree_allocator_free(exec->host_allocator, graph_memory_allocations);
     iree_slim_mutex_unlock(&exec->mutex);
     IREE_TRACE_ZONE_END(z0);
     return status;
@@ -2932,10 +3052,8 @@ iree_status_t iree_hal_streaming_graph_exec_launch(
   status = iree_hal_streaming_graph_exec_prepare_launch_point_locked(
       exec, stream, &launch_point, &launch_point_inserted);
   if (!iree_status_is_ok(status)) {
-    status = iree_status_join(
-        status, iree_hal_streaming_graph_memory_rollback_launch_pointers(
-                    graph_memory_publication_count, graph_memory_publications));
-    iree_allocator_free(exec->host_allocator, graph_memory_publications);
+    iree_slim_mutex_unlock(&stream->mutex);
+    iree_allocator_free(exec->host_allocator, graph_memory_allocations);
     iree_slim_mutex_unlock(&exec->mutex);
     IREE_TRACE_ZONE_END(z0);
     return status;
@@ -2950,8 +3068,6 @@ iree_status_t iree_hal_streaming_graph_exec_launch(
   iree_hal_streaming_accepted_signal_list_t accepted_signals;
   iree_hal_streaming_accepted_signal_list_initialize(exec->host_allocator,
                                                      &accepted_signals);
-
-  iree_slim_mutex_lock(&stream->mutex);
 
   // Reserve the next stream timeline value while holding the stream lock so
   // concurrent host threads cannot submit same-stream work with the same wait
@@ -2992,6 +3108,11 @@ iree_status_t iree_hal_streaming_graph_exec_launch(
     iree_status_t drain_status =
         iree_hal_streaming_accepted_signal_list_drain(&accepted_signals);
     status = iree_status_join(status, drain_status);
+    // Per-attempt evidence makes this a no-op for allocations whose map was
+    // never accepted or never became fully usable. This cannot replace the
+    // original submission failure and requires no fallible rollback work.
+    iree_hal_streaming_graph_memory_mark_failed_launch_retries(
+        graph_memory_allocation_count, graph_memory_allocations);
   }
 
   if (iree_status_is_ok(status)) {
@@ -3011,12 +3132,7 @@ iree_status_t iree_hal_streaming_graph_exec_launch(
   }
 
   iree_slim_mutex_unlock(&stream->mutex);
-  if (!iree_status_is_ok(status)) {
-    status = iree_status_join(
-        status, iree_hal_streaming_graph_memory_rollback_launch_pointers(
-                    graph_memory_publication_count, graph_memory_publications));
-  }
-  iree_allocator_free(exec->host_allocator, graph_memory_publications);
+  iree_allocator_free(exec->host_allocator, graph_memory_allocations);
   iree_slim_mutex_unlock(&exec->mutex);
   // The last reference to a captured graph frees the allocations it owns, which
   // synchronizes every context and relocks this stream, so the references the
@@ -3332,8 +3448,18 @@ iree_status_t iree_hal_streaming_graph_exec_update(
     IREE_TRACE_ZONE_END(z0);
     return iree_make_status(IREE_STATUS_INVALID_ARGUMENT);
   }
+  iree_status_t validation_status =
+      iree_hal_streaming_graph_validate_child_graph_memory_topology(graph);
+  if (!iree_status_is_ok(validation_status)) {
+    if (iree_status_code(validation_status) == IREE_STATUS_UNIMPLEMENTED) {
+      *out_result = IREE_HAL_STREAMING_GRAPH_EXEC_UPDATE_NOT_SUPPORTED;
+    }
+    iree_slim_mutex_unlock(&exec->mutex);
+    IREE_TRACE_ZONE_END(z0);
+    return validation_status;
+  }
   if (!iree_hal_streaming_graph_update_is_compatible(
-          exec->graph, exec->instantiated_visible_node_count, graph,
+          exec->template_graph, exec->instantiated_visible_node_count, graph,
           out_error_node, out_result)) {
     iree_slim_mutex_unlock(&exec->mutex);
     IREE_TRACE_ZONE_END(z0);
