@@ -461,7 +461,7 @@ static void iree_hal_streaming_graph_memory_allocation_destroy(
   // A retained pointer-table lookup carries a wrapper lease while it reads and
   // retains |graph_memory_allocation|. Close and drain those leases before
   // clearing that borrowed pointer or releasing either object.
-  iree_hal_streaming_memory_prepare_wrapped_buffer_release(
+  iree_hal_streaming_memory_drain_wrapped_buffer_lookups(
       allocation->virtual_buffer);
   allocation->virtual_buffer->graph_memory_allocation = NULL;
   iree_hal_streaming_memory_prepare_virtual_reservation_release(

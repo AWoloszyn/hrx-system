@@ -145,10 +145,11 @@ extern "C" iree_status_t __wrap_iree_hal_allocator_virtual_memory_reserve(
         allocator, queue_family_affinity, size, out_virtual_buffer);
   }
   iree_hal_buffer_params_t params = {
-      .usage = IREE_HAL_BUFFER_USAGE_TRANSFER | IREE_HAL_BUFFER_USAGE_DISPATCH,
-      .access = IREE_HAL_MEMORY_ACCESS_ALL,
-      .type = IREE_HAL_MEMORY_TYPE_DEVICE_LOCAL,
-      .queue_family_affinity = queue_family_affinity,
+      /*.usage=*/IREE_HAL_BUFFER_USAGE_TRANSFER |
+          IREE_HAL_BUFFER_USAGE_DISPATCH,
+      /*.access=*/IREE_HAL_MEMORY_ACCESS_ALL,
+      /*.type=*/IREE_HAL_MEMORY_TYPE_DEVICE_LOCAL,
+      /*.queue_family_affinity=*/queue_family_affinity,
   };
   return iree_hal_allocator_allocate_buffer(allocator, params, size,
                                             out_virtual_buffer);
@@ -1763,9 +1764,7 @@ TEST_F(CpuStreamingMemoryTest,
       EXPECT_EQ(IREE_STATUS_INVALID_ARGUMENT,
                 free_status_code.load(std::memory_order_acquire));
     }
-    if (graph) {
-      iree_hal_streaming_graph_release(graph);
-    }
+    iree_hal_streaming_graph_release(graph);
   }
 #endif  // IREE_PLATFORM_LINUX
 }
@@ -1999,9 +1998,7 @@ TEST_F(CpuStreamingMemoryTest,
             free_status_code.load(std::memory_order_acquire));
   EXPECT_EQ(1,
             fault_queue.injected_flush_count.load(std::memory_order_acquire));
-  if (graph) {
-    iree_hal_streaming_graph_release(graph);
-  }
+  iree_hal_streaming_graph_release(graph);
   iree_hal_streaming_device_terminal_resource_await_idle(&device_entry_);
   EXPECT_EQ(0, device_entry_.pending_terminal_resource_count);
 #endif  // IREE_PLATFORM_LINUX

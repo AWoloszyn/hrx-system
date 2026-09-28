@@ -119,7 +119,7 @@ iree_status_t iree_hal_streaming_memory_unpublish_wrapped_buffer(
 // Closes lookup admission, removes |buffer| from its pointer table if present,
 // and waits for every admitted retained lookup to release its lease.
 // Final owners call this before clearing metadata borrowed through the wrapper.
-void iree_hal_streaming_memory_prepare_wrapped_buffer_release(
+void iree_hal_streaming_memory_drain_wrapped_buffer_lookups(
     iree_hal_streaming_buffer_t* buffer);
 
 // Removes and releases an externally owned buffer wrapper after draining every

@@ -574,7 +574,7 @@ iree_status_t iree_hal_streaming_memory_unpublish_wrapped_buffer(
   return iree_ok_status();
 }
 
-void iree_hal_streaming_memory_prepare_wrapped_buffer_release(
+void iree_hal_streaming_memory_drain_wrapped_buffer_lookups(
     iree_hal_streaming_buffer_t* buffer) {
   if (!buffer) {
     return;
@@ -595,7 +595,7 @@ void iree_hal_streaming_memory_release_wrapped_buffer(
   if (!buffer) {
     return;
   }
-  iree_hal_streaming_memory_prepare_wrapped_buffer_release(buffer);
+  iree_hal_streaming_memory_drain_wrapped_buffer_lookups(buffer);
   iree_hal_streaming_buffer_free(buffer);
 }
 
