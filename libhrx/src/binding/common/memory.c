@@ -1923,21 +1923,55 @@ static void iree_hal_streaming_memory_restore_claimed_graph_allocation(
       allocation);
 }
 
-static iree_status_t iree_hal_streaming_memory_lookup_host_allocation(
+typedef struct iree_hal_streaming_host_flags_query_t {
+  // Registration flags copied while the buffer-table entry is protected.
+  iree_hal_streaming_host_register_flags_t flags;
+} iree_hal_streaming_host_flags_query_t;
+
+static hrx_status_t iree_hal_streaming_memory_host_flags_query_callback(
+    const hrx_buffer_table_entry_t* entry, size_t offset, void* user_data) {
+  (void)offset;
+  if (!entry->host_ptr) {
+    return hrx_make_status(HRX_STATUS_INVALID_ARGUMENT,
+                           "pointer is not host-visible memory");
+  }
+  iree_hal_streaming_buffer_t* buffer =
+      (iree_hal_streaming_buffer_t*)entry->user_data;
+  if (!buffer) {
+    return hrx_make_status(HRX_STATUS_FAILED_PRECONDITION,
+                           "allocation has no streaming wrapper");
+  }
+  iree_hal_streaming_host_flags_query_t* query =
+      (iree_hal_streaming_host_flags_query_t*)user_data;
+  query->flags = buffer->host_register_flags;
+  return hrx_ok_status();
+}
+
+static iree_status_t iree_hal_streaming_memory_query_host_flags_from_context(
+    iree_hal_streaming_context_t* context, uint64_t address,
+    iree_hal_streaming_host_register_flags_t* out_flags) {
+  iree_hal_streaming_host_flags_query_t query = {
+      .flags = IREE_HAL_STREAMING_HOST_REGISTER_FLAG_DEFAULT,
+  };
+  hrx_buffer_table_retained_ref_t table_ref;
+  iree_status_t status = HRX_CALL(hrx_buffer_table_find_range_retain_if(
+      &context->buffer_table, address, /*size=*/1,
+      iree_hal_streaming_memory_host_flags_query_callback, &query, &table_ref));
+  if (iree_status_is_ok(status)) {
+    *out_flags = query.flags;
+    hrx_buffer_release(table_ref.buffer);
+  }
+  return status;
+}
+
+static iree_status_t iree_hal_streaming_memory_lookup_host_flags(
     iree_hal_streaming_context_t* preferred_context, void* pointer,
-    iree_hal_streaming_retained_buffer_ref_t* out_ref) {
+    iree_hal_streaming_host_register_flags_t* out_flags) {
   const iree_hal_streaming_deviceptr_t address =
       (iree_hal_streaming_deviceptr_t)(uintptr_t)pointer;
-  iree_status_t status = iree_hal_streaming_memory_lookup_range_retain(
-      preferred_context, address, /*size=*/1, out_ref);
-  if (iree_status_is_ok(status)) {
-    if (out_ref->host_pointer) {
-      return status;
-    }
-    iree_hal_streaming_retained_buffer_ref_deinitialize(out_ref);
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "pointer is not host-visible memory");
-  }
+  iree_status_t status =
+      iree_hal_streaming_memory_query_host_flags_from_context(
+          preferred_context, address, out_flags);
   if (iree_status_code(status) != IREE_STATUS_NOT_FOUND) {
     return status;
   }
@@ -1958,8 +1992,8 @@ static iree_status_t iree_hal_streaming_memory_lookup_host_allocation(
     if (context == preferred_context) {
       continue;
     }
-    status = iree_hal_streaming_memory_lookup_range_retain(context, address,
-                                                           /*size=*/1, out_ref);
+    status = iree_hal_streaming_memory_query_host_flags_from_context(
+        context, address, out_flags);
     if (iree_status_is_ok(status) ||
         iree_status_code(status) != IREE_STATUS_NOT_FOUND) {
       break;
@@ -1968,12 +2002,6 @@ static iree_status_t iree_hal_streaming_memory_lookup_host_allocation(
     status = iree_status_from_code(IREE_STATUS_NOT_FOUND);
   }
   iree_slim_mutex_unlock(&device_registry->context_list.mutex);
-
-  if (iree_status_is_ok(status) && !out_ref->host_pointer) {
-    iree_hal_streaming_retained_buffer_ref_deinitialize(out_ref);
-    return iree_make_status(IREE_STATUS_INVALID_ARGUMENT,
-                            "pointer is not host-visible memory");
-  }
   return status;
 }
 
@@ -2934,15 +2962,7 @@ iree_status_t iree_hal_streaming_memory_host_flags(
   IREE_ASSERT_ARGUMENT(out_flags);
   *out_flags = IREE_HAL_STREAMING_HOST_REGISTER_FLAG_DEFAULT;
 
-  iree_hal_streaming_retained_buffer_ref_t retained_ref;
-  iree_status_t status = iree_hal_streaming_memory_lookup_host_allocation(
-      context, ptr, &retained_ref);
-  if (iree_status_is_ok(status)) {
-    *out_flags = retained_ref.host_register_flags;
-    iree_hal_streaming_retained_buffer_ref_deinitialize(&retained_ref);
-  }
-
-  return status;
+  return iree_hal_streaming_memory_lookup_host_flags(context, ptr, out_flags);
 }
 
 iree_status_t iree_hal_streaming_memory_memset(

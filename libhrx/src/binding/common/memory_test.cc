@@ -1758,6 +1758,26 @@ TEST_F(CpuStreamingMemoryTest,
 }
 
 TEST_F(CpuStreamingMemoryTest,
+       HostFlagQueryReadsPublishedMetadataWhileAllocationIsClosing) {
+  const iree_hal_streaming_host_register_flags_t allocation_flags =
+      static_cast<iree_hal_streaming_host_register_flags_t>(
+          IREE_HAL_STREAMING_HOST_REGISTER_FLAG_PORTABLE |
+          IREE_HAL_STREAMING_HOST_REGISTER_FLAG_MAPPED);
+  IREE_ASSERT_OK(iree_hal_streaming_memory_allocate_host(
+      context_, /*size=*/4096, allocation_flags, &buffer_));
+  ASSERT_NE(nullptr, buffer_->host_ptr);
+  iree_hal_streaming_allocation_preparation_begin_close(&buffer_->preparation);
+
+  iree_hal_streaming_host_register_flags_t queried_flags =
+      IREE_HAL_STREAMING_HOST_REGISTER_FLAG_DEFAULT;
+  IREE_EXPECT_OK(iree_hal_streaming_memory_host_flags(
+      context_, buffer_->host_ptr, &queried_flags));
+  EXPECT_EQ(allocation_flags, queried_flags);
+
+  iree_hal_streaming_allocation_preparation_reopen(&buffer_->preparation);
+}
+
+TEST_F(CpuStreamingMemoryTest,
        SameStreamGraphLaunchReservesPointerPreparationThroughEnqueue) {
 #if !defined(IREE_PLATFORM_LINUX)
   GTEST_SKIP() << "virtual-memory dependency injection requires ELF wrapping";
