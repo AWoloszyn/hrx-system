@@ -803,10 +803,7 @@ iree_hal_host_call_t iree_hal_streaming_graph_memory_allocation_unmap_call(
 uint64_t iree_hal_streaming_graph_memory_used_current(
     iree_hal_streaming_device_t* device) {
   iree_slim_mutex_lock(&device->graph_memory_mutex);
-  // HIP counts physical backing retained for graph reuse as used even while it
-  // is unmapped in the cache. Active mappings are tracked separately to derive
-  // the peak simultaneous use reported by UsedMemHigh.
-  uint64_t value = device->graph_memory_reserved_current;
+  uint64_t value = device->graph_memory_mapped_current;
   iree_slim_mutex_unlock(&device->graph_memory_mutex);
   return value;
 }

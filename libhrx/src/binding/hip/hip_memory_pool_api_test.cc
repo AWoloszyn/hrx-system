@@ -59,6 +59,7 @@ using HipStreamSynchronizeFn = hipError_t (*)(hipStream_t stream);
 using HipDeviceGetGraphMemAttributeFn = hipError_t (*)(int device,
                                                        int attribute,
                                                        void* value);
+using HipDeviceGraphMemTrimFn = hipError_t (*)(int device);
 using HipStreamBeginCaptureFn = hipError_t (*)(hipStream_t stream,
                                                hipStreamCaptureMode mode);
 using HipStreamEndCaptureFn = hipError_t (*)(hipStream_t stream,
@@ -109,6 +110,8 @@ struct HipRuntimeApi {
   HipStreamSynchronizeFn stream_synchronize = nullptr;
   // Queries graph-memory accounting for a device.
   HipDeviceGetGraphMemAttributeFn device_get_graph_mem_attribute = nullptr;
+  // Releases graph-memory backing that is not currently used by a graph.
+  HipDeviceGraphMemTrimFn device_graph_mem_trim = nullptr;
   // Begins stream capture into a graph template.
   HipStreamBeginCaptureFn stream_begin_capture = nullptr;
   // Ends stream capture and returns its graph template.
@@ -174,6 +177,8 @@ class HipMemoryPoolApiTest : public testing::Test {
       api_.device_get_graph_mem_attribute =
           ResolveHipSymbol<HipDeviceGetGraphMemAttributeFn>(
               api_.library, "hipDeviceGetGraphMemAttribute");
+      api_.device_graph_mem_trim = ResolveHipSymbol<HipDeviceGraphMemTrimFn>(
+          api_.library, "hipDeviceGraphMemTrim");
       api_.stream_begin_capture = ResolveHipSymbol<HipStreamBeginCaptureFn>(
           api_.library, "hipStreamBeginCapture");
       api_.stream_end_capture = ResolveHipSymbol<HipStreamEndCaptureFn>(
@@ -203,6 +208,7 @@ class HipMemoryPoolApiTest : public testing::Test {
     ASSERT_NE(nullptr, api_.graph_launch);
     ASSERT_NE(nullptr, api_.stream_synchronize);
     ASSERT_NE(nullptr, api_.device_get_graph_mem_attribute);
+    ASSERT_NE(nullptr, api_.device_graph_mem_trim);
     ASSERT_NE(nullptr, api_.stream_begin_capture);
     ASSERT_NE(nullptr, api_.stream_end_capture);
     ASSERT_NE(nullptr, api_.malloc_async);
@@ -367,10 +373,15 @@ TEST_F(HipMemoryPoolApiTest, CapturedAllocationRetainsGraphOwnership) {
 }
 
 TEST_F(HipMemoryPoolApiTest, StreamOrderedFreeReleasesGraphAllocation) {
+  ASSERT_EQ(hipSuccess, api_.device_graph_mem_trim(device_));
   uint64_t used_before = 0;
+  uint64_t reserved_before = 0;
   ASSERT_EQ(hipSuccess,
             api_.device_get_graph_mem_attribute(
                 device_, hipGraphMemAttrUsedMemCurrent, &used_before));
+  ASSERT_EQ(hipSuccess,
+            api_.device_get_graph_mem_attribute(
+                device_, hipGraphMemAttrReservedMemCurrent, &reserved_before));
 
   hipGraph_t graph = nullptr;
   ASSERT_EQ(hipSuccess, api_.graph_create(&graph, /*flags=*/0));
@@ -392,14 +403,32 @@ TEST_F(HipMemoryPoolApiTest, StreamOrderedFreeReleasesGraphAllocation) {
                                                /*log_buffer=*/nullptr,
                                                /*log_buffer_size=*/0));
   ASSERT_EQ(hipSuccess, api_.graph_launch(executable_graph, stream_));
+  ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream_));
+
+  uint64_t used_active = 0;
+  uint64_t reserved_active = 0;
+  ASSERT_EQ(hipSuccess,
+            api_.device_get_graph_mem_attribute(
+                device_, hipGraphMemAttrUsedMemCurrent, &used_active));
+  ASSERT_EQ(hipSuccess,
+            api_.device_get_graph_mem_attribute(
+                device_, hipGraphMemAttrReservedMemCurrent, &reserved_active));
+  EXPECT_GT(used_active, used_before);
+  EXPECT_GT(reserved_active, reserved_before);
+
   ASSERT_EQ(hipSuccess, api_.free_async(parameters.dptr, stream_));
   ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream_));
 
   uint64_t used_after = 0;
+  uint64_t reserved_after = 0;
   EXPECT_EQ(hipSuccess,
             api_.device_get_graph_mem_attribute(
                 device_, hipGraphMemAttrUsedMemCurrent, &used_after));
+  EXPECT_EQ(hipSuccess,
+            api_.device_get_graph_mem_attribute(
+                device_, hipGraphMemAttrReservedMemCurrent, &reserved_after));
   EXPECT_EQ(used_before, used_after);
+  EXPECT_EQ(reserved_active, reserved_after);
 
   // A later launch reactivates the graph's stable virtual address and must
   // make it available to the same stream-ordered free path again.
@@ -415,6 +444,13 @@ TEST_F(HipMemoryPoolApiTest, StreamOrderedFreeReleasesGraphAllocation) {
 
   EXPECT_EQ(hipSuccess, api_.graph_exec_destroy(executable_graph));
   EXPECT_EQ(hipSuccess, api_.graph_destroy(graph));
+  ASSERT_EQ(hipSuccess, api_.device_graph_mem_trim(device_));
+
+  uint64_t reserved_trimmed = 0;
+  EXPECT_EQ(hipSuccess,
+            api_.device_get_graph_mem_attribute(
+                device_, hipGraphMemAttrReservedMemCurrent, &reserved_trimmed));
+  EXPECT_EQ(reserved_before, reserved_trimmed);
 }
 
 TEST_F(HipMemoryPoolApiTest, GraphFreeRetiresAndRelaunchesStablePointer) {
