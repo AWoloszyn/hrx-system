@@ -35,6 +35,13 @@ using HipGraphAddHostNodeFn = hipError_t (*)(hipGraphNode_t* node,
                                              const hipGraphNode_t* dependencies,
                                              size_t dependency_count,
                                              const void* parameters);
+using HipGraphAddMemcpyNode1DFn = hipError_t (*)(
+    hipGraphNode_t* node, hipGraph_t graph, const hipGraphNode_t* dependencies,
+    size_t dependency_count, void* destination, const void* source, size_t size,
+    hipMemcpyKind kind);
+using HipGraphAddMemsetNodeFn = hipError_t (*)(
+    hipGraphNode_t* node, hipGraph_t graph, const hipGraphNode_t* dependencies,
+    size_t dependency_count, const void* parameters);
 using HipGraphAddChildGraphNodeFn = hipError_t (*)(
     hipGraphNode_t* node, hipGraph_t graph, const hipGraphNode_t* dependencies,
     size_t dependency_count, hipGraph_t child_graph);
@@ -62,13 +69,23 @@ using HipGraphExecDestroyFn = hipError_t (*)(hipGraphExec_t executable_graph);
 using HipGraphExecChildGraphNodeSetParamsFn =
     hipError_t (*)(hipGraphExec_t executable_graph, hipGraphNode_t node,
                    hipGraph_t child_graph);
+using HipGraphExecMemcpyNodeSetParams1DFn = hipError_t (*)(
+    hipGraphExec_t executable_graph, hipGraphNode_t node, void* destination,
+    const void* source, size_t size, hipMemcpyKind kind);
+using HipGraphExecMemsetNodeSetParamsFn =
+    hipError_t (*)(hipGraphExec_t executable_graph, hipGraphNode_t node,
+                   const void* parameters);
 using HipGraphExecUpdateFn = hipError_t (*)(
     hipGraphExec_t executable_graph, hipGraph_t graph,
     hipGraphNode_t* error_node, hipGraphExecUpdateResult* update_result);
 using HipGraphLaunchFn = hipError_t (*)(hipGraphExec_t executable_graph,
                                         hipStream_t stream);
+using HipGraphDestroyNodeFn = hipError_t (*)(hipGraphNode_t node);
+using HipMallocFn = hipError_t (*)(hipDeviceptr_t* pointer, size_t size);
 using HipFreeFn = hipError_t (*)(void* pointer);
 using HipFreeAsyncFn = hipError_t (*)(void* pointer, hipStream_t stream);
+using HipMemcpyFn = hipError_t (*)(void* destination, const void* source,
+                                   size_t size, hipMemcpyKind kind);
 
 struct HipRuntimeApi {
   // Initializes the runtime under test.
@@ -95,6 +112,10 @@ struct HipRuntimeApi {
   HipGraphAddEmptyNodeFn graph_add_empty_node = nullptr;
   // Adds a host-call graph node.
   HipGraphAddHostNodeFn graph_add_host_node = nullptr;
+  // Adds a one-dimensional memory-copy node.
+  HipGraphAddMemcpyNode1DFn graph_add_memcpy_node_1d = nullptr;
+  // Adds a memory-set node.
+  HipGraphAddMemsetNodeFn graph_add_memset_node = nullptr;
   // Adds a child-graph node.
   HipGraphAddChildGraphNodeFn graph_add_child_graph_node = nullptr;
   // Adds a graph-memory allocation node.
@@ -114,14 +135,25 @@ struct HipRuntimeApi {
   // Replaces an executable child graph.
   HipGraphExecChildGraphNodeSetParamsFn graph_exec_child_graph_node_set_params =
       nullptr;
+  // Updates one executable memory-copy node.
+  HipGraphExecMemcpyNodeSetParams1DFn graph_exec_memcpy_node_set_params_1d =
+      nullptr;
+  // Updates one executable memory-set node.
+  HipGraphExecMemsetNodeSetParamsFn graph_exec_memset_node_set_params = nullptr;
   // Updates an executable from a source graph.
   HipGraphExecUpdateFn graph_exec_update = nullptr;
   // Launches an executable graph.
   HipGraphLaunchFn graph_launch = nullptr;
+  // Removes a node from its source graph.
+  HipGraphDestroyNodeFn graph_destroy_node = nullptr;
+  // Allocates device memory.
+  HipMallocFn malloc = nullptr;
   // Frees a device allocation synchronously.
   HipFreeFn free = nullptr;
   // Enqueues a device-allocation free.
   HipFreeAsyncFn free_async = nullptr;
+  // Copies bytes between host and device memory.
+  HipMemcpyFn memcpy = nullptr;
 };
 
 class HipGraphApiTest : public testing::Test {
@@ -148,6 +180,10 @@ class HipGraphApiTest : public testing::Test {
           dso_.Resolve<HipGraphAddEmptyNodeFn>("hipGraphAddEmptyNode");
       api_.graph_add_host_node =
           dso_.Resolve<HipGraphAddHostNodeFn>("hipGraphAddHostNode");
+      api_.graph_add_memcpy_node_1d =
+          dso_.Resolve<HipGraphAddMemcpyNode1DFn>("hipGraphAddMemcpyNode1D");
+      api_.graph_add_memset_node =
+          dso_.Resolve<HipGraphAddMemsetNodeFn>("hipGraphAddMemsetNode");
       api_.graph_add_child_graph_node =
           dso_.Resolve<HipGraphAddChildGraphNodeFn>(
               "hipGraphAddChildGraphNode");
@@ -168,11 +204,21 @@ class HipGraphApiTest : public testing::Test {
       api_.graph_exec_child_graph_node_set_params =
           dso_.Resolve<HipGraphExecChildGraphNodeSetParamsFn>(
               "hipGraphExecChildGraphNodeSetParams");
+      api_.graph_exec_memcpy_node_set_params_1d =
+          dso_.Resolve<HipGraphExecMemcpyNodeSetParams1DFn>(
+              "hipGraphExecMemcpyNodeSetParams1D");
+      api_.graph_exec_memset_node_set_params =
+          dso_.Resolve<HipGraphExecMemsetNodeSetParamsFn>(
+              "hipGraphExecMemsetNodeSetParams");
       api_.graph_exec_update =
           dso_.Resolve<HipGraphExecUpdateFn>("hipGraphExecUpdate");
       api_.graph_launch = dso_.Resolve<HipGraphLaunchFn>("hipGraphLaunch");
+      api_.graph_destroy_node =
+          dso_.Resolve<HipGraphDestroyNodeFn>("hipGraphDestroyNode");
+      api_.malloc = dso_.Resolve<HipMallocFn>("hipMalloc");
       api_.free = dso_.Resolve<HipFreeFn>("hipFree");
       api_.free_async = dso_.Resolve<HipFreeAsyncFn>("hipFreeAsync");
+      api_.memcpy = dso_.Resolve<HipMemcpyFn>("hipMemcpy");
     }
 
     ASSERT_NE(nullptr, api_.init);
@@ -187,6 +233,8 @@ class HipGraphApiTest : public testing::Test {
     ASSERT_NE(nullptr, api_.graph_destroy);
     ASSERT_NE(nullptr, api_.graph_add_empty_node);
     ASSERT_NE(nullptr, api_.graph_add_host_node);
+    ASSERT_NE(nullptr, api_.graph_add_memcpy_node_1d);
+    ASSERT_NE(nullptr, api_.graph_add_memset_node);
     ASSERT_NE(nullptr, api_.graph_add_child_graph_node);
     ASSERT_NE(nullptr, api_.graph_add_mem_alloc_node);
     ASSERT_NE(nullptr, api_.graph_add_mem_free_node);
@@ -196,10 +244,15 @@ class HipGraphApiTest : public testing::Test {
     ASSERT_NE(nullptr, api_.graph_instantiate);
     ASSERT_NE(nullptr, api_.graph_exec_destroy);
     ASSERT_NE(nullptr, api_.graph_exec_child_graph_node_set_params);
+    ASSERT_NE(nullptr, api_.graph_exec_memcpy_node_set_params_1d);
+    ASSERT_NE(nullptr, api_.graph_exec_memset_node_set_params);
     ASSERT_NE(nullptr, api_.graph_exec_update);
     ASSERT_NE(nullptr, api_.graph_launch);
+    ASSERT_NE(nullptr, api_.graph_destroy_node);
+    ASSERT_NE(nullptr, api_.malloc);
     ASSERT_NE(nullptr, api_.free);
     ASSERT_NE(nullptr, api_.free_async);
+    ASSERT_NE(nullptr, api_.memcpy);
     ASSERT_EQ(hipSuccess, api_.init(/*flags=*/0));
     ASSERT_EQ(hipSuccess, api_.get_device(&device_));
     ASSERT_EQ(hipSuccess, api_.stream_create(&stream_));
@@ -885,6 +938,219 @@ TEST_F(HipGraphApiTest,
   EXPECT_EQ(hipSuccess, api_.graph_destroy(parent));
   EXPECT_EQ(hipSuccess, api_.graph_destroy(original_child));
   EXPECT_EQ(hipSuccess, api_.stream_synchronize(stream_));
+}
+
+TEST_F(HipGraphApiTest, ExecMemcpyUpdateMutatesOnlyPrivateTemplate) {
+  constexpr size_t kSize = sizeof(uint32_t);
+  const uint32_t source_a_value = 0x12345678u;
+  const uint32_t source_b_value = 0x9ABCDEF0u;
+  const uint32_t zero = 0;
+  hipDeviceptr_t source_a = nullptr;
+  hipDeviceptr_t source_b = nullptr;
+  hipDeviceptr_t destination_a = nullptr;
+  hipDeviceptr_t destination_b = nullptr;
+  ASSERT_EQ(hipSuccess, api_.malloc(&source_a, kSize));
+  ASSERT_EQ(hipSuccess, api_.malloc(&source_b, kSize));
+  ASSERT_EQ(hipSuccess, api_.malloc(&destination_a, kSize));
+  ASSERT_EQ(hipSuccess, api_.malloc(&destination_b, kSize));
+  ASSERT_EQ(hipSuccess, api_.memcpy(source_a, &source_a_value, kSize,
+                                    hipMemcpyHostToDevice));
+  ASSERT_EQ(hipSuccess, api_.memcpy(source_b, &source_b_value, kSize,
+                                    hipMemcpyHostToDevice));
+  ASSERT_EQ(hipSuccess,
+            api_.memcpy(destination_a, &zero, kSize, hipMemcpyHostToDevice));
+  ASSERT_EQ(hipSuccess,
+            api_.memcpy(destination_b, &zero, kSize, hipMemcpyHostToDevice));
+
+  hipGraph_t graph = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_create(&graph, /*flags=*/0));
+  hipGraphNode_t copy_node = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_add_memcpy_node_1d(
+                            &copy_node, graph, /*dependencies=*/nullptr,
+                            /*dependency_count=*/0, destination_a, source_a,
+                            kSize, hipMemcpyDeviceToDevice));
+  hipGraphExec_t executable_graph = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_instantiate(&executable_graph, graph,
+                                               /*error_node=*/nullptr,
+                                               /*log_buffer=*/nullptr,
+                                               /*log_buffer_size=*/0));
+
+  ASSERT_EQ(hipSuccess, api_.graph_exec_memcpy_node_set_params_1d(
+                            executable_graph, copy_node, destination_b,
+                            source_b, kSize, hipMemcpyDeviceToDevice));
+  ASSERT_EQ(hipSuccess, api_.graph_launch(executable_graph, stream_));
+  ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream_));
+
+  uint32_t destination_a_value = 0;
+  uint32_t destination_b_value = 0;
+  ASSERT_EQ(hipSuccess, api_.memcpy(&destination_a_value, destination_a, kSize,
+                                    hipMemcpyDeviceToHost));
+  ASSERT_EQ(hipSuccess, api_.memcpy(&destination_b_value, destination_b, kSize,
+                                    hipMemcpyDeviceToHost));
+  EXPECT_EQ(zero, destination_a_value);
+  EXPECT_EQ(source_b_value, destination_b_value);
+
+  hipGraphExec_t source_executable_graph = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_instantiate(&source_executable_graph, graph,
+                                               /*error_node=*/nullptr,
+                                               /*log_buffer=*/nullptr,
+                                               /*log_buffer_size=*/0));
+  ASSERT_EQ(hipSuccess, api_.graph_launch(source_executable_graph, stream_));
+  ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream_));
+  ASSERT_EQ(hipSuccess, api_.memcpy(&destination_a_value, destination_a, kSize,
+                                    hipMemcpyDeviceToHost));
+  EXPECT_EQ(source_a_value, destination_a_value);
+
+  EXPECT_EQ(hipSuccess, api_.graph_exec_destroy(source_executable_graph));
+  EXPECT_EQ(hipSuccess, api_.graph_exec_destroy(executable_graph));
+  EXPECT_EQ(hipSuccess, api_.graph_destroy(graph));
+  EXPECT_EQ(hipSuccess, api_.free(destination_b));
+  EXPECT_EQ(hipSuccess, api_.free(destination_a));
+  EXPECT_EQ(hipSuccess, api_.free(source_b));
+  EXPECT_EQ(hipSuccess, api_.free(source_a));
+}
+
+TEST_F(HipGraphApiTest,
+       ExecMemsetUpdateTracksStableIdentityAcrossGraphMutation) {
+  constexpr size_t kSize = sizeof(uint32_t);
+  const uint32_t zero = 0;
+  hipDeviceptr_t destination_a = nullptr;
+  hipDeviceptr_t destination_b = nullptr;
+  hipDeviceptr_t destination_c = nullptr;
+  hipDeviceptr_t destination_d = nullptr;
+  ASSERT_EQ(hipSuccess, api_.malloc(&destination_a, kSize));
+  ASSERT_EQ(hipSuccess, api_.malloc(&destination_b, kSize));
+  ASSERT_EQ(hipSuccess, api_.malloc(&destination_c, kSize));
+  ASSERT_EQ(hipSuccess, api_.malloc(&destination_d, kSize));
+  ASSERT_EQ(hipSuccess,
+            api_.memcpy(destination_a, &zero, kSize, hipMemcpyHostToDevice));
+  ASSERT_EQ(hipSuccess,
+            api_.memcpy(destination_b, &zero, kSize, hipMemcpyHostToDevice));
+  ASSERT_EQ(hipSuccess,
+            api_.memcpy(destination_c, &zero, kSize, hipMemcpyHostToDevice));
+  ASSERT_EQ(hipSuccess,
+            api_.memcpy(destination_d, &zero, kSize, hipMemcpyHostToDevice));
+
+  hipGraph_t graph = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_create(&graph, /*flags=*/0));
+  hipMemsetParams first_parameters = {};
+  first_parameters.dst = destination_a;
+  first_parameters.value = 0x11;
+  first_parameters.elementSize = 1;
+  first_parameters.width = kSize;
+  first_parameters.height = 1;
+  hipGraphNode_t first_node = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_add_memset_node(
+                            &first_node, graph, /*dependencies=*/nullptr,
+                            /*dependency_count=*/0, &first_parameters));
+  hipMemsetParams second_parameters = first_parameters;
+  second_parameters.dst = destination_b;
+  second_parameters.value = 0x22;
+  hipGraphNode_t second_node = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_add_memset_node(
+                            &second_node, graph, &first_node,
+                            /*dependency_count=*/1, &second_parameters));
+
+  hipGraphExec_t executable_graph = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_instantiate(&executable_graph, graph,
+                                               /*error_node=*/nullptr,
+                                               /*log_buffer=*/nullptr,
+                                               /*log_buffer_size=*/0));
+  ASSERT_EQ(hipSuccess, api_.graph_destroy_node(first_node));
+  hipMemsetParams added_parameters = first_parameters;
+  added_parameters.dst = destination_c;
+  added_parameters.value = 0x33;
+  hipGraphNode_t added_node = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_add_memset_node(
+                            &added_node, graph, /*dependencies=*/nullptr,
+                            /*dependency_count=*/0, &added_parameters));
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.graph_exec_memset_node_set_params(executable_graph, added_node,
+                                                   &added_parameters));
+
+  hipMemsetParams updated_second_parameters = second_parameters;
+  updated_second_parameters.value = 0x44;
+  ASSERT_EQ(hipSuccess,
+            api_.graph_exec_memset_node_set_params(
+                executable_graph, second_node, &updated_second_parameters));
+  ASSERT_EQ(hipSuccess, api_.graph_launch(executable_graph, stream_));
+  ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream_));
+
+  uint32_t destination_a_value = 0;
+  uint32_t destination_b_value = 0;
+  ASSERT_EQ(hipSuccess, api_.memcpy(&destination_a_value, destination_a, kSize,
+                                    hipMemcpyDeviceToHost));
+  ASSERT_EQ(hipSuccess, api_.memcpy(&destination_b_value, destination_b, kSize,
+                                    hipMemcpyDeviceToHost));
+  EXPECT_EQ(0x11111111u, destination_a_value);
+  EXPECT_EQ(0x44444444u, destination_b_value);
+
+  hipGraph_t replacement_graph = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_create(&replacement_graph, /*flags=*/0));
+  hipMemsetParams replacement_first_parameters = first_parameters;
+  replacement_first_parameters.dst = destination_c;
+  replacement_first_parameters.value = 0x55;
+  hipGraphNode_t replacement_first_node = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_add_memset_node(
+                            &replacement_first_node, replacement_graph,
+                            /*dependencies=*/nullptr, /*dependency_count=*/0,
+                            &replacement_first_parameters));
+  hipMemsetParams replacement_second_parameters = first_parameters;
+  replacement_second_parameters.dst = destination_d;
+  replacement_second_parameters.value = 0x66;
+  hipGraphNode_t replacement_second_node = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_add_memset_node(
+                            &replacement_second_node, replacement_graph,
+                            &replacement_first_node, /*dependency_count=*/1,
+                            &replacement_second_parameters));
+  hipGraphNode_t error_node = nullptr;
+  hipGraphExecUpdateResult update_result = hipGraphExecUpdateError;
+  ASSERT_EQ(hipSuccess,
+            api_.graph_exec_update(executable_graph, replacement_graph,
+                                   &error_node, &update_result));
+  EXPECT_EQ(nullptr, error_node);
+  EXPECT_EQ(hipGraphExecUpdateSuccess, update_result);
+  EXPECT_EQ(hipErrorInvalidValue,
+            api_.graph_exec_memset_node_set_params(
+                executable_graph, second_node, &updated_second_parameters));
+
+  hipMemsetParams updated_replacement_parameters =
+      replacement_second_parameters;
+  updated_replacement_parameters.value = 0x77;
+  ASSERT_EQ(hipSuccess, api_.graph_exec_memset_node_set_params(
+                            executable_graph, replacement_second_node,
+                            &updated_replacement_parameters));
+  ASSERT_EQ(hipSuccess, api_.graph_launch(executable_graph, stream_));
+  ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream_));
+
+  uint32_t destination_c_value = 0;
+  uint32_t destination_d_value = 0;
+  ASSERT_EQ(hipSuccess, api_.memcpy(&destination_c_value, destination_c, kSize,
+                                    hipMemcpyDeviceToHost));
+  ASSERT_EQ(hipSuccess, api_.memcpy(&destination_d_value, destination_d, kSize,
+                                    hipMemcpyDeviceToHost));
+  EXPECT_EQ(0x55555555u, destination_c_value);
+  EXPECT_EQ(0x77777777u, destination_d_value);
+
+  hipGraphExec_t source_executable_graph = nullptr;
+  ASSERT_EQ(hipSuccess, api_.graph_instantiate(&source_executable_graph, graph,
+                                               /*error_node=*/nullptr,
+                                               /*log_buffer=*/nullptr,
+                                               /*log_buffer_size=*/0));
+  ASSERT_EQ(hipSuccess, api_.graph_launch(source_executable_graph, stream_));
+  ASSERT_EQ(hipSuccess, api_.stream_synchronize(stream_));
+  ASSERT_EQ(hipSuccess, api_.memcpy(&destination_b_value, destination_b, kSize,
+                                    hipMemcpyDeviceToHost));
+  EXPECT_EQ(0x22222222u, destination_b_value);
+
+  EXPECT_EQ(hipSuccess, api_.graph_exec_destroy(source_executable_graph));
+  EXPECT_EQ(hipSuccess, api_.graph_exec_destroy(executable_graph));
+  EXPECT_EQ(hipSuccess, api_.graph_destroy(replacement_graph));
+  EXPECT_EQ(hipSuccess, api_.graph_destroy(graph));
+  EXPECT_EQ(hipSuccess, api_.free(destination_d));
+  EXPECT_EQ(hipSuccess, api_.free(destination_c));
+  EXPECT_EQ(hipSuccess, api_.free(destination_b));
+  EXPECT_EQ(hipSuccess, api_.free(destination_a));
 }
 
 }  // namespace
