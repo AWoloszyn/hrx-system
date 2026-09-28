@@ -19733,8 +19733,7 @@ HIPAPI hipError_t hipGraphLaunch(hipGraphExec_t graphExec, hipStream_t stream) {
     if (launch_result ==
         IREE_HAL_STREAMING_GRAPH_EXEC_LAUNCH_COOPERATIVE_TOO_LARGE) {
       fallback_result = hipErrorCooperativeLaunchTooLarge;
-    } else if (iree_status_code(launch_status) ==
-               IREE_STATUS_UNIMPLEMENTED) {
+    } else if (iree_status_code(launch_status) == IREE_STATUS_UNIMPLEMENTED) {
       fallback_result = hipErrorNotSupported;
     }
     hipError_t result =

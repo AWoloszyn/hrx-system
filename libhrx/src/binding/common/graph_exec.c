@@ -3094,9 +3094,33 @@ iree_status_t iree_hal_streaming_graph_exec_launch(
   // its claim and rejects the launch. Cross-stream use/free still requires an
   // explicit HIP stream dependency.
   iree_slim_mutex_lock(&stream->mutex);
-  iree_status_t status =
-      iree_hal_streaming_graph_memory_prepare_launch_pointers(
-          exec, &graph_memory_allocations, &graph_memory_allocation_count);
+  iree_hal_queue_t* cooperative_queue = NULL;
+  bool cooperative_launch_too_large = false;
+  iree_status_t status = iree_ok_status();
+  if (exec->has_cooperative_dispatches) {
+    status = iree_hal_streaming_stream_select_cooperative_queue_locked(
+        stream, &cooperative_queue);
+  }
+  if (iree_status_is_ok(status) && exec->has_cooperative_dispatches) {
+    status =
+        iree_hal_streaming_graph_exec_preflight_cooperative_dispatches_locked(
+            exec, cooperative_queue, &cooperative_launch_too_large);
+  }
+  if (iree_status_is_ok(status) && cooperative_launch_too_large) {
+    *out_result = IREE_HAL_STREAMING_GRAPH_EXEC_LAUNCH_COOPERATIVE_TOO_LARGE;
+    status = iree_make_status(
+        IREE_STATUS_OUT_OF_RANGE,
+        "cooperative graph dispatch exceeds concurrent residency");
+  }
+  if (!iree_status_is_ok(status)) {
+    iree_slim_mutex_unlock(&stream->mutex);
+    iree_slim_mutex_unlock(&exec->mutex);
+    IREE_TRACE_ZONE_END(z0);
+    return status;
+  }
+
+  status = iree_hal_streaming_graph_memory_prepare_launch_pointers(
+      exec, &graph_memory_allocations, &graph_memory_allocation_count);
   if (!iree_status_is_ok(status)) {
     iree_slim_mutex_unlock(&stream->mutex);
     // Pointer publications are stable graph-allocation state and persist even
@@ -3129,34 +3153,6 @@ iree_status_t iree_hal_streaming_graph_exec_launch(
   iree_hal_streaming_accepted_signal_list_initialize(exec->host_allocator,
                                                      &accepted_signals);
 
-  iree_slim_mutex_lock(&stream->mutex);
-
-  iree_hal_queue_t* cooperative_queue = NULL;
-  bool cooperative_launch_too_large = false;
-  iree_status_t status = iree_ok_status();
-  if (exec->has_cooperative_dispatches) {
-    status = iree_hal_streaming_stream_select_cooperative_queue_locked(
-        stream, &cooperative_queue);
-  }
-  if (iree_status_is_ok(status) && exec->has_cooperative_dispatches) {
-    status =
-        iree_hal_streaming_graph_exec_preflight_cooperative_dispatches_locked(
-            exec, cooperative_queue, &cooperative_launch_too_large);
-  }
-  if (iree_status_is_ok(status) && cooperative_launch_too_large) {
-    *out_result = IREE_HAL_STREAMING_GRAPH_EXEC_LAUNCH_COOPERATIVE_TOO_LARGE;
-    status = iree_make_status(
-        IREE_STATUS_OUT_OF_RANGE,
-        "cooperative graph dispatch exceeds concurrent residency");
-  }
-  if (!iree_status_is_ok(status)) {
-    iree_slim_mutex_unlock(&stream->mutex);
-    iree_slim_mutex_unlock(&exec->mutex);
-    iree_hal_streaming_dropped_graph_list_deinitialize(&dropped_graphs);
-    iree_hal_streaming_accepted_signal_list_deinitialize(&accepted_signals);
-    IREE_TRACE_ZONE_END(z0);
-    return status;
-  }
   // Reserve the next stream timeline value while holding the stream lock so
   // concurrent host threads cannot submit same-stream work with the same wait
   // or signal value. The graph waits on the current stream tail, not the last

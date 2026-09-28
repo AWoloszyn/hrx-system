@@ -32,6 +32,20 @@ void DestroyGraphExecHandle(iree_hal_streaming_graph_exec_t* executable) {
   }
 }
 
+iree_status_t LaunchGraphExecAndCheckResult(
+    iree_hal_streaming_graph_exec_t* executable,
+    iree_hal_streaming_stream_t* stream) {
+  iree_hal_streaming_graph_exec_launch_result_t result =
+      IREE_HAL_STREAMING_GRAPH_EXEC_LAUNCH_ERROR;
+  iree_status_t status =
+      iree_hal_streaming_graph_exec_launch(executable, stream, &result);
+  EXPECT_EQ(iree_status_is_ok(status)
+                ? IREE_HAL_STREAMING_GRAPH_EXEC_LAUNCH_SUCCESS
+                : IREE_HAL_STREAMING_GRAPH_EXEC_LAUNCH_ERROR,
+            result);
+  return status;
+}
+
 // Runs |cleanup| when it leaves scope. A test body builds its handles across a
 // run of fatal assertions and a fatal assertion returns from the body, so the
 // releases have to sit somewhere that return cannot skip.
@@ -956,7 +970,7 @@ TEST_F(GraphExecTest, RebuiltHostCallSurvivesExecutableDestroy) {
   auto* exec_resource = reinterpret_cast<iree_hal_resource_t*>(exec);
   EXPECT_EQ(1, iree_atomic_ref_count_load(&exec_resource->ref_count))
       << "rebuilt callback state retained its owning executable";
-  IREE_ASSERT_OK(iree_hal_streaming_graph_exec_launch(exec, stream_));
+  IREE_ASSERT_OK(LaunchGraphExecAndCheckResult(exec, stream_));
   IREE_ASSERT_OK(iree_hal_streaming_graph_exec_destroy_handle(exec));
   exec = nullptr;
 
@@ -990,7 +1004,7 @@ TEST_F(GraphExecTest,
   IREE_ASSERT_OK(iree_hal_streaming_stream_create(
       context_, context_->queue, IREE_HAL_STREAMING_STREAM_FLAG_NONE,
       /*priority=*/0, iree_allocator_system(), &launch_stream));
-  IREE_ASSERT_OK(iree_hal_streaming_graph_exec_launch(exec, launch_stream));
+  IREE_ASSERT_OK(LaunchGraphExecAndCheckResult(exec, launch_stream));
 
   // Public stream destruction synchronizes, removes the context-list owner,
   // and releases the caller's owner. Model all three steps so executable
@@ -1178,7 +1192,7 @@ TEST_F(GraphExecTest, LaunchResourceCleanupDoesNotDelayExecRetirement) {
   iree_hal_queue_release(original_queue);
   wrapper_installed = true;
 
-  IREE_ASSERT_OK(iree_hal_streaming_graph_exec_launch(exec, stream_));
+  IREE_ASSERT_OK(LaunchGraphExecAndCheckResult(exec, stream_));
   ASSERT_TRUE(controlled_queue.pending);
   IREE_ASSERT_OK(ControlledHostCallQueueInvokeCallback(&controlled_queue));
   ControlledHostCallQueuePublishSuccess(&controlled_queue);
@@ -1242,7 +1256,7 @@ TEST_F(GraphExecTest, RetirementCallbackReleasesGraphBeforePublishingSignal) {
       graph, /*dependencies=*/nullptr, /*dependency_count=*/0, &node));
   IREE_ASSERT_OK(iree_hal_streaming_graph_instantiate(
       graph, IREE_HAL_STREAMING_GRAPH_INSTANTIATE_FLAG_NONE, &exec));
-  IREE_ASSERT_OK(iree_hal_streaming_graph_exec_launch(exec, stream_));
+  IREE_ASSERT_OK(LaunchGraphExecAndCheckResult(exec, stream_));
   IREE_ASSERT_OK(iree_hal_streaming_stream_synchronize(stream_));
 
   // Leave the executable's source-graph reference as the probe's only owner.
@@ -1324,7 +1338,7 @@ TEST_F(GraphExecTest, CancelledRetirementDrainsAfterFailurePublication) {
       graph, /*dependencies=*/nullptr, /*dependency_count=*/0, &node));
   IREE_ASSERT_OK(iree_hal_streaming_graph_instantiate(
       graph, IREE_HAL_STREAMING_GRAPH_INSTANTIATE_FLAG_NONE, &exec));
-  IREE_ASSERT_OK(iree_hal_streaming_graph_exec_launch(exec, launch_stream));
+  IREE_ASSERT_OK(LaunchGraphExecAndCheckResult(exec, launch_stream));
   IREE_ASSERT_OK(iree_hal_streaming_stream_synchronize(launch_stream));
   iree_hal_streaming_graph_release(graph);
   graph = nullptr;
@@ -1380,7 +1394,7 @@ TEST_F(GraphExecTest, RetirementAllocationFailureLeavesExecRetryable) {
       graph, /*dependencies=*/nullptr, /*dependency_count=*/0, &node));
   IREE_ASSERT_OK(iree_hal_streaming_graph_instantiate(
       graph, IREE_HAL_STREAMING_GRAPH_INSTANTIATE_FLAG_NONE, &exec));
-  IREE_ASSERT_OK(iree_hal_streaming_graph_exec_launch(exec, stream_));
+  IREE_ASSERT_OK(LaunchGraphExecAndCheckResult(exec, stream_));
   IREE_ASSERT_OK(iree_hal_streaming_stream_synchronize(stream_));
 
   allocator.fail_allocations.store(true, std::memory_order_release);
@@ -1393,7 +1407,7 @@ TEST_F(GraphExecTest, RetirementAllocationFailureLeavesExecRetryable) {
   // launch point, so the executable remains usable and a later destroy can
   // retire both launches.
   allocator.fail_allocations.store(false, std::memory_order_release);
-  IREE_ASSERT_OK(iree_hal_streaming_graph_exec_launch(exec, stream_));
+  IREE_ASSERT_OK(LaunchGraphExecAndCheckResult(exec, stream_));
   IREE_ASSERT_OK(iree_hal_streaming_stream_synchronize(stream_));
   IREE_ASSERT_OK(iree_hal_streaming_graph_exec_destroy_handle(exec));
   exec = nullptr;
@@ -1427,7 +1441,7 @@ TEST_F(GraphExecTest, RetirementQueueRejectionLeavesExecRetryable) {
       graph, /*dependencies=*/nullptr, /*dependency_count=*/0, &node));
   IREE_ASSERT_OK(iree_hal_streaming_graph_instantiate(
       graph, IREE_HAL_STREAMING_GRAPH_INSTANTIATE_FLAG_NONE, &exec));
-  IREE_ASSERT_OK(iree_hal_streaming_graph_exec_launch(exec, stream_));
+  IREE_ASSERT_OK(LaunchGraphExecAndCheckResult(exec, stream_));
   IREE_ASSERT_OK(iree_hal_streaming_stream_synchronize(stream_));
 
   original_queue = stream_->queue;
@@ -1452,7 +1466,7 @@ TEST_F(GraphExecTest, RetirementQueueRejectionLeavesExecRetryable) {
   iree_hal_queue_release(&controlled_queue.base);
   wrapper_installed = false;
 
-  IREE_ASSERT_OK(iree_hal_streaming_graph_exec_launch(exec, stream_));
+  IREE_ASSERT_OK(LaunchGraphExecAndCheckResult(exec, stream_));
   IREE_ASSERT_OK(iree_hal_streaming_stream_synchronize(stream_));
   IREE_ASSERT_OK(iree_hal_streaming_graph_exec_destroy_handle(exec));
   exec = nullptr;

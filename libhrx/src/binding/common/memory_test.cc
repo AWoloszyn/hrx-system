@@ -307,6 +307,20 @@ namespace {
 
 void NoopHostCallback(void* user_data) { (void)user_data; }
 
+iree_status_t LaunchGraphExecAndCheckResult(
+    iree_hal_streaming_graph_exec_t* executable,
+    iree_hal_streaming_stream_t* stream) {
+  iree_hal_streaming_graph_exec_launch_result_t result =
+      IREE_HAL_STREAMING_GRAPH_EXEC_LAUNCH_ERROR;
+  iree_status_t status =
+      iree_hal_streaming_graph_exec_launch(executable, stream, &result);
+  EXPECT_EQ(iree_status_is_ok(status)
+                ? IREE_HAL_STREAMING_GRAPH_EXEC_LAUNCH_SUCCESS
+                : IREE_HAL_STREAMING_GRAPH_EXEC_LAUNCH_ERROR,
+            result);
+  return status;
+}
+
 #if defined(IREE_PLATFORM_LINUX)
 class ScopedGraphVirtualMemoryEmulation {
  public:
@@ -979,7 +993,7 @@ TEST_F(CpuStreamingMemoryTest,
 
   auto launch_with_rejection = [&](int reject_host_call_index) {
     ResetRejectNthHostCallQueue(&fault_queue, reject_host_call_index);
-    iree_status_t status = iree_hal_streaming_graph_exec_launch(exec, stream_);
+    iree_status_t status = LaunchGraphExecAndCheckResult(exec, stream_);
     EXPECT_EQ(IREE_STATUS_RESOURCE_EXHAUSTED, iree_status_code(status));
     const bool was_rejected =
         iree_status_code(status) == IREE_STATUS_RESOURCE_EXHAUSTED;
@@ -997,8 +1011,7 @@ TEST_F(CpuStreamingMemoryTest,
   };
   auto launch_and_synchronize = [&] {
     ResetRejectNthHostCallQueue(&fault_queue, /*reject_host_call_index=*/-1);
-    iree_status_t launch_status =
-        iree_hal_streaming_graph_exec_launch(exec, stream_);
+    iree_status_t launch_status = LaunchGraphExecAndCheckResult(exec, stream_);
     EXPECT_EQ(IREE_STATUS_OK, iree_status_code(launch_status));
     const bool launch_succeeded = iree_status_is_ok(launch_status);
     iree_status_ignore(launch_status);
@@ -1116,7 +1129,7 @@ TEST_F(CpuStreamingMemoryTest,
   };
   auto launch_and_synchronize = [&] {
     ResetRejectNthHostCallQueue(&fault_queue, /*reject_host_call_index=*/-1);
-    iree_status_t status = iree_hal_streaming_graph_exec_launch(exec, stream_);
+    iree_status_t status = LaunchGraphExecAndCheckResult(exec, stream_);
     EXPECT_EQ(IREE_STATUS_OK, iree_status_code(status));
     const bool launched = iree_status_is_ok(status);
     iree_status_ignore(status);
@@ -1160,7 +1173,7 @@ TEST_F(CpuStreamingMemoryTest,
   // Its mapping is residue from an incomplete attempt, not a live unmatched
   // allocation from the earlier successful launch.
   ResetRejectNthHostCallQueue(&fault_queue, /*reject_host_call_index=*/1);
-  iree_status_t status = iree_hal_streaming_graph_exec_launch(exec, stream_);
+  iree_status_t status = LaunchGraphExecAndCheckResult(exec, stream_);
   EXPECT_EQ(IREE_STATUS_RESOURCE_EXHAUSTED, iree_status_code(status));
   const bool was_rejected =
       iree_status_code(status) == IREE_STATUS_RESOURCE_EXHAUSTED;
@@ -1801,7 +1814,7 @@ TEST_F(CpuStreamingMemoryTest,
   std::atomic<bool> launch_returned = false;
   std::atomic<iree_status_code_t> launch_status_code = IREE_STATUS_UNKNOWN;
   std::thread launch_thread([&] {
-    iree_status_t status = iree_hal_streaming_graph_exec_launch(exec, stream_);
+    iree_status_t status = LaunchGraphExecAndCheckResult(exec, stream_);
     launch_status_code.store(iree_status_code(status),
                              std::memory_order_release);
     iree_status_ignore(status);
